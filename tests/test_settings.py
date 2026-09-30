@@ -656,3 +656,68 @@ def test_a_settings_file_that_will_not_read_is_not_overwritten_by_a_save(beside_
     with pytest.raises(SettingsError):
         data_rules.set_schedule(True, "07:00", 120)
     assert settings_path().read_text(encoding="utf-8") == "{not json"
+
+
+# ------------------------------------------------ one reading (P118) ----
+
+def test_one_reading_asks_the_data_folder_once_and_outside_it_every_time(monkeypatch, tmp_path):
+    """A read-only reply asks where the data folder is thousands of times;
+    inside ``one_reading`` the first answer stands, and outside it an
+    override takes effect at once, as ``data_home`` has always promised."""
+    asked = []
+    real = data_rules.resolve_data_home
+
+    def counted(*args, **kwargs):
+        asked.append(1)
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(data_rules, "resolve_data_home", counted)
+    first = data_rules.data_home()
+    with data_rules.one_reading():
+        assert data_rules.data_home() == data_rules.data_home() == first
+        monkeypatch.setenv(data_rules.ENV_DATA_HOME, str(tmp_path / "elsewhere"))
+        assert data_rules.data_home() == first, "one reply sees one data folder"
+    assert len(asked) == 2
+    assert data_rules.data_home() == tmp_path / "elsewhere", "outside a reading, an override is at once"
+
+
+def test_one_reading_reads_the_settings_once_and_hands_each_caller_its_own_copy():
+    data_rules.set_firm("J Park & Associates, CPA")
+    with data_rules.one_reading():
+        mine = data_rules._read()
+        mine["firm"] = "changed by one caller"
+        settings_path().write_text(json.dumps({"firm": "written meanwhile"}), encoding="utf-8")
+        assert data_rules._read()["firm"] == "J Park & Associates, CPA"
+    assert data_rules._read()["firm"] == "written meanwhile"
+
+
+def test_one_reading_holds_what_a_path_resolves_to_but_never_an_error(monkeypatch, tmp_path):
+    from pathlib import Path
+
+    calls, real = [], Path.resolve
+
+    def counted(self, strict=False):
+        calls.append(str(self))
+        if self.name == "refuses":
+            raise OSError("cannot be resolved")
+        return real(self, strict)
+
+    monkeypatch.setattr(Path, "resolve", counted)
+    with data_rules.one_reading():
+        for _ in range(3):
+            assert data_rules.resolved(tmp_path / "a") == real(tmp_path / "a")
+            with pytest.raises(OSError):
+                data_rules.resolved(tmp_path / "refuses")
+    assert calls.count(str(tmp_path / "a")) == 1
+    assert calls.count(str(tmp_path / "refuses")) == 3
+    data_rules.resolved(tmp_path / "a")
+    assert calls.count(str(tmp_path / "a")) == 2, "outside a reading nothing is held"
+
+
+def test_a_nested_reading_is_the_same_reading_and_ends_with_the_outer_one():
+    with data_rules.one_reading():
+        first = data_rules.app_dir()
+        with data_rules.one_reading():
+            assert data_rules._HELD is not None and data_rules.app_dir() == first
+        assert data_rules._HELD is not None
+    assert data_rules._HELD is None

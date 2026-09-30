@@ -1038,13 +1038,15 @@ def _recorded_root_over(folder: Path) -> Path | None:
     the chain that walks folders and moves files.
     """
     from tracker import layout
-    from tracker.settings import clients_root
+    from tracker.settings import clients_root, resolved
 
     root = clients_root()
     if root is None:
         return None
     try:
-        under = layout.parts_below(root.resolve(), folder.resolve())
+        # Resolved once per reply inside a reading (P118): every store read
+        # asks this, and on the office PC each resolve is a trip to the disk.
+        under = layout.parts_below(resolved(root), resolved(folder))
     except OSError:
         return None
     return root if under is not None else None
@@ -1115,9 +1117,10 @@ def _positional_root(folder: Path) -> Path | None:
     the shape is worded.
     """
     from tracker import layout
+    from tracker.settings import resolved
 
     try:
-        folder = folder.resolve()
+        folder = resolved(folder)
     except OSError:
         return None
     if len(folder.parents) < 4:
@@ -1140,8 +1143,9 @@ def engagement_path(root: Path | str, engagement_dir: Path | str) -> str:
     root, with forward slashes, so a store copied to another machine or
     another drive letter still names the same engagements."""
     from tracker import layout
+    from tracker.settings import resolved
 
-    root, folder = Path(root).resolve(), Path(engagement_dir).resolve()
+    root, folder = resolved(root), resolved(engagement_dir)
     below = layout.parts_below(root, folder)
     if below is None:
         raise StoreError(f"{folder} is not under the clients root {root}")

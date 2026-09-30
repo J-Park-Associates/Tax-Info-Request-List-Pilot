@@ -95,6 +95,7 @@ from tracker import (
     content_check,
     door,
     errors,
+    firm_cache,
     layout,
     ledger,
     names,
@@ -266,6 +267,7 @@ from tracker.registry import (
     RegistryError,
     discover_engagements,
     engagement_from,
+    household_positions,
     households_named,
     mark_superseded,
 )
@@ -327,6 +329,7 @@ from tracker.settings import (
     error_log_path,
     firm,
     firm_phone,
+    one_reading,
     product_name,
     program_drive_refusal,
     schedule_preference,
@@ -5433,17 +5436,38 @@ def _firm_row(one, household: str, today: dt.date) -> tuple[dict, list[dict], di
     return row, files, paths
 
 
-def _firm_key(paths: dict[str, str], key: str, path: str) -> str:
+def _firm_key(paths: dict[str, str], key: str, path: str,
+              spelled_for: dict[str, dict[str, str]] | None = None) -> str:
     """``key`` as the firm's one ``paths`` map spells it: a row's key is only
     its own return's (a preserved original's place in that record), so two
     returns can spell one key for different paths. The later one is
     suffixed `` #2``, `` #3``... (the kind is still the first word), and the
-    same key for the same path is the same key."""
-    spelled, n = key, 1
+    same key for the same path is the same key.
+
+    ``spelled_for`` remembers, per key, the spellings already given (P119):
+    a key every return shares - ``shown_copy 3`` - was otherwise tried
+    against every earlier suffix, which grew with the square of the
+    practice. The next suffix is tried from the number already given, and
+    each is still checked against ``paths``, so a spelling is never one
+    another path holds. Without ``spelled_for``, or for a key that already
+    holds `` #``, it is the plain walk from the start."""
+    if spelled_for is None or " #" in key:
+        spelled, n = key, 1
+        while paths.get(spelled, path) != path:
+            n += 1
+            spelled = f"{key} #{n}"
+        paths[spelled] = path
+        return spelled
+    given = spelled_for.setdefault(key, {})
+    if path in given:
+        return given[path]
+    n = len(given) + 1
+    spelled = key if n == 1 else f"{key} #{n}"
     while paths.get(spelled, path) != path:
         n += 1
         spelled = f"{key} #{n}"
     paths[spelled] = path
+    given[path] = spelled
     return spelled
 
 
@@ -5454,9 +5478,18 @@ def _cmd_firm(argv: list[str]) -> dict:
     its household is paused for two open years (``paused``, ruling 21), and
     the practice's totals. It walks the tree as ``list`` does and reads what
     ``state`` reads for each return, so a count here and the group on the
-    return's own page cannot disagree. It writes nothing, takes no lock and
-    reads no document. Inactive and rolled-forward returns are left out.
-    A root that cannot be walked is said, never answered as empty."""
+    return's own page cannot disagree. It writes nothing in either client
+    tree, takes no lock and reads no document. Inactive and rolled-forward
+    returns are left out. A root that cannot be walked is said, never
+    answered as empty.
+
+    **The cache (P120).** A household whose folders have not changed since
+    the last reply is answered from ``firm-view.json`` in the data folder
+    (:mod:`tracker.firm_cache`); the rest are read as always, and the
+    practice-wide facts are worked out again every time. When the cache
+    path is unsure of anything it gives way to :func:`_firm_fresh`, the
+    whole walk as it always was, which is the reference the suite holds the
+    cached reply to."""
     try:
         root = _saved_root()
     except (door.DoorError, SettingsError) as exc:
@@ -5468,33 +5501,36 @@ def _cmd_firm(argv: list[str]) -> dict:
              "paths": {}, "next_sort": _next_sort()}
     if root is None or not root.is_dir():
         return reply
-    try:
-        registry = discover_engagements(root)
-    except EmptyRoot:
-        return reply
-    except RegistryError as exc:
-        errors.keep("api: firm", exc)
-        log.warning("The clients root could not be walked (%s)", errors.error_class(exc))
-        raise ManifestError(PRACTICE_NOT_WALKED) from None
     today = dt.date.today()
-    names = {household.path: household.name for household in registry.households}
+    shown = _firm_cached(root, today)
+    if shown is None:
+        shown = _firm_fresh(root, today)
+    _firm_reply(reply, shown)
+    return reply
+
+
+#: One shown return of the firm view: its row (``paused`` set), its files and
+#: its own ``paths``, as :func:`_firm_row` built them.
+_FirmShown = tuple[dict, list[dict], dict[str, str]]
+
+
+def _firm_reply(reply: dict, shown: list[_FirmShown]) -> None:
+    """Fill ``reply`` from the shown returns, in the walk's order: the rows,
+    the files with each ``open_key`` spelled firm-wide (:func:`_firm_key`),
+    and the totals. Nothing it is given is changed, so a kept row is never
+    altered by the reply it answers."""
     totals = reply["totals"]
-    # Ruling 21: a household with two open years is paused - the pass sorts
-    # nothing from its inbox (``runner.TWO_OPEN_YEARS``, the same
-    # ``open_years`` test, over the registry's own walk: no extra disk read).
-    paused = {path for path, theirs in registry.by_household().items()
-              if len(open_years(theirs)) > 1}
-    for one in registry.engagements:
-        if runner.why_skipped(one)[0]:
-            continue
-        row, files, own = _firm_row(one, names.get(one.household_path, ""), today)
-        row["paused"] = one.household_path in paused
-        for one_file in files:
-            if one_file["open_key"]:
-                one_file["open_key"] = _firm_key(reply["paths"], one_file["open_key"],
-                                                 own[one_file["open_key"]])
+    # A key that already reads like a spelling (none does today) could stand
+    # where the shortcut would not look: then every key takes the plain walk.
+    literal = any(" #" in one_file["open_key"] for _row, files, _own in shown for one_file in files)
+    spelled_for: dict[str, dict[str, str]] | None = None if literal else {}
+    for row, files, own in shown:
         reply["returns"].append(row)
-        reply["files"].extend(files)
+        reply["files"].extend(
+            {**one_file, "open_key": _firm_key(reply["paths"], one_file["open_key"],
+                                               own[one_file["open_key"]], spelled_for)}
+            if one_file["open_key"] else one_file
+            for one_file in files)
         counts = row["counts"]
         if counts[GROUP_NEEDS_YOU] or row["problem"]:
             totals["need"] += 1
@@ -5504,7 +5540,177 @@ def _cmd_firm(argv: list[str]) -> dict:
             totals["complete"] += 1
         totals["files"] += row["files"]
         totals["drafts"] += row["draft"]["ready"]
-    return reply
+
+
+def _firm_fresh(root: Path, today: dt.date) -> list[_FirmShown]:
+    """The firm view's returns read whole: the practice walked
+    (:func:`discover_engagements`) and every shown return read. The
+    reference the cached path is held to, and what answers whenever it is
+    unsure. A root that holds nothing is no return; one that cannot be
+    walked is :data:`PRACTICE_NOT_WALKED`."""
+    try:
+        registry = discover_engagements(root)
+    except EmptyRoot:
+        return []
+    except RegistryError as exc:
+        errors.keep("api: firm", exc)
+        log.warning("The clients root could not be walked (%s)", errors.error_class(exc))
+        raise ManifestError(PRACTICE_NOT_WALKED) from None
+    names = {household.path: household.name for household in registry.households}
+    # Ruling 21: a household with two open years is paused - the pass sorts
+    # nothing from its inbox (``runner.TWO_OPEN_YEARS``, the same
+    # ``open_years`` test, over the registry's own walk: no extra disk read).
+    paused = {path for path, theirs in registry.by_household().items()
+              if len(open_years(theirs)) > 1}
+    shown = []
+    for one in registry.engagements:
+        if runner.why_skipped(one)[0]:
+            continue
+        row, files, own = _firm_row(one, names.get(one.household_path, ""), today)
+        row["paused"] = one.household_path in paused
+        shown.append((row, files, own))
+    return shown
+
+
+def _firm_cached(root: Path, today: dt.date) -> list[_FirmShown] | None:
+    """The firm view's returns with every unchanged household answered from
+    the cache (P120), or ``None`` when this path is unsure and
+    :func:`_firm_fresh` must answer. Anything unexpected here is kept on the
+    error log and answered fresh: the cache may make a reply slow, never
+    wrong."""
+    try:
+        return _firm_from_cache(root, today)
+    except _FirmUnsure:
+        return None
+    except Exception as exc:     # the cache's own surprise costs speed, never the reply
+        errors.keep("api: firm cache", exc)
+        log.warning("The firm view's cache was set aside (%s)", errors.error_class(exc))
+        return None
+
+
+class _FirmUnsure(Exception):
+    """The cached path cannot give the walk's answer by itself."""
+
+
+def _firm_from_cache(root: Path, today: dt.date) -> list[_FirmShown]:
+    """:func:`_firm_cached`'s work, in four steps.
+
+    1. List the households as the walk lists them
+       (:func:`tracker.registry.household_positions`) and fingerprint each
+       one's two folders (:func:`tracker.firm_cache.fingerprint`) before
+       anything is read, so a change made while this reply reads lands in
+       the next reply's fingerprint.
+    2. Read fresh every household whose fingerprint is not the one kept,
+       by the practice walk's own per-household reading
+       (:func:`households_named`).
+    3. Work out the practice-wide facts from every household's facts, kept
+       or fresh, with the registry's own rules: which prior a Roll Forward
+       retired (:func:`mark_superseded`), which return is skipped
+       (``runner.why_skipped``) and which household has two open years
+       (``open_years``).
+    4. Build each shown return's row that is not kept (:func:`_firm_row`),
+       keep every household that read without a problem, and answer.
+    """
+    positions = household_positions(root)
+    if positions is None:
+        raise _FirmUnsure
+    private, folders = positions
+    head = firm_cache.head(root, today)
+    where = firm_cache.cache_path()
+    kept = firm_cache.load(where, head)
+    prints = {folder: firm_cache.fingerprint(folder, layout.client_household_dir(private.parent, folder.name))
+              for folder in folders}
+    entries: dict[Path, dict] = {}
+    for folder in folders:
+        entry = kept.get(folder.name)
+        if entry is not None and prints[folder] is not None and entry["fingerprint"] == prints[folder]:
+            entries[folder] = entry
+    read = _firm_read_households(private, [folder for folder in folders if folder not in entries], prints)
+    entries.update({folder: entry for folder, (entry, _ones) in read.items()})
+    # The walk's order: every household with its record, then the returns
+    # of households whose record is gone (``registry._kept``).
+    order = [folder for folder in folders if entries[folder]["kind"] == "household"] + \
+            [folder for folder in folders if entries[folder]["kind"] == "record_missing"]
+    facts = [(folder, one) for folder in order for one in entries[folder]["returns"]]
+    marked = mark_superseded([
+        Engagement(path=Path(one["path"]), household_path=Path(one["household"]), problem=one["problem"],
+                   info=EngagementInfo(active=one["active"], tax_year=one["tax_year"],
+                                       rolled_from=one["rolled_from"]))
+        for _folder, one in facts])
+    households = [Household(path=folder) for folder in order if entries[folder]["kind"] == "household"]
+    paused = {path for path, theirs in
+              Registry(source=root, engagements=marked, households=households).by_household().items()
+              if len(open_years(theirs)) > 1}
+    showing = [not runner.why_skipped(one)[0] for one in marked]
+    # A return now shown whose row was not kept (it was a retired prior
+    # until another household changed): its household is read again.
+    short = [folder for folder in dict.fromkeys(folder for (folder, one), show in zip(facts, showing, strict=True)
+                                                  if show and one["shown"] is None)
+             if folder not in read]
+    if short:
+        again = _firm_read_households(private, short, prints)
+        for folder, (entry, ones) in again.items():
+            if (entry["kind"], entry["name"], entry["returns"]) != (
+                    entries[folder]["kind"], entries[folder]["name"],
+                    [{**one, "shown": None} for one in entries[folder]["returns"]]):
+                raise _FirmUnsure       # it changed under this reply: read it all fresh
+            # A copy of the kept entry takes the new rows, so what was loaded
+            # stays as loaded and the save below sees the change.
+            entries[folder] = {**entries[folder], "returns": [dict(one) for one in entries[folder]["returns"]]}
+            read[folder] = (entries[folder], ones)
+        facts = [(folder, one) for folder in order for one in entries[folder]["returns"]]
+    shown: list[_FirmShown] = []
+    for (folder, one), engagement, show in zip(facts, marked, showing, strict=True):
+        if not show:
+            continue
+        if folder in read:
+            row, files, own = _firm_row(read[folder][1][one["path"]], entries[folder]["name"], today)
+            one["shown"] = {"row": row, "files": files, "paths": own}
+        else:
+            row, files, own = one["shown"]["row"], one["shown"]["files"], one["shown"]["paths"]
+        shown.append(({**row, "paused": engagement.household_path in paused}, files, own))
+    keep = {folder.name: entry for folder, entry in entries.items() if _firm_keepable(entry)}
+    if keep != kept:        # written only when what is kept changed
+        firm_cache.save(where, head, keep)
+    return shown
+
+
+def _firm_keepable(entry: dict) -> bool:
+    """Whether a household's entry may be kept: fingerprinted, and none of
+    its returns has a problem, read or shown - such a household is read
+    fresh every time, so its detail reaches the error log every time."""
+    return bool(entry["fingerprint"]) and not any(
+        one["problem"] or (one["shown"] is not None and one["shown"]["row"]["problem"])
+        for one in entry["returns"])
+
+
+def _firm_read_households(private: Path, folders: list[Path],
+                          prints: dict[Path, str | None]) -> dict[Path, tuple[dict, dict[str, Engagement]]]:
+    """Each of ``folders`` read as the practice walk reads it
+    (:func:`households_named`, decision 192's one per-household reading):
+    its cache entry - the fingerprint taken before the read, its kind, its
+    name and each return's facts, no row yet - and its returns by path. A
+    household whose record has a problem is given no fingerprint, so it is
+    never kept and is read fresh on every reply."""
+    if not folders:
+        return {}
+    found = households_named(private, [folder.name for folder in folders])
+    wanted = set(folders)
+    kept = {household.path: household for household in found.households if household.path in wanted}
+    read: dict[Path, tuple[dict, dict[str, Engagement]]] = {}
+    for folder in folders:
+        ones = [one for one in found.engagements if one.household_path == folder]
+        household = kept.get(folder)
+        kind = "household" if household is not None else ("record_missing" if ones else "none")
+        troubled = household is not None and bool(household.problem)
+        entry = {"fingerprint": "" if troubled else (prints[folder] or ""), "kind": kind,
+                 "name": household.name if household is not None else "",
+                 "returns": [{"path": str(one.path), "household": str(one.household_path),
+                              "problem": one.problem, "active": one.info.active,
+                              "tax_year": one.info.tax_year, "rolled_from": one.info.rolled_from,
+                              "shown": None} for one in ones]}
+        read[folder] = (entry, {str(one.path): one for one in ones})
+    return read
 
 
 def _next_sort() -> str | None:
@@ -5516,6 +5722,16 @@ def _next_sort() -> str | None:
     except (ScheduleChoiceError, SettingsError):
         return None
     return said[-5:] if said else None
+
+
+#: The commands that write nothing - no record, no file, no setting, not the
+#: store's own rows beyond the reader's top-up from a journal - and so run
+#: inside :func:`tracker.settings.one_reading` (P118): each machine question
+#: (where the data folder is, what the settings say, what a folder resolves
+#: to) is asked once per reply instead of thousands of times. A command joins
+#: only when it writes nothing; ``tests/test_api.py`` pins that this and
+#: :data:`WRITING_COMMANDS` never meet.
+HELD_READING_COMMANDS = frozenset({"firm", "list", "state"})
 
 
 #: The commands that write a record, a file or the store. Each holds the
@@ -5620,8 +5836,12 @@ def main(argv: list[str]) -> int:
             if argv[0] in WRITING_COMMANDS:
                 _prove_the_root()
             # One reading child for the command, started only if something is
-            # read, and ended with it (decision 169, R-4).
-            with ocr.reading_session(in_a_child=content_check.READ_IN_A_CHILD):
+            # read, and ended with it (decision 169, R-4). A command that writes
+            # nothing asks each machine question once (P118).
+            with ExitStack() as held:
+                if argv[0] in HELD_READING_COMMANDS:
+                    held.enter_context(one_reading())
+                held.enter_context(ocr.reading_session(in_a_child=content_check.READ_IN_A_CHILD))
                 payload = COMMANDS[argv[0]](argv[1:])
         except Exception as exc:  # said as JSON, never a traceback on screen
             if _failure_of(exc)["kind"] == "failed":

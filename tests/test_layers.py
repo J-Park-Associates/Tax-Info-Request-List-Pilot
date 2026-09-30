@@ -125,8 +125,11 @@ LAYERS: dict[int, frozenset[str]] = {
     # ``progress`` joins L0 with decision 193: the one progress-line format
     # and the cancel marker, stdlib only, so the filer, the scanner and the
     # runner can take a Watch without reaching up to ``api``.
+    # ``firm_cache`` joins L0 with P120: the firm view's cache file, its head
+    # and the households' fingerprints - the standard library, ``settings``,
+    # ``fsio`` and ``errors``; the API does the reading and decides what is kept.
     0: frozenset({"__init__", "reasons", "locking", "checkpoint", "page", "fsio", "settings",
-                  "layout", "door", "errors", "progress"}),
+                  "layout", "door", "errors", "progress", "firm_cache"}),
     1: frozenset({"households", "ledger", "manifest", "records", "scaffold", "store",
                   "templates", "validators"}),
     2: frozenset({"containers", "content_check", "names", "ocr", "router"}),

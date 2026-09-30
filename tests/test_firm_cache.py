@@ -1,0 +1,193 @@
+"""The firm view's cache file (P120, ``pilot/SPEC-firm-cache.md``): where it
+lives, what its fingerprint notices, and that a damaged, foreign or stale
+file is never used. Whether a cached reply equals the whole walk's is
+``tests/test_api.py``'s claim; this file holds the parts that decide it."""
+
+from __future__ import annotations
+
+import datetime as dt
+import json
+import logging
+import os
+import time
+from pathlib import Path
+
+import pytest
+
+from tracker import firm_cache, settings
+
+TODAY = dt.date(2026, 3, 2)
+
+
+def _aged(*folders: Path, seconds: int = 120) -> None:
+    """Every entry under ``folders`` dated ``seconds`` ago: past the racy
+    window, as a household nobody has touched for a while is."""
+    past = time.time() - seconds
+    for folder in folders:
+        for path in [folder, *folder.rglob("*")]:
+            os.utime(path, (past, past))
+
+
+def _household(tmp_path: Path) -> tuple[Path, Path]:
+    private = tmp_path / "private" / "Lee Family"
+    client = tmp_path / "clients" / "Lee Family"
+    (private / "2025" / "1040 - Ann Lee").mkdir(parents=True)
+    (private / "2025" / "1040 - Ann Lee" / "record.jsonl").write_text("one\n", encoding="utf-8")
+    (client / "Drop files here").mkdir(parents=True)
+    _aged(private, client)
+    return private, client
+
+
+def test_the_cache_lives_in_the_data_folder_and_is_named_once():
+    assert firm_cache.cache_path() == settings.data_home() / firm_cache.CACHE_FILENAME
+    assert firm_cache.cache_path().parent == settings.data_home()
+
+
+def test_an_unchanged_household_keeps_its_fingerprint(tmp_path):
+    private, client = _household(tmp_path)
+    first = firm_cache.fingerprint(private, client)
+    assert first is not None and first == firm_cache.fingerprint(private, client)
+
+
+@pytest.mark.parametrize("change", ["a file dropped in the inbox", "a record grown", "a record rewritten",
+                                    "a file removed", "a folder added", "a file renamed"])
+def test_every_kind_of_change_under_either_folder_changes_the_fingerprint(tmp_path, change):
+    private, client = _household(tmp_path)
+    before = firm_cache.fingerprint(private, client)
+    record = private / "2025" / "1040 - Ann Lee" / "record.jsonl"
+    if change == "a file dropped in the inbox":
+        (client / "Drop files here" / "w2.pdf").write_bytes(b"x")
+    elif change == "a record grown":
+        record.write_text("one\ntwo\n", encoding="utf-8")
+    elif change == "a record rewritten":
+        # The same size, an older time: a sync client restoring a copy.
+        record.write_text("uno\n", encoding="utf-8")
+        past = time.time() - 3600
+        os.utime(record, (past, past))
+    elif change == "a file removed":
+        record.unlink()
+    elif change == "a folder added":
+        (private / "2024").mkdir()
+    else:
+        record.rename(record.with_name("other.jsonl"))
+    _aged(private, client, seconds=60)       # past the racy window, at another time
+    if change == "a record rewritten":
+        past = time.time() - 3600
+        os.utime(record, (past, past))
+    assert firm_cache.fingerprint(private, client) != before, change
+
+
+def test_a_household_touched_within_the_racy_window_is_never_fingerprinted(tmp_path):
+    """A file rewritten twice in one tick of the clock at one size would keep
+    its fingerprint; so anything this new is read fresh until it settles."""
+    private, client = _household(tmp_path)
+    (private / "2025" / "1040 - Ann Lee" / "record.jsonl").write_text("two\n", encoding="utf-8")
+    assert firm_cache.fingerprint(private, client) is None
+    ahead = time.time() + 3600               # a clock ahead of this one
+    os.utime(private / "2025", (ahead, ahead))
+    _aged(private / "2025" / "1040 - Ann Lee", client)
+    assert firm_cache.fingerprint(private, client) is None
+
+
+def test_a_missing_client_folder_is_said_not_skipped(tmp_path):
+    private, client = _household(tmp_path)
+    with_it = firm_cache.fingerprint(private, client)
+    for path in sorted(client.rglob("*"), reverse=True):
+        path.rmdir()
+    client.rmdir()
+    without = firm_cache.fingerprint(private, client)
+    assert without is not None and without != with_it
+
+
+def test_a_household_holding_a_link_is_never_fingerprinted(tmp_path):
+    private, client = _household(tmp_path)
+    try:
+        (private / "linked").symlink_to(tmp_path, target_is_directory=True)
+    except OSError:
+        pytest.skip("this machine cannot make a symbolic link")
+    _aged(private, client)
+    assert firm_cache.fingerprint(private, client) is None
+
+
+def test_the_head_names_the_format_the_program_the_root_the_data_folder_the_day_and_the_settings(tmp_path):
+    head = firm_cache.head(tmp_path, TODAY)
+    assert set(head) == {"format", "program", "root", "data_home", "day", "settings"}
+    assert head["format"] == firm_cache.FORMAT and head["day"] == "2026-03-02"
+    assert head["root"] == str(tmp_path) and head["data_home"] == str(settings.data_home())
+    assert firm_cache.head(tmp_path, TODAY + dt.timedelta(days=1)) != head
+    settings.set_firm("Another Name LLP")                    # the settings file changed
+    assert firm_cache.head(tmp_path, TODAY)["settings"] != head["settings"]
+
+
+def test_the_program_stamp_follows_the_packaged_executable(tmp_path, monkeypatch):
+    program = tmp_path / "tracker-api.exe"
+    program.write_bytes(b"one")
+    monkeypatch.setattr("sys.frozen", True, raising=False)
+    monkeypatch.setattr("sys.executable", str(program))
+    first = firm_cache.program_stamp()
+    program.write_bytes(b"one and two")
+    assert firm_cache.program_stamp() != first
+
+
+def _entry(fingerprint="f" * 32):
+    return {"fingerprint": fingerprint, "kind": "household", "name": "Lee Family",
+            "returns": [{"path": "p", "household": "h", "problem": "", "active": True, "tax_year": 2025,
+                         "rolled_from": "", "shown": {"row": {"a": 1}, "files": [], "paths": {}}}]}
+
+
+def test_what_is_saved_is_what_is_loaded_under_the_same_head(tmp_path):
+    where = tmp_path / "firm-view.json"
+    head = firm_cache.head(tmp_path, TODAY)
+    firm_cache.save(where, head, {"Lee Family": _entry()})
+    assert firm_cache.load(where, head) == {"Lee Family": _entry()}
+
+
+def test_another_head_is_not_used(tmp_path):
+    where = tmp_path / "firm-view.json"
+    head = firm_cache.head(tmp_path, TODAY)
+    firm_cache.save(where, head, {"Lee Family": _entry()})
+    assert firm_cache.load(where, {**head, "day": "2026-03-03"}) == {}
+    assert firm_cache.load(where, {**head, "program": "another"}) == {}
+    assert firm_cache.load(where, {**head, "format": firm_cache.FORMAT + 1}) == {}
+
+
+def test_a_missing_file_is_the_ordinary_first_reply_and_is_not_logged(tmp_path, caplog):
+    with caplog.at_level(logging.WARNING, logger="tracker.firm_cache"):
+        assert firm_cache.load(tmp_path / "firm-view.json", firm_cache.head(tmp_path, TODAY)) == {}
+    assert not caplog.records
+
+
+@pytest.mark.parametrize("damage", ["not json", "a row changed", "a key missing", "a wrong type"])
+def test_a_damaged_file_is_never_used_and_is_said_by_its_reason(tmp_path, caplog, damage):
+    where = tmp_path / "firm-view.json"
+    head = firm_cache.head(tmp_path, TODAY)
+    firm_cache.save(where, head, {"Lee Family": _entry()})
+    if damage == "not json":
+        where.write_text(where.read_text(encoding="utf-8")[:-7], encoding="utf-8")
+    else:
+        kept = json.loads(where.read_text(encoding="utf-8"))
+        one = kept["households"]["Lee Family"]
+        if damage == "a row changed":            # valid JSON, the digest no longer agrees
+            one["returns"][0]["shown"]["row"]["a"] = 2
+        elif damage == "a key missing":
+            del one["returns"][0]["active"]
+            kept["digest"] = firm_cache._households_digest(kept["households"])
+        else:
+            one["returns"][0]["tax_year"] = "2025"
+            kept["digest"] = firm_cache._households_digest(kept["households"])
+        where.write_text(json.dumps(kept), encoding="utf-8")
+    with caplog.at_level(logging.WARNING, logger="tracker.firm_cache"):
+        assert firm_cache.load(where, head) == {}
+    said = " ".join(record.getMessage() for record in caplog.records)
+    assert "rebuilding it" in said and "Lee Family" not in said
+
+
+def test_a_cache_that_cannot_be_written_is_logged_and_the_reply_goes_on(tmp_path, caplog, monkeypatch):
+    def refused(path, text):
+        raise PermissionError(13, "held by another reader")
+
+    monkeypatch.setattr(firm_cache, "write_text_atomically", refused)
+    with caplog.at_level(logging.WARNING, logger="tracker.firm_cache"):
+        firm_cache.save(tmp_path / "firm-view.json", firm_cache.head(tmp_path, TODAY), {"Lee Family": _entry()})
+    said = " ".join(record.getMessage() for record in caplog.records)
+    assert "could not be written" in said and "held by another reader" not in said
