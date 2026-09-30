@@ -116,13 +116,14 @@ what has arrived shows each attachment that filed, under its request.
    **Roll Forward…** (offered once that year has ended), or add a return to
    it with **Add a Return…** - pick the tax form type, then the request list;
    the catalog lives in `tracker/templates.py` and nowhere else. A household
-   the tracker has no record of is made with File, **New Household…**. The
-   app is a side panel of four pages (Overview, Needs Review, Reminders,
-   Clients), right-click menus on rows, a menu bar behind Alt, a
-   **Folders Skipped** list for anything left alone, and one **Sort** icon. Its name is unique across both trees by how it reads,
+   the tracker has no record of is made with File, **New Household…**. A
+   household's name is unique across both trees by how it reads,
    not how it is spelled: a name that reads as a household already in the
    list is refused and pointed at it there - add a first name or a middle
-   initial, then the city, to tell two households apart (decision 188)
+   initial, then the city, to tell two households apart (decision 188). The
+   app is a side panel of four pages (Overview, Needs Review, Reminders,
+   Clients), right-click menus on rows, a menu bar behind Alt, a
+   **Folders Skipped** list for anything left alone, and one **Sort** icon
 2. List the engagement's document requests (and validation rules) in the
    app's request-list editor
 3. `python -m tracker.scaffold <return_dir>` — builds the household's

@@ -166,7 +166,7 @@ the clients root, and the difference between them is the whole point:
   Each file in it moves into the year's folder under its own name, and the
   emptied folders are removed. Its row keeps the folder in a column of its
   own, **Client's Subfolder** — `Bank statements\2025` — which the Status
-  Report shows and the review card says as `api.CAME_FROM_SUBFOLDER`
+  Report shows and the review row says as `api.CAME_FROM_SUBFOLDER`
   (*came from the client's subfolder 'Bank statements\2025'*), so you can
   still see how the client had sorted it. It is ours, in the record; the
   client is never told it. Since decision 190 it is never part of the
@@ -835,7 +835,7 @@ a person in Google Drive, on the firm's Shared Drive:
    letters carry the link.
 
 The app asks for all three in those words — once, when a household's first
-return is made, and on the household's card until the third step is done. It
+return is made, and on the household's page until the third step is done. It
 records only that a person said so: Drive for desktop exposes no permission
 to a program, so the tracker cannot see a share and does not pretend to.
 Nothing about filing, scanning or drafting waits on it.
@@ -888,7 +888,7 @@ What the tracker does and does not do:
   document only a fed return is left with parks here, in the household it
   was dropped in, and its original stays in this household's year folder.
   If the page names that return's person, it waits for **one click** —
-  *File it under <the return>* on its row or card, which shows the
+  *File it under <the return>* on its row, which shows the
   requests it will be filed under. If it names nobody, it waits for the
   picker (*File under another return*). The same holds for a document sent
   again. The cost: a co-owner's document reaches the other household when
@@ -896,12 +896,12 @@ What the tracker does and does not do:
   status does not count it and its drafted letter may still ask for it.
 - A feed is a **return line**, not a return: the household and the return's
   name, the name it keeps every year. **Roll Forward…** carries nothing about
-  feeds, and a line the other household has retired is said on the card
+  feeds, and a line the other household has retired is said on the return's page
   rather than quietly feeding nothing.
-- The card's *Also fed by* line is drawn from what this computer last
-  read of every household: when the app last listed the clients, or a
+- The page's *Also fed by* line is drawn from what this computer last
+  read of every household: when the app last listed the clients, or
   a sort or a pass ran here. A feed a person added on another
-  computer is named here after the next of those. The feeds a card
+  computer is named here after the next of those. The feeds a page
   lists as its own, and every click that files through a feed, read
   the other household's record at that moment.
 - Nothing is ever inferred. The tracker never looks at two households and
@@ -914,7 +914,7 @@ What the tracker does and does not do:
 
 Every feed a person adds is warned about, every time: anyone with access to
 that drop folder may drop for that return, and its documents will rest under
-the folder it lives in, shared with whoever that household's card says.
+the folder it lives in, shared with whoever that household's page says.
 Adding a return to a household is warned about too: everyone with access to
 the folder will see that return's documents.
 
@@ -981,7 +981,7 @@ year's folder with no row and opened on the next pass.
 **When a container parks** (§4 has each sentence): a locked or damaged one
 is the client's to fix - they send the documents on their own, and the
 reminder asks for them; one with nothing attached, or past a limit, is
-yours. Its card has no **Open**: an email or a zip is opened, if at all,
+yours. Its row has no **Open**: an email or a zip is opened, if at all,
 on a machine with no Drive sign-in and no client folder, never this one (decision 184). Read it there, and bring any document you find back
 into **this household's `Drop files here`**:
 it came in this household's own email or zip, so nothing is published
@@ -1013,7 +1013,7 @@ the run's line say whose it is. Then:
   know to be theirs. Drop a copy into
   **this household's `Drop files here`**, never the client's folder for
   the year: it is already this household's, so nothing is published
-  anywhere new. The next pass sorts it, and if it parks it gets a card,
+  anywhere new. The next pass sorts it, and if it parks it gets a row,
   with **Open** when the tracker read it (decision 190). Then delete the stray by hand.
 - **It is another return's, or another household's.** Do the same
   there: that household's `Drop files here`, and nowhere else.
@@ -1023,11 +1023,11 @@ the run's line say whose it is. Then:
 - **It is not a whole document** — a partial or broken copy: delete it by
   hand, and never ask the client for it.
 
-To read such a file, let the pass give it a card and use **Open** on its
-card: the firm's review copy, marked for Protected View, offered on a row
+To read such a file, let the pass give it a row and use **Open** on its
+row: the firm's review copy, marked for Protected View, offered on a row
 the tracker read and parked for a filing reason (decision 190's
 allow-list). That replaces decision 184's reading of a copy set aside by
-hand (Jason's answer of 2026-09-26). A card with no **Open** - an email
+hand (Jason's answer of 2026-09-26). A row with no **Open** - an email
 or a zip, a reading the tracker refused, a file that is not a document -
 is read on a machine with no Drive sign-in and no client folder (decision
 184), or you ask the client what they meant to send.
@@ -1165,8 +1165,8 @@ working copy in File Explorer (an email or a zip is plain text, never
 opened). Right-click a row for its menu (Check…, Not Requested, Show in File
 Explorer, Unfile, Mark Missing, Edit Request…); the menu bar (File, Edit,
 Client, View, Tools, Help) appears when you press Alt. **Check…** and
-**Draft Reminder…** open the side sheet that older text here calls the
-review card and the Reminder card. The one **Sort** icon beside the search
+**Draft Reminder…** open a side sheet; where older text here says
+"card", read the file's row on Needs Review or a side sheet. The one **Sort** icon beside the search
 box sorts the open return's household (grey on the four pages: open a client
 first); the overnight sort is the schedule. A *Sort Failed* notice with no
 button shows on every page while the last **scheduled** sort failed, and
@@ -1371,9 +1371,9 @@ household and cannot clear it. **Unfile** asks for an optional reason first.
    put a copy that passed only on that word back into Failed Validation.
    A co-owner's document that names a person on a return in another
    household waits here too (decision 204): open it with **Open** on its
-   card and press **File it under <the return>**.
+   row and press **File it under <the return>**.
 
-   The card does not leave you to find the request yourself. Each parked
+   The row does not leave you to find the request yourself. Each parked
    file carries a shortlist: up to three requests, best first, at the head
    of its picker under *Suggested*, with every other request below them
    under *Other requests*, and under the row the one line that says why each
@@ -1385,7 +1385,7 @@ household and cannot clear it. **Unfile** asks for an optional reason first.
    Applicable is never offered — it is named in one line under the
    shortlist ("C01 is Not Applicable in TY2025 - clear it in the editor to
    file here"), so you decide whether this document changes that call. A file whose evidence says nothing gets no suggestion at all
-   rather than a guess — where the card says so, read the document. The
+   rather than a guess — where the row says so, read the document. The
    same answer is on the command line, without the app:
    `python -m tracker.review` against the engagement folder prints it.
 
@@ -1400,7 +1400,7 @@ household and cannot clear it. **Unfile** asks for an optional reason first.
    keeps its words, but its title may not come first in what was read, so
    it can file less surely than an upright one or wait here for you; it is
    never read as empty (the rule that turns such a page arrives later).
-3. **A working copy that has moved is yours, and it is the first card on
+3. **A working copy that has moved is yours, and it is the first row on
    the screen.** Every pass proves each working copy against the
    fingerprint its own index row carries (decision 109). A copy somebody
    dragged away from where the record put it, or renamed, makes that row
@@ -1419,7 +1419,7 @@ household and cannot clear it. **Unfile** asks for an optional reason first.
    is left where it is and this one's copy goes to review instead, and a
    left-over copy is named every pass until you remove it yourself. §4 has
    the row and what each answer means. A copy that was simply deleted is
-   not on this card: the pass makes it again from the original (decision
+   not on this row: the pass makes it again from the original (decision
    157, §1 *A working copy went missing*). One whose original is gone too
    is, with one answer, **Mark … missing**, which puts the document back on
    the client's letter.
@@ -1474,7 +1474,7 @@ with what changed since the last one — which requests are now asked for
 that were not, and which no longer are — above the line you paste from, so
 you reconcile in seconds rather than comparing two emails by eye.
 
-**Read it in the app.** The engagement's **Reminder** card shows the same
+**Read it in the app.** The engagement's **Reminder** side sheet shows the same
 draft: what the record says about it (the day and the stage of the last one,
 or that it has not been drafted yet), the subject line, and the letter as
 the client will read it. **Copy for Outlook** puts that letter on the
@@ -1488,21 +1488,21 @@ nothing writes over it afterwards — not the scheduled pass, and not
 its fresh draft beside it exactly as it does beside one you edited by
 hand. Next week's pass writes next week's draft as before. An approval
 covers the text you approved and nothing after it (decision 190): edit
-the file afterwards and the card, the practice page's Drafted column and
+the file afterwards and the side sheet, the practice page's Drafted column and
 the run log say *approved, then edited* instead of *approved*. The file is
 still left alone, because you edited it; approve it again once it reads as
 you want it. An approval given before this change reached the machine
 recorded no text, so it reads *approved, then edited* the same way: the
 file is still left alone, and you approve it again. **Open the
 draft file** is still there for anyone who would rather work in Notepad,
-and an edited file is shown as it stands with a note saying so — the card
+and an edited file is shown as it stands with a note saying so — the side sheet
 shows the letter alone, so the staff-side lines under the dashed rule at
 the foot of the file are never on the clipboard. Those lines are headed **US** - the
 requests waiting on us, not the client - each with the word the app shows
 for its status.
 
 Open the draft, read it, edit it, paste it into Outlook and send it. Nothing in the
-tool sends anything, ever — the card has no send button, and there is no
+tool sends anything, ever — the side sheet has no send button, and there is no
 mail or network code anywhere in the reminder path.
 
 **The letter gets firmer as the date gets closer.** There are four stages,
@@ -1511,7 +1511,7 @@ engagement's **Due Date** — the date you are asking the client to send
 things by, which is one of the engagement's details and yours to change.
 The draft's header says which stage it is on, above the fingerprint line,
 so you can see it without reading the letter; the practice page's Drafted
-column says it too, and the app's Reminder card shows all four as a toggle
+column says it too, and the app's Reminder side sheet shows all four as a toggle
 with the one in force pressed. **Moving that toggle changes the words and
 nothing else** — the same requests are asked for at every stage, the letter
 is regenerated on screen, and the file on disk is not touched until you
@@ -1566,7 +1566,7 @@ question — unfile the copy, fix the rule, or set the row's override — and
 the next pass writes the whole reminder, correct, once. The manual draft
 (`python -m tracker.reminder <engagement_dir> --write`) and `--reminders
 always` are held by the same question; nothing clears it but you. So is the
-app's Reminder card: while a reminder is held it shows the hold, the
+app's Reminder side sheet: while a reminder is held it shows the hold, the
 requests holding it and the stage the day would write at, and nothing that
 reads like something to send — no letter, no clipboard, no approval.
 
@@ -1589,7 +1589,7 @@ the machine cannot handle, and a file can land after the sort. While the
 household's own inbox holds any such file, every return of that household is
 held the same whole way, because the letter cannot know which request the
 file answers. The practice page's Drafted column says `held (N)`, `runs.log`
-counts it (`held=`), and the app's card says **"Held: N files not
+counts it (`held=`), and the app's side sheet says **"Held: N files not
 sorted"**. On a Saturday that means: press **Sort &
 Scan** — Run now — (or wait for the next pass — the schedule runs on its saved interval, every two hours by default, and the
 pass that sorts the inbox drafts the reminder that same day), or deal with the
@@ -1613,7 +1613,7 @@ Every original gets a row in the engagement's index: where it went, what it
 became, and — when it was not filed — why not.
 
 **Before you open anything a pass parked.** A parked document is opened
-with **Open** on its card, and only there, which opens the firm's working
+with **Open** on its row, and only there, which opens the firm's working
 copy in `00 - Needs Review` - never the client's original - marked as from
 the internet so that Office and Acrobat show it in Protected View, the
 read-only view they give a file from outside (decision 190). **Open** is
@@ -1622,7 +1622,7 @@ document the tracker read and parked for a filing reason - it matched no
 request or more than one, a request contested it, the name is not on the
 page or names another return, or it names another household's person
 and waits for one click (decision 204), its forms would not sort, its
-issuer is not named, it shows its form number. Every other card has no **Open**: an
+issuer is not named, it shows its form number. Every other row has no **Open**: an
 email or a zip; a file whose reading was refused (unreadable, extraction
 or OCR failed, the reader crashed, stopped or could not start, too large,
 locked, no pages, no readable text); a file the tracker never read (an
@@ -1636,18 +1636,18 @@ shortcut is not a document: since decision 190 the tracker sets it aside
 itself (`reasons.NOT_A_DOCUMENT`; the one list is
 `validators.PROGRAM_EXTENSIONS`), makes it no copy and offers no **Open**,
 and it is opened nowhere - ask the client what they meant to send. A file
-with no card - a stray in `Prepared` or `_Opened`, an original in the
+with no row - a stray in `Prepared` or `_Opened`, an original in the
 client's folder for the year - is never opened where it sits; the rows
 below, and §1's *A document the tracker did not file*, say where it goes.
 
 **The Code column is what the machine reads** (decision 190). The Reason is
 the sentence for you, and it may quote what the client chose — the file's
 name, a page's spelling — so nothing the tracker decides reads it: the
-letter, its holds and the review card read the row's **Code**, the cause's
+letter, its holds and the review row read the row's **Code**, the cause's
 one name in `tracker/reasons.py`. A row written before decision 190 has an
 empty Code: its cause was not recorded, and the tracker does not guess it
 from the words. Such a parked row holds the letter for the request its
-card suggests, asked in the generic sentence, until you decide it.
+row suggests, asked in the generic sentence, until you decide it.
 
 | The index says | In plain words | What you do |
 |---|---|---|
@@ -1656,9 +1656,9 @@ card suggests, asked in the generic sentence, until you decide it.
 | `filer.RESENT_AFTER_SET_ASIDE` | The client sent again a document somebody had closed with **Not requested**. It was routed afresh: filed if exactly one request accepts it now, otherwise parked again with a copy of its own. The reason quotes the earlier decision whole — the date and the note whoever closed it typed. | Read what was decided last time, then decide again: file it, or close it again. The copy set aside earlier stays where it is. |
 | `filer.NEEDS_REVIEW` | Parked for a person; the reason says which of the rows below. | Work it in the app. |
 | `filer.ASSIGNED_BY_PERSON` | Someone filed it with **File it**, on the date shown, and what the rules had said is kept after it. | Nothing. This is the audit trail. |
-| `api.CAME_FROM_SUBFOLDER` | Not in the Reason: the **Client's Subfolder** column, and the card's line under the reason, on any row - filed, parked, a duplicate, the opened email or zip's own row, or a row saying it could not be filed - whose file the client dropped inside a folder of their own in `Drop files here` (§1, *The layout*). It names that folder, below the inbox. A row written before decision 190 still ends its Reason with this sentence, and has an empty column. | Nothing. It is where the client had put it; use it when the row's name alone does not say enough. |
+| `api.CAME_FROM_SUBFOLDER` | Not in the Reason: the **Client's Subfolder** column, and the row's line under the reason, on any row - filed, parked, a duplicate, the opened email or zip's own row, or a row saying it could not be filed - whose file the client dropped inside a folder of their own in `Drop files here` (§1, *The layout*). It names that folder, below the inbox. A row written before decision 190 still ends its Reason with this sentence, and has an empty column. | Nothing. It is where the client had put it; use it when the row's name alone does not say enough. |
 | `router.UNMATCHED` | No request on this manifest accepted it. | File it to the right request, or add the request. |
-| `reasons.SHOWS_ITS_FORM_NUMBER` / `reasons.NAME_POINTS_AT` | No request accepted it, but the page shows the **form number** of the request(s) named — in its title, or as the form its first page is about, beside another of that request's own words — most often a scan whose reading lost one of the phrases the request asks for; or, where the page shows none, the file's **name** points at a request, and the sentence says "file name" instead. Those requests are the card's shortlist, never a filing, and the client's reminder is held for them rather than asking for what they sent (decision 140). | Open it with **Open** on its card: if it is that request's document, file it there; if not, file it where it belongs or set it aside, and the reminder is released. |
+| `reasons.SHOWS_ITS_FORM_NUMBER` / `reasons.NAME_POINTS_AT` | No request accepted it, but the page shows the **form number** of the request(s) named — in its title, or as the form its first page is about, beside another of that request's own words — most often a scan whose reading lost one of the phrases the request asks for; or, where the page shows none, the file's **name** points at a request, and the sentence says "file name" instead. Those requests are the row's shortlist, never a filing, and the client's reminder is held for them rather than asking for what they sent (decision 140). | Open it with **Open** on its row: if it is that request's document, file it there; if not, file it where it belongs or set it aside, and the reminder is released. |
 | `router.AMBIGUOUS` | More than one request accepted it. A broker's consolidated 1099 no longer parks here when exactly one request accepted it because of its 1099-B section (decision 146, below); two requests asking for a 1099-B, or none, and it still does. | Pick the right one. |
 | `reasons.FILED_WHOLE` / `reasons.ALSO_ANSWERS` | A broker's consolidated 1099 (decision 146): several requests accepted it, and exactly one - E01 on a 1040, B01 on a 1041 - was accepted because of its 1099-B section, so it filed whole there, one copy in one folder. The Also Answers column names every other asked request one of its sections answers (a 1099-INT/DIV row, a 1099-MISC row) and the sections that did; each of those requests reads Received with `reasons.IN_CONSOLIDATED` in its notes, counting one document per section - so a 1099-INT/DIV row asking for three is Partial after one statement with interest and dividend sections - and the letter does not ask for them. A statement with only interest and dividend sections is not a brokerage statement and files under the 1099-INT/DIV row as before. | Nothing. If the statement does not in fact carry what one of those requests needs, press **Mark … missing** beside it in the app's filed list: the statement stays where it is, that request comes off, and the letter asks for it again. |
 | `router.CONTESTED_PREFIX` | It looks like a named request but failed one of that request's own rules — last year's W-2, say. | Read the named rule. Usually it is the wrong year or the wrong client. |
@@ -1666,18 +1666,18 @@ card suggests, asked in the generic sentence, until you decide it.
 | `reasons.NO_READABLE_TEXT` | Nothing in the file could be read at all — a scan or a photo the reader could not run on, an image-only PDF, an empty sheet. Nothing was matched against anything, so this is not "matched no request". | It has no **Open** (the tracker read nothing in it). Ask the client to send it again, or open it, if at all, on a machine with no Drive sign-in and no client folder, never this one (decision 184), and file it by hand. If many files say it at once, the reader itself is damaged: re-install the app (§6, step 5). The shortlist shows what its **file name** suggests; the document decides. |
 | `reasons.UNREADABLE_IMAGE` | A photo arrived that would not open — a half-finished upload, most often. | Ask the client for it again; the reminder does. |
 | `reasons.HEIC_NOT_SUPPORTED` | An iPhone photo arrived and this machine's HEIC reader is missing. Ours, never the client's: they sent an ordinary photo. | Run `Setup.bat` again (it installs `pillow-heif` from the locks); for the packaged app, rebuild it. Until then it has no **Open**, because the tracker never read it: open it, if at all, on a machine with no Drive sign-in and no client folder, never this one (decision 184), and file it by hand. |
-| `reasons.ISSUER_NOT_NAMED` | The request list asks for this document one row per issuer (§8) and this one names none of them — a K-1 from a partnership nobody listed. | Type the issuer's name on the card and press **Add issuer** (§8), or file it to the right row. |
-| `reasons.NAME_NOT_ON_PAGE` | A request that asks for a **named** document accepted it, and the page names nobody on this return's people list (§10). | Open the page with **Open** on its card. If it does name them in a spelling the list has not got, file it and **teach the spelling** on the same card; if it is somebody else's, file it by hand on the return it belongs to. |
+| `reasons.ISSUER_NOT_NAMED` | The request list asks for this document one row per issuer (§8) and this one names none of them — a K-1 from a partnership nobody listed. | Type the issuer's name on the row and press **Add issuer** (§8), or file it to the right row. |
+| `reasons.NAME_NOT_ON_PAGE` | A request that asks for a **named** document accepted it, and the page names nobody on this return's people list (§10). | Open the page with **Open** on its row. If it does name them in a spelling the list has not got, file it and **teach the spelling** on the same row; if it is somebody else's, file it by hand on the return it belongs to. |
 | `reasons.NAMES_ANOTHER_RETURN` | The page names somebody who is on another return of this household, and nobody on this one. The sentence says who, and which return. | Switch to that return and file it there. Nothing was moved. |
 | `reasons.NO_PEOPLE_ON_FILE` | This return lists nobody yet, so nothing can confirm a named request. | Open **Edit Request List** and add the return's people (§10). Everything parked for this reason files itself on the next pass. |
 | `reasons.SEVERAL_FORMS_UNSORTED` | One page prints two or more forms' own names (a stack scanned in one pass) and they will not sort one to a request: a form no row asks for, two rows wanting one form, or a row that accepted the page on a phrase rather than a form number. When they do sort, the page files a copy under each request and the row's Reason says so (`reasons.NAMES_SEVERAL_FORMS`). | Split the scan, or file the whole page to the one request that matters and note the rest. |
-| `reasons.NOT_A_DOCUMENT` | A program, or a file Windows runs as one - `.exe`, a shortcut, a script, a disk image; the one list is `validators.PROGRAM_EXTENSIONS`, read from the file's real last extension (decision 190). It was decided before anything read it, so nothing its name says reached a request, and it has **no review copy**: the card lists it under its own heading with its true type, and offers no **Open** and no **File it**. It holds nothing, because it names no request, and the letter asks the client about it by the name they gave it, under *RECEIVED, BUT WE COULD NOT USE IT*, in the words any unusable file gets. A program sent again after it was set aside parks the same way, unread and with no copy. | Never open it, here or anywhere. Close it with **Not requested** once the client has said what they meant to send; the letter then stops asking. A program's review copy made before decision 190 may still sit in `00 - Needs Review`: nothing offers it, and you may delete it from there by hand. |
+| `reasons.NOT_A_DOCUMENT` | A program, or a file Windows runs as one - `.exe`, a shortcut, a script, a disk image; the one list is `validators.PROGRAM_EXTENSIONS`, read from the file's real last extension (decision 190). It was decided before anything read it, so nothing its name says reached a request, and it has **no review copy**: the Needs Review page lists it under its own heading with its true type, and offers no **Open** and no **File it**. It holds nothing, because it names no request, and the letter asks the client about it by the name they gave it, under *RECEIVED, BUT WE COULD NOT USE IT*, in the words any unusable file gets. A program sent again after it was set aside parks the same way, unread and with no copy. | Never open it, here or anywhere. Close it with **Not requested** once the client has said what they meant to send; the letter then stops asking. A program's review copy made before decision 190 may still sit in `00 - Needs Review`: nothing offers it, and you may delete it from there by hand. |
 | `reasons.TOO_LARGE` | The file is larger than the tracker will read (`validators.MAX_READ_MB`) — a video, a disk image, a whole mailbox, or a genuinely enormous scan. It was not opened: no text, no OCR. It is still counted and kept like any other original. | It has no **Open**. Ask the client what it was meant to be, or open it, if at all, on a machine with no Drive sign-in and no client folder, never this one (decision 184), and file it by hand. |
 | `reasons.READING_STOPPED` | The reader gave up on this file at the safety stop — a minute a page, ten minutes a file (decision 137). Something in it made reading far slower than any real document, or the machine was very busy at the time; it will not be tried again until the file changes. The stop covers the whole reading - the text layer, each page's drawing and the OCR - because each document is opened and read in a process of its own that the pass ends at the stop (decision 150). An email or a zip is opened in that process too, under the stop for a file, and one stopped there parks whole with nothing taken out of it (decision 154). That process never outlives the pass: if the schedule's own time limit stops the pass, the reading stops with it. | It has no **Open**. Ask the client to send it again, or open it, if at all, on a machine with no Drive sign-in and no client folder, never this one (decision 184), and file it by hand. |
 | `reasons.READING_CRASHED` | The reader's own process ended on this file without an answer - the PDF or OCR library crashed, the email or zip opener crashed (decision 154), or the machine ran out of memory (decision 150). Only this file is affected: the pass went on to the next one, and this file will not be tried again until it changes. | It has no **Open**. Ask the client to send it again, or open it, if at all, on a machine with no Drive sign-in and no client folder, never this one (decision 184), and file it by hand. If many files say it at once, the machine itself needs a look. |
 | `reasons.READER_UNAVAILABLE` | The reader could not start on this machine at all, so the file was never opened (decision 150). The machine's problem, never the file's: nothing is kept about the file and nothing is recorded - no index row, no Needs Review row. The file waits (in the inbox, or in the year's folder with no row) and is read again on the next pass. The pass's own summary says it once, and the run log counts it (`reader-could-not-start`). | Look at the machine (memory, disk, antivirus, a damaged install). Once it is fixed, the next pass reads and files the waiting files; there is nothing to file by hand. |
-| `reasons.UNNAMED_ACROSS_HOUSEHOLDS` | This household's drop folder feeds a return in another household, and that return would have taken this document on its keywords alone — but the page names nobody, so it was not moved into a folder other people can open. It waits here (decision 137). The Evidence names the return and the request that wanted it, as `<return> / <request>`. The same holds for a document sent again that the other household already has. | Open it with **Open** on its card. If it is that return's, file it there with **File under another return**; if it is this household's, file it here. |
-| `reasons.NAMED_ACROSS_HOUSEHOLDS` | This household's drop folder feeds a return in another household, that return's list accepted this document, and the page names that return's person. The pass never files into another household (decision 204), so it waits here, its original in this household's year folder, and the row keeps what that return's list accepted. The same holds for a document sent again. Until somebody clicks, the other household's status does not count it. | Open it with **Open** on its card. If it is that return's, press **File it under <the return>** once — it files under the requests shown and nothing else. If the button is not offered (the row says the return is no longer fed, or a request is gone or N/A), use **File under another return**. If it is this household's, file it here. |
+| `reasons.UNNAMED_ACROSS_HOUSEHOLDS` | This household's drop folder feeds a return in another household, and that return would have taken this document on its keywords alone — but the page names nobody, so it was not moved into a folder other people can open. It waits here (decision 137). The Evidence names the return and the request that wanted it, as `<return> / <request>`. The same holds for a document sent again that the other household already has. | Open it with **Open** on its row. If it is that return's, file it there with **File under another return**; if it is this household's, file it here. |
+| `reasons.NAMED_ACROSS_HOUSEHOLDS` | This household's drop folder feeds a return in another household, that return's list accepted this document, and the page names that return's person. The pass never files into another household (decision 204), so it waits here, its original in this household's year folder, and the row keeps what that return's list accepted. The same holds for a document sent again. Until somebody clicks, the other household's status does not count it. | Open it with **Open** on its row. If it is that return's, press **File it under <the return>** once — it files under the requests shown and nothing else. If the button is not offered (the row says the return is no longer fed, or a request is gone or N/A), use **File under another return**. If it is this household's, file it here. |
 | `router.NO_REQUEST_ACCEPTS` | No request on this manifest takes that file type at all. | Usually a stray file. Otherwise widen the request's allowed types. It has no **Open**: the tracker never read the file (decision 190). |
 | `reasons.CONTAINER_LOCKED` | An email or a zip arrived and one of the files inside is locked with a password (or packed in a way this machine cannot unpack), so nothing in it was opened. The container is kept like any original, with a review copy. | Ask the client for the documents themselves; the reminder does. It has no **Open**. If you have the password, open it, if at all, on a machine with no Drive sign-in and no client folder, never this one (decision 184), and bring the documents back into this household's `Drop files here`, never the client's folder for the year; the next pass sorts them. |
 | `reasons.CONTAINER_DAMAGED` | An email or a zip arrived that does not read as one - a broken zip, an Outlook file whose structure is damaged, an email with no headers at all. Nothing in it was opened. | It has no **Open**. Ask the client to send the documents on their own; the reminder does. It is opened, if at all, on a machine with no Drive sign-in and no client folder, never this one (decision 184). |
@@ -1702,12 +1702,12 @@ These appear as warnings on the run rather than as index rows:
 
 | The run warns | In plain words | What you do |
 |---|---|---|
-| `filer.REPLACED_IN_PBC` | An original we had already filed no longer holds the bytes we filed. A client cannot change one under the documented shares (§1, *Sharing a household with a client*), so somebody at the firm or the sync client did; the working copy was made from the earlier file. Said too for a file taken out of an email or a zip that was replaced under its own name in the hidden `_Opened` folder. | Do not open either where it sits. Copy the new file from the year's folder into this household's `Drop files here`: it is already this household's, so nothing is published anywhere new. The next pass sorts it as a new arrival (an identical one is a Duplicate), and if it parks it gets a card, with **Open** when the tracker read it. If it is the better document, file it and **Unfile** or set aside the old row. Then find out who at the firm changed it. |
+| `filer.REPLACED_IN_PBC` | An original we had already filed no longer holds the bytes we filed. A client cannot change one under the documented shares (§1, *Sharing a household with a client*), so somebody at the firm or the sync client did; the working copy was made from the earlier file. Said too for a file taken out of an email or a zip that was replaced under its own name in the hidden `_Opened` folder. | Do not open either where it sits. Copy the new file from the year's folder into this household's `Drop files here`: it is already this household's, so nothing is published anywhere new. The next pass sorts it as a new arrival (an identical one is a Duplicate), and if it parks it gets a row, with **Open** when the tracker read it. If it is the better document, file it and **Unfile** or set aside the old row. Then find out who at the firm changed it. |
 | `filer.README_UNREAD` | The README in a household's inbox could not be opened just now - most often because someone has it open, or antivirus is holding it (decision 179). It is neither sorted nor written over; it waits where it is, as a file held open does. | Nothing, unless it is said pass after pass: then close whatever has it open. The next pass looks again. |
-| `filer.UNTIED_IN_PBC` | A row was recorded without its bytes and its working copy no longer matches the original. | Do not open either file where it sits, and do not **Unfile** the row: with no recorded bytes it cannot prove which copy is its own, so Unfile would put a copy of the client's new file on a card and leave the old copy in `Prepared`, still counted for the request - and filing it again counts two. In the app, leave the row as it is. Nothing is adopted automatically, by design. |
-| `filer.UNRECORDED_OPENED` / `filer.OPENED_CONTAINER_GONE` | A file sits in a hidden `_Opened` folder that no row names, or a container's folder there whose email or zip has no row any more (decision 143). A pass killed half way that the next pass did not finish can leave one; so can a file somebody put there by hand. It is never sorted from there and never deleted. | Do not open it where it sits. Confirm whose it is first (§1, *A document the tracker did not file*): if it is this household's, drop a copy into this household's `Drop files here`; the next pass sorts it, and if it is a document it gets a card, with **Open** when the tracker read it. Then delete the stray by hand. If you cannot tell whose it is, leave it and ask. |
+| `filer.UNTIED_IN_PBC` | A row was recorded without its bytes and its working copy no longer matches the original. | Do not open either file where it sits, and do not **Unfile** the row: with no recorded bytes it cannot prove which copy is its own, so Unfile would put a copy of the client's new file on a row and leave the old copy in `Prepared`, still counted for the request - and filing it again counts two. In the app, leave the row as it is. Nothing is adopted automatically, by design. |
+| `filer.UNRECORDED_OPENED` / `filer.OPENED_CONTAINER_GONE` | A file sits in a hidden `_Opened` folder that no row names, or a container's folder there whose email or zip has no row any more (decision 143). A pass killed half way that the next pass did not finish can leave one; so can a file somebody put there by hand. It is never sorted from there and never deleted. | Do not open it where it sits. Confirm whose it is first (§1, *A document the tracker did not file*): if it is this household's, drop a copy into this household's `Drop files here`; the next pass sorts it, and if it is a document it gets a row, with **Open** when the tracker read it. Then delete the stray by hand. If you cannot tell whose it is, leave it and ask. |
 | `filer.REMAKE_FAILED` | A working copy that was gone could not be made again from the original this pass - a full disk, a path past the limit, or an original that changed while it was read (decision 157). Nothing half made is left, nothing is recorded, and the request is held for you (`reasons.COPY_MISSING`), never asked of the client. | Nothing, if the next pass makes it. If the line comes back every pass, look at what it names: free the disk or shorten the root; an original it names is never opened where it sits (§1, *A working copy went missing*). |
-| `filer.UNRECORDED_COPY` | A file is sitting in `Prepared` under a name that begins with a request's identifier (or in the review folder) that nothing on the record put there and no row's bytes account for. It **is** counted for that request — what a request has is what `Prepared` holds under its name — but nobody can say where it came from. It is never a copy the tracker left half made: since decision 155 a copy that fails or is killed part-way (antivirus holding it, a full disk, the power going out) leaves only a temporary file, which nothing counts and the next pass removes. | Do not open it where it sits. Confirm whose it is first (§1, *A document the tracker did not file*): if it is this household's, drop a copy into this household's `Drop files here`; the next pass sorts it and it gets a card, with **Open** when the tracker read it. Then delete the stray by hand. If you cannot tell whose it is, leave it and ask. If it is not a whole document — a partial or broken copy, say one an older version left — delete it by hand; never ask the client for it. Said every pass until you do. |
+| `filer.UNRECORDED_COPY` | A file is sitting in `Prepared` under a name that begins with a request's identifier (or in the review folder) that nothing on the record put there and no row's bytes account for. It **is** counted for that request — what a request has is what `Prepared` holds under its name — but nobody can say where it came from. It is never a copy the tracker left half made: since decision 155 a copy that fails or is killed part-way (antivirus holding it, a full disk, the power going out) leaves only a temporary file, which nothing counts and the next pass removes. | Do not open it where it sits. Confirm whose it is first (§1, *A document the tracker did not file*): if it is this household's, drop a copy into this household's `Drop files here`; the next pass sorts it and it gets a row, with **Open** when the tracker read it. Then delete the stray by hand. If you cannot tell whose it is, leave it and ask. If it is not a whole document — a partial or broken copy, say one an older version left — delete it by hand; never ask the client for it. Said every pass until you do. |
 | `filer.MARK_REFUSED` | A file that can carry macros (a macro workbook, an old `.doc` or `.xls`, an email or a zip) was not given a review copy, because the copy could not be marked as from the internet - the mark Office reads to open a file in Protected View (decision 190). The firm's folders sit on a volume that holds no such mark: FAT, or a network share that drops it. Fail closed: the row says it could not be filed, and its original rests safe in the client's folder for the year. An **Unfile** or a put-back that would move such a file into review is refused the same way and records nothing; one a pass was finishing from before is abandoned instead, said once (`filer.INTERRUPTED_MARK_REFUSED`), and the row stands as it was. | Never open the original. Ask the client to send the document as a PDF, and set this row aside with **Not requested** in the app; no later pass makes its copy. Move the firm's folders to an NTFS volume, so the next such file gets its marked copy. |
 
 And since decision 143 the Decision column has a sixth value, for an email
@@ -1791,7 +1791,7 @@ or put another file in its place.
   half, or another file put in its place, is not the document, whatever
   rules it passes — so the request reads Missing, and because the note is
   ours the letter does not ask the client for it. Look at it with **Open**
-  on its card, because nothing on the record says what that file is: put the right copy back (the
+  on its row, because nothing on the record says what that file is: put the right copy back (the
   original is in the client's folder for the year), or file whatever it
   is properly. It is on the practice page too, so you see it across every
   engagement at once.
@@ -1837,7 +1837,7 @@ or put another file in its place.
 A note on a `.csv`, `.tsv` or `.txt` may end with `reasons.TEXT_CUT`: only
 the first part of a very long text file was read
 (`validators.TEXT_READ_CAP_MB`), so "not found" means not found in that
-part. The part that was read is bounded (decision 178), so the card keeps
+part. The part that was read is bounded (decision 178), so the row keeps
 **Open** where the row was parked for a filing reason; but the note speaks
 only for that part - ask the client for it in smaller parts before
 believing it.
@@ -2343,16 +2343,16 @@ per issuing entity**. The catalog cannot do this for you: which entities a
 client is in is a fact about that client.
 
 **Adding one.** When a K-1 arrives from an entity no row names, it parks in `00 - Needs Review`
-and its card carries one box: type the issuer's name as the K-1 prints it and press **Add the
+and its row carries one box: type the issuer's name as the K-1 prints it and press **Add the
 issuer and file it**. The app adds the next free row in F's block - `Schedule K-1 - ` and the
 name, the entity in Required Keywords, everything else copied from `F01`, for this return's
 year - and files the document under it, in one step; the banner names both. It is refused,
-with nothing added and nothing filed, if the card is out of date, if the list changed since
-the card was drawn, or if the name is inside - or the same as - another issuer row's name.
+with nothing added and nothing filed, if the page is out of date, if the list changed since
+the page was drawn, or if the name is inside - or the same as - another issuer row's name.
 
 To add a row **before** a K-1 arrives, or on a return whose K-1 row is not the catalog's
 `F01`, use **Edit Request List**, **Add a Request**, and fill the cells below; then **Save**.
-The routing cells are in each row's **Routing rules** fold.
+The routing cells show when the editor's **Advanced** switch is on.
 
 | Column | What to put |
 |---|---|
@@ -2376,7 +2376,7 @@ L.P.`. The suffix is the part whose punctuation differs between your
 typing and the form's printing, and the match is on whole words. Two
 issuer rows must not have one name inside the other, or the same name
 twice — `Ashford` and `Ashford Holdings`, or two rows both `Ashford
-Holdings`, would all claim the same K-1 — and the save or the card is
+Holdings`, would all claim the same K-1 — and the save or the row is
 refused, by name, if they do.
 
 A list that **already** holds two rows of one name — written before
@@ -2398,7 +2398,7 @@ really a different issuer, and save; the warning stops.
   Share of Income" and `F01` asks for that too.
 - A K-1 from an entity **no row names** parks in `00 - Needs Review`,
   and the reason names the issuer rows you do have. File it in the app,
-  or type the issuer's name on its card and add the row and file it in
+  or type the issuer's name on its row and add the row and file it in
   one step. It is not
   put on `F01`, and it is not guessed onto whichever issuer row has not
   had a K-1 yet.
@@ -2556,7 +2556,7 @@ questions and two columns, and neither stands in for the other.
 outcome — nothing else. Not a word of the client's document, and no part
 of anybody's tax identification number, ever, anywhere.
 
-**When one parks.** The card says which of the three it was, and the three
+**When one parks.** The row says which of the three it was, and the three
 rows in §4 say what to do. The usual one is a spelling the list has not
 got: file the document and type the spelling the page prints into the box
 beside **Teach this spelling**, and the next one like it files itself.
