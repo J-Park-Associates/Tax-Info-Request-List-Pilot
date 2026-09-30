@@ -402,7 +402,7 @@
     "artifact:firm-view.json": {
       "type": "artifact",
       "layer": "runtime",
-      "role": "The firm view's cache (P120): in the data home beside tracker.db, never synced, never under the clients root, never beside the program. Per household of the private tree: its fingerprint, its kind and name, each return's facts (path, household, problem, active, tax year, rolled from) and, for a shown return, its firm row, files and paths as api._firm_row built them. Client data: household names, return folders and the names of files waiting for a person (P123 asks Jason; built as allowed, like tracker.db). Disposable: deleting it costs the next Overview one full read. Written only when what is kept changed, atomically (fsio.write_text_atomically)."
+      "role": "The firm view's cache (P120): in the data home beside tracker.db, never synced, never under the clients root, never beside the program. Per household of the private tree: its fingerprint, its kind and name, each return's facts (path, household, problem, active, tax year, rolled from) and, for a shown return, its firm row, files and paths as api._firm_row built them. Client data: household names, return folders and the names of files waiting for a person (allowed by Jason, P123, like tracker.db). Disposable: deleting it costs the next Overview one full read. Written only when what is kept changed, atomically (fsio.write_text_atomically)."
     },
     "artifact:last-pass.json": {
       "type": "artifact",

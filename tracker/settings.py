@@ -307,9 +307,9 @@ def error_log(logger_name: str = "tracker") -> Iterator[Path | None]:
 
 
 def _read() -> dict:
-    """What ``settings.json`` says, as a dict of the caller's own - read once
-    per reading inside :func:`one_reading` (P118), from the file every other
-    time."""
+    """What the settings file (:data:`SETTINGS_FILENAME`) says, as a dict of
+    the caller's own - read once per reading inside :func:`one_reading`
+    (P118), from the file every other time."""
     if _HELD is not None and _SETTINGS_HELD in _HELD:
         return dict(_HELD[_SETTINGS_HELD])
     path = settings_path()
@@ -669,7 +669,7 @@ def data_home() -> Path:
 #: when no reading is under way - which is always, outside
 #: :func:`one_reading`.
 _HELD: dict | None = None
-#: The key :func:`_read` holds ``settings.json``'s answer under.
+#: The key :func:`_read` holds the settings file's answer under.
 _SETTINGS_HELD = ("settings",)
 
 
@@ -678,7 +678,7 @@ def one_reading() -> Iterator[None]:
     """Hold this process's answers to the machine's questions for one
     read-only reply (P118, ``pilot/SPEC-firm-cache.md``): where the data
     folder is (:func:`data_home`), where the program is (:func:`app_dir`,
-    :func:`program_folders`), what ``settings.json`` says (:func:`_read`)
+    :func:`program_folders`), what the settings file says (:func:`_read`)
     and what each path resolves to (:func:`resolved`).
 
     **Why.** A firm-wide reply asks them thousands of times - every store

@@ -3028,7 +3028,7 @@ ADMISSION_PIN: dict[int, dict[str, str]] = {2: {
     "tracker.settings.SETTINGS_FILENAME": "ddf9dfc4d857c464",
     "tracker.settings._SETTINGS_HELD": "6c71e2207cf64f31",
     "tracker.settings._held": "379fbddee2b4b987",
-    "tracker.settings._read": "943c4e39c89c01a5",
+    "tracker.settings._read": "ff1836cb9db58dc9",
     "tracker.settings.clients_root": "8fbaef8c43dcb573",
     "tracker.settings.resolved": "e42941a71b19eac8",
     "tracker.settings.settings_dir": "0468e63b780056c5",

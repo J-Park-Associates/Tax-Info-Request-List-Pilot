@@ -281,9 +281,9 @@ another lane adds a field).
 
 No change to the tests in this lane; see section 4.
 
-### P123 - the owner question
+### P123 - the cache may keep client names in the data folder
 
-The cache keeps client names in the data folder; see section 6.
+Decided by Jason on 2026-09-30 ("p123, allow"): (a), as built; see section 6.
 
 ## 3. Files, functions and owning tests
 
@@ -380,18 +380,16 @@ names its data folder in the environment.
   folder. Deleting `firm-view.json` is always safe; the next Overview
   rebuilds it.
 
-## 6. Open for Jason
+## 6. Jason's decision (P123)
 
-**Q1 (client data): the cache keeps client names in the data folder.**
-Like `tracker.db`, `firm-view.json` holds household names, return folder
-paths and the names of files waiting for a person, in this Windows
-account's private data folder on the office PC (never synced, never in a
-client folder).
-- **(a) Recommended:** allow it, as for `tracker.db` (decision 186).
-- (b) Keep only counts in the cache; names are read fresh each time (the
-  page would take about 9 s again, since the names are most of the work).
-
-Built meanwhile: (a).
+**The cache keeps client names in the data folder: allowed.** Like
+`tracker.db`, `firm-view.json` holds household names, return folder paths
+and the names of files waiting for a person, in this Windows account's
+private data folder on the office PC - never synced, never in a client
+tree. Asked as (a) allow it, as for `tracker.db` (decision 186), recommended;
+or (b) keep only counts and read names fresh (about 9 s again). **Jason,
+2026-09-30: "p123, allow"** - (a), as built. Also recorded as P168 on the
+records branch. Nothing is open for Jason in this SPEC.
 
 ## 7. What this makes true in the docs
 

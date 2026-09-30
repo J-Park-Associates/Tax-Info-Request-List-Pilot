@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 348,
     "edges": 1169,
-    "reused": 300
+    "reused": 302
   },
   "node_types": [
     "artifact",
@@ -3526,7 +3526,7 @@
       "id": "tracker/settings.py",
       "type": "module",
       "layer": "core",
-      "sha256": "fa3fb4558339ba9f",
+      "sha256": "5d4a99cf49825770",
       "lines": 949,
       "cli": "python -m tracker.settings",
       "exports": [
@@ -4571,7 +4571,7 @@
       "id": "docs/repo-map.curated.json",
       "type": "file",
       "layer": "docs",
-      "sha256": "b5350955bc379aa1",
+      "sha256": "85185b318cda6630",
       "lines": 1140,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
@@ -4644,7 +4644,7 @@
       "id": "pilot/DECISIONS.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "c06ae31d4dc60f18",
+      "sha256": "17ba0792242eec3b",
       "lines": 126
     },
     {
@@ -4686,8 +4686,8 @@
       "id": "pilot/SPEC-firm-cache.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "1d0cdbb3dbe035c7",
-      "lines": 404
+      "sha256": "0971558d8183bd03",
+      "lines": 402
     },
     {
       "id": "pilot/SPEC-glass.md",
@@ -5594,7 +5594,7 @@
       "id": "artifact:firm-view.json",
       "type": "artifact",
       "layer": "runtime",
-      "role": "The firm view's cache (P120): in the data home beside tracker.db, never synced, never under the clients root, never beside the program. Per household of the private tree: its fingerprint, its kind and name, each return's facts (path, household, problem, active, tax year, rolled from) and, for a shown return, its firm row, files and paths as api._firm_row built them. Client data: household names, return folders and the names of files waiting for a person (P123 asks Jason; built as allowed, like tracker.db). Disposable: deleting it costs the next Overview one full read. Written only when what is kept changed, atomically (fsio.write_text_atomically)."
+      "role": "The firm view's cache (P120): in the data home beside tracker.db, never synced, never under the clients root, never beside the program. Per household of the private tree: its fingerprint, its kind and name, each return's facts (path, household, problem, active, tax year, rolled from) and, for a shown return, its firm row, files and paths as api._firm_row built them. Client data: household names, return folders and the names of files waiting for a person (allowed by Jason, P123, like tracker.db). Disposable: deleting it costs the next Overview one full read. Written only when what is kept changed, atomically (fsio.write_text_atomically)."
     },
     {
       "id": "artifact:last-pass.json",
@@ -9519,7 +9519,7 @@
       "id": "tests/test_store.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "ed422ede61724d58",
+      "sha256": "485a3464434faeb9",
       "lines": 4379,
       "exports": [
         "AS_AT_16",
