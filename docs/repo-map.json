@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 346,
     "edges": 1156,
-    "reused": 301
+    "reused": 298
   },
   "node_types": [
     "artifact",
@@ -4033,7 +4033,7 @@
       "id": "app/renderer/index.html",
       "type": "ui",
       "layer": "desktop-app",
-      "sha256": "7f19b9f985348b94",
+      "sha256": "1535483e2e048f25",
       "lines": 568,
       "role": "The desktop app's markup under a Content-Security-Policy that allows nothing but the app's own files: the shell skeleton (side panel, path row, notices, page, the tooltip and the drawn icons), the side sheet with the reminder's parts, and the dialogs.",
       "notes": "Nothing here types a word: shell.js fills each name and tooltip from the vocabulary (data-tip-key names the key). The script order is app.js, tooltip.js, pages.js, sheet.js, shell.js, then the pilot's. The side sheet's frame holds the check body (sheet.js fills it), the reminder's parts with the ids drawReminder() draws into, and the two footers; the four dialogs the menu and the notices open (roll, safeguards, about, folders skipped) sit beside the older ones. #legacy holds only the three boxes saveRoot() reads."
@@ -4072,7 +4072,7 @@
       "id": "app/renderer/pilot-ui.css",
       "type": "ui",
       "layer": "desktop-app",
-      "sha256": "dd73af2300890561",
+      "sha256": "3ebc5687f3234204",
       "lines": 613,
       "role": "The pilot's tokens and structure pass: the light and dark colour tokens (SPEC-shell 10), the type roles, the 4px grid, and one button shape in four importances and two sizes, loaded after style.css and before shell.css and pilot-style.css.",
       "notes": "The two :root blocks (light, then prefers-color-scheme: dark with the same names) are the only place a colour, size or step is written; outside them tests fail on a hex, a literal size, weight or line height, or a padding, margin or gap off the grid (steps 4/8/16/24/32/48). --bg-page is --window-light or --window-dark: main.js reads those two literals for the first paint. The old token names are aliases of the purpose names, so every rule already written picks up both themes. Rules of style.css that write a literal colour and still draw are restated here through tokens (a test lists them). It never names .rem-preview: the reminder letter mirrors the emailed letter. It ends with a forced-colors block of system colours only."
@@ -4097,8 +4097,8 @@
       "id": "app/renderer/shell.css",
       "type": "ui",
       "layer": "desktop-app",
-      "sha256": "fd7617e11bd17449",
-      "lines": 1104,
+      "sha256": "31db5aca75902e54",
+      "lines": 1113,
       "role": "Layout and components of the shell's markup: side panel, path row, notices, page, the row and group every page is made of, the setup page, the sheet's frame and the tooltip.",
       "notes": "Tokens only, as pilot-ui.css: no colour, size or step is written here, and tests/test_shell.py fails on the first one. Every display other than none sits under :not(.hidden) (or [hidden], or :empty), because style.css's .hidden and the hidden attribute both lose to a later display. It ends with its own forced-colors block. The columns of a row are 240/200/160/144 so a row fits the 860px main area at the 1100px window; the date and the next step share the last column. It also styles the sheet's contents (status line, More fold, footer), the links, and the safeguards, about and folders-skipped dialogs."
     },
@@ -4625,8 +4625,8 @@
       "id": "pilot/DECISIONS.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "4444401fd72d6a4f",
-      "lines": 134
+      "sha256": "bab86c32071d59ec",
+      "lines": 135
     },
     {
       "id": "pilot/HANDOFF.md",
@@ -4674,15 +4674,15 @@
       "id": "pilot/SPEC-lists.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "e1fd602db7612601",
-      "lines": 681
+      "sha256": "a482ed0191afd5c3",
+      "lines": 711
     },
     {
       "id": "pilot/SPEC-shell.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "25b0a324f2c72a9f",
-      "lines": 1969
+      "sha256": "956173aea13b7097",
+      "lines": 1972
     },
     {
       "id": "pilot/SPEC-ui.md",

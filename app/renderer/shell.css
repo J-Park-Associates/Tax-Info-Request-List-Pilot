@@ -35,7 +35,7 @@ input, textarea, select { caret-color: var(--text); accent-color: var(--accent);
 
 #side:not(.hidden) {
   display: grid;
-  grid-template-rows: var(--size-bar) minmax(0, 1fr) auto;
+  grid-template-rows: auto minmax(0, 1fr) auto;
   min-height: 0;
   background: var(--bg-nav);
   border-right: 1px solid var(--border);
@@ -49,12 +49,19 @@ input, textarea, select { caret-color: var(--text); accent-color: var(--accent);
   background: var(--brand);
 }
 #side-brand img { height: var(--size-control); width: auto; }
-/* The brand's words beside the logo (pilot SPEC-lists 15.1): the firm, then
-   the app's name, on the navy band in both themes. */
-#side-brand:not(.hidden) { gap: var(--sp-2); }
+/* The brand band (pilot SPEC-lists 15.1, Q14): the logo, whose wordmark is
+   the firm's name, and under it the app's name, on the navy band in both
+   themes. The firm's name is there as words for a screen reader too. */
+#side-brand:not(.hidden) {
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: var(--sp-1);
+  min-height: var(--size-bar);
+  padding-block: var(--sp-2);
+}
 #side-brand-words:not(.hidden) { display: grid; min-width: 0; color: var(--window-light); }
-#side-brand-name { font-size: var(--fs-body); line-height: var(--lh-body); font-weight: var(--fw-strong); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-#side-brand-product { font-size: var(--fs-caption); line-height: var(--lh-caption); font-weight: var(--fw-regular); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#side-brand-product { font-size: var(--fs-caption); line-height: var(--lh-caption); font-weight: var(--fw-strong); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 /* The items scroll rather than cut one at a short window (P153). */
 #side-scroll { min-height: 0; overflow-y: auto; padding-bottom: var(--sp-2); }
@@ -74,8 +81,10 @@ input, textarea, select { caret-color: var(--text); accent-color: var(--accent);
 .side-icon { color: var(--text-secondary); }
 .side-section[aria-current="page"] .side-icon { color: var(--accent); }
 .side-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-/* Not built yet (P154): muted but readable, and still a control. */
-.side-section.is-soon { color: var(--text-secondary); }
+/* Not built yet (P154): muted but readable, and still a control; its long
+   name wraps to a second line rather than lose "(Under Construction)". */
+.side-section.is-soon:not(.hidden) { color: var(--text-secondary); height: auto; min-height: var(--size-row); padding-block: var(--sp-1); }
+.side-section.is-soon .side-name { white-space: normal; overflow: visible; }
 #side-sections li:not(.hidden) { display: block; margin-bottom: var(--sp-1); }
 
 .side-section:not(.hidden) {
@@ -842,7 +851,7 @@ input, textarea, select { caret-color: var(--text); accent-color: var(--accent);
   margin-right: var(--sp-2);
   padding: 0 var(--sp-1);
   border-radius: var(--radius-control);
-  background: var(--bg-hover);
+  background: var(--bg-pressed);
   color: var(--text-secondary);
   font-size: var(--fs-caption);
   line-height: var(--lh-caption);

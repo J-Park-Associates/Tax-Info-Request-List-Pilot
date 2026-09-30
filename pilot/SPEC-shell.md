@@ -338,6 +338,9 @@ Numbers are right-aligned in their column, with tabular figures.
 - Household, year and return pages select **Clients** (they live under it).
 - Foot: `#last-sort` in caption `--text-caption`, 16px from the panel's
   sides, 16px from the badge. States in section 8.3.
+- Pilot 0.3 raises the panel (icons, badges, Client Types, Under
+  Construction items, Settings, the brand band's words):
+  `pilot/SPEC-lists.md` section 15 (P153, P154, P179).
 
 ### 3.4 Path row (`#bar`)
 

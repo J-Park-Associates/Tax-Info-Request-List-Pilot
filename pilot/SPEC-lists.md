@@ -164,7 +164,7 @@ action here).
 
   | Column | Least | Most | Usual |
   |---|---|---|---|
-  | name (Return, File, Client) | 160 | 640 | 240 (its least; it takes the space the others leave) |
+  | name (Return, File, Client) | 160 | 640 | 224 (its least; it takes the space the others leave; 240 until P179) |
   | detail | 80 | 400 | 200 |
   | status | 96 | 320 | 160 |
   | end (date and step) | 112 | 240 | 144 |
@@ -180,7 +180,7 @@ action here).
 - **The name column absorbs the remaining space** (`minmax(name, 1fr)`, as
   today): its width is its least width, so narrowing it undoes a widening and
   never leaves a gap; widening any other column takes the space from it.
-- **The 1100px window:** the usual widths still add to 856 of the 860px main
+- **The 1100px window:** the usual widths add to 840 of the 860px main (P179: 843px beside Windows' scrollbar)
   area (SPEC-shell 3.6), so there is no sideways scroll. Headers are short
   words on one line and cut with "…" before they push anything. A return link
   still wraps (ruling 27: the year is never cut), and a status word keeps its
@@ -313,6 +313,25 @@ status words already use, so the heading and the statuses agree:
 | `tracker/api.py` | `SCREEN["columns"]`, `MENU["reset_columns"]` (words only). |
 | `pilot/wording-shell.tsv` | The new words' rows. |
 | `docs/repo-map.curated.json` | `pages.js`'s note (headers, ordering, widths). |
+
+**Lane 4b (sections 9-17):**
+
+| File | What |
+|---|---|
+| `tracker/records.py` | `HouseholdInfo.related`, `HOUSEHOLD_FIELDS`, `HOUSEHOLD_EDITABLE`, `household_to_json`, `household_from_json`, new `related_from_json`, `household_problem`. |
+| `tracker/store.py` | `SCHEMA_VERSION` 20 and its history note, `_IN_PLACE[19]`, `ADMISSION_VERSION` 3, `_LIST_COLUMNS`, `_household_cell`'s note, `_refuse_a_malformed_line` (the related list). |
+| `tracker/api.py` | `RELATED_LABEL`, `ADD_RELATED_LABEL`, `RELATED_REFUSED`, `RELATED_UNKNOWN`; `_related_from_spec`, `_mirror_related`, `_cmd_edit_household`; `_household_payload` (`related`); `LINK_FEEDS`, `LINK_FED_BY`, `LINK_RELATED`, `_household_links`; `_list_payload` (`links`, `form`); `_firm_row` (`form`, files' `suggestion_short`); `_cmd_firm` (`links`); `SCREEN` (`find_placeholder`, `find_placeholder_files`, `linked`, `tabs`, `documents`, `paging`, `side`, `client_types`, `columns.client_name`, `columns.sort_by`, `counts.one_file`, `icons.more_actions`, `icons.remove_filter`, `notices.under_construction`); the household words (`related_label`, `add_related`). |
+| `app/renderer/pages.js` | New: `PAGES_PER_PAGE`, `PAGES_REASON_ICONS`, `PAGES_SECTIONS`, `pagesPageAt`, `pagesTab`, `pagesReasonPick`, `pagesClientType`, `pagesPanel`; `pagesLinkMark`, `pagesLinkMarkIn`, `pagesShowPanel`, `pagesPanelOpen`, `pagesClosePanel`, `pagesOpenRowLinks`, `pagesDetailCell`, `pagesStatusCell`, `pagesPaged`, `pagesFoot`, `pagesTurn`, `pagesPick`, `pagesTabs`, `pagesFileCount`, `pagesReasonCards`, `pagesReviewGroup`, `pagesTypeFilter`. Changed: `pagesNameCell`, `pagesRow`, `pagesActivate`, `pagesList`, `pagesGroup`, `pagesOrderBy`, `pagesWorkRows`, `pagesPausedRows`, `pagesOverview`, `pagesReviewSpec`, `pagesNeedsReview`, `pagesReminderSpecs`, `pagesReminders`, `pagesClientSpecs`, `pagesSwitch`, `pagesClients`, `pagesReturn`, `pagesDraw`, `pagesKey`, `PAGES_COLUMNS.clients`. |
+| `app/renderer/shell.js` | New `shellSideWords`, `drawFindWords`; changed `shellVocabulary`, `drawSide`, `drawCounts`, `shellDraw`, `findOptions`, `drawFound`, `openFound`, `shellKey` (Escape closes the panel), the wiring (Client Types, Under Construction, Settings, a click outside the panel). |
+| `app/renderer/tooltip.js` | New `showTipNow`. |
+| `app/renderer/app.js` | Edit Household's related list: `editorRelated`, `renderEditorRelated`, `addEditorRelated`, `openHouseholdEditor`, `saveHousehold`, the dialog's model, the wiring. |
+| `app/renderer/index.html` | The side panel (brand words, icons, the unbuilt items, Client Types, Workspace, Settings), the new icon symbols, Edit Household's related field. |
+| `app/renderer/shell.css`, `pilot-ui.css` | The raised lists' rules and their forced-colours lines; `--st-linked`, `--bg-band`; `--size-col-name` 224px (P179). |
+| `app/main.js` | No change: Settings answers through the existing `change_root`. |
+
+**Owner tests (lane 4b):** `tests/test_records.py`, `tests/test_store.py`,
+`tests/test_api.py`, `tests/test_shell.py`, `tests/test_shell_menu.py`; the
+guards as above plus `tests/test_tripwire.py` and `tests/test_errors.py`.
 
 **Owner tests:** `tests/test_shell.py` (the renderer's owner: the pages'
 node probes and the stylesheet), `tests/test_shell_menu.py` (the template),
@@ -550,10 +569,15 @@ year; choosing one opens Check on it. Up to eight options, as before.
 
 ### 15.1 The panel
 
-- **Brand band** (`--brand`, both themes): the JP logo, **"J Park &
-  Associates"** (body, 600) and **"Tax Document Console"** (caption) in
-  `--window-light`. New words name the app "Tax Document Console" (P155);
-  nothing existing is renamed and no version number changes (P140).
+- **Brand band** (`--brand`, both themes; P179): the JP logo, whose
+  wordmark already reads "J Park & Associates", and under it **"Tax
+  Document Console"** (caption, 600) in `--window-light`; the words **"J
+  Park & Associates"** are in the band for a screen reader
+  (`visually-hidden`), because beside the 133px-wide wordmark they were cut
+  to "J Park &..." (owner question Q14). The band grows to its content
+  (about 64px, SPEC-shell 3.3 said 48px). New words name the app "Tax
+  Document Console" (P155); nothing existing is renamed and no version
+  number changes (P140).
 - **Pages:** Overview, Needs Review, Reminders, Clients, each with an
   icon, its count badge (Needs Review files waiting, **amber**:
   `--st-attention` on `--warn-bg`; Reminders drafts ready, neutral:
@@ -645,9 +669,14 @@ at the pills' 12px weight 600, "Looks Like Wrong Document" is 158px,
 "Names Another Household" 149px, "Claimed by Two Requests" 140px, "Came
 in Email or Zip" 113px; with the pill's 32px of padding, dot or icon and
 gap, the longest is 191px, inside Needs Review's 200px Reason column, so
-every reason shows whole at 1100px and Q9 no longer arises. "Two Years
+every reason shows whole at 1100px and Q9 no longer arises. **P179:** the
+name column's usual least width is 224px (was 240px): Windows' classic
+scrollbar takes 17px of the 860px main area, and at 240px the lists
+(856px) scrolled sideways; at 224px the header row needs 840px and a
+Needs Review card 842px, inside 843px. Checked in the harness at 1100 x
+700, light and dark: no sideways scroll. "Two Years
 Open; Sorting Paused" (176px at 12px) wraps in its row, as ruling 21
-already allows. The usual widths still add to 856 of 860px. The rendered
+already allows. The rendered
 look is the Windows check's to confirm.
 
 ## 17. The keyboard's status tooltip (P178)
@@ -679,3 +708,4 @@ Each is answerable by a letter; the recommendation is built meanwhile.
 | Q11 | Rows per page on the four firm lists: A) 50; B) 100; C) 25. | **A** (a page of 50 fills about two screens at 1100 x 700 and keeps a draw quick) |
 | Q12 | The search box's words on Needs Review: A) "Search Files, Clients and Returns"; B) "Search Files and Clients"; C) the same "Search Clients and Returns" as every page. | **A** (it says everything the box finds there) |
 | Q13 | If a reason word is still cut at 1100px in the Windows check (16 measured none cut): A) shorter words (lane 2's job); B) a wider default Reason column. | **A** |
+| Q14 | The side panel's brand band: A) the logo (its wordmark is the firm's name) with "Tax Document Console" under it, the firm's name as words for a screen reader; B) a smaller logo with "J Park & Associates" and "Tax Document Console" written beside it (the wordmark would need a JP-only mark, which the firm does not have as a file yet). | **A** |
