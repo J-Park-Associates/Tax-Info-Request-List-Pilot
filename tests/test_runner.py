@@ -2430,6 +2430,7 @@ def test_progress_lines_end_with_one_final_line_after_the_page(tmp_path, samples
     [ran] = final["runs"]
     assert ran["label"] == engagement.label and ran["path"] == str(engagement.path)
     assert ran["filed"] >= 1 and ran["ok"] and ran["cancelled"] is False
+    assert ran["code"] == "", "a good run has no failure kind"
 
     def refused(*args, **kwargs):
         raise PermissionError("a sync client holds it")
@@ -2438,6 +2439,25 @@ def test_progress_lines_end_with_one_final_line_after_the_page(tmp_path, samples
     code, lines = _run_now(root, household_of(engagement.path), monkeypatch, capsys)
     assert code == 1 and lines[-1]["exit"] == 1
     assert PAGE_NOT_WRITTEN.format(kind="PermissionError") in lines[-1]["pass_warnings"]
+
+
+def test_the_final_line_carries_the_kind_of_a_failed_run_and_no_path(tmp_path, samples, monkeypatch, capsys):
+    """Ruling 29: the app says a short reason after "Sort Failed" chosen by
+    the run's ``code`` - the kind the runner already logs. A household whose
+    client folder is gone fails with that kind, and the code is a slug, never
+    a sentence or a path."""
+    import shutil
+
+    from tracker.layout import client_household_dir
+
+    root = tmp_path / "root"
+    engagement = build_engagement(root, samples)
+    _run_now(root, household_of(engagement.path), monkeypatch, capsys)    # it has had its client folder
+    shutil.rmtree(client_household_dir(root, household_of(engagement.path).name))
+    code, lines = _run_now(root, household_of(engagement.path), monkeypatch, capsys)
+    [ran] = lines[-1]["runs"]
+    assert ran["error"] and ran["code"] == "client-folder-missing"
+    assert "/" not in ran["code"] and "\\" not in ran["code"]
 
 
 def test_a_pass_whose_watcher_is_gone_stops_at_the_next_file(tmp_path, samples, monkeypatch, capsys):

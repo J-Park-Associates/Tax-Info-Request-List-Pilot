@@ -2068,6 +2068,15 @@ if (window.tracker.onAfterInstallDone) {
   });
 }
 
+// A failed sort as the banner says it (rulings 25 and 29): "Sort Failed" and
+// a short reason from the API by the kind of failure the pass reported, five
+// words at most; the run's own sentence stays in the error log.
+function scanFailed(run) {
+  const words = vocab.scan;
+  const reason = words.reasons[run.code] || words.reasons.other;
+  return reason ? fill(words.problem_reason, { reason }) : words.problem;
+}
+
 // What a Sort & Scan pass said, as the banner's lines and its colour: the
 // asked return's run from the pass's final line, the household's other
 // returns, and the summary line of the state drawn after it.
@@ -2085,7 +2094,7 @@ function scanSummary(run, others, summary) {
   // Every word is the API's (vocab.scan, decision 42; the review's S4).
   const words = vocab.scan;
   if (run.skipped) return { text: [fill(words.nothing_done, { why: run.skipped }), ...also].join("\n"), cls: "warn" };
-  if (run.error) return { text: [fill(words.problem, { error: run.error }), ...also].join("\n"), cls: "err" };
+  if (run.error) return { text: [scanFailed(run), ...also].join("\n"), cls: "err" };
   const did = [fill(words.filed, { n: run.filed })];
   if (run.review) did.push(fill(words.review, { n: run.review }));
   if (run.waiting) did.push(fill(words.syncing, { n: run.waiting }));

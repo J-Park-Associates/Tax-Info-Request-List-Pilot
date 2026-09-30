@@ -2482,3 +2482,26 @@ def test_the_move_schedule_question_carries_its_warning(tmp_path):
     """
     ran = run_shell(["moveScheduleQuestion"], setup, 'return moveScheduleQuestion("front-desk");', tmp_path, "app.js")
     assert ran == "Move Schedule Here From front-desk?\n\nOnly If front-desk Is Retired"
+
+
+def test_a_failed_sort_says_a_short_approved_reason_and_never_a_path(tmp_path):
+    """Rulings 25 and 29: the return's banner says "Sort Failed" and a short
+    reason chosen by the kind of failure the pass reported, from the API's
+    vocabulary - at most five words in all, Title Case, no path. A kind the
+    engine does not tell apart is "Unexpected Error"."""
+    from tests.test_api import title_case
+
+    words = api._vocab()["scan"]
+    setup = ("const fill = (p, v) => p.replace(/\\{(\\w+)\\}/g, (_, k) => v[k] ?? '');\n"
+             f"const vocab = {{ scan: {json.dumps(words)} }};")
+    probe = """
+      const kinds = ["lock-held", "household-paused", "client-folder-missing", "folder-missing", "crashed:OSError", "", "unsorted-files"];
+      return kinds.map((code) => scanFailed({ code, error: "C:/Clients/Smith Family: it broke" }));
+    """
+    said = run_shell(["scanFailed"], setup, probe, tmp_path, "app.js")
+    assert said == ["Sort Failed: Another PC Sorting", "Sort Failed: Two Years Open", "Sort Failed: Folder Not Found",
+                    "Sort Failed: Folder Not Found", "Sort Failed: Unexpected Error", "Sort Failed: Unexpected Error",
+                    "Sort Failed: Unexpected Error"]
+    for line in said:
+        assert len(line.split()) <= 5 and line == title_case(line) and "/" not in line and "Smith" not in line, line
+    assert set(words["reasons"]) == {"lock-held", "household-paused", "client-folder-missing", "folder-missing", "other"}

@@ -2765,6 +2765,9 @@ def _final_line(report: RunReport, code: int, pass_id: int | None = None) -> str
         "path": str(run.engagement.path),
         "ok": run.ok,
         "error": run.error,
+        # The kind of a failure or a skip, for the short reason the app says
+        # after "Sort Failed" (ruling 29); never a sentence, never a path.
+        "code": run.code,
         "skipped": run.skipped,
         "filed": run.filed,
         "review": run.review,

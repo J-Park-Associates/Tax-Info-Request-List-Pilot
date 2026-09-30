@@ -3150,11 +3150,14 @@ def test_every_word_a_scan_reply_is_said_in_is_the_apis():
 
     js = read("app/renderer/app.js")
     body = js.split("function scanSummary(run, others, summary) {", 1)[1].split("\n}\n", 1)[0]
+    body += js.split("function scanFailed(run) {", 1)[1].split("\n}\n", 1)[0]
     words = api._vocab()["scan"]
     for key, literal in words.items():
         if key == "scanning":
             continue        # the sort icon and the last-sort line say a running sort now (SPEC 8.3)
         assert f"words.{key}" in body or f"vocab.scan.{key}" in js, key
+        if isinstance(literal, dict):
+            continue        # the short reasons: each a phrase of its own, tested in test_shell
         stem = literal.split("{")[0].strip()
         assert " " not in stem or stem not in js, literal
     assert "Scanning" not in js and "Pass complete" not in js and "Nothing done" not in js

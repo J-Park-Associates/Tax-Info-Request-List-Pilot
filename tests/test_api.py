@@ -8387,14 +8387,15 @@ def test_firm_says_a_reminder_draft_ready_only_until_it_is_approved_and_counts_t
     assert folder.is_dir()
 
 
-def test_firm_is_read_only(capsys, demo_root):
+def test_firm_is_read_only(capsys, demo_root, monkeypatch):
+    import traceback
+
     from tracker import store
-    from tracker.locking import LOCK_FILENAME
+    from tracker.locking import LOCK_FILENAME, engagement_lock
     from tracker.settings import data_home
 
-    _a_practice_for_the_firm_view(capsys, demo_root)
+    mixed, _quiet, _retired = _a_practice_for_the_firm_view(capsys, demo_root)
     store_file = store.store_path()
-
     def snapshot():
         found = {str(path.relative_to(demo_root)): path.read_bytes() if path.is_file() else None
                  for path in sorted(demo_root.rglob("*"))}
@@ -8409,6 +8410,43 @@ def test_firm_is_read_only(capsys, demo_root):
     assert snapshot() == before
     assert not list(demo_root.rglob(LOCK_FILENAME))
     assert "firm" not in api.WRITING_COMMANDS and "firm" in api.COMMANDS
+
+    # Final review A, M14: with a store that LAGS its journal. The walk that
+    # finds the returns follows every journal, as ``list`` does (it is the one
+    # place the store is caught up); the firm's own reads of a return must
+    # not - a read with ``follow=True`` would be a write. So no other
+    # read of a return may follow the journal, and no document moves.
+    def died(*args, **kwargs):
+        raise OSError("the machine went down between the two writes")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(store, "_apply", died)
+        with engagement_lock(mixed), pytest.raises(OSError):
+            store.record(store.connect(), mixed, ledger.new(ledger.FILED, key="pbc/lagging.pdf", row={
+                "received": "2026-02-02", "original_name": "lagging.pdf", "size_kb": 1.0, "digest": "6" * 64,
+                "identifier": "", "prepared_location": "", "pbc_location": "pbc/lagging.pdf",
+                "decision": "Needs Review", "reason": "", "candidates": "", "evidence": "", "also_filed": ""}))
+    store.close()
+    assert store.state(store.connect(), mixed, ledger_head_now=ledger.head(mixed)) == store.BEHIND
+    store.close()
+    tree = {str(path.relative_to(demo_root)): path.read_bytes() if path.is_file() else None
+            for path in sorted(demo_root.rglob("*"))}
+    real, from_api = store.follow_the_journal, []
+
+    def watched(conn, root, engagement_dir):
+        names = {frame.name for frame in traceback.extract_stack()}
+        # The details reader (``load_engagement_info``) has no follow=False
+        # form and the walk has already caught the store up; every other read
+        # the firm makes of a return must not follow.
+        if "_firm_row" in names and "load_engagement_info" not in names:
+            from_api.append(sorted(names & {"load_manifest", "read_index", "_firm_row", "triage"}))
+        return real(conn, root, engagement_dir)
+
+    monkeypatch.setattr(store, "follow_the_journal", watched)
+    assert run(capsys, "firm")[0] == 0
+    assert not from_api, "the firm view reads a return with follow=False; only the walk and the details reader follow"
+    assert {str(path.relative_to(demo_root)): path.read_bytes() if path.is_file() else None
+            for path in sorted(demo_root.rglob("*"))} == tree
 
 
 def test_firm_says_an_unreadable_record_as_its_own_row(capsys, demo_root, monkeypatch):
@@ -8667,10 +8705,14 @@ def test_a_moved_copy_whose_bytes_are_nowhere_has_no_key(capsys, demo_root, tmp_
     assert not [key for key in payload["state"]["paths"] if key.startswith("moved_copy")]
 
 
-def test_a_set_aside_file_a_parked_zip_and_a_parked_document_are_shown_never_opened(
+def test_a_set_aside_file_and_a_parked_document_are_shown_but_a_zip_or_email_is_plain_text(
         capsys, demo_root, tmp_path):
-    """F2: every file name is a link (SPEC 3.9), so a row that must not open
-    still carries a reveal-only ``shown_key``; a program has no copy and no key."""
+    """F2, and ruling 24: every file name is a link (SPEC 3.9) except a
+    container. A row that must not open still carries a reveal-only
+    ``shown_key``; a program has no copy and no key; an email or a zip has a
+    working copy but no key at all, on ``state`` and on ``firm`` alike,
+    because one more click on a revealed container would open it (decision
+    190)."""
     engagement = sample_engagement(capsys, demo_root, tmp_path, "vacation photo.bmp")
     (inbox_of(engagement) / "letters.zip").write_bytes(b"PK\x03\x04 not really a zip")
     (inbox_of(engagement) / "setup.exe").write_bytes(b"MZ")
@@ -8685,16 +8727,25 @@ def test_a_set_aside_file_a_parked_zip_and_a_parked_document_are_shown_never_ope
     state = payload["state"]
     rows = {e["original_name"]: e for e in state["index"]}
     assert rows["vacation photo.bmp"]["decision"] == api.NOT_REQUESTED
-    for name in ("vacation photo.bmp", "letters.zip"):
-        row = rows[name]
-        assert row["open_key"] == "", name
-        key = row["shown_key"]
-        assert key.startswith("shown_copy ") and api.PATH_KINDS["shown_copy"] == "reveal"
-        assert Path(state["paths"][key]) == engagement / row["prepared_location"]
-        assert Path(state["paths"][key]).is_file()
-        assert not [s for s in _walk_strings(key) if str(engagement) in s]
+    row = rows["vacation photo.bmp"]
+    assert row["open_key"] == ""
+    key = row["shown_key"]
+    assert key.startswith("shown_copy ") and api.PATH_KINDS["shown_copy"] == "reveal"
+    assert Path(state["paths"][key]) == engagement / row["prepared_location"]
+    assert Path(state["paths"][key]).is_file()
+    assert not [s for s in _walk_strings(key) if str(engagement) in s]
+    zipped = rows["letters.zip"]
+    assert zipped["prepared_location"] and zipped["bucket"] == api.BUCKET_CONTAINER
+    assert zipped["open_key"] == "" and zipped["shown_key"] == "", "an email or a zip is plain text"
     assert rows["setup.exe"]["shown_key"] == "" and not rows["setup.exe"]["prepared_location"]
     assert not [k for k in state["paths"] if k.startswith("shown_copy") and "setup" in state["paths"][k]]
+    assert not [p for p in state["paths"].values() if p.endswith("letters.zip") or "letters" in Path(p).name]
+    # The firm's Needs Review file for the zip has no key and no path either.
+    code, firm = run(capsys, "firm")
+    assert code == 0, firm
+    [file] = [f for f in firm["files"] if "letters" in f["name"]]
+    assert file["open_key"] == ""
+    assert not [p for p in firm["paths"].values() if "letters" in Path(p).name]
     # A filed row carries no shown key (its copies are open_keys).
     assert all("shown_key" not in e for e in state["index"] if e["decision"] == FILED)
 

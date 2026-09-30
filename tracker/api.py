@@ -455,6 +455,21 @@ PAGE_ERROR = "The App Hit an Error"
 SCAN_SCANNING = "Scanning\u2026"
 SCAN_NOTHING_DONE = "Nothing Done: {why}."
 SCAN_PROBLEM = "Sort Failed"
+#: A failed sort with its short reason after it (Jason, rulings 25 and 29):
+#: five words at most in all, no path; the long detail stays in the error log.
+SCAN_PROBLEM_REASON = "Sort Failed: {reason}"
+#: The short reason by the runner's own ``code`` for the failure (the final
+#: line's ``code``); any code not listed here is ``other``. Approved by
+#: Jason, ruling 29. Not mapped, because the engine does not tell them apart
+#: at this point: Drive not signed in (a notice of its own) and the 30-minute
+#: cap (the shell's own sentence, ``SHELL_KILLED``).
+SCAN_REASONS = {
+    "lock-held": "Another PC Sorting",
+    "household-paused": "Two Years Open",
+    "client-folder-missing": "Folder Not Found",
+    "folder-missing": "Folder Not Found",
+    "other": "Unexpected Error",
+}
 SCAN_COMPLETE = "Pass complete \u2014 {did}.   {summary}"
 SCAN_FILED = "Filed {n}"
 SCAN_REVIEW = "{n} to Review"
@@ -1698,7 +1713,8 @@ def _vocab() -> dict:
                  "buttons_back": LOCK_BUTTONS_BACK, "watch_seconds": LOCK_WATCH_SECONDS},
         # What a Sort & Scan reply is said as (decision 193's review, S4).
         "scan": {"scanning": SCAN_SCANNING, "nothing_done": SCAN_NOTHING_DONE,
-                 "problem": SCAN_PROBLEM, "complete": SCAN_COMPLETE, "filed": SCAN_FILED,
+                 "problem": SCAN_PROBLEM, "problem_reason": SCAN_PROBLEM_REASON,
+                 "reasons": dict(SCAN_REASONS), "complete": SCAN_COMPLETE, "filed": SCAN_FILED,
                  "review": SCAN_REVIEW, "syncing": SCAN_SYNCING, "not_sorted": SCAN_NOT_SORTED,
                  "but": SCAN_BUT, "not_in_pass": SCAN_NOT_IN_PASS},
         # Sort & Scan, watched, and its Stop (decision 193).
