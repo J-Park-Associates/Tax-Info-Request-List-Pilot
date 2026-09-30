@@ -8347,6 +8347,13 @@ def test_firm_lists_every_file_it_counts_and_buckets_a_return_with_only_a_file(c
     assert [(f["name"], f["code"], f["return"]) for f in firm["files"]] == [
         ("setup.exe", reasons.NOT_A_DOCUMENT.code, str(only_file)),
         ("w2.pdf", reasons.FILE_MOVED.code, str(only_file))]
+    _code, state = run(capsys, "state", api.ENGAGEMENT_FLAG, str(only_file))
+    handles = {e["original_name"]: e["handle"] for e in state["index"]}
+    handles.update({m["original_name"]: m["handle"] for m in state["moved"]})
+    assert set(handles) == {"setup.exe", "w2.pdf"}
+    for f in firm["files"]:
+        assert f["year"] == 2025
+        assert f["handle"] and f["handle"] == handles[f["name"]]
     assert firm["totals"]["files"] == 2
     assert firm["totals"]["need"] == 1 and firm["totals"]["complete"] == 0
 
