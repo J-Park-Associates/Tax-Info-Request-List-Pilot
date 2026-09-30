@@ -196,11 +196,7 @@
         const copy = keyOf("moved_copy", handle);
         keys[copy] = copyPath(path, "Prepared/Elsewhere", one.name);
         movedList.push({ original_name: one.name, handle, seq: 1, home: "", now: "", in_request: "", gone: false, identifier: "", open_key: copy });
-        if (one.inRequest) {
-          const at = items.find((it) => it.document === one.inRequest);
-          const found = at ? at.identifier : "";
-          Object.assign(movedList[movedList.length - 1], { in_request: found, identifier: found });
-        }
+        if (one.inRequest) movedList[movedList.length - 1].named = one.inRequest;
         index.push({ handle, original_name: one.name, received: dayOf(one.date), decision: vocab.decisions.file_moved, group: "needs_you", identifier: "", code: "file-moved", answered: [], open_keys: [], seq: 1 });
         return;
       }
@@ -228,6 +224,12 @@
       }
     };
     for (const key of Object.keys(GROUP_OF)) for (const one of body[key]) push(key, one);
+    // A moved copy sits in a request's folder: that request's identifier, from the items.
+    for (const one of movedList) {
+      const at = items.find((it) => it.document === one.named);
+      if (at) Object.assign(one, { in_request: at.identifier, identifier: at.identifier });
+      delete one.named;
+    }
     // A suggestion names a request of this return: its identifier, from the items.
     for (const one of review) for (const s of one.shortlist) s.identifier = (items.find((it) => it.document === s.name) || items[0] || {}).identifier || "";
     for (const one of review) one.shortlist = one.shortlist.map((s) => ({ identifier: s.identifier, reason: s.name }));
@@ -380,7 +382,7 @@
         return wait(scenario === "slow" ? 1500 : 30, firm());
       }
       if (command === "state") {
-        if (scenario === "state-fails" && calls.filter((c) => c === "state").length > 1) return wait(20, { error: "The return could not be read.", failure: { sentence: "The return could not be read.", kind: "failed" } });
+        if (scenario === "state-fails" && calls.filter((c) => c === "state").length > 0) return wait(20, { error: "The return could not be read.", failure: { sentence: "The return could not be read.", kind: "failed" } });
         return wait(scenario === "slow-state" ? 600 : 20, stateOf(args[args.length - 1]));
       }
       if (command === "reminder") return wait(10, reminderReply(bodies[args[args.length - 1]], args[args.length - 1], payload && payload.stage));
@@ -391,6 +393,7 @@
         if (reply) return wait(20, reply);
         return wait(10, { error: "The row is no longer there.", failure: { sentence: "The row is no longer there.", kind: "failed" } });
       }
+      if (command === "templates") return wait(10, { forms: [{ id: "1040", label: "1040", who: "Individual", blurb: "" }], templates: { 1040: [] }, default_year: 2026 });
       if (command === "pilot-record") return wait(10, { terms: "1", tour_seen: true });
       if (command === "set-root") {
         rootSet = true;

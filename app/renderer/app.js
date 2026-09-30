@@ -858,7 +858,7 @@ function reviewRow(e, choices, ids, open, triage, people = []) {
       teachSpelling(triage, people),
       noteBox(vocab.review_labels.dismiss_note),
       fedReturns().length
-        && el("button", { className: "btn btn-subtle r-hand-over" }, vocab.review_labels.hand_over)),
+        ? el("button", { className: "btn btn-subtle r-hand-over" }, vocab.review_labels.hand_over) : null),
     el("button", { className: "btn btn-primary r-file" },
       open ? vocab.review_labels.file : vocab.review_labels.file_anyway),
     open && el("button", { className: "btn r-dismiss" }, vocab.review_labels.dismiss),

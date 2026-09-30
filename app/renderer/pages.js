@@ -980,16 +980,18 @@ function pagesRowFor(token) {
 }
 
 // The steps of one kind on the page in the order drawn: the sheet's next arrow.
-function pagesSteps(kind) {
+function pagesSteps(kind, wanted) {
   return [...pagesTokens.entries()]
-    .filter(([, spec]) => spec.step && spec.step.kind === kind)
+    .filter(([, spec]) => spec.step && spec.step.kind === kind && (!wanted || wanted(spec)))
     .sort((a, b) => Number(a[0].slice(4)) - Number(b[0].slice(4)))
     .map(([, spec]) => spec.step);
 }
 
-// Every Check step on the page.
+// Every Check step of the files a person must look at, in the order drawn
+// (SPEC 7.1): the parked and moved-by-hand files, not the ones already set
+// aside, which are checked one at a time when a person opens them.
 function pagesFiles() {
-  return pagesSteps("check");
+  return pagesSteps("check", (spec) => spec.fileKind !== "aside");
 }
 
 // Every Draft reminder step on the page (the Reminders page's drafts).

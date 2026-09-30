@@ -31,9 +31,12 @@ const base = `http://127.0.0.1:${port}/`;
 const SIZES = [[1100, 700], [1400, 900]];
 const THEMES = ["light", "dark"];
 const go = (route) => `shellGo(${JSON.stringify(route)})`;
+const later = (ms, code) => `setTimeout(() => { ${code} }, ${ms})`;
+const check = (k) => `const s = pagesFiles()[${k}]; openCheck(s.ret, s.name, s.handle);`;
 const smith = "/clients/J Park & Associates/Smith Family";
 const smithReturn = `${smith}/2025/1040 - John & Jane Smith`;
 const ret = { level: "return", household: smith, year: 2025, ret: smithReturn };
+const chen = "/clients/J Park & Associates/Chen Family";
 const SCENARIOS = [
   { name: "overview", query: "" },
   { name: "overview-empty", query: "?scenario=quiet" },
@@ -56,7 +59,23 @@ const SCENARIOS = [
   { name: "return-empty", query: "", run: go({ level: "return", household: "/clients/J Park & Associates/Novak Household", year: 2025, ret: "/clients/J Park & Associates/Novak Household/2025/1040 - Petra Novak" }) },
   { name: "return-locked", query: "?mode=real&scenario=locked", run: go(ret) },
   { name: "return-stale-lock", query: "?mode=real&scenario=stale-lock", run: go(ret) },
-  { name: "sheet-frame", query: "", run: `${go(ret)}; setTimeout(() => openSheetFrame("scan0012.pdf"), 200)` },
+  // The side sheet (S5), on the real app.js: Check a file on a parked document, with More open, on a moved-by-hand
+  // copy, an email and a photo with no copy; the reminder held and ready; a read in progress; the four dialogs.
+  { name: "sheet-check", query: "", run: `${go(ret)}; ${later(400, check(0))}`, wait: 1500 },
+  { name: "sheet-check-more", query: "", run: `${go(ret)}; ${later(400, check(0))}; ${later(900, "document.getElementById('sheet-more').click()")}`, wait: 2200 },
+  { name: "sheet-check-moved", query: "", run: `${go(ret)}; ${later(400, check(2))}`, wait: 1500 },
+  { name: "sheet-check-email", query: "", run: `${go(ret)}; ${later(400, check(3))}`, wait: 1500 },
+  { name: "sheet-check-photo", query: "", run: `${go(ret)}; ${later(400, check(4))}`, wait: 1500 },
+  { name: "sheet-check-from-firm", query: "", run: `${go({ level: "needs-review" })}; ${later(500, check(0))}`, wait: 1500 },
+  { name: "sheet-reminder-held", query: "", run: `${go(ret)}; ${later(400, `openReminder(${JSON.stringify(smithReturn)})`)}`, wait: 1500 },
+  { name: "sheet-reminder", query: "", run: `${go({ level: "reminders" })}; ${later(500, "const s = pagesDrafts()[0]; openReminder(s.ret)")}`, wait: 1500 },
+  { name: "sheet-loading", query: "?scenario=slow-state", run: `${go({ level: "needs-review" })}; ${later(500, check(0))}`, wait: 900 },
+  { name: "dialog-roll", query: "", run: `${go({ level: "household", household: chen })}; ${later(600, "openRoll()")}`, wait: 1500 },
+  { name: "dialog-safeguards", query: "", run: "openSafeguards()", wait: 1500 },
+  { name: "dialog-about", query: "", run: "openAbout()", wait: 1500 },
+  { name: "dialog-misfits", query: "?scenario=notices", run: `${later(300, "openMisfits()")}`, wait: 1500 },
+  { name: "link-file-tooltip", query: "", run: go(ret), hover: "#page .row-link" },
+  { name: "link-household-tooltip", query: "", hover: "#page .row:nth-child(1) .row-detail .row-link" },
   { name: "notices", query: "?mode=real&scenario=notices" },
   { name: "setup", query: "?scenario=setup" },
   { name: "loading", query: "?scenario=slow" },
@@ -86,7 +105,7 @@ for (const scenario of SCENARIOS) {
       if (scenario.search) { await page.focus("#find"); await page.keyboard.type(scenario.search); }
       if (scenario.hover) { await page.hover(scenario.hover); await page.waitForTimeout(700); }
       if (scenario.focusKey) { await page.keyboard.press("F6"); await page.keyboard.press("F6"); await page.focus(scenario.focusKey); await page.keyboard.press("Shift+Tab"); await page.keyboard.press("Tab"); await page.waitForTimeout(200); }
-      await page.waitForTimeout(scenario.name === "loading" ? 300 : 350);
+      await page.waitForTimeout(scenario.name === "loading" ? 300 : scenario.wait || 350);
       await page.screenshot({ path: path.join(out, `${scenario.name}-${theme}-${width}x${height}.png`) });
       shots += 1;
       await context.close();
