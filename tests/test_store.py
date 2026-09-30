@@ -3026,8 +3026,11 @@ ADMISSION_PIN: dict[int, dict[str, str]] = {2: {
     "tracker.settings.ENV_SETTINGS_DIR": "b654987367e5160b",
     "tracker.settings.KEY_CLIENTS_ROOT": "3b8f548e07b39dbf",
     "tracker.settings.SETTINGS_FILENAME": "ddf9dfc4d857c464",
-    "tracker.settings._read": "87ec97cc779bf82a",
+    "tracker.settings._SETTINGS_HELD": "6c71e2207cf64f31",
+    "tracker.settings._held": "379fbddee2b4b987",
+    "tracker.settings._read": "9a09d08e256be9de",
     "tracker.settings.clients_root": "8fbaef8c43dcb573",
+    "tracker.settings.resolved": "e42941a71b19eac8",
     "tracker.settings.settings_dir": "0468e63b780056c5",
     "tracker.settings.settings_path": "8a79e7ca2ca7f66a",
     "tracker.store.ALSO_IN": "f91e15416cd81c44",
@@ -3039,10 +3042,10 @@ ADMISSION_PIN: dict[int, dict[str, str]] = {2: {
     "tracker.store.UNKNOWN_EVENT": "099e89ceccd1e5e9",
     "tracker.store._engagement_row": "e7254ccc28e41fad",
     "tracker.store._line_keys_problem": "0d6016b3dab0c236",
-    "tracker.store._positional_root": "a85ac4e9131d5ce4",
-    "tracker.store._recorded_root_over": "02b4322cc9356915",
+    "tracker.store._positional_root": "f2fce089ca54ef5a",
+    "tracker.store._recorded_root_over": "6447409cff0d940e",
     "tracker.store._refuse_a_malformed_line": "3691dbc864c8530f",
-    "tracker.store.engagement_path": "5b0cd86c45c214f3",
+    "tracker.store.engagement_path": "354415605ca56669",
     "tracker.store.key_root": "13d66deeca51405a",
     "tracker.store.kind": "c5781c37870424f8",
     "tracker.store.statuses": "d99730d725daf407",
@@ -4374,3 +4377,14 @@ def test_the_store_beside_the_settings_file_is_never_refused_its_checkpoint(root
     where.unlink()
     store.prove_the_root(root)
     assert where.is_file()
+
+
+def test_a_record_written_inside_a_read_only_reply_is_refused_before_anything_is_written(tmp_path):
+    """The review of P118, SHOULD-3: a read-only reply records nothing."""
+    from tracker.settings import one_reading
+
+    folder = tmp_path / "return"
+    folder.mkdir()
+    with one_reading(), pytest.raises(RuntimeError, match="read-only reply"):
+        store.record(None, folder, {"event": "anything"})
+    assert list(folder.iterdir()) == []

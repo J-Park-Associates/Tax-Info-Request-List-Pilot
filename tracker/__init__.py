@@ -36,6 +36,7 @@ See docs/ROADMAP.md for the build plan. Component modules:
 - reasons       : every refusal said once: the note, the client's ask, whose problem it is
 - errors        : an error named by its class where a person sees it; its words kept apart
 - api           : the desktop app's command layer, one JSON command in, one JSON reply out
+- firm_cache    : the firm view's cache in the data folder - its head, each household's fingerprint, and a damaged or stale file never used
 
 The standing rules below are the ones every module upholds. They are read
 by the app (through the API's vocabulary) and pinned into CLAUDE.md, the

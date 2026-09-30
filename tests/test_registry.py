@@ -796,3 +796,116 @@ def test_the_misfit_codes_are_the_ones_the_app_words_in_two_title_case_words():
     for phrase in reasons.values():
         assert len(phrase.split()) == 2, phrase
         assert phrase == phrase.title(), phrase
+
+
+# ------------------------------------ one answer, asked faster (P119) ----
+
+def _prior_as_every_pair_compared(candidate, index, engagements):
+    """The rule ``_prior_of`` was before P119, word for word: every readable
+    return resolved against the Rolled From, pair by pair."""
+    from pathlib import Path
+
+    from tracker import layout
+
+    def same(a, b):
+        try:
+            return Path(a).resolve() == b.resolve()
+        except OSError:
+            return False
+
+    readable = [(position, prior) for position, prior in enumerate(engagements)
+                if position != index and not prior.problem]
+    for position, prior in readable:
+        if same(candidate.rolled_from, prior.path):
+            return position
+    tails = {position: layout.shared_tail(candidate.rolled_from, prior.path) for position, prior in readable}
+    if not tails:
+        return None
+    longest = max(tails.values())
+    if longest < layout.ROLLED_FROM_TAIL:
+        return None
+    matches = [position for position, tail in tails.items() if tail == longest]
+    return matches[0] if len(matches) == 1 else None
+
+
+def test_the_rolled_forward_prior_is_found_as_every_pair_compared_found_it(root, tmp_path):
+    """P119: each return's folder is resolved once, not once per pair (7 s at
+    150 rolled-forward returns, growing with the square). The answer is the
+    old one for every candidate: an exact folder, the first in walk order; a
+    tail match after the root moved; a tie deciding nothing; a problem
+    return never the prior; a Rolled From naming itself, or nothing."""
+    from tracker.registry import _prior_of, _Priors, engagement_from
+
+    a = make(root, household="Park Family", year=2025, name="1040 - John Park")
+    make(root, household="Park Family", year=2026, name="1040 - John Park",
+         info=EngagementInfo(rolled_from=str(a.resolve())))
+    b = make(root, household="Lee Family", year=2025, name="1040 - Ann Lee")
+    make(root, household="Lee Family", year=2026, name="1040 - Ann Lee",
+         info=EngagementInfo(rolled_from=str(tmp_path / "Old root" / b.relative_to(root))))
+    make(root, household="Kim Family", year=2025, name="1040 - Kim")
+    make(root, household="Kim Family", year=2026, name="1040 - Kim",
+         info=EngagementInfo(rolled_from="1040 - Kim"))
+    found = [engagement_from(p) for p in engagement_dirs(root)]
+    found.append(Engagement(path=root / "gone", problem="could not be listed"))
+    found.append(Engagement(path=root / "twin", info=EngagementInfo(rolled_from=str(root / "gone"))))
+    found.append(Engagement(path=a, info=EngagementInfo(rolled_from=str(a))))   # itself, once more
+    priors = _Priors(found)
+    for index, candidate in enumerate(found):
+        if candidate.rolled_from:
+            assert _prior_of(candidate, index, priors) == _prior_as_every_pair_compared(candidate, index, found)
+
+
+def test_two_claims_are_grouped_as_every_pair_compared_grouped_them(root):
+    """P119: households sharing a name key are joined through the first
+    household holding it, not pair by pair - the same groups, listed in walk
+    order, so each sentence names the same folders."""
+    from tracker.layout import name_key
+    from tracker.records import HouseholdInfo
+    from tracker.registry import TWO_CLAIM, Household, _two_claims
+
+    households = [Household(path=root / name, info=HouseholdInfo(name=claimed))
+                  for name, claimed in [("Park", ""), ("Lee", "Park"), ("Kim", ""), ("Kim 2", "Lee"),
+                                        ("Cho", "Cho Family"), ("Cho Family", ""), ("Moon", "")]]
+    keys = [{name_key(one.path.name)} | ({name_key(one.info.name)} if one.info.name else set())
+            for one in households]
+    together = {}
+    for i, one in enumerate(households):
+        group = {i}
+        while True:
+            grown = {j for j in range(len(households)) if any(keys[j] & keys[k] for k in group)}
+            if grown == group:
+                break
+            group = grown
+        together[one.path] = [households[j] for j in sorted(group)]
+    expected = {path: TWO_CLAIM.format(name=group[0].info.name or group[0].path.name, a=group[0].path.name,
+                                       b="`, `".join(other.path.name for other in group[1:]))
+                for path, group in together.items() if len(group) > 1}
+    assert _two_claims(households) == expected
+    assert set(expected) == {root / name for name in ("Park", "Lee", "Kim 2", "Cho", "Cho Family")}
+
+
+def test_household_positions_are_the_walks_households_in_the_walks_order(root):
+    """P120's cache asks the households the practice walk asks, in its order,
+    and says when it cannot be sure (no private tree)."""
+    from tracker.registry import household_positions
+
+    for name in ("lee Family", "Park Family", "Kim Family"):
+        make(root, household=name)
+    # The review's SHOULD-1: a folder the walk passes over is no household
+    # position; one whose name the layout refuses is listed, as the walk
+    # lists it (a misfit).
+    (root / PRIVATE_TREE / "_Archive").mkdir()
+    (root / PRIVATE_TREE / "~$lock").mkdir()
+    (root / PRIVATE_TREE / "2019").mkdir()
+    private, folders = household_positions(root)
+    assert private == root / PRIVATE_TREE
+    assert [f.name for f in folders] == ["2019", "Kim Family", "lee Family", "Park Family"]
+    folders = [f for f in folders if f.name != "2019"]
+    walked = []
+    for one in discover_engagements(root).households:
+        walked.append(one.path)
+    assert folders == walked
+    assert household_positions(root / "nothing here") is None
+    empty = root.parent / "Empty root"
+    empty.mkdir()
+    assert household_positions(empty) is None

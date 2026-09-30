@@ -307,6 +307,11 @@ def error_log(logger_name: str = "tracker") -> Iterator[Path | None]:
 
 
 def _read() -> dict:
+    """What the settings file (:data:`SETTINGS_FILENAME`) says, as a shallow
+    copy of the caller's own - read once per reading inside :func:`one_reading`
+    (P118), from the file every other time."""
+    if _HELD is not None and _SETTINGS_HELD in _HELD:
+        return dict(_HELD[_SETTINGS_HELD])
     path = settings_path()
     try:
         text = path.read_text(encoding="utf-8")
@@ -320,7 +325,9 @@ def _read() -> dict:
         raise SettingsError(f"{path} could not be read: {exc}") from None
     if not isinstance(data, dict):
         raise SettingsError(f"{path} should hold one JSON object")
-    return data
+    if _HELD is not None:
+        _HELD[_SETTINGS_HELD] = data
+    return dict(data)
 
 
 def clients_root() -> Path | None:
@@ -380,6 +387,7 @@ def real_corpus_dir() -> Path | None:
 
 
 def _write(data: dict) -> None:
+    refuse_a_write_while_reading("the settings file")
     path = settings_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     write_json_atomically(path, data)
@@ -488,7 +496,12 @@ def app_dir() -> Path:
 
     Not :func:`settings_dir`, which the Electron shell may point elsewhere:
     this is where the program itself lives, whatever the settings say.
+    Answered once per reading inside :func:`one_reading` (P118).
     """
+    return _held(("app_dir",), _the_app_dir)
+
+
+def _the_app_dir() -> Path:
     if getattr(sys, "frozen", False):
         return Path(sys.executable).resolve().parent
     return Path(__file__).resolve().parent.parent
@@ -544,7 +557,12 @@ def program_folders() -> list[Path]:
     install, the checkout), and the settings folder **when it holds the app**
     - the packaged app, whose shell keeps its settings in the unzipped
     package the executable sits inside. A settings folder that does not
-    hold the program (the suite's per-test folder) is not the program."""
+    hold the program (the suite's per-test folder) is not the program.
+    Answered once per reading inside :func:`one_reading` (P118)."""
+    return list(_held(("program_folders",), _the_program_folders))
+
+
+def _the_program_folders() -> list[Path]:
     app = app_dir()
     folders = [app]
     settings = settings_dir().resolve()
@@ -636,9 +654,91 @@ def data_home() -> Path:
     under another account - and it is not encrypted. A ``TRACKER_DATA_HOME``
     a person sets is trusted to be where they mean, within the two checks;
     it is not resolved, so one junctioned elsewhere is judged by its own
-    spelling's drive (:func:`drive_type`)."""
-    return resolve_data_home(os.environ, windows=os.name == "nt", home=_home(),
-                             program=program_folders(), drive_type=drive_type)
+    spelling's drive (:func:`drive_type`).
+
+    Inside :func:`one_reading` - one read-only reply - it is answered once
+    and then from memory (P118): the proof that it is not inside the
+    program asks the disk a few dozen times, and every store read asks it."""
+    return _held(("data_home",), lambda: resolve_data_home(
+        os.environ, windows=os.name == "nt", home=_home(),
+        program=program_folders(), drive_type=drive_type))
+
+
+# ------------------------------------------------------- one reading ----
+
+#: The answers held for the one read-only reply under way (P118), or None
+#: when no reading is under way - which is always, outside
+#: :func:`one_reading`.
+_HELD: dict | None = None
+#: The key :func:`_read` holds the settings file's answer under.
+_SETTINGS_HELD = ("settings",)
+
+
+@contextmanager
+def one_reading() -> Iterator[None]:
+    """Hold this process's answers to the machine's questions for one
+    read-only reply (P118, ``pilot/SPEC-firm-cache.md``): where the data
+    folder is (:func:`data_home`), where the program is (:func:`app_dir`,
+    :func:`program_folders`), what the settings file says (:func:`_read`)
+    and what each path resolves to (:func:`resolved`).
+
+    **Why.** A firm-wide reply asks them thousands of times - every store
+    read asks where the store is, and every answer re-proves that the data
+    folder is not inside the program by asking the disk - and on the
+    office PC a question to the disk costs a tenth of a millisecond: 750
+    returns took 53 s, nearly all of it these repeats.
+
+    **Why only here.** A read-only command changes none of the answers - no
+    environment variable, no settings file, no folder of its own - so the
+    first answer is the answer for the whole reply. A writer, the pass and
+    the suite may change them between two questions, and outside a reading
+    nothing is held: :func:`data_home` still takes an override at once. An
+    error is never held; the question is asked again. Nested readings are
+    one reading."""
+    global _HELD
+    if _HELD is not None:
+        yield
+        return
+    _HELD = {}
+    try:
+        yield
+    finally:
+        _HELD = None
+
+
+def _held(key: tuple, answer):
+    """``answer()``, asked once per reading inside :func:`one_reading` and
+    every time outside one."""
+    if _HELD is None:
+        return answer()
+    if key not in _HELD:
+        _HELD[key] = answer()
+    return _HELD[key]
+
+
+#: What a write inside :func:`one_reading` is refused with.
+WRITE_WHILE_READING = ("{what} may not be written inside a read-only reply (P118): the reply holds "
+                       "its answers, and a write would leave them stale")
+
+
+def refuse_a_write_while_reading(what: str) -> None:
+    """Raise when a write is asked for inside :func:`one_reading` (the
+    review of P118, SHOULD-3): a read-only command writes nothing, and a
+    write under held answers would leave the rest of the reply answering
+    from before it. The settings file and the store's recorded events ask
+    it; the store's own catch-up from a journal is derivation, not a
+    write of anything new, and does not."""
+    if _HELD is not None:
+        raise RuntimeError(WRITE_WHILE_READING.format(what=what))
+
+
+def resolved(path: Path | str) -> Path:
+    """``Path(path).resolve()``, asked once per spelling inside
+    :func:`one_reading` (P118) - the store's key for every return is its
+    folder resolved, asked on every store read - and every time outside
+    one. An ``OSError`` is raised as ``resolve`` raises it, and not held."""
+    folder = Path(path)
+    return _held(("resolved", str(folder)), folder.resolve)
 
 
 def default_data_home() -> Path:
