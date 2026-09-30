@@ -142,9 +142,21 @@ the paste and rename hints, the keyword tooltip. Kept: the sharing and feed warn
 
 Each file its own process, Python 3.11 (`/tmp/v`) then 3.13 (`/tmp/v313`), one after the other:
 
-RESULTS
+| File | 3.11 and 3.13 |
+|---|---|
+| `test_shell` | 81 passed (was 57; 24 new) |
+| `test_pilot_ui` | 11 passed |
+| `test_single_source` | 165 passed |
+| `test_layers` | 29 passed |
+| `test_tour` | 8 passed |
+| `test_pilot` | 18 passed |
+| `test_api` | 368 passed (two tests changed on purpose) |
+| `test_row_columns`, `test_pilot_installer` | 26 and 12 passed (3.11) |
+| `test_repo_map` | run after `repo_map.py update`, the last commit: passes on both |
 
-New in `tests/test_shell.py` (each names its claim, 23 new): the Title Case rule and every phrase
+`python -m ruff check .` is clean on both; `repo_map.py check` is current after the last `update`.
+
+New in `tests/test_shell.py` (each names its claim): the Title Case rule and every phrase
 `index.html` / `app.js` draw; the sheet in the registry, hiding by its attribute; the cards, functions and
 rules the sheet and dialogs took are gone; the help lines cut; no sharing checklist; the link kinds built from
 the API's keys, no path in any node, attribute or tooltip; running a link (reveal for a file alone,
