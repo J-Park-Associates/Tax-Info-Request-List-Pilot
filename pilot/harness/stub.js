@@ -209,7 +209,7 @@
       const entry = {
         handle, original_name: one.name, received: dayOf(one.date), decision: dismissed ? vocab.decisions.dismissed : vocab.decisions.needs_review,
         group: dismissed ? "set_aside" : "needs_you", identifier: "", code: dismissed ? "not-requested" : CODE[one.status], bucket: one.bucket || "document",
-        answered: [], open_keys: [], open_key: "", shown_key: "", extension: (/\.([^.]+)$/.exec(one.name) || [])[1] || "", seq: 1,
+        answered: [], open_keys: [], open_key: "", shown_key: "", extension: (/\.([^.]+)$/.exec(one.name) || [])[1] || "", seq: one.seq || 1,
       };
       if (one.copy !== false) {
         // A parked read document's shown key is its review copy's (S8a review 2); the rest only reveal.
@@ -350,7 +350,8 @@
     if (command === "dismiss") {
       const one = takeFile(path, payload.original);
       if (!one) return null;
-      body.setAside.push(file(one.name, "", ASIDE, "Mar 7", { copy: one.copy }));
+      // The engine rewrites the same index row: the handle stays, the record version moves on (F1).
+      body.setAside.push(file(one.name, "", ASIDE, "Mar 7", { copy: one.copy, id: one.id, seq: (one.seq || 1) + 1 }));
       return { state: stateOf(path), dismissed: { original_name: one.name, decision: vocab.decisions.dismissed, reason: ASIDE } };
     }
     if (command === "restore") {

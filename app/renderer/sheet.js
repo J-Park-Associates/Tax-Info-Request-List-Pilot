@@ -105,6 +105,15 @@ function sheetFind(state, handle) {
   return null;
 }
 
+// What the sheet was drawn from: the kind the file is in and the record
+// version its buttons will send. A write that worked changes one or the other
+// even when the file keeps its handle (Not requested rewrites the same row;
+// a Put back that parks it turns a moved copy into a parked file).
+function sheetSeen(found) {
+  const one = found.kind === "moved" ? found.moved : found.entry;
+  return `${found.kind}:${one.seq}`;
+}
+
 // The footer's buttons, in the order the SPEC gives them (the secondary
 // first, the primary at the right), taken out of the row that built them.
 function sheetFooter(row, moved) {
@@ -147,6 +156,7 @@ function sheetDrawCheck(handle) {
   const buttons = sheetFooter(row, found.kind === "moved");
   now.row = row;
   now.handle = handle;
+  now.shown = sheetSeen(found);
   $("sheet-check").replaceChildren(sheetStatus(found), row);
   $("check-actions").replaceChildren(...buttons);
   const entry = found.entry;
@@ -241,14 +251,16 @@ async function sheetAdvance() {
 }
 
 // shell.js: one return's state has arrived. A file the sheet is showing that
-// has left the list was answered (a write that worked): the next file, or
-// close. The same file still there is a read, or a refusal: left as it is,
-// with what the person typed.
+// has left the list, or is there in another kind or at another record
+// version, was answered (a write that worked): the next file, or close. The
+// same file as it was drawn is a read, or a refusal: left as it is, with what
+// the person typed.
 function sheetStateArrived(state) {
   const now = sheetNow;
   if (!now || now.kind !== "check" || !now.ready) return;
   if (!state.paths || state.paths.engagement !== now.ret) return;
-  if (sheetFind(state, now.handle)) return;
+  const found = sheetFind(state, now.handle);
+  if (found && sheetSeen(found) === now.shown) return;
   now.ready = false;
   sheetAdvance();
 }

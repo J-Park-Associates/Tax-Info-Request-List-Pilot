@@ -1753,19 +1753,24 @@ def test_the_sheet_finds_a_file_where_it_can_be_checked_and_nowhere_else(tmp_pat
     assert ran == ["parked", "aside", None, None, "moved", None], "filed, marked missing and unknown files are not there to check"
 
 
-def test_the_sheet_moves_on_only_when_the_file_it_shows_has_left_the_list(tmp_path):
-    """After a write that works the row leaves the state: the next file. A
-    read of the same state, a refusal, another return's state and a state
-    that arrives before the file is drawn leave the sheet as it is."""
-    ran = run_shell(["sheetFind", "sheetStateArrived"], SHEET_SETUP, """
-      const here = { paths: { engagement: "r1" }, moved: [], index: [{ handle: "p", decision: "Needs Review" }] };
+def test_the_sheet_moves_on_only_when_the_file_it_shows_has_been_answered(tmp_path):
+    """After a write that works the row leaves the state, or keeps its handle
+    in another kind (Not requested rewrites the same row: parked to set aside;
+    a Put back that parks a moved copy) or at another record version: the next
+    file. A read of the same state, a refusal, another return's state and a
+    state that arrives before the file is drawn leave the sheet as it is."""
+    ran = run_shell(["sheetFind", "sheetSeen", "sheetStateArrived"], SHEET_SETUP, """
+      const at = (extra) => ({ paths: { engagement: "r1" }, moved: [], index: [{ handle: "p", decision: "Needs Review", seq: 1, ...extra }] });
       const gone = { paths: { engagement: "r1" }, moved: [], index: [] };
       const other = { paths: { engagement: "r2" }, moved: [], index: [] };
       const run = (now, state) => { sheetNow = now; advanced.length = 0; sheetStateArrived(state); return advanced.length; };
-      const check = (extra = {}) => ({ kind: "check", ret: "r1", handle: "p", ready: true, ...extra });
-      return [run(check(), here), run(check(), gone), run(check(), other), run(check({ ready: false }), gone), run({ kind: "reminder", ret: "r1", ready: true }, gone), run(null, gone)];
+      const check = (extra = {}) => ({ kind: "check", ret: "r1", handle: "p", ready: true, shown: "parked:1", ...extra });
+      const movedNow = { kind: "check", ret: "r1", handle: "m", ready: true, shown: "moved:1" };
+      const parkedNow = { paths: { engagement: "r1" }, moved: [], index: [{ handle: "m", decision: "Needs Review", seq: 2 }] };
+      return [run(check(), at({})), run(check(), gone), run(check(), other), run(check({ ready: false }), gone), run({ kind: "reminder", ret: "r1", ready: true }, gone), run(null, gone),
+              run(check(), at({ decision: "Not Requested" })), run(check(), at({ seq: 2 })), run(movedNow, parkedNow)];
     """, tmp_path, source="sheet.js")
-    assert ran == [0, 1, 0, 0, 0, 0]
+    assert ran == [0, 1, 0, 0, 0, 0, 1, 1, 1]
 
 
 def test_the_sheets_following_files_are_those_after_it_in_the_order_the_page_was_drawn(tmp_path):
