@@ -679,6 +679,13 @@ NOT_FED = "{label} is not a return this drop folder feeds; add it to the househo
 #: The editor's label and button, and what a name that is not one is
 #: refused with.
 RELATED_LABEL = "Related Households"
+#: The catalog ids each side-panel Client Type stands for (pilot P153).
+CLIENT_TYPE_FORMS = {
+    "individuals": ["1040"],
+    "businesses": ["1120", "1120S", "1065"],
+    "trusts": ["1041"],
+    "nonprofits": ["990"],
+}
 ADD_RELATED_LABEL = "Add Related Household"
 RELATED_REFUSED = "{household} is not a household this one can be related to"
 RELATED_UNKNOWN = "{household} is not a household under the clients folder"
@@ -1347,13 +1354,12 @@ SCREEN: dict = {
     },
     # The Client Types of the side panel (pilot SPEC-lists 15.3): each
     # opens Clients filtered to the households with a return of one of its
-    # forms, matched on the return's recorded catalog id (never a folder
-    # name).
+    # forms (CLIENT_TYPE_FORMS, ``vocab.client_type_forms``).
     "client_types": {
-        "individuals": {"label": "Individuals", "forms": ["1040"]},
-        "businesses": {"label": "Businesses", "forms": ["1120", "1120S", "1065"]},
-        "trusts": {"label": "Trusts & Estates", "forms": ["1041"]},
-        "nonprofits": {"label": "Nonprofits", "forms": ["990"]},
+        "individuals": "Individuals",
+        "businesses": "Businesses",
+        "trusts": "Trusts & Estates",
+        "nonprofits": "Nonprofits",
     },
     # The column headers of the four firm lists (pilot SPEC-lists 2, P138):
     # a header's word, its tooltip - "Sort by {Column}", Jason's choice
@@ -1797,6 +1803,9 @@ def _vocab() -> dict:
         # every label, heading and tooltip of the shell, five words or fewer.
         "menu": dict(MENU),
         "screen": SCREEN,
+        # The forms of each Client Type (pilot SPEC-lists 15.3): catalog ids,
+        # not words, matched on each return's recorded form, never a name.
+        "client_type_forms": CLIENT_TYPE_FORMS,
         # One short label per reason code, for a row's status (11.5).
         "reasons": dict(reasons.SHORT_REASONS),
         # Sort & Scan's command (decision 203): the shell watches it as a

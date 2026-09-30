@@ -178,10 +178,11 @@ function shellSideWords(words) {
     setTip(node, side.under_construction);
   }
   for (const node of document.querySelectorAll(".side-section[data-type]")) {
-    const kind = (words.client_types || {})[node.dataset.type];
-    if (!kind) throw new Error(`client_types.${node.dataset.type}`);
-    node.querySelector(".side-name").textContent = kind.label;
-    setTip(node, kind.forms.join(", "));
+    const label = (words.client_types || {})[node.dataset.type];
+    const forms = (vocab.client_type_forms || {})[node.dataset.type];
+    if (!label || !forms) throw new Error(`client_types.${node.dataset.type}`);
+    node.querySelector(".side-name").textContent = label;
+    setTip(node, forms.join(", "));
   }
 }
 

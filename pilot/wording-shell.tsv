@@ -286,10 +286,10 @@ api.SCREEN	side.soon.personal_trusts		new	Personal Trusts (Under Construction)	4
 api.SCREEN	side.soon.corporate_entities		new	Corporate Entities (Under Construction)	4	Side panel Workspace, unbuilt	Pilot 0.3 lane 4b, SPEC-lists 15.1 (P154)	Corporate Entities (Under Construction)	new
 api.SCREEN	side.soon.portal_settings		new	Portal Settings (Under Construction)	4	Side panel Workspace, unbuilt	Pilot 0.3 lane 4b, SPEC-lists 15.1 (P154)	Portal Settings (Under Construction)	new
 api.SCREEN	notices.under_construction		new	Under Construction	2	Toast when an unbuilt item is chosen	Pilot 0.3 lane 4b, SPEC-lists 15.1 (P154)	Under Construction	new
-api.SCREEN	client_types.individuals.label		new	Individuals	1	Side panel Client Type; Clients chip	Pilot 0.3 lane 4b, SPEC-lists 15.1, 15.3 (P153)	Individuals	new
-api.SCREEN	client_types.businesses.label		new	Businesses	1	Side panel Client Type; Clients chip	Pilot 0.3 lane 4b, SPEC-lists 15.1, 15.3 (P153)	Businesses	new
-api.SCREEN	client_types.trusts.label		new	Trusts & Estates	3	Side panel Client Type; Clients chip	Pilot 0.3 lane 4b, SPEC-lists 15.1, 15.3 (P153)	Trusts & Estates	new
-api.SCREEN	client_types.nonprofits.label		new	Nonprofits	1	Side panel Client Type; Clients chip	Pilot 0.3 lane 4b, SPEC-lists 15.1, 15.3 (P153)	Nonprofits	new
+api.SCREEN	client_types.individuals		new	Individuals	1	Side panel Client Type; Clients chip	Pilot 0.3 lane 4b, SPEC-lists 15.1, 15.3 (P153)	Individuals	new
+api.SCREEN	client_types.businesses		new	Businesses	1	Side panel Client Type; Clients chip	Pilot 0.3 lane 4b, SPEC-lists 15.1, 15.3 (P153)	Businesses	new
+api.SCREEN	client_types.trusts		new	Trusts & Estates	3	Side panel Client Type; Clients chip	Pilot 0.3 lane 4b, SPEC-lists 15.1, 15.3 (P153)	Trusts & Estates	new
+api.SCREEN	client_types.nonprofits		new	Nonprofits	1	Side panel Client Type; Clients chip	Pilot 0.3 lane 4b, SPEC-lists 15.1, 15.3 (P153)	Nonprofits	new
 api.SCREEN	columns.client_name		new	Client Name	2	Column header, Clients	Pilot 0.3 lane 4b, SPEC-lists 15.2 (P153)	Client Name	new
 api.SCREEN	icons.more_actions		new	More Actions	2	Needs Review group button tooltip and name	Pilot 0.3 lane 4b, SPEC-lists 12 (P149)	More Actions	new
 api.SCREEN	icons.remove_filter		new	Remove Filter	2	Client Type chip dismiss tooltip and name	Pilot 0.3 lane 4b, SPEC-lists 15.3 (P153)	Remove Filter	new

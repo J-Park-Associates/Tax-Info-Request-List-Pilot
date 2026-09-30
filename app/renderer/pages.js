@@ -1161,11 +1161,11 @@ function pagesClientSpecs(firm, all) {
   const words = screenWords().counts;
   const own = (name) => firm.returns.filter((one) => one.household === name);
   const pausedNames = pagesPaused(firm);
-  const kind = pagesClientType ? (screenWords().client_types || {})[pagesClientType] : null;
-  if (pagesClientType && !kind) throw new Error(`client_types.${pagesClientType}`);
+  const kind = pagesClientType ? (vocab.client_type_forms || {})[pagesClientType] : null;
+  if (pagesClientType && !kind) throw new Error(`client_type_forms.${pagesClientType}`);
   // A Client Type keeps the households with a return of one of its forms,
   // by the form each return's record holds - never read from a name (P153).
-  const ofType = (one) => !kind || (one.returns || []).some((ret) => kind.forms.indexOf(ret.form) !== -1);
+  const ofType = (one) => !kind || (one.returns || []).some((ret) => kind.indexOf(ret.form) !== -1);
   return pagesEach(households.filter(ofType).sort((a, b) => pagesByName(a.name, b.name)), (one) => one.name, (one) => {
     const returns = own(one.name);
     const need = returns.reduce((n, r) => n + r.counts.needs_you, 0);
@@ -1206,12 +1206,12 @@ function pagesSwitch(work) {
 function pagesTypeFilter() {
   if (!pagesClientType) return null;
   const words = screenWords();
-  const kind = (words.client_types || {})[pagesClientType];
-  if (!kind) throw new Error(`client_types.${pagesClientType}`);
+  const label = (words.client_types || {})[pagesClientType];
+  if (!label) throw new Error(`client_types.${pagesClientType}`);
   const dismiss = h("button", { type: "button", className: "icon-button type-dismiss", "aria-label": words.icons.remove_filter, dataset: { pick: "type" } }, icon("dismiss", true));
   setTip(dismiss, words.icons.remove_filter);
   dismiss.addEventListener("click", () => pagesPick("clients", () => { pagesClientType = ""; }, "all"));
-  return h("span", { className: "type-filter" }, h("span", { className: "type-filter-word" }, kind.label), dismiss);
+  return h("span", { className: "type-filter" }, h("span", { className: "type-filter-word" }, label), dismiss);
 }
 
 function pagesClients() {

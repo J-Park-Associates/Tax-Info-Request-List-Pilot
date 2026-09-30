@@ -911,6 +911,7 @@ const failed = (err) => failures.push(String(err.message));
 let shellHousehold = () => null; let households = [];
 const vocab = {
   shell: { page_error: "The app hit an error" }, notices: { about: "{label}: {sentence}" },
+  client_type_forms: { individuals: ["1040"], businesses: ["1120", "1120S", "1065"], trusts: ["1041"], nonprofits: ["990"] },
   decisions: { needs_review: "Needs Review", dismissed: "Not Requested", filed: "Filed", file_moved: "File Moved" },
   labels: { Missing: { label: "Outstanding" }, Received: { label: "Received" }, Partial: { label: "Partly in" }, Rejected: { label: "Could not use" }, NotAsked: { label: "Not asked" } },
   overrides: { not_applicable: "Not Applicable" },
@@ -933,8 +934,7 @@ const vocab = {
     paging: { showing: "Showing {from}-{to} of {total} {noun}", previous: "Previous", next: "Next",
               nouns: { overview: "Returns", needs_review: "Files", reminders: "Drafts", clients: "Clients" } },
     icons: { more_actions: "More Actions", remove_filter: "Remove Filter" }, filters: { work: "Work Waiting", all: "All" }, work: "Work Waiting",
-    client_types: { individuals: { label: "Individuals", forms: ["1040"] }, businesses: { label: "Businesses", forms: ["1120", "1120S", "1065"] },
-                    trusts: { label: "Trusts & Estates", forms: ["1041"] }, nonprofits: { label: "Nonprofits", forms: ["990"] } },
+    client_types: { individuals: "Individuals", businesses: "Businesses", trusts: "Trusts & Estates", nonprofits: "Nonprofits" },
   },
 };
 """
@@ -3230,7 +3230,8 @@ def test_the_side_panel_is_the_mocks_with_the_firms_brand_and_nothing_behind_the
     assert words["brand"] == "J Park & Associates" and words["product"] == "Tax Document Console"
     assert words["under_construction"] == "Under Construction" == api.SCREEN["notices"]["under_construction"]
     assert all(said.endswith("(Under Construction)") for said in words["soon"].values()) and len(words["soon"]) == 5
-    assert {key: one["forms"] for key, one in api.SCREEN["client_types"].items()} == {
+    assert set(api.SCREEN["client_types"]) == set(api.CLIENT_TYPE_FORMS) and '"client_type_forms": CLIENT_TYPE_FORMS,' in (REPO / "tracker" / "api.py").read_text(encoding="utf-8")
+    assert api.CLIENT_TYPE_FORMS == {
         "individuals": ["1040"], "businesses": ["1120", "1120S", "1065"], "trusts": ["1041"], "nonprofits": ["990"]}
     shell = stripped_js("shell.js")
     soon = shell[shell.index('querySelectorAll(".side-section[data-soon]")) {\n  node.addEventListener'):]
