@@ -1567,11 +1567,14 @@ def test_the_link_kinds_are_built_from_the_apis_keys_and_navigate_without_the_en
     where there is no key."""
     ran = run_pages_dom("""
       const paths = { engagement: "r1", "shown_copy a": "/secret/a.pdf", "moved_copy m": "/secret/m.pdf", "filed_copy f 0": "/secret/f.pdf" };
-      const state = stateOf([item("R", "received", { status_key: "Received" }), item("M", "received", { status_key: "Received" })],
+      const state = stateOf([item("R", "received", { status_key: "Received" }), item("M", "received", { status_key: "Received" }),
+         item("N", "received", { status_key: "Received" }), item("Y", "received", { status_key: "Received" })],
         [parked("a", { shown_key: "shown_copy a" }), parked("b", { shown_key: "" }), setAsideRow("d", { shown_key: "shown_copy a" }),
          { handle: "f", original_name: "f.pdf", decision: "Filed", group: "received", identifier: "R", filed_names: ["f.pdf"], open_keys: ["filed_copy f 0"], answered: [] },
          { handle: "g1", original_name: "g1.pdf", decision: "Filed", group: "received", identifier: "M", filed_names: ["g1.pdf"], open_keys: ["filed_copy g1 0"], answered: [] },
-         { handle: "g2", original_name: "g2.pdf", decision: "Filed", group: "received", identifier: "M", filed_names: ["g2.pdf"], open_keys: ["filed_copy g2 0"], answered: [] }],
+         { handle: "g2", original_name: "g2.pdf", decision: "Filed", group: "received", identifier: "M", filed_names: ["g2.pdf"], open_keys: ["filed_copy g2 0"], answered: [] },
+         { handle: "n", original_name: "n.pdf", decision: "Filed", group: "received", identifier: "N", filed_names: ["n.pdf", "n2.pdf"], open_keys: ["filed_copy n 0", "filed_copy n 1"], answered: [] },
+         { handle: "s", original_name: "s.pdf", decision: "Filed", group: "received", identifier: "X", filed_names: ["s.pdf"], open_keys: ["filed_copy s 0"], answered: ["Y"] }],
         [{ handle: "m", original_name: "m.pdf", in_request: "", identifier: "", open_key: "moved_copy m" }]);
       state.paths = paths;
       const groups = pagesReturnGroups(state, 2025);
@@ -1598,8 +1601,11 @@ def test_the_link_kinds_are_built_from_the_apis_keys_and_navigate_without_the_en
     assert ran["parked"] == [["a.pdf", ["file", "shown_copy a"]], ["b.pdf", None]]
     assert ran["moved"] == [["m.pdf", ["file", "moved_copy m"]]]
     assert ran["aside"] == [["d.pdf", ["file", "shown_copy a"]]]
-    assert ran["received"] == [["f.pdf", "filed_copy f 0"], ["2 files", None]], "a count is not a name, so it is not a link"
-    assert ran["unfile"] == [["Doc R", "f"], ["Doc M", None]], "Unfile is offered for the one original filed under a request, not for several"
+    assert ran["received"] == [["f.pdf", "filed_copy f 0"], ["2 files", None], ["n.pdf", "filed_copy n 0"], ["s.pdf", None]], (
+        "a count is not a name, so it is not a link; one original filed under two requests (decision 94) links the "
+        "first copy, prepared_location, which is the one under its own request; a statement that answers a request "
+        "without a copy of its own links nothing there")
+    assert ran["unfile"] == [["Doc R", "f"], ["Doc M", None], ["Doc N", "n"], ["Doc Y", None]], "Unfile is offered for the one original filed under a request, not for several"
     assert ran["strings"] > 20 and ran["pathInASpec"] is False, "a spec holds the key and the map it came with; nothing it draws holds the path"
     assert ran["resolved"] == ["/secret/a.pdf", "", "/x/y", ""], "a string, or {path, kind}; a missing key or map is no path"
 
@@ -1699,32 +1705,123 @@ def test_a_row_menu_offers_only_what_applies_and_the_page_answers_only_its_own_t
     ran = run_pages_dom("""
       const spec = (menu, extra = {}) => ({ menu, step: { kind: "check", ret: "r", name: "n", handle: "h" }, ...extra });
       const out = {};
+      const on = (fn) => { fn(); };
       out.parked = pagesEnableFor(spec("file", { fileKind: "parked", nameLink: { kind: "file" } }));
       out.aside = pagesEnableFor(spec("file", { fileKind: "aside" }));
       out.missing = pagesEnableFor({ menu: "file", fileKind: "missing", step: null });
       out.moved = pagesEnableFor(spec("moved", { canKeep: true, nameLink: { kind: "file" } }));
       out.movedNoKeep = pagesEnableFor(spec("moved"));
+      out.movedGone = pagesEnableFor(spec("moved", { gone: true, nameLink: { kind: "file" } }));
       out.request = pagesEnableFor({ menu: "request" });
       out.received = pagesEnableFor({ menu: "received", unfile: { original: "h", seq: 1 }, missing: null });
+      out.receivedLinked = pagesEnableFor({ menu: "received", unfile: { original: "h", seq: 1 }, missing: { original: "h", identifier: "R", seq: 1 }, detailLink: { kind: "file" } });
+      out.receivedPlain = pagesEnableFor({ menu: "received", unfile: null, missing: null });
+      busyNow = ["h"];
+      out.receivedBusy = pagesEnableFor({ menu: "received", unfile: { original: "h", seq: 1 }, missing: { original: "h", identifier: "R", seq: 1 } });
+      busyNow = [];
+      // Another Return is offered where the sheet has the button: a document of this return, with a return to hand it to.
+      feds = [];
+      out.noFed = pagesEnableFor(spec("file", { fileKind: "parked" }));
+      feds = [1];
+      lastState.index[0].bucket = "x";
+      out.notDocument = pagesEnableFor(spec("file", { fileKind: "parked" }));
+      lastState.index[0].bucket = "doc";
+      lastState.paths.engagement = "elsewhere";
+      out.otherReturn = pagesEnableFor(spec("file", { fileKind: "parked" }));
+      lastState.paths.engagement = "r";
       locked = true;
       out.lockedParked = pagesEnableFor(spec("file", { fileKind: "parked" }));
       out.lockedRequest = pagesEnableFor({ menu: "request" });
+      out.lockedReceived = pagesEnableFor({ menu: "received", unfile: { original: "h", seq: 1 }, missing: { original: "h", identifier: "R", seq: 1 }, detailLink: { kind: "file" } });
       locked = false;
+      // The client rows' menus are the shell's ids and never a file's.
+      shellIds = ["edit_household", "open_client_folder", "sort_now"];
+      out.household = pagesEnableFor({ menu: "household", nameLink: { kind: "household", path: "hh" } });
+      out.returnRow = pagesEnableFor({ menu: "return", nameLink: { kind: "return", path: "rr" }, detailLink: { kind: "file" } });
       pagesTokens.set("row-1", spec("file", { fileKind: "parked", nameLink: { kind: "file", key: "k", paths: { k: "/p" } } }));
       out.crumb = pagesMenu("edit_household", "crumb-household");
       out.unknown = pagesMenu("check", "row-99");
       out.own = pagesMenu("show_in_explorer", "row-1");
       return out;
-    """, tmp_path, setup="let shellEnabled = () => []; let openCheck; const unfileDocument = () => {}; const withdrawAnswer = () => {}; const sheetPress = () => true; let sheetNow = null;\n"
+    """, tmp_path, setup="let shellIds = []; let shellEnabled = () => shellIds; let openCheck; const unfileDocument = () => {}; const withdrawAnswer = () => {}; const sheetPress = () => true; let sheetNow = null;\n"
+                           "let busyNow = []; const writeBusy = (command, original) => busyNow.indexOf(original) !== -1; let feds = [1]; const fedReturns = () => feds; const notADocument = (e) => e.bucket === 'x';\n"
+                           "lastState = { paths: { engagement: 'r' }, index: [{ handle: 'h', bucket: 'doc' }] };\n"
                            + read("pages.js")[read("pages.js").index("const PAGES_ROW_ANSWERS = {"):read("pages.js").index("};\n", read("pages.js").index("const PAGES_ROW_ANSWERS = {")) + 3],
-       functions=["pagesEnableFor", "pagesMenu", "pagesRowRoute", "pagesRunStep", "pagesRunLink", "pagesCheckThen", "pagesClientMenu", "pagesRoute", "pagesPathOf"])
+       functions=["pagesEnableFor", "pagesCanHandOver", "pagesMenu", "pagesRowRoute", "pagesRunStep", "pagesRunLink", "pagesCheckThen", "pagesClientMenu", "pagesRoute", "pagesPathOf"])
     assert ran["parked"] == ["check", "not_requested", "another_return", "show_in_explorer"]
     assert ran["aside"] == ["check"] and ran["missing"] == []
     assert ran["moved"] == ["check", "put_back", "keep_here", "show_in_explorer"] and ran["movedNoKeep"] == ["check", "put_back"]
+    assert ran["movedGone"] == ["check", "show_in_explorer"], "a copy whose original is gone has no Put Back on the sheet"
     assert ran["request"] == ["edit_request"] and ran["received"] == ["unfile"]
+    assert ran["receivedLinked"] == ["unfile", "mark_missing", "show_in_explorer"], "the filed copy's link has a keyboard route (F11)"
+    assert ran["receivedPlain"] == [] and ran["receivedBusy"] == [], "a write in flight greys its item"
+    assert ran["noFed"] == ["check", "not_requested"], "no return to hand it to: no Another Return"
+    assert ran["notDocument"] == ["check", "not_requested"] and ran["otherReturn"] == ["check", "not_requested"]
     assert ran["lockedParked"] == ["check"] and ran["lockedRequest"] == [], "a live lock greys the writing items"
+    assert ran["lockedReceived"] == ["show_in_explorer"], "under a live lock Received offers no Unfile or Mark Missing"
+    assert ran["household"] == ran["returnRow"] == ["edit_household", "open_client_folder", "sort_now"], "the client rows' menus never carry show_in_explorer"
     assert ran["crumb"] is False and ran["unknown"] is False, "the crumbs' tokens and unknown rows are the shell's"
     assert ran["own"] is True
+
+
+def test_a_client_rows_item_is_answered_only_if_its_rule_holds_on_the_page_it_went_to(tmp_path):
+    """Right-click a return a live pass holds, choose Edit Request List: the
+    app goes there, and the lock (read on arrival) greys the item, so the
+    editor does not open (SPEC 5.2)."""
+    ran = run_shell(["pagesClientMenu"], """
+      let shellRoute = { level: "overview" }; let locked = false; let ids = ["edit_list"]; const answered = [];
+      const there = { level: "return", ret: "r2", household: "h" };
+      const pagesRowRoute = () => there; const shellEnabled = () => ids; const openReminder = () => {};
+      const shellGo = async (route) => { shellRoute = route; ids = locked ? [] : ["edit_list"]; };
+      const shellAnswer = (id) => answered.push(id);
+    """, """
+      return (async () => {
+        locked = true;
+        await pagesClientMenu({ menu: "return" }, "edit_list");
+        const first = answered.slice();
+        shellRoute = { level: "overview" }; locked = false;
+        await pagesClientMenu({ menu: "return" }, "edit_list");
+        return [first, answered.slice()];
+      })();
+    """, tmp_path, source="pages.js")
+    assert ran == [[], ["edit_list"]]
+
+
+def test_a_second_unfile_or_mark_missing_before_the_reply_is_not_sent_and_the_menu_greys_it(tmp_path):
+    """The item has no button to grey: a second Unfile of the same original
+    would carry the seq the first used and be refused, a failure notice for
+    a write that worked. It is not sent, its menu id is grey meanwhile, and
+    it is free again once the reply (or the refusal) is in."""
+    ran = run_shell(["writeKey", "writeBusy", "writeStart", "writeDone", "unfileDocument", "withdrawAnswer"], """
+      const viewGeneration = 1; const writesInFlight = new Set(); const sent = []; const refusals = []; const releases = []; let reject = false;
+      const withEng = (c) => c;
+      const call = (command, payload) => { sent.push([command, payload.original]); return new Promise((resolve, fail) => { releases.push(() => (reject ? fail(new Error("no")) : resolve({ state: {}, unfiled: { original_name: "a", decision: "d" }, marked_missing: { original_name: "a", reason: "r" } }))); }); };
+      const renderFor = () => {}; const outcome = () => {};
+      const refused = async (err) => { refusals.push(err.message); };
+    """, """
+      return (async () => {
+        const out = {};
+        const first = unfileDocument({ original: "h", seq: 1 });
+        const second = unfileDocument({ original: "h", seq: 1 });
+        out.busy = writeBusy("unfile", "h");
+        out.otherOriginal = writeBusy("unfile", "other");
+        releases.splice(0).forEach((go) => go()); await first; await second;
+        out.sentOnce = sent.length; out.freeAfter = !writeBusy("unfile", "h");
+        const m1 = withdrawAnswer({ original: "h", identifier: "R1", seq: 1 });
+        const m2 = withdrawAnswer({ original: "h", identifier: "R1", seq: 1 });
+        const m3 = withdrawAnswer({ original: "h", identifier: "R2", seq: 1 });
+        out.missingBusy = [writeBusy("mark-missing", "h", "R1"), writeBusy("mark-missing", "h", "R2")];
+        reject = true; releases.splice(0).forEach((go) => go()); await m1; await m2; await m3;
+        out.sentAfter = sent.map((one) => one.join(":")); out.refusals = refusals;
+        out.freeAfterRefusal = !writeBusy("mark-missing", "h", "R1");
+        return out;
+      })();
+    """, tmp_path, source="app.js")
+    assert ran["busy"] is True and ran["otherOriginal"] is False
+    assert ran["sentOnce"] == 1 and ran["freeAfter"] is True
+    assert ran["missingBusy"] == [True, True]
+    assert ran["sentAfter"] == ["unfile:h", "mark-missing:h", "mark-missing:h"], "the second identical write is not sent, a different request's is"
+    assert ran["freeAfterRefusal"] is True
 
 
 def test_a_menu_answer_that_fails_is_a_notice_not_an_unhandled_rejection():

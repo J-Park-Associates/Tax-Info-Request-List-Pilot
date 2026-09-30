@@ -466,7 +466,7 @@ const settle = (page) => page.waitForTimeout(250);
   await goReturn(page);
   await page.click("#page .rows .row:nth-child(1)", { button: "right" });
   let sent = await page.evaluate(() => window.HARNESS.menuLog.at(-1));
-  check("right-click on a parked file asks for the file menu", sent.popup === "file" && /^row-/.test(sent.token) && ["check", "not_requested", "another_return", "show_in_explorer"].every((id) => sent.enable.includes(id)), sent);
+  check("right-click on a parked file asks for the file menu, without Another Return where there is no return to hand it to", sent.popup === "file" && /^row-/.test(sent.token) && sent.enable.join() === "check,not_requested,show_in_explorer", sent);
   await page.click("#page .rows .row:nth-child(3)", { button: "right" });
   sent = await page.evaluate(() => window.HARNESS.menuLog.at(-1));
   check("right-click on a moved-by-hand file asks for the moved menu, with Keep only where it applies", sent.popup === "moved" && sent.enable.includes("put_back") && sent.enable.includes("keep_here"), sent);

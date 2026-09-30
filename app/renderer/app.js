@@ -1108,10 +1108,32 @@ function openReviewCopy(btn) {
 // and every copy goes back with it. Each takes the row's handle and its
 // record version (`seq`) and no button: the menu has none.
 
+// A menu item has no button to grey, so the write in flight is remembered by
+// what it writes: a second Unfile of the same original before the reply would
+// carry the same `seq`, be refused, and be reported as a failure although the
+// first worked. writeBusy() lets the row's menu grey the item meanwhile.
+const writesInFlight = new Set();
+function writeKey(command, original, identifier) {
+  return `${command} ${original} ${identifier || ""}`;
+}
+function writeBusy(command, original, identifier) {
+  return writesInFlight.has(writeKey(command, original, identifier));
+}
+function writeStart(key) {
+  if (writesInFlight.has(key)) return false;
+  writesInFlight.add(key);
+  return true;
+}
+function writeDone(key) {
+  writesInFlight.delete(key);
+}
+
 // The statement stays filed; only the one request comes off what it
 // answers, and the re-scan puts that request back to what its folder holds.
 async function withdrawAnswer(spec, btn) {
   const view = viewGeneration;   // drawn only if this return is still the one shown (D6)
+  const busy = writeKey("mark-missing", spec.original, spec.identifier);
+  if (!writeStart(busy)) return;
   if (btn) btn.disabled = true;
   try {
     const result = await call(withEng("mark-missing"), {
@@ -1127,6 +1149,8 @@ async function withdrawAnswer(spec, btn) {
     outcome(notes.join(". ") + ".", m.scan_note ? "warn" : "ok");
   } catch (err) {
     await refused(err, btn);
+  } finally {
+    writeDone(busy);
   }
 }
 
@@ -1157,6 +1181,8 @@ async function dismissParked(li, btn) {
 // it stopped being.
 async function unfileDocument(spec) {
   const view = viewGeneration;   // drawn only if this return is still the one shown (D6)
+  const busy = writeKey("unfile", spec.original);
+  if (!writeStart(busy)) return;
   try {
     const result = await call(withEng("unfile"), {
       original: spec.original,
@@ -1171,6 +1197,8 @@ async function unfileDocument(spec) {
     outcome(notes.join(". ") + ".", u.left_filed || u.scan_note ? "warn" : "ok");
   } catch (err) {
     await refused(err, null);
+  } finally {
+    writeDone(busy);
   }
 }
 

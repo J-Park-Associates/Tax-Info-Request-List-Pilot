@@ -679,7 +679,7 @@ function pagesReturnGroups(state, year) {
   const receivedOf = new Map(index.map((one) => [one.handle, one.received]));
   groups.needs_you.push(...pagesEach(state.moved || [], (one) => one.original_name, (one) => ({
     name: one.original_name, detail: nameOf(one.identifier || one.in_request), status: words.moved, tone: "needs",
-    date: pagesDay(receivedOf.get(one.handle)), menu: "moved", canKeep: Boolean(one.in_request && !one.gone), nameLink: linkOf(one.open_key),
+    date: pagesDay(receivedOf.get(one.handle)), menu: "moved", canKeep: Boolean(one.in_request && !one.gone), gone: Boolean(one.gone), nameLink: linkOf(one.open_key),
     step: { kind: "check", ret: state.paths.engagement, name: one.original_name, handle: one.handle },
   })));
 
@@ -695,8 +695,12 @@ function pagesReturnGroups(state, year) {
       const detail = item.group === "received"
         ? (filed.length > 1 ? fill(words.counts.files, { n: filed.length }) : filed.length ? filed[0].original_name : "")
         : pagesItemDetail(item, year);
-      // One filed file with one working copy is a link to it; several files
-      // are a count, and a count is not a name. Unfile is offered for the one
+      // One filed file is a link to its copy under this very request: the
+      // first of its copies, which is the one the record's `prepared_location`
+      // names and the filer files under the row's own `identifier` (decision
+      // 94's other copies follow it). A file that only answers the request
+      // (decision 146) has no copy here, so no link. Several files are a
+      // count, and a count is not a name. Unfile is offered for the one
       // original filed under this request, Mark missing for the request a
       // consolidated statement answered without a copy (decision 146).
       const single = filed.length === 1 ? filed[0] : null;
@@ -712,7 +716,7 @@ function pagesReturnGroups(state, year) {
         identifier: item.identifier,
       };
       if (item.group === "received") {
-        spec.detailLink = single && (single.open_keys || []).length === 1 ? linkOf(single.open_keys[0]) : null;
+        spec.detailLink = single && single.identifier === item.identifier && (single.open_keys || []).length >= 1 ? linkOf(single.open_keys[0]) : null;
         spec.unfile = direct.length === 1 ? { original: direct[0].handle, seq: direct[0].seq } : null;
         spec.missing = answering ? { original: answering.handle, seq: answering.seq, identifier: item.identifier } : null;
       }
@@ -1015,21 +1019,38 @@ function pagesRowRoute(spec) {
   return shellRoute;
 }
 
+// Another Return is on the sheet only for a parked document of a return whose
+// household has another return to hand it to (app.js's fedReturns, read from
+// the state the sheet draws from). A file of a return that is not on screen
+// cannot be known here, so its item stays grey rather than opening a sheet
+// that has no such button (SPEC 5.3: "the ids whose rule holds now").
+function pagesCanHandOver(spec) {
+  const state = lastState;
+  if (!state || !spec.step || !state.paths || state.paths.engagement !== spec.step.ret) return false;
+  const entry = (state.index || []).find((one) => one.handle === spec.step.handle);
+  return Boolean(entry) && !notADocument(entry) && fedReturns().length > 0;
+}
+
 function pagesEnableFor(spec) {
   const ids = [];
   const write = !locked;
   if (spec.menu === "file") {
     if (spec.step) ids.push("check");
-    if (write && spec.fileKind === "parked") ids.push("not_requested", "another_return");
+    if (write && spec.fileKind === "parked") {
+      ids.push("not_requested");
+      if (pagesCanHandOver(spec)) ids.push("another_return");
+    }
   } else if (spec.menu === "moved") {
     ids.push("check");
-    if (write) ids.push("put_back");
+    // A copy whose original is gone has only Mark Missing on the sheet.
+    if (write && !spec.gone) ids.push("put_back");
     if (write && spec.canKeep) ids.push("keep_here");
   } else if (spec.menu === "request") {
     if (write) ids.push("edit_request");
   } else if (spec.menu === "received") {
-    if (write && spec.unfile) ids.push("unfile");
-    if (write && spec.missing) ids.push("mark_missing");
+    if (write && spec.unfile && !writeBusy("unfile", spec.unfile.original)) ids.push("unfile");
+    if (write && spec.missing && !writeBusy("mark-missing", spec.missing.original, spec.missing.identifier)) ids.push("mark_missing");
+    if (spec.detailLink) ids.push("show_in_explorer");
   } else if (spec.menu === "household" || spec.menu === "return") {
     ids.push(...shellEnabled(pagesRowRoute(spec)));
   }
@@ -1060,6 +1081,9 @@ async function pagesClientMenu(spec, id) {
     await shellGo(route);
     if (shellRoute !== route) return;   // the person went on elsewhere while it loaded
   }
+  // The item was enabled from the page the row was on; the page it went to
+  // has its own lock and its own rules (SPEC 5.2). Answer only if they hold.
+  if (!shellEnabled().includes(id)) return;
   shellAnswer(id);
 }
 
@@ -1072,7 +1096,7 @@ const PAGES_ROW_ANSWERS = {
   edit_request: (spec) => pagesRunStep({ kind: "edit", identifier: spec.identifier }),
   unfile: (spec) => unfileDocument(spec.unfile),
   mark_missing: (spec) => withdrawAnswer(spec.missing),
-  show_in_explorer: (spec) => pagesRunLink(spec.nameLink),
+  show_in_explorer: (spec) => pagesRunLink(spec.nameLink || spec.detailLink),
 };
 
 // shell.js asks first for every menu message that carries a token. False:
