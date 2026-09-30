@@ -924,6 +924,8 @@ assert (sorted((*PLAIN_COLUMNS, *ROUTING_COLUMNS)) == sorted(field for _, field 
     "the plain view and the routing fold must share the request list's columns between them"
 ROUTING_LABEL = "Routing Rules"
 ROUTING_ALL_LABEL = "Show Every Row's Routing Rules"
+#: The one switch that shows a row's routing columns (S5).
+EDITOR_ADVANCED_LABEL = "Advanced"
 ROUTING_HELP = ("How the tracker recognises this document when it arrives. A save checks these "
                 "the same way whether the fold is open or not.")
 #: Edit Request List pressed while the state on screen is still another
@@ -1306,6 +1308,9 @@ SCREEN: dict = {
         "drafted": "Drafted {date}, Stage {n}",
     },
     "loading": "Loading",
+    # The one word for closing a sheet or a dialog (S5 review F9); the
+    # ``icons.dismiss`` word above stays for the notice's own icon.
+    "close": "Close",
     "setup": {
         "title": "Choose Your Clients Folder",
         "choose": "Choose Folder…",
@@ -1328,6 +1333,10 @@ SCREEN: dict = {
         "renamed": "Folder Renamed",
         "paused": "Two Years Open; Sorting Paused",
         "feed": "Prior Year Data Not Found",
+        # The two short warnings beside a disabled Save in the request-list
+        # editor (S5 rebuild 1). PROPOSED for Jason: not yet ruled on.
+        "pick_request": "Pick a Request First",
+        "name_requests": "Name Each Custom Request",
     },
     "misfits": {
         "title": "Folders Skipped",
@@ -1343,6 +1352,8 @@ SCREEN: dict = {
             "unlisted": "Cannot List",
             "client_look_alike": "Look-Alike Folder",
             "legacy_folder": "Old Workbook",
+            # Ruling 18a: the two-word replacement for "Not A Year".
+            "not_a_year": "Bad Year",
         },
     },
     "safeguards": {
@@ -1827,6 +1838,7 @@ def _vocab() -> dict:
             # and which fold under its Routing rules, and the fold's words.
             "plain_columns": list(PLAIN_COLUMNS), "routing_columns": list(ROUTING_COLUMNS),
             "routing": ROUTING_LABEL, "routing_all": ROUTING_ALL_LABEL, "routing_help": ROUTING_HELP,
+            "advanced": EDITOR_ADVANCED_LABEL,
             "not_this_return": EDITOR_NOT_THIS_RETURN,
         },
     }
@@ -5401,8 +5413,9 @@ def _firm_key(paths: dict[str, str], key: str, path: str) -> str:
 def _cmd_firm(argv: list[str]) -> dict:
     """The firm view in one read-only reply (SPEC-shell 9.2): for every
     active return the count of its rows in each group, the files waiting for
-    a person, the due date and whether its reminder draft is ready, and the
-    practice's totals. It walks the tree as ``list`` does and reads what
+    a person, the due date and whether its reminder draft is ready, whether
+    its household is paused for two open years (``paused``, ruling 21), and
+    the practice's totals. It walks the tree as ``list`` does and reads what
     ``state`` reads for each return, so a count here and the group on the
     return's own page cannot disagree. It writes nothing, takes no lock and
     reads no document. Inactive and rolled-forward returns are left out.
@@ -5429,10 +5442,16 @@ def _cmd_firm(argv: list[str]) -> dict:
     today = dt.date.today()
     names = {household.path: household.name for household in registry.households}
     totals = reply["totals"]
+    # Ruling 21: a household with two open years is paused - the pass sorts
+    # nothing from its inbox (``runner.TWO_OPEN_YEARS``, the same
+    # ``open_years`` test, over the registry's own walk: no extra disk read).
+    paused = {path for path, theirs in registry.by_household().items()
+              if len(open_years(theirs)) > 1}
     for one in registry.engagements:
         if runner.why_skipped(one)[0]:
             continue
         row, files, own = _firm_row(one, names.get(one.household_path, ""), today)
+        row["paused"] = one.household_path in paused
         for one_file in files:
             if one_file["open_key"]:
                 one_file["open_key"] = _firm_key(reply["paths"], one_file["open_key"],

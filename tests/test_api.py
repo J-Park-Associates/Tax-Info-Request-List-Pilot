@@ -8213,7 +8213,8 @@ def test_firm_reply_names_its_fields_as_the_spec_does_and_carries_year_and_handl
     assert file["return"] in {one["path"] for one in firm["returns"]}
     for one in firm["returns"]:
         assert one["year"] == 2025 and set(one) == {
-            "path", "household", "label", "year", "counts", "files", "oldest", "due", "draft", "problem"}
+            "path", "household", "label", "year", "counts", "files", "oldest", "due", "draft", "problem",
+            "paused"}
     assert set(firm["totals"]) == {"need", "waiting", "complete", "files", "drafts"}
 
 
@@ -8432,6 +8433,50 @@ def test_firm_leaves_out_inactive_returns(capsys, demo_root):
     _code, firm = run(capsys, "firm")
     assert str(retired) not in {one["path"] for one in firm["returns"]}
     assert len(firm["returns"]) == 2
+
+
+def test_the_vocabulary_carries_the_shell_join_words_and_keeps_the_dismiss_icon():
+    """S5's editor words (two proposed for Jason), the one Close word (S5
+    review F9), and the Bad Year reason (ruling 18a); the notice's Dismiss
+    icon stays."""
+    words = api._vocab()
+    screen = words["screen"]
+    assert screen["close"] == "Close" and screen["icons"]["dismiss"] == "Dismiss"
+    assert screen["notices"]["pick_request"] == "Pick a Request First"
+    assert screen["notices"]["name_requests"] == "Name Each Custom Request"
+    assert words["editor"]["advanced"] == "Advanced"
+    assert screen["misfits"]["reasons"]["not_a_year"] == "Bad Year"
+
+
+def test_firm_marks_every_return_of_a_household_paused_for_two_open_years(capsys, demo_root):
+    """Ruling 21: ``paused`` is true on each returns[] entry of a household
+    with two open years (the pass sorts nothing from its inbox) and false on
+    every other, and a prior year a person switched off ends the pause."""
+    from tracker.layout import private_household_dir
+
+    items = [{"identifier": "A01", "document": "W-2"}]
+    assert run(capsys, "create", stdin={"household": "Lee Family", "return_name": "1040 - Ann Lee",
+                                        "items": items})[0] == 0
+    assert run(capsys, "create", stdin={"household": "Kim Family", "return_name": "1040 - Kim",
+                                        "items": items})[0] == 0
+    _code, firm = run(capsys, "firm")
+    assert [one["paused"] for one in firm["returns"]] == [False, False]
+
+    prior = run(capsys, "create", stdin={
+        "household_path": str(private_household_dir(demo_root, "Lee Family")),
+        "return_name": "1040 - Ben Lee", "year": default_tax_year() - 1, "items": items})
+    assert prior[0] == 0
+    _code, firm = run(capsys, "firm")
+    said = {one["label"]: one["paused"] for one in firm["returns"]}
+    assert len(said) == 3 and sum(said.values()) == 2
+    assert {one["household"] for one in firm["returns"] if one["paused"]} == {"Lee Family"}
+
+    ben = where(demo_root, "1040 - Ben Lee", household="Lee Family", year=default_tax_year() - 1)
+    rows = payload_of_state(capsys, ben)["rules"]
+    assert run(capsys, "edit", api.ENGAGEMENT_FLAG, str(ben),
+               stdin={"items": rows, "engagement": {"active": False}})[0] == 0
+    _code, firm = run(capsys, "firm")
+    assert len(firm["returns"]) == 2 and not any(one["paused"] for one in firm["returns"])
 
 
 def test_firm_says_a_root_it_cannot_walk_and_answers_an_empty_root_as_nothing(capsys, demo_root,

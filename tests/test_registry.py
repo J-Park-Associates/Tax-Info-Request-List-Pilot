@@ -789,12 +789,10 @@ def test_the_misfit_codes_are_the_ones_the_app_words_in_two_title_case_words():
     from tracker import api
 
     codes = {c.args[2].value for c in _misfit_calls()}
-    # Codes with no usable word, pinned: S5 draws the name alone. Jason's
-    # "Not A Year" (ruling 18) is three words and breaks the Title Case rule,
-    # so it waits for a two-word replacement (handoff shell-S8b).
-    without_a_word = {"not_a_year"}
+    # Every code has its words (ruling 18a: "Bad Year" for not_a_year).
     reasons = api._vocab()["screen"]["misfits"]["reasons"]
-    assert set(reasons) == codes - without_a_word
+    assert set(reasons) == codes
+    assert reasons["not_a_year"] == "Bad Year"
     for phrase in reasons.values():
         assert len(phrase.split()) == 2, phrase
         assert phrase == phrase.title(), phrase
