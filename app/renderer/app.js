@@ -1189,6 +1189,35 @@ async function dismissParked(li, btn) {
   }
 }
 
+// A right-click Unfile asks first, in a small box (ruling 16): the file's
+// name, the optional reason the old list's Unfile carried, Cancel and the
+// confirm. The reason goes to the write as `note`; it is never required.
+let unfiling = null;
+function openUnfile(spec) {
+  const words = vocab.review_labels;
+  unfiling = spec;
+  $("uf-title").textContent = words.unfile;
+  $("uf-name").textContent = spec.name || "";
+  $("uf-note-label").textContent = words.unfile_note;
+  $("uf-note").value = "";
+  $("uf-cancel").textContent = vocab.editor.cancel;
+  $("uf-confirm").textContent = words.unfile;
+  $("uf-confirm").disabled = false;
+  openDialog("unfile-modal");
+}
+
+async function confirmUnfile() {
+  if (!unfiling) return;
+  const btn = $("uf-confirm");
+  btn.disabled = true;   // the write is in flight: one press, one write
+  try {
+    await unfileDocument({ ...unfiling, note: $("uf-note").value.trim() });
+  } finally {
+    btn.disabled = false;
+    closeDialog("unfile-modal");
+  }
+}
+
 // The copy goes back under the client's own name and the request reverts in
 // the same breath, so the banner says where the document is now, not what
 // it stopped being.
@@ -3234,6 +3263,8 @@ const DIALOGS = {
     first: () => $("ho-return"),
     closed: () => { handingOver = null; },
   },
+  // A small confirm: the reason is optional, so there is no work to lose.
+  "unfile-modal": { model: null, first: () => $("uf-note"), closed: () => { unfiling = null; } },
   modal: {
     model: () => wizardModel(),
     first: () => null,
@@ -3424,6 +3455,8 @@ $("hh-edit-feeds").addEventListener("click", (e) => {
 $("ho-cancel").addEventListener("click", () => requestClose("handover-modal"));
 $("ho-return").addEventListener("change", loadHandOverRequests);
 $("ho-file").addEventListener("click", fileHandOver);
+$("uf-cancel").addEventListener("click", () => requestClose("unfile-modal"));
+$("uf-confirm").addEventListener("click", confirmUnfile);
 $("btn-copy").addEventListener("click", copyReminder);
 $("btn-approve").addEventListener("click", approveReminder);
 $("reminder-stages").addEventListener("click", (e) => {

@@ -249,7 +249,7 @@ function pagesRow(spec) {
   const words = stepOf ? pagesStepWords(stepOf) : "";
   const step = stepOf ? h("span", { className: "row-step", "aria-hidden": "true" }, words, icon("chev", true)) : null;
   const node = h("div", {
-    className: `row${step ? " has-step" : ""}`, role: "option", id, "aria-selected": "false",
+    className: `row${step ? " has-step" : ""}${spec.child ? " row-child" : ""}`, role: "option", id, "aria-selected": "false",
     "aria-description": words || undefined, dataset: { menu: spec.menu || "", token: id },
   },
   pagesCell("row-name", "name", spec.name, spec.nameLink),
@@ -342,7 +342,8 @@ function pagesList(name, kids) {
 function pagesGroup(spec) {
   pagesUid += 1;
   const headId = `group-${pagesUid}`;
-  const total = spec.blocks.reduce((n, block) => n + block.rows.length, 0);
+  // A file's own row under its request (ruling 17) is not another request: not counted.
+  const total = spec.blocks.reduce((n, block) => n + block.rows.filter((row) => !row.classList.contains("row-child")).length, 0);
   const meta = h("span", { className: "group-count" }, spec.caption !== undefined ? spec.caption : String(total));
   const title = h("h2", { className: "group-title", id: headId }, spec.headingLink ? pagesHeadLink(spec.headingLink, spec.heading) : spec.heading);
   const start = spec.step ? pagesGroupStep(spec.step) : null;
@@ -717,10 +718,23 @@ function pagesReturnGroups(state, year) {
       };
       if (item.group === "received") {
         spec.detailLink = single && single.identifier === item.identifier && (single.open_keys || []).length >= 1 ? linkOf(single.open_keys[0]) : null;
-        spec.unfile = direct.length === 1 ? { original: direct[0].handle, seq: direct[0].seq } : null;
+        // Several files answer the request: the request keeps its count and each file
+        // gets its own row under it (ruling 17), with its own link and its own Unfile.
+        spec.unfile = filed.length === 1 && direct.length === 1 ? { original: direct[0].handle, seq: direct[0].seq, name: direct[0].original_name } : null;
         spec.missing = answering ? { original: answering.handle, seq: answering.seq, identifier: item.identifier } : null;
       }
       groups[item.group].push(spec);
+      if (item.group === "received" && filed.length > 1) {
+        for (const one of filed) {
+          const here = one.identifier === item.identifier;
+          groups.received.push({
+            name: one.original_name, detail: "", status: "", tone: "done", date: pagesDay(one.received), child: true,
+            menu: "received", identifier: item.identifier,
+            nameLink: here && (one.open_keys || []).length >= 1 ? linkOf(one.open_keys[0]) : null,
+            unfile: here ? { original: one.handle, seq: one.seq, name: one.original_name } : null, missing: null,
+          });
+        }
+      }
     });
   }
   // Set aside: files a person set aside (Not requested) and moved files a person marked missing. The
@@ -1050,7 +1064,7 @@ function pagesEnableFor(spec) {
   } else if (spec.menu === "received") {
     if (write && spec.unfile && !writeBusy("unfile", spec.unfile.original)) ids.push("unfile");
     if (write && spec.missing && !writeBusy("mark-missing", spec.missing.original, spec.missing.identifier)) ids.push("mark_missing");
-    if (spec.detailLink) ids.push("show_in_explorer");
+    if (spec.detailLink || spec.nameLink) ids.push("show_in_explorer");
   } else if (spec.menu === "household" || spec.menu === "return") {
     ids.push(...shellEnabled(pagesRowRoute(spec)));
   }
@@ -1094,7 +1108,7 @@ const PAGES_ROW_ANSWERS = {
   put_back: (spec) => pagesCheckThen(spec, "r-restore", "put_back"),
   keep_here: (spec) => pagesCheckThen(spec, "r-keep", "keep_here"),
   edit_request: (spec) => pagesRunStep({ kind: "edit", identifier: spec.identifier }),
-  unfile: (spec) => unfileDocument(spec.unfile),
+  unfile: (spec) => openUnfile(spec.unfile),
   mark_missing: (spec) => withdrawAnswer(spec.missing),
   show_in_explorer: (spec) => pagesRunLink(spec.nameLink || spec.detailLink),
 };

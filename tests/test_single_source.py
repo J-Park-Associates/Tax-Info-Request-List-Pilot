@@ -1824,7 +1824,8 @@ def test_every_review_action_the_renderer_sends_carries_the_rows_seq():
         sent = re.search(rf'call\(withEng\("{command}"\), \{{(.*?)\}}\)', js, re.S)
         assert sent and "seq: Number(spec.seq)" in sent.group(1), command
     pages = read("app/renderer/pages.js")
-    assert "{ original: direct[0].handle, seq: direct[0].seq }" in pages
+    assert "{ original: direct[0].handle, seq: direct[0].seq, name: direct[0].original_name }" in pages
+    assert "unfile: here ? { original: one.handle, seq: one.seq, name: one.original_name } : null" in pages
     assert "{ original: answering.handle, seq: answering.seq, identifier: item.identifier }" in pages
     # ...and since decision 114 the filing has one call site for the three
     # buttons that make it, so each of them reads the version off the element
@@ -3682,7 +3683,7 @@ def test_every_dialog_is_in_the_one_registry_and_closes_through_one_guard():
     html = read("app/renderer/index.html")
     ids = set(_DIALOG_IDS.findall(html))
     assert ids == {"editor", "household-modal", "handover-modal", "modal", "schedule-modal",
-                   "roll-modal", "safeguards-modal", "about-modal", "misfits-modal"}
+                   "roll-modal", "safeguards-modal", "about-modal", "misfits-modal", "unfile-modal"}
     # The registry also holds the side sheet (SPEC 7): it hides by its attribute.
     assert _registry(js) == ids | {"sheet"}
     for ident in ids:
@@ -3735,11 +3736,12 @@ def test_every_dialog_opens_with_focus_inside_and_gives_it_back():
                           ("function openRoll() {", "roll-modal"),
                           ("function openSafeguards() {", "safeguards-modal"),
                           ("function openAbout() {", "about-modal"),
-                          ("function openMisfits() {", "misfits-modal")):
+                          ("function openMisfits() {", "misfits-modal"),
+                          ("function openUnfile(spec) {", "unfile-modal")):
         assert f'openDialog("{ident}")' in _js_function(js, opener), opener
     assert 'openDialog("sheet");' in _js_function(read("app/renderer/sheet.js"), "function sheetFrame(now, title) {")
     registry = js.split("const DIALOGS = {", 1)[1].split("\n};\n", 1)[0]
-    assert registry.count("first: () =>") == 10
+    assert registry.count("first: () =>") == 11
     trap = _js_function(js, "function trapTab(e, id) {")
     assert "e.preventDefault();" in trap and "first.focus();" in trap and "last.focus();" in trap
 

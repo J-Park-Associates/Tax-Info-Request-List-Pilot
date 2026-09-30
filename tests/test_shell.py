@@ -1646,8 +1646,9 @@ def test_the_link_kinds_are_built_from_the_apis_keys_and_navigate_without_the_en
         parked: groups.needs_you.filter((s) => s.menu === "file").map((s) => [s.name, link(s)]),
         moved: groups.needs_you.filter((s) => s.menu === "moved").map((s) => [s.name, link(s)]),
         aside: groups.set_aside.map((s) => [s.name, link(s)]),
-        received: groups.received.map((s) => [s.detail, s.detailLink ? s.detailLink.key : null]),
-        unfile: groups.received.map((s) => [s.name, s.unfile ? s.unfile.original : null]),
+        received: groups.received.filter((s) => !s.child).map((s) => [s.detail, s.detailLink ? s.detailLink.key : null]),
+        unfile: groups.received.filter((s) => !s.child).map((s) => [s.name, s.unfile ? s.unfile.original : null]),
+        children: groups.received.filter((s) => s.child).map((s) => [s.name, s.menu, s.nameLink ? s.nameLink.key : null, s.unfile ? s.unfile.original : null, s.unfile ? s.unfile.name : null, s.missing]),
         pathInASpec: drawn,
         resolved: [pagesPathOf(paths, "shown_copy a"), pagesPathOf(paths, "nope"), pagesPathOf({ k: { path: "/x/y", kind: "reveal" } }, "k"), pagesPathOf(null, "k")],
       };
@@ -1659,7 +1660,9 @@ def test_the_link_kinds_are_built_from_the_apis_keys_and_navigate_without_the_en
         "a count is not a name, so it is not a link; one original filed under two requests (decision 94) links the "
         "first copy, prepared_location, which is the one under its own request; a statement that answers a request "
         "without a copy of its own links nothing there")
-    assert ran["unfile"] == [["Doc R", "f"], ["Doc M", None], ["Doc N", "n"], ["Doc Y", None]], "Unfile is offered for the one original filed under a request, not for several"
+    assert ran["unfile"] == [["Doc R", "f"], ["Doc M", None], ["Doc N", "n"], ["Doc Y", None]], "Unfile is offered on the request only for the one original filed under it"
+    assert ran["children"] == [["g1.pdf", "received", "filed_copy g1 0", "g1", "g1.pdf", None], ["g2.pdf", "received", "filed_copy g2 0", "g2", "g2.pdf", None]], (
+        "ruling 17: a request answered by several files gets one row per file, each with its own link (open_keys[0]) and its own Unfile")
     assert ran["strings"] > 20 and ran["pathInASpec"] is False, "a spec holds the key and the map it came with; nothing it draws holds the path"
     assert ran["resolved"] == ["/secret/a.pdf", "", "/x/y", ""], "a string, or {path, kind}; a missing key or map is no path"
 
@@ -2130,3 +2133,34 @@ def test_the_link_kinds_name_the_apis_three_tooltip_keys():
     text = stripped_js("pages.js")
     assert 'const PAGES_LINK_WORDS = { file: "show_in_explorer", household: "navigate_client", return: "navigate_return" };' in text
     assert text.count('openPath(path, "reveal")') == 1 and 'openPath(path, "reveal")' in js_function("pagesRunLink", "pages.js")
+
+
+def test_unfile_from_the_menu_asks_first_and_sends_the_reason_as_the_writes_note():
+    """Ruling 16: the right-click Unfile opens a small confirm box (in the one
+    dialog registry, focus on the reason field) and only its confirm writes;
+    the reason is the write's `note`, and every word in it is the API's."""
+    app = stripped_js("app.js")
+    pages = stripped_js("pages.js")
+    assert "unfile: (spec) => openUnfile(spec.unfile)," in pages and "unfile: (spec) => unfileDocument" not in pages
+    opening = js_function("openUnfile", "app.js")
+    for word in ("review_labels", "unfile_note", "vocab.editor.cancel", "words.unfile"):
+        assert word in opening, word
+    assert 'openDialog("unfile-modal")' in opening
+    assert '"unfile-modal": { model: null, first: () => $("uf-note")' in app
+    confirming = js_function("confirmUnfile", "app.js")
+    assert 'note: $("uf-note").value.trim()' in confirming and "btn.disabled = true;" in confirming and 'closeDialog("unfile-modal")' in confirming
+    assert '$("uf-confirm").addEventListener("click", confirmUnfile);' in app
+    html = read("index.html")
+    box = html[html.index('id="unfile-modal"'):]
+    box = box[:box.index("</div>\n  </div>")]
+    assert ">Unfile<" not in box and ">Cancel<" not in box and "Reason" not in box, "the renderer types no word in the box"
+
+
+def test_a_request_answered_by_several_files_draws_a_row_for_each_and_counts_only_requests():
+    """Ruling 17: each file its own row under the request (own link, own
+    right-click), and the group's count is requests, not file rows."""
+    pages = stripped_js("pages.js")
+    assert 'if (item.group === "received" && filed.length > 1) {' in pages
+    assert "child: true" in pages and 'spec.child ? " row-child" : ""' in pages
+    assert 'row.classList.contains("row-child")' in js_function("pagesGroup", "pages.js")
+    assert 'if (spec.detailLink || spec.nameLink) ids.push("show_in_explorer");' in pages

@@ -395,6 +395,8 @@ input, textarea, select { caret-color: var(--text); accent-color: var(--accent);
 }
 /* The three kinds of link (SPEC 3.9): a name that acts, in the link colour. */
 .row-link { color: var(--link); cursor: pointer; }
+/* One of several files that answer a request: its own row, set in from the request's (ruling 17). */
+.row-child .row-name { padding-left: var(--sp-4); font-weight: var(--fw-regular); }
 .row-link:hover { text-decoration: underline; }
 .row-detail {
   color: var(--text-secondary);

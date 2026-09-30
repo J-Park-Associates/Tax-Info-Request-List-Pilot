@@ -360,6 +360,12 @@
       body.received.push(request(`Put back ${one.name}`, one.name, LB("Received"), "Mar 7"));
       return { state: stateOf(path), restored: { original_name: one.name, decision: vocab.decisions.filed, reason: "", parked_as: "", scan_note: "" } };
     }
+    if (command === "unfile") {
+      // The made-up return keeps its rows; the reply is the engine's shape, and the payload (with its note) is what the harness checks.
+      const one = stateOf(path).index.find((row) => row.handle === payload.original);
+      if (!one) return null;
+      return { state: stateOf(path), unfiled: { original_name: one.original_name, decision: vocab.decisions.unfiled, left_filed: "", scan_note: "" } };
+    }
     if (command === "approve") {
       approved[path] = { date: "2026-03-07", stage: payload.stage };
       return { reminder: reminderReply(body, path, payload.stage).reminder, set_aside: "" };
@@ -387,7 +393,7 @@
         return wait(scenario === "slow-state" ? 600 : 20, stateOf(args[args.length - 1]));
       }
       if (command === "reminder") return wait(10, reminderReply(bodies[args[args.length - 1]], args[args.length - 1], payload && payload.stage));
-      if (["assign", "dismiss", "restore", "approve"].indexOf(command) !== -1) {
+      if (["assign", "dismiss", "restore", "unfile", "approve"].indexOf(command) !== -1) {
         window.HARNESS.writes.push({ command, payload });
         const path = args[args.length - 1];
         const reply = write(command, path, payload);

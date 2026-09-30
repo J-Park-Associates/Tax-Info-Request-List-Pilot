@@ -210,6 +210,24 @@
     </div>
   </div>
 
+  <!-- Unfile from a row's right-click menu (ruling 16): a small confirm with the
+       optional reason the old list's Unfile carried. Every word is the API's. -->
+  <div id="unfile-modal" class="modal-overlay hidden">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="uf-title">
+      <h3 id="uf-title"></h3>
+      <p id="uf-name" class="wiz-note"></p>
+      <label class="field">
+        <span id="uf-note-label"></span>
+        <input id="uf-note" type="text" autocomplete="off">
+      </label>
+      <div class="modal-actions">
+        <button id="uf-cancel" class="btn" type="button"></button>
+        <span class="toolbar-spacer"></span>
+        <button id="uf-confirm" class="btn btn-primary" type="button"></button>
+      </div>
+    </div>
+  </div>
+
   <!-- The schedule setting (pilot P21): on or off, when the first run is and
        how often it repeats. Read from `settings`, saved by `set-schedule`;
        every word is the API's (vocab.schedule). -->
