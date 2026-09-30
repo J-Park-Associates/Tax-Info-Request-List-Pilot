@@ -674,6 +674,14 @@ NOBODY_TYPED = "Nobody Typed Yet"
 #: with. Nothing routes outside the feed list, and a person extends it
 #: deliberately or not at all.
 NOT_FED = "{label} is not a return this drop folder feeds; add it to the household's feeds first"
+#: The related households (pilot P141, P170): a person's note that two
+#: households belong together, kept on both records and never a route.
+#: The editor's label and button, and what a name that is not one is
+#: refused with.
+RELATED_LABEL = "Related Households"
+ADD_RELATED_LABEL = "Add Related Household"
+RELATED_REFUSED = "{household} is not a household this one can be related to"
+RELATED_UNKNOWN = "{household} is not a household under the clients folder"
 
 MISFITS_HEADING = "Folders the Tracker Leaves Alone"
 MISFITS_NOTE = ("Each is listed with the one reason it does not fit the layout; nothing in it "
@@ -1260,6 +1268,10 @@ SCREEN: dict = {
     "navigate_return": "Navigate to Return",
     "find": "Find a Client",
     "find_none": "No Match",
+    # The search box's placeholder (pilot SPEC-lists 13, P173): every page,
+    # and Needs Review, where the box also finds the waiting files.
+    "find_placeholder": "Search Clients and Returns",
+    "find_placeholder_files": "Search Files, Clients and Returns",
     "sort": {
         "now": "Sort Now",
         "stop": "Stop Sorting",
@@ -1281,10 +1293,72 @@ SCREEN: dict = {
         "complete": "Complete",
     },
     "work": "Work Waiting",
+    # The linked households (pilot SPEC-lists 10, P141, P171): the icon's
+    # tooltip and the panel's name, and each link's kind (owner question
+    # Q10, recommendation A).
+    "linked": {
+        "tip": "Linked Households",
+        "feeds": "Also Feeds",
+        "fed_by": "Fed By",
+        "related": "Related",
+    },
+    # Overview's filter tabs (pilot SPEC-lists 11, P145); "All" is
+    # ``filters.all``.
+    "tabs": {
+        "need": "Need You ({n})",
+        "waiting": "Waiting ({n})",
+    },
+    # A Needs Review group's count (pilot SPEC-lists 12, P149).
+    "documents": {
+        "one": "1 Document",
+        "many": "{n} Documents",
+    },
+    # The page buttons of the four firm lists (pilot SPEC-lists 14, P152,
+    # P174): the footer, its two buttons and each list's noun.
+    "paging": {
+        "showing": "Showing {from}-{to} of {total} {noun}",
+        "previous": "Previous",
+        "next": "Next",
+        "nouns": {
+            "overview": "Returns",
+            "needs_review": "Files",
+            "reminders": "Drafts",
+            "clients": "Clients",
+        },
+    },
+    # The side panel (pilot SPEC-lists 15, P153, P154): the brand band, the
+    # section headings, Settings, and the pages that are not built yet,
+    # each marked and doing nothing but say so. New words name the app
+    # "Tax Document Console" (P155).
+    "side": {
+        "brand": "J Park & Associates",
+        "product": "Tax Document Console",
+        "types": "Client Types",
+        "workspace": "Workspace",
+        "settings": "Settings",
+        "under_construction": "Under Construction",
+        "soon": {
+            "ready_to_sign": "Ready to Sign (Under Construction)",
+            "family_entities": "Family Entities (Under Construction)",
+            "personal_trusts": "Personal Trusts (Under Construction)",
+            "corporate_entities": "Corporate Entities (Under Construction)",
+            "portal_settings": "Portal Settings (Under Construction)",
+        },
+    },
+    # The Client Types of the side panel (pilot SPEC-lists 15.3): each
+    # opens Clients filtered to the households with a return of one of its
+    # forms, matched on the return's recorded catalog id (never a folder
+    # name).
+    "client_types": {
+        "individuals": {"label": "Individuals", "forms": ["1040"]},
+        "businesses": {"label": "Businesses", "forms": ["1120", "1120S", "1065"]},
+        "trusts": {"label": "Trusts & Estates", "forms": ["1041"]},
+        "nonprofits": {"label": "Nonprofits", "forms": ["990"]},
+    },
     # The column headers of the four firm lists (pilot SPEC-lists 2, P138):
-    # a header's word, its tooltip - "Order", never "Sort", which files
-    # documents in this app - and what a screen reader hears after a
-    # keyboard resize.
+    # a header's word, its tooltip - "Sort by {Column}", Jason's choice
+    # (P180), whose "by {Column}" keeps it apart from the filing pass's
+    # Sort Now - and what a screen reader hears after a keyboard resize.
     "columns": {
         "return": "Return",
         "client": "Client",
@@ -1297,7 +1371,9 @@ SCREEN: dict = {
         "stage": "Stage",
         "drafted": "Drafted",
         "returns": "Returns",
-        "order_by": "Order by {column}",
+        # Clients' own word for its name column (pilot SPEC-lists 15.2).
+        "client_name": "Client Name",
+        "sort_by": "Sort by {column}",
         "width": "{column} Width {n}",
     },
     "empty": {
@@ -1321,6 +1397,7 @@ SCREEN: dict = {
         "returns": "{n} Returns",
         "one_return": "1 Return",
         "files": "{n} Files",
+        "one_file": "1 File",
     },
     "due": "Due {date}",
     "partly": "{n} of {total}",
@@ -1348,6 +1425,10 @@ SCREEN: dict = {
         "open": "Open",
         "next": "Next",
         "more": "More",
+        # A Needs Review group's button that opens its right-click menu, and
+        # the Client Type chip's dismiss (pilot SPEC-lists 12, 15.3).
+        "more_actions": "More Actions",
+        "remove_filter": "Remove Filter",
     },
     "sheet": {
         "reminder": "Reminder",
@@ -1694,6 +1775,9 @@ def _vocab() -> dict:
             "feed_warning": FEED_WARNING,
             "return_warning": RETURN_WARNING,
             "nobody_typed": NOBODY_TYPED,
+            # The related households (pilot P170): the editor's label and button.
+            "related_label": RELATED_LABEL,
+            "add_related": ADD_RELATED_LABEL,
             # A paused household (decision 188): the one action and its help.
             "accept_folder_name": ACCEPT_FOLDER_NAME_LABEL,
             "accept_folder_name_help": ACCEPT_FOLDER_NAME_HELP,
@@ -2721,6 +2805,9 @@ def _household_payload(engagement: Path) -> dict:
         "link": info.link,
         "feeds": feeds,
         "fed_by": fed,
+        # The households this record names as related (pilot P170); the
+        # list's ``links`` also shows the ones that name this household.
+        "related": list(info.related),
         "open_years": years,
         # The year the card's roll fold names, or None when no roll is
         # offered (decision 196).
@@ -3511,6 +3598,7 @@ def _list_payload(root: Path, registry: Registry) -> dict:
     vocabulary (decision 194). ``list`` adds the vocabulary; a write that
     changes the list carries this alone (:data:`LIST_CHANGING`)."""
     grouped = registry.by_household()
+    links = _household_links(registry)
     households = []
     for household in registry.households:
         returns = grouped.get(household.path, [])
@@ -3523,12 +3611,15 @@ def _list_payload(root: Path, registry: Registry) -> dict:
             "contact": household.info.contact,
             "link": household.info.link,
             "problem": household.problem,
+            # The households linked to this one (pilot P141, P172).
+            "links": links.get(household.path, []),
             "open_years": open_years(returns),
             "returns": [
                 {"label": one.label, "path": str(one.path),
                  "year": one.tax_year if one.tax_year is not None else year_of(one.path),
                  "return_name": one.info.return_name or one.path.name,
-                 "active": one.active, "superseded_by": one.superseded_by}
+                 "active": one.active, "superseded_by": one.superseded_by,
+                 "form": one.info.form}
                 for one in returns
             ],
         })
@@ -3536,7 +3627,10 @@ def _list_payload(root: Path, registry: Registry) -> dict:
         {"name": one.label, "path": str(one.path),
          "household": str(one.household_path),
          "year": one.tax_year if one.tax_year is not None else year_of(one.path),
-         "return_name": one.info.return_name or one.path.name}
+         "return_name": one.info.return_name or one.path.name,
+         # The catalog the return was cut from (pilot P172): the form chip
+         # and the Client Types, read from the record, never a folder name.
+         "form": one.info.form}
         for one in registry.engagements
     ]
     return {
@@ -3551,6 +3645,51 @@ def _list_payload(root: Path, registry: Registry) -> dict:
                     for misfit in registry.misfits],
         "root": str(root),
     }
+
+
+#: The kinds of link between two households (pilot P141, P172), as the
+#: ``links`` field says them: this household's drop folder also feeds that
+#: one, that one's feeds this one, or a person marked them related.
+LINK_FEEDS = "feeds"
+LINK_FED_BY = "fed_by"
+LINK_RELATED = "related"
+
+
+def _household_links(registry: Registry) -> dict[Path, list[dict]]:
+    """Every household's linked households, by the household's folder
+    (pilot P141, P172): each ``{"name", "path", "kind"}``, from the records
+    the walk already read - no extra disk read, nothing inferred.
+
+    Both kinds are shown on **both** ends. A feed (decision 132) is
+    ``feeds`` on the feeding household and ``fed_by`` on the fed one; a
+    related mark (P170) is ``related`` on both, whichever record names it,
+    so a save that stopped between its two writes still shows. A name no
+    household folder answers keeps its words with ``path`` ``""``: the
+    panel shows it as text and never guesses where it went.
+    """
+    by_key = {layout.name_key(one.name): one for one in registry.households}
+    found: dict[Path, dict[tuple[str, str], dict]] = {one.path: {} for one in registry.households}
+
+    def add(household, name: str, kind: str) -> None:
+        other = by_key.get(layout.name_key(name))
+        if other is not None and other.path == household.path:
+            return
+        entry = {"name": other.name if other else name, "path": str(other.path) if other else "", "kind": kind}
+        found[household.path].setdefault((layout.name_key(entry["name"]), kind), entry)
+
+    for household in registry.households:
+        for feed in household.info.feeds:
+            add(household, feed.household, LINK_FEEDS)
+            other = by_key.get(layout.name_key(feed.household))
+            if other is not None:
+                add(other, household.name, LINK_FED_BY)
+        for name in household.info.related:
+            add(household, name, LINK_RELATED)
+            other = by_key.get(layout.name_key(name))
+            if other is not None:
+                add(other, household.name, LINK_RELATED)
+    return {path: sorted(entries.values(), key=lambda one: (layout.name_key(one["name"]), one["kind"]))
+            for path, entries in found.items()}
 
 
 def _list_paths(root: Path | None) -> dict:
@@ -3923,6 +4062,61 @@ def _feeds_from_spec(sent: object, household_dir: Path) -> tuple[Feed, ...]:
     return tuple(wanted)
 
 
+def _related_from_spec(sent: object, household_dir: Path) -> tuple[str, ...]:
+    """The related households a person picked in the editor (pilot P170),
+    refused where it is not a list of other households' folder names.
+
+    Each name is held to the layout's one name rule, as a feed's halves
+    are; the household itself, a blank and a name twice are refused by
+    name; and every name must be a household under the clients root,
+    read fresh from the private tree (never inferred, never from the
+    store), so a link always points at a household that exists.
+    """
+    if not isinstance(sent, (list, tuple)):
+        raise ManifestError(RELATED_REFUSED.format(household="(blank)"))
+    wanted: list[str] = []
+    for one in sent:
+        name = layout.normalised_name(one if isinstance(one, str) else "")
+        if not name:
+            raise ManifestError(RELATED_REFUSED.format(household="(blank)"))
+        _folder_name(name, "household")
+        if layout.name_key(name) == layout.name_key(household_dir.name) or \
+                any(layout.name_key(held) == layout.name_key(name) for held in wanted):
+            raise ManifestError(RELATED_REFUSED.format(household=name))
+        wanted.append(name)
+    if not wanted:
+        return ()
+    found = {layout.name_key(one.name): one.name
+             for one in households_named(household_dir.parent, wanted).households}
+    for name in wanted:
+        if layout.name_key(name) not in found:
+            raise ManifestError(RELATED_UNKNOWN.format(household=name))
+    return tuple(found[layout.name_key(name)] for name in wanted)
+
+
+def _mirror_related(household_dir: Path, before: tuple[str, ...], after: tuple[str, ...]) -> None:
+    """Write a changed related list into the other side's record too
+    (pilot P170): each household added now names this one, each removed
+    no longer does. One household at a time, each under its own lock
+    (``save_household`` takes it), never two at once, so no lock order is
+    needed; a failure is raised as it is, and the screen still shows the
+    link from the record that has it until a save completes it."""
+    keys_after = {layout.name_key(one) for one in after}
+    keys_before = {layout.name_key(one) for one in before}
+    changed = [one for one in after if layout.name_key(one) not in keys_before] + \
+              [one for one in before if layout.name_key(one) not in keys_after]
+    if not changed:
+        return
+    here = layout.name_key(household_dir.name)
+    for other in households_named(household_dir.parent, changed).households:
+        info = load_household_info(other.path)
+        kept = tuple(one for one in info.related if layout.name_key(one) != here)
+        if layout.name_key(other.name) in keys_after:
+            kept += (household_dir.name,)
+        if kept != info.related:
+            save_household(other.path, replace(info, related=kept))
+
+
 def _cmd_edit_household(argv: list[str]) -> dict:
     """Save the household's own details from the app's small modal.
 
@@ -3936,6 +4130,12 @@ def _cmd_edit_household(argv: list[str]) -> dict:
     - a list a person built from what is already there, never inferred. A
     feed naming this household, a blank half, or one the list already
     holds is refused by name.
+
+    ``related`` is the list of other households a person marked as
+    related (pilot P170): household names, each one that exists. The
+    change is written into this household's record and then into each
+    other household it added or removed (:func:`_mirror_related`), so the
+    link is on both records.
     """
     engagement = _engagement_dir(argv)
     household_dir = household_of(engagement)
@@ -3957,8 +4157,11 @@ def _cmd_edit_household(argv: list[str]) -> dict:
         contact=" ".join(str(spec.get("contact", held.contact) or "").split()),
         link=" ".join(str(spec.get("link", held.link) or "").split()),
         feeds=_feeds_from_spec(spec["feeds"], household_dir) if "feeds" in spec else held.feeds,
+        related=_related_from_spec(spec["related"], household_dir) if "related" in spec else held.related,
     )
     saved = save_household(household_dir, info)
+    if "related" in spec:
+        _mirror_related(household_dir, held.related, info.related)
     # The household's members, contact and link are in the list (decision 194).
     return _with_list({"saved": {"household": list(saved.fields)}, "state": _state(engagement)})
 
@@ -5395,6 +5598,7 @@ def _firm_row(one, household: str, today: dt.date) -> tuple[dict, list[dict], di
     record's ``prepared_location`` / ``moved_to`` alone: no path is stat-ed,
     no document is read."""
     row = {"path": str(one.path), "household": household, "label": one.label,
+           "form": one.info.form,
            "year": one.tax_year if one.tax_year is not None else year_of(one.path),
            "counts": dict.fromkeys(GROUPS, 0), "files": 0, "oldest": None, "due": None,
            "draft": {"ready": False, "stage": 0, "held": 0, "drafted": None}, "problem": ""}
@@ -5499,6 +5703,9 @@ def _cmd_firm(argv: list[str]) -> dict:
         raise ManifestError(PRACTICE_NOT_WALKED) from None
     today = dt.date.today()
     names = {household.path: household.name for household in registry.households}
+    # The linked households of each return's household (pilot P141, P172),
+    # from the records this walk already read.
+    links = _household_links(registry)
     totals = reply["totals"]
     # Ruling 21: a household with two open years is paused - the pass sorts
     # nothing from its inbox (``runner.TWO_OPEN_YEARS``, the same
@@ -5510,6 +5717,7 @@ def _cmd_firm(argv: list[str]) -> dict:
             continue
         row, files, own = _firm_row(one, names.get(one.household_path, ""), today)
         row["paused"] = one.household_path in paused
+        row["links"] = links.get(one.household_path, [])
         for one_file in files:
             if one_file["open_key"]:
                 one_file["open_key"] = _firm_key(reply["paths"], one_file["open_key"],

@@ -926,7 +926,7 @@ const vocab = {
     counts: { need: "{n} need you", waiting: "{n} waiting", complete: "Complete", files: "{n} files", one_return: "1 return", returns: "{n} returns" },
     sections: { overview: "Overview", needs_review: "Needs Review", reminders: "Reminders", clients: "Clients" },
     columns: { return: "Return", client: "Client", status: "Status", date: "Date", file: "File", suggestion: "Suggestion", reason: "Reason",
-               received: "Received", stage: "Stage", drafted: "Drafted", returns: "Returns", order_by: "Order by {column}", width: "{column} Width {n}" },
+               received: "Received", stage: "Stage", drafted: "Drafted", returns: "Returns", sort_by: "Sort by {column}", width: "{column} Width {n}" },
   },
 };
 """
@@ -2763,7 +2763,7 @@ def run_lists(probe: str, tmp_path: Path, extra: str = ""):
 def test_the_four_firm_lists_draw_a_header_row_of_buttons_in_the_rows_columns(tmp_path):
     """SPEC-lists 1-3: Overview, Needs Review, Reminders and Clients each draw
     one header row - a table of one row of column headers, each a button with
-    the vocabulary's word and the tooltip "Order by {Column}" - and Clients'
+    the vocabulary's word and the tooltip "Sort by {Column}" (P180) - and Clients'
     empty end column has an empty header that orders nothing."""
     ran = run_lists("""
       const out = {};
@@ -2785,7 +2785,7 @@ def test_the_four_firm_lists_draw_a_header_row_of_buttons_in_the_rows_columns(tm
     assert ran["clients"]["words"] == ["Client", "Returns", "Status"], "the Clients end column is always empty"
     for level, one in ran.items():
         assert one["tables"] == 1 and one["rows"] == 1 and one["cells"] == 4 and one["grips"] == 4, level
-        assert one["tips"] == [f"Order by {word}" for word in one["words"]], level
+        assert one["tips"] == [f"Sort by {word}" for word in one["words"]], level
         assert set(one["sorts"]) <= {"none", ""}, "the usual order: no header orders the list"
     assert ran["needs-review"]["label"] == "Needs Review" and ran["overview"]["label"] == "Overview"
 
@@ -2852,16 +2852,17 @@ def test_needs_review_orders_files_in_each_group_and_groups_follow_their_first_f
     assert ran["reason"] == [["1040 - Alpha (2025)", "1065 - Bravo (2025)"], ["a.pdf", "b.pdf", "z.pdf"]]
 
 
-def test_no_header_word_or_tooltip_says_sort():
-    """P138: "Sort" files documents in this app, so no column word, tooltip,
-    width line or menu item of this change says it, and pages.js types none
-    of them (every word is the vocabulary's)."""
+def test_only_the_header_tooltip_says_sort_and_always_by_its_column():
+    """P138 and Jason's answer to Q1 (P180): a header's tooltip reads "Sort by
+    {Column}" - the "by {Column}" keeps it apart from the filing pass's Sort
+    Now - and no column word, width line or menu item of this change says
+    Sort; pages.js types none of them (every word is the vocabulary's)."""
     for key, words in api.SCREEN["columns"].items():
-        assert "sort" not in words.lower(), key
+        assert "sort" not in words.lower() or key == "sort_by", key
     assert "sort" not in api.MENU["reset_columns"].lower()
-    assert api.SCREEN["columns"]["order_by"] == "Order by {column}"
+    assert api.SCREEN["columns"]["sort_by"] == "Sort by {column}"
     heads = js_function("pagesColumnHeads", "pages.js")
-    assert not re.findall(r'"(?:Order|Return|Client|Status|Date)\b', heads), "a header word typed in pages.js"
+    assert not re.findall(r'"(?:Sort|Order|Return|Client|Status|Date)\b', heads), "a header word typed in pages.js"
 
 
 def test_a_column_width_is_clamped_saved_and_reset(tmp_path):

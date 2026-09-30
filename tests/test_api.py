@@ -8977,3 +8977,105 @@ def test_list_carries_each_misfits_code_and_the_vocabulary_words_it(capsys, demo
     assert misfit["code"] == "not_a_tree"
     assert misfit["sentence"] and misfit["where"]
     assert _vocab()["screen"]["misfits"]["reasons"][misfit["code"]] == "Unknown Folder"
+
+
+# ============ pilot P141, P170, P172: linked households and the form ===========
+
+
+def three_households(capsys, root):
+    """Park Family (a 1040), Park & Lee LLC (an 1120S) and Lee Family (a
+    1040), made the way the app makes them, each with its form recorded."""
+    for household, return_name, form in (("Park Family", "1040 - John Park", "1040"),
+                                         ("Park & Lee LLC", "1120S - Park & Lee LLC", "1120S"),
+                                         ("Lee Family", "1040 - Sam Lee", "1040")):
+        assert run(capsys, "create", stdin={
+            "household": household, "contact": "John", "return_name": return_name, "form": form,
+            "items": [{"identifier": "A01", "document": "W-2"}]})[0] == 0
+    return (where(root, "1040 - John Park", household="Park Family"),
+            where(root, "1120S - Park & Lee LLC", household="Park & Lee LLC"),
+            where(root, "1040 - Sam Lee", household="Lee Family"))
+
+
+def test_a_related_household_is_written_on_both_records_and_removed_from_both(capsys, demo_root):
+    """Pilot P170: a person marks two households related in Edit Household;
+    the save writes the mark into both records, the state names it, and
+    removing it on either side removes it from both. Nothing is inferred."""
+    from tracker.households import load_household_info
+    from tracker.layout import private_household_dir
+
+    park, llc, lee = three_households(capsys, demo_root)
+    park_dir = private_household_dir(demo_root, "Park Family")
+    lee_dir = private_household_dir(demo_root, "Lee Family")
+    llc_dir = private_household_dir(demo_root, "Park & Lee LLC")
+    assert load_household_info(park_dir).related == ()
+
+    code, payload = run(capsys, "edit-household", api.ENGAGEMENT_FLAG, str(park),
+                        stdin={"related": ["Lee Family", "park & lee llc"]})
+    assert code == 0, payload
+    assert "related" in payload["saved"]["household"]
+    assert load_household_info(park_dir).related == ("Lee Family", "Park & Lee LLC")
+    assert load_household_info(lee_dir).related == ("Park Family",)
+    assert load_household_info(llc_dir).related == ("Park Family",)
+    assert payload["state"]["household"]["related"] == ["Lee Family", "Park & Lee LLC"]
+
+    # Removed from the other side: gone from both records.
+    code, payload = run(capsys, "edit-household", api.ENGAGEMENT_FLAG, str(lee), stdin={"related": []})
+    assert code == 0, payload
+    assert load_household_info(lee_dir).related == ()
+    assert load_household_info(park_dir).related == ("Park & Lee LLC",)
+    assert load_household_info(llc_dir).related == ("Park Family",)
+    assert api._vocab()["household"]["related_label"] == "Related Households"
+    assert api._vocab()["household"]["add_related"] == "Add Related Household"
+
+
+def test_a_related_list_refuses_itself_a_blank_a_repeat_and_a_household_that_is_not_there(capsys, demo_root):
+    """Pilot P170: only another household that exists can be related, each
+    once; every refusal says the name and nothing is written."""
+    from tracker.households import load_household_info
+    from tracker.layout import private_household_dir
+
+    park, _llc, _lee = three_households(capsys, demo_root)
+    park_dir = private_household_dir(demo_root, "Park Family")
+    for sent, said in ((["Park Family"], api.RELATED_REFUSED.format(household="Park Family")),
+                       ([""], api.RELATED_REFUSED.format(household="(blank)")),
+                       ("Lee Family", api.RELATED_REFUSED.format(household="(blank)")),
+                       (["Lee Family", "lee family"], api.RELATED_REFUSED.format(household="lee family")),
+                       (["Nobody Here"], api.RELATED_UNKNOWN.format(household="Nobody Here"))):
+        code, payload = run(capsys, "edit-household", api.ENGAGEMENT_FLAG, str(park), stdin={"related": sent})
+        assert code == 1 and payload["error"] == said, (sent, payload)
+    assert load_household_info(park_dir).related == ()
+
+
+def test_the_list_and_the_firm_carry_each_households_links_both_ways_and_each_returns_form(capsys, demo_root):
+    """Pilot P141, P172: a feed is Also Feeds on the feeding household and
+    Fed By on the fed one; a related mark is Related on both, even when
+    only one record names it; and every return carries its recorded form.
+    The fields are additive: nothing already in either reply moves."""
+    from dataclasses import replace
+
+    from tracker.households import load_household_info, save_household
+    from tracker.layout import private_household_dir
+
+    park, llc, lee = three_households(capsys, demo_root)
+    assert run(capsys, "edit-household", api.ENGAGEMENT_FLAG, str(park),
+               stdin={"feeds": [{"household": "Park & Lee LLC", "return_name": "1120S - Park & Lee LLC"}]})[0] == 0
+    # A related mark on one record only (a save that stopped half way) still shows on both ends.
+    lee_dir = private_household_dir(demo_root, "Lee Family")
+    save_household(lee_dir, replace(load_household_info(lee_dir), related=("Park Family",)))
+
+    _code, listed = run(capsys, "list")
+    links = {one["name"]: [(link["name"], link["kind"]) for link in one["links"]] for one in listed["households"]}
+    assert links["Park Family"] == [("Lee Family", "related"), ("Park & Lee LLC", "feeds")]
+    assert links["Park & Lee LLC"] == [("Park Family", "fed_by")]
+    assert links["Lee Family"] == [("Park Family", "related")]
+    paths = {one["name"]: one["path"] for one in listed["households"]}
+    assert {link["path"] for one in listed["households"] for link in one["links"]} <= set(paths.values())
+    assert {one["return_name"]: one["form"] for one in listed["engagements"]} == {
+        "1040 - John Park": "1040", "1120S - Park & Lee LLC": "1120S", "1040 - Sam Lee": "1040"}
+
+    _code, firm = run(capsys, "firm")
+    by_return = {Path(one["path"]): one for one in firm["returns"]}
+    assert by_return[llc]["form"] == "1120S" and by_return[park]["form"] == "1040"
+    assert [(link["name"], link["kind"]) for link in by_return[llc]["links"]] == [("Park Family", "fed_by")]
+    assert [(link["name"], link["kind"]) for link in by_return[lee]["links"]] == [("Park Family", "related")]
+    assert {"path", "household", "label", "year", "counts", "files", "paused"} <= set(by_return[park])

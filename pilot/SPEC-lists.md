@@ -23,8 +23,9 @@ After this change:
 - **Clicking a header orders the list by that column.** Clicking it again
   reverses the order; a third click puts the list back in its usual order. A
   small arrow beside the header's word shows which column orders the list and
-  which way. The word is **"Order"**, never "Sort": in this app "Sort" already
-  means filing documents (the Sort icon, "Sort Failed", "Sorted 11:14 PM").
+  which way. The header's tooltip reads **"Sort by {Column}"** (Jason, Q1,
+  P180); its "by {Column}" keeps it apart from the filing pass (the Sort
+  icon, "Sort Failed", "Sorted 11:14 PM").
 - **Each header can be made wider or narrower** by dragging its right edge, as
   in File Explorer; double-clicking the edge fits the column to its widest
   entry. From the keyboard, with a header focused, **Ctrl+Shift+Right** widens
@@ -77,14 +78,14 @@ words (ruling 10, P63):
 | `columns.stage` | Stage | Reminders |
 | `columns.drafted` | Drafted | Reminders |
 | `columns.returns` | Returns | Clients |
-| `columns.order_by` | Order by {column} | each header's tooltip, e.g. "Order by Status" |
+| `columns.sort_by` | Sort by {column} | each header's tooltip, e.g. "Sort by Status" (Jason, Q1, P180) |
 | `columns.width` | {column} Width {n} | said to a screen reader after a keyboard resize, e.g. "Status Width 176" |
 | `vocab.menu.reset_columns` (`MENU`) | Reset Column Widths | View menu |
 
 "Client" is the household's word on screen already ("Navigate to Client"). The
-header is a button whose name is its word; the tooltip adds "Order by".
+header is a button whose name is its word; the tooltip adds "Sort by".
 
-**Owner question Q1** (built: A): the header tooltip says
+**Owner question Q1** (decided C by Jason, 2026-09-30, P180; built in lane 4b): the header tooltip says
 **A) "Order by Status"** (recommended: plain, and cannot be confused with
 filing); B) "Arrange by Status" (File Explorer's word for grouping, a different
 thing there); C) "Sort by Status" (the most familiar, but "Sort" is the filing
@@ -665,14 +666,14 @@ Each is answerable by a letter; the recommendation is built meanwhile.
 
 | # | Question | Recommendation |
 |---|---|---|
-| Q1 | Header tooltip word: A) "Order by Status"; B) "Arrange by Status"; C) "Sort by Status". | **A** |
-| Q2 | Headers on which lists: A) the four firm lists only; B) also the household and year pages; C) also the return page's sections. | **A** |
-| Q3 | A chosen order is kept: A) while the app is open; B) across restarts; C) only until you leave the page. | **A** |
-| Q4 | Column widths are kept: A) on this PC across restarts, with View › Reset Column Widths; B) only while the app is open. | **A** |
-| Q5 | The household beside a Needs Review heading: A) small grey underlined link; B) small blue underlined link. | **A** |
-| Q6 | A band behind each Needs Review heading: A) no band; B) a light band. | **A** |
-| Q7 | The Return column orders by: A) the whole name as shown, form first; B) the name without its form ("John & Jane Smith"). | **A** |
-| Q9 | If a Needs Review reason is still cut at 200px on Windows: A) shorter reason words (lane 2's job); B) a wider Reason column, taken from the Return column (File names then cut sooner). | **A** (words that fit keep every column readable at 1100px) |
+| Q1 | Header tooltip word: A) "Order by Status"; B) "Arrange by Status"; C) "Sort by Status". | **Decided C** (Jason, 2026-09-30, P180: "1. sort by"); built in lane 4b |
+| Q2 | Headers on which lists: A) the four firm lists only; B) also the household and year pages; C) also the return page's sections. | **Decided A** (Jason, 2026-09-30, P180: "a for the rest") |
+| Q3 | A chosen order is kept: A) while the app is open; B) across restarts; C) only until you leave the page. | **Decided A** (Jason, 2026-09-30, P180: "a for the rest") |
+| Q4 | Column widths are kept: A) on this PC across restarts, with View › Reset Column Widths; B) only while the app is open. | **Decided A** (Jason, 2026-09-30, P180: "a for the rest") |
+| Q5 | The household beside a Needs Review heading: A) small grey underlined link; B) small blue underlined link. | **Decided A** (Jason, 2026-09-30, P180: "a for the rest") |
+| Q6 | A band behind each Needs Review heading: A) no band; B) a light band. | **Decided A** (Jason, 2026-09-30, P180: "a for the rest") |
+| Q7 | The Return column orders by: A) the whole name as shown, form first; B) the name without its form ("John & Jane Smith"). | **Decided A** (Jason, 2026-09-30, P180: "a for the rest") |
+| Q9 | If a Needs Review reason is still cut at 200px on Windows: A) shorter reason words (lane 2's job); B) a wider Reason column, taken from the Return column (File names then cut sooner). | **Decided A** (Jason, 2026-09-30, P180: "a for the rest") |
 | Q8 | The return page's three sections: A) a coloured bar and icon on the heading, a tinted count badge and a matching edge down the rows; B) a tinted band behind each heading; C) the icon alone. | **A** (built in lane 4b, P176) |
 | Q10 | The kinds in the Linked Households panel: A) "Also Feeds" / "Fed By" / "Related"; B) "Feeds" / "Fed From" / "Related"; C) one word for all, "Linked". | **A** ("Also Feeds" is already the Edit Household word, so a person reads the same word in both places) |
 | Q11 | Rows per page on the four firm lists: A) 50; B) 100; C) 25. | **A** (a page of 50 fills about two screens at 1100 x 700 and keeps a draw quick) |

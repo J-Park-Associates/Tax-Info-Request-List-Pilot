@@ -478,7 +478,8 @@ function pagesCaption(text) {
 }
 
 // ── column headers: order and width (pilot SPEC-lists; P135-P139) ─────
-// The word is "Order", never "Sort": in this app Sort files documents (P138).
+// A header's tooltip is "Sort by {Column}" (Jason, P180); the column word
+// itself and the header's name never say Sort, which also names the filing pass.
 // A header orders its list by its column: the first click in the column's
 // natural direction, the second the reverse, the third back to the list's
 // usual order. The order is a view of the rows the engine already sent, so
@@ -564,7 +565,7 @@ function pagesColumnHeads(list) {
     const arrow = icon("chev", true);
     arrow.classList.add("col-arrow");
     const button = h("button", { type: "button", className: "col-head", dataset: { cell, list } }, h("span", { className: "col-word" }, word), arrow);
-    setTip(button, fill(said.order_by, { column: word }));
+    setTip(button, fill(said.sort_by, { column: word }));
     button.addEventListener("click", () => pagesOrderBy(list, cell));
     return h("div", { className: "col-cell", role: "columnheader", "aria-sort": sort, dataset: { cell } }, button, pagesGrip(list, cell));
   });

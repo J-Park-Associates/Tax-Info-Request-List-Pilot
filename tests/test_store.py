@@ -201,9 +201,12 @@ A_ROW_ORIGINAL = "../../../../Clients/Smith Family/2025/w2.pdf"
 #: before the first in-place step (decision 204 upgrades a version-16 file
 #: where it stands, so "the version before this one" is not set aside).
 REFUSED_EARLIER = min(store._IN_PLACE) - 1
-#: What turns a store of this version back into one at version 18: the
-#: column decision 209 (R3b) added in place, taken off again.
-AS_AT_18 = ('ALTER TABLE engagements DROP COLUMN "admitted_by"',)
+#: What turns a store of this version back into one at version 19: the
+#: column pilot P170 added in place (the related households), taken off.
+AS_AT_19 = ('ALTER TABLE engagements DROP COLUMN "household_related"',)
+#: ... and back to version 18: the column decision 209 (R3b) added in
+#: place, taken off again.
+AS_AT_18 = (*AS_AT_19, 'ALTER TABLE engagements DROP COLUMN "admitted_by"')
 #: ... and back to version 17: the columns decision 190's in-place step
 #: adds, taken off again.
 AS_AT_17 = (*AS_AT_18,
@@ -278,7 +281,7 @@ def test_opening_a_file_that_is_not_there_creates_the_schema(tmp_path):
 
     conn = store.open(path)
     try:
-        assert conn.execute("PRAGMA user_version").fetchone()[0] == store.SCHEMA_VERSION == 19
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == store.SCHEMA_VERSION == 20
         tables = {row[0] for row in conn.execute(
             "SELECT name FROM sqlite_master WHERE type = 'table'")}
         assert tables == {"engagements", "requests", "statuses", "learned_keywords",
@@ -2393,7 +2396,7 @@ def test_a_row_written_without_asked_reads_as_asked(conn, root, by_hand):
 
     build(conn, root, by_hand)
     build(store.connect(), root, by_hand)
-    assert conn.execute("PRAGMA user_version").fetchone()[0] == store.SCHEMA_VERSION == 19
+    assert conn.execute("PRAGMA user_version").fetchone()[0] == store.SCHEMA_VERSION == 20
     assert all(row["asked"] is True for row in store.rules(conn, by_hand))
     assert all(item.asked for item in load_manifest(by_hand))
     assert store.check(conn, root, by_hand) == []
@@ -2423,7 +2426,7 @@ def test_a_row_written_without_a_short_title_reads_as_blank(conn, root, by_hand)
 
     build(conn, root, by_hand)
     build(store.connect(), root, by_hand)
-    assert conn.execute("PRAGMA user_version").fetchone()[0] == store.SCHEMA_VERSION == 19
+    assert conn.execute("PRAGMA user_version").fetchone()[0] == store.SCHEMA_VERSION == 20
     assert all(item.short_title == "" for item in load_manifest(by_hand))
     assert all(item.short_name for item in load_manifest(by_hand))
     assert store.check(conn, root, by_hand) == []
@@ -2770,7 +2773,7 @@ def test_a_store_at_version_18_gains_admitted_by_in_place(conn, root, by_hand, t
 
     upgraded = store.open(path)
     try:
-        assert upgraded.execute("PRAGMA user_version").fetchone()[0] == store.SCHEMA_VERSION == 19
+        assert upgraded.execute("PRAGMA user_version").fetchone()[0] == store.SCHEMA_VERSION == 20
         assert not list(path.parent.glob(f"{store.STORE_FILENAME}.v*.old*"))
         assert admitted_by(upgraded, by_hand) == 0
         store.sync(upgraded, root, by_hand)
@@ -3046,6 +3049,258 @@ ADMISSION_PIN: dict[int, dict[str, str]] = {2: {
     "tracker.store.key_root": "13d66deeca51405a",
     "tracker.store.kind": "c5781c37870424f8",
     "tracker.store.statuses": "d99730d725daf407",
+}, 3: {
+    "tracker.layout.CLIENTS": "3b8264d65abeec66",
+    "tracker.layout.CLIENTS_TREE": "488530d6164e0dd6",
+    "tracker.layout.CLIENT_HOUSEHOLD": "2c784f90e61ac610",
+    "tracker.layout.HOUSEHOLD": "8de5259835758e72",
+    "tracker.layout.INBOX": "d9c4d1b7a70cb6f2",
+    "tracker.layout.INBOX_DIR_NAME": "919dcb2c2a774098",
+    "tracker.layout.IN_INBOX": "fc74c5d3e9ae9444",
+    "tracker.layout.IN_OPENED": "633c5d64586b470a",
+    "tracker.layout.IN_ORIGINALS": "20496354d6f1b26b",
+    "tracker.layout.IN_RETURN": "155a1bfd542aaa0d",
+    "tracker.layout.LOOK_ALIKES": "54c49454cf2f5689",
+    "tracker.layout.MISPLACED": "b8ca0cd70606f6d7",
+    "tracker.layout.NAMELESS": "1bad7ce20105964a",
+    "tracker.layout.NAME_COMPATIBILITY": "ec65d3d71fd72b3d",
+    "tracker.layout.NAME_DEVICE": "620b97404635bcec",
+    "tracker.layout.NAME_EMPTY": "aa82b128dcf1c993",
+    "tracker.layout.NAME_FIRST_CHARACTER": "bd62babfb5664dc1",
+    "tracker.layout.NAME_ILLEGAL": "305df1e9431d3276",
+    "tracker.layout.NAME_INVISIBLE": "2401333e2c513d23",
+    "tracker.layout.NAME_LAYOUT_WORD": "978aa80c1fbb2b52",
+    "tracker.layout.NAME_MAX_CHARS": "48449a14a4ff7d79",
+    "tracker.layout.NAME_SCRIPTS": "3de824b29b62bb49",
+    "tracker.layout.NAME_TOO_LONG": "7a5e00d8497fbe2d",
+    "tracker.layout.NAME_TRAILING": "7fafe7cda3544c33",
+    "tracker.layout.OPENED": "33bdc49eaabcbced",
+    "tracker.layout.OPENED_DIR_NAME": "5ef673f341874a6f",
+    "tracker.layout.ORIGINALS": "535087da73c5868d",
+    "tracker.layout.OUTSIDE": "2f2e7ba21585ff28",
+    "tracker.layout.PRIVATE": "68a262e0c0fb929f",
+    "tracker.layout.PRIVATE_TREE": "27c7f0479a0c896f",
+    "tracker.layout.RETURN": "08633b69eed18c1b",
+    "tracker.layout.ROOT": "11ccb349ede85740",
+    "tracker.layout.STEP_ABOVE_ROOT": "1385e84ae7f46b2d",
+    "tracker.layout.STEP_ABSOLUTE": "f523898e69fbc750",
+    "tracker.layout.STEP_BLANK": "a4e9e11cd18fd75b",
+    "tracker.layout.STEP_CLIENT_TREE": "5f51b518f9526119",
+    "tracker.layout.STEP_NOT_A_PLACE": "d1aa6f26861ccbee",
+    "tracker.layout.STEP_NOT_A_RETURN": "1e7d015db6355c80",
+    "tracker.layout.STEP_OTHER_HOUSEHOLD": "a0f05df5e57d787b",
+    "tracker.layout.STEP_OTHER_YEAR": "7994492387ba5850",
+    "tracker.layout.WINDOWS_ILLEGAL_CHARS": "0852803faa2a184a",
+    "tracker.layout.WINDOWS_RESERVED_NAMES": "99bf9abac32f89f2",
+    "tracker.layout.WINDOWS_RESERVED_NAMES_TEXT": "c9d9ad8d312ac5a8",
+    "tracker.layout.YEAR": "74c6b2f8351bcc6d",
+    "tracker.layout._ASCII_LOOK_ALIKES": "5333fd34ff62ce29",
+    "tracker.layout._IGNORABLE_CODES": "999fbf22e2feeb49",
+    "tracker.layout._INVISIBLE_CATEGORIES": "bb62d3360fd14a4d",
+    "tracker.layout._LAYOUT_WORD_KEYS": "a6d47e2209691833",
+    "tracker.layout._ONE_SCRIPT": "17235d2097441c94",
+    "tracker.layout._character": "bd5a8cc4e82855fc",
+    "tracker.layout._parts": "a2847013a67202c7",
+    "tracker.layout._script": "f890f9bb62d24799",
+    "tracker.layout.is_invisible": "2b17b033d61a3df2",
+    "tracker.layout.is_reserved_name": "3ee144cf8f5c095d",
+    "tracker.layout.is_year_folder": "c89c110db3cb607d",
+    "tracker.layout.name_key": "749d88cbbd6eb3c3",
+    "tracker.layout.parts_below": "522d9b67dfe50b6a",
+    "tracker.layout.place_of": "fc1a78ab7179dd32",
+    "tracker.layout.place_problem": "2e94883c849c9d08",
+    "tracker.layout.recorded_name": "84bfdf3a851f4652",
+    "tracker.layout.recorded_subfolder_part": "50620c73d7ae6dab",
+    "tracker.layout.root_of": "a6c7013a757965b4",
+    "tracker.layout.segment_problem": "13e273e844d2cc2b",
+    "tracker.ledger.ACCEPTED_KEY": "f4764fc7a8ddd588",
+    "tracker.ledger.ALSO_KEY": "da42922852e5dfcd",
+    "tracker.ledger.ASKED_KEY": "46da5b49eea2fbee",
+    "tracker.ledger.AT_KEY": "22eb1fa0c521db09",
+    "tracker.ledger.DIGEST_KEY": "889a0f98aa32537e",
+    "tracker.ledger.DRAFTED": "ef02a62df7dc350b",
+    "tracker.ledger.DRAFT_APPROVED": "41bf68b11dd88d88",
+    "tracker.ledger.EVENTS": "c6d719a66bc0b51d",
+    "tracker.ledger.EVENT_KEY": "9e0d5d1c8d94a5b6",
+    "tracker.ledger.FILE_KEY": "0efde3f4308de780",
+    "tracker.ledger.FINGERPRINT_KEY": "7df2d13d670e5ed4",
+    "tracker.ledger.FOLDER_NAME_ACCEPTED": "b7b92a8807e8bbf9",
+    "tracker.ledger.FORMAT_KEY": "04fc6c808adf51ac",
+    "tracker.ledger.FROM_KEY": "8ecb478c3dc0d3ae",
+    "tracker.ledger.HELD_KEY": "85c4d432c47707ee",
+    "tracker.ledger.HOST_KEY": "e293b75405af70cd",
+    "tracker.ledger.HOUSEHOLD_CHANGED": "783c776c223a869f",
+    "tracker.ledger.HOUSEHOLD_KEY": "8de5259835758e72",
+    "tracker.ledger.IDENTIFIER_KEY": "123a87f051936a7e",
+    "tracker.ledger.INFO_KEY": "ef3370879a96cf2e",
+    "tracker.ledger.KEYWORD_KEY": "a51a9ff6a628d820",
+    "tracker.ledger.KEYWORD_LEARNED": "7a5d6590fc40e09a",
+    "tracker.ledger.KEYWORD_UNLEARNED": "ce11d4a4c4da44a9",
+    "tracker.ledger.KEY_KEY": "632a3e84412d6ea8",
+    "tracker.ledger.LINE_KEYS": "bfa2973d92dd93ad",
+    "tracker.ledger.LINK_KEY": "67b4e6e1e90cbc98",
+    "tracker.ledger.MOVE_ABANDONED": "a11db9ac01cd5285",
+    "tracker.ledger.MOVING": "d290155f3097fcde",
+    "tracker.ledger.OPS_KEY": "2c35289e43246c9f",
+    "tracker.ledger.OP_COPY": "477c02e96b3c4061",
+    "tracker.ledger.OP_KEY": "b27b68850018781c",
+    "tracker.ledger.OP_MOVE": "c4a4adaf72f566c1",
+    "tracker.ledger.OP_REMOVE": "e8c2c1465f168081",
+    "tracker.ledger.REASON_KEY": "ffa78aeaf553b544",
+    "tracker.ledger.RECORD_FORMAT": "6b86b273ff34fce1",
+    "tracker.ledger.RELEASED": "81acce4087249f66",
+    "tracker.ledger.REMOVED_KEY": "760f3c525ed93b07",
+    "tracker.ledger.RETIRED_EVENTS": "ca06b9854a7990f9",
+    "tracker.ledger.ROW_EVENTS": "b53cc1cb7387825b",
+    "tracker.ledger.ROW_KEY": "e4d99047ca6a3721",
+    "tracker.ledger.RULES_CHANGED": "e4535fc89d8ef96d",
+    "tracker.ledger.RULES_IMPORTED": "cddb10ca0e4c2100",
+    "tracker.ledger.RULES_KEY": "a29e7581476cd7ad",
+    "tracker.ledger.SCANNED": "7e17f4790bff13d5",
+    "tracker.ledger.SHARING_CONFIRMED": "c8027ef3eb13f5e3",
+    "tracker.ledger.STAGE_KEY": "874095181f94a63d",
+    "tracker.ledger.STATUSES_KEY": "18c7785691d58b80",
+    "tracker.ledger.TEXT_FINGERPRINT_KEY": "0db6b5095dc3896e",
+    "tracker.ledger.TO_KEY": "e28f3243b469e21d",
+    "tracker.ledger.WAS_KEY": "1d383f963e096e21",
+    "tracker.ledger.op_ends": "a4e5e845ab4c8deb",
+    "tracker.reasons.KNOWN_CODES": "4ad3f21d00c7f8e5",
+    "tracker.records.BLANK_BOUNDS": "cec8e55a02712202",
+    "tracker.records.CANDIDATE_SEP": "3c01b9ef061065a0",
+    "tracker.records.COUNT_BOUNDS": "66fbd6100ed5379b",
+    "tracker.records.DATE_BOUNDS": "14ca9c3c8c63da08",
+    "tracker.records.DATE_FIELDS": "f0aaa0cb84de4063",
+    "tracker.records.DATE_PATTERN_ALTERNATES": "6d1924b141e16df5",
+    "tracker.records.DATE_PATTERN_BOUND_MAX": "f5ca38f748a1d6ea",
+    "tracker.records.DATE_PATTERN_COST_MAX": "b552e632666bbf61",
+    "tracker.records.DATE_PATTERN_MAX": "27badc983df1780b",
+    "tracker.records.DATE_PATTERN_NESTED": "7b1330f7983d042e",
+    "tracker.records.DATE_PATTERN_NOT_A_REGEX": "a158e00f56bf6ba7",
+    "tracker.records.DATE_PATTERN_OPEN_MAX": "6b86b273ff34fce1",
+    "tracker.records.DATE_PATTERN_OPEN_WIDTH": "0604cd3138feed20",
+    "tracker.records.DATE_PATTERN_REFERS_BACK": "25a2057a272ff94c",
+    "tracker.records.DATE_PATTERN_REPEATS_MAX": "4e07408562bedb8b",
+    "tracker.records.DATE_PATTERN_TOO_COSTLY": "3e2d8a14b8d6a5a6",
+    "tracker.records.DATE_PATTERN_TOO_LONG": "02239fb8cdceefd8",
+    "tracker.records.DATE_PATTERN_TOO_MANY": "ba11446dcfecda24",
+    "tracker.records.DATE_PATTERN_TOO_MANY_OPTIONAL": "eb3c2f5771c5d09f",
+    "tracker.records.DATE_PATTERN_TOO_MANY_WAYS": "a322d9761b272d91",
+    "tracker.records.DATE_PATTERN_TOO_OPEN": "fcaa25330d84e4d0",
+    "tracker.records.DATE_PATTERN_TOO_WIDE": "f7af15030b186a35",
+    "tracker.records.DATE_PATTERN_VARIABLE_MAX": "2c624232cdd22177",
+    "tracker.records.DATE_PATTERN_WAYS_MAX": "ca902d4a8acbdea1",
+    "tracker.records.DATE_YEAR_MAX": "4f5131ea0c5a3e7f",
+    "tracker.records.DATE_YEAR_MIN": "e41d64db5703c644",
+    "tracker.records.DIGEST_BOUNDS": "677bb2233d3c0d23",
+    "tracker.records.FEED_REFUSED": "d601e93b18987f24",
+    "tracker.records.FLAG_BOUNDS": "2bfdeea59997694f",
+    "tracker.records.HOST_BOUNDS": "72219f0e2bcda110",
+    "tracker.records.HOST_MAX": "a68b412c4282555f",
+    "tracker.records.LONG_TEXT_BOUNDS": "3de4da1af0b30ef2",
+    "tracker.records.LONG_TEXT_MAX": "876c9b16254e157d",
+    "tracker.records.MAX_EXPECTED_COUNT": "888df25ae3577242",
+    "tracker.records.MAX_FILE_COUNT": "888df25ae3577242",
+    "tracker.records.MAX_ROW": "888df25ae3577242",
+    "tracker.records.MAX_ROW_SIZE_KB": "02bfbb85ecfba2af",
+    "tracker.records.MAX_SIZE_KB": "50b4b069390c1d79",
+    "tracker.records.MAX_STAGE": "19581e27de7ced00",
+    "tracker.records.MIN_EXPECTED_COUNT": "6b86b273ff34fce1",
+    "tracker.records.MIN_SIZE_KB_FLOOR": "5feceb66ffc86f38",
+    "tracker.records.MIN_SPELLING_WORDS": "d4735e3a265e16ee",
+    "tracker.records.NAME_BOUNDS": "fab0c3e598d1038c",
+    "tracker.records.NUMBER_BOUNDS": "d7d2f825d092e462",
+    "tracker.records.OVERRIDE_BOUNDS": "22a3650c5fc6e021",
+    "tracker.records.PERSON_KINDS": "11ac10e2383de5cc",
+    "tracker.records.RULE_FLAG_FIELDS": "c500b9a01ed742b3",
+    "tracker.records.RULE_LIST_FIELDS": "8b3d25ca8662bd02",
+    "tracker.records.SHORT_TITLE_MAX": "f5ca38f748a1d6ea",
+    "tracker.records.STAMP_BOUNDS": "7c7cf7f161dd3671",
+    "tracker.records.STAMP_YEAR_MIN": "ad1f3889d0032e7c",
+    "tracker.records.TEXT_BOUNDS": "ce369c3539b412af",
+    "tracker.records.TEXT_LIST_BOUNDS": "196f901bd54f0f8c",
+    "tracker.records.TEXT_MAX": "40510175845988f1",
+    "tracker.records.WAITS_FOR_ANSWERS": "f0615f5bcc293884",
+    "tracker.records.WAITS_FOR_BOUNDS": "6f57ee0ee5ca0bbc",
+    "tracker.records.WAITS_FOR_SEP": "de9881cacd5c858e",
+    "tracker.records.WINDOWS_ILLEGAL_CHARS": "0852803faa2a184a",
+    "tracker.records.WINDOWS_ILLEGAL_CHARS_TEXT": "e4b68ca2e1ff6518",
+    "tracker.records.WINDOWS_RESERVED_NAMES_TEXT": "c9d9ad8d312ac5a8",
+    "tracker.records.YEAR_MAX": "1aaf97e300d50bac",
+    "tracker.records.YEAR_MIN": "e41d64db5703c644",
+    "tracker.records._ENTRY_LONG_TEXT": "108c25e4b80db4c6",
+    "tracker.records._ENTRY_NAMES": "5980f2d1176281a2",
+    "tracker.records._ENTRY_TEXT": "68e0df1c43ff5282",
+    "tracker.records._HEX_DIGEST": "286fa658d6b7911b",
+    "tracker.records._INFO_LONG_TEXT": "69674950c21f7eae",
+    "tracker.records._INFO_TEXT": "cbdf6035c202636d",
+    "tracker.records._ISO_DATE": "3ca3c91bdac79395",
+    "tracker.records._ONE_LINE_REFUSED": "f912910f93b16ff7",
+    "tracker.records._REFERS_BACK": "6a5a714c08b4ca99",
+    "tracker.records._REPEATS": "0429e0cc33348e07",
+    "tracker.records._RULE_TEXT": "4dbd8ce696bb0f8e",
+    "tracker.records._STAMP": "36e48aca67f1ef08",
+    "tracker.records._field": "190cfe96c598c222",
+    "tracker.records._first": "afafd6bbd03b4d5a",
+    "tracker.records._is_number": "b55a28bc0ae446c7",
+    "tracker.records._walk": "58be230437faa42c",
+    "tracker.records._ways": "73d93a78035726fd",
+    "tracker.records._width": "971b31440953101e",
+    "tracker.records.count_problem": "89257d6ec9bdd711",
+    "tracker.records.date_pattern_problem": "fa02803a1a99c545",
+    "tracker.records.date_problem": "0bf005c4a966d7f8",
+    "tracker.records.digest_problem": "217cc9c49f9a6e20",
+    "tracker.records.entry_problem": "a79ea9e62a85223a",
+    "tracker.records.feed_from_json": "b2e5148af638d97c",
+    "tracker.records.feeds_from_json": "b108fd6888f95ec6",
+    "tracker.records.flag_problem": "1082a26284942f5c",
+    "tracker.records.format_waits_for": "a9f50749433f46ce",
+    "tracker.records.host_problem": "7d98945bc57bd382",
+    "tracker.records.household_problem": "d341e98e6700e560",
+    "tracker.records.identifier_problem": "f8ee13a768acea53",
+    "tracker.records.info_problem": "a14147da699ad792",
+    "tracker.records.is_a_spelling": "9872f0754c1f928d",
+    "tracker.records.name_parts": "2fb3aa450c490a16",
+    "tracker.records.name_problem": "435e57a752b587c2",
+    "tracker.records.name_words": "888ff2df30e14d73",
+    "tracker.records.number_problem": "b8e64da5f5e20b1a",
+    "tracker.records.parse_waits_for": "fe2da49df5b9f8ce",
+    "tracker.records.people_from_json": "f450ab3614ffbb7c",
+    "tracker.records.person_from_json": "7e7a8fed1cb8c27a",
+    "tracker.records.received_problem": "2fe803ce248363ca",
+    "tracker.records.rule_row_fault": "e63ac46148a8c37f",
+    "tracker.records.rule_row_problem": "bfbfa65df0936781",
+    "tracker.records.short_title_problem": "cee1ccd1dc44eedd",
+    "tracker.records.split_codes": "ac4f6152bb7ad6ee",
+    "tracker.records.stamp_problem": "2d66f0bfa7df3a4f",
+    "tracker.records.status_from_json": "18fe07346092ffad",
+    "tracker.records.status_problem": "0a4507873e497b78",
+    "tracker.records.text_list_problem": "5c6a2aa819ebb0cf",
+    "tracker.records.text_problem": "3af72e89b781e54e",
+    "tracker.records.waits_for_problem": "463d041ef7fa9219",
+    "tracker.records.word_list_problem": "64d72805fbba0527",
+    "tracker.settings.ENV_SETTINGS_DIR": "b654987367e5160b",
+    "tracker.settings.KEY_CLIENTS_ROOT": "3b8f548e07b39dbf",
+    "tracker.settings.SETTINGS_FILENAME": "ddf9dfc4d857c464",
+    "tracker.settings._read": "87ec97cc779bf82a",
+    "tracker.settings.clients_root": "8fbaef8c43dcb573",
+    "tracker.settings.settings_dir": "0468e63b780056c5",
+    "tracker.settings.settings_path": "8a79e7ca2ca7f66a",
+    "tracker.store.ALSO_IN": "f91e15416cd81c44",
+    "tracker.store.KIND_HOUSEHOLD": "8de5259835758e72",
+    "tracker.store.KIND_RETURN": "08633b69eed18c1b",
+    "tracker.store.MALFORMED_LINE": "7af462b999c9799b",
+    "tracker.store.RULE_LIST_FIELDS": "8b3d25ca8662bd02",
+    "tracker.store.STATUS_COLUMNS": "072efbf3b12ac0bd",
+    "tracker.store.UNKNOWN_EVENT": "099e89ceccd1e5e9",
+    "tracker.store._engagement_row": "e7254ccc28e41fad",
+    "tracker.store._line_keys_problem": "0d6016b3dab0c236",
+    "tracker.store._positional_root": "a85ac4e9131d5ce4",
+    "tracker.store._recorded_root_over": "02b4322cc9356915",
+    "tracker.store._refuse_a_malformed_line": "1fa3ee39286cc582",
+    "tracker.store.engagement_path": "5b0cd86c45c214f3",
+    "tracker.store.key_root": "13d66deeca51405a",
+    "tracker.store.kind": "c5781c37870424f8",
+    "tracker.store.statuses": "d99730d725daf407",
 }}
 
 
@@ -3287,7 +3542,7 @@ def test_an_index_of_the_previous_version_reads_with_waits_for_empty(conn, root,
     assert "waits_for" not in ledger.path_for(by_hand).read_text(encoding="utf-8")
 
     build(conn, root, by_hand)
-    assert conn.execute("PRAGMA user_version").fetchone()[0] == store.SCHEMA_VERSION == 19
+    assert conn.execute("PRAGMA user_version").fetchone()[0] == store.SCHEMA_VERSION == 20
     [row] = [entry_from_json(one) for one in store.documents(conn, by_hand)]
     assert row.waits_for == "" and row.waiting_for is None
     assert store.check(conn, root, by_hand) == []
@@ -3332,7 +3587,7 @@ def test_a_version_16_store_is_upgraded_in_place_and_keeps_its_cached_verdicts(t
 
     conn = store.open(old)
     try:
-        assert conn.execute("PRAGMA user_version").fetchone()[0] == store.SCHEMA_VERSION == 19
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == store.SCHEMA_VERSION == 20
         assert conn.execute(f"SELECT COUNT(*) FROM {store.VERDICTS_TABLE}").fetchone()[0] == cached
         assert conn.execute(f"SELECT COUNT(*) FROM {store.FILE_MEMOS_TABLE}").fetchone()[0] == memos
         rows = [entry_from_json(one) for one in store.documents(conn, engagement)]
@@ -3381,7 +3636,7 @@ def test_two_openers_of_one_version_16_store_both_succeed(tmp_path, monkeypatch)
     conn = store.open(path)
     try:
         assert raced["done"]
-        assert conn.execute("PRAGMA user_version").fetchone()[0] == store.SCHEMA_VERSION == 19
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == store.SCHEMA_VERSION == 20
         columns = [row[1] for row in conn.execute("PRAGMA table_info(documents)")]
         assert columns.count("waits_for") == 1 and columns.count("code") == 1
     finally:
@@ -3421,7 +3676,7 @@ def test_a_version_17_store_gains_the_cause_columns_in_place_and_every_old_row_r
 
     conn = store.open(old)
     try:
-        assert conn.execute("PRAGMA user_version").fetchone()[0] == store.SCHEMA_VERSION == 19
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == store.SCHEMA_VERSION == 20
         [row] = [entry_from_json(one) for one in store.documents(conn, engagement)]
         assert row.original_name == "notice.pdf" and row.code == "" and row.subfolder == ""
         assert "note_codes" in [one[1] for one in conn.execute("PRAGMA table_info(statuses)")]
@@ -4374,3 +4629,70 @@ def test_the_store_beside_the_settings_file_is_never_refused_its_checkpoint(root
     where.unlink()
     store.prove_the_root(root)
     assert where.is_file()
+
+
+# ------------------------------- pilot P170: the related households (schema 20, admission 3) ----
+
+
+def test_a_households_related_list_is_stored_and_read_back_as_it_was_saved(root):
+    """Pilot P170: the related households are one JSON list in one column of
+    the household's row, read back through the record's own reader, and a
+    household saved before the field existed reads as related to none."""
+    from dataclasses import replace
+
+    from tracker.households import load_household_info, save_household
+    from tracker.layout import private_household_dir
+
+    make_engagement(root, ITEMS, household="Park Family")
+    make_engagement(root, ITEMS, household="Lee Family")
+    family = private_household_dir(root, "Park Family")
+    assert load_household_info(family).related == ()
+    save_household(family, replace(load_household_info(family), related=("Lee Family",)))
+    by_name = {key.rsplit("/", 1)[-1]: info for key, info in store.households(store.connect())}
+    assert by_name["Park Family"].related == ("Lee Family",)
+    assert by_name["Lee Family"].related == ()
+    assert load_household_info(family).related == ("Lee Family",)
+
+
+def test_a_related_list_that_is_not_folder_names_is_refused_at_admission():
+    """Pilot P170 (admission 3): a ``household_changed`` line whose related
+    list is not a list of text, or names something that is not one folder
+    name, is refused by name before it reaches a column."""
+    from tracker.layout import NAME_ILLEGAL, PRIVATE_TREE
+
+    household = f"{PRIVATE_TREE}/Smith Family"
+    for related in ("Lee Family", [1], [{"name": "Lee"}]):
+        with pytest.raises(store.StoreError, match="'related' that is not a list of household names"):
+            store._refuse_a_malformed_line(ledger.new(ledger.HOUSEHOLD_CHANGED, household={"related": related}),
+                                           2, household, kind=store.KIND_HOUSEHOLD)
+    with pytest.raises(store.StoreError) as refused:
+        store._refuse_a_malformed_line(ledger.new(ledger.HOUSEHOLD_CHANGED, household={"related": ["Lee/.."]}),
+                                       2, household, kind=store.KIND_HOUSEHOLD)
+    assert f"'related' that is not one folder name ({NAME_ILLEGAL})" in str(refused.value)
+    store._refuse_a_malformed_line(ledger.new(ledger.HOUSEHOLD_CHANGED, household={"related": ["Lee Family"]}),
+                                   2, household, kind=store.KIND_HOUSEHOLD)
+
+
+def test_a_store_at_version_19_gains_the_related_column_in_place_as_a_rebuild_writes_it(conn, root, by_hand, tmp_path):
+    """Pilot P170: version 20's column is added where the file stands -
+    nothing set aside, the verdict cache kept - holding the record's own
+    default, ``[]``, on every row, which is what a rebuild writes, so
+    ``store check`` finds nothing on the upgraded file."""
+    build(conn, root, by_hand)
+    path = tmp_path / "app" / store.STORE_FILENAME
+    conn.close()
+    written = sqlite3.connect(path)
+    for statement in AS_AT_19:
+        written.execute(statement)
+    written.execute("PRAGMA user_version = 19")
+    written.commit()
+    written.close()
+
+    upgraded = store.open(path)
+    try:
+        assert upgraded.execute("PRAGMA user_version").fetchone()[0] == store.SCHEMA_VERSION == 20
+        assert not list(path.parent.glob(f"{store.STORE_FILENAME}.v*.old*"))
+        assert {row[0] for row in upgraded.execute("SELECT household_related FROM engagements")} == {"[]"}
+        assert store.check(upgraded, root, by_hand) == []
+    finally:
+        upgraded.close()
