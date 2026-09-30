@@ -626,3 +626,39 @@ P140.
 | P185 | 2026-09-30 | **How the rename carries an install over (P155 Q2, build detail).** An upgrade installs over the earlier copy in its own folder (same AppId, Inno Setup's default); a new install goes to `Programs\Tax Document Console`. The data folder `tax-document-tracker-pilot` and Electron's own folder keep their earlier names (internal, as Q4), so nothing holding client data moves. The installer removes the earlier shortcuts and program file by exact path and the uninstaller removes the task under either name; the after-install step copies `settings.json` from the earlier program folder only when the program has none, and removes the task "Tax Document Tracker Pilot" after registering "Tax Document Console" (kept if the new one failed). Each job says one sentence every run; a failure is retried at the next launch. Never the production product's task or folder. `pilot/SPEC-rename.md`. | SPEC author, from P155 and decision 209. Status: Open until the rename lands. |
 | P186 | 2026-09-30 | **"Tracker" on screen becomes "App" in every sentence, enforced by test (P155 Q3, build detail).** Title-case screen words and "the tracker" in every sentence a person sees, the app's and the engine's, and in the person-facing documents; internal names (Q4), comments, stored record values and history are kept. Two gate tests fail on any other "tracker" a person could see. The engine sentences are their own commit, since the original repository is merged in by hand (P17). | SPEC author, from P155 Q3. Status: Open until the rename lands. |
 | P187 | 2026-09-30 | **The terms bullet names Tax Document Console** - Q1 of `pilot/SPEC-rename.md`: (a) new name, terms version stays 1 (recommended); (b) new name, version 2; (c) unchanged. | Awaiting Jason; built on (a) meanwhile. |
+
+## 12. Addendum (2026-09-30): the typed-name sign-off and the renamed log's deny rules
+
+Added by the orchestrator after Commits A and B, from Jason's answers (P187, P188, P189). Built as **Commit C** on the same branch.
+
+### 12.1 The sign-off (P188)
+*Ruling:* the terms card gains one text box, labelled **"Type Your Full Name to Sign"**, above the accept button. The button reads **"Sign and Accept"** and is disabled until the box, trimmed, is not blank. *Reason:* Jason asked for a typed name as a sign-off; a button that cannot be pressed without a name makes the sign-off part of acceptance, not an optional extra.
+
+*Ruling:* the name is sent with the acceptance and saved in the pilot record as `terms_signed_by`, beside `terms` and `terms_accepted_at` (`tracker/api.py` around 5576-5625: `PILOT_RECORD_REFUSED`, `_terms_version`, the `pilot-record` write at 5612-5622). The API accepts the key `signed_by` only together with `terms`; it must be a string that is not blank after trimming and at most 200 characters, else the whole request is refused with the existing refusal `PILOT_RECORD_REFUSED`, whose wording is widened to name `signed_by` (and whose pins in `tests/test_errors.py` / `tests/test_tripwire.py` follow, if they pin it). The saved value is the trimmed name. *Reason:* the name is a record of who accepted; nothing is guessed, and a blank or oversized name fails loudly. It stays in the data folder on this PC and is never sent anywhere (standing rule: no network).
+
+*Ruling: an earlier acceptance without a name.* A record whose `terms` equals the current version and which has no `terms_signed_by` is accepted as it is: the terms card is not shown again, and nothing is written to the record (P188 Q2 (a)). The API reads such a record unchanged; `terms_signed_by` is simply absent. The automatic path at `app/renderer/pilot.js:227` (`if (record && record.terms !== version) PilotRecord.acceptTerms(version)`) must never record a name it did not get typed: if that path can fire for a record that needs acceptance, it shows the card for signing instead of accepting silently. The builder reads 215-255 to decide which of those it is and says so in the build notes.
+
+*Ruling:* the read-only terms card (Help, Terms; `app/renderer/pilot.js`, pinned by `test_help_terms_shows_the_same_card_read_only_with_one_close` in `tests/test_pilot.py:188`) shows **"Signed by {name} on {date}"** under the terms when the record holds a name, with the date formatted the way the app already formats dates on screen (find the existing helper; do not add a new format). With no name recorded it shows nothing extra. The name box and the sign button are not shown on the read-only card. The name is inserted as text (`textContent`), never as HTML.
+
+*Wording:* the three new strings ("Type Your Full Name to Sign", "Sign and Accept", "Signed by {name} on {date}") live in `app/renderer/pilot-content.js` in the `terms` block (that file says it is "the only file to edit for the badge, terms and tour text"), and get rows in `pilot/wording-shell.tsv` if that table lists the terms card's existing words (check with grep for the current accept button's words).
+
+*Files:* `app/renderer/pilot.js` (the terms card about 150-255, `PilotRecord.acceptTerms` at 92, which gains the name argument), `app/renderer/pilot-content.js` (terms block from line 14), `tracker/api.py` (pilot record, above), `pilot/Tester Guide.md` (the first-launch step that mentions the terms: the tester types their full name to sign), `pilot/harness/stub.js` if it answers `pilot-record` (it keeps the engine's shape, including `terms_signed_by`), and `docs/repo-map.curated.json` if the api node's notes describe the pilot record's keys (then `python tools/repo_map.py update`).
+
+*Tests* (each named as its claim), owning files `tests/test_pilot.py` and `tests/test_api.py`, plus `tests/test_shell.py`, `tests/test_errors.py`, `tests/test_tripwire.py` only if touched:
+- `test_the_accept_button_waits_for_a_typed_name` (test_pilot)
+- `test_a_blank_or_spaces_only_name_does_not_enable_accept` (test_pilot)
+- `test_the_signed_name_is_sent_with_the_acceptance` (test_pilot)
+- `test_help_terms_shows_who_signed_and_when` (test_pilot)
+- `test_an_earlier_acceptance_without_a_name_is_not_asked_again` (test_pilot)
+- `test_the_pilot_record_keeps_the_signed_name_beside_the_acceptance_time` (test_api; the trimmed name is saved)
+- `test_a_signed_name_without_terms_or_blank_or_too_long_is_refused` (test_api; nothing is written to the record)
+- the existing `test_the_pilot_record_keeps_terms_and_tour_in_the_data_home` (test_api:2242) still passes unchanged: a record with no name is still valid.
+
+### 12.2 The renamed fallback log's deny rules (P189)
+`.claude/settings.json` (deny list; the eight `Tax Document Tracker Pilot` `error.log` rules at 71-78): add the same eight rules for `Tax Document Console` directly after them, in the same order and form (Windows `//c/Users/*/AppData/Local/...` and `~/.config/...`, `error.log` and `error.log.*`, Read and Edit). Keep the eight earlier ones. Change nothing else in that file. In `tests/test_single_source.py`, `_fallback_log_rules()` (about 479) lists both folders again (Commit A narrowed it to the earlier one while this waited; restore its docstring to say both), and add `test_the_fallback_log_rules_deny_the_current_and_the_earlier_folder` as sections 4.1 and 7 describe. Tightening only: the log can name a client.
+
+### 12.3 What Jason and a tester will notice
+The first launch shows the terms with a name box; "Sign and Accept" stays greyed until a name is typed, and stays greyed with only spaces. Help, Terms then shows "Signed by Jane Tester on {date}" (made-up name). A tester who accepted before sees no change. The 0.3 Windows check (section 9) adds these steps: type only spaces and see the button stay greyed; type a name and accept; reopen Help, Terms and see the signature.
+
+### 12.4 Documents in the same commit
+`pilot/Tester Guide.md` (12.1), `pilot/wording-shell.tsv` (if it lists terms words), the map (if notes change), and a "Commit C" section appended to `pilot/handoffs/rename-build.md`.
