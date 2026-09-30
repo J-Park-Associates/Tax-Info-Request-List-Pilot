@@ -8,7 +8,7 @@
 This is the pilot edition's diary of decisions: each row says what was decided, when, and why.
 
 ## What it is
-It is a table of 114 rows, from P1 to P115 (P115 dated 2026-09-30). Its first lines say it holds decisions for the pilot edition only. The main product's decisions live in `docs/ROADMAP.md`, and this log never borrows its numbers.
+It is a table of 115 rows, from P1 to P116 (P116 dated 2026-09-30). Its first lines say it holds decisions for the pilot edition only. The main product's decisions live in `docs/ROADMAP.md`, and this log never borrows its numbers.
 
 Each row has four columns:
 - **#** - the decision's number, with a leading **P** for *pilot*. P-numbers mean "the pilot's decision number 1, 2, 3 and so on", in the order they were made. Elsewhere in the project a plain number, like decision 209, points to the main product's log.
@@ -32,6 +32,7 @@ Examples of what the rows cover, without listing them all:
 - **P30-P50:** a "glass" look was designed, then removed entirely in P50.
 - **P51 onward:** the new screen structure, and later shell rulings.
 - **P115:** upgrades clear only the old program code.
+- **P116:** the plain-English library is kept current automatically: a tool remembers a fingerprint of every file a page explains, and a check fails until a missing or out-of-date page is written.
 
 ## Why it matters to the firm
 The reasons behind rules are easy to forget. This log keeps them, so nobody undoes a careful choice by accident. It is also how Jason's rulings are written down.

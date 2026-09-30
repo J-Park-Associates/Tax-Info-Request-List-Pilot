@@ -94,6 +94,18 @@ Never edit `docs/repo-map.json` or `docs/repo-map.md` — both are generated, an
 both say so at the top. `tests/test_repo_map.py::test_the_committed_map_is_current`
 fails if the committed map has drifted, so the suite catches a forgotten update.
 
+**The plain-English library keeps itself current.** A new handoff note, or a
+change to any original a page in `docs/For NonCoders/` translates, comes with
+its page in the same change. `tools/noncoder_pages.py` fingerprints the
+originals, and a Stop hook (`.claude/settings.json`) and
+`tests/test_noncoder_pages.py` fail while a page is missing or stale. `todo`
+lists what to write, `place NOTE` says where a new page goes, `stamp`
+records it once the page is written or confirmed (keeping the version it
+replaces in `7 - History`), and `organize` moves and renames pages to where
+the rules say - the Stop hook runs it for you; the style rules are in
+[`docs/noncoder-style.md`](docs/noncoder-style.md). `pages.json` and the
+library's start page are generated - never hand-edit them.
+
 ## The routing tools
 
 The vocabulary coverage report (`docs/vocab-coverage.md`, `tools/vocab_report.py`),
@@ -315,7 +327,7 @@ checks alike:
 
 - **Test only the components a change touched.** Run each changed module's own
   test file, the test files of the modules that import it, and the guard files
-  (`test_layers`, `test_single_source`, `test_repo_map`, plus `test_tripwire`
+  (`test_layers`, `test_single_source`, `test_repo_map`, `test_noncoder_pages`, plus `test_tripwire`
   and `test_errors` when tests or error wording change). Do not rerun the sorting
   engine's (logic engine's) tests - router, filer, scanner, manifest and the rest -
   for a change that does not touch them.

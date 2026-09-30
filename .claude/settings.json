@@ -74,5 +74,18 @@
       "Read(~/.config/Tax Document Tracker Pilot/error.log.*)",
       "Edit(~/.config/Tax Document Tracker Pilot/error.log.*)"
     ]
+  },
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "f=\"$CLAUDE_PROJECT_DIR/tools/noncoder_pages.py\"; [ -f \"$f\" ] || exit 0; for p in \"$CLAUDE_PROJECT_DIR/.venv/Scripts/python.exe\" \"$CLAUDE_PROJECT_DIR/.venv/bin/python\" python3 python; do command -v \"$p\" >/dev/null 2>&1 && exec \"$p\" \"$f\" hook; done; exit 0",
+            "timeout": 30
+          }
+        ]
+      }
+    ]
   }
 }

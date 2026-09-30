@@ -24,7 +24,8 @@ The file is organized in these parts:
 6. **How work flows.** Nothing is built without a written plan. Jason owns every decision. A separate reviewer, who did not build the change, checks it.
 7. **One-time steps run themselves** (decision 209). A step that must happen after installing or upgrading is built into the installer and the app's launch. No person is ever told to remember a manual step.
 8. **Working on this repo.** How to install parts, run tests, and the coding habits to follow (plain paths, one part per file, clear failure messages, tests named as claims).
-9. **Cost discipline.** Automatic online testing costs money, so tests run on the local machine. Run the dead-code check first, then only the tests the change touched, and save work to the shared branch in big, infrequent groups. No online test runs on every small save. Jason set this on 2026-09-22, revised through decisions 207 and 211, and on 2026-09-29.
+9. **The plain-English library.** Under the code map part, a short paragraph says a new handoff note, or a change to a file that a plain-English page explains, must come with its page. An automatic check and an end-of-session check enforce it.
+10. **Cost discipline.** Automatic online testing costs money, so tests run on the local machine. Run the dead-code check first, then only the tests the change touched, and save work to the shared branch in big, infrequent groups. No online test runs on every small save. Jason set this on 2026-09-22, revised through decisions 207 and 211, and on 2026-09-29.
 
 ## Why it matters to the firm
 Client tax documents are sensitive. This file makes every AI helper obey the same safety rules and work in the same careful way, so the rules do not depend on a helper's memory. A test (`tests/test_single_source.py`) checks that the four rules are quoted exactly the same everywhere.

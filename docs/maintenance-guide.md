@@ -385,6 +385,14 @@ break. The map marks them. They are:
 | The installer recipe | `pilot/installer/setup.iss` |
 | The build buttons | `Build App.bat`, `pilot/Build Pilot Installer.bat` |
 
+The plain-English library in `docs/For NonCoders/` keeps itself honest. A
+small program, `tools/noncoder_pages.py`, remembers a fingerprint of every
+file a page explains. A new handoff note or a changed file cannot be
+finished without its page: an automatic check fails, and an AI helper is
+told which page to write, until it is done. The same program files the
+pages into the right folders, renumbers them, and keeps a history of pages
+that were rewritten or whose file was removed.
+
 ---
 
 ## Where to look next

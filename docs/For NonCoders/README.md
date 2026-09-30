@@ -20,6 +20,7 @@ overview of the whole system, then [where the pilot stands](<1 - Start Here/Wher
 | `4 - Testing and Checks` | The automatic checks: on this computer, on the office PC, and on GitHub. |
 | `5 - Rules, Plans and Decisions` | The rules for AI helpers, the decision log, the build plan and the code map. |
 | `6 - Work History (Handoff Notes)` | What each work session did, stage by stage, in the order it happened. |
+| `7 - History` | Pages whose file was removed, and earlier versions of pages that were rewritten. |
 
 ## What the tags mean
 
@@ -29,8 +30,8 @@ Every page has a **Tags** line near the top, with up to three kinds of tag.
 
 | Kind | Meaning |
 |---|---|
-| Program file | Explains a file the program is made of. |
 | Overview | Where the whole project stands. |
+| Program file | Explains a file the program is made of. |
 | Build | A work session that built something new. |
 | Review | An independent check of a build, by a session that did not build it. |
 | Fix round | A work session that fixed what a review found, and nothing more. |
@@ -98,7 +99,7 @@ and so on.
 - [Fourth independent check of stage S1's firm-wide data](<6 - Work History (Handoff Notes)/Stage 1 - Engine Answers and Short Wording/S1 - 08 Review 4.md>) - Review (S1)
 - [Adding a missing test to the firm-wide list (S1, fix round 4)](<6 - Work History (Handoff Notes)/Stage 1 - Engine Answers and Short Wording/S1 - 09 Fix Round 4.md>) - Fix round (S1)
 - [Fifth independent check of stage S1: no problems found](<6 - Work History (Handoff Notes)/Stage 1 - Engine Answers and Short Wording/S1 - 10 Review 5.md>) - Review (S1)
-- [Second half of the join: the shell now runs on the real engine](<6 - Work History (Handoff Notes)/Stage 6 - Joining the Screen to the Real Engine/S6 - 02 Build, Part 2.md>) - Build (S6b)
+- [Second half of the join: the shell now runs on the real engine](<6 - Work History (Handoff Notes)/Stage 6 - Joining the Screen to the Real Engine/S6b - 01 Build, Part 2.md>) - Build (S6b)
 
 ### GitHub costs
 
@@ -122,6 +123,7 @@ and so on.
 - [Jason's rulings on the shell build](<6 - Work History (Handoff Notes)/Jason's Rulings and Plan Updates/Jason's Rulings on the Screen.md>) - Rulings
 - [The shell's list of live decisions](<6 - Work History (Handoff Notes)/Jason's Rulings and Plan Updates/Live Decisions List.md>) - Rulings
 - [Bringing the shell plan up to date with Jason's rulings 1 to 13](<6 - Work History (Handoff Notes)/Jason's Rulings and Plan Updates/Plan Brought Up to Date with Rulings 1-13.md>) - Rulings
+- [A tool that keeps these plain-English pages up to date](<6 - Work History (Handoff Notes)/Other Work/2026-09-30 Noncoder Automation Build.md>) - Build
 
 ### Safety
 
@@ -182,8 +184,8 @@ and so on.
 - [First check of stage S5: the side sheet, links, right-click menus and dialogs](<6 - Work History (Handoff Notes)/Stage 5 - Side Sheet, Links, Menus and Dialogs/S5 - 02 Review 1.md>) - Review (S5)
 - [Stage S5 (the side sheet), first fix round: many findings fixed](<6 - Work History (Handoff Notes)/Stage 5 - Side Sheet, Links, Menus and Dialogs/S5 - 03 Fix Round 1.md>) - Fix round (S5)
 - [Stage S5 (the side sheet), second fix round: Jason's rulings 16 to 21](<6 - Work History (Handoff Notes)/Stage 5 - Side Sheet, Links, Menus and Dialogs/S5 - 04 Fix Round 2.md>) - Fix round (S5)
-- [Stage S6a: the first half of joining the screen's branches together](<6 - Work History (Handoff Notes)/Stage 6 - Joining the Screen to the Real Engine/S6 - 01 Build, Part 1.md>) - Build (S6a)
-- [Second half of the join: the shell now runs on the real engine](<6 - Work History (Handoff Notes)/Stage 6 - Joining the Screen to the Real Engine/S6 - 02 Build, Part 2.md>) - Build (S6b)
+- [Stage S6a: the first half of joining the screen's branches together](<6 - Work History (Handoff Notes)/Stage 6 - Joining the Screen to the Real Engine/S6a - 01 Build, Part 1.md>) - Build (S6a)
+- [Second half of the join: the shell now runs on the real engine](<6 - Work History (Handoff Notes)/Stage 6 - Joining the Screen to the Real Engine/S6b - 01 Build, Part 2.md>) - Build (S6b)
 - [Building the tooltips stage (S7): placement by Floating UI](<6 - Work History (Handoff Notes)/Stage 7 - Tooltips/S7 - 01 Build.md>) - Build (S7)
 - [First check of the tooltips stage (S7)](<6 - Work History (Handoff Notes)/Stage 7 - Tooltips/S7 - 02 Review 1.md>) - Review (S7)
 - [Stage S7 fixes: how the small hint boxes load and behave](<6 - Work History (Handoff Notes)/Stage 7 - Tooltips/S7 - 03 Fix Round 1.md>) - Fix round (S7)
@@ -210,6 +212,7 @@ and so on.
 - [Installer tests](<4 - Testing and Checks/Tests on This Computer/Installer tests (test_pilot_installer.py).md>) - Program file
 - [Screen picture and click tests](<4 - Testing and Checks/Tests on This Computer/Screen picture and click tests (harness).md>) - Program file
 - [Windows test kit](<4 - Testing and Checks/Tests on the Office PC/Windows test kit (run_checks.ps1).md>) - Program file
+- [A tool that keeps these plain-English pages up to date](<6 - Work History (Handoff Notes)/Other Work/2026-09-30 Noncoder Automation Build.md>) - Build
 
 ### Wording
 
@@ -262,16 +265,17 @@ and so on.
 - [Pilot build plan](<5 - Rules, Plans and Decisions/Pilot build plan (SPEC.md).md>)
 - [Pilot decision log](<5 - Rules, Plans and Decisions/Pilot decision log (DECISIONS.md).md>)
 
-### Build (11)
+### Build (12)
 
 - [A check of the "closing best practices" list, and the gaps it filled](<6 - Work History (Handoff Notes)/Other Work/2026-09-30 Maintainer Handoff Audit.md>)
+- [A tool that keeps these plain-English pages up to date](<6 - Work History (Handoff Notes)/Other Work/2026-09-30 Noncoder Automation Build.md>)
 - [Stage S1: the engine's new answers and the shortened wording](<6 - Work History (Handoff Notes)/Stage 1 - Engine Answers and Short Wording/S1 - 01 Build.md>)
 - [Stage S2: the window and its menus](<6 - Work History (Handoff Notes)/Stage 2 - Window and Menus/S2 - 01 Build.md>)
 - [Building the new screen's frame (stage S3)](<6 - Work History (Handoff Notes)/Stage 3 - The Screen's Frame/S3 - 01 Build.md>)
 - [Building every page of the new screen (stage S4)](<6 - Work History (Handoff Notes)/Stage 4 - Every Page of the Screen/S4 - 01 Build.md>)
 - [Stage S5 built: the side sheet, file links, right-click menus and dialogs](<6 - Work History (Handoff Notes)/Stage 5 - Side Sheet, Links, Menus and Dialogs/S5 - 01 Build.md>)
-- [Stage S6a: the first half of joining the screen's branches together](<6 - Work History (Handoff Notes)/Stage 6 - Joining the Screen to the Real Engine/S6 - 01 Build, Part 1.md>)
-- [Second half of the join: the shell now runs on the real engine](<6 - Work History (Handoff Notes)/Stage 6 - Joining the Screen to the Real Engine/S6 - 02 Build, Part 2.md>)
+- [Stage S6a: the first half of joining the screen's branches together](<6 - Work History (Handoff Notes)/Stage 6 - Joining the Screen to the Real Engine/S6a - 01 Build, Part 1.md>)
+- [Second half of the join: the shell now runs on the real engine](<6 - Work History (Handoff Notes)/Stage 6 - Joining the Screen to the Real Engine/S6b - 01 Build, Part 2.md>)
 - [Building the tooltips stage (S7): placement by Floating UI](<6 - Work History (Handoff Notes)/Stage 7 - Tooltips/S7 - 01 Build.md>)
 - [File names become links, and words go to Title Case (stage S8a)](<6 - Work History (Handoff Notes)/Stage 8 - Links, Title Case and Skip Reasons/S8a - 01 Build.md>)
 - [Two-word reasons for the Folders Skipped dialog (S8b)](<6 - Work History (Handoff Notes)/Stage 8 - Links, Title Case and Skip Reasons/S8b - 01 Build (Two-Word Skip Reasons).md>)
@@ -336,3 +340,20 @@ and so on.
 - [Jason's rulings on the shell build](<6 - Work History (Handoff Notes)/Jason's Rulings and Plan Updates/Jason's Rulings on the Screen.md>)
 - [The shell's list of live decisions](<6 - Work History (Handoff Notes)/Jason's Rulings and Plan Updates/Live Decisions List.md>)
 - [Bringing the shell plan up to date with Jason's rulings 1 to 13](<6 - Work History (Handoff Notes)/Jason's Rulings and Plan Updates/Plan Brought Up to Date with Rulings 1-13.md>)
+
+## History
+
+Pages whose file was removed, and earlier versions of pages that were rewritten.
+They record what a page said then; they are not kept up to date.
+
+### Retired Pages (0)
+
+- none
+
+### Earlier Versions (1)
+
+- [Code map](<7 - History/Earlier Versions/Code map (repo_map.py) - until 2026-09-30.md>)
+
+---
+
+Generated by tools/noncoder_pages.py stamp; do not edit by hand.

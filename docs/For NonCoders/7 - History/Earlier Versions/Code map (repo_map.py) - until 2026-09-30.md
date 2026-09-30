@@ -1,6 +1,6 @@
 # Code map
 
-**Original file:** `tools/repo_map.py`, with `docs/repo-map.curated.json`  
+**Original file:** `tools/repo_map.py`, with `docs/repo-map.md`, `docs/repo-map.json` and `docs/repo-map.curated.json`  
 **Kind of file:** helper tool (Python) and the map files it builds  
 **Tags:** Kind: Program file · Topic: Code map  
 

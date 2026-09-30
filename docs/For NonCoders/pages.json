@@ -1,0 +1,525 @@
+{
+  "pages": {
+    "docs/For NonCoders/1 - Start Here/Where the Pilot Stands (main handoff).md": {
+      "originals": {
+        "pilot/HANDOFF.md": "3cd8a0fe689e6b55be26605b86b41f3ea158e1ef23ad3a2f0c9682d1b2176f1d"
+      },
+      "page": "672c2bf021538c47852f79e6235970aba701d887155289fbed60f9ad82354793"
+    },
+    "docs/For NonCoders/2 - How the Program Works/Engine and Schedule/Engine front door (api_entry.py).md": {
+      "originals": {
+        "api_entry.py": "209588474916bb591273ec077cf953d36fe54cb78d6d628172a7d7553f6aad49"
+      },
+      "page": "170e0181e6685edbb238f2ac6ea9dc9530b06f792a568f03910426b75b42fd6d"
+    },
+    "docs/For NonCoders/2 - How the Program Works/Engine and Schedule/Sorting pass (runner.py).md": {
+      "originals": {
+        "tracker/runner.py": "f2fed0f7ac99d73b83488530c88bc108c7611e0aa9511e2643699f4aa9cb268b"
+      },
+      "page": "b5eff0fc1f12f572cd67a9e05bc5b835555472ad94e8be91915f869a221ec5d8"
+    },
+    "docs/For NonCoders/2 - How the Program Works/Engine and Schedule/Windows schedule (scheduling.py).md": {
+      "originals": {
+        "tracker/scheduling.py": "309d227a99f04d9dffda58063ae5b0f058a2ba10d7bb693d04d48cce2231e7ec"
+      },
+      "page": "eac2972d186f17e1ab14da0f2d7c9a6df361b3520857818a692bbfa63ad34249"
+    },
+    "docs/For NonCoders/2 - How the Program Works/Safety Walls/Window control center (main.js).md": {
+      "originals": {
+        "app/main.js": "df01497b91d7fd1262940407f27a141cfd84ee86e6feb0eed07f624f5f9dbc87"
+      },
+      "page": "594eff9657923be8f209e3aaff1126abd6146839a98a31d165fdffb3e33cf6e0"
+    },
+    "docs/For NonCoders/2 - How the Program Works/Safety Walls/Window doorway (preload.js).md": {
+      "originals": {
+        "app/preload.js": "a7e6f1035e32ccd13d817ab22675f313a9ba9dff48c00db433f81a29168f6911"
+      },
+      "page": "fde6fbfd8a7c9a879ae931933536be3311186f7fea9a2216d3780ebb0aba963f"
+    },
+    "docs/For NonCoders/2 - How the Program Works/Safety Walls/Window page and its safety rule (index.html).md": {
+      "originals": {
+        "app/renderer/index.html": "ae8cb4817bbfe657e6ffcf8caa1759c353ca78bf2a9858221e9d68dd2bd4f897"
+      },
+      "page": "b015ab39ecf0fed3392f3da64b53055f7ec96431e50ebbfe19319dba6a476aa8"
+    },
+    "docs/For NonCoders/3 - Building and Installing/Building the App/Build App.md": {
+      "originals": {
+        "Build App.bat": "d9379d5d56da3a35f97a2cc69126ed778fc9dbb56571013a8b9d4907cc42874a"
+      },
+      "page": "f9f4a32730331966fa4afc709cb18d9e0efa3c060dc974a75c279a41b515e83a"
+    },
+    "docs/For NonCoders/3 - Building and Installing/Building the App/Freezing recipe (api_entry.spec).md": {
+      "originals": {
+        "api_entry.spec": "4682c0f3165bb774afdfbd7938fae2ed92eeab27ade518d0e27e8d05aa4f34a8"
+      },
+      "page": "941e07150d001eca9f82aca9cc6e756da33ddb41e2f713a5ff5b8f8b179b30af"
+    },
+    "docs/For NonCoders/3 - Building and Installing/Building the App/Setup.md": {
+      "originals": {
+        "Setup.bat": "12dd62e8fd5cc625ba01d353ad3214cf72dad03e4aca82f0f1b244cfc14c6e32"
+      },
+      "page": "2d8cf8ddcb11ac8d315732acaa1a8cb4628913ecf4ea72dd4d3a9f37d0e3a13e"
+    },
+    "docs/For NonCoders/3 - Building and Installing/Building the App/Start App.md": {
+      "originals": {
+        "Start App.bat": "4f86a76e020644f96c16369ab9e738acf9a53f526dbef75cbc6bb1e42f3ce576"
+      },
+      "page": "9abc0206adbee9c76eeba1e1d8a74c05fde8845fa5e0620726aa387a01af36dc"
+    },
+    "docs/For NonCoders/3 - Building and Installing/Installer/Build Pilot Installer.md": {
+      "originals": {
+        "pilot/Build Pilot Installer.bat": "da95b01870d871789331a3fbddfa7e6de7fea241ff0790723b7401e06c2cccc9"
+      },
+      "page": "d942843ad7dc4782abd61678bb9acc8e621528e375e3533b3c408b1d8a47b501"
+    },
+    "docs/For NonCoders/3 - Building and Installing/Installer/Installer recipe (setup.iss).md": {
+      "originals": {
+        "pilot/installer/setup.iss": "9e3bdeb995372aed3f0c10b716c3a574268bf5a0caef6255da362f23a611f9ed"
+      },
+      "page": "77cfcf32b42ed13cb039f1d5d2fbf3433b29f65b254d5260682b34b85a65cf86"
+    },
+    "docs/For NonCoders/3 - Building and Installing/Supply-Chain Safety/Lock files and lockfiles.py.md": {
+      "originals": {
+        "requirements-build.lock": "435a065f7ccc5eb9f960aad17428d384d6fe87f8f070f22f8d0eb7127089ebcd",
+        "requirements-build.txt": "c5072d0d9c05fc4f49d5f5c93c500491fa4c0941df69fe3df5875ff369d20800",
+        "requirements-gpu.lock": "c396a1cb94b67f6579ef5be402f5470c321ccac011344b3333b999a00a5525eb",
+        "requirements-gpu.txt": "4de66a1b58e3a995bc3fe23928424f1ed8b31373ade1d0068f40f81d1e15216e",
+        "requirements-nodeps.lock": "1cd95ab09aa03078a6b185c530992439eeba2117169f5dfecefc740924ea32c1",
+        "requirements-nodeps.txt": "d7006c4642f0d46c8333f98c2502bc11e2a44285f20cbf5a0c56e9d796305d74",
+        "requirements.lock": "32dff6ba32d1285f27a84f423eb1cc2677cf33c4863b2e23b76fd21d7238d484",
+        "requirements.txt": "63601bf3dcad92f626dc7374985dfa9a0fa030b048d0ce869371d41eb00428c7",
+        "tools/lockfiles.py": "3e3f38a41a647e575d33f3c9cf9b8efee6395c774db66e1ac99cc4adc7a627ed"
+      },
+      "page": "2cc3716e11dc9a74d074ffa2049e9c847451d32c34f3e3830bb1b3fa1d3c4d94"
+    },
+    "docs/For NonCoders/4 - Testing and Checks/Checks on GitHub/GitHub automatic checks (workflows).md": {
+      "originals": {
+        ".github/dependabot.yml": "e0206833befc1ed45357eac4244741f3e33c779097532d3ae47f32f29ad5201c",
+        ".github/workflows/audit.yml": "1c060f7d778ec24f5baf6abb77f52830c4ddcb8edf55e45168d00f17807a6c9a",
+        ".github/workflows/build.yml": "0644476c928cb75e2da2166707aecf2f0c226dd38b42866a726930cf5d425be4",
+        ".github/workflows/ci.yml": "106fb22b22cfb9a7505289fe8243a597f686c072deb33337139d0b1abc47291d",
+        ".github/workflows/gate.yml": "7443cee687fedc98c200b6c7a2938e67506113847294c89ec70a701472e7b4d0"
+      },
+      "page": "45ebd25d11f21acf08ea22ec35679577f83ea46f1878511635ca1131943e2389"
+    },
+    "docs/For NonCoders/4 - Testing and Checks/Tests on This Computer/Installer tests (test_pilot_installer.py).md": {
+      "originals": {
+        "tests/test_pilot_installer.py": "0fd1abb0577f94b331185a2e22693b46b8b58f7ab22b013b1b640116277beb70"
+      },
+      "page": "a65727d23ecc978ff9178c1f349a813a5dd579dadc93a34d8a5981173e69fce4"
+    },
+    "docs/For NonCoders/4 - Testing and Checks/Tests on This Computer/Screen picture and click tests (harness).md": {
+      "originals": {
+        "pilot/harness/README.md": "869f0afb869914dce425b0411d0dd8c4a28dcbfab91facee2c5a0c5da49364c5",
+        "pilot/harness/accel.js": "412604fab2868884c0dd3dca0b76f7463152151a18fb6b6ad265da42cf4e965c",
+        "pilot/harness/app-stub.js": "00f678acb6f3844d1bb856df88c8038202ba20d1ff2cbddb6a76dfe9fc9ef23a",
+        "pilot/harness/boot.js": "e66138d98731bd4437d7ff7c855ead9b825ebcb68a447f412ad603154af15ff5",
+        "pilot/harness/interact.mjs": "87e979df7b788ea235f8195146726abb7acc8a5f8d4d7e62a350d2f78b8450ea",
+        "pilot/harness/make_vocab.py": "c1476c8f40c1e4ee28810c305389535a484f2887197f062187afedd779e8d5b4",
+        "pilot/harness/serve.mjs": "2165b4fc8fcb346404a2fa86241291cfd3917a634d81d3a6e7d803f18880cb49",
+        "pilot/harness/shoot.mjs": "e2f1ca660c3c1a9570eaf1c0ba856e43c927a9950261748841d84ac37de65d86",
+        "pilot/harness/stub.js": "2233dd21d9846be3210fc7bb85e5480c174be3b56f18522093fe7d65698cb477"
+      },
+      "page": "c7016048570e8b12e5abaa37f37c93151b24308a7774853bc7337eb29458a284"
+    },
+    "docs/For NonCoders/4 - Testing and Checks/Tests on the Office PC/Windows test kit (run_checks.ps1).md": {
+      "originals": {
+        "pilot/wintest/run_checks.ps1": "c9a89cb747f396416a78a473023ef4e622bb853add5524d0d27074dec0228384",
+        "pilot/wintest/uninstall_checks.ps1": "1858f065fe8511fa30f69fba02efbdf616b5cb81d84196d5b099a395a7250227"
+      },
+      "page": "9f621c133a656d45d598c579db88ef4cecf9566d5826ebe5b088918514848f8d"
+    },
+    "docs/For NonCoders/5 - Rules, Plans and Decisions/Code map (repo_map.py).md": {
+      "originals": {
+        "docs/repo-map.curated.json": "d948a7ade9688aca635221a49e796c348620e58865333b741fb1a53f0e998693",
+        "tools/repo_map.py": "ed9a92e97d400e106fbd4e9183e637bc95fbb097e7e524fdc141160430778b28"
+      },
+      "page": "5effb08498041afc7cc60a129c73f2aeb9ec639d2e9c349f366de42c37246dc5"
+    },
+    "docs/For NonCoders/5 - Rules, Plans and Decisions/Instructions for AI helpers (CLAUDE.md).md": {
+      "originals": {
+        "CLAUDE.md": "5858ac828381c1316678ea75d64611e9e4ee50f5227c3cf6470f5b28bd2e659c"
+      },
+      "page": "b331bfb512513fb927ac35b2648ad8dfd96f7d5465cad455e41855053251d70b"
+    },
+    "docs/For NonCoders/5 - Rules, Plans and Decisions/Pilot build plan (SPEC.md).md": {
+      "originals": {
+        "pilot/SPEC.md": "55e88623ddc70b0d4ab94fcb938fb57a983d2b5ce30f705fe48486a52d820987"
+      },
+      "page": "5fd5784033caf0ed03e83dacf05c9307e0ec6c9f648998882dbbeabe4356a6a5"
+    },
+    "docs/For NonCoders/5 - Rules, Plans and Decisions/Pilot decision log (DECISIONS.md).md": {
+      "originals": {
+        "pilot/DECISIONS.md": "5016dbfbd44c5b7249276e2c6e83f1d1a9d3a7a76aba55fdec5774f98d8b3a65"
+      },
+      "page": "0330a7bf8a2bb0e71884101aba7aa039dd8e45f6bb9b99f3043e306b4ee2e43e"
+    },
+    "docs/For NonCoders/6 - Work History (Handoff Notes)/Final Checks/1 Final Review A.md": {
+      "originals": {
+        "pilot/handoffs/shell-final-review-A.md": "ac8c09508f5cc0a4a0073a4805ac71ab404810842706cb3e0d2287c9f8be0c69"
+      },
+      "page": "38ff6491a2a2322a630e8141b2aee7453c130b6096ef92a369003468f68f79ff"
+    },
+    "docs/For NonCoders/6 - Work History (Handoff Notes)/Final Checks/2 Final Review B.md": {
+      "originals": {
+        "pilot/handoffs/shell-final-review-B.md": "c09561c97783fcb2c483f4eb076a9aca34bc2996e5da738354a3e7dca159f3e5"
+      },
+      "page": "b3dc6c5ff897c6739b71ea5fdc523c5c4367b8eae252da92dba25e65c3d90cd9"
+    },
+    "docs/For NonCoders/6 - Work History (Handoff Notes)/Final Checks/3 Final Review C.md": {
+      "originals": {
+        "pilot/handoffs/shell-final-review-C.md": "a7add34088d1ac39b3701318a448f584199c32a7180f030d6386b184a983a027"
+      },
+      "page": "a286fb59cf8c2ec1ce4b117ce20ee3e16c51ac77f290d4534dc96df024376eae"
+    },
+    "docs/For NonCoders/6 - Work History (Handoff Notes)/Final Checks/4 Fix Pass After the Final Reviews.md": {
+      "originals": {
+        "pilot/handoffs/shell-fixpass.md": "9f53544201a5759d4be40d0d505604ea7134dc427d4a73da66eb53e4b4cfc701"
+      },
+      "page": "156240bcc9d8ca33c6abfc15054e24e56dd70011608f56e92a2fb5e7e458ee90"
+    },
+    "docs/For NonCoders/6 - Work History (Handoff Notes)/Final Checks/5 Final Re-review.md": {
+      "originals": {
+        "pilot/handoffs/shell-final-rereview.md": "43a7a3c122828d870b796cbf32e215a7fe5b4093ef24c8e3b738a3c6f24d4fbc"
+      },
+      "page": "2b6228b4ee4160949c75fdbccee715b23be76ae519f8937c7aafc2774d697224"
+    },
+    "docs/For NonCoders/6 - Work History (Handoff Notes)/Final Checks/6 Final Check of the Second Fix Pass.md": {
+      "originals": {
+        "pilot/handoffs/shell-final-check2.md": "5cfd801140bab43679ffab64287324106a4ad4410140477fd1d3722550eb2a51"
+      },
+      "page": "f40f2cccd60ea04d97fc753d71087a836d513908b60d7bf22ea63e4f01c524e8"
+    },
+    "docs/For NonCoders/6 - Work History (Handoff Notes)/Jason's Rulings and Plan Updates/Jason's Rulings on the Screen.md": {
+      "originals": {
+        "pilot/handoffs/shell-rulings.md": "1dcbed14faf6ec36bfe6c65fb3f9c786bab061b6c9dbb994ed68b763d2e4234a"
+      },
+      "page": "e58b7a938ed425285f3c1b408d00a23f6e54e29435faac84cf05947717a68c98"
+    },
+    "docs/For NonCoders/6 - Work History (Handoff Notes)/Jason's Rulings and Plan Updates/Live Decisions List.md": {
+      "originals": {
+        "pilot/handoffs/shell-ledger.md": "2806646ec7783cdcebca16a2e2d1b6e749d5cbc0c869a2b5fe1fcde49bde96e9"
+      },
+      "page": "fdea935612ad7b14d3e99398b93b131c9f709007d24e25d60a700e3c69dc3202"
+    },
+    "docs/For NonCoders/6 - Work History (Handoff Notes)/Jason's Rulings and Plan Updates/Plan Brought Up to Date with Rulings 1-13.md": {
+      "originals": {
+        "pilot/handoffs/shell-spec-sync.md": "7c02c87c49fd8232b947dbd3088f71b891055c09604b2256ad127b8a7be85048"
+      },
+      "page": "57f57d2312bd8e23ebfc4dcbeeb63aef2ef117cd1acbd5dc729ef85d4948f35c"
+    },
+    "docs/For NonCoders/6 - Work History (Handoff Notes)/Other Work/2026-09-30 Maintainer Handoff Audit.md": {
+      "originals": {
+        "pilot/handoffs/maintainer-handoff-audit.md": "3e125c4cc500c5105fe7b9f85510649f7e21e11c2ab3657444a184bff992a159"
+      },
+      "page": "bc5facd36f75ab8dcb13f11335af280f27092e46d0afa4d39d885c4ea019dcaf"
+    },
+    "docs/For NonCoders/6 - Work History (Handoff Notes)/Other Work/2026-09-30 Noncoder Automation Build.md": {
+      "originals": {
+        "pilot/handoffs/noncoder-automation-build.md": "53f9e285441a40c1562585c44a7a2ce632e9d7d6de47ba69a2c2782649c0456a"
+      },
+      "page": "7228c52a1d3f831592a87e8aa8a6ce80e1651ed7226937efb61489d344997b1d"
+    },
+    "docs/For NonCoders/6 - Work History (Handoff Notes)/Stage 1 - Engine Answers and Short Wording/S1 - 01 Build.md": {
+      "originals": {
+        "pilot/handoffs/shell-S1.md": "83f533d60824c060f7c558891430f61e1a252f1bff71f4cb2065ac1ecbdd1b45"
+      },
+      "page": "d694e76a9862c5ee8225b7dc0c12120264dd7c1c3f4e1a725a85b9ed9b8bcbd7"
+    },
+    "docs/For NonCoders/6 - Work History (Handoff Notes)/Stage 1 - Engine Answers and Short Wording/S1 - 02 Review 1.md": {
+      "originals": {
+        "pilot/handoffs/shell-S1-review-1.md": "c11584795732736182d77b9eb98f162b11c6f16d83d9b5c0f811852272fb521b"
+      },
+      "page": "b137d2c94f2937310708eb077552440627bdf213bee6a9c07af633868f83ce5c"
+    },
+    "docs/For NonCoders/6 - Work History (Handoff Notes)/Stage 1 - Engine Answers and Short Wording/S1 - 03 Fix Round 1.md": {
+      "originals": {
+        "pilot/handoffs/shell-S1-rebuild-1.md": "ce146c77f30d6d902fe9c8ff2c7065cc5e475f38b03633d46b6ff9f346880072"
+      },
+      "page": "9b929ab453314a611cde6e9216bbed8ad8a82e8fc353e7eec4c3774dd879f729"
+    },
+    "docs/For NonCoders/6 - Work History (Handoff Notes)/Stage 1 - Engine Answers and Short Wording/S1 - 04 Review 2.md": {
+      "originals": {
+        "pilot/handoffs/shell-S1-review-2.md": "9dae0c48aee4d0ff0fb39093f01334f26ce3d7d48111b9d12d55a6b79298ab27"
+      },
+      "page": "566797800085cf9851291f80b089171f2b69a70852f862839ddbc0f8c3aaff81"
+    },
+    "docs/For NonCoders/6 - Work History (Handoff Notes)/Stage 1 - Engine Answers and Short Wording/S1 - 05 Fix Round 2.md": {
+      "originals": {
+        "pilot/handoffs/shell-S1-rebuild-2.md": "82dfe68338e80873381fd60820c91bf3802d0c4dcd52769cd0ca2570598cbcaf"
+      },
+      "page": "6b2cd12f984b6975be698ee49b17b7ca8d8dd19161c6680e6d6f3a0fe0f11d0b"
+    },
+    "docs/For NonCoders/6 - Work History (Handoff Notes)/Stage 1 - Engine Answers and Short Wording/S1 - 06 Review 3.md": {
+      "originals": {
+        "pilot/handoffs/shell-S1-review-3.md": "605b8e56ae29b6c6d853d53f638b305b74219915183fd19aed9ef713de7a15e5"
+      },
+      "page": "c02bc67569e6973f37a1d72b1951631442bd63d1be48b2395f73909ae300c102"
+    },
+    "docs/For NonCoders/6 - Work History (Handoff Notes)/Stage 1 - Engine Answers and Short Wording/S1 - 07 Fix Round 3.md": {
+      "originals": {
+        "pilot/handoffs/shell-S1-rebuild-3.md": "18571942de42d4ec93df8c9be6caea0234f95dc029d935cc0cfd6f741f8da052"
+      },
+      "page": "13113dc842a4e67eb0fcbfceb42ea9c4c361b7514ebbfaebd54fd5ff760b63f6"
+    },
+    "docs/For NonCoders/6 - Work History (Handoff Notes)/Stage 1 - Engine Answers and Short Wording/S1 - 08 Review 4.md": {
+      "originals": {
+        "pilot/handoffs/shell-S1-review-4.md": "c0ea1a2e1d3f6c3428ca120310669c1cd31ca58088a4e554e49cba26b1146e8c"
+      },
+      "page": "a46be3b581b036e4a3ec2bf73413e50391b0c634a44c92373f68fbbd87f4fd1f"
+    },
+    "docs/For NonCoders/6 - Work History (Handoff Notes)/Stage 1 - Engine Answers and Short Wording/S1 - 09 Fix Round 4.md": {
+      "originals": {
+        "pilot/handoffs/shell-S1-rebuild-4.md": "27fa6c6c0eee6dcf34f8c827172caf363236caefdb8297300123ce644abf13bc"
+      },
+      "page": "2357d9848c2c7fff30a6037d5acbfd2f56da68a7a92dc89a54e0b85dcfb54ca6"
+    },
+    "docs/For NonCoders/6 - Work History (Handoff Notes)/Stage 1 - Engine Answers and Short Wording/S1 - 10 Review 5.md": {
+      "originals": {
+        "pilot/handoffs/shell-S1-review-5.md": "d2282762379b9d598d8d13e1274080ccd8d22a77a08e4fe30ebb5849e516fd2b"
+      },
+      "page": "f760b8affda17ce4692cee79211b9c6a93d79cbdbc9741f390cc69d73950d151"
+    },
+    "docs/For NonCoders/6 - Work History (Handoff Notes)/Stage 2 - Window and Menus/S2 - 01 Build.md": {
+      "originals": {
+        "pilot/handoffs/shell-S2.md": "060b9b1eb97ee3327dc6d72043f6dc8e2488f48ea171eddda59b042ba047a2f6"
+      },
+      "page": "7c9ef8bce5eff27f51c625b73dfc81677029e8e162dcaff31fe6ebc60dc4e9d1"
+    },
+    "docs/For NonCoders/6 - Work History (Handoff Notes)/Stage 2 - Window and Menus/S2 - 02 Review 1.md": {
+      "originals": {
+        "pilot/handoffs/shell-S2-review-1.md": "c747a27aeb0bc16f3431101e336a060a4b14e5b7b27ed5c542b6dfcc50aaf43b"
+      },
+      "page": "d5faad1656f5c3819c200d21f6d0a90176f6d96efff0d002b6d0836f11b2da86"
+    },
+    "docs/For NonCoders/6 - Work History (Handoff Notes)/Stage 2 - Window and Menus/S2 - 03 Fix Round 1.md": {
+      "originals": {
+        "pilot/handoffs/shell-S2-rebuild-1.md": "ebebf297b229de72923b2c35e133636873a1d555b476e3238c2604b434806db1"
+      },
+      "page": "0c1d11d0e51c709171eb43e87b6bf2085e9fe48ce94e85cf103114373d911aff"
+    },
+    "docs/For NonCoders/6 - Work History (Handoff Notes)/Stage 2 - Window and Menus/S2 - 04 Review 2.md": {
+      "originals": {
+        "pilot/handoffs/shell-S2-review-2.md": "fe42f00abb17303ec88d98db7643d187d7f3e4fe3b6ec380eae44861796b67c4"
+      },
+      "page": "48dd24141118a543295a1985054ec2f318d6756b192a31e7fbbb7e5f55f7145f"
+    },
+    "docs/For NonCoders/6 - Work History (Handoff Notes)/Stage 2 - Window and Menus/S2 - 05 Fix Round 2.md": {
+      "originals": {
+        "pilot/handoffs/shell-S2-rebuild-2.md": "b8a0de143ae4e3a072949edad5b15cb4ded3ab6816cd760edfe066eb20fdd5b8"
+      },
+      "page": "152b6fb80167099860605969e2beea93c3636523a8d335657368c402d609e6c2"
+    },
+    "docs/For NonCoders/6 - Work History (Handoff Notes)/Stage 2 - Window and Menus/S2 - 06 Review 3.md": {
+      "originals": {
+        "pilot/handoffs/shell-S2-review-3.md": "cd1761666f86aef07ec052605bcf98782bfd87c55ed68b8954180ffc6329ad43"
+      },
+      "page": "0bfd5e1011e3099a4bd1ecd9964a78cc931c1236b6392702406bb97d76e835dc"
+    },
+    "docs/For NonCoders/6 - Work History (Handoff Notes)/Stage 2 - Window and Menus/S2 - 07 Fix Round 3.md": {
+      "originals": {
+        "pilot/handoffs/shell-S2-rebuild-3.md": "3ce571e7e85b701348fcdcd1cb36467c4cb9cf0771e158c2823f35add5793a3f"
+      },
+      "page": "4236150081b548e5668100e6f96be22b90bac1f0c1768e37c662d88765f6a980"
+    },
+    "docs/For NonCoders/6 - Work History (Handoff Notes)/Stage 2 - Window and Menus/S2 - 08 Review 4.md": {
+      "originals": {
+        "pilot/handoffs/shell-S2-review-4.md": "7b7ba3cd61f4970c44cac034fe442bff2b037bf93d1e3080e7751605ede5ef45"
+      },
+      "page": "58b30b0685f6c4269c6e9ffb6c44f93716479899a1bc5049933e080889c7428c"
+    },
+    "docs/For NonCoders/6 - Work History (Handoff Notes)/Stage 2 - Window and Menus/S2 - 09 Fix Round 4.md": {
+      "originals": {
+        "pilot/handoffs/shell-S2-rebuild-4.md": "2530b695cd305802c0b6a942fd4cf561199ea40a42edfa2cb25ea32f4684a3a3"
+      },
+      "page": "ab47b1e38cd87eadf58992570dced58a1f22abbf14f52cfd2c72cb48876b3349"
+    },
+    "docs/For NonCoders/6 - Work History (Handoff Notes)/Stage 2 - Window and Menus/S2 - 10 Review 5.md": {
+      "originals": {
+        "pilot/handoffs/shell-S2-review-5.md": "fd501320911c43b93dac297795e8d3d1d86ec15f926321faf20420f78e8a2f04"
+      },
+      "page": "67fd4b0149e0d239fe13fdd1952893932b0a6c4180494c5db473a8a415bc6afd"
+    },
+    "docs/For NonCoders/6 - Work History (Handoff Notes)/Stage 3 - The Screen's Frame/S3 - 01 Build.md": {
+      "originals": {
+        "pilot/handoffs/shell-S3.md": "ce8116808c56e87a736a97feb99cd2b3097eed5e2c22408187dfc99c53897a1c"
+      },
+      "page": "5fa5d3e0cb46f7bb6155e327905fe6ec7f2259d888b0721a3dfe83a4410c6d45"
+    },
+    "docs/For NonCoders/6 - Work History (Handoff Notes)/Stage 3 - The Screen's Frame/S3 - 02 Review 1.md": {
+      "originals": {
+        "pilot/handoffs/shell-S3-review-1.md": "05f0d99681f9e2c26a9b97730f5ea327594a3138f3feaf4795f6ac48c4c8312d"
+      },
+      "page": "a024fbe1df33a210a3332ea79ac5df81f3a14fa5171649b3756509cc92a734ff"
+    },
+    "docs/For NonCoders/6 - Work History (Handoff Notes)/Stage 3 - The Screen's Frame/S3 - 03 Fix Round 1.md": {
+      "originals": {
+        "pilot/handoffs/shell-S3-rebuild-1.md": "92ee12f9907b9f61fad3c0a460e1943e7334185aaaae12709717f11a72024a2f"
+      },
+      "page": "28f9a9db1f4f977e16db3a9d5e12f47a53d769d0da43c2cc7f81967ba8603b36"
+    },
+    "docs/For NonCoders/6 - Work History (Handoff Notes)/Stage 3 - The Screen's Frame/S3 - 04 Review 2.md": {
+      "originals": {
+        "pilot/handoffs/shell-S3-review-2.md": "e98c47b3efa45c560f60cc43eb4b1e821f4e9cfcab512b52906cd2e2c6f1b955"
+      },
+      "page": "329efb7dd58e177ed3e31c076261cc250025f63b937e5967c53379fad6451c13"
+    },
+    "docs/For NonCoders/6 - Work History (Handoff Notes)/Stage 3 - The Screen's Frame/S3 - 05 Fix Round 2.md": {
+      "originals": {
+        "pilot/handoffs/shell-S3-rebuild-2.md": "12aa346c382d9ee4acfae23c67353ba6874a623ebb7c3ffb6ee6f26847e923d2"
+      },
+      "page": "bbe92b1237480e9ca8e809db33e5960a0eeac7aafafb4c6cfe75fabd8bd8aaa3"
+    },
+    "docs/For NonCoders/6 - Work History (Handoff Notes)/Stage 3 - The Screen's Frame/S3 - 06 Review 3.md": {
+      "originals": {
+        "pilot/handoffs/shell-S3-review-3.md": "cb75aa3a28335844b725a14d39d7f297dfe09fb84e0ab02de90b7cf1206eb167"
+      },
+      "page": "06d6e2c96c542395d7f1c96b939b7f9dc2f9fe9fd58f250fb159dee0cd4ab579"
+    },
+    "docs/For NonCoders/6 - Work History (Handoff Notes)/Stage 4 - Every Page of the Screen/S4 - 01 Build.md": {
+      "originals": {
+        "pilot/handoffs/shell-S4.md": "06aeab0649af47d921937918ee7c8096688831b19b7cbacf901258b2752df41f"
+      },
+      "page": "74a33cfe9ccbb3d6a5e746578f8c86cb9b4afc84d9da849b84f18936b843e06d"
+    },
+    "docs/For NonCoders/6 - Work History (Handoff Notes)/Stage 4 - Every Page of the Screen/S4 - 02 Review 1.md": {
+      "originals": {
+        "pilot/handoffs/shell-S4-review-1.md": "1f0aab5d20326a2da07397cf4a588e22285d6b881a367eb201865844f540ebb1"
+      },
+      "page": "c2b9bcdb9c56a60e322889ce0226f52bb25472086b0597104fc64297a1716ea0"
+    },
+    "docs/For NonCoders/6 - Work History (Handoff Notes)/Stage 4 - Every Page of the Screen/S4 - 03 Fix Round 1.md": {
+      "originals": {
+        "pilot/handoffs/shell-S4-rebuild-1.md": "282980d45675f0a8dd5a2cf05250b2f8b9cd9f63167c6c9631fe9856b7072457"
+      },
+      "page": "c37fa99664a795bb204772ddb2378d7f54cd374965634572695b214080751d69"
+    },
+    "docs/For NonCoders/6 - Work History (Handoff Notes)/Stage 4 - Every Page of the Screen/S4 - 04 Review 2.md": {
+      "originals": {
+        "pilot/handoffs/shell-S4-review-2.md": "2c85d165c0628310498275395ec1025d7affd46de0ed48305740a90493270784"
+      },
+      "page": "16dc5325ac29e51bec0998180246274c5d1ed7ef8e09164e2dfa60cb2fa963f1"
+    },
+    "docs/For NonCoders/6 - Work History (Handoff Notes)/Stage 5 - Side Sheet, Links, Menus and Dialogs/S5 - 01 Build.md": {
+      "originals": {
+        "pilot/handoffs/shell-S5.md": "60080f7072e1e186a5eb95f5e6fb0e004e2bffe44749840f331d492867c2648d"
+      },
+      "page": "baea0e93aada77bc8911e30aa24b102fac9336b868c00d9339a7980255bfc5df"
+    },
+    "docs/For NonCoders/6 - Work History (Handoff Notes)/Stage 5 - Side Sheet, Links, Menus and Dialogs/S5 - 02 Review 1.md": {
+      "originals": {
+        "pilot/handoffs/shell-S5-review-1.md": "6b1210a151703cfe066bb72136f84e2f06c01f773c5d56bc18cc83c90edb6e2c"
+      },
+      "page": "b718566ab5dddef8ee68b9eb1517b2c9f9506435ad4e3486d68514bd9317a75d"
+    },
+    "docs/For NonCoders/6 - Work History (Handoff Notes)/Stage 5 - Side Sheet, Links, Menus and Dialogs/S5 - 03 Fix Round 1.md": {
+      "originals": {
+        "pilot/handoffs/shell-S5-rebuild-1.md": "9230e364fde342457e8e93dddec251ab1475b08b4ca7c08723f8c7d9d3a55b41"
+      },
+      "page": "4a767a40e0cd471e1ce86c7df473695720ad4b9adfa1010be7c4183c811ddc93"
+    },
+    "docs/For NonCoders/6 - Work History (Handoff Notes)/Stage 5 - Side Sheet, Links, Menus and Dialogs/S5 - 04 Fix Round 2.md": {
+      "originals": {
+        "pilot/handoffs/shell-S5-rebuild-2.md": "f74dcda98a89621df78f3f95973c2ce9ea3d9b27c4a3e1cc2e08f66c58bb3018"
+      },
+      "page": "d077892de6c958cad9702947be86cdbc179bbe9ee56faca727d9ccf38027a71b"
+    },
+    "docs/For NonCoders/6 - Work History (Handoff Notes)/Stage 6 - Joining the Screen to the Real Engine/S6a - 01 Build, Part 1.md": {
+      "originals": {
+        "pilot/handoffs/shell-S6a.md": "754be9043445037424034a633807f9f110b2e982b8e9aebef0e74515c2b870b9"
+      },
+      "page": "62ab3f07ad8979449aab66cc7b9414facc91d4fe073d8023496d3cdd12f92c47"
+    },
+    "docs/For NonCoders/6 - Work History (Handoff Notes)/Stage 6 - Joining the Screen to the Real Engine/S6b - 01 Build, Part 2.md": {
+      "originals": {
+        "pilot/handoffs/shell-S6b.md": "c1be58a134bf4f0dacc9144102bb8b92ee35f0737b09ed6a3e059698d3ce04b0"
+      },
+      "page": "a8f28003d06b39335f339d79affcaa3293d9025b34940398b1ff0f6caf6c97e3"
+    },
+    "docs/For NonCoders/6 - Work History (Handoff Notes)/Stage 7 - Tooltips/S7 - 01 Build.md": {
+      "originals": {
+        "pilot/handoffs/shell-S7.md": "73d6316945e781558ea8ce883e478cde49cccd70d6c35492cd6ecf0528c9d5a7"
+      },
+      "page": "a4c9f26dae2b85730802b75192a3cd3fbb24c78e4bbc7940ded8f815719243fb"
+    },
+    "docs/For NonCoders/6 - Work History (Handoff Notes)/Stage 7 - Tooltips/S7 - 02 Review 1.md": {
+      "originals": {
+        "pilot/handoffs/shell-S7-review-1.md": "83ea0e5f5c6345968ba22f2001faf1a7b84eaa1231d8c728061d7a33684d02d2"
+      },
+      "page": "a063f07eb41792a8891e58dfeb8068d83f11fce008cb716e4c5b4109de997257"
+    },
+    "docs/For NonCoders/6 - Work History (Handoff Notes)/Stage 7 - Tooltips/S7 - 03 Fix Round 1.md": {
+      "originals": {
+        "pilot/handoffs/shell-S7-rebuild-1.md": "efd34ed88db374e8b48a1f56b372f28bfe9a0c06b60ae18fb8a6df914c4830cd"
+      },
+      "page": "5a85681c23997ac0eacb90f032a21b704c865eeba057ed959e8dcc66813a61c8"
+    },
+    "docs/For NonCoders/6 - Work History (Handoff Notes)/Stage 7 - Tooltips/S7 - 04 Review 2.md": {
+      "originals": {
+        "pilot/handoffs/shell-S7-review-2.md": "2e818ffab4988a405f2c2d85a48c82b40a359c12747fb997223a3fd562ccee46"
+      },
+      "page": "ba05d793010649052d7222e5a8a9bd41cc48bbf0f5ff96110e42b7769f43cea6"
+    },
+    "docs/For NonCoders/6 - Work History (Handoff Notes)/Stage 7 - Tooltips/S7 - 05 Fix Round 2.md": {
+      "originals": {
+        "pilot/handoffs/shell-S7-rebuild-2.md": "a42971973353ac0684926c703ccbe9ad09a1c9f9e0f9906492f5bb5dddc5c5c7"
+      },
+      "page": "9369b3157f80b22a35c72f33097f3d85332aa5e950a647674cc387056475b94e"
+    },
+    "docs/For NonCoders/6 - Work History (Handoff Notes)/Stage 7 - Tooltips/S7 - 06 Review 3.md": {
+      "originals": {
+        "pilot/handoffs/shell-S7-review-3.md": "40ba9a0ad367161f2e10339642296b459e4a68a4c109a5ef64e8007d9546f579"
+      },
+      "page": "bba380af2c2b60b7981ee2ffa9579218d872f6490b3da8ab496e14d7bf130b4b"
+    },
+    "docs/For NonCoders/6 - Work History (Handoff Notes)/Stage 8 - Links, Title Case and Skip Reasons/S8a - 01 Build.md": {
+      "originals": {
+        "pilot/handoffs/shell-S8a.md": "8b702b45cbdce2268a4e2f9e9979f35d872a442af2e510e90fdf6085fbb827d2"
+      },
+      "page": "754b1043d5b631d4004723862debad6ece11105db4166ae036da31f110b1974e"
+    },
+    "docs/For NonCoders/6 - Work History (Handoff Notes)/Stage 8 - Links, Title Case and Skip Reasons/S8a - 02 Review 1.md": {
+      "originals": {
+        "pilot/handoffs/shell-S8a-review-1.md": "17744312189a27410edacdf8dd9ca1a9533625e5b5276f578e00738dc8eef8c5"
+      },
+      "page": "143501b4ad61e6fc04a81fe0a2f01ee2dc67365e8cd322f15ab0f1b02a0f52cb"
+    },
+    "docs/For NonCoders/6 - Work History (Handoff Notes)/Stage 8 - Links, Title Case and Skip Reasons/S8a - 03 Fix Round 1.md": {
+      "originals": {
+        "pilot/handoffs/shell-S8a-rebuild-1.md": "f6ec3d1d915635fb3707d02ca8ea0b3fade6c8a9425928ee6e3e5c9141e202e3"
+      },
+      "page": "839220f610017957d98422d3da410a43e00c9b5045a408d753789d637e34e9c2"
+    },
+    "docs/For NonCoders/6 - Work History (Handoff Notes)/Stage 8 - Links, Title Case and Skip Reasons/S8a - 04 Review 2.md": {
+      "originals": {
+        "pilot/handoffs/shell-S8a-review-2.md": "7d854d8a43a1e61c247a8d147c1a739c37bd2c4e001cb5ab23085cbe0355629d"
+      },
+      "page": "c371c037feccb07fdfbe2246f14d8efd1b257ab3a3c1cb2d070cac5e591e5c0c"
+    },
+    "docs/For NonCoders/6 - Work History (Handoff Notes)/Stage 8 - Links, Title Case and Skip Reasons/S8a - 05 Fix Round 2.md": {
+      "originals": {
+        "pilot/handoffs/shell-S8a-rebuild-2.md": "c235bc5c51b4f7ca771a4df9554cd4c00571d1af086e4b46b5be581ed429ef27"
+      },
+      "page": "0a9b907d27b181639dbdd1ac5b7c3507af7fb4c59e9e680a0b4d6362cb830249"
+    },
+    "docs/For NonCoders/6 - Work History (Handoff Notes)/Stage 8 - Links, Title Case and Skip Reasons/S8a - 06 Review 3.md": {
+      "originals": {
+        "pilot/handoffs/shell-S8a-review-3.md": "c9a16d8ceb991a875c3c2217c17f9e5681faa957088c695d879e4b2637cc90f5"
+      },
+      "page": "62d474ee914aaa557ddc7dc7d35c7a2329dc142d576e872d02e9aa9eb66e53d4"
+    },
+    "docs/For NonCoders/6 - Work History (Handoff Notes)/Stage 8 - Links, Title Case and Skip Reasons/S8a - 07 Fix Round 3.md": {
+      "originals": {
+        "pilot/handoffs/shell-S8a-rebuild-3.md": "c0a21bcb00eee71b5645ad2f1a5528b46a845a71bfd2b932e6c2e7cf615e66f4"
+      },
+      "page": "1981baf9918d49841491d0fecf5800405f5f073fe46c6cb4bee11547bd0930e9"
+    },
+    "docs/For NonCoders/6 - Work History (Handoff Notes)/Stage 8 - Links, Title Case and Skip Reasons/S8b - 01 Build (Two-Word Skip Reasons).md": {
+      "originals": {
+        "pilot/handoffs/shell-S8b.md": "3f692443a841a7fb1b22dd83c7b65877a07720c844c5498ca88038028968877b"
+      },
+      "page": "8730104e7e2863f5a4a4a915adb9bbd40b28f8a78be6df8cc84ee6c33c66eec7"
+    }
+  },
+  "version": 2
+}
