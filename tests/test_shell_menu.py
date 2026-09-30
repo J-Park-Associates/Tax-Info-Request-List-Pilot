@@ -173,7 +173,9 @@ class BrowserWindow {
 }
 const electron = {
   app: { isPackaged: !!sc.packaged, requestSingleInstanceLock: () => true, quit() {}, on() {},
-         getPath: () => { if (!sc.userData) throw new Error("no such path"); return sc.userData; },
+         setPath() {},
+         getPath: (name) => { if (name === "appData") return "appdata";
+                              if (!sc.userData) throw new Error("no such path"); return sc.userData; },
          whenReady: () => Promise.resolve() },
   BrowserWindow,
   Menu: {
@@ -467,10 +469,10 @@ def test_open_error_log_falls_back_to_the_shells_own_log_when_the_api_named_none
 
 def test_open_error_log_opens_the_local_non_roaming_fallback_on_windows(tmp_path):
     """Jason's ruling (2026-09-29): on Windows the fallback is
-    %LOCALAPPDATA%\\Tax Document Tracker Pilot\\error.log, never userData
+    %LOCALAPPDATA%\\Tax Document Console\\error.log (package.json's productName), never userData
     (which is under the roaming %APPDATA%)."""
     local = tmp_path / "local"
-    fallback = local / "Tax Document Tracker Pilot" / "error.log"
+    fallback = local / "Tax Document Console" / "error.log"
     fallback.parent.mkdir(parents=True)
     fallback.write_text("kept\n", encoding="utf-8")
     roaming = tmp_path / "roaming"

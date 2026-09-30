@@ -2267,7 +2267,7 @@ STATUS_NO_PROBLEMS = "Nothing failed."
 #: The folders the walk left alone (decision 125), and what is said when
 #: there are none. The sentence on each is the registry's; this is only the
 #: heading a person reads and the two columns it is drawn in.
-STATUS_MISFITS_HEADING = "Folders the Tracker Leaves Alone"
+STATUS_MISFITS_HEADING = "Folders the App Leaves Alone"
 STATUS_NO_MISFITS = "Every folder fits the layout."
 MISFIT_COLUMNS = ("Folder", "Why it is left alone")
 #: What the last-pass cell says for an engagement the page read rather than ran.

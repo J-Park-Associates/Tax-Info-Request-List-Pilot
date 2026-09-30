@@ -442,15 +442,15 @@ SHELL_KILLED_WRITE = "Change Stopped: Ran Too Long."
 SHELL_KILLED_WRITE_NOTE = "It May Be Partly Done."
 SHELL_KILLED_READ = "Stopped: Ran Too Long."
 SHELL_KILLED_AT = "It Was on {household}: {name}."
-SHELL_NO_REPLY = "No Reply From the Tracker"
-SHELL_COULD_NOT_START = "The Tracker Could Not Start"
+SHELL_NO_REPLY = "No Reply From the App"
+SHELL_COULD_NOT_START = "The App Could Not Start"
 SHELL_COULD_NOT_SEND = "Could Not Send; Nothing Changed"
 #: With no error log named (no data folder yet) the reply says just this, two
 #: words, and the details are saved only in the shell's fallback log in
 #: Electron's per-user app folder, never shown: the shell never writes a log
 #: beside the program (decision 186's rebase review, MF2; Jason, 2026-09-29;
 #: SPEC-shell 11.2).
-SHELL_NO_LOG = "Tracker Failed"
+SHELL_NO_LOG = "App Failed"
 #: An error of the page's own, said by its class; its message goes to the
 #: error log through the shell (the review's S5).
 PAGE_ERROR = "The App Hit an Error"
@@ -701,7 +701,7 @@ CLIENT_TYPE_FORMS = {
     "nonprofits": ["990"],
 }
 
-MISFITS_HEADING = "Folders the Tracker Leaves Alone"
+MISFITS_HEADING = "Folders the App Leaves Alone"
 MISFITS_NOTE = ("Each is listed with the one reason it does not fit the layout; nothing in it "
                 "is ever read, moved or renamed.")
 TWO_OPEN_YEARS_NOTE = "Two Years Open; Sorting Paused"
@@ -1205,7 +1205,7 @@ PATH_KINDS: dict[str, str] = {
 OVERRIDE_LABELS: tuple[str, ...] = (
     "Client Confirmed Final Version",
     "Correct; Only Formatting Flagged",
-    "Received Outside the Tracker",
+    "Received Outside the App",
     "Prior-Year or Substitute Document Accepted",
 )
 
@@ -1346,11 +1346,11 @@ SCREEN: dict = {
     },
     # The side panel (pilot SPEC-lists 15, P153, P154): the brand band, the
     # section headings, Settings, and the pages that are not built yet,
-    # each marked and doing nothing but say so. New words name the app
-    # "Tax Document Console" (P155).
+    # each marked and doing nothing but say so. The product is named from
+    # its one home, app/package.json's productName (P155, SPEC-rename R1).
     "side": {
         "brand": "J Park & Associates",
-        "product": "Tax Document Console",
+        "product": product_name(),
         "types": "Client Types",
         "workspace": "Workspace",
         "settings": "Settings",
@@ -3831,7 +3831,7 @@ DUPLICATE_HOUSEHOLD = ("A household with that name is already in the list, as '{
                        "the city. Nothing was changed.")
 #: What it is told when the name is a client folder no household owns.
 CLIENT_FOLDER_TAKEN = ("A folder with that name is already in the clients' tree and no household owns "
-                       "it. It is listed under Folders the Tracker Leaves Alone; give it back to its "
+                       "it. It is listed under Folders the App Leaves Alone; give it back to its "
                        "household or move it aside first. Nothing was changed.")
 
 

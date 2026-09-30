@@ -582,17 +582,20 @@ changes nothing:
   the old `runs.log` in the clients folder, which names clients. Nothing
   deletes them for you: delete them. The app never writes an error log
   beside itself: with no data folder, a failed command's message says just
-  "Tracker failed", and its details are saved only in a small error.log
-  file in the app's own local folder, `%LOCALAPPDATA%\Tax Document Tracker
-  Pilot` (it does not roam with a profile, and it is not the data folder),
+  "App Failed", and its details are saved only in a small error.log
+  file in the app's own local folder, `%LOCALAPPDATA%\Tax Document
+  Console` (it does not roam with a profile, and it is not the data folder),
   never shown. Help, Open Error Log opens it.
   **The fallback error log's place (ruling 22):**
-  `%LOCALAPPDATA%\Tax Document Tracker Pilot\error.log`, normally
-  `C:\Users\<user>\AppData\Local\Tax Document Tracker Pilot\`, with one
+  `%LOCALAPPDATA%\Tax Document Console\error.log`, normally
+  `C:\Users\<user>\AppData\Local\Tax Document Console\`, with one
   older copy `error.log.1`. (The tracker's normal error log is the
   `tracker-errors.log` in the data folder, above.) Uninstalling the app leaves that folder behind.
   The log can contain client names, so when the program is removed for good
-  (or the PC is retired) delete the folder by hand.
+  (or the PC is retired) delete the folder by hand. A PC upgraded from the
+  earlier name may still hold an earlier log in
+  `%LOCALAPPDATA%\Tax Document Tracker Pilot\`, which a person may delete
+  the same way.
 
 There used to be a second one, a comparison flag on the ledger's own
 statuses against the request list's. There is nothing left for it to
@@ -669,6 +672,54 @@ removable drive, a network drive or one Windows cannot name (decision 186):
 the schedule runs whatever program sits there on every pass, so it must be
 on this computer's own disk. The app's first screen says the same for as
 long as it runs from such a drive.
+
+**After the rename (P155).** Before Pilot 0.3 the app was called Tax
+Document Tracker Pilot, the earlier name; it is now Tax Document Console.
+Installing 0.3 over the earlier name upgrades it in place, in its own
+folder `%LOCALAPPDATA%\Programs\Tax Document Tracker Pilot` (a new install
+goes to `%LOCALAPPDATA%\Programs\Tax Document Console`), replaces the
+earlier Start menu entry and desktop icon, and keeps `settings.json`
+beside the program. The data folder keeps its name,
+`%LOCALAPPDATA%\tax-document-tracker-pilot`, and nothing in it moves; the
+column widths stay where they were, in `%APPDATA%\Tax Document Tracker
+Pilot` (the earlier name, kept on purpose). The first start after the
+upgrade, or `Setup.bat`, runs two carry-over jobs in the after-install
+step, and each says one sentence every time, first among the step's lines:
+
+- **The settings file,** copied from the earlier program folder only when
+  this program has none (the earlier name uninstalled, then 0.3 installed
+  fresh): "Run from source: the settings file is the checkout's own, so
+  nothing is carried over from the earlier name." / "The program was
+  upgraded in its own folder, so its settings file stayed where it was." /
+  "This program already has its settings file (<file>), so the one left by
+  the earlier name (<earlier file>) was not used; it was left where it
+  was." / "There was no settings file from the earlier name to carry
+  over." / "Copied the settings file left by the earlier name (<earlier
+  file>) to <file>, so the clients folder and the schedule choice carry
+  over; the earlier file was left where it was." If the copy fails: "The
+  settings file left by the earlier name (<earlier file>) could not be
+  copied to <file> (<problem>); nothing was changed. Start the app: it
+  tries again at launch."
+- **The scheduled task** under the earlier name, removed once the new
+  task, Tax Document Console, is registered: "Removed the scheduled task
+  under the earlier name, Tax Document Tracker Pilot; the schedule now runs
+  as Tax Document Console where it is on." / "There was no scheduled task
+  under the earlier name, Tax Document Tracker Pilot, on this computer." If
+  the new task could not be registered the earlier one is kept, so the pass
+  still runs: "The scheduled task under the earlier name, Tax Document
+  Tracker Pilot, was kept because the new one could not be registered
+  (above); the app tries again at its next start." If it cannot be
+  removed: "The scheduled task under the earlier name, Tax Document Tracker
+  Pilot, could not be removed (<problem>); until it is, both tasks start
+  the pass, and the second finds the first's lock and moves nothing. Start
+  the app: it tries again at launch, and Repair the Schedule tries at
+  once."
+
+A failed carry-over is a failure like any other: the first screen's notice
+says it and the next start tries again. The firm's production product,
+Tax Document Tracker, its task and its folders are never touched. An
+earlier fallback error log may remain in `%LOCALAPPDATA%\Tax Document
+Tracker Pilot\` (above).
 
 **It only runs while someone is logged on.** The task is registered to run
 as the logged-on person, not as a background service, so the designated
@@ -2082,7 +2133,7 @@ exactly as it came.
      so loudly: from a folder too deep (any of its libraries past 240
      characters, counted on the real folder, so a shortcut or junction does
      not help) it shows a red banner that stays, "Move the app to a shorter
-     folder, for example C:\JPA Tracker; scans can't be read from here",
+     folder, for example C:\JPA App; scans can't be read from here",
      and the scheduled pass puts the same sentence in its warnings once.
 6. Run one pass — the **Sort** icon on a single return — and read the run
    log before trusting the schedule.

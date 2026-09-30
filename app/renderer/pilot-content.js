@@ -6,7 +6,7 @@ const PILOT =
 {
   "edition": {
     "label": "Pilot",
-    "version": "0.2"
+    "version": "0.3"
   },
   "contact": {
     "email": "admin@jparkassociates.com"
@@ -18,7 +18,7 @@ const PILOT =
       {
         "heading": "This is a Pilot",
         "bullets": [
-          "A test edition of Tax Document Tracker, built by J Park & Associates.",
+          "A test edition of Tax Document Console, built by J Park & Associates.",
           "It works, but it is still being finished. Expect rough edges.",
           "Please tell us what you find."
         ]

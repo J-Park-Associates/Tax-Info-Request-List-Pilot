@@ -1332,7 +1332,7 @@ def _every_notice(tmp_path, short_words="{}"):
 
 def test_no_notice_draws_more_than_five_words_or_a_path_even_over_the_apis_long_sentences(tmp_path):
     """SPEC 11.1 (five words, no path of any kind) and 2.2 E28-E31: the reader's
-    warning (it names C:\\JPA Tracker), each machine warning, the pause, the
+    warning (it names C:\\JPA App), each machine warning, the pause, the
     feed, the lock's `on` and `greyed` sentences are all long in the API, and
     the harness's stub sends them long. The notices show a short line whatever
     the vocabulary holds; the long sentences go to the error log."""
@@ -2298,10 +2298,10 @@ def test_the_four_dialogs_draw_the_apis_words_and_never_a_path(tmp_path):
       const opened = []; const openDialog = (id) => opened.push(id); const logged = [];
       const window = { tracker: { logError: (t) => logged.push(t) } };
       const fill = (p, v) => p.replace(/\{(\w+)\}/g, (_, k) => v[k] ?? "");
-      const PILOT = { edition: { version: "0.2" } };
-      let misfits = [{ path: "/abs/Clients/Old Files", where: "Clients/Old Files", sentence: "This folder is not a household and is left alone by the tracker.", code: "not_a_tree" },
+      const PILOT = { edition: { version: "0.3" } };
+      let misfits = [{ path: "/abs/Clients/Old Files", where: "Clients/Old Files", sentence: "This folder is not a household and is left alone by the app.", code: "not_a_tree" },
                      { path: "C:\\\\abs\\\\Scans", where: "", sentence: "Also left alone.", code: "not_a_year" }];
-      const vocab = { product: "Tax Document Tracker", rules: [{ headline: "h", detail: "d", short: "No AI Reads Documents" }, { headline: "h2", detail: "d2", short: "Nothing Is Guessed" }],
+      const vocab = { product: "Tax Document Console", rules: [{ headline: "h", detail: "d", short: "No AI Reads Documents" }, { headline: "h2", detail: "d2", short: "Nothing Is Guessed" }],
         screen: { icons: { dismiss: "Dismiss" }, safeguards: { title: "Safeguards" }, about: { edition: "Pilot {version}" }, misfits: { title: "Folders Skipped", reasons: { not_a_tree: "Unknown Folder" } } } };
       const screenWords = () => vocab.screen;
     """
@@ -2315,7 +2315,7 @@ def test_the_four_dialogs_draw_the_apis_words_and_never_a_path(tmp_path):
       return { ...said, loud };
     """, tmp_path, source="app.js")
     assert ran["rules"] == ["No AI Reads Documents", "Nothing Is Guessed"] and ran["title"] == "Safeguards"
-    assert ran["product"] == "Tax Document Tracker" and ran["edition"] == "Pilot 0.2"
+    assert ran["product"] == "Tax Document Console" and ran["edition"] == "Pilot 0.3"
     assert ran["folders"] == ["Old FilesUnknown Folder", "Scans"], (
         "a folder is its own name (the last part of where it is) and the vocabulary's word for its code; "
         "a code with no word (not_a_year) draws the name alone")

@@ -118,6 +118,15 @@ CORPUS_INSIDE_APP = (ENV_REAL_CORPUS + " names {folder}, inside the app's own fo
 ENV_DATA_HOME = "TRACKER_DATA_HOME"
 #: The data home's folder name: app/package.json's "name", held equal by a test.
 DATA_HOME_NAME = "tax-document-tracker-pilot"
+#: The pilot's name before the rename (P155, product_name() says the new one): the one home
+#: of the earlier name. The after-install step reads the settings file left in
+#: its program folder and removes its scheduled task (SPEC-rename R5, R6); the
+#: installer script, the two Windows check scripts and package.json's
+#: config.userDataName type it, and a test holds each copy equal to this. It is
+#: never the firm's production product ("Tax Document Tracker", no "Pilot"),
+#: whose task and folders nothing here touches. The data home above keeps its
+#: name through the rename (R3): it is package.json's internal "name".
+EARLIER_PRODUCT_NAME = "Tax Document Tracker Pilot"
 SCRATCH_DIR_NAME = "scratch"
 LOGS_DIR_NAME = "logs"
 #: GetDriveTypeW's answers (WinBase.h). Only DRIVE_FIXED may hold the program
@@ -192,6 +201,21 @@ def settings_dir() -> Path:
 
 def settings_path() -> Path:
     return settings_dir() / SETTINGS_FILENAME
+
+
+def earlier_settings_path() -> Path | None:
+    """Where the earlier name's installer put the settings file, or None.
+
+    Inno Setup installed the pilot under ``%LOCALAPPDATA%\\Programs\\<name>``,
+    and the settings file lives beside the program, so this is the file a PC
+    uninstalled under the earlier name left behind (the uninstaller keeps
+    it on purpose). None where ``LOCALAPPDATA`` is unset: there is then no
+    such folder to look in, and the caller says there was nothing to carry.
+    """
+    local = os.environ.get("LOCALAPPDATA")
+    if not local:
+        return None
+    return Path(local) / "Programs" / EARLIER_PRODUCT_NAME / SETTINGS_FILENAME
 
 
 #: The local debug log (decision 193, security principle 7): an

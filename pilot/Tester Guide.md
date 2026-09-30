@@ -1,8 +1,8 @@
-# Tax Document Tracker Pilot - Tester Guide
+# Tax Document Console - Tester Guide
 
 ## 1. What this is
 
-Tax Document Tracker Pilot keeps track of the tax documents your clients owe you. Your client drops everything into one folder; the program sorts, renames and lists what arrives, and drafts the reminder emails that you send yourself.
+Tax Document Console keeps track of the tax documents your clients owe you. Your client drops everything into one folder; the program sorts, renames and lists what arrives, and drafts the reminder emails that you send yourself.
 
 The four rules it never breaks:
 
@@ -21,9 +21,10 @@ This is a **pilot**: a first edition for a small group of firms. It works, but i
 
 ## 3. Install
 
-1. Run `Tax-Document-Tracker-Pilot-Setup-<version>.exe`.
+1. Run `Tax-Document-Console-Setup-<version>.exe`.
 2. Windows may show a blue box, **"Windows protected your PC"** (Windows SmartScreen, its built-in warning for programs it does not recognize). This appears because the installer is not yet signed with a paid certificate. It does not mean anything is wrong. Click **More info**, then **Run anyway**.
 3. Follow the steps. No administrator rights are needed.
+4. If this PC has the program under its earlier name, Tax Document Tracker Pilot, close it first, then install over it without uninstalling. Your clients folder, your settings and your schedule are kept, and the earlier Start menu entry and desktop icon are replaced by the new ones.
 
 ## 4. First launch
 
@@ -71,7 +72,7 @@ Pressing **Scan** by hand works whether the schedule is on or off.
 
 ## 9. Uninstall
 
-Open Windows **Settings**, then **Apps**, and remove **Tax Document Tracker Pilot**.
+Open Windows **Settings**, then **Apps**, and remove **Tax Document Console**.
 
 Uninstalling removes the program and its scheduled task. It leaves your clients folder, your settings and the program's data folder (`%LOCALAPPDATA%\tax-document-tracker-pilot`) where they are.
 

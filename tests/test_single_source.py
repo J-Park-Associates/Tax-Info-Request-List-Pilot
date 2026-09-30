@@ -189,7 +189,7 @@ def test_the_apps_menu_is_the_template_in_both_builds_and_the_source_app_runs_it
 #: brought forward. Every other part of the shell is left real.
 _ELECTRON_STUB = r"""
 const Module = require("module");
-const seen = { asked: false, quit: 0, windows: 0, restored: 0, focused: 0, events: [], spawned: [] };
+const seen = { asked: false, quit: 0, windows: 0, restored: 0, focused: 0, events: [], spawned: [], setPaths: [] };
 const handlers = {};
 const win = {
   isMinimized: () => true,
@@ -209,6 +209,8 @@ class BrowserWindow {
 const electron = {
   app: {
     isPackaged: false,
+    getPath: (name) => `/fake/${name}`,
+    setPath(name, value) { seen.setPaths.push({ name, value, beforeLock: !seen.asked }); },
     requestSingleInstanceLock() { seen.asked = true; return process.argv[3] === "first"; },
     quit() { seen.quit += 1; },
     on(name, fn) { seen.events.push(name); handlers[name] = fn; },
@@ -287,6 +289,60 @@ def test_the_app_opens_one_window(tmp_path):
     second = launch("second")
     assert second["asked"] and second["quit"] == 1
     assert second["windows"] == 0 and "second-instance" not in second["events"]
+
+
+def test_the_electron_user_data_folder_keeps_its_earlier_name(tmp_path):
+    """SPEC-rename R4: Electron names its userData folder - the page's column
+    widths and cached terms and tour answers - after productName, so the
+    rename would silently start an empty one. main.js sets it, before the
+    single-instance lock Electron keys on it, to package.json's
+    config.userDataName, which is the pilot's earlier name."""
+    import shutil
+    import subprocess
+
+    from tracker.settings import EARLIER_PRODUCT_NAME
+
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node is not on PATH (CI installs it)")
+    package = json.loads(read("app/package.json"))
+    assert package["config"]["userDataName"] == EARLIER_PRODUCT_NAME != package["productName"]
+    harness = tmp_path / "user_data.js"
+    harness.write_text(_ELECTRON_STUB, encoding="utf-8", newline="\n")
+    done = subprocess.run([node, str(harness), str(REPO / "app" / "main.js"), "second"],
+                          capture_output=True, text=True, encoding="utf-8", timeout=60, check=False)
+    assert done.returncode == 0, done.stderr
+    [set_path] = json.loads(done.stdout)["setPaths"]
+    assert set_path["name"] == "userData" and set_path["beforeLock"]
+    parts = re.split(r"[\\/]", set_path["value"])
+    assert parts[-2:] == ["appData", EARLIER_PRODUCT_NAME]
+
+
+def test_the_side_panel_names_the_product_from_its_one_home():
+    """SPEC-rename R1: the side panel's brand band says the product's name
+    as package.json's productName says it, with no second typed copy."""
+    import tracker.api as api
+    from tracker.settings import product_name
+
+    assert api.SCREEN["side"]["product"] == product_name() == json.loads(read("app/package.json"))["productName"]
+    assert api._vocab()["screen"]["side"]["product"] == product_name()
+    assert '"product": product_name(),' in read("tracker/api.py")
+    assert product_name() not in read("tracker/api.py")
+
+
+def test_the_version_is_0_3_in_the_badge_and_the_release_steps():
+    """P140: the version moves to 0.3 once - the badge, and with it Help >
+    About and the installer's name - and the release steps are 0.3's, with
+    the tag pilot-0.3 and no 0.2 tag."""
+    content = read("app/renderer/pilot-content.js")
+    pilot = json.loads(content.split("// PILOT-CONTENT-BEGIN", 1)[1].split("// PILOT-CONTENT-END", 1)[0])
+    assert pilot["edition"]["version"] == "0.3"
+    release = read("pilot/RELEASE.md")
+    assert release.splitlines()[0] == "# Pilot 0.3 - release steps"
+    assert "git tag pilot-0.3 && git push origin pilot-0.3" in release
+    assert "Tax-Document-Console-Setup-0.3.exe" in release
+    assert "There is no 0.2 tag" in " ".join(release.split())
+    assert "pilot-0.2" not in release
 
 
 def test_the_renderer_builds_the_page_from_data_not_html():
@@ -424,8 +480,15 @@ def _fallback_log_rules() -> list[str]:
     """The shell's fallback error log and its one rotated copy (Jason,
     2026-09-29: the log can name a client, so the agent's file tools are
     denied it, in the two path styles the data-home rules use: Windows'
-    %LOCALAPPDATA% folder and, off Windows, Electron's userData)."""
-    product = json.loads(read("app/package.json"))["productName"]
+    %LOCALAPPDATA% folder and, off Windows, Electron's userData).
+
+    The rules name the earlier product's folders, which an upgraded PC may
+    still hold and where Electron's userData stays (SPEC-rename R4). The
+    rules for the renamed Windows folder are permission configuration and
+    wait for Jason (SPEC-rename 4.1; left undone by the rename's build), so
+    this names exactly what the deny list holds today."""
+    from tracker.settings import EARLIER_PRODUCT_NAME as product
+
     folders = (f"//c/Users/*/AppData/Local/{product}", f"~/.config/{product}")
     return [f"{tool}({folder}/error.log{suffix})"
             for folder in folders for suffix in ("", ".*") for tool in ("Read", "Edit")]
@@ -2515,13 +2578,13 @@ const realSpawn = require("child_process").spawn;
 const realFs = require("fs");
 const [mainJs, fake, calls] = process.argv.slice(2);
 // Off Windows the fallback log is in Electron's userData; FAKE_PLATFORM=win32
-// makes it %LOCALAPPDATA%\\Tax Document Tracker Pilot (Jason, 2026-09-29).
+// makes it %LOCALAPPDATA%\\<productName> (Jason, 2026-09-29).
 Object.defineProperty(process, "platform", { value: process.env.FAKE_PLATFORM || "linux" });
 let handler = null;
 const sent = [];
 const appHandlers = {};
 const electron = {
-  app: { isPackaged: false, requestSingleInstanceLock: () => true, quit() {},
+  app: { isPackaged: false, requestSingleInstanceLock: () => true, quit() {}, setPath() {},
          getPath: () => process.env.FAKE_USERDATA,
          on(name, fn) { appHandlers[name] = fn; },
          whenReady: () => new Promise(() => {}) },
@@ -2829,17 +2892,17 @@ def test_with_no_error_log_named_the_failure_is_saved_in_the_fallback_log_and_th
     """Jason, 2026-09-29 (after the rebase review of 186, MF2): with no data
     home the API names no error log. The failure is still SAVED - in the
     shell's fallback log in the per-user app folder, never beside the
-    program - and the screen says just "Tracker Failed", with nothing of
+    program - and the screen says just "App Failed", with nothing of
     stderr in the reply."""
     import tracker.api as api
     from tracker.settings import ERROR_LOG_FILENAME
 
-    assert api.SHELL_NO_LOG == "Tracker Failed"
+    assert api.SHELL_NO_LOG == "App Failed"
     ran = _run_the_shell(tmp_path, [["list"], ["templates"]], FAKE_LOG="")
     reply = ran["out"][1]["reply"]
     sentence = api.SHELL_NO_REPLY.format(code=1) + "\n\n" + api.SHELL_NO_LOG
     assert reply["error"] == sentence and reply["failure"]["sentence"] == sentence
-    assert reply["error"].endswith("\n\nTracker Failed")
+    assert reply["error"].endswith("\n\nApp Failed")
     assert "fabricated" not in json.dumps(reply) and "Sample Client" not in json.dumps(reply)
     assert reply["failure"]["kind"] == "failed"
     saved = (tmp_path / "userdata" / "error.log").read_text(encoding="utf-8")
@@ -2853,7 +2916,7 @@ def test_with_an_error_log_named_the_failure_goes_there_and_not_to_the_fallback_
 
     ran = _run_the_shell(tmp_path, [["list"], ["templates"]])
     reply = ran["out"][1]["reply"]
-    assert reply["error"] == api.SHELL_NO_REPLY.format(code=1) and "Tracker Failed" not in reply["error"]
+    assert reply["error"] == api.SHELL_NO_REPLY.format(code=1) and "App Failed" not in reply["error"]
     assert _STDERR_TEXT in (tmp_path / "tracker-errors.log").read_text(encoding="utf-8")
     assert not (tmp_path / "userdata").exists()
 
@@ -2909,14 +2972,14 @@ def test_the_fallback_log_is_capped_and_a_write_that_fails_never_throws(tmp_path
 
 
 def test_on_windows_the_fallback_log_is_local_and_never_the_roaming_or_data_folder(tmp_path):
-    """Jason, 2026-09-29: %LOCALAPPDATA%\\Tax Document Tracker Pilot\\error.log
+    """Jason, 2026-09-29: %LOCALAPPDATA%\\<productName>\\error.log
     (Electron has no getPath name for it), else the profile's AppData\\Local;
     never userData (roaming %APPDATA%), never the data home nor the upstream
     product's folder."""
     from tracker.settings import DATA_HOME_NAME
 
     product = json.loads(read("app/package.json"))["productName"]
-    assert product == "Tax Document Tracker Pilot" and product not in (DATA_HOME_NAME, UPSTREAM_DATA_HOME_NAME)
+    assert product == "Tax Document Console" and product not in (DATA_HOME_NAME, UPSTREAM_DATA_HOME_NAME)
     local = tmp_path / "local"
     _run_the_shell(tmp_path, [["list"], ["templates"]], FAKE_LOG="", FAKE_PLATFORM="win32",
                    LOCALAPPDATA=str(local))
@@ -4077,6 +4140,26 @@ def test_the_runbook_says_where_the_fallback_error_log_is_and_to_delete_it_by_ha
     folder, and that it can hold client names so it is deleted by hand."""
     runbook = " ".join(read("docs/runbook.md").split())
     note = runbook.split("**The fallback error log's place (ruling 22):**", 1)[1].split("There used to be a second one", 1)[0]
-    for part in (r"%LOCALAPPDATA%\Tax Document Tracker Pilot\error.log", "error.log.1", "tracker-errors.log",
-                 "Uninstalling the app leaves that folder behind", "can contain client names", "delete the folder by hand"):
+    for part in (r"%LOCALAPPDATA%\Tax Document Console\error.log", "error.log.1", "tracker-errors.log",
+                 "Uninstalling the app leaves that folder behind", "can contain client names", "delete the folder by hand",
+                 r"%LOCALAPPDATA%\Tax Document Tracker Pilot", "may still hold an earlier log"):
         assert part in note, part
+
+
+def test_the_runbook_quotes_every_sentence_of_the_rename_carry_over():
+    """SPEC-rename section 8: the runbook's "After the rename (P155)" says
+    what the first start after the upgrade does, quoting each carry-over
+    sentence exactly - the task's with the two names filled in, the settings
+    file's with its paths and problem left as placeholders."""
+    from tracker import after_install, scheduling, settings
+
+    runbook = " ".join(read("docs/runbook.md").split())
+    note = runbook.split("**After the rename (P155).**", 1)[1].split("**It only runs while someone is logged on.**", 1)[0]
+    for name in ("SETTINGS_FROM_SOURCE", "SETTINGS_IN_PLACE", "SETTINGS_BOTH", "SETTINGS_NO_EARLIER",
+                 "SETTINGS_CARRIED", "SETTINGS_CARRY_FAILED", "EARLIER_TASK_KEPT", "EARLIER_TASK_REMOVED",
+                 "EARLIER_TASK_NONE", "EARLIER_TASK_FAILED"):
+        sentence = getattr(after_install, name)
+        if name.startswith("EARLIER_TASK"):
+            sentence = sentence.replace("{old}", settings.EARLIER_PRODUCT_NAME).replace("{new}", scheduling.TASK_NAME)
+        for part in re.split(r"\{\w+\}", sentence):
+            assert part.strip() in note, (name, part)

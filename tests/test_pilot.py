@@ -101,10 +101,13 @@ def test_the_pilot_files_build_the_page_only_with_text():
 
 def test_the_pilot_never_types_the_product_name():
     product = json.loads((REPO / "app" / "package.json").read_text(encoding="utf-8"))["productName"]
-    # The approved terms name the underlying product ("a test edition of Tax
-    # Document Tracker"), which is not the pilot's product name once Build A
-    # renames it to "... Pilot"; that one phrase is not a typing of it.
-    approved = "A test edition of Tax Document Tracker, built by"
+    # The approved terms' first bullet names the product (P155, Q1 of
+    # SPEC-rename: "A test edition of Tax Document Console, built by ..."):
+    # the terms a tester accepts are firm wording, kept word for word, so
+    # that is the one place the pilot says the name, exactly once.
+    approved = f"A test edition of {product}, built by J Park & Associates."
+    content = read("pilot-content.js")
+    assert content.count(product) == 1 and approved in content
     for name in (*PILOT_JS, "pilot-style.css"):
         assert product not in read(name).replace(approved, ""), name
 

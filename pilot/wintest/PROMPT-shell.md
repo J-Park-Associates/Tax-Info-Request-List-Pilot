@@ -92,8 +92,8 @@ not rerun. The run also builds the installer; note its SHA-256.
        gone, but a household that was never sorted just gets its inside
        folder made again and the sort succeeds, which would show no banner.
     2. Open the Start menu, type **Task Scheduler**, open it, click **Task
-       Scheduler Library**, right-click the task named **Tax Document Tracker
-       Pilot** and choose **Run**. Wait half a minute and press F5: **Last
+       Scheduler Library**, right-click the task named **Tax Document
+       Console** and choose **Run**. Wait half a minute and press F5: **Last
        Run Result** is not `0x0`. (If there is no such task, open the app once
        and choose **Repair Schedule** in the Tools menu, then come back.)
     3. Rename `Clients-away` back to `Clients`, then open the app.
@@ -131,16 +131,37 @@ not rerun. The run also builds the installer; note its SHA-256.
     "1 Folders Skipped" appears; **Show** opens Folders Skipped with the
     folder and the reason "Bad Year". Delete the test folder afterwards.
 16. **Fallback error log.** A failing command cannot be made by hand on an
-    installed app (the tracker has to crash before it names its data folder),
+    installed app (the app has to crash before it names its data folder),
     so the tests make that failure (`test_shell_menu.py`,
     `test_single_source.py`). By hand check what a person can: on a fresh
     Windows user, before choosing a Clients folder, choose **Help**, **Open
     Error Log**: the notice says "No Error Log Yet". If a fallback log exists
-    (`%LOCALAPPDATA%\Tax Document Tracker Pilot\error.log`, normally
-    `C:\Users\<you>\AppData\Local\Tax Document Tracker Pilot\`), Open Error
+    (`%LOCALAPPDATA%\Tax Document Console\error.log`, normally
+    `C:\Users\<you>\AppData\Local\Tax Document Console\`), Open Error
     Log opens it. Uninstall the app: that folder is still there (delete it by
-    hand; it can hold client names).
+    hand; it can hold client names). A PC upgraded from the earlier name may
+    also hold an earlier log in `%LOCALAPPDATA%\Tax Document Tracker Pilot\`;
+    it can be deleted the same way.
 17. **Remote Desktop** at 1100 x 700: nothing cut off, no horizontal scroll.
+18. **The rename (P155), upgrade over the earlier name.** On a PC with the
+    earlier name, Tax Document Tracker Pilot, installed and the schedule on:
+    install `Tax-Document-Console-Setup-0.3.exe` over it without
+    uninstalling. The Start menu and the desktop show only Tax Document
+    Console; Settings > Apps shows one entry, "Tax Document Console 0.3".
+19. **The rename, first start.** Start the app once. In a Command Prompt,
+    `schtasks /Query /TN "Tax Document Console"` finds the task and
+    `schtasks /Query /TN "Tax Document Tracker Pilot"` finds none (the
+    earlier name). The clients folder, the schedule choice and the column
+    widths are as they were.
+20. **The rename, a fresh install.** Uninstall 0.3, then install 0.3 again:
+    it goes to `%LOCALAPPDATA%\Programs\Tax Document Console`, and the
+    settings left by the earlier name are copied (the after-install line
+    says so: "Copied the settings file left by the earlier name ...").
+21. **The rename, uninstall.** Run `pilot\wintest\uninstall_checks.ps1`: both
+    task names are gone, and the data folder and `settings.json` are left.
+22. **The rename, on screen.** The window title, the side panel, Help >
+    About and the badge read Tax Document Console / Pilot 0.3; a forced
+    failure reads "App Failed".
 
 Record results in `pilot/wintest/` as `RESULTS-TEMPLATE.md` asks and tell Jason
 what passed, what failed and why.

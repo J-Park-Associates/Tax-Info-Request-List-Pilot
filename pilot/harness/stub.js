@@ -30,7 +30,7 @@
   // The long sentences of the API's other sources, as sent (tracker/ocr.py,
   // households.py, runner.py, settings.py at S1's tip); paths made up.
   const LONG = {
-    reader: "Move the app to a shorter folder, for example C:\\JPA Tracker; scans can't be read from here",
+    reader: "Move the app to a shorter folder, for example C:\\JPA App; scans can't be read from here",
     machine: [
       "Left over from an earlier version and no longer used: C:\\Made Up\\Tracker\\old-run.log. They hold client names, and nothing deletes them for you - delete them. "
         + "The tracker keeps its database and its run log in C:\\Users\\Someone\\AppData\\Local\\Tracker now.",

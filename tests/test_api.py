@@ -2093,10 +2093,13 @@ def test_the_firm_is_typed_once_in_settings_and_signs_every_engagement(capsys, d
 
 def _on_the_office_computer(monkeypatch, *, task_exists=False):
     """This computer is ``office-pc`` with Task Scheduler, and its
-    ``schtasks`` a fake that keeps every command (decision 209)."""
+    ``schtasks`` a fake that keeps every command (decision 209). The
+    earlier name's task, which the after-install step looks for since the
+    rename (SPEC-rename 3.2), is not on this computer, and its query is
+    not kept: these tests are about this computer's own task."""
     import platform
 
-    from tracker import scheduling
+    from tracker import scheduling, settings
 
     calls = []
 
@@ -2105,6 +2108,8 @@ def _on_the_office_computer(monkeypatch, *, task_exists=False):
             self.returncode, self.stdout, self.stderr = returncode, "", ""
 
     def answer(command):
+        if settings.EARLIER_PRODUCT_NAME in command:
+            return Said(1)
         calls.append(command)
         return Said(0 if task_exists or command[1] != "/query" else 1)
 

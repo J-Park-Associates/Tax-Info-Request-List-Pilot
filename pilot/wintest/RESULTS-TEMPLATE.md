@@ -1,4 +1,4 @@
-# Pilot 0.2 - Windows check result
+# Pilot 0.3 - Windows check result
 
 - **Date:**
 - **Machine:** Windows version, test machine
@@ -30,7 +30,7 @@
 
 | # | Step | Result | What was seen |
 |---|---|---|---|
-| 1 | Header badge reads "Pilot edition 0.2" | | |
+| 1 | Header badge reads "Pilot edition 0.3" | | |
 | 2 | Terms: Escape does nothing | | |
 | 3 | Terms: "I agree. Continue." disabled until the box is ticked | | |
 | 4 | Accepting starts the tour | | |
@@ -42,7 +42,7 @@
 | 10 | Named working copies in Prepared (e.g. "A01 - W-2 - TY2025.pdf") | | |
 | 11 | Files the rules cannot place are in Needs Review | | |
 | 12 | Status opens | | |
-| 13 | Schedule Off: `schtasks /Query /TN "Tax Document Tracker Pilot"` finds no task | | |
+| 13 | Schedule Off: `schtasks /Query /TN "Tax Document Console"` finds no task | | |
 | 14 | Schedule On at 06:30, every 4 hours: task XML shows 06:30 and PT240M or PT4H | | |
 | 15 | After restart the Schedule dialog keeps the choice | | |
 | 16 | After restart the terms and tour do not reappear | | |
