@@ -16,8 +16,8 @@
   ],
   "counts": {
     "nodes": 348,
-    "edges": 1168,
-    "reused": 302
+    "edges": 1169,
+    "reused": 300
   },
   "node_types": [
     "artifact",
@@ -126,8 +126,8 @@
       "id": "tracker/__init__.py",
       "type": "module",
       "layer": "core",
-      "sha256": "9d97ce9e7151c250",
-      "lines": 83,
+      "sha256": "bd7d28f216704dd9",
+      "lines": 84,
       "role": "Package docstring listing every component, and STANDING_RULES - the four rules worded once.",
       "notes": "Imports nothing of the package at load time since decision 99: the re-exports of the manifest and scaffold APIs (thirteen names no file in tracker/, tools/, tests/ or the entry point consumed) are gone, and with them the package's one load-time cycle (this package -> tracker/manifest.py -> from tracker import ledger). Its module list names the manifest as the request list - its schema, validation, and its reading from and writing to the record - and the scanner as an orchestrator that records rather than writes back (decision 104). There is no load-time cycle left to name: tests/test_layers.py pins the layer of every module and that no load-time import points upward. Every cycle the derived edges show closes through an import at call time (the map labels those separately), and tracker/filer.py <-> tracker/scanner.py inside _rescan() is the deliberate one. Standing rule 1 still says 'deterministic rules in the manifest': the manifest is the request list, and its home changed with decision 104, not the word. SAFEGUARDS (P64): the four standing rules again in one short line each, in the same order, for the app's Safeguards dialog; STANDING_RULES keeps the full wording that every doc quotes."
     },
@@ -262,7 +262,7 @@
       "id": "tracker/api.py",
       "type": "module",
       "layer": "core",
-      "sha256": "3092a9c6b65c9b19",
+      "sha256": "e14158a31fb52066",
       "lines": 5864,
       "cli": "python -m tracker.api",
       "exports": [
@@ -1321,7 +1321,7 @@
       "id": "tracker/firm_cache.py",
       "type": "module",
       "layer": "core",
-      "sha256": "50d98eee3941acc0",
+      "sha256": "b1f139c72029a4d5",
       "lines": 249,
       "exports": [
         "CACHE_FILENAME",
@@ -4686,7 +4686,7 @@
       "id": "pilot/SPEC-firm-cache.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "669d470d9fa8a56f",
+      "sha256": "1d0cdbb3dbe035c7",
       "lines": 404
     },
     {
@@ -9321,8 +9321,8 @@
       "id": "tests/test_single_source.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "abd8e1e80af3fb79",
-      "lines": 4057,
+      "sha256": "26fdf6fa7a6c8a18",
+      "lines": 4060,
       "exports": [
         "AFTER_WHAT",
         "CONSOLE_EXEMPT",
@@ -14193,6 +14193,12 @@
     {
       "from": "tests/test_single_source.py",
       "to": "tracker/filer.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_single_source.py",
+      "to": "tracker/firm_cache.py",
       "type": "exercises",
       "source": "derived"
     },

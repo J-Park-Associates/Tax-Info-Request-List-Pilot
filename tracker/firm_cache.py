@@ -35,7 +35,7 @@ cache in the client folders (decision 186: nothing derived from a client
 sits in a synced tree); ``pickle`` (loading one runs code).
 
 **Where it lives.** :data:`CACHE_FILENAME` in the tracker's data folder
-(:func:`tracker.settings.data_home`), beside ``tracker.db``: it holds
+(:func:`tracker.settings.data_home`), beside the store (``store.STORE_FILENAME``): it holds
 household names, return folders and the names of files waiting for a
 person, as the store does. It is disposable: missing, damaged, from another
 format or program, for another root or another day, it is set aside by

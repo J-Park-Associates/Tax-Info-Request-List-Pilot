@@ -5484,8 +5484,8 @@ def _cmd_firm(argv: list[str]) -> dict:
     answered as empty.
 
     **The cache (P120).** A household whose folders have not changed since
-    the last reply is answered from ``firm-view.json`` in the data folder
-    (:mod:`tracker.firm_cache`); the rest are read as always, and the
+    the last reply is answered from the cache in the data folder
+    (:data:`tracker.firm_cache.CACHE_FILENAME`); the rest are read as always, and the
     practice-wide facts are worked out again every time. When the cache
     path is unsure of anything it gives way to :func:`_firm_fresh`, the
     whole walk as it always was, which is the reference the suite holds the
