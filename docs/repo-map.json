@@ -15,9 +15,9 @@
     "a person sends the draft"
   ],
   "counts": {
-    "nodes": 340,
-    "edges": 1151,
-    "reused": 272
+    "nodes": 341,
+    "edges": 1156,
+    "reused": 288
   },
   "node_types": [
     "artifact",
@@ -262,8 +262,8 @@
       "id": "tracker/api.py",
       "type": "module",
       "layer": "core",
-      "sha256": "9077f2f4945fc6b5",
-      "lines": 5640,
+      "sha256": "37ff7fbcbb635cf7",
+      "lines": 5644,
       "cli": "python -m tracker.api",
       "exports": [
         "ACCEPT_FOLDER_NAME_HELP",
@@ -459,6 +459,7 @@
         "SCAN_COMPLETE",
         "SCAN_FILED",
         "SCAN_NOTHING_DONE",
+        "SCAN_NOTHING_DONE_BARE",
         "SCAN_NOT_IN_PASS",
         "SCAN_NOT_SORTED",
         "SCAN_PROBLEM",
@@ -546,10 +547,10 @@
         "PROGRESS_SCAN": "'Checking {name}'",
         "PROGRESS_STOP": "'Stop'",
         "PROGRESS_STOPPING": "'Stopping After This File\u2026'",
-        "SHELL_KILLED": "'Sort Stopped: Ran Too Long'",
-        "SHELL_KILLED_WRITE": "'Change Stopped: Ran Too Long'",
+        "SHELL_KILLED": "'Sort Stopped: Ran Too Long.'",
+        "SHELL_KILLED_WRITE": "'Change Stopped: Ran Too Long.'",
         "SHELL_KILLED_WRITE_NOTE": "'It May Be Partly Done.'",
-        "SHELL_KILLED_READ": "'Stopped: Ran Too Long'",
+        "SHELL_KILLED_READ": "'Stopped: Ran Too Long.'",
         "SHELL_KILLED_AT": "'It Was on {household}: {name}.'",
         "SHELL_NO_REPLY": "'No Reply From the Tracker'",
         "SHELL_COULD_NOT_START": "'The Tracker Could Not Start'",
@@ -559,6 +560,7 @@
         "SCAN_SCANNING": "'Scanning\u2026'",
         "SCAN_NOTHING_DONE": "'Nothing Done: {why}.'",
         "SCAN_PROBLEM": "'Sort Failed'",
+        "SCAN_NOTHING_DONE_BARE": "'Nothing Done'",
         "SCAN_PROBLEM_REASON": "'Sort Failed: {reason}'",
         "SCAN_COMPLETE": "'Pass complete \u2014 {did}.   {summary}'",
         "SCAN_FILED": "'Filed {n}'",
@@ -3976,7 +3978,7 @@
       "id": "app/main.js",
       "type": "module",
       "layer": "desktop-app",
-      "sha256": "e4ba5dc5db48d2e8",
+      "sha256": "df01497b91d7fd12",
       "lines": 760,
       "role": "Electron main process. Spawns the Python API (`-m tracker.api` under the checkout's .venv interpreter, by its full path, or the frozen executable package.json's config.apiName names in the portable build) and relays its JSON to the renderer over IPC. Since decision 193 it passes each progress line a pass prints (tracker.progress's format) to the window on the tracker-progress channel, keeps the last non-progress line as the reply, follows the kill to the limit_seconds the pass reports and says where it was, answers every failure of its own in the API's envelope, and puts no stderr on screen - a failed command's goes to the error log the API names, else to the shell's fallback error.log in %LOCALAPPDATA%\\Tax Document Tracker Pilot (local, non-roaming; Electron's userData off Windows).",
       "notes": "This is the cross-language boundary: everything the UI can do is a tracker.api command. The renderer is untrusted here: a command must be in vocab.commands (before the vocabulary arrives, only BOOTSTRAP_COMMAND, pinned to tracker.api.COMMANDS by a guard) with the one argument shape the renderer uses; open-path opens only a path the API reported in state.paths, and the error log vocab.shell.error_log names, as a file (an optional second argument \"reveal\" on the same channel shows a reported file selected in File Explorer through shell.showItemInFolder after the same lstat check; a folder still goes to shell.openPath); the tracker's exit code is read, not discarded, and a plain command that outlives TRACKER_TIMEOUT_MS is killed and reported, and a pass at the limit its own first line states (decision 203). The window is sandboxed, cannot navigate and cannot open windows. Decision 160: the shell takes app.requestSingleInstanceLock(); a second launch quits before any window is made, and the running one restores and focuses its window on second-instance - two windows were two editors, and the earlier one's save took the later one's back. Decision 176: devTools is off when packaged, and runTracker() serialises the payload before the tracker starts and writes it as UTF-8, which is how tracker.api._read_spec() reads it. Decision 191: from source it runs .venv/Scripts/python.exe (or .venv/bin/python), never a bare python, and answers with the lock tool's NOT_SET_UP sentence when that is missing; buildMenu() runs before the window is made in both builds, and the app's own menu (SPEC-shell 5.1) has no reload, zoom or developer-tools item or accelerator (E-7). Decision 188 (E-14): learn() keeps each reported path with its kind from vocab.path_kinds, and openPath lstat()s it and opens it only when it is no symbolic link (Node reports a junction as one) and still a directory for 'folder' or a regular file for 'file'; otherwise vocab.shell.not_opened. No path.relative( and no startsWith( (tests/test_layers.py). Decision 186's rebase review (MF2): keepInLog() appends (appendToLog, fail-safe: a failed write is dropped, never thrown) to the error log the API named and builds no such path - no ERROR_LOG_FILENAME in the shell. Jason's ruling of 2026-09-29: with none named (no data folder yet) it appends to a fallback error.log in %LOCALAPPDATA%\\Tax Document Tracker Pilot (process.env.LOCALAPPDATA, else the profile's AppData\\Local; off Windows app.getPath('userData'); FALLBACK_LOG_NAME; not the data home, which the P19 deny list and the package check keep out of a package, and not the roaming %APPDATA%; capped at FALLBACK_CAP 256 KB, one .1 copy, never written through a link or a folder, a folder at error.log.1 drops the old log instead of stopping writes), a failed command's reply adds just vocab.shell.no_log (api.SHELL_NO_LOG, 'Tracker failed'; SPEC-shell 11.2), the stderr is never on screen, and a renderer error is kept there too. The menu bar stays hidden until Alt (autoHideMenuBar, Jason 2026-09-29). Decision 203: the command named by vocab.pass_command (learned, never typed) is a pass: runTracker resolves the click at its 'started' progress line, streams its later lines on tracker-progress and sends {reply, code} - its final line, or the shell's own failure when it gave none or was killed - on the same channel when it closes; a pass is killed only at the limit its own first line states (limit_seconds, locking.RUN_TIME_LIMIT_SECONDS), while every other command keeps TRACKER_TIMEOUT_MS; each running pass is kept in 'passes' and will-quit destroys its stdout, which the runner takes as Stop. Decision 209: at whenReady the shell runs the API's after-install command itself (LAUNCH_COMMAND, through spawnTracker, outside the renderer's allowlist) in the background: no tracker-cmd waits for it (the review's S7), and when its reply says ran the shell sends LAUNCH_DONE_CHANNEL ('after-install-done', one of three main-to-renderer channels, with tracker-progress and MENU_CHANNEL) so the page asks list again for the notice. SPEC-shell 5: the menu bar is built from BAR with the API's words (DEFAULT_MENU_WORDS, word for word tracker.api.MENU, replaced by vocab.menu when a word differs), items are enabled from the page's {enable} list (ALWAYS need nothing), and a chosen item goes to the page on MENU_CHANNEL as {id, token}; onMenuMessage() treats the one 'menu' channel as untrusted (unknown ids, popups and long tokens are dropped) and pops the six native right-click menus of POPUPS; Open error log is the shell's alone (openErrorLog: the named log, else the fallback if it exists, through openChecked's lstat test, the one openPath uses). pageBackground() reads --window-light / --window-dark from pilot-ui.css for the system theme (none under a contrast theme) and nativeTheme 'updated' repaints the window. Pilot P46: flushes the page's storage to disk as the window closes, since Electron lets go of the single-instance lock before it closes that storage."
@@ -4007,8 +4009,8 @@
       "id": "app/renderer/app.js",
       "type": "module",
       "layer": "desktop-app",
-      "sha256": "baf4205997b1ea29",
-      "lines": 3642,
+      "sha256": "b28f69c90526225f",
+      "lines": 3654,
       "role": "The desktop UI's data and writes: the New household dialog (form type, then request list), the request-list editor - the only place a rule is entered - every write, the notices, the lock and the pass. It draws no page: the shell (shell.js) and the pages (pages.js) do. Talks only to window.tracker from the preload bridge.",
       "notes": "Every node is built with el() and placed with replaceChildren; there is no innerHTML and no escaper, so a client's file name, a keyword somebody typed into the request list or a folder name is text whatever characters it carries (a guard checks the sinks are absent). Every word it shows or compares comes from the API's vocabulary (applyVocabulary); it owns no label. Decision 76: the Needs Review card asks one question of a parked and a set-aside document alike - which request does this belong to - so reviewRow() builds both, and only an open question carries the note box and the button that sets one aside; what a person has set aside is folded under its own count, never removed from the page, because the list is the only way back. Decision 77: the way back for what is already filed is the right-click menu of a Received row (Unfile, Mark missing: unfileDocument() and withdrawAnswer(), each taking the row's handle and record version) - there for the one row that is wrong, so nobody corrects a filing in Explorer, which the index never learns of. Decision 84: the side sheet shows the shortlist. sheet.js maps state.review by handle and hands the parked file its triage; reviewRow() puts the shortlist at the head of the picker under the 'suggested' heading, every other request under 'other_requests', and lists the sentence behind each suggestion beneath the row - an <option> carries no second line, and the reason is what is read before anything is picked. The picker starts on the best suggestion, falling back to the router's own first candidate. A parked file the evidence says nothing about shows the vocabulary's nothing_suggested rather than a guess, and a set-aside row is not triaged at all, so it gets no shortlist. Every word of it - the two headings and the File it label as well - comes from vocab; the renderer still types none. Decision 89: a chip beside the engagement's name says whether its own page still describes it. The word and the label are the API's (vocab.view), the chip's class is derived from the word the same way a status chip's is, and the button opens state.paths.view through the same whitelisted opener the Open Status button uses. Decision 91: that button's label is the API's too - applyVocabulary() fills #view-label from vocab.view.open, exactly as it fills the scan button - so the page carries no word for it, and the path it opens is now an .html file the shell hands to the default browser. Decision 104: requestRows() is the one row component - a table of inputs built from vocab.columns (each column's key, header and help; the two numbers as number inputs whose minimum comes from vocab.editor.minimums, the override a pick of vocab.overrides), used by the custom-request section of Add a return / New household (three columns, identifiers assigned as rows are added) and by the editor (all ten). openEditor() opens on state.rules - the person's rows as stored, a derived date pattern shown blank, the file types shown as '*' when any - with the engagement's details laid out from vocab.editor.engagement_fields (a text box, a date or a yes/no box for the editable ones, plain text for the rest) and the keywords filings taught shown beside each row as taught (vocab.editor.learned_note), never as typed. pasteRows() appends rows pasted from a spreadsheet by position - tab-separated if any line holds a tab, otherwise CSV through a small RFC 4180 reader, a first line that repeats the headings skipped - and records nothing. saveEditor() is one edit call: a refusal is shown inside the editor with its row and column and the modal stays open; a save renders the state the API returns, closes, and says what changed or that nothing did, with the warnings under vocab.editor.warnings_heading. Every heading, label, hint and button of the editor is vocab.editor's or vocab.columns'; the Check Manifest button and the button that opened the workbook are gone with the workbook. Decision 112: both row builders put the row's sequence number on the <li> (dataset.seq, from state.index[].seq and state.review[].seq) and assignParked(), dismissParked() and unfileDocument() send it back as seq; assignParked's banner shows the API's overrode_shortlist sentence as a warn note beside left_in_review. A refusal goes through refused(): the API's sentence is toasted, the button re-enabled and showReturn(active) re-reads the state (one `state` since decision 194), so the card shows the row as the record now holds it. The renderer types no sentence of its own here either. Decision 113: the learned cell is a list rather than a line - learnedCell() draws the API's learned_note and then one span.ed-learned-word per taught keyword, each with its own button.ed-unlearn carrying the identifier and the word - and a click calls the unlearn command, then re-draws only the learned column from the state that comes back (renderLearnedCells), because unlearning is its own event and lands at once while the rows may hold edits the person has not saved. The note area says the API's unlearned_note, and its scan_note under it when the re-scan could not run; the renderer types no word of it. Decision 110: movedRow() builds the sheet's row for a moved working copy of state.moved, with restoreMoved (the restore command) and keepMoved (assign, with the request the picker was left on and the keyword typed) behind two buttons, delegated on #sheet; sending it to review is gone (SPEC-shell E65) and its home and where it is now are paths, so neither is drawn. The picker and the keyword box are shown only where the API said which request the copy's name belongs to (in_request, decision 168), and the picker starts on it; every word is vocab.review_labels', including the word for a copy that is nowhere. Decision 114 (the deck, Cards/List) is gone with the shell (SPEC-shell 13): the side sheet places one row built by reviewRow() at a time, and its Next moves on without writing. fileRow() is the one place the assign call is made - assignParked() and keepMoved() reach it, and a guard in tests/test_single_source.py keeps it the only one, so the review rows and a moved copy cannot drift apart. Decision 118: renderReminder()/loadReminder()/drawReminder() are the reminder in the side sheet - the record's last word on the draft as one caption, the four stages as a toggle coloured from the API's palette, the letter drawn from its own shape with el() (never from the clipboard's markup, which would be an HTML string), Copy for Outlook putting text/html and text/plain on the clipboard with the same words, Approve sending back the fingerprint of the text on screen, and no Open the draft file (SPEC-shell 7.2); the letter's parts sit in the side sheet from the start with the ids drawReminder() looks up. The stage a person picked is the only thing the page holds of its own and is dropped when the engagement changes. It types no colour: every hex it draws with is looked up in vocab.reminder.palette by the key a stage carries, and a guard reads the file for one. Decision 129 added the household card's two feed lines, the editor's feed list with its picker and its warning, and File under another return on both renderings of the queue - every word of it from the API's vocabulary, as always. Decision 160: the editor sends state's list_head with every save, and a Rename fold (renameChoices(), renameRequest()) calls the rename command, renames the row in place, adopts the version the rename returns and keeps what the person typed and not saved. Decision 157: movedRow() draws a gone row (its copy and its original both gone) with the one answer left, Mark <identifier> missing (vocab.review_labels.mark_missing on the .r-withdraw button), and the sheet's delegate sends it to withdrawAnswer(). Decision 189: runScan() shows the reply's pass_warnings and each other return's error, skip and warnings under its own label, in the same banner and the same way as the asked return's warnings, on the skipped and failed paths too. Decision 188: the household card shows the API's pause sentence and, where there is something to accept, the one 'Accept the folder's name' button, which sends accept-folder-name with the seq and scope the card was drawn from; misfits are drawn from the API's 'where' (the path below the root), never worked out here. Decision 194: one process per click. A switch is showReturn -> one `state` (193's generation drops a late reply). The Reminder card is drawn from state.reminder_card (drawReminderReply draws either source); `reminder` is called only for the stage toggle, a refused approve, or to keep a toggled rung after a write. The list and vocab arrive once from `list` (bootstrap: start and set-root) and are replaced by the `list` a list-changing write carries (adoptList). The editor opens on lastState (D13); its save is judged by list_head. The review's fixes: call(args, payload, { ofAnother }) says the warnings of another return's state (the hand-over picker's) under its label (vocab.notices.about, labelOfState); unlearnKeyword redraws through renderFor, so D13's lastState is never behind an unlearn. Decision 196: there is no wizard and no household choice outside the household on screen. openRoll() opens the roll dialog (#roll-modal; renderRollFold fills it) only when state.household.roll_year is set, and Add a return; rollFromCard() gathers the ticks and form picks (rollChoice, kept for the household on screen across a redraw) and rollHouseholdCall(hh, choice) - a pure function a test runs under node - builds the one roll-household call from the household on screen. openAddReturn(hh) sets addingTo, the only household a create sends by path; openNewHousehold() clears it. A refused create stays in #ne-note. On decision 194's model the create and the roll adopt the list their reply carries (adoptList) and draw its state through renderFor; the roll fold's people button is reviewPeople() - showReturn, which says whether its read drew the page, then openEditor only when it did and the clicked return is still active, so a failed read is one notice and a switch during the read opens no editor; bootstrap loads the catalog once for the roll fold's form pick; openEditor reads state only when lastState is another return's and says vocab.editor.not_this_return when a switch landed during that read. Decision 200: a row's status is vocab.labels[item.status_key].label in pages.js (pagesItemStatus), one word in its colour with no sentence (SPEC-shell 2.5 E58); setAsideGroups() builds the one Set aside fold (not asked first, then each Not Applicable year) that renderEditorRows() draws, each group headed by setAsideHeading(). Not Applicable rows leave the working table; no 'override:' is typed. Decision 201: every dialog is in DIALOGS and goes through openDialog (remembers the opener, focuses a control, Tab trapped by trapTab) and requestClose (Cancel, Escape and an overlay click alike) to closeDialog (focus back to the opener); a dialog with a model is compared with its snapshot and, when dirty, raises its unsaved bar - Keep editing focused, Discard the only way out, Escape keeping; rename and a form picked move the snapshot. keywordBox() and noteBox() build the labelled review boxes. requestRows takes a fold option: the editor's plain part (vocab.editor.plain_columns, and a custom row's Document per state.items[].catalog_row) and a per-row Routing rules fold (routing_columns), hidden never dropped; a refused save opens every fold. addIssuerAndFile() is the one call site of add-issuer-and-file. DECISION 190: the Reminder card's status and each return's household line say vocab.reminder.approved_then_edited when the state's `lapsed` is set, after approved and before last drafted. tests/test_layers.py scans this file, main.js and preload.js for any network call. The review list groups parked rows by the API's bucket under review_labels.buckets (decision 190); a not-a-document row and card offer no Open and no File it and say the true type; Open is offered only where the API named row.open_key (never a container or a refused reading - decision 190 following 184) and opens state.paths[row.open_key], never a path of its own. Since the review of 190 every row is keyed on the API's handle, never pbc_location: data-original, the triaged map, the triaged map, so two programs from one zip (no location) are two rows. Decision 203: runScan() sends withEng(vocab.pass_command) and is answered once the pass has begun; onPassMessage() takes that pass's progress lines (drawProgress) and its ending (passEnded): the final line's pass_warnings become notices, the asked return's run and the household's other runs draw the banner through scanSummary(run, others, summary) - a notice under its label when that return is no longer shown - and the page is redrawn with one `list`, then one `state`, behind renderFor. The household's returns are greyed by the lock the pass holds, which state reports (193); scanDone() gives the button back through applyLock()'s mark (the review's M2), and a final line that does not name the asked return is vocab.scan.not_in_pass (S2). Decision 209: Install Schedule is gone; Tools > Repair schedule (repairSchedule) runs install-schedule after confirm(vocab.schedule.repair_confirm) and says the reply's sentence (outcome). When the repair's reply names another computer (host), it asks confirm(vocab.schedule.move_confirm with {host} filled in) and on yes calls move-schedule-here. saveRoot's banner is warn when after_install.failed is non-empty. window.tracker.onAfterInstallDone re-asks list and redraws only the notice. renderAfterInstall() shows list's after_install notice at the top of the first screen, headed vocab.after_install.heading, until a run finds nothing. Pilot P21: the Schedule dialog (openSchedule/saveSchedule, registered in DIALOGS as schedule-modal) reads settings, saves through set-schedule, shows a refusal inside the dialog and types none of its words. Pilot 0.2 (SPEC-shell, S3): the shell around the page is shell.js's. app.js calls it at six one-line seams - shellVocabulary at the end of applyVocabulary, shellAdopt in adoptList, shellNeedsRoot in loadEngagements, shellChanged where the sort, the lock or the pass changes, shellProgress in drawProgress, and shellKey first in the document's one keydown listener -. S5 (the side sheet and the dialogs) added the sheet.js seams: render() draws the reminder and hands the state to shellStateArrived (which lets sheet.js move on), DIALOGS holds the sheet (attr: true, it hides by its attribute) and the roll, safeguards, about and folders-skipped dialogs (openRoll, openSafeguards, openAbout, openMisfits), one delegate on #sheet answers the file on it, and the dialogs' help lines are cut (SPEC-shell 2.7). A file name is a link (pages.js) whose path is looked up by the API's key and never drawn; the household sharing checklist is not drawn either."
     },
@@ -4509,8 +4511,8 @@
       "id": "README.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "ae2b0ed9d82e7f9c",
-      "lines": 586,
+      "sha256": "3a2f7a7c383a1eff",
+      "lines": 587,
       "role": "What the system is, how to run each stage, and how to set it up. Who does what is docs/workflow.md."
     },
     {
@@ -4544,7 +4546,7 @@
       "id": "docs/runbook.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "44aa1452c4bff651",
+      "sha256": "8708069ae7bdd99e",
       "lines": 2613,
       "role": "The operator's page for one tax season: the designated machine and today's rule that only one may run a clients root, what a person does each morning and on the draft day, what every index reason and validation note means, and the thirty-minute move to another machine.",
       "notes": "Written for a person, not an agent. Roles are docs/workflow.md and the reasons behind the rules are docs/ROADMAP.md; it links to both rather than repeating them."
@@ -5032,6 +5034,13 @@
       "lines": 60
     },
     {
+      "id": "pilot/handoffs/shell-final-rereview.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "43a7a3c122828d87",
+      "lines": 266
+    },
+    {
       "id": "pilot/handoffs/shell-final-review-A.md",
       "type": "doc",
       "layer": "docs",
@@ -5056,8 +5065,8 @@
       "id": "pilot/handoffs/shell-fixpass.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "03f68770b7054172",
-      "lines": 69
+      "sha256": "9f53544201a5759d",
+      "lines": 90
     },
     {
       "id": "pilot/handoffs/shell-ledger.md",
@@ -5070,8 +5079,8 @@
       "id": "pilot/handoffs/shell-rulings.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "0852231c0ce99c2e",
-      "lines": 38
+      "sha256": "1dcbed14faf6ec36",
+      "lines": 39
     },
     {
       "id": "pilot/handoffs/shell-spec-sync.md",
@@ -5140,8 +5149,8 @@
       "id": "pilot/wintest/PROMPT-shell.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "b4cc7021277d4ac2",
-      "lines": 136
+      "sha256": "f3639f2616542448",
+      "lines": 145
     },
     {
       "id": "pilot/wintest/PROMPT.md",
@@ -8987,8 +8996,8 @@
       "id": "tests/test_shell.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "00fcce57778e9bf1",
-      "lines": 2639,
+      "sha256": "cfeff627561fda27",
+      "lines": 2688,
       "exports": [
         "CONTRAST",
         "FAKE_DOM",
@@ -9025,6 +9034,7 @@
         "test_a_client_rows_item_is_answered_only_if_its_rule_holds_on_the_page_it_went_to",
         "test_a_cut_name_that_is_a_link_carries_the_links_tooltip_not_its_own",
         "test_a_failed_last_sort_is_a_keyed_notice_without_retry_that_clears_when_the_record_says_it_worked",
+        "test_a_failed_or_locked_household_sort_draws_no_engine_sentence_and_no_path",
         "test_a_failed_sort_says_a_short_approved_reason_and_never_a_path",
         "test_a_file_without_a_group_is_named_and_not_counted",
         "test_a_held_reminder_row_draws_its_document_alone_never_a_code_or_the_hold_sentence",
@@ -9204,8 +9214,8 @@
       "id": "tests/test_single_source.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "8a8da5684dc2e0ff",
-      "lines": 4051,
+      "sha256": "abd8e1e80af3fb79",
+      "lines": 4057,
       "exports": [
         "AFTER_WHAT",
         "CONSOLE_EXEMPT",
@@ -13925,7 +13935,25 @@
     },
     {
       "from": "tests/test_shell.py",
+      "to": "pkg:tests",
+      "type": "depends_on",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_shell.py",
       "to": "tracker/api.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_shell.py",
+      "to": "tracker/layout.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_shell.py",
+      "to": "tracker/locking.py",
       "type": "exercises",
       "source": "derived"
     },
@@ -13937,6 +13965,12 @@
     },
     {
       "from": "tests/test_shell.py",
+      "to": "tests/samples.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_shell.py",
       "to": "tests/test_api.py",
       "type": "imports",
       "source": "derived"
@@ -13944,6 +13978,12 @@
     {
       "from": "tests/test_shell.py",
       "to": "tests/test_pilot_ui.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_shell.py",
+      "to": "tests/test_runner.py",
       "type": "imports",
       "source": "derived"
     },
