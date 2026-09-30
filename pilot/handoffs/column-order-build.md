@@ -108,7 +108,17 @@ edit was the refused one).
   checkout of 877c7a2 without a `.venv`. Environmental, not this change.
 - `tests/test_repo_map.py` 80 passed; `tests/test_vocab_report.py` 28 passed;
   `tests/test_tripwire.py` 19 passed; `tests/test_errors.py` 83 passed.
-- `tests/test_api.py`: see the commit message / final reply (run last).
+- `tests/test_api.py`: 407 passed, exit 0 on both (3.14: 24m13s; 3.11:
+  39m50s, on a PC loaded by the other lanes' runs).
+- Exit codes: test_shell 1, test_shell_menu 1 (the known failures above),
+  test_single_source 1 (the tripwire above), every other file 0.
+
+Session notes: a second copy of this builder worked in the same worktree for
+a while and made commit bf2d9ed from my staged files (its content is exactly
+this lane's work). It had also started two `tests/test_api.py` runs there; I
+stopped those two and my own first run (PIDs 33180, 35256, 14652 and their
+children) because they were writing into the same log files, then ran
+`test_api.py` once per interpreter with separate logs (the results above).
 - `python -m ruff check .`: all checks passed. `python tools/repo_map.py
   check`: current. `python tools/vocab_report.py check`: current.
 - Dead code: none in the changed files (every new function and constant is
