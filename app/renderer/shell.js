@@ -254,7 +254,13 @@ function shellOpenState() {
   else if (route.level === "household" || route.level === "year") {
     const own = shellOwnReturns(route.household);
     const shown = lastState && lastState.paths ? lastState.paths.engagement : "";
-    if (own.length && !own.some((one) => one.path === shown)) path = (own.find((one) => one.path === active) || own[0]).path;
+    // A working return first - active and not rolled forward, as the list's
+    // household says - so the household's Sort reports on one it sorts (P134).
+    const working = ((shellHousehold(route.household) || {}).returns || [])
+      .filter((one) => one.active !== false && !one.superseded_by).map((one) => one.path);
+    if (own.length && !own.some((one) => one.path === shown)) {
+      path = (own.find((one) => one.path === active) || own.find((one) => working.indexOf(one.path) !== -1) || own[0]).path;
+    }
   }
   if (!path) return Promise.resolve();
   return showReturn(path).then((drawn) => {
@@ -793,6 +799,7 @@ function inboxFolder() {
 }
 
 async function shellRefresh() {
+  forgetSortAnswers();   // app.js: a Sort's answer is not in the record read again (P131)
   try {
     adoptList(await call(["list"]));
     if (shellRoute.level === "return") await showReturn(shellRoute.ret);
@@ -876,6 +883,7 @@ function focusRegion(name) {
 }
 
 function shellKey(e) {
+  tipKey(e);   // tooltip.js: Escape hides a showing tip first, and the key goes on (P130)
   if (e.key === "F6") {
     e.preventDefault();
     const at = F6_REGIONS.indexOf(regionOf(document.activeElement));
@@ -893,10 +901,6 @@ function shellKey(e) {
     if (!$("find-list").hidden) {
       $("find").value = "";
       hideFound();
-      return true;
-    }
-    if (tipShowing()) {
-      hideTip();
       return true;
     }
     return false;

@@ -121,8 +121,8 @@ not rerun. The run also builds the installer; note its SHA-256.
     "Two Years Open; Sorting Paused" **in full, on wrapped lines if needed,
     never cut**, and Overview lists it the same way. Nothing is hidden on the
     household's own pages. To switch the older return off: open that older
-    return's page, right-click its name and choose **Edit Request List…**, set
-    **Active** to *No: Sorting Skips This Return*, and save. Press F5: the
+    return's page, right-click its name and choose **Edit Request List…**,
+    untick **Active — No: Sorting Skips This Return**, and save. Press F5: the
     marker goes.
 15. **Skipped folders.** In File Explorer, inside the practice folder
     `J Park & Associates\<household>\` (the household's own folder, for

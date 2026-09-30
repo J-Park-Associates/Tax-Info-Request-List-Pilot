@@ -645,12 +645,16 @@ def test_reveal_is_refused_when_the_file_is_no_longer_a_file_or_is_a_link(tmp_pa
     copy, moved, scenario = _reveal_scenario(tmp_path)
     copy.unlink()
     copy.mkdir()                                   # a folder where the file was
+    ran = _run(tmp_path, [{"tracker": ["list"]}, {"open": [str(copy), "reveal"]}], **scenario)
+    assert ran["revealed"] == [] and ran["opened"] == [] and all(ran["answers"])
+    # The link half needs a machine that can make one (the Windows check's A4, P129).
     moved.unlink()
-    moved.symlink_to(tmp_path / "Prepared" / "elsewhere.pdf")
-    ran = _run(tmp_path, [{"tracker": ["list"]}, {"open": [str(copy), "reveal"]},
-                          {"open": [str(moved), "reveal"]}], **scenario)
-    assert ran["revealed"] == [] and ran["opened"] == []
-    assert all(ran["answers"])
+    try:
+        moved.symlink_to(tmp_path / "Prepared" / "elsewhere.pdf")
+    except (OSError, NotImplementedError):
+        pytest.skip("this machine cannot make a symbolic link")
+    ran = _run(tmp_path, [{"tracker": ["list"]}, {"open": [str(moved), "reveal"]}], **scenario)
+    assert ran["revealed"] == [] and ran["opened"] == [] and all(ran["answers"])
 
 
 def test_a_word_that_is_not_reveal_opens_the_default_way_and_a_folder_is_never_revealed(tmp_path):

@@ -120,6 +120,8 @@ $("notices").addEventListener("click", (e) => {
 // The lock, as app.js keeps it: the shell reads `locked` and `lockStale`.
 let lockStale = false;
 function appRouteChanged() {}
+// F5 forgets a Sort's answer (P131); the double keeps none.
+function forgetSortAnswers() {}
 
 async function showReturn(path) {
   active = path;

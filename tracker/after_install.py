@@ -196,10 +196,10 @@ SETTINGS_UNREADABLE = ("The app's settings file could not be read, so neither th
                        "record check could run; choose the clients folder again in the app.")
 SETTINGS_UNWRITABLE = ("The app's settings file ({file}) could not be written, so the schedule choice was "
                        "not saved and nothing was changed. Try again, or check the folder's permissions.")
-SCHEDULE_OFF_HERE = ("The schedule is off on this computer; turn it on with the Schedule button before "
+SCHEDULE_OFF_HERE = ("The schedule is off on this computer; turn it on in Tools > Schedule before "
                      "moving it here.")
 PREFERENCE_UNUSABLE = ("The schedule setting in the app's settings file cannot be used ({problem}) No "
-                       "schedule was changed. Choose it again with the Schedule button.")
+                       "schedule was changed. Choose it again in Tools > Schedule.")
 #: The schedule key the record holds when the saved choice was refused.
 PREFERENCE_KEY = "preference_unusable"
 SCHEDULE_FAILED = ("The schedule could not be registered on this computer ({problem}). Start the app: "

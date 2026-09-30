@@ -473,6 +473,13 @@ SCAN_REASONS = {
     "folder-missing": "Folder Not Found",
     "other": "Unexpected Error",
 }
+#: Why a return skipped for want of room did nothing: "Nothing Done: Names
+#: Too Long." (P134; Jason chose it, 2026-09-30, SPEC-wincheck-fixes Q1).
+#: The other skip words, Inactive and Rolled Forward, are the screen's own
+#: (``SCREEN``), referenced in :func:`_vocab`'s ``scan.skipped``, never
+#: restated. A lock held elsewhere says :data:`SCAN_REASONS`'s word; a kind
+#: listed nowhere is :data:`SCAN_NOTHING_DONE_BARE` (P117).
+SCAN_NO_ROOM = "Names Too Long"
 SCAN_COMPLETE = "Pass complete \u2014 {did}.   {summary}"
 SCAN_FILED = "Filed {n}"
 SCAN_REVIEW = "{n} to Review"
@@ -1720,7 +1727,10 @@ def _vocab() -> dict:
         "scan": {"scanning": SCAN_SCANNING, "nothing_done": SCAN_NOTHING_DONE,
                  "nothing_done_bare": SCAN_NOTHING_DONE_BARE,
                  "problem": SCAN_PROBLEM, "problem_reason": SCAN_PROBLEM_REASON,
-                 "reasons": dict(SCAN_REASONS), "complete": SCAN_COMPLETE, "filed": SCAN_FILED,
+                 "reasons": dict(SCAN_REASONS),
+                 "skipped": {"inactive": SCREEN["inactive"], "rolled-forward": SCREEN["rolled"],
+                             "no-room": SCAN_NO_ROOM},
+                 "complete": SCAN_COMPLETE, "filed": SCAN_FILED,
                  "review": SCAN_REVIEW, "syncing": SCAN_SYNCING, "not_sorted": SCAN_NOT_SORTED,
                  "but": SCAN_BUT, "not_in_pass": SCAN_NOT_IN_PASS},
         # Sort & Scan, watched, and its Stop (decision 193).
@@ -4905,6 +4915,10 @@ def _reminder_now(engagement: Path, requested: int | None, today: dt.date) -> di
         "stage": stage,
         "held": _held_rows(draft.held),
         "unsorted": draft.unsorted,
+        # Which files hold it, by name, for the sheet to list (P134): a walk of
+        # its own, a moment after the draft's count, so a file landing between
+        # the two can make them differ until the next read.
+        "unsorted_files": reminder.unsorted_files_in_inbox(engagement) if draft.unsorted else [],
         "refusal": reminder.held_refusal(draft) if draft.is_held else "",
         "held_too_long": late,
         "last": ({"date": ledger.day_of(str(last.get(ledger.AT_KEY, ""))).isoformat(),

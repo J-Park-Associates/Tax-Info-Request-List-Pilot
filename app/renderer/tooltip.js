@@ -102,8 +102,14 @@ function hideTip() {
   tipFor = null;
 }
 
-function tipShowing() {
-  return tipFor !== null;
+// Escape hides a showing tip, wherever the keyboard is (SPEC-shell 8.5,
+// P130). shellKey hands it every key first - app.js keeps the document's one
+// keydown listener (SPEC-shell 4.3) - and it never consumes one, so the same
+// Escape still clears the search box, closes the side sheet or asks a dialog
+// to close. Consuming it would make every dialog need two Escapes, because
+// the keyboard puts a tip on each control it reaches.
+function tipKey(e) {
+  if (e.key === "Escape" && tipFor !== null) hideTip();
 }
 
 function tipTarget(event) {

@@ -244,3 +244,6 @@ api._vocab	firm.unreadable (api.FIRM_UNREADABLE)	Could not be read	reword	Could 
 api._vocab	schedule.move_warning	Only If {host} Is Retired	reword	Only If {host} Is Retired	5	Under the move-schedule question	Now shown with the confirm (final review A finding 1)	Only If {host} Is Retired	case
 api._vocab	reasons.opened-not-across	Came in Email or Zip	reword	Email or Zip	3	Status column of a parked file's row (return page, Needs Review), and the side sheet	P116, built as P125 (SPEC-email-zip-tag): cut in the 160px column in the cloud's font (fits on Windows, 131px); the old words become its tooltip	Email or Zip	changed
 api._vocab	reason_tips.opened-not-across	(none: new)	reword	Came in Email or Zip	5	Tooltip of the "Email or Zip" status, shown every time	P116, built as P125 (SPEC-email-zip-tag): the words the tag replaced	Came in Email or Zip	changed
+api._vocab	scan.skipped.inactive	(none)	reword	Inactive	1	After Nothing Done	P134: the screen's approved word (screen.inactive); was a bare Nothing Done	Inactive	case
+api._vocab	scan.skipped.rolled-forward	(none)	reword	Rolled Forward	2	After Nothing Done	P134: the screen's approved word (screen.rolled)	Rolled Forward	case
+api._vocab	scan.skipped.no-room	(none)	reword	Names Too Long	3	After Nothing Done	P134: new word; Jason chose it (SPEC-wincheck-fixes Q1, 2026-09-30)	Names Too Long	case

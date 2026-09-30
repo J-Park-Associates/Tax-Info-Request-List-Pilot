@@ -23,6 +23,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -404,6 +405,56 @@ def test_the_search_box_alone_shows_no_tooltip_on_keyboard_focus():
     assert ':focus-visible' in focus and 'matches("#find")' in focus
     assert 'matches("input")' not in focus and "textarea" not in focus
     assert '<input id="find"' in read("index.html")
+
+
+def test_escape_hides_a_showing_tip_first_and_leaves_the_key_to_the_page(tmp_path):
+    """P130 (the Windows check's F2): a hover tip over the Sort icon while the
+    search box has the focus survived Escape, because only the last branch of
+    ``shellKey`` hid a tip. ``tooltip.js``'s ``tipKey`` hides the tip and does
+    not consume the key, so the same Escape still does the page's own thing
+    (clear the search box, close the sheet or a dialog)."""
+    setup = """
+      let tipFor = null, hidden = 0;
+      function hideTip() { hidden += 1; tipFor = null; }
+      const key = (k) => { const e = { key: k, stopped: 0, prevented: 0 };
+        e.preventDefault = () => { e.prevented += 1; }; e.stopPropagation = () => { e.stopped += 1; };
+        e.stopImmediatePropagation = () => { e.stopped += 1; }; return e; };
+    """
+    probe = """
+      const out = [];
+      tipFor = { id: "sort" }; let e = key("Escape"); tipKey(e); out.push([hidden, tipFor, e.prevented, e.stopped]);
+      e = key("Escape"); tipKey(e); out.push([hidden, e.prevented, e.stopped]);
+      tipFor = { id: "sort" }; e = key("Tab"); tipKey(e); out.push([hidden, tipFor === null]);
+      return out;
+    """
+    out = run_shell(["tipKey"], setup, probe, tmp_path, "tooltip.js")
+    assert out == [[1, None, 0, 0], [1, 0, 0], [1, False]]
+
+
+def test_shell_key_hands_escape_to_the_tip_first_wherever_the_focus_is(tmp_path):
+    """P130, wired: ``shellKey`` (the one keydown listener's first step, SPEC
+    4.3) hands every key to ``tipKey`` before anything else, so the search
+    box's own Escape, a dialog's and the side sheet's no longer leave a tip
+    showing. Reproduced before the fix: focus in the search box, a hover tip
+    on the Sort icon, Escape - the search box was cleared and the tip stayed."""
+    setup = """
+      let tipFor = null, dialogStack = [], cleared = 0;
+      function hideTip() { tipFor = null; }
+      const nodes = { find: { value: "Smi" }, sheet: { hidden: true }, "find-list": { hidden: true } };
+      const $ = (id) => nodes[id];
+      function hideFound() { cleared += 1; }
+      const key = (k, target) => ({ key: k, target, preventDefault() {} });
+    """
+    probe = """
+      const out = [];
+      tipFor = { id: "sort" }; out.push([shellKey(key("Escape", nodes.find)), tipFor, cleared, nodes.find.value]);
+      tipFor = { id: "sort" }; dialogStack = ["modal"];
+      out.push([shellKey(key("Escape", { closest: () => null })), tipFor]);
+      return out;
+    """
+    out = run_shell(["shellKey", "findKey"], setup + js_function("tipKey", "tooltip.js"), probe, tmp_path)
+    assert out == [[True, None, 1, ""], [False, None]]
+    assert "tipShowing" not in read("tooltip.js") and "hideTip" not in js_function("shellKey")
 
 
 def test_the_skeleton_is_the_specs_and_the_legacy_box_holds_only_the_three_inputs_saveroot_reads():
@@ -2359,7 +2410,13 @@ vm.runInContext({json.dumps(stub)}, vm.createContext({{ window, location: {{ sea
   console.log(JSON.stringify({{ list, firm, states }}));
 }})();
 """
-    done = subprocess.run([NODE, "-e", script], capture_output=True, text=True, encoding="utf-8", timeout=60, check=False)
+    # From a file, never ``node -e``: the stub alone is longer than Windows'
+    # 32,767-character command line (the Windows check's A3, P129).
+    with tempfile.TemporaryDirectory() as folder:
+        probe = Path(folder) / "stub-replies.js"
+        probe.write_text(script, encoding="utf-8", newline="\n")
+        done = subprocess.run([NODE, str(probe)], capture_output=True, text=True, encoding="utf-8", timeout=60,
+                              check=False)
     assert done.returncode == 0, done.stderr
     return json.loads(done.stdout)
 
@@ -2542,6 +2599,283 @@ def test_a_failed_sort_says_a_short_approved_reason_and_never_a_path(tmp_path):
     for line in said:
         assert len(line.split()) <= 5 and line == title_case(line) and "/" not in line and "Smith" not in line, line
     assert set(words["reasons"]) == {"lock-held", "household-paused", "client-folder-missing", "folder-missing", "other"}
+
+
+def test_a_sort_asked_for_an_inactive_return_says_why_nothing_was_done(tmp_path, monkeypatch, capsys):
+    """P134 (the Windows check, "Added after the check"): a household page
+    sorts through its first return, which on the office PC was the prior
+    year's, set inactive by a person - and the banner read a bare "Nothing
+    Done". With the real engine through ``run-now`` on a household with an
+    inactive return, the page's own ``scanSummary`` now says why, in the
+    screen's approved word; a kind with no word still says "Nothing Done"
+    (P117). Every skip word is Title Case and five words at most in all."""
+    from tests import test_runner as engine
+    from tests.samples import build_samples
+    from tests.test_api import title_case
+
+    samples = tmp_path / "samples"
+    samples.mkdir()
+    build_samples(samples)
+    root = tmp_path / "root"
+    current = engine.build_engagement(root, samples, name="Smith TY2025")
+    prior = engine.build_engagement(root, samples, name="Smith TY2024", drops=())
+    engine.edit_details(prior.path, active=False)
+    runs = engine._run_now(root, engine.household_of(current.path), monkeypatch, capsys)[1][-1]["runs"]
+    [skipped] = [one for one in runs if one["path"] == str(prior.path)]
+    assert skipped["skipped"] and skipped["code"] == "inactive" and not skipped["error"]
+
+    words = api._vocab()["scan"]
+    setup = ("const fill = (p, v) => p.replace(/\\{(\\w+)\\}/g, (_, k) => v[k] ?? '');\n"
+             f"const vocab = {{ scan: {json.dumps(words)} }};")
+    probe = f"""
+      const run = {json.dumps(skipped)};
+      return [scanSummary(run, [], '').text, scanSummary({{ ...run, code: "rolled-forward" }}, [], '').text,
+              scanSummary({{ ...run, code: "no-room" }}, [], '').text, scanSummary({{ ...run, code: "brand-new" }}, [], '').text];
+    """
+    said = run_shell(["scanFailed", "scanSummary"], setup, probe, tmp_path, "app.js")
+    assert said == ["Nothing Done: Inactive.", "Nothing Done: Rolled Forward.", "Nothing Done: Names Too Long.",
+                    "Nothing Done"]
+    for line in said:
+        assert len(line.split()) <= 5 and title_case(line) == line, line
+    assert set(words["skipped"]) == {"inactive", "rolled-forward", "no-room"}
+    screen = api._vocab()["screen"]
+    assert (words["skipped"]["inactive"], words["skipped"]["rolled-forward"]) == (screen["inactive"], screen["rolled"])
+
+
+SORT_ANSWERS = r"""
+  let shellRoute = { level: "overview" }, synced = [];
+  const returns = { "r25": { household: "h1" }, "r24": { household: "h1" }, "o25": { household: "h2" } };
+  function shellReturn(path) { return returns[path] || null; }
+  function syncNotices(prefix, wanted) { synced.push([prefix, wanted.map((one) => one.failure.sentence)]); }
+  const sortAnswers = new Map(), keyedNotices = new Map();
+  function clearNotice(key) { keyedNotices.delete(key); }
+  const shownAt = (route) => { shellRoute = route; showSortAnswers(); return synced[synced.length - 1][1]; };
+"""
+SORT_ANSWER_FUNCTIONS = ["keepSortAnswer", "sortKeyPath", "householdOnScreen", "showSortAnswers", "forgetSortLine",
+                         "forgetSortAnswers"]
+
+
+def test_a_sorts_answer_shows_only_on_its_own_clients_pages(tmp_path):
+    """P131 (the Windows check's F3; rulings 20 and 28, SPEC-shell 3.5): a
+    return's "Sort Failed: {reason}" used to be a window-wide notice, so it
+    showed on Overview and Clients too. It is kept under the return it was
+    asked for and shown only on that household's pages; a line a person
+    dismissed does not come back on the next visit."""
+    probe = """
+      shellRoute = { level: "return", ret: "r25" };
+      keepSortAnswer(["r25", "r24"], "r25", [{ sentence: "Sort Failed: Folder Not Found", kind: "failed" }]);
+      const out = { onReturn: synced[synced.length - 1] };
+      out.overview = shownAt({ level: "overview" });
+      out.clients = shownAt({ level: "clients" });
+      out.household = shownAt({ level: "household", household: "h1" });
+      out.year = shownAt({ level: "year", household: "h1", year: 2025 });
+      out.sibling = shownAt({ level: "return", ret: "r24" });
+      out.otherClient = shownAt({ level: "return", ret: "o25" });
+      forgetSortLine("sort:" + JSON.stringify(["r25", 0]));
+      out.afterDismiss = shownAt({ level: "return", ret: "r25" });
+      out.left = [...sortAnswers.keys()];
+      return out;
+    """
+    out = run_shell(SORT_ANSWER_FUNCTIONS, SORT_ANSWERS, probe, tmp_path, "app.js")
+    failed = ["Sort Failed: Folder Not Found"]
+    assert out["onReturn"] == ["sort", failed]
+    assert out["overview"] == [] and out["clients"] == [] and out["otherClient"] == []
+    assert out["household"] == failed and out["year"] == failed and out["sibling"] == failed
+    assert out["afterDismiss"] == [] and out["left"] == []
+
+
+def test_a_later_sort_or_f5_takes_a_sorts_answer_away(tmp_path):
+    """P131: the next Sort of the household replaces every answer of the
+    returns it ran (a good one says nothing), and F5 forgets them all - the
+    page is read again from the record, which the app's own Sort does not
+    write. It used to go only when the app restarted."""
+    probe = """
+      shellRoute = { level: "return", ret: "r25" };
+      const bad = [{ sentence: "Sort Failed: Folder Not Found", kind: "failed" }];
+      keepSortAnswer(["r25", "r24"], "r25", bad);
+      const out = { failed: shownAt(shellRoute) };
+      keepSortAnswer(["r25", "r24"], "r24", []);          // asked from the household page, all well
+      out.afterGoodSort = shownAt(shellRoute);
+      keepSortAnswer(["r25"], "r25", bad);
+      forgetSortAnswers();
+      out.afterF5 = synced[synced.length - 1];
+      out.left = sortAnswers.size;
+      return out;
+    """
+    out = run_shell(SORT_ANSWER_FUNCTIONS, SORT_ANSWERS, probe, tmp_path, "app.js")
+    assert out["failed"] == ["Sort Failed: Folder Not Found"]
+    assert out["afterGoodSort"] == [] and out["afterF5"] == ["sort", []] and out["left"] == 0
+
+
+def test_a_sorts_answer_is_never_a_window_wide_notice_and_f5_forgets_it():
+    """P131, wired: ``passEnded`` keeps its answer through ``keepSortAnswer``
+    (no ``outcome`` or ``notice`` of its own), every route change re-shows the
+    answers, a dismissed line is forgotten, and F5 forgets them all."""
+    ended = js_function("passEnded", "app.js")
+    assert "outcome(" not in ended and "notice(" not in ended
+    assert ended.count("keepSortAnswer(ran, asked, answer);") == 2
+    assert "showSortAnswers();" in js_function("appRouteChanged", "app.js")
+    assert "forgetSortLine(entry.key);" in read("app.js")
+    assert js_function("shellRefresh").split("\n")[1].strip().startswith("forgetSortAnswers();")
+    assert "function forgetSortAnswers() {}" in (REPO / "pilot" / "harness" / "app-stub.js").read_text(encoding="utf-8")
+
+
+def test_create_return_goes_to_the_new_returns_page(tmp_path):
+    """P132 (the Windows check's F4; the review's S3): after Create Return the
+    page stayed on the route it was opened from while the new return's state
+    arrived, so a return page drew nothing until F5. ``createEngagement``,
+    lifted with fakes and started on another household's return, now goes to
+    the new return's page - after the dialog closed and the list that names it
+    was adopted - and says the return was created after that."""
+    setup = js_function("pagesRoute", "pages.js") + r"""
+      const said = [];
+      let templates = [], customItems = [{ document: "W-2" }], wizardPeople = [], selectedForm = "1040";
+      let engagements = [{ path: "/h1/2025/old", household: "/h1", year: 2025 }];
+      const nodes = { "tmpl-list": { querySelectorAll: () => [] }, "ne-create": { disabled: false },
+        "ne-name": { value: "" }, "ne-client": { value: "" }, "ne-due": { value: "" }, "ne-year": { value: "2024" },
+        "ne-note": { textContent: "", classList: { remove() {} } } };
+      const $ = (id) => nodes[id];
+      const vocab = { household: { return_created: "{label} created ({n})" } };
+      const fill = (p, v) => p.replace(/\{(\w+)\}/g, (_, k) => v[k] ?? "");
+      function householdSpec() { return { household_path: "/h2" }; }
+      function personSpec(p) { return p; }
+      function toastWord() { said.push("toastWord"); }
+      function toast() { said.push("toast"); }
+      function closeDialog(id) { said.push(["closeDialog", id]); }
+      function adoptList() { engagements.push({ path: "/h2/2024/new", household: "/h2", year: 2024 }); said.push("adoptList"); }
+      function shellReturn(path) { return engagements.find((one) => one.path === path) || null; }
+      function select(path) { said.push(["select", path]); return 7; }
+      function renderFor(view) { said.push(["renderFor", view]); return true; }
+      function shellGo(route) { said.push(["shellGo", route]); return Promise.resolve(); }
+      function outcome(text, cls) { said.push(["outcome", text, cls]); }
+      function failed(err) { said.push(["failed", String(err)]); }
+      function failureSentence(err) { return String(err); }
+      async function call() { return { list: {}, created: "1040 - New", state: { paths: { engagement: "/h2/2024/new" } } }; }
+    """
+    out = run_shell(["createEngagement"], setup, "return createEngagement().then(() => said);", tmp_path, "app.js")
+    steps = [one if isinstance(one, str) else one[0] for one in out]
+    assert ["shellGo", {"level": "return", "household": "/h2", "year": 2024, "ret": "/h2/2024/new"}] in out, out
+    assert steps.index("closeDialog") < steps.index("adoptList") < steps.index("shellGo") < steps.index("outcome"), out
+    assert "failed" not in steps
+
+
+SORT_NOTICES = r"""
+  const notices = [], keyedNotices = new Map(), sortAnswers = new Map(), locks = [];
+  let shellRoute = { level: "return", ret: "r25" };
+  const returns = { r25: { household: "h1" }, r24: { household: "h1" } };
+  function shellReturn(path) { return returns[path] || null; }
+  const el = () => ({ removed: false, remove() { this.removed = true; } });
+  const $ = () => ({ append() {} });
+  function drawNotice() {}
+  function outlineRefused() {}
+  function showLock(lock) { locks.push(lock); }
+  const shown = () => notices.map((one) => one.sentence);
+  const press = (entry) => { dismissNotice(entry); forgetSortLine(entry.key); };   // the notice's cross or Retry
+"""
+SORT_NOTICE_FUNCTIONS = ["notice", "keyedNotice", "clearNotice", "syncNotices", "dismissNotice"] + SORT_ANSWER_FUNCTIONS
+
+
+def test_a_sort_that_fails_the_same_way_again_is_said_again(tmp_path):
+    """The review's M1: a keyed notice stays silent for a sentence its key
+    already holds, even once dismissed - so after Retry (or the cross) a Sort
+    that failed the same way again showed nothing. With the real notice
+    functions: fail, press Retry, fail again - the failure is back; a failure
+    not yet dismissed is not doubled; a good Sort takes it away."""
+    probe = """
+      const failed = () => [{ sentence: "Sort Failed: Folder Not Found", kind: "failed" }];
+      const out = [];
+      keepSortAnswer(["r25", "r24"], "r25", failed()); out.push(shown());
+      press(notices[0]); out.push(shown());
+      keepSortAnswer(["r25", "r24"], "r25", failed()); out.push(shown());
+      keepSortAnswer(["r25", "r24"], "r25", failed()); out.push(shown());
+      keepSortAnswer(["r25", "r24"], "r24", []); out.push(shown());
+      return out;
+    """
+    out = run_shell(SORT_NOTICE_FUNCTIONS, SORT_NOTICES, probe, tmp_path, "app.js")
+    failed = ["Sort Failed: Folder Not Found"]
+    assert out == [failed, [], failed, failed, []]
+
+
+def test_a_locked_sort_still_shows_its_lock_and_outlines_its_row(tmp_path):
+    """The review's S1: the pass-level failure is kept whole, so a locked
+    pass's ``lock`` reaches ``showLock`` and its ``identifier`` outlines the
+    row, as ``notice()`` did before a Sort's answer was kept per return."""
+    probe = """
+      keepSortAnswer(["r25"], "r25", [{ sentence: "In Use on FRONT-DESK", kind: "locked", identifier: "R01",
+        lock: { host: "FRONT-DESK" }, retry: () => 0 }]);
+      return { shown: shown(), locks, identifier: notices[0].identifier, retry: typeof notices[0].retry };
+    """
+    out = run_shell(SORT_NOTICE_FUNCTIONS, SORT_NOTICES, probe, tmp_path, "app.js")
+    assert out == {"shown": ["In Use on FRONT-DESK"], "locks": [{"host": "FRONT-DESK"}], "identifier": "R01",
+                   "retry": "function"}
+
+
+def test_the_sorts_answer_is_built_line_by_line_from_the_pass(tmp_path):
+    """The review's S4: ``passEnded``, lifted with the real ``scanSummary``.
+    A pass that failed as a whole is one line, whole (its lock kept), with
+    Retry; a skip names its reason; a summary for a return no longer shown
+    carries its label on the first line only; a good Sort says nothing."""
+    words = api._vocab()["scan"]
+    setup = ("const fill = (p, v) => p.replace(/\\{(\\w+)\\}/g, (_, k) => v[k] ?? '');\n"
+             f"const vocab = {{ scan: {json.dumps(words)} }};\n") + r"""
+      let scanning = null, active = "r25", viewGeneration = 1, kept = [];
+      function scanDone() {}
+      function warningNotices() {}
+      function adoptList() {}
+      function withEng(c) { return [c]; }
+      function renderFor() { return true; }
+      function failed() {}
+      function showReturn() {}
+      function runScan() {}
+      async function call(args) { return args[0] === "state" ? { summary: { line: "" } } : {}; }
+      function keepSortAnswer(ran, asked, answer) {
+        kept.push({ ran, asked, answer: answer.map((one) => ({ ...one, retry: typeof one.retry })) }); }
+      const run = (over) => ({ path: "r25", label: "Smith 2025", ok: true, error: "", code: "", skipped: "", filed: 1,
+        review: 0, waiting: 0, file_errors: [], warnings: [], cancelled: false, ...over });
+      const end = async (asked, reply) => { scanning = { asked }; await passEnded({ reply }); return kept[kept.length - 1]; };
+    """
+    probe = r"""
+      const out = {};
+      out.whole = await end("r25", { error: "In use", failure: { sentence: "In Use on FRONT-DESK", kind: "locked",
+        lock: { host: "FRONT-DESK" }, identifier: null } });
+      out.skipped = await end("r25", { runs: [run({ skipped: "inactive", code: "inactive", ok: false, filed: 0 })] });
+      out.away = await end("r24", { runs: [run({ path: "r24", label: "Smith 2024", error: "gone", code: "folder-missing" }),
+        run({ path: "r25", error: "gone", code: "folder-missing" })] });
+      out.good = await end("r25", { runs: [run({})] });
+      return out;
+    """
+    out = run_shell(["passEnded", "scanSummary", "scanFailed"], setup, "return (async () => {" + probe + "})();",
+                    tmp_path, "app.js")
+    assert out["whole"] == {"ran": [], "asked": "r25", "answer": [
+        {"sentence": "In Use on FRONT-DESK", "kind": "locked", "lock": {"host": "FRONT-DESK"}, "identifier": None,
+         "retry": "function"}]}
+    assert out["skipped"]["answer"] == [{"sentence": "Nothing Done: Inactive.", "kind": "warning", "retry": "undefined"}]
+    assert [one["sentence"] for one in out["away"]["answer"]] == [
+        "Smith 2024: Sort Failed: Folder Not Found", "Smith 2025: Sort Failed: Folder Not Found"]
+    assert out["away"]["ran"] == ["r24", "r25"] and out["away"]["answer"][0]["kind"] == "failed"
+    assert out["good"] == {"ran": ["r25"], "asked": "r25", "answer": []}
+
+
+def test_a_household_page_sorts_through_a_working_return(tmp_path):
+    """The review's M2 (the "Added after the check" item): a household page
+    sorted through its first return, the inactive 2024 one, and reported
+    that nothing was done though the same pass sorted 2025. It now reads the
+    active return that has not rolled forward, from the list's household;
+    a return a person chose is still the one read."""
+    setup = r"""
+      let shellRoute = { level: "household", household: "h1" }, lastState = null, active = "", read = [];
+      let shellPageBusy = false, shellPageFailed = false;
+      const own = [{ path: "r24", household: "h1" }, { path: "r25", household: "h1" }];
+      function shellOwnReturns() { return own; }
+      function shellHousehold() { return { returns: [{ path: "r24", active: false, superseded_by: "" },
+                                                      { path: "r25", active: true, superseded_by: "" }] }; }
+      function showReturn(path) { read.push(path); return Promise.resolve(true); }
+      function shellDraw() {}
+    """
+    probe = """
+      return shellOpenState().then(() => { active = "r24"; return shellOpenState(); }).then(() => read);
+    """
+    assert run_shell(["shellOpenState"], setup, probe, tmp_path) == ["r25", "r24"]
 
 
 def test_a_failed_or_locked_household_sort_draws_no_engine_sentence_and_no_path(tmp_path, monkeypatch, capsys):

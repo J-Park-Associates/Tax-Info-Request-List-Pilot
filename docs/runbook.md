@@ -636,7 +636,7 @@ saving the clients root, **Repair the Schedule**, the move to another computer (
 registers the saved choice, never the defaults. **Off** removes this
 computer's own task and leaves the designation file alone: turn it off on
 the designated computer and no computer runs the schedule, which the app
-says in one sentence; Scan still works by hand. A hand-edited value in
+says in one sentence; Sort still works by hand. A hand-edited value in
 `settings.json` that the setting does not allow is refused in a sentence
 naming the file and the key, at the first screen's notice, and no task is
 registered until the choice is saved again with the button. Each pass
