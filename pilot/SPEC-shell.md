@@ -10,6 +10,43 @@ the SPEC session (opus, high effort) from the confirmed brief
 is a private artifact; its link is in [`HANDOFF.md`](HANDOFF.md) and its
 source is [`mockup-shell.html`](mockup-shell.html) (open it in a browser).
 
+> **Amended by rulings 1-13 (2026-09-29).** Jason's rulings on the build
+> (`pilot/handoffs/shell-rulings.md`, rows 1-13; later rows win over
+> earlier) and the proposals the finished builds made (S1, S2, S3, S4, S7)
+> are folded in below. Where this SPEC's older text and a ruling
+> disagreed, the ruling won. Sections changed:
+>
+> - **1** - the vendored Floating UI files and the load order (ruling 5);
+>   the fallback error log and the agent deny list (ruling 4).
+> - **3.9** (new) - links: file names open File Explorer, household and
+>   return names navigate, return links carry their year, no path is ever
+>   shown (rulings 8, 9, 11, 12, 13).
+> - **4.3** - the menu bar stays hidden until Alt (ruling 3); the tour's
+>   and the terms' own keydown listeners (ruling 1).
+> - **5.1, 5.2** - item words in Title Case (ruling 10).
+> - **5.5** - Open Error Log opens the fallback log; the fallback log
+>   (ruling 4); the failure's on-screen text (ruling 6).
+> - **5.7** (new) - `open-path`'s reveal option and the openable keys of
+>   working copies (rulings 8, 12).
+> - **6** - the pages draw the three link kinds and "{Return Name} ({Year})";
+>   the diagrams follow Title Case and "Could Not Sort" (rulings 8-13).
+> - **8.5** - the tooltip: Floating UI placement, 300 ms hover, focus on
+>   every control but the search box, hidden when its control scrolls out
+>   of view (rulings 2, 5, 7).
+> - **9.2, 9.3** - `year` on the `firm` rows, `files[]`' fields, "Could Not
+>   Be Read" (ruling 13; S1).
+> - **11.1-11.6** - Title Case, the rule and every word table (ruling 10);
+>   "Could Not Sort" (ruling 8); the no-error-log line (rulings 4, 6); the
+>   three link tooltips (rulings 11, 12).
+> - **12** - tour step titles in Title Case, "Needs Review" (rulings 8, 10).
+> - **14.1, 14.2** - the accepted keydown exception (ruling 1); the tooltip,
+>   fallback-log and Title Case tests.
+> - **16** - S7 and S8a in the build table; the Windows check's added steps.
+> - **19** (new) - open for Jason.
+>
+> The decision rows for these rulings are S6's to number and log; this SPEC
+> names rulings by their row in `shell-rulings.md`.
+
 Two things needed Jason before any build (section 15). Both are settled:
 the engine part is approved (P79) and the wording is approved (P84).
 
@@ -62,7 +99,9 @@ names, and for no others.
 | `app/renderer/shell.js` **new** | Side panel, path, search, sort icon, routing, keyboard map, the menu channel, right-click requests. |
 | `app/renderer/pages.js` **new** | The pages (section 6), the row and group components, their states. |
 | `app/renderer/sheet.js` **new** | The side sheet: Check a file, Draft reminder. |
-| `app/renderer/tooltip.js` **new** | The custom tooltip (PLAN-ui section 5, words capped by P63). |
+| `app/renderer/tooltip.js` **new** | The custom tooltip (PLAN-ui section 5, words capped by P63): its timing, focus, Esc and `role=tooltip` logic; placement by Floating UI (8.5). |
+| `app/renderer/vendor/floating-ui/` **new** (ruling 5) | `@floating-ui/dom` 1.8.0 and `@floating-ui/core` 1.8.0 (which has `@floating-ui/utils` 0.2.12 compiled in), MIT, vendored **unedited** as two UMD files, `floating-ui.core.umd.min.js` and `floating-ui.dom.umd.min.js`, with the three licence files and a README naming the versions, the registry integrity and every file's SHA-256. A test pins each file's SHA-256 (decision 191's habit). No CDN, no runtime `npm` install, `app/package.json` untouched. Tippy.js is not used (built on Popper.js, about 2 MB, last released 2021). |
+| `.claude/settings.json` (ruling 4) | The agent deny list gains the fallback error log (5.5): `Read` and `Edit` of `…/AppData/Local/Tax Document Tracker Pilot/error.log` and `error.log.*`, and the same under `~/.config/` off Windows; pinned by `test_the_agent_deny_list_names_the_data_home_and_every_file_that_names_a_client`. |
 | `app/renderer/shell.css` **new** | Layout and components of the new markup. Tokens only: no colour, size or step written outside `pilot-ui.css`'s `:root` blocks. |
 | `app/renderer/pilot-ui.css` | Tokens gain dark values and purpose names (section 10); grid steps become 4/8/16/24/32/48; rules for removed elements are deleted. |
 | `app/renderer/style.css` | **Not edited.** Its rules for removed elements simply match nothing. Its literal colours that still apply are overridden in `pilot-ui.css`'s dark block (section 10.4). |
@@ -74,10 +113,17 @@ names, and for no others.
 
 Load order in `index.html` (all `'self'`, CSP unchanged):
 styles `style.css`, `pilot-ui.css`, `shell.css`, `pilot-style.css`;
-scripts `app.js`, `tooltip.js`, `pages.js`, `sheet.js`, `shell.js`,
-`pilot-content.js`, `pilot.js`, `tour.js`. The new scripts are classic
+scripts `vendor/floating-ui/floating-ui.core.umd.min.js`,
+`vendor/floating-ui/floating-ui.dom.umd.min.js`, `app.js`, `tooltip.js`,
+`pages.js`, `sheet.js`, `shell.js`, `pilot-content.js`, `pilot.js`,
+`tour.js`. The two vendor files sit directly above `app.js` (core, then
+dom), so nothing parser-blocking lies between `app.js` and `shell.js`; they
+depend on nothing and still load before `tooltip.js`, which reaches them
+only through the one global `FloatingUIDOM`. Every `<script src>` is a file
+of the app (no scheme, no `//`). The new scripts are classic
 scripts, as `app.js` is: they share its globals and add their own, each
-named for what it does. No module loader, no bundler, no package.
+named for what it does. No module loader, no bundler, no package beyond
+the vendored files.
 
 ## 2. Every element of today's screen, and where it goes
 
@@ -379,6 +425,34 @@ stands in for an icon ("›" in the audit's words is drawn, not typed).
 Every icon that is a control has an `aria-label` and a tooltip of five
 words or fewer (P65); none has a visible label beside it.
 
+### 3.9 Links (rulings 8, 9, 11, 12, 13)
+
+Three kinds of name are live links, drawn in `--link` wherever a page
+shows them. A link shows the **name only, never a path** (P63).
+
+| Name | Does | Tooltip (`vocab.screen`) |
+|---|---|---|
+| A **file name** (a parked, moved-by-hand, set-aside or filed file's own name, in a row's name or detail column) | Shows **that exact working copy** in File Explorer, the file selected in its folder (5.7) | "Show in File Explorer" |
+| A **household name** (a row's name or detail, a group's caption) | Navigates to that household's page in the app; no engine call | "Navigate to Client" |
+| A **return name** (a row's name, a Needs Review group heading) | Navigates to that return's page in the app; no engine call | "Navigate to Return" |
+
+- **The only link that opens File Explorer is a file name** (ruling 12). No
+  household or return row carries an open key for a link; "Opens File
+  Explorer" applies to files only. Opening the client folder, the inbox or
+  the working folder stays in the Client menu (5.1).
+- **A return link carries its tax year:** wherever a return name is drawn
+  as a link (the Overview's Work Waiting, the household and year pages,
+  Reminders, the Needs Review group headings) it reads
+  **"{Return Name} ({Year})"**, e.g. "1120-S - Rivera Design LLC (2025)",
+  so two years of one return can be told apart (ruling 13). The year is the
+  return's own, from the API's row (`year`, 9.2), never typed or worked out
+  by the renderer. The path row and the page's H1 are unchanged: the path
+  already carries the year.
+- A link that cannot act (the copy is gone or changed) says the shell's
+  "Not Opened; It Has Changed" as a notice, as the open icon does (7.1).
+- `pages.js` builds the three kinds (S5); the keys a file link opens by
+  are the API's (5.7, S8a).
+
 ## 4. Behaviour of the shell
 
 ### 4.1 Routing
@@ -416,7 +490,7 @@ The last route is not remembered across launches.
 | F9 | Sort now (when enabled) |
 | Ctrl+N | New household… |
 | Ctrl+E | Edit request list… (a return open) |
-| Alt | the menu bar (Windows) |
+| Alt | the menu bar (Windows). The bar stays **hidden until Alt** (`autoHideMenuBar: true`; ruling 3) |
 | F6 | cycle focus: side panel › path row › page › side panel |
 | Esc | close the sheet, the search list, a tooltip, in that order |
 | Enter, Shift+F10 | a row's step, a row's right-click menu |
@@ -425,6 +499,16 @@ The accelerators are the menu's (section 5), so they work from anywhere and
 show in the menus. F6, Esc and the listbox keys are the page's: the one
 `keydown` listener stays in `app.js` (a test holds the renderer to one) and
 hands them to `shellKey(e)` in `shell.js` before its own Escape handling.
+
+**Accepted exception (ruling 1):** the terms screen (`pilot.js`) and the
+tour (`tour.js`) keep their own capturing `keydown` listeners, as built.
+They take over the keyboard on purpose and act only while they are open.
+The new files (`shell.js`, `pages.js`, `sheet.js`, `tooltip.js`) add none.
+
+Because Electron delivers a menu accelerator (Ctrl+1 to 4, Ctrl+F, Ctrl+N,
+Ctrl+E, F5, F9) to the menu first, and it then reaches the page as `{id}`
+on the `menu` channel, the page acts on the `{id}` only, never also on the
+raw key, or it would act twice (S2's note; the Windows check confirms it).
 
 ## 5. Menu bar, right-click menus and the one channel (P58, P68, P69)
 
@@ -439,42 +523,42 @@ and the menu is rebuilt only if a word differs.
 
 | Menu | Item (id) | Accelerator | Enabled when |
 |---|---|---|---|
-| **File** | New household… (`new_household`) | Ctrl+N | a clients folder is set |
-| | Change clients folder… (`change_root`) | | always |
-| | Open clients folder (`open_root`) | | a clients folder is set |
+| **File** | New Household… (`new_household`) | Ctrl+N | a clients folder is set |
+| | Change Clients Folder… (`change_root`) | | always |
+| | Open Clients Folder (`open_root`) | | a clients folder is set |
 | | — | | |
 | | Exit (role `quit`, label `exit`) | Alt+F4 (Windows' own) | always |
 | **Edit** | role `editMenu` (Undo, Redo, Cut, Copy, Paste, Select all), label `edit` | Windows' own | always |
-| **Client** | Edit household… (`edit_household`) | | a household, year or return is open and not locked |
-| | Add a return… (`add_return`) | | same |
-| | Roll forward… (`roll_forward`) | | same, and the household has a year to roll |
-| | Mark as shared (`mark_shared`) | | same, and it is not shared |
+| **Client** | Edit Household… (`edit_household`) | | a household, year or return is open and not locked |
+| | Add a Return… (`add_return`) | | same |
+| | Roll Forward… (`roll_forward`) | | same, and the household has a year to roll |
+| | Mark as Shared (`mark_shared`) | | same, and it is not shared |
 | | — | | |
-| | Edit request list… (`edit_list`) | Ctrl+E | a return is open and not locked |
-| | Draft reminder… (`draft_reminder`) | | a return is open |
+| | Edit Request List… (`edit_list`) | Ctrl+E | a return is open and not locked |
+| | Draft Reminder… (`draft_reminder`) | | a return is open |
 | | — | | |
-| | Open client folder (`open_client_folder`) | | a household, year or return is open |
-| | Open inbox (`open_inbox`) | | same |
-| | Open working folder (`open_working`) | | a return is open |
+| | Open Client Folder (`open_client_folder`) | | a household, year or return is open |
+| | Open Inbox (`open_inbox`) | | same |
+| | Open Working Folder (`open_working`) | | a return is open |
 | **View** | Overview (`overview`) | Ctrl+1 | a clients folder is set |
-| | Needs review (`needs_review`) | Ctrl+2 | same |
+| | Needs Review (`needs_review`) | Ctrl+2 | same |
 | | Reminders (`reminders`) | Ctrl+3 | same |
 | | Clients (`clients`) | Ctrl+4 | same |
 | | — | | |
 | | Find (`find`) | Ctrl+F | same |
 | | Refresh (`refresh`) | F5 | always |
-| **Tools** | Sort now (`sort_now`) | F9 | a household, year or return is open, no sort runs, not locked |
-| | Stop sorting (`stop_sorting`) | | a sort runs |
+| **Tools** | Sort Now (`sort_now`) | F9 | a household, year or return is open, no sort runs, not locked |
+| | Stop Sorting (`stop_sorting`) | | a sort runs |
 | | — | | |
 | | Schedule… (`schedule`) | | a clients folder is set |
-| | Repair schedule (`repair_schedule`) | | same |
-| | Firm report (`firm_report`) | | the API reported `paths.status` |
+| | Repair Schedule (`repair_schedule`) | | same |
+| | Firm Report (`firm_report`) | | the API reported `paths.status` |
 | | — | | |
-| | Clear stuck lock (`clear_lock`) | | the open return's lock is stale |
-| **Help** | Take the tour (`tour`) | | always |
+| | Clear Stuck Lock (`clear_lock`) | | the open return's lock is stale |
+| **Help** | Take the Tour (`tour`) | | always |
 | | Safeguards (`safeguards`) | | always |
 | | Terms (`terms`) | | always |
-| | Open error log (`error_log`) | | always (section 5.5) |
+| | Open Error Log (`error_log`) | | always (section 5.5) |
 | | — | | |
 | | About (`about`) | | always |
 
@@ -499,12 +583,12 @@ keyboard, screen reader and dark support for free.
 
 | Template (`popup`) | Target | Items (ids, words from `vocab.menu`) |
 |---|---|---|
-| `household` | a household row; the household segment; the household H1 | the Client menu's household items: Edit household…, Add a return…, Roll forward…, Mark as shared, —, Open client folder, Open inbox |
-| `return` | a return row; the return segment; the return H1 | Edit request list…, Draft reminder…, —, Open working folder, Open client folder, Open inbox |
-| `file` | a parked or set-aside file row | Check… (`check`), Not requested (`not_requested`), Another return… (`another_return`) |
-| `moved` | a moved-by-hand row | Check…, Put back (`put_back`), Keep here (`keep_here`) |
-| `request` | a Needs you or Waiting request row | Edit request… (`edit_request`) |
-| `received` | a Received row | Unfile (`unfile`), Mark missing (`mark_missing`) |
+| `household` | a household row; the household segment; the household H1 | the Client menu's household items: Edit Household…, Add a Return…, Roll Forward…, Mark as Shared, —, Open Client Folder, Open Inbox |
+| `return` | a return row; the return segment; the return H1 | Edit Request List…, Draft Reminder…, —, Open Working Folder, Open Client Folder, Open Inbox |
+| `file` | a parked or set-aside file row | Check… (`check`), Not Requested (`not_requested`), Another Return… (`another_return`) |
+| `moved` | a moved-by-hand row | Check…, Put Back (`put_back`), Keep Here (`keep_here`) |
+| `request` | a Needs you or Waiting request row | Edit Request… (`edit_request`) |
+| `received` | a Received row | Unfile (`unfile`), Mark Missing (`mark_missing`) |
 
 The page sends the enable list with each popup, by the rules of 5.1 (a
 locked return greys the writing items).
@@ -549,14 +633,37 @@ every existing check in place.
 
 ### 5.5 Handled in `main.js` alone
 
-- **Open error log:** `main.js` opens the error log the API named
+- **Open Error Log:** `main.js` opens the error log the API named
   (`vocab.shell.error_log`) with `shell.openPath` when it is a regular file
-  and no symbolic link (the same test `openPath` makes), or, when the API
-  named none, the shell's fallback log (11.2, in `%LOCALAPPDATA%\Tax Document Tracker Pilot`) if it exists; otherwise it sends
+  and no symbolic link (the same `lstat` test `openPath` makes, shared as
+  `openChecked`); when the API named none, it opens the shell's **fallback
+  log** (below) if that exists, through the same test. Otherwise it sends
   `{id: "error_log", missing: true}` and the page shows the toast
-  "No error log yet".
-- **Menu bar:** it stays hidden until Alt (`autoHideMenuBar`; Jason,
-  2026-09-29, no change).
+  "No Error Log Yet".
+- **The fallback error log (ruling 4).** When a tracker command fails and
+  the API has named no error log (no data folder yet, first start only),
+  the failure is still **saved**: `keepInLog()` appends its details (a
+  heading with the time, then stderr, at most 64 KB an entry) to
+  `%LOCALAPPDATA%\Tax Document Tracker Pilot\error.log` on Windows
+  (`process.env.LOCALAPPDATA`, else `os.homedir()\AppData\Local`; the
+  folder is named from `productName`); off Windows (tests, development
+  runs) `app.getPath('userData')`. A local folder that does not roam:
+  never the roaming `%APPDATA%`, never the data home
+  (`tax-document-tracker-pilot`) or the upstream one
+  (`tax-document-tracker`), and neither of those is created. A renderer
+  error (`log-error`) and a shell serialisation error go the same way when
+  no log is named. Past **256 KB** the file becomes `error.log.1` (one copy,
+  replacing an older one), so it never holds much more than 512 KB; if the
+  rotation cannot be done, the old log is dropped and writing goes on. A
+  link or a folder at `error.log` is left alone, and every write is caught:
+  a write that fails never throws and never changes the reply. The raw
+  stderr can name clients, so it stays in that file on this PC: never on
+  screen, never in a reply, never sent. Its path is in the agent deny list
+  (`.claude/settings.json`, section 1), pinned by test.
+- **A failure's on-screen text (ruling 6):** the failure's own approved
+  sentence, a blank line, then "Tracker Failed" (`shell.no_log`, in
+  ruling 10's casing). Not reduced to the two words for this pilot.
+- **Menu bar:** it stays hidden until Alt (`autoHideMenuBar`; ruling 3).
 - **Exit:** role `quit`.
 
 ### 5.6 Light and dark at first paint (P59, P73)
@@ -570,6 +677,35 @@ again, so a switch while the app is open does not flash the old colour
 behind a resize. `nativeTheme.themeSource` stays `"system"`. The page
 follows the setting through `prefers-color-scheme`; nothing in the
 renderer asks.
+
+### 5.7 Showing a file in File Explorer (`open-path` with reveal; rulings 8, 12)
+
+- **The option.** `window.tracker.open(path, how)` gains a second argument:
+  `open(path)` opens as today; `open(path, "reveal")` shows the item in
+  File Explorer with the file selected in its folder
+  (`shell.showItemInFolder`). The preload passes `how` on the existing
+  `open-path` channel; no new channel.
+- **Same guard.** Reveal goes through the same allow-list and the same
+  `lstat` test as opening: the path must be one the API reported
+  (`openable`), of the kind the API named, and no symbolic link; anything
+  else is refused with "Not Opened; It Has Changed" or the not-reported
+  sentence, and nothing is shown. Reveal applies to a **file** only.
+- **Openable keys for working copies.** The API reports each working copy
+  a file link may show under `state.paths`, by a key, never on a field the
+  page draws: a parked file's review copy (the existing `review_copy`
+  key), each working copy of a filed document (one per request it was
+  filed under, in `filed_names`' order) and where a moved-by-hand copy is
+  now. Index rows carry the keys of their copies and a moved row its key,
+  so the page asks by key and the path never reaches a drawn element.
+  `PATH_KINDS` names each key's kind (`file`). Only paths the record
+  already holds; nothing is read from disk to find them. **Household and
+  return rows carry no open key for a link** (ruling 12): only file names
+  open File Explorer.
+- The exact key names and fields are S8a's (branch `claude/shell-s8a-links`,
+  in progress at this sync: its work-in-progress uses `filed_copy <row> <n>`
+  and `moved_copy <row>` beside `review_copy <row>`, `open_keys` on index
+  rows and `open_key` on moved rows). They are final when S8a's review
+  says "No findings".
 
 ## 6. Pages, one per level, and their states
 
@@ -596,6 +732,9 @@ Common states, used by every page below:
   tooltip. An H1 is never cut: it wraps, to two lines at most (the widest
   name, 80 characters at 20px, needs two at the 860px minimum). User data (names, file names) is content, not copy: the
   five-word rule does not count it, and a test feeds names at those lengths.
+- **Links (3.9):** every file, household and return name a page draws is
+  a link of its kind; a return drawn as a link reads "{Return Name}
+  ({Year})". The words in the diagrams below are in Title Case (11.1).
 
 ### 6.1 Overview (the landing page)
 
@@ -603,12 +742,12 @@ Common states, used by every page below:
  [bar] Overview                                        [find    ] [sort]
  ───────────────────────────────────────────────────────────────────────
    12              31                 148
-   Need a person   Waiting on clients Complete
+   Need a Person   Waiting on Clients Complete
 
-   Work waiting  43
-   1040 - John & Jane Smith     Smith Family      3 need you    Mar 3   Open ›
-   1120-S - Rivera Design LLC   Rivera Design     1 need you    Mar 5
-   1040 - Ana Lopez             Lopez Household   2 waiting   Due Apr 15
+   Work Waiting  43
+   1040 - John & Jane Smith (2025)     Smith Family     3 Need You    Mar 3   Open ›
+   1120-S - Rivera Design LLC (2025)   Rivera Design    1 Need You    Mar 5
+   1040 - Ana Lopez (2025)             Lopez Household  2 Waiting   Due Apr 15
 ```
 
 - **Figures:** three numbers in the figure role, `--text`, 48px apart, each
@@ -617,7 +756,8 @@ Common states, used by every page below:
   else **Waiting on clients** (anything in Waiting on client), else
   **Complete**. They add up to the active returns this year. Not links.
 - **Work waiting** (H2, count): one row per return in the first two
-  buckets. Name: the return. Detail: its household. Status: "{n} need you"
+  buckets. Name: the return, a link reading "{Return Name} ({Year})"
+  (3.9). Detail: its household, a link. Status: "{n} need you"
   (`--st-attention`) or "{n} waiting" (`--st-waiting`). Date: the oldest file
   waiting ("Mar 3") for the first bucket, the due date ("Due Apr 15") for
   the second, or empty. Step: **Open**. Order: need-you returns by their
@@ -629,9 +769,11 @@ Common states, used by every page below:
 
 ### 6.2 Needs review (firm)
 
-- One group per return with files waiting: H2 is the return's name, its
-  caption the household and the count. Groups ordered by their oldest file.
-- Rows: name = the file's own name; detail = the request it most likely is
+- One group per return with files waiting: H2 is the return's name, a
+  link reading "{Return Name} ({Year})" (3.9), its caption the household
+  (a link) and the count. Groups ordered by their oldest file.
+- Rows: name = the file's own name (a link to its review copy in File
+  Explorer, 3.9); detail = the request it most likely is
   (the first suggestion's name), else empty; status = the reason's short
   label (11.4), `--st-attention`; date = received; step **Check** → the
   sheet (7.1), which loads that return's `state`. Right-click: `file`.
@@ -642,8 +784,8 @@ Common states, used by every page below:
 ### 6.3 Reminders (firm)
 
 - One list, no H2 (the page is one thing). Rows: one per return whose draft
-  for this week is ready and not yet approved. Name: the return. Detail:
-  household. Status: the stage's short name (`--st-waiting`), or
+  for this week is ready and not yet approved. Name: the return, a link
+  reading "{Return Name} ({Year})". Detail: household, a link. Status: the stage's short name (`--st-waiting`), or
   "Held" (`--st-attention`) when files or rows hold it. Date: drafted.
   Step **Draft reminder** → the sheet (7.2). Right-click: `return`.
 - **Empty:** "No drafts ready".
@@ -654,7 +796,8 @@ Common states, used by every page below:
 - A two-option switch at the keyline, 24px under the path row: **Work
   waiting** (the default each time the page opens) and **All**. The
   selected option has P52's selected look.
-- Rows: one per household, by name. Name: the household. Detail: "{n}
+- Rows: one per household, by name. Name: the household, a link
+  ("Navigate to Client", 3.9). Detail: "{n}
   returns" (this year's, "1 return" for one). Status: "{n} need you",
   "{n} waiting" or "Complete", summed over its returns. Date: empty. Step
   **Open** → the household page. Right-click: `household`.
@@ -670,7 +813,8 @@ Common states, used by every page below:
 - H1: the household's name. Under it one caption line of what applies,
   joined by " · ": "Contact {name}", "Shared" or "Not shared".
 - One group per tax year, newest first: H2 is the year. Rows: one per
-  return. Name: the return. Detail: "Inactive" or "Rolled forward" when the
+  return. Name: the return, a link reading "{Return Name} ({Year})" (3.9).
+  Detail: "Inactive" or "Rolled forward" when the
   list says so, else empty. Status: as on Clients. Step **Open**.
   Right-click: `return`.
 - Household notices while any of its pages is open: two years open,
@@ -692,20 +836,23 @@ Common states, used by every page below:
    1040 - John & Jane Smith
    Due Apr 15
 
-   Needs you  3
-   scan0012.pdf        W-2                Could not tell       Mar 3   Check ›
-   IMG_2231.jpg        1099-INT           Fits two requests    Mar 4
-   1098 - Chase                           Could not use        Mar 2
+   Needs You  3
+   scan0012.pdf        W-2                Could Not Sort       Mar 3   Check ›
+   IMG_2231.jpg        1099-INT           Fits Two Requests    Mar 4
+   1098 - Chase                           Could Not Use        Mar 2
 
-   Waiting on client  2                                    Draft reminder ›
+   Waiting on Client  2                                    Draft Reminder ›
    1099-B - Schwab     Dec 2025           Outstanding
-   K-1 - Park LP       1 of 2             Partly in
+   K-1 - Park LP       1 of 2             Partly In
 
    Received  9
    W-2 - Acme Corp     acme-w2.pdf        Received             Mar 1
 
- ▸ Set aside  4
+ ▸ Set Aside  4
 ```
+
+(The file names `scan0012.pdf`, `IMG_2231.jpg` and `acme-w2.pdf` are links
+that show their working copy in File Explorer, 3.9.)
 
 - H1: the return's name. Caption: "Due {date}" when the record has one.
 - **Needs you** (`group == "needs_you"`), in this order: files parked for a
@@ -713,6 +860,7 @@ Common states, used by every page below:
   side is Us or Decide, in list order. Files the router set into buckets
   ("Emails and zips", "Not documents") sit under those two words as caption
   sub-headings, weight 600, inside the group.
+  - Every file name below is a link to its working copy (3.9, 5.7).
   - Parked file: name = file name; detail = first suggestion or empty;
     status = short reason; date = received; step **Check** (7.1).
   - Moved by hand: name = file name; detail = its request; status "Moved by
@@ -726,7 +874,7 @@ Common states, used by every page below:
   reminder** (7.2), the same as the group heading's, which shows it on hover
   or focus of the heading.
 - **Received** (`group == "received"`): request rows. Detail: the file's own
-  name, or "{n} files". Status "Received" or "Accepted" (`--st-done`). Date:
+  name (a link to that filed working copy, 3.9), or "{n} files". Status "Received" or "Accepted" (`--st-done`). Date:
   received. No step; right-click: `received` (Unfile, Mark missing).
 - **Set aside** (`group == "set_aside"`): a `details` element, shut each
   time the page opens; its summary is the H2 with its count. Rows: not
@@ -859,15 +1007,37 @@ shell's own failures. The dismiss icon ends each.
 
 ### 8.5 Tooltip (`tooltip.js`)
 
-PLAN-ui section 5, with P63 and P65: any element with `data-tip` gets it,
-after 500ms of hover or at once on keyboard focus; Esc and pointer-out hide
-it; one `#tip` element, `role="tooltip"`, tied by `aria-describedby`; kept
-inside the window; at most 320px wide; caption type on `--bg-raised` with
-`--shadow-overlay` and a 1px `--border`. Its text is always vocabulary or a
-user's name, never typed in the renderer, never over five words (names
-excepted). Placed with `element.style.setProperty` (allowed by the CSP, as
-the tour does). Every `title=` in the renderer goes; `setTip(el, text)`
-replaces them.
+PLAN-ui section 5, with P63 and P65, and rulings 2, 5 and 7:
+
+- **When it shows.** Any element with `data-tip` gets it after **300 ms**
+  of hover (ruling 7; `TIP_DELAY_MS`), on every control. On **keyboard
+  focus** it shows at once on **every control except the search box**
+  (`#find`), which shows none on focus so the tip never covers its list
+  (ruling 2, option b); hover still shows the search icon's tip ("Find a
+  Client", the icon lets the pointer through to the box). Esc and
+  pointer-out hide it.
+- **What it is.** One `#tip` element, `role="tooltip"`, tied by
+  `aria-describedby`; at most 320px wide; caption type on `--bg-raised`
+  with `--shadow-overlay` and a 1px `--border`. Its text is always
+  vocabulary or a user's name, never typed in the renderer, never over
+  five words (names excepted).
+- **Where it goes (ruling 5).** Placement is Floating UI's
+  (`FloatingUIDOM.computePosition`, strategy `fixed`, from the vendored
+  files of section 1): below its element, 4px off it (`offset(4)`),
+  flipped above when there is no room (`flip`), shifted to stay 8px inside
+  the window (`shift` with 8px padding). `tooltip.js` keeps its own timing,
+  focus, Esc and `role=tooltip` logic and uses the library for placement
+  only, through the one global `FloatingUIDOM`; no `import`, no `require`,
+  no edge arithmetic of its own. The result is set with
+  `element.style.setProperty` (allowed by the CSP, as the tour does): no
+  `style` attribute, no `innerHTML`.
+- **Scrolling.** While it shows, the tip is placed again when the window
+  is resized or anything scrolls, so it follows its element. When its
+  element is **scrolled out of view** the tip is hidden (Floating UI's
+  `hide()`, `referenceHidden`), and it does **not** come back when the
+  element scrolls back into view: it returns only on the next hover or
+  focus.
+- Every `title=` in the renderer goes; `setTip(el, text)` replaces them.
 
 ### 8.6 Motion
 
@@ -920,6 +1090,7 @@ No arguments. Reply:
 {
   "returns": [{
      "path": str, "household": str,
+     "year": n,                   # the return's tax year (ruling 13)
      "counts": {"needs_you": n, "waiting": n, "received": n, "set_aside": n},
      "files": n,                  # of needs_you, the files (parked + moved)
      "oldest": "YYYY-MM-DD"|null, # the oldest file waiting for a person
@@ -927,8 +1098,8 @@ No arguments. Reply:
      "draft": {"ready": bool, "stage": n, "held": n, "drafted": "YYYY-MM-DD"|null},
      "problem": str               # a short sentence, or ""
   }],
-  "files": [{"return": str, "name": str, "code": str, "received": "YYYY-MM-DD",
-             "suggestion": str}],
+  "files": [{"return": str, "year": n, "name": str, "handle": str, "code": str,
+             "received": "YYYY-MM-DD", "suggestion": str}],
   "totals": {"need": n, "waiting": n, "complete": n, "files": n, "drafts": n},
   "next_sort": "HH:MM"|null
 }
@@ -942,9 +1113,28 @@ No arguments. Reply:
   parked and moved files (`runner._parked_files`' reading), the
   engagement's info for `due`, and the reminder's draft-week reader for
   `draft` (the one `_reminder_payload` uses; the letter is not composed).
+- A `returns[]` row carries no return name: the page joins it to `list`
+  by `path`. `year` is the return's own tax year from its record (else its
+  folder's year), so a return link can read "{Return Name} ({Year})"
+  without the renderer working it out (ruling 13). A `files[]` entry's
+  `return` is its return's `path`; it carries that return's `year`, the
+  file's `handle` (the key its return's `state` knows it by), and
+  `suggestion`, the first suggestion's request label or "". Files moved by
+  hand are listed too (code `file-moved`, no suggestion), so `files[]`,
+  `returns[].files` and `totals.files` agree, and `oldest` comes from that
+  one list.
+- A return counts under **Need a person** when its `needs_you` count or its
+  `files` is above zero, or it has a `problem`; never as Complete.
+- `draft.ready`: drafted this draft-week and not yet approved (an approval
+  the letter was edited after does not count); `held`: the holding rows
+  plus the unsorted inbox files; a hold does not unmake ready (6.3).
 - A return whose record cannot be read is one row with `problem` set and
-  zero counts; it never fails the reply (decision 189's rule). A root that
-  cannot be walked is `PRACTICE_NOT_WALKED`, as `list` says it.
+  zero counts; it never fails the reply (decision 189's rule). Its
+  `problem` is "Could Not Be Read" (`api.FIRM_UNREADABLE`; the words need
+  Jason's approval, section 19) and the detail goes to the error log. A
+  root that cannot be walked is `PRACTICE_NOT_WALKED`, as `list` says it.
+- These fields are S1's (rebuilds 1 and 3); `year` on both lists and
+  `handle` on `files[]` came in S1 rebuild 3, not yet reviewed at this sync.
 - `next_sort`: the schedule's next run as `scheduling` reports it to the
   Schedule dialog, or null.
 - Budget: 750 returns under 3 seconds on the office PC (measured in the
@@ -961,6 +1151,11 @@ No arguments. Reply:
 - `list`'s `last_pass` gains `{"ok": bool, "when": iso}` beside its line,
   so the last-sort line can say "Sorted {time}" or "Sort failed" without
   parsing the runner's sentence.
+- `paths` rides on `list` only, not on the writes that carry the list.
+- (Rulings 8 and 12, S8a.) `state.paths` also reports each working copy a
+  file link may show, by key, with `PATH_KINDS` naming each key's kind;
+  index rows and moved rows carry their copies' keys (5.7). Household and
+  return rows carry none.
 
 ### 9.4 Tests for the engine part (`tests/test_api.py`)
 
@@ -1149,16 +1344,47 @@ brand colour, not a text pair).
 
 Five words or fewer for every label, heading, notice, error, tooltip,
 dialog line and toast; placeholders count as one word; `&` access keys are
-not counted. No path of any kind. Sentence case; no full stop on labels,
-headings, buttons or tooltips. Say return, sort, request list, client
-folder, inbox; never manifest, engagement, pass, record, scan or a request
-code. Two exceptions (P63): the pilot terms and the reminder letter. User
-data (names, file names) is content and is not counted.
+not counted. No path of any kind. No full stop on labels, headings,
+buttons or tooltips. Say return, sort, request list, client folder, inbox;
+never manifest, engagement, pass, record, scan or a request code. Two
+exceptions (P63): the pilot terms and the reminder letter. User data
+(names, file names) is content and is not counted.
+
+**Title Case throughout (ruling 10, 2026-09-29; replaces "sentence case",
+and P53's sentence-case table headers).** Every drawn phrase (at most five
+words) is Title Case:
+
+- Capitalise every word except **a, an, the, and, but, or, nor, for, of,
+  on, in, to, by, at, as, up, vs** when they are neither the first nor the
+  last word.
+- Capitalise each part of a hyphenated word ("Last-Year", "Set-Aside"),
+  and the word after a colon or semicolon ("Held: {n} Need a Decision",
+  "Not Opened; It Has Changed").
+- Leave untouched: placeholders (`{n}`, `{host}`), numbers, ALL-CAPS tokens
+  ("AI", "PDF", "HEIC"), file names and record data (names the record
+  holds, stored override reasons).
+- **Exceptions, unchanged:** the pilot terms; the client reminder letter
+  and its subject; the error log's contents; prose in the docs.
+
+Examples: "Needs Review", "Could Not Sort", "Fits Two Requests", "Moved by
+Hand", "Open a Client to Sort", "Sort Stopped: Ran Too Long". Sections
+11.3-11.6 and the `title_case` column of
+[`wording-shell.tsv`](wording-shell.tsv) give every exact spelling. Words
+quoted elsewhere in this SPEC in sentence case (sections 0-8, written
+before ruling 10) are the same words and are drawn in the spelling of
+11.3-11.6; where the two differ, 11.3-11.6 wins. S8a applies the rule to
+the engine's words (with a test), S5 and S6 to the renderer's and the
+tour's literals.
 
 ### 11.2 Today's strings over five words
 
 **Approved by Jason (P84).** All 212, today and proposed, one row each, in [`wording-shell.tsv`](wording-shell.tsv)
-(columns: source, key, today, verdict, proposed, words, where, note).
+(columns: source, key, today, verdict, proposed, words, where, note,
+title_case, changed). `title_case` is the proposed words in ruling 10's
+casing, the spelling the app draws (empty for a cut row; the terms
+unchanged). `changed` says what ruling 10 or a later ruling did to the
+row: `case` (casing only), `word (rulings …)` (the words changed),
+`no`, or `-` (cut).
 Verdicts: **reword** 67, **cut** 113 (not shown in the app any more),
 **error-log** 10 (the detail goes to the error log; a short line stays),
 **merge** 5 (says the same as another row), **exception** 17 (the terms).
@@ -1175,39 +1401,40 @@ Verdicts: **reword** 67, **cut** 113 (not shown in the app any more),
 - **A risky act keeps its warning:** moving the schedule to this computer
   gains "Only if {host} is retired" (`schedule.move_warning`), and the
   editor's Active field keeps "No: sorting skips this return".
-- **No error log yet:** when the tracker fails before it has a data folder
-  (first start only), the API names no error log; the details are no longer
-  printed on screen, they are saved in the shell's fallback log
-  (`error.log` in `%LOCALAPPDATA%\Tax Document Tracker Pilot`, a local folder
-  that does not roam, never the data home; capped at 256 KB with one `.1`
-  copy), and the notice says just "Tracker failed" (Jason, 2026-09-29).
+- **No error log yet (rulings 4 and 6):** when the tracker fails before it
+  has a data folder (first start only), the API names no error log; the
+  details are no longer printed on screen, they are saved in the shell's
+  fallback log (`error.log` in `%LOCALAPPDATA%\Tax Document Tracker Pilot`,
+  a local folder that does not roam, never the data home; capped at 256 KB
+  with one `.1` copy; 5.5), and the notice is the failure's own sentence, a
+  blank line, then "Tracker Failed" (`shell.no_log`).
 
 ### 11.3 New words: the menu (`vocab.menu`, `api.MENU`)
 
 | Key | Words | | Key | Words |
 |---|---|---|---|---|
 | `file` | &File | | `view` | &View |
-| `new_household` | New household… | | `overview` | Overview |
-| `change_root` | Change clients folder… | | `needs_review` | Needs review |
-| `open_root` | Open clients folder | | `reminders` | Reminders |
+| `new_household` | New Household… | | `overview` | Overview |
+| `change_root` | Change Clients Folder… | | `needs_review` | Needs Review |
+| `open_root` | Open Clients Folder | | `reminders` | Reminders |
 | `exit` | Exit | | `clients` | Clients |
 | `edit` | &Edit | | `find` | Find |
 | `client` | &Client | | `refresh` | Refresh |
-| `edit_household` | Edit household… | | `tools` | &Tools |
-| `add_return` | Add a return… | | `sort_now` | Sort now |
-| `roll_forward` | Roll forward… | | `stop_sorting` | Stop sorting |
-| `mark_shared` | Mark as shared | | `schedule` | Schedule… |
-| `edit_list` | Edit request list… | | `repair_schedule` | Repair schedule |
-| `draft_reminder` | Draft reminder… | | `firm_report` | Firm report |
-| `open_client_folder` | Open client folder | | `clear_lock` | Clear stuck lock |
-| `open_inbox` | Open inbox | | `help` | &Help |
-| `open_working` | Open working folder | | `tour` | Take the tour |
+| `edit_household` | Edit Household… | | `tools` | &Tools |
+| `add_return` | Add a Return… | | `sort_now` | Sort Now |
+| `roll_forward` | Roll Forward… | | `stop_sorting` | Stop Sorting |
+| `mark_shared` | Mark as Shared | | `schedule` | Schedule… |
+| `edit_list` | Edit Request List… | | `repair_schedule` | Repair Schedule |
+| `draft_reminder` | Draft Reminder… | | `firm_report` | Firm Report |
+| `open_client_folder` | Open Client Folder | | `clear_lock` | Clear Stuck Lock |
+| `open_inbox` | Open Inbox | | `help` | &Help |
+| `open_working` | Open Working Folder | | `tour` | Take the Tour |
 | `check` | Check… | | `safeguards` | Safeguards |
-| `not_requested` | Not requested | | `terms` | Terms |
-| `another_return` | Another return… | | `error_log` | Open error log |
-| `put_back` | Put back | | `about` | About |
-| `keep_here` | Keep here | | `unfile` | Unfile |
-| `edit_request` | Edit request… | | `mark_missing` | Mark missing |
+| `not_requested` | Not Requested | | `terms` | Terms |
+| `another_return` | Another Return… | | `error_log` | Open Error Log |
+| `put_back` | Put Back | | `about` | About |
+| `keep_here` | Keep Here | | `unfile` | Unfile |
+| `edit_request` | Edit Request… | | `mark_missing` | Mark Missing |
 
 ### 11.4 New words: the screen (`vocab.screen`)
 
@@ -1216,50 +1443,57 @@ Where an existing key does the same job, the existing key is reworded
 
 | Key | Words | Where |
 |---|---|---|
-| `sections.overview` / `needs_review` / `reminders` / `clients` | Overview / Needs review / Reminders / Clients | side panel, path |
+| `sections.overview` / `needs_review` / `reminders` / `clients` | Overview / Needs Review / Reminders / Clients | side panel, path |
 | `side_label` | Sections | the side panel's name for screen readers |
 | `path_label` | Path | the path's name for screen readers |
-| `find` | Find a client | search name and tooltip |
-| `find_none` | No match | search list |
-| `sort.now` / `sort.stop` / `sort.firm` / `sort.locked` / `sort.stopping` | Sort now / Stop sorting / Open a client to sort / In use elsewhere / Stopping | sort icon tooltip and name |
-| `last_sort.today` / `other_day` / `failed` / `never` / `running` | Sorted {time} / Sorted {date} / Sort failed / Not sorted yet / Sorting {n} of {total} | side panel foot |
+| `find` | Find a Client | search name and tooltip |
+| `find_none` | No Match | search list |
+| `sort.now` / `sort.stop` / `sort.firm` / `sort.locked` / `sort.stopping` | Sort Now / Stop Sorting / Open a Client to Sort / In Use Elsewhere / Stopping | sort icon tooltip and name |
+| `last_sort.today` / `other_day` / `failed` / `never` / `running` | Sorted {time} / Sorted {date} / Sort Failed / Not Sorted Yet / Sorting {n} of {total} | side panel foot |
 | `last_sort.done` | Sorted | done icon tooltip |
-| `figures.need` / `waiting` / `complete` | Need a person / Waiting on clients / Complete | Overview |
-| `work` | Work waiting | Overview H2 |
-| `empty.overview` / `next_sort` | Nothing is waiting / Next sort {time} | Overview empty |
-| `empty.needs_review` | Nothing needs review | Needs review empty |
-| `empty.reminders` | No drafts ready | Reminders empty |
-| `empty.clients` | No clients yet | Clients empty |
-| `empty.work` | No work waiting | Clients, Work waiting empty |
-| `empty.returns` | No returns yet | household empty |
-| `empty.received` | Nothing received yet | Received group |
-| `filters.work` / `filters.all` | Work waiting / All | Clients switch |
-| `counts.need` / `waiting` / `complete` | {n} need you / {n} waiting / Complete | row status |
-| `counts.returns` / `one_return` / `files` | {n} returns / 1 return / {n} files | row detail |
+| `figures.need` / `waiting` / `complete` | Need a Person / Waiting on Clients / Complete | Overview |
+| `work` | Work Waiting | Overview H2 |
+| `empty.overview` / `next_sort` | Nothing Is Waiting / Next Sort {time} | Overview empty |
+| `empty.needs_review` | Nothing Needs Review | Needs review empty |
+| `empty.reminders` | No Drafts Ready | Reminders empty |
+| `empty.clients` | No Clients Yet | Clients empty |
+| `empty.work` | No Work Waiting | Clients, Work waiting empty |
+| `empty.returns` | No Returns Yet | household empty |
+| `empty.received` | Nothing Received Yet | Received group |
+| `filters.work` / `filters.all` | Work Waiting / All | Clients switch |
+| `counts.need` / `waiting` / `complete` | {n} Need You / {n} Waiting / Complete | row status |
+| `counts.returns` / `one_return` / `files` | {n} Returns / 1 Return / {n} Files | row detail |
 | `due` | Due {date} | row date, return caption |
 | `partly` | {n} of {total} | row detail |
-| `groups.needs_you` / `waiting` / `received` / `set_aside` | Needs you / Waiting on client / Received / Set aside | return page |
-| `steps.check` / `open` / `draft` / `edit` | Check / Open / Draft reminder / Edit | row step |
-| `moved` | Moved by hand | row status |
+| `groups.needs_you` / `waiting` / `received` / `set_aside` | Needs You / Waiting on Client / Received / Set Aside | return page |
+| `steps.check` / `open` / `draft` / `edit` | Check / Open / Draft Reminder / Edit | row step |
+| `moved` | Moved by Hand | row status |
 | `held` | Held | Reminders row status |
-| `inactive` / `rolled` | Inactive / Rolled forward | household row detail |
+| `inactive` / `rolled` | Inactive / Rolled Forward | household row detail |
 | `contact` | Contact {name} | household caption |
-| `shared` / `not_shared` | Shared / Not shared | household caption, done icon |
+| `shared` / `not_shared` | Shared / Not Shared | household caption, done icon |
 | `icons.dismiss` / `open` / `next` / `more` | Dismiss / Open / Next / More | icon tooltips |
 | `sheet.reminder` | Reminder | sheet title |
-| `sheet.drafted` | Drafted {date}, stage {n} | sheet caption |
+| `sheet.drafted` | Drafted {date}, Stage {n} | sheet caption |
 | `loading` | Loading | screen readers only |
-| `setup.title` / `choose` / `start` / `missing` | Choose your clients folder / Choose folder… / Start / Folder not found | setup page |
-| `notices.firm_failed` | Counts not available | notice |
-| `notices.skipped` / `show` | {n} folders skipped / Show | notice |
-| `notices.no_log` | No error log yet | toast |
-| `notices.drive` | Drive not signed in | notice (the machine warning's short line) |
-| `misfits.title` | Folders skipped | dialog |
+| `setup.title` / `choose` / `start` / `missing` | Choose Your Clients Folder / Choose Folder… / Start / Folder Not Found | setup page |
+| `notices.firm_failed` | Counts Not Available | notice |
+| `notices.skipped` / `show` | {n} Folders Skipped / Show | notice |
+| `notices.no_log` | No Error Log Yet | toast |
+| `notices.drive` | Drive Not Signed In | notice (the machine warning's short line) |
+| `misfits.title` | Folders Skipped | dialog |
 | `safeguards.title` | Safeguards | dialog |
 | `about.edition` | Pilot {version} | About dialog, badge |
 | `retry` | Retry | notice action |
 | `copied` / `saved` | Copied / Saved | toast |
-| `schedule.move_warning` | Only if {host} is retired | Repair schedule confirm |
+| `schedule.move_warning` | Only If {host} Is Retired | Repair schedule confirm |
+| `show_in_explorer` (ruling 12) | Show in File Explorer | tooltip of every file name that is a link (3.9) |
+| `navigate_client` (ruling 11) | Navigate to Client | tooltip of every household name that is a link |
+| `navigate_return` (ruling 12) | Navigate to Return | tooltip of every return name that is a link |
+| `FIRM_UNREADABLE` (`firm`'s `problem`, S1) | Could Not Be Read | Overview row of a return whose record cannot be read; **awaiting Jason's approval** (section 19) |
+
+The three link keys' words are Jason's (rulings 11 and 12); the key names
+are S8a's work in progress and are final with its review.
 
 ### 11.5 Short reasons (`reasons.py`, one per code, `vocab.reasons`)
 
@@ -1268,48 +1502,53 @@ where it is used today (the index, the letter, the log).
 
 | Code | Short | | Code | Short |
 |---|---|---|---|---|
-| `unmatched` | Could not tell | | `name-absent` | No client name found |
-| `ambiguous` | Fits two requests | | `name-other` | Names another return |
-| `contested` | Claimed by two requests | | `named-across` | Names another household |
-| `between-returns` | Fits two returns | | `unnamed-across` | No name on it |
-| `ocr-only` | Read from scan only | | `name-points-at` | Name hints a request |
-| `no-request-accepts` | File type not asked | | `shows-form-number` | Shows a form number |
-| `several-forms-unsorted` | Several forms, unsorted | | `issuer-not-named` | Issuer not named |
-| `no-room` | No room for name | | `no-people` | Return has no people |
-| `could-not-file` | Could not file | | `answer-not-counted` | Statement not counted |
-| `put-back-refused` | Could not put back | | `opened-not-across` | Came in email or zip |
-| `unfiled` | Unfiled by a person | | `container-damaged` | Email or zip damaged |
-| `not-requested` | Not requested | | `container-empty` | Nothing attached |
-| `assigned` | Filed by a person | | `container-limit` | Email or zip too big |
-| `matched` | Filed | | `container-locked` | Email or zip locked |
-| `several-forms` | Filed as several forms | | `password` | Password protected |
-| `filed-whole` | Filed whole | | `google-stub` | Google shortcut only |
-| `file-moved` | Moved by hand | | `extension` | File type not allowed |
-| `copy-missing` | Copy missing | | `not-a-document` | Not a document |
-| `copy-changed` | Copy was changed | | `too-small` | File almost empty |
-| `copy-and-original-gone` | Copy and original gone | | `too-large` | Too large to read |
-| `interrupted-move` | Step interrupted | | `no-pages` | PDF has no pages |
-| `interrupted-move-lost` | Move interrupted | | `unreadable-pdf` | PDF will not open |
-| `pending-sync` | Syncing | | `unreadable-image` | Photo will not open |
-| `vanished` | File disappeared | | `heic-reader` | HEIC photo, no reader |
-| `no-keyword` | Expected words missing | | `uncheckable-type` | Cannot check this type |
-| `wrong-document` | Looks like wrong document | | `extraction-failed` | Text could not be read |
-| `wrong-period` | Wrong period | | `no-text-layer` | Scan not readable |
-| `reader-unavailable` | Reader did not start | | `no-text-after-ocr` | No readable text |
-| `reading-crashed` | Reader stopped | | `ocr-failed` | Scan reading failed |
-| `reading-stopped` | Reading timed out | | `unreadable` | Nothing readable |
+| `unmatched` | Could Not Sort | | `name-absent` | No Client Name Found |
+| `ambiguous` | Fits Two Requests | | `name-other` | Names Another Return |
+| `contested` | Claimed by Two Requests | | `named-across` | Names Another Household |
+| `between-returns` | Fits Two Returns | | `unnamed-across` | No Name on It |
+| `ocr-only` | Read From Scan Only | | `name-points-at` | Name Hints a Request |
+| `no-request-accepts` | File Type Not Asked | | `shows-form-number` | Shows a Form Number |
+| `several-forms-unsorted` | Several Forms, Unsorted | | `issuer-not-named` | Issuer Not Named |
+| `no-room` | No Room for Name | | `no-people` | Return Has No People |
+| `could-not-file` | Could Not File | | `answer-not-counted` | Statement Not Counted |
+| `put-back-refused` | Could Not Put Back | | `opened-not-across` | Came in Email or Zip |
+| `unfiled` | Unfiled by a Person | | `container-damaged` | Email or Zip Damaged |
+| `not-requested` | Not Requested | | `container-empty` | Nothing Attached |
+| `assigned` | Filed by a Person | | `container-limit` | Email or Zip Too Big |
+| `matched` | Filed | | `container-locked` | Email or Zip Locked |
+| `several-forms` | Filed as Several Forms | | `password` | Password Protected |
+| `filed-whole` | Filed Whole | | `google-stub` | Google Shortcut Only |
+| `file-moved` | Moved by Hand | | `extension` | File Type Not Allowed |
+| `copy-missing` | Copy Missing | | `not-a-document` | Not a Document |
+| `copy-changed` | Copy Was Changed | | `too-small` | File Almost Empty |
+| `copy-and-original-gone` | Copy and Original Gone | | `too-large` | Too Large to Read |
+| `interrupted-move` | Step Interrupted | | `no-pages` | PDF Has No Pages |
+| `interrupted-move-lost` | Move Interrupted | | `unreadable-pdf` | PDF Will Not Open |
+| `pending-sync` | Syncing | | `unreadable-image` | Photo Will Not Open |
+| `vanished` | File Disappeared | | `heic-reader` | HEIC Photo, No Reader |
+| `no-keyword` | Expected Words Missing | | `uncheckable-type` | Cannot Check This Type |
+| `wrong-document` | Looks Like Wrong Document | | `extraction-failed` | Text Could Not Be Read |
+| `wrong-period` | Wrong Period | | `no-text-layer` | Scan Not Readable |
+| `reader-unavailable` | Reader Did Not Start | | `no-text-after-ocr` | No Readable Text |
+| `reading-crashed` | Reader Stopped | | `ocr-failed` | Scan Reading Failed |
+| `reading-stopped` | Reading Timed Out | | `unreadable` | Nothing Readable |
+
+`unmatched` was "Could not tell"; it is "Could Not Sort" (ruling 8(c),
+spelled per ruling 10: Jason typed "Could not Sort", and ruling 10 wins).
 
 A test requires one short label for every code in `BY_CODE` and
 `PLAIN_CODES`, each five words or fewer.
 
 ### 11.6 Stages and safeguards
 
-- Reminder stages gain a `short` each: "Heads up", "Checking in",
-  "Deadline near", "Final notice". The letter's subject keeps its full name.
+- Reminder stages gain a `short` each: "Heads Up", "Checking In",
+  "Deadline Near", "Final Notice". The letter's subject keeps its full name
+  and its own casing (ruling 10's exception).
 - `tracker/__init__.py` gains `SAFEGUARDS`, four short lines beside
-  `STANDING_RULES` (which keeps its full wording): "No AI reads documents",
-  "Originals never changed", "Nothing is guessed", "Nothing is ever sent"
-  (P64). `vocab.rules` carries both; Help › Safeguards shows the short ones.
+  `STANDING_RULES` (which keeps its full wording): "No AI Reads Documents",
+  "Originals Never Changed", "Nothing Is Guessed", "Nothing Is Ever Sent"
+  (P64, in ruling 10's casing). `vocab.rules` carries both; Help ›
+  Safeguards shows the short ones.
 
 ## 12. The pilot layer
 
@@ -1324,20 +1563,26 @@ A test requires one short label for every code in `BY_CODE` and
 
 | Step | Today | New anchor |
 |---|---|---|
-| One clients folder | `setup-card` | `page` (the setup page) |
-| Household and request list | `btn-new-household` | `side-sections` (Clients) |
-| Drop files here | `btn-inbox` | `crumbs` |
+| One Clients Folder | `setup-card` | `page` (the setup page) |
+| Household and Request List | `btn-new-household` | `side-sections` (Clients) |
+| Drop Files Here | `btn-inbox` | `crumbs` |
 | Sort | `btn-scan` | `sort` |
-| Originals, untouched | `moved-card` | `page` |
-| Organized working copies | `filed-card` | `page` |
-| Needs review | `review-card` | `side-sections` |
-| Status page | `btn-status`, `eng-select` | `side-sections` (Overview) |
-| Drafted reminder | `reminder-card` | `side-sections` (Reminders) |
+| Originals, Untouched | `moved-card` | `page` |
+| Organized Working Copies | `filed-card` | `page` |
+| Needs Review | `review-card` | `side-sections` |
+| Status Page | `btn-status`, `eng-select` | `side-sections` (Overview) |
+| Drafted Reminder | `reminder-card` | `side-sections` (Reminders) |
+
+The step titles are drawn, so they are in Title Case (ruling 10); the
+Needs Review step's title is "Needs Review" (ruling 8(b)). S6 changes them
+in `pilot-content.js`.
 
 - **Tour lines:** one line per step, five words or fewer
   ([`wording-shell.tsv`](wording-shell.tsv), `tour.steps[n].does`); the
   strength, limit and fallback lines and the stage chips go. The test that
   capped tour lines at 30 words (`tests/test_pilot.py`) caps them at five.
+  The lines are drawn in the spelling of the table's `title_case` column
+  (e.g. "Unsure Files Wait for You"); the terms keep their own wording.
 
 ## 13. `app.js`: what stays, what goes
 
@@ -1353,8 +1598,9 @@ network call) hold for each new file, and the tests say so by name.
 ## 14. Tests
 
 The survey of every test that reads the renderer or shell files is
-[`shell-test-pins.md`](shell-test-pins.md): 162 tests, of which 114 hold
-unchanged, 34 change, 1 goes and 13 were open; this section settles the 13.
+[`shell-test-pins.md`](shell-test-pins.md): 162 tests, of which 113 hold
+unchanged, 35 change (one more since rulings 4 and 6), 1 goes and 13 were
+open; this section settles the 13.
 Test names state the claim, as the repository's convention asks.
 
 ### 14.1 New: `tests/test_shell.py`
@@ -1408,10 +1654,43 @@ Static (read the files):
   `openExternal`, `startsWith(`, inline style attribute or `on*=`.
 - `test_the_new_renderer_files_type_no_words_of_their_own`: no string
   literal of two or more words.
-- `test_one_keydown_listener_owns_the_keyboard`: exactly one
-  `addEventListener("keydown"` across all renderer files (it stays in
-  `app.js` and hands the shell's keys to `shellKey(e)` in `shell.js`).
+- `test_one_keydown_listener_owns_the_keyboard`: the page's one
+  `document.addEventListener("keydown"` is in `app.js`, which hands the
+  shell's keys to `shellKey(e)` in `shell.js` before its dialog handling,
+  and the new files (`shell.js`, `pages.js`, `sheet.js`, `tooltip.js`) add
+  none. **Accepted exception (ruling 1):** the capturing listeners of
+  `pilot.js` (the terms) and `tour.js` stay, as built; they act only while
+  the terms or the tour are open (`test_pilot`'s
+  `test_the_terms_cannot_be_escaped` pins the terms' one).
 - `test_the_harness_is_never_loaded_by_the_app`.
+- **Tooltips (rulings 2, 5, 7):**
+  `test_the_vendored_floating_ui_is_the_pinned_bytes_and_nothing_else`
+  (the SHA-256 of every vendored file, no extra file, the README names the
+  versions and hashes);
+  `test_the_loading_order_is_the_specs_and_the_csp_is_unchanged` (every
+  `<script src>`, however quoted and in any case, is a file of the app, no
+  scheme and no `//`; core, then dom, above `app.js`, before `tooltip.js`;
+  the CSP is `script-src 'self'`);
+  `test_the_tooltip_reaches_floating_ui_only_through_its_one_global`
+  (only `FloatingUIDOM`, `computePosition`/`offset`/`flip`/`shift`/`hide`,
+  no `import`/`require`, no edge arithmetic, no colour or size literal,
+  placement only through `style.setProperty`);
+  `test_a_tip_goes_when_its_element_is_scrolled_out_of_view`;
+  `test_the_hover_delay_is_300_ms_and_keyboard_focus_waits_for_nothing`;
+  `test_the_search_box_alone_shows_no_tooltip_on_keyboard_focus` (both
+  halves of ruling 2: focus shows the tip on every other control; the
+  search box shows none).
+- **Title Case (ruling 10):** a test walks the screen words of `_vocab()`
+  (the menu, the screen block, the short reasons, the stage shorts, the
+  safeguards, the reworded keys) and requires each in the casing of 11.1,
+  with the exceptions' keys (terms, the letter and its subject) listed in
+  the test. Its name is S8a's.
+- **Links (rulings 8-13):** the page draws a file name as a link that asks
+  `open(key, "reveal")`, a household or return name as a link that
+  navigates with no engine call, each with its tooltip, and a return link
+  reads "{Return Name} ({Year})" from the row's `year`; no link's text or
+  tooltip holds a path. The names are S5's; `main.js`'s reveal (same
+  allow-list and `lstat`, file only) is S8a's.
 
 Run in node against the file's own functions, as the existing
 `_run_renderer` tests do:
@@ -1434,7 +1713,9 @@ The engine part's tests are in 9.4.
 |---|---|
 | `test_single_source::test_the_shell_and_the_preload_agree_on_every_ipc_channel`, `…sends_on_only_the_channels_the_preload_listens_to` | the `menu` channel, both ways |
 | `…test_the_packaged_app_has_no_menu_and_the_source_app_runs_its_private_python` | becomes: the app's menu is the template of 5.1 in both builds (the Python half stays) |
-| `…test_the_app_opens_one_window`, `_ELECTRON_STUB`, `_SHELL_HARNESS` | the stub gains `Menu.buildFromTemplate`, `setApplicationMenu`, `nativeTheme` |
+| `…test_the_app_opens_one_window`, `_ELECTRON_STUB`, `_SHELL_HARNESS` | the stub gains `Menu.buildFromTemplate`, `setApplicationMenu`, `nativeTheme`, `ipcMain.on`, `app.getPath`; the harnesses force `process.platform` (`linux` by default) so the fallback log's place does not depend on the host |
+| `…test_with_no_error_log_the_shell_says_stderr_in_the_reply_and_writes_no_file` (rulings 4, 6) | becomes `…test_with_no_error_log_named_the_failure_is_saved_in_the_fallback_log_and_the_reply_says_two_words`; joined by `…test_with_an_error_log_named_the_failure_goes_there_and_not_to_the_fallback_or_the_screen`, `…test_the_fallback_log_is_capped_and_a_write_that_fails_never_throws` (the cap, a link, a folder, a stuck `.1`) and `…test_on_windows_the_fallback_log_is_local_and_never_the_roaming_or_data_folder` |
+| `…test_the_agent_deny_list_names_the_data_home_and_every_file_that_names_a_client` (ruling 4) | also expects the fallback log's `Read`/`Edit` rules, spelled from `package.json`'s `productName` |
 | `…test_the_standing_rules_are_worded_once_and_quoted_everywhere` | the page half: `#safeguards-modal` holds one line per `SAFEGUARDS` entry (P64); the docs half unchanged |
 | `…test_the_scan_button_label_is_typed_once`, `…test_documents_name_buttons_by_their_labels` | the label is `vocab.menu.sort_now`, typed nowhere in the renderer; docs name the menu items |
 | `…test_accept_and_file_it_are_one_call_site`, `…test_the_issuer_action_has_one_call_site`, `…test_every_review_action_the_renderer_sends_carries_the_rows_seq` | recounted without the deck (the sheet is one caller) |
@@ -1506,8 +1787,10 @@ Commits end with `[skip ci]`; the tests run locally, never on GitHub.
 | **S3 Renderer foundation** | tokens light and dark (10), `shell.css`, `tooltip.js`, the `index.html` skeleton (3.1), `shell.js` (4, 8.1-8.3, 5.3-5.4's page side), the setup page, notices' placement, the pilot layer (12), the harness (14.4) | the SPEC only (draws from the stub) | `app/renderer/*` (not `app.js`'s card code), `pilot/harness/`, `tests/test_shell.py` (renderer part), `test_pilot_ui.py`, `test_tour.py`, `test_pilot.py` |
 | **S2 Shell process** | the menu template, `buildMenu`, the `menu` channel, 5.5, first paint (5.6), `preload.js` | S1 (`api.MENU`) | `app/main.js`, `app/preload.js`, `tests/test_shell.py` (menu part), `test_single_source.py` (shell pins) |
 | **S4 Pages** | `pages.js` (6), the row and group components, removal of the card renderers from `app.js` (13) | S3 | `app/renderer/pages.js`, `app.js`, `index.html` (removals), tests of 14.2 that follow the cards |
-| **S5 Sheet and dialogs** | `sheet.js` (7), the right-click wiring, the roll, safeguards, about and folders-skipped dialogs, the dialogs' help lines cut | S4 | `app/renderer/sheet.js`, `app.js` (dialogs), `index.html` (dialogs), their tests |
-| **S6 Join** | the renderer on the real API instead of the stub; vocabulary keys that do not meet; the whole set of affected tests; the Windows check prompt | S1-S5 | as found |
+| **S5 Sheet and dialogs** | `sheet.js` (7), the right-click wiring, the roll, safeguards, about and folders-skipped dialogs, the dialogs' help lines cut; the three link kinds and "{Return Name} ({Year})" in `pages.js` and the sheet (3.9); the renderer's literals in Title Case | S4, S8a's keys | `app/renderer/sheet.js`, `pages.js` (links), `app.js` (dialogs), `index.html` (dialogs), their tests |
+| **S7 Tooltips** (rulings 2, 5, 7; branch `claude/shell-s7-tooltips`) | Floating UI vendored and placing the tip; focus on all but the search box; 300 ms hover; hidden when scrolled out of view (8.5) | S3 | `app/renderer/tooltip.js`, `vendor/floating-ui/`, `index.html` (two script lines), `tests/test_shell.py`, `pilot/harness/` |
+| **S8a Links and words** (rulings 8-12, 10; branch `claude/shell-s8a-links`) | the openable keys of working copies and `open-path`'s reveal (5.7, 9.3); the three link tooltips; the engine's and `main.js`'s words in Title Case, with a test (11.1) | S2 | `tracker/api.py` and the modules whose words it reads, `app/main.js`, `app/preload.js`, their tests, the docs that quote the words |
+| **S6 Join** | the renderer on the real API instead of the stub; vocabulary keys that do not meet; the whole set of affected tests; the tour titles and lines in Title Case (12); the Windows check prompt; the decision rows for rulings 1-13 | S1-S5, S7, S8a | as found |
 
 **Side by side (parallel):** **S1 and S3** run at the same time: S1 is Python
 and docs, S3 is renderer files drawn from the stub, and they meet only in
@@ -1533,7 +1816,13 @@ row, the path and a heading, and Shift+F10; light and dark (Settings,
 Personalisation, Colours) with the app open, and a contrast theme; the
 first paint in dark (no white flash); Sort now and Stop on a real
 household; the firm pages on the office's clients folder (the 3-second
-budget of 9.2); a tooltip by mouse and by Tab; Remote Desktop at 1100 × 700.
+budget of 9.2); a tooltip by mouse (after 300 ms) and by Tab (at once; none
+on the search box), and a tip whose control scrolls away; a file name link
+(File Explorer opens with that copy selected) and a household and a return
+link (the app navigates; the return reads "{Return Name} ({Year})"); Help ›
+Open Error Log before the first data folder exists (the fallback in
+`%LOCALAPPDATA%\Tax Document Tracker Pilot`) and after; Remote Desktop at
+1100 × 700.
 Not repeated: the installer, the schedule's registration, filing itself -
 this work does not reach them.
 
@@ -1548,8 +1837,9 @@ this work does not reach them.
   and dark, both sizes, looked at before the handoff.
 - `.claude/skills/impeccable/scripts/impeccable detect --json` over the
   changed UI files, once, its findings fixed or answered in the handoff.
-- No network call, no new package, the CSP unchanged, nothing that reads a
-  client document.
+- No network call, no new package (the vendored Floating UI files of
+  ruling 5 are the one exception, pinned by hash), the CSP unchanged,
+  nothing that reads a client document.
 
 ## 18. Out of scope
 
@@ -1559,3 +1849,20 @@ this work does not reach them.
 - Porting the shell to the main tracker (a later job in that repository).
 - Charts, a dashboard, tabs, a second button row, glass or blur (the
   brief's anti-goals).
+
+## 19. Open for Jason (from the SPEC sync, 2026-09-29)
+
+None blocks a build; each is recorded rather than guessed.
+
+| # | Question | Why it is open |
+|---|---|---|
+| O1 | Approve "Could Not Be Read" (`api.FIRM_UNREADABLE`), the Overview's line for a return whose record cannot be read (9.2, 11.4). | S1 added it; it is not in the approved wording table. |
+| O2 | A long name that is cut carries its full name as its tooltip (3.6, 6); a name that is a link carries "Show in File Explorer", "Navigate to Client" or "Navigate to Return" (3.9). One element has one tooltip: which wins when a link's name is cut? | Rulings 8-12 and the long-name rule meet on one element; neither says. |
+| O3 | How a keyboard user acts on a name link inside a row: the row is one `option` of a listbox and Enter runs the row's step (3.6). | Not ruled; S5 to propose (for example, the link's action as a right-click item, or Enter on the name). |
+| O4 | Does a right-click menu gain a "Show in File Explorer" item for a file row? | S8a's work in progress names the word for "the right-click item that does the same"; no ruling adds an item to 5.2. |
+| O5 | `triage.places.footer` ("In the Page {page} Footer") is a fragment joined into the side sheet's reason line, not a phrase of its own: Title Case it as the rule reads, or leave it lower case inside the line? | Ruling 10 speaks of phrases; this one is spliced into another. The table shows the Title Case form, flagged. |
+| O6 | Ruling 6 wrote "Tracker failed"; this SPEC draws it "Tracker Failed" (ruling 10). Confirm. | The rulings file says ruling 10 wins over the lower-case spellings of rows 8 and 13; row 6 is not named, but its words are drawn. |
+
+Pending other jobs, not Jason: S8a's key names (5.7, 9.3, 11.4) and its
+Title Case test's name are final with S8a's review; `year` and `handle` on
+`firm`'s rows (9.2) with S1 rebuild 3's review.

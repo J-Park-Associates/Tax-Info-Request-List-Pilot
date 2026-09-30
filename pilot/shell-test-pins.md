@@ -4,6 +4,10 @@ Input to [`SPEC-shell.md`](SPEC-shell.md) section 14, made by a read-only survey
 before the build. Where this file says CHECK, the SPEC decides; where the two
 differ, the SPEC wins. Line numbers are as of branch `claude/amazing-maxwell-b4hdzo`.
 
+Amended by the SPEC sync (rulings 1-13, 2026-09-29): two rows below are
+brought up to date (the no-data-home page error; the no-error-log shell
+test, KEEP to CHANGE, so the counts move by one).
+
 
 Read-only survey for the shell-replacement SPEC. Repo: `/home/user/Tax-Info-Request-List-Pilot`. No repository file was edited. Line numbers are the `def` line.
 
@@ -15,7 +19,7 @@ Verdicts: **KEEP** = still true after the shell change as described. **CHANGE** 
 
 | file | tests listed | KEEP | CHANGE | DELETE | CHECK |
 |---|---|---|---|---|---|
-| test_single_source.py | 92 | 59 | 22 | 1 | 10 |
+| test_single_source.py | 92 | 58 | 23 | 1 | 10 |
 | test_api.py | 25 | 14 | 9 | 0 | 2 |
 | test_pilot.py | 15 | 15 | 0 | 0 | 0 |
 | test_pilot_ui.py | 10 | 8 | 1 | 0 | 1 |
@@ -23,7 +27,7 @@ Verdicts: **KEEP** = still true after the shell change as described. **CHANGE** 
 | test_tour.py | 8 | 7 | 1 | 0 | 0 |
 | test_layers.py | 2 | 2 | 0 | 0 | 0 |
 | test_repo_map.py | 5 | 4 | 1 | 0 | 0 |
-| **total** | **162** | **114** | **34** | **1** | **13** |
+| **total** | **162** | **113** | **35** | **1** | **13** |
 
 
 ## The pins you asked about
@@ -65,7 +69,7 @@ Verdicts: **KEEP** = still true after the shell change as described. **CHANGE** 
 | `test_the_renderer_gets_its_vocabulary_from_the_api` | 2593 | `schedule.note` "Scan works either way. Nothing is ever sent." | 8 |
 | `test_the_wizard_sends_every_catalog_row_and_the_tick_is_asked` | 5433 (assert at 5455) | `nothing_asked` "Select at least one request item" | 6 |
 | `test_rule_two_names_the_inbox_and_the_years_folder_and_is_quoted_everywhere` | 734 | `rules[1].detail` "Files are moved byte for byte under their own names out of {INBOX_DIR_NAME} into the client's folder for the year; all work happens on copies, and every move is recorded in {THE_RECORD}." | 35 |
-| `test_without_a_data_home_the_pages_error_never_points_at_an_error_log_that_is_not_there` | 2457 | `shell.page_error` is `PAGE_ERROR` ("The app hit an error") on both branches; `PAGE_ERROR_NO_LOG` is gone (rebuild 1, F6) | 26 |
+| `test_without_a_data_home_the_pages_error_never_points_at_an_error_log_that_is_not_there` | 2457 | `shell.page_error` is `PAGE_ERROR` ("The app hit an error") on both branches; `PAGE_ERROR_NO_LOG` is gone (S1 rebuild 1, F6) | 26 |
 
 Negative-only literals that mirror over-five-word vocabulary text (they assert the text is ABSENT from app.js/index.html/main.js, so they survive a rewrite): `test_single_source.py` 921 (`typed` tuple: `No template — carry`, `return(s) rolled into`, `request(s) carried`, `file(s) sent last year were never filed`), 2993 (`` `The app could not send`` not in main.js), `test_api.py` 4288 (People block words).
 
@@ -162,7 +166,7 @@ Tests that read a long string DYNAMICALLY (safe when the words shorten, but the 
 | `test_closing_the_app_breaks_its_passes_pipe_rather_than_killing_it` | 2694 | main.js harness: `will-quit` destroys a running pass's stdout | KEEP | Stub as above. |
 | `test_the_shells_kill_follows_the_limit_the_pass_reported_and_says_where_it_was` | 2707 | main.js harness: kill follows `limit_seconds`; sentence names household and file | KEEP | Stub as above. |
 | `test_the_shell_never_puts_stderr_on_screen_and_appends_it_to_the_error_log` | 2721 | main.js harness: stderr to the error log only | KEEP | Stub as above. |
-| `test_with_no_error_log_the_shell_says_stderr_in_the_reply_and_writes_no_file` | 2732 | main.js harness: no data home means stderr in the reply, no file | KEEP | Stub as above. |
+| `test_with_no_error_log_the_shell_says_stderr_in_the_reply_and_writes_no_file` | 2732 | main.js harness: no data home means stderr in the reply, no file | CHANGE | Rulings 4 and 6 (SPEC 5.5, 11.2): with no log named the failure is saved in the shell's fallback log (`%LOCALAPPDATA%\Tax Document Tracker Pilot\error.log`, 256 KB, one `.1`) and the reply is the failure's sentence, a blank line, "Tracker Failed"; no stderr on screen. Became `test_with_no_error_log_named_the_failure_is_saved_in_the_fallback_log_and_the_reply_says_two_words` (S2 rebuilds 3-4), beside three new fallback-log tests. Stub gains `app.getPath`. |
 | `test_a_failed_spawn_is_said_by_its_code` | 2750 | main.js harness: `SHELL_COULD_NOT_START` with the code | KEEP | Stub as above. |
 | `test_the_progress_key_is_typed_once_per_language_and_the_error_log_only_by_the_api` | 2759 | main.js `const PROGRESS_KEY`, typed once; no error-log filename; `vocab.shell`, `said.error_log` | KEEP |  |
 | `test_the_shells_default_words_are_the_apis_word_for_word` | 2772 | main.js `let killed/killedAt/noReply/couldNotStart/couldNotSend/noLog =` defaults equal `api.SHELL_*` | KEEP | Dynamic, so no wording pin; but these six main.js defaults must be retyped in the same commit as the five-word rewrite (shell.killed is 26 words, shell.no_log 24). Same first-launch gap applies to any menu labels main.js defaults; no test yet says a menu label is the API's word. |
