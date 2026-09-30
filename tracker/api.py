@@ -5642,11 +5642,14 @@ def _firm_row(one, household: str, today: dt.date) -> tuple[dict, list[dict], di
     files = [{"return": row["path"], "year": row["year"], "name": t.entry.original_name,
               "handle": handle_of(t.entry), "code": t.entry.code, "received": t.entry.received,
               "suggestion": by_name[t.shortlist[0].identifier].label if t.shortlist else "",
+              # The request's short name, for Needs Review's chip (pilot
+              # P149); the full label above is the chip's tooltip.
+              "suggestion_short": by_name[t.shortlist[0].identifier].short_name if t.shortlist else "",
               "open_key": shown(_shown_copy_key(t.entry), t.entry.prepared_location)}
              for t in parked]
     files.extend({"return": row["path"], "year": row["year"], "name": entry.original_name,
                   "handle": handle_of(entry), "code": reasons.FILE_MOVED.code,
-                  "received": entry.received, "suggestion": "",
+                  "received": entry.received, "suggestion": "", "suggestion_short": "",
                   "open_key": shown(_moved_copy_key(entry), moved_to(entry))}
                  for entry in entries
                  if file_group(entry) == GROUP_NEEDS_YOU and entry.decision == FILE_MOVED)

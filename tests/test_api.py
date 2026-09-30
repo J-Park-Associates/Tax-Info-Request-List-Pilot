@@ -8208,7 +8208,8 @@ def test_firm_reply_names_its_fields_as_the_spec_does_and_carries_year_and_handl
     mixed, _quiet, _retired = _a_practice_for_the_firm_view(capsys, demo_root)
     _code, firm = run(capsys, "firm")
     [file] = firm["files"]
-    assert set(file) == {"return", "year", "name", "handle", "code", "received", "suggestion", "open_key"}
+    assert set(file) == {"return", "year", "name", "handle", "code", "received", "suggestion", "suggestion_short",
+                         "open_key"}
     assert file["open_key"] == "", "a program has no working copy, so no key (ruling 15)"
     assert firm["paths"] == {}
     assert file["return"] == str(mixed) and file["year"] == 2025
@@ -8218,7 +8219,7 @@ def test_firm_reply_names_its_fields_as_the_spec_does_and_carries_year_and_handl
     for one in firm["returns"]:
         assert one["year"] == 2025 and set(one) == {
             "path", "household", "label", "year", "counts", "files", "oldest", "due", "draft", "problem",
-            "paused"}
+            "paused", "form", "links"}
     assert set(firm["totals"]) == {"need", "waiting", "complete", "files", "drafts"}
 
 

@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 346,
     "edges": 1156,
-    "reused": 293
+    "reused": 302
   },
   "node_types": [
     "artifact",
@@ -262,8 +262,8 @@
       "id": "tracker/api.py",
       "type": "module",
       "layer": "core",
-      "sha256": "e508e26112a33377",
-      "lines": 5873,
+      "sha256": "531ac696590b15e0",
+      "lines": 5876,
       "cli": "python -m tracker.api",
       "exports": [
         "ACCEPT_FOLDER_NAME_HELP",
@@ -5934,8 +5934,8 @@
       "id": "tests/test_api.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "072edc529f714549",
-      "lines": 9081,
+      "sha256": "d1c79898c95391a5",
+      "lines": 9082,
       "exports": [
         "COUNTS",
         "DEEPER_ROOT_LENGTH",
