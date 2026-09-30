@@ -304,6 +304,8 @@ EARLIER_TASK_KEPT = ("The scheduled task under the earlier name, {old}, was kept
 EARLIER_TASK_REMOVED = ("Removed the scheduled task under the earlier name, {old}; the schedule now runs as "
                         "{new} where it is on.")
 EARLIER_TASK_NONE = "There was no scheduled task under the earlier name, {old}, on this computer."
+EARLIER_TASK_FROM_SOURCE = ("Run from source: the scheduled task under the earlier name, {old}, belongs to "
+                            "an installed copy, so it was left alone.")
 EARLIER_TASK_FAILED = ("The scheduled task under the earlier name, {old}, could not be removed ({problem}); "
                        "until it is, both tasks start the pass, and the second finds the first's lock and "
                        "moves nothing. Start the app: it tries again at launch, and Repair the Schedule "
@@ -958,14 +960,16 @@ def _carry_over_settings() -> _Step:
     current = settings.settings_path()
     if earlier is None:
         return _Step(SETTINGS_KEY, SETTINGS_NO_EARLIER)
-    if earlier.resolve() == current.resolve():
-        return _Step(SETTINGS_KEY, SETTINGS_IN_PLACE)
-    if not earlier.is_file():
-        return _Step(SETTINGS_KEY, SETTINGS_NO_EARLIER)
-    if current.exists():
-        return _Step(SETTINGS_KEY, SETTINGS_BOTH.format(new=current, old=earlier))
     made = False
     try:
+        # Inside the try, so a folder this account may not read is this
+        # job's own worded failure, not an error that stops the whole step.
+        if earlier.resolve() == current.resolve():
+            return _Step(SETTINGS_KEY, SETTINGS_IN_PLACE)
+        if not earlier.is_file():
+            return _Step(SETTINGS_KEY, SETTINGS_NO_EARLIER)
+        if current.exists():
+            return _Step(SETTINGS_KEY, SETTINGS_BOTH.format(new=current, old=earlier))
         original = earlier.read_bytes()
         write_bytes_atomically(current, original)
         made = True
@@ -980,6 +984,14 @@ def _carry_over_settings() -> _Step:
     return _Step(SETTINGS_KEY, SETTINGS_CARRIED.format(old=earlier, new=current))
 
 
+def _installed_program() -> bool:
+    """Whether this is the packaged program rather than a run from source:
+    the earlier name's task is removed only then. Its own function so the
+    tests can stand in for the packaged program here alone, without the
+    frozen paths every other module takes."""
+    return bool(getattr(sys, "frozen", False))
+
+
 def _replace_earlier_task(schedule: _Step) -> _Step:
     """The rename's second job (SPEC-rename R6): once the schedule job has
     run, remove this computer's task under the earlier name - that name and
@@ -987,8 +999,13 @@ def _replace_earlier_task(schedule: _Step) -> _Step:
     started twice. Kept when the schedule failed this run, so the pass
     still runs on a schedule until the new task is there; the schedule's own
     failure already keeps the step from being recorded as done. A failed
-    delete is a failure, tried again at the next launch."""
+    delete is a failure, tried again at the next launch. From the packaged
+    program only, like the settings copy: a run from source must never
+    delete the task of a copy installed on the same computer, which would
+    only register it again at its next start."""
     old, new = settings.EARLIER_PRODUCT_NAME, scheduling.TASK_NAME
+    if not _installed_program():
+        return _Step(EARLIER_TASK_KEY, EARLIER_TASK_FROM_SOURCE.format(old=old))
     if schedule.failed:
         return _Step(EARLIER_TASK_KEY, EARLIER_TASK_KEPT.format(old=old))
     try:

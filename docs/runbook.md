@@ -704,7 +704,10 @@ step, and each says one sentence every time, first among the step's lines:
   task, Tax Document Console, is registered: "Removed the scheduled task
   under the earlier name, Tax Document Tracker Pilot; the schedule now runs
   as Tax Document Console where it is on." / "There was no scheduled task
-  under the earlier name, Tax Document Tracker Pilot, on this computer." If
+  under the earlier name, Tax Document Tracker Pilot, on this computer."
+  Only the installed program removes it; the app run from source says "Run
+  from source: the scheduled task under the earlier name, Tax Document
+  Tracker Pilot, belongs to an installed copy, so it was left alone." If
   the new task could not be registered the earlier one is kept, so the pass
   still runs: "The scheduled task under the earlier name, Tax Document
   Tracker Pilot, was kept because the new one could not be registered

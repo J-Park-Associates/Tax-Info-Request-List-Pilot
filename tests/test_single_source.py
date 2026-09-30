@@ -4179,7 +4179,7 @@ def test_the_runbook_quotes_every_sentence_of_the_rename_carry_over():
     note = runbook.split("**After the rename (P155).**", 1)[1].split("**It only runs while someone is logged on.**", 1)[0]
     for name in ("SETTINGS_FROM_SOURCE", "SETTINGS_IN_PLACE", "SETTINGS_BOTH", "SETTINGS_NO_EARLIER",
                  "SETTINGS_CARRIED", "SETTINGS_CARRY_FAILED", "EARLIER_TASK_KEPT", "EARLIER_TASK_REMOVED",
-                 "EARLIER_TASK_NONE", "EARLIER_TASK_FAILED"):
+                 "EARLIER_TASK_NONE", "EARLIER_TASK_FAILED", "EARLIER_TASK_FROM_SOURCE"):
         sentence = getattr(after_install, name)
         if name.startswith("EARLIER_TASK"):
             sentence = sentence.replace("{old}", settings.EARLIER_PRODUCT_NAME).replace("{new}", scheduling.TASK_NAME)

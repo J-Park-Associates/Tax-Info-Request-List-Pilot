@@ -5578,6 +5578,8 @@ PILOT_RECORD_REFUSED = ('pilot-record takes {{}} to read, or "terms" as the vers
                         'at most {longest} characters), or "tour_seen": true; not {asked}.')
 #: The longest name the terms' sign-off keeps (P188): a name, not a document.
 SIGNED_BY_LONGEST = 200
+#: What a refusal shows in place of the typed name, which it never echoes.
+SIGNED_BY_WITHHELD = "(name withheld)"
 
 
 def _terms_version(value: object) -> bool:
@@ -5632,8 +5634,11 @@ def _cmd_pilot_record(argv: list[str]) -> dict:
     if (set(spec) - {"terms", "tour_seen", "signed_by"} or (seen is not None and seen is not True)
             or (terms is not None and not _terms_version(terms))
             or ("signed_by" in spec and (terms is None or not _signed_by(signed)))):
+        # The rest of the request is echoed; the typed name never is, since
+        # the refusal is what the page writes to the error log.
+        shown = {**spec, "signed_by": SIGNED_BY_WITHHELD} if "signed_by" in spec else spec
         raise ManifestError(PILOT_RECORD_REFUSED.format(
-            longest=SIGNED_BY_LONGEST, asked=json.dumps(spec, sort_keys=True)))
+            longest=SIGNED_BY_LONGEST, asked=json.dumps(shown, sort_keys=True)))
     record = _read_pilot_record()
     if asked:
         now = dt.datetime.now().isoformat(timespec="seconds")

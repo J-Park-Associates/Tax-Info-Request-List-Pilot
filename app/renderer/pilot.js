@@ -149,11 +149,9 @@ const PilotTerms = (() => {
     const controls = { overlay };
     const actions = make("div", "pilot-terms-actions");
     if (readOnly) {
-      // Who signed and when, filled by show() once the record answers.
-      const signed = make("p", "pilot-terms-signed");
-      signed.hidden = true;
-      card.appendChild(signed);
-      controls.signed = signed;
+      // Who signed and when: built here, attached by show() above the
+      // actions only once the record holds a name, never hidden and shown.
+      Object.assign(controls, { signed: make("p", "pilot-terms-signed"), actions });
       const close = make("button", "btn btn-primary", terms.close);
       close.id = "pilot-terms-close";
       close.setAttribute("type", "button");
@@ -216,18 +214,27 @@ const PilotTerms = (() => {
     };
   }
 
+  // A signature carries its full date: month name, day and year from the
+  // stored ISO time. pagesDay (pages.js) drops the year, and no on-screen
+  // format carries one, so this is the pilot's own.
+  function signedDay(iso) {
+    const parts = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso || ""));
+    if (!parts) return "";
+    return new Date(Number(parts[1]), Number(parts[2]) - 1, Number(parts[3])).toLocaleDateString([], { year: "numeric", month: "long", day: "numeric" });
+  }
+
   // Help > Terms. The signature line shows only when the record holds a
   // name; an acceptance from before the sign-off shows none (P188 Q2).
   function show() {
     if (document.getElementById("pilot-terms") || document.getElementById("pilot-tour")) return;
-    const { overlay, signed, close } = build(true);
+    const { overlay, signed, actions, close } = build(true);
     PilotRecord.read().then((record) => {
       const name = record ? String(record.terms_signed_by || "") : "";
-      const day = record ? pagesDay(record.terms_accepted_at) : "";
+      const day = record ? signedDay(record.terms_accepted_at) : "";
       if (!name || !day || !overlay.isConnected) return;
       // The date goes in first, so nothing a person typed is read as a slot.
       signed.textContent = PILOT.terms.signed.split("{date}").join(day).split("{name}").join(name);
-      signed.hidden = false;
+      actions.before(signed);
     });
     const hold = holdKeys(() => [close], dismiss);
     function dismiss() {

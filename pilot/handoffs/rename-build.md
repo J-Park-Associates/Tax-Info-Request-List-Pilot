@@ -161,7 +161,8 @@ What was built:
   acceptance (`PilotRecord.acceptTerms(version, signedBy)` sends
   `signed_by`). Help, Terms reads the record and shows "Signed by {name} on
   {date}" as text, only when a name and a date are held. The date comes from
-  `pagesDay` in pages.js (the app's existing short date).
+  `pagesDay` in pages.js (the app's existing short date). Changed by the
+  fold below: the date now carries its year (`signedDay`).
 - `app/renderer/pilot-content.js`: `terms.sign` and `terms.signed` are new,
   and `terms.accept` is now "Sign and Accept". The terms version stays 1.
 - `tracker/api.py` pilot-record: `signed_by` is taken only with `terms`. It
@@ -192,9 +193,12 @@ window's cache already holds this version's acceptance. That acceptance was
 made on this PC, before the sign-off or with it, so it stands without a name
 (P188 Q2 (a)). It sends no `signed_by`, so it never records a name nobody
 typed, and it cannot fire for a record the tester has never accepted. There
-is one known edge case: if a signed acceptance's record write failed (it is
-logged) and a later launch's level-up writes the acceptance, the name is
-lost and no name is invented.
+is one known edge case: if a signed acceptance's record write failed and a
+later launch's level-up writes the acceptance, the name is lost and no name
+is invented. The failed write is logged only when the engine replies with an
+error; when the app never listed its commands within 120 seconds, or the
+call itself failed, `askNow` returns nothing and logs nothing (as it always
+has, for the terms version too), so that loss is unseen.
 
 Tests on both interpreters (3.14.3 `C:\Users\User\pl\order\.venv`; 3.11.15
 `...\Tax-Info-Request-List-Pilot-main\.venv311`), each file its own process,
@@ -218,3 +222,69 @@ pilot-content.js and harness/stub.js. Dead code: none in the changed files.
 Hands-on Windows steps (section 12.3): type only spaces and see the button
 stay greyed; type a name and accept; reopen Help, Terms and see the
 signature.
+
+## Fold (review of SPEC-rename: MUST-1, SHOULD-1, NIT-1 to NIT-4)
+
+One commit, "Fold: review of SPEC-rename (MUST-1, SHOULD-1, NIT-1 to
+NIT-4)", building the orchestrator's rulings (`C:\Users\User\pl\rename-rulings.md`).
+
+- **MUST-1 (fixed).** `app/renderer/pilot.js` no longer touches `hidden`,
+  which `test_pilot_ui.py` forbids in the pilot's scripts. `build(true)`
+  makes the "Signed by" paragraph without attaching it and hands back the
+  actions row; `show()` attaches it with `actions.before(signed)` only when
+  the record holds a name. `test_pilot_ui.py` is now in the results below
+  (it was missing from Commit C's table).
+- **SHOULD-1 (fixed).** `_replace_earlier_task` (`tracker/after_install.py`)
+  now runs only in the installed program, like the settings copy. From
+  source it does nothing and says `EARLIER_TASK_FROM_SOURCE`: "Run from
+  source: the scheduled task under the earlier name, {old}, belongs to an
+  installed copy, so it was left alone." A run from source must never delete
+  an installed copy's task. The check is `_installed_program()`, its own
+  function so tests can stand in for the packaged program for this job
+  alone (fixture `installed`); the earlier-task tests take it. New test:
+  `test_from_source_the_earlier_task_is_never_removed`. The runbook's "After
+  the rename (P155)" quotes the new sentence, and
+  `test_the_runbook_quotes_every_sentence_of_the_rename_carry_over` lists it.
+- **NIT-1 (fixed).** `_carry_over_settings`'s path checks (`resolve`,
+  `is_file`, `exists`) are inside its `try`, so an access error there is
+  `SETTINGS_CARRY_FAILED`, said by its class. New test:
+  `test_a_settings_folder_that_cannot_be_read_is_the_carry_over_s_own_failure`.
+- **NIT-2 (fixed).** Commit C's "one known edge case" no longer says a lost
+  signed save "is logged"; it now says when it is and is not.
+- **NIT-3 (fixed).** The pilot-record refusal (`tracker/api.py`) echoes the
+  request with `signed_by` replaced by `SIGNED_BY_WITHHELD`, "(name
+  withheld)"; the refusal wording itself is unchanged. New test:
+  `test_a_refused_request_never_echoes_the_typed_name`.
+- **NIT-4 (fixed).** Help, Terms shows "Signed by {name} on {date}" with the
+  year. No on-screen format in `app/renderer` carries a year (`pagesDay`
+  gives "Sep 30"), so `pilot.js` has its own `signedDay`: month name, day
+  and year from the stored ISO time, through the browser's own
+  `toLocaleDateString` (no library). `test_help_terms_shows_who_signed_and_when`
+  pins it. SPEC section 12.1 still says `pagesDay`; it was not edited, as
+  ruled.
+- **NIT-5 (declined for now).** The gate test covering module constants
+  only is out of this lane's scope. Left as a later job: have
+  `tests/test_single_source.py`'s gate also walk the `ast` string constants
+  in `tracker/*.py`, skipping docstrings.
+- The map: the after_install and api nodes' notes in
+  `docs/repo-map.curated.json` say the from-source rule, the path checks
+  and the withheld name; then `repo_map.py update`.
+
+Fold tests, each file its own process, four at a time (3.14.3
+`C:\Users\User\pl\order\.venv`; 3.11.15
+`...\Tax-Info-Request-List-Pilot-main\.venv311`):
+
+| File | 3.14 | 3.11 |
+|---|---|---|
+| test_pilot_ui.py | 11 passed | 11 passed |
+| test_pilot.py | 24 passed | 24 passed |
+| test_after_install.py | 91 passed, 3 skipped | 91 passed, 3 skipped |
+| test_api.py | 438 passed | 438 passed |
+| test_single_source.py (runbook quote list) | 179 passed | 179 passed |
+| test_errors.py | 83 passed | 83 passed |
+| test_repo_map.py | 80 passed | 80 passed |
+
+Quick checks: ruff reports all checks passed; `repo_map.py check` reports
+the map is current (CRLF warnings are about working copies only);
+`vocab_report.py check` reports current; `node --check app/renderer/pilot.js`
+is clean. Dead code: none in the changed files.

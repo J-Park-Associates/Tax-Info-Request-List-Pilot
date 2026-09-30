@@ -1598,7 +1598,14 @@ def test_a_settings_copy_that_fails_leaves_nothing_behind_and_is_a_failure(packa
     assert record["program"] == "" and sentence in record["failed"]
 
 
-def test_the_earlier_task_is_removed_after_the_new_one_is_registered(root, windows):
+@pytest.fixture
+def installed(monkeypatch):
+    """The packaged program, for the earlier name's task alone: every other
+    path stays the checkout's, so no test reaches a real program folder."""
+    monkeypatch.setattr(after_install, "_installed_program", lambda: True)
+
+
+def test_the_earlier_task_is_removed_after_the_new_one_is_registered(root, windows, installed):
     designation_file(root).write_text(f"{HERE}\n", encoding="utf-8")
     windows["earlier_exists"] = True
 
@@ -1612,7 +1619,7 @@ def test_the_earlier_task_is_removed_after_the_new_one_is_registered(root, windo
     assert not windows["earlier_exists"]
 
 
-def test_the_earlier_task_is_removed_when_the_schedule_is_off_or_elsewhere(root, windows):
+def test_the_earlier_task_is_removed_when_the_schedule_is_off_or_elsewhere(root, windows, installed):
     removed = after_install.EARLIER_TASK_REMOVED.format(old=settings.EARLIER_PRODUCT_NAME,
                                                          new=scheduling.TASK_NAME)
     settings.set_schedule(False, "07:00", 120)
@@ -1628,7 +1635,7 @@ def test_the_earlier_task_is_removed_when_the_schedule_is_off_or_elsewhere(root,
     assert not windows["earlier_exists"]
 
 
-def test_the_earlier_task_is_kept_when_the_new_one_could_not_be_registered(root, windows):
+def test_the_earlier_task_is_kept_when_the_new_one_could_not_be_registered(root, windows, installed):
     designation_file(root).write_text("front-desk\nsecret-laptop\n", encoding="utf-8")
     windows["earlier_exists"] = True
 
@@ -1640,7 +1647,7 @@ def test_the_earlier_task_is_kept_when_the_new_one_could_not_be_registered(root,
     assert windows["earlier_calls"] == [] and windows["earlier_exists"]
 
 
-def test_with_no_earlier_task_nothing_is_removed_and_it_says_so(root, windows, monkeypatch):
+def test_with_no_earlier_task_nothing_is_removed_and_it_says_so(root, windows, installed, monkeypatch):
     designation_file(root).write_text(f"{HERE}\n", encoding="utf-8")
     none = after_install.EARLIER_TASK_NONE.format(old=settings.EARLIER_PRODUCT_NAME)
 
@@ -1655,7 +1662,7 @@ def test_with_no_earlier_task_nothing_is_removed_and_it_says_so(root, windows, m
     assert windows["earlier_calls"] == []
 
 
-def test_a_failed_removal_of_the_earlier_task_is_a_failure_and_runs_again_at_launch(root, windows):
+def test_a_failed_removal_of_the_earlier_task_is_a_failure_and_runs_again_at_launch(root, windows, installed):
     designation_file(root).write_text(f"{HERE}\n", encoding="utf-8")
     windows["earlier_exists"] = True
     windows["earlier_delete_fails"] = True
@@ -1676,7 +1683,7 @@ def test_a_failed_removal_of_the_earlier_task_is_a_failure_and_runs_again_at_lau
     assert after_install.launch() is None
 
 
-def test_only_the_earlier_pilot_name_is_ever_removed_never_the_production_task(root, windows):
+def test_only_the_earlier_pilot_name_is_ever_removed_never_the_production_task(root, windows, installed):
     production = "Tax Document Tracker"                       # the firm's product, R8
     assert settings.EARLIER_PRODUCT_NAME == production + " Pilot"
     assert settings.EARLIER_PRODUCT_NAME != scheduling.TASK_NAME
@@ -1710,6 +1717,38 @@ def test_running_the_step_twice_changes_nothing_the_second_time(packaged, app, s
     assert [command[1] for command in windows["earlier_calls"]].count("/delete") == 1
 
 
+def test_from_source_the_earlier_task_is_never_removed(root, windows):
+    """A run from source must never delete the task of a copy installed on
+    the same computer: it says why in one sentence and asks Task Scheduler
+    nothing about the earlier name."""
+    designation_file(root).write_text(f"{HERE}\n", encoding="utf-8")
+    windows["earlier_exists"] = True
+
+    done = after_install.run(reason=after_install.REASON_LAUNCH)
+
+    assert done.exit_code == 0 and done.carried[1] == after_install.EARLIER_TASK_FROM_SOURCE.format(
+        old=settings.EARLIER_PRODUCT_NAME)
+    assert windows["earlier_calls"] == [] and windows["earlier_exists"]
+
+
+def test_a_settings_folder_that_cannot_be_read_is_the_carry_over_s_own_failure(packaged, monkeypatch):
+    """The path checks sit inside the job's error handling: an access error
+    there is the job's worded failure, said by its class, never an error
+    that stops the whole step."""
+    packaged.write_bytes(b"the earlier settings")
+    current = settings.settings_path()
+
+    def refused(self):
+        raise PermissionError(13, "a message that could name a client")
+
+    monkeypatch.setattr(type(packaged), "is_file", refused)
+    step = after_install._carry_over_settings()
+
+    assert step.failed and not current.exists()
+    assert step.sentence == after_install.SETTINGS_CARRY_FAILED.format(
+        old=packaged, new=current, problem="PermissionError (EACCES)")
+
+
 def test_a_record_from_before_the_rename_reads_as_nothing_carried(app):
     path = after_install.record_path()
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -1726,7 +1765,7 @@ def test_the_carry_over_sentences_lead_the_printed_lines(root, windows, monkeypa
     code, out = cli(monkeypatch, capsys, "--reason", "setup")
 
     carried = [after_install.SETTINGS_FROM_SOURCE,
-               after_install.EARLIER_TASK_NONE.format(old=settings.EARLIER_PRODUCT_NAME)]
+               after_install.EARLIER_TASK_FROM_SOURCE.format(old=settings.EARLIER_PRODUCT_NAME)]
     assert code == 0 and out.splitlines()[:CARRIED] == carried
     assert after_install.read_record()["carried"] == carried
     assert out.count(after_install.SETTINGS_FROM_SOURCE) == 1

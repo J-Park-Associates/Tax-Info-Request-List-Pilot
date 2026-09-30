@@ -239,20 +239,23 @@ def test_the_signed_name_is_sent_with_the_acceptance():
 
 def test_help_terms_shows_who_signed_and_when():
     """Help, Terms shows "Signed by {name} on {date}" when the record holds a
-    name, the date in the app's own short form (``pagesDay``, from
-    pages.js, which loads first), and the name set as text, never HTML; the
-    read-only card has no name box and no sign button."""
+    name, the date in full with its year (``signedDay``: a sign-off carries a
+    full date, and the app's short ``pagesDay`` drops the year), and the name
+    set as text, never HTML; the line is attached only once there is a name,
+    never hidden and shown; the read-only card has no name box and no sign
+    button."""
     assert content()["terms"]["signed"] == "Signed by {name} on {date}"
     js = read("pilot.js")
     shown = re.sub(r"//[^\n]*", "", js[js.index("function show() {"):js.index("function gate() {")])
     assert "PilotRecord.read().then((record) => {" in shown
-    assert "record.terms_signed_by" in shown and "pagesDay(record.terms_accepted_at)" in shown
+    assert "record.terms_signed_by" in shown and "signedDay(record.terms_accepted_at)" in shown
+    assert "pagesDay" not in shown
     assert "if (!name || !day || !overlay.isConnected) return;" in shown
     assert 'signed.textContent = PILOT.terms.signed.split("{date}").join(day).split("{name}").join(name);' in shown
+    assert "actions.before(signed);" in shown
     assert "pilot-terms-name" not in shown and "terms.sign" not in shown.replace("terms.signed", "")
-    html = read("index.html")
-    assert html.index('src="pages.js"') < html.index('src="pilot.js"')
-    assert "function pagesDay(iso) {" in read("pages.js")
+    day = js[js.index("function signedDay(iso) {"):js.index("function show() {")]
+    assert 'year: "numeric", month: "long", day: "numeric"' in day
 
 
 def test_an_earlier_acceptance_without_a_name_is_not_asked_again():

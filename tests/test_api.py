@@ -2304,6 +2304,15 @@ def test_a_signed_name_without_terms_or_blank_or_too_long_is_refused(capsys, std
     assert not (data_home() / api.PILOT_RECORD_FILENAME).exists()
 
 
+def test_a_refused_request_never_echoes_the_typed_name(capsys):
+    """The refusal is what the page writes to the error log: it echoes the
+    rest of the request, with the name in it withheld."""
+    name = "Jordan Sample " + "Q" * api.SIGNED_BY_LONGEST
+    code, payload = run(capsys, "pilot-record", stdin={"terms": "1", "signed_by": name})
+    assert code != 0 and "Jordan Sample" not in payload["error"] and "QQQ" not in payload["error"]
+    assert '"signed_by": "(name withheld)"' in payload["error"] and '"terms": "1"' in payload["error"]
+
+
 def test_a_name_of_the_longest_length_is_kept(capsys):
     name = "J" * api.SIGNED_BY_LONGEST
     code, payload = run(capsys, "pilot-record", stdin={"terms": "1", "signed_by": name})
