@@ -3222,9 +3222,9 @@ def test_switching_returns_is_one_state_call():
     ended = _body(js, "async function passEnded({ reply }) {")
     assert ended.index('call(["list"])') < ended.index('call(withEng("state"))')
     calls = [m.start() for m in re.finditer(r"(?<![\w.])bootstrap\(", js)]
-    assert len(calls) == 4        # its definition, its own Retry, saveRoot and start-up
+    assert len(calls) == 3        # its definition, its own Retry and saveRoot; start-up is startWhenLoaded
     assert "await bootstrap();" in _body(js, "async function saveRoot() {")
-    assert js.rstrip().endswith("bootstrap();")
+    assert js.rstrip().endswith("startWhenLoaded(bootstrap);")
 
 
 def test_the_reminder_card_is_drawn_from_state():

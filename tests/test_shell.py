@@ -2505,3 +2505,31 @@ def test_a_failed_sort_says_a_short_approved_reason_and_never_a_path(tmp_path):
     for line in said:
         assert len(line.split()) <= 5 and line == title_case(line) and "/" not in line and "Smith" not in line, line
     assert set(words["reasons"]) == {"lock-held", "household-paused", "client-folder-missing", "folder-missing", "other"}
+
+
+def test_the_app_starts_only_after_every_script_has_loaded(tmp_path):
+    """Final review B, finding 1: app.js loads before pages.js, sheet.js and
+    shell.js, and its bootstrap draws through them, so a quick first reply
+    used to hit a name that did not exist yet ("The App Hit an Error"). The
+    start waits for DOMContentLoaded while the document is still loading, and
+    runs at once when it has finished."""
+    setup = """
+      let listeners = {}, started = 0;
+      const document = { readyState: "loading", addEventListener: (name, fn) => { listeners[name] = fn; } };
+      const bootstrap = () => { started += 1; };
+    """
+    probe = """
+      startWhenLoaded(bootstrap);
+      const before = started;
+      listeners.DOMContentLoaded();
+      const loading = [before, started];
+      document.readyState = "complete";
+      startWhenLoaded(bootstrap);
+      return { loading, after: started };
+    """
+    assert run_shell(["startWhenLoaded"], setup, probe, tmp_path, "app.js") == {"loading": [0, 1], "after": 2}
+    html = read("index.html")
+    scripts = re.findall(r'<script src="([^"]+)"></script>', html)
+    assert scripts.index("app.js") < scripts.index("shell.js"), "the order is why the start must wait"
+    js = read("app.js")
+    assert js.rstrip().endswith("startWhenLoaded(bootstrap);") and not re.search(r"^bootstrap\(\);", js, re.M)

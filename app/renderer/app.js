@@ -2068,7 +2068,7 @@ if (window.tracker.onAfterInstallDone) {
   });
 }
 
-// A failed sort as the banner says it (rulings 25 and 29): "Sort Failed" and
+// A failed sort as the banner says it (rulings 25 and 29): the API's failure word and
 // a short reason from the API by the kind of failure the pass reported, five
 // words at most; the run's own sentence stays in the error log.
 function scanFailed(run) {
@@ -3626,4 +3626,13 @@ document.addEventListener("keydown", (e) => {
   }
 });
 
-bootstrap();
+// The first `list` may answer before pages.js, sheet.js and shell.js have
+// run (they load after this file), and bootstrap draws through them: it
+// starts once the document and every script are in place (final review B,
+// finding 1). DOMContentLoaded fires after the last synchronous script.
+function startWhenLoaded(start) {
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", () => start(), { once: true });
+  else start();
+}
+
+startWhenLoaded(bootstrap);
