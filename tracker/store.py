@@ -2268,7 +2268,14 @@ def record(conn: sqlite3.Connection, engagement_dir: Path | str, *events: dict) 
     The apply reads the journal again inside its transaction and applies
     from the store's applied seq as it is then (decision 135), so a reader
     that caught up part of this batch meanwhile has none of it re-applied.
+
+    Refused outright inside a read-only reply
+    (:func:`tracker.settings.one_reading`, P118): such a reply records
+    nothing.
     """
+    from tracker.settings import refuse_a_write_while_reading
+
+    refuse_a_write_while_reading("a return's record")
     engagement_dir = Path(engagement_dir)
     for event in events:
         name = event.get(ledger.EVENT_KEY)

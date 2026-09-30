@@ -307,8 +307,8 @@ def error_log(logger_name: str = "tracker") -> Iterator[Path | None]:
 
 
 def _read() -> dict:
-    """What the settings file (:data:`SETTINGS_FILENAME`) says, as a dict of
-    the caller's own - read once per reading inside :func:`one_reading`
+    """What the settings file (:data:`SETTINGS_FILENAME`) says, as a shallow
+    copy of the caller's own - read once per reading inside :func:`one_reading`
     (P118), from the file every other time."""
     if _HELD is not None and _SETTINGS_HELD in _HELD:
         return dict(_HELD[_SETTINGS_HELD])
@@ -387,6 +387,7 @@ def real_corpus_dir() -> Path | None:
 
 
 def _write(data: dict) -> None:
+    refuse_a_write_while_reading("the settings file")
     path = settings_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     write_json_atomically(path, data)
@@ -713,6 +714,22 @@ def _held(key: tuple, answer):
     if key not in _HELD:
         _HELD[key] = answer()
     return _HELD[key]
+
+
+#: What a write inside :func:`one_reading` is refused with.
+WRITE_WHILE_READING = ("{what} may not be written inside a read-only reply (P118): the reply holds "
+                       "its answers, and a write would leave them stale")
+
+
+def refuse_a_write_while_reading(what: str) -> None:
+    """Raise when a write is asked for inside :func:`one_reading` (the
+    review of P118, SHOULD-3): a read-only command writes nothing, and a
+    write under held answers would leave the rest of the reply answering
+    from before it. The settings file and the store's recorded events ask
+    it; the store's own catch-up from a journal is derivation, not a
+    write of anything new, and does not."""
+    if _HELD is not None:
+        raise RuntimeError(WRITE_WHILE_READING.format(what=what))
 
 
 def resolved(path: Path | str) -> Path:

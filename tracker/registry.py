@@ -427,7 +427,11 @@ def household_positions(root: Path | str) -> tuple[Path, list[Path]] | None:
                  if layout.place_of(root, child).kind == layout.PRIVATE and not _skip(child)]
         if len(trees) != 1:
             return None
-        folders = sorted((p for p in trees[0].iterdir() if p.is_dir()), key=lambda p: p.name.lower())
+        # The names the walk passes over without a word (``_skip``) are not
+        # households; a name the layout refuses is still listed, as the walk
+        # lists it (a misfit, no return), so its folder counts as changed or not.
+        folders = sorted((p for p in trees[0].iterdir() if p.is_dir() and not _skip(p)),
+                         key=lambda p: p.name.lower())
     except OSError:
         return None
     return trees[0], folders
@@ -891,13 +895,13 @@ def _two_claims(households: list[Household]) -> dict[Path, str]:
 
     # Households that share a key are joined through the first household
     # holding it (P119), not by comparing every pair: the same groups.
-    first: dict[str, int] = {}
+    holder: dict[str, int] = {}
     for i, theirs in enumerate(keys):
         for key in theirs:
-            if key in first:
-                group[top(i)] = top(first[key])
+            if key in holder:
+                group[top(i)] = top(holder[key])
             else:
-                first[key] = i
+                holder[key] = i
     members: dict[int, list[Household]] = {}
     for i, one in enumerate(households):
         members.setdefault(top(i), []).append(one)

@@ -5577,15 +5577,37 @@ def _firm_cached(root: Path, today: dt.date) -> list[_FirmShown] | None:
     the cache (P120), or ``None`` when this path is unsure and
     :func:`_firm_fresh` must answer. Anything unexpected here is kept on the
     error log and answered fresh: the cache may make a reply slow, never
-    wrong."""
+    wrong. A surprise is said once when it starts and again when it
+    changes, not on every reply while it lasts (:func:`firm_cache.first_time_said`)."""
     try:
-        return _firm_from_cache(root, today)
+        said: Path | None = firm_cache.cache_path().with_name(firm_cache.SAID_FILENAME)
+    except (SettingsError, OSError):
+        said = None             # no data folder: every surprise is said
+    try:
+        shown = _firm_from_cache(root, today)
     except _FirmUnsure:
         return None
     except Exception as exc:     # the cache's own surprise costs speed, never the reply
-        errors.keep("api: firm cache", exc)
-        log.warning("The firm view's cache was set aside (%s)", errors.error_class(exc))
+        if said is None or firm_cache.first_time_said(said, errors.error_class(exc)):
+            errors.keep("api: firm cache", exc)
+            log.warning("The firm view's cache was set aside (%s)", errors.error_class(exc))
         return None
+    if said is not None:
+        firm_cache.first_time_said(said, None)
+    return shown
+
+
+#: What a household's fingerprint reads by its whole bytes and what it
+#: leaves out (the review of P120, SHOULD-2 and SHOULD-4). By content: the
+#: files the firm view opens - every record, the reminder drafts, the
+#: inbox's README - so a rewrite that keeps a size and a time is still
+#: seen. Left out: the return's status page, which every pass rewrites
+#: from the record and no firm reader opens; ``tests/test_api.py`` pins
+#: both by watching every file a firm reply opens.
+FIRM_JUDGED = firm_cache.Judged(
+    private_whole=frozenset({ledger.LEDGER_FILENAME, reminder.DRAFT_FILENAME, reminder.NEW_DRAFT_FILENAME}),
+    client_whole=frozenset({layout.README_NAME}),
+    left_out=frozenset({VIEW_FILENAME}))
 
 
 class _FirmUnsure(Exception):
@@ -5618,8 +5640,12 @@ def _firm_from_cache(root: Path, today: dt.date) -> list[_FirmShown]:
     head = firm_cache.head(root, today)
     where = firm_cache.cache_path()
     kept = firm_cache.load(where, head)
+    # A folder whose name no household may have (the walk makes it a
+    # misfit) has no client folder to ask about: only its own is taken.
     prints = dict(zip(folders, firm_cache.fingerprints(
-        [(folder, layout.client_household_dir(private.parent, folder.name)) for folder in folders]), strict=True))
+        [(folder, None if layout.segment_problem(folder.name)
+          else layout.client_household_dir(private.parent, folder.name)) for folder in folders],
+        FIRM_JUDGED), strict=True))
     entries: dict[Path, dict] = {}
     for folder in folders:
         entry = kept.get(folder.name)

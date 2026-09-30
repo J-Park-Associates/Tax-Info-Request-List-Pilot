@@ -891,9 +891,16 @@ def test_household_positions_are_the_walks_households_in_the_walks_order(root):
 
     for name in ("lee Family", "Park Family", "Kim Family"):
         make(root, household=name)
+    # The review's SHOULD-1: a folder the walk passes over is no household
+    # position; one whose name the layout refuses is listed, as the walk
+    # lists it (a misfit).
+    (root / PRIVATE_TREE / "_Archive").mkdir()
+    (root / PRIVATE_TREE / "~$lock").mkdir()
+    (root / PRIVATE_TREE / "2019").mkdir()
     private, folders = household_positions(root)
     assert private == root / PRIVATE_TREE
-    assert [f.name for f in folders] == ["Kim Family", "lee Family", "Park Family"]
+    assert [f.name for f in folders] == ["2019", "Kim Family", "lee Family", "Park Family"]
+    folders = [f for f in folders if f.name != "2019"]
     walked = []
     for one in discover_engagements(root).households:
         walked.append(one.path)

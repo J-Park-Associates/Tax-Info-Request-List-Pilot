@@ -83,9 +83,9 @@ def test_a_household_touched_within_the_racy_window_is_never_fingerprinted(tmp_p
     private, client = _household(tmp_path)
     (private / "2025" / "1040 - Ann Lee" / "record.jsonl").write_text("two\n", encoding="utf-8")
     assert firm_cache.fingerprint(private, client) is None
-    ahead = time.time() + 3600               # a clock ahead of this one
-    os.utime(private / "2025", (ahead, ahead))
-    _aged(private / "2025" / "1040 - Ann Lee", client)
+    _aged(private, client)
+    ahead = time.time() + 3600               # a file dated by a clock ahead of this one
+    os.utime(private / "2025" / "1040 - Ann Lee" / "record.jsonl", (ahead, ahead))
     assert firm_cache.fingerprint(private, client) is None
 
 
@@ -215,3 +215,71 @@ def test_an_error_in_any_thread_is_raised_to_the_caller(tmp_path, monkeypatch):
     monkeypatch.setattr(firm_cache, "fingerprint", broken)
     with pytest.raises(RuntimeError):
         firm_cache.fingerprints([(tmp_path, tmp_path)] * 5)
+
+
+# ------------------------------------------ the review's folds (P120) ----
+
+JUDGED = firm_cache.Judged(private_whole=frozenset({"record.jsonl"}),
+                           client_whole=frozenset({"_README.txt"}),
+                           left_out=frozenset({"Status Report.html"}))
+
+
+def test_a_record_rewritten_at_its_own_size_and_time_changes_the_fingerprint(tmp_path):
+    """SHOULD-2: a rewrite that keeps a record's size and puts its time back
+    (a backup restore, a copy that keeps times, a hand edit) still changes
+    its bytes, and a record is judged by its bytes."""
+    private, client = _household(tmp_path)
+    record = private / "2025" / "1040 - Ann Lee" / "record.jsonl"
+    before = firm_cache.fingerprint(private, client, JUDGED)
+    kept = record.stat()
+    record.write_text("uno\n", encoding="utf-8")                  # the same four bytes long
+    os.utime(record, ns=(kept.st_atime_ns, kept.st_mtime_ns))
+    assert record.stat().st_size == kept.st_size
+    assert firm_cache.fingerprint(private, client, JUDGED) != before
+
+
+def test_the_status_page_and_folder_times_leave_the_fingerprint_alone(tmp_path):
+    """SHOULD-4: every pass rewrites each return's status page and moves the
+    folders' times with its lock and temporary files; neither is anything
+    the firm view reads, so neither makes a household read again."""
+    private, client = _household(tmp_path)
+    page = private / "2025" / "1040 - Ann Lee" / "Status Report.html"
+    page.write_text("<p>one</p>", encoding="utf-8")
+    _aged(private, client)
+    before = firm_cache.fingerprint(private, client, JUDGED)
+    page.write_text("<p>written again by a pass</p>", encoding="utf-8")
+    passing = private / "2025" / "1040 - Ann Lee" / ".lock"
+    passing.write_text("x", encoding="utf-8")
+    passing.unlink()
+    for folder in (private, private / "2025", private / "2025" / "1040 - Ann Lee"):
+        os.utime(folder, (time.time() - 30, time.time() - 30))
+    assert firm_cache.fingerprint(private, client, JUDGED) == before
+
+
+def test_a_household_with_no_client_folder_to_ask_is_taken_by_its_own_folder(tmp_path):
+    """SHOULD-1: a folder whose name no household may have has no client
+    folder; it is fingerprinted by its own and kept, not refused."""
+    private, client = _household(tmp_path)
+    alone = firm_cache.fingerprint(private, None, JUDGED)
+    assert alone is not None and alone != firm_cache.fingerprint(private, client, JUDGED)
+
+
+def test_a_household_holding_a_junction_is_never_fingerprinted(tmp_path):
+    """NIT-5: the Windows link a person can make without Developer Mode."""
+    winapi = pytest.importorskip("_winapi")
+    private, client = _household(tmp_path)
+    target = tmp_path / "elsewhere"
+    target.mkdir()
+    winapi.CreateJunction(str(target), str(private / "joined"))
+    _aged(private, client)
+    assert firm_cache.fingerprint(private, client, JUDGED) is None
+
+
+def test_a_surprise_is_said_once_until_it_changes(tmp_path):
+    """SHOULD-1: the cached path set aside for one surprise says it once."""
+    note = tmp_path / firm_cache.SAID_FILENAME
+    assert firm_cache.first_time_said(note, "LayoutError") is True
+    assert firm_cache.first_time_said(note, "LayoutError") is False
+    assert firm_cache.first_time_said(note, "OSError (EACCES)") is True
+    assert firm_cache.first_time_said(note, None) is True and not note.exists()
+    assert firm_cache.first_time_said(note, None) is False

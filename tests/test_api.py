@@ -8545,6 +8545,10 @@ def test_the_firm_view_from_its_cache_is_the_whole_walks_reply_through_every_cha
         "return_name": "1040 - Kim Old", "year": default_tax_year() - 1, "items": items})[0] == 0
     kim_old = where(demo_root, "1040 - Kim Old", household="Kim Family", year=default_tax_year() - 1)
     assert run(capsys, "rollover", stdin={"prior": str(kim_old), "year": default_tax_year()})[0] == 0
+    # The review's SHOULD-1: a folder the walk passes over, and one whose
+    # name no household may have, leave the cache on for everyone else.
+    (demo_root / PRIVATE_TREE / "_Archive").mkdir()
+    (demo_root / PRIVATE_TREE / "2019").mkdir()
     _aged(demo_root)
 
     whole = _firm_whole(capsys, monkeypatch)
@@ -8690,12 +8694,30 @@ def test_the_firm_cache_is_one_file_in_the_data_folder_and_nothing_in_either_cli
     assert firm_cache.cache_path().stat().st_mtime_ns == written, "an unchanged practice writes nothing"
 
 
-def test_the_commands_held_to_one_reading_write_nothing():
-    """P118: a command joins ``HELD_READING_COMMANDS`` only when it writes
-    nothing, so the list and the writers never meet."""
+def test_the_commands_held_to_one_reading_write_nothing_and_a_write_there_is_refused(
+        capsys, demo_root, monkeypatch):
+    """P118, and the review's SHOULD-3: a command joins
+    ``HELD_READING_COMMANDS`` only when it writes nothing; a settings or
+    record write inside one is refused outright, and ``list``, ``state``
+    and ``firm`` answer with that refusal in place."""
+    from tracker import settings
+
     assert api.HELD_READING_COMMANDS <= set(api.COMMANDS)
     assert not api.HELD_READING_COMMANDS & api.WRITING_COMMANDS
     assert api.PASS_COMMAND not in api.HELD_READING_COMMANDS
+    mixed, _quiet, _retired = _a_practice_for_the_firm_view(capsys, demo_root)
+    for argv in (["list"], ["state", api.ENGAGEMENT_FLAG, str(mixed)], ["firm"]):
+        assert run(capsys, *argv)[0] == 0, argv
+    real = api._cmd_firm
+
+    def writes(argv):
+        settings.set_firm("written inside a read-only reply")
+        return real(argv)
+
+    monkeypatch.setitem(api.COMMANDS, "firm", writes)
+    code, payload = run(capsys, "firm")
+    assert code != 0 and payload["failure"]["kind"] == "failed"
+    assert settings.firm() == "J Park & Associates, CPA"
 
 
 def test_the_firm_key_spells_every_key_as_the_plain_walk_does():
@@ -9216,3 +9238,77 @@ def test_list_carries_each_misfits_code_and_the_vocabulary_words_it(capsys, demo
     assert misfit["code"] == "not_a_tree"
     assert misfit["sentence"] and misfit["where"]
     assert _vocab()["screen"]["misfits"]["reasons"][misfit["code"]] == "Unknown Folder"
+
+
+def test_a_record_rewritten_at_its_own_size_and_time_is_never_answered_from_the_cache(
+        capsys, demo_root, monkeypatch):
+    """The review's SHOULD-2 (probe P15): a record rewritten at the same
+    length with its time put back breaks its chain; the whole walk says
+    Could Not Be Read, and so must the cached reply."""
+    mixed, _quiet, _retired = _a_practice_for_the_firm_view(capsys, demo_root)
+    _aged(demo_root)
+    assert _cached_firm(capsys) == _firm_whole(capsys, monkeypatch)
+    record = ledger.path_for(mixed)
+    kept = record.stat()
+    text = record.read_bytes()
+    assert b'"active": true' in text
+    record.write_bytes(text.replace(b'"active": true', b'"active":false', 1))
+    os.utime(record, ns=(kept.st_atime_ns, kept.st_mtime_ns))
+    assert record.stat().st_size == kept.st_size
+    whole = _firm_whole(capsys, monkeypatch)
+    assert {one["path"]: one["problem"] for one in whole["returns"]}[str(mixed)] == api.FIRM_UNREADABLE
+    assert _cached_firm(capsys) == whole
+
+
+def test_the_first_overview_after_a_pass_reads_no_household_again(capsys, demo_root, monkeypatch):
+    """The review's SHOULD-4: a pass rewrites each return's status page and
+    moves its folders' times with its lock; nothing the firm view reads
+    changed, so the next reply reads no return."""
+    from tracker.view import VIEW_FILENAME
+
+    mixed, quiet, _retired = _a_practice_for_the_firm_view(capsys, demo_root)
+    _aged(demo_root)
+    whole = _firm_whole(capsys, monkeypatch)
+    assert _cached_firm(capsys) == whole
+    for folder in (mixed, quiet):
+        (folder / VIEW_FILENAME).write_text("<p>drawn again by the pass</p>", encoding="utf-8")
+        (folder / "held by the pass.tmp").write_text("x", encoding="utf-8")
+        (folder / "held by the pass.tmp").unlink()
+    read = _rows_read(monkeypatch)
+    assert _cached_firm(capsys) == whole
+    assert read == []
+
+
+def test_every_file_a_firm_reply_opens_is_judged_by_its_bytes_and_never_the_status_page(
+        capsys, demo_root, monkeypatch):
+    """What the fingerprint reads whole and leaves out (``api.FIRM_JUDGED``)
+    is pinned to what the firm view opens: a file it opens but judges by
+    size and time alone could be rewritten unseen, and a page it leaves
+    out must be one it never opens."""
+    import sys
+
+    from tracker import reminder
+    from tracker.view import VIEW_FILENAME
+
+    mixed, quiet, _retired = _a_practice_for_the_firm_view(capsys, demo_root)
+    for folder in (mixed, quiet):
+        (folder / reminder.DRAFT_FILENAME).write_text("Dear client", encoding="utf-8")
+    opened = []
+    root = str(demo_root.resolve()).lower()
+
+    def watch(event, args):
+        if event == "open" and isinstance(args[0], (str, os.PathLike)):
+            where = os.path.abspath(os.fsdecode(args[0]))
+            if where.lower().startswith(root):
+                opened.append(Path(where))
+
+    sys.addaudithook(watch)
+    try:
+        whole = _firm_whole(capsys, monkeypatch)
+    finally:
+        root = "\0"                          # an audit hook cannot be removed; it stops matching
+    assert whole["returns"] and opened
+    judged = api.FIRM_JUDGED
+    for where in opened:
+        assert where.name != VIEW_FILENAME
+        assert where.name in judged.private_whole | judged.client_whole, where.name

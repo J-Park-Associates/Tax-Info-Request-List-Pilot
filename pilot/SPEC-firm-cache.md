@@ -80,11 +80,18 @@ in `tracker/api.py`) runs inside `settings.one_reading()`. Inside it:
 
 - `settings.data_home()`, `settings.app_dir()` and
   `settings.program_folders()` are answered once and then from memory;
-- `settings.json` is read once (`settings._read`; each caller gets its own
-  copy of the dict, so none can change another's);
+- `settings.json` is read once (`settings._read`; each caller gets a
+  shallow copy of the dict, so none can change another's keys);
 - `settings.resolved(path)` answers `Path.resolve()` once per spelling;
   the store's three resolvers (`_recorded_root_over`, `engagement_path`,
   `_positional_root`) ask it.
+
+**A write inside a reading is refused** (the review's SHOULD-3, folded
+2026-09-30): `settings._write` and `store.record` raise
+`settings.WRITE_WHILE_READING` when asked inside `one_reading()`, so a
+read-only command that ever tried to write would fail loudly rather than
+answer from held answers. The store's own catch-up from a journal is
+derivation, not a new record, and stays allowed.
 
 **Why this is safe.** A read-only command changes none of these: no
 environment variable, no settings file, no folder rename of its own. The
@@ -137,10 +144,25 @@ private tree it keeps:
 
 - `fingerprint`: a digest of every folder and file under the household's
   private folder **and** under its client folder (`layout.client_household_dir(root,
-  name)`, the folder that holds its inbox), each entry's name, kind, size and modification time, from
-  one `os.scandir` listing per folder, eight households at a time
-  (`firm_cache.fingerprints`). Nothing is opened. On Windows the
-  listing carries size and time itself, so this costs no `stat` per file;
+  name)`, the folder that holds its inbox), from one `os.scandir` listing
+  per folder, eight households at a time (`firm_cache.fingerprints`):
+  - every entry's name and kind; a folder is taken by its name and what it
+    holds, never its own time (a folder's time moves when a lock or a
+    temporary file comes and goes, and anything added or removed is in the
+    listing anyway);
+  - every file's size and modification time (on Windows the listing
+    carries both, so no `stat` per file);
+  - **the whole bytes of the files the firm view opens** (`api.FIRM_JUDGED`,
+    the review's SHOULD-2): every `_ledger.jsonl` (each return's and the
+    household's record) and the reminder drafts in the private folder, and
+    the inbox's `_README.txt` in the client folder. A client's documents
+    are never opened;
+  - never the return's status page (`view.VIEW_FILENAME`), which every pass
+    rewrites from the record and no firm reader opens (SHOULD-4).
+  A folder at the household position whose name no household may have
+  (`layout.segment_problem`; the walk makes it a misfit) is taken by its
+  private folder alone, and the folders the walk passes over (`_`, `.`,
+  `~$`) are not household positions at all (SHOULD-1);
 - `kind` (`household`, `record_missing` or `none`) and the household's
   name, as the registry reads them;
 - per return, the facts the practice-wide step needs - `path`, `problem`,
@@ -159,9 +181,9 @@ three places, and each is covered:
 
 | What the row reads | Where it is | Covered by |
 |---|---|---|
-| the record (the journal) and the store rows built from it | the return's folder; the store is rebuilt from the journal by its head digest (`store.follow_the_journal`) | the household's fingerprint (the journal's size and time) |
-| the index, the working copies' rows, the reminder draft and its approval | the return's folder | the household's fingerprint |
-| the files still in the inbox (`reminder.unsorted_in_inbox`) | the household's client folder | the household's fingerprint |
+| the record (the journal) and the store rows built from it | the return's folder; the store is rebuilt from the journal by its head digest (`store.follow_the_journal`) | the household's fingerprint (the journal's whole bytes) |
+| the index, the working copies' rows, the reminder draft and its approval | the return's folder (the index and the approvals are lines of the journal) | the household's fingerprint (the journal's and the drafts' whole bytes) |
+| the files still in the inbox (`reminder.unsorted_in_inbox`) | the household's client folder | the household's fingerprint (names, sizes and times; the README's bytes) |
 | the household's record (its name, and P141's links when lane 4 adds them) | the household's private folder | the household's fingerprint |
 | the draft week and the stage | today's date | the head |
 | the clients root, the settings, the program | - | the head |
@@ -172,7 +194,21 @@ while the row is being built makes the next fingerprint differ: the cache
 can be one reply behind a change that is still being written, never more.
 Equality is what is compared, not order, so a sync client that sets an
 older modification time still changes the fingerprint (the size or the
-time differs from the one kept).
+time differs from the one kept). On Windows a file's size and time in a
+folder listing are brought up to date when the writer closes it, so "one
+reply behind" holds from the moment the writer closes the file (the
+review's NIT-2); the records the firm view reads are read by their bytes,
+which are current as soon as they are written.
+
+**Which files are still judged by size and time alone, and why that
+cannot change a status** (the review's SHOULD-2). Every file the firm view
+opens is read by its bytes; `tests/test_api.py` pins that with an audit
+hook that watches every file a firm reply opens. The rest - working copies,
+originals, files in the inbox, the tracker's own pages - are never opened
+by the firm view: its rows depend only on whether they are there, their
+names, and for an inbox file whether it is still being written, all of
+which the listing, the size and the time answer. A same-size rewrite of one
+of them with its time put back changes nothing the view reads.
 
 **What is recomputed every time.** The practice-wide facts: which returns
 a Roll Forward retired (`registry.mark_superseded`), which returns are
@@ -246,15 +282,25 @@ nothing else.
 **Known limits.** (1) A store damaged while its journals stay the same is
 not seen by a kept household's row until that household changes; the
 return's own page, the pass and `verify` still see it at once, and the
-status the row shows is still the journal's. (2) Every file under a
-household counts, so a pass that rewrites a return's `Status Report.html`
-makes that household read again on the next Overview; after a scheduled
-pass that touched every household, the first Overview is a fill (about
-9-11 s at 750 on this PC). Filling the cache at the end of the scheduled
-pass would hide that, but the runner may not import the API
-(`tests/test_layers.py`); it is named in the hand-back, not built. The
-sample could not show which files a pass rewrites: its 750 copies all
-claim one household name, so the pass stops every one of them.
+status the row shows is still the journal's. (2) A pass that changes a
+household - a file sorted, a record line written, a draft made - makes that
+household read again on the next Overview, as it must. A pass that changes
+nothing no longer does (the review's SHOULD-4, choice (i)): the reviewer
+measured that every pass rewrites each return's `Status Report.html` and
+moves the return's and the household's folder times with its lock and
+temporary files; the status page is left out and folder times are not
+taken. Measured on a copy of the 750-household sample in the scratch
+folder (the sample itself was not written): each of the 750 returns'
+status pages rewritten and a lock file made and removed in every return
+and household folder, the next reply took 2.05 s and 1.65 s (1.75 s warm
+before), reading no household again. Choice (ii), the pass refilling the
+cache, was not needed.
+
+**A surprise is said once** (SHOULD-1). When the cached path meets
+something unexpected it still answers from the whole walk, and the error
+log says it once when it starts and again when its class changes, not on
+every reply (`firm-view.said` beside the cache keeps the last class said;
+the first reply the cache answers removes it).
 
 **Rejected:** one digest over the whole practice (any drop into any inbox
 would make the next Overview read all 750 households); watching the folders
@@ -320,9 +366,10 @@ old code's reply (2,343,016 bytes).
 
 | `firm`, 750 returns | Before | After |
 |---|---|---|
-| warm, cache kept | 52.2-53.8 s | 1.85-2.33 s; 1.97-2.30 s with the PC at 85% CPU from another lane's tests |
+| warm, cache kept | 52.2-53.8 s | 1.85-2.33 s; 1.97-2.30 s with the PC at 85% CPU from another lane's tests; **1.19-1.24 s after the review's fold** (records read by their bytes, folder times left out; PC idle) |
 | warm, the 3.11 interpreter, PC at 85% CPU | - | 2.64-2.71 s |
-| cache empty (first reply of a day, after an upgrade) | 131 s first run, 53 s warm | 9.3-11.2 s; 11.8-12.9 s at 85% CPU |
+| cache empty (first reply of a day, after an upgrade) | 131 s first run, 53 s warm | 9.3-11.2 s; 11.8-12.9 s at 85% CPU; 6.97 s after the fold (PC idle) |
+| first Overview after a pass (simulated on a scratch copy, see Known limits) | - | 2.05 s, then 1.65 s |
 | one household changed | - | 2.4-2.8 s |
 | 75 households changed | - | 2.75 s (threaded walk, 85% CPU); 4.3 s before the walk was threaded |
 | P118 and P119 only, no cache | - | 7.6 s |

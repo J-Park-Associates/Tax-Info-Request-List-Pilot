@@ -3028,7 +3028,7 @@ ADMISSION_PIN: dict[int, dict[str, str]] = {2: {
     "tracker.settings.SETTINGS_FILENAME": "ddf9dfc4d857c464",
     "tracker.settings._SETTINGS_HELD": "6c71e2207cf64f31",
     "tracker.settings._held": "379fbddee2b4b987",
-    "tracker.settings._read": "ff1836cb9db58dc9",
+    "tracker.settings._read": "9a09d08e256be9de",
     "tracker.settings.clients_root": "8fbaef8c43dcb573",
     "tracker.settings.resolved": "e42941a71b19eac8",
     "tracker.settings.settings_dir": "0468e63b780056c5",
@@ -4377,3 +4377,14 @@ def test_the_store_beside_the_settings_file_is_never_refused_its_checkpoint(root
     where.unlink()
     store.prove_the_root(root)
     assert where.is_file()
+
+
+def test_a_record_written_inside_a_read_only_reply_is_refused_before_anything_is_written(tmp_path):
+    """The review of P118, SHOULD-3: a read-only reply records nothing."""
+    from tracker.settings import one_reading
+
+    folder = tmp_path / "return"
+    folder.mkdir()
+    with one_reading(), pytest.raises(RuntimeError, match="read-only reply"):
+        store.record(None, folder, {"event": "anything"})
+    assert list(folder.iterdir()) == []

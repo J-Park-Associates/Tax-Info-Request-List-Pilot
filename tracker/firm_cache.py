@@ -57,6 +57,7 @@ import stat
 import sys
 import threading
 import time
+from dataclasses import dataclass
 from pathlib import Path
 
 from tracker import errors, settings
@@ -91,7 +92,10 @@ RETURN_FACTS = {"path": str, "household": str, "problem": str, "active": bool,
 #: case ``git`` guards the same way), and a synced drive's clock may be
 #: coarser than the disk's; so a household with anything this new - or
 #: dated in the future, by a clock ahead of this one - is read fresh and not
-#: kept until it has been still for this long.
+#: kept until it has been still for this long. The window is measured by
+#: this PC's clock: a network share whose clock runs more than this far
+#: behind could date a rewrite outside it, which is one more reason the
+#: records are judged by their bytes (:class:`Judged`).
 RACY_SECONDS = 5
 
 #: A link or junction inside a household's folders: the practice walk may
@@ -135,19 +139,53 @@ def head(root: Path | str, today: dt.date) -> dict:
             "data_home": str(settings.data_home()), "day": today.isoformat(), "settings": spelled}
 
 
-def fingerprint(*folders: Path) -> str | None:
-    """One digest of every entry under each of ``folders`` - each name, and
-    whether it is a folder, its size and its modification time - from one
-    ``os.scandir`` listing per folder, in name order. Nothing is opened. A
-    folder that is not there is said as absent. ``None`` when a folder
-    cannot be listed, holds a link or junction, or holds anything modified
-    within :data:`RACY_SECONDS` of now or later: such a household is read
-    fresh and never kept."""
+#: What a household's fingerprint is taken with (P120, and the review's
+#: SHOULD-2 and SHOULD-4): which files of each folder are digested by their
+#: whole bytes, and which files are left out. The API fills it from the
+#: modules that own the names; this module only applies it.
+@dataclass(frozen=True)
+class Judged:
+    #: In the household's private folder, at any depth: the records the
+    #: firm view reads (every return's and the household's record, the
+    #: reminder drafts). A rewrite that keeps a record's size and time - a
+    #: backup restore, a copy that keeps times, a hand edit put back - still
+    #: changes its bytes.
+    private_whole: frozenset[str] = frozenset()
+    #: In the household's client folder, at any depth: the firm's own files
+    #: the inbox count opens (its README). A client's documents are never
+    #: among them and are never opened.
+    client_whole: frozenset[str] = frozenset()
+    #: Left out entirely: files the tracker writes from the record and the
+    #: firm view never opens (a return's status page, rewritten by every
+    #: pass). Leaving one out cannot hide a status: it holds nothing the
+    #: record does not.
+    left_out: frozenset[str] = frozenset()
+
+
+#: Every file judged by its size and time, none left out.
+NOTHING_JUDGED = Judged()
+
+
+def fingerprint(private: Path, client: Path | None, judged: Judged = NOTHING_JUDGED) -> str | None:
+    """One digest of a household's two folders: every entry's name and
+    kind; every file's size and modification time; and the whole bytes of
+    the files ``judged`` names. A folder is taken by its name and what it
+    holds, never its own time - a folder's time moves when a lock or a
+    temporary file comes and goes, and anything added or removed is in the
+    listing anyway. ``client`` is ``None`` for a folder whose name no
+    client folder can have (the walk makes it a misfit). A folder that is
+    not there is said as absent. ``None`` when a folder cannot be listed or
+    read, holds a link or junction, or holds a file modified within
+    :data:`RACY_SECONDS` of now or later: such a household is read fresh
+    and never kept."""
     digest = hashlib.blake2b(digest_size=16)
     settled = time.time_ns() - RACY_SECONDS * 1_000_000_000
-    for folder in folders:
+    for folder, whole in ((private, judged.private_whole), (client, judged.client_whole)):
+        if folder is None:
+            digest.update(b"\3none\n")
+            continue
         digest.update(f"\1{folder}\n".encode("utf-8", "surrogatepass"))
-        if not _listed(Path(folder), digest, settled):
+        if not _listed(Path(folder), digest, settled, whole, judged.left_out):
             return None
     return digest.hexdigest()
 
@@ -159,7 +197,8 @@ def fingerprint(*folders: Path) -> str | None:
 FINGERPRINT_THREADS = 8
 
 
-def fingerprints(pairs: list[tuple[Path, Path]], *, threads: int = FINGERPRINT_THREADS) -> list[str | None]:
+def fingerprints(pairs: list[tuple[Path, Path | None]], judged: Judged = NOTHING_JUDGED, *,
+                 threads: int = FINGERPRINT_THREADS) -> list[str | None]:
     """:func:`fingerprint` of each ``(private folder, client folder)`` in
     ``pairs``, in order, taken ``threads`` at a time. Each fingerprint is its
     own digest, so the answer is the one a single thread gives; the first
@@ -170,7 +209,7 @@ def fingerprints(pairs: list[tuple[Path, Path]], *, threads: int = FINGERPRINT_T
     def work(start: int) -> None:
         try:
             for index in range(start, len(pairs), threads):
-                found[index] = fingerprint(*pairs[index])
+                found[index] = fingerprint(*pairs[index], judged)
         except BaseException as exc:        # raised below, in the caller's thread
             failures.append(exc)
 
@@ -185,7 +224,7 @@ def fingerprints(pairs: list[tuple[Path, Path]], *, threads: int = FINGERPRINT_T
     return found
 
 
-def _listed(folder: Path, digest, settled: int) -> bool:
+def _listed(folder: Path, digest, settled: int, whole: frozenset[str], left_out: frozenset[str]) -> bool:
     try:
         with os.scandir(folder) as found:
             entries = sorted(found, key=lambda entry: entry.name)
@@ -195,19 +234,28 @@ def _listed(folder: Path, digest, settled: int) -> bool:
     except OSError:
         return False
     for entry in entries:
+        if entry.name in left_out:
+            continue
         try:
             about = entry.stat(follow_symlinks=False)
         except OSError:
             return False
         if entry.is_symlink() or getattr(about, "st_reparse_tag", 0) in _LINK_TAGS:
             return False
+        if stat.S_ISDIR(about.st_mode):
+            digest.update(f"{entry.name}\0dir\n".encode("utf-8", "surrogatepass"))
+            if not _listed(Path(entry.path), digest, settled, whole, left_out):
+                return False
+            continue
         if about.st_mtime_ns > settled:
             return False
-        is_folder = stat.S_ISDIR(about.st_mode)
-        digest.update(f"{entry.name}\0{int(is_folder)}\0{about.st_size}\0{about.st_mtime_ns}\n"
+        digest.update(f"{entry.name}\0{about.st_size}\0{about.st_mtime_ns}\n"
                       .encode("utf-8", "surrogatepass"))
-        if is_folder and not _listed(Path(entry.path), digest, settled):
-            return False
+        if entry.name in whole:
+            try:
+                digest.update(hashlib.blake2b(Path(entry.path).read_bytes(), digest_size=16).digest())
+            except OSError:
+                return False
     return True
 
 
@@ -281,3 +329,31 @@ def save(path: Path, expected: dict, households: dict[str, dict]) -> None:
         write_text_atomically(path, json.dumps(payload, separators=(",", ":")))
     except OSError as exc:
         log.warning("The firm view's cache could not be written (%s)", errors.error_class(exc))
+
+
+#: Beside the cache: the class of the last surprise the cached path was set
+#: aside for, so the error log says each one once when it starts - not on
+#: every reply while it lasts (the review's SHOULD-1) - and again whenever
+#: it changes. Removed by the first reply the cache answers.
+SAID_FILENAME = "firm-view.said"
+
+
+def first_time_said(path: Path, said: str | None) -> bool:
+    """Whether ``said`` - a surprise's class, or ``None`` for a reply the
+    cache answered - is not what the note at ``path`` last kept; the note
+    then keeps it. A note that cannot be read or written counts as a
+    change, so a surprise is never kept quiet because of the note."""
+    try:
+        before = path.read_text(encoding="utf-8") if path.exists() else None
+    except OSError:
+        before = ""
+    if before == said:
+        return False
+    try:
+        if said is None:
+            path.unlink(missing_ok=True)
+        else:
+            write_text_atomically(path, said)
+    except OSError:
+        return True
+    return True

@@ -721,3 +721,13 @@ def test_a_nested_reading_is_the_same_reading_and_ends_with_the_outer_one():
             assert data_rules._HELD is not None and data_rules.app_dir() == first
         assert data_rules._HELD is not None
     assert data_rules._HELD is None
+
+
+def test_a_settings_write_inside_a_reading_is_refused_outright():
+    """The review's SHOULD-3: a read-only reply writes nothing, and a write
+    under held answers would leave the rest of the reply stale."""
+    with data_rules.one_reading():
+        with pytest.raises(RuntimeError, match="read-only reply"):
+            data_rules.set_firm("Written inside a reading")
+    data_rules.set_firm("Written after it")
+    assert data_rules.firm() == "Written after it"
