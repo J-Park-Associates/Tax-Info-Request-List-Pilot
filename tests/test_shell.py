@@ -2731,7 +2731,7 @@ def test_create_return_goes_to_the_new_returns_page(tmp_path):
     assert "failed" not in steps
 
 
-NOTICES = r"""
+SORT_NOTICES = r"""
   const notices = [], keyedNotices = new Map(), sortAnswers = new Map(), locks = [];
   let shellRoute = { level: "return", ret: "r25" };
   const returns = { r25: { household: "h1" }, r24: { household: "h1" } };
@@ -2744,7 +2744,7 @@ NOTICES = r"""
   const shown = () => notices.map((one) => one.sentence);
   const press = (entry) => { dismissNotice(entry); forgetSortLine(entry.key); };   // the notice's cross or Retry
 """
-NOTICE_FUNCTIONS = ["notice", "keyedNotice", "clearNotice", "syncNotices", "dismissNotice"] + SORT_ANSWER_FUNCTIONS
+SORT_NOTICE_FUNCTIONS = ["notice", "keyedNotice", "clearNotice", "syncNotices", "dismissNotice"] + SORT_ANSWER_FUNCTIONS
 
 
 def test_a_sort_that_fails_the_same_way_again_is_said_again(tmp_path):
@@ -2763,7 +2763,7 @@ def test_a_sort_that_fails_the_same_way_again_is_said_again(tmp_path):
       keepSortAnswer(["r25", "r24"], "r24", []); out.push(shown());
       return out;
     """
-    out = run_shell(NOTICE_FUNCTIONS, NOTICES, probe, tmp_path, "app.js")
+    out = run_shell(SORT_NOTICE_FUNCTIONS, SORT_NOTICES, probe, tmp_path, "app.js")
     failed = ["Sort Failed: Folder Not Found"]
     assert out == [failed, [], failed, failed, []]
 
@@ -2777,7 +2777,7 @@ def test_a_locked_sort_still_shows_its_lock_and_outlines_its_row(tmp_path):
         lock: { host: "FRONT-DESK" }, retry: () => 0 }]);
       return { shown: shown(), locks, identifier: notices[0].identifier, retry: typeof notices[0].retry };
     """
-    out = run_shell(NOTICE_FUNCTIONS, NOTICES, probe, tmp_path, "app.js")
+    out = run_shell(SORT_NOTICE_FUNCTIONS, SORT_NOTICES, probe, tmp_path, "app.js")
     assert out == {"shown": ["In Use on FRONT-DESK"], "locks": [{"host": "FRONT-DESK"}], "identifier": "R01",
                    "retry": "function"}
 

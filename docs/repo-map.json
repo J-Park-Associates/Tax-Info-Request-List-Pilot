@@ -9051,7 +9051,7 @@
       "id": "tests/test_shell.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "95ae377ab3c2d201",
+      "sha256": "23f27822a9a39925",
       "lines": 3022,
       "exports": [
         "CONTRAST",
@@ -9061,7 +9061,6 @@
         "FLOATING_UI_SHA256",
         "JOIN_POPUPS",
         "NODE",
-        "NOTICES",
         "NOTICE_FUNCTIONS",
         "OK_DARK",
         "OK_LIGHT",
@@ -9075,6 +9074,8 @@
         "SHELL_FILES",
         "SORT_ANSWERS",
         "SORT_ANSWER_FUNCTIONS",
+        "SORT_NOTICES",
+        "SORT_NOTICE_FUNCTIONS",
         "TITLE_FREE",
         "TOKENS",
         "family",
@@ -9226,7 +9227,7 @@
         "PROBE_EVERY_NOTICE": "'\\n      const seen = [];\\n      for (const scenario of [\"notices\", \"household-notices\", \"locked\", \"stale-lock\"]) {\\n        const { list, state } = await replies(scenario);\\n        vocab = list.vocab;\\n        vocab.screen.notices = Object.assign({}, vocab.screen.notices, %s);\\n        drawn.length = 0; logged.length = 0;\\n        renderMachineNotices(list);\\n        renderAfterInstall(noticeOf(list.after_install));\\n        renderShortOfRoom([{ engagement: \"r1\", sentences: [\"A LONG ROOM SENTENCE\"] }]);\\n        active = state.paths.engagement;\\n        showLock(state.lock);\\n        lastState = state;\\n        pagesHouseholdNotices({ level: \"household\", household: state.household.path });\\n        seen.push({ scenario, drawn: drawn.slice(), logged: logged.slice(), reader: list.reader_warning, machine: list.machine_warnings,\\n                    pause: state.household.pause.sentence || \"\", lock: state.lock });\\n      }\\n      return seen;\\n'",
         "SHEET_SETUP": "'\\nconst vocab = { decisions: { needs_review: \"Needs Review\", dismissed: \"Not Requested\", file_moved: \"File Moved\", filed: \"Filed\" } };\\nlet sheetNow = null; let sheetGeneration = 0; const advanced = []; const closed = [];\\nconst sheetAdvance = () => advanced.push(sheetNow.handle);\\n'",
         "SORT_ANSWERS": "'\\n  let shellRoute = { level: \"overview\" }, synced = [];\\n  const returns = { \"r25\": { household: \"h1\" }, \"r24\": { household: \"h1\" }, \"o25\": { household: \"h2\" } };\\n  function shellReturn(path) { return returns[path] || null; }\\n  function syncNotices(prefix, wanted) { synced.push([prefix, wanted.map((one) => one.failure.sentence)]); }\\n  const sortAnswers = new Map(), keyedNotices = new Map();\\n  function clearNotice(key) { keyedNotices.delete(key); }\\n  const shownAt = (route) => { shellRoute = route; showSortAnswers(); return synced[synced.length - 1][1]; };\\n'",
-        "NOTICES": "'\\n  const notices = [], keyedNotices = new Map(), sortAnswers = new Map(), locks = [];\\n  let shellRoute = { level: \"return\", ret: \"r25\" };\\n  const returns = { r25: { household: \"h1\" }, r24: { household: \"h1\" } };\\n  function shellReturn(path) { return returns[path] || null; }\\n  const el = () => ({ removed: false, remove() { this.removed = true; } });\\n  const $ = () => ({ append() {} });\\n  function drawNotice() {}\\n  function outlineRefused() {}\\n  function showLock(lock) { locks.push(lock); }\\n  const shown = () => notices.map((one) => one.sentence);\\n  const press = (entry) => { dismissNotice(entry); forgetSortLine(entry.key); };   // the notice\\'s cross or Retry\\n'"
+        "SORT_NOTICES": "'\\n  const notices = [], keyedNotices = new Map(), sortAnswers = new Map(), locks = [];\\n  let shellRoute = { level: \"return\", ret: \"r25\" };\\n  const returns = { r25: { household: \"h1\" }, r24: { household: \"h1\" } };\\n  function shellReturn(path) { return returns[path] || null; }\\n  const el = () => ({ removed: false, remove() { this.removed = true; } });\\n  const $ = () => ({ append() {} });\\n  function drawNotice() {}\\n  function outlineRefused() {}\\n  function showLock(lock) { locks.push(lock); }\\n  const shown = () => notices.map((one) => one.sentence);\\n  const press = (entry) => { dismissNotice(entry); forgetSortLine(entry.key); };   // the notice\\'s cross or Retry\\n'"
       },
       "role": "The shell's renderer half: the tokens and their contrast in both themes, the shell stylesheet's discipline, the guards every renderer file keeps, the words the new files may not type, and the route, search, sort icon and menu enable list run in node against shell.js's own functions.",
       "notes": "SHELL_FILES and TITLE_FREE name the files a claim covers; S2 adds the menu half, S4 the pages' node tests and S5 the sheet's. The contrast table and the token values are the SPEC's section 10, copied as data."
