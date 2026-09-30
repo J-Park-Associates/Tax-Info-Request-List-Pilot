@@ -57,9 +57,8 @@ header and `CLAUDE.md` then works as written.
     then `$null = $proc.Handle` at once; returns the process.
   - The `-Tests` loop uses both; the collection loop is unchanged
     (`WaitForExit()`, then `ExitCode -eq 0`).
-- `pilot/wintest/PROMPT-shell.md` ("The tests"): one sentence that the
-  command may also be pasted into an open PowerShell window as
-  `& .\pilot\wintest\run_checks.ps1 -Tests ...`; the one-liner stays.
+- `pilot/wintest/PROMPT-shell.md` ("The tests"): the one-liner is unchanged
+  and now works as written.
 
 **Owning test.** `tests/test_pilot.py`:
 `test_the_check_script_splits_a_comma_joined_test_list_and_reads_each_exit_code`
@@ -69,7 +68,8 @@ and two tiny Python scripts that exit 0 and 3, and asserts the list splits in
 two and the exit codes read back as 0 and 3. Fails before the fix (no helper
 block).
 
-**Doc lines made true.** `PROMPT-shell.md` "The tests".
+**Doc lines made true.** `PROMPT-shell.md` "The tests" and the header of
+`run_checks.ps1`, which both use `-File`.
 
 ## 2. A3 and A4: two shell tests on Windows (P129)
 
