@@ -1498,6 +1498,22 @@ def test_every_phrase_the_page_and_the_dialogs_draw_from_index_html_and_app_js_i
     assert "Belongs to" not in app
 
 
+def test_no_toast_types_a_sentence_and_the_words_it_asks_for_are_five_title_case_words_in_the_vocabulary():
+    """F6: a toast is the API's word. The renderer types none (no string
+    literal in a `toast(` call), and every key `toastWord` is given is in
+    vocab.screen.notices as at most five words in Title Case."""
+    for name in ("app.js", "pages.js", "shell.js", "sheet.js"):
+        text = stripped_js(name)
+        assert not re.search(r"\btoast\(\s*[\"'`]", text), f"{name} types a toast"
+    mirror = json.loads((REPO / "pilot" / "harness" / "vocab-mirror.json").read_text(encoding="utf-8"))
+    notices = mirror["screen"]["notices"]
+    keys = set(re.findall(r"toastWord\(\"(\w+)\"\)", stripped_js("app.js")))
+    assert keys == {"pick_request", "name_requests"}, keys
+    for key in keys | {"no_log"}:
+        assert len(notices[key].split()) <= 5 and title_case_ok(notices[key]), key
+    assert "toast(said)" in js_function("toastWord", "app.js") and "failed(new Error(" in js_function("toastWord", "app.js")
+
+
 def test_the_side_sheet_is_a_modal_in_the_one_dialog_registry_and_hides_by_its_attribute():
     """SPEC 7: it joins the dialog stack (focus in, Tab kept, Esc), hides by
     its `hidden` attribute, and gives the scrim and the row back when shut;

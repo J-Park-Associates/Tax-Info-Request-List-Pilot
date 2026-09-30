@@ -129,6 +129,17 @@ function fill(pattern, values) {
   return pattern.replace(/\{(\w+)\}/g, (_, key) => values[key] ?? "");
 }
 
+// A toast is the API's word (vocab.screen.notices), never a sentence typed
+// here. A word the vocabulary lacks is a failure said loudly, not a blank.
+function toastWord(key) {
+  const said = vocab && vocab.screen && vocab.screen.notices ? vocab.screen.notices[key] : "";
+  if (!said) {
+    failed(new Error(`vocab.screen.notices.${key}`));
+    return;
+  }
+  toast(said);
+}
+
 function toast(msg) {
   const el = $("toast");
   el.textContent = msg;
@@ -728,7 +739,7 @@ async function restoreMoved(li, btn) {
 async function keepMoved(li, btn) {
   const identifier = li.querySelector("select").value;
   if (!identifier) {
-    toast("Pick the request this document belongs to first.");
+    toastWord("pick_request");
     return;
   }
   btn.disabled = true;
@@ -1021,7 +1032,7 @@ async function fileHandOver() {
   const btn = $("ho-file");
   const identifier = $("ho-request").value;
   if (!handingOver || !identifier) {
-    toast("Pick the request this document belongs to first.");
+    toastWord("pick_request");
     return;
   }
   btn.disabled = true;
@@ -1068,7 +1079,7 @@ async function fileWhereItWaits(original, seq, btn) {
 async function assignParked(li, btn) {
   const identifier = li.querySelector("select").value;
   if (!identifier) {
-    toast("Pick the request this document belongs to first.");
+    toastWord("pick_request");
     return;
   }
   btn.disabled = true;
@@ -2714,7 +2725,7 @@ async function createEngagement() {
   const catalog = [...$("tmpl-list").querySelectorAll("input[type=checkbox]")]
     .map((box) => ({ ...templates[Number(box.dataset.index)], asked: box.checked }));
   if (customItems.some((c) => !String(c.document || "").trim())) {
-    toast("Give each custom request a document name first.");
+    toastWord("name_requests");
     return;
   }
   const items = [...catalog, ...customItems.map((c) => ({ ...c, asked: true }))];
