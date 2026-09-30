@@ -2717,14 +2717,9 @@ async function createEngagement() {
       fill(vocab.household.return_created, { label: result.created, n: asked }),
     ];
     // A household's first return comes back with the sharing checklist
-    // (decision 126): the two grants a person makes in Drive, once, in
-    // the API's own words. The household card carries the same lines
-    // until somebody gives the firm's word on the card.
-    if (result.checklist) {
-      lines.push(result.checklist.heading);
-      result.checklist.lines.forEach((line, n) => lines.push(`${n + 1}. ${line}`));
-      lines.push(result.checklist.note);
-    }
+    // (decision 126), whose lines name folders by their paths: it is not
+    // drawn (SPEC 2.4 E45; the Tester Guide carries it) - no path is ever on
+    // the screen.
     // Decision 137: a household link that was not a web address was left
     // out of the new return; the sentence is the API's.
     if (result.link_dropped) lines.push(result.link_dropped);
