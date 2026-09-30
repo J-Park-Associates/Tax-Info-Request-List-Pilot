@@ -244,4 +244,4 @@ api._vocab	firm.unreadable (api.FIRM_UNREADABLE)	Could not be read	reword	Could 
 api._vocab	schedule.move_warning	Only If {host} Is Retired	reword	Only If {host} Is Retired	5	Under the move-schedule question	Now shown with the confirm (final review A finding 1)	Only If {host} Is Retired	case
 api._vocab	scan.skipped.inactive	(none)	reword	Inactive	1	After Nothing Done	P134: the screen's approved word (screen.inactive); was a bare Nothing Done	Inactive	case
 api._vocab	scan.skipped.rolled-forward	(none)	reword	Rolled Forward	2	After Nothing Done	P134: the screen's approved word (screen.rolled)	Rolled Forward	case
-api._vocab	scan.skipped.no-room	(none)	reword	Names Too Long	3	After Nothing Done	P134: new word, SPEC-wincheck-fixes Q1; Jason may change	Names Too Long	case
+api._vocab	scan.skipped.no-room	(none)	reword	Names Too Long	3	After Nothing Done	P134: new word; Jason chose it (SPEC-wincheck-fixes Q1, 2026-09-30)	Names Too Long	case

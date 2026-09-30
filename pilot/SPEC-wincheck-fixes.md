@@ -94,6 +94,9 @@ on this PC.
 
 ## 3. F2: Escape and the tooltip (P130)
 
+(Review N-c, folded: the tour's and the terms card's own Escape handlers,
+which stop the key before `shellKey`, call `tipKey(e)` first too.)
+
 **Root cause.** `tooltip.js` has no key handler; the only Escape for a tip is
 the last branch of `shellKey` in `shell.js`, reached only when no dialog is
 open, the focus is not in the search box, and no search list or side sheet
@@ -140,15 +143,23 @@ after a later good Sort, after F5, and on every page, the firm pages included.
 **Ruling (rulings 20, 28; SPEC-shell 3.5, 8.4).**
 
 - `app.js` keeps `sortAnswers`: return path -> the lines of its last Sort's
-  answer (sentence, kind, and Retry for a pass that failed as a whole).
-- When a pass ends: every return the pass ran loses its old answer, then the
-  asked return's answer (if it has anything to say) is kept. What was a
-  toast-free "ok" says nothing, as today.
+  answer (sentence, kind, and Retry for a pass that failed as a whole, which
+  is kept whole, so its `lock` and `identifier` still reach `notice()`:
+  review S1).
+- When a pass ends: every return the pass ran loses its old answer and its
+  notices (their keys too, so the same failure met again is said again:
+  review M1), then the asked return's answer (if it has anything to say) is
+  kept. A good Sort says nothing, **whether or not its return is still on
+  screen** (review S2, ruled intended): it belongs to its return (P131), its
+  rows show it, and the side panel's last-sort line still updates. Before,
+  a good Sort of a return no longer shown was a "{label}: Pass complete"
+  notice.
 - The answer is shown as keyed notices (`syncNotices("sort", ...)`) only
   while a page of the same household is on screen (household, year or
   return). Firm pages and Setup show none. It is re-shown on every route
   change (`appRouteChanged`) and after each pass.
-- A dismissed line is forgotten (it does not come back on the next visit).
+- A dismissed line is forgotten (it does not come back on the next visit),
+  and its key with it, so a later Sort's same failure is said again.
 - F5 (`shellRefresh`) forgets every answer: the page is re-read from the
   record, which the app's own Sort does not write.
 - The answer said while another return was shown keeps its label prefix
@@ -163,6 +174,11 @@ Files: `app/renderer/app.js` (`passEnded`, new `keepSortAnswer`,
 `forgetSortAnswers`).
 
 **Owning tests.** `tests/test_shell.py`:
+`test_a_sort_that_fails_the_same_way_again_is_said_again` (the real notice
+functions: fail, Retry, fail again; review M1),
+`test_a_locked_sort_still_shows_its_lock_and_outlines_its_row` (review S1),
+`test_the_sorts_answer_is_built_line_by_line_from_the_pass` (`passEnded`
+lifted with the real `scanSummary`; review S4),
 `test_a_sorts_answer_shows_only_on_its_own_clients_pages` and
 `test_a_later_sort_or_f5_takes_a_sorts_answer_away` (node: the functions
 lifted from `app.js` with fakes for `syncNotices`, `shellRoute` and
@@ -187,9 +203,10 @@ page (`shellGo(pagesRoute(path))`), whichever page the wizard was opened
 from; its notices ("return created", a dropped link) are said after it.
 
 **Owning test.** `tests/test_shell.py`
-`test_create_return_goes_to_the_new_returns_page` (static: `createEngagement`
-calls `shellGo(pagesRoute(` with the new path after `adoptList`). Fails
-before the fix.
+`test_create_return_goes_to_the_new_returns_page` (review S3: `createEngagement`
+lifted with fakes, started on another household's return; it closes the
+dialog, adopts the list, goes to the new return's route and only then says
+the return was created). Fails before the fix (on 877c7a2).
 
 ## 6. F5: the schedule-off words (P133)
 
@@ -221,8 +238,8 @@ button" becomes "Tools > Schedule"); `tests/test_api.py` pins
 committed): a household with a 2025 return and a 2024 return set inactive.
 
 - The list gives the household's returns oldest year first, and a household
-  or year page Sorts through `own.find(active) || own[0]` - the inactive 2024
-  return. The runner skips it with code `inactive`; `scanSummary` has a word
+  or year page Sorted through `own.find(active) || own[0]` (`shell.js`
+  `shellOpenState`) - the inactive 2024 return. The runner skips it with code `inactive`; `scanSummary` has a word
   only for `lock-held`, so the banner read a bare "Nothing Done", although
   the 2025 return was sorted in the same pass. A Sort asked for the 2025
   return itself did not skip.
@@ -237,24 +254,32 @@ committed): a household with a 2025 return and a 2024 return set inactive.
 
 **Ruling.**
 
-- `tracker/api.py`: a new `SCAN_SKIPPED` (sent as `vocab.scan.skipped`),
+- `tracker/api.py`: a new `vocab.scan.skipped`,
   kept apart from `SCAN_REASONS`, the failure words of ruling 29, which stay
   exactly as approved: `inactive: "Inactive"` and `rolled-forward: "Rolled
   Forward"` (the screen's approved words, `screen.inactive` and
-  `screen.rolled`) and `no-room: "Names Too Long"` (new: Q1). `app.js`
+  `screen.rolled`, referenced in `_vocab`, not restated: review N-b) and
+  `no-room: "Names Too Long"` (`SCAN_NO_ROOM`; Jason chose it, Q1). `app.js`
   `scanSummary` says "Nothing Done: {why}." for a lock held elsewhere (as
   today) or a skip whose code has a word here, else "Nothing Done" (P117).
   The household's other returns still say nothing for a skip, as today.
 - `tracker/reminder.py`: `unsorted_files_in_inbox(engagement_dir)` gives the
   name of each waiting file (or unreadable folder), sorted; the count
-  `unsorted_in_inbox` is its length, so the two can never disagree.
+  `unsorted_in_inbox` is its length, one walk per call. The card's count and
+  names are two walks a moment apart and can differ if a file lands between
+  them, until the next read (review N-a, said in the code).
 - `tracker/api.py` reminder card: `unsorted_files` beside `unsorted`.
 - `app.js` `drawReminder`: the names are listed under the hold line, after
   the held requests. A file's name only, never its folder path.
 - `pilot/harness/stub.js`: its reminder card carries `unsorted_files: []`.
-- Considered and left: making a household page pick the newest or an active
-  return. The list carries no active flag; the reason word now says what
-  happened, and the return's own Sort sorts the same household.
+- `shell.js` `shellOpenState` (review M2): a household or year page reads,
+  after the return a person chose, the first return the list's household
+  says is working (`active` not false, no `superseded_by`, the fields
+  `pages.js` already draws "Inactive" and "Rolled Forward" from), else the
+  first. So the household's Sort reports on a return it sorts. (This SPEC
+  first said the list carries no active flag. That was wrong: the flat
+  `engagements` list has none, but each household's `returns` do.) Owning
+  test: `test_a_household_page_sorts_through_a_working_return`.
 
 **Owning tests.** `tests/test_shell.py`
 `test_a_sort_asked_for_an_inactive_return_says_why_nothing_was_done` (the
@@ -286,11 +311,12 @@ Worth one look on a PC without Windhawk at the next Windows check.
 
 ## Open for Jason
 
-- **Q1. The reason word when a household's folder names leave no room**
-  (runner code `no-room`, rare: a path too long for Windows). (a) "Nothing
-  Done: Names Too Long." **(recommended; built)** (b) "Nothing Done: No Room
-  for Name." (the Needs Review word, but six words, over the five-word rule)
-  (c) keep the bare "Nothing Done".
+- **Q1. Decided.** The reason word when a household's folder names leave no
+  room (runner code `no-room`). Jason, 2026-09-30, chose **(a) "Nothing Done:
+  Names Too Long."** (records branch P169), as built. The other choices were
+  (b) "Nothing Done: No Room for Name." and (c) the bare "Nothing Done".
+
+Nothing else is open.
 
 ## Tests this SPEC runs (both interpreters)
 

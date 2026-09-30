@@ -2619,10 +2619,12 @@ SORT_ANSWERS = r"""
   const returns = { "r25": { household: "h1" }, "r24": { household: "h1" }, "o25": { household: "h2" } };
   function shellReturn(path) { return returns[path] || null; }
   function syncNotices(prefix, wanted) { synced.push([prefix, wanted.map((one) => one.failure.sentence)]); }
-  const sortAnswers = new Map();
+  const sortAnswers = new Map(), keyedNotices = new Map();
+  function clearNotice(key) { keyedNotices.delete(key); }
   const shownAt = (route) => { shellRoute = route; showSortAnswers(); return synced[synced.length - 1][1]; };
 """
-SORT_ANSWER_FUNCTIONS = ["keepSortAnswer", "householdOnScreen", "showSortAnswers", "forgetSortLine", "forgetSortAnswers"]
+SORT_ANSWER_FUNCTIONS = ["keepSortAnswer", "sortKeyPath", "householdOnScreen", "showSortAnswers", "forgetSortLine",
+                         "forgetSortAnswers"]
 
 
 def test_a_sorts_answer_shows_only_on_its_own_clients_pages(tmp_path):
@@ -2690,15 +2692,162 @@ def test_a_sorts_answer_is_never_a_window_wide_notice_and_f5_forgets_it():
     assert "function forgetSortAnswers() {}" in (REPO / "pilot" / "harness" / "app-stub.js").read_text(encoding="utf-8")
 
 
-def test_create_return_goes_to_the_new_returns_page():
-    """P132 (the Windows check's F4): after Create Return the page stayed on
-    the route it was opened from while the new return's state arrived, so a
-    return page drew nothing until F5. The window now goes to the new
-    return's page, after the list that names it has been adopted."""
-    create = js_function("createEngagement", "app.js")
-    assert "shellGo(pagesRoute(result.state.paths.engagement));" in create
-    assert create.index("adoptList(result.list)") < create.index("shellGo(pagesRoute(")
-    assert create.index('closeDialog("modal")') < create.index("shellGo(pagesRoute(")
+def test_create_return_goes_to_the_new_returns_page(tmp_path):
+    """P132 (the Windows check's F4; the review's S3): after Create Return the
+    page stayed on the route it was opened from while the new return's state
+    arrived, so a return page drew nothing until F5. ``createEngagement``,
+    lifted with fakes and started on another household's return, now goes to
+    the new return's page - after the dialog closed and the list that names it
+    was adopted - and says the return was created after that."""
+    setup = js_function("pagesRoute", "pages.js") + r"""
+      const said = [];
+      let templates = [], customItems = [{ document: "W-2" }], wizardPeople = [], selectedForm = "1040";
+      let engagements = [{ path: "/h1/2025/old", household: "/h1", year: 2025 }];
+      const nodes = { "tmpl-list": { querySelectorAll: () => [] }, "ne-create": { disabled: false },
+        "ne-name": { value: "" }, "ne-client": { value: "" }, "ne-due": { value: "" }, "ne-year": { value: "2024" },
+        "ne-note": { textContent: "", classList: { remove() {} } } };
+      const $ = (id) => nodes[id];
+      const vocab = { household: { return_created: "{label} created ({n})" } };
+      const fill = (p, v) => p.replace(/\{(\w+)\}/g, (_, k) => v[k] ?? "");
+      function householdSpec() { return { household_path: "/h2" }; }
+      function personSpec(p) { return p; }
+      function toastWord() { said.push("toastWord"); }
+      function toast() { said.push("toast"); }
+      function closeDialog(id) { said.push(["closeDialog", id]); }
+      function adoptList() { engagements.push({ path: "/h2/2024/new", household: "/h2", year: 2024 }); said.push("adoptList"); }
+      function shellReturn(path) { return engagements.find((one) => one.path === path) || null; }
+      function select(path) { said.push(["select", path]); return 7; }
+      function renderFor(view) { said.push(["renderFor", view]); return true; }
+      function shellGo(route) { said.push(["shellGo", route]); return Promise.resolve(); }
+      function outcome(text, cls) { said.push(["outcome", text, cls]); }
+      function failed(err) { said.push(["failed", String(err)]); }
+      function failureSentence(err) { return String(err); }
+      async function call() { return { list: {}, created: "1040 - New", state: { paths: { engagement: "/h2/2024/new" } } }; }
+    """
+    out = run_shell(["createEngagement"], setup, "return createEngagement().then(() => said);", tmp_path, "app.js")
+    steps = [one if isinstance(one, str) else one[0] for one in out]
+    assert ["shellGo", {"level": "return", "household": "/h2", "year": 2024, "ret": "/h2/2024/new"}] in out, out
+    assert steps.index("closeDialog") < steps.index("adoptList") < steps.index("shellGo") < steps.index("outcome"), out
+    assert "failed" not in steps
+
+
+NOTICES = r"""
+  const notices = [], keyedNotices = new Map(), sortAnswers = new Map(), locks = [];
+  let shellRoute = { level: "return", ret: "r25" };
+  const returns = { r25: { household: "h1" }, r24: { household: "h1" } };
+  function shellReturn(path) { return returns[path] || null; }
+  const el = () => ({ removed: false, remove() { this.removed = true; } });
+  const $ = () => ({ append() {} });
+  function drawNotice() {}
+  function outlineRefused() {}
+  function showLock(lock) { locks.push(lock); }
+  const shown = () => notices.map((one) => one.sentence);
+  const press = (entry) => { dismissNotice(entry); forgetSortLine(entry.key); };   // the notice's cross or Retry
+"""
+NOTICE_FUNCTIONS = ["notice", "keyedNotice", "clearNotice", "syncNotices", "dismissNotice"] + SORT_ANSWER_FUNCTIONS
+
+
+def test_a_sort_that_fails_the_same_way_again_is_said_again(tmp_path):
+    """The review's M1: a keyed notice stays silent for a sentence its key
+    already holds, even once dismissed - so after Retry (or the cross) a Sort
+    that failed the same way again showed nothing. With the real notice
+    functions: fail, press Retry, fail again - the failure is back; a failure
+    not yet dismissed is not doubled; a good Sort takes it away."""
+    probe = """
+      const failed = () => [{ sentence: "Sort Failed: Folder Not Found", kind: "failed" }];
+      const out = [];
+      keepSortAnswer(["r25", "r24"], "r25", failed()); out.push(shown());
+      press(notices[0]); out.push(shown());
+      keepSortAnswer(["r25", "r24"], "r25", failed()); out.push(shown());
+      keepSortAnswer(["r25", "r24"], "r25", failed()); out.push(shown());
+      keepSortAnswer(["r25", "r24"], "r24", []); out.push(shown());
+      return out;
+    """
+    out = run_shell(NOTICE_FUNCTIONS, NOTICES, probe, tmp_path, "app.js")
+    failed = ["Sort Failed: Folder Not Found"]
+    assert out == [failed, [], failed, failed, []]
+
+
+def test_a_locked_sort_still_shows_its_lock_and_outlines_its_row(tmp_path):
+    """The review's S1: the pass-level failure is kept whole, so a locked
+    pass's ``lock`` reaches ``showLock`` and its ``identifier`` outlines the
+    row, as ``notice()`` did before a Sort's answer was kept per return."""
+    probe = """
+      keepSortAnswer(["r25"], "r25", [{ sentence: "In Use on FRONT-DESK", kind: "locked", identifier: "R01",
+        lock: { host: "FRONT-DESK" }, retry: () => 0 }]);
+      return { shown: shown(), locks, identifier: notices[0].identifier, retry: typeof notices[0].retry };
+    """
+    out = run_shell(NOTICE_FUNCTIONS, NOTICES, probe, tmp_path, "app.js")
+    assert out == {"shown": ["In Use on FRONT-DESK"], "locks": [{"host": "FRONT-DESK"}], "identifier": "R01",
+                   "retry": "function"}
+
+
+def test_the_sorts_answer_is_built_line_by_line_from_the_pass(tmp_path):
+    """The review's S4: ``passEnded``, lifted with the real ``scanSummary``.
+    A pass that failed as a whole is one line, whole (its lock kept), with
+    Retry; a skip names its reason; a summary for a return no longer shown
+    carries its label on the first line only; a good Sort says nothing."""
+    words = api._vocab()["scan"]
+    setup = ("const fill = (p, v) => p.replace(/\\{(\\w+)\\}/g, (_, k) => v[k] ?? '');\n"
+             f"const vocab = {{ scan: {json.dumps(words)} }};\n") + r"""
+      let scanning = null, active = "r25", viewGeneration = 1, kept = [];
+      function scanDone() {}
+      function warningNotices() {}
+      function adoptList() {}
+      function withEng(c) { return [c]; }
+      function renderFor() { return true; }
+      function failed() {}
+      function showReturn() {}
+      function runScan() {}
+      async function call(args) { return args[0] === "state" ? { summary: { line: "" } } : {}; }
+      function keepSortAnswer(ran, asked, answer) {
+        kept.push({ ran, asked, answer: answer.map((one) => ({ ...one, retry: typeof one.retry })) }); }
+      const run = (over) => ({ path: "r25", label: "Smith 2025", ok: true, error: "", code: "", skipped: "", filed: 1,
+        review: 0, waiting: 0, file_errors: [], warnings: [], cancelled: false, ...over });
+      const end = async (asked, reply) => { scanning = { asked }; await passEnded({ reply }); return kept[kept.length - 1]; };
+    """
+    probe = r"""
+      const out = {};
+      out.whole = await end("r25", { error: "In use", failure: { sentence: "In Use on FRONT-DESK", kind: "locked",
+        lock: { host: "FRONT-DESK" }, identifier: null } });
+      out.skipped = await end("r25", { runs: [run({ skipped: "inactive", code: "inactive", ok: false, filed: 0 })] });
+      out.away = await end("r24", { runs: [run({ path: "r24", label: "Smith 2024", error: "gone", code: "folder-missing" }),
+        run({ path: "r25", error: "gone", code: "folder-missing" })] });
+      out.good = await end("r25", { runs: [run({})] });
+      return out;
+    """
+    out = run_shell(["passEnded", "scanSummary", "scanFailed"], setup, "return (async () => {" + probe + "})();",
+                    tmp_path, "app.js")
+    assert out["whole"] == {"ran": [], "asked": "r25", "answer": [
+        {"sentence": "In Use on FRONT-DESK", "kind": "locked", "lock": {"host": "FRONT-DESK"}, "identifier": None,
+         "retry": "function"}]}
+    assert out["skipped"]["answer"] == [{"sentence": "Nothing Done: Inactive.", "kind": "warning", "retry": "undefined"}]
+    assert [one["sentence"] for one in out["away"]["answer"]] == [
+        "Smith 2024: Sort Failed: Folder Not Found", "Smith 2025: Sort Failed: Folder Not Found"]
+    assert out["away"]["ran"] == ["r24", "r25"] and out["away"]["answer"][0]["kind"] == "failed"
+    assert out["good"] == {"ran": ["r25"], "asked": "r25", "answer": []}
+
+
+def test_a_household_page_sorts_through_a_working_return(tmp_path):
+    """The review's M2 (the "Added after the check" item): a household page
+    sorted through its first return, the inactive 2024 one, and reported
+    that nothing was done though the same pass sorted 2025. It now reads the
+    active return that has not rolled forward, from the list's household;
+    a return a person chose is still the one read."""
+    setup = r"""
+      let shellRoute = { level: "household", household: "h1" }, lastState = null, active = "", read = [];
+      let shellPageBusy = false, shellPageFailed = false;
+      const own = [{ path: "r24", household: "h1" }, { path: "r25", household: "h1" }];
+      function shellOwnReturns() { return own; }
+      function shellHousehold() { return { returns: [{ path: "r24", active: false, superseded_by: "" },
+                                                      { path: "r25", active: true, superseded_by: "" }] }; }
+      function showReturn(path) { read.push(path); return Promise.resolve(true); }
+      function shellDraw() {}
+    """
+    probe = """
+      return shellOpenState().then(() => { active = "r24"; return shellOpenState(); }).then(() => read);
+    """
+    assert run_shell(["shellOpenState"], setup, probe, tmp_path) == ["r25", "r24"]
 
 
 def test_a_failed_or_locked_household_sort_draws_no_engine_sentence_and_no_path(tmp_path, monkeypatch, capsys):

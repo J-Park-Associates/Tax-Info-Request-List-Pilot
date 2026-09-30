@@ -1415,9 +1415,9 @@ def unsorted_in_inbox(engagement_dir: Path | str) -> int:
     does, one count per folder: whatever the client put in it cannot be
     sorted, so the letter could ask for it.
 
-    The count is the length of :func:`unsorted_files_in_inbox`, from the
-    same walk, so the number the hold line says and the names under it can
-    never disagree (P134).
+    The count is the length of :func:`unsorted_files_in_inbox`, one walk,
+    so for any one call the two functions cannot disagree (P134); a caller
+    that asks each separately walks twice.
     """
     return len(unsorted_files_in_inbox(engagement_dir))
 

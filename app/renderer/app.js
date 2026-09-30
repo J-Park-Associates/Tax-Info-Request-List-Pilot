@@ -2214,8 +2214,9 @@ async function passEnded({ reply }) {
   // What this Sort says is kept under the return it was asked for (P131).
   const answer = [];
   if (ended.error) {
+    // Whole, so a refused row is outlined and a lock shows its notice (showLock).
     const failure = ended.failure || { sentence: ended.error, kind: "failed" };
-    answer.push({ sentence: failure.sentence, kind: failure.kind || "failed", retry: runScan });
+    answer.push({ ...failure, kind: failure.kind || "failed", retry: runScan });
   } else {
     warningNotices(ended.pass_warnings || []);
   }
@@ -2268,12 +2269,22 @@ async function passEnded({ reply }) {
 const sortAnswers = new Map();   // return path -> [{sentence, kind, retry, gone}]
 
 // A pass has ended: every return it ran loses its old answer, and the
-// asked return keeps this one when it has anything to say.
+// asked return keeps this one when it has anything to say. Their notices
+// go too, so the same failure met again is said again - a keyed notice
+// stays silent for a sentence its key already holds, even once dismissed.
 function keepSortAnswer(ran, asked, lines) {
-  for (const path of ran) sortAnswers.delete(path);
+  const done = new Set([...ran, asked]);
+  for (const path of done) sortAnswers.delete(path);
+  for (const key of [...keyedNotices.keys()]) {
+    if (key.indexOf("sort:") === 0 && done.has(sortKeyPath(key))) clearNotice(key);
+  }
   if (lines.length) sortAnswers.set(asked, lines);
-  else sortAnswers.delete(asked);
   showSortAnswers();
+}
+
+// The return a sort notice's key names ("sort:" and [path, line]).
+function sortKeyPath(key) {
+  return JSON.parse(key.slice("sort:".length))[0];
 }
 
 // The household whose pages are on screen, or "" on a firm page or Setup.
@@ -2293,8 +2304,8 @@ function showSortAnswers() {
     if (!here || !one || one.household !== here) continue;
     lines.forEach((line, i) => {
       if (!line.gone) {
-        wanted.push({ key: JSON.stringify([path, i]), failure: { sentence: line.sentence, kind: line.kind },
-                      opts: line.retry ? { retry: line.retry } : undefined });
+        const { retry, ...failure } = line;   // the whole failure: its lock and identifier too
+        wanted.push({ key: JSON.stringify([path, i]), failure, opts: retry ? { retry } : undefined });
       }
     });
   }
@@ -2304,6 +2315,7 @@ function showSortAnswers() {
 // A line a person dismissed (or retried) is not shown again.
 function forgetSortLine(key) {
   if (!key || key.indexOf("sort:") !== 0) return;
+  keyedNotices.delete(key);
   const [path, i] = JSON.parse(key.slice("sort:".length));
   const lines = sortAnswers.get(path);
   if (!lines || !lines[i]) return;

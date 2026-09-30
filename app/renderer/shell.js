@@ -254,7 +254,13 @@ function shellOpenState() {
   else if (route.level === "household" || route.level === "year") {
     const own = shellOwnReturns(route.household);
     const shown = lastState && lastState.paths ? lastState.paths.engagement : "";
-    if (own.length && !own.some((one) => one.path === shown)) path = (own.find((one) => one.path === active) || own[0]).path;
+    // A working return first - active and not rolled forward, as the list's
+    // household says - so the household's Sort reports on one it sorts (P134).
+    const working = ((shellHousehold(route.household) || {}).returns || [])
+      .filter((one) => one.active !== false && !one.superseded_by).map((one) => one.path);
+    if (own.length && !own.some((one) => one.path === shown)) {
+      path = (own.find((one) => one.path === active) || own.find((one) => working.indexOf(one.path) !== -1) || own[0]).path;
+    }
   }
   if (!path) return Promise.resolve();
   return showReturn(path).then((drawn) => {
