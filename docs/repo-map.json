@@ -1,6 +1,6 @@
 {
   "schema": 2,
-  "generated": "2026-09-29",
+  "generated": "2026-09-30",
   "generator": "tools/repo_map.py",
   "generator_sha256": "22c7b60a1d198289",
   "module_table_sha256": "6eac48a9eb5ee554",
@@ -15,9 +15,9 @@
     "a person sends the draft"
   ],
   "counts": {
-    "nodes": 286,
+    "nodes": 287,
     "edges": 1138,
-    "reused": 242
+    "reused": 245
   },
   "node_types": [
     "artifact",
@@ -4739,6 +4739,13 @@
       "layer": "docs",
       "sha256": "17744312189a2741",
       "lines": 275
+    },
+    {
+      "id": "pilot/handoffs/shell-S8a-review-2.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "7d854d8a43a1e61c",
+      "lines": 224
     },
     {
       "id": "pilot/handoffs/shell-S8a.md",
