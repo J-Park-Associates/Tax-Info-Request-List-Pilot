@@ -90,6 +90,22 @@ def test_every_menu_id_is_in_the_apis_words_and_every_word_is_placed():
         "household", "return", "file", "moved", "request", "received"}
 
 
+def test_the_four_row_menus_offer_exactly_the_items_the_renderer_templates_can_answer():
+    """The S6 join (S5 rebuild 1, F13): ``main.js`` drops an id its popup lacks,
+    so a forgotten one fails silently. Show in File Explorer sits on the file,
+    moved and received menus, never on a request's."""
+    popups = read("app/main.js").split("const POPUPS = new Map([", 1)[1].split("\n]);", 1)[0]
+    found = {name: re.findall(r'"([a-z_]+)"', items) for name, items in
+             re.findall(r'^\s*\["(file|moved|request|received)", \[([^\]]*)\]\]', popups, flags=re.M)}
+    assert found == {
+        "file": ["check", "not_requested", "another_return", "show_in_explorer"],
+        "moved": ["check", "put_back", "keep_here", "show_in_explorer"],
+        "request": ["edit_request"],
+        "received": ["unfile", "mark_missing", "show_in_explorer"],
+    }
+    assert api.MENU["show_in_explorer"] == api.SCREEN["show_in_explorer"] == "Show in File Explorer"
+
+
 def test_the_preload_exposes_one_menu_channel():
     preload = read("app/preload.js")
     assert re.findall(r'ipcRenderer\.(\w+)\("menu"', preload) == ["on", "send"]
@@ -371,7 +387,8 @@ def test_a_right_click_menu_is_native_holds_only_its_templates_items_and_echoes_
     assert ran["sends"][0] == {"channel": "menu", "message": {"id": "edit_household", "token": "row-7"}}
     # An x outside the window opens the menu at the pointer.
     assert "x" not in received["options"] and "y" not in received["options"]
-    assert [i["label"] for i in received["items"]] == [_word("unfile"), _word("mark_missing")]
+    assert [i["label"] for i in received["items"]] == [
+        _word("unfile"), _word("mark_missing"), _word("show_in_explorer")]
     assert [i["label"] for i in ret["items"] if i.get("label")] == [
         _word("edit_list"), _word("draft_reminder"), _word("open_working"),
         _word("open_client_folder"), _word("open_inbox")]
@@ -382,10 +399,10 @@ def test_the_six_right_click_menus_hold_the_items_of_the_spec(tmp_path):
         "household": ["edit_household", "add_return", "roll_forward", "mark_shared", "-",
                       "open_client_folder", "open_inbox"],
         "return": ["edit_list", "draft_reminder", "-", "open_working", "open_client_folder", "open_inbox"],
-        "file": ["check", "not_requested", "another_return"],
-        "moved": ["check", "put_back", "keep_here"],
+        "file": ["check", "not_requested", "another_return", "show_in_explorer"],
+        "moved": ["check", "put_back", "keep_here", "show_in_explorer"],
         "request": ["edit_request"],
-        "received": ["unfile", "mark_missing"],
+        "received": ["unfile", "mark_missing", "show_in_explorer"],
     }
     ran = _run(tmp_path, [{"menu": {"popup": name, "enable": [], "token": name}} for name in names])
     for popup, (name, ids) in zip(ran["popups"], names.items(), strict=True):

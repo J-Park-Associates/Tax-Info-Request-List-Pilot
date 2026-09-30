@@ -499,6 +499,7 @@ const DEFAULT_MENU_WORDS = {
   edit_request: "Edit Request…",
   unfile: "Unfile",
   mark_missing: "Mark Missing",
+  show_in_explorer: "Show in File Explorer",
 };
 let menuWords = { ...DEFAULT_MENU_WORDS };
 // The one channel the shell sends the page a chosen item on: {id, token}.
@@ -529,10 +530,10 @@ const POPUPS = new Map([
   ["household", ["edit_household", "add_return", "roll_forward", "mark_shared", SEPARATOR,
     "open_client_folder", "open_inbox"]],
   ["return", ["edit_list", "draft_reminder", SEPARATOR, "open_working", "open_client_folder", "open_inbox"]],
-  ["file", ["check", "not_requested", "another_return"]],
-  ["moved", ["check", "put_back", "keep_here"]],
+  ["file", ["check", "not_requested", "another_return", "show_in_explorer"]],
+  ["moved", ["check", "put_back", "keep_here", "show_in_explorer"]],
   ["request", ["edit_request"]],
-  ["received", ["unfile", "mark_missing"]],
+  ["received", ["unfile", "mark_missing", "show_in_explorer"]],
 ]);
 // What needs nothing of the page: enabled from the first frame.
 const ALWAYS = new Set(["change_root", "exit", "refresh", "tour", "safeguards", "terms", "error_log", "about"]);

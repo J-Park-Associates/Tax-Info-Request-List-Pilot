@@ -1210,6 +1210,9 @@ MENU: dict[str, str] = {
     "edit_request": "Edit Request…",
     "unfile": "Unfile",
     "mark_missing": "Mark Missing",
+    # A file row's right-click item that shows its copy in File Explorer
+    # (ruling 12; the same words as ``screen.show_in_explorer``, the tooltip).
+    "show_in_explorer": "Show in File Explorer",
 }
 
 #: The words of the new screen that no existing key already says (SPEC-shell

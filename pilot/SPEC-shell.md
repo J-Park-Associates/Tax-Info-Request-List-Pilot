@@ -585,10 +585,10 @@ keyboard, screen reader and dark support for free.
 |---|---|---|
 | `household` | a household row; the household segment; the household H1 | the Client menu's household items: Edit Household…, Add a Return…, Roll Forward…, Mark as Shared, —, Open Client Folder, Open Inbox |
 | `return` | a return row; the return segment; the return H1 | Edit Request List…, Draft Reminder…, —, Open Working Folder, Open Client Folder, Open Inbox |
-| `file` | a parked or set-aside file row | Check… (`check`), Not Requested (`not_requested`), Another Return… (`another_return`) |
-| `moved` | a moved-by-hand row | Check…, Put Back (`put_back`), Keep Here (`keep_here`) |
+| `file` | a parked or set-aside file row | Check… (`check`), Not Requested (`not_requested`), Another Return… (`another_return`), Show in File Explorer (`show_in_explorer`) |
+| `moved` | a moved-by-hand row | Check…, Put Back (`put_back`), Keep Here (`keep_here`), Show in File Explorer |
 | `request` | a Needs you or Waiting request row | Edit Request… (`edit_request`) |
-| `received` | a Received row | Unfile (`unfile`), Mark Missing (`mark_missing`) |
+| `received` | a Received row | Unfile (`unfile`), Mark Missing (`mark_missing`), Show in File Explorer |
 
 The page sends the enable list with each popup, by the rules of 5.1 (a
 locked return greys the writing items).
@@ -697,15 +697,21 @@ renderer asks.
   filed under, in `filed_names`' order) and where a moved-by-hand copy is
   now. Index rows carry the keys of their copies and a moved row its key,
   so the page asks by key and the path never reaches a drawn element.
-  `PATH_KINDS` names each key's kind (`file`). Only paths the record
-  already holds; nothing is read from disk to find them. **Household and
+  `PATH_KINDS` names each key's kind: `review_copy` is `file` (it opens in
+  the default program and is revealed); `filed_copy`, `moved_copy` and
+  `shown_copy` are **reveal-only** (kind `reveal`): `open-path` shows them
+  in File Explorer with `"reveal"` and refuses a plain open, because none
+  of them carries the Protected View mark. A parked or set-aside row's
+  `shown_key` is the key of the copy it *shows* (its `review_copy` key
+  where that copy opens, else a `shown_copy` key; "" for a program, which
+  has no copy), beside `open_key`, the copy it *opens*. Only paths the
+  record already holds; nothing is read from disk to find them. **Household and
   return rows carry no open key for a link** (ruling 12): only file names
   open File Explorer.
-- The exact key names and fields are S8a's (branch `claude/shell-s8a-links`,
-  in progress at this sync: its work-in-progress uses `filed_copy <row> <n>`
-  and `moved_copy <row>` beside `review_copy <row>`, `open_keys` on index
-  rows and `open_key` on moved rows). They are final when S8a's review
-  says "No findings".
+- The key names and fields are S8a's, final (its review 3 found nothing):
+  `review_copy <row>`, `shown_copy <row>`, `filed_copy <row> <n>` and
+  `moved_copy <row>`; `open_keys` on index rows, `open_key` and `shown_key`
+  on parked rows, `open_key` on moved rows.
 
 ## 6. Pages, one per level, and their states
 
@@ -1096,10 +1102,13 @@ No arguments. Reply:
      "oldest": "YYYY-MM-DD"|null, # the oldest file waiting for a person
      "due": "YYYY-MM-DD"|null,    # the record's due date
      "draft": {"ready": bool, "stage": n, "held": n, "drafted": "YYYY-MM-DD"|null},
-     "problem": str               # a short sentence, or ""
+     "problem": str,              # a short sentence, or ""
+     "paused": bool               # its household has two open years (ruling 21)
   }],
   "files": [{"return": str, "year": n, "name": str, "handle": str, "code": str,
-             "received": "YYYY-MM-DD", "suggestion": str}],
+             "received": "YYYY-MM-DD", "suggestion": str,
+             "open_key": str}],   # the key of the file's copy in `paths`, or "" (ruling 15)
+  "paths": {key: path},           # each key's path, reveal only (ruling 15)
   "totals": {"need": n, "waiting": n, "complete": n, "files": n, "drafts": n},
   "next_sort": "HH:MM"|null
 }
@@ -1123,6 +1132,16 @@ No arguments. Reply:
   hand are listed too (code `file-moved`, no suggestion), so `files[]`,
   `returns[].files` and `totals.files` agree, and `oldest` comes from that
   one list.
+- `paused` (ruling 21) is true on every `returns[]` entry of a household
+  whose active returns span two open years (`households.open_years`, the
+  test behind `runner.TWO_OPEN_YEARS` and `household.two_open_years`),
+  computed from the walk the reply already makes: no further disk read.
+  The page marks the return with the notice's words.
+- `files[].open_key` and the top-level `paths` are ruling 15's: a file's
+  name is a link that shows its copy in File Explorer. A key is the state's
+  (`shown_copy <row>` for a parked or set-aside file, `moved_copy <row>` for
+  one moved by hand); two returns may spell one key for different paths, so
+  the later is suffixed ` #2`, ` #3`, and `paths` answers each spelling.
 - A return counts under **Need a person** when its `needs_you` count or its
   `files` is above zero, or it has a `problem`; never as Complete.
 - `draft.ready`: drafted this draft-week and not yet approved (an approval
@@ -1154,8 +1173,9 @@ No arguments. Reply:
 - `paths` rides on `list` only, not on the writes that carry the list.
 - (Rulings 8 and 12, S8a.) `state.paths` also reports each working copy a
   file link may show, by key, with `PATH_KINDS` naming each key's kind;
-  index rows and moved rows carry their copies' keys (5.7). Household and
-  return rows carry none.
+  index rows and moved rows carry their copies' keys, and a parked row its
+  `shown_key` (5.7). Household and return rows carry none. `firm` reports
+  the same for its files (`files[].open_key`, `paths`; 9.2).
 
 ### 9.4 Tests for the engine part (`tests/test_api.py`)
 
@@ -1435,6 +1455,7 @@ Verdicts: **reword** 67, **cut** 113 (not shown in the app any more),
 | `put_back` | Put Back | | `about` | About |
 | `keep_here` | Keep Here | | `unfile` | Unfile |
 | `edit_request` | Edit Request… | | `mark_missing` | Mark Missing |
+| `show_in_explorer` | Show in File Explorer | | | |
 
 ### 11.4 New words: the screen (`vocab.screen`)
 
@@ -1482,6 +1503,10 @@ Where an existing key does the same job, the existing key is reworded
 | `notices.no_log` | No Error Log Yet | toast |
 | `notices.drive` | Drive Not Signed In | notice (the machine warning's short line) |
 | `misfits.title` | Folders Skipped | dialog |
+| `misfits.reasons.<code>` | two words per misfit code (ruling 18); `not_a_year` is Bad Year (ruling 18a) | dialog, beside the folder name |
+| `close` | Close | the one word for closing a sheet or a dialog (S5 review F9); `icons.dismiss` stays for the notice icon |
+| `notices.pick_request` / `name_requests` | Pick a Request First / Name Each Custom Request (proposed for Jason) | the request-list editor, beside a disabled action |
+| `editor.advanced` (`vocab.editor`) | Advanced | the editor's one switch for routing columns |
 | `safeguards.title` | Safeguards | dialog |
 | `about.edition` | Pilot {version} | About dialog, badge |
 | `retry` | Retry | notice action |
