@@ -15,7 +15,8 @@ every rename, every move and each request's validated status.
 **Looking after the program and not a programmer?** Start with
 [docs/maintenance-guide.md](docs/maintenance-guide.md): the safety walls,
 the schedule, Google Drive, building the installer and testing, in plain
-words.
+words. [docs/For NonCoders](<docs/For NonCoders/README.md>) explains each
+program file and every past handoff note the same way, sorted and tagged.
 
 A client folder is a **household**, with one folder per **tax year** inside
 it and one folder per **return** inside that (decision 125). Two trees sit

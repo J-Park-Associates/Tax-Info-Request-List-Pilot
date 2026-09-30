@@ -15,9 +15,9 @@
     "a person sends the draft"
   ],
   "counts": {
-    "nodes": 348,
+    "nodes": 431,
     "edges": 1162,
-    "reused": 305
+    "reused": 388
   },
   "node_types": [
     "artifact",
@@ -4512,9 +4512,592 @@
       "id": "README.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "624b543518580ee8",
-      "lines": 592,
+      "sha256": "51ec0becff9710a9",
+      "lines": 593,
       "role": "What the system is, how to run each stage, and how to set it up. Who does what is docs/workflow.md."
+    },
+    {
+      "id": "docs/For NonCoders/1 - Start Here/Where the Pilot Stands (main handoff).md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "672c2bf021538c47",
+      "lines": 102
+    },
+    {
+      "id": "docs/For NonCoders/2 - How the Program Works/Engine and Schedule/Engine front door (api_entry.py).md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "170e0181e6685edb",
+      "lines": 34
+    },
+    {
+      "id": "docs/For NonCoders/2 - How the Program Works/Engine and Schedule/Sorting pass (runner.py).md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "b5eff0fc1f12f572",
+      "lines": 42
+    },
+    {
+      "id": "docs/For NonCoders/2 - How the Program Works/Engine and Schedule/Windows schedule (scheduling.py).md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "eac2972d186f17e1",
+      "lines": 40
+    },
+    {
+      "id": "docs/For NonCoders/2 - How the Program Works/Safety Walls/Window control center (main.js).md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "594eff9657923be8",
+      "lines": 44
+    },
+    {
+      "id": "docs/For NonCoders/2 - How the Program Works/Safety Walls/Window doorway (preload.js).md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "fde6fbfd8a7c9a87",
+      "lines": 39
+    },
+    {
+      "id": "docs/For NonCoders/2 - How the Program Works/Safety Walls/Window page and its safety rule (index.html).md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "b015ab39ecf0fed3",
+      "lines": 36
+    },
+    {
+      "id": "docs/For NonCoders/3 - Building and Installing/Building the App/Build App.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "f9f4a32730331966",
+      "lines": 42
+    },
+    {
+      "id": "docs/For NonCoders/3 - Building and Installing/Building the App/Freezing recipe (api_entry.spec).md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "941e07150d001eca",
+      "lines": 37
+    },
+    {
+      "id": "docs/For NonCoders/3 - Building and Installing/Building the App/Setup.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "2d8cf8ddcb11ac8d",
+      "lines": 36
+    },
+    {
+      "id": "docs/For NonCoders/3 - Building and Installing/Building the App/Start App.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "9abc0206adbee9c7",
+      "lines": 35
+    },
+    {
+      "id": "docs/For NonCoders/3 - Building and Installing/Installer/Build Pilot Installer.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "d942843ad7dc4782",
+      "lines": 35
+    },
+    {
+      "id": "docs/For NonCoders/3 - Building and Installing/Installer/Installer recipe (setup.iss).md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "77cfcf32b42ed13c",
+      "lines": 41
+    },
+    {
+      "id": "docs/For NonCoders/3 - Building and Installing/Supply-Chain Safety/Lock files and lockfiles.py.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "2cc3716e11dc9a74",
+      "lines": 48
+    },
+    {
+      "id": "docs/For NonCoders/4 - Testing and Checks/Checks on GitHub/GitHub automatic checks (workflows).md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "45ebd25d11f21acf",
+      "lines": 46
+    },
+    {
+      "id": "docs/For NonCoders/4 - Testing and Checks/Tests on This Computer/Installer tests (test_pilot_installer.py).md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "a65727d23ecc978f",
+      "lines": 42
+    },
+    {
+      "id": "docs/For NonCoders/4 - Testing and Checks/Tests on This Computer/Screen picture and click tests (harness).md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "c7016048570e8b12",
+      "lines": 36
+    },
+    {
+      "id": "docs/For NonCoders/4 - Testing and Checks/Tests on the Office PC/Windows test kit (run_checks.ps1).md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "9f621c133a656d45",
+      "lines": 40
+    },
+    {
+      "id": "docs/For NonCoders/5 - Rules, Plans and Decisions/Code map (repo_map.py).md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "9293eec66be99f54",
+      "lines": 44
+    },
+    {
+      "id": "docs/For NonCoders/5 - Rules, Plans and Decisions/Instructions for AI helpers (CLAUDE.md).md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "5dfb799a9c60f28e",
+      "lines": 45
+    },
+    {
+      "id": "docs/For NonCoders/5 - Rules, Plans and Decisions/Pilot build plan (SPEC.md).md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "5fd5784033caf0ed",
+      "lines": 40
+    },
+    {
+      "id": "docs/For NonCoders/5 - Rules, Plans and Decisions/Pilot decision log (DECISIONS.md).md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "ecbc6b0105e3bdd5",
+      "lines": 49
+    },
+    {
+      "id": "docs/For NonCoders/6 - Work History (Handoff Notes)/Final Checks/1 Final Review A.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "38ff6491a2a2322a",
+      "lines": 53
+    },
+    {
+      "id": "docs/For NonCoders/6 - Work History (Handoff Notes)/Final Checks/2 Final Review B.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "b3dc6c5ff897c673",
+      "lines": 51
+    },
+    {
+      "id": "docs/For NonCoders/6 - Work History (Handoff Notes)/Final Checks/3 Final Review C.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "a286fb59cf8c2ec1",
+      "lines": 54
+    },
+    {
+      "id": "docs/For NonCoders/6 - Work History (Handoff Notes)/Final Checks/4 Fix Pass After the Final Reviews.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "156240bcc9d8ca33",
+      "lines": 69
+    },
+    {
+      "id": "docs/For NonCoders/6 - Work History (Handoff Notes)/Final Checks/5 Final Re-review.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "2b6228b4ee416094",
+      "lines": 47
+    },
+    {
+      "id": "docs/For NonCoders/6 - Work History (Handoff Notes)/Final Checks/6 Final Check of the Second Fix Pass.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "f40f2cccd60ea04d",
+      "lines": 56
+    },
+    {
+      "id": "docs/For NonCoders/6 - Work History (Handoff Notes)/Jason's Rulings and Plan Updates/Jason's Rulings on the Screen.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "e58b7a938ed42528",
+      "lines": 66
+    },
+    {
+      "id": "docs/For NonCoders/6 - Work History (Handoff Notes)/Jason's Rulings and Plan Updates/Live Decisions List.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "fdea935612ad7b14",
+      "lines": 66
+    },
+    {
+      "id": "docs/For NonCoders/6 - Work History (Handoff Notes)/Jason's Rulings and Plan Updates/Plan Brought Up to Date with Rulings 1-13.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "57f57d2312bd8e23",
+      "lines": 63
+    },
+    {
+      "id": "docs/For NonCoders/6 - Work History (Handoff Notes)/Other Work/2026-09-30 Maintainer Handoff Audit.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "bc5facd36f75ab8d",
+      "lines": 63
+    },
+    {
+      "id": "docs/For NonCoders/6 - Work History (Handoff Notes)/Stage 1 - Engine Answers and Short Wording/S1 - 01 Build.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "d694e76a9862c5ee",
+      "lines": 46
+    },
+    {
+      "id": "docs/For NonCoders/6 - Work History (Handoff Notes)/Stage 1 - Engine Answers and Short Wording/S1 - 02 Review 1.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "b137d2c94f293731",
+      "lines": 69
+    },
+    {
+      "id": "docs/For NonCoders/6 - Work History (Handoff Notes)/Stage 1 - Engine Answers and Short Wording/S1 - 03 Fix Round 1.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "9b929ab453314a61",
+      "lines": 54
+    },
+    {
+      "id": "docs/For NonCoders/6 - Work History (Handoff Notes)/Stage 1 - Engine Answers and Short Wording/S1 - 04 Review 2.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "566797800085cf98",
+      "lines": 58
+    },
+    {
+      "id": "docs/For NonCoders/6 - Work History (Handoff Notes)/Stage 1 - Engine Answers and Short Wording/S1 - 05 Fix Round 2.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "6b2cd12f984b6975",
+      "lines": 34
+    },
+    {
+      "id": "docs/For NonCoders/6 - Work History (Handoff Notes)/Stage 1 - Engine Answers and Short Wording/S1 - 06 Review 3.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "c02bc67569e6973f",
+      "lines": 36
+    },
+    {
+      "id": "docs/For NonCoders/6 - Work History (Handoff Notes)/Stage 1 - Engine Answers and Short Wording/S1 - 07 Fix Round 3.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "13113dc842a4e67e",
+      "lines": 59
+    },
+    {
+      "id": "docs/For NonCoders/6 - Work History (Handoff Notes)/Stage 1 - Engine Answers and Short Wording/S1 - 08 Review 4.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "a46be3b581b036e4",
+      "lines": 58
+    },
+    {
+      "id": "docs/For NonCoders/6 - Work History (Handoff Notes)/Stage 1 - Engine Answers and Short Wording/S1 - 09 Fix Round 4.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "2357d9848c2c7fff",
+      "lines": 42
+    },
+    {
+      "id": "docs/For NonCoders/6 - Work History (Handoff Notes)/Stage 1 - Engine Answers and Short Wording/S1 - 10 Review 5.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "f760b8affda17ce4",
+      "lines": 39
+    },
+    {
+      "id": "docs/For NonCoders/6 - Work History (Handoff Notes)/Stage 2 - Window and Menus/S2 - 01 Build.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "7c9ef8bce5eff27f",
+      "lines": 43
+    },
+    {
+      "id": "docs/For NonCoders/6 - Work History (Handoff Notes)/Stage 2 - Window and Menus/S2 - 02 Review 1.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "d5faad1656f5c381",
+      "lines": 49
+    },
+    {
+      "id": "docs/For NonCoders/6 - Work History (Handoff Notes)/Stage 2 - Window and Menus/S2 - 03 Fix Round 1.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "0c1d11d0e51c7091",
+      "lines": 48
+    },
+    {
+      "id": "docs/For NonCoders/6 - Work History (Handoff Notes)/Stage 2 - Window and Menus/S2 - 04 Review 2.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "48dd24141118a543",
+      "lines": 57
+    },
+    {
+      "id": "docs/For NonCoders/6 - Work History (Handoff Notes)/Stage 2 - Window and Menus/S2 - 05 Fix Round 2.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "152b6fb801670998",
+      "lines": 39
+    },
+    {
+      "id": "docs/For NonCoders/6 - Work History (Handoff Notes)/Stage 2 - Window and Menus/S2 - 06 Review 3.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "0bfd5e1011e3099a",
+      "lines": 43
+    },
+    {
+      "id": "docs/For NonCoders/6 - Work History (Handoff Notes)/Stage 2 - Window and Menus/S2 - 07 Fix Round 3.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "4236150081b548e5",
+      "lines": 53
+    },
+    {
+      "id": "docs/For NonCoders/6 - Work History (Handoff Notes)/Stage 2 - Window and Menus/S2 - 08 Review 4.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "58b30b0685f6c426",
+      "lines": 55
+    },
+    {
+      "id": "docs/For NonCoders/6 - Work History (Handoff Notes)/Stage 2 - Window and Menus/S2 - 09 Fix Round 4.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "ab47b1e38cd87ead",
+      "lines": 51
+    },
+    {
+      "id": "docs/For NonCoders/6 - Work History (Handoff Notes)/Stage 2 - Window and Menus/S2 - 10 Review 5.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "67fd4b0149e0d239",
+      "lines": 50
+    },
+    {
+      "id": "docs/For NonCoders/6 - Work History (Handoff Notes)/Stage 3 - The Screen's Frame/S3 - 01 Build.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "5fa5d3e0cb46f7bb",
+      "lines": 60
+    },
+    {
+      "id": "docs/For NonCoders/6 - Work History (Handoff Notes)/Stage 3 - The Screen's Frame/S3 - 02 Review 1.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "a024fbe1df33a210",
+      "lines": 54
+    },
+    {
+      "id": "docs/For NonCoders/6 - Work History (Handoff Notes)/Stage 3 - The Screen's Frame/S3 - 03 Fix Round 1.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "28f9a9db1f4f977e",
+      "lines": 44
+    },
+    {
+      "id": "docs/For NonCoders/6 - Work History (Handoff Notes)/Stage 3 - The Screen's Frame/S3 - 04 Review 2.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "329efb7dd58e177e",
+      "lines": 42
+    },
+    {
+      "id": "docs/For NonCoders/6 - Work History (Handoff Notes)/Stage 3 - The Screen's Frame/S3 - 05 Fix Round 2.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "bbe92b1237480e9c",
+      "lines": 45
+    },
+    {
+      "id": "docs/For NonCoders/6 - Work History (Handoff Notes)/Stage 3 - The Screen's Frame/S3 - 06 Review 3.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "06d6e2c96c542395",
+      "lines": 49
+    },
+    {
+      "id": "docs/For NonCoders/6 - Work History (Handoff Notes)/Stage 4 - Every Page of the Screen/S4 - 01 Build.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "74a33cfe9ccbb3d6",
+      "lines": 69
+    },
+    {
+      "id": "docs/For NonCoders/6 - Work History (Handoff Notes)/Stage 4 - Every Page of the Screen/S4 - 02 Review 1.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "c2b9bcdb9c56a60e",
+      "lines": 60
+    },
+    {
+      "id": "docs/For NonCoders/6 - Work History (Handoff Notes)/Stage 4 - Every Page of the Screen/S4 - 03 Fix Round 1.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "c37fa99664a795bb",
+      "lines": 50
+    },
+    {
+      "id": "docs/For NonCoders/6 - Work History (Handoff Notes)/Stage 4 - Every Page of the Screen/S4 - 04 Review 2.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "16dc5325ac29e51b",
+      "lines": 57
+    },
+    {
+      "id": "docs/For NonCoders/6 - Work History (Handoff Notes)/Stage 5 - Side Sheet, Links, Menus and Dialogs/S5 - 01 Build.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "baea0e93aada77bc",
+      "lines": 69
+    },
+    {
+      "id": "docs/For NonCoders/6 - Work History (Handoff Notes)/Stage 5 - Side Sheet, Links, Menus and Dialogs/S5 - 02 Review 1.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "b718566ab5dddef8",
+      "lines": 55
+    },
+    {
+      "id": "docs/For NonCoders/6 - Work History (Handoff Notes)/Stage 5 - Side Sheet, Links, Menus and Dialogs/S5 - 03 Fix Round 1.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "4a767a40e0cd471e",
+      "lines": 66
+    },
+    {
+      "id": "docs/For NonCoders/6 - Work History (Handoff Notes)/Stage 5 - Side Sheet, Links, Menus and Dialogs/S5 - 04 Fix Round 2.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "d077892de6c958ca",
+      "lines": 54
+    },
+    {
+      "id": "docs/For NonCoders/6 - Work History (Handoff Notes)/Stage 6 - Joining the Screen to the Real Engine/S6 - 01 Build, Part 1.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "62ab3f07ad897944",
+      "lines": 66
+    },
+    {
+      "id": "docs/For NonCoders/6 - Work History (Handoff Notes)/Stage 6 - Joining the Screen to the Real Engine/S6 - 02 Build, Part 2.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "a8f28003d06b3933",
+      "lines": 66
+    },
+    {
+      "id": "docs/For NonCoders/6 - Work History (Handoff Notes)/Stage 7 - Tooltips/S7 - 01 Build.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "a4c9f26dae2b8573",
+      "lines": 50
+    },
+    {
+      "id": "docs/For NonCoders/6 - Work History (Handoff Notes)/Stage 7 - Tooltips/S7 - 02 Review 1.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "a063f07eb41792a8",
+      "lines": 47
+    },
+    {
+      "id": "docs/For NonCoders/6 - Work History (Handoff Notes)/Stage 7 - Tooltips/S7 - 03 Fix Round 1.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "5a85681c23997ac0",
+      "lines": 39
+    },
+    {
+      "id": "docs/For NonCoders/6 - Work History (Handoff Notes)/Stage 7 - Tooltips/S7 - 04 Review 2.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "ba05d79301064905",
+      "lines": 40
+    },
+    {
+      "id": "docs/For NonCoders/6 - Work History (Handoff Notes)/Stage 7 - Tooltips/S7 - 05 Fix Round 2.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "9369b3157f80b22a",
+      "lines": 42
+    },
+    {
+      "id": "docs/For NonCoders/6 - Work History (Handoff Notes)/Stage 7 - Tooltips/S7 - 06 Review 3.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "bba380af2c2b60b7",
+      "lines": 40
+    },
+    {
+      "id": "docs/For NonCoders/6 - Work History (Handoff Notes)/Stage 8 - Links, Title Case and Skip Reasons/S8a - 01 Build.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "754b1043d5b631d4",
+      "lines": 49
+    },
+    {
+      "id": "docs/For NonCoders/6 - Work History (Handoff Notes)/Stage 8 - Links, Title Case and Skip Reasons/S8a - 02 Review 1.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "143501b4ad61e6fc",
+      "lines": 68
+    },
+    {
+      "id": "docs/For NonCoders/6 - Work History (Handoff Notes)/Stage 8 - Links, Title Case and Skip Reasons/S8a - 03 Fix Round 1.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "839220f610017957",
+      "lines": 42
+    },
+    {
+      "id": "docs/For NonCoders/6 - Work History (Handoff Notes)/Stage 8 - Links, Title Case and Skip Reasons/S8a - 04 Review 2.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "c371c037feccb07f",
+      "lines": 39
+    },
+    {
+      "id": "docs/For NonCoders/6 - Work History (Handoff Notes)/Stage 8 - Links, Title Case and Skip Reasons/S8a - 05 Fix Round 2.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "0a9b907d27b18163",
+      "lines": 51
+    },
+    {
+      "id": "docs/For NonCoders/6 - Work History (Handoff Notes)/Stage 8 - Links, Title Case and Skip Reasons/S8a - 06 Review 3.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "62d474ee914aaa55",
+      "lines": 57
+    },
+    {
+      "id": "docs/For NonCoders/6 - Work History (Handoff Notes)/Stage 8 - Links, Title Case and Skip Reasons/S8a - 07 Fix Round 3.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "1981baf9918d4984",
+      "lines": 37
+    },
+    {
+      "id": "docs/For NonCoders/6 - Work History (Handoff Notes)/Stage 8 - Links, Title Case and Skip Reasons/S8b - 01 Build (Two-Word Skip Reasons).md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "8730104e7e2863f5",
+      "lines": 44
+    },
+    {
+      "id": "docs/For NonCoders/README.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "d085c08fca687283",
+      "lines": 338,
+      "role": "The start page of the plain-English library for a reader who does not code: the folder layout (start here, how the program works, building and installing, testing, rules and decisions, work history) and the Kind / Topic / Stage tags every page carries, with every page listed by topic and by kind.",
+      "notes": "Each page under docs/For NonCoders names the original it explains on its Original file line and is a translation, not a source: where a page and its original disagree, the original wins and the page is fixed. Change a program file or add a handoff note and its page here is part of the change."
     },
     {
       "id": "docs/ROADMAP.md",
@@ -4538,8 +5121,8 @@
       "id": "docs/maintenance-guide.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "426b5836c4958ccd",
-      "lines": 419,
+      "sha256": "c7e47080138e989d",
+      "lines": 420,
       "role": "The maintainer's handoff page, written for a reader who does not code: the security walls (sandbox, command allowlist, the openable path registry, the Content-Security-Policy) and why none may be loosened, the Task Scheduler job and what a failed night looks like, the Google Drive layout, building the installer, the hash-locked installs, local testing and the GitHub Actions cost rule, and the transition points this map marks.",
       "notes": "Links to the runbook, CLAUDE.md, pilot/RELEASE.md and the decision logs rather than repeating them. Change the security boundary, the schedule's command or the build and this page is part of the change."
     },
@@ -4547,8 +5130,8 @@
       "id": "docs/repo-map.curated.json",
       "type": "file",
       "layer": "docs",
-      "sha256": "8771017952481e4f",
-      "lines": 1168,
+      "sha256": "d0b191efd1420b99",
+      "lines": 1172,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
     },
@@ -4697,8 +5280,8 @@
       "id": "pilot/handoffs/maintainer-handoff-audit.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "9534eeadd79a7507",
-      "lines": 74
+      "sha256": "3e125c4cc500c510",
+      "lines": 100
     },
     {
       "id": "pilot/handoffs/shell-S1-rebuild-1.md",

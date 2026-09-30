@@ -72,3 +72,29 @@ which cannot be tested off Windows - a candidate for the office PC lane.
 
 `pilot/installer/setup.iss`, `tests/test_pilot_installer.py`,
 `pilot/DECISIONS.md` (P115), `docs/maintenance-guide.md`, this note.
+
+## Second job: the plain-English library (same day)
+
+Jason asked for every file named in this audit, and every handoff note
+already written, in plain English for a non-coder, organized and tagged,
+in a subfolder named "For NonCoders". Done in `docs/For NonCoders/`:
+
+- 21 program-file pages and 61 handoff-note pages (all 60 notes in
+  `pilot/handoffs/` plus `pilot/HANDOFF.md`), each naming its original
+  on its "Original file" line and carrying a **Tags** line
+  (Kind / Topic / Stage).
+- Folders: `1 - Start Here` to `6 - Work History (Handoff Notes)`, with
+  subfolders by subject and one folder per screen stage; the notes inside
+  a stage are numbered in the order they happened (build, review 1, fix
+  round 1, ...). `README.md` there explains the tags and lists every page
+  by topic and by kind.
+- Written by seven Sonnet agents in parallel, then fact-checked page by
+  page against the originals by three Opus agents, which corrected 38
+  pages (invented sentences removed, counts and ruling numbers fixed,
+  open items for Jason restored). A structural check (every original has
+  a page, every page has its sections and tags, every named original
+  exists, every start-page link resolves) passes.
+
+**Left:** the pages are translations, not sources. A new handoff note, or
+a change to a translated program file, needs its page added or updated in
+the same commit; nothing enforces that yet (a test could, if Jason wants).

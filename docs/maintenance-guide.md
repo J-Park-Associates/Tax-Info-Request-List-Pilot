@@ -396,6 +396,7 @@ break. The map marks them. They are:
 | Know **why** something odd was built that way | [ROADMAP.md](ROADMAP.md) (search for the decision number) and [pilot/DECISIONS.md](../pilot/DECISIONS.md) |
 | Know how the program stores its records | [storage.md](storage.md) |
 | Hand work to an AI helper | [CLAUDE.md](../CLAUDE.md) |
+| Read any program file or past handoff note in plain words | [For NonCoders](<For NonCoders/README.md>) |
 
 ## Words used on this page
 

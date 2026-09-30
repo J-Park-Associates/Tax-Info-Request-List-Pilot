@@ -511,6 +511,10 @@
     "docs/maintenance-guide.md": {
       "role": "The maintainer's handoff page, written for a reader who does not code: the security walls (sandbox, command allowlist, the openable path registry, the Content-Security-Policy) and why none may be loosened, the Task Scheduler job and what a failed night looks like, the Google Drive layout, building the installer, the hash-locked installs, local testing and the GitHub Actions cost rule, and the transition points this map marks.",
       "notes": "Links to the runbook, CLAUDE.md, pilot/RELEASE.md and the decision logs rather than repeating them. Change the security boundary, the schedule's command or the build and this page is part of the change."
+    },
+    "docs/For NonCoders/README.md": {
+      "role": "The start page of the plain-English library for a reader who does not code: the folder layout (start here, how the program works, building and installing, testing, rules and decisions, work history) and the Kind / Topic / Stage tags every page carries, with every page listed by topic and by kind.",
+      "notes": "Each page under docs/For NonCoders names the original it explains on its Original file line and is a translation, not a source: where a page and its original disagree, the original wins and the page is fixed. Change a program file or add a handoff note and its page here is part of the change."
     }
   },
   "edges": [
