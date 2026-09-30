@@ -1590,6 +1590,7 @@ def test_the_link_kinds_are_built_from_the_apis_keys_and_navigate_without_the_en
         moved: groups.needs_you.filter((s) => s.menu === "moved").map((s) => [s.name, link(s)]),
         aside: groups.set_aside.map((s) => [s.name, link(s)]),
         received: groups.received.map((s) => [s.detail, s.detailLink ? s.detailLink.key : null]),
+        unfile: groups.received.map((s) => [s.name, s.unfile ? s.unfile.original : null]),
         pathInASpec: drawn,
         resolved: [pagesPathOf(paths, "shown_copy a"), pagesPathOf(paths, "nope"), pagesPathOf({ k: { path: "/x/y", kind: "reveal" } }, "k"), pagesPathOf(null, "k")],
       };
@@ -1598,6 +1599,7 @@ def test_the_link_kinds_are_built_from_the_apis_keys_and_navigate_without_the_en
     assert ran["moved"] == [["m.pdf", ["file", "moved_copy m"]]]
     assert ran["aside"] == [["d.pdf", ["file", "shown_copy a"]]]
     assert ran["received"] == [["f.pdf", "filed_copy f 0"], ["2 files", None]], "a count is not a name, so it is not a link"
+    assert ran["unfile"] == [["Doc R", "f"], ["Doc M", None]], "Unfile is offered for the one original filed under a request, not for several"
     assert ran["strings"] > 20 and ran["pathInASpec"] is False, "a spec holds the key and the map it came with; nothing it draws holds the path"
     assert ran["resolved"] == ["/secret/a.pdf", "", "/x/y", ""], "a string, or {path, kind}; a missing key or map is no path"
 
@@ -1878,3 +1880,11 @@ def test_shift_f10_and_the_menu_key_ask_for_the_native_menu_under_the_active_row
     keys = keys[:keys.index("\n}\n")]
     assert 'e.key === "ContextMenu" || (e.key === "F10" && e.shiftKey)' in keys and "pagesPopup(rows[at]" in keys
     assert 'list.addEventListener("contextmenu"' in text
+
+
+def test_the_link_kinds_name_the_apis_three_tooltip_keys():
+    """The tests above run the words through a copy of the table; this pins
+    the table pages.js really has (rulings 11, 12; S8a's key names)."""
+    text = stripped_js("pages.js")
+    assert 'const PAGES_LINK_WORDS = { file: "show_in_explorer", household: "navigate_client", return: "navigate_return" };' in text
+    assert text.count('openPath(path, "reveal")') == 1 and 'openPath(path, "reveal")' in js_function("pagesRunLink", "pages.js")

@@ -23,15 +23,17 @@
 //                       ask the firm's counts again if the state moved them
 // What this file calls in app.js: appRouteChanged(route), so the lock (a
 // notice) follows the return on screen.
-// What this file calls, if it exists (the pages are pages.js, the sheet S5's):
+// What this file calls, if it exists (the pages are pages.js, the sheet sheet.js):
 //   pagesDraw(route, page)   draw the route's page into #page
 //   pagesLeave()             the setup page took the screen: the pages' notices go
 //   pagesTally(state)        how many of each group a state holds
 //   pagesKey(e)              a key on a row list (the one keydown listener
 //                            stays in app.js and hands keys here)
 //   pagesMenu(id, token)     a right-click menu item on a row
-//   closeSheet(), openRoll(), openSafeguards(), openAbout(), openReminder()
-// A menu id the page cannot answer yet is said as a notice and logged.
+//   sheetStateArrived(state) the file on the sheet may have left the list
+//   closeSheet()             navigating shuts the sheet
+//   openRoll(), openSafeguards(), openAbout(), openReminder()  (app.js, sheet.js)
+// A menu id the page cannot answer is said as a notice and logged.
 
 "use strict";
 

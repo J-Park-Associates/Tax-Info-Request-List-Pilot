@@ -46,7 +46,7 @@ const SCENARIOS = [
   { name: "reminders", query: "", run: go({ level: "reminders" }) },
   { name: "reminders-empty", query: "?scenario=quiet", run: go({ level: "reminders" }) },
   { name: "clients", query: "", run: go({ level: "clients" }) },
-  { name: "clients-all", query: "", run: `${go({ level: "clients" })}; setTimeout(() => document.querySelectorAll(".switch-option")[1].click(), 100)` },
+  { name: "clients-all", query: "", run: `${go({ level: "clients" })}; setTimeout(() => document.querySelectorAll(".switch-option")[1].click(), 400)` },
   { name: "clients-none-waiting", query: "?scenario=quiet", run: go({ level: "clients" }) },
   { name: "clients-empty", query: "?scenario=empty-clients", run: go({ level: "clients" }) },
   { name: "household", query: "", run: go({ level: "household", household: smith }) },
@@ -148,7 +148,7 @@ if (!only.length || only.includes("real-app")) {
   if (errors.length) problems.push(`real app.js: ${errors.join("; ")}`);
   if (logged.length) problems.push(`real app.js logged: ${logged.join("; ")}`);
   if (notice) problems.push(`real app.js shows an error: ${notice}`);
-  if (side !== "Overview|Needs review|Reminders|Clients") problems.push(`real app.js: side panel is "${side}"`);
+  if (side !== "Overview|Needs Review|Reminders|Clients") problems.push(`real app.js: side panel is "${side}"`);
   await page.screenshot({ path: path.join(out, "real-app-1100x700.png") });
   console.log(`real app.js: side panel "${side}", first group "${title}", ${errors.length} page errors, ${logged.length} logged, ${notice ? `shows "${notice}"` : "no visible error"}`);
   await context.close();
