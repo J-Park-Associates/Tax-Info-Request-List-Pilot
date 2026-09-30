@@ -2247,30 +2247,39 @@ def test_a_request_answered_by_several_files_draws_a_row_for_each_and_counts_onl
     assert 'if (spec.detailLink || spec.nameLink) ids.push("show_in_explorer");' in pages
 
 
-def test_a_failed_last_sort_is_a_keyed_notice_with_retry_that_clears_when_a_sort_works(tmp_path):
-    """Ruling 20: the record's last sort failed -> one notice (the vocabulary's
-    'Sort Failed', Retry runs the sort); while a sort runs it is left alone; a
-    sort that worked, or none yet, clears it. Nothing here types a word."""
+def test_a_failed_last_sort_is_a_keyed_notice_without_retry_that_clears_when_the_record_says_it_worked(tmp_path):
+    """Rulings 20 and 28: the record's last sort failed -> one notice (the
+    vocabulary's failed word) with NO Retry and no action, on every page; while
+    a sort runs it is left alone; a record that says it worked clears it. The
+    shapes are the ones ``list`` really sends (``api._last_pass``): a failed
+    scheduled pass, a good one, none yet and an unreadable file (``ok`` false,
+    ``when`` null: no notice)."""
     ran = run_shell(["syncSortNotice"], """
       let scanning = null; let shellLastPass = null;
       const seen = [];
       const screenWords = () => ({ last_sort: { failed: "Sort Failed" } });
-      const keyedNotice = (key, failure, opts) => seen.push(["show", key, failure.sentence, failure.kind, opts.retry === runScan]);
+      const keyedNotice = (key, failure, opts) => seen.push(["show", key, failure.sentence, failure.kind, Object.keys(opts || {}).length]);
       const clearNotice = (key) => seen.push(["clear", key]);
       const runScan = () => {};
     """, """
       const at = (pass, running) => { shellLastPass = pass; scanning = running; seen.length = 0; syncSortNotice(); return seen.map((one) => one.join("|")); };
+      const line = { text: "Last Sort Failed", level: "err" };
       return {
-        failed: at({ when: "2026-09-30T06:00:00Z", ok: false }, null),
-        running: at({ when: "2026-09-30T06:00:00Z", ok: false }, { pass: "p" }),
-        worked: at({ when: "2026-09-30T06:00:00Z", ok: true }, null),
-        never: at(null, null),
+        failed: at({ ...line, ok: false, when: "2026-09-30T06:00:00" }, null),
+        running: at({ ...line, ok: false, when: "2026-09-30T06:00:00" }, { pass: "p" }),
+        worked: at({ text: "Sorted", level: "ok", ok: true, when: "2026-09-30T06:00:00" }, null),
+        never: at({ text: "Never", level: "warn", ok: false, when: null }, null),
+        unreadable: at({ text: "Could Not Be Read", level: "err", ok: false, when: null }, null),
+        none: at(null, null),
       };
     """, tmp_path)
-    assert ran["failed"] == ["show|last-sort|Sort Failed|failed|true"]
+    assert ran["failed"] == ["show|last-sort|Sort Failed|failed|0"], "no retry, no action"
     assert ran["running"] == [], "left as it is while a sort runs"
-    assert ran["worked"] == ["clear|last-sort"] and ran["never"] == ["clear|last-sort"]
+    assert ran["worked"] == ["clear|last-sort"] and ran["none"] == ["clear|last-sort"]
+    assert ran["never"] == ["clear|last-sort"] and ran["unreadable"] == ["clear|last-sort"]
     assert "syncSortNotice();" in js_function("shellChanged", "shell.js")
+    body = js_function("syncSortNotice", "shell.js")
+    assert "retry" not in body and "runScan" not in body and "action" not in body
 
 
 def test_a_household_paused_for_two_open_years_is_marked_and_listed_from_the_firm_replys_paused_field(tmp_path):
@@ -2533,3 +2542,26 @@ def test_the_app_starts_only_after_every_script_has_loaded(tmp_path):
     assert scripts.index("app.js") < scripts.index("shell.js"), "the order is why the start must wait"
     js = read("app.js")
     assert js.rstrip().endswith("startWhenLoaded(bootstrap);") and not re.search(r"^bootstrap\(\);", js, re.M)
+
+
+def test_a_sort_is_never_sent_without_a_return_chosen(tmp_path):
+    """Final review C, C2 (ruling 28): on a firm page nothing can send the
+    pass with no engagement - the engine would answer in the command line's
+    words (a flag, over five). runScan itself refuses when no return is
+    active, so a Retry or a key cannot get round the greyed icon."""
+    setup = """
+      let active = null, scanning = null; const sent = [];
+      const vocab = { pass_command: "run-now" };
+      const withEng = (name) => (active ? [name, "--engagement", active] : [name]);
+      const shellChanged = () => {}; const drawProgress = () => {}; const scanDone = () => {}; const failed = () => {};
+      const call = async (args) => { sent.push(args); return { pass: 1 }; };
+    """
+    probe = """
+      await runScan();
+      const none = sent.length;
+      active = "R1";
+      await runScan();
+      return { none, sent };
+    """
+    ran = run_shell(["runScan"], setup, "return (async () => { " + probe + " })();", tmp_path, "app.js")
+    assert ran == {"none": 0, "sent": [["run-now", "--engagement", "R1"]]}

@@ -2165,6 +2165,10 @@ function scanDone() {
 // return and every read keep working while it runs; the household's own
 // returns show the lock the pass holds, as any lock shows (decision 193).
 async function runScan() {
+  // Never a sort without a return chosen: the engine would answer with the
+  // command line's own sentence (final review C, C2). The sort icon is grey
+  // on firm pages; this holds for every other way in (a Retry, a key).
+  if (!active) return;
   const args = withEng(vocab.pass_command);
   const mine = { args, pass: null, stopping: false, asked: active };
   scanning = mine;

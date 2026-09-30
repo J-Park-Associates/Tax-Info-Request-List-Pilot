@@ -246,11 +246,12 @@ const crumbs = (page) => page.evaluate(() => [...document.querySelectorAll("#cru
   await context.close();
 }
 
-{ // ruling 20: a failed sort is a notice with Retry at the top of every page; the side line stays; it clears when a sort works
+{ // rulings 20 and 28: a failed sort is a notice with NO Retry at the top of every page; the side line stays; it clears when the record says a sort worked
   for (const mode of ["double", "real"]) {
     const { context, page } = await open(`?mode=${mode}&scenario=failed`);
-    const failedNotice = () => page.evaluate(() => [...document.querySelectorAll("#notices .notice-failed")].filter((n) => n.querySelector(".notice-text").textContent === "Sort Failed").map((n) => [...n.querySelectorAll("button")].map((b) => b.textContent)[0]));
-    check(`ruling 20 (${mode}): Overview shows the failed sort with Retry`, (await failedNotice()).join() === "Retry", await failedNotice());
+    const failedNotice = () => page.evaluate(() => [...document.querySelectorAll("#notices .notice-failed")].filter((n) => n.querySelector(".notice-text").textContent === "Sort Failed").map((n) => [...n.querySelectorAll("button")].map((b) => b.textContent).filter((t) => t.trim()).join("|")));
+    check(`ruling 28 (${mode}): Overview shows the failed sort with no Retry`, (await failedNotice()).length === 1 && !(await failedNotice()).join().includes("Retry"), await failedNotice());
+    check(`ruling 28 (${mode}): nothing on it can send a sort or draw a flag`, await page.evaluate(() => { const n = document.querySelector("#notices .notice-failed"); return !/--engagement|Pick an engagement/i.test(n.textContent) && !n.querySelector("[data-act]"); }), "notice");
     for (const level of ["needs-review", "reminders", "clients"]) {
       await page.evaluate((l) => shellGo({ level: l }), level);
       await page.waitForTimeout(150);
