@@ -1818,6 +1818,42 @@ def test_a_row_menu_offers_only_what_applies_and_the_page_answers_only_its_own_t
     assert ran["own"] is True
 
 
+#: What each right-click template must carry in main.js's POPUPS for the page's row menus to appear (S6's
+#: join of S2 and S8a; F13). main.js drops an id its template lacks, so a join that forgets one passes
+#: every renderer test and the item silently never shows. The renderer's side is pinned here; the join
+#: itself is the checklist in pilot/handoffs/shell-S5-rebuild-1.md (POPUPS lives on S2's branch).
+JOIN_POPUPS = {
+    "file": ["check", "not_requested", "another_return", "show_in_explorer"],
+    "moved": ["check", "put_back", "keep_here", "show_in_explorer"],
+    "request": ["edit_request"],
+    "received": ["unfile", "mark_missing", "show_in_explorer"],
+}
+
+
+def test_the_row_menus_offer_exactly_the_ids_the_join_must_put_in_the_popup_templates(tmp_path):
+    """The most each template can offer, on the most permissive row, is the
+    join table above; the page answers each of those ids and no other; the
+    client rows' templates are the shell's ids and never a file's."""
+    ran = run_pages_dom("""
+      const step = { kind: "check", ret: "r", name: "n", handle: "h" };
+      const link = { kind: "file" };
+      const most = { file: { menu: "file", fileKind: "parked", nameLink: link, step },
+                     moved: { menu: "moved", canKeep: true, nameLink: link, step },
+                     request: { menu: "request" },
+                     received: { menu: "received", unfile: { original: "h", seq: 1 }, missing: { original: "h", identifier: "R", seq: 1 }, detailLink: link } };
+      const out = {};
+      for (const [name, spec] of Object.entries(most)) out[name] = pagesEnableFor(spec);
+      return out;
+    """, tmp_path, setup="let shellEnabled = () => []; const writeBusy = () => false; const fedReturns = () => [1]; const notADocument = () => false;\n"
+                         "lastState = { paths: { engagement: 'r' }, index: [{ handle: 'h' }] };\n",
+       functions=["pagesEnableFor", "pagesCanHandOver", "pagesRowRoute"])
+    assert ran == JOIN_POPUPS
+    text = read("pages.js")
+    table = text[text.index("const PAGES_ROW_ANSWERS = {"):]
+    answered = set(re.findall(r"^  (\w+): ", table[:table.index("\n};\n")], flags=re.M))
+    assert answered == {id for ids in JOIN_POPUPS.values() for id in ids}, "the page answers what the templates carry, no more"
+
+
 def test_a_client_rows_item_is_answered_only_if_its_rule_holds_on_the_page_it_went_to(tmp_path):
     """Right-click a return a live pass holds, choose Edit Request List: the
     app goes there, and the lock (read on arrival) greys the item, so the
