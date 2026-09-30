@@ -1,6 +1,7 @@
 {
   "permissions": {
     "deny": [
+      "Bash(git push origin --delete:*)",
       "Read(//c/Users/*/AppData/Local/tax-document-tracker-pilot/**)",
       "Edit(//c/Users/*/AppData/Local/tax-document-tracker-pilot/**)",
       "Read(~/.local/state/tax-document-tracker-pilot/**)",
