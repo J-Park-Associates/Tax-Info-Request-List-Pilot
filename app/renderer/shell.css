@@ -465,6 +465,91 @@ input, textarea, select { caret-color: var(--text); accent-color: var(--accent);
 .is-done { color: var(--st-done); }
 .is-plain { color: var(--text-secondary); font-weight: var(--fw-regular); }
 
+/* Three levels on Needs Review (pilot SPEC-lists 5, P136): the return is the
+   heading's bold link; the household beside it a small regular grey link
+   (still underlined, blue on hover); a file's own name, on every page, an
+   ordinary-weight link - an item, not a heading. */
+.row-file .row-name { font-weight: var(--fw-regular); }
+.group-count .row-link { color: var(--text-secondary); }
+.group-count .row-link:hover { color: var(--link); }
+
+/* The column headers of the four firm lists (pilot SPEC-lists 3 and 4;
+   P135, P137): the rows' own grid, one short word each, a drawn arrow on
+   the column that orders the list, and a grip on each right edge. A list is
+   never narrower than its columns: widened past the window, the page area
+   scrolls sideways, header and rows together, and the window never does. */
+.rows, .col-table {
+  min-width: calc(var(--size-col-name) + var(--size-col-detail) + var(--size-col-status) + var(--size-col-end) + 3 * var(--sp-4) + 2 * var(--sp-8));
+}
+.col-heads:not(.hidden) {
+  display: grid;
+  grid-template-columns: minmax(var(--size-col-name), 1fr) var(--size-col-detail) var(--size-col-status) var(--size-col-end);
+  align-items: center;
+  column-gap: var(--sp-4);
+  min-height: var(--size-control-sm);
+  padding: 0 var(--sp-8);
+  border-bottom: 1px solid var(--border);
+}
+.col-cell { position: relative; min-width: 0; }
+.col-cell[data-cell="end"] { text-align: right; }
+.col-head:not(.hidden) {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  max-width: 100%;
+  min-height: var(--size-control-sm);
+  padding: 0 var(--sp-1);
+  margin: 0 calc(-1 * var(--sp-1));
+  border: 0;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--text-secondary);
+  font-family: inherit;
+  font-size: var(--fs-caption);
+  line-height: var(--lh-caption);
+  font-weight: var(--fw-strong);
+  cursor: pointer;
+  overflow: hidden;
+  transition: background-color var(--dur) var(--ease);
+}
+.col-head:hover { background: var(--bg-hover); }
+.col-head:active { background: var(--bg-pressed); }
+.col-head:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+.col-word { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* The chevron (SPEC-shell 3.8) turned up for the natural order, down for its
+   reverse, and shown only on the column that orders the list. */
+.col-arrow { flex: none; visibility: hidden; transform: rotate(-90deg); transition: transform var(--dur) var(--ease); }
+.col-cell[aria-sort="ascending"] .col-arrow { visibility: visible; }
+.col-cell[aria-sort="descending"] .col-arrow { visibility: visible; transform: rotate(90deg); }
+/* 8px wide, centred in the 16px gap after the column; its 1px line shows
+   while the header row is hovered, 2px in the focus colour while its header
+   has keyboard focus or it is dragged. */
+.col-grip:not(.hidden) {
+  display: block;
+  position: absolute;
+  inset-block: 0;
+  inset-inline-end: calc(-1 * var(--sp-4) + var(--sp-1));
+  width: var(--sp-2);
+  cursor: col-resize;
+  touch-action: none;
+}
+.col-grip::after {
+  content: "";
+  position: absolute;
+  inset-block: var(--sp-1);
+  inset-inline-start: calc(50% - var(--size-hair) / 2);
+  width: var(--size-hair);
+}
+.col-heads:hover .col-grip::after { background: var(--border-input); }
+.col-head:focus-visible + .col-grip::after, .col-grip.is-dragging::after {
+  inset-inline-start: calc(50% - var(--size-hair));
+  width: calc(2 * var(--size-hair));
+  background: var(--focus);
+}
+/* Fitting a column (a double-click on its grip): every cell on one line
+   while it is measured. */
+#page.is-measuring .row-name, #page.is-measuring .row-detail, #page.is-measuring .row-status { white-space: nowrap; }
+
 /* Loading: outline rows in the row grid (SPEC 6, states). */
 .row-skeleton:not(.hidden) {
   display: grid;
@@ -721,6 +806,12 @@ input, textarea, select { caret-color: var(--text); accent-color: var(--accent);
   .group-step { color: LinkText; }
   .row-name, .row-detail, .row-status, .row-date, .row-step { color: inherit; }
   .row-link { color: LinkText; }
+  .group-count .row-link { color: LinkText; }
+  /* The column headers (SPEC-lists 4): words and hairline in the system's
+     text colour; the grips always shown, so they can be found. */
+  .col-head { color: CanvasText; }
+  .col-heads { border-bottom: 1px solid CanvasText; }
+  .col-grip::after { background: CanvasText; }
   /* The focused row has forced-color-adjust: none, so its own colours would
      show on Highlight: the step's link colour (.row-step:not(.hidden)) and the
      status tones outrank the inherit above. Every part takes HighlightText. */

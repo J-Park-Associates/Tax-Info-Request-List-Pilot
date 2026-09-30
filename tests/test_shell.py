@@ -824,7 +824,7 @@ def test_every_menu_id_the_page_answers_is_in_the_template_and_the_rest_are_the_
     log (main.js's alone, 5.5); the row menus' ids go to pages.js first."""
     template = {"new_household", "change_root", "open_root", "exit", "edit_household", "add_return", "roll_forward", "mark_shared",
                 "edit_list", "draft_reminder", "open_client_folder", "open_inbox", "open_working", "overview", "needs_review",
-                "reminders", "clients", "find", "refresh", "sort_now", "stop_sorting", "schedule", "repair_schedule", "firm_report",
+                "reminders", "clients", "find", "refresh", "reset_columns", "sort_now", "stop_sorting", "schedule", "repair_schedule", "firm_report",
                 "clear_lock", "tour", "safeguards", "terms", "error_log", "about"}
     rows = {"check", "not_requested", "another_return", "put_back", "keep_here", "edit_request", "unfile", "mark_missing", "show_in_explorer"}
     text = read("shell.js")
@@ -862,7 +862,8 @@ FAKE_DOM = r"""
 class Node {}
 class Text extends Node { constructor(data) { super(); this.data = data; } }
 class Element extends Node {
-  constructor(tag) { super(); this.tag = tag; this.className = ""; this.dataset = {}; this.attrs = {}; this.kids = []; this.open = false; this.handlers = {}; }
+  constructor(tag) { super(); this.tag = tag; this.className = ""; this.dataset = {}; this.attrs = {}; this.kids = []; this.open = false; this.handlers = {};
+    this.style = { props: {}, setProperty(key, value) { this.props[key] = value; }, removeProperty(key) { delete this.props[key]; } }; }
   get classList() {
     const self = this;
     return { add(one) { if (!self.className.split(" ").includes(one)) self.className = `${self.className} ${one}`.trim(); },
@@ -923,9 +924,35 @@ const vocab = {
     empty: { received: "Nothing received yet" }, moved: "Moved by hand", due: "Due {date}", partly: "{n} of {total}",
     show_in_explorer: "Show in File Explorer", navigate_client: "Navigate to Client", navigate_return: "Navigate to Return",
     counts: { need: "{n} need you", waiting: "{n} waiting", complete: "Complete", files: "{n} files", one_return: "1 return", returns: "{n} returns" },
+    sections: { overview: "Overview", needs_review: "Needs Review", reminders: "Reminders", clients: "Clients" },
+    columns: { return: "Return", client: "Client", status: "Status", date: "Date", file: "File", suggestion: "Suggestion", reason: "Reason",
+               received: "Received", stage: "Stage", drafted: "Drafted", returns: "Returns", order_by: "Order by {column}", width: "{column} Width {n}" },
   },
 };
 """
+
+#: The column headers' constants (SPEC-lists), lifted from pages.js as written:
+#: the probes run the pages' own tables, not a copy of them.
+PAGES_CONSTS = ("const PAGES_COLUMNS = {", "const PAGES_CELLS = ", "const PAGES_WIDTHS = ", "const PAGES_USUAL = ", "const PAGES_WIDTH_STEP = ",
+                "const PAGES_WIDTHS_KEY = ", "const PAGES_URGENCY = ", "const pagesOrder = ", "let pagesWidths = ")
+
+
+#: The column headers' own functions (SPEC-lists), which every firm page and
+#: pagesDraw now reach.
+COLUMN_FUNCTIONS = ("pagesListOf", "pagesUrgent", "pagesIsBlank", "pagesCompareKeys", "pagesCompare", "pagesOrdered", "pagesOrderBy",
+                    "pagesColumnHeads", "pagesGrip", "pagesColumnKey", "pagesStoredWidths", "pagesWidthOf", "pagesSetWidth",
+                    "pagesSaveWidths", "pagesApplyWidths", "pagesResetWidths", "pagesReviewSpec", "pagesOrderedGroups")
+
+
+def pages_consts() -> str:
+    text = read("pages.js")
+    out = []
+    for head in PAGES_CONSTS:
+        start = text.index(head)
+        line_end = text.index("\n", start)
+        end = text.index("\n};\n", start) + 3 if text[start:line_end].rstrip().endswith("{") else line_end
+        out.append(text[start:end])
+    return "\n".join(out)
 
 RETURN_STATE = r"""
 const item = (id, group, extra = {}) => ({ identifier: id, document: `Doc ${id}`, short_name: `Doc ${id}`, group, status_key: "Missing", manual_override: "",
@@ -950,11 +977,12 @@ def run_pages_dom(probe: str, tmp_path: Path, setup: str = "", functions=None):
         "pagesReminders", "pagesClients", "pagesHousehold", "folderName", "pagesLinkWords", "pagesReturnText", "pagesHouseholdPath",
         "pagesPathOf", "pagesFileLink", "pagesRunLink", "pagesLinkNode", "pagesCell", "pagesHeadLink", "pagesRunRowLink", "pagesWhere",
         "pagesPaused", "pagesNameCell", "pagesPausedRows", "pagesSteps", "pagesDrafts", "pagesRunRow", "pagesRunStep", "pagesPopup", "pagesEnableFor", "pagesRowRoute", "pagesKey", "pagesTitle",
+        *COLUMN_FUNCTIONS,
     ]
     shell = read("shell.js")
     consts = "\n".join(shell[shell.index(head):shell.index(");\n", shell.index(head)) + 3] if head.endswith("[") else shell[shell.index(head):shell.index("\n", shell.index(head))]
                        for head in ("const H_ATTRIBUTES = new Set([", 'const SVG_NS = '))
-    lifted = consts + "\n" + "\n".join(js_function(name, "pages.js" if f"function {name}(" in read("pages.js") else "shell.js") for name in wanted)
+    lifted = consts + "\n" + pages_consts() + "\n" + "\n".join(js_function(name, "pages.js" if f"function {name}(" in read("pages.js") else "shell.js") for name in wanted)
     script = tmp_path / "pages_probe.js"
     script.write_text(f"{FAKE_DOM}\n{PAGE_WORDS}\n{RETURN_STATE}\n{setup}\n{lifted}\nprocess.stdout.write(JSON.stringify((() => {{ {probe} }})()));\n",
                       encoding="utf-8", newline="\n")
@@ -1290,7 +1318,7 @@ def test_a_row_that_cannot_be_built_is_left_out_and_named_on_every_page(tmp_path
       const specs = pagesReminderSpecs(firm);
       return { specs: specs.map((one) => [one.name, one.status]), broken: pagesBroken.map((one) => one.name) };
     """, tmp_path, functions=["pagesReminderSpecs", "pagesStage", "pagesSafe", "pagesEach", "pagesLabel", "pagesSafeName", "pagesReturnName",
-                              "pagesByName", "pagesDay", "screenWords", "pagesReturnText", "pagesHouseholdPath"])
+                              "pagesByName", "pagesDay", "screenWords", "pagesReturnText", "pagesHouseholdPath", "pagesUrgent"])
     assert ran["specs"] == [["Alpha (2025)", "Heads up"]] and ran["broken"] == ["Bravo"]
 
 
@@ -1806,7 +1834,8 @@ def test_the_firm_pages_rows_link_by_the_firms_keys_and_carry_the_year(tmp_path)
                               "pagesFileLink", "pagesRow", "pagesCell", "pagesLinkNode", "pagesLinkWords", "pagesHeadLink", "pagesGroup", "pagesGroupStep", "pagesList",
                               "pagesReason", "pagesDay", "pagesSafe", "pagesEach", "pagesLabel", "pagesSafeName", "pagesStepWords", "pagesByName", "pagesEmpty",
                               "pagesNextSort", "pagesWorkRows", "pagesCounts", "pagesRoute", "pagesDue", "pagesReminderSpecs", "pagesStage", "screenWords", "h", "icon",
-                              "pagesActivate", "pagesRunRow", "pagesRunRowLink", "pagesRunLink", "pagesRunStep", "pagesPathOf", "pagesPopup", "pagesEnableFor", "pagesRowRoute"])
+                              "pagesActivate", "pagesRunRow", "pagesRunRowLink", "pagesRunLink", "pagesRunStep", "pagesPathOf", "pagesPopup", "pagesEnableFor", "pagesRowRoute",
+                              *COLUMN_FUNCTIONS])
     assert ran["head"] == [["1040 - Smith (2025)", "return"]] and ran["caption"] == [["Smith Family", "household"]] and ran["captionText"] == "Smith Family · 2"
     assert ran["rows"] == [["one.pdf", [["one.pdf", "file"]]], ["two.exe", []]], "text for the file with no copy"
     assert ran["overview"][0] == "1040 - Smith (2025)" and ran["overview"][1]["kind"] == "return" and ran["overview"][2] == {"kind": "household", "path": "/c/Smith"}
@@ -2686,3 +2715,251 @@ def test_a_link_differs_from_plain_text_by_more_than_its_colour():
     for theme in ("light", "dark"):
         assert ratio("--link", "--text", theme) < 3, "the colour alone would not do: the underline is the cue"
     assert ".row-link { color: LinkText; }" in read("shell.css")
+
+
+# ── the lists: column headers, order and width (pilot SPEC-lists) ────────
+
+#: One firm reply for the four lists: five returns (one unreadable), three
+#: waiting files in two returns, three drafts (one held).
+FIRM_LISTS = r"""
+  let shellFirmData = null; const shellFirm = () => ({ data: shellFirmData }); const openNewHousehold = () => {};
+  let shellRoute = { level: "overview" };
+  const box = new Element("div"); const $ = (id) => box;
+  Object.assign(vocab.screen, {
+    figures: { need: "Need a Person", waiting: "Waiting on Clients", complete: "Complete" }, work: "Work Waiting",
+    filters: { work: "Work Waiting", all: "All" }, held: "Held",
+    empty: { overview: "Nothing Is Waiting", next_sort: "Next Sort {time}", needs_review: "Nothing Needs Review", reminders: "No Drafts Ready",
+             clients: "No Clients Yet", work: "No Work Waiting", returns: "No Returns Yet", received: "Nothing Received Yet" },
+  });
+  vocab.reminder = { stages: [{ number: 1, short: "Heads Up" }, { number: 2, short: "Checking In" }, { number: 3, short: "Final Notice" }] };
+  vocab.reasons = { unmatched: { short: "Could Not Tell" }, "opened-not-across": { short: "Came in Email or Zip" } };
+  shellReturn = (path) => ({ return_name: path.split("/").pop(), household: "", year: 2025 });
+  households = ["Alpha", "Bravo", "Charlie", "Delta", "Echo"].map((name) => ({ name, path: `c/${name}` }));
+  const zero = { needs_you: 0, waiting: 0, received: 0, set_aside: 0 };
+  const line = (name, household, extra) => ({ path: `r/${name}`, household, year: 2025, counts: { ...zero }, oldest: null, due: null, problem: "",
+                                              draft: { ready: false, stage: 0, held: 0, drafted: null }, ...extra });
+  shellFirmData = { paths: {}, totals: { need: 3, waiting: 2, complete: 0 }, next_sort: null, returns: [
+    line("1040 - Alpha", "Alpha", { counts: { ...zero, needs_you: 3 }, oldest: "2026-03-05", draft: { ready: true, stage: 1, held: 0, drafted: "2026-03-01" } }),
+    line("1065 - Bravo", "Bravo", { counts: { ...zero, needs_you: 12 }, oldest: "2026-03-01", draft: { ready: true, stage: 2, held: 1, drafted: "2026-03-02" } }),
+    line("1040 - Charlie", "Charlie", { counts: { ...zero, waiting: 2 }, due: "2026-04-15", draft: { ready: true, stage: 3, held: 0, drafted: "2026-02-20" } }),
+    line("1040 - Delta", "Delta", { counts: { ...zero, waiting: 5 } }),
+    line("1041 - Echo", "Echo", { problem: "Could Not Be Read" }),
+  ], files: [
+    { return: "r/1040 - Alpha", year: 2025, name: "b.pdf", handle: "h1", code: "unmatched", received: "2026-03-05", suggestion: "W-2", open_key: "" },
+    { return: "r/1040 - Alpha", year: 2025, name: "a.pdf", handle: "h2", code: "opened-not-across", received: "2026-03-07", suggestion: "", open_key: "" },
+    { return: "r/1065 - Bravo", year: 2025, name: "z.pdf", handle: "h3", code: "unmatched", received: "2026-03-01", suggestion: "K-1", open_key: "" },
+  ] };
+  const draw = (level) => { shellRoute = { level }; pagesDraw(shellRoute, box); return box; };
+  const names = (page) => page.byClass("row").map((row) => row.byClass("row-name")[0].textContent);
+  const sorts = (page) => page.find((one) => one.attrs.role === "columnheader").map((one) => one.attrs["aria-sort"] || "");
+"""
+
+
+def run_lists(probe: str, tmp_path: Path, extra: str = ""):
+    return run_pages_dom(probe, tmp_path, setup=FIRM_LISTS + extra,
+                         functions=[*re.findall(r"^function (\w+)\(", read("pages.js"), flags=re.M), "h", "icon", "screenWords", "folderName"])
+
+
+def test_the_four_firm_lists_draw_a_header_row_of_buttons_in_the_rows_columns(tmp_path):
+    """SPEC-lists 1-3: Overview, Needs Review, Reminders and Clients each draw
+    one header row - a table of one row of column headers, each a button with
+    the vocabulary's word and the tooltip "Order by {Column}" - and Clients'
+    empty end column has an empty header that orders nothing."""
+    ran = run_lists("""
+      const out = {};
+      for (const level of ["overview", "needs-review", "reminders", "clients"]) {
+        tips.length = 0;
+        const page = draw(level);
+        const tables = page.find((one) => one.attrs.role === "table");
+        out[level] = { tables: tables.length, label: tables[0].attrs["aria-label"], rows: tables[0].find((one) => one.attrs.role === "row").length,
+                       cells: tables[0].find((one) => one.attrs.role === "columnheader").length,
+                       words: tables[0].find((one) => one.tag === "button").map((one) => one.textContent),
+                       tips: tips.filter(([cls]) => cls === "col-head").map(([, words]) => words), sorts: sorts(page),
+                       grips: tables[0].byClass("col-grip").length };
+      }
+      return out;
+    """, tmp_path)
+    assert ran["overview"]["words"] == ["Return", "Client", "Status", "Date"]
+    assert ran["needs-review"]["words"] == ["File", "Suggestion", "Reason", "Received"]
+    assert ran["reminders"]["words"] == ["Return", "Client", "Stage", "Drafted"]
+    assert ran["clients"]["words"] == ["Client", "Returns", "Status"], "the Clients end column is always empty"
+    for level, one in ran.items():
+        assert one["tables"] == 1 and one["rows"] == 1 and one["cells"] == 4 and one["grips"] == 4, level
+        assert one["tips"] == [f"Order by {word}" for word in one["words"]], level
+        assert set(one["sorts"]) <= {"none", ""}, "the usual order: no header orders the list"
+    assert ran["needs-review"]["label"] == "Needs Review" and ran["overview"]["label"] == "Overview"
+
+
+def test_a_header_orders_its_list_then_reverses_then_returns_to_the_usual_order(tmp_path):
+    """SPEC-lists 3: the first press orders by the column (aria-sort
+    ascending), the second reverses it (descending), the third restores the
+    usual order; the order is kept when the page is drawn again while the app
+    is open."""
+    ran = run_lists("""
+      const usual = names(draw("overview"));
+      pagesOrderBy("overview", "name"); const first = [names(box), sorts(box)];
+      draw("clients"); const kept = names(draw("overview"));
+      pagesOrderBy("overview", "name"); const second = [names(box), sorts(box)];
+      pagesOrderBy("overview", "name"); const third = [names(box), sorts(box)];
+      return { usual, first, kept, second, third };
+    """, tmp_path)
+    assert ran["usual"] == ["1041 - Echo (2025)", "1065 - Bravo (2025)", "1040 - Alpha (2025)", "1040 - Charlie (2025)", "1040 - Delta (2025)"]
+    assert ran["first"][0] == ["1040 - Alpha (2025)", "1040 - Charlie (2025)", "1040 - Delta (2025)", "1041 - Echo (2025)", "1065 - Bravo (2025)"]
+    assert ran["first"][1] == ["ascending", "none", "none", "none"]
+    assert ran["kept"] == ran["first"][0], "a list keeps its order while the app is open"
+    assert ran["second"][0] == list(reversed(ran["first"][0])) and ran["second"][1][0] == "descending"
+    assert ran["third"] == [ran["usual"], ["none", "none", "none", "none"]]
+
+
+def test_status_orders_by_urgency_not_alphabetically(tmp_path):
+    """SPEC-lists 3: a return that cannot be read first, then what needs a
+    person (the larger count first), then what waits on the client; on
+    Reminders, Held first and then the later stage."""
+    ran = run_lists("""
+      draw("overview"); pagesOrderBy("overview", "status"); const overview = names(box);
+      pagesOrderBy("overview", "status"); const back = names(box);
+      draw("reminders"); pagesOrderBy("reminders", "status");
+      const reminders = box.byClass("row").map((row) => row.byClass("row-status")[0].textContent);
+      return { overview, back, reminders };
+    """, tmp_path)
+    assert ran["overview"] == ["1041 - Echo (2025)", "1065 - Bravo (2025)", "1040 - Alpha (2025)", "1040 - Delta (2025)", "1040 - Charlie (2025)"]
+    assert ran["back"] == list(reversed(ran["overview"]))
+    assert ran["reminders"] == ["Held", "Final Notice", "Heads Up"]
+
+
+def test_dates_order_by_the_iso_date_and_blanks_go_last_both_ways(tmp_path):
+    ran = run_lists("""
+      draw("overview"); pagesOrderBy("overview", "end"); const up = names(box);
+      pagesOrderBy("overview", "end"); const down = names(box);
+      return { up, down };
+    """, tmp_path)
+    assert ran["up"] == ["1065 - Bravo (2025)", "1040 - Alpha (2025)", "1040 - Charlie (2025)", "1041 - Echo (2025)", "1040 - Delta (2025)"]
+    assert ran["down"] == ["1040 - Charlie (2025)", "1040 - Alpha (2025)", "1065 - Bravo (2025)", "1041 - Echo (2025)", "1040 - Delta (2025)"]
+
+
+def test_needs_review_orders_files_in_each_group_and_groups_follow_their_first_file(tmp_path):
+    ran = run_lists("""
+      const titles = (page) => page.byClass("group-title").map((one) => one.textContent);
+      const usual = [titles(draw("needs-review")), names(box)];
+      pagesOrderBy("needs_review", "end"); pagesOrderBy("needs_review", "end");
+      const newest = [titles(box), names(box)];
+      pagesOrderBy("needs_review", "status");
+      const reason = [titles(box), names(box)];
+      return { usual, newest, reason };
+    """, tmp_path)
+    assert ran["usual"] == [["1065 - Bravo (2025)", "1040 - Alpha (2025)"], ["z.pdf", "b.pdf", "a.pdf"]]
+    assert ran["newest"] == [["1040 - Alpha (2025)", "1065 - Bravo (2025)"], ["a.pdf", "b.pdf", "z.pdf"]]
+    assert ran["reason"] == [["1040 - Alpha (2025)", "1065 - Bravo (2025)"], ["a.pdf", "b.pdf", "z.pdf"]]
+
+
+def test_no_header_word_or_tooltip_says_sort():
+    """P138: "Sort" files documents in this app, so no column word, tooltip,
+    width line or menu item of this change says it, and pages.js types none
+    of them (every word is the vocabulary's)."""
+    for key, words in api.SCREEN["columns"].items():
+        assert "sort" not in words.lower(), key
+    assert "sort" not in api.MENU["reset_columns"].lower()
+    assert api.SCREEN["columns"]["order_by"] == "Order by {column}"
+    heads = js_function("pagesColumnHeads", "pages.js")
+    assert not re.findall(r'"(?:Order|Return|Client|Status|Date)\b', heads), "a header word typed in pages.js"
+
+
+def test_a_column_width_is_clamped_saved_and_reset(tmp_path):
+    """SPEC-lists 4: a width lands within its column's limits, is kept on this
+    PC across a restart, and View › Reset Column Widths forgets every list's.
+    Storage that holds something unreadable leaves the usual widths."""
+    ran = run_lists("""
+      const props = () => ({ ...box.style.props });
+      pagesSetWidth("overview", "status", 5000); pagesSetWidth("overview", "detail", 10); pagesSaveWidths();
+      const set = props(); const stored = JSON.parse(window.localStorage.getItem("tracker.columns"));
+      pagesWidths = null; box.style.props = {}; pagesApplyWidths(box, "overview"); const again = props();
+      pagesApplyWidths(box, ""); const plain = props();
+      pagesApplyWidths(box, "overview"); pagesResetWidths(); const reset = [props(), window.localStorage.getItem("tracker.columns")];
+      window.localStorage.setItem("tracker.columns", "not json"); pagesWidths = null; pagesApplyWidths(box, "overview"); const junk = props();
+      return { set, stored, again, plain, reset, junk };
+    """, tmp_path, extra="""
+      const window = { localStorage: { data: {}, getItem(k) { return k in this.data ? this.data[k] : null; }, setItem(k, v) { this.data[k] = String(v); },
+                                       removeItem(k) { delete this.data[k]; } } };
+    """)
+    assert ran["set"] == {"--size-col-status": "320px", "--size-col-detail": "80px"}
+    assert ran["stored"] == {"overview": {"status": 320, "detail": 80}}
+    assert ran["again"] == ran["set"], "kept on this PC across a restart"
+    assert ran["plain"] == {} and ran["reset"] == [{}, None] and ran["junk"] == {}
+
+
+def test_needs_review_moves_width_from_suggestion_to_reason_and_still_fits_1100px(tmp_path):
+    """SPEC-lists 4: Needs Review's reasons are the longest status words, so its
+    usual Reason column is 200px and its Suggestion 160px - the same sum, so
+    the 1100px window still has no sideways scroll; a person's own width wins."""
+    ran = run_lists("""
+      pagesApplyWidths(box, "needs_review"); const usual = { ...box.style.props };
+      pagesSetWidth("needs_review", "status", 240); const held = { ...box.style.props };
+      pagesApplyWidths(box, "overview"); const other = { ...box.style.props };
+      return { usual, held, other };
+    """, tmp_path, extra="const window = { localStorage: { getItem() { return null; }, setItem() {}, removeItem() {} } };")
+    assert ran["usual"] == {"--size-col-detail": "160px", "--size-col-status": "200px"}
+    assert ran["held"] == {"--size-col-detail": "160px", "--size-col-status": "240px"}
+    assert ran["other"] == {}
+    light, _dark = root_blocks()
+    usual = sum(int(light[f"--size-col-{cell}"].removesuffix("px")) for cell in ("detail", "status"))
+    assert usual == 160 + 200, "the list's usual sum is the stylesheet's (856 of 860px at 1100px)"
+
+
+def test_the_keyboard_resizes_a_focused_header_with_ctrl_shift_arrows_only():
+    """SPEC-lists 4, P137: shell.js hands a key on a header to pagesColumnKey,
+    which acts on Ctrl+Shift+Left or Right alone (never with Alt), steps 16px
+    and says the width in the polite live region; the one keydown listener
+    stays app.js's."""
+    shell = read("shell.js")
+    assert 'e.target.closest(".col-head") && typeof pagesColumnKey === "function") return pagesColumnKey(e) === true;' in shell
+    key = js_function("pagesColumnKey", "pages.js")
+    assert "!e.ctrlKey || !e.shiftKey || e.altKey" in key and '"ArrowLeft"' in key and '"ArrowRight"' in key
+    assert '$("page-say").textContent' in key and "columns.width" in key
+    assert "const PAGES_WIDTH_STEP = 16;" in read("pages.js")
+    assert '<div id="page-say" class="visually-hidden" role="status" aria-live="polite"></div>' in read("index.html")
+    assert "keydown" not in read("pages.js")
+
+
+def test_the_header_row_and_grips_keep_the_rules_of_the_stylesheet():
+    """SPEC-lists 3-4: the header row is the rows' own grid; a list is never
+    narrower than its columns (so a widened list scrolls the page area); a
+    header shows keyboard focus; High Contrast keeps the header words, rule
+    and grips in system colours; no typewriter font."""
+    first = {}
+    for _media, selector, body in blocks(read("shell.css")):
+        for part in selector.split(","):
+            first.setdefault(" ".join(part.split()), dict(declarations(body)))
+    assert first[".col-heads:not(.hidden)"]["grid-template-columns"] == first[".row:not(.hidden)"]["grid-template-columns"]
+    assert "var(--size-col-end)" in first[".rows"]["min-width"] and first[".rows"]["min-width"] == first[".col-table"]["min-width"]
+    assert first[".col-head:focus-visible"]["outline"] == "2px solid var(--focus)"
+    assert first[".col-grip:not(.hidden)"]["cursor"] == "col-resize"
+    css = read("shell.css")
+    forced = css[css.index("@media (forced-colors: active)"):]
+    for rule in (".col-head { color: CanvasText; }", ".col-grip::after { background: CanvasText; }", ".group-count .row-link { color: LinkText; }"):
+        assert rule in forced, rule
+    assert "monospace" not in css.lower()
+
+
+def test_file_rows_are_ordinary_weight_and_the_household_beside_a_heading_is_secondary(tmp_path):
+    """SPEC-lists 5, P136: a file's own name is a regular-weight link; a
+    return's row keeps its weight; the household beside a Needs Review
+    heading is the secondary text colour (blue on hover), which is AA text on
+    the page and on a hovered row in both themes."""
+    ran = run_pages_dom("""
+      const file = pagesRow({ name: "a.pdf", detail: "", status: "", tone: "needs", date: "", menu: "file", fileKind: "parked", nameLink: null });
+      const linked = pagesRow({ name: "b.pdf", detail: "", status: "", tone: "needs", date: "", menu: "file", nameLink: { kind: "file", key: "k", paths: {} } });
+      const ret = pagesRow({ name: "1040 - A (2025)", detail: "", status: "", tone: "needs", date: "", menu: "return", nameLink: { kind: "return", path: "r" } });
+      return [file, linked, ret].map((row) => row.classList.contains("row-file"));
+    """, tmp_path)
+    assert ran == [True, True, False]
+    first = {}
+    for _media, selector, body in blocks(read("shell.css")):
+        for part in selector.split(","):
+            first.setdefault(" ".join(part.split()), dict(declarations(body)))
+    assert first[".row-file .row-name"]["font-weight"] == "var(--fw-regular)"
+    assert first[".group-count .row-link"]["color"] == "var(--text-secondary)"
+    assert first[".group-count .row-link:hover"]["color"] == "var(--link)"
+    for theme in ("light", "dark"):
+        assert ratio("--text-secondary", "--bg-page", theme) >= 4.5
+        assert ratio("--text-secondary", "--bg-hover", theme) >= 4.5
+        assert ratio("--border-input", "--bg-page", theme) >= 3, "the grip line is a control's edge"

@@ -101,6 +101,7 @@ const H_ATTRIBUTES = new Set([
   "aria-label", "aria-current", "aria-selected", "aria-expanded", "aria-busy", "aria-hidden",
   "aria-labelledby", "aria-valuemin", "aria-valuemax", "aria-valuenow", "aria-live",
   "aria-controls", "aria-description", "aria-keyshortcuts", "aria-disabled", "aria-pressed",
+  "aria-sort",
 ]);
 
 function h(tag, attrs = {}, ...children) {
@@ -723,6 +724,7 @@ function shellEnabled(at) {
   const ids = ["change_root", "refresh", "tour", "safeguards", "terms", "error_log", "about"];
   if (shellRootSet) {
     ids.push("new_household", "open_root", "overview", "needs_review", "reminders", "clients", "find", "schedule", "repair_schedule");
+    ids.push("reset_columns");
   }
   if (client && writable) {
     ids.push("edit_household");
@@ -822,6 +824,7 @@ const MENU_ANSWERS = {
   clients: () => shellGo({ level: "clients" }),
   find: () => $("find").focus(),
   refresh: () => shellRefresh(),
+  reset_columns: () => pagesResetWidths(),
   sort_now: () => sortClicked(),
   stop_sorting: () => stopPass(),
   schedule: () => openSchedule(),
@@ -902,6 +905,7 @@ function shellKey(e) {
     return false;
   }
   if (e.target.closest && e.target.closest('[role="listbox"]') && typeof pagesKey === "function") return pagesKey(e) === true;
+  if (e.target.closest && e.target.closest(".col-head") && typeof pagesColumnKey === "function") return pagesColumnKey(e) === true;
   return false;
 }
 

@@ -62,6 +62,34 @@ let pagesSetAsideOpen = false;
 let pagesBroken = [];          // the rows of the page being drawn that could not be built: {name, err}
 let pagesDrawn = "";           // which route the page holds, so a failed draw keeps only its own
 
+// The column headers of the four firm lists (pilot SPEC-lists; P135-P139):
+// each list's columns by the vocabulary's word (vocab.screen.columns); a
+// cell with no word has an empty header that orders nothing.
+const PAGES_COLUMNS = {
+  overview: { name: "return", detail: "client", status: "status", end: "date" },
+  needs_review: { name: "file", detail: "suggestion", status: "reason", end: "received" },
+  reminders: { name: "return", detail: "client", status: "stage", end: "drafted" },
+  clients: { name: "client", detail: "returns", status: "status", end: "" },
+};
+const PAGES_CELLS = ["name", "detail", "status", "end"];
+// Each column's least and most width in px (SPEC-lists 4). The usual widths
+// are the stylesheet's tokens; the name column's width is its least, and it
+// takes whatever the others leave.
+const PAGES_WIDTHS = { name: [160, 640], detail: [80, 400], status: [96, 320], end: [112, 240] };
+// A list whose usual widths differ from the stylesheet's (SPEC-lists 4):
+// Needs Review's reasons are the longest status words ("Looks Like Wrong
+// Document"), and its suggestions are short request names, so 40px move
+// from Suggestion to Reason. The sum is unchanged, so 1100px still fits.
+const PAGES_USUAL = { needs_review: { detail: 160, status: 200 } };
+const PAGES_WIDTH_STEP = 16;               // one Ctrl+Shift+Arrow: four grid steps
+const PAGES_WIDTHS_KEY = "tracker.columns"; // this PC's own storage, never the record
+// Urgency, the order the app already uses (SPEC-lists 3): a return that cannot
+// be read or a paused household first, then what needs a person, what waits
+// on the client, what is complete.
+const PAGES_URGENCY = { problem: 0, needs: 1, waiting: 2, done: 3, plain: 4 };
+const pagesOrder = {};         // list -> {cell, dir}: kept while the app is open (P139)
+let pagesWidths = null;        // list -> {cell: px}: read once from this PC's storage (P139)
+
 // ── small helpers ─────────────────────────────────────────────────────
 function pagesDay(iso) {
   const parts = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso || ""));
@@ -270,8 +298,10 @@ function pagesRow(spec) {
   // name and the words of a paused household are never cut away. A file's
   // name still ends in an ellipsis.
   const wraps = Boolean(spec.mark || (spec.nameLink && spec.nameLink.kind !== "file"));
+  // A file's own name is an item, not a heading: ordinary weight (P136).
+  const file = Boolean(spec.fileKind || (spec.nameLink && spec.nameLink.kind === "file"));
   const node = h("div", {
-    className: `row${step ? " has-step" : ""}${spec.child ? " row-child" : ""}${wraps ? " row-wrap" : ""}`, role: "option", id, "aria-selected": "false",
+    className: `row${step ? " has-step" : ""}${spec.child ? " row-child" : ""}${wraps ? " row-wrap" : ""}${file ? " row-file" : ""}`, role: "option", id, "aria-selected": "false",
     "aria-description": words || undefined, dataset: { menu: spec.menu || "", token: id },
   },
   pagesNameCell(spec),
@@ -393,7 +423,8 @@ function pagesGroup(spec) {
     if (spec.onToggle) fold.addEventListener("toggle", () => spec.onToggle(fold.open));
     return [fold];
   }
-  return [h("div", { className: headClass }, title, meta, start), body].filter(Boolean);
+  // `heads`: a list's column headers, between its heading and its rows.
+  return [h("div", { className: headClass }, title, meta, start), body ? spec.heads : null, body].filter(Boolean);
 }
 
 // A link in a heading or a caption (a return's name, a household's): outside
@@ -446,6 +477,222 @@ function pagesCaption(text) {
   return text ? h("div", { className: "page-caption" }, text) : null;
 }
 
+// ── column headers: order and width (pilot SPEC-lists; P135-P139) ─────
+// The word is "Order", never "Sort": in this app Sort files documents (P138).
+// A header orders its list by its column: the first click in the column's
+// natural direction, the second the reverse, the third back to the list's
+// usual order. The order is a view of the rows the engine already sent, so
+// it is worked out here and nowhere else; a list keeps it while the app is
+// open. A width is this PC's: kept in its own storage across restarts,
+// forgotten by View › Reset Column Widths.
+
+// The firm list a route draws, or "" for a page with no column headers.
+function pagesListOf(route) {
+  return { overview: "overview", "needs-review": "needs_review", reminders: "reminders", clients: "clients" }[route.level] || "";
+}
+
+// A status's order key: its urgency, then the larger count first, then its words.
+function pagesUrgent(rank, count, text) {
+  return text ? [rank, -(count || 0), text] : "";
+}
+
+function pagesIsBlank(value) {
+  return value === "" || value === null || value === undefined;
+}
+
+function pagesCompareKeys(x, y) {
+  if (Array.isArray(x)) {
+    for (let i = 0; i < x.length; i += 1) {
+      const by = pagesCompareKeys(x[i], y[i]);
+      if (by) return by;
+    }
+    return 0;
+  }
+  if (typeof x === "number" && typeof y === "number") return x - y;
+  return pagesByName(String(x), String(y));
+}
+
+// Compares two {spec, at} entries by one column: blanks always last, in
+// either direction; a tie keeps the usual order (`at`).
+function pagesCompare(cell, dir) {
+  return (a, b) => {
+    const x = a.spec.keys ? a.spec.keys[cell] : "";
+    const y = b.spec.keys ? b.spec.keys[cell] : "";
+    if (pagesIsBlank(x) || pagesIsBlank(y)) {
+      if (pagesIsBlank(x) && pagesIsBlank(y)) return a.at - b.at;
+      return pagesIsBlank(x) ? 1 : -1;
+    }
+    return dir * pagesCompareKeys(x, y) || a.at - b.at;
+  };
+}
+
+// A list's specs in the order its header asks for, or as they came.
+function pagesOrdered(list, specs) {
+  const order = pagesOrder[list];
+  if (!order) return specs;
+  const by = pagesCompare(order.cell, order.dir);
+  return specs.map((spec, at) => ({ spec, at })).sort(by).map((entry) => entry.spec);
+}
+
+// A header was pressed: the next order in its cycle, the list drawn again,
+// and focus back on the same header so it can be pressed again.
+function pagesOrderBy(list, cell) {
+  const now = pagesOrder[list];
+  if (!now || now.cell !== cell) pagesOrder[list] = { cell, dir: 1 };
+  else if (now.dir > 0) pagesOrder[list] = { cell, dir: -1 };
+  else delete pagesOrder[list];
+  const page = $("page");
+  pagesDraw(shellRoute, page);
+  const again = page.querySelector(`.col-head[data-cell="${cell}"]`);
+  if (again) again.focus();
+}
+
+// The header row of a list: one `role="columnheader"` cell per column in the
+// rows' own grid, each a button (a Tab stop; Enter and Space press it) with
+// the vocabulary's word, the drawn arrow of its order and a grip on its
+// right edge. `aria-sort` says which column orders the list and which way.
+function pagesColumnHeads(list) {
+  const words = screenWords();
+  const said = words.columns;
+  const order = pagesOrder[list];
+  const cells = PAGES_CELLS.map((cell) => {
+    const key = PAGES_COLUMNS[list][cell];
+    if (!key) return h("div", { className: "col-cell", role: "columnheader", dataset: { cell } }, pagesGrip(list, cell));
+    const word = said[key];
+    if (!word) throw new Error(`columns.${key}`);
+    const sort = order && order.cell === cell ? (order.dir > 0 ? "ascending" : "descending") : "none";
+    const arrow = icon("chev", true);
+    arrow.classList.add("col-arrow");
+    const button = h("button", { type: "button", className: "col-head", dataset: { cell, list } }, h("span", { className: "col-word" }, word), arrow);
+    setTip(button, fill(said.order_by, { column: word }));
+    button.addEventListener("click", () => pagesOrderBy(list, cell));
+    return h("div", { className: "col-cell", role: "columnheader", "aria-sort": sort, dataset: { cell } }, button, pagesGrip(list, cell));
+  });
+  return h("div", { className: "col-table", role: "table", "aria-label": words.sections[list], dataset: { list } },
+    h("div", { className: "col-heads", role: "row" }, ...cells));
+}
+
+// The grip on a header's right edge: drag to set the width, double-click to
+// fit the widest entry. The keyboard's way is Ctrl+Shift+Arrow on the header.
+function pagesGrip(list, cell) {
+  const grip = h("span", { className: "col-grip", "aria-hidden": "true", dataset: { cell } });
+  grip.addEventListener("pointerdown", (e) => pagesGripStart(list, cell, grip, e));
+  grip.addEventListener("dblclick", () => pagesFit(list, cell));
+  return grip;
+}
+
+function pagesGripStart(list, cell, grip, e) {
+  if (e.button !== 0) return;
+  e.preventDefault();
+  const from = grip.parentNode.getBoundingClientRect().width;
+  const start = e.clientX;
+  grip.setPointerCapture(e.pointerId);
+  grip.classList.add("is-dragging");
+  const move = (m) => pagesSetWidth(list, cell, from + m.clientX - start);
+  const done = () => {
+    grip.removeEventListener("pointermove", move);
+    grip.removeEventListener("pointerup", done);
+    grip.removeEventListener("pointercancel", done);
+    grip.classList.remove("is-dragging");
+    pagesSaveWidths();
+  };
+  grip.addEventListener("pointermove", move);
+  grip.addEventListener("pointerup", done);
+  grip.addEventListener("pointercancel", done);
+}
+
+// Fit a column to its widest entry on the page and its header's own word:
+// every cell is measured on one line (`is-measuring`), then let go.
+function pagesFit(list, cell) {
+  const page = $("page");
+  const parts = { name: ".row-name", detail: ".row-detail", status: ".row-status", end: ".row-end" }[cell];
+  page.classList.add("is-measuring");
+  let widest = 0;
+  for (const one of page.querySelectorAll(`${parts}, .col-cell[data-cell="${cell}"] .col-head`)) widest = Math.max(widest, one.scrollWidth);
+  page.classList.remove("is-measuring");
+  pagesSetWidth(list, cell, widest);
+  pagesSaveWidths();
+}
+
+// Ctrl+Shift+Right widens and Ctrl+Shift+Left narrows the focused header's
+// column by one step, and the width it lands on is said to a screen reader
+// (shell.js hands a key on a header here; true = handled). Not Alt+Arrow:
+// Alt+Left is Back in Windows, and Alt shows the hidden menu bar (P137).
+function pagesColumnKey(e) {
+  const head = e.target.closest(".col-head");
+  if (!head || !e.ctrlKey || !e.shiftKey || e.altKey || (e.key !== "ArrowLeft" && e.key !== "ArrowRight")) return false;
+  e.preventDefault();
+  const box = head.parentNode;
+  pagesSetWidth(head.dataset.list, head.dataset.cell, box.getBoundingClientRect().width + (e.key === "ArrowRight" ? PAGES_WIDTH_STEP : -PAGES_WIDTH_STEP));
+  pagesSaveWidths();
+  $("page-say").textContent = fill(screenWords().columns.width, {
+    column: head.querySelector(".col-word").textContent, n: Math.round(box.getBoundingClientRect().width),
+  });
+  return true;
+}
+
+// The widths this PC holds, read once. Storage that cannot be read (a locked
+// profile) leaves the usual widths: a width is a comfort of this screen, not
+// a fact about a return, and the page works the same without it.
+function pagesStoredWidths() {
+  if (pagesWidths) return pagesWidths;
+  pagesWidths = {};
+  try {
+    const held = JSON.parse(window.localStorage.getItem(PAGES_WIDTHS_KEY) || "{}");
+    if (held && typeof held === "object" && !Array.isArray(held)) pagesWidths = held;
+  } catch (err) {
+    // Unreadable or not JSON: the usual widths, which pagesWidths now holds.
+  }
+  return pagesWidths;
+}
+
+// One column's width in a list: the held one, within its limits; else the
+// list's own usual width (PAGES_USUAL); else null, the stylesheet's.
+function pagesWidthOf(list, cell) {
+  const held = (pagesStoredWidths()[list] || {})[cell];
+  if (typeof held !== "number" || !Number.isFinite(held)) return (PAGES_USUAL[list] || {})[cell] || null;
+  const [least, most] = PAGES_WIDTHS[cell];
+  return Math.round(Math.min(most, Math.max(least, held)));
+}
+
+function pagesSetWidth(list, cell, px) {
+  const [least, most] = PAGES_WIDTHS[cell];
+  const held = pagesStoredWidths();
+  held[list] = { ...(held[list] || {}), [cell]: Math.round(Math.min(most, Math.max(least, px))) };
+  pagesApplyWidths($("page"), list);
+}
+
+// Kept on this PC; a profile that refuses the write keeps the width while
+// the app is open, as the read above does.
+function pagesSaveWidths() {
+  try {
+    window.localStorage.setItem(PAGES_WIDTHS_KEY, JSON.stringify(pagesStoredWidths()));
+  } catch (err) {
+    // Not kept past a restart; the width holds while the app is open.
+  }
+}
+
+// The list's widths on the page (the tokens the rows' grid reads), or the
+// usual ones on a page with no list.
+function pagesApplyWidths(page, list) {
+  for (const cell of PAGES_CELLS) {
+    const px = list ? pagesWidthOf(list, cell) : null;
+    if (px === null) page.style.removeProperty(`--size-col-${cell}`);
+    else page.style.setProperty(`--size-col-${cell}`, `${px}px`);
+  }
+}
+
+// View › Reset Column Widths: every list back to the usual widths.
+function pagesResetWidths() {
+  pagesWidths = {};
+  try {
+    window.localStorage.removeItem(PAGES_WIDTHS_KEY);
+  } catch (err) {
+    // Nothing held to forget: the usual widths are what the page now shows.
+  }
+  pagesApplyWidths($("page"), pagesListOf(shellRoute));
+}
+
 // ── Overview (SPEC 6.1) ───────────────────────────────────────────────
 function pagesWorkRows(returns) {
   const name = (one) => pagesReturnName(one.path);
@@ -457,14 +704,19 @@ function pagesWorkRows(returns) {
   const wait = returns.filter((one) => !one.problem && !one.counts.needs_you && one.counts.waiting > 0)
     .sort((a, b) => (a.due || PAGES_LATE).localeCompare(b.due || PAGES_LATE) || pagesByName(name(a), name(b)));
   const steps = { kind: "open" };
-  const specOf = (one, date) => {
+  // `keys`: what each column orders by (SPEC-lists 3) - the shown name, the
+  // urgency and the ISO date the row was drawn from, never the drawn "Mar 3".
+  const specOf = (one, date, iso) => {
     const said = pagesCounts(one.counts, one.problem);
     const house = pagesHouseholdPath(one.household);
-    return { name: pagesReturnText(one.path, one.year), detail: one.household, status: said.text, tone: said.tone, date, menu: "return",
+    const text = pagesReturnText(one.path, one.year);
+    const rank = one.problem ? PAGES_URGENCY.problem : PAGES_URGENCY[said.tone];
+    return { name: text, detail: one.household, status: said.text, tone: said.tone, date, menu: "return",
              nameLink: { kind: "return", path: one.path }, detailLink: house ? { kind: "household", path: house } : null,
-             step: { ...steps, route: pagesRoute(one.path) } };
+             step: { ...steps, route: pagesRoute(one.path) },
+             keys: { name: text, detail: one.household, status: pagesUrgent(rank, one.counts.needs_you || one.counts.waiting, said.text), end: iso || "" } };
   };
-  return [...pagesEach(need, name, (one) => specOf(one, pagesDay(one.oldest))), ...pagesEach(wait, name, (one) => specOf(one, pagesDue(one.due)))];
+  return [...pagesEach(need, name, (one) => specOf(one, pagesDay(one.oldest), one.oldest)), ...pagesEach(wait, name, (one) => specOf(one, pagesDue(one.due), one.due))];
 }
 
 // A household paused for two open years is work waiting for a person: one row
@@ -476,7 +728,8 @@ function pagesPausedRows(firm) {
     const path = pagesHouseholdPath(name);
     if (!path) throw new Error("household");
     return { name, detail: "", status: word, tone: "needs", date: "", menu: "household", nameLink: { kind: "household", path },
-             step: { kind: "open", route: { level: "household", household: path } } };
+             step: { kind: "open", route: { level: "household", household: path } },
+             keys: { name, detail: "", status: pagesUrgent(PAGES_URGENCY.problem, 0, word), end: "" } };
   });
 }
 
@@ -486,9 +739,10 @@ function pagesOverview() {
   const totals = firm.totals;
   const figures = h("div", { className: "figures" }, ...[[totals.need, words.figures.need], [totals.waiting, words.figures.waiting], [totals.complete, words.figures.complete]]
     .map(([n, label]) => h("div", { className: "figure" }, h("b", { className: "figure-number" }, String(n)), h("span", { className: "figure-label" }, label))));
-  const rows = pagesEach([...pagesPausedRows(firm), ...pagesWorkRows(firm.returns)], (spec) => spec.name, pagesRow);
+  const specs = pagesOrdered("overview", [...pagesPausedRows(firm), ...pagesWorkRows(firm.returns)]);
+  const rows = pagesEach(specs, (spec) => spec.name, pagesRow);
   if (!rows.length) return [figures, pagesEmpty(words.empty.overview, pagesNextSort(firm))];
-  return [figures, ...pagesGroup({ heading: words.work, first: true, blocks: [{ rows }] })];
+  return [figures, ...pagesGroup({ heading: words.work, first: true, heads: pagesColumnHeads("overview"), blocks: [{ rows }] })];
 }
 
 // ── Needs review (SPEC 6.2) ───────────────────────────────────────────
@@ -504,20 +758,47 @@ function pagesReviewGroups(firm) {
     .sort((a, b) => oldest(a.files).localeCompare(oldest(b.files)) || pagesByName(pagesReturnName(a.path), pagesReturnName(b.path)));
 }
 
+// One waiting file's row. A file's name is a link to its working copy when the
+// firm's reply names one (`open_key` and the reply's `paths`, ruling 15);
+// with none it is text.
+function pagesReviewSpec(firm, group, file) {
+  const reason = pagesReason(file.code);
+  return {
+    name: file.name, detail: file.suggestion || "", status: reason, tone: "needs", date: pagesDay(file.received),
+    menu: "file", fileKind: "parked", nameLink: pagesFileLink(firm.paths, file.open_key),
+    step: { kind: "check", ret: group.path, name: file.name, handle: file.handle },
+    keys: { name: file.name, detail: file.suggestion || "", status: pagesUrgent(PAGES_URGENCY.needs, 0, reason), end: file.received || "" },
+  };
+}
+
+// The returns of Needs Review in the chosen order (SPEC-lists 3): each
+// return's files ordered among themselves, and the returns following their
+// first file; with no order chosen, today's order.
+function pagesOrderedGroups(planned) {
+  const order = pagesOrder.needs_review;
+  if (!order) return planned;
+  const by = pagesCompare(order.cell, order.dir);
+  return planned.map((one, at) => ({ one, at }))
+    .sort((a, b) => {
+      const x = a.one.specs[0];
+      const y = b.one.specs[0];
+      if (!x || !y) return x === y ? a.at - b.at : (x ? -1 : 1);
+      return by({ spec: x, at: a.at }, { spec: y, at: b.at });
+    })
+    .map((entry) => entry.one);
+}
+
 function pagesNeedsReview() {
   const words = screenWords();
   const firm = pagesFirm();
   const groups = pagesReviewGroups(firm);
   if (!groups.length) return [pagesEmpty(words.empty.needs_review, pagesNextSort(firm))];
-  return groups.flatMap((group, i) => pagesSafe(pagesReturnName(group.path), () => {
+  const planned = pagesOrderedGroups(groups.map((group) => ({
+    group, specs: pagesOrdered("needs_review", pagesEach(group.files, (file) => file.name, (file) => pagesReviewSpec(firm, group, file))),
+  })));
+  return [pagesColumnHeads("needs_review"), ...planned.flatMap(({ group, specs }, i) => pagesSafe(pagesReturnName(group.path), () => {
     const owner = pagesFirmReturn(group.path);
-    // A file's name is a link to its working copy when the firm's reply names
-    // one (`open_key` and the reply's `paths`, ruling 15); with none it is text.
-    const rows = pagesEach(group.files, (file) => file.name, (file) => pagesRow({
-      name: file.name, detail: file.suggestion || "", status: pagesReason(file.code), tone: "needs", date: pagesDay(file.received),
-      menu: "file", fileKind: "parked", nameLink: pagesFileLink(firm.paths, file.open_key),
-      step: { kind: "check", ret: group.path, name: file.name, handle: file.handle },
-    }));
+    const rows = pagesEach(specs, (spec) => spec.name, pagesRow);
     const household = owner ? owner.household : "";
     const house = pagesHouseholdPath(household);
     const caption = household
@@ -525,7 +806,7 @@ function pagesNeedsReview() {
       : String(rows.length);
     return pagesGroup({ heading: pagesReturnText(group.path, owner ? owner.year : 0), headingLink: { kind: "return", path: group.path },
                         caption, first: i === 0, blocks: [{ rows }] });
-  }) || []);
+  }) || [])];
 }
 
 // ── Reminders (SPEC 6.3) ──────────────────────────────────────────────
@@ -533,21 +814,28 @@ function pagesReminderSpecs(firm) {
   const ready = firm.returns.filter((one) => one.draft && one.draft.ready);
   return pagesEach(ready.sort((a, b) => pagesByName(pagesReturnName(a.path), pagesReturnName(b.path))), (one) => pagesReturnName(one.path), (one) => {
     const house = pagesHouseholdPath(one.household);
+    const text = pagesReturnText(one.path, one.year);
+    const held = one.draft.held > 0;
+    const status = held ? screenWords().held : pagesStage(one.draft.stage);
     return {
-      name: pagesReturnText(one.path, one.year), detail: one.household,
-      status: one.draft.held > 0 ? screenWords().held : pagesStage(one.draft.stage),
-      tone: one.draft.held > 0 ? "needs" : "waiting", date: pagesDay(one.draft.drafted), menu: "return",
+      name: text, detail: one.household,
+      status, tone: held ? "needs" : "waiting", date: pagesDay(one.draft.drafted), menu: "return",
       nameLink: { kind: "return", path: one.path }, detailLink: house ? { kind: "household", path: house } : null,
       step: { kind: "draft", ret: one.path },
+      // Held first (a person must act), then the later stage first: a later
+      // reminder is the more overdue client (SPEC-lists 3).
+      keys: { name: text, detail: one.household, status: pagesUrgent(held ? PAGES_URGENCY.needs : PAGES_URGENCY.waiting, held ? 0 : one.draft.stage, status),
+              end: one.draft.drafted || "" },
     };
   });
 }
 
 function pagesReminders() {
   const words = screenWords();
-  const specs = pagesReminderSpecs(pagesFirm());
+  const specs = pagesOrdered("reminders", pagesReminderSpecs(pagesFirm()));
   if (!specs.length) return [pagesEmpty(words.empty.reminders)];
-  return [h("div", { className: "page-gap" }), pagesList({ label: words.sections.reminders }, pagesEach(specs, (spec) => spec.name, pagesRow))];
+  return [h("div", { className: "page-gap" }), pagesColumnHeads("reminders"),
+    pagesList({ label: words.sections.reminders }, pagesEach(specs, (spec) => spec.name, pagesRow))];
 }
 
 // ── Clients (SPEC 6.4) ────────────────────────────────────────────────
@@ -567,11 +855,13 @@ function pagesClientSpecs(firm, all) {
         : wait ? { text: fill(words.waiting, { n: wait }), tone: "waiting" }
           : returns.length ? { text: words.complete, tone: "done" } : { text: "", tone: "plain" };
     const paused = pausedNames.has(one.name);
+    const rank = !need && problem ? PAGES_URGENCY.problem : PAGES_URGENCY[said.tone];
     return { work: need + wait > 0 || Boolean(problem) || paused, spec: {
       name: one.name, detail: returns.length ? fill(returns.length === 1 ? words.one_return : words.returns, { n: returns.length }) : "",
       mark: paused ? screenWords().notices.paused : "",
       status: said.text, tone: said.tone, date: "", menu: "household", nameLink: { kind: "household", path: one.path },
       step: { kind: "open", route: { level: "household", household: one.path } },
+      keys: { name: one.name, detail: returns.length || "", status: pagesUrgent(rank, need || wait, said.text), end: "" },
     } };
   }).filter((one) => all || one.work).map((one) => one.spec);
 }
@@ -597,10 +887,12 @@ function pagesClients() {
     start.addEventListener("click", () => openNewHousehold());
     return [pagesEmpty(words.empty.clients, "", start)];
   }
-  const specs = pagesClientSpecs(firm, pagesClientsAll);
+  // One order for both tabs of the switch (SPEC-lists 3).
+  const specs = pagesOrdered("clients", pagesClientSpecs(firm, pagesClientsAll));
+  if (!specs.length) return [pagesSwitch(), pagesEmpty(words.empty.work)];
   const rows = document.createDocumentFragment();
   for (const row of pagesEach(specs, (spec) => spec.name, pagesRow)) rows.append(row);
-  return [pagesSwitch(), specs.length ? pagesList({ label: words.sections.clients }, [rows]) : pagesEmpty(words.empty.work)];
+  return [pagesSwitch(), pagesColumnHeads("clients"), pagesList({ label: words.sections.clients }, [rows])];
 }
 
 // ── Household and year (SPEC 6.5, 6.6) ────────────────────────────────
@@ -991,6 +1283,7 @@ function pagesDraw(route, page) {
     }
   }
   page.replaceChildren(...nodes);
+  pagesApplyWidths(page, pagesListOf(route));
   pagesDrawn = key;
   pagesRestore(page);
 }

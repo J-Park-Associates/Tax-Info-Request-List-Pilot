@@ -242,3 +242,17 @@ api._vocab	shell.killed_write	(none: was the sort sentence for every command)	re
 api._vocab	shell.killed_write_note	(none)	reword	It May Be Partly Done.	5	Notice area, after Change Stopped	Final review A finding 5: say part of a write may have happened	It May Be Partly Done.	case
 api._vocab	firm.unreadable (api.FIRM_UNREADABLE)	Could not be read	reword	Could Not Be Read	4	Overview and the row status	Title Case, ruling 10 (final review A finding 3); the SPEC O1 default, Jason may change	Could Not Be Read	case
 api._vocab	schedule.move_warning	Only If {host} Is Retired	reword	Only If {host} Is Retired	5	Under the move-schedule question	Now shown with the confirm (final review A finding 1)	Only If {host} Is Retired	case
+api.SCREEN	columns.return		new	Return	1	Column header, Overview and Reminders	Pilot 0.3, SPEC-lists 2 (P138): "Order", never "Sort"; open for Jason, Q1	Return	new
+api.SCREEN	columns.client		new	Client	1	Column header, Overview, Reminders and Clients	Pilot 0.3, SPEC-lists 2 (P138): "Order", never "Sort"; open for Jason, Q1	Client	new
+api.SCREEN	columns.status		new	Status	1	Column header, Overview and Clients	Pilot 0.3, SPEC-lists 2 (P138): "Order", never "Sort"; open for Jason, Q1	Status	new
+api.SCREEN	columns.date		new	Date	1	Column header, Overview	Pilot 0.3, SPEC-lists 2 (P138): "Order", never "Sort"; open for Jason, Q1	Date	new
+api.SCREEN	columns.file		new	File	1	Column header, Needs Review	Pilot 0.3, SPEC-lists 2 (P138): "Order", never "Sort"; open for Jason, Q1	File	new
+api.SCREEN	columns.suggestion		new	Suggestion	1	Column header, Needs Review	Pilot 0.3, SPEC-lists 2 (P138): "Order", never "Sort"; open for Jason, Q1	Suggestion	new
+api.SCREEN	columns.reason		new	Reason	1	Column header, Needs Review	Pilot 0.3, SPEC-lists 2 (P138): "Order", never "Sort"; open for Jason, Q1	Reason	new
+api.SCREEN	columns.received		new	Received	1	Column header, Needs Review	Pilot 0.3, SPEC-lists 2 (P138): "Order", never "Sort"; open for Jason, Q1	Received	new
+api.SCREEN	columns.stage		new	Stage	1	Column header, Reminders	Pilot 0.3, SPEC-lists 2 (P138): "Order", never "Sort"; open for Jason, Q1	Stage	new
+api.SCREEN	columns.drafted		new	Drafted	1	Column header, Reminders	Pilot 0.3, SPEC-lists 2 (P138): "Order", never "Sort"; open for Jason, Q1	Drafted	new
+api.SCREEN	columns.returns		new	Returns	1	Column header, Clients	Pilot 0.3, SPEC-lists 2 (P138): "Order", never "Sort"; open for Jason, Q1	Returns	new
+api.SCREEN	columns.order_by		new	Order by {column}	3	Tooltip of every column header	Pilot 0.3, SPEC-lists 2 (P138): "Order", never "Sort"; open for Jason, Q1	Order by {column}	new
+api.SCREEN	columns.width		new	{column} Width {n}	3	Said to a screen reader after a keyboard resize	Pilot 0.3, SPEC-lists 2 (P138): "Order", never "Sort"; open for Jason, Q1	{column} Width {n}	new
+api.MENU	reset_columns		new	Reset Column Widths	3	View menu	Pilot 0.3, SPEC-lists 4 (P139); open for Jason, Q4	Reset Column Widths	new

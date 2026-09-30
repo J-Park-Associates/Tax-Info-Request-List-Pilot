@@ -381,6 +381,10 @@ runs.
 
 ### 3.6 Rows and groups (one row style, every page; P71, P76)
 
+Column headers, ordering and column widths on the four firm lists, and the
+Needs Review heading, household and file levels: `pilot/SPEC-lists.md`
+(Pilot 0.3, P135-P139).
+
 A **row** is 40px tall (`min-height: 40px`, `align-items: center`), a 1px
 `--border` hairline under it (not under the last row of a group). Columns,
 left to right:

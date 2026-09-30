@@ -1211,6 +1211,8 @@ MENU: dict[str, str] = {
     "clients": "Clients",
     "find": "Find",
     "refresh": "Refresh",
+    # Forgets the list column widths this PC keeps (pilot SPEC-lists 4, P139).
+    "reset_columns": "Reset Column Widths",
     "tools": "&Tools",
     "sort_now": "Sort Now",
     "stop_sorting": "Stop Sorting",
@@ -1279,6 +1281,25 @@ SCREEN: dict = {
         "complete": "Complete",
     },
     "work": "Work Waiting",
+    # The column headers of the four firm lists (pilot SPEC-lists 2, P138):
+    # a header's word, its tooltip - "Order", never "Sort", which files
+    # documents in this app - and what a screen reader hears after a
+    # keyboard resize.
+    "columns": {
+        "return": "Return",
+        "client": "Client",
+        "status": "Status",
+        "date": "Date",
+        "file": "File",
+        "suggestion": "Suggestion",
+        "reason": "Reason",
+        "received": "Received",
+        "stage": "Stage",
+        "drafted": "Drafted",
+        "returns": "Returns",
+        "order_by": "Order by {column}",
+        "width": "{column} Width {n}",
+    },
     "empty": {
         "overview": "Nothing Is Waiting",
         "next_sort": "Next Sort {time}",
