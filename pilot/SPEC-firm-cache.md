@@ -138,7 +138,8 @@ private tree it keeps:
 - `fingerprint`: a digest of every folder and file under the household's
   private folder **and** under its client folder (`layout.client_household_dir(root,
   name)`, the folder that holds its inbox), each entry's name, kind, size and modification time, from
-  one `os.scandir` listing per folder. Nothing is opened. On Windows the
+  one `os.scandir` listing per folder, eight households at a time
+  (`firm_cache.fingerprints`). Nothing is opened. On Windows the
   listing carries size and time itself, so this costs no `stat` per file;
 - `kind` (`household`, `record_missing` or `none`) and the household's
   name, as the registry reads them;
@@ -319,13 +320,20 @@ old code's reply (2,343,016 bytes).
 
 | `firm`, 750 returns | Before | After |
 |---|---|---|
-| warm, cache kept | 52.2-53.8 s | 1.85-2.33 s |
-| cache empty (first reply of a day, after an upgrade) | 131 s first run, 53 s warm | 9.3-11.2 s |
-| one household changed | - | 2.8 s |
-| 75 households changed | - | 4.3 s |
+| warm, cache kept | 52.2-53.8 s | 1.85-2.33 s; 1.97-2.30 s with the PC at 85% CPU from another lane's tests |
+| warm, the 3.11 interpreter, PC at 85% CPU | - | 2.64-2.71 s |
+| cache empty (first reply of a day, after an upgrade) | 131 s first run, 53 s warm | 9.3-11.2 s; 11.8-12.9 s at 85% CPU |
+| one household changed | - | 2.4-2.8 s |
+| 75 households changed | - | 2.75 s (threaded walk, 85% CPU); 4.3 s before the walk was threaded |
 | P118 and P119 only, no cache | - | 7.6 s |
 | `list` | 28.5 s | 3.3-4.9 s |
 | Roll Forward season, 750 + 750 (synthetic) | about 175 s (7.0 s at 150 + 150) | 0.93 s |
+
+The fingerprint walk (every folder of both trees listed) took 1.0-2.2 s one
+household at a time; `firm_cache.fingerprints` lists eight households at a
+time with `threading` (standard library; listing waits on the disk, so the
+threads overlap), 0.7 s under the same load. Each fingerprint is its own
+digest, so the answer is the one a single thread gives.
 
 The cold figure of 131 s was the first run after the sample was copied; a
 cold disk cache cannot be reproduced here without a restart, so the "cache

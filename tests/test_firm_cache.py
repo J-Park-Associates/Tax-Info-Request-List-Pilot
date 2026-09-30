@@ -191,3 +191,27 @@ def test_a_cache_that_cannot_be_written_is_logged_and_the_reply_goes_on(tmp_path
         firm_cache.save(tmp_path / "firm-view.json", firm_cache.head(tmp_path, TODAY), {"Lee Family": _entry()})
     said = " ".join(record.getMessage() for record in caplog.records)
     assert "could not be written" in said and "held by another reader" not in said
+
+
+def test_fingerprints_taken_eight_at_a_time_are_the_ones_taken_one_at_a_time(tmp_path):
+    pairs = []
+    for n in range(20):
+        private = tmp_path / "private" / f"Household {n}"
+        client = tmp_path / "clients" / f"Household {n}"
+        (private / "2025").mkdir(parents=True)
+        (private / "2025" / "record.jsonl").write_text("x" * n, encoding="utf-8")
+        client.mkdir(parents=True)
+        pairs.append((private, client))
+    _aged(tmp_path)
+    assert firm_cache.fingerprints(pairs) == [firm_cache.fingerprint(*pair) for pair in pairs]
+    assert len(set(firm_cache.fingerprints(pairs, threads=3))) == 20
+    assert firm_cache.fingerprints([]) == []
+
+
+def test_an_error_in_any_thread_is_raised_to_the_caller(tmp_path, monkeypatch):
+    def broken(*folders):
+        raise RuntimeError("a surprise")
+
+    monkeypatch.setattr(firm_cache, "fingerprint", broken)
+    with pytest.raises(RuntimeError):
+        firm_cache.fingerprints([(tmp_path, tmp_path)] * 5)

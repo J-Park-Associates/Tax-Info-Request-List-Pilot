@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 348,
     "edges": 1169,
-    "reused": 302
+    "reused": 300
   },
   "node_types": [
     "artifact",
@@ -262,7 +262,7 @@
       "id": "tracker/api.py",
       "type": "module",
       "layer": "core",
-      "sha256": "e14158a31fb52066",
+      "sha256": "5e861c7739ef61a0",
       "lines": 5864,
       "cli": "python -m tracker.api",
       "exports": [
@@ -1321,16 +1321,18 @@
       "id": "tracker/firm_cache.py",
       "type": "module",
       "layer": "core",
-      "sha256": "b1f139c72029a4d5",
-      "lines": 249,
+      "sha256": "614b029883f4d382",
+      "lines": 283,
       "exports": [
         "CACHE_FILENAME",
+        "FINGERPRINT_THREADS",
         "FORMAT",
         "KINDS",
         "RACY_SECONDS",
         "RETURN_FACTS",
         "cache_path",
         "fingerprint",
+        "fingerprints",
         "head",
         "load",
         "program_stamp",
@@ -1339,9 +1341,10 @@
       "constants": {
         "CACHE_FILENAME": "'firm-view.json'",
         "FORMAT": "1",
-        "RACY_SECONDS": "5"
+        "RACY_SECONDS": "5",
+        "FINGERPRINT_THREADS": "8"
       },
-      "role": "The firm view's cache (P120, pilot/SPEC-firm-cache.md): the file firm-view.json in the data home (cache_path, from settings.data_home, never a hard-coded folder name), its head (FORMAT, program_stamp - every tracker/*.py file's name, size and time, or the packaged executable's, and the Python version - the clients root, the data home, the day and settings.json's size and time), each household's fingerprint (every entry under its private folder and its client folder: name, kind, size, modification time, one os.scandir listing per folder, nothing opened), and load/save (a digest over the kept households; a damaged, foreign, other-day or other-program file is set aside and said on the error log by its reason, never a client's words). No CLI.",
+      "role": "The firm view's cache (P120, pilot/SPEC-firm-cache.md): the file firm-view.json in the data home (cache_path, from settings.data_home, never a hard-coded folder name), its head (FORMAT, program_stamp - every tracker/*.py file's name, size and time, or the packaged executable's, and the Python version - the clients root, the data home, the day and settings.json's size and time), each household's fingerprint (every entry under its private folder and its client folder: name, kind, size, modification time, one os.scandir listing per folder, nothing opened; fingerprints() takes eight households at a time with threading), and load/save (a digest over the kept households; a damaged, foreign, other-day or other-program file is set aside and said on the error log by its reason, never a client's words). No CLI.",
       "notes": "Layer 0: the standard library, settings, fsio and errors. It decides nothing about rows: api._firm_from_cache reads, decides what is kept and recomputes the practice-wide facts (mark_superseded, why_skipped, open_years) every reply. fingerprint() returns None - read fresh, never kept - for a folder that cannot be listed, a link or junction, or any entry modified within RACY_SECONDS (5 s) of now or dated in the future: a file rewritten twice in one clock tick at one size would otherwise keep its fingerprint (git's racily-clean case). FORMAT rises only when this file's own shape changes; a field another lane adds to a firm row flows through as JSON, and any code change changes program_stamp, so the first reply after an upgrade rebuilds every row. Owned by tests/test_firm_cache.py; the cached reply is held to the whole walk's, field for field, in tests/test_api.py (the firm-cache tests)."
     },
     {
@@ -4571,7 +4574,7 @@
       "id": "docs/repo-map.curated.json",
       "type": "file",
       "layer": "docs",
-      "sha256": "85185b318cda6630",
+      "sha256": "a058fc53f6a2a8b0",
       "lines": 1140,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
@@ -4686,8 +4689,8 @@
       "id": "pilot/SPEC-firm-cache.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "0971558d8183bd03",
-      "lines": 402
+      "sha256": "03b55c75f436bf48",
+      "lines": 410
     },
     {
       "id": "pilot/SPEC-glass.md",
@@ -7271,8 +7274,8 @@
       "id": "tests/test_firm_cache.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "c63ccd0ad505c335",
-      "lines": 193,
+      "sha256": "0775cdffc80d5b34",
+      "lines": 217,
       "exports": [
         "TODAY",
         "test_a_cache_that_cannot_be_written_is_logged_and_the_reply_goes_on",
@@ -7281,9 +7284,11 @@
         "test_a_household_touched_within_the_racy_window_is_never_fingerprinted",
         "test_a_missing_client_folder_is_said_not_skipped",
         "test_a_missing_file_is_the_ordinary_first_reply_and_is_not_logged",
+        "test_an_error_in_any_thread_is_raised_to_the_caller",
         "test_an_unchanged_household_keeps_its_fingerprint",
         "test_another_head_is_not_used",
         "test_every_kind_of_change_under_either_folder_changes_the_fingerprint",
+        "test_fingerprints_taken_eight_at_a_time_are_the_ones_taken_one_at_a_time",
         "test_the_cache_lives_in_the_data_folder_and_is_named_once",
         "test_the_head_names_the_format_the_program_the_root_the_data_folder_the_day_and_the_settings",
         "test_the_program_stamp_follows_the_packaged_executable",

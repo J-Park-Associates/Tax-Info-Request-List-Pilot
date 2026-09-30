@@ -5618,8 +5618,8 @@ def _firm_from_cache(root: Path, today: dt.date) -> list[_FirmShown]:
     head = firm_cache.head(root, today)
     where = firm_cache.cache_path()
     kept = firm_cache.load(where, head)
-    prints = {folder: firm_cache.fingerprint(folder, layout.client_household_dir(private.parent, folder.name))
-              for folder in folders}
+    prints = dict(zip(folders, firm_cache.fingerprints(
+        [(folder, layout.client_household_dir(private.parent, folder.name)) for folder in folders]), strict=True))
     entries: dict[Path, dict] = {}
     for folder in folders:
         entry = kept.get(folder.name)
