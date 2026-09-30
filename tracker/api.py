@@ -1474,6 +1474,10 @@ SCREEN: dict = {
         # What choosing a side-panel page that is not built yet says, and
         # all it does (pilot P154).
         "under_construction": "Under Construction",
+        # A related link saved on the household edited, not yet on the
+        # other, whose sort holds it; saving again completes it (P170,
+        # the re-check's MUST-R1).
+        "related_pending": "Link Pending: {household} Is Sorting",
     },
     "misfits": {
         "title": "Folders Skipped",
@@ -4107,7 +4111,7 @@ def _related_from_spec(sent: object, household_dir: Path) -> tuple[str, ...]:
     return tuple(found[layout.name_key(name)] for name in wanted)
 
 
-def _mirror_related(household_dir: Path, after: tuple[str, ...]) -> None:
+def _mirror_related(household_dir: Path, after: tuple[str, ...]) -> list[str]:
     """Make every other household's record agree with the related list a
     person just saved here (pilot P170): each household it names names this
     one, and every other household no longer names this one. It reconciles
@@ -4122,24 +4126,37 @@ def _mirror_related(household_dir: Path, after: tuple[str, ...]) -> None:
     lock** (the review's S1): one lock at a time, never two, so no lock
     order is needed, and a change another writer made to that household
     before the lock is kept, since the record is read fresh under it. A
-    lock that is held elsewhere is refused by name
-    (``EngagementLockedError``), never waited on or skipped."""
+    lock that is held elsewhere is not waited on: that household is
+    returned as pending, the household edited stays saved, and the caller
+    says the link is not yet made (the re-check's MUST-R1)."""
     here = layout.name_key(household_dir.name)
     wanted = {layout.name_key(one) for one in after}
     private = household_dir.parent
     names = [one.name for one in private.iterdir() if one.is_dir() and layout.name_key(one.name) != here]
     practice = households_named(private, names).households if names else []
+    pending: list[str] = []
     for other in practice:
+        # A household whose record already agrees - it names this one
+        # exactly when the saved list names it - is left alone: no lock is
+        # taken and nothing is written (the re-check's MUST-R1: a
+        # contact-only save touches no other household).
         named = any(layout.name_key(one) == here for one in other.info.related)
-        if not named and layout.name_key(other.name) not in wanted:
+        if named == (layout.name_key(other.name) in wanted):
             continue
-        with engagement_lock(other.path):
-            info = load_household_info(other.path)
-            kept = tuple(one for one in info.related if layout.name_key(one) != here)
-            if layout.name_key(other.name) in wanted:
-                kept += (household_dir.name,)
-            if kept != info.related:
-                save_household(other.path, replace(info, related=kept), lock_held=True)
+        # A household another pass holds is not waited on and does not undo
+        # this save: its link is said as not yet made, and saving again
+        # after its sort completes it (the repair above).
+        try:
+            with engagement_lock(other.path):
+                info = load_household_info(other.path)
+                kept = tuple(one for one in info.related if layout.name_key(one) != here)
+                if layout.name_key(other.name) in wanted:
+                    kept += (household_dir.name,)
+                if kept != info.related:
+                    save_household(other.path, replace(info, related=kept), lock_held=True)
+        except EngagementLockedError:
+            pending.append(other.name)
+    return pending
 
 
 def _cmd_edit_household(argv: list[str]) -> dict:
@@ -4186,7 +4203,11 @@ def _cmd_edit_household(argv: list[str]) -> dict:
     )
     saved = save_household(household_dir, info)
     if "related" in spec:
-        _mirror_related(household_dir, info.related)
+        # The household edited is saved whatever the other side says; a
+        # household another pass holds is named in a notice, never a
+        # failure (the re-check's MUST-R1).
+        for name in _mirror_related(household_dir, info.related):
+            _warn(SCREEN["notices"]["related_pending"].format(household=name))
     # The household's members, contact and link are in the list (decision 194).
     return _with_list({"saved": {"household": list(saved.fields)}, "state": _state(engagement)})
 

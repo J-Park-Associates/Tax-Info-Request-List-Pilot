@@ -9142,3 +9142,57 @@ def test_the_other_households_record_is_read_and_written_inside_its_own_lock(cap
     after = households.load_household_info(lee_dir)
     assert after.related == ("Park Family",)
     assert said == ["refused"] or after.contact == "Changed Meanwhile", (said, after.contact)
+
+
+def test_a_contact_only_save_touches_no_linked_household_even_while_its_sort_holds_it(capsys, demo_root):
+    """The re-check's MUST-R1 (1): the editor always sends the related list,
+    so a save that changes only the contact must not reach a linked
+    household whose record already agrees - no lock, no write, no notice -
+    and so succeeds while another pass holds that household."""
+    from tracker import ledger
+    from tracker.households import load_household_info
+    from tracker.layout import private_household_dir
+    from tracker.locking import acquire_lock, release_lock
+
+    park, _llc, _lee = three_households(capsys, demo_root)
+    assert run(capsys, "edit-household", api.ENGAGEMENT_FLAG, str(park), stdin={"related": ["Lee Family"]})[0] == 0
+    lee_dir = private_household_dir(demo_root, "Lee Family")
+    lines = len(ledger.read_events(lee_dir))
+    held = acquire_lock(lee_dir)
+    try:
+        code, payload = run(capsys, "edit-household", api.ENGAGEMENT_FLAG, str(park),
+                            stdin={"contact": "John and Mary", "related": ["Lee Family"]})
+    finally:
+        release_lock(held)
+    assert code == 0, payload
+    assert payload["warnings"] == [] and payload["saved"]["household"] == ["contact"]
+    assert len(ledger.read_events(lee_dir)) == lines
+    assert load_household_info(lee_dir).related == ("Park Family",)
+
+
+def test_a_link_to_a_household_being_sorted_saves_here_says_so_and_a_later_save_completes_it(capsys, demo_root):
+    """The re-check's MUST-R1 (2): when the other household's lock is held,
+    the household edited is saved, the reply exits 0 with a notice that the
+    link is pending on the other, and saving again once its sort is over
+    writes the other side."""
+    from tracker.households import load_household_info
+    from tracker.layout import private_household_dir
+    from tracker.locking import acquire_lock, release_lock
+
+    park, _llc, _lee = three_households(capsys, demo_root)
+    park_dir = private_household_dir(demo_root, "Park Family")
+    lee_dir = private_household_dir(demo_root, "Lee Family")
+    held = acquire_lock(lee_dir)
+    try:
+        code, payload = run(capsys, "edit-household", api.ENGAGEMENT_FLAG, str(park), stdin={"related": ["Lee Family"]})
+    finally:
+        release_lock(held)
+    assert code == 0, payload
+    assert load_household_info(park_dir).related == ("Lee Family",)
+    assert load_household_info(lee_dir).related == ()
+    assert payload["warnings"] == ["Link Pending: Lee Family Is Sorting"]
+    assert api.SCREEN["notices"]["related_pending"] == "Link Pending: {household} Is Sorting"
+
+    code, payload = run(capsys, "edit-household", api.ENGAGEMENT_FLAG, str(park), stdin={"related": ["Lee Family"]})
+    assert code == 0 and payload["warnings"] == [], payload
+    assert load_household_info(lee_dir).related == ("Park Family",)

@@ -402,8 +402,13 @@ color) have the linked to information appear when you click the tooltip."
   the side that lacked it (the editor shows it there, from the other
   record) clears it from the side that had it. Each other household is
   read and written **inside its own lock** (review S1), so a change another
-  writer makes there cannot be reverted; a lock held elsewhere is refused
-  by name.
+  writer makes there cannot be reverted. A household whose record already
+  agrees is left alone - no lock, no write - so a save that changes only
+  the contact never reaches a linked household. When another household's
+  lock is held (its sort is running), the household edited is still saved
+  and the reply exits 0 with the notice **"Link Pending: {household} Is
+  Sorting"** (`vocab.screen.notices.related_pending`); saving again after
+  that sort writes the other side (re-check MUST-R1).
 - **Only households that exist.** Edit Household offers the other
   households of the `list` reply; the command refuses a name that is not a
   household under the clients root (`RELATED_UNKNOWN`), the household

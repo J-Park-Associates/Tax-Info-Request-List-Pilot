@@ -295,3 +295,4 @@ api.SCREEN	icons.more_actions		new	More Actions	2	Needs Review group button tool
 api.SCREEN	icons.remove_filter		new	Remove Filter	2	Client Type chip dismiss tooltip and name	Pilot 0.3 lane 4b, SPEC-lists 15.3 (P153)	Remove Filter	new
 api._vocab	household.related_label		new	Related Households	2	Edit Household	Pilot 0.3 lane 4b, SPEC-lists 9 (P170)	Related Households	new
 api._vocab	household.add_related		new	Add Related Household	3	Edit Household button	Pilot 0.3 lane 4b, SPEC-lists 9 (P170)	Add Related Household	new
+api.SCREEN	notices.related_pending		new	Link Pending: {household} Is Sorting	5	Notice after Edit Household when the linked household is being sorted	Pilot 0.3 lane 4b, SPEC-lists 9.1 (P170; re-check MUST-R1): this household is saved, the other side waits; saving again completes it	Link Pending: {household} Is Sorting	new
