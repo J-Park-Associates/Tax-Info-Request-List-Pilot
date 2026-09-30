@@ -483,11 +483,10 @@ function drawReminder(card) {
   $("reminder-held").textContent = card.held_too_long
     ? `${holdLine(rows, unsorted)}\n${card.held_too_long}`
     : holdLine(rows, unsorted);
-  show("reminder-held-rows", (card.held || []).map((row) =>
-    el("li", {},
-      el("span", { className: "rem-hold-id" }, row.identifier),
-      ` ${row.document}`,
-      el("span", { className: "rem-hold-why" }, row.reason))));
+  // A held row is named by its document alone: never its request code, and
+  // the engine's long hold sentence (row.reason) is the status page's, not
+  // the sheet's (SPEC 7.2, 11.1).
+  show("reminder-held-rows", (card.held || []).map((row) => el("li", {}, row.document)));
 
   // The four rungs, each in its own colour, the one in force pressed. Live
   // only when there is a generated letter to re-stage: a held reminder and

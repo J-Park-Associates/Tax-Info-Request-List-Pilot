@@ -258,7 +258,7 @@
   function reminderReply(body, path, stage) {
     if (!body.draft) return { reminder: null, not_yet: vocab.reminder.not_yet };
     const at = stage || body.draft.stage;
-    const held = Array.from({ length: body.draft.held }, (_, i) => ({ identifier: `R${String(i + 1).padStart(2, "0")}`, document: `Held request ${i + 1}`, reason: REASON("unmatched") }));
+    const held = Array.from({ length: body.draft.held }, (_, i) => ({ identifier: `R${String(i + 1).padStart(2, "0")}`, document: `Held request ${i + 1}`, reason: "held - a file the client sent for this could not be used (it is a photo); a person decides whether the client resends it or we file what came" }));
     const letter = {
       greeting: "Hi John and Jane,", progress: "", intro: "A few documents are still needed for your 2025 return.",
       sections: [{ heading: "Still needed", items: ["1099-B - Northwind Brokerage", "K-1 - Hillside Partners LP"] }],

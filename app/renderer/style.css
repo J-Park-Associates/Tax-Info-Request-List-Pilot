@@ -130,8 +130,6 @@ body {
   color: var(--text);
 }
 .rem-hold-rows li:last-child { margin-bottom: 0; }
-.rem-hold-rows .rem-hold-why { display: block; font-size: 12.5px; font-weight: 400; color: var(--subtle); }
-.rem-hold-rows .rem-hold-id { font-weight: 700; color: var(--navy); }
 
 .rem-stages { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
 .rem-stage {

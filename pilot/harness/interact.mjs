@@ -405,6 +405,8 @@ const settle = (page) => page.waitForTimeout(250);
   check("a return page's reminder has no Next", await page.evaluate(() => document.getElementById("sheet-next").hidden), null);
   const held = await page.textContent("#reminder-held");
   check("held says so in the API's words and offers no Copy or Approve", held.length > 0 && await page.evaluate(() => document.getElementById("reminder-actions").classList.contains("hidden")), held);
+  const heldRows = await page.evaluate(() => [...document.querySelectorAll("#reminder-held-rows li")].map((li) => li.textContent));
+  check("a held row draws its document alone: no request code, no hold sentence", heldRows.length > 0 && heldRows.every((t) => /^Held request \d$/.test(t)), heldRows);
   await context.close();
 }
 

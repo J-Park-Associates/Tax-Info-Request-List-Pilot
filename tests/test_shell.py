@@ -1803,6 +1803,16 @@ def test_sheet_js_draws_the_names_it_is_given_and_types_none_and_uses_the_region
     assert "innerHTML" not in text and "pagesWhere($(\"page\"))" in text
 
 
+def test_a_held_reminder_row_draws_its_document_alone_never_a_code_or_the_hold_sentence():
+    """The engine's hold sentence is 25 words and the row's identifier is a
+    request code: neither is drawn in the sheet (SPEC 7.2, 11.1)."""
+    text = stripped_js("app.js")
+    start = text.index('show("reminder-held-rows"')
+    drawn = text[start:text.index("\n", start)]
+    assert "row.document" in drawn and "row.identifier" not in drawn and "row.reason" not in drawn
+    assert "rem-hold-id" not in text and "rem-hold-why" not in text
+
+
 # ── the shell's other side of the window ────────────────────────────────────
 
 def test_a_menu_channel_that_throws_is_a_notice_and_never_stops_a_route_change(tmp_path):

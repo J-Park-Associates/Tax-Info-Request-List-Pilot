@@ -234,7 +234,6 @@ button, input, select, textarea {
 
 /* Caption size: every 11, 11.5, 12 and 12.5px of style.css. */
 .btn-small, .summary, .rem-status, .rem-edited, .rem-stage,
-.rem-hold-rows .rem-hold-why,
 .req-side,
 .field span, .tmpl-head, .tmpl-rules, .editor-table th,
 .editor-table .ed-learned, .editor-table .ed-unlearn,
@@ -248,7 +247,7 @@ button, input, select, textarea {
 /* Two weights only: every 700 of style.css is 600, and so is the
    user-agent bold of th, legend and strong. */
 th, legend, strong,
-.rem-hold-rows .rem-hold-id, .rem-stage[aria-pressed="true"],
+.rem-stage[aria-pressed="true"],
 .req-id, .tmpl-head, .tmpl-id, .editor-table th, .side,
 .ed-engagement legend, .chosen-badge {
   font-weight: var(--fw-strong);
