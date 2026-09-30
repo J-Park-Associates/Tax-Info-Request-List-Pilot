@@ -15,9 +15,9 @@
     "a person sends the draft"
   ],
   "counts": {
-    "nodes": 345,
+    "nodes": 346,
     "edges": 1157,
-    "reused": 302
+    "reused": 303
   },
   "node_types": [
     "artifact",
@@ -5104,6 +5104,13 @@
       "layer": "docs",
       "sha256": "7c02c87c49fd8232",
       "lines": 114
+    },
+    {
+      "id": "pilot/handoffs/wincheck-fixes-build.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "c784e44fb977d749",
+      "lines": 117
     },
     {
       "id": "pilot/harness/README.md",
