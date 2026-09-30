@@ -18,7 +18,7 @@
 ::selection { background: var(--bg-selected); color: var(--text); }
 input, textarea, select { caret-color: var(--text); accent-color: var(--accent); }
 #page, #sheet-body, .modal { scrollbar-color: var(--scroll-thumb) transparent; }
-.tabular, .side-count, .group-count, .row-date, .figure-number, .last-sort-text {
+.tabular, .side-count, .group-count, .list-count, .row-date, .figure-number, .last-sort-text, .page-count, .reason-card-number, .switch-count, .group-docs {
   font-variant-numeric: tabular-nums;
 }
 :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
@@ -35,7 +35,7 @@ input, textarea, select { caret-color: var(--text); accent-color: var(--accent);
 
 #side:not(.hidden) {
   display: grid;
-  grid-template-rows: var(--size-bar) minmax(0, 1fr) auto;
+  grid-template-rows: auto minmax(0, 1fr) auto;
   min-height: 0;
   background: var(--bg-nav);
   border-right: 1px solid var(--border);
@@ -49,12 +49,42 @@ input, textarea, select { caret-color: var(--text); accent-color: var(--accent);
   background: var(--brand);
 }
 #side-brand img { height: var(--size-control); width: auto; }
-
-#side-sections {
-  list-style: none;
-  padding: var(--sp-2) 0;
-  overflow-y: auto;
+/* The brand band (pilot SPEC-lists 15.1, Q14): the logo, whose wordmark is
+   the firm's name, and under it the app's name, on the navy band in both
+   themes. The firm's name is there as words for a screen reader too. */
+#side-brand:not(.hidden) {
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: var(--sp-1);
+  min-height: var(--size-bar);
+  padding-block: var(--sp-2);
 }
+#side-brand-words:not(.hidden) { display: grid; min-width: 0; color: var(--window-light); }
+#side-brand-product { font-size: var(--fs-caption); line-height: var(--lh-caption); font-weight: var(--fw-strong); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* The items scroll rather than cut one at a short window (P153). */
+#side-scroll { min-height: 0; overflow-y: auto; padding-bottom: var(--sp-2); }
+#side-sections, .side-list {
+  list-style: none;
+  padding: var(--sp-2) 0 0;
+  margin: 0;
+}
+.side-list li:not(.hidden) { display: block; margin-bottom: var(--sp-1); }
+.side-heading {
+  margin: var(--sp-4) var(--sp-4) 0;
+  font-size: var(--fs-caption);
+  line-height: var(--lh-caption);
+  font-weight: var(--fw-strong);
+  color: var(--text-secondary);
+}
+.side-icon { color: var(--text-secondary); }
+.side-section[aria-current="page"] .side-icon { color: var(--accent); }
+.side-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Not built yet (P154): muted but readable, and still a control; its long
+   name wraps to a second line rather than lose "(Under Construction)". */
+.side-section.is-soon:not(.hidden) { color: var(--text-secondary); height: auto; min-height: var(--size-row); padding-block: var(--sp-1); }
+.side-section.is-soon .side-name { white-space: normal; overflow: visible; }
 #side-sections li:not(.hidden) { display: block; margin-bottom: var(--sp-1); }
 
 .side-section:not(.hidden) {
@@ -101,12 +131,22 @@ input, textarea, select { caret-color: var(--text); accent-color: var(--accent);
   font-weight: var(--fw-regular);
   color: var(--text-caption);
 }
+/* A count above zero is a badge (P153): Needs Review's amber, the rest neutral. */
+.side-count:not(:empty) {
+  padding: 0 var(--sp-2);
+  border-radius: var(--radius);
+  background: var(--bg-pressed);
+  color: var(--text-secondary);
+  font-weight: var(--fw-strong);
+}
+.side-section[data-section="needs-review"] .side-count:not(:empty) { background: var(--warn-bg); color: var(--st-attention); }
 
 #side-foot:not(.hidden) {
   display: grid;
   gap: var(--sp-4);
   padding: var(--sp-4);
 }
+#side-foot .side-section:not(.hidden) { width: 100%; margin-inline: 0; }
 
 /* The last-sort line (SPEC 8.3). */
 #last-sort:not(.hidden) {
@@ -345,14 +385,14 @@ input, textarea, select { caret-color: var(--text); accent-color: var(--accent);
   padding: 0 var(--sp-8);
 }
 .group-head.is-first { margin-top: var(--sp-6); }
-.group-title {
+.group-title, .list-title {
   font-family: var(--font-display);
   font-size: var(--fs-h2);
   line-height: var(--lh-h2);
   font-weight: var(--fw-strong);
   color: var(--text);
 }
-.group-count {
+.group-count, .list-count {
   font-size: var(--fs-caption);
   line-height: var(--lh-caption);
   color: var(--text-caption);
@@ -465,6 +505,91 @@ input, textarea, select { caret-color: var(--text); accent-color: var(--accent);
 .is-done { color: var(--st-done); }
 .is-plain { color: var(--text-secondary); font-weight: var(--fw-regular); }
 
+/* Three levels on Needs Review (pilot SPEC-lists 5, P136): the return is the
+   heading's bold link; the household beside it a small regular grey link
+   (still underlined, blue on hover); a file's own name, on every page, an
+   ordinary-weight link - an item, not a heading. */
+.row-file .row-name { font-weight: var(--fw-regular); }
+.group-count .row-link { color: var(--text-secondary); }
+.group-count .row-link:hover { color: var(--link); }
+
+/* The column headers of the four firm lists (pilot SPEC-lists 3 and 4;
+   P135, P137): the rows' own grid, one short word each, a drawn arrow on
+   the column that orders the list, and a grip on each right edge. A list is
+   never narrower than its columns: widened past the window, the page area
+   scrolls sideways, header and rows together, and the window never does. */
+.rows, .col-table {
+  min-width: calc(var(--size-col-name) + var(--size-col-detail) + var(--size-col-status) + var(--size-col-end) + 3 * var(--sp-4) + 2 * var(--sp-8));
+}
+.col-heads:not(.hidden) {
+  display: grid;
+  grid-template-columns: minmax(var(--size-col-name), 1fr) var(--size-col-detail) var(--size-col-status) var(--size-col-end);
+  align-items: center;
+  column-gap: var(--sp-4);
+  min-height: var(--size-control-sm);
+  padding: 0 var(--sp-8);
+  border-bottom: 1px solid var(--border);
+}
+.col-cell { position: relative; min-width: 0; }
+.col-cell[data-cell="end"] { text-align: right; }
+.col-head:not(.hidden) {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  max-width: 100%;
+  min-height: var(--size-control-sm);
+  padding: 0 var(--sp-1);
+  margin: 0 calc(-1 * var(--sp-1));
+  border: 0;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--text-secondary);
+  font-family: inherit;
+  font-size: var(--fs-caption);
+  line-height: var(--lh-caption);
+  font-weight: var(--fw-strong);
+  cursor: pointer;
+  overflow: hidden;
+  transition: background-color var(--dur) var(--ease);
+}
+.col-head:hover { background: var(--bg-hover); }
+.col-head:active { background: var(--bg-pressed); }
+.col-head:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+.col-word { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* The chevron (SPEC-shell 3.8) turned up for the natural order, down for its
+   reverse, and shown only on the column that orders the list. */
+.col-arrow { flex: none; visibility: hidden; transform: rotate(-90deg); transition: transform var(--dur) var(--ease); }
+.col-cell[aria-sort="ascending"] .col-arrow { visibility: visible; }
+.col-cell[aria-sort="descending"] .col-arrow { visibility: visible; transform: rotate(90deg); }
+/* 8px wide, centred in the 16px gap after the column; its 1px line shows
+   while the header row is hovered, 2px in the focus colour while its header
+   has keyboard focus or it is dragged. */
+.col-grip:not(.hidden) {
+  display: block;
+  position: absolute;
+  inset-block: 0;
+  inset-inline-end: calc(-1 * var(--sp-4) + var(--sp-1));
+  width: var(--sp-2);
+  cursor: col-resize;
+  touch-action: none;
+}
+.col-grip::after {
+  content: "";
+  position: absolute;
+  inset-block: var(--sp-1);
+  inset-inline-start: calc(50% - var(--size-hair) / 2);
+  width: var(--size-hair);
+}
+.col-heads:hover .col-grip::after { background: var(--border-input); }
+.col-head:focus-visible + .col-grip::after, .col-grip.is-dragging::after {
+  inset-inline-start: calc(50% - var(--size-hair));
+  width: calc(2 * var(--size-hair));
+  background: var(--focus);
+}
+/* Fitting a column (a double-click on its grip): every cell on one line
+   while it is measured. */
+#page.is-measuring .row-name, #page.is-measuring .row-detail, #page.is-measuring .row-status { white-space: nowrap; }
+
 /* Loading: outline rows in the row grid (SPEC 6, states). */
 .row-skeleton:not(.hidden) {
   display: grid;
@@ -552,8 +677,18 @@ input, textarea, select { caret-color: var(--text); accent-color: var(--accent);
   color: var(--text-caption);
 }
 
-/* The Overview's three figures. */
-.figures:not(.hidden) { display: flex; gap: var(--sp-12); margin: var(--sp-6) var(--sp-8) 0; }
+/* The Overview's three figures, each a raised card with its status's icon (P145). */
+.figures:not(.hidden) { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--sp-4); margin: var(--sp-6) var(--sp-8) 0; }
+.figure:not(.hidden) {
+  display: grid;
+  gap: var(--sp-2);
+  padding: var(--sp-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-raised);
+}
+.figure-top:not(.hidden) { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2); }
+.figure-icon:not(.hidden) { display: inline-grid; place-items: center; }
 .figure-number:not(.hidden) {
   display: block;
   font-family: var(--font-display);
@@ -678,6 +813,232 @@ input, textarea, select { caret-color: var(--text); accent-color: var(--accent);
 .misfit-name { font-weight: var(--fw-strong); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .misfit-why { color: var(--text-secondary); white-space: nowrap; }
 
+/* ── The raised lists (pilot SPEC-lists 10-17; P145, P149, P152-P154,
+   P171-P178) ──────────────────────────────────────────────────────────── */
+
+/* Every second row of a firm list is lightly shaded; the dividers and the
+   words still carry the rows (the shading is decoration). */
+#page:not([data-list=""]) .rows > .row:nth-child(even):not(.is-active):not(:hover) { background: var(--bg-band); }
+/* The header row stays in place while the page scrolls (P174). */
+.col-table { position: sticky; top: 0; z-index: 1; background: var(--bg-page); }
+
+/* A status as a pill: a dot (or a reason's icon) and the words, in the
+   status's colour on its tint; caption size, so the longest reason fits
+   Needs Review's Reason column at 1100px (SPEC-lists 16). */
+.pill:not(.hidden) {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  max-width: 100%;
+  padding: 0 var(--sp-2);
+  border-radius: var(--radius);
+  font-size: var(--fs-caption);
+  line-height: var(--lh-caption);
+  font-weight: var(--fw-strong);
+  vertical-align: middle;
+}
+.is-attention > .pill { background: var(--warn-bg); }
+.is-waiting > .pill { background: var(--info-bg); }
+.is-done > .pill { background: var(--ok-bg); }
+.is-plain > .pill { background: var(--bg-hover); }
+.pill-dot:not(.hidden) { display: block; flex: none; width: var(--sp-2); height: var(--sp-2); border-radius: var(--radius); background: currentColor; }
+.pill-word { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.row-wrap .pill-word { white-space: normal; }
+
+/* The form chip before a return's name, and Needs Review's request chip. */
+.form-tag:not(.hidden), .request-tag:not(.hidden) {
+  display: inline-block;
+  margin-right: var(--sp-2);
+  padding: 0 var(--sp-1);
+  border-radius: var(--radius-control);
+  background: var(--bg-pressed);
+  color: var(--text-secondary);
+  font-size: var(--fs-caption);
+  line-height: var(--lh-caption);
+  font-weight: var(--fw-strong);
+  vertical-align: middle;
+}
+.request-tag:not(.hidden) { max-width: 100%; margin-right: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: var(--fw-regular); }
+
+/* The Linked Households mark (P141, P171): a link icon in its own violet. */
+.link-mark:not(.hidden) {
+  display: inline-grid;
+  place-items: center;
+  width: var(--size-control-sm);
+  height: var(--size-control-sm);
+  margin-left: var(--sp-1);
+  border: 1px solid transparent;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--st-linked);
+  vertical-align: middle;
+  cursor: pointer;
+  transition: background-color var(--dur) var(--ease);
+}
+.link-mark:hover { background: var(--bg-pressed); }
+#link-panel:not(.hidden) {
+  position: fixed;
+  z-index: 150;
+  min-width: var(--size-find);
+  max-width: var(--size-tip-max);
+  padding: var(--sp-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-raised);
+  box-shadow: var(--shadow-overlay);
+  animation: link-in var(--dur) var(--ease);
+}
+@keyframes link-in { from { opacity: 0; } to { opacity: 1; } }
+/* The panel itself takes focus only when it has no name to link (every
+   one retired); it shows the ring then, as every control does (S3). */
+#link-panel:focus-visible, .link-to:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.link-list { list-style: none; margin: 0; padding: 0; }
+.link-line:not(.hidden) { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-4); min-height: var(--size-control); }
+.link-to {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--link);
+  font-family: inherit;
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
+  font-weight: var(--fw-strong);
+  text-align: left;
+  text-decoration: underline;
+  text-underline-offset: var(--sp-1);
+  cursor: pointer;
+}
+.link-name { color: var(--text); }
+.link-kind { font-size: var(--fs-caption); line-height: var(--lh-caption); color: var(--text-caption); white-space: nowrap; }
+
+/* Overview's tabs at the right of Work Waiting (P145). */
+.switch.is-tabs:not(.hidden) { margin: 0 0 0 auto; }
+.switch-count:not(.hidden) {
+  display: inline-block;
+  margin-left: var(--sp-2);
+  padding: 0 var(--sp-1);
+  border-radius: var(--radius-control);
+  background: var(--bg-pressed);
+  font-size: var(--fs-caption);
+  line-height: var(--lh-caption);
+}
+
+/* A return page's three sections in their status colours (P176): a bar at
+   the heading's edge, the section's icon, a tinted count badge and a faint
+   edge down its rows. The heading's words stay the text colour. */
+.group-head.is-section { position: relative; }
+.group-head.is-section::before {
+  content: "";
+  position: absolute;
+  left: var(--sp-6);
+  top: calc(50% - var(--size-icon) / 2);
+  width: var(--size-pill);
+  height: var(--size-icon);
+  border-radius: var(--radius-control);
+}
+.section-needs::before { background: var(--st-attention); }
+.section-waiting::before { background: var(--st-waiting); }
+.section-done::before { background: var(--st-done); }
+.group-head.is-section:not(.hidden) { align-items: center; }
+.group-icon:not(.hidden) { display: inline-grid; place-items: center; align-self: center; }
+.group-count.is-badge { padding: 0 var(--sp-2); border-radius: var(--radius); font-weight: var(--fw-strong); }
+.group-count.is-badge.is-attention { background: var(--warn-bg); }
+.group-count.is-badge.is-waiting { background: var(--info-bg); }
+.group-count.is-badge.is-done { background: var(--ok-bg); }
+/* The edge sits under the heading's bar, 24px in, and moves no row by a pixel. */
+.rows.edge-needs .row, .rows.edge-waiting .row, .rows.edge-done .row { position: relative; }
+.rows.edge-needs .row::before, .rows.edge-waiting .row::before, .rows.edge-done .row::before {
+  content: "";
+  position: absolute;
+  left: var(--sp-6);
+  top: 0;
+  bottom: 0;
+  width: calc(2 * var(--size-hair));
+}
+.rows.edge-needs .row::before { background: var(--st-attention); }
+.rows.edge-waiting .row::before { background: var(--st-waiting); }
+.rows.edge-done .row::before { background: var(--st-done); }
+
+/* Needs Review (P149): the reason cards, and each return as a card group. */
+.reason-cards:not(.hidden) {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  margin: var(--sp-4) var(--sp-8) var(--sp-6);
+}
+.reason-card:not(.hidden) {
+  display: grid;
+  gap: var(--sp-1);
+  min-width: var(--size-crumb-household);
+  padding: var(--sp-2) var(--sp-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-raised);
+  color: var(--text);
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--dur) var(--ease);
+}
+.reason-card:hover { background: var(--bg-hover); }
+.reason-card[aria-pressed="true"] { background: var(--bg-selected); border-color: var(--accent); }
+.reason-card-top:not(.hidden) { display: flex; align-items: center; gap: var(--sp-1); }
+.reason-card-word { font-size: var(--fs-caption); line-height: var(--lh-caption); font-weight: var(--fw-strong); color: var(--text-secondary); }
+.reason-card-number { font-family: var(--font-display); font-size: var(--fs-h1); line-height: var(--lh-h1); font-weight: var(--fw-strong); }
+.reason-card-icon:not(.hidden) { display: inline-grid; place-items: center; }
+.return-card:not(.hidden) {
+  display: block;
+  margin: var(--sp-4) var(--sp-6) 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-raised);
+  overflow: hidden;
+}
+.return-card .group-head:not(.hidden) { align-items: center; margin: 0; padding: var(--sp-2); }
+.return-card .row:not(.hidden) { padding: 0 var(--sp-2); }
+.return-card .row-name { padding-left: var(--sp-4); }
+/* Inside a card the rows' own padding is 8px, so the least width is the columns and 16px. */
+.return-card .rows {
+  min-width: calc(var(--size-col-name) + var(--size-col-detail) + var(--size-col-status) + var(--size-col-end) + 3 * var(--sp-4) + 2 * var(--sp-2));
+}
+.row-icon:not(.hidden) { display: inline-grid; place-items: center; margin-right: var(--sp-2); color: var(--text-secondary); vertical-align: middle; }
+.group-docs {
+  margin-left: auto;
+  padding: 0 var(--sp-2);
+  border-radius: var(--radius);
+  background: var(--bg-pressed);
+  color: var(--text-secondary);
+  font-size: var(--fs-caption);
+  line-height: var(--lh-caption);
+  white-space: nowrap;
+}
+.page-head.group-head:not(.hidden) { align-items: baseline; }
+
+/* The page buttons (P152, P174). */
+.page-foot:not(.hidden) {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-4);
+  margin: var(--sp-4) var(--sp-8) 0;
+}
+.page-count { font-size: var(--fs-caption); line-height: var(--lh-caption); color: var(--text-caption); }
+.page-steps:not(.hidden) { display: inline-flex; gap: var(--sp-2); }
+
+/* Clients: the switch and the Client Type chip on one line (P153). */
+.clients-bar:not(.hidden) { display: flex; align-items: center; gap: var(--sp-4); }
+.type-filter:not(.hidden) {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  padding: 0 0 0 var(--sp-2);
+  border: 1px solid var(--border-input);
+  border-radius: var(--radius);
+  background: var(--bg-raised);
+  font-weight: var(--fw-strong);
+}
+.type-dismiss.icon-button:not(.hidden) { width: var(--size-control-sm); height: var(--size-control-sm); }
+
 /* ── Tooltip (SPEC 8.5) ──────────────────────────────────────────────── */
 
 #tip:not([hidden]) {
@@ -721,6 +1082,12 @@ input, textarea, select { caret-color: var(--text); accent-color: var(--accent);
   .group-step { color: LinkText; }
   .row-name, .row-detail, .row-status, .row-date, .row-step { color: inherit; }
   .row-link { color: LinkText; }
+  .group-count .row-link { color: LinkText; }
+  /* The column headers (SPEC-lists 4): words and hairline in the system's
+     text colour; the grips always shown, so they can be found. */
+  .col-head { color: CanvasText; }
+  .col-heads { border-bottom: 1px solid CanvasText; }
+  .col-grip::after { background: CanvasText; }
   /* The focused row has forced-color-adjust: none, so its own colours would
      show on Highlight: the step's link colour (.row-step:not(.hidden)) and the
      status tones outrank the inherit above. Every part takes HighlightText. */
@@ -728,6 +1095,16 @@ input, textarea, select { caret-color: var(--text); accent-color: var(--accent);
   .rows:focus-visible .row.is-active .row-status, .rows:focus-visible .row.is-active .row-date,
   .rows:focus-visible .row.is-active .row-step, .rows:focus-visible .row.is-active .row-link { color: HighlightText; }
   #notices .notice { border: 1px solid CanvasText; background: Canvas; color: CanvasText; }
+  /* The raised lists (SPEC-lists 16): pills, chips, cards and badges keep an
+     edge; shadings go; the link mark is a button with an edge; a section's
+     icon and words carry it. */
+  .pill, .form-tag, .request-tag, .group-count.is-badge, .group-docs, .side-count:not(:empty), .switch-count, .type-filter,
+  .figure, .reason-card, .return-card, #link-panel { border: 1px solid CanvasText; background: Canvas; color: CanvasText; }
+  .reason-card[aria-pressed="true"] { background: Highlight; color: HighlightText; forced-color-adjust: none; }
+  .link-mark { color: ButtonText; border-color: CanvasText; }
+  .link-to { color: LinkText; }
+  .side-section.is-soon, .side-heading, .link-kind, .page-count { color: CanvasText; }
+  #side-brand-words { color: CanvasText; }
   .last-sort-bar { background: Canvas; border: 1px solid CanvasText; }
   .last-sort-bar > span { background: Highlight; }
   #sheet-scrim { background: transparent; }

@@ -8210,7 +8210,8 @@ def test_firm_reply_names_its_fields_as_the_spec_does_and_carries_year_and_handl
     mixed, _quiet, _retired = _a_practice_for_the_firm_view(capsys, demo_root)
     _code, firm = run(capsys, "firm")
     [file] = firm["files"]
-    assert set(file) == {"return", "year", "name", "handle", "code", "received", "suggestion", "open_key"}
+    assert set(file) == {"return", "year", "name", "handle", "code", "received", "suggestion", "suggestion_short",
+                         "open_key"}
     assert file["open_key"] == "", "a program has no working copy, so no key (ruling 15)"
     assert firm["paths"] == {}
     assert file["return"] == str(mixed) and file["year"] == 2025
@@ -8220,7 +8221,7 @@ def test_firm_reply_names_its_fields_as_the_spec_does_and_carries_year_and_handl
     for one in firm["returns"]:
         assert one["year"] == 2025 and set(one) == {
             "path", "household", "label", "year", "counts", "files", "oldest", "due", "draft", "problem",
-            "paused"}
+            "paused", "form", "links"}
     assert set(firm["totals"]) == {"need", "waiting", "complete", "files", "drafts"}
 
 
@@ -9345,3 +9346,244 @@ def test_a_client_drop_named_like_the_status_page_is_seen_by_the_cache(capsys, d
     assert {one["path"]: one["draft"]["held"] for one in whole["returns"]}[str(mixed)] >= 1
     assert _cached_firm(capsys) == whole
 
+# ============ pilot P141, P170, P172: linked households and the form ===========
+
+
+def three_households(capsys, root):
+    """Park Family (a 1040), Park & Lee LLC (an 1120S) and Lee Family (a
+    1040), made the way the app makes them, each with its form recorded."""
+    for household, return_name, form in (("Park Family", "1040 - John Park", "1040"),
+                                         ("Park & Lee LLC", "1120S - Park & Lee LLC", "1120S"),
+                                         ("Lee Family", "1040 - Sam Lee", "1040")):
+        assert run(capsys, "create", stdin={
+            "household": household, "contact": "John", "return_name": return_name, "form": form,
+            "items": [{"identifier": "A01", "document": "W-2"}]})[0] == 0
+    return (where(root, "1040 - John Park", household="Park Family"),
+            where(root, "1120S - Park & Lee LLC", household="Park & Lee LLC"),
+            where(root, "1040 - Sam Lee", household="Lee Family"))
+
+
+def test_a_related_household_is_written_on_both_records_and_removed_from_both(capsys, demo_root):
+    """Pilot P170: a person marks two households related in Edit Household;
+    the save writes the mark into both records, the state names it, and
+    removing it on either side removes it from both. Nothing is inferred."""
+    from tracker.households import load_household_info
+    from tracker.layout import private_household_dir
+
+    park, llc, lee = three_households(capsys, demo_root)
+    park_dir = private_household_dir(demo_root, "Park Family")
+    lee_dir = private_household_dir(demo_root, "Lee Family")
+    llc_dir = private_household_dir(demo_root, "Park & Lee LLC")
+    assert load_household_info(park_dir).related == ()
+
+    code, payload = run(capsys, "edit-household", api.ENGAGEMENT_FLAG, str(park),
+                        stdin={"related": ["Lee Family", "park & lee llc"]})
+    assert code == 0, payload
+    assert "related" in payload["saved"]["household"]
+    assert load_household_info(park_dir).related == ("Lee Family", "Park & Lee LLC")
+    assert load_household_info(lee_dir).related == ("Park Family",)
+    assert load_household_info(llc_dir).related == ("Park Family",)
+    assert payload["state"]["household"]["related"] == ["Lee Family", "Park & Lee LLC"]
+
+    # Removed from the other side: gone from both records.
+    code, payload = run(capsys, "edit-household", api.ENGAGEMENT_FLAG, str(lee), stdin={"related": []})
+    assert code == 0, payload
+    assert load_household_info(lee_dir).related == ()
+    assert load_household_info(park_dir).related == ("Park & Lee LLC",)
+    assert load_household_info(llc_dir).related == ("Park Family",)
+    assert api._vocab()["household"]["related_label"] == "Related Households"
+    assert api._vocab()["household"]["add_related"] == "Add Related Household"
+
+
+def test_a_related_list_refuses_itself_a_blank_a_repeat_and_a_household_that_is_not_there(capsys, demo_root):
+    """Pilot P170: only another household that exists can be related, each
+    once; every refusal says the name and nothing is written."""
+    from tracker.households import load_household_info
+    from tracker.layout import private_household_dir
+
+    park, _llc, _lee = three_households(capsys, demo_root)
+    park_dir = private_household_dir(demo_root, "Park Family")
+    for sent, said in ((["Park Family"], api.RELATED_REFUSED.format(household="Park Family")),
+                       ([""], api.RELATED_REFUSED.format(household="(blank)")),
+                       ("Lee Family", api.RELATED_NOT_A_LIST), ([1], api.RELATED_NOT_A_LIST),
+                       (["Lee Family", "lee family"], api.RELATED_REFUSED.format(household="lee family")),
+                       (["Nobody Here"], api.RELATED_UNKNOWN.format(household="Nobody Here"))):
+        code, payload = run(capsys, "edit-household", api.ENGAGEMENT_FLAG, str(park), stdin={"related": sent})
+        assert code == 1 and payload["error"] == said, (sent, payload)
+    assert load_household_info(park_dir).related == ()
+
+
+def test_the_list_and_the_firm_carry_each_households_links_both_ways_and_each_returns_form(capsys, demo_root):
+    """Pilot P141, P172: a feed is Also Feeds on the feeding household and
+    Fed By on the fed one; a related mark is Related on both, even when
+    only one record names it; and every return carries its recorded form.
+    The fields are additive: nothing already in either reply moves."""
+    from dataclasses import replace
+
+    from tracker.households import load_household_info, save_household
+    from tracker.layout import private_household_dir
+
+    park, llc, lee = three_households(capsys, demo_root)
+    assert run(capsys, "edit-household", api.ENGAGEMENT_FLAG, str(park),
+               stdin={"feeds": [{"household": "Park & Lee LLC", "return_name": "1120S - Park & Lee LLC"}]})[0] == 0
+    # A related mark on one record only (a save that stopped half way) still shows on both ends.
+    lee_dir = private_household_dir(demo_root, "Lee Family")
+    save_household(lee_dir, replace(load_household_info(lee_dir), related=("Park Family",)))
+
+    _code, listed = run(capsys, "list")
+    links = {one["name"]: [(link["name"], link["kind"]) for link in one["links"]] for one in listed["households"]}
+    assert links["Park Family"] == [("Lee Family", "related"), ("Park & Lee LLC", "feeds")]
+    assert links["Park & Lee LLC"] == [("Park Family", "fed_by")]
+    assert links["Lee Family"] == [("Park Family", "related")]
+    paths = {one["name"]: one["path"] for one in listed["households"]}
+    assert {link["path"] for one in listed["households"] for link in one["links"]} <= set(paths.values())
+    assert {one["return_name"]: one["form"] for one in listed["engagements"]} == {
+        "1040 - John Park": "1040", "1120S - Park & Lee LLC": "1120S", "1040 - Sam Lee": "1040"}
+
+    _code, firm = run(capsys, "firm")
+    by_return = {Path(one["path"]): one for one in firm["returns"]}
+    assert by_return[llc]["form"] == "1120S" and by_return[park]["form"] == "1040"
+    assert [(link["name"], link["kind"]) for link in by_return[llc]["links"]] == [("Park Family", "fed_by")]
+    assert [(link["name"], link["kind"]) for link in by_return[lee]["links"]] == [("Park Family", "related")]
+    assert {"path", "household", "label", "year", "counts", "files", "paused"} <= set(by_return[park])
+
+
+def test_a_one_sided_related_link_is_repaired_by_saving_either_side(capsys, demo_root):
+    """Pilot P170, the review's M1: a save that stopped after its first
+    write leaves Park naming Lee and Lee naming nobody. Saving Lee without
+    the link (what the editor sends once the person removes it) clears it
+    from Park too; saving Park with it completes it on Lee."""
+    from dataclasses import replace
+
+    from tracker.households import load_household_info, save_household
+    from tracker.layout import private_household_dir
+
+    park, _llc, lee = three_households(capsys, demo_root)
+    park_dir = private_household_dir(demo_root, "Park Family")
+    lee_dir = private_household_dir(demo_root, "Lee Family")
+    save_household(park_dir, replace(load_household_info(park_dir), related=("Lee Family",)))
+    assert load_household_info(lee_dir).related == ()
+
+    code, payload = run(capsys, "edit-household", api.ENGAGEMENT_FLAG, str(lee), stdin={"related": []})
+    assert code == 0, payload
+    assert load_household_info(park_dir).related == (), "removed on the side that lacked it: gone from both"
+    _code, listed = run(capsys, "list")
+    assert all(not one["links"] for one in listed["households"] if one["name"] in ("Park Family", "Lee Family"))
+
+    save_household(park_dir, replace(load_household_info(park_dir), related=("Lee Family",)))
+    code, payload = run(capsys, "edit-household", api.ENGAGEMENT_FLAG, str(park), stdin={"related": ["Lee Family"]})
+    assert code == 0, payload
+    assert load_household_info(lee_dir).related == ("Park Family",), "re-saving the side that has it completes the other"
+
+
+def test_the_other_households_record_is_read_and_written_inside_its_own_lock(capsys, demo_root, monkeypatch):
+    """Pilot P170, the review's S1: the mirror reads the other household
+    under that household's lock, so another writer that tries to change it
+    between the read and the write is refused by the lock rather than
+    having its change silently reverted by the mirror's save."""
+    from dataclasses import replace
+
+    from tracker import households
+    from tracker.layout import private_household_dir
+    from tracker.locking import EngagementLockedError
+
+    park, _llc, _lee = three_households(capsys, demo_root)
+    lee_dir = private_household_dir(demo_root, "Lee Family")
+    real = api.load_household_info
+    said = []
+
+    def and_another_writer(folder):
+        info = real(folder)
+        if Path(folder) == lee_dir and not said:
+            try:
+                households.save_household(lee_dir, replace(households.load_household_info(lee_dir), contact="Changed Meanwhile"))
+                said.append("written")
+            except EngagementLockedError:
+                said.append("refused")
+        return info
+
+    monkeypatch.setattr(api, "load_household_info", and_another_writer)
+    code, payload = run(capsys, "edit-household", api.ENGAGEMENT_FLAG, str(park), stdin={"related": ["Lee Family"]})
+    assert code == 0, payload
+    after = households.load_household_info(lee_dir)
+    assert after.related == ("Park Family",)
+    assert said == ["refused"] or after.contact == "Changed Meanwhile", (said, after.contact)
+
+
+def test_a_contact_only_save_touches_no_linked_household_even_while_its_sort_holds_it(capsys, demo_root):
+    """The re-check's MUST-R1 (1): the editor always sends the related list,
+    so a save that changes only the contact must not reach a linked
+    household whose record already agrees - no lock, no write, no notice -
+    and so succeeds while another pass holds that household."""
+    from tracker import ledger
+    from tracker.households import load_household_info
+    from tracker.layout import private_household_dir
+    from tracker.locking import acquire_lock, release_lock
+
+    park, _llc, _lee = three_households(capsys, demo_root)
+    assert run(capsys, "edit-household", api.ENGAGEMENT_FLAG, str(park), stdin={"related": ["Lee Family"]})[0] == 0
+    lee_dir = private_household_dir(demo_root, "Lee Family")
+    lines = len(ledger.read_events(lee_dir))
+    held = acquire_lock(lee_dir)
+    try:
+        code, payload = run(capsys, "edit-household", api.ENGAGEMENT_FLAG, str(park),
+                            stdin={"contact": "John and Mary", "related": ["Lee Family"]})
+    finally:
+        release_lock(held)
+    assert code == 0, payload
+    assert payload["warnings"] == [] and payload["saved"]["household"] == ["contact"]
+    assert len(ledger.read_events(lee_dir)) == lines
+    assert load_household_info(lee_dir).related == ("Park Family",)
+
+
+def test_a_link_to_a_household_being_sorted_saves_here_says_so_and_a_later_save_completes_it(capsys, demo_root):
+    """The re-check's MUST-R1 (2): when the other household's lock is held,
+    the household edited is saved, the reply exits 0 with a notice that the
+    link is pending on the other, and saving again once its sort is over
+    writes the other side."""
+    from tracker.households import load_household_info
+    from tracker.layout import private_household_dir
+    from tracker.locking import acquire_lock, release_lock
+
+    park, _llc, _lee = three_households(capsys, demo_root)
+    park_dir = private_household_dir(demo_root, "Park Family")
+    lee_dir = private_household_dir(demo_root, "Lee Family")
+    held = acquire_lock(lee_dir)
+    try:
+        code, payload = run(capsys, "edit-household", api.ENGAGEMENT_FLAG, str(park), stdin={"related": ["Lee Family"]})
+    finally:
+        release_lock(held)
+    assert code == 0, payload
+    assert load_household_info(park_dir).related == ("Lee Family",)
+    assert load_household_info(lee_dir).related == ()
+    assert payload["warnings"] == ["Link Pending: Lee Family Is Busy"]
+    assert api.SCREEN["notices"]["related_pending"] == "Link Pending: {household} Is Busy"
+
+    code, payload = run(capsys, "edit-household", api.ENGAGEMENT_FLAG, str(park), stdin={"related": ["Lee Family"]})
+    assert code == 0 and payload["warnings"] == [], payload
+    assert load_household_info(lee_dir).related == ("Park Family",)
+
+
+def test_a_cached_rows_links_follow_a_change_to_another_households_record(capsys, demo_root, monkeypatch):
+    """The 0.3 landing's join of the firm cache (P120) and linked households
+    (P141, P172): a household's links depend on other households' records,
+    so they are worked out practice-wide on every reply and never kept in a
+    row. Lee's record gains Park; Park's own folders do not change, yet
+    Park's cached row says Related at once, exactly as the whole walk does."""
+    from dataclasses import replace
+
+    from tracker.households import load_household_info, save_household
+    from tracker.layout import private_household_dir
+
+    park, _llc, _lee = three_households(capsys, demo_root)
+    _aged(demo_root)
+    whole = _firm_whole(capsys, monkeypatch)
+    assert _cached_firm(capsys) == whole
+    assert {Path(one["path"]): one["links"] for one in whole["returns"]}[park] == []
+    lee_dir = private_household_dir(demo_root, "Lee Family")
+    save_household(lee_dir, replace(load_household_info(lee_dir), related=("Park Family",)))
+    _aged(demo_root)
+    whole = _firm_whole(capsys, monkeypatch)
+    by_path = {Path(one["path"]): one for one in whole["returns"]}
+    assert [(link["name"], link["kind"]) for link in by_path[park]["links"]] == [("Lee Family", "related")]
+    assert _cached_firm(capsys) == whole

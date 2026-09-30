@@ -68,12 +68,13 @@ log = logging.getLogger(__name__)
 #: The file's name in the data folder.
 CACHE_FILENAME = "firm-view.json"
 
-#: The shape of this file: the head's keys, a household entry's keys and a
+#: The shape of this file: the head's keys, a household entry's keys (2: the
+#: household's own feeds and related names, pilot P141) and a
 #: return's facts. It rises only when that shape changes. A field added to
 #: a firm row does not change it - rows are kept as the JSON the API built
 #: them as - and any change to the program changes :func:`program_stamp`,
 #: so the first reply after an upgrade rebuilds every row with its fields.
-FORMAT = 1
+FORMAT = 2
 
 #: A household's kind, as the practice walk reads it: a household with its
 #: record, one whose record is gone while its returns hold theirs, or a

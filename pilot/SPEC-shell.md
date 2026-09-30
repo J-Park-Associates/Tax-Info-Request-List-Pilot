@@ -338,6 +338,9 @@ Numbers are right-aligned in their column, with tabular figures.
 - Household, year and return pages select **Clients** (they live under it).
 - Foot: `#last-sort` in caption `--text-caption`, 16px from the panel's
   sides, 16px from the badge. States in section 8.3.
+- Pilot 0.3 raises the panel (icons, badges, Client Types, Under
+  Construction items, Settings, the brand band's words):
+  `pilot/SPEC-lists.md` section 15 (P153, P154, P179).
 
 ### 3.4 Path row (`#bar`)
 
@@ -380,6 +383,10 @@ last-sort line says the same. The notice is left as it is while a sort
 runs.
 
 ### 3.6 Rows and groups (one row style, every page; P71, P76)
+
+Column headers, ordering and column widths on the four firm lists, and the
+Needs Review heading, household and file levels: `pilot/SPEC-lists.md`
+(Pilot 0.3, P135-P139).
 
 A **row** is 40px tall (`min-height: 40px`, `align-items: center`), a 1px
 `--border` hairline under it (not under the last row of a group). Columns,
