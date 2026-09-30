@@ -93,6 +93,16 @@ function showTip(node) {
   placeTip(node, tip);
 }
 
+// A row made active by the keyboard (pilot SPEC-lists 17, P178): its
+// status's tip shows at once and whole, cut or not, because a keyboard has
+// no hover to ask for it.
+function showTipNow(node) {
+  const cut = node.dataset.tipCut;
+  delete node.dataset.tipCut;
+  showTip(node);
+  if (cut !== undefined) node.dataset.tipCut = cut;
+}
+
 function hideTip() {
   clearTimeout(tipTimer);
   tipTimer = null;

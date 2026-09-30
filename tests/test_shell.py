@@ -923,10 +923,18 @@ const vocab = {
     notices: { paused: "Two Years Open; Sorting Paused" },
     empty: { received: "Nothing received yet" }, moved: "Moved by hand", due: "Due {date}", partly: "{n} of {total}",
     show_in_explorer: "Show in File Explorer", navigate_client: "Navigate to Client", navigate_return: "Navigate to Return",
-    counts: { need: "{n} need you", waiting: "{n} waiting", complete: "Complete", files: "{n} files", one_return: "1 return", returns: "{n} returns" },
+    counts: { need: "{n} need you", waiting: "{n} waiting", complete: "Complete", files: "{n} files", one_file: "1 file", one_return: "1 return", returns: "{n} returns" },
     sections: { overview: "Overview", needs_review: "Needs Review", reminders: "Reminders", clients: "Clients" },
     columns: { return: "Return", client: "Client", status: "Status", date: "Date", file: "File", suggestion: "Suggestion", reason: "Reason",
-               received: "Received", stage: "Stage", drafted: "Drafted", returns: "Returns", sort_by: "Sort by {column}", width: "{column} Width {n}" },
+               received: "Received", stage: "Stage", drafted: "Drafted", returns: "Returns", client_name: "Client Name", sort_by: "Sort by {column}",
+               width: "{column} Width {n}" },
+    linked: { tip: "Linked Households", feeds: "Also Feeds", fed_by: "Fed By", related: "Related" },
+    tabs: { need: "Need You ({n})", waiting: "Waiting ({n})" }, documents: { one: "1 Document", many: "{n} Documents" },
+    paging: { showing: "Showing {from}-{to} of {total} {noun}", previous: "Previous", next: "Next",
+              nouns: { overview: "Returns", needs_review: "Files", reminders: "Drafts", clients: "Clients" } },
+    icons: { more_actions: "More Actions", remove_filter: "Remove Filter" }, filters: { work: "Work Waiting", all: "All" }, work: "Work Waiting",
+    client_types: { individuals: { label: "Individuals", forms: ["1040"] }, businesses: { label: "Businesses", forms: ["1120", "1120S", "1065"] },
+                    trusts: { label: "Trusts & Estates", forms: ["1041"] }, nonprofits: { label: "Nonprofits", forms: ["990"] } },
   },
 };
 """
@@ -934,14 +942,21 @@ const vocab = {
 #: The column headers' constants (SPEC-lists), lifted from pages.js as written:
 #: the probes run the pages' own tables, not a copy of them.
 PAGES_CONSTS = ("const PAGES_COLUMNS = {", "const PAGES_CELLS = ", "const PAGES_WIDTHS = ", "const PAGES_USUAL = ", "const PAGES_WIDTH_STEP = ",
-                "const PAGES_WIDTHS_KEY = ", "const PAGES_URGENCY = ", "const pagesOrder = ", "let pagesWidths = ")
+                "const PAGES_WIDTHS_KEY = ", "const PAGES_URGENCY = ", "const pagesOrder = ", "let pagesWidths = ",
+                # The raised lists (pilot SPEC-lists 10-17): pages, tabs, reason cards, types, the panel.
+                "const PAGES_PER_PAGE = ", "const PAGES_REASON_ICONS = {", "const PAGES_SECTIONS = ", "let pagesPageAt = ",
+                "let pagesTab = ", "let pagesReasonPick = ", "let pagesClientType = ", "let pagesPanel = ")
 
 
 #: The column headers' own functions (SPEC-lists), which every firm page and
 #: pagesDraw now reach.
 COLUMN_FUNCTIONS = ("pagesListOf", "pagesUrgent", "pagesIsBlank", "pagesCompareKeys", "pagesCompare", "pagesOrdered", "pagesOrderBy",
                     "pagesColumnHeads", "pagesGrip", "pagesColumnKey", "pagesStoredWidths", "pagesWidthOf", "pagesSetWidth",
-                    "pagesSaveWidths", "pagesApplyWidths", "pagesResetWidths", "pagesReviewSpec", "pagesOrderedGroups")
+                    "pagesSaveWidths", "pagesApplyWidths", "pagesResetWidths", "pagesReviewSpec", "pagesOrderedGroups",
+                    # The raised lists (pilot SPEC-lists 10-17).
+                    "pagesDetailCell", "pagesStatusCell", "pagesLinkMark", "pagesLinkMarkIn", "pagesShowPanel", "pagesPanelOpen",
+                    "pagesClosePanel", "pagesOpenRowLinks", "pagesPaged", "pagesFoot", "pagesTurn", "pagesPick", "pagesTabs",
+                    "pagesFileCount", "pagesReasonCards", "pagesReviewGroup", "pagesSwitch", "pagesTypeChip")
 
 
 def pages_consts() -> str:
@@ -1828,7 +1843,8 @@ def test_the_firm_pages_rows_link_by_the_firms_keys_and_carry_the_year(tmp_path)
       const overview = pagesWorkRows(firmData.returns)[0] || { broken: pagesBroken.map((b) => String(b.err)) };
       const reminder = pagesReminderSpecs(firmData)[0];
       const link = (n) => n.byClass("row-link").map((l) => [l.textContent, l.dataset.link]);
-      return { head: link(head), caption: link(caption), captionText: caption.textContent, rows: rows.map((r) => [r.byClass("row-name")[0].textContent, link(r.byClass("row-name")[0])]),
+      const docs = nodes.flatMap((n) => (n.byClass ? n.byClass("group-docs") : [])).map((n) => n.textContent);
+      return { head: link(head), caption: link(caption), captionText: caption.textContent, docs, rows: rows.map((r) => [r.byClass("row-name")[0].textContent, link(r.byClass("row-name")[0])]),
                overview: [overview.name, overview.nameLink, overview.detailLink], reminder: [reminder.name, reminder.nameLink.kind, reminder.detailLink.kind] };
     """, tmp_path, functions=["pagesNeedsReview", "pagesNameCell", "pagesReviewGroups", "pagesFirm", "pagesFirmReturn", "pagesReturnName", "pagesReturnText", "pagesHouseholdPath",
                               "pagesFileLink", "pagesRow", "pagesCell", "pagesLinkNode", "pagesLinkWords", "pagesHeadLink", "pagesGroup", "pagesGroupStep", "pagesList",
@@ -1836,7 +1852,8 @@ def test_the_firm_pages_rows_link_by_the_firms_keys_and_carry_the_year(tmp_path)
                               "pagesNextSort", "pagesWorkRows", "pagesCounts", "pagesRoute", "pagesDue", "pagesReminderSpecs", "pagesStage", "screenWords", "h", "icon",
                               "pagesActivate", "pagesRunRow", "pagesRunRowLink", "pagesRunLink", "pagesRunStep", "pagesPathOf", "pagesPopup", "pagesEnableFor", "pagesRowRoute",
                               *COLUMN_FUNCTIONS])
-    assert ran["head"] == [["1040 - Smith (2025)", "return"]] and ran["caption"] == [["Smith Family", "household"]] and ran["captionText"] == "Smith Family · 2"
+    assert ran["head"] == [["1040 - Smith (2025)", "return"]] and ran["caption"] == [["Smith Family", "household"]] and ran["captionText"] == "Smith Family"
+    assert ran["docs"] == ["2 Documents"], "the group's count sits at its heading's end (P149)"
     assert ran["rows"] == [["one.pdf", [["one.pdf", "file"]]], ["two.exe", []]], "text for the file with no copy"
     assert ran["overview"][0] == "1040 - Smith (2025)" and ran["overview"][1]["kind"] == "return" and ran["overview"][2] == {"kind": "household", "path": "/c/Smith"}
     assert ran["reminder"] == ["1040 - Smith (2025)", "return", "household"]
@@ -2782,7 +2799,7 @@ def test_the_four_firm_lists_draw_a_header_row_of_buttons_in_the_rows_columns(tm
     assert ran["overview"]["words"] == ["Return", "Client", "Status", "Date"]
     assert ran["needs-review"]["words"] == ["File", "Suggestion", "Reason", "Received"]
     assert ran["reminders"]["words"] == ["Return", "Client", "Stage", "Drafted"]
-    assert ran["clients"]["words"] == ["Client", "Returns", "Status"], "the Clients end column is always empty"
+    assert ran["clients"]["words"] == ["Client Name", "Returns", "Status"], "the Clients end column is always empty (P153: Client Name)"
     for level, one in ran.items():
         assert one["tables"] == 1 and one["rows"] == 1 and one["cells"] == 4 and one["grips"] == 4, level
         assert one["tips"] == [f"Sort by {word}" for word in one["words"]], level

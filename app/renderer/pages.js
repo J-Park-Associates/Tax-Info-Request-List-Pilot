@@ -69,7 +69,7 @@ const PAGES_COLUMNS = {
   overview: { name: "return", detail: "client", status: "status", end: "date" },
   needs_review: { name: "file", detail: "suggestion", status: "reason", end: "received" },
   reminders: { name: "return", detail: "client", status: "stage", end: "drafted" },
-  clients: { name: "client", detail: "returns", status: "status", end: "" },
+  clients: { name: "client_name", detail: "returns", status: "status", end: "" },
 };
 const PAGES_CELLS = ["name", "detail", "status", "end"];
 // Each column's least and most width in px (SPEC-lists 4). The usual widths
@@ -89,6 +89,28 @@ const PAGES_WIDTHS_KEY = "tracker.columns"; // this PC's own storage, never the 
 const PAGES_URGENCY = { problem: 0, needs: 1, waiting: 2, done: 3, plain: 4 };
 const pagesOrder = {};         // list -> {cell, dir}: kept while the app is open (P139)
 let pagesWidths = null;        // list -> {cell: px}: read once from this PC's storage (P139)
+// Rows per page of a firm list (pilot SPEC-lists 14, P152, P174; owner question Q11).
+const PAGES_PER_PAGE = 50;
+// A reason's small icon on Needs Review (SPEC-lists 12, P149): every reason
+// pill is the Need You amber, told apart by this icon and its words. A code
+// not listed takes the plain alert.
+const PAGES_REASON_ICONS = {
+  unmatched: "question", ambiguous: "question", contested: "question", "between-returns": "question",
+  "several-forms-unsorted": "question", "name-points-at": "question", "shows-form-number": "question",
+  "name-absent": "person", "name-other": "person", "named-across": "person", "unnamed-across": "person",
+  "no-room": "person", "no-people": "person", "issuer-not-named": "person",
+  "no-request-accepts": "file", extension: "file", "not-a-document": "file", "too-small": "file", "too-large": "file",
+  "no-pages": "file", "unreadable-pdf": "file", password: "file", "google-stub": "file", "ocr-only": "file",
+  "opened-not-across": "box", "container-damaged": "box", "container-empty": "box", "container-limit": "box",
+  "container-locked": "box", "file-moved": "hand", unfiled: "hand", "put-back-refused": "hand", "could-not-file": "hand",
+};
+// A return page's three sections in their status colour (SPEC-lists 6, P176).
+const PAGES_SECTIONS = { needs_you: ["needs", "alert"], waiting: ["waiting", "clock"], received: ["done", "done"] };
+let pagesPageAt = {};          // list -> the page shown (0 first); forgotten when the page is left (P174)
+let pagesTab = "all";          // Overview's filter tab: all, need or waiting (P145)
+let pagesReasonPick = "";      // Needs Review's reason card, a reason's code or "" for All (P149)
+let pagesClientType = "";      // Clients' Client Type, a key of vocab.screen.client_types or "" (P153)
+let pagesPanel = null;         // the open Linked Households panel: {node, back} (P171)
 
 // ── small helpers ─────────────────────────────────────────────────────
 function pagesDay(iso) {
@@ -269,9 +291,97 @@ function pagesByName(a, b) {
 // The name cell, and beside the name the row's marker when it has one (a
 // household paused for two open years, ruling 21): the vocabulary's words.
 function pagesNameCell(spec) {
-  const box = pagesCell("row-name", "name", spec.name, spec.nameLink);
+  // The form chip (P145) comes first; it repeats the form the name begins
+  // with, so it is hidden from a screen reader, which reads the name.
+  const first = spec.form ? h("span", { className: "form-chip", "aria-hidden": "true" }, spec.form)
+    : spec.fileIcon ? h("span", { className: "row-icon" }, icon("file", true)) : null;
+  const box = h("span", { className: "row-name" }, first, spec.nameLink ? pagesLinkNode(spec.nameLink, spec.name, "name") : spec.name);
+  if (!spec.nameLink) setTipIfCut(box, spec.name);
   if (spec.mark) box.append(h("span", { className: "row-mark is-attention" }, spec.mark));
+  if (spec.linksIn === "name") pagesLinkMarkIn(box, spec.links, true);
   return box;
+}
+
+// ── linked households (pilot SPEC-lists 10; P141, P171) ────────────────
+// The icon beside a household's name when it has links, in --st-linked.
+// Inside a row list it is not a Tab stop (the list is one, SPEC-shell
+// 3.6): the list's own click and Space on the active row open its panel.
+// Outside a list it is an ordinary button.
+function pagesLinkMark(links, inList) {
+  const words = screenWords().linked;
+  if (!words || !words.tip) throw new Error("linked.tip");
+  const mark = h("button", { type: "button", className: "link-mark", "aria-label": words.tip, tabindex: inList ? "-1" : undefined }, icon("link", true));
+  setTip(mark, words.tip);
+  if (!inList) {
+    mark.addEventListener("click", (e) => {
+      e.stopPropagation();
+      pagesShowPanel(mark, links, mark);
+    });
+  }
+  return mark;
+}
+
+function pagesLinkMarkIn(box, links, inList) {
+  if (links && links.length) box.append(pagesLinkMark(links, inList));
+}
+
+// The small panel naming each linked household and its kind, each name a
+// link to that client. Escape (shellKey), a click outside (shell.js) or
+// leaving it closes it, and focus goes back where it was opened from.
+function pagesShowPanel(anchor, links, back) {
+  pagesClosePanel(false);
+  const words = screenWords();
+  const lines = links.map((one) => {
+    const kind = words.linked[one.kind];
+    if (!kind) throw new Error(`linked.${one.kind}`);
+    const name = one.path ? h("button", { type: "button", className: "link-to" }, one.name) : h("span", { className: "link-name" }, one.name);
+    if (one.path) {
+      setTip(name, pagesLinkWords("household"));
+      name.addEventListener("click", () => {
+        pagesClosePanel(false);
+        shellGo({ level: "household", household: one.path });
+      });
+    }
+    return h("li", { className: "link-line" }, name, h("span", { className: "link-kind" }, kind));
+  });
+  const node = h("div", { id: "link-panel", role: "dialog", "aria-label": words.linked.tip, tabindex: "-1" }, h("ul", { className: "link-list" }, ...lines));
+  document.body.append(node);
+  pagesPanel = { node, back };
+  node.addEventListener("focusout", (e) => {
+    if (pagesPanel && pagesPanel.node === node && !node.contains(e.relatedTarget)) pagesClosePanel(false);
+  });
+  FloatingUIDOM.computePosition(anchor, node, {
+    strategy: "fixed", placement: "bottom-start",
+    middleware: [FloatingUIDOM.offset(TIP_GAP), FloatingUIDOM.flip({ padding: TIP_MARGIN }), FloatingUIDOM.shift({ padding: TIP_MARGIN })],
+  }).then(({ x, y }) => {
+    node.style.setProperty("left", `${Math.round(x)}px`);
+    node.style.setProperty("top", `${Math.round(y)}px`);
+  });
+  const first = node.querySelector(".link-to");
+  (first || node).focus();
+}
+
+function pagesPanelOpen() {
+  return pagesPanel !== null;
+}
+
+// `back`: focus returns to where the panel was opened from (the icon, or
+// the row list whose active row opened it).
+function pagesClosePanel(back) {
+  if (!pagesPanel) return;
+  const was = pagesPanel;
+  pagesPanel = null;
+  was.node.remove();
+  if (back && was.back && was.back.isConnected) was.back.focus();
+}
+
+// A row's panel: its links, under its icon, focus back to its list.
+function pagesOpenRowLinks(list, row) {
+  const spec = pagesTokens.get(row.id);
+  const mark = row.querySelector(".link-mark");
+  if (!spec || !spec.links || !spec.links.length || !mark) return false;
+  pagesShowPanel(mark, spec.links, list);
+  return true;
 }
 
 // The households the firm reply says are paused (`paused: true` on each of
@@ -300,16 +410,51 @@ function pagesRow(spec) {
   const wraps = Boolean(spec.mark || (spec.nameLink && spec.nameLink.kind !== "file"));
   // A file's own name is an item, not a heading: ordinary weight (P136).
   const file = Boolean(spec.fileKind || (spec.nameLink && spec.nameLink.kind === "file"));
+  // A row with linked households says so to a screen reader: its icon is
+  // not a Tab stop inside the list (P171).
+  const linked = spec.links && spec.links.length ? screenWords().linked.tip : "";
+  const described = [words, linked].filter(Boolean).join(", ");
   const node = h("div", {
     className: `row${step ? " has-step" : ""}${spec.child ? " row-child" : ""}${wraps ? " row-wrap" : ""}${file ? " row-file" : ""}`, role: "option", id, "aria-selected": "false",
-    "aria-description": words || undefined, dataset: { menu: spec.menu || "", token: id },
+    "aria-description": described || undefined, dataset: { menu: spec.menu || "", token: id },
   },
   pagesNameCell(spec),
-  pagesCell("row-detail", "detail", spec.detail || "", spec.detailLink),
-  h("span", { className: `row-status ${PAGES_TONES[spec.tone] || ""}` }, spec.status || ""),
+  pagesDetailCell(spec),
+  pagesStatusCell(spec),
   h("span", { className: "row-end" }, h("span", { className: "row-date" }, spec.date || ""), step));
-  setTipIfCut(node.querySelector(".row-status"), spec.status);
   return node;
+}
+
+// The detail cell: a link, plain words, or (Needs Review's suggestion) a
+// muted chip with its full title as the tooltip; and the link mark after a
+// household's name (P141).
+function pagesDetailCell(spec) {
+  let box;
+  if (spec.detailChip && spec.detail) {
+    const tag = h("span", { className: "request-chip" }, spec.detail);
+    setTip(tag, spec.detailTip || spec.detail);
+    box = h("span", { className: "row-detail" }, tag);
+  } else {
+    box = pagesCell("row-detail", "detail", spec.detail || "", spec.detailLink);
+  }
+  if (spec.linksIn === "detail") pagesLinkMarkIn(box, spec.links, true);
+  return box;
+}
+
+// The status cell: the status word, or on a firm list a pill - a dot (or a
+// reason's icon) and the words - in the status's colour on its tint (P145,
+// P149). The tooltip is the full words, shown when they are cut.
+function pagesStatusCell(spec) {
+  const tone = PAGES_TONES[spec.tone] || "";
+  if (!spec.pill || !spec.status) {
+    const box = h("span", { className: `row-status ${tone}` }, spec.status || "");
+    setTipIfCut(box, spec.status);
+    return box;
+  }
+  const word = h("span", { className: "pill-word" }, spec.status);
+  setTipIfCut(word, spec.status);
+  const lead = spec.reasonIcon ? icon(spec.reasonIcon, true) : h("span", { className: "pill-dot", "aria-hidden": "true" });
+  return h("span", { className: `row-status ${tone}` }, h("span", { className: "pill" }, lead, word));
 }
 
 function pagesStepWords(step) {
@@ -317,7 +462,9 @@ function pagesStepWords(step) {
   return { open: steps.open, check: steps.check, draft: steps.draft, edit: steps.edit }[step.kind];
 }
 
-function pagesActivate(list, row) {
+// `byKey`: the keyboard made the row active, so its status's tooltip - the
+// full words - shows at once, as a hover would (P178); any other way hides it.
+function pagesActivate(list, row, byKey) {
   for (const one of list.querySelectorAll(".is-active")) {
     one.classList.remove("is-active");
     one.setAttribute("aria-selected", "false");
@@ -326,6 +473,10 @@ function pagesActivate(list, row) {
   row.setAttribute("aria-selected", "true");
   list.setAttribute("aria-activedescendant", row.id);
   if (row.scrollIntoView) row.scrollIntoView({ block: "nearest" });
+  if (typeof showTipNow !== "function") return;
+  hideTip();
+  const status = byKey ? row.querySelector(".row-status [data-tip], .row-status[data-tip]") : null;
+  if (status) showTipNow(status);
 }
 
 function pagesRunRow(row) {
@@ -354,14 +505,16 @@ function pagesRunStep(step) {
 }
 
 // One listbox: a Tab stop, named by its heading or by a label.
-function pagesList(name, kids) {
-  const attrs = { className: "rows", role: "listbox", tabindex: "0" };
+function pagesList(name, kids, edge) {
+  // `edge`: a return section's tone, drawn as a faint edge down its rows (P176).
+  const attrs = { className: edge ? `rows edge-${edge}` : "rows", role: "listbox", tabindex: "0" };
   if (name.labelledby) attrs["aria-labelledby"] = name.labelledby;
   else attrs["aria-label"] = name.label;
   const list = h("div", attrs, ...kids);
   list.addEventListener("focus", () => {
     const first = list.querySelector('[role="option"]');
-    if (first && !list.querySelector(".is-active")) pagesActivate(list, first);
+    const byKey = typeof list.matches === "function" && list.matches(":focus-visible");
+    if (first && !list.querySelector(".is-active")) pagesActivate(list, first, byKey);
   });
   list.addEventListener("click", (e) => {
     const row = e.target.closest(".row");
@@ -369,12 +522,13 @@ function pagesList(name, kids) {
     pagesActivate(list, row);
     list.focus({ preventScroll: true });
     const link = e.target.closest(".row-link");
-    if (link) pagesRunRowLink(row, link);
+    if (e.target.closest(".link-mark")) pagesOpenRowLinks(list, row);
+    else if (link) pagesRunRowLink(row, link);
     else if (e.target.closest(".row-step")) pagesRunRow(row);
   });
   list.addEventListener("dblclick", (e) => {
     const row = e.target.closest(".row");
-    if (row && !e.target.closest(".row-link")) pagesRunRow(row);
+    if (row && !e.target.closest(".row-link") && !e.target.closest(".link-mark")) pagesRunRow(row);
   });
   list.addEventListener("contextmenu", (e) => {
     const row = e.target.closest(".row");
@@ -396,10 +550,15 @@ function pagesGroup(spec) {
   const headId = `group-${pagesUid}`;
   // A file's own row under its request (ruling 17) is not another request: not counted.
   const total = spec.blocks.reduce((n, block) => n + block.rows.filter((row) => !row.classList.contains("row-child")).length, 0);
-  const meta = h("span", { className: "group-count" }, spec.caption !== undefined ? spec.caption : String(total));
+  // A return section's tone (P176): its icon before the heading, a bar at
+  // its edge and a tinted count badge, in the section's status colour.
+  const section = spec.key ? PAGES_SECTIONS[spec.key] : null;
+  const tone = section ? PAGES_TONES[section[0]] : "";
+  const meta = h("span", { className: `group-count${section ? ` is-badge ${tone}` : ""}` }, spec.caption !== undefined ? spec.caption : String(total));
   const title = h("h2", { className: "group-title", id: headId }, spec.headingLink ? pagesHeadLink(spec.headingLink, spec.heading) : spec.heading);
   const start = spec.step ? pagesGroupStep(spec.step) : null;
-  const headClass = `group-head${spec.first ? " is-first" : ""}`;
+  const lead = section ? h("span", { className: `group-icon ${tone}` }, icon(section[1])) : spec.lead || null;
+  const headClass = `group-head${spec.first ? " is-first" : ""}${section ? ` is-section section-${section[0]}` : ""}`;
   let body = null;
   if (total) {
     const kids = [];
@@ -413,18 +572,20 @@ function pagesGroup(spec) {
       kids.push(h("div", { role: "group", "aria-labelledby": subId },
         h("div", { className: "group-sub", id: subId }, block.sub), ...block.rows));
     }
-    body = pagesList({ labelledby: headId }, kids);
+    body = pagesList({ labelledby: headId }, kids, section ? section[0] : "");
   } else if (spec.none) {
     body = h("div", { className: "group-none" }, spec.none);
   }
   if (spec.fold) {
-    const fold = h("details", { className: "group-fold" }, h("summary", { className: headClass }, title, meta), body);
+    const fold = h("details", { className: "group-fold" }, h("summary", { className: headClass }, lead, title, meta), body);
     fold.open = Boolean(spec.open);
     if (spec.onToggle) fold.addEventListener("toggle", () => spec.onToggle(fold.open));
     return [fold];
   }
-  // `heads`: a list's column headers, between its heading and its rows.
-  return [h("div", { className: headClass }, title, meta, start), body ? spec.heads : null, body].filter(Boolean);
+  // `heads`: a list's column headers, between its heading and its rows;
+  // `tools`: what sits at the heading's end (Overview's tabs, a Needs
+  // Review group's count and More Actions).
+  return [h("div", { className: headClass }, lead, title, meta, spec.tools || null, start), body ? spec.heads : null, body].filter(Boolean);
 }
 
 // A link in a heading or a caption (a return's name, a household's): outside
@@ -542,6 +703,7 @@ function pagesOrderBy(list, cell) {
   if (!now || now.cell !== cell) pagesOrder[list] = { cell, dir: 1 };
   else if (now.dir > 0) pagesOrder[list] = { cell, dir: -1 };
   else delete pagesOrder[list];
+  delete pagesPageAt[list];      // any change of order returns to page 1 (P174)
   const page = $("page");
   pagesDraw(shellRoute, page);
   const again = page.querySelector(`.col-head[data-cell="${cell}"]`);
@@ -694,6 +856,88 @@ function pagesResetWidths() {
   pagesApplyWidths($("page"), pagesListOf(shellRoute));
 }
 
+// ── page buttons (pilot SPEC-lists 14; P152, P174) ────────────────────
+// A list's items divided into pages after its order, tabs and filters: the
+// part shown and its footer. `sizeOf` counts an item (Needs Review counts a
+// return group by its files, and never splits one); a page holds items
+// while their count stays within PAGES_PER_PAGE, and an item larger than a
+// page is a page of its own.
+function pagesPaged(list, items, sizeOf) {
+  const size = sizeOf || (() => 1);
+  const pages = [];
+  let part = [];
+  let held = 0;
+  for (const one of items) {
+    const n = size(one);
+    if (part.length && held + n > PAGES_PER_PAGE) {
+      pages.push(part);
+      part = [];
+      held = 0;
+    }
+    part.push(one);
+    held += n;
+  }
+  if (part.length) pages.push(part);
+  const at = Math.min(pagesPageAt[list] || 0, Math.max(0, pages.length - 1));
+  pagesPageAt[list] = at;
+  const count = (group) => group.reduce((n, one) => n + size(one), 0);
+  const before = pages.slice(0, at).reduce((n, group) => n + count(group), 0);
+  const shown = pages[at] || [];
+  const total = count(items);
+  return { part: shown, foot: total ? pagesFoot(list, before + 1, before + count(shown), total, at, pages.length) : null };
+}
+
+// "Showing 1-50 of 750 Returns", with Previous and Next (disabled at the ends).
+function pagesFoot(list, from, to, total, at, count) {
+  const words = screenWords().paging;
+  const noun = words.nouns[list];
+  if (!noun) throw new Error(`paging.nouns.${list}`);
+  const step = (by, key) => {
+    const button = h("button", { type: "button", className: "btn btn-small page-step", disabled: by < 0 ? at === 0 : at >= count - 1, dataset: { step: key } }, words[key]);
+    button.addEventListener("click", () => pagesTurn(list, by, key));
+    return button;
+  };
+  return h("div", { className: "page-foot" }, h("span", { className: "page-count" }, fill(words.showing, { from, to, total, noun })),
+    h("span", { className: "page-steps" }, step(-1, "previous"), step(1, "next")));
+}
+
+// Previous or Next: the page drawn again at its top, focus kept on the
+// button pressed, or on the other one once this one is disabled.
+function pagesTurn(list, by, key) {
+  pagesPageAt[list] = Math.max(0, (pagesPageAt[list] || 0) + by);
+  const page = $("page");
+  pagesDraw(shellRoute, page);
+  page.scrollTop = 0;
+  const same = page.querySelector(`.page-step[data-step="${key}"]`);
+  const other = page.querySelector(`.page-step[data-step="${key === "next" ? "previous" : "next"}"]`);
+  const to = same && !same.disabled ? same : other;
+  if (to) to.focus();
+}
+
+// A choice that narrows a list (a tab, a reason card, a Client Type): the
+// list starts again at its first page, is drawn again, and focus goes back
+// to the control that was pressed (found by its data-pick).
+function pagesPick(list, set, pick) {
+  set();
+  delete pagesPageAt[list];
+  const page = $("page");
+  pagesDraw(shellRoute, page);
+  const again = page.querySelector(`[data-pick="${pick}"]`);
+  if (again) again.focus();
+}
+
+// Overview's filter tabs: All, Need You (n), Waiting (n) (P145).
+function pagesTabs(need, waiting) {
+  const words = screenWords();
+  const tab = (key, label) => {
+    const node = h("button", { type: "button", className: "switch-option", "aria-pressed": pagesTab === key ? "true" : "false", dataset: { pick: `tab-${key}` } }, label);
+    node.addEventListener("click", () => pagesPick("overview", () => { pagesTab = key; }, `tab-${key}`));
+    return node;
+  };
+  return h("div", { className: "switch is-tabs", role: "group", "aria-label": words.work },
+    tab("all", words.filters.all), tab("need", fill(words.tabs.need, { n: need })), tab("waiting", fill(words.tabs.waiting, { n: waiting })));
+}
+
 // ── Overview (SPEC 6.1) ───────────────────────────────────────────────
 function pagesWorkRows(returns) {
   const name = (one) => pagesReturnName(one.path);
@@ -712,7 +956,8 @@ function pagesWorkRows(returns) {
     const house = pagesHouseholdPath(one.household);
     const text = pagesReturnText(one.path, one.year);
     const rank = one.problem ? PAGES_URGENCY.problem : PAGES_URGENCY[said.tone];
-    return { name: text, detail: one.household, status: said.text, tone: said.tone, date, menu: "return",
+    return { name: text, detail: one.household, status: said.text, tone: said.tone, date, menu: "return", pill: true, form: one.form || "",
+             links: one.links || [], linksIn: "detail",
              nameLink: { kind: "return", path: one.path }, detailLink: house ? { kind: "household", path: house } : null,
              step: { ...steps, route: pagesRoute(one.path) },
              keys: { name: text, detail: one.household, status: pagesUrgent(rank, one.counts.needs_you || one.counts.waiting, said.text), end: iso || "" } };
@@ -728,7 +973,7 @@ function pagesPausedRows(firm) {
   return pagesEach([...pagesPaused(firm)].sort(pagesByName), (name) => name, (name) => {
     const path = pagesHouseholdPath(name);
     if (!path) throw new Error("household");
-    return { name, detail: "", status: word, tone: "needs", date: "", menu: "household", nameLink: { kind: "household", path },
+    return { name, detail: "", status: word, tone: "needs", date: "", menu: "household", pill: true, nameLink: { kind: "household", path },
              step: { kind: "open", route: { level: "household", household: path } },
              keys: { name, detail: "", status: pagesUrgent(PAGES_URGENCY.problem, 0, word), end: "" } };
   });
@@ -738,12 +983,22 @@ function pagesOverview() {
   const words = screenWords();
   const firm = pagesFirm();
   const totals = firm.totals;
-  const figures = h("div", { className: "figures" }, ...[[totals.need, words.figures.need], [totals.waiting, words.figures.waiting], [totals.complete, words.figures.complete]]
-    .map(([n, label]) => h("div", { className: "figure" }, h("b", { className: "figure-number" }, String(n)), h("span", { className: "figure-label" }, label))));
-  const specs = pagesOrdered("overview", [...pagesPausedRows(firm), ...pagesWorkRows(firm.returns)]);
-  const rows = pagesEach(specs, (spec) => spec.name, pagesRow);
-  if (!rows.length) return [figures, pagesEmpty(words.empty.overview, pagesNextSort(firm))];
-  return [figures, ...pagesGroup({ heading: words.work, first: true, heads: pagesColumnHeads("overview"), blocks: [{ rows }] })];
+  // The three counts, each in a raised card with its status's icon (P145).
+  const figures = h("div", { className: "figures" }, ...[[totals.need, words.figures.need, "needs", "alert"], [totals.waiting, words.figures.waiting, "waiting", "clock"],
+    [totals.complete, words.figures.complete, "done", "done"]]
+    .map(([n, label, tone, name]) => h("div", { className: "figure" },
+      h("span", { className: "figure-top" }, h("span", { className: "figure-label" }, label), h("span", { className: `figure-icon ${PAGES_TONES[tone]}` }, icon(name))),
+      h("b", { className: "figure-number" }, String(n)))));
+  const all = [...pagesPausedRows(firm), ...pagesWorkRows(firm.returns)];
+  if (!all.length) return [figures, pagesEmpty(words.empty.overview, pagesNextSort(firm))];
+  // The tab narrows the whole list, then the order and the pages apply.
+  const need = all.filter((spec) => spec.tone === "needs");
+  const waiting = all.filter((spec) => spec.tone === "waiting");
+  const shown = pagesTab === "need" ? need : pagesTab === "waiting" ? waiting : all;
+  const { part, foot } = pagesPaged("overview", pagesOrdered("overview", shown));
+  const rows = pagesEach(part, (spec) => spec.name, pagesRow);
+  return [figures, ...pagesGroup({ heading: words.work, caption: String(shown.length), first: true, tools: pagesTabs(need.length, waiting.length),
+                                   heads: pagesColumnHeads("overview"), none: words.empty.work, blocks: [{ rows }] }), foot];
 }
 
 // ── Needs review (SPEC 6.2) ───────────────────────────────────────────
@@ -765,7 +1020,8 @@ function pagesReviewGroups(firm) {
 function pagesReviewSpec(firm, group, file) {
   const reason = pagesReason(file.code);
   return {
-    name: file.name, detail: file.suggestion || "", status: reason, tone: "needs", date: pagesDay(file.received),
+    name: file.name, detail: file.suggestion_short || file.suggestion || "", detailTip: file.suggestion || "", detailChip: true,
+    status: reason, tone: "needs", date: pagesDay(file.received), pill: true, reasonIcon: PAGES_REASON_ICONS[file.code] || "alert", fileIcon: true,
     menu: "file", fileKind: "parked", nameLink: pagesFileLink(firm.paths, file.open_key),
     step: { kind: "check", ret: group.path, name: file.name, handle: file.handle },
     keys: { name: file.name, detail: file.suggestion || "", status: pagesUrgent(PAGES_URGENCY.needs, 0, reason), end: file.received || "" },
@@ -789,25 +1045,84 @@ function pagesOrderedGroups(planned) {
     .map((entry) => entry.one);
 }
 
+// "13 Files", "1 File": the count beside a title (P149).
+function pagesFileCount(n) {
+  const words = screenWords().counts;
+  return n === 1 ? words.one_file : fill(words.files, { n });
+}
+
+// The reason cards across the top of Needs Review (P149): All, then one per
+// reason present with its count, each a filter (aria-pressed).
+function pagesReasonCards(counts, total) {
+  const words = screenWords();
+  const card = (code, label, n, name) => {
+    const node = h("button", { type: "button", className: "reason-card", "aria-pressed": pagesReasonPick === code ? "true" : "false", dataset: { pick: `reason-${code || "all"}` } },
+      h("span", { className: "reason-card-top" }, name ? h("span", { className: "reason-card-icon is-attention" }, icon(name, true)) : null, h("span", { className: "reason-card-word" }, label)),
+      h("b", { className: "reason-card-number" }, String(n)));
+    node.addEventListener("click", () => pagesPick("needs_review", () => { pagesReasonPick = code; }, `reason-${code || "all"}`));
+    return node;
+  };
+  const reasons = [...counts.entries()].map(([code, n]) => [code, pagesReason(code), n]).sort((a, b) => b[2] - a[2] || pagesByName(a[1], b[1]));
+  return h("div", { className: "reason-cards", role: "group", "aria-label": words.sections.needs_review },
+    card("", words.filters.all, total, ""), ...reasons.map(([code, label, n]) => card(code, label, n, PAGES_REASON_ICONS[code] || "alert")));
+}
+
+// A return group's heading on Needs Review (P149): its folder icon, the
+// return's name, the household as the small secondary link with its link
+// mark, the count of its documents, and More Actions, which opens the same
+// native menu as a right-click on the heading (the return's; no new action).
+function pagesReviewGroup(group, specs) {
+  const words = screenWords();
+  const owner = pagesFirmReturn(group.path);
+  const rows = pagesEach(specs, (spec) => spec.name, pagesRow);
+  const household = owner ? owner.household : "";
+  const house = pagesHouseholdPath(household);
+  const caption = household ? [house ? pagesHeadLink({ kind: "household", path: house }, household) : household] : [];
+  if (owner && owner.links && owner.links.length) caption.push(pagesLinkMark(owner.links, false));
+  pagesUid += 1;
+  const token = `row-${pagesUid}`;
+  const route = pagesRoute(group.path);
+  pagesTokens.set(token, { menu: "return", nameLink: { kind: "return", path: group.path }, step: { kind: "open", route } });
+  const more = h("button", { type: "button", className: "icon-button group-more", "aria-label": words.icons.more_actions }, icon("more"));
+  setTip(more, words.icons.more_actions);
+  const popup = (x, y) => shellPopup("return", token, x, y, pagesEnableFor(pagesTokens.get(token)));
+  more.addEventListener("click", () => {
+    const box = more.getBoundingClientRect();
+    popup(box.left, box.bottom);
+  });
+  const count = h("span", { className: "group-docs" }, rows.length === 1 ? words.documents.one : fill(words.documents.many, { n: rows.length }));
+  const nodes = pagesGroup({ heading: pagesReturnText(group.path, owner ? owner.year : 0), headingLink: { kind: "return", path: group.path },
+                             caption, lead: h("span", { className: "group-icon" }, icon("folder")), tools: [count, more], blocks: [{ rows }] });
+  nodes[0].addEventListener("contextmenu", (e) => {
+    e.preventDefault();
+    popup(e.clientX, e.clientY);
+  });
+  return [h("div", { className: "return-card" }, ...nodes)];
+}
+
 function pagesNeedsReview() {
   const words = screenWords();
   const firm = pagesFirm();
-  const groups = pagesReviewGroups(firm);
-  if (!groups.length) return [pagesEmpty(words.empty.needs_review, pagesNextSort(firm))];
+  const all = pagesReviewGroups(firm);
+  if (!all.length) return [pagesEmpty(words.empty.needs_review, pagesNextSort(firm))];
+  // The reason cards count the whole page; a card narrows it, then the
+  // order and the pages apply (P149, P174).
+  const counts = new Map();
+  for (const group of all) for (const file of group.files) counts.set(file.code, (counts.get(file.code) || 0) + 1);
+  if (pagesReasonPick && !counts.has(pagesReasonPick)) pagesReasonPick = "";
+  const groups = pagesReasonPick
+    ? all.map((group) => ({ ...group, files: group.files.filter((file) => file.code === pagesReasonPick) })).filter((group) => group.files.length)
+    : all;
+  const total = groups.reduce((n, group) => n + group.files.length, 0);
   const planned = pagesOrderedGroups(groups.map((group) => ({
     group, specs: pagesOrdered("needs_review", pagesEach(group.files, (file) => file.name, (file) => pagesReviewSpec(firm, group, file))),
   })));
-  return [pagesColumnHeads("needs_review"), ...planned.flatMap(({ group, specs }, i) => pagesSafe(pagesReturnName(group.path), () => {
-    const owner = pagesFirmReturn(group.path);
-    const rows = pagesEach(specs, (spec) => spec.name, pagesRow);
-    const household = owner ? owner.household : "";
-    const house = pagesHouseholdPath(household);
-    const caption = household
-      ? [house ? pagesHeadLink({ kind: "household", path: house }, household) : household, ` · ${rows.length}`]
-      : String(rows.length);
-    return pagesGroup({ heading: pagesReturnText(group.path, owner ? owner.year : 0), headingLink: { kind: "return", path: group.path },
-                        caption, first: i === 0, blocks: [{ rows }] });
-  }) || [])];
+  const { part, foot } = pagesPaged("needs_review", planned, (one) => one.specs.length);
+  const head = h("div", { className: "group-head is-first page-head" }, h("h2", { className: "list-title" }, words.sections.needs_review),
+    h("span", { className: "list-count" }, pagesFileCount(total)));
+  const allFiles = all.reduce((n, group) => n + group.files.length, 0);
+  return [head, pagesReasonCards(counts, allFiles), pagesColumnHeads("needs_review"),
+    ...part.flatMap(({ group, specs }) => pagesSafe(pagesReturnName(group.path), () => pagesReviewGroup(group, specs)) || []), foot];
 }
 
 // ── Reminders (SPEC 6.3) ──────────────────────────────────────────────
@@ -820,7 +1135,8 @@ function pagesReminderSpecs(firm) {
     const status = held ? screenWords().held : pagesStage(one.draft.stage);
     return {
       name: text, detail: one.household,
-      status, tone: held ? "needs" : "waiting", date: pagesDay(one.draft.drafted), menu: "return",
+      status, tone: held ? "needs" : "waiting", date: pagesDay(one.draft.drafted), menu: "return", pill: true, form: one.form || "",
+      links: one.links || [], linksIn: "detail",
       nameLink: { kind: "return", path: one.path }, detailLink: house ? { kind: "household", path: house } : null,
       step: { kind: "draft", ret: one.path },
       // Held first (a person must act), then the later stage first: a later
@@ -835,8 +1151,9 @@ function pagesReminders() {
   const words = screenWords();
   const specs = pagesOrdered("reminders", pagesReminderSpecs(pagesFirm()));
   if (!specs.length) return [pagesEmpty(words.empty.reminders)];
+  const { part, foot } = pagesPaged("reminders", specs);
   return [h("div", { className: "page-gap" }), pagesColumnHeads("reminders"),
-    pagesList({ label: words.sections.reminders }, pagesEach(specs, (spec) => spec.name, pagesRow))];
+    pagesList({ label: words.sections.reminders }, pagesEach(part, (spec) => spec.name, pagesRow)), foot];
 }
 
 // ── Clients (SPEC 6.4) ────────────────────────────────────────────────
@@ -844,7 +1161,12 @@ function pagesClientSpecs(firm, all) {
   const words = screenWords().counts;
   const own = (name) => firm.returns.filter((one) => one.household === name);
   const pausedNames = pagesPaused(firm);
-  return pagesEach(households.slice().sort((a, b) => pagesByName(a.name, b.name)), (one) => one.name, (one) => {
+  const kind = pagesClientType ? (screenWords().client_types || {})[pagesClientType] : null;
+  if (pagesClientType && !kind) throw new Error(`client_types.${pagesClientType}`);
+  // A Client Type keeps the households with a return of one of its forms,
+  // by the form each return's record holds - never read from a name (P153).
+  const ofType = (one) => !kind || (one.returns || []).some((ret) => kind.forms.indexOf(ret.form) !== -1);
+  return pagesEach(households.filter(ofType).sort((a, b) => pagesByName(a.name, b.name)), (one) => one.name, (one) => {
     const returns = own(one.name);
     const need = returns.reduce((n, r) => n + r.counts.needs_you, 0);
     const wait = returns.reduce((n, r) => n + r.counts.waiting, 0);
@@ -860,24 +1182,36 @@ function pagesClientSpecs(firm, all) {
     return { work: need + wait > 0 || Boolean(problem) || paused, spec: {
       name: one.name, detail: returns.length ? fill(returns.length === 1 ? words.one_return : words.returns, { n: returns.length }) : "",
       mark: paused ? screenWords().notices.paused : "",
-      status: said.text, tone: said.tone, date: "", menu: "household", nameLink: { kind: "household", path: one.path },
+      status: said.text, tone: said.tone, date: "", menu: "household", pill: true, links: one.links || [], linksIn: "name",
+      nameLink: { kind: "household", path: one.path },
       step: { kind: "open", route: { level: "household", household: one.path } },
       keys: { name: one.name, detail: returns.length || "", status: pagesUrgent(rank, need || wait, said.text), end: "" },
     } };
   }).filter((one) => all || one.work).map((one) => one.spec);
 }
 
-function pagesSwitch() {
+// The Clients switch: Work Waiting (with its count, P153) and All.
+function pagesSwitch(work) {
   const words = screenWords().filters;
-  const option = (label, all) => {
-    const node = h("button", { type: "button", className: "switch-option", "aria-pressed": pagesClientsAll === all ? "true" : "false" }, label);
-    node.addEventListener("click", () => {
-      pagesClientsAll = all;
-      pagesDraw(shellRoute, $("page"));
-    });
+  const option = (label, all, count) => {
+    const node = h("button", { type: "button", className: "switch-option", "aria-pressed": pagesClientsAll === all ? "true" : "false", dataset: { pick: all ? "all" : "work" } },
+      label, count === undefined ? null : h("span", { className: "switch-count" }, String(count)));
+    node.addEventListener("click", () => pagesPick("clients", () => { pagesClientsAll = all; }, all ? "all" : "work"));
     return node;
   };
-  return h("div", { className: "switch", role: "group", "aria-label": screenWords().sections.clients }, option(words.work, false), option(words.all, true));
+  return h("div", { className: "switch", role: "group", "aria-label": screenWords().sections.clients }, option(words.work, false, work), option(words.all, true));
+}
+
+// The Client Type chip on Clients, with its dismiss (P153; SPEC-lists 15.3).
+function pagesTypeChip() {
+  if (!pagesClientType) return null;
+  const words = screenWords();
+  const kind = (words.client_types || {})[pagesClientType];
+  if (!kind) throw new Error(`client_types.${pagesClientType}`);
+  const dismiss = h("button", { type: "button", className: "icon-button type-dismiss", "aria-label": words.icons.remove_filter, dataset: { pick: "type" } }, icon("dismiss", true));
+  setTip(dismiss, words.icons.remove_filter);
+  dismiss.addEventListener("click", () => pagesPick("clients", () => { pagesClientType = ""; }, "all"));
+  return h("span", { className: "type-chip" }, h("span", { className: "type-chip-word" }, kind.label), dismiss);
 }
 
 function pagesClients() {
@@ -888,12 +1222,16 @@ function pagesClients() {
     start.addEventListener("click", () => openNewHousehold());
     return [pagesEmpty(words.empty.clients, "", start)];
   }
-  // One order for both tabs of the switch (SPEC-lists 3).
+  // One order for both tabs of the switch (SPEC-lists 3); the type and the
+  // tab narrow the whole list, then the order and the pages apply.
+  const work = pagesClientSpecs(firm, false).length;
   const specs = pagesOrdered("clients", pagesClientSpecs(firm, pagesClientsAll));
-  if (!specs.length) return [pagesSwitch(), pagesEmpty(words.empty.work)];
+  const bar = h("div", { className: "clients-bar" }, pagesSwitch(work), pagesTypeChip());
+  if (!specs.length) return [bar, pagesEmpty(words.empty.work)];
+  const { part, foot } = pagesPaged("clients", specs);
   const rows = document.createDocumentFragment();
-  for (const row of pagesEach(specs, (spec) => spec.name, pagesRow)) rows.append(row);
-  return [pagesSwitch(), pagesColumnHeads("clients"), pagesList({ label: words.sections.clients }, [rows])];
+  for (const row of pagesEach(part, (spec) => spec.name, pagesRow)) rows.append(row);
+  return [bar, pagesColumnHeads("clients"), pagesList({ label: words.sections.clients }, [rows]), foot];
 }
 
 // ── Household and year (SPEC 6.5, 6.6) ────────────────────────────────
@@ -1121,6 +1459,7 @@ function pagesReturn(route) {
   pagesReturnPlan(groups, route).forEach((one, i) => {
     pagesSafe(one.heading, () => {
       const spec = { ...one, first: i === 0, blocks: pagesBlocks(groups[one.key]) };
+      if (one.fold) delete spec.key;        // Set aside keeps its plain fold (P176)
       if (one.fold) {
         // Shut each time the page opens (pagesDraw resets it); kept across redraws of this page.
         spec.open = pagesSetAsideOpen;
@@ -1248,6 +1587,15 @@ function pagesRouteKey(route) {
 // says so; it is never emptied for one bad row (SPEC 6, failed read).
 function pagesDraw(route, page) {
   if (route.level === "clients" && pagesLastLevel !== "clients") pagesClientsAll = false;
+  // A firm page's pages, tab and reason card are forgotten when it is left;
+  // a Client Type when another firm page is opened (P174, P145, P149, P153).
+  if (route.level !== pagesLastLevel) {
+    pagesPageAt = {};
+    pagesTab = "all";
+    pagesReasonPick = "";
+    if (["overview", "needs-review", "reminders"].indexOf(route.level) !== -1) pagesClientType = "";
+  }
+  if (typeof pagesClosePanel === "function") pagesClosePanel(false);
   pagesLastLevel = route.level;
   const key = pagesRouteKey(route);
   if (pagesDrawn !== key) pagesSetAsideOpen = false;   // Set aside is shut each time the page opens
@@ -1283,7 +1631,8 @@ function pagesDraw(route, page) {
       nodes = [];
     }
   }
-  page.replaceChildren(...nodes);
+  page.replaceChildren(...nodes.filter(Boolean));
+  page.dataset.list = pagesListOf(route);   // a firm list's rows are shaded in turn (P145)
   pagesApplyWidths(page, pagesListOf(route));
   pagesDrawn = key;
   pagesRestore(page);
@@ -1313,7 +1662,12 @@ function pagesKey(e) {
   };
   if (e.key in moves) {
     e.preventDefault();
-    pagesActivate(list, rows[Math.min(Math.max(moves[e.key], 0), rows.length - 1)]);
+    pagesActivate(list, rows[Math.min(Math.max(moves[e.key], 0), rows.length - 1)], true);
+    return true;
+  }
+  // Space: the active row's Linked Households panel, when it has one (P171).
+  if (e.key === " " && pagesOpenRowLinks(list, rows[at])) {
+    e.preventDefault();
     return true;
   }
   if (e.key === "Enter") {

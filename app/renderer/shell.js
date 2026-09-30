@@ -149,13 +149,40 @@ function shellVocabulary() {
   const words = screenWords();
   $("side").setAttribute("aria-label", words.side_label);
   $("crumbs").setAttribute("aria-label", words.path_label);
-  for (const node of document.querySelectorAll(".side-section")) {
+  for (const node of document.querySelectorAll(".side-section[data-section]")) {
     const key = node.dataset.section;
     node.querySelector(".side-name").textContent = words.sections[SCREEN_KEYS[key] || key];
   }
+  shellSideWords(words);
   shellNameIcons();
   shellChanged();
   shellDraw();
+}
+
+// The side panel's other words (pilot SPEC-lists 15; P153-P155): the brand
+// band, the section headings, the Client Types (their forms the tooltip),
+// the items not built yet (each "Under Construction" as its tooltip) and
+// Settings. A word the vocabulary lacks throws, as every word here does.
+function shellSideWords(words) {
+  const side = words.side;
+  if (!side) throw new Error("side");
+  $("side-brand-name").textContent = side.brand;
+  $("side-brand-product").textContent = side.product;
+  $("side-types-heading").textContent = side.types;
+  $("side-workspace-heading").textContent = side.workspace;
+  $("side-settings").querySelector(".side-name").textContent = side.settings;
+  for (const node of document.querySelectorAll(".side-section[data-soon]")) {
+    const said = side.soon[node.dataset.soon];
+    if (!said) throw new Error(`side.soon.${node.dataset.soon}`);
+    node.querySelector(".side-name").textContent = said;
+    setTip(node, side.under_construction);
+  }
+  for (const node of document.querySelectorAll(".side-section[data-type]")) {
+    const kind = (words.client_types || {})[node.dataset.type];
+    if (!kind) throw new Error(`client_types.${node.dataset.type}`);
+    node.querySelector(".side-name").textContent = kind.label;
+    setTip(node, kind.forms.join(", "));
+  }
 }
 
 // ── data the list and the firm command bring ──────────────────────────
@@ -290,6 +317,7 @@ function shellStateArrived(state) {
 
 function shellDraw() {
   drawSide();
+  drawFindWords();
   drawPath();
   drawPage();
   shellChanged();
@@ -310,12 +338,15 @@ function drawSide() {
   // First run: drawn disabled, no counts. From Change clients folder the
   // panel stays enabled (SPEC 6.8).
   const off = shellRoute.level === "setup" && !shellRootSet;
+  // A Client Type is the current item while Clients shows it (P153).
+  const type = shellRoute.level === "clients" && typeof pagesClientType === "string" ? pagesClientType : "";
   for (const node of document.querySelectorAll(".side-section")) {
     const key = node.dataset.section;
     node.disabled = off;
-    if (key === shellSection()) node.setAttribute("aria-current", "page");
+    const here = key ? key === shellSection() && !type : Boolean(type) && node.dataset.type === type;
+    if (here) node.setAttribute("aria-current", "page");
     else node.removeAttribute("aria-current");
-    node.setAttribute("aria-keyshortcuts", `Control+${SIDE_KEYS.indexOf(key) + 1}`);
+    if (key) node.setAttribute("aria-keyshortcuts", `Control+${SIDE_KEYS.indexOf(key) + 1}`);
   }
 }
 
@@ -487,10 +518,17 @@ function syncSortNotice() {
 
 function drawCounts() {
   const counts = shellCounts();
-  for (const node of document.querySelectorAll(".side-section")) {
+  for (const node of document.querySelectorAll(".side-section[data-section]")) {
     const n = shellRoute.level === "setup" ? 0 : counts[node.dataset.section] || 0;
     node.querySelector(".side-count").textContent = n > 0 ? String(n) : "";
   }
+}
+
+// The search box's placeholder (pilot SPEC-lists 13, P173): Needs Review's
+// names the files the box also finds there.
+function drawFindWords() {
+  const words = screenWords();
+  $("find").setAttribute("placeholder", shellRoute.level === "needs-review" ? words.find_placeholder_files : words.find_placeholder);
 }
 
 // ── search (SPEC 8.2) ─────────────────────────────────────────────────
@@ -498,10 +536,16 @@ function fold(text) {
   return String(text).normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
 }
 
-function findOptions(query) {
+// `files`: the waiting files the box also finds on Needs Review (P173), each
+// noted with its return and year; choosing one opens Check on it.
+function findOptions(query, files) {
   const needle = fold(query).trim();
   if (!needle) return [];
   const words = screenWords();
+  const waiting = (files || []).filter((one) => fold(one.name).indexOf(needle) !== -1).map((one) => {
+    const ret = shellReturn(one.return);
+    return { name: one.name, note: `${ret ? ret.return_name : ""} ${one.year || ""}`.trim(), check: { ret: one.return, name: one.name, handle: one.handle } };
+  });
   const people = households.filter((one) => fold(one.name).indexOf(needle) !== -1).map((one) => ({
     name: one.name,
     note: fill(shellOwnReturns(one.path).length === 1 ? words.counts.one_return : words.counts.returns, { n: shellOwnReturns(one.path).length }),
@@ -515,7 +559,7 @@ function findOptions(query) {
       route: { level: "return", household: one.household, year: one.year, ret: one.path },
     };
   });
-  return [...people, ...returns].slice(0, 8);
+  return [...waiting, ...people, ...returns].slice(0, 8);
 }
 
 function drawFound() {
@@ -523,7 +567,8 @@ function drawFound() {
   const list = $("find-list");
   const box = $("find");
   const query = box.value;
-  shellFound = findOptions(query);
+  const firm = shellFirmNow.data;
+  shellFound = findOptions(query, shellRoute.level === "needs-review" && firm ? firm.files : []);
   if (!query.trim()) {
     hideFound();
     return;
@@ -566,6 +611,11 @@ function openFound(index) {
   if (!one) return;
   $("find").value = "";
   hideFound();
+  if (one.check) {
+    if (typeof openCheck === "function") openCheck(one.check.ret, one.check.name, one.check.handle);
+    else unanswered("check");
+    return;
+  }
   shellGo(one.route);
 }
 
@@ -888,6 +938,11 @@ function shellKey(e) {
   if (e.target === $("find")) return findKey(e);
   if (e.key === "Escape") {
     if (dialogStack.length) return false;   // a dialog's own rule
+    if (typeof pagesPanelOpen === "function" && pagesPanelOpen()) {
+      e.preventDefault();
+      pagesClosePanel(true);
+      return true;
+    }
     if (!$("sheet").hidden && typeof closeSheet === "function") {
       e.preventDefault();
       closeSheet();
@@ -930,9 +985,26 @@ function findKey(e) {
 }
 
 // ── wiring ────────────────────────────────────────────────────────────
-for (const node of document.querySelectorAll(".side-section")) {
-  node.addEventListener("click", () => shellGo({ level: node.dataset.section }));
+for (const node of document.querySelectorAll(".side-section[data-section]")) {
+  node.addEventListener("click", () => {
+    if (node.dataset.section === "clients") pagesClientType = "";   // Clients itself: every type
+    shellGo({ level: node.dataset.section });
+  });
 }
+// A Client Type opens Clients filtered to it, from its first page (P153).
+for (const node of document.querySelectorAll(".side-section[data-type]")) {
+  node.addEventListener("click", () => {
+    pagesClientType = node.dataset.type;
+    delete pagesPageAt.clients;
+    shellGo({ level: "clients" });
+  });
+}
+// A page not built yet says so and does nothing else: no page, no command (P154).
+for (const node of document.querySelectorAll(".side-section[data-soon]")) {
+  node.addEventListener("click", () => toastWord("under_construction"));
+}
+// Settings: the settings the app already has, through the menu's own answer (P175).
+$("side-settings").addEventListener("click", () => shellAnswer("change_root"));
 $("sort").addEventListener("click", sortClicked);
 $("find").addEventListener("input", drawFound);
 $("find").addEventListener("focus", () => {
@@ -940,6 +1012,8 @@ $("find").addEventListener("focus", () => {
 });
 document.addEventListener("click", (e) => {
   if (!e.target.closest("#find-wrap")) hideFound();
+  // A click outside the Linked Households panel closes it (P171).
+  if (!e.target.closest("#link-panel") && !e.target.closest(".link-mark") && typeof pagesClosePanel === "function") pagesClosePanel(false);
 });
 $("sheet-close").addEventListener("click", () => {
   if (typeof closeSheet === "function") closeSheet();

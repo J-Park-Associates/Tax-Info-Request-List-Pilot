@@ -20,15 +20,38 @@
        vocabulary, and this file types none. The page is drawn by shell.js
        (the setup page) and pages.js (the rest). -->
   <div id="shell">
+    <!-- The side panel (pilot SPEC-lists 15; P153, P154): the brand band, the
+         four pages (Ctrl+1..4), two pages not built yet, the Client Types
+         that open Clients filtered, the Workspace items not built yet, and
+         Settings. An "Under Construction" item is aria-disabled, says so
+         and opens nothing. The list scrolls rather than cut an item. -->
     <nav id="side">
-      <div id="side-brand"><img src="logo.svg" alt="" /></div>
+      <div id="side-brand"><img src="logo.svg" alt="" /><span id="side-brand-words"><span id="side-brand-name"></span><span id="side-brand-product"></span></span></div>
+      <div id="side-scroll">
       <ul id="side-sections">
-        <li><button type="button" class="side-section" data-section="overview"><span class="side-name"></span><span class="side-count"></span></button></li>
-        <li><button type="button" class="side-section" data-section="needs-review"><span class="side-name"></span><span class="side-count"></span></button></li>
-        <li><button type="button" class="side-section" data-section="reminders"><span class="side-name"></span><span class="side-count"></span></button></li>
-        <li><button type="button" class="side-section" data-section="clients"><span class="side-name"></span><span class="side-count"></span></button></li>
+        <li><button type="button" class="side-section" data-section="overview"><svg class="icon side-icon" aria-hidden="true"><use href="#i-grid" /></svg><span class="side-name"></span><span class="side-count"></span></button></li>
+        <li><button type="button" class="side-section" data-section="needs-review"><svg class="icon side-icon" aria-hidden="true"><use href="#i-alert" /></svg><span class="side-name"></span><span class="side-count"></span></button></li>
+        <li><button type="button" class="side-section" data-section="reminders"><svg class="icon side-icon" aria-hidden="true"><use href="#i-bell" /></svg><span class="side-name"></span><span class="side-count"></span></button></li>
+        <li><button type="button" class="side-section" data-section="clients"><svg class="icon side-icon" aria-hidden="true"><use href="#i-people" /></svg><span class="side-name"></span><span class="side-count"></span></button></li>
+        <li><button type="button" class="side-section is-soon" data-soon="ready_to_sign" aria-disabled="true"><svg class="icon side-icon" aria-hidden="true"><use href="#i-pen" /></svg><span class="side-name"></span></button></li>
+        <li><button type="button" class="side-section is-soon" data-soon="family_entities" aria-disabled="true"><svg class="icon side-icon" aria-hidden="true"><use href="#i-folder" /></svg><span class="side-name"></span></button></li>
       </ul>
+      <h2 class="side-heading" id="side-types-heading"></h2>
+      <ul class="side-list" aria-labelledby="side-types-heading">
+        <li><button type="button" class="side-section" data-type="individuals"><svg class="icon side-icon" aria-hidden="true"><use href="#i-person" /></svg><span class="side-name"></span></button></li>
+        <li><button type="button" class="side-section" data-type="businesses"><svg class="icon side-icon" aria-hidden="true"><use href="#i-briefcase" /></svg><span class="side-name"></span></button></li>
+        <li><button type="button" class="side-section" data-type="trusts"><svg class="icon side-icon" aria-hidden="true"><use href="#i-shield" /></svg><span class="side-name"></span></button></li>
+        <li><button type="button" class="side-section" data-type="nonprofits"><svg class="icon side-icon" aria-hidden="true"><use href="#i-heart" /></svg><span class="side-name"></span></button></li>
+      </ul>
+      <h2 class="side-heading" id="side-workspace-heading"></h2>
+      <ul class="side-list" aria-labelledby="side-workspace-heading">
+        <li><button type="button" class="side-section is-soon" data-soon="personal_trusts" aria-disabled="true"><svg class="icon side-icon" aria-hidden="true"><use href="#i-shield" /></svg><span class="side-name"></span></button></li>
+        <li><button type="button" class="side-section is-soon" data-soon="corporate_entities" aria-disabled="true"><svg class="icon side-icon" aria-hidden="true"><use href="#i-briefcase" /></svg><span class="side-name"></span></button></li>
+        <li><button type="button" class="side-section is-soon" data-soon="portal_settings" aria-disabled="true"><svg class="icon side-icon" aria-hidden="true"><use href="#i-gear" /></svg><span class="side-name"></span></button></li>
+      </ul>
+      </div>
       <div id="side-foot">
+        <button type="button" class="side-section" id="side-settings"><svg class="icon side-icon" aria-hidden="true"><use href="#i-gear" /></svg><span class="side-name"></span></button>
         <div id="last-sort" role="status" aria-live="polite"></div>
       </div>
     </nav>
@@ -129,6 +152,24 @@
     <symbol id="i-done" viewBox="0 0 16 16"><path d="M3.5 8.5l3 3 6-7" /></symbol>
     <symbol id="i-more" viewBox="0 0 16 16"><circle cx="3.5" cy="8" r="0.6" /><circle cx="8" cy="8" r="0.6" /><circle cx="12.5" cy="8" r="0.6" /></symbol>
     <symbol id="i-open" viewBox="0 0 16 16"><path d="M9 3h4v4M13 3L7.5 8.5M11 9.5V13H3V5h3.5" /></symbol>
+    <!-- The side panel's, the raised pages' and the linked households' (pilot SPEC-lists 10-15). -->
+    <symbol id="i-grid" viewBox="0 0 16 16"><rect x="2.5" y="2.5" width="4.5" height="4.5" rx="1" /><rect x="9" y="2.5" width="4.5" height="4.5" rx="1" /><rect x="2.5" y="9" width="4.5" height="4.5" rx="1" /><rect x="9" y="9" width="4.5" height="4.5" rx="1" /></symbol>
+    <symbol id="i-alert" viewBox="0 0 16 16"><circle cx="8" cy="8" r="5.5" /><path d="M8 5v3.5M8 10.75v0.5" /></symbol>
+    <symbol id="i-clock" viewBox="0 0 16 16"><circle cx="8" cy="8" r="5.5" /><path d="M8 5v3l2 1.5" /></symbol>
+    <symbol id="i-bell" viewBox="0 0 16 16"><path d="M4 11V7.5a4 4 0 0 1 8 0V11l1 1.5H3z" /><path d="M6.5 14h3" /></symbol>
+    <symbol id="i-people" viewBox="0 0 16 16"><circle cx="6" cy="5.5" r="2.25" /><path d="M2 13c0-2.2 1.8-3.5 4-3.5s4 1.3 4 3.5" /><circle cx="11.5" cy="6" r="1.75" /><path d="M11 9.5c1.7 0 3 1.1 3 3" /></symbol>
+    <symbol id="i-pen" viewBox="0 0 16 16"><path d="M3 13l1-3.5L10.5 3l2.5 2.5L6.5 12z" /><path d="M9 4.5l2.5 2.5" /></symbol>
+    <symbol id="i-folder" viewBox="0 0 16 16"><path d="M2 4.5h4l1.5 1.5H14v6.5H2z" /></symbol>
+    <symbol id="i-person" viewBox="0 0 16 16"><circle cx="8" cy="5.5" r="2.5" /><path d="M3.5 13.5c0-2.5 2-4 4.5-4s4.5 1.5 4.5 4" /></symbol>
+    <symbol id="i-briefcase" viewBox="0 0 16 16"><rect x="2" y="5" width="12" height="8" rx="1" /><path d="M6 5V3.5h4V5M2 9h12" /></symbol>
+    <symbol id="i-shield" viewBox="0 0 16 16"><path d="M8 2l5 2v4c0 3-2.2 5-5 6-2.8-1-5-3-5-6V4z" /></symbol>
+    <symbol id="i-heart" viewBox="0 0 16 16"><path d="M8 13.5S2.5 10 2.5 6.5A2.75 2.75 0 0 1 8 5a2.75 2.75 0 0 1 5.5 1.5C13.5 10 8 13.5 8 13.5z" /></symbol>
+    <symbol id="i-gear" viewBox="0 0 16 16"><circle cx="8" cy="8" r="2" /><path d="M8 2v2M8 12v2M2 8h2M12 8h2M3.8 3.8l1.4 1.4M10.8 10.8l1.4 1.4M3.8 12.2l1.4-1.4M10.8 5.2l1.4-1.4" /></symbol>
+    <symbol id="i-link" viewBox="0 0 16 16"><path d="M7 9a2.5 2.5 0 0 0 3.5 0l2-2a2.5 2.5 0 0 0-3.5-3.5L8 4.5" /><path d="M9 7a2.5 2.5 0 0 0-3.5 0l-2 2A2.5 2.5 0 0 0 7 12.5l1-1" /></symbol>
+    <symbol id="i-file" viewBox="0 0 16 16"><path d="M4 2h5l3 3v9H4z" /><path d="M9 2v3h3" /></symbol>
+    <symbol id="i-question" viewBox="0 0 16 16"><circle cx="8" cy="8" r="5.5" /><path d="M6.25 6.5a1.75 1.75 0 1 1 2.5 1.6c-0.5 0.25-0.75 0.6-0.75 1.15M8 11v0.25" /></symbol>
+    <symbol id="i-box" viewBox="0 0 16 16"><path d="M2.5 5l5.5-2.5L13.5 5v6L8 13.5 2.5 11z" /><path d="M2.5 5L8 7.5 13.5 5M8 7.5v6" /></symbol>
+    <symbol id="i-hand" viewBox="0 0 16 16"><path d="M5 8V3.75a1 1 0 0 1 2 0V7M7 7V3a1 1 0 0 1 2 0v4M9 7V3.75a1 1 0 0 1 2 0V8.5M11 6.5a1 1 0 0 1 2 0V10a4 4 0 0 1-4 4H8.5a3.5 3.5 0 0 1-3-1.5L3.5 9.5a1 1 0 0 1 1.5-1.2L5 8.5" /></symbol>
   </svg>
 
   <!-- The three boxes the setup page fills and saveRoot() reads; hidden and
@@ -171,6 +212,16 @@
           <button type="button" id="hh-edit-feed-add" class="btn btn-small"></button>
         </div>
         <p id="hh-edit-feed-warning" class="rem-hold hidden" role="status"></p>
+      </div>
+      <!-- The related households (pilot P170): picked from the households
+           that exist, never inferred; saved on both records. -->
+      <div class="field">
+        <span id="hh-edit-related-label"></span>
+        <ul id="hh-edit-related" class="household-feeds"></ul>
+        <div class="feed-add">
+          <select id="hh-edit-related-pick"></select>
+          <button type="button" id="hh-edit-related-add" class="btn btn-small"></button>
+        </div>
       </div>
       <div class="modal-actions">
         <button id="hh-edit-cancel" class="btn">Cancel</button>

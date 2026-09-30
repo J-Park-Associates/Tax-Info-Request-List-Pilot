@@ -84,6 +84,9 @@
   --st-done: #05603f;
   --st-error: #991b1b;
   --danger: #b42318;
+  /* the Linked Households mark and a firm list's shaded row (pilot SPEC-lists 16, P177) */
+  --st-linked: #7c3aad;
+  --bg-band: #f8fafc;
 
   /* notices */
   --err-bg: #fef2f2;  --err-border: #fecaca;  --err-fg: #991b1b;
@@ -159,6 +162,8 @@
     --st-done: #7dd8b0;
     --st-error: #ffa29b;
     --danger: #ff9189;
+    --st-linked: #c4a0f0;
+    --bg-band: #1f232a;
 
     --err-bg: #3a1d20;  --err-border: #6e2f33;  --err-fg: #ffb8b3;
     --warn-bg: #35290f; --warn-border: #6b5420; --warn-fg: #f6d08a;

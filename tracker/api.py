@@ -1464,6 +1464,9 @@ SCREEN: dict = {
         # editor (S5 rebuild 1). Approved by Jason, ruling 23.
         "pick_request": "Pick a Request First",
         "name_requests": "Name Each Custom Request",
+        # What choosing a side-panel page that is not built yet says, and
+        # all it does (pilot P154).
+        "under_construction": "Under Construction",
     },
     "misfits": {
         "title": "Folders Skipped",

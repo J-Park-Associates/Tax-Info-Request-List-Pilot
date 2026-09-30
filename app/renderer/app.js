@@ -1475,6 +1475,10 @@ async function markShared() {
 // nothing is inferred - a household is assembled by a person, and so is a
 // feed (decision 129).
 let editorFeeds = [];
+// The related households shown in the editor (pilot P170): names, the ones
+// this record holds and the ones that name it (the list's links), so a save
+// completes a link one side is still missing.
+let editorRelated = [];
 
 // What the picker is offering right now, in the order it draws the options.
 // An option's value is its index here and nothing else: a feed is two
@@ -1510,7 +1514,36 @@ function openHouseholdEditor() {
   editorFeeds = (hh.feeds || []).map((f) => ({ household: f.household, return_name: f.return_name,
                                                label: f.label }));
   renderEditorFeeds();
+  $("hh-edit-related-label").textContent = words.related_label;
+  $("hh-edit-related-add").textContent = words.add_related;
+  const listed = households.find((one) => one.path === hh.path);
+  const named = listed ? (listed.links || []).filter((one) => one.kind === "related").map((one) => one.name) : [];
+  editorRelated = [...new Set([...(hh.related || []), ...named])];
+  renderEditorRelated();
   openDialog("household-modal");
+}
+
+// The related households, and a picker of every other household the list
+// knows (P170): a person picks from what exists; nothing is typed or inferred.
+function renderEditorRelated() {
+  const hh = lastState && lastState.household;
+  const here = hh ? hh.name : "";
+  show("hh-edit-related", editorRelated.map((name, at) => el("li", {},
+    el("span", {}, name),
+    el("button", { className: "btn btn-small hh-related-remove", dataset: { at: String(at) } },
+      vocab.editor.remove_row))));
+  const taken = new Set(editorRelated);
+  const options = households.filter((one) => one.name !== here && !taken.has(one.name))
+    .map((one) => el("option", { value: one.name }, one.name));
+  show("hh-edit-related-pick", options.length ? options : [el("option", { value: "" }, "—")]);
+  $("hh-edit-related-add").disabled = !options.length;
+}
+
+function addEditorRelated() {
+  const picked = $("hh-edit-related-pick").value;
+  if (!picked || editorRelated.includes(picked)) return;
+  editorRelated.push(picked);
+  renderEditorRelated();
 }
 
 // The return lines this drop folder feeds, and the picker of every other
@@ -1571,6 +1604,7 @@ async function saveHousehold() {
       contact: $("hh-edit-contact").value.trim(),
       link: $("hh-edit-link").value.trim(),
       feeds: editorFeeds.map((f) => ({ household: f.household, return_name: f.return_name })),
+      related: editorRelated.slice(),
     });
     closeDialog("household-modal");
     if (result.list) adoptList(result.list);   // the list this write changed (decision 194)
@@ -3286,6 +3320,7 @@ const DIALOGS = {
       members: $("hh-edit-members").value, contact: $("hh-edit-contact").value,
       link: $("hh-edit-link").value,
       feeds: editorFeeds.map((f) => [f.household, f.return_name]),
+      related: editorRelated.slice(),
     }),
     first: () => $("hh-edit-members"),
   },
@@ -3482,6 +3517,13 @@ $("hh-edit-feeds").addEventListener("click", (e) => {
   if (!remove) return;
   editorFeeds.splice(Number(remove.dataset.at), 1);
   renderEditorFeeds();
+});
+$("hh-edit-related-add").addEventListener("click", addEditorRelated);
+$("hh-edit-related").addEventListener("click", (e) => {
+  const remove = e.target.closest("button.hh-related-remove");
+  if (!remove) return;
+  editorRelated.splice(Number(remove.dataset.at), 1);
+  renderEditorRelated();
 });
 $("ho-cancel").addEventListener("click", () => requestClose("handover-modal"));
 $("ho-return").addEventListener("change", loadHandOverRequests);
