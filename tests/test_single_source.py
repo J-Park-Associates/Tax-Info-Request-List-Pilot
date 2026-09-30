@@ -3230,10 +3230,11 @@ const NOT_ASKED_GROUP = "not asked";
 const vocab = { columns: [], set_aside: { heading: "Set aside ({n})", group: "{label} ({n})" },
                 editor: { plain_columns: [], routing_columns: [], routing_all: "", routing_help: "" } };
 const editorState = { learned: {} };
-const editorFolds = new Map();
+let editorAdvanced = false;
+const setAdvanced = () => {};
+const shellWords = (key) => (key === "editor.advanced" ? "Advanced" : key);
 const editorRowIsCustom = () => false;
 const editorRowFoldOpen = () => false;
-const showEveryFold = () => {};
 const editorRows = [
   { identifier: "A01", group: "" },
   { identifier: "B01", group: NOT_ASKED_GROUP },
@@ -3246,13 +3247,14 @@ function requestRows(box, rows) { for (const row of rows) box.append(el("div", {
 function setAsideGroups(rows) {
   return rows.map((row) => ({ label: row.group, sentence: "A fabricated sentence.", rows: [row] }));
 }
-const page = { "ed-rows": document.createElement("div") };
+const page = { "ed-rows": document.createElement("div"), "ed-advanced-body": { classList: { toggle: () => {} } } };
 const $ = (id) => page[id];
 renderEditorRows();
 process.stdout.write(JSON.stringify(tree(page["ed-rows"])));
 """)
     above, active, fold = drawn["children"]
-    assert above["className"] == "editor-actions"   # the routing toggle (decision 201)
+    assert above["className"] == "editor-actions"   # the one Advanced switch (SPEC 2.7, E91)
+    assert _texts(above) == ["Advanced"] and _class_names(above).count("btn btn-small ed-advanced") == 1
     assert fold["tag"] == "details" and fold["className"] == "ed-set-aside"
     assert [child["tag"] if isinstance(child, dict) else child for child in fold["children"]] == [
         "summary", "div", "div", "div", "div"]
@@ -3709,8 +3711,8 @@ def test_escape_and_an_overlay_click_reach_every_dialog_the_same_way():
     assert "if (e.target === $(id)) requestClose(id);" in overlay
     assert not re.search(r"e\.target === \$\(\"[a-z-]+\"\)", js)
     for button, dialog in (("hh-edit-cancel", "household-modal"), ("ho-cancel", "handover-modal"),
-                           ("ed-cancel", "editor"), ("wh-cancel", "modal"), ("wf-cancel", "modal"),
-                           ("ne-cancel", "modal"), ("sc-cancel", "schedule-modal"), ("roll-cancel", "roll-modal")):
+                           ("ed-cancel", "editor"), ("wh-cancel", "modal"),
+                           ("sc-cancel", "schedule-modal"), ("roll-cancel", "roll-modal")):
         assert f'$("{button}").addEventListener("click", () => requestClose("{dialog}"));' in js, button
 
 
@@ -3777,7 +3779,7 @@ def test_the_editor_opens_on_the_state_on_screen_with_every_fold_closed():
     assert body.count("call(") == 1 and 'call(withEng("state"))' in body
     assert "? { ...lastState }" in body and body.index("lastState") < body.index("call(")
     assert "refresh(" not in body
-    assert body.index("editorFolds.clear();") < body.index("renderEditorRows();")
+    assert body.index("editorAdvanced = false;") < body.index("renderEditorRows();")
     assert "head: editorState.list_head" in _js_function(js, "async function saveEditor() {")
 
 

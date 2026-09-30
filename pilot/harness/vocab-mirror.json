@@ -130,6 +130,7 @@
  },
  "editor": {
   "add_row": "Add a Request",
+  "advanced": "Advanced",
   "any_extension": "*",
   "cancel": "Cancel",
   "date_fields": [

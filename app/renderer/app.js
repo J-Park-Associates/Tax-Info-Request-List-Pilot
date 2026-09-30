@@ -2591,7 +2591,8 @@ function learnedCell(identifier, learned) {
 // table rows - the row's name as text and the boxes a preparer touches
 // (`fold.plain`, and a custom row's Document), then its routing
 // fold holding the rest (`fold.routing`) and the taught keywords, closed
-// unless `fold.isOpen(row)` says otherwise. Folding hides cells and never
+// unless `fold.isOpen(row)` says otherwise. There is no toggle per row: the
+// editor's one Advanced switch opens every fold at once (SPEC 2.7, E91). Folding hides cells and never
 // drops them: every box writes into the same row object through
 // cellInput, so a save carries every column whether a fold was opened or
 // not. Which column goes where is the API's answer, never the page's.
@@ -2614,7 +2615,6 @@ function requestRows(container, rows, { columns, onChange, onRemove, onTakeBack,
     head = el("tr", {},
       el("th", {}, documentColumn.label),
       plain.map((c) => el("th", {}, c.label)),
-      el("th", {}, ""),
       el("th", {}, ""));
     body = rows.flatMap((row, index) => {
       const custom = fold.custom(row);
@@ -2626,23 +2626,13 @@ function requestRows(container, rows, { columns, onChange, onRemove, onTakeBack,
         inFold.map((c) => el("label", { className: "field" },
           el("span", {}, c.label), cellInput(row, c, changed))),
         taught ? learnedBox("div", row) : null));
-      cell.colSpan = plain.length + 3;
+      cell.colSpan = plain.length + 2;
       const routingRow = el("tr", { className: open ? "ed-routing" : "ed-routing hidden",
                                     dataset: { index: String(index) } }, cell);
-      const toggle = el("button", {
-        type: "button", className: "btn btn-small ed-fold",
-        "aria-expanded": String(open),
-      }, vocab.editor.routing);
-      toggle.addEventListener("click", () => {
-        const now = routingRow.classList.toggle("hidden") === false;
-        toggle.setAttribute("aria-expanded", String(now));
-        fold.setOpen(row, now);
-      });
       const plainRow = el("tr", { dataset: { index: String(index) } },
         el("td", { className: "ed-name" }, name,
           custom ? cellInput(row, documentColumn, changed) : null),
         plain.map((c) => el("td", { className: `ed-${c.key}` }, cellInput(row, c, changed))),
-        el("td", { className: "ed-fold-cell" }, toggle),
         removeCell(row, index));
       return [plainRow, routingRow];
     });
@@ -2868,7 +2858,6 @@ function renderEditorRows() {
       routing: vocab.editor.routing_columns,
       custom: editorRowIsCustom,
       isOpen: editorRowFoldOpen,
-      setOpen: (row, open) => editorFolds.set(row, open),
     },
     learned: (editorState && editorState.learned) || {},
     onChange: () => { if (grouping() !== drawn) renderEditorRows(); },
@@ -2895,27 +2884,29 @@ function renderEditorRows() {
     ? el("details", { className: "ed-set-aside" },
       el("summary", {}, fill(vocab.set_aside.heading, { n: aside.length })), ...groups.flat())
     : null;
-  // The one toggle above the rows that opens every row's routing fold.
-  const all = editorRows.every(editorRowFoldOpen);
-  const every = el("button", { type: "button", className: "btn btn-small ed-fold-all",
-                               "aria-expanded": String(all) }, vocab.editor.routing_all);
-  every.addEventListener("click", showEveryFold);
-  const above = el("div", { className: "editor-actions" }, every);
+  // The one Advanced switch above the rows (SPEC 2.7, E91): on, every row's
+  // routing rules and taught keywords, and the paste and rename blocks, are
+  // shown; off, the plain table alone. A word the vocabulary lacks is said.
+  const advanced = el("button", { type: "button", className: "btn btn-small ed-advanced",
+                                  "aria-pressed": String(editorAdvanced) }, shellWords("editor.advanced"));
+  advanced.addEventListener("click", () => setAdvanced(!editorAdvanced));
+  const above = el("div", { className: "editor-actions" }, advanced);
+  $("ed-advanced-body").classList.toggle("hidden", !editorAdvanced);
   $("ed-rows").replaceChildren(...[above, activeBox, folded].filter(Boolean));
 }
 
-// The plain view's folds (decision 201): open or shut per row object, so a
-// fold stays as the person left it when the rows are drawn again. A row
-// the editor did not open on - typed or pasted since - has no items entry
-// and opens unfolded, because the person is writing it now.
-const editorFolds = new Map();
+// The plain view's folds (decision 201) are open or shut together, by the one
+// Advanced switch, and stay so when the rows are drawn again. A row the
+// editor did not open on - typed or pasted since - has no items entry and
+// opens unfolded, because the person is writing it now.
+let editorAdvanced = false;
 
 function editorRowItem(row) {
   return ((editorState && editorState.items) || []).find((i) => i.identifier === row.identifier);
 }
 
 function editorRowFoldOpen(row) {
-  return editorFolds.has(row) ? editorFolds.get(row) : !editorRowItem(row);
+  return editorAdvanced || !editorRowItem(row);
 }
 
 // A custom row is one no catalog row of the return's form has; the API
@@ -2926,9 +2917,14 @@ function editorRowIsCustom(row) {
   return !known || !known.catalog_row;
 }
 
-function showEveryFold() {
-  for (const row of editorRows) editorFolds.set(row, true);
+function setAdvanced(on) {
+  editorAdvanced = on;
   renderEditorRows();
+}
+
+// A refused save names a column that must be on screen: Advanced goes on.
+function showEveryFold() {
+  setAdvanced(true);
 }
 
 // Only the learned column, drawn again from the state the API just sent.
@@ -3045,7 +3041,7 @@ async function openEditor(focus) {
     outcome(vocab.editor.not_this_return, "err");
     return;
   }
-  editorFolds.clear();
+  editorAdvanced = false;
   editorRows = (editorState.rules || []).map(editorRow);
   renderEngagementFields(editorState.engagement || {});
   // The return's people, as the record holds them (decision 128): edited
@@ -3450,7 +3446,6 @@ $("wi-household").addEventListener("click", () => {
   showStep("household");
   $("hh-name").focus();
 });
-$("wf-cancel").addEventListener("click", () => requestClose("modal"));
 // A refusal in the dialog's note stands until the person edits a field.
 $("modal").addEventListener("input", hideCreateNote);
 // The roll dialog (decision 196): its ticks and form picks are held for the
@@ -3533,7 +3528,6 @@ $("ed-rename-btn").addEventListener("click", renameRequest);
 $("ed-save").addEventListener("click", saveEditor);
 $("ed-cancel").addEventListener("click", () => requestClose("editor"));
 $("ne-create").addEventListener("click", createEngagement);
-$("ne-cancel").addEventListener("click", () => requestClose("modal"));
 // Every dialog the same way (decision 201): a click on the dim behind it
 // is Escape, and the bar's two answers are the only way past it.
 for (const id of Object.keys(DIALOGS)) {

@@ -1498,6 +1498,44 @@ def test_every_phrase_the_page_and_the_dialogs_draw_from_index_html_and_app_js_i
     assert "Belongs to" not in app
 
 
+def test_the_editor_has_one_advanced_switch_and_no_per_row_routing_toggle(tmp_path):
+    """SPEC 2.7 E91: one Advanced switch replaces the per-row routing
+    toggles and the show-every-fold button; it shows every row's routing
+    rules, the taught keywords, and the paste and rename blocks. A row
+    typed or pasted since the editor opened is open regardless, and a
+    refused save turns the switch on."""
+    app = stripped_js("app.js")
+    assert "ed-fold" not in app and "editorFolds" not in app and "routing_all" not in app and not re.search(r"vocab\.editor\.routing(?!_)", app)
+    assert app.count('className: "btn btn-small ed-advanced"') == 1 and 'shellWords("editor.advanced")' in app
+    html = read("index.html")
+    body = html[html.index('<div id="ed-advanced-body" class="hidden">'):html.index('<div id="ed-note"')]
+    assert 'id="ed-paste"' in body and 'id="ed-rename-btn"' in body, "paste and rename sit behind the switch"
+    ran = run_shell(["editorRowFoldOpen", "editorRowItem", "setAdvanced", "showEveryFold"], """
+      let editorAdvanced = false; let editorState = { items: [{ identifier: "A01" }] }; let drawn = 0;
+      const renderEditorRows = () => { drawn += 1; };
+    """, """
+      const known = { identifier: "A01" }; const typed = { identifier: "Z99" };
+      const out = { off: [editorRowFoldOpen(known), editorRowFoldOpen(typed)] };
+      setAdvanced(true); out.on = editorRowFoldOpen(known);
+      setAdvanced(false); out.offAgain = editorRowFoldOpen(known);
+      showEveryFold(); out.refused = editorRowFoldOpen(known); out.drawn = drawn;
+      return out;
+    """, tmp_path, source="app.js")
+    assert ran == {"off": [False, True], "on": True, "offAgain": False, "refused": True, "drawn": 3}
+
+
+def test_the_wizard_keeps_the_first_steps_cancel_only_and_esc_and_the_scrim_still_close_it():
+    """SPEC 2.7 E88-E90: step 1 keeps Cancel; the form step and the requests
+    step have none (step 3 keeps Back). Escape and the scrim close the one
+    `#modal` at every step."""
+    html = read("index.html")
+    modal = html[html.index('<div id="modal"'):html.index('id="ne-create"') + 40]
+    assert modal.count(">Cancel</button>") == 1 and 'id="wh-cancel"' in modal
+    app = stripped_js("app.js")
+    assert "wf-cancel" not in html + app and "ne-cancel" not in html + app
+    assert re.search(r"^\s*modal: \{", app, flags=re.M), "the wizard is still in the dialog registry, so Escape and the scrim close it"
+
+
 def test_no_toast_types_a_sentence_and_the_words_it_asks_for_are_five_title_case_words_in_the_vocabulary():
     """F6: a toast is the API's word. The renderer types none (no string
     literal in a `toast(` call), and every key `toastWord` is given is in

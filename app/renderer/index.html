@@ -297,10 +297,6 @@
       <div id="wiz-form" class="hidden">
         <h3 id="form-title"></h3>
         <div id="form-grid" class="form-grid"></div>
-        <div class="modal-actions">
-          <span class="toolbar-spacer"></span>
-          <button id="wf-cancel" class="btn">Cancel</button>
-        </div>
       </div>
 
       <!-- Step 2: tailored request list for the chosen form -->
@@ -363,7 +359,6 @@
              is edited or the dialog is closed (decision 196). -->
         <p id="ne-note" class="rem-hold hidden" role="alert"></p>
         <div class="modal-actions">
-          <button id="ne-cancel" class="btn">Cancel</button>
           <button id="ne-create" class="btn btn-primary"></button>
         </div>
       </div>
@@ -402,6 +397,8 @@
       <div class="editor-actions">
         <button id="ed-add" class="btn btn-small"></button>
       </div>
+      <!-- Behind the one Advanced switch (SPEC 2.7, E91): paste and rename. -->
+      <div id="ed-advanced-body" class="hidden">
       <details class="ed-paste">
         <summary id="ed-paste-title"></summary>
         <textarea id="ed-paste" rows="4" aria-label="Rows to Paste"></textarea>
@@ -419,6 +416,7 @@
           <button id="ed-rename-btn" class="btn btn-small"></button>
         </div>
       </details>
+      </div>
       <div id="ed-note" class="banner hidden" role="status"></div>
       <div class="modal-actions">
         <button id="ed-cancel" class="btn"></button>
