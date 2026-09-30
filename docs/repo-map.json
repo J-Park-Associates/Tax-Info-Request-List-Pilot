@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 336,
     "edges": 1151,
-    "reused": 0
+    "reused": 293
   },
   "node_types": [
     "artifact",
@@ -4921,8 +4921,8 @@
       "id": "pilot/handoffs/shell-S6b.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "06f3d0724c9eee3e",
-      "lines": 94
+      "sha256": "c1be58a134bf4f0d",
+      "lines": 100
     },
     {
       "id": "pilot/handoffs/shell-S7-rebuild-1.md",
