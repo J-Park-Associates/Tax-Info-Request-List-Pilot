@@ -284,6 +284,9 @@
         path: e.path, household: owner.name, label: e.name, year: e.year, counts: groupCounts(body), files: filesOf(body).length,
         oldest: days[0] || null, due: dueOf(body.due) || null,
         draft: body.draft || { ready: false, stage: 0, held: 0, drafted: null }, problem: "",
+        // The engine (S6, tracker/api.py firm) adds `paused: true` on each entry of a household paused for two open
+        // years; absent otherwise. The scenario "paused" pauses Okafor Family, which has no other work.
+        ...(scenario === "paused" && owner.name === "Okafor Family" ? { paused: true } : {}),
       };
     });
     // Each file's key is that of the copy `state` names for it; the reply's

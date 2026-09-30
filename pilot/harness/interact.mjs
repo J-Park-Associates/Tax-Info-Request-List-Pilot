@@ -267,6 +267,24 @@ const crumbs = (page) => page.evaluate(() => [...document.querySelectorAll("#cru
   await context.close();
 }
 
+{ // ruling 21: a household paused for two open years is marked beside its name on Clients and is a row on Overview's Work Waiting
+  const { context, page } = await open("?mode=real&scenario=paused");
+  const overview = await page.evaluate(() => [...document.querySelectorAll("#page .row")].map((r) => [r.querySelector(".row-name").textContent, r.querySelector(".row-status").textContent]));
+  check("ruling 21: Overview leads Work Waiting with the paused household, in the vocabulary's words", overview[0].join("|") === "Okafor Family|Two Years Open; Sorting Paused" && overview.filter((r) => r[1].includes("Paused")).length === 1, overview.slice(0, 3));
+  await page.click("#page .row-name .row-link");
+  await page.waitForFunction(() => document.querySelector("#page h1")?.textContent.includes("Okafor"), null, { timeout: 5000 });
+  check("ruling 21: the paused household's row opens the household", true, null);
+  await page.evaluate(() => shellGo({ level: "clients" }));
+  await page.waitForSelector("#page .row");
+  const marks = await page.evaluate(() => [...document.querySelectorAll("#page .row")].filter((r) => r.querySelector(".row-mark")).map((r) => [r.querySelector(".row-name .row-link").textContent, r.querySelector(".row-mark").textContent]));
+  check("ruling 21: Clients marks the paused household beside its name, in Work Waiting too, and no other", marks.length === 1 && marks[0].join("|") === "Okafor Family|Two Years Open; Sorting Paused", marks);
+  await context.close();
+  const plain = await open("?mode=real");
+  const none = await plain.page.evaluate(() => document.querySelectorAll("#page .row-mark").length + [...document.querySelectorAll("#page .row-status")].filter((n) => n.textContent.includes("Paused")).length);
+  check("ruling 21: with no paused field on any return nothing is drawn", none === 0, none);
+  await plain.context.close();
+}
+
 // ── the side sheet, the links, the right-click menus and the dialogs (S5), on the real app.js ──
 const smith = "/clients/J Park & Associates/Smith Family";
 const smithReturn = `${smith}/2025/1040 - John & Jane Smith`;

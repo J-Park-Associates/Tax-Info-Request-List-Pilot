@@ -838,6 +838,7 @@ const vocab = {
   screen: {
     groups: { needs_you: "Needs you", waiting: "Waiting on client", received: "Received", set_aside: "Set aside" },
     steps: { check: "Check", open: "Open", draft: "Draft reminder", edit: "Edit" },
+    notices: { paused: "Two Years Open; Sorting Paused" },
     empty: { received: "Nothing received yet" }, moved: "Moved by hand", due: "Due {date}", partly: "{n} of {total}",
     show_in_explorer: "Show in File Explorer", navigate_client: "Navigate to Client", navigate_return: "Navigate to Return",
     counts: { need: "{n} need you", waiting: "{n} waiting", complete: "Complete", files: "{n} files", one_return: "1 return", returns: "{n} returns" },
@@ -867,7 +868,7 @@ def run_pages_dom(probe: str, tmp_path: Path, setup: str = "", functions=None):
         "pagesClientSpecs", "pagesRemember", "pagesRestore", "pagesFirmReturn", "pagesActivate", "pagesOverview", "pagesNeedsReview",
         "pagesReminders", "pagesClients", "pagesHousehold", "folderName", "pagesLinkWords", "pagesReturnText", "pagesHouseholdPath",
         "pagesPathOf", "pagesFileLink", "pagesRunLink", "pagesLinkNode", "pagesCell", "pagesHeadLink", "pagesRunRowLink", "pagesWhere",
-        "pagesSteps", "pagesDrafts", "pagesRunRow", "pagesRunStep", "pagesPopup", "pagesEnableFor", "pagesRowRoute", "pagesKey", "pagesTitle",
+        "pagesPaused", "pagesNameCell", "pagesPausedRows", "pagesSteps", "pagesDrafts", "pagesRunRow", "pagesRunStep", "pagesPopup", "pagesEnableFor", "pagesRowRoute", "pagesKey", "pagesTitle",
     ]
     shell = read("shell.js")
     consts = "\n".join(shell[shell.index(head):shell.index(");\n", shell.index(head)) + 3] if head.endswith("[") else shell[shell.index(head):shell.index("\n", shell.index(head))]
@@ -1721,7 +1722,7 @@ def test_the_firm_pages_rows_link_by_the_firms_keys_and_carry_the_year(tmp_path)
       const link = (n) => n.byClass("row-link").map((l) => [l.textContent, l.dataset.link]);
       return { head: link(head), caption: link(caption), captionText: caption.textContent, rows: rows.map((r) => [r.byClass("row-name")[0].textContent, link(r.byClass("row-name")[0])]),
                overview: [overview.name, overview.nameLink, overview.detailLink], reminder: [reminder.name, reminder.nameLink.kind, reminder.detailLink.kind] };
-    """, tmp_path, functions=["pagesNeedsReview", "pagesReviewGroups", "pagesFirm", "pagesFirmReturn", "pagesReturnName", "pagesReturnText", "pagesHouseholdPath",
+    """, tmp_path, functions=["pagesNeedsReview", "pagesNameCell", "pagesReviewGroups", "pagesFirm", "pagesFirmReturn", "pagesReturnName", "pagesReturnText", "pagesHouseholdPath",
                               "pagesFileLink", "pagesRow", "pagesCell", "pagesLinkNode", "pagesLinkWords", "pagesHeadLink", "pagesGroup", "pagesGroupStep", "pagesList",
                               "pagesReason", "pagesDay", "pagesSafe", "pagesEach", "pagesLabel", "pagesSafeName", "pagesStepWords", "pagesByName", "pagesEmpty",
                               "pagesNextSort", "pagesWorkRows", "pagesCounts", "pagesRoute", "pagesDue", "pagesReminderSpecs", "pagesStage", "screenWords", "h", "icon",
@@ -2190,3 +2191,27 @@ def test_a_failed_last_sort_is_a_keyed_notice_with_retry_that_clears_when_a_sort
     assert ran["running"] == [], "left as it is while a sort runs"
     assert ran["worked"] == ["clear|last-sort"] and ran["never"] == ["clear|last-sort"]
     assert "syncSortNotice();" in js_function("shellChanged", "shell.js")
+
+
+def test_a_household_paused_for_two_open_years_is_marked_and_listed_from_the_firm_replys_paused_field(tmp_path):
+    """Ruling 21: `paused: true` on a household's firm.returns[] entries puts
+    the vocabulary's words beside its name on Clients (and in Work Waiting)
+    and leads Overview's rows with it; an entry without the field draws
+    nothing."""
+    ran = run_pages_dom("""
+      households = [{ name: "Alpha Family", path: "a" }, { name: "Bravo Family", path: "b" }];
+      const make = (household, extra = {}) => ({ path: household, household, counts: { needs_you: 0, waiting: 0, received: 0, set_aside: 0 }, problem: "", ...extra });
+      const paused = { returns: [make("Alpha Family", { paused: true }), make("Bravo Family")] };
+      const plain = { returns: [make("Alpha Family"), make("Bravo Family")] };
+      const say = (firm, all) => pagesClientSpecs(firm, all).map((one) => [one.name, one.mark]);
+      const cell = pagesNameCell({ name: "Alpha Family", mark: "Two Years Open; Sorting Paused" });
+      return { work: say(paused, false), all: say(paused, true), plainWork: say(plain, false), plainAll: say(plain, true),
+               rows: pagesPausedRows(paused).map((s) => [s.name, s.status, s.menu, s.step.route.household]), none: pagesPausedRows(plain),
+               cell: cell.kids.map((k) => k.className), plainCell: pagesNameCell({ name: "x" }).kids.length };
+    """, tmp_path)
+    words = "Two Years Open; Sorting Paused"
+    assert ran["work"] == [["Alpha Family", words]], "a paused household is work waiting for a person"
+    assert ran["all"] == [["Alpha Family", words], ["Bravo Family", ""]]
+    assert ran["plainWork"] == [] and ran["plainAll"] == [["Alpha Family", ""], ["Bravo Family", ""]], "with the field absent nothing is drawn"
+    assert ran["rows"] == [["Alpha Family", words, "household", "a"]] and ran["none"] == []
+    assert ran["cell"][-1] == "row-mark is-attention" and ran["plainCell"] == 1

@@ -236,6 +236,21 @@ function pagesByName(a, b) {
   return a.localeCompare(b, undefined, { numeric: true });
 }
 
+// The name cell, and beside the name the row's marker when it has one (a
+// household paused for two open years, ruling 21): the vocabulary's words.
+function pagesNameCell(spec) {
+  const box = pagesCell("row-name", "name", spec.name, spec.nameLink);
+  if (spec.mark) box.append(h("span", { className: "row-mark is-attention" }, spec.mark));
+  return box;
+}
+
+// The households the firm reply says are paused (`paused: true` on each of
+// their returns, S6's field); an entry without the field is not paused, and
+// nothing is drawn for it.
+function pagesPaused(firm) {
+  return new Set(firm.returns.filter((one) => one.paused === true).map((one) => one.household));
+}
+
 // ── the row and the group (SPEC 3.6) ──────────────────────────────────
 // A spec: {name, detail, status, tone, date, step, menu}. `step` is data
 // ({kind, ...}), run by pagesRunStep; `menu` names the right-click template.
@@ -252,7 +267,7 @@ function pagesRow(spec) {
     className: `row${step ? " has-step" : ""}${spec.child ? " row-child" : ""}`, role: "option", id, "aria-selected": "false",
     "aria-description": words || undefined, dataset: { menu: spec.menu || "", token: id },
   },
-  pagesCell("row-name", "name", spec.name, spec.nameLink),
+  pagesNameCell(spec),
   pagesCell("row-detail", "detail", spec.detail || "", spec.detailLink),
   h("span", { className: `row-status ${PAGES_TONES[spec.tone] || ""}` }, spec.status || ""),
   h("span", { className: "row-end" }, h("span", { className: "row-date" }, spec.date || ""), step));
@@ -445,14 +460,26 @@ function pagesWorkRows(returns) {
   return [...pagesEach(need, name, (one) => specOf(one, pagesDay(one.oldest))), ...pagesEach(wait, name, (one) => specOf(one, pagesDue(one.due)))];
 }
 
+// A household paused for two open years is work waiting for a person: one row
+// on the Overview, first, worded by the vocabulary, opening the household
+// (ruling 21). Nothing is hidden on its own pages.
+function pagesPausedRows(firm) {
+  const word = screenWords().notices.paused;
+  return pagesEach([...pagesPaused(firm)].sort(pagesByName), (name) => name, (name) => {
+    const path = pagesHouseholdPath(name);
+    if (!path) throw new Error("household");
+    return { name, detail: "", status: word, tone: "needs", date: "", menu: "household", nameLink: { kind: "household", path },
+             step: { kind: "open", route: { level: "household", household: path } } };
+  });
+}
+
 function pagesOverview() {
   const words = screenWords();
   const firm = pagesFirm();
   const totals = firm.totals;
   const figures = h("div", { className: "figures" }, ...[[totals.need, words.figures.need], [totals.waiting, words.figures.waiting], [totals.complete, words.figures.complete]]
     .map(([n, label]) => h("div", { className: "figure" }, h("b", { className: "figure-number" }, String(n)), h("span", { className: "figure-label" }, label))));
-  const rows = pagesEach(pagesWorkRows(firm.returns), (spec) => spec.name, pagesRow);
-  if (!rows.length) return [figures, pagesEmpty(words.empty.overview, pagesNextSort(firm))];
+  const rows = pagesEach([...pagesPausedRows(firm), ...pagesWorkRows(firm.returns)], (spec) => spec.name, pagesRow);  if (!rows.length) return [figures, pagesEmpty(words.empty.overview, pagesNextSort(firm))];
   return [figures, ...pagesGroup({ heading: words.work, first: true, blocks: [{ rows }] })];
 }
 
@@ -519,6 +546,7 @@ function pagesReminders() {
 function pagesClientSpecs(firm, all) {
   const words = screenWords().counts;
   const own = (name) => firm.returns.filter((one) => one.household === name);
+  const pausedNames = pagesPaused(firm);
   return pagesEach(households.slice().sort((a, b) => pagesByName(a.name, b.name)), (one) => one.name, (one) => {
     const returns = own(one.name);
     const need = returns.reduce((n, r) => n + r.counts.needs_you, 0);
@@ -530,8 +558,10 @@ function pagesClientSpecs(firm, all) {
       : problem ? { text: problem.problem, tone: "needs" }
         : wait ? { text: fill(words.waiting, { n: wait }), tone: "waiting" }
           : returns.length ? { text: words.complete, tone: "done" } : { text: "", tone: "plain" };
-    return { work: need + wait > 0 || Boolean(problem), spec: {
+    const paused = pausedNames.has(one.name);
+    return { work: need + wait > 0 || Boolean(problem) || paused, spec: {
       name: one.name, detail: returns.length ? fill(returns.length === 1 ? words.one_return : words.returns, { n: returns.length }) : "",
+      mark: paused ? screenWords().notices.paused : "",
       status: said.text, tone: said.tone, date: "", menu: "household", nameLink: { kind: "household", path: one.path },
       step: { kind: "open", route: { level: "household", household: one.path } },
     } };
