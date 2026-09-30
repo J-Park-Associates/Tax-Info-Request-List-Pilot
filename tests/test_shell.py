@@ -889,8 +889,8 @@ const isSetAside = (o) => o === "Not Applicable";
 const overrideLabel = (o, year) => `Not applicable ${year}`;
 let locked = false;
 let lastState = null;
-const tips = [];
-const setTipIfCut = (node, words) => tips.push([node.className, words]);
+const tips = []; const cutTips = [];
+const setTipIfCut = (node, words) => { tips.push([node.className, words]); cutTips.push(node.className); };
 const setTip = (node, words) => tips.push([node.className, words]);
 const opened = []; const went = [];
 const openPath = (path, how) => opened.push([path, how]);
@@ -915,7 +915,8 @@ const vocab = {
   overrides: { not_applicable: "Not Applicable" },
   review_labels: { bucket_order: ["document", "container", "not_a_document"], dismiss: "Not requested",
                    buckets: { document: "Documents", container: "Emails and zips", not_a_document: "Not documents" } },
-  reasons: { unmatched: { short: "Could not tell" }, "opened-not-across": { short: "Came in email or zip" } },
+  reasons: { unmatched: { short: "Could not tell" }, "opened-not-across": { short: "Email or zip" } },
+  reason_tips: { "opened-not-across": "Came in email or zip" },
   screen: {
     groups: { needs_you: "Needs you", waiting: "Waiting on client", received: "Received", set_aside: "Set aside" },
     steps: { check: "Check", open: "Open", draft: "Draft reminder", edit: "Edit" },
@@ -989,10 +990,33 @@ def test_a_returns_needs_you_group_holds_parked_files_then_moved_then_requests_t
          parked("zip", { bucket: "container", code: "opened-not-across" })],
         [{ handle: "m1", original_name: "moved.pdf", identifier: "A" }]);
       const groups = pagesReturnGroups(state, 2025);
-      return groups.needs_you.map((one) => [one.name, one.status, one.sub || ""]);
+      return groups.needs_you.map((one) => [one.name, one.status, one.sub || "", one.reason || ""]);
     """, tmp_path)
-    assert ran == [["b-old.pdf", "Could not tell", ""], ["a-new.pdf", "Could not tell", ""], ["moved.pdf", "Moved by hand", ""],
-                   ["Doc A", "Could not use", ""], ["zip.pdf", "Came in email or zip", "Emails and zips"]]
+    assert ran == [["b-old.pdf", "Could not tell", "", "unmatched"], ["a-new.pdf", "Could not tell", "", "unmatched"], ["moved.pdf", "Moved by hand", "", ""],
+                   ["Doc A", "Could not use", "", ""], ["zip.pdf", "Email or zip", "Emails and zips", "opened-not-across"]]
+
+
+def test_a_status_that_is_a_tag_always_carries_the_words_it_stands_for_as_its_tooltip(tmp_path):
+    """Pilot P116: "Email or Zip" is a tag for "Came in Email or Zip", so its
+    tooltip says those words every time, cut or not. Any other status is its
+    own tooltip only when it is cut, and a vocabulary with no tip table is a
+    loud failure, not a row with no tip."""
+    ran = run_pages_dom("""
+      const row = (code) => { tips.length = 0; cutTips.length = 0;
+        const node = pagesRow({ name: "x.pdf", detail: "", status: pagesReason(code), reason: code, tone: "needs", date: "", menu: "file",
+                                step: { kind: "check", ret: "r", name: "x.pdf", handle: "h" } });
+        return { tip: tips.filter(([cls]) => cls.startsWith("row-status")).map(([, words]) => words),
+                 cut: cutTips.filter((cls) => cls.startsWith("row-status")).length, described: node.getAttribute("aria-description") || "" }; };
+      const tagged = row("opened-not-across"); const plain = row("unmatched");
+      const saved = vocab.reason_tips; delete vocab.reason_tips;
+      let loud = ""; try { row("unmatched"); } catch (err) { loud = err.message; }
+      vocab.reason_tips = saved;
+      return { tagged, plain, loud };
+    """, tmp_path)
+    # The keyboard never focuses the status, so the row's description carries the words (review SHOULD-1).
+    assert ran["tagged"] == {"tip": ["Came in email or zip"], "cut": 0, "described": "Check, Came in email or zip"}
+    assert ran["plain"] == {"tip": ["Could not tell"], "cut": 1, "described": "Check"}
+    assert ran["loud"] == "reason_tips"
 
 
 def test_the_pages_groups_and_the_firms_tally_of_them_cannot_disagree(tmp_path):
@@ -1789,10 +1813,12 @@ def test_the_firm_pages_rows_link_by_the_firms_keys_and_carry_the_year(tmp_path)
         { path: known, household: "Smith Family", year: 2025, label: "Smith Family 2025 1040 - Smith", counts: { needs_you: 2, waiting: 0, received: 0, set_aside: 0 }, oldest: "2026-03-03", due: null,
           draft: { ready: true, stage: 1, held: 0, drafted: "2026-03-03" }, problem: "" }],
         files: [{ return: known, year: 2025, name: "one.pdf", handle: "h1", code: "unmatched", received: "2026-03-03", suggestion: "", open_key: "shown_copy h1" },
-                { return: known, year: 2025, name: "two.exe", handle: "h2", code: "unmatched", received: "2026-03-04", suggestion: "", open_key: "" }],
+                { return: known, year: 2025, name: "two.exe", handle: "h2", code: "opened-not-across", received: "2026-03-04", suggestion: "", open_key: "" }],
         totals: {}, next_sort: null };
       shellFirm = () => ({ data: firmData });
+      tips.length = 0;
       const nodes = pagesNeedsReview();
+      const statusTips = tips.filter(([cls]) => cls.startsWith("row-status")).map(([, words]) => words);
       const head = nodes.find((n) => n.byClass && n.byClass("group-title").length).byClass("group-title")[0];
       const caption = nodes.find((n) => n.byClass && n.byClass("group-count").length).byClass("group-count")[0];
       const rows = nodes.flatMap((n) => (n.byClass ? n.byClass("row") : []));
@@ -1801,7 +1827,7 @@ def test_the_firm_pages_rows_link_by_the_firms_keys_and_carry_the_year(tmp_path)
       const reminder = pagesReminderSpecs(firmData)[0];
       const link = (n) => n.byClass("row-link").map((l) => [l.textContent, l.dataset.link]);
       return { head: link(head), caption: link(caption), captionText: caption.textContent, rows: rows.map((r) => [r.byClass("row-name")[0].textContent, link(r.byClass("row-name")[0])]),
-               overview: [overview.name, overview.nameLink, overview.detailLink], reminder: [reminder.name, reminder.nameLink.kind, reminder.detailLink.kind] };
+               overview: [overview.name, overview.nameLink, overview.detailLink], reminder: [reminder.name, reminder.nameLink.kind, reminder.detailLink.kind], statusTips };
     """, tmp_path, functions=["pagesNeedsReview", "pagesNameCell", "pagesReviewGroups", "pagesFirm", "pagesFirmReturn", "pagesReturnName", "pagesReturnText", "pagesHouseholdPath",
                               "pagesFileLink", "pagesRow", "pagesCell", "pagesLinkNode", "pagesLinkWords", "pagesHeadLink", "pagesGroup", "pagesGroupStep", "pagesList",
                               "pagesReason", "pagesDay", "pagesSafe", "pagesEach", "pagesLabel", "pagesSafeName", "pagesStepWords", "pagesByName", "pagesEmpty",
@@ -1811,6 +1837,8 @@ def test_the_firm_pages_rows_link_by_the_firms_keys_and_carry_the_year(tmp_path)
     assert ran["rows"] == [["one.pdf", [["one.pdf", "file"]]], ["two.exe", []]], "text for the file with no copy"
     assert ran["overview"][0] == "1040 - Smith (2025)" and ran["overview"][1]["kind"] == "return" and ran["overview"][2] == {"kind": "household", "path": "/c/Smith"}
     assert ran["reminder"] == ["1040 - Smith (2025)", "return", "household"]
+    # P116: the page hands each file's reason code to its row, so a tag's words are its tooltip.
+    assert ran["statusTips"] == ["Could not tell", "Came in email or zip"]
 
 
 def test_a_cut_name_that_is_a_link_carries_the_links_tooltip_not_its_own(tmp_path):

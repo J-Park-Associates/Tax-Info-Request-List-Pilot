@@ -15,9 +15,9 @@
     "a person sends the draft"
   ],
   "counts": {
-    "nodes": 346,
+    "nodes": 350,
     "edges": 1156,
-    "reused": 303
+    "reused": 292
   },
   "node_types": [
     "artifact",
@@ -262,8 +262,8 @@
       "id": "tracker/api.py",
       "type": "module",
       "layer": "core",
-      "sha256": "37ff7fbcbb635cf7",
-      "lines": 5644,
+      "sha256": "f668d860f05ae141",
+      "lines": 5646,
       "cli": "python -m tracker.api",
       "exports": [
         "ACCEPT_FOLDER_NAME_HELP",
@@ -2161,8 +2161,8 @@
       "id": "tracker/reasons.py",
       "type": "module",
       "layer": "core",
-      "sha256": "d4b73fd076afa6d5",
-      "lines": 886,
+      "sha256": "261cd46723a347a0",
+      "lines": 899,
       "exports": [
         "ALSO_ANSWERS",
         "AMBIGUOUS",
@@ -4034,10 +4034,10 @@
       "id": "app/renderer/pages.js",
       "type": "module",
       "layer": "desktop-app",
-      "sha256": "c04841141cfe7467",
-      "lines": 1171,
+      "sha256": "66af95c32be89c43",
+      "lines": 1180,
       "role": "The pages (pilot SPEC-shell 3.6 and 6): Overview, Needs review, Reminders, Clients, household, year and return, drawn into #page from the `list`, `firm` and `state` replies, with the one row and group every page is made of and the keys on a row list.",
-      "notes": "A classic script loaded after app.js and tooltip.js and before shell.js. It types no word: every word is vocab.screen, vocab.menu or a word the vocabulary already holds (a request's label, a stage's short name, a reason's short label), and a word the vocabulary lacks is a loud failure that pagesDraw says as a notice. A return's groups are the API's `group` on each state item and on each index file (a moved file a person marked missing is Set aside): nothing is guessed from a decision, so an item or file without a known group is left out of every group and named in its own notice, while every other row is drawn (pagesSafe / pagesEach: one bad row never blanks a page, a page that cannot be built whole keeps what it held or draws its H1); pagesTally counts the same way, and never throws, so shell.js can tell when the firm's counts moved. A long API sentence (a pause, a feed) is shown as its short vocabulary word (shortNotice, shell.js) and goes to the error log. The four firm pages draw no H1. A household's notices (two years open, folder renamed with Accept, feeds) are syncNotices('household', ...) while any of its pages is open. Three kinds of name are live links (SPEC 3.9): a file name asks the shell to reveal the copy the API's key names in the map its row came with (state.paths, or firm.paths for the Needs Review page; the path is never drawn), a household name and a return name navigate with no engine call, and a return reads '{Return Name} ({Year})' from the list's name and the row's year. A row's right-click (or Shift+F10) asks for the native menu of its template with the ids that apply (pagesEnableFor); pagesMenu answers a row's items - the file items open the sheet and press its own button - and takes a household or return row to that page first. It offers the sheet pagesFiles() (the parked and moved files in the order drawn), pagesDrafts(), pagesWhere and pagesFocusAt, and calls openCheck and openReminder (sheet.js)."
+      "notes": "A classic script loaded after app.js and tooltip.js and before shell.js. It types no word: every word is vocab.screen, vocab.menu or a word the vocabulary already holds (a request's label, a stage's short name, a reason's short label, and for a label shortened into a tag the words it stands for, vocab.reason_tips, which are that status's tooltip every time: P116), and a word the vocabulary lacks is a loud failure that pagesDraw says as a notice. A return's groups are the API's `group` on each state item and on each index file (a moved file a person marked missing is Set aside): nothing is guessed from a decision, so an item or file without a known group is left out of every group and named in its own notice, while every other row is drawn (pagesSafe / pagesEach: one bad row never blanks a page, a page that cannot be built whole keeps what it held or draws its H1); pagesTally counts the same way, and never throws, so shell.js can tell when the firm's counts moved. A long API sentence (a pause, a feed) is shown as its short vocabulary word (shortNotice, shell.js) and goes to the error log. The four firm pages draw no H1. A household's notices (two years open, folder renamed with Accept, feeds) are syncNotices('household', ...) while any of its pages is open. Three kinds of name are live links (SPEC 3.9): a file name asks the shell to reveal the copy the API's key names in the map its row came with (state.paths, or firm.paths for the Needs Review page; the path is never drawn), a household name and a return name navigate with no engine call, and a return reads '{Return Name} ({Year})' from the list's name and the row's year. A row's right-click (or Shift+F10) asks for the native menu of its template with the ids that apply (pagesEnableFor); pagesMenu answers a row's items - the file items open the sheet and press its own button - and takes a household or return row to that page first. It offers the sheet pagesFiles() (the parked and moved files in the order drawn), pagesDrafts(), pagesWhere and pagesFocusAt, and calls openCheck and openReminder (sheet.js)."
     },
     {
       "id": "app/renderer/pilot-content.js",
@@ -4537,7 +4537,7 @@
       "id": "docs/repo-map.curated.json",
       "type": "file",
       "layer": "docs",
-      "sha256": "6691b60d905cf071",
+      "sha256": "a75121029c7e0742",
       "lines": 1121,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
@@ -4610,15 +4610,15 @@
       "id": "pilot/DECISIONS.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "3a5ba10e1f0daaf7",
-      "lines": 149
+      "sha256": "574237ffc73bc7bc",
+      "lines": 150
     },
     {
       "id": "pilot/HANDOFF.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "3cd8a0fe689e6b55",
-      "lines": 726
+      "sha256": "152f539222f37758",
+      "lines": 728
     },
     {
       "id": "pilot/PLAN-ui.md",
@@ -4649,6 +4649,13 @@
       "lines": 87
     },
     {
+      "id": "pilot/SPEC-email-zip-tag.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "c1b14fc4d6018cff",
+      "lines": 99
+    },
+    {
       "id": "pilot/SPEC-glass.md",
       "type": "doc",
       "layer": "docs",
@@ -4659,8 +4666,8 @@
       "id": "pilot/SPEC-shell.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "bfdb802d80303669",
-      "lines": 1965
+      "sha256": "ff3dcb39a06dd658",
+      "lines": 1968
     },
     {
       "id": "pilot/SPEC-ui.md",
@@ -4682,6 +4689,13 @@
       "layer": "docs",
       "sha256": "6ec2ab88594a7e78",
       "lines": 82
+    },
+    {
+      "id": "pilot/handoffs/email-zip-tag-build.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "3fc085d906e1b3c9",
+      "lines": 132
     },
     {
       "id": "pilot/handoffs/shell-S1-rebuild-1.md",
@@ -5118,6 +5132,20 @@
       "lines": 123
     },
     {
+      "id": "pilot/reviews/email-zip-tag-review.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "661429975c063e71",
+      "lines": 143
+    },
+    {
+      "id": "pilot/reviews/email-zip-tag-rulings.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "577159529716de6e",
+      "lines": 14
+    },
+    {
       "id": "pilot/reviews/review-1.md",
       "type": "doc",
       "layer": "docs",
@@ -5170,14 +5198,14 @@
       "id": "pilot/wintest/PROMPT-shell-local.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "26f4dd8246766306",
+      "sha256": "375c1e27d0dcd9d4",
       "lines": 49
     },
     {
       "id": "pilot/wintest/PROMPT-shell.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "eabcc8e71266b1f1",
+      "sha256": "72e735d98554c81c",
       "lines": 146
     },
     {
@@ -5919,8 +5947,8 @@
       "id": "tests/test_api.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "07da801688bd4032",
-      "lines": 8979,
+      "sha256": "8b094973c2444dc5",
+      "lines": 8980,
       "exports": [
         "COUNTS",
         "DEEPER_ROOT_LENGTH",
@@ -7967,11 +7995,12 @@
       "id": "tests/test_reasons.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "7c52771d337e74e5",
-      "lines": 225,
+      "sha256": "5638a5793210dcb4",
+      "lines": 240,
       "exports": [
         "REASONS_PY",
         "TAIL_READERS",
+        "test_a_label_shortened_into_a_tag_keeps_the_words_it_replaced_as_its_tooltip",
         "test_a_plain_string_has_no_code_whatever_it_says",
         "test_a_program_is_asked_about_in_the_words_any_unusable_file_gets",
         "test_by_code_names_every_reason_and_the_sets_are_codes",
@@ -9031,8 +9060,8 @@
       "id": "tests/test_shell.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "cfeff627561fda27",
-      "lines": 2688,
+      "sha256": "1a23c4c5dd49cdf4",
+      "lines": 2716,
       "exports": [
         "CONTRAST",
         "FAKE_DOM",
@@ -9096,6 +9125,7 @@
         "test_a_row_that_cannot_be_built_is_left_out_and_named_on_every_page",
         "test_a_second_unfile_or_mark_missing_before_the_reply_is_not_sent_and_the_menu_greys_it",
         "test_a_sort_is_never_sent_without_a_return_chosen",
+        "test_a_status_that_is_a_tag_always_carries_the_words_it_stands_for_as_its_tooltip",
         "test_a_tip_goes_when_its_element_is_scrolled_out_of_view",
         "test_an_error_after_the_state_arrives_never_reaches_the_write_that_brought_it",
         "test_changing_the_clients_folder_keeps_the_firms_name_and_phone",
@@ -9187,7 +9217,7 @@
         "RETIRED": "(':root',)",
         "PEOPLE": "'\\nconst fill = (p, v) => p.replace(/\\\\{(\\\\w+)\\\\}/g, (_, k) => v[k] ?? \"\");\\nconst vocab = { screen: { counts: { one_return: \"1 return\", returns: \"{n} returns\" },\\n  sections: { overview: \"Overview\", needs_review: \"Needs review\", reminders: \"Reminders\", clients: \"Clients\" },\\n  sort: { now: \"Sort now\", stop: \"Stop sorting\", firm: \"Open a client to sort\", locked: \"In use elsewhere\", stopping: \"Stopping\" } } };\\nconst households = [\\n  { name: \"Smith Family\", path: \"h1\", returns: [{ rollable: true }] }, { name: \"Rivera Design\", path: \"h2\", returns: [] },\\n  { name: \"Ren\\\\u00e9e Okafor\", path: \"h3\", returns: [] }, { name: \"Lopez Household\", path: \"h4\", returns: [] },\\n];\\nconst engagements = [\\n  { name: \"a\", path: \"r1\", household: \"h1\", year: 2025, return_name: \"1040 - John & Jane Smith\" },\\n  { name: \"b\", path: \"r2\", household: \"h1\", year: 2024, return_name: \"1040 - John & Jane Smith\" },\\n  { name: \"c\", path: \"r3\", household: \"h2\", year: 2025, return_name: \"1120-S - Rivera Design LLC\" },\\n];\\nlet calls = 0; const call = () => { calls += 1; };\\n'",
         "FAKE_DOM": "'\\nclass Node {}\\nclass Text extends Node { constructor(data) { super(); this.data = data; } }\\nclass Element extends Node {\\n  constructor(tag) { super(); this.tag = tag; this.className = \"\"; this.dataset = {}; this.attrs = {}; this.kids = []; this.open = false; this.handlers = {}; }\\n  get classList() {\\n    const self = this;\\n    return { add(one) { if (!self.className.split(\" \").includes(one)) self.className = `${self.className} ${one}`.trim(); },\\n             contains(one) { return self.className.split(\" \").includes(one); } };\\n  }\\n  setAttribute(key, value) { this.attrs[key] = String(value); }\\n  getAttribute(key) { return this.attrs[key]; }\\n  append(...nodes) { for (const one of nodes) this.kids.push(one instanceof Node ? one : new Text(String(one))); }\\n  replaceChildren(...nodes) { this.kids = []; this.append(...nodes); }\\n  addEventListener(type, fn) { (this.handlers[type] = this.handlers[type] || []).push(fn); }\\n  get childNodes() { return this.kids; }\\n  find(test, out = []) { for (const one of this.kids) if (one instanceof Element) { if (test(one)) out.push(one); one.find(test, out); } return out; }\\n  querySelector(selector) { return this.byClass(selector.slice(1))[0] || null; }\\n  byClass(name) { return this.find((one) => one.className.split(\" \").includes(name)); }\\n  get textContent() { return this.kids.map((one) => (one instanceof Text ? one.data : one.textContent)).join(\"\"); }\\n}\\nconst document = { activeElement: null, createDocumentFragment: () => new Element(\"fragment\"), createElement: (tag) => new Element(tag), createElementNS: (_ns, tag) => new Element(tag) };\\nconst page = (nodes) => { const box = new Element(\"div\"); box.append(...nodes.filter(Boolean)); return box; };\\n'",
-        "PAGE_WORDS": "'\\nconst fill = (p, v) => p.replace(/\\\\{(\\\\w+)\\\\}/g, (_, k) => v[k] ?? \"\");\\nconst isSetAside = (o) => o === \"Not Applicable\";\\nconst overrideLabel = (o, year) => `Not applicable ${year}`;\\nlet locked = false;\\nlet lastState = null;\\nconst tips = [];\\nconst setTipIfCut = (node, words) => tips.push([node.className, words]);\\nconst setTip = (node, words) => tips.push([node.className, words]);\\nconst opened = []; const went = [];\\nconst openPath = (path, how) => opened.push([path, how]);\\nconst shellGo = (route) => went.push(route);\\nconst shellPopup = (name, token, x, y, enable) => {};\\nconst unanswered = (id) => failures.push(`unanswered ${id}`);\\nlet shellReturn = (path) => ({ return_name: \"1040 - John & Jane Smith\", household: \"h1\", year: 2025 });\\nconst PAGES_LINK_WORDS = { file: \"show_in_explorer\", household: \"navigate_client\", return: \"navigate_return\" };\\nconst PAGES_GROUPS = [\"needs_you\", \"waiting\", \"received\", \"set_aside\"];\\nconst PAGES_TONES = { needs: \"is-attention\", waiting: \"is-waiting\", done: \"is-done\", plain: \"is-plain\" };\\nconst PAGES_LATE = \"9999-99-99\";\\nlet pagesUid = 0; const pagesTokens = new Map(); let pagesSetAsideOpen = false; let pagesBroken = []; let pagesDrawn = \"\";\\nlet pagesFocus = null; let pagesLastLevel = \"\"; let pagesClientsAll = false;\\nconst notices = []; const failures = [];\\nlet syncNotices = (prefix, wanted) => notices.push([prefix, wanted.map((one) => [one.key, one.failure.sentence, one.detail || \"\"])]);\\nconst failed = (err) => failures.push(String(err.message));\\nlet shellHousehold = () => null; let households = [];\\nconst vocab = {\\n  shell: { page_error: \"The app hit an error\" }, notices: { about: \"{label}: {sentence}\" },\\n  decisions: { needs_review: \"Needs Review\", dismissed: \"Not Requested\", filed: \"Filed\", file_moved: \"File Moved\" },\\n  labels: { Missing: { label: \"Outstanding\" }, Received: { label: \"Received\" }, Partial: { label: \"Partly in\" }, Rejected: { label: \"Could not use\" }, NotAsked: { label: \"Not asked\" } },\\n  overrides: { not_applicable: \"Not Applicable\" },\\n  review_labels: { bucket_order: [\"document\", \"container\", \"not_a_document\"], dismiss: \"Not requested\",\\n                   buckets: { document: \"Documents\", container: \"Emails and zips\", not_a_document: \"Not documents\" } },\\n  reasons: { unmatched: { short: \"Could not tell\" }, \"opened-not-across\": { short: \"Came in email or zip\" } },\\n  screen: {\\n    groups: { needs_you: \"Needs you\", waiting: \"Waiting on client\", received: \"Received\", set_aside: \"Set aside\" },\\n    steps: { check: \"Check\", open: \"Open\", draft: \"Draft reminder\", edit: \"Edit\" },\\n    notices: { paused: \"Two Years Open; Sorting Paused\" },\\n    empty: { received: \"Nothing received yet\" }, moved: \"Moved by hand\", due: \"Due {date}\", partly: \"{n} of {total}\",\\n    show_in_explorer: \"Show in File Explorer\", navigate_client: \"Navigate to Client\", navigate_return: \"Navigate to Return\",\\n    counts: { need: \"{n} need you\", waiting: \"{n} waiting\", complete: \"Complete\", files: \"{n} files\", one_return: \"1 return\", returns: \"{n} returns\" },\\n  },\\n};\\n'",
+        "PAGE_WORDS": "'\\nconst fill = (p, v) => p.replace(/\\\\{(\\\\w+)\\\\}/g, (_, k) => v[k] ?? \"\");\\nconst isSetAside = (o) => o === \"Not Applicable\";\\nconst overrideLabel = (o, year) => `Not applicable ${year}`;\\nlet locked = false;\\nlet lastState = null;\\nconst tips = []; const cutTips = [];\\nconst setTipIfCut = (node, words) => { tips.push([node.className, words]); cutTips.push(node.className); };\\nconst setTip = (node, words) => tips.push([node.className, words]);\\nconst opened = []; const went = [];\\nconst openPath = (path, how) => opened.push([path, how]);\\nconst shellGo = (route) => went.push(route);\\nconst shellPopup = (name, token, x, y, enable) => {};\\nconst unanswered = (id) => failures.push(`unanswered ${id}`);\\nlet shellReturn = (path) => ({ return_name: \"1040 - John & Jane Smith\", household: \"h1\", year: 2025 });\\nconst PAGES_LINK_WORDS = { file: \"show_in_explorer\", household: \"navigate_client\", return: \"navigate_return\" };\\nconst PAGES_GROUPS = [\"needs_you\", \"waiting\", \"received\", \"set_aside\"];\\nconst PAGES_TONES = { needs: \"is-attention\", waiting: \"is-waiting\", done: \"is-done\", plain: \"is-plain\" };\\nconst PAGES_LATE = \"9999-99-99\";\\nlet pagesUid = 0; const pagesTokens = new Map(); let pagesSetAsideOpen = false; let pagesBroken = []; let pagesDrawn = \"\";\\nlet pagesFocus = null; let pagesLastLevel = \"\"; let pagesClientsAll = false;\\nconst notices = []; const failures = [];\\nlet syncNotices = (prefix, wanted) => notices.push([prefix, wanted.map((one) => [one.key, one.failure.sentence, one.detail || \"\"])]);\\nconst failed = (err) => failures.push(String(err.message));\\nlet shellHousehold = () => null; let households = [];\\nconst vocab = {\\n  shell: { page_error: \"The app hit an error\" }, notices: { about: \"{label}: {sentence}\" },\\n  decisions: { needs_review: \"Needs Review\", dismissed: \"Not Requested\", filed: \"Filed\", file_moved: \"File Moved\" },\\n  labels: { Missing: { label: \"Outstanding\" }, Received: { label: \"Received\" }, Partial: { label: \"Partly in\" }, Rejected: { label: \"Could not use\" }, NotAsked: { label: \"Not asked\" } },\\n  overrides: { not_applicable: \"Not Applicable\" },\\n  review_labels: { bucket_order: [\"document\", \"container\", \"not_a_document\"], dismiss: \"Not requested\",\\n                   buckets: { document: \"Documents\", container: \"Emails and zips\", not_a_document: \"Not documents\" } },\\n  reasons: { unmatched: { short: \"Could not tell\" }, \"opened-not-across\": { short: \"Email or zip\" } },\\n  reason_tips: { \"opened-not-across\": \"Came in email or zip\" },\\n  screen: {\\n    groups: { needs_you: \"Needs you\", waiting: \"Waiting on client\", received: \"Received\", set_aside: \"Set aside\" },\\n    steps: { check: \"Check\", open: \"Open\", draft: \"Draft reminder\", edit: \"Edit\" },\\n    notices: { paused: \"Two Years Open; Sorting Paused\" },\\n    empty: { received: \"Nothing received yet\" }, moved: \"Moved by hand\", due: \"Due {date}\", partly: \"{n} of {total}\",\\n    show_in_explorer: \"Show in File Explorer\", navigate_client: \"Navigate to Client\", navigate_return: \"Navigate to Return\",\\n    counts: { need: \"{n} need you\", waiting: \"{n} waiting\", complete: \"Complete\", files: \"{n} files\", one_return: \"1 return\", returns: \"{n} returns\" },\\n  },\\n};\\n'",
         "RETURN_STATE": "'\\nconst item = (id, group, extra = {}) => ({ identifier: id, document: `Doc ${id}`, short_name: `Doc ${id}`, group, status_key: \"Missing\", manual_override: \"\",\\n  period: \"\", year: 2025, file_count: 0, expected_count: 1, received_date: null, ...extra });\\nconst parked = (handle, extra = {}) => ({ handle, original_name: `${handle}.pdf`, decision: \"Needs Review\", group: \"needs_you\", code: \"unmatched\", received: \"2026-03-03\", bucket: \"document\", ...extra });\\nconst movedRow = (handle, extra = {}) => ({ handle, original_name: `${handle}.pdf`, decision: \"File Moved\", group: \"needs_you\", code: \"file-moved\", received: \"2026-03-02\", ...extra });\\nconst setAsideRow = (handle, extra = {}) => ({ handle, original_name: `${handle}.pdf`, decision: \"Not Requested\", group: \"set_aside\", code: \"not-requested\", received: \"2026-03-01\", ...extra });\\nconst stateOf = (items, index = [], moved = []) => ({ paths: { engagement: \"r1\" }, engagement: { due: \"2026-04-15\" }, items, index, review: [], moved });\\n'",
         "PROBE_EVERY_NOTICE": "'\\n      const seen = [];\\n      for (const scenario of [\"notices\", \"household-notices\", \"locked\", \"stale-lock\"]) {\\n        const { list, state } = await replies(scenario);\\n        vocab = list.vocab;\\n        vocab.screen.notices = Object.assign({}, vocab.screen.notices, %s);\\n        drawn.length = 0; logged.length = 0;\\n        renderMachineNotices(list);\\n        renderAfterInstall(noticeOf(list.after_install));\\n        renderShortOfRoom([{ engagement: \"r1\", sentences: [\"A LONG ROOM SENTENCE\"] }]);\\n        active = state.paths.engagement;\\n        showLock(state.lock);\\n        lastState = state;\\n        pagesHouseholdNotices({ level: \"household\", household: state.household.path });\\n        seen.push({ scenario, drawn: drawn.slice(), logged: logged.slice(), reader: list.reader_warning, machine: list.machine_warnings,\\n                    pause: state.household.pause.sentence || \"\", lock: state.lock });\\n      }\\n      return seen;\\n'",
         "SHEET_SETUP": "'\\nconst vocab = { decisions: { needs_review: \"Needs Review\", dismissed: \"Not Requested\", file_moved: \"File Moved\", filed: \"Filed\" } };\\nlet sheetNow = null; let sheetGeneration = 0; const advanced = []; const closed = [];\\nconst sheetAdvance = () => advanced.push(sheetNow.handle);\\n'"
