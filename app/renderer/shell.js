@@ -216,21 +216,29 @@ function shellHasClient() {
 }
 
 // ── go (SPEC 4.1) ─────────────────────────────────────────────────────
+// Resolves when the return the page needs has been read (or at once when it
+// needs none), for a caller that goes on from there (a row's menu).
 function shellGo(next) {
   if (LEVELS.indexOf(next.level) === -1) throw new Error(next.level);
-  if (shellRoute.level === "setup" && next.level !== "setup" && !shellRootSet) return;   // the folder comes first
+  if (shellRoute.level === "setup" && next.level !== "setup" && !shellRootSet) return Promise.resolve();   // the folder comes first
   if (typeof closeSheet === "function") closeSheet();
   hideFound();
   if (next.level === "setup") shellBack = shellRoute.level === "setup" ? shellBack : shellRoute;
   shellRoute = next;
-  appRouteChanged(next);   // app.js: the lock belongs to the return on screen
+  // Nothing the window's other side does may stop the page from going where
+  // the person asked: a lock or a menu channel that throws is a notice.
+  try {
+    appRouteChanged(next);   // app.js: the lock belongs to the return on screen
+  } catch (err) {
+    failed(err);
+  }
   shellPageBusy = next.level === "return";
   shellPageFailed = false;
   shellDraw();
   const page = $("page");
   page.scrollTop = 0;
   page.focus({ preventScroll: true });
-  shellOpenState();
+  return shellOpenState();
 }
 
 // A return's page needs its state, and a household or year page needs the
@@ -246,8 +254,8 @@ function shellOpenState() {
     const shown = lastState && lastState.paths ? lastState.paths.engagement : "";
     if (own.length && !own.some((one) => one.path === shown)) path = (own.find((one) => one.path === active) || own[0]).path;
   }
-  if (!path) return;
-  showReturn(path).then((drawn) => {
+  if (!path) return Promise.resolve();
+  return showReturn(path).then((drawn) => {
     if (shellRoute !== route) return;
     shellPageBusy = false;
     shellPageFailed = route.level === "return" && !drawn;
@@ -266,6 +274,7 @@ function shellStateArrived(state) {
   // would say a write that worked had failed.
   try {
     shellDraw();
+    if (typeof sheetStateArrived === "function") sheetStateArrived(state);   // sheet.js: the file answered leaves, the next comes
     const firm = shellFirmNow.data;
     const mine = firm && state.paths ? firm.returns.find((one) => one.path === state.paths.engagement) : null;
     if (!mine || typeof pagesTally !== "function") return;
@@ -675,9 +684,11 @@ function shellChangeRoot() {
 // ── the menu channel, the page's side (SPEC 5.3, 5.4) ─────────────────
 // The ids whose rule in 5.1 holds now. main.js sets `enabled` on the items
 // whose ids it knows and ignores anything else.
-function shellEnabled() {
-  const route = shellRoute;
-  const client = shellHasClient();
+// `at`: the route a row's menu stands for (a household or return row on a page
+// that is not its own); the rules are the same, read for that route.
+function shellEnabled(at) {
+  const route = at || shellRoute;
+  const client = ["household", "year", "return"].indexOf(route.level) !== -1;
   const isReturn = route.level === "return";
   const writable = !locked;
   const household = shellHousehold(route.household);
@@ -705,14 +716,25 @@ function shellEnabled() {
   return ids;
 }
 
+// The menu channel is the window's other side: one that throws is said as a
+// notice and the page goes on (a route change must not depend on it).
 function shellEnable() {
-  if (window.tracker.menu) window.tracker.menu.send({ enable: shellEnabled() });
+  try {
+    if (window.tracker.menu) window.tracker.menu.send({ enable: shellEnabled() });
+  } catch (err) {
+    failed(err);
+  }
 }
 
 // Ask main.js for a native right-click menu: one of the six templates, at
-// the pointer. The token is the page's own row key, echoed back (never a path).
-function shellPopup(name, token, x, y) {
-  if (window.tracker.menu) window.tracker.menu.send({ popup: name, enable: shellEnabled(), token, x, y });
+// the pointer, with the ids that apply (the page's, or a row's own). The token
+// is the page's own row key, echoed back (never a path).
+function shellPopup(name, token, x, y, enable) {
+  try {
+    if (window.tracker.menu) window.tracker.menu.send({ popup: name, enable: enable || shellEnabled(), token, x, y });
+  } catch (err) {
+    failed(err);
+  }
 }
 
 function unanswered(id) {
@@ -720,8 +742,21 @@ function unanswered(id) {
   window.tracker.logError(`menu.${id}`);
 }
 
-function openPath(path) {
-  if (path) window.tracker.open(path);
+// Open a path the API reported, or (`how` "reveal") show that file in File
+// Explorer. The shell answers "" or the sentence for a path that is no longer
+// what it was; that is a notice in the API's words, and what the operating
+// system said goes to the error log.
+async function openPath(path, how) {
+  if (!path) return;
+  try {
+    const said = await window.tracker.open(path, how);
+    if (said) {
+      window.tracker.logError(String(said));
+      notice({ sentence: vocab.shell.not_opened, kind: "warning" });
+    }
+  } catch (err) {
+    failed(err);
+  }
 }
 
 function clientFolder() {
@@ -777,6 +812,12 @@ const MENU_ANSWERS = {
   about: () => (typeof openAbout === "function" ? openAbout() : unanswered("about")),
 };
 
+function shellAnswer(id) {
+  const answer = MENU_ANSWERS[id];
+  if (answer) answer();
+  else unanswered(id);
+}
+
 function shellMenu(message) {
   if (message.missing) {
     toast(screenWords().notices.no_log);
@@ -784,9 +825,7 @@ function shellMenu(message) {
   }
   const id = String(message.id);
   if (message.token && typeof pagesMenu === "function" && pagesMenu(id, message.token) !== false) return;
-  const answer = MENU_ANSWERS[id];
-  if (answer) answer();
-  else unanswered(id);
+  shellAnswer(id);
 }
 
 // ── keyboard (SPEC 4.3): app.js's one keydown listener hands keys here ──

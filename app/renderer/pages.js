@@ -26,13 +26,26 @@
 // no group, counted in none) and named in a notice of its own, while every
 // other row and group is drawn (pagesSafe; SPEC 6, "loud and safe").
 //
-// What this file offers the sheet (S5) and the right-click menus (S5):
+// Three kinds of name are live links (SPEC 3.9; rulings 8-13), drawn as
+// `.row-link` with the vocabulary's tooltip: a file name shows that exact
+// working copy in File Explorer (`window.tracker.open(path, "reveal")`, the
+// path looked up by the API's key in the map it came with, never drawn); a
+// household name and a return name navigate in the app, with no call to the
+// engine. A return's link reads "{Return Name} ({Year})": its name from the
+// list and its year from the row's own record, never worked out here.
+//
+// What this file offers the sheet and the right-click menus:
 //   pagesRowFor(token)  what a row is about ({menu, step, ...}), by the row's id
 //   pagesFiles()        the Check steps on the page, in the order drawn
+//   pagesDrafts()       the Draft reminder steps, in the order drawn
+//   pagesWhere/pagesFocusAt  where focus sat in a row list, and back to it
+//   pagesMenu(id, token)     a right-click item on a row (the crumbs' and the
+//                            menu bar's ids are shell.js's)
 //   data-menu, data-token on every row and on the H1 of a household or
-//                       return, which S5 wires to shellPopup()
+//                       return; a right-click or Shift+F10 asks for the
+//                       native menu of that template (shellPopup)
 // Steps that open the sheet call openCheck(ret, name, handle) and
-// openReminder(ret) when they exist (S5); until then the shell says so.
+// openReminder(ret) (sheet.js).
 
 "use strict";
 
@@ -89,6 +102,70 @@ function pagesReturnName(path) {
 function pagesRoute(path) {
   const one = shellReturn(path);
   return { level: "return", household: one ? one.household : "", year: one ? one.year : 0, ret: path };
+}
+
+// ── links (SPEC 3.9; rulings 8-13) ────────────────────────────────────
+const PAGES_LINK_WORDS = { file: "show_in_explorer", household: "navigate_client", return: "navigate_return" };
+
+// A link's tooltip, the vocabulary's. A word it lacks is a loud failure (the
+// row that would carry the link is left out and named), never a guess.
+function pagesLinkWords(kind) {
+  const key = PAGES_LINK_WORDS[kind];
+  const said = key ? screenWords()[key] : "";
+  if (!said) throw new Error(`screen.${key}`);
+  return said;
+}
+
+// A return's link text, "{Return Name} ({Year})" (ruling 13): its name from
+// the list, its year from the row's own record (or the list's), both the
+// API's. A row the API gave no year for is its name alone, not a year of ours.
+function pagesReturnText(path, year, named) {
+  const name = named || pagesReturnName(path);
+  const listed = shellReturn(path);
+  const shown = year || (listed ? listed.year : 0);
+  return shown ? `${name} (${shown})` : name;
+}
+
+function pagesHouseholdPath(name) {
+  const one = households.find((other) => other.name === name);
+  return one ? one.path : "";
+}
+
+// The absolute path the API reported under a key, from the map that came with
+// the row (`state.paths`, `firm.paths`): a string, or {path, kind}. It goes to
+// the shell's open and is never put in a node.
+function pagesPathOf(map, key) {
+  const found = map && key ? map[key] : "";
+  return typeof found === "string" ? found : found && typeof found.path === "string" ? found.path : "";
+}
+
+function pagesFileLink(map, key) {
+  return key ? { kind: "file", key, paths: map } : null;
+}
+
+function pagesRunLink(link) {
+  if (link.kind === "household") shellGo({ level: "household", household: link.path });
+  else if (link.kind === "return") shellGo(pagesRoute(link.path));
+  else {
+    const path = pagesPathOf(link.paths, link.key);
+    if (path) openPath(path, "reveal");
+    else unanswered("show_in_explorer");
+  }
+}
+
+// A name that is a link: a node of its own in the cell, carrying the link's
+// tooltip (which wins over the cut name's, whose full text is the page's
+// heading or the sheet's title).
+function pagesLinkNode(link, text, cell) {
+  const node = h("span", { className: "row-link", dataset: { link: link.kind, cell } }, text);
+  setTip(node, pagesLinkWords(link.kind));
+  return node;
+}
+
+function pagesCell(className, cell, text, link) {
+  const box = h("span", { className }, link ? pagesLinkNode(link, text, cell) : text);
+  if (!link) setTipIfCut(box, text);
+  return box;
 }
 
 // A short reason's label (SPEC 11.5): `vocab.reasons[code]`, a label or an
@@ -175,12 +252,10 @@ function pagesRow(spec) {
     className: `row${step ? " has-step" : ""}`, role: "option", id, "aria-selected": "false",
     "aria-description": words || undefined, dataset: { menu: spec.menu || "", token: id },
   },
-  h("span", { className: "row-name" }, spec.name),
-  h("span", { className: "row-detail" }, spec.detail || ""),
+  pagesCell("row-name", "name", spec.name, spec.nameLink),
+  pagesCell("row-detail", "detail", spec.detail || "", spec.detailLink),
   h("span", { className: `row-status ${PAGES_TONES[spec.tone] || ""}` }, spec.status || ""),
   h("span", { className: "row-end" }, h("span", { className: "row-date" }, spec.date || ""), step));
-  setTipIfCut(node.querySelector(".row-name"), spec.name);
-  setTipIfCut(node.querySelector(".row-detail"), spec.detail);
   setTipIfCut(node.querySelector(".row-status"), spec.status);
   return node;
 }
@@ -204,6 +279,13 @@ function pagesActivate(list, row) {
 function pagesRunRow(row) {
   const spec = pagesTokens.get(row.id);
   if (spec && spec.step) pagesRunStep(spec.step);
+}
+
+// A click on a name link in a row: the link of that cell.
+function pagesRunRowLink(row, node) {
+  const spec = pagesTokens.get(row.id);
+  const link = spec ? spec[`${node.dataset.cell}Link`] : null;
+  if (link) pagesRunLink(link);
 }
 
 function pagesRunStep(step) {
@@ -234,11 +316,21 @@ function pagesList(name, kids) {
     if (!row) return;
     pagesActivate(list, row);
     list.focus({ preventScroll: true });
-    if (e.target.closest(".row-step")) pagesRunRow(row);
+    const link = e.target.closest(".row-link");
+    if (link) pagesRunRowLink(row, link);
+    else if (e.target.closest(".row-step")) pagesRunRow(row);
   });
   list.addEventListener("dblclick", (e) => {
     const row = e.target.closest(".row");
-    if (row) pagesRunRow(row);
+    if (row && !e.target.closest(".row-link")) pagesRunRow(row);
+  });
+  list.addEventListener("contextmenu", (e) => {
+    const row = e.target.closest(".row");
+    if (!row) return;
+    e.preventDefault();
+    pagesActivate(list, row);
+    list.focus({ preventScroll: true });
+    pagesPopup(row, e.clientX, e.clientY);
   });
   return list;
 }
@@ -252,7 +344,7 @@ function pagesGroup(spec) {
   const headId = `group-${pagesUid}`;
   const total = spec.blocks.reduce((n, block) => n + block.rows.length, 0);
   const meta = h("span", { className: "group-count" }, spec.caption !== undefined ? spec.caption : String(total));
-  const title = h("h2", { className: "group-title", id: headId }, spec.heading);
+  const title = h("h2", { className: "group-title", id: headId }, spec.headingLink ? pagesHeadLink(spec.headingLink, spec.heading) : spec.heading);
   const start = spec.step ? pagesGroupStep(spec.step) : null;
   const headClass = `group-head${spec.first ? " is-first" : ""}`;
   let body = null;
@@ -281,6 +373,14 @@ function pagesGroup(spec) {
   return [h("div", { className: headClass }, title, meta, start), body].filter(Boolean);
 }
 
+// A link in a heading or a caption (a return's name, a household's): outside
+// the row lists, so it takes its own click.
+function pagesHeadLink(link, text) {
+  const node = pagesLinkNode(link, text, "head");
+  node.addEventListener("click", () => pagesRunLink(link));
+  return node;
+}
+
 // The group heading's own step, shown on hover of the heading; the same
 // step every row of the group runs, and reachable from the keyboard there.
 function pagesGroupStep(step) {
@@ -298,7 +398,16 @@ function pagesTitle(text, menu, token) {
   pagesUid += 1;
   const attrs = { className: "page-title", id: `title-${pagesUid}` };
   if (menu) attrs.dataset = { menu, token };
-  return h("h1", attrs, text);
+  const node = h("h1", attrs, text);
+  // The heading of a household or a return: its own native menu, acting on
+  // the page it heads (the crumb tokens are shell.js's).
+  if (menu) {
+    node.addEventListener("contextmenu", (e) => {
+      e.preventDefault();
+      shellPopup(menu, token, e.clientX, e.clientY);
+    });
+  }
+  return node;
 }
 
 // The H1 of a household, year or return page (the frame that stays when the
@@ -327,7 +436,9 @@ function pagesWorkRows(returns) {
   const steps = { kind: "open" };
   const specOf = (one, date) => {
     const said = pagesCounts(one.counts, one.problem);
-    return { name: name(one), detail: one.household, status: said.text, tone: said.tone, date, menu: "return",
+    const house = pagesHouseholdPath(one.household);
+    return { name: pagesReturnText(one.path, one.year), detail: one.household, status: said.text, tone: said.tone, date, menu: "return",
+             nameLink: { kind: "return", path: one.path }, detailLink: house ? { kind: "household", path: house } : null,
              step: { ...steps, route: pagesRoute(one.path) } };
   };
   return [...pagesEach(need, name, (one) => specOf(one, pagesDay(one.oldest))), ...pagesEach(wait, name, (one) => specOf(one, pagesDue(one.due)))];
@@ -364,24 +475,36 @@ function pagesNeedsReview() {
   if (!groups.length) return [pagesEmpty(words.empty.needs_review, pagesNextSort(firm))];
   return groups.flatMap((group, i) => pagesSafe(group.path, () => {
     const owner = pagesFirmReturn(group.path);
+    // A file's name is a link to its working copy when the firm's reply names
+    // one (`open_key` and the reply's `paths`, ruling 15); with none it is text.
     const rows = pagesEach(group.files, (file) => file.name, (file) => pagesRow({
       name: file.name, detail: file.suggestion || "", status: pagesReason(file.code), tone: "needs", date: pagesDay(file.received),
-      menu: "file", step: { kind: "check", ret: group.path, name: file.name, handle: file.handle },
+      menu: "file", fileKind: "parked", nameLink: pagesFileLink(firm.paths, file.open_key),
+      step: { kind: "check", ret: group.path, name: file.name, handle: file.handle },
     }));
     const household = owner ? owner.household : "";
-    return pagesGroup({ heading: pagesReturnName(group.path), caption: household ? `${household} · ${rows.length}` : String(rows.length), first: i === 0, blocks: [{ rows }] });
+    const house = pagesHouseholdPath(household);
+    const caption = household
+      ? [house ? pagesHeadLink({ kind: "household", path: house }, household) : household, ` · ${rows.length}`]
+      : String(rows.length);
+    return pagesGroup({ heading: pagesReturnText(group.path, owner ? owner.year : 0), headingLink: { kind: "return", path: group.path },
+                        caption, first: i === 0, blocks: [{ rows }] });
   }) || []);
 }
 
 // ── Reminders (SPEC 6.3) ──────────────────────────────────────────────
 function pagesReminderSpecs(firm) {
   const ready = firm.returns.filter((one) => one.draft && one.draft.ready);
-  return pagesEach(ready.sort((a, b) => pagesByName(pagesReturnName(a.path), pagesReturnName(b.path))), (one) => pagesReturnName(one.path), (one) => ({
-    name: pagesReturnName(one.path), detail: one.household,
-    status: one.draft.held > 0 ? screenWords().held : pagesStage(one.draft.stage),
-    tone: one.draft.held > 0 ? "needs" : "waiting", date: pagesDay(one.draft.drafted), menu: "return",
-    step: { kind: "draft", ret: one.path },
-  }));
+  return pagesEach(ready.sort((a, b) => pagesByName(pagesReturnName(a.path), pagesReturnName(b.path))), (one) => pagesReturnName(one.path), (one) => {
+    const house = pagesHouseholdPath(one.household);
+    return {
+      name: pagesReturnText(one.path, one.year), detail: one.household,
+      status: one.draft.held > 0 ? screenWords().held : pagesStage(one.draft.stage),
+      tone: one.draft.held > 0 ? "needs" : "waiting", date: pagesDay(one.draft.drafted), menu: "return",
+      nameLink: { kind: "return", path: one.path }, detailLink: house ? { kind: "household", path: house } : null,
+      step: { kind: "draft", ret: one.path },
+    };
+  });
 }
 
 function pagesReminders() {
@@ -408,7 +531,7 @@ function pagesClientSpecs(firm, all) {
           : returns.length ? { text: words.complete, tone: "done" } : { text: "", tone: "plain" };
     return { work: need + wait > 0 || Boolean(problem), spec: {
       name: one.name, detail: returns.length ? fill(returns.length === 1 ? words.one_return : words.returns, { n: returns.length }) : "",
-      status: said.text, tone: said.tone, date: "", menu: "household",
+      status: said.text, tone: said.tone, date: "", menu: "household", nameLink: { kind: "household", path: one.path },
       step: { kind: "open", route: { level: "household", household: one.path } },
     } };
   }).filter((one) => all || one.work).map((one) => one.spec);
@@ -458,7 +581,8 @@ function pagesReturnSpecs(returns) {
     const firm = pagesFirmReturn(one.path);
     const said = firm ? pagesCounts(firm.counts, firm.problem) : { text: "", tone: "plain" };
     const detail = one.superseded_by ? words.rolled : one.active === false ? words.inactive : "";
-    return { name: one.return_name || one.label, detail, status: said.text, tone: said.tone, date: "", menu: "return",
+    return { name: pagesReturnText(one.path, one.year, one.return_name), detail, status: said.text, tone: said.tone, date: "", menu: "return",
+             nameLink: { kind: "return", path: one.path },
              step: { kind: "open", route: { level: "return", household: shellRoute.household, year: one.year, ret: one.path } } };
   });
 }
@@ -540,17 +664,22 @@ function pagesReturnGroups(state, year) {
   }
   const filesIn = (group) => index.filter((one) => one.group === group);
   const parked = filesIn("needs_you").filter((one) => one.decision === decisions.needs_review).sort(oldestFirst);
+  // A file's name is a link to its working copy when the state names one:
+  // `shown_key` on a parked or set-aside row, `open_key` on a moved one, and
+  // `open_keys[0]` on the one copy a filed row has (SPEC 3.9, 5.7). A row with
+  // no key is text.
+  const linkOf = (key) => pagesFileLink(state.paths, key);
   const parkedSpec = (entry) => {
     const first = ((triage.get(entry.handle) || {}).shortlist || [])[0];
     return { name: entry.original_name, detail: first ? nameOf(first.identifier) : "", status: pagesReason(entry.code), tone: "needs",
-             date: pagesDay(entry.received), menu: "file", step: fileStep(entry) };
+             date: pagesDay(entry.received), menu: "file", fileKind: "parked", nameLink: linkOf(entry.shown_key), step: fileStep(entry) };
   };
   const parkedIn = (list, extra) => pagesEach(list, (one) => one.original_name, (one) => ({ ...parkedSpec(one), ...extra }));
   groups.needs_you.push(...parkedIn(parked.filter((one) => (one.bucket || plain) === plain), {}));
   const receivedOf = new Map(index.map((one) => [one.handle, one.received]));
   groups.needs_you.push(...pagesEach(state.moved || [], (one) => one.original_name, (one) => ({
     name: one.original_name, detail: nameOf(one.identifier || one.in_request), status: words.moved, tone: "needs",
-    date: pagesDay(receivedOf.get(one.handle)), menu: "moved",
+    date: pagesDay(receivedOf.get(one.handle)), menu: "moved", canKeep: Boolean(one.in_request && !one.gone), nameLink: linkOf(one.open_key),
     step: { kind: "check", ret: state.paths.engagement, name: one.original_name, handle: one.handle },
   })));
 
@@ -566,6 +695,13 @@ function pagesReturnGroups(state, year) {
       const detail = item.group === "received"
         ? (filed.length > 1 ? fill(words.counts.files, { n: filed.length }) : filed.length ? filed[0].original_name : "")
         : pagesItemDetail(item, year);
+      // One filed file with one working copy is a link to it; several files
+      // are a count, and a count is not a name. Unfile is offered for the one
+      // original filed under this request, Mark missing for the request a
+      // consolidated statement answered without a copy (decision 146).
+      const single = filed.length === 1 ? filed[0] : null;
+      const direct = filed.filter((one) => one.identifier === item.identifier);
+      const answering = filed.find((one) => (one.answered || []).indexOf(item.identifier) !== -1);
       const tone = { needs_you: "needs", waiting: "waiting", received: "done", set_aside: "plain" }[item.group];
       const spec = {
         name: pagesItemName(item), detail, status: pagesItemStatus(item), tone,
@@ -575,6 +711,11 @@ function pagesReturnGroups(state, year) {
           : item.group === "waiting" ? { kind: "draft", ret: state.paths.engagement } : null,
         identifier: item.identifier,
       };
+      if (item.group === "received") {
+        spec.detailLink = single && (single.open_keys || []).length === 1 ? linkOf(single.open_keys[0]) : null;
+        spec.unfile = direct.length === 1 ? { original: direct[0].handle, seq: direct[0].seq } : null;
+        spec.missing = answering ? { original: answering.handle, seq: answering.seq, identifier: item.identifier } : null;
+      }
       groups[item.group].push(spec);
     });
   }
@@ -584,7 +725,8 @@ function pagesReturnGroups(state, year) {
     const missing = entry.decision === decisions.file_moved;
     return {
       name: entry.original_name, detail: "", status: missing ? words.moved : vocab.review_labels.dismiss, tone: "plain",
-      date: pagesDay(entry.received), menu: "file", step: missing ? null : fileStep(entry),
+      date: pagesDay(entry.received), menu: "file", fileKind: missing ? "missing" : "aside", nameLink: linkOf(entry.shown_key),
+      step: missing ? null : fileStep(entry),
     };
   }));
   for (const bucket of bucketOrder.slice(1)) {
@@ -700,15 +842,25 @@ function pagesBuild(route) {
   return builders[route.level](route);
 }
 
-function pagesRemember(page) {
+// Where focus sits in a row list of the page: which list and which row, or
+// null when it sits anywhere else.
+function pagesWhere(page) {
   const here = document.activeElement;
   const list = here && here.closest ? here.closest('[role="listbox"]') : null;
-  if (!list || !page.contains(list)) {
-    pagesFocus = null;
-    return;
-  }
+  if (!list || !page.contains(list)) return null;
   const row = list.querySelector(".is-active");
-  pagesFocus = { at: [...page.querySelectorAll('[role="listbox"]')].indexOf(list), row: row ? [...list.querySelectorAll('[role="option"]')].indexOf(row) : 0 };
+  return { at: [...page.querySelectorAll('[role="listbox"]')].indexOf(list), row: row ? [...list.querySelectorAll('[role="option"]')].indexOf(row) : 0 };
+}
+
+function pagesRemember(page) {
+  pagesFocus = pagesWhere(page);
+}
+
+// Focus back on the row it was on (or the nearest), after the page was drawn
+// again: the sheet's way back to the row that opened it.
+function pagesFocusAt(where) {
+  pagesFocus = where;
+  pagesRestore($("page"));
 }
 
 function pagesRestore(page) {
@@ -797,6 +949,13 @@ function pagesKey(e) {
   const rows = [...list.querySelectorAll('[role="option"]')];
   if (!rows.length) return false;
   const at = Math.max(0, rows.findIndex((one) => one.classList.contains("is-active")));
+  // Shift+F10 and the menu key: the row's native menu, under the row.
+  if (e.key === "ContextMenu" || (e.key === "F10" && e.shiftKey)) {
+    e.preventDefault();
+    const box = rows[at].getBoundingClientRect();
+    pagesPopup(rows[at], box.left + box.width / 2, box.bottom);
+    return true;
+  }
   const size = rows[0].offsetHeight || 1;
   const page = Math.max(1, Math.floor(($("page").clientHeight || size) / size) - 1);
   const moves = {
@@ -820,10 +979,115 @@ function pagesRowFor(token) {
   return pagesTokens.get(token) || null;
 }
 
-// Every Check step on the page in the order drawn: the sheet's next arrow.
-function pagesFiles() {
+// The steps of one kind on the page in the order drawn: the sheet's next arrow.
+function pagesSteps(kind) {
   return [...pagesTokens.entries()]
-    .filter(([, spec]) => spec.step && spec.step.kind === "check")
+    .filter(([, spec]) => spec.step && spec.step.kind === kind)
     .sort((a, b) => Number(a[0].slice(4)) - Number(b[0].slice(4)))
     .map(([, spec]) => spec.step);
+}
+
+// Every Check step on the page.
+function pagesFiles() {
+  return pagesSteps("check");
+}
+
+// Every Draft reminder step on the page (the Reminders page's drafts).
+function pagesDrafts() {
+  return pagesSteps("draft");
+}
+
+// ── the right-click menu of a row (SPEC 5.2, 5.3) ─────────────────────
+// A row asks for the native menu of its template with the ids that apply to
+// it now (a live lock greys the writing items); the id chosen comes back
+// with the row's token to pagesMenu. The client rows (household, return) act
+// on that row's household or return: the app goes there first, then answers
+// the item as if the person had chosen it on that page.
+
+// The route a household or return row stands for.
+function pagesRowRoute(spec) {
+  if (spec.step && spec.step.route) return spec.step.route;
+  const link = spec.nameLink;
+  if (link && link.kind === "return") return pagesRoute(link.path);
+  if (link && link.kind === "household") return { level: "household", household: link.path };
+  return shellRoute;
+}
+
+function pagesEnableFor(spec) {
+  const ids = [];
+  const write = !locked;
+  if (spec.menu === "file") {
+    if (spec.step) ids.push("check");
+    if (write && spec.fileKind === "parked") ids.push("not_requested", "another_return");
+  } else if (spec.menu === "moved") {
+    ids.push("check");
+    if (write) ids.push("put_back");
+    if (write && spec.canKeep) ids.push("keep_here");
+  } else if (spec.menu === "request") {
+    if (write) ids.push("edit_request");
+  } else if (spec.menu === "received") {
+    if (write && spec.unfile) ids.push("unfile");
+    if (write && spec.missing) ids.push("mark_missing");
+  } else if (spec.menu === "household" || spec.menu === "return") {
+    ids.push(...shellEnabled(pagesRowRoute(spec)));
+  }
+  if ((spec.menu === "file" || spec.menu === "moved") && spec.nameLink) ids.push("show_in_explorer");
+  return ids;
+}
+
+function pagesPopup(row, x, y) {
+  const spec = pagesTokens.get(row.id);
+  if (spec && spec.menu) shellPopup(spec.menu, row.id, x, y, pagesEnableFor(spec));
+}
+
+// Open the sheet on a file, then press the button the menu item stands for:
+// the write is the sheet's own, with everything the sheet checks.
+async function pagesCheckThen(spec, button, id) {
+  await openCheck(spec.step.ret, spec.step.name, spec.step.handle);
+  if (sheetNow && !sheetPress(button)) unanswered(id);
+}
+
+async function pagesClientMenu(spec, id) {
+  if (id === "draft_reminder" && spec.step && spec.step.kind === "draft") {
+    openReminder(spec.step.ret);
+    return;
+  }
+  const route = pagesRowRoute(spec);
+  const here = route.level === shellRoute.level && (route.level === "household" ? route.household === shellRoute.household : route.ret === shellRoute.ret);
+  if (!here) {
+    await shellGo(route);
+    if (shellRoute !== route) return;   // the person went on elsewhere while it loaded
+  }
+  shellAnswer(id);
+}
+
+const PAGES_ROW_ANSWERS = {
+  check: (spec) => pagesRunStep(spec.step),
+  not_requested: (spec) => pagesCheckThen(spec, "r-dismiss", "not_requested"),
+  another_return: (spec) => pagesCheckThen(spec, "r-hand-over", "another_return"),
+  put_back: (spec) => pagesCheckThen(spec, "r-restore", "put_back"),
+  keep_here: (spec) => pagesCheckThen(spec, "r-keep", "keep_here"),
+  edit_request: (spec) => pagesRunStep({ kind: "edit", identifier: spec.identifier }),
+  unfile: (spec) => unfileDocument(spec.unfile),
+  mark_missing: (spec) => withdrawAnswer(spec.missing),
+  show_in_explorer: (spec) => pagesRunLink(spec.nameLink),
+};
+
+// shell.js asks first for every menu message that carries a token. False:
+// not a row's (the crumbs' tokens, the menu bar), so the shell answers.
+function pagesMenu(id, token) {
+  const spec = pagesTokens.get(token);
+  if (!spec) return false;
+  const answer = PAGES_ROW_ANSWERS[id];
+  // An answer is asynchronous; a failure of the page's own in it is a notice
+  // like any other, never an unhandled rejection.
+  if (answer) {
+    Promise.resolve().then(() => answer(spec)).catch((err) => failed(err));
+    return true;
+  }
+  if (spec.menu === "household" || spec.menu === "return") {
+    pagesClientMenu(spec, id).catch((err) => failed(err));
+    return true;
+  }
+  return false;
 }

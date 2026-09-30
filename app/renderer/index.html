@@ -60,18 +60,56 @@
     </div>
   </div>
 
-  <!-- The side sheet (SPEC-shell 7): sheet.js draws Check a file and Draft
-       reminder into it. Hidden until one opens. -->
+  <!-- The side sheet (SPEC-shell 7): sheet.js draws Check a file into
+       #sheet-check and #check-actions; the reminder's parts are here from the
+       start, with the ids drawReminder() looks up, so the letter can be drawn
+       whenever a return's state arrives. Every word is the API's. -->
   <div id="sheet-scrim" hidden></div>
   <aside id="sheet" role="dialog" aria-modal="true" aria-labelledby="sheet-title" hidden>
     <div id="sheet-head">
       <h2 id="sheet-title" tabindex="-1"></h2>
+      <button id="sheet-open" class="icon-button" type="button" data-tip-key="screen.icons.open" hidden>
+        <svg class="icon" aria-hidden="true"><use href="#i-open" /></svg>
+      </button>
+      <button id="sheet-more" class="icon-button" type="button" data-tip-key="screen.icons.more" aria-expanded="false" aria-controls="sheet-more-body" hidden>
+        <svg class="icon" aria-hidden="true"><use href="#i-more" /></svg>
+      </button>
+      <button id="sheet-next" class="icon-button" type="button" data-tip-key="screen.icons.next" hidden>
+        <svg class="icon" aria-hidden="true"><use href="#i-next" /></svg>
+      </button>
       <button id="sheet-close" class="icon-button" type="button" data-tip-key="screen.icons.dismiss">
         <svg class="icon" aria-hidden="true"><use href="#i-dismiss" /></svg>
       </button>
     </div>
-    <div id="sheet-body"></div>
-    <div id="sheet-foot"></div>
+    <div id="sheet-body">
+      <div id="sheet-check" hidden></div>
+      <!-- The week's reminder (decision 118): what the record says about it,
+           the four stages as a toggle, the letter as it will read, and the
+           two things a person does with it - copy it, or approve it.
+           Nothing sends: there is no send button here and no mail link
+           anywhere in the app. Every word and every colour is the API's
+           (vocab.reminder); the page types neither, and the preview is built
+           from the letter's own shape with DOM nodes, never from markup. -->
+      <div id="sheet-reminder" hidden>
+        <p id="reminder-status" class="rem-status"></p>
+        <div id="reminder-hold" class="hidden">
+          <p id="reminder-held" class="rem-hold" role="status"></p>
+          <ul id="reminder-held-rows" class="rem-hold-rows"></ul>
+        </div>
+        <div id="reminder-stages" class="rem-stages" role="group"></div>
+        <p id="reminder-edited" class="rem-edited hidden"></p>
+        <p id="reminder-link-dropped" class="rem-edited hidden" role="status"></p>
+        <p id="reminder-subject" class="rem-subject"></p>
+        <div id="reminder-preview" class="rem-preview" tabindex="0"></div>
+      </div>
+    </div>
+    <div id="sheet-foot">
+      <div id="check-actions" class="sheet-actions" hidden></div>
+      <div id="reminder-actions" class="sheet-actions" hidden>
+        <button type="button" id="btn-approve" class="btn"></button>
+        <button type="button" id="btn-copy" class="btn btn-primary"></button>
+      </div>
+    </div>
   </aside>
 
   <!-- One tooltip element, reused (SPEC-shell 8.5). -->
@@ -91,105 +129,14 @@
     <symbol id="i-open" viewBox="0 0 16 16"><path d="M9 3h4v4M13 3L7.5 8.5M11 9.5V13H3V5h3.5" /></symbol>
   </svg>
 
-  <!-- What is left of the old screen, hidden and never drawn. The pages
-       (pages.js) took over the top bar, the banners, the request table, the
-       household card and the setup card; what remains here is what the side
-       sheet (S5) and the dialogs take over next: the reminder, moved, review
-       and filed cards, the standing-rules footer, the roll fold, and the
-       three boxes the setup page fills and saveRoot() reads. S5 deletes
-       each as it takes it over. -->
+  <!-- The three boxes the setup page fills and saveRoot() reads; hidden and
+       never drawn. Everything else the old screen held is the pages', the
+       side sheet's or a dialog's. -->
   <div id="legacy" class="hidden">
     <input id="root-input" type="text" />
     <input id="firm-input" type="text" />
     <input id="phone-input" type="text" />
-    <!-- The household rolls as a household (decisions 126 and 196): drawn only
-         when the API names the year it rolls to. Every word is the API's. -->
-    <details id="household-roll" class="household-roll ed-paste hidden"></details>
-
-      <!-- The week's reminder (decision 118): what the record says about it,
-           the four stages as a toggle, the letter as it will read, and the
-           three things a person does with it — copy it, approve it, or open
-           the file. Nothing sends: there is no send button here and no mail
-           link anywhere in the app. Every word and every colour is the API's
-           (vocab.reminder); the page types neither, and the preview is built
-           from the letter's own shape with DOM nodes, never from markup. -->
-      <section id="reminder-card" class="card hidden">
-        <div class="card-head">
-          <h3 id="reminder-heading"></h3>
-          <span class="summary"></span>
-        </div>
-        <div class="reminder-body">
-          <p id="reminder-status" class="rem-status"></p>
-          <!-- One shape per state: held is the hold line, the rows and the
-               toggle, and nothing that reads like something to send. -->
-          <div id="reminder-hold" class="hidden">
-            <p id="reminder-held" class="rem-hold" role="status"></p>
-            <ul id="reminder-held-rows" class="rem-hold-rows"></ul>
-          </div>
-          <div id="reminder-stages" class="rem-stages" role="group"></div>
-          <p id="reminder-hint" class="rem-hint"></p>
-          <p id="reminder-edited" class="rem-edited hidden"></p>
-          <p id="reminder-link-dropped" class="rem-edited hidden" role="status"></p>
-          <p id="reminder-subject" class="rem-subject"></p>
-          <div id="reminder-preview" class="rem-preview" tabindex="0"></div>
-          <div id="reminder-actions" class="rem-actions">
-            <button type="button" id="btn-copy" class="btn btn-primary"></button>
-            <button type="button" id="btn-approve" class="btn"></button>
-            <span class="toolbar-spacer"></span>
-            <button type="button" id="btn-open-draft" class="rem-quiet"></button>
-          </div>
-        </div>
-      </section>
-
-      <!-- The copies that wandered (decision 110): above the review queue, because a
-           working copy that is not where the record put it is the first
-           question of the morning. Every word of it is the API's. -->
-      <section id="moved-card" class="card hidden">
-        <div class="card-head">
-          <h3 id="moved-heading"></h3>
-          <span class="summary" id="moved-summary"></span>
-        </div>
-        <ul id="moved-list" class="review"></ul>
-      </section>
-
-      <section id="review-card" class="card hidden">
-        <div class="card-head">
-          <h3>Needs review</h3>
-          <span class="summary">the client sent these; pick the request each belongs to — nothing is guessed</span>
-        </div>
-        <ul id="review-list" class="review"></ul>
-        <details id="dismissed-card" class="dismissed hidden">
-          <summary id="dismissed-heading"></summary>
-          <ul id="dismissed-list" class="review"></ul>
-        </details>
-      </section>
-
-      <section id="filed-card" class="card hidden">
-        <details class="dismissed">
-          <summary id="filed-heading"></summary>
-          <ul id="filed-list" class="review"></ul>
-        </details>
-      </section>
-
-      <footer id="assurances" class="assurances">
-        <div class="assure">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-          <div><strong></strong><span></span></div>
-        </div>
-        <div class="assure">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-          <div><strong></strong><span></span></div>
-        </div>
-        <div class="assure">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/></svg>
-          <div><strong></strong><span></span></div>
-        </div>
-        <div class="assure">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-          <div><strong></strong><span></span></div>
-        </div>
   </div>
-
 
   <!-- The household's own three fields (decision 125): the members a
        person typed as who its folder is meant to be shared with, the
@@ -501,10 +448,60 @@
     </div>
   </div>
 
+  <!-- ═══════════════ The four dialogs the menu and the notices open ═══════════════
+       Roll forward (Client menu), Safeguards and About (Help menu), and the
+       folders the walk left alone (a notice's Show). Every word is the API's;
+       shell.js and app.js fill them. -->
+  <div id="roll-modal" class="modal-overlay hidden">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="roll-title">
+      <h3 id="roll-title"></h3>
+      <div id="roll-body" class="tmpl-list"></div>
+      <div class="modal-actions">
+        <button id="roll-cancel" class="btn" type="button"></button>
+        <span class="toolbar-spacer"></span>
+        <button id="btn-roll" class="btn btn-primary" type="button"></button>
+      </div>
+    </div>
+  </div>
+
+  <div id="safeguards-modal" class="modal-overlay hidden">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="safeguards-title">
+      <h3 id="safeguards-title"></h3>
+      <ul id="safeguards-list" class="safeguards"></ul>
+      <div class="modal-actions">
+        <span class="toolbar-spacer"></span>
+        <button id="safeguards-close" class="btn btn-primary" type="button"></button>
+      </div>
+    </div>
+  </div>
+
+  <div id="about-modal" class="modal-overlay hidden">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="about-title">
+      <h3 id="about-title"></h3>
+      <p id="about-edition" class="about-edition"></p>
+      <div class="modal-actions">
+        <span class="toolbar-spacer"></span>
+        <button id="about-close" class="btn btn-primary" type="button"></button>
+      </div>
+    </div>
+  </div>
+
+  <div id="misfits-modal" class="modal-overlay hidden">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="misfits-title">
+      <h3 id="misfits-title"></h3>
+      <ul id="misfits-list" class="misfits"></ul>
+      <div class="modal-actions">
+        <span class="toolbar-spacer"></span>
+        <button id="misfits-close" class="btn btn-primary" type="button"></button>
+      </div>
+    </div>
+  </div>
+
   <div id="toast" class="toast hidden" role="alert"></div>
   <script src="app.js"></script>
   <script src="tooltip.js"></script>
   <script src="pages.js"></script>
+  <script src="sheet.js"></script>
   <script src="shell.js"></script>
   <script src="pilot-content.js"></script>
   <script src="pilot.js"></script>
