@@ -1,6 +1,6 @@
 {
   "schema": 2,
-  "generated": "2026-09-29",
+  "generated": "2026-09-30",
   "generator": "tools/repo_map.py",
   "generator_sha256": "22c7b60a1d198289",
   "module_table_sha256": "1cd8532e9c5b2c20",
@@ -15,9 +15,9 @@
     "a person sends the draft"
   ],
   "counts": {
-    "nodes": 285,
+    "nodes": 286,
     "edges": 1142,
-    "reused": 233
+    "reused": 241
   },
   "node_types": [
     "artifact",
@@ -4046,8 +4046,8 @@
       "id": "app/renderer/shell.js",
       "type": "module",
       "layer": "desktop-app",
-      "sha256": "17567734f3c97404",
-      "lines": 873,
+      "sha256": "0c443e20e92b10c4",
+      "lines": 880,
       "role": "The app shell (pilot SPEC-shell, P58-P77): the side panel, the path row, the search, the sort icon, the one route, the setup page and the page's side of the `menu` channel. A classic script that shares app.js's globals and draws nothing of a return itself; it hands the page to pages.js.",
       "notes": "It types no word of its own: every name, tooltip and line is vocab.screen, and a key the vocabulary lacks throws, which app.js's bootstrap says as a notice - a loud failure, never a guess. Its own builder h() sets only the attributes it names (the pattern of app.js's el(), decision 137). app.js calls it at seams of one line each: shellVocabulary, shellAdopt, shellNeedsRoot, shellChanged, shellProgress, shellKey and shellStateArrived (and shell.js calls appRouteChanged); app.js's one document keydown listener hands every key to shellKey first, so the new files add no listener of their own (a test holds it). The route is {level, household, year, ret} of paths the API reported; a return's page waits for showReturn's state, and Sort now sorts the active return's household, so a household or year page first reads the state of one of its own returns when the state on screen is not (its notices come with it). The menu's enable list (shellEnabled) follows SPEC 5.1 rule for rule and is sent on every change; a menu id the page cannot answer is a notice and an error-log line, never silence. The firm command's counts (shellLoadFirm) are asked after every list; while they load the firm pages show outline rows, and a failure is one notice with Retry."
     },
@@ -4674,6 +4674,13 @@
       "lines": 271
     },
     {
+      "id": "pilot/handoffs/shell-S4-review-2.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "2c85d165c0628310",
+      "lines": 153
+    },
+    {
       "id": "pilot/handoffs/shell-S4.md",
       "type": "doc",
       "layer": "docs",
@@ -5039,8 +5046,8 @@
       "id": "pilot/harness/stub.js",
       "type": "module",
       "layer": "root",
-      "sha256": "1752862fe7cb646e",
-      "lines": 346
+      "sha256": "1e6ca8f8cce0a8cb",
+      "lines": 347
     },
     {
       "id": "pilot/mockup-shell.html",
@@ -8526,8 +8533,8 @@
       "id": "tests/test_shell.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "145b8b04f2091c66",
-      "lines": 1417,
+      "sha256": "eae88eafba933b08",
+      "lines": 1423,
       "exports": [
         "CONTRAST",
         "FAKE_DOM",
