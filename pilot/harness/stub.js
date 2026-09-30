@@ -209,7 +209,8 @@
         group: dismissed ? "set_aside" : "needs_you", identifier: "", code: dismissed ? "not-requested" : CODE[one.status], bucket: one.bucket || "document",
         answered: [], open_keys: [], open_key: "", shown_key: "", extension: (/\.([^.]+)$/.exec(one.name) || [])[1] || "", seq: one.seq || 1,
       };
-      if (one.copy !== false) {
+      // An email or a zip has a working copy but no key (ruling 24): its name is plain text.
+      if (one.copy !== false && (one.bucket || "document") !== "container") {
         // A parked read document's shown key is its review copy's (S8a review 2); the rest only reveal.
         const shown = one.review ? keyOf("review_copy", handle) : keyOf("shown_copy", handle);
         keys[shown] = copyPath(path, "Prepared/_Review", one.name);
@@ -295,7 +296,7 @@
       if (x.kind === "moved") {
         open_key = keyOf("moved_copy", handleOf(x));
         paths[open_key] = copyPath(e.path, "Prepared/Elsewhere", x.name);
-      } else if (x.copy !== false) {
+      } else if (x.copy !== false && (x.bucket || "document") !== "container") {
         open_key = keyOf(x.review ? "review_copy" : "shown_copy", handleOf(x));
         paths[open_key] = copyPath(e.path, "Prepared/_Review", x.name);
       }

@@ -4,7 +4,7 @@
 
 The shell is built in jobs (P78), each with a handoff in [`handoffs/`](handoffs/)
 and its reviews; this section is the index and what is left. Jason's rulings
-1-22 are rows P85-P107 in [`DECISIONS.md`](DECISIONS.md); the live ledger is
+1-29 are rows P85-P114 in [`DECISIONS.md`](DECISIONS.md); the live ledger is
 [`handoffs/shell-ledger.md`](handoffs/shell-ledger.md).
 
 | Job | What | Handoff | State |
@@ -20,14 +20,34 @@ and its reviews; this section is the index and what is left. Jason's rulings
 | S4 | the pages | `shell-S4*.md` | joined with S5 |
 | S5 | the sheet, links, dialogs, right-click menus | `shell-S5*.md` | joined (S6b) |
 | S6b | S5 merged; the harness on the real API (no vocabulary snapshot); `screen.close`; `editor.routing` dropped; the wire table | `shell-S6b.md` | done |
+| Fix pass | the final reviews A, B and C answered (rulings 23-29) | `shell-fixpass.md` | done, awaiting its own review |
 
-**What is left.** (1) A comprehensive review of the joined branch, by a
-session that did not build it. (2) The merge to `main` (a merge commit, in the
-queue). (3) The Windows check: [`wintest/PROMPT-shell.md`](wintest/PROMPT-shell.md);
-the firm summary is 6.7 s for 750 returns in the sandbox against a 3 s budget,
-and the Windows number decides whether it needs a cache. Also waiting on Jason:
-two words proposed and not yet ruled on, `screen.notices.pick_request` ("Pick a
-Request First") and `screen.notices.name_requests` ("Name Each Custom Request").
+**What is left.** (1) The fix pass ([`handoffs/shell-fixpass.md`](handoffs/shell-fixpass.md))
+answered the final reviews A, B and C; a session that did not build it reviews
+it. (2) The merge to `main` (a merge commit, in the queue). (3) The Windows
+check: [`wintest/PROMPT-shell.md`](wintest/PROMPT-shell.md), rewritten so a CPA
+can do every step.
+
+**Open for Jason** (nothing blocks the build; each has a default):
+
+1. **SPEC section 19, O1-O6**, with the defaults taken: O1 "Could Not Be Read"
+   (now Title Case, the firm row's word); O2 which tooltip wins on a cut link
+   name (the link's); O3 how a keyboard user acts on a name link (right-click
+   menu or the context key; Enter runs the row step); **O4** "Show in File
+   Explorer" on file rows' right-click menus (**built without a ruling**); O5
+   `triage.places.footer` stays lower case as a fragment; O6 "Tracker Failed"
+   in Title Case against ruling 6's "Tracker failed".
+2. **"Bad Year"** (ruling 18a) is my working word for a folder where a year
+   should be; change it if you prefer another.
+3. **Ruling 25's reason words** were proposed and are now approved (ruling
+   29); nothing is waiting on them. Two are not mapped because the engine does
+   not tell them apart in a return's pass: "Drive Not Signed In" (its own
+   notice) and "Ran Too Long" (the shell's own sentence at the 30-minute cap).
+4. **Firm speed on Windows**: 6.7 s for 750 returns in the sandbox against a
+   3 s budget; the Windows number decides whether the firm view needs a cache.
+5. **The status word "Came in Email or Zip"** is cut in the 160px status
+   column (a file row keeps its ellipsis); say if you want the column wider or
+   the words shorter.
 
 ## App shell SPEC written (2026-09-29, P67-P78; branch `claude/admiring-lamport-bp1sse`)
 

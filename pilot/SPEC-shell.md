@@ -399,7 +399,7 @@ stays in the row's accessible name while the step shows. A row with no
 step keeps its date on hover.
 
 **A row may wrap (rulings 21, 27).** A return's row, a household's row and
-any row with a marker let the name, detail and status wrap instead of ending
+any row with a marker let the name and status wrap instead of ending
 in "…", so "{Return Name} ({Year})" always shows its year at the 1100px
 minimum and "Two Years Open; Sorting Paused" is always whole. A row grows
 only for a long name: one line stays 40px (the minimum), two lines are 48px

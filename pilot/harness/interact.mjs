@@ -711,7 +711,7 @@ const settle = (page) => page.waitForTimeout(250);
   const clipped = () => page.evaluate(() => {
     const bad = [];
     for (const row of document.querySelectorAll("#page .row-wrap")) {
-      for (const cell of row.querySelectorAll(".row-name, .row-detail, .row-status")) {
+      for (const cell of row.querySelectorAll(".row-name, .row-status")) {
         if (cell.scrollWidth > cell.clientWidth + 1 || cell.scrollHeight > cell.clientHeight + 1) bad.push(cell.textContent);
       }
       const total = Math.round(row.getBoundingClientRect().height), height = total > 40 ? total - Math.round(parseFloat(getComputedStyle(row).borderBottomWidth)) : total;   // the 1px rule under a row is not part of the grid

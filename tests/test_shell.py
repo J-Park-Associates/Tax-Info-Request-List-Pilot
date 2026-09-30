@@ -2568,7 +2568,7 @@ def test_a_sort_is_never_sent_without_a_return_chosen(tmp_path):
 
 
 def test_a_return_or_household_row_wraps_so_its_year_and_its_paused_words_are_never_cut():
-    """Rulings 21 and 27 (final review B, findings 3 and 4): the name, detail
+    """Rulings 21 and 27 (final review B, findings 3 and 4): the name
     and status of a return's or household's row (and of a row with a marker)
     wrap instead of ending in an ellipsis, on the token grid; a file's name
     keeps its ellipsis. The rendered claim (the year visible at 1100px on
@@ -2577,7 +2577,7 @@ def test_a_return_or_household_row_wraps_so_its_year_and_its_paused_words_are_ne
     for _media, selector, body in blocks(read("shell.css")):
         for part in selector.split(","):
             wrapped.setdefault(" ".join(part.split()), dict(declarations(body)))   # the first rule of a selector, not a media block after it
-    for cell in (".row-wrap .row-name", ".row-wrap .row-detail", ".row-wrap .row-status"):
+    for cell in (".row-wrap .row-name", ".row-wrap .row-status"):
         rule = wrapped[cell]
         assert rule["white-space"] == "normal" and rule["text-overflow"] == "clip" and rule["overflow-wrap"] == "break-word", cell
     assert wrapped[".row.row-wrap:not(.hidden)"]["padding-block"] == "var(--sp-1)"

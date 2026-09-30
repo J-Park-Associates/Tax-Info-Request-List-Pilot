@@ -230,3 +230,14 @@ pilot-content.js	tour.steps[9].does	Weekly, drafts a reminder listing what's mis
 pilot-content.js	tour.steps[9].fallback	Appears when a reminder is drafted.	cut		0	Nowhere; fallbacks cut	Audit §8		-
 pilot-content.js	tour.steps[9].limit	Send from your own email; no Outlook or Gmail link.	cut		0	Nowhere; limits cut	Audit §8		-
 pilot-content.js	tour.steps[9].strength	Nothing is ever sent. No client is contacted without you.	cut		0	Nowhere; strengths cut	Audit §8		-
+api._vocab	scan.problem_reason	(none: was "{error}" appended)	reword	Sort Failed: {reason}	4	A return's failed-sort banner	Approved by Jason (rulings 25, 29); the long detail stays in the error log	Sort Failed: {reason}	case
+api._vocab	scan.reasons.lock-held	(none)	reword	Another PC Sorting	3	After Sort Failed	Approved by Jason, ruling 29 (new word)	Another PC Sorting	case
+api._vocab	scan.reasons.household-paused	(none)	reword	Two Years Open	3	After Sort Failed	Approved by Jason, ruling 29	Two Years Open	case
+api._vocab	scan.reasons.client-folder-missing	(none)	reword	Folder Not Found	3	After Sort Failed	Approved by Jason, ruling 29	Folder Not Found	case
+api._vocab	scan.reasons.folder-missing	(none)	reword	Folder Not Found	3	After Sort Failed	Approved by Jason, ruling 29	Folder Not Found	case
+api._vocab	scan.reasons.other	(none)	reword	Unexpected Error	2	After Sort Failed	Approved by Jason, ruling 29 (new word); any kind not listed	Unexpected Error	case
+api._vocab	shell.killed_read	(none: was the sort sentence for every command)	reword	Stopped: Ran Too Long	4	Notice area	Final review A finding 5: a command that only reads	Stopped: Ran Too Long	case
+api._vocab	shell.killed_write	(none: was the sort sentence for every command)	reword	Change Stopped: Ran Too Long	5	Notice area	Final review A finding 5: a command that writes	Change Stopped: Ran Too Long	case
+api._vocab	shell.killed_write_note	(none)	reword	It May Be Partly Done.	5	Notice area, after Change Stopped	Final review A finding 5: say part of a write may have happened	It May Be Partly Done.	case
+api._vocab	firm.unreadable (api.FIRM_UNREADABLE)	Could not be read	reword	Could Not Be Read	4	Overview and the row status	Title Case, ruling 10 (final review A finding 3); the SPEC O1 default, Jason may change	Could Not Be Read	case
+api._vocab	schedule.move_warning	Only If {host} Is Retired	reword	Only If {host} Is Retired	5	Under the move-schedule question	Now shown with the confirm (final review A finding 1)	Only If {host} Is Retired	case
