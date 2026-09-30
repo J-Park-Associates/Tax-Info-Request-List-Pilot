@@ -693,15 +693,18 @@ function noteBox(words) {
     el("input", { type: "text", className: "r-note" }));
 }
 
-function movedRow(m, choices) {
+function movedRow(m, choices, items = choices) {
   // Decision 157: a copy whose original is gone too has nothing to put
   // back or keep - each would refuse - so the one answer offered is the
   // person's Mark missing on the row's own request, which puts the document
   // back on the client's letter.
+  // The button names the request by its name, never its code (SPEC 11.1).
   if (m.gone) {
+    const asked = m.identifier ? items.find((i) => i.identifier === m.identifier) : null;
+    if (m.identifier && !asked) throw new Error(`items.${m.identifier}`);
     return el("li", { className: "sheet-row", dataset: { original: m.handle, row: m.handle, seq: m.seq } },
-      m.identifier && el("button", { className: "btn btn-primary r-withdraw", dataset: { identifier: m.identifier } },
-        fill(vocab.review_labels.mark_missing, { identifier: m.identifier })),
+      asked && el("button", { className: "btn btn-primary r-withdraw", dataset: { identifier: m.identifier } },
+        fill(vocab.review_labels.mark_missing, { identifier: pagesItemName(asked) })),
     );
   }
   return el("li", { className: "sheet-row", dataset: { original: m.handle, row: m.handle, seq: m.seq } },
@@ -782,8 +785,8 @@ function spellingFrom(node) {
 // One entry of the picker: the identifier and the document, joined by the
 // one separator a reason sentence uses between the same two things.
 function requestOption(item, picked) {
-  return el("option", { value: item.identifier, selected: item.identifier === picked },
-    `${item.identifier}${vocab.triage.identifier_separator}${item.document}`);
+  // The request is named by its document; the code is only the value.
+  return el("option", { value: item.identifier, selected: item.identifier === picked }, item.document);
 }
 
 // One file's answers, as the side sheet draws them (sheet.js places the parts
@@ -890,8 +893,7 @@ function waitsFor(triage, className) {
   if (!w) return null;
   return el("div", { className: "where-it-waits" },
     el("ul", { className: "r-reasons" },
-      w.requests.map((r) => el("li", {},
-        `${r.identifier}${vocab.triage.identifier_separator}${r.document}`)),
+      w.requests.map((r) => el("li", {}, r.document)),
       w.answers.length
         ? el("li", {}, `${vocab.review_labels.also_answers} ${w.answers.join(", ")}`) : null),
     el("button", { className: `btn btn-primary ${className}` },

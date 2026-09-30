@@ -1924,6 +1924,45 @@ def test_the_sheet_moves_on_only_when_the_file_it_shows_has_been_answered(tmp_pa
     assert ran == [0, 1, 0, 0, 0, 0, 1, 1, 1]
 
 
+def test_no_request_code_is_drawn_in_the_picker_the_shortlist_or_mark_missing(tmp_path):
+    """SPEC 11.1 (F14b): a request is named, never coded. The option's text
+    is the document (its value stays the identifier); a gone copy's button
+    says Mark <the request's name> Missing; a request it cannot name is a
+    loud failure, never the code."""
+    ran = run_shell(["requestOption", "movedRow"], """
+      const vocab = { triage: { identifier_separator: " - " }, review_labels: { mark_missing: "Mark {identifier} Missing" } };
+      const fill = (p, v) => p.replace(/\\{(\\w+)\\}/g, (_, k) => v[k] ?? "");
+      const el = (tag, attrs, ...kids) => ({ tag, attrs, kids: kids.flat().filter(Boolean) });
+      const pagesItemName = (item) => item.short_name || item.document;
+    """, """
+      const items = [{ identifier: "R03", document: "1099-B - Northwind Brokerage", short_name: "Northwind" }];
+      const option = requestOption(items[0], "R03");
+      const gone = movedRow({ handle: "h", seq: 1, gone: true, identifier: "R03" }, [], items);
+      let loud = "";
+      try { movedRow({ handle: "h", seq: 1, gone: true, identifier: "R99" }, [], items); } catch (err) { loud = err.message; }
+      return { option: [option.attrs.value, option.kids], button: gone.kids[0].kids, key: gone.kids[0].attrs.dataset.identifier, loud };
+    """, tmp_path, source="app.js")
+    assert ran["option"] == ["R03", ["1099-B - Northwind Brokerage"]]
+    assert ran["button"] == ["Mark Northwind Missing"] and ran["key"] == "R03" and ran["loud"] == "items.R99"
+
+
+def test_the_status_line_of_every_kind_of_file_says_what_and_when_it_was_received(tmp_path):
+    """SPEC 7.1: the short reason and the received date. A moved copy's row
+    has no date; its index row, by the same handle, does (F14a)."""
+    ran = run_shell(["sheetStatus"], """
+      const screenWords = () => ({ moved: "Moved by Hand" });
+      const vocab = { review_labels: { dismiss: "Not Requested" } };
+      const pagesReason = (code) => `reason:${code}`;
+      const pagesDay = (iso) => (iso ? `day:${iso}` : "");
+      const h = (tag, attrs, ...kids) => kids.filter(Boolean).map((k) => (typeof k === "string" ? k : k.join("")));
+    """, """
+      const state = { index: [{ handle: "m", received: "2026-03-05" }, { handle: "p", received: "2026-03-03", code: "c" }] };
+      return [sheetStatus({ kind: "moved", moved: { handle: "m" } }, state), sheetStatus({ kind: "parked", entry: state.index[1] }, state),
+              sheetStatus({ kind: "aside", entry: { received: "2026-01-30" } }, state), sheetStatus({ kind: "moved", moved: { handle: "gone" } }, state)];
+    """, tmp_path, source="sheet.js")
+    assert ran == [["Moved by Hand", "day:2026-03-05"], ["reason:c", "day:2026-03-03"], ["Not Requested", "day:2026-01-30"], ["Moved by Hand"]]
+
+
 def test_the_sheets_following_files_are_those_after_it_in_the_order_the_page_was_drawn(tmp_path):
     ran = run_shell(["sheetAfter", "sheetDraftsAfter"], SHEET_SETUP, """
       const order = [{ ret: "a", handle: "1" }, { ret: "a", handle: "2" }, { ret: "b", handle: "3" }];

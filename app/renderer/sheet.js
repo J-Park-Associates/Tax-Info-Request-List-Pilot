@@ -127,12 +127,15 @@ function sheetFooter(row, moved) {
   return buttons;
 }
 
-function sheetStatus(found) {
+// The short reason and the day it was received. A moved copy's row (state.moved)
+// carries no date: its index row, by the same handle, does.
+function sheetStatus(found, state) {
   const words = screenWords();
   const entry = found.entry;
   const said = found.kind === "moved" ? words.moved
     : found.kind === "aside" ? vocab.review_labels.dismiss : pagesReason(entry.code);
-  const received = entry ? pagesDay(entry.received) : "";
+  const dated = entry || (state.index || []).find((one) => one.handle === found.moved.handle);
+  const received = dated ? pagesDay(dated.received) : "";
   return h("p", { className: "sheet-status" },
     h("span", { className: "sheet-reason" }, said),
     received ? h("span", { className: "sheet-received" }, received) : null);
@@ -148,7 +151,7 @@ function sheetDrawCheck(handle) {
   const ids = new Set(state.items.map((one) => one.identifier));
   const triage = new Map((state.review || []).map((one) => [one.handle, one]));
   const people = (state.engagement || {}).people || [];
-  const row = found.kind === "moved" ? movedRow(found.moved, choices)
+  const row = found.kind === "moved" ? movedRow(found.moved, choices, state.items)
     : reviewRow(found.entry, choices, ids, found.kind === "parked", triage.get(handle), people);
   const name = found.kind === "moved" ? found.moved.original_name : found.entry.original_name;
   $("sheet-title").textContent = name;
@@ -157,7 +160,7 @@ function sheetDrawCheck(handle) {
   now.row = row;
   now.handle = handle;
   now.shown = sheetSeen(found);
-  $("sheet-check").replaceChildren(sheetStatus(found), row);
+  $("sheet-check").replaceChildren(sheetStatus(found, state), row);
   $("check-actions").replaceChildren(...buttons);
   const entry = found.entry;
   const copy = $("sheet-open");
