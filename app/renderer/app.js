@@ -2082,18 +2082,30 @@ function scanFailed(run) {
 // returns, and the summary line of the state drawn after it.
 function scanSummary(run, others, summary) {
   // What the pass said beyond the asked return (decision 189): the
-  // household's other returns' problems, shown the way this return's
-  // warnings are - the API's words, each under the return's own label.
-  // The pass's own warnings are notices (decision 193), which stay.
+  // household's other returns, each under its own label, in the same short
+  // words as the asked return (final re-review NEW 1): the failure word and its
+  // approved reason for a failure, the lock word for a run held back by a
+  // lock, nothing for any other skip. The engine's sentences carry
+  // folder paths and stay in the error log. The pass's own warnings are
+  // notices (decision 193), which stay.
+  const words = vocab.scan;
   const also = [];
   for (const other of others) {
-    for (const said of [other.error, other.skipped, ...other.warnings]) {
+    const short = other.error ? scanFailed(other)
+      : other.skipped && other.code === "lock-held" ? words.reasons["lock-held"] : "";
+    if (short) also.push(`• ${other.label}: ${short}`);
+    for (const said of other.warnings) {
       if (said) also.push(`• ${other.label}: ${said}`);
     }
   }
-  // Every word is the API's (vocab.scan, decision 42; the review's S4).
-  const words = vocab.scan;
-  if (run.skipped) return { text: [fill(words.nothing_done, { why: run.skipped }), ...also].join("\n"), cls: "warn" };
+  // Every word is the API's (vocab.scan, decision 42; the review's S4). A
+  // skipped return is never drawn with the engine's sentence: a lock held
+  // elsewhere says so in the approved word, any other skip only that
+  // nothing was done.
+  if (run.skipped) {
+    const why = run.code === "lock-held" ? words.reasons["lock-held"] : "";
+    return { text: [why ? fill(words.nothing_done, { why }) : words.nothing_done_bare, ...also].join("\n"), cls: "warn" };
+  }
   if (run.error) return { text: [scanFailed(run), ...also].join("\n"), cls: "err" };
   const did = [fill(words.filed, { n: run.filed })];
   if (run.review) did.push(fill(words.review, { n: run.review }));

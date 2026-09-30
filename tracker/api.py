@@ -431,13 +431,13 @@ PROGRESS_STOPPING = "Stopping After This File\u2026"
 #: What the shell says when a child is killed, ends with no reply, or
 #: cannot start - learned from here, with pinned defaults for a first
 #: start (``app/main.js``).
-SHELL_KILLED = "Sort Stopped: Ran Too Long"
+SHELL_KILLED = "Sort Stopped: Ran Too Long."
 #: A command killed at the same cap that is not a sort (final review A,
 #: finding 5): a write says part of it may have happened, a read only that it
 #: stopped. ``main.js`` tells them apart by :data:`WRITING_COMMANDS`.
-SHELL_KILLED_WRITE = "Change Stopped: Ran Too Long"
+SHELL_KILLED_WRITE = "Change Stopped: Ran Too Long."
 SHELL_KILLED_WRITE_NOTE = "It May Be Partly Done."
-SHELL_KILLED_READ = "Stopped: Ran Too Long"
+SHELL_KILLED_READ = "Stopped: Ran Too Long."
 SHELL_KILLED_AT = "It Was on {household}: {name}."
 SHELL_NO_REPLY = "No Reply From the Tracker"
 SHELL_COULD_NOT_START = "The Tracker Could Not Start"
@@ -455,6 +455,9 @@ PAGE_ERROR = "The App Hit an Error"
 SCAN_SCANNING = "Scanning\u2026"
 SCAN_NOTHING_DONE = "Nothing Done: {why}."
 SCAN_PROBLEM = "Sort Failed"
+#: A skipped return whose kind has no approved word is said as just this, never
+#: with the engine's sentence (it carries folder paths; final re-review NEW 1).
+SCAN_NOTHING_DONE_BARE = "Nothing Done"
 #: A failed sort with its short reason after it (Jason, rulings 25 and 29):
 #: five words at most in all, no path; the long detail stays in the error log.
 SCAN_PROBLEM_REASON = "Sort Failed: {reason}"
@@ -1713,6 +1716,7 @@ def _vocab() -> dict:
                  "buttons_back": LOCK_BUTTONS_BACK, "watch_seconds": LOCK_WATCH_SECONDS},
         # What a Sort & Scan reply is said as (decision 193's review, S4).
         "scan": {"scanning": SCAN_SCANNING, "nothing_done": SCAN_NOTHING_DONE,
+                 "nothing_done_bare": SCAN_NOTHING_DONE_BARE,
                  "problem": SCAN_PROBLEM, "problem_reason": SCAN_PROBLEM_REASON,
                  "reasons": dict(SCAN_REASONS), "complete": SCAN_COMPLETE, "filed": SCAN_FILED,
                  "review": SCAN_REVIEW, "syncing": SCAN_SYNCING, "not_sorted": SCAN_NOT_SORTED,

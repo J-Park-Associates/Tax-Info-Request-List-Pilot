@@ -2775,8 +2775,14 @@ def test_a_command_killed_at_the_cap_says_whether_it_was_a_sort_a_change_or_a_re
     assert ran["out"][2]["reply"]["error"] == f"{api.SHELL_KILLED_READ}{at}"
     assert "rename" in api._vocab()["writing_commands"] and api.PASS_COMMAND not in api._vocab()["writing_commands"]
     assert "state" not in api._vocab()["writing_commands"]
-    for said in (api.SHELL_KILLED_WRITE, api.SHELL_KILLED_WRITE_NOTE, api.SHELL_KILLED_READ):
+    for said in (api.SHELL_KILLED, api.SHELL_KILLED_WRITE, api.SHELL_KILLED_WRITE_NOTE, api.SHELL_KILLED_READ,
+                 api.SHELL_KILLED_AT):
         assert len(said.split()) <= 5, said
+        assert said.endswith("."), "each phrase is a sentence of its own (final re-review NEW 4)"
+    # Read aloud, the line breaks at each full stop: no phrase runs into the next.
+    assert ran["out"][1]["reply"]["error"] == (
+        "Change Stopped: Ran Too Long. It May Be Partly Done. It Was on Sample Household: A01.")
+    assert ran["out"][2]["reply"]["error"] == "Stopped: Ran Too Long. It Was on Sample Household: A01."
 
 
 def test_the_shell_never_puts_stderr_on_screen_and_appends_it_to_the_error_log(tmp_path):

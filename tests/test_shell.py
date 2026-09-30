@@ -2516,6 +2516,55 @@ def test_a_failed_sort_says_a_short_approved_reason_and_never_a_path(tmp_path):
     assert set(words["reasons"]) == {"lock-held", "household-paused", "client-folder-missing", "folder-missing", "other"}
 
 
+def test_a_failed_or_locked_household_sort_draws_no_engine_sentence_and_no_path(tmp_path, monkeypatch, capsys):
+    """Final re-review NEW 1 (rulings 25 and 29), with the real engine: a
+    household of two returns is sorted through ``run-now``, once with its
+    client folder gone (both fail) and once with one return's lock held by a
+    live pass (both are skipped). The final line's runs go to the page's own
+    ``scanSummary``, and every line it draws is "Sort Failed" with the short
+    approved reason, or "Nothing Done: Another PC Sorting" - never the
+    engine's long sentence, and never a folder path, for the asked return or
+    for the household's other return."""
+    import os
+
+    from tests import test_runner as engine
+    from tests.samples import build_samples
+    from tests.test_api import title_case
+    from tracker.layout import client_household_dir
+    from tracker.locking import LOCK_FILENAME
+
+    samples = tmp_path / "samples"
+    samples.mkdir()
+    build_samples(samples)
+    root = tmp_path / "root"
+    first = engine.build_engagement(root, samples, name="Smith TY2025")
+    second = engine.build_engagement(root, samples, name="Other TY2025", drops=())
+    household = engine.household_of(first.path)
+    engine._run_now(root, household, monkeypatch, capsys)              # it has had its client folder
+    (second.path / LOCK_FILENAME).write_text(f"pid={os.getpid()}", encoding="utf-8")
+    held = engine._run_now(root, household, monkeypatch, capsys)[1][-1]["runs"]
+    (second.path / LOCK_FILENAME).unlink()
+    shutil.rmtree(client_household_dir(root, household.name))
+    failed = engine._run_now(root, household, monkeypatch, capsys)[1][-1]["runs"]
+    assert {one["code"] for one in held} == {"lock-held"} and {one["code"] for one in failed} == {"client-folder-missing"}
+    assert all(one["skipped"] for one in held) and all(one["error"] for one in failed), "the engine did say its long sentences"
+
+    words = api._vocab()["scan"]
+    setup = ("const fill = (p, v) => p.replace(/\\{(\\w+)\\}/g, (_, k) => v[k] ?? '');\n"
+             f"const vocab = {{ scan: {json.dumps(words)} }};")
+    probe = "return scanSummary(runs[0], runs.slice(1), '').text;"
+    for name, runs in (("lock held", held), ("client folder gone", failed)):
+        text = run_shell(["scanFailed", "scanSummary"], f"{setup}\nconst runs = {json.dumps(runs)};", probe,
+                         tmp_path, "app.js")
+        lines = text.split("\n")
+        assert len(lines) == 2, (name, text)
+        for line in lines:
+            assert title_case(line) == line and not re.search(r"[\\/`]|Clients|missing|another run|lock", line), (name, line)
+        assert lines[0] in ("Sort Failed: Folder Not Found", "Nothing Done: Another PC Sorting."), lines[0]
+        assert lines[1].endswith(("Sort Failed: Folder Not Found", "Another PC Sorting")), lines[1]
+        assert lines[1].startswith("\u2022 Test Household 2025 "), lines[1]
+
+
 def test_the_app_starts_only_after_every_script_has_loaded(tmp_path):
     """Final review B, finding 1: app.js loads before pages.js, sheet.js and
     shell.js, and its bootstrap draws through them, so a quick first reply

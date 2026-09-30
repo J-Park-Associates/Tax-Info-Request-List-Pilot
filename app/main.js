@@ -90,10 +90,10 @@ let pathKinds = {};           // vocab.path_kinds, once seen
 let notOpened = "Not Opened; It Has Changed";
 // The shell's own sentences (decision 193): learned from vocab.shell, with
 // these defaults - word for word tracker.api's SHELL_* - for a first start.
-let killed = "Sort Stopped: Ran Too Long";
-let killedWrite = "Change Stopped: Ran Too Long";
+let killed = "Sort Stopped: Ran Too Long.";
+let killedWrite = "Change Stopped: Ran Too Long.";
 let killedWriteNote = "It May Be Partly Done.";
-let killedRead = "Stopped: Ran Too Long";
+let killedRead = "Stopped: Ran Too Long.";
 let writingCommands = new Set();   // vocab.writing_commands, once seen
 let killedAt = "It Was on {household}: {name}.";
 let noReply = "No Reply From the Tracker";
