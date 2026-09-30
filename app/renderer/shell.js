@@ -793,6 +793,7 @@ function inboxFolder() {
 }
 
 async function shellRefresh() {
+  forgetSortAnswers();   // app.js: a Sort's answer is not in the record read again (P131)
   try {
     adoptList(await call(["list"]));
     if (shellRoute.level === "return") await showReturn(shellRoute.ret);
@@ -876,6 +877,7 @@ function focusRegion(name) {
 }
 
 function shellKey(e) {
+  tipKey(e);   // tooltip.js: Escape hides a showing tip first, and the key goes on (P130)
   if (e.key === "F6") {
     e.preventDefault();
     const at = F6_REGIONS.indexOf(regionOf(document.activeElement));
@@ -895,7 +897,7 @@ function shellKey(e) {
       hideFound();
       return true;
     }
-    return false;   // a showing tip was hidden already, by tooltip.js (P130)
+    return false;
   }
   if (e.target.closest && e.target.closest('[role="listbox"]') && typeof pagesKey === "function") return pagesKey(e) === true;
   return false;

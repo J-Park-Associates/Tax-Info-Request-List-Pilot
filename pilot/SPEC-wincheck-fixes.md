@@ -100,25 +100,33 @@ open, the focus is not in the search box, and no search list or side sheet
 shows - so a hover tip over the Sort icon while the search box has focus
 survives Escape (reproduced in the renderer harness).
 
-**Ruling.** SPEC-shell 8.5 gives `tooltip.js` its own Esc logic. A keydown
-listener in `tooltip.js`, on the document in the capture phase, hides a
-showing tip on Escape and **does not consume the key**: the same Escape
-still clears the search box, closes the side sheet or asks the dialog to
-close. (Consuming it was rejected: the keyboard puts a tip on every focused
-control at once, so every dialog would need two Escapes.)
+**Ruling.** SPEC-shell 8.5 gives `tooltip.js` its own Esc logic, and
+SPEC-shell 4.3 keeps one keydown listener (app.js's, which asks `shellKey`
+first; `test_one_keydown_listener_owns_the_keyboard` holds it). So
+`tooltip.js` gets the logic as a function, `tipKey(e)`, and `shellKey`'s
+first line hands it every key. It hides a showing tip on Escape and **does
+not consume the key**: the same Escape still clears the search box, closes
+the side sheet or asks the dialog to close. (Consuming it was rejected: the
+keyboard puts a tip on every focused control at once, so every dialog would
+need two Escapes.) A capture-phase listener of its own was built first and
+dropped for SPEC-shell 4.3.
 
-- `app/renderer/tooltip.js`: `tipKey(e)` and its registration; `tipShowing()`
-  goes (no caller is left).
-- `app/renderer/shell.js` `shellKey`: the `if (tipShowing()) { hideTip(); return true; }`
-  branch goes (dead: the tip is already hidden when it runs).
+- `app/renderer/tooltip.js`: `tipKey(e)`; `tipShowing()` goes (no caller is
+  left).
+- `app/renderer/shell.js` `shellKey`: first line `tipKey(e);`; the
+  `if (tipShowing()) { hideTip(); return true; }` branch goes (dead: the tip
+  is already hidden when it runs).
 
 **Owning tests.** `tests/test_shell.py`:
 `test_escape_hides_a_showing_tip_first_and_leaves_the_key_to_the_page`
 (node: `tipKey` lifted with a fake tip; Escape hides it and neither
 `preventDefault` nor `stopPropagation` is called; another key leaves it) and
-`test_the_tooltip_listens_for_escape_in_the_capture_phase` (the listener is
-registered with `true`, and `shellKey` no longer names the tip). Both fail
-before the fix.
+`test_shell_key_hands_escape_to_the_tip_first_wherever_the_focus_is` (node:
+`shellKey` and `findKey` lifted; with the focus in the search box, Escape
+clears the box and hides the tip; with a dialog open, the dialog keeps its
+Escape and the tip goes). Both fail before the fix. Also checked in the
+renderer harness: focus in the search box, hover tip on Sort, Escape - the
+tip goes and the box clears.
 
 **Staff notice.** Escape closes a tip everywhere.
 
@@ -158,7 +166,12 @@ Files: `app/renderer/app.js` (`passEnded`, new `keepSortAnswer`,
 `test_a_sorts_answer_shows_only_on_its_own_clients_pages` and
 `test_a_later_sort_or_f5_takes_a_sorts_answer_away` (node: the functions
 lifted from `app.js` with fakes for `syncNotices`, `shellRoute` and
-`shellReturn`). Both fail before the fix.
+`shellReturn`), and `test_a_sorts_answer_is_never_a_window_wide_notice_and_f5_forgets_it`
+(the wiring: `passEnded`, `appRouteChanged`, the dismiss, `shellRefresh`,
+the harness double). All three fail before the fix. Also driven once in the
+renderer harness with the real `app.js`: the answer showed on the return and
+household pages, not on Overview or Clients, and went after a good Sort and
+after F5.
 
 **Staff notice.** See the list at the top.
 
@@ -224,11 +237,14 @@ committed): a household with a 2025 return and a 2024 return set inactive.
 
 **Ruling.**
 
-- `tracker/api.py` `SCAN_REASONS` gains `inactive: "Inactive"` and
-  `rolled-forward: "Rolled Forward"` (the screen's approved words,
-  `screen.inactive` and `screen.rolled`) and `no-room: "Names Too Long"`
-  (new: Q1). `app.js` `scanSummary` says "Nothing Done: {why}." whenever the
-  skip's code has a word (not `other`), else "Nothing Done" (P117).
+- `tracker/api.py`: a new `SCAN_SKIPPED` (sent as `vocab.scan.skipped`),
+  kept apart from `SCAN_REASONS`, the failure words of ruling 29, which stay
+  exactly as approved: `inactive: "Inactive"` and `rolled-forward: "Rolled
+  Forward"` (the screen's approved words, `screen.inactive` and
+  `screen.rolled`) and `no-room: "Names Too Long"` (new: Q1). `app.js`
+  `scanSummary` says "Nothing Done: {why}." for a lock held elsewhere (as
+  today) or a skip whose code has a word here, else "Nothing Done" (P117).
+  The household's other returns still say nothing for a skip, as today.
 - `tracker/reminder.py`: `unsorted_files_in_inbox(engagement_dir)` gives the
   name of each waiting file (or unreadable folder), sorted; the count
   `unsorted_in_inbox` is its length, so the two can never disagree.
@@ -248,9 +264,9 @@ Inactive."); `tests/test_reminder.py`
 `tests/test_api.py` `test_the_card_shows_the_inbox_hold_in_the_apis_words_and_offers_no_approve`
 (extended: `unsorted_files` names the waiting file). All fail before the fix.
 
-**Words.** `pilot/wording-shell.tsv` gains `scan.reasons.inactive`,
-`scan.reasons.rolled-forward`, `scan.reasons.no-room`; the vocabulary report
-is rebuilt.
+**Words.** `pilot/wording-shell.tsv` gains `scan.skipped.inactive`,
+`scan.skipped.rolled-forward`, `scan.skipped.no-room`; the vocabulary report
+is rebuilt if it names them.
 
 ## 8. N2: the prompt's step 14 (P133)
 

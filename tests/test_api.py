@@ -3419,6 +3419,8 @@ def test_the_card_shows_the_inbox_hold_in_the_apis_words_and_offers_no_approve(c
 
     card = reminder_card(capsys, folder)
     assert card["held"] == [] and card["unsorted"] == 1
+    # Which file holds it, by its own name (P134).
+    assert card["unsorted_files"] == ["W-2 from the client.pdf"]
     assert (card["subject"], card["text"], card["html"], card["letter"]) == ("", "", "", {})
     assert card["editable"] is False
 

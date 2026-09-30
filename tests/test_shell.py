@@ -410,9 +410,9 @@ def test_the_search_box_alone_shows_no_tooltip_on_keyboard_focus():
 def test_escape_hides_a_showing_tip_first_and_leaves_the_key_to_the_page(tmp_path):
     """P130 (the Windows check's F2): a hover tip over the Sort icon while the
     search box has the focus survived Escape, because only the last branch of
-    ``shellKey`` hid a tip. ``tooltip.js`` hears Escape itself, hides the tip
-    and does not consume the key, so the same Escape still does the page's
-    own thing (clear the search box, close the sheet or a dialog)."""
+    ``shellKey`` hid a tip. ``tooltip.js``'s ``tipKey`` hides the tip and does
+    not consume the key, so the same Escape still does the page's own thing
+    (clear the search box, close the sheet or a dialog)."""
     setup = """
       let tipFor = null, hidden = 0;
       function hideTip() { hidden += 1; tipFor = null; }
@@ -431,14 +431,30 @@ def test_escape_hides_a_showing_tip_first_and_leaves_the_key_to_the_page(tmp_pat
     assert out == [[1, None, 0, 0], [1, 0, 0], [1, False]]
 
 
-def test_the_tooltip_listens_for_escape_in_the_capture_phase():
-    """P130: heard before the page's own keydown (``app.js`` listens in the
-    bubble phase and asks ``shellKey`` first), and ``shellKey`` no longer
-    names the tip."""
-    js = stripped_js("tooltip.js")
-    assert 'document.addEventListener("keydown", tipKey, true);' in js
-    key = js_function("shellKey")
-    assert "tipShowing" not in key and "hideTip" not in key and "tipShowing" not in js
+def test_shell_key_hands_escape_to_the_tip_first_wherever_the_focus_is(tmp_path):
+    """P130, wired: ``shellKey`` (the one keydown listener's first step, SPEC
+    4.3) hands every key to ``tipKey`` before anything else, so the search
+    box's own Escape, a dialog's and the side sheet's no longer leave a tip
+    showing. Reproduced before the fix: focus in the search box, a hover tip
+    on the Sort icon, Escape - the search box was cleared and the tip stayed."""
+    setup = """
+      let tipFor = null, dialogStack = [], cleared = 0;
+      function hideTip() { tipFor = null; }
+      const nodes = { find: { value: "Smi" }, sheet: { hidden: true }, "find-list": { hidden: true } };
+      const $ = (id) => nodes[id];
+      function hideFound() { cleared += 1; }
+      const key = (k, target) => ({ key: k, target, preventDefault() {} });
+    """
+    probe = """
+      const out = [];
+      tipFor = { id: "sort" }; out.push([shellKey(key("Escape", nodes.find)), tipFor, cleared, nodes.find.value]);
+      tipFor = { id: "sort" }; dialogStack = ["modal"];
+      out.push([shellKey(key("Escape", { closest: () => null })), tipFor]);
+      return out;
+    """
+    out = run_shell(["shellKey", "findKey"], setup + js_function("tipKey", "tooltip.js"), probe, tmp_path)
+    assert out == [[True, None, 1, ""], [False, None]]
+    assert "tipShowing" not in read("tooltip.js") and "hideTip" not in js_function("shellKey")
 
 
 def test_the_skeleton_is_the_specs_and_the_legacy_box_holds_only_the_three_inputs_saveroot_reads():
@@ -2555,6 +2571,134 @@ def test_a_failed_sort_says_a_short_approved_reason_and_never_a_path(tmp_path):
     for line in said:
         assert len(line.split()) <= 5 and line == title_case(line) and "/" not in line and "Smith" not in line, line
     assert set(words["reasons"]) == {"lock-held", "household-paused", "client-folder-missing", "folder-missing", "other"}
+
+
+def test_a_sort_asked_for_an_inactive_return_says_why_nothing_was_done(tmp_path, monkeypatch, capsys):
+    """P134 (the Windows check, "Added after the check"): a household page
+    sorts through its first return, which on the office PC was the prior
+    year's, set inactive by a person - and the banner read a bare "Nothing
+    Done". With the real engine through ``run-now`` on a household with an
+    inactive return, the page's own ``scanSummary`` now says why, in the
+    screen's approved word; a kind with no word still says "Nothing Done"
+    (P117). Every skip word is Title Case and five words at most in all."""
+    from tests import test_runner as engine
+    from tests.samples import build_samples
+    from tests.test_api import title_case
+
+    samples = tmp_path / "samples"
+    samples.mkdir()
+    build_samples(samples)
+    root = tmp_path / "root"
+    current = engine.build_engagement(root, samples, name="Smith TY2025")
+    prior = engine.build_engagement(root, samples, name="Smith TY2024", drops=())
+    engine.edit_details(prior.path, active=False)
+    runs = engine._run_now(root, engine.household_of(current.path), monkeypatch, capsys)[1][-1]["runs"]
+    [skipped] = [one for one in runs if one["path"] == str(prior.path)]
+    assert skipped["skipped"] and skipped["code"] == "inactive" and not skipped["error"]
+
+    words = api._vocab()["scan"]
+    setup = ("const fill = (p, v) => p.replace(/\\{(\\w+)\\}/g, (_, k) => v[k] ?? '');\n"
+             f"const vocab = {{ scan: {json.dumps(words)} }};")
+    probe = f"""
+      const run = {json.dumps(skipped)};
+      return [scanSummary(run, [], '').text, scanSummary({{ ...run, code: "rolled-forward" }}, [], '').text,
+              scanSummary({{ ...run, code: "no-room" }}, [], '').text, scanSummary({{ ...run, code: "brand-new" }}, [], '').text];
+    """
+    said = run_shell(["scanFailed", "scanSummary"], setup, probe, tmp_path, "app.js")
+    assert said == ["Nothing Done: Inactive.", "Nothing Done: Rolled Forward.", "Nothing Done: Names Too Long.",
+                    "Nothing Done"]
+    for line in said:
+        assert len(line.split()) <= 5 and title_case(line) == line, line
+    assert set(words["skipped"]) == {"inactive", "rolled-forward", "no-room"}
+    screen = api._vocab()["screen"]
+    assert (words["skipped"]["inactive"], words["skipped"]["rolled-forward"]) == (screen["inactive"], screen["rolled"])
+
+
+SORT_ANSWERS = r"""
+  let shellRoute = { level: "overview" }, synced = [];
+  const returns = { "r25": { household: "h1" }, "r24": { household: "h1" }, "o25": { household: "h2" } };
+  function shellReturn(path) { return returns[path] || null; }
+  function syncNotices(prefix, wanted) { synced.push([prefix, wanted.map((one) => one.failure.sentence)]); }
+  const sortAnswers = new Map();
+  const shownAt = (route) => { shellRoute = route; showSortAnswers(); return synced[synced.length - 1][1]; };
+"""
+SORT_ANSWER_FUNCTIONS = ["keepSortAnswer", "householdOnScreen", "showSortAnswers", "forgetSortLine", "forgetSortAnswers"]
+
+
+def test_a_sorts_answer_shows_only_on_its_own_clients_pages(tmp_path):
+    """P131 (the Windows check's F3; rulings 20 and 28, SPEC-shell 3.5): a
+    return's "Sort Failed: {reason}" used to be a window-wide notice, so it
+    showed on Overview and Clients too. It is kept under the return it was
+    asked for and shown only on that household's pages; a line a person
+    dismissed does not come back on the next visit."""
+    probe = """
+      shellRoute = { level: "return", ret: "r25" };
+      keepSortAnswer(["r25", "r24"], "r25", [{ sentence: "Sort Failed: Folder Not Found", kind: "failed" }]);
+      const out = { onReturn: synced[synced.length - 1] };
+      out.overview = shownAt({ level: "overview" });
+      out.clients = shownAt({ level: "clients" });
+      out.household = shownAt({ level: "household", household: "h1" });
+      out.year = shownAt({ level: "year", household: "h1", year: 2025 });
+      out.sibling = shownAt({ level: "return", ret: "r24" });
+      out.otherClient = shownAt({ level: "return", ret: "o25" });
+      forgetSortLine("sort:" + JSON.stringify(["r25", 0]));
+      out.afterDismiss = shownAt({ level: "return", ret: "r25" });
+      out.left = [...sortAnswers.keys()];
+      return out;
+    """
+    out = run_shell(SORT_ANSWER_FUNCTIONS, SORT_ANSWERS, probe, tmp_path, "app.js")
+    failed = ["Sort Failed: Folder Not Found"]
+    assert out["onReturn"] == ["sort", failed]
+    assert out["overview"] == [] and out["clients"] == [] and out["otherClient"] == []
+    assert out["household"] == failed and out["year"] == failed and out["sibling"] == failed
+    assert out["afterDismiss"] == [] and out["left"] == []
+
+
+def test_a_later_sort_or_f5_takes_a_sorts_answer_away(tmp_path):
+    """P131: the next Sort of the household replaces every answer of the
+    returns it ran (a good one says nothing), and F5 forgets them all - the
+    page is read again from the record, which the app's own Sort does not
+    write. It used to go only when the app restarted."""
+    probe = """
+      shellRoute = { level: "return", ret: "r25" };
+      const bad = [{ sentence: "Sort Failed: Folder Not Found", kind: "failed" }];
+      keepSortAnswer(["r25", "r24"], "r25", bad);
+      const out = { failed: shownAt(shellRoute) };
+      keepSortAnswer(["r25", "r24"], "r24", []);          // asked from the household page, all well
+      out.afterGoodSort = shownAt(shellRoute);
+      keepSortAnswer(["r25"], "r25", bad);
+      forgetSortAnswers();
+      out.afterF5 = synced[synced.length - 1];
+      out.left = sortAnswers.size;
+      return out;
+    """
+    out = run_shell(SORT_ANSWER_FUNCTIONS, SORT_ANSWERS, probe, tmp_path, "app.js")
+    assert out["failed"] == ["Sort Failed: Folder Not Found"]
+    assert out["afterGoodSort"] == [] and out["afterF5"] == ["sort", []] and out["left"] == 0
+
+
+def test_a_sorts_answer_is_never_a_window_wide_notice_and_f5_forgets_it():
+    """P131, wired: ``passEnded`` keeps its answer through ``keepSortAnswer``
+    (no ``outcome`` or ``notice`` of its own), every route change re-shows the
+    answers, a dismissed line is forgotten, and F5 forgets them all."""
+    ended = js_function("passEnded", "app.js")
+    assert "outcome(" not in ended and "notice(" not in ended
+    assert ended.count("keepSortAnswer(ran, asked, answer);") == 2
+    assert "showSortAnswers();" in js_function("appRouteChanged", "app.js")
+    assert "forgetSortLine(entry.key);" in read("app.js")
+    assert js_function("shellRefresh").split("\n")[1].strip().startswith("forgetSortAnswers();")
+    assert "function forgetSortAnswers() {}" in (REPO / "pilot" / "harness" / "app-stub.js").read_text(encoding="utf-8")
+
+
+def test_create_return_goes_to_the_new_returns_page():
+    """P132 (the Windows check's F4): after Create Return the page stayed on
+    the route it was opened from while the new return's state arrived, so a
+    return page drew nothing until F5. The window now goes to the new
+    return's page, after the list that names it has been adopted."""
+    create = js_function("createEngagement", "app.js")
+    assert "shellGo(pagesRoute(result.state.paths.engagement));" in create
+    assert create.index("adoptList(result.list)") < create.index("shellGo(pagesRoute(")
+    assert create.index('closeDialog("modal")') < create.index("shellGo(pagesRoute(")
 
 
 def test_a_failed_or_locked_household_sort_draws_no_engine_sentence_and_no_path(tmp_path, monkeypatch, capsys):

@@ -497,7 +497,10 @@ function drawReminder(card) {
   // A held row is named by its document alone: never its request code, and
   // the engine's long hold sentence (row.reason) is the status page's, not
   // the sheet's (SPEC 7.2, 11.1).
-  show("reminder-held-rows", (card.held || []).map((row) => el("li", {}, row.document)));
+  // Then each file still waiting in Drop files here, by its own name - which
+  // file holds the draft (P134); never its folder path.
+  show("reminder-held-rows", [...(card.held || []).map((row) => el("li", {}, row.document)),
+                              ...(card.unsorted_files || []).map((name) => el("li", {}, name))]);
 
   // The four rungs, each in its own colour, the one in force pressed. Live
   // only when there is a generated letter to re-stage: a held reminder and
@@ -1668,6 +1671,7 @@ function stopLockWatch() {
 // on screen, so a page that is not a return's, or is another return's, shows
 // none until that return's state says so.
 function appRouteChanged(route) {
+  showSortAnswers();   // a Sort's answer shows on its own client's pages only (P131)
   const own = lastState && lastState.paths ? lastState.paths.engagement : "";
   const here = route.level === "return" ? own === route.ret
     : (route.level === "household" || route.level === "year")
@@ -2100,10 +2104,10 @@ function scanSummary(run, others, summary) {
   }
   // Every word is the API's (vocab.scan, decision 42; the review's S4). A
   // skipped return is never drawn with the engine's sentence: a lock held
-  // elsewhere says so in the approved word, any other skip only that
-  // nothing was done.
+  // elsewhere says so in the approved word, an inactive, rolled-forward or
+  // roomless return its own (P134), any other skip only that nothing was done.
   if (run.skipped) {
-    const why = run.code === "lock-held" ? words.reasons["lock-held"] : "";
+    const why = run.code === "lock-held" ? words.reasons["lock-held"] : (words.skipped || {})[run.code] || "";
     return { text: [why ? fill(words.nothing_done, { why }) : words.nothing_done_bare, ...also].join("\n"), cls: "warn" };
   }
   if (run.error) return { text: [scanFailed(run), ...also].join("\n"), cls: "err" };
@@ -2207,12 +2211,16 @@ async function passEnded({ reply }) {
   const asked = scanning.asked;
   scanDone();
   const ended = reply || {};
+  // What this Sort says is kept under the return it was asked for (P131).
+  const answer = [];
   if (ended.error) {
-    notice(ended.failure || { sentence: ended.error, kind: "failed" }, { retry: runScan });
+    const failure = ended.failure || { sentence: ended.error, kind: "failed" };
+    answer.push({ sentence: failure.sentence, kind: failure.kind || "failed", retry: runScan });
   } else {
     warningNotices(ended.pass_warnings || []);
   }
   const runs = Array.isArray(ended.runs) ? ended.runs : [];
+  const ran = runs.map((one) => one.path);
   const run = runs.find((one) => one.path === asked);
   const view = viewGeneration;
   let state = null;
@@ -2229,19 +2237,84 @@ async function passEnded({ reply }) {
   }
   if (!run) {
     // Its counts are never guessed from another return's (the review's S2).
-    if (!ended.error) notice({ sentence: vocab.scan.not_in_pass, kind: "warning" });
+    if (!ended.error) answer.push({ sentence: vocab.scan.not_in_pass, kind: "warning" });
+    keepSortAnswer(ran, asked, answer);
     return;
   }
   const shown = asked === active && view === viewGeneration;
   const said = scanSummary(run, runs.filter((one) => one !== run),
                            shown && state && state.summary ? state.summary.line : "");
-  if (!shown) {
-    // The return it scanned is not the one shown (193 §8): its summary is
-    // a notice under its own label, so nothing vanishes.
-    notice({ sentence: `${run.label}: ${said.text}`, kind: "warning" });
-    return;
+  // What went well shows in the rows and says nothing (outcome's rule); the
+  // rest is one line each. The return it sorted is not the one shown (193
+  // §8): the answer opens with its own label, so nothing vanishes.
+  if (said.cls !== "ok") {
+    const lines = said.text.split("\n").map((line) => line.replace(/^•\s*/, "").trim()).filter(Boolean);
+    lines.forEach((line, i) => answer.push({
+      sentence: !shown && i === 0 ? `${run.label}: ${line}` : line,
+      kind: said.cls === "err" ? "failed" : "warning",
+    }));
   }
-  outcome(said.text, said.cls);
+  keepSortAnswer(ran, asked, answer);
+}
+
+// ── a Sort's answer belongs to its return (P131; rulings 20, 28) ───────
+// What a Sort said - "Sort Failed: {reason}", "Nothing Done", files not
+// sorted - is kept under the return it was asked for and shown only while a
+// page of that return's household is on screen. A firm page never shows it:
+// its one failed-sort notice is the scheduled sort's (SPEC-shell 3.5). The
+// next Sort of the household replaces it, F5 forgets it (the page is read
+// again from the record, which the app's own Sort does not write), and a
+// line a person dismissed does not come back.
+const sortAnswers = new Map();   // return path -> [{sentence, kind, retry, gone}]
+
+// A pass has ended: every return it ran loses its old answer, and the
+// asked return keeps this one when it has anything to say.
+function keepSortAnswer(ran, asked, lines) {
+  for (const path of ran) sortAnswers.delete(path);
+  if (lines.length) sortAnswers.set(asked, lines);
+  else sortAnswers.delete(asked);
+  showSortAnswers();
+}
+
+// The household whose pages are on screen, or "" on a firm page or Setup.
+function householdOnScreen() {
+  if (shellRoute.level === "household" || shellRoute.level === "year") return shellRoute.household;
+  if (shellRoute.level !== "return") return "";
+  const one = shellReturn(shellRoute.ret);
+  return one ? one.household : "";
+}
+
+// The answers of the household on screen, as keyed notices; none elsewhere.
+function showSortAnswers() {
+  const here = householdOnScreen();
+  const wanted = [];
+  for (const [path, lines] of sortAnswers) {
+    const one = shellReturn(path);
+    if (!here || !one || one.household !== here) continue;
+    lines.forEach((line, i) => {
+      if (!line.gone) {
+        wanted.push({ key: JSON.stringify([path, i]), failure: { sentence: line.sentence, kind: line.kind },
+                      opts: line.retry ? { retry: line.retry } : undefined });
+      }
+    });
+  }
+  syncNotices("sort", wanted);
+}
+
+// A line a person dismissed (or retried) is not shown again.
+function forgetSortLine(key) {
+  if (!key || key.indexOf("sort:") !== 0) return;
+  const [path, i] = JSON.parse(key.slice("sort:".length));
+  const lines = sortAnswers.get(path);
+  if (!lines || !lines[i]) return;
+  lines[i].gone = true;
+  if (lines.every((line) => line.gone)) sortAnswers.delete(path);
+}
+
+// F5 (shell.js's shellRefresh): every answer goes with the page it was on.
+function forgetSortAnswers() {
+  sortAnswers.clear();
+  syncNotices("sort", []);
 }
 
 // ── Add a return / New household (decision 196) ─────────────────────────
@@ -2803,6 +2876,9 @@ async function createEngagement() {
     // The list this write changed arrives with it (decision 194).
     if (result.list) adoptList(result.list);
     renderFor(select(result.state.paths.engagement), result.state);
+    // The new return's page opens, whichever page the wizard was opened from
+    // (P132): the route stayed on the old one, which drew nothing until F5.
+    shellGo(pagesRoute(result.state.paths.engagement));
     const lines = [
       fill(vocab.household.return_created, { label: result.created, n: asked }),
     ];
@@ -3558,6 +3634,7 @@ $("notices").addEventListener("click", (e) => {
     return;
   }
   dismissNotice(entry);
+  forgetSortLine(entry.key);
   if (button.dataset.act === "retry") {
     const again = retryOf(entry);
     if (again) again();

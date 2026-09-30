@@ -1244,7 +1244,7 @@ def test_an_unreadable_choice_is_a_recorded_failure_and_no_task_is_registered(ro
 
     assert done.exit_code == 1 and done.schedule == after_install.PREFERENCE_KEY
     assert creates(windows["calls"]) == []
-    assert str(settings.settings_path()) in done.schedule_sentence and "Schedule button" in done.schedule_sentence
+    assert str(settings.settings_path()) in done.schedule_sentence and "Tools > Schedule" in done.schedule_sentence
     assert after_install.notice()["failed"] == [done.schedule_sentence]
     assert after_install.launch() is not None                       # tried again at the next start
     # the record check still ran

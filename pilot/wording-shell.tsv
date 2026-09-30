@@ -242,3 +242,6 @@ api._vocab	shell.killed_write	(none: was the sort sentence for every command)	re
 api._vocab	shell.killed_write_note	(none)	reword	It May Be Partly Done.	5	Notice area, after Change Stopped	Final review A finding 5: say part of a write may have happened	It May Be Partly Done.	case
 api._vocab	firm.unreadable (api.FIRM_UNREADABLE)	Could not be read	reword	Could Not Be Read	4	Overview and the row status	Title Case, ruling 10 (final review A finding 3); the SPEC O1 default, Jason may change	Could Not Be Read	case
 api._vocab	schedule.move_warning	Only If {host} Is Retired	reword	Only If {host} Is Retired	5	Under the move-schedule question	Now shown with the confirm (final review A finding 1)	Only If {host} Is Retired	case
+api._vocab	scan.skipped.inactive	(none)	reword	Inactive	1	After Nothing Done	P134: the screen's approved word (screen.inactive); was a bare Nothing Done	Inactive	case
+api._vocab	scan.skipped.rolled-forward	(none)	reword	Rolled Forward	2	After Nothing Done	P134: the screen's approved word (screen.rolled)	Rolled Forward	case
+api._vocab	scan.skipped.no-room	(none)	reword	Names Too Long	3	After Nothing Done	P134: new word, SPEC-wincheck-fixes Q1; Jason may change	Names Too Long	case

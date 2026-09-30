@@ -473,6 +473,17 @@ SCAN_REASONS = {
     "folder-missing": "Folder Not Found",
     "other": "Unexpected Error",
 }
+#: Why a skipped return did nothing, by the runner's ``code`` for the skip:
+#: "Nothing Done: {why}." (P134). Inactive and Rolled Forward are the
+#: screen's own approved words (``screen.inactive``, ``screen.rolled``);
+#: Names Too Long is new (pilot SPEC-wincheck-fixes, Q1). A lock held
+#: elsewhere says :data:`SCAN_REASONS`'s word; a kind listed nowhere is
+#: :data:`SCAN_NOTHING_DONE_BARE` (P117).
+SCAN_SKIPPED = {
+    "inactive": "Inactive",
+    "rolled-forward": "Rolled Forward",
+    "no-room": "Names Too Long",
+}
 SCAN_COMPLETE = "Pass complete \u2014 {did}.   {summary}"
 SCAN_FILED = "Filed {n}"
 SCAN_REVIEW = "{n} to Review"
@@ -1718,7 +1729,8 @@ def _vocab() -> dict:
         "scan": {"scanning": SCAN_SCANNING, "nothing_done": SCAN_NOTHING_DONE,
                  "nothing_done_bare": SCAN_NOTHING_DONE_BARE,
                  "problem": SCAN_PROBLEM, "problem_reason": SCAN_PROBLEM_REASON,
-                 "reasons": dict(SCAN_REASONS), "complete": SCAN_COMPLETE, "filed": SCAN_FILED,
+                 "reasons": dict(SCAN_REASONS), "skipped": dict(SCAN_SKIPPED),
+                 "complete": SCAN_COMPLETE, "filed": SCAN_FILED,
                  "review": SCAN_REVIEW, "syncing": SCAN_SYNCING, "not_sorted": SCAN_NOT_SORTED,
                  "but": SCAN_BUT, "not_in_pass": SCAN_NOT_IN_PASS},
         # Sort & Scan, watched, and its Stop (decision 193).
@@ -4903,6 +4915,8 @@ def _reminder_now(engagement: Path, requested: int | None, today: dt.date) -> di
         "stage": stage,
         "held": _held_rows(draft.held),
         "unsorted": draft.unsorted,
+        # Which files hold it, by name, for the sheet to list (P134).
+        "unsorted_files": reminder.unsorted_files_in_inbox(engagement) if draft.unsorted else [],
         "refusal": reminder.held_refusal(draft) if draft.is_held else "",
         "held_too_long": late,
         "last": ({"date": ledger.day_of(str(last.get(ledger.AT_KEY, ""))).isoformat(),

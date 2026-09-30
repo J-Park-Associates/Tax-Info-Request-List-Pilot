@@ -265,7 +265,7 @@
     };
     const text = [letter.greeting, letter.intro, letter.sections[0].heading, ...letter.sections[0].items, letter.close, ...letter.signoff].join("\n\n");
     return { reminder: {
-      stage: at, editable: !held.length, held, unsorted: 0, asked: held.length ? [] : ["R01"], file: { edited: false, exists: true },
+      stage: at, editable: !held.length, held, unsorted: 0, unsorted_files: [], asked: held.length ? [] : ["R01"], file: { edited: false, exists: true },
       subject: "Documents needed for your 2025 return", text, html: `<p>${text}</p>`, fingerprint: `fp-${path}-${at}`,
       last: { date: body.draft.drafted, stage: body.draft.stage }, approved: approved[path] || null, lapsed: false, held_too_long: "", link_dropped: "", letter,
     } };
