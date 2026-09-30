@@ -263,8 +263,13 @@ function pagesRow(spec) {
   const stepOf = spec.step && !(spec.step.kind === "edit" && locked) ? spec.step : null;
   const words = stepOf ? pagesStepWords(stepOf) : "";
   const step = stepOf ? h("span", { className: "row-step", "aria-hidden": "true" }, words, icon("chev", true)) : null;
+  // A return's or a household's row, and any row that carries a marker, may
+  // wrap to two lines or more (rulings 21 and 27): the year after a return's
+  // name and the words of a paused household are never cut away. A file's
+  // name still ends in an ellipsis.
+  const wraps = Boolean(spec.mark || (spec.nameLink && spec.nameLink.kind !== "file"));
   const node = h("div", {
-    className: `row${step ? " has-step" : ""}${spec.child ? " row-child" : ""}`, role: "option", id, "aria-selected": "false",
+    className: `row${step ? " has-step" : ""}${spec.child ? " row-child" : ""}${wraps ? " row-wrap" : ""}`, role: "option", id, "aria-selected": "false",
     "aria-description": words || undefined, dataset: { menu: spec.menu || "", token: id },
   },
   pagesNameCell(spec),

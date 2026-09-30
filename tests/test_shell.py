@@ -2565,3 +2565,23 @@ def test_a_sort_is_never_sent_without_a_return_chosen(tmp_path):
     """
     ran = run_shell(["runScan"], setup, "return (async () => { " + probe + " })();", tmp_path, "app.js")
     assert ran == {"none": 0, "sent": [["run-now", "--engagement", "R1"]]}
+
+
+def test_a_return_or_household_row_wraps_so_its_year_and_its_paused_words_are_never_cut():
+    """Rulings 21 and 27 (final review B, findings 3 and 4): the name, detail
+    and status of a return's or household's row (and of a row with a marker)
+    wrap instead of ending in an ellipsis, on the token grid; a file's name
+    keeps its ellipsis. The rendered claim (the year visible at 1100px on
+    every page) is interact.mjs's."""
+    wrapped = {}
+    for _media, selector, body in blocks(read("shell.css")):
+        for part in selector.split(","):
+            wrapped.setdefault(" ".join(part.split()), dict(declarations(body)))   # the first rule of a selector, not a media block after it
+    for cell in (".row-wrap .row-name", ".row-wrap .row-detail", ".row-wrap .row-status"):
+        rule = wrapped[cell]
+        assert rule["white-space"] == "normal" and rule["text-overflow"] == "clip" and rule["overflow-wrap"] == "break-word", cell
+    assert wrapped[".row.row-wrap:not(.hidden)"]["padding-block"] == "var(--sp-1)"
+    assert wrapped[".row-name"]["text-overflow"] == "ellipsis", "a file's name still ends in an ellipsis"
+    pages = read("pages.js")
+    assert 'const wraps = Boolean(spec.mark || (spec.nameLink && spec.nameLink.kind !== "file"));' in pages
+    assert '" row-wrap"' in pages

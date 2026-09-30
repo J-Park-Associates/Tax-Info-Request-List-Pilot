@@ -393,6 +393,19 @@ input, textarea, select { caret-color: var(--text); accent-color: var(--accent);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* Rulings 21 and 27: a return's or household's row (and a row with a marker)
+   wraps instead of cutting, so "{Return Name} ({Year})" always shows its year
+   and "Two Years Open; Sorting Paused" is always whole. Rows grow only for a
+   long name: a line is 20px and the padding 4px, so one line stays 40px (the
+   row's minimum) and two lines are 48px, three 68px, on the 4px grid. A file's name keeps its ellipsis. */
+.row.row-wrap:not(.hidden) { padding-block: var(--sp-1); }
+.row-wrap .row-name, .row-wrap .row-detail, .row-wrap .row-status {
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+  overflow-wrap: break-word;
+  min-width: 0;
+}
 /* The three kinds of link (SPEC 3.9): a name that acts, in the link colour. */
 .row-link { color: var(--link); cursor: pointer; }
 /* Beside a household's name: the marker for two open years (ruling 21). */

@@ -251,7 +251,7 @@ const crumbs = (page) => page.evaluate(() => [...document.querySelectorAll("#cru
     const { context, page } = await open(`?mode=${mode}&scenario=failed`);
     const failedNotice = () => page.evaluate(() => [...document.querySelectorAll("#notices .notice-failed")].filter((n) => n.querySelector(".notice-text").textContent === "Sort Failed").map((n) => [...n.querySelectorAll("button")].map((b) => b.textContent).filter((t) => t.trim()).join("|")));
     check(`ruling 28 (${mode}): Overview shows the failed sort with no Retry`, (await failedNotice()).length === 1 && !(await failedNotice()).join().includes("Retry"), await failedNotice());
-    check(`ruling 28 (${mode}): nothing on it can send a sort or draw a flag`, await page.evaluate(() => { const n = document.querySelector("#notices .notice-failed"); return !/--engagement|Pick an engagement/i.test(n.textContent) && !n.querySelector("[data-act]"); }), "notice");
+    check(`ruling 28 (${mode}): nothing on it can send a sort or draw a flag`, await page.evaluate(() => { const n = document.querySelector("#notices .notice-failed"); return !/--engagement|Pick an engagement/i.test(n.textContent) && !n.querySelector('[data-act]:not([data-act="dismiss"])'); }), "notice");
     for (const level of ["needs-review", "reminders", "clients"]) {
       await page.evaluate((l) => shellGo({ level: l }), level);
       await page.waitForTimeout(150);
@@ -703,6 +703,42 @@ const settle = (page) => page.waitForTimeout(250);
   await page.waitForTimeout(700);
   const box = await page.evaluate(() => { const t = document.getElementById("tip"); const r = t.getBoundingClientRect(); return { shown: !t.hidden, w: r.width, h: r.height, right: r.right, bottom: r.bottom, iw: innerWidth, ih: innerHeight, color: getComputedStyle(t).color }; });
   check("the tip shows, sized and inside the window", box.shown && box.w > 0 && box.h > 0 && box.right <= box.iw && box.bottom <= box.ih, box);
+  await context.close();
+}
+
+{ // rulings 21 and 27, at the 1100px minimum: a return link shows its year and the paused words are whole, on every page
+  const { context, page } = await open("?mode=real&scenario=paused");
+  const clipped = () => page.evaluate(() => {
+    const bad = [];
+    for (const row of document.querySelectorAll("#page .row-wrap")) {
+      for (const cell of row.querySelectorAll(".row-name, .row-detail, .row-status")) {
+        if (cell.scrollWidth > cell.clientWidth + 1 || cell.scrollHeight > cell.clientHeight + 1) bad.push(cell.textContent);
+      }
+      const total = Math.round(row.getBoundingClientRect().height), height = total > 40 ? total - Math.round(parseFloat(getComputedStyle(row).borderBottomWidth)) : total;   // the 1px rule under a row is not part of the grid
+      if (height % 4) bad.push(`height ${height}: ${row.textContent}`);
+    }
+    const years = [...document.querySelectorAll('#page .row-link[data-link="return"]')].filter((l) => !/\(\d{4}\)$/.test(l.textContent)).map((l) => l.textContent);
+    return { bad, years, links: document.querySelectorAll('#page .row-link[data-link="return"]').length };
+  });
+  for (const [where, level, all] of [["Overview", "overview", false], ["Needs Review", "needs-review", false], ["Reminders", "reminders", false],
+    ["Clients", "clients", false], ["Clients (All)", "clients", true]]) {
+    await page.evaluate((l) => shellGo({ level: l }), level);
+    await page.waitForTimeout(250);
+    if (all) { await page.click(".switch-option:nth-child(2)"); await page.waitForTimeout(250); }
+    const found = await clipped();
+    check(`ruling 27 at 1100px: nothing wrapped is cut on ${where}`, found.bad.length === 0, found.bad.slice(0, 3));
+    check(`ruling 27 at 1100px: every return link on ${where} shows its year`, found.years.length === 0, found.years);
+  }
+  await page.evaluate(() => shellGo({ level: "household", household: "/clients/J Park & Associates/Smith Family" }));
+  await page.waitForTimeout(250);
+  const household = await clipped();
+  check("ruling 27 at 1100px: the household page shows both years whole", household.bad.length === 0 && household.years.length === 0 && household.links >= 2, household);
+  await page.evaluate(() => shellGo({ level: "clients" }));
+  await page.waitForTimeout(250);
+  await page.click(".switch-option:nth-child(2)");
+  await page.waitForTimeout(250);
+  const paused = await page.evaluate(() => { const mark = document.querySelector("#page .row-mark"); return mark ? { text: mark.textContent, whole: mark.scrollWidth <= mark.parentElement.clientWidth + 1 } : null; });
+  check("ruling 21 at 1100px: the paused words are whole on Clients", paused && paused.text === "Two Years Open; Sorting Paused" && paused.whole, paused);
   await context.close();
 }
 
