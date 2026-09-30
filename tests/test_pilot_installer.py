@@ -39,8 +39,10 @@ def _sections(text: str) -> dict[str, str]:
             continue
         match = re.fullmatch(r"\[(\w+)\]", line)
         if match:
+            # A heading seen twice keeps both bodies: Inno reads them as one
+            # section, so a guard must too (the review's finding 6).
             current = match.group(1)
-            found[current] = []
+            found.setdefault(current, [])
         elif current and line:
             found[current].append(line)
     return {name: "\n".join(lines) for name, lines in found.items()}
@@ -92,9 +94,13 @@ def test_an_upgrade_clears_only_the_old_program_code():
     ]
 
 
-def test_an_upgrade_asks_to_close_the_running_app_and_restarts_nothing():
+def test_the_upgrades_deletion_is_one_section_only():
+    assert len(re.findall(r"^\s*\[InstallDelete\]\s*$", _setup(), re.MULTILINE | re.IGNORECASE)) == 1
+
+
+def test_an_upgrade_closes_the_running_app_and_restarts_nothing():
     setup = _sections(_setup())["Setup"]
-    assert re.search(r"^CloseApplications=yes$", setup, re.MULTILINE)
+    assert re.search(r"^CloseApplications=force$", setup, re.MULTILINE)
     assert re.search(r"^RestartApplications=no$", setup, re.MULTILINE)
 
 

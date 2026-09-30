@@ -501,7 +501,7 @@
       "notes": "TRANSITION POINT: Python becomes the frozen executable here. Committed rather than regenerated from flags, so what is frozen is part of the commit being built (decision 169 for the reader's parts). Run only by Build App.bat, inside a fresh virtual environment holding exactly the locks."
     },
     "pilot/installer/setup.iss": {
-      "role": "The Inno Setup 6 recipe for the pilot's Windows installer: per-user install without administrator rights (P4), the fixed AppId an upgrade finds the old copy by, an upgrade that asks to close a running app or pass and clears only the old program code first (P115), and an uninstall that removes the scheduled task and the installed files and never client or tracker data (P12).",
+      "role": "The Inno Setup 6 recipe for the pilot's Windows installer: per-user install without administrator rights (P4), the fixed AppId an upgrade finds the old copy by, an upgrade that closes a running app or pass and clears only the old program code first (P115), and an uninstall that removes the scheduled task and the installed files and never client or tracker data (P12).",
       "notes": "TRANSITION POINT: the packaged folder becomes the installer here. Compiled by pilot/Build Pilot Installer.bat with /DAppVersion and /DSourceDir. [InstallDelete] names only {app}\\resources\\app and {app}\\resources\\tracker-api\\_internal: the graphics card pack (gpu-runtime) sits beside tracker-api.exe and settings.json beside the app's executable, and both survive an upgrade. tests/test_pilot_installer.py reads it as text and pins each of these claims."
     },
     "pilot/Build Pilot Installer.bat": {

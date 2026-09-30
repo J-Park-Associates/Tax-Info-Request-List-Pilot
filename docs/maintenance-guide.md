@@ -29,7 +29,8 @@ copies onto the office computer. The tracker reads and writes that copy;
 Google Drive moves the changes to the cloud by itself.
 
 There are four promises the program always keeps. They are written word
-for word in `tracker/__init__.py` and in the app's About box:
+for word in `tracker/__init__.py`, and the app shows them in short under
+**Help > Safeguards**:
 
 - No AI ever reads a client's financial document.
 - Original files are never changed.
@@ -43,7 +44,7 @@ for word in `tracker/__init__.py` and in the app's About box:
 ## Part 1. The safety walls (please do not weaken these)
 
 The window is treated like a stranger. Even if someone tricked it, it
-still could not open or change files on its own. Four walls make that true.
+still could not open or change files on its own. Five walls make that true.
 
 ### Wall 1: The window is in a sandbox
 
@@ -135,8 +136,10 @@ though the window already checked. Two walls are better than one.
 
 - **Its name** in Task Scheduler is the program's name:
   `Tax Document Tracker Pilot`.
-- **When it runs:** starting at 7:00 in the morning, then every 2 hours.
-  On Saturdays it also writes the reminder emails (as drafts only).
+- **When it runs:** unless someone changed it, starting at 7:00 in the
+  morning, then every 2 hours. It can be changed, or turned off, in the app
+  under **Tools > Schedule…**. On Saturdays it also writes the reminder
+  emails (as drafts only).
 - **What it runs** (in the installed program):
 
   ```
@@ -147,13 +150,13 @@ though the window already checked. Two walls are better than one.
   holds `settings.json`, the small file that says where the clients folder
   is. `--log` means "write what happened in the run log."
 - **Where it starts** (its *working directory*, the folder it stands in):
-  the program's own folder.
+  the engine's folder, `<program folder>\resources\tracker-api`.
 - **How long it may run:** up to 2 hours. After that Windows stops it.
   Stopping it half way is safe: the next pass cleans up and carries on.
 
 **You never set this up by hand.** Installing the program, the first start
 after an update, and saving the clients folder all set it up. If it ever
-looks wrong, open the app and use **Repair the Schedule**.
+looks wrong, open the app and use **Tools > Repair Schedule**.
 
 Only **one** computer may run the alarm clock for a clients folder. That
 computer's name is written in a file called `_Scheduling computer.txt` in
@@ -251,12 +254,15 @@ The recipe is `pilot\installer\setup.iss`.
 
 - Installs for one person only. It does **not** need an administrator.
 - Installs to `%LOCALAPPDATA%\Programs\Tax Document Tracker Pilot`.
-- **On an upgrade:** if the app or a sorting pass is running, it asks to
-  close it first. It then removes only the old program code (two folders:
+- **On an upgrade:** close the app first. If the app or a sorting pass is
+  still running, the installer closes it. It then removes only the old program code (two folders:
   `resources\app` and `resources\tracker-api\_internal`) and copies in the
   new code, so no leftover old files stay behind. It never touches client
   files, the data folder, `settings.json`, or the optional graphics card
   pack (`gpu-runtime`).
+- **If an upgrade stops half way** (for example, you pressed Cancel or
+  Abort), the program may not start. Run the same installer again; it
+  finishes the job.
 - **On uninstall:** removes the program and the alarm clock. It never
   removes client files, the data folder or `settings.json`.
 - **Never change the `AppId` line.** It is how an upgrade finds the old

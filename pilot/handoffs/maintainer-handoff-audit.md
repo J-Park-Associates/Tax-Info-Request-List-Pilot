@@ -27,8 +27,9 @@ exit, Sort Failed notice, run log), never silently; the CSP lives in
 
 1. **Upgrade left orphaned files** (Jason approved, P115): `setup.iss` now
    clears only `{app}\resources\app` and `{app}\resources\tracker-api\_internal`
-   before copying, and asks to close a running app or pass
-   (`CloseApplications=yes`, `RestartApplications=no`). The GPU pack and
+   before copying, and closes a running app or pass
+   (`CloseApplications=force`, `RestartApplications=no`; the review showed
+   `yes` could leave a half-deleted install if the person declined). The GPU pack and
    `settings.json` are outside those folders. Guard tests updated and two
    added in `tests/test_pilot_installer.py`; `pilot/SPEC.md` and
    `pilot/DECISIONS.md` (P115) updated.
@@ -47,6 +48,11 @@ ruff clean; `repo_map.py check` and `vocab_report.py check` current;
 `test_pilot_installer` (14), `test_repo_map` (82), `test_layers` (29),
 `test_single_source` (172) pass under Python 3.11. **Not run:** Python 3.14
 (not on the cloud machine) and anything Windows-only.
+
+## Review
+
+One independent Opus review; its six findings (four guide facts, the
+force-close, the duplicate-section guard) are fixed in the second commit.
 
 ## What is left
 

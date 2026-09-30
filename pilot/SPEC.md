@@ -666,8 +666,10 @@ installer; it is free and needs no admin rights to run the result (P4).
   which `[Files]` then replaces whole, so no file the new version dropped is
   left behind. Never the folders above them: the graphics card pack
   (`gpu-runtime`) sits beside `tracker-api.exe` and `settings.json` beside the
-  app's executable. `CloseApplications=yes` and `RestartApplications=no`: a
-  running app or pass is closed with the person's say, and nothing restarts.
+  app's executable. `CloseApplications=force` and `RestartApplications=no`:
+  a running app or pass is closed, not merely asked, since a locked old file
+  left after the deletion would stop the copy half way; nothing restarts. An
+  upgrade aborted half way is repaired by running the installer again.
 
 ### `pilot/Build Pilot Installer.bat`
 
@@ -757,8 +759,10 @@ Name each test as the claim it makes. Run under Python 3.11 and the office's.
   `settings.json` or `Delete` of anything outside `{app}`.
 - `test_an_upgrade_clears_only_the_old_program_code` - `[InstallDelete]` is
   exactly the two code folders (P115).
-- `test_an_upgrade_asks_to_close_the_running_app_and_restarts_nothing` -
-  `CloseApplications=yes`, `RestartApplications=no` (P115).
+- `test_the_upgrades_deletion_is_one_section_only` - one `[InstallDelete]`
+  heading, so no second one can hide a data path (P115).
+- `test_an_upgrade_closes_the_running_app_and_restarts_nothing` -
+  `CloseApplications=force`, `RestartApplications=no` (P115).
 - `test_the_installer_needs_a_version_to_compile` - `#ifndef AppVersion` and `#error`.
 - `test_the_pilot_build_refuses_what_is_not_committed` - the `.bat` runs
   `git status --porcelain` and exits on output.

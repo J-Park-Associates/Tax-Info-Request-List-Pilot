@@ -32,11 +32,14 @@ ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 WizardStyle=modern
 ; An upgrade while the app or a scheduled pass is running: Windows is asked
-; which programs hold the files being replaced, and the person is asked to
-; let the installer close them (P115). A pass closed half way is safe - every
-; write goes through a temp that the next pass sweeps. Nothing is restarted:
-; the schedule starts the next pass itself.
-CloseApplications=yes
+; which programs hold the files being replaced, and they are closed - forced,
+; not merely asked (P115), because [InstallDelete] below has already removed
+; every unlocked file of the old code, and a locked one left behind would
+; stop the copy half way and leave neither version able to start. A pass
+; closed half way is safe - every write goes through a temp that the next
+; pass sweeps. Nothing is restarted: the schedule starts the next pass itself.
+; An upgrade aborted half way is repaired by running the installer again.
+CloseApplications=force
 RestartApplications=no
 
 ; An upgrade removes the old version's program code before copying the new
