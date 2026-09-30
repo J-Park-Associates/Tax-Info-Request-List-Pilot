@@ -5,7 +5,7 @@ const PILOT =
 // PILOT-CONTENT-BEGIN
 {
   "edition": {
-    "label": "Pilot edition",
+    "label": "Pilot",
     "version": "0.2"
   },
   "contact": {
@@ -69,162 +69,94 @@ const PILOT =
     ],
     "checkbox": "I have read this and will keep my own backups.",
     "accept": "I agree. Continue.",
-    "quit": "Quit."
+    "quit": "Quit.",
+    "close": "Close"
   },
   "tour": {
-    "stages": [
-      "Set up",
-      "Drop in",
-      "Sort",
-      "Check",
-      "Track",
-      "Remind"
-    ],
     "steps": [
       {
         "id": "welcome",
-        "stage": "",
         "anchors": [],
         "title": "Welcome to the Pilot",
-        "does": [
-          "A client drops documents in one folder.",
-          "The program sorts and renames them.",
-          "You see what arrived, what's missing, and what needs you."
-        ],
-        "strength": "Runs on this computer with fixed rules. No AI reads documents. Nothing is sent.",
-        "limit": "6 return types (1040, 1120, 1120-S, 1065, 1041, 990), about 74 document kinds.",
-        "fallback": ""
+        "does": "Sorts What Your Clients Send"
       },
       {
         "id": "clients-folder",
-        "stage": "Set up",
         "anchors": [
-          "setup-card",
-          "eng-select"
+          "page"
         ],
-        "title": "One clients folder",
-        "does": "Choose one clients folder. Each household gets a shared inbox and a private working folder.",
-        "strength": "Clients see only their own shared folder. Your working files stay private.",
-        "limit": "Use a folder your firm backs up. One computer runs the automatic schedule.",
-        "fallback": "Clients folder already chosen. Switch returns from the list at top left."
+        "title": "One Clients Folder",
+        "does": "Choose One Clients Folder"
       },
       {
         "id": "new-household",
-        "stage": "Set up",
         "anchors": [
-          "btn-new-household"
+          "side-sections"
         ],
-        "title": "Household and request list",
-        "does": "Create a household, pick the return type, tick the documents you expect.",
-        "strength": "Files are matched to your own request list, in your order.",
-        "limit": "Unknown document types go to Needs Review, never guessed.",
-        "fallback": "New household is at the top of the window."
+        "title": "Household and Request List",
+        "does": "Tick the Documents You Expect"
       },
       {
         "id": "drop-files",
-        "stage": "Drop in",
         "anchors": [
-          "btn-inbox"
+          "crumbs"
         ],
         "title": "Drop files here",
-        "does": "Inbox opens 'Drop files here'. PDFs, scans, photos, spreadsheets, zips and emails all go in.",
-        "strength": "The client never names or sorts anything.",
-        "limit": "Photos and faint scans read slowly and may go to Needs Review.",
-        "fallback": "Inbox opens once a household is chosen at the top left."
+        "does": "Everything Goes in the Inbox"
       },
       {
         "id": "scan",
-        "stage": "Sort",
         "anchors": [
-          "btn-scan"
+          "sort"
         ],
-        "title": "Scan",
-        "does": "Reads each new file, matches it to a request, moves the original, makes a named copy.",
-        "strength": "Filed only when exactly one request fits. Doubt goes to a person.",
-        "limit": "First scans with many images take longer. The schedule also runs it automatically.",
-        "fallback": "Scan works once a household is chosen at the top left."
+        "title": "Sort",
+        "does": "Matches Files to Your Requests"
       },
       {
         "id": "originals",
-        "stage": "Sort",
         "anchors": [
-          "moved-card"
+          "page"
         ],
-        "title": "Originals, untouched",
-        "does": "Lists the originals moved from the inbox into the client's year folder.",
-        "strength": "Moved byte for byte, never altered. Every move is recorded and can be undone.",
-        "limit": "Moved files leave the client's inbox.",
-        "fallback": "Appears after a scan moves something."
+        "title": "Originals, Untouched",
+        "does": "Originals Are Moved, Never Changed"
       },
       {
         "id": "working-copies",
-        "stage": "Sort",
         "anchors": [
-          "filed-card"
+          "page"
         ],
-        "title": "Organized working copies",
-        "does": "Accepted documents are copied into Prepared with organized names, e.g. 'A01 - W-2 - TY2025.pdf'.",
-        "strength": "Every return's folder reads the same way. Copies can be re-made from the originals.",
-        "limit": "Fixed naming pattern; custom schemes aren't offered yet.",
-        "fallback": "Appears after the first document is filed."
+        "title": "Organized Working Copies",
+        "does": "Copies Get Tidy Names"
       },
       {
         "id": "needs-review",
-        "stage": "Check",
         "anchors": [
-          "review-card"
+          "side-sections"
         ],
         "title": "Needs Review",
-        "does": "Unknown, ambiguous or unreadable files wait here with likely matches. File with one click, or dismiss.",
-        "strength": "Nothing is guessed. You see why it stopped.",
-        "limit": "Expect more items in the first weeks. The rules don't change on their own.",
-        "fallback": "Appears when a pass sets a document aside."
+        "does": "Unsure Files Wait for You"
       },
       {
         "id": "status",
-        "stage": "Track",
         "anchors": [
-          "btn-status"
+          "side-sections"
         ],
-        "title": "Status page",
-        "does": "Opens the status page: every requested document, received or missing, with validation notes.",
-        "strength": "One page answers 'what are we still waiting for?'",
-        "limit": "A file on this computer, not a client portal.",
-        "fallback": "Status opens once a household is chosen at the top left."
+        "title": "Status Page",
+        "does": "See Every Request's Status"
       },
       {
         "id": "reminder",
-        "stage": "Remind",
         "anchors": [
-          "reminder-card"
+          "side-sections"
         ],
-        "title": "Drafted reminder",
-        "does": "Weekly, drafts a reminder listing what's missing. You copy and send it.",
-        "strength": "Nothing is ever sent. No client is contacted without you.",
-        "limit": "Send from your own email; no Outlook or Gmail link.",
-        "fallback": "Appears when a reminder is drafted."
+        "title": "Drafted Reminder",
+        "does": "Drafts Reminders; You Send Them"
       },
       {
         "id": "wrap-up",
-        "stage": "",
         "anchors": [],
-        "title": "What to expect",
-        "does": "Replay this tour any time with the Tour button.",
-        "strength": [
-          "Runs offline on your own Windows PC",
-          "No AI reads client documents",
-          "Originals never altered",
-          "Nothing guessed, nothing sent"
-        ],
-        "limit": [
-          "Windows only",
-          "About 74 document kinds, 6 return types",
-          "Scans slow without the optional graphics pack",
-          "Schedule on/off and run time: the Schedule button",
-          "Installer unsigned: Windows shows a warning",
-          "Problems or ideas: {email}"
-        ],
-        "fallback": ""
+        "title": "What to Expect",
+        "does": "Replay This Tour From Help"
       }
     ]
   }

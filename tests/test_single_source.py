@@ -74,15 +74,22 @@ def test_the_shell_and_the_preload_agree_on_every_ipc_channel():
     handled = set(re.findall(r'ipcMain\.handle\("([a-z-]+)"', read("app/main.js")))
     invoked = set(re.findall(r'ipcRenderer\.invoke\("([a-z-]+)"', read("app/preload.js")))
     assert handled == invoked and handled
-    # The one channel the shell sends on (decision 209, the review's S7):
-    # the launch step finished having run, and the page listens for it.
+    # The channels the shell sends on outside a reply (decision 209, the
+    # review's S7; SPEC-shell 5.4): the launch step finished having run, and
+    # a menu item chosen. The page listens for both.
     sent = set(re.findall(r'const [A-Z_]+_CHANNEL = "([a-z-]+)"', read("app/main.js")))
     heard = set(re.findall(r'ipcRenderer\.on\("([a-z-]+)"', read("app/preload.js")))
-    assert sent == {"after-install-done"} and sent <= heard
+    assert sent == {"after-install-done", "menu"} and sent <= heard
     # With the pass's progress channel (decision 193), those are all it hears.
     sent |= set(re.findall(r'event\.sender\.send\("([a-z-]+)"', read("app/main.js")))
-    assert sent == heard == {"after-install-done", "tracker-progress"}
+    assert sent == heard == {"after-install-done", "tracker-progress", "menu"}
     assert "webContents.send(LAUNCH_DONE_CHANNEL)" in read("app/main.js")
+    assert "webContents.send(MENU_CHANNEL, message)" in read("app/main.js")
+    # The menu channel goes both ways, once: the shell listens on it with
+    # ipcMain.on (a one-way message, not a call that has a reply), and the
+    # preload sends on it - the page's only way to the menu.
+    assert re.findall(r'ipcMain\.on\(([A-Za-z_"]+),', read("app/main.js")) == ["MENU_CHANNEL"]
+    assert re.findall(r'ipcRenderer\.send\("([a-z-]+)"', read("app/preload.js")) == ["menu"]
     assert "window.tracker.onAfterInstallDone(" in read("app/renderer/app.js")
 
 
@@ -118,25 +125,11 @@ def test_accept_and_file_it_are_one_call_site():
     """
     js = read("app/renderer/app.js")
     assert js.count('withEng("assign")') == 2
-    assert len(re.findall(r"\bfileRow\(", js)) == 4      # the one definition and its three callers
+    assert len(re.findall(r"\bfileRow\(", js)) == 3      # the one definition and its two callers
     # The hand-over's own call site is the only one that names a target,
     # and the two buttons that offer it both reach it.
     assert js.count("target: $(\"ho-return\").value") == 1
-    assert len(re.findall(r"\bopenHandOver\(", js)) == 3
-
-
-def test_the_review_mode_key_is_a_key_and_not_a_word():
-    """Decision 114: which rendering a person is on is remembered on the
-    machine, under a ``localStorage`` key - nothing about the queue is
-    recorded (decision 83). A key is not a word anybody reads, which is why
-    the renderer may type it at all, so it must be no word the API says and
-    must carry no space."""
-    import tracker.api as api
-
-    js = read("app/renderer/app.js")
-    key = re.search(r'const REVIEW_MODE_STORAGE_KEY = "([^"]+)";', js).group(1)
-    assert key and not re.search(r"\s", key)
-    assert key not in {str(word) for word in api._vocab()["review_labels"].values()}
+    assert len(re.findall(r"\bopenHandOver\(", js)) == 2
 
 
 def test_the_shell_runs_only_commands_the_api_has():
@@ -169,18 +162,20 @@ def test_the_packaged_app_has_no_console_and_sends_the_api_utf8_it_serialised_fi
     assert 'proc.stdin.write(body, "utf8")' in run
 
 
-def test_the_packaged_app_has_no_menu_and_the_source_app_runs_its_private_python():
-    """Decision 191. The packaged app removes Electron's default menu (E-7)
-    before its window is made - the menu carries reload, zoom and the
-    developer-tools accelerator. From source, the shell runs the Python
-    Setup.bat made, by its full path, never a bare ``python`` from the
-    search path, and when that is missing it says so in the lock tool's
-    own sentence."""
+def test_the_apps_menu_is_the_template_in_both_builds_and_the_source_app_runs_its_private_python():
+    """Decision 191, SPEC-shell 5.1. Electron's default menu carries reload,
+    zoom and the developer-tools accelerator (E-7), so both builds set the
+    app's own menu (the template) before the window is made, and neither
+    removes it. From source, the shell runs the Python Setup.bat made, by
+    its full path, never a bare ``python`` from the search path, and when
+    that is missing it says so in the lock tool's own sentence."""
     from tools.lockfiles import NOT_SET_UP
 
     main_js = read("app/main.js")
     window = main_js[main_js.index("function createWindow"):]
-    assert window.index("if (app.isPackaged) Menu.setApplicationMenu(null);") < window.index("new BrowserWindow(")
+    assert window.index("buildMenu();") < window.index("new BrowserWindow(")
+    assert "Menu.setApplicationMenu(Menu.buildFromTemplate(buildTemplate()))" in main_js
+    assert "setApplicationMenu(null)" not in main_js and "app.isPackaged) Menu" not in main_js
     assert re.search(r"const \{ app, BrowserWindow, Menu,", main_js)
     assert 'spawn("python"' not in main_js
     assert 'path.join(REPO_ROOT, ".venv", "Scripts", "python.exe")' in main_js
@@ -202,7 +197,9 @@ const win = {
   focus() { seen.focused += 1; },
   loadFile() {},
   on() {},
-  webContents: { setWindowOpenHandler() {}, on() {} },
+  isDestroyed: () => false,
+  setBackgroundColor() {},
+  webContents: { setWindowOpenHandler() {}, on() {}, send() {} },
 };
 const opened = [];
 class BrowserWindow {
@@ -217,7 +214,9 @@ const electron = {
     on(name, fn) { seen.events.push(name); handlers[name] = fn; },
     whenReady: () => Promise.resolve(),
   },
-  BrowserWindow, ipcMain: { handle() {} }, shell: {}, dialog: {},
+  BrowserWindow, ipcMain: { handle() {}, on() {} }, shell: {}, dialog: {},
+  Menu: { buildFromTemplate: (template) => ({ template }), setApplicationMenu() {} },
+  nativeTheme: { shouldUseDarkColors: false, shouldUseHighContrastColors: false, themeSource: "", on() {} },
 };
 const load = Module._load;
 Module._load = function (request, ...rest) {
@@ -399,6 +398,17 @@ def _deny_list_from_the_constants() -> list[str]:
     return [f"{tool}({path})" for path in paths for tool in ("Read", "Edit")]
 
 
+def _fallback_log_rules() -> list[str]:
+    """The shell's fallback error log and its one rotated copy (Jason,
+    2026-09-29: the log can name a client, so the agent's file tools are
+    denied it, in the two path styles the data-home rules use: Windows'
+    %LOCALAPPDATA% folder and, off Windows, Electron's userData)."""
+    product = json.loads(read("app/package.json"))["productName"]
+    folders = (f"//c/Users/*/AppData/Local/{product}", f"~/.config/{product}")
+    return [f"{tool}({folder}/error.log{suffix})"
+            for folder in folders for suffix in ("", ".*") for tool in ("Read", "Edit")]
+
+
 def _denied(deny: list[str], path: str) -> bool:
     """Whether a Read rule of ``deny`` matches the absolute ``path`` (``/c/...``),
     read the way the rules are written - gitignore's: ``**/`` any folders,
@@ -445,7 +455,7 @@ def test_the_agent_deny_list_names_the_data_home_and_every_file_that_names_a_cli
                 for path in (f"//c/Users/*/AppData/Local/{UPSTREAM_DATA_HOME_NAME}/**",
                              f"~/.local/state/{UPSTREAM_DATA_HOME_NAME}/**")
                 for tool in ("Read", "Edit")]
-    assert deny == _deny_list_from_the_constants() + upstream    # pilot P19: both data folders
+    assert deny == _deny_list_from_the_constants() + upstream + _fallback_log_rules()    # P19; Jason 2026-09-29
     owners = [line.split()[0] for line in read(".github/CODEOWNERS").splitlines()
               if line.strip() and not line.startswith("#")]
     assert "/.claude/" in owners, owners      # the list is the owner's to review
@@ -584,25 +594,21 @@ def test_openpyxl_is_imported_only_to_read_a_clients_spreadsheet():
     assert any(line.startswith("openpyxl==") for line in read("requirements.txt").splitlines())
 
 
-def test_the_stylesheet_has_a_chip_for_every_status_and_nothing_else():
-    """Every status, the word for a row not yet scanned, and (decision 142)
-    the word for a row nobody asked for with nothing in."""
-    from tracker.api import _slug
-    from tracker.manifest import NOT_ASKED_LABEL, UNSCANNED_LABEL, Status
-
-    css = read("app/renderer/style.css")
-    chips = set(re.findall(r"\.chip-([a-z-]+)\s*\{", css))
-    assert chips == {_slug(s) for s in Status.ALL} | {_slug(UNSCANNED_LABEL), _slug(NOT_ASKED_LABEL)}
-
-
-def test_the_stylesheet_has_a_class_for_every_view_state():
-    """Decision 89: the chip's class is derived from the word the API sends,
-    so a state with no class would show as unstyled text and a class with no
-    state would be a word the page invented."""
-    from tracker.view import VIEW_STATES
-
-    css = read("app/renderer/style.css")
-    assert set(re.findall(r"\.view-([a-z-]+)\s*\{", css)) == set(VIEW_STATES)
+def test_no_status_chip_or_view_chip_is_drawn_and_a_rows_colour_follows_its_group():
+    """SPEC 2.5 E58 and 2.1 E9: the chip, its side line and the view-state
+    chip are gone. The row keeps one status word, coloured by the group it
+    is in (decision 200's rule that no colour moves with a label holds), so
+    no stylesheet carries a chip or a view class and no renderer file builds
+    a class from a label or a state."""
+    css = read("app/renderer/style.css") + read("app/renderer/pilot-ui.css")
+    assert ".chip" not in css and "--radius-pill" not in css
+    assert not re.search(r"\.view-[a-z]+\s*\{", css) and ".eng-form" not in css
+    for name in ("app.js", "pages.js", "shell.js", "index.html"):
+        text = read(f"app/renderer/{name}")
+        assert "chip" not in text.replace("chip-", "chip-"), name
+        assert "view-state" not in text and "eng-form" not in text, name
+    pages = read("app/renderer/pages.js")
+    assert 'tone = { needs_you: "needs", waiting: "waiting", received: "done", set_aside: "plain" }[item.group]' in pages
 
 
 def test_the_renderer_types_no_colour():
@@ -701,7 +707,8 @@ def test_the_renderer_types_no_vocabulary_of_its_own():
              api_module.SET_ASIDE_SECTION.split("{")[0].strip())
     for literal in added:
         assert literal and literal not in js and literal not in html, literal
-    for key in ("not_asked_label", "not_asked_key", "ask_the_client", "ask_the_client_note",
+    # The 31-word note under the ticks is cut with the dialogs' help lines (SPEC 2.7, E90).
+    for key in ("not_asked_label", "ask_the_client",
                 "not_asked_table_label", "roll_template_label", "nothing_asked",
                 "new_not_asked_carried", "origin_new"):
         assert f"vocab.{key}" in js, key
@@ -895,27 +902,31 @@ def test_the_card_hands_the_roll_call_the_household_it_shows_and_no_other(tmp_pa
 
 def test_the_roll_fold_says_what_unticking_does_and_a_paused_card_offers_neither_entry():
     """The retire-on-untick sentence (decision 126) is drawn inside the
-    fold, beside the ticks and before the button, naming the year; the
-    fold is hidden whenever the API offers no roll (a paused household
-    among them), and Add a return is hidden while the household is paused
-    (decision 188), because then the pause is the work."""
+    roll dialog, after the ticks, naming the year, with the roll button in
+    the dialog's footer; the dialog opens only when the API offers a roll
+    (a paused household has none), and Add a return is hidden while the
+    household is paused (decision 188), because then the pause is the work."""
     js = read("app/renderer/app.js")
+    html = read("app/renderer/index.html")
     fold = _js_function(js, "function renderRollFold(hh) {")
-    assert 'fold.classList.toggle("hidden", !hh.roll_year);' in fold
     note = fold.index('fill(words.rollover_unticked, { year })')
-    assert fold.index('className: "roll-tick"') < note < fold.index('id: "btn-roll"')
-    card = _js_function(js, "function renderHousehold(state) {")
-    assert "renderRollFold(hh);" in card
-    assert '$("btn-add-return").classList.toggle("hidden", Boolean(pause.sentence));' in card
-    assert "const pause = hh.pause || {};" in card
+    assert fold.index('className: "roll-tick"') < note
+    assert 'show("roll-body"' in fold and "roll_intro" not in js, "the intro is cut (SPEC 2.7, E92)"
+    opening = _js_function(js, "function openRoll() {")
+    assert "!hh.roll_year" in opening and 'unanswered("roll_forward")' in opening and 'openDialog("roll-modal")' in opening
+    dialog = html[html.index('id="roll-modal"'):]
+    assert dialog.index('id="roll-body"') < dialog.index('id="roll-cancel"') < dialog.index('id="btn-roll"')
+    # Add a return while paused is the menu's rule now (SPEC 5.1): shell.js
+    # leaves the id off the enable list, and tests/test_shell.py pins it.
+    assert "paused" in _js_function(read("app/renderer/shell.js"), "function shellEnabled(at) {")
 
 
 #: The words decision 196 adds under ``vocab.household``.
-ROLL_AND_ADD_KEYS = ("roll_forward_to", "roll_ticked", "roll_intro", "roll_no_template",
+ROLL_AND_ADD_KEYS = ("roll_forward_to", "roll_ticked", "roll_no_template",
                      "roll_done", "roll_carried", "roll_unfiled", "roll_retired_line",
-                     "roll_forms_unloaded", "add_return", "add_return_title", "new_intro",
-                     "form_step_title", "form_step_note", "change_form", "change_household",
-                     "items_title", "create_return", "return_created", "empty_root")
+                     "roll_forms_unloaded", "add_return_title",
+                     "form_step_title", "change_form", "change_household",
+                     "items_title", "create_return", "return_created")
 
 
 def test_every_word_of_roll_forward_add_a_return_and_new_household_is_the_apis():
@@ -1066,9 +1077,11 @@ def test_the_renderer_names_no_catalog_of_its_own():
 
     js = read("app/renderer/app.js")
     html = read("app/renderer/index.html")
+    pages = read("app/renderer/pages.js")
     for form in FORM_TEMPLATES:
-        assert form not in js and form not in html, form
-    assert "state.engagement ? state.engagement.form" in js
+        assert form not in js and form not in html and form not in pages, form
+    # The form chip is gone (SPEC 2.1 E8): the return's name starts with its form.
+    assert "engagement.form" not in pages
 
 
 def test_the_standing_rules_are_worded_once_and_quoted_everywhere():
@@ -1087,8 +1100,15 @@ def test_the_standing_rules_are_worded_once_and_quoted_everywhere():
             assert rule["headline"] in text, (rel, rule["headline"])
             assert plain(rule["detail"]) in text, (rel, rule["detail"])
         assert rule["headline"] in rule_nodes and plain(rule["detail"]) in rule_nodes, rule["headline"]
+    # The page half (SPEC 2.7, E93; P64): Help > Safeguards is a dialog that
+    # holds one short line per rule, read from the API's `rules[].short`, and
+    # the four cards of the old footer are gone.
     html = read("app/renderer/index.html")
-    assert html.count("<div><strong></strong><span></span></div>") == len(api.standing_rules())
+    js = read("app/renderer/app.js")
+    assert "<div><strong></strong><span></span></div>" not in html and 'id="assurances"' not in html
+    assert 'id="safeguards-list"' in html
+    opening = _js_function(js, "function openSafeguards() {")
+    assert "vocab.rules.map(" in opening and "rule.short" in opening and "rule.detail" not in opening
 
 
 def test_the_documents_list_the_forms_the_catalog_has():
@@ -1172,16 +1192,17 @@ def test_the_retired_override_word_survives_only_in_the_decision_logs_history():
                 assert retired.lower() not in line.lower() or "old_journal" in line, (path.name, line)
 
 
-def test_the_scan_button_label_is_typed_once():
-    label = re.search(r'const SCAN_LABEL = "([^"]+)";', read("app/renderer/app.js")).group(1)
-    assert label not in read("app/renderer/index.html")
-    js = read("app/renderer/app.js")
-    assert js.count(f'"{label}"') == 1
+def test_the_scan_buttons_label_is_typed_nowhere_in_the_renderer():
+    """SPEC 14.2: the sort icon's words are the API's (``vocab.screen.sort``),
+    so the old button label is typed in no renderer file, and a document that
+    names the old button names it by one label only."""
+    for name in ("app.js", "shell.js", "pages.js", "index.html"):
+        text = read(f"app/renderer/{name}")
+        assert "SCAN_LABEL" not in text and '"Sort & Scan"' not in text, name
+    assert "Sort & Scan" not in read("app/renderer/index.html")
     for rel in ("docs/ROADMAP.md", "docs/workflow.md", "README.md", "docs/repo-map.curated.json"):
-        text = read(rel)
-        # Prose may name the button, but only by its real label.
-        for phrase in re.findall(r"\b([A-Z][a-z]+ (?:&|and) Scan)\b", text):
-            assert phrase == label, (rel, phrase)
+        phrases = set(re.findall(r"\b([A-Z][a-z]+ (?:&|and) Scan)\b", read(rel)))
+        assert len(phrases) <= 1, (rel, phrases)
 
 
 def test_the_words_for_the_engagements_page_are_pythons_alone():
@@ -1191,6 +1212,8 @@ def test_the_words_for_the_engagements_page_are_pythons_alone():
 
     for rel in ("app/renderer/index.html", "app/renderer/app.js", "app/renderer/style.css"):
         text = read(rel)
+        if rel.endswith((".js", ".css")):      # a comment may name the page; the page may not type it
+            text = re.sub(r"/\*.*?\*/|//[^\n]*", "", text, flags=re.S)
         assert VIEW_OPEN_LABEL not in text, rel
         assert VIEW_LABEL not in text, rel
 
@@ -1409,10 +1432,9 @@ def test_documents_name_buttons_by_their_labels():
               for m in re.findall(r"<button[^>]*>(.*?)</button>", html, re.S)}
     js = read("app/renderer/app.js")
     labels |= set(re.findall(r'<button[^>]*>([^<]+)</button>', js))
-    labels.add(re.search(r'const SCAN_LABEL = "([^"]+)";', js).group(1))
-    # Buttons filled in at runtime from a label Python owns: the scan
-    # button's, above, the one that opens the engagement's page, and the
-    # request-list editor's (decision 104).
+    # Buttons filled in at runtime from a label Python owns: the one that
+    # opens the engagement's page and the request-list editor's (decision
+    # 104). The scan button is the menu's now (SPEC 14.2).
     labels.add(VIEW_OPEN_LABEL)
     labels |= {EDITOR_OPEN_LABEL, EDITOR_SAVE_LABEL, EDITOR_CANCEL_LABEL, EDITOR_ADD_LABEL,
                EDITOR_REMOVE_LABEL, EDITOR_PASTE_LABEL, UNLEARN_LABEL}
@@ -1819,24 +1841,30 @@ def test_every_review_action_the_renderer_sends_carries_the_rows_seq():
     import tracker.api as api
 
     js = read("app/renderer/app.js")
-    # Two of the three read the row's version where they send it...
-    for command in ("dismiss", "unfile"):
+    # The sheet's dismissal reads the row's version off the row on the sheet...
+    sent = re.search(r'call\(withEng\("dismiss"\), \{(.*?)\}\)', js, re.S)
+    assert sent and "seq:" in sent.group(1) and "li.dataset.seq" in sent.group(1)
+    # ...and the right-click writes of a filed row (Unfile, Mark missing) read
+    # it from the spec the page built from the same index row (pages.js).
+    for command in ("unfile", "mark-missing"):
         sent = re.search(rf'call\(withEng\("{command}"\), \{{(.*?)\}}\)', js, re.S)
-        assert sent, command
-        assert "seq:" in sent.group(1), command
-        assert "li.dataset.seq" in sent.group(1), command
+        assert sent and "seq: Number(spec.seq)" in sent.group(1), command
+    pages = read("app/renderer/pages.js")
+    assert "{ original: direct[0].handle, seq: direct[0].seq, name: direct[0].original_name }" in pages
+    assert "unfile: here ? { original: one.handle, seq: one.seq, name: one.original_name } : null" in pages
+    assert "{ original: answering.handle, seq: answering.seq, identifier: item.identifier }" in pages
     # ...and since decision 114 the filing has one call site for the three
     # buttons that make it, so each of them reads the version off the element
     # it was drawn on and hands it to that one function.
     sent = re.search(r'call\(withEng\("assign"\), \{(.*?)\}\)', js, re.S)
     assert sent and "seq" in sent.group(1)
-    for handler in ("assignParked", "keepMoved", "acceptCard"):
+    for handler in ("assignParked", "keepMoved"):
         body = re.search(rf"async function {handler}\(.*?\n\}}", js, re.S)
         assert body, handler
         assert "fileRow(" in body.group(0) and "dataset.seq" in body.group(0), handler
     # Every row builder puts it on the element the handlers read it back
     # from - since decision 190 one more: the row that is not a document.
-    assert js.count("seq: e.seq") == 3
+    assert js.count("seq: e.seq") == 1 and js.count("seq: m.seq") == 2
     # And the sentence a refusal shows is the API's, never the renderer's.
     assert api.NO_SEQ not in js
 
@@ -2110,15 +2138,21 @@ def test_the_shell_lstats_before_it_opens_and_refuses_a_link_or_a_changed_kind()
     import tracker.api as api
 
     main = read("app/main.js")
-    opener = main[main.index("async function openPath("):]
+    # openPath refuses an unreported path first, then checks; reveal is an argument, not a channel.
+    assert 'openChecked(p, openable.get(p), reveal === "reveal")' in main
+    opener = main[main.index("async function openChecked("):]
     opener = opener[:opener.index("\n}\n")]
+    assert opener.index("fs.promises.lstat(") < opener.index("shell.showItemInFolder(")
     assert opener.index("fs.promises.lstat(") < opener.index("shell.openPath(")
     assert "isSymbolicLink()" in opener and "isDirectory()" in opener and "isFile()" in opener
     assert "vocab.path_kinds" in main and "vocab.shell.not_opened" in main
-    assert main.count("shell.openPath(") == 1
+    # One call site of each, both behind openChecked (after the lstat and the kind check).
+    assert main.count("shell.openPath(") == 1 and main.count("shell.showItemInFolder(") == 1
     vocab = api._vocab()
     assert vocab["shell"]["not_opened"] == api.SHELL_NOT_OPENED
-    assert set(vocab["path_kinds"].values()) == {"folder", "file"}
+    assert set(vocab["path_kinds"].values()) == {"folder", "file", "reveal"}
+    # A reveal-only kind is refused unless the call asked to reveal (F1).
+    assert 'kind === "reveal" && !reveal' in opener
 
 
 # ------------------------------------------ one-time steps run themselves ----
@@ -2455,15 +2489,21 @@ const Module = require("module");
 const realSpawn = require("child_process").spawn;
 const realFs = require("fs");
 const [mainJs, fake, calls] = process.argv.slice(2);
+// Off Windows the fallback log is in Electron's userData; FAKE_PLATFORM=win32
+// makes it %LOCALAPPDATA%\\Tax Document Tracker Pilot (Jason, 2026-09-29).
+Object.defineProperty(process, "platform", { value: process.env.FAKE_PLATFORM || "linux" });
 let handler = null;
 const sent = [];
 const appHandlers = {};
 const electron = {
   app: { isPackaged: false, requestSingleInstanceLock: () => true, quit() {},
+         getPath: () => process.env.FAKE_USERDATA,
          on(name, fn) { appHandlers[name] = fn; },
          whenReady: () => new Promise(() => {}) },
-  BrowserWindow: class {}, Menu: { setApplicationMenu() {} },
-  ipcMain: { handle(name, fn) { if (name === "tracker-cmd") handler = fn; } },
+  BrowserWindow: class {},
+  Menu: { buildFromTemplate: (template) => ({ template }), setApplicationMenu() {} },
+  ipcMain: { handle(name, fn) { if (name === "tracker-cmd") handler = fn; }, on() {} },
+  nativeTheme: { shouldUseDarkColors: false, shouldUseHighContrastColors: false, themeSource: "", on() {} },
   shell: {}, dialog: {},
 };
 const load = Module._load;
@@ -2490,9 +2530,8 @@ const event = { sender: { isDestroyed: () => false,
   }
   // The app closing (decision 203): what the shell does on will-quit.
   if (process.env.HARNESS_QUIT && appHandlers["will-quit"]) appHandlers["will-quit"]();
-  // The shell appends a failed child's stderr without waiting on it, and a
-  // pass ends after its click was answered; give both their moment before
-  // the harness ends.
+  // A failed child's stderr is appended before its reply is settled; a pass
+  // ends after its click was answered. Give that moment before the harness ends.
   setTimeout(() => {
     const pipeBroke = realFs.existsSync(`${process.env.FAKE_LOG}.pipe-broke`);
     process.stdout.write(JSON.stringify({ out, sent, pipeBroke }));
@@ -2509,7 +2548,8 @@ const folder = given[given.indexOf("tracker.api") + 3];
 const say = (o) => process.stdout.write(JSON.stringify(o) + "\n");
 const line = (fields) => say({ progress: { v: 1, pass: 4242, at: "2026-01-02T03:04:05", ...fields } });
 if (command === "list") {
-  say({ vocab: { commands: ["list", "run-now", "scan", "state", "templates", "priors"],
+  say({ vocab: { commands: ["list", "run-now", "scan", "state", "rename", "templates", "priors"],
+                 writing_commands: ["rename"],
                  engagement_flag: "--engagement", pass_command: "run-now",
                  shell: { error_log: process.env.FAKE_LOG } } });
 } else if (command === "run-now" && folder === "/sample/return") {
@@ -2538,7 +2578,7 @@ if (command === "list") {
   say({ error: "refused", failure: { sentence: "refused", kind: "refused", seq: null, identifier: null },
         warnings: [] });
   process.exit(1);
-} else if (command === "state") {
+} else if (command === "state" || command === "rename") {
   line({ event: "started", limit_seconds: 1, households: 1 });
   line({ event: "household", household: "Sample Household", n: 1, of: 1 });
   line({ event: "file", step: "scan", name: "A01", household: "Sample Household" });
@@ -2566,7 +2606,8 @@ def _run_the_shell(tmp_path, calls, **env):
     done = subprocess.run([node, str(harness), str(REPO / "app" / "main.js"), str(fake),
                            json.dumps(calls)],
                           capture_output=True, text=True, encoding="utf-8", timeout=120, check=False,
-                          env=child_env(**{"FAKE_LOG": str(tmp_path / "tracker-errors.log"), **env}))
+                          env=child_env(**{"FAKE_LOG": str(tmp_path / "tracker-errors.log"),
+                                           "FAKE_USERDATA": str(tmp_path / "userdata"), **env}))
     assert done.returncode == 0, done.stderr
     return json.loads(done.stdout)
 
@@ -2626,7 +2667,7 @@ def test_the_runbooks_189_sentence_is_rewritten():
     for text in (runbook, read("README.md")):
         assert "inside the app's thirty-minute limit" not in text
         assert "thirty-minute" not in text
-    assert runbook.count("**Run now** (Sort & Scan) is\nthe scheduled pass") == 1
+    assert runbook.count("The app's **Sort** icon (Run now) is\nthe scheduled pass") == 1
 
 
 #: The renderer's lock and pass-ending functions, lifted from app.js and run
@@ -2636,30 +2677,33 @@ _BUTTON_PROBE = r"""
 const fs = require("fs");
 const src = fs.readFileSync(process.argv[2], "utf8");
 function grab(sig) { const i = src.indexOf(sig); const j = src.indexOf("\n}\n", i); return src.slice(i, j + 3); }
-const buttons = src.slice(src.indexOf("const LOCKED_BUTTONS"), src.indexOf("function applyLock"));
-const parts = [buttons, grab("function applyLock() {"), grab("function setLocked(on) {"), grab("function scanDone() {")];
-const nodes = {};
-const node = (id) => ({ id, classList: { add() {}, remove() {} }, textContent: "", disabled: false, dataset: {},
-                        querySelectorAll: () => [] });
-const ctx = `let locked = false; let scanning = {}; const SCAN_LABEL = "Sort & Scan";
-const $ = (id) => (nodes[id] ||= node(id));
+const cards = src.slice(src.indexOf("const LOCKED_CARDS"), src.indexOf("function applyLock"));
+const parts = [cards, grab("function applyLock() {"), grab("function setLocked(on) {"), grab("function scanDone() {")];
+const control = { disabled: false, dataset: {} };
+const nodes = {
+  "sheet-body": { querySelectorAll: () => [control] },
+  "sheet-foot": { querySelectorAll: () => [] },
+  notices: { querySelectorAll: () => [] },
+};
+const ctx = `let locked = false; let scanning = {};
+const shellChanged = () => {}; const shellProgress = () => {};   // shell.js's, told of the change (SPEC-shell 14.2)
+const $ = (id) => nodes[id];
 ${parts.join("\n")}
 return { setLocked, scanDone };`;
-const r = new Function("nodes", "node", ctx)(nodes, node);
-const btn = () => (nodes["btn-scan"] ||= node("btn-scan"));
-btn().disabled = true;     // runScan
+const r = new Function("nodes", ctx)(nodes);
 r.setLocked(true);         // a state during the pass shows its lock
 r.scanDone();              // the pass ends while the lock notice shows
-const whileLocked = btn().disabled;
+const whileLocked = control.disabled;
 r.setLocked(false);        // the redraw's state: the lock has gone
-process.stdout.write(JSON.stringify({ whileLocked, after: btn().disabled }));
+process.stdout.write(JSON.stringify({ whileLocked, after: control.disabled }));
 """
 
 
-def test_the_end_of_a_pass_gives_sort_and_scan_back_through_the_locks_mark(tmp_path):
-    """Decision 203's review, M2: the button comes back through applyLock's
-    mark, so the lock going gives it back - never an unmarked disable that
-    nothing ever lifts."""
+def test_the_end_of_a_pass_gives_back_only_what_the_lock_did_not_hold(tmp_path):
+    """Decision 203's review, M2, on SPEC 14.2's model: the sort icon and the
+    menu follow ``scanning`` and ``locked`` through ``shellChanged``, and a
+    control the lock greyed stays greyed when the pass ends - only the lock
+    going gives it back, through applyLock's mark; scanDone lifts nothing."""
     import shutil
     import subprocess
 
@@ -2675,7 +2719,7 @@ def test_the_end_of_a_pass_gives_sort_and_scan_back_through_the_locks_mark(tmp_p
     assert done.returncode == 0, done.stderr
     assert json.loads(done.stdout) == {"whileLocked": True, "after": False}
     ended = _body(read("app/renderer/app.js"), "function scanDone() {")
-    assert "btn.disabled = locked" not in ended and "applyLock();" in ended
+    assert ".disabled" not in ended and "applyLock();" in ended and "shellChanged();" in ended
 
 
 def test_a_pass_killed_at_its_own_limit_ends_with_the_killed_sentence(tmp_path):
@@ -2713,9 +2757,32 @@ def test_the_shells_kill_follows_the_limit_the_pass_reported_and_says_where_it_w
     reply = killed["reply"]
     assert reply["killed"] is True and reply["failure"]["kind"] == "failed"
     assert reply["error"] == reply["failure"]["sentence"]
-    assert reply["error"] == (api.SHELL_KILLED.format(minutes=1) + " "
+    assert reply["error"] == (api.SHELL_KILLED_READ + " "
                               + api.SHELL_KILLED_AT.format(household="Sample Household", name="A01"))
     assert reply["progress"]["name"] == "A01"
+
+
+def test_a_command_killed_at_the_cap_says_whether_it_was_a_sort_a_change_or_a_read(tmp_path):
+    """Final review A, finding 5: only a sort is said to be a stopped sort; a
+    change that was killed says part of it may have happened; a read only that
+    it stopped. The shell learns which commands change things from the API."""
+    import tracker.api as api
+
+    ran = _run_the_shell(tmp_path, [["list"], ["rename", "--engagement", "/sample/return"],
+                                    ["state", "--engagement", "/sample/return"]])
+    at = " " + api.SHELL_KILLED_AT.format(household="Sample Household", name="A01")
+    assert ran["out"][1]["reply"]["error"] == f"{api.SHELL_KILLED_WRITE} {api.SHELL_KILLED_WRITE_NOTE}{at}"
+    assert ran["out"][2]["reply"]["error"] == f"{api.SHELL_KILLED_READ}{at}"
+    assert "rename" in api._vocab()["writing_commands"] and api.PASS_COMMAND not in api._vocab()["writing_commands"]
+    assert "state" not in api._vocab()["writing_commands"]
+    for said in (api.SHELL_KILLED, api.SHELL_KILLED_WRITE, api.SHELL_KILLED_WRITE_NOTE, api.SHELL_KILLED_READ,
+                 api.SHELL_KILLED_AT):
+        assert len(said.split()) <= 5, said
+        assert said.endswith("."), "each phrase is a sentence of its own (final re-review NEW 4)"
+    # Read aloud, the line breaks at each full stop: no phrase runs into the next.
+    assert ran["out"][1]["reply"]["error"] == (
+        "Change Stopped: Ran Too Long. It May Be Partly Done. It Was on Sample Household: A01.")
+    assert ran["out"][2]["reply"]["error"] == "Stopped: Ran Too Long. It Was on Sample Household: A01."
 
 
 def test_the_shell_never_puts_stderr_on_screen_and_appends_it_to_the_error_log(tmp_path):
@@ -2729,22 +2796,115 @@ def test_the_shell_never_puts_stderr_on_screen_and_appends_it_to_the_error_log(t
     assert "a fabricated message naming Sample Client's folder" in logged
 
 
-def test_with_no_error_log_the_shell_says_stderr_in_the_reply_and_writes_no_file(tmp_path):
-    """The rebase review of 186 (MF2): with no data home the API names no
-    error log, and the shell never builds one beside the program or in the
-    settings folder - a failed command's stderr is said in its own reply,
-    and no file is written anywhere."""
+#: What the fake tracker's ``templates`` writes to stderr (it names a client).
+_STDERR_TEXT = "a fabricated message naming Sample Client's folder"
+
+
+def test_with_no_error_log_named_the_failure_is_saved_in_the_fallback_log_and_the_reply_says_two_words(tmp_path):
+    """Jason, 2026-09-29 (after the rebase review of 186, MF2): with no data
+    home the API names no error log. The failure is still SAVED - in the
+    shell's fallback log in the per-user app folder, never beside the
+    program - and the screen says just "Tracker Failed", with nothing of
+    stderr in the reply."""
     import tracker.api as api
     from tracker.settings import ERROR_LOG_FILENAME
 
+    assert api.SHELL_NO_LOG == "Tracker Failed"
     ran = _run_the_shell(tmp_path, [["list"], ["templates"]], FAKE_LOG="")
     reply = ran["out"][1]["reply"]
-    stderr = "Traceback: a fabricated message naming Sample Client's folder\n"
-    sentence = api.SHELL_NO_REPLY.format(code=1) + "\n\n" + api.SHELL_NO_LOG.format(stderr=stderr)
+    sentence = api.SHELL_NO_REPLY.format(code=1) + "\n\n" + api.SHELL_NO_LOG
     assert reply["error"] == sentence and reply["failure"]["sentence"] == sentence
+    assert reply["error"].endswith("\n\nTracker Failed")
+    assert "fabricated" not in json.dumps(reply) and "Sample Client" not in json.dumps(reply)
     assert reply["failure"]["kind"] == "failed"
-    assert not (REPO / ERROR_LOG_FILENAME).exists()
+    saved = (tmp_path / "userdata" / "error.log").read_text(encoding="utf-8")
+    assert _STDERR_TEXT in saved and "shell stderr of a failed command" in saved
+    assert not (REPO / ERROR_LOG_FILENAME).exists() and not (REPO / "error.log").exists()
     assert not list(tmp_path.rglob(ERROR_LOG_FILENAME))
+
+
+def test_with_an_error_log_named_the_failure_goes_there_and_not_to_the_fallback_or_the_screen(tmp_path):
+    import tracker.api as api
+
+    ran = _run_the_shell(tmp_path, [["list"], ["templates"]])
+    reply = ran["out"][1]["reply"]
+    assert reply["error"] == api.SHELL_NO_REPLY.format(code=1) and "Tracker Failed" not in reply["error"]
+    assert _STDERR_TEXT in (tmp_path / "tracker-errors.log").read_text(encoding="utf-8")
+    assert not (tmp_path / "userdata").exists()
+
+
+def test_the_fallback_log_is_capped_and_a_write_that_fails_never_throws(tmp_path):
+    import tracker.api as api
+
+    # Past the cap the file becomes error.log.1 and a fresh one is begun.
+    userdata = tmp_path / "userdata"
+    userdata.mkdir()
+    (userdata / "error.log").write_text("aged\n" * 100_000, encoding="utf-8")     # 400 KB
+    _run_the_shell(tmp_path, [["list"], ["templates"]], FAKE_LOG="")
+    assert (userdata / "error.log.1").read_text(encoding="utf-8").startswith("aged")
+    fresh = (userdata / "error.log").read_text(encoding="utf-8")
+    assert _STDERR_TEXT in fresh and "aged" not in fresh
+    # A folder named error.log.1 cannot be rotated into: the old log is
+    # dropped, the new failure is still written, the folder is left alone.
+    stuck = tmp_path / "stuck"
+    (stuck / "userdata" / "error.log.1").mkdir(parents=True)
+    (stuck / "userdata" / "error.log").write_text("aged\n" * 100_000, encoding="utf-8")
+    _run_the_shell(stuck, [["list"], ["templates"]], FAKE_LOG="")
+    assert (stuck / "userdata" / "error.log.1").is_dir()
+    stuck_now = (stuck / "userdata" / "error.log").read_text(encoding="utf-8")
+    assert _STDERR_TEXT in stuck_now and "aged" not in stuck_now
+    _run_the_shell(stuck, [["list"], ["templates"]], FAKE_LOG="")            # and the next write too
+    stuck_later = (stuck / "userdata" / "error.log").read_text(encoding="utf-8")
+    assert stuck_later.count(_STDERR_TEXT) > stuck_now.count(_STDERR_TEXT)
+    # A link where the log should be is never written through: its target
+    # is unchanged and the reply is too.
+    linked = tmp_path / "linked"
+    (linked / "userdata").mkdir(parents=True)
+    target = linked / "target.txt"
+    target.write_text("untouched\n", encoding="utf-8")
+    try:
+        (linked / "userdata" / "error.log").symlink_to(target)
+    except (OSError, NotImplementedError):
+        pass                                        # this machine cannot make a link
+    else:
+        ran = _run_the_shell(linked, [["list"], ["templates"]], FAKE_LOG="")
+        assert ran["out"][1]["reply"]["error"].endswith(api.SHELL_NO_LOG)
+        assert target.read_text(encoding="utf-8") == "untouched\n"
+    # A folder where the log should be: the write fails, the reply is unchanged.
+    broken = tmp_path / "broken"
+    (broken / "userdata" / "error.log").mkdir(parents=True)
+    ran = _run_the_shell(broken, [["list"], ["templates"]], FAKE_LOG="")
+    assert ran["out"][1]["reply"]["error"].endswith(api.SHELL_NO_LOG)
+    # A per-user folder that cannot be made (a file is in its way): same.
+    blocked = tmp_path / "blocked"
+    blocked.mkdir()
+    (blocked / "userdata").write_text("a file", encoding="utf-8")
+    ran = _run_the_shell(blocked, [["list"], ["templates"]], FAKE_LOG="")
+    assert ran["out"][1]["reply"]["error"].endswith(api.SHELL_NO_LOG)
+
+
+def test_on_windows_the_fallback_log_is_local_and_never_the_roaming_or_data_folder(tmp_path):
+    """Jason, 2026-09-29: %LOCALAPPDATA%\\Tax Document Tracker Pilot\\error.log
+    (Electron has no getPath name for it), else the profile's AppData\\Local;
+    never userData (roaming %APPDATA%), never the data home nor the upstream
+    product's folder."""
+    from tracker.settings import DATA_HOME_NAME
+
+    product = json.loads(read("app/package.json"))["productName"]
+    assert product == "Tax Document Tracker Pilot" and product not in (DATA_HOME_NAME, UPSTREAM_DATA_HOME_NAME)
+    local = tmp_path / "local"
+    _run_the_shell(tmp_path, [["list"], ["templates"]], FAKE_LOG="", FAKE_PLATFORM="win32",
+                   LOCALAPPDATA=str(local))
+    assert _STDERR_TEXT in (local / product / "error.log").read_text(encoding="utf-8")
+    assert not (tmp_path / "userdata").exists()
+    assert not (local / DATA_HOME_NAME).exists() and not (local / UPSTREAM_DATA_HOME_NAME).exists()
+    # No LOCALAPPDATA: the profile's AppData\\Local.
+    home = tmp_path / "home"
+    other = tmp_path / "other"
+    other.mkdir()
+    _run_the_shell(other, [["list"], ["templates"]], FAKE_LOG="", FAKE_PLATFORM="win32",
+                   LOCALAPPDATA="", HOME=str(home), USERPROFILE=str(home))
+    assert _STDERR_TEXT in (home / "AppData" / "Local" / product / "error.log").read_text(encoding="utf-8")
 
 
 def test_a_failed_spawn_is_said_by_its_code(tmp_path):
@@ -2780,6 +2940,9 @@ def test_the_shells_default_words_are_the_apis_word_for_word():
 
     assert default("killed") == api.SHELL_KILLED
     assert default("killedAt") == api.SHELL_KILLED_AT
+    assert default("killedWrite") == api.SHELL_KILLED_WRITE
+    assert default("killedWriteNote") == api.SHELL_KILLED_WRITE_NOTE
+    assert default("killedRead") == api.SHELL_KILLED_READ
     assert default("noReply") == api.SHELL_NO_REPLY
     assert default("couldNotStart") == api.SHELL_COULD_NOT_START
     assert default("couldNotSend") == api.SHELL_COULD_NOT_SEND
@@ -2790,12 +2953,19 @@ def test_the_shells_default_words_are_the_apis_word_for_word():
 
 
 def test_the_notice_buttons_are_the_apis_labels_word_for_word():
+    """SPEC 3.5 and 14.2: a notice offers Retry (a text button) and the close
+    icon; Look again is merged into Retry and Dismiss is the icon, whose name
+    and tooltip are ``screen.icons.dismiss``. Both stay typed in the template
+    so a notice works before any vocabulary arrives, word for word the API's."""
     import tracker.api as api
 
     html = read("app/renderer/index.html")
     template = html.split('<template id="notice-buttons">', 1)[1].split("</template>", 1)[0]
-    buttons = dict(re.findall(r'data-act="([a-z]+)">([^<]+)</button>', template))
-    assert buttons == api.NOTICE_LABELS
+    text_buttons = dict(re.findall(r'data-act="([a-z]+)">([^<]+)</button>', template))
+    assert text_buttons == {"retry": api.NOTICE_LABELS["retry"]}
+    icon = re.search(r'<button[^>]*data-act="dismiss"[^>]*>', template).group(0)
+    assert 'data-tip-key="screen.icons.dismiss"' in icon and f'aria-label="{api.NOTICE_LABELS["dismiss"]}"' in icon
+    assert "look" not in template
     assert api._vocab()["notices"]["labels"] == api.NOTICE_LABELS
 
 
@@ -2816,8 +2986,9 @@ def test_every_draw_after_an_await_goes_through_renderFor():
     assert "view !== viewGeneration" in body
     # The shown return changes in one place, and every change bumps the view.
     assert len(re.findall(r"(?<![\w.])(?<!let )(?<!const )active = ", js)) == 1
-    # Since decision 194 a switch is showReturn, which selects before it asks.
-    assert "showReturn(button.dataset.path)" in js and "showReturn(e.target.value)" in js
+    # Since decision 194 a switch is showReturn, which selects before it asks;
+    # the route asks for it (shell.js), and a notice's Retry.
+    assert "showReturn(path)" in _js_function(read("app/renderer/shell.js"), "function shellOpenState() {")
     show = js.split("async function showReturn(path) {", 1)[1].split("\n}\n", 1)[0]
     assert show.index("const view = select(path)") < show.index("call(")
 
@@ -2876,8 +3047,9 @@ def test_the_lock_notice_types_no_sentence_and_polls_only_while_a_lock_shows():
 def test_the_shell_sends_on_only_the_channels_the_preload_listens_to():
     sent = set(re.findall(r'event\.sender\.send\("([a-z-]+)"', read("app/main.js")))
     heard = set(re.findall(r'ipcRenderer\.on\("([a-z-]+)"', read("app/preload.js")))
-    # Decision 209's launch channel is the one other the preload hears.
-    assert sent == {"tracker-progress"} and heard == sent | {"after-install-done"}
+    # Decision 209's launch channel and SPEC-shell 5.4's menu channel are the
+    # others the preload hears; both are sent with webContents.send.
+    assert sent == {"tracker-progress"} and heard == sent | {"after-install-done", "menu"}
 
 
 # ------------------------------------------ decision 193: the review's fixes ----
@@ -2900,7 +3072,9 @@ let active = "A"; let viewGeneration = 0; let locked = false; let lockWatch = nu
 const vocab = { engagement_flag: "--engagement",
   lock: { running: "r", running_other: "o", on: "o", greyed: "g", left_behind: "l", watch_seconds: 5,
           buttons_back: "back" } };
-const LOCKED_BUTTONS = []; const LOCKED_CARDS = [];
+const LOCKED_CARDS = []; let lockStale = false;
+const keyedNotice = () => {}, clearNotice = () => {};
+const shellChanged = () => {};   // shell.js's, told of the change (SPEC-shell 14.2)
 const $ = (id) => (nodes[id] ||= node());
 const fill = (p) => p;
 async function call(args) { asked.push(args[2]); return { lock: held[args[2]] ? lockOf(args[2]) : null }; }
@@ -2982,9 +3156,14 @@ def test_every_word_a_scan_reply_is_said_in_is_the_apis():
 
     js = read("app/renderer/app.js")
     body = js.split("function scanSummary(run, others, summary) {", 1)[1].split("\n}\n", 1)[0]
+    body += js.split("function scanFailed(run) {", 1)[1].split("\n}\n", 1)[0]
     words = api._vocab()["scan"]
     for key, literal in words.items():
+        if key == "scanning":
+            continue        # the sort icon and the last-sort line say a running sort now (SPEC 8.3)
         assert f"words.{key}" in body or f"vocab.scan.{key}" in js, key
+        if isinstance(literal, dict):
+            continue        # the short reasons: each a phrase of its own, tested in test_shell
         stem = literal.split("{")[0].strip()
         assert " " not in stem or stem not in js, literal
     assert "Scanning" not in js and "Pass complete" not in js and "Nothing done" not in js
@@ -3030,15 +3209,15 @@ def test_switching_returns_is_one_state_call():
     js = read("app/renderer/app.js")
     show = _body(js, "async function showReturn(path) {")
     assert show.count("call(") == 1 and 'call(["state", ' in show
-    for head in ('$("household-returns").addEventListener("click", (e) => {',
-                 '$("eng-select").addEventListener("change", (e) => {',
-                 '$("household-roll").addEventListener("click", async (e) => {'):
+    for head in ('$("roll-body").addEventListener("click", (e) => {',):
         handler = _handler(js, head)
         if "reviewPeople(" in handler:       # the roll fold's people button (S4)
             handler += _body(js, "async function reviewPeople(path) {")
         assert "showReturn(" in handler, head
         for other in ("refresh(", "bootstrap(", "loadReminder(", "call("):
             assert other not in handler, (head, other)
+    assert "showReturn(path)" in _body(read("app/renderer/shell.js"), "function shellOpenState() {")
+    assert "showReturn(" not in read("app/renderer/pages.js")
     refused = _body(js, "async function refused(err, btn) {")
     assert "showReturn(active)" in refused and "bootstrap(" not in refused
     assert "refresh(" not in js
@@ -3049,9 +3228,9 @@ def test_switching_returns_is_one_state_call():
     ended = _body(js, "async function passEnded({ reply }) {")
     assert ended.index('call(["list"])') < ended.index('call(withEng("state"))')
     calls = [m.start() for m in re.finditer(r"(?<![\w.])bootstrap\(", js)]
-    assert len(calls) == 4        # its definition, its own Retry, saveRoot and start-up
+    assert len(calls) == 3        # its definition, its own Retry and saveRoot; start-up is startWhenLoaded
     assert "await bootstrap();" in _body(js, "async function saveRoot() {")
-    assert js.rstrip().endswith("bootstrap();")
+    assert js.rstrip().endswith("startWhenLoaded(bootstrap);")
 
 
 def test_the_reminder_card_is_drawn_from_state():
@@ -3076,7 +3255,7 @@ def test_the_editor_opens_on_the_state_on_screen():
     """D13: the editor opens on the state already drawn for this return,
     with no refetch; a save is still judged by the list's head (160)."""
     js = read("app/renderer/app.js")
-    body = _body(js, "async function openEditor() {")
+    body = _body(js, "async function openEditor(focus) {")
     assert "lastState.paths.engagement === active" in body
     assert body.index("lastState") < body.index("call(")
     assert "head: editorState.list_head" in _body(js, "async function saveEditor() {")
@@ -3127,9 +3306,9 @@ def test_the_renderer_types_no_status_label():
     from tracker.manifest import STATUS_LABELS
 
     js = read("app/renderer/app.js")
-    # A column heading is not a status: the Received column holds a date.
-    html = re.sub(r"<th[^>]*>[^<]*</th>", "", read("app/renderer/index.html"))
-    for text in (js, html):
+    pages = read("app/renderer/pages.js")
+    html = read("app/renderer/index.html")
+    for text in (js, pages, html):
         for shown in STATUS_LABELS.values():
             assert not _typed(shown.label, text), shown.label
             assert shown.sentence not in text, shown.sentence
@@ -3138,7 +3317,7 @@ def test_the_renderer_types_no_status_label():
             assert side.sentence not in text, side.sentence
         assert view.SET_ASIDE_SECTION.split("{")[0].strip() not in text
         assert view.SET_ASIDE_GROUP not in text
-    assert "vocab.labels" in js and "vocab.reminder.sides" in js
+    assert "vocab.labels" in pages
     assert "vocab.set_aside.heading" in js and "vocab.set_aside.group" in js
 
 
@@ -3185,9 +3364,9 @@ def _run_renderer(tmp_path, name: str, headers: tuple[str, ...], script: str):
     start = js.index("const EL_ATTRIBUTES = new Set([")
     allowed = js[start:js.index("]);", start) + 3]
     bodies = "\n".join([allowed] + [_js_function(js, header) for header in (
-        "function el(tag, attrs = {}, ...children) {", *headers)])
+        "function el(tag, attrs = {}, ...children) {", "function tipped(node, words) {", *headers)])
     path = tmp_path / f"{name}.js"
-    path.write_text(f"{_DOM_SHIM}\n{bodies}\n{script}\n", encoding="utf-8", newline="\n")
+    path.write_text(f"{_DOM_SHIM}\nfunction setTip() {{}}\n{bodies}\n{script}\n", encoding="utf-8", newline="\n")
     done = subprocess.run([node, str(path)], capture_output=True, text=True, encoding="utf-8",
                           timeout=60, check=False)
     assert done.returncode == 0, done.stderr
@@ -3211,13 +3390,14 @@ def test_the_editor_set_aside_fold_draws_each_group_as_elements(tmp_path):
         "function renderEditorRows() {", "function setAsideHeading(group) {",
         "function fill(pattern, values) {"), """
 const NOT_ASKED_GROUP = "not asked";
-const vocab = { columns: [], set_aside: { heading: "Set aside ({n})", group: "{label} ({n})" },
+const vocab = { columns: [], set_aside: { heading: "Set Aside ({n})", group: "{label} ({n})" },
                 editor: { plain_columns: [], routing_columns: [], routing_all: "", routing_help: "" } };
 const editorState = { learned: {} };
-const editorFolds = new Map();
+let editorAdvanced = false;
+const setAdvanced = () => {};
+const shellWords = (key) => (key === "editor.advanced" ? "Advanced" : key);
 const editorRowIsCustom = () => false;
 const editorRowFoldOpen = () => false;
-const showEveryFold = () => {};
 const editorRows = [
   { identifier: "A01", group: "" },
   { identifier: "B01", group: NOT_ASKED_GROUP },
@@ -3230,13 +3410,14 @@ function requestRows(box, rows) { for (const row of rows) box.append(el("div", {
 function setAsideGroups(rows) {
   return rows.map((row) => ({ label: row.group, sentence: "A fabricated sentence.", rows: [row] }));
 }
-const page = { "ed-rows": document.createElement("div") };
+const page = { "ed-rows": document.createElement("div"), "ed-advanced-body": { classList: { toggle: () => {} } } };
 const $ = (id) => page[id];
 renderEditorRows();
 process.stdout.write(JSON.stringify(tree(page["ed-rows"])));
 """)
     above, active, fold = drawn["children"]
-    assert above["className"] == "editor-actions"   # the routing toggle (decision 201)
+    assert above["className"] == "editor-actions"   # the one Advanced switch (SPEC 2.7, E91)
+    assert _texts(above) == ["Advanced"] and _class_names(above).count("btn btn-small ed-advanced") == 1
     assert fold["tag"] == "details" and fold["className"] == "ed-set-aside"
     assert [child["tag"] if isinstance(child, dict) else child for child in fold["children"]] == [
         "summary", "div", "div", "div", "div"]
@@ -3455,7 +3636,7 @@ const showEveryFold = () => { done.folds += 1; };
 const editorNote = (text, cls) => done.notes.push([text, cls]);
 const closeDialog = (id) => done.closed.push(id);
 const renderFor = () => { throw new Error("a refused save draws nothing"); };
-const banner = () => {};
+const outcome = () => {};
 saveEditor().then(() => process.stdout.write(JSON.stringify(done)));
 """
     sentence = "Row A01: a fabricated refusal"
@@ -3477,7 +3658,7 @@ def test_edit_request_list_says_so_when_the_state_is_still_another_returns(tmp_p
     opens nothing - never a button that does nothing."""
     from tracker import api
 
-    seen = _run_renderer(tmp_path, "open_editor", ("async function openEditor() {",), f"""
+    seen = _run_renderer(tmp_path, "open_editor", ("async function openEditor(focus) {",), f"""
 const vocab = {{ editor: {{ not_this_return: {json.dumps(api.EDITOR_NOT_THIS_RETURN)} }} }};
 const active = "/root/J Park & Associates/Lee/2026/1040 - Pat Lee";
 const other = {{ paths: {{ engagement: "/root/J Park & Associates/Lee/2026/1120S - Lee LLC" }} }};
@@ -3486,7 +3667,7 @@ const done = {{ called: [], banners: [], opened: [], failed: 0 }};
 const withEng = (command) => [command, "--engagement", active];
 const call = async (args) => {{ done.called.push(args[0]); return other; }};
 const failed = () => {{ done.failed += 1; }};
-const banner = (text, cls) => done.banners.push([text, cls]);
+const outcome = (text, cls) => done.banners.push([text, cls]);
 const openDialog = (id) => done.opened.push(id);
 openEditor().then(() => process.stdout.write(JSON.stringify(done)));
 """)
@@ -3504,7 +3685,7 @@ const clicked = "/root/J Park & Associates/Lee/2026/1040 - Pat Lee";
 const other = "/root/J Park & Associates/Lee/2026/1120S - Lee LLC";
 let active = other, viewGeneration = 0;
 const done = { called: 0, failed: 0, opened: [] };
-const stopLockWatch = () => {}, renderEngagements = () => {}, render = () => {};
+const stopLockWatch = () => {}, render = () => {};
 const applyLock = () => {}, outlineRefused = () => {};
 const failed = () => { done.failed += 1; };
 const openEditor = () => { done.opened.push(active); };
@@ -3553,14 +3734,15 @@ const done = {{ banners: [], failed: 0 }};
 const button = {{ disabled: false, open: true }};
 const $ = () => button;
 const gatherRollChoice = () => ({{}});
+const closeDialog = () => {{ button.open = false; }};
 const rollHouseholdCall = () => [["roll-household"], {{}}];
 const call = async () => ({{ target_year: 2027, state, rolled: [{{ label: "1040 - Pat Lee",
   carried: [], unfiled_last_year: [], warnings: [] }}], retired: [], skipped: [],
   warning: {json.dumps(warning)} }});
-const adoptList = () => {{}}, renderFor = () => {{}}, renderEngagements = () => {{}};
+const adoptList = () => {{}}, renderFor = () => {{}};
 const select = () => 1;
 const failed = () => {{ done.failed += 1; }};
-const banner = (text, cls) => done.banners.push([text, cls]);
+const outcome = (text, cls) => done.banners.push([text, cls]);
 rollFromCard().then(() => process.stdout.write(JSON.stringify(done)));
 """)
     assert seen["failed"] == 0
@@ -3568,58 +3750,58 @@ rollFromCard().then(() => process.stdout.write(JSON.stringify(done)));
     assert warning in text.split("\n") and cls == "warn"
 
 
-def _side_lines(tmp_path, labels: dict, items: list[dict]) -> list:
-    """``sideLine`` as written, for each of ``items``, with the tracker's
-    own sides and the label table given."""
+def test_the_side_sentence_is_shown_nowhere_on_a_return_page(tmp_path):
+    """Decision 200, on SPEC 2.5 E58 and P63: whose move a row is, and the
+    row's own sentence, are not shown on the row - not as text and not as a
+    tooltip. The group says whose move it is; the row keeps one status word."""
+    from tests.test_shell import run_pages
     from tracker import reminder
 
-    sides = [{"key": side.key, "label": side.label} for side in reminder.SIDES]
-    return _run_renderer(tmp_path, "side_line", (
-        "function sideLine(item) {", "function isSetAside(override) {"), f"""
-const vocab = {{ labels: {json.dumps(labels)}, reminder: {{ sides: {json.dumps(sides)} }},
-                overrides: {{ not_applicable: "Not Applicable" }} }};
-const items = {json.dumps(items)};
-process.stdout.write(JSON.stringify(items.map((item) => {{ const line = sideLine(item); return line && tree(line); }})));
-""")
+    items = [{"identifier": f"R{i}", "document": f"Request {i}", "short_name": f"Request {i}", "group": "waiting",
+              "status_key": "Missing", "side": side.key, "manual_override": "", "period": "", "year": 2025,
+              "side_sentence": f"{side.sentence} (fabricated row)", "file_count": 0, "expected_count": 1, "received_date": None}
+             for i, side in enumerate(reminder.SIDES)]
+    ran = run_pages(["pagesReturnGroups", "pagesItemName", "pagesItemStatus", "pagesItemDetail", "pagesDay", "pagesByName", "pagesReason",
+                      "pagesSafe", "pagesEach", "pagesLabel", "pagesSafeName"], f"""
+let pagesBroken = [];
+const vocab = {{ decisions: {{ needs_review: "Needs Review", dismissed: "Not Requested", filed: "Filed" }},
+  labels: {{ Missing: {{ key: "missing", label: "Outstanding" }} }}, overrides: {{ not_applicable: "Not Applicable" }},
+  review_labels: {{ bucket_order: ["document"], buckets: {{}}, dismiss: "Not requested" }} }};
+const screenWords = () => ({{ moved: "Moved by hand", partly: "{{n}} of {{total}}", counts: {{ files: "{{n}} files" }} }});
+const fill = (p, v) => p.replace(/\\{{(\\w+)\\}}/g, (_, k) => v[k] ?? "");
+const isSetAside = () => false, overrideLabel = (o) => o;
+const PAGES_GROUPS = ["needs_you", "waiting", "received", "set_aside"];
+const state = {{ paths: {{ engagement: "r1" }}, items: {json.dumps(items)}, index: [], review: [], moved: [] }};
+""", "return JSON.stringify(pagesReturnGroups(state, 2025));", tmp_path)
+    for side in reminder.SIDES:
+        assert side.sentence not in ran and "fabricated row" not in ran
+    assert '"side' not in ran
 
 
-def _titles(node) -> list[str]:
-    """Every ``title`` - a tooltip - in a drawn tree."""
-    if isinstance(node, str):
-        return []
-    own = [node["attributes"]["title"]] if "title" in node["attributes"] else []
-    return own + [title for child in node["children"] for title in _titles(child)]
+def test_an_accepted_rows_status_word_is_the_label_tables_not_the_records(tmp_path):
+    """An Accepted row sits in Received and says the label table's word for
+    it. Relabelled in the table, the row follows the table, not the word the
+    record keeps."""
+    from tests.test_shell import run_pages
 
-
-def test_the_side_sentence_is_text_beside_the_chip_and_never_a_tooltip(tmp_path):
-    """Decision 200: whose move a row is, in bold, and the row's own
-    sentence as a text child of the same line - on the page for a person
-    to read, never moved into a ``title`` to hover for."""
-    from tracker import reminder
-
-    items = [{"identifier": side.key, "side": side.key, "manual_override": "",
-              "side_sentence": f"{side.sentence} (fabricated row)"} for side in reminder.SIDES]
-    lines = _side_lines(tmp_path, {}, items)
-    for side, item, line in zip(reminder.SIDES, items, lines, strict=True):
-        assert line["className"] == "req-side"
-        bold, gap, sentence = line["children"]
-        assert bold == {"tag": "span", "className": "side", "attributes": {}, "children": [side.label]}
-        assert (gap, sentence) == (" ", item["side_sentence"])
-        assert _titles(line) == []
-
-
-def test_an_accepted_rows_side_word_is_the_label_tables_not_the_records(tmp_path):
-    """An Accepted row has no side; its line says the label table's word
-    for the override and that label's sentence. Relabelled in the table,
-    the line follows the table, not the word the record keeps."""
-    labels = {"Accepted": {"key": "Accepted", "label": "Signed off (fabricated)",
-                           "sentence": "A fabricated sentence for the accepted row."}}
-    [line] = _side_lines(tmp_path, labels, [{"identifier": "A01", "side": None, "side_sentence": "",
-                                             "manual_override": "Accepted"}])
-    bold, gap, sentence = line["children"]
-    assert bold["children"] == ["Signed off (fabricated)"]
-    assert (gap, sentence) == (" ", "A fabricated sentence for the accepted row.")
-    assert "Accepted" not in _texts(line)
+    item = {"identifier": "A01", "document": "W-2 - Acme", "short_name": "W-2 - Acme", "group": "received", "status_key": "Accepted",
+            "manual_override": "Accepted", "period": "", "year": 2025, "file_count": 1, "expected_count": 1, "received_date": "2026-03-01"}
+    ran = run_pages(["pagesReturnGroups", "pagesItemName", "pagesItemStatus", "pagesItemDetail", "pagesDay", "pagesByName", "pagesReason",
+                      "pagesSafe", "pagesEach", "pagesLabel", "pagesSafeName"], f"""
+let pagesBroken = [];
+const vocab = {{ decisions: {{ needs_review: "Needs Review", dismissed: "Not Requested", filed: "Filed" }},
+  labels: {{ Accepted: {{ key: "Accepted", label: "Signed off (fabricated)", sentence: "A fabricated sentence." }} }},
+  overrides: {{ not_applicable: "Not Applicable" }}, review_labels: {{ bucket_order: ["document"], buckets: {{}}, dismiss: "Not requested" }} }};
+const screenWords = () => ({{ moved: "Moved by hand", partly: "{{n}} of {{total}}", counts: {{ files: "{{n}} files" }} }});
+const fill = (p, v) => p.replace(/\\{{(\\w+)\\}}/g, (_, k) => v[k] ?? "");
+const isSetAside = () => false, overrideLabel = (o) => o;
+const PAGES_GROUPS = ["needs_you", "waiting", "received", "set_aside"];
+const state = {{ paths: {{ engagement: "r1" }}, items: [{json.dumps(item)}], index: [], review: [], moved: [] }};
+""", "return JSON.stringify(pagesReturnGroups(state, 2025));", tmp_path)
+    groups = json.loads(ran)
+    [row] = groups["received"]
+    assert row["status"] == "Signed off (fabricated)" and row["tone"] == "done"
+    assert groups["needs_you"] == groups["waiting"] == groups["set_aside"] == []
 
 
 def test_the_runbook_status_table_is_the_label_table():
@@ -3662,8 +3844,10 @@ def test_every_dialog_is_in_the_one_registry_and_closes_through_one_guard():
     js = read("app/renderer/app.js")
     html = read("app/renderer/index.html")
     ids = set(_DIALOG_IDS.findall(html))
-    assert ids == {"editor", "household-modal", "handover-modal", "modal", "schedule-modal"}
-    assert _registry(js) == ids
+    assert ids == {"editor", "household-modal", "handover-modal", "modal", "schedule-modal",
+                   "roll-modal", "safeguards-modal", "about-modal", "misfits-modal", "unfile-modal"}
+    # The registry also holds the side sheet (SPEC 7): it hides by its attribute.
+    assert _registry(js) == ids | {"sheet"}
     for ident in ids:
         assert f'$("{ident}").classList.add("hidden")' not in js, ident
         assert f'$("{ident}").classList.remove("hidden")' not in js, ident
@@ -3690,8 +3874,8 @@ def test_escape_and_an_overlay_click_reach_every_dialog_the_same_way():
     assert "if (e.target === $(id)) requestClose(id);" in overlay
     assert not re.search(r"e\.target === \$\(\"[a-z-]+\"\)", js)
     for button, dialog in (("hh-edit-cancel", "household-modal"), ("ho-cancel", "handover-modal"),
-                           ("ed-cancel", "editor"), ("wh-cancel", "modal"), ("wf-cancel", "modal"),
-                           ("ne-cancel", "modal"), ("sc-cancel", "schedule-modal")):
+                           ("ed-cancel", "editor"), ("wh-cancel", "modal"),
+                           ("sc-cancel", "schedule-modal"), ("roll-cancel", "roll-modal")):
         assert f'$("{button}").addEventListener("click", () => requestClose("{dialog}"));' in js, button
 
 
@@ -3705,15 +3889,21 @@ def test_every_dialog_opens_with_focus_inside_and_gives_it_back():
     assert "target.focus();" in opening and "DIALOGS[id].first()" in opening
     closing = _js_function(js, "function closeDialog(id) {")
     assert "const back = dialogOpener[id];" in closing and "back.focus();" in closing
-    for opener, ident in (("async function openEditor() {", "editor"),
+    for opener, ident in (("async function openEditor(focus) {", "editor"),
                           ("function openHouseholdEditor() {", "household-modal"),
                           ("async function openHandOver(original, seq) {", "handover-modal"),
                           ("async function openAddReturn(hh) {", "modal"),
                           ("async function openNewHousehold() {", "modal"),
-                          ("async function openSchedule() {", "schedule-modal")):
+                          ("async function openSchedule() {", "schedule-modal"),
+                          ("function openRoll() {", "roll-modal"),
+                          ("function openSafeguards() {", "safeguards-modal"),
+                          ("function openAbout() {", "about-modal"),
+                          ("function openMisfits() {", "misfits-modal"),
+                          ("function openUnfile(spec) {", "unfile-modal")):
         assert f'openDialog("{ident}")' in _js_function(js, opener), opener
+    assert 'openDialog("sheet");' in _js_function(read("app/renderer/sheet.js"), "function sheetFrame(now, title) {")
     registry = js.split("const DIALOGS = {", 1)[1].split("\n};\n", 1)[0]
-    assert registry.count("first: () =>") == 5
+    assert registry.count("first: () =>") == 11
     trap = _js_function(js, "function trapTab(e, id) {")
     assert "e.preventDefault();" in trap and "first.focus();" in trap and "last.focus();" in trap
 
@@ -3749,11 +3939,11 @@ def test_the_editor_opens_on_the_state_on_screen_with_every_fold_closed():
     switch has not landed on yet, one call; each open starts with every
     fold closed, and the save is still judged by ``list_head``."""
     js = read("app/renderer/app.js")
-    body = _js_function(js, "async function openEditor() {")
+    body = _js_function(js, "async function openEditor(focus) {")
     assert body.count("call(") == 1 and 'call(withEng("state"))' in body
     assert "? { ...lastState }" in body and body.index("lastState") < body.index("call(")
     assert "refresh(" not in body
-    assert body.index("editorFolds.clear();") < body.index("renderEditorRows();")
+    assert body.index("editorAdvanced = false;") < body.index("renderEditorRows();")
     assert "head: editorState.list_head" in _js_function(js, "async function saveEditor() {")
 
 
@@ -3761,7 +3951,7 @@ def test_no_text_box_is_named_only_by_its_placeholder():
     """D11: a placeholder is gone the moment somebody types. The renderer
     types no placeholder of its own; the keyword, spelling and note boxes
     are each built inside a visible label, by one builder each; and the
-    setup card's three boxes sit inside labels in the page."""
+    setup page's two boxes are built inside labels."""
     js = read("app/renderer/app.js")
     html = read("app/renderer/index.html")
     assert 'placeholder: "' not in js
@@ -3773,9 +3963,15 @@ def test_no_text_box_is_named_only_by_its_placeholder():
         body = _js_function(js, builder)
         label = body.split('el("label", { className: "field', 1)[1]
         assert f'className: "{cls}"' in label, cls
-    assert len(re.findall(r"\bkeywordBox\(\)", js)) == 4        # the builder and its three places
+    assert len(re.findall(r"\bkeywordBox\(\)", js)) == 3        # the builder and its two places
+    # The setup page (shell.js) builds its two boxes inside labels; the three
+    # inputs index.html keeps are hidden, for saveRoot(), and carry no name.
+    shell = read("app/renderer/shell.js")
+    assert 'h("label", { className: "setup-field" }, h("span", {}, vocab.settings.firm_label), firm)' in shell
+    assert 'h("label", { className: "setup-field" }, h("span", {}, vocab.settings.phone_label), phone)' in shell
+    legacy = html[html.index('<div id="legacy" class="hidden">'):]
     for ident in ("phone-input", "firm-input", "root-input"):
-        assert re.search(rf'<label class="field">\s*<span id="[a-z]+-label"></span>\s*<input id="{ident}"', html), ident
+        assert f'<input id="{ident}"' in legacy, ident
         tag = re.search(rf'<input id="{ident}"[^>]*>', html).group(0)
         assert "placeholder=" not in tag and "aria-label=" not in tag, tag
 
@@ -3787,7 +3983,7 @@ def test_the_issuer_action_has_one_call_site():
     identifier or row of its own."""
     js = read("app/renderer/app.js")
     assert js.count('withEng("add-issuer-and-file")') == 1
-    assert len(re.findall(r"\baddIssuerAndFile\(", js)) == 3     # the definition and its two callers
+    assert len(re.findall(r"\baddIssuerAndFile\(", js)) == 2     # the definition and its one caller
     sent = re.search(r'call\(withEng\("add-issuer-and-file"\), \{(.*?)\}\)', js, re.S).group(1)
     assert set(re.findall(r"(\w+):", sent)) == {"original", "seq", "head", "issuer"}
 
@@ -3815,7 +4011,7 @@ def test_the_runbook_describes_the_saved_schedule_and_the_interval_aware_amber_r
 
     runbook = read("docs/runbook.md")
     assert "**Schedule** button" in runbook and "`settings.json`" in runbook
-    for door in ("`Setup.bat`", "saving the clients root", "**Repair the schedule**", "the move to another computer"):
+    for door in ("`Setup.bat`", "saving the clients root", "**Repair the Schedule**", "the move to another computer"):
         assert door in runbook.split("**Off** removes", 1)[0].split("setting on each computer", 1)[1], door
     assert "every two hours" not in runbook.replace("every-two-hours", "").replace("every two hours by default", "")
     amber = runbook.split("**Amber**, *Nothing newer for over N hours*", 1)[1].split("**Red**", 1)[0]
@@ -3824,3 +4020,38 @@ def test_the_runbook_describes_the_saved_schedule_and_the_interval_aware_amber_r
     assert LAST_PASS_AMBER_HOURS == 4
     assert "never resets them to the defaults" in runbook
     assert "the schedule is off on this computer" in runbook.lower() or "**Off** removes" in runbook
+
+
+def test_the_safeguards_are_the_standing_rules_in_one_short_line_each():
+    """P64: the Safeguards dialog shows one short line per standing rule, in
+    the rules' order; the full wording stays in STANDING_RULES and is what
+    the docs quote."""
+    from tracker import SAFEGUARDS, STANDING_RULES, api
+
+    assert len(SAFEGUARDS) == len(STANDING_RULES) == 4
+    for short, (headline, _detail) in zip(SAFEGUARDS, STANDING_RULES, strict=True):
+        assert 1 <= len(short.split()) <= 5 and short != headline
+    assert [rule["short"] for rule in api.standing_rules()] == list(SAFEGUARDS)
+
+
+def test_the_four_safeguard_words_are_pinned_word_for_word_and_reach_the_app():
+    """Final review C, C10: the Safeguards dialog says these four phrases (P63,
+    approved words). Changing one of them, or the order, used to pass every
+    test. They are the package's ``SAFEGUARDS`` and the vocabulary carries them
+    unchanged."""
+    import tracker
+    import tracker.api as api
+
+    assert tracker.SAFEGUARDS == ("No AI Reads Documents", "Originals Never Changed", "Nothing Is Guessed", "Nothing Is Ever Sent")
+    assert [rule["short"] for rule in api._vocab()["rules"]] == list(tracker.SAFEGUARDS)
+
+
+def test_the_runbook_says_where_the_fallback_error_log_is_and_to_delete_it_by_hand():
+    """Final review C, C10 (ruling 22): the runbook's note gives the fallback
+    log's place, the normal error log's place, that uninstalling leaves the
+    folder, and that it can hold client names so it is deleted by hand."""
+    runbook = " ".join(read("docs/runbook.md").split())
+    note = runbook.split("**The fallback error log's place (ruling 22):**", 1)[1].split("There used to be a second one", 1)[0]
+    for part in (r"%LOCALAPPDATA%\Tax Document Tracker Pilot\error.log", "error.log.1", "tracker-errors.log",
+                 "Uninstalling the app leaves that folder behind", "can contain client names", "delete the folder by hand"):
+        assert part in note, part

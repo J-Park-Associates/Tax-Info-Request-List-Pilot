@@ -1,19 +1,20 @@
 // Pilot edition: the guided tour over the real screen (pilot SPEC section 6).
 //
 // The tour only points (SPEC section 1). It highlights an element that is
-// already on the page and says what it does, why it is safe and what its
-// current limit is. It never presses a button, runs a pass, opens a file or
+// already on the page and says, in one line, what it does (SPEC-shell
+// section 12: one line per step, five words or fewer). It never presses a
+// button, runs a pass, opens a file or
 // talks to the tracker - that it was seen is pilot.js's to keep (P46), and
 // while it is open the layer under the card takes
 // every click, so a tester reading a step cannot set something off by
-// accident. The wording lives in pilot-content.js (P8); the three headings
-// below are UI labels, not copy.
+// accident. The wording lives in pilot-content.js (P8); the buttons and the
+// step count below are UI labels, not copy.
 //
-// A step's element may not exist yet - the Needs Review card appears only
-// once a pass sets something aside - so each step names the ids it can
-// point at, in order, and a line to show instead when none is on screen.
+// Each step names the ids it can point at, in order. The shell's parts (the
+// side panel, the path, the sort icon, the page) are always on the screen,
+// so a step nearly always points; one that finds nothing is shown centred.
 // The anchor is re-checked every half second, because a scheduled pass can
-// bring the card in while the tester is reading.
+// change the page while the tester is reading.
 
 const PilotTour = (() => {
   const GAP = 12;
@@ -59,32 +60,6 @@ const PilotTour = (() => {
     return null;
   }
 
-  function callout(className, heading, value) {
-    const section = make("section", className);
-    section.appendChild(make("h3", "", heading));
-    if (Array.isArray(value)) {
-      const list = make("ul");
-      for (const line of value) list.appendChild(make("li", "", line));
-      section.appendChild(list);
-    } else {
-      section.appendChild(make("p", "", value));
-    }
-    return section;
-  }
-
-  function stagesStrip(step) {
-    const names = PILOT.tour.stages;
-    const current = names.indexOf(step.stage);
-    const strip = make("ol", "pilot-tour-stages");
-    names.forEach((name, i) => {
-      const item = make("li", "pilot-tour-stage", name);
-      if (current !== -1 && i === current) item.classList.add("is-current");
-      if (current !== -1 && i < current) item.classList.add("is-done");
-      strip.appendChild(item);
-    });
-    return strip;
-  }
-
   function render() {
     const all = steps();
     const step = all[index];
@@ -92,29 +67,11 @@ const PilotTour = (() => {
     anchor = findAnchor(step);
 
     card.replaceChildren();
-    card.classList.remove("is-wide");
-    card.appendChild(stagesStrip(step));
     card.appendChild(make("div", "pilot-tour-count", `Step ${index + 1} of ${all.length}`));
     const title = make("h2", "", step.title);
     title.id = "pilot-tour-title";
     card.appendChild(title);
-    card.appendChild(callout("pilot-tour-does", "What it does", step.does));
-
-    const ok = callout("pilot-tour-ok", "Why it's safe", step.strength);
-    const warn = callout("pilot-tour-warn", "Current limit", step.limit);
-    if (Array.isArray(step.strength) && Array.isArray(step.limit)) {
-      const compare = make("div", "pilot-tour-compare");
-      compare.appendChild(ok);
-      compare.appendChild(warn);
-      card.appendChild(compare);
-      card.classList.add("is-wide");
-    } else {
-      card.appendChild(ok);
-      card.appendChild(warn);
-    }
-    if (!anchor && step.fallback) {
-      card.appendChild(make("p", "pilot-tour-fallback", step.fallback));
-    }
+    card.appendChild(make("p", "", step.does));
 
     const actions = make("div", "pilot-tour-actions");
     const back = button("Back", previous);
@@ -169,8 +126,8 @@ const PilotTour = (() => {
     card.style.setProperty("top", `${cardTop}px`);
   }
 
-  // A card may appear or vanish while the tour is open (a scheduled pass
-  // finished); the step then points at it, or says what to expect.
+  // An element may appear or vanish while the tour is open (a scheduled
+  // pass finished); the step then points at it, or is shown centred.
   function recheck() {
     if (!layer) return;
     const found = findAnchor(steps()[index]);

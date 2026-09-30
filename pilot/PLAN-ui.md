@@ -1,5 +1,11 @@
 # Plan: a simpler app screen (sidebar + tabs, hover descriptors, plain English)
 
+> **Partly replaced (P62, 2026-09-29):** the layout is now
+> [`BRIEF-shell.md`](BRIEF-shell.md): firm sections in the side panel, an explorer
+> breadcrumb, one grouped list per return, and no tabs, sidebar tree or ⋯ More
+> button. The tooltip, plain English, start-up safety line and notice area
+> below still stand.
+
 Approved by Jason on 2026-09-29 in a planning session. This is the input to the
 SPEC job (see [`HANDOFF.md`](HANDOFF.md), Next). Nothing here is built yet.
 

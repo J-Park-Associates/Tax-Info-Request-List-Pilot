@@ -1,7 +1,9 @@
-"""Build E, the structure pass (pilot SPEC-ui.md, decisions P51-P54).
+"""Build E, the structure pass (pilot SPEC-ui.md, decisions P51-P54), and the
+shell's tokens (pilot SPEC-shell.md section 10, decisions P72-P73).
 
 ``app/renderer/pilot-ui.css`` redefines the look by overriding ``style.css``,
-so what can be pinned is what the file may and may not contain. These tests
+so what can be pinned is what the file may and may not contain. Its colours
+are written twice, light and dark; ``tests/test_shell.py`` checks the pairs. These tests
 read it as text, the way ``test_pilot.py`` reads the pilot's other renderer
 files: the window is sandboxed and there is no browser in the gate. Each one
 is a claim of the SPEC's; the rendered claims (every button 32px or 24px, every
@@ -40,7 +42,10 @@ NOT_A_COLOUR = {
     "no-repeat", "repeat", "center", "cover", "contain", "border-box", "padding-box", "content-box",
     "important",
 }
-GRID_TOKEN = re.compile(r"^(?:0|auto|var\(--sp-[a-z0-9-]+\))$")
+# The grid's steps (SPEC-shell 10.3): 4, 8, 16, 24, 32 and 48. The retired
+# --sp-half (2), --sp-3 (12) and --sp-5 (20) are not steps.
+SP_STEPS = ("1", "2", "4", "6", "8", "12")
+GRID_TOKEN = re.compile(r"^(?:0|auto|var\(--sp-(?:" + "|".join(SP_STEPS) + r")\))$")
 # Every property that lays out by a distance: the physical and the logical sides.
 _SIDES = ("top", "right", "bottom", "left", "inline", "block", "inline-start", "inline-end", "block-start", "block-end")
 GRID_PROPS = {"gap", "row-gap", "column-gap", "inset", "padding", "margin"}
@@ -143,7 +148,7 @@ def test_the_structure_pass_writes_no_literal_colour_outside_its_tokens():
             for prop, value in declarations(body):
                 assert prop.startswith("--") or not COLOUR.search(value), f":root: {prop}"
                 if "rgba(" in value:
-                    assert prop == "--shadow-overlay", f"only the overlay shadow may hold rgba(: {prop}"
+                    assert prop in ("--shadow-overlay", "--scrim"), f"only the overlay shadow and the scrim may hold rgba(: {prop}"
             continue
         for prop, value in declarations(body):
             faults = list(colour_faults(prop, value))
@@ -208,15 +213,13 @@ def test_the_structure_pass_adds_no_remote_or_forbidden_thing():
 
 
 # Rules whose element the page never hides with .hidden.
-NEVER_HIDDEN = {
-    ".mode-toggle": "the review Cards/List switch: its card is hidden, it never is",
-}
+NEVER_HIDDEN: dict[str, str] = {}
 
 
 def test_the_structure_pass_never_unhides_a_hidden_element():
     """A `display` in a later stylesheet out-ranks style.css's `.hidden`
     (same specificity, later source), so an element app.js hides comes back:
-    Build E did this to #wi-household ("Change household details" in Add a
+    Build E did this to #wi-household ("Change Household Details" in Add a
     return). Every display other than none is declared under :not(.hidden)."""
     seen = 0
     for name in (CSS_NAME, "pilot-style.css"):
@@ -244,6 +247,16 @@ def test_the_tour_leads_with_next():
 
 def test_cards_never_shrink_inside_the_scrolling_column():
     """P55: without it .card { overflow: hidden } collapses every card to a
-    sliver when notices fill the window, instead of .main scrolling."""
+    sliver when notices fill the window, instead of #page scrolling."""
     rules = {sel.strip(): dict(declarations(body)) for _m, sel, body in blocks(read(CSS_NAME))}
-    assert rules[".main > *"]["flex-shrink"] == "0"
+    assert rules["#page > *"]["flex-shrink"] == "0"
+
+
+def test_the_grids_retired_steps_are_gone_from_every_pilot_stylesheet():
+    """SPEC-shell 10.3: --sp-half, --sp-3 and --sp-5 are deleted, and every
+    use moved to a step that keeps the component on the 4px grid."""
+    for name in (CSS_NAME, "shell.css", "pilot-style.css"):
+        css = stripped(read(name))
+        assert not re.search(r"--sp-(?:half|3|5)\b", css), name
+    defined = set(re.findall(r"--sp-(\w+):", stripped(read(CSS_NAME))))
+    assert defined == set(SP_STEPS)

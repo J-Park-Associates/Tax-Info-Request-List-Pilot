@@ -358,17 +358,17 @@ STATUS_LABELS: dict[str, StatusLabel] = {
     Status.MISSING: StatusLabel(
         "Outstanding", "Asked for; nothing usable has arrived yet."),
     Status.PARTIAL: StatusLabel(
-        "Partly in", "Some of the expected files are in; the rest are still to come."),
+        "Partly In", "Some of the expected files are in; the rest are still to come."),
     Status.FAILED: StatusLabel(
-        "Could not use", "Something arrived that the rules could not use."),
+        "Could Not Use", "Something arrived that the rules could not use."),
     Status.PENDING_SYNC: StatusLabel(
         "Syncing", "It is in; the cloud is still copying it down."),
     Status.RECEIVED: StatusLabel(
         "Received", "In, and every check passed or a person accepted it."),
     UNSCANNED_LABEL: StatusLabel(
-        "Not yet checked", "Asked for; no pass has looked at it yet."),
+        "Not Yet Checked", "Asked for; no pass has looked at it yet."),
     NOT_ASKED_LABEL: StatusLabel(
-        "Not asked", "On the list, not requested; filed if it arrives."),
+        "Not Asked", "On the list, not requested; filed if it arrives."),
     Override.ACCEPTED: StatusLabel(
         "Accepted", "A person accepted it with a reason; the rules stop here."),
     Override.NOT_APPLICABLE: StatusLabel(

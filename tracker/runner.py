@@ -437,7 +437,7 @@ NO_HOUSEHOLD_NAMED = f"{HOUSEHOLD_FLAG} names no household; Run now runs one, na
 #: until the job is registered again (decision 131's review, F3) - which the
 #: app does itself at its first start after the upgrade (decision 209).
 OLD_JOB_ROOT = ("the scheduled job still names an old clients root ({root}); start the app on this "
-                "computer - it registers the job again - or press Repair the schedule")
+                "computer - it registers the job again - or press Repair the Schedule")
 
 #: The scheduled pass says when it ran and how it ended (decision 159, E4):
 #: a job that stops - settings unreadable, the root gone, the task deleted -
@@ -570,7 +570,7 @@ def run_now_arguments(settings_dir: Path | str, household: Path | str) -> list[s
     return [SETTINGS_FLAG, str(settings_dir), LOG_FLAG, "--reminders", REMINDERS_NEVER,
             PROGRESS_LINES_FLAG, f"{HOUSEHOLD_FLAG}={household}"]
 #: What the run says about an engagement it drafted nothing for.
-NOTHING_OUTSTANDING = "nothing outstanding; no reminder needed"
+NOTHING_OUTSTANDING = "Nothing Outstanding; No Reminder Needed"
 #: Which rung of the reminder a draft was written at (decision 117), said
 #: once: the run's own line names it after the file, and the practice
 #: page's Drafted cell says it instead of a bare yes, so the one screen a
@@ -2267,7 +2267,7 @@ STATUS_NO_PROBLEMS = "Nothing failed."
 #: The folders the walk left alone (decision 125), and what is said when
 #: there are none. The sentence on each is the registry's; this is only the
 #: heading a person reads and the two columns it is drawn in.
-STATUS_MISFITS_HEADING = "Folders the tracker leaves alone"
+STATUS_MISFITS_HEADING = "Folders the Tracker Leaves Alone"
 STATUS_NO_MISFITS = "Every folder fits the layout."
 MISFIT_COLUMNS = ("Folder", "Why it is left alone")
 #: What the last-pass cell says for an engagement the page read rather than ran.
@@ -2765,6 +2765,9 @@ def _final_line(report: RunReport, code: int, pass_id: int | None = None) -> str
         "path": str(run.engagement.path),
         "ok": run.ok,
         "error": run.error,
+        # The kind of a failure or a skip, for the short reason the app says
+        # after "Sort Failed" (ruling 29); never a sentence, never a path.
+        "code": run.code,
         "skipped": run.skipped,
         "filed": run.filed,
         "review": run.review,

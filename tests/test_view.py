@@ -732,7 +732,7 @@ def test_not_asked_rows_fold_away_until_a_document_arrives_and_then_sit_in_the_t
     asked, showing its real status."""
     from dataclasses import replace
 
-    from tracker.manifest import COL_ASKED, NOT_ASKED_LABEL
+    from tracker.manifest import COL_ASKED, NOT_ASKED_LABEL, STATUS_LABELS
 
     rows = [ITEMS[0], replace(ITEMS[1], asked=False), ITEMS[2],
             RequestItem(identifier="G01", document="Property Tax", period="TY2025",
@@ -748,11 +748,11 @@ def test_not_asked_rows_fold_away_until_a_document_arrives_and_then_sit_in_the_t
     # One fold: the two rows nobody asked for, then ITEMS' set-aside row.
     assert blocks == [view.SET_ASIDE_SECTION.format(n=3)]
     assert re.findall(r"<h3>(.*?)</h3>", page)[0] == view.SET_ASIDE_GROUP.format(
-        label=NOT_ASKED_LABEL, n=2)
+        label=STATUS_LABELS[NOT_ASKED_LABEL].label, n=2)
     folded = not_applicable_tables(engagement)[0]
     by_id = {row[0]: dict(zip(view.REQUEST_COLUMNS, row, strict=True)) for row in folded[1:]}
     assert set(by_id) == {"C01", "G01"}
-    assert {one[COL_STATUS] for one in by_id.values()} == {NOT_ASKED_LABEL}
+    assert {one[COL_STATUS] for one in by_id.values()} == {STATUS_LABELS[NOT_ASKED_LABEL].label}
     assert {one[COL_ASKED] for one in by_id.values()} == {"no"}
 
     drop(engagement, "1098.pdf", "Form 1098 Mortgage Interest Statement 2025")
@@ -890,7 +890,7 @@ def test_the_status_report_has_one_set_aside_fold_with_a_group_per_sub_label():
     drawn = "\n".join(view._set_aside_block(rows))
     assert re.findall(r"<details><summary>(.*?)</summary>", drawn) == [view.SET_ASIDE_SECTION.format(n=3)]
     groups = [
-        (view.SET_ASIDE_GROUP.format(label=NOT_ASKED_LABEL, n=1), STATUS_LABELS[NOT_ASKED_LABEL].sentence),
+        (view.SET_ASIDE_GROUP.format(label=STATUS_LABELS[NOT_ASKED_LABEL].label, n=1), STATUS_LABELS[NOT_ASKED_LABEL].sentence),
         (view.SET_ASIDE_GROUP.format(label="Not Applicable in TY2024", n=1),
          STATUS_LABELS[Override.NOT_APPLICABLE].sentence),
         (view.SET_ASIDE_GROUP.format(label="Not Applicable in TY2025", n=1),

@@ -1,6 +1,6 @@
 /* The desktop app's stylesheet.
    Light, trustworthy financial-services aesthetic. Navy primary, generous
-   whitespace, color-coded status chips. Segoe UI (native, offline-safe). */
+   whitespace, one row style. Segoe UI (native, offline-safe). */
 
 :root {
   --navy: #14335c;
@@ -32,40 +32,6 @@ body {
   overflow: hidden;
 }
 
-/* ── Top bar ─────────────────────────────────────────────────────────── */
-
-.topbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 14px 24px;
-  background: linear-gradient(135deg, var(--navy-deep), var(--navy));
-  color: #f8fafc;
-  flex-shrink: 0;
-}
-
-.brand { display: flex; align-items: center; gap: 14px; }
-.brand-logo { height: 34px; width: auto; display: block; }
-.brand-divider { width: 1px; height: 22px; background: rgba(248, 250, 252, 0.35); }
-.brand-product { font-size: 15px; font-weight: 400; color: #cbd5e1; }
-
-/* ── Layout ──────────────────────────────────────────────────────────── */
-
-.layout { display: flex; flex: 1; min-height: 0; }
-
-/* ── Main dashboard ──────────────────────────────────────────────────── */
-
-.main {
-  flex: 1;
-  min-width: 0;
-  padding: 20px 24px;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.toolbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .toolbar-spacer { flex: 1; }
 
 .btn {
@@ -94,9 +60,6 @@ body {
   border-color: var(--blue);
 }
 .btn-primary:hover { background: var(--blue-dark); border-color: var(--blue-dark); }
-
-.btn-ghost { box-shadow: none; background: transparent; color: var(--subtle); }
-.btn-ghost:hover { color: #b91c1c; border-color: #fca5a5; background: #fef2f2; }
 
 /* ── Banner + cards ──────────────────────────────────────────────────── */
 
@@ -131,11 +94,6 @@ body {
 .notice-warning { background: #fffbeb; border-color: #fde68a; color: #92400e; }
 /* The row a notice is about, outlined on every redraw until it is dismissed. */
 .refused { outline: 2px solid #b91c1c; outline-offset: -2px; }
-/* The Reminder card as one line: not scanned yet, or not readable (D7). */
-#reminder-card.line-only .reminder-body > :not(#reminder-status) { display: none; }
-/* Where a running pass is. */
-.pass-progress { font-size: 13px; color: var(--subtle); padding: 2px 4px; }
-.pass-progress .pp-household { font-weight: 600; }
 
 .card {
   background: var(--card);
@@ -161,8 +119,6 @@ body {
    --rem-ink, --rem-muted and --rem-paper on the elements below, so this
    file and the page alike stay free of a hex the design system owns. */
 
-.reminder-body { padding: 0 18px 16px; display: flex; flex-direction: column; gap: 14px; }
-
 .rem-status { font-size: 12.5px; color: var(--subtle); }
 .rem-hold { font-size: 13px; font-weight: 600; color: var(--stage-ink, var(--muted)); }
 .rem-hold-rows { list-style: none; margin: 8px 0 0; padding: 0; }
@@ -174,8 +130,6 @@ body {
   color: var(--text);
 }
 .rem-hold-rows li:last-child { margin-bottom: 0; }
-.rem-hold-rows .rem-hold-why { display: block; font-size: 12.5px; font-weight: 400; color: var(--subtle); }
-.rem-hold-rows .rem-hold-id { font-weight: 700; color: var(--navy); }
 
 .rem-stages { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
 .rem-stage {
@@ -221,7 +175,6 @@ body {
 .rem-stage:disabled:hover { background: var(--card); border-color: var(--border); }
 .rem-stage[aria-pressed="true"]:disabled:hover { border-color: transparent; }
 
-.rem-hint { font-size: 12.5px; color: var(--subtle); }
 .rem-edited {
   font-size: 12.5px;
   color: var(--muted);
@@ -263,147 +216,18 @@ body {
 .rem-preview .rem-em-colour { color: var(--stage-ink, inherit); }
 .rem-preview .rem-em-bold { font-weight: bold; }
 
-.rem-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-.rem-quiet {
-  border: 0;
-  background: none;
-  box-shadow: none;
-  padding: 6px 2px;
-  font: inherit;
-  font-size: 12.5px;
-  font-weight: 600;
-  color: var(--subtle);
-  cursor: pointer;
-  border-bottom: 1.5px solid transparent;
-  border-radius: 0;
-}
-.rem-quiet:hover { color: var(--navy); border-bottom-color: var(--navy); background: none; }
-.rem-quiet:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
-
 @media (max-width: 1100px) {
   .rem-stages { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
-/* ── Requests table ──────────────────────────────────────────────────── */
-
-.requests { width: 100%; border-collapse: collapse; font-size: 13.5px; }
-
-.requests th {
-  text-align: left;
-  font-size: 11.5px;
-  font-weight: 700;
-  letter-spacing: 0.5px;
-  text-transform: uppercase;
-  color: var(--subtle);
-  padding: 8px 14px;
-  border-top: 1px solid var(--border);
-  border-bottom: 1px solid var(--border);
-  background: #f8fafc;
-}
-
-.requests td {
-  padding: 11px 14px;
-  border-bottom: 1px solid #eef2f7;
-  vertical-align: top;
-}
-.requests tbody tr:last-child td { border-bottom: none; }
-.requests tbody tr { transition: background-color 150ms ease; }
-.requests tbody tr:hover { background: #f8fafc; }
-
-.col-id { width: 56px; }
-.col-num { width: 64px; text-align: center; }
-.requests td.col-num { text-align: center; color: var(--muted); }
-.col-status { width: 150px; }
-.col-recv { width: 108px; }
+/* ── A request's identifier, in the editor ───────────────────────────── */
 
 .req-id { font-weight: 700; color: var(--navy); }
-.req-doc { font-weight: 600; }
-.req-period { font-size: 12px; color: var(--subtle); }
-.req-notes { color: var(--muted); font-size: 12.5px; max-width: 420px; }
-.req-recv { color: var(--muted); font-size: 12.5px; white-space: nowrap; }
-
-/* Status chips — color plus label, never color alone */
-.chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 3px 10px;
-  border-radius: 999px;
-  font-size: 12px;
-  font-weight: 700;
-  white-space: nowrap;
-  border: 1px solid;
-}
-.chip::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
-.chip-received  { background: #ecfdf5; border-color: #a7f3d0; color: #047857; }
-.chip-partial   { background: #fffbeb; border-color: #fde68a; color: #b45309; }
-.chip-failed-validation  { background: #fef2f2; border-color: #fecaca; color: #b91c1c; }
-.chip-missing   { background: #f1f5f9; border-color: #d8e0ea; color: #475569; }
-.chip-pending-sync   { background: #eff6ff; border-color: #bfdbfe; color: #1d4ed8; }
-.chip-requested { background: #f8fafc; border-color: #e2e8f0; color: #64748b; }
-.chip-requested::before { background: #cbd5e1; }
-.chip-not-asked { background: #f8fafc; border-color: #e2e8f0; color: #64748b; font-style: italic; }
-.chip-not-asked::before { background: #cbd5e1; }
-
-/* ── Assurance bar ───────────────────────────────────────────────────── */
-
-.assurances {
-  margin-top: auto;
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 12px;
-}
-
-.assure {
-  display: flex;
-  gap: 10px;
-  align-items: flex-start;
-  padding: 12px 14px;
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  color: var(--navy);
-}
-.assure div { display: flex; flex-direction: column; }
-.assure strong { font-size: 13px; }
-.assure span { font-size: 12px; color: var(--subtle); }
-.assure svg { flex-shrink: 0; margin-top: 2px; }
 
 /* ── Engagement picker ───────────────────────────────────────────────── */
-
-.eng-picker select {
-  font: inherit;
-  font-size: 13.5px;
-  font-weight: 600;
-  color: var(--navy);
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 9px 12px;
-  max-width: 320px;
-  cursor: pointer;
-  box-shadow: var(--shadow);
-  transition: border-color 180ms ease;
-}
-.eng-form {
-  font-size: 12.5px;
-  font-weight: 600;
-  color: var(--muted);
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 5px 9px;
-  white-space: nowrap;
-}
 /* The status report's state, beside the engagement. One class per word
    the API sends (tracker.view.VIEW_STATES); the renderer derives the class
    from the word and types none of them. */
-.view-current { border-color: #a7f3d0; color: #047857; }
-.view-behind  { border-color: #fde68a; color: #b45309; }
-.view-unknown { border-color: var(--border); color: var(--subtle); }
-
-.eng-picker select:hover { border-color: #cbd5e1; }
-.eng-picker select:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
 
 .visually-hidden {
   position: absolute;
@@ -540,15 +364,10 @@ body {
 .ed-set-aside { margin-top: 8px; }
 .ed-set-aside > summary { cursor: pointer; font-size: 12.5px; color: var(--subtle); }
 .ed-set-aside .editor-table td { color: var(--subtle); }
-.rows-set-aside { margin-top: 8px; }
-.rows-set-aside > summary { cursor: pointer; font-size: 12.5px; color: var(--subtle); }
-.requests tr.not-asked .req-doc { font-style: italic; }
 /* Whose move a row is, and a Set aside group's heading (decision 200):
    a bold word and its sentence as text, wrapped - never cut to an ellipsis. */
 .side { font-weight: 700; }
 .req-side { font-size: 12px; color: var(--subtle); white-space: normal; }
-.req-reason { font-size: 12px; color: var(--subtle); margin-top: 2px; max-width: 220px;
-              overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .r-set-aside { color: var(--subtle); }
 .editor-table .ed-remove { text-align: right; }
 
@@ -575,7 +394,6 @@ body {
 }
 .ed-fields .field { margin-bottom: 10px; }
 .ed-fields .wiz-check { margin: 4px 0 10px; }
-.ed-readonly { display: block; font-size: 14px; padding: 6px 0; color: var(--muted); }
 
 .ed-paste { margin-top: 14px; }
 .ed-paste summary { cursor: pointer; font-size: 12.5px; font-weight: 600; color: var(--muted); }
@@ -692,7 +510,6 @@ body {
 
 /* Spinner inside the scan button */
 @keyframes spin { to { transform: rotate(360deg); } }
-.spinning svg { animation: spin 0.9s linear infinite; }
 
 @media (prefers-reduced-motion: reduce) {
   * { animation: none !important; transition: none !important; }
@@ -747,204 +564,14 @@ body {
 }
 .wiz-check input { margin-top: 3px; accent-color: var(--blue); }
 
-/* ── Needs review: file it from here ─────────────────────────────────── */
-
 .roll-grid.three { grid-template-columns: 1.2fr 1.6fr 1fr; margin-top: 0; }
 
-.review { list-style: none; padding: 0 18px 14px; }
-.review li {
-  display: grid;
-  grid-template-columns: 1fr auto auto auto auto;
-  grid-template-areas:
-    "name select keyword file dismiss"
-    "why select note file dismiss"
-    "reasons reasons reasons reasons reasons";
-  column-gap: 10px;
-  row-gap: 2px;
-  align-items: center;
-  padding: 10px 0;
-  border-top: 1px solid #eef2f7;
-  font-size: 13.5px;
-}
-.review li:first-child { border-top: none; }
-.review .r-name { grid-area: name; font-weight: 600; color: #b45309; }
-.review .r-why { grid-area: why; color: var(--subtle); font-size: 12.5px; }
-.r-subfolder { display: block; }
-/* Decision 190's buckets: a heading per bucket, a program's true type in
-   the place a picker would be, and Open beneath the row. */
-.review li.r-bucket { display: block; font-weight: 600; color: var(--subtle); padding-top: 14px; }
-.review .r-type { grid-area: select; font-weight: 600; }
-.review .r-open-copy { grid-column: 1; justify-self: start; }
-.review select, .review input {
-  font: inherit;
-  font-size: 13px;
-  padding: 7px 10px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: #fbfcfe;
-  color: var(--text);
-}
-/* Why each suggestion is on the list, under the row that offers it: an
-   <option> carries no second line, and the reason is what is read first. */
-.review .r-reasons {
-  grid-area: reasons;
-  list-style: none;
-  margin: 4px 0 0;
-  padding: 0;
-  color: var(--subtle);
-  font-size: 12.5px;
-}
-.review .r-reasons li { padding: 1px 0 1px 14px; text-indent: -14px; }
-.review .r-reasons .r-nothing { font-style: italic; }
-.review select { grid-area: select; max-width: 300px; }
-/* Each box sits in its own label (decision 201, D11), so the label takes
-   the box's place in the grid and the box keeps its width. */
-.review .r-keyword-box { grid-area: keyword; margin: 0; }
-.review .r-note-box { grid-area: note; margin: 0; }
-.review .r-keyword-box span, .review .r-note-box span,
-.r-spelling-box span, .deck-card .r-keyword-box span { margin-bottom: 2px; }
-.review .r-keyword { width: 190px; }
-.review .r-note { width: 190px; }
-.r-spelling-box { margin: 0; }
-/* The issuer's one box and one button on a card parked for an unnamed
-   issuer (decision 201): the whole width of the row, under its reasons. */
-.r-issuer { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px; }
-.r-issuer .field { margin: 0; }
-.r-issuer .wiz-note { flex-basis: 100%; margin: 0; }
-.review .r-file { grid-area: file; }
-.review .r-unfile { grid-area: file; }
-.review .r-dismiss { grid-area: dismiss; }
-/* Moved by hand (decision 110): three answers rather than two, so this one
-   list takes the review grid with a column added for the third. The first
-   two sit in the areas the other cards' two buttons use. */
-.review .r-restore { grid-area: file; }
-.review .r-keep { grid-area: dismiss; }
-.review .r-review { grid-area: send; }
-#moved-list li {
-  grid-template-columns: 1fr auto auto auto auto auto;
-  grid-template-areas:
-    "name select keyword file dismiss send"
-    "why select keyword file dismiss send"
-    "reasons reasons reasons reasons reasons reasons";
-}
-.review select:focus-visible, .review input:focus-visible { outline: 2px solid var(--blue); outline-offset: 1px; }
-/* The row the card handed over to, in the app's own focus colour: a person
-   who asked for the full picker should not have to find the row again. */
-.review li.focused { outline: 2px solid var(--blue); outline-offset: -2px; border-radius: 8px; }
-
-/* ── The same queue, one card at a time (decision 114) ────────────────── */
-
-/* Layout only: the app's card and button classes, no colour of its own. The
-   two renderings sit in the one section and the toggle in its head says
-   which is showing. */
-.mode-toggle { display: flex; gap: 6px; }
-.mode-toggle .btn.on { background: var(--blue); border-color: var(--blue); color: #fff; }
-.deck { padding: 0 18px 14px; }
-.deck-card {
-  display: grid;
-  grid-template-columns: 1fr auto auto auto;
-  grid-template-areas:
-    "name      name   name name"
-    "why       why    why  why"
-    "suggested suggested suggested suggested"
-    "reasons   reasons reasons reasons"
-    "keyword   keyword keyword keyword"
-    "position  accept open skip";
-  column-gap: 8px;
-  row-gap: 6px;
-  align-items: center;
-  padding: 14px 16px;
-  font-size: 13.5px;
-}
-.deck-card .r-name { grid-area: name; font-weight: 600; color: #b45309; }
-.deck-card .r-why { grid-area: why; color: var(--subtle); font-size: 12.5px; }
-.deck-suggested { grid-area: suggested; font-size: 12px; font-weight: 600; color: var(--navy); }
-.deck-card .r-reasons {
-  grid-area: reasons;
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  color: var(--subtle);
-  font-size: 12.5px;
-}
-.deck-card .r-reasons li { padding: 1px 0 1px 14px; text-indent: -14px; }
-.deck-card .r-reasons .r-nothing { font-style: italic; }
-.deck-card .r-keyword-box { grid-area: keyword; margin: 0; }
-.deck-card .r-keyword,
-.deck-card .r-issuer input {
-  width: 240px;
-  font: inherit;
-  font-size: 13px;
-  padding: 7px 10px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: #fbfcfe;
-  color: var(--text);
-}
-.deck-card .r-keyword:focus-visible,
-.deck-card .r-issuer input:focus-visible { outline: 2px solid var(--blue); outline-offset: 1px; }
-.deck-position { grid-area: position; color: var(--subtle); font-size: 12.5px; }
-.deck-card .c-accept { grid-area: accept; }
-.deck-card .c-open { grid-area: open; }
-.deck-card .c-skip { grid-area: skip; }
-
-/* Set aside, not gone: folded away under its own count, and re-openable. */
-.dismissed { padding: 0 18px 12px; }
-.dismissed > summary {
-  cursor: pointer;
-  padding: 8px 0;
-  color: var(--subtle);
-  font-size: 12.5px;
-}
-.dismissed > summary:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
-.dismissed .review { padding: 0; }
-
-/* ── Lock notice + small buttons ─────────────────────────────────────── */
-
-#lock-notice { display: flex; align-items: center; gap: 12px; }
-#lock-notice.hidden { display: none; }
-#lock-notice #lock-text { flex: 1; }
+/* ── Small buttons ───────────────────────────────────────────────────── */
 .btn-small { padding: 5px 10px; font-size: 12.5px; }
 .banner.err { background: #fef2f2; border-color: #fecaca; color: #991b1b; }
 .banner.multi { white-space: pre-line; }
 
 .roll-grid.four { grid-template-columns: 1.2fr 0.6fr 1.6fr 1fr; margin-top: 0; }
-
-/* ── First-launch setup ──────────────────────────────────────────────── */
-
-.setup-row { display: flex; align-items: flex-end; gap: 8px; padding: 0 18px 10px; }
-.setup-row > .field, .setup-field { flex: 1; }
-.setup-row .field { margin-bottom: 0; }
-.setup-field .wiz-note { margin-top: 4px; }
-.setup-row input {
-  flex: 1;
-  font: inherit;
-  font-size: 14px;
-  padding: 9px 12px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: #fbfcfe;
-  color: var(--text);
-}
-#setup-note { padding: 0 18px 14px; }
-
-/* ── The household, and the folders left alone (decision 125) ────────── */
-/* No colour of its own: the card's tokens are the page's, and the words
-   are the API's.  The household is the client folder a return lives in -
-   its members as the firm typed them, its contact, its inbox link, the
-   year's returns and the one queue a person works across it. */
-
-.household-body { padding: 0 18px 14px; }
-.household-facts {
-  display: grid;
-  grid-template-columns: max-content 1fr;
-  gap: 4px 14px;
-  margin: 0 0 10px;
-  font-size: 13.5px;
-}
-.household-facts dt { color: var(--subtle); }
-.household-facts dd { margin: 0; color: var(--text); overflow-wrap: anywhere; }
-.household-returns { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0 4px; }
 
 /* ── The feed list (decision 129) ─────────────────────────────────────── */
 /* What this drop folder also feeds, edited as a list a person built from
@@ -963,20 +590,6 @@ body {
 .feed-add { display: flex; gap: 6px; align-items: center; }
 .feed-add select { flex: 1; min-width: 0; }
 
-/* ── The sharing checklist (decision 126) ────────────────────────────── */
-/* The two grants a person makes in Drive, once, and the firm's dated word
-   that they were made. No colour of its own: the tracker cannot see
-   Drive's sharing, so nothing here is a status and nothing is chipped. */
-
-.household-checklist { margin: 4px 0 10px; }
-.household-checklist ol {
-  margin: 4px 0 0;
-  padding-left: 20px;
-  font-size: 13px;
-  color: var(--muted);
-}
-.household-checklist ol li { margin: 2px 0; overflow-wrap: anywhere; }
-
 /* One return on the rollover's checklist: the tick and its label on one
    line, its form template and its offers box under them. */
 .roll-return { display: block; padding: 10px 12px; cursor: default; }
@@ -984,9 +597,6 @@ body {
 .roll-return .roll-form { display: block; margin: 8px 0 6px; }
 .roll-return .roll-form span { font-size: 12px; color: var(--subtle); }
 .roll-return input[type="checkbox"] { cursor: pointer; accent-color: var(--blue); }
-#misfits-card { margin: 0 0 14px; }
-#misfits-card #misfits-note { padding: 0; }
-#misfits-list .r-name { color: var(--subtle); overflow-wrap: anywhere; }
 
 /* ── Changes not saved (decision 201) ────────────────────────────────── */
 /* One bar per dialog, in the banner's warn colours: the dialog stays
@@ -1004,20 +614,17 @@ body {
 /* Windows contrast themes (Microsoft Learn: "Contrast themes - Windows apps").
    Chromium applies the user's system colours itself; this keeps what
    background colour or a shadow alone was drawing: an edge on buttons, cards,
-   dialogs and status chips, and the system Highlight colour on every focus
+   and dialogs, and the system Highlight colour on every focus
    outline. Nothing here changes the normal appearance. */
 @media (forced-colors: active) {
   .btn,
   .card,
-  .modal,
-  .toolbar,
-  .chip {
+  .modal {
     border: 1px solid CanvasText;
   }
 
   .btn:focus-visible,
   .rem-stage:focus-visible,
-  .rem-quiet:focus-visible,
   .form-card:focus-visible,
   .wiz-back:focus-visible,
   input:focus-visible,

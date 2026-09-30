@@ -112,15 +112,18 @@ parks for a person with the reason, and a document that came inside one is
 never filed into another household's return. The client README's list of
 what has arrived shows each attachment that filed, under its request.
 
-1. Roll a household's returns forward from last year on its card (**Roll
-   forward to `<year>`**, offered once that year has ended), or add a return
-   to it with **Add a return** - pick the tax form type, then the request
-   list; the catalog lives in `tracker/templates.py` and nowhere else. A
-   household the tracker has no record of is made with **New household**
-   on the toolbar. Its name is unique across both trees by how it reads,
+1. Roll a household's returns forward from last year with the Client menu's
+   **Roll Forward…** (offered once that year has ended), or add a return to
+   it with **Add a Return…** - pick the tax form type, then the request list;
+   the catalog lives in `tracker/templates.py` and nowhere else. A household
+   the tracker has no record of is made with File, **New Household…**. A
+   household's name is unique across both trees by how it reads,
    not how it is spelled: a name that reads as a household already in the
    list is refused and pointed at it there - add a first name or a middle
-   initial, then the city, to tell two households apart (decision 188)
+   initial, then the city, to tell two households apart (decision 188). The
+   app is a side panel of four pages (Overview, Needs Review, Reminders,
+   Clients), right-click menus on rows, a menu bar behind Alt, a
+   **Folders Skipped** list for anything left alone, and one **Sort** icon
 2. List the engagement's document requests (and validation rules) in the
    app's request-list editor
 3. `python -m tracker.scaffold <return_dir>` — builds the household's
@@ -322,7 +325,7 @@ job only on the computer that runs the schedule: the one named in
 `J Park & Associates\_Scheduling computer.txt` under the clients root,
 which the first Windows computer to set the root claims; any other
 computer registers none and removes its own. The app's
-**Repair the schedule** runs the step again, for a job that was deleted or broken; when
+**Repair the Schedule** runs the step again, for a job that was deleted or broken; when
 another computer runs the schedule it offers to move it to this one, which
 is what `python -m tracker.after_install --move-schedule-here` does from
 source (docs/runbook.md §6), and the old computer removes its own task at
@@ -357,13 +360,13 @@ and sends it. Nothing in the scheduled path sends email — and
 `tests/test_layers.py` pins that no module under `tracker/` imports a mail
 or network module.
 
-The app's **Reminder** card is where that draft is read (decision 118): the
+The app's **Reminder** sheet is where that draft is read (decision 118): the
 record's last word on it, the four stages as a toggle that rewrites the
 letter on screen without touching the file, the letter itself in the firm's
 own colours, **Copy for Outlook** (the body as HTML beside the same words as
 plain text), **Approve** — which makes what is on screen this week's draft,
 records it, and has the pass leave it alone for the rest of the week the way
-it leaves one you edited — and **Open the draft file**. There is no send
+it leaves one you edited — and **Open the Draft File**. There is no send
 button on it, and a held reminder shows the hold and nothing else.
 
 How a season is actually run on the firm's one machine — the morning pass,
@@ -480,7 +483,7 @@ land together. What did need a rule is the K-1 whose issuer nobody listed:
 with issuer rows present it parks (`tracker.reasons.ISSUER_NOT_NAMED`) with
 those rows named, rather than joining everybody else's on the generic row or
 being guessed onto whichever row is left over. `docs/runbook.md` §8 is how a
-person adds one: from the parked K-1's card in one step, or in the editor.
+person adds one: from the parked K-1's row in one step, or in the editor.
 
 When a person files something out of `00 - Needs Review` they can type a
 keyword, and it is recorded against that one engagement's request and
@@ -510,7 +513,7 @@ office.
 ## Form-type templates
 
 For a returning client the request list is last year's, rolled forward
-(**Roll forward** on the household's card, or `python -m tracker.rollover`). For a
+(Client, **Roll Forward…**, or `python -m tracker.rollover`). For a
 new client you choose the return type (1040, 1120, 1120-S, 1065, 1041, 990)
 and every form carries its own checklist in `tracker/templates.py`,
 the only place it lives. Every row of it goes on the return (decision 142);

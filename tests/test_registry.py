@@ -750,3 +750,49 @@ def test_a_root_whose_only_household_lost_its_record_says_restore_never_nothing_
     said = HOUSEHOLD_RECORD_MISSING.format(folder=TEST_HOUSEHOLD)
     assert registry.stopped == {household: said}
     assert [(one.path, one.problem) for one in registry.engagements] == [(folder, said)]
+
+
+# ---- S8b: every misfit carries a stable code (ruling 18) -----------------
+
+def _misfit_calls():
+    import ast
+    from pathlib import Path
+
+    tree = ast.parse((Path(__file__).parent.parent / "tracker" / "registry.py").read_text("utf-8"))
+    return [n for n in ast.walk(tree) if isinstance(n, ast.Call)
+            and getattr(n.func, "id", "") == "Misfit"]
+
+
+def test_a_misfit_cannot_be_built_without_a_code(tmp_path):
+    from tracker.registry import Misfit
+
+    with pytest.raises(TypeError):
+        Misfit(tmp_path, "left alone")  # type: ignore[call-arg]
+    with pytest.raises(ValueError):
+        Misfit(tmp_path, "left alone", "")
+
+
+def test_every_misfit_the_registry_builds_names_its_code_as_a_literal():
+    """Every `Misfit(` in the registry passes a non-empty string literal code
+    as its third argument, so a new construction cannot slip in without one."""
+    import ast
+
+    calls = _misfit_calls()
+    assert len(calls) == 12
+    for call in calls:
+        assert len(call.args) == 3, call.lineno
+        code = call.args[2]
+        assert isinstance(code, ast.Constant) and isinstance(code.value, str) and code.value, call.lineno
+
+
+def test_the_misfit_codes_are_the_ones_the_app_words_in_two_title_case_words():
+    from tracker import api
+
+    codes = {c.args[2].value for c in _misfit_calls()}
+    # Every code has its words (ruling 18a: "Bad Year" for not_a_year).
+    reasons = api._vocab()["screen"]["misfits"]["reasons"]
+    assert set(reasons) == codes
+    assert reasons["not_a_year"] == "Bad Year"
+    for phrase in reasons.values():
+        assert len(phrase.split()) == 2, phrase
+        assert phrase == phrase.title(), phrase

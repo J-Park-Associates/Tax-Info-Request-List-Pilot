@@ -28,15 +28,18 @@ def content() -> dict:
 
 
 def tour_lines(content_: dict):
+    """One line per step (SPEC-shell 12): the strength, limit and fallback
+    lines and the stage chips are gone."""
     for step in content_["tour"]["steps"]:
-        for key in ("does", "strength", "limit"):
-            value = step[key]
-            yield from ([value] if isinstance(value, str) else value)
+        assert set(step) == {"id", "anchors", "title", "does"}, step["id"]
+        assert isinstance(step["does"], str), step["id"]
+        yield step["does"]
 
 
 def test_the_pilot_content_is_json_between_its_markers():
     data = content()
     assert set(data) == {"edition", "contact", "terms", "tour"}
+    assert set(data["tour"]) == {"steps"}
 
 
 def test_the_edition_version_is_a_plain_version_number():
@@ -48,7 +51,7 @@ def test_the_edition_version_is_a_plain_version_number():
 def test_the_terms_have_every_field_and_a_positive_version():
     terms = content()["terms"]
     assert isinstance(terms["version"], int) and terms["version"] >= 1
-    for key in ("title", "checkbox", "accept", "quit"):
+    for key in ("title", "checkbox", "accept", "quit", "close"):
         assert isinstance(terms[key], str) and terms[key].strip(), key
     assert terms["sections"]
 
@@ -66,8 +69,13 @@ def test_the_contact_is_the_firms_admin_address():
 def test_every_line_of_copy_is_short():
     data = content()
     lines = [b for s in data["terms"]["sections"] for b in s["bullets"]]
-    lines += list(tour_lines(data))
     long = [line for line in lines if len(line.split()) > 30]
+    assert not long, long
+
+
+def test_every_tour_line_is_five_words_or_fewer():
+    """P63: five words. The terms are the one exception, shown whole (P20)."""
+    long = [line for line in tour_lines(content()) if len(line.split()) > 5]
     assert not long, long
 
 
@@ -107,7 +115,7 @@ def test_the_pilot_style_targets_only_its_own_names():
     css = re.sub(r"/\*.*?\*/", "", read("pilot-style.css"), flags=re.S)
     css = re.sub(r"@media[^{]*\{", "", css)
     selectors = [s.strip() for block in re.findall(r"([^{}]+)\{", css) for s in block.split(",")]
-    allowed = (".pilot-", "#pilot-", "#btn-tour", ".brand")
+    allowed = (".pilot-", "#pilot-")
     assert selectors and all(s.startswith(allowed) for s in selectors), selectors
 
 
@@ -157,3 +165,22 @@ def test_windows_contrast_themes_are_honoured_without_touching_the_normal_look()
         assert "CanvasText" in inner or "Highlight" in inner
         assert not re.search(r"#[0-9a-fA-F]{3,8}\b|rgba?\(", inner), "system colours only"
         assert "glass" not in css and "backdrop-filter" not in css
+
+
+def test_the_badge_sits_in_the_side_panels_foot_and_there_is_no_tour_button():
+    """SPEC-shell 12: the badge moves to #side-foot; Help > Take the tour
+    starts the tour (the menu id `tour`), so the page has no Tour button."""
+    js = read("pilot.js")
+    assert 'document.getElementById("side-foot")' in js
+    assert "btn-tour" not in js and "btn-tour" not in read("index.html")
+    assert "PilotTour.start()" in read("shell.js") and "PilotTerms.show()" in read("shell.js")
+    assert 'id="side-foot"' in read("index.html")
+
+
+def test_help_terms_shows_the_same_card_read_only_with_one_close():
+    js = read("pilot.js")
+    shown = js[js.index("function show() {"):js.index("function gate() {")]
+    code = re.sub(r"//[^\n]*", "", shown)
+    assert "build(true)" in code and "close" in code
+    assert not re.search(r"\b(?:agree|accept|quit)\b", code) and "window.close" not in code
+    assert '"close": "Close"' in read("pilot-content.js")

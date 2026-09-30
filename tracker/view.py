@@ -224,7 +224,7 @@ LAST_WRITTEN_NOTHING = "nothing yet"
 VIEW_STATES = STATES
 #: What the chip beside the engagement calls it, and what the button that
 #: opens it says. Both are the API's vocabulary; the app types neither.
-VIEW_LABEL = "Status report"
+VIEW_LABEL = "Status Report"
 VIEW_OPEN_LABEL = "Open Status Report"
 
 #: The index columns the review section repeats. The headers still come
@@ -245,7 +245,7 @@ NOT_ASKED_CLASS = "not-asked"
 #: The one folded block under the Requests table of every row nobody waits
 #: on - not asked with nothing in, or not applicable - and how many it
 #: holds (decision 200, replacing decision 142's and 116's own folds).
-SET_ASIDE_SECTION = "Set aside ({n})"
+SET_ASIDE_SECTION = "Set Aside ({n})"
 #: Each group's heading inside it: the row's label (the Not Applicable
 #: label with the rows' year) and how many rows the group holds.
 SET_ASIDE_GROUP = "{label} ({n})"

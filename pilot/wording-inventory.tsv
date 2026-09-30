@@ -1,0 +1,213 @@
+source	key	words	text
+api._vocab	after_install.wait	43	A household named above as malformed or as changed behind the tracker's back waits in the app until a person repairs it (runbook §9); any other line above is for a person to look at. The rest of the practice runs as normal.
+api._vocab	ask_the_client_note	31	Every row is on the return. A ticked row is asked for and reminded; an unticked one is never asked for, but a document that arrives for it is filed there.
+api._vocab	columns[0].help	16	Names the request and its working copies; matched by prefix, so A100 and BS01 both work
+api._vocab	columns[10].help	11	Why the rules were overridden; required when Manual Override is Accepted
+api._vocab	columns[11].help	39	yes: the document carries the taxpayer's or the entity's name and files only where that name is on the page; no: a receipt, a log or a headerless export, filed by its keywords alone when the name is absent
+api._vocab	columns[12].help	22	Yes: the client is asked for it and reminded. No: nobody asks, but a document that arrives for it is filed here
+api._vocab	columns[13].help	26	What the firm's working file names call it, 20 characters at most; blank takes the document's first words. The client always sees the full document name
+api._vocab	columns[1].help	7	What the request is called to people
+api._vocab	columns[2].help	18	The period asked for, e.g. TY2025 or Dec 2025; a year in it is the year check
+api._vocab	columns[3].help	10	How many files are due; counted over distinct valid files
+api._vocab	columns[4].help	12	File types accepted, comma-separated; blank means the safe default, * means any type
+api._vocab	columns[5].help	8	Files smaller than this are rejected as placeholders
+api._vocab	columns[6].help	20	Every one of these must appear in the document (a keyword may hold alternatives with | and phrases wanted together with +)
+api._vocab	columns[7].help	13	At least one of these must appear; a keyword reads the same way
+api._vocab	columns[8].help	19	Blank with a year in Period checks for that year; * turns the year check off; a typed regex wins
+api._vocab	columns[9].help	16	Accepted counts as Received; Not Applicable takes the request out of every count for the year
+api._vocab	dialogs.unsaved	8	You have changes here that are not saved.
+api._vocab	editor.engagement_fields[10].help	14	which catalog the request list was cut from; blank if it was never recorded
+api._vocab	editor.engagement_fields[11].help	11	the household this return belongs to; the folder above the year
+api._vocab	editor.engagement_fields[12].help	10	the year the return is for; the year folder's name
+api._vocab	editor.engagement_fields[13].help	11	the return's folder name, form first; the same name every year
+api._vocab	editor.engagement_fields[14].help	23	who this return is for, with the spellings documents use; a named request files only where one of these is on the page
+api._vocab	editor.engagement_fields[1].help	6	label; the folder name if blank
+api._vocab	editor.engagement_fields[3].help	11	the date the reminder asks the client to send things by
+api._vocab	editor.engagement_fields[4].help	27	the statutory filing date; named in the reminder from the third stage on; blank = not mentioned (defaults from the form, weekends shifted; holidays are yours to edit)
+api._vocab	editor.engagement_fields[6].help	12	the sign-off line and the client README's contact (typed once at setup)
+api._vocab	editor.engagement_fields[7].help	8	no = this client is not chased by email
+api._vocab	editor.engagement_fields[8].help	7	no = the scheduled run skips this folder
+api._vocab	editor.engagement_fields[9].help	12	written by the rollover; the engagement it names is no longer chased
+api._vocab	editor.not_this_return	24	The request list could not be opened: what is on screen is still another return's. Pick the return again, then open its request list.
+api._vocab	editor.paste_hint	37	Paste rows copied from a spreadsheet: one request per line, cells separated by tabs or as CSV, in the column order above; a first line that repeats the headings is skipped. Nothing is recorded until you save.
+api._vocab	editor.rename_hint	39	Gives a request another identifier and moves its filed documents with it, at once. Changing an identifier in the list and saving is refused while the request holds documents; a change of case alone is saved in the list.
+api._vocab	editor.rename_left_note	11	left in the old folder because no row names them: {left}
+api._vocab	editor.renamed_note	15	{old} renamed {new}; {moved} working copy(ies) moved with it and the request was re-scanned
+api._vocab	editor.routing_help	23	How the tracker recognises this document when it arrives. A save checks these the same way whether the fold is open or not.
+api._vocab	editor.saved	9	Request list saved: {changed} row(s) changed, {removed} removed
+api._vocab	editor.unlearned_note	8	{keyword} unlearned from {identifier}; the request was re-scanned
+api._vocab	extension_default_note	14	blank means pdf, xlsx, csv; a photo or an image counts as a PDF
+api._vocab	household.accept_folder_name_help	19	records that this household (or this return) is now called by its folder's name; nothing is moved or renamed
+api._vocab	household.add_feed	7	Add a return this drop folder feeds
+api._vocab	household.contact_help	15	the greeting name in every return's letter, filled into each return when it is made
+api._vocab	household.empty_root	11	No households under {root} yet — click {new} to create the first.
+api._vocab	household.fed_by_line	8	Also fed by the drop folder of: {listed}
+api._vocab	household.feed_warning	25	Anyone with access to this drop folder may drop for this return. Its documents will rest under the folder it lives in, shared with: {members}.
+api._vocab	household.feeds_help	17	returns in other households this drop folder feeds, by return line; most households feed only their own
+api._vocab	household.feeds_line	6	This drop folder also feeds: {listed}
+api._vocab	household.form_step_note	10	The request list is tailored to the form you pick.
+api._vocab	household.link_help	12	pasted into every return's letter; paste it once the inbox is shared
+api._vocab	household.members_help	24	who this household's folder is meant to be shared with - the tracker cannot read Drive's sharing, so this is the firm's own note
+api._vocab	household.members_label	7	Shared with (as typed by the firm)
+api._vocab	household.misfits_note	22	Each is listed with the one reason it does not fit the layout; nothing in it is ever read, moved or renamed.
+api._vocab	household.new_intro	27	A client folder is a household: one folder per tax year inside it, one folder per return inside that, and one inbox the client drops everything into.
+api._vocab	household.queue_line	10	{n} document(s) waiting for a person across this household
+api._vocab	household.return_created	19	Return "{label}" created with {n} request(s) asked for, client README generated. Open the Client Folder to show it.
+api._vocab	household.return_name_help	11	the return's folder name, form first; the same name every year
+api._vocab	household.return_warning	19	Everyone with access to this folder will see this return's documents. Add it here only if every member may.
+api._vocab	household.roll_done	8	{rolled} return(s) rolled into {year}; {retired} retired
+api._vocab	household.roll_forms_unloaded	16	The return types could not be loaded, so each return keeps the form it recorded: {reason}
+api._vocab	household.roll_intro	40	Last year's list is the starting point. Everything the client actually sent, set aside or under-delivered carries forward - what was set aside as not applicable under its own heading, for a fresh decision; the form template only fills blanks.
+api._vocab	household.roll_no_template	9	No template — carry last year's list as it is
+api._vocab	household.roll_ticked	7	Roll the ticked returns forward to {year}
+api._vocab	household.roll_unfiled	9	{n} file(s) sent last year were never filed
+api._vocab	household.rollover_unticked	28	A return left unticked is retired for {year}: it is set inactive and stops being chased. Tick it later and roll it on its own if that changes.
+api._vocab	household.shared_on_line	8	Marked as shared on {day} by the firm
+api._vocab	household.sharing_heading	6	Before the client can drop anything
+api._vocab	household.sharing_note	29	The tracker cannot see Drive's sharing. The two grants are the firm's to make, once; the year folders are view-only through the household folder, and nothing is ever re-shared.
+api._vocab	household.two_open_years	21	Two years are open in this household ({years}); nothing is sorted from its inbox until one is retired in the editor
+api._vocab	labels.Accepted.sentence	11	A person accepted it with a reason; the rules stop here.
+api._vocab	labels.Failed Validation.sentence	8	Something arrived that the rules could not use.
+api._vocab	labels.Missing.sentence	7	Asked for; nothing usable has arrived yet.
+api._vocab	labels.Not Applicable.sentence	9	Does not apply this year; not counted, not chased.
+api._vocab	labels.Not asked.sentence	9	On the list, not requested; filed if it arrives.
+api._vocab	labels.Partial.sentence	13	Some of the expected files are in; the rest are still to come.
+api._vocab	labels.Pending Sync.sentence	10	It is in; the cloud is still copying it down.
+api._vocab	labels.Received.sentence	10	In, and every check passed or a person accepted it.
+api._vocab	labels.Requested.sentence	9	Asked for; no pass has looked at it yet.
+api._vocab	lock.buttons_back	11	The pass let go of this return; its buttons are back.
+api._vocab	lock.cleared	9	The lock left behind was cleared ({minutes} min old).
+api._vocab	lock.greyed	18	This return's buttons are greyed while it runs and come back by themselves the moment it lets go.
+api._vocab	lock.left_behind	29	A pass that started at {started} on {host} left its lock behind ({minutes} min old); it has most likely ended. The next pass replaces it, or clear it here.
+api._vocab	lock.running	12	A pass that started at {started} on {host} is holding this return.
+api._vocab	lock.running_other	11	A pass that started at {started} on {host} is holding {label}.
+api._vocab	new_not_asked_carried	28	{n} catalog row(s) this client never had added as not asked - a document for one files there; set Asked in the editor to ask for it
+api._vocab	not_applicable_carried	13	{n} request(s) not applicable last year - review them in the editor
+api._vocab	nothing_asked	6	Select at least one request item
+api._vocab	override_reasons[0]	7	Client confirmed this is the final version
+api._vocab	override_reasons[1]	6	Correct document, validation flagged formatting only
+api._vocab	override_reasons[2]	11	Received outside the system (in person, fax, confirmed in a meeting)
+api._vocab	people.help	23	who this return is for, with the spellings documents use; a named request files only where one of these is on the page
+api._vocab	people.none_yet	17	add at least one person to the return; a named request files only where a name confirms
+api._vocab	people.one_word	16	a spelling needs at least two words, so a family name alone never confirms a document
+api._vocab	people.rolled_note	9	{n} return(s) rolled; review each return's people once
+api._vocab	people.spellings_help	23	ticked spellings are what a page is matched against; untick one a document never prints, and add any the app did not propose
+api._vocab	people.teach_hint	7	the name as this page prints it
+api._vocab	reminder.copied	23	the letter is on the clipboard - paste it into Outlook as the body; the subject line is on the card above it
+api._vocab	reminder.edited_by_hand	17	edited by hand - approve it as it stands, or delete it to regenerate at a stage
+api._vocab	reminder.held_line	8	Reminder held: {n} request(s) need a decision
+api._vocab	reminder.inbox_held_line	10	Reminder held: {n} file(s) still waiting to be sorted
+api._vocab	reminder.last_drafted_line	6	last drafted {date} at stage {n}
+api._vocab	reminder.line_unreadable	8	{label}: its reminder could not be read ({kind})
+api._vocab	reminder.not_yet	9	No reminder yet: this return has not been scanned.
+api._vocab	reminder.set_aside_line	8	the other draft was set aside as {name}
+api._vocab	reminder.sides[0].sentence	7	The letter asks the client for it.
+api._vocab	reminder.sides[1].sentence	13	Waiting on us, not the client; the letter does not ask for it.
+api._vocab	reminder.sides[2].sentence	19	A person decides whether the client resends it or we fix it here; the letter is held until then.
+api._vocab	reminder.stage_toggle_hint	17	the pass pre-selects the stage from the Due Date; move it up or down before you send
+api._vocab	reminder.unreadable	14	This return's reminder could not be read just now; the notice above says why.
+api._vocab	review_labels.buckets.container	22	Emails and zips - opened, if at all, on a machine with no Drive sign-in and no client folder, never this one
+api._vocab	review_labels.buckets.not_a_document	14	Not documents - do not open; ask the client what they meant to send
+api._vocab	review_labels.came_from	8	came from the client's subfolder '{folder}'
+api._vocab	review_labels.dismiss_note	6	why nothing asks for it (optional)
+api._vocab	review_labels.handed_over	9	Filed under {label} ({identifier}); nothing about it stays here
+api._vocab	review_labels.issuer_add	6	Add the issuer and file it
+api._vocab	review_labels.issuer_help	30	Adds {identifier}, a K-1 row for this issuer, to the request list and files this document under it. Type the distinctive words and leave off the suffix (L.P., LLC).
+api._vocab	review_labels.issuer_label	7	Issuer's name, as the K-1 prints it
+api._vocab	review_labels.issuer_not_rescanned	8	not re-scanned ({kind}); the next pass re-scans it
+api._vocab	review_labels.keyword_help	28	A word this document contains that others like it will too. Taught to the request so the next one files itself; the editor shows it beside the row.
+api._vocab	review_labels.moved_summary	17	these working copies are not where the record put them; choose for each - nothing is guessed
+api._vocab	review_labels.unfile_note	6	why it is coming back (optional)
+api._vocab	roll_template_label	14	Form template (fills blanks, adds the rows this client never had as not asked)
+api._vocab	room.heading	7	Returns short of room under this root
+api._vocab	room.parks	27	{count} request(s) have no room for a working copy under this root; a document for them parks for a person until the clients root is shorter
+api._vocab	room.short	41	{short} characters short of the room its working copies need, so their names are cut to fit; a shorter clients root, a request's Short name shortened in the editor, or a shorter return name at the next rollover gives it back
+api._vocab	rules[0].detail	12	Every routing and status decision comes from deterministic rules in the manifest.
+api._vocab	rules[0].headline	9	No generative AI ever reads a client financial document.
+api._vocab	rules[1].detail	35	Files are moved byte for byte under their own names out of Drop files here into the client's folder for the year; all work happens on copies, and every move is recorded in the record.
+api._vocab	rules[2].detail	84	A document is filed only when exactly one request accepts it - or, when one document names several forms as itself, when each of those forms is accepted by exactly one request, or, when a broker's consolidated statement is accepted by several requests, when exactly one of them accepts it for its 1099-B, which then holds the whole statement. Ambiguous, contested and unrecognized files go to 00 - Needs Review for a person - misfiling a tax document is worse than not filing it.
+api._vocab	rules[3].detail	24	The system drafts client emails and stops. There is no SMTP, no mail client and no network call in the reminder or scheduling path.
+api._vocab	scan.not_in_pass	25	The pass ended, but its final line does not name this return, so its counts are not shown; the page is drawn from the record.
+api._vocab	scan.not_sorted	7	{n} file(s) could not be sorted
+api._vocab	scan.problem	6	The pass reported a problem: {error}
+api._vocab	schedule.move_confirm	43	{host} runs the schedule for this clients folder, so this computer registered none.  Move the schedule to this computer? Do this only when {host} has stopped running it for good (it removes its own task at its next start). Nothing is ever sent.
+api._vocab	schedule.note	8	Scan works either way. Nothing is ever sent.
+api._vocab	schedule.repair_confirm	27	Register the daily job with Task Scheduler again, on this computer, for this clients folder?  It files, scans and (on saturdays) drafts reminders. Nothing is ever sent.
+api._vocab	schedule.repair_help	18	Register the daily job again on this computer - only needed if the schedule was deleted or broken
+api._vocab	settings.firm_help	6	as it should sign the reminders
+api._vocab	settings.phone_help	9	named in the final-notice reminder; blank drops that sentence
+api._vocab	shell.could_not_send	13	The app could not send that to the tracker ({kind}); nothing was changed.
+api._vocab	shell.could_not_start	6	The tracker could not start ({code}).
+api._vocab	shell.killed	26	The pass ran past its limit of {minutes} minutes and was stopped. What it finished is on the record, and the next pass does the rest.
+api._vocab	shell.no_log	24	There is no error log to hold the details - the tracker has no data folder yet - so they are here instead: {stderr}
+api._vocab	shell.no_reply	16	The tracker ended without a reply (exit code {code}); the details are in the error log.
+api._vocab	shell.not_opened	14	That is no longer the folder or file the tracker reported; nothing was opened.
+api._vocab	shell.page_error	16	The app met an error of its own ({kind}); the details are in the error log.
+api._vocab	triage.nothing_suggested	13	nothing to suggest - the evidence says nothing about which request this is
+api._vocab	triage.places.footer	6	in the footer of page {page}
+api._vocab	triage.set_aside_note	12	{identifier} is {label} - clear it in the editor to file here
+api._vocab	year_note	12	Defaults to the most recently ended year; the checklist's periods follow it
+pilot-content.js	terms.checkbox	10	I have read this and will keep my own backups.
+pilot-content.js	terms.sections[0].bullets[0]	13	A test edition of Tax Document Tracker, built by J Park & Associates.
+pilot-content.js	terms.sections[0].bullets[1]	11	It works, but it is still being finished. Expect rough edges.
+pilot-content.js	terms.sections[0].bullets[2]	6	Please tell us what you find.
+pilot-content.js	terms.sections[1].bullets[0]	12	Back up a Client’s folder before you point this program at it.
+pilot-content.js	terms.sections[1].bullets[1]	16	For your first tries, use a copy of a few client folders, not your live ones.
+pilot-content.js	terms.sections[2].bullets[0]	22	Files a client drops in are moved, byte for byte and under their own names, into that client's folder for the year.
+pilot-content.js	terms.sections[2].bullets[1]	7	They are never edited, renamed or compressed.
+pilot-content.js	terms.sections[2].bullets[2]	11	Sorting and renaming happen only on copies. Every move is recorded.
+pilot-content.js	terms.sections[3].bullets[0]	7	Fixed, written rules make every sorting decision.
+pilot-content.js	terms.sections[3].bullets[1]	11	Anything uncertain goes to Needs Review for a person to decide.
+pilot-content.js	terms.sections[4].bullets[0]	11	The program drafts reminder emails. You read and send them yourself.
+pilot-content.js	terms.sections[4].bullets[1]	17	No email sending, no data sent anywhere: it runs on this computer and needs no internet connection.
+pilot-content.js	terms.sections[5].bullets[0]	11	The Pilot is provided as is, without warranty of any kind.
+pilot-content.js	terms.sections[5].bullets[1]	14	You remain responsible for your clients' records and for checking what the program files.
+pilot-content.js	terms.sections[6].bullets[1]	17	Please do not send client documents. Describe what happened, or send a screenshot with client names covered.
+pilot-content.js	terms.title	7	Before you start: this is a Pilot
+pilot-content.js	tour.steps[0].does[0]	7	A client drops documents in one folder.
+pilot-content.js	tour.steps[0].does[1]	6	The program sorts and renames them.
+pilot-content.js	tour.steps[0].does[2]	10	You see what arrived, what's missing, and what needs you.
+pilot-content.js	tour.steps[0].limit	13	6 return types (1040, 1120, 1120-S, 1065, 1041, 990), about 74 document kinds.
+pilot-content.js	tour.steps[0].strength	14	Runs on this computer with fixed rules. No AI reads documents. Nothing is sent.
+pilot-content.js	tour.steps[10].does	9	Replay this tour any time with the Tour button.
+pilot-content.js	tour.steps[10].limit[1]	7	About 74 document kinds, 6 return types
+pilot-content.js	tour.steps[10].limit[2]	7	Scans slow without the optional graphics pack
+pilot-content.js	tour.steps[10].limit[3]	8	Schedule on/off and run time: the Schedule button
+pilot-content.js	tour.steps[10].limit[4]	6	Installer unsigned: Windows shows a warning
+pilot-content.js	tour.steps[10].strength[0]	7	Runs offline on your own Windows PC
+pilot-content.js	tour.steps[1].does	15	Choose one clients folder. Each household gets a shared inbox and a private working folder.
+pilot-content.js	tour.steps[1].fallback	12	Clients folder already chosen. Switch returns from the list at top left.
+pilot-content.js	tour.steps[1].limit	13	Use a folder your firm backs up. One computer runs the automatic schedule.
+pilot-content.js	tour.steps[1].strength	12	Clients see only their own shared folder. Your working files stay private.
+pilot-content.js	tour.steps[2].does	12	Create a household, pick the return type, tick the documents you expect.
+pilot-content.js	tour.steps[2].fallback	9	New household is at the top of the window.
+pilot-content.js	tour.steps[2].limit	9	Unknown document types go to Needs Review, never guessed.
+pilot-content.js	tour.steps[2].strength	11	Files are matched to your own request list, in your order.
+pilot-content.js	tour.steps[3].does	15	Inbox opens 'Drop files here'. PDFs, scans, photos, spreadsheets, zips and emails all go in.
+pilot-content.js	tour.steps[3].fallback	11	Inbox opens once a household is chosen at the top left.
+pilot-content.js	tour.steps[3].limit	12	Photos and faint scans read slowly and may go to Needs Review.
+pilot-content.js	tour.steps[3].strength	7	The client never names or sorts anything.
+pilot-content.js	tour.steps[4].does	16	Reads each new file, matches it to a request, moves the original, makes a named copy.
+pilot-content.js	tour.steps[4].fallback	11	Scan works once a household is chosen at the top left.
+pilot-content.js	tour.steps[4].limit	13	First scans with many images take longer. The schedule also runs it automatically.
+pilot-content.js	tour.steps[4].strength	12	Filed only when exactly one request fits. Doubt goes to a person.
+pilot-content.js	tour.steps[5].does	12	Lists the originals moved from the inbox into the client's year folder.
+pilot-content.js	tour.steps[5].fallback	6	Appears after a scan moves something.
+pilot-content.js	tour.steps[5].limit	6	Moved files leave the client's inbox.
+pilot-content.js	tour.steps[5].strength	14	Moved byte for byte, never altered. Every move is recorded and can be undone.
+pilot-content.js	tour.steps[6].does	17	Accepted documents are copied into Prepared with organized names, e.g. 'A01 - W-2 - TY2025.pdf'.
+pilot-content.js	tour.steps[6].fallback	7	Appears after the first document is filed.
+pilot-content.js	tour.steps[6].limit	8	Fixed naming pattern; custom schemes aren't offered yet.
+pilot-content.js	tour.steps[6].strength	14	Every return's folder reads the same way. Copies can be re-made from the originals.
+pilot-content.js	tour.steps[7].does	16	Unknown, ambiguous or unreadable files wait here with likely matches. File with one click, or dismiss.
+pilot-content.js	tour.steps[7].fallback	8	Appears when a pass sets a document aside.
+pilot-content.js	tour.steps[7].limit	14	Expect more items in the first weeks. The rules don't change on their own.
+pilot-content.js	tour.steps[7].strength	8	Nothing is guessed. You see why it stopped.
+pilot-content.js	tour.steps[8].does	13	Opens the status page: every requested document, received or missing, with validation notes.
+pilot-content.js	tour.steps[8].fallback	11	Status opens once a household is chosen at the top left.
+pilot-content.js	tour.steps[8].limit	9	A file on this computer, not a client portal.
+pilot-content.js	tour.steps[8].strength	10	One page answers 'what are we still waiting for?'
+pilot-content.js	tour.steps[9].does	12	Weekly, drafts a reminder listing what's missing. You copy and send it.
+pilot-content.js	tour.steps[9].fallback	6	Appears when a reminder is drafted.
+pilot-content.js	tour.steps[9].limit	10	Send from your own email; no Outlook or Gmail link.
+pilot-content.js	tour.steps[9].strength	10	Nothing is ever sent. No client is contacted without you.
