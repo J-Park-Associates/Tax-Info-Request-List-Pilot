@@ -286,7 +286,7 @@ STATUS_PAGE_FILENAME = "status.html"
 #: What an earlier version left and nothing uses (decision 186). Said on the
 #: app's first screen until it is gone; nothing is deleted for the person.
 LEFT_BEHIND = ("Left over from an earlier version and no longer used: {paths}. They hold client "
-               "names, and nothing deletes them for you - delete them. The tracker keeps its "
+               "names, and nothing deletes them for you - delete them. The app keeps its "
                "database and its run log in {home} now.")
 #: What an earlier version left that must be kept, not deleted: decision
 #: 159's record checkpoint cannot be made again, and the records in
@@ -2279,7 +2279,7 @@ STATUS_INDEX_UNREADABLE = "{label}: the index could not be read ({error})"
 #: counts, and only when there is one - on a good day there is nothing.
 STATUS_RECORDS_HEADING = "Records that need a person"
 RECORD_SIBLING = ("{path}: a copy beside a record or its lock, left by a sync client or a second "
-                  "machine. The tracker never deletes one; a person decides which copy is right.")
+                  "machine. The app never deletes one; a person decides which copy is right.")
 RECORD_FOREIGN = ("{key}: line {seq} was written on {host} ({at}). Once a person has looked, "
                   "acknowledge it: {command}")
 #: The command that acknowledges, with this machine's own store in it - no
@@ -2641,7 +2641,7 @@ def _parser():
                         help=f"pretend today is this {ISO_DATE_HINT} (for testing a schedule)")
     parser.add_argument(LOG_FLAG, nargs="?", const=LOG_FILENAME, default="",
                         help=f"append the pass's counts and codes to a log (default: "
-                             f"{LOG_FILENAME} in the tracker's data folder)")
+                             f"{LOG_FILENAME} in the app's data folder)")
     parser.add_argument(PROGRESS_LINES_FLAG, action="store_true",
                         help="print the pass's progress lines and end with one final JSON line "
                              "(what the app's Run now reads)")

@@ -19,13 +19,13 @@ synced return folder carries everything about that return: the
 working copies, the drafts and the return's own ledger,
 which holds the request list too; the originals sit in the client's own
 folder for the year, one tree over. There is no portal and no second copy of any of
-it. There *is* one database — `tracker.db`, in the tracker's data folder on
+it. There *is* one database — `tracker.db`, in the app's data folder on
 the designated machine (`%LOCALAPPDATA%\tax-document-tracker`, decision 186) —
 built from the ledgers in the folders, never synced
 and never opened by a person. Beside it sits a second, small file,
 `record-heads.db` (decision 159): this machine's note of how far every
 return's record went when it last wrote or read it. It is what lets the
-tracker notice a record that came back shorter, reordered or rewritten -
+app notice a record that came back shorter, reordered or rewritten -
 a sync client restoring an older copy, a careless hand edit - instead of
 quietly rebuilding from it. It is never synced either, and it survives
 deleting `tracker.db`. A third, `firm-view.json` (pilot P120), keeps the
@@ -36,7 +36,7 @@ person, and it is never synced. A household whose folders changed since is
 read again; deleting the file is always safe (the next Overview reads every
 household once, a few seconds longer).
 
-**The tracker's data folder is private to one Windows account.** `tracker.db`
+**The app's data folder is private to one Windows account.** `tracker.db`
 holds every client's index rows, and it lives in
 `%LOCALAPPDATA%\tax-document-tracker` (decision 186): the account's own local
 application-data folder, which Windows lets only that account, the machine's
@@ -68,7 +68,7 @@ A reading's `scratch` folder catches what a library writes *through the
 temp folder*; a library that writes to a path of its own choosing is not
 caught. A killed reading's folder lives until the next reading starts, and
 one whose process number Windows reused lives until that process ends.
-`TRACKER_STORE`, which points the tracker at another database, is held to
+`TRACKER_STORE`, which points the app at another database, is held to
 the same checks — a whole path, not inside the program, on a fixed disk —
 and the store check refuses a copy inside the app's own folder. A `--log`
 file and the scheduler's `--out` file are a person's explicit choice and go
@@ -83,7 +83,7 @@ Last Run Result; the app's first screen says why in its red banner. The page lis
 is read from the database. The residual risk: a clients root the pass
 cannot reach at the same time leaves only Task Scheduler's Last Run Result.
 
-**A return the store refuses as "changed behind the tracker's back".** The
+**A return the store refuses as "changed behind the app's back".** The
 store keeps a fingerprint of every line of a return's record it has read
 (decision 137). If a sync client or a person rewrote or reordered the record
 while keeping its length, the pass and the app refuse that return, apply
@@ -109,7 +109,7 @@ the day of the upgrade: at the end of Setup, and in a notice at the top of
 the app's first screen headed *Setup Needs Attention*. The
 notice stays until a later run finds nothing; it cannot be dismissed,
 because the finding is true until the record is repaired. A return it
-names as "malformed", or as "changed behind the tracker's back", is shown
+names as "malformed", or as "changed behind the app's back", is shown
 to Jason before that household is sorted, and repaired the way any such
 line is repaired (section 9); until then its household stops with the same
 sentence and the rest of the practice runs as normal - the pass judges
@@ -133,7 +133,7 @@ into. Another drive's root is fine — a drive letter mapped to the clients
 share is a real root.
 
 **The clients root must be on a Shared Drive, not in My Drive.** In My Drive
-a client owns what they upload: they could delete a document the tracker has
+a client owns what they upload: they could delete a document the app has
 already filed, and the rule that originals are never altered cannot hold on
 a folder somebody outside the firm can empty. On a Shared Drive the firm owns
 every file in it, whoever uploaded it.
@@ -205,10 +205,10 @@ the clients root, and the difference between them is the whole point:
   `A01 - W-2 - TY2025 (2).pdf` - and the review folder `00 - Needs Review`
   (decision 168). There is no folder per request: the name says which
   request a copy is for, and Explorer sorts a request's copies together. A
-  folder anyone makes inside `Prepared` is theirs: the tracker files nothing
+  folder anyone makes inside `Prepared` is theirs: the app files nothing
   into it, counts nothing in it and moves nothing out of it, and every pass
   names it once on the run - *"<folder> is a folder inside Prepared. The
-  tracker files into Prepared itself and counts nothing in this folder."* A
+  app files into Prepared itself and counts nothing in this folder."* A
   return made before decision 168 keeps its old request folders, and each is
   named that way. What sits in them is not counted, so such a return reads
   Missing for every document in its old folders, and its letter would ask
@@ -216,7 +216,7 @@ the clients root, and the difference between them is the whole point:
   it again. A file in
   `Prepared` whose name begins with no request's identifier is named on the
   run too, and not counted.
-- The inbox holds one file of ours, `_README.txt`, which the tracker writes
+- The inbox holds one file of ours, `_README.txt`, which the app writes
   and nobody edits. Step 2 of it reads *"We will examine and place all
   documents into the current year's folder."*; step 3 reads *"Please keep
   sending the documents listed under REQUESTED, NOT YET RECEIVED."*; step 4 begins *"Original
@@ -241,12 +241,12 @@ the clients root, and the difference between them is the whole point:
   and `G:\Shared drives\JPA Clients\J Park & Associates` without quotes is two
   commands to a Windows shell. `"G:\Shared drives\JPA Clients"` is safe.
 
-**Folders the tracker leaves alone.** The tracker reads that layout and no
+**Folders the app leaves alone.** The app reads that layout and no
 other. Anything else under the root — a stray folder beside the two trees, a
 household with no record, a folder where a year should be that is not four
 digits, a year folder with no return in it, a folder from before September
 2026 holding a `_manifest.xlsx`, a folder Windows will not let it list, a
-client folder no household owns, a folder named in a way the tracker does
+client folder no household owns, a folder named in a way the app does
 not accept for a household or a return — is
 **listed with one sentence saying why, and left alone**. Nothing is renamed,
 nothing is moved, nothing is deleted. The list is at the bottom of the status
@@ -255,7 +255,7 @@ which opens the list of folders with a two-word reason beside each name:
 Unknown Folder, Old Layout, No Household, Unowned Folder, Name Refused, No
 Return, Cannot List, Look-Alike Folder, Old Workbook or Bad Year; the long
 sentence goes to the error log), and at the end of every command line pass,
-under **Folders the tracker leaves alone**. The app's list is as the app
+under **Folders the app leaves alone**. The app's list is as the app
 last walked the root: when it started, at its last sort (the **Sort** icon
 next to the search box, or Tools, Sort Now), or when it last created,
 rolled forward or retired a return, accepted a folder's name, changed a
@@ -276,7 +276,7 @@ first"*): move it aside, then set the household up in the app.
 The app will not adopt one either. Creating a household whose folder is
 already there without a record is refused before anything is written, in
 these words (decision 137): *"A folder named '<name>' is already there and
-the tracker did not make it. Choose another name, or move that folder aside
+the app did not make it. Choose another name, or move that folder aside
 first. Nothing was changed."* And a create that fails part way removes only
 the folders it made itself — never one it found.
 
@@ -286,7 +286,7 @@ it by hand.
 
 **The folder is the name** (decision 188). A household is its folder's
 name, and a return is its folder's name under its year folder; what the
-record says about them is a claim the tracker checks. Rename a household or
+record says about them is a claim the app checks. Rename a household or
 return folder in Explorer, or drag a return into another household, and the
 household is **paused**: the pass sorts, lays out and drafts nothing for it,
 and every one of its returns shows red on every pass with this sentence
@@ -348,7 +348,7 @@ Received Date, File Count and Validation Notes are on the Status Report**,
 not in the editor. The engagement's details — client, share link, due
 date, sender, firm, reminders, active — and the **people** the return is
 for are edited in the same place.
-The editor keeps each value inside the bounds the tracker will read back
+The editor keeps each value inside the bounds the app will read back
 (decision 187): Expected Count is a whole number from 1 to 9,999, Min Size
 KB from 0 to 1,048,576, a date is a real date between 1900 and 2100, and a
 Date Pattern is at most 200 characters with at most eight variable parts
@@ -356,7 +356,7 @@ Date Pattern is at most 200 characters with at most eight variable parts
 at most is open-ended (`+`, `*`) and the rest at most `{…,20}`. No
 repetition may sit inside another, no back-reference inside one, and a `|`
 not inside anything that repeats more than once (so `(?:Dec|12)?` is fine).
-The tracker counts every way the pattern could try one line, and refuses
+The app counts every way the pattern could try one line, and refuses
 one with more than 16,384, or whose ways times the longest stretch of
 matching each can do come to more than 200,000 (an assertion such as
 `\b` counts toward that stretch). The slowest pattern found by the
@@ -405,10 +405,10 @@ double-click brings the open window forward rather than opening another
 editor beside it.
 
 **A folder from before September 2026** may still hold a `_manifest.xlsx`.
-The tracker no longer reads it: it is one of the folders left alone, listed
+The app no longer reads it: it is one of the folders left alone, listed
 with its own sentence rather than treated as an engagement, and the return is
 set up again in the app (Client, **Add a Return…** with the household open,
-or File, **New Household…** for a household the tracker has no record of;
+or File, **New Household…** for a household the app has no record of;
 then type or paste the rows). The workbook may be deleted once that is done.
 
 The status report is one web page with everything about that engagement on
@@ -435,7 +435,7 @@ prints the state. The request list is edited in the app, not on the page.
 The record, the run log and `python -m tracker.scanner` keep the scanner's
 own words for a request; this runbook uses them too. The app, the Status
 Report and the staff lines under a draft show a preparer's word for each,
-from one table in the tracker (`tracker.manifest.STATUS_LABELS`).
+from one table in the app (`tracker.manifest.STATUS_LABELS`).
 
 | The record says | The app shows |
 |---|---|
@@ -450,7 +450,7 @@ from one table in the tracker (`tracker.manifest.STATUS_LABELS`).
 | **Not Applicable** | Not Applicable in TY<year> - Does not apply this year; not counted, not chased. |
 
 Beside every request that is still outstanding the app says whose move it
-is, with the one sentence behind it, from one table in the tracker
+is, with the one sentence behind it, from one table in the app
 (`tracker.reminder.SIDES`):
 
 | Whose move | The sentence beside it |
@@ -479,7 +479,7 @@ changes nothing:
   database against the ledgers, document by document, status by status and
   rule by rule. The first argument is the folder the app runs from, or its
   settings file: either means this Windows account's database, in the
-  tracker's data folder (decision 186). A path to a `tracker.db` is taken as
+  app's data folder (decision 186). A path to a `tracker.db` is taken as
   that file — a copy you want to ask about — except the old one beside the
   app, which is refused. Anything else — a mistyped
   folder, a file that is neither — is refused, so a typo can never create
@@ -494,7 +494,7 @@ changes nothing:
   return's folder>" --discard --accept-loss "<name>"` - after the export
   and the difference; `--discard` alone, or for the whole root, is
   refused. **An older database is set
-  aside by itself** since decision 159: the tracker renames it
+  aside by itself** since decision 159: the app renames it
   `tracker.db.v<N>.old` and builds a new one from the ledgers (keep the old
   file until the first pass has finished), and a database from a *newer*
   version is refused with "install that version again". Either way the
@@ -562,7 +562,7 @@ changes nothing:
   would be replayed into it. It never overwrites: if the data folder
   already holds one of those names, nothing moves, and the step says so in
   one sentence - then, and only then, a person acts, as below. It moves nothing on the delete list. Until
-  `record-heads.db` is moved the tracker makes no new checkpoint - one
+  `record-heads.db` is moved the app makes no new checkpoint - one
   would trust every record as it is that day (*the moment of trust*, §6) -
   so nothing is written: the pass serves no household, writes its page
   and its log and says *No record checkpoint was made* (reason
@@ -589,7 +589,7 @@ changes nothing:
   **The fallback error log's place (ruling 22):**
   `%LOCALAPPDATA%\Tax Document Console\error.log`, normally
   `C:\Users\<user>\AppData\Local\Tax Document Console\`, with one
-  older copy `error.log.1`. (The tracker's normal error log is the
+  older copy `error.log.1`. (The app's normal error log is the
   `tracker-errors.log` in the data folder, above.) Uninstalling the app leaves that folder behind.
   The log can contain client names, so when the program is removed for good
   (or the PC is retired) delete the folder by hand. A PC upgraded from the
@@ -802,7 +802,7 @@ answer is two steps, on the designated machine:
    folder by hand - and every button that writes refuse with *this
    machine's record checkpoint belongs to <old folder>; this would work in
    <new folder>*. (One client's folder inside the root is not refused.) Once you are sure the root really moved (and this is not
-   a second copy of the tree), run, with the tracker's data folder (where
+   a second copy of the tree), run, with the app's data folder (where
    `record-heads.db` sits since decision 186) and the new root:
 
    ```
@@ -857,25 +857,25 @@ On a Windows PC with long paths off - the Windows default
 (`LongPathsEnabled` = 0) - that limit is one character shorter, 259,
 because Windows counts the character that ends a path, and a folder costs
 more than its own length: Windows will not make a folder of 248
-characters or more, and every file the tracker writes passes through a
+characters or more, and every file the app writes passes through a
 temporary name up to twenty-six characters long beside it. So there each
 return's room is measured with its review folder counted that way, and a
 return that does not fit says so in the room's own sentences - never as
 "could not be filed (FileNotFoundError)" (pilot decision P29). The
-tracker asks Windows which applies when it starts; nothing needs setting.
+app asks Windows which applies when it starts; nothing needs setting.
 
-A person has exactly three levers, and every sentence the tracker says
+A person has exactly three levers, and every sentence the app says
 about room names one of them: **a shorter clients root** (a drive letter
 over a profile path, the Shared Drive's own folder over one deep inside
 it), **a shorter Short name** in the editor for the request (every copy
 filed from then on is shorter; the folder keeps its name - a folder made
 under the full title before decision 144 keeps that name too, and takes
-short copies), and **a shorter return name** at the next rollover. Nothing in the tracker ever renames a
+short copies), and **a shorter return name** at the next rollover. Nothing in the app ever renames a
 folder or a filed copy to make room.
 
 ### Sharing a household with a client
 
-The tracker never makes, checks or changes a share. Two grants, made once by
+The app never makes, checks or changes a share. Two grants, made once by
 a person in Google Drive, on the firm's Shared Drive:
 
 1. Share the household folder under `Clients` (for example `Clients\Park
@@ -894,7 +894,7 @@ a person in Google Drive, on the firm's Shared Drive:
 The app asks for all three in those words — once, when a household's first
 return is made, and on the household's page until the third step is done. It
 records only that a person said so: Drive for desktop exposes no permission
-to a program, so the tracker cannot see a share and does not pretend to.
+to a program, so the app cannot see a share and does not pretend to.
 Nothing about filing, scanning or drafting waits on it.
 
 Nothing is ever re-shared. A new year is a new folder under the same
@@ -932,7 +932,7 @@ the point of the arrangement, and it is also why a document handed to a fed
 return **moves** into that household's year folder: the dropper stops seeing
 it unless they are shared there too.
 
-What the tracker does and does not do:
+What the app does and does not do:
 
 - The document is judged against every return the drop folder feeds, its own
   and the fed ones together: the request lists accept, the name on the page
@@ -961,12 +961,12 @@ What the tracker does and does not do:
   computer is named here after the next of those. The feeds a page
   lists as its own, and every click that files through a feed, read
   the other household's record at that moment.
-- Nothing is ever inferred. The tracker never looks at two households and
+- Nothing is ever inferred. The app never looks at two households and
   suggests that one feeds the other, any more than it decides who belongs
   in a household. Both are a person's assembly.
 - **Ownership changes are a person's too.** When somebody buys in or sells
   out, a person changes the Drive grant, changes the members in the app and
-  extends or trims the feed. The tracker records the change and does nothing
+  extends or trims the feed. The app records the change and does nothing
   else about it — it cannot see a share and does not pretend to.
 
 Every feed a person adds is warned about, every time: anyone with access to
@@ -1054,7 +1054,7 @@ purpose (the owner's decision of 2026-09-23, a named exception to decision
 another machine, both need what is in it. Do not tidy it by hand; a file
 there that no row names is said on every pass until a person has looked.
 
-### A document the tracker did not file
+### A document the app did not file
 
 A file turns up that no row accounts for — in `Prepared` under a request's
 name, in a hidden `_Opened` folder, or inside an email or a zip you have
@@ -1071,7 +1071,7 @@ the run's line say whose it is. Then:
   **this household's `Drop files here`**, never the client's folder for
   the year: it is already this household's, so nothing is published
   anywhere new. The next pass sorts it, and if it parks it gets a row,
-  with **Open** when the tracker read it (decision 190). Then delete the stray by hand.
+  with **Open** when the app read it (decision 190). Then delete the stray by hand.
 - **It is another return's, or another household's.** Do the same
   there: that household's `Drop files here`, and nowhere else.
 - **You cannot tell whose it is.** Leave it where it is and ask whoever
@@ -1082,10 +1082,10 @@ the run's line say whose it is. Then:
 
 To read such a file, let the pass give it a row and use **Open** on its
 row: the firm's review copy, marked for Protected View, offered on a row
-the tracker read and parked for a filing reason (decision 190's
+the app read and parked for a filing reason (decision 190's
 allow-list). That replaces decision 184's reading of a copy set aside by
 hand (Jason's answer of 2026-09-26). A row with no **Open** - an email
-or a zip, a reading the tracker refused, a file that is not a document -
+or a zip, a reading the app refused, a file that is not a document -
 is read on a machine with no Drive sign-in and no client folder (decision
 184), or you ask the client what they meant to send.
 
@@ -1236,7 +1236,7 @@ household and cannot clear it. **Unfile** asks for an optional reason first.
    every parked file across the practice, newest first. A return the pass
    did not run is shown as its record stood when the pass began. The app's
    **Open Status** button opens it. The run log
-   (`tracker.runner.LOG_FILENAME`), in the tracker's data folder on the
+   (`tracker.runner.LOG_FILENAME`), in the app's data folder on the
    machine that runs the schedule (`%LOCALAPPDATA%\tax-document-tracker\logs`,
    decision 186), says of every pass — the app's button's included — when it
    ran and how many returns it filed, parked, failed, skipped or held, with a
@@ -1392,7 +1392,7 @@ household and cannot clear it. **Unfile** asks for an optional reason first.
      decided on 2026-09-26 that such a line is named here every pass, and
      filing goes on, until a person has looked. Check with whoever uses
      that computer that the change was theirs, then run the command the
-     page prints, `python -m tracker.checkpoint "<the tracker's data folder>"
+     page prints, `python -m tracker.checkpoint "<the app's data folder>"
      acknowledge "<the return>"`, and it stops being named.
    - **a refused record**, a sentence ending *Run recover (runbook §6).*:
      the pass left that return alone because its record came back
@@ -1408,7 +1408,7 @@ household and cannot clear it. **Unfile** asks for an optional reason first.
    outlined, and looking again shows what it holds now. *Retry* re-runs
    the same step. A greyed return is a pass in progress. Every unexpected
    error's detail is in the error log (`tracker.settings.ERROR_LOG_FILENAME`)
-   beside the tracker's database, rotated at 1 MB, three kept. It can hold
+   beside the app's database, rotated at 1 MB, three kept. It can hold
    client names: it stays on this machine, and a developer reads it at
    this machine.
 2. **Clear the review folder.** Anything the rules could not be sure of is
@@ -1675,34 +1675,34 @@ copy in `00 - Needs Review` - never the client's original - marked as from
 the internet so that Office and Acrobat show it in Protected View, the
 read-only view they give a file from outside (decision 190). **Open** is
 an allow-list, `api.READ_AND_PARKED_CODES`: it is offered only for a
-document the tracker read and parked for a filing reason - it matched no
+document the app read and parked for a filing reason - it matched no
 request or more than one, a request contested it, the name is not on the
 page or names another return, or it names another household's person
 and waits for one click (decision 204), its forms would not sort, its
 issuer is not named, it shows its form number. Every other row has no **Open**: an
 email or a zip; a file whose reading was refused (unreadable, extraction
 or OCR failed, the reader crashed, stopped or could not start, too large,
-locked, no pages, no readable text); a file the tracker never read (an
+locked, no pages, no readable text); a file the app never read (an
 iPhone photo with no HEIC reader, no reader on this machine, a type no
 request takes, a Google Docs shortcut, a file too small); and any cause
 added since that nobody has placed in the list. For those, ask the client
 to send it again, or open it, if at all, on a machine with no Drive sign-in and no client folder, never this one (decision 184). A copy that
 cannot be marked is never made (`filer.MARK_REFUSED`, below). Read it
 there, and do not enable editing, content or macros. A program, script or
-shortcut is not a document: since decision 190 the tracker sets it aside
+shortcut is not a document: since decision 190 the app sets it aside
 itself (`reasons.NOT_A_DOCUMENT`; the one list is
 `validators.PROGRAM_EXTENSIONS`), makes it no copy and offers no **Open**,
 and it is opened nowhere - ask the client what they meant to send. A file
 with no row - a stray in `Prepared` or `_Opened`, an original in the
 client's folder for the year - is never opened where it sits; the rows
-below, and §1's *A document the tracker did not file*, say where it goes.
+below, and §1's *A document the app did not file*, say where it goes.
 
 **The Code column is what the machine reads** (decision 190). The Reason is
 the sentence for you, and it may quote what the client chose — the file's
-name, a page's spelling — so nothing the tracker decides reads it: the
+name, a page's spelling — so nothing the app decides reads it: the
 letter, its holds and the review row read the row's **Code**, the cause's
 one name in `tracker/reasons.py`. A row written before decision 190 has an
-empty Code: its cause was not recorded, and the tracker does not guess it
+empty Code: its cause was not recorded, and the app does not guess it
 from the words. Such a parked row holds the letter for the request its
 row suggests, asked in the generic sentence, until you decide it.
 
@@ -1720,22 +1720,22 @@ row suggests, asked in the generic sentence, until you decide it.
 | `reasons.FILED_WHOLE` / `reasons.ALSO_ANSWERS` | A broker's consolidated 1099 (decision 146): several requests accepted it, and exactly one - E01 on a 1040, B01 on a 1041 - was accepted because of its 1099-B section, so it filed whole there, one copy in one folder. The Also Answers column names every other asked request one of its sections answers (a 1099-INT/DIV row, a 1099-MISC row) and the sections that did; each of those requests reads Received with `reasons.IN_CONSOLIDATED` in its notes, counting one document per section - so a 1099-INT/DIV row asking for three is Partial after one statement with interest and dividend sections - and the letter does not ask for them. A statement with only interest and dividend sections is not a brokerage statement and files under the 1099-INT/DIV row as before. | Nothing. If the statement does not in fact carry what one of those requests needs, press **Mark … missing** beside it in the app's filed list: the statement stays where it is, that request comes off, and the letter asks for it again. |
 | `router.CONTESTED_PREFIX` | It looks like a named request but failed one of that request's own rules — last year's W-2, say. | Read the named rule. Usually it is the wrong year or the wrong client. |
 | `router.OCR_ONLY` | A scan or a photo with no text layer; OCR read it, but only loosely enough to guess. | Confirm what it is and file it. |
-| `reasons.NO_READABLE_TEXT` | Nothing in the file could be read at all — a scan or a photo the reader could not run on, an image-only PDF, an empty sheet. Nothing was matched against anything, so this is not "matched no request". | It has no **Open** (the tracker read nothing in it). Ask the client to send it again, or open it, if at all, on a machine with no Drive sign-in and no client folder, never this one (decision 184), and file it by hand. If many files say it at once, the reader itself is damaged: re-install the app (§6, step 5). The shortlist shows what its **file name** suggests; the document decides. |
+| `reasons.NO_READABLE_TEXT` | Nothing in the file could be read at all — a scan or a photo the reader could not run on, an image-only PDF, an empty sheet. Nothing was matched against anything, so this is not "matched no request". | It has no **Open** (the app read nothing in it). Ask the client to send it again, or open it, if at all, on a machine with no Drive sign-in and no client folder, never this one (decision 184), and file it by hand. If many files say it at once, the reader itself is damaged: re-install the app (§6, step 5). The shortlist shows what its **file name** suggests; the document decides. |
 | `reasons.UNREADABLE_IMAGE` | A photo arrived that would not open — a half-finished upload, most often. | Ask the client for it again; the reminder does. |
-| `reasons.HEIC_NOT_SUPPORTED` | An iPhone photo arrived and this machine's HEIC reader is missing. Ours, never the client's: they sent an ordinary photo. | Run `Setup.bat` again (it installs `pillow-heif` from the locks); for the packaged app, rebuild it. Until then it has no **Open**, because the tracker never read it: open it, if at all, on a machine with no Drive sign-in and no client folder, never this one (decision 184), and file it by hand. |
+| `reasons.HEIC_NOT_SUPPORTED` | An iPhone photo arrived and this machine's HEIC reader is missing. Ours, never the client's: they sent an ordinary photo. | Run `Setup.bat` again (it installs `pillow-heif` from the locks); for the packaged app, rebuild it. Until then it has no **Open**, because the app never read it: open it, if at all, on a machine with no Drive sign-in and no client folder, never this one (decision 184), and file it by hand. |
 | `reasons.ISSUER_NOT_NAMED` | The request list asks for this document one row per issuer (§8) and this one names none of them — a K-1 from a partnership nobody listed. | Type the issuer's name on the row and press **Add issuer** (§8), or file it to the right row. |
 | `reasons.NAME_NOT_ON_PAGE` | A request that asks for a **named** document accepted it, and the page names nobody on this return's people list (§10). | Open the page with **Open** on its row. If it does name them in a spelling the list has not got, file it and **teach the spelling** on the same row; if it is somebody else's, file it by hand on the return it belongs to. |
 | `reasons.NAMES_ANOTHER_RETURN` | The page names somebody who is on another return of this household, and nobody on this one. The sentence says who, and which return. | Switch to that return and file it there. Nothing was moved. |
 | `reasons.NO_PEOPLE_ON_FILE` | This return lists nobody yet, so nothing can confirm a named request. | Open **Edit Request List** and add the return's people (§10). Everything parked for this reason files itself on the next pass. |
 | `reasons.SEVERAL_FORMS_UNSORTED` | One page prints two or more forms' own names (a stack scanned in one pass) and they will not sort one to a request: a form no row asks for, two rows wanting one form, or a row that accepted the page on a phrase rather than a form number. When they do sort, the page files a copy under each request and the row's Reason says so (`reasons.NAMES_SEVERAL_FORMS`). | Split the scan, or file the whole page to the one request that matters and note the rest. |
 | `reasons.NOT_A_DOCUMENT` | A program, or a file Windows runs as one - `.exe`, a shortcut, a script, a disk image; the one list is `validators.PROGRAM_EXTENSIONS`, read from the file's real last extension (decision 190). It was decided before anything read it, so nothing its name says reached a request, and it has **no review copy**: the Needs Review page lists it under its own heading with its true type, and offers no **Open** and no **File it**. It holds nothing, because it names no request, and the letter asks the client about it by the name they gave it, under *RECEIVED, BUT WE COULD NOT USE IT*, in the words any unusable file gets. A program sent again after it was set aside parks the same way, unread and with no copy. | Never open it, here or anywhere. Close it with **Not requested** once the client has said what they meant to send; the letter then stops asking. A program's review copy made before decision 190 may still sit in `00 - Needs Review`: nothing offers it, and you may delete it from there by hand. |
-| `reasons.TOO_LARGE` | The file is larger than the tracker will read (`validators.MAX_READ_MB`) — a video, a disk image, a whole mailbox, or a genuinely enormous scan. It was not opened: no text, no OCR. It is still counted and kept like any other original. | It has no **Open**. Ask the client what it was meant to be, or open it, if at all, on a machine with no Drive sign-in and no client folder, never this one (decision 184), and file it by hand. |
+| `reasons.TOO_LARGE` | The file is larger than the app will read (`validators.MAX_READ_MB`) — a video, a disk image, a whole mailbox, or a genuinely enormous scan. It was not opened: no text, no OCR. It is still counted and kept like any other original. | It has no **Open**. Ask the client what it was meant to be, or open it, if at all, on a machine with no Drive sign-in and no client folder, never this one (decision 184), and file it by hand. |
 | `reasons.READING_STOPPED` | The reader gave up on this file at the safety stop — a minute a page, ten minutes a file (decision 137). Something in it made reading far slower than any real document, or the machine was very busy at the time; it will not be tried again until the file changes. The stop covers the whole reading - the text layer, each page's drawing and the OCR - because each document is opened and read in a process of its own that the pass ends at the stop (decision 150). An email or a zip is opened in that process too, under the stop for a file, and one stopped there parks whole with nothing taken out of it (decision 154). That process never outlives the pass: if the schedule's own time limit stops the pass, the reading stops with it. | It has no **Open**. Ask the client to send it again, or open it, if at all, on a machine with no Drive sign-in and no client folder, never this one (decision 184), and file it by hand. |
 | `reasons.READING_CRASHED` | The reader's own process ended on this file without an answer - the PDF or OCR library crashed, the email or zip opener crashed (decision 154), or the machine ran out of memory (decision 150). Only this file is affected: the pass went on to the next one, and this file will not be tried again until it changes. | It has no **Open**. Ask the client to send it again, or open it, if at all, on a machine with no Drive sign-in and no client folder, never this one (decision 184), and file it by hand. If many files say it at once, the machine itself needs a look. |
 | `reasons.READER_UNAVAILABLE` | The reader could not start on this machine at all, so the file was never opened (decision 150). The machine's problem, never the file's: nothing is kept about the file and nothing is recorded - no index row, no Needs Review row. The file waits (in the inbox, or in the year's folder with no row) and is read again on the next pass. The pass's own summary says it once, and the run log counts it (`reader-could-not-start`). | Look at the machine (memory, disk, antivirus, a damaged install). Once it is fixed, the next pass reads and files the waiting files; there is nothing to file by hand. |
 | `reasons.UNNAMED_ACROSS_HOUSEHOLDS` | This household's drop folder feeds a return in another household, and that return would have taken this document on its keywords alone — but the page names nobody, so it was not moved into a folder other people can open. It waits here (decision 137). The Evidence names the return and the request that wanted it, as `<return> / <request>`. The same holds for a document sent again that the other household already has. | Open it with **Open** on its row. If it is that return's, file it there with **File under another return**; if it is this household's, file it here. |
 | `reasons.NAMED_ACROSS_HOUSEHOLDS` | This household's drop folder feeds a return in another household, that return's list accepted this document, and the page names that return's person. The pass never files into another household (decision 204), so it waits here, its original in this household's year folder, and the row keeps what that return's list accepted. The same holds for a document sent again. Until somebody clicks, the other household's status does not count it. | Open it with **Open** on its row. If it is that return's, press **File it under <the return>** once — it files under the requests shown and nothing else. If the button is not offered (the row says the return is no longer fed, or a request is gone or N/A), use **File under another return**. If it is this household's, file it here. |
-| `router.NO_REQUEST_ACCEPTS` | No request on this manifest takes that file type at all. | Usually a stray file. Otherwise widen the request's allowed types. It has no **Open**: the tracker never read the file (decision 190). |
+| `router.NO_REQUEST_ACCEPTS` | No request on this manifest takes that file type at all. | Usually a stray file. Otherwise widen the request's allowed types. It has no **Open**: the app never read the file (decision 190). |
 | `reasons.CONTAINER_LOCKED` | An email or a zip arrived and one of the files inside is locked with a password (or packed in a way this machine cannot unpack), so nothing in it was opened. The container is kept like any original, with a review copy. | Ask the client for the documents themselves; the reminder does. It has no **Open**. If you have the password, open it, if at all, on a machine with no Drive sign-in and no client folder, never this one (decision 184), and bring the documents back into this household's `Drop files here`, never the client's folder for the year; the next pass sorts them. |
 | `reasons.CONTAINER_DAMAGED` | An email or a zip arrived that does not read as one - a broken zip, an Outlook file whose structure is damaged, an email with no headers at all. Nothing in it was opened. | It has no **Open**. Ask the client to send the documents on their own; the reminder does. It is opened, if at all, on a machine with no Drive sign-in and no client folder, never this one (decision 184). |
 | `reasons.CONTAINER_EMPTY` | An email or a zip arrived with nothing attached - only the message's own text, or a picture shown inside it. Ours, never the client's. | It has no **Open**. Open it, if at all, on a machine with no Drive sign-in and no client folder, never this one (decision 184), and read it: the message may say what they meant to send. Close it with **Not requested** once read. |
@@ -1759,12 +1759,12 @@ These appear as warnings on the run rather than as index rows:
 
 | The run warns | In plain words | What you do |
 |---|---|---|
-| `filer.REPLACED_IN_PBC` | An original we had already filed no longer holds the bytes we filed. A client cannot change one under the documented shares (§1, *Sharing a household with a client*), so somebody at the firm or the sync client did; the working copy was made from the earlier file. Said too for a file taken out of an email or a zip that was replaced under its own name in the hidden `_Opened` folder. | Do not open either where it sits. Copy the new file from the year's folder into this household's `Drop files here`: it is already this household's, so nothing is published anywhere new. The next pass sorts it as a new arrival (an identical one is a Duplicate), and if it parks it gets a row, with **Open** when the tracker read it. If it is the better document, file it and **Unfile** or set aside the old row. Then find out who at the firm changed it. |
+| `filer.REPLACED_IN_PBC` | An original we had already filed no longer holds the bytes we filed. A client cannot change one under the documented shares (§1, *Sharing a household with a client*), so somebody at the firm or the sync client did; the working copy was made from the earlier file. Said too for a file taken out of an email or a zip that was replaced under its own name in the hidden `_Opened` folder. | Do not open either where it sits. Copy the new file from the year's folder into this household's `Drop files here`: it is already this household's, so nothing is published anywhere new. The next pass sorts it as a new arrival (an identical one is a Duplicate), and if it parks it gets a row, with **Open** when the app read it. If it is the better document, file it and **Unfile** or set aside the old row. Then find out who at the firm changed it. |
 | `filer.README_UNREAD` | The README in a household's inbox could not be opened just now - most often because someone has it open, or antivirus is holding it (decision 179). It is neither sorted nor written over; it waits where it is, as a file held open does. | Nothing, unless it is said pass after pass: then close whatever has it open. The next pass looks again. |
 | `filer.UNTIED_IN_PBC` | A row was recorded without its bytes and its working copy no longer matches the original. | Do not open either file where it sits, and do not **Unfile** the row: with no recorded bytes it cannot prove which copy is its own, so Unfile would put a copy of the client's new file on a row and leave the old copy in `Prepared`, still counted for the request - and filing it again counts two. In the app, leave the row as it is. Nothing is adopted automatically, by design. |
-| `filer.UNRECORDED_OPENED` / `filer.OPENED_CONTAINER_GONE` | A file sits in a hidden `_Opened` folder that no row names, or a container's folder there whose email or zip has no row any more (decision 143). A pass killed half way that the next pass did not finish can leave one; so can a file somebody put there by hand. It is never sorted from there and never deleted. | Do not open it where it sits. Confirm whose it is first (§1, *A document the tracker did not file*): if it is this household's, drop a copy into this household's `Drop files here`; the next pass sorts it, and if it is a document it gets a row, with **Open** when the tracker read it. Then delete the stray by hand. If you cannot tell whose it is, leave it and ask. |
+| `filer.UNRECORDED_OPENED` / `filer.OPENED_CONTAINER_GONE` | A file sits in a hidden `_Opened` folder that no row names, or a container's folder there whose email or zip has no row any more (decision 143). A pass killed half way that the next pass did not finish can leave one; so can a file somebody put there by hand. It is never sorted from there and never deleted. | Do not open it where it sits. Confirm whose it is first (§1, *A document the app did not file*): if it is this household's, drop a copy into this household's `Drop files here`; the next pass sorts it, and if it is a document it gets a row, with **Open** when the app read it. Then delete the stray by hand. If you cannot tell whose it is, leave it and ask. |
 | `filer.REMAKE_FAILED` | A working copy that was gone could not be made again from the original this pass - a full disk, a path past the limit, or an original that changed while it was read (decision 157). Nothing half made is left, nothing is recorded, and the request is held for you (`reasons.COPY_MISSING`), never asked of the client. | Nothing, if the next pass makes it. If the line comes back every pass, look at what it names: free the disk or shorten the root; an original it names is never opened where it sits (§1, *A working copy went missing*). |
-| `filer.UNRECORDED_COPY` | A file is sitting in `Prepared` under a name that begins with a request's identifier (or in the review folder) that nothing on the record put there and no row's bytes account for. It **is** counted for that request — what a request has is what `Prepared` holds under its name — but nobody can say where it came from. It is never a copy the tracker left half made: since decision 155 a copy that fails or is killed part-way (antivirus holding it, a full disk, the power going out) leaves only a temporary file, which nothing counts and the next pass removes. | Do not open it where it sits. Confirm whose it is first (§1, *A document the tracker did not file*): if it is this household's, drop a copy into this household's `Drop files here`; the next pass sorts it and it gets a row, with **Open** when the tracker read it. Then delete the stray by hand. If you cannot tell whose it is, leave it and ask. If it is not a whole document — a partial or broken copy, say one an older version left — delete it by hand; never ask the client for it. Said every pass until you do. |
+| `filer.UNRECORDED_COPY` | A file is sitting in `Prepared` under a name that begins with a request's identifier (or in the review folder) that nothing on the record put there and no row's bytes account for. It **is** counted for that request — what a request has is what `Prepared` holds under its name — but nobody can say where it came from. It is never a copy the app left half made: since decision 155 a copy that fails or is killed part-way (antivirus holding it, a full disk, the power going out) leaves only a temporary file, which nothing counts and the next pass removes. | Do not open it where it sits. Confirm whose it is first (§1, *A document the app did not file*): if it is this household's, drop a copy into this household's `Drop files here`; the next pass sorts it and it gets a row, with **Open** when the app read it. Then delete the stray by hand. If you cannot tell whose it is, leave it and ask. If it is not a whole document — a partial or broken copy, say one an older version left — delete it by hand; never ask the client for it. Said every pass until you do. |
 | `filer.MARK_REFUSED` | A file that can carry macros (a macro workbook, an old `.doc` or `.xls`, an email or a zip) was not given a review copy, because the copy could not be marked as from the internet - the mark Office reads to open a file in Protected View (decision 190). The firm's folders sit on a volume that holds no such mark: FAT, or a network share that drops it. Fail closed: the row says it could not be filed, and its original rests safe in the client's folder for the year. An **Unfile** or a put-back that would move such a file into review is refused the same way and records nothing; one a pass was finishing from before is abandoned instead, said once (`filer.INTERRUPTED_MARK_REFUSED`), and the row stands as it was. | Never open the original. Ask the client to send the document as a PDF, and set this row aside with **Not requested** in the app; no later pass makes its copy. Move the firm's folders to an NTFS volume, so the next such file gets its marked copy. |
 
 And since decision 143 the Decision column has a sixth value, for an email
@@ -1810,11 +1810,11 @@ note says so in the firm's own sentence. The class says what kind of
 failure it was; the reader's own message is never shown, because it can
 quote the document itself - a number, a name. The full message and its
 trace go only to the debug log, `tracker-errors.log` in the data folder
-beside the tracker's database (decisions 186 and 193): a person mending the
-tracker reads it there, and it can name a client, so it is deleted with the
+beside the app's database (decisions 186 and 193): a person mending the
+app reads it there, and it can name a client, so it is deleted with the
 rest of that folder's client data. The same holds for a row the
 filer could not file, for the run log's line and for the app: an error the
-tracker did not foresee is shown by its class alone. So too for the
+app did not foresee is shown by its class alone. So too for the
 warnings a pass prints in the scheduled job's console window (a README or
 a page that could not be refreshed, a record that could not be read): they
 name the class and the firm's own file or return, never the error's words,
@@ -1934,7 +1934,7 @@ which syncs. Any machine signed into the same Drive account has all of it
 already.
 
 **What was only on that machine:** the settings file beside the app
-(`tracker.settings.SETTINGS_FILENAME`), the tracker's data folder
+(`tracker.settings.SETTINGS_FILENAME`), the app's data folder
 (`%LOCALAPPDATA%\tax-document-tracker`, decision 186: the database
 `tracker.store.STORE_FILENAME`, the record checkpoint beside it
 (`record-heads.db`, `tracker.checkpoint.CHECKPOINT_FILENAME`), the folder
@@ -1990,7 +1990,7 @@ Until that pass has run, the app refuses the buttons on that engagement
 with *a run was interrupted here; the next pass finishes it first* - press
 **Run now** on it and they come back.
 
-**And no file the tracker writes is ever half there** (decision 155). A
+**And no file the app writes is ever half there** (decision 155). A
 working copy, the weekly draft, the client's README, the Status Report
 and the settings are each written to a temporary name beside the real one
 (ending `.tmp`, with the program's process number and a random tag in it)
@@ -2008,7 +2008,7 @@ happens to carry that shape and holds anything else is left where it is.
 It is not syncing, but the pass cannot tell it from a file still arriving,
 so it is counted with them (*syncing N* on the run's line), pass after
 pass, until you move it out of the inbox, unopened. You never delete
-one of the tracker's own temporary files by hand. A working copy of a read-only file the client sent (from a
+one of the app's own temporary files by hand. A working copy of a read-only file the client sent (from a
 CD, or taken out of a zip by Explorer) is made writable, so a person's
 filing or hand-over can always move it; the client's original is left
 exactly as it came.
@@ -2180,7 +2180,7 @@ designated machine:
    delete them.
 2. **Understand which lines would go.** A line only *the database* has
    is a step the record no longer holds (a filing, an edit to the list):
-   accepting the loss drops it from the tracker's view. Look at the
+   accepting the loss drops it from the app's view. Look at the
    return's folder and the Status Report to see whether that step still
    matters. If it does, stop and ask Jason. If a conflict copy sits beside
    the record (any other file whose name begins `_ledger`), stop too: have
@@ -2200,7 +2200,7 @@ designated machine:
    return).
 
 **A record that does not read** (recover's first look says *the record
-itself does not read*, and offers no `--accept-loss`): the tracker never
+itself does not read*, and offers no `--accept-loss`): the app never
 rewrites a record, so this one is a person's job. A second person looks at
 the difference first. Then do exactly what the sentence says:
 
@@ -2210,7 +2210,7 @@ the difference first. Then do exactly what the sentence says:
   copy the export over the return's record (`_ledger.jsonl` in the return's
   own folder, the app closed and the schedule off);
 - if it says *this machine's store holds no copy of this return*, no file
-  the tracker wrote is one to restore from - it wrote no export at all when
+  the app wrote is one to restore from - it wrote no export at all when
   the database held nothing: restore from a conflict copy or the firm's
   off-drive copy, and ask Jason. Never copy a file shorter than the
   record's readable part over it.
@@ -2224,12 +2224,12 @@ Then run `recover` again to check the record now reads.
   would make the next pass a moment of trust. The next pass tries again.
 - *the clients folder is not the one this machine's record checkpoint
   belongs to*: see *If the clients root moves*.
-- *the tracker cannot read this machine's record checkpoint* (the pass
+- *the app cannot read this machine's record checkpoint* (the pass
   says *No household was served this pass*, or a return says it): the
   file is damaged, and the steps below are for this one only.
 
-If the pass or a return says *the tracker cannot read this machine's
-record checkpoint*, the file is damaged; the tracker never moves it by
+If the pass or a return says *the app cannot read this machine's
+record checkpoint*, the file is damaged; the app never moves it by
 itself, because a damaged checkpoint is exactly what a person must see.
 Close the app, turn the schedule off, and rename the file (for example to
 `record-heads.db.damaged`) - keep it, never delete it - then run one pass:
@@ -2256,7 +2256,7 @@ the same judgment the pass makes - a line outside the record's rule, said
 as the pass says a malformed line (below, section 9: a writer that is not
 a machine's name among them), the database holding lines the record
 does not, a recorded file missing or holding other bytes) and exits non-zero if there
-is any. It writes nothing anywhere. `python -m tracker.checkpoint "<the tracker's
+is any. It writes nothing anywhere. `python -m tracker.checkpoint "<the app's
 data folder>" state` shows the root the checkpoint belongs to and what it
 vouches for.
 
@@ -2474,7 +2474,7 @@ the same way.
   [ROADMAP.md](ROADMAP.md). The odd choice is usually load-bearing.
 - **What every pass did**, engagement by engagement, with the failures:
   the practice page (`tracker.runner.STATUS_PAGE_FILENAME`) in the clients
-  root; the run log (`tracker.runner.LOG_FILENAME`), in the tracker's data
+  root; the run log (`tracker.runner.LOG_FILENAME`), in the app's data
   folder on the machine that runs the schedule, counts them by code.
 - **What happened to one document**: the Index section of that
   engagement's **Status Report.html**. Every move and every rename is in
@@ -2483,7 +2483,7 @@ the same way.
 - **A household the pass stopped with "names … for a step (…), which is
   outside the places a step of this return may touch"**
   (`tracker.filer.OP_OUTSIDE`, decision 180): the return's record holds a
-  step the tracker did not write - a copy of the record restored over a
+  step the app did not write - a copy of the record restored over a
   newer one, a line another machine wrote, or a hand edit - pointing
   outside that return's own folders. The word in brackets says which way
   it is outside (decision 187): `absolute` (a drive, a share or a full
@@ -2491,7 +2491,7 @@ the same way.
   of this return's folders), `other-household` or `other-year` (a write
   into another household's client folder or another year's `_Opened`),
   `client-tree` (a removal naming a client's original or inbox - the
-  tracker only ever removes its own copies), `blank`, or `not-a-return`.
+  app only ever removes its own copies), `blank`, or `not-a-return`.
   "… would be copied to … with no fingerprint to prove the copy against"
   (`tracker.filer.COPY_UNPROVED`) is the same kind of line: a copy whose
   source is not there to be fingerprinted. (An interrupted copy an earlier
@@ -2508,7 +2508,7 @@ the same way.
 
 - **A household the pass stopped with "line N of the record is malformed
   (…)"** (`tracker.store.MALFORMED_LINE`, shown as "the record could not be
-  read"; decision 187): the record holds a line the tracker will not obey.
+  read"; decision 187): the record holds a line the app will not obey.
   The words in brackets say which field and which kind of problem, never
   the value: a value outside the editor's bounds ("must be a whole number
   from 1 to 9999", "must be a date written YYYY-MM-DD", "must be true or
@@ -2516,14 +2516,14 @@ the same way.
   "could try too many ways to match one line", "could do too much matching
   on one line" or "has more than 8 variable repetitions"); a line naming "an event this version does not know"; a
   step "outside this return's places"; a household or return label that
-  "is not one folder name"; a line stamped in a form the tracker never
+  "is not one folder name"; a line stamped in a form the app never
   writes; or one of the three things every line since decision 159
-  carries about itself, in a shape the tracker never writes - a writer
+  carries about itself, in a shape the app never writes - a writer
   ('host') that "must be a machine's name" (blank, spaced, too long, or
   holding a slash), a link ('prev') that "must be blank or 64 lowercase
   hexadecimal characters", or a format ('fmt') that "must be a whole
   number" this version writes. A line like that in a return's record was
-  written by hand or by something other than the tracker. Nothing was
+  written by hand or by something other than the app. Nothing was
   moved, copied or removed for that household, and every other household
   was sorted as usual. Do not edit the record by hand: say which return and
   which line, and the store check
@@ -2634,7 +2634,7 @@ sentence — `'<what you typed>' is not a household name: <why>` (decision 188).
 A name is refused when it:
 
 1. is empty, or longer than 80 characters;
-2. does not begin with a letter or a digit — the tracker passes over every
+2. does not begin with a letter or a digit — the app passes over every
    folder that begins with `.`, `_` or `~$`, so a household named so would
    never be sorted or chased;
 3. ends with a dot or a space (Windows drops them), or contains any of
@@ -2652,7 +2652,7 @@ A name is refused when it:
    `Drop files here`, `Prepared`, `00 - Needs Review`, `_Opened`), or four
    digits.
 
-**Look-alikes are one name.** Two names are compared as the tracker reads
+**Look-alikes are one name.** Two names are compared as the app reads
 them, not as they are spelled: case, spacing, invisible characters, the
 Cyrillic and Greek letters that look like Latin ones, the dashes and the
 apostrophes all fold away, and so do `1`, `i` and `|` against `l`, `0`
@@ -2666,5 +2666,5 @@ is shown on the request list and stays there with everything you typed;
 identification number or any part of one to a name.
 
 A folder already on disk whose name breaks the rule is listed under
-*Folders the tracker leaves alone* with the reason, and nothing in it is
+*Folders the app leaves alone* with the reason, and nothing in it is
 read.

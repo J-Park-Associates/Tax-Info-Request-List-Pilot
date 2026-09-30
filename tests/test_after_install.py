@@ -472,8 +472,8 @@ def test_a_household_whose_record_changed_behind_the_trackers_back_waits_in_the_
 
     [finding] = after_install.run(reason=after_install.REASON_SETUP).findings
 
-    assert "changed behind the tracker's back" in finding
-    _waits(engagement, capsys, "changed behind the tracker's back")
+    assert "changed behind the app's back" in finding
+    _waits(engagement, capsys, "changed behind the app's back")
     store.rebuild_engagement(store.connect(), root, engagement)     # put back for the agreement check
 
 

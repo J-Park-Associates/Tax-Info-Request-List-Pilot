@@ -82,7 +82,7 @@ log = logging.getLogger(__name__)
 LEGACY_MANIFEST_FILENAME = "_manifest.xlsx"
 #: How such a folder is listed, and what the misfit list says of it.
 LEGACY_FOLDER = (
-    "holds a request list in a workbook the tracker no longer reads ({name}) and no "
+    "holds a request list in a workbook the app no longer reads ({name}) and no "
     "record; set the engagement up again in the app"
 )
 
@@ -104,7 +104,7 @@ ROLLED_FROM_UNMATCHED = (
 MAX_DEPTH = 4
 
 #: A folder at the top of the clients root that is neither of the two trees.
-MISFIT_NOT_A_TREE = "is not one of the two trees the tracker reads ({clients} and {private}); left alone"
+MISFIT_NOT_A_TREE = "is not one of the two trees the app reads ({clients} and {private}); left alone"
 #: A record where the layout before decision 125 put one: straight under a
 #: tree, at the household level, at the year level.
 MISFIT_RECORD_MISPLACED = ("holds a record in the layout before decision 125; set the household up again "
@@ -120,13 +120,13 @@ MISFIT_CLIENT_NO_RECORD = ("is a client folder no household record owns; nothing
                            "the app will not set a household up over it")
 #: A household or return folder whose name the layout's one rule refuses
 #: (decision 188): the reason is the rule's own phrase.
-MISFIT_BAD_NAME = ("is named in a way the tracker does not accept for a household or a return "
+MISFIT_BAD_NAME = ("is named in a way the app does not accept for a household or a return "
                    "({reason}); left alone")
 #: A folder where a year would be, named as something else.
 MISFIT_NOT_A_YEAR = "sits where a year folder would but is not named as a four-digit year; left alone"
 #: A return folder with no record, and a household with no return under any
 #: of its years.
-MISFIT_NO_RETURN = "holds no return the tracker can read"
+MISFIT_NO_RETURN = "holds no return the app can read"
 #: A folder the walk cannot list: an ACL that denies the run's account, a
 #: folder moved in from elsewhere carrying its own. Every document inside
 #: would be invisible to every list, so it is said rather than passed over.
@@ -969,7 +969,7 @@ if __name__ == "__main__":
             suffix = f"  ({', '.join(flags)})" if flags else ""
             print(f"    {engagement.label}{suffix}")
             print(f"        {engagement.path}")
-    print(f"\n  Folders the tracker leaves alone ({len(loaded.misfits)})")
+    print(f"\n  Folders the app leaves alone ({len(loaded.misfits)})")
     for misfit in loaded.misfits:
         print(f"    {misfit.path}")
         print(f"        {misfit.sentence}")

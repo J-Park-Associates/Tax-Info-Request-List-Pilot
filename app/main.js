@@ -423,7 +423,7 @@ function spawnTracker(args, payload, onProgress, onEnded) {
 // refusal - a file name on the page, never a new path.
 async function openPath(p, reveal) {
   if (typeof p !== "string" || !openable.has(p)) {
-    return "That path is not one the tracker reported; nothing was opened.";
+    return "That path is not one the app reported; nothing was opened.";
   }
   return openChecked(p, openable.get(p), reveal === "reveal");
 }

@@ -133,16 +133,16 @@ LOGS_DIR_NAME = "logs"
 #: the schedule runs, or the data home.
 DRIVE_UNKNOWN, DRIVE_NO_ROOT_DIR, DRIVE_REMOVABLE, DRIVE_FIXED, DRIVE_REMOTE, DRIVE_CDROM, DRIVE_RAMDISK = range(7)
 
-NO_LOCAL_APPDATA = ("LOCALAPPDATA is not set for this Windows account, so the tracker has nowhere "
+NO_LOCAL_APPDATA = ("LOCALAPPDATA is not set for this Windows account, so the app has nowhere "
                     "private to keep its database; it never keeps it beside the program or in the "
                     "temp folder instead. Run the app as the account that runs the schedule")
 LOCAL_APPDATA_NOT_A_FOLDER = "LOCALAPPDATA names {folder}, which is not a folder on this computer"
-NO_HOME = ("this account has no home folder, so the tracker has nowhere private to keep its "
+NO_HOME = ("this account has no home folder, so the app has nowhere private to keep its "
            "database; set " + ENV_DATA_HOME + " to a folder of its own")
 DATA_HOME_NOT_ABSOLUTE = ENV_DATA_HOME + " must name a whole path, got {value!r}"
-DATA_HOME_BESIDE_PROGRAM = ("the tracker's data folder {home} would be inside the program's own "
+DATA_HOME_BESIDE_PROGRAM = ("the app's data folder {home} would be inside the program's own "
                             "folder {program}, or hold it; client data never sits beside the program")
-DATA_HOME_NOT_LOCAL = ("the tracker's data folder {home} is not on this computer's own disk; "
+DATA_HOME_NOT_LOCAL = ("the app's data folder {home} is not on this computer's own disk; "
                        "client data never sits on a removable or network drive")
 #: Why Install Schedule refuses to schedule the program from where it is
 #: (decision 186): the task runs whatever program sits at that path on every
@@ -830,7 +830,7 @@ def program_drive_refusal(*, app: Path | None = None, settings: Path | None = No
 #: the API's "under the clients root" check all follow the root, so a root
 #: that holds the app's own folder would walk it, write into it and accept
 #: its files as engagements.
-ROOT_IS_SYSTEM_DRIVE = ("{root} is the whole system drive; the tracker would walk all of it. "
+ROOT_IS_SYSTEM_DRIVE = ("{root} is the whole system drive; the app would walk all of it. "
                         "Choose the folder the firm keeps its clients in")
 ROOT_HOLDS_SETTINGS = ("{root} holds the app's own settings ({settings}); "
                        "choose the folder the firm keeps its clients in")
@@ -839,9 +839,9 @@ ROOT_INSIDE_SETTINGS = ("{root} is inside the app's settings folder ({settings})
 ROOT_HOLDS_APP = ("{root} holds the app itself ({app}); "
                   "choose the folder the firm keeps its clients in")
 #: The data home and the clients root never overlap (decision 186).
-ROOT_HOLDS_DATA = ("{root} holds the tracker's own data folder ({data}); "
+ROOT_HOLDS_DATA = ("{root} holds the app's own data folder ({data}); "
                    "choose the folder the firm keeps its clients in")
-ROOT_INSIDE_DATA = ("{root} is inside the tracker's own data folder ({data}); "
+ROOT_INSIDE_DATA = ("{root} is inside the app's own data folder ({data}); "
                     "choose the folder the firm keeps its clients in")
 #: A root one level too deep (decision 188, D-3): a folder above it holds
 #: both trees, and the root lies inside one of them.

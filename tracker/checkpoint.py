@@ -96,8 +96,8 @@ BUSY_TIMEOUT_MS = 5000
 SET_ASIDE_SUFFIX = ".v{version}.old"
 
 #: A file written by a newer version of the tracker: refused, never read.
-NEWER_FILE = ("{path} was written by a newer version of the tracker (version {version}; this one "
-              "knows {known}). This machine has a newer version of the tracker's {what}; install "
+NEWER_FILE = ("{path} was written by a newer version of the app (version {version}; this one "
+              "knows {known}). This machine has a newer version of the app's {what}; install "
               "that version again.")
 
 SCHEMA: tuple[str, ...] = (
@@ -156,7 +156,7 @@ class CheckpointLeftBehind(CheckpointError):
 #: A checkpoint file that will not open as one (the review's S4). Refused by
 #: name and never set aside automatically: a damaged checkpoint is exactly
 #: what a person must see.
-UNREADABLE = ("{path}: the tracker cannot read this machine's record checkpoint ({why}). Set the "
+UNREADABLE = ("{path}: the app cannot read this machine's record checkpoint ({why}). Set the "
               "file aside by hand (runbook §6); the next pass seeds it again from the records - "
               "the moment of trust.")
 #: A checkpoint another run holds this moment (``verify``, ``acknowledge``,

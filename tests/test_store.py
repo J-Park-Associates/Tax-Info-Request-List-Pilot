@@ -2314,7 +2314,7 @@ def test_a_journal_rewritten_to_the_same_length_is_refused_by_sync_and_by_record
     path.write_bytes(first + b"\n")
     written_elsewhere(by_hand, events[2])
     written_elsewhere(by_hand, events[1])
-    sentence = "was changed behind the tracker's back (line 2 onward no longer matches)"
+    sentence = "was changed behind the app's back (line 2 onward no longer matches)"
     for reading in (store.sync, store.catch_up, store.follow_the_journal):
         with pytest.raises(store.StoreError, match=re.escape(sentence)) as refused:
             reading(conn, root, by_hand)
@@ -4069,7 +4069,7 @@ def test_a_newer_store_is_still_refused(tmp_path):
     newer = sqlite3.connect(path)
     newer.execute(f"PRAGMA user_version = {store.SCHEMA_VERSION + 1}")
     newer.close()
-    with pytest.raises(store.StoreError, match="newer version of the tracker's store; install"):
+    with pytest.raises(store.StoreError, match="newer version of the app's store; install"):
         store.open(path)
     assert not path.with_name(f"{store.STORE_FILENAME}.v{store.SCHEMA_VERSION + 1}.old").exists()
 

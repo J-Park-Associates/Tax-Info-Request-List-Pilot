@@ -561,7 +561,7 @@ def test_a_switch_between_light_and_dark_sets_the_window_colour_again(tmp_path):
 # opens, decision 190); a filed, moved or shown working copy is "reveal".
 _KINDS = {"engagement": "folder", "review_copy": "file", "filed_copy": "reveal",
           "moved_copy": "reveal", "shown_copy": "reveal"}
-NOT_REPORTED = "That path is not one the tracker reported; nothing was opened."
+NOT_REPORTED = "That path is not one the app reported; nothing was opened."
 NOT_OPENED = "Not Opened; It Has Changed"
 
 

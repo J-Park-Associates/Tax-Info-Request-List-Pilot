@@ -8080,7 +8080,7 @@ def test_the_vocabulary_carries_every_word_201_shows():
     # The fold and its two labels went with S5's one Advanced switch; nothing reads them.
     assert "routing" not in editor and "routing_all" not in editor and editor["advanced"] == "Advanced"
     assert editor["not_this_return"] == api.EDITOR_NOT_THIS_RETURN
-    assert editor["routing_help"] == ("How the tracker recognises this document when it arrives. A save "
+    assert editor["routing_help"] == ("How the app recognises this document when it arrives. A save "
                                       "checks these the same way whether the fold is open or not.")
     labels = words["review_labels"]
     assert labels["keyword"] == "Keyword to Learn (Optional)"

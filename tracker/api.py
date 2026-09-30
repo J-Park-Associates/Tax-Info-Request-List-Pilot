@@ -393,8 +393,8 @@ _RUNNING: dict = {"command": ""}
 USAGE = "usage: tracker.api {commands}"
 #: What an error the tracker did not expect is said as: its class and code,
 #: never its message, and where its detail went.
-FAILED = ("The tracker hit an error it did not expect ({kind}). What it finished is on the record; "
-          "the details are in {log} beside the tracker's database.")
+FAILED = ("The app hit an error it did not expect ({kind}). What it finished is on the record; "
+          "the details are in {log} beside the app's database.")
 #: The notices' three buttons (decision 193, ruling 12). Static in
 #: ``index.html``'s template, pinned to these word for word, because a
 #: notice must work when the very first ``list`` fails, before any
@@ -605,7 +605,7 @@ ENGAGEMENT_FLAG = "--engagement"
 HOUSEHOLD_HEADING = "Household"
 HOUSEHOLD_NAME_LABEL = "Household"
 MEMBERS_LABEL = "Shared With"
-MEMBERS_HELP = ("who this household's folder is meant to be shared with - the tracker cannot "
+MEMBERS_HELP = ("who this household's folder is meant to be shared with - the app cannot "
                 "read Drive's sharing, so this is the firm's own note")
 CONTACT_LABEL = "Contact"
 CONTACT_HELP = "the greeting name in every return's letter, filled into each return when it is made"
@@ -721,7 +721,7 @@ SHARING_HEADING = "Before the client can drop anything"
 MARK_SHARED_LABEL = "Mark as Shared"
 SHARED_ON_LINE = "Shared {day}"
 NOT_YET_SHARED_LINE = "Not Yet Marked as Shared"
-SHARING_NOTE = ("The tracker cannot see Drive's sharing. The two grants are the firm's to make, once; "
+SHARING_NOTE = ("The app cannot see Drive's sharing. The two grants are the firm's to make, once; "
                 "the year folders are view-only through the household folder, and nothing is ever re-shared.")
 #: Why *Mark as shared* refuses: the inbox's link is the one part of the
 #: three the tracker can see was done, so it is the one part it insists on.
@@ -974,7 +974,7 @@ assert (sorted((*PLAIN_COLUMNS, *ROUTING_COLUMNS)) == sorted(field for _, field 
     "the plain view and the routing fold must share the request list's columns between them"
 #: The one switch that shows a row's routing columns (S5).
 EDITOR_ADVANCED_LABEL = "Advanced"
-ROUTING_HELP = ("How the tracker recognises this document when it arrives. A save checks these "
+ROUTING_HELP = ("How the app recognises this document when it arrives. A save checks these "
                 "the same way whether the fold is open or not.")
 #: Edit Request List pressed while the state on screen is still another
 #: return's, after reading it again (decision 201, the review's S4): said
@@ -1075,7 +1075,7 @@ def _new_return_dir(root: Path, household: str, year: int, return_name: str,
 #: there and holds no record (decision 137, M1): the tracker did not make
 #: it, so it is a misfit, and a misfit is left alone. Refused before
 #: anything is written.
-HOUSEHOLD_NOT_OURS = ("A folder named '{name}' is already there and the tracker did not make it. "
+HOUSEHOLD_NOT_OURS = ("A folder named '{name}' is already there and the app did not make it. "
                       "Choose another name, or move that folder aside first. Nothing was changed.")
 def _engagement_dir(argv: list[str]) -> Path:
     """The engagement a command is about: ``ENGAGEMENT_FLAG <folder>``.

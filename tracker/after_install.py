@@ -200,7 +200,7 @@ CHECK_FOUND = "The record check found {n} line(s) a person must look at:"
 #: ``tests/test_after_install.py``: a malformed line (decision 209, R3b)
 #: and a record changed behind the tracker's back (decision 137) stop their
 #: household. It claims nothing for any other finding.
-FINDINGS_WAIT = ("A household named above as malformed or as changed behind the tracker's back waits "
+FINDINGS_WAIT = ("A household named above as malformed or as changed behind the app's back waits "
                  "in the app until a person repairs it (runbook §9); any other line above is for a "
                  "person to look at. The rest of the practice runs as normal.")
 

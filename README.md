@@ -81,7 +81,7 @@ engagement folder.
 fourteen columns an accountant edits, and the client, link, due date, the
 people the return is for and the rest, are edited in the app's **Edit Request List** editor and nowhere
 else; every save is journalled as one event and folded into one database
-in the tracker's data folder on the machine that runs the schedule ([docs/storage.md](docs/storage.md)),
+in the app's data folder on the machine that runs the schedule ([docs/storage.md](docs/storage.md)),
 beside each request's Status, Received Date, File Count and Validation
 Notes and every original's index row. Nothing in the folder is a
 spreadsheet, and the machine reads and writes no workbook.
@@ -116,7 +116,7 @@ what has arrived shows each attachment that filed, under its request.
    **Roll Forward…** (offered once that year has ended), or add a return to
    it with **Add a Return…** - pick the tax form type, then the request list;
    the catalog lives in `tracker/templates.py` and nowhere else. A household
-   the tracker has no record of is made with File, **New Household…**. A
+   the app has no record of is made with File, **New Household…**. A
    household's name is unique across both trees by how it reads,
    not how it is spelled: a name that reads as a household already in the
    list is refused and pointed at it there - add a first name or a middle
@@ -279,7 +279,7 @@ python -m tracker.runner --settings "C:\Tools\tax-tracker" --log     # what the 
 ```
 
 `--log` alone appends the pass's counts and codes — never a client's name — to `runs.log` in the
-tracker's data folder, rotated at 256 KB with three older files kept; `--log <file>` names
+app's data folder, rotated at 256 KB with three older files kept; `--log <file>` names
 another, by its whole path - a person's explicit choice, written where it is named, so name a
 place in the data folder. A pass that cannot have its data folder files nothing, writes the
 status page with that one problem, and exits non-zero.
@@ -313,7 +313,7 @@ Run it with the app's private Python, the one `Setup.bat` made (decision
 own Python holds none of the locked packages. `--settings` defaults to this checkout's own folder, whose `settings.json`
 must already name a clients root; the job carries no root of its own.
 `--install` registers the task as it writes the XML, and running the same
-line again changes the schedule. It writes the task's file into the tracker's data folder unless
+line again changes the schedule. It writes the task's file into the app's data folder unless
 `--out` names another (a person's explicit choice, written where it is named), and refuses when the program is on a removable or network drive (decision
 186). You rarely need to: the app registers the
 job itself (decision 209) - `Setup.bat` runs its after-install step last,
@@ -547,7 +547,7 @@ direct pins; to move one, change it there and in its `.lock`, run
 
 Two steps, in that order (decision 169): the reader, RapidOCR, is
 installed without its dependencies, because its package asks for the
-desktop build of OpenCV and the tracker uses the headless one;
+desktop build of OpenCV and the app uses the headless one;
 `requirements.lock` holds what it really needs. Nothing else is installed
 for reading - the models ship in the package, and nothing is downloaded
 while it reads. On Windows it reads on the processor, or on an NVIDIA card

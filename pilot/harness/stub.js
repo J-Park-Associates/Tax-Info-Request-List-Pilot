@@ -33,14 +33,14 @@
     reader: "Move the app to a shorter folder, for example C:\\JPA App; scans can't be read from here",
     machine: [
       "Left over from an earlier version and no longer used: C:\\Made Up\\Tracker\\old-run.log. They hold client names, and nothing deletes them for you - delete them. "
-        + "The tracker keeps its database and its run log in C:\\Users\\Someone\\AppData\\Local\\Tracker now.",
+        + "The app keeps its database and its run log in C:\\Users\\Someone\\AppData\\Local\\Tracker now.",
       "The app is running from a removable drive (E:\\Tracker). The schedule runs whatever program sits there, every pass, so it is not installed from here: "
         + "copy the app's folder to this computer's own disk (a short path, such as C:\\Tools), start it from there and press Install Schedule.",
     ],
     paused: "Paused: this folder's name and its record's name disagree. Nothing is sorted, laid out or drafted for the household until a person opens it in the app and "
       + "accepts the folder's name, or gives the folder back the name its record holds.",
     feed: "this drop folder is set to feed Lopez Household / 1040 - Ana Lopez, which has no active return for 2025",
-    findingsWait: "A household named above as malformed or as changed behind the tracker's back waits in the app until a person repairs it (runbook \u00a79); "
+    findingsWait: "A household named above as malformed or as changed behind the app's back waits in the app until a person repairs it (runbook \u00a79); "
       + "any other line above is for a person to look at. The rest of the practice runs as normal.",
   };
 

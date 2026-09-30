@@ -2104,7 +2104,7 @@ STRUCK = ("open it yourself", "open it on this machine", "on this machine, and d
 def test_no_document_sends_a_person_to_open_a_refused_file_or_publish_a_stray():
     """Decision 184: each struck sentence stays struck, and what replaced it
     - the paragraph on opening a parked file, the section on a document the
-    tracker did not file - is said once. It catches these sentences' known
+    app did not file - is said once. It catches these sentences' known
     shapes coming back, not a new one worded differently."""
     for rel in (*DOCUMENTS, "app/renderer/index.html", "app/renderer/app.js",
                 "tracker/reasons.py", "Build App.bat"):
@@ -2113,7 +2113,7 @@ def test_no_document_sends_a_person_to_open_a_refused_file_or_publish_a_stray():
             assert sentence not in text, (rel, sentence)
     runbook = read("docs/runbook.md")
     assert runbook.count("**Before you open anything a pass parked.**") == 1
-    assert runbook.count("### A document the tracker did not file") == 1
+    assert runbook.count("### A document the app did not file") == 1
 
 
 def test_the_one_machine_rule_is_stated_once_as_todays_rule():
@@ -2531,7 +2531,7 @@ def test_the_runbook_reads_a_file_with_open_on_its_card_never_in_a_folder_of_one
                if re.search(r"\bfolder of your own\b", sentence, re.IGNORECASE)
                or ("`Prepared`" in sentence and re.search(r"\byour own\b", sentence, re.IGNORECASE))]
     assert offered == [], offered
-    section = runbook[runbook.index("### A document the tracker did not file"):]
+    section = runbook[runbook.index("### A document the app did not file"):]
     section = section[:section.index("\n### ", 4)]
     assert "**Open** on its" in section and "decision 184" in section, section
 
@@ -4163,3 +4163,117 @@ def test_the_runbook_quotes_every_sentence_of_the_rename_carry_over():
             sentence = sentence.replace("{old}", settings.EARLIER_PRODUCT_NAME).replace("{new}", scheduling.TASK_NAME)
         for part in re.split(r"\{\w+\}", sentence):
             assert part.strip() in note, (name, part)
+
+# ========== P155 Q3 (SPEC-rename R9, 7.4): the program is "the app" to a person ==========
+
+#: What "tracker" may still be in something a person reads: the internal names
+#: Q4 keeps (SPEC-rename R9) - the package and its paths and modules, the
+#: command lines, the frozen API, every TRACKER_* variable, the file and folder
+#: names on disk, the renderer's bridge, the repository - which are removed
+#: before a sentence is judged.
+_INTERNAL_TRACKER_NAMES = re.compile(
+    r"tax-document-tracker(?:-pilot)?"            # the data folders (R3, R8)
+    r"|tracker-errors\.log[\w.]*"                  # the debug log's file name
+    r"|tracker-api(?:\.exe)?"                      # the frozen API (package.json's apiName)
+    r"|tax-tracker[\w.]*"                          # the task's file, the example install folder
+    r"|python -m tracker[\w.]*"                    # the command lines
+    r"|\btracker[/\\][\w./\\*<>{}-]*"              # the package's paths
+    r"|\btracker\.[a-z_][\w.]*"                    # the package's modules and names
+    r"|\bTRACKER_[A-Z_]+"                          # the environment variables
+    r"|window\.tracker"                            # the renderer's bridge
+    r"|the tracker package"                        # the package, said as a package
+    r"|Tax-Info-Request-List-Pilot",               # the repository
+    re.IGNORECASE)
+
+
+def _calls_the_program_the_tracker(text: str) -> bool:
+    """Whether ``text``, its internal names removed, still says "tracker"."""
+    return "tracker" in _INTERNAL_TRACKER_NAMES.sub("", text).lower()
+
+
+#: Module-level constants whose value is a name, not a sentence, each with
+#: its reason (SPEC-rename 7.4).
+_NAMES_NOT_SENTENCES = {
+    # The pilot's name before the rename, the one home of it (R1): a name,
+    # which the carry-over's sentences put beside the words "earlier name".
+    "tracker.settings.EARLIER_PRODUCT_NAME",
+}
+
+
+def _strings(value) -> list[str]:
+    """Every string in a vocabulary value, walked recursively (keys included)."""
+    if isinstance(value, str):
+        return [value]
+    if isinstance(value, dict):
+        return [s for key, item in value.items() for s in (*_strings(key), *_strings(item))]
+    if isinstance(value, (list, tuple)):
+        return [s for item in value for s in _strings(item)]
+    return []
+
+
+def test_no_sentence_the_app_shows_calls_it_the_tracker():
+    """P155 Q3: every sentence a person can see calls the program "the app".
+    The vocabulary the renderer reads, every module-level UPPER_CASE string
+    in the engine (the sentences its errors, notes and pages are made of),
+    the pilot's own wording and the shell's first-start sentences; only the
+    internal names Q4 keeps may say "tracker"."""
+    import importlib
+    import pkgutil
+
+    import tracker
+    import tracker.api as api
+
+    said = {f"vocab: {s}": s for s in _strings(api._vocab())}
+    for module in pkgutil.iter_modules(tracker.__path__):
+        loaded = importlib.import_module(f"tracker.{module.name}")
+        for name, value in vars(loaded).items():
+            if re.fullmatch(r"[A-Z][A-Z0-9_]*", name) and isinstance(value, str):
+                said[f"tracker.{module.name}.{name}"] = value
+    content = read("app/renderer/pilot-content.js")
+    pilot = json.loads(content.split("// PILOT-CONTENT-BEGIN", 1)[1].split("// PILOT-CONTENT-END", 1)[0])
+    said.update({f"pilot-content: {s}": s for s in _strings(pilot)})
+    main_js = read("app/main.js")
+    for name in ("noReply", "couldNotStart", "noLog"):
+        said[f"main.js {name}"] = re.search(rf'^let {name} = "([^"]*)";$', main_js, re.MULTILINE).group(1)
+    # And every other sentence the shell says itself: its string literals
+    # with a space in them, comments left out.
+    code = "\n".join(line for line in main_js.splitlines() if not line.lstrip().startswith("//"))
+    said.update({f"main.js: {s}": s for s in re.findall(r'"([^"\n]* [^"\n]*)"', code)})
+    assert len(said) > 500
+    assert [where for where, text in said.items()
+            if where not in _NAMES_NOT_SENTENCES and _calls_the_program_the_tracker(text)] == []
+
+
+#: The documents a person reads as the app's (SPEC-rename 7.4). History and
+#: agent-facing files are not among them (R10, 4.7).
+_PERSON_FACING_DOCUMENTS = ("README.md", "PRODUCT.md", "docs/runbook.md", "docs/workflow.md",
+                            "pilot/README.md", "pilot/Tester Guide.md", "pilot/RELEASE.md")
+#: The two products a sentence may name: the pilot's earlier name, only in a
+#: sentence that says it is the earlier one, and the firm's production
+#: product, only in one that says "production" (R8, R10).
+_EARLIER_PRODUCT = re.compile(r"Tax\s+Document\s+Tracker\s+Pilot", re.IGNORECASE)
+_PRODUCTION_PRODUCT = re.compile(r"Tax\s+Document\s+Tracker", re.IGNORECASE)
+#: Another product of the firm's, named with its link, is not this program.
+_ANOTHER_PRODUCT = re.compile(r"\[Audit-PBC-List\]\([^)]*\)\s+tracker")
+
+
+def test_no_person_facing_document_calls_the_program_the_tracker():
+    """P155 Q3: the documents a person reads call the program "the app".
+    Judged sentence by sentence, the lines joined, so a phrase split over
+    two lines is still seen."""
+    wrong = []
+    for rel in _PERSON_FACING_DOCUMENTS:
+        text = " ".join(read(rel).split())
+        for sentence in re.split(r"(?<=[.!?])\s+", text):
+            judged = _ANOTHER_PRODUCT.sub("", sentence)
+            if _EARLIER_PRODUCT.search(judged):
+                if "earlier" not in judged.lower():
+                    wrong.append((rel, sentence))
+                judged = _EARLIER_PRODUCT.sub("", judged)
+            if _PRODUCTION_PRODUCT.search(judged):
+                if "production" not in judged.lower():
+                    wrong.append((rel, sentence))
+                judged = _PRODUCTION_PRODUCT.sub("", judged)
+            if _calls_the_program_the_tracker(judged):
+                wrong.append((rel, sentence))
+    assert wrong == []
