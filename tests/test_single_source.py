@@ -482,16 +482,17 @@ def _fallback_log_rules() -> list[str]:
     denied it, in the two path styles the data-home rules use: Windows'
     %LOCALAPPDATA% folder and, off Windows, Electron's userData).
 
-    The rules name the earlier product's folders, which an upgraded PC may
-    still hold and where Electron's userData stays (SPEC-rename R4). The
-    rules for the renamed Windows folder are permission configuration and
-    wait for Jason (SPEC-rename 4.1; left undone by the rename's build), so
-    this names exactly what the deny list holds today."""
-    from tracker.settings import EARLIER_PRODUCT_NAME as product
+    The rules name both products' folders (P189): the earlier one first,
+    which an upgraded PC may still hold and where Electron's userData stays
+    (SPEC-rename R4), then the current one, package.json's productName,
+    where the renamed app writes its log on Windows. Both can name a client."""
+    from tracker.settings import EARLIER_PRODUCT_NAME
 
-    folders = (f"//c/Users/*/AppData/Local/{product}", f"~/.config/{product}")
+    current = json.loads(read("app/package.json"))["productName"]
     return [f"{tool}({folder}/error.log{suffix})"
-            for folder in folders for suffix in ("", ".*") for tool in ("Read", "Edit")]
+            for product in (EARLIER_PRODUCT_NAME, current)
+            for folder in (f"//c/Users/*/AppData/Local/{product}", f"~/.config/{product}")
+            for suffix in ("", ".*") for tool in ("Read", "Edit")]
 
 
 def _denied(deny: list[str], path: str) -> bool:
@@ -544,6 +545,27 @@ def test_the_agent_deny_list_names_the_data_home_and_every_file_that_names_a_cli
     owners = [line.split()[0] for line in read(".github/CODEOWNERS").splitlines()
               if line.strip() and not line.startswith("#")]
     assert "/.claude/" in owners, owners      # the list is the owner's to review
+
+
+def test_the_fallback_log_rules_deny_the_current_and_the_earlier_folder():
+    """P189 (Jason, 2026-09-30: "Yes add the log rules."): the renamed app
+    writes its fallback log under the current product's folder, and an
+    upgraded PC may still hold one under the earlier folder; either can name
+    a client, so the deny list refuses both, the log and its rotated copy,
+    in both path styles, to reading and editing alike. Tightening only."""
+    from tracker.settings import EARLIER_PRODUCT_NAME
+
+    deny = json.loads(read(".claude/settings.json"))["permissions"]["deny"]
+    current = json.loads(read("app/package.json"))["productName"]
+    assert current != EARLIER_PRODUCT_NAME
+    rules = _fallback_log_rules()
+    assert len(rules) == 16 and deny[-16:] == rules
+    for product in (EARLIER_PRODUCT_NAME, current):
+        for name in ("error.log", "error.log.1"):
+            assert _denied(deny, f"/c/Users/someone/AppData/Local/{product}/{name}"), (product, name)
+        for style in (f"//c/Users/*/AppData/Local/{product}", f"~/.config/{product}"):
+            for tool in ("Read", "Edit"):
+                assert f"{tool}({style}/error.log)" in deny and f"{tool}({style}/error.log.*)" in deny
 
 
 def test_the_deny_list_never_refuses_a_persons_own_folder_that_shares_a_client_folders_name():

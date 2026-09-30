@@ -2262,6 +2262,54 @@ def test_the_pilot_record_keeps_terms_and_tour_in_the_data_home(capsys):
     assert (again["terms"], again["tour_seen"]) == ("1", True)
 
 
+def test_the_pilot_record_keeps_the_signed_name_beside_the_acceptance_time(capsys):
+    """P188: the name typed to sign the terms comes with the terms and is
+    kept, trimmed, as ``terms_signed_by`` beside ``terms_accepted_at``; the
+    reply carries both, so Help, Terms can say who signed and when. An
+    acceptance sent without a name keeps none - a name belongs to the
+    acceptance it signed."""
+    from tracker.settings import data_home
+
+    code, signed = run(capsys, "pilot-record", stdin={"terms": "1", "signed_by": "  Jane Tester "})
+    assert code == 0 and signed["terms"] == "1" and signed["terms_signed_by"] == "Jane Tester"
+    kept = json.loads((data_home() / api.PILOT_RECORD_FILENAME).read_text(encoding="utf-8"))
+    assert kept["terms_signed_by"] == "Jane Tester" and kept["terms_accepted_at"]
+    assert signed["terms_accepted_at"] == kept["terms_accepted_at"]
+    code, again = run(capsys, "pilot-record", stdin={})
+    assert (again["terms_signed_by"], again["terms_accepted_at"]) == ("Jane Tester", kept["terms_accepted_at"])
+    code, seen = run(capsys, "pilot-record", stdin={"tour_seen": True})
+    assert code == 0 and seen["terms_signed_by"] == "Jane Tester"      # the tour leaves the name alone
+
+    code, unsigned = run(capsys, "pilot-record", stdin={"terms": "2"})
+    assert code == 0 and unsigned["terms"] == "2" and unsigned["terms_signed_by"] == ""
+    kept = json.loads((data_home() / api.PILOT_RECORD_FILENAME).read_text(encoding="utf-8"))
+    assert "terms_signed_by" not in kept
+
+
+@pytest.mark.parametrize("stdin", [
+    {"signed_by": "Jane Tester"}, {"tour_seen": True, "signed_by": "Jane Tester"},
+    {"terms": "1", "signed_by": ""}, {"terms": "1", "signed_by": "   "},
+    {"terms": "1", "signed_by": "x" * (api.SIGNED_BY_LONGEST + 1)},
+    {"terms": "1", "signed_by": None}, {"terms": "1", "signed_by": 7},
+])
+def test_a_signed_name_without_terms_or_blank_or_too_long_is_refused(capsys, stdin):
+    """A name signs the terms or nothing: without them, blank, spaces only,
+    not text or past the longest, the whole request is refused in the one
+    refusal, which names ``signed_by``, and nothing is written."""
+    from tracker.settings import data_home
+
+    code, payload = run(capsys, "pilot-record", stdin=stdin)
+    assert code != 0 and payload["error"].startswith("pilot-record takes {} to read")
+    assert '"signed_by"' in payload["error"]
+    assert not (data_home() / api.PILOT_RECORD_FILENAME).exists()
+
+
+def test_a_name_of_the_longest_length_is_kept(capsys):
+    name = "J" * api.SIGNED_BY_LONGEST
+    code, payload = run(capsys, "pilot-record", stdin={"terms": "1", "signed_by": name})
+    assert code == 0 and payload["terms_signed_by"] == name
+
+
 @pytest.mark.parametrize("stdin", [
     {"terms": "0"}, {"terms": "one"}, {"terms": True}, {"terms": ""}, {"terms": "1234567"},
     {"tour_seen": False}, {"tour_seen": "yes"}, {"terms": "1", "name": "x"},

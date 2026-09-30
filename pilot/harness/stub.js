@@ -410,7 +410,7 @@
         return wait(10, { error: "The row is no longer there.", failure: { sentence: "The row is no longer there.", kind: "failed" } });
       }
       if (command === "templates") return wait(10, { forms: [{ id: "1040", label: "1040", who: "Individual", blurb: "" }], templates: { 1040: [] }, default_year: 2026 });
-      if (command === "pilot-record") return wait(10, { terms: "1", tour_seen: true });
+      if (command === "pilot-record") return wait(10, { terms: "1", terms_signed_by: "", terms_accepted_at: "", tour_seen: true });
       if (command === "set-root") {
         rootSet = true;
         return wait(50, { root: ROOT, settings_path: "", after_install: { schedule_sentence: "", failed: [], findings: [] }, short_of_room: [] });

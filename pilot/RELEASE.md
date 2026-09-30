@@ -65,8 +65,10 @@ Use a Windows account that does not run the firm's real schedule, and a
    and SHA-256. Keep that hash.
 5. **Install and try it** (the checklist testers will follow):
    - SmartScreen warns (unsigned): *More info* -> *Run anyway*.
-   - First launch: the terms screen shows; Escape does nothing; tick the box,
-     *I agree. Continue.*; the tour starts. Walk all 11 steps.
+   - First launch: the terms screen shows; Escape does nothing; tick the box;
+     *Sign and Accept* stays greyed until a name is typed (spaces alone do
+     not count); type a name, *Sign and Accept*; the tour starts. Help,
+     Terms then shows *Signed by {name} on {date}*. Walk all 11 steps.
    - Choose a clients folder (the copy), create a household, drop a W-2, a
      1099, a phone photo and an unknown document into *Drop files here*,
      press **Scan**. Check: originals moved to the year folder, named copies

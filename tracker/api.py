@@ -5574,7 +5574,10 @@ def _cmd_after_install(argv: list[str]) -> dict:
 #: that storage showed the terms again (the pilot 0.1 Windows check).
 PILOT_RECORD_FILENAME = "pilot-record.json"
 PILOT_RECORD_REFUSED = ('pilot-record takes {{}} to read, or "terms" as the version of the terms '
-                        'accepted, or "tour_seen": true; not {asked}.')
+                        'accepted with "signed_by" as the name typed to sign them (not blank, '
+                        'at most {longest} characters), or "tour_seen": true; not {asked}.')
+#: The longest name the terms' sign-off keeps (P188): a name, not a document.
+SIGNED_BY_LONGEST = 200
 
 
 def _terms_version(value: object) -> bool:
@@ -5582,6 +5585,12 @@ def _terms_version(value: object) -> bool:
     it: a positive whole number, sent as a number or its digits."""
     text = str(value) if isinstance(value, (int, str)) and not isinstance(value, bool) else ""
     return text.isascii() and text.isdigit() and len(text) <= 6 and not text.startswith("0")
+
+
+def _signed_by(value: object) -> bool:
+    """Whether ``value`` is a name typed to sign the terms (P188): text that
+    is not blank once trimmed and no longer than ``SIGNED_BY_LONGEST``."""
+    return isinstance(value, str) and 0 < len(value.strip()) <= SIGNED_BY_LONGEST
 
 
 def _pilot_record_path() -> Path:
@@ -5600,30 +5609,50 @@ def _read_pilot_record() -> dict:
 
 def _cmd_pilot_record(argv: list[str]) -> dict:
     """The pilot's terms acceptance and "tour seen" (pilot P46): JSON on
-    stdin, ``{}`` to read, ``{"terms": "<version>"}`` when the terms are
-    accepted, ``{"tour_seen": true}`` when the tour is closed. Kept per
-    Windows account in the data home - per account, like the window's own
-    storage - so it asks no more of a person than the cache did, and
-    survives what the cache does not. Not a client record:
-    nothing here is held to the record checkpoint's root. Replies with the
-    record as it now stands: ``terms`` ("" when none) and ``tour_seen``."""
+    stdin, ``{}`` to read, ``{"terms": "<version>", "signed_by": "<name>"}``
+    when the terms are accepted, ``{"tour_seen": true}`` when the tour is
+    closed. Kept per Windows account in the data home - per account, like
+    the window's own storage - so it asks no more of a person than the cache
+    did, and survives what the cache does not. Not a client record:
+    nothing here is held to the record checkpoint's root.
+
+    The name typed to sign the terms (P188) comes only with the terms it
+    signs, and is kept trimmed as ``terms_signed_by`` beside the acceptance
+    time; a blank or oversized one refuses the whole request, so nothing is
+    written. An acceptance sent without a name - the page bringing the
+    record level with an acceptance its cache already held - is kept with
+    none, and a name kept from an earlier acceptance is dropped with it,
+    since it signed that one. It stays in the data home; nothing is sent.
+
+    Replies with the record as it now stands: ``terms``, ``terms_signed_by``
+    and ``terms_accepted_at`` ("" when none) and ``tour_seen``."""
     spec = _read_spec()
-    terms, seen = spec.get("terms"), spec.get("tour_seen")
+    terms, seen, signed = spec.get("terms"), spec.get("tour_seen"), spec.get("signed_by")
     asked = {key: value for key, value in spec.items() if key in ("terms", "tour_seen")}
-    if (set(spec) - {"terms", "tour_seen"} or (seen is not None and seen is not True)
-            or (terms is not None and not _terms_version(terms))):
-        raise ManifestError(PILOT_RECORD_REFUSED.format(asked=json.dumps(spec, sort_keys=True)))
+    if (set(spec) - {"terms", "tour_seen", "signed_by"} or (seen is not None and seen is not True)
+            or (terms is not None and not _terms_version(terms))
+            or ("signed_by" in spec and (terms is None or not _signed_by(signed)))):
+        raise ManifestError(PILOT_RECORD_REFUSED.format(
+            longest=SIGNED_BY_LONGEST, asked=json.dumps(spec, sort_keys=True)))
     record = _read_pilot_record()
     if asked:
         now = dt.datetime.now().isoformat(timespec="seconds")
         if terms is not None:
             record.update(terms=str(terms), terms_accepted_at=now)
+            if signed is None:
+                record.pop("terms_signed_by", None)
+            else:
+                record["terms_signed_by"] = signed.strip()
         if seen:
             record.update(tour_seen=True, tour_seen_at=now)
         path = _pilot_record_path()
         path.parent.mkdir(parents=True, exist_ok=True)
         write_json_atomically(path, record)
-    return {"terms": str(record.get("terms") or ""), "tour_seen": record.get("tour_seen") is True}
+    name, when = record.get("terms_signed_by"), record.get("terms_accepted_at")
+    return {"terms": str(record.get("terms") or ""),
+            "terms_signed_by": name if isinstance(name, str) else "",
+            "terms_accepted_at": when if isinstance(when, str) else "",
+            "tour_seen": record.get("tour_seen") is True}
 
 
 def _cmd_acknowledge_foreign(argv: list[str]) -> dict:

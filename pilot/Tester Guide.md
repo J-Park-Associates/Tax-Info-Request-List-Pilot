@@ -28,7 +28,7 @@ This is a **pilot**: a first edition for a small group of firms. It works, but i
 
 ## 4. First launch
 
-1. Read the terms and accept them. The program does not open until you do.
+1. Read the terms and accept them: tick the box, type your full name to sign, and choose **Sign and Accept**. The program does not open until you do.
 2. A short tour starts, walking through each part of the program. You can replay it any time with the **Tour** button.
 3. Choose your clients folder (the copy from section 2).
 

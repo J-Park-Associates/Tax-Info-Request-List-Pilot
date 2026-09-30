@@ -68,7 +68,9 @@ const PILOT =
       }
     ],
     "checkbox": "I have read this and will keep my own backups.",
-    "accept": "I agree. Continue.",
+    "sign": "Type Your Full Name to Sign",
+    "accept": "Sign and Accept",
+    "signed": "Signed by {name} on {date}",
     "quit": "Quit.",
     "close": "Close"
   },

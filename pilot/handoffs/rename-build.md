@@ -150,3 +150,71 @@ Dead code: none left in the changed files (ruff, and a read of each change).
   helper, and `tests/test_api.py`'s `_on_the_office_computer`, keep the
   earlier name's schtasks commands apart from this computer's own task, so
   the existing assertions on "our" task are unchanged.
+
+## Commit C (SPEC-rename section 12: P188 sign-off, P189 log rules)
+
+What was built:
+- `app/renderer/pilot.js`: the terms card has a "Type Your Full Name to
+  Sign" box (the app's own `.field` look) below the checkbox and above the
+  buttons. "Sign and Accept" stays disabled until the box is ticked and the
+  name, trimmed, is not blank. The click sends the trimmed name with the
+  acceptance (`PilotRecord.acceptTerms(version, signedBy)` sends
+  `signed_by`). Help, Terms reads the record and shows "Signed by {name} on
+  {date}" as text, only when a name and a date are held. The date comes from
+  `pagesDay` in pages.js (the app's existing short date).
+- `app/renderer/pilot-content.js`: `terms.sign` and `terms.signed` are new,
+  and `terms.accept` is now "Sign and Accept". The terms version stays 1.
+- `tracker/api.py` pilot-record: `signed_by` is taken only with `terms`. It
+  must be text, not blank once trimmed, and at most `SIGNED_BY_LONGEST`
+  (200) characters, or the whole request is refused with the widened
+  `PILOT_RECORD_REFUSED`. It is saved trimmed as `terms_signed_by`. An
+  acceptance without a name drops any earlier name, because a name belongs
+  to the acceptance it signed. The reply now also carries `terms_signed_by`
+  and `terms_accepted_at` ("" when none).
+- `.claude/settings.json` (P189, approved): the eight `Tax Document Console`
+  error.log Read/Edit rules come after the eight earlier ones. Nothing else
+  in the file changed. `tests/test_single_source.py` `_fallback_log_rules()`
+  names both folders again, and
+  `test_the_fallback_log_rules_deny_the_current_and_the_earlier_folder`
+  pins them.
+- Docs: `pilot/Tester Guide.md` section 4 step 1; `pilot/RELEASE.md`'s
+  first-launch step, which named "I agree. Continue."; one
+  `pilot/wording-shell.tsv` row for `terms.sign`. The table lists only
+  strings over five words, and the other two new strings are five words or
+  fewer, as the old accept words were. `pilot/harness/stub.js` answers the
+  engine's new reply shape. The api node's note in
+  `docs/repo-map.curated.json`, then `repo_map.py update`.
+  `pilot-style.css` has two small rules, `.pilot-terms-name` and
+  `.pilot-terms-signed`.
+
+The automatic path at pilot.js 227 (12.1's question). It fires only when the
+window's cache already holds this version's acceptance. That acceptance was
+made on this PC, before the sign-off or with it, so it stands without a name
+(P188 Q2 (a)). It sends no `signed_by`, so it never records a name nobody
+typed, and it cannot fire for a record the tester has never accepted. There
+is one known edge case: if a signed acceptance's record write failed (it is
+logged) and a later launch's level-up writes the acceptance, the name is
+lost and no name is invented.
+
+Tests on both interpreters (3.14.3 `C:\Users\User\pl\order\.venv`; 3.11.15
+`...\Tax-Info-Request-List-Pilot-main\.venv311`), each file its own process,
+four at a time:
+
+| File | 3.14 | 3.11 |
+|---|---|---|
+| test_pilot.py | 24 passed | 24 passed |
+| test_api.py | 437 passed | 437 passed |
+| test_single_source.py | 179 passed | 179 passed |
+| test_errors.py (refusal wording changed) | 83 passed | 83 passed |
+| test_repo_map.py | 80 passed | 80 passed |
+
+test_shell.py and test_tripwire.py were not touched and pin nothing changed
+here, so they were not run. Quick checks: ruff reports all checks passed;
+`repo_map.py check` reports the map is current (its CRLF warning is about
+tracker/runner.py's working copy, not this change); `vocab_report.py check`
+reports the report is current; `node --check` is clean on pilot.js,
+pilot-content.js and harness/stub.js. Dead code: none in the changed files.
+
+Hands-on Windows steps (section 12.3): type only spaces and see the button
+stay greyed; type a name and accept; reopen Help, Terms and see the
+signature.
