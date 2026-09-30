@@ -8069,9 +8069,9 @@ def test_the_vocabulary_carries_every_word_201_shows():
     assert editor["routing_columns"] == ["identifier", "document", "period", "allowed_extensions",
                                          "min_size_kb", "required_keywords", "any_keywords",
                                          "date_pattern", "named"]
-    assert editor["routing"] == "Routing Rules"
+    # The fold and its two labels went with S5's one Advanced switch; nothing reads them.
+    assert "routing" not in editor and "routing_all" not in editor and editor["advanced"] == "Advanced"
     assert editor["not_this_return"] == api.EDITOR_NOT_THIS_RETURN
-    assert editor["routing_all"] == "Show Every Row's Routing Rules"
     assert editor["routing_help"] == ("How the tracker recognises this document when it arrives. A save "
                                       "checks these the same way whether the fold is open or not.")
     labels = words["review_labels"]
@@ -8092,7 +8092,7 @@ def test_the_vocabulary_carries_every_word_201_shows():
     here = Path(__file__).resolve().parents[1]
     js = (here / "app" / "renderer" / "app.js").read_text(encoding="utf-8")
     html = (here / "app" / "renderer" / "index.html").read_text(encoding="utf-8")
-    for word in (*words["dialogs"].values(), editor["routing"], editor["routing_all"], labels["keyword"],
+    for word in (*words["dialogs"].values(), labels["keyword"],
                  labels["issuer_label"], labels["issuer_add"], settings["firm_label"],
                  settings["firm_help"]):
         assert word not in js and word not in html, word

@@ -922,8 +922,6 @@ ROUTING_COLUMNS = ("identifier", "document", "period", "allowed_extensions", "mi
 assert (sorted((*PLAIN_COLUMNS, *ROUTING_COLUMNS)) == sorted(field for _, field in COLUMNS)
         and not set(PLAIN_COLUMNS) & set(ROUTING_COLUMNS)), \
     "the plain view and the routing fold must share the request list's columns between them"
-ROUTING_LABEL = "Routing Rules"
-ROUTING_ALL_LABEL = "Show Every Row's Routing Rules"
 #: The one switch that shows a row's routing columns (S5).
 EDITOR_ADVANCED_LABEL = "Advanced"
 ROUTING_HELP = ("How the tracker recognises this document when it arrives. A save checks these "
@@ -1840,7 +1838,7 @@ def _vocab() -> dict:
             # The plain view (decision 201): which columns every row shows
             # and which fold under its Routing rules, and the fold's words.
             "plain_columns": list(PLAIN_COLUMNS), "routing_columns": list(ROUTING_COLUMNS),
-            "routing": ROUTING_LABEL, "routing_all": ROUTING_ALL_LABEL, "routing_help": ROUTING_HELP,
+            "routing_help": ROUTING_HELP,
             "advanced": EDITOR_ADVANCED_LABEL,
             "not_this_return": EDITOR_NOT_THIS_RETURN,
         },

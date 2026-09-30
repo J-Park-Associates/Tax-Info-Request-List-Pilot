@@ -3406,7 +3406,7 @@ function trapTab(e, id) {
 function openSafeguards() {
   const words = screenWords();
   $("safeguards-title").textContent = words.safeguards.title;
-  $("safeguards-close").textContent = words.icons.dismiss;
+  $("safeguards-close").textContent = words.close;
   const lines = vocab.rules.map((rule) => {
     if (!rule.short) throw new Error("rules.short");
     return el("li", {}, rule.short);
@@ -3420,7 +3420,7 @@ function openAbout() {
   const words = screenWords();
   $("about-title").textContent = vocab.product;
   $("about-edition").textContent = fill(words.about.edition, { version: PILOT.edition.version });
-  $("about-close").textContent = words.icons.dismiss;
+  $("about-close").textContent = words.close;
   openDialog("about-modal");
 }
 
@@ -3432,7 +3432,7 @@ function openAbout() {
 function openMisfits() {
   const words = screenWords();
   $("misfits-title").textContent = words.misfits.title;
-  $("misfits-close").textContent = words.icons.dismiss;
+  $("misfits-close").textContent = words.close;
   const reasons = words.misfits.reasons || {};
   window.tracker.logError(misfits.map((one) => `${one.where || one.path}: ${one.sentence}`).join("\n"));
   show("misfits-list", misfits.map((one) => el("li", {},

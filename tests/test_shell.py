@@ -2406,3 +2406,15 @@ def test_the_harness_stub_replies_have_the_shape_of_the_engines(capsys, demo_roo
     assert moved and set(moved[0]) - {"named"} == {
         "original_name", "pbc_location", "handle", "seq", "home", "now", "in_request", "gone",
         "open_key", "identifier", "group"}
+
+
+def test_the_three_info_dialogs_close_with_the_apis_close_word():
+    """SPEC 2.7 E93-E95 say Close (S5 review F9): the button of Safeguards,
+    About and Folders Skipped reads ``screen.close``, and ``icons.dismiss``
+    stays the notice icon's and the side sheet's."""
+    app = stripped_js("app.js")
+    for name in ("safeguards", "about", "misfits"):
+        assert f'$("{name}-close").textContent = words.close;' in app, name
+    assert "-close\").textContent = words.icons.dismiss" not in app
+    screen = api._vocab()["screen"]
+    assert screen["close"] == "Close" and screen["icons"]["dismiss"] == "Dismiss"
