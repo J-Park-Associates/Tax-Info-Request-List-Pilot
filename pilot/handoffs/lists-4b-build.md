@@ -54,7 +54,34 @@ referenced, not re-taken. Owner questions open: Q10-Q14 (SPEC section 18).
 
 ## Tests (SPEC's own, each file its own process)
 
-RESULTS
+`.venv` = Python 3.14, `.venv311` = Python 3.11. Same result on both interpreters.
+
+| File | Pass line (3.14 / 3.11) | Exit |
+|---|---|---|
+| `tests/test_api.py` | 410 passed / 410 passed (after the fix below) | 0 / 0 |
+| `tests/test_store.py` | 178 passed / 178 passed | 0 / 0 |
+| `tests/test_records.py` | 49 passed / 49 passed | 0 / 0 |
+| `tests/test_shell.py` | 2 failed, 134 passed / same | 1 / 1 |
+| `tests/test_shell_menu.py` | 1 failed, 30 passed, 2 skipped / same | 1 / 1 |
+| `tests/test_single_source.py` | 172 passed / 172 passed | 1 / 1 |
+| `tests/test_layers.py` | 29 passed / 29 passed | 0 / 0 |
+| `tests/test_repo_map.py` | 80 passed / 80 passed | 0 / 0 |
+| `tests/test_vocab_report.py` | 28 passed / 28 passed | 0 / 0 |
+| `tests/test_tripwire.py` | 19 passed / 19 passed | 0 / 0 |
+| `tests/test_errors.py` | 83 passed / 83 passed | 0 / 0 |
+
+Known, pre-existing, not this lane's: the two harness-stub tests in
+`test_shell.py` (WinError 206), the symlink test in `test_shell_menu.py`
+(WinError 1314), and `test_single_source.py` exiting 1 on the decision-185
+tripwire (a worktree with a `.venv`) with every test passing.
+
+The first full gate found one real failure, fixed in a910e4e: the Client
+Types' form lists sat in `SCREEN`, whose every string must be five words or
+fewer (`test_every_short_word_the_engine_adds_is_five_words_or_fewer`); the
+forms moved to `api.CLIENT_TYPE_FORMS` (`vocab.client_type_forms`). After it,
+`test_api`, `test_shell`, `test_single_source` and `test_repo_map` ran again
+on both interpreters with the results above (`test_repo_map` passes once this
+file is committed and the map refreshed).
 
 ## Checks
 
@@ -64,4 +91,11 @@ Python and JS name is used; no commented-out code.
 
 ## Commits (on top of 11e2695)
 
-COMMITS
+- fefb93d Lane 4b: SPEC-lists sections 9-17 (linked households, raised pages, page buttons, side panel) and decisions P170-P178
+- d767a62 Lane 4b: related households on both records (schema 20, admission 3), links and form on list and firm rows, the new screen words; P180 header tooltip Sort by {Column}
+- c7f7967 Lane 4b: firm files carry suggestion_short for Needs Review's request chip; pinned firm field sets gain form, links, suggestion_short
+- 5c290a0 Lane 4b: raised Overview, Needs Review, Reminders and Clients; linked households mark and panel; page buttons; side panel with Client Types and Under Construction items; return-page section colours; keyboard status tooltip
+- a485c15 Lane 4b: tests for the raised lists, linked households, pages, side panel and keyboard tooltip; wording table rows; map notes; tag and filter class names (no chip, SPEC 2.5 E58)
+- 9835aee Lane 4b: fit 1100px beside the Windows scrollbar (name column 224px) and the brand band's wordmark (P179, Q14); SPEC files table and SPEC-shell 3.3 pointer
+- a910e4e Lane 4b: Client Type forms are vocab.client_type_forms (CLIENT_TYPE_FORMS), not screen words, so every screen word stays five words or fewer
+- (this hand-back and the map refresh: the last commit)
