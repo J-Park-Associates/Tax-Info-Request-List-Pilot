@@ -895,11 +895,7 @@ function shellKey(e) {
       hideFound();
       return true;
     }
-    if (tipShowing()) {
-      hideTip();
-      return true;
-    }
-    return false;
+    return false;   // a showing tip was hidden already, by tooltip.js (P130)
   }
   if (e.target.closest && e.target.closest('[role="listbox"]') && typeof pagesKey === "function") return pagesKey(e) === true;
   return false;

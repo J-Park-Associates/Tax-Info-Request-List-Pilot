@@ -407,6 +407,40 @@ def test_the_search_box_alone_shows_no_tooltip_on_keyboard_focus():
     assert '<input id="find"' in read("index.html")
 
 
+def test_escape_hides_a_showing_tip_first_and_leaves_the_key_to_the_page(tmp_path):
+    """P130 (the Windows check's F2): a hover tip over the Sort icon while the
+    search box has the focus survived Escape, because only the last branch of
+    ``shellKey`` hid a tip. ``tooltip.js`` hears Escape itself, hides the tip
+    and does not consume the key, so the same Escape still does the page's
+    own thing (clear the search box, close the sheet or a dialog)."""
+    setup = """
+      let tipFor = null, hidden = 0;
+      function hideTip() { hidden += 1; tipFor = null; }
+      const key = (k) => { const e = { key: k, stopped: 0, prevented: 0 };
+        e.preventDefault = () => { e.prevented += 1; }; e.stopPropagation = () => { e.stopped += 1; };
+        e.stopImmediatePropagation = () => { e.stopped += 1; }; return e; };
+    """
+    probe = """
+      const out = [];
+      tipFor = { id: "sort" }; let e = key("Escape"); tipKey(e); out.push([hidden, tipFor, e.prevented, e.stopped]);
+      e = key("Escape"); tipKey(e); out.push([hidden, e.prevented, e.stopped]);
+      tipFor = { id: "sort" }; e = key("Tab"); tipKey(e); out.push([hidden, tipFor === null]);
+      return out;
+    """
+    out = run_shell(["tipKey"], setup, probe, tmp_path, "tooltip.js")
+    assert out == [[1, None, 0, 0], [1, 0, 0], [1, False]]
+
+
+def test_the_tooltip_listens_for_escape_in_the_capture_phase():
+    """P130: heard before the page's own keydown (``app.js`` listens in the
+    bubble phase and asks ``shellKey`` first), and ``shellKey`` no longer
+    names the tip."""
+    js = stripped_js("tooltip.js")
+    assert 'document.addEventListener("keydown", tipKey, true);' in js
+    key = js_function("shellKey")
+    assert "tipShowing" not in key and "hideTip" not in key and "tipShowing" not in js
+
+
 def test_the_skeleton_is_the_specs_and_the_legacy_box_holds_only_the_three_inputs_saveroot_reads():
     """SPEC 3.1 and 13. The pages took the toolbar, the banners, the request
     table, the household card and the setup card; the side sheet took the

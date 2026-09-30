@@ -102,8 +102,13 @@ function hideTip() {
   tipFor = null;
 }
 
-function tipShowing() {
-  return tipFor !== null;
+// Escape hides a showing tip, wherever the keyboard is (SPEC-shell 8.5,
+// P130): heard first, in the capture phase, and never consumed, so the same
+// Escape still clears the search box, closes the side sheet or asks a dialog
+// to close. Consuming it would make every dialog need two Escapes, because
+// the keyboard puts a tip on each control it reaches.
+function tipKey(e) {
+  if (e.key === "Escape" && tipFor !== null) hideTip();
 }
 
 function tipTarget(event) {
@@ -132,6 +137,7 @@ document.addEventListener("focusin", (e) => {
   }
 });
 document.addEventListener("focusout", hideTip);
+document.addEventListener("keydown", tipKey, true);
 document.addEventListener("pointerdown", hideTip, true);
 // Scrolling or resizing while a tip shows moves it with its element.
 function replaceTip() {
