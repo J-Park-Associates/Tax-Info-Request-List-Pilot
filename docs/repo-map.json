@@ -15,9 +15,9 @@
     "a person sends the draft"
   ],
   "counts": {
-    "nodes": 344,
+    "nodes": 346,
     "edges": 1156,
-    "reused": 300
+    "reused": 303
   },
   "node_types": [
     "artifact",
@@ -4610,8 +4610,8 @@
       "id": "pilot/DECISIONS.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "10e03c95939dc2f5",
-      "lines": 120
+      "sha256": "3a5ba10e1f0daaf7",
+      "lines": 149
     },
     {
       "id": "pilot/HANDOFF.md",
@@ -5097,6 +5097,13 @@
       "lines": 114
     },
     {
+      "id": "pilot/handoffs/wincheck-shell.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "c62f922644deac9f",
+      "lines": 52
+    },
+    {
       "id": "pilot/harness/README.md",
       "type": "doc",
       "layer": "docs",
@@ -5186,6 +5193,13 @@
       "layer": "docs",
       "sha256": "d82d4ab68a5704a1",
       "lines": 57
+    },
+    {
+      "id": "pilot/wintest/RESULTS-shell.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "c98390a2be159914",
+      "lines": 102
     },
     {
       "id": "pilot/wintest/SAMPLE-DOCUMENTS.md",
@@ -5317,8 +5331,8 @@
       "id": ".claude/settings.json",
       "type": "file",
       "layer": "root",
-      "sha256": "b8d4d7817e7c6924",
-      "lines": 78
+      "sha256": "103b09a62fe090cd",
+      "lines": 81
     },
     {
       "id": ".claude/skills/impeccable/scripts/command-metadata.json",
@@ -5491,8 +5505,8 @@
       "id": "pilot/mockup-shell.html",
       "type": "ui",
       "layer": "root",
-      "sha256": "2849db2cee578acc",
-      "lines": 1023
+      "sha256": "e962c9d2f39c06a8",
+      "lines": 1078
     },
     {
       "id": "pilot/wintest/make_samples.py",
