@@ -2258,8 +2258,8 @@ async function passEnded({ reply }) {
 }
 
 // ── a Sort's answer belongs to its return (P131; rulings 20, 28) ───────
-// What a Sort said - "Sort Failed: {reason}", "Nothing Done", files not
-// sorted - is kept under the return it was asked for and shown only while a
+// What a Sort said - a failure and its reason, a skip, files not sorted -
+// is kept under the return it was asked for and shown only while a
 // page of that return's household is on screen. A firm page never shows it:
 // its one failed-sort notice is the scheduled sort's (SPEC-shell 3.5). The
 // next Sort of the household replaces it, F5 forgets it (the page is read
