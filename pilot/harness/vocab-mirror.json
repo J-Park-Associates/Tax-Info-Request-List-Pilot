@@ -985,6 +985,17 @@
   },
   "loading": "Loading",
   "misfits": {
+   "reasons": {
+    "bad_name": "Name Refused",
+    "client_look_alike": "Look-Alike Folder",
+    "client_no_record": "Unowned Folder",
+    "legacy_folder": "Old Workbook",
+    "no_household_record": "No Household",
+    "no_return": "No Return",
+    "not_a_tree": "Unknown Folder",
+    "record_misplaced": "Old Layout",
+    "unlisted": "Cannot List"
+   },
    "title": "Folders Skipped"
   },
   "moved": "Moved by Hand",

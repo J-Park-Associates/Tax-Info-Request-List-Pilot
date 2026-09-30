@@ -2090,10 +2090,10 @@ def test_the_four_dialogs_draw_the_apis_words_and_never_a_path(tmp_path):
       const window = { tracker: { logError: (t) => logged.push(t) } };
       const fill = (p, v) => p.replace(/\{(\w+)\}/g, (_, k) => v[k] ?? "");
       const PILOT = { edition: { version: "0.2" } };
-      let misfits = [{ path: "/abs/Clients/Old Files", where: "Clients/Old Files", sentence: "This folder is not a household and is left alone by the tracker." },
-                     { path: "C:\\\\abs\\\\Scans", where: "", sentence: "Also left alone." }];
+      let misfits = [{ path: "/abs/Clients/Old Files", where: "Clients/Old Files", sentence: "This folder is not a household and is left alone by the tracker.", code: "not_a_tree" },
+                     { path: "C:\\\\abs\\\\Scans", where: "", sentence: "Also left alone.", code: "not_a_year" }];
       const vocab = { product: "Tax Document Tracker", rules: [{ headline: "h", detail: "d", short: "No AI Reads Documents" }, { headline: "h2", detail: "d2", short: "Nothing Is Guessed" }],
-        screen: { icons: { dismiss: "Dismiss" }, safeguards: { title: "Safeguards" }, about: { edition: "Pilot {version}" }, misfits: { title: "Folders Skipped" } } };
+        screen: { icons: { dismiss: "Dismiss" }, safeguards: { title: "Safeguards" }, about: { edition: "Pilot {version}" }, misfits: { title: "Folders Skipped", reasons: { not_a_tree: "Unknown Folder" } } } };
       const screenWords = () => vocab.screen;
     """
     ran = run_shell(["openSafeguards", "openAbout", "openMisfits", "folderName"], setup, """
@@ -2107,10 +2107,12 @@ def test_the_four_dialogs_draw_the_apis_words_and_never_a_path(tmp_path):
     """, tmp_path, source="app.js")
     assert ran["rules"] == ["No AI Reads Documents", "Nothing Is Guessed"] and ran["title"] == "Safeguards"
     assert ran["product"] == "Tax Document Tracker" and ran["edition"] == "Pilot 0.2"
-    assert ran["folders"] == ["Old Files", "Scans"], "a folder is its own name: the last part of where it is"
+    assert ran["folders"] == ["Old FilesUnknown Folder", "Scans"], (
+        "a folder is its own name (the last part of where it is) and the vocabulary's word for its code; "
+        "a code with no word (not_a_year) draws the name alone")
     assert ran["opened"] == ["safeguards-modal", "about-modal", "misfits-modal"]
     assert ran["loud"] == "rules.short", "a rule without its short line is a word the vocabulary lacks: loud, not the long sentence"
-    assert any("vocab.screen.misfits.reason" in line for line in ran["logged"]), "the missing two-word reason is said in the error log"
+    assert not any("vocab.screen" in line for line in ran["logged"]), "a code without a word is not an error"
     assert any("not a household" in line for line in ran["logged"]), "the folder's long sentence goes to the error log"
 
 

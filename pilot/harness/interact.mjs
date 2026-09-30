@@ -524,6 +524,8 @@ const settle = (page) => page.waitForTimeout(250);
   await page.click("#notices .notice-act[data-act=action]");
   const names = await page.evaluate(() => [...document.querySelectorAll("#misfits-list .misfit-name")].map((n) => n.textContent));
   check("Show lists the folders skipped by their own names, never a path", names.join("|") === "Old Files|Scans|Misc", names);
+  const whys = await page.evaluate(() => [...document.querySelectorAll("#misfits-list li")].map((n) => n.textContent));
+  check("each skipped folder has the vocabulary's reason beside its name; a code without a word draws the name alone", whys.join("|") === "Old FilesUnknown Folder|ScansNo Return|Misc", whys);
   await page.keyboard.press("Escape");
   await context.close();
 }

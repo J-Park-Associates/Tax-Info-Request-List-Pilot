@@ -3393,23 +3393,20 @@ function openAbout() {
   openDialog("about-modal");
 }
 
-// One row per folder left alone: its own name. The API's one sentence per
-// folder says why, and is far over five words: it goes to the error log, and
-// the two-word reason the SPEC draws is a word the vocabulary must carry
-// (`screen.misfits.reason`); until it does, the missing word is said once.
+// One row per folder left alone: its own name and, beside it, the API's
+// two-word reason for that kind of folder (`screen.misfits.reasons[code]`).
+// The one long sentence per folder goes to the error log, and no path is
+// drawn. A code the vocabulary has no word for (the year that is not a year,
+// until Jason gives it one) draws the name alone: not an error.
 function openMisfits() {
   const words = screenWords();
   $("misfits-title").textContent = words.misfits.title;
   $("misfits-close").textContent = words.icons.dismiss;
-  const reason = words.misfits.reason || "";
-  if (!reason && !openMisfits.said) {
-    openMisfits.said = true;
-    window.tracker.logError("vocab.screen.misfits.reason");
-  }
+  const reasons = words.misfits.reasons || {};
   window.tracker.logError(misfits.map((one) => `${one.where || one.path}: ${one.sentence}`).join("\n"));
   show("misfits-list", misfits.map((one) => el("li", {},
     el("span", { className: "misfit-name" }, folderName(one.where || one.path)),
-    reason && el("span", { className: "misfit-why" }, reason))));
+    reasons[one.code] && el("span", { className: "misfit-why" }, reasons[one.code]))));
   openDialog("misfits-modal");
 }
 

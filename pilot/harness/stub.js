@@ -328,7 +328,7 @@
     reader_warning: LONG.reader,
     machine_warnings: LONG.machine,
     after_install: { failed: ["The daily job could not be registered."], findings: ["A household is malformed."], wait: LONG.findingsWait },
-    misfits: [{ path: "x", where: "Clients/Old Files", sentence: "Not a household." }, { path: "y", where: "Clients/Scans", sentence: "Not a household." }, { path: "z", where: "Clients/Misc", sentence: "Not a household." }],
+    misfits: [{ path: "x", where: "Clients/Old Files", sentence: "Not a household.", code: "not_a_tree" }, { path: "y", where: "Clients/Scans", sentence: "Not a household.", code: "no_return" }, { path: "z", where: "Clients/Misc", sentence: "Not a household.", code: "not_a_year" }],
   } : {};
 
   // ── the writes the side sheet makes: they change the made-up return ───
