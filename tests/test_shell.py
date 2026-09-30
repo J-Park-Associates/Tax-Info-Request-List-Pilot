@@ -2164,3 +2164,29 @@ def test_a_request_answered_by_several_files_draws_a_row_for_each_and_counts_onl
     assert "child: true" in pages and 'spec.child ? " row-child" : ""' in pages
     assert 'row.classList.contains("row-child")' in js_function("pagesGroup", "pages.js")
     assert 'if (spec.detailLink || spec.nameLink) ids.push("show_in_explorer");' in pages
+
+
+def test_a_failed_last_sort_is_a_keyed_notice_with_retry_that_clears_when_a_sort_works(tmp_path):
+    """Ruling 20: the record's last sort failed -> one notice (the vocabulary's
+    'Sort Failed', Retry runs the sort); while a sort runs it is left alone; a
+    sort that worked, or none yet, clears it. Nothing here types a word."""
+    ran = run_shell(["syncSortNotice"], """
+      let scanning = null; let shellLastPass = null;
+      const seen = [];
+      const screenWords = () => ({ last_sort: { failed: "Sort Failed" } });
+      const keyedNotice = (key, failure, opts) => seen.push(["show", key, failure.sentence, failure.kind, opts.retry === runScan]);
+      const clearNotice = (key) => seen.push(["clear", key]);
+      const runScan = () => {};
+    """, """
+      const at = (pass, running) => { shellLastPass = pass; scanning = running; seen.length = 0; syncSortNotice(); return seen.map((one) => one.join("|")); };
+      return {
+        failed: at({ when: "2026-09-30T06:00:00Z", ok: false }, null),
+        running: at({ when: "2026-09-30T06:00:00Z", ok: false }, { pass: "p" }),
+        worked: at({ when: "2026-09-30T06:00:00Z", ok: true }, null),
+        never: at(null, null),
+      };
+    """, tmp_path)
+    assert ran["failed"] == ["show|last-sort|Sort Failed|failed|true"]
+    assert ran["running"] == [], "left as it is while a sort runs"
+    assert ran["worked"] == ["clear|last-sort"] and ran["never"] == ["clear|last-sort"]
+    assert "syncSortNotice();" in js_function("shellChanged", "shell.js")

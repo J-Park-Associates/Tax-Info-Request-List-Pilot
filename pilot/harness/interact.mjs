@@ -246,6 +246,26 @@ const crumbs = (page) => page.evaluate(() => [...document.querySelectorAll("#cru
   await context.close();
 }
 
+{ // ruling 20: a failed sort is a notice with Retry at the top of every page; the side line stays; it clears when a sort works
+  for (const mode of ["double", "real"]) {
+    const { context, page } = await open(`?mode=${mode}&scenario=failed`);
+    const failedNotice = () => page.evaluate(() => [...document.querySelectorAll("#notices .notice-failed")].filter((n) => n.querySelector(".notice-text").textContent === "Sort Failed").map((n) => [...n.querySelectorAll("button")].map((b) => b.textContent)[0]));
+    check(`ruling 20 (${mode}): Overview shows the failed sort with Retry`, (await failedNotice()).join() === "Retry", await failedNotice());
+    for (const level of ["needs-review", "reminders", "clients"]) {
+      await page.evaluate((l) => shellGo({ level: l }), level);
+      await page.waitForTimeout(150);
+      check(`ruling 20 (${mode}): it is still there on ${level}, once`, (await failedNotice()).length === 1, await failedNotice());
+    }
+    check(`ruling 20 (${mode}): the side panel's Sort Failed line stays`, (await page.textContent("#last-sort")).includes("Sort Failed"), await page.textContent("#last-sort"));
+    await page.evaluate(() => { shellLastPass = { ...shellLastPass, ok: true, text: "Sorted." }; shellChanged(); });
+    check(`ruling 20 (${mode}): it clears when a sort works`, (await failedNotice()).length === 0, await failedNotice());
+    await context.close();
+  }
+  const { context, page } = await open("?mode=double");
+  const none = await page.evaluate(() => [...document.querySelectorAll("#notices .notice-text")].map((n) => n.textContent));
+  check("ruling 20: a good last sort shows no failure notice", !none.includes("Sort Failed"), none);
+  await context.close();
+}
 
 // ── the side sheet, the links, the right-click menus and the dialogs (S5), on the real app.js ──
 const smith = "/clients/J Park & Associates/Smith Family";

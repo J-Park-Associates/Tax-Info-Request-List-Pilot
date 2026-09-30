@@ -460,9 +460,24 @@ function sortClicked() {
 function shellChanged() {
   if (!vocab || !vocab.screen) return;
   drawLastSort();
+  syncSortNotice();
   drawSort();
   drawCounts();
   shellEnable();
+}
+
+// A failed sort is also a notice at the top of the main area, on every page,
+// with Retry (ruling 20); the side panel's "Sort Failed" line stays. It is the
+// record's word, not an event's: it stays while the last sort failed, is left
+// as it is while one runs, and goes when a sort works.
+function syncSortNotice() {
+  if (scanning) return;
+  const last = shellLastPass;
+  if (last && last.when && last.ok === false) {
+    keyedNotice("last-sort", { sentence: screenWords().last_sort.failed, kind: "failed" }, { retry: runScan });
+  } else {
+    clearNotice("last-sort");
+  }
 }
 
 function drawCounts() {
