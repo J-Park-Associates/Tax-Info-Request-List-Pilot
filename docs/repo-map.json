@@ -1,6 +1,6 @@
 {
   "schema": 2,
-  "generated": "2026-09-30",
+  "generated": "2026-09-29",
   "generator": "tools/repo_map.py",
   "generator_sha256": "22c7b60a1d198289",
   "module_table_sha256": "7302db5ae8334be2",
@@ -15,7 +15,7 @@
     "a person sends the draft"
   ],
   "counts": {
-    "nodes": 344,
+    "nodes": 346,
     "edges": 1156,
     "reused": 300
   },
@@ -4610,8 +4610,8 @@
       "id": "pilot/DECISIONS.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "10e03c95939dc2f5",
-      "lines": 120
+      "sha256": "88a80a51cec0f832",
+      "lines": 123
     },
     {
       "id": "pilot/HANDOFF.md",
@@ -5097,6 +5097,13 @@
       "lines": 114
     },
     {
+      "id": "pilot/handoffs/wincheck-shell.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "97b7fa97fc7deef4",
+      "lines": 44
+    },
+    {
       "id": "pilot/harness/README.md",
       "type": "doc",
       "layer": "docs",
@@ -5186,6 +5193,13 @@
       "layer": "docs",
       "sha256": "d82d4ab68a5704a1",
       "lines": 57
+    },
+    {
+      "id": "pilot/wintest/RESULTS-shell.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "c98390a2be159914",
+      "lines": 102
     },
     {
       "id": "pilot/wintest/SAMPLE-DOCUMENTS.md",
@@ -5317,8 +5331,8 @@
       "id": ".claude/settings.json",
       "type": "file",
       "layer": "root",
-      "sha256": "b8d4d7817e7c6924",
-      "lines": 78
+      "sha256": "103b09a62fe090cd",
+      "lines": 81
     },
     {
       "id": ".claude/skills/impeccable/scripts/command-metadata.json",
