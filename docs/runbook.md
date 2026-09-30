@@ -572,6 +572,12 @@ changes nothing:
   file in the app's own local folder, `%LOCALAPPDATA%\Tax Document Tracker
   Pilot` (it does not roam with a profile, and it is not the data folder),
   never shown. Help, Open error log opens it.
+  **The fallback error log's place (ruling 22):**
+  `%LOCALAPPDATA%\Tax Document Tracker Pilot\error.log`, normally
+  `C:\Users\<user>\AppData\Local\Tax Document Tracker Pilot\`, with one
+  older copy `error.log.1`. Uninstalling the app leaves that folder behind.
+  The log can contain client names, so when the program is removed for good
+  (or the PC is retired) delete the folder by hand.
 
 There used to be a second one, a comparison flag on the ledger's own
 statuses against the request list's. There is nothing left for it to
