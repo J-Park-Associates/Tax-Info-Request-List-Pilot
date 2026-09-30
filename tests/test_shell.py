@@ -2418,3 +2418,19 @@ def test_the_three_info_dialogs_close_with_the_apis_close_word():
     assert "-close\").textContent = words.icons.dismiss" not in app
     screen = api._vocab()["screen"]
     assert screen["close"] == "Close" and screen["icons"]["dismiss"] == "Dismiss"
+
+
+def test_every_word_index_html_types_is_in_title_case():
+    """Ruling 10 (Title Case) for the page's own literals: the text between
+    tags, ``aria-label`` and ``placeholder``. The words that come from the
+    API are its; these are the few the template types (Retry, Cancel, the
+    wizard's field names) and they are cased like them."""
+    from tests.test_api import title_case
+
+    html = re.sub(r"<!--.*?-->", "", read("index.html"), flags=re.S)
+    html = re.sub(r"<(script|style|svg)\b.*?</\1>", "", html, flags=re.S)
+    texts = [t.strip() for t in re.findall(r">([^<>]+)<", html) if t.strip()]
+    texts += re.findall(r'(?:aria-label|placeholder)="([^"]+)"', html)
+    assert "Retry" in texts and "Add a Custom Request" in texts
+    bad = [(t, title_case(t)) for t in texts if len(t.split()) > 1 and title_case(t) != t]
+    assert not bad, bad

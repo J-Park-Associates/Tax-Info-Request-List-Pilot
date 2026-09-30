@@ -753,7 +753,7 @@ async function keepMoved(li, btn) {
   }
 }
 
-// ── Needs review: a person's decision, carried out by the filer ──────────
+// ── Needs Review: a person's decision, carried out by the filer ──────────
 
 // The card's offer beside a page that named nobody on this return
 // (decision 128): the person it belongs to, and the spelling this page

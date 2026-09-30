@@ -115,7 +115,7 @@
     }, extra || {}));
   }
   if (scenario === "quiet") {
-    // Nothing waits anywhere: the empty Overview, Needs review and Reminders.
+    // Nothing waits anywhere: the empty Overview, Needs Review and Reminders.
     household("Okafor Family", "Ada Okafor", [["1040 - Chidi & Ada Okafor", 2025, generic(0, 0, 12, "")]]);
     household("Patel Family", "Nina Patel", [["1040 - Nina Patel", 2025, generic(0, 0, 9, "")]]);
   } else if (scenario !== "empty-clients") {
