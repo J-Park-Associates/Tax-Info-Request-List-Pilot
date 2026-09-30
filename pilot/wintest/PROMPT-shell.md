@@ -53,11 +53,11 @@ not rerun. The run also builds the installer; note its SHA-256.
    with the app open (it follows at once). Close and reopen while Dark: the
    window must not flash white first. In both, a return or file name that is a
    link is underlined, and a status such as "3 Waiting" is not.
-5. **The "Came in Email or Zip" status.** Open a return that has a file that
+5. **The "Email or Zip" status (P116).** Open a return that has a file that
    came in an email or a zip. That file's name is plain text, not a link (an
-   email or a zip is never opened from here), and its status words end with an
-   ellipsis at the column's edge without spilling into the next column;
-   hovering shows the full words.
+   email or a zip is never opened from here), and its status reads "Email or
+   Zip" whole, with no ellipsis, with the window at 1100 px wide; hovering the
+   status shows "Came in Email or Zip".
 6. **Firm summary speed.** Clients folder with many returns (the 750-return
    copy if you have it, else note the count): open Overview and time how long
    the counts take to appear. The budget is 3 seconds for 750 returns. The
@@ -121,8 +121,8 @@ not rerun. The run also builds the installer; note its SHA-256.
     "Two Years Open; Sorting Paused" **in full, on wrapped lines if needed,
     never cut**, and Overview lists it the same way. Nothing is hidden on the
     household's own pages. To switch the older return off: open that older
-    return's page, right-click its name and choose **Edit Request List…**, set
-    **Active** to *No: Sorting Skips This Return*, and save. Press F5: the
+    return's page, right-click its name and choose **Edit Request List…**,
+    untick **Active — No: Sorting Skips This Return**, and save. Press F5: the
     marker goes.
 15. **Skipped folders.** In File Explorer, inside the practice folder
     `J Park & Associates\<household>\` (the household's own folder, for

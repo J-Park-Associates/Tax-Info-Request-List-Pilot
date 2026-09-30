@@ -1668,6 +1668,26 @@ def test_a_file_waiting_in_the_drop_folder_holds_the_whole_reminder(tmp_path):
     assert reminder_module.held_refusal(draft) == INBOX_HOLD.format(n=2)
 
 
+def test_the_waiting_files_are_named_and_counted_from_one_walk(tmp_path):
+    """P134: the reminder sheet said "Held: 1 Files Not Sorted" and nothing
+    about which file. The names come from the same walk as the count, so they
+    always agree: each file's own name (a subfolder's file by its name, never
+    a path), a transfer still in progress among them, sorted."""
+    from tracker.reminder import unsorted_files_in_inbox, unsorted_in_inbox
+
+    folder = engagement(tmp_path, SENDABLE)
+    assert unsorted_files_in_inbox(folder) == [] and unsorted_in_inbox(folder) == 0
+    waiting_in(folder, "W-2 from the client.pdf", "W-2 Jane Smith 2025.pdf.tmp.driveupload")
+    (inbox_of(folder) / "bank").mkdir()
+    (inbox_of(folder) / "bank" / "march.pdf").write_bytes(b"%PDF-1.4 a statement")
+
+    names = unsorted_files_in_inbox(folder)
+
+    assert names == ["W-2 Jane Smith 2025.pdf.tmp.driveupload", "W-2 from the client.pdf", "march.pdf"]
+    assert unsorted_in_inbox(folder) == len(names) == draft_reminder(folder).unsorted
+    assert not any("/" in name or "\\" in name for name in names)
+
+
 def test_a_transfer_still_in_progress_holds_the_reminder(tmp_path):
     from tracker.filer import iter_drops
 

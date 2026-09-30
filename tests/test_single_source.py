@@ -189,7 +189,7 @@ def test_the_apps_menu_is_the_template_in_both_builds_and_the_source_app_runs_it
 #: brought forward. Every other part of the shell is left real.
 _ELECTRON_STUB = r"""
 const Module = require("module");
-const seen = { asked: false, quit: 0, windows: 0, restored: 0, focused: 0, events: [] };
+const seen = { asked: false, quit: 0, windows: 0, restored: 0, focused: 0, events: [], spawned: [] };
 const handlers = {};
 const win = {
   isMinimized: () => true,
@@ -218,9 +218,30 @@ const electron = {
   Menu: { buildFromTemplate: (template) => ({ template }), setApplicationMenu() {} },
   nativeTheme: { shouldUseDarkColors: false, shouldUseHighContrastColors: false, themeSource: "", on() {} },
 };
+// The tracker is never started: in a checkout with a .venv, main.js's launch
+// step would run the checkout's Python against the checkout's settings file
+// (decision 185's tripwire). Every spawn is recorded and answers at once
+// with an empty reply and exit 0 (the review of SPEC-wincheck-fixes, S5).
+const { EventEmitter } = require("events");
+const childProcess = {
+  spawn(command) {
+    seen.spawned.push(command);
+    const stream = () => Object.assign(new EventEmitter(), { setEncoding() {} });
+    const child = Object.assign(new EventEmitter(), { stdout: stream(), stderr: stream(), kill() {} });
+    child.stdin = Object.assign(new EventEmitter(), { write() {}, end() {} });
+    setImmediate(() => {
+      child.stdout.emit("data", '{"warnings": []}\n');
+      child.emit("exit", 0, null);
+      child.emit("close", 0, null);
+    });
+    return child;
+  },
+};
 const load = Module._load;
 Module._load = function (request, ...rest) {
-  return request === "electron" ? electron : load.call(this, request, ...rest);
+  if (request === "electron") return electron;
+  if (request === "child_process" || request === "node:child_process") return childProcess;
+  return load.call(this, request, ...rest);
 };
 require(process.argv[2]);
 setImmediate(() => {
@@ -260,6 +281,7 @@ def test_the_app_opens_one_window(tmp_path):
 
     first = launch("first")
     assert first["asked"] and first["windows"] == 1 and first["quit"] == 0
+    assert all(isinstance(one, str) for one in first["spawned"])   # recorded, never started
     assert "second-instance" in first["events"]
     assert first["restored"] == 1 and first["focused"] == 1   # the second launch, answered
     second = launch("second")
@@ -1325,6 +1347,7 @@ def test_documents_name_only_runtime_files_the_code_owns():
     from tracker.after_install import BUILD_INFO_FILENAME, RECORD_FILENAME
     from tracker.checkpoint import CHECKPOINT_FILENAME
     from tracker.filer import README_LOCK_FILENAME
+    from tracker.firm_cache import CACHE_FILENAME
     from tracker.ledger import LEDGER_FILENAME
     from tracker.locking import LOCK_FILENAME, RACE_LOCK_FILENAME
     from tracker.registry import LEGACY_MANIFEST_FILENAME
@@ -1344,7 +1367,9 @@ def test_documents_name_only_runtime_files_the_code_owns():
              # Decision 159: the checkpoint, the scheduled pass's own note, the race's lock.
              CHECKPOINT_FILENAME, LAST_PASS_FILENAME, RACE_LOCK_FILENAME,
              # Decision 209: the after-install step's note, and the build's.
-             RECORD_FILENAME, BUILD_INFO_FILENAME}
+             RECORD_FILENAME, BUILD_INFO_FILENAME,
+             # P120: the firm view's cache.
+             CACHE_FILENAME}
     tracked = subprocess.run(["git", "ls-files"], cwd=REPO, capture_output=True, text=True).stdout.split()
     repo_files = {Path(t).name for t in tracked} | {t for t in tracked}
     for rel in DOCUMENTS:

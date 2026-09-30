@@ -565,8 +565,9 @@ SCHEDULE_CLAIMED_DAILY = ("This computer ({host}) now runs the schedule for this
                           "at {start}.")
 SCHEDULE_REGISTERED_DAILY = ("The schedule is set: every day at {start}, with this computer's copy of "
                              "the app.")
-SCHEDULE_OFF = ("The schedule is off on this computer. Scan still works. Turn it on with the Schedule "
-                "button.")
+#: The app's words since the shell (P133): the pass is Sort, and Schedule is
+#: a Tools menu item, not a button.
+SCHEDULE_OFF = "The schedule is off on this computer. Sort still works. Turn it on in Tools > Schedule."
 SCHEDULE_ELSEWHERE = "{host} runs the schedule for this clients folder, so this computer registers none{removed}."
 SCHEDULE_REMOVED = " and removed the one it had"
 #: The file's path is named; its content never is (it is whatever was left there).

@@ -296,7 +296,8 @@ details.fold[open] > summary .chev { transform: rotate(90deg); }
     <label for="mock-state">State <select id="mock-state">
       <option value="normal">Normal day</option>
       <option value="loading">Loading</option>
-      <option value="failed">Sort failed</option>
+      <option value="failed">Overnight sort failed</option>
+      <option value="retfailed">A return's sort failed</option>
       <option value="locked">Return in use elsewhere</option>
       <option value="empty">Nothing waiting</option>
       <option value="setup">First run</option>
@@ -379,6 +380,9 @@ function smithReturn() {
       req("W-2 - Brightline Health", "w2-jane.pdf", "Received", "Mar 1"),
       req("1099-INT - Bluebird Credit Union", "bluebird-int.pdf", "Received", "Mar 1"),
       req("1099-DIV - Evergreen Funds", "evergreen-div.pdf", "Accepted", "Feb 27"),
+      // P116: a file that came in an email or a zip says so in short tag
+      // words that fit the status column; the tooltip carries the full words.
+      { ...req("1099-R - Evergreen Funds", "evergreen-1099r.pdf", "Email or Zip", "Feb 27"), statusTip: "Came in Email or Zip" },
       req("1095-C - Brightline Health", "1095c.pdf", "Received", "Feb 26"),
       req("Property tax bill", "county-tax.pdf", "Received", "Feb 24"),
       req("Childcare receipts", "3 files", "Received", "Feb 20"),
@@ -413,37 +417,78 @@ hh("Smith Family", "John Smith", true, [
   ret("1040 - John & Jane Smith", 2025, smithReturn()),
   ret("1040 - John & Jane Smith", 2024, genericReturn({ need: 0, waiting: 0, received: 11 }, ""), { detail: "Rolled forward" }),
 ]);
-hh("Rivera Design", "Marco Rivera", true, [
-  ret("1120-S - Rivera Design LLC", 2025, genericReturn({ need: 1, waiting: 3, received: 6 }, "Due Mar 16")),
-  ret("1040 - Marco Rivera", 2025, { ...genericReturn({ need: 0, waiting: 2, received: 7 }, "Due Apr 15"), draft: { stage: 0, held: 0, drafted: "Mar 3" } }),
+// The 20 made-up households of the office PC's sample Clients folder
+// (2026-09-29): each form's own core requests (tracker/templates.py), how
+// many the client has sent, and the files built to land in Needs Review.
+const FORM_REQUESTS = {
+  "1040": ["W-2", "1099-INT-DIV", "Prior-Year Returns", "1098 Mortgage", "Charity Receipts"],
+  "1120": ["Prior-Year Returns", "Trial Balance", "General Ledger", "Financial Statements", "December Bank Recs", "Fixed Assets", "Payroll 941 W-3"],
+  "1120S": ["Prior-Year Returns", "Trial Balance", "General Ledger", "Financial Statements", "December Bank Recs", "Shareholder List", "Distributions", "Officer W-2"],
+  "1065": ["Prior-Year Returns", "Partnership Agmt", "Trial Balance", "Financial Statements", "December Bank Recs", "Partner List", "Capital Accounts", "Contrib & Distrib"],
+  "1041": ["Trust or Will", "Prior-Year Returns", "Trust 1099s", "Brokerage Statements", "Distributions", "Beneficiaries"],
+  "990": ["Prior-Year 990", "Trial Balance", "Financial Statements", "December Bank Recs", "Board & Minutes", "Officer Comp", "Donors Schedule B"],
+};
+const MISFILES = {
+  year: ["W-2 2024 - old.pdf", "Wrong Period"], photo: ["office photo.bmp", "File Type Not Asked"],
+  gsheet: ["Expenses 2025.gsheet", "Google Shortcut Only"], docx: ["Notes for CPA.docx", "File Type Not Asked"],
+  unknown: ["Misc Paperwork.pdf", "Could Not Sort"],
+};
+const DUE = { "1040": "Due Apr 15", "1041": "Due Apr 15", "1120": "Due Apr 15", "1120S": "Due Mar 16", "1065": "Due Mar 16", "990": "Due May 15" };
+function sampleReturn(form, sent, misfiles = [], draft = null) {
+  const r = { needs: [], waiting: [], received: [], setAside: [], due: "", draft };
+  FORM_REQUESTS[form].forEach((name, i) => {
+    if (i < sent) r.received.push(req(name, name.toLowerCase().replace(/[^a-z0-9]+/g, "-") + ".pdf", "Received", "Mar " + (1 + i)));
+    else r.waiting.push(req(name, "", "Outstanding"));
+  });
+  misfiles.forEach((k) => r.needs.push(file(MISFILES[k][0], "", MISFILES[k][1], "Mar 9", { suggest: [FORM_REQUESTS[form][0]], reasons: [] })));
+  if (r.needs.length || r.waiting.length) r.due = DUE[form];
+  return r;
+}
+const drafted = (stage) => ({ stage, held: 0, drafted: "Mar 3" });
+hh("Nguyen Family", "Minh Nguyen", true, [ret("1040 - Minh & Lan Nguyen", 2025, sampleReturn("1040", 4, ["year"]))]);
+hh("Patel Family", "Raj Patel", true, [
+  ret("1040 - Raj & Priya Patel", 2025, sampleReturn("1040", 3, [], drafted(1))),
+  ret("1120S - Patel Dental Group, Inc", 2025, sampleReturn("1120S", 6, ["photo"])),
 ]);
-hh("Lopez Household", "Ana Lopez", false, [ret("1040 - Ana Lopez", 2025, { ...genericReturn({ need: 0, waiting: 2, received: 5 }, "Due Apr 15"), draft: { stage: 1, held: 0, drafted: "Mar 3" } })]);
-hh("Chen Family", "Wei Chen", true, [ret("1040 - Wei & Lin Chen", 2025, genericReturn({ need: 2, waiting: 1, received: 8 }, "Due Apr 15"))]);
-hh("Okafor Family", "Ada Okafor", true, [ret("1040 - Chidi & Ada Okafor", 2025, genericReturn({ need: 0, waiting: 0, received: 12 }, ""))]);
-hh("Novak Household", "Petra Novak", true, [
-  ret("1040 - Petra Novak", 2025, genericReturn({ need: 0, waiting: 1, received: 6 }, "Due Apr 15")),
-  ret("1041 - Novak Family Trust", 2025, genericReturn({ need: 1, waiting: 0, received: 4 }, "Due Apr 15")),
+hh("Garcia Household", "Sofia Garcia", true, [ret("1040 - Sofia Garcia", 2025, sampleReturn("1040", 5))]);
+hh("Okafor Family", "Chidi Okafor", true, [
+  ret("1040 - Chidi & Ada Okafor", 2025, sampleReturn("1040", 2, ["gsheet"])),
+  ret("1065 - Okafor & Reyes Properties LLC", 2025, sampleReturn("1065", 5, [], drafted(0))),
 ]);
-hh("Brennan & Sons", "Liam Brennan", true, [ret("1120 - Brennan & Sons Inc", 2025, { ...genericReturn({ need: 0, waiting: 4, received: 9 }, "Due Apr 15"), draft: { stage: 2, held: 0, drafted: "Mar 3" } })]);
-hh("Harborview Foundation", "Grace Ito", true, [ret("990 - Harborview Foundation", 2025, genericReturn({ need: 0, waiting: 0, received: 7 }, ""))]);
-hh("Kim & Alvarez Partners", "Sora Kim", true, [ret("1065 - Kim & Alvarez Partners", 2025, genericReturn({ need: 3, waiting: 1, received: 5 }, "Due Mar 16"))]);
+hh("Kim Family", "Daniel Kim", false, [ret("1040 - Daniel & Grace Kim", 2025, sampleReturn("1040", 0, [], drafted(2)))]);
+hh("Estate of Margaret Brennan", "Thomas Brennan", true, [ret("1041 - Estate of Margaret Brennan", 2025, sampleReturn("1041", 4, ["unknown"]))]);
+hh("Harbor Light Food Pantry", "Denise Walker", true, [ret("990 - Harbor Light Food Pantry", 2025, sampleReturn("990", 6, [], drafted(0)))]);
+hh("Lindqvist Family", "Erik Lindqvist", true, [ret("1040 - Erik & Anna Lindqvist", 2025, sampleReturn("1040", 5, ["docx"]))]);
+hh("Castillo Logistics", "Ramon Castillo", true, [ret("1120 - Castillo Logistics Corp", 2025, sampleReturn("1120", 4, [], drafted(1)))]);
+hh("Whitaker Family Trust", "Helen Whitaker", true, [ret("1041 - Whitaker Family Irrevocable Trust", 2025, sampleReturn("1041", 6))]);
+hh("Delgado Family", "Marco Delgado", true, [
+  ret("1040 - Marco & Elena Delgado", 2025, sampleReturn("1040", 3, ["year"])),
+  ret("1040 - Marco & Elena Delgado", 2024, sampleReturn("1040", 4)),
+]);
+hh("Mori Family", "Kenji Mori", true, [
+  ret("1040 - Kenji & Yuki Mori", 2025, sampleReturn("1040", 4)),
+  ret("1120 - Mori Precision Tooling, Inc", 2025, sampleReturn("1120", 3, ["unknown"])),
+]);
+hh("Adeyemi Household", "Tunde Adeyemi", false, [ret("1040 - Tunde Adeyemi", 2025, sampleReturn("1040", 1, [], drafted(3)))]);
+hh("Sunrise Community Arts", "Rebecca Stone", true, [ret("990 - Sunrise Community Arts Center", 2025, sampleReturn("990", 3, ["photo"]))]);
+hh("Rossi Family", "Luca Rossi", true, [
+  ret("1040 - Luca & Maria Rossi", 2025, sampleReturn("1040", 5)),
+  ret("1065 - Rossi Bros. Restaurant Group LLC", 2025, sampleReturn("1065", 6, ["gsheet"])),
+]);
+hh("Chen & Alvarez", "Wei Chen", true, [ret("1040 - Wei Chen & Carmen Alvarez", 2025, sampleReturn("1040", 4, [], drafted(1)))]);
+hh("Blackwood Ventures", "Graham Blackwood", true, [ret("1120S - Blackwood Ventures, Inc", 2025, sampleReturn("1120S", 8, ["docx"]))]);
+hh("Haddad Family", "Omar Haddad", true, [ret("1040 - Omar & Leila Haddad", 2025, sampleReturn("1040", 4, ["year"]))]);
+hh("Novak Family", "Pavel Novak", true, [
+  ret("1040 - Pavel & Eva Novak", 2025, sampleReturn("1040", 3)),
+  ret("1041 - Novak Children's Education Trust", 2025, sampleReturn("1041", 3)),
+]);
+hh("Greenfield Capital Partners", "Nora Greenfield", true, [ret("1065 - Greenfield Capital Partners LP", 2025, sampleReturn("1065", 7, ["unknown"]))]);
+// Two design cases kept beside the sample: a name long enough to wrap
+// (ruling 27) and a household with no return yet.
 hh("Alexandria Montgomery-Whitfield & Christopher Delacroix Family", "Alexandria Whitfield", false, [
   ret("1040 - Alexandria Montgomery-Whitfield & Christopher Delacroix (married filing jointly)", 2025, genericReturn({ need: 0, waiting: 3, received: 2 }, "Due Apr 15")),
 ]);
-hh("Patel Family", "Nina Patel", true, []);
-// Made-up surnames for scale: 200 more households.
-(function more() {
-  const last = ["Abbott", "Barros", "Castell", "Dunmore", "Ellery", "Farrow", "Garland", "Hale", "Ingram", "Jessop", "Kerrigan", "Lindqvist", "Marlow", "Nyberg", "Oakes", "Pembrook", "Quill", "Rowntree", "Sallow", "Thorne"];
-  const first = ["Avery", "Blake", "Casey", "Drew", "Emery", "Finley", "Harper", "Jordan", "Kendall", "Morgan"];
-  let s = 7;
-  const rnd = () => (s = (s * 16807) % 2147483647) / 2147483647;
-  for (let i = 0; i < 200; i++) {
-    const l = last[i % 20], f = first[Math.floor(i / 20)];
-    const roll = rnd();
-    const counts = roll < 0.035 ? { need: 1, waiting: 1, received: 6 } : roll < 0.16 ? { need: 0, waiting: 1 + (i % 3), received: 6 } : { need: 0, waiting: 0, received: 8 };
-    hh(`${l} Household (${f})`, `${f} ${l}`, true, [ret(`1040 - ${f} ${l}`, 2025, genericReturn(counts, counts.waiting ? "Due Apr 15" : ""))]);
-  }
-})();
+hh("Ito Household", "Grace Ito", true, []);
 
 const allReturns = () => households.flatMap((x) => x.returns);
 const thisYear = (r) => r.year === 2025;
@@ -481,7 +526,7 @@ function drawSide() {
     wrap.replaceChildren(h("p", { class: "last-sort", role: "status" }, stopping ? "Stopping" : `Sorting ${n} of ${total}`),
       h("div", { class: "progress", role: "progressbar", "aria-valuemin": "0", "aria-valuemax": String(total), "aria-valuenow": String(n) }, h("span", { style: `width:${Math.round((n / total) * 100)}%` })));
   } else if (S.scenario === "failed") {
-    wrap.replaceChildren(h("p", { class: "last-sort failed", role: "status" }, "Sort failed"));
+    wrap.replaceChildren(h("p", { class: "last-sort failed", role: "status" }, "Sort Failed"));
   } else if (S.scenario === "setup") {
     wrap.replaceChildren(h("p", { class: "last-sort", role: "status" }, "Not sorted yet"));
   } else {
@@ -524,9 +569,14 @@ function drawPath() {
 /* ---------------- notices ---------------- */
 function drawNotices() {
   const list = [];
-  if (S.scenario === "failed") list.push(["err", "Sort failed", "Retry", () => { S.scenario = "normal"; $("mock-state").value = "normal"; startSort(true); }]);
+  // Rulings 20 and 28: the overnight sort's failure shows on every page with
+  // no button; only the next good overnight sort clears it ("Normal day").
+  if (S.scenario === "failed") list.push(["err", "Sort Failed", null]);
+  // A return's own failure (rulings 25 and 29) shows on that return only,
+  // never on a firm page, and the next good Sort of its household clears it.
+  if (S.retFailed && S.route.ret === S.retFailed) list.push(["err", "Sort Failed: Folder Not Found", null]);
   if (S.locked && S.route.ret === lockedReturn()) list.push(["info", "In use on FRONT-DESK", null]);
-  if (S.route.hh && S.route.hh.name === "Novak Household") list.push(["warn", "Two years open; sorting paused", null]);
+  if (S.route.hh && S.route.hh.name === "Delgado Family") list.push(["warn", "Two Years Open; Sorting Paused", null]);
   if (S.scenario === "normal" && S.route.level === "overview") list.push(["warn", "3 folders skipped", "Show", () => showDialog("misfits")]);
   $("notices").replaceChildren(...list.map(([kind, words, act, fn]) => {
     const n = h("div", { class: "notice " + kind }, h("span", { class: "grow" }, words));
@@ -557,7 +607,7 @@ function listbox(rows, labelId) {
     const node = h("div", { class: "row", role: "option", id, "aria-selected": "false", "aria-description": r.step ? r.step.words : null },
       h("span", { class: "c-name", "data-full": r.name }, r.name),
       h("span", { class: "c-detail", "data-full": r.detail || "" }, r.detail || ""),
-      h("span", { class: "c-status " + (r.tone || "") }, r.status || ""),
+      h("span", { class: "c-status " + (r.tone || ""), "data-tip": r.statusTip || null }, r.status || ""),
       h("span", { class: "c-end" }, h("span", { class: "c-date" }, r.date || ""), step));
     if (r.step) node.classList.add("has-step");
     node.addEventListener("click", () => setActive(i));
@@ -617,7 +667,7 @@ function itemRow(r, it, groupName) {
   const step = groupName === "needs" ? { words: "Edit", run: () => toast("Opens the request list editor") }
     : groupName === "waiting" ? { words: "Draft reminder", run: () => openReminder(r) } : null;
   const menu = groupName === "received" ? () => receivedMenu(r, it) : () => [{ id: "edit_request", words: "Edit request…", run: () => toast("Opens the request list editor") }];
-  return { name: it.name, detail: it.detail, status: it.status, tone, date: it.date, step, menu };
+  return { name: it.name, detail: it.detail, status: it.status, statusTip: it.statusTip, tone, date: it.date, step, menu };
 }
 
 /* ---------------- pages ---------------- */
@@ -910,8 +960,9 @@ function drawMenubar() {
 let sortTimer = null;
 function startSort(force) {
   if (S.sorting || (!S.route.hh && !force)) return;
-  S.sorting = { n: 1, total: S.route.hh ? S.route.hh.returns.length + 2 : 3 };
-  S.scenario = S.scenario === "failed" ? "normal" : S.scenario;
+  // The app's own Sort names one household, so it never clears the overnight
+  // sort's failure (ruling 28).
+  S.sorting = { n: 1, total: S.route.hh ? S.route.hh.returns.length + 2 : 3, hh: S.route.hh };
   drawSide(); drawPath(); drawNotices();
   sortTimer = setInterval(() => {
     if (!S.sorting) return clearInterval(sortTimer);
@@ -921,7 +972,9 @@ function startSort(force) {
 }
 function stopSort() { if (!S.sorting) return; S.sorting.stopping = true; drawSide(); drawPath(); }
 function finishSort() {
-  clearInterval(sortTimer); S.sorting = null;
+  clearInterval(sortTimer);
+  if (S.retFailed && S.sorting.hh === S.retFailed.household) S.retFailed = null;
+  S.sorting = null;
   const d = new Date(); S.lastSort = { at: d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }), ok: true };
   drawAll();
 }
@@ -972,7 +1025,7 @@ function showTip(el) {
 function hideTip() { clearTimeout(tipTimer); $("tip").hidden = true; }
 document.addEventListener("mouseover", (e) => {
   const el = e.target.closest("[data-tip], [data-full]"); hideTip();
-  if (el) tipTimer = setTimeout(() => showTip(el), 500);
+  if (el) tipTimer = setTimeout(() => showTip(el), 300);
 });
 document.addEventListener("focusin", (e) => { hideTip(); if (e.target.matches("[data-tip]")) showTip(e.target); });
 document.addEventListener("focusout", hideTip);
@@ -1007,9 +1060,11 @@ document.addEventListener("keydown", (e) => {
 $("mock-theme").addEventListener("change", (e) => { const v = e.target.value; if (v === "system") document.documentElement.removeAttribute("data-theme"); else document.documentElement.setAttribute("data-theme", v); });
 $("mock-state").addEventListener("change", (e) => {
   const v = e.target.value; clearInterval(sortTimer); S.sorting = null; S.locked = false; closeSheet(false);
-  S.scenario = v === "locked" ? "normal" : v;
+  S.scenario = v === "locked" || v === "retfailed" ? "normal" : v;
+  S.retFailed = v === "retfailed" ? lockedReturn() : null;
   if (v === "setup") S.route = { level: "setup" };
   else if (v === "locked") { S.locked = true; S.route = { level: "return", hh: households[0], year: 2025, ret: lockedReturn() }; }
+  else if (v === "retfailed") S.route = { level: "return", hh: households[0], year: 2025, ret: lockedReturn() };
   else if (S.route.level === "setup") S.route = { level: "overview" };
   drawAll();
 });

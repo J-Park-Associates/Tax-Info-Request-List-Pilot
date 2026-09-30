@@ -93,6 +93,16 @@ function showTip(node) {
   placeTip(node, tip);
 }
 
+// A row made active by the keyboard (pilot SPEC-lists 17, P178): its
+// status's tip shows at once and whole, cut or not, because a keyboard has
+// no hover to ask for it.
+function showTipNow(node) {
+  const cut = node.dataset.tipCut;
+  delete node.dataset.tipCut;
+  showTip(node);
+  if (cut !== undefined) node.dataset.tipCut = cut;
+}
+
 function hideTip() {
   clearTimeout(tipTimer);
   tipTimer = null;
@@ -102,8 +112,14 @@ function hideTip() {
   tipFor = null;
 }
 
-function tipShowing() {
-  return tipFor !== null;
+// Escape hides a showing tip, wherever the keyboard is (SPEC-shell 8.5,
+// P130). shellKey hands it every key first - app.js keeps the document's one
+// keydown listener (SPEC-shell 4.3) - and it never consumes one, so the same
+// Escape still clears the search box, closes the side sheet or asks a dialog
+// to close. Consuming it would make every dialog need two Escapes, because
+// the keyboard puts a tip on each control it reaches.
+function tipKey(e) {
+  if (e.key === "Escape" && tipFor !== null) hideTip();
 }
 
 function tipTarget(event) {

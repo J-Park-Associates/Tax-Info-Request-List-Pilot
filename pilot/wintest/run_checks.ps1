@@ -61,6 +61,23 @@ function Inno-Version($iscc) {
     if (Test-Path $unins) { return (Get-Item $unins).VersionInfo.ProductVersion }
     return ""
 }
+# BEGIN test-file helpers
+# `powershell -File run_checks.ps1 -Tests a,b` hands the script "a,b" as one
+# value (only -Command splits it), so every value is split on commas here and
+# the command works however it is typed (P128).
+function Split-TestList([string[]]$list) {
+    return @($list | ForEach-Object { "$_" -split "," } | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+}
+# One test file in its own process. Windows PowerShell 5.1 reports no exit code
+# for a Start-Process -PassThru process whose handle was never read while it
+# ran, so the handle is read at once (P128); otherwise every file read FAIL.
+function Start-TestFile($python, $file, $out) {
+    $proc = Start-Process -FilePath $python -ArgumentList "-m", "pytest", "-q", "-p", "no:cacheprovider", "`"$file`"" `
+            -RedirectStandardOutput $out -RedirectStandardError "$out.err" -NoNewWindow -PassThru
+    $null = $proc.Handle
+    return $proc
+}
+# END test-file helpers
 function As-Version($text) {
     $m = [regex]::Match("$text", '\d+(\.\d+){1,3}')
     if ($m.Success) { return [version]$m.Value } else { return [version]"0.0" }
@@ -137,13 +154,12 @@ $map  = Run $vpy @("tools\repo_map.py", "check")
 Record "ruff_and_map" (Verdict (($ruff -eq 0) -and ($map -eq 0))) "ruff=$ruff map=$map"
 $env:PYTHONIOENCODING = "utf-8"
 $running = @()
+$Tests = Split-TestList $Tests
 if ($Tests.Count) {
     foreach ($t in $Tests) {
         if (-not (Test-Path $t)) { Record "tests" "FAIL" "no such test file: $t"; Stop-Here "check the -Tests list" }
         $out = Join-Path $Results ("pytest-" + [IO.Path]::GetFileNameWithoutExtension($t) + ".txt")
-        $running += [pscustomobject]@{ File = $t; Out = $out
-            Proc = Start-Process -FilePath $vpy -ArgumentList "-m", "pytest", "-q", "-p", "no:cacheprovider", "`"$t`"" `
-                   -RedirectStandardOutput $out -RedirectStandardError "$out.err" -NoNewWindow -PassThru }
+        $running += [pscustomobject]@{ File = $t; Out = $out; Proc = Start-TestFile $vpy $t $out }
     }
     Say "Started $($Tests.Count) test file(s) in parallel; building meanwhile"
 } else {

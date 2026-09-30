@@ -9,7 +9,12 @@ may not contain.
 
 import json
 import re
+import shutil
+import subprocess
+import sys
 from pathlib import Path
+
+import pytest
 
 REPO = Path(__file__).resolve().parent.parent
 RENDERER = REPO / "app" / "renderer"
@@ -184,3 +189,41 @@ def test_help_terms_shows_the_same_card_read_only_with_one_close():
     assert "build(true)" in code and "close" in code
     assert not re.search(r"\b(?:agree|accept|quit)\b", code) and "window.close" not in code
     assert '"close": "Close"' in read("pilot-content.js")
+
+
+POWERSHELL = shutil.which("powershell.exe") if sys.platform == "win32" else None
+
+
+@pytest.mark.skipif(POWERSHELL is None, reason="Windows PowerShell 5.1 is the Windows check's shell")
+def test_the_check_script_splits_a_comma_joined_test_list_and_reads_each_exit_code(tmp_path):
+    """P128 (Windows check A1, A2): ``powershell -File`` hands ``-Tests a,b``
+    over as one value, and Windows PowerShell 5.1 gives a ``Start-Process
+    -PassThru`` process no exit code unless its handle was read while it ran.
+    The script's own helpers, lifted as they are and run in 5.1, split the
+    list and read back 0 for a passing file and 3 for another."""
+    script = (REPO / "pilot" / "wintest" / "run_checks.ps1").read_text(encoding="utf-8")
+    begin, end = "# BEGIN test-file helpers\n", "# END test-file helpers"
+    assert script.count(begin) == 1 and script.count(end) == 1
+    helpers = script.split(begin)[1].split(end)[0]
+    assert "$Tests = Split-TestList $Tests" in script and "Start-TestFile $vpy $t $out" in script
+    # A fake "pytest": a module the helper's `-m pytest` finds first, exiting
+    # with the number the file names.
+    (tmp_path / "pytest.py").write_text(
+        "import sys\nraise SystemExit(int(open(sys.argv[-1]).read()))\n", encoding="utf-8")
+    (tmp_path / "pass.txt").write_text("0", encoding="utf-8")
+    (tmp_path / "fail.txt").write_text("3", encoding="utf-8")
+    driver = tmp_path / "drive.ps1"
+    driver.write_text(helpers + """
+$here, $python = $args[0], $args[1]
+Set-Location $here
+[string[]]$files = Split-TestList @("pass.txt, fail.txt")
+$procs = @($files | ForEach-Object { Start-TestFile $python $_ (Join-Path $here ("out-" + $_)) })
+Start-Sleep -Milliseconds 500
+$codes = @($procs | ForEach-Object { $_.WaitForExit(); "$($_.ExitCode)" })
+"$($files.Count)|$($files -join ';')|$($codes -join ';')"
+""", encoding="utf-8")
+    done = subprocess.run([POWERSHELL, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(driver),
+                           str(tmp_path), sys.executable],
+                          capture_output=True, text=True, timeout=120, check=False)
+    assert done.returncode == 0, done.stderr
+    assert done.stdout.strip().splitlines()[-1] == "2|pass.txt;fail.txt|0;3", done.stdout + done.stderr

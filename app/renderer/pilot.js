@@ -180,6 +180,7 @@ const PilotTerms = (() => {
   function holdKeys(stops, onEscape) {
     return function hold(e) {
       if (e.key === "Escape") {
+        tipKey(e);   // tooltip.js: this capture stops the key before shellKey (P130)
         e.preventDefault();
         e.stopPropagation();
         if (onEscape) onEscape();

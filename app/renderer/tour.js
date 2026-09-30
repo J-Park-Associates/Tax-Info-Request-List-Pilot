@@ -152,6 +152,7 @@ const PilotTour = (() => {
   function onKey(e) {
     if (!layer || document.getElementById("pilot-terms")) return;
     if (e.key === "Escape") {
+      tipKey(e);   // tooltip.js: this capture stops the key before shellKey (P130)
       e.preventDefault();
       e.stopPropagation();
       stop();

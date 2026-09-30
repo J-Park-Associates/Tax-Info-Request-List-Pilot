@@ -106,12 +106,12 @@
       bodies[rpath] = body;
       // `label` is the engine's pattern (layout.ENGAGEMENT_LABEL_PATTERN): household, year, return name.
       const label = `${name} ${year} ${returnName}`;
-      engagements.push({ name: label, path: rpath, household: path, year, return_name: returnName });
+      engagements.push({ name: label, path: rpath, household: path, year, return_name: returnName, form: formOf(returnName) });
       return { label, path: rpath, year, return_name: returnName, active: year === 2025, superseded_by: year === 2025 ? null : "next", rollable: year === 2025, form: "1040", people: [contact] };
     });
     households.push(Object.assign({
       name, path, client_folder: `/clients/Clients/${name}`, inbox: `/clients/Clients/${name}/Drop files here`,
-      members: [contact], contact, link: "", problem: "", open_years: rows.length ? [Math.max(...rows.map((r) => r.year))] : [], returns: rows,
+      members: [contact], contact, link: "", problem: "", links: [], open_years: rows.length ? [Math.max(...rows.map((r) => r.year))] : [], returns: rows,
     }, extra || {}));
   }
   if (scenario === "quiet") {
@@ -265,7 +265,7 @@
     };
     const text = [letter.greeting, letter.intro, letter.sections[0].heading, ...letter.sections[0].items, letter.close, ...letter.signoff].join("\n\n");
     return { reminder: {
-      stage: at, editable: !held.length, held, unsorted: 0, asked: held.length ? [] : ["R01"], file: { edited: false, exists: true },
+      stage: at, editable: !held.length, held, unsorted: 0, unsorted_files: [], asked: held.length ? [] : ["R01"], file: { edited: false, exists: true },
       subject: "Documents needed for your 2025 return", text, html: `<p>${text}</p>`, fingerprint: `fp-${path}-${at}`,
       last: { date: body.draft.drafted, stage: body.draft.stage }, approved: approved[path] || null, lapsed: false, held_too_long: "", link_dropped: "", letter,
     } };
@@ -273,6 +273,9 @@
 
   const groupCounts = (body) => ({ needs_you: body.needs.length, waiting: body.waiting.length, received: body.received.length, set_aside: body.setAside.length });
   const filesOf = (body) => body.needs.filter((x) => x.kind !== "request");
+  // The form a return name starts with, as the engine records it ("1120-S - ..." is 1120S).
+  function formOf(returnName) { return returnName.split(" - ")[0].replace(/-/g, ""); }
+
   function firm() {
     const paths = {};
     const returns = engagements.filter((e) => e.year === 2025).map((e) => {
@@ -286,6 +289,8 @@
         // The engine (tracker/api.py firm, ruling 21) sends `paused` on every entry: true for each return of a household
         // paused for two open years. The scenario "paused" pauses Okafor Family, which has no other work.
         paused: scenario === "paused" && owner.name === "Okafor Family",
+        // Pilot 0.3 (lane 4, P141, P172): the return's form and its household's links.
+        form: e.form, links: owner.links || [],
       };
     });
     // Each file's key is that of the copy `state` names for it; the reply's
@@ -302,7 +307,7 @@
       }
       return {
         return: e.path, year: e.year, name: x.name, handle: handleOf(x), code: x.kind === "moved" ? "file-moved" : CODE[x.status], received: dayOf(x.date),
-        suggestion: (x.suggest || [])[0] || "", open_key,
+        suggestion: (x.suggest || [])[0] || "", suggestion_short: (x.suggest || [])[0] || "", open_key,
       };
     }));
     const totals = {

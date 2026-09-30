@@ -28,7 +28,13 @@ return's record went when it last wrote or read it. It is what lets the
 tracker notice a record that came back shorter, reordered or rewritten -
 a sync client restoring an older copy, a careless hand edit - instead of
 quietly rebuilding from it. It is never synced either, and it survives
-deleting `tracker.db`.
+deleting `tracker.db`. A third, `firm-view.json` (pilot P120), keeps the
+Overview's last answer for each household, so the firm pages open in about
+two seconds instead of reading every return again: like `tracker.db` it
+holds household names, return folders and the names of files waiting for a
+person, and it is never synced. A household whose folders changed since is
+read again; deleting the file is always safe (the next Overview reads every
+household once, a few seconds longer).
 
 **The tracker's data folder is private to one Windows account.** `tracker.db`
 holds every client's index rows, and it lives in
@@ -636,7 +642,7 @@ saving the clients root, **Repair the Schedule**, the move to another computer (
 registers the saved choice, never the defaults. **Off** removes this
 computer's own task and leaves the designation file alone: turn it off on
 the designated computer and no computer runs the schedule, which the app
-says in one sentence; Scan still works by hand. A hand-edited value in
+says in one sentence; Sort still works by hand. A hand-edited value in
 `settings.json` that the setting does not allow is refused in a sentence
 naming the file and the key, at the first screen's notice, and no task is
 registered until the choice is saved again with the button. Each pass

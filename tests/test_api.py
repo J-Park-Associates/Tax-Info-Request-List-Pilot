@@ -3419,6 +3419,8 @@ def test_the_card_shows_the_inbox_hold_in_the_apis_words_and_offers_no_approve(c
 
     card = reminder_card(capsys, folder)
     assert card["held"] == [] and card["unsorted"] == 1
+    # Which file holds it, by its own name (P134).
+    assert card["unsorted_files"] == ["W-2 from the client.pdf"]
     assert (card["subject"], card["text"], card["html"], card["letter"]) == ("", "", "", {})
     assert card["editable"] is False
 
@@ -8208,7 +8210,8 @@ def test_firm_reply_names_its_fields_as_the_spec_does_and_carries_year_and_handl
     mixed, _quiet, _retired = _a_practice_for_the_firm_view(capsys, demo_root)
     _code, firm = run(capsys, "firm")
     [file] = firm["files"]
-    assert set(file) == {"return", "year", "name", "handle", "code", "received", "suggestion", "open_key"}
+    assert set(file) == {"return", "year", "name", "handle", "code", "received", "suggestion", "suggestion_short",
+                         "open_key"}
     assert file["open_key"] == "", "a program has no working copy, so no key (ruling 15)"
     assert firm["paths"] == {}
     assert file["return"] == str(mixed) and file["year"] == 2025
@@ -8218,7 +8221,7 @@ def test_firm_reply_names_its_fields_as_the_spec_does_and_carries_year_and_handl
     for one in firm["returns"]:
         assert one["year"] == 2025 and set(one) == {
             "path", "household", "label", "year", "counts", "files", "oldest", "due", "draft", "problem",
-            "paused"}
+            "paused", "form", "links"}
     assert set(firm["totals"]) == {"need", "waiting", "complete", "files", "drafts"}
 
 
@@ -8390,7 +8393,7 @@ def test_firm_says_a_reminder_draft_ready_only_until_it_is_approved_and_counts_t
 def test_firm_is_read_only(capsys, demo_root, monkeypatch):
     import traceback
 
-    from tracker import store
+    from tracker import firm_cache, store
     from tracker.locking import LOCK_FILENAME, engagement_lock
     from tracker.settings import data_home
 
@@ -8402,7 +8405,9 @@ def test_firm_is_read_only(capsys, demo_root, monkeypatch):
         # The store and its side files, and the data home beside it.
         for path in sorted({*data_home().rglob("*"), store_file,
                             *store_file.parent.glob(store_file.name + "-*")}):
-            found[f"store:{path}"] = path.read_bytes() if path.is_file() else None
+            # The view's one write is its own cache, in the data folder (P120).
+            if path != firm_cache.cache_path():
+                found[f"store:{path}"] = path.read_bytes() if path.is_file() else None
         return found
 
     before = snapshot()
@@ -8475,6 +8480,265 @@ def test_firm_leaves_out_inactive_returns(capsys, demo_root):
     _code, firm = run(capsys, "firm")
     assert str(retired) not in {one["path"] for one in firm["returns"]}
     assert len(firm["returns"]) == 2
+
+
+# ------------------------------------------ the firm view's cache (P120) ----
+
+#: One time in the past every aged entry is given, so an entry aged twice
+#: keeps its time and only what changed in between reads as changed.
+_AGED_AT = int(dt.datetime.now().timestamp()) - 3600
+
+
+def _aged(root: Path) -> None:
+    """Every entry under ``root`` dated an hour ago - past the cache's racy
+    window, as a practice nobody has touched for a while is - so the firm
+    view keeps what it reads. The records' contents are not touched."""
+    for path in [root, *root.rglob("*")]:
+        os.utime(path, (_AGED_AT, _AGED_AT))
+
+
+def _firm_whole(capsys, monkeypatch) -> dict:
+    """The firm reply with the cache set aside: the whole walk, as it was
+    before P120 - the reference every cached reply is held to."""
+    with monkeypatch.context() as patch:
+        patch.setattr(api, "_firm_cached", lambda root, today: None)
+        code, payload = run(capsys, "firm")
+    assert code == 0, payload
+    return payload
+
+
+def _rows_read(monkeypatch) -> list[str]:
+    """The returns the next replies read (``_firm_row``), by path."""
+    read, real = [], api._firm_row
+
+    def counted(one, household, today):
+        read.append(str(one.path))
+        return real(one, household, today)
+
+    monkeypatch.setattr(api, "_firm_row", counted)
+    return read
+
+
+def _cached_firm(capsys) -> dict:
+    code, payload = run(capsys, "firm")
+    assert code == 0, payload
+    return payload
+
+
+def test_the_firm_view_from_its_cache_is_the_whole_walks_reply_through_every_change(
+        capsys, demo_root, monkeypatch):
+    """P120's one rule: a cached reply is the whole walk's, field for field -
+    kept households unread, changed ones read, the practice-wide facts (a
+    retired prior, two open years) worked out again every time."""
+    from tracker import firm_cache
+    from tracker.layout import private_household_dir
+
+    mixed, quiet, retired = _a_practice_for_the_firm_view(capsys, demo_root)
+    items = [{"identifier": "A01", "document": "W-2"}]
+    for household, name in (("Lee Family", "1040 - Ann Lee"), ("Kim Family", "1040 - Kim")):
+        assert run(capsys, "create", stdin={"household": household, "return_name": name,
+                                            "items": items})[0] == 0
+    # Two open years: Lee is paused (ruling 21).
+    assert run(capsys, "create", stdin={
+        "household_path": str(private_household_dir(demo_root, "Lee Family")),
+        "return_name": "1040 - Ben Lee", "year": default_tax_year() - 1, "items": items})[0] == 0
+    # A Roll Forward: Kim's prior year is retired, not shown.
+    assert run(capsys, "create", stdin={
+        "household_path": str(private_household_dir(demo_root, "Kim Family")),
+        "return_name": "1040 - Kim Old", "year": default_tax_year() - 1, "items": items})[0] == 0
+    kim_old = where(demo_root, "1040 - Kim Old", household="Kim Family", year=default_tax_year() - 1)
+    assert run(capsys, "rollover", stdin={"prior": str(kim_old), "year": default_tax_year()})[0] == 0
+    # The review's SHOULD-1: a folder the walk passes over, and one whose
+    # name no household may have, leave the cache on for everyone else.
+    (demo_root / PRIVATE_TREE / "_Archive").mkdir()
+    (demo_root / PRIVATE_TREE / "2019").mkdir()
+    _aged(demo_root)
+
+    whole = _firm_whole(capsys, monkeypatch)
+    assert any(one["paused"] for one in whole["returns"]) and str(kim_old) not in {
+        one["path"] for one in whole["returns"]}
+    read = _rows_read(monkeypatch)
+    assert _cached_firm(capsys) == whole                      # fills the cache
+    assert firm_cache.cache_path().is_file() and len(read) == len(whole["returns"])
+    read.clear()
+    assert _cached_firm(capsys) == whole                      # answered from it
+    assert read == [], "an unchanged practice reads no return"
+
+    # A file dropped in Lee's inbox: only Lee's returns are read again.
+    held = {one["path"]: one["draft"]["held"] for one in whole["returns"]}
+    lee = where(demo_root, "1040 - Ann Lee", household="Lee Family")
+    (inbox_of(lee) / "w2 made up.pdf").write_bytes(b"%PDF-1.4 made up")
+    _aged(demo_root)
+    whole = _firm_whole(capsys, monkeypatch)
+    read.clear()
+    assert _cached_firm(capsys) == whole
+    assert read and {Path(one).parent.parent.name for one in read} == {"Lee Family"}
+    for one in whole["returns"]:
+        assert one["draft"]["held"] == held[one["path"]] + (one["household"] == "Lee Family"), one["path"]
+
+    # An edit: Quiet switched off leaves the view.
+    rows = payload_of_state(capsys, quiet)["rules"]
+    assert run(capsys, "edit", api.ENGAGEMENT_FLAG, str(quiet),
+               stdin={"items": rows, "engagement": {"active": False}})[0] == 0
+    _aged(demo_root)
+    whole = _firm_whole(capsys, monkeypatch)
+    assert _cached_firm(capsys) == whole
+    assert str(quiet) not in {one["path"] for one in whole["returns"]}
+    assert {str(mixed)} <= {one["path"] for one in whole["returns"]} and str(retired) not in {
+        one["path"] for one in whole["returns"]}
+
+
+def test_a_prior_that_another_household_stops_retiring_is_read_again(capsys, demo_root, monkeypatch):
+    """A Roll Forward may name a prior in another household. Kept while
+    retired, the prior has no row; when the household that retired it goes,
+    the prior is shown again, so its household is read - never answered
+    blank - though its own folders did not change."""
+    import shutil
+
+    from tests.conftest import make_engagement
+    from tracker.layout import client_household_dir, private_household_dir
+    from tracker.manifest import EngagementInfo, RequestItem
+
+    items = [RequestItem(identifier="A01", document="W-2")]
+    prior = make_engagement(demo_root, items, household="Park Family", year=default_tax_year(),
+                            return_name="1040 - Park")
+    make_engagement(demo_root, items, EngagementInfo(rolled_from=str(prior.resolve())),
+                    household="Cho Family", year=default_tax_year(), return_name="1040 - Cho")
+    _aged(demo_root)
+    whole = _firm_whole(capsys, monkeypatch)
+    assert str(prior) not in {one["path"] for one in whole["returns"]}
+    assert _cached_firm(capsys) == whole == _cached_firm(capsys)
+
+    for folder in (private_household_dir(demo_root, "Cho Family"), client_household_dir(demo_root, "Cho Family")):
+        shutil.rmtree(folder, ignore_errors=True)
+    _aged(demo_root)
+    read = _rows_read(monkeypatch)
+    whole = _firm_whole(capsys, monkeypatch)
+    assert str(prior) in {one["path"] for one in whole["returns"]}
+    read.clear()
+    assert _cached_firm(capsys) == whole
+    assert read == [str(prior)]
+
+
+def test_a_household_changed_within_seconds_is_read_fresh_and_not_kept(capsys, demo_root, monkeypatch):
+    """The racy window: a record written a moment ago could be written again
+    in the same tick at the same size, so its household is read every time
+    until it has been still for a few seconds."""
+    from tracker import firm_cache
+
+    _a_practice_for_the_firm_view(capsys, demo_root)
+    read = _rows_read(monkeypatch)
+    assert _cached_firm(capsys)["returns"]
+    assert _cached_firm(capsys) == _firm_whole(capsys, monkeypatch)
+    assert len(read) == 6, "three replies, two shown returns, every one read"
+    assert not firm_cache.cache_path().exists() or json.loads(
+        firm_cache.cache_path().read_text(encoding="utf-8"))["households"] == {}
+
+
+def test_a_household_with_a_problem_is_never_kept_so_its_detail_is_logged_every_time(
+        capsys, demo_root, monkeypatch):
+    from tracker import firm_cache
+
+    mixed, _quiet, _retired = _a_practice_for_the_firm_view(capsys, demo_root)
+    _aged(demo_root)
+    real, kept = api.load_manifest, []
+
+    def broken(path, **kwargs):
+        if Path(path) == mixed:
+            kept.append(1)
+            raise api.ManifestError("the record is not readable")
+        return real(path, **kwargs)
+
+    monkeypatch.setattr(api, "load_manifest", broken)
+    for _ in range(2):
+        rows = {one["path"]: one for one in _cached_firm(capsys)["returns"]}
+        assert rows[str(mixed)]["problem"] == api.FIRM_UNREADABLE
+    assert len(kept) == 2, "read, and said, on every reply"
+    households = json.loads(firm_cache.cache_path().read_text(encoding="utf-8"))["households"] \
+        if firm_cache.cache_path().exists() else {}
+    assert HOUSEHOLD not in households
+
+
+def test_the_firm_view_answers_whole_when_its_cache_is_unsure(capsys, demo_root, monkeypatch, caplog):
+    import logging
+
+    from tracker import firm_cache
+
+    _a_practice_for_the_firm_view(capsys, demo_root)
+    _aged(demo_root)
+    whole = _firm_whole(capsys, monkeypatch)
+
+    def surprised(path, expected):
+        raise RuntimeError("an unexpected shape")
+
+    monkeypatch.setattr(firm_cache, "load", surprised)
+    with caplog.at_level(logging.WARNING, logger="tracker.api"):
+        assert _cached_firm(capsys) == whole
+    assert "cache was set aside (RuntimeError)" in caplog.text
+    monkeypatch.setattr(api, "household_positions", lambda root: None)       # no one private tree
+    assert _cached_firm(capsys) == whole
+
+
+def test_the_firm_cache_is_one_file_in_the_data_folder_and_nothing_in_either_client_tree(
+        capsys, demo_root):
+    from tracker import firm_cache
+    from tracker.settings import data_home
+
+    _a_practice_for_the_firm_view(capsys, demo_root)
+    _aged(demo_root)
+    tree = {str(path): path.read_bytes() if path.is_file() else None for path in sorted(demo_root.rglob("*"))}
+    home = set(data_home().rglob("*"))
+    _cached_firm(capsys)
+    assert set(data_home().rglob("*")) - home == {firm_cache.cache_path()}
+    assert {str(path): path.read_bytes() if path.is_file() else None
+            for path in sorted(demo_root.rglob("*"))} == tree
+    written = firm_cache.cache_path().stat().st_mtime_ns
+    _cached_firm(capsys)
+    assert firm_cache.cache_path().stat().st_mtime_ns == written, "an unchanged practice writes nothing"
+
+
+def test_the_commands_held_to_one_reading_write_nothing_and_a_write_there_is_refused(
+        capsys, demo_root, monkeypatch):
+    """P118, and the review's SHOULD-3: a command joins
+    ``HELD_READING_COMMANDS`` only when it writes nothing; a settings or
+    record write inside one is refused outright, and ``list``, ``state``
+    and ``firm`` answer with that refusal in place."""
+    from tracker import settings
+
+    assert api.HELD_READING_COMMANDS <= set(api.COMMANDS)
+    assert not api.HELD_READING_COMMANDS & api.WRITING_COMMANDS
+    assert api.PASS_COMMAND not in api.HELD_READING_COMMANDS
+    mixed, _quiet, _retired = _a_practice_for_the_firm_view(capsys, demo_root)
+    for argv in (["list"], ["state", api.ENGAGEMENT_FLAG, str(mixed)], ["firm"]):
+        assert run(capsys, *argv)[0] == 0, argv
+    real = api._cmd_firm
+
+    def writes(argv):
+        settings.set_firm("written inside a read-only reply")
+        return real(argv)
+
+    monkeypatch.setitem(api.COMMANDS, "firm", writes)
+    code, payload = run(capsys, "firm")
+    assert code != 0 and payload["failure"]["kind"] == "failed"
+    assert settings.firm() == "J Park & Associates, CPA"
+
+
+def test_the_firm_key_spells_every_key_as_the_plain_walk_does():
+    """P119: remembering each key's spellings gives the plain walk's answer,
+    key for key, including the same path asked twice."""
+    import random
+
+    chooser = random.Random(209)
+    asked = [(f"shown_copy {chooser.randint(1, 4)}", f"C:/r{chooser.randint(1, 30)}/copy.pdf")
+             for _ in range(400)]
+    plain, fast, spelled_for = {}, {}, {}
+    for key, path in asked:
+        assert api._firm_key(fast, key, path, spelled_for) == api._firm_key(plain, key, path)
+    assert fast == plain
+    # A key that already reads like a spelling takes the plain walk.
+    literal, walked = {"k #2": "C:/b"}, {"k #2": "C:/b"}
+    for key, path in [("k", "C:/a"), ("k", "C:/b"), ("k #2", "C:/c")]:
+        assert api._firm_key(literal, key, path, {}) == api._firm_key(walked, key, path)
 
 
 def test_the_vocabulary_carries_the_shell_join_words_and_keeps_the_dismiss_icon():
@@ -8591,6 +8855,7 @@ def test_the_vocabulary_carries_the_menu_the_screen_and_the_short_words(capsys):
     assert words["screen"]["sort"]["stop"] == "Stop Sorting"
     assert words["screen"]["filters"] == {"work": "Work Waiting", "all": "All"}
     assert words["reasons"] == reasons.SHORT_REASONS
+    assert words["reason_tips"] == reasons.REASON_TIPS
     assert [stage["short"] for stage in words["reminder"]["stages"]] == [
         "Heads Up", "Checking In", "Deadline Near", "Final Notice"]
     assert [rule["short"] for rule in words["rules"]] == list(api.SAFEGUARDS)
@@ -8613,7 +8878,7 @@ def test_every_short_word_the_engine_adds_is_five_words_or_fewer():
             yield path, node
 
     for path, text in [*walk(api.MENU, "menu"), *walk(api.SCREEN, "screen"),
-                       *walk(reasons.SHORT_REASONS, "reasons")]:
+                       *walk(reasons.SHORT_REASONS, "reasons"), *walk(reasons.REASON_TIPS, "reason_tips")]:
         counted = re.sub(r"\{[a-z_]+\}", "x", text.replace("&", "")).split()
         assert 1 <= len(counted) <= 5, (path, text)
 
@@ -8977,3 +9242,350 @@ def test_list_carries_each_misfits_code_and_the_vocabulary_words_it(capsys, demo
     assert misfit["code"] == "not_a_tree"
     assert misfit["sentence"] and misfit["where"]
     assert _vocab()["screen"]["misfits"]["reasons"][misfit["code"]] == "Unknown Folder"
+
+
+def test_a_record_rewritten_at_its_own_size_and_time_is_never_answered_from_the_cache(
+        capsys, demo_root, monkeypatch):
+    """The review's SHOULD-2 (probe P15): a record rewritten at the same
+    length with its time put back breaks its chain; the whole walk says
+    Could Not Be Read, and so must the cached reply."""
+    mixed, _quiet, _retired = _a_practice_for_the_firm_view(capsys, demo_root)
+    _aged(demo_root)
+    assert _cached_firm(capsys) == _firm_whole(capsys, monkeypatch)
+    record = ledger.path_for(mixed)
+    kept = record.stat()
+    text = record.read_bytes()
+    assert b'"active": true' in text
+    record.write_bytes(text.replace(b'"active": true', b'"active":false', 1))
+    os.utime(record, ns=(kept.st_atime_ns, kept.st_mtime_ns))
+    assert record.stat().st_size == kept.st_size
+    whole = _firm_whole(capsys, monkeypatch)
+    assert {one["path"]: one["problem"] for one in whole["returns"]}[str(mixed)] == api.FIRM_UNREADABLE
+    assert _cached_firm(capsys) == whole
+
+
+def test_the_first_overview_after_a_pass_reads_no_household_again(capsys, demo_root, monkeypatch):
+    """The review's SHOULD-4: a pass rewrites each return's status page and
+    moves its folders' times with its lock; nothing the firm view reads
+    changed, so the next reply reads no return."""
+    from tracker.view import VIEW_FILENAME
+
+    mixed, quiet, _retired = _a_practice_for_the_firm_view(capsys, demo_root)
+    _aged(demo_root)
+    whole = _firm_whole(capsys, monkeypatch)
+    assert _cached_firm(capsys) == whole
+    for folder in (mixed, quiet):
+        (folder / VIEW_FILENAME).write_text("<p>drawn again by the pass</p>", encoding="utf-8")
+        (folder / "held by the pass.tmp").write_text("x", encoding="utf-8")
+        (folder / "held by the pass.tmp").unlink()
+    read = _rows_read(monkeypatch)
+    assert _cached_firm(capsys) == whole
+    assert read == []
+
+
+def test_every_file_a_firm_reply_opens_is_judged_by_its_bytes_and_never_the_status_page(
+        capsys, demo_root, monkeypatch):
+    """What the fingerprint reads whole and leaves out (``api.FIRM_JUDGED``)
+    is pinned to what the firm view opens: a file it opens but judges by
+    size and time alone could be rewritten unseen, and a page it leaves
+    out must be one it never opens."""
+    import sys
+
+    from tracker import reminder
+    from tracker.view import VIEW_FILENAME
+
+    mixed, quiet, _retired = _a_practice_for_the_firm_view(capsys, demo_root)
+    for folder in (mixed, quiet):
+        (folder / reminder.DRAFT_FILENAME).write_text("Dear client", encoding="utf-8")
+    opened = []
+    root = str(demo_root.resolve()).lower()
+
+    def watch(event, args):
+        if event == "open" and isinstance(args[0], (str, os.PathLike)):
+            where = os.path.abspath(os.fsdecode(args[0]))
+            if where.lower().startswith(root):
+                opened.append(Path(where))
+
+    sys.addaudithook(watch)
+    try:
+        whole = _firm_whole(capsys, monkeypatch)
+    finally:
+        root = "\0"                          # an audit hook cannot be removed; it stops matching
+    assert whole["returns"] and opened
+    from tracker import firm_cache
+    from tracker.layout import CLIENTS_TREE
+
+    judged = api.FIRM_JUDGED
+    for where in opened:
+        assert where.name != VIEW_FILENAME
+        # Its names below its household's folder, in the tree it is in: the
+        # place must be one the fingerprint reads whole, in that tree.
+        tree, _household, *below = where.relative_to(demo_root.resolve()).parts
+        places = judged.private_whole if tree == PRIVATE_TREE else judged.client_whole
+        assert tree in (PRIVATE_TREE, CLIENTS_TREE) and firm_cache._at(places, tuple(below)), where
+
+
+@pytest.mark.parametrize("dropped", ["a file", "a folder holding a file"])
+def test_a_client_drop_named_like_the_status_page_is_seen_by_the_cache(capsys, demo_root, monkeypatch, dropped):
+    """The re-check's MUST-R1: a client who forwards the firm's page back, as
+    a file or inside a folder of that name, has a file waiting in the inbox;
+    the cached reply holds the draft for it exactly as the whole walk does."""
+    from tracker.view import VIEW_FILENAME
+
+    mixed, _quiet, _retired = _a_practice_for_the_firm_view(capsys, demo_root)
+    _aged(demo_root)
+    assert _cached_firm(capsys) == _firm_whole(capsys, monkeypatch)
+    inbox = inbox_of(mixed)
+    if dropped == "a file":
+        (inbox / VIEW_FILENAME).write_text("<p>forwarded back</p>", encoding="utf-8")
+    else:
+        (inbox / VIEW_FILENAME).mkdir()
+        (inbox / VIEW_FILENAME / "w2.pdf").write_bytes(b"%PDF-1.4 made up")
+    _aged(demo_root)
+    whole = _firm_whole(capsys, monkeypatch)
+    assert {one["path"]: one["draft"]["held"] for one in whole["returns"]}[str(mixed)] >= 1
+    assert _cached_firm(capsys) == whole
+
+# ============ pilot P141, P170, P172: linked households and the form ===========
+
+
+def three_households(capsys, root):
+    """Park Family (a 1040), Park & Lee LLC (an 1120S) and Lee Family (a
+    1040), made the way the app makes them, each with its form recorded."""
+    for household, return_name, form in (("Park Family", "1040 - John Park", "1040"),
+                                         ("Park & Lee LLC", "1120S - Park & Lee LLC", "1120S"),
+                                         ("Lee Family", "1040 - Sam Lee", "1040")):
+        assert run(capsys, "create", stdin={
+            "household": household, "contact": "John", "return_name": return_name, "form": form,
+            "items": [{"identifier": "A01", "document": "W-2"}]})[0] == 0
+    return (where(root, "1040 - John Park", household="Park Family"),
+            where(root, "1120S - Park & Lee LLC", household="Park & Lee LLC"),
+            where(root, "1040 - Sam Lee", household="Lee Family"))
+
+
+def test_a_related_household_is_written_on_both_records_and_removed_from_both(capsys, demo_root):
+    """Pilot P170: a person marks two households related in Edit Household;
+    the save writes the mark into both records, the state names it, and
+    removing it on either side removes it from both. Nothing is inferred."""
+    from tracker.households import load_household_info
+    from tracker.layout import private_household_dir
+
+    park, llc, lee = three_households(capsys, demo_root)
+    park_dir = private_household_dir(demo_root, "Park Family")
+    lee_dir = private_household_dir(demo_root, "Lee Family")
+    llc_dir = private_household_dir(demo_root, "Park & Lee LLC")
+    assert load_household_info(park_dir).related == ()
+
+    code, payload = run(capsys, "edit-household", api.ENGAGEMENT_FLAG, str(park),
+                        stdin={"related": ["Lee Family", "park & lee llc"]})
+    assert code == 0, payload
+    assert "related" in payload["saved"]["household"]
+    assert load_household_info(park_dir).related == ("Lee Family", "Park & Lee LLC")
+    assert load_household_info(lee_dir).related == ("Park Family",)
+    assert load_household_info(llc_dir).related == ("Park Family",)
+    assert payload["state"]["household"]["related"] == ["Lee Family", "Park & Lee LLC"]
+
+    # Removed from the other side: gone from both records.
+    code, payload = run(capsys, "edit-household", api.ENGAGEMENT_FLAG, str(lee), stdin={"related": []})
+    assert code == 0, payload
+    assert load_household_info(lee_dir).related == ()
+    assert load_household_info(park_dir).related == ("Park & Lee LLC",)
+    assert load_household_info(llc_dir).related == ("Park Family",)
+    assert api._vocab()["household"]["related_label"] == "Related Households"
+    assert api._vocab()["household"]["add_related"] == "Add Related Household"
+
+
+def test_a_related_list_refuses_itself_a_blank_a_repeat_and_a_household_that_is_not_there(capsys, demo_root):
+    """Pilot P170: only another household that exists can be related, each
+    once; every refusal says the name and nothing is written."""
+    from tracker.households import load_household_info
+    from tracker.layout import private_household_dir
+
+    park, _llc, _lee = three_households(capsys, demo_root)
+    park_dir = private_household_dir(demo_root, "Park Family")
+    for sent, said in ((["Park Family"], api.RELATED_REFUSED.format(household="Park Family")),
+                       ([""], api.RELATED_REFUSED.format(household="(blank)")),
+                       ("Lee Family", api.RELATED_NOT_A_LIST), ([1], api.RELATED_NOT_A_LIST),
+                       (["Lee Family", "lee family"], api.RELATED_REFUSED.format(household="lee family")),
+                       (["Nobody Here"], api.RELATED_UNKNOWN.format(household="Nobody Here"))):
+        code, payload = run(capsys, "edit-household", api.ENGAGEMENT_FLAG, str(park), stdin={"related": sent})
+        assert code == 1 and payload["error"] == said, (sent, payload)
+    assert load_household_info(park_dir).related == ()
+
+
+def test_the_list_and_the_firm_carry_each_households_links_both_ways_and_each_returns_form(capsys, demo_root):
+    """Pilot P141, P172: a feed is Also Feeds on the feeding household and
+    Fed By on the fed one; a related mark is Related on both, even when
+    only one record names it; and every return carries its recorded form.
+    The fields are additive: nothing already in either reply moves."""
+    from dataclasses import replace
+
+    from tracker.households import load_household_info, save_household
+    from tracker.layout import private_household_dir
+
+    park, llc, lee = three_households(capsys, demo_root)
+    assert run(capsys, "edit-household", api.ENGAGEMENT_FLAG, str(park),
+               stdin={"feeds": [{"household": "Park & Lee LLC", "return_name": "1120S - Park & Lee LLC"}]})[0] == 0
+    # A related mark on one record only (a save that stopped half way) still shows on both ends.
+    lee_dir = private_household_dir(demo_root, "Lee Family")
+    save_household(lee_dir, replace(load_household_info(lee_dir), related=("Park Family",)))
+
+    _code, listed = run(capsys, "list")
+    links = {one["name"]: [(link["name"], link["kind"]) for link in one["links"]] for one in listed["households"]}
+    assert links["Park Family"] == [("Lee Family", "related"), ("Park & Lee LLC", "feeds")]
+    assert links["Park & Lee LLC"] == [("Park Family", "fed_by")]
+    assert links["Lee Family"] == [("Park Family", "related")]
+    paths = {one["name"]: one["path"] for one in listed["households"]}
+    assert {link["path"] for one in listed["households"] for link in one["links"]} <= set(paths.values())
+    assert {one["return_name"]: one["form"] for one in listed["engagements"]} == {
+        "1040 - John Park": "1040", "1120S - Park & Lee LLC": "1120S", "1040 - Sam Lee": "1040"}
+
+    _code, firm = run(capsys, "firm")
+    by_return = {Path(one["path"]): one for one in firm["returns"]}
+    assert by_return[llc]["form"] == "1120S" and by_return[park]["form"] == "1040"
+    assert [(link["name"], link["kind"]) for link in by_return[llc]["links"]] == [("Park Family", "fed_by")]
+    assert [(link["name"], link["kind"]) for link in by_return[lee]["links"]] == [("Park Family", "related")]
+    assert {"path", "household", "label", "year", "counts", "files", "paused"} <= set(by_return[park])
+
+
+def test_a_one_sided_related_link_is_repaired_by_saving_either_side(capsys, demo_root):
+    """Pilot P170, the review's M1: a save that stopped after its first
+    write leaves Park naming Lee and Lee naming nobody. Saving Lee without
+    the link (what the editor sends once the person removes it) clears it
+    from Park too; saving Park with it completes it on Lee."""
+    from dataclasses import replace
+
+    from tracker.households import load_household_info, save_household
+    from tracker.layout import private_household_dir
+
+    park, _llc, lee = three_households(capsys, demo_root)
+    park_dir = private_household_dir(demo_root, "Park Family")
+    lee_dir = private_household_dir(demo_root, "Lee Family")
+    save_household(park_dir, replace(load_household_info(park_dir), related=("Lee Family",)))
+    assert load_household_info(lee_dir).related == ()
+
+    code, payload = run(capsys, "edit-household", api.ENGAGEMENT_FLAG, str(lee), stdin={"related": []})
+    assert code == 0, payload
+    assert load_household_info(park_dir).related == (), "removed on the side that lacked it: gone from both"
+    _code, listed = run(capsys, "list")
+    assert all(not one["links"] for one in listed["households"] if one["name"] in ("Park Family", "Lee Family"))
+
+    save_household(park_dir, replace(load_household_info(park_dir), related=("Lee Family",)))
+    code, payload = run(capsys, "edit-household", api.ENGAGEMENT_FLAG, str(park), stdin={"related": ["Lee Family"]})
+    assert code == 0, payload
+    assert load_household_info(lee_dir).related == ("Park Family",), "re-saving the side that has it completes the other"
+
+
+def test_the_other_households_record_is_read_and_written_inside_its_own_lock(capsys, demo_root, monkeypatch):
+    """Pilot P170, the review's S1: the mirror reads the other household
+    under that household's lock, so another writer that tries to change it
+    between the read and the write is refused by the lock rather than
+    having its change silently reverted by the mirror's save."""
+    from dataclasses import replace
+
+    from tracker import households
+    from tracker.layout import private_household_dir
+    from tracker.locking import EngagementLockedError
+
+    park, _llc, _lee = three_households(capsys, demo_root)
+    lee_dir = private_household_dir(demo_root, "Lee Family")
+    real = api.load_household_info
+    said = []
+
+    def and_another_writer(folder):
+        info = real(folder)
+        if Path(folder) == lee_dir and not said:
+            try:
+                households.save_household(lee_dir, replace(households.load_household_info(lee_dir), contact="Changed Meanwhile"))
+                said.append("written")
+            except EngagementLockedError:
+                said.append("refused")
+        return info
+
+    monkeypatch.setattr(api, "load_household_info", and_another_writer)
+    code, payload = run(capsys, "edit-household", api.ENGAGEMENT_FLAG, str(park), stdin={"related": ["Lee Family"]})
+    assert code == 0, payload
+    after = households.load_household_info(lee_dir)
+    assert after.related == ("Park Family",)
+    assert said == ["refused"] or after.contact == "Changed Meanwhile", (said, after.contact)
+
+
+def test_a_contact_only_save_touches_no_linked_household_even_while_its_sort_holds_it(capsys, demo_root):
+    """The re-check's MUST-R1 (1): the editor always sends the related list,
+    so a save that changes only the contact must not reach a linked
+    household whose record already agrees - no lock, no write, no notice -
+    and so succeeds while another pass holds that household."""
+    from tracker import ledger
+    from tracker.households import load_household_info
+    from tracker.layout import private_household_dir
+    from tracker.locking import acquire_lock, release_lock
+
+    park, _llc, _lee = three_households(capsys, demo_root)
+    assert run(capsys, "edit-household", api.ENGAGEMENT_FLAG, str(park), stdin={"related": ["Lee Family"]})[0] == 0
+    lee_dir = private_household_dir(demo_root, "Lee Family")
+    lines = len(ledger.read_events(lee_dir))
+    held = acquire_lock(lee_dir)
+    try:
+        code, payload = run(capsys, "edit-household", api.ENGAGEMENT_FLAG, str(park),
+                            stdin={"contact": "John and Mary", "related": ["Lee Family"]})
+    finally:
+        release_lock(held)
+    assert code == 0, payload
+    assert payload["warnings"] == [] and payload["saved"]["household"] == ["contact"]
+    assert len(ledger.read_events(lee_dir)) == lines
+    assert load_household_info(lee_dir).related == ("Park Family",)
+
+
+def test_a_link_to_a_household_being_sorted_saves_here_says_so_and_a_later_save_completes_it(capsys, demo_root):
+    """The re-check's MUST-R1 (2): when the other household's lock is held,
+    the household edited is saved, the reply exits 0 with a notice that the
+    link is pending on the other, and saving again once its sort is over
+    writes the other side."""
+    from tracker.households import load_household_info
+    from tracker.layout import private_household_dir
+    from tracker.locking import acquire_lock, release_lock
+
+    park, _llc, _lee = three_households(capsys, demo_root)
+    park_dir = private_household_dir(demo_root, "Park Family")
+    lee_dir = private_household_dir(demo_root, "Lee Family")
+    held = acquire_lock(lee_dir)
+    try:
+        code, payload = run(capsys, "edit-household", api.ENGAGEMENT_FLAG, str(park), stdin={"related": ["Lee Family"]})
+    finally:
+        release_lock(held)
+    assert code == 0, payload
+    assert load_household_info(park_dir).related == ("Lee Family",)
+    assert load_household_info(lee_dir).related == ()
+    assert payload["warnings"] == ["Link Pending: Lee Family Is Busy"]
+    assert api.SCREEN["notices"]["related_pending"] == "Link Pending: {household} Is Busy"
+
+    code, payload = run(capsys, "edit-household", api.ENGAGEMENT_FLAG, str(park), stdin={"related": ["Lee Family"]})
+    assert code == 0 and payload["warnings"] == [], payload
+    assert load_household_info(lee_dir).related == ("Park Family",)
+
+
+def test_a_cached_rows_links_follow_a_change_to_another_households_record(capsys, demo_root, monkeypatch):
+    """The 0.3 landing's join of the firm cache (P120) and linked households
+    (P141, P172): a household's links depend on other households' records,
+    so they are worked out practice-wide on every reply and never kept in a
+    row. Lee's record gains Park; Park's own folders do not change, yet
+    Park's cached row says Related at once, exactly as the whole walk does."""
+    from dataclasses import replace
+
+    from tracker.households import load_household_info, save_household
+    from tracker.layout import private_household_dir
+
+    park, _llc, _lee = three_households(capsys, demo_root)
+    _aged(demo_root)
+    whole = _firm_whole(capsys, monkeypatch)
+    assert _cached_firm(capsys) == whole
+    assert {Path(one["path"]): one["links"] for one in whole["returns"]}[park] == []
+    lee_dir = private_household_dir(demo_root, "Lee Family")
+    save_household(lee_dir, replace(load_household_info(lee_dir), related=("Park Family",)))
+    _aged(demo_root)
+    whole = _firm_whole(capsys, monkeypatch)
+    by_path = {Path(one["path"]): one for one in whole["returns"]}
+    assert [(link["name"], link["kind"]) for link in by_path[park]["links"]] == [("Lee Family", "related")]
+    read = _rows_read(monkeypatch)
+    assert _cached_firm(capsys) == whole
+    assert not any(str(one).startswith(str(park)) for one in read), "Park's row came from the cache"
