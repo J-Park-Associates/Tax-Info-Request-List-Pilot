@@ -95,3 +95,38 @@ No existing api.py line changed. The words themselves live in `tracker/reasons.p
   3.11, no packages) at 23:26. The hook blocked me from deleting it; it is safe
   to remove.
 - `.venv311` in this worktree is not in `.gitignore`. It was not committed.
+
+## Review fold (2026-09-30 00:27 PDT)
+
+Review: `pilot/reviews/email-zip-tag-review.md`. Rulings: `pilot/reviews/email-zip-tag-rulings.md`.
+Both files are in the fold commit.
+
+- **SHOULD-1:** `pagesRow` now works out the tip before it builds the row.
+  The row's `aria-description` becomes the step words plus the tip, so a
+  keyboard or screen-reader user gets the full words too. The new test in
+  `tests/test_shell.py` asserts "Check, Came in email or zip" for the tag
+  and "Check" for a plain status.
+- **SHOULD-2:** two tests now fail if either page stops passing the reason code:
+  - the return page's Needs you test checks `reason` on each row;
+  - the Needs Review test checks the status tooltips it records.
+- **NIT-1:** HANDOFF item 5, the "Also open" paragraph in SPEC-shell and the
+  wording-table note now say the old words were cut in the cloud's font and
+  fit on Windows (131px).
+- **NIT-2:** SPEC-shell 11.5's intro now has the `REASON_TIPS` sentence.
+- **Correction (NIT-3):** in the Checks section above, the map count at HEAD
+  was 346 nodes, and `test_single_source.py` exited 1. Its 172 tests pass,
+  then the decision-185 tripwire fires. That was already so before this change.
+- **Reruns** (only the touched files; results as pass line and exit code):
+
+  | Test file | 3.14 | 3.11 |
+  |---|---|---|
+  | `test_shell.py` | 111 passed, 2 failed, exit 1 | 111 passed, 2 failed, exit 1 |
+  | `test_single_source.py` | 172 passed, exit 1 | 172 passed, exit 1 |
+  | `test_repo_map.py` | 80 passed, exit 0 | 80 passed, exit 0 |
+
+  - The `test_shell.py` exit 1 comes only from the 2 known WinError 206
+    harness-stub tests, which belong to lane 3.
+  - The `test_single_source.py` exit 1 is the pre-existing decision-185
+    tripwire, which the review found (NIT-3).
+- **Quick checks:** ruff: All checks passed. `repo_map.py check`: exit 0.
+  `vocab_report.py check`: exit 0.

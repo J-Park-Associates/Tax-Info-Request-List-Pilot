@@ -1575,7 +1575,9 @@ are S8a's work in progress and are final with its review.
 ### 11.5 Short reasons (`reasons.py`, one per code, `vocab.reasons`)
 
 A `short` beside each code's sentence; the row shows it, the sentence stays
-where it is used today (the index, the letter, the log).
+where it is used today (the index, the letter, the log). A label shortened into
+a tag has its longer words in `reasons.REASON_TIPS` (`vocab.reason_tips`), shown
+as its tooltip every time (P116).
 
 | Code | Short | | Code | Short |
 |---|---|---|---|---|
@@ -1961,6 +1963,6 @@ Title Case test's name are final with S8a's review; `year` and `handle` on
 
 Also open for Jason (the fix pass, 2026-09-30): "Bad Year" (ruling 18a) is a
 working word he may change; firm speed on Windows over a streamed Drive is
-unmeasured; the status word "Came in Email or Zip" is cut in the 160px status column (a file row keeps its ellipsis; answered by P116: the tag
+unmeasured; the status word "Came in Email or Zip" is cut in the 160px status column in the cloud's font (it fits on Windows, 131px; a file row keeps its ellipsis; answered by P116: the tag
 "Email or Zip", with those words as its tooltip, `pilot/SPEC-email-zip-tag.md`). The ruling
 25 reason words were approved as ruling 29.

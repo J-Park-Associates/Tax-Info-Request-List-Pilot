@@ -15,9 +15,9 @@
     "a person sends the draft"
   ],
   "counts": {
-    "nodes": 346,
+    "nodes": 348,
     "edges": 1156,
-    "reused": 303
+    "reused": 305
   },
   "node_types": [
     "artifact",
@@ -4034,8 +4034,8 @@
       "id": "app/renderer/pages.js",
       "type": "module",
       "layer": "desktop-app",
-      "sha256": "2154e7e352dfa0ee",
-      "lines": 1178,
+      "sha256": "66af95c32be89c43",
+      "lines": 1180,
       "role": "The pages (pilot SPEC-shell 3.6 and 6): Overview, Needs review, Reminders, Clients, household, year and return, drawn into #page from the `list`, `firm` and `state` replies, with the one row and group every page is made of and the keys on a row list.",
       "notes": "A classic script loaded after app.js and tooltip.js and before shell.js. It types no word: every word is vocab.screen, vocab.menu or a word the vocabulary already holds (a request's label, a stage's short name, a reason's short label, and for a label shortened into a tag the words it stands for, vocab.reason_tips, which are that status's tooltip every time: P116), and a word the vocabulary lacks is a loud failure that pagesDraw says as a notice. A return's groups are the API's `group` on each state item and on each index file (a moved file a person marked missing is Set aside): nothing is guessed from a decision, so an item or file without a known group is left out of every group and named in its own notice, while every other row is drawn (pagesSafe / pagesEach: one bad row never blanks a page, a page that cannot be built whole keeps what it held or draws its H1); pagesTally counts the same way, and never throws, so shell.js can tell when the firm's counts moved. A long API sentence (a pause, a feed) is shown as its short vocabulary word (shortNotice, shell.js) and goes to the error log. The four firm pages draw no H1. A household's notices (two years open, folder renamed with Accept, feeds) are syncNotices('household', ...) while any of its pages is open. Three kinds of name are live links (SPEC 3.9): a file name asks the shell to reveal the copy the API's key names in the map its row came with (state.paths, or firm.paths for the Needs Review page; the path is never drawn), a household name and a return name navigate with no engine call, and a return reads '{Return Name} ({Year})' from the list's name and the row's year. A row's right-click (or Shift+F10) asks for the native menu of its template with the ids that apply (pagesEnableFor); pagesMenu answers a row's items - the file items open the sheet and press its own button - and takes a household or return row to that page first. It offers the sheet pagesFiles() (the parked and moved files in the order drawn), pagesDrafts(), pagesWhere and pagesFocusAt, and calls openCheck and openReminder (sheet.js)."
     },
@@ -4617,7 +4617,7 @@
       "id": "pilot/HANDOFF.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "7de40e339a0c7053",
+      "sha256": "152f539222f37758",
       "lines": 728
     },
     {
@@ -4666,8 +4666,8 @@
       "id": "pilot/SPEC-shell.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "3384ddadeadcb23c",
-      "lines": 1966
+      "sha256": "ff3dcb39a06dd658",
+      "lines": 1968
     },
     {
       "id": "pilot/SPEC-ui.md",
@@ -4694,8 +4694,8 @@
       "id": "pilot/handoffs/email-zip-tag-build.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "9ea999006f71b3b4",
-      "lines": 97
+      "sha256": "3fc085d906e1b3c9",
+      "lines": 132
     },
     {
       "id": "pilot/handoffs/shell-S1-rebuild-1.md",
@@ -5123,6 +5123,20 @@
       "layer": "docs",
       "sha256": "6968d704ca55cea8",
       "lines": 123
+    },
+    {
+      "id": "pilot/reviews/email-zip-tag-review.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "661429975c063e71",
+      "lines": 143
+    },
+    {
+      "id": "pilot/reviews/email-zip-tag-rulings.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "577159529716de6e",
+      "lines": 14
     },
     {
       "id": "pilot/reviews/review-1.md",
@@ -9032,8 +9046,8 @@
       "id": "tests/test_shell.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "4e474a951f893f94",
-      "lines": 2710,
+      "sha256": "1a23c4c5dd49cdf4",
+      "lines": 2716,
       "exports": [
         "CONTRAST",
         "FAKE_DOM",

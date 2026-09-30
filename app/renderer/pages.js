@@ -270,20 +270,22 @@ function pagesRow(spec) {
   // name and the words of a paused household are never cut away. A file's
   // name still ends in an ellipsis.
   const wraps = Boolean(spec.mark || (spec.nameLink && spec.nameLink.kind !== "file"));
+  // A status that is a tag for longer words (P116: `spec.reason` is its code,
+  // `vocab.reason_tips` the words) shows them as its tooltip every time, and
+  // the row's description carries them for the keyboard and a screen reader,
+  // since focus rests on the list, never on the status; any other status shows
+  // its own words only when they are cut.
+  const tips = spec.reason ? vocab.reason_tips : null;
+  if (spec.reason && !tips) throw new Error("reason_tips");
+  const tip = tips ? tips[spec.reason] || "" : "";
   const node = h("div", {
     className: `row${step ? " has-step" : ""}${spec.child ? " row-child" : ""}${wraps ? " row-wrap" : ""}`, role: "option", id, "aria-selected": "false",
-    "aria-description": words || undefined, dataset: { menu: spec.menu || "", token: id },
+    "aria-description": [words, tip].filter(Boolean).join(", ") || undefined, dataset: { menu: spec.menu || "", token: id },
   },
   pagesNameCell(spec),
   pagesCell("row-detail", "detail", spec.detail || "", spec.detailLink),
   h("span", { className: `row-status ${PAGES_TONES[spec.tone] || ""}` }, spec.status || ""),
   h("span", { className: "row-end" }, h("span", { className: "row-date" }, spec.date || ""), step));
-  // A status that is a tag for longer words (P116: `spec.reason` is its code,
-  // `vocab.reason_tips` the words) shows them as its tooltip every time; any
-  // other status shows its own words only when they are cut.
-  const tips = spec.reason ? vocab.reason_tips : null;
-  if (spec.reason && !tips) throw new Error("reason_tips");
-  const tip = tips ? tips[spec.reason] || "" : "";
   if (tip) setTip(node.querySelector(".row-status"), tip);
   else setTipIfCut(node.querySelector(".row-status"), spec.status);
   return node;
