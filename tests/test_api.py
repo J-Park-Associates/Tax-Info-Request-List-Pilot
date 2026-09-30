@@ -9586,4 +9586,6 @@ def test_a_cached_rows_links_follow_a_change_to_another_households_record(capsys
     whole = _firm_whole(capsys, monkeypatch)
     by_path = {Path(one["path"]): one for one in whole["returns"]}
     assert [(link["name"], link["kind"]) for link in by_path[park]["links"]] == [("Lee Family", "related")]
+    read = _rows_read(monkeypatch)
     assert _cached_firm(capsys) == whole
+    assert not any(str(one).startswith(str(park)) for one in read), "Park's row came from the cache"

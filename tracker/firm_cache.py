@@ -320,10 +320,14 @@ def load(path: Path, expected: dict) -> dict[str, dict]:
 
 
 def _entry_is_whole(entry: object) -> bool:
-    if not isinstance(entry, dict) or set(entry) != {"fingerprint", "kind", "name", "returns"}:
+    if not isinstance(entry, dict) or set(entry) != {"fingerprint", "kind", "name", "feeds", "related", "returns"}:
         return False
     if not isinstance(entry["fingerprint"], str) or entry["kind"] not in KINDS \
             or not isinstance(entry["name"], str) or not isinstance(entry["returns"], list):
+        return False
+    # FORMAT 2: the household's own feeds and related names, each a list of words.
+    if not all(isinstance(entry[key], list) and all(isinstance(one, str) for one in entry[key])
+               for key in ("feeds", "related")):
         return False
     return all(_return_is_whole(one) for one in entry["returns"])
 

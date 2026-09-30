@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 371,
     "edges": 1170,
-    "reused": 327
+    "reused": 322
   },
   "node_types": [
     "artifact",
@@ -1341,8 +1341,8 @@
       "id": "tracker/firm_cache.py",
       "type": "module",
       "layer": "core",
-      "sha256": "e6ea969958d766cf",
-      "lines": 383,
+      "sha256": "a6975493dfe702e7",
+      "lines": 387,
       "exports": [
         "ANY",
         "CACHE_FILENAME",
@@ -5721,8 +5721,8 @@
       "id": "pilot/harness/stub.js",
       "type": "module",
       "layer": "root",
-      "sha256": "8d269d91fb2f1c4e",
-      "lines": 434
+      "sha256": "3447d5a0173d1c4c",
+      "lines": 439
     },
     {
       "id": "pilot/mockup-shell.html",
@@ -6148,8 +6148,8 @@
       "id": "tests/test_api.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "0f6fba6d23266a00",
-      "lines": 9589,
+      "sha256": "dc626e6331710ab2",
+      "lines": 9591,
       "exports": [
         "COUNTS",
         "DEEPER_ROOT_LENGTH",
@@ -7480,8 +7480,8 @@
       "id": "tests/test_firm_cache.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "8f5dc7ff1aeadc21",
-      "lines": 333,
+      "sha256": "cf8ce8dc756041e3",
+      "lines": 344,
       "exports": [
         "ANY",
         "JUDGED",
@@ -7498,6 +7498,7 @@
         "test_a_missing_file_is_the_ordinary_first_reply_and_is_not_logged",
         "test_a_record_rewritten_at_its_own_size_and_time_changes_the_fingerprint",
         "test_a_surprise_is_said_once_until_it_changes",
+        "test_an_entry_whose_feeds_or_related_is_not_a_list_of_words_is_damage",
         "test_an_error_in_any_thread_is_raised_to_the_caller",
         "test_an_unchanged_household_keeps_its_fingerprint",
         "test_another_head_is_not_used",
@@ -9330,7 +9331,7 @@
       "id": "tests/test_shell.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "05db3025c77cc8c1",
+      "sha256": "32253d983f66c50a",
       "lines": 3742,
       "exports": [
         "COLUMN_FUNCTIONS",
@@ -9539,7 +9540,7 @@
         "FAKE_DOM": "'\\nclass Node {}\\nclass Text extends Node { constructor(data) { super(); this.data = data; } }\\nclass Element extends Node {\\n  constructor(tag) { super(); this.tag = tag; this.className = \"\"; this.dataset = {}; this.attrs = {}; this.kids = []; this.open = false; this.handlers = {};\\n    this.style = { props: {}, setProperty(key, value) { this.props[key] = value; }, removeProperty(key) { delete this.props[key]; } }; }\\n  get classList() {\\n    const self = this;\\n    return { add(one) { if (!self.className.split(\" \").includes(one)) self.className = `${self.className} ${one}`.trim(); },\\n             contains(one) { return self.className.split(\" \").includes(one); } };\\n  }\\n  setAttribute(key, value) { this.attrs[key] = String(value); }\\n  getAttribute(key) { return this.attrs[key]; }\\n  append(...nodes) { for (const one of nodes) this.kids.push(one instanceof Node ? one : new Text(String(one))); }\\n  replaceChildren(...nodes) { this.kids = []; this.append(...nodes); }\\n  addEventListener(type, fn) { (this.handlers[type] = this.handlers[type] || []).push(fn); }\\n  get childNodes() { return this.kids; }\\n  find(test, out = []) { for (const one of this.kids) if (one instanceof Element) { if (test(one)) out.push(one); one.find(test, out); } return out; }\\n  querySelector(selector) { return this.byClass(selector.slice(1))[0] || null; }\\n  byClass(name) { return this.find((one) => one.className.split(\" \").includes(name)); }\\n  get textContent() { return this.kids.map((one) => (one instanceof Text ? one.data : one.textContent)).join(\"\"); }\\n}\\nconst document = { activeElement: null, createDocumentFragment: () => new Element(\"fragment\"), createElement: (tag) => new Element(tag), createElementNS: (_ns, tag) => new Element(tag) };\\nconst page = (nodes) => { const box = new Element(\"div\"); box.append(...nodes.filter(Boolean)); return box; };\\n'",
         "PAGE_WORDS": "'\\nconst fill = (p, v) => p.replace(/\\\\{(\\\\w+)\\\\}/g, (_, k) => v[k] ?? \"\");\\nconst isSetAside = (o) => o === \"Not Applicable\";\\nconst overrideLabel = (o, year) => `Not applicable ${year}`;\\nlet locked = false;\\nlet lastState = null;\\nconst tips = []; const cutTips = [];\\nconst setTipIfCut = (node, words) => { tips.push([node.className, words]); cutTips.push(node.className); };\\nconst setTip = (node, words) => tips.push([node.className, words]);\\nconst opened = []; const went = [];\\nconst openPath = (path, how) => opened.push([path, how]);\\nconst shellGo = (route) => went.push(route);\\nconst shellPopup = (name, token, x, y, enable) => {};\\nconst unanswered = (id) => failures.push(`unanswered ${id}`);\\nlet shellReturn = (path) => ({ return_name: \"1040 - John & Jane Smith\", household: \"h1\", year: 2025 });\\nconst PAGES_LINK_WORDS = { file: \"show_in_explorer\", household: \"navigate_client\", return: \"navigate_return\" };\\nconst PAGES_GROUPS = [\"needs_you\", \"waiting\", \"received\", \"set_aside\"];\\nconst PAGES_TONES = { needs: \"is-attention\", waiting: \"is-waiting\", done: \"is-done\", plain: \"is-plain\" };\\nconst PAGES_LATE = \"9999-99-99\";\\nlet pagesUid = 0; const pagesTokens = new Map(); let pagesSetAsideOpen = false; let pagesBroken = []; let pagesDrawn = \"\";\\nlet pagesFocus = null; let pagesLastLevel = \"\"; let pagesClientsAll = false;\\nconst notices = []; const failures = [];\\nlet syncNotices = (prefix, wanted) => notices.push([prefix, wanted.map((one) => [one.key, one.failure.sentence, one.detail || \"\"])]);\\nconst failed = (err) => failures.push(String(err.message));\\nlet shellHousehold = () => null; let households = [];\\nconst vocab = {\\n  shell: { page_error: \"The app hit an error\" }, notices: { about: \"{label}: {sentence}\" },\\n  client_type_forms: { individuals: [\"1040\"], businesses: [\"1120\", \"1120S\", \"1065\"], trusts: [\"1041\"], nonprofits: [\"990\"] },\\n  decisions: { needs_review: \"Needs Review\", dismissed: \"Not Requested\", filed: \"Filed\", file_moved: \"File Moved\" },\\n  labels: { Missing: { label: \"Outstanding\" }, Received: { label: \"Received\" }, Partial: { label: \"Partly in\" }, Rejected: { label: \"Could not use\" }, NotAsked: { label: \"Not asked\" } },\\n  overrides: { not_applicable: \"Not Applicable\" },\\n  review_labels: { bucket_order: [\"document\", \"container\", \"not_a_document\"], dismiss: \"Not requested\",\\n                   buckets: { document: \"Documents\", container: \"Emails and zips\", not_a_document: \"Not documents\" } },\\n  reasons: { unmatched: { short: \"Could not tell\" }, \"opened-not-across\": { short: \"Email or zip\" } },\\n  reason_tips: { \"opened-not-across\": \"Came in email or zip\" },\\n  screen: {\\n    groups: { needs_you: \"Needs you\", waiting: \"Waiting on client\", received: \"Received\", set_aside: \"Set aside\" },\\n    steps: { check: \"Check\", open: \"Open\", draft: \"Draft reminder\", edit: \"Edit\" },\\n    notices: { paused: \"Two Years Open; Sorting Paused\" },\\n    empty: { received: \"Nothing received yet\" }, moved: \"Moved by hand\", due: \"Due {date}\", partly: \"{n} of {total}\",\\n    show_in_explorer: \"Show in File Explorer\", navigate_client: \"Navigate to Client\", navigate_return: \"Navigate to Return\",\\n    counts: { need: \"{n} need you\", waiting: \"{n} waiting\", complete: \"Complete\", files: \"{n} files\", one_file: \"1 file\", one_return: \"1 return\", returns: \"{n} returns\" },\\n    sections: { overview: \"Overview\", needs_review: \"Needs Review\", reminders: \"Reminders\", clients: \"Clients\" },\\n    columns: { return: \"Return\", client: \"Client\", status: \"Status\", date: \"Date\", file: \"File\", suggestion: \"Suggestion\", reason: \"Reason\",\\n               received: \"Received\", stage: \"Stage\", drafted: \"Drafted\", returns: \"Returns\", client_name: \"Client Name\", sort_by: \"Sort by {column}\",\\n               width: \"{column} Width {n}\" },\\n    linked: { tip: \"Linked Households\", feeds: \"Also Feeds\", fed_by: \"Fed By\", related: \"Related\" },\\n    tabs: { need: \"Need You ({n})\", waiting: \"Waiting ({n})\" }, documents: { one: \"1 Document\", many: \"{n} Documents\" },\\n    paging: { showing: \"Showing {from}-{to} of {total} {noun}\", previous: \"Previous\", next: \"Next\",\\n              nouns: { overview: \"Returns\", needs_review: \"Files\", reminders: \"Drafts\", clients: \"Clients\" } },\\n    icons: { more_actions: \"More Actions\", remove_filter: \"Remove Filter\" }, filters: { work: \"Work Waiting\", all: \"All\" }, work: \"Work Waiting\",\\n    client_types: { individuals: \"Individuals\", businesses: \"Businesses\", trusts: \"Trusts & Estates\", nonprofits: \"Nonprofits\" },\\n  },\\n};\\n'",
         "PAGES_CONSTS": "('const PAGES_COLUMNS = {', 'const PAGES_CELLS = ', 'const PAGES_WIDTHS = ', 'const PAGES_USUAL = ', 'const PAGES_WIDTH_STEP = ', 'const PAGES_WIDTHS_KEY = ', 'const PAGES_URGENCY = ', 'const pagesOrder = ', 'let pagesWidths = ', 'const PAGES_PER_PAGE = ', 'const PAGES_REASON_ICONS = {', 'const PAGES_SECTIONS = ', 'let pagesPageAt = ', 'let pagesTab = ', 'let pagesReasonPick = ', 'let pagesClientType = ', 'let pagesPanel = ')",
-        "COLUMN_FUNCTIONS": "('pagesListOf', 'pagesUrgent', 'pagesIsBlank', 'pagesCompareKeys', 'pagesCompare', 'pagesOrdered', 'pagesOrderBy', 'pagesColumnHeads', 'pagesGrip', 'pagesColumnKey', 'pagesStoredWidths', 'pagesWidthOf', 'pagesSetWidth', 'pagesSaveWidths', 'pagesApplyWidths', 'pagesResetWidths', 'pagesReviewSpec', 'pagesOrderedGroups', 'pagesDetailCell', 'pagesStatusCell', 'pagesLinkMark', 'pagesLinkMarkIn', 'pagesShowPanel', 'pagesPanelOpen', 'pagesClosePanel', 'pagesOpenRowLinks', 'pagesPaged', 'pagesFoot', 'pagesTurn', 'pagesPick', 'pagesTabs', 'pagesFileCount', 'pagesReasonCards', 'pagesReviewGroup', 'pagesSwitch', 'pagesTypeFilter', 'pagesReopenPanel')",
+        "COLUMN_FUNCTIONS": "('pagesListOf', 'pagesUrgent', 'pagesIsBlank', 'pagesCompareKeys', 'pagesCompare', 'pagesOrdered', 'pagesOrderBy', 'pagesColumnHeads', 'pagesGrip', 'pagesColumnKey', 'pagesStoredWidths', 'pagesWidthOf', 'pagesSetWidth', 'pagesSaveWidths', 'pagesApplyWidths', 'pagesResetWidths', 'pagesReviewSpec', 'pagesOrderedGroups', 'pagesDetailCell', 'pagesReasonTip', 'pagesStatusCell', 'pagesLinkMark', 'pagesLinkMarkIn', 'pagesShowPanel', 'pagesPanelOpen', 'pagesClosePanel', 'pagesOpenRowLinks', 'pagesPaged', 'pagesFoot', 'pagesTurn', 'pagesPick', 'pagesTabs', 'pagesFileCount', 'pagesReasonCards', 'pagesReviewGroup', 'pagesSwitch', 'pagesTypeFilter', 'pagesReopenPanel')",
         "RETURN_STATE": "'\\nconst item = (id, group, extra = {}) => ({ identifier: id, document: `Doc ${id}`, short_name: `Doc ${id}`, group, status_key: \"Missing\", manual_override: \"\",\\n  period: \"\", year: 2025, file_count: 0, expected_count: 1, received_date: null, ...extra });\\nconst parked = (handle, extra = {}) => ({ handle, original_name: `${handle}.pdf`, decision: \"Needs Review\", group: \"needs_you\", code: \"unmatched\", received: \"2026-03-03\", bucket: \"document\", ...extra });\\nconst movedRow = (handle, extra = {}) => ({ handle, original_name: `${handle}.pdf`, decision: \"File Moved\", group: \"needs_you\", code: \"file-moved\", received: \"2026-03-02\", ...extra });\\nconst setAsideRow = (handle, extra = {}) => ({ handle, original_name: `${handle}.pdf`, decision: \"Not Requested\", group: \"set_aside\", code: \"not-requested\", received: \"2026-03-01\", ...extra });\\nconst stateOf = (items, index = [], moved = []) => ({ paths: { engagement: \"r1\" }, engagement: { due: \"2026-04-15\" }, items, index, review: [], moved });\\n'",
         "PROBE_EVERY_NOTICE": "'\\n      const seen = [];\\n      for (const scenario of [\"notices\", \"household-notices\", \"locked\", \"stale-lock\"]) {\\n        const { list, state } = await replies(scenario);\\n        vocab = list.vocab;\\n        vocab.screen.notices = Object.assign({}, vocab.screen.notices, %s);\\n        drawn.length = 0; logged.length = 0;\\n        renderMachineNotices(list);\\n        renderAfterInstall(noticeOf(list.after_install));\\n        renderShortOfRoom([{ engagement: \"r1\", sentences: [\"A LONG ROOM SENTENCE\"] }]);\\n        active = state.paths.engagement;\\n        showLock(state.lock);\\n        lastState = state;\\n        pagesHouseholdNotices({ level: \"household\", household: state.household.path });\\n        seen.push({ scenario, drawn: drawn.slice(), logged: logged.slice(), reader: list.reader_warning, machine: list.machine_warnings,\\n                    pause: state.household.pause.sentence || \"\", lock: state.lock });\\n      }\\n      return seen;\\n'",
         "SHEET_SETUP": "'\\nconst vocab = { decisions: { needs_review: \"Needs Review\", dismissed: \"Not Requested\", file_moved: \"File Moved\", filed: \"Filed\" } };\\nlet sheetNow = null; let sheetGeneration = 0; const advanced = []; const closed = [];\\nconst sheetAdvance = () => advanced.push(sheetNow.handle);\\n'",
@@ -9804,8 +9805,8 @@
       "id": "tests/test_store.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "bea14f2b83930d7f",
-      "lines": 4710,
+      "sha256": "3dfeb37843c03b6f",
+      "lines": 4715,
       "exports": [
         "AS_AT_16",
         "AS_AT_17",

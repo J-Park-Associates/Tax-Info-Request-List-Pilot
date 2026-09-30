@@ -1006,7 +1006,7 @@ COLUMN_FUNCTIONS = ("pagesListOf", "pagesUrgent", "pagesIsBlank", "pagesCompareK
                     "pagesColumnHeads", "pagesGrip", "pagesColumnKey", "pagesStoredWidths", "pagesWidthOf", "pagesSetWidth",
                     "pagesSaveWidths", "pagesApplyWidths", "pagesResetWidths", "pagesReviewSpec", "pagesOrderedGroups",
                     # The raised lists (pilot SPEC-lists 10-17).
-                    "pagesDetailCell", "pagesStatusCell", "pagesLinkMark", "pagesLinkMarkIn", "pagesShowPanel", "pagesPanelOpen",
+                    "pagesDetailCell", "pagesReasonTip", "pagesStatusCell", "pagesLinkMark", "pagesLinkMarkIn", "pagesShowPanel", "pagesPanelOpen",
                     "pagesClosePanel", "pagesOpenRowLinks", "pagesPaged", "pagesFoot", "pagesTurn", "pagesPick", "pagesTabs",
                     "pagesFileCount", "pagesReasonCards", "pagesReviewGroup", "pagesSwitch", "pagesTypeFilter", "pagesReopenPanel")
 
@@ -1912,7 +1912,7 @@ def test_the_firm_pages_rows_link_by_the_firms_keys_and_carry_the_year(tmp_path)
       shellFirm = () => ({ data: firmData });
       tips.length = 0;
       const nodes = pagesNeedsReview();
-      const statusTips = tips.filter(([cls]) => cls.startsWith("row-status")).map(([, words]) => words);
+      const statusTips = tips.filter(([cls]) => cls.startsWith("row-status") || cls === "pill-word").map(([, words]) => words);
       const head = nodes.find((n) => n.byClass && n.byClass("group-title").length).byClass("group-title")[0];
       const caption = nodes.find((n) => n.byClass && n.byClass("group-count").length).byClass("group-count")[0];
       const rows = nodes.flatMap((n) => (n.byClass ? n.byClass("row") : []));
@@ -3704,7 +3704,7 @@ def test_escape_closes_the_link_panel_and_returns_focus_to_its_icon(tmp_path):
       let prevented = 0;
       const handled = shellKey({ key: "Escape", target: new Element("button"), preventDefault: () => { prevented += 1; } });
       return { handled, prevented, open: pagesPanelOpen(), focused: focused.slice(-1)[0] };
-    """, tmp_path, setup=PANEL_DOM, functions=[*re.findall(r"^function (\w+)\(", read("pages.js"), flags=re.M), "h", "icon", "screenWords",
+    """, tmp_path, setup=PANEL_DOM + "let tipFor = null; function hideTip() { tipFor = null; }" + js_function("tipKey", "tooltip.js"), functions=[*re.findall(r"^function (\w+)\(", read("pages.js"), flags=re.M), "h", "icon", "screenWords",
                                                "folderName", "shellKey"])
     assert ran == {"handled": True, "prevented": 1, "open": False, "focused": "link-mark"}
 

@@ -130,7 +130,7 @@ def test_the_program_stamp_follows_the_packaged_executable(tmp_path, monkeypatch
 
 
 def _entry(fingerprint="f" * 32):
-    return {"fingerprint": fingerprint, "kind": "household", "name": "Lee Family",
+    return {"fingerprint": fingerprint, "kind": "household", "name": "Lee Family", "feeds": [], "related": [],
             "returns": [{"path": "p", "household": "h", "problem": "", "active": True, "tax_year": 2025,
                          "rolled_from": "", "shown": {"row": {"a": 1}, "files": [], "paths": {}}}]}
 
@@ -331,3 +331,14 @@ def test_a_client_file_carrying_a_tracker_name_elsewhere_is_never_read_whole(tmp
     assert [one.relative_to(client).as_posix() for one in opened if one.is_relative_to(client)] == [
         "Drop files here/_README.txt"]
 
+
+def test_an_entry_whose_feeds_or_related_is_not_a_list_of_words_is_damage(tmp_path):
+    """FORMAT 2 (the 0.3 landing): a kept household carries its own feeds and
+    related names; anything else there is damage, and the file is rebuilt."""
+    where = tmp_path / "firm-view.json"
+    head = firm_cache.head(tmp_path, TODAY)
+    for key, bad in (("feeds", "Lee Family"), ("related", [1]), ("related", None)):
+        firm_cache.save(where, head, {"Lee Family": {**_entry(), key: bad}})
+        assert firm_cache.load(where, head) == {}
+    firm_cache.save(where, head, {"Lee Family": _entry()})
+    assert firm_cache.load(where, head) == {"Lee Family": _entry()}
