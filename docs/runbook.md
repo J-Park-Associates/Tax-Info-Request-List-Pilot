@@ -575,7 +575,8 @@ changes nothing:
   **The fallback error log's place (ruling 22):**
   `%LOCALAPPDATA%\Tax Document Tracker Pilot\error.log`, normally
   `C:\Users\<user>\AppData\Local\Tax Document Tracker Pilot\`, with one
-  older copy `error.log.1`. Uninstalling the app leaves that folder behind.
+  older copy `error.log.1`. (The tracker's normal error log is the
+  `tracker-errors.log` in the data folder, above.) Uninstalling the app leaves that folder behind.
   The log can contain client names, so when the program is removed for good
   (or the PC is retired) delete the folder by hand.
 
