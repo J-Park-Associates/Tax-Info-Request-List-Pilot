@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 348,
     "edges": 1157,
-    "reused": 304
+    "reused": 305
   },
   "node_types": [
     "artifact",
@@ -9285,8 +9285,8 @@
       "id": "tests/test_single_source.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "abd8e1e80af3fb79",
-      "lines": 4057,
+      "sha256": "c4bfaff75de13ce7",
+      "lines": 4079,
       "exports": [
         "AFTER_WHAT",
         "CONSOLE_EXEMPT",
