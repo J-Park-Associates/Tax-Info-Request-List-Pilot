@@ -19,6 +19,7 @@ const TIP_MARGIN = 8;
 
 let tipFor = null;      // the element whose tip shows, or null
 let tipTimer = null;
+let tipWaitFor = null;  // the element whose tip waits on its delay, or null
 
 function tipNode() {
   return document.getElementById("tip");
@@ -78,8 +79,11 @@ function placeTip(node, tip) {
   });
 }
 
+// An element the page has removed gets no tip (P202 R3): a hover just before
+// a keyboard page change would otherwise show one, after its delay, for an
+// element that is gone.
 function showTip(node) {
-  const words = tipWords(node);
+  const words = node.isConnected ? tipWords(node) : "";
   const tip = tipNode();
   if (!words || !tip) {
     hideTip();
@@ -87,6 +91,7 @@ function showTip(node) {
   }
   if (tipFor && tipFor !== node) tipFor.removeAttribute("aria-describedby");
   tipFor = node;
+  tipWaitFor = null;
   tip.textContent = words;
   tip.hidden = false;
   node.setAttribute("aria-describedby", "tip");
@@ -106,6 +111,7 @@ function showTipNow(node) {
 function hideTip() {
   clearTimeout(tipTimer);
   tipTimer = null;
+  tipWaitFor = null;
   const tip = tipNode();
   if (tip) tip.hidden = true;
   if (tipFor) tipFor.removeAttribute("aria-describedby");
@@ -126,10 +132,16 @@ function tipTarget(event) {
   return event.target instanceof Element ? event.target.closest("[data-tip]") : null;
 }
 
+// An element the page removes while it is hovered never sends mouseout, so
+// the next mouseover - on anything, tip or not - first hides a tip showing or
+// waiting for an element no longer on the page (P202 R1).
 document.addEventListener("mouseover", (e) => {
+  const held = tipFor || tipWaitFor;
+  if (held && !held.isConnected) hideTip();
   const node = tipTarget(e);
   if (!node || node === tipFor) return;
   hideTip();
+  tipWaitFor = node;
   tipTimer = setTimeout(() => showTip(node), TIP_DELAY_MS);
 });
 document.addEventListener("mouseout", (e) => {
