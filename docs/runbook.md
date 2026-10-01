@@ -50,7 +50,9 @@ first pass (slow once, never wrong). Start the app from the
 Start menu or its shortcut. A program started from inside another program's
 window - some AI assistants among them - can be given a private copy of this
 folder by Windows; the app refuses to run that way and says so on its first
-screen. Nobody opens, copies or backs up the
+screen. If Windows will not let the app list the folder where it keeps those
+copies (`%LOCALAPPDATA%\Packages`), the app cannot tell, so it refuses too and
+its first screen names that folder; let the account read it. Nobody opens, copies or backs up the
 data folder; the ledgers are the backup. A reading's temporary files, if a library ever
 writes one, go to a folder of that reading's own in the data folder
 (`scratch`), removed when the reading ends — never the machine's temp folder.

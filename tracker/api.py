@@ -323,6 +323,7 @@ from tracker.settings import (
     EXAMPLE_ROOT,
     REDIRECTED_COPY,
     SET_ROOT_HINT,
+    DataHomeRedirected,
     SettingsError,
     clients_root,
     data_home,
@@ -1216,6 +1217,11 @@ OVERRIDE_LABELS: tuple[str, ...] = (
 #: keep "Client" for the greeting name (``records.ENGAGEMENT_LABELS``); the
 #: editor says "Taxpayer", the person the letter greets.
 EDITOR_LABELS: dict[str, str] = {"client": "Taxpayer"}
+#: The editor's help line where the screen's word differs from the record's
+#: (P196, combined review M1): ``records.ENGAGEMENT_NOTES`` keeps "this client"
+#: for the README it writes (R7, R9); the editor, which draws the help beside
+#: every yes/no box, says the Taxpayer.
+EDITOR_HELP: dict[str, str] = {"reminders": f"{NO} = this taxpayer is not chased by email"}
 
 #: The menu bar's words, keyed by item (SPEC-shell 11.3, P84). ``vocab.menu``
 #: carries this, and ``main.js`` holds the same words as its defaults so the
@@ -2000,7 +2006,7 @@ def _vocab() -> dict:
             "rename": RENAME_LABEL, "renamed_note": RENAMED_NOTE, "rename_left_note": RENAME_LEFT_NOTE,
             "engagement_fields": [
                 {"key": f, "label": EDITOR_LABELS.get(f, ENGAGEMENT_LABELS[f]),
-                 "help": ACTIVE_HELP if f == "active" else ENGAGEMENT_HELP.get(f, ""),
+                 "help": ACTIVE_HELP if f == "active" else EDITOR_HELP.get(f, ENGAGEMENT_HELP.get(f, "")),
                  "editable": f in ENGAGEMENT_EDITABLE}
                 for _, f in ENGAGEMENT_FIELDS
             ],
@@ -3563,8 +3569,13 @@ def _machine_warnings(root: Path | None) -> list[str]:
     Windows cannot name) - said every time the app opens from there. Last,
     each stale copy of the data folder Windows kept for a package the app was
     once started inside (F7, P193, R2): named, never removed, because it holds
-    client-derived data."""
+    client-derived data. While R1 refuses this process's own redirected data
+    home, R1's sentence stands alone (combined review N3): a copy line would
+    call the folder this process sees "never used". A Packages folder Windows
+    will not list is one sentence, said once, and the rest still shows
+    (combined review S2)."""
     warnings = []
+    redirected = False
     try:
         # Asked first and on its own (decision 186's review, M1): what was
         # left behind asks the data home only when it finds something, and
@@ -3574,9 +3585,15 @@ def _machine_warnings(root: Path | None) -> list[str]:
         warnings += [sentence for _code, sentence in left_behind_warnings(root)]
     except SettingsError as exc:
         warnings.append(str(exc))
+        redirected = isinstance(exc, DataHomeRedirected)
     if refusal := program_drive_refusal():
         warnings.append(refusal)
-    warnings += [REDIRECTED_COPY.format(path=copy) for copy in redirected_copies()]
+    if not redirected:
+        try:
+            warnings += [REDIRECTED_COPY.format(path=copy) for copy in redirected_copies()]
+        except SettingsError as exc:
+            if str(exc) not in warnings:        # the probe may have said it already
+                warnings.append(str(exc))
     return warnings
 
 

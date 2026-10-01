@@ -53,6 +53,7 @@ Line numbers are on the base `61901ba` (each edit is one line, so they hold).
 | 1406 | `screen.empty.clients` | No Clients Yet | No Households Yet | P196 |
 | 1428 | `screen.groups.waiting` | Waiting on Client | Waiting on Taxpayer | R1 |
 | 1992 | `editor.engagement_fields[client].label` | Client | Taxpayer | R1: a new `EDITOR_LABELS` beside it overrides the record's label for the editor only (R7) |
+| 1223 | `editor.engagement_fields[reminders].help` | no = this client is not chased by email | no = this taxpayer is not chased by email | R1 (combined review M1): drawn beside the Reminders box; a new `EDITOR_HELP` beside `EDITOR_LABELS` overrides the record's note for the editor only, and the record and its README keep theirs (R7, R9) |
 
 ### 2.2 The engine's one drawn word (`tracker/reasons.py`)
 
@@ -89,6 +90,27 @@ the vocabulary. Their code names (`pagesClients`, `pagesClientType`,
   long `reasons.py` sentences, "Clients folder problem: ...", "Tell the app
   where your clients live first ...", the sharing lines, the cut help
   lines): not drawn (SPEC-shell 11.1); R9.
+- **(f) Sentences that reach the screen and keep "client"** (combined
+  review S1, by the orchestrator's rule: "client" stays where it names the
+  firm's clients' data in general or the `Clients` folder on disk; it would
+  become Taxpayer for the person on a return, Household for a listed
+  household). None of these means either, so none changes:
+  - `tracker/settings.py:144-147` (`DATA_HOME_BESIDE_PROGRAM`,
+    `DATA_HOME_NOT_LOCAL`, first-screen warnings): "client data never sits
+    beside the program / on a removable or network drive" - the firm's
+    clients' data in general (R4).
+  - `tracker/runner.py:288` (`LEFT_BEHIND`, first screen): "They hold client
+    names" - the firm's clients' data in general (R4).
+  - `tracker/settings.py:972-985` (`ROOT_IS_SYSTEM_DRIVE` to
+    `ROOT_INSIDE_DATA`, setup and Settings refusals): "choose the folder the
+    firm keeps its clients in" - the clients root, the folder on disk the
+    Settings button calls Clients Folder (R3).
+  - `tracker/api.py:3857` (`CLIENT_FOLDER_TAKEN`, a dialog's refusal): "the
+    clients' tree" - the `Clients` folder on disk (R3).
+  - `tracker/api.py:648` (`RETURN_CREATED_LINE`, a notice): "client README
+    generated. Open the Client Folder to show it." - the README is a file
+    the app writes into the household's folder under `Clients`, and the
+    sentence names that folder's button, Open Client Folder (R3).
 
 ## 4. Files, functions and owning tests
 

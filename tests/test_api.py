@@ -7674,6 +7674,44 @@ def test_a_stale_redirected_copy_is_named_on_the_first_screen(capsys, demo_root,
     assert (copy / "tracker.db").read_bytes() == b"made-up"                 # named, never removed
 
 
+def test_a_packages_folder_windows_will_not_list_is_one_sentence_and_the_rest_still_shows(
+        capsys, demo_root, tmp_path, monkeypatch):
+    """Combined review S2: a raw PermissionError used to fail the whole
+    list reply; now the first screen says one sentence - the folder and
+    the error's class - once, even when the probe said it too, and the
+    rest of the reply still comes."""
+    from tracker import settings as settings_module
+
+    packages = tmp_path / "Local" / settings_module.PACKAGES_DIR_NAME
+    said = settings_module.PACKAGES_UNREADABLE.format(folder=packages, error="PermissionError (EACCES)")
+
+    def unreadable():
+        raise settings_module.SettingsError(said)
+    monkeypatch.setattr(api, "redirected_copies", unreadable)
+    code, payload = run(capsys, "list")
+    assert code == 0
+    assert payload["machine_warnings"] == [said]
+    assert payload["vocab"] and "households" in payload and "last_pass" in payload   # the rest still shows
+    monkeypatch.setattr(api, "data_home", unreadable)
+    assert run(capsys, "list")[1]["machine_warnings"] == [said]              # said once
+
+
+def test_a_redirected_app_says_its_refusal_alone_not_also_a_copy_it_never_uses(
+        capsys, demo_root, tmp_path, monkeypatch):
+    """Combined review N3: while R1 refuses this process's data home, the
+    copy this process sees is not named as one "the app never uses"."""
+    from tracker import settings as settings_module
+
+    refusal = settings_module.DATA_HOME_REDIRECTED.format(package="Claude_pzs8sxrjxfjjc",
+                                                          product=settings_module.product_name())
+
+    def redirected():
+        raise settings_module.DataHomeRedirected(refusal)
+    monkeypatch.setattr(api, "data_home", redirected)
+    monkeypatch.setattr(api, "redirected_copies", lambda: [tmp_path / "copy"])
+    assert run(capsys, "list")[1]["machine_warnings"] == [refusal]
+
+
 # ------------------------------- statuses in a preparer's words (d200) ----
 
 
@@ -9298,6 +9336,9 @@ def test_no_word_the_window_draws_says_client_but_a_folders_own_name(capsys, dem
     drawn = [("menu", vocab["menu"]), ("screen", vocab["screen"]), ("reasons", vocab["reasons"]),
              ("ask_the_client", vocab["ask_the_client"]), ("override_labels", vocab["override_labels"]),
              ("engagement_fields", [f["label"] for f in vocab["editor"]["engagement_fields"]]),
+             # the editor draws a help line only beside its yes/no boxes (app.js renderEngagementFields)
+             ("engagement_help", [f["help"] for f in vocab["editor"]["engagement_fields"]
+                                  if f["editable"] and f["key"] in ("reminders", "active")]),
              ("settings.root_label", vocab["settings"]["root_label"]),
              ("open_client_folder", api.OPEN_CLIENT_FOLDER_LABEL)]
     said = [(where + path, text) for where, branch in drawn for path, text in _drawn_words(branch)

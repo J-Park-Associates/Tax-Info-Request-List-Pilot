@@ -119,6 +119,14 @@ would record moves in a store the schedule never reads.
   and start Tax Document Console from the Start menu."
   `{package}` is the package folder's name (for example
   `Claude_pzs8sxrjxfjjc`), never a client's.
+- Combined review S2 and N3 (folded 2026-09-30): the refusal is its own
+  class, `DataHomeRedirected` (a `SettingsError`), so the first screen tells
+  it apart by class, never by its words. A `Packages` folder Windows will not
+  list (access denied, a disk error) is a `SettingsError` with the new
+  constant `PACKAGES_UNREADABLE`, which names the folder and the error's
+  class (decision 190), never its message: having written its file, the
+  probe cannot rule a redirect out, so the data home is refused loudly
+  rather than guessed. The probe's file is still removed in its `finally`.
 - Rejected: asking Windows for package identity (proven blind here, see
   evidence 2); comparing file IDs of the normal path and the package copy
   (read-only, but blind until the first redirected write has already made
@@ -137,6 +145,14 @@ never deletes that; it is out of date and is never used once R1 holds.
   never uses it and it is out of date; move that folder to the Recycle Bin."
 - Not in `runner.left_behind()`: that list is decision 186's "beside the
   program", and its move group would move the copy into the data home.
+- Combined review S2 and N3 (folded 2026-09-30): a `Packages` folder
+  Windows will not list makes `redirected_copies()` raise
+  `PACKAGES_UNREADABLE`; `_machine_warnings` says that one sentence (once,
+  even when R1's probe said it too) and the rest of the first screen still
+  shows, where a raw `PermissionError` used to fail the whole `list`
+  reply. While R1 refuses this process's own data home, R1's sentence
+  stands alone: no `REDIRECTED_COPY` line, which would call the folder this
+  process sees "never used".
 
 **R3. The sample script never writes the real data folder.** Reason: on
 9/29 it did, from inside Claude, and became the copy's first writer.

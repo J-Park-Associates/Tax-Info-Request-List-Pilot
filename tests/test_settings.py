@@ -5,7 +5,9 @@ where the clients live, it is set once, and a typo cannot quietly create an
 empty folder for the run to walk for ever.
 """
 
+import errno
 import json
+from pathlib import Path
 
 import pytest
 
@@ -610,6 +612,45 @@ def test_a_stale_redirected_copy_is_found_and_never_touched(tmp_path):
     assert data_rules.redirected_copies(environ, windows=False) == []
     assert data_rules.redirected_copies({**environ, data_rules.ENV_DATA_HOME: str(tmp_path / "mine")},
                                         windows=True) == []
+
+
+def _packages_denied(monkeypatch):
+    """Windows refusing to list a Packages folder, as the review's probe did
+    (combined review S2); every other folder lists as it does."""
+    real = data_rules.os.scandir
+
+    def scandir(path):
+        if Path(path).name == data_rules.PACKAGES_DIR_NAME:
+            raise PermissionError(errno.EACCES, "Access is denied", str(path))
+        return real(path)
+    monkeypatch.setattr(data_rules.os, "scandir", scandir)
+
+
+def test_a_packages_folder_windows_will_not_list_is_one_sentence_not_a_raw_error(tmp_path, monkeypatch):
+    """Combined review S2: the copy search and the probe say the folder and
+    the error's class in the firm's sentence, never a raw PermissionError;
+    the probe still removes its file."""
+    local = _local(tmp_path)
+    (local / data_rules.PACKAGES_DIR_NAME / PACKAGE).mkdir(parents=True)
+    _packages_denied(monkeypatch)
+    said = data_rules.PACKAGES_UNREADABLE.format(folder=local / data_rules.PACKAGES_DIR_NAME,
+                                                 error="PermissionError (EACCES)")
+    with pytest.raises(SettingsError) as caught:
+        data_rules.redirected_copies({"LOCALAPPDATA": str(local)}, windows=True)
+    assert str(caught.value) == said
+    with pytest.raises(SettingsError) as caught:
+        data_rules.redirect_probe(local)
+    assert str(caught.value) == said
+    assert "Access is denied" not in said
+    assert _probe_files(local) == []
+
+
+def test_a_redirected_data_folder_is_refused_by_its_own_kind_of_settings_error(tmp_path, monkeypatch, unasked):
+    """Combined review N3: the first screen tells R1's refusal from any
+    other data-home refusal by its class, not by its words."""
+    monkeypatch.setattr(data_rules, "redirect_probe", lambda _local: PACKAGE)
+    with pytest.raises(data_rules.DataHomeRedirected):
+        data_rules._the_data_home({"LOCALAPPDATA": str(_local(tmp_path))}, windows=True)
 
 
 def test_no_packages_folder_names_no_copy(tmp_path):

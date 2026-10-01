@@ -533,10 +533,13 @@ input, textarea, select { caret-color: var(--text); accent-color: var(--accent);
 /* Overview and Reminders, the two lists of returns: one field per column
    (P194, P195) - Tax Year, Taxpayer, Form Type, then the list's status and
    date. The taxpayer takes what the others leave, as the name column does on
-   the other lists; at the usual widths the five fit 843px at 1100px. */
+   the other lists; at the usual widths the five fit 843px at 1100px. Their
+   loading rows take the same five, so the outline lines up with the heads. */
 .row-return:not(.hidden),
 .col-table[data-list="overview"] .col-heads:not(.hidden),
-.col-table[data-list="reminders"] .col-heads:not(.hidden) {
+.col-table[data-list="reminders"] .col-heads:not(.hidden),
+#page[data-list="overview"] .row-skeleton:not(.hidden),
+#page[data-list="reminders"] .row-skeleton:not(.hidden) {
   grid-template-columns: var(--size-col-year) minmax(var(--size-col-taxpayer), 1fr) var(--size-col-form) var(--size-col-status) var(--size-col-end);
 }
 .col-table[data-list="overview"], .col-table[data-list="reminders"],
@@ -625,6 +628,9 @@ input, textarea, select { caret-color: var(--text); accent-color: var(--accent);
 }
 .row-skeleton > i:first-child { width: 60%; }
 .row-skeleton > i:last-child { grid-column: 3; width: 70%; }
+/* On the five-column lists the status is the fourth column. */
+#page[data-list="overview"] .row-skeleton > i:last-child,
+#page[data-list="reminders"] .row-skeleton > i:last-child { grid-column: 4; }
 
 /* A group's own step at its heading's end (SPEC 6.7), and the Set aside fold. */
 .group-step:not(.hidden) {

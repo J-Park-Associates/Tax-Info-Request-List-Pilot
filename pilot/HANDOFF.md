@@ -1,12 +1,22 @@
 # Pilot handoff
 
-**One field per column (P194-P196, 2026-09-30):** built on the firm-columns
-branch, awaiting review - `SPEC-firm-columns.md`, hand-back
-`handoffs/firm-columns-build.md`. P196 (Client becomes Taxpayer on screen;
-the page is Households) is built on `claude/taxpayer-words`, stacked on that
-branch, awaiting the one review of both - `SPEC-taxpayer-words.md`,
-hand-back `handoffs/taxpayer-words-build.md`; owner questions Q1-Q5 open,
-each built as recommended.
+**F7 and the firm columns (P193-P196, 2026-09-30):** all three builds are
+combined on `claude/zen-easley-93548b` and reviewed together -
+P193 (F7, the data folder Windows redirects: `SPEC-F7-redirected-data-folder.md`,
+`handoffs/F7-build.md`), P194/P195 (one field per column:
+`SPEC-firm-columns.md`, `handoffs/firm-columns-build.md`) and P196 (Client
+becomes Taxpayer on screen; the page is Households: `SPEC-taxpayer-words.md`,
+`handoffs/taxpayer-words-build.md`). The review is
+`reviews/combined-review.md`, the orchestrator's rulings
+`reviews/combined-rulings.md`, and the fixes are folded in
+(`handoffs/combined-fold.md`). Open: P196's Q1-Q5, each built as
+recommended; F7's R6 (the office PC) and Q1 (a) (Jason moves the private
+copy to the Recycle Bin) are Jason's; the next Windows check carries S3 and
+S5 (`wintest/PROMPT-0.3.md`). Not fixed here: `test_shell_menu`'s
+`test_open_error_log_opens_the_named_file_and_says_so_when_there_is_none`
+failed once under 3.11 with 12 files in parallel - its harness waits a
+fixed 100 ms for `main.js` (`tests/test_shell_menu.py:245`); it passes
+alone and on `392ec27`, so it predates this work.
 
 ## App shell: where the build stands (2026-09-30; branch `claude/shell-join`, S6b)
 

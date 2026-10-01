@@ -90,7 +90,7 @@ const PAGES_WIDTH_STEP = 16;               // one Ctrl+Shift+Arrow: four grid st
 const PAGES_WIDTHS_KEY = "tracker.columns"; // this PC's own storage, never the record
 // Urgency, the order the app already uses (SPEC-lists 3): a return that cannot
 // be read or a paused household first, then what needs a person, what waits
-// on the client, what is complete.
+// on the taxpayer, what is complete.
 const PAGES_URGENCY = { problem: 0, needs: 1, waiting: 2, done: 3, plain: 4 };
 const pagesOrder = {};         // list -> {cell, dir}: kept while the app is open (P139)
 let pagesWidths = null;        // list -> {cell: px}: read once from this PC's storage (P139)
@@ -114,7 +114,7 @@ const PAGES_SECTIONS = { needs_you: ["needs", "alert"], waiting: ["waiting", "cl
 let pagesPageAt = {};          // list -> the page shown (0 first); forgotten when the page is left (P174)
 let pagesTab = "all";          // Overview's filter tab: all, need or waiting (P145)
 let pagesReasonPick = "";      // Needs Review's reason card, a reason's code or "" for All (P149)
-let pagesClientType = "";      // Clients' Client Type, a key of vocab.screen.client_types or "" (P153)
+let pagesClientType = "";      // Households' Taxpayer Type, a key of vocab.screen.client_types or "" (P153)
 let pagesPanel = null;         // the open Linked Households panel: {node, back} (P171)
 
 // ── small helpers ─────────────────────────────────────────────────────
@@ -1227,7 +1227,7 @@ function pagesReminderSpecs(firm) {
       status, tone: held ? "needs" : "waiting", date: pagesDay(one.draft.drafted), menu: "return", pill: true,
       step: { kind: "draft", ret: one.path },
       // Held first (a person must act), then the later stage first: a later
-      // reminder is the more overdue client (SPEC-lists 3).
+      // reminder is the more overdue taxpayer (SPEC-lists 3).
       keys: { ...pagesReturnKeys(cells), status: pagesUrgent(held ? PAGES_URGENCY.needs : PAGES_URGENCY.waiting, held ? 0 : one.draft.stage, status),
               end: one.draft.drafted || "" },
     };

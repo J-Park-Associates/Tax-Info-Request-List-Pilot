@@ -169,6 +169,14 @@ DATA_HOME_REDIRECTED = ("Windows is giving this copy of the app a private data f
 REDIRECTED_COPY = ("Windows kept a private copy of the app's data folder at {path}, from a time "
                    "the app was started inside another program. The app never uses it and it is "
                    "out of date; move that folder to the Recycle Bin.")
+#: When Windows will not list %LOCALAPPDATA%\Packages (combined review S2):
+#: the probe cannot tell whether this process is redirected, nor the first
+#: screen which stale copies there are, so both say this one sentence. The
+#: folder is the machine's, never a client's, and the error is said by its
+#: class (decision 190), never its message or a traceback.
+PACKAGES_UNREADABLE = ("Windows would not let the app list {folder} ({error}), so it cannot tell "
+                       "whether Windows is keeping a private copy of its data folder there; let "
+                       "this Windows account read that folder, then start the app again.")
 #: Why Install Schedule refuses to schedule the program from where it is
 #: (decision 186): the task runs whatever program sits at that path on every
 #: pass, so a stick or a share would carry the program - and, beside it, the
@@ -206,6 +214,12 @@ EXPECTED_SEP = "+"
 
 class SettingsError(Exception):
     """The settings file could not be read, or names a folder that is not there."""
+
+
+class DataHomeRedirected(SettingsError):
+    """F7's R1 refusal (``DATA_HOME_REDIRECTED``): its own class so the first
+    screen says R1's sentence alone, never also naming the folder this
+    process is using as a stale copy the app "never uses" (combined review N3)."""
 
 
 def settings_dir() -> Path:
@@ -734,7 +748,7 @@ def _the_data_home(environ, *, windows: bool) -> Path:
     if windows and not (environ.get(ENV_DATA_HOME) or "").strip():
         package = _redirected_package(Path(environ["LOCALAPPDATA"].strip()))
         if package:
-            raise SettingsError(DATA_HOME_REDIRECTED.format(package=package, product=product_name()))
+            raise DataHomeRedirected(DATA_HOME_REDIRECTED.format(package=package, product=product_name()))
     return answer
 
 
@@ -774,7 +788,13 @@ def redirect_probe(local: Path, *, make=_make_empty) -> str | None:
     that question is blind here; comparing the file IDs of the normal path
     and a package copy - blind until a first redirected write has already
     made the copy. A probe that cannot write raises nothing new: the data
-    home's own writers say what they cannot do, as they always have."""
+    home's own writers say what they cannot do, as they always have. A
+    Packages folder it cannot list is ``PACKAGES_UNREADABLE``, a
+    SettingsError (:func:`_package_names`): having written its file, the
+    probe cannot rule a redirect out, and two stores are the one thing
+    decision 159's checkpoint cannot survive, so the data home is refused
+    loudly rather than guessed (combined review S2). The file is still
+    removed in the ``finally``."""
     name = f"{REDIRECT_PROBE_PREFIX}{os.getpid()}-{secrets.token_hex(8)}"
     probe = Path(local) / name
     landed: list[Path] = []
@@ -795,11 +815,23 @@ def redirect_probe(local: Path, *, make=_make_empty) -> str | None:
 
 
 def _package_names(packages: Path) -> list[str]:
-    """The package folders in `packages`, sorted; none when it is absent."""
+    """The package folders in `packages`, sorted; none when it is absent.
+
+    Any other refusal - access denied, a disk error - is a SettingsError
+    with ``PACKAGES_UNREADABLE``, never a raw OSError: the first screen
+    says it as one sentence and still shows the rest, and the probe refuses
+    the data home with it (combined review S2)."""
     try:
         return sorted(entry.name for entry in os.scandir(packages) if entry.is_dir())
     except (FileNotFoundError, NotADirectoryError):
         return []
+    except OSError as exc:
+        # At call time, as in the error log's handleError: this module's
+        # load-time imports stay layout and fsio.
+        from tracker import errors
+
+        raise SettingsError(PACKAGES_UNREADABLE.format(
+            folder=packages, error=errors.error_class(exc))) from None
 
 
 def redirected_copies(environ=None, *, windows: bool | None = None) -> list[Path]:
@@ -813,7 +845,8 @@ def redirected_copies(environ=None, *, windows: bool | None = None) -> list[Path
 
     The first screen names each one (``REDIRECTED_COPY``) and asks a person
     to move it to the Recycle Bin; the app never removes it, because it holds
-    client-derived data (decision 186). Not in
+    client-derived data (decision 186). A Packages folder Windows will not
+    list raises SettingsError (``PACKAGES_UNREADABLE``). Not in
     :func:`tracker.runner.left_behind`: that is decision 186's "beside the
     program", and its move would carry the copy into the data home."""
     environ = os.environ if environ is None else environ

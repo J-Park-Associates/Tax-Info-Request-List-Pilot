@@ -283,7 +283,7 @@ api.SCREEN	paging.next		new	Next	1	Page footer button	Pilot 0.3 lane 4b, SPEC-li
 api.SCREEN	paging.nouns.overview		new	Returns	1	Page footer noun, Overview	Pilot 0.3 lane 4b, SPEC-lists 14 (P152)	Returns	new
 api.SCREEN	paging.nouns.needs_review		new	Files	1	Page footer noun, Needs Review	Pilot 0.3 lane 4b, SPEC-lists 14 (P152)	Files	new
 api.SCREEN	paging.nouns.reminders		new	Drafts	1	Page footer noun, Reminders	Pilot 0.3 lane 4b, SPEC-lists 14 (P152)	Drafts	new
-api.SCREEN	paging.nouns.clients		new	Households	1	Page footer noun, Clients	Pilot 0.3 lane 4b, SPEC-lists 14 (P152); P196, SPEC-taxpayer-words the page Jason named: was Clients	Households	new
+api.SCREEN	paging.nouns.clients		new	Households	1	Page footer noun, Households	Pilot 0.3 lane 4b, SPEC-lists 14 (P152); P196, SPEC-taxpayer-words the page Jason named: was Clients	Households	new
 api.SCREEN	side.brand		new	J Park & Associates	4	Side panel brand band	Pilot 0.3 lane 4b, SPEC-lists 15.1 (P153)	J Park & Associates	new
 api.SCREEN	side.product		new	Tax Document Console	3	Side panel brand band	Pilot 0.3 lane 4b, SPEC-lists 15.1 (P153, P155: new text names the app Tax Document Console)	Tax Document Console	new
 api.SCREEN	side.types		new	Taxpayer Types	2	Side panel section heading	Pilot 0.3 lane 4b, SPEC-lists 15.1 (P153); P196, SPEC-taxpayer-words R5, Q2: was Client Types	Taxpayer Types	new
@@ -300,7 +300,7 @@ api.SCREEN	client_types.individuals		new	Individuals	1	Side panel Client Type; C
 api.SCREEN	client_types.businesses		new	Businesses	1	Side panel Client Type; Clients chip	Pilot 0.3 lane 4b, SPEC-lists 15.1, 15.3 (P153)	Businesses	new
 api.SCREEN	client_types.trusts		new	Trusts & Estates	3	Side panel Client Type; Clients chip	Pilot 0.3 lane 4b, SPEC-lists 15.1, 15.3 (P153)	Trusts & Estates	new
 api.SCREEN	client_types.nonprofits		new	Nonprofits	1	Side panel Client Type; Clients chip	Pilot 0.3 lane 4b, SPEC-lists 15.1, 15.3 (P153)	Nonprofits	new
-api.SCREEN	columns.client_name		new	Household Name	2	Column header, Clients	Pilot 0.3 lane 4b, SPEC-lists 15.2 (P153); P196, SPEC-taxpayer-words R2: was Client Name	Household Name	new
+api.SCREEN	columns.client_name		new	Household Name	2	Column header, Households	Pilot 0.3 lane 4b, SPEC-lists 15.2 (P153); P196, SPEC-taxpayer-words R2: was Client Name	Household Name	new
 api.SCREEN	icons.more_actions		new	More Actions	2	Needs Review group button tooltip and name	Pilot 0.3 lane 4b, SPEC-lists 12 (P149)	More Actions	new
 api.SCREEN	icons.remove_filter		new	Remove Filter	2	Client Type chip dismiss tooltip and name	Pilot 0.3 lane 4b, SPEC-lists 15.3 (P153)	Remove Filter	new
 api._vocab	household.related_label		new	Related Households	2	Edit Household	Pilot 0.3 lane 4b, SPEC-lists 9 (P170)	Related Households	new
@@ -319,3 +319,4 @@ api.SCREEN	empty.clients	No Clients Yet	reword	No Households Yet	3	Households pa
 api.SCREEN	groups.waiting	Waiting on Client	reword	Waiting on Taxpayer	3	Return page group heading	P196, SPEC-taxpayer-words R1	Waiting on Taxpayer	word (P196)
 reasons.SHORT_REASONS	name-absent	No Client Name Found	reword	No Taxpayer Name Found	4	Needs Review reason	P196, SPEC-taxpayer-words R1	No Taxpayer Name Found	word (P196)
 index.html	ne-client label	Client (Greeting Name)	reword	Taxpayer (Greeting Name)	3	New return, field label	P196, SPEC-taxpayer-words R1	Taxpayer (Greeting Name)	word (P196)
+api._vocab	editor.engagement_fields[7].help	no = this client is not chased by email	reword	no = this taxpayer is not chased by email	8	Request-list editor, beside the Reminders box	P196, SPEC-taxpayer-words R1, combined review M1: drawn beside every yes/no box (app.js), so not cut as the earlier row says; the record and the README keep this client (R7, R9)	no = this taxpayer is not chased by email	word (P196)
