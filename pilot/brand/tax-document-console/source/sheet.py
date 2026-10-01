@@ -1,4 +1,4 @@
-"""Contact sheet for the chosen mark: every size 1:1 on light and dark, 8x zooms, the concept beside it."""
+"""Contact sheet for the chosen mark: every size 1:1 on light and dark, 8x zooms, the vector mark on cream."""
 import io
 import sys
 

@@ -573,7 +573,7 @@ tracker.api / create → tracker.scaffold → client drops into the household in
   - used by: `pilot/brand/tax-document-console/source/export.py`
   - tested by: **no dedicated test file**
 - **`pilot/brand/tax-document-console/source/mark.py`**
-  - constants: `NAVY` = '#1B2A4A', `GOLD` = '#C9A84C', `CREAM` = '#F5F0E8', `FLAP` = ('#3D5A92', '#2E4675'), `TAB` = ('#A8862F', '#94782A'), `SHEET` = ('#FFFDF8', '#F0E9DC'), `RIM` = '#9FB2D6', `TICK` = '#9C7F2C', `RULE` = '#9AA6BC', `SHADOW` = '#0A1F3D'
+  - constants: `NAVY` = '#1B2A4A', `GOLD` = '#C9A84C', `CREAM` = '#F5F0E8', `FLAP` = ('#3D5A92', '#2E4675'), `TAB` = ('#A8862F', '#94782A'), `SHEET` = ('#FFFDF8', '#F0E9DC'), `RIM` = '#9FB2D6', `TICK` = '#9C7F2C', `RULE` = '#9AA6BC', `SHADOW` = '#0A1F3D', `BACK_X` = (4, 42), `SLOPE` = (18, 22), `SHEET_BOX` = (14, 12, 36, 32), `SMALL_TICK_CORNER` = (21.88, 21.88), `DRAWN` = (4, 7, 45, 40)
   - used by: `pilot/brand/tax-document-console/source/export.py`, `pilot/brand/tax-document-console/source/lockup.py`, `pilot/brand/tax-document-console/source/raster.py`, `pilot/brand/tax-document-console/source/sheet.py`, `pilot/brand/tax-document-console/source/wordmark.py`
   - tested by: **no dedicated test file**
 - **`pilot/brand/tax-document-console/source/raster.py`**

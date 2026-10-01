@@ -6,18 +6,22 @@ flap, rimmed all round, its top edge a lighter band. The rim is what keeps the
 navy's edge on a dark taskbar; on a light one the navy inside the rim carries
 it (SPEC-icon-ledger.md has the figures).
 
-It is drawn two ways, because no single drawing is sharp at every size:
+It is drawn in three bands, because no single drawing is sharp at every size:
 - 16, 20 and 24px are pixel art (PIXEL_ART): flat colours, no blended pixel,
-  no rules and a larger tick;
-- every other size is the 48-unit master fitted to its own pixel grid by
-  icon_svg(s): each horizontal and vertical edge lands on a whole pixel and the
-  rim is whole pixels, so only the slopes, the tick and the corner arcs blend.
-  From 30 to 40px it is the small drawing (no rules) with a tick of whole
-  pixels, because a blended tick that size smudges into a blot.
-The pixel art keeps the fitted geometry's columns and rows but lifts the flap a
-row where the sheet needs room, and draws the tick with its long arm at least
-twice the short one: at these sizes an even tick reads as a V.
-The vector masters (full_mark, app_icon) use the same drawing, unrounded.
+  no rules and a larger tick. They keep the fitted geometry's columns, but at
+  16 and 20 the flap sits a row lower so the sheet has room for its tick, and
+  the tick's long arm is at least twice the short one: an even tick reads as
+  a V at these sizes;
+- 30 to 47px (30, 32, 36, 40 and Square44x44Logo's 44) are the master fitted
+  to the size by icon_svg(s), without the rules, the tick built of whole
+  pixels: a blended tick that small smudges into a blot;
+- 48px and up are the full master fitted to the size: every horizontal and
+  vertical edge on a whole pixel, the rim, band and radii whole pixels, so only
+  the slopes, the tick, the rules' round ends and the corner arcs blend.
+Fitting rounds half up (never Python's round-half-to-even, which sends edges
+that fall on a half pixel in opposite directions) and places a length from a
+snapped edge where two edges must stay a fixed distance apart.
+The vector masters (full_mark, app_icon) use the same geometry, unrounded.
 """
 
 import math
@@ -37,6 +41,18 @@ RULE = "#9AA6BC"
 SHADOW = "#0A1F3D"
 
 SIZES = [16, 20, 24, 30, 32, 36, 40, 48, 60, 64, 72, 80, 96, 128, 256]
+
+# The master geometry on its 48-unit grid. The drawing spans x 4-45 and y 7-40,
+# so it sits centred within half a unit (the flap overhangs the back on the right).
+BACK_X = (4, 42)                    # the back's left and right edges
+TOP, TAB_H, BOTTOM = 7, 4, 40       # the tab's top, its height (the body's top is TOP + TAB_H), the bottom
+SLOPE = (18, 22)                    # the tab's slope runs from (18, TOP) to (22, TOP + TAB_H)
+FLAP_TOP, FLAP_X_TOP, FLAP_X_BOTTOM = 24, (8, 45), (4, 41)
+SHEET_BOX = (14, 12, 36, 32)        # x0, y0, x1, y1
+TICK_PTS = ((17.5, 17), (19.3, 18.8), (22.5, 15.1))
+RULES = ((25, 33, 16), (18, 33, 21))   # x0, x1, top; each 2 units tall
+SMALL_TICK_CORNER = (21.88, 21.88)  # the whole-pixel tick's corner, 30-47px
+DRAWN = (4, 7, 45, 40)              # the drawing's extent, for the lockup and the panels
 
 # One letter per pixel, row 0 at the top: r rim, n navy, f flap, g gold tab,
 # c cream sheet, t tick, . clear.
@@ -86,7 +102,7 @@ PIXEL_ART = {
 ..ggggggg...............
 ..gggggggg..............
 ..gggggggggrrrrrrrrrrr..
-..rnnnncccccccccttcnnr..
+..rnnnnccccccccccccnnr..
 ..rnnnnccccccccttccnnr..
 ..rnnnncccccccttcccnnr..
 ..rnnnnccttccttccccnnr..
@@ -114,72 +130,88 @@ def f(v):
     return f"{v:.3f}".rstrip("0").rstrip(".")
 
 
+def _half_up(v):
+    return math.floor(v + 0.5)
+
+
 def _grad(gid, a, b):
     # 120 degrees in the CSS sense: from top-left toward bottom-right, 30 degrees below horizontal
     return (f'<linearGradient id="{gid}" x1="0.067" y1="0.25" x2="0.933" y2="0.75">'
             f'<stop offset="0" stop-color="{a}"/><stop offset="1" stop-color="{b}"/></linearGradient>')
 
 
+def _geometry(s, snap):
+    """Every shape's coordinates at s pixels (snap) or s units (exact), as SVG path data and boxes."""
+    u = s / 48
+
+    def P(v):        # a position: on the pixel grid when snapped
+        return _half_up(v * u) if snap else v * u
+
+    def L(v, least=1):   # a length: whole pixels, never under `least`, when snapped
+        return max(least, _half_up(v * u)) if snap else v * u
+
+    g = {"u": u, "rim": L(1), "band": L(1.5), "rad": L(2), "frad": L(1.5)}
+    rad = g["rad"]
+    x0, x1, top, y1 = P(BACK_X[0]), P(BACK_X[1]), P(TOP), P(BOTTOM)
+    body = top + L(TAB_H)
+    t1, t2 = P(SLOPE[0]), P(SLOPE[1])
+    g["back"] = (f"M{f(x0)} {f(top + rad)}a{f(rad)} {f(rad)} 0 0 1 {f(rad)} {f(-rad)}H{f(t1)}L{f(t2)} {f(body)}"
+                 f"H{f(x1 - rad)}a{f(rad)} {f(rad)} 0 0 1 {f(rad)} {f(rad)}V{f(y1 - rad)}"
+                 f"a{f(rad)} {f(rad)} 0 0 1 {f(-rad)} {f(rad)}H{f(x0 + rad)}a{f(rad)} {f(rad)} 0 0 1 {f(-rad)} {f(-rad)}Z")
+    g["tab"] = f"M{f(x0 - 1)} {f(top - 1)}H{f(t1)}L{f(t2)} {f(body)}V{f(body + g['rim'])}H{f(x0 - 1)}Z"
+    fy0 = P(FLAP_TOP)
+    g["flap_top"], g["flap_x"] = fy0, (P(FLAP_X_BOTTOM[0]), P(FLAP_X_TOP[1]))
+    g["flap"] = _rounded([(P(FLAP_X_TOP[0]), fy0), (P(FLAP_X_TOP[1]), fy0),
+                          (P(FLAP_X_BOTTOM[1]), y1), (P(FLAP_X_BOTTOM[0]), y1)], g["frad"])
+    sx0, sy0 = P(SHEET_BOX[0]), P(SHEET_BOX[1])
+    g["sheet"] = (sx0, sy0, L(SHEET_BOX[2] - SHEET_BOX[0]), L(SHEET_BOX[3] - SHEET_BOX[1]))
+    (ax, ay), (bx, by), (cx, cy) = TICK_PTS
+    g["tick"] = f"M{f(ax * u)} {f(ay * u)}L{f(bx * u)} {f(by * u)}L{f(cx * u)} {f(cy * u)}"
+    g["tick_w"] = L(2, 2)
+    g["rules"] = [(P(a), P(c), P(b) - P(a), L(2)) for a, b, c in RULES]   # one height for both
+    if snap:
+        vy = min(_half_up(SMALL_TICK_CORNER[1] * u), fy0 - 2)   # a clear row between tick and flap
+        g["pixel_tick"] = (math.floor(SMALL_TICK_CORNER[0] * u), vy,
+                           max(2, _half_up(2.88 * u)), max(4, vy - sy0 - 2))   # a clear row above
+    return g
+
+
 def drawing(s, snap=True, shadow=True, uid="m", small=False):
     """The icon at s pixels (or s units, unsnapped): defs and shapes, no <svg> wrapper.
 
     snap=True puts every horizontal and vertical edge on a whole pixel and makes the
-    rim and the flap's top band whole pixels; snap=False is the exact master.
-    small=True is the drawing the pixel art starts from: no rules, a larger tick.
+    rim, band and radii whole pixels; snap=False is the exact master.
+    small=True (with snap) is the 30-47px drawing: no rules, the tick of whole pixels.
     """
-    u = s / 48
-    P = (lambda v: round(v * u)) if snap else (lambda v: v * u)
-    rim = max(1, round(u)) if snap else u
-    band = max(1, round(1.5 * u)) if snap else 1.5 * u
-    rad = max(1, round(2 * u)) if snap else 2 * u
-    frad = max(1, round(1.5 * u)) if snap else 1.5 * u
-
-    x0, x1, top, body, y1 = P(5), P(43), P(7), P(11), P(40)
-    t1, t2 = P(19), P(23)                       # the tab's slope: from (t1, top) to (t2, body)
-    back = (f"M{f(x0)} {f(top + rad)}a{f(rad)} {f(rad)} 0 0 1 {f(rad)} {f(-rad)}H{f(t1)}L{f(t2)} {f(body)}"
-            f"H{f(x1 - rad)}a{f(rad)} {f(rad)} 0 0 1 {f(rad)} {f(rad)}V{f(y1 - rad)}"
-            f"a{f(rad)} {f(rad)} 0 0 1 {f(-rad)} {f(rad)}H{f(x0 + rad)}a{f(rad)} {f(rad)} 0 0 1 {f(-rad)} {f(-rad)}Z")
-    tab = (f"M{f(x0 - 1)} {f(top - 1)}H{f(t1)}L{f(t2)} {f(body)}V{f(body + rim)}"
-           f"H{f(x0 - 1)}Z")
-
-    fx0, fx1, fx2, fx3, fy0, fy1 = P(9), P(46), P(42), P(5), P(24), P(40)
-    flap = _rounded([(fx0, fy0), (fx1, fy0), (fx2, fy1), (fx3, fy1)], frad)
-
-    sx0, sx1, sy0, sy1 = P(15), P(37), P(12), P(32)
-    if small:
-        tw = 3 * u
-        tick = f"M{f(20 * u)} {f(19 * u)}l{f(2.88 * u)} {f(2.88 * u)}l{f(5.12 * u)} {f(-5.92 * u)}"
-    else:
-        tw = max(2, round(2 * u)) if snap else 2 * u
-        tick = f"M{f(18.5 * u)} {f(17 * u)}l{f(1.8 * u)} {f(1.8 * u)}l{f(3.2 * u)} {f(-3.7 * u)}"
-    if snap and small:
-        tick_svg = _pixel_tick(math.floor(22.88 * u), round(21.88 * u), max(2, round(2.88 * u)), max(4, round(5.92 * u)))
-    else:
-        tick_svg = (f'<path d="{tick}" fill="none" stroke="{TICK}" stroke-width="{f(tw)}" '
-                    'stroke-linecap="round" stroke-linejoin="round"/>')
-
-    def rule(a, b, c, d):
-        ry0, ry1 = P(c), max(P(c) + 1, P(d))
-        return (f'<rect x="{f(P(a))}" y="{f(ry0)}" width="{f(P(b) - P(a))}" height="{f(ry1 - ry0)}" '
-                f'rx="{f((ry1 - ry0) / 2)}" fill="{RULE}"/>')
-
+    g = _geometry(s, snap)
     i = uid
+    if small:
+        tick = _pixel_tick(*g["pixel_tick"])
+        rules = ""
+    else:
+        tick = (f'<path d="{g["tick"]}" fill="none" stroke="{TICK}" stroke-width="{f(g["tick_w"])}" '
+                'stroke-linecap="round" stroke-linejoin="round"/>')
+        rules = "".join(f'<rect x="{f(x)}" y="{f(y)}" width="{f(w)}" height="{f(h)}" rx="{f(h / 2)}" fill="{RULE}"/>'
+                        for x, y, w, h in g["rules"])
+    sx, sy, sw, sh = g["sheet"]
+    fx0, fx1 = g["flap_x"]
     filt = (f'<filter id="{i}sh" x="-20%" y="-20%" width="140%" height="150%"><feDropShadow dx="0" '
-            f'dy="{f(P(1) if snap else u)}" stdDeviation="{f(u)}" flood-color="{SHADOW}" flood-opacity="0.28"/></filter>')
+            f'dy="{f(_half_up(g["u"]) if snap else g["u"])}" stdDeviation="{f(g["u"])}" '
+            f'flood-color="{SHADOW}" flood-opacity="0.28"/></filter>')
     defs = (f"<defs>{_grad(i + 'b', *BACK)}{_grad(i + 'f', *FLAP)}{_grad(i + 't', *TAB)}{_grad(i + 's', *SHEET)}"
-            f'{filt if shadow else ""}<clipPath id="{i}cb"><path d="{back}"/></clipPath>'
-            f'<clipPath id="{i}cf"><path d="{flap}"/></clipPath></defs>')
+            f'{filt if shadow else ""}<clipPath id="{i}cb"><path d="{g["back"]}"/></clipPath>'
+            f'<clipPath id="{i}cf"><path d="{g["flap"]}"/></clipPath></defs>')
     lift = f' filter="url(#{i}sh)"' if shadow else ""
     return (f'{defs}<g{lift}>'
-            f'<path d="{back}" fill="url(#{i}b)"/>'
-            f'<path d="{back}" fill="none" stroke="{RIM}" stroke-width="{f(2 * rim)}" clip-path="url(#{i}cb)"/>'
-            f'<path d="{tab}" fill="url(#{i}t)" clip-path="url(#{i}cb)"/>'
-            f'<rect x="{f(sx0)}" y="{f(sy0)}" width="{f(sx1 - sx0)}" height="{f(sy1 - sy0)}" rx="{f(rad)}" fill="url(#{i}s)"/>'
-            f"{tick_svg}"
-            f'{"" if small else rule(26, 34, 16, 18) + rule(19, 34, 21, 23)}'
-            f'<path d="{flap}" fill="url(#{i}f)"/>'
-            f'<path d="{flap}" fill="none" stroke="{RIM}" stroke-width="{f(2 * rim)}" clip-path="url(#{i}cf)"/>'
-            f'<rect x="{f(fx3)}" y="{f(fy0)}" width="{f(fx1 - fx3)}" height="{f(band)}" fill="{RIM}" clip-path="url(#{i}cf)"/>'
+            f'<path d="{g["back"]}" fill="url(#{i}b)"/>'
+            f'<path d="{g["back"]}" fill="none" stroke="{RIM}" stroke-width="{f(2 * g["rim"])}" clip-path="url(#{i}cb)"/>'
+            f'<path d="{g["tab"]}" fill="url(#{i}t)" clip-path="url(#{i}cb)"/>'
+            f'<rect x="{f(sx)}" y="{f(sy)}" width="{f(sw)}" height="{f(sh)}" rx="{f(g["rad"])}" fill="url(#{i}s)"/>'
+            f"{tick}{rules}"
+            f'<path d="{g["flap"]}" fill="url(#{i}f)"/>'
+            f'<path d="{g["flap"]}" fill="none" stroke="{RIM}" stroke-width="{f(2 * g["rim"])}" clip-path="url(#{i}cf)"/>'
+            f'<rect x="{f(fx0)}" y="{f(g["flap_top"])}" width="{f(fx1 - fx0)}" height="{f(g["band"])}" '
+            f'fill="{RIM}" clip-path="url(#{i}cf)"/>'
             "</g>")
 
 
@@ -220,13 +252,15 @@ def pixel_art(s):
     return [[PIXEL_COLOURS.get(ch) for ch in r] for r in rows]
 
 
-def full_mark(ink=None, gold=None, uid="fm"):
-    """The master drawing on a 100-unit grid, exact and without shadow.
+# full_mark's frame: the drawing's extent scaled to 100 units tall
+FULL_W = 100 * (DRAWN[2] - DRAWN[0]) / (DRAWN[3] - DRAWN[1])
 
-    ink and gold are accepted so the lockup's call stays as it was; the mark is
-    the same on every ground, so they are not used.
-    """
-    return f'<g transform="scale({f(100 / 48)})">{drawing(48, snap=False, shadow=False, uid=uid)}</g>'
+
+def full_mark(uid="fm"):
+    """The master drawing, exact and without shadow, cropped to its extent: FULL_W wide, 100 tall."""
+    k = 100 / (DRAWN[3] - DRAWN[1])
+    return (f'<g transform="scale({f(k)}) translate({-DRAWN[0]} {-DRAWN[1]})">'
+            f"{drawing(48, snap=False, shadow=False, uid=uid)}</g>")
 
 
 def app_icon(s):
@@ -237,20 +271,19 @@ def app_icon(s):
 
 def _mono():
     """One colour that follows the text: the folder solid, the sheet cut out, the tick and a gap above the flap."""
-    m = drawing(48, snap=False, shadow=False, uid="mo")
-    back = m.split('<path d="', 2)[1].split('"', 1)[0]
-    flap = m.split('<clipPath id="mocf"><path d="', 1)[1].split('"', 1)[0]
-    tick = "M18.5 17l1.8 1.8l3.2 -3.7"
+    g = _geometry(48, snap=False)
+    sx, sy, sw, sh = g["sheet"]
     return (f'<defs><mask id="mom"><rect x="-2" y="-2" width="52" height="52" fill="#fff"/>'
-            f'<rect x="15" y="12" width="22" height="20" rx="2" fill="#000"/>'
-            f'<path d="{tick}" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>'
-            f'<path d="{flap}" fill="none" stroke="#000" stroke-width="3"/></mask></defs>'
-            f'<g mask="url(#mom)" fill="currentColor"><path d="{back}"/></g>'
-            f'<path d="{flap}" fill="currentColor"/>')
+            f'<rect x="{f(sx)}" y="{f(sy)}" width="{f(sw)}" height="{f(sh)}" rx="{f(g["rad"])}" fill="#000"/>'
+            f'<path d="{g["tick"]}" fill="none" stroke="#fff" stroke-width="{f(g["tick_w"])}" '
+            'stroke-linecap="round" stroke-linejoin="round"/>'
+            f'<path d="{g["flap"]}" fill="none" stroke="#000" stroke-width="3"/></mask></defs>'
+            f'<g mask="url(#mom)" fill="currentColor"><path d="{g["back"]}"/></g>'
+            f'<path d="{g["flap"]}" fill="currentColor"/>')
 
 
 def bare_mark(theme):
-    """The mark alone, for the app's surfaces: "color" for any ground, "mono" for contrast themes."""
+    """The mark alone, for the app's surfaces: "color" for any ground, "mono" (24px and up) for contrast themes."""
     if theme == "mono":
         return f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">{_mono()}</svg>'
-    return f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="-2 -2 104 104">{full_mark()}</svg>'
+    return f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="-2 -2 {f(FULL_W + 4)} 104">{full_mark()}</svg>'

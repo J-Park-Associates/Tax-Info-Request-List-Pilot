@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 364,
     "edges": 1175,
-    "reused": 318
+    "reused": 308
   },
   "node_types": [
     "artifact",
@@ -4659,8 +4659,8 @@
       "id": "pilot/SPEC-icon-ledger.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "a96bd44aaafb19ac",
-      "lines": 85
+      "sha256": "c23dbb169a3953dc",
+      "lines": 95
     },
     {
       "id": "pilot/SPEC-icon.md",
@@ -4701,8 +4701,8 @@
       "id": "pilot/brand/tax-document-console/README.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "10fb669f1f3370c5",
-      "lines": 69
+      "sha256": "eefa0031bf21262e",
+      "lines": 71
     },
     {
       "id": "pilot/handoffs/brand-icon.md",
@@ -5494,43 +5494,43 @@
       "id": "pilot/brand/tax-document-console/app/icon.svg",
       "type": "ui",
       "layer": "root",
-      "sha256": "ee643abe3e35a596",
+      "sha256": "b5a065a0c82da4d2",
       "lines": 1
     },
     {
       "id": "pilot/brand/tax-document-console/app/mark-mono.svg",
       "type": "ui",
       "layer": "root",
-      "sha256": "b5eb26aaa1559638",
+      "sha256": "e69c6771950ef45e",
       "lines": 1
     },
     {
       "id": "pilot/brand/tax-document-console/app/mark.svg",
       "type": "ui",
       "layer": "root",
-      "sha256": "5285882da9dc90d7",
+      "sha256": "72275b7380ce92ab",
       "lines": 1
     },
     {
       "id": "pilot/brand/tax-document-console/brand/lockup-dark.svg",
       "type": "ui",
       "layer": "root",
-      "sha256": "234f9179d57604a3",
+      "sha256": "a49ce1ab1948b80b",
       "lines": 1
     },
     {
       "id": "pilot/brand/tax-document-console/brand/lockup-light.svg",
       "type": "ui",
       "layer": "root",
-      "sha256": "91468d6be690170d",
+      "sha256": "d67df87086b7f3d5",
       "lines": 1
     },
     {
       "id": "pilot/brand/tax-document-console/source/export.py",
       "type": "module",
       "layer": "root",
-      "sha256": "2409903bd6ac953e",
-      "lines": 82,
+      "sha256": "0aa8743631cdfc9a",
+      "lines": 81,
       "cli": "python -m pilot.brand.tax-document-console.source.export",
       "exports": [
         "SCALES",
@@ -5555,7 +5555,7 @@
       "id": "pilot/brand/tax-document-console/source/lockup.py",
       "type": "module",
       "layer": "root",
-      "sha256": "745b9b55ff5d33dc",
+      "sha256": "874934332775c670",
       "lines": 48,
       "exports": [
         "GOLD_TEXT_ON_LIGHT",
@@ -5570,23 +5570,31 @@
       "id": "pilot/brand/tax-document-console/source/mark.py",
       "type": "module",
       "layer": "root",
-      "sha256": "600844496c8d4c70",
-      "lines": 256,
+      "sha256": "cfeca9e89e2bc9c7",
+      "lines": 289,
       "exports": [
         "BACK",
+        "BACK_X",
         "CREAM",
+        "DRAWN",
         "FLAP",
+        "FULL_W",
         "GOLD",
         "NAVY",
         "PIXEL_ART",
         "PIXEL_COLOURS",
         "RIM",
         "RULE",
+        "RULES",
         "SHADOW",
         "SHEET",
+        "SHEET_BOX",
         "SIZES",
+        "SLOPE",
+        "SMALL_TICK_CORNER",
         "TAB",
         "TICK",
+        "TICK_PTS",
         "app_icon",
         "bare_mark",
         "drawing",
@@ -5605,7 +5613,12 @@
         "RIM": "'#9FB2D6'",
         "TICK": "'#9C7F2C'",
         "RULE": "'#9AA6BC'",
-        "SHADOW": "'#0A1F3D'"
+        "SHADOW": "'#0A1F3D'",
+        "BACK_X": "(4, 42)",
+        "SLOPE": "(18, 22)",
+        "SHEET_BOX": "(14, 12, 36, 32)",
+        "SMALL_TICK_CORNER": "(21.88, 21.88)",
+        "DRAWN": "(4, 7, 45, 40)"
       }
     },
     {
@@ -5633,7 +5646,7 @@
       "id": "pilot/brand/tax-document-console/source/sheet.py",
       "type": "module",
       "layer": "root",
-      "sha256": "29a394547ee22ddb",
+      "sha256": "7b17562599441b04",
       "lines": 39,
       "cli": "python -m pilot.brand.tax-document-console.source.sheet",
       "exports": [

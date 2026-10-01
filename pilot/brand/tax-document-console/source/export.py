@@ -13,7 +13,7 @@ from pathlib import Path
 
 from ico import pack
 from lockup import lockup
-from mark import CREAM, NAVY, SIZES, app_icon, bare_mark
+from mark import CREAM, NAVY, SIZES, app_icon, bare_mark, icon_svg
 from PIL import Image
 from raster import icon_png, tile_png
 from render import Renderer
@@ -24,7 +24,7 @@ WIZARD_SMALL = [(55, 55), (64, 68), (83, 80), (92, 97), (110, 106), (119, 123), 
 
 # Microsoft's scale qualifiers (percent) and target sizes for packaged app icons
 SCALES = [100, 125, 150, 200, 250, 300, 400]
-TARGETS = [16, 20, 24, 30, 32, 36, 40, 48, 60, 64, 72, 80, 96, 256]
+TARGETS = [16, 20, 24, 30, 32, 36, 40, 48, 60, 64, 72, 80, 96, 256]   # all in SIZES, so the .ico's renders serve
 # One image serves all three target-size forms: it meets 3:1 on both themes as drawn.
 TARGET_FORMS = ["", "_altform-unplated", "_altform-lightunplated"]
 
@@ -34,13 +34,13 @@ def _bmp(png: bytes, path: Path):
 
 
 def _panel(w, h, mark_frac, ground):
-    """A flat panel with the mark centred, for the wizard bitmaps."""
+    """A flat panel with the icon fitted at its own size and placed on whole pixels, for the wizard bitmaps."""
     m = round(min(w, h) * mark_frac)
-    inner = bare_mark("color").split(">", 1)[1].rsplit("</svg>", 1)[0]
-    x, y = (w - m) / 2, (h - m) / 2 if h < w * 1.5 else h * 0.30 - m / 2
+    inner = icon_svg(m).split(">", 1)[1].rsplit("</svg>", 1)[0]
+    x, y = (w - m) // 2, (h - m) // 2 if h < w * 1.5 else round(h * 0.30 - m / 2)
     return (f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {w} {h}">'
             f'<rect width="{w}" height="{h}" fill="{ground}"/>'
-            f'<svg x="{x}" y="{y}" width="{m}" height="{m}" viewBox="-2 -2 104 104">{inner}</svg></svg>')
+            f'<svg x="{x}" y="{y}" width="{m}" height="{m}" viewBox="0 0 {m} {m}">{inner}</svg></svg>')
 
 
 def export(out: Path):
@@ -61,9 +61,8 @@ def export(out: Path):
             (win / f"Square44x44Logo.scale-{pct}.png").write_bytes(icon_png(r, round(44 * pct / 100)))
             (win / f"Square150x150Logo.scale-{pct}.png").write_bytes(tile_png(r, round(150 * pct / 100)))
         for t in TARGETS:
-            png = pngs[t] if t in pngs else icon_png(r, t)
             for form in TARGET_FORMS:
-                (win / f"Square44x44Logo.targetsize-{t}{form}.png").write_bytes(png)
+                (win / f"Square44x44Logo.targetsize-{t}{form}.png").write_bytes(pngs[t])
         for i, (w, h) in enumerate(WIZARD_LARGE):
             _bmp(r.png(_panel(w, h, 0.62, NAVY), w, h), inst / f"wizard-large-{i + 1}.bmp")
         for i, (w, h) in enumerate(WIZARD_SMALL):

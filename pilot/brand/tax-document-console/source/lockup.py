@@ -4,7 +4,7 @@
 in Inter 600 caps, tracked 0.30em. Words in the tracked line are set one by one
 with a fixed gap, so tracking does not also widen the word spaces.
 """
-from mark import CREAM, GOLD, NAVY, f, full_mark
+from mark import CREAM, FULL_W, GOLD, NAVY, f, full_mark
 from wordmark import metrics, text_path
 
 GOLD_TEXT_ON_LIGHT = "#7A5F16"   # gold-800: gold-500 is 2.0:1 on cream, not a text colour
@@ -31,9 +31,9 @@ def lockup(theme):
     block = cap1 + gap + cap2
     mark_h = block * 1.12
     pad = 10
-    # the mark's drawn extent on its grid: 0..100 both ways
+    # full_mark is cropped to the drawing: FULL_W by 100 units
     scale = mark_h / 100
-    mark_w = 100 * scale
+    mark_w = FULL_W * scale
     top = pad + (mark_h - block) / 2
     tx = pad + mark_w + mark_h * 0.26
     b1 = top + cap1
@@ -43,6 +43,6 @@ def lockup(theme):
     H = mark_h + 2 * pad
     svg = (f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {f(W)} {f(H)}">'
            f'<g transform="translate({f(pad)} {f(pad)}) scale({f(scale)})">'
-           f'{full_mark(ink, GOLD)}</g>'
+           f'{full_mark()}</g>'
            f'<path d="{d1}" fill="{ink}"/><path d="{d2}" fill="{sub}"/></svg>')
     return svg, W, H
