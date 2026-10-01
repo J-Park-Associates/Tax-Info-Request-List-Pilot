@@ -1,6 +1,6 @@
 {
   "schema": 2,
-  "generated": "2026-09-30",
+  "generated": "2026-10-01",
   "generator": "tools/repo_map.py",
   "generator_sha256": "22c7b60a1d198289",
   "module_table_sha256": "5e7e893efc3bbe3c",
@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 364,
     "edges": 1175,
-    "reused": 0
+    "reused": 318
   },
   "node_types": [
     "artifact",
@@ -4610,8 +4610,8 @@
       "id": "pilot/DECISIONS.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "74d3eae218f0c5be",
-      "lines": 121
+      "sha256": "8bbfe1ba61ee2d81",
+      "lines": 122
     },
     {
       "id": "pilot/HANDOFF.md",
@@ -4656,11 +4656,18 @@
       "lines": 986
     },
     {
+      "id": "pilot/SPEC-icon-ledger.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "a96bd44aaafb19ac",
+      "lines": 85
+    },
+    {
       "id": "pilot/SPEC-icon.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "c3552dd8f36d31f2",
-      "lines": 65
+      "sha256": "ffce13df7c28db60",
+      "lines": 67
     },
     {
       "id": "pilot/SPEC-shell.md",
@@ -4694,8 +4701,8 @@
       "id": "pilot/brand/tax-document-console/README.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "6c0fc7d1cb5f06e3",
-      "lines": 78
+      "sha256": "10fb669f1f3370c5",
+      "lines": 69
     },
     {
       "id": "pilot/handoffs/brand-icon.md",
@@ -5487,52 +5494,48 @@
       "id": "pilot/brand/tax-document-console/app/icon.svg",
       "type": "ui",
       "layer": "root",
-      "sha256": "935e4d5725506b1d",
-      "lines": 1
-    },
-    {
-      "id": "pilot/brand/tax-document-console/app/mark-light.svg",
-      "type": "ui",
-      "layer": "root",
-      "sha256": "44162d3aa55f2151",
+      "sha256": "ee643abe3e35a596",
       "lines": 1
     },
     {
       "id": "pilot/brand/tax-document-console/app/mark-mono.svg",
       "type": "ui",
       "layer": "root",
-      "sha256": "6cc8a84e0fadb653",
+      "sha256": "b5eb26aaa1559638",
       "lines": 1
     },
     {
       "id": "pilot/brand/tax-document-console/app/mark.svg",
       "type": "ui",
       "layer": "root",
-      "sha256": "2488d66e9e2f2b3a",
+      "sha256": "5285882da9dc90d7",
       "lines": 1
     },
     {
       "id": "pilot/brand/tax-document-console/brand/lockup-dark.svg",
       "type": "ui",
       "layer": "root",
-      "sha256": "ff557100e65c3f73",
+      "sha256": "234f9179d57604a3",
       "lines": 1
     },
     {
       "id": "pilot/brand/tax-document-console/brand/lockup-light.svg",
       "type": "ui",
       "layer": "root",
-      "sha256": "33bf48ab9c2644f8",
+      "sha256": "91468d6be690170d",
       "lines": 1
     },
     {
       "id": "pilot/brand/tax-document-console/source/export.py",
       "type": "module",
       "layer": "root",
-      "sha256": "7c59a69e60820b86",
-      "lines": 69,
+      "sha256": "2409903bd6ac953e",
+      "lines": 82,
       "cli": "python -m pilot.brand.tax-document-console.source.export",
       "exports": [
+        "SCALES",
+        "TARGETS",
+        "TARGET_FORMS",
         "WIZARD_LARGE",
         "WIZARD_SMALL",
         "export"
@@ -5567,40 +5570,53 @@
       "id": "pilot/brand/tax-document-console/source/mark.py",
       "type": "module",
       "layer": "root",
-      "sha256": "287606eff231ccac",
-      "lines": 273,
+      "sha256": "600844496c8d4c70",
+      "lines": 256,
       "exports": [
-        "BIG",
+        "BACK",
         "CREAM",
+        "FLAP",
         "GOLD",
         "NAVY",
         "PIXEL_ART",
-        "PIXEL_RING",
+        "PIXEL_COLOURS",
+        "RIM",
+        "RULE",
+        "SHADOW",
+        "SHEET",
         "SIZES",
-        "THEMES",
+        "TAB",
+        "TICK",
         "app_icon",
         "bare_mark",
         "drawing",
         "f",
         "full_mark",
-        "mark_svg",
-        "plate",
-        "plate_svg"
+        "icon_svg",
+        "pixel_art"
       ],
       "constants": {
         "NAVY": "'#1B2A4A'",
         "GOLD": "'#C9A84C'",
-        "CREAM": "'#F5F0E8'"
+        "CREAM": "'#F5F0E8'",
+        "FLAP": "('#3D5A92', '#2E4675')",
+        "TAB": "('#A8862F', '#94782A')",
+        "SHEET": "('#FFFDF8', '#F0E9DC')",
+        "RIM": "'#9FB2D6'",
+        "TICK": "'#9C7F2C'",
+        "RULE": "'#9AA6BC'",
+        "SHADOW": "'#0A1F3D'"
       }
     },
     {
       "id": "pilot/brand/tax-document-console/source/raster.py",
       "type": "module",
       "layer": "root",
-      "sha256": "e93315b7b44764f6",
-      "lines": 22,
+      "sha256": "f47559eb220da6a4",
+      "lines": 42,
       "exports": [
-        "icon_png"
+        "icon_png",
+        "tile_png"
       ]
     },
     {
@@ -5617,7 +5633,7 @@
       "id": "pilot/brand/tax-document-console/source/sheet.py",
       "type": "module",
       "layer": "root",
-      "sha256": "95135183f7c13b53",
+      "sha256": "29a394547ee22ddb",
       "lines": 39,
       "cli": "python -m pilot.brand.tax-document-console.source.sheet",
       "exports": [

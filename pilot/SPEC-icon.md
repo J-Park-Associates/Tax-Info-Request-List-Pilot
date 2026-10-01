@@ -2,7 +2,9 @@
 
 Status: **written 2026-09-30, awaiting Jason's answers to the two questions
 below before it is built.** Decision P115 (`DECISIONS.md`). The artwork is
-finished and reviewed; this job only wires it in.
+finished and reviewed; this job only wires it in. The artwork itself was
+replaced on 2026-10-01 by P116 ([`SPEC-icon-ledger.md`](SPEC-icon-ledger.md))
+under the same file names, so the table below still applies.
 
 Read first: [`brand/tax-document-console/README.md`](brand/tax-document-console/README.md)
 (what each file is), then this file. Look up each file below with

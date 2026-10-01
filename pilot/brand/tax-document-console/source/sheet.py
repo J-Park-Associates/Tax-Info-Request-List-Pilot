@@ -11,7 +11,7 @@ from render import Renderer
 def main(out):
     with Renderer() as r:
         imgs = {s: Image.open(io.BytesIO(icon_png(r, s))) for s in SIZES}
-        big = Image.open(io.BytesIO(r.png(bare_mark("light"), 208, 208)))
+        big = Image.open(io.BytesIO(r.png(bare_mark("color"), 208, 208)))
     W = sum(SIZES) + 12 * len(SIZES) + 24
     H = 2 * 280 + 32 * 8 + 48 + 240
     sh = Image.new("RGBA", (max(W, 1400), H), (255, 255, 255, 255))
