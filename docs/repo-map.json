@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 424,
     "edges": 1195,
-    "reused": 368
+    "reused": 377
   },
   "node_types": [
     "artifact",
@@ -5608,8 +5608,8 @@
       "id": "pilot/reviews/lanes-rulings.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "7c9469702b04b180",
-      "lines": 19
+      "sha256": "33207271c71403bd",
+      "lines": 24
     },
     {
       "id": "pilot/reviews/lanes-screen-review.md",

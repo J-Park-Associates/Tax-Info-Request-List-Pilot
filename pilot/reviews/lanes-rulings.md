@@ -17,3 +17,8 @@ The four lanes (P198 F6, P199 check notes, P200 check scripts, P201 cache fill) 
 - **NIT-2 (an "access denied" query re-registers at every start with nothing logged):** accepted; the query's refusal (its exit code) goes to the error log once per start.
 - **NIT-3 (a test named "...and says so" does not check the log):** accepted; it asserts the log entry.
 - **NIT-4 (the fill can push a long pass past the task's limit before the log and page are written):** accepted; the fill runs after the pass's log line and page are written, so the record is never lost to the fill.
+
+## On the folds (`a6c0d85`, `9c7d9a4`)
+
+- M1 re-checked by the orchestrator: `app/renderer/app.js` 2177-2178 tests every return of the pass, and `test_shell.py -k nothing_to_sort` passes (2 tests).
+- SHOULD-3 was built differently from the ruling, and the difference is accepted: the household a Sort just wrote is always too recent (under 5 s) for the cache to keep, so a person's Sort refreshes only changed households and only when today's cache is already current; otherwise the next Overview fills it. The scheduled pass fills the whole firm, as ruled.
