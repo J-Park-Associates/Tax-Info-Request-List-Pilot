@@ -223,3 +223,18 @@ def test_every_code_has_one_short_label_of_five_words_or_fewer():
     for code, short in SHORT_REASONS.items():
         assert 1 <= len(short.split()) <= 5, (code, short)
         assert short == short.strip() and not short.endswith("."), (code, short)
+
+
+def test_a_label_shortened_into_a_tag_keeps_the_words_it_replaced_as_its_tooltip():
+    """Pilot P116: "Came in Email or Zip" became the tag "Email or Zip" to
+    fit the 160px status column, and the words it replaced are its tooltip.
+    A tip belongs to a code that has a label, says more than the tag, and is
+    five words or fewer like every tooltip (SPEC-shell 11)."""
+    from tracker.reasons import REASON_TIPS, SHORT_REASONS
+
+    assert SHORT_REASONS["opened-not-across"] == "Email or Zip"
+    assert REASON_TIPS == {"opened-not-across": "Came in Email or Zip"}
+    for code, tip in REASON_TIPS.items():
+        assert code in SHORT_REASONS and len(tip) > len(SHORT_REASONS[code]), (code, tip)
+        assert 1 <= len(tip.split()) <= 5, (code, tip)
+        assert tip == tip.strip() and not tip.endswith("."), (code, tip)

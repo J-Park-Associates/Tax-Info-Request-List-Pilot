@@ -675,7 +675,7 @@ def test_a_library_past_the_limit_means_the_app_must_move(tmp_path, monkeypatch)
     monkeypatch.setattr(ocr, "READER_PATH_LIMIT", len(str(library.resolve())) - 1)
     assert ocr.reader_path_warning(app) == ocr.READER_PATH_WARNING
     assert ocr.READER_PATH_WARNING.startswith(
-        "Move the app to a shorter folder, for example C:\\JPA Tracker")
+        "Move the app to a shorter folder, for example C:\\JPA App")
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="a directory junction is Windows'")

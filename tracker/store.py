@@ -244,12 +244,12 @@ STORE_OVERRIDE_NOT_ABSOLUTE = ENV_STORE + " must name a whole path, got {value!r
 STORE_OVERRIDE_IN_PROGRAM = (ENV_STORE + " names {path}, inside the program's own folder {program}; "
                              "client data never sits beside the program")
 STORE_OVERRIDE_NOT_LOCAL = (ENV_STORE + " names {path}, which is not on this computer's own disk; "
-                            "the tracker keeps its database only on a fixed disk")
+                            "the app keeps its database only on a fixed disk")
 #: What the command line says of a copy named inside the app's own folder
 #: (decision 186's review, N4): client data never lives in a code checkout,
 #: and ``rebuild`` would create it there.
 COPY_INSIDE_APP = ("{path} is inside the app's own folder {app}; a copy of the database is never "
-                   "kept there. Copy it into the tracker's data folder under a new name and name "
+                   "kept there. Copy it into the app's data folder under a new name and name "
                    "that instead")
 
 #: What this version of the code knows how to read, written into the file as
@@ -364,7 +364,14 @@ COPY_INSIDE_APP = ("{path} is inside the app's own folder {app}; a copy of the d
 #: the one in-place column with a default: it is bookkeeping, like
 #: ``built_at``, not a value any journal line carries, and ``store check``
 #: does not compare it.
-SCHEMA_VERSION = 19
+#: Version 20 (pilot P170) added ``household_related`` to ``engagements``:
+#: the households a person marked as related to a household, a JSON list
+#: in one text column. In place, like 17 to 19: no journal line before it
+#: carries the field, and the column is added with the record's own
+#: default, ``'[]'`` - exactly what a rebuild writes for a row whose lines
+#: never name it (``_new_engagement_defaults``), so ``store check`` finds
+#: nothing on an upgraded file and the verdict cache is kept.
+SCHEMA_VERSION = 20
 
 #: The explicit in-place upgrades (the module docstring's rule): the
 #: version a file is at, and the statements that bring it to the next one.
@@ -378,13 +385,17 @@ SCHEMA_VERSION = 19
 #: found that in 204's step and made both steps add NULL.) The one
 #: exception is 18's ``admitted_by`` (decision 209): bookkeeping that no
 #: journal line carries and ``store check`` does not compare, whose 0 is
-#: its true value on every upgraded row.
+#: its true value on every upgraded row. 19's ``household_related`` (pilot
+#: P170) has a default for the rule's own reason: ``'[]'`` is the record's
+#: default, which is what a rebuild writes on every row, so NULL would be
+#: the value a rebuild does not write.
 _IN_PLACE: dict[int, tuple[str, ...]] = {
     16: ("""ALTER TABLE documents ADD COLUMN "waits_for" TEXT""",),
     17: ("""ALTER TABLE documents ADD COLUMN "code" TEXT""",
          """ALTER TABLE documents ADD COLUMN "subfolder" TEXT""",
          """ALTER TABLE statuses ADD COLUMN "note_codes" TEXT"""),
     18: ("""ALTER TABLE engagements ADD COLUMN "admitted_by" INTEGER NOT NULL DEFAULT 0""",),
+    19: ("""ALTER TABLE engagements ADD COLUMN "household_related" TEXT DEFAULT '[]'""",),
 }
 
 #: Which admission (:func:`_refuse_a_malformed_line`, with
@@ -402,7 +413,9 @@ _IN_PLACE: dict[int, tuple[str, ...]] = {
 #: (``test_admission_version_changes_with_the_admission``) pins the source
 #: of every function the admission reaches, and every constant they read,
 #: to this number.
-ADMISSION_VERSION = 2
+#: 3 adds pilot P170's refusal: a household's related list that is not a
+#: list of text, or names something that is not one folder name.
+ADMISSION_VERSION = 3
 
 #: The ``(table, column)`` pairs an in-place step added, read off
 #: :data:`_IN_PLACE` so that a new step is covered without a second list.
@@ -636,7 +649,7 @@ _AFFINITY: dict[str, str] = {
 #: The record fields held as a JSON array in a text column, by name. Named
 #: because SQLite cannot tell one from a string on the way back, exactly as
 #: ``records.RULE_LIST_FIELDS`` says it for a rule row.
-_LIST_COLUMNS: frozenset[str] = frozenset({"members", "feeds"})
+_LIST_COLUMNS: frozenset[str] = frozenset({"members", "feeds", "related"})
 
 
 def _column_types(record: type, *, prefix: str = "") -> dict[str, str]:
@@ -1038,13 +1051,15 @@ def _recorded_root_over(folder: Path) -> Path | None:
     the chain that walks folders and moves files.
     """
     from tracker import layout
-    from tracker.settings import clients_root
+    from tracker.settings import clients_root, resolved
 
     root = clients_root()
     if root is None:
         return None
     try:
-        under = layout.parts_below(root.resolve(), folder.resolve())
+        # Resolved once per reply inside a reading (P118): every store read
+        # asks this, and on the office PC each resolve is a trip to the disk.
+        under = layout.parts_below(resolved(root), resolved(folder))
     except OSError:
         return None
     return root if under is not None else None
@@ -1115,9 +1130,10 @@ def _positional_root(folder: Path) -> Path | None:
     the shape is worded.
     """
     from tracker import layout
+    from tracker.settings import resolved
 
     try:
-        folder = folder.resolve()
+        folder = resolved(folder)
     except OSError:
         return None
     if len(folder.parents) < 4:
@@ -1140,8 +1156,9 @@ def engagement_path(root: Path | str, engagement_dir: Path | str) -> str:
     root, with forward slashes, so a store copied to another machine or
     another drive letter still names the same engagements."""
     from tracker import layout
+    from tracker.settings import resolved
 
-    root, folder = Path(root).resolve(), Path(engagement_dir).resolve()
+    root, folder = resolved(root), resolved(engagement_dir)
     below = layout.parts_below(root, folder)
     if below is None:
         raise StoreError(f"{folder} is not under the clients root {root}")
@@ -1721,8 +1738,8 @@ def _write_household_info(conn: sqlite3.Connection, engagement_id: int, info: di
 def _household_cell(name: str, info: dict) -> object:
     """One household field as its column holds it.
 
-    The two fields that are lists - the members and the feeds (decision
-    129) - are stored as JSON arrays, and a line that wrote one name as a
+    The fields that are lists - the members, the feeds (decision 129) and
+    the related households (pilot P170) - are stored as JSON arrays, and a line that wrote one name as a
     string is read as one member on both sides
     (``records.household_from_json``) - so the column holds a list either
     way and :func:`check` compares like with like.
@@ -2069,6 +2086,15 @@ def _refuse_a_malformed_line(event: dict, seq: int, where: str, *, kind: str = K
             for feed in feeds:
                 a_segment("feeds.household", feed.household)
                 a_segment("feeds.return_name", feed.return_name)
+        # The related households (pilot P170): a list of names, each one
+        # household folder's name, or the line is not one this version
+        # writes.
+        if isinstance(household, dict) and "related" in household:
+            related = household["related"]
+            if not isinstance(related, list) or not all(isinstance(one, str) for one in related):
+                refuse("carries 'related' that is not a list of household names")
+            for one in related:
+                a_segment("related", one)
         if isinstance(household, dict):
             if problem := records.household_problem(household):
                 refuse(f"carries details whose {problem}")
@@ -2264,7 +2290,14 @@ def record(conn: sqlite3.Connection, engagement_dir: Path | str, *events: dict) 
     The apply reads the journal again inside its transaction and applies
     from the store's applied seq as it is then (decision 135), so a reader
     that caught up part of this batch meanwhile has none of it re-applied.
+
+    Refused outright inside a read-only reply
+    (:func:`tracker.settings.one_reading`, P118): such a reply records
+    nothing.
     """
+    from tracker.settings import refuse_a_write_while_reading
+
+    refuse_a_write_while_reading("a return's record")
     engagement_dir = Path(engagement_dir)
     for event in events:
         name = event.get(ledger.EVENT_KEY)
@@ -2515,7 +2548,7 @@ def _catching_up(conn: sqlite3.Connection, root: Path | str | None, engagement_d
 #: What the store says of a journal whose applied lines no longer chain to
 #: the digest it kept (decision 137, A3). The same shape as the refusal of a
 #: truncated journal: what happened, that nothing was applied, what to do.
-REWRITTEN = ("The record for {rel} was changed behind the tracker's back (line {line} onward "
+REWRITTEN = ("The record for {rel} was changed behind the app's back (line {line} onward "
              "no longer matches). Nothing was applied. " + ledger.RUN_RECOVER)
 
 
@@ -2605,7 +2638,7 @@ AN_EARLIER_LINE = "an earlier line"
 CLAIMS_THIS_MACHINE = ("Line {n} of the record for {rel} says it was written on this machine, and "
                        "this machine did not write it. Nothing was applied. " + ledger.RUN_RECOVER)
 NO_WRITER = ("Line {n} of the record for {rel} carries no writer - written by an older version of "
-             "the tracker or by hand. Nothing was applied. " + ledger.RUN_RECOVER)
+             "the app or by hand. Nothing was applied. " + ledger.RUN_RECOVER)
 FOREIGN = ("Line {n} of the record for {rel} was written on {host}; this machine is the one that "
            "writes (decision 159). Nothing was applied. " + ledger.RUN_RECOVER)
 #: What a rebuild says instead of losing what the checkpoint vouches for.
@@ -3911,7 +3944,7 @@ def verify(conn: sqlite3.Connection, held: sqlite3.Connection | None, root: Path
 #: The one spelling the command line refuses by name (decision 186): the
 #: store an earlier version kept beside the program.
 OLD_STORE_NAMED = ("{path} is the old database beside the program; it is no longer used and "
-                   "nothing was opened. The tracker's database is {store}. Delete the old one.")
+                   "nothing was opened. The app's database is {store}. Delete the old one.")
 
 
 def store_named(given: Path) -> Path | str | None:

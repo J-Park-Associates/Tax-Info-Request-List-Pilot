@@ -267,7 +267,7 @@ def test_strays_in_prepared_are_warnings_and_parked_files_are_not(engagement):
         UNCLAIMED_FILE.format(name="loose_notes.txt", prepared=PREPARED_DIR_NAME),
         reasons.PERSONS_FOLDER.format(folder="misc uploads", prepared=PREPARED_DIR_NAME),
     ]
-    assert report.warnings[1] == ("misc uploads is a folder inside Prepared. The tracker files "
+    assert report.warnings[1] == ("misc uploads is a folder inside Prepared. The app files "
                                   "into Prepared itself and counts nothing in this folder.")
     assert report.updates["A01"].file_count == 0      # nothing in a person's folder counts
     assert list(engagement.glob("*.xlsx")) == []                     # no second record

@@ -1,7 +1,7 @@
 # Pilot edition (first edition)
 
 This repository, `J-Park-Associates/Tax-Info-Request-List-Pilot`, holds a
-working-but-in-progress copy of the Tax Document Tracker for a first batch of
+working-but-in-progress copy of Tax Document Console for a first batch of
 test firms. Testers install it on a Windows PC and run it on their own
 clients' files: the client's drop folder, the sorting engine, the organized
 working copies in `Prepared/`, the Needs Review queue, the status page and the

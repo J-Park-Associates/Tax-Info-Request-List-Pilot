@@ -1414,13 +1414,27 @@ def unsorted_in_inbox(engagement_dir: Path | str) -> int:
     one a live writer still holds. A folder the pass cannot list (``unlistable_folders``)
     does, one count per folder: whatever the client put in it cannot be
     sorted, so the letter could ask for it.
+
+    The count is the length of :func:`unsorted_files_in_inbox`, one walk,
+    so for any one call the two functions cannot disagree (P134); a caller
+    that asks each separately walks twice.
     """
+    return len(unsorted_files_in_inbox(engagement_dir))
+
+
+def unsorted_files_in_inbox(engagement_dir: Path | str) -> list[str]:
+    """The name of each file (or unreadable folder) :func:`unsorted_in_inbox`
+    counts, sorted: what the app's reminder sheet lists under "Held: {n}
+    Files Not Sorted" so a person can see which file holds the draft
+    (P134). A name only - the file's own, never its folder path, which the
+    screen never shows (SPEC-shell 11.1). Two files of one name in
+    different subfolders are two entries."""
     from tracker.filer import iter_drops, unfinished_drops, unlistable_folders, unreachable_drops
 
     inbox = inbox_of(Path(engagement_dir))
     waiting = {*iter_drops(inbox), *unfinished_drops(inbox), *unreachable_drops(inbox),
                *unlistable_folders(inbox)}
-    return sum(1 for path in waiting if not _readme_leftover(path, inbox))
+    return sorted(Path(path).name for path in waiting if not _readme_leftover(path, inbox))
 
 
 def _readme_leftover(path: Path, inbox: Path) -> bool:

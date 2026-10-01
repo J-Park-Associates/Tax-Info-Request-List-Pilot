@@ -101,6 +101,7 @@ const H_ATTRIBUTES = new Set([
   "aria-label", "aria-current", "aria-selected", "aria-expanded", "aria-busy", "aria-hidden",
   "aria-labelledby", "aria-valuemin", "aria-valuemax", "aria-valuenow", "aria-live",
   "aria-controls", "aria-description", "aria-keyshortcuts", "aria-disabled", "aria-pressed",
+  "aria-sort", "aria-haspopup",
 ]);
 
 function h(tag, attrs = {}, ...children) {
@@ -148,13 +149,41 @@ function shellVocabulary() {
   const words = screenWords();
   $("side").setAttribute("aria-label", words.side_label);
   $("crumbs").setAttribute("aria-label", words.path_label);
-  for (const node of document.querySelectorAll(".side-section")) {
+  for (const node of document.querySelectorAll(".side-section[data-section]")) {
     const key = node.dataset.section;
     node.querySelector(".side-name").textContent = words.sections[SCREEN_KEYS[key] || key];
   }
+  shellSideWords(words);
   shellNameIcons();
   shellChanged();
   shellDraw();
+}
+
+// The side panel's other words (pilot SPEC-lists 15; P153-P155): the brand
+// band, the section headings, the Client Types (their forms the tooltip),
+// the items not built yet (each "Under Construction" as its tooltip) and
+// Settings. A word the vocabulary lacks throws, as every word here does.
+function shellSideWords(words) {
+  const side = words.side;
+  if (!side) throw new Error("side");
+  $("side-brand-name").textContent = side.brand;
+  $("side-brand-product").textContent = side.product;
+  $("side-types-heading").textContent = side.types;
+  $("side-workspace-heading").textContent = side.workspace;
+  $("side-settings").querySelector(".side-name").textContent = side.settings;
+  for (const node of document.querySelectorAll(".side-section[data-soon]")) {
+    const said = side.soon[node.dataset.soon];
+    if (!said) throw new Error(`side.soon.${node.dataset.soon}`);
+    node.querySelector(".side-name").textContent = said;
+    setTip(node, side.under_construction);
+  }
+  for (const node of document.querySelectorAll(".side-section[data-type]")) {
+    const label = (words.client_types || {})[node.dataset.type];
+    const forms = (vocab.client_type_forms || {})[node.dataset.type];
+    if (!label || !forms) throw new Error(`client_types.${node.dataset.type}`);
+    node.querySelector(".side-name").textContent = label;
+    setTip(node, forms.join(", "));
+  }
 }
 
 // ── data the list and the firm command bring ──────────────────────────
@@ -254,7 +283,13 @@ function shellOpenState() {
   else if (route.level === "household" || route.level === "year") {
     const own = shellOwnReturns(route.household);
     const shown = lastState && lastState.paths ? lastState.paths.engagement : "";
-    if (own.length && !own.some((one) => one.path === shown)) path = (own.find((one) => one.path === active) || own[0]).path;
+    // A working return first - active and not rolled forward, as the list's
+    // household says - so the household's Sort reports on one it sorts (P134).
+    const working = ((shellHousehold(route.household) || {}).returns || [])
+      .filter((one) => one.active !== false && !one.superseded_by).map((one) => one.path);
+    if (own.length && !own.some((one) => one.path === shown)) {
+      path = (own.find((one) => one.path === active) || own.find((one) => working.indexOf(one.path) !== -1) || own[0]).path;
+    }
   }
   if (!path) return Promise.resolve();
   return showReturn(path).then((drawn) => {
@@ -289,6 +324,7 @@ function shellStateArrived(state) {
 
 function shellDraw() {
   drawSide();
+  drawFindWords();
   drawPath();
   drawPage();
   shellChanged();
@@ -309,12 +345,15 @@ function drawSide() {
   // First run: drawn disabled, no counts. From Change clients folder the
   // panel stays enabled (SPEC 6.8).
   const off = shellRoute.level === "setup" && !shellRootSet;
+  // A Client Type is the current item while Clients shows it (P153).
+  const type = shellRoute.level === "clients" && typeof pagesClientType === "string" ? pagesClientType : "";
   for (const node of document.querySelectorAll(".side-section")) {
     const key = node.dataset.section;
     node.disabled = off;
-    if (key === shellSection()) node.setAttribute("aria-current", "page");
+    const here = key ? key === shellSection() && !type : Boolean(type) && node.dataset.type === type;
+    if (here) node.setAttribute("aria-current", "page");
     else node.removeAttribute("aria-current");
-    node.setAttribute("aria-keyshortcuts", `Control+${SIDE_KEYS.indexOf(key) + 1}`);
+    if (key) node.setAttribute("aria-keyshortcuts", `Control+${SIDE_KEYS.indexOf(key) + 1}`);
   }
 }
 
@@ -486,10 +525,17 @@ function syncSortNotice() {
 
 function drawCounts() {
   const counts = shellCounts();
-  for (const node of document.querySelectorAll(".side-section")) {
+  for (const node of document.querySelectorAll(".side-section[data-section]")) {
     const n = shellRoute.level === "setup" ? 0 : counts[node.dataset.section] || 0;
     node.querySelector(".side-count").textContent = n > 0 ? String(n) : "";
   }
+}
+
+// The search box's placeholder (pilot SPEC-lists 13, P173): Needs Review's
+// names the files the box also finds there.
+function drawFindWords() {
+  const words = screenWords();
+  $("find").setAttribute("placeholder", shellRoute.level === "needs-review" ? words.find_placeholder_files : words.find_placeholder);
 }
 
 // ── search (SPEC 8.2) ─────────────────────────────────────────────────
@@ -497,10 +543,16 @@ function fold(text) {
   return String(text).normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
 }
 
-function findOptions(query) {
+// `files`: the waiting files the box also finds on Needs Review (P173), each
+// noted with its return and year; choosing one opens Check on it.
+function findOptions(query, files) {
   const needle = fold(query).trim();
   if (!needle) return [];
   const words = screenWords();
+  const waiting = (files || []).filter((one) => fold(one.name).indexOf(needle) !== -1).map((one) => {
+    const ret = shellReturn(one.return);
+    return { name: one.name, note: `${ret ? ret.return_name : ""} ${one.year || ""}`.trim(), check: { ret: one.return, name: one.name, handle: one.handle } };
+  });
   const people = households.filter((one) => fold(one.name).indexOf(needle) !== -1).map((one) => ({
     name: one.name,
     note: fill(shellOwnReturns(one.path).length === 1 ? words.counts.one_return : words.counts.returns, { n: shellOwnReturns(one.path).length }),
@@ -514,7 +566,7 @@ function findOptions(query) {
       route: { level: "return", household: one.household, year: one.year, ret: one.path },
     };
   });
-  return [...people, ...returns].slice(0, 8);
+  return [...waiting, ...people, ...returns].slice(0, 8);
 }
 
 function drawFound() {
@@ -522,7 +574,8 @@ function drawFound() {
   const list = $("find-list");
   const box = $("find");
   const query = box.value;
-  shellFound = findOptions(query);
+  const firm = shellFirmNow.data;
+  shellFound = findOptions(query, shellRoute.level === "needs-review" && firm ? firm.files : []);
   if (!query.trim()) {
     hideFound();
     return;
@@ -565,6 +618,11 @@ function openFound(index) {
   if (!one) return;
   $("find").value = "";
   hideFound();
+  if (one.check) {
+    if (typeof openCheck === "function") openCheck(one.check.ret, one.check.name, one.check.handle);
+    else unanswered("check");
+    return;
+  }
   shellGo(one.route);
 }
 
@@ -723,6 +781,7 @@ function shellEnabled(at) {
   const ids = ["change_root", "refresh", "tour", "safeguards", "terms", "error_log", "about"];
   if (shellRootSet) {
     ids.push("new_household", "open_root", "overview", "needs_review", "reminders", "clients", "find", "schedule", "repair_schedule");
+    ids.push("reset_columns");
   }
   if (client && writable) {
     ids.push("edit_household");
@@ -793,6 +852,7 @@ function inboxFolder() {
 }
 
 async function shellRefresh() {
+  forgetSortAnswers();   // app.js: a Sort's answer is not in the record read again (P131)
   try {
     adoptList(await call(["list"]));
     if (shellRoute.level === "return") await showReturn(shellRoute.ret);
@@ -822,6 +882,7 @@ const MENU_ANSWERS = {
   clients: () => shellGo({ level: "clients" }),
   find: () => $("find").focus(),
   refresh: () => shellRefresh(),
+  reset_columns: () => pagesResetWidths(),
   sort_now: () => sortClicked(),
   stop_sorting: () => stopPass(),
   schedule: () => openSchedule(),
@@ -876,6 +937,7 @@ function focusRegion(name) {
 }
 
 function shellKey(e) {
+  tipKey(e);   // tooltip.js: Escape hides a showing tip first, and the key goes on (P130)
   if (e.key === "F6") {
     e.preventDefault();
     const at = F6_REGIONS.indexOf(regionOf(document.activeElement));
@@ -885,6 +947,11 @@ function shellKey(e) {
   if (e.target === $("find")) return findKey(e);
   if (e.key === "Escape") {
     if (dialogStack.length) return false;   // a dialog's own rule
+    if (typeof pagesPanelOpen === "function" && pagesPanelOpen()) {
+      e.preventDefault();
+      pagesClosePanel(true);
+      return true;
+    }
     if (!$("sheet").hidden && typeof closeSheet === "function") {
       e.preventDefault();
       closeSheet();
@@ -895,13 +962,10 @@ function shellKey(e) {
       hideFound();
       return true;
     }
-    if (tipShowing()) {
-      hideTip();
-      return true;
-    }
     return false;
   }
   if (e.target.closest && e.target.closest('[role="listbox"]') && typeof pagesKey === "function") return pagesKey(e) === true;
+  if (e.target.closest && e.target.closest(".col-head") && typeof pagesColumnKey === "function") return pagesColumnKey(e) === true;
   return false;
 }
 
@@ -926,9 +990,26 @@ function findKey(e) {
 }
 
 // ── wiring ────────────────────────────────────────────────────────────
-for (const node of document.querySelectorAll(".side-section")) {
-  node.addEventListener("click", () => shellGo({ level: node.dataset.section }));
+for (const node of document.querySelectorAll(".side-section[data-section]")) {
+  node.addEventListener("click", () => {
+    if (node.dataset.section === "clients") pagesClientType = "";   // Clients itself: every type
+    shellGo({ level: node.dataset.section });
+  });
 }
+// A Client Type opens Clients filtered to it, from its first page (P153).
+for (const node of document.querySelectorAll(".side-section[data-type]")) {
+  node.addEventListener("click", () => {
+    pagesClientType = node.dataset.type;
+    delete pagesPageAt.clients;
+    shellGo({ level: "clients" });
+  });
+}
+// A page not built yet says so and does nothing else: no page, no command (P154).
+for (const node of document.querySelectorAll(".side-section[data-soon]")) {
+  node.addEventListener("click", () => toastWord("under_construction"));
+}
+// Settings: the settings the app already has, through the menu's own answer (P175).
+$("side-settings").addEventListener("click", () => shellAnswer("change_root"));
 $("sort").addEventListener("click", sortClicked);
 $("find").addEventListener("input", drawFound);
 $("find").addEventListener("focus", () => {
@@ -936,6 +1017,8 @@ $("find").addEventListener("focus", () => {
 });
 document.addEventListener("click", (e) => {
   if (!e.target.closest("#find-wrap")) hideFound();
+  // A click outside the Linked Households panel closes it (P171).
+  if (!e.target.closest("#link-panel") && !e.target.closest(".link-mark") && typeof pagesClosePanel === "function") pagesClosePanel(false);
 });
 $("sheet-close").addEventListener("click", () => {
   if (typeof closeSheet === "function") closeSheet();

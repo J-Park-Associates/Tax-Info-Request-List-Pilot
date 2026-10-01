@@ -1,8 +1,8 @@
 # Tax Document Console: the app icon and lockup
 
-Jason picked this mark on 2026-10-01 (P116): concept 4e, "Gold tab", from the
+Jason picked this mark on 2026-10-01 (P191): concept 4e, "Gold tab", from the
 concept page (https://claude.ai/artifact/MF8rLu5xoeTXdhFdYZHPgJ). It replaces
-the monogram of P115; `concept-approved.png` is that earlier mark's concept,
+the monogram of P190; `concept-approved.png` is that earlier mark's concept,
 kept for the record. [`../../SPEC-icon-ledger.md`](../../SPEC-icon-ledger.md)
 is the drawing's SPEC.
 

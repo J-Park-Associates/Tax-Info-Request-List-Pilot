@@ -98,6 +98,17 @@
   font-weight: var(--fw-strong);
 }
 
+.pilot-terms-name {
+  margin-bottom: var(--sp-2);
+}
+
+.pilot-terms-signed {
+  margin: 0 0 var(--sp-2);
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
+  font-weight: var(--fw-strong);
+}
+
 .pilot-terms-actions {
   display: flex;
   justify-content: flex-end;

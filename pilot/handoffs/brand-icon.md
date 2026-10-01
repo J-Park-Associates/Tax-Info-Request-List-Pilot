@@ -12,13 +12,13 @@
 - Every file the app, its build and its installer need was exported to
   `pilot/brand/tax-document-console/`, with the generator in its `source/`.
   A rebuild reproduces the committed files byte for byte.
-- Decision P115 records the pick. `pilot/SPEC-icon.md` is the SPEC for wiring
+- Decision P190 records the pick. `pilot/SPEC-icon.md` is the SPEC for wiring
   the files in.
 
 ## What is left
 
-1. Jason answers the two questions at the top of `pilot/SPEC-icon.md` (keep the
-   product name for now; which brand shows in the side panel).
+1. Jason answers the two questions at the top of `pilot/SPEC-icon.md` (the name is
+   settled on `main`; which brand shows in the side panel).
 2. A build session wires the icon in, exactly as `SPEC-icon.md` says, and runs
    the tests it names.
 3. A review session that did not build it; then the Windows check in the SPEC.

@@ -16,7 +16,7 @@ people side.
   page, written into the clients folder by every pass and opened by the app's
   **Open Status** button: what each engagement still owes, what is waiting for
   a person across all of them, what failed overnight, and which folders the
-  tracker left alone because they do not fit the layout.
+  app left alone because they do not fit the layout.
 - **Preparer / staff** — works the `Prepared/` tree, files anything in
   `00 - Needs Review` with the app's *File it* action, sets `Manual Override`
   when their judgment beats the rules, and sends the drafted reminders.
@@ -239,7 +239,7 @@ person types.
   it again. Refiling is unfiling and then
   **File it**; a working copy somebody annotated is left where it is and
   said so, because the notes are work and which file the firm wants is not
-  the tracker's to decide. The keyword the request learned when it was filed
+  the app's to decide. The keyword the request learned when it was filed
   is not unlearned — it is a rule about documents, and the request still
   wants it. A document somebody re-filed since the list was drawn is a newer
   filing, and unfiling it is refused with what the record now says rather
@@ -267,7 +267,7 @@ person types.
   and nothing is ever deleted, so a copy left over after the bytes were
   already home is named every pass until you remove it yourself. A page
   filed under several requests is put back and never kept or sent from
-  here, because which copy you meant is not the tracker's to guess.
+  here, because which copy you meant is not the app's to guess.
 - **The Reminder card**, under the request table: the week's draft, and the
   only place in the app a client letter is read (decision 118). It says what
   the record says — the day and stage of the last draft, or that one was

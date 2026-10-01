@@ -565,8 +565,9 @@ SCHEDULE_CLAIMED_DAILY = ("This computer ({host}) now runs the schedule for this
                           "at {start}.")
 SCHEDULE_REGISTERED_DAILY = ("The schedule is set: every day at {start}, with this computer's copy of "
                              "the app.")
-SCHEDULE_OFF = ("The schedule is off on this computer. Scan still works. Turn it on with the Schedule "
-                "button.")
+#: The app's words since the shell (P133): the pass is Sort, and Schedule is
+#: a Tools menu item, not a button.
+SCHEDULE_OFF = "The schedule is off on this computer. Sort still works. Turn it on in Tools > Schedule."
 SCHEDULE_ELSEWHERE = "{host} runs the schedule for this clients folder, so this computer registers none{removed}."
 SCHEDULE_REMOVED = " and removed the one it had"
 #: The file's path is named; its content never is (it is whatever was left there).
@@ -752,7 +753,7 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser(
-        description="Generate the scheduled job that runs the tracker unattended"
+        description="Generate the scheduled job that runs the app unattended"
     )
     parser.add_argument(SETTINGS_FLAG, default="", metavar="FOLDER",
                         help=f"the app's settings folder, whose {SETTINGS_FILENAME} names the clients "
@@ -774,7 +775,7 @@ if __name__ == "__main__":
                         help="write to this file instead of standard output")
     parser.add_argument(INSTALL_FLAG, action="store_true",
                         help="also register the task with Task Scheduler (Windows); the task's file "
-                             f"goes into the tracker's data folder unless {OUT_FLAG} names another")
+                             f"goes into the app's data folder unless {OUT_FLAG} names another")
     ns = parser.parse_args()
     if ns.install and ns.format != FORMAT_XML:
         parser.error(f"{INSTALL_FLAG} needs {FORMAT_FLAG} xml")

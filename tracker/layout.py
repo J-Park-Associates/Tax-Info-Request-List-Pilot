@@ -139,7 +139,7 @@ SHORT_NAME_RESERVE = 12
 #: so a return's room is the same number at every run (pilot decision P29).
 TEMP_NAME_RESERVE = len("/x." + "9" * 10 + "." + "f" * 8 + ".tmp")
 #: What such a refusal says.
-PATH_TOO_LONG = ("the deepest file the tracker would write under {folder} would be {length} "
+PATH_TOO_LONG = ("the deepest file the app would write under {folder} would be {length} "
                  "characters, past the {limit} Windows allows; shorten the household or the return name")
 #: Readers with a documented limit shorter than Windows's, by extension,
 #: lower-case without the dot (decision 131). A working copy is written
@@ -727,7 +727,7 @@ NOT_A_HOUSEHOLD = ("{name} is not a household's folder (a household sits at <cli
 #: What a write the one door refuses is told (decision 188, R9): only a
 #: household's own client folder, its inbox and its year folders of
 #: originals are places the tracker writes in the tree a client is shared.
-OUTSIDE_CLIENT_PLACE = ("{path} is not a place the tracker writes for the household {household} "
+OUTSIDE_CLIENT_PLACE = ("{path} is not a place the app writes for the household {household} "
                         "in the tree its client is shared; nothing was written")
 
 
@@ -838,7 +838,15 @@ def names_one_folder(a: str, b: str) -> bool:
     compares them (``os.path.normcase``). What says a client folder is a
     household's own (the re-check of decision 188, R1): the comparison key
     refuses a new name, it never identifies a folder on the disk."""
-    return os.path.normcase(str(a)) == os.path.normcase(str(b))
+    return folder_name_key(a) == folder_name_key(b)
+
+
+def folder_name_key(name: str) -> str:
+    """What :func:`names_one_folder` compares (``os.path.normcase``): two
+    names with one such key are one folder. A key, so a walk can put many
+    names in a set and look each folder up once (P119) rather than compare
+    every folder with every name."""
+    return os.path.normcase(str(name))
 
 
 def tree_of(root: Path | str, path: Path | str) -> str | None:
@@ -1075,8 +1083,18 @@ def limit_for(extension: str) -> int:
 def shared_tail(a: str | Path, b: str | Path) -> int:
     """How many trailing folder names ``a`` and ``b`` have in common,
     compared as Windows compares them (``os.path.normcase``)."""
-    named = [os.path.normcase(part) for part in Path(a).parts]
-    folder = [os.path.normcase(part) for part in Path(b).parts]
+    return common_tail(tail_names(a), tail_names(b))
+
+
+def tail_names(path: str | Path) -> tuple[str, ...]:
+    """``path``'s folder names as :func:`shared_tail` compares them: made
+    once per path, so a practice-wide match (``registry.mark_superseded``)
+    does not remake them for every pair (P119)."""
+    return tuple(os.path.normcase(part) for part in Path(path).parts)
+
+
+def common_tail(named: tuple[str, ...], folder: tuple[str, ...]) -> int:
+    """How many trailing names two :func:`tail_names` have in common."""
     count = 0
     while count < len(named) and count < len(folder) and named[-1 - count] == folder[-1 - count]:
         count += 1

@@ -50,8 +50,10 @@ can do every step.
 4. **Firm speed on Windows**: 6.7 s for 750 returns in the sandbox against a
    3 s budget; the Windows number decides whether the firm view needs a cache.
 5. **The status word "Came in Email or Zip"** is cut in the 160px status
-   column (a file row keeps its ellipsis); say if you want the column wider or
-   the words shorter.
+   column in the cloud's font (it fits on Windows, 131px; a file row keeps its ellipsis); say if you want the column wider or
+   the words shorter. **Answered (P116, built as P125):** the status is the
+   tag "Email or Zip" and its tooltip says "Came in Email or Zip"
+   (`pilot/SPEC-email-zip-tag.md`).
 
 ## App shell SPEC written (2026-09-29, P67-P78; branch `claude/admiring-lamport-bp1sse`)
 

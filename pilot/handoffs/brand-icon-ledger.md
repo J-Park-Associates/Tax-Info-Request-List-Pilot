@@ -1,8 +1,8 @@
 # Handoff: the Ledger 4e icon (2026-10-01)
 
 ## Done
-- Jason chose concept 4e "Gold tab" (P116) after three rounds of concepts
-  (https://claude.ai/artifact/MF8rLu5xoeTXdhFdYZHPgJ). It replaces P115's
+- Jason chose concept 4e "Gold tab" (P191) after three rounds of concepts
+  (https://claude.ai/artifact/MF8rLu5xoeTXdhFdYZHPgJ). It replaces P190's
   monogram under the same file names.
 - SPEC: `pilot/SPEC-icon-ledger.md`. Generator and files:
   `pilot/brand/tax-document-console/` (README says what each file is).
@@ -30,4 +30,4 @@
 
 ## Files the next session needs
 `pilot/SPEC-icon.md`, `pilot/brand/tax-document-console/README.md`, and the
-P115/P116 rows in `pilot/DECISIONS.md`.
+P190/P191 rows in `pilot/DECISIONS.md`.

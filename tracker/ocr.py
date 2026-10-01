@@ -165,7 +165,7 @@ class ReaderUnavailable(Exception):
 #: below Windows' 260, so this leaves a margin.
 READER_PATH_LIMIT = 240
 #: What the app and the pass say when the app sits too deep to read.
-READER_PATH_WARNING = ("Move the app to a shorter folder, for example C:\\JPA Tracker; "
+READER_PATH_WARNING = ("Move the app to a shorter folder, for example C:\\JPA App; "
                        "scans can't be read from here")
 
 

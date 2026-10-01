@@ -189,7 +189,7 @@ def test_the_apps_menu_is_the_template_in_both_builds_and_the_source_app_runs_it
 #: brought forward. Every other part of the shell is left real.
 _ELECTRON_STUB = r"""
 const Module = require("module");
-const seen = { asked: false, quit: 0, windows: 0, restored: 0, focused: 0, events: [] };
+const seen = { asked: false, quit: 0, windows: 0, restored: 0, focused: 0, events: [], spawned: [], setPaths: [] };
 const handlers = {};
 const win = {
   isMinimized: () => true,
@@ -209,6 +209,8 @@ class BrowserWindow {
 const electron = {
   app: {
     isPackaged: false,
+    getPath: (name) => `/fake/${name}`,
+    setPath(name, value) { seen.setPaths.push({ name, value, beforeLock: !seen.asked }); },
     requestSingleInstanceLock() { seen.asked = true; return process.argv[3] === "first"; },
     quit() { seen.quit += 1; },
     on(name, fn) { seen.events.push(name); handlers[name] = fn; },
@@ -218,9 +220,30 @@ const electron = {
   Menu: { buildFromTemplate: (template) => ({ template }), setApplicationMenu() {} },
   nativeTheme: { shouldUseDarkColors: false, shouldUseHighContrastColors: false, themeSource: "", on() {} },
 };
+// The tracker is never started: in a checkout with a .venv, main.js's launch
+// step would run the checkout's Python against the checkout's settings file
+// (decision 185's tripwire). Every spawn is recorded and answers at once
+// with an empty reply and exit 0 (the review of SPEC-wincheck-fixes, S5).
+const { EventEmitter } = require("events");
+const childProcess = {
+  spawn(command) {
+    seen.spawned.push(command);
+    const stream = () => Object.assign(new EventEmitter(), { setEncoding() {} });
+    const child = Object.assign(new EventEmitter(), { stdout: stream(), stderr: stream(), kill() {} });
+    child.stdin = Object.assign(new EventEmitter(), { write() {}, end() {} });
+    setImmediate(() => {
+      child.stdout.emit("data", '{"warnings": []}\n');
+      child.emit("exit", 0, null);
+      child.emit("close", 0, null);
+    });
+    return child;
+  },
+};
 const load = Module._load;
 Module._load = function (request, ...rest) {
-  return request === "electron" ? electron : load.call(this, request, ...rest);
+  if (request === "electron") return electron;
+  if (request === "child_process" || request === "node:child_process") return childProcess;
+  return load.call(this, request, ...rest);
 };
 require(process.argv[2]);
 setImmediate(() => {
@@ -260,11 +283,66 @@ def test_the_app_opens_one_window(tmp_path):
 
     first = launch("first")
     assert first["asked"] and first["windows"] == 1 and first["quit"] == 0
+    assert all(isinstance(one, str) for one in first["spawned"])   # recorded, never started
     assert "second-instance" in first["events"]
     assert first["restored"] == 1 and first["focused"] == 1   # the second launch, answered
     second = launch("second")
     assert second["asked"] and second["quit"] == 1
     assert second["windows"] == 0 and "second-instance" not in second["events"]
+
+
+def test_the_electron_user_data_folder_keeps_its_earlier_name(tmp_path):
+    """SPEC-rename R4: Electron names its userData folder - the page's column
+    widths and cached terms and tour answers - after productName, so the
+    rename would silently start an empty one. main.js sets it, before the
+    single-instance lock Electron keys on it, to package.json's
+    config.userDataName, which is the pilot's earlier name."""
+    import shutil
+    import subprocess
+
+    from tracker.settings import EARLIER_PRODUCT_NAME
+
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node is not on PATH (CI installs it)")
+    package = json.loads(read("app/package.json"))
+    assert package["config"]["userDataName"] == EARLIER_PRODUCT_NAME != package["productName"]
+    harness = tmp_path / "user_data.js"
+    harness.write_text(_ELECTRON_STUB, encoding="utf-8", newline="\n")
+    done = subprocess.run([node, str(harness), str(REPO / "app" / "main.js"), "second"],
+                          capture_output=True, text=True, encoding="utf-8", timeout=60, check=False)
+    assert done.returncode == 0, done.stderr
+    [set_path] = json.loads(done.stdout)["setPaths"]
+    assert set_path["name"] == "userData" and set_path["beforeLock"]
+    parts = re.split(r"[\\/]", set_path["value"])
+    assert parts[-2:] == ["appData", EARLIER_PRODUCT_NAME]
+
+
+def test_the_side_panel_names_the_product_from_its_one_home():
+    """SPEC-rename R1: the side panel's brand band says the product's name
+    as package.json's productName says it, with no second typed copy."""
+    import tracker.api as api
+    from tracker.settings import product_name
+
+    assert api.SCREEN["side"]["product"] == product_name() == json.loads(read("app/package.json"))["productName"]
+    assert api._vocab()["screen"]["side"]["product"] == product_name()
+    assert '"product": product_name(),' in read("tracker/api.py")
+    assert product_name() not in read("tracker/api.py")
+
+
+def test_the_version_is_0_3_in_the_badge_and_the_release_steps():
+    """P140: the version moves to 0.3 once - the badge, and with it Help >
+    About and the installer's name - and the release steps are 0.3's, with
+    the tag pilot-0.3 and no 0.2 tag."""
+    content = read("app/renderer/pilot-content.js")
+    pilot = json.loads(content.split("// PILOT-CONTENT-BEGIN", 1)[1].split("// PILOT-CONTENT-END", 1)[0])
+    assert pilot["edition"]["version"] == "0.3"
+    release = read("pilot/RELEASE.md")
+    assert release.splitlines()[0] == "# Pilot 0.3 - release steps"
+    assert "git tag pilot-0.3 && git push origin pilot-0.3" in release
+    assert "Tax-Document-Console-Setup-0.3.exe" in release
+    assert "There is no 0.2 tag" in " ".join(release.split())
+    assert "pilot-0.2" not in release
 
 
 def test_the_renderer_builds_the_page_from_data_not_html():
@@ -402,11 +480,19 @@ def _fallback_log_rules() -> list[str]:
     """The shell's fallback error log and its one rotated copy (Jason,
     2026-09-29: the log can name a client, so the agent's file tools are
     denied it, in the two path styles the data-home rules use: Windows'
-    %LOCALAPPDATA% folder and, off Windows, Electron's userData)."""
-    product = json.loads(read("app/package.json"))["productName"]
-    folders = (f"//c/Users/*/AppData/Local/{product}", f"~/.config/{product}")
+    %LOCALAPPDATA% folder and, off Windows, Electron's userData).
+
+    The rules name both products' folders (P189): the earlier one first,
+    which an upgraded PC may still hold and where Electron's userData stays
+    (SPEC-rename R4), then the current one, package.json's productName,
+    where the renamed app writes its log on Windows. Both can name a client."""
+    from tracker.settings import EARLIER_PRODUCT_NAME
+
+    current = json.loads(read("app/package.json"))["productName"]
     return [f"{tool}({folder}/error.log{suffix})"
-            for folder in folders for suffix in ("", ".*") for tool in ("Read", "Edit")]
+            for product in (EARLIER_PRODUCT_NAME, current)
+            for folder in (f"//c/Users/*/AppData/Local/{product}", f"~/.config/{product}")
+            for suffix in ("", ".*") for tool in ("Read", "Edit")]
 
 
 def _denied(deny: list[str], path: str) -> bool:
@@ -459,6 +545,27 @@ def test_the_agent_deny_list_names_the_data_home_and_every_file_that_names_a_cli
     owners = [line.split()[0] for line in read(".github/CODEOWNERS").splitlines()
               if line.strip() and not line.startswith("#")]
     assert "/.claude/" in owners, owners      # the list is the owner's to review
+
+
+def test_the_fallback_log_rules_deny_the_current_and_the_earlier_folder():
+    """P189 (Jason, 2026-09-30: "Yes add the log rules."): the renamed app
+    writes its fallback log under the current product's folder, and an
+    upgraded PC may still hold one under the earlier folder; either can name
+    a client, so the deny list refuses both, the log and its rotated copy,
+    in both path styles, to reading and editing alike. Tightening only."""
+    from tracker.settings import EARLIER_PRODUCT_NAME
+
+    deny = json.loads(read(".claude/settings.json"))["permissions"]["deny"]
+    current = json.loads(read("app/package.json"))["productName"]
+    assert current != EARLIER_PRODUCT_NAME
+    rules = _fallback_log_rules()
+    assert len(rules) == 16 and deny[-16:] == rules
+    for product in (EARLIER_PRODUCT_NAME, current):
+        for name in ("error.log", "error.log.1"):
+            assert _denied(deny, f"/c/Users/someone/AppData/Local/{product}/{name}"), (product, name)
+        for style in (f"//c/Users/*/AppData/Local/{product}", f"~/.config/{product}"):
+            for tool in ("Read", "Edit"):
+                assert f"{tool}({style}/error.log)" in deny and f"{tool}({style}/error.log.*)" in deny
 
 
 def test_the_deny_list_never_refuses_a_persons_own_folder_that_shares_a_client_folders_name():
@@ -1325,6 +1432,7 @@ def test_documents_name_only_runtime_files_the_code_owns():
     from tracker.after_install import BUILD_INFO_FILENAME, RECORD_FILENAME
     from tracker.checkpoint import CHECKPOINT_FILENAME
     from tracker.filer import README_LOCK_FILENAME
+    from tracker.firm_cache import CACHE_FILENAME
     from tracker.ledger import LEDGER_FILENAME
     from tracker.locking import LOCK_FILENAME, RACE_LOCK_FILENAME
     from tracker.registry import LEGACY_MANIFEST_FILENAME
@@ -1344,7 +1452,9 @@ def test_documents_name_only_runtime_files_the_code_owns():
              # Decision 159: the checkpoint, the scheduled pass's own note, the race's lock.
              CHECKPOINT_FILENAME, LAST_PASS_FILENAME, RACE_LOCK_FILENAME,
              # Decision 209: the after-install step's note, and the build's.
-             RECORD_FILENAME, BUILD_INFO_FILENAME}
+             RECORD_FILENAME, BUILD_INFO_FILENAME,
+             # P120: the firm view's cache.
+             CACHE_FILENAME}
     tracked = subprocess.run(["git", "ls-files"], cwd=REPO, capture_output=True, text=True).stdout.split()
     repo_files = {Path(t).name for t in tracked} | {t for t in tracked}
     for rel in DOCUMENTS:
@@ -2016,7 +2126,7 @@ STRUCK = ("open it yourself", "open it on this machine", "on this machine, and d
 def test_no_document_sends_a_person_to_open_a_refused_file_or_publish_a_stray():
     """Decision 184: each struck sentence stays struck, and what replaced it
     - the paragraph on opening a parked file, the section on a document the
-    tracker did not file - is said once. It catches these sentences' known
+    app did not file - is said once. It catches these sentences' known
     shapes coming back, not a new one worded differently."""
     for rel in (*DOCUMENTS, "app/renderer/index.html", "app/renderer/app.js",
                 "tracker/reasons.py", "Build App.bat"):
@@ -2025,7 +2135,7 @@ def test_no_document_sends_a_person_to_open_a_refused_file_or_publish_a_stray():
             assert sentence not in text, (rel, sentence)
     runbook = read("docs/runbook.md")
     assert runbook.count("**Before you open anything a pass parked.**") == 1
-    assert runbook.count("### A document the tracker did not file") == 1
+    assert runbook.count("### A document the app did not file") == 1
 
 
 def test_the_one_machine_rule_is_stated_once_as_todays_rule():
@@ -2443,7 +2553,7 @@ def test_the_runbook_reads_a_file_with_open_on_its_card_never_in_a_folder_of_one
                if re.search(r"\bfolder of your own\b", sentence, re.IGNORECASE)
                or ("`Prepared`" in sentence and re.search(r"\byour own\b", sentence, re.IGNORECASE))]
     assert offered == [], offered
-    section = runbook[runbook.index("### A document the tracker did not file"):]
+    section = runbook[runbook.index("### A document the app did not file"):]
     section = section[:section.index("\n### ", 4)]
     assert "**Open** on its" in section and "decision 184" in section, section
 
@@ -2490,13 +2600,13 @@ const realSpawn = require("child_process").spawn;
 const realFs = require("fs");
 const [mainJs, fake, calls] = process.argv.slice(2);
 // Off Windows the fallback log is in Electron's userData; FAKE_PLATFORM=win32
-// makes it %LOCALAPPDATA%\\Tax Document Tracker Pilot (Jason, 2026-09-29).
+// makes it %LOCALAPPDATA%\\<productName> (Jason, 2026-09-29).
 Object.defineProperty(process, "platform", { value: process.env.FAKE_PLATFORM || "linux" });
 let handler = null;
 const sent = [];
 const appHandlers = {};
 const electron = {
-  app: { isPackaged: false, requestSingleInstanceLock: () => true, quit() {},
+  app: { isPackaged: false, requestSingleInstanceLock: () => true, quit() {}, setPath() {},
          getPath: () => process.env.FAKE_USERDATA,
          on(name, fn) { appHandlers[name] = fn; },
          whenReady: () => new Promise(() => {}) },
@@ -2804,17 +2914,17 @@ def test_with_no_error_log_named_the_failure_is_saved_in_the_fallback_log_and_th
     """Jason, 2026-09-29 (after the rebase review of 186, MF2): with no data
     home the API names no error log. The failure is still SAVED - in the
     shell's fallback log in the per-user app folder, never beside the
-    program - and the screen says just "Tracker Failed", with nothing of
+    program - and the screen says just "App Failed", with nothing of
     stderr in the reply."""
     import tracker.api as api
     from tracker.settings import ERROR_LOG_FILENAME
 
-    assert api.SHELL_NO_LOG == "Tracker Failed"
+    assert api.SHELL_NO_LOG == "App Failed"
     ran = _run_the_shell(tmp_path, [["list"], ["templates"]], FAKE_LOG="")
     reply = ran["out"][1]["reply"]
     sentence = api.SHELL_NO_REPLY.format(code=1) + "\n\n" + api.SHELL_NO_LOG
     assert reply["error"] == sentence and reply["failure"]["sentence"] == sentence
-    assert reply["error"].endswith("\n\nTracker Failed")
+    assert reply["error"].endswith("\n\nApp Failed")
     assert "fabricated" not in json.dumps(reply) and "Sample Client" not in json.dumps(reply)
     assert reply["failure"]["kind"] == "failed"
     saved = (tmp_path / "userdata" / "error.log").read_text(encoding="utf-8")
@@ -2828,7 +2938,7 @@ def test_with_an_error_log_named_the_failure_goes_there_and_not_to_the_fallback_
 
     ran = _run_the_shell(tmp_path, [["list"], ["templates"]])
     reply = ran["out"][1]["reply"]
-    assert reply["error"] == api.SHELL_NO_REPLY.format(code=1) and "Tracker Failed" not in reply["error"]
+    assert reply["error"] == api.SHELL_NO_REPLY.format(code=1) and "App Failed" not in reply["error"]
     assert _STDERR_TEXT in (tmp_path / "tracker-errors.log").read_text(encoding="utf-8")
     assert not (tmp_path / "userdata").exists()
 
@@ -2884,14 +2994,14 @@ def test_the_fallback_log_is_capped_and_a_write_that_fails_never_throws(tmp_path
 
 
 def test_on_windows_the_fallback_log_is_local_and_never_the_roaming_or_data_folder(tmp_path):
-    """Jason, 2026-09-29: %LOCALAPPDATA%\\Tax Document Tracker Pilot\\error.log
+    """Jason, 2026-09-29: %LOCALAPPDATA%\\<productName>\\error.log
     (Electron has no getPath name for it), else the profile's AppData\\Local;
     never userData (roaming %APPDATA%), never the data home nor the upstream
     product's folder."""
     from tracker.settings import DATA_HOME_NAME
 
     product = json.loads(read("app/package.json"))["productName"]
-    assert product == "Tax Document Tracker Pilot" and product not in (DATA_HOME_NAME, UPSTREAM_DATA_HOME_NAME)
+    assert product == "Tax Document Console" and product not in (DATA_HOME_NAME, UPSTREAM_DATA_HOME_NAME)
     local = tmp_path / "local"
     _run_the_shell(tmp_path, [["list"], ["templates"]], FAKE_LOG="", FAKE_PLATFORM="win32",
                    LOCALAPPDATA=str(local))
@@ -4052,6 +4162,140 @@ def test_the_runbook_says_where_the_fallback_error_log_is_and_to_delete_it_by_ha
     folder, and that it can hold client names so it is deleted by hand."""
     runbook = " ".join(read("docs/runbook.md").split())
     note = runbook.split("**The fallback error log's place (ruling 22):**", 1)[1].split("There used to be a second one", 1)[0]
-    for part in (r"%LOCALAPPDATA%\Tax Document Tracker Pilot\error.log", "error.log.1", "tracker-errors.log",
-                 "Uninstalling the app leaves that folder behind", "can contain client names", "delete the folder by hand"):
+    for part in (r"%LOCALAPPDATA%\Tax Document Console\error.log", "error.log.1", "tracker-errors.log",
+                 "Uninstalling the app leaves that folder behind", "can contain client names", "delete the folder by hand",
+                 r"%LOCALAPPDATA%\Tax Document Tracker Pilot", "may still hold an earlier log"):
         assert part in note, part
+
+
+def test_the_runbook_quotes_every_sentence_of_the_rename_carry_over():
+    """SPEC-rename section 8: the runbook's "After the rename (P155)" says
+    what the first start after the upgrade does, quoting each carry-over
+    sentence exactly - the task's with the two names filled in, the settings
+    file's with its paths and problem left as placeholders."""
+    from tracker import after_install, scheduling, settings
+
+    runbook = " ".join(read("docs/runbook.md").split())
+    note = runbook.split("**After the rename (P155).**", 1)[1].split("**It only runs while someone is logged on.**", 1)[0]
+    for name in ("SETTINGS_FROM_SOURCE", "SETTINGS_IN_PLACE", "SETTINGS_BOTH", "SETTINGS_NO_EARLIER",
+                 "SETTINGS_CARRIED", "SETTINGS_CARRY_FAILED", "EARLIER_TASK_KEPT", "EARLIER_TASK_REMOVED",
+                 "EARLIER_TASK_NONE", "EARLIER_TASK_FAILED", "EARLIER_TASK_FROM_SOURCE"):
+        sentence = getattr(after_install, name)
+        if name.startswith("EARLIER_TASK"):
+            sentence = sentence.replace("{old}", settings.EARLIER_PRODUCT_NAME).replace("{new}", scheduling.TASK_NAME)
+        for part in re.split(r"\{\w+\}", sentence):
+            assert part.strip() in note, (name, part)
+
+# ========== P155 Q3 (SPEC-rename R9, 7.4): the program is "the app" to a person ==========
+
+#: What "tracker" may still be in something a person reads: the internal names
+#: Q4 keeps (SPEC-rename R9) - the package and its paths and modules, the
+#: command lines, the frozen API, every TRACKER_* variable, the file and folder
+#: names on disk, the renderer's bridge, the repository - which are removed
+#: before a sentence is judged.
+_INTERNAL_TRACKER_NAMES = re.compile(
+    r"tax-document-tracker(?:-pilot)?"            # the data folders (R3, R8)
+    r"|tracker-errors\.log[\w.]*"                  # the debug log's file name
+    r"|tracker-api(?:\.exe)?"                      # the frozen API (package.json's apiName)
+    r"|tax-tracker[\w.]*"                          # the task's file, the example install folder
+    r"|python -m tracker[\w.]*"                    # the command lines
+    r"|\btracker[/\\][\w./\\*<>{}-]*"              # the package's paths
+    r"|\btracker\.[a-z_][\w.]*"                    # the package's modules and names
+    r"|\bTRACKER_[A-Z_]+"                          # the environment variables
+    r"|window\.tracker"                            # the renderer's bridge
+    r"|the tracker package"                        # the package, said as a package
+    r"|Tax-Info-Request-List-Pilot",               # the repository
+    re.IGNORECASE)
+
+
+def _calls_the_program_the_tracker(text: str) -> bool:
+    """Whether ``text``, its internal names removed, still says "tracker"."""
+    return "tracker" in _INTERNAL_TRACKER_NAMES.sub("", text).lower()
+
+
+#: Module-level constants whose value is a name, not a sentence, each with
+#: its reason (SPEC-rename 7.4).
+_NAMES_NOT_SENTENCES = {
+    # The pilot's name before the rename, the one home of it (R1): a name,
+    # which the carry-over's sentences put beside the words "earlier name".
+    "tracker.settings.EARLIER_PRODUCT_NAME",
+}
+
+
+def _strings(value) -> list[str]:
+    """Every string in a vocabulary value, walked recursively (keys included)."""
+    if isinstance(value, str):
+        return [value]
+    if isinstance(value, dict):
+        return [s for key, item in value.items() for s in (*_strings(key), *_strings(item))]
+    if isinstance(value, (list, tuple)):
+        return [s for item in value for s in _strings(item)]
+    return []
+
+
+def test_no_sentence_the_app_shows_calls_it_the_tracker():
+    """P155 Q3: every sentence a person can see calls the program "the app".
+    The vocabulary the renderer reads, every module-level UPPER_CASE string
+    in the engine (the sentences its errors, notes and pages are made of),
+    the pilot's own wording and the shell's first-start sentences; only the
+    internal names Q4 keeps may say "tracker"."""
+    import importlib
+    import pkgutil
+
+    import tracker
+    import tracker.api as api
+
+    said = {f"vocab: {s}": s for s in _strings(api._vocab())}
+    for module in pkgutil.iter_modules(tracker.__path__):
+        loaded = importlib.import_module(f"tracker.{module.name}")
+        for name, value in vars(loaded).items():
+            if re.fullmatch(r"[A-Z][A-Z0-9_]*", name) and isinstance(value, str):
+                said[f"tracker.{module.name}.{name}"] = value
+    content = read("app/renderer/pilot-content.js")
+    pilot = json.loads(content.split("// PILOT-CONTENT-BEGIN", 1)[1].split("// PILOT-CONTENT-END", 1)[0])
+    said.update({f"pilot-content: {s}": s for s in _strings(pilot)})
+    main_js = read("app/main.js")
+    for name in ("noReply", "couldNotStart", "noLog"):
+        said[f"main.js {name}"] = re.search(rf'^let {name} = "([^"]*)";$', main_js, re.MULTILINE).group(1)
+    # And every other sentence the shell says itself: its string literals
+    # with a space in them, comments left out.
+    code = "\n".join(line for line in main_js.splitlines() if not line.lstrip().startswith("//"))
+    said.update({f"main.js: {s}": s for s in re.findall(r'"([^"\n]* [^"\n]*)"', code)})
+    assert len(said) > 500
+    assert [where for where, text in said.items()
+            if where not in _NAMES_NOT_SENTENCES and _calls_the_program_the_tracker(text)] == []
+
+
+#: The documents a person reads as the app's (SPEC-rename 7.4). History and
+#: agent-facing files are not among them (R10, 4.7).
+_PERSON_FACING_DOCUMENTS = ("README.md", "PRODUCT.md", "docs/runbook.md", "docs/workflow.md",
+                            "pilot/README.md", "pilot/Tester Guide.md", "pilot/RELEASE.md")
+#: The two products a sentence may name: the pilot's earlier name, only in a
+#: sentence that says it is the earlier one, and the firm's production
+#: product, only in one that says "production" (R8, R10).
+_EARLIER_PRODUCT = re.compile(r"Tax\s+Document\s+Tracker\s+Pilot", re.IGNORECASE)
+_PRODUCTION_PRODUCT = re.compile(r"Tax\s+Document\s+Tracker", re.IGNORECASE)
+#: Another product of the firm's, named with its link, is not this program.
+_ANOTHER_PRODUCT = re.compile(r"\[Audit-PBC-List\]\([^)]*\)\s+tracker")
+
+
+def test_no_person_facing_document_calls_the_program_the_tracker():
+    """P155 Q3: the documents a person reads call the program "the app".
+    Judged sentence by sentence, the lines joined, so a phrase split over
+    two lines is still seen."""
+    wrong = []
+    for rel in _PERSON_FACING_DOCUMENTS:
+        text = " ".join(read(rel).split())
+        for sentence in re.split(r"(?<=[.!?])\s+", text):
+            judged = _ANOTHER_PRODUCT.sub("", sentence)
+            if _EARLIER_PRODUCT.search(judged):
+                if "earlier" not in judged.lower():
+                    wrong.append((rel, sentence))
+                judged = _EARLIER_PRODUCT.sub("", judged)
+            if _PRODUCTION_PRODUCT.search(judged):
+                if "production" not in judged.lower():
+                    wrong.append((rel, sentence))
+                judged = _PRODUCTION_PRODUCT.sub("", judged)
+            if _calls_the_program_the_tracker(judged):
+                wrong.append((rel, sentence))
+    assert wrong == []

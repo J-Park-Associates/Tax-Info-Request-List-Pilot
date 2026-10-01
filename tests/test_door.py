@@ -55,7 +55,7 @@ def test_a_client_write_through_a_link_is_refused(root, tmp_path):
     inbox = layout.inbox_dir_for(root, HOUSEHOLD)
     _link_to(outside, inbox / "swapped")
 
-    with pytest.raises(door.DoorError, match="is not a place the tracker writes"):
+    with pytest.raises(door.DoorError, match="is not a place the app writes"):
         door.client_write(root, HOUSEHOLD, inbox / "swapped" / "w2.pdf")
     assert door.through_a_link(inbox / "swapped" / "w2.pdf", root)
     assert door.client_write(root, HOUSEHOLD, inbox / "w2.pdf") == inbox / "w2.pdf"

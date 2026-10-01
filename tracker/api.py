@@ -82,7 +82,7 @@ import shutil
 import sys
 from collections.abc import Callable
 from contextlib import ExitStack
-from dataclasses import asdict, replace
+from dataclasses import asdict, dataclass, replace
 from functools import cache
 from pathlib import Path, PurePosixPath
 from types import SimpleNamespace
@@ -95,6 +95,7 @@ from tracker import (
     content_check,
     door,
     errors,
+    firm_cache,
     layout,
     ledger,
     names,
@@ -266,6 +267,7 @@ from tracker.registry import (
     RegistryError,
     discover_engagements,
     engagement_from,
+    household_positions,
     households_named,
     mark_superseded,
 )
@@ -327,6 +329,7 @@ from tracker.settings import (
     error_log_path,
     firm,
     firm_phone,
+    one_reading,
     product_name,
     program_drive_refusal,
     schedule_preference,
@@ -390,8 +393,8 @@ _RUNNING: dict = {"command": ""}
 USAGE = "usage: tracker.api {commands}"
 #: What an error the tracker did not expect is said as: its class and code,
 #: never its message, and where its detail went.
-FAILED = ("The tracker hit an error it did not expect ({kind}). What it finished is on the record; "
-          "the details are in {log} beside the tracker's database.")
+FAILED = ("The app hit an error it did not expect ({kind}). What it finished is on the record; "
+          "the details are in {log} beside the app's database.")
 #: The notices' three buttons (decision 193, ruling 12). Static in
 #: ``index.html``'s template, pinned to these word for word, because a
 #: notice must work when the very first ``list`` fails, before any
@@ -439,15 +442,15 @@ SHELL_KILLED_WRITE = "Change Stopped: Ran Too Long."
 SHELL_KILLED_WRITE_NOTE = "It May Be Partly Done."
 SHELL_KILLED_READ = "Stopped: Ran Too Long."
 SHELL_KILLED_AT = "It Was on {household}: {name}."
-SHELL_NO_REPLY = "No Reply From the Tracker"
-SHELL_COULD_NOT_START = "The Tracker Could Not Start"
+SHELL_NO_REPLY = "No Reply From the App"
+SHELL_COULD_NOT_START = "The App Could Not Start"
 SHELL_COULD_NOT_SEND = "Could Not Send; Nothing Changed"
 #: With no error log named (no data folder yet) the reply says just this, two
 #: words, and the details are saved only in the shell's fallback log in
 #: Electron's per-user app folder, never shown: the shell never writes a log
 #: beside the program (decision 186's rebase review, MF2; Jason, 2026-09-29;
 #: SPEC-shell 11.2).
-SHELL_NO_LOG = "Tracker Failed"
+SHELL_NO_LOG = "App Failed"
 #: An error of the page's own, said by its class; its message goes to the
 #: error log through the shell (the review's S5).
 PAGE_ERROR = "The App Hit an Error"
@@ -473,6 +476,13 @@ SCAN_REASONS = {
     "folder-missing": "Folder Not Found",
     "other": "Unexpected Error",
 }
+#: Why a return skipped for want of room did nothing: "Nothing Done: Names
+#: Too Long." (P134; Jason chose it, 2026-09-30, SPEC-wincheck-fixes Q1).
+#: The other skip words, Inactive and Rolled Forward, are the screen's own
+#: (``SCREEN``), referenced in :func:`_vocab`'s ``scan.skipped``, never
+#: restated. A lock held elsewhere says :data:`SCAN_REASONS`'s word; a kind
+#: listed nowhere is :data:`SCAN_NOTHING_DONE_BARE` (P117).
+SCAN_NO_ROOM = "Names Too Long"
 SCAN_COMPLETE = "Pass complete \u2014 {did}.   {summary}"
 SCAN_FILED = "Filed {n}"
 SCAN_REVIEW = "{n} to Review"
@@ -595,7 +605,7 @@ ENGAGEMENT_FLAG = "--engagement"
 HOUSEHOLD_HEADING = "Household"
 HOUSEHOLD_NAME_LABEL = "Household"
 MEMBERS_LABEL = "Shared With"
-MEMBERS_HELP = ("who this household's folder is meant to be shared with - the tracker cannot "
+MEMBERS_HELP = ("who this household's folder is meant to be shared with - the app cannot "
                 "read Drive's sharing, so this is the firm's own note")
 CONTACT_LABEL = "Contact"
 CONTACT_HELP = "the greeting name in every return's letter, filled into each return when it is made"
@@ -674,8 +684,24 @@ NOBODY_TYPED = "Nobody Typed Yet"
 #: with. Nothing routes outside the feed list, and a person extends it
 #: deliberately or not at all.
 NOT_FED = "{label} is not a return this drop folder feeds; add it to the household's feeds first"
+#: The related households (pilot P141, P170): a person's note that two
+#: households belong together, kept on both records and never a route.
+#: The editor's label and button, and what a name that is not one is
+#: refused with.
+RELATED_LABEL = "Related Households"
+ADD_RELATED_LABEL = "Add Related Household"
+RELATED_REFUSED = "{household} is not a household this one can be related to"
+RELATED_UNKNOWN = "{household} is not a household under the clients folder"
+RELATED_NOT_A_LIST = "Related Households is not a list of household names"
+#: The catalog ids each side-panel Client Type stands for (pilot P153).
+CLIENT_TYPE_FORMS = {
+    "individuals": ["1040"],
+    "businesses": ["1120", "1120S", "1065"],
+    "trusts": ["1041"],
+    "nonprofits": ["990"],
+}
 
-MISFITS_HEADING = "Folders the Tracker Leaves Alone"
+MISFITS_HEADING = "Folders the App Leaves Alone"
 MISFITS_NOTE = ("Each is listed with the one reason it does not fit the layout; nothing in it "
                 "is ever read, moved or renamed.")
 TWO_OPEN_YEARS_NOTE = "Two Years Open; Sorting Paused"
@@ -695,7 +721,7 @@ SHARING_HEADING = "Before the client can drop anything"
 MARK_SHARED_LABEL = "Mark as Shared"
 SHARED_ON_LINE = "Shared {day}"
 NOT_YET_SHARED_LINE = "Not Yet Marked as Shared"
-SHARING_NOTE = ("The tracker cannot see Drive's sharing. The two grants are the firm's to make, once; "
+SHARING_NOTE = ("The app cannot see Drive's sharing. The two grants are the firm's to make, once; "
                 "the year folders are view-only through the household folder, and nothing is ever re-shared.")
 #: Why *Mark as shared* refuses: the inbox's link is the one part of the
 #: three the tracker can see was done, so it is the one part it insists on.
@@ -948,7 +974,7 @@ assert (sorted((*PLAIN_COLUMNS, *ROUTING_COLUMNS)) == sorted(field for _, field 
     "the plain view and the routing fold must share the request list's columns between them"
 #: The one switch that shows a row's routing columns (S5).
 EDITOR_ADVANCED_LABEL = "Advanced"
-ROUTING_HELP = ("How the tracker recognises this document when it arrives. A save checks these "
+ROUTING_HELP = ("How the app recognises this document when it arrives. A save checks these "
                 "the same way whether the fold is open or not.")
 #: Edit Request List pressed while the state on screen is still another
 #: return's, after reading it again (decision 201, the review's S4): said
@@ -1049,7 +1075,7 @@ def _new_return_dir(root: Path, household: str, year: int, return_name: str,
 #: there and holds no record (decision 137, M1): the tracker did not make
 #: it, so it is a misfit, and a misfit is left alone. Refused before
 #: anything is written.
-HOUSEHOLD_NOT_OURS = ("A folder named '{name}' is already there and the tracker did not make it. "
+HOUSEHOLD_NOT_OURS = ("A folder named '{name}' is already there and the app did not make it. "
                       "Choose another name, or move that folder aside first. Nothing was changed.")
 def _engagement_dir(argv: list[str]) -> Path:
     """The engagement a command is about: ``ENGAGEMENT_FLAG <folder>``.
@@ -1179,7 +1205,7 @@ PATH_KINDS: dict[str, str] = {
 OVERRIDE_LABELS: tuple[str, ...] = (
     "Client Confirmed Final Version",
     "Correct; Only Formatting Flagged",
-    "Received Outside the Tracker",
+    "Received Outside the App",
     "Prior-Year or Substitute Document Accepted",
 )
 
@@ -1211,6 +1237,8 @@ MENU: dict[str, str] = {
     "clients": "Clients",
     "find": "Find",
     "refresh": "Refresh",
+    # Forgets the list column widths this PC keeps (pilot SPEC-lists 4, P139).
+    "reset_columns": "Reset Column Widths",
     "tools": "&Tools",
     "sort_now": "Sort Now",
     "stop_sorting": "Stop Sorting",
@@ -1258,6 +1286,10 @@ SCREEN: dict = {
     "navigate_return": "Navigate to Return",
     "find": "Find a Client",
     "find_none": "No Match",
+    # The search box's placeholder (pilot SPEC-lists 13, P173): every page,
+    # and Needs Review, where the box also finds the waiting files.
+    "find_placeholder": "Search Clients and Returns",
+    "find_placeholder_files": "Search Files, Clients and Returns",
     "sort": {
         "now": "Sort Now",
         "stop": "Stop Sorting",
@@ -1279,6 +1311,88 @@ SCREEN: dict = {
         "complete": "Complete",
     },
     "work": "Work Waiting",
+    # The linked households (pilot SPEC-lists 10, P141, P171): the icon's
+    # tooltip and the panel's name, and each link's kind (owner question
+    # Q10, recommendation A).
+    "linked": {
+        "tip": "Linked Households",
+        "feeds": "Also Feeds",
+        "fed_by": "Fed By",
+        "related": "Related",
+    },
+    # Overview's filter tabs (pilot SPEC-lists 11, P145); "All" is
+    # ``filters.all``.
+    "tabs": {
+        "need": "Need You ({n})",
+        "waiting": "Waiting ({n})",
+    },
+    # A Needs Review group's count (pilot SPEC-lists 12, P149).
+    "documents": {
+        "one": "1 Document",
+        "many": "{n} Documents",
+    },
+    # The page buttons of the four firm lists (pilot SPEC-lists 14, P152,
+    # P174): the footer, its two buttons and each list's noun.
+    "paging": {
+        "showing": "Showing {from}-{to} of {total} {noun}",
+        "previous": "Previous",
+        "next": "Next",
+        "nouns": {
+            "overview": "Returns",
+            "needs_review": "Files",
+            "reminders": "Drafts",
+            "clients": "Clients",
+        },
+    },
+    # The side panel (pilot SPEC-lists 15, P153, P154): the brand band, the
+    # section headings, Settings, and the pages that are not built yet,
+    # each marked and doing nothing but say so. The product is named from
+    # its one home, app/package.json's productName (P155, SPEC-rename R1).
+    "side": {
+        "brand": "J Park & Associates",
+        "product": product_name(),
+        "types": "Client Types",
+        "workspace": "Workspace",
+        "settings": "Settings",
+        "under_construction": "Under Construction",
+        "soon": {
+            "ready_to_sign": "Ready to Sign (Under Construction)",
+            "family_entities": "Family Entities (Under Construction)",
+            "personal_trusts": "Personal Trusts (Under Construction)",
+            "corporate_entities": "Corporate Entities (Under Construction)",
+            "portal_settings": "Portal Settings (Under Construction)",
+        },
+    },
+    # The Client Types of the side panel (pilot SPEC-lists 15.3): each
+    # opens Clients filtered to the households with a return of one of its
+    # forms (CLIENT_TYPE_FORMS, ``vocab.client_type_forms``).
+    "client_types": {
+        "individuals": "Individuals",
+        "businesses": "Businesses",
+        "trusts": "Trusts & Estates",
+        "nonprofits": "Nonprofits",
+    },
+    # The column headers of the four firm lists (pilot SPEC-lists 2, P138):
+    # a header's word, its tooltip - "Sort by {Column}", Jason's choice
+    # (P180), whose "by {Column}" keeps it apart from the filing pass's
+    # Sort Now - and what a screen reader hears after a keyboard resize.
+    "columns": {
+        "return": "Return",
+        "client": "Client",
+        "status": "Status",
+        "date": "Date",
+        "file": "File",
+        "suggestion": "Suggestion",
+        "reason": "Reason",
+        "received": "Received",
+        "stage": "Stage",
+        "drafted": "Drafted",
+        "returns": "Returns",
+        # Clients' own word for its name column (pilot SPEC-lists 15.2).
+        "client_name": "Client Name",
+        "sort_by": "Sort by {column}",
+        "width": "{column} Width {n}",
+    },
     "empty": {
         "overview": "Nothing Is Waiting",
         "next_sort": "Next Sort {time}",
@@ -1300,6 +1414,7 @@ SCREEN: dict = {
         "returns": "{n} Returns",
         "one_return": "1 Return",
         "files": "{n} Files",
+        "one_file": "1 File",
     },
     "due": "Due {date}",
     "partly": "{n} of {total}",
@@ -1327,6 +1442,10 @@ SCREEN: dict = {
         "open": "Open",
         "next": "Next",
         "more": "More",
+        # A Needs Review group's button that opens its right-click menu, and
+        # the Client Type chip's dismiss (pilot SPEC-lists 12, 15.3).
+        "more_actions": "More Actions",
+        "remove_filter": "Remove Filter",
     },
     "sheet": {
         "reminder": "Reminder",
@@ -1362,6 +1481,13 @@ SCREEN: dict = {
         # editor (S5 rebuild 1). Approved by Jason, ruling 23.
         "pick_request": "Pick a Request First",
         "name_requests": "Name Each Custom Request",
+        # What choosing a side-panel page that is not built yet says, and
+        # all it does (pilot P154).
+        "under_construction": "Under Construction",
+        # A related link saved on the household edited, not yet on the
+        # other, whose lock another pass holds; saving again completes it
+        # (P170, the re-check's MUST-R1; Jason's words, P183).
+        "related_pending": "Link Pending: {household} Is Busy",
     },
     "misfits": {
         "title": "Folders Skipped",
@@ -1673,6 +1799,9 @@ def _vocab() -> dict:
             "feed_warning": FEED_WARNING,
             "return_warning": RETURN_WARNING,
             "nobody_typed": NOBODY_TYPED,
+            # The related households (pilot P170): the editor's label and button.
+            "related_label": RELATED_LABEL,
+            "add_related": ADD_RELATED_LABEL,
             # A paused household (decision 188): the one action and its help.
             "accept_folder_name": ACCEPT_FOLDER_NAME_LABEL,
             "accept_folder_name_help": ACCEPT_FOLDER_NAME_HELP,
@@ -1689,8 +1818,13 @@ def _vocab() -> dict:
         # every label, heading and tooltip of the shell, five words or fewer.
         "menu": dict(MENU),
         "screen": SCREEN,
+        # The forms of each Client Type (pilot SPEC-lists 15.3): catalog ids,
+        # not words, matched on each return's recorded form, never a name.
+        "client_type_forms": CLIENT_TYPE_FORMS,
         # One short label per reason code, for a row's status (11.5).
         "reasons": dict(reasons.SHORT_REASONS),
+        # The words a shortened label stands for, its tooltip every time (P116).
+        "reason_tips": dict(reasons.REASON_TIPS),
         # Sort & Scan's command (decision 203): the shell watches it as a
         # pass, and the renderer sends it; neither types it.
         "pass_command": PASS_COMMAND,
@@ -1718,7 +1852,10 @@ def _vocab() -> dict:
         "scan": {"scanning": SCAN_SCANNING, "nothing_done": SCAN_NOTHING_DONE,
                  "nothing_done_bare": SCAN_NOTHING_DONE_BARE,
                  "problem": SCAN_PROBLEM, "problem_reason": SCAN_PROBLEM_REASON,
-                 "reasons": dict(SCAN_REASONS), "complete": SCAN_COMPLETE, "filed": SCAN_FILED,
+                 "reasons": dict(SCAN_REASONS),
+                 "skipped": {"inactive": SCREEN["inactive"], "rolled-forward": SCREEN["rolled"],
+                             "no-room": SCAN_NO_ROOM},
+                 "complete": SCAN_COMPLETE, "filed": SCAN_FILED,
                  "review": SCAN_REVIEW, "syncing": SCAN_SYNCING, "not_sorted": SCAN_NOT_SORTED,
                  "but": SCAN_BUT, "not_in_pass": SCAN_NOT_IN_PASS},
         # Sort & Scan, watched, and its Stop (decision 193).
@@ -2700,6 +2837,9 @@ def _household_payload(engagement: Path) -> dict:
         "link": info.link,
         "feeds": feeds,
         "fed_by": fed,
+        # The households this record names as related (pilot P170); the
+        # list's ``links`` also shows the ones that name this household.
+        "related": list(info.related),
         "open_years": years,
         # The year the card's roll fold names, or None when no roll is
         # offered (decision 196).
@@ -3490,6 +3630,7 @@ def _list_payload(root: Path, registry: Registry) -> dict:
     vocabulary (decision 194). ``list`` adds the vocabulary; a write that
     changes the list carries this alone (:data:`LIST_CHANGING`)."""
     grouped = registry.by_household()
+    links = _household_links(registry)
     households = []
     for household in registry.households:
         returns = grouped.get(household.path, [])
@@ -3502,12 +3643,15 @@ def _list_payload(root: Path, registry: Registry) -> dict:
             "contact": household.info.contact,
             "link": household.info.link,
             "problem": household.problem,
+            # The households linked to this one (pilot P141, P172).
+            "links": links.get(household.path, []),
             "open_years": open_years(returns),
             "returns": [
                 {"label": one.label, "path": str(one.path),
                  "year": one.tax_year if one.tax_year is not None else year_of(one.path),
                  "return_name": one.info.return_name or one.path.name,
-                 "active": one.active, "superseded_by": one.superseded_by}
+                 "active": one.active, "superseded_by": one.superseded_by,
+                 "form": one.info.form}
                 for one in returns
             ],
         })
@@ -3515,7 +3659,10 @@ def _list_payload(root: Path, registry: Registry) -> dict:
         {"name": one.label, "path": str(one.path),
          "household": str(one.household_path),
          "year": one.tax_year if one.tax_year is not None else year_of(one.path),
-         "return_name": one.info.return_name or one.path.name}
+         "return_name": one.info.return_name or one.path.name,
+         # The catalog the return was cut from (pilot P172): the form chip
+         # and the Client Types, read from the record, never a folder name.
+         "form": one.info.form}
         for one in registry.engagements
     ]
     return {
@@ -3530,6 +3677,65 @@ def _list_payload(root: Path, registry: Registry) -> dict:
                     for misfit in registry.misfits],
         "root": str(root),
     }
+
+
+#: The kinds of link between two households (pilot P141, P172), as the
+#: ``links`` field says them: this household's drop folder also feeds that
+#: one, that one's feeds this one, or a person marked them related.
+LINK_FEEDS = "feeds"
+LINK_FED_BY = "fed_by"
+LINK_RELATED = "related"
+
+
+def _household_links(registry: Registry) -> dict[Path, list[dict]]:
+    """:func:`_links_from` over the households the practice walk read."""
+    return _links_from([(one.path, one.name, [feed.household for feed in one.info.feeds], list(one.info.related))
+                        for one in registry.households])
+
+
+def _links_from(households: list[tuple[Path, str, list[str], list[str]]]) -> dict[Path, list[dict]]:
+    """Every household's linked households, by the household's folder
+    (pilot P141, P172): each ``{"name", "path", "kind"}``, from the records
+    the walk already read - no extra disk read, nothing inferred.
+
+    Both kinds are shown on **both** ends. A feed (decision 132) is
+    ``feeds`` on the feeding household and ``fed_by`` on the fed one; a
+    related mark (P170) is ``related`` on both, whichever record names it,
+    so a save that stopped between its two writes still shows. A name no
+    household folder answers keeps its words with ``path`` ``""``: the
+    panel shows it as text and never guesses where it went.
+    """
+    @dataclass(frozen=True)
+    class _One:
+        path: Path
+        name: str
+        feeds: list[str]
+        related: list[str]
+
+    every = [_One(path, name, feeds, related) for path, name, feeds, related in households]
+    by_key = {layout.name_key(one.name): one for one in every}
+    found: dict[Path, dict[tuple[str, str], dict]] = {one.path: {} for one in every}
+
+    def add(household, name: str, kind: str) -> None:
+        other = by_key.get(layout.name_key(name))
+        if other is not None and other.path == household.path:
+            return
+        entry = {"name": other.name if other else name, "path": str(other.path) if other else "", "kind": kind}
+        found[household.path].setdefault((layout.name_key(entry["name"]), kind), entry)
+
+    for household in every:
+        for fed in household.feeds:
+            add(household, fed, LINK_FEEDS)
+            other = by_key.get(layout.name_key(fed))
+            if other is not None:
+                add(other, household.name, LINK_FED_BY)
+        for name in household.related:
+            add(household, name, LINK_RELATED)
+            other = by_key.get(layout.name_key(name))
+            if other is not None:
+                add(other, household.name, LINK_RELATED)
+    return {path: sorted(entries.values(), key=lambda one: (layout.name_key(one["name"]), one["kind"]))
+            for path, entries in found.items()}
 
 
 def _list_paths(root: Path | None) -> dict:
@@ -3625,7 +3831,7 @@ DUPLICATE_HOUSEHOLD = ("A household with that name is already in the list, as '{
                        "the city. Nothing was changed.")
 #: What it is told when the name is a client folder no household owns.
 CLIENT_FOLDER_TAKEN = ("A folder with that name is already in the clients' tree and no household owns "
-                       "it. It is listed under Folders the Tracker Leaves Alone; give it back to its "
+                       "it. It is listed under Folders the App Leaves Alone; give it back to its "
                        "household or move it aside first. Nothing was changed.")
 
 
@@ -3902,6 +4108,86 @@ def _feeds_from_spec(sent: object, household_dir: Path) -> tuple[Feed, ...]:
     return tuple(wanted)
 
 
+def _related_from_spec(sent: object, household_dir: Path) -> tuple[str, ...]:
+    """The related households a person picked in the editor (pilot P170),
+    refused where it is not a list of other households' folder names.
+
+    Each name is held to the layout's one name rule, as a feed's halves
+    are; the household itself, a blank and a name twice are refused by
+    name; and every name must be a household under the clients root,
+    read fresh from the private tree (never inferred, never from the
+    store), so a link always points at a household that exists.
+    """
+    if not isinstance(sent, (list, tuple)) or not all(isinstance(one, str) for one in sent):
+        raise ManifestError(RELATED_NOT_A_LIST)
+    wanted: list[str] = []
+    for one in sent:
+        name = layout.normalised_name(one)
+        if not name:
+            raise ManifestError(RELATED_REFUSED.format(household="(blank)"))
+        _folder_name(name, "household")
+        if layout.name_key(name) == layout.name_key(household_dir.name) or \
+                any(layout.name_key(held) == layout.name_key(name) for held in wanted):
+            raise ManifestError(RELATED_REFUSED.format(household=name))
+        wanted.append(name)
+    if not wanted:
+        return ()
+    found = {layout.name_key(one.name): one.name
+             for one in households_named(household_dir.parent, wanted).households}
+    for name in wanted:
+        if layout.name_key(name) not in found:
+            raise ManifestError(RELATED_UNKNOWN.format(household=name))
+    return tuple(found[layout.name_key(name)] for name in wanted)
+
+
+def _mirror_related(household_dir: Path, after: tuple[str, ...]) -> list[str]:
+    """Make every other household's record agree with the related list a
+    person just saved here (pilot P170): each household it names names this
+    one, and every other household no longer names this one. It reconciles
+    rather than diffs, so a save that stopped between its two writes - one
+    record naming the other, the other not - is repaired by saving either
+    side again, and a removal made on the side that lacked the link clears
+    the side that had it (the review's M1).
+
+    The candidates are the households this list names and every household
+    whose record names this one, found in one listing of the private tree
+    (``households_named``). Each is then read and written **inside its own
+    lock** (the review's S1): one lock at a time, never two, so no lock
+    order is needed, and a change another writer made to that household
+    before the lock is kept, since the record is read fresh under it. A
+    lock that is held elsewhere is not waited on: that household is
+    returned as pending, the household edited stays saved, and the caller
+    says the link is not yet made (the re-check's MUST-R1)."""
+    here = layout.name_key(household_dir.name)
+    wanted = {layout.name_key(one) for one in after}
+    private = household_dir.parent
+    names = [one.name for one in private.iterdir() if one.is_dir() and layout.name_key(one.name) != here]
+    practice = households_named(private, names).households if names else []
+    pending: list[str] = []
+    for other in practice:
+        # A household whose record already agrees - it names this one
+        # exactly when the saved list names it - is left alone: no lock is
+        # taken and nothing is written (the re-check's MUST-R1: a
+        # contact-only save touches no other household).
+        named = any(layout.name_key(one) == here for one in other.info.related)
+        if named == (layout.name_key(other.name) in wanted):
+            continue
+        # A household another pass holds is not waited on and does not undo
+        # this save: its link is said as not yet made, and saving again
+        # after its sort completes it (the repair above).
+        try:
+            with engagement_lock(other.path):
+                info = load_household_info(other.path)
+                kept = tuple(one for one in info.related if layout.name_key(one) != here)
+                if layout.name_key(other.name) in wanted:
+                    kept += (household_dir.name,)
+                if kept != info.related:
+                    save_household(other.path, replace(info, related=kept), lock_held=True)
+        except EngagementLockedError:
+            pending.append(other.name)
+    return pending
+
+
 def _cmd_edit_household(argv: list[str]) -> dict:
     """Save the household's own details from the app's small modal.
 
@@ -3915,6 +4201,12 @@ def _cmd_edit_household(argv: list[str]) -> dict:
     - a list a person built from what is already there, never inferred. A
     feed naming this household, a blank half, or one the list already
     holds is refused by name.
+
+    ``related`` is the list of other households a person marked as
+    related (pilot P170): household names, each one that exists. The list
+    is written into this household's record, and then every other
+    household's record is made to agree with it (:func:`_mirror_related`),
+    so the link is on both records and a half-finished save is repaired.
     """
     engagement = _engagement_dir(argv)
     household_dir = household_of(engagement)
@@ -3936,8 +4228,15 @@ def _cmd_edit_household(argv: list[str]) -> dict:
         contact=" ".join(str(spec.get("contact", held.contact) or "").split()),
         link=" ".join(str(spec.get("link", held.link) or "").split()),
         feeds=_feeds_from_spec(spec["feeds"], household_dir) if "feeds" in spec else held.feeds,
+        related=_related_from_spec(spec["related"], household_dir) if "related" in spec else held.related,
     )
     saved = save_household(household_dir, info)
+    if "related" in spec:
+        # The household edited is saved whatever the other side says; a
+        # household another pass holds is named in a notice, never a
+        # failure (the re-check's MUST-R1).
+        for name in _mirror_related(household_dir, info.related):
+            _warn(SCREEN["notices"]["related_pending"].format(household=name))
     # The household's members, contact and link are in the list (decision 194).
     return _with_list({"saved": {"household": list(saved.fields)}, "state": _state(engagement)})
 
@@ -4903,6 +5202,10 @@ def _reminder_now(engagement: Path, requested: int | None, today: dt.date) -> di
         "stage": stage,
         "held": _held_rows(draft.held),
         "unsorted": draft.unsorted,
+        # Which files hold it, by name, for the sheet to list (P134): a walk of
+        # its own, a moment after the draft's count, so a file landing between
+        # the two can make them differ until the next read.
+        "unsorted_files": reminder.unsorted_files_in_inbox(engagement) if draft.unsorted else [],
         "refusal": reminder.held_refusal(draft) if draft.is_held else "",
         "held_too_long": late,
         "last": ({"date": ledger.day_of(str(last.get(ledger.AT_KEY, ""))).isoformat(),
@@ -5271,7 +5574,12 @@ def _cmd_after_install(argv: list[str]) -> dict:
 #: that storage showed the terms again (the pilot 0.1 Windows check).
 PILOT_RECORD_FILENAME = "pilot-record.json"
 PILOT_RECORD_REFUSED = ('pilot-record takes {{}} to read, or "terms" as the version of the terms '
-                        'accepted, or "tour_seen": true; not {asked}.')
+                        'accepted with "signed_by" as the name typed to sign them (not blank, '
+                        'at most {longest} characters), or "tour_seen": true; not {asked}.')
+#: The longest name the terms' sign-off keeps (P188): a name, not a document.
+SIGNED_BY_LONGEST = 200
+#: What a refusal shows in place of the typed name, which it never echoes.
+SIGNED_BY_WITHHELD = "(name withheld)"
 
 
 def _terms_version(value: object) -> bool:
@@ -5279,6 +5587,12 @@ def _terms_version(value: object) -> bool:
     it: a positive whole number, sent as a number or its digits."""
     text = str(value) if isinstance(value, (int, str)) and not isinstance(value, bool) else ""
     return text.isascii() and text.isdigit() and len(text) <= 6 and not text.startswith("0")
+
+
+def _signed_by(value: object) -> bool:
+    """Whether ``value`` is a name typed to sign the terms (P188): text that
+    is not blank once trimmed and no longer than ``SIGNED_BY_LONGEST``."""
+    return isinstance(value, str) and 0 < len(value.strip()) <= SIGNED_BY_LONGEST
 
 
 def _pilot_record_path() -> Path:
@@ -5297,30 +5611,53 @@ def _read_pilot_record() -> dict:
 
 def _cmd_pilot_record(argv: list[str]) -> dict:
     """The pilot's terms acceptance and "tour seen" (pilot P46): JSON on
-    stdin, ``{}`` to read, ``{"terms": "<version>"}`` when the terms are
-    accepted, ``{"tour_seen": true}`` when the tour is closed. Kept per
-    Windows account in the data home - per account, like the window's own
-    storage - so it asks no more of a person than the cache did, and
-    survives what the cache does not. Not a client record:
-    nothing here is held to the record checkpoint's root. Replies with the
-    record as it now stands: ``terms`` ("" when none) and ``tour_seen``."""
+    stdin, ``{}`` to read, ``{"terms": "<version>", "signed_by": "<name>"}``
+    when the terms are accepted, ``{"tour_seen": true}`` when the tour is
+    closed. Kept per Windows account in the data home - per account, like
+    the window's own storage - so it asks no more of a person than the cache
+    did, and survives what the cache does not. Not a client record:
+    nothing here is held to the record checkpoint's root.
+
+    The name typed to sign the terms (P188) comes only with the terms it
+    signs, and is kept trimmed as ``terms_signed_by`` beside the acceptance
+    time; a blank or oversized one refuses the whole request, so nothing is
+    written. An acceptance sent without a name - the page bringing the
+    record level with an acceptance its cache already held - is kept with
+    none, and a name kept from an earlier acceptance is dropped with it,
+    since it signed that one. It stays in the data home; nothing is sent.
+
+    Replies with the record as it now stands: ``terms``, ``terms_signed_by``
+    and ``terms_accepted_at`` ("" when none) and ``tour_seen``."""
     spec = _read_spec()
-    terms, seen = spec.get("terms"), spec.get("tour_seen")
+    terms, seen, signed = spec.get("terms"), spec.get("tour_seen"), spec.get("signed_by")
     asked = {key: value for key, value in spec.items() if key in ("terms", "tour_seen")}
-    if (set(spec) - {"terms", "tour_seen"} or (seen is not None and seen is not True)
-            or (terms is not None and not _terms_version(terms))):
-        raise ManifestError(PILOT_RECORD_REFUSED.format(asked=json.dumps(spec, sort_keys=True)))
+    if (set(spec) - {"terms", "tour_seen", "signed_by"} or (seen is not None and seen is not True)
+            or (terms is not None and not _terms_version(terms))
+            or ("signed_by" in spec and (terms is None or not _signed_by(signed)))):
+        # The rest of the request is echoed; the typed name never is, since
+        # the refusal is what the page writes to the error log.
+        shown = {**spec, "signed_by": SIGNED_BY_WITHHELD} if "signed_by" in spec else spec
+        raise ManifestError(PILOT_RECORD_REFUSED.format(
+            longest=SIGNED_BY_LONGEST, asked=json.dumps(shown, sort_keys=True)))
     record = _read_pilot_record()
     if asked:
         now = dt.datetime.now().isoformat(timespec="seconds")
         if terms is not None:
             record.update(terms=str(terms), terms_accepted_at=now)
+            if signed is None:
+                record.pop("terms_signed_by", None)
+            else:
+                record["terms_signed_by"] = signed.strip()
         if seen:
             record.update(tour_seen=True, tour_seen_at=now)
         path = _pilot_record_path()
         path.parent.mkdir(parents=True, exist_ok=True)
         write_json_atomically(path, record)
-    return {"terms": str(record.get("terms") or ""), "tour_seen": record.get("tour_seen") is True}
+    name, when = record.get("terms_signed_by"), record.get("terms_accepted_at")
+    return {"terms": str(record.get("terms") or ""),
+            "terms_signed_by": name if isinstance(name, str) else "",
+            "terms_accepted_at": when if isinstance(when, str) else "",
+            "tour_seen": record.get("tour_seen") is True}
 
 
 def _cmd_acknowledge_foreign(argv: list[str]) -> dict:
@@ -5374,6 +5711,7 @@ def _firm_row(one, household: str, today: dt.date) -> tuple[dict, list[dict], di
     record's ``prepared_location`` / ``moved_to`` alone: no path is stat-ed,
     no document is read."""
     row = {"path": str(one.path), "household": household, "label": one.label,
+           "form": one.info.form,
            "year": one.tax_year if one.tax_year is not None else year_of(one.path),
            "counts": dict.fromkeys(GROUPS, 0), "files": 0, "oldest": None, "due": None,
            "draft": {"ready": False, "stage": 0, "held": 0, "drafted": None}, "problem": ""}
@@ -5417,11 +5755,14 @@ def _firm_row(one, household: str, today: dt.date) -> tuple[dict, list[dict], di
     files = [{"return": row["path"], "year": row["year"], "name": t.entry.original_name,
               "handle": handle_of(t.entry), "code": t.entry.code, "received": t.entry.received,
               "suggestion": by_name[t.shortlist[0].identifier].label if t.shortlist else "",
+              # The request's short name, for Needs Review's chip (pilot
+              # P149); the full label above is the chip's tooltip.
+              "suggestion_short": by_name[t.shortlist[0].identifier].short_name if t.shortlist else "",
               "open_key": shown(_shown_copy_key(t.entry), t.entry.prepared_location)}
              for t in parked]
     files.extend({"return": row["path"], "year": row["year"], "name": entry.original_name,
                   "handle": handle_of(entry), "code": reasons.FILE_MOVED.code,
-                  "received": entry.received, "suggestion": "",
+                  "received": entry.received, "suggestion": "", "suggestion_short": "",
                   "open_key": shown(_moved_copy_key(entry), moved_to(entry))}
                  for entry in entries
                  if file_group(entry) == GROUP_NEEDS_YOU and entry.decision == FILE_MOVED)
@@ -5433,17 +5774,38 @@ def _firm_row(one, household: str, today: dt.date) -> tuple[dict, list[dict], di
     return row, files, paths
 
 
-def _firm_key(paths: dict[str, str], key: str, path: str) -> str:
+def _firm_key(paths: dict[str, str], key: str, path: str,
+              spelled_for: dict[str, dict[str, str]] | None = None) -> str:
     """``key`` as the firm's one ``paths`` map spells it: a row's key is only
     its own return's (a preserved original's place in that record), so two
     returns can spell one key for different paths. The later one is
     suffixed `` #2``, `` #3``... (the kind is still the first word), and the
-    same key for the same path is the same key."""
-    spelled, n = key, 1
+    same key for the same path is the same key.
+
+    ``spelled_for`` remembers, per key, the spellings already given (P119):
+    a key every return shares - ``shown_copy 3`` - was otherwise tried
+    against every earlier suffix, which grew with the square of the
+    practice. The next suffix is tried from the number already given, and
+    each is still checked against ``paths``, so a spelling is never one
+    another path holds. Without ``spelled_for``, or for a key that already
+    holds `` #``, it is the plain walk from the start."""
+    if spelled_for is None or " #" in key:
+        spelled, n = key, 1
+        while paths.get(spelled, path) != path:
+            n += 1
+            spelled = f"{key} #{n}"
+        paths[spelled] = path
+        return spelled
+    given = spelled_for.setdefault(key, {})
+    if path in given:
+        return given[path]
+    n = len(given) + 1
+    spelled = key if n == 1 else f"{key} #{n}"
     while paths.get(spelled, path) != path:
         n += 1
         spelled = f"{key} #{n}"
     paths[spelled] = path
+    given[path] = spelled
     return spelled
 
 
@@ -5454,9 +5816,18 @@ def _cmd_firm(argv: list[str]) -> dict:
     its household is paused for two open years (``paused``, ruling 21), and
     the practice's totals. It walks the tree as ``list`` does and reads what
     ``state`` reads for each return, so a count here and the group on the
-    return's own page cannot disagree. It writes nothing, takes no lock and
-    reads no document. Inactive and rolled-forward returns are left out.
-    A root that cannot be walked is said, never answered as empty."""
+    return's own page cannot disagree. It writes nothing in either client
+    tree, takes no lock and reads no document. Inactive and rolled-forward
+    returns are left out. A root that cannot be walked is said, never
+    answered as empty.
+
+    **The cache (P120).** A household whose folders have not changed since
+    the last reply is answered from the cache in the data folder
+    (:data:`tracker.firm_cache.CACHE_FILENAME`); the rest are read as always, and the
+    practice-wide facts are worked out again every time. When the cache
+    path is unsure of anything it gives way to :func:`_firm_fresh`, the
+    whole walk as it always was, which is the reference the suite holds the
+    cached reply to."""
     try:
         root = _saved_root()
     except (door.DoorError, SettingsError) as exc:
@@ -5468,33 +5839,36 @@ def _cmd_firm(argv: list[str]) -> dict:
              "paths": {}, "next_sort": _next_sort()}
     if root is None or not root.is_dir():
         return reply
-    try:
-        registry = discover_engagements(root)
-    except EmptyRoot:
-        return reply
-    except RegistryError as exc:
-        errors.keep("api: firm", exc)
-        log.warning("The clients root could not be walked (%s)", errors.error_class(exc))
-        raise ManifestError(PRACTICE_NOT_WALKED) from None
     today = dt.date.today()
-    names = {household.path: household.name for household in registry.households}
+    shown = _firm_cached(root, today)
+    if shown is None:
+        shown = _firm_fresh(root, today)
+    _firm_reply(reply, shown)
+    return reply
+
+
+#: One shown return of the firm view: its row (``paused`` set), its files and
+#: its own ``paths``, as :func:`_firm_row` built them.
+_FirmShown = tuple[dict, list[dict], dict[str, str]]
+
+
+def _firm_reply(reply: dict, shown: list[_FirmShown]) -> None:
+    """Fill ``reply`` from the shown returns, in the walk's order: the rows,
+    the files with each ``open_key`` spelled firm-wide (:func:`_firm_key`),
+    and the totals. Nothing it is given is changed, so a kept row is never
+    altered by the reply it answers."""
     totals = reply["totals"]
-    # Ruling 21: a household with two open years is paused - the pass sorts
-    # nothing from its inbox (``runner.TWO_OPEN_YEARS``, the same
-    # ``open_years`` test, over the registry's own walk: no extra disk read).
-    paused = {path for path, theirs in registry.by_household().items()
-              if len(open_years(theirs)) > 1}
-    for one in registry.engagements:
-        if runner.why_skipped(one)[0]:
-            continue
-        row, files, own = _firm_row(one, names.get(one.household_path, ""), today)
-        row["paused"] = one.household_path in paused
-        for one_file in files:
-            if one_file["open_key"]:
-                one_file["open_key"] = _firm_key(reply["paths"], one_file["open_key"],
-                                                 own[one_file["open_key"]])
+    # A key that already reads like a spelling (none does today) could stand
+    # where the shortcut would not look: then every key takes the plain walk.
+    literal = any(" #" in one_file["open_key"] for _row, files, _own in shown for one_file in files)
+    spelled_for: dict[str, dict[str, str]] | None = None if literal else {}
+    for row, files, own in shown:
         reply["returns"].append(row)
-        reply["files"].extend(files)
+        reply["files"].extend(
+            {**one_file, "open_key": _firm_key(reply["paths"], one_file["open_key"],
+                                               own[one_file["open_key"]], spelled_for)}
+            if one_file["open_key"] else one_file
+            for one_file in files)
         counts = row["counts"]
         if counts[GROUP_NEEDS_YOU] or row["problem"]:
             totals["need"] += 1
@@ -5504,7 +5878,221 @@ def _cmd_firm(argv: list[str]) -> dict:
             totals["complete"] += 1
         totals["files"] += row["files"]
         totals["drafts"] += row["draft"]["ready"]
-    return reply
+
+
+def _firm_fresh(root: Path, today: dt.date) -> list[_FirmShown]:
+    """The firm view's returns read whole: the practice walked
+    (:func:`discover_engagements`) and every shown return read. The
+    reference the cached path is held to, and what answers whenever it is
+    unsure. A root that holds nothing is no return; one that cannot be
+    walked is :data:`PRACTICE_NOT_WALKED`."""
+    try:
+        registry = discover_engagements(root)
+    except EmptyRoot:
+        return []
+    except RegistryError as exc:
+        errors.keep("api: firm", exc)
+        log.warning("The clients root could not be walked (%s)", errors.error_class(exc))
+        raise ManifestError(PRACTICE_NOT_WALKED) from None
+    names = {household.path: household.name for household in registry.households}
+    # Ruling 21: a household with two open years is paused - the pass sorts
+    # nothing from its inbox (``runner.TWO_OPEN_YEARS``, the same
+    # ``open_years`` test, over the registry's own walk: no extra disk read).
+    paused = {path for path, theirs in registry.by_household().items()
+              if len(open_years(theirs)) > 1}
+    # The linked households of each return's household (pilot P141, P172),
+    # worked out practice-wide from the records this walk already read.
+    links = _household_links(registry)
+    shown = []
+    for one in registry.engagements:
+        if runner.why_skipped(one)[0]:
+            continue
+        row, files, own = _firm_row(one, names.get(one.household_path, ""), today)
+        row["paused"] = one.household_path in paused
+        row["links"] = links.get(one.household_path, [])
+        shown.append((row, files, own))
+    return shown
+
+
+def _firm_cached(root: Path, today: dt.date) -> list[_FirmShown] | None:
+    """The firm view's returns with every unchanged household answered from
+    the cache (P120), or ``None`` when this path is unsure and
+    :func:`_firm_fresh` must answer. Anything unexpected here is kept on the
+    error log and answered fresh: the cache may make a reply slow, never
+    wrong. A surprise is said once when it starts and again when it
+    changes, not on every reply while it lasts (:func:`firm_cache.first_time_said`)."""
+    try:
+        said: Path | None = firm_cache.cache_path().with_name(firm_cache.SAID_FILENAME)
+    except (SettingsError, OSError):
+        said = None             # no data folder: every surprise is said
+    try:
+        shown = _firm_from_cache(root, today)
+    except _FirmUnsure:
+        return None
+    except Exception as exc:     # the cache's own surprise costs speed, never the reply
+        if said is None or firm_cache.first_time_said(said, errors.error_class(exc)):
+            errors.keep("api: firm cache", exc)
+            log.warning("The firm view's cache was set aside (%s)", errors.error_class(exc))
+        return None
+    if said is not None:
+        firm_cache.first_time_said(said, None)
+    return shown
+
+
+#: What a household's fingerprint reads by its whole bytes and what it
+#: leaves out (the review of P120, SHOULD-2 and SHOULD-4). By content: the
+#: files the firm view opens - every record, the reminder drafts, the
+#: inbox's README - so a rewrite that keeps a size and a time is still
+#: seen. Left out: the return's status page, which every pass rewrites
+#: from the record and no firm reader opens; ``tests/test_api.py`` pins
+#: both by watching every file a firm reply opens.
+#: Each at the one place the tracker writes it (the re-check's MUST-R1 and
+#: NIT-R1): the household's record in the household's folder; a return's
+#: record, drafts and status page in the return's folder, two levels down
+#: (year, return); the README at the top of the inbox.
+FIRM_JUDGED = firm_cache.Judged(
+    private_whole=frozenset({
+        (ledger.LEDGER_FILENAME,),
+        *((firm_cache.ANY, firm_cache.ANY, name)
+          for name in (ledger.LEDGER_FILENAME, reminder.DRAFT_FILENAME, reminder.NEW_DRAFT_FILENAME))}),
+    client_whole=frozenset({(layout.INBOX_DIR_NAME, layout.README_NAME)}),
+    private_left_out=frozenset({(firm_cache.ANY, firm_cache.ANY, VIEW_FILENAME)}))
+
+
+class _FirmUnsure(Exception):
+    """The cached path cannot give the walk's answer by itself."""
+
+
+def _firm_from_cache(root: Path, today: dt.date) -> list[_FirmShown]:
+    """:func:`_firm_cached`'s work, in four steps.
+
+    1. List the households as the walk lists them
+       (:func:`tracker.registry.household_positions`) and fingerprint each
+       one's two folders (:func:`tracker.firm_cache.fingerprint`) before
+       anything is read, so a change made while this reply reads lands in
+       the next reply's fingerprint.
+    2. Read fresh every household whose fingerprint is not the one kept,
+       by the practice walk's own per-household reading
+       (:func:`households_named`).
+    3. Work out the practice-wide facts from every household's facts, kept
+       or fresh, with the registry's own rules: which prior a Roll Forward
+       retired (:func:`mark_superseded`), which return is skipped
+       (``runner.why_skipped``) and which household has two open years
+       (``open_years``).
+    4. Build each shown return's row that is not kept (:func:`_firm_row`),
+       keep every household that read without a problem, and answer.
+    """
+    positions = household_positions(root)
+    if positions is None:
+        raise _FirmUnsure
+    private, folders = positions
+    head = firm_cache.head(root, today)
+    where = firm_cache.cache_path()
+    kept = firm_cache.load(where, head)
+    # A folder whose name no household may have (the walk makes it a
+    # misfit) has no client folder to ask about: only its own is taken.
+    prints = dict(zip(folders, firm_cache.fingerprints(
+        [(folder, None if layout.segment_problem(folder.name)
+          else layout.client_household_dir(private.parent, folder.name)) for folder in folders],
+        FIRM_JUDGED), strict=True))
+    entries: dict[Path, dict] = {}
+    for folder in folders:
+        entry = kept.get(folder.name)
+        if entry is not None and prints[folder] is not None and entry["fingerprint"] == prints[folder]:
+            entries[folder] = entry
+    read = _firm_read_households(private, [folder for folder in folders if folder not in entries], prints)
+    entries.update({folder: entry for folder, (entry, _ones) in read.items()})
+    # The walk's order: every household with its record, then the returns
+    # of households whose record is gone (``registry._kept``).
+    order = [folder for folder in folders if entries[folder]["kind"] == "household"] + \
+            [folder for folder in folders if entries[folder]["kind"] == "record_missing"]
+    facts = [(folder, one) for folder in order for one in entries[folder]["returns"]]
+    marked = mark_superseded([
+        Engagement(path=Path(one["path"]), household_path=Path(one["household"]), problem=one["problem"],
+                   info=EngagementInfo(active=one["active"], tax_year=one["tax_year"],
+                                       rolled_from=one["rolled_from"]))
+        for _folder, one in facts])
+    households = [Household(path=folder) for folder in order if entries[folder]["kind"] == "household"]
+    paused = {path for path, theirs in
+              Registry(source=root, engagements=marked, households=households).by_household().items()
+              if len(open_years(theirs)) > 1}
+    showing = [not runner.why_skipped(one)[0] for one in marked]
+    # A return now shown whose row was not kept (it was a retired prior
+    # until another household changed): its household is read again.
+    short = [folder for folder in dict.fromkeys(folder for (folder, one), show in zip(facts, showing, strict=True)
+                                                  if show and one["shown"] is None)
+             if folder not in read]
+    if short:
+        again = _firm_read_households(private, short, prints)
+        for folder, (entry, ones) in again.items():
+            if (entry["kind"], entry["name"], entry["returns"]) != (
+                    entries[folder]["kind"], entries[folder]["name"],
+                    [{**one, "shown": None} for one in entries[folder]["returns"]]):
+                raise _FirmUnsure       # it changed under this reply: read it all fresh
+            # A copy of the kept entry takes the new rows, so what was loaded
+            # stays as loaded and the save below sees the change.
+            entries[folder] = {**entries[folder], "returns": [dict(one) for one in entries[folder]["returns"]]}
+            read[folder] = (entries[folder], ones)
+        facts = [(folder, one) for folder in order for one in entries[folder]["returns"]]
+    # Practice-wide, every reply (pilot P141, P172): a household's links
+    # depend on other households' records too, so they are never kept.
+    links = _links_from([(folder, entries[folder]["name"], entries[folder]["feeds"], entries[folder]["related"])
+                         for folder in order if entries[folder]["kind"] == "household"])
+    shown: list[_FirmShown] = []
+    for (folder, one), engagement, show in zip(facts, marked, showing, strict=True):
+        if not show:
+            continue
+        if folder in read:
+            row, files, own = _firm_row(read[folder][1][one["path"]], entries[folder]["name"], today)
+            one["shown"] = {"row": row, "files": files, "paths": own}
+        else:
+            row, files, own = one["shown"]["row"], one["shown"]["files"], one["shown"]["paths"]
+        shown.append(({**row, "paused": engagement.household_path in paused,
+                       "links": links.get(engagement.household_path, [])}, files, own))
+    keep = {folder.name: entry for folder, entry in entries.items() if _firm_keepable(entry)}
+    if keep != kept:        # written only when what is kept changed
+        firm_cache.save(where, head, keep)
+    return shown
+
+
+def _firm_keepable(entry: dict) -> bool:
+    """Whether a household's entry may be kept: fingerprinted, and none of
+    its returns has a problem, read or shown - such a household is read
+    fresh every time, so its detail reaches the error log every time."""
+    return bool(entry["fingerprint"]) and not any(
+        one["problem"] or (one["shown"] is not None and one["shown"]["row"]["problem"])
+        for one in entry["returns"])
+
+
+def _firm_read_households(private: Path, folders: list[Path],
+                          prints: dict[Path, str | None]) -> dict[Path, tuple[dict, dict[str, Engagement]]]:
+    """Each of ``folders`` read as the practice walk reads it
+    (:func:`households_named`, decision 192's one per-household reading):
+    its cache entry - the fingerprint taken before the read, its kind, its
+    name and each return's facts, no row yet - and its returns by path. A
+    household whose record has a problem is given no fingerprint, so it is
+    never kept and is read fresh on every reply."""
+    if not folders:
+        return {}
+    found = households_named(private, [folder.name for folder in folders])
+    wanted = set(folders)
+    kept = {household.path: household for household in found.households if household.path in wanted}
+    read: dict[Path, tuple[dict, dict[str, Engagement]]] = {}
+    for folder in folders:
+        ones = [one for one in found.engagements if one.household_path == folder]
+        household = kept.get(folder)
+        kind = "household" if household is not None else ("record_missing" if ones else "none")
+        troubled = household is not None and bool(household.problem)
+        entry = {"fingerprint": "" if troubled else (prints[folder] or ""), "kind": kind,
+                 "name": household.name if household is not None else "",
+                 "feeds": [feed.household for feed in household.info.feeds] if household is not None else [],
+                 "related": list(household.info.related) if household is not None else [],
+                 "returns": [{"path": str(one.path), "household": str(one.household_path),
+                              "problem": one.problem, "active": one.info.active,
+                              "tax_year": one.info.tax_year, "rolled_from": one.info.rolled_from,
+                              "shown": None} for one in ones]}
+        read[folder] = (entry, {str(one.path): one for one in ones})
+    return read
 
 
 def _next_sort() -> str | None:
@@ -5516,6 +6104,16 @@ def _next_sort() -> str | None:
     except (ScheduleChoiceError, SettingsError):
         return None
     return said[-5:] if said else None
+
+
+#: The commands that write nothing - no record, no file, no setting, not the
+#: store's own rows beyond the reader's top-up from a journal - and so run
+#: inside :func:`tracker.settings.one_reading` (P118): each machine question
+#: (where the data folder is, what the settings say, what a folder resolves
+#: to) is asked once per reply instead of thousands of times. A command joins
+#: only when it writes nothing; ``tests/test_api.py`` pins that this and
+#: :data:`WRITING_COMMANDS` never meet.
+HELD_READING_COMMANDS = frozenset({"firm", "list", "state"})
 
 
 #: The commands that write a record, a file or the store. Each holds the
@@ -5620,8 +6218,12 @@ def main(argv: list[str]) -> int:
             if argv[0] in WRITING_COMMANDS:
                 _prove_the_root()
             # One reading child for the command, started only if something is
-            # read, and ended with it (decision 169, R-4).
-            with ocr.reading_session(in_a_child=content_check.READ_IN_A_CHILD):
+            # read, and ended with it (decision 169, R-4). A command that writes
+            # nothing asks each machine question once (P118).
+            with ExitStack() as held:
+                if argv[0] in HELD_READING_COMMANDS:
+                    held.enter_context(one_reading())
+                held.enter_context(ocr.reading_session(in_a_child=content_check.READ_IN_A_CHILD))
                 payload = COMMANDS[argv[0]](argv[1:])
         except Exception as exc:  # said as JSON, never a traceback on screen
             if _failure_of(exc)["kind"] == "failed":

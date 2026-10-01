@@ -82,7 +82,7 @@ log = logging.getLogger(__name__)
 LEGACY_MANIFEST_FILENAME = "_manifest.xlsx"
 #: How such a folder is listed, and what the misfit list says of it.
 LEGACY_FOLDER = (
-    "holds a request list in a workbook the tracker no longer reads ({name}) and no "
+    "holds a request list in a workbook the app no longer reads ({name}) and no "
     "record; set the engagement up again in the app"
 )
 
@@ -104,7 +104,7 @@ ROLLED_FROM_UNMATCHED = (
 MAX_DEPTH = 4
 
 #: A folder at the top of the clients root that is neither of the two trees.
-MISFIT_NOT_A_TREE = "is not one of the two trees the tracker reads ({clients} and {private}); left alone"
+MISFIT_NOT_A_TREE = "is not one of the two trees the app reads ({clients} and {private}); left alone"
 #: A record where the layout before decision 125 put one: straight under a
 #: tree, at the household level, at the year level.
 MISFIT_RECORD_MISPLACED = ("holds a record in the layout before decision 125; set the household up again "
@@ -120,13 +120,13 @@ MISFIT_CLIENT_NO_RECORD = ("is a client folder no household record owns; nothing
                            "the app will not set a household up over it")
 #: A household or return folder whose name the layout's one rule refuses
 #: (decision 188): the reason is the rule's own phrase.
-MISFIT_BAD_NAME = ("is named in a way the tracker does not accept for a household or a return "
+MISFIT_BAD_NAME = ("is named in a way the app does not accept for a household or a return "
                    "({reason}); left alone")
 #: A folder where a year would be, named as something else.
 MISFIT_NOT_A_YEAR = "sits where a year folder would but is not named as a four-digit year; left alone"
 #: A return folder with no record, and a household with no return under any
 #: of its years.
-MISFIT_NO_RETURN = "holds no return the tracker can read"
+MISFIT_NO_RETURN = "holds no return the app can read"
 #: A folder the walk cannot list: an ACL that denies the run's account, a
 #: folder moved in from elsewhere carrying its own. Every document inside
 #: would be invisible to every list, so it is said rather than passed over.
@@ -411,6 +411,32 @@ def _walk_root(root: Path) -> _Walk:
     return found
 
 
+def household_positions(root: Path | str) -> tuple[Path, list[Path]] | None:
+    """The private tree under ``root`` and every folder at its household
+    position, found and ordered exactly as :func:`_walk_root` finds and
+    orders them - for the firm view's cache (P120), which must ask the same
+    households in the same order without reading them. ``None`` when that
+    is not one plain answer: ``root`` or the tree cannot be listed, or
+    there is no private tree, or more than one. The caller then walks the
+    practice as it always has, which says each of those in its own words;
+    so nothing is logged here."""
+    root = Path(root)
+    try:
+        children = sorted((p for p in root.iterdir() if p.is_dir()), key=lambda p: p.name.lower())
+        trees = [child for child in children
+                 if layout.place_of(root, child).kind == layout.PRIVATE and not _skip(child)]
+        if len(trees) != 1:
+            return None
+        # The names the walk passes over without a word (``_skip``) are not
+        # households; a name the layout refuses is still listed, as the walk
+        # lists it (a misfit, no return), so its folder counts as changed or not.
+        folders = sorted((p for p in trees[0].iterdir() if p.is_dir() and not _skip(p)),
+                         key=lambda p: p.name.lower())
+    except OSError:
+        return None
+    return trees[0], folders
+
+
 def _client_folders(tree: Path) -> list[Path]:
     """The client tree's first level: its folders, by name, from one
     listing - ``os.scandir``'s own entry types, so nothing below is
@@ -586,14 +612,44 @@ def engagement_from(folder: Path) -> Engagement:
     return Engagement(path=folder, info=info, household_path=household_path)
 
 
-def _same_folder(a: str, b: Path) -> bool:
+def _resolved(path: str | Path) -> Path | None:
+    """``path`` resolved, or ``None`` when it cannot be: such a path is the
+    same folder as nothing."""
     try:
-        return Path(a).resolve() == b.resolve()
+        return Path(path).resolve()
     except OSError:
-        return False
+        return None
 
 
-def _prior_of(candidate: Engagement, index: int, engagements: list[Engagement]) -> int | None:
+class _Priors:
+    """What :func:`_prior_of` compares a Rolled From with, made once for the
+    whole practice (P119): every readable return's folder resolved, and its
+    folder names for the fallback. Asked of every pair, the resolves alone
+    took 7 s at 150 rolled-forward returns and grew with the square."""
+
+    def __init__(self, engagements: list[Engagement]) -> None:
+        self.engagements = engagements
+        # A folder the walk could not list, or whose record it could not
+        # read, is never taken as the prior: retiring it would turn its
+        # report into a benign skip.
+        self.readable = [position for position, prior in enumerate(engagements) if not prior.problem]
+        self.by_folder: dict[Path, list[int]] = {}
+        for position in self.readable:
+            folder = _resolved(engagements[position].path)
+            if folder is not None:
+                self.by_folder.setdefault(folder, []).append(position)
+        self._names: dict[int, tuple[str, ...]] | None = None
+
+    def names(self) -> dict[int, tuple[str, ...]]:
+        """Each readable return's folder names, in walk order, made the
+        first time a Rolled From needs the fallback."""
+        if self._names is None:
+            self._names = {position: layout.tail_names(self.engagements[position].path)
+                           for position in self.readable}
+        return self._names
+
+
+def _prior_of(candidate: Engagement, index: int, priors: _Priors) -> int | None:
     """Which engagement ``candidate`` was rolled forward from, as an index.
 
     By the resolved path first. Failing that - Rolled From is written
@@ -606,15 +662,14 @@ def _prior_of(candidate: Engagement, index: int, engagements: list[Engagement]) 
     retires a prior by the same rule), and only when that engagement is the
     only one to do so. Two that tie decide nothing.
     """
-    # A folder the walk could not list, or whose record it could not
-    # read, is never taken as the prior: retiring it would turn its report
-    # into a benign skip.
-    readable = [(position, prior) for position, prior in enumerate(engagements)
-                if position != index and not prior.problem]
-    for position, prior in readable:
-        if _same_folder(candidate.rolled_from, prior.path):
-            return position
-    tails = {position: layout.shared_tail(candidate.rolled_from, prior.path) for position, prior in readable}
+    folder = _resolved(candidate.rolled_from)
+    if folder is not None:
+        for position in priors.by_folder.get(folder, ()):
+            if position != index:
+                return position
+    named = layout.tail_names(candidate.rolled_from)
+    tails = {position: layout.common_tail(named, names)
+             for position, names in priors.names().items() if position != index}
     if not tails:
         return None
     longest = max(tails.values())
@@ -636,10 +691,12 @@ def mark_superseded(engagements: list[Engagement]) -> list[Engagement]:
     """
     successors: dict[int, str] = {}
     unmatched: dict[int, str] = {}
+    priors: _Priors | None = None
     for index, candidate in enumerate(engagements):
         if not candidate.rolled_from:
             continue
-        prior = _prior_of(candidate, index, engagements)
+        priors = priors or _Priors(engagements)
+        prior = _prior_of(candidate, index, priors)
         if prior is not None:
             successors[prior] = candidate.label
         else:
@@ -725,8 +782,10 @@ def discover_engagements(root: Path | str, *, max_depth: int = MAX_DEPTH) -> Reg
     # listed with its own sentence and never adopted or read.
     names = [one.name for one in [*(household.path for household in keep), *found.record_missing]]
     by_key = {layout.name_key(name): name for name in names}
+    # One lookup per client folder (P119), by what names_one_folder compares.
+    own = {layout.folder_name_key(name) for name in names}
     for folder in found.client_folders:
-        if any(layout.names_one_folder(folder.name, name) for name in names):
+        if layout.folder_name_key(folder.name) in own:
             continue
         like = by_key.get(layout.name_key(folder.name))
         misfits.append(Misfit(folder, MISFIT_CLIENT_LOOK_ALIKE.format(household=like), "client_look_alike")
@@ -830,16 +889,25 @@ def _two_claims(households: list[Household]) -> dict[Path, str]:
 
     def top(i: int) -> int:
         while group[i] != i:
+            group[i] = group[group[i]]
             i = group[i]
         return i
 
-    for i in range(len(households)):
-        for j in range(i + 1, len(households)):
-            if keys[i] & keys[j]:
-                group[top(j)] = top(i)
+    # Households that share a key are joined through the first household
+    # holding it (P119), not by comparing every pair: the same groups.
+    holder: dict[str, int] = {}
+    for i, theirs in enumerate(keys):
+        for key in theirs:
+            if key in holder:
+                group[top(i)] = top(holder[key])
+            else:
+                holder[key] = i
+    members: dict[int, list[Household]] = {}
+    for i, one in enumerate(households):
+        members.setdefault(top(i), []).append(one)
     stopped: dict[Path, str] = {}
     for i, one in enumerate(households):
-        together = [other for j, other in enumerate(households) if top(j) == top(i)]
+        together = members[top(i)]
         if len(together) > 1:
             first = together[0]
             stopped[one.path] = TWO_CLAIM.format(
@@ -901,7 +969,7 @@ if __name__ == "__main__":
             suffix = f"  ({', '.join(flags)})" if flags else ""
             print(f"    {engagement.label}{suffix}")
             print(f"        {engagement.path}")
-    print(f"\n  Folders the tracker leaves alone ({len(loaded.misfits)})")
+    print(f"\n  Folders the app leaves alone ({len(loaded.misfits)})")
     for misfit in loaded.misfits:
         print(f"    {misfit.path}")
         print(f"        {misfit.sentence}")

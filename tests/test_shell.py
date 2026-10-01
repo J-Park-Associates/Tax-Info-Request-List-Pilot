@@ -23,6 +23,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -404,6 +405,56 @@ def test_the_search_box_alone_shows_no_tooltip_on_keyboard_focus():
     assert ':focus-visible' in focus and 'matches("#find")' in focus
     assert 'matches("input")' not in focus and "textarea" not in focus
     assert '<input id="find"' in read("index.html")
+
+
+def test_escape_hides_a_showing_tip_first_and_leaves_the_key_to_the_page(tmp_path):
+    """P130 (the Windows check's F2): a hover tip over the Sort icon while the
+    search box has the focus survived Escape, because only the last branch of
+    ``shellKey`` hid a tip. ``tooltip.js``'s ``tipKey`` hides the tip and does
+    not consume the key, so the same Escape still does the page's own thing
+    (clear the search box, close the sheet or a dialog)."""
+    setup = """
+      let tipFor = null, hidden = 0;
+      function hideTip() { hidden += 1; tipFor = null; }
+      const key = (k) => { const e = { key: k, stopped: 0, prevented: 0 };
+        e.preventDefault = () => { e.prevented += 1; }; e.stopPropagation = () => { e.stopped += 1; };
+        e.stopImmediatePropagation = () => { e.stopped += 1; }; return e; };
+    """
+    probe = """
+      const out = [];
+      tipFor = { id: "sort" }; let e = key("Escape"); tipKey(e); out.push([hidden, tipFor, e.prevented, e.stopped]);
+      e = key("Escape"); tipKey(e); out.push([hidden, e.prevented, e.stopped]);
+      tipFor = { id: "sort" }; e = key("Tab"); tipKey(e); out.push([hidden, tipFor === null]);
+      return out;
+    """
+    out = run_shell(["tipKey"], setup, probe, tmp_path, "tooltip.js")
+    assert out == [[1, None, 0, 0], [1, 0, 0], [1, False]]
+
+
+def test_shell_key_hands_escape_to_the_tip_first_wherever_the_focus_is(tmp_path):
+    """P130, wired: ``shellKey`` (the one keydown listener's first step, SPEC
+    4.3) hands every key to ``tipKey`` before anything else, so the search
+    box's own Escape, a dialog's and the side sheet's no longer leave a tip
+    showing. Reproduced before the fix: focus in the search box, a hover tip
+    on the Sort icon, Escape - the search box was cleared and the tip stayed."""
+    setup = """
+      let tipFor = null, dialogStack = [], cleared = 0;
+      function hideTip() { tipFor = null; }
+      const nodes = { find: { value: "Smi" }, sheet: { hidden: true }, "find-list": { hidden: true } };
+      const $ = (id) => nodes[id];
+      function hideFound() { cleared += 1; }
+      const key = (k, target) => ({ key: k, target, preventDefault() {} });
+    """
+    probe = """
+      const out = [];
+      tipFor = { id: "sort" }; out.push([shellKey(key("Escape", nodes.find)), tipFor, cleared, nodes.find.value]);
+      tipFor = { id: "sort" }; dialogStack = ["modal"];
+      out.push([shellKey(key("Escape", { closest: () => null })), tipFor]);
+      return out;
+    """
+    out = run_shell(["shellKey", "findKey"], setup + js_function("tipKey", "tooltip.js"), probe, tmp_path)
+    assert out == [[True, None, 1, ""], [False, None]]
+    assert "tipShowing" not in read("tooltip.js") and "hideTip" not in js_function("shellKey")
 
 
 def test_the_skeleton_is_the_specs_and_the_legacy_box_holds_only_the_three_inputs_saveroot_reads():
@@ -824,7 +875,7 @@ def test_every_menu_id_the_page_answers_is_in_the_template_and_the_rest_are_the_
     log (main.js's alone, 5.5); the row menus' ids go to pages.js first."""
     template = {"new_household", "change_root", "open_root", "exit", "edit_household", "add_return", "roll_forward", "mark_shared",
                 "edit_list", "draft_reminder", "open_client_folder", "open_inbox", "open_working", "overview", "needs_review",
-                "reminders", "clients", "find", "refresh", "sort_now", "stop_sorting", "schedule", "repair_schedule", "firm_report",
+                "reminders", "clients", "find", "refresh", "reset_columns", "sort_now", "stop_sorting", "schedule", "repair_schedule", "firm_report",
                 "clear_lock", "tour", "safeguards", "terms", "error_log", "about"}
     rows = {"check", "not_requested", "another_return", "put_back", "keep_here", "edit_request", "unfile", "mark_missing", "show_in_explorer"}
     text = read("shell.js")
@@ -862,7 +913,8 @@ FAKE_DOM = r"""
 class Node {}
 class Text extends Node { constructor(data) { super(); this.data = data; } }
 class Element extends Node {
-  constructor(tag) { super(); this.tag = tag; this.className = ""; this.dataset = {}; this.attrs = {}; this.kids = []; this.open = false; this.handlers = {}; }
+  constructor(tag) { super(); this.tag = tag; this.className = ""; this.dataset = {}; this.attrs = {}; this.kids = []; this.open = false; this.handlers = {};
+    this.style = { props: {}, setProperty(key, value) { this.props[key] = value; }, removeProperty(key) { delete this.props[key]; } }; }
   get classList() {
     const self = this;
     return { add(one) { if (!self.className.split(" ").includes(one)) self.className = `${self.className} ${one}`.trim(); },
@@ -889,8 +941,8 @@ const isSetAside = (o) => o === "Not Applicable";
 const overrideLabel = (o, year) => `Not applicable ${year}`;
 let locked = false;
 let lastState = null;
-const tips = [];
-const setTipIfCut = (node, words) => tips.push([node.className, words]);
+const tips = []; const cutTips = [];
+const setTipIfCut = (node, words) => { tips.push([node.className, words]); cutTips.push(node.className); };
 const setTip = (node, words) => tips.push([node.className, words]);
 const opened = []; const went = [];
 const openPath = (path, how) => opened.push([path, how]);
@@ -910,22 +962,64 @@ const failed = (err) => failures.push(String(err.message));
 let shellHousehold = () => null; let households = [];
 const vocab = {
   shell: { page_error: "The app hit an error" }, notices: { about: "{label}: {sentence}" },
+  client_type_forms: { individuals: ["1040"], businesses: ["1120", "1120S", "1065"], trusts: ["1041"], nonprofits: ["990"] },
   decisions: { needs_review: "Needs Review", dismissed: "Not Requested", filed: "Filed", file_moved: "File Moved" },
   labels: { Missing: { label: "Outstanding" }, Received: { label: "Received" }, Partial: { label: "Partly in" }, Rejected: { label: "Could not use" }, NotAsked: { label: "Not asked" } },
   overrides: { not_applicable: "Not Applicable" },
   review_labels: { bucket_order: ["document", "container", "not_a_document"], dismiss: "Not requested",
                    buckets: { document: "Documents", container: "Emails and zips", not_a_document: "Not documents" } },
-  reasons: { unmatched: { short: "Could not tell" }, "opened-not-across": { short: "Came in email or zip" } },
+  reasons: { unmatched: { short: "Could not tell" }, "opened-not-across": { short: "Email or zip" } },
+  reason_tips: { "opened-not-across": "Came in email or zip" },
   screen: {
     groups: { needs_you: "Needs you", waiting: "Waiting on client", received: "Received", set_aside: "Set aside" },
     steps: { check: "Check", open: "Open", draft: "Draft reminder", edit: "Edit" },
     notices: { paused: "Two Years Open; Sorting Paused" },
     empty: { received: "Nothing received yet" }, moved: "Moved by hand", due: "Due {date}", partly: "{n} of {total}",
     show_in_explorer: "Show in File Explorer", navigate_client: "Navigate to Client", navigate_return: "Navigate to Return",
-    counts: { need: "{n} need you", waiting: "{n} waiting", complete: "Complete", files: "{n} files", one_return: "1 return", returns: "{n} returns" },
+    counts: { need: "{n} need you", waiting: "{n} waiting", complete: "Complete", files: "{n} files", one_file: "1 file", one_return: "1 return", returns: "{n} returns" },
+    sections: { overview: "Overview", needs_review: "Needs Review", reminders: "Reminders", clients: "Clients" },
+    columns: { return: "Return", client: "Client", status: "Status", date: "Date", file: "File", suggestion: "Suggestion", reason: "Reason",
+               received: "Received", stage: "Stage", drafted: "Drafted", returns: "Returns", client_name: "Client Name", sort_by: "Sort by {column}",
+               width: "{column} Width {n}" },
+    linked: { tip: "Linked Households", feeds: "Also Feeds", fed_by: "Fed By", related: "Related" },
+    tabs: { need: "Need You ({n})", waiting: "Waiting ({n})" }, documents: { one: "1 Document", many: "{n} Documents" },
+    paging: { showing: "Showing {from}-{to} of {total} {noun}", previous: "Previous", next: "Next",
+              nouns: { overview: "Returns", needs_review: "Files", reminders: "Drafts", clients: "Clients" } },
+    icons: { more_actions: "More Actions", remove_filter: "Remove Filter" }, filters: { work: "Work Waiting", all: "All" }, work: "Work Waiting",
+    client_types: { individuals: "Individuals", businesses: "Businesses", trusts: "Trusts & Estates", nonprofits: "Nonprofits" },
   },
 };
 """
+
+#: The column headers' constants (SPEC-lists), lifted from pages.js as written:
+#: the probes run the pages' own tables, not a copy of them.
+PAGES_CONSTS = ("const PAGES_COLUMNS = {", "const PAGES_CELLS = ", "const PAGES_WIDTHS = ", "const PAGES_USUAL = ", "const PAGES_WIDTH_STEP = ",
+                "const PAGES_WIDTHS_KEY = ", "const PAGES_URGENCY = ", "const pagesOrder = ", "let pagesWidths = ",
+                # The raised lists (pilot SPEC-lists 10-17): pages, tabs, reason cards, types, the panel.
+                "const PAGES_PER_PAGE = ", "const PAGES_REASON_ICONS = {", "const PAGES_SECTIONS = ", "let pagesPageAt = ",
+                "let pagesTab = ", "let pagesReasonPick = ", "let pagesClientType = ", "let pagesPanel = ")
+
+
+#: The column headers' own functions (SPEC-lists), which every firm page and
+#: pagesDraw now reach.
+COLUMN_FUNCTIONS = ("pagesListOf", "pagesUrgent", "pagesIsBlank", "pagesCompareKeys", "pagesCompare", "pagesOrdered", "pagesOrderBy",
+                    "pagesColumnHeads", "pagesGrip", "pagesColumnKey", "pagesStoredWidths", "pagesWidthOf", "pagesSetWidth",
+                    "pagesSaveWidths", "pagesApplyWidths", "pagesResetWidths", "pagesReviewSpec", "pagesOrderedGroups",
+                    # The raised lists (pilot SPEC-lists 10-17).
+                    "pagesDetailCell", "pagesReasonTip", "pagesStatusCell", "pagesLinkMark", "pagesLinkMarkIn", "pagesShowPanel", "pagesPanelOpen",
+                    "pagesClosePanel", "pagesOpenRowLinks", "pagesPaged", "pagesFoot", "pagesTurn", "pagesPick", "pagesTabs",
+                    "pagesFileCount", "pagesReasonCards", "pagesReviewGroup", "pagesSwitch", "pagesTypeFilter", "pagesReopenPanel")
+
+
+def pages_consts() -> str:
+    text = read("pages.js")
+    out = []
+    for head in PAGES_CONSTS:
+        start = text.index(head)
+        line_end = text.index("\n", start)
+        end = text.index("\n};\n", start) + 3 if text[start:line_end].rstrip().endswith("{") else line_end
+        out.append(text[start:end])
+    return "\n".join(out)
 
 RETURN_STATE = r"""
 const item = (id, group, extra = {}) => ({ identifier: id, document: `Doc ${id}`, short_name: `Doc ${id}`, group, status_key: "Missing", manual_override: "",
@@ -950,11 +1044,12 @@ def run_pages_dom(probe: str, tmp_path: Path, setup: str = "", functions=None):
         "pagesReminders", "pagesClients", "pagesHousehold", "folderName", "pagesLinkWords", "pagesReturnText", "pagesHouseholdPath",
         "pagesPathOf", "pagesFileLink", "pagesRunLink", "pagesLinkNode", "pagesCell", "pagesHeadLink", "pagesRunRowLink", "pagesWhere",
         "pagesPaused", "pagesNameCell", "pagesPausedRows", "pagesSteps", "pagesDrafts", "pagesRunRow", "pagesRunStep", "pagesPopup", "pagesEnableFor", "pagesRowRoute", "pagesKey", "pagesTitle",
+        *COLUMN_FUNCTIONS,
     ]
     shell = read("shell.js")
     consts = "\n".join(shell[shell.index(head):shell.index(");\n", shell.index(head)) + 3] if head.endswith("[") else shell[shell.index(head):shell.index("\n", shell.index(head))]
                        for head in ("const H_ATTRIBUTES = new Set([", 'const SVG_NS = '))
-    lifted = consts + "\n" + "\n".join(js_function(name, "pages.js" if f"function {name}(" in read("pages.js") else "shell.js") for name in wanted)
+    lifted = consts + "\n" + pages_consts() + "\n" + "\n".join(js_function(name, "pages.js" if f"function {name}(" in read("pages.js") else "shell.js") for name in wanted)
     script = tmp_path / "pages_probe.js"
     script.write_text(f"{FAKE_DOM}\n{PAGE_WORDS}\n{RETURN_STATE}\n{setup}\n{lifted}\nprocess.stdout.write(JSON.stringify((() => {{ {probe} }})()));\n",
                       encoding="utf-8", newline="\n")
@@ -989,10 +1084,33 @@ def test_a_returns_needs_you_group_holds_parked_files_then_moved_then_requests_t
          parked("zip", { bucket: "container", code: "opened-not-across" })],
         [{ handle: "m1", original_name: "moved.pdf", identifier: "A" }]);
       const groups = pagesReturnGroups(state, 2025);
-      return groups.needs_you.map((one) => [one.name, one.status, one.sub || ""]);
+      return groups.needs_you.map((one) => [one.name, one.status, one.sub || "", one.reason || ""]);
     """, tmp_path)
-    assert ran == [["b-old.pdf", "Could not tell", ""], ["a-new.pdf", "Could not tell", ""], ["moved.pdf", "Moved by hand", ""],
-                   ["Doc A", "Could not use", ""], ["zip.pdf", "Came in email or zip", "Emails and zips"]]
+    assert ran == [["b-old.pdf", "Could not tell", "", "unmatched"], ["a-new.pdf", "Could not tell", "", "unmatched"], ["moved.pdf", "Moved by hand", "", ""],
+                   ["Doc A", "Could not use", "", ""], ["zip.pdf", "Email or zip", "Emails and zips", "opened-not-across"]]
+
+
+def test_a_status_that_is_a_tag_always_carries_the_words_it_stands_for_as_its_tooltip(tmp_path):
+    """Pilot P116: "Email or Zip" is a tag for "Came in Email or Zip", so its
+    tooltip says those words every time, cut or not. Any other status is its
+    own tooltip only when it is cut, and a vocabulary with no tip table is a
+    loud failure, not a row with no tip."""
+    ran = run_pages_dom("""
+      const row = (code) => { tips.length = 0; cutTips.length = 0;
+        const node = pagesRow({ name: "x.pdf", detail: "", status: pagesReason(code), reason: code, tone: "needs", date: "", menu: "file",
+                                step: { kind: "check", ret: "r", name: "x.pdf", handle: "h" } });
+        return { tip: tips.filter(([cls]) => cls.startsWith("row-status")).map(([, words]) => words),
+                 cut: cutTips.filter((cls) => cls.startsWith("row-status")).length, described: node.getAttribute("aria-description") || "" }; };
+      const tagged = row("opened-not-across"); const plain = row("unmatched");
+      const saved = vocab.reason_tips; delete vocab.reason_tips;
+      let loud = ""; try { row("unmatched"); } catch (err) { loud = err.message; }
+      vocab.reason_tips = saved;
+      return { tagged, plain, loud };
+    """, tmp_path)
+    # The keyboard never focuses the status, so the row's description carries the words (review SHOULD-1).
+    assert ran["tagged"] == {"tip": ["Came in email or zip"], "cut": 0, "described": "Check, Came in email or zip"}
+    assert ran["plain"] == {"tip": ["Could not tell"], "cut": 1, "described": "Check"}
+    assert ran["loud"] == "reason_tips"
 
 
 def test_the_pages_groups_and_the_firms_tally_of_them_cannot_disagree(tmp_path):
@@ -1214,7 +1332,7 @@ def _every_notice(tmp_path, short_words="{}"):
 
 def test_no_notice_draws_more_than_five_words_or_a_path_even_over_the_apis_long_sentences(tmp_path):
     """SPEC 11.1 (five words, no path of any kind) and 2.2 E28-E31: the reader's
-    warning (it names C:\\JPA Tracker), each machine warning, the pause, the
+    warning (it names C:\\JPA App), each machine warning, the pause, the
     feed, the lock's `on` and `greyed` sentences are all long in the API, and
     the harness's stub sends them long. The notices show a short line whatever
     the vocabulary holds; the long sentences go to the error log."""
@@ -1290,7 +1408,7 @@ def test_a_row_that_cannot_be_built_is_left_out_and_named_on_every_page(tmp_path
       const specs = pagesReminderSpecs(firm);
       return { specs: specs.map((one) => [one.name, one.status]), broken: pagesBroken.map((one) => one.name) };
     """, tmp_path, functions=["pagesReminderSpecs", "pagesStage", "pagesSafe", "pagesEach", "pagesLabel", "pagesSafeName", "pagesReturnName",
-                              "pagesByName", "pagesDay", "screenWords", "pagesReturnText", "pagesHouseholdPath"])
+                              "pagesByName", "pagesDay", "screenWords", "pagesReturnText", "pagesHouseholdPath", "pagesUrgent"])
     assert ran["specs"] == [["Alpha (2025)", "Heads up"]] and ran["broken"] == ["Bravo"]
 
 
@@ -1789,10 +1907,12 @@ def test_the_firm_pages_rows_link_by_the_firms_keys_and_carry_the_year(tmp_path)
         { path: known, household: "Smith Family", year: 2025, label: "Smith Family 2025 1040 - Smith", counts: { needs_you: 2, waiting: 0, received: 0, set_aside: 0 }, oldest: "2026-03-03", due: null,
           draft: { ready: true, stage: 1, held: 0, drafted: "2026-03-03" }, problem: "" }],
         files: [{ return: known, year: 2025, name: "one.pdf", handle: "h1", code: "unmatched", received: "2026-03-03", suggestion: "", open_key: "shown_copy h1" },
-                { return: known, year: 2025, name: "two.exe", handle: "h2", code: "unmatched", received: "2026-03-04", suggestion: "", open_key: "" }],
+                { return: known, year: 2025, name: "two.exe", handle: "h2", code: "opened-not-across", received: "2026-03-04", suggestion: "", open_key: "" }],
         totals: {}, next_sort: null };
       shellFirm = () => ({ data: firmData });
+      tips.length = 0;
       const nodes = pagesNeedsReview();
+      const statusTips = tips.filter(([cls]) => cls.startsWith("row-status") || cls === "pill-word").map(([, words]) => words);
       const head = nodes.find((n) => n.byClass && n.byClass("group-title").length).byClass("group-title")[0];
       const caption = nodes.find((n) => n.byClass && n.byClass("group-count").length).byClass("group-count")[0];
       const rows = nodes.flatMap((n) => (n.byClass ? n.byClass("row") : []));
@@ -1800,17 +1920,22 @@ def test_the_firm_pages_rows_link_by_the_firms_keys_and_carry_the_year(tmp_path)
       const overview = pagesWorkRows(firmData.returns)[0] || { broken: pagesBroken.map((b) => String(b.err)) };
       const reminder = pagesReminderSpecs(firmData)[0];
       const link = (n) => n.byClass("row-link").map((l) => [l.textContent, l.dataset.link]);
-      return { head: link(head), caption: link(caption), captionText: caption.textContent, rows: rows.map((r) => [r.byClass("row-name")[0].textContent, link(r.byClass("row-name")[0])]),
-               overview: [overview.name, overview.nameLink, overview.detailLink], reminder: [reminder.name, reminder.nameLink.kind, reminder.detailLink.kind] };
+      const docs = nodes.flatMap((n) => (n.byClass ? n.byClass("group-docs") : [])).map((n) => n.textContent);
+      return { head: link(head), caption: link(caption), captionText: caption.textContent, docs, rows: rows.map((r) => [r.byClass("row-name")[0].textContent, link(r.byClass("row-name")[0])]),
+               overview: [overview.name, overview.nameLink, overview.detailLink], reminder: [reminder.name, reminder.nameLink.kind, reminder.detailLink.kind], statusTips };
     """, tmp_path, functions=["pagesNeedsReview", "pagesNameCell", "pagesReviewGroups", "pagesFirm", "pagesFirmReturn", "pagesReturnName", "pagesReturnText", "pagesHouseholdPath",
                               "pagesFileLink", "pagesRow", "pagesCell", "pagesLinkNode", "pagesLinkWords", "pagesHeadLink", "pagesGroup", "pagesGroupStep", "pagesList",
                               "pagesReason", "pagesDay", "pagesSafe", "pagesEach", "pagesLabel", "pagesSafeName", "pagesStepWords", "pagesByName", "pagesEmpty",
                               "pagesNextSort", "pagesWorkRows", "pagesCounts", "pagesRoute", "pagesDue", "pagesReminderSpecs", "pagesStage", "screenWords", "h", "icon",
-                              "pagesActivate", "pagesRunRow", "pagesRunRowLink", "pagesRunLink", "pagesRunStep", "pagesPathOf", "pagesPopup", "pagesEnableFor", "pagesRowRoute"])
-    assert ran["head"] == [["1040 - Smith (2025)", "return"]] and ran["caption"] == [["Smith Family", "household"]] and ran["captionText"] == "Smith Family · 2"
+                              "pagesActivate", "pagesRunRow", "pagesRunRowLink", "pagesRunLink", "pagesRunStep", "pagesPathOf", "pagesPopup", "pagesEnableFor", "pagesRowRoute",
+                              *COLUMN_FUNCTIONS])
+    assert ran["head"] == [["1040 - Smith (2025)", "return"]] and ran["caption"] == [["Smith Family", "household"]] and ran["captionText"] == "Smith Family"
+    assert ran["docs"] == ["2 Documents"], "the group's count sits at its heading's end (P149)"
     assert ran["rows"] == [["one.pdf", [["one.pdf", "file"]]], ["two.exe", []]], "text for the file with no copy"
     assert ran["overview"][0] == "1040 - Smith (2025)" and ran["overview"][1]["kind"] == "return" and ran["overview"][2] == {"kind": "household", "path": "/c/Smith"}
     assert ran["reminder"] == ["1040 - Smith (2025)", "return", "household"]
+    # P116: the page hands each file's reason code to its row, so a tag's words are its tooltip.
+    assert ran["statusTips"] == ["Could not tell", "Came in email or zip"]
 
 
 def test_a_cut_name_that_is_a_link_carries_the_links_tooltip_not_its_own(tmp_path):
@@ -2173,10 +2298,10 @@ def test_the_four_dialogs_draw_the_apis_words_and_never_a_path(tmp_path):
       const opened = []; const openDialog = (id) => opened.push(id); const logged = [];
       const window = { tracker: { logError: (t) => logged.push(t) } };
       const fill = (p, v) => p.replace(/\{(\w+)\}/g, (_, k) => v[k] ?? "");
-      const PILOT = { edition: { version: "0.2" } };
-      let misfits = [{ path: "/abs/Clients/Old Files", where: "Clients/Old Files", sentence: "This folder is not a household and is left alone by the tracker.", code: "not_a_tree" },
+      const PILOT = { edition: { version: "0.3" } };
+      let misfits = [{ path: "/abs/Clients/Old Files", where: "Clients/Old Files", sentence: "This folder is not a household and is left alone by the app.", code: "not_a_tree" },
                      { path: "C:\\\\abs\\\\Scans", where: "", sentence: "Also left alone.", code: "not_a_year" }];
-      const vocab = { product: "Tax Document Tracker", rules: [{ headline: "h", detail: "d", short: "No AI Reads Documents" }, { headline: "h2", detail: "d2", short: "Nothing Is Guessed" }],
+      const vocab = { product: "Tax Document Console", rules: [{ headline: "h", detail: "d", short: "No AI Reads Documents" }, { headline: "h2", detail: "d2", short: "Nothing Is Guessed" }],
         screen: { icons: { dismiss: "Dismiss" }, safeguards: { title: "Safeguards" }, about: { edition: "Pilot {version}" }, misfits: { title: "Folders Skipped", reasons: { not_a_tree: "Unknown Folder" } } } };
       const screenWords = () => vocab.screen;
     """
@@ -2190,7 +2315,7 @@ def test_the_four_dialogs_draw_the_apis_words_and_never_a_path(tmp_path):
       return { ...said, loud };
     """, tmp_path, source="app.js")
     assert ran["rules"] == ["No AI Reads Documents", "Nothing Is Guessed"] and ran["title"] == "Safeguards"
-    assert ran["product"] == "Tax Document Tracker" and ran["edition"] == "Pilot 0.2"
+    assert ran["product"] == "Tax Document Console" and ran["edition"] == "Pilot 0.3"
     assert ran["folders"] == ["Old FilesUnknown Folder", "Scans"], (
         "a folder is its own name (the last part of where it is) and the vocabulary's word for its code; "
         "a code with no word (not_a_year) draws the name alone")
@@ -2331,7 +2456,13 @@ vm.runInContext({json.dumps(stub)}, vm.createContext({{ window, location: {{ sea
   console.log(JSON.stringify({{ list, firm, states }}));
 }})();
 """
-    done = subprocess.run([NODE, "-e", script], capture_output=True, text=True, encoding="utf-8", timeout=60, check=False)
+    # From a file, never ``node -e``: the stub alone is longer than Windows'
+    # 32,767-character command line (the Windows check's A3, P129).
+    with tempfile.TemporaryDirectory() as folder:
+        probe = Path(folder) / "stub-replies.js"
+        probe.write_text(script, encoding="utf-8", newline="\n")
+        done = subprocess.run([NODE, str(probe)], capture_output=True, text=True, encoding="utf-8", timeout=60,
+                              check=False)
     assert done.returncode == 0, done.stderr
     return json.loads(done.stdout)
 
@@ -2516,6 +2647,283 @@ def test_a_failed_sort_says_a_short_approved_reason_and_never_a_path(tmp_path):
     assert set(words["reasons"]) == {"lock-held", "household-paused", "client-folder-missing", "folder-missing", "other"}
 
 
+def test_a_sort_asked_for_an_inactive_return_says_why_nothing_was_done(tmp_path, monkeypatch, capsys):
+    """P134 (the Windows check, "Added after the check"): a household page
+    sorts through its first return, which on the office PC was the prior
+    year's, set inactive by a person - and the banner read a bare "Nothing
+    Done". With the real engine through ``run-now`` on a household with an
+    inactive return, the page's own ``scanSummary`` now says why, in the
+    screen's approved word; a kind with no word still says "Nothing Done"
+    (P117). Every skip word is Title Case and five words at most in all."""
+    from tests import test_runner as engine
+    from tests.samples import build_samples
+    from tests.test_api import title_case
+
+    samples = tmp_path / "samples"
+    samples.mkdir()
+    build_samples(samples)
+    root = tmp_path / "root"
+    current = engine.build_engagement(root, samples, name="Smith TY2025")
+    prior = engine.build_engagement(root, samples, name="Smith TY2024", drops=())
+    engine.edit_details(prior.path, active=False)
+    runs = engine._run_now(root, engine.household_of(current.path), monkeypatch, capsys)[1][-1]["runs"]
+    [skipped] = [one for one in runs if one["path"] == str(prior.path)]
+    assert skipped["skipped"] and skipped["code"] == "inactive" and not skipped["error"]
+
+    words = api._vocab()["scan"]
+    setup = ("const fill = (p, v) => p.replace(/\\{(\\w+)\\}/g, (_, k) => v[k] ?? '');\n"
+             f"const vocab = {{ scan: {json.dumps(words)} }};")
+    probe = f"""
+      const run = {json.dumps(skipped)};
+      return [scanSummary(run, [], '').text, scanSummary({{ ...run, code: "rolled-forward" }}, [], '').text,
+              scanSummary({{ ...run, code: "no-room" }}, [], '').text, scanSummary({{ ...run, code: "brand-new" }}, [], '').text];
+    """
+    said = run_shell(["scanFailed", "scanSummary"], setup, probe, tmp_path, "app.js")
+    assert said == ["Nothing Done: Inactive.", "Nothing Done: Rolled Forward.", "Nothing Done: Names Too Long.",
+                    "Nothing Done"]
+    for line in said:
+        assert len(line.split()) <= 5 and title_case(line) == line, line
+    assert set(words["skipped"]) == {"inactive", "rolled-forward", "no-room"}
+    screen = api._vocab()["screen"]
+    assert (words["skipped"]["inactive"], words["skipped"]["rolled-forward"]) == (screen["inactive"], screen["rolled"])
+
+
+SORT_ANSWERS = r"""
+  let shellRoute = { level: "overview" }, synced = [];
+  const returns = { "r25": { household: "h1" }, "r24": { household: "h1" }, "o25": { household: "h2" } };
+  function shellReturn(path) { return returns[path] || null; }
+  function syncNotices(prefix, wanted) { synced.push([prefix, wanted.map((one) => one.failure.sentence)]); }
+  const sortAnswers = new Map(), keyedNotices = new Map();
+  function clearNotice(key) { keyedNotices.delete(key); }
+  const shownAt = (route) => { shellRoute = route; showSortAnswers(); return synced[synced.length - 1][1]; };
+"""
+SORT_ANSWER_FUNCTIONS = ["keepSortAnswer", "sortKeyPath", "householdOnScreen", "showSortAnswers", "forgetSortLine",
+                         "forgetSortAnswers"]
+
+
+def test_a_sorts_answer_shows_only_on_its_own_clients_pages(tmp_path):
+    """P131 (the Windows check's F3; rulings 20 and 28, SPEC-shell 3.5): a
+    return's "Sort Failed: {reason}" used to be a window-wide notice, so it
+    showed on Overview and Clients too. It is kept under the return it was
+    asked for and shown only on that household's pages; a line a person
+    dismissed does not come back on the next visit."""
+    probe = """
+      shellRoute = { level: "return", ret: "r25" };
+      keepSortAnswer(["r25", "r24"], "r25", [{ sentence: "Sort Failed: Folder Not Found", kind: "failed" }]);
+      const out = { onReturn: synced[synced.length - 1] };
+      out.overview = shownAt({ level: "overview" });
+      out.clients = shownAt({ level: "clients" });
+      out.household = shownAt({ level: "household", household: "h1" });
+      out.year = shownAt({ level: "year", household: "h1", year: 2025 });
+      out.sibling = shownAt({ level: "return", ret: "r24" });
+      out.otherClient = shownAt({ level: "return", ret: "o25" });
+      forgetSortLine("sort:" + JSON.stringify(["r25", 0]));
+      out.afterDismiss = shownAt({ level: "return", ret: "r25" });
+      out.left = [...sortAnswers.keys()];
+      return out;
+    """
+    out = run_shell(SORT_ANSWER_FUNCTIONS, SORT_ANSWERS, probe, tmp_path, "app.js")
+    failed = ["Sort Failed: Folder Not Found"]
+    assert out["onReturn"] == ["sort", failed]
+    assert out["overview"] == [] and out["clients"] == [] and out["otherClient"] == []
+    assert out["household"] == failed and out["year"] == failed and out["sibling"] == failed
+    assert out["afterDismiss"] == [] and out["left"] == []
+
+
+def test_a_later_sort_or_f5_takes_a_sorts_answer_away(tmp_path):
+    """P131: the next Sort of the household replaces every answer of the
+    returns it ran (a good one says nothing), and F5 forgets them all - the
+    page is read again from the record, which the app's own Sort does not
+    write. It used to go only when the app restarted."""
+    probe = """
+      shellRoute = { level: "return", ret: "r25" };
+      const bad = [{ sentence: "Sort Failed: Folder Not Found", kind: "failed" }];
+      keepSortAnswer(["r25", "r24"], "r25", bad);
+      const out = { failed: shownAt(shellRoute) };
+      keepSortAnswer(["r25", "r24"], "r24", []);          // asked from the household page, all well
+      out.afterGoodSort = shownAt(shellRoute);
+      keepSortAnswer(["r25"], "r25", bad);
+      forgetSortAnswers();
+      out.afterF5 = synced[synced.length - 1];
+      out.left = sortAnswers.size;
+      return out;
+    """
+    out = run_shell(SORT_ANSWER_FUNCTIONS, SORT_ANSWERS, probe, tmp_path, "app.js")
+    assert out["failed"] == ["Sort Failed: Folder Not Found"]
+    assert out["afterGoodSort"] == [] and out["afterF5"] == ["sort", []] and out["left"] == 0
+
+
+def test_a_sorts_answer_is_never_a_window_wide_notice_and_f5_forgets_it():
+    """P131, wired: ``passEnded`` keeps its answer through ``keepSortAnswer``
+    (no ``outcome`` or ``notice`` of its own), every route change re-shows the
+    answers, a dismissed line is forgotten, and F5 forgets them all."""
+    ended = js_function("passEnded", "app.js")
+    assert "outcome(" not in ended and "notice(" not in ended
+    assert ended.count("keepSortAnswer(ran, asked, answer);") == 2
+    assert "showSortAnswers();" in js_function("appRouteChanged", "app.js")
+    assert "forgetSortLine(entry.key);" in read("app.js")
+    assert js_function("shellRefresh").split("\n")[1].strip().startswith("forgetSortAnswers();")
+    assert "function forgetSortAnswers() {}" in (REPO / "pilot" / "harness" / "app-stub.js").read_text(encoding="utf-8")
+
+
+def test_create_return_goes_to_the_new_returns_page(tmp_path):
+    """P132 (the Windows check's F4; the review's S3): after Create Return the
+    page stayed on the route it was opened from while the new return's state
+    arrived, so a return page drew nothing until F5. ``createEngagement``,
+    lifted with fakes and started on another household's return, now goes to
+    the new return's page - after the dialog closed and the list that names it
+    was adopted - and says the return was created after that."""
+    setup = js_function("pagesRoute", "pages.js") + r"""
+      const said = [];
+      let templates = [], customItems = [{ document: "W-2" }], wizardPeople = [], selectedForm = "1040";
+      let engagements = [{ path: "/h1/2025/old", household: "/h1", year: 2025 }];
+      const nodes = { "tmpl-list": { querySelectorAll: () => [] }, "ne-create": { disabled: false },
+        "ne-name": { value: "" }, "ne-client": { value: "" }, "ne-due": { value: "" }, "ne-year": { value: "2024" },
+        "ne-note": { textContent: "", classList: { remove() {} } } };
+      const $ = (id) => nodes[id];
+      const vocab = { household: { return_created: "{label} created ({n})" } };
+      const fill = (p, v) => p.replace(/\{(\w+)\}/g, (_, k) => v[k] ?? "");
+      function householdSpec() { return { household_path: "/h2" }; }
+      function personSpec(p) { return p; }
+      function toastWord() { said.push("toastWord"); }
+      function toast() { said.push("toast"); }
+      function closeDialog(id) { said.push(["closeDialog", id]); }
+      function adoptList() { engagements.push({ path: "/h2/2024/new", household: "/h2", year: 2024 }); said.push("adoptList"); }
+      function shellReturn(path) { return engagements.find((one) => one.path === path) || null; }
+      function select(path) { said.push(["select", path]); return 7; }
+      function renderFor(view) { said.push(["renderFor", view]); return true; }
+      function shellGo(route) { said.push(["shellGo", route]); return Promise.resolve(); }
+      function outcome(text, cls) { said.push(["outcome", text, cls]); }
+      function failed(err) { said.push(["failed", String(err)]); }
+      function failureSentence(err) { return String(err); }
+      async function call() { return { list: {}, created: "1040 - New", state: { paths: { engagement: "/h2/2024/new" } } }; }
+    """
+    out = run_shell(["createEngagement"], setup, "return createEngagement().then(() => said);", tmp_path, "app.js")
+    steps = [one if isinstance(one, str) else one[0] for one in out]
+    assert ["shellGo", {"level": "return", "household": "/h2", "year": 2024, "ret": "/h2/2024/new"}] in out, out
+    assert steps.index("closeDialog") < steps.index("adoptList") < steps.index("shellGo") < steps.index("outcome"), out
+    assert "failed" not in steps
+
+
+SORT_NOTICES = r"""
+  const notices = [], keyedNotices = new Map(), sortAnswers = new Map(), locks = [];
+  let shellRoute = { level: "return", ret: "r25" };
+  const returns = { r25: { household: "h1" }, r24: { household: "h1" } };
+  function shellReturn(path) { return returns[path] || null; }
+  const el = () => ({ removed: false, remove() { this.removed = true; } });
+  const $ = () => ({ append() {} });
+  function drawNotice() {}
+  function outlineRefused() {}
+  function showLock(lock) { locks.push(lock); }
+  const shown = () => notices.map((one) => one.sentence);
+  const press = (entry) => { dismissNotice(entry); forgetSortLine(entry.key); };   // the notice's cross or Retry
+"""
+SORT_NOTICE_FUNCTIONS = ["notice", "keyedNotice", "clearNotice", "syncNotices", "dismissNotice"] + SORT_ANSWER_FUNCTIONS
+
+
+def test_a_sort_that_fails_the_same_way_again_is_said_again(tmp_path):
+    """The review's M1: a keyed notice stays silent for a sentence its key
+    already holds, even once dismissed - so after Retry (or the cross) a Sort
+    that failed the same way again showed nothing. With the real notice
+    functions: fail, press Retry, fail again - the failure is back; a failure
+    not yet dismissed is not doubled; a good Sort takes it away."""
+    probe = """
+      const failed = () => [{ sentence: "Sort Failed: Folder Not Found", kind: "failed" }];
+      const out = [];
+      keepSortAnswer(["r25", "r24"], "r25", failed()); out.push(shown());
+      press(notices[0]); out.push(shown());
+      keepSortAnswer(["r25", "r24"], "r25", failed()); out.push(shown());
+      keepSortAnswer(["r25", "r24"], "r25", failed()); out.push(shown());
+      keepSortAnswer(["r25", "r24"], "r24", []); out.push(shown());
+      return out;
+    """
+    out = run_shell(SORT_NOTICE_FUNCTIONS, SORT_NOTICES, probe, tmp_path, "app.js")
+    failed = ["Sort Failed: Folder Not Found"]
+    assert out == [failed, [], failed, failed, []]
+
+
+def test_a_locked_sort_still_shows_its_lock_and_outlines_its_row(tmp_path):
+    """The review's S1: the pass-level failure is kept whole, so a locked
+    pass's ``lock`` reaches ``showLock`` and its ``identifier`` outlines the
+    row, as ``notice()`` did before a Sort's answer was kept per return."""
+    probe = """
+      keepSortAnswer(["r25"], "r25", [{ sentence: "In Use on FRONT-DESK", kind: "locked", identifier: "R01",
+        lock: { host: "FRONT-DESK" }, retry: () => 0 }]);
+      return { shown: shown(), locks, identifier: notices[0].identifier, retry: typeof notices[0].retry };
+    """
+    out = run_shell(SORT_NOTICE_FUNCTIONS, SORT_NOTICES, probe, tmp_path, "app.js")
+    assert out == {"shown": ["In Use on FRONT-DESK"], "locks": [{"host": "FRONT-DESK"}], "identifier": "R01",
+                   "retry": "function"}
+
+
+def test_the_sorts_answer_is_built_line_by_line_from_the_pass(tmp_path):
+    """The review's S4: ``passEnded``, lifted with the real ``scanSummary``.
+    A pass that failed as a whole is one line, whole (its lock kept), with
+    Retry; a skip names its reason; a summary for a return no longer shown
+    carries its label on the first line only; a good Sort says nothing."""
+    words = api._vocab()["scan"]
+    setup = ("const fill = (p, v) => p.replace(/\\{(\\w+)\\}/g, (_, k) => v[k] ?? '');\n"
+             f"const vocab = {{ scan: {json.dumps(words)} }};\n") + r"""
+      let scanning = null, active = "r25", viewGeneration = 1, kept = [];
+      function scanDone() {}
+      function warningNotices() {}
+      function adoptList() {}
+      function withEng(c) { return [c]; }
+      function renderFor() { return true; }
+      function failed() {}
+      function showReturn() {}
+      function runScan() {}
+      async function call(args) { return args[0] === "state" ? { summary: { line: "" } } : {}; }
+      function keepSortAnswer(ran, asked, answer) {
+        kept.push({ ran, asked, answer: answer.map((one) => ({ ...one, retry: typeof one.retry })) }); }
+      const run = (over) => ({ path: "r25", label: "Smith 2025", ok: true, error: "", code: "", skipped: "", filed: 1,
+        review: 0, waiting: 0, file_errors: [], warnings: [], cancelled: false, ...over });
+      const end = async (asked, reply) => { scanning = { asked }; await passEnded({ reply }); return kept[kept.length - 1]; };
+    """
+    probe = r"""
+      const out = {};
+      out.whole = await end("r25", { error: "In use", failure: { sentence: "In Use on FRONT-DESK", kind: "locked",
+        lock: { host: "FRONT-DESK" }, identifier: null } });
+      out.skipped = await end("r25", { runs: [run({ skipped: "inactive", code: "inactive", ok: false, filed: 0 })] });
+      out.away = await end("r24", { runs: [run({ path: "r24", label: "Smith 2024", error: "gone", code: "folder-missing" }),
+        run({ path: "r25", error: "gone", code: "folder-missing" })] });
+      out.good = await end("r25", { runs: [run({})] });
+      return out;
+    """
+    out = run_shell(["passEnded", "scanSummary", "scanFailed"], setup, "return (async () => {" + probe + "})();",
+                    tmp_path, "app.js")
+    assert out["whole"] == {"ran": [], "asked": "r25", "answer": [
+        {"sentence": "In Use on FRONT-DESK", "kind": "locked", "lock": {"host": "FRONT-DESK"}, "identifier": None,
+         "retry": "function"}]}
+    assert out["skipped"]["answer"] == [{"sentence": "Nothing Done: Inactive.", "kind": "warning", "retry": "undefined"}]
+    assert [one["sentence"] for one in out["away"]["answer"]] == [
+        "Smith 2024: Sort Failed: Folder Not Found", "Smith 2025: Sort Failed: Folder Not Found"]
+    assert out["away"]["ran"] == ["r24", "r25"] and out["away"]["answer"][0]["kind"] == "failed"
+    assert out["good"] == {"ran": ["r25"], "asked": "r25", "answer": []}
+
+
+def test_a_household_page_sorts_through_a_working_return(tmp_path):
+    """The review's M2 (the "Added after the check" item): a household page
+    sorted through its first return, the inactive 2024 one, and reported
+    that nothing was done though the same pass sorted 2025. It now reads the
+    active return that has not rolled forward, from the list's household;
+    a return a person chose is still the one read."""
+    setup = r"""
+      let shellRoute = { level: "household", household: "h1" }, lastState = null, active = "", read = [];
+      let shellPageBusy = false, shellPageFailed = false;
+      const own = [{ path: "r24", household: "h1" }, { path: "r25", household: "h1" }];
+      function shellOwnReturns() { return own; }
+      function shellHousehold() { return { returns: [{ path: "r24", active: false, superseded_by: "" },
+                                                      { path: "r25", active: true, superseded_by: "" }] }; }
+      function showReturn(path) { read.push(path); return Promise.resolve(true); }
+      function shellDraw() {}
+    """
+    probe = """
+      return shellOpenState().then(() => { active = "r24"; return shellOpenState(); }).then(() => read);
+    """
+    assert run_shell(["shellOpenState"], setup, probe, tmp_path) == ["r25", "r24"]
+
+
 def test_a_failed_or_locked_household_sort_draws_no_engine_sentence_and_no_path(tmp_path, monkeypatch, capsys):
     """Final re-review NEW 1 (rulings 25 and 29), with the real engine: a
     household of two returns is sorted through ``run-now``, once with its
@@ -2686,3 +3094,649 @@ def test_a_link_differs_from_plain_text_by_more_than_its_colour():
     for theme in ("light", "dark"):
         assert ratio("--link", "--text", theme) < 3, "the colour alone would not do: the underline is the cue"
     assert ".row-link { color: LinkText; }" in read("shell.css")
+
+
+# ── the lists: column headers, order and width (pilot SPEC-lists) ────────
+
+#: One firm reply for the four lists: five returns (one unreadable), three
+#: waiting files in two returns, three drafts (one held).
+FIRM_LISTS = r"""
+  let shellFirmData = null; const shellFirm = () => ({ data: shellFirmData }); const openNewHousehold = () => {};
+  let shellRoute = { level: "overview" };
+  const box = new Element("div"); const $ = (id) => box;
+  Object.assign(vocab.screen, {
+    figures: { need: "Need a Person", waiting: "Waiting on Clients", complete: "Complete" }, work: "Work Waiting",
+    filters: { work: "Work Waiting", all: "All" }, held: "Held",
+    empty: { overview: "Nothing Is Waiting", next_sort: "Next Sort {time}", needs_review: "Nothing Needs Review", reminders: "No Drafts Ready",
+             clients: "No Clients Yet", work: "No Work Waiting", returns: "No Returns Yet", received: "Nothing Received Yet" },
+  });
+  vocab.reminder = { stages: [{ number: 1, short: "Heads Up" }, { number: 2, short: "Checking In" }, { number: 3, short: "Final Notice" }] };
+  vocab.reasons = { unmatched: { short: "Could Not Tell" }, "opened-not-across": { short: "Came in Email or Zip" } };
+  shellReturn = (path) => ({ return_name: path.split("/").pop(), household: "", year: 2025 });
+  households = ["Alpha", "Bravo", "Charlie", "Delta", "Echo"].map((name) => ({ name, path: `c/${name}` }));
+  const zero = { needs_you: 0, waiting: 0, received: 0, set_aside: 0 };
+  const line = (name, household, extra) => ({ path: `r/${name}`, household, year: 2025, counts: { ...zero }, oldest: null, due: null, problem: "",
+                                              draft: { ready: false, stage: 0, held: 0, drafted: null }, ...extra });
+  shellFirmData = { paths: {}, totals: { need: 3, waiting: 2, complete: 0 }, next_sort: null, returns: [
+    line("1040 - Alpha", "Alpha", { counts: { ...zero, needs_you: 3 }, oldest: "2026-03-05", draft: { ready: true, stage: 1, held: 0, drafted: "2026-03-01" } }),
+    line("1065 - Bravo", "Bravo", { counts: { ...zero, needs_you: 12 }, oldest: "2026-03-01", draft: { ready: true, stage: 2, held: 1, drafted: "2026-03-02" } }),
+    line("1040 - Charlie", "Charlie", { counts: { ...zero, waiting: 2 }, due: "2026-04-15", draft: { ready: true, stage: 3, held: 0, drafted: "2026-02-20" } }),
+    line("1040 - Delta", "Delta", { counts: { ...zero, waiting: 5 } }),
+    line("1041 - Echo", "Echo", { problem: "Could Not Be Read" }),
+  ], files: [
+    { return: "r/1040 - Alpha", year: 2025, name: "b.pdf", handle: "h1", code: "unmatched", received: "2026-03-05", suggestion: "W-2", open_key: "" },
+    { return: "r/1040 - Alpha", year: 2025, name: "a.pdf", handle: "h2", code: "opened-not-across", received: "2026-03-07", suggestion: "", open_key: "" },
+    { return: "r/1065 - Bravo", year: 2025, name: "z.pdf", handle: "h3", code: "unmatched", received: "2026-03-01", suggestion: "K-1", open_key: "" },
+  ] };
+  const draw = (level) => { shellRoute = { level }; pagesDraw(shellRoute, box); return box; };
+  const names = (page) => page.byClass("row").map((row) => row.byClass("row-name")[0].textContent);
+  const sorts = (page) => page.find((one) => one.attrs.role === "columnheader").map((one) => one.attrs["aria-sort"] || "");
+"""
+
+
+def run_lists(probe: str, tmp_path: Path, extra: str = ""):
+    return run_pages_dom(probe, tmp_path, setup=FIRM_LISTS + extra,
+                         functions=[*re.findall(r"^function (\w+)\(", read("pages.js"), flags=re.M), "h", "icon", "screenWords", "folderName"])
+
+
+def test_the_four_firm_lists_draw_a_header_row_of_buttons_in_the_rows_columns(tmp_path):
+    """SPEC-lists 1-3: Overview, Needs Review, Reminders and Clients each draw
+    one header row - a table of one row of column headers, each a button with
+    the vocabulary's word and the tooltip "Sort by {Column}" (P180) - and Clients'
+    empty end column has an empty header that orders nothing."""
+    ran = run_lists("""
+      const out = {};
+      for (const level of ["overview", "needs-review", "reminders", "clients"]) {
+        tips.length = 0;
+        const page = draw(level);
+        const tables = page.find((one) => one.attrs.role === "table");
+        out[level] = { tables: tables.length, label: tables[0].attrs["aria-label"], rows: tables[0].find((one) => one.attrs.role === "row").length,
+                       cells: tables[0].find((one) => one.attrs.role === "columnheader").length,
+                       words: tables[0].find((one) => one.tag === "button").map((one) => one.textContent),
+                       tips: tips.filter(([cls]) => cls === "col-head").map(([, words]) => words), sorts: sorts(page),
+                       grips: tables[0].byClass("col-grip").length };
+      }
+      return out;
+    """, tmp_path)
+    assert ran["overview"]["words"] == ["Return", "Client", "Status", "Date"]
+    assert ran["needs-review"]["words"] == ["File", "Suggestion", "Reason", "Received"]
+    assert ran["reminders"]["words"] == ["Return", "Client", "Stage", "Drafted"]
+    assert ran["clients"]["words"] == ["Client Name", "Returns", "Status"], "the Clients end column is always empty (P153: Client Name)"
+    for level, one in ran.items():
+        assert one["tables"] == 1 and one["rows"] == 1 and one["cells"] == 4 and one["grips"] == 4, level
+        assert one["tips"] == [f"Sort by {word}" for word in one["words"]], level
+        assert set(one["sorts"]) <= {"none", ""}, "the usual order: no header orders the list"
+    assert ran["needs-review"]["label"] == "Needs Review" and ran["overview"]["label"] == "Overview"
+
+
+def test_a_header_orders_its_list_then_reverses_then_returns_to_the_usual_order(tmp_path):
+    """SPEC-lists 3: the first press orders by the column (aria-sort
+    ascending), the second reverses it (descending), the third restores the
+    usual order; the order is kept when the page is drawn again while the app
+    is open."""
+    ran = run_lists("""
+      const usual = names(draw("overview"));
+      pagesOrderBy("overview", "name"); const first = [names(box), sorts(box)];
+      draw("clients"); const kept = names(draw("overview"));
+      pagesOrderBy("overview", "name"); const second = [names(box), sorts(box)];
+      pagesOrderBy("overview", "name"); const third = [names(box), sorts(box)];
+      return { usual, first, kept, second, third };
+    """, tmp_path)
+    assert ran["usual"] == ["1041 - Echo (2025)", "1065 - Bravo (2025)", "1040 - Alpha (2025)", "1040 - Charlie (2025)", "1040 - Delta (2025)"]
+    assert ran["first"][0] == ["1040 - Alpha (2025)", "1040 - Charlie (2025)", "1040 - Delta (2025)", "1041 - Echo (2025)", "1065 - Bravo (2025)"]
+    assert ran["first"][1] == ["ascending", "none", "none", "none"]
+    assert ran["kept"] == ran["first"][0], "a list keeps its order while the app is open"
+    assert ran["second"][0] == list(reversed(ran["first"][0])) and ran["second"][1][0] == "descending"
+    assert ran["third"] == [ran["usual"], ["none", "none", "none", "none"]]
+
+
+def test_status_orders_by_urgency_not_alphabetically(tmp_path):
+    """SPEC-lists 3: a return that cannot be read first, then what needs a
+    person (the larger count first), then what waits on the client; on
+    Reminders, Held first and then the later stage."""
+    ran = run_lists("""
+      draw("overview"); pagesOrderBy("overview", "status"); const overview = names(box);
+      pagesOrderBy("overview", "status"); const back = names(box);
+      draw("reminders"); pagesOrderBy("reminders", "status");
+      const reminders = box.byClass("row").map((row) => row.byClass("row-status")[0].textContent);
+      return { overview, back, reminders };
+    """, tmp_path)
+    assert ran["overview"] == ["1041 - Echo (2025)", "1065 - Bravo (2025)", "1040 - Alpha (2025)", "1040 - Delta (2025)", "1040 - Charlie (2025)"]
+    assert ran["back"] == list(reversed(ran["overview"]))
+    assert ran["reminders"] == ["Held", "Final Notice", "Heads Up"]
+
+
+def test_dates_order_by_the_iso_date_and_blanks_go_last_both_ways(tmp_path):
+    ran = run_lists("""
+      draw("overview"); pagesOrderBy("overview", "end"); const up = names(box);
+      pagesOrderBy("overview", "end"); const down = names(box);
+      return { up, down };
+    """, tmp_path)
+    assert ran["up"] == ["1065 - Bravo (2025)", "1040 - Alpha (2025)", "1040 - Charlie (2025)", "1041 - Echo (2025)", "1040 - Delta (2025)"]
+    assert ran["down"] == ["1040 - Charlie (2025)", "1040 - Alpha (2025)", "1065 - Bravo (2025)", "1041 - Echo (2025)", "1040 - Delta (2025)"]
+
+
+def test_needs_review_orders_files_in_each_group_and_groups_follow_their_first_file(tmp_path):
+    ran = run_lists("""
+      const titles = (page) => page.byClass("group-title").map((one) => one.textContent);
+      const usual = [titles(draw("needs-review")), names(box)];
+      pagesOrderBy("needs_review", "end"); pagesOrderBy("needs_review", "end");
+      const newest = [titles(box), names(box)];
+      pagesOrderBy("needs_review", "status");
+      const reason = [titles(box), names(box)];
+      return { usual, newest, reason };
+    """, tmp_path)
+    assert ran["usual"] == [["1065 - Bravo (2025)", "1040 - Alpha (2025)"], ["z.pdf", "b.pdf", "a.pdf"]]
+    assert ran["newest"] == [["1040 - Alpha (2025)", "1065 - Bravo (2025)"], ["a.pdf", "b.pdf", "z.pdf"]]
+    assert ran["reason"] == [["1040 - Alpha (2025)", "1065 - Bravo (2025)"], ["a.pdf", "b.pdf", "z.pdf"]]
+
+
+def test_only_the_header_tooltip_says_sort_and_always_by_its_column():
+    """P138 and Jason's answer to Q1 (P180): a header's tooltip reads "Sort by
+    {Column}" - the "by {Column}" keeps it apart from the filing pass's Sort
+    Now - and no column word, width line or menu item of this change says
+    Sort; pages.js types none of them (every word is the vocabulary's)."""
+    for key, words in api.SCREEN["columns"].items():
+        assert "sort" not in words.lower() or key == "sort_by", key
+    assert "sort" not in api.MENU["reset_columns"].lower()
+    assert api.SCREEN["columns"]["sort_by"] == "Sort by {column}"
+    heads = js_function("pagesColumnHeads", "pages.js")
+    assert not re.findall(r'"(?:Sort|Order|Return|Client|Status|Date)\b', heads), "a header word typed in pages.js"
+
+
+def test_a_column_width_is_clamped_saved_and_reset(tmp_path):
+    """SPEC-lists 4: a width lands within its column's limits, is kept on this
+    PC across a restart, and View › Reset Column Widths forgets every list's.
+    Storage that holds something unreadable leaves the usual widths."""
+    ran = run_lists("""
+      const props = () => ({ ...box.style.props });
+      pagesSetWidth("overview", "status", 5000); pagesSetWidth("overview", "detail", 10); pagesSaveWidths();
+      const set = props(); const stored = JSON.parse(window.localStorage.getItem("tracker.columns"));
+      pagesWidths = null; box.style.props = {}; pagesApplyWidths(box, "overview"); const again = props();
+      pagesApplyWidths(box, ""); const plain = props();
+      pagesApplyWidths(box, "overview"); pagesResetWidths(); const reset = [props(), window.localStorage.getItem("tracker.columns")];
+      window.localStorage.setItem("tracker.columns", "not json"); pagesWidths = null; pagesApplyWidths(box, "overview"); const junk = props();
+      return { set, stored, again, plain, reset, junk };
+    """, tmp_path, extra="""
+      const window = { localStorage: { data: {}, getItem(k) { return k in this.data ? this.data[k] : null; }, setItem(k, v) { this.data[k] = String(v); },
+                                       removeItem(k) { delete this.data[k]; } } };
+    """)
+    assert ran["set"] == {"--size-col-status": "320px", "--size-col-detail": "80px"}
+    assert ran["stored"] == {"overview": {"status": 320, "detail": 80}}
+    assert ran["again"] == ran["set"], "kept on this PC across a restart"
+    assert ran["plain"] == {} and ran["reset"] == [{}, None] and ran["junk"] == {}
+
+
+def test_needs_review_moves_width_from_suggestion_to_reason_and_still_fits_1100px(tmp_path):
+    """SPEC-lists 4: Needs Review's reasons are the longest status words, so its
+    usual Reason column is 200px and its Suggestion 160px - the same sum, so
+    the 1100px window still has no sideways scroll; a person's own width wins."""
+    ran = run_lists("""
+      pagesApplyWidths(box, "needs_review"); const usual = { ...box.style.props };
+      pagesSetWidth("needs_review", "status", 240); const held = { ...box.style.props };
+      pagesApplyWidths(box, "overview"); const other = { ...box.style.props };
+      return { usual, held, other };
+    """, tmp_path, extra="const window = { localStorage: { getItem() { return null; }, setItem() {}, removeItem() {} } };")
+    assert ran["usual"] == {"--size-col-detail": "160px", "--size-col-status": "200px"}
+    assert ran["held"] == {"--size-col-detail": "160px", "--size-col-status": "240px"}
+    assert ran["other"] == {}
+    light, _dark = root_blocks()
+    usual = sum(int(light[f"--size-col-{cell}"].removesuffix("px")) for cell in ("detail", "status"))
+    assert usual == 160 + 200, "the list's usual sum is the stylesheet's (856 of 860px at 1100px)"
+
+
+def test_the_keyboard_resizes_a_focused_header_with_ctrl_shift_arrows_only():
+    """SPEC-lists 4, P137: shell.js hands a key on a header to pagesColumnKey,
+    which acts on Ctrl+Shift+Left or Right alone (never with Alt), steps 16px
+    and says the width in the polite live region; the one keydown listener
+    stays app.js's."""
+    shell = read("shell.js")
+    assert 'e.target.closest(".col-head") && typeof pagesColumnKey === "function") return pagesColumnKey(e) === true;' in shell
+    key = js_function("pagesColumnKey", "pages.js")
+    assert "!e.ctrlKey || !e.shiftKey || e.altKey" in key and '"ArrowLeft"' in key and '"ArrowRight"' in key
+    assert '$("page-say").textContent' in key and "columns.width" in key
+    assert "const PAGES_WIDTH_STEP = 16;" in read("pages.js")
+    assert '<div id="page-say" class="visually-hidden" role="status" aria-live="polite"></div>' in read("index.html")
+    assert "keydown" not in read("pages.js")
+
+
+def test_the_header_row_and_grips_keep_the_rules_of_the_stylesheet():
+    """SPEC-lists 3-4: the header row is the rows' own grid; a list is never
+    narrower than its columns (so a widened list scrolls the page area); a
+    header shows keyboard focus; High Contrast keeps the header words, rule
+    and grips in system colours; no typewriter font."""
+    first = {}
+    for _media, selector, body in blocks(read("shell.css")):
+        for part in selector.split(","):
+            first.setdefault(" ".join(part.split()), dict(declarations(body)))
+    assert first[".col-heads:not(.hidden)"]["grid-template-columns"] == first[".row:not(.hidden)"]["grid-template-columns"]
+    assert "var(--size-col-end)" in first[".rows"]["min-width"] and first[".rows"]["min-width"] == first[".col-table"]["min-width"]
+    assert first[".col-head:focus-visible"]["outline"] == "2px solid var(--focus)"
+    assert first[".col-grip:not(.hidden)"]["cursor"] == "col-resize"
+    css = read("shell.css")
+    forced = css[css.index("@media (forced-colors: active)"):]
+    for rule in (".col-head { color: CanvasText; }", ".col-grip::after { background: CanvasText; }", ".group-count .row-link { color: LinkText; }"):
+        assert rule in forced, rule
+    assert "monospace" not in css.lower()
+
+
+def test_file_rows_are_ordinary_weight_and_the_household_beside_a_heading_is_secondary(tmp_path):
+    """SPEC-lists 5, P136: a file's own name is a regular-weight link; a
+    return's row keeps its weight; the household beside a Needs Review
+    heading is the secondary text colour (blue on hover), which is AA text on
+    the page and on a hovered row in both themes."""
+    ran = run_pages_dom("""
+      const file = pagesRow({ name: "a.pdf", detail: "", status: "", tone: "needs", date: "", menu: "file", fileKind: "parked", nameLink: null });
+      const linked = pagesRow({ name: "b.pdf", detail: "", status: "", tone: "needs", date: "", menu: "file", nameLink: { kind: "file", key: "k", paths: {} } });
+      const ret = pagesRow({ name: "1040 - A (2025)", detail: "", status: "", tone: "needs", date: "", menu: "return", nameLink: { kind: "return", path: "r" } });
+      return [file, linked, ret].map((row) => row.classList.contains("row-file"));
+    """, tmp_path)
+    assert ran == [True, True, False]
+    first = {}
+    for _media, selector, body in blocks(read("shell.css")):
+        for part in selector.split(","):
+            first.setdefault(" ".join(part.split()), dict(declarations(body)))
+    assert first[".row-file .row-name"]["font-weight"] == "var(--fw-regular)"
+    assert first[".group-count .row-link"]["color"] == "var(--text-secondary)"
+    assert first[".group-count .row-link:hover"]["color"] == "var(--link)"
+    for theme in ("light", "dark"):
+        assert ratio("--text-secondary", "--bg-page", theme) >= 4.5
+        assert ratio("--text-secondary", "--bg-hover", theme) >= 4.5
+        assert ratio("--border-input", "--bg-page", theme) >= 3, "the grip line is a control's edge"
+
+
+# ── lane 4b: the raised lists (pilot SPEC-lists 9-17; P141-P155, P170-P178) ──
+
+#: A practice for the lane 4b probes: linked households, forms, a paused one.
+LINKED = r"""
+  households = [
+    { name: "Alpha", path: "c/Alpha", links: [{ name: "Bravo", path: "c/Bravo", kind: "related" }], returns: [{ form: "1040" }] },
+    { name: "Bravo", path: "c/Bravo", links: [{ name: "Alpha", path: "c/Alpha", kind: "related" }, { name: "Gone", path: "", kind: "fed_by" }],
+      returns: [{ form: "1065" }] },
+    { name: "Charlie", path: "c/Charlie", links: [], returns: [{ form: "" }] },
+    { name: "Delta", path: "c/Delta", links: [], returns: [{ form: "1040" }] },
+    { name: "Echo", path: "c/Echo", links: [], returns: [{ form: "1041" }] },
+  ];
+  for (const one of shellFirmData.returns) one.links = (households.find((h) => h.name === one.household) || {}).links || [];
+  shellFirmData.returns[0].form = "1040";
+"""
+
+
+def test_a_linked_household_carries_the_violet_link_mark_on_the_four_firm_lists(tmp_path):
+    """P141, P171: beside the household's name on Overview (Client), Needs
+    Review (the household under each return), Reminders (Client) and Clients
+    (Client Name); in a row list it is no Tab stop and the row's description
+    says Linked Households; on Needs Review it is an ordinary button."""
+    ran = run_lists("""
+      const out = {};
+      for (const level of ["overview", "needs-review", "reminders", "clients"]) {
+        const page = draw(level);
+        const marks = page.byClass("link-mark");
+        out[level] = { marks: marks.length, tabindex: marks.map((m) => m.attrs.tabindex || ""), names: marks.map((m) => m.attrs["aria-label"]),
+                       described: page.byClass("row").filter((r) => r.byClass("link-mark").length).map((r) => r.attrs["aria-description"]) };
+      }
+      return out;
+    """, tmp_path, LINKED)
+    assert ran["overview"]["marks"] == 2 and set(ran["overview"]["tabindex"]) == {"-1"}
+    assert all(one.endswith("Linked Households") for one in ran["overview"]["described"])
+    assert ran["clients"]["marks"] == 2 and ran["reminders"]["marks"] == 2
+    assert ran["needs-review"]["marks"] == 2 and set(ran["needs-review"]["tabindex"]) == {""}, "a heading's mark is a Tab stop"
+    assert {name for one in ran.values() for name in one["names"]} == {"Linked Households"}
+    css = read("shell.css")
+    assert ".link-mark:not(.hidden) {" in css and "color: var(--st-linked);" in css[css.index(".link-mark:not(.hidden) {"):][:600]
+    forced = css[css.index("@media (forced-colors: active)"):]
+    assert ".link-mark { color: ButtonText; border-color: CanvasText; }" in forced
+
+
+def test_the_link_panel_names_each_household_and_its_kind_and_closes_back_to_where_it_opened(tmp_path):
+    """P171: the panel lists each linked household with its kind's word, a
+    household with a folder as a link to it and one without as text; a
+    choice goes to that client; closing returns focus to where it opened."""
+    ran = run_pages_dom("""
+      Element.prototype.focus = function () { focused.push(this.className || this.attrs.id || this.tag); };
+      Element.prototype.remove = function () { this.removed = true; };
+      Element.prototype.contains = function () { return false; };
+      const focused = []; document.body = new Element("body");
+      globalThis.FloatingUIDOM = { computePosition: () => Promise.resolve({ x: 10, y: 20 }), offset: () => 0, flip: () => 0, shift: () => 0 };
+      globalThis.TIP_GAP = 4; globalThis.TIP_MARGIN = 8;
+      const anchor = new Element("button"); anchor.className = "link-mark"; anchor.isConnected = true;
+      pagesShowPanel(anchor, [{ name: "Bravo", path: "c/Bravo", kind: "related" }, { name: "Gone", path: "", kind: "fed_by" },
+                              { name: "Delta", path: "c/Delta", kind: "feeds" }], anchor);
+      const panel = document.body.kids[0];
+      const lines = panel.byClass("link-line").map((l) => [l.kids[0].className, l.kids[0].textContent, l.kids[1].textContent]);
+      const open = pagesPanelOpen();
+      panel.byClass("link-to")[0].handlers.click[0]();
+      const afterChoice = [pagesPanelOpen(), went.slice(-1)[0]];
+      pagesShowPanel(anchor, [{ name: "Bravo", path: "c/Bravo", kind: "related" }], anchor);
+      pagesClosePanel(true);
+      return { role: panel.attrs.role, label: panel.attrs["aria-label"], lines, open, afterChoice, closed: pagesPanelOpen(), focused };
+    """, tmp_path)
+    assert ran["role"] == "dialog" and ran["label"] == "Linked Households" and ran["open"] is True
+    assert ran["lines"] == [["link-to", "Bravo", "Related"], ["link-name", "Gone", "Fed By"], ["link-to", "Delta", "Also Feeds"]]
+    assert ran["afterChoice"] == [False, {"level": "household", "household": "c/Bravo"}]
+    assert ran["closed"] is False and ran["focused"][-1] == "link-mark", "focus goes back to the icon"
+
+
+def test_the_firm_lists_divide_the_whole_ordered_list_into_pages_of_fifty(tmp_path):
+    """P152, P174: order and tabs act on the whole list, pages divide the
+    result; the footer counts in the list's noun; any change returns to
+    page 1, and leaving the page forgets it."""
+    ran = run_lists("""
+      const many = [];
+      for (let i = 0; i < 120; i += 1) many.push(line(`1040 - R${String(i).padStart(3, "0")}`, "Alpha", { counts: { ...zero, waiting: 1 }, due: "2026-04-15" }));
+      shellFirmData.returns = many;
+      const foot = (page) => page.byClass("page-count")[0].textContent;
+      const steps = (page) => page.byClass("page-step").map((b) => b.disabled === true);
+      const first = draw("overview"); const one = [foot(first), steps(first), names(first).length, names(first)[0]];
+      pagesPageAt.overview = 2; const third = draw("overview"); const three = [foot(third), steps(third), names(third).length];
+      pagesOrderBy("overview", "name"); pagesOrderBy("overview", "name");
+      const back = [foot(box), names(box)[0]];
+      pagesPageAt.overview = 1; draw("clients"); const again = foot(draw("overview"));
+      return { one, three, back, again, per: PAGES_PER_PAGE };
+    """, tmp_path)
+    assert ran["per"] == 50
+    assert ran["one"] == ["Showing 1-50 of 120 Returns", [True, False], 50, "1040 - R000 (2025)"]
+    assert ran["three"] == ["Showing 101-120 of 120 Returns", [False, True], 20]
+    assert ran["back"] == ["Showing 1-50 of 120 Returns", "1040 - R119 (2025)"], "a new order starts at page 1, over the whole list"
+    assert ran["again"] == "Showing 1-50 of 120 Returns", "the page is forgotten when the page is left"
+
+
+def test_needs_review_pages_by_whole_return_groups_and_counts_files(tmp_path):
+    """P174: a page takes return groups while their files stay within 50,
+    and never splits one; the footer counts files."""
+    ran = run_lists("""
+      const files = [];
+      for (const [ret, n] of [["r/1040 - Alpha", 30], ["r/1065 - Bravo", 30], ["r/1040 - Charlie", 60]]) {
+        for (let i = 0; i < n; i += 1) files.push({ return: ret, year: 2025, name: `${ret.slice(2)} ${i}.pdf`, handle: `${ret}${i}`, code: "unmatched",
+                                                    received: `2026-03-0${ret.length % 9 + 1}`, suggestion: "", open_key: "" });
+      }
+      shellFirmData.files = files;
+      const counts = (page) => [page.byClass("page-count")[0].textContent, page.byClass("return-card").length, page.byClass("row").length];
+      const one = counts(draw("needs-review"));
+      pagesPageAt.needs_review = 1; const two = counts(draw("needs-review"));
+      pagesPageAt.needs_review = 2; const three = counts(draw("needs-review"));
+      return { one, two, three };
+    """, tmp_path)
+    assert ran["one"][1:] == [1, 30] and ran["two"][1:] == [1, 30] and ran["three"][1:] == [1, 60]
+    assert ran["one"][0].endswith("of 120 Files") and ran["three"][0] == "Showing 61-120 of 120 Files"
+
+
+def test_overviews_tabs_narrow_the_whole_list_and_carry_their_counts(tmp_path):
+    """P145: All, Need You (n), Waiting (n) as pressed buttons; a tab narrows
+    the list before the order and the pages, and Work Waiting's count is the
+    rows it shows."""
+    ran = run_lists("""
+      const page = draw("overview");
+      const tabs = (p) => p.byClass("switch-option").map((b) => [b.textContent, b.attrs["aria-pressed"]]);
+      const all = [tabs(page), names(page).length, page.byClass("group-count")[0].textContent];
+      pagesTab = "waiting"; const waiting = draw("overview");
+      return { all, waiting: [tabs(waiting), names(waiting), waiting.byClass("group-count")[0].textContent] };
+    """, tmp_path)
+    assert ran["all"] == [[["All", "true"], ["Need You (3)", "false"], ["Waiting (2)", "false"]], 5, "5"]
+    assert ran["waiting"][0][2] == ["Waiting (2)", "true"]
+    assert ran["waiting"][1] == ["1040 - Charlie (2025)", "1040 - Delta (2025)"] and ran["waiting"][2] == "2"
+
+
+def test_needs_reviews_reason_cards_count_each_reason_and_filter_the_whole_page(tmp_path):
+    """P149: a card per reason with its count and icon, and All; a card is a
+    pressed filter; the page's count beside its title says the files shown;
+    every reason pill is the Need You amber with its reason's icon."""
+    ran = run_lists("""
+      const page = draw("needs-review");
+      const cards = (p) => p.byClass("reason-card").map((c) => [c.byClass("reason-card-word")[0].textContent, c.byClass("reason-card-number")[0].textContent, c.attrs["aria-pressed"]]);
+      const pills = page.byClass("row-status").map((s) => [s.className, s.byClass("pill").length, s.byClass("icon").length, s.textContent]);
+      const before = [cards(page), page.byClass("list-count")[0].textContent, pills];
+      pagesReasonPick = "opened-not-across"; const picked = draw("needs-review");
+      return { before, after: [cards(picked), picked.byClass("list-count")[0].textContent, picked.byClass("row").length] };
+    """, tmp_path)
+    cards, count, pills = ran["before"]
+    assert cards == [["All", "3", "true"], ["Could Not Tell", "2", "false"], ["Came in Email or Zip", "1", "false"]]
+    assert count == "3 files"
+    assert all(cls == "row-status is-attention" and pill == 1 and icons == 1 for cls, pill, icons, _words in pills)
+    assert ran["after"] == [[["All", "3", "false"], ["Could Not Tell", "2", "false"], ["Came in Email or Zip", "1", "true"]], "1 file", 1]
+
+
+def test_a_client_type_narrows_clients_by_the_recorded_form_and_shows_a_removable_chip(tmp_path):
+    """P153, SPEC-lists 15.3: a type keeps the households with a return whose
+    recorded form is one of its forms (a blank form belongs to none); the
+    chip names the type and its dismiss clears it; Work Waiting shows its count."""
+    ran = run_lists("""
+      pagesClientType = "individuals"; pagesClientsAll = true; pagesLastLevel = "clients";
+      const page = draw("clients");
+      const chip = page.byClass("type-filter")[0];
+      const kept = [names(page), chip.byClass("type-filter-word")[0].textContent, chip.byClass("type-dismiss")[0].attrs["aria-label"],
+                    page.byClass("switch-count").map((c) => c.textContent)];
+      chip.byClass("type-dismiss")[0].handlers.click[0]();
+      return { kept, cleared: [pagesClientType, names(box).length, box.byClass("type-filter").length] };
+    """, tmp_path, LINKED)
+    assert ran["kept"][0] == ["Alpha", "Delta"]
+    assert ran["kept"][1:3] == ["Individuals", "Remove Filter"]
+    assert ran["kept"][3] == ["2"], "Work Waiting's count: the individuals with work waiting"
+    assert ran["cleared"] == ["", 5, 0]
+
+
+def test_a_return_pages_three_sections_carry_their_colour_icon_badge_and_edge(tmp_path):
+    """P176 (Q8): Needs You amber, Waiting on Client blue, Received green -
+    the heading's tone, its icon, a tinted count badge and an edge down its
+    rows; Set Aside keeps its plain fold; the heading words stay plain."""
+    ran = run_pages_dom("""
+      lastState = stateOf([item("B", "received", { status_key: "Received", received_date: "2026-03-01" }), item("C", "waiting"),
+                           item("D", "needs_you", { status_key: "Rejected" }), item("A", "set_aside", { status_key: "NotAsked" })], [parked("p1")]);
+      const box = page(pagesReturn({ level: "return", ret: "r1", year: 2025 }));
+      const heads = box.byClass("group-head").map((h) => [h.className, h.byClass("group-icon").map((i) => i.className).join(),
+                                                          h.byClass("group-count")[0].className, h.byClass("group-title")[0].className]);
+      const lists = box.find((one) => one.attrs.role === "listbox").map((l) => l.className);
+      return { heads, lists };
+    """, tmp_path)
+    assert ran["heads"][:3] == [
+        ["group-head is-first is-section section-needs", "group-icon is-attention", "group-count is-badge is-attention", "group-title"],
+        ["group-head is-section section-waiting", "group-icon is-waiting", "group-count is-badge is-waiting", "group-title"],
+        ["group-head is-section section-done", "group-icon is-done", "group-count is-badge is-done", "group-title"]]
+    assert ran["heads"][3][0] == "group-head" and ran["heads"][3][1] == "", "Set Aside keeps its plain fold"
+    assert ran["lists"][:3] == ["rows edge-needs", "rows edge-waiting", "rows edge-done"]
+    css = read("shell.css")
+    for tone, token in (("needs", "--st-attention"), ("waiting", "--st-waiting"), ("done", "--st-done")):
+        assert f".section-{tone}::before {{ background: var({token}); }}" in css
+        assert f".rows.edge-{tone} .row::before {{ background: var({token}); }}" in css
+    assert ".group-title, .list-title {" in css, "the heading words keep the text colour"
+
+
+def test_a_firm_lists_status_is_a_pill_with_a_dot_and_a_form_chip_leads_a_returns_name(tmp_path):
+    """P145: on Overview the status is a pill with a dot that keeps its count
+    in the app's colours, and a return's recorded form is a chip before its
+    name, hidden from a screen reader (the name already begins with it)."""
+    ran = run_lists("""
+      const page = draw("overview");
+      const row = page.byClass("row").find((r) => r.textContent.indexOf("Alpha") !== -1);
+      return { dot: row.byClass("pill-dot").length, word: row.byClass("pill-word")[0].textContent, chip: row.byClass("form-tag").map((c) => [c.textContent, c.attrs["aria-hidden"]]),
+               plain: page.byClass("row").filter((r) => r.byClass("form-tag").length).length };
+    """, tmp_path, LINKED)
+    assert ran == {"dot": 1, "word": "3 need you", "chip": [["1040", "true"]], "plain": 1}
+    css = read("shell.css")
+    for tone, tint in (("attention", "--warn-bg"), ("waiting", "--info-bg"), ("done", "--ok-bg")):
+        assert f".is-{tone} > .pill {{ background: var({tint}); }}" in css
+    assert "monospace" not in css.lower() and "monospace" not in read("pilot-ui.css").lower()
+
+
+def test_the_search_finds_waiting_files_on_needs_review_and_its_placeholder_says_so(tmp_path):
+    """P173: the box searches the whole practice; given Needs Review's files
+    it finds them first, noted with their return and year, and choosing one
+    opens Check; its placeholder is the vocabulary's, per page."""
+    probe = """
+      const files = [{ return: "r1", year: 2025, name: "Smith W-2.pdf", handle: "h1" }];
+      const found = findOptions("smith", files);
+      return { names: found.map((o) => o.name), note: found[0].note, check: found[0].check, without: findOptions("smith").length };
+    """
+    ran = run_shell(["screenWords", "fold", "shellHousehold", "shellOwnReturns", "shellReturn", "findOptions"], PEOPLE, probe, tmp_path)
+    assert ran["names"][0] == "Smith W-2.pdf" and ran["note"] == "1040 - John & Jane Smith 2025"
+    assert ran["check"] == {"ret": "r1", "name": "Smith W-2.pdf", "handle": "h1"} and ran["without"] == 3
+    assert api.SCREEN["find_placeholder"] == "Search Clients and Returns"
+    assert api.SCREEN["find_placeholder_files"] == "Search Files, Clients and Returns"
+    shell = stripped_js("shell.js")
+    assert 'setAttribute("placeholder", shellRoute.level === "needs-review" ? words.find_placeholder_files : words.find_placeholder)' in shell
+
+
+def test_the_side_panel_is_the_mocks_with_the_firms_brand_and_nothing_behind_the_unbuilt_items(tmp_path):
+    """P153, P154, P155: the brand band names the firm and Tax Document
+    Console; the four pages keep Ctrl+1..4; five Under Construction items are
+    aria-disabled buttons whose click says so and calls nothing else; four
+    Client Types open Clients filtered; Settings is the settings the app has."""
+    html = read("index.html")
+    side = html[html.index('<nav id="side">'):html.index("</nav>", html.index('<nav id="side">'))]
+    assert side.count('data-section="') == 4 and side.count('data-type="') == 4
+    assert side.count('aria-disabled="true"') == 5 and side.count('class="side-section is-soon"') == 5
+    for ident in ("side-brand-name", "side-brand-product", "side-scroll", "side-types-heading", "side-workspace-heading", "side-settings", "last-sort"):
+        assert f'id="{ident}"' in side, ident
+    assert side.index('data-soon="family_entities"') < side.index('id="side-types-heading"') < side.index('data-soon="personal_trusts"')
+    words = api.SCREEN["side"]
+    assert words["brand"] == "J Park & Associates" and words["product"] == "Tax Document Console"
+    assert words["under_construction"] == "Under Construction" == api.SCREEN["notices"]["under_construction"]
+    assert all(said.endswith("(Under Construction)") for said in words["soon"].values()) and len(words["soon"]) == 5
+    assert set(api.SCREEN["client_types"]) == set(api.CLIENT_TYPE_FORMS) and '"client_type_forms": CLIENT_TYPE_FORMS,' in (REPO / "tracker" / "api.py").read_text(encoding="utf-8")
+    assert api.CLIENT_TYPE_FORMS == {
+        "individuals": ["1040"], "businesses": ["1120", "1120S", "1065"], "trusts": ["1041"], "nonprofits": ["990"]}
+    shell = stripped_js("shell.js")
+    soon = shell[shell.index('querySelectorAll(".side-section[data-soon]")) {\n  node.addEventListener'):]
+    soon = soon[:soon.index("\n}\n")]
+    assert 'toastWord("under_construction")' in soon and "call(" not in soon and "shellGo" not in soon
+    assert '$("side-settings").addEventListener("click", () => shellAnswer("change_root"));' in shell
+    css = read("shell.css")
+    assert "#side-scroll { min-height: 0; overflow-y: auto;" in css, "the panel scrolls rather than cut an item"
+    assert '.side-section[data-section="needs-review"] .side-count:not(:empty) { background: var(--warn-bg); color: var(--st-attention); }' in css
+
+
+def test_a_row_made_active_by_the_keyboard_shows_its_status_tooltip_at_once(tmp_path):
+    """P178: Up/Down move the active row by aria-activedescendant and show
+    the row's status words as its tooltip at once; a click shows none."""
+    ran = run_pages_dom("""
+      const shown = []; let hidden = 0;
+      globalThis.showTipNow = (node) => shown.push(node.textContent);
+      globalThis.hideTip = () => { hidden += 1; };
+      Element.prototype.querySelectorAll = function (sel) { return sel === ".is-active" ? this.byClass("is-active") : this.find((one) => one.attrs.role === "option"); };
+      const oldQuery = Element.prototype.querySelector;
+      Element.prototype.querySelector = function (sel) {
+        if (sel.indexOf("[data-tip]") !== -1) return this.byClass("pill-word")[0] || null;   // the tip's node (setTipIfCut is faked here)
+        return oldQuery.call(this, sel);
+      };
+      Object.defineProperty(Element.prototype, "classList", { get() {
+        const self = this;
+        return { add(one) { if (!self.className.split(" ").includes(one)) self.className = `${self.className} ${one}`.trim(); },
+                 contains(one) { return self.className.split(" ").includes(one); },
+                 remove(one) { self.className = self.className.split(" ").filter((c) => c !== one).join(" "); } };
+      } });
+      const rows = [pagesRow({ name: "a.pdf", status: "Came in Email or Zip", tone: "needs", pill: true, menu: "file" }),
+                    pagesRow({ name: "b.pdf", status: "Could Not Tell", tone: "needs", pill: true, menu: "file" })];
+      const list = new Element("div"); list.append(...rows);
+      pagesActivate(list, rows[1], true);
+      pagesActivate(list, rows[0]);
+      return { shown, hidden };
+    """, tmp_path)
+    assert ran["shown"] == ["Could Not Tell"] and ran["hidden"] == 2
+    tip = read("tooltip.js")
+    assert "function showTipNow(node) {" in tip and "delete node.dataset.tipCut;" in tip
+
+
+def test_the_new_tokens_and_every_new_pair_meet_their_contrast_in_both_themes():
+    """P177, SPEC-lists 16: the two new tokens have their values in both
+    themes, and every new pair meets its figure (text 4.5, non-text 3)."""
+    for name, (light, dark) in {"--st-linked": ("#7c3aad", "#c4a0f0"), "--bg-band": ("#f8fafc", "#1f232a")}.items():
+        assert resolve(name, "light") == light and resolve(name, "dark") == dark, name
+    for fg, bg, needs in (("--st-linked", "--bg-page", 3), ("--st-linked", "--bg-hover", 3), ("--st-linked", "--bg-selected", 3),
+                          ("--st-linked", "--bg-band", 3), ("--st-linked", "--bg-raised", 3), ("--st-linked", "--bg-pressed", 3), ("--st-attention", "--warn-bg", 4.5),
+                          ("--st-waiting", "--info-bg", 4.5), ("--st-done", "--ok-bg", 4.5), ("--st-attention", "--bg-raised", 3),
+                          ("--st-waiting", "--bg-raised", 3), ("--st-done", "--bg-raised", 3), ("--text", "--bg-band", 4.5),
+                          ("--text-secondary", "--bg-band", 4.5), ("--text-caption", "--bg-band", 4.5), ("--link", "--bg-band", 4.5),
+                          ("--link", "--bg-raised", 4.5), ("--focus", "--bg-band", 3), ("--text-secondary", "--bg-nav", 4.5),
+                          ("--text-secondary", "--bg-nav-hover", 4.5), ("--text-secondary", "--bg-pressed", 4.5),
+                          ("--window-light", "--brand", 4.5)):
+        for theme in ("light", "dark"):
+            assert ratio(fg, bg, theme) >= needs, (fg, bg, theme)
+
+
+# ── lane 4b review fold (pilot/reviews/lists-rulings.md: S2-S5, N3-N5) ──
+
+#: What the panel's probes need of a DOM beyond FAKE_DOM: focus, removal, a
+#: body, Floating UI's placement, and the two selectors the panel code asks.
+PANEL_DOM = r"""
+  const focused = [];
+  Element.prototype.focus = function () { focused.push(this.attrs.role === "listbox" ? "listbox" : this.className || this.attrs.id || this.tag); };
+  Element.prototype.remove = function () { this.removed = true; };
+  Element.prototype.contains = function () { return false; };
+  Element.prototype.closest = function () { return null; };
+  Element.prototype.querySelectorAll = function (sel) { return sel === ".link-mark" ? this.byClass("link-mark") : this.byClass(sel.slice(1)); };
+  const oldQuery = Element.prototype.querySelector;
+  Element.prototype.querySelector = function (sel) {
+    return sel === '[role="listbox"]' ? this.find((one) => one.attrs.role === "listbox")[0] || null : oldQuery.call(this, sel);
+  };
+  document.body = new Element("body");
+  globalThis.FloatingUIDOM = { computePosition: () => Promise.resolve({ x: 0, y: 0 }), offset: () => 0, flip: () => 0, shift: () => 0 };
+  globalThis.TIP_GAP = 4; globalThis.TIP_MARGIN = 8;
+"""
+
+
+def test_a_redraw_keeps_the_link_panel_open_on_the_same_household_or_moves_focus_to_the_list(tmp_path):
+    """The review's S2: a firm reply redraws the page while the panel is
+    open; the panel opens again on the same household's mark, and when that
+    household no longer has one, focus goes to the page's list, never lost."""
+    ran = run_lists("""
+      draw("overview");
+      const mark = box.byClass("link-mark").find((one) => one.dataset.owner === "Bravo");
+      pagesShowPanel(mark, mark.linked, box);
+      draw("overview");
+      const kept = [pagesPanelOpen(), pagesPanel && pagesPanel.owner, document.body.kids.filter((one) => !one.removed).length];
+      for (const one of shellFirmData.returns) one.links = [];
+      focused.length = 0;
+      draw("overview");
+      return { kept, gone: [pagesPanelOpen(), focused.slice(-1)[0]] };
+    """, tmp_path, LINKED + PANEL_DOM)
+    assert ran["kept"] == [True, "Bravo", 1]
+    assert ran["gone"] == [False, "listbox"]
+
+
+def test_escape_closes_the_link_panel_and_returns_focus_to_its_icon(tmp_path):
+    """The review's S5: Escape, through the shell's one key handler, closes
+    an open panel and puts focus back on the icon it was opened from."""
+    ran = run_pages_dom("""
+      const els = { find: new Element("input"), sheet: { hidden: true }, "find-list": { hidden: true } };
+      globalThis.$ = (id) => els[id]; globalThis.dialogStack = [];
+      const anchor = new Element("button"); anchor.className = "link-mark"; anchor.isConnected = true;
+      pagesShowPanel(anchor, [{ name: "Bravo", path: "c/Bravo", kind: "related" }], anchor);
+      let prevented = 0;
+      const handled = shellKey({ key: "Escape", target: new Element("button"), preventDefault: () => { prevented += 1; } });
+      return { handled, prevented, open: pagesPanelOpen(), focused: focused.slice(-1)[0] };
+    """, tmp_path, setup=PANEL_DOM + "let tipFor = null; function hideTip() { tipFor = null; }" + js_function("tipKey", "tooltip.js"), functions=[*re.findall(r"^function (\w+)\(", read("pages.js"), flags=re.M), "h", "icon", "screenWords",
+                                               "folderName", "shellKey"])
+    assert ran == {"handled": True, "prevented": 1, "open": False, "focused": "link-mark"}
+
+
+def test_the_link_panel_and_the_pickers_are_named_and_show_their_focus():
+    """The review's S3, S4 and N4: every control in the panel shows a focus
+    ring (forced colours give it CanvasText); both Edit Household pickers and
+    lists are named by their labels; the link icon and More Actions say they
+    open a dialog and a menu."""
+    css = read("shell.css")
+    assert "#link-panel:focus { outline: none; }" not in css
+    assert "#link-panel:focus-visible, .link-to:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }" in css
+    assert ":focus-visible { outline: 2px solid CanvasText; }" in css[css.index("@media (forced-colors: active)"):]
+    html = read("index.html")
+    for ident, label in (("hh-edit-related-pick", "hh-edit-related-label"), ("hh-edit-related", "hh-edit-related-label"),
+                         ("hh-edit-feed-pick", "hh-edit-feeds-label"), ("hh-edit-feeds", "hh-edit-feeds-label")):
+        assert re.search(rf'id="{ident}"[^>]*aria-labelledby="{label}"', html), ident
+    pages = stripped_js("pages.js")
+    assert '"aria-haspopup": "menu"' in pages and '"aria-haspopup": "dialog"' in pages
+
+
+def test_the_four_lists_and_a_needs_review_card_fit_1100px_beside_a_windows_scrollbar():
+    """The review's N5 (P179): at 1100px the main area is 860px less Windows'
+    classic 17px scrollbar, 843px; the columns' usual widths with their gaps
+    and the list's padding, and a Needs Review card with its margins, border
+    and padding, must fit it, or the page scrolls sideways again."""
+    light, _dark = root_blocks()
+
+    def px(name: str) -> int:
+        return int(light[name].strip().removesuffix("px"))
+
+    sp = {step: px(f"--sp-{step}") for step in (2, 4, 6, 8)}
+    columns = sum(px(f"--size-col-{cell}") for cell in ("name", "detail", "status", "end")) + 3 * sp[4]
+    assert columns + 2 * sp[8] <= 1100 - px("--size-side") - 17
+    assert columns + 2 * sp[6] + 2 + 2 * sp[2] <= 1100 - px("--size-side") - 17

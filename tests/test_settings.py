@@ -504,6 +504,40 @@ def test_the_data_home_is_named_by_the_apps_package_name():
     assert data_rules.DATA_HOME_NAME == json.loads(PACKAGE_JSON.read_text(encoding="utf-8"))["name"]
 
 
+# ---------------------------------------------- the rename (P155, SPEC-rename)
+
+
+def test_the_earlier_product_name_is_the_pilots_old_name_not_the_current_or_production_one():
+    """R1 and R8: the one home of the earlier name, which is neither the
+    product's name now nor the firm's production product's."""
+    assert data_rules.EARLIER_PRODUCT_NAME == "Tax Document Tracker Pilot"
+    assert data_rules.EARLIER_PRODUCT_NAME != data_rules.product_name()
+    assert data_rules.EARLIER_PRODUCT_NAME != "Tax Document Tracker"
+
+
+def test_the_earlier_settings_path_is_under_local_app_data_programs(tmp_path, monkeypatch):
+    """Where the earlier installer put the program, and settings.json beside
+    it; None where there is no LOCALAPPDATA to look in."""
+    from pathlib import Path
+
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    assert data_rules.earlier_settings_path() == (
+        Path(tmp_path) / "Programs" / data_rules.EARLIER_PRODUCT_NAME / SETTINGS_FILENAME)
+    monkeypatch.setenv("LOCALAPPDATA", "")
+    assert data_rules.earlier_settings_path() is None
+    monkeypatch.delenv("LOCALAPPDATA")
+    assert data_rules.earlier_settings_path() is None
+
+
+def test_the_data_folder_keeps_its_name_through_the_rename():
+    """R3: the data folder holds the store, the checkpoint and the run log,
+    and a scheduled pass can start between the upgrade and the app's first
+    launch, so it is never renamed or moved: it keeps the pilot's internal
+    name, which is not the product's name now."""
+    assert data_rules.DATA_HOME_NAME == "tax-document-tracker-pilot"
+    assert data_rules.DATA_HOME_NAME != data_rules.product_name()
+
+
 def test_a_clients_root_that_holds_or_sits_inside_the_data_home_is_refused(beside_the_app, monkeypatch):
     from pathlib import Path
 
@@ -656,3 +690,78 @@ def test_a_settings_file_that_will_not_read_is_not_overwritten_by_a_save(beside_
     with pytest.raises(SettingsError):
         data_rules.set_schedule(True, "07:00", 120)
     assert settings_path().read_text(encoding="utf-8") == "{not json"
+
+
+# ------------------------------------------------ one reading (P118) ----
+
+def test_one_reading_asks_the_data_folder_once_and_outside_it_every_time(monkeypatch, tmp_path):
+    """A read-only reply asks where the data folder is thousands of times;
+    inside ``one_reading`` the first answer stands, and outside it an
+    override takes effect at once, as ``data_home`` has always promised."""
+    asked = []
+    real = data_rules.resolve_data_home
+
+    def counted(*args, **kwargs):
+        asked.append(1)
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(data_rules, "resolve_data_home", counted)
+    first = data_rules.data_home()
+    with data_rules.one_reading():
+        assert data_rules.data_home() == data_rules.data_home() == first
+        monkeypatch.setenv(data_rules.ENV_DATA_HOME, str(tmp_path / "elsewhere"))
+        assert data_rules.data_home() == first, "one reply sees one data folder"
+    assert len(asked) == 2
+    assert data_rules.data_home() == tmp_path / "elsewhere", "outside a reading, an override is at once"
+
+
+def test_one_reading_reads_the_settings_once_and_hands_each_caller_its_own_copy():
+    data_rules.set_firm("J Park & Associates, CPA")
+    with data_rules.one_reading():
+        mine = data_rules._read()
+        mine["firm"] = "changed by one caller"
+        settings_path().write_text(json.dumps({"firm": "written meanwhile"}), encoding="utf-8")
+        assert data_rules._read()["firm"] == "J Park & Associates, CPA"
+    assert data_rules._read()["firm"] == "written meanwhile"
+
+
+def test_one_reading_holds_what_a_path_resolves_to_but_never_an_error(monkeypatch, tmp_path):
+    from pathlib import Path
+
+    calls, real = [], Path.resolve
+
+    def counted(self, strict=False):
+        calls.append(str(self))
+        if self.name == "refuses":
+            raise OSError("cannot be resolved")
+        return real(self, strict)
+
+    monkeypatch.setattr(Path, "resolve", counted)
+    with data_rules.one_reading():
+        for _ in range(3):
+            assert data_rules.resolved(tmp_path / "a") == real(tmp_path / "a")
+            with pytest.raises(OSError):
+                data_rules.resolved(tmp_path / "refuses")
+    assert calls.count(str(tmp_path / "a")) == 1
+    assert calls.count(str(tmp_path / "refuses")) == 3
+    data_rules.resolved(tmp_path / "a")
+    assert calls.count(str(tmp_path / "a")) == 2, "outside a reading nothing is held"
+
+
+def test_a_nested_reading_is_the_same_reading_and_ends_with_the_outer_one():
+    with data_rules.one_reading():
+        first = data_rules.app_dir()
+        with data_rules.one_reading():
+            assert data_rules._HELD is not None and data_rules.app_dir() == first
+        assert data_rules._HELD is not None
+    assert data_rules._HELD is None
+
+
+def test_a_settings_write_inside_a_reading_is_refused_outright():
+    """The review's SHOULD-3: a read-only reply writes nothing, and a write
+    under held answers would leave the rest of the reply stale."""
+    with data_rules.one_reading():
+        with pytest.raises(RuntimeError, match="read-only reply"):
+            data_rules.set_firm("Written inside a reading")
+    data_rules.set_firm("Written after it")
+    assert data_rules.firm() == "Written after it"

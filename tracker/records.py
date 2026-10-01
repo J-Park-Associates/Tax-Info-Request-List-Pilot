@@ -1147,6 +1147,12 @@ class HouseholdInfo:
     #: a drop folder feeds its own returns unless a person extends it, and
     #: nothing ever infers one.
     feeds: tuple[Feed, ...] = ()
+    #: The households a person marked as related to this one (pilot P141,
+    #: P170): folder names, **a note and never a route** - nothing files,
+    #: feeds or shares through it - kept on both records by the one command
+    #: that writes it (``edit-household``). Empty for a record written
+    #: before the field existed, and never inferred.
+    related: tuple[str, ...] = ()
 
 
 #: The household's labels, in the order a reader shows them.
@@ -1156,13 +1162,14 @@ HOUSEHOLD_FIELDS = (
     ("Contact", "contact"),
     ("Inbox Link", "link"),
     ("Also feeds", "feeds"),
+    ("Related Households", "related"),
 )
 #: The fields a person may change once the household exists. The name is
 #: not among them: the folder is the name, exactly as a return's is.
 #: ``feeds`` is (decision 129) and is edited through its own list rather
 #: than a box, because a feed is a household and a return line picked from
 #: what is already there.
-HOUSEHOLD_EDITABLE: tuple[str, ...] = ("members", "contact", "link", "feeds")
+HOUSEHOLD_EDITABLE: tuple[str, ...] = ("members", "contact", "link", "feeds", "related")
 assert set(HOUSEHOLD_EDITABLE) <= {field_name for _, field_name in HOUSEHOLD_FIELDS}
 
 
@@ -1179,6 +1186,7 @@ def household_to_json(info: HouseholdInfo) -> dict:
     # journal's line and the store's column hold exactly one shape
     # (decision 129).
     payload["feeds"] = [feed_to_json(one) for one in info.feeds]
+    payload["related"] = list(info.related)
     return payload
 
 
@@ -1207,7 +1215,26 @@ def household_from_json(raw: dict) -> HouseholdInfo:
     # names none, which reads as none.
     if "feeds" in values:
         values["feeds"] = feeds_from_json(values["feeds"])
+    # The related households (pilot P170): a list of names, and a record
+    # from before the field names none. A shape that is not a list of text
+    # raises rather than being half-read; the store's admission refuses it
+    # first (``household_problem``).
+    if "related" in values:
+        values["related"] = related_from_json(values["related"])
     return HouseholdInfo(**values)
+
+
+def related_from_json(raw: object) -> tuple[str, ...]:
+    """A household's related list as the record holds it: a list of
+    household names, read back as they were written (pilot P170). ``None``
+    is none; anything that is not a list of text raises."""
+    if raw is None:
+        return ()
+    if isinstance(raw, str):
+        raw = json.loads(raw or "[]")
+    if not isinstance(raw, list) or not all(isinstance(one, str) for one in raw):
+        raise ValueError("the related households are not a list of names")
+    return tuple(raw)
 
 
 #: The person's half of a request row: everything the manifest's
@@ -1987,6 +2014,11 @@ def household_problem(household: dict) -> str:
     if members is not None:
         checks.append(_field("members", text_problem(members) if isinstance(members, str)
                              else text_list_problem(members)))
+    # The related households (pilot P170): a list of names, each held to
+    # the text rule; whether each is one folder name is the layout's.
+    related = household.get("related")
+    if related is not None:
+        checks.append(_field("related", text_list_problem(related)))
     return _first(*checks)
 
 

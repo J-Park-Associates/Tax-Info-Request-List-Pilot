@@ -18,6 +18,11 @@ const vocabFile = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "harness-")), 
 execFileSync(process.env.HARNESS_PYTHON || "python3", [path.join(here, "make_vocab.py"), vocabFile], { cwd: path.resolve(here, "..", ".."), stdio: "inherit" });
 const { server, port } = await serve(fs.readFileSync(vocabFile, "utf-8"));
 const base = `http://127.0.0.1:${port}/`;
+// The edition the badge shows, read from between pilot-content.js's markers
+// (plain JSON there, for the tests and the installer build), so the About
+// check follows the version rather than typing it.
+const pilotContent = fs.readFileSync(path.resolve(here, "..", "..", "app", "renderer", "pilot-content.js"), "utf-8");
+const edition = JSON.parse(pilotContent.split("// PILOT-CONTENT-BEGIN")[1].split("// PILOT-CONTENT-END")[0]).edition.version;
 
 const browser = await chromium.launch({ args: ["--no-sandbox"] });
 const failures = [];
@@ -594,7 +599,7 @@ const settle = (page) => page.waitForTimeout(250);
   await page.keyboard.press("Escape");
   check("Esc shuts the dialog", await page.evaluate(() => document.getElementById("safeguards-modal").classList.contains("hidden")), null);
   await page.evaluate(() => shellMenu({ id: "about" }));
-  check("Help > About names the product and the edition", (await page.textContent("#about-modal")).includes("Pilot 0.2"), await page.textContent("#about-modal"));
+  check("Help > About names the product and the edition", (await page.textContent("#about-modal")).includes(`Pilot ${edition}`), await page.textContent("#about-modal"));
   await page.click("#about-close");
   await page.click("#notices .notice-act[data-act=action]");
   const names = await page.evaluate(() => [...document.querySelectorAll("#misfits-list .misfit-name")].map((n) => n.textContent));

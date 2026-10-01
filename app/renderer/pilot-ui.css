@@ -42,7 +42,7 @@
   --size-bar: 48px; --size-sheet-foot: 64px;
   --size-side: 240px; --size-sheet: 400px; --size-find: 240px; --size-icon: 16px;
   --size-pill: 3px; --size-hair: 1px;
-  --size-col-name: 240px; --size-col-detail: 200px; --size-col-status: 160px; --size-col-end: 144px;
+  --size-col-name: 224px; --size-col-detail: 200px; --size-col-status: 160px; --size-col-end: 144px;
   --size-crumb-min: 96px; --size-crumb-household: 240px; --size-crumb-current: 400px;
   --size-tip-max: 320px; --size-form: 320px; --size-page-max: 480px; --size-progress: 4px;
 
@@ -84,6 +84,9 @@
   --st-done: #05603f;
   --st-error: #991b1b;
   --danger: #b42318;
+  /* the Linked Households mark and a firm list's shaded row (pilot SPEC-lists 16, P177) */
+  --st-linked: #7c3aad;
+  --bg-band: #f8fafc;
 
   /* notices */
   --err-bg: #fef2f2;  --err-border: #fecaca;  --err-fg: #991b1b;
@@ -159,6 +162,8 @@
     --st-done: #7dd8b0;
     --st-error: #ffa29b;
     --danger: #ff9189;
+    --st-linked: #c4a0f0;
+    --bg-band: #1f232a;
 
     --err-bg: #3a1d20;  --err-border: #6e2f33;  --err-fg: #ffb8b3;
     --warn-bg: #35290f; --warn-border: #6b5420; --warn-fg: #f6d08a;

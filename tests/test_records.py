@@ -586,3 +586,33 @@ def test_the_code_and_the_subfolder_are_columns_of_the_index():
     assert INDEX_LAYOUT["code"][0] == "Code"
     assert INDEX_LAYOUT["subfolder"][0] == "Client's Subfolder"
     assert {"Code", "Client's Subfolder"} <= set(INDEX_COLUMNS)
+
+
+# ----------------------------------------------- pilot P170: related households ----
+
+
+def test_a_households_related_list_round_trips_and_an_old_record_reads_as_none():
+    """Pilot P170: the related households are the record's last field, a
+    list of names written as a JSON list and read back as they were; a
+    household record from before the field names none (backward
+    compatible), and a shape that is not a list of names raises rather
+    than being half-read."""
+    info = records.HouseholdInfo(name="Park Family", related=("Lee Family", "Park & Lee LLC"))
+    stored = records.household_to_json(info)
+    assert stored["related"] == ["Lee Family", "Park & Lee LLC"]
+    assert records.household_from_json(stored) == info
+    assert records.household_from_json({"name": "Park Family"}).related == ()
+    assert records.household_from_json({"name": "Park Family", "related": '["Lee Family"]'}).related == ("Lee Family",)
+    assert "related" in records.HOUSEHOLD_EDITABLE
+    assert ("Related Households", "related") in records.HOUSEHOLD_FIELDS
+    assert [one.name for one in fields(records.HouseholdInfo)][-1] == "related"
+    for bad in ([1], {"name": "Lee"}, "Lee Family"):
+        with pytest.raises((ValueError, TypeError)):
+            records.household_from_json({"name": "Park Family", "related": bad})
+
+
+def test_a_households_related_list_is_held_to_the_text_rule():
+    """Pilot P170: each related name is one line of text, as a member is."""
+    assert records.household_problem({"related": ["Lee Family"]}) == ""
+    assert records.household_problem({"related": "Lee Family"}).startswith("'related' ")
+    assert records.household_problem({"related": ["Lee\nFamily"]}).startswith("'related' ")

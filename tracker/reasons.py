@@ -231,7 +231,7 @@ TOO_SMALL = Reason(
 TOO_LARGE = Reason(
     "too-large", "Too large to read ({size}). A person looks at it.",
     "Too large to read", firm_side=True,
-    firm_note=f"too large for the tracker to read; a person opens it, if at all, {OTHER_MACHINE}",
+    firm_note=f"too large for the app to read; a person opens it, if at all, {OTHER_MACHINE}",
 )
 PENDING_SYNC = Reason(
     "pending-sync", "cloud-only placeholder; waiting for OneDrive/Google Drive to sync",
@@ -561,7 +561,7 @@ IN_CONSOLIDATED_CLIENT = "included in your consolidated brokerage statement"
 #: Until 168 a request whose folder was not there said
 #: "request folder not found; the next pass creates it" - retired with the
 #: folder, because a request can no longer lack one.
-PERSONS_FOLDER = ("{folder} is a folder inside {prepared}. The tracker files into {prepared} "
+PERSONS_FOLDER = ("{folder} is a folder inside {prepared}. The app files into {prepared} "
                   "itself and counts nothing in this folder.")
 
 #: A reading that hit the safety stop (decision 137, B1.2; the owner's
@@ -842,7 +842,7 @@ SHORT_REASONS: dict[str, str] = {
     "could-not-file": "Could Not File",
     "answer-not-counted": "Statement Not Counted",
     "put-back-refused": "Could Not Put Back",
-    "opened-not-across": "Came in Email or Zip",
+    "opened-not-across": "Email or Zip",
     "unfiled": "Unfiled by a Person",
     "container-damaged": "Email or Zip Damaged",
     "not-requested": "Not Requested",
@@ -883,4 +883,17 @@ SHORT_REASONS: dict[str, str] = {
     "ocr-failed": "Scan Reading Failed",
     "reading-stopped": "Reading Timed Out",
     "unreadable": "Nothing Readable",
+}
+
+#: The longer words a short label stands for, shown as its tooltip every
+#: time, cut or not (pilot P116, SPEC-email-zip-tag). Only a label that was
+#: shortened into a tag to fit the 160px status column is here: its tag
+#: alone could be read as something else - "Email or Zip" on a document's
+#: row does not say the document came out of one - so the words it replaced
+#: stay one hover away. Every other label says all it means and has no
+#: tip unless it is cut. Five words or fewer, like every tooltip (SPEC-shell
+#: 11); keyed by code, and ``tests/test_reasons.py`` keeps each key a code
+#: of :data:`SHORT_REASONS` and each tip different from its tag.
+REASON_TIPS: dict[str, str] = {
+    "opened-not-across": "Came in Email or Zip",
 }

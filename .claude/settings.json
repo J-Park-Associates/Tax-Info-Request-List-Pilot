@@ -75,7 +75,15 @@
       "Read(~/.config/Tax Document Tracker Pilot/error.log)",
       "Edit(~/.config/Tax Document Tracker Pilot/error.log)",
       "Read(~/.config/Tax Document Tracker Pilot/error.log.*)",
-      "Edit(~/.config/Tax Document Tracker Pilot/error.log.*)"
+      "Edit(~/.config/Tax Document Tracker Pilot/error.log.*)",
+      "Read(//c/Users/*/AppData/Local/Tax Document Console/error.log)",
+      "Edit(//c/Users/*/AppData/Local/Tax Document Console/error.log)",
+      "Read(//c/Users/*/AppData/Local/Tax Document Console/error.log.*)",
+      "Edit(//c/Users/*/AppData/Local/Tax Document Console/error.log.*)",
+      "Read(~/.config/Tax Document Console/error.log)",
+      "Edit(~/.config/Tax Document Console/error.log)",
+      "Read(~/.config/Tax Document Console/error.log.*)",
+      "Edit(~/.config/Tax Document Console/error.log.*)"
     ]
   }
 }

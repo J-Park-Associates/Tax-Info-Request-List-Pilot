@@ -63,7 +63,8 @@ const PilotRecord = (() => {
     });
   }
 
-  // The durable record: {terms, tour_seen}, or null when it cannot be had.
+  // The durable record: {terms, terms_signed_by, terms_accepted_at,
+  // tour_seen}, or null when it cannot be had.
   // One call at a time: two writes sent together would each read, change and
   // write the file, and one would lose the other's field (P46 review, 1).
   let queue = Promise.resolve(null);
@@ -89,9 +90,11 @@ const PilotRecord = (() => {
       if (record && record.tour_seen) writeStored(TOUR_KEY, "1");
       return record;
     }),
-    acceptTerms: (version) => {
+    // signedBy is the name typed to sign (P188); left out, the acceptance is
+    // kept with no name - never one the tester did not type.
+    acceptTerms: (version, signedBy) => {
       writeStored(TERMS_KEY, version);
-      return ask({ terms: version });
+      return ask(signedBy === undefined ? { terms: version } : { terms: version, signed_by: signedBy });
     },
     cacheTerms: (version) => writeStored(TERMS_KEY, version),
     tourSeen: () => {
@@ -146,6 +149,9 @@ const PilotTerms = (() => {
     const controls = { overlay };
     const actions = make("div", "pilot-terms-actions");
     if (readOnly) {
+      // Who signed and when: built here, attached by show() above the
+      // actions only once the record holds a name, never hidden and shown.
+      Object.assign(controls, { signed: make("p", "pilot-terms-signed"), actions });
       const close = make("button", "btn btn-primary", terms.close);
       close.id = "pilot-terms-close";
       close.setAttribute("type", "button");
@@ -159,6 +165,17 @@ const PilotTerms = (() => {
       check.appendChild(agree);
       check.appendChild(document.createTextNode(` ${terms.checkbox}`));
       card.appendChild(check);
+      // The sign-off (P188): the name typed here is the signature.
+      const field = make("label", "field pilot-terms-name");
+      field.appendChild(make("span", "", terms.sign));
+      const name = make("input");
+      name.id = "pilot-terms-name";
+      name.setAttribute("type", "text");
+      name.setAttribute("maxlength", "200");
+      name.setAttribute("autocomplete", "off");
+      name.setAttribute("spellcheck", "false");
+      field.appendChild(name);
+      card.appendChild(field);
       const quit = make("button", "btn", terms.quit);
       quit.id = "pilot-terms-quit";
       quit.setAttribute("type", "button");
@@ -168,7 +185,7 @@ const PilotTerms = (() => {
       accept.setAttribute("disabled", "");
       actions.appendChild(quit);
       actions.appendChild(accept);
-      Object.assign(controls, { agree, quit, accept });
+      Object.assign(controls, { agree, name, quit, accept });
     }
     card.appendChild(actions);
     overlay.appendChild(card);
@@ -180,6 +197,7 @@ const PilotTerms = (() => {
   function holdKeys(stops, onEscape) {
     return function hold(e) {
       if (e.key === "Escape") {
+        tipKey(e);   // tooltip.js: this capture stops the key before shellKey (P130)
         e.preventDefault();
         e.stopPropagation();
         if (onEscape) onEscape();
@@ -196,10 +214,28 @@ const PilotTerms = (() => {
     };
   }
 
-  // Help > Terms.
+  // A signature carries its full date: month name, day and year from the
+  // stored ISO time. pagesDay (pages.js) drops the year, and no on-screen
+  // format carries one, so this is the pilot's own.
+  function signedDay(iso) {
+    const parts = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso || ""));
+    if (!parts) return "";
+    return new Date(Number(parts[1]), Number(parts[2]) - 1, Number(parts[3])).toLocaleDateString([], { year: "numeric", month: "long", day: "numeric" });
+  }
+
+  // Help > Terms. The signature line shows only when the record holds a
+  // name; an acceptance from before the sign-off shows none (P188 Q2).
   function show() {
     if (document.getElementById("pilot-terms") || document.getElementById("pilot-tour")) return;
-    const { overlay, close } = build(true);
+    const { overlay, signed, actions, close } = build(true);
+    PilotRecord.read().then((record) => {
+      const name = record ? String(record.terms_signed_by || "") : "";
+      const day = record ? signedDay(record.terms_accepted_at) : "";
+      if (!name || !day || !overlay.isConnected) return;
+      // The date goes in first, so nothing a person typed is read as a slot.
+      signed.textContent = PILOT.terms.signed.split("{date}").join(day).split("{name}").join(name);
+      actions.before(signed);
+    });
     const hold = holdKeys(() => [close], dismiss);
     function dismiss() {
       document.removeEventListener("keydown", hold, true);
@@ -221,22 +257,30 @@ const PilotTerms = (() => {
     const version = String(terms.version);
     if (PilotRecord.termsCached(version)) {
       // The cache has it; the durable record is brought level in the
-      // background (a tester of 0.1 accepted before it existed).
+      // background (a tester of 0.1 accepted before it existed). That
+      // acceptance was made on this PC, so it stands without a name (P188
+      // Q2): none is sent, and none is ever made up.
       PilotRecord.read().then((record) => {
         if (record && record.terms !== version) PilotRecord.acceptTerms(version);
       });
       return;
     }
 
-    const { overlay, agree, quit, accept } = build(false);
-    const hold = holdKeys(() => [agree, quit, accept], null);
+    const { overlay, agree, name, quit, accept } = build(false);
+    const hold = holdKeys(() => [agree, name, quit, accept], null);
+    // Sign and Accept waits for the box and a name; spaces are not a name.
+    const signedBy = () => name.value.trim();
+    const ready = () => agree.checked && signedBy() !== "";
 
     // Clicks outside the card land on the overlay and go nowhere.
     overlay.addEventListener("mousedown", (e) => {
       if (e.target === overlay) e.preventDefault();
     });
     agree.addEventListener("change", () => {
-      accept.disabled = !agree.checked;
+      accept.disabled = !ready();
+    });
+    name.addEventListener("input", () => {
+      accept.disabled = !ready();
     });
     quit.addEventListener("click", () => window.close());
     function close() {
@@ -245,8 +289,8 @@ const PilotTerms = (() => {
       overlay.remove();
     }
     accept.addEventListener("click", () => {
-      if (!agree.checked) return;
-      PilotRecord.acceptTerms(version);
+      if (!ready()) return;
+      PilotRecord.acceptTerms(version, signedBy());
       close();
       if (!PilotRecord.tourCached()) PilotTour.start();
     });

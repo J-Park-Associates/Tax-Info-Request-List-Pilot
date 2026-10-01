@@ -98,7 +98,12 @@ def test_the_tour_text_carries_no_placeholder_but_the_email():
             for item in node.values():
                 yield from strings(item)
 
-    tokens = {t for s in strings(content()) for t in re.findall(r"\{[^}]*\}", s)}
+    # The terms' "signed" line is the one other filled sentence: pilot.js puts
+    # the signed name and the day into it (P188), so it is checked on its own.
+    text = content()
+    signed = text["terms"].pop("signed")
+    assert set(re.findall(r"\{[^}]*\}", signed)) == {"{name}", "{date}"}, signed
+    tokens = {t for s in strings(text) for t in re.findall(r"\{[^}]*\}", s)}
     assert tokens <= {"{email}"}, tokens
 
 

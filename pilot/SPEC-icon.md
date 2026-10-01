@@ -1,9 +1,9 @@
 # Pilot: put the Tax Document Console icon everywhere it is seen - SPEC
 
 Status: **written 2026-09-30, awaiting Jason's answers to the two questions
-below before it is built.** Decision P115 (`DECISIONS.md`). The artwork is
+below before it is built.** Decision P190 (`DECISIONS.md`). The artwork is
 finished and reviewed; this job only wires it in. The artwork itself was
-replaced on 2026-10-01 by P116 ([`SPEC-icon-ledger.md`](SPEC-icon-ledger.md))
+replaced on 2026-10-01 by P191 ([`SPEC-icon-ledger.md`](SPEC-icon-ledger.md))
 under the same file names, so the table below still applies.
 
 Read first: [`brand/tax-document-console/README.md`](brand/tax-document-console/README.md)
@@ -12,13 +12,9 @@ Read first: [`brand/tax-document-console/README.md`](brand/tax-document-console/
 
 ## Questions for Jason (answer before the build)
 
-1. **The product's name.** The app, the installer, the install folder and the
-   Start menu still say "Tax Document Tracker Pilot" (`app/package.json`
-   `productName`, `pilot/installer/setup.iss` throughout). Renaming them to
-   "Tax Document Console" is **not** in this SPEC: `productName` also names
-   the app's data folder (`PRODUCT_NAME` in `app/main.js`), so a rename moves
-   every pilot tester's settings unless it is migrated. Recommended: keep the
-   name for this job and take the rename as its own SPEC.
+1. **The product's name.** Settled on `main`: the app is "Tax Document
+   Console" everywhere (P155, carried over for existing installs by P185), so
+   this job uses that name and changes no name itself.
 2. **The side panel's brand spot.** `#side-brand` in `app/renderer/index.html`
    (line 24) shows the firm's logo, `app/renderer/logo.svg`. Options: keep the
    firm's logo (recommended: the window title and taskbar already carry the
@@ -32,7 +28,7 @@ Read first: [`brand/tax-document-console/README.md`](brand/tax-document-console/
 | 2 | The window's title bar and taskbar while running unpackaged (`Start App.bat`) | `app/main.js`, the `new BrowserWindow({...})` call (about line 681) | Add `icon: path.join(__dirname, "assets", "icon.ico")`. Also call `app.setAppUserModelId("com.jparkassociates.taxdocumentconsole")` before the window opens so Windows groups the running window with its shortcut and shows the same icon |
 | 3 | The installer's own .exe | `pilot/installer/setup.iss` `[Setup]` | `SetupIconFile=..\brand\tax-document-console\installer\setup.ico` |
 | 4 | The setup wizard's panels | `pilot/installer/setup.iss` `[Setup]` | `WizardImageFile=` the seven `wizard-large-N.bmp` and `WizardSmallImageFile=` the seven `wizard-small-N.bmp`, comma-separated, smallest first (Inno Setup 6 picks by the screen's scaling) |
-| 5 | Settings > Apps (the uninstall entry) | `pilot/installer/setup.iss` `[Setup]` | `UninstallDisplayIcon={app}\Tax Document Tracker Pilot.exe` |
+| 5 | Settings > Apps (the uninstall entry) | `pilot/installer/setup.iss` `[Setup]` | `UninstallDisplayIcon={app}\Tax Document Console.exe` |
 | 6 | The engine's .exe in the install folder (rarely seen) | `api_entry.spec` | `icon=` the same `icon.ico` on the `EXE(...)` |
 | 7 | The side panel's brand spot | `app/renderer/index.html` line 24 | Only if Jason picks the second option in question 2 |
 

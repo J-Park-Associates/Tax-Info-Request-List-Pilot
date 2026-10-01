@@ -1,7 +1,7 @@
 # Pilot: replace the app icon with Ledger 4e - SPEC
 
-Status: **written 2026-10-01.** Decision P116 (`DECISIONS.md`), superseding the
-artwork of P115. The wiring in [`SPEC-icon.md`](SPEC-icon.md) is unchanged: it
+Status: **written 2026-10-01.** Decision P191 (`DECISIONS.md`), superseding the
+artwork of P190. The wiring in [`SPEC-icon.md`](SPEC-icon.md) is unchanged: it
 names files by path, and every path it names is regenerated here.
 
 ## What Jason chose

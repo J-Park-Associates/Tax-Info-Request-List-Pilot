@@ -524,8 +524,8 @@ RUN_RECOVER = "Run recover (runbook §6)."
 BROKEN_LINK = ("{name} line {line} does not follow the line before it (the record was reordered, "
                "cut or edited). Nothing past it is read. " + RUN_RECOVER)
 UNLINKED_LINE = ("{name} line {line} was written without the record's link - by an older version "
-                 "of the tracker or by hand. Nothing past it is read. " + RUN_RECOVER)
-NEWER_FORMAT = ("{name} line {line} was written by a newer version of the tracker (format {fmt}); "
+                 "of the app or by hand. Nothing past it is read. " + RUN_RECOVER)
+NEWER_FORMAT = ("{name} line {line} was written by a newer version of the app (format {fmt}); "
                 "this version reads format {known} and stops here rather than misread it. "
                 + RUN_RECOVER)
 #: A line that does not read at all, by class only - never the parser's own
