@@ -623,7 +623,10 @@ code names below are unchanged. See `SPEC-taxpayer-words.md`.
   Each muted but readable (`--text-secondary`, 7.58:1 on `--bg-nav`),
   keyboard-reachable, `aria-disabled="true"`, tooltip "Under
   Construction". Choosing one shows a short **"Under Construction"**
-  toast and opens nothing, calls no engine command.
+  toast and opens nothing, calls no engine command. **View › Show Under
+  Construction** (P197, a checked item, ticked by default) hides all five
+  and the Workspace heading, kept on this PC; see
+  `SPEC-hide-under-construction.md`.
 - **Client Types** (section heading): Individuals (1040), Businesses
   (1120, 1120S, 1065), Trusts & Estates (1041), Nonprofits (990); the
   forms are each item's tooltip. Each opens Clients filtered to the

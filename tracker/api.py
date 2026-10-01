@@ -1253,6 +1253,9 @@ MENU: dict[str, str] = {
     "refresh": "Refresh",
     # Forgets the list column widths this PC keeps (pilot SPEC-lists 4, P139).
     "reset_columns": "Reset Column Widths",
+    # A checked item: shows or hides the side panel's Under Construction
+    # items, kept on this PC (pilot SPEC-hide-under-construction, P197).
+    "show_under_construction": "Show &Under Construction",
     "tools": "&Tools",
     "sort_now": "Sort Now",
     "stop_sorting": "Stop Sorting",

@@ -875,7 +875,7 @@ def test_every_menu_id_the_page_answers_is_in_the_template_and_the_rest_are_the_
     log (main.js's alone, 5.5); the row menus' ids go to pages.js first."""
     template = {"new_household", "change_root", "open_root", "exit", "edit_household", "add_return", "roll_forward", "mark_shared",
                 "edit_list", "draft_reminder", "open_client_folder", "open_inbox", "open_working", "overview", "needs_review",
-                "reminders", "clients", "find", "refresh", "reset_columns", "sort_now", "stop_sorting", "schedule", "repair_schedule", "firm_report",
+                "reminders", "clients", "find", "refresh", "reset_columns", "show_under_construction", "sort_now", "stop_sorting", "schedule", "repair_schedule", "firm_report",
                 "clear_lock", "tour", "safeguards", "terms", "error_log", "about"}
     rows = {"check", "not_requested", "another_return", "put_back", "keep_here", "edit_request", "unfile", "mark_missing", "show_in_explorer"}
     text = read("shell.js")
@@ -895,11 +895,11 @@ def test_a_menu_id_the_page_cannot_answer_is_said_and_logged():
 
 
 def test_the_shell_sends_only_the_menu_channels_messages_and_no_path():
-    """SPEC 5.4: {enable} and {popup, enable, token, x, y}; the token is a
-    key the page made, never a path."""
+    """SPEC 5.4: {enable, checked} (P197) and {popup, enable, token, x, y};
+    the token is a key the page made, never a path."""
     text = stripped_js("shell.js")
     sends = re.findall(r"window\.tracker\.menu\.send\(([^;]*)\);", text)
-    assert sorted(sends) == sorted(["{ enable: shellEnabled() }", "{ popup: name, enable: enable || shellEnabled(), token, x, y }"])
+    assert sorted(sends) == sorted(["{ enable: shellEnabled(), checked: shellChecked() }", "{ popup: name, enable: enable || shellEnabled(), token, x, y }"])
     assert 'shellPopup(one.popup, `crumb-${one.popup}`' in text, "a segment's token is its own name"
     assert "window.tracker.menu.onCommand(shellMenu)" in text
 
@@ -2271,6 +2271,7 @@ def test_a_menu_channel_that_throws_is_a_notice_and_never_stops_a_route_change(t
       const failed = (err) => failures.push(err.message);
       const window = { tracker: { menu: { send: () => { throw new Error("closed"); } } } };
       const shellEnabled = () => [];
+      const shellChecked = () => [];
     """, """
       shellEnable(); shellPopup("file", "row-1", 1, 2);
       return failures;
@@ -3901,3 +3902,135 @@ def test_the_window_and_its_taskbar_button_carry_the_console_icon():
     assert (REPO / "app" / "assets" / "icon.ico").is_file()
     set_id = main.index('app.setAppUserModelId("com.jparkassociates.taxdocumentconsole");')
     assert set_id < main.index("app.whenReady()")
+
+
+# ── View › Show Under Construction (pilot SPEC-hide-under-construction, P197) ──
+
+#: The side panel as index.html lays it out, in a DOM just big enough for
+#: drawSoon and shellToggleSoon: the pages list (four pages, two Under
+#: Construction), the Taxpayer Types under their heading, and Workspace (three
+#: Under Construction items) under its heading.
+SOON_PANEL = r"""
+class El {
+  constructor(tag, attrs, kids) {
+    this.tag = tag; this.attrs = attrs || {}; this.kids = kids || []; this.parent = null; this.cls = new Set();
+    for (const k of this.kids) k.parent = this;
+    this.classList = { toggle: (c, on) => (on ? this.cls.add(c) : this.cls.delete(c)), contains: (c) => this.cls.has(c) };
+    if (this.attrs.class) for (const c of this.attrs.class.split(" ")) this.cls.add(c);
+  }
+  getAttribute(name) { return name in this.attrs ? this.attrs[name] : null; }
+  matches(sel) {
+    if (sel === "li") return this.tag === "li";
+    if (sel === ".side-list") return this.cls.has("side-list");
+    if (sel === ".side-section") return this.cls.has("side-section");
+    if (sel === ".side-section[data-soon]") return this.cls.has("side-section") && "data-soon" in this.attrs;
+    throw new Error(`selector ${sel}`);
+  }
+  all() { return this.kids.flatMap((k) => [k, ...k.all()]); }
+  querySelectorAll(sel) { return this.all().filter((n) => n.matches(sel)); }
+  closest(sel) { let n = this; while (n && !n.matches(sel)) n = n.parent; return n || null; }
+}
+const button = (attrs) => new El("li", {}, [new El("button", { class: "side-section", ...attrs })]);
+const soon = (key) => button({ "data-soon": key });
+const typesHeading = new El("h2", { id: "side-types-heading", class: "side-heading" });
+const workHeading = new El("h2", { id: "side-workspace-heading", class: "side-heading" });
+const root = new El("nav", {}, [
+  new El("ul", { id: "side-sections" }, [
+    button({ "data-section": "overview" }), button({ "data-section": "needs-review" }),
+    button({ "data-section": "reminders" }), button({ "data-section": "clients" }),
+    soon("ready_to_sign"), soon("family_entities")]),
+  typesHeading,
+  new El("ul", { class: "side-list", "aria-labelledby": "side-types-heading" }, [
+    button({ "data-type": "individuals" }), button({ "data-type": "businesses" }),
+    button({ "data-type": "trusts" }), button({ "data-type": "nonprofits" })]),
+  workHeading,
+  new El("ul", { class: "side-list", "aria-labelledby": "side-workspace-heading" }, [
+    soon("personal_trusts"), soon("corporate_entities"), soon("portal_settings")]),
+]);
+const byId = { "side-types-heading": typesHeading, "side-workspace-heading": workHeading };
+const $ = (id) => byId[id] || null;
+const document = { activeElement: null, querySelectorAll: (sel) => root.querySelectorAll(sel) };
+const store = { data: {}, broken: false,
+  getItem(k) { if (this.broken) throw new Error("locked"); return k in this.data ? this.data[k] : null; },
+  setItem(k, v) { if (this.broken) throw new Error("locked"); this.data[k] = String(v); },
+  removeItem(k) { if (this.broken) throw new Error("locked"); delete this.data[k]; } };
+const window = { localStorage: store };
+const SOON_KEY = "tracker.underConstruction";
+let shellSoonHidden = null;
+const said = { focus: [], tips: 0, sent: [] };
+function focusRegion(name) { said.focus.push(name); }
+function hideTip() { said.tips += 1; }
+function shellEnable() { said.sent.push(shellChecked()); }
+const hiddenNow = () => root.all().filter((n) => n.cls.has("hidden")).map((n) =>
+  n.tag === "li" ? n.kids[0].attrs["data-soon"] || n.kids[0].attrs["data-section"] || n.kids[0].attrs["data-type"]
+    : n.attrs.id || n.attrs["aria-labelledby"]);
+const soonButton = (key) => root.querySelectorAll(".side-section[data-soon]").find((n) => n.attrs["data-soon"] === key);
+"""
+
+SOON_FUNCTIONS = ["shellReadSoon", "shellChecked", "drawSoon", "shellToggleSoon"]
+
+
+def test_hiding_takes_the_five_under_construction_items_and_the_workspace_heading_out_of_the_panel(tmp_path):
+    """P197 rulings 1 and 2: a stored "hidden" hides the five items and the
+    Workspace heading and list with the .hidden class (display: none, so out
+    of the Tab order and the accessibility tree); the pages, the Taxpayer
+    Types and their heading stay; the menu's tick is off."""
+    ran = run_shell(SOON_FUNCTIONS, SOON_PANEL, """
+      store.data[SOON_KEY] = "hidden";
+      drawSoon();
+      return { hidden: hiddenNow(), checked: shellChecked() };
+    """, tmp_path)
+    assert sorted(ran["hidden"]) == sorted([
+        "ready_to_sign", "family_entities", "side-workspace-heading", "side-workspace-heading",
+        "personal_trusts", "corporate_entities", "portal_settings"])
+    assert ran["checked"] == []
+
+
+def test_a_new_install_shows_them_and_the_menu_flips_keeps_and_says_the_tick(tmp_path):
+    """P197 rulings 3, 5 and 6, Q2: shown with nothing stored; the menu's
+    answer hides them, keeps "hidden" on this PC, hides a showing tip, moves
+    focus that sat on a hidden item to the side panel's current page (F6's
+    place) and tells the menu; choosing it again shows them and forgets the
+    key, and focus elsewhere is left where it is."""
+    ran = run_shell(SOON_FUNCTIONS, SOON_PANEL, """
+      drawSoon();
+      const first = { hidden: hiddenNow(), checked: shellChecked() };
+      document.activeElement = soonButton("portal_settings");
+      shellToggleSoon();
+      const off = { hidden: hiddenNow().length, stored: store.data[SOON_KEY], focus: [...said.focus], tips: said.tips };
+      document.activeElement = null;
+      shellToggleSoon();
+      const on = { hidden: hiddenNow(), stored: SOON_KEY in store.data, focus: said.focus };
+      return { first, off, on, sent: said.sent };
+    """, tmp_path)
+    assert ran["first"] == {"hidden": [], "checked": ["show_under_construction"]}
+    assert ran["off"] == {"hidden": 7, "stored": "hidden", "focus": ["side"], "tips": 1}
+    assert ran["on"] == {"hidden": [], "stored": False, "focus": ["side"]}
+    assert ran["sent"] == [[], ["show_under_construction"]]
+
+
+def test_storage_that_cannot_be_read_shows_them_and_the_choice_holds_while_the_app_is_open(tmp_path):
+    """P197 ruling 5: the column widths' fallback - unreadable storage shows
+    the items, and a choice it refuses to keep still holds until the app
+    closes."""
+    ran = run_shell(SOON_FUNCTIONS, SOON_PANEL, """
+      store.broken = true;
+      drawSoon();
+      const first = hiddenNow();
+      shellToggleSoon();
+      return { first, after: hiddenNow().length, checked: shellChecked() };
+    """, tmp_path)
+    assert ran == {"first": [], "after": 7, "checked": []}
+
+
+def test_the_setting_is_this_pcs_and_the_side_panel_draws_it_on_every_draw():
+    """P197 rulings 4-6: kept under its own key in this PC's storage (never
+    settings.json, never the engine), drawn by drawSide, answered by the menu
+    and enabled from the first frame."""
+    text = stripped_js("shell.js")
+    assert 'const SOON_KEY = "tracker.underConstruction";' in text
+    assert "drawSoon();" in js_function("drawSide")
+    assert "show_under_construction: () => shellToggleSoon()," in text
+    first = [line for line in js_function("shellEnabled").splitlines() if "const ids = [" in line]
+    assert len(first) == 1 and '"show_under_construction"' in first[0]
+    assert "under_construction" not in (REPO / "tracker" / "settings.py").read_text(encoding="utf-8")

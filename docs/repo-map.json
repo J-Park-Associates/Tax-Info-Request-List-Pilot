@@ -15,9 +15,9 @@
     "a person sends the draft"
   ],
   "counts": {
-    "nodes": 409,
+    "nodes": 411,
     "edges": 1193,
-    "reused": 362
+    "reused": 363
   },
   "node_types": [
     "artifact",
@@ -288,8 +288,8 @@
       "id": "tracker/api.py",
       "type": "module",
       "layer": "core",
-      "sha256": "97723747a5545ca8",
-      "lines": 6282,
+      "sha256": "2b5a5225a1ef38a2",
+      "lines": 6285,
       "cli": "python -m tracker.api",
       "exports": [
         "ACCEPT_FOLDER_NAME_HELP",
@@ -4095,10 +4095,10 @@
       "id": "app/main.js",
       "type": "module",
       "layer": "desktop-app",
-      "sha256": "7662a4cc6e8f3965",
-      "lines": 779,
+      "sha256": "5bed05ad72596202",
+      "lines": 792,
       "role": "Electron main process. Spawns the Python API (`-m tracker.api` under the checkout's .venv interpreter, by its full path, or the frozen executable package.json's config.apiName names in the portable build) and relays its JSON to the renderer over IPC. Since decision 193 it passes each progress line a pass prints (tracker.progress's format) to the window on the tracker-progress channel, keeps the last non-progress line as the reply, follows the kill to the limit_seconds the pass reports and says where it was, answers every failure of its own in the API's envelope, and puts no stderr on screen - a failed command's goes to the error log the API names, else to the shell's fallback error.log in %LOCALAPPDATA%\\<productName> (local, non-roaming; Electron's userData off Windows).",
-      "notes": "This is the cross-language boundary: everything the UI can do is a tracker.api command. The renderer is untrusted here: a command must be in vocab.commands (before the vocabulary arrives, only BOOTSTRAP_COMMAND, pinned to tracker.api.COMMANDS by a guard) with the one argument shape the renderer uses; open-path opens only a path the API reported in state.paths, and the error log vocab.shell.error_log names, as a file (an optional second argument \"reveal\" on the same channel shows a reported file selected in File Explorer through shell.showItemInFolder after the same lstat check; a folder still goes to shell.openPath); the tracker's exit code is read, not discarded, and a plain command that outlives TRACKER_TIMEOUT_MS is killed and reported, and a pass at the limit its own first line states (decision 203). The window is sandboxed, cannot navigate and cannot open windows. Decision 160: the shell takes app.requestSingleInstanceLock(); a second launch quits before any window is made, and the running one restores and focuses its window on second-instance - two windows were two editors, and the earlier one's save took the later one's back. Decision 176: devTools is off when packaged, and runTracker() serialises the payload before the tracker starts and writes it as UTF-8, which is how tracker.api._read_spec() reads it. Decision 191: from source it runs .venv/Scripts/python.exe (or .venv/bin/python), never a bare python, and answers with the lock tool's NOT_SET_UP sentence when that is missing; buildMenu() runs before the window is made in both builds, and the app's own menu (SPEC-shell 5.1) has no reload, zoom or developer-tools item or accelerator (E-7). Decision 188 (E-14): learn() keeps each reported path with its kind from vocab.path_kinds, and openPath lstat()s it and opens it only when it is no symbolic link (Node reports a junction as one) and still a directory for 'folder' or a regular file for 'file'; otherwise vocab.shell.not_opened. No path.relative( and no startsWith( (tests/test_layers.py). Decision 186's rebase review (MF2): keepInLog() appends (appendToLog, fail-safe: a failed write is dropped, never thrown) to the error log the API named and builds no such path - no ERROR_LOG_FILENAME in the shell. Jason's ruling of 2026-09-29: with none named (no data folder yet) it appends to a fallback error.log in %LOCALAPPDATA%\\<productName> (process.env.LOCALAPPDATA, else the profile's AppData\\Local; off Windows app.getPath('userData'); FALLBACK_LOG_NAME; not the data home, which the P19 deny list and the package check keep out of a package, and not the roaming %APPDATA%; capped at FALLBACK_CAP 256 KB, one .1 copy, never written through a link or a folder, a folder at error.log.1 drops the old log instead of stopping writes), a failed command's reply adds just vocab.shell.no_log (api.SHELL_NO_LOG, 'Tracker failed'; SPEC-shell 11.2), the stderr is never on screen, and a renderer error is kept there too. The menu bar stays hidden until Alt (autoHideMenuBar, Jason 2026-09-29). Decision 203: the command named by vocab.pass_command (learned, never typed) is a pass: runTracker resolves the click at its 'started' progress line, streams its later lines on tracker-progress and sends {reply, code} - its final line, or the shell's own failure when it gave none or was killed - on the same channel when it closes; a pass is killed only at the limit its own first line states (limit_seconds, locking.RUN_TIME_LIMIT_SECONDS), while every other command keeps TRACKER_TIMEOUT_MS; each running pass is kept in 'passes' and will-quit destroys its stdout, which the runner takes as Stop. Decision 209: at whenReady the shell runs the API's after-install command itself (LAUNCH_COMMAND, through spawnTracker, outside the renderer's allowlist) in the background: no tracker-cmd waits for it (the review's S7), and when its reply says ran the shell sends LAUNCH_DONE_CHANNEL ('after-install-done', one of three main-to-renderer channels, with tracker-progress and MENU_CHANNEL) so the page asks list again for the notice. SPEC-shell 5: the menu bar is built from BAR with the API's words (DEFAULT_MENU_WORDS, word for word tracker.api.MENU, replaced by vocab.menu when a word differs), items are enabled from the page's {enable} list (ALWAYS need nothing), and a chosen item goes to the page on MENU_CHANNEL as {id, token}; onMenuMessage() treats the one 'menu' channel as untrusted (unknown ids, popups and long tokens are dropped) and pops the six native right-click menus of POPUPS; Open error log is the shell's alone (openErrorLog: the named log, else the fallback if it exists, through openChecked's lstat test, the one openPath uses). pageBackground() reads --window-light / --window-dark from pilot-ui.css for the system theme (none under a contrast theme) and nativeTheme 'updated' repaints the window. Pilot P46: flushes the page's storage to disk as the window closes, since Electron lets go of the single-instance lock before it closes that storage. The rename (P155, pilot/SPEC-rename.md R4): productName is now the new name, so the window title, the fallback log's folder and the scheduled task follow it, but Electron's userData folder (the page's column widths and cached terms and tour answers) keeps the earlier name: main.js calls app.setPath('userData', appData + package.json's config.userDataName) at the top, before anything asks for a path and before requestSingleInstanceLock, which Electron keys on that folder. config.userDataName is held equal to settings.EARLIER_PRODUCT_NAME by tests/test_pilot_installer.py and tests/test_single_source.py. The screen defaults say 'App', not 'Tracker' (P155 Q3)."
+      "notes": "This is the cross-language boundary: everything the UI can do is a tracker.api command. The renderer is untrusted here: a command must be in vocab.commands (before the vocabulary arrives, only BOOTSTRAP_COMMAND, pinned to tracker.api.COMMANDS by a guard) with the one argument shape the renderer uses; open-path opens only a path the API reported in state.paths, and the error log vocab.shell.error_log names, as a file (an optional second argument \"reveal\" on the same channel shows a reported file selected in File Explorer through shell.showItemInFolder after the same lstat check; a folder still goes to shell.openPath); the tracker's exit code is read, not discarded, and a plain command that outlives TRACKER_TIMEOUT_MS is killed and reported, and a pass at the limit its own first line states (decision 203). The window is sandboxed, cannot navigate and cannot open windows. Decision 160: the shell takes app.requestSingleInstanceLock(); a second launch quits before any window is made, and the running one restores and focuses its window on second-instance - two windows were two editors, and the earlier one's save took the later one's back. Decision 176: devTools is off when packaged, and runTracker() serialises the payload before the tracker starts and writes it as UTF-8, which is how tracker.api._read_spec() reads it. Decision 191: from source it runs .venv/Scripts/python.exe (or .venv/bin/python), never a bare python, and answers with the lock tool's NOT_SET_UP sentence when that is missing; buildMenu() runs before the window is made in both builds, and the app's own menu (SPEC-shell 5.1) has no reload, zoom or developer-tools item or accelerator (E-7). Decision 188 (E-14): learn() keeps each reported path with its kind from vocab.path_kinds, and openPath lstat()s it and opens it only when it is no symbolic link (Node reports a junction as one) and still a directory for 'folder' or a regular file for 'file'; otherwise vocab.shell.not_opened. No path.relative( and no startsWith( (tests/test_layers.py). Decision 186's rebase review (MF2): keepInLog() appends (appendToLog, fail-safe: a failed write is dropped, never thrown) to the error log the API named and builds no such path - no ERROR_LOG_FILENAME in the shell. Jason's ruling of 2026-09-29: with none named (no data folder yet) it appends to a fallback error.log in %LOCALAPPDATA%\\<productName> (process.env.LOCALAPPDATA, else the profile's AppData\\Local; off Windows app.getPath('userData'); FALLBACK_LOG_NAME; not the data home, which the P19 deny list and the package check keep out of a package, and not the roaming %APPDATA%; capped at FALLBACK_CAP 256 KB, one .1 copy, never written through a link or a folder, a folder at error.log.1 drops the old log instead of stopping writes), a failed command's reply adds just vocab.shell.no_log (api.SHELL_NO_LOG, 'Tracker failed'; SPEC-shell 11.2), the stderr is never on screen, and a renderer error is kept there too. The menu bar stays hidden until Alt (autoHideMenuBar, Jason 2026-09-29). Decision 203: the command named by vocab.pass_command (learned, never typed) is a pass: runTracker resolves the click at its 'started' progress line, streams its later lines on tracker-progress and sends {reply, code} - its final line, or the shell's own failure when it gave none or was killed - on the same channel when it closes; a pass is killed only at the limit its own first line states (limit_seconds, locking.RUN_TIME_LIMIT_SECONDS), while every other command keeps TRACKER_TIMEOUT_MS; each running pass is kept in 'passes' and will-quit destroys its stdout, which the runner takes as Stop. Decision 209: at whenReady the shell runs the API's after-install command itself (LAUNCH_COMMAND, through spawnTracker, outside the renderer's allowlist) in the background: no tracker-cmd waits for it (the review's S7), and when its reply says ran the shell sends LAUNCH_DONE_CHANNEL ('after-install-done', one of three main-to-renderer channels, with tracker-progress and MENU_CHANNEL) so the page asks list again for the notice. SPEC-shell 5: the menu bar is built from BAR with the API's words (DEFAULT_MENU_WORDS, word for word tracker.api.MENU, replaced by vocab.menu when a word differs), items are enabled from the page's {enable} list (ALWAYS need nothing), and a chosen item goes to the page on MENU_CHANNEL as {id, token}; onMenuMessage() treats the one 'menu' channel as untrusted (unknown ids, popups and long tokens are dropped) and pops the six native right-click menus of POPUPS; Open error log is the shell's alone (openErrorLog: the named log, else the fallback if it exists, through openChecked's lstat test, the one openPath uses). pageBackground() reads --window-light / --window-dark from pilot-ui.css for the system theme (none under a contrast theme) and nativeTheme 'updated' repaints the window. Pilot P46: flushes the page's storage to disk as the window closes, since Electron lets go of the single-instance lock before it closes that storage. The rename (P155, pilot/SPEC-rename.md R4): productName is now the new name, so the window title, the fallback log's folder and the scheduled task follow it, but Electron's userData folder (the page's column widths and cached terms and tour answers) keeps the earlier name: main.js calls app.setPath('userData', appData + package.json's config.userDataName) at the top, before anything asks for a path and before requestSingleInstanceLock, which Electron keys on that folder. config.userDataName is held equal to settings.EARLIER_PRODUCT_NAME by tests/test_pilot_installer.py and tests/test_single_source.py. The screen defaults say 'App', not 'Tracker' (P155 Q3). P197: the View menu's Show Under Construction is a native check item (CHECKABLE), enabled from the first frame (ALWAYS) and ticked until the page speaks; the page's {enable, checked} message sets the tick, a `checked` id that is not checkable is dropped and a message without `checked` leaves it, and the menu is rebuilt only when the enable list or the tick changed."
     },
     {
       "id": "app/package-lock.json",
@@ -4118,7 +4118,7 @@
       "id": "app/preload.js",
       "type": "module",
       "layer": "desktop-app",
-      "sha256": "a7e6f1035e32ccd1",
+      "sha256": "988bf819f444e152",
       "lines": 23,
       "role": "Context bridge exposing only the calls tests/test_single_source.py checks against main.js.call(args, payload), tracker.open(path, how) (how = \"reveal\" or absent), tracker.pickFolder(), tracker.logError(text) on 'log-error' (kept only in an error log: the API's, else the shell's fallback) and tracker.onProgress(listener), which hears 'tracker-progress', and tracker.onAfterInstallDone(listener), which hears the shell's 'after-install-done' and passes nothing across, and tracker.menu (onCommand hears {id, token} on 'menu'; send posts the page's {enable} or {popup, enable, token, x, y} on it). Nothing else crosses."
     },
@@ -4135,8 +4135,8 @@
       "id": "app/renderer/index.html",
       "type": "ui",
       "layer": "desktop-app",
-      "sha256": "3faafc32a71f80a3",
-      "lines": 568,
+      "sha256": "95ad9482b617f569",
+      "lines": 570,
       "role": "The desktop app's markup under a Content-Security-Policy that allows nothing but the app's own files: the shell skeleton (side panel, path row, notices, page, the tooltip and the drawn icons), the side sheet with the reminder's parts, and the dialogs.",
       "notes": "Nothing here types a word: shell.js fills each name and tooltip from the vocabulary (data-tip-key names the key). The script order is app.js, tooltip.js, pages.js, sheet.js, shell.js, then the pilot's. The side sheet's frame holds the check body (sheet.js fills it), the reminder's parts with the ids drawReminder() draws into, and the two footers; the four dialogs the menu and the notices open (roll, safeguards, about, folders skipped) sit beside the older ones. #legacy holds only the three boxes saveRoot() reads."
     },
@@ -4208,10 +4208,10 @@
       "id": "app/renderer/shell.js",
       "type": "module",
       "layer": "desktop-app",
-      "sha256": "ba37468fa37076f7",
-      "lines": 1026,
+      "sha256": "aae8685097269754",
+      "lines": 1086,
       "role": "The app shell (pilot SPEC-shell, P58-P77): the side panel, the path row, the search, the sort icon, the one route, the setup page and the page's side of the `menu` channel. A classic script that shares app.js's globals and draws nothing of a return itself; it hands the page to pages.js.",
-      "notes": "It types no word of its own: every name, tooltip and line is vocab.screen, and a key the vocabulary lacks throws, which app.js's bootstrap says as a notice - a loud failure, never a guess. Its own builder h() sets only the attributes it names (the pattern of app.js's el(), decision 137). app.js calls it at seams of one line each: shellVocabulary, shellAdopt, shellNeedsRoot, shellChanged, shellProgress, shellKey and shellStateArrived (and shell.js calls appRouteChanged); app.js's one document keydown listener hands every key to shellKey first, so the new files add no listener of their own (a test holds it). The route is {level, household, year, ret} of paths the API reported; a return's page waits for showReturn's state, and Sort now sorts the active return's household, so a household or year page first reads the state of one of its own returns when the state on screen is not (its notices come with it). P134 (review M2): of those, the one a person chose, else the first the list's household says is working (active, not rolled forward), so a household Sort reports on a return it sorted. The menu's enable list (shellEnabled) follows SPEC 5.1 rule for rule and is sent on every change; a menu id the page cannot answer is a notice and an error-log line, never silence. The firm command's counts (shellLoadFirm) are asked after every list; while they load the firm pages show outline rows, and a failure is one notice with Retry. S5: shellGo returns the read of the return a page needs and guards the lock and the menu channel, so a channel that throws is a notice and never stops navigation; openPath(path, how) is the one open (how 'reveal' shows a file in File Explorer) and says Not Opened in the API's words when the shell refuses; shellEnabled(at) reads the rules for the route a row's menu stands for; shellAnswer runs a menu id as if chosen on the page. Lane 4b: the side panel's brand words, Taxpayer Types (the screen's word since P196; set pagesClientType, then open Households), Under Construction items (a toast and nothing else) and Settings (the change_root answer) come from vocab.screen.side and client_types (shellSideWords); the search box's placeholder is per page (drawFindWords) and on Needs Review findOptions also finds the waiting files, opening Check."
+      "notes": "It types no word of its own: every name, tooltip and line is vocab.screen, and a key the vocabulary lacks throws, which app.js's bootstrap says as a notice - a loud failure, never a guess. Its own builder h() sets only the attributes it names (the pattern of app.js's el(), decision 137). app.js calls it at seams of one line each: shellVocabulary, shellAdopt, shellNeedsRoot, shellChanged, shellProgress, shellKey and shellStateArrived (and shell.js calls appRouteChanged); app.js's one document keydown listener hands every key to shellKey first, so the new files add no listener of their own (a test holds it). The route is {level, household, year, ret} of paths the API reported; a return's page waits for showReturn's state, and Sort now sorts the active return's household, so a household or year page first reads the state of one of its own returns when the state on screen is not (its notices come with it). P134 (review M2): of those, the one a person chose, else the first the list's household says is working (active, not rolled forward), so a household Sort reports on a return it sorted. The menu's enable list (shellEnabled) follows SPEC 5.1 rule for rule and is sent on every change; a menu id the page cannot answer is a notice and an error-log line, never silence. The firm command's counts (shellLoadFirm) are asked after every list; while they load the firm pages show outline rows, and a failure is one notice with Retry. S5: shellGo returns the read of the return a page needs and guards the lock and the menu channel, so a channel that throws is a notice and never stops navigation; openPath(path, how) is the one open (how 'reveal' shows a file in File Explorer) and says Not Opened in the API's words when the shell refuses; shellEnabled(at) reads the rules for the route a row's menu stands for; shellAnswer runs a menu id as if chosen on the page. Lane 4b: the side panel's brand words, Taxpayer Types (the screen's word since P196; set pagesClientType, then open Households), Under Construction items (a toast and nothing else) and Settings (the change_root answer) come from vocab.screen.side and client_types (shellSideWords); the search box's placeholder is per page (drawFindWords) and on Needs Review findOptions also finds the waiting files, opening Check. P197: View > Show Under Construction (shellToggleSoon, the menu's answer) hides the five Under Construction items and the Workspace heading with the .hidden class (display: none: out of the Tab order and the accessibility tree), drawn by drawSoon on every drawSide; the choice is this PC's localStorage (tracker.underConstruction, 'hidden'), never settings.json; unreadable storage shows them; focus on a hidden item moves to the side panel's current page; shellEnable sends the tick as `checked` (shellChecked)."
     },
     {
       "id": "app/renderer/style.css",
@@ -4654,7 +4654,7 @@
       "id": "docs/repo-map.curated.json",
       "type": "file",
       "layer": "docs",
-      "sha256": "075a205b561a82d3",
+      "sha256": "94894a5775c90349",
       "lines": 1148,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
@@ -4727,7 +4727,7 @@
       "id": "pilot/DECISIONS.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "9ead391b3d9c510d",
+      "sha256": "242a2dccfdc78b27",
       "lines": 192
     },
     {
@@ -4801,6 +4801,13 @@
       "lines": 986
     },
     {
+      "id": "pilot/SPEC-hide-under-construction.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "ef28ab8d0fd94671",
+      "lines": 132
+    },
+    {
       "id": "pilot/SPEC-icon-ledger.md",
       "type": "doc",
       "layer": "docs",
@@ -4818,8 +4825,8 @@
       "id": "pilot/SPEC-lists.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "2f825e00d20c2113",
-      "lines": 745
+      "sha256": "bb5da28cb989669b",
+      "lines": 748
     },
     {
       "id": "pilot/SPEC-rename.md",
@@ -4832,7 +4839,7 @@
       "id": "pilot/SPEC-shell.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "ab83efd761d824bf",
+      "sha256": "c5591072496acdec",
       "lines": 1979
     },
     {
@@ -4941,6 +4948,13 @@
       "layer": "docs",
       "sha256": "b6ac6f8425b058fc",
       "lines": 80
+    },
+    {
+      "id": "pilot/handoffs/hide-under-construction-build.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "d32e5f3b75911d35",
+      "lines": 68
     },
     {
       "id": "pilot/handoffs/icon-wiring.md",
@@ -9806,8 +9820,8 @@
       "id": "tests/test_shell.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "90b0d994ec50229b",
-      "lines": 3903,
+      "sha256": "8865aa1b523988ec",
+      "lines": 4036,
       "exports": [
         "COLUMN_FUNCTIONS",
         "CONTRAST",
@@ -9832,6 +9846,8 @@
         "RETURN_STATE",
         "SHEET_SETUP",
         "SHELL_FILES",
+        "SOON_FUNCTIONS",
+        "SOON_PANEL",
         "SORT_ANSWERS",
         "SORT_ANSWER_FUNCTIONS",
         "SORT_NOTICES",
@@ -9876,6 +9892,7 @@
         "test_a_menu_id_the_page_cannot_answer_is_said_and_logged",
         "test_a_moved_file_marked_missing_is_set_aside_and_the_tally_equals_the_firms_counts",
         "test_a_needs_review_group_that_cannot_be_built_is_named_by_its_return_and_never_its_folder",
+        "test_a_new_install_shows_them_and_the_menu_flips_keeps_and_says_the_tick",
         "test_a_notice_falls_back_to_the_setup_line_for_a_word_the_vocabulary_lacks",
         "test_a_notice_shows_the_vocabularys_short_word_when_it_has_one",
         "test_a_notice_whose_short_word_the_vocabulary_lacks_falls_back_to_the_setup_line_and_logs_the_sentence",
@@ -9922,6 +9939,7 @@
         "test_every_word_index_html_types_is_in_title_case",
         "test_file_rows_are_ordinary_weight_and_the_household_beside_a_heading_is_secondary",
         "test_folder_names_are_the_last_part_of_the_path_on_either_kind_of_slash",
+        "test_hiding_takes_the_five_under_construction_items_and_the_workspace_heading_out_of_the_panel",
         "test_long_names_are_cut_and_carry_their_full_name_as_the_tooltip",
         "test_needs_review_household_and_year_pages_say_each_field_once",
         "test_needs_review_moves_width_from_suggestion_to_reason_and_still_fits_1100px",
@@ -9946,6 +9964,7 @@
         "test_shell_key_hands_escape_to_the_tip_first_wherever_the_focus_is",
         "test_shift_f10_and_the_menu_key_ask_for_the_native_menu_under_the_active_row",
         "test_status_orders_by_urgency_not_alphabetically",
+        "test_storage_that_cannot_be_read_shows_them_and_the_choice_holds_while_the_app_is_open",
         "test_tax_year_orders_by_number_and_form_type_by_the_apps_form_order",
         "test_the_app_starts_only_after_every_script_has_loaded",
         "test_the_cards_the_sheet_and_the_dialogs_took_are_gone_from_the_renderer_and_its_stylesheets",
@@ -9988,6 +10007,7 @@
         "test_the_search_finds_waiting_files_on_needs_review_and_its_placeholder_says_so",
         "test_the_search_list_shows_at_most_eight_options",
         "test_the_set_aside_fold_is_shut_each_time_the_page_opens",
+        "test_the_setting_is_this_pcs_and_the_side_panel_draws_it_on_every_draw",
         "test_the_sheet_finds_a_file_where_it_can_be_checked_and_nowhere_else",
         "test_the_sheet_moves_on_only_when_the_file_it_shows_has_been_answered",
         "test_the_sheets_following_files_are_those_after_it_in_the_order_the_page_was_drawn",
@@ -10029,7 +10049,8 @@
         "SORT_NOTICES": "'\\n  const notices = [], keyedNotices = new Map(), sortAnswers = new Map(), locks = [];\\n  let shellRoute = { level: \"return\", ret: \"r25\" };\\n  const returns = { r25: { household: \"h1\" }, r24: { household: \"h1\" } };\\n  function shellReturn(path) { return returns[path] || null; }\\n  const el = () => ({ removed: false, remove() { this.removed = true; } });\\n  const $ = () => ({ append() {} });\\n  function drawNotice() {}\\n  function outlineRefused() {}\\n  function showLock(lock) { locks.push(lock); }\\n  const shown = () => notices.map((one) => one.sentence);\\n  const press = (entry) => { dismissNotice(entry); forgetSortLine(entry.key); };   // the notice\\'s cross or Retry\\n'",
         "FIRM_LISTS": "'\\n  let shellFirmData = null; const shellFirm = () => ({ data: shellFirmData }); const openNewHousehold = () => {};\\n  let shellRoute = { level: \"overview\" };\\n  const box = new Element(\"div\"); const $ = (id) => box;\\n  Object.assign(vocab.screen, {\\n    figures: { need: \"Need a Person\", waiting: \"Waiting on Taxpayers\", complete: \"Complete\" }, work: \"Work Waiting\",\\n    filters: { work: \"Work Waiting\", all: \"All\" }, held: \"Held\",\\n    empty: { overview: \"Nothing Is Waiting\", next_sort: \"Next Sort {time}\", needs_review: \"Nothing Needs Review\", reminders: \"No Drafts Ready\",\\n             clients: \"No Households Yet\", work: \"No Work Waiting\", returns: \"No Returns Yet\", received: \"Nothing Received Yet\" },\\n  });\\n  vocab.reminder = { stages: [{ number: 1, short: \"Heads Up\" }, { number: 2, short: \"Checking In\" }, { number: 3, short: \"Final Notice\" }] };\\n  vocab.reasons = { unmatched: { short: \"Could Not Tell\" }, \"opened-not-across\": { short: \"Came in Email or Zip\" } };\\n  shellReturn = (path) => ({ return_name: path.split(\"/\").pop(), household: \"\", year: 2025 });\\n  households = [\"Alpha\", \"Bravo\", \"Charlie\", \"Delta\", \"Echo\"].map((name) => ({ name, path: `c/${name}` }));\\n  const zero = { needs_you: 0, waiting: 0, received: 0, set_aside: 0 };\\n  const line = (name, household, extra) => ({ path: `r/${name}`, household, year: 2025, form: name.split(\" - \")[0], counts: { ...zero }, oldest: null, due: null, problem: \"\",\\n                                              draft: { ready: false, stage: 0, held: 0, drafted: null }, ...extra });\\n  shellFirmData = { paths: {}, totals: { need: 3, waiting: 2, complete: 0 }, next_sort: null, returns: [\\n    line(\"1040 - Alpha\", \"Alpha\", { counts: { ...zero, needs_you: 3 }, oldest: \"2026-03-05\", draft: { ready: true, stage: 1, held: 0, drafted: \"2026-03-01\" } }),\\n    line(\"1065 - Bravo\", \"Bravo\", { counts: { ...zero, needs_you: 12 }, oldest: \"2026-03-01\", draft: { ready: true, stage: 2, held: 1, drafted: \"2026-03-02\" } }),\\n    line(\"1040 - Charlie\", \"Charlie\", { counts: { ...zero, waiting: 2 }, due: \"2026-04-15\", draft: { ready: true, stage: 3, held: 0, drafted: \"2026-02-20\" } }),\\n    line(\"1040 - Delta\", \"Delta\", { counts: { ...zero, waiting: 5 } }),\\n    line(\"1041 - Echo\", \"Echo\", { problem: \"Could Not Be Read\" }),\\n  ], files: [\\n    { return: \"r/1040 - Alpha\", year: 2025, name: \"b.pdf\", handle: \"h1\", code: \"unmatched\", received: \"2026-03-05\", suggestion: \"W-2\", open_key: \"\" },\\n    { return: \"r/1040 - Alpha\", year: 2025, name: \"a.pdf\", handle: \"h2\", code: \"opened-not-across\", received: \"2026-03-07\", suggestion: \"\", open_key: \"\" },\\n    { return: \"r/1065 - Bravo\", year: 2025, name: \"z.pdf\", handle: \"h3\", code: \"unmatched\", received: \"2026-03-01\", suggestion: \"K-1\", open_key: \"\" },\\n  ] };\\n  const draw = (level) => { shellRoute = { level }; pagesDraw(shellRoute, box); return box; };\\n  const names = (page) => page.byClass(\"row\").map((row) => row.byClass(\"row-name\")[0].textContent);\\n  const sorts = (page) => page.find((one) => one.attrs.role === \"columnheader\").map((one) => one.attrs[\"aria-sort\"] || \"\");\\n'",
         "LINKED": "'\\n  households = [\\n    { name: \"Alpha\", path: \"c/Alpha\", links: [{ name: \"Bravo\", path: \"c/Bravo\", kind: \"related\" }], returns: [{ form: \"1040\" }] },\\n    { name: \"Bravo\", path: \"c/Bravo\", links: [{ name: \"Alpha\", path: \"c/Alpha\", kind: \"related\" }, { name: \"Gone\", path: \"\", kind: \"fed_by\" }],\\n      returns: [{ form: \"1065\" }] },\\n    { name: \"Charlie\", path: \"c/Charlie\", links: [], returns: [{ form: \"\" }] },\\n    { name: \"Delta\", path: \"c/Delta\", links: [], returns: [{ form: \"1040\" }] },\\n    { name: \"Echo\", path: \"c/Echo\", links: [], returns: [{ form: \"1041\" }] },\\n  ];\\n  for (const one of shellFirmData.returns) one.links = (households.find((h) => h.name === one.household) || {}).links || [];\\n  shellFirmData.returns[0].form = \"1040\";\\n'",
-        "PANEL_DOM": "'\\n  const focused = [];\\n  Element.prototype.focus = function () { focused.push(this.attrs.role === \"listbox\" ? \"listbox\" : this.className || this.attrs.id || this.tag); };\\n  Element.prototype.remove = function () { this.removed = true; };\\n  Element.prototype.contains = function () { return false; };\\n  Element.prototype.closest = function () { return null; };\\n  Element.prototype.querySelectorAll = function (sel) { return sel === \".link-mark\" ? this.byClass(\"link-mark\") : this.byClass(sel.slice(1)); };\\n  const oldQuery = Element.prototype.querySelector;\\n  Element.prototype.querySelector = function (sel) {\\n    return sel === \\'[role=\"listbox\"]\\' ? this.find((one) => one.attrs.role === \"listbox\")[0] || null : oldQuery.call(this, sel);\\n  };\\n  document.body = new Element(\"body\");\\n  globalThis.FloatingUIDOM = { computePosition: () => Promise.resolve({ x: 0, y: 0 }), offset: () => 0, flip: () => 0, shift: () => 0 };\\n  globalThis.TIP_GAP = 4; globalThis.TIP_MARGIN = 8;\\n'"
+        "PANEL_DOM": "'\\n  const focused = [];\\n  Element.prototype.focus = function () { focused.push(this.attrs.role === \"listbox\" ? \"listbox\" : this.className || this.attrs.id || this.tag); };\\n  Element.prototype.remove = function () { this.removed = true; };\\n  Element.prototype.contains = function () { return false; };\\n  Element.prototype.closest = function () { return null; };\\n  Element.prototype.querySelectorAll = function (sel) { return sel === \".link-mark\" ? this.byClass(\"link-mark\") : this.byClass(sel.slice(1)); };\\n  const oldQuery = Element.prototype.querySelector;\\n  Element.prototype.querySelector = function (sel) {\\n    return sel === \\'[role=\"listbox\"]\\' ? this.find((one) => one.attrs.role === \"listbox\")[0] || null : oldQuery.call(this, sel);\\n  };\\n  document.body = new Element(\"body\");\\n  globalThis.FloatingUIDOM = { computePosition: () => Promise.resolve({ x: 0, y: 0 }), offset: () => 0, flip: () => 0, shift: () => 0 };\\n  globalThis.TIP_GAP = 4; globalThis.TIP_MARGIN = 8;\\n'",
+        "SOON_PANEL": "'\\nclass El {\\n  constructor(tag, attrs, kids) {\\n    this.tag = tag; this.attrs = attrs || {}; this.kids = kids || []; this.parent = null; this.cls = new Set();\\n    for (const k of this.kids) k.parent = this;\\n    this.classList = { toggle: (c, on) => (on ? this.cls.add(c) : this.cls.delete(c)), contains: (c) => this.cls.has(c) };\\n    if (this.attrs.class) for (const c of this.attrs.class.split(\" \")) this.cls.add(c);\\n  }\\n  getAttribute(name) { return name in this.attrs ? this.attrs[name] : null; }\\n  matches(sel) {\\n    if (sel === \"li\") return this.tag === \"li\";\\n    if (sel === \".side-list\") return this.cls.has(\"side-list\");\\n    if (sel === \".side-section\") return this.cls.has(\"side-section\");\\n    if (sel === \".side-section[data-soon]\") return this.cls.has(\"side-section\") && \"data-soon\" in this.attrs;\\n    throw new Error(`selector ${sel}`);\\n  }\\n  all() { return this.kids.flatMap((k) => [k, ...k.all()]); }\\n  querySelectorAll(sel) { return this.all().filter((n) => n.matches(sel)); }\\n  closest(sel) { let n = this; while (n && !n.matches(sel)) n = n.parent; return n || null; }\\n}\\nconst button = (attrs) => new El(\"li\", {}, [new El(\"button\", { class: \"side-section\", ...attrs })]);\\nconst soon = (key) => button({ \"data-soon\": key });\\nconst typesHeading = new El(\"h2\", { id: \"side-types-heading\", class: \"side-heading\" });\\nconst workHeading = new El(\"h2\", { id: \"side-workspace-heading\", class: \"side-heading\" });\\nconst root = new El(\"nav\", {}, [\\n  new El(\"ul\", { id: \"side-sections\" }, [\\n    button({ \"data-section\": \"overview\" }), button({ \"data-section\": \"needs-review\" }),\\n    button({ \"data-section\": \"reminders\" }), button({ \"data-section\": \"clients\" }),\\n    soon(\"ready_to_sign\"), soon(\"family_entities\")]),\\n  typesHeading,\\n  new El(\"ul\", { class: \"side-list\", \"aria-labelledby\": \"side-types-heading\" }, [\\n    button({ \"data-type\": \"individuals\" }), button({ \"data-type\": \"businesses\" }),\\n    button({ \"data-type\": \"trusts\" }), button({ \"data-type\": \"nonprofits\" })]),\\n  workHeading,\\n  new El(\"ul\", { class: \"side-list\", \"aria-labelledby\": \"side-workspace-heading\" }, [\\n    soon(\"personal_trusts\"), soon(\"corporate_entities\"), soon(\"portal_settings\")]),\\n]);\\nconst byId = { \"side-types-heading\": typesHeading, \"side-workspace-heading\": workHeading };\\nconst $ = (id) => byId[id] || null;\\nconst document = { activeElement: null, querySelectorAll: (sel) => root.querySelectorAll(sel) };\\nconst store = { data: {}, broken: false,\\n  getItem(k) { if (this.broken) throw new Error(\"locked\"); return k in this.data ? this.data[k] : null; },\\n  setItem(k, v) { if (this.broken) throw new Error(\"locked\"); this.data[k] = String(v); },\\n  removeItem(k) { if (this.broken) throw new Error(\"locked\"); delete this.data[k]; } };\\nconst window = { localStorage: store };\\nconst SOON_KEY = \"tracker.underConstruction\";\\nlet shellSoonHidden = null;\\nconst said = { focus: [], tips: 0, sent: [] };\\nfunction focusRegion(name) { said.focus.push(name); }\\nfunction hideTip() { said.tips += 1; }\\nfunction shellEnable() { said.sent.push(shellChecked()); }\\nconst hiddenNow = () => root.all().filter((n) => n.cls.has(\"hidden\")).map((n) =>\\n  n.tag === \"li\" ? n.kids[0].attrs[\"data-soon\"] || n.kids[0].attrs[\"data-section\"] || n.kids[0].attrs[\"data-type\"]\\n    : n.attrs.id || n.attrs[\"aria-labelledby\"]);\\nconst soonButton = (key) => root.querySelectorAll(\".side-section[data-soon]\").find((n) => n.attrs[\"data-soon\"] === key);\\n'"
       },
       "role": "The shell's renderer half: the tokens and their contrast in both themes, the shell stylesheet's discipline, the guards every renderer file keeps, the words the new files may not type, and the route, search, sort icon and menu enable list run in node against shell.js's own functions.",
       "notes": "SHELL_FILES and TITLE_FREE name the files a claim covers; S2 adds the menu half, S4 the pages' node tests and S5 the sheet's. The contrast table and the token values are the SPEC's section 10, copied as data."
@@ -10038,8 +10059,8 @@
       "id": "tests/test_shell_menu.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "2718b62fb71dd1b6",
-      "lines": 682,
+      "sha256": "a1c8e330ca85decf",
+      "lines": 720,
       "exports": [
         "NOT_OPENED",
         "NOT_REPORTED",
@@ -10053,6 +10074,7 @@
         "test_a_switch_between_light_and_dark_sets_the_window_colour_again",
         "test_a_word_from_the_api_rebuilds_the_menu_only_when_it_differs",
         "test_a_word_that_is_not_reveal_opens_the_default_way_and_a_folder_is_never_revealed",
+        "test_choosing_show_under_construction_is_sent_to_the_page",
         "test_every_accelerator_is_named_once",
         "test_every_menu_id_is_in_the_apis_words_and_every_word_is_placed",
         "test_only_the_items_that_need_nothing_are_enabled_until_the_page_speaks",
@@ -10064,6 +10086,7 @@
         "test_reveal_is_refused_when_the_file_is_no_longer_a_file_or_is_a_link",
         "test_reveal_of_a_path_the_api_did_not_report_is_refused",
         "test_reveal_shows_a_reported_file_in_file_explorer_and_a_plain_open_still_opens_it",
+        "test_show_under_construction_is_the_view_menus_last_item_a_ticked_check_item_from_the_first_frame",
         "test_the_four_row_menus_offer_exactly_the_items_the_renderer_templates_can_answer",
         "test_the_menu_channel_drops_what_it_does_not_know",
         "test_the_menu_has_no_reload_zoom_or_developer_tools",
@@ -10075,6 +10098,7 @@
         "test_the_preload_passes_the_optional_second_argument_on_the_same_open_and_adds_no_channel",
         "test_the_six_right_click_menus_hold_the_items_of_the_spec",
         "test_the_template_carries_the_accelerators_of_the_spec_and_no_others",
+        "test_the_tick_follows_the_page_and_a_stray_checked_id_is_dropped",
         "test_the_window_colour_is_read_defensively",
         "test_the_window_colours_main_reads_are_the_pages",
         "test_the_window_paints_the_pages_colour_for_the_systems_theme"

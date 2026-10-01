@@ -1518,7 +1518,7 @@ Verdicts: **reword** 67, **cut** 113 (not shown in the app any more),
 | `put_back` | Put Back | | `about` | About |
 | `keep_here` | Keep Here | | `unfile` | Unfile |
 | `edit_request` | Edit Request… | | `mark_missing` | Mark Missing |
-| `show_in_explorer` | Show in File Explorer | | | |
+| `show_in_explorer` | Show in File Explorer | | `show_under_construction` | Show &Under Construction (P197, a checked item) |
 
 ### 11.4 New words: the screen (`vocab.screen`)
 
