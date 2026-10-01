@@ -10179,8 +10179,8 @@
       "id": "tests/test_tour.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "ed060d27b94cc8fe",
-      "lines": 109,
+      "sha256": "382387ee196c8d78",
+      "lines": 114,
       "exports": [
         "REPO",
         "test_every_step_has_a_title_and_one_line",
