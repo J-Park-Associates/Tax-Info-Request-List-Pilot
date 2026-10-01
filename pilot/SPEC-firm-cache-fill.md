@@ -59,6 +59,19 @@ the racy window (`RACY_SECONDS`, 5 s: a household the pass wrote in its
 last 5 s is not kept, and the next Overview reads it - one household,
 milliseconds), links and junctions never kept, the status page and folder
 times left out.
+*Changed by the engine review's rulings (`pilot/reviews/lanes-rulings.md`,
+Engine, SHOULD-3): the scheduled pass fills the whole firm as above; a
+person's Sort fills only the households its pass touched.* A Sort asks the
+summary only while the cache already holds today's head
+(`runner._fills_the_cache`), when the summary reads just the households
+whose fingerprint changed - the one the Sort touched, and any a person
+changed meanwhile - and keeps the rest. On a cold head (a new day, an
+upgrade, a settings change) the summary would read every household - 65 s
+at 750 on the office PC (N4) for one household's Sort, with nothing on the
+screen - so it is not asked, and the next Overview reads every household as
+it would have before P201. Still one writer of the cache's shape: no
+household-limited mode was added to the summary, since the household a Sort
+just wrote is inside the 5 s racy window and could not have been kept.
 
 **R3. When: after the households' locks are released and the progress file
 is closed, before the run log, the console report, the practice page and
@@ -68,6 +81,16 @@ household folder is an entry its fingerprint would take. Before the log and
 the page, so a fill that failed is said in both, as every pass warning is.
 The store is open but idle in the pass at that point; the app's own firm
 replies already run beside a scheduled pass, so this is no new concurrency.
+*Changed by the engine review's rulings (NIT-4): the fill now runs after the
+run log's line and the practice page are written, not before them*, so a
+fill that runs long - up to its 300 s, after a pass that may already be near
+the task's two-hour limit - can never cost the pass its record. A fill that
+failed is then said after the fact: the pass warning is added as before, its
+code goes into the run log as a codes line of its own just below the pass's
+(as `page-not-written` already does), the page is written again with its
+sentence (if that second write fails, the first page stands and the class is
+on the debug log), and the sentence is on the console or in Run now's final
+line. The pass line's own `warnings=` count does not include it.
 
 **R4. Which passes fill: every real pass that walked the saved clients
 root** - the scheduled job and a person's Sort (Run now) alike, as P201
@@ -75,9 +98,16 @@ says. Not a dry run (it writes nothing, this included), not a pass whose
 record checkpoint could not be proved (it served no household), and not a
 pass given a clients root on its command line (a person running one folder
 by hand; the firm summary only ever answers for the saved root, so filling
-for it would be filling a cache that pass did not touch). The pass that
+for it would be filling a cache that pass did not touch). ~~The pass that
 stopped early, ran out of time or lost its app still fills: the summary
-describes the folders as they are, whatever the pass finished.
+describes the folders as they are, whatever the pass finished.~~
+*Changed by the engine review's rulings (SHOULD-1, "Stop means stop"): a
+pass a person stopped does not fill*, nor one that lost its app (it is
+stopped the same way). The household work has ended, and a fill would keep
+Stop waiting - up to 65 s cold at 750 returns, 300 s at the cap - with
+nothing on the screen; the next Overview fills the cache as it did before
+P201. A pass that ran out of time, or whose own code failed, still fills. A
+person's Sort fills only while the cache is warm (R2, as changed).
 
 **R5. A fill that fails never fails the pass: it is said, loudly, and the
 pass's exit code is unchanged.** One pass warning through `_warn`, the one
@@ -104,9 +134,14 @@ practice with nothing keepable - every household changed in the last 5 s,
 as a one-household practice is just after its pass, or no household at all
 - wrote no file, so the fill could not tell "answered, nothing to keep"
 from "could not write" and would have said every such pass failed. Found
-by this SPEC's own first test, which did exactly that. The cost: while
+by this SPEC's own first test, which did exactly that. ~~The cost: while
 nothing is kept, each reply rewrites a file of about a hundred bytes; once
-any household is kept, an unchanged practice writes nothing, as P120 says.
+any household is kept, an unchanged practice writes nothing, as P120 says.~~
+*Changed by the engine review's rulings (NIT-1): written only when the head
+changes* - `if keep != kept or (not kept and not firm_cache.holds(where,
+[head])):` - so while nothing is kept the file is written once per head (a
+day, a program, a settings change), not on every reply; once any household
+is kept, an unchanged practice writes nothing, as P120 says.
 
 The words: *the Overview could not be made ready after the pass ({why}); the
 first Overview after it reads every household again* - lower-case, as the
@@ -212,9 +247,11 @@ measured then; 65 s in the 0.3 Windows check's cold run, N4), inside the
 - The first Overview after a scheduled pass - including the first of the
   day, and the first after an upgrade once the morning pass has run - opens
   warm (about 2 s at 750 returns) instead of reading every household.
-- A Sort (Run now) takes the firm summary's time longer to finish (about the
-  warm reply, a second or two at 750 on a warm day; longer on the first Sort
-  of a day when no scheduled pass ran yet), and Overview after it is warm.
+- A Sort (Run now) takes the firm summary's time longer to finish only while
+  the cache is warm for today (about the warm reply, a second or two at
+  750), and Overview after it is warm. On the first Sort of a day before any
+  scheduled pass, it takes no longer (engine review, SHOULD-3); a Sort that
+  is stopped ends at once (SHOULD-1).
 - If the fill ever fails, the practice page's Problems list and the Sort
   result say *the Overview could not be made ready after the pass (...)*;
   nothing else changes, and the next Overview is simply slower.

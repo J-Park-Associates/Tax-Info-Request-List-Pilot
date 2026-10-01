@@ -8833,6 +8833,33 @@ def test_a_practice_with_nothing_to_keep_yet_still_leaves_todays_head(capsys, de
     assert firm_cache.load(firm_cache.cache_path(), head) == {}, "nothing racy is kept"
 
 
+def test_a_practice_with_nothing_to_keep_writes_the_cache_once_per_head_not_every_reply(
+        capsys, demo_root, monkeypatch):
+    """The engine review's NIT-1: while nothing is kept, the head is left by
+    the first reply only; a later reply under the same head writes nothing,
+    and a reply under another head (another day) writes it again."""
+    import datetime as dt
+
+    from tracker import firm_cache
+
+    monkeypatch.setattr(firm_cache, "RACY_SECONDS", 10 ** 6)     # every household stays racy
+    _a_practice_for_the_firm_view(capsys, demo_root)
+    _cached_firm(capsys)
+    head = firm_cache.head(str(api._saved_root()), dt.date.today())
+    assert firm_cache.load(firm_cache.cache_path(), head) == {}, "nothing racy is kept"
+    saved = []
+    real_save = firm_cache.save
+    monkeypatch.setattr(firm_cache, "save", lambda *args: saved.append(args) or real_save(*args))
+
+    _cached_firm(capsys)
+    assert saved == [], "the same head, nothing kept: nothing written"
+
+    firm_cache.save(firm_cache.cache_path(), {**head, "day": "1999-01-01"}, {})
+    saved.clear()
+    _cached_firm(capsys)
+    assert len(saved) == 1 and saved[0][1] == head
+
+
 def test_the_commands_held_to_one_reading_write_nothing_and_a_write_there_is_refused(
         capsys, demo_root, monkeypatch):
     """P118, and the review's SHOULD-3: a command joins

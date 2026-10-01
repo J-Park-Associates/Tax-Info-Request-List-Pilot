@@ -1347,14 +1347,37 @@ def test_a_query_that_fails_is_never_read_as_a_task_that_exists(root, windows):
     assert ran is not None and ran.installed and len(creates(windows["calls"])) == 1
 
 
-def test_a_schtasks_that_cannot_start_runs_the_step_and_says_so(root, windows, monkeypatch):
+def test_a_query_refused_keeps_its_exit_code_on_the_error_log_once_per_start(root, windows, caplog):
+    """The engine review's NIT-2: a refusal other than "it exists" registers
+    the task again at every start, so each start writes why - the query's
+    exit code, never ``schtasks``'s own words - once."""
+    import logging
+
+    from tracker import errors
+
+    assert after_install.run(reason=after_install.REASON_SETUP).exit_code == 0
+    windows["query_fails"] = True
+    with caplog.at_level(logging.WARNING, logger=errors.DEBUG_LOGGER):
+        assert after_install.launch() is not None
+    said = [record.getMessage() for record in caplog.records
+            if after_install.ASKING_FOR_THE_TASK in record.getMessage()]
+    assert said == [f"{after_install.ASKING_FOR_THE_TASK}: {after_install.QUERY_REFUSED.format(code=1)}"]
+    assert "Access is denied" not in caplog.text
+
+
+def test_a_schtasks_that_cannot_start_runs_the_step_and_says_so(root, windows, monkeypatch, caplog):
+    import logging
+
+    from tracker import errors
+
     assert after_install.run(reason=after_install.REASON_SETUP).exit_code == 0
 
     def cannot_start(command):
         raise FileNotFoundError(2, "The system cannot find the file specified", "schtasks")
 
     monkeypatch.setattr(scheduling, "_schtasks", cannot_start)
-    ran = after_install.launch()
+    with caplog.at_level(logging.WARNING, logger=errors.DEBUG_LOGGER):
+        ran = after_install.launch()
 
     assert ran is not None and ran.exit_code == 1
     assert ran.schedule_sentence == after_install.SCHEDULE_FAILED.format(
@@ -1362,6 +1385,35 @@ def test_a_schtasks_that_cannot_start_runs_the_step_and_says_so(root, windows, m
     assert ran.schedule_sentence in after_install.notice()["failed"]
     assert TRACEBACK not in ran.schedule_sentence
     assert after_install.read_record()["program"] == ""     # tried again at the next start
+    # The "says so" of its name (the engine review's NIT-3): the query's
+    # failure is on the local error log.
+    assert "after_install: asking whether the scheduled task exists" in caplog.text
+
+
+def test_a_schtasks_that_hangs_is_said_as_unreachable(root, windows, monkeypatch, caplog):
+    """The engine review's SHOULD-2: a ``schtasks`` past its limit raises
+    ``TimeoutError`` (``scheduling._schtasks``), and the launch says it as
+    Task Scheduler that cannot be reached, and logs it - never "the task
+    exists", so nothing is skipped on its word."""
+    import logging
+
+    from tracker import errors
+
+    assert after_install.run(reason=after_install.REASON_SETUP).exit_code == 0
+
+    def hangs(command):
+        raise TimeoutError(scheduling.SCHTASKS_TOO_LONG.format(seconds=scheduling.SCHTASKS_TIME_LIMIT_SECONDS))
+
+    monkeypatch.setattr(scheduling, "_schtasks", hangs)
+    with caplog.at_level(logging.WARNING, logger=errors.DEBUG_LOGGER):
+        ran = after_install.launch()
+
+    assert ran is not None and ran.exit_code == 1
+    assert ran.schedule_sentence == after_install.SCHEDULE_FAILED.format(
+        problem=after_install.SCHEDULE_UNREACHABLE)
+    assert "after_install: asking whether the scheduled task exists" in caplog.text
+    assert "after_install: registering the schedule" in caplog.text
+    assert "did not answer within 60 seconds" in caplog.text
 
 
 def test_a_record_from_before_the_setting_is_run_again_once(root, windows):

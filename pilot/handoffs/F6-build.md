@@ -81,3 +81,50 @@ current (415 nodes after this file is added).
   step 21" row on the test PC (uninstall, reinstall the same build, start,
   `schtasks /Query /TN "Tax Document Console"` finds the task).
 - The office PC's schedule stays off (Jason); with it off the door asks nothing.
+
+## Engine review fold (2026-10-01, branch claude/fold-engine from 7e90834)
+
+Rulings from `pilot/reviews/lanes-rulings.md` (Engine); the SPEC's ruling 5
+and section 4 say what changed and why.
+
+- **SHOULD-2 (60-second limit):** `tracker/scheduling.py:454`
+  `SCHTASKS_TIME_LIMIT_SECONDS = 60`; `_schtasks` (:461) passes `timeout=`
+  and turns `TimeoutExpired` into `TimeoutError` (an `OSError`,
+  `SCHTASKS_TOO_LONG`), so every caller's `OSError` path says
+  `SCHEDULE_UNREACHABLE` and keeps it on the error log - never "the task
+  exists". At a launch a hang costs up to two minutes in the background
+  (the query, then the step's create). Tests
+  `test_a_schtasks_that_hangs_is_stopped_at_its_limit_as_an_os_error`
+  (tests/test_scheduling.py:302, the real `_schtasks` with `subprocess.run`
+  stood in - `REAL_SCHTASKS` in tests/conftest.py) and
+  `test_a_schtasks_that_hangs_is_said_as_unreachable`
+  (tests/test_after_install.py:1393).
+- **NIT-2 (a refusal's exit code logged once per start):**
+  `scheduling.task_query()` (:518) hands back the exit code (`task_exists`
+  now asks it); `after_install._task_missing` (tracker/after_install.py:1236)
+  keeps `QUERY_REFUSED` with the code only (:1263) under
+  `ASKING_FOR_THE_TASK`. Tests
+  `test_a_query_refused_keeps_its_exit_code_on_the_error_log_once_per_start`
+  (tests/test_after_install.py:1350) and
+  `test_task_query_hands_back_the_exit_code_and_asks_nothing_off_windows`
+  (tests/test_scheduling.py:290).
+- **NIT-3:** `test_a_schtasks_that_cannot_start_runs_the_step_and_says_so`
+  (tests/test_after_install.py:1368) now asserts the error log carries
+  "after_install: asking whether the scheduled task exists".
+- Docs: curated map notes (scheduling, after_install); map refreshed. No
+  real scheduled task was created, changed, deleted or queried.
+### Tests (fold), each file its own process, two at a time per interpreter
+
+| File | Python 3.11.15 (private venv, hash-checked locks) | Python 3.14 (C:\Python314) |
+|---|---|---|
+| tests/test_runner.py | 207 passed, 1 warning | 207 passed, 1 warning |
+| tests/test_firm_cache.py | 31 passed, 1 skipped | 31 passed, 1 skipped |
+| tests/test_after_install.py | 99 passed, 3 skipped | 99 passed, 3 skipped |
+| tests/test_scheduling.py | 118 passed, 4 warnings | 118 passed, 4 warnings |
+| tests/test_api.py -k "firm or cache" | 28 passed, 417 deselected | 28 passed, 417 deselected |
+| tests/test_layers.py | 29 passed | 29 passed |
+| tests/test_repo_map.py | 80 passed | 80 passed |
+
+Plus tests/test_single_source.py (the runbook changed): 179 passed (3.14).
+`python -m ruff check .`: All checks passed. `python tools/repo_map.py check`:
+Map is current (424 nodes). Dead code: none left (ruff clean; no unused names).

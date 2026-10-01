@@ -221,6 +221,9 @@ def reading_in_this_process():
 #: The real answer to "is there a Task Scheduler here", for the one test
 #: that asks it of the platform (decision 209).
 REAL_TASK_SCHEDULER_HERE = scheduling.task_scheduler_here
+#: The real ``schtasks`` runner, for the one test of its time limit, which
+#: stands in for ``subprocess.run`` so no real Task Scheduler is reached.
+REAL_SCHTASKS = scheduling._schtasks
 
 
 def _schtasks_unfaked(command):

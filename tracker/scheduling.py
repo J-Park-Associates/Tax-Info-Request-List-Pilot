@@ -446,11 +446,29 @@ def install_task(xml_path: Path | str, task_name: str = TASK_NAME) -> list[str]:
     return command
 
 
+#: How long one ``schtasks`` command may take before it is stopped (the
+#: engine review's SHOULD-2): the launch asks it at every start, inside the
+#: after-install step's lock, so a Task Scheduler service that hangs must
+#: not hold that lock - and a later Repair or root save - for ever. A
+#: healthy ``schtasks`` answers in well under a second.
+SCHTASKS_TIME_LIMIT_SECONDS = 60
+#: What a ``schtasks`` that ran past the limit raises, by its class only
+#: (``TimeoutError``, an ``OSError``), so every caller's ``OSError`` path
+#: says it as Task Scheduler that cannot be reached - never "it exists".
+SCHTASKS_TOO_LONG = "schtasks did not answer within {seconds} seconds"
+
+
 def _schtasks(command: list[str]) -> subprocess.CompletedProcess:
     """Run one ``schtasks`` command line and hand back what it said. The one
     place this module starts a process: the tests replace it, so no test
-    ever reaches a real Task Scheduler."""
-    return subprocess.run(command, capture_output=True, text=True)
+    ever reaches a real Task Scheduler. One that does not answer within
+    :data:`SCHTASKS_TIME_LIMIT_SECONDS` is stopped and raises
+    ``TimeoutError``."""
+    try:
+        return subprocess.run(command, capture_output=True, text=True,
+                              timeout=SCHTASKS_TIME_LIMIT_SECONDS)
+    except subprocess.TimeoutExpired:
+        raise TimeoutError(SCHTASKS_TOO_LONG.format(seconds=SCHTASKS_TIME_LIMIT_SECONDS)) from None
 
 
 def register_here(settings_folder: str | Path, *, start: str = DEFAULT_START,
@@ -491,11 +509,21 @@ def task_exists(task_name: str = TASK_NAME) -> bool:
     ``False``, "not confirmed", never "it is there" (P198, F6): the callers
     act on it by registering again (``/create /f``, which says in its own
     words why it cannot) or by having nothing to remove. A ``schtasks`` that
-    cannot be started at all raises ``OSError`` for the caller to say.
+    cannot be started at all, or does not answer in time, raises ``OSError``
+    for the caller to say.
     """
+    return task_query(task_name) == 0
+
+
+def task_query(task_name: str = TASK_NAME) -> int | None:
+    """``schtasks /query /tn``'s exit code for this task - 0 when it exists,
+    any other a refusal (not found, access denied, Task Scheduler stopped) -
+    or ``None`` off Windows, where nothing is asked. The launch keeps a
+    refusal's code on the error log (the engine review's NIT-2); its words
+    are not kept. Raises ``OSError`` as :func:`task_exists` does."""
     if not task_scheduler_here():
-        return False
-    return _schtasks(["schtasks", "/query", "/tn", task_name]).returncode == 0
+        return None
+    return _schtasks(["schtasks", "/query", "/tn", task_name]).returncode
 
 
 def remove_task(task_name: str = TASK_NAME) -> bool:

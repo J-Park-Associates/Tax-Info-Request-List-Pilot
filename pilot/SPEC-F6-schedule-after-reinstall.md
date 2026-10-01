@@ -64,6 +64,18 @@ person deletes it in Task Scheduler, an IT clean-up): the note cannot know.
    A `schtasks` that cannot even be started (`OSError`) is kept on the local
    error log and runs the step too, whose own registration then fails loudly
    with `SCHEDULE_UNREACHABLE`. Nothing is skipped silently.
+   *Changed by the engine review's rulings (`pilot/reviews/lanes-rulings.md`,
+   Engine, SHOULD-2 and NIT-2):* every `schtasks` command now has a 60-second
+   limit (`scheduling.SCHTASKS_TIME_LIMIT_SECONDS`), because the query now
+   runs at every start inside the step's lock and a hung Task Scheduler
+   would otherwise hold that lock, and every later Repair or root save,
+   for ever. One that runs past it raises `TimeoutError` (an `OSError`), so
+   it takes the `OSError` path above: kept on the error log, the step runs,
+   and its registration is said as `SCHEDULE_UNREACHABLE` - never "the task
+   exists". A query that is refused keeps its exit code (never `schtasks`'s
+   words) on the error log, once per start (`scheduling.task_query`,
+   `after_install.QUERY_REFUSED`), so a task registered again at every
+   start has its reason written down.
 6. **No new words, no new screen.** A re-registration that succeeds is the
    step doing its job, as at a first install: the note records it and the
    first screen shows nothing. A registration that fails uses the existing
@@ -103,6 +115,12 @@ Not touched: `tracker/api.py`, `app/renderer/*`, `pilot/installer/setup.iss`.
 
 `tests/test_scheduling.py`:
 - `test_task_exists_asks_schtasks_and_only_exit_zero_is_yes`
+
+Added by the engine review's fold: `test_a_query_refused_keeps_its_exit_code_on_the_error_log_once_per_start`
+and `test_a_schtasks_that_hangs_is_said_as_unreachable` (`tests/test_after_install.py`; the
+"...and says so" test now asserts its error-log entry, NIT-3);
+`test_task_query_hands_back_the_exit_code_and_asks_nothing_off_windows` and
+`test_a_schtasks_that_hangs_is_stopped_at_its_limit_as_an_os_error` (`tests/test_scheduling.py`).
 
 Guards: `tests/test_layers.py`, `tests/test_single_source.py`,
 `tests/test_repo_map.py` (no wording change, so not `test_errors`).

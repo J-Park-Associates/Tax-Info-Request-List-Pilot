@@ -6098,11 +6098,13 @@ def _firm_from_cache(root: Path, today: dt.date) -> list[_FirmShown]:
         shown.append(({**row, "paused": engagement.household_path in paused,
                        "links": links.get(engagement.household_path, [])}, files, own))
     keep = {folder.name: entry for folder, entry in entries.items() if _firm_keepable(entry)}
-    # Written only when what is kept changed - or when nothing was kept, so
-    # a practice with nothing to keep yet (every household just changed, or
-    # none at all) still leaves today's head, and the pass's fill can tell
-    # that from a cache that was never written (P201, SPEC-firm-cache-fill R5).
-    if keep != kept or not kept:
+    # Written only when what is kept changed - or when nothing was kept and
+    # the file does not already carry this head, so a practice with nothing
+    # to keep yet (every household just changed, or none at all) still
+    # leaves today's head, and the pass's fill can tell that from a cache
+    # that was never written (P201, SPEC-firm-cache-fill R5a) - once per
+    # head, not on every reply while nothing is kept (the review's NIT-1).
+    if keep != kept or (not kept and not firm_cache.holds(where, [head])):
         firm_cache.save(where, head, keep)
     return shown
 
