@@ -1377,8 +1377,13 @@ SCREEN: dict = {
     # (P180), whose "by {Column}" keeps it apart from the filing pass's
     # Sort Now - and what a screen reader hears after a keyboard resize.
     "columns": {
-        "return": "Return",
-        "client": "Client",
+        # Overview's and Reminders' return columns, one field each, in
+        # Jason's order (pilot P194, P195; "Taxpayer" is his word): the
+        # household has no column, and is named in the Taxpayer link's tooltip.
+        "tax_year": "Tax Year",
+        "taxpayer": "Taxpayer",
+        "form_type": "Form Type",
+        "taxpayer_tip": "{action} ({household})",
         "status": "Status",
         "date": "Date",
         "file": "File",

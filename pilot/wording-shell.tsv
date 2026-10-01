@@ -248,8 +248,12 @@ api._vocab	reason_tips.opened-not-across	(none: new)	reword	Came in Email or Zip
 api._vocab	scan.skipped.inactive	(none)	reword	Inactive	1	After Nothing Done	P134: the screen's approved word (screen.inactive); was a bare Nothing Done	Inactive	case
 api._vocab	scan.skipped.rolled-forward	(none)	reword	Rolled Forward	2	After Nothing Done	P134: the screen's approved word (screen.rolled)	Rolled Forward	case
 api._vocab	scan.skipped.no-room	(none)	reword	Names Too Long	3	After Nothing Done	P134: new word; Jason chose it (SPEC-wincheck-fixes Q1, 2026-09-30)	Names Too Long	case
-api.SCREEN	columns.return		new	Return	1	Column header, Overview and Reminders	Pilot 0.3, SPEC-lists 2 (P138): "Order", never "Sort"; open for Jason, Q1	Return	new
-api.SCREEN	columns.client		new	Client	1	Column header, Overview, Reminders and Clients	Pilot 0.3, SPEC-lists 2 (P138): "Order", never "Sort"; open for Jason, Q1	Client	new
+api.SCREEN	columns.return	Return	cut		0	Nowhere; was column header, Overview and Reminders	Pilot 0.3, SPEC-firm-columns (P194, P195): the return's fields are each their own column		-
+api.SCREEN	columns.tax_year		new	Tax Year	2	Column header, Overview and Reminders	Pilot 0.3, SPEC-firm-columns (P194, P195)	Tax Year	new
+api.SCREEN	columns.taxpayer		new	Taxpayer	1	Column header, Overview and Reminders	Pilot 0.3, SPEC-firm-columns (P194, P195); Jason's word	Taxpayer	new
+api.SCREEN	columns.form_type		new	Form Type	2	Column header, Overview and Reminders	Pilot 0.3, SPEC-firm-columns (P194, P195)	Form Type	new
+api.SCREEN	columns.taxpayer_tip		new	{action} ({household})	2	Tooltip of a taxpayer's return link, Overview and Reminders	Pilot 0.3, SPEC-firm-columns (P194, P195): the household, which has no column (Q1 A)	{action} ({household})	new
+api.SCREEN	columns.client	Client	cut		0	Nowhere; was column header, Overview and Reminders	Pilot 0.3, SPEC-firm-columns (P194, P195): the household is the Taxpayer link's tooltip; Clients says Client Name		-
 api.SCREEN	columns.status		new	Status	1	Column header, Overview and Clients	Pilot 0.3, SPEC-lists 2 (P138): "Order", never "Sort"; open for Jason, Q1	Status	new
 api.SCREEN	columns.date		new	Date	1	Column header, Overview	Pilot 0.3, SPEC-lists 2 (P138): "Order", never "Sort"; open for Jason, Q1	Date	new
 api.SCREEN	columns.file		new	File	1	Column header, Needs Review	Pilot 0.3, SPEC-lists 2 (P138): "Order", never "Sort"; open for Jason, Q1	File	new

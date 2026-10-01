@@ -43,6 +43,11 @@ files. Nothing a client sees changes. No engine behaviour changes.
 
 ## 1. Which lists get headers (P135)
 
+Since P194/P195, Overview's and Reminders' columns are Tax Year, Taxpayer,
+Form Type, then Status/Stage and Date/Drafted, and the household has no
+column: `pilot/SPEC-firm-columns.md`. The rows below for those two lists, and
+section 2's `columns.return` and `columns.client`, are history.
+
 | List | Page | Headers (name, detail, status, end) | Orderable |
 |---|---|---|---|
 | `overview` | Overview's Work Waiting | Return, Client, Status, Date | all four |

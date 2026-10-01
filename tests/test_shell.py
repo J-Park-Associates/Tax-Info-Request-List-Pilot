@@ -963,6 +963,7 @@ let shellHousehold = () => null; let households = [];
 const vocab = {
   shell: { page_error: "The app hit an error" }, notices: { about: "{label}: {sentence}" },
   client_type_forms: { individuals: ["1040"], businesses: ["1120", "1120S", "1065"], trusts: ["1041"], nonprofits: ["990"] },
+  layout: { return_name_pattern: "{form} - {client}" },
   decisions: { needs_review: "Needs Review", dismissed: "Not Requested", filed: "Filed", file_moved: "File Moved" },
   labels: { Missing: { label: "Outstanding" }, Received: { label: "Received" }, Partial: { label: "Partly in" }, Rejected: { label: "Could not use" }, NotAsked: { label: "Not asked" } },
   overrides: { not_applicable: "Not Applicable" },
@@ -978,7 +979,8 @@ const vocab = {
     show_in_explorer: "Show in File Explorer", navigate_client: "Navigate to Client", navigate_return: "Navigate to Return",
     counts: { need: "{n} need you", waiting: "{n} waiting", complete: "Complete", files: "{n} files", one_file: "1 file", one_return: "1 return", returns: "{n} returns" },
     sections: { overview: "Overview", needs_review: "Needs Review", reminders: "Reminders", clients: "Clients" },
-    columns: { return: "Return", client: "Client", status: "Status", date: "Date", file: "File", suggestion: "Suggestion", reason: "Reason",
+    columns: { tax_year: "Tax Year", taxpayer: "Taxpayer", form_type: "Form Type", taxpayer_tip: "{action} ({household})",
+               status: "Status", date: "Date", file: "File", suggestion: "Suggestion", reason: "Reason",
                received: "Received", stage: "Stage", drafted: "Drafted", returns: "Returns", client_name: "Client Name", sort_by: "Sort by {column}",
                width: "{column} Width {n}" },
     linked: { tip: "Linked Households", feeds: "Also Feeds", fed_by: "Fed By", related: "Related" },
@@ -1008,7 +1010,9 @@ COLUMN_FUNCTIONS = ("pagesListOf", "pagesUrgent", "pagesIsBlank", "pagesCompareK
                     # The raised lists (pilot SPEC-lists 10-17).
                     "pagesDetailCell", "pagesReasonTip", "pagesStatusCell", "pagesLinkMark", "pagesLinkMarkIn", "pagesShowPanel", "pagesPanelOpen",
                     "pagesClosePanel", "pagesOpenRowLinks", "pagesPaged", "pagesFoot", "pagesTurn", "pagesPick", "pagesTabs",
-                    "pagesFileCount", "pagesReasonCards", "pagesReviewGroup", "pagesSwitch", "pagesTypeFilter", "pagesReopenPanel")
+                    "pagesFileCount", "pagesReasonCards", "pagesReviewGroup", "pagesSwitch", "pagesTypeFilter", "pagesReopenPanel",
+                    # One field per column (pilot SPEC-firm-columns; P194, P195).
+                    "pagesTaxpayer", "pagesFormKey", "pagesFormCell", "pagesReturnHeading", "pagesReturnCells", "pagesReturnKeys")
 
 
 def pages_consts() -> str:
@@ -1041,7 +1045,7 @@ def run_pages_dom(probe: str, tmp_path: Path, setup: str = "", functions=None):
         "pagesHouseholdNotices", "pagesRoute", "pagesFiles", "h", "icon", "screenWords", "pagesSafe", "pagesEach", "pagesLabel",
         "pagesSafeName", "pagesTitleFor", "pagesReportBroken", "pagesRouteKey", "pagesDraw", "pagesBuild", "pagesYear", "pagesReturnSpecs",
         "pagesClientSpecs", "pagesRemember", "pagesRestore", "pagesFirmReturn", "pagesActivate", "pagesOverview", "pagesNeedsReview",
-        "pagesReminders", "pagesClients", "pagesHousehold", "folderName", "pagesLinkWords", "pagesReturnText", "pagesHouseholdPath",
+        "pagesReminders", "pagesClients", "pagesHousehold", "folderName", "pagesLinkWords", "pagesHouseholdPath",
         "pagesPathOf", "pagesFileLink", "pagesRunLink", "pagesLinkNode", "pagesCell", "pagesHeadLink", "pagesRunRowLink", "pagesWhere",
         "pagesPaused", "pagesNameCell", "pagesPausedRows", "pagesSteps", "pagesDrafts", "pagesRunRow", "pagesRunStep", "pagesPopup", "pagesEnableFor", "pagesRowRoute", "pagesKey", "pagesTitle",
         *COLUMN_FUNCTIONS,
@@ -1142,7 +1146,7 @@ def test_the_overview_puts_each_return_in_one_bucket(tmp_path):
         make("e", {}, { problem: "Record unreadable" }), make("f", { waiting: 1 }, { due: "2026-04-01" }) ]);
       return rows.map((one) => [one.name, one.status, one.tone, one.date, one.step.kind]);
     """, tmp_path)
-    assert [one[0] for one in ran] == ["Echo (2025)", "Delta (2025)", "Alpha (2025)", "Foxtrot (2025)", "Bravo (2025)"], "Charlie is complete and is not listed; a return reads with its year (ruling 13)"
+    assert [one[0] for one in ran] == ["Echo", "Delta", "Alpha", "Foxtrot", "Bravo"], "Charlie is complete and is not listed; the year is its own column (P195)"
     assert ran[0][1:3] == ["Record unreadable", "needs"]
     assert ran[2][1:3] == ["2 need you", "needs"], "a return with both counts is in the first bucket only"
     assert ran[3][2] == "waiting" and all(one[4] == "open" for one in ran)
@@ -1408,8 +1412,9 @@ def test_a_row_that_cannot_be_built_is_left_out_and_named_on_every_page(tmp_path
       const specs = pagesReminderSpecs(firm);
       return { specs: specs.map((one) => [one.name, one.status]), broken: pagesBroken.map((one) => one.name) };
     """, tmp_path, functions=["pagesReminderSpecs", "pagesStage", "pagesSafe", "pagesEach", "pagesLabel", "pagesSafeName", "pagesReturnName",
-                              "pagesByName", "pagesDay", "screenWords", "pagesReturnText", "pagesHouseholdPath", "pagesUrgent"])
-    assert ran["specs"] == [["Alpha (2025)", "Heads up"]] and ran["broken"] == ["Bravo"]
+                              "pagesByName", "pagesDay", "screenWords", "pagesHouseholdPath", "pagesUrgent", "pagesLinkWords",
+                              "pagesTaxpayer", "pagesFormKey", "pagesReturnCells", "pagesReturnKeys"])
+    assert ran["specs"] == [["Alpha", "Heads up"]] and ran["broken"] == ["Bravo"]
 
 
 def test_a_page_that_cannot_be_built_whole_keeps_what_it_held_or_draws_its_frame(tmp_path):
@@ -1882,15 +1887,23 @@ def test_running_a_link_reveals_a_file_and_only_navigates_for_a_household_or_a_r
     assert ran["words"] == ["Show in File Explorer", "Navigate to Client", "Navigate to Return"]
 
 
-def test_a_return_link_reads_its_name_and_its_year_from_the_rows_own_record(tmp_path):
-    """Ruling 13: "{Return Name} ({Year})", the name from the list and the
-    year from the row (or the list's), never a year the renderer worked out;
-    a row with neither year reads as its name alone."""
+def test_the_taxpayer_is_the_name_without_its_recorded_form_and_never_a_guess(tmp_path):
+    """P194, P195: a return's Taxpayer is its name less the "{form} - " the
+    naming pattern puts first, only when the record's form is what it begins
+    with (a hyphen in the form number and letter case are not differences);
+    a return with no recorded form, or a name typed another way, is shown
+    whole; a vocabulary without the pattern is a loud failure."""
     ran = run_pages_dom("""
-      shellReturn = (path) => (path === "a" ? { return_name: "1120-S - Rivera Design LLC", household: "h", year: 2024 } : null);
-      return [pagesReturnText("a", 2025), pagesReturnText("a"), pagesReturnText("gone/2023/1040 - Gone", 0), pagesReturnText("a", 2025, "Named On The Row")];
+      const out = [pagesTaxpayer("1040 - Chidi & Ada Okafor", "1040"), pagesTaxpayer("1120-S - Rivera Design LLC", "1120S"),
+                   pagesTaxpayer("1040 - Gone", ""), pagesTaxpayer("Okafor 1040", "1040"), pagesTaxpayer("1065 - Bravo", "1040"),
+                   pagesTaxpayer("1040 - ", "1040"), pagesTaxpayer("990 - Friends - of the Park", "990")];
+      vocab.layout = {};
+      let loud = "";
+      try { pagesTaxpayer("1040 - A", "1040"); } catch (err) { loud = err.message; }
+      return { out, loud };
     """, tmp_path)
-    assert ran == ["1120-S - Rivera Design LLC (2025)", "1120-S - Rivera Design LLC (2024)", "1040 - Gone", "Named On The Row (2025)"]
+    assert ran["out"] == ["Chidi & Ada Okafor", "Rivera Design LLC", "1040 - Gone", "Okafor 1040", "1065 - Bravo", "1040 - ", "Friends - of the Park"]
+    assert ran["loud"] == "layout.return_name_pattern"
 
 
 def test_the_firm_pages_rows_link_by_the_firms_keys_and_carry_the_year(tmp_path):
@@ -1904,7 +1917,7 @@ def test_the_firm_pages_rows_link_by_the_firms_keys_and_carry_the_year(tmp_path)
       shellReturn = (path) => ({ return_name: "1040 - Smith", household: "/c/Smith", year: 2025 });
       households = [{ name: "Smith Family", path: "/c/Smith" }];
       const firmData = { paths: { "shown_copy h1": "/abs/h1.pdf" }, returns: [
-        { path: known, household: "Smith Family", year: 2025, label: "Smith Family 2025 1040 - Smith", counts: { needs_you: 2, waiting: 0, received: 0, set_aside: 0 }, oldest: "2026-03-03", due: null,
+        { path: known, household: "Smith Family", year: 2025, form: "1040", label: "Smith Family 2025 1040 - Smith", counts: { needs_you: 2, waiting: 0, received: 0, set_aside: 0 }, oldest: "2026-03-03", due: null,
           draft: { ready: true, stage: 1, held: 0, drafted: "2026-03-03" }, problem: "" }],
         files: [{ return: known, year: 2025, name: "one.pdf", handle: "h1", code: "unmatched", received: "2026-03-03", suggestion: "", open_key: "shown_copy h1" },
                 { return: known, year: 2025, name: "two.exe", handle: "h2", code: "opened-not-across", received: "2026-03-04", suggestion: "", open_key: "" }],
@@ -1921,19 +1934,22 @@ def test_the_firm_pages_rows_link_by_the_firms_keys_and_carry_the_year(tmp_path)
       const reminder = pagesReminderSpecs(firmData)[0];
       const link = (n) => n.byClass("row-link").map((l) => [l.textContent, l.dataset.link]);
       const docs = nodes.flatMap((n) => (n.byClass ? n.byClass("group-docs") : [])).map((n) => n.textContent);
-      return { head: link(head), caption: link(caption), captionText: caption.textContent, docs, rows: rows.map((r) => [r.byClass("row-name")[0].textContent, link(r.byClass("row-name")[0])]),
-               overview: [overview.name, overview.nameLink, overview.detailLink], reminder: [reminder.name, reminder.nameLink.kind, reminder.detailLink.kind], statusTips };
-    """, tmp_path, functions=["pagesNeedsReview", "pagesNameCell", "pagesReviewGroups", "pagesFirm", "pagesFirmReturn", "pagesReturnName", "pagesReturnText", "pagesHouseholdPath",
+      return { head: link(head), headParts: head.kids.map((k) => [k.className, k.textContent]), caption: link(caption), captionText: caption.textContent, docs,
+               rows: rows.map((r) => [r.byClass("row-name")[0].textContent, link(r.byClass("row-name")[0])]),
+               overview: [overview.name, overview.nameLink, overview.household, overview.year, overview.form, overview.detailLink || null],
+               reminder: [reminder.name, reminder.nameLink.kind, reminder.household, reminder.year, reminder.form], statusTips };
+    """, tmp_path, functions=["pagesNeedsReview", "pagesNameCell", "pagesReviewGroups", "pagesFirm", "pagesFirmReturn", "pagesReturnName", "pagesHouseholdPath",
                               "pagesFileLink", "pagesRow", "pagesCell", "pagesLinkNode", "pagesLinkWords", "pagesHeadLink", "pagesGroup", "pagesGroupStep", "pagesList",
                               "pagesReason", "pagesDay", "pagesSafe", "pagesEach", "pagesLabel", "pagesSafeName", "pagesStepWords", "pagesByName", "pagesEmpty",
                               "pagesNextSort", "pagesWorkRows", "pagesCounts", "pagesRoute", "pagesDue", "pagesReminderSpecs", "pagesStage", "screenWords", "h", "icon",
                               "pagesActivate", "pagesRunRow", "pagesRunRowLink", "pagesRunLink", "pagesRunStep", "pagesPathOf", "pagesPopup", "pagesEnableFor", "pagesRowRoute",
                               *COLUMN_FUNCTIONS])
-    assert ran["head"] == [["1040 - Smith (2025)", "return"]] and ran["caption"] == [["Smith Family", "household"]] and ran["captionText"] == "Smith Family"
+    assert ran["head"] == [["Smith", "return"]] and ran["caption"] == [["Smith Family", "household"]] and ran["captionText"] == "Smith Family"
+    assert ran["headParts"] == [["head-year", "2025"], ["row-link", "Smith"], ["form-tag", "1040"]], "the heading says the year, the taxpayer and the form once each (P195)"
     assert ran["docs"] == ["2 Documents"], "the group's count sits at its heading's end (P149)"
     assert ran["rows"] == [["one.pdf", [["one.pdf", "file"]]], ["two.exe", []]], "text for the file with no copy"
-    assert ran["overview"][0] == "1040 - Smith (2025)" and ran["overview"][1]["kind"] == "return" and ran["overview"][2] == {"kind": "household", "path": "/c/Smith"}
-    assert ran["reminder"] == ["1040 - Smith (2025)", "return", "household"]
+    assert ran["overview"] == ["Smith", {"kind": "return", "path": "/c/Smith/2025/1040 - Smith", "tip": "Navigate to Return (Smith Family)"}, "Smith Family", 2025, "1040", None]
+    assert ran["reminder"] == ["Smith", "return", "Smith Family", 2025, "1040"]
     # P116: the page hands each file's reason code to its row, so a tag's words are its tooltip.
     assert ran["statusTips"] == ["Could not tell", "Came in email or zip"]
 
@@ -3115,7 +3131,7 @@ FIRM_LISTS = r"""
   shellReturn = (path) => ({ return_name: path.split("/").pop(), household: "", year: 2025 });
   households = ["Alpha", "Bravo", "Charlie", "Delta", "Echo"].map((name) => ({ name, path: `c/${name}` }));
   const zero = { needs_you: 0, waiting: 0, received: 0, set_aside: 0 };
-  const line = (name, household, extra) => ({ path: `r/${name}`, household, year: 2025, counts: { ...zero }, oldest: null, due: null, problem: "",
+  const line = (name, household, extra) => ({ path: `r/${name}`, household, year: 2025, form: name.split(" - ")[0], counts: { ...zero }, oldest: null, due: null, problem: "",
                                               draft: { ready: false, stage: 0, held: 0, drafted: null }, ...extra });
   shellFirmData = { paths: {}, totals: { need: 3, waiting: 2, complete: 0 }, next_sort: null, returns: [
     line("1040 - Alpha", "Alpha", { counts: { ...zero, needs_you: 3 }, oldest: "2026-03-05", draft: { ready: true, stage: 1, held: 0, drafted: "2026-03-01" } }),
@@ -3158,12 +3174,13 @@ def test_the_four_firm_lists_draw_a_header_row_of_buttons_in_the_rows_columns(tm
       }
       return out;
     """, tmp_path)
-    assert ran["overview"]["words"] == ["Return", "Client", "Status", "Date"]
+    assert ran["overview"]["words"] == ["Tax Year", "Taxpayer", "Form Type", "Status", "Date"], "Jason's order (P194, P195)"
     assert ran["needs-review"]["words"] == ["File", "Suggestion", "Reason", "Received"]
-    assert ran["reminders"]["words"] == ["Return", "Client", "Stage", "Drafted"]
+    assert ran["reminders"]["words"] == ["Tax Year", "Taxpayer", "Form Type", "Stage", "Drafted"], "the same columns, then its own (P195)"
     assert ran["clients"]["words"] == ["Client Name", "Returns", "Status"], "the Clients end column is always empty (P153: Client Name)"
     for level, one in ran.items():
-        assert one["tables"] == 1 and one["rows"] == 1 and one["cells"] == 4 and one["grips"] == 4, level
+        width = 5 if level in ("overview", "reminders") else 4
+        assert one["tables"] == 1 and one["rows"] == 1 and one["cells"] == width and one["grips"] == width, level
         assert one["tips"] == [f"Sort by {word}" for word in one["words"]], level
         assert set(one["sorts"]) <= {"none", ""}, "the usual order: no header orders the list"
     assert ran["needs-review"]["label"] == "Needs Review" and ran["overview"]["label"] == "Overview"
@@ -3176,18 +3193,18 @@ def test_a_header_orders_its_list_then_reverses_then_returns_to_the_usual_order(
     is open."""
     ran = run_lists("""
       const usual = names(draw("overview"));
-      pagesOrderBy("overview", "name"); const first = [names(box), sorts(box)];
+      pagesOrderBy("overview", "taxpayer"); const first = [names(box), sorts(box)];
       draw("clients"); const kept = names(draw("overview"));
-      pagesOrderBy("overview", "name"); const second = [names(box), sorts(box)];
-      pagesOrderBy("overview", "name"); const third = [names(box), sorts(box)];
+      pagesOrderBy("overview", "taxpayer"); const second = [names(box), sorts(box)];
+      pagesOrderBy("overview", "taxpayer"); const third = [names(box), sorts(box)];
       return { usual, first, kept, second, third };
     """, tmp_path)
-    assert ran["usual"] == ["1041 - Echo (2025)", "1065 - Bravo (2025)", "1040 - Alpha (2025)", "1040 - Charlie (2025)", "1040 - Delta (2025)"]
-    assert ran["first"][0] == ["1040 - Alpha (2025)", "1040 - Charlie (2025)", "1040 - Delta (2025)", "1041 - Echo (2025)", "1065 - Bravo (2025)"]
-    assert ran["first"][1] == ["ascending", "none", "none", "none"]
+    assert ran["usual"] == ["Echo", "Bravo", "Alpha", "Charlie", "Delta"]
+    assert ran["first"][0] == ["Alpha", "Bravo", "Charlie", "Delta", "Echo"]
+    assert ran["first"][1] == ["none", "ascending", "none", "none", "none"]
     assert ran["kept"] == ran["first"][0], "a list keeps its order while the app is open"
-    assert ran["second"][0] == list(reversed(ran["first"][0])) and ran["second"][1][0] == "descending"
-    assert ran["third"] == [ran["usual"], ["none", "none", "none", "none"]]
+    assert ran["second"][0] == list(reversed(ran["first"][0])) and ran["second"][1][1] == "descending"
+    assert ran["third"] == [ran["usual"], ["none", "none", "none", "none", "none"]]
 
 
 def test_status_orders_by_urgency_not_alphabetically(tmp_path):
@@ -3201,7 +3218,7 @@ def test_status_orders_by_urgency_not_alphabetically(tmp_path):
       const reminders = box.byClass("row").map((row) => row.byClass("row-status")[0].textContent);
       return { overview, back, reminders };
     """, tmp_path)
-    assert ran["overview"] == ["1041 - Echo (2025)", "1065 - Bravo (2025)", "1040 - Alpha (2025)", "1040 - Delta (2025)", "1040 - Charlie (2025)"]
+    assert ran["overview"] == ["Echo", "Bravo", "Alpha", "Delta", "Charlie"]
     assert ran["back"] == list(reversed(ran["overview"]))
     assert ran["reminders"] == ["Held", "Final Notice", "Heads Up"]
 
@@ -3212,13 +3229,13 @@ def test_dates_order_by_the_iso_date_and_blanks_go_last_both_ways(tmp_path):
       pagesOrderBy("overview", "end"); const down = names(box);
       return { up, down };
     """, tmp_path)
-    assert ran["up"] == ["1065 - Bravo (2025)", "1040 - Alpha (2025)", "1040 - Charlie (2025)", "1041 - Echo (2025)", "1040 - Delta (2025)"]
-    assert ran["down"] == ["1040 - Charlie (2025)", "1040 - Alpha (2025)", "1065 - Bravo (2025)", "1041 - Echo (2025)", "1040 - Delta (2025)"]
+    assert ran["up"] == ["Bravo", "Alpha", "Charlie", "Echo", "Delta"]
+    assert ran["down"] == ["Charlie", "Alpha", "Bravo", "Echo", "Delta"]
 
 
 def test_needs_review_orders_files_in_each_group_and_groups_follow_their_first_file(tmp_path):
     ran = run_lists("""
-      const titles = (page) => page.byClass("group-title").map((one) => one.textContent);
+      const titles = (page) => page.byClass("group-title").map((one) => one.byClass("row-link")[0].textContent);
       const usual = [titles(draw("needs-review")), names(box)];
       pagesOrderBy("needs_review", "end"); pagesOrderBy("needs_review", "end");
       const newest = [titles(box), names(box)];
@@ -3226,9 +3243,9 @@ def test_needs_review_orders_files_in_each_group_and_groups_follow_their_first_f
       const reason = [titles(box), names(box)];
       return { usual, newest, reason };
     """, tmp_path)
-    assert ran["usual"] == [["1065 - Bravo (2025)", "1040 - Alpha (2025)"], ["z.pdf", "b.pdf", "a.pdf"]]
-    assert ran["newest"] == [["1040 - Alpha (2025)", "1065 - Bravo (2025)"], ["a.pdf", "b.pdf", "z.pdf"]]
-    assert ran["reason"] == [["1040 - Alpha (2025)", "1065 - Bravo (2025)"], ["a.pdf", "b.pdf", "z.pdf"]]
+    assert ran["usual"] == [["Bravo", "Alpha"], ["z.pdf", "b.pdf", "a.pdf"]]
+    assert ran["newest"] == [["Alpha", "Bravo"], ["a.pdf", "b.pdf", "z.pdf"]]
+    assert ran["reason"] == [["Alpha", "Bravo"], ["a.pdf", "b.pdf", "z.pdf"]]
 
 
 def test_only_the_header_tooltip_says_sort_and_always_by_its_column():
@@ -3250,7 +3267,7 @@ def test_a_column_width_is_clamped_saved_and_reset(tmp_path):
     Storage that holds something unreadable leaves the usual widths."""
     ran = run_lists("""
       const props = () => ({ ...box.style.props });
-      pagesSetWidth("overview", "status", 5000); pagesSetWidth("overview", "detail", 10); pagesSaveWidths();
+      pagesSetWidth("overview", "status", 5000); pagesSetWidth("overview", "year", 10); pagesSaveWidths();
       const set = props(); const stored = JSON.parse(window.localStorage.getItem("tracker.columns"));
       pagesWidths = null; box.style.props = {}; pagesApplyWidths(box, "overview"); const again = props();
       pagesApplyWidths(box, ""); const plain = props();
@@ -3261,8 +3278,8 @@ def test_a_column_width_is_clamped_saved_and_reset(tmp_path):
       const window = { localStorage: { data: {}, getItem(k) { return k in this.data ? this.data[k] : null; }, setItem(k, v) { this.data[k] = String(v); },
                                        removeItem(k) { delete this.data[k]; } } };
     """)
-    assert ran["set"] == {"--size-col-status": "320px", "--size-col-detail": "80px"}
-    assert ran["stored"] == {"overview": {"status": 320, "detail": 80}}
+    assert ran["set"] == {"--size-col-status": "320px", "--size-col-year": "64px"}
+    assert ran["stored"] == {"overview": {"status": 320, "year": 64}}
     assert ran["again"] == ran["set"], "kept on this PC across a restart"
     assert ran["plain"] == {} and ran["reset"] == [{}, None] and ran["junk"] == {}
 
@@ -3429,15 +3446,15 @@ def test_the_firm_lists_divide_the_whole_ordered_list_into_pages_of_fifty(tmp_pa
       const steps = (page) => page.byClass("page-step").map((b) => b.disabled === true);
       const first = draw("overview"); const one = [foot(first), steps(first), names(first).length, names(first)[0]];
       pagesPageAt.overview = 2; const third = draw("overview"); const three = [foot(third), steps(third), names(third).length];
-      pagesOrderBy("overview", "name"); pagesOrderBy("overview", "name");
+      pagesOrderBy("overview", "taxpayer"); pagesOrderBy("overview", "taxpayer");
       const back = [foot(box), names(box)[0]];
       pagesPageAt.overview = 1; draw("clients"); const again = foot(draw("overview"));
       return { one, three, back, again, per: PAGES_PER_PAGE };
     """, tmp_path)
     assert ran["per"] == 50
-    assert ran["one"] == ["Showing 1-50 of 120 Returns", [True, False], 50, "1040 - R000 (2025)"]
+    assert ran["one"] == ["Showing 1-50 of 120 Returns", [True, False], 50, "R000"]
     assert ran["three"] == ["Showing 101-120 of 120 Returns", [False, True], 20]
-    assert ran["back"] == ["Showing 1-50 of 120 Returns", "1040 - R119 (2025)"], "a new order starts at page 1, over the whole list"
+    assert ran["back"] == ["Showing 1-50 of 120 Returns", "R119"], "a new order starts at page 1, over the whole list"
     assert ran["again"] == "Showing 1-50 of 120 Returns", "the page is forgotten when the page is left"
 
 
@@ -3474,7 +3491,7 @@ def test_overviews_tabs_narrow_the_whole_list_and_carry_their_counts(tmp_path):
     """, tmp_path)
     assert ran["all"] == [[["All", "true"], ["Need You (3)", "false"], ["Waiting (2)", "false"]], 5, "5"]
     assert ran["waiting"][0][2] == ["Waiting (2)", "true"]
-    assert ran["waiting"][1] == ["1040 - Charlie (2025)", "1040 - Delta (2025)"] and ran["waiting"][2] == "2"
+    assert ran["waiting"][1] == ["Charlie", "Delta"] and ran["waiting"][2] == "2"
 
 
 def test_needs_reviews_reason_cards_count_each_reason_and_filter_the_whole_page(tmp_path):
@@ -3541,17 +3558,21 @@ def test_a_return_pages_three_sections_carry_their_colour_icon_badge_and_edge(tm
     assert ".group-title, .list-title {" in css, "the heading words keep the text colour"
 
 
-def test_a_firm_lists_status_is_a_pill_with_a_dot_and_a_form_chip_leads_a_returns_name(tmp_path):
+def test_a_firm_lists_status_is_a_pill_with_a_dot_and_the_form_chip_has_its_own_column(tmp_path):
     """P145: on Overview the status is a pill with a dot that keeps its count
-    in the app's colours, and a return's recorded form is a chip before its
-    name, hidden from a screen reader (the name already begins with it)."""
+    in the app's colours; P195: the recorded form's chip is the Form Type
+    cell, read by a screen reader (the taxpayer no longer begins with it), and
+    a return with no recorded form has an empty Form Type cell."""
     ran = run_lists("""
       const page = draw("overview");
       const row = page.byClass("row").find((r) => r.textContent.indexOf("Alpha") !== -1);
-      return { dot: row.byClass("pill-dot").length, word: row.byClass("pill-word")[0].textContent, chip: row.byClass("form-tag").map((c) => [c.textContent, c.attrs["aria-hidden"]]),
-               plain: page.byClass("row").filter((r) => r.byClass("form-tag").length).length };
+      const form = row.byClass("row-form")[0];
+      shellFirmData.returns[3].form = ""; const again = draw("overview");
+      return { dot: row.byClass("pill-dot").length, word: row.byClass("pill-word")[0].textContent,
+               chip: form.byClass("form-tag").map((c) => [c.textContent, c.attrs["aria-hidden"] || ""]), inName: row.byClass("row-name")[0].byClass("form-tag").length,
+               forms: again.byClass("row").map((r) => r.byClass("row-form")[0].textContent) };
     """, tmp_path, LINKED)
-    assert ran == {"dot": 1, "word": "3 need you", "chip": [["1040", "true"]], "plain": 1}
+    assert ran == {"dot": 1, "word": "3 need you", "chip": [["1040", ""]], "inName": 0, "forms": ["1041", "1065", "1040", "1040", ""]}
     css = read("shell.css")
     for tone, tint in (("attention", "--warn-bg"), ("waiting", "--info-bg"), ("done", "--ok-bg")):
         assert f".is-{tone} > .pill {{ background: var({tint}); }}" in css
@@ -3740,6 +3761,135 @@ def test_the_four_lists_and_a_needs_review_card_fit_1100px_beside_a_windows_scro
     columns = sum(px(f"--size-col-{cell}") for cell in ("name", "detail", "status", "end")) + 3 * sp[4]
     assert columns + 2 * sp[8] <= 1100 - px("--size-side") - 17
     assert columns + 2 * sp[6] + 2 + 2 * sp[2] <= 1100 - px("--size-side") - 17
+    # P194, P195: Overview's and Reminders' five columns, four gaps and the list's padding.
+    returns = sum(px(f"--size-col-{cell}") for cell in ("year", "taxpayer", "form", "status", "end")) + 4 * sp[4]
+    assert returns + 2 * sp[8] == 832 <= 1100 - px("--size-side") - 17
+    first = {}
+    for _media, selector, body in blocks(read("shell.css")):
+        for part in selector.split(","):
+            first.setdefault(" ".join(part.split()), dict(declarations(body)))
+    least = first['#page[data-list="overview"] .rows']["min-width"]
+    for cell in ("year", "taxpayer", "form", "status", "end"):
+        assert f"var(--size-col-{cell})" in least, cell
+    assert "4 * var(--sp-4)" in least and least == first['.col-table[data-list="reminders"]']["min-width"]
+
+
+def test_overview_and_reminders_say_tax_year_taxpayer_and_form_type_once_each_in_their_own_columns(tmp_path):
+    """P194, P195: each return row is five cells in Jason's order - Tax Year,
+    Taxpayer, Form Type, then the list's status and date - and no cell says
+    the form or the year a second time; the household has no column; the
+    rows and the header row share one five-column grid."""
+    ran = run_lists("""
+      const out = {};
+      for (const level of ["overview", "reminders"]) {
+        const page = draw(level);
+        out[level] = page.byClass("row").map((r) => [r.kids.map((k) => k.className.split(" ")[0]), r.byClass("row-year")[0].textContent,
+                                                    r.byClass("row-name")[0].textContent, r.byClass("row-form")[0].textContent, r.byClass("row-detail").length]);
+      }
+      return out;
+    """, tmp_path)
+    for level, rows in ran.items():
+        for cells, year, name, form, detail in rows:
+            assert cells == ["row-year", "row-name", "row-form", "row-status", "row-end"], level
+            assert year == "2025" and "2025" not in name and not name.startswith(form) and detail == 0, (level, name)
+    assert [row[2] for row in ran["reminders"]] == ["Alpha", "Charlie", "Bravo"], "the usual order is unchanged (by the return's name)"
+    first = {}
+    for _media, selector, body in blocks(read("shell.css")):
+        for part in selector.split(","):
+            first.setdefault(" ".join(part.split()), dict(declarations(body)))
+    grid = first[".row-return:not(.hidden)"]["grid-template-columns"]
+    assert grid == ("var(--size-col-year) minmax(var(--size-col-taxpayer), 1fr) var(--size-col-form) var(--size-col-status) var(--size-col-end)")
+    assert first['.col-table[data-list="overview"] .col-heads:not(.hidden)']["grid-template-columns"] == grid
+    assert first['.col-table[data-list="reminders"] .col-heads:not(.hidden)']["grid-template-columns"] == grid
+    css = read("shell.css")
+    tabular = next(body for _m, selector, body in blocks(css) if selector.strip().startswith(".tabular,"))
+    selector = next(selector for _m, selector, body in blocks(css) if selector.strip().startswith(".tabular,"))
+    assert ".row-year" in selector and ".head-year" in selector and ".row-date" in selector and "tabular-nums" in tabular
+    assert "monospace" not in css.lower()
+
+
+def test_the_household_is_in_the_taxpayer_tooltip_and_the_rows_description(tmp_path):
+    """P195 Q1 (Jason: "Take your recommendation"): the household has no
+    column; its name is the Taxpayer link's tooltip and part of the row's
+    screen-reader description, and its Linked Households mark sits after the
+    taxpayer, owned by the household so a redraw finds it again."""
+    ran = run_lists("""
+      tips.length = 0;
+      const page = draw("overview");
+      const alpha = page.byClass("row").find((r) => r.byClass("row-name")[0].textContent === "Alpha");
+      return { tips: tips.filter(([cls]) => cls === "row-link").map(([, words]) => words), described: alpha.attrs["aria-description"],
+               mark: alpha.byClass("row-name")[0].byClass("link-mark").map((m) => m.dataset.owner) };
+    """, tmp_path, LINKED)
+    assert "Navigate to Return (Alpha)" in ran["tips"] and "Navigate to Return (Bravo)" in ran["tips"]
+    assert ran["described"].endswith("Alpha, Linked Households")
+    assert ran["mark"] == ["Alpha"]
+    assert api.SCREEN["columns"]["taxpayer_tip"] == "{action} ({household})"
+    assert "return" not in api.SCREEN["columns"] and "client" not in api.SCREEN["columns"], "no list draws the old Return or Client header"
+
+
+def test_tax_year_orders_by_number_and_form_type_by_the_apps_form_order(tmp_path):
+    """P195: Tax Year orders by its number; Form Type in the order the app
+    already lists forms (the Client Types: 1040; 1120, 1120S, 1065; 1041;
+    990), any other form after them by its name; a blank goes last both ways."""
+    ran = run_lists("""
+      const set = { "1040 - Alpha": [2025, "1040"], "1065 - Bravo": [2024, "1065"], "1040 - Charlie": [2023, "990"], "1040 - Delta": ["", ""], "1041 - Echo": [2026, "1041"] };
+      for (const one of shellFirmData.returns) [one.year, one.form] = set[one.path.slice(2)];
+      shellFirmData.returns.push(line("W9 - Foxtrot", "Alpha", { year: 2022, form: "W9", counts: { ...zero, waiting: 1 } }));
+      draw("overview");
+      pagesOrderBy("overview", "year"); const years = names(box);
+      pagesOrderBy("overview", "year"); const back = names(box);
+      pagesOrderBy("overview", "form"); const forms = names(box);
+      pagesOrderBy("overview", "form"); const formsBack = names(box);
+      return { years, back, forms, formsBack };
+    """, tmp_path)
+    # Charlie's record says 990 and Delta's no form, so their names are shown whole (never cut by a guess).
+    assert ran["years"] == ["Foxtrot", "1040 - Charlie", "Bravo", "Alpha", "Echo", "1040 - Delta"]
+    assert ran["back"] == ["Echo", "Alpha", "Bravo", "1040 - Charlie", "Foxtrot", "1040 - Delta"], "a blank year is last both ways"
+    assert ran["forms"] == ["Alpha", "Bravo", "Echo", "1040 - Charlie", "Foxtrot", "1040 - Delta"]
+    assert ran["formsBack"] == ["Foxtrot", "1040 - Charlie", "Echo", "Bravo", "Alpha", "1040 - Delta"], "a blank form is last both ways"
+
+
+def test_a_saved_width_of_the_old_return_column_never_reaches_the_new_layout(tmp_path):
+    """P195: a width saved for Overview's old Return (name) or Client (detail)
+    column is not applied to the new layout and is dropped at the next save;
+    Status and Date keep theirs, since they mean the same."""
+    ran = run_lists("""
+      window.localStorage.setItem("tracker.columns", JSON.stringify({ overview: { name: 500, detail: 300, status: 200 }, clients: { name: 300 } }));
+      pagesWidths = null; box.style.props = {};
+      pagesApplyWidths(box, "overview"); const shown = { ...box.style.props };
+      pagesSetWidth("overview", "taxpayer", 400); pagesSaveWidths();
+      return { shown, after: { ...box.style.props }, stored: JSON.parse(window.localStorage.getItem("tracker.columns")) };
+    """, tmp_path, extra="""
+      const window = { localStorage: { data: {}, getItem(k) { return k in this.data ? this.data[k] : null; }, setItem(k, v) { this.data[k] = String(v); },
+                                       removeItem(k) { delete this.data[k]; } } };
+    """)
+    assert ran["shown"] == {"--size-col-status": "200px"}
+    assert ran["after"] == {"--size-col-status": "200px", "--size-col-taxpayer": "400px"}
+    assert ran["stored"] == {"overview": {"status": 200, "taxpayer": 400}, "clients": {"name": 300}}
+
+
+def test_needs_review_household_and_year_pages_say_each_field_once(tmp_path):
+    """P195 Q2 (Jason: "yes, apply to all windows"): Needs Review's files keep
+    their own columns and each return heading says the year, the taxpayer
+    and the form once; on the household and year pages a return is its form
+    chip and its taxpayer, the year being the heading or the title above."""
+    ran = run_lists("""
+      const review = draw("needs-review");
+      const heads = review.byClass("group-title").map((t) => t.kids.map((k) => [k.className, k.textContent]));
+      const hh = { name: "Alpha", path: "c/Alpha", returns: [{ path: "r/1040 - Alpha", year: 2025, return_name: "1040 - Alpha", form: "1040", active: true },
+                                                             { path: "r/old", year: 2024, return_name: "1040 - Alpha", form: "1040", active: true }] };
+      shellHousehold = () => hh;
+      shellRoute = { level: "household", household: "c/Alpha" };
+      const page = pagesHousehold(shellRoute);
+      const rows = page.flatMap((n) => (n && n.byClass ? n.byClass("row") : [])).map((r) => r.byClass("row-name")[0].kids.map((k) => [k.className, k.textContent]));
+      const year = pagesYear({ level: "year", household: "c/Alpha", year: 2025 });
+      const yearRows = year.flatMap((n) => (n && n.byClass ? n.byClass("row") : [])).map((r) => r.byClass("row-name")[0].textContent);
+      return { heads, rows, yearRows, title: year[0].textContent };
+    """, tmp_path)
+    assert ran["heads"] == [[["head-year", "2025"], ["row-link", "Bravo"], ["form-tag", "1065"]],
+                            [["head-year", "2025"], ["row-link", "Alpha"], ["form-tag", "1040"]]]
+    assert ran["rows"] == [[["form-tag", "1040"], ["row-link", "Alpha"]], [["form-tag", "1040"], ["row-link", "Alpha"]]], "the year is the heading above"
+    assert ran["title"] == "2025" and ran["yearRows"] == ["1040Alpha"]
 
 
 def test_the_window_and_its_taskbar_button_carry_the_console_icon():

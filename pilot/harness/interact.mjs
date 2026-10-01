@@ -470,11 +470,11 @@ const settle = (page) => page.waitForTimeout(250);
   await page.evaluate(() => shellGo({ level: "household", household: "/clients/J Park & Associates/Smith Family" }));
   await page.waitForFunction(() => document.querySelector("#page .row-link[data-link=return]"), null, { timeout: 5000 });
   const returns = await page.evaluate(() => [...document.querySelectorAll("#page .row-link[data-link=return]")].map((n) => [n.textContent, n.dataset.tip]));
-  check("a return name reads with its year and says where it goes", returns.length === 2 && returns[0][0].endsWith("(2025)") && returns[1][0].endsWith("(2024)") && returns.every((r) => r[1] === "Navigate to Return"), returns);
+  check("a return reads as its taxpayer, once under each year, and says where it goes (P195)", returns.length === 2 && returns.every((r) => !/\(\d{4}\)$/.test(r[0]) && r[1] === "Navigate to Return"), returns);
   await page.click("#page .row-link[data-link=return]");
   await page.waitForFunction(() => shellRoute.level === "return", null, { timeout: 5000 });
   check("clicking a return name goes to its page", await page.evaluate(() => shellRoute.level === "return" && shellRoute.year === 2025), null);
-  await page.evaluate(() => shellGo({ level: "overview" }));
+  await page.evaluate(() => shellGo({ level: "clients" }));
   await page.waitForSelector("#page .row-link[data-link=household]");
   const before = await page.evaluate(() => window.HARNESS.opened.length);
   const hh = await page.evaluate(() => { const l = document.querySelector("#page .row-link[data-link=household]"); return [l.textContent, l.dataset.tip]; });
@@ -488,8 +488,8 @@ const settle = (page) => page.waitForTimeout(250);
   const { context, page } = await open("?mode=real");
   await page.evaluate(() => shellGo({ level: "needs-review" }));
   await page.waitForSelector("#page .row-link");
-  const head = await page.evaluate(() => [document.querySelector(".group-title .row-link").textContent, document.querySelector(".group-count .row-link").dataset.tip]);
-  check("a group heading is a return link with its year; its caption a household link", head[0].endsWith("(2025)") && head[1] === "Navigate to Client", head);
+  const head = await page.evaluate(() => [document.querySelector(".group-title .head-year").textContent, document.querySelector(".group-count .row-link").dataset.tip]);
+  check("a group heading says its year once, beside the taxpayer's return link; its caption a household link (P195)", head[0] === "2025" && head[1] === "Navigate to Client", head);
   await page.click("#page .rows .row-link");
   const opened = await page.evaluate(() => window.HARNESS.opened);
   check("a firm-page file name reveals the path of the key the firm's reply gave", opened.length === 1 && opened[0][1] === "reveal", opened);
@@ -716,13 +716,15 @@ const settle = (page) => page.waitForTimeout(250);
   const clipped = () => page.evaluate(() => {
     const bad = [];
     for (const row of document.querySelectorAll("#page .row-wrap")) {
-      for (const cell of row.querySelectorAll(".row-name, .row-status")) {
+      for (const cell of row.querySelectorAll(".row-year, .row-name, .row-status")) {
         if (cell.scrollWidth > cell.clientWidth + 1 || cell.scrollHeight > cell.clientHeight + 1) bad.push(cell.textContent);
       }
       const total = Math.round(row.getBoundingClientRect().height), height = total > 40 ? total - Math.round(parseFloat(getComputedStyle(row).borderBottomWidth)) : total;   // the 1px rule under a row is not part of the grid
       if (height % 4) bad.push(`height ${height}: ${row.textContent}`);
     }
-    const years = [...document.querySelectorAll('#page .row-link[data-link="return"]')].filter((l) => !/\(\d{4}\)$/.test(l.textContent)).map((l) => l.textContent);
+    // P195: a return row on Overview and Reminders says its year in its own column; a Needs Review heading beside the taxpayer.
+    const years = [...[...document.querySelectorAll("#page .row-return")].filter((r) => r.querySelector('.row-link[data-link="return"]') && !/^\d{4}$/.test(r.querySelector(".row-year").textContent)),
+      ...[...document.querySelectorAll("#page .group-title")].filter((t) => t.querySelector('.row-link[data-link="return"]') && !t.querySelector(".head-year"))].map((n) => n.textContent);
     return { bad, years, links: document.querySelectorAll('#page .row-link[data-link="return"]').length };
   });
   for (const [where, level, all] of [["Overview", "overview", false], ["Needs Review", "needs-review", false], ["Reminders", "reminders", false],
@@ -732,7 +734,7 @@ const settle = (page) => page.waitForTimeout(250);
     if (all) { await page.click(".switch-option:nth-child(2)"); await page.waitForTimeout(250); }
     const found = await clipped();
     check(`ruling 27 at 1100px: nothing wrapped is cut on ${where}`, found.bad.length === 0, found.bad.slice(0, 3));
-    check(`ruling 27 at 1100px: every return link on ${where} shows its year`, found.years.length === 0, found.years);
+    check(`P195 at 1100px: every return on ${where} says its year once, in its own place`, found.years.length === 0, found.years);
   }
   await page.evaluate(() => shellGo({ level: "household", household: "/clients/J Park & Associates/Smith Family" }));
   await page.waitForTimeout(250);
