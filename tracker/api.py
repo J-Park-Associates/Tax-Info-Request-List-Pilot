@@ -491,6 +491,14 @@ SCAN_FILED = "Filed {n}"
 SCAN_REVIEW = "{n} to Review"
 SCAN_SYNCING = "{n} Still Syncing"
 SCAN_NOT_SORTED = "{n} Files Not Sorted"
+#: A Sort that ran and found nothing to do - nothing filed, nothing to review,
+#: nothing syncing, no file it could not sort, no warning - says so in its
+#: own short words (P199, owner question Q1, built as recommended), as a
+#: skipped return says "Nothing Done" (P134): before, it said nothing at all.
+#: When a file is still arriving in the inbox, nothing was sorted though
+#: something waits: that is "Nothing Done: 1 Still Syncing." in the words
+#: already approved (:data:`SCAN_NOTHING_DONE` with :data:`SCAN_SYNCING`).
+SCAN_NOTHING_TO_SORT = "Nothing to Sort"
 SCAN_BUT = "But {problems}."
 #: A pass whose final line does not name the return it was asked for
 #: (decision 203's review, S2): its counts are not guessed from another's.
@@ -1881,7 +1889,8 @@ def _vocab() -> dict:
                              "no-room": SCAN_NO_ROOM},
                  "complete": SCAN_COMPLETE, "filed": SCAN_FILED,
                  "review": SCAN_REVIEW, "syncing": SCAN_SYNCING, "not_sorted": SCAN_NOT_SORTED,
-                 "but": SCAN_BUT, "not_in_pass": SCAN_NOT_IN_PASS},
+                 "but": SCAN_BUT, "not_in_pass": SCAN_NOT_IN_PASS,
+                 "nothing_to_sort": SCAN_NOTHING_TO_SORT},
         # Sort & Scan, watched, and its Stop (decision 193).
         "progress": {"household": PROGRESS_HOUSEHOLD, "sort": PROGRESS_SORT,
                      "scan": PROGRESS_SCAN, "stop": PROGRESS_STOP,

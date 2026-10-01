@@ -690,7 +690,8 @@ goes to `%LOCALAPPDATA%\Programs\Tax Document Console`), replaces the
 earlier Start menu entry and desktop icon, and keeps `settings.json`
 beside the program. The data folder keeps its name,
 `%LOCALAPPDATA%\tax-document-tracker-pilot`, and nothing in it moves; the
-column widths stay where they were, in `%APPDATA%\Tax Document Tracker
+column widths (and, since P199, the order each list was left in) stay
+where they were, in `%APPDATA%\Tax Document Tracker
 Pilot` (the earlier name, kept on purpose). The first start after the
 upgrade, or `Setup.bat`, runs two carry-over jobs in the after-install
 step, and each says one sentence every time, first among the step's lines:

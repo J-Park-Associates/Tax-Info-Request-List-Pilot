@@ -78,8 +78,9 @@ const PAGES_COLUMNS = {
 // Every cell any list has: a list's widths set its own and clear the rest.
 const PAGES_CELLS = ["year", "taxpayer", "form", "name", "detail", "status", "end"];
 // Each column's least and most width in px (SPEC-lists 4). The usual widths
-// are the stylesheet's tokens; the name column's width (and the taxpayer's)
-// is its least, and it takes whatever the others leave.
+// are the stylesheet's tokens. Every column of a firm list is exactly its
+// width (P199): none takes the window's slack, so widening a column moves
+// its right edge, and the columns after it, to the right.
 const PAGES_WIDTHS = { year: [64, 160], taxpayer: [160, 640], form: [64, 160], name: [160, 640], detail: [80, 400], status: [96, 320], end: [112, 240] };
 // A list whose usual widths differ from the stylesheet's (SPEC-lists 4):
 // Needs Review's reasons are the longest status words ("Looks Like Wrong
@@ -88,11 +89,12 @@ const PAGES_WIDTHS = { year: [64, 160], taxpayer: [160, 640], form: [64, 160], n
 const PAGES_USUAL = { needs_review: { detail: 160, status: 200 } };
 const PAGES_WIDTH_STEP = 16;               // one Ctrl+Shift+Arrow: four grid steps
 const PAGES_WIDTHS_KEY = "tracker.columns"; // this PC's own storage, never the record
+const PAGES_ORDER_KEY = "tracker.order";    // the order each list was left in, kept the same way (P199)
 // Urgency, the order the app already uses (SPEC-lists 3): a return that cannot
 // be read or a paused household first, then what needs a person, what waits
 // on the taxpayer, what is complete.
 const PAGES_URGENCY = { problem: 0, needs: 1, waiting: 2, done: 3, plain: 4 };
-const pagesOrder = {};         // list -> {cell, dir}: kept while the app is open (P139)
+let pagesOrder = null;         // list -> {cell, dir}: read once from this PC's storage (P199)
 let pagesWidths = null;        // list -> {cell: px}: read once from this PC's storage (P139)
 // Rows per page of a firm list (pilot SPEC-lists 14, P152, P174; owner question Q11).
 const PAGES_PER_PAGE = 50;
@@ -755,7 +757,7 @@ function pagesCompare(cell, dir) {
 
 // A list's specs in the order its header asks for, or as they came.
 function pagesOrdered(list, specs) {
-  const order = pagesOrder[list];
+  const order = pagesStoredOrder()[list];
   if (!order) return specs;
   const by = pagesCompare(order.cell, order.dir);
   return specs.map((spec, at) => ({ spec, at })).sort(by).map((entry) => entry.spec);
@@ -764,10 +766,12 @@ function pagesOrdered(list, specs) {
 // A header was pressed: the next order in its cycle, the list drawn again,
 // and focus back on the same header so it can be pressed again.
 function pagesOrderBy(list, cell) {
-  const now = pagesOrder[list];
-  if (!now || now.cell !== cell) pagesOrder[list] = { cell, dir: 1 };
-  else if (now.dir > 0) pagesOrder[list] = { cell, dir: -1 };
-  else delete pagesOrder[list];
+  const held = pagesStoredOrder();
+  const now = held[list];
+  if (!now || now.cell !== cell) held[list] = { cell, dir: 1 };
+  else if (now.dir > 0) held[list] = { cell, dir: -1 };
+  else delete held[list];
+  pagesSaveOrder();
   delete pagesPageAt[list];      // any change of order returns to page 1 (P174)
   const page = $("page");
   pagesDraw(shellRoute, page);
@@ -782,7 +786,7 @@ function pagesOrderBy(list, cell) {
 function pagesColumnHeads(list) {
   const words = screenWords();
   const said = words.columns;
-  const order = pagesOrder[list];
+  const order = pagesStoredOrder()[list];
   const cells = Object.keys(PAGES_COLUMNS[list]).map((cell) => {
     const key = PAGES_COLUMNS[list][cell];
     if (!key) return h("div", { className: "col-cell", role: "columnheader", dataset: { cell } }, pagesGrip(list, cell));
@@ -857,6 +861,40 @@ function pagesColumnKey(e) {
     column: head.querySelector(".col-word").textContent, n: Math.round(box.getBoundingClientRect().width),
   });
   return true;
+}
+
+// The order each list was left in on this PC, read once (P199, replacing
+// P139's "while the app is open"): kept per list as its widths are. Only an
+// order a header can give survives the read - a list this app draws, one of
+// its columns with a word, a direction of 1 or -1 - so a damaged or old
+// value leaves that list (or every list) in its usual order and says
+// nothing, as an unreadable width does.
+function pagesStoredOrder() {
+  if (pagesOrder) return pagesOrder;
+  pagesOrder = {};
+  try {
+    const held = JSON.parse(window.localStorage.getItem(PAGES_ORDER_KEY) || "{}");
+    if (held && typeof held === "object" && !Array.isArray(held)) {
+      for (const [list, one] of Object.entries(held)) {
+        const columns = PAGES_COLUMNS[list];
+        if (columns && one && typeof one === "object" && Object.prototype.hasOwnProperty.call(columns, one.cell)
+            && columns[one.cell] && (one.dir === 1 || one.dir === -1)) pagesOrder[list] = { cell: one.cell, dir: one.dir };
+      }
+    }
+  } catch (err) {
+    // Unreadable or not JSON: every list in its usual order, which pagesOrder now holds.
+  }
+  return pagesOrder;
+}
+
+// Kept on this PC; a profile that refuses the write keeps the order while
+// the app is open.
+function pagesSaveOrder() {
+  try {
+    window.localStorage.setItem(PAGES_ORDER_KEY, JSON.stringify(pagesStoredOrder()));
+  } catch (err) {
+    // Not kept past a restart; the order holds while the app is open.
+  }
 }
 
 // The widths this PC holds, read once. Storage that cannot be read (a locked
@@ -1122,7 +1160,7 @@ function pagesReviewSpec(firm, group, file) {
 // return's files ordered among themselves, and the returns following their
 // first file; with no order chosen, today's order.
 function pagesOrderedGroups(planned) {
-  const order = pagesOrder.needs_review;
+  const order = pagesStoredOrder().needs_review;
   if (!order) return planned;
   const by = pagesCompare(order.cell, order.dir);
   return planned.map((one, at) => ({ one, at }))
