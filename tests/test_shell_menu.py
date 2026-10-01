@@ -156,7 +156,7 @@ let updated = null;
 const theme = { shouldUseDarkColors: !!sc.dark, shouldUseHighContrastColors: !!sc.contrast,
                 themeSource: "", on(name, fn) { if (name === "updated") updated = fn; } };
 const snapshot = (items) => items.map((i) => ({
-  label: i.label, type: i.type, role: i.role, enabled: i.enabled, accelerator: i.accelerator,
+  label: i.label, type: i.type, role: i.role, enabled: i.enabled, accelerator: i.accelerator, checked: i.checked,
   submenu: i.submenu ? snapshot(i.submenu) : undefined }));
 let live = { bar: null, popup: null };
 const win = {
@@ -329,7 +329,7 @@ def test_only_the_items_that_need_nothing_are_enabled_until_the_page_speaks(tmp_
     enabled = {label for label, item in _flat(menu).items() if item.get("enabled")}
     # Exit is a role: Electron enables it itself.
     assert enabled == {_word(k) for k in ("change_root", "refresh", "tour", "safeguards", "terms",
-                                          "error_log", "about")}
+                                          "error_log", "about", "show_under_construction")}
 
 
 def test_the_page_enables_the_items_whose_rule_holds_and_the_menu_follows(tmp_path):
@@ -418,6 +418,55 @@ def test_a_chosen_bar_item_is_sent_to_the_page_except_exit_and_the_error_log(tmp
     assert ran["sends"] == [{"channel": "menu", "message": {"id": "find", "token": ""}},
                             {"channel": "menu", "message": {"id": "tour", "token": ""}}]
 
+
+
+def test_show_under_construction_is_the_view_menus_last_item_a_ticked_check_item_from_the_first_frame(tmp_path):
+    """P197 (SPEC-hide-under-construction 2.4, 2.7, Q2): a native check item,
+    so Windows draws its tick, focus and High Contrast colours; Alt, V, U
+    reaches it; no accelerator; ticked (shown) until the page speaks."""
+    [menu] = _run(tmp_path, [])["menus"]
+    view = [i.get("label") or "-" for i in menu[3]["submenu"]]
+    assert view[-3:] == ["-", _word("reset_columns"), _word("show_under_construction")]
+    item = _flat(menu)[_word("show_under_construction")]
+    assert item["type"] == "checkbox" and item["checked"] is True and item["enabled"]
+    assert not item.get("accelerator")
+    assert _word("show_under_construction") == "Show &Under Construction"
+    others = [label for label in view if label not in ("-", _word("show_under_construction"))]
+    assert not [label for label in others if "&U" in label or label.lower().startswith("u")], "the access key U is the item's own"
+    assert all(i.get("type") != "checkbox" for label, i in _flat(menu).items() if label != _word("show_under_construction"))
+
+
+def test_the_tick_follows_the_page_and_a_stray_checked_id_is_dropped(tmp_path):
+    """P197 ruling 6: the page sends {enable, checked}; main keeps only the
+    checkable ids, rebuilds only on a change, and a message without
+    `checked` leaves the tick as it was."""
+    word = _word("show_under_construction")
+    ran = _run(tmp_path, [
+        {"menu": {"enable": ["overview"], "checked": []}},                          # hidden: unticked
+        {"menu": {"enable": ["overview"], "checked": []}},                          # the same: no rebuild
+        {"menu": {"enable": ["overview"]}},                                         # no `checked`: kept
+        {"menu": {"enable": ["overview"], "checked": ["overview", "show_under_construction", 7]}},
+        {"menu": {"enable": ["overview"], "checked": "show_under_construction"}},   # not a list: kept
+    ])
+    ticks = [_flat(menu)[word]["checked"] for menu in ran["menus"]]
+    assert ticks == [True, False, True]
+    assert not any(i.get("checked") for label, i in _flat(ran["menus"][-1]).items() if label != word)
+
+
+def test_choosing_show_under_construction_is_sent_to_the_page(tmp_path):
+    ran = _run(tmp_path, [{"clickBar": _word("show_under_construction")}])
+    assert ran["sends"] == [{"channel": "menu", "message": {"id": "show_under_construction", "token": ""}}]
+
+
+def test_a_chosen_check_item_keeps_the_pages_tick_until_the_page_answers(tmp_path):
+    """P197, review NIT 1: Windows flips a check item's tick when it is
+    chosen; main.js rebuilds it from what the page last said, so a page whose
+    answer fails never leaves it flipped. The page's reply then moves it."""
+    word = _word("show_under_construction")
+    ran = _run(tmp_path, [{"clickBar": word}, {"menu": {"enable": [], "checked": []}}])
+    assert [_flat(menu)[word]["checked"] for menu in ran["menus"]] == [True, True, False]
+    plain = _run(tmp_path, [{"menu": {"enable": ["find"]}}, {"clickBar": _word("find")}])
+    assert len(plain["menus"]) == 2, "an ordinary item rebuilds nothing"
 
 def _learn(errorlog, **scenario):
     return [{"tracker": ["list"]}, {"clickBar": _word("error_log")}], {"errorLog": str(errorlog), **scenario}

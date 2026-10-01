@@ -266,6 +266,7 @@ api.SCREEN	columns.returns		new	Returns	1	Column header, Clients	Pilot 0.3, SPEC
 api.SCREEN	columns.sort_by		new	Sort by {column}	3	Tooltip of every column header	Pilot 0.3, SPEC-lists 2 (P138); Jason chose "Sort by" (Q1 C, P180)	Sort by {column}	new
 api.SCREEN	columns.width		new	{column} Width {n}	3	Said to a screen reader after a keyboard resize	Pilot 0.3, SPEC-lists 2 (P138): "Order", never "Sort"; open for Jason, Q1	{column} Width {n}	new
 api.MENU	reset_columns		new	Reset Column Widths	3	View menu	Pilot 0.3, SPEC-lists 4 (P139); open for Jason, Q4	Reset Column Widths	new
+api.MENU	show_under_construction		new	Show &Under Construction	3	View menu, a checked item	Pilot 0.3, SPEC-hide-under-construction (P197); open for Jason, Q3	Show &Under Construction	new
 api.SCREEN	find_placeholder		new	Households and Returns	3	Search box placeholder, every page	Pilot 0.3 lane 4b, SPEC-lists 13 (P173); P196, SPEC-taxpayer-words R2, R8: the old words did not fit: was Search Clients and Returns	Households and Returns	new
 api.SCREEN	find_placeholder_files		new	Files, Households and Returns	4	Search box placeholder, Needs Review	Pilot 0.3 lane 4b, SPEC-lists 13 (P173); open for Jason, Q12; P196, SPEC-taxpayer-words R2, R8: the old words did not fit: was Search Files, Clients and Returns	Files, Households and Returns	new
 api.SCREEN	linked.tip		new	Linked Households	2	Link icon tooltip and name; panel name; row description	Pilot 0.3 lane 4b, SPEC-lists 10 (P141, P171)	Linked Households	new

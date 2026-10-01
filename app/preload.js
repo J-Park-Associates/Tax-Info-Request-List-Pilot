@@ -16,7 +16,7 @@ contextBridge.exposeInMainWorld("tracker", {
   menu: {
     // A menu item was chosen: {id, token}. token is the page's own, echoed.
     onCommand: (listener) => ipcRenderer.on("menu", (_e, m) => listener(m)),
-    // What applies now: {enable: [ids]}; or pop a right-click menu:
+    // What applies now: {enable: [ids], checked: [ids ticked]}; or pop a right-click menu:
     // {popup, enable: [ids], token, x, y}.
     send: (message) => ipcRenderer.send("menu", message),
   },

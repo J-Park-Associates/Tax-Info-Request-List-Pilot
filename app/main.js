@@ -502,6 +502,7 @@ const DEFAULT_MENU_WORDS = {
   find: "Find",
   refresh: "Refresh",
   reset_columns: "Reset Column Widths",
+  show_under_construction: "Show &Under Construction",
   tools: "&Tools",
   sort_now: "Sort Now",
   stop_sorting: "Stop Sorting",
@@ -544,7 +545,7 @@ const BAR = [
     ["edit_list", "CmdOrCtrl+E"], ["draft_reminder"], SEPARATOR,
     ["open_client_folder"], ["open_inbox"], ["open_working"]]],
   ["view", [["overview", "CmdOrCtrl+1"], ["needs_review", "CmdOrCtrl+2"], ["reminders", "CmdOrCtrl+3"],
-    ["clients", "CmdOrCtrl+4"], SEPARATOR, ["find", "CmdOrCtrl+F"], ["refresh", "F5"], SEPARATOR, ["reset_columns"]]],
+    ["clients", "CmdOrCtrl+4"], SEPARATOR, ["find", "CmdOrCtrl+F"], ["refresh", "F5"], SEPARATOR, ["reset_columns"], ["show_under_construction"]]],
   ["tools", [["sort_now", "F9"], ["stop_sorting"], SEPARATOR, ["schedule"], ["repair_schedule"],
     ["firm_report"], SEPARATOR, ["clear_lock"]]],
   ["help", [["tour"], ["safeguards"], ["terms"], ["error_log"], SEPARATOR, ["about"]]],
@@ -560,10 +561,16 @@ const POPUPS = new Map([
   ["received", ["unfile", "mark_missing", "show_in_explorer"]],
 ]);
 // What needs nothing of the page: enabled from the first frame.
-const ALWAYS = new Set(["change_root", "exit", "refresh", "tour", "safeguards", "terms", "error_log", "about"]);
+const ALWAYS = new Set(["change_root", "exit", "refresh", "tour", "safeguards", "terms", "error_log", "about",
+  "show_under_construction"]);
 const BAR_IDS = new Set(BAR.flatMap(([, items]) => (items || []).filter((i) => i !== SEPARATOR).map((i) => i[0])));
+// The bar's checked items: Windows draws the tick. The page owns what each
+// one says and sends the ticked ids as `checked` (P197).
+const CHECKABLE = new Set(["show_under_construction"]);
 // What the page last said applies (5.3); until it speaks only ALWAYS does.
 let menuEnabled = new Set();
+// Ticked until the page speaks: a new install shows the Under Construction items (P197, Q2).
+let menuChecked = new Set(CHECKABLE);
 let menuBuilt = false;
 let mainWindow = null;
 
@@ -590,6 +597,10 @@ function menuItem(id, enabled, token) {
     click: () => {
       if (id === "error_log") openErrorLog().catch(() => null);
       else sendMenu({ id, token });
+      // Windows flips a check item's tick itself; put it back to what the page
+      // last said, so a page whose answer fails never leaves it flipped. The
+      // page's own message then ticks it (P197, review NIT 1).
+      if (CHECKABLE.has(id) && menuBuilt) buildMenu();
     },
   };
 }
@@ -606,6 +617,7 @@ function buildTemplate() {
         if (id === "exit") return { label: menuWords.exit, role: "quit" };
         const built = menuItem(id, ALWAYS.has(id) || menuEnabled.has(id), "");
         if (accelerator) built.accelerator = accelerator;
+        if (CHECKABLE.has(id)) Object.assign(built, { type: "checkbox", checked: menuChecked.has(id) });
         return built;
       }),
     };
@@ -652,9 +664,14 @@ function onMenuMessage(event, message) {
   }
   const enable = known(message.enable, BAR_IDS);
   if (!enable) return;
+  const equal = (a, b) => a.size === b.size && [...a].every((id) => b.has(id));
   const next = new Set(enable);
-  const same = next.size === menuEnabled.size && [...next].every((id) => menuEnabled.has(id));
+  // `checked` is optional: a message without it leaves the ticks as they are.
+  const ticked = known(message.checked, CHECKABLE);
+  const nextChecked = ticked ? new Set(ticked) : menuChecked;
+  const same = equal(next, menuEnabled) && equal(nextChecked, menuChecked);
   menuEnabled = next;
+  menuChecked = nextChecked;
   if (!same && menuBuilt) buildMenu();
 }
 ipcMain.on(MENU_CHANNEL, onMenuMessage);

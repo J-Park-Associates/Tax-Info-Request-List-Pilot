@@ -46,6 +46,7 @@ const LEVELS = ["overview", "needs-review", "reminders", "clients", "household",
 const FIRM_LEVELS = ["overview", "needs-review", "reminders", "clients"];
 const SIDE_KEYS = ["overview", "needs-review", "reminders", "clients"];
 const SCREEN_KEYS = { "needs-review": "needs_review" };
+const SOON_KEY = "tracker.underConstruction";   // this PC's own storage, never the record (P197)
 
 let shellRoute = { level: "overview" };
 let shellBack = null;          // the route Cancel goes back to, from Change clients folder
@@ -58,6 +59,7 @@ let shellFirmAsked = false;    // a second ask arrived while one ran
 let shellPageBusy = false;     // a return's state is on its way
 let shellPageFailed = false;   // it could not be had (the notice says why, with Retry)
 let shellFound = [];           // the search list's options
+let shellSoonHidden = null;    // View › Show Under Construction is off: read once from this PC (P197)
 
 // The vocabulary blocks this file reads. A block that is missing is the
 // failure it looks like: the page is told and the error log has it.
@@ -355,6 +357,63 @@ function drawSide() {
     else node.removeAttribute("aria-current");
     if (key) node.setAttribute("aria-keyshortcuts", `Control+${SIDE_KEYS.indexOf(key) + 1}`);
   }
+  drawSoon();
+}
+
+// ── View › Show Under Construction (pilot SPEC-hide-under-construction, P197) ──
+// Kept on this PC as the column widths are: storage that cannot be read
+// shows the items (a new install's default), and a write it refuses holds
+// the choice while the app is open.
+function shellReadSoon() {
+  if (shellSoonHidden !== null) return shellSoonHidden;
+  shellSoonHidden = false;
+  try {
+    shellSoonHidden = window.localStorage.getItem(SOON_KEY) === "hidden";
+  } catch (err) {
+    // Unreadable: shown, which shellSoonHidden now says.
+  }
+  return shellSoonHidden;
+}
+
+// The bar's ticked items, sent with the enable list: main.js draws the tick.
+function shellChecked() {
+  return shellReadSoon() ? [] : ["show_under_construction"];
+}
+
+// Hidden is gone, not faded: the .hidden class is display: none, so a hidden
+// item leaves the Tab order and what a screen reader reads (the hidden
+// attribute would lose to the shell's `li:not(.hidden)` display rule). A
+// heading whose every item is Under Construction (Workspace) goes with them.
+function drawSoon() {
+  const hide = shellReadSoon();
+  for (const node of document.querySelectorAll(".side-section[data-soon]")) node.closest("li").classList.toggle("hidden", hide);
+  for (const list of document.querySelectorAll(".side-list")) {
+    const items = list.querySelectorAll(".side-section");
+    const allSoon = items.length > 0 && list.querySelectorAll(".side-section[data-soon]").length === items.length;
+    const heading = $(list.getAttribute("aria-labelledby"));
+    list.classList.toggle("hidden", hide && allSoon);
+    if (heading) heading.classList.toggle("hidden", hide && allSoon);
+  }
+}
+
+// The menu's answer: flip, keep, redraw, and tell the menu its tick. Focus
+// on an item now hidden moves to the side panel's current page, where F6
+// puts it, so it is never lost to the window; a tip it showed goes with it.
+function shellToggleSoon() {
+  const hide = !shellReadSoon();
+  shellSoonHidden = hide;
+  try {
+    if (hide) window.localStorage.setItem(SOON_KEY, "hidden");
+    else window.localStorage.removeItem(SOON_KEY);
+  } catch (err) {
+    // Not kept past a restart; the choice holds while the app is open.
+  }
+  const held = document.activeElement;
+  const lost = Boolean(hide && held && held.closest && held.closest(".side-section[data-soon]"));
+  drawSoon();
+  if (hide) hideTip();
+  if (lost) focusRegion("side");
+  shellEnable();
 }
 
 // ── last sort (SPEC 8.3) ──────────────────────────────────────────────
@@ -778,7 +837,7 @@ function shellEnabled(at) {
   const own = lastState && lastState.household && lastState.household.path === route.household ? lastState.household : null;
   const shared = Boolean(own && own.shared_on);
   const paused = Boolean(own && own.pause && own.pause.sentence);   // while paused the pause is the work
-  const ids = ["change_root", "refresh", "tour", "safeguards", "terms", "error_log", "about"];
+  const ids = ["change_root", "refresh", "tour", "safeguards", "terms", "error_log", "about", "show_under_construction"];
   if (shellRootSet) {
     ids.push("new_household", "open_root", "overview", "needs_review", "reminders", "clients", "find", "schedule", "repair_schedule");
     ids.push("reset_columns");
@@ -803,7 +862,7 @@ function shellEnabled(at) {
 // notice and the page goes on (a route change must not depend on it).
 function shellEnable() {
   try {
-    if (window.tracker.menu) window.tracker.menu.send({ enable: shellEnabled() });
+    if (window.tracker.menu) window.tracker.menu.send({ enable: shellEnabled(), checked: shellChecked() });
   } catch (err) {
     failed(err);
   }
@@ -883,6 +942,7 @@ const MENU_ANSWERS = {
   find: () => $("find").focus(),
   refresh: () => shellRefresh(),
   reset_columns: () => pagesResetWidths(),
+  show_under_construction: () => shellToggleSoon(),
   sort_now: () => sortClicked(),
   stop_sorting: () => stopPass(),
   schedule: () => openSchedule(),
@@ -1004,6 +1064,8 @@ for (const node of document.querySelectorAll(".side-section[data-type]")) {
     shellGo({ level: "clients" });
   });
 }
+// A stored "hidden" applies before the first paint, not when the words arrive (P197, review S1).
+drawSoon();
 // A page not built yet says so and does nothing else: no page, no command (P154).
 for (const node of document.querySelectorAll(".side-section[data-soon]")) {
   node.addEventListener("click", () => toastWord("under_construction"));
