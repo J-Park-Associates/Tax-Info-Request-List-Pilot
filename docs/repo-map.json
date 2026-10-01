@@ -15,9 +15,9 @@
     "a person sends the draft"
   ],
   "counts": {
-    "nodes": 426,
+    "nodes": 428,
     "edges": 1195,
-    "reused": 379
+    "reused": 376
   },
   "node_types": [
     "artifact",
@@ -4240,8 +4240,8 @@
       "id": "app/renderer/shell.js",
       "type": "module",
       "layer": "desktop-app",
-      "sha256": "8e5d653ff43324a5",
-      "lines": 1089,
+      "sha256": "b9c0794d1fc55c4c",
+      "lines": 1091,
       "role": "The app shell (pilot SPEC-shell, P58-P77): the side panel, the path row, the search, the sort icon, the one route, the setup page and the page's side of the `menu` channel. A classic script that shares app.js's globals and draws nothing of a return itself; it hands the page to pages.js.",
       "notes": "It types no word of its own: every name, tooltip and line is vocab.screen, and a key the vocabulary lacks throws, which app.js's bootstrap says as a notice - a loud failure, never a guess. Its own builder h() sets only the attributes it names (the pattern of app.js's el(), decision 137). app.js calls it at seams of one line each: shellVocabulary, shellAdopt, shellNeedsRoot, shellChanged, shellProgress, shellKey and shellStateArrived (and shell.js calls appRouteChanged); app.js's one document keydown listener hands every key to shellKey first, so the new files add no listener of their own (a test holds it). The route is {level, household, year, ret} of paths the API reported; a return's page waits for showReturn's state, and Sort now sorts the active return's household, so a household or year page first reads the state of one of its own returns when the state on screen is not (its notices come with it). P134 (review M2): of those, the one a person chose, else the first the list's household says is working (active, not rolled forward), so a household Sort reports on a return it sorted. The menu's enable list (shellEnabled) follows SPEC 5.1 rule for rule and is sent on every change; a menu id the page cannot answer is a notice and an error-log line, never silence. The firm command's counts (shellLoadFirm) are asked after every list; while they load the firm pages show outline rows, and a failure is one notice with Retry. S5: shellGo returns the read of the return a page needs and guards the lock and the menu channel, so a channel that throws is a notice and never stops navigation; openPath(path, how) is the one open (how 'reveal' shows a file in File Explorer) and says Not Opened in the API's words when the shell refuses; shellEnabled(at) reads the rules for the route a row's menu stands for; shellAnswer runs a menu id as if chosen on the page. Lane 4b: the side panel's brand words, Taxpayer Types (the screen's word since P196; set pagesClientType, then open Households), Under Construction items (a toast and nothing else) and Settings (the change_root answer) come from vocab.screen.side and client_types (shellSideWords); the search box's placeholder is per page (drawFindWords) and on Needs Review findOptions also finds the waiting files, opening Check. P197: View > Show Under Construction (shellToggleSoon, the menu's answer) hides the five Under Construction items and the Workspace heading with the .hidden class (display: none: out of the Tab order and the accessibility tree), drawn by drawSoon on every drawSide; the choice is this PC's localStorage (tracker.underConstruction, 'hidden'), never settings.json; unreadable storage shows them; focus on a hidden item moves to the side panel's current page; shellEnable sends the tick as `checked` (shellChecked)."
     },
@@ -4759,7 +4759,7 @@
       "id": "pilot/DECISIONS.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "7e4485c2d90fe75e",
+      "sha256": "9dcb73718776af87",
       "lines": 197
     },
     {
@@ -4906,7 +4906,7 @@
       "id": "pilot/SPEC-stuck-tip.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "3bddd12eb74a3136",
+      "sha256": "442ae74129f6a89a",
       "lines": 31
     },
     {
@@ -5496,7 +5496,7 @@
       "id": "pilot/handoffs/stuck-tip-build.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "ed2bb77f1fb7ac0b",
+      "sha256": "e5eb73580b62f655",
       "lines": 46
     },
     {
@@ -5703,6 +5703,13 @@
       "lines": 38
     },
     {
+      "id": "pilot/reviews/stuck-tip-review.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "da77975a625c10ba",
+      "lines": 74
+    },
+    {
       "id": "pilot/reviews/wincheck-fixes-review.md",
       "type": "doc",
       "layer": "docs",
@@ -5762,7 +5769,7 @@
       "id": "pilot/wintest/RESULTS-0.3-followup.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "f89e257d0e27cd49",
+      "sha256": "6fedf33380fb1118",
       "lines": 33
     },
     {

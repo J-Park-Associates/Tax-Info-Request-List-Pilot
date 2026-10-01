@@ -807,6 +807,8 @@ function shellNeedsRoot(on, listed) {
   shellRootSet = !on && Boolean(listed && listed.root);
   if (on) {
     if (listed && listed.root_problem) notice({ sentence: screenWords().setup.missing, kind: "failed" });
+    // The one page change that does not go through shellGo: its tip goes too (P202 review).
+    hideTip();
     shellRoute = { level: "setup" };
     shellBack = null;
     shellDraw();

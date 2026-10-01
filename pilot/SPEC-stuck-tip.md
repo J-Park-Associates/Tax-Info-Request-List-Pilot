@@ -14,7 +14,7 @@ The code dates from SPEC-shell and lane 4b (`d2c3768`, `5c290a0`); nothing in P1
 
 - **R1. A tip whose element is no longer on the page is hidden at the next pointer move.** In the `mouseover` handler (`tooltip.js:129-134`), before anything else: when a tip is showing or waiting (`tipFor`, or a pending `tipTimer` for a node) and that node is not `isConnected`, `hideTip()`. Reason: the cheapest event that always follows a page change under a resting or moving mouse; no observer of the whole document.
 - **R2. A page change hides the tip at once.** Wherever the shell draws a new page (the one place every page change goes through - the builder names it with file:line), call `hideTip()` before drawing. Reason: Ctrl+1-4 with the mouse resting still must not leave a tip for a frame; R1 alone waits for the mouse.
-- **R3. A pending tip whose element left before its delay ended is never shown.** `showTip` (`tooltip.js:81`) does nothing for a node that is not `isConnected`. Reason: a hover just before a keyboard page change would otherwise show a tip for a removed element 400 ms later.
+- **R3. A pending tip whose element left before its delay ended is never shown.** `showTip` (`tooltip.js:81`) does nothing for a node that is not `isConnected`. Reason: a hover just before a keyboard page change would otherwise show a tip for a removed element 300 ms later (`TIP_DELAY_MS`, `tooltip.js:16`).
 - Nothing else changes: timing, focus tips, Escape, the search box rule, Floating UI placement.
 
 ## What staff will notice
@@ -23,7 +23,7 @@ A tip never stays behind after the page changes; it goes with its page.
 
 ## Files and owning tests
 
-- `app/renderer/tooltip.js` 81-99 (`showTip`), 129-134 (`mouseover`); the page-drawing function the builder names: `shellGo` in `app/renderer/shell.js:254` (the one every page change goes through - the menu's Ctrl+1-4 at `shell.js:939-942` (main.js:547-548 binds the keys), the side panel's links at `shell.js:1057`, the path row at 513, the search box at 686, and pages.js's links; `shellDraw`/`drawPage` also redraw the same page when its state arrives, so they are not where a page change is).
+- `app/renderer/tooltip.js` 81-99 (`showTip`), 129-134 (`mouseover`); the page-drawing function the builder names: `shellGo` in `app/renderer/shell.js:254`, and `shellNeedsRoot` (`shell.js:806`), which sends a missing clients folder to the setup page without it (the P202 review's SHOULD) (`shellGo` is the one every other page change goes through - the menu's Ctrl+1-4 at `shell.js:939-942` (main.js:547-548 binds the keys), the side panel's links at `shell.js:1057`, the path row at 513, the search box at 686, and pages.js's links; `shellDraw`/`drawPage` also redraw the same page when its state arrives, so they are not where a page change is).
 - `tests/test_shell.py`, beside the tooltip tests at 368-434, using their Node harness. New tests, named as claims:
   `test_a_tip_whose_element_leaves_the_page_is_hidden_at_the_next_mouse_move`,
   `test_a_page_change_hides_a_showing_tip`,

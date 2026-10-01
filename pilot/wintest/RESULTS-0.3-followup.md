@@ -9,14 +9,14 @@
 | Check | Result | Evidence |
 |---|---|---|
 | The logo build, started from the Start menu, reads every return | PASS | Overview: Need a Person 14, Waiting 13, all 27 returns with their statuses; no "Setup Needs Attention", no "Could Not Be Read" (12:57 AM). |
-| The real store is whole | PASS | Read-only (`immutable=1`, no side files): `user_version` 20, 51 engagements, 26 returns with documents, 3 with none received yet. |
+| The real store (made-up sample data) is whole | PASS | Read-only (`immutable=1`, no side files): `user_version` 20, 51 engagements, 26 returns with documents, 3 with none received yet. |
 | The Claude private copy is gone | PASS | `%LOCALAPPDATA%\Packages\Claude_pzs8sxrjxfjjc\LocalCache\Local` holds no `tax-document-tracker-pilot` (moved to the Recycle Bin by Jason, SPEC-F7 Q1 (a)). |
 
 ## The merged build
 
 | Check | Result | Evidence |
 |---|---|---|
-| Install over the open app | PASS | The app was closed through its own Close button first (N7); the silent install exited 0 at 3:35 AM; the program landed in the real `Programs\Tax Document Console` and no private copy was made. |
+| Install, after closing the open app | PASS | The app was closed through its own Close button first (N7); the silent install exited 0 at 3:35 AM; the program landed in the real `Programs\Tax Document Console` and no private copy was made. |
 | First start runs the one-time step cleanly | PASS | `after-install.json`: ran 3:35:29 AM, reason launch, schedule off, 0 findings, nothing failed. |
 | The schedule stays off (Jason's word) | PASS | `settings.json` `"schedule_enabled": false`; no task under either name. |
 | One field per column (P194, P195) | PASS | Overview: Tax Year, Taxpayer, Form Type, Status, Date; "Chidi & Ada Okafor" with no "1040 -" and no "(2025)"; the form once, as its chip. |
