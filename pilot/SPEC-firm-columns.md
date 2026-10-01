@@ -99,7 +99,8 @@ and year pages), it says the year, the taxpayer and the form once each.
     Widths still forgets them all.
 14. **1100px:** the five usual widths, four 16px gaps and the 32px padding
     each side are 80 + 224 + 96 + 160 + 144 + 64 + 64 = 832px, inside the
-    843px beside Windows' scrollbar (P179). No sideways scroll.
+    843px beside Windows' scrollbar (P179). No sideways scroll. The budget
+    is the page's, and P203 makes the minimum window's page 1100 wide.
 15. **Keyboard, focus, High Contrast:** the new headers are the same
     `button.col-head` in a `role="columnheader"` cell (Tab stop, Enter/Space,
     Ctrl+Shift+Arrow resizes, visible focus ring, `aria-sort`), and the

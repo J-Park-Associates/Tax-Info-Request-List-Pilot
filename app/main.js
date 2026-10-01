@@ -707,6 +707,12 @@ function createWindow() {
   // has none of them.
   buildMenu();
   const win = new BrowserWindow({
+    // The sizes below are the page's, not the window's (P203): every list's
+    // 1100 px budget (SPEC-firm-columns 14, SPEC-shell's minimum window)
+    // assumes the page is 1100 wide, and without this Windows counts its
+    // frame in the 1100, leaving the page 1084 and the Overview list a
+    // sideways scrollbar. The window is drawn 16 px wider than the page.
+    useContentSize: true,
     width: 1400,
     height: 900,
     minWidth: 1100,
