@@ -1,9 +1,9 @@
 {
   "schema": 2,
-  "generated": "2026-09-30",
+  "generated": "2026-10-01",
   "generator": "tools/repo_map.py",
   "generator_sha256": "22c7b60a1d198289",
-  "module_table_sha256": "ed97f6f4b5f27e45",
+  "module_table_sha256": "3aa0cd2ccb5726c2",
   "pipeline": [
     "tracker.api / create",
     "tracker.scaffold",
@@ -15,9 +15,9 @@
     "a person sends the draft"
   ],
   "counts": {
-    "nodes": 374,
-    "edges": 1171,
-    "reused": 330
+    "nodes": 395,
+    "edges": 1190,
+    "reused": 0
   },
   "node_types": [
     "artifact",
@@ -4712,8 +4712,8 @@
       "id": "pilot/DECISIONS.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "cd018b65dec78970",
-      "lines": 184
+      "sha256": "8036be775e4a8ccf",
+      "lines": 186
     },
     {
       "id": "pilot/HANDOFF.md",
@@ -4772,6 +4772,20 @@
       "lines": 986
     },
     {
+      "id": "pilot/SPEC-icon-ledger.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "022ab9ec557a87dd",
+      "lines": 104
+    },
+    {
+      "id": "pilot/SPEC-icon.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "eb08ff5589e3d0e3",
+      "lines": 63
+    },
+    {
       "id": "pilot/SPEC-lists.md",
       "type": "doc",
       "layer": "docs",
@@ -4819,6 +4833,27 @@
       "layer": "docs",
       "sha256": "fad1bfa9cab19530",
       "lines": 83
+    },
+    {
+      "id": "pilot/brand/tax-document-console/README.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "c0e435c163b889c3",
+      "lines": 74
+    },
+    {
+      "id": "pilot/handoffs/brand-icon-ledger.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "c2be5c5de676fc84",
+      "lines": 33
+    },
+    {
+      "id": "pilot/handoffs/brand-icon.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "aea79646d08642e3",
+      "lines": 37
     },
     {
       "id": "pilot/handoffs/column-order-build.md",
@@ -5532,6 +5567,11 @@
       "layer": "external"
     },
     {
+      "id": "pkg:fontTools",
+      "type": "package",
+      "layer": "external"
+    },
+    {
       "id": "pkg:numpy",
       "type": "package",
       "layer": "external",
@@ -5572,6 +5612,11 @@
       "layer": "external"
     },
     {
+      "id": "pkg:playwright",
+      "type": "package",
+      "layer": "external"
+    },
+    {
       "id": "pkg:pypdf",
       "type": "package",
       "layer": "external",
@@ -5601,6 +5646,11 @@
     },
     {
       "id": "pkg:tools",
+      "type": "package",
+      "layer": "external"
+    },
+    {
+      "id": "pkg:uharfbuzz",
       "type": "package",
       "layer": "external"
     },
@@ -5737,6 +5787,184 @@
       "layer": "root",
       "sha256": "350a49fe7fb7c239",
       "lines": 82
+    },
+    {
+      "id": "pilot/brand/tax-document-console/app/icon.svg",
+      "type": "ui",
+      "layer": "root",
+      "sha256": "e154763dc04b5f2a",
+      "lines": 1
+    },
+    {
+      "id": "pilot/brand/tax-document-console/app/mark-mono.svg",
+      "type": "ui",
+      "layer": "root",
+      "sha256": "e69c6771950ef45e",
+      "lines": 1
+    },
+    {
+      "id": "pilot/brand/tax-document-console/app/mark.svg",
+      "type": "ui",
+      "layer": "root",
+      "sha256": "649b623d13aa1f0a",
+      "lines": 1
+    },
+    {
+      "id": "pilot/brand/tax-document-console/brand/lockup-dark.svg",
+      "type": "ui",
+      "layer": "root",
+      "sha256": "9234e6a402265115",
+      "lines": 1
+    },
+    {
+      "id": "pilot/brand/tax-document-console/brand/lockup-light.svg",
+      "type": "ui",
+      "layer": "root",
+      "sha256": "c19c231916601c2f",
+      "lines": 1
+    },
+    {
+      "id": "pilot/brand/tax-document-console/source/export.py",
+      "type": "module",
+      "layer": "root",
+      "sha256": "0aa8743631cdfc9a",
+      "lines": 81,
+      "cli": "python -m pilot.brand.tax-document-console.source.export",
+      "exports": [
+        "SCALES",
+        "TARGETS",
+        "TARGET_FORMS",
+        "WIZARD_LARGE",
+        "WIZARD_SMALL",
+        "export"
+      ]
+    },
+    {
+      "id": "pilot/brand/tax-document-console/source/ico.py",
+      "type": "module",
+      "layer": "root",
+      "sha256": "6afc35a2c4828eb2",
+      "lines": 50,
+      "exports": [
+        "pack"
+      ]
+    },
+    {
+      "id": "pilot/brand/tax-document-console/source/lockup.py",
+      "type": "module",
+      "layer": "root",
+      "sha256": "874934332775c670",
+      "lines": 48,
+      "exports": [
+        "GOLD_TEXT_ON_LIGHT",
+        "lockup",
+        "tracked"
+      ],
+      "constants": {
+        "GOLD_TEXT_ON_LIGHT": "'#7A5F16'"
+      }
+    },
+    {
+      "id": "pilot/brand/tax-document-console/source/mark.py",
+      "type": "module",
+      "layer": "root",
+      "sha256": "1001784d8d66cda7",
+      "lines": 306,
+      "exports": [
+        "BACK",
+        "BACK_X",
+        "CREAM",
+        "DRAWN",
+        "FLAP",
+        "FULL_W",
+        "GOLD",
+        "NAVY",
+        "PIXEL_ART",
+        "PIXEL_COLOURS",
+        "RIM",
+        "RULE",
+        "RULES",
+        "SHADOW",
+        "SHEET",
+        "SHEET_BOX",
+        "SIZES",
+        "SLOPE",
+        "SLOPE_RIM",
+        "SMALL_TICK_CORNER",
+        "TAB",
+        "TICK",
+        "TICK_PTS",
+        "app_icon",
+        "bare_mark",
+        "drawing",
+        "f",
+        "full_mark",
+        "icon_svg",
+        "pixel_art"
+      ],
+      "constants": {
+        "NAVY": "'#1B2A4A'",
+        "GOLD": "'#C9A84C'",
+        "CREAM": "'#F5F0E8'",
+        "FLAP": "('#3D5A92', '#2E4675')",
+        "TAB": "('#A8862F', '#94782A')",
+        "SHEET": "('#FFFDF8', '#F0E9DC')",
+        "RIM": "'#6A87C2'",
+        "TICK": "'#9C7F2C'",
+        "RULE": "'#9AA6BC'",
+        "SHADOW": "'#0A1F3D'",
+        "BACK_X": "(4, 42)",
+        "SLOPE": "(18, 22)",
+        "SHEET_BOX": "(14, 12, 36, 32)",
+        "SMALL_TICK_CORNER": "(21.88, 21.88)",
+        "DRAWN": "(4, 7, 45, 40)",
+        "SLOPE_RIM": "1.5"
+      }
+    },
+    {
+      "id": "pilot/brand/tax-document-console/source/raster.py",
+      "type": "module",
+      "layer": "root",
+      "sha256": "f47559eb220da6a4",
+      "lines": 42,
+      "exports": [
+        "icon_png",
+        "tile_png"
+      ]
+    },
+    {
+      "id": "pilot/brand/tax-document-console/source/render.py",
+      "type": "module",
+      "layer": "root",
+      "sha256": "b74a82c1c90354b8",
+      "lines": 32,
+      "exports": [
+        "Renderer"
+      ]
+    },
+    {
+      "id": "pilot/brand/tax-document-console/source/sheet.py",
+      "type": "module",
+      "layer": "root",
+      "sha256": "7b17562599441b04",
+      "lines": 39,
+      "cli": "python -m pilot.brand.tax-document-console.source.sheet",
+      "exports": [
+        "main"
+      ]
+    },
+    {
+      "id": "pilot/brand/tax-document-console/source/wordmark.py",
+      "type": "module",
+      "layer": "root",
+      "sha256": "e4b4045c7541cd58",
+      "lines": 98,
+      "exports": [
+        "FACES",
+        "FONTS",
+        "metrics",
+        "text_path"
+      ]
     },
     {
       "id": "pilot/harness/accel.js",
@@ -10930,6 +11158,120 @@
       "to": "tracker/store.py",
       "type": "documents",
       "source": "curated"
+    },
+    {
+      "from": "pilot/brand/tax-document-console/source/export.py",
+      "to": "pkg:PIL",
+      "type": "depends_on",
+      "source": "derived"
+    },
+    {
+      "from": "pilot/brand/tax-document-console/source/export.py",
+      "to": "pilot/brand/tax-document-console/source/ico.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "pilot/brand/tax-document-console/source/export.py",
+      "to": "pilot/brand/tax-document-console/source/lockup.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "pilot/brand/tax-document-console/source/export.py",
+      "to": "pilot/brand/tax-document-console/source/mark.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "pilot/brand/tax-document-console/source/export.py",
+      "to": "pilot/brand/tax-document-console/source/raster.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "pilot/brand/tax-document-console/source/export.py",
+      "to": "pilot/brand/tax-document-console/source/render.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "pilot/brand/tax-document-console/source/ico.py",
+      "to": "pkg:PIL",
+      "type": "depends_on",
+      "source": "derived"
+    },
+    {
+      "from": "pilot/brand/tax-document-console/source/lockup.py",
+      "to": "pilot/brand/tax-document-console/source/mark.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "pilot/brand/tax-document-console/source/lockup.py",
+      "to": "pilot/brand/tax-document-console/source/wordmark.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "pilot/brand/tax-document-console/source/raster.py",
+      "to": "pkg:PIL",
+      "type": "depends_on",
+      "source": "derived"
+    },
+    {
+      "from": "pilot/brand/tax-document-console/source/raster.py",
+      "to": "pilot/brand/tax-document-console/source/mark.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "pilot/brand/tax-document-console/source/render.py",
+      "to": "pkg:playwright",
+      "type": "depends_on",
+      "source": "derived"
+    },
+    {
+      "from": "pilot/brand/tax-document-console/source/sheet.py",
+      "to": "pkg:PIL",
+      "type": "depends_on",
+      "source": "derived"
+    },
+    {
+      "from": "pilot/brand/tax-document-console/source/sheet.py",
+      "to": "pilot/brand/tax-document-console/source/mark.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "pilot/brand/tax-document-console/source/sheet.py",
+      "to": "pilot/brand/tax-document-console/source/raster.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "pilot/brand/tax-document-console/source/sheet.py",
+      "to": "pilot/brand/tax-document-console/source/render.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "pilot/brand/tax-document-console/source/wordmark.py",
+      "to": "pkg:fontTools",
+      "type": "depends_on",
+      "source": "derived"
+    },
+    {
+      "from": "pilot/brand/tax-document-console/source/wordmark.py",
+      "to": "pkg:uharfbuzz",
+      "type": "depends_on",
+      "source": "derived"
+    },
+    {
+      "from": "pilot/brand/tax-document-console/source/wordmark.py",
+      "to": "pilot/brand/tax-document-console/source/mark.py",
+      "type": "imports",
+      "source": "derived"
     },
     {
       "from": "pilot/harness/make_vocab.py",
