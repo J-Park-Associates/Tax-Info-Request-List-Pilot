@@ -15,9 +15,9 @@
     "a person sends the draft"
   ],
   "counts": {
-    "nodes": 407,
+    "nodes": 408,
     "edges": 1193,
-    "reused": 359
+    "reused": 360
   },
   "node_types": [
     "artifact",
@@ -5416,11 +5416,18 @@
       "lines": 123
     },
     {
+      "id": "pilot/reviews/combined-review.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "4f6f042c642ee1c7",
+      "lines": 291
+    },
+    {
       "id": "pilot/reviews/combined-rulings.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "f95d49f0bdb18c07",
-      "lines": 9
+      "sha256": "6744eac797f59a16",
+      "lines": 19
     },
     {
       "id": "pilot/reviews/email-zip-tag-review.md",
