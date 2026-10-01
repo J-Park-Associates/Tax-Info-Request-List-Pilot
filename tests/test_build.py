@@ -744,3 +744,23 @@ def test_batch_files_check_out_with_crlf():
     said = subprocess.run(["git", "check-attr", "eol", "--", *names], cwd=REPO,
                           capture_output=True, text=True, check=True).stdout.splitlines()
     assert said == [f"{name}: eol: crlf" for name in names], said
+
+
+ICON_SOURCE = "pilot/brand/tax-document-console/app/icon.ico"
+ICON_COPY = "app/assets/icon.ico"
+
+
+def test_the_packaged_exe_carries_the_console_icon():
+    """The packager writes the icon into the shell's .exe (run from app/, so the
+    path is app-relative) and the freeze gives the engine's .exe the same file."""
+    packager = next(line for line in read(BUILD_SCRIPT).splitlines() if "electron-packager.mjs" in line)
+    assert "--icon=assets\\icon.ico" in packager
+    spec = read("api_entry.spec")
+    assert re.search(rf'^\s+icon="{re.escape(ICON_COPY)}",$', spec, re.M)
+    assert (REPO / ICON_COPY).is_file()
+
+
+def test_the_dev_launch_icon_is_a_byte_identical_copy_of_the_artworks():
+    """app/assets/icon.ico is committed because the unpackaged launch needs it;
+    the artwork's generator owns the original, so the copy cannot drift."""
+    assert (REPO / ICON_COPY).read_bytes() == (REPO / ICON_SOURCE).read_bytes()

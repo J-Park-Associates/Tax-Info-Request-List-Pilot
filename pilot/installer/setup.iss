@@ -37,6 +37,13 @@ UninstallDisplayName=Tax Document Console {#AppVersion}
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 WizardStyle=modern
+; The console icon (pilot SPEC-icon): the installer's own .exe, the wizard's
+; side panel and corner image at the seven scalings Inno Setup 6 picks from
+; (smallest first), and the entry in Settings > Apps.
+SetupIconFile=..\brand\tax-document-console\installer\setup.ico
+WizardImageFile=..\brand\tax-document-console\installer\wizard-large-1.bmp,..\brand\tax-document-console\installer\wizard-large-2.bmp,..\brand\tax-document-console\installer\wizard-large-3.bmp,..\brand\tax-document-console\installer\wizard-large-4.bmp,..\brand\tax-document-console\installer\wizard-large-5.bmp,..\brand\tax-document-console\installer\wizard-large-6.bmp,..\brand\tax-document-console\installer\wizard-large-7.bmp
+WizardSmallImageFile=..\brand\tax-document-console\installer\wizard-small-1.bmp,..\brand\tax-document-console\installer\wizard-small-2.bmp,..\brand\tax-document-console\installer\wizard-small-3.bmp,..\brand\tax-document-console\installer\wizard-small-4.bmp,..\brand\tax-document-console\installer\wizard-small-5.bmp,..\brand\tax-document-console\installer\wizard-small-6.bmp,..\brand\tax-document-console\installer\wizard-small-7.bmp
+UninstallDisplayIcon={app}\Tax Document Console.exe
 
 [Tasks]
 Name: "desktopicon"; Description: "Create a &desktop icon"; GroupDescription: "Additional icons:"; Flags: unchecked
@@ -52,8 +59,8 @@ Type: files; Name: "{userdesktop}\Tax Document Tracker Pilot.lnk"
 Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs ignoreversion
 
 [Icons]
-Name: "{group}\Tax Document Console"; Filename: "{app}\Tax Document Console.exe"
-Name: "{autodesktop}\Tax Document Console"; Filename: "{app}\Tax Document Console.exe"; Tasks: desktopicon
+Name: "{group}\Tax Document Console"; Filename: "{app}\Tax Document Console.exe"; AppUserModelID: "com.jparkassociates.taxdocumentconsole"
+Name: "{autodesktop}\Tax Document Console"; Filename: "{app}\Tax Document Console.exe"; Tasks: desktopicon; AppUserModelID: "com.jparkassociates.taxdocumentconsole"
 
 [Run]
 Filename: "{app}\Tax Document Console.exe"; Description: "Launch Tax Document Console"; Flags: postinstall nowait skipifsilent

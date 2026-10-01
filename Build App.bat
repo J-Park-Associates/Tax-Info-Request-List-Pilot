@@ -62,8 +62,9 @@ pushd app
 call npm ci --no-audit --no-fund
 if errorlevel 1 (popd & echo npm ci failed - check your internet connection. & call :wait & exit /b 1)
 rem The packager is run through its entry script, not the npx shim: the
-rem shim breaks when the folder's path contains an ampersand.
-node node_modules\@electron\packager\bin\electron-packager.mjs . "%NAME%" --platform=%PLATFORM% --arch=%ARCH% --out="..\%OUT%\dist" --overwrite
+rem shim breaks when the folder's path contains an ampersand. --icon is
+rem relative to app\ (pushd above) and writes the console icon into the .exe.
+node node_modules\@electron\packager\bin\electron-packager.mjs . "%NAME%" --platform=%PLATFORM% --arch=%ARCH% --out="..\%OUT%\dist" --icon=assets\icon.ico --overwrite
 if errorlevel 1 (popd & echo electron-packager failed & call :wait & exit /b 1)
 popd
 

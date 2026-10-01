@@ -59,6 +59,9 @@ exe = EXE(
     strip=False,
     upx=False,
     console=True,
+    # The same icon as the shell's program file (pilot SPEC-icon, item 6); the
+    # path is relative to where Build App.bat runs PyInstaller, the repo root.
+    icon="app/assets/icon.ico",
 )
 coll = COLLECT(
     exe,

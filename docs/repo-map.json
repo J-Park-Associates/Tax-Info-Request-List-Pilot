@@ -15,9 +15,9 @@
     "a person sends the draft"
   ],
   "counts": {
-    "nodes": 395,
+    "nodes": 396,
     "edges": 1190,
-    "reused": 0
+    "reused": 349
   },
   "node_types": [
     "artifact",
@@ -4080,8 +4080,8 @@
       "id": "app/main.js",
       "type": "module",
       "layer": "desktop-app",
-      "sha256": "bf97069a8d69492e",
-      "lines": 771,
+      "sha256": "ebda63bd03cc3dcb",
+      "lines": 779,
       "role": "Electron main process. Spawns the Python API (`-m tracker.api` under the checkout's .venv interpreter, by its full path, or the frozen executable package.json's config.apiName names in the portable build) and relays its JSON to the renderer over IPC. Since decision 193 it passes each progress line a pass prints (tracker.progress's format) to the window on the tracker-progress channel, keeps the last non-progress line as the reply, follows the kill to the limit_seconds the pass reports and says where it was, answers every failure of its own in the API's envelope, and puts no stderr on screen - a failed command's goes to the error log the API names, else to the shell's fallback error.log in %LOCALAPPDATA%\\<productName> (local, non-roaming; Electron's userData off Windows).",
       "notes": "This is the cross-language boundary: everything the UI can do is a tracker.api command. The renderer is untrusted here: a command must be in vocab.commands (before the vocabulary arrives, only BOOTSTRAP_COMMAND, pinned to tracker.api.COMMANDS by a guard) with the one argument shape the renderer uses; open-path opens only a path the API reported in state.paths, and the error log vocab.shell.error_log names, as a file (an optional second argument \"reveal\" on the same channel shows a reported file selected in File Explorer through shell.showItemInFolder after the same lstat check; a folder still goes to shell.openPath); the tracker's exit code is read, not discarded, and a plain command that outlives TRACKER_TIMEOUT_MS is killed and reported, and a pass at the limit its own first line states (decision 203). The window is sandboxed, cannot navigate and cannot open windows. Decision 160: the shell takes app.requestSingleInstanceLock(); a second launch quits before any window is made, and the running one restores and focuses its window on second-instance - two windows were two editors, and the earlier one's save took the later one's back. Decision 176: devTools is off when packaged, and runTracker() serialises the payload before the tracker starts and writes it as UTF-8, which is how tracker.api._read_spec() reads it. Decision 191: from source it runs .venv/Scripts/python.exe (or .venv/bin/python), never a bare python, and answers with the lock tool's NOT_SET_UP sentence when that is missing; buildMenu() runs before the window is made in both builds, and the app's own menu (SPEC-shell 5.1) has no reload, zoom or developer-tools item or accelerator (E-7). Decision 188 (E-14): learn() keeps each reported path with its kind from vocab.path_kinds, and openPath lstat()s it and opens it only when it is no symbolic link (Node reports a junction as one) and still a directory for 'folder' or a regular file for 'file'; otherwise vocab.shell.not_opened. No path.relative( and no startsWith( (tests/test_layers.py). Decision 186's rebase review (MF2): keepInLog() appends (appendToLog, fail-safe: a failed write is dropped, never thrown) to the error log the API named and builds no such path - no ERROR_LOG_FILENAME in the shell. Jason's ruling of 2026-09-29: with none named (no data folder yet) it appends to a fallback error.log in %LOCALAPPDATA%\\<productName> (process.env.LOCALAPPDATA, else the profile's AppData\\Local; off Windows app.getPath('userData'); FALLBACK_LOG_NAME; not the data home, which the P19 deny list and the package check keep out of a package, and not the roaming %APPDATA%; capped at FALLBACK_CAP 256 KB, one .1 copy, never written through a link or a folder, a folder at error.log.1 drops the old log instead of stopping writes), a failed command's reply adds just vocab.shell.no_log (api.SHELL_NO_LOG, 'Tracker failed'; SPEC-shell 11.2), the stderr is never on screen, and a renderer error is kept there too. The menu bar stays hidden until Alt (autoHideMenuBar, Jason 2026-09-29). Decision 203: the command named by vocab.pass_command (learned, never typed) is a pass: runTracker resolves the click at its 'started' progress line, streams its later lines on tracker-progress and sends {reply, code} - its final line, or the shell's own failure when it gave none or was killed - on the same channel when it closes; a pass is killed only at the limit its own first line states (limit_seconds, locking.RUN_TIME_LIMIT_SECONDS), while every other command keeps TRACKER_TIMEOUT_MS; each running pass is kept in 'passes' and will-quit destroys its stdout, which the runner takes as Stop. Decision 209: at whenReady the shell runs the API's after-install command itself (LAUNCH_COMMAND, through spawnTracker, outside the renderer's allowlist) in the background: no tracker-cmd waits for it (the review's S7), and when its reply says ran the shell sends LAUNCH_DONE_CHANNEL ('after-install-done', one of three main-to-renderer channels, with tracker-progress and MENU_CHANNEL) so the page asks list again for the notice. SPEC-shell 5: the menu bar is built from BAR with the API's words (DEFAULT_MENU_WORDS, word for word tracker.api.MENU, replaced by vocab.menu when a word differs), items are enabled from the page's {enable} list (ALWAYS need nothing), and a chosen item goes to the page on MENU_CHANNEL as {id, token}; onMenuMessage() treats the one 'menu' channel as untrusted (unknown ids, popups and long tokens are dropped) and pops the six native right-click menus of POPUPS; Open error log is the shell's alone (openErrorLog: the named log, else the fallback if it exists, through openChecked's lstat test, the one openPath uses). pageBackground() reads --window-light / --window-dark from pilot-ui.css for the system theme (none under a contrast theme) and nativeTheme 'updated' repaints the window. Pilot P46: flushes the page's storage to disk as the window closes, since Electron lets go of the single-instance lock before it closes that storage. The rename (P155, pilot/SPEC-rename.md R4): productName is now the new name, so the window title, the fallback log's folder and the scheduled task follow it, but Electron's userData folder (the page's column widths and cached terms and tour answers) keeps the earlier name: main.js calls app.setPath('userData', appData + package.json's config.userDataName) at the top, before anything asks for a path and before requestSingleInstanceLock, which Electron keys on that folder. config.userDataName is held equal to settings.EARLIER_PRODUCT_NAME by tests/test_pilot_installer.py and tests/test_single_source.py. The screen defaults say 'App', not 'Tracker' (P155 Q3)."
     },
@@ -4639,8 +4639,8 @@
       "id": "docs/repo-map.curated.json",
       "type": "file",
       "layer": "docs",
-      "sha256": "914b1a671396b77b",
-      "lines": 1140,
+      "sha256": "5480ee2a7fa936b0",
+      "lines": 1148,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
     },
@@ -4712,8 +4712,8 @@
       "id": "pilot/DECISIONS.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "8036be775e4a8ccf",
-      "lines": 186
+      "sha256": "8f446ccef009ebfb",
+      "lines": 187
     },
     {
       "id": "pilot/HANDOFF.md",
@@ -4782,8 +4782,8 @@
       "id": "pilot/SPEC-icon.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "eb08ff5589e3d0e3",
-      "lines": 63
+      "sha256": "b4a082a9975ecb30",
+      "lines": 66
     },
     {
       "id": "pilot/SPEC-lists.md",
@@ -4839,7 +4839,9 @@
       "type": "doc",
       "layer": "docs",
       "sha256": "c0e435c163b889c3",
-      "lines": 74
+      "lines": 74,
+      "role": "Says what each file of the Tax Document Console artwork folder is and where it is seen (the app icon, the installer's icon and wizard images, the lockups, the packaged-app tiles).",
+      "notes": "Everything in pilot/brand/tax-document-console/ except this file and source/ is GENERATED by source/export.py and is never edited by hand: change source/mark.py and re-run `python export.py ..`. The app's copy, app/assets/icon.ico (committed because the unpackaged launch needs it; .ico is not a mapped suffix), must stay byte-identical to app/icon.ico here, which tests/test_build.py holds; Build App.bat (--icon), api_entry.spec (icon=), app/main.js (BrowserWindow icon) and pilot/installer/setup.iss ([Setup] icon keys) name these files."
     },
     {
       "id": "pilot/handoffs/brand-icon-ledger.md",
@@ -4875,6 +4877,13 @@
       "layer": "docs",
       "sha256": "be85cd2a7ec78673",
       "lines": 153
+    },
+    {
+      "id": "pilot/handoffs/icon-wiring.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "ed60b2f25b8fc408",
+      "lines": 51
     },
     {
       "id": "pilot/handoffs/landing-0.3.md",
@@ -5728,8 +5737,8 @@
       "id": "Build App.bat",
       "type": "script",
       "layer": "root",
-      "sha256": "d9379d5d56da3a35",
-      "lines": 117,
+      "sha256": "8ce00cdc00967522",
+      "lines": 118,
       "role": "Builds the portable package: freezes the API with PyInstaller from the committed api_entry.spec inside a virtual environment holding exactly requirements.lock, requirements-build.lock and requirements-nodeps.lock, installed with --require-hashes, packages the Electron shell with @electron/packager, copies the frozen API into resources/ and writes BUILD-INFO.txt.",
       "notes": "Reproducible from the commit (decision 46): the freeze runs in its own venv because PyInstaller follows optional imports and the machine's Python would otherwise leak unrelated packages into the package (decision 53). The packager runs through its entry script under `node`, not the `npx` shim, for the ampersand reason Start App.bat states; the copy into the package is `robocopy` with its exit code checked and the executable's presence asserted, because `xcopy` gave up on the package's long paths while the script still reported success (decision 53). Guards pin OUT to .gitignore and the resources path to app/main.js. Decision 55: the venv is made fresh each build; no parenthesised value is expanded inside the build-info block. Decision 78: every exit goes through one `:wait` label, which pauses for the person who double-clicked unless TRACKER_BUILD_NONINTERACTIVE is set - the one switch, named in this file's header and read nowhere else, and what lets .github/workflows/build.yml run this file rather than a copy of it. Decision 191: the installs read the locks in hash mode (a replaced file, or a package the locks do not name, fails the build), tests/test_build.py compares BUILD-INFO.txt's freeze with the union of the locks under the build's markers, NoDefaultCurrentDirectoryInExePath is set before the first command and robocopy is called by its full path (E-10)."
     },
@@ -5837,7 +5846,9 @@
         "WIZARD_LARGE",
         "WIZARD_SMALL",
         "export"
-      ]
+      ],
+      "role": "The artwork's generator: rewrites app/, installer/, brand/ and windows/ of pilot/brand/tax-document-console/ from mark.py.",
+      "notes": "The artwork folder is output; this folder is the source. A design tool, not an app dependency (fonttools, uharfbuzz, pillow, playwright are in no lock file). Never hand-edit a generated icon, bitmap or SVG: re-run it, then copy app/icon.ico to app/assets/icon.ico."
     },
     {
       "id": "pilot/brand/tax-document-console/source/ico.py",
@@ -6920,8 +6931,8 @@
       "id": "tests/test_build.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "5ff2c50cbd7b76c3",
-      "lines": 746,
+      "sha256": "9dcca4a6432a4daf",
+      "lines": 766,
       "exports": [
         "BUILD_ENVIRONMENT",
         "BUILD_LOCKS",
@@ -6930,6 +6941,8 @@
         "FLOOR_ENVIRONMENT",
         "FROZEN_HEADING",
         "GATE_WORKFLOW",
+        "ICON_COPY",
+        "ICON_SOURCE",
         "LAUNCHER",
         "NODEPS",
         "NODEPS_STEP",
@@ -6969,12 +6982,14 @@
         "test_the_build_fails_when_a_frozen_version_differs_from_the_locks",
         "test_the_build_workflow_is_never_run_per_commit",
         "test_the_build_workflow_runs_the_repositorys_own_build_script",
+        "test_the_dev_launch_icon_is_a_byte_identical_copy_of_the_artworks",
         "test_the_graphics_card_pack_is_pinned_apart_and_read_by_its_own_build_step",
         "test_the_gui_opencv_is_never_pinned_and_the_locks_cover_every_reader_pin",
         "test_the_launcher_never_installs_and_says_when_setup_must_run",
         "test_the_onnx_runtime_and_numpy_are_pinned_by_platform_and_interpreter",
         "test_the_package_is_proved_to_hold_no_store_log_task_file_or_settings",
         "test_the_package_is_published_with_its_sha256_after_the_smoke_checks",
+        "test_the_packaged_exe_carries_the_console_icon",
         "test_the_pinned_pypdf_is_at_least_the_advisories_fix",
         "test_the_reader_is_installed_in_two_steps_everywhere_the_tree_is_installed",
         "test_the_scratch_roots_scan_is_filed_by_the_reader_and_by_nothing_else",
@@ -6997,7 +7012,9 @@
         "LAUNCHER": "'Start App.bat'",
         "PIP_SPELLINGS": "('pip install -r requirements.txt', 'pip3 install pyinstaller', 'pip3.14 install x', 'PIP.EXE Install x', 'python -m pip  install -r requirements.txt', 'py -m pip install x', '%PY% -m pip install x', 'python3 -m   pip\\tinstall x')",
         "NPM_SPELLINGS": "('npm ci', 'call npm.cmd ci', 'npm install', 'npm i electron', 'NPM   Install', 'call npm.CMD i')",
-        "PYPDF_ADVISORIES_FIXED_IN": "(6, 16, 1)"
+        "PYPDF_ADVISORIES_FIXED_IN": "(6, 16, 1)",
+        "ICON_SOURCE": "'pilot/brand/tax-document-console/app/icon.ico'",
+        "ICON_COPY": "'app/assets/icon.ico'"
       },
       "role": "Guards what only the build workflow could otherwise discover ten minutes into a release: that it runs the batch file the repository owns rather than a copy of the build, that the switch it sets is the one that batch file reads, that the flags it fires at the frozen executable are flags tracker/runner.py declares, that it passes the two environment variables tracker/settings.py names, and that both workflows quote the one interpreter pyproject.toml writes down.",
       "notes": "Decision 78. It also asserts the fixture: a scratch root is one engagement discovery finds and a whole dry pass walks, because a smoke check over an empty folder proves only that discovery does not crash. Nothing here can prove the package runs - only the Windows runner can. Decision 137 (M5), on decision 191's locks: requirements.lock, requirements-build.lock and requirements-nodeps.lock pin the whole tree the portable build freezes, by hash; the suite holds requirements*.txt to them, \"Build App.bat\" to installing them with --require-hashes, and every BUILD-INFO.txt under build-portable/dist to freezing nothing else. Decision 191 also: every pip install in every batch file and workflow is --require-hashes from a .lock and none upgrades pip; the build runs from a v* tag only, with a job guard; the checksum step follows the smoke checks and the upload carries the zip and its .sha256; the launcher installs nothing and speaks the lock tool's sentence; every batch file sets NoDefaultCurrentDirectoryInExePath first and calls Windows' own tools by path (E-10); every checkout keeps no credentials (F-12); the audit workflow is scheduled, Linux-only and never on a push."
@@ -8455,8 +8472,8 @@
       "id": "tests/test_pilot_installer.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "54e8f6772e9c0d9e",
-      "lines": 234,
+      "sha256": "21ccdd0da1e512d5",
+      "lines": 265,
       "exports": [
         "APP_ID",
         "BUILD",
@@ -8473,10 +8490,12 @@
         "test_the_installer_installs_for_one_user_without_admin",
         "test_the_installer_is_named_and_placed_as_the_spec_says",
         "test_the_installer_needs_a_version_to_compile",
+        "test_the_installer_shows_the_console_icon",
         "test_the_pilot_build_checks_it_is_a_git_checkout_before_the_dirty_check",
         "test_the_pilot_build_follows_the_root_scripts_rules",
         "test_the_pilot_build_names_the_installer_as_setup_iss_does",
         "test_the_pilot_build_refuses_what_is_not_committed",
+        "test_the_shortcuts_and_the_window_share_one_app_id",
         "test_the_start_menu_takes_the_new_name_on_an_upgrade",
         "test_the_tester_guide_names_the_pilot_folders_it_leaves_alone",
         "test_the_version_the_build_reads_is_the_one_the_badge_shows",
@@ -9662,8 +9681,8 @@
       "id": "tests/test_shell.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "5aeef7b4b6fce31b",
-      "lines": 3742,
+      "sha256": "fbd148ab34c4758b",
+      "lines": 3753,
       "exports": [
         "COLUMN_FUNCTIONS",
         "CONTRAST",
@@ -9856,6 +9875,7 @@
         "test_the_title_case_rule_says_what_ruling_10_says",
         "test_the_tooltip_reaches_floating_ui_only_through_its_one_global",
         "test_the_vendored_floating_ui_is_the_pinned_bytes_and_nothing_else",
+        "test_the_window_and_its_taskbar_button_carry_the_console_icon",
         "test_the_window_colours_are_the_pages",
         "test_the_wizard_keeps_the_first_steps_cancel_only_and_esc_and_the_scrim_still_close_it",
         "test_the_year_page_leaves_a_gap_under_its_h1_before_its_rows",
@@ -9888,7 +9908,7 @@
       "id": "tests/test_shell_menu.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "bb335568b7ae2ad3",
+      "sha256": "2718b62fb71dd1b6",
       "lines": 682,
       "exports": [
         "NOT_OPENED",
@@ -9938,8 +9958,8 @@
       "id": "tests/test_single_source.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "e7be6ebf50dbf8a8",
-      "lines": 4301,
+      "sha256": "3ab64526585554ad",
+      "lines": 4302,
       "exports": [
         "AFTER_WHAT",
         "CONSOLE_EXEMPT",
