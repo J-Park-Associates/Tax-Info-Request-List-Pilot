@@ -95,6 +95,12 @@ If a step fails, state the root cause in one sentence, note it, and go on unless
 
 `run_checks.ps1` never starts the app; its step 8 ("launch") says how to start it outside the agent's shell, so the first start stays the hands-on step. And `make_samples.py` builds under a throwaway `TRACKER_DATA_HOME`. Steps 19-21 are rerun this way after F7 and F6 land.
 
+**Note for the next check (P200, the check scripts; `pilot/SPEC-check-scripts-0.3.md`).** Carry these lines into the next check's prompt:
+
+- `-Tests` takes each file bare, with `.py`, or as a path: `-Tests test_build,test_shell_menu.py,tests\test_api.py` names three files. A name that is no file stops the run before any test starts.
+- The named files run side by side, and the installer is built only after every one of them has ended, so the build no longer trips the suite's end-of-run guard (A1). The run takes as long as the slowest file plus the build.
+- Before the silent install, the script asks Tax Document Console to close, as its own Close button does, and waits up to 30 seconds (`close_app` in `checks.json`). It never forces it: if the app is still open, the script stops with "close Tax Document Console (File > Exit), then run this script again". A pass in progress stops after the file it is on, as at any close.
+
 **Two more checks for the next Windows check (combined review S3 and S5; orchestrator's rulings, 2026-09-30).** Carry both into its prompt:
 
 - **Where the program landed (S3).** `run_checks.ps1` step 7 still runs the installer with `Start-Process` from the agent's shell, and the installer writes `{localappdata}\Programs\Tax Document Console` (`pilot/installer/setup.iss`). The 0.3 install on 9/30 landed in the real `Programs` folder (the Claude copy holds no `Programs` folder), but confirm it: Jason lists `%LOCALAPPDATA%\Programs\Tax Document Console` in File Explorer, outside Claude, or opens the Start-menu shortcut's properties from a normal window and reads its target. If it landed in the Claude package's private copy instead, the install becomes a hands-on step too (`explorer.exe` on the setup file, or a person's double-click), recorded here and in `run_checks.ps1` step 7.
