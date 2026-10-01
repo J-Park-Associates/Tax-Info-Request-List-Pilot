@@ -532,16 +532,36 @@ input, textarea, select { caret-color: var(--text); accent-color: var(--accent);
 }
 /* Overview and Reminders, the two lists of returns: one field per column
    (P194, P195) - Tax Year, Taxpayer, Form Type, then the list's status and
-   date. The taxpayer takes what the others leave, as the name column does on
-   the other lists; at the usual widths the five fit 843px at 1100px. Their
-   loading rows take the same five, so the outline lines up with the heads. */
+   date; at the usual widths the five fit 843px at 1100px. Their loading
+   rows take the same five, so the outline lines up with the heads.
+   Every column of a firm list is exactly its width, as in File Explorer's
+   Details view (P199): no column takes the window's slack, so the Date sits
+   just after the Status at every width, the space left over is blank after
+   the last column, and widening a column by its right edge moves that edge
+   and every column after it to the right. */
 .row-return:not(.hidden),
 .col-table[data-list="overview"] .col-heads:not(.hidden),
 .col-table[data-list="reminders"] .col-heads:not(.hidden),
 #page[data-list="overview"] .row-skeleton:not(.hidden),
 #page[data-list="reminders"] .row-skeleton:not(.hidden) {
-  grid-template-columns: var(--size-col-year) minmax(var(--size-col-taxpayer), 1fr) var(--size-col-form) var(--size-col-status) var(--size-col-end);
+  grid-template-columns: var(--size-col-year) var(--size-col-taxpayer) var(--size-col-form) var(--size-col-status) var(--size-col-end);
 }
+/* Needs Review and Households: the same rule on their four columns. */
+#page[data-list="needs_review"] .row:not(.hidden),
+#page[data-list="clients"] .row:not(.hidden),
+.col-table[data-list="needs_review"] .col-heads:not(.hidden),
+.col-table[data-list="clients"] .col-heads:not(.hidden),
+#page[data-list="needs_review"] .row-skeleton:not(.hidden),
+#page[data-list="clients"] .row-skeleton:not(.hidden) {
+  grid-template-columns: var(--size-col-name) var(--size-col-detail) var(--size-col-status) var(--size-col-end);
+}
+/* A firm list's date starts at its column's left edge, under its header's
+   word, as File Explorer's Date column does (P199); a row's step shows in
+   the same place on hover. A return's own page keeps its date at the end. */
+#page[data-list="overview"] .row-end:not(.hidden),
+#page[data-list="needs_review"] .row-end:not(.hidden),
+#page[data-list="reminders"] .row-end:not(.hidden),
+#page[data-list="clients"] .row-end:not(.hidden) { justify-items: start; }
 .col-table[data-list="overview"], .col-table[data-list="reminders"],
 #page[data-list="overview"] .rows, #page[data-list="reminders"] .rows {
   min-width: calc(var(--size-col-year) + var(--size-col-taxpayer) + var(--size-col-form) + var(--size-col-status) + var(--size-col-end) + 4 * var(--sp-4) + 2 * var(--sp-8));
@@ -551,7 +571,6 @@ input, textarea, select { caret-color: var(--text); accent-color: var(--accent);
 .head-year { margin-right: var(--sp-2); }
 .group-title .form-tag { margin: 0 0 0 var(--sp-2); }
 .col-cell { position: relative; min-width: 0; }
-.col-cell[data-cell="end"] { text-align: right; }
 .col-head:not(.hidden) {
   display: inline-flex;
   align-items: center;

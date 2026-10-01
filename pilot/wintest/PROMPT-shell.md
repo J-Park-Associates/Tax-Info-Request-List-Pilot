@@ -113,9 +113,11 @@ not rerun. The run also builds the installer; note its SHA-256.
     folder (keep the name in your notes), open one of its returns and press
     Sort. The banner's first line reads "Sort Failed: Folder Not Found"
     (five words at most, no folder path). If the household has other returns,
-    each gets one more line beginning with a bullet and its household, year
-    and return name, then "Sort Failed: Folder Not Found", and never a
-    folder path or a long sentence. Rename the folder back.
+    each gets one more line beginning with a bullet and that return said as
+    the lists say it - the year, the taxpayer and the form, each once
+    ("• 2024 John A. Smith 1040"; the household is the page's own, P199) -
+    then "Sort Failed: Folder Not Found", and never a folder path or a long
+    sentence. Rename the folder back.
 14. **Paused marker.** In a household make two years open: Add a Return for
     the year before. Clients shows a marker beside the household reading
     "Two Years Open; Sorting Paused" **in full, on wrapped lines if needed,

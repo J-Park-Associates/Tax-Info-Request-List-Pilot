@@ -88,7 +88,7 @@ and year pages), it says the year, the taxpayer and the form once each.
     | Column | Least | Most | Usual |
     |---|---|---|---|
     | Tax Year (`year`) | 64 | 160 | 80 |
-    | Taxpayer (`taxpayer`) | 160 | 640 | 224 (its least; it takes what the others leave) |
+    | Taxpayer (`taxpayer`) | 160 | 640 | 224 (exactly this since P199: no column takes the window's slack, `pilot/SPEC-check-notes-0.3.md` 1) |
     | Form Type (`form`) | 64 | 160 | 96 |
 
     Status and Date keep theirs. **Stored widths:** a list's saved widths are

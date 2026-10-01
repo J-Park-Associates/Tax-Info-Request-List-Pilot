@@ -2019,6 +2019,15 @@ function applyScheduleVocabulary(words) {
     ...words.every_choices.map((one) => el("option", { value: String(one.minutes) }, one.label)));
 }
 
+// The schedule's next-run sentence in the app's one clock style
+// (P199): the time the engine writes as HH:MM at the sentence's end is
+// written as every other time the app shows is (pagesTime: this PC's own
+// style, "10:30 PM" on the office's), the style the first-run time box
+// beside it already uses. A sentence that does not end in a time is left whole.
+function scheduleClock(said) {
+  return String(said || "").replace(/\b(\d{2}:\d{2})$/, (clock) => pagesTime(clock));
+}
+
 // Off greys the two fields: there is nothing to choose while it does not run.
 function greyScheduleFields() {
   const off = $("sc-off").checked;
@@ -2051,7 +2060,7 @@ async function openSchedule() {
     $("sc-off").checked = !chosen.enabled;
     $("sc-start").value = chosen.start;
     $("sc-every").value = String(chosen.every);
-    $("sc-next").textContent = current.next_run;
+    $("sc-next").textContent = scheduleClock(current.next_run);
     scheduleError(current.schedule_problem);
     greyScheduleFields();
     // What "Next run" says is true of the saved choice only (hidden again on any change, below).
@@ -2079,7 +2088,7 @@ async function saveSchedule() {
     });
     closeDialog("schedule-modal");
     const worked = result.after_install.exit === 0 && (result.installed || !result.enabled);
-    outcome(result.next_run ? `${result.sentence} ${result.next_run}` : result.sentence, worked ? "ok" : "warn", { toasted: true });
+    outcome(result.next_run ? `${result.sentence} ${scheduleClock(result.next_run)}` : result.sentence, worked ? "ok" : "warn", { toasted: true });
     renderAfterInstall(noticeOf(result.after_install));
     try {
       await loadEngagements();     // the last-pass line follows the new choice
@@ -2115,6 +2124,17 @@ function scanFailed(run) {
   return reason ? fill(words.problem_reason, { reason }) : words.problem;
 }
 
+// A return in a Sort's answer, said by its fields as the lists say a return
+// (P194-P196, P199): the year, the taxpayer and the form, each once, in the
+// order of a return heading on the review page. The answer shows only on its household's
+// own pages (P131), so the household is not said again. A return the list
+// does not hold is said by its label, never guessed.
+function sortReturnSaid(run) {
+  const one = shellReturn(run.path);
+  if (!one) return run.label;
+  return [one.year, pagesTaxpayer(one.return_name, one.form || ""), one.form].filter(Boolean).join(" ");
+}
+
 // What a Sort & Scan pass said, as the banner's lines and its colour: the
 // asked return's run from the pass's final line, the household's other
 // returns, and the summary line of the state drawn after it.
@@ -2131,9 +2151,9 @@ function scanSummary(run, others, summary) {
   for (const other of others) {
     const short = other.error ? scanFailed(other)
       : other.skipped && other.code === "lock-held" ? words.reasons["lock-held"] : "";
-    if (short) also.push(`• ${other.label}: ${short}`);
+    if (short) also.push(`• ${sortReturnSaid(other)}: ${short}`);
     for (const said of other.warnings) {
-      if (said) also.push(`• ${other.label}: ${said}`);
+      if (said) also.push(`• ${sortReturnSaid(other)}: ${said}`);
     }
   }
   // Every word is the API's (vocab.scan, decision 42; the review's S4). A
@@ -2145,6 +2165,15 @@ function scanSummary(run, others, summary) {
     return { text: [why ? fill(words.nothing_done, { why }) : words.nothing_done_bare, ...also].join("\n"), cls: "warn" };
   }
   if (run.error) return { text: [scanFailed(run), ...also].join("\n"), cls: "err" };
+  // A pass that found nothing to do says so (P199, Q1 as recommended), as a
+  // skip says nothing was done: before, it said nothing, and a person could
+  // not tell a Sort that ran from one that never started. A file still
+  // arriving in Drop files here means something waits, so that pass says
+  // the approved nothing-done words with the syncing count.
+  if (!run.filed && !run.review && !run.file_errors.length && !run.warnings.length && !also.length && !run.cancelled) {
+    return { text: run.waiting ? fill(words.nothing_done, { why: fill(words.syncing, { n: run.waiting }) }) : words.nothing_to_sort,
+             cls: "warn" };
+  }
   const did = [fill(words.filed, { n: run.filed })];
   if (run.review) did.push(fill(words.review, { n: run.review }));
   if (run.waiting) did.push(fill(words.syncing, { n: run.waiting }));
@@ -2282,10 +2311,13 @@ async function passEnded({ reply }) {
   // What went well shows in the rows and says nothing (outcome's rule); the
   // rest is one line each. The return it sorted is not the one shown (193
   // §8): the answer opens with its own label, so nothing vanishes.
+  // Each line is a notice of its own; a line about another return of the
+  // household keeps its bullet, so it reads as part of this Sort's answer
+  // (PROMPT-shell step 13; P199).
   if (said.cls !== "ok") {
-    const lines = said.text.split("\n").map((line) => line.replace(/^•\s*/, "").trim()).filter(Boolean);
+    const lines = said.text.split("\n").map((line) => line.trim()).filter(Boolean);
     lines.forEach((line, i) => answer.push({
-      sentence: !shown && i === 0 ? `${run.label}: ${line}` : line,
+      sentence: !shown && i === 0 ? `${sortReturnSaid(run)}: ${line}` : line,
       kind: said.cls === "err" ? "failed" : "warning",
     }));
   }

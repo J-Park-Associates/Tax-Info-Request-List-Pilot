@@ -996,7 +996,7 @@ const vocab = {
 #: The column headers' constants (SPEC-lists), lifted from pages.js as written:
 #: the probes run the pages' own tables, not a copy of them.
 PAGES_CONSTS = ("const PAGES_COLUMNS = {", "const PAGES_CELLS = ", "const PAGES_WIDTHS = ", "const PAGES_USUAL = ", "const PAGES_WIDTH_STEP = ",
-                "const PAGES_WIDTHS_KEY = ", "const PAGES_URGENCY = ", "const pagesOrder = ", "let pagesWidths = ",
+                "const PAGES_WIDTHS_KEY = ", "const PAGES_ORDER_KEY = ", "const PAGES_URGENCY = ", "let pagesOrder = ", "let pagesWidths = ",
                 # The raised lists (pilot SPEC-lists 10-17): pages, tabs, reason cards, types, the panel.
                 "const PAGES_PER_PAGE = ", "const PAGES_REASON_ICONS = {", "const PAGES_SECTIONS = ", "let pagesPageAt = ",
                 "let pagesTab = ", "let pagesReasonPick = ", "let pagesClientType = ", "let pagesPanel = ")
@@ -1007,6 +1007,8 @@ PAGES_CONSTS = ("const PAGES_COLUMNS = {", "const PAGES_CELLS = ", "const PAGES_
 COLUMN_FUNCTIONS = ("pagesListOf", "pagesUrgent", "pagesIsBlank", "pagesCompareKeys", "pagesCompare", "pagesOrdered", "pagesOrderBy",
                     "pagesColumnHeads", "pagesGrip", "pagesColumnKey", "pagesStoredWidths", "pagesWidthOf", "pagesSetWidth",
                     "pagesSaveWidths", "pagesApplyWidths", "pagesResetWidths", "pagesReviewSpec", "pagesOrderedGroups",
+                    # The order kept on this PC (P199).
+                    "pagesStoredOrder", "pagesSaveOrder",
                     # The raised lists (pilot SPEC-lists 10-17).
                     "pagesDetailCell", "pagesReasonTip", "pagesStatusCell", "pagesLinkMark", "pagesLinkMarkIn", "pagesShowPanel", "pagesPanelOpen",
                     "pagesClosePanel", "pagesOpenRowLinks", "pagesPaged", "pagesFoot", "pagesTurn", "pagesPick", "pagesTabs",
@@ -2890,6 +2892,7 @@ def test_the_sorts_answer_is_built_line_by_line_from_the_pass(tmp_path):
       function failed() {}
       function showReturn() {}
       function runScan() {}
+      function shellReturn() { return null; }
       async function call(args) { return args[0] === "state" ? { summary: { line: "" } } : {}; }
       function keepSortAnswer(ran, asked, answer) {
         kept.push({ ran, asked, answer: answer.map((one) => ({ ...one, retry: typeof one.retry })) }); }
@@ -2907,14 +2910,14 @@ def test_the_sorts_answer_is_built_line_by_line_from_the_pass(tmp_path):
       out.good = await end("r25", { runs: [run({})] });
       return out;
     """
-    out = run_shell(["passEnded", "scanSummary", "scanFailed"], setup, "return (async () => {" + probe + "})();",
+    out = run_shell(["passEnded", "scanSummary", "scanFailed", "sortReturnSaid"], setup, "return (async () => {" + probe + "})();",
                     tmp_path, "app.js")
     assert out["whole"] == {"ran": [], "asked": "r25", "answer": [
         {"sentence": "In Use on FRONT-DESK", "kind": "locked", "lock": {"host": "FRONT-DESK"}, "identifier": None,
          "retry": "function"}]}
     assert out["skipped"]["answer"] == [{"sentence": "Nothing Done: Inactive.", "kind": "warning", "retry": "undefined"}]
     assert [one["sentence"] for one in out["away"]["answer"]] == [
-        "Smith 2024: Sort Failed: Folder Not Found", "Smith 2025: Sort Failed: Folder Not Found"]
+        "Smith 2024: Sort Failed: Folder Not Found", "\u2022 Smith 2025: Sort Failed: Folder Not Found"], "P199: its bullet stays"
     assert out["away"]["ran"] == ["r24", "r25"] and out["away"]["answer"][0]["kind"] == "failed"
     assert out["good"] == {"ran": ["r25"], "asked": "r25", "answer": []}
 
@@ -2976,10 +2979,10 @@ def test_a_failed_or_locked_household_sort_draws_no_engine_sentence_and_no_path(
 
     words = api._vocab()["scan"]
     setup = ("const fill = (p, v) => p.replace(/\\{(\\w+)\\}/g, (_, k) => v[k] ?? '');\n"
-             f"const vocab = {{ scan: {json.dumps(words)} }};")
+             f"const vocab = {{ scan: {json.dumps(words)} }};\nfunction shellReturn() {{ return null; }}")
     probe = "return scanSummary(runs[0], runs.slice(1), '').text;"
     for name, runs in (("lock held", held), ("client folder gone", failed)):
-        text = run_shell(["scanFailed", "scanSummary"], f"{setup}\nconst runs = {json.dumps(runs)};", probe,
+        text = run_shell(["scanFailed", "scanSummary", "sortReturnSaid"], f"{setup}\nconst runs = {json.dumps(runs)};", probe,
                          tmp_path, "app.js")
         lines = text.split("\n")
         assert len(lines) == 2, (name, text)
@@ -3799,7 +3802,7 @@ def test_overview_and_reminders_say_tax_year_taxpayer_and_form_type_once_each_in
         for part in selector.split(","):
             first.setdefault(" ".join(part.split()), dict(declarations(body)))
     grid = first[".row-return:not(.hidden)"]["grid-template-columns"]
-    assert grid == ("var(--size-col-year) minmax(var(--size-col-taxpayer), 1fr) var(--size-col-form) var(--size-col-status) var(--size-col-end)")
+    assert grid == ("var(--size-col-year) var(--size-col-taxpayer) var(--size-col-form) var(--size-col-status) var(--size-col-end)"), "P199"
     assert first['.col-table[data-list="overview"] .col-heads:not(.hidden)']["grid-template-columns"] == grid
     assert first['.col-table[data-list="reminders"] .col-heads:not(.hidden)']["grid-template-columns"] == grid
     css = read("shell.css")
@@ -4060,3 +4063,175 @@ def test_hiding_while_focus_is_elsewhere_leaves_focus_where_it_is(tmp_path):
       return { hidden: hiddenNow().length, focus: said.focus, stored: store.data[SOON_KEY] };
     """, tmp_path)
     assert ran == {"hidden": 7, "focus": [], "stored": "hidden"}
+
+
+# ── the 0.3 Windows check's list and dialog notes (pilot SPEC-check-notes-0.3, P199) ──
+
+def test_a_firm_lists_columns_are_their_own_widths_so_the_date_sits_after_the_status():
+    """P199 (L4, N2a): no column of a firm list takes the window's slack - the
+    taxpayer's and the name column's 1fr made the Date run to the window's
+    right edge, and made a widened column grow to the left as its flexible
+    neighbour shrank. Every track is its width, so at any window from 1100px
+    up the Date starts 16px after the Status's right edge (656px into the
+    list at the usual widths), the date and its header start at the column's
+    left edge, and a return's own page keeps its date at the end."""
+    first = {}
+    for _media, selector, body in blocks(read("shell.css")):
+        for part in selector.split(","):
+            first.setdefault(" ".join(part.split()), dict(declarations(body)))
+    five = "var(--size-col-year) var(--size-col-taxpayer) var(--size-col-form) var(--size-col-status) var(--size-col-end)"
+    four = "var(--size-col-name) var(--size-col-detail) var(--size-col-status) var(--size-col-end)"
+    for selector in (".row-return:not(.hidden)", '.col-table[data-list="overview"] .col-heads:not(.hidden)',
+                     '#page[data-list="reminders"] .row-skeleton:not(.hidden)'):
+        assert first[selector]["grid-template-columns"] == five, selector
+    for selector in ('#page[data-list="needs_review"] .row:not(.hidden)', '#page[data-list="clients"] .row:not(.hidden)',
+                     '.col-table[data-list="needs_review"] .col-heads:not(.hidden)', '.col-table[data-list="clients"] .col-heads:not(.hidden)',
+                     '#page[data-list="needs_review"] .row-skeleton:not(.hidden)', '#page[data-list="clients"] .row-skeleton:not(.hidden)'):
+        assert first[selector]["grid-template-columns"] == four, selector
+    assert "1fr" in first[".row:not(.hidden)"]["grid-template-columns"], "a return's own page (no headers) is unchanged"
+    for name in ("overview", "needs_review", "reminders", "clients"):
+        assert first[f'#page[data-list="{name}"] .row-end:not(.hidden)']["justify-items"] == "start", name
+    assert first[".row-end:not(.hidden)"]["justify-items"] == "end"
+    assert '.col-cell[data-cell="end"]' not in first, "the Date header's word starts where its dates do"
+    light, _dark = root_blocks()
+
+    def px(name: str) -> int:
+        return int(light[name].strip().removesuffix("px"))
+
+    date_at = px("--sp-8") + sum(px(f"--size-col-{cell}") for cell in ("year", "taxpayer", "form", "status")) + 4 * px("--sp-4")
+    assert date_at == 656 and date_at + px("--size-col-end") + px("--sp-8") <= 1100 - px("--size-side") - 17
+
+
+def test_the_order_chosen_by_a_header_is_kept_on_this_pc_across_a_restart(tmp_path):
+    """P199 (N2b), replacing P139's "while the app is open": a list's order is
+    kept per list in this PC's storage, as its widths are, and comes back
+    after a restart; the third press forgets it. A damaged value - not JSON,
+    a column the list no longer has, Households' wordless end column, a
+    direction other than 1 or -1 - leaves the usual order. Reset Column
+    Widths does not touch the order."""
+    ran = run_lists("""
+      const restart = () => { pagesOrder = null; pagesWidths = null; };
+      const usual = names(draw("overview"));
+      pagesOrderBy("overview", "taxpayer"); pagesOrderBy("overview", "taxpayer");
+      draw("reminders"); pagesOrderBy("reminders", "end");
+      const stored = JSON.parse(window.localStorage.getItem("tracker.order"));
+      restart(); const back = [names(draw("overview")), sorts(box)];
+      pagesResetWidths(); restart(); const afterReset = names(draw("overview"));
+      const damaged = {};
+      for (const [name, value] of [["junk", "not json"], ["old", JSON.stringify({ overview: { cell: "name", dir: 1 } })],
+                                   ["wordless", JSON.stringify({ clients: { cell: "end", dir: 1 } })],
+                                   ["dir", JSON.stringify({ overview: { cell: "taxpayer", dir: 2 } })],
+                                   ["list", JSON.stringify(["overview"])]]) {
+        window.localStorage.setItem("tracker.order", value); restart();
+        damaged[name] = [names(draw("overview")), sorts(box), pagesStoredOrder()];
+      }
+      window.localStorage.setItem("tracker.order", JSON.stringify({ overview: { cell: "taxpayer", dir: -1 } })); restart();
+      draw("overview"); pagesOrderBy("overview", "taxpayer"); restart();
+      const third = [names(draw("overview")), window.localStorage.getItem("tracker.order")];
+      return { usual, stored, back, afterReset, damaged, third };
+    """, tmp_path, extra="""
+      const window = { localStorage: { data: {}, getItem(k) { return k in this.data ? this.data[k] : null; }, setItem(k, v) { this.data[k] = String(v); },
+                                       removeItem(k) { delete this.data[k]; } } };
+    """)
+    assert ran["stored"] == {"overview": {"cell": "taxpayer", "dir": -1}, "reminders": {"cell": "end", "dir": 1}}
+    assert ran["back"] == [["Echo", "Delta", "Charlie", "Bravo", "Alpha"], ["none", "descending", "none", "none", "none"]]
+    assert ran["afterReset"] == ran["back"][0], "Reset Column Widths leaves the order"
+    for name, (shown, sorts, held) in ran["damaged"].items():
+        assert shown == ran["usual"] and set(sorts) == {"none"} and held == {}, name
+    assert ran["third"] == [ran["usual"], "{}"], "the third press forgets the order on this PC too"
+
+
+SORT_SAID = r"""
+const fill = (p, v) => p.replace(/\{(\w+)\}/g, (_, k) => v[k] ?? '');
+const known = { r24: { year: 2024, form: "1040", return_name: "1040 - John A. Smith" },
+                r25: { year: 2025, form: "1040", return_name: "1040 - John A. Smith" },
+                b24: { year: 2024, form: "", return_name: "Smith Bakery Books" } };
+function shellReturn(path) { return known[path] || null; }
+const run = (over) => ({ path: "r25", label: "Smith Family 2025 1040 - John A. Smith", ok: true, error: "", code: "", skipped: "", filed: 0,
+  review: 0, waiting: 0, file_errors: [], warnings: [], cancelled: false, ...over });
+"""
+
+
+def test_another_returns_line_keeps_its_bullet_and_says_the_return_by_its_fields(tmp_path):
+    """P199 (N3): step 13's extra line, "Smith Family 2024 1040 - John A.
+    Smith: Sort Failed: Folder Not Found", had lost its bullet, and said the
+    household, the form and the year inside the return's long label. It now
+    begins with its bullet and says the return as the lists do (P194-P196):
+    the year, the taxpayer and the form, each once; the household is the
+    page's own. A return the list does not hold keeps its label."""
+    words = api._vocab()
+    setup = (f"const vocab = {{ scan: {json.dumps(words['scan'])}, layout: {json.dumps(words['layout'])} }};\n"
+             + SORT_SAID + js_function("pagesTaxpayer", "pages.js") + r"""
+      let scanning = null, active = "r25", viewGeneration = 1, kept = [];
+      function scanDone() {}
+      function warningNotices() {}
+      function adoptList() {}
+      function withEng(c) { return [c]; }
+      function renderFor() { return true; }
+      function failed() {}
+      function showReturn() {}
+      function runScan() {}
+      async function call(args) { return args[0] === "state" ? { summary: { line: "" } } : {}; }
+      function keepSortAnswer(ran, asked, answer) { kept.push(answer.map((one) => one.sentence)); }
+    """)
+    probe = r"""
+      const gone = { error: "gone", code: "client-folder-missing" };
+      scanning = { asked: "r25" };
+      await passEnded({ reply: { runs: [run(gone), run({ ...gone, path: "r24", label: "Smith Family 2024 1040 - John A. Smith" }),
+                                        run({ ...gone, path: "b24", label: "Smith Family 2024 Smith Bakery Books" }),
+                                        run({ ...gone, path: "x", label: "Smith Family 2023 Old Return" })] } });
+      active = "r24"; scanning = { asked: "r25" };
+      await passEnded({ reply: { runs: [run(gone)] } });
+      return kept;
+    """
+    kept = run_shell(["passEnded", "scanSummary", "scanFailed", "sortReturnSaid"], setup,
+                     "return (async () => {" + probe + "})();", tmp_path, "app.js")
+    assert kept[0] == ["Sort Failed: Folder Not Found", "• 2024 John A. Smith 1040: Sort Failed: Folder Not Found",
+                       "• 2024 Smith Bakery Books: Sort Failed: Folder Not Found",
+                       "• Smith Family 2023 Old Return: Sort Failed: Folder Not Found"]
+    assert kept[1] == ["2025 John A. Smith 1040: Sort Failed: Folder Not Found"], "the asked return, said while another is shown"
+    step = (REPO / "pilot" / "wintest" / "PROMPT-shell.md").read_text(encoding="utf-8")
+    assert "the year, the taxpayer and the form" in step
+
+
+def test_a_sort_that_finds_nothing_to_do_says_nothing_to_sort(tmp_path):
+    """P199 Q1 (built as recommended): a Sort that filed nothing, sent nothing
+    to review, met no file it could not sort and no warning said nothing at
+    all. It now says "Nothing to Sort"; with a file still arriving it says
+    "Nothing Done: 1 Still Syncing." in words already approved; a Sort that
+    did anything is unchanged."""
+    words = api._vocab()["scan"]
+    setup = f"const vocab = {{ scan: {json.dumps(words)} }};\n" + SORT_SAID
+    probe = """
+      return [scanSummary(run({}), [], ""), scanSummary(run({ waiting: 1 }), [], ""), scanSummary(run({ filed: 1 }), [], ""),
+              scanSummary(run({ review: 2 }), [], "").cls, scanSummary(run({ file_errors: ["x"] }), [], "").text.split("\\n")[1],
+              scanSummary(run({ cancelled: true }), [], "").text.split("\\n")[0]];
+    """
+    said = run_shell(["scanFailed", "scanSummary", "sortReturnSaid"], setup, probe, tmp_path, "app.js")
+    assert said[0] == {"text": "Nothing to Sort", "cls": "warn"}
+    assert said[1] == {"text": "Nothing Done: 1 Still Syncing.", "cls": "warn"}
+    assert said[2]["cls"] == "ok" and said[3] == "ok", "a Sort that did something still says nothing (P131)"
+    assert said[4] == "But 1 Files Not Sorted." and said[5].startswith("Pass complete")
+    from tests.test_api import title_case
+    for text in (said[0]["text"], said[1]["text"]):
+        assert title_case(text) == text and len(text.split()) <= 5
+
+
+def test_the_schedule_dialog_says_its_next_run_in_the_apps_clock_style(tmp_path):
+    """P199 (N5): "First Run At" showed "6:30 AM" (the time box, in this PC's
+    style) beside "Next run: today at 22:30" (the engine's HH:MM). The dialog
+    and its saved toast now write the time as every other time the app shows
+    is (pagesTime, this PC's own style: "10:30 PM" on the office's), and a
+    sentence that does not end in a time is left whole."""
+    setup = js_function("pagesTime", "pages.js")
+    probe = """
+      return [scheduleClock("Next run: today at 22:30"), pagesTime("22:30"), scheduleClock("Next run: tomorrow at 06:30"),
+              pagesTime("06:30"), scheduleClock(""), scheduleClock("Off")];
+    """
+    said = run_shell(["scheduleClock"], setup, probe, tmp_path, "app.js")
+    assert said[0] == f"Next run: today at {said[1]}" and "22:30" not in said[0]
+    assert said[2] == f"Next run: tomorrow at {said[3]}" and said[4:] == ["", "Off"]
+    js = read("app.js")
+    assert '$("sc-next").textContent = scheduleClock(current.next_run);' in js
+    assert "${scheduleClock(result.next_run)}" in js
+    assert 'toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })' in js_function("pagesTime", "pages.js")
