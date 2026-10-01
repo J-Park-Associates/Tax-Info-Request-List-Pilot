@@ -615,6 +615,16 @@ def test_the_window_colour_is_read_defensively(tmp_path):
     assert ran["windowOptions"].get("backgroundColor") is None and len(ran["menus"]) == 1
 
 
+def test_the_windows_minimum_and_default_sizes_are_its_pages(tmp_path):
+    """P203: without ``useContentSize`` Windows counts its frame in
+    ``minWidth``, so the minimum window's page was 1084 wide, not the 1100
+    every list's column budget assumes."""
+    options = _run(tmp_path, [])["windowOptions"]
+    assert options.get("useContentSize") is True
+    assert (options.get("width"), options.get("height")) == (1400, 900)
+    assert (options.get("minWidth"), options.get("minHeight")) == (1100, 700)
+
+
 def test_a_switch_between_light_and_dark_sets_the_window_colour_again(tmp_path):
     css = {"pilot-ui.css": ":root { --window-light: #ffffff; --window-dark: #1b1e24; }"}
     ran = _run(tmp_path, [{"theme": {"shouldUseDarkColors": True}},

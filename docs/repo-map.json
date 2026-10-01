@@ -15,9 +15,9 @@
     "a person sends the draft"
   ],
   "counts": {
-    "nodes": 429,
+    "nodes": 430,
     "edges": 1195,
-    "reused": 381
+    "reused": 383
   },
   "node_types": [
     "artifact",
@@ -4127,8 +4127,8 @@
       "id": "app/main.js",
       "type": "module",
       "layer": "desktop-app",
-      "sha256": "68b4873d04076931",
-      "lines": 796,
+      "sha256": "ec367cce248ad05b",
+      "lines": 802,
       "role": "Electron main process. Spawns the Python API (`-m tracker.api` under the checkout's .venv interpreter, by its full path, or the frozen executable package.json's config.apiName names in the portable build) and relays its JSON to the renderer over IPC. Since decision 193 it passes each progress line a pass prints (tracker.progress's format) to the window on the tracker-progress channel, keeps the last non-progress line as the reply, follows the kill to the limit_seconds the pass reports and says where it was, answers every failure of its own in the API's envelope, and puts no stderr on screen - a failed command's goes to the error log the API names, else to the shell's fallback error.log in %LOCALAPPDATA%\\<productName> (local, non-roaming; Electron's userData off Windows).",
       "notes": "This is the cross-language boundary: everything the UI can do is a tracker.api command. The renderer is untrusted here: a command must be in vocab.commands (before the vocabulary arrives, only BOOTSTRAP_COMMAND, pinned to tracker.api.COMMANDS by a guard) with the one argument shape the renderer uses; open-path opens only a path the API reported in state.paths, and the error log vocab.shell.error_log names, as a file (an optional second argument \"reveal\" on the same channel shows a reported file selected in File Explorer through shell.showItemInFolder after the same lstat check; a folder still goes to shell.openPath); the tracker's exit code is read, not discarded, and a plain command that outlives TRACKER_TIMEOUT_MS is killed and reported, and a pass at the limit its own first line states (decision 203). The window is sandboxed, cannot navigate and cannot open windows. Decision 160: the shell takes app.requestSingleInstanceLock(); a second launch quits before any window is made, and the running one restores and focuses its window on second-instance - two windows were two editors, and the earlier one's save took the later one's back. Decision 176: devTools is off when packaged, and runTracker() serialises the payload before the tracker starts and writes it as UTF-8, which is how tracker.api._read_spec() reads it. Decision 191: from source it runs .venv/Scripts/python.exe (or .venv/bin/python), never a bare python, and answers with the lock tool's NOT_SET_UP sentence when that is missing; buildMenu() runs before the window is made in both builds, and the app's own menu (SPEC-shell 5.1) has no reload, zoom or developer-tools item or accelerator (E-7). Decision 188 (E-14): learn() keeps each reported path with its kind from vocab.path_kinds, and openPath lstat()s it and opens it only when it is no symbolic link (Node reports a junction as one) and still a directory for 'folder' or a regular file for 'file'; otherwise vocab.shell.not_opened. No path.relative( and no startsWith( (tests/test_layers.py). Decision 186's rebase review (MF2): keepInLog() appends (appendToLog, fail-safe: a failed write is dropped, never thrown) to the error log the API named and builds no such path - no ERROR_LOG_FILENAME in the shell. Jason's ruling of 2026-09-29: with none named (no data folder yet) it appends to a fallback error.log in %LOCALAPPDATA%\\<productName> (process.env.LOCALAPPDATA, else the profile's AppData\\Local; off Windows app.getPath('userData'); FALLBACK_LOG_NAME; not the data home, which the P19 deny list and the package check keep out of a package, and not the roaming %APPDATA%; capped at FALLBACK_CAP 256 KB, one .1 copy, never written through a link or a folder, a folder at error.log.1 drops the old log instead of stopping writes), a failed command's reply adds just vocab.shell.no_log (api.SHELL_NO_LOG, 'Tracker failed'; SPEC-shell 11.2), the stderr is never on screen, and a renderer error is kept there too. The menu bar stays hidden until Alt (autoHideMenuBar, Jason 2026-09-29). Decision 203: the command named by vocab.pass_command (learned, never typed) is a pass: runTracker resolves the click at its 'started' progress line, streams its later lines on tracker-progress and sends {reply, code} - its final line, or the shell's own failure when it gave none or was killed - on the same channel when it closes; a pass is killed only at the limit its own first line states (limit_seconds, locking.RUN_TIME_LIMIT_SECONDS), while every other command keeps TRACKER_TIMEOUT_MS; each running pass is kept in 'passes' and will-quit destroys its stdout, which the runner takes as Stop. Decision 209: at whenReady the shell runs the API's after-install command itself (LAUNCH_COMMAND, through spawnTracker, outside the renderer's allowlist) in the background: no tracker-cmd waits for it (the review's S7), and when its reply says ran the shell sends LAUNCH_DONE_CHANNEL ('after-install-done', one of three main-to-renderer channels, with tracker-progress and MENU_CHANNEL) so the page asks list again for the notice. SPEC-shell 5: the menu bar is built from BAR with the API's words (DEFAULT_MENU_WORDS, word for word tracker.api.MENU, replaced by vocab.menu when a word differs), items are enabled from the page's {enable} list (ALWAYS need nothing), and a chosen item goes to the page on MENU_CHANNEL as {id, token}; onMenuMessage() treats the one 'menu' channel as untrusted (unknown ids, popups and long tokens are dropped) and pops the six native right-click menus of POPUPS; Open error log is the shell's alone (openErrorLog: the named log, else the fallback if it exists, through openChecked's lstat test, the one openPath uses). pageBackground() reads --window-light / --window-dark from pilot-ui.css for the system theme (none under a contrast theme) and nativeTheme 'updated' repaints the window. Pilot P46: flushes the page's storage to disk as the window closes, since Electron lets go of the single-instance lock before it closes that storage. The rename (P155, pilot/SPEC-rename.md R4): productName is now the new name, so the window title, the fallback log's folder and the scheduled task follow it, but Electron's userData folder (the page's column widths and cached terms and tour answers) keeps the earlier name: main.js calls app.setPath('userData', appData + package.json's config.userDataName) at the top, before anything asks for a path and before requestSingleInstanceLock, which Electron keys on that folder. config.userDataName is held equal to settings.EARLIER_PRODUCT_NAME by tests/test_pilot_installer.py and tests/test_single_source.py. The screen defaults say 'App', not 'Tracker' (P155 Q3). P197: the View menu's Show Under Construction is a native check item (CHECKABLE), enabled from the first frame (ALWAYS) and ticked until the page speaks; the page's {enable, checked} message sets the tick, a `checked` id that is not checkable is dropped and a message without `checked` leaves it, and the menu is rebuilt only when the enable list or the tick changed."
     },
@@ -4850,8 +4850,8 @@
       "id": "pilot/SPEC-firm-columns.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "2b1275e01dc396d8",
-      "lines": 212
+      "sha256": "72825963b1656744",
+      "lines": 213
     },
     {
       "id": "pilot/SPEC-glass.md",
@@ -5078,6 +5078,13 @@
       "layer": "docs",
       "sha256": "8fb81b74c21953af",
       "lines": 101
+    },
+    {
+      "id": "pilot/handoffs/min-page-width-build.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "be3c52728fae4e6f",
+      "lines": 28
     },
     {
       "id": "pilot/handoffs/rename-build.md",
@@ -10266,8 +10273,8 @@
       "id": "tests/test_shell_menu.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "e83732f74a976475",
-      "lines": 750,
+      "sha256": "b18a901df250a90a",
+      "lines": 760,
       "exports": [
         "NOT_OPENED",
         "NOT_REPORTED",
@@ -10309,7 +10316,8 @@
         "test_the_tick_follows_the_page_and_a_stray_checked_id_is_dropped",
         "test_the_window_colour_is_read_defensively",
         "test_the_window_colours_main_reads_are_the_pages",
-        "test_the_window_paints_the_pages_colour_for_the_systems_theme"
+        "test_the_window_paints_the_pages_colour_for_the_systems_theme",
+        "test_the_windows_minimum_and_default_sizes_are_its_pages"
       ],
       "constants": {
         "NOT_REPORTED": "'That path is not one the app reported; nothing was opened.'",
