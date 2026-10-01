@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 364,
     "edges": 1175,
-    "reused": 312
+    "reused": 318
   },
   "node_types": [
     "artifact",
@@ -4659,7 +4659,7 @@
       "id": "pilot/SPEC-icon-ledger.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "686a26c28dde91fb",
+      "sha256": "4353ca66829d7726",
       "lines": 104
     },
     {

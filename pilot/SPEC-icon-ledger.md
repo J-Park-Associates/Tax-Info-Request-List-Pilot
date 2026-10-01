@@ -35,8 +35,8 @@ it is the rim (3.2:1) or the gold tab (3.1:1 or more). So the whole outline
 meets 3:1 on both themes, including the strip over the cream sheet, where
 nothing but the rim stands between sheet and ground. Measured as the weakest
 point between ground and navy at every generated size, blended pixels
-included: 3.03:1 on dark, 3.09:1 on light. Where the rim is one pixel, the
-flap's sloped sides take a 1.5 px rim: a 1 px rim on a slope splits into two
+included: 3.03:1 on dark, 3.09:1 on light. Where the fitted rim is one pixel
+(30-71 px), the flap's sloped sides take a 1.5 px rim: a 1 px rim on a slope splits into two
 half-tone pixels, and neither reaches 3:1 on a dark taskbar.
 Three changes from the concept: the flap is rimmed all round (drawn without a
 rim, its bottom edge was 1.7:1 on a dark taskbar); the rim is mid-blue, not
