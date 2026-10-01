@@ -68,4 +68,4 @@ python sheet.py sheet.png  # every size 1:1 on light and dark, plus 8x zooms
 ```
 
 Set `CHROME_PATH` to use a particular Chromium. After any change to
-`source/mark.py`, check the 16 to 44px zooms before accepting it.
+`source/mark.py`, check the sheet's 16, 20, 24 and 32px zooms before accepting it.

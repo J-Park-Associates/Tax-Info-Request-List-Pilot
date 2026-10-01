@@ -54,14 +54,16 @@ No drawing is sharp at every size, so it is drawn in three bands:
   smudges into a blot.
 - **48 px and up** are the full vector drawing fitted to the size: every
   horizontal and vertical edge on a whole pixel, the rim, the flap's top band
-  and the corner radii whole pixels (`max(1, round(size / 48))` for the rim),
+  and the corner radii whole pixels (`max(1, floor(size / 48 + 0.5))` for the rim),
   both rules one height, so only the tab's slope, the flap's sides, the tick,
   the rules' round ends and the corner arcs are blended. The shadow is drawn
   from 48 px up.
 
 Fitting rounds half up, never Python's round-half-to-even, which sends edges
-on a half pixel in opposite directions; the tab's height is laid off from its
-snapped top, so it steps evenly from size to size.
+on a half pixel in opposite directions. Where two edges sit a fixed distance
+apart in the master, the second is laid off from the first: the body's top
+from the tab's top, and the sheet's top one rim below the body's top, so the
+rim above the sheet keeps its full width.
 
 ## Files
 

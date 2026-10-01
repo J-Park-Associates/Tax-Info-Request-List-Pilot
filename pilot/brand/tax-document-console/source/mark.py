@@ -8,7 +8,7 @@ it (SPEC-icon-ledger.md has the figures).
 
 It is drawn in three bands, because no single drawing is sharp at every size:
 - 16, 20 and 24px are pixel art (PIXEL_ART): flat colours, no blended pixel,
-  no rules and a larger tick. They keep the fitted geometry's columns, but at
+  no rules and a larger tick. They keep within a pixel of the fitted geometry, but at
   16 and 20 the flap sits a row lower so the sheet has room for its tick, and
   the tick's long arm is at least twice the short one: an even tick reads as
   a V at these sizes;
@@ -163,7 +163,9 @@ def _geometry(s, snap):
     g["flap_top"], g["flap_x"] = fy0, (P(FLAP_X_BOTTOM[0]), P(FLAP_X_TOP[1]))
     g["flap"] = _rounded([(P(FLAP_X_TOP[0]), fy0), (P(FLAP_X_TOP[1]), fy0),
                           (P(FLAP_X_BOTTOM[1]), y1), (P(FLAP_X_BOTTOM[0]), y1)], g["frad"])
-    sx0, sy0 = P(SHEET_BOX[0]), P(SHEET_BOX[1])
+    # the sheet's top is one rim below the body's top in the master, so it is laid off from it:
+    # snapped separately the two can meet (the sheet hides the rim) or part (a navy gap)
+    sx0, sy0 = P(SHEET_BOX[0]), (body + g["rim"]) if snap else P(SHEET_BOX[1])
     g["sheet"] = (sx0, sy0, L(SHEET_BOX[2] - SHEET_BOX[0]), L(SHEET_BOX[3] - SHEET_BOX[1]))
     (ax, ay), (bx, by), (cx, cy) = TICK_PTS
     g["tick"] = f"M{f(ax * u)} {f(ay * u)}L{f(bx * u)} {f(by * u)}L{f(cx * u)} {f(cy * u)}"

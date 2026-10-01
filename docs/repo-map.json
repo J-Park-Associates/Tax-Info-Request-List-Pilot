@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 364,
     "edges": 1175,
-    "reused": 308
+    "reused": 316
   },
   "node_types": [
     "artifact",
@@ -4659,8 +4659,8 @@
       "id": "pilot/SPEC-icon-ledger.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "c23dbb169a3953dc",
-      "lines": 95
+      "sha256": "08e44a92081c3989",
+      "lines": 97
     },
     {
       "id": "pilot/SPEC-icon.md",
@@ -4701,7 +4701,7 @@
       "id": "pilot/brand/tax-document-console/README.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "eefa0031bf21262e",
+      "sha256": "d9a5cef389c6e6f7",
       "lines": 71
     },
     {
@@ -5570,8 +5570,8 @@
       "id": "pilot/brand/tax-document-console/source/mark.py",
       "type": "module",
       "layer": "root",
-      "sha256": "cfeca9e89e2bc9c7",
-      "lines": 289,
+      "sha256": "8a74ff51c54e0d34",
+      "lines": 291,
       "exports": [
         "BACK",
         "BACK_X",
