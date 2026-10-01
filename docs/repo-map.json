@@ -15,9 +15,9 @@
     "a person sends the draft"
   ],
   "counts": {
-    "nodes": 424,
+    "nodes": 428,
     "edges": 1195,
-    "reused": 377
+    "reused": 376
   },
   "node_types": [
     "artifact",
@@ -4240,8 +4240,8 @@
       "id": "app/renderer/shell.js",
       "type": "module",
       "layer": "desktop-app",
-      "sha256": "390b5dc69fe12a01",
-      "lines": 1088,
+      "sha256": "b9c0794d1fc55c4c",
+      "lines": 1091,
       "role": "The app shell (pilot SPEC-shell, P58-P77): the side panel, the path row, the search, the sort icon, the one route, the setup page and the page's side of the `menu` channel. A classic script that shares app.js's globals and draws nothing of a return itself; it hands the page to pages.js.",
       "notes": "It types no word of its own: every name, tooltip and line is vocab.screen, and a key the vocabulary lacks throws, which app.js's bootstrap says as a notice - a loud failure, never a guess. Its own builder h() sets only the attributes it names (the pattern of app.js's el(), decision 137). app.js calls it at seams of one line each: shellVocabulary, shellAdopt, shellNeedsRoot, shellChanged, shellProgress, shellKey and shellStateArrived (and shell.js calls appRouteChanged); app.js's one document keydown listener hands every key to shellKey first, so the new files add no listener of their own (a test holds it). The route is {level, household, year, ret} of paths the API reported; a return's page waits for showReturn's state, and Sort now sorts the active return's household, so a household or year page first reads the state of one of its own returns when the state on screen is not (its notices come with it). P134 (review M2): of those, the one a person chose, else the first the list's household says is working (active, not rolled forward), so a household Sort reports on a return it sorted. The menu's enable list (shellEnabled) follows SPEC 5.1 rule for rule and is sent on every change; a menu id the page cannot answer is a notice and an error-log line, never silence. The firm command's counts (shellLoadFirm) are asked after every list; while they load the firm pages show outline rows, and a failure is one notice with Retry. S5: shellGo returns the read of the return a page needs and guards the lock and the menu channel, so a channel that throws is a notice and never stops navigation; openPath(path, how) is the one open (how 'reveal' shows a file in File Explorer) and says Not Opened in the API's words when the shell refuses; shellEnabled(at) reads the rules for the route a row's menu stands for; shellAnswer runs a menu id as if chosen on the page. Lane 4b: the side panel's brand words, Taxpayer Types (the screen's word since P196; set pagesClientType, then open Households), Under Construction items (a toast and nothing else) and Settings (the change_root answer) come from vocab.screen.side and client_types (shellSideWords); the search box's placeholder is per page (drawFindWords) and on Needs Review findOptions also finds the waiting files, opening Check. P197: View > Show Under Construction (shellToggleSoon, the menu's answer) hides the five Under Construction items and the Workspace heading with the .hidden class (display: none: out of the Tab order and the accessibility tree), drawn by drawSoon on every drawSide; the choice is this PC's localStorage (tracker.underConstruction, 'hidden'), never settings.json; unreadable storage shows them; focus on a hidden item moves to the side panel's current page; shellEnable sends the tick as `checked` (shellChecked)."
     },
@@ -4257,10 +4257,10 @@
       "id": "app/renderer/tooltip.js",
       "type": "module",
       "layer": "desktop-app",
-      "sha256": "d2e6df03d8282c02",
-      "lines": 159,
-      "role": "The custom tooltip (SPEC-shell 8.5): any element with data-tip gets one after 500 ms of hover or at once on keyboard focus; one #tip element, role=tooltip, tied by aria-describedby while it shows.",
-      "notes": "setTip(node, words) replaces every title attribute of the old screen; setTipIfCut() shows a name only when the screen cut it. A box being typed into never shows one on focus (it would cover what the typing opens). Its words are the API's vocabulary or a person's own name, never typed here. P130: tipKey(e) hides a showing tip on Escape and never consumes the key; shell.js's shellKey calls it first, so the document keeps its one keydown listener (SPEC-shell 4.3)."
+      "sha256": "e3b8d9e58842f1d4",
+      "lines": 171,
+      "role": "The custom tooltip (SPEC-shell 8.5): any element with data-tip gets one after 300 ms of hover or at once on keyboard focus; one #tip element, role=tooltip, tied by aria-describedby while it shows.",
+      "notes": "setTip(node, words) replaces every title attribute of the old screen; setTipIfCut() shows a name only when the screen cut it. A box being typed into never shows one on focus (it would cover what the typing opens). Its words are the API's vocabulary or a person's own name, never typed here. P130: tipKey(e) hides a showing tip on Escape and never consumes the key; shell.js's shellKey calls it first, so the document keeps its one keydown listener (SPEC-shell 4.3). P202: a tip goes with its page - shell.js's shellGo hides it before drawing a new page, the next mouseover on anything hides a tip showing or waiting for an element no longer on the page (a removed element never sends mouseout), and showTip shows nothing for such an element."
     },
     {
       "id": "app/renderer/tour.js",
@@ -4686,7 +4686,7 @@
       "id": "docs/repo-map.curated.json",
       "type": "file",
       "layer": "docs",
-      "sha256": "b12cebe732e9693f",
+      "sha256": "baef99ecf04fe372",
       "lines": 1148,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
@@ -4759,8 +4759,8 @@
       "id": "pilot/DECISIONS.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "a9381e794ff40ca6",
-      "lines": 196
+      "sha256": "9dcb73718776af87",
+      "lines": 197
     },
     {
       "id": "pilot/HANDOFF.md",
@@ -4901,6 +4901,13 @@
       "layer": "docs",
       "sha256": "82872c2c14e74723",
       "lines": 1982
+    },
+    {
+      "id": "pilot/SPEC-stuck-tip.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "442ae74129f6a89a",
+      "lines": 31
     },
     {
       "id": "pilot/SPEC-taxpayer-words.md",
@@ -5486,6 +5493,13 @@
       "lines": 114
     },
     {
+      "id": "pilot/handoffs/stuck-tip-build.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "e5eb73580b62f655",
+      "lines": 46
+    },
+    {
       "id": "pilot/handoffs/taxpayer-words-build.md",
       "type": "doc",
       "layer": "docs",
@@ -5689,6 +5703,13 @@
       "lines": 38
     },
     {
+      "id": "pilot/reviews/stuck-tip-review.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "da77975a625c10ba",
+      "lines": 74
+    },
+    {
       "id": "pilot/reviews/wincheck-fixes-review.md",
       "type": "doc",
       "layer": "docs",
@@ -5743,6 +5764,13 @@
       "layer": "docs",
       "sha256": "b839fae296263ba4",
       "lines": 88
+    },
+    {
+      "id": "pilot/wintest/RESULTS-0.3-followup.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "6fedf33380fb1118",
+      "lines": 33
     },
     {
       "id": "pilot/wintest/RESULTS-0.3.md",
@@ -9977,8 +10005,8 @@
       "id": "tests/test_shell.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "1d46da2e9001e525",
-      "lines": 4264,
+      "sha256": "d0eaa9f696f9623d",
+      "lines": 4343,
       "exports": [
         "COLUMN_FUNCTIONS",
         "CONTRAST",
@@ -10010,6 +10038,7 @@
         "SORT_NOTICES",
         "SORT_NOTICE_FUNCTIONS",
         "SORT_SAID",
+        "TIP_PAGE",
         "TITLE_FREE",
         "TOKENS",
         "family",
@@ -10056,6 +10085,7 @@
         "test_a_notice_falls_back_to_the_setup_line_for_a_word_the_vocabulary_lacks",
         "test_a_notice_shows_the_vocabularys_short_word_when_it_has_one",
         "test_a_notice_whose_short_word_the_vocabulary_lacks_falls_back_to_the_setup_line_and_logs_the_sentence",
+        "test_a_page_change_hides_a_showing_tip",
         "test_a_page_that_cannot_be_built_whole_keeps_what_it_held_or_draws_its_frame",
         "test_a_redraw_keeps_the_link_panel_open_on_the_same_household_or_moves_focus_to_the_list",
         "test_a_request_answered_by_several_files_draws_a_row_for_each_and_counts_only_requests",
@@ -10077,6 +10107,8 @@
         "test_a_sorts_answer_shows_only_on_its_own_clients_pages",
         "test_a_status_that_is_a_tag_always_carries_the_words_it_stands_for_as_its_tooltip",
         "test_a_tip_goes_when_its_element_is_scrolled_out_of_view",
+        "test_a_tip_waiting_on_its_delay_is_never_shown_for_an_element_that_left",
+        "test_a_tip_whose_element_leaves_the_page_is_hidden_at_the_next_mouse_move",
         "test_an_error_after_the_state_arrives_never_reaches_the_write_that_brought_it",
         "test_another_returns_line_keeps_its_bullet_and_says_the_return_by_its_fields",
         "test_changing_the_clients_folder_keeps_the_firms_name_and_phone",
@@ -10202,6 +10234,7 @@
         "SHELL_FILES": "('shell.js', 'tooltip.js', 'pages.js', 'sheet.js')",
         "TITLE_FREE": "('shell.js', 'tooltip.js', 'pages.js', 'sheet.js', 'shell.css', 'pilot.js', 'tour.js', 'app.js', 'index.html')",
         "FLOATING_UI_SCRIPTS": "('vendor/floating-ui/floating-ui.core.umd.min.js', 'vendor/floating-ui/floating-ui.dom.umd.min.js')",
+        "TIP_PAGE": "'\\nclass Element {\\n  constructor(words) { this.dataset = words ? { tip: words } : {}; this.isConnected = true; this.attrs = {};\\n    this.scrollWidth = 10; this.clientWidth = 10; }\\n  closest() { return this.dataset.tip !== undefined ? this : null; }\\n  contains(other) { return other === this; }\\n  matches() { return false; }\\n  setAttribute(k, v) { this.attrs[k] = v; }\\n  removeAttribute(k) { delete this.attrs[k]; }\\n}\\nconst tipBox = { hidden: true, textContent: \"\", style: { setProperty() {} } };\\nconst handlers = {};\\nconst document = { getElementById: (id) => (id === \"tip\" ? tipBox : null),\\n  addEventListener: (type, fn) => { handlers[type] = fn; } };\\nconst window = { addEventListener() {} };\\nconst FloatingUIDOM = { computePosition: () => ({ then() {} }), offset() {}, flip() {}, shift() {}, hide() {} };\\nconst timers = new Map(); let lastTimer = 0;\\nconst setTimeout = (fn) => { lastTimer += 1; timers.set(lastTimer, fn); return lastTimer; };\\nconst clearTimeout = (id) => { timers.delete(id); };\\nconst tick = () => { const due = [...timers.values()]; timers.clear(); due.forEach((fn) => fn()); };\\nconst over = (target) => handlers.mouseover({ target });\\nconst seen = (node) => [tipBox.hidden, tipBox.textContent, node.attrs[\"aria-describedby\"] || null];\\n'",
         "RETIRED": "(':root',)",
         "PEOPLE": "'\\nconst fill = (p, v) => p.replace(/\\\\{(\\\\w+)\\\\}/g, (_, k) => v[k] ?? \"\");\\nconst vocab = { screen: { counts: { one_return: \"1 return\", returns: \"{n} returns\" },\\n  sections: { overview: \"Overview\", needs_review: \"Needs review\", reminders: \"Reminders\", clients: \"Clients\" },\\n  sort: { now: \"Sort now\", stop: \"Stop sorting\", firm: \"Open a client to sort\", locked: \"In use elsewhere\", stopping: \"Stopping\" } } };\\nconst households = [\\n  { name: \"Smith Family\", path: \"h1\", returns: [{ rollable: true }] }, { name: \"Rivera Design\", path: \"h2\", returns: [] },\\n  { name: \"Ren\\\\u00e9e Okafor\", path: \"h3\", returns: [] }, { name: \"Lopez Household\", path: \"h4\", returns: [] },\\n];\\nconst engagements = [\\n  { name: \"a\", path: \"r1\", household: \"h1\", year: 2025, return_name: \"1040 - John & Jane Smith\" },\\n  { name: \"b\", path: \"r2\", household: \"h1\", year: 2024, return_name: \"1040 - John & Jane Smith\" },\\n  { name: \"c\", path: \"r3\", household: \"h2\", year: 2025, return_name: \"1120-S - Rivera Design LLC\" },\\n];\\nlet calls = 0; const call = () => { calls += 1; };\\n'",
         "FAKE_DOM": "'\\nclass Node {}\\nclass Text extends Node { constructor(data) { super(); this.data = data; } }\\nclass Element extends Node {\\n  constructor(tag) { super(); this.tag = tag; this.className = \"\"; this.dataset = {}; this.attrs = {}; this.kids = []; this.open = false; this.handlers = {};\\n    this.style = { props: {}, setProperty(key, value) { this.props[key] = value; }, removeProperty(key) { delete this.props[key]; } }; }\\n  get classList() {\\n    const self = this;\\n    return { add(one) { if (!self.className.split(\" \").includes(one)) self.className = `${self.className} ${one}`.trim(); },\\n             contains(one) { return self.className.split(\" \").includes(one); } };\\n  }\\n  setAttribute(key, value) { this.attrs[key] = String(value); }\\n  getAttribute(key) { return this.attrs[key]; }\\n  append(...nodes) { for (const one of nodes) this.kids.push(one instanceof Node ? one : new Text(String(one))); }\\n  replaceChildren(...nodes) { this.kids = []; this.append(...nodes); }\\n  addEventListener(type, fn) { (this.handlers[type] = this.handlers[type] || []).push(fn); }\\n  get childNodes() { return this.kids; }\\n  find(test, out = []) { for (const one of this.kids) if (one instanceof Element) { if (test(one)) out.push(one); one.find(test, out); } return out; }\\n  querySelector(selector) { return this.byClass(selector.slice(1))[0] || null; }\\n  byClass(name) { return this.find((one) => one.className.split(\" \").includes(name)); }\\n  get textContent() { return this.kids.map((one) => (one instanceof Text ? one.data : one.textContent)).join(\"\"); }\\n}\\nconst document = { activeElement: null, createDocumentFragment: () => new Element(\"fragment\"), createElement: (tag) => new Element(tag), createElementNS: (_ns, tag) => new Element(tag) };\\nconst page = (nodes) => { const box = new Element(\"div\"); box.append(...nodes.filter(Boolean)); return box; };\\n'",

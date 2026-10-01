@@ -431,6 +431,85 @@ def test_escape_hides_a_showing_tip_first_and_leaves_the_key_to_the_page(tmp_pat
     assert out == [[1, None, 0, 0], [1, 0, 0], [1, False]]
 
 
+# P202: the whole of tooltip.js, run as it is under a page of fakes - its own
+# listeners, a timer the probe fires by hand, and elements a page change can
+# take off the page (isConnected false) without ever sending mouseout.
+TIP_PAGE = r"""
+class Element {
+  constructor(words) { this.dataset = words ? { tip: words } : {}; this.isConnected = true; this.attrs = {};
+    this.scrollWidth = 10; this.clientWidth = 10; }
+  closest() { return this.dataset.tip !== undefined ? this : null; }
+  contains(other) { return other === this; }
+  matches() { return false; }
+  setAttribute(k, v) { this.attrs[k] = v; }
+  removeAttribute(k) { delete this.attrs[k]; }
+}
+const tipBox = { hidden: true, textContent: "", style: { setProperty() {} } };
+const handlers = {};
+const document = { getElementById: (id) => (id === "tip" ? tipBox : null),
+  addEventListener: (type, fn) => { handlers[type] = fn; } };
+const window = { addEventListener() {} };
+const FloatingUIDOM = { computePosition: () => ({ then() {} }), offset() {}, flip() {}, shift() {}, hide() {} };
+const timers = new Map(); let lastTimer = 0;
+const setTimeout = (fn) => { lastTimer += 1; timers.set(lastTimer, fn); return lastTimer; };
+const clearTimeout = (id) => { timers.delete(id); };
+const tick = () => { const due = [...timers.values()]; timers.clear(); due.forEach((fn) => fn()); };
+const over = (target) => handlers.mouseover({ target });
+const seen = (node) => [tipBox.hidden, tipBox.textContent, node.attrs["aria-describedby"] || null];
+"""
+
+
+def test_a_tip_whose_element_leaves_the_page_is_hidden_at_the_next_mouse_move(tmp_path):
+    """P202 R1, the fault as seen: a Taxpayer link's tip showed, the page
+    changed under a resting mouse, and the tip stayed over the new page while
+    the mouse moved over plain parts of it - a removed element never sends
+    mouseout, and a mouseover on an element without a tip returned early."""
+    probe = """
+      const link = new Element("Navigate to Return (Okafor Family)"), plain = new Element("");
+      const out = [];
+      over(link); tick(); out.push(seen(link));
+      link.isConnected = false; over(plain); out.push(seen(link));
+      return out;
+    """
+    out = run_shell([], TIP_PAGE + read("tooltip.js"), probe, tmp_path)
+    assert out == [[False, "Navigate to Return (Okafor Family)", "tip"], [True, "Navigate to Return (Okafor Family)", None]]
+
+
+def test_a_page_change_hides_a_showing_tip(tmp_path):
+    """P202 R2: Ctrl+1-4 and the side panel's links all go through shellGo,
+    which hides a showing tip before it draws the new page, so a resting
+    mouse leaves no tip behind even for a frame."""
+    setup = TIP_PAGE + read("tooltip.js") + """
+      const LEVELS = ["overview", "needs-review", "reminders", "clients", "household", "year", "return", "setup"];
+      let shellRoute = { level: "overview" }, shellBack = null, shellRootSet = true, shellPageBusy = false, shellPageFailed = false;
+      const hideFound = () => {}, appRouteChanged = () => {}, failed = (err) => { throw err; };
+      const atDraw = [];
+      const shellDraw = () => { atDraw.push(tipBox.hidden); };
+      const $ = () => ({ scrollTop: 0, focus() {} });
+      const shellOpenState = () => Promise.resolve();
+    """
+    probe = """
+      const link = new Element("Navigate to Return (Okafor Family)");
+      over(link); tick(); const before = seen(link);
+      return shellGo({ level: "needs-review" }).then(() => [before, seen(link), atDraw]);
+    """
+    out = run_shell(["shellGo"], setup, probe, tmp_path)
+    assert out == [[False, "Navigate to Return (Okafor Family)", "tip"],
+                   [True, "Navigate to Return (Okafor Family)", None], [True]]
+
+
+def test_a_tip_waiting_on_its_delay_is_never_shown_for_an_element_that_left(tmp_path):
+    """P202 R3: a hover just before a keyboard page change starts the delay;
+    when it ends the element is gone, and no tip shows for it."""
+    probe = """
+      const link = new Element("Navigate to Return (Okafor Family)");
+      over(link); link.isConnected = false; tick();
+      return seen(link);
+    """
+    out = run_shell([], TIP_PAGE + read("tooltip.js"), probe, tmp_path)
+    assert out == [True, "", None]
+
+
 def test_shell_key_hands_escape_to_the_tip_first_wherever_the_focus_is(tmp_path):
     """P130, wired: ``shellKey`` (the one keydown listener's first step, SPEC
     4.3) hands every key to ``tipKey`` before anything else, so the search

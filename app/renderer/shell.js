@@ -256,6 +256,7 @@ function shellGo(next) {
   if (shellRoute.level === "setup" && next.level !== "setup" && !shellRootSet) return Promise.resolve();   // the folder comes first
   if (typeof closeSheet === "function") closeSheet();
   hideFound();
+  hideTip();   // tooltip.js: a tip goes with its page, even under a resting mouse (P202 R2)
   if (next.level === "setup") shellBack = shellRoute.level === "setup" ? shellBack : shellRoute;
   shellRoute = next;
   // Nothing the window's other side does may stop the page from going where
@@ -806,6 +807,8 @@ function shellNeedsRoot(on, listed) {
   shellRootSet = !on && Boolean(listed && listed.root);
   if (on) {
     if (listed && listed.root_problem) notice({ sentence: screenWords().setup.missing, kind: "failed" });
+    // The one page change that does not go through shellGo: its tip goes too (P202 review).
+    hideTip();
     shellRoute = { level: "setup" };
     shellBack = null;
     shellDraw();
