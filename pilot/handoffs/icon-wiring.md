@@ -1,7 +1,7 @@
 # Icon wiring - build handoff (pilot SPEC-icon.md, items 1-6)
 
 Item 7 (side panel brand spot) is not built: Jason kept the firm's logo (P192).
-Nothing is committed or pushed; the changes are in the working tree.
+Committed as 0f29178 and pushed to `claude/sweet-maxwell-4t4jne`; a second review found no code defects.
 
 ## Done, file by file
 
@@ -19,7 +19,8 @@ Nothing is committed or pushed; the changes are in the working tree.
   from the repo root, as the spec's own `Path("app/package.json")` assumes).
 - Tests: `tests/test_build.py` (`test_the_packaged_exe_carries_the_console_icon`,
   `test_the_dev_launch_icon_is_a_byte_identical_copy_of_the_artworks`),
-  `tests/test_pilot_installer.py` (`test_the_installer_shows_the_console_icon`),
+  `tests/test_pilot_installer.py` (`test_the_installer_shows_the_console_icon`,
+  `test_the_shortcuts_and_the_window_share_one_app_id`),
   `tests/test_shell.py` (`test_the_window_and_its_taskbar_button_carry_the_console_icon`).
   The fake `app` objects in the node harnesses of `tests/test_shell_menu.py` and
   `tests/test_single_source.py` (3 of them) gained `setAppUserModelId() {}`, since
@@ -33,7 +34,7 @@ The Start-menu and desktop shortcuts carry `AppUserModelID: "com.jparkassociates
 
 ## Gate results (both interpreters, 3.11 / 3.13, same counts)
 
-test_build 33; test_pilot_installer 19; test_shell 153; test_shell_menu 33;
+test_build 33; test_pilot_installer 20; test_shell 153; test_shell_menu 33;
 test_single_source 179; test_layers 29; test_repo_map 80 - all passed.
 `ruff check .` clean; `repo_map.py check` current. test_tripwire / test_errors not run
 (no wording rules changed).
@@ -47,5 +48,5 @@ test_single_source 179; test_layers 29; test_repo_map 80 - all passed.
 ## Files for the reviewer
 
 `Build App.bat`, `api_entry.spec`, `app/main.js`, `app/assets/icon.ico`,
-`pilot/installer/setup.iss`, the three new tests, the two harness stubs,
+`pilot/installer/setup.iss`, the four new tests, the two harness stubs,
 `docs/repo-map.curated.json`.

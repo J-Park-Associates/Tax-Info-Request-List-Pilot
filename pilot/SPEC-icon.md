@@ -1,7 +1,7 @@
 # Pilot: put the Tax Document Console icon everywhere it is seen - SPEC
 
-Status: **answered 2026-10-01, ready to build: items 1-6; item 7 is not
-built.** Decisions P190 and P192 (`DECISIONS.md`). The artwork is
+Status: **built 2026-10-01: items 1-6 (P192); item 7 is not built. Windows
+check pending.** Decisions P190 and P192 (`DECISIONS.md`). The artwork is
 finished and reviewed; this job only wires it in. The artwork itself was
 replaced on 2026-10-01 by P191 ([`SPEC-icon-ledger.md`](SPEC-icon-ledger.md))
 under the same file names, so the table below still applies.

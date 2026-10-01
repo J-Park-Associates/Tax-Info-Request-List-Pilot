@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 396,
     "edges": 1190,
-    "reused": 349
+    "reused": 347
   },
   "node_types": [
     "artifact",
@@ -4712,7 +4712,7 @@
       "id": "pilot/DECISIONS.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "8f446ccef009ebfb",
+      "sha256": "fcba31ed1e24356e",
       "lines": 187
     },
     {
@@ -4782,7 +4782,7 @@
       "id": "pilot/SPEC-icon.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "b4a082a9975ecb30",
+      "sha256": "d0f22e5a88e6a956",
       "lines": 66
     },
     {
@@ -4882,8 +4882,8 @@
       "id": "pilot/handoffs/icon-wiring.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "ed60b2f25b8fc408",
-      "lines": 51
+      "sha256": "c3769e3f296c48b8",
+      "lines": 52
     },
     {
       "id": "pilot/handoffs/landing-0.3.md",
