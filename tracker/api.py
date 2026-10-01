@@ -937,8 +937,9 @@ NOT_APPLICABLE_CARRIED = "Review {n} Set-Aside Requests"
 NEW_NOT_ASKED_CARRIED = "{n} Requests Added, Not Asked"
 #: The request list's heading over the catalog's checkboxes, and the sentence
 #: under it (decision 142): a tick is a request the client is asked for
-#: and reminded of; every row is on the return either way.
-ASK_THE_CLIENT = "Ask the Client"
+#: and reminded of; every row is on the return either way. The screen says
+#: "Taxpayer" where it means the person (P196); the name keeps its code name.
+ASK_THE_CLIENT = "Ask the Taxpayer"
 #: The name the app's folded table of not-asked rows is read out by, and
 #: the roll fold's label over the template pick (decision 142).
 NOT_ASKED_TABLE_LABEL = "Requests Not Asked For"
@@ -1205,11 +1206,16 @@ PATH_KINDS: dict[str, str] = {
 #: (:data:`tracker.manifest.OVERRIDE_REASONS`), in its order (P77, P84): the
 #: record keeps the stored words as values, so only the label changes.
 OVERRIDE_LABELS: tuple[str, ...] = (
-    "Client Confirmed Final Version",
+    "Taxpayer Confirmed Final Version",
     "Correct; Only Formatting Flagged",
     "Received Outside the App",
     "Prior-Year or Substitute Document Accepted",
 )
+#: The request-list editor's label for a return's detail where the screen's
+#: word differs from the record's (P196): the record and the files it writes
+#: keep "Client" for the greeting name (``records.ENGAGEMENT_LABELS``); the
+#: editor says "Taxpayer", the person the letter greets.
+EDITOR_LABELS: dict[str, str] = {"client": "Taxpayer"}
 
 #: The menu bar's words, keyed by item (SPEC-shell 11.3, P84). ``vocab.menu``
 #: carries this, and ``main.js`` holds the same words as its defaults so the
@@ -1222,7 +1228,7 @@ MENU: dict[str, str] = {
     "open_root": "Open Clients Folder",
     "exit": "Exit",
     "edit": "&Edit",
-    "client": "&Client",
+    "client": "H&ousehold",
     "edit_household": "Edit Household…",
     "add_return": "Add a Return…",
     "roll_forward": "Roll Forward…",
@@ -1236,7 +1242,7 @@ MENU: dict[str, str] = {
     "overview": "Overview",
     "needs_review": "Needs Review",
     "reminders": "Reminders",
-    "clients": "Clients",
+    "clients": "Households",
     "find": "Find",
     "refresh": "Refresh",
     # Forgets the list column widths this PC keeps (pilot SPEC-lists 4, P139).
@@ -1274,7 +1280,7 @@ SCREEN: dict = {
         "overview": "Overview",
         "needs_review": "Needs Review",
         "reminders": "Reminders",
-        "clients": "Clients",
+        "clients": "Households",
     },
     "side_label": "Sections",
     "path_label": "Path",
@@ -1283,19 +1289,19 @@ SCREEN: dict = {
     "show_in_explorer": "Show in File Explorer",
     # The tooltip of a household name, which navigates to the household's page
     # in the app (no path, no engine call).
-    "navigate_client": "Navigate to Client",
+    "navigate_client": "Navigate to Household",
     # The tooltip of a return name, which navigates to the return's page.
     "navigate_return": "Navigate to Return",
-    "find": "Find a Client",
+    "find": "Find a Household",
     "find_none": "No Match",
     # The search box's placeholder (pilot SPEC-lists 13, P173): every page,
     # and Needs Review, where the box also finds the waiting files.
-    "find_placeholder": "Search Clients and Returns",
-    "find_placeholder_files": "Search Files, Clients and Returns",
+    "find_placeholder": "Households and Returns",
+    "find_placeholder_files": "Files, Households and Returns",
     "sort": {
         "now": "Sort Now",
         "stop": "Stop Sorting",
-        "firm": "Open a Client to Sort",
+        "firm": "Open a Household to Sort",
         "locked": "In Use Elsewhere",
         "stopping": "Stopping",
     },
@@ -1309,7 +1315,7 @@ SCREEN: dict = {
     },
     "figures": {
         "need": "Need a Person",
-        "waiting": "Waiting on Clients",
+        "waiting": "Waiting on Taxpayers",
         "complete": "Complete",
     },
     "work": "Work Waiting",
@@ -1343,7 +1349,7 @@ SCREEN: dict = {
             "overview": "Returns",
             "needs_review": "Files",
             "reminders": "Drafts",
-            "clients": "Clients",
+            "clients": "Households",
         },
     },
     # The side panel (pilot SPEC-lists 15, P153, P154): the brand band, the
@@ -1353,7 +1359,7 @@ SCREEN: dict = {
     "side": {
         "brand": "J Park & Associates",
         "product": product_name(),
-        "types": "Client Types",
+        "types": "Taxpayer Types",
         "workspace": "Workspace",
         "settings": "Settings",
         "under_construction": "Under Construction",
@@ -1365,9 +1371,10 @@ SCREEN: dict = {
             "portal_settings": "Portal Settings (Under Construction)",
         },
     },
-    # The Client Types of the side panel (pilot SPEC-lists 15.3): each
-    # opens Clients filtered to the households with a return of one of its
-    # forms (CLIENT_TYPE_FORMS, ``vocab.client_type_forms``).
+    # The Taxpayer Types of the side panel (pilot SPEC-lists 15.3; the
+    # heading's word is P196's): each opens Households filtered to the
+    # households with a return of one of its forms (CLIENT_TYPE_FORMS,
+    # ``vocab.client_type_forms``; the keys keep their code names).
     "client_types": {
         "individuals": "Individuals",
         "businesses": "Businesses",
@@ -1379,8 +1386,13 @@ SCREEN: dict = {
     # (P180), whose "by {Column}" keeps it apart from the filing pass's
     # Sort Now - and what a screen reader hears after a keyboard resize.
     "columns": {
-        "return": "Return",
-        "client": "Client",
+        # Overview's and Reminders' return columns, one field each, in
+        # Jason's order (pilot P194, P195; "Taxpayer" is his word): the
+        # household has no column, and is named in the Taxpayer link's tooltip.
+        "tax_year": "Tax Year",
+        "taxpayer": "Taxpayer",
+        "form_type": "Form Type",
+        "taxpayer_tip": "{action} ({household})",
         "status": "Status",
         "date": "Date",
         "file": "File",
@@ -1390,8 +1402,9 @@ SCREEN: dict = {
         "stage": "Stage",
         "drafted": "Drafted",
         "returns": "Returns",
-        # Clients' own word for its name column (pilot SPEC-lists 15.2).
-        "client_name": "Client Name",
+        # Households' own word for its name column (pilot SPEC-lists 15.2;
+        # a row there is a household, so "Household Name", P196 R2).
+        "client_name": "Household Name",
         "sort_by": "Sort by {column}",
         "width": "{column} Width {n}",
     },
@@ -1400,7 +1413,7 @@ SCREEN: dict = {
         "next_sort": "Next Sort {time}",
         "needs_review": "Nothing Needs Review",
         "reminders": "No Drafts Ready",
-        "clients": "No Clients Yet",
+        "clients": "No Households Yet",
         "work": "No Work Waiting",
         "returns": "No Returns Yet",
         "received": "Nothing Received Yet",
@@ -1422,7 +1435,7 @@ SCREEN: dict = {
     "partly": "{n} of {total}",
     "groups": {
         "needs_you": "Needs You",
-        "waiting": "Waiting on Client",
+        "waiting": "Waiting on Taxpayer",
         "received": "Received",
         "set_aside": "Set Aside",
     },
@@ -1986,7 +1999,7 @@ def _vocab() -> dict:
             "rename_from": RENAME_FROM_LABEL, "rename_to": RENAME_TO_LABEL,
             "rename": RENAME_LABEL, "renamed_note": RENAMED_NOTE, "rename_left_note": RENAME_LEFT_NOTE,
             "engagement_fields": [
-                {"key": f, "label": ENGAGEMENT_LABELS[f],
+                {"key": f, "label": EDITOR_LABELS.get(f, ENGAGEMENT_LABELS[f]),
                  "help": ACTIVE_HELP if f == "active" else ENGAGEMENT_HELP.get(f, ""),
                  "editable": f in ENGAGEMENT_EDITABLE}
                 for _, f in ENGAGEMENT_FIELDS

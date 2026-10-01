@@ -85,7 +85,7 @@ api._vocab	lock.running_other	A pass that started at {started} on {host} is hold
 api._vocab	new_not_asked_carried	{n} catalog row(s) this client never had added as not asked - a document for one files there; set Asked in the editor to ask for it	reword	{n} requests added, not asked	5	Notice area after roll		{n} Requests Added, Not Asked	case
 api._vocab	not_applicable_carried	{n} request(s) not applicable last year - review them in the editor	reword	Review {n} set-aside requests	4	Notice area after roll		Review {n} Set-Aside Requests	case
 api._vocab	nothing_asked	Select at least one request item	reword	Tick at least one request	5	Toast, New household		Tick at Least One Request	case
-api._vocab	override_reasons[0]	Client confirmed this is the final version	reword	Client confirmed final version	4	Editor Reason drop-down	Label only: the record keeps today's words as the stored value (P78)	Client Confirmed Final Version	case
+api._vocab	override_reasons[0]	Client confirmed this is the final version	reword	Taxpayer Confirmed Final Version	4	Editor Reason drop-down	Label only: the record keeps today's words as the stored value (P78); P196, SPEC-taxpayer-words R1: was Client confirmed final version	Taxpayer Confirmed Final Version	case
 api._vocab	override_reasons[1]	Correct document, validation flagged formatting only	reword	Correct; only formatting flagged	4	Editor Reason drop-down	Label only: the record keeps today's words as the stored value (P78)	Correct; Only Formatting Flagged	case
 api._vocab	override_reasons[2]	Received outside the system (in person, fax, confirmed in a meeting)	reword	Received outside the tracker	4	Editor Reason drop-down	Label only: the record keeps today's words as the stored value (P78)	Received Outside the Tracker	case
 api._vocab	people.help	who this return is for, with the spellings documents use; a named request files only where one of these is on the page	cut		0	Nowhere; was People help	Dialog help lines cut		-
@@ -184,8 +184,8 @@ pilot-content.js	terms.sections[5].bullets[1]	You remain responsible for your cl
 pilot-content.js	terms.sections[6].bullets[1]	Please do not send client documents. Describe what happened, or send a screenshot with client names covered.	exception	Please do not send client documents. Describe what happened, or send a screenshot with client names covered.	17	Pilot terms screen	P63: agreement kept whole	Please do not send client documents. Describe what happened, or send a screenshot with client names covered.	no (exception: pilot terms)
 pilot-content.js	terms.sign	(none: new, P188)	exception	Type Your Full Name to Sign	6	Pilot terms screen, above the accept button	P188: the typed-name sign-off, Jason's words (SPEC-rename 12.1)	Type Your Full Name to Sign	no (exception: pilot terms)
 pilot-content.js	terms.title	Before you start: this is a Pilot	exception	Before you start: this is a Pilot	7	Pilot terms screen	P63: agreement kept whole	Before you start: this is a Pilot	no (exception: pilot terms)
-pilot-content.js	tour.steps[0].does[0]	A client drops documents in one folder.	reword	Sorts what your clients send	5	Tour step 0 line	Audit §8: one line per step	Sorts What Your Clients Send	case
-pilot-content.js	tour.steps[0].does[1]	The program sorts and renames them.	merge	Sorts what your clients send	5	Tour step 0 line	Merged into tour.steps[0].does[0]	Sorts What Your Clients Send	case
+pilot-content.js	tour.steps[0].does[0]	A client drops documents in one folder.	reword	Sorts What Your Taxpayers Send	5	Tour step 0 line	Audit §8: one line per step; P196, SPEC-taxpayer-words R1: was Sorts what your clients send	Sorts What Your Taxpayers Send	case
+pilot-content.js	tour.steps[0].does[1]	The program sorts and renames them.	merge	Sorts What Your Taxpayers Send	5	Tour step 0 line	Merged into tour.steps[0].does[0]; P196, SPEC-taxpayer-words R1: was Sorts what your clients send	Sorts What Your Taxpayers Send	case
 pilot-content.js	tour.steps[0].does[2]	You see what arrived, what's missing, and what needs you.	cut		0	Nowhere; one line per step	Audit §8		-
 pilot-content.js	tour.steps[0].limit	6 return types (1040, 1120, 1120-S, 1065, 1041, 990), about 74 document kinds.	cut		0	Nowhere; limits cut	Audit §8		-
 pilot-content.js	tour.steps[0].strength	Runs on this computer with fixed rules. No AI reads documents. Nothing is sent.	cut		0	Nowhere; strengths cut	Audit §8		-
@@ -248,8 +248,12 @@ api._vocab	reason_tips.opened-not-across	(none: new)	reword	Came in Email or Zip
 api._vocab	scan.skipped.inactive	(none)	reword	Inactive	1	After Nothing Done	P134: the screen's approved word (screen.inactive); was a bare Nothing Done	Inactive	case
 api._vocab	scan.skipped.rolled-forward	(none)	reword	Rolled Forward	2	After Nothing Done	P134: the screen's approved word (screen.rolled)	Rolled Forward	case
 api._vocab	scan.skipped.no-room	(none)	reword	Names Too Long	3	After Nothing Done	P134: new word; Jason chose it (SPEC-wincheck-fixes Q1, 2026-09-30)	Names Too Long	case
-api.SCREEN	columns.return		new	Return	1	Column header, Overview and Reminders	Pilot 0.3, SPEC-lists 2 (P138): "Order", never "Sort"; open for Jason, Q1	Return	new
-api.SCREEN	columns.client		new	Client	1	Column header, Overview, Reminders and Clients	Pilot 0.3, SPEC-lists 2 (P138): "Order", never "Sort"; open for Jason, Q1	Client	new
+api.SCREEN	columns.return	Return	cut		0	Nowhere; was column header, Overview and Reminders	Pilot 0.3, SPEC-firm-columns (P194, P195): the return's fields are each their own column		-
+api.SCREEN	columns.tax_year		new	Tax Year	2	Column header, Overview and Reminders	Pilot 0.3, SPEC-firm-columns (P194, P195)	Tax Year	new
+api.SCREEN	columns.taxpayer		new	Taxpayer	1	Column header, Overview and Reminders	Pilot 0.3, SPEC-firm-columns (P194, P195); Jason's word	Taxpayer	new
+api.SCREEN	columns.form_type		new	Form Type	2	Column header, Overview and Reminders	Pilot 0.3, SPEC-firm-columns (P194, P195)	Form Type	new
+api.SCREEN	columns.taxpayer_tip		new	{action} ({household})	2	Tooltip of a taxpayer's return link, Overview and Reminders	Pilot 0.3, SPEC-firm-columns (P194, P195): the household, which has no column (Q1 A)	{action} ({household})	new
+api.SCREEN	columns.client	Client	cut		0	Nowhere; was column header, Overview and Reminders	Pilot 0.3, SPEC-firm-columns (P194, P195): the household is the Taxpayer link's tooltip; Households says Household Name (P196)		-
 api.SCREEN	columns.status		new	Status	1	Column header, Overview and Clients	Pilot 0.3, SPEC-lists 2 (P138): "Order", never "Sort"; open for Jason, Q1	Status	new
 api.SCREEN	columns.date		new	Date	1	Column header, Overview	Pilot 0.3, SPEC-lists 2 (P138): "Order", never "Sort"; open for Jason, Q1	Date	new
 api.SCREEN	columns.file		new	File	1	Column header, Needs Review	Pilot 0.3, SPEC-lists 2 (P138): "Order", never "Sort"; open for Jason, Q1	File	new
@@ -262,8 +266,8 @@ api.SCREEN	columns.returns		new	Returns	1	Column header, Clients	Pilot 0.3, SPEC
 api.SCREEN	columns.sort_by		new	Sort by {column}	3	Tooltip of every column header	Pilot 0.3, SPEC-lists 2 (P138); Jason chose "Sort by" (Q1 C, P180)	Sort by {column}	new
 api.SCREEN	columns.width		new	{column} Width {n}	3	Said to a screen reader after a keyboard resize	Pilot 0.3, SPEC-lists 2 (P138): "Order", never "Sort"; open for Jason, Q1	{column} Width {n}	new
 api.MENU	reset_columns		new	Reset Column Widths	3	View menu	Pilot 0.3, SPEC-lists 4 (P139); open for Jason, Q4	Reset Column Widths	new
-api.SCREEN	find_placeholder		new	Search Clients and Returns	4	Search box placeholder, every page	Pilot 0.3 lane 4b, SPEC-lists 13 (P173)	Search Clients and Returns	new
-api.SCREEN	find_placeholder_files		new	Search Files, Clients and Returns	5	Search box placeholder, Needs Review	Pilot 0.3 lane 4b, SPEC-lists 13 (P173); open for Jason, Q12	Search Files, Clients and Returns	new
+api.SCREEN	find_placeholder		new	Households and Returns	3	Search box placeholder, every page	Pilot 0.3 lane 4b, SPEC-lists 13 (P173); P196, SPEC-taxpayer-words R2, R8: the old words did not fit: was Search Clients and Returns	Households and Returns	new
+api.SCREEN	find_placeholder_files		new	Files, Households and Returns	4	Search box placeholder, Needs Review	Pilot 0.3 lane 4b, SPEC-lists 13 (P173); open for Jason, Q12; P196, SPEC-taxpayer-words R2, R8: the old words did not fit: was Search Files, Clients and Returns	Files, Households and Returns	new
 api.SCREEN	linked.tip		new	Linked Households	2	Link icon tooltip and name; panel name; row description	Pilot 0.3 lane 4b, SPEC-lists 10 (P141, P171)	Linked Households	new
 api.SCREEN	linked.feeds		new	Also Feeds	2	Linked Households panel, a link's kind	Pilot 0.3 lane 4b, SPEC-lists 10 (P171); open for Jason, Q10	Also Feeds	new
 api.SCREEN	linked.fed_by		new	Fed By	2	Linked Households panel, a link's kind	Pilot 0.3 lane 4b, SPEC-lists 10 (P171); open for Jason, Q10	Fed By	new
@@ -279,10 +283,10 @@ api.SCREEN	paging.next		new	Next	1	Page footer button	Pilot 0.3 lane 4b, SPEC-li
 api.SCREEN	paging.nouns.overview		new	Returns	1	Page footer noun, Overview	Pilot 0.3 lane 4b, SPEC-lists 14 (P152)	Returns	new
 api.SCREEN	paging.nouns.needs_review		new	Files	1	Page footer noun, Needs Review	Pilot 0.3 lane 4b, SPEC-lists 14 (P152)	Files	new
 api.SCREEN	paging.nouns.reminders		new	Drafts	1	Page footer noun, Reminders	Pilot 0.3 lane 4b, SPEC-lists 14 (P152)	Drafts	new
-api.SCREEN	paging.nouns.clients		new	Clients	1	Page footer noun, Clients	Pilot 0.3 lane 4b, SPEC-lists 14 (P152)	Clients	new
+api.SCREEN	paging.nouns.clients		new	Households	1	Page footer noun, Clients	Pilot 0.3 lane 4b, SPEC-lists 14 (P152); P196, SPEC-taxpayer-words the page Jason named: was Clients	Households	new
 api.SCREEN	side.brand		new	J Park & Associates	4	Side panel brand band	Pilot 0.3 lane 4b, SPEC-lists 15.1 (P153)	J Park & Associates	new
 api.SCREEN	side.product		new	Tax Document Console	3	Side panel brand band	Pilot 0.3 lane 4b, SPEC-lists 15.1 (P153, P155: new text names the app Tax Document Console)	Tax Document Console	new
-api.SCREEN	side.types		new	Client Types	2	Side panel section heading	Pilot 0.3 lane 4b, SPEC-lists 15.1 (P153)	Client Types	new
+api.SCREEN	side.types		new	Taxpayer Types	2	Side panel section heading	Pilot 0.3 lane 4b, SPEC-lists 15.1 (P153); P196, SPEC-taxpayer-words R5, Q2: was Client Types	Taxpayer Types	new
 api.SCREEN	side.workspace		new	Workspace	1	Side panel section heading	Pilot 0.3 lane 4b, SPEC-lists 15.1 (P154)	Workspace	new
 api.SCREEN	side.settings		new	Settings	1	Side panel foot	Pilot 0.3 lane 4b, SPEC-lists 15.1 (P153, P175)	Settings	new
 api.SCREEN	side.under_construction		new	Under Construction	2	Tooltip of each unbuilt side panel item	Pilot 0.3 lane 4b, SPEC-lists 15.1 (P154)	Under Construction	new
@@ -296,9 +300,22 @@ api.SCREEN	client_types.individuals		new	Individuals	1	Side panel Client Type; C
 api.SCREEN	client_types.businesses		new	Businesses	1	Side panel Client Type; Clients chip	Pilot 0.3 lane 4b, SPEC-lists 15.1, 15.3 (P153)	Businesses	new
 api.SCREEN	client_types.trusts		new	Trusts & Estates	3	Side panel Client Type; Clients chip	Pilot 0.3 lane 4b, SPEC-lists 15.1, 15.3 (P153)	Trusts & Estates	new
 api.SCREEN	client_types.nonprofits		new	Nonprofits	1	Side panel Client Type; Clients chip	Pilot 0.3 lane 4b, SPEC-lists 15.1, 15.3 (P153)	Nonprofits	new
-api.SCREEN	columns.client_name		new	Client Name	2	Column header, Clients	Pilot 0.3 lane 4b, SPEC-lists 15.2 (P153)	Client Name	new
+api.SCREEN	columns.client_name		new	Household Name	2	Column header, Clients	Pilot 0.3 lane 4b, SPEC-lists 15.2 (P153); P196, SPEC-taxpayer-words R2: was Client Name	Household Name	new
 api.SCREEN	icons.more_actions		new	More Actions	2	Needs Review group button tooltip and name	Pilot 0.3 lane 4b, SPEC-lists 12 (P149)	More Actions	new
 api.SCREEN	icons.remove_filter		new	Remove Filter	2	Client Type chip dismiss tooltip and name	Pilot 0.3 lane 4b, SPEC-lists 15.3 (P153)	Remove Filter	new
 api._vocab	household.related_label		new	Related Households	2	Edit Household	Pilot 0.3 lane 4b, SPEC-lists 9 (P170)	Related Households	new
 api._vocab	household.add_related		new	Add Related Household	3	Edit Household button	Pilot 0.3 lane 4b, SPEC-lists 9 (P170)	Add Related Household	new
 api.SCREEN	notices.related_pending		new	Link Pending: {household} Is Busy	5	Notice after Edit Household when the linked household is being sorted	Pilot 0.3 lane 4b, SPEC-lists 9.1 (P170; re-check MUST-R1; Jason, P183: Is Busy): this household is saved, the other side waits; saving again completes it	Link Pending: {household} Is Busy	new
+api._vocab	ask_the_client	Ask the Client	reword	Ask the Taxpayer	3	Request list heading, after the form	P196, SPEC-taxpayer-words R1	Ask the Taxpayer	word (P196)
+api._vocab	editor.engagement_fields[0].label	Client	reword	Taxpayer	1	Request-list editor, the greeting name's box	P196, SPEC-taxpayer-words R1; the record keeps Client (R7)	Taxpayer	word (P196)
+api.MENU	client	&Client	reword	H&ousehold	1	Menu bar	P196, SPEC-taxpayer-words R2, Q3; Alt+O (H is Help's)	H&ousehold	word (P196)
+api.MENU	clients	Clients	reword	Households	1	View menu	P196, SPEC-taxpayer-words the page Jason named	Households	word (P196)
+api.SCREEN	sections.clients	Clients	reword	Households	1	Side panel, path row, page title	P196, SPEC-taxpayer-words the page Jason named	Households	word (P196)
+api.SCREEN	navigate_client	Navigate to Client	reword	Navigate to Household	3	A household name's tooltip	P196, SPEC-taxpayer-words R2, Q3	Navigate to Household	word (P196)
+api.SCREEN	find	Find a Client	reword	Find a Household	3	Search box tooltip	P196, SPEC-taxpayer-words R2, Q3	Find a Household	word (P196)
+api.SCREEN	sort.firm	Open a Client to Sort	reword	Open a Household to Sort	5	Sort icon tooltip on a firm page	P196, SPEC-taxpayer-words R2, Q3	Open a Household to Sort	word (P196)
+api.SCREEN	figures.waiting	Waiting on Clients	reword	Waiting on Taxpayers	3	Overview figure	P196, SPEC-taxpayer-words R1	Waiting on Taxpayers	word (P196)
+api.SCREEN	empty.clients	No Clients Yet	reword	No Households Yet	3	Households page empty state	P196, SPEC-taxpayer-words the page Jason named	No Households Yet	word (P196)
+api.SCREEN	groups.waiting	Waiting on Client	reword	Waiting on Taxpayer	3	Return page group heading	P196, SPEC-taxpayer-words R1	Waiting on Taxpayer	word (P196)
+reasons.SHORT_REASONS	name-absent	No Client Name Found	reword	No Taxpayer Name Found	4	Needs Review reason	P196, SPEC-taxpayer-words R1	No Taxpayer Name Found	word (P196)
+index.html	ne-client label	Client (Greeting Name)	reword	Taxpayer (Greeting Name)	3	New return, field label	P196, SPEC-taxpayer-words R1	Taxpayer (Greeting Name)	word (P196)

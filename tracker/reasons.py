@@ -824,7 +824,7 @@ KNOWN_CODES: frozenset[str] = frozenset(BY_CODE) | frozenset(PLAIN_CODES)
 #: and :data:`PLAIN_CODES` and no other.
 SHORT_REASONS: dict[str, str] = {
     "unmatched": "Could Not Sort",
-    "name-absent": "No Client Name Found",
+    "name-absent": "No Taxpayer Name Found",
     "ambiguous": "Fits Two Requests",
     "name-other": "Names Another Return",
     "contested": "Claimed by Two Requests",

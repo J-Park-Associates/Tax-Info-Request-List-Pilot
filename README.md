@@ -112,7 +112,7 @@ parks for a person with the reason, and a document that came inside one is
 never filed into another household's return. The client README's list of
 what has arrived shows each attachment that filed, under its request.
 
-1. Roll a household's returns forward from last year with the Client menu's
+1. Roll a household's returns forward from last year with the Household menu's
    **Roll Forward…** (offered once that year has ended), or add a return to
    it with **Add a Return…** - pick the tax form type, then the request list;
    the catalog lives in `tracker/templates.py` and nowhere else. A household
@@ -122,7 +122,7 @@ what has arrived shows each attachment that filed, under its request.
    list is refused and pointed at it there - add a first name or a middle
    initial, then the city, to tell two households apart (decision 188). The
    app is a side panel of four pages (Overview, Needs Review, Reminders,
-   Clients), right-click menus on rows, a menu bar behind Alt, a
+   Households), right-click menus on rows, a menu bar behind Alt, a
    **Folders Skipped** list for anything left alone, and one **Sort** icon
 2. List the engagement's document requests (and validation rules) in the
    app's request-list editor
@@ -513,7 +513,7 @@ office.
 ## Form-type templates
 
 For a returning client the request list is last year's, rolled forward
-(Client, **Roll Forward…**, or `python -m tracker.rollover`). For a
+(Household, **Roll Forward…**, or `python -m tracker.rollover`). For a
 new client you choose the return type (1040, 1120, 1120-S, 1065, 1041, 990)
 and every form carries its own checklist in `tracker/templates.py`,
 the only place it lives. Every row of it goes on the return (decision 142);

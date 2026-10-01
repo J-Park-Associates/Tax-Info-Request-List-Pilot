@@ -1,5 +1,13 @@
 # Pilot handoff
 
+**One field per column (P194-P196, 2026-09-30):** built on the firm-columns
+branch, awaiting review - `SPEC-firm-columns.md`, hand-back
+`handoffs/firm-columns-build.md`. P196 (Client becomes Taxpayer on screen;
+the page is Households) is built on `claude/taxpayer-words`, stacked on that
+branch, awaiting the one review of both - `SPEC-taxpayer-words.md`,
+hand-back `handoffs/taxpayer-words-build.md`; owner questions Q1-Q5 open,
+each built as recommended.
+
 ## App shell: where the build stands (2026-09-30; branch `claude/shell-join`, S6b)
 
 The shell is built in jobs (P78), each with a handoff in [`handoffs/`](handoffs/)
