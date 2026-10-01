@@ -29,11 +29,12 @@ No single drawing is sharp at every size, so the icon is drawn three ways
 - **30 to 47px** (30, 32, 36, 40 and Square44x44Logo's 44) are the drawing
   fitted to the size without the rules, the tick built of whole pixels.
 - **48px and up** are the full drawing fitted to the size: every horizontal
-  and vertical edge, the rim and the corner radii on whole pixels (the flap's
-  sloped sides take a 1.5px rim where the rim is one pixel, so they hold 3:1 on
-  a dark taskbar), so only the
+  and vertical edge, the rim and the corner radii on whole pixels, so only the
   tab's slope, the flap's sides, the tick, the rules' round ends and the
   corner arcs are blended.
+
+From 30 to 71px, where the rim is one pixel, the flap's sloped sides take a
+1.5px rim, so they still hold 3:1 on a dark taskbar.
 
 Every size is drawn at that size; none is a resize of another.
 

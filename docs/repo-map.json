@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 364,
     "edges": 1175,
-    "reused": 311
+    "reused": 312
   },
   "node_types": [
     "artifact",
@@ -4659,7 +4659,7 @@
       "id": "pilot/SPEC-icon-ledger.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "fabedadac7188ad4",
+      "sha256": "686a26c28dde91fb",
       "lines": 104
     },
     {
@@ -4701,8 +4701,8 @@
       "id": "pilot/brand/tax-document-console/README.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "ef2367666534d1b4",
-      "lines": 73
+      "sha256": "829c7e833fa62c94",
+      "lines": 74
     },
     {
       "id": "pilot/handoffs/brand-icon.md",
@@ -5494,7 +5494,7 @@
       "id": "pilot/brand/tax-document-console/app/icon.svg",
       "type": "ui",
       "layer": "root",
-      "sha256": "0418bd685f0f4379",
+      "sha256": "e154763dc04b5f2a",
       "lines": 1
     },
     {
@@ -5508,21 +5508,21 @@
       "id": "pilot/brand/tax-document-console/app/mark.svg",
       "type": "ui",
       "layer": "root",
-      "sha256": "f8d98c5266a541ab",
+      "sha256": "649b623d13aa1f0a",
       "lines": 1
     },
     {
       "id": "pilot/brand/tax-document-console/brand/lockup-dark.svg",
       "type": "ui",
       "layer": "root",
-      "sha256": "15b9f5375cff4513",
+      "sha256": "9234e6a402265115",
       "lines": 1
     },
     {
       "id": "pilot/brand/tax-document-console/brand/lockup-light.svg",
       "type": "ui",
       "layer": "root",
-      "sha256": "752e38e5d9aad5fd",
+      "sha256": "c19c231916601c2f",
       "lines": 1
     },
     {
@@ -5570,8 +5570,8 @@
       "id": "pilot/brand/tax-document-console/source/mark.py",
       "type": "module",
       "layer": "root",
-      "sha256": "5fe712fbfea01ead",
-      "lines": 303,
+      "sha256": "1001784d8d66cda7",
+      "lines": 306,
       "exports": [
         "BACK",
         "BACK_X",

@@ -21,7 +21,7 @@ On a 48-unit grid (the master; `source/mark.py` holds the numbers):
 | Part | Geometry (units) | Colour |
 |---|---|---|
 | Folder back | x 4-42, y 7-40; tab x 4-18 at the top, sloping to x 22 at y 11 (the tab is 4 units tall) | navy `#2E4675` to `#1B2A4A`, 120 degrees |
-| Rim | 1 unit inside the back's and the flap's outline | mid-blue `#6A87C2` |
+| Rim | 1 unit inside the back's and the flap's outline (1.5 px on the flap's slopes where fitted to a one-pixel rim, 30-71 px; see Contrast) | mid-blue `#6A87C2` |
 | Tab | the back left of the slope, above y 11 | gold `#A8862F` to `#94782A` |
 | Sheet | x 14-36, y 12-32, radius 2 | cream `#FFFDF8` to `#F0E9DC` |
 | Tick | (17.5, 17) to (19.3, 18.8) to (22.5, 15.1), stroke 2 | gold `#9C7F2C`: 3.8:1 on `#FFFDF8`, where it sits; 3.2:1 at the sheet's darker end |
