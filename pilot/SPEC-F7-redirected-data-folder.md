@@ -199,7 +199,7 @@ behaviour that depends on the operating system): from the agent's shell on
 this PC, `python -m tracker.api list` with `TRACKER_DATA_HOME` unset
 answers R1's sentence, and leaves no probe file in either place.
 
-## Open for Jason
+## Open for Jason (answered 2026-09-30: Q1 (a), Q2 (a))
 
 **Q1. The private copy on the office PC** (client-derived data, made-up
 samples only): (a) you move

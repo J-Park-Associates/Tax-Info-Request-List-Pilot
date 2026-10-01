@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 401,
     "edges": 1190,
-    "reused": 350
+    "reused": 353
   },
   "node_types": [
     "artifact",
@@ -4712,8 +4712,8 @@
       "id": "pilot/DECISIONS.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "292d6d47595c9067",
-      "lines": 188
+      "sha256": "f3acdab1e13a050c",
+      "lines": 189
     },
     {
       "id": "pilot/HANDOFF.md",
@@ -4754,7 +4754,7 @@
       "id": "pilot/SPEC-F7-redirected-data-folder.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "57423a83eb1cdfae",
+      "sha256": "2835f6504ec01ec1",
       "lines": 212
     },
     {
