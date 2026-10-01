@@ -34,7 +34,11 @@ two seconds instead of reading every return again: like `tracker.db` it
 holds household names, return folders and the names of files waiting for a
 person, and it is never synced. A household whose folders changed since is
 read again; deleting the file is always safe (the next Overview reads every
-household once, a few seconds longer).
+household once, a few seconds longer). Every pass over the saved clients
+folder - the schedule's and a Sort alike - ends by asking the Overview once
+itself, so this file is ready before anyone opens the app: the first Overview
+of the day, after the morning's scheduled pass, opens in about two seconds
+(pilot P201).
 
 **The app's data folder is private to one Windows account.** `tracker.db`
 holds every client's index rows, and it lives in
@@ -1330,6 +1334,14 @@ household and cannot clear it. **Unfile** asks for an optional reason first.
    that stopped because the app closed says so as a pass warning: the code
    `pass-app-closed` in the run log, and on the page *stopped when the app
    that started it closed, after N file(s)* (decision 203).
+   *the Overview could not be made ready after the pass (…)* (the code
+   `cache-not-filled`, pilot P201) means the pass's last step - asking the
+   Overview once so `firm-view.json` is ready - did not finish; the pass
+   itself is fine and its result is not changed, only the next Overview is
+   slower. Nothing to do once; if it repeats, the error log beside
+   `tracker.db` says why. Right after an upgrade it can say so until the app
+   has been started once, which registers the schedule again with what the
+   step needs.
    **Run now** says the same: under the return's own result it lists the
    household's other returns' problems and the pass's own (the reader,
    the log, the page).

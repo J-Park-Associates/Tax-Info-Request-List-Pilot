@@ -85,7 +85,7 @@ from pathlib import Path, PurePosixPath, PureWindowsPath
 from tracker.fsio import write_text_atomically
 from tracker.layout import designation_file
 from tracker.locking import RUN_TIME_LIMIT_SECONDS, is_this_host, this_host
-from tracker.runner import DRAFT_DAY_NAME, LOG_FLAG, RUNNER_MODE_FLAG, SETTINGS_FLAG
+from tracker.runner import DRAFT_DAY_NAME, LOG_FLAG, PRODUCT_FLAG, RUNNER_MODE_FLAG, SETTINGS_FLAG
 
 # The schedule choice and its checks live in ``settings`` - the runner reads
 # the saved choice too, and the runner may not import this module - and are
@@ -183,8 +183,17 @@ def runner_arguments(settings_dir: str | Path, *, frozen: bool = False) -> str:
     It names the app's settings folder and **no clients root** (decision
     131): the runner reads the root from the settings file there at every
     run, so the root has one home.
+
+    The packaged line also names the product (P201,
+    ``pilot/SPEC-firm-cache-fill.md`` R6), before the settings folder so
+    the line still ends as above: the pass asks the firm summary at its end
+    in a child that imports the API, which reads the product's name at
+    import, and Task Scheduler gives the job none of the shell's
+    environment. A checkout reads it from ``app/package.json``, so the
+    source line is unchanged.
     """
-    program = RUNNER_MODE_FLAG if frozen else "-m tracker.runner"
+    program = (f"{RUNNER_MODE_FLAG} {PRODUCT_FLAG} {quote_argument(product_name())}" if frozen
+               else "-m tracker.runner")
     return f'{program} {SETTINGS_FLAG} {quote_argument(settings_dir)} {LOG_FLAG}'
 
 

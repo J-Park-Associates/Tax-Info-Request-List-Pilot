@@ -319,6 +319,22 @@ def load(path: Path, expected: dict) -> dict[str, dict]:
     return households
 
 
+def holds(path: Path, heads: list[dict]) -> bool:
+    """Whether the file at ``path`` is whole JSON kept under one of ``heads``
+    - how the pass knows the firm summary it asked for at its end left the
+    cache filled for this root, program and day (P201,
+    ``pilot/SPEC-firm-cache-fill.md`` R5). Nothing is logged: the reply that
+    wrote it, or gave way to the whole walk, has already said any surprise
+    on its own error log, and the pass says the rest as a pass warning."""
+    try:
+        kept = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return False
+    return isinstance(kept, dict) and kept.get("head") in heads \
+        and isinstance(kept.get("households"), dict) \
+        and kept.get("digest") == _households_digest(kept["households"])
+
+
 def _entry_is_whole(entry: object) -> bool:
     if not isinstance(entry, dict) or set(entry) != {"fingerprint", "kind", "name", "feeds", "related", "returns"}:
         return False

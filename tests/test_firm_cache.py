@@ -151,6 +151,29 @@ def test_another_head_is_not_used(tmp_path):
     assert firm_cache.load(where, {**head, "format": firm_cache.FORMAT + 1}) == {}
 
 
+def test_holds_only_a_whole_file_under_one_of_the_heads(tmp_path, caplog):
+    """P201 R5: how the pass knows the summary it asked for left the cache
+    filled - whole JSON, its digest true, under one of the heads given -
+    and nothing is logged, since the reply already said any surprise."""
+    where = tmp_path / "firm-view.json"
+    head = firm_cache.head(tmp_path, TODAY)
+    tomorrow = {**head, "day": "2026-03-03"}
+    with caplog.at_level(logging.WARNING, logger="tracker.firm_cache"):
+        assert not firm_cache.holds(where, [head])                      # missing
+        firm_cache.save(where, head, {"Lee Family": _entry()})
+        assert firm_cache.holds(where, [head]) and firm_cache.holds(where, [tomorrow, head])
+        assert not firm_cache.holds(where, [tomorrow])
+        firm_cache.save(where, head, {})
+        assert firm_cache.holds(where, [head]), "a practice with nothing kept yet is still filled"
+        kept = json.loads(where.read_text(encoding="utf-8"))
+        kept["households"]["Lee Family"] = _entry()
+        where.write_text(json.dumps(kept), encoding="utf-8")
+        assert not firm_cache.holds(where, [head]), "a digest that does not match is not whole"
+        where.write_text("{not json", encoding="utf-8")
+        assert not firm_cache.holds(where, [head])
+    assert not caplog.records
+
+
 def test_a_missing_file_is_the_ordinary_first_reply_and_is_not_logged(tmp_path, caplog):
     with caplog.at_level(logging.WARNING, logger="tracker.firm_cache"):
         assert firm_cache.load(tmp_path / "firm-view.json", firm_cache.head(tmp_path, TODAY)) == {}

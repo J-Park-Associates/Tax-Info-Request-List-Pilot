@@ -102,7 +102,7 @@ from pathlib import Path
 import pytest
 
 from tests.tripwire import sitecustomize as tripwire
-from tracker import after_install, content_check, ledger, scheduling, settings, store, view
+from tracker import after_install, content_check, ledger, runner, scheduling, settings, store, view
 from tracker.filer import ensure, file_household_drops, refresh_household_readme
 from tracker.households import create_household
 from tracker.layout import (
@@ -244,6 +244,35 @@ def no_task_scheduler_unless_faked():
     patch.setattr(scheduling, "_schtasks", _schtasks_unfaked)
     try:
         yield
+    finally:
+        patch.undo()
+
+
+#: The pass's real fill of the firm view's cache (P201), kept before any
+#: test can stand in for it, for the tests that ask for the real one.
+REAL_FILL = runner.fill_firm_cache
+
+
+@pytest.fixture(autouse=True)
+def fills_asked():
+    """No pass starts a real firm summary unless its test asks (P201,
+    ``pilot/SPEC-firm-cache-fill.md`` R8). Every real pass over the saved
+    root asks one at its end, in a child Python that writes
+    ``firm-view.json``; across the suite that is a second interpreter per
+    pass and a file in every data folder. Here the fill answers "filled"
+    and records the root and product it was asked for; a test of the fill
+    puts :data:`REAL_FILL` back with its own ``monkeypatch``.
+    """
+    asked: list[tuple[str, str]] = []
+
+    def recorded(root, *, product=""):
+        asked.append((str(root), product))
+        return ""
+
+    patch = pytest.MonkeyPatch()
+    patch.setattr(runner, "fill_firm_cache", recorded)
+    try:
+        yield asked
     finally:
         patch.undo()
 
