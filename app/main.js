@@ -597,6 +597,10 @@ function menuItem(id, enabled, token) {
     click: () => {
       if (id === "error_log") openErrorLog().catch(() => null);
       else sendMenu({ id, token });
+      // Windows flips a check item's tick itself; put it back to what the page
+      // last said, so a page whose answer fails never leaves it flipped. The
+      // page's own message then ticks it (P197, review NIT 1).
+      if (CHECKABLE.has(id) && menuBuilt) buildMenu();
     },
   };
 }

@@ -457,6 +457,17 @@ def test_choosing_show_under_construction_is_sent_to_the_page(tmp_path):
     ran = _run(tmp_path, [{"clickBar": _word("show_under_construction")}])
     assert ran["sends"] == [{"channel": "menu", "message": {"id": "show_under_construction", "token": ""}}]
 
+
+def test_a_chosen_check_item_keeps_the_pages_tick_until_the_page_answers(tmp_path):
+    """P197, review NIT 1: Windows flips a check item's tick when it is
+    chosen; main.js rebuilds it from what the page last said, so a page whose
+    answer fails never leaves it flipped. The page's reply then moves it."""
+    word = _word("show_under_construction")
+    ran = _run(tmp_path, [{"clickBar": word}, {"menu": {"enable": [], "checked": []}}])
+    assert [_flat(menu)[word]["checked"] for menu in ran["menus"]] == [True, True, False]
+    plain = _run(tmp_path, [{"menu": {"enable": ["find"]}}, {"clickBar": _word("find")}])
+    assert len(plain["menus"]) == 2, "an ordinary item rebuilds nothing"
+
 def _learn(errorlog, **scenario):
     return [{"tracker": ["list"]}, {"clickBar": _word("error_log")}], {"errorLog": str(errorlog), **scenario}
 

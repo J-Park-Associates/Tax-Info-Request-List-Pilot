@@ -3963,7 +3963,7 @@ function hideTip() { said.tips += 1; }
 function shellEnable() { said.sent.push(shellChecked()); }
 const hiddenNow = () => root.all().filter((n) => n.cls.has("hidden")).map((n) =>
   n.tag === "li" ? n.kids[0].attrs["data-soon"] || n.kids[0].attrs["data-section"] || n.kids[0].attrs["data-type"]
-    : n.attrs.id || n.attrs["aria-labelledby"]);
+    : n.attrs.id || `list:${n.attrs["aria-labelledby"]}`);
 const soonButton = (key) => root.querySelectorAll(".side-section[data-soon]").find((n) => n.attrs["data-soon"] === key);
 """
 
@@ -3981,7 +3981,7 @@ def test_hiding_takes_the_five_under_construction_items_and_the_workspace_headin
       return { hidden: hiddenNow(), checked: shellChecked() };
     """, tmp_path)
     assert sorted(ran["hidden"]) == sorted([
-        "ready_to_sign", "family_entities", "side-workspace-heading", "side-workspace-heading",
+        "ready_to_sign", "family_entities", "side-workspace-heading", "list:side-workspace-heading",
         "personal_trusts", "corporate_entities", "portal_settings"])
     assert ran["checked"] == []
 
@@ -4030,7 +4030,33 @@ def test_the_setting_is_this_pcs_and_the_side_panel_draws_it_on_every_draw():
     text = stripped_js("shell.js")
     assert 'const SOON_KEY = "tracker.underConstruction";' in text
     assert "drawSoon();" in js_function("drawSide")
+    assert re.search(r"^drawSoon\(\);$", text, flags=re.M), "a stored hidden applies at load, before the words (review S1)"
     assert "show_under_construction: () => shellToggleSoon()," in text
     first = [line for line in js_function("shellEnabled").splitlines() if "const ids = [" in line]
     assert len(first) == 1 and '"show_under_construction"' in first[0]
     assert "under_construction" not in (REPO / "tracker" / "settings.py").read_text(encoding="utf-8")
+
+
+def test_a_damaged_stored_value_shows_them(tmp_path):
+    """P197 ruling 5 (review NIT 2a): only the exact word "hidden" hides; any
+    other stored value reads as shown, the new install's default."""
+    ran = run_shell(SOON_FUNCTIONS, SOON_PANEL, """
+      const seen = [];
+      for (const value of ["HIDDEN", "1", "true", ""]) {
+        store.data[SOON_KEY] = value; shellSoonHidden = null; drawSoon();
+        seen.push([hiddenNow(), shellChecked()]);
+      }
+      return seen;
+    """, tmp_path)
+    assert ran == [[[], ["show_under_construction"]]] * 4
+
+
+def test_hiding_while_focus_is_elsewhere_leaves_focus_where_it_is(tmp_path):
+    """P197 ruling 3 (review NIT 2b): focus moves only when it sat on an item
+    now hidden; on a page item it stays."""
+    ran = run_shell(SOON_FUNCTIONS, SOON_PANEL, """
+      document.activeElement = root.querySelectorAll(".side-section")[0];
+      shellToggleSoon();
+      return { hidden: hiddenNow().length, focus: said.focus, stored: store.data[SOON_KEY] };
+    """, tmp_path)
+    assert ran == {"hidden": 7, "focus": [], "stored": "hidden"}

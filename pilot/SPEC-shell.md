@@ -584,6 +584,7 @@ and the menu is rebuilt only if a word differs.
 | | — | | |
 | | Find (`find`) | Ctrl+F | same |
 | | Refresh (`refresh`) | F5 | always |
+| | Show Under Construction (`show_under_construction`), a checked item | | always (P197) |
 | **Tools** | Sort Now (`sort_now`) | F9 | a household, year or return is open, no sort runs, not locked |
 | | Stop Sorting (`stop_sorting`) | | a sort runs |
 | | — | | |
@@ -639,8 +640,10 @@ same when the wording table has a note word for it. Cancel writes nothing.
 ### 5.3 The page tells the menu what applies
 
 On every route change, state change and lock change, `shell.js` sends
-`{enable: [ids]}`: the ids whose rule in 5.1 holds now. `main.js` sets
-`enabled` on the menu items whose ids it knows and ignores anything else.
+`{enable: [ids], checked: [ids]}`: the ids whose rule in 5.1 holds now, and
+the checkable ids that are on (P197; `main.js` keeps only `CHECKABLE` ids, and
+a message without `checked` leaves the tick). `main.js` sets `enabled` on the
+menu items whose ids it knows and ignores anything else.
 It never adds, removes or renames an item for the page.
 
 ### 5.4 The one channel: `menu` (preload)
@@ -651,7 +654,7 @@ It never adds, removes or renames an item for the page.
 menu: {
   // A menu item was chosen: {id, token}. token is the page's own, echoed.
   onCommand: (listener) => ipcRenderer.on("menu", (_e, m) => listener(m)),
-  // What applies now: {enable: [ids]}; or pop a right-click menu:
+  // What applies now: {enable: [ids], checked: [ids ticked]}; or pop a right-click menu:
   // {popup, enable: [ids], token, x, y}.
   send: (message) => ipcRenderer.send("menu", message),
 },

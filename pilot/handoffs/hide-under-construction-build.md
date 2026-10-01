@@ -66,3 +66,40 @@ check`: Map is current (411 nodes, after this handoff was added).
 Not run in the real app on Windows (a hands-on check: View > Show Under
 Construction off and on, Alt+V+U, focus on a Tab-focused item, High Contrast,
 a restart keeps it). No push, no pull request.
+
+## Review fold (2026-10-01)
+
+Review: `pilot/reviews/hide-under-construction-review.md` (no MUST); rulings
+word for word: `pilot/reviews/hide-under-construction-rulings.md`.
+
+- **S1** (flash at start): `drawSoon();` once at load in shell.js's wiring
+  section, before the Under Construction click wiring; pinned in
+  `test_the_setting_is_this_pcs_and_the_side_panel_draws_it_on_every_draw`
+  (a top-level `drawSoon();` line). The menu tick at start is left as it was
+  (the menu bar is hidden until Alt; NIT 1's rebuild covers a click).
+- **S2**: SPEC-shell 5.3 now says `{enable: [ids], checked: [ids]}` and how
+  main.js treats `checked`; 5.4's preload copy matches preload.js word for
+  word; the curated `app/preload.js` role says `{enable, checked}`; map updated.
+- **NIT 1**: main.js's item click rebuilds the menu after sending when the id
+  is checkable, so the tick returns to what the page last said and only the
+  page's reply moves it. Test
+  `test_a_chosen_check_item_keeps_the_pages_tick_until_the_page_answers`
+  (an ordinary item still rebuilds nothing).
+- **NIT 2**: `test_a_damaged_stored_value_shows_them` ("HIDDEN", "1", "true",
+  "") and `test_hiding_while_focus_is_elsewhere_leaves_focus_where_it_is`.
+- **NIT 3**: `hiddenNow()` labels a list `list:<aria-labelledby>`, so the
+  heading and its list read as two different things.
+- **NIT 4**: SPEC-shell 5.1's View rows gain Show Under Construction (always,
+  P197).
+
+Dead code: none added; `node --check` main.js and shell.js ok. Tests, each its
+own process, in parallel:
+
+| File | 3.11.15 | 3.14.3 |
+|---|---|---|
+| tests/test_shell.py | 164 passed | 164 passed |
+| tests/test_shell_menu.py | 34 passed, 3 skipped | 34 passed, 3 skipped |
+| tests/test_single_source.py | 179 passed | 179 passed |
+| tests/test_repo_map.py | 80 passed | 80 passed |
+
+ruff: All checks passed. Map check: current (after this note, `update` run).

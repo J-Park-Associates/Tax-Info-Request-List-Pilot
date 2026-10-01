@@ -1064,6 +1064,8 @@ for (const node of document.querySelectorAll(".side-section[data-type]")) {
     shellGo({ level: "clients" });
   });
 }
+// A stored "hidden" applies before the first paint, not when the words arrive (P197, review S1).
+drawSoon();
 // A page not built yet says so and does nothing else: no page, no command (P154).
 for (const node of document.querySelectorAll(".side-section[data-soon]")) {
   node.addEventListener("click", () => toastWord("under_construction"));
