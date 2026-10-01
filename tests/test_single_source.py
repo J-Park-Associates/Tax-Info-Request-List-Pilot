@@ -4220,6 +4220,9 @@ _NAMES_NOT_SENTENCES = {
     # The pilot's name before the rename, the one home of it (R1): a name,
     # which the carry-over's sentences put beside the words "earlier name".
     "tracker.settings.EARLIER_PRODUCT_NAME",
+    # The redirect probe's file name (F7, P193, R1): a name no person reads,
+    # written and removed in one breath.
+    "tracker.settings.REDIRECT_PROBE_PREFIX",
 }
 
 

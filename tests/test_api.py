@@ -7655,6 +7655,25 @@ def test_the_first_screen_says_when_the_app_runs_from_a_removable_drive(capsys, 
         settings_module.PROGRAM_ON_REMOVABLE.format(folder=settings_module.app_dir())]
 
 
+def test_a_stale_redirected_copy_is_named_on_the_first_screen(capsys, demo_root, tmp_path, monkeypatch):
+    """F7 (P193, R2): a copy of the data folder Windows kept for a package
+    the app was once started inside is named, one sentence each, and never
+    removed - it holds client-derived data."""
+    from tracker import settings as settings_module
+
+    local = tmp_path / "Local"
+    copy = (local / settings_module.PACKAGES_DIR_NAME / "Claude_pzs8sxrjxfjjc" / "LocalCache"
+            / "Local" / settings_module.DATA_HOME_NAME)
+    copy.mkdir(parents=True)
+    (copy / "tracker.db").write_bytes(b"made-up")
+    monkeypatch.setattr(api, "redirected_copies", lambda: settings_module.redirected_copies(
+        {"LOCALAPPDATA": str(local)}, windows=True))
+    code, payload = run(capsys, "list")
+    assert code == 0
+    assert payload["machine_warnings"] == [settings_module.REDIRECTED_COPY.format(path=copy)]
+    assert (copy / "tracker.db").read_bytes() == b"made-up"                 # named, never removed
+
+
 # ------------------------------- statuses in a preparer's words (d200) ----
 
 
