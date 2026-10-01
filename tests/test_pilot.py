@@ -286,7 +286,7 @@ def test_the_check_script_splits_a_comma_joined_test_list_and_reads_each_exit_co
     begin, end = "# BEGIN test-file helpers\n", "# END test-file helpers"
     assert script.count(begin) == 1 and script.count(end) == 1
     helpers = script.split(begin)[1].split(end)[0]
-    assert "$Tests = Split-TestList $Tests" in script and "Start-TestFile $vpy $t $out" in script
+    assert "$Tests = Split-TestList $Tests" in script and "Start-TestFile $vpy $file $out" in script
     # A fake "pytest": a module the helper's `-m pytest` finds first, exiting
     # with the number the file names.
     (tmp_path / "pytest.py").write_text(
@@ -308,3 +308,101 @@ $codes = @($procs | ForEach-Object { $_.WaitForExit(); "$($_.ExitCode)" })
                           capture_output=True, text=True, timeout=120, check=False)
     assert done.returncode == 0, done.stderr
     assert done.stdout.strip().splitlines()[-1] == "2|pass.txt;fail.txt|0;3", done.stdout + done.stderr
+
+
+def _helpers(name: str) -> str:
+    """One BEGIN/END block of run_checks.ps1, lifted as it is."""
+    script = (REPO / "pilot" / "wintest" / "run_checks.ps1").read_text(encoding="utf-8")
+    begin, end = f"# BEGIN {name} helpers\n", f"# END {name} helpers"
+    assert script.count(begin) == 1 and script.count(end) == 1
+    return script.split(begin)[1].split(end)[0]
+
+
+def _run_ps(driver: Path, *args: str) -> str:
+    done = subprocess.run([POWERSHELL, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(driver), *args],
+                          capture_output=True, text=True, timeout=120, check=False)
+    assert done.returncode == 0, done.stdout + done.stderr
+    return done.stdout.strip().splitlines()[-1]
+
+
+def test_the_check_script_builds_only_after_every_named_test_file_has_ended():
+    """P200, A1: the build writes build-portable into the checkout, and the
+    suite's end-of-run guard (decision 185) fails any file still running when
+    a new folder appears there. So every test process is waited for, and its
+    verdict recorded, before the build starts."""
+    script = (REPO / "pilot" / "wintest" / "run_checks.ps1").read_text(encoding="utf-8")
+    waited = script.index("$r.Proc.WaitForExit()")
+    recorded = script.index('Record ("tests " + $r.File)')
+    build = script.index(r'Run "cmd.exe" @("/c", "pilot\Build Pilot Installer.bat")')
+    assert script.count("$r.Proc.WaitForExit()") == 1 and script.count("Build Pilot Installer.bat\")") == 1
+    assert waited < recorded < build
+
+
+def test_the_check_script_closes_only_the_app_and_never_forces_it_before_installing():
+    """P200, N7: an open app makes the silent install abort and roll back, so
+    the app is asked to close first, and the script stops if it does not.
+    Nothing in the script kills a process."""
+    script = (REPO / "pilot" / "wintest" / "run_checks.ps1").read_text(encoding="utf-8")
+    assert "Stop-Process" not in script and ".Kill(" not in script and "taskkill" not in script.lower()
+    assert "/FORCECLOSEAPPLICATIONS" not in script
+    close = script.index("$stillOpen = Close-App $appExes 30")
+    install = script.index('Start-Process -FilePath $setup.FullName')
+    assert close < install
+    assert script.index('Stop-Here "close $ProductName', close) < install
+
+
+@pytest.mark.skipif(POWERSHELL is None, reason="Windows PowerShell 5.1 is the Windows check's shell")
+def test_the_check_script_takes_a_test_file_by_bare_name_by_file_name_or_by_path(tmp_path):
+    """P200, N8: ``-Tests test_build`` once stopped with "no such test file".
+    The script's resolver, lifted as it is and run in 5.1, finds the same
+    file from each way of naming it, and nothing for a name that is not one."""
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "tests" / "test_build.py").write_text("", encoding="utf-8")
+    driver = tmp_path / "drive.ps1"
+    driver.write_text(_helpers("test-file") + r"""
+Set-Location $args[0]
+$found = @("test_build", "test_build.py", "tests\test_build.py", "tests/test_build", "test_none") |
+         ForEach-Object { $f = Resolve-TestFile $_; if ($f) { (Resolve-Path $f).Path } else { "none" } }
+$found -join "|"
+""", encoding="utf-8")
+    want = str(tmp_path / "tests" / "test_build.py")
+    assert _run_ps(driver, str(tmp_path)).split("|") == [want] * 4 + ["none"]
+
+
+@pytest.mark.skipif(POWERSHELL is None, reason="Windows PowerShell 5.1 is the Windows check's shell")
+def test_the_check_script_asks_the_app_to_close_and_leaves_alone_what_will_not(tmp_path):
+    """P200, N7: the script's close helpers, lifted as they are and run in 5.1.
+    A stand-in app with a window (a copy of PowerShell holding an invisible
+    form) closes when asked; a stand-in without one is still running when the
+    helper gives up, and is returned rather than killed; a process whose
+    program is not named is never touched."""
+    shown, windowless = tmp_path / "shown" / "app.exe", tmp_path / "windowless" / "app.exe"
+    for exe in (shown, windowless):
+        exe.parent.mkdir()
+        shutil.copy(POWERSHELL, exe)
+    form = ("Add-Type -AssemblyName System.Windows.Forms; $f = New-Object System.Windows.Forms.Form; "
+            "$f.Opacity = 0; [System.Windows.Forms.Application]::Run($f)")
+    procs = [subprocess.Popen([str(shown), "-NoProfile", "-Command", form]),
+             subprocess.Popen([str(windowless), "-NoProfile", "-Command", "Start-Sleep -Seconds 120"],
+                              creationflags=subprocess.CREATE_NO_WINDOW)]
+    driver = tmp_path / "drive.ps1"
+    driver.write_text(_helpers("app-close") + """
+$shown, $windowless = $args[0], $args[1]
+$deadline = (Get-Date).AddSeconds(30)
+while ((Get-Date) -lt $deadline -and -not (@(Find-AppProcess @($shown) | Where-Object { $_.MainWindowHandle -ne 0 }).Count)) {
+    Start-Sleep -Milliseconds 200
+}
+$before = @(Find-AppProcess @($shown, $windowless)).Count
+$left = @(Close-App @($shown) 20).Count
+$stubborn = @(Close-App @($windowless) 2).Count
+"$before|$left|$stubborn|$(@(Find-AppProcess @($windowless)).Count)"
+""", encoding="utf-8")
+    try:
+        assert _run_ps(driver, str(shown), str(windowless)) == "2|0|1|1"
+        assert procs[0].wait(10) == 0
+        assert procs[1].poll() is None, "the window-less stand-in was not the helper's to end"
+    finally:
+        for proc in procs:
+            if proc.poll() is None:
+                proc.kill()
+                proc.wait(10)

@@ -4781,6 +4781,13 @@
       "lines": 228
     },
     {
+      "id": "pilot/SPEC-check-scripts-0.3.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "8459fcdc0fa424bf",
+      "lines": 162
+    },
+    {
       "id": "pilot/SPEC-email-zip-tag.md",
       "type": "doc",
       "layer": "docs",
@@ -4928,6 +4935,13 @@
       "layer": "docs",
       "sha256": "aea79646d08642e3",
       "lines": 37
+    },
+    {
+      "id": "pilot/handoffs/check-scripts-build.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "f83141175688f1f9",
+      "lines": 38
     },
     {
       "id": "pilot/handoffs/column-order-build.md",
@@ -5619,8 +5633,8 @@
       "id": "pilot/wintest/PROMPT-0.3.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "5af888bc96b9a712",
-      "lines": 101
+      "sha256": "5a4bbdb9204abdbd",
+      "lines": 107
     },
     {
       "id": "pilot/wintest/PROMPT-RERUN-3.md",
@@ -8589,8 +8603,8 @@
       "id": "tests/test_pilot.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "2f1f2bcacd04367a",
-      "lines": 310,
+      "sha256": "c263e62349d40335",
+      "lines": 408,
       "exports": [
         "PILOT_JS",
         "POWERSHELL",
@@ -8608,7 +8622,11 @@
         "test_help_terms_shows_who_signed_and_when",
         "test_the_accept_button_waits_for_a_typed_name",
         "test_the_badge_sits_in_the_side_panels_foot_and_there_is_no_tour_button",
+        "test_the_check_script_asks_the_app_to_close_and_leaves_alone_what_will_not",
+        "test_the_check_script_builds_only_after_every_named_test_file_has_ended",
+        "test_the_check_script_closes_only_the_app_and_never_forces_it_before_installing",
         "test_the_check_script_splits_a_comma_joined_test_list_and_reads_each_exit_code",
+        "test_the_check_script_takes_a_test_file_by_bare_name_by_file_name_or_by_path",
         "test_the_contact_is_the_firms_admin_address",
         "test_the_edition_version_is_a_plain_version_number",
         "test_the_page_loads_the_pilot_after_the_app",
@@ -10097,8 +10115,8 @@
       "id": "tests/test_shell_menu.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "fae7892371db26de",
-      "lines": 731,
+      "sha256": "e83732f74a976475",
+      "lines": 750,
       "exports": [
         "NOT_OPENED",
         "NOT_REPORTED",

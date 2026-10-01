@@ -159,6 +159,22 @@ const snapshot = (items) => items.map((i) => ({
   label: i.label, type: i.type, role: i.role, enabled: i.enabled, accelerator: i.accelerator, checked: i.checked,
   submenu: i.submenu ? snapshot(i.submenu) : undefined }));
 let live = { bar: null, popup: null };
+// What main.js has started and not yet seen finish: Electron's ready, a fake
+// tracker child until it closes, a file check (fs.promises). The harness waits
+// for this to reach nought, never for a fixed time: a busy PC (12 test files at
+// once) once took longer than the 60 ms it used to wait for a file check (P200).
+let pending = 0;
+const track = (promise) => {
+  pending += 1;
+  const done = () => { pending -= 1; };
+  promise.then(done, done);
+  return promise;
+};
+// Every continuation of a settled promise runs before the next turn of the
+// event loop, so a turn with nothing pending means main.js has done answering.
+const settle = async () => {
+  do { await new Promise((resolve) => setImmediate(resolve)); } while (pending > 0);
+};
 const win = {
   isDestroyed: () => false,
   getContentBounds: () => ({ width: 1400, height: 900 }),
@@ -176,7 +192,7 @@ const electron = {
          setPath() {}, setAppUserModelId() {},
          getPath: (name) => { if (name === "appData") return "appdata";
                               if (!sc.userData) throw new Error("no such path"); return sc.userData; },
-         whenReady: () => Promise.resolve() },
+         whenReady: () => track(Promise.resolve()) },
   BrowserWindow,
   Menu: {
     buildFromTemplate: (template) => ({ template, popup(options) {
@@ -209,9 +225,11 @@ const fakeSpawn = (cmd, args) => {
   proc.stdin = { write() {}, end() {}, on() {} };
   proc.pid = 1;
   proc.kill = () => {};
+  pending += 1;
   setImmediate(() => {
     if (args.includes("list")) proc.stdout.emit("data", JSON.stringify(listReply()) + "\n");
     proc.emit("close", 0);
+    pending -= 1;
   });
   return proc;
 };
@@ -220,7 +238,9 @@ Module._load = function (request, ...rest) {
   if (request === "electron") return electron;
   if (request === "child_process") return { spawn: fakeSpawn };
   if (request === "fs") {
-    return { ...realFs, existsSync: () => true,
+    const promises = Object.fromEntries(Object.entries(realFs.promises).map(([name, fn]) =>
+      [name, typeof fn === "function" ? (...args) => track(fn.apply(realFs.promises, args)) : fn]));
+    return { ...realFs, promises, existsSync: () => true,
       readFileSync(p, ...more) {
         const base = String(p).split(/[\\/]/).pop();
         if (base in (sc.css || {})) {
@@ -232,7 +252,6 @@ Module._load = function (request, ...rest) {
   }
   return load.call(this, request, ...rest);
 };
-const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const items = (list, label) => {
   for (const item of list) {
     if (item.label === label) return item;
@@ -243,7 +262,7 @@ const items = (list, label) => {
 };
 (async () => {
   require(mainJs);
-  await wait(100);
+  await settle();
   for (const step of sc.steps) {
     if (step.menu !== undefined) {
       menuHandler({ sender: step.stranger ? {} : win.webContents }, step.menu);
@@ -261,7 +280,7 @@ const items = (list, label) => {
       Object.assign(theme, step.theme);
       updated();
     }
-    await wait(60);
+    await settle();
   }
   process.stdout.write(JSON.stringify(log));
 })();
