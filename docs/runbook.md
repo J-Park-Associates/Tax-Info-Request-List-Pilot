@@ -128,8 +128,11 @@ judged; a store that holds none yet says so rather than "nothing to
 repair". A finding is not a failure: Setup still
 finishes. If the step itself could not run - the store would not open, the
 settings could not be read - Setup says so in one sentence and the app
-tries again at its next start. The store check below is the same check,
-for a deliberate look.
+tries again at its next start. On the computer that runs the schedule,
+every start also asks Windows whether the scheduled task is still there:
+one that an uninstall (or a person, in Task Scheduler) deleted is
+registered again at that start, with no Repair (P198). The store check
+below is the same check, for a deliberate look.
 
 **The clients root is a folder of clients, and only that.** The app refuses
 the system drive's root (`C:\`), the app's own folder, the folder holding its
