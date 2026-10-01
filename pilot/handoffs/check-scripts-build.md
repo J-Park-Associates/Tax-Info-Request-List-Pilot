@@ -36,3 +36,20 @@ Flake proof: a scratch probe ran every node-harness test of `test_shell_menu` wi
 
 - `CLAUDE.md` lines 323-324 still say `-Tests` "runs the files alongside the installer build"; outside this lane. Wording: "runs the files side by side, then builds the installer once they have ended."
 - `pilot/DECISIONS.md` row P200: status "SPEC to write" -> built; and the N7 cause reading (window-less Electron helpers) is the likely one, from the install log line quoted in RESULTS-0.3; the full `install.log` under `%USERPROFILE%\PilotTest` was not opened.
+
+## Review fold (2026-10-01 02:07, branch `claude/fold-screen` from 7e90834)
+
+Findings from `pilot/reviews/lanes-screen-review.md`, as ruled in `pilot/reviews/lanes-rulings.md` "Screen and scripts".
+
+- **S1 (accepted, fixed).** `pilot/wintest/run_checks.ps1` 123-139 new `Get-AppExePatterns`: both product names, in the real `%LOCALAPPDATA%\Programs` and in `%LOCALAPPDATA%\Packages\*\LocalCache\Local\Programs`, fixed parts wildcard-escaped; 144-147 `Find-AppProcess` matches those patterns (`-like`; a plain path matches only itself); step 6 line 299 uses it. Still never forced, still nothing but `Tax Document Console.exe`. New test `tests/test_pilot.py::test_the_check_script_finds_the_app_wherever_it_was_installed_and_nothing_else` (5.1, stand-in %LOCALAPPDATA% named with `[x]`: finds the real and the Packages copy, not another name or folder, closes nothing). `pilot/wintest/PROMPT-0.3.md` P200 note gains the line.
+- **N1 (fixed).** `run_checks.ps1` 83-91 `Get-TestFileCandidates`; the stop message (248-252) names those same places, never ".py.py".
+- **N2 (fixed).** `run_checks.ps1` 100-111 `Get-UniqueTestFiles` (by full path, first naming kept); step 4 line 256.
+- **N3 (fixed).** Only `.py` names are candidates, so `-Tests README.md` stops. N1-N3 test: `tests/test_pilot.py::test_the_check_script_takes_only_py_files_says_where_it_looked_and_runs_a_file_named_twice_once` (5.1, lifted helpers).
+- The whole script parses in Windows PowerShell 5.1.26100 (0 errors). `run_checks.ps1` was not run whole (it installs the app); the app was not started or closed; nothing under %USERPROFILE%\PilotTest or %LOCALAPPDATA% was opened.
+- `pilot/SPEC-check-scripts-0.3.md` sections 2 and 3 (rulings, line ranges, owning tests) updated.
+
+Runs (each file its own process, two at a time per interpreter): Python 3.11.15 (scratchpad venv) / C:\Python314:
+- tests/test_pilot.py: 30 passed in 10.43s / 30 passed in 11.65s
+- tests/test_single_source.py: 179 passed in 40.21s / 179 passed in 38.85s
+- tests/test_repo_map.py: 80 passed in 27.69s / 80 passed in 26.07s
+- `python -m ruff check .`: All checks passed! `python tools/repo_map.py check`: Map is current (424 nodes).

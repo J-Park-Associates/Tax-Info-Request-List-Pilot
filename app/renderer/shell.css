@@ -18,7 +18,7 @@
 ::selection { background: var(--bg-selected); color: var(--text); }
 input, textarea, select { caret-color: var(--text); accent-color: var(--accent); }
 #page, #sheet-body, .modal { scrollbar-color: var(--scroll-thumb) transparent; }
-.tabular, .side-count, .group-count, .list-count, .row-date, .row-year, .head-year, .figure-number, .last-sort-text, .page-count, .reason-card-number, .switch-count, .group-docs {
+.tabular, .side-count, .group-count, .list-count, .row-date, .row-year, .head-year, .figure-number, .last-sort-text, .page-count, .reason-card-number, .switch-count, .group-docs, #sc-next {
   font-variant-numeric: tabular-nums;
 }
 :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }

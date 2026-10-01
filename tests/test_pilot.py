@@ -370,6 +370,72 @@ $found -join "|"
 
 
 @pytest.mark.skipif(POWERSHELL is None, reason="Windows PowerShell 5.1 is the Windows check's shell")
+def test_the_check_script_takes_only_py_files_says_where_it_looked_and_runs_a_file_named_twice_once(tmp_path):
+    """The screen review's N1-N3, the script's helpers lifted as they are and
+    run in 5.1: "-Tests README.md" finds no test file although README.md
+    exists (only .py files are test files); the stop message names the places
+    looked, never "test_x.py.py"; and a file named twice in two ways is run
+    once, under its first naming."""
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "tests" / "test_build.py").write_text("", encoding="utf-8")
+    (tmp_path / "README.md").write_text("", encoding="utf-8")
+    (tmp_path / "tests" / "README.md").write_text("", encoding="utf-8")
+    driver = tmp_path / "drive.ps1"
+    driver.write_text(_helpers("test-file") + r"""
+Set-Location $args[0]
+$readme = if (Resolve-TestFile "README.md") { "found" } else { "none" }
+$looked = (Get-TestFileCandidates "test_x.py") -join " and "
+$bare = (Get-TestFileCandidates "test_x") -join " and "
+$files = @(Get-UniqueTestFiles @("tests\test_build.py", "tests/test_build.py", (Resolve-TestFile "test_build")))
+"$readme|$looked|$bare|$($files.Count)|$($files[0])"
+""", encoding="utf-8")
+    said = _run_ps(driver, str(tmp_path)).split("|")
+    assert said == ["none", r"test_x.py and tests\test_x.py", r"test_x.py and tests\test_x.py", "1", r"tests\test_build.py"]
+    script = (REPO / "pilot" / "wintest" / "run_checks.ps1").read_text(encoding="utf-8")
+    assert "$looked = (Get-TestFileCandidates $t) -join" in script and "$t.py and tests" not in script
+    assert script.index("$files = @(Get-UniqueTestFiles $files)") < script.index("Start-TestFile $vpy $file $out")
+
+
+@pytest.mark.skipif(POWERSHELL is None, reason="Windows PowerShell 5.1 is the Windows check's shell")
+def test_the_check_script_finds_the_app_wherever_it_was_installed_and_nothing_else(tmp_path):
+    """The screen review's S1: an install run from inside a packaged app lands
+    in that package's private copy of Programs (P193), where the close step
+    once never looked. The helpers, lifted as they are and run in 5.1 against
+    a stand-in %LOCALAPPDATA%, find the program in the real Programs folder
+    and in a Packages\\<package>\\LocalCache\\Local\\Programs copy, and never
+    a program of another name or in another folder."""
+    local = tmp_path / "Local [x]"
+    real = local / "Programs" / "Tax Document Console" / "app.exe"
+    copy = local / "Packages" / "Claude_abc" / "LocalCache" / "Local" / "Programs" / "Tax Document Console" / "app.exe"
+    others = [local / "Programs" / "Other" / "app.exe", local / "Programs" / "Tax Document Console" / "other.exe"]
+    for exe in (real, copy, *others):
+        exe.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy(POWERSHELL, exe)
+    procs = [subprocess.Popen([str(exe), "-NoProfile", "-Command", "Start-Sleep -Seconds 120"],
+                              creationflags=subprocess.CREATE_NO_WINDOW) for exe in (real, copy, *others)]
+    driver = tmp_path / "drive.ps1"
+    driver.write_text(_helpers("app-close") + """
+$patterns = Get-AppExePatterns $args[0] @("Tax Document Console") "app.exe"
+$deadline = (Get-Date).AddSeconds(30)
+while ((Get-Date) -lt $deadline -and @(Find-AppProcess $patterns).Count -lt 2) { Start-Sleep -Milliseconds 200 }
+$found = @(Find-AppProcess $patterns | ForEach-Object { $_.Path } | Sort-Object -Unique)
+"$($patterns.Count)|$($found -join ';')"
+""", encoding="utf-8")
+    try:
+        said = _run_ps(driver, str(local)).split("|")
+        assert said[0] == "2"
+        assert sorted(said[1].split(";")) == sorted([str(real), str(copy)])
+        assert all(proc.poll() is None for proc in procs), "finding the app never closes anything"
+    finally:
+        for proc in procs:
+            if proc.poll() is None:
+                proc.kill()
+                proc.wait(10)
+    script = (REPO / "pilot" / "wintest" / "run_checks.ps1").read_text(encoding="utf-8")
+    assert '$appExes = Get-AppExePatterns $env:LOCALAPPDATA @($ProductName, $EarlierName) "$ProductName.exe"' in script
+
+
+@pytest.mark.skipif(POWERSHELL is None, reason="Windows PowerShell 5.1 is the Windows check's shell")
 def test_the_check_script_asks_the_app_to_close_and_leaves_alone_what_will_not(tmp_path):
     """P200, N7: the script's close helpers, lifted as they are and run in 5.1.
     A stand-in app with a window (a copy of PowerShell holding an invisible

@@ -2169,9 +2169,16 @@ function scanSummary(run, others, summary) {
   // skip says nothing was done: before, it said nothing, and a person could
   // not tell a Sort that ran from one that never started. A file still
   // arriving in Drop files here means something waits, so that pass says
-  // the approved nothing-done words with the syncing count.
-  if (!run.filed && !run.review && !run.file_errors.length && !run.warnings.length && !also.length && !run.cancelled) {
-    return { text: run.waiting ? fill(words.nothing_done, { why: fill(words.syncing, { n: run.waiting }) }) : words.nothing_to_sort,
+  // the approved nothing-done words with the syncing count. The pass sorts
+  // the household's one inbox across every return and counts per return, so
+  // it is said only when no return of the pass filed, sent to review, met a
+  // file it could not sort or was stopped (the screen review's M1): a Sort
+  // pressed on one return that filed into another did something.
+  const all = [run, ...others];
+  const quiet = all.every((one) => !one.filed && !one.review && !one.file_errors.length && !one.cancelled);
+  if (quiet && !run.warnings.length && !also.length) {
+    const waiting = all.reduce((n, one) => n + (one.waiting || 0), 0);
+    return { text: waiting ? fill(words.nothing_done, { why: fill(words.syncing, { n: waiting }) }) : words.nothing_to_sort,
              cls: "warn" };
   }
   const did = [fill(words.filed, { n: run.filed })];

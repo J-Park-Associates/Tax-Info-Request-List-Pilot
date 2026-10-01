@@ -25,7 +25,9 @@ change, no version number.
   PM" beside "First Run At 6:30 AM", not "22:30".
 - A Sort that finds **nothing to do** now says "Nothing to Sort" (Q1 below;
   built as recommended). If a file is still arriving in Drop files here it
-  says "Nothing Done: 1 Still Syncing."
+  says "Nothing Done: 1 Still Syncing." A Sort that filed into **another**
+  return of the household did something and never says it (the screen
+  review's M1).
 
 ## 1. L4: the Date column sits too far to the right
 
@@ -158,10 +160,14 @@ that ends the engine's sentence through `pagesTime`; the dialog (2063) and
 the toast after Save (2091) use it. The engine's sentence is unchanged
 (`_next_sort` in `tracker/api.py` reads its last five characters, and
 `tests/test_scheduling.py` pins it). A sentence that does not end in a time
-is left whole.
+is left whole. The time in the sentence is drawn with
+`font-variant-numeric: tabular-nums`, as every date and time is: `#sc-next`
+joins the tabular list in `app/renderer/shell.css` line 21 (the screen
+review's N4).
 
 **Owning test.** `tests/test_shell.py`
-`test_the_schedule_dialog_says_its_next_run_in_the_apps_clock_style` (new).
+`test_the_schedule_dialog_says_its_next_run_in_the_apps_clock_style` (new;
+it also holds `#sc-next` in the tabular list).
 
 ## 6. A household Sort that does nothing (owner question Q1)
 
@@ -188,13 +194,24 @@ Syncing" (no new pattern; five words). A Sort that filed, sent to review,
 could not sort a file, warned, was stopped, or has a line about another
 return is unchanged.
 
+**Every return of the pass decides, not the asked one alone** (the screen
+review's M1, accepted in `pilot/reviews/lanes-rulings.md`). The pass sorts
+the household's one inbox across every open return and counts per return,
+so a Sort pressed while the 1065 is shown can file five documents into the
+1040. The notice is said only when no return in the pass filed, sent to
+review, met a file it could not sort or was stopped; the syncing count is
+the pass's, summed over its returns.
+
 **Files.** `tracker/api.py` 494-501 (`SCAN_NOTHING_TO_SORT`, its comment) and
-1892-1893 (`vocab.scan.nothing_to_sort`); `app/renderer/app.js` 2168-2176
+1892-1893 (`vocab.scan.nothing_to_sort`); `app/renderer/app.js` 2168-2182
 (`scanSummary`).
 
 **Owning tests.** `tests/test_shell.py`
 `test_a_sort_that_finds_nothing_to_do_says_nothing_to_sort` (new; Title Case
-and five words); `tests/test_single_source.py`
+and five words) and
+`test_nothing_to_sort_is_said_only_when_no_return_of_the_household_received_anything`
+(M1: another return filing, parking, failing a file or stopping keeps it
+silent); `tests/test_single_source.py`
 `test_every_word_a_scan_reply_is_said_in_is_the_apis` (the new key is used
 as `words.nothing_to_sort`); `tests/test_api.py`
 `test_every_drawn_word_the_vocabulary_carries_is_in_title_case`.
