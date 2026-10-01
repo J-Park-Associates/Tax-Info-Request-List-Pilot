@@ -31,8 +31,9 @@
 // working copy in File Explorer (`window.tracker.open(path, "reveal")`, the
 // path looked up by the API's key in the map it came with, never drawn); a
 // household name and a return name navigate in the app, with no call to the
-// engine. A return's link reads "{Return Name} ({Year})": its name from the
-// list and its year from the row's own record, never worked out here.
+// engine. A return's link reads its taxpayer (P194, P195): its name from the
+// list less the recorded form it begins with; the year and the form are each
+// their own column (Overview, Reminders), heading part or page title.
 //
 // What this file offers the sheet and the right-click menus:
 //   pagesRowFor(token)  what a row is about ({menu, step, ...}), by the row's id
@@ -64,18 +65,23 @@ let pagesDrawn = "";           // which route the page holds, so a failed draw k
 
 // The column headers of the four firm lists (pilot SPEC-lists; P135-P139):
 // each list's columns by the vocabulary's word (vocab.screen.columns); a
-// cell with no word has an empty header that orders nothing.
+// cell with no word has an empty header that orders nothing. A list's cells
+// are its keys, left to right. The two lists of returns say each field once,
+// in its own column (P194, P195): Tax Year, Taxpayer, Form Type, then the
+// list's own status and date.
 const PAGES_COLUMNS = {
-  overview: { name: "return", detail: "client", status: "status", end: "date" },
+  overview: { year: "tax_year", taxpayer: "taxpayer", form: "form_type", status: "status", end: "date" },
   needs_review: { name: "file", detail: "suggestion", status: "reason", end: "received" },
-  reminders: { name: "return", detail: "client", status: "stage", end: "drafted" },
+  reminders: { year: "tax_year", taxpayer: "taxpayer", form: "form_type", status: "stage", end: "drafted" },
   clients: { name: "client_name", detail: "returns", status: "status", end: "" },
 };
-const PAGES_CELLS = ["name", "detail", "status", "end"];
+// Every cell any list has: a list's widths set its own and clear the rest.
+const PAGES_CELLS = ["year", "taxpayer", "form", "name", "detail", "status", "end"];
 // Each column's least and most width in px (SPEC-lists 4). The usual widths
-// are the stylesheet's tokens; the name column's width is its least, and it
-// takes whatever the others leave.
-const PAGES_WIDTHS = { name: [160, 640], detail: [80, 400], status: [96, 320], end: [112, 240] };
+// are the stylesheet's tokens. Every column of a firm list is exactly its
+// width (P199): none takes the window's slack, so widening a column moves
+// its right edge, and the columns after it, to the right.
+const PAGES_WIDTHS = { year: [64, 160], taxpayer: [160, 640], form: [64, 160], name: [160, 640], detail: [80, 400], status: [96, 320], end: [112, 240] };
 // A list whose usual widths differ from the stylesheet's (SPEC-lists 4):
 // Needs Review's reasons are the longest status words ("Looks Like Wrong
 // Document"), and its suggestions are short request names, so 40px move
@@ -83,11 +89,12 @@ const PAGES_WIDTHS = { name: [160, 640], detail: [80, 400], status: [96, 320], e
 const PAGES_USUAL = { needs_review: { detail: 160, status: 200 } };
 const PAGES_WIDTH_STEP = 16;               // one Ctrl+Shift+Arrow: four grid steps
 const PAGES_WIDTHS_KEY = "tracker.columns"; // this PC's own storage, never the record
+const PAGES_ORDER_KEY = "tracker.order";    // the order each list was left in, kept the same way (P199)
 // Urgency, the order the app already uses (SPEC-lists 3): a return that cannot
 // be read or a paused household first, then what needs a person, what waits
-// on the client, what is complete.
+// on the taxpayer, what is complete.
 const PAGES_URGENCY = { problem: 0, needs: 1, waiting: 2, done: 3, plain: 4 };
-const pagesOrder = {};         // list -> {cell, dir}: kept while the app is open (P139)
+let pagesOrder = null;         // list -> {cell, dir}: read once from this PC's storage (P199)
 let pagesWidths = null;        // list -> {cell: px}: read once from this PC's storage (P139)
 // Rows per page of a firm list (pilot SPEC-lists 14, P152, P174; owner question Q11).
 const PAGES_PER_PAGE = 50;
@@ -109,7 +116,7 @@ const PAGES_SECTIONS = { needs_you: ["needs", "alert"], waiting: ["waiting", "cl
 let pagesPageAt = {};          // list -> the page shown (0 first); forgotten when the page is left (P174)
 let pagesTab = "all";          // Overview's filter tab: all, need or waiting (P145)
 let pagesReasonPick = "";      // Needs Review's reason card, a reason's code or "" for All (P149)
-let pagesClientType = "";      // Clients' Client Type, a key of vocab.screen.client_types or "" (P153)
+let pagesClientType = "";      // Households' Taxpayer Type, a key of vocab.screen.client_types or "" (P153)
 let pagesPanel = null;         // the open Linked Households panel: {node, back} (P171)
 
 // ── small helpers ─────────────────────────────────────────────────────
@@ -166,14 +173,35 @@ function pagesLinkWords(kind) {
   return said;
 }
 
-// A return's link text, "{Return Name} ({Year})" (ruling 13): its name from
-// the list, its year from the row's own record (or the list's), both the
-// API's. A row the API gave no year for is its name alone, not a year of ours.
-function pagesReturnText(path, year, named) {
-  const name = named || pagesReturnName(path);
-  const listed = shellReturn(path);
-  const shown = year || (listed ? listed.year : 0);
-  return shown ? `${name} (${shown})` : name;
+// The taxpayer a return is for, as its name says it (P194, P195): the
+// return's name without the "{form} - " the naming pattern puts first, and
+// only when the record's form is what the name begins with. A return with no
+// recorded form, or a name somebody typed another way, is shown whole: the
+// form is read from the record, never from a name (P172), and a name is
+// never cut by a guess. Letter case and a hyphen inside the form number are
+// not differences (the catalog's own labels write a form number with a hyphen). The year is
+// its own column, heading or title.
+function pagesTaxpayer(name, form) {
+  const pattern = vocab.layout ? vocab.layout.return_name_pattern : "";
+  if (!pattern) throw new Error("layout.return_name_pattern");
+  const at = pattern.indexOf("{client}");
+  if (!form || pattern.indexOf("{form}") !== 0 || at === -1 || at + "{client}".length !== pattern.length) return name;
+  const sep = pattern.slice("{form}".length, at);     // " - "
+  const cut = sep ? name.indexOf(sep) : -1;
+  const same = (text) => text.replace(/-/g, "").toLowerCase();
+  const rest = cut > 0 && same(name.slice(0, cut)) === same(form) ? name.slice(cut + sep.length).trim() : "";
+  return rest || name;
+}
+
+// A form's order key (P195): the order the app already lists forms in, the
+// side panel's Client Types (vocab.client_type_forms), then any other form
+// by its name; a blank form is blank, so it goes last both ways.
+function pagesFormKey(form) {
+  if (!form) return "";
+  if (!vocab.client_type_forms) throw new Error("client_type_forms");
+  const known = Object.values(vocab.client_type_forms).flat();
+  const at = known.indexOf(form);
+  return [at === -1 ? known.length : at, form];
 }
 
 function pagesHouseholdPath(name) {
@@ -206,9 +234,11 @@ function pagesRunLink(link) {
 // A name that is a link: a node of its own in the cell, carrying the link's
 // tooltip (which wins over the cut name's, whose full text is the page's
 // heading or the sheet's title).
+// `link.tip`: a link's own tooltip, where it says more than its kind's
+// words (a taxpayer's return also names its household, P195).
 function pagesLinkNode(link, text, cell) {
   const node = h("span", { className: "row-link", dataset: { link: link.kind, cell } }, text);
-  setTip(node, pagesLinkWords(link.kind));
+  setTip(node, link.tip || pagesLinkWords(link.kind));
   return node;
 }
 
@@ -291,15 +321,29 @@ function pagesByName(a, b) {
 // The name cell, and beside the name the row's marker when it has one (a
 // household paused for two open years, ruling 21): the vocabulary's words.
 function pagesNameCell(spec) {
-  // The form tag (P145) comes first; it repeats the form the name begins
-  // with, so it is hidden from a screen reader, which reads the name.
-  const first = spec.form ? h("span", { className: "form-tag", "aria-hidden": "true" }, spec.form)
-    : spec.fileIcon ? h("span", { className: "row-icon" }, icon("file", true)) : null;
+  // The form tag (P145) comes first where the row has no Form Type column
+  // of its own (the household and year pages); the name no longer begins
+  // with the form (P195), so a screen reader reads the tag too.
+  const tag = spec.form && !spec.returnRow ? h("span", { className: "form-tag" }, spec.form) : null;
+  const first = tag || (spec.fileIcon ? h("span", { className: "row-icon" }, icon("file", true)) : null);
   const box = h("span", { className: "row-name" }, first, spec.nameLink ? pagesLinkNode(spec.nameLink, spec.name, "name") : spec.name);
   if (!spec.nameLink) setTipIfCut(box, spec.name);
   if (spec.mark) box.append(h("span", { className: "row-mark is-attention" }, spec.mark));
-  if (spec.linksIn === "name") pagesLinkMarkIn(box, spec.links, true, spec.name);
+  if (spec.linksIn === "name") pagesLinkMarkIn(box, spec.links, true, spec.linkOwner || spec.name);
   return box;
+}
+
+// A return row's Form Type cell: the form tag, or nothing when the record has no form.
+function pagesFormCell(spec) {
+  return h("span", { className: "row-form" }, spec.form ? h("span", { className: "form-tag" }, spec.form) : null);
+}
+
+// A return's heading on Needs Review (P195): the year, the taxpayer (the
+// link to the return) and the form tag, each once, in the columns' order.
+function pagesReturnHeading(path, year, form) {
+  return [year ? h("span", { className: "head-year" }, String(year)) : null,
+    pagesHeadLink({ kind: "return", path }, pagesTaxpayer(pagesReturnName(path), form)),
+    form ? h("span", { className: "form-tag" }, form) : null];
 }
 
 // ── linked households (pilot SPEC-lists 10; P141, P171) ────────────────
@@ -418,33 +462,35 @@ function pagesRow(spec) {
   // not a Tab stop inside the list (P171).
   const linked = spec.links && spec.links.length ? screenWords().linked.tip : "";
   // A status that is a tag for longer words (P116) carries them for the
-  // keyboard and a screen reader, since focus rests on the list (lane 2).
-  const described = [words, pagesReasonTip(spec), linked].filter(Boolean).join(", ");
+  // keyboard and a screen reader, since focus rests on the list (lane 2);
+  // a return row names its household there too, as its tooltip does (P195).
+  const described = [words, pagesReasonTip(spec), spec.household, linked].filter(Boolean).join(", ");
+  // A row of a list of returns (Overview, Reminders) is five cells, one field
+  // each: Tax Year, Taxpayer, Form Type, then status and date (P194, P195).
+  const lead = spec.returnRow
+    ? [h("span", { className: "row-year" }, spec.year ? String(spec.year) : ""), pagesNameCell(spec), pagesFormCell(spec)]
+    : [pagesNameCell(spec), pagesDetailCell(spec)];
   const node = h("div", {
-    className: `row${step ? " has-step" : ""}${spec.child ? " row-child" : ""}${wraps ? " row-wrap" : ""}${file ? " row-file" : ""}`, role: "option", id, "aria-selected": "false",
+    className: `row${spec.returnRow ? " row-return" : ""}${step ? " has-step" : ""}${spec.child ? " row-child" : ""}${wraps ? " row-wrap" : ""}${file ? " row-file" : ""}`,
+    role: "option", id, "aria-selected": "false",
     "aria-description": described || undefined, dataset: { menu: spec.menu || "", token: id },
   },
-  pagesNameCell(spec),
-  pagesDetailCell(spec),
+  ...lead,
   pagesStatusCell(spec),
   h("span", { className: "row-end" }, h("span", { className: "row-date" }, spec.date || ""), step));
   return node;
 }
 
 // The detail cell: a link, plain words, or (Needs Review's suggestion) a
-// muted tag with its full title as the tooltip; and the link mark after a
-// household's name (P141).
+// muted tag with its full title as the tooltip. (The link mark sits in the
+// name cell: no list shows a household in its detail column since P195.)
 function pagesDetailCell(spec) {
-  let box;
   if (spec.detailTag && spec.detail) {
     const tag = h("span", { className: "request-tag" }, spec.detail);
     setTip(tag, spec.detailTip || spec.detail);
-    box = h("span", { className: "row-detail" }, tag);
-  } else {
-    box = pagesCell("row-detail", "detail", spec.detail || "", spec.detailLink);
+    return h("span", { className: "row-detail" }, tag);
   }
-  if (spec.linksIn === "detail") pagesLinkMarkIn(box, spec.links, true, spec.detail);
-  return box;
+  return pagesCell("row-detail", "detail", spec.detail || "", spec.detailLink);
 }
 
 // The longer words a status is a tag for (P116: `spec.reason` is its code,
@@ -575,7 +621,8 @@ function pagesGroup(spec) {
   const section = spec.key ? PAGES_SECTIONS[spec.key] : null;
   const tone = section ? PAGES_TONES[section[0]] : "";
   const meta = h("span", { className: `group-count${section ? ` is-badge ${tone}` : ""}` }, spec.caption !== undefined ? spec.caption : String(total));
-  const title = h("h2", { className: "group-title", id: headId }, spec.headingLink ? pagesHeadLink(spec.headingLink, spec.heading) : spec.heading);
+  // `heading`: words, or the nodes of a return's heading (pagesReturnHeading).
+  const title = h("h2", { className: "group-title", id: headId }, spec.heading);
   const start = spec.step ? pagesGroupStep(spec.step) : null;
   const lead = section ? h("span", { className: `group-icon ${tone}` }, icon(section[1])) : spec.lead || null;
   const headClass = `group-head${spec.first ? " is-first" : ""}${section ? ` is-section section-${section[0]}` : ""}`;
@@ -710,7 +757,7 @@ function pagesCompare(cell, dir) {
 
 // A list's specs in the order its header asks for, or as they came.
 function pagesOrdered(list, specs) {
-  const order = pagesOrder[list];
+  const order = pagesStoredOrder()[list];
   if (!order) return specs;
   const by = pagesCompare(order.cell, order.dir);
   return specs.map((spec, at) => ({ spec, at })).sort(by).map((entry) => entry.spec);
@@ -719,10 +766,12 @@ function pagesOrdered(list, specs) {
 // A header was pressed: the next order in its cycle, the list drawn again,
 // and focus back on the same header so it can be pressed again.
 function pagesOrderBy(list, cell) {
-  const now = pagesOrder[list];
-  if (!now || now.cell !== cell) pagesOrder[list] = { cell, dir: 1 };
-  else if (now.dir > 0) pagesOrder[list] = { cell, dir: -1 };
-  else delete pagesOrder[list];
+  const held = pagesStoredOrder();
+  const now = held[list];
+  if (!now || now.cell !== cell) held[list] = { cell, dir: 1 };
+  else if (now.dir > 0) held[list] = { cell, dir: -1 };
+  else delete held[list];
+  pagesSaveOrder();
   delete pagesPageAt[list];      // any change of order returns to page 1 (P174)
   const page = $("page");
   pagesDraw(shellRoute, page);
@@ -737,8 +786,8 @@ function pagesOrderBy(list, cell) {
 function pagesColumnHeads(list) {
   const words = screenWords();
   const said = words.columns;
-  const order = pagesOrder[list];
-  const cells = PAGES_CELLS.map((cell) => {
+  const order = pagesStoredOrder()[list];
+  const cells = Object.keys(PAGES_COLUMNS[list]).map((cell) => {
     const key = PAGES_COLUMNS[list][cell];
     if (!key) return h("div", { className: "col-cell", role: "columnheader", dataset: { cell } }, pagesGrip(list, cell));
     const word = said[key];
@@ -788,7 +837,7 @@ function pagesGripStart(list, cell, grip, e) {
 // every cell is measured on one line (`is-measuring`), then let go.
 function pagesFit(list, cell) {
   const page = $("page");
-  const parts = { name: ".row-name", detail: ".row-detail", status: ".row-status", end: ".row-end" }[cell];
+  const parts = { year: ".row-year", taxpayer: ".row-name", form: ".row-form", name: ".row-name", detail: ".row-detail", status: ".row-status", end: ".row-end" }[cell];
   page.classList.add("is-measuring");
   let widest = 0;
   for (const one of page.querySelectorAll(`${parts}, .col-cell[data-cell="${cell}"] .col-head`)) widest = Math.max(widest, one.scrollWidth);
@@ -814,6 +863,40 @@ function pagesColumnKey(e) {
   return true;
 }
 
+// The order each list was left in on this PC, read once (P199, replacing
+// P139's "while the app is open"): kept per list as its widths are. Only an
+// order a header can give survives the read - a list this app draws, one of
+// its columns with a word, a direction of 1 or -1 - so a damaged or old
+// value leaves that list (or every list) in its usual order and says
+// nothing, as an unreadable width does.
+function pagesStoredOrder() {
+  if (pagesOrder) return pagesOrder;
+  pagesOrder = {};
+  try {
+    const held = JSON.parse(window.localStorage.getItem(PAGES_ORDER_KEY) || "{}");
+    if (held && typeof held === "object" && !Array.isArray(held)) {
+      for (const [list, one] of Object.entries(held)) {
+        const columns = PAGES_COLUMNS[list];
+        if (columns && one && typeof one === "object" && Object.prototype.hasOwnProperty.call(columns, one.cell)
+            && columns[one.cell] && (one.dir === 1 || one.dir === -1)) pagesOrder[list] = { cell: one.cell, dir: one.dir };
+      }
+    }
+  } catch (err) {
+    // Unreadable or not JSON: every list in its usual order, which pagesOrder now holds.
+  }
+  return pagesOrder;
+}
+
+// Kept on this PC; a profile that refuses the write keeps the order while
+// the app is open.
+function pagesSaveOrder() {
+  try {
+    window.localStorage.setItem(PAGES_ORDER_KEY, JSON.stringify(pagesStoredOrder()));
+  } catch (err) {
+    // Not kept past a restart; the order holds while the app is open.
+  }
+}
+
 // The widths this PC holds, read once. Storage that cannot be read (a locked
 // profile) leaves the usual widths: a width is a comfort of this screen, not
 // a fact about a return, and the page works the same without it.
@@ -830,8 +913,11 @@ function pagesStoredWidths() {
 }
 
 // One column's width in a list: the held one, within its limits; else the
-// list's own usual width (PAGES_USUAL); else null, the stylesheet's.
+// list's own usual width (PAGES_USUAL); else null, the stylesheet's. A cell
+// the list does not have is null: a width kept for a column a list no longer
+// draws (Overview's old Return column, P195) never reaches its new layout.
 function pagesWidthOf(list, cell) {
+  if (!(cell in PAGES_COLUMNS[list])) return null;
   const held = (pagesStoredWidths()[list] || {})[cell];
   if (typeof held !== "number" || !Number.isFinite(held)) return (PAGES_USUAL[list] || {})[cell] || null;
   const [least, most] = PAGES_WIDTHS[cell];
@@ -841,7 +927,9 @@ function pagesWidthOf(list, cell) {
 function pagesSetWidth(list, cell, px) {
   const [least, most] = PAGES_WIDTHS[cell];
   const held = pagesStoredWidths();
-  held[list] = { ...(held[list] || {}), [cell]: Math.round(Math.min(most, Math.max(least, px))) };
+  // Only the list's own columns are kept: the next save drops a width of a column it no longer has.
+  const own = Object.entries(held[list] || {}).filter(([one]) => one in PAGES_COLUMNS[list]);
+  held[list] = { ...Object.fromEntries(own), [cell]: Math.round(Math.min(most, Math.max(least, px))) };
   pagesApplyWidths($("page"), list);
 }
 
@@ -958,6 +1046,26 @@ function pagesTabs(need, waiting) {
     tab("all", words.filters.all), tab("need", fill(words.tabs.need, { n: need })), tab("waiting", fill(words.tabs.waiting, { n: waiting })));
 }
 
+// ── a firm return's row (P194, P195) ──────────────────────────────────
+// The first three cells of a return's row on Overview and Reminders, one
+// field each: its year, its taxpayer - the link to the return, whose tooltip
+// and screen-reader description name the household, which has no column of
+// its own, and after which the household's link mark sits - and its form.
+function pagesReturnCells(one) {
+  const said = screenWords().columns;
+  if (!said.taxpayer_tip) throw new Error("columns.taxpayer_tip");
+  const tip = one.household ? fill(said.taxpayer_tip, { action: pagesLinkWords("return"), household: one.household }) : "";
+  return { returnRow: true, year: one.year || "", name: pagesTaxpayer(pagesReturnName(one.path), one.form || ""), form: one.form || "",
+           household: one.household || "", links: one.links || [], linksIn: "name", linkOwner: one.household || "",
+           nameLink: { kind: "return", path: one.path, tip } };
+}
+
+// What those three cells order by: the year's number, the taxpayer as shown,
+// the form's place in the app's order of forms.
+function pagesReturnKeys(cells) {
+  return { year: cells.year, taxpayer: cells.name, form: pagesFormKey(cells.form) };
+}
+
 // ── Overview (SPEC 6.1) ───────────────────────────────────────────────
 function pagesWorkRows(returns) {
   const name = (one) => pagesReturnName(one.path);
@@ -969,18 +1077,16 @@ function pagesWorkRows(returns) {
   const wait = returns.filter((one) => !one.problem && !one.counts.needs_you && one.counts.waiting > 0)
     .sort((a, b) => (a.due || PAGES_LATE).localeCompare(b.due || PAGES_LATE) || pagesByName(name(a), name(b)));
   const steps = { kind: "open" };
-  // `keys`: what each column orders by (SPEC-lists 3) - the shown name, the
-  // urgency and the ISO date the row was drawn from, never the drawn "Mar 3".
+  // `keys`: what each column orders by (SPEC-lists 3) - the year, the shown
+  // taxpayer, the form's place, the urgency and the ISO date the row was
+  // drawn from, never the drawn "Mar 3".
   const specOf = (one, date, iso) => {
     const said = pagesCounts(one.counts, one.problem);
-    const house = pagesHouseholdPath(one.household);
-    const text = pagesReturnText(one.path, one.year);
     const rank = one.problem ? PAGES_URGENCY.problem : PAGES_URGENCY[said.tone];
-    return { name: text, detail: one.household, status: said.text, tone: said.tone, date, menu: "return", pill: true, form: one.form || "",
-             links: one.links || [], linksIn: "detail",
-             nameLink: { kind: "return", path: one.path }, detailLink: house ? { kind: "household", path: house } : null,
+    const cells = pagesReturnCells(one);
+    return { ...cells, status: said.text, tone: said.tone, date, menu: "return", pill: true,
              step: { ...steps, route: pagesRoute(one.path) },
-             keys: { name: text, detail: one.household, status: pagesUrgent(rank, one.counts.needs_you || one.counts.waiting, said.text), end: iso || "" } };
+             keys: { ...pagesReturnKeys(cells), status: pagesUrgent(rank, one.counts.needs_you || one.counts.waiting, said.text), end: iso || "" } };
   };
   return [...pagesEach(need, name, (one) => specOf(one, pagesDay(one.oldest), one.oldest)), ...pagesEach(wait, name, (one) => specOf(one, pagesDue(one.due), one.due))];
 }
@@ -993,9 +1099,11 @@ function pagesPausedRows(firm) {
   return pagesEach([...pagesPaused(firm)].sort(pagesByName), (name) => name, (name) => {
     const path = pagesHouseholdPath(name);
     if (!path) throw new Error("household");
-    return { name, detail: "", status: word, tone: "needs", date: "", menu: "household", pill: true, nameLink: { kind: "household", path },
+    // A household's row in the return columns: no year and no form of its
+    // own; its name stands in the Taxpayer column (P195).
+    return { returnRow: true, year: "", name, form: "", status: word, tone: "needs", date: "", menu: "household", pill: true, nameLink: { kind: "household", path },
              step: { kind: "open", route: { level: "household", household: path } },
-             keys: { name, detail: "", status: pagesUrgent(PAGES_URGENCY.problem, 0, word), end: "" } };
+             keys: { year: "", taxpayer: name, form: "", status: pagesUrgent(PAGES_URGENCY.problem, 0, word), end: "" } };
   });
 }
 
@@ -1052,7 +1160,7 @@ function pagesReviewSpec(firm, group, file) {
 // return's files ordered among themselves, and the returns following their
 // first file; with no order chosen, today's order.
 function pagesOrderedGroups(planned) {
-  const order = pagesOrder.needs_review;
+  const order = pagesStoredOrder().needs_review;
   if (!order) return planned;
   const by = pagesCompare(order.cell, order.dir);
   return planned.map((one, at) => ({ one, at }))
@@ -1111,7 +1219,7 @@ function pagesReviewGroup(group, specs) {
     popup(box.left, box.bottom);
   });
   const count = h("span", { className: "group-docs" }, rows.length === 1 ? words.documents.one : fill(words.documents.many, { n: rows.length }));
-  const nodes = pagesGroup({ heading: pagesReturnText(group.path, owner ? owner.year : 0), headingLink: { kind: "return", path: group.path },
+  const nodes = pagesGroup({ heading: pagesReturnHeading(group.path, owner ? owner.year : 0, owner ? owner.form : ""),
                              caption, lead: h("span", { className: "group-icon" }, icon("folder")), tools: [count, more], blocks: [{ rows }] });
   nodes[0].addEventListener("contextmenu", (e) => {
     e.preventDefault();
@@ -1149,19 +1257,16 @@ function pagesNeedsReview() {
 function pagesReminderSpecs(firm) {
   const ready = firm.returns.filter((one) => one.draft && one.draft.ready);
   return pagesEach(ready.sort((a, b) => pagesByName(pagesReturnName(a.path), pagesReturnName(b.path))), (one) => pagesReturnName(one.path), (one) => {
-    const house = pagesHouseholdPath(one.household);
-    const text = pagesReturnText(one.path, one.year);
     const held = one.draft.held > 0;
     const status = held ? screenWords().held : pagesStage(one.draft.stage);
+    const cells = pagesReturnCells(one);
     return {
-      name: text, detail: one.household,
-      status, tone: held ? "needs" : "waiting", date: pagesDay(one.draft.drafted), menu: "return", pill: true, form: one.form || "",
-      links: one.links || [], linksIn: "detail",
-      nameLink: { kind: "return", path: one.path }, detailLink: house ? { kind: "household", path: house } : null,
+      ...cells,
+      status, tone: held ? "needs" : "waiting", date: pagesDay(one.draft.drafted), menu: "return", pill: true,
       step: { kind: "draft", ret: one.path },
       // Held first (a person must act), then the later stage first: a later
-      // reminder is the more overdue client (SPEC-lists 3).
-      keys: { name: text, detail: one.household, status: pagesUrgent(held ? PAGES_URGENCY.needs : PAGES_URGENCY.waiting, held ? 0 : one.draft.stage, status),
+      // reminder is the more overdue taxpayer (SPEC-lists 3).
+      keys: { ...pagesReturnKeys(cells), status: pagesUrgent(held ? PAGES_URGENCY.needs : PAGES_URGENCY.waiting, held ? 0 : one.draft.stage, status),
               end: one.draft.drafted || "" },
     };
   });
@@ -1271,7 +1376,9 @@ function pagesReturnSpecs(returns) {
     const firm = pagesFirmReturn(one.path);
     const said = firm ? pagesCounts(firm.counts, firm.problem) : { text: "", tone: "plain" };
     const detail = one.superseded_by ? words.rolled : one.active === false ? words.inactive : "";
-    return { name: pagesReturnText(one.path, one.year, one.return_name), detail, status: said.text, tone: said.tone, date: "", menu: "return",
+    // The form tag and the taxpayer, each once; the year is the heading
+    // above the rows or the page's title (P195).
+    return { name: pagesTaxpayer(one.return_name || pagesReturnName(one.path), one.form || ""), form: one.form || "", detail, status: said.text, tone: said.tone, date: "", menu: "return",
              nameLink: { kind: "return", path: one.path },
              step: { kind: "open", route: { level: "return", household: shellRoute.household, year: one.year, ret: one.path } } };
   });

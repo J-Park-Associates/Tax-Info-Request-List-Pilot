@@ -34,7 +34,15 @@ two seconds instead of reading every return again: like `tracker.db` it
 holds household names, return folders and the names of files waiting for a
 person, and it is never synced. A household whose folders changed since is
 read again; deleting the file is always safe (the next Overview reads every
-household once, a few seconds longer).
+household once, a few seconds longer). Every scheduled pass over the saved
+clients folder ends by asking the Overview once itself, after its run log
+line and its page are written, so this file is ready before anyone opens the
+app: the first Overview of the day, after the morning's scheduled pass, opens
+in about two seconds (pilot P201). A Sort does the same only while the file
+is already ready for today, when it re-reads just the households that
+changed; on a new day, after an upgrade or after a settings change it leaves
+that to the next Overview, so one household's Sort never waits for the whole
+firm. A pass someone stopped asks nothing: Stop means stop.
 
 **The app's data folder is private to one Windows account.** `tracker.db`
 holds every client's index rows, and it lives in
@@ -46,7 +54,13 @@ app's own folder holds the program and `settings.json` — the clients folder,
 the firm's name and its telephone number, nothing about a client. Run the
 app and the schedule as the same Windows account: another account on the
 same machine keeps a database of its own, built from the ledgers on its
-first pass (slow once, never wrong). Nobody opens, copies or backs up the
+first pass (slow once, never wrong). Start the app from the
+Start menu or its shortcut. A program started from inside another program's
+window - some AI assistants among them - can be given a private copy of this
+folder by Windows; the app refuses to run that way and says so on its first
+screen. If Windows will not let the app list the folder where it keeps those
+copies (`%LOCALAPPDATA%\Packages`), the app cannot tell, so it refuses too and
+its first screen names that folder; let the account read it. Nobody opens, copies or backs up the
 data folder; the ledgers are the backup. A reading's temporary files, if a library ever
 writes one, go to a folder of that reading's own in the data folder
 (`scratch`), removed when the reading ends — never the machine's temp folder.
@@ -122,8 +136,11 @@ judged; a store that holds none yet says so rather than "nothing to
 repair". A finding is not a failure: Setup still
 finishes. If the step itself could not run - the store would not open, the
 settings could not be read - Setup says so in one sentence and the app
-tries again at its next start. The store check below is the same check,
-for a deliberate look.
+tries again at its next start. On the computer that runs the schedule,
+every start also asks Windows whether the scheduled task is still there:
+one that an uninstall (or a person, in Task Scheduler) deleted is
+registered again at that start, with no Repair (P198). The store check
+below is the same check, for a deliberate look.
 
 **The clients root is a folder of clients, and only that.** The app refuses
 the system drive's root (`C:\`), the app's own folder, the folder holding its
@@ -294,8 +311,8 @@ until somebody acts - *"Paused: this folder's name and its record's name
 disagree. Nothing is sorted, laid out or drafted for the household until a
 person opens it in the app and accepts the folder's name, or gives the
 folder back the name its record holds."* **Roll Forward…** and **Add a
-Return…** (the Client menu) are greyed for it, and the app and the command
-line refuse both with the same sentence. The household is marked on Clients
+Return…** (the Household menu) are greyed for it, and the app and the command
+line refuse both with the same sentence. The household is marked on Households
 and on Overview with *Two Years Open; Sorting Paused* when the cause is two
 open years.
 
@@ -407,7 +424,7 @@ editor beside it.
 **A folder from before September 2026** may still hold a `_manifest.xlsx`.
 The app no longer reads it: it is one of the folders left alone, listed
 with its own sentence rather than treated as an engagement, and the return is
-set up again in the app (Client, **Add a Return…** with the household open,
+set up again in the app (Household, **Add a Return…** with the household open,
 or File, **New Household…** for a household the app has no record of;
 then type or paste the rows). The workbook may be deleted once that is done.
 
@@ -681,7 +698,8 @@ goes to `%LOCALAPPDATA%\Programs\Tax Document Console`), replaces the
 earlier Start menu entry and desktop icon, and keeps `settings.json`
 beside the program. The data folder keeps its name,
 `%LOCALAPPDATA%\tax-document-tracker-pilot`, and nothing in it moves; the
-column widths stay where they were, in `%APPDATA%\Tax Document Tracker
+column widths (and, since P199, the order each list was left in) stay
+where they were, in `%APPDATA%\Tax Document Tracker
 Pilot` (the earlier name, kept on purpose). The first start after the
 upgrade, or `Setup.bat`, runs two carry-over jobs in the after-install
 step, and each says one sentence every time, first among the step's lines:
@@ -1152,7 +1170,7 @@ puts them back.
 
 ### Rolling a household into the next year
 
-Rolling forward is done from the **household** (Client, **Roll Forward…**
+Rolling forward is done from the **household** (Household, **Roll Forward…**
 with the household open), not from one return, and only once the year it
 rolls to has ended: from January 2028, say, it offers **Roll forward to
 2027**. It opens a dialog that shows the open year's returns,
@@ -1216,7 +1234,7 @@ python -m tracker.rollover "<a return folder>" --year 2027 --form 1040
 ## 2. Every morning
 
 **The app's window, in one paragraph.** A side panel on the left lists the
-four pages - **Overview**, **Needs Review**, **Reminders**, **Clients**
+four pages - **Overview**, **Needs Review**, **Reminders**, **Households**
 (Ctrl+1 to Ctrl+4) - each with a count, and the last sort's time (or *Sort
 Failed*) at its foot. The path row above the page names where you are; a
 household or return name in it takes you there. A return or household name
@@ -1224,10 +1242,10 @@ anywhere is a link that opens its page; a file name is a link that shows that
 working copy in File Explorer (an email or a zip is plain text, never
 opened). Right-click a row for its menu (Check…, Not Requested, Show in File
 Explorer, Unfile, Mark Missing, Edit Request…); the menu bar (File, Edit,
-Client, View, Tools, Help) appears when you press Alt. **Check…** and
+Household, View, Tools, Help) appears when you press Alt. **Check…** and
 **Draft Reminder…** open a side sheet; where older text here says
 "card", read the file's row on Needs Review or a side sheet. The one **Sort** icon beside the search
-box sorts the open return's household (grey on the four pages: open a client
+box sorts the open return's household (grey on the four pages: open a household
 first); the overnight sort is the schedule. A *Sort Failed* notice with no
 button shows on every page while the last **scheduled** sort failed, and
 clears when the next scheduled sort succeeds - the app's own Sort names one
@@ -1324,6 +1342,16 @@ household and cannot clear it. **Unfile** asks for an optional reason first.
    that stopped because the app closed says so as a pass warning: the code
    `pass-app-closed` in the run log, and on the page *stopped when the app
    that started it closed, after N file(s)* (decision 203).
+   *the Overview could not be made ready after the pass (…)* (the code
+   `cache-not-filled`, pilot P201) means the pass's last step - asking the
+   Overview once so `firm-view.json` is ready - did not finish; the pass
+   itself is fine and its result is not changed, only the next Overview is
+   slower. It is asked after the pass's own run log line and page are
+   written, so the code arrives as a line of its own just below the pass's
+   in `runs.log`. Nothing to do once; if it repeats, the error log beside
+   `tracker.db` says why. Right after an upgrade it can say so until the app
+   has been started once, which registers the schedule again with what the
+   step needs.
    **Run now** says the same: under the return's own result it lists the
    household's other returns' problems and the pass's own (the reader,
    the log, the page).

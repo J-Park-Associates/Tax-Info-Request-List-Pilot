@@ -7655,6 +7655,63 @@ def test_the_first_screen_says_when_the_app_runs_from_a_removable_drive(capsys, 
         settings_module.PROGRAM_ON_REMOVABLE.format(folder=settings_module.app_dir())]
 
 
+def test_a_stale_redirected_copy_is_named_on_the_first_screen(capsys, demo_root, tmp_path, monkeypatch):
+    """F7 (P193, R2): a copy of the data folder Windows kept for a package
+    the app was once started inside is named, one sentence each, and never
+    removed - it holds client-derived data."""
+    from tracker import settings as settings_module
+
+    local = tmp_path / "Local"
+    copy = (local / settings_module.PACKAGES_DIR_NAME / "Claude_pzs8sxrjxfjjc" / "LocalCache"
+            / "Local" / settings_module.DATA_HOME_NAME)
+    copy.mkdir(parents=True)
+    (copy / "tracker.db").write_bytes(b"made-up")
+    monkeypatch.setattr(api, "redirected_copies", lambda: settings_module.redirected_copies(
+        {"LOCALAPPDATA": str(local)}, windows=True))
+    code, payload = run(capsys, "list")
+    assert code == 0
+    assert payload["machine_warnings"] == [settings_module.REDIRECTED_COPY.format(path=copy)]
+    assert (copy / "tracker.db").read_bytes() == b"made-up"                 # named, never removed
+
+
+def test_a_packages_folder_windows_will_not_list_is_one_sentence_and_the_rest_still_shows(
+        capsys, demo_root, tmp_path, monkeypatch):
+    """Combined review S2: a raw PermissionError used to fail the whole
+    list reply; now the first screen says one sentence - the folder and
+    the error's class - once, even when the probe said it too, and the
+    rest of the reply still comes."""
+    from tracker import settings as settings_module
+
+    packages = tmp_path / "Local" / settings_module.PACKAGES_DIR_NAME
+    said = settings_module.PACKAGES_UNREADABLE.format(folder=packages, error="PermissionError (EACCES)")
+
+    def unreadable():
+        raise settings_module.SettingsError(said)
+    monkeypatch.setattr(api, "redirected_copies", unreadable)
+    code, payload = run(capsys, "list")
+    assert code == 0
+    assert payload["machine_warnings"] == [said]
+    assert payload["vocab"] and "households" in payload and "last_pass" in payload   # the rest still shows
+    monkeypatch.setattr(api, "data_home", unreadable)
+    assert run(capsys, "list")[1]["machine_warnings"] == [said]              # said once
+
+
+def test_a_redirected_app_says_its_refusal_alone_not_also_a_copy_it_never_uses(
+        capsys, demo_root, tmp_path, monkeypatch):
+    """Combined review N3: while R1 refuses this process's data home, the
+    copy this process sees is not named as one "the app never uses"."""
+    from tracker import settings as settings_module
+
+    refusal = settings_module.DATA_HOME_REDIRECTED.format(package="Claude_pzs8sxrjxfjjc",
+                                                          product=settings_module.product_name())
+
+    def redirected():
+        raise settings_module.DataHomeRedirected(refusal)
+    monkeypatch.setattr(api, "data_home", redirected)
+    monkeypatch.setattr(api, "redirected_copies", lambda: [tmp_path / "copy"])
+    assert run(capsys, "list")[1]["machine_warnings"] == [refusal]
+
+
 # ------------------------------- statuses in a preparer's words (d200) ----
 
 
@@ -8759,6 +8816,50 @@ def test_the_firm_cache_is_one_file_in_the_data_folder_and_nothing_in_either_cli
     assert firm_cache.cache_path().stat().st_mtime_ns == written, "an unchanged practice writes nothing"
 
 
+def test_a_practice_with_nothing_to_keep_yet_still_leaves_todays_head(capsys, demo_root):
+    """P201 R5: every household changed within the racy window (as just
+    after a pass), so none is kept - and the cache is still written under
+    today's head, so the pass's fill can tell an answered summary from one
+    that kept nothing because it could not write."""
+    import datetime as dt
+
+    from tracker import firm_cache
+
+    _a_practice_for_the_firm_view(capsys, demo_root)
+    assert not firm_cache.cache_path().exists()
+    _cached_firm(capsys)
+    head = firm_cache.head(str(api._saved_root()), dt.date.today())
+    assert firm_cache.holds(firm_cache.cache_path(), [head])
+    assert firm_cache.load(firm_cache.cache_path(), head) == {}, "nothing racy is kept"
+
+
+def test_a_practice_with_nothing_to_keep_writes_the_cache_once_per_head_not_every_reply(
+        capsys, demo_root, monkeypatch):
+    """The engine review's NIT-1: while nothing is kept, the head is left by
+    the first reply only; a later reply under the same head writes nothing,
+    and a reply under another head (another day) writes it again."""
+    import datetime as dt
+
+    from tracker import firm_cache
+
+    monkeypatch.setattr(firm_cache, "RACY_SECONDS", 10 ** 6)     # every household stays racy
+    _a_practice_for_the_firm_view(capsys, demo_root)
+    _cached_firm(capsys)
+    head = firm_cache.head(str(api._saved_root()), dt.date.today())
+    assert firm_cache.load(firm_cache.cache_path(), head) == {}, "nothing racy is kept"
+    saved = []
+    real_save = firm_cache.save
+    monkeypatch.setattr(firm_cache, "save", lambda *args: saved.append(args) or real_save(*args))
+
+    _cached_firm(capsys)
+    assert saved == [], "the same head, nothing kept: nothing written"
+
+    firm_cache.save(firm_cache.cache_path(), {**head, "day": "1999-01-01"}, {})
+    saved.clear()
+    _cached_firm(capsys)
+    assert len(saved) == 1 and saved[0][1] == head
+
+
 def test_the_commands_held_to_one_reading_write_nothing_and_a_write_there_is_refused(
         capsys, demo_root, monkeypatch):
     """P118, and the review's SHOULD-3: a command joins
@@ -9140,7 +9241,7 @@ def test_no_return_or_household_row_carries_an_open_key_and_their_words_navigate
     assert code == 0, state
     assert all("open_key" not in one for one in state["household"]["returns"])
     screen = api._vocab()["screen"]
-    assert screen["navigate_client"] == "Navigate to Client"
+    assert screen["navigate_client"] == "Navigate to Household"
     assert screen["navigate_return"] == "Navigate to Return"
     assert screen["show_in_explorer"] == "Show in File Explorer"
 
@@ -9264,6 +9365,39 @@ def test_every_drawn_word_the_vocabulary_carries_is_in_title_case(capsys, demo_r
         if title_case(text) != text:
             bad.append((path, text, title_case(text)))
     assert not bad, bad
+
+
+#: The drawn words that still say "Client" (pilot P196, SPEC-taxpayer-words
+#: R3): each names a folder on disk, whose own name is ``Clients``.
+_FOLDER_WORDS = {"Change Clients Folder…", "Open Clients Folder", "Open Client Folder",
+                 "Choose Your Clients Folder", "Clients Folder"}
+
+
+def test_no_word_the_window_draws_says_client_but_a_folders_own_name(capsys, demo_root):
+    """P196: the person is the Taxpayer, the listed household a Household;
+    only a button naming a folder on disk keeps the folder's word."""
+    vocab = api._vocab()
+    drawn = [("menu", vocab["menu"]), ("screen", vocab["screen"]), ("reasons", vocab["reasons"]),
+             ("ask_the_client", vocab["ask_the_client"]), ("override_labels", vocab["override_labels"]),
+             ("engagement_fields", [f["label"] for f in vocab["editor"]["engagement_fields"]]),
+             # the editor draws a help line only beside its yes/no boxes (app.js renderEngagementFields)
+             ("engagement_help", [f["help"] for f in vocab["editor"]["engagement_fields"]
+                                  if f["editable"] and f["key"] in ("reminders", "active")]),
+             ("settings.root_label", vocab["settings"]["root_label"]),
+             ("open_client_folder", api.OPEN_CLIENT_FOLDER_LABEL)]
+    said = [(where + path, text) for where, branch in drawn for path, text in _drawn_words(branch)
+            if "client" in text.lower() and text not in _FOLDER_WORDS]
+    assert not said, said
+    assert vocab["screen"]["sections"]["clients"] == vocab["menu"]["clients"] == "Households"
+    assert vocab["screen"]["side"]["types"] == "Taxpayer Types"
+
+
+def test_the_editor_says_taxpayer_where_the_record_keeps_client():
+    """P196 R7: the record and the files it writes keep their label; only
+    the editor's word for the greeting name changes."""
+    [field] = [f for f in api._vocab()["editor"]["engagement_fields"] if f["key"] == "client"]
+    assert field["label"] == "Taxpayer"
+    assert ENGAGEMENT_LABELS["client"] == "Client"
 
 
 def test_the_notices_carry_a_short_word_for_every_kind_the_pages_show():

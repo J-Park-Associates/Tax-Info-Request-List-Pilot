@@ -150,6 +150,7 @@ import json
 import logging
 import os
 import re
+import subprocess
 import sys
 import time
 from collections.abc import Iterable
@@ -157,7 +158,7 @@ from contextlib import ExitStack, nullcontext
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from tracker import checkpoint, content_check, door, errors, ledger, ocr, store
+from tracker import checkpoint, content_check, door, errors, firm_cache, ledger, ocr, store
 from tracker.filer import (
     HOUSEHOLD_NO_ROOM,
     NEEDS_REVIEW,
@@ -228,6 +229,7 @@ from tracker.reminder import (
 from tracker.scaffold import scaffold_engagement, scaffold_household
 from tracker.scanner import ScanLockedError, scan_engagement
 from tracker.settings import (
+    ENV_PRODUCT_NAME,
     ENV_SETTINGS_DIR,
     ERROR_LOG_BACKUPS,
     ERROR_LOG_FILENAME,
@@ -569,6 +571,107 @@ def run_now_arguments(settings_dir: Path | str, household: Path | str) -> list[s
     """
     return [SETTINGS_FLAG, str(settings_dir), LOG_FLAG, "--reminders", REMINDERS_NEVER,
             PROGRESS_LINES_FLAG, f"{HOUSEHOLD_FLAG}={household}"]
+
+
+#: The app's own command the pass asks at its end to fill the firm view's
+#: cache (P201): ``tracker.api``'s ``firm``, the one Overview runs. Named
+#: once here; ``tests/test_runner.py`` holds it to the API's command table.
+FIRM_COMMAND = "firm"
+#: The packaged schedule's word for the product's name (P201, R6): the
+#: fill's child imports the API, which reads the name at import, and Task
+#: Scheduler passes no environment. ``tracker.scheduling`` writes it into
+#: the packaged task's line; the pass hands it to that child alone.
+PRODUCT_FLAG = "--product"
+#: How long the fill may take before it is stopped: over four times the
+#: 65 s the 0.3 Windows check measured for a cold fill at 750 returns (N4).
+FILL_TIME_LIMIT_SECONDS = 300
+
+
+def fill_firm_cache(root: str, *, product: str = "") -> str:
+    """Ask the firm summary once at a pass's end, so the first Overview
+    after it is warm (P201, ``pilot/SPEC-firm-cache-fill.md``), and return
+    "" when it left the cache filled for ``root`` - or why not, by kind.
+
+    **Why a child and not a call.** The rows the cache keeps are built by
+    the API (``api._firm_from_cache``), and this module may not import it
+    (``tests/test_layers.py``: the runner never imports ``api`` or
+    ``scheduling``). A second builder of those rows down here would be a
+    second place a status is decided, which P120 refused; so the pass runs
+    exactly what Overview runs, as its own process: ``python -m tracker.api
+    firm`` from a checkout, the packaged executable given ``firm`` in the
+    app (``api_entry.py``). It reads every household whose fingerprint
+    changed - those this pass touched, or every one on a new day or after
+    an upgrade - keeps the rest, and writes nothing if nothing changed:
+    every rule of the cache's own holds because it is the same code.
+
+    **What it sees and keeps of the reply.** Nothing: the reply names
+    clients, so stdin, stdout and stderr are closed and no window opens.
+    The child has this pass's environment (its settings folder, store and
+    data folder) and its own error log, where any surprise is said. Then
+    :func:`tracker.firm_cache.holds` asks the cache file whether it is now
+    whole under today's head for this root (or the day the fill began, so
+    one that crosses midnight is not called failed).
+
+    **Never fatal.** The caller says a reason as a pass warning and leaves
+    the exit code alone: the cache only makes the next reply faster."""
+    began = dt.date.today()
+    frozen = getattr(sys, "frozen", False)
+    command = [sys.executable, FIRM_COMMAND] if frozen else [sys.executable, "-m", "tracker.api", FIRM_COMMAND]
+    env = dict(os.environ)
+    if product:
+        env[ENV_PRODUCT_NAME] = product
+    try:
+        done = subprocess.run(command, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                              stderr=subprocess.DEVNULL, env=env,
+                              cwd=None if frozen else Path(__file__).resolve().parent.parent,
+                              timeout=FILL_TIME_LIMIT_SECONDS,
+                              creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    except subprocess.TimeoutExpired:
+        return FILL_TOO_LONG.format(minutes=FILL_TIME_LIMIT_SECONDS // 60)
+    except OSError as exc:
+        return FILL_NOT_STARTED.format(kind=errors.error_class(exc))
+    if done.returncode:
+        return FILL_STOPPED.format(code=done.returncode)
+    try:
+        heads = [firm_cache.head(root, day) for day in dict.fromkeys((began, dt.date.today()))]
+        filled = firm_cache.holds(firm_cache.cache_path(), heads)
+    except (OSError, SettingsError):
+        filled = False          # a head that cannot be asked holds nothing
+    return "" if filled else FILL_NOT_KEPT
+
+
+def _fills_the_cache(ns, root: str, *, outcome: str, unproved, household: Path | None) -> bool:
+    """Whether this pass fills the firm view's cache at its end (P201,
+    ``pilot/SPEC-firm-cache-fill.md`` R4, as the engine review's rulings
+    changed it). A real pass over the saved root that served its
+    households - not a dry run (it writes nothing, this included), not a
+    typed root (the summary answers only for the saved one), not a pass
+    that could prove no household against the record checkpoint - and:
+
+    - **not a pass a person stopped** (SHOULD-1, "Stop means stop"): the
+      household work has ended, and a fill would keep Stop waiting. The
+      next Overview fills the cache, as it did before P201. A pass that
+      lost its app is stopped the same way.
+    - **a person's Sort fills only the households its pass touched**
+      (SHOULD-3): it asks the summary only while the cache already holds
+      today's head, when the summary reads just the households whose
+      fingerprint changed - the one the Sort touched, and any a person
+      changed meanwhile - and keeps the rest. On a cold head (a new day,
+      an upgrade, a settings change) the summary would read every
+      household, the whole firm's cost for one household's Sort, so it is
+      not asked: the cache's own staleness rules leave that to the next
+      Overview, which reads every household as it would have anyway. The
+      household the Sort just wrote is inside :data:`firm_cache.RACY_SECONDS`
+      in any case, so a cold fill could not have kept it.
+    - the scheduled pass fills the whole firm, cold or warm."""
+    if ns.dry_run or ns.root or unproved is not None or outcome == "stopped":
+        return False
+    if household is None:
+        return True
+    try:
+        return firm_cache.holds(firm_cache.cache_path(), [firm_cache.head(root, dt.date.today())])
+    except (OSError, SettingsError):
+        return False            # a head that cannot be asked: the next Overview fills it
 #: What the run says about an engagement it drafted nothing for.
 NOTHING_OUTSTANDING = "Nothing Outstanding; No Reminder Needed"
 #: Which rung of the reminder a draft was written at (decision 117), said
@@ -630,6 +733,16 @@ LOG_NOT_WRITTEN = "the run log could not be written ({kind})"
 #: What the practice page's failure says where it can be said: the app's
 #: reply after Run now, and the console (decision 189).
 PAGE_NOT_WRITTEN = "the practice page could not be written ({kind})"
+#: What a pass says when the firm summary it asked for at its end did not
+#: leave the cache filled (P201, ``pilot/SPEC-firm-cache-fill.md`` R5): a
+#: pass warning, never the exit code - the cache only makes the next
+#: Overview faster - and {why} is one of the four reasons below, by kind.
+CACHE_NOT_FILLED = ("the Overview could not be made ready after the pass ({why}); the first Overview "
+                    "after it reads every household again")
+FILL_NOT_STARTED = "the firm summary could not start: {kind}"
+FILL_STOPPED = "the firm summary stopped with code {code}"
+FILL_TOO_LONG = "the firm summary took longer than {minutes} minutes"
+FILL_NOT_KEPT = "the firm summary did not keep its answer"
 #: What a pass says when no data home can be had (decision 186): on stderr,
 #: as Task Scheduler's result, and - since the review's S1 - as the one
 #: problem on the practice page, when the clients root can take one.
@@ -726,6 +839,7 @@ CODE_PASS_DID_NOT_FINISH = "pass-did-not-finish"
 CODE_LOG_NOT_WRITTEN = "log-not-written"
 CODE_PAGE_NOT_WRITTEN = "page-not-written"
 CODE_CHECKPOINT_NOT_PROVED = "checkpoint-not-proved"
+CODE_CACHE_NOT_FILLED = "cache-not-filled"
 
 
 def reader_start_warning() -> str:
@@ -2645,6 +2759,9 @@ def _parser():
     parser.add_argument(PROGRESS_LINES_FLAG, action="store_true",
                         help="print the pass's progress lines and end with one final JSON line "
                              "(what the app's Run now reads)")
+    parser.add_argument(PRODUCT_FLAG, default="", metavar="NAME",
+                        help="the product's name, for the firm summary the pass asks at its end "
+                             "(what the packaged app's scheduled job passes)")
     return parser
 
 
@@ -2977,6 +3094,7 @@ def _pass(ns, parser, reached: dict) -> int:
         else:
             say(f"\n  Logged to {log_file}")
 
+    page_written = False
     if not ns.dry_run:
         # Every real pass, whether or not it was asked to log, whether or
         # not an engagement failed, and whether or not the pass itself was
@@ -3004,7 +3122,36 @@ def _pass(ns, parser, reached: dict) -> int:
                 except Exception as late:
                     log.warning("Could not write %s (%s)", log_file.name, errors.error_class(late))
         else:
+            page_written = True
             say(f"\n  The practice: {page}")
+
+    # The firm view's cache is filled here (P201, SPEC-firm-cache-fill R3
+    # and R4, as the engine review's rulings changed them): after every
+    # household's lock is gone - a lock file is an entry a fingerprint
+    # would take - and after the run log's line and the page are written,
+    # so a fill that runs long can never cost the pass its record (NIT-4).
+    # Which passes fill is :func:`_fills_the_cache`'s. Never fatal: one
+    # that failed is said after the fact - its code added to the run log as
+    # a page that could not be written is, the page written again with its
+    # sentence, and the sentence on the console or in Run now's final line.
+    if _fills_the_cache(ns, root, outcome=outcome, unproved=unproved, household=household):
+        why = fill_firm_cache(root, product=ns.product)
+        if why:
+            _warn(result, CODE_CACHE_NOT_FILLED, CACHE_NOT_FILLED.format(why=why))
+            say(f"\n  ! {result.warnings[-1]}")
+            if log_file is not None:
+                try:
+                    append_rotating(log_file, f"    codes {CODE_CACHE_NOT_FILLED}=1\n",
+                                    max_bytes=LOG_MAX_BYTES, keep=LOG_KEEP)
+                except Exception as late:
+                    log.warning("Could not write %s (%s)", log_file.name, errors.error_class(late))
+            if page_written:
+                try:
+                    write_status_page(loaded.source, status_report(
+                        loaded, passed=result.runs, warnings=result.warnings, unread=unread))
+                except Exception as late:
+                    # The page written above stands, without this sentence.
+                    log.warning("Could not write %s (%s)", STATUS_PAGE_FILENAME, errors.error_class(late))
 
     # Checkpoint the store's write-ahead log and take its two side files
     # with it: a scheduled pass leaves the app's folder as it found it.

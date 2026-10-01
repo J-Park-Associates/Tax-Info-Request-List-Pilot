@@ -43,6 +43,11 @@ files. Nothing a client sees changes. No engine behaviour changes.
 
 ## 1. Which lists get headers (P135)
 
+Since P194/P195, Overview's and Reminders' columns are Tax Year, Taxpayer,
+Form Type, then Status/Stage and Date/Drafted, and the household has no
+column: `pilot/SPEC-firm-columns.md`. The rows below for those two lists, and
+section 2's `columns.return` and `columns.client`, are history.
+
 | List | Page | Headers (name, detail, status, end) | Orderable |
 |---|---|---|---|
 | `overview` | Overview's Work Waiting | Return, Client, Status, Date | all four |
@@ -132,6 +137,9 @@ action here).
   the return with the newest file on top). One header row serves every group.
 - **The usual order** (no header chosen) is today's order, unchanged
   (SPEC-shell 6.1-6.4).
+- **Revised by P199 (`pilot/SPEC-check-notes-0.3.md` 3):** the order is now
+  kept on this PC across a restart, per list, as widths are
+  (`tracker.order`). The P139 text below is the history.
 - **Memory (P139; owner question Q3, recommendation A):** each list keeps its
   chosen order while the app is open - leaving Overview and coming back, or a
   refresh after a sort, keeps it - and every list starts in its usual order
@@ -177,6 +185,11 @@ action here).
   app's font on Windows is **not measured here** (no Windows font in this
   build's tests): the Windows check measures it, and owner question Q9
   covers the case where it does not.
+- **Revised by P199 (`pilot/SPEC-check-notes-0.3.md` 1-2):** on the four
+  firm lists no column absorbs the space any more; every column is its
+  width and the slack is blank after the last column, so the Date sits
+  after the Status and a widened column grows to the right. The next item
+  is the history, and still true of a return's own pages.
 - **The name column absorbs the remaining space** (`minmax(name, 1fr)`, as
   today): its width is its least width, so narrowing it undoes a widening and
   never leaves a gap; widening any other column takes the space from it.
@@ -591,6 +604,10 @@ year; choosing one opens Check on it. Up to eight options, as before.
 
 ## 15. The side panel and Clients (P153, P154)
 
+Since P196 the screen calls Clients **Households**, its name column
+**Household Name** and the Client Types **Taxpayer Types**; the keys and
+code names below are unchanged. See `SPEC-taxpayer-words.md`.
+
 ### 15.1 The panel
 
 - **Brand band** (`--brand`, both themes; P179): the JP logo, whose
@@ -614,7 +631,10 @@ year; choosing one opens Check on it. Up to eight options, as before.
   Each muted but readable (`--text-secondary`, 7.58:1 on `--bg-nav`),
   keyboard-reachable, `aria-disabled="true"`, tooltip "Under
   Construction". Choosing one shows a short **"Under Construction"**
-  toast and opens nothing, calls no engine command.
+  toast and opens nothing, calls no engine command. **View › Show Under
+  Construction** (P197, a checked item, ticked by default) hides all five
+  and the Workspace heading, kept on this PC; see
+  `SPEC-hide-under-construction.md`.
 - **Client Types** (section heading): Individuals (1040), Businesses
   (1120, 1120S, 1065), Trusts & Estates (1041), Nonprofits (990); the
   forms are each item's tooltip. Each opens Clients filtered to the

@@ -875,7 +875,7 @@ def test_every_menu_id_the_page_answers_is_in_the_template_and_the_rest_are_the_
     log (main.js's alone, 5.5); the row menus' ids go to pages.js first."""
     template = {"new_household", "change_root", "open_root", "exit", "edit_household", "add_return", "roll_forward", "mark_shared",
                 "edit_list", "draft_reminder", "open_client_folder", "open_inbox", "open_working", "overview", "needs_review",
-                "reminders", "clients", "find", "refresh", "reset_columns", "sort_now", "stop_sorting", "schedule", "repair_schedule", "firm_report",
+                "reminders", "clients", "find", "refresh", "reset_columns", "show_under_construction", "sort_now", "stop_sorting", "schedule", "repair_schedule", "firm_report",
                 "clear_lock", "tour", "safeguards", "terms", "error_log", "about"}
     rows = {"check", "not_requested", "another_return", "put_back", "keep_here", "edit_request", "unfile", "mark_missing", "show_in_explorer"}
     text = read("shell.js")
@@ -895,11 +895,11 @@ def test_a_menu_id_the_page_cannot_answer_is_said_and_logged():
 
 
 def test_the_shell_sends_only_the_menu_channels_messages_and_no_path():
-    """SPEC 5.4: {enable} and {popup, enable, token, x, y}; the token is a
-    key the page made, never a path."""
+    """SPEC 5.4: {enable, checked} (P197) and {popup, enable, token, x, y};
+    the token is a key the page made, never a path."""
     text = stripped_js("shell.js")
     sends = re.findall(r"window\.tracker\.menu\.send\(([^;]*)\);", text)
-    assert sorted(sends) == sorted(["{ enable: shellEnabled() }", "{ popup: name, enable: enable || shellEnabled(), token, x, y }"])
+    assert sorted(sends) == sorted(["{ enable: shellEnabled(), checked: shellChecked() }", "{ popup: name, enable: enable || shellEnabled(), token, x, y }"])
     assert 'shellPopup(one.popup, `crumb-${one.popup}`' in text, "a segment's token is its own name"
     assert "window.tracker.menu.onCommand(shellMenu)" in text
 
@@ -963,6 +963,7 @@ let shellHousehold = () => null; let households = [];
 const vocab = {
   shell: { page_error: "The app hit an error" }, notices: { about: "{label}: {sentence}" },
   client_type_forms: { individuals: ["1040"], businesses: ["1120", "1120S", "1065"], trusts: ["1041"], nonprofits: ["990"] },
+  layout: { return_name_pattern: "{form} - {client}" },
   decisions: { needs_review: "Needs Review", dismissed: "Not Requested", filed: "Filed", file_moved: "File Moved" },
   labels: { Missing: { label: "Outstanding" }, Received: { label: "Received" }, Partial: { label: "Partly in" }, Rejected: { label: "Could not use" }, NotAsked: { label: "Not asked" } },
   overrides: { not_applicable: "Not Applicable" },
@@ -975,16 +976,17 @@ const vocab = {
     steps: { check: "Check", open: "Open", draft: "Draft reminder", edit: "Edit" },
     notices: { paused: "Two Years Open; Sorting Paused" },
     empty: { received: "Nothing received yet" }, moved: "Moved by hand", due: "Due {date}", partly: "{n} of {total}",
-    show_in_explorer: "Show in File Explorer", navigate_client: "Navigate to Client", navigate_return: "Navigate to Return",
+    show_in_explorer: "Show in File Explorer", navigate_client: "Navigate to Household", navigate_return: "Navigate to Return",
     counts: { need: "{n} need you", waiting: "{n} waiting", complete: "Complete", files: "{n} files", one_file: "1 file", one_return: "1 return", returns: "{n} returns" },
-    sections: { overview: "Overview", needs_review: "Needs Review", reminders: "Reminders", clients: "Clients" },
-    columns: { return: "Return", client: "Client", status: "Status", date: "Date", file: "File", suggestion: "Suggestion", reason: "Reason",
-               received: "Received", stage: "Stage", drafted: "Drafted", returns: "Returns", client_name: "Client Name", sort_by: "Sort by {column}",
+    sections: { overview: "Overview", needs_review: "Needs Review", reminders: "Reminders", clients: "Households" },
+    columns: { tax_year: "Tax Year", taxpayer: "Taxpayer", form_type: "Form Type", taxpayer_tip: "{action} ({household})",
+               status: "Status", date: "Date", file: "File", suggestion: "Suggestion", reason: "Reason",
+               received: "Received", stage: "Stage", drafted: "Drafted", returns: "Returns", client_name: "Household Name", sort_by: "Sort by {column}",
                width: "{column} Width {n}" },
     linked: { tip: "Linked Households", feeds: "Also Feeds", fed_by: "Fed By", related: "Related" },
     tabs: { need: "Need You ({n})", waiting: "Waiting ({n})" }, documents: { one: "1 Document", many: "{n} Documents" },
     paging: { showing: "Showing {from}-{to} of {total} {noun}", previous: "Previous", next: "Next",
-              nouns: { overview: "Returns", needs_review: "Files", reminders: "Drafts", clients: "Clients" } },
+              nouns: { overview: "Returns", needs_review: "Files", reminders: "Drafts", clients: "Households" } },
     icons: { more_actions: "More Actions", remove_filter: "Remove Filter" }, filters: { work: "Work Waiting", all: "All" }, work: "Work Waiting",
     client_types: { individuals: "Individuals", businesses: "Businesses", trusts: "Trusts & Estates", nonprofits: "Nonprofits" },
   },
@@ -994,7 +996,7 @@ const vocab = {
 #: The column headers' constants (SPEC-lists), lifted from pages.js as written:
 #: the probes run the pages' own tables, not a copy of them.
 PAGES_CONSTS = ("const PAGES_COLUMNS = {", "const PAGES_CELLS = ", "const PAGES_WIDTHS = ", "const PAGES_USUAL = ", "const PAGES_WIDTH_STEP = ",
-                "const PAGES_WIDTHS_KEY = ", "const PAGES_URGENCY = ", "const pagesOrder = ", "let pagesWidths = ",
+                "const PAGES_WIDTHS_KEY = ", "const PAGES_ORDER_KEY = ", "const PAGES_URGENCY = ", "let pagesOrder = ", "let pagesWidths = ",
                 # The raised lists (pilot SPEC-lists 10-17): pages, tabs, reason cards, types, the panel.
                 "const PAGES_PER_PAGE = ", "const PAGES_REASON_ICONS = {", "const PAGES_SECTIONS = ", "let pagesPageAt = ",
                 "let pagesTab = ", "let pagesReasonPick = ", "let pagesClientType = ", "let pagesPanel = ")
@@ -1005,10 +1007,14 @@ PAGES_CONSTS = ("const PAGES_COLUMNS = {", "const PAGES_CELLS = ", "const PAGES_
 COLUMN_FUNCTIONS = ("pagesListOf", "pagesUrgent", "pagesIsBlank", "pagesCompareKeys", "pagesCompare", "pagesOrdered", "pagesOrderBy",
                     "pagesColumnHeads", "pagesGrip", "pagesColumnKey", "pagesStoredWidths", "pagesWidthOf", "pagesSetWidth",
                     "pagesSaveWidths", "pagesApplyWidths", "pagesResetWidths", "pagesReviewSpec", "pagesOrderedGroups",
+                    # The order kept on this PC (P199).
+                    "pagesStoredOrder", "pagesSaveOrder",
                     # The raised lists (pilot SPEC-lists 10-17).
                     "pagesDetailCell", "pagesReasonTip", "pagesStatusCell", "pagesLinkMark", "pagesLinkMarkIn", "pagesShowPanel", "pagesPanelOpen",
                     "pagesClosePanel", "pagesOpenRowLinks", "pagesPaged", "pagesFoot", "pagesTurn", "pagesPick", "pagesTabs",
-                    "pagesFileCount", "pagesReasonCards", "pagesReviewGroup", "pagesSwitch", "pagesTypeFilter", "pagesReopenPanel")
+                    "pagesFileCount", "pagesReasonCards", "pagesReviewGroup", "pagesSwitch", "pagesTypeFilter", "pagesReopenPanel",
+                    # One field per column (pilot SPEC-firm-columns; P194, P195).
+                    "pagesTaxpayer", "pagesFormKey", "pagesFormCell", "pagesReturnHeading", "pagesReturnCells", "pagesReturnKeys")
 
 
 def pages_consts() -> str:
@@ -1041,7 +1047,7 @@ def run_pages_dom(probe: str, tmp_path: Path, setup: str = "", functions=None):
         "pagesHouseholdNotices", "pagesRoute", "pagesFiles", "h", "icon", "screenWords", "pagesSafe", "pagesEach", "pagesLabel",
         "pagesSafeName", "pagesTitleFor", "pagesReportBroken", "pagesRouteKey", "pagesDraw", "pagesBuild", "pagesYear", "pagesReturnSpecs",
         "pagesClientSpecs", "pagesRemember", "pagesRestore", "pagesFirmReturn", "pagesActivate", "pagesOverview", "pagesNeedsReview",
-        "pagesReminders", "pagesClients", "pagesHousehold", "folderName", "pagesLinkWords", "pagesReturnText", "pagesHouseholdPath",
+        "pagesReminders", "pagesClients", "pagesHousehold", "folderName", "pagesLinkWords", "pagesHouseholdPath",
         "pagesPathOf", "pagesFileLink", "pagesRunLink", "pagesLinkNode", "pagesCell", "pagesHeadLink", "pagesRunRowLink", "pagesWhere",
         "pagesPaused", "pagesNameCell", "pagesPausedRows", "pagesSteps", "pagesDrafts", "pagesRunRow", "pagesRunStep", "pagesPopup", "pagesEnableFor", "pagesRowRoute", "pagesKey", "pagesTitle",
         *COLUMN_FUNCTIONS,
@@ -1142,7 +1148,7 @@ def test_the_overview_puts_each_return_in_one_bucket(tmp_path):
         make("e", {}, { problem: "Record unreadable" }), make("f", { waiting: 1 }, { due: "2026-04-01" }) ]);
       return rows.map((one) => [one.name, one.status, one.tone, one.date, one.step.kind]);
     """, tmp_path)
-    assert [one[0] for one in ran] == ["Echo (2025)", "Delta (2025)", "Alpha (2025)", "Foxtrot (2025)", "Bravo (2025)"], "Charlie is complete and is not listed; a return reads with its year (ruling 13)"
+    assert [one[0] for one in ran] == ["Echo", "Delta", "Alpha", "Foxtrot", "Bravo"], "Charlie is complete and is not listed; the year is its own column (P195)"
     assert ran[0][1:3] == ["Record unreadable", "needs"]
     assert ran[2][1:3] == ["2 need you", "needs"], "a return with both counts is in the first bucket only"
     assert ran[3][2] == "waiting" and all(one[4] == "open" for one in ran)
@@ -1408,8 +1414,9 @@ def test_a_row_that_cannot_be_built_is_left_out_and_named_on_every_page(tmp_path
       const specs = pagesReminderSpecs(firm);
       return { specs: specs.map((one) => [one.name, one.status]), broken: pagesBroken.map((one) => one.name) };
     """, tmp_path, functions=["pagesReminderSpecs", "pagesStage", "pagesSafe", "pagesEach", "pagesLabel", "pagesSafeName", "pagesReturnName",
-                              "pagesByName", "pagesDay", "screenWords", "pagesReturnText", "pagesHouseholdPath", "pagesUrgent"])
-    assert ran["specs"] == [["Alpha (2025)", "Heads up"]] and ran["broken"] == ["Bravo"]
+                              "pagesByName", "pagesDay", "screenWords", "pagesHouseholdPath", "pagesUrgent", "pagesLinkWords",
+                              "pagesTaxpayer", "pagesFormKey", "pagesReturnCells", "pagesReturnKeys"])
+    assert ran["specs"] == [["Alpha", "Heads up"]] and ran["broken"] == ["Bravo"]
 
 
 def test_a_page_that_cannot_be_built_whole_keeps_what_it_held_or_draws_its_frame(tmp_path):
@@ -1676,9 +1683,9 @@ def title_case_ok(phrase: str) -> bool:
 
 
 def test_the_title_case_rule_says_what_ruling_10_says():
-    for good in ("Needs Review", "Waiting on Client", "Add a Return…", "Client (Greeting Name)", "Not Opened; It Has Changed", "Belongs To…", "Due Date (Optional)"):
+    for good in ("Needs Review", "Waiting on Taxpayer", "Add a Return…", "Taxpayer (Greeting Name)", "Not Opened; It Has Changed", "Belongs To…", "Due Date (Optional)"):
         assert title_case_ok(good), good
-    for bad in ("Needs review", "Waiting On Client", "Add A Return", "Due date (optional)", "Look again"):
+    for bad in ("Needs review", "Waiting On Taxpayer", "Add A Return", "Due date (optional)", "Look again"):
         assert not title_case_ok(bad), bad
 
 
@@ -1879,18 +1886,26 @@ def test_running_a_link_reveals_a_file_and_only_navigates_for_a_household_or_a_r
     assert ran["went"] == [{"level": "household", "household": "hh"},
                            {"level": "return", "household": "hh", "year": 2025, "ret": "r9"}]
     assert ran["failures"] == ["unanswered show_in_explorer"], "a key with no path says so, loudly"
-    assert ran["words"] == ["Show in File Explorer", "Navigate to Client", "Navigate to Return"]
+    assert ran["words"] == ["Show in File Explorer", "Navigate to Household", "Navigate to Return"]
 
 
-def test_a_return_link_reads_its_name_and_its_year_from_the_rows_own_record(tmp_path):
-    """Ruling 13: "{Return Name} ({Year})", the name from the list and the
-    year from the row (or the list's), never a year the renderer worked out;
-    a row with neither year reads as its name alone."""
+def test_the_taxpayer_is_the_name_without_its_recorded_form_and_never_a_guess(tmp_path):
+    """P194, P195: a return's Taxpayer is its name less the "{form} - " the
+    naming pattern puts first, only when the record's form is what it begins
+    with (a hyphen in the form number and letter case are not differences);
+    a return with no recorded form, or a name typed another way, is shown
+    whole; a vocabulary without the pattern is a loud failure."""
     ran = run_pages_dom("""
-      shellReturn = (path) => (path === "a" ? { return_name: "1120-S - Rivera Design LLC", household: "h", year: 2024 } : null);
-      return [pagesReturnText("a", 2025), pagesReturnText("a"), pagesReturnText("gone/2023/1040 - Gone", 0), pagesReturnText("a", 2025, "Named On The Row")];
+      const out = [pagesTaxpayer("1040 - Chidi & Ada Okafor", "1040"), pagesTaxpayer("1120-S - Rivera Design LLC", "1120S"),
+                   pagesTaxpayer("1040 - Gone", ""), pagesTaxpayer("Okafor 1040", "1040"), pagesTaxpayer("1065 - Bravo", "1040"),
+                   pagesTaxpayer("1040 - ", "1040"), pagesTaxpayer("990 - Friends - of the Park", "990")];
+      vocab.layout = {};
+      let loud = "";
+      try { pagesTaxpayer("1040 - A", "1040"); } catch (err) { loud = err.message; }
+      return { out, loud };
     """, tmp_path)
-    assert ran == ["1120-S - Rivera Design LLC (2025)", "1120-S - Rivera Design LLC (2024)", "1040 - Gone", "Named On The Row (2025)"]
+    assert ran["out"] == ["Chidi & Ada Okafor", "Rivera Design LLC", "1040 - Gone", "Okafor 1040", "1065 - Bravo", "1040 - ", "Friends - of the Park"]
+    assert ran["loud"] == "layout.return_name_pattern"
 
 
 def test_the_firm_pages_rows_link_by_the_firms_keys_and_carry_the_year(tmp_path):
@@ -1904,7 +1919,7 @@ def test_the_firm_pages_rows_link_by_the_firms_keys_and_carry_the_year(tmp_path)
       shellReturn = (path) => ({ return_name: "1040 - Smith", household: "/c/Smith", year: 2025 });
       households = [{ name: "Smith Family", path: "/c/Smith" }];
       const firmData = { paths: { "shown_copy h1": "/abs/h1.pdf" }, returns: [
-        { path: known, household: "Smith Family", year: 2025, label: "Smith Family 2025 1040 - Smith", counts: { needs_you: 2, waiting: 0, received: 0, set_aside: 0 }, oldest: "2026-03-03", due: null,
+        { path: known, household: "Smith Family", year: 2025, form: "1040", label: "Smith Family 2025 1040 - Smith", counts: { needs_you: 2, waiting: 0, received: 0, set_aside: 0 }, oldest: "2026-03-03", due: null,
           draft: { ready: true, stage: 1, held: 0, drafted: "2026-03-03" }, problem: "" }],
         files: [{ return: known, year: 2025, name: "one.pdf", handle: "h1", code: "unmatched", received: "2026-03-03", suggestion: "", open_key: "shown_copy h1" },
                 { return: known, year: 2025, name: "two.exe", handle: "h2", code: "opened-not-across", received: "2026-03-04", suggestion: "", open_key: "" }],
@@ -1921,19 +1936,22 @@ def test_the_firm_pages_rows_link_by_the_firms_keys_and_carry_the_year(tmp_path)
       const reminder = pagesReminderSpecs(firmData)[0];
       const link = (n) => n.byClass("row-link").map((l) => [l.textContent, l.dataset.link]);
       const docs = nodes.flatMap((n) => (n.byClass ? n.byClass("group-docs") : [])).map((n) => n.textContent);
-      return { head: link(head), caption: link(caption), captionText: caption.textContent, docs, rows: rows.map((r) => [r.byClass("row-name")[0].textContent, link(r.byClass("row-name")[0])]),
-               overview: [overview.name, overview.nameLink, overview.detailLink], reminder: [reminder.name, reminder.nameLink.kind, reminder.detailLink.kind], statusTips };
-    """, tmp_path, functions=["pagesNeedsReview", "pagesNameCell", "pagesReviewGroups", "pagesFirm", "pagesFirmReturn", "pagesReturnName", "pagesReturnText", "pagesHouseholdPath",
+      return { head: link(head), headParts: head.kids.map((k) => [k.className, k.textContent]), caption: link(caption), captionText: caption.textContent, docs,
+               rows: rows.map((r) => [r.byClass("row-name")[0].textContent, link(r.byClass("row-name")[0])]),
+               overview: [overview.name, overview.nameLink, overview.household, overview.year, overview.form, overview.detailLink || null],
+               reminder: [reminder.name, reminder.nameLink.kind, reminder.household, reminder.year, reminder.form], statusTips };
+    """, tmp_path, functions=["pagesNeedsReview", "pagesNameCell", "pagesReviewGroups", "pagesFirm", "pagesFirmReturn", "pagesReturnName", "pagesHouseholdPath",
                               "pagesFileLink", "pagesRow", "pagesCell", "pagesLinkNode", "pagesLinkWords", "pagesHeadLink", "pagesGroup", "pagesGroupStep", "pagesList",
                               "pagesReason", "pagesDay", "pagesSafe", "pagesEach", "pagesLabel", "pagesSafeName", "pagesStepWords", "pagesByName", "pagesEmpty",
                               "pagesNextSort", "pagesWorkRows", "pagesCounts", "pagesRoute", "pagesDue", "pagesReminderSpecs", "pagesStage", "screenWords", "h", "icon",
                               "pagesActivate", "pagesRunRow", "pagesRunRowLink", "pagesRunLink", "pagesRunStep", "pagesPathOf", "pagesPopup", "pagesEnableFor", "pagesRowRoute",
                               *COLUMN_FUNCTIONS])
-    assert ran["head"] == [["1040 - Smith (2025)", "return"]] and ran["caption"] == [["Smith Family", "household"]] and ran["captionText"] == "Smith Family"
+    assert ran["head"] == [["Smith", "return"]] and ran["caption"] == [["Smith Family", "household"]] and ran["captionText"] == "Smith Family"
+    assert ran["headParts"] == [["head-year", "2025"], ["row-link", "Smith"], ["form-tag", "1040"]], "the heading says the year, the taxpayer and the form once each (P195)"
     assert ran["docs"] == ["2 Documents"], "the group's count sits at its heading's end (P149)"
     assert ran["rows"] == [["one.pdf", [["one.pdf", "file"]]], ["two.exe", []]], "text for the file with no copy"
-    assert ran["overview"][0] == "1040 - Smith (2025)" and ran["overview"][1]["kind"] == "return" and ran["overview"][2] == {"kind": "household", "path": "/c/Smith"}
-    assert ran["reminder"] == ["1040 - Smith (2025)", "return", "household"]
+    assert ran["overview"] == ["Smith", {"kind": "return", "path": "/c/Smith/2025/1040 - Smith", "tip": "Navigate to Return (Smith Family)"}, "Smith Family", 2025, "1040", None]
+    assert ran["reminder"] == ["Smith", "return", "Smith Family", 2025, "1040"]
     # P116: the page hands each file's reason code to its row, so a tag's words are its tooltip.
     assert ran["statusTips"] == ["Could not tell", "Came in email or zip"]
 
@@ -2255,6 +2273,7 @@ def test_a_menu_channel_that_throws_is_a_notice_and_never_stops_a_route_change(t
       const failed = (err) => failures.push(err.message);
       const window = { tracker: { menu: { send: () => { throw new Error("closed"); } } } };
       const shellEnabled = () => [];
+      const shellChecked = () => [];
     """, """
       shellEnable(); shellPopup("file", "row-1", 1, 2);
       return failures;
@@ -2873,6 +2892,7 @@ def test_the_sorts_answer_is_built_line_by_line_from_the_pass(tmp_path):
       function failed() {}
       function showReturn() {}
       function runScan() {}
+      function shellReturn() { return null; }
       async function call(args) { return args[0] === "state" ? { summary: { line: "" } } : {}; }
       function keepSortAnswer(ran, asked, answer) {
         kept.push({ ran, asked, answer: answer.map((one) => ({ ...one, retry: typeof one.retry })) }); }
@@ -2890,14 +2910,14 @@ def test_the_sorts_answer_is_built_line_by_line_from_the_pass(tmp_path):
       out.good = await end("r25", { runs: [run({})] });
       return out;
     """
-    out = run_shell(["passEnded", "scanSummary", "scanFailed"], setup, "return (async () => {" + probe + "})();",
+    out = run_shell(["passEnded", "scanSummary", "scanFailed", "sortReturnSaid"], setup, "return (async () => {" + probe + "})();",
                     tmp_path, "app.js")
     assert out["whole"] == {"ran": [], "asked": "r25", "answer": [
         {"sentence": "In Use on FRONT-DESK", "kind": "locked", "lock": {"host": "FRONT-DESK"}, "identifier": None,
          "retry": "function"}]}
     assert out["skipped"]["answer"] == [{"sentence": "Nothing Done: Inactive.", "kind": "warning", "retry": "undefined"}]
     assert [one["sentence"] for one in out["away"]["answer"]] == [
-        "Smith 2024: Sort Failed: Folder Not Found", "Smith 2025: Sort Failed: Folder Not Found"]
+        "Smith 2024: Sort Failed: Folder Not Found", "\u2022 Smith 2025: Sort Failed: Folder Not Found"], "P199: its bullet stays"
     assert out["away"]["ran"] == ["r24", "r25"] and out["away"]["answer"][0]["kind"] == "failed"
     assert out["good"] == {"ran": ["r25"], "asked": "r25", "answer": []}
 
@@ -2959,10 +2979,10 @@ def test_a_failed_or_locked_household_sort_draws_no_engine_sentence_and_no_path(
 
     words = api._vocab()["scan"]
     setup = ("const fill = (p, v) => p.replace(/\\{(\\w+)\\}/g, (_, k) => v[k] ?? '');\n"
-             f"const vocab = {{ scan: {json.dumps(words)} }};")
+             f"const vocab = {{ scan: {json.dumps(words)} }};\nfunction shellReturn() {{ return null; }}")
     probe = "return scanSummary(runs[0], runs.slice(1), '').text;"
     for name, runs in (("lock held", held), ("client folder gone", failed)):
-        text = run_shell(["scanFailed", "scanSummary"], f"{setup}\nconst runs = {json.dumps(runs)};", probe,
+        text = run_shell(["scanFailed", "scanSummary", "sortReturnSaid"], f"{setup}\nconst runs = {json.dumps(runs)};", probe,
                          tmp_path, "app.js")
         lines = text.split("\n")
         assert len(lines) == 2, (name, text)
@@ -3068,7 +3088,7 @@ def test_a_needs_review_group_that_cannot_be_built_is_named_by_its_return_and_ne
       return { drew: nodes.length, broken: pagesBroken.map((one) => one.name), notices: notices.flatMap(([, list]) => list.map((one) => one[1])) };
     """, tmp_path, setup="""
       let shellFirmData = null; const shellFirm = () => ({ data: shellFirmData });
-      Object.assign(vocab.screen, { navigate_client: "Navigate to Client", empty: { needs_review: "Nothing needs review", next_sort: "Next sort {time}" } });
+      Object.assign(vocab.screen, { navigate_client: "Navigate to Household", empty: { needs_review: "Nothing needs review", next_sort: "Next sort {time}" } });
       vocab.shell = { page_error: "The App Hit an Error" }; vocab.notices = { about: "{label}: {sentence}" };
       vocab.reasons = { unmatched: "No Match" };
     """, functions=functions)
@@ -3105,17 +3125,17 @@ FIRM_LISTS = r"""
   let shellRoute = { level: "overview" };
   const box = new Element("div"); const $ = (id) => box;
   Object.assign(vocab.screen, {
-    figures: { need: "Need a Person", waiting: "Waiting on Clients", complete: "Complete" }, work: "Work Waiting",
+    figures: { need: "Need a Person", waiting: "Waiting on Taxpayers", complete: "Complete" }, work: "Work Waiting",
     filters: { work: "Work Waiting", all: "All" }, held: "Held",
     empty: { overview: "Nothing Is Waiting", next_sort: "Next Sort {time}", needs_review: "Nothing Needs Review", reminders: "No Drafts Ready",
-             clients: "No Clients Yet", work: "No Work Waiting", returns: "No Returns Yet", received: "Nothing Received Yet" },
+             clients: "No Households Yet", work: "No Work Waiting", returns: "No Returns Yet", received: "Nothing Received Yet" },
   });
   vocab.reminder = { stages: [{ number: 1, short: "Heads Up" }, { number: 2, short: "Checking In" }, { number: 3, short: "Final Notice" }] };
   vocab.reasons = { unmatched: { short: "Could Not Tell" }, "opened-not-across": { short: "Came in Email or Zip" } };
   shellReturn = (path) => ({ return_name: path.split("/").pop(), household: "", year: 2025 });
   households = ["Alpha", "Bravo", "Charlie", "Delta", "Echo"].map((name) => ({ name, path: `c/${name}` }));
   const zero = { needs_you: 0, waiting: 0, received: 0, set_aside: 0 };
-  const line = (name, household, extra) => ({ path: `r/${name}`, household, year: 2025, counts: { ...zero }, oldest: null, due: null, problem: "",
+  const line = (name, household, extra) => ({ path: `r/${name}`, household, year: 2025, form: name.split(" - ")[0], counts: { ...zero }, oldest: null, due: null, problem: "",
                                               draft: { ready: false, stage: 0, held: 0, drafted: null }, ...extra });
   shellFirmData = { paths: {}, totals: { need: 3, waiting: 2, complete: 0 }, next_sort: null, returns: [
     line("1040 - Alpha", "Alpha", { counts: { ...zero, needs_you: 3 }, oldest: "2026-03-05", draft: { ready: true, stage: 1, held: 0, drafted: "2026-03-01" } }),
@@ -3158,12 +3178,13 @@ def test_the_four_firm_lists_draw_a_header_row_of_buttons_in_the_rows_columns(tm
       }
       return out;
     """, tmp_path)
-    assert ran["overview"]["words"] == ["Return", "Client", "Status", "Date"]
+    assert ran["overview"]["words"] == ["Tax Year", "Taxpayer", "Form Type", "Status", "Date"], "Jason's order (P194, P195)"
     assert ran["needs-review"]["words"] == ["File", "Suggestion", "Reason", "Received"]
-    assert ran["reminders"]["words"] == ["Return", "Client", "Stage", "Drafted"]
-    assert ran["clients"]["words"] == ["Client Name", "Returns", "Status"], "the Clients end column is always empty (P153: Client Name)"
+    assert ran["reminders"]["words"] == ["Tax Year", "Taxpayer", "Form Type", "Stage", "Drafted"], "the same columns, then its own (P195)"
+    assert ran["clients"]["words"] == ["Household Name", "Returns", "Status"], "the Households end column is always empty (P153; P196: Household Name)"
     for level, one in ran.items():
-        assert one["tables"] == 1 and one["rows"] == 1 and one["cells"] == 4 and one["grips"] == 4, level
+        width = 5 if level in ("overview", "reminders") else 4
+        assert one["tables"] == 1 and one["rows"] == 1 and one["cells"] == width and one["grips"] == width, level
         assert one["tips"] == [f"Sort by {word}" for word in one["words"]], level
         assert set(one["sorts"]) <= {"none", ""}, "the usual order: no header orders the list"
     assert ran["needs-review"]["label"] == "Needs Review" and ran["overview"]["label"] == "Overview"
@@ -3176,18 +3197,18 @@ def test_a_header_orders_its_list_then_reverses_then_returns_to_the_usual_order(
     is open."""
     ran = run_lists("""
       const usual = names(draw("overview"));
-      pagesOrderBy("overview", "name"); const first = [names(box), sorts(box)];
+      pagesOrderBy("overview", "taxpayer"); const first = [names(box), sorts(box)];
       draw("clients"); const kept = names(draw("overview"));
-      pagesOrderBy("overview", "name"); const second = [names(box), sorts(box)];
-      pagesOrderBy("overview", "name"); const third = [names(box), sorts(box)];
+      pagesOrderBy("overview", "taxpayer"); const second = [names(box), sorts(box)];
+      pagesOrderBy("overview", "taxpayer"); const third = [names(box), sorts(box)];
       return { usual, first, kept, second, third };
     """, tmp_path)
-    assert ran["usual"] == ["1041 - Echo (2025)", "1065 - Bravo (2025)", "1040 - Alpha (2025)", "1040 - Charlie (2025)", "1040 - Delta (2025)"]
-    assert ran["first"][0] == ["1040 - Alpha (2025)", "1040 - Charlie (2025)", "1040 - Delta (2025)", "1041 - Echo (2025)", "1065 - Bravo (2025)"]
-    assert ran["first"][1] == ["ascending", "none", "none", "none"]
+    assert ran["usual"] == ["Echo", "Bravo", "Alpha", "Charlie", "Delta"]
+    assert ran["first"][0] == ["Alpha", "Bravo", "Charlie", "Delta", "Echo"]
+    assert ran["first"][1] == ["none", "ascending", "none", "none", "none"]
     assert ran["kept"] == ran["first"][0], "a list keeps its order while the app is open"
-    assert ran["second"][0] == list(reversed(ran["first"][0])) and ran["second"][1][0] == "descending"
-    assert ran["third"] == [ran["usual"], ["none", "none", "none", "none"]]
+    assert ran["second"][0] == list(reversed(ran["first"][0])) and ran["second"][1][1] == "descending"
+    assert ran["third"] == [ran["usual"], ["none", "none", "none", "none", "none"]]
 
 
 def test_status_orders_by_urgency_not_alphabetically(tmp_path):
@@ -3201,7 +3222,7 @@ def test_status_orders_by_urgency_not_alphabetically(tmp_path):
       const reminders = box.byClass("row").map((row) => row.byClass("row-status")[0].textContent);
       return { overview, back, reminders };
     """, tmp_path)
-    assert ran["overview"] == ["1041 - Echo (2025)", "1065 - Bravo (2025)", "1040 - Alpha (2025)", "1040 - Delta (2025)", "1040 - Charlie (2025)"]
+    assert ran["overview"] == ["Echo", "Bravo", "Alpha", "Delta", "Charlie"]
     assert ran["back"] == list(reversed(ran["overview"]))
     assert ran["reminders"] == ["Held", "Final Notice", "Heads Up"]
 
@@ -3212,13 +3233,13 @@ def test_dates_order_by_the_iso_date_and_blanks_go_last_both_ways(tmp_path):
       pagesOrderBy("overview", "end"); const down = names(box);
       return { up, down };
     """, tmp_path)
-    assert ran["up"] == ["1065 - Bravo (2025)", "1040 - Alpha (2025)", "1040 - Charlie (2025)", "1041 - Echo (2025)", "1040 - Delta (2025)"]
-    assert ran["down"] == ["1040 - Charlie (2025)", "1040 - Alpha (2025)", "1065 - Bravo (2025)", "1041 - Echo (2025)", "1040 - Delta (2025)"]
+    assert ran["up"] == ["Bravo", "Alpha", "Charlie", "Echo", "Delta"]
+    assert ran["down"] == ["Charlie", "Alpha", "Bravo", "Echo", "Delta"]
 
 
 def test_needs_review_orders_files_in_each_group_and_groups_follow_their_first_file(tmp_path):
     ran = run_lists("""
-      const titles = (page) => page.byClass("group-title").map((one) => one.textContent);
+      const titles = (page) => page.byClass("group-title").map((one) => one.byClass("row-link")[0].textContent);
       const usual = [titles(draw("needs-review")), names(box)];
       pagesOrderBy("needs_review", "end"); pagesOrderBy("needs_review", "end");
       const newest = [titles(box), names(box)];
@@ -3226,9 +3247,9 @@ def test_needs_review_orders_files_in_each_group_and_groups_follow_their_first_f
       const reason = [titles(box), names(box)];
       return { usual, newest, reason };
     """, tmp_path)
-    assert ran["usual"] == [["1065 - Bravo (2025)", "1040 - Alpha (2025)"], ["z.pdf", "b.pdf", "a.pdf"]]
-    assert ran["newest"] == [["1040 - Alpha (2025)", "1065 - Bravo (2025)"], ["a.pdf", "b.pdf", "z.pdf"]]
-    assert ran["reason"] == [["1040 - Alpha (2025)", "1065 - Bravo (2025)"], ["a.pdf", "b.pdf", "z.pdf"]]
+    assert ran["usual"] == [["Bravo", "Alpha"], ["z.pdf", "b.pdf", "a.pdf"]]
+    assert ran["newest"] == [["Alpha", "Bravo"], ["a.pdf", "b.pdf", "z.pdf"]]
+    assert ran["reason"] == [["Alpha", "Bravo"], ["a.pdf", "b.pdf", "z.pdf"]]
 
 
 def test_only_the_header_tooltip_says_sort_and_always_by_its_column():
@@ -3250,7 +3271,7 @@ def test_a_column_width_is_clamped_saved_and_reset(tmp_path):
     Storage that holds something unreadable leaves the usual widths."""
     ran = run_lists("""
       const props = () => ({ ...box.style.props });
-      pagesSetWidth("overview", "status", 5000); pagesSetWidth("overview", "detail", 10); pagesSaveWidths();
+      pagesSetWidth("overview", "status", 5000); pagesSetWidth("overview", "year", 10); pagesSaveWidths();
       const set = props(); const stored = JSON.parse(window.localStorage.getItem("tracker.columns"));
       pagesWidths = null; box.style.props = {}; pagesApplyWidths(box, "overview"); const again = props();
       pagesApplyWidths(box, ""); const plain = props();
@@ -3261,8 +3282,8 @@ def test_a_column_width_is_clamped_saved_and_reset(tmp_path):
       const window = { localStorage: { data: {}, getItem(k) { return k in this.data ? this.data[k] : null; }, setItem(k, v) { this.data[k] = String(v); },
                                        removeItem(k) { delete this.data[k]; } } };
     """)
-    assert ran["set"] == {"--size-col-status": "320px", "--size-col-detail": "80px"}
-    assert ran["stored"] == {"overview": {"status": 320, "detail": 80}}
+    assert ran["set"] == {"--size-col-status": "320px", "--size-col-year": "64px"}
+    assert ran["stored"] == {"overview": {"status": 320, "year": 64}}
     assert ran["again"] == ran["set"], "kept on this PC across a restart"
     assert ran["plain"] == {} and ran["reset"] == [{}, None] and ran["junk"] == {}
 
@@ -3429,15 +3450,15 @@ def test_the_firm_lists_divide_the_whole_ordered_list_into_pages_of_fifty(tmp_pa
       const steps = (page) => page.byClass("page-step").map((b) => b.disabled === true);
       const first = draw("overview"); const one = [foot(first), steps(first), names(first).length, names(first)[0]];
       pagesPageAt.overview = 2; const third = draw("overview"); const three = [foot(third), steps(third), names(third).length];
-      pagesOrderBy("overview", "name"); pagesOrderBy("overview", "name");
+      pagesOrderBy("overview", "taxpayer"); pagesOrderBy("overview", "taxpayer");
       const back = [foot(box), names(box)[0]];
       pagesPageAt.overview = 1; draw("clients"); const again = foot(draw("overview"));
       return { one, three, back, again, per: PAGES_PER_PAGE };
     """, tmp_path)
     assert ran["per"] == 50
-    assert ran["one"] == ["Showing 1-50 of 120 Returns", [True, False], 50, "1040 - R000 (2025)"]
+    assert ran["one"] == ["Showing 1-50 of 120 Returns", [True, False], 50, "R000"]
     assert ran["three"] == ["Showing 101-120 of 120 Returns", [False, True], 20]
-    assert ran["back"] == ["Showing 1-50 of 120 Returns", "1040 - R119 (2025)"], "a new order starts at page 1, over the whole list"
+    assert ran["back"] == ["Showing 1-50 of 120 Returns", "R119"], "a new order starts at page 1, over the whole list"
     assert ran["again"] == "Showing 1-50 of 120 Returns", "the page is forgotten when the page is left"
 
 
@@ -3474,7 +3495,7 @@ def test_overviews_tabs_narrow_the_whole_list_and_carry_their_counts(tmp_path):
     """, tmp_path)
     assert ran["all"] == [[["All", "true"], ["Need You (3)", "false"], ["Waiting (2)", "false"]], 5, "5"]
     assert ran["waiting"][0][2] == ["Waiting (2)", "true"]
-    assert ran["waiting"][1] == ["1040 - Charlie (2025)", "1040 - Delta (2025)"] and ran["waiting"][2] == "2"
+    assert ran["waiting"][1] == ["Charlie", "Delta"] and ran["waiting"][2] == "2"
 
 
 def test_needs_reviews_reason_cards_count_each_reason_and_filter_the_whole_page(tmp_path):
@@ -3541,17 +3562,21 @@ def test_a_return_pages_three_sections_carry_their_colour_icon_badge_and_edge(tm
     assert ".group-title, .list-title {" in css, "the heading words keep the text colour"
 
 
-def test_a_firm_lists_status_is_a_pill_with_a_dot_and_a_form_chip_leads_a_returns_name(tmp_path):
+def test_a_firm_lists_status_is_a_pill_with_a_dot_and_the_form_chip_has_its_own_column(tmp_path):
     """P145: on Overview the status is a pill with a dot that keeps its count
-    in the app's colours, and a return's recorded form is a chip before its
-    name, hidden from a screen reader (the name already begins with it)."""
+    in the app's colours; P195: the recorded form's chip is the Form Type
+    cell, read by a screen reader (the taxpayer no longer begins with it), and
+    a return with no recorded form has an empty Form Type cell."""
     ran = run_lists("""
       const page = draw("overview");
       const row = page.byClass("row").find((r) => r.textContent.indexOf("Alpha") !== -1);
-      return { dot: row.byClass("pill-dot").length, word: row.byClass("pill-word")[0].textContent, chip: row.byClass("form-tag").map((c) => [c.textContent, c.attrs["aria-hidden"]]),
-               plain: page.byClass("row").filter((r) => r.byClass("form-tag").length).length };
+      const form = row.byClass("row-form")[0];
+      shellFirmData.returns[3].form = ""; const again = draw("overview");
+      return { dot: row.byClass("pill-dot").length, word: row.byClass("pill-word")[0].textContent,
+               chip: form.byClass("form-tag").map((c) => [c.textContent, c.attrs["aria-hidden"] || ""]), inName: row.byClass("row-name")[0].byClass("form-tag").length,
+               forms: again.byClass("row").map((r) => r.byClass("row-form")[0].textContent) };
     """, tmp_path, LINKED)
-    assert ran == {"dot": 1, "word": "3 need you", "chip": [["1040", "true"]], "plain": 1}
+    assert ran == {"dot": 1, "word": "3 need you", "chip": [["1040", ""]], "inName": 0, "forms": ["1041", "1065", "1040", "1040", ""]}
     css = read("shell.css")
     for tone, tint in (("attention", "--warn-bg"), ("waiting", "--info-bg"), ("done", "--ok-bg")):
         assert f".is-{tone} > .pill {{ background: var({tint}); }}" in css
@@ -3570,8 +3595,8 @@ def test_the_search_finds_waiting_files_on_needs_review_and_its_placeholder_says
     ran = run_shell(["screenWords", "fold", "shellHousehold", "shellOwnReturns", "shellReturn", "findOptions"], PEOPLE, probe, tmp_path)
     assert ran["names"][0] == "Smith W-2.pdf" and ran["note"] == "1040 - John & Jane Smith 2025"
     assert ran["check"] == {"ret": "r1", "name": "Smith W-2.pdf", "handle": "h1"} and ran["without"] == 3
-    assert api.SCREEN["find_placeholder"] == "Search Clients and Returns"
-    assert api.SCREEN["find_placeholder_files"] == "Search Files, Clients and Returns"
+    assert api.SCREEN["find_placeholder"] == "Households and Returns"
+    assert api.SCREEN["find_placeholder_files"] == "Files, Households and Returns"
     shell = stripped_js("shell.js")
     assert 'setAttribute("placeholder", shellRoute.level === "needs-review" ? words.find_placeholder_files : words.find_placeholder)' in shell
 
@@ -3740,6 +3765,135 @@ def test_the_four_lists_and_a_needs_review_card_fit_1100px_beside_a_windows_scro
     columns = sum(px(f"--size-col-{cell}") for cell in ("name", "detail", "status", "end")) + 3 * sp[4]
     assert columns + 2 * sp[8] <= 1100 - px("--size-side") - 17
     assert columns + 2 * sp[6] + 2 + 2 * sp[2] <= 1100 - px("--size-side") - 17
+    # P194, P195: Overview's and Reminders' five columns, four gaps and the list's padding.
+    returns = sum(px(f"--size-col-{cell}") for cell in ("year", "taxpayer", "form", "status", "end")) + 4 * sp[4]
+    assert returns + 2 * sp[8] == 832 <= 1100 - px("--size-side") - 17
+    first = {}
+    for _media, selector, body in blocks(read("shell.css")):
+        for part in selector.split(","):
+            first.setdefault(" ".join(part.split()), dict(declarations(body)))
+    least = first['#page[data-list="overview"] .rows']["min-width"]
+    for cell in ("year", "taxpayer", "form", "status", "end"):
+        assert f"var(--size-col-{cell})" in least, cell
+    assert "4 * var(--sp-4)" in least and least == first['.col-table[data-list="reminders"]']["min-width"]
+
+
+def test_overview_and_reminders_say_tax_year_taxpayer_and_form_type_once_each_in_their_own_columns(tmp_path):
+    """P194, P195: each return row is five cells in Jason's order - Tax Year,
+    Taxpayer, Form Type, then the list's status and date - and no cell says
+    the form or the year a second time; the household has no column; the
+    rows and the header row share one five-column grid."""
+    ran = run_lists("""
+      const out = {};
+      for (const level of ["overview", "reminders"]) {
+        const page = draw(level);
+        out[level] = page.byClass("row").map((r) => [r.kids.map((k) => k.className.split(" ")[0]), r.byClass("row-year")[0].textContent,
+                                                    r.byClass("row-name")[0].textContent, r.byClass("row-form")[0].textContent, r.byClass("row-detail").length]);
+      }
+      return out;
+    """, tmp_path)
+    for level, rows in ran.items():
+        for cells, year, name, form, detail in rows:
+            assert cells == ["row-year", "row-name", "row-form", "row-status", "row-end"], level
+            assert year == "2025" and "2025" not in name and not name.startswith(form) and detail == 0, (level, name)
+    assert [row[2] for row in ran["reminders"]] == ["Alpha", "Charlie", "Bravo"], "the usual order is unchanged (by the return's name)"
+    first = {}
+    for _media, selector, body in blocks(read("shell.css")):
+        for part in selector.split(","):
+            first.setdefault(" ".join(part.split()), dict(declarations(body)))
+    grid = first[".row-return:not(.hidden)"]["grid-template-columns"]
+    assert grid == ("var(--size-col-year) var(--size-col-taxpayer) var(--size-col-form) var(--size-col-status) var(--size-col-end)"), "P199"
+    assert first['.col-table[data-list="overview"] .col-heads:not(.hidden)']["grid-template-columns"] == grid
+    assert first['.col-table[data-list="reminders"] .col-heads:not(.hidden)']["grid-template-columns"] == grid
+    css = read("shell.css")
+    tabular = next(body for _m, selector, body in blocks(css) if selector.strip().startswith(".tabular,"))
+    selector = next(selector for _m, selector, body in blocks(css) if selector.strip().startswith(".tabular,"))
+    assert ".row-year" in selector and ".head-year" in selector and ".row-date" in selector and "tabular-nums" in tabular
+    assert "monospace" not in css.lower()
+
+
+def test_the_household_is_in_the_taxpayer_tooltip_and_the_rows_description(tmp_path):
+    """P195 Q1 (Jason: "Take your recommendation"): the household has no
+    column; its name is the Taxpayer link's tooltip and part of the row's
+    screen-reader description, and its Linked Households mark sits after the
+    taxpayer, owned by the household so a redraw finds it again."""
+    ran = run_lists("""
+      tips.length = 0;
+      const page = draw("overview");
+      const alpha = page.byClass("row").find((r) => r.byClass("row-name")[0].textContent === "Alpha");
+      return { tips: tips.filter(([cls]) => cls === "row-link").map(([, words]) => words), described: alpha.attrs["aria-description"],
+               mark: alpha.byClass("row-name")[0].byClass("link-mark").map((m) => m.dataset.owner) };
+    """, tmp_path, LINKED)
+    assert "Navigate to Return (Alpha)" in ran["tips"] and "Navigate to Return (Bravo)" in ran["tips"]
+    assert ran["described"].endswith("Alpha, Linked Households")
+    assert ran["mark"] == ["Alpha"]
+    assert api.SCREEN["columns"]["taxpayer_tip"] == "{action} ({household})"
+    assert "return" not in api.SCREEN["columns"] and "client" not in api.SCREEN["columns"], "no list draws the old Return or Client header"
+
+
+def test_tax_year_orders_by_number_and_form_type_by_the_apps_form_order(tmp_path):
+    """P195: Tax Year orders by its number; Form Type in the order the app
+    already lists forms (the Client Types: 1040; 1120, 1120S, 1065; 1041;
+    990), any other form after them by its name; a blank goes last both ways."""
+    ran = run_lists("""
+      const set = { "1040 - Alpha": [2025, "1040"], "1065 - Bravo": [2024, "1065"], "1040 - Charlie": [2023, "990"], "1040 - Delta": ["", ""], "1041 - Echo": [2026, "1041"] };
+      for (const one of shellFirmData.returns) [one.year, one.form] = set[one.path.slice(2)];
+      shellFirmData.returns.push(line("W9 - Foxtrot", "Alpha", { year: 2022, form: "W9", counts: { ...zero, waiting: 1 } }));
+      draw("overview");
+      pagesOrderBy("overview", "year"); const years = names(box);
+      pagesOrderBy("overview", "year"); const back = names(box);
+      pagesOrderBy("overview", "form"); const forms = names(box);
+      pagesOrderBy("overview", "form"); const formsBack = names(box);
+      return { years, back, forms, formsBack };
+    """, tmp_path)
+    # Charlie's record says 990 and Delta's no form, so their names are shown whole (never cut by a guess).
+    assert ran["years"] == ["Foxtrot", "1040 - Charlie", "Bravo", "Alpha", "Echo", "1040 - Delta"]
+    assert ran["back"] == ["Echo", "Alpha", "Bravo", "1040 - Charlie", "Foxtrot", "1040 - Delta"], "a blank year is last both ways"
+    assert ran["forms"] == ["Alpha", "Bravo", "Echo", "1040 - Charlie", "Foxtrot", "1040 - Delta"]
+    assert ran["formsBack"] == ["Foxtrot", "1040 - Charlie", "Echo", "Bravo", "Alpha", "1040 - Delta"], "a blank form is last both ways"
+
+
+def test_a_saved_width_of_the_old_return_column_never_reaches_the_new_layout(tmp_path):
+    """P195: a width saved for Overview's old Return (name) or Client (detail)
+    column is not applied to the new layout and is dropped at the next save;
+    Status and Date keep theirs, since they mean the same."""
+    ran = run_lists("""
+      window.localStorage.setItem("tracker.columns", JSON.stringify({ overview: { name: 500, detail: 300, status: 200 }, clients: { name: 300 } }));
+      pagesWidths = null; box.style.props = {};
+      pagesApplyWidths(box, "overview"); const shown = { ...box.style.props };
+      pagesSetWidth("overview", "taxpayer", 400); pagesSaveWidths();
+      return { shown, after: { ...box.style.props }, stored: JSON.parse(window.localStorage.getItem("tracker.columns")) };
+    """, tmp_path, extra="""
+      const window = { localStorage: { data: {}, getItem(k) { return k in this.data ? this.data[k] : null; }, setItem(k, v) { this.data[k] = String(v); },
+                                       removeItem(k) { delete this.data[k]; } } };
+    """)
+    assert ran["shown"] == {"--size-col-status": "200px"}
+    assert ran["after"] == {"--size-col-status": "200px", "--size-col-taxpayer": "400px"}
+    assert ran["stored"] == {"overview": {"status": 200, "taxpayer": 400}, "clients": {"name": 300}}
+
+
+def test_needs_review_household_and_year_pages_say_each_field_once(tmp_path):
+    """P195 Q2 (Jason: "yes, apply to all windows"): Needs Review's files keep
+    their own columns and each return heading says the year, the taxpayer
+    and the form once; on the household and year pages a return is its form
+    chip and its taxpayer, the year being the heading or the title above."""
+    ran = run_lists("""
+      const review = draw("needs-review");
+      const heads = review.byClass("group-title").map((t) => t.kids.map((k) => [k.className, k.textContent]));
+      const hh = { name: "Alpha", path: "c/Alpha", returns: [{ path: "r/1040 - Alpha", year: 2025, return_name: "1040 - Alpha", form: "1040", active: true },
+                                                             { path: "r/old", year: 2024, return_name: "1040 - Alpha", form: "1040", active: true }] };
+      shellHousehold = () => hh;
+      shellRoute = { level: "household", household: "c/Alpha" };
+      const page = pagesHousehold(shellRoute);
+      const rows = page.flatMap((n) => (n && n.byClass ? n.byClass("row") : [])).map((r) => r.byClass("row-name")[0].kids.map((k) => [k.className, k.textContent]));
+      const year = pagesYear({ level: "year", household: "c/Alpha", year: 2025 });
+      const yearRows = year.flatMap((n) => (n && n.byClass ? n.byClass("row") : [])).map((r) => r.byClass("row-name")[0].textContent);
+      return { heads, rows, yearRows, title: year[0].textContent };
+    """, tmp_path)
+    assert ran["heads"] == [[["head-year", "2025"], ["row-link", "Bravo"], ["form-tag", "1065"]],
+                            [["head-year", "2025"], ["row-link", "Alpha"], ["form-tag", "1040"]]]
+    assert ran["rows"] == [[["form-tag", "1040"], ["row-link", "Alpha"]], [["form-tag", "1040"], ["row-link", "Alpha"]]], "the year is the heading above"
+    assert ran["title"] == "2025" and ran["yearRows"] == ["1040Alpha"]
 
 
 def test_the_window_and_its_taskbar_button_carry_the_console_icon():
@@ -3751,3 +3905,360 @@ def test_the_window_and_its_taskbar_button_carry_the_console_icon():
     assert (REPO / "app" / "assets" / "icon.ico").is_file()
     set_id = main.index('app.setAppUserModelId("com.jparkassociates.taxdocumentconsole");')
     assert set_id < main.index("app.whenReady()")
+
+
+# ── View › Show Under Construction (pilot SPEC-hide-under-construction, P197) ──
+
+#: The side panel as index.html lays it out, in a DOM just big enough for
+#: drawSoon and shellToggleSoon: the pages list (four pages, two Under
+#: Construction), the Taxpayer Types under their heading, and Workspace (three
+#: Under Construction items) under its heading.
+SOON_PANEL = r"""
+class El {
+  constructor(tag, attrs, kids) {
+    this.tag = tag; this.attrs = attrs || {}; this.kids = kids || []; this.parent = null; this.cls = new Set();
+    for (const k of this.kids) k.parent = this;
+    this.classList = { toggle: (c, on) => (on ? this.cls.add(c) : this.cls.delete(c)), contains: (c) => this.cls.has(c) };
+    if (this.attrs.class) for (const c of this.attrs.class.split(" ")) this.cls.add(c);
+  }
+  getAttribute(name) { return name in this.attrs ? this.attrs[name] : null; }
+  matches(sel) {
+    if (sel === "li") return this.tag === "li";
+    if (sel === ".side-list") return this.cls.has("side-list");
+    if (sel === ".side-section") return this.cls.has("side-section");
+    if (sel === ".side-section[data-soon]") return this.cls.has("side-section") && "data-soon" in this.attrs;
+    throw new Error(`selector ${sel}`);
+  }
+  all() { return this.kids.flatMap((k) => [k, ...k.all()]); }
+  querySelectorAll(sel) { return this.all().filter((n) => n.matches(sel)); }
+  closest(sel) { let n = this; while (n && !n.matches(sel)) n = n.parent; return n || null; }
+}
+const button = (attrs) => new El("li", {}, [new El("button", { class: "side-section", ...attrs })]);
+const soon = (key) => button({ "data-soon": key });
+const typesHeading = new El("h2", { id: "side-types-heading", class: "side-heading" });
+const workHeading = new El("h2", { id: "side-workspace-heading", class: "side-heading" });
+const root = new El("nav", {}, [
+  new El("ul", { id: "side-sections" }, [
+    button({ "data-section": "overview" }), button({ "data-section": "needs-review" }),
+    button({ "data-section": "reminders" }), button({ "data-section": "clients" }),
+    soon("ready_to_sign"), soon("family_entities")]),
+  typesHeading,
+  new El("ul", { class: "side-list", "aria-labelledby": "side-types-heading" }, [
+    button({ "data-type": "individuals" }), button({ "data-type": "businesses" }),
+    button({ "data-type": "trusts" }), button({ "data-type": "nonprofits" })]),
+  workHeading,
+  new El("ul", { class: "side-list", "aria-labelledby": "side-workspace-heading" }, [
+    soon("personal_trusts"), soon("corporate_entities"), soon("portal_settings")]),
+]);
+const byId = { "side-types-heading": typesHeading, "side-workspace-heading": workHeading };
+const $ = (id) => byId[id] || null;
+const document = { activeElement: null, querySelectorAll: (sel) => root.querySelectorAll(sel) };
+const store = { data: {}, broken: false,
+  getItem(k) { if (this.broken) throw new Error("locked"); return k in this.data ? this.data[k] : null; },
+  setItem(k, v) { if (this.broken) throw new Error("locked"); this.data[k] = String(v); },
+  removeItem(k) { if (this.broken) throw new Error("locked"); delete this.data[k]; } };
+const window = { localStorage: store };
+const SOON_KEY = "tracker.underConstruction";
+let shellSoonHidden = null;
+const said = { focus: [], tips: 0, sent: [] };
+function focusRegion(name) { said.focus.push(name); }
+function hideTip() { said.tips += 1; }
+function shellEnable() { said.sent.push(shellChecked()); }
+const hiddenNow = () => root.all().filter((n) => n.cls.has("hidden")).map((n) =>
+  n.tag === "li" ? n.kids[0].attrs["data-soon"] || n.kids[0].attrs["data-section"] || n.kids[0].attrs["data-type"]
+    : n.attrs.id || `list:${n.attrs["aria-labelledby"]}`);
+const soonButton = (key) => root.querySelectorAll(".side-section[data-soon]").find((n) => n.attrs["data-soon"] === key);
+"""
+
+SOON_FUNCTIONS = ["shellReadSoon", "shellChecked", "drawSoon", "shellToggleSoon"]
+
+
+def test_hiding_takes_the_five_under_construction_items_and_the_workspace_heading_out_of_the_panel(tmp_path):
+    """P197 rulings 1 and 2: a stored "hidden" hides the five items and the
+    Workspace heading and list with the .hidden class (display: none, so out
+    of the Tab order and the accessibility tree); the pages, the Taxpayer
+    Types and their heading stay; the menu's tick is off."""
+    ran = run_shell(SOON_FUNCTIONS, SOON_PANEL, """
+      store.data[SOON_KEY] = "hidden";
+      drawSoon();
+      return { hidden: hiddenNow(), checked: shellChecked() };
+    """, tmp_path)
+    assert sorted(ran["hidden"]) == sorted([
+        "ready_to_sign", "family_entities", "side-workspace-heading", "list:side-workspace-heading",
+        "personal_trusts", "corporate_entities", "portal_settings"])
+    assert ran["checked"] == []
+
+
+def test_a_new_install_shows_them_and_the_menu_flips_keeps_and_says_the_tick(tmp_path):
+    """P197 rulings 3, 5 and 6, Q2: shown with nothing stored; the menu's
+    answer hides them, keeps "hidden" on this PC, hides a showing tip, moves
+    focus that sat on a hidden item to the side panel's current page (F6's
+    place) and tells the menu; choosing it again shows them and forgets the
+    key, and focus elsewhere is left where it is."""
+    ran = run_shell(SOON_FUNCTIONS, SOON_PANEL, """
+      drawSoon();
+      const first = { hidden: hiddenNow(), checked: shellChecked() };
+      document.activeElement = soonButton("portal_settings");
+      shellToggleSoon();
+      const off = { hidden: hiddenNow().length, stored: store.data[SOON_KEY], focus: [...said.focus], tips: said.tips };
+      document.activeElement = null;
+      shellToggleSoon();
+      const on = { hidden: hiddenNow(), stored: SOON_KEY in store.data, focus: said.focus };
+      return { first, off, on, sent: said.sent };
+    """, tmp_path)
+    assert ran["first"] == {"hidden": [], "checked": ["show_under_construction"]}
+    assert ran["off"] == {"hidden": 7, "stored": "hidden", "focus": ["side"], "tips": 1}
+    assert ran["on"] == {"hidden": [], "stored": False, "focus": ["side"]}
+    assert ran["sent"] == [[], ["show_under_construction"]]
+
+
+def test_storage_that_cannot_be_read_shows_them_and_the_choice_holds_while_the_app_is_open(tmp_path):
+    """P197 ruling 5: the column widths' fallback - unreadable storage shows
+    the items, and a choice it refuses to keep still holds until the app
+    closes."""
+    ran = run_shell(SOON_FUNCTIONS, SOON_PANEL, """
+      store.broken = true;
+      drawSoon();
+      const first = hiddenNow();
+      shellToggleSoon();
+      return { first, after: hiddenNow().length, checked: shellChecked() };
+    """, tmp_path)
+    assert ran == {"first": [], "after": 7, "checked": []}
+
+
+def test_the_setting_is_this_pcs_and_the_side_panel_draws_it_on_every_draw():
+    """P197 rulings 4-6: kept under its own key in this PC's storage (never
+    settings.json, never the engine), drawn by drawSide, answered by the menu
+    and enabled from the first frame."""
+    text = stripped_js("shell.js")
+    assert 'const SOON_KEY = "tracker.underConstruction";' in text
+    assert "drawSoon();" in js_function("drawSide")
+    assert re.search(r"^drawSoon\(\);$", text, flags=re.M), "a stored hidden applies at load, before the words (review S1)"
+    assert "show_under_construction: () => shellToggleSoon()," in text
+    first = [line for line in js_function("shellEnabled").splitlines() if "const ids = [" in line]
+    assert len(first) == 1 and '"show_under_construction"' in first[0]
+    assert "under_construction" not in (REPO / "tracker" / "settings.py").read_text(encoding="utf-8")
+
+
+def test_a_damaged_stored_value_shows_them(tmp_path):
+    """P197 ruling 5 (review NIT 2a): only the exact word "hidden" hides; any
+    other stored value reads as shown, the new install's default."""
+    ran = run_shell(SOON_FUNCTIONS, SOON_PANEL, """
+      const seen = [];
+      for (const value of ["HIDDEN", "1", "true", ""]) {
+        store.data[SOON_KEY] = value; shellSoonHidden = null; drawSoon();
+        seen.push([hiddenNow(), shellChecked()]);
+      }
+      return seen;
+    """, tmp_path)
+    assert ran == [[[], ["show_under_construction"]]] * 4
+
+
+def test_hiding_while_focus_is_elsewhere_leaves_focus_where_it_is(tmp_path):
+    """P197 ruling 3 (review NIT 2b): focus moves only when it sat on an item
+    now hidden; on a page item it stays."""
+    ran = run_shell(SOON_FUNCTIONS, SOON_PANEL, """
+      document.activeElement = root.querySelectorAll(".side-section")[0];
+      shellToggleSoon();
+      return { hidden: hiddenNow().length, focus: said.focus, stored: store.data[SOON_KEY] };
+    """, tmp_path)
+    assert ran == {"hidden": 7, "focus": [], "stored": "hidden"}
+
+
+# ── the 0.3 Windows check's list and dialog notes (pilot SPEC-check-notes-0.3, P199) ──
+
+def test_a_firm_lists_columns_are_their_own_widths_so_the_date_sits_after_the_status():
+    """P199 (L4, N2a): no column of a firm list takes the window's slack - the
+    taxpayer's and the name column's 1fr made the Date run to the window's
+    right edge, and made a widened column grow to the left as its flexible
+    neighbour shrank. Every track is its width, so at any window from 1100px
+    up the Date starts 16px after the Status's right edge (656px into the
+    list at the usual widths), the date and its header start at the column's
+    left edge, and a return's own page keeps its date at the end."""
+    first = {}
+    for _media, selector, body in blocks(read("shell.css")):
+        for part in selector.split(","):
+            first.setdefault(" ".join(part.split()), dict(declarations(body)))
+    five = "var(--size-col-year) var(--size-col-taxpayer) var(--size-col-form) var(--size-col-status) var(--size-col-end)"
+    four = "var(--size-col-name) var(--size-col-detail) var(--size-col-status) var(--size-col-end)"
+    for selector in (".row-return:not(.hidden)", '.col-table[data-list="overview"] .col-heads:not(.hidden)',
+                     '#page[data-list="reminders"] .row-skeleton:not(.hidden)'):
+        assert first[selector]["grid-template-columns"] == five, selector
+    for selector in ('#page[data-list="needs_review"] .row:not(.hidden)', '#page[data-list="clients"] .row:not(.hidden)',
+                     '.col-table[data-list="needs_review"] .col-heads:not(.hidden)', '.col-table[data-list="clients"] .col-heads:not(.hidden)',
+                     '#page[data-list="needs_review"] .row-skeleton:not(.hidden)', '#page[data-list="clients"] .row-skeleton:not(.hidden)'):
+        assert first[selector]["grid-template-columns"] == four, selector
+    assert "1fr" in first[".row:not(.hidden)"]["grid-template-columns"], "a return's own page (no headers) is unchanged"
+    for name in ("overview", "needs_review", "reminders", "clients"):
+        assert first[f'#page[data-list="{name}"] .row-end:not(.hidden)']["justify-items"] == "start", name
+    assert first[".row-end:not(.hidden)"]["justify-items"] == "end"
+    assert '.col-cell[data-cell="end"]' not in first, "the Date header's word starts where its dates do"
+    light, _dark = root_blocks()
+
+    def px(name: str) -> int:
+        return int(light[name].strip().removesuffix("px"))
+
+    date_at = px("--sp-8") + sum(px(f"--size-col-{cell}") for cell in ("year", "taxpayer", "form", "status")) + 4 * px("--sp-4")
+    assert date_at == 656 and date_at + px("--size-col-end") + px("--sp-8") <= 1100 - px("--size-side") - 17
+
+
+def test_the_order_chosen_by_a_header_is_kept_on_this_pc_across_a_restart(tmp_path):
+    """P199 (N2b), replacing P139's "while the app is open": a list's order is
+    kept per list in this PC's storage, as its widths are, and comes back
+    after a restart; the third press forgets it. A damaged value - not JSON,
+    a column the list no longer has, Households' wordless end column, a
+    direction other than 1 or -1 - leaves the usual order. Reset Column
+    Widths does not touch the order."""
+    ran = run_lists("""
+      const restart = () => { pagesOrder = null; pagesWidths = null; };
+      const usual = names(draw("overview"));
+      pagesOrderBy("overview", "taxpayer"); pagesOrderBy("overview", "taxpayer");
+      draw("reminders"); pagesOrderBy("reminders", "end");
+      const stored = JSON.parse(window.localStorage.getItem("tracker.order"));
+      restart(); const back = [names(draw("overview")), sorts(box)];
+      pagesResetWidths(); restart(); const afterReset = names(draw("overview"));
+      const damaged = {};
+      for (const [name, value] of [["junk", "not json"], ["old", JSON.stringify({ overview: { cell: "name", dir: 1 } })],
+                                   ["wordless", JSON.stringify({ clients: { cell: "end", dir: 1 } })],
+                                   ["dir", JSON.stringify({ overview: { cell: "taxpayer", dir: 2 } })],
+                                   ["list", JSON.stringify(["overview"])]]) {
+        window.localStorage.setItem("tracker.order", value); restart();
+        damaged[name] = [names(draw("overview")), sorts(box), pagesStoredOrder()];
+      }
+      window.localStorage.setItem("tracker.order", JSON.stringify({ overview: { cell: "taxpayer", dir: -1 } })); restart();
+      draw("overview"); pagesOrderBy("overview", "taxpayer"); restart();
+      const third = [names(draw("overview")), window.localStorage.getItem("tracker.order")];
+      return { usual, stored, back, afterReset, damaged, third };
+    """, tmp_path, extra="""
+      const window = { localStorage: { data: {}, getItem(k) { return k in this.data ? this.data[k] : null; }, setItem(k, v) { this.data[k] = String(v); },
+                                       removeItem(k) { delete this.data[k]; } } };
+    """)
+    assert ran["stored"] == {"overview": {"cell": "taxpayer", "dir": -1}, "reminders": {"cell": "end", "dir": 1}}
+    assert ran["back"] == [["Echo", "Delta", "Charlie", "Bravo", "Alpha"], ["none", "descending", "none", "none", "none"]]
+    assert ran["afterReset"] == ran["back"][0], "Reset Column Widths leaves the order"
+    for name, (shown, sorts, held) in ran["damaged"].items():
+        assert shown == ran["usual"] and set(sorts) == {"none"} and held == {}, name
+    assert ran["third"] == [ran["usual"], "{}"], "the third press forgets the order on this PC too"
+
+
+SORT_SAID = r"""
+const fill = (p, v) => p.replace(/\{(\w+)\}/g, (_, k) => v[k] ?? '');
+const known = { r24: { year: 2024, form: "1040", return_name: "1040 - John A. Smith" },
+                r25: { year: 2025, form: "1040", return_name: "1040 - John A. Smith" },
+                b24: { year: 2024, form: "", return_name: "Smith Bakery Books" } };
+function shellReturn(path) { return known[path] || null; }
+const run = (over) => ({ path: "r25", label: "Smith Family 2025 1040 - John A. Smith", ok: true, error: "", code: "", skipped: "", filed: 0,
+  review: 0, waiting: 0, file_errors: [], warnings: [], cancelled: false, ...over });
+"""
+
+
+def test_another_returns_line_keeps_its_bullet_and_says_the_return_by_its_fields(tmp_path):
+    """P199 (N3): step 13's extra line, "Smith Family 2024 1040 - John A.
+    Smith: Sort Failed: Folder Not Found", had lost its bullet, and said the
+    household, the form and the year inside the return's long label. It now
+    begins with its bullet and says the return as the lists do (P194-P196):
+    the year, the taxpayer and the form, each once; the household is the
+    page's own. A return the list does not hold keeps its label."""
+    words = api._vocab()
+    setup = (f"const vocab = {{ scan: {json.dumps(words['scan'])}, layout: {json.dumps(words['layout'])} }};\n"
+             + SORT_SAID + js_function("pagesTaxpayer", "pages.js") + r"""
+      let scanning = null, active = "r25", viewGeneration = 1, kept = [];
+      function scanDone() {}
+      function warningNotices() {}
+      function adoptList() {}
+      function withEng(c) { return [c]; }
+      function renderFor() { return true; }
+      function failed() {}
+      function showReturn() {}
+      function runScan() {}
+      async function call(args) { return args[0] === "state" ? { summary: { line: "" } } : {}; }
+      function keepSortAnswer(ran, asked, answer) { kept.push(answer.map((one) => one.sentence)); }
+    """)
+    probe = r"""
+      const gone = { error: "gone", code: "client-folder-missing" };
+      scanning = { asked: "r25" };
+      await passEnded({ reply: { runs: [run(gone), run({ ...gone, path: "r24", label: "Smith Family 2024 1040 - John A. Smith" }),
+                                        run({ ...gone, path: "b24", label: "Smith Family 2024 Smith Bakery Books" }),
+                                        run({ ...gone, path: "x", label: "Smith Family 2023 Old Return" })] } });
+      active = "r24"; scanning = { asked: "r25" };
+      await passEnded({ reply: { runs: [run(gone)] } });
+      return kept;
+    """
+    kept = run_shell(["passEnded", "scanSummary", "scanFailed", "sortReturnSaid"], setup,
+                     "return (async () => {" + probe + "})();", tmp_path, "app.js")
+    assert kept[0] == ["Sort Failed: Folder Not Found", "• 2024 John A. Smith 1040: Sort Failed: Folder Not Found",
+                       "• 2024 Smith Bakery Books: Sort Failed: Folder Not Found",
+                       "• Smith Family 2023 Old Return: Sort Failed: Folder Not Found"]
+    assert kept[1] == ["2025 John A. Smith 1040: Sort Failed: Folder Not Found"], "the asked return, said while another is shown"
+    step = (REPO / "pilot" / "wintest" / "PROMPT-shell.md").read_text(encoding="utf-8")
+    assert "the year, the taxpayer and the form" in step
+
+
+def test_a_sort_that_finds_nothing_to_do_says_nothing_to_sort(tmp_path):
+    """P199 Q1 (built as recommended): a Sort that filed nothing, sent nothing
+    to review, met no file it could not sort and no warning said nothing at
+    all. It now says "Nothing to Sort"; with a file still arriving it says
+    "Nothing Done: 1 Still Syncing." in words already approved; a Sort that
+    did anything is unchanged."""
+    words = api._vocab()["scan"]
+    setup = f"const vocab = {{ scan: {json.dumps(words)} }};\n" + SORT_SAID
+    probe = """
+      return [scanSummary(run({}), [], ""), scanSummary(run({ waiting: 1 }), [], ""), scanSummary(run({ filed: 1 }), [], ""),
+              scanSummary(run({ review: 2 }), [], "").cls, scanSummary(run({ file_errors: ["x"] }), [], "").text.split("\\n")[1],
+              scanSummary(run({ cancelled: true }), [], "").text.split("\\n")[0]];
+    """
+    said = run_shell(["scanFailed", "scanSummary", "sortReturnSaid"], setup, probe, tmp_path, "app.js")
+    assert said[0] == {"text": "Nothing to Sort", "cls": "warn"}
+    assert said[1] == {"text": "Nothing Done: 1 Still Syncing.", "cls": "warn"}
+    assert said[2]["cls"] == "ok" and said[3] == "ok", "a Sort that did something still says nothing (P131)"
+    assert said[4] == "But 1 Files Not Sorted." and said[5].startswith("Pass complete")
+    from tests.test_api import title_case
+    for text in (said[0]["text"], said[1]["text"]):
+        assert title_case(text) == text and len(text.split()) <= 5
+
+
+def test_nothing_to_sort_is_said_only_when_no_return_of_the_household_received_anything(tmp_path):
+    """The screen review's M1: the pass sorts the household's one inbox
+    across every return and counts per return, so a Sort pressed on the
+    1065 can file five documents into the 1040. That Sort did something and
+    must not say "Nothing to Sort" (it says nothing, as before P199); one
+    where no return filed, sent to review, met a file it could not sort or
+    was stopped still says it, and a file arriving for another return is
+    still the syncing words."""
+    words = api._vocab()["scan"]
+    setup = f"const vocab = {{ scan: {json.dumps(words)} }};\n" + SORT_SAID
+    probe = """
+      const other = (over) => run({ path: "r24", label: "Smith Family 2024 1040 - John A. Smith", ...over });
+      return [scanSummary(run({}), [other({ filed: 3 })], ""), scanSummary(run({}), [other({ review: 1 })], ""),
+              scanSummary(run({}), [other({ file_errors: ["x"] })], ""), scanSummary(run({}), [other({ cancelled: true })], ""),
+              scanSummary(run({}), [other({})], ""), scanSummary(run({}), [other({ waiting: 2 })], "")];
+    """
+    said = run_shell(["scanFailed", "scanSummary", "sortReturnSaid"], setup, probe, tmp_path, "app.js")
+    for one in said[:4]:
+        assert "Nothing to Sort" not in one["text"] and one["cls"] == "ok", one
+    assert said[4] == {"text": "Nothing to Sort", "cls": "warn"}, "no return of the pass received anything"
+    assert said[5] == {"text": "Nothing Done: 2 Still Syncing.", "cls": "warn"}
+
+
+def test_the_schedule_dialog_says_its_next_run_in_the_apps_clock_style(tmp_path):
+    """P199 (N5): "First Run At" showed "6:30 AM" (the time box, in this PC's
+    style) beside "Next run: today at 22:30" (the engine's HH:MM). The dialog
+    and its saved toast now write the time as every other time the app shows
+    is (pagesTime, this PC's own style: "10:30 PM" on the office's), and a
+    sentence that does not end in a time is left whole."""
+    setup = js_function("pagesTime", "pages.js")
+    probe = """
+      return [scheduleClock("Next run: today at 22:30"), pagesTime("22:30"), scheduleClock("Next run: tomorrow at 06:30"),
+              pagesTime("06:30"), scheduleClock(""), scheduleClock("Off")];
+    """
+    said = run_shell(["scheduleClock"], setup, probe, tmp_path, "app.js")
+    assert said[0] == f"Next run: today at {said[1]}" and "22:30" not in said[0]
+    assert said[2] == f"Next run: tomorrow at {said[3]}" and said[4:] == ["", "Off"]
+    js = read("app.js")
+    assert '$("sc-next").textContent = scheduleClock(current.next_run);' in js
+    # The time in the sentence lines up as every date and time does (the
+    # screen review's N4: tabular-nums, never a typewriter font).
+    selector = next(selector for _m, selector, _b in blocks(read("shell.css")) if selector.strip().startswith(".tabular,"))
+    assert "#sc-next" in [part.strip() for part in selector.split(",")]
+    assert "${scheduleClock(result.next_run)}" in js
+    assert 'toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })' in js_function("pagesTime", "pages.js")

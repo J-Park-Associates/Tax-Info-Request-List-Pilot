@@ -8,13 +8,26 @@ household, one return, and a pile of fake documents waiting in its
 ``%USERPROFILE%\\PilotTest``, and an existing non-empty folder is refused
 rather than mixed into, so a mistyped path can never write among real files.
 
+It never writes the app's real data folder (F7, P193, R3). Building the
+samples writes each return's record and the engine's store and checkpoint;
+on 9/29 the script ran from inside the Claude desktop app, which Windows
+redirects, and became the first writer of a private copy of the data folder
+the app later read instead of the real one. So it builds under a throwaway
+``TRACKER_DATA_HOME`` (a temporary folder, removed afterwards), and keeps
+nothing of the engine's but the records inside the sample folder: the app's
+first read seeds its checkpoint from those records, as it does for any
+return it sees for the first time.
+
 Run from the repository root with the checkout's virtual environment:
     .venv\\Scripts\\python.exe pilot\\wintest\\make_samples.py [target]
 """
 
 from __future__ import annotations
 
+import logging
+import os
 import sys
+import tempfile
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
@@ -34,7 +47,18 @@ def main(argv: list[str]) -> int:
     sys.path.insert(0, str(REPO / "tests"))
     from samples import build_scratch_root  # the suite's own fake documents
 
-    root = build_scratch_root(target)
+    from tracker import store
+    from tracker.settings import ENV_DATA_HOME
+
+    os.environ.pop(store.ENV_STORE, None)           # a named store would be written, not the throwaway one
+    with tempfile.TemporaryDirectory(prefix="pilot-samples-") as throwaway:
+        os.environ[ENV_DATA_HOME] = throwaway
+        try:
+            root = build_scratch_root(target)
+        finally:
+            store.close()                           # Windows cannot remove an open database
+            logging.shutdown()                      # nor an open error log
+            del os.environ[ENV_DATA_HOME]
     inboxes = [p for p in root.rglob("*") if p.is_dir() and p.name == "Drop files here"]
     count = sum(1 for inbox in inboxes for f in inbox.rglob("*") if f.is_file())
     if not inboxes or count == 0:

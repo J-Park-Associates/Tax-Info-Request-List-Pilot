@@ -56,14 +56,16 @@ def is_earlier(command: list[str]) -> bool:
 def windows(monkeypatch):
     """This computer is ``HERE``, has Task Scheduler, and its ``schtasks`` is
     a fake that keeps every command; a task of ours exists when ``exists``
-    is set on the returned state, and the earlier name's when
+    is set on the returned state - ``/create`` sets it and ``/delete``
+    clears it, as Windows does (P198), and ``query_fails`` makes every
+    ``/query`` of ours refuse - and the earlier name's when
     ``earlier_exists`` is (its commands are kept in ``earlier_calls``);
     ``order`` has every command's task and verb, in the order made."""
     calls: list[list[str]] = []
     earlier_calls: list[list[str]] = []
     order: list[tuple[str, str]] = []
     calls_state = {"exists": False, "earlier_exists": False, "earlier_delete_fails": False,
-                   "earlier_calls": earlier_calls, "order": order}
+                   "query_fails": False, "earlier_calls": earlier_calls, "order": order}
 
     def answer(command):
         order.append((task_named(command), command[1]))
@@ -78,7 +80,10 @@ def windows(monkeypatch):
             return Said()
         calls.append(command)
         if command[1] == "/query":
+            if calls_state["query_fails"]:
+                return Said(1, "ERROR: Access is denied.")
             return Said(0 if calls_state["exists"] else 1)
+        calls_state["exists"] = command[1] == "/create"
         return Said()
 
     monkeypatch.setattr(platform, "node", lambda: HERE.upper())
@@ -386,12 +391,18 @@ def test_a_failed_run_is_tried_again_at_the_next_launch(root, windows):
 
 
 def test_the_launch_door_does_nothing_when_the_program_is_unchanged(root, windows, monkeypatch):
+    """Nothing but the one question P198 added: is the task still there."""
     assert after_install.run(reason=after_install.REASON_SETUP).exit_code == 0
 
     def refused(*args, **kwargs):
         raise AssertionError("the launch door reached past the identity")
 
-    monkeypatch.setattr(scheduling, "_schtasks", refused)
+    def only_asks(command):
+        if command[1] != "/query":
+            refused()
+        return Said(0)
+
+    monkeypatch.setattr(scheduling, "_schtasks", only_asks)
     monkeypatch.setattr(store, "connect", refused)
     began = time.perf_counter()
     assert after_install.launch() is None
@@ -1255,7 +1266,7 @@ def test_the_launch_door_runs_again_when_the_choice_changed(root, windows):
     assert after_install.launch() is None
 
 
-def test_the_launch_door_makes_no_schtasks_call_when_nothing_changed(root, windows, monkeypatch):
+def test_the_launch_door_makes_only_one_query_when_nothing_changed(root, windows, monkeypatch):
     settings.set_schedule(True, "09:00", 30)
     assert after_install.run(reason=after_install.REASON_SETUP).exit_code == 0
     recorded = json.loads(after_install.record_path().read_text(encoding="utf-8"))
@@ -1264,7 +1275,145 @@ def test_the_launch_door_makes_no_schtasks_call_when_nothing_changed(root, windo
 
     assert after_install.launch() is None
 
-    assert len(windows["calls"]) == calls_before
+    assert windows["calls"][calls_before:] == [["schtasks", "/query", "/tn", scheduling.TASK_NAME]]
+
+
+# ------------------------------------- the task removed behind the note (P198, F6) ----
+
+
+def test_a_launch_after_the_task_was_removed_registers_it_again(root, windows):
+    assert after_install.run(reason=after_install.REASON_SETUP).schedule == scheduling.CLAIMED
+    assert after_install.launch() is None and windows["exists"]
+
+    windows["exists"] = False                               # deleted in Task Scheduler
+    windows["calls"].clear()
+    again = after_install.launch()
+
+    assert again is not None and again.exit_code == 0 and again.installed
+    assert again.schedule == scheduling.REGISTERED and windows["exists"]
+    assert len(creates(windows["calls"])) == 1
+    assert after_install.notice() is None                   # a success says nothing on screen
+    assert after_install.launch() is None                   # and once is enough
+
+
+def test_a_reinstall_that_kept_the_note_registers_the_schedule_at_first_start(root, windows):
+    """F6 as the 0.3 Windows check found it: the uninstaller deletes the task
+    and leaves the data folder, so the note and ``settings.json`` (schedule
+    on) both say nothing changed; the same build's first start registers
+    the saved choice again, with no Repair."""
+    settings.set_schedule(True, "06:30", 240)
+    assert after_install.run(reason=after_install.REASON_SETUP).exit_code == 0
+    note = after_install.record_path().read_bytes()
+
+    windows["exists"] = False                               # setup.iss [UninstallRun]
+    started = after_install.launch()                        # the same build, reinstalled
+
+    assert started is not None and started.installed and windows["exists"]
+    assert "T06:30:00" in registered_xml() and "PT240M" in registered_xml()
+    assert json.loads(after_install.record_path().read_bytes())["program"] == json.loads(note)["program"]
+
+
+def test_a_launch_with_the_schedule_off_registers_nothing(root, windows):
+    settings.set_schedule(False, "07:00", 120)
+    assert after_install.run(reason=after_install.REASON_SETUP).schedule == scheduling.OFF
+    windows["calls"].clear()
+
+    assert after_install.launch() is None
+
+    assert windows["calls"] == []                           # not asked, nothing registered
+    assert not windows["exists"]
+
+
+def test_a_launch_on_a_computer_the_designation_does_not_name_asks_nothing_and_registers_nothing(
+        root, windows):
+    """Decision 159 (M1): only the designated computer registers. Another
+    computer expects no task, so its launch never asks and never makes one."""
+    designation_file(root).write_text(f"{ELSEWHERE}\n", encoding="utf-8")
+    assert after_install.run(reason=after_install.REASON_SETUP).schedule == scheduling.ELSEWHERE
+    windows["calls"].clear()
+
+    assert after_install.launch() is None
+
+    assert windows["calls"] == [] and not windows["exists"]
+
+
+def test_a_query_that_fails_is_never_read_as_a_task_that_exists(root, windows):
+    assert after_install.run(reason=after_install.REASON_SETUP).exit_code == 0
+    windows["query_fails"] = True
+    windows["calls"].clear()
+
+    ran = after_install.launch()
+
+    assert ran is not None and ran.installed and len(creates(windows["calls"])) == 1
+
+
+def test_a_query_refused_keeps_its_exit_code_on_the_error_log_once_per_start(root, windows, caplog):
+    """The engine review's NIT-2: a refusal other than "it exists" registers
+    the task again at every start, so each start writes why - the query's
+    exit code, never ``schtasks``'s own words - once."""
+    import logging
+
+    from tracker import errors
+
+    assert after_install.run(reason=after_install.REASON_SETUP).exit_code == 0
+    windows["query_fails"] = True
+    with caplog.at_level(logging.WARNING, logger=errors.DEBUG_LOGGER):
+        assert after_install.launch() is not None
+    said = [record.getMessage() for record in caplog.records
+            if after_install.ASKING_FOR_THE_TASK in record.getMessage()]
+    assert said == [f"{after_install.ASKING_FOR_THE_TASK}: {after_install.QUERY_REFUSED.format(code=1)}"]
+    assert "Access is denied" not in caplog.text
+
+
+def test_a_schtasks_that_cannot_start_runs_the_step_and_says_so(root, windows, monkeypatch, caplog):
+    import logging
+
+    from tracker import errors
+
+    assert after_install.run(reason=after_install.REASON_SETUP).exit_code == 0
+
+    def cannot_start(command):
+        raise FileNotFoundError(2, "The system cannot find the file specified", "schtasks")
+
+    monkeypatch.setattr(scheduling, "_schtasks", cannot_start)
+    with caplog.at_level(logging.WARNING, logger=errors.DEBUG_LOGGER):
+        ran = after_install.launch()
+
+    assert ran is not None and ran.exit_code == 1
+    assert ran.schedule_sentence == after_install.SCHEDULE_FAILED.format(
+        problem=after_install.SCHEDULE_UNREACHABLE)
+    assert ran.schedule_sentence in after_install.notice()["failed"]
+    assert TRACEBACK not in ran.schedule_sentence
+    assert after_install.read_record()["program"] == ""     # tried again at the next start
+    # The "says so" of its name (the engine review's NIT-3): the query's
+    # failure is on the local error log.
+    assert "after_install: asking whether the scheduled task exists" in caplog.text
+
+
+def test_a_schtasks_that_hangs_is_said_as_unreachable(root, windows, monkeypatch, caplog):
+    """The engine review's SHOULD-2: a ``schtasks`` past its limit raises
+    ``TimeoutError`` (``scheduling._schtasks``), and the launch says it as
+    Task Scheduler that cannot be reached, and logs it - never "the task
+    exists", so nothing is skipped on its word."""
+    import logging
+
+    from tracker import errors
+
+    assert after_install.run(reason=after_install.REASON_SETUP).exit_code == 0
+
+    def hangs(command):
+        raise TimeoutError(scheduling.SCHTASKS_TOO_LONG.format(seconds=scheduling.SCHTASKS_TIME_LIMIT_SECONDS))
+
+    monkeypatch.setattr(scheduling, "_schtasks", hangs)
+    with caplog.at_level(logging.WARNING, logger=errors.DEBUG_LOGGER):
+        ran = after_install.launch()
+
+    assert ran is not None and ran.exit_code == 1
+    assert ran.schedule_sentence == after_install.SCHEDULE_FAILED.format(
+        problem=after_install.SCHEDULE_UNREACHABLE)
+    assert "after_install: asking whether the scheduled task exists" in caplog.text
+    assert "after_install: registering the schedule" in caplog.text
+    assert "did not answer within 60 seconds" in caplog.text
 
 
 def test_a_record_from_before_the_setting_is_run_again_once(root, windows):
@@ -1337,7 +1486,8 @@ def task_scheduler(monkeypatch, *, exists=False):
 def test_the_windows_check_sequence_keeps_the_task_through_a_restart(root, windows, monkeypatch):
     """The pilot 0.1 Windows check's steps 13-15, in order: saving the root
     registers, Off removes, On at 06:30 every 240 minutes registers, and the
-    two launches of the restart change nothing - the task is still there."""
+    two launches of the restart change nothing - the task is still there,
+    and each only asks so (P198)."""
     task = task_scheduler(monkeypatch)
     after_install.run(reason=after_install.REASON_ROOT)
     assert task["exists"]
@@ -1350,7 +1500,7 @@ def test_the_windows_check_sequence_keeps_the_task_through_a_restart(root, windo
 
     assert after_install.launch() is None and after_install.launch() is None
 
-    assert task["exists"] and len(task["calls"]) == made
+    assert task["exists"] and task["calls"][made:] == ["/query", "/query"]    # asked, nothing changed
     assert "T06:30:00" in registered_xml() and "PT240M" in registered_xml()
 
 

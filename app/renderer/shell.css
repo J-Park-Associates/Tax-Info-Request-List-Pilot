@@ -18,7 +18,7 @@
 ::selection { background: var(--bg-selected); color: var(--text); }
 input, textarea, select { caret-color: var(--text); accent-color: var(--accent); }
 #page, #sheet-body, .modal { scrollbar-color: var(--scroll-thumb) transparent; }
-.tabular, .side-count, .group-count, .list-count, .row-date, .figure-number, .last-sort-text, .page-count, .reason-card-number, .switch-count, .group-docs {
+.tabular, .side-count, .group-count, .list-count, .row-date, .row-year, .head-year, .figure-number, .last-sort-text, .page-count, .reason-card-number, .switch-count, .group-docs, #sc-next {
   font-variant-numeric: tabular-nums;
 }
 :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
@@ -434,8 +434,8 @@ input, textarea, select { caret-color: var(--text); accent-color: var(--accent);
   white-space: nowrap;
 }
 /* Rulings 21 and 27: a return's or household's row (and a row with a marker)
-   wraps instead of cutting, so "{Return Name} ({Year})" always shows its year
-   and "Two Years Open; Sorting Paused" is always whole. Rows grow only for a
+   wraps instead of cutting, so a taxpayer's name is always whole (the year is
+   its own column since P194) and "Two Years Open; Sorting Paused" is always whole. Rows grow only for a
    long name: a line is 20px and the padding 4px, so one line stays 40px (the
    row's minimum) and two lines are 48px, three 68px, on the 4px grid. A file's name keeps its ellipsis. */
 .row.row-wrap:not(.hidden) { padding-block: var(--sp-1); }
@@ -530,8 +530,47 @@ input, textarea, select { caret-color: var(--text); accent-color: var(--accent);
   padding: 0 var(--sp-8);
   border-bottom: 1px solid var(--border);
 }
+/* Overview and Reminders, the two lists of returns: one field per column
+   (P194, P195) - Tax Year, Taxpayer, Form Type, then the list's status and
+   date; at the usual widths the five fit 843px at 1100px. Their loading
+   rows take the same five, so the outline lines up with the heads.
+   Every column of a firm list is exactly its width, as in File Explorer's
+   Details view (P199): no column takes the window's slack, so the Date sits
+   just after the Status at every width, the space left over is blank after
+   the last column, and widening a column by its right edge moves that edge
+   and every column after it to the right. */
+.row-return:not(.hidden),
+.col-table[data-list="overview"] .col-heads:not(.hidden),
+.col-table[data-list="reminders"] .col-heads:not(.hidden),
+#page[data-list="overview"] .row-skeleton:not(.hidden),
+#page[data-list="reminders"] .row-skeleton:not(.hidden) {
+  grid-template-columns: var(--size-col-year) var(--size-col-taxpayer) var(--size-col-form) var(--size-col-status) var(--size-col-end);
+}
+/* Needs Review and Households: the same rule on their four columns. */
+#page[data-list="needs_review"] .row:not(.hidden),
+#page[data-list="clients"] .row:not(.hidden),
+.col-table[data-list="needs_review"] .col-heads:not(.hidden),
+.col-table[data-list="clients"] .col-heads:not(.hidden),
+#page[data-list="needs_review"] .row-skeleton:not(.hidden),
+#page[data-list="clients"] .row-skeleton:not(.hidden) {
+  grid-template-columns: var(--size-col-name) var(--size-col-detail) var(--size-col-status) var(--size-col-end);
+}
+/* A firm list's date starts at its column's left edge, under its header's
+   word, as File Explorer's Date column does (P199); a row's step shows in
+   the same place on hover. A return's own page keeps its date at the end. */
+#page[data-list="overview"] .row-end:not(.hidden),
+#page[data-list="needs_review"] .row-end:not(.hidden),
+#page[data-list="reminders"] .row-end:not(.hidden),
+#page[data-list="clients"] .row-end:not(.hidden) { justify-items: start; }
+.col-table[data-list="overview"], .col-table[data-list="reminders"],
+#page[data-list="overview"] .rows, #page[data-list="reminders"] .rows {
+  min-width: calc(var(--size-col-year) + var(--size-col-taxpayer) + var(--size-col-form) + var(--size-col-status) + var(--size-col-end) + 4 * var(--sp-4) + 2 * var(--sp-8));
+}
+.row-year, .row-form { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* A Needs Review return heading says the year, the taxpayer and the form once each. */
+.head-year { margin-right: var(--sp-2); }
+.group-title .form-tag { margin: 0 0 0 var(--sp-2); }
 .col-cell { position: relative; min-width: 0; }
-.col-cell[data-cell="end"] { text-align: right; }
 .col-head:not(.hidden) {
   display: inline-flex;
   align-items: center;
@@ -608,6 +647,9 @@ input, textarea, select { caret-color: var(--text); accent-color: var(--accent);
 }
 .row-skeleton > i:first-child { width: 60%; }
 .row-skeleton > i:last-child { grid-column: 3; width: 70%; }
+/* On the five-column lists the status is the fourth column. */
+#page[data-list="overview"] .row-skeleton > i:last-child,
+#page[data-list="reminders"] .row-skeleton > i:last-child { grid-column: 4; }
 
 /* A group's own step at its heading's end (SPEC 6.7), and the Set aside fold. */
 .group-step:not(.hidden) {

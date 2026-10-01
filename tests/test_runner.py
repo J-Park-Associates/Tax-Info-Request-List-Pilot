@@ -4988,3 +4988,244 @@ def test_a_relative_log_file_is_refused_before_the_pass(tmp_path, samples, monke
     assert LOG_NOT_ABSOLUTE.format(log="mine.log") in capsys.readouterr().err
     assert (inbox_of(engagement.path) / f"W-2 John Smith {YEAR}.pdf").is_file()   # nothing filed
     assert not (tmp_path / "mine.log").exists() and not log_path().exists()
+
+
+# ------------------------------------- the firm view's cache, filled (P201) ----
+
+
+def test_the_pass_fills_the_firm_cache_with_the_apps_own_summary(tmp_path, samples, monkeypatch, capsys):
+    """P201 (``pilot/SPEC-firm-cache-fill.md`` R1-R3): the scheduled job's
+    line ends by asking the app's own firm summary, in a child, so the
+    cache in the data folder is whole under today's head for the saved
+    root when the pass returns - and nothing of the reply reaches the
+    console or the run log."""
+    from tests.conftest import REAL_FILL
+    from tracker import door, firm_cache
+
+    root = tmp_path / "Clients"
+    build_engagement(root, samples, drops=())
+    monkeypatch.setattr(runner_module, "fill_firm_cache", REAL_FILL)
+    assert not firm_cache.cache_path().exists()
+
+    assert _the_scheduled_job(root, monkeypatch, "--reminders", REMINDERS_NEVER, "--log") == 0
+    head = firm_cache.head(str(door.checked_root(None)), dt.date.today())
+    assert firm_cache.holds(firm_cache.cache_path(), [head])
+    assert '"returns"' not in capsys.readouterr().out
+    assert runner_module.CODE_CACHE_NOT_FILLED not in log_path().read_text(encoding="utf-8")
+
+
+def test_the_fill_asks_for_the_apps_own_firm_command():
+    """R1: the command is named once in the runner and held to the API's
+    table, so a renamed command cannot leave every pass asking for one that
+    is gone - and it is a reading command, which writes no client tree."""
+    from tracker import api
+
+    assert runner_module.FIRM_COMMAND in api.COMMANDS
+    assert runner_module.FIRM_COMMAND in api.HELD_READING_COMMANDS
+
+
+def _warm_cache_for_today() -> None:
+    """The firm view's cache as the summary leaves it: whole, under today's
+    head for the saved root, keeping nothing. The head carries the settings
+    file as it stands, so it is written after the settings are."""
+    from tracker import door, firm_cache
+
+    firm_cache.save(firm_cache.cache_path(), firm_cache.head(str(door.checked_root(None)), dt.date.today()), {})
+
+
+def _run_now_warm(root, household, monkeypatch, capsys) -> tuple[int, list[dict]]:
+    """:func:`_run_now` with the cache warm for today: the settings saved
+    first, the cache written under their head, then Run now's own line -
+    which writes no setting, so the head still holds."""
+    from tracker.runner import run_now_arguments
+
+    settings = _settings_for(root, monkeypatch)
+    _warm_cache_for_today()
+    capsys.readouterr()
+    code = main(run_now_arguments(settings, household))
+    return code, _lines(capsys.readouterr().out)
+
+
+def test_run_now_fills_only_the_households_it_touched_so_only_while_the_cache_is_warm(
+        tmp_path, samples, monkeypatch, capsys, fills_asked):
+    """R4 as the engine review's SHOULD-3 ruled it: a person's Sort asks the
+    summary only while the cache holds today's head, when the summary reads
+    just the households whose fingerprint changed (the one the Sort
+    touched) and keeps the rest; on a cold head it would read the whole
+    firm, so it is not asked and the next Overview fills it. Either way
+    before the final line, and no pass warning."""
+    from tracker import door
+
+    root = tmp_path / "root"
+    engagement = build_engagement(root, samples)
+    code, said = _run_now(root, household_of(engagement.path), monkeypatch, capsys)
+    assert code == 0 and said[-1]["pass_warnings"] == []
+    assert fills_asked == [], "a cold cache: the whole firm's fill is not a Sort's to pay"
+
+    code, said = _run_now_warm(root, household_of(engagement.path), monkeypatch, capsys)
+    assert code == 0 and said[-1]["pass_warnings"] == []
+    assert fills_asked == [(str(door.checked_root(None)), "")]
+
+
+def test_the_scheduled_pass_fills_the_whole_firm_on_a_cold_cache(tmp_path, samples, monkeypatch, fills_asked):
+    """SHOULD-3's other half: the scheduled pass fills whether or not the
+    cache holds today's head - its fill is how the first Overview of the
+    day is warm."""
+    from tracker import door, firm_cache
+
+    root = tmp_path / "Clients"
+    build_engagement(root, samples)
+    assert _the_scheduled_job(root, monkeypatch, "--reminders", REMINDERS_NEVER) == 0
+    assert not firm_cache.cache_path().exists()
+    assert fills_asked == [(str(door.checked_root(None)), "")]
+
+
+def test_a_pass_a_person_stopped_does_not_fill(tmp_path, samples, monkeypatch, capsys, fills_asked):
+    """The engine review's SHOULD-1, ruled "Stop means stop": a stopped pass
+    ends without asking the summary, even while the cache is warm, so Stop
+    does not wait for it; the next Overview fills the cache as before P201."""
+    root = tmp_path / "root"
+    engagement = build_engagement(root, samples)
+    real = runner_module.run_registry
+
+    def stopped(*args, report, **kwargs):
+        real(*args, report=report, **kwargs)
+        for run in report.runs:
+            run.cancelled = True
+
+    monkeypatch.setattr(runner_module, "run_registry", stopped)
+    _code, said = _run_now_warm(root, household_of(engagement.path), monkeypatch, capsys)
+    assert said[-1]["runs"][0]["cancelled"] is True
+    assert fills_asked == []
+    assert _the_scheduled_job(root, monkeypatch, "--reminders", REMINDERS_NEVER) in (0, 1)
+    assert fills_asked == [], "the scheduled pass, stopped, does not fill either"
+    capsys.readouterr()
+
+
+def test_the_fill_runs_after_the_run_log_line_and_the_page_are_written(tmp_path, samples, monkeypatch, capsys):
+    """The engine review's NIT-4, ruled: the fill can run long, so it is
+    asked only once the pass's own record - its run log line and its page -
+    is written, and a fill stopped by anything cannot cost the pass that."""
+    root = tmp_path / "Clients"
+    build_engagement(root, samples)
+    seen = {}
+
+    def fill(where, *, product=""):
+        seen["logged"] = "    counts " in log_path().read_text(encoding="utf-8")
+        seen["page"] = bool(_page(root))
+        return ""
+
+    monkeypatch.setattr(runner_module, "fill_firm_cache", fill)
+    assert _the_scheduled_job(root, monkeypatch, "--reminders", REMINDERS_NEVER, "--log") == 0
+    assert seen == {"logged": True, "page": True}
+    capsys.readouterr()
+
+
+def test_a_dry_run_a_typed_root_and_an_unproved_checkpoint_do_not_fill(
+        tmp_path, samples, monkeypatch, capsys, fills_asked):
+    """R4: a dry run writes nothing, this included; a root typed on the
+    command line is not the one the summary answers for; a pass that could
+    prove no household against the record checkpoint served none."""
+    from tracker import checkpoint
+
+    root = tmp_path / "Clients"
+    build_engagement(root, samples)
+    assert _the_scheduled_job(root, monkeypatch, "--dry-run") == 0
+    main([str(root), "--reminders", REMINDERS_NEVER])
+    assert fills_asked == []
+
+    def unreadable(*args, **kwargs):
+        raise checkpoint.CheckpointError("the checkpoint could not be opened")
+
+    monkeypatch.setattr(runner_module.store, "prove_the_root", unreadable)
+    _the_scheduled_job(root, monkeypatch, "--reminders", REMINDERS_NEVER)
+    assert fills_asked == []
+    capsys.readouterr()
+
+
+def test_a_fill_that_fails_is_a_pass_warning_and_never_the_exit_code(tmp_path, samples, monkeypatch, capsys):
+    """R5: said loudly - on the page, as its code in the run log, in Run
+    now's final line - and never fatal: the cache only makes the next
+    Overview faster."""
+    from tracker.runner import CACHE_NOT_FILLED, CODE_CACHE_NOT_FILLED, FILL_STOPPED
+
+    why = FILL_STOPPED.format(code=3)
+    monkeypatch.setattr(runner_module, "fill_firm_cache", lambda root, product="": why)
+    root = tmp_path / "root"
+    engagement = build_engagement(root, samples)
+
+    assert _the_scheduled_job(root, monkeypatch, "--reminders", REMINDERS_NEVER, "--log") == 0
+    assert f"{CODE_CACHE_NOT_FILLED}=1" in log_path().read_text(encoding="utf-8")
+    assert CACHE_NOT_FILLED.format(why=why) in _page(root)
+    assert CACHE_NOT_FILLED.format(why=why) in capsys.readouterr().out
+
+    # A Sort fills only while the cache is warm.
+    code, said = _run_now_warm(root, household_of(engagement.path), monkeypatch, capsys)
+    assert code == 0 and said[-1]["pass_warnings"] == [CACHE_NOT_FILLED.format(why=why)]
+
+
+@pytest.mark.parametrize("ending", ["no start", "stopped", "too long", "not kept"])
+def test_each_reason_a_fill_fails_is_said_by_its_kind(tmp_path, monkeypatch, ending):
+    """R5: the four reasons, each by kind and never a client's words: the
+    child could not start, stopped with a code, ran past its limit, or
+    finished without leaving the cache whole under today's head."""
+    import subprocess
+
+    from tests.conftest import REAL_FILL
+    from tracker.runner import (
+        FILL_NOT_KEPT,
+        FILL_NOT_STARTED,
+        FILL_STOPPED,
+        FILL_TIME_LIMIT_SECONDS,
+        FILL_TOO_LONG,
+    )
+
+    def child(command, **kwargs):
+        if ending == "no start":
+            raise FileNotFoundError(2, "No such file", str(tmp_path / "a client's folder"))
+        if ending == "too long":
+            raise subprocess.TimeoutExpired(command, kwargs["timeout"])
+        return subprocess.CompletedProcess(command, 2 if ending == "stopped" else 0)
+
+    monkeypatch.setattr(runner_module.subprocess, "run", child)
+    said = REAL_FILL(str(tmp_path))
+    assert said == {"no start": FILL_NOT_STARTED.format(kind="FileNotFoundError (ENOENT)"),
+                    "stopped": FILL_STOPPED.format(code=2),
+                    "too long": FILL_TOO_LONG.format(minutes=FILL_TIME_LIMIT_SECONDS // 60),
+                    "not kept": FILL_NOT_KEPT}[ending]
+    assert "a client's folder" not in said
+
+
+def test_the_product_name_reaches_the_fill_and_never_the_page(tmp_path, samples, monkeypatch, capsys,
+                                                              fills_asked):
+    """R6: the packaged schedule names the product so the fill's child can
+    import the API; the runner hands it to that child alone - its own
+    environment, and so the page's heading, are as they were."""
+    import os
+    import subprocess
+
+    from tests.conftest import REAL_FILL
+    from tracker.runner import PRODUCT_FLAG
+    from tracker.settings import ENV_PRODUCT_NAME
+
+    monkeypatch.delenv(ENV_PRODUCT_NAME, raising=False)
+    root = tmp_path / "Clients"
+    build_engagement(root, samples)
+    _the_scheduled_job(root, monkeypatch, "--reminders", REMINDERS_NEVER, PRODUCT_FLAG, "Named Product")
+    assert [product for _root, product in fills_asked] == ["Named Product"]
+    assert ENV_PRODUCT_NAME not in os.environ
+    assert "Named Product" not in _page(root)
+
+    seen = {}
+
+    def child(command, **kwargs):
+        seen.update(command=command, env=kwargs["env"],
+                    streams={kwargs[name] for name in ("stdin", "stdout", "stderr")})
+        return subprocess.CompletedProcess(command, 0)
+
+    monkeypatch.setattr(runner_module.subprocess, "run", child)
+    REAL_FILL(str(root), product="Named Product")
+    assert seen["env"][ENV_PRODUCT_NAME] == "Named Product"
+    assert seen["command"][-1] == runner_module.FIRM_COMMAND
+    assert seen["streams"] == {subprocess.DEVNULL}, "the reply names clients; none of it is kept"
+    capsys.readouterr()

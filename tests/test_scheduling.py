@@ -264,6 +264,72 @@ def test_remove_task_deletes_only_an_existing_task(monkeypatch):
         scheduling.remove_task()
 
 
+def test_task_exists_asks_schtasks_and_only_exit_zero_is_yes(monkeypatch):
+    """P198 (F6): the launch door's one question. Only exit 0 is "it is
+    there"; any refusal is "not confirmed", so the caller registers again
+    rather than trusting a task that may be gone."""
+    from tracker import scheduling
+
+    assert scheduling.task_exists() is False              # no Task Scheduler: nothing asked
+    calls = fake_schtasks(monkeypatch, exists=True)
+    assert scheduling.task_exists() is True
+    assert calls == [["schtasks", "/query", "/tn", TASK_NAME]]
+    fake_schtasks(monkeypatch, exists=False)
+    assert scheduling.task_exists() is False
+    monkeypatch.setattr(scheduling, "_schtasks", lambda command: Said(1, "ERROR: Access is denied."))
+    assert scheduling.task_exists() is False
+
+    def cannot_start(command):
+        raise FileNotFoundError(2, "No such file", "schtasks")
+
+    monkeypatch.setattr(scheduling, "_schtasks", cannot_start)
+    with pytest.raises(OSError):
+        scheduling.task_exists()
+
+
+def test_task_query_hands_back_the_exit_code_and_asks_nothing_off_windows(monkeypatch):
+    """The engine review's NIT-2: the launch keeps a refusal's exit code on
+    the error log, so the question hands the code back, not just yes or no."""
+    from tracker import scheduling
+
+    assert scheduling.task_query() is None                 # no Task Scheduler: nothing asked
+    fake_schtasks(monkeypatch, exists=True)
+    assert scheduling.task_query() == 0
+    monkeypatch.setattr(scheduling, "_schtasks", lambda command: Said(5, "ERROR: Access is denied."))
+    assert scheduling.task_query() == 5 and scheduling.task_exists() is False
+
+
+def test_a_schtasks_that_hangs_is_stopped_at_its_limit_as_an_os_error(monkeypatch):
+    """The engine review's SHOULD-2: ``schtasks`` runs at every start inside
+    the step's lock, so it is given :data:`SCHTASKS_TIME_LIMIT_SECONDS` and
+    one that runs past it raises ``TimeoutError`` (an ``OSError``), which
+    every caller says as Task Scheduler that cannot be reached - never "the
+    task exists". The real ``_schtasks`` is asked; ``subprocess.run`` is
+    the stand-in, so no real Task Scheduler is reached."""
+    import subprocess
+
+    from tests.conftest import REAL_SCHTASKS
+    from tracker import scheduling
+
+    given = {}
+
+    def hangs(command, **kwargs):
+        given.update(kwargs)
+        raise subprocess.TimeoutExpired(command, kwargs["timeout"])
+
+    monkeypatch.setattr(scheduling.subprocess, "run", hangs)
+    with pytest.raises(TimeoutError) as stopped:
+        REAL_SCHTASKS(["schtasks", "/query", "/tn", TASK_NAME])
+    assert isinstance(stopped.value, OSError)
+    assert given["timeout"] == scheduling.SCHTASKS_TIME_LIMIT_SECONDS == 60
+    assert str(stopped.value) == scheduling.SCHTASKS_TOO_LONG.format(seconds=60)
+
+    monkeypatch.setattr(scheduling, "task_scheduler_here", lambda: True)
+    monkeypatch.setattr(scheduling, "_schtasks", REAL_SCHTASKS)
+    with pytest.raises(OSError):
+        scheduling.task_exists()
+
+
 def test_register_here_is_the_one_registration(monkeypatch, tmp_path):
     """Decision 209: the repair path and the after-install step both come
     through ``register_here``. The job names the app's settings folder and
@@ -366,6 +432,25 @@ def test_the_packaged_job_is_the_same_command_line_behind_the_api_executable():
     tail = f'"{ARGS["settings"]}" {LOG_FLAG}'
     assert runner_arguments(ARGS["settings"]).endswith(tail)
     assert runner_arguments(ARGS["settings"], frozen=True).endswith(tail)
+
+
+def test_the_packaged_job_names_the_product_for_the_fill_and_the_source_job_does_not():
+    """P201 R6 (``pilot/SPEC-firm-cache-fill.md``): the pass fills the firm
+    cache through a child that imports the API, which reads the product's
+    name at import; a frozen build has no package.json and Task Scheduler
+    passes no environment, so the packaged line names it - before the
+    settings folder, so the line still ends as decision 131's does. A
+    checkout reads package.json, so its line (and the README's quotation
+    of it) is unchanged."""
+    from tracker.runner import PRODUCT_FLAG, RUNNER_MODE_FLAG, SETTINGS_FLAG, _parser
+    from tracker.scheduling import quote_argument, runner_arguments
+    from tracker.settings import product_name
+
+    packaged = runner_arguments(ARGS["settings"], frozen=True)
+    assert packaged.startswith(f"{RUNNER_MODE_FLAG} {PRODUCT_FLAG} {quote_argument(product_name())} {SETTINGS_FLAG} ")
+    assert PRODUCT_FLAG not in runner_arguments(ARGS["settings"])
+    said = _parser().parse_args([PRODUCT_FLAG, product_name(), SETTINGS_FLAG, ARGS["settings"]])
+    assert said.product == product_name()
 
 
 def test_the_time_limit_is_the_locks_run_limit_rendered():

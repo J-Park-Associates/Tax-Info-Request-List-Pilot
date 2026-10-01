@@ -51,7 +51,7 @@ const crumbs = (page) => page.evaluate(() => [...document.querySelectorAll("#cru
   await page.evaluate(() => shellMenu({ id: "needs_review" }));
   check("Ctrl+2 goes to Needs Review", (await current(page)) === "Needs Review", await current(page));
   await page.keyboard.press("Control+4");
-  check("Ctrl+4 goes to Clients", (await current(page)) === "Clients", await current(page));
+  check("Ctrl+4 goes to Households", (await current(page)) === "Households", await current(page));
   await page.click('.side-section[data-section="overview"]');
   check("a click goes to Overview", (await current(page)) === "Overview", await current(page));
   const enabled = await page.evaluate(() => window.HARNESS.menuLog.at(-1).enable);
@@ -132,7 +132,7 @@ const crumbs = (page) => page.evaluate(() => [...document.querySelectorAll("#cru
     steps.push(await page.evaluate(() => document.querySelector("#pilot-tour p").textContent));
     await page.keyboard.press("ArrowRight");
   }
-  check("the tour says one short line per step", steps.every((s) => s.split(" ").length <= 5) && steps[0] === "Sorts What Your Clients Send", steps);
+  check("the tour says one short line per step", steps.every((s) => s.split(" ").length <= 5) && steps[0] === "Sorts What Your Taxpayers Send", steps);
   check("the tour ends", await page.evaluate(() => !document.getElementById("pilot-tour")), null);
   await page.hover("#sort");
   await page.waitForTimeout(700);
@@ -165,7 +165,7 @@ const crumbs = (page) => page.evaluate(() => [...document.querySelectorAll("#cru
   await page.evaluate(() => shellGo({ level: "return", household: "/clients/J Park & Associates/Smith Family", year: 2025, ret: "/clients/J Park & Associates/Smith Family/2025/1040 - John & Jane Smith" }));
   await page.waitForFunction(() => document.querySelector("#page details") && !document.querySelector("#page[aria-busy=true]"), null, { timeout: 5000 });
   const titles = await page.evaluate(() => [...document.querySelectorAll("#page .group-title")].map((n) => n.textContent));
-  check("the return draws its groups in order", titles.join("|") === "Needs You|Waiting on Client|Received|Set Aside", titles);
+  check("the return draws its groups in order", titles.join("|") === "Needs You|Waiting on Taxpayer|Received|Set Aside", titles);
   check("Set aside is shut", await page.evaluate(() => !document.querySelector("#page details").open), null);
   await page.focus("#page .rows");
   const before = await page.evaluate(() => document.querySelectorAll("#notices .notice").length);
@@ -470,17 +470,17 @@ const settle = (page) => page.waitForTimeout(250);
   await page.evaluate(() => shellGo({ level: "household", household: "/clients/J Park & Associates/Smith Family" }));
   await page.waitForFunction(() => document.querySelector("#page .row-link[data-link=return]"), null, { timeout: 5000 });
   const returns = await page.evaluate(() => [...document.querySelectorAll("#page .row-link[data-link=return]")].map((n) => [n.textContent, n.dataset.tip]));
-  check("a return name reads with its year and says where it goes", returns.length === 2 && returns[0][0].endsWith("(2025)") && returns[1][0].endsWith("(2024)") && returns.every((r) => r[1] === "Navigate to Return"), returns);
+  check("a return reads as its taxpayer, once under each year, and says where it goes (P195)", returns.length === 2 && returns.every((r) => !/\(\d{4}\)$/.test(r[0]) && r[1] === "Navigate to Return"), returns);
   await page.click("#page .row-link[data-link=return]");
   await page.waitForFunction(() => shellRoute.level === "return", null, { timeout: 5000 });
   check("clicking a return name goes to its page", await page.evaluate(() => shellRoute.level === "return" && shellRoute.year === 2025), null);
-  await page.evaluate(() => shellGo({ level: "overview" }));
+  await page.evaluate(() => shellGo({ level: "clients" }));
   await page.waitForSelector("#page .row-link[data-link=household]");
   const before = await page.evaluate(() => window.HARNESS.opened.length);
   const hh = await page.evaluate(() => { const l = document.querySelector("#page .row-link[data-link=household]"); return [l.textContent, l.dataset.tip]; });
   await page.click("#page .row-link[data-link=household]");
   await page.waitForFunction(() => shellRoute.level === "household", null, { timeout: 5000 });
-  check("a household name goes to the client's page, with its tooltip, and never opens File Explorer", hh[1] === "Navigate to Client" && (await page.evaluate(() => window.HARNESS.opened.length)) === before, hh);
+  check("a household name goes to the client's page, with its tooltip, and never opens File Explorer", hh[1] === "Navigate to Household" && (await page.evaluate(() => window.HARNESS.opened.length)) === before, hh);
   await context.close();
 }
 
@@ -488,8 +488,8 @@ const settle = (page) => page.waitForTimeout(250);
   const { context, page } = await open("?mode=real");
   await page.evaluate(() => shellGo({ level: "needs-review" }));
   await page.waitForSelector("#page .row-link");
-  const head = await page.evaluate(() => [document.querySelector(".group-title .row-link").textContent, document.querySelector(".group-count .row-link").dataset.tip]);
-  check("a group heading is a return link with its year; its caption a household link", head[0].endsWith("(2025)") && head[1] === "Navigate to Client", head);
+  const head = await page.evaluate(() => [document.querySelector(".group-title .head-year").textContent, document.querySelector(".group-count .row-link").dataset.tip]);
+  check("a group heading says its year once, beside the taxpayer's return link; its caption a household link (P195)", head[0] === "2025" && head[1] === "Navigate to Household", head);
   await page.click("#page .rows .row-link");
   const opened = await page.evaluate(() => window.HARNESS.opened);
   check("a firm-page file name reveals the path of the key the firm's reply gave", opened.length === 1 && opened[0][1] === "reveal", opened);
@@ -584,7 +584,7 @@ const settle = (page) => page.waitForTimeout(250);
 { // the menu channel that throws must not stop navigation
   const { context, page } = await open("?mode=real&scenario=menu-throws");
   await page.click('.side-section[data-section="clients"]');
-  check("a route change goes on when the menu channel throws", (await current(page)) === "Clients", await current(page));
+  check("a route change goes on when the menu channel throws", (await current(page)) === "Households", await current(page));
   const text = await page.textContent("#notices");
   check("and the failure is one notice", text.length > 0 && !text.includes("menu channel closed"), text);
   await context.close();
@@ -651,7 +651,7 @@ const settle = (page) => page.waitForTimeout(250);
   const icon = await page.evaluate(() => { const r = document.querySelector("#find-wrap .icon").getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; });
   await page.mouse.move(icon.x, icon.y);
   await page.waitForTimeout(700);
-  check("hover on the search icon shows the tip", (await tipShown()) && (await page.textContent("#tip")) === "Find a Client", await page.textContent("#tip"));
+  check("hover on the search icon shows the tip", (await tipShown()) && (await page.textContent("#tip")) === "Find a Household", await page.textContent("#tip"));
   await page.mouse.move(0, 0);
   await page.waitForTimeout(100);
   check("moving away hides it", !(await tipShown()), null);
@@ -716,23 +716,25 @@ const settle = (page) => page.waitForTimeout(250);
   const clipped = () => page.evaluate(() => {
     const bad = [];
     for (const row of document.querySelectorAll("#page .row-wrap")) {
-      for (const cell of row.querySelectorAll(".row-name, .row-status")) {
+      for (const cell of row.querySelectorAll(".row-year, .row-name, .row-status")) {
         if (cell.scrollWidth > cell.clientWidth + 1 || cell.scrollHeight > cell.clientHeight + 1) bad.push(cell.textContent);
       }
       const total = Math.round(row.getBoundingClientRect().height), height = total > 40 ? total - Math.round(parseFloat(getComputedStyle(row).borderBottomWidth)) : total;   // the 1px rule under a row is not part of the grid
       if (height % 4) bad.push(`height ${height}: ${row.textContent}`);
     }
-    const years = [...document.querySelectorAll('#page .row-link[data-link="return"]')].filter((l) => !/\(\d{4}\)$/.test(l.textContent)).map((l) => l.textContent);
+    // P195: a return row on Overview and Reminders says its year in its own column; a Needs Review heading beside the taxpayer.
+    const years = [...[...document.querySelectorAll("#page .row-return")].filter((r) => r.querySelector('.row-link[data-link="return"]') && !/^\d{4}$/.test(r.querySelector(".row-year").textContent)),
+      ...[...document.querySelectorAll("#page .group-title")].filter((t) => t.querySelector('.row-link[data-link="return"]') && !t.querySelector(".head-year"))].map((n) => n.textContent);
     return { bad, years, links: document.querySelectorAll('#page .row-link[data-link="return"]').length };
   });
   for (const [where, level, all] of [["Overview", "overview", false], ["Needs Review", "needs-review", false], ["Reminders", "reminders", false],
-    ["Clients", "clients", false], ["Clients (All)", "clients", true]]) {
+    ["Households", "clients", false], ["Households (All)", "clients", true]]) {
     await page.evaluate((l) => shellGo({ level: l }), level);
     await page.waitForTimeout(250);
     if (all) { await page.click(".switch-option:nth-child(2)"); await page.waitForTimeout(250); }
     const found = await clipped();
     check(`ruling 27 at 1100px: nothing wrapped is cut on ${where}`, found.bad.length === 0, found.bad.slice(0, 3));
-    check(`ruling 27 at 1100px: every return link on ${where} shows its year`, found.years.length === 0, found.years);
+    check(`P195 at 1100px: every return on ${where} says its year once, in its own place`, found.years.length === 0, found.years);
   }
   await page.evaluate(() => shellGo({ level: "household", household: "/clients/J Park & Associates/Smith Family" }));
   await page.waitForTimeout(250);

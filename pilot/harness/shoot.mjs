@@ -75,7 +75,7 @@ const SCENARIOS = [
   { name: "dialog-about", query: "", run: "openAbout()", wait: 1500 },
   { name: "dialog-misfits", query: "?scenario=notices", run: `${later(300, "openMisfits()")}`, wait: 1500 },
   { name: "link-file-tooltip", query: "", run: go(ret), hover: "#page .row-link" },
-  { name: "link-household-tooltip", query: "", hover: "#page .row:nth-child(1) .row-detail .row-link" },
+  { name: "link-taxpayer-tooltip", query: "", hover: "#page .row-return:nth-child(1) .row-name .row-link" },
   { name: "notices", query: "?mode=real&scenario=notices" },
   { name: "setup", query: "?scenario=setup" },
   { name: "loading", query: "?scenario=slow" },

@@ -21,10 +21,12 @@
        (the setup page) and pages.js (the rest). -->
   <div id="shell">
     <!-- The side panel (pilot SPEC-lists 15; P153, P154): the brand band, the
-         four pages (Ctrl+1..4), two pages not built yet, the Client Types
-         that open Clients filtered, the Workspace items not built yet, and
+         four pages (Ctrl+1..4), two pages not built yet, the Taxpayer Types
+         that open Households filtered, the Workspace items not built yet, and
          Settings. An "Under Construction" item is aria-disabled, says so
-         and opens nothing. The list scrolls rather than cut an item. -->
+         and opens nothing; View > Show Under Construction hides them all,
+         and the Workspace heading with them (P197). The list scrolls rather
+         than cut an item. -->
     <nav id="side">
       <div id="side-brand"><img src="logo.svg" alt="" /><span id="side-brand-words"><span id="side-brand-name" class="visually-hidden"></span><span id="side-brand-product"></span></span></div>
       <div id="side-scroll">
@@ -387,7 +389,7 @@
         <p id="ne-return-warning" class="rem-hold" role="status"></p>
         <div class="roll-grid three">
           <label class="field">
-            <span>Client (Greeting Name)</span>
+            <span>Taxpayer (Greeting Name)</span>
             <input id="ne-client" type="text" placeholder="E.g. John Smith" />
           </label>
           <label class="field">
@@ -505,7 +507,7 @@
   </div>
 
   <!-- ═══════════════ The four dialogs the menu and the notices open ═══════════════
-       Roll forward (Client menu), Safeguards and About (Help menu), and the
+       Roll forward (Household menu), Safeguards and About (Help menu), and the
        folders the walk left alone (a notice's Show). Every word is the API's;
        shell.js and app.js fill them. -->
   <div id="roll-modal" class="modal-overlay hidden">

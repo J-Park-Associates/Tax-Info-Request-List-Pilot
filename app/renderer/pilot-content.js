@@ -80,7 +80,7 @@ const PILOT =
         "id": "welcome",
         "anchors": [],
         "title": "Welcome to the Pilot",
-        "does": "Sorts What Your Clients Send"
+        "does": "Sorts What Your Taxpayers Send"
       },
       {
         "id": "clients-folder",

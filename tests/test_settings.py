@@ -5,7 +5,9 @@ where the clients live, it is set once, and a typo cannot quietly create an
 empty folder for the run to walk for ever.
 """
 
+import errno
 import json
+from pathlib import Path
 
 import pytest
 
@@ -496,6 +498,165 @@ def test_asking_where_the_data_home_is_creates_nothing(tmp_path, monkeypatch):
     assert store.store_path() == mine / store.STORE_FILENAME
     assert scheduling.schedule_xml_path() == mine / scheduling.SCHEDULE_XML_FILENAME
     assert not mine.exists()
+
+
+# ------------------------------- the data folder Windows redirects (F7, P193) ----
+
+#: The package the F7 session found redirecting this PC's %LOCALAPPDATA%.
+PACKAGE = "Claude_pzs8sxrjxfjjc"
+
+
+@pytest.fixture
+def unasked(monkeypatch):
+    """A process that has not yet asked whether it is redirected."""
+    monkeypatch.setattr(data_rules, "_redirect_answer", data_rules._UNASKED)
+
+
+def _local(tmp_path):
+    local = tmp_path / "Local"
+    local.mkdir(parents=True)
+    return local
+
+
+def test_a_redirected_data_folder_is_refused_by_name(tmp_path, monkeypatch, unasked):
+    local = _local(tmp_path)
+    monkeypatch.setattr(data_rules, "redirect_probe", lambda _local: PACKAGE)
+    with pytest.raises(SettingsError) as caught:
+        data_rules._the_data_home({"LOCALAPPDATA": str(local)}, windows=True)
+    assert str(caught.value) == data_rules.DATA_HOME_REDIRECTED.format(package=PACKAGE,
+                                                                        product=data_rules.product_name())
+    assert PACKAGE in str(caught.value) and "Start menu" in str(caught.value)
+
+
+def test_an_unredirected_data_folder_is_answered_as_before(tmp_path, monkeypatch, unasked):
+    local = _local(tmp_path)
+    monkeypatch.setattr(data_rules, "redirect_probe", lambda _local: None)
+    assert data_rules._the_data_home({"LOCALAPPDATA": str(local)}, windows=True) == (
+        local / data_rules.DATA_HOME_NAME)
+
+
+def test_a_named_data_folder_is_never_probed(tmp_path, monkeypatch, unasked):
+    """A person who names a folder means it; and off Windows there is no
+    %LOCALAPPDATA% for Windows to redirect."""
+    def never(_local):
+        raise AssertionError("probed a data home a person named")
+
+    monkeypatch.setattr(data_rules, "redirect_probe", never)
+    mine = tmp_path / "of-its-own"
+    assert data_rules._the_data_home({data_rules.ENV_DATA_HOME: str(mine),
+                                      "LOCALAPPDATA": str(_local(tmp_path))}, windows=True) == mine
+    assert data_rules._the_data_home({"XDG_STATE_HOME": str(tmp_path / "state")}, windows=False) == (
+        tmp_path / "state" / data_rules.DATA_HOME_NAME)
+    assert data_rules._redirect_answer is data_rules._UNASKED
+
+
+def test_the_probe_runs_once_a_process(tmp_path, monkeypatch, unasked):
+    asked = []
+
+    def probe(local):
+        asked.append(local)
+        return PACKAGE
+
+    monkeypatch.setattr(data_rules, "redirect_probe", probe)
+    environ = {"LOCALAPPDATA": str(_local(tmp_path))}
+    for _ in range(3):
+        with pytest.raises(SettingsError):
+            data_rules._the_data_home(environ, windows=True)
+    assert len(asked) == 1
+
+
+def _redirecting(local, package):
+    """A stand-in for Windows' redirect: the probe file is visible at the
+    normal path and also lands in the package's own copy."""
+    copy = local / data_rules.PACKAGES_DIR_NAME / package / "LocalCache" / "Local"
+    copy.mkdir(parents=True)
+
+    def make(probe):
+        probe.write_bytes(b"")
+        (copy / probe.name).write_bytes(b"")
+    return make
+
+
+def _probe_files(folder):
+    return list(folder.rglob(data_rules.REDIRECT_PROBE_PREFIX + "*"))
+
+
+def test_the_redirect_probe_leaves_nothing_behind(tmp_path):
+    local = _local(tmp_path)
+    (local / data_rules.PACKAGES_DIR_NAME / "Another_abc" / "LocalCache" / "Local").mkdir(parents=True)
+    assert data_rules.redirect_probe(local, make=_redirecting(local, PACKAGE)) == PACKAGE
+    assert _probe_files(local) == []
+
+    elsewhere = _local(tmp_path / "unredirected")
+    assert data_rules.redirect_probe(elsewhere) is None          # the real writer, no Packages folder
+    (elsewhere / data_rules.PACKAGES_DIR_NAME / "Another_abc").mkdir(parents=True)
+    assert data_rules.redirect_probe(elsewhere) is None          # a Packages folder, no copy
+    assert _probe_files(elsewhere) == []
+
+    def cannot(_probe):
+        raise PermissionError("denied")
+    assert data_rules.redirect_probe(local, make=cannot) is None  # nothing new is raised
+    assert _probe_files(local) == []
+
+
+def test_a_stale_redirected_copy_is_found_and_never_touched(tmp_path):
+    local = _local(tmp_path)
+    copy = (local / data_rules.PACKAGES_DIR_NAME / PACKAGE / "LocalCache" / "Local"
+            / data_rules.DATA_HOME_NAME)
+    copy.mkdir(parents=True)
+    (copy / "tracker.db").write_bytes(b"made-up")
+    (local / data_rules.PACKAGES_DIR_NAME / "Another_abc" / "LocalCache" / "Local").mkdir(parents=True)
+    environ = {"LOCALAPPDATA": str(local)}
+    assert data_rules.redirected_copies(environ, windows=True) == [copy]
+    assert (copy / "tracker.db").read_bytes() == b"made-up"
+    assert data_rules.redirected_copies(environ, windows=False) == []
+    assert data_rules.redirected_copies({**environ, data_rules.ENV_DATA_HOME: str(tmp_path / "mine")},
+                                        windows=True) == []
+
+
+def _packages_denied(monkeypatch):
+    """Windows refusing to list a Packages folder, as the review's probe did
+    (combined review S2); every other folder lists as it does."""
+    real = data_rules.os.scandir
+
+    def scandir(path):
+        if Path(path).name == data_rules.PACKAGES_DIR_NAME:
+            raise PermissionError(errno.EACCES, "Access is denied", str(path))
+        return real(path)
+    monkeypatch.setattr(data_rules.os, "scandir", scandir)
+
+
+def test_a_packages_folder_windows_will_not_list_is_one_sentence_not_a_raw_error(tmp_path, monkeypatch):
+    """Combined review S2: the copy search and the probe say the folder and
+    the error's class in the firm's sentence, never a raw PermissionError;
+    the probe still removes its file."""
+    local = _local(tmp_path)
+    (local / data_rules.PACKAGES_DIR_NAME / PACKAGE).mkdir(parents=True)
+    _packages_denied(monkeypatch)
+    said = data_rules.PACKAGES_UNREADABLE.format(folder=local / data_rules.PACKAGES_DIR_NAME,
+                                                 error="PermissionError (EACCES)")
+    with pytest.raises(SettingsError) as caught:
+        data_rules.redirected_copies({"LOCALAPPDATA": str(local)}, windows=True)
+    assert str(caught.value) == said
+    with pytest.raises(SettingsError) as caught:
+        data_rules.redirect_probe(local)
+    assert str(caught.value) == said
+    assert "Access is denied" not in said
+    assert _probe_files(local) == []
+
+
+def test_a_redirected_data_folder_is_refused_by_its_own_kind_of_settings_error(tmp_path, monkeypatch, unasked):
+    """Combined review N3: the first screen tells R1's refusal from any
+    other data-home refusal by its class, not by its words."""
+    monkeypatch.setattr(data_rules, "redirect_probe", lambda _local: PACKAGE)
+    with pytest.raises(data_rules.DataHomeRedirected):
+        data_rules._the_data_home({"LOCALAPPDATA": str(_local(tmp_path))}, windows=True)
+
+
+def test_no_packages_folder_names_no_copy(tmp_path):
+    local = _local(tmp_path)
+    assert data_rules.redirected_copies({"LOCALAPPDATA": str(local)}, windows=True) == []
+    assert data_rules.redirected_copies({}, windows=True) == []
 
 
 def test_the_data_home_is_named_by_the_apps_package_name():

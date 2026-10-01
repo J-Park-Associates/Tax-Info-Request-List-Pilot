@@ -108,7 +108,11 @@ makes the packaged app, which has no Setup, and a source checkout updated
 by a pull that left the locks alone, run it once; and it is what makes the
 old computer, after the schedule was moved to a new one, remove its own
 task at its next start rather than at its next upgrade (two computers
-running the pass is the hazard this decision closes);
+running the pass is the hazard this decision closes). On the computer the
+record says registered the schedule it also asks Windows, last, whether the
+task is still there (P198, F6): an uninstall deletes the task and keeps
+this record, so the same build reinstalled - or a task deleted by hand -
+registers again at the next start, never only at Repair;
 and saving the clients root runs it, so the first root saved on the
 office computer registers the schedule with no button. The app's
 **Repair the Schedule** runs it deliberately.
@@ -1194,14 +1198,17 @@ def designation_now(root: Path | None) -> str | None | object:
 
 
 def launch() -> AfterInstall | None:
-    """The app's launch door: nothing, at once, when this program is the
-    one that last ran the step cleanly **and** the designation names the
-    computer it named then; otherwise the step, as a launch. The second
+    """The app's launch door: nothing when this program is the one that
+    last ran the step cleanly, **and** the designation names the computer
+    it named then, **and** a task it registered here is still there;
+    otherwise the step, as a launch. The second
     condition is the review's M1: after the schedule moves to a new
     computer nothing about the old one's program changed, and without it
     the old computer kept its task - two computers running the pass -
-    until its next upgrade. Compared and run under the step's lock
-    (pilot P47), so what it compares is not changing under it."""
+    until its next upgrade. The third is P198 (F6): on the computer that
+    registered the schedule, the task itself must still be there - an
+    uninstall deletes it and keeps the note. Compared and run under the
+    step's lock (pilot P47), so what it compares is not changing under it."""
     try:
         with _one_at_a_time():
             if _unchanged(read_record()):
@@ -1213,14 +1220,54 @@ def launch() -> AfterInstall | None:
 
 def _unchanged(record: dict | None) -> bool:
     """Whether the program, the designation and the saved choice are all
-    what ``record`` says the last clean run left."""
+    what ``record`` says the last clean run left - and, where it registered
+    the schedule, the task is still there (:func:`_task_missing`, asked
+    last so a launch that runs the step anyway never asks)."""
     if record is None or record.get("program") != program_identity():
         return False
     root, refused = _saved_root()
     now = None if refused else designation_now(root)
     preference, _ = _saved_preference()
     return (now is not _UNREADABLE_NOW and record.get("designated") == now
-            and preference is not None and record.get("preference") == _preference_record(preference))
+            and preference is not None and record.get("preference") == _preference_record(preference)
+            and not _task_missing(record))
+
+
+def _task_missing(record: dict) -> bool:
+    """Whether the task the last clean run registered on this computer is
+    gone (P198, F6). Asked only when ``record`` says this computer claimed
+    or registered the schedule - the designation already matched it, so a
+    computer the designation does not name, a schedule that is off, no root
+    and no Task Scheduler expect no task and are never asked (decision 159,
+    M1). One ``schtasks /query`` on the designated computer, in the launch
+    step's background run.
+
+    Anything but "it exists" is missing: a query that fails runs the step,
+    whose ``/create /f`` either registers the task again or says in
+    :data:`SCHEDULE_FAILED` why it cannot - never a silent skip. A
+    ``schtasks`` that cannot be started, or that does not answer within its
+    limit (:data:`tracker.scheduling.SCHTASKS_TIME_LIMIT_SECONDS`), is kept
+    on the local error log and runs the step the same way; the step's own
+    ``schtasks`` then says it as :data:`SCHEDULE_UNREACHABLE`. A query that
+    is refused keeps its exit code on the error log, once per start (the
+    engine review's NIT-2), so a task registered again at every start has
+    its reason written down."""
+    if record.get("schedule") not in scheduling.REGISTERING:
+        return False
+    try:
+        code = scheduling.task_query()
+    except OSError as exc:
+        errors.keep(ASKING_FOR_THE_TASK, exc)
+        return True
+    if code:
+        errors.keep(ASKING_FOR_THE_TASK, QUERY_REFUSED.format(code=code))
+    return code != 0
+
+
+#: Where the launch's question to Task Scheduler is said on the error log.
+ASKING_FOR_THE_TASK = "after_install: asking whether the scheduled task exists"
+#: A refused query, by its exit code only: ``schtasks``'s own words are not kept.
+QUERY_REFUSED = "schtasks /query refused with exit code {code}; the step runs to register the task again"
 
 
 def record_failure(sentence: str) -> None:
