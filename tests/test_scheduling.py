@@ -391,6 +391,25 @@ def test_the_packaged_job_is_the_same_command_line_behind_the_api_executable():
     assert runner_arguments(ARGS["settings"], frozen=True).endswith(tail)
 
 
+def test_the_packaged_job_names_the_product_for_the_fill_and_the_source_job_does_not():
+    """P201 R6 (``pilot/SPEC-firm-cache-fill.md``): the pass fills the firm
+    cache through a child that imports the API, which reads the product's
+    name at import; a frozen build has no package.json and Task Scheduler
+    passes no environment, so the packaged line names it - before the
+    settings folder, so the line still ends as decision 131's does. A
+    checkout reads package.json, so its line (and the README's quotation
+    of it) is unchanged."""
+    from tracker.runner import PRODUCT_FLAG, RUNNER_MODE_FLAG, SETTINGS_FLAG, _parser
+    from tracker.scheduling import quote_argument, runner_arguments
+    from tracker.settings import product_name
+
+    packaged = runner_arguments(ARGS["settings"], frozen=True)
+    assert packaged.startswith(f"{RUNNER_MODE_FLAG} {PRODUCT_FLAG} {quote_argument(product_name())} {SETTINGS_FLAG} ")
+    assert PRODUCT_FLAG not in runner_arguments(ARGS["settings"])
+    said = _parser().parse_args([PRODUCT_FLAG, product_name(), SETTINGS_FLAG, ARGS["settings"]])
+    assert said.product == product_name()
+
+
 def test_the_time_limit_is_the_locks_run_limit_rendered():
     from tracker.locking import RUN_TIME_LIMIT_SECONDS
     from tracker.scheduling import EXECUTION_TIME_LIMIT, iso_duration

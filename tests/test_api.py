@@ -8816,6 +8816,23 @@ def test_the_firm_cache_is_one_file_in_the_data_folder_and_nothing_in_either_cli
     assert firm_cache.cache_path().stat().st_mtime_ns == written, "an unchanged practice writes nothing"
 
 
+def test_a_practice_with_nothing_to_keep_yet_still_leaves_todays_head(capsys, demo_root):
+    """P201 R5: every household changed within the racy window (as just
+    after a pass), so none is kept - and the cache is still written under
+    today's head, so the pass's fill can tell an answered summary from one
+    that kept nothing because it could not write."""
+    import datetime as dt
+
+    from tracker import firm_cache
+
+    _a_practice_for_the_firm_view(capsys, demo_root)
+    assert not firm_cache.cache_path().exists()
+    _cached_firm(capsys)
+    head = firm_cache.head(str(api._saved_root()), dt.date.today())
+    assert firm_cache.holds(firm_cache.cache_path(), [head])
+    assert firm_cache.load(firm_cache.cache_path(), head) == {}, "nothing racy is kept"
+
+
 def test_the_commands_held_to_one_reading_write_nothing_and_a_write_there_is_refused(
         capsys, demo_root, monkeypatch):
     """P118, and the review's SHOULD-3: a command joins
