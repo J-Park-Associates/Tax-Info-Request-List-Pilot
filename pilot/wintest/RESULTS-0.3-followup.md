@@ -26,8 +26,16 @@
 | View > Show Under Construction (P197) | PASS | Ticked on a new install; Alt+V then U hides the five items and the Workspace heading; still hidden after closing and starting again from the Start menu; turned back on to leave the default. |
 | A tooltip after a keyboard page change | **FAIL** -> P202 | The tip "Navigate to Return (Okafor Family)" stayed on screen after Ctrl+4, Ctrl+2 and Ctrl+3 and did not clear when the mouse moved. Cause and fix: `pilot/SPEC-stuck-tip.md`. |
 
+## The build of `4b55bc4` (pull request #24, P202)
+
+- Installer SHA-256 `764d156959e7315d775e8f3d7ec94e55b27523887a00c6cc06fcb0c0dffeb78c`. The first install attempt (4:00 AM) met the open app and stopped with exit 5, rolling itself back (N7): the close click had been blocked by Windows' text-input layer, which the screen tool may not control. The app was then closed through its own window message (`CloseMainWindow`, never forced) and the install exited 0 at 4:03 AM, into the real `Programs` folder.
+
+| Check | Result | Evidence |
+|---|---|---|
+| The tooltip after a keyboard page change (P202) | NOT VERIFIED by hand | Every key and click sent while the mouse rested on a link was refused by the screen tool ("Textinputhost is in front"); access to it was declined. Covered by the three P202 tests, which drive the real `tooltip.js` and `shellGo` and fail on the code before the fix. |
+| Overview at the minimum window | **FAIL** -> P203 | The window shrunk by `MoveWindow` stopped at 1100 wide; `GetClientRect` gave its page 1084 wide; the Work Waiting list showed a sideways scrollbar with a nearly full-width handle. Cause and fix: `pilot/SPEC-min-page-width.md`. |
+
 ## Not checked by hand tonight
 
-- 1100 px window width (SPEC-firm-columns, the combined review's S5): the window was used at its default size.
 - F6 by hand (uninstall, reinstall the same build, schedule on): the schedule stays off at Jason's word; covered by `tests/test_after_install.py`.
 - `run_checks.ps1` whole (P200): it builds and installs; its parts are covered by `tests/test_pilot.py`.
