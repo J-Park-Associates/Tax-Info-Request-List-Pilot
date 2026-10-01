@@ -51,7 +51,7 @@ const crumbs = (page) => page.evaluate(() => [...document.querySelectorAll("#cru
   await page.evaluate(() => shellMenu({ id: "needs_review" }));
   check("Ctrl+2 goes to Needs Review", (await current(page)) === "Needs Review", await current(page));
   await page.keyboard.press("Control+4");
-  check("Ctrl+4 goes to Clients", (await current(page)) === "Clients", await current(page));
+  check("Ctrl+4 goes to Households", (await current(page)) === "Households", await current(page));
   await page.click('.side-section[data-section="overview"]');
   check("a click goes to Overview", (await current(page)) === "Overview", await current(page));
   const enabled = await page.evaluate(() => window.HARNESS.menuLog.at(-1).enable);
@@ -132,7 +132,7 @@ const crumbs = (page) => page.evaluate(() => [...document.querySelectorAll("#cru
     steps.push(await page.evaluate(() => document.querySelector("#pilot-tour p").textContent));
     await page.keyboard.press("ArrowRight");
   }
-  check("the tour says one short line per step", steps.every((s) => s.split(" ").length <= 5) && steps[0] === "Sorts What Your Clients Send", steps);
+  check("the tour says one short line per step", steps.every((s) => s.split(" ").length <= 5) && steps[0] === "Sorts What Your Taxpayers Send", steps);
   check("the tour ends", await page.evaluate(() => !document.getElementById("pilot-tour")), null);
   await page.hover("#sort");
   await page.waitForTimeout(700);
@@ -165,7 +165,7 @@ const crumbs = (page) => page.evaluate(() => [...document.querySelectorAll("#cru
   await page.evaluate(() => shellGo({ level: "return", household: "/clients/J Park & Associates/Smith Family", year: 2025, ret: "/clients/J Park & Associates/Smith Family/2025/1040 - John & Jane Smith" }));
   await page.waitForFunction(() => document.querySelector("#page details") && !document.querySelector("#page[aria-busy=true]"), null, { timeout: 5000 });
   const titles = await page.evaluate(() => [...document.querySelectorAll("#page .group-title")].map((n) => n.textContent));
-  check("the return draws its groups in order", titles.join("|") === "Needs You|Waiting on Client|Received|Set Aside", titles);
+  check("the return draws its groups in order", titles.join("|") === "Needs You|Waiting on Taxpayer|Received|Set Aside", titles);
   check("Set aside is shut", await page.evaluate(() => !document.querySelector("#page details").open), null);
   await page.focus("#page .rows");
   const before = await page.evaluate(() => document.querySelectorAll("#notices .notice").length);
@@ -480,7 +480,7 @@ const settle = (page) => page.waitForTimeout(250);
   const hh = await page.evaluate(() => { const l = document.querySelector("#page .row-link[data-link=household]"); return [l.textContent, l.dataset.tip]; });
   await page.click("#page .row-link[data-link=household]");
   await page.waitForFunction(() => shellRoute.level === "household", null, { timeout: 5000 });
-  check("a household name goes to the client's page, with its tooltip, and never opens File Explorer", hh[1] === "Navigate to Client" && (await page.evaluate(() => window.HARNESS.opened.length)) === before, hh);
+  check("a household name goes to the client's page, with its tooltip, and never opens File Explorer", hh[1] === "Navigate to Household" && (await page.evaluate(() => window.HARNESS.opened.length)) === before, hh);
   await context.close();
 }
 
@@ -489,7 +489,7 @@ const settle = (page) => page.waitForTimeout(250);
   await page.evaluate(() => shellGo({ level: "needs-review" }));
   await page.waitForSelector("#page .row-link");
   const head = await page.evaluate(() => [document.querySelector(".group-title .head-year").textContent, document.querySelector(".group-count .row-link").dataset.tip]);
-  check("a group heading says its year once, beside the taxpayer's return link; its caption a household link (P195)", head[0] === "2025" && head[1] === "Navigate to Client", head);
+  check("a group heading says its year once, beside the taxpayer's return link; its caption a household link (P195)", head[0] === "2025" && head[1] === "Navigate to Household", head);
   await page.click("#page .rows .row-link");
   const opened = await page.evaluate(() => window.HARNESS.opened);
   check("a firm-page file name reveals the path of the key the firm's reply gave", opened.length === 1 && opened[0][1] === "reveal", opened);
@@ -584,7 +584,7 @@ const settle = (page) => page.waitForTimeout(250);
 { // the menu channel that throws must not stop navigation
   const { context, page } = await open("?mode=real&scenario=menu-throws");
   await page.click('.side-section[data-section="clients"]');
-  check("a route change goes on when the menu channel throws", (await current(page)) === "Clients", await current(page));
+  check("a route change goes on when the menu channel throws", (await current(page)) === "Households", await current(page));
   const text = await page.textContent("#notices");
   check("and the failure is one notice", text.length > 0 && !text.includes("menu channel closed"), text);
   await context.close();
@@ -651,7 +651,7 @@ const settle = (page) => page.waitForTimeout(250);
   const icon = await page.evaluate(() => { const r = document.querySelector("#find-wrap .icon").getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; });
   await page.mouse.move(icon.x, icon.y);
   await page.waitForTimeout(700);
-  check("hover on the search icon shows the tip", (await tipShown()) && (await page.textContent("#tip")) === "Find a Client", await page.textContent("#tip"));
+  check("hover on the search icon shows the tip", (await tipShown()) && (await page.textContent("#tip")) === "Find a Household", await page.textContent("#tip"));
   await page.mouse.move(0, 0);
   await page.waitForTimeout(100);
   check("moving away hides it", !(await tipShown()), null);
@@ -728,7 +728,7 @@ const settle = (page) => page.waitForTimeout(250);
     return { bad, years, links: document.querySelectorAll('#page .row-link[data-link="return"]').length };
   });
   for (const [where, level, all] of [["Overview", "overview", false], ["Needs Review", "needs-review", false], ["Reminders", "reminders", false],
-    ["Clients", "clients", false], ["Clients (All)", "clients", true]]) {
+    ["Households", "clients", false], ["Households (All)", "clients", true]]) {
     await page.evaluate((l) => shellGo({ level: l }), level);
     await page.waitForTimeout(250);
     if (all) { await page.click(".switch-option:nth-child(2)"); await page.waitForTimeout(250); }

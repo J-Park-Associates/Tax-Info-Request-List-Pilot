@@ -596,6 +596,10 @@ year; choosing one opens Check on it. Up to eight options, as before.
 
 ## 15. The side panel and Clients (P153, P154)
 
+Since P196 the screen calls Clients **Households**, its name column
+**Household Name** and the Client Types **Taxpayer Types**; the keys and
+code names below are unchanged. See `SPEC-taxpayer-words.md`.
+
 ### 15.1 The panel
 
 - **Brand band** (`--brand`, both themes; P179): the JP logo, whose

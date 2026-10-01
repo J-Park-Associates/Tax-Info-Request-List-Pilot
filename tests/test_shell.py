@@ -976,17 +976,17 @@ const vocab = {
     steps: { check: "Check", open: "Open", draft: "Draft reminder", edit: "Edit" },
     notices: { paused: "Two Years Open; Sorting Paused" },
     empty: { received: "Nothing received yet" }, moved: "Moved by hand", due: "Due {date}", partly: "{n} of {total}",
-    show_in_explorer: "Show in File Explorer", navigate_client: "Navigate to Client", navigate_return: "Navigate to Return",
+    show_in_explorer: "Show in File Explorer", navigate_client: "Navigate to Household", navigate_return: "Navigate to Return",
     counts: { need: "{n} need you", waiting: "{n} waiting", complete: "Complete", files: "{n} files", one_file: "1 file", one_return: "1 return", returns: "{n} returns" },
-    sections: { overview: "Overview", needs_review: "Needs Review", reminders: "Reminders", clients: "Clients" },
+    sections: { overview: "Overview", needs_review: "Needs Review", reminders: "Reminders", clients: "Households" },
     columns: { tax_year: "Tax Year", taxpayer: "Taxpayer", form_type: "Form Type", taxpayer_tip: "{action} ({household})",
                status: "Status", date: "Date", file: "File", suggestion: "Suggestion", reason: "Reason",
-               received: "Received", stage: "Stage", drafted: "Drafted", returns: "Returns", client_name: "Client Name", sort_by: "Sort by {column}",
+               received: "Received", stage: "Stage", drafted: "Drafted", returns: "Returns", client_name: "Household Name", sort_by: "Sort by {column}",
                width: "{column} Width {n}" },
     linked: { tip: "Linked Households", feeds: "Also Feeds", fed_by: "Fed By", related: "Related" },
     tabs: { need: "Need You ({n})", waiting: "Waiting ({n})" }, documents: { one: "1 Document", many: "{n} Documents" },
     paging: { showing: "Showing {from}-{to} of {total} {noun}", previous: "Previous", next: "Next",
-              nouns: { overview: "Returns", needs_review: "Files", reminders: "Drafts", clients: "Clients" } },
+              nouns: { overview: "Returns", needs_review: "Files", reminders: "Drafts", clients: "Households" } },
     icons: { more_actions: "More Actions", remove_filter: "Remove Filter" }, filters: { work: "Work Waiting", all: "All" }, work: "Work Waiting",
     client_types: { individuals: "Individuals", businesses: "Businesses", trusts: "Trusts & Estates", nonprofits: "Nonprofits" },
   },
@@ -1681,9 +1681,9 @@ def title_case_ok(phrase: str) -> bool:
 
 
 def test_the_title_case_rule_says_what_ruling_10_says():
-    for good in ("Needs Review", "Waiting on Client", "Add a Return…", "Client (Greeting Name)", "Not Opened; It Has Changed", "Belongs To…", "Due Date (Optional)"):
+    for good in ("Needs Review", "Waiting on Taxpayer", "Add a Return…", "Taxpayer (Greeting Name)", "Not Opened; It Has Changed", "Belongs To…", "Due Date (Optional)"):
         assert title_case_ok(good), good
-    for bad in ("Needs review", "Waiting On Client", "Add A Return", "Due date (optional)", "Look again"):
+    for bad in ("Needs review", "Waiting On Taxpayer", "Add A Return", "Due date (optional)", "Look again"):
         assert not title_case_ok(bad), bad
 
 
@@ -1884,7 +1884,7 @@ def test_running_a_link_reveals_a_file_and_only_navigates_for_a_household_or_a_r
     assert ran["went"] == [{"level": "household", "household": "hh"},
                            {"level": "return", "household": "hh", "year": 2025, "ret": "r9"}]
     assert ran["failures"] == ["unanswered show_in_explorer"], "a key with no path says so, loudly"
-    assert ran["words"] == ["Show in File Explorer", "Navigate to Client", "Navigate to Return"]
+    assert ran["words"] == ["Show in File Explorer", "Navigate to Household", "Navigate to Return"]
 
 
 def test_the_taxpayer_is_the_name_without_its_recorded_form_and_never_a_guess(tmp_path):
@@ -3084,7 +3084,7 @@ def test_a_needs_review_group_that_cannot_be_built_is_named_by_its_return_and_ne
       return { drew: nodes.length, broken: pagesBroken.map((one) => one.name), notices: notices.flatMap(([, list]) => list.map((one) => one[1])) };
     """, tmp_path, setup="""
       let shellFirmData = null; const shellFirm = () => ({ data: shellFirmData });
-      Object.assign(vocab.screen, { navigate_client: "Navigate to Client", empty: { needs_review: "Nothing needs review", next_sort: "Next sort {time}" } });
+      Object.assign(vocab.screen, { navigate_client: "Navigate to Household", empty: { needs_review: "Nothing needs review", next_sort: "Next sort {time}" } });
       vocab.shell = { page_error: "The App Hit an Error" }; vocab.notices = { about: "{label}: {sentence}" };
       vocab.reasons = { unmatched: "No Match" };
     """, functions=functions)
@@ -3121,10 +3121,10 @@ FIRM_LISTS = r"""
   let shellRoute = { level: "overview" };
   const box = new Element("div"); const $ = (id) => box;
   Object.assign(vocab.screen, {
-    figures: { need: "Need a Person", waiting: "Waiting on Clients", complete: "Complete" }, work: "Work Waiting",
+    figures: { need: "Need a Person", waiting: "Waiting on Taxpayers", complete: "Complete" }, work: "Work Waiting",
     filters: { work: "Work Waiting", all: "All" }, held: "Held",
     empty: { overview: "Nothing Is Waiting", next_sort: "Next Sort {time}", needs_review: "Nothing Needs Review", reminders: "No Drafts Ready",
-             clients: "No Clients Yet", work: "No Work Waiting", returns: "No Returns Yet", received: "Nothing Received Yet" },
+             clients: "No Households Yet", work: "No Work Waiting", returns: "No Returns Yet", received: "Nothing Received Yet" },
   });
   vocab.reminder = { stages: [{ number: 1, short: "Heads Up" }, { number: 2, short: "Checking In" }, { number: 3, short: "Final Notice" }] };
   vocab.reasons = { unmatched: { short: "Could Not Tell" }, "opened-not-across": { short: "Came in Email or Zip" } };
@@ -3177,7 +3177,7 @@ def test_the_four_firm_lists_draw_a_header_row_of_buttons_in_the_rows_columns(tm
     assert ran["overview"]["words"] == ["Tax Year", "Taxpayer", "Form Type", "Status", "Date"], "Jason's order (P194, P195)"
     assert ran["needs-review"]["words"] == ["File", "Suggestion", "Reason", "Received"]
     assert ran["reminders"]["words"] == ["Tax Year", "Taxpayer", "Form Type", "Stage", "Drafted"], "the same columns, then its own (P195)"
-    assert ran["clients"]["words"] == ["Client Name", "Returns", "Status"], "the Clients end column is always empty (P153: Client Name)"
+    assert ran["clients"]["words"] == ["Household Name", "Returns", "Status"], "the Households end column is always empty (P153; P196: Household Name)"
     for level, one in ran.items():
         width = 5 if level in ("overview", "reminders") else 4
         assert one["tables"] == 1 and one["rows"] == 1 and one["cells"] == width and one["grips"] == width, level
@@ -3591,8 +3591,8 @@ def test_the_search_finds_waiting_files_on_needs_review_and_its_placeholder_says
     ran = run_shell(["screenWords", "fold", "shellHousehold", "shellOwnReturns", "shellReturn", "findOptions"], PEOPLE, probe, tmp_path)
     assert ran["names"][0] == "Smith W-2.pdf" and ran["note"] == "1040 - John & Jane Smith 2025"
     assert ran["check"] == {"ret": "r1", "name": "Smith W-2.pdf", "handle": "h1"} and ran["without"] == 3
-    assert api.SCREEN["find_placeholder"] == "Search Clients and Returns"
-    assert api.SCREEN["find_placeholder_files"] == "Search Files, Clients and Returns"
+    assert api.SCREEN["find_placeholder"] == "Households and Returns"
+    assert api.SCREEN["find_placeholder_files"] == "Files, Households and Returns"
     shell = stripped_js("shell.js")
     assert 'setAttribute("placeholder", shellRoute.level === "needs-review" ? words.find_placeholder_files : words.find_placeholder)' in shell
 

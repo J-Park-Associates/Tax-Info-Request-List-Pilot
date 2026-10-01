@@ -9140,7 +9140,7 @@ def test_no_return_or_household_row_carries_an_open_key_and_their_words_navigate
     assert code == 0, state
     assert all("open_key" not in one for one in state["household"]["returns"])
     screen = api._vocab()["screen"]
-    assert screen["navigate_client"] == "Navigate to Client"
+    assert screen["navigate_client"] == "Navigate to Household"
     assert screen["navigate_return"] == "Navigate to Return"
     assert screen["show_in_explorer"] == "Show in File Explorer"
 
@@ -9264,6 +9264,36 @@ def test_every_drawn_word_the_vocabulary_carries_is_in_title_case(capsys, demo_r
         if title_case(text) != text:
             bad.append((path, text, title_case(text)))
     assert not bad, bad
+
+
+#: The drawn words that still say "Client" (pilot P196, SPEC-taxpayer-words
+#: R3): each names a folder on disk, whose own name is ``Clients``.
+_FOLDER_WORDS = {"Change Clients Folder…", "Open Clients Folder", "Open Client Folder",
+                 "Choose Your Clients Folder", "Clients Folder"}
+
+
+def test_no_word_the_window_draws_says_client_but_a_folders_own_name(capsys, demo_root):
+    """P196: the person is the Taxpayer, the listed household a Household;
+    only a button naming a folder on disk keeps the folder's word."""
+    vocab = api._vocab()
+    drawn = [("menu", vocab["menu"]), ("screen", vocab["screen"]), ("reasons", vocab["reasons"]),
+             ("ask_the_client", vocab["ask_the_client"]), ("override_labels", vocab["override_labels"]),
+             ("engagement_fields", [f["label"] for f in vocab["editor"]["engagement_fields"]]),
+             ("settings.root_label", vocab["settings"]["root_label"]),
+             ("open_client_folder", api.OPEN_CLIENT_FOLDER_LABEL)]
+    said = [(where + path, text) for where, branch in drawn for path, text in _drawn_words(branch)
+            if "client" in text.lower() and text not in _FOLDER_WORDS]
+    assert not said, said
+    assert vocab["screen"]["sections"]["clients"] == vocab["menu"]["clients"] == "Households"
+    assert vocab["screen"]["side"]["types"] == "Taxpayer Types"
+
+
+def test_the_editor_says_taxpayer_where_the_record_keeps_client():
+    """P196 R7: the record and the files it writes keep their label; only
+    the editor's word for the greeting name changes."""
+    [field] = [f for f in api._vocab()["editor"]["engagement_fields"] if f["key"] == "client"]
+    assert field["label"] == "Taxpayer"
+    assert ENGAGEMENT_LABELS["client"] == "Client"
 
 
 def test_the_notices_carry_a_short_word_for_every_kind_the_pages_show():

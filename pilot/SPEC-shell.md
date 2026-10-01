@@ -1419,6 +1419,10 @@ brand colour, not a text pair).
 
 ## 11. Wording (P63, P66)
 
+Since P196 the screen says Taxpayer for the person and Household for the
+listed household where this section says client; a button naming a folder
+on disk keeps "client folder". See `SPEC-taxpayer-words.md`.
+
 ### 11.1 The rules
 
 Five words or fewer for every label, heading, notice, error, tooltip,

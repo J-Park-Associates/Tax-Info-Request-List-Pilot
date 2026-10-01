@@ -294,8 +294,8 @@ until somebody acts - *"Paused: this folder's name and its record's name
 disagree. Nothing is sorted, laid out or drafted for the household until a
 person opens it in the app and accepts the folder's name, or gives the
 folder back the name its record holds."* **Roll Forward…** and **Add a
-Return…** (the Client menu) are greyed for it, and the app and the command
-line refuse both with the same sentence. The household is marked on Clients
+Return…** (the Household menu) are greyed for it, and the app and the command
+line refuse both with the same sentence. The household is marked on Households
 and on Overview with *Two Years Open; Sorting Paused* when the cause is two
 open years.
 
@@ -407,7 +407,7 @@ editor beside it.
 **A folder from before September 2026** may still hold a `_manifest.xlsx`.
 The app no longer reads it: it is one of the folders left alone, listed
 with its own sentence rather than treated as an engagement, and the return is
-set up again in the app (Client, **Add a Return…** with the household open,
+set up again in the app (Household, **Add a Return…** with the household open,
 or File, **New Household…** for a household the app has no record of;
 then type or paste the rows). The workbook may be deleted once that is done.
 
@@ -1152,7 +1152,7 @@ puts them back.
 
 ### Rolling a household into the next year
 
-Rolling forward is done from the **household** (Client, **Roll Forward…**
+Rolling forward is done from the **household** (Household, **Roll Forward…**
 with the household open), not from one return, and only once the year it
 rolls to has ended: from January 2028, say, it offers **Roll forward to
 2027**. It opens a dialog that shows the open year's returns,
@@ -1216,7 +1216,7 @@ python -m tracker.rollover "<a return folder>" --year 2027 --form 1040
 ## 2. Every morning
 
 **The app's window, in one paragraph.** A side panel on the left lists the
-four pages - **Overview**, **Needs Review**, **Reminders**, **Clients**
+four pages - **Overview**, **Needs Review**, **Reminders**, **Households**
 (Ctrl+1 to Ctrl+4) - each with a count, and the last sort's time (or *Sort
 Failed*) at its foot. The path row above the page names where you are; a
 household or return name in it takes you there. A return or household name
@@ -1224,10 +1224,10 @@ anywhere is a link that opens its page; a file name is a link that shows that
 working copy in File Explorer (an email or a zip is plain text, never
 opened). Right-click a row for its menu (Check…, Not Requested, Show in File
 Explorer, Unfile, Mark Missing, Edit Request…); the menu bar (File, Edit,
-Client, View, Tools, Help) appears when you press Alt. **Check…** and
+Household, View, Tools, Help) appears when you press Alt. **Check…** and
 **Draft Reminder…** open a side sheet; where older text here says
 "card", read the file's row on Needs Review or a side sheet. The one **Sort** icon beside the search
-box sorts the open return's household (grey on the four pages: open a client
+box sorts the open return's household (grey on the four pages: open a household
 first); the overnight sort is the schedule. A *Sort Failed* notice with no
 button shows on every page while the last **scheduled** sort failed, and
 clears when the next scheduled sort succeeds - the app's own Sort names one
