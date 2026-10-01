@@ -1,22 +1,27 @@
 # Pilot handoff
 
-**F7 and the firm columns (P193-P196, 2026-09-30):** all three builds are
-combined on `claude/zen-easley-93548b` and reviewed together -
-P193 (F7, the data folder Windows redirects: `SPEC-F7-redirected-data-folder.md`,
-`handoffs/F7-build.md`), P194/P195 (one field per column:
-`SPEC-firm-columns.md`, `handoffs/firm-columns-build.md`) and P196 (Client
-becomes Taxpayer on screen; the page is Households: `SPEC-taxpayer-words.md`,
-`handoffs/taxpayer-words-build.md`). The review is
-`reviews/combined-review.md`, the orchestrator's rulings
-`reviews/combined-rulings.md`, and the fixes are folded in
-(`handoffs/combined-fold.md`). Open: P196's Q1-Q5, each built as
-recommended; F7's R6 (the office PC) and Q1 (a) (Jason moves the private
-copy to the Recycle Bin) are Jason's; the next Windows check carries S3 and
-S5 (`wintest/PROMPT-0.3.md`). Not fixed here: `test_shell_menu`'s
-`test_open_error_log_opens_the_named_file_and_says_so_when_there_is_none`
-failed once under 3.11 with 12 files in parallel - its harness waits a
-fixed 100 ms for `main.js` (`tests/test_shell_menu.py:245`); it passes
-alone and on `392ec27`, so it predates this work.
+**Landed 2026-10-01 (P193-P204): `main` is `6a2d87f`, installed on the office PC.**
+F7 (the data folder Windows redirects), F6 (the schedule after a reinstall),
+one field per column (Tax Year, Taxpayer, Form Type, Status, Date), Taxpayer
+and Household words, View > Show Under Construction, the 0.3 check's notes,
+the check scripts and the `test_shell_menu` flake, the firm cache filled at a
+pass's end, a tooltip that outlived its page (P202) and the minimum window's
+page (P203) - pull requests #23, #24 and #25, recorded in P204. Evidence:
+`wintest/RESULTS-0.3-followup.md`; reviews and rulings in `reviews/`;
+the session's note `handoffs/F7-root-cause.md`.
+
+**Open for Jason** (each built as recommended meanwhile): P196 Q1-Q5
+(`SPEC-taxpayer-words.md`), P197 Q1-Q3 (`SPEC-hide-under-construction.md`),
+P199 Q1 (`SPEC-check-notes-0.3.md`); whether to turn GitHub Actions back on
+(it is off for the repository); the schedule stays off at Jason's word.
+
+**Left:** the tooltip fix (P202) was not verifiable by hand (the screen tool
+could not send keys while hovering) - check it once by hovering a name and
+pressing Ctrl+4; a laptop at 125-150 % display scaling opens taller than its
+screen (older than P203, `reviews/min-width-review.md`); F6 by hand needs
+the schedule on; `run_checks.ps1` whole runs at the next Windows check; the
+production tracker's own private copy under the Claude package and its
+`checkpoint-left-behind` pass (its own repository).
 
 ## App shell: where the build stands (2026-09-30; branch `claude/shell-join`, S6b)
 

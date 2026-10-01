@@ -14,17 +14,11 @@ Branch `claude/zen-easley-93548b` (worktree `.claude/worktrees/zen-easley-93548b
 - Jason's answers, all logged in `pilot/DECISIONS.md` P193-P197: F7 Q1 (a), Q2 (a); household in the tooltip; "apply to all windows"; "Taxpayer" across the app; folders keep their names; emails unchanged; the page is "Households"; the Under Construction setting.
 - Tests: each build's own test files passed on Python 3.11 and 3.14, each file its own process; ruff clean; map current (413 nodes). **The whole suite has not run on this branch** (the daily landing's job).
 
-## Left, in order
+## Landed (2026-10-01, 4:20 AM Pacific)
 
-1. **Jason (SPEC-F7 R6 and Q1 (a)):** close any app the check session started; start Tax Document Console from the Start menu; open Overview (the 27 samples should read normally). Then move `%LOCALAPPDATA%\Packages\Claude_pzs8sxrjxfjjc\LocalCache\Local\tax-document-tracker-pilot` to the Recycle Bin. Not yet confirmed in this session.
-2. **Landing:** this branch waits for Jason's word to push and land (merge commit, draft pull request marked ready once, the whole suite once on Windows first).
-3. **Windows check after landing** (`pilot/wintest/PROMPT-0.3.md`, its note at the end): steps 19-21 with the app started outside Claude; the installer landing in the real `Programs` folder; one look at 1100 px; P197 by hand (on/off, Alt+V+U, focus, High Contrast, the choice kept after a restart); the new columns and words on every window.
-4. **F6** (`pilot/handoffs/wincheck-0.3.md`, Left item 2): its own SPEC.
-5. `wincheck-0.3.md` Left items 3-6 (lane 4's Date column and N2, the check scripts A1/N7/N8, the smaller notes). `test_shell_menu` has a timing flake on 3.11 that predates this work (`pilot/HANDOFF.md`).
+Everything above, and the four further lanes (P198 F6, P199 the check notes, P200 the check scripts and the flake, P201 the cache fill), consolidated and then reviewed as a whole, plus two faults the hands-on check found (P202 a tooltip that outlived its page, P203 the minimum window's page), landed in pull requests #23, #24 and #25 with merge commits. `main` is `6a2d87f` and its build is installed on the office PC. The landing is P204; the hands-on results are `pilot/wintest/RESULTS-0.3-followup.md`; the status page is `pilot/HANDOFF.md`.
 
-**Noticed, not acted on:** the Claude package's redirect area also holds `LocalCache\Roaming\Tax Document Tracker` for the firm's **production** tracker, whose 9:00 PM pass on 9/30 failed with `checkpoint-left-behind` (`%LOCALAPPDATA%\tax-document-tracker\last-pass.json`). Worth one look in the production repo for the same cause; nothing there was touched.
-
-## Files the next session needs
-
-- `pilot/DECISIONS.md` P193-P197; the four SPECs and their hand-backs named above; `pilot/reviews/` (both reviews and both rulings files).
-- `pilot/wintest/PROMPT-0.3.md` (the note at the end) for the next Windows check.
+- SPEC-F7 R6 passed (the Start-menu app read every return; the real store is whole) and Q1 (a) was done by Jason.
+- The whole suite ran once on this PC on both interpreters; its failures were the test environment's and every failing file passed in a fixed environment (P204).
+- GitHub Actions is off for the repository; no online check ran.
+- What is still open is on the status page (`pilot/HANDOFF.md`, top), not here.
