@@ -15,9 +15,9 @@
     "a person sends the draft"
   ],
   "counts": {
-    "nodes": 413,
+    "nodes": 415,
     "edges": 1193,
-    "reused": 366
+    "reused": 368
   },
   "node_types": [
     "artifact",
@@ -135,8 +135,8 @@
       "id": "tracker/after_install.py",
       "type": "module",
       "layer": "core",
-      "sha256": "467ac1a9e764bccb",
-      "lines": 1346,
+      "sha256": "b23a0ca3d5cff7d3",
+      "lines": 1379,
       "cli": "python -m tracker.after_install",
       "exports": [
         "AfterInstall",
@@ -282,7 +282,7 @@
         "EARLIER_TASK_FAILED": "\"The scheduled task under the earlier name, {old}, could not be removed ({problem}); until it is, both tasks start the pass, and the second finds the first's lock and moves nothing. Start the app: it tries again at launch, and Repair the Schedule tries at once.\""
       },
       "role": "Every one-time step after installing or upgrading, in one function (decision 209, Jason's standing preference): run(reason) registers the schedule on the computer the designation file names (scheduling.schedule_decision) and runs decision 187's record check (store.check per record folder, store.gone_journals), then records what it did in after-install.json beside the store.",
-      "notes": "Three doors, one function: Setup.bat runs it last (--reason setup, after the lock stamp); the app's shell runs the API's after-install command before the page's first call, which returns {ran: false} at once when program_identity() (sys.executable, package.json's version, store.SCHEMA_VERSION, and every tracker/*.py from source or BUILD-INFO.txt when frozen) matches the record - measured at about 7 ms; and set-root runs it, so the first root saved on the office computer registers the schedule with no button. install-schedule (the app's Repair the schedule) is the deliberate re-run. A finding is not a failure: exit 0 with the findings listed (FINDINGS_WAIT); exit 1 only when a job could not run (designation unreadable, schtasks refused, store will not open, saved root refused), each one sentence, never a traceback or a file's content. The program identity is recorded only when nothing failed, so a failed run is tried again at the next launch. It never creates a store: the check is skipped when the store file is not there, and a folder the store never met (store.holds) is left to the first catch-up rather than named. The first screen's list reply carries after_install.notice() while the record holds findings or failures; the app shows it at the top, not dismissible. --move-schedule-here rewrites the designation to this computer (runbook section 6). Layer 4: imports scheduling, store, registry, ledger, door, settings, locking, fsio; the API imports it. The review fixes: launch() also runs the step when designation_now(root) differs from the record's 'designated' (so the old computer removes its task at its next start after a move); only the claim's OSError is DESIGNATION_UNWRITABLE, a job file or schtasks that cannot be reached is SCHEDULE_FAILED with the constant SCHEDULE_UNREACHABLE; an unnameable computer is scheduling.UNNAMED_HOST; the check counts what it judged (CHECK_CLEAN names n, CHECK_NOTHING_HELD for a store holding none); move_schedule_here() says MOVED_FROM_UNREADABLE over a garbage file and is also the API's move-schedule-here; record_failure(LAUNCH_FAILED) is what the API's launch door writes when launch() raises. FINDINGS_WAIT claims waiting only for malformed and changed-behind-the-back returns - both proved by tests, the first true since store R3b (the strict xfail is now a plain pass). R8, the third job: _clear_test_cache() removes CHECKOUT/.pytest_cache from source only, by lstat and an explicit bottom-up walk that unlinks any link and never descends into one - a link is a symbolic link or a junction only (S_ISLNK or the reparse tag IO_REPARSE_TAG_SYMLINK/MOUNT_POINT); any other reparse point, such as a cloud placeholder folder, is walked as a folder (CACHE_CLEARED / CACHE_NOT_CLEARED); run(checkout=...) lets tests name a fabricated checkout, and tests/conftest.py points CHECKOUT at a folder never made so the suite never clears its own cache. The command line is main(argv) in the imported module and the __main__ block only calls it: a runpy copy of the module had its own CHECKOUT, so tests reached the real cache (second review, MF1); the tests call main() and a guard test asserts the real checkout's cache is untouched. The careful mover (SPEC-209 R9) is move_left_behind(items, home) -> MoveOutcome, a pure function over decision 186's move group: every destination checked, and two items of one name or any link or junction (_is_link) refused, before anything moves; nothing is ever overwritten (no os.replace: a rename that refuses an existing name on one volume, each destination re-checked just before its move, otherwise a copy into a name it creates, with size and SHA-256 compared before the source is removed, a folder first renamed aside to <name>.moving-<pid>); a failure removes only what the mover created, keeps the source whole and moves earlier items back; nothing present is nothing to do; its sentences are the LEFT_BEHIND_* constants. Not yet wired into run(): it is wired first there, fed by runner.left_behind_to_move, when 186 lands. At the merge with main (decision 186 landed): run()'s first job is _move_what_186_lists - move_left_behind(runner.left_behind_to_move(root), store.store_path().parent), a SettingsError (no data home) being nothing to do - before the schedule, the check and the cache; its sentence leads the lines and its failure joins failed. RECORD_FILENAME is runner.AFTER_INSTALL_FILENAME (one spelling; runner cannot import this module). _schedule answers scheduling.REFUSED_DRIVE with 186's sentence as a failure. _check says an OSError by errors.said (its class), the record's and the store's own errors whole. Merge review fixes: move_left_behind treats CHECKPOINT_UNIT (checkpoint, its journal, a .damaged copy, by checkpoint's constants) as one - a journal without its checkpoint beside it, or a home holding any part, moves nothing (LEFT_BEHIND_JOURNAL_ALONE); move_schedule_here asks settings.program_drive_refusal() first and changes nothing when it refuses; every OSError said by class (the check, the claim, the registration, the mover) is also kept whole with errors.keep on the local debug log. Pilot P21: run(start=None, every=None) registers the choice saved in settings.json at every door; a named start/every is checked and saved first; off removes this computer's task and leaves the designation alone; a refused saved choice is a recorded failure (PREFERENCE_KEY) and registers nothing; the record holds the preference and launch() runs the step again when it differs. Pilot P47: one run at a time - run() and launch() hold after-install.lock beside the record (locking.acquire_lock, so a lock whose process ended is taken over) from before the saved choice is read until the record is written, waiting up to LOCK_WAIT_SECONDS and otherwise changing nothing (STEP_BUSY); every task it removes is noted on the debug log with why. The rename's carry-over (P155 Q2, pilot/SPEC-rename.md section 3): _carry_over_settings() runs first in _run(), before the settings are read - from the packaged program only, it copies settings.json byte for byte from settings.earlier_settings_path() when this program has none (an in-place upgrade finds one file; an existing file wins), verified by SHA-256, the earlier file left, its path checks inside its own error handling so an access error is SETTINGS_CARRY_FAILED; _replace_earlier_task() runs right after _schedule() and, from the packaged program only (_installed_program(), the seam its tests set; from source it says EARLIER_TASK_FROM_SOURCE and asks Task Scheduler nothing, so a checkout never deletes an installed copy's task), removes the task named settings.EARLIER_PRODUCT_NAME through scheduling.remove_task(task_name=...) - that name only, never the production task - unless the schedule failed this run, when it is kept. Each says one sentence every run (SETTINGS_* and EARLIER_TASK_*), kept in the record's 'carried' list and leading the printed lines; read_record() reads a record without it as nothing carried. A failed copy or removal is in 'failed', so no identity is recorded and the next launch runs the step again; a carry-over that is not a failure raises no notice."
+      "notes": "Three doors, one function: Setup.bat runs it last (--reason setup, after the lock stamp); the app's shell runs the API's after-install command before the page's first call, which returns {ran: false} at once when program_identity() (sys.executable, package.json's version, store.SCHEMA_VERSION, and every tracker/*.py from source or BUILD-INFO.txt when frozen) matches the record - measured at about 7 ms; and set-root runs it, so the first root saved on the office computer registers the schedule with no button. install-schedule (the app's Repair the schedule) is the deliberate re-run. A finding is not a failure: exit 0 with the findings listed (FINDINGS_WAIT); exit 1 only when a job could not run (designation unreadable, schtasks refused, store will not open, saved root refused), each one sentence, never a traceback or a file's content. The program identity is recorded only when nothing failed, so a failed run is tried again at the next launch. It never creates a store: the check is skipped when the store file is not there, and a folder the store never met (store.holds) is left to the first catch-up rather than named. The first screen's list reply carries after_install.notice() while the record holds findings or failures; the app shows it at the top, not dismissible. --move-schedule-here rewrites the designation to this computer (runbook section 6). Layer 4: imports scheduling, store, registry, ledger, door, settings, locking, fsio; the API imports it. The review fixes: launch() also runs the step when designation_now(root) differs from the record's 'designated' (so the old computer removes its task at its next start after a move); only the claim's OSError is DESIGNATION_UNWRITABLE, a job file or schtasks that cannot be reached is SCHEDULE_FAILED with the constant SCHEDULE_UNREACHABLE; an unnameable computer is scheduling.UNNAMED_HOST; the check counts what it judged (CHECK_CLEAN names n, CHECK_NOTHING_HELD for a store holding none); move_schedule_here() says MOVED_FROM_UNREADABLE over a garbage file and is also the API's move-schedule-here; record_failure(LAUNCH_FAILED) is what the API's launch door writes when launch() raises. FINDINGS_WAIT claims waiting only for malformed and changed-behind-the-back returns - both proved by tests, the first true since store R3b (the strict xfail is now a plain pass). R8, the third job: _clear_test_cache() removes CHECKOUT/.pytest_cache from source only, by lstat and an explicit bottom-up walk that unlinks any link and never descends into one - a link is a symbolic link or a junction only (S_ISLNK or the reparse tag IO_REPARSE_TAG_SYMLINK/MOUNT_POINT); any other reparse point, such as a cloud placeholder folder, is walked as a folder (CACHE_CLEARED / CACHE_NOT_CLEARED); run(checkout=...) lets tests name a fabricated checkout, and tests/conftest.py points CHECKOUT at a folder never made so the suite never clears its own cache. The command line is main(argv) in the imported module and the __main__ block only calls it: a runpy copy of the module had its own CHECKOUT, so tests reached the real cache (second review, MF1); the tests call main() and a guard test asserts the real checkout's cache is untouched. The careful mover (SPEC-209 R9) is move_left_behind(items, home) -> MoveOutcome, a pure function over decision 186's move group: every destination checked, and two items of one name or any link or junction (_is_link) refused, before anything moves; nothing is ever overwritten (no os.replace: a rename that refuses an existing name on one volume, each destination re-checked just before its move, otherwise a copy into a name it creates, with size and SHA-256 compared before the source is removed, a folder first renamed aside to <name>.moving-<pid>); a failure removes only what the mover created, keeps the source whole and moves earlier items back; nothing present is nothing to do; its sentences are the LEFT_BEHIND_* constants. Not yet wired into run(): it is wired first there, fed by runner.left_behind_to_move, when 186 lands. At the merge with main (decision 186 landed): run()'s first job is _move_what_186_lists - move_left_behind(runner.left_behind_to_move(root), store.store_path().parent), a SettingsError (no data home) being nothing to do - before the schedule, the check and the cache; its sentence leads the lines and its failure joins failed. RECORD_FILENAME is runner.AFTER_INSTALL_FILENAME (one spelling; runner cannot import this module). _schedule answers scheduling.REFUSED_DRIVE with 186's sentence as a failure. _check says an OSError by errors.said (its class), the record's and the store's own errors whole. Merge review fixes: move_left_behind treats CHECKPOINT_UNIT (checkpoint, its journal, a .damaged copy, by checkpoint's constants) as one - a journal without its checkpoint beside it, or a home holding any part, moves nothing (LEFT_BEHIND_JOURNAL_ALONE); move_schedule_here asks settings.program_drive_refusal() first and changes nothing when it refuses; every OSError said by class (the check, the claim, the registration, the mover) is also kept whole with errors.keep on the local debug log. Pilot P21: run(start=None, every=None) registers the choice saved in settings.json at every door; a named start/every is checked and saved first; off removes this computer's task and leaves the designation alone; a refused saved choice is a recorded failure (PREFERENCE_KEY) and registers nothing; the record holds the preference and launch() runs the step again when it differs. Pilot P47: one run at a time - run() and launch() hold after-install.lock beside the record (locking.acquire_lock, so a lock whose process ended is taken over) from before the saved choice is read until the record is written, waiting up to LOCK_WAIT_SECONDS and otherwise changing nothing (STEP_BUSY); every task it removes is noted on the debug log with why. The rename's carry-over (P155 Q2, pilot/SPEC-rename.md section 3): _carry_over_settings() runs first in _run(), before the settings are read - from the packaged program only, it copies settings.json byte for byte from settings.earlier_settings_path() when this program has none (an in-place upgrade finds one file; an existing file wins), verified by SHA-256, the earlier file left, its path checks inside its own error handling so an access error is SETTINGS_CARRY_FAILED; _replace_earlier_task() runs right after _schedule() and, from the packaged program only (_installed_program(), the seam its tests set; from source it says EARLIER_TASK_FROM_SOURCE and asks Task Scheduler nothing, so a checkout never deletes an installed copy's task), removes the task named settings.EARLIER_PRODUCT_NAME through scheduling.remove_task(task_name=...) - that name only, never the production task - unless the schedule failed this run, when it is kept. Each says one sentence every run (SETTINGS_* and EARLIER_TASK_*), kept in the record's 'carried' list and leading the printed lines; read_record() reads a record without it as nothing carried. A failed copy or removal is in 'failed', so no identity is recorded and the next launch runs the step again; a carry-over that is not a failure raises no notice. P198 (F6, pilot/SPEC-F6-schedule-after-reinstall.md): launch()'s _unchanged() asks _task_missing(record) last - only when the record's schedule is scheduling.REGISTERING (this computer claimed or registered it, and the designation already matched), one scheduling.task_exists() (schtasks /query) on the designated computer; anything but exit 0, or an OSError kept on the debug log, runs the step, whose /create /f registers the task again or says SCHEDULE_FAILED - so a task an uninstall or a person deleted comes back at the next start, and a computer the designation does not name, or a schedule that is off, is never asked."
     },
     {
       "id": "tracker/api.py",
@@ -3465,8 +3465,8 @@
       "id": "tracker/scheduling.py",
       "type": "module",
       "layer": "core",
-      "sha256": "26661f1c69c9c338",
-      "lines": 853,
+      "sha256": "f7d762a578f53d16",
+      "lines": 866,
       "cli": "python -m tracker.scheduling",
       "exports": [
         "CLAIMED",
@@ -3537,6 +3537,7 @@
         "schedule_decision",
         "schedule_xml_path",
         "start_hour",
+        "task_exists",
         "task_scheduler_here",
         "task_scheduler_xml"
       ],
@@ -3582,7 +3583,7 @@
         "MOVED_FROM_UNREADABLE": "\"The file naming the computer that ran the schedule for this clients folder was not one computer's name; this computer ({here}) now runs it.\""
       },
       "role": "Generates the Windows Task Scheduler XML or n8n workflow that runs tracker.runner unattended.",
-      "notes": "One daily task is enough because the runner decides the drafting day. Recognizes Windows drive-letter paths as absolute even when generating from Linux. Decision 131: THE JOB NAMES NO CLIENTS ROOT - runner_arguments(settings_dir) writes -m tracker.runner --settings \"<the app's settings folder>\" --log (runner.SETTINGS_FLAG), and the runner reads the root from settings.json there at every run, so the root has one home and a root changed in the app is the root the job walks next; the Description names the settings file. ROOT_FLAG and the CLI's root option are gone; the CLI takes --settings, defaulting to this checkout's settings folder, and refuses one that names no clients root. The folder resolver is resolve_folder() now. install_task() registers the XML with schtasks (/f, so re-running changes the schedule); --install does both steps. The task name is the product name from settings.product_name(); the defaults (start, repeat, XML file name) are module constants the API's install-schedule reports back so the app shows what was actually installed. EXECUTION_TIME_LIMIT is locking.RUN_TIME_LIMIT_SECONDS rendered by iso_duration(), not a second number, because the lock's stale threshold is derived from the same limit. runner_arguments(frozen=True) is the packaged form of the one command line: the app's executable in runner mode (runner.RUNNER_MODE_FLAG) instead of -m tracker.runner, same arguments after it. TASK_NAME at import is safe because only the shell-launched API (or a source checkout) imports this module; the frozen job never does. Decision 55: quote_argument() doubles a trailing backslash so a drive-root clients folder survives the Windows argument parser. Decision 191 (D-11): n8n runs its command through cmd on Windows and sh elsewhere, so n8n_workflow() quotes working_dir and python by quote_argument() like the settings folder, and refuse_shell_special() refuses any of the three holding a double quote, %, $, a backtick, ! or a control character - a ValueError naming the field and the kind of character, never the value. Decision 194 (D8): escapes with html.escape(quote=False), byte-identical to saxutils; it imports nothing that loads urllib.request/http.client/ssl, so no API process carries a network library (tests/test_layers.py proves it in a subprocess for tracker.api and tracker.scheduling; tests/test_scheduling.py proves the escape is unchanged). Decision 186: schedule_xml_path() is the task file's place, in the data home; --install without --out writes there, making the folder as it writes. Decision 209: which computer runs the schedule is one file in the private tree - designated_machine() reads it, claim() writes this host when none is named (read, compare, write), move_here() rewrites it, and schedule_decision(root) decides in order: no_root, no_task_scheduler, claimed, registered, elsewhere, unreadable, each with a sentence constant. register_here() is the one registration (the API's repair path and the after-install step both call it; it writes the XML to decision 186's schedule_xml_path() in the data home, making its folder as the installer does, and the working folder is settings.app_dir()) and remove_task() deletes this computer's own task (schtasks /query then /delete) when another computer is named. The function that answered 'is this Windows' under a name that said 'the scheduling host' is renamed task_scheduler_here(): it answers only whether Task Scheduler exists here. Every schtasks call goes through _schtasks(), the one seam; the suite's autouse guard (tests/conftest.py) fails a test that reaches the real one. platform.node is read only in locking.this_host. The review fixes: schedule_decision returns UNNAMED_HOST (HOST_UNNAMED) before reading the file when this computer's own name is not a HOST_NAME; every comparison with this computer is locking.is_this_host; _host_name() is private and each caller says its whole sentence; claim() creates the file with O_EXCL and answers a file made meanwhile by what it says; move_here() returns Moved(before, unreadable) so a move over garbage says MOVED_FROM_UNREADABLE. At the merge with 186: schedule_decision's first row is settings.program_drive_refusal() -> REFUSED_DRIVE, with the sentence in ScheduleDecision.sentence (186's one authority, asked once per door; the API's install-schedule no longer asks it too); register_here writes to 186's schedule_xml_path() (no argument) and makes its folder, and its working folder is settings.app_dir(). Pilot P21: registration takes the saved choice (after_install passes it); register_here and the command line check start and interval through the one check in settings; OFF is the outcome of a schedule switched off (SCHEDULE_OFF); once-a-day (every 0) has its own sentences and no Repetition; next_run() is the plain sentence for when the setting next runs."
+      "notes": "One daily task is enough because the runner decides the drafting day. Recognizes Windows drive-letter paths as absolute even when generating from Linux. Decision 131: THE JOB NAMES NO CLIENTS ROOT - runner_arguments(settings_dir) writes -m tracker.runner --settings \"<the app's settings folder>\" --log (runner.SETTINGS_FLAG), and the runner reads the root from settings.json there at every run, so the root has one home and a root changed in the app is the root the job walks next; the Description names the settings file. ROOT_FLAG and the CLI's root option are gone; the CLI takes --settings, defaulting to this checkout's settings folder, and refuses one that names no clients root. The folder resolver is resolve_folder() now. install_task() registers the XML with schtasks (/f, so re-running changes the schedule); --install does both steps. The task name is the product name from settings.product_name(); the defaults (start, repeat, XML file name) are module constants the API's install-schedule reports back so the app shows what was actually installed. EXECUTION_TIME_LIMIT is locking.RUN_TIME_LIMIT_SECONDS rendered by iso_duration(), not a second number, because the lock's stale threshold is derived from the same limit. runner_arguments(frozen=True) is the packaged form of the one command line: the app's executable in runner mode (runner.RUNNER_MODE_FLAG) instead of -m tracker.runner, same arguments after it. TASK_NAME at import is safe because only the shell-launched API (or a source checkout) imports this module; the frozen job never does. Decision 55: quote_argument() doubles a trailing backslash so a drive-root clients folder survives the Windows argument parser. Decision 191 (D-11): n8n runs its command through cmd on Windows and sh elsewhere, so n8n_workflow() quotes working_dir and python by quote_argument() like the settings folder, and refuse_shell_special() refuses any of the three holding a double quote, %, $, a backtick, ! or a control character - a ValueError naming the field and the kind of character, never the value. Decision 194 (D8): escapes with html.escape(quote=False), byte-identical to saxutils; it imports nothing that loads urllib.request/http.client/ssl, so no API process carries a network library (tests/test_layers.py proves it in a subprocess for tracker.api and tracker.scheduling; tests/test_scheduling.py proves the escape is unchanged). Decision 186: schedule_xml_path() is the task file's place, in the data home; --install without --out writes there, making the folder as it writes. Decision 209: which computer runs the schedule is one file in the private tree - designated_machine() reads it, claim() writes this host when none is named (read, compare, write), move_here() rewrites it, and schedule_decision(root) decides in order: no_root, no_task_scheduler, claimed, registered, elsewhere, unreadable, each with a sentence constant. register_here() is the one registration (the API's repair path and the after-install step both call it; it writes the XML to decision 186's schedule_xml_path() in the data home, making its folder as the installer does, and the working folder is settings.app_dir()) and remove_task() deletes this computer's own task (schtasks /query then /delete) when another computer is named. The function that answered 'is this Windows' under a name that said 'the scheduling host' is renamed task_scheduler_here(): it answers only whether Task Scheduler exists here. Every schtasks call goes through _schtasks(), the one seam; the suite's autouse guard (tests/conftest.py) fails a test that reaches the real one. platform.node is read only in locking.this_host. The review fixes: schedule_decision returns UNNAMED_HOST (HOST_UNNAMED) before reading the file when this computer's own name is not a HOST_NAME; every comparison with this computer is locking.is_this_host; _host_name() is private and each caller says its whole sentence; claim() creates the file with O_EXCL and answers a file made meanwhile by what it says; move_here() returns Moved(before, unreadable) so a move over garbage says MOVED_FROM_UNREADABLE. At the merge with 186: schedule_decision's first row is settings.program_drive_refusal() -> REFUSED_DRIVE, with the sentence in ScheduleDecision.sentence (186's one authority, asked once per door; the API's install-schedule no longer asks it too); register_here writes to 186's schedule_xml_path() (no argument) and makes its folder, and its working folder is settings.app_dir(). Pilot P21: registration takes the saved choice (after_install passes it); register_here and the command line check start and interval through the one check in settings; OFF is the outcome of a schedule switched off (SCHEDULE_OFF); once-a-day (every 0) has its own sentences and no Repetition; next_run() is the plain sentence for when the setting next runs. P198 (F6): task_exists(task_name) is the one question 'is the task there' - schtasks /query, exit 0 only is yes, any refusal False ('not confirmed'), an OSError raised; off Windows False. remove_task asks it, and after_install's launch door asks it on the designated computer."
     },
     {
       "id": "tracker/settings.py",
@@ -4654,7 +4655,7 @@
       "id": "docs/repo-map.curated.json",
       "type": "file",
       "layer": "docs",
-      "sha256": "ad7fad3799b93010",
+      "sha256": "3d46dfb126d0dbe1",
       "lines": 1148,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
@@ -4663,8 +4664,8 @@
       "id": "docs/runbook.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "94af0690c7dead5f",
-      "lines": 2679,
+      "sha256": "b347c6ec1251d4cd",
+      "lines": 2682,
       "role": "The operator's page for one tax season: the designated machine and today's rule that only one may run a clients root, what a person does each morning and on the draft day, what every index reason and validation note means, and the thirty-minute move to another machine.",
       "notes": "Written for a person, not an agent. Roles are docs/workflow.md and the reasons behind the rules are docs/ROADMAP.md; it links to both rather than repeating them."
     },
@@ -4764,6 +4765,13 @@
       "layer": "docs",
       "sha256": "27378a3a23de8ac5",
       "lines": 94
+    },
+    {
+      "id": "pilot/SPEC-F6-schedule-after-reinstall.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "597b07e7c7e32200",
+      "lines": 116
     },
     {
       "id": "pilot/SPEC-F7-redirected-data-folder.md",
@@ -4885,6 +4893,13 @@
       "lines": 74,
       "role": "Says what each file of the Tax Document Console artwork folder is and where it is seen (the app icon, the installer's icon and wizard images, the lockups, the packaged-app tiles).",
       "notes": "Everything in pilot/brand/tax-document-console/ except this file and source/ is GENERATED by source/export.py and is never edited by hand: change source/mark.py and re-run `python export.py ..`. The app's copy, app/assets/icon.ico (committed because the unpackaged launch needs it; .ico is not a mapped suffix), must stay byte-identical to app/icon.ico here, which tests/test_build.py holds; Build App.bat (--icon), api_entry.spec (icon=), app/main.js (BrowserWindow icon) and pilot/installer/setup.iss ([Setup] icon keys) name these files."
+    },
+    {
+      "id": "pilot/handoffs/F6-build.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "d7dda382038e739a",
+      "lines": 83
     },
     {
       "id": "pilot/handoffs/F7-build.md",
@@ -6471,8 +6486,8 @@
       "id": "tests/test_after_install.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "463b2f0ad82938e6",
-      "lines": 1771,
+      "sha256": "e7ee409ee7e46f46",
+      "lines": 1869,
       "exports": [
         "CARRIED",
         "CHECKPOINT",
@@ -6515,7 +6530,10 @@
         "test_a_household_whose_applied_line_the_rule_refuses_waits_in_the_app",
         "test_a_household_whose_record_changed_behind_the_trackers_back_waits_in_the_app",
         "test_a_junction_in_the_test_cache_is_removed_not_followed",
+        "test_a_launch_after_the_task_was_removed_registers_it_again",
+        "test_a_launch_on_a_computer_the_designation_does_not_name_asks_nothing_and_registers_nothing",
         "test_a_launch_registers_the_saved_choice",
+        "test_a_launch_with_the_schedule_off_registers_nothing",
         "test_a_link_in_the_test_cache_is_removed_not_followed",
         "test_a_linked_left_behind_item_is_refused",
         "test_a_linked_test_cache_removes_only_the_link",
@@ -6524,12 +6542,15 @@
         "test_a_missing_test_cache_is_nothing_to_do",
         "test_a_move_elsewhere_removes_this_computers_task_at_its_next_start",
         "test_a_move_over_an_unreadable_file_says_so",
+        "test_a_query_that_fails_is_never_read_as_a_task_that_exists",
         "test_a_record_from_before_the_rename_reads_as_nothing_carried",
         "test_a_record_from_before_the_setting_is_run_again_once",
+        "test_a_reinstall_that_kept_the_note_registers_the_schedule_at_first_start",
         "test_a_removable_drive_is_still_refused",
         "test_a_reparse_folder_that_is_no_link_is_walked_as_a_folder",
         "test_a_run_that_cannot_have_the_lock_changes_nothing_and_says_so",
         "test_a_run_that_read_off_never_removes_what_a_later_on_registered",
+        "test_a_schtasks_that_cannot_start_runs_the_step_and_says_so",
         "test_a_settings_copy_that_fails_leaves_nothing_behind_and_is_a_failure",
         "test_a_settings_file_that_cannot_be_written_is_recorded_not_raised",
         "test_a_settings_folder_that_cannot_be_read_is_the_carry_over_s_own_failure",
@@ -6576,7 +6597,7 @@
         "test_the_earlier_task_is_removed_when_the_schedule_is_off_or_elsewhere",
         "test_the_first_computer_to_register_claims_the_schedule",
         "test_the_launch_door_does_nothing_when_the_program_is_unchanged",
-        "test_the_launch_door_makes_no_schtasks_call_when_nothing_changed",
+        "test_the_launch_door_makes_only_one_query_when_nothing_changed",
         "test_the_launch_door_runs_again_when_the_choice_changed",
         "test_the_left_behind_checkpoint_moves_into_the_data_home",
         "test_the_packaged_app_has_no_checkout_to_clear",
@@ -9702,8 +9723,8 @@
       "id": "tests/test_scheduling.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "1e09025eb80d4600",
-      "lines": 611,
+      "sha256": "ec0da128e80247d5",
+      "lines": 634,
       "exports": [
         "ARGS",
         "NOW",
@@ -9735,6 +9756,7 @@
         "test_register_here_refuses_a_bad_choice_before_writing_anything",
         "test_relative_paths_are_not_mistaken_for_absolute",
         "test_remove_task_deletes_only_an_existing_task",
+        "test_task_exists_asks_schtasks_and_only_exit_zero_is_yes",
         "test_task_scheduler_here_answers_only_whether_windows",
         "test_the_command_line_install_refuses_a_program_on_a_removable_drive",
         "test_the_command_line_is_built_once_for_both_schedulers",

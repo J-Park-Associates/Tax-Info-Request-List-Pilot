@@ -264,6 +264,29 @@ def test_remove_task_deletes_only_an_existing_task(monkeypatch):
         scheduling.remove_task()
 
 
+def test_task_exists_asks_schtasks_and_only_exit_zero_is_yes(monkeypatch):
+    """P198 (F6): the launch door's one question. Only exit 0 is "it is
+    there"; any refusal is "not confirmed", so the caller registers again
+    rather than trusting a task that may be gone."""
+    from tracker import scheduling
+
+    assert scheduling.task_exists() is False              # no Task Scheduler: nothing asked
+    calls = fake_schtasks(monkeypatch, exists=True)
+    assert scheduling.task_exists() is True
+    assert calls == [["schtasks", "/query", "/tn", TASK_NAME]]
+    fake_schtasks(monkeypatch, exists=False)
+    assert scheduling.task_exists() is False
+    monkeypatch.setattr(scheduling, "_schtasks", lambda command: Said(1, "ERROR: Access is denied."))
+    assert scheduling.task_exists() is False
+
+    def cannot_start(command):
+        raise FileNotFoundError(2, "No such file", "schtasks")
+
+    monkeypatch.setattr(scheduling, "_schtasks", cannot_start)
+    with pytest.raises(OSError):
+        scheduling.task_exists()
+
+
 def test_register_here_is_the_one_registration(monkeypatch, tmp_path):
     """Decision 209: the repair path and the after-install step both come
     through ``register_here``. The job names the app's settings folder and

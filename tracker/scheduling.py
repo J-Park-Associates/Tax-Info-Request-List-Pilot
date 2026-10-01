@@ -474,17 +474,30 @@ def register_here(settings_folder: str | Path, *, start: str = DEFAULT_START,
     return install_task(xml_path)
 
 
-def remove_task(task_name: str = TASK_NAME) -> bool:
-    """Delete this computer's own task, if it has one; whether one was removed.
+def task_exists(task_name: str = TASK_NAME) -> bool:
+    """Whether Task Scheduler holds a task of this name: ``schtasks /query
+    /tn`` exits 0 for one that exists. Off Windows there is none.
 
-    ``schtasks /query`` first (exit 0 is "it exists"), then ``/delete /f``.
-    Off Windows there is nothing to remove. A delete that fails raises
-    ``RuntimeError``: a task left running on a computer that no longer runs
-    the schedule is a second pass, and that is said, not swallowed.
+    Any other answer - not found, access denied, Task Scheduler stopped - is
+    ``False``, "not confirmed", never "it is there" (P198, F6): the callers
+    act on it by registering again (``/create /f``, which says in its own
+    words why it cannot) or by having nothing to remove. A ``schtasks`` that
+    cannot be started at all raises ``OSError`` for the caller to say.
     """
     if not task_scheduler_here():
         return False
-    if _schtasks(["schtasks", "/query", "/tn", task_name]).returncode != 0:
+    return _schtasks(["schtasks", "/query", "/tn", task_name]).returncode == 0
+
+
+def remove_task(task_name: str = TASK_NAME) -> bool:
+    """Delete this computer's own task, if it has one; whether one was removed.
+
+    :func:`task_exists` first, then ``/delete /f``. Off Windows there is
+    nothing to remove. A delete that fails raises ``RuntimeError``: a task
+    left running on a computer that no longer runs the schedule is a second
+    pass, and that is said, not swallowed.
+    """
+    if not task_exists(task_name):
         return False
     completed = _schtasks(["schtasks", "/delete", "/tn", task_name, "/f"])
     if completed.returncode != 0:
