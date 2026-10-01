@@ -3740,3 +3740,14 @@ def test_the_four_lists_and_a_needs_review_card_fit_1100px_beside_a_windows_scro
     columns = sum(px(f"--size-col-{cell}") for cell in ("name", "detail", "status", "end")) + 3 * sp[4]
     assert columns + 2 * sp[8] <= 1100 - px("--size-side") - 17
     assert columns + 2 * sp[6] + 2 + 2 * sp[2] <= 1100 - px("--size-side") - 17
+
+
+def test_the_window_and_its_taskbar_button_carry_the_console_icon():
+    """The unpackaged launch has no icon written into an .exe, so the window names
+    the file; the app id is set before the window opens so Windows groups the
+    running window with its shortcut."""
+    main = (REPO / "app" / "main.js").read_text(encoding="utf-8")
+    assert 'icon: path.join(__dirname, "assets", "icon.ico"),' in main
+    assert (REPO / "app" / "assets" / "icon.ico").is_file()
+    set_id = main.index('app.setAppUserModelId("com.jparkassociates.taxdocumentconsole");')
+    assert set_id < main.index("app.whenReady()")

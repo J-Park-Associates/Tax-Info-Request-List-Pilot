@@ -232,3 +232,34 @@ def test_every_batch_file_the_pilot_build_calls_is_named_by_its_path():
     calls = re.findall(r'^\s*call\s+"([^"]+\.bat)"', _build(), re.M | re.I)
     assert calls, "the build calls Build App.bat"
     assert all(c.startswith((".\\", "%~dp0")) for c in calls), calls
+
+
+def test_the_installer_shows_the_console_icon():
+    """SetupIconFile, both wizard images (seven scalings each, smallest first)
+    and the uninstall entry's icon: every file named exists."""
+    setup = dict(line.split("=", 1) for line in _sections(_setup())["Setup"].splitlines() if "=" in line)
+    folder = SETUP.parent
+
+    def on_disk(name: str) -> Path:
+        return folder / name.replace("\\", "/")      # the script's paths are Windows'
+
+    assert on_disk(setup["SetupIconFile"]).is_file()
+    for key, stem in (("WizardImageFile", "wizard-large"), ("WizardSmallImageFile", "wizard-small")):
+        named = setup[key].split(",")
+        assert [n.rsplit("\\", 1)[-1] for n in named] == [f"{stem}-{i}.bmp" for i in range(1, 8)], key
+        for name in named:
+            assert on_disk(name).is_file(), name
+    assert setup["UninstallDisplayIcon"] == f"{{app}}\\{_product_name()}.exe"
+
+
+def test_the_shortcuts_and_the_window_share_one_app_id():
+    """Windows groups taskbar buttons by app id: a shortcut and the running
+    process that name different ids show as two buttons, so every [Icons] line
+    carries the id app/main.js gives the process."""
+    main = (REPO / "app" / "main.js").read_text(encoding="utf-8")
+    found = re.search(r'setAppUserModelId\("([^"]+)"\)', main)
+    assert found, "app/main.js no longer sets an app user model id"
+    icons = [line for line in _sections(_setup())["Icons"].splitlines() if line.strip()]
+    assert icons
+    for line in icons:
+        assert f'AppUserModelID: "{found.group(1)}"' in line, line

@@ -695,6 +695,9 @@ function createWindow() {
     minWidth: 1100,
     minHeight: 700,
     title: PRODUCT_NAME,
+    // The title bar and taskbar icon of the unpackaged launch (Start App.bat);
+    // the packaged .exe carries the same file, written in by electron-packager.
+    icon: path.join(__dirname, "assets", "icon.ico"),
     backgroundColor: pageBackground(),
     autoHideMenuBar: true,
     webPreferences: {
@@ -733,6 +736,11 @@ function createWindow() {
 if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
+  // Before the window opens: Windows groups a running window with its
+  // shortcut, and shows the shortcut's icon on the taskbar button, by this
+  // id. It is a fixed string, never derived from the name, so a rename does
+  // not split a pinned button from its window.
+  app.setAppUserModelId("com.jparkassociates.taxdocumentconsole");
   app.on("second-instance", () => {
     const [win] = BrowserWindow.getAllWindows();
     if (!win) return;

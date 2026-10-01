@@ -1,7 +1,7 @@
 # Pilot: put the Tax Document Console icon everywhere it is seen - SPEC
 
-Status: **written 2026-09-30, awaiting Jason's answers to the two questions
-below before it is built.** Decision P190 (`DECISIONS.md`). The artwork is
+Status: **built 2026-10-01: items 1-6 (P192); item 7 is not built. Windows
+check pending.** Decisions P190 and P192 (`DECISIONS.md`). The artwork is
 finished and reviewed; this job only wires it in. The artwork itself was
 replaced on 2026-10-01 by P191 ([`SPEC-icon-ledger.md`](SPEC-icon-ledger.md))
 under the same file names, so the table below still applies.
@@ -19,6 +19,7 @@ Read first: [`brand/tax-document-console/README.md`](brand/tax-document-console/
    (line 24) shows the firm's logo, `app/renderer/logo.svg`. Options: keep the
    firm's logo (recommended: the window title and taskbar already carry the
    product), or show `mark.svg` beside the words "Tax Document Console".
+   **Answered (P192): keep the firm's logo.** Item 7 below is not built.
 
 ## What changes
 
@@ -31,6 +32,8 @@ Read first: [`brand/tax-document-console/README.md`](brand/tax-document-console/
 | 5 | Settings > Apps (the uninstall entry) | `pilot/installer/setup.iss` `[Setup]` | `UninstallDisplayIcon={app}\Tax Document Console.exe` |
 | 6 | The engine's .exe in the install folder (rarely seen) | `api_entry.spec` | `icon=` the same `icon.ico` on the `EXE(...)` |
 | 7 | The side panel's brand spot | `app/renderer/index.html` line 24 | Only if Jason picks the second option in question 2 |
+
+The Start-menu and desktop shortcuts must carry the same AppUserModelID as the running process (`com.jparkassociates.taxdocumentconsole`, set by `app.setAppUserModelId` in `app/main.js`), or Windows shows a pinned button and the running window as two taskbar buttons; `setup.iss`'s `[Icons]` lines name it.
 
 The renderer takes no new code for 1-6. The page's content security policy is
 unchanged. Nothing in `tracker/` changes, so the engine's tests do not run.

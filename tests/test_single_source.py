@@ -213,6 +213,7 @@ const electron = {
     setPath(name, value) { seen.setPaths.push({ name, value, beforeLock: !seen.asked }); },
     requestSingleInstanceLock() { seen.asked = true; return process.argv[3] === "first"; },
     quit() { seen.quit += 1; },
+    setAppUserModelId() {},
     on(name, fn) { seen.events.push(name); handlers[name] = fn; },
     whenReady: () => Promise.resolve(),
   },
@@ -2606,7 +2607,7 @@ let handler = null;
 const sent = [];
 const appHandlers = {};
 const electron = {
-  app: { isPackaged: false, requestSingleInstanceLock: () => true, quit() {}, setPath() {},
+  app: { isPackaged: false, requestSingleInstanceLock: () => true, quit() {}, setPath() {}, setAppUserModelId() {},
          getPath: () => process.env.FAKE_USERDATA,
          on(name, fn) { appHandlers[name] = fn; },
          whenReady: () => new Promise(() => {}) },

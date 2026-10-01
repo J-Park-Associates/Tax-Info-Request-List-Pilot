@@ -173,7 +173,7 @@ class BrowserWindow {
 }
 const electron = {
   app: { isPackaged: !!sc.packaged, requestSingleInstanceLock: () => true, quit() {}, on() {},
-         setPath() {},
+         setPath() {}, setAppUserModelId() {},
          getPath: (name) => { if (name === "appData") return "appdata";
                               if (!sc.userData) throw new Error("no such path"); return sc.userData; },
          whenReady: () => Promise.resolve() },
