@@ -638,6 +638,40 @@ def fill_firm_cache(root: str, *, product: str = "") -> str:
     except (OSError, SettingsError):
         filled = False          # a head that cannot be asked holds nothing
     return "" if filled else FILL_NOT_KEPT
+
+
+def _fills_the_cache(ns, root: str, *, outcome: str, unproved, household: Path | None) -> bool:
+    """Whether this pass fills the firm view's cache at its end (P201,
+    ``pilot/SPEC-firm-cache-fill.md`` R4, as the engine review's rulings
+    changed it). A real pass over the saved root that served its
+    households - not a dry run (it writes nothing, this included), not a
+    typed root (the summary answers only for the saved one), not a pass
+    that could prove no household against the record checkpoint - and:
+
+    - **not a pass a person stopped** (SHOULD-1, "Stop means stop"): the
+      household work has ended, and a fill would keep Stop waiting. The
+      next Overview fills the cache, as it did before P201. A pass that
+      lost its app is stopped the same way.
+    - **a person's Sort fills only the households its pass touched**
+      (SHOULD-3): it asks the summary only while the cache already holds
+      today's head, when the summary reads just the households whose
+      fingerprint changed - the one the Sort touched, and any a person
+      changed meanwhile - and keeps the rest. On a cold head (a new day,
+      an upgrade, a settings change) the summary would read every
+      household, the whole firm's cost for one household's Sort, so it is
+      not asked: the cache's own staleness rules leave that to the next
+      Overview, which reads every household as it would have anyway. The
+      household the Sort just wrote is inside :data:`firm_cache.RACY_SECONDS`
+      in any case, so a cold fill could not have kept it.
+    - the scheduled pass fills the whole firm, cold or warm."""
+    if ns.dry_run or ns.root or unproved is not None or outcome == "stopped":
+        return False
+    if household is None:
+        return True
+    try:
+        return firm_cache.holds(firm_cache.cache_path(), [firm_cache.head(root, dt.date.today())])
+    except (OSError, SettingsError):
+        return False            # a head that cannot be asked: the next Overview fills it
 #: What the run says about an engagement it drafted nothing for.
 NOTHING_OUTSTANDING = "Nothing Outstanding; No Reminder Needed"
 #: Which rung of the reminder a draft was written at (decision 117), said
@@ -3044,17 +3078,6 @@ def _pass(ns, parser, reached: dict) -> int:
                   if said.startswith(PASS_APP_CLOSED.split("{", 1)[0])]
         for said in dict.fromkeys(closed or [PASS_APP_CLOSED.format(n=0)]):
             _warn(result, CODE_PASS_APP_CLOSED, said)
-    # The firm view's cache is filled here (P201, SPEC-firm-cache-fill R3
-    # and R4): after every household's lock is gone - a lock file is an
-    # entry a fingerprint would take - and before the log, the page and Run
-    # now's final line, so a fill that failed is said in all three. Every
-    # real pass over the saved root, the schedule's and Run now's alike;
-    # not a dry run, not a typed root (the summary answers only for the
-    # saved one), not a pass that could prove no household. Never fatal.
-    if not ns.dry_run and not ns.root and unproved is None:
-        why = fill_firm_cache(root, product=ns.product)
-        if why:
-            _warn(result, CODE_CACHE_NOT_FILLED, CACHE_NOT_FILLED.format(why=why))
     # With progress lines the console is the shell's pipe (decision 203):
     # what is said below goes in the final line instead.
     say = (lambda text: None) if lines else print
@@ -3071,6 +3094,7 @@ def _pass(ns, parser, reached: dict) -> int:
         else:
             say(f"\n  Logged to {log_file}")
 
+    page_written = False
     if not ns.dry_run:
         # Every real pass, whether or not it was asked to log, whether or
         # not an engagement failed, and whether or not the pass itself was
@@ -3098,7 +3122,36 @@ def _pass(ns, parser, reached: dict) -> int:
                 except Exception as late:
                     log.warning("Could not write %s (%s)", log_file.name, errors.error_class(late))
         else:
+            page_written = True
             say(f"\n  The practice: {page}")
+
+    # The firm view's cache is filled here (P201, SPEC-firm-cache-fill R3
+    # and R4, as the engine review's rulings changed them): after every
+    # household's lock is gone - a lock file is an entry a fingerprint
+    # would take - and after the run log's line and the page are written,
+    # so a fill that runs long can never cost the pass its record (NIT-4).
+    # Which passes fill is :func:`_fills_the_cache`'s. Never fatal: one
+    # that failed is said after the fact - its code added to the run log as
+    # a page that could not be written is, the page written again with its
+    # sentence, and the sentence on the console or in Run now's final line.
+    if _fills_the_cache(ns, root, outcome=outcome, unproved=unproved, household=household):
+        why = fill_firm_cache(root, product=ns.product)
+        if why:
+            _warn(result, CODE_CACHE_NOT_FILLED, CACHE_NOT_FILLED.format(why=why))
+            say(f"\n  ! {result.warnings[-1]}")
+            if log_file is not None:
+                try:
+                    append_rotating(log_file, f"    codes {CODE_CACHE_NOT_FILLED}=1\n",
+                                    max_bytes=LOG_MAX_BYTES, keep=LOG_KEEP)
+                except Exception as late:
+                    log.warning("Could not write %s (%s)", log_file.name, errors.error_class(late))
+            if page_written:
+                try:
+                    write_status_page(loaded.source, status_report(
+                        loaded, passed=result.runs, warnings=result.warnings, unread=unread))
+                except Exception as late:
+                    # The page written above stands, without this sentence.
+                    log.warning("Could not write %s (%s)", STATUS_PAGE_FILENAME, errors.error_class(late))
 
     # Checkpoint the store's write-ahead log and take its two side files
     # with it: a scheduled pass leaves the app's folder as it found it.

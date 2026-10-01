@@ -1245,15 +1245,29 @@ def _task_missing(record: dict) -> bool:
     Anything but "it exists" is missing: a query that fails runs the step,
     whose ``/create /f`` either registers the task again or says in
     :data:`SCHEDULE_FAILED` why it cannot - never a silent skip. A
-    ``schtasks`` that cannot be started is kept on the local error log and
-    runs the step the same way."""
+    ``schtasks`` that cannot be started, or that does not answer within its
+    limit (:data:`tracker.scheduling.SCHTASKS_TIME_LIMIT_SECONDS`), is kept
+    on the local error log and runs the step the same way; the step's own
+    ``schtasks`` then says it as :data:`SCHEDULE_UNREACHABLE`. A query that
+    is refused keeps its exit code on the error log, once per start (the
+    engine review's NIT-2), so a task registered again at every start has
+    its reason written down."""
     if record.get("schedule") not in scheduling.REGISTERING:
         return False
     try:
-        return not scheduling.task_exists()
+        code = scheduling.task_query()
     except OSError as exc:
-        errors.keep("after_install: asking whether the scheduled task exists", exc)
+        errors.keep(ASKING_FOR_THE_TASK, exc)
         return True
+    if code:
+        errors.keep(ASKING_FOR_THE_TASK, QUERY_REFUSED.format(code=code))
+    return code != 0
+
+
+#: Where the launch's question to Task Scheduler is said on the error log.
+ASKING_FOR_THE_TASK = "after_install: asking whether the scheduled task exists"
+#: A refused query, by its exit code only: ``schtasks``'s own words are not kept.
+QUERY_REFUSED = "schtasks /query refused with exit code {code}; the step runs to register the task again"
 
 
 def record_failure(sentence: str) -> None:

@@ -287,6 +287,49 @@ def test_task_exists_asks_schtasks_and_only_exit_zero_is_yes(monkeypatch):
         scheduling.task_exists()
 
 
+def test_task_query_hands_back_the_exit_code_and_asks_nothing_off_windows(monkeypatch):
+    """The engine review's NIT-2: the launch keeps a refusal's exit code on
+    the error log, so the question hands the code back, not just yes or no."""
+    from tracker import scheduling
+
+    assert scheduling.task_query() is None                 # no Task Scheduler: nothing asked
+    fake_schtasks(monkeypatch, exists=True)
+    assert scheduling.task_query() == 0
+    monkeypatch.setattr(scheduling, "_schtasks", lambda command: Said(5, "ERROR: Access is denied."))
+    assert scheduling.task_query() == 5 and scheduling.task_exists() is False
+
+
+def test_a_schtasks_that_hangs_is_stopped_at_its_limit_as_an_os_error(monkeypatch):
+    """The engine review's SHOULD-2: ``schtasks`` runs at every start inside
+    the step's lock, so it is given :data:`SCHTASKS_TIME_LIMIT_SECONDS` and
+    one that runs past it raises ``TimeoutError`` (an ``OSError``), which
+    every caller says as Task Scheduler that cannot be reached - never "the
+    task exists". The real ``_schtasks`` is asked; ``subprocess.run`` is
+    the stand-in, so no real Task Scheduler is reached."""
+    import subprocess
+
+    from tests.conftest import REAL_SCHTASKS
+    from tracker import scheduling
+
+    given = {}
+
+    def hangs(command, **kwargs):
+        given.update(kwargs)
+        raise subprocess.TimeoutExpired(command, kwargs["timeout"])
+
+    monkeypatch.setattr(scheduling.subprocess, "run", hangs)
+    with pytest.raises(TimeoutError) as stopped:
+        REAL_SCHTASKS(["schtasks", "/query", "/tn", TASK_NAME])
+    assert isinstance(stopped.value, OSError)
+    assert given["timeout"] == scheduling.SCHTASKS_TIME_LIMIT_SECONDS == 60
+    assert str(stopped.value) == scheduling.SCHTASKS_TOO_LONG.format(seconds=60)
+
+    monkeypatch.setattr(scheduling, "task_scheduler_here", lambda: True)
+    monkeypatch.setattr(scheduling, "_schtasks", REAL_SCHTASKS)
+    with pytest.raises(OSError):
+        scheduling.task_exists()
+
+
 def test_register_here_is_the_one_registration(monkeypatch, tmp_path):
     """Decision 209: the repair path and the after-install step both come
     through ``register_here``. The job names the app's settings folder and

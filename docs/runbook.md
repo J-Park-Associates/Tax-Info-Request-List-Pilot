@@ -34,11 +34,15 @@ two seconds instead of reading every return again: like `tracker.db` it
 holds household names, return folders and the names of files waiting for a
 person, and it is never synced. A household whose folders changed since is
 read again; deleting the file is always safe (the next Overview reads every
-household once, a few seconds longer). Every pass over the saved clients
-folder - the schedule's and a Sort alike - ends by asking the Overview once
-itself, so this file is ready before anyone opens the app: the first Overview
-of the day, after the morning's scheduled pass, opens in about two seconds
-(pilot P201).
+household once, a few seconds longer). Every scheduled pass over the saved
+clients folder ends by asking the Overview once itself, after its run log
+line and its page are written, so this file is ready before anyone opens the
+app: the first Overview of the day, after the morning's scheduled pass, opens
+in about two seconds (pilot P201). A Sort does the same only while the file
+is already ready for today, when it re-reads just the households that
+changed; on a new day, after an upgrade or after a settings change it leaves
+that to the next Overview, so one household's Sort never waits for the whole
+firm. A pass someone stopped asks nothing: Stop means stop.
 
 **The app's data folder is private to one Windows account.** `tracker.db`
 holds every client's index rows, and it lives in
@@ -1342,7 +1346,9 @@ household and cannot clear it. **Unfile** asks for an optional reason first.
    `cache-not-filled`, pilot P201) means the pass's last step - asking the
    Overview once so `firm-view.json` is ready - did not finish; the pass
    itself is fine and its result is not changed, only the next Overview is
-   slower. Nothing to do once; if it repeats, the error log beside
+   slower. It is asked after the pass's own run log line and page are
+   written, so the code arrives as a line of its own just below the pass's
+   in `runs.log`. Nothing to do once; if it repeats, the error log beside
    `tracker.db` says why. Right after an upgrade it can say so until the app
    has been started once, which registers the schedule again with what the
    step needs.
