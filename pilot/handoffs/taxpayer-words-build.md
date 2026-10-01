@@ -75,7 +75,7 @@ passed!"
 refreshed (the map hashes every file). Refreshed, rerun alone: passed.
 `test_tripwire` and `test_errors` not run: no test's file access and no
 error wording changed. `python tools/repo_map.py check`: "Map is current
-(404 nodes)". `node --check` on `interact.mjs`, `main.js`, `pilot-content.js`: ok.
+(405 nodes)". `node --check` on `interact.mjs`, `main.js`, `pilot-content.js`: ok.
 
 ## The 1100 px proof
 
