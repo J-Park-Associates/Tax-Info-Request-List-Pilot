@@ -23,7 +23,7 @@ A tip never stays behind after the page changes; it goes with its page.
 
 ## Files and owning tests
 
-- `app/renderer/tooltip.js` 81-99 (`showTip`), 129-134 (`mouseover`); the page-drawing function the builder names (expect `app/renderer/app.js` or `shell.js`).
+- `app/renderer/tooltip.js` 81-99 (`showTip`), 129-134 (`mouseover`); the page-drawing function the builder names: `shellGo` in `app/renderer/shell.js:254` (the one every page change goes through - the menu's Ctrl+1-4 at `shell.js:939-942` (main.js:547-548 binds the keys), the side panel's links at `shell.js:1057`, the path row at 513, the search box at 686, and pages.js's links; `shellDraw`/`drawPage` also redraw the same page when its state arrives, so they are not where a page change is).
 - `tests/test_shell.py`, beside the tooltip tests at 368-434, using their Node harness. New tests, named as claims:
   `test_a_tip_whose_element_leaves_the_page_is_hidden_at_the_next_mouse_move`,
   `test_a_page_change_hides_a_showing_tip`,
