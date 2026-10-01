@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 364,
     "edges": 1175,
-    "reused": 316
+    "reused": 312
   },
   "node_types": [
     "artifact",
@@ -4659,8 +4659,8 @@
       "id": "pilot/SPEC-icon-ledger.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "08e44a92081c3989",
-      "lines": 97
+      "sha256": "3a1e7e1518a48273",
+      "lines": 100
     },
     {
       "id": "pilot/SPEC-icon.md",
@@ -4701,7 +4701,7 @@
       "id": "pilot/brand/tax-document-console/README.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "d9a5cef389c6e6f7",
+      "sha256": "e5870f625f9e0d07",
       "lines": 71
     },
     {
@@ -5494,7 +5494,7 @@
       "id": "pilot/brand/tax-document-console/app/icon.svg",
       "type": "ui",
       "layer": "root",
-      "sha256": "b5a065a0c82da4d2",
+      "sha256": "e154763dc04b5f2a",
       "lines": 1
     },
     {
@@ -5508,21 +5508,21 @@
       "id": "pilot/brand/tax-document-console/app/mark.svg",
       "type": "ui",
       "layer": "root",
-      "sha256": "72275b7380ce92ab",
+      "sha256": "649b623d13aa1f0a",
       "lines": 1
     },
     {
       "id": "pilot/brand/tax-document-console/brand/lockup-dark.svg",
       "type": "ui",
       "layer": "root",
-      "sha256": "a49ce1ab1948b80b",
+      "sha256": "9234e6a402265115",
       "lines": 1
     },
     {
       "id": "pilot/brand/tax-document-console/brand/lockup-light.svg",
       "type": "ui",
       "layer": "root",
-      "sha256": "d67df87086b7f3d5",
+      "sha256": "c19c231916601c2f",
       "lines": 1
     },
     {
@@ -5570,8 +5570,8 @@
       "id": "pilot/brand/tax-document-console/source/mark.py",
       "type": "module",
       "layer": "root",
-      "sha256": "8a74ff51c54e0d34",
-      "lines": 291,
+      "sha256": "f31cea0a220a8bb2",
+      "lines": 292,
       "exports": [
         "BACK",
         "BACK_X",
@@ -5610,7 +5610,7 @@
         "FLAP": "('#3D5A92', '#2E4675')",
         "TAB": "('#A8862F', '#94782A')",
         "SHEET": "('#FFFDF8', '#F0E9DC')",
-        "RIM": "'#9FB2D6'",
+        "RIM": "'#6A87C2'",
         "TICK": "'#9C7F2C'",
         "RULE": "'#9AA6BC'",
         "SHADOW": "'#0A1F3D'",

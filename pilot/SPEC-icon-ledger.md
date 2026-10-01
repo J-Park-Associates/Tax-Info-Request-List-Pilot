@@ -21,7 +21,7 @@ On a 48-unit grid (the master; `source/mark.py` holds the numbers):
 | Part | Geometry (units) | Colour |
 |---|---|---|
 | Folder back | x 4-42, y 7-40; tab x 4-18 at the top, sloping to x 22 at y 11 (the tab is 4 units tall) | navy `#2E4675` to `#1B2A4A`, 120 degrees |
-| Rim | 1 unit inside the back's and the flap's outline | `#9FB2D6` |
+| Rim | 1 unit inside the back's and the flap's outline | mid-blue `#6A87C2` |
 | Tab | the back left of the slope, above y 11 | gold `#A8862F` to `#94782A` |
 | Sheet | x 14-36, y 12-32, radius 2 | cream `#FFFDF8` to `#F0E9DC` |
 | Tick | (17.5, 17) to (19.3, 18.8) to (22.5, 15.1), stroke 2 | gold `#9C7F2C`: 3.8:1 on `#FFFDF8`, where it sits; 3.2:1 at the sheet's darker end |
@@ -30,13 +30,16 @@ On a 48-unit grid (the master; `source/mark.py` holds the numbers):
 | Shadow | 1 unit down, blur 1, 28% of `#0A1F3D` | at 48 px and up only |
 
 **Contrast** (Windows grounds `#F3F3F3` and `#202020`). On a dark taskbar the
-outer edge is the rim (7.6:1) or the gold tab (3.9:1). On a light one the rim
-is pale (1.9:1), so the edge is carried by what sits directly inside it: the
-navy back (8.4:1 or more), the flap (6.1:1 or more) and the gold tab (3.1:1).
-The concept page drew the flap without a rim; the flap's bottom edge was then
-1.7:1 on a dark taskbar. The rim all round fixes that. The other change from
-the concept: the whole drawing moves a unit left, so its extent (x 4-45, the
-flap overhanging the back on the right) is centred within half a unit.
+outer edge is the rim (4.5:1) or the gold tab (3.9:1 or more). On a light one
+it is the rim (3.2:1) or the gold tab (3.1:1 or more). So the whole outline
+meets 3:1 on both themes, including the strip over the cream sheet, where
+nothing but the rim stands between sheet and ground.
+Three changes from the concept: the flap is rimmed all round (drawn without a
+rim, its bottom edge was 1.7:1 on a dark taskbar); the rim is mid-blue, not
+the concept's pale `#9FB2D6`, which was 1.9:1 on a light taskbar above the
+sheet; and the whole drawing moves a unit left, so its extent (x 4-45, the
+flap overhanging the back on the right) is centred within half a unit in the
+master, and within half a unit plus half a pixel once fitted to a size.
 
 ## Per size ("scale up by pixel")
 

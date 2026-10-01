@@ -1,10 +1,10 @@
 """The chosen mark: Ledger 4e, a navy folder with a gold tab holding a request list.
 
-The drawing: a navy folder back with a light rim, its tab in gold; a cream
+The drawing: a navy folder back with a mid-blue rim, its tab in gold; a cream
 sheet standing in it with a gold tick and two rules; an angled navy front
-flap, rimmed all round, its top edge a lighter band. The rim is what keeps the
-navy's edge on a dark taskbar; on a light one the navy inside the rim carries
-it (SPEC-icon-ledger.md has the figures).
+flap, rimmed all round, its top edge a band of the rim's colour. The rim and
+the tab are the whole outline, and both meet 3:1 on a light and a dark
+taskbar (SPEC-icon-ledger.md has the figures).
 
 It is drawn in three bands, because no single drawing is sharp at every size:
 - 16, 20 and 24px are pixel art (PIXEL_ART): flat colours, no blended pixel,
@@ -35,7 +35,7 @@ BACK = ("#2E4675", NAVY)            # the folder back, 120-degree gradient
 FLAP = ("#3D5A92", "#2E4675")       # the front flap
 TAB = ("#A8862F", "#94782A")        # gold dark enough for 3:1 on a light taskbar
 SHEET = ("#FFFDF8", "#F0E9DC")
-RIM = "#9FB2D6"
+RIM = "#6A87C2"                     # 3:1 on both taskbars; a paler rim fails on light above the sheet
 TICK = "#9C7F2C"                    # gold-500 is too faint on cream for a mark this small
 RULE = "#9AA6BC"
 SHADOW = "#0A1F3D"
@@ -43,7 +43,8 @@ SHADOW = "#0A1F3D"
 SIZES = [16, 20, 24, 30, 32, 36, 40, 48, 60, 64, 72, 80, 96, 128, 256]
 
 # The master geometry on its 48-unit grid. The drawing spans x 4-45 and y 7-40,
-# so it sits centred within half a unit (the flap overhangs the back on the right).
+# so the master sits centred within half a unit (the flap overhangs the back on the right);
+# fitted to a size, within half a unit plus half a pixel.
 BACK_X = (4, 42)                    # the back's left and right edges
 TOP, TAB_H, BOTTOM = 7, 4, 40       # the tab's top, its height (the body's top is TOP + TAB_H), the bottom
 SLOPE = (18, 22)                    # the tab's slope runs from (18, TOP) to (22, TOP + TAB_H)

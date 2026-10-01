@@ -6,10 +6,10 @@ the monogram of P115; `concept-approved.png` is that earlier mark's concept,
 kept for the record. [`../../SPEC-icon-ledger.md`](../../SPEC-icon-ledger.md)
 is the drawing's SPEC.
 
-The mark: a navy folder with a light rim, its tab in gold; a cream request
+The mark: a navy folder with a mid-blue rim, its tab in gold; a cream request
 list standing in it with a gold tick and two rules; an angled navy front flap,
-rimmed all round. The rim is what keeps the navy's edge on a dark taskbar; on
-a light one the navy inside it does (figures in the SPEC).
+rimmed all round. The rim and the gold tab form the whole outline, and both
+meet 3:1 on a light and a dark taskbar (figures in the SPEC).
 
 Colours are the J Park & Associates navy family with two darker golds: the
 tab's gold `#A8862F`-`#94782A` is dark enough for 3:1 on a light taskbar, and
@@ -25,9 +25,9 @@ No single drawing is sharp at every size, so the icon is drawn three ways
 - **16, 20 and 24px** are pixel art: one letter per pixel, no blended pixel.
   They drop the rules and the shadow, and the tick's long arm is at least
   twice its short one, because an even tick reads as a V at these sizes.
+  At 16 and 20 the flap sits a row lower so the sheet has room for the tick.
 - **30 to 47px** (30, 32, 36, 40 and Square44x44Logo's 44) are the drawing
   fitted to the size without the rules, the tick built of whole pixels.
-  At 16 and 20 the flap sits a row lower so the sheet has room for the tick.
 - **48px and up** are the full drawing fitted to the size: every horizontal
   and vertical edge, the rim and the corner radii on whole pixels, so only the
   tab's slope, the flap's sides, the tick, the rules' round ends and the
