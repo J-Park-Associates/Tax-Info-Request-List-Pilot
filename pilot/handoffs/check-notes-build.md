@@ -81,3 +81,17 @@ classic scrollbar); the token sum is still 832 <= 843px.
 
 - Not measured on Windows; the next Windows check should look at L4/N2/N5.
 - Q1 waits for Jason's letter (record in SPEC 6 and DECISIONS P199).
+
+## Review fold (2026-10-01 02:07, branch `claude/fold-screen` from 7e90834)
+
+Findings from `pilot/reviews/lanes-screen-review.md`, as ruled in `pilot/reviews/lanes-rulings.md` "Screen and scripts".
+
+- **M1 (accepted, fixed).** `app/renderer/app.js` 2168-2182 (`scanSummary`): "Nothing to Sort" is said only when no return of the household's pass filed, sent to review, met a file it could not sort or was stopped; the syncing count is summed over the pass's returns. New test `tests/test_shell.py::test_nothing_to_sort_is_said_only_when_no_return_of_the_household_received_anything` (the active return has nothing, another return files 3: no notice, cls "ok"; likewise review, a file error, a stop; nothing anywhere still says it; another return syncing says "Nothing Done: 2 Still Syncing."). `pilot/wording-shell.tsv:324` "where" note now says every return decides. `pilot/SPEC-check-notes-0.3.md` sections "What staff will notice" and 6, `docs/repo-map.curated.json` (app.js notes) updated.
+- **N4 (accepted, fixed).** `app/renderer/shell.css:21`: `#sc-next` joins the tabular-nums list. `test_the_schedule_dialog_says_its_next_run_in_the_apps_clock_style` holds it; SPEC section 5 says it.
+- No line of `tracker/api.py` changed.
+
+Runs (each file its own process, two at a time per interpreter): Python 3.11.15 (scratchpad venv) / C:\Python314:
+- tests/test_shell.py: 170 passed in 36.03s / 170 passed in 30.65s
+- tests/test_single_source.py: 179 passed in 40.21s / 179 passed in 38.85s
+- tests/test_repo_map.py: 80 passed in 27.69s / 80 passed in 26.07s
+- `python -m ruff check .`: All checks passed! `python tools/repo_map.py check`: Map is current (424 nodes).

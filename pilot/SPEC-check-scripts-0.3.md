@@ -59,10 +59,16 @@ rolled back).
 - Asking the window to close is what the app's own Close button does: a pass
   in progress stops after the file it is on (decision 203), and the window's
   storage is flushed.
-- Only processes whose program file is exactly the installed
+- Only processes whose program file is the installed
   `Tax Document Console.exe` (in `Programs\Tax Document Console` or the
-  earlier `Programs\Tax Document Tracker Pilot`) are counted. Nothing is ever
-  killed; if the app is still open after 30 seconds the script records
+  earlier `Programs\Tax Document Tracker Pilot`) are counted, wherever that
+  `Programs` folder is: the real `%LOCALAPPDATA%\Programs`, or a packaged
+  app's private copy, `%LOCALAPPDATA%\Packages\<package>\LocalCache\Local\Programs`,
+  where an install run from inside such an app lands (P193; the screen
+  review's S1, accepted). `Get-AppExePatterns` writes both places for both
+  names as path patterns whose fixed parts are escaped, so only the package
+  folder is a wildcard and no program of another name or folder matches.
+  Nothing is ever killed; if the app is still open after 30 seconds the script records
   `close_app` FAIL with the process ids and stops, telling the person to close
   it with File > Exit.
 - Honest limit: the "window-less helpers" cause is the most likely reading of
@@ -71,10 +77,10 @@ rolled back).
   does not open. The ruling holds either way: the app is closed before the
   installer looks.
 
-**Where.** `run_checks.ps1` lines 106-130, the `app-close` helpers
-(`Find-AppProcess`, `Close-App`, a lifted BEGIN/END block as the test-file
-helpers are); step 6, lines 251-269, before the installer's `Start-Process`
-(line 271).
+**Where.** `run_checks.ps1` lines 122-163, the `app-close` helpers
+(`Get-AppExePatterns`, `Find-AppProcess`, `Close-App`, a lifted BEGIN/END
+block as the test-file helpers are); step 6, lines 289-309, before the
+installer's `Start-Process` (line 310).
 
 **Owning tests.** `tests/test_pilot.py`:
 - `test_the_check_script_closes_only_the_app_and_never_forces_it_before_installing`
@@ -83,7 +89,12 @@ helpers are); step 6, lines 251-269, before the installer's `Start-Process`
 - `test_the_check_script_asks_the_app_to_close_and_leaves_alone_what_will_not`
   (Windows, PowerShell 5.1: the helpers lifted as they are close a stand-in
   with a window, return a window-less stand-in still running and unkilled, and
-  never touch a process whose program is not named).
+  never touch a process whose program is not named);
+- `test_the_check_script_finds_the_app_wherever_it_was_installed_and_nothing_else`
+  (S1; Windows, 5.1: against a stand-in `%LOCALAPPDATA%` whose name holds
+  `[x]`, the helpers find a stand-in program in the real `Programs` folder and
+  in a `Packages\<package>\LocalCache\Local\Programs` copy, and neither a
+  program of another name nor one in another folder; nothing is closed).
 
 **What the person notices.** If the app is open, it closes by itself just
 before the install (`close_app` INFO in `checks.json`); if it will not close,
@@ -94,17 +105,24 @@ the script stops with one sentence saying what to do, and nothing is forced.
 **Cause.** The script tested each `-Tests` value with `Test-Path` as typed, so
 a bare name (`test_build`) was not found and the run stopped.
 
-**Ruling.** Each value is resolved by `Resolve-TestFile`: the value as typed if
-it is a file, else with `.py` added, else either of those under `tests\`.
-`test_build`, `test_build.py`, `tests\test_build.py` and `tests/test_build`
-name the same file. Every name is resolved before any test starts, so a typo
-stops the run at once with what was looked for.
+**Ruling.** Each value is resolved by `Resolve-TestFile`: the name with `.py`
+added when it has none, as typed, else under `tests\`
+(`Get-TestFileCandidates`). `test_build`, `test_build.py`,
+`tests\test_build.py` and `tests/test_build` name the same file. Only a `.py`
+file is a test file, so `-Tests README.md` finds nothing and stops (the screen
+review's N3). Every name is resolved before any test starts, so a typo stops
+the run at once, and the message names the same places the resolver looked,
+never "test_x.py.py" (N1). A file named twice, in any of those ways, runs once
+under its first naming (`Get-UniqueTestFiles`, by full path; N2): two runs
+would write one output file.
 
-**Where.** `run_checks.ps1` lines 83-104 (inside the test-file helpers), step 4
-lines 212-218; the header's example uses bare names.
+**Where.** `run_checks.ps1` lines 83-120 (inside the test-file helpers), step 4
+lines 247-256; the header's example uses bare names.
 
 **Owning tests.** `tests/test_pilot.py::test_the_check_script_takes_a_test_file_by_bare_name_by_file_name_or_by_path`
-(Windows, 5.1, lifted helper); the existing
+(Windows, 5.1, lifted helper);
+`tests/test_pilot.py::test_the_check_script_takes_only_py_files_says_where_it_looked_and_runs_a_file_named_twice_once`
+(N1-N3; Windows, 5.1, lifted helpers); the existing
 `test_the_check_script_splits_a_comma_joined_test_list_and_reads_each_exit_code`
 now looks for `Start-TestFile $vpy $file $out`.
 

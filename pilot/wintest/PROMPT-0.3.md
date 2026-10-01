@@ -97,9 +97,9 @@ If a step fails, state the root cause in one sentence, note it, and go on unless
 
 **Note for the next check (P200, the check scripts; `pilot/SPEC-check-scripts-0.3.md`).** Carry these lines into the next check's prompt:
 
-- `-Tests` takes each file bare, with `.py`, or as a path: `-Tests test_build,test_shell_menu.py,tests\test_api.py` names three files. A name that is no file stops the run before any test starts.
+- `-Tests` takes each file bare, with `.py`, or as a path: `-Tests test_build,test_shell_menu.py,tests\test_api.py` names three files. A name that is no `.py` file stops the run before any test starts, saying where it looked; a file named twice runs once.
 - The named files run side by side, and the installer is built only after every one of them has ended, so the build no longer trips the suite's end-of-run guard (A1). The run takes as long as the slowest file plus the build.
-- Before the silent install, the script asks Tax Document Console to close, as its own Close button does, and waits up to 30 seconds (`close_app` in `checks.json`). It never forces it: if the app is still open, the script stops with "close Tax Document Console (File > Exit), then run this script again". A pass in progress stops after the file it is on, as at any close.
+- Before the silent install, the script asks Tax Document Console to close, as its own Close button does, and waits up to 30 seconds (`close_app` in `checks.json`). It never forces it: if the app is still open, the script stops with "close Tax Document Console (File > Exit), then run this script again". A pass in progress stops after the file it is on, as at any close. It finds the app by its program file wherever it was installed, including a packaged app's private copy (`%LOCALAPPDATA%\Packages\<package>\LocalCache\Local\Programs`, P193), and touches no other program.
 
 **Two more checks for the next Windows check (combined review S3 and S5; orchestrator's rulings, 2026-09-30).** Carry both into its prompt:
 

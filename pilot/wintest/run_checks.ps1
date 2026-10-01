@@ -80,18 +80,34 @@ function Inno-Version($iscc) {
 function Split-TestList([string[]]$list) {
     return @($list | ForEach-Object { "$_" -split "," } | ForEach-Object { $_.Trim() } | Where-Object { $_ })
 }
-# The file a -Tests value names, as a path from the repository: the value as
-# typed when it is a file, else the same name under tests\, with .py added
-# when it has none (P200, N8). Nothing found returns $null, and the script
-# stops before any test runs.
+# The places a -Tests value is looked for: the name with .py added when it
+# has none, as typed and under tests\ (P200, N8). Only a .py file is a test
+# file, so "README.md" is looked for as README.md.py and found nowhere (the
+# screen review's N3); the stop message names these same places, so it never
+# says "test_x.py.py" (N1).
+function Get-TestFileCandidates($name) {
+    $py = if ($name -like "*.py") { $name } else { "$name.py" }
+    return @($py, (Join-Path "tests" $py))
+}
+# The file a -Tests value names, as a path from the repository. Nothing found
+# returns $null, and the script stops before any test runs.
 function Resolve-TestFile($name) {
-    $tried = @($name)
-    if (-not $name.EndsWith(".py")) { $tried += "$name.py" }
-    $tried += @($tried | ForEach-Object { Join-Path "tests" $_ })
-    foreach ($candidate in $tried) {
+    foreach ($candidate in (Get-TestFileCandidates $name)) {
         if (Test-Path $candidate -PathType Leaf) { return $candidate }
     }
     return $null
+}
+# A file named twice runs once (the screen review's N2): "test_api" and
+# "tests\test_api.py" are one file, and two runs would write one output file.
+# Files are compared by their full path; the first naming is kept, in order.
+function Get-UniqueTestFiles([string[]]$files) {
+    $seen = @()
+    $kept = @()
+    foreach ($file in $files) {
+        $full = (Resolve-Path $file).Path
+        if ($seen -notcontains $full) { $seen += $full; $kept += $file }
+    }
+    return $kept
 }
 # One test file in its own process. Windows PowerShell 5.1 reports no exit code
 # for a Start-Process -PassThru process whose handle was never read while it
@@ -104,12 +120,29 @@ function Start-TestFile($python, $file, $out) {
 }
 # END test-file helpers
 # BEGIN app-close helpers
-# The app's own processes: those whose program file is exactly one of the
-# given paths (the installed Tax Document Console.exe). Electron runs several
-# processes of that one file; nothing else on the PC is ever counted.
+# Where the installed program can be, as patterns of its full path: the real
+# %LOCALAPPDATA%\Programs\<name>\, and the private copy Windows keeps for a
+# packaged app (%LOCALAPPDATA%\Packages\<package>\LocalCache\Local\Programs\
+# <name>\, P193), which an install run from inside such an app lands in. The
+# program file is the same, so the app is found wherever it was installed
+# (the screen review's S1). The fixed parts are escaped, so only the package
+# folder is a wildcard.
+function Get-AppExePatterns([string]$localAppData, [string[]]$names, [string]$exeName) {
+    $base = [Management.Automation.WildcardPattern]::Escape($localAppData)
+    $file = [Management.Automation.WildcardPattern]::Escape($exeName)
+    return @($names | ForEach-Object {
+        $folder = [Management.Automation.WildcardPattern]::Escape($_)
+        "$base\Programs\$folder\$file"
+        "$base\Packages\*\LocalCache\Local\Programs\$folder\$file"
+    })
+}
+# The app's own processes: those whose program file matches one of the given
+# path patterns (the installed Tax Document Console.exe, wherever it is).
+# Electron runs several processes of that one file; nothing else on the PC is
+# ever counted. A path with no wildcard matches only itself.
 function Find-AppProcess([string[]]$exePaths) {
     return @(Get-Process -ErrorAction SilentlyContinue |
-             Where-Object { $_.Path -and ($exePaths -contains $_.Path) })
+             Where-Object { $path = $_.Path; $path -and @($exePaths | Where-Object { $path -like $_ }).Count })
 }
 # Asks the app to close as its own Close button does (a pass in progress stops
 # after the file it is on, decision 203), then waits for every one of its
@@ -213,9 +246,14 @@ if ($Tests.Count) {
     $files = @()
     foreach ($t in $Tests) {
         $file = Resolve-TestFile $t
-        if (-not $file) { Record "tests" "FAIL" "no such test file: $t (looked for $t, $t.py and tests\$t.py)"; Stop-Here "check the -Tests list" }
+        if (-not $file) {
+            $looked = (Get-TestFileCandidates $t) -join " and "
+            Record "tests" "FAIL" "no such test file: $t (looked for $looked; only .py files are test files)"
+            Stop-Here "check the -Tests list"
+        }
         $files += $file
     }
+    $files = @(Get-UniqueTestFiles $files)
     foreach ($file in $files) {
         $out = Join-Path $Results ("pytest-" + [IO.Path]::GetFileNameWithoutExtension($file) + ".txt")
         $running += [pscustomobject]@{ File = $file; Out = $out; Proc = Start-TestFile $vpy $file $out }
@@ -255,9 +293,10 @@ Record "build" "PASS" "$($setup.FullName) SHA-256 $sha"
 # /SUPPRESSMSGBOXES answers the installer's "files in use" question with
 # Abort. So the app is asked to close first, as its own Close button does -
 # only processes whose program is the installed Tax Document Console.exe, in
-# the new folder or the earlier one. Nothing is forced: if it is still open
-# after 30 seconds the script stops and says so (P200).
-$appExes = @($ProductName, $EarlierName) | ForEach-Object { Join-Path $env:LOCALAPPDATA "Programs\$_\$ProductName.exe" }
+# the new folder or the earlier one, in the real Programs folder or a
+# packaged app's private copy of it (S1). Nothing is forced: if it is still
+# open after 30 seconds the script stops and says so (P200).
+$appExes = Get-AppExePatterns $env:LOCALAPPDATA @($ProductName, $EarlierName) "$ProductName.exe"
 $wasOpen = (Find-AppProcess $appExes).Count
 $stillOpen = Close-App $appExes 30
 if ($stillOpen.Count) {

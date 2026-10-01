@@ -4217,6 +4217,29 @@ def test_a_sort_that_finds_nothing_to_do_says_nothing_to_sort(tmp_path):
         assert title_case(text) == text and len(text.split()) <= 5
 
 
+def test_nothing_to_sort_is_said_only_when_no_return_of_the_household_received_anything(tmp_path):
+    """The screen review's M1: the pass sorts the household's one inbox
+    across every return and counts per return, so a Sort pressed on the
+    1065 can file five documents into the 1040. That Sort did something and
+    must not say "Nothing to Sort" (it says nothing, as before P199); one
+    where no return filed, sent to review, met a file it could not sort or
+    was stopped still says it, and a file arriving for another return is
+    still the syncing words."""
+    words = api._vocab()["scan"]
+    setup = f"const vocab = {{ scan: {json.dumps(words)} }};\n" + SORT_SAID
+    probe = """
+      const other = (over) => run({ path: "r24", label: "Smith Family 2024 1040 - John A. Smith", ...over });
+      return [scanSummary(run({}), [other({ filed: 3 })], ""), scanSummary(run({}), [other({ review: 1 })], ""),
+              scanSummary(run({}), [other({ file_errors: ["x"] })], ""), scanSummary(run({}), [other({ cancelled: true })], ""),
+              scanSummary(run({}), [other({})], ""), scanSummary(run({}), [other({ waiting: 2 })], "")];
+    """
+    said = run_shell(["scanFailed", "scanSummary", "sortReturnSaid"], setup, probe, tmp_path, "app.js")
+    for one in said[:4]:
+        assert "Nothing to Sort" not in one["text"] and one["cls"] == "ok", one
+    assert said[4] == {"text": "Nothing to Sort", "cls": "warn"}, "no return of the pass received anything"
+    assert said[5] == {"text": "Nothing Done: 2 Still Syncing.", "cls": "warn"}
+
+
 def test_the_schedule_dialog_says_its_next_run_in_the_apps_clock_style(tmp_path):
     """P199 (N5): "First Run At" showed "6:30 AM" (the time box, in this PC's
     style) beside "Next run: today at 22:30" (the engine's HH:MM). The dialog
@@ -4233,5 +4256,9 @@ def test_the_schedule_dialog_says_its_next_run_in_the_apps_clock_style(tmp_path)
     assert said[2] == f"Next run: tomorrow at {said[3]}" and said[4:] == ["", "Off"]
     js = read("app.js")
     assert '$("sc-next").textContent = scheduleClock(current.next_run);' in js
+    # The time in the sentence lines up as every date and time does (the
+    # screen review's N4: tabular-nums, never a typewriter font).
+    selector = next(selector for _m, selector, _b in blocks(read("shell.css")) if selector.strip().startswith(".tabular,"))
+    assert "#sc-next" in [part.strip() for part in selector.split(",")]
     assert "${scheduleClock(result.next_run)}" in js
     assert 'toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })' in js_function("pagesTime", "pages.js")
