@@ -59,7 +59,7 @@ test_shell_menu timing flake did not show. New tests: test_shell.py 3973,
 records `checked`; the ALWAYS set gains the id).
 
 `python -m ruff check .`: All checks passed. `python tools/repo_map.py
-check`: Map is current (410 nodes).
+check`: Map is current (411 nodes, after this handoff was added).
 
 ## Not done
 
