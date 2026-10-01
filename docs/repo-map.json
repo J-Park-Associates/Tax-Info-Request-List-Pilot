@@ -15,7 +15,7 @@
     "a person sends the draft"
   ],
   "counts": {
-    "nodes": 424,
+    "nodes": 425,
     "edges": 1195,
     "reused": 377
   },
@@ -4759,8 +4759,8 @@
       "id": "pilot/DECISIONS.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "a9381e794ff40ca6",
-      "lines": 196
+      "sha256": "7e4485c2d90fe75e",
+      "lines": 197
     },
     {
       "id": "pilot/HANDOFF.md",
@@ -4901,6 +4901,13 @@
       "layer": "docs",
       "sha256": "82872c2c14e74723",
       "lines": 1982
+    },
+    {
+      "id": "pilot/SPEC-stuck-tip.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "94fe354697b2aa28",
+      "lines": 31
     },
     {
       "id": "pilot/SPEC-taxpayer-words.md",
