@@ -17,7 +17,9 @@ It is drawn in three bands, because no single drawing is sharp at every size:
   pixels: a blended tick that small smudges into a blot;
 - 48px and up are the full master fitted to the size: every horizontal and
   vertical edge on a whole pixel, the rim, band and radii whole pixels, so only
-  the slopes, the tick, the rules' round ends and the corner arcs blend.
+  the slopes, the tick, the rules' round ends and the corner arcs blend. Where
+  the rim is one pixel the flap's sloped sides take SLOPE_RIM, so their
+  blended rim still holds 3:1 on a dark taskbar.
 Fitting rounds half up (never Python's round-half-to-even, which sends edges
 that fall on a half pixel in opposite directions) and places a length from a
 snapped edge where two edges must stay a fixed distance apart.
@@ -54,6 +56,7 @@ TICK_PTS = ((17.5, 17), (19.3, 18.8), (22.5, 15.1))
 RULES = ((25, 33, 16), (18, 33, 21))   # x0, x1, top; each 2 units tall
 SMALL_TICK_CORNER = (21.88, 21.88)  # the whole-pixel tick's corner, 30-47px
 DRAWN = (4, 7, 45, 40)              # the drawing's extent, for the lockup and the panels
+SLOPE_RIM = 1.5                     # pixels: the least rim the flap's sloped sides take when fitted
 
 # One letter per pixel, row 0 at the top: r rim, n navy, f flap, g gold tab,
 # c cream sheet, t tick, . clear.
@@ -164,6 +167,11 @@ def _geometry(s, snap):
     g["flap_top"], g["flap_x"] = fy0, (P(FLAP_X_BOTTOM[0]), P(FLAP_X_TOP[1]))
     g["flap"] = _rounded([(P(FLAP_X_TOP[0]), fy0), (P(FLAP_X_TOP[1]), fy0),
                           (P(FLAP_X_BOTTOM[1]), y1), (P(FLAP_X_BOTTOM[0]), y1)], g["frad"])
+    # A 1px rim on a slope is split across two half-tone pixels, neither 3:1 on a dark
+    # taskbar, so where the rim is one pixel the flap's two sloped sides get SLOPE_RIM.
+    g["slopes"] = ((P(FLAP_X_TOP[0]), fy0, P(FLAP_X_BOTTOM[0]), y1),
+                   (P(FLAP_X_TOP[1]), fy0, P(FLAP_X_BOTTOM[1]), y1))
+    g["slope_rim"] = SLOPE_RIM if snap and g["rim"] < SLOPE_RIM else g["rim"]
     # the sheet's top is one rim below the body's top in the master, so it is laid off from it:
     # snapped separately the two can meet (the sheet hides the rim) or part (a navy gap)
     sx0, sy0 = P(SHEET_BOX[0]), (body + g["rim"]) if snap else P(SHEET_BOX[1])
@@ -213,6 +221,9 @@ def drawing(s, snap=True, shadow=True, uid="m", small=False):
             f"{tick}{rules}"
             f'<path d="{g["flap"]}" fill="url(#{i}f)"/>'
             f'<path d="{g["flap"]}" fill="none" stroke="{RIM}" stroke-width="{f(2 * g["rim"])}" clip-path="url(#{i}cf)"/>'
+            + "".join(f'<line x1="{f(a)}" y1="{f(b)}" x2="{f(c)}" y2="{f(d)}" stroke="{RIM}" '
+                      f'stroke-width="{f(2 * g["slope_rim"])}" clip-path="url(#{i}cf)"/>'
+                      for a, b, c, d in g["slopes"]) +
             f'<rect x="{f(fx0)}" y="{f(g["flap_top"])}" width="{f(fx1 - fx0)}" height="{f(g["band"])}" '
             f'fill="{RIM}" clip-path="url(#{i}cf)"/>'
             "</g>")

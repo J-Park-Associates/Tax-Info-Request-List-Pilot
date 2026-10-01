@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 364,
     "edges": 1175,
-    "reused": 312
+    "reused": 311
   },
   "node_types": [
     "artifact",
@@ -4610,7 +4610,7 @@
       "id": "pilot/DECISIONS.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "8bbfe1ba61ee2d81",
+      "sha256": "1ff1246ec56b894f",
       "lines": 122
     },
     {
@@ -4659,8 +4659,8 @@
       "id": "pilot/SPEC-icon-ledger.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "3a1e7e1518a48273",
-      "lines": 100
+      "sha256": "fabedadac7188ad4",
+      "lines": 104
     },
     {
       "id": "pilot/SPEC-icon.md",
@@ -4701,8 +4701,8 @@
       "id": "pilot/brand/tax-document-console/README.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "e5870f625f9e0d07",
-      "lines": 71
+      "sha256": "ef2367666534d1b4",
+      "lines": 73
     },
     {
       "id": "pilot/handoffs/brand-icon.md",
@@ -5494,7 +5494,7 @@
       "id": "pilot/brand/tax-document-console/app/icon.svg",
       "type": "ui",
       "layer": "root",
-      "sha256": "e154763dc04b5f2a",
+      "sha256": "0418bd685f0f4379",
       "lines": 1
     },
     {
@@ -5508,21 +5508,21 @@
       "id": "pilot/brand/tax-document-console/app/mark.svg",
       "type": "ui",
       "layer": "root",
-      "sha256": "649b623d13aa1f0a",
+      "sha256": "f8d98c5266a541ab",
       "lines": 1
     },
     {
       "id": "pilot/brand/tax-document-console/brand/lockup-dark.svg",
       "type": "ui",
       "layer": "root",
-      "sha256": "9234e6a402265115",
+      "sha256": "15b9f5375cff4513",
       "lines": 1
     },
     {
       "id": "pilot/brand/tax-document-console/brand/lockup-light.svg",
       "type": "ui",
       "layer": "root",
-      "sha256": "c19c231916601c2f",
+      "sha256": "752e38e5d9aad5fd",
       "lines": 1
     },
     {
@@ -5570,8 +5570,8 @@
       "id": "pilot/brand/tax-document-console/source/mark.py",
       "type": "module",
       "layer": "root",
-      "sha256": "f31cea0a220a8bb2",
-      "lines": 292,
+      "sha256": "5fe712fbfea01ead",
+      "lines": 303,
       "exports": [
         "BACK",
         "BACK_X",
@@ -5591,6 +5591,7 @@
         "SHEET_BOX",
         "SIZES",
         "SLOPE",
+        "SLOPE_RIM",
         "SMALL_TICK_CORNER",
         "TAB",
         "TICK",
@@ -5618,7 +5619,8 @@
         "SLOPE": "(18, 22)",
         "SHEET_BOX": "(14, 12, 36, 32)",
         "SMALL_TICK_CORNER": "(21.88, 21.88)",
-        "DRAWN": "(4, 7, 45, 40)"
+        "DRAWN": "(4, 7, 45, 40)",
+        "SLOPE_RIM": "1.5"
       }
     },
     {
