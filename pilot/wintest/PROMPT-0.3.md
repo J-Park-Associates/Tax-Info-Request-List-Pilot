@@ -93,4 +93,4 @@ If a step fails, state the root cause in one sentence, note it, and go on unless
 
 > Start the app only from the Start menu, its shortcut through `explorer.exe`, or a person's click - never `Start-Process` from your shell. Any engine command from a checkout sets `TRACKER_DATA_HOME` to a folder of its own.
 
-`run_checks.ps1` now ends by starting the app through `explorer.exe` (its step 8, "launch"), and `make_samples.py` builds under a throwaway `TRACKER_DATA_HOME`. Steps 19-21 are rerun this way after F7 and F6 land.
+`run_checks.ps1` never starts the app; its step 8 ("launch") says how to start it outside the agent's shell, so the first start stays the hands-on step. And `make_samples.py` builds under a throwaway `TRACKER_DATA_HOME`. Steps 19-21 are rerun this way after F7 and F6 land.
