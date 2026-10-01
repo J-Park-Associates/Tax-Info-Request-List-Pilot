@@ -16,7 +16,7 @@
   on the office PC's pass (P184).
 
 ## Left, in order
-1. **The rename and version lane:** P155 ("Tax Document Console" everywhere a
+1. **Done 2026-09-30 (P190, pull request #20, e234c54).** The rename and version lane: P155 ("Tax Document Console" everywhere a
    person reads the name; the badge reads "Pilot 0.3"; "Tracker" on screen becomes
    "App"; internal names stay) and P140 (version 0.3). It includes the job in
    `tracker/after_install.py` that carries settings, data and the schedule over.
