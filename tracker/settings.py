@@ -46,6 +46,7 @@ import json
 import logging
 import os
 import re
+import secrets
 import sys
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -144,6 +145,30 @@ DATA_HOME_BESIDE_PROGRAM = ("the app's data folder {home} would be inside the pr
                             "folder {program}, or hold it; client data never sits beside the program")
 DATA_HOME_NOT_LOCAL = ("the app's data folder {home} is not on this computer's own disk; "
                        "client data never sits on a removable or network drive")
+#: F7 (P193): Windows silently redirects what a program started from inside
+#: a packaged app (the Claude desktop app, on 9/29) writes under
+#: %LOCALAPPDATA% into that package's own copy,
+#: %LOCALAPPDATA%\Packages\<package>\LocalCache\Local. Such a process sees the
+#: copy at the normal path, so two stores and two checkpoints each refuse the
+#: other's lines. The probe file's name starts with this; the rest is the
+#: process id and 16 random hex digits, so two probes never meet.
+REDIRECT_PROBE_PREFIX = ".tracker-redirect-probe-"
+#: Where Windows keeps each package's own folders, inside %LOCALAPPDATA%, and
+#: where inside one of them a redirected %LOCALAPPDATA% write lands.
+PACKAGES_DIR_NAME = "Packages"
+REDIRECTED_LOCAL = ("LocalCache", "Local")
+#: The refusal when this process's %LOCALAPPDATA% is redirected (R1); a
+#: SettingsError, so the first screen and the pass say it as they say any
+#: data home they cannot have. {package} is the package folder's name, never a
+#: client's; {product} is product_name(), the product name's one home.
+DATA_HOME_REDIRECTED = ("Windows is giving this copy of the app a private data folder of its own, "
+                        "because it was started from inside another program ({package}). Close it "
+                        "and start {product} from the Start menu.")
+#: One first-screen sentence per stale redirected copy (R2). The app never
+#: removes it: it holds client-derived data (decision 186).
+REDIRECTED_COPY = ("Windows kept a private copy of the app's data folder at {path}, from a time "
+                   "the app was started inside another program. The app never uses it and it is "
+                   "out of date; move that folder to the Recycle Bin.")
 #: Why Install Schedule refuses to schedule the program from where it is
 #: (decision 186): the task runs whatever program sits at that path on every
 #: pass, so a stick or a share would carry the program - and, beside it, the
@@ -682,10 +707,124 @@ def data_home() -> Path:
 
     Inside :func:`one_reading` - one read-only reply - it is answered once
     and then from memory (P118): the proof that it is not inside the
-    program asks the disk a few dozen times, and every store read asks it."""
-    return _held(("data_home",), lambda: resolve_data_home(
-        os.environ, windows=os.name == "nt", home=_home(),
-        program=program_folders(), drive_type=drive_type))
+    program asks the disk a few dozen times, and every store read asks it.
+
+    On Windows, with no ``ENV_DATA_HOME``, a data home Windows is
+    redirecting is refused (F7, P193): see :func:`_the_data_home`."""
+    return _held(("data_home",), lambda: _the_data_home(os.environ, windows=os.name == "nt"))
+
+
+def _the_data_home(environ, *, windows: bool) -> Path:
+    """:func:`resolve_data_home`, then the redirect refusal (F7, P193, R1).
+
+    Why here and not in :func:`resolve_data_home` or
+    :func:`default_data_home`: the suite always sets ``ENV_DATA_HOME``, and
+    the tripwire must still learn the real place without a probe. Why only
+    with no ``ENV_DATA_HOME``: a person who names a folder means it. Why
+    once a process (:func:`_redirected_package`): a redirect is fixed when
+    the process starts and cannot change while it lives.
+
+    Two copies of the store and checkpoint, each trusted by the programs
+    that see it, is the one thing decision 159's checkpoint cannot survive -
+    each copy refuses the other's lines, and a pass on the copy would record
+    moves in a store the schedule never reads - so the copy is refused
+    before anything reads or writes it."""
+    answer = resolve_data_home(environ, windows=windows, home=_home(),
+                               program=program_folders(), drive_type=drive_type)
+    if windows and not (environ.get(ENV_DATA_HOME) or "").strip():
+        package = _redirected_package(Path(environ["LOCALAPPDATA"].strip()))
+        if package:
+            raise SettingsError(DATA_HOME_REDIRECTED.format(package=package, product=product_name()))
+    return answer
+
+
+#: This process's one answer to "is %LOCALAPPDATA% redirected?" - the
+#: package's name, or None - once asked; ``_UNASKED`` until then.
+_UNASKED = object()
+_redirect_answer: object = _UNASKED
+
+
+def _redirected_package(local: Path) -> str | None:
+    """:func:`redirect_probe` of ``local``, asked once per process."""
+    global _redirect_answer
+    if _redirect_answer is _UNASKED:
+        _redirect_answer = redirect_probe(local)
+    return _redirect_answer
+
+
+def _make_empty(path: Path) -> None:
+    with open(path, "x", encoding="utf-8"):
+        pass
+
+
+def redirect_probe(local: Path, *, make=_make_empty) -> str | None:
+    """The package whose copy Windows writes this process's ``local``
+    (%LOCALAPPDATA%) into, or None (F7, P193, R1).
+
+    It writes a uniquely named empty file directly in ``local`` with
+    ``make``, looks for that name in every
+    ``local\\Packages\\*\\LocalCache\\Local``, and removes it from wherever it
+    landed, in a ``finally``. A hit is a redirect, named by the package
+    folder. ``make`` is injected, as ``drive_type`` is, because a test cannot
+    make Windows redirect.
+
+    Rejected: asking Windows for this process's package identity - a
+    process started from inside the Claude desktop app has none
+    (``GetCurrentPackageFamilyName`` answers 15700) yet is redirected, so
+    that question is blind here; comparing the file IDs of the normal path
+    and a package copy - blind until a first redirected write has already
+    made the copy. A probe that cannot write raises nothing new: the data
+    home's own writers say what they cannot do, as they always have."""
+    name = f"{REDIRECT_PROBE_PREFIX}{os.getpid()}-{secrets.token_hex(8)}"
+    probe = Path(local) / name
+    landed: list[Path] = []
+    try:
+        try:
+            make(probe)
+        except OSError:
+            return None
+        packages = Path(local) / PACKAGES_DIR_NAME
+        for package in _package_names(packages):
+            copy = packages.joinpath(package, *REDIRECTED_LOCAL, name)
+            if os.path.lexists(copy):
+                landed.append(copy)
+        return landed[0].parent.parent.parent.name if landed else None
+    finally:
+        for where in (probe, *landed):
+            where.unlink(missing_ok=True)
+
+
+def _package_names(packages: Path) -> list[str]:
+    """The package folders in `packages`, sorted; none when it is absent."""
+    try:
+        return sorted(entry.name for entry in os.scandir(packages) if entry.is_dir())
+    except (FileNotFoundError, NotADirectoryError):
+        return []
+
+
+def redirected_copies(environ=None, *, windows: bool | None = None) -> list[Path]:
+    """Every stale copy of the data home Windows kept for a package (F7,
+    P193, R2): each existing
+    ``%LOCALAPPDATA%\\Packages\\*\\LocalCache\\Local\\`` + ``DATA_HOME_NAME``.
+    Windows only, read-only, and nothing when there is no Packages folder -
+    nor when `ENV_DATA_HOME` names the data home: the app then never uses
+    %LOCALAPPDATA%, so a copy of that place is no copy of its data folder,
+    and the suite, which always names one, never reads the real machine.
+
+    The first screen names each one (``REDIRECTED_COPY``) and asks a person
+    to move it to the Recycle Bin; the app never removes it, because it holds
+    client-derived data (decision 186). Not in
+    :func:`tracker.runner.left_behind`: that is decision 186's "beside the
+    program", and its move would carry the copy into the data home."""
+    environ = os.environ if environ is None else environ
+    windows = os.name == "nt" if windows is None else windows
+    local = (environ.get("LOCALAPPDATA") or "").strip()
+    if not windows or not local or (environ.get(ENV_DATA_HOME) or "").strip():
+        return []
+    packages = Path(local) / PACKAGES_DIR_NAME
+    copies = [packages.joinpath(package, *REDIRECTED_LOCAL, DATA_HOME_NAME)
+              for package in _package_names(packages)]
+    return [copy for copy in copies if os.path.isdir(copy)]
 
 
 # ------------------------------------------------------- one reading ----

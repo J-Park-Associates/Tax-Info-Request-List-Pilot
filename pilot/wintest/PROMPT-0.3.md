@@ -88,3 +88,9 @@ sentence when something breaks.
    Do not fix any failure. Tell me the file's path and stop.
 
 If a step fails, state the root cause in one sentence, note it, and go on unless it blocks. End with a short list: what to fix, what needs my decision, and whether the build is ready to tag `pilot-0.3` (P140).
+
+**Note for the next check (F7, P193, R4; added by the F7 build).** Carry this line into the next check's prompt:
+
+> Start the app only from the Start menu, its shortcut through `explorer.exe`, or a person's click - never `Start-Process` from your shell. Any engine command from a checkout sets `TRACKER_DATA_HOME` to a folder of its own.
+
+`run_checks.ps1` now ends by starting the app through `explorer.exe` (its step 8, "launch"), and `make_samples.py` builds under a throwaway `TRACKER_DATA_HOME`. Steps 19-21 are rerun this way after F7 and F6 land.

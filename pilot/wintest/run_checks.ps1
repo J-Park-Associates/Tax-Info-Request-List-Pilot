@@ -227,4 +227,18 @@ if (Test-Path $sample) {
     Record "sample_folder" (Verdict ($sampleExit -eq 0)) "$sample (made-up documents from tests/samples.py)"
 }
 
+# 8. Start the app, outside the program this script runs in (F7, P193, R4).
+# Windows redirects what a program started from inside a packaged app (an AI
+# assistant's window among them) writes under %LOCALAPPDATA% into that
+# package's private copy, so an app started with Start-Process from this
+# shell would read and write a second data folder the schedule never sees.
+# explorer.exe hands the shortcut to the desktop's own Explorer, which starts
+# the app as the Start menu does. Never Start-Process here.
+if ($shortcut) {
+    & explorer.exe "$($shortcut.FullName)"
+    Record "launch" "INFO" "started through explorer.exe from $($shortcut.FullName), as the Start menu starts it"
+} else {
+    Record "launch" "NOT VERIFIED" "no Start-menu shortcut to start the app from; start it from the Start menu by hand"
+}
+
 Say "Automated part done. Results: $Json"

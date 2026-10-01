@@ -321,6 +321,7 @@ from tracker.settings import (
     DEFAULT_SCHEDULE_START,
     ERROR_LOG_FILENAME,
     EXAMPLE_ROOT,
+    REDIRECTED_COPY,
     SET_ROOT_HINT,
     SettingsError,
     clients_root,
@@ -332,6 +333,7 @@ from tracker.settings import (
     one_reading,
     product_name,
     program_drive_refusal,
+    redirected_copies,
     schedule_preference,
     set_clients_root,
     set_firm,
@@ -3545,7 +3547,10 @@ def _machine_warnings(root: Path | None) -> list[str]:
     keeps showing until it is fixed (decision 186): what an earlier version
     left beside the app, or a data home that cannot be had at all, and an app
     running from a drive Install Schedule refuses (removable, network, or one
-    Windows cannot name) - said every time the app opens from there."""
+    Windows cannot name) - said every time the app opens from there. Last,
+    each stale copy of the data folder Windows kept for a package the app was
+    once started inside (F7, P193, R2): named, never removed, because it holds
+    client-derived data."""
     warnings = []
     try:
         # Asked first and on its own (decision 186's review, M1): what was
@@ -3558,6 +3563,7 @@ def _machine_warnings(root: Path | None) -> list[str]:
         warnings.append(str(exc))
     if refusal := program_drive_refusal():
         warnings.append(refusal)
+    warnings += [REDIRECTED_COPY.format(path=copy) for copy in redirected_copies()]
     return warnings
 
 
