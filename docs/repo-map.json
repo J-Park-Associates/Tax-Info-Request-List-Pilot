@@ -4759,15 +4759,15 @@
       "id": "pilot/DECISIONS.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "be477728f2fa356c",
-      "lines": 198
+      "sha256": "1e5442aa43683cb4",
+      "lines": 199
     },
     {
       "id": "pilot/HANDOFF.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "de5d168a0cb043f6",
-      "lines": 746
+      "sha256": "6839403961cb6646",
+      "lines": 751
     },
     {
       "id": "pilot/PLAN-ui.md",
@@ -4978,8 +4978,8 @@
       "id": "pilot/handoffs/F7-root-cause.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "a0b101bb0a75fde0",
-      "lines": 30
+      "sha256": "467bab4957595025",
+      "lines": 24
     },
     {
       "id": "pilot/handoffs/brand-icon-ledger.md",
@@ -5790,8 +5790,8 @@
       "id": "pilot/wintest/RESULTS-0.3-followup.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "50363685f6f8a25b",
-      "lines": 41
+      "sha256": "6f4ddc96c7d3c571",
+      "lines": 49
     },
     {
       "id": "pilot/wintest/RESULTS-0.3.md",

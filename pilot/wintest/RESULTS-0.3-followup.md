@@ -35,6 +35,14 @@
 | The tooltip after a keyboard page change (P202) | NOT VERIFIED by hand | Every key and click sent while the mouse rested on a link was refused by the screen tool ("Textinputhost is in front"); access to it was declined. Covered by the three P202 tests, which drive the real `tooltip.js` and `shellGo` and fail on the code before the fix. |
 | Overview at the minimum window | **FAIL** -> P203 | The window shrunk by `MoveWindow` stopped at 1100 wide; `GetClientRect` gave its page 1084 wide; the Work Waiting list showed a sideways scrollbar with a nearly full-width handle. Cause and fix: `pilot/SPEC-min-page-width.md`. |
 
+## The build of `6a2d87f` (pull request #25, P203) - the one left installed
+
+- Installer SHA-256 `6b74ca206f3d1aaa31b3455d182fa5e7ddf6c7e6b6ad508bbcebc7674b151028`. The app was closed through its own window message, the silent install exited 0 at 4:14 AM into the real `Programs` folder, and the app was started from its Start-menu shortcut through Explorer.
+
+| Check | Result | Evidence |
+|---|---|---|
+| Overview at the minimum window (P203) | PASS | Shrunk by `MoveWindow`: the window stops at 1116 wide and its page (`GetClientRect`) is 1100 wide, 861 tall; Overview's five columns show whole with no sideways scrollbar. The window was then set back to its default size and left open. |
+
 ## Not checked by hand tonight
 
 - F6 by hand (uninstall, reinstall the same build, schedule on): the schedule stays off at Jason's word; covered by `tests/test_after_install.py`.
