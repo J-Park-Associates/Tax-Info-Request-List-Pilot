@@ -1,6 +1,6 @@
 @echo off
-rem ── Build the Tax Document Tracker Pilot installer ─────────────────────
-rem Output: build-portable\installer\Tax-Document-Tracker-Pilot-Setup-<version>.exe
+rem ── Build the Tax Document Console installer ───────────────────────────
+rem Output: build-portable\installer\Tax-Document-Console-Setup-<version>.exe
 rem
 rem The installer is exactly what is committed: this refuses a tree with any
 rem uncommitted change (pilot decision P13). The version comes from
@@ -65,7 +65,7 @@ echo [5/5] Compiling the installer...
 "%ISCC%" /DAppVersion=%VER% /DSourceDir="%PACKAGED%" pilot\installer\setup.iss
 if errorlevel 1 (echo Inno Setup failed & call :wait & exit /b 1)
 
-set "INSTALLER=%CD%\build-portable\installer\Tax-Document-Tracker-Pilot-Setup-%VER%.exe"
+set "INSTALLER=%CD%\build-portable\installer\Tax-Document-Console-Setup-%VER%.exe"
 if not exist "%INSTALLER%" (echo The installer was not produced: %INSTALLER% & call :wait & exit /b 1)
 echo.
 echo Installer: %INSTALLER%

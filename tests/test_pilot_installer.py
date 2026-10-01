@@ -19,6 +19,12 @@ REPO = Path(__file__).resolve().parent.parent
 SETUP = REPO / "pilot" / "installer" / "setup.iss"
 BUILD = REPO / "pilot" / "Build Pilot Installer.bat"
 UPSTREAM_DATA_HOME_NAME = "tax-document-tracker"
+#: The firm's production product (R8 of pilot/SPEC-rename.md): never named by
+#: the installer or the check scripts, which name only the pilot's earlier name.
+UPSTREAM_PRODUCT_NAME = "Tax Document Tracker"
+#: How an upgrade finds the copy it replaces: never changes (P155, R2).
+APP_ID = "AppId={{27812DF2-05B3-4844-81BA-E58F49D2BD7D}"
+WINTEST = REPO / "pilot" / "wintest"
 
 
 def _setup() -> str:
@@ -65,13 +71,28 @@ def test_uninstalling_removes_the_schedule_it_ran():
     assert "RunOnceId" in run
 
 
+def test_uninstalling_removes_the_task_under_either_name():
+    """An upgrade's first start removes the earlier name's task (P155), but a
+    PC uninstalled before the app ever started again still has it: the
+    uninstaller removes the task under both names, each once."""
+    from tracker import scheduling, settings
+
+    run = _sections(_setup())["UninstallRun"].splitlines()
+    for name, once in ((scheduling.TASK_NAME, "RemoveSchedule"),
+                       (settings.EARLIER_PRODUCT_NAME, "RemoveEarlierSchedule")):
+        [line] = [line for line in run if f'/Delete /TN ""{name}"" /F' in line]
+        assert f'RunOnceId: "{once}"' in line
+    assert len(run) == 2
+
+
 def test_uninstalling_never_deletes_client_or_tracker_data():
     text = _setup()
     sections = _sections(text)
     assert "UninstallDelete" not in sections
-    assert "InstallDelete" not in sections
-    # The comments may say what uninstall leaves alone; the script itself never names it.
-    code = "\n".join(sections.values())
+    # The comments may say what uninstall leaves alone; the script itself never
+    # names it. [InstallDelete] names only the earlier name's own files (its
+    # own test, below).
+    code = "\n".join(body for name, body in sections.items() if name != "InstallDelete")
     for name in ("tax-document-tracker-pilot", UPSTREAM_DATA_HOME_NAME, "settings.json"):
         assert name not in code, name
     assert not re.search(r"\bdel(ete)?\b", code.replace("/Delete /TN", ""), re.IGNORECASE)
@@ -88,12 +109,68 @@ def test_the_installer_is_named_and_placed_as_the_spec_says():
     name = _product_name()
     assert f"AppName={name}" in setup
     assert f"DefaultDirName={{localappdata}}\\Programs\\{name}" in setup
-    assert "OutputBaseFilename=Tax-Document-Tracker-Pilot-Setup-{#AppVersion}" in setup
+    assert "OutputBaseFilename=" + name.replace(" ", "-") + "-Setup-{#AppVersion}" in setup
     assert "UninstallDisplayName=" + name + " {#AppVersion}" in setup
     assert re.search(r"^AppId=\{\{[0-9A-F-]{36}\}$", setup, re.MULTILINE)
     files = _sections(_setup())["Files"]
     assert 'Source: "{#SourceDir}\\*"; DestDir: "{app}"' in files
     assert f'{{app}}\\{name}.exe' in _sections(_setup())["Icons"]
+
+
+def test_an_upgrade_installs_over_the_earlier_copy_in_its_own_folder():
+    """R2: the AppId never changes and UsePreviousAppDir stays at Inno Setup's
+    default (yes), so a PC that has the earlier name is upgraded in place,
+    where its settings.json already is; only a new install uses the new
+    folder."""
+    setup = _sections(_setup())["Setup"]
+    assert APP_ID in setup.splitlines()
+    assert "UsePreviousAppDir" not in setup
+
+
+def test_the_start_menu_takes_the_new_name_on_an_upgrade():
+    """R7: an upgrade would otherwise keep the earlier Start menu folder."""
+    assert "UsePreviousGroup=no" in _sections(_setup())["Setup"].splitlines()
+
+
+def test_an_upgrade_removes_exactly_the_earlier_shortcuts_and_program_file():
+    """R7: the earlier Start menu shortcut, its folder when empty, the earlier
+    desktop icon and the earlier program file - by exact path, never a
+    wildcard, so nothing else in the Start menu or on the desktop can match."""
+    from tracker.settings import EARLIER_PRODUCT_NAME as old
+
+    lines = _sections(_setup())["InstallDelete"].splitlines()
+    assert lines == [
+        f'Type: files; Name: "{{app}}\\{old}.exe"',
+        f'Type: files; Name: "{{userprograms}}\\{old}\\{old}.lnk"',
+        f'Type: dirifempty; Name: "{{userprograms}}\\{old}"',
+        f'Type: files; Name: "{{userdesktop}}\\{old}.lnk"',
+    ]
+    assert not any(wild in line for line in lines for wild in "*?")
+
+
+def test_every_copy_of_the_earlier_name_matches_the_one_in_settings():
+    """R1: the earlier name has one home, settings.EARLIER_PRODUCT_NAME; the
+    places that cannot import Python type it, and each copy is that one. R8:
+    none of them ever names the firm's production product, whose name is
+    the earlier one without "Pilot"."""
+    from tracker.settings import EARLIER_PRODUCT_NAME as old
+
+    config = json.loads((REPO / "app" / "package.json").read_text(encoding="utf-8"))["config"]
+    assert config["userDataName"] == old
+    for script in ("run_checks.ps1", "uninstall_checks.ps1"):
+        text = (WINTEST / script).read_text(encoding="utf-8")
+        assert re.findall(r'^\$EarlierName = "([^"]*)"$', text, re.MULTILINE) == [old], script
+    for path in (SETUP, WINTEST / "run_checks.ps1", WINTEST / "uninstall_checks.ps1"):
+        text = path.read_text(encoding="utf-8")
+        named = re.findall(re.escape(UPSTREAM_PRODUCT_NAME) + r"(?: Pilot)?", text)
+        assert named and set(named) == {old}, path.name
+
+
+def test_the_pilot_build_names_the_installer_as_setup_iss_does():
+    base = re.search(r"^OutputBaseFilename=(.+)-\{#AppVersion\}$", _sections(_setup())["Setup"],
+                     re.MULTILINE).group(1)
+    named = re.findall(r"installer\\([^\\\s\"]+)-%VER%\.exe", _build())
+    assert named == [base]
 
 
 def test_the_desktop_icon_is_offered_but_not_ticked():

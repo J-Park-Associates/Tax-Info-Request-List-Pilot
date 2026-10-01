@@ -56,7 +56,7 @@ def test_the_edition_version_is_a_plain_version_number():
 def test_the_terms_have_every_field_and_a_positive_version():
     terms = content()["terms"]
     assert isinstance(terms["version"], int) and terms["version"] >= 1
-    for key in ("title", "checkbox", "accept", "quit", "close"):
+    for key in ("title", "checkbox", "sign", "accept", "signed", "quit", "close"):
         assert isinstance(terms[key], str) and terms[key].strip(), key
     assert terms["sections"]
 
@@ -101,10 +101,13 @@ def test_the_pilot_files_build_the_page_only_with_text():
 
 def test_the_pilot_never_types_the_product_name():
     product = json.loads((REPO / "app" / "package.json").read_text(encoding="utf-8"))["productName"]
-    # The approved terms name the underlying product ("a test edition of Tax
-    # Document Tracker"), which is not the pilot's product name once Build A
-    # renames it to "... Pilot"; that one phrase is not a typing of it.
-    approved = "A test edition of Tax Document Tracker, built by"
+    # The approved terms' first bullet names the product (P155, Q1 of
+    # SPEC-rename: "A test edition of Tax Document Console, built by ..."):
+    # the terms a tester accepts are firm wording, kept word for word, so
+    # that is the one place the pilot says the name, exactly once.
+    approved = f"A test edition of {product}, built by J Park & Associates."
+    content = read("pilot-content.js")
+    assert content.count(product) == 1 and approved in content
     for name in (*PILOT_JS, "pilot-style.css"):
         assert product not in read(name).replace(approved, ""), name
 
@@ -141,7 +144,7 @@ def test_acceptance_is_asked_of_the_durable_record_before_the_terms_stay():
     assert "record.terms !== version" in js[asked:] and "close();" in js[asked:]
     # Accepting records it durably, not only in the cache.
     accepted = js[js.index('accept.addEventListener("click"'):]
-    assert "PilotRecord.acceptTerms(version);" in accepted.split("});")[0]
+    assert "PilotRecord.acceptTerms(version, signedBy());" in accepted.split("});")[0]
     # Storage is touched in one place only.
     assert js.count("window.localStorage.") == 2
 
@@ -189,6 +192,84 @@ def test_help_terms_shows_the_same_card_read_only_with_one_close():
     assert "build(true)" in code and "close" in code
     assert not re.search(r"\b(?:agree|accept|quit)\b", code) and "window.close" not in code
     assert '"close": "Close"' in read("pilot-content.js")
+
+
+def _gate() -> str:
+    js = read("pilot.js")
+    return re.sub(r"//[^\n]*", "", js[js.index("function gate() {"):js.index("return { show, gate };")])
+
+
+def test_the_accept_button_waits_for_a_typed_name():
+    """P188: the terms card gains one box, "Type Your Full Name to Sign",
+    and "Sign and Accept" stays disabled until the box holds a name - the
+    sign-off is part of accepting, not an extra."""
+    terms = content()["terms"]
+    assert terms["sign"] == "Type Your Full Name to Sign" and terms["accept"] == "Sign and Accept"
+    js = read("pilot.js")
+    built = js[js.index("function build(readOnly) {"):js.index("function holdKeys(")]
+    assert 'make("span", "", terms.sign)' in built
+    assert 'name.id = "pilot-terms-name";' in built and 'name.setAttribute("type", "text");' in built
+    assert built.index("card.appendChild(field);") < built.index("card.appendChild(actions);")
+    assert 'accept.setAttribute("disabled", "");' in built
+    gate = _gate()
+    assert "const ready = () => agree.checked && signedBy() !== \"\";" in gate
+    assert gate.count("accept.disabled = !ready();") == 2        # the box and the name each re-ask
+    assert 'name.addEventListener("input"' in gate
+    assert "[agree, name, quit, accept]" in gate                  # Tab reaches the name box
+
+
+def test_a_blank_or_spaces_only_name_does_not_enable_accept():
+    """A name is what is left once the spaces are trimmed; spaces alone are
+    no name, and a click that somehow arrives without one does nothing."""
+    gate = _gate()
+    assert "const signedBy = () => name.value.trim();" in gate
+    clicked = gate[gate.index('accept.addEventListener("click"'):]
+    assert clicked.split("\n")[1].strip() == "if (!ready()) return;"
+
+
+def test_the_signed_name_is_sent_with_the_acceptance():
+    """The trimmed name travels with the acceptance to the durable record,
+    as ``signed_by`` beside ``terms`` - the one shape the api takes."""
+    js = read("pilot.js")
+    clicked = _gate()[_gate().index('accept.addEventListener("click"'):]
+    assert "PilotRecord.acceptTerms(version, signedBy());" in clicked.split("});")[0]
+    record = js[js.index("acceptTerms: (version, signedBy) => {"):js.index("cacheTerms:")]
+    assert "{ terms: version, signed_by: signedBy }" in record
+
+
+def test_help_terms_shows_who_signed_and_when():
+    """Help, Terms shows "Signed by {name} on {date}" when the record holds a
+    name, the date in full with its year (``signedDay``: a sign-off carries a
+    full date, and the app's short ``pagesDay`` drops the year), and the name
+    set as text, never HTML; the line is attached only once there is a name,
+    never hidden and shown; the read-only card has no name box and no sign
+    button."""
+    assert content()["terms"]["signed"] == "Signed by {name} on {date}"
+    js = read("pilot.js")
+    shown = re.sub(r"//[^\n]*", "", js[js.index("function show() {"):js.index("function gate() {")])
+    assert "PilotRecord.read().then((record) => {" in shown
+    assert "record.terms_signed_by" in shown and "signedDay(record.terms_accepted_at)" in shown
+    assert "pagesDay" not in shown
+    assert "if (!name || !day || !overlay.isConnected) return;" in shown
+    assert 'signed.textContent = PILOT.terms.signed.split("{date}").join(day).split("{name}").join(name);' in shown
+    assert "actions.before(signed);" in shown
+    assert "pilot-terms-name" not in shown and "terms.sign" not in shown.replace("terms.signed", "")
+    day = js[js.index("function signedDay(iso) {"):js.index("function show() {")]
+    assert 'year: "numeric", month: "long", day: "numeric"' in day
+
+
+def test_an_earlier_acceptance_without_a_name_is_not_asked_again():
+    """P188 Q2 (a): a tester who accepted version 1 before the sign-off is
+    not asked again. The terms version stays 1 (P187), the gate asks the
+    record only for the version, and the cache's level-up sends no name, so
+    none is ever recorded that was not typed."""
+    assert content()["terms"]["version"] == 1
+    gate = _gate()
+    assert "terms_signed_by" not in gate and "signed_by" not in gate
+    cached = gate[gate.index("if (PilotRecord.termsCached(version)) {"):gate.index("const { overlay")]
+    assert "if (record && record.terms !== version) PilotRecord.acceptTerms(version);" in cached
+    asked = gate[gate.index("PilotRecord.read().then((record) => {", gate.index("document.body.appendChild")):]
+    assert "if (!record || record.terms !== version || !overlay.isConnected) return;" in asked
 
 
 POWERSHELL = shutil.which("powershell.exe") if sys.platform == "win32" else None

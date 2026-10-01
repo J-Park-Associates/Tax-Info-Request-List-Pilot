@@ -84,7 +84,7 @@ import traceback
 DEBUG_LOGGER = "tracker.debug"
 
 #: Where the debug log goes, as the CLI says it.
-WHERE_KEPT = ("tracker-errors.log beside the tracker's database, in the data home (decisions 186 "
+WHERE_KEPT = ("tracker-errors.log beside the app's database, in the data home (decisions 186 "
               "and 193), while a pass or an app command runs; kept nowhere otherwise")
 
 #: At most this many kept entries travel back with one answer from a

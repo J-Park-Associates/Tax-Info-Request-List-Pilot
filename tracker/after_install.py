@@ -52,6 +52,21 @@ else - not a line in the runbook, not a button.
    rather than ``shutil.rmtree`` (whose handling of junctions differs by
    version). Absent is nothing to do and says nothing.
 
+**The rename's carry-over** (P155 Q2, ``pilot/SPEC-rename.md`` section 3) -
+two jobs around the others, each saying one sentence every run, "nothing to
+do" included, kept in the record's ``carried`` and leading the printed
+lines. First of all, before anything reads the settings file, the settings
+file the earlier name left in its program folder is copied to this
+program's, byte for byte and only when this one has none (a PC that
+uninstalled the earlier name and installed this one fresh; an upgrade
+installs in place and keeps its file). Right after the schedule, the
+earlier name's scheduled task is removed - that name and nothing else,
+never the firm's production task - unless the schedule failed this run,
+when it is kept so the pass still runs. A failure of either is a failure
+like any other: nothing is recorded as done, and the next launch tries
+again. Carrying over is not a finding, so the first screen's notice does
+not show it.
+
 **The careful mover** (SPEC-209 R9, by the standing preference) -
 decision 186's hand step, moving the record checkpoint and ``recovered/``
 from beside the program into the data home, becomes
@@ -143,7 +158,7 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 from tracker import checkpoint, door, errors, ledger, registry, runner, scheduling, settings, store
-from tracker.fsio import write_json_atomically
+from tracker.fsio import write_bytes_atomically, write_json_atomically
 from tracker.locking import EngagementLockedError, acquire_lock, release_lock, this_host
 
 #: The note of the last run, beside the store - in the data home (decision
@@ -185,7 +200,7 @@ CHECK_FOUND = "The record check found {n} line(s) a person must look at:"
 #: ``tests/test_after_install.py``: a malformed line (decision 209, R3b)
 #: and a record changed behind the tracker's back (decision 137) stop their
 #: household. It claims nothing for any other finding.
-FINDINGS_WAIT = ("A household named above as malformed or as changed behind the tracker's back waits "
+FINDINGS_WAIT = ("A household named above as malformed or as changed behind the app's back waits "
                  "in the app until a person repairs it (runbook §9); any other line above is for a "
                  "person to look at. The rest of the practice runs as normal.")
 
@@ -267,6 +282,34 @@ LOCK_UNAVAILABLE = ("The after-install step could not take its lock ({file}), so
                     "Start the app: it tries again at launch.")
 #: What Setup prints when the step exits 1 (``Setup.bat`` echoes the same words).
 SETUP_RETRY = "The after-install step could not finish (above). Start the app: it tries again at launch."
+#: The rename's carry-over (P155 Q2, SPEC-rename section 3): the settings
+#: file left by the earlier name, and its scheduled task. Each job says one
+#: of these every run, "nothing to do" included; the record keeps them in
+#: ``carried``. {old} and {new} are filled from ``settings`` and
+#: ``scheduling``, so no sentence types either name.
+SETTINGS_KEY = "settings"
+EARLIER_TASK_KEY = "earlier_task"
+SETTINGS_FROM_SOURCE = ("Run from source: the settings file is the checkout's own, so nothing is carried "
+                        "over from the earlier name.")
+SETTINGS_IN_PLACE = "The program was upgraded in its own folder, so its settings file stayed where it was."
+SETTINGS_BOTH = ("This program already has its settings file ({new}), so the one left by the earlier "
+                 "name ({old}) was not used; it was left where it was.")
+SETTINGS_NO_EARLIER = "There was no settings file from the earlier name to carry over."
+SETTINGS_CARRIED = ("Copied the settings file left by the earlier name ({old}) to {new}, so the clients "
+                    "folder and the schedule choice carry over; the earlier file was left where it was.")
+SETTINGS_CARRY_FAILED = ("The settings file left by the earlier name ({old}) could not be copied to {new} "
+                         "({problem}); nothing was changed. Start the app: it tries again at launch.")
+EARLIER_TASK_KEPT = ("The scheduled task under the earlier name, {old}, was kept because the new one could "
+                     "not be registered (above); the app tries again at its next start.")
+EARLIER_TASK_REMOVED = ("Removed the scheduled task under the earlier name, {old}; the schedule now runs as "
+                        "{new} where it is on.")
+EARLIER_TASK_NONE = "There was no scheduled task under the earlier name, {old}, on this computer."
+EARLIER_TASK_FROM_SOURCE = ("Run from source: the scheduled task under the earlier name, {old}, belongs to "
+                            "an installed copy, so it was left alone.")
+EARLIER_TASK_FAILED = ("The scheduled task under the earlier name, {old}, could not be removed ({problem}); "
+                       "until it is, both tasks start the pass, and the second finds the first's lock and "
+                       "moves nothing. Start the app: it tries again at launch, and Repair the Schedule "
+                       "tries at once.")
 
 
 def record_path() -> Path:
@@ -342,6 +385,8 @@ class AfterInstall:
     #: move the schedule here; else "".
     schedule_host: str = ""
     cache_sentence: str = ""
+    #: The rename's carry-over sentences (settings, then the earlier task).
+    carried: tuple[str, ...] = ()
     findings: tuple[str, ...] = ()
     failed: tuple[str, ...] = ()
     program: str = ""
@@ -367,6 +412,7 @@ class AfterInstall:
         """The run as the API hands it to the app."""
         said = asdict(self)
         said.update(lines=list(self.lines), findings=list(self.findings), failed=list(self.failed),
+                    carried=list(self.carried),
                     command=list(self.command), installed=self.installed, exit=self.exit_code)
         return said
 
@@ -892,6 +938,90 @@ def _move_what_186_lists(root: Path | None) -> _Step | None:
     return _Step(MOVE_KEY, done.sentence, failed=done.failed)
 
 
+class _CopyDiffers(OSError):
+    """The settings copy, read back, is not the earlier file byte for byte."""
+
+
+def _carry_over_settings() -> _Step:
+    """The rename's first job (SPEC-rename R5): copy the settings file the
+    earlier name left in its own program folder to this program's, only
+    when this program has none - so a PC that uninstalled the earlier name
+    and installed this one fresh keeps its clients folder and schedule
+    choice. From the packaged program only: from source the settings file
+    is the checkout's own, and the office PC may have the pilot installed
+    beside it. The file is copied as bytes, never parsed or rewritten here
+    (whether it is usable is :func:`_saved_root`'s and
+    :func:`_saved_preference`'s to say), and the earlier file is left where
+    it was. An upgrade in place (R2) finds the two paths are one file.
+    Runs before anything reads the settings, so the same run uses them."""
+    if not getattr(sys, "frozen", False):
+        return _Step(SETTINGS_KEY, SETTINGS_FROM_SOURCE)
+    earlier = settings.earlier_settings_path()
+    current = settings.settings_path()
+    if earlier is None:
+        return _Step(SETTINGS_KEY, SETTINGS_NO_EARLIER)
+    made = False
+    try:
+        # Inside the try, so a folder this account may not read is this
+        # job's own worded failure, not an error that stops the whole step.
+        if earlier.resolve() == current.resolve():
+            return _Step(SETTINGS_KEY, SETTINGS_IN_PLACE)
+        if not earlier.is_file():
+            return _Step(SETTINGS_KEY, SETTINGS_NO_EARLIER)
+        if current.exists():
+            return _Step(SETTINGS_KEY, SETTINGS_BOTH.format(new=current, old=earlier))
+        original = earlier.read_bytes()
+        write_bytes_atomically(current, original)
+        made = True
+        if hashlib.sha256(current.read_bytes()).digest() != hashlib.sha256(original).digest():
+            raise _CopyDiffers("the copy read back did not match the earlier file")
+    except OSError as exc:
+        errors.keep("after_install: carrying the earlier settings file over", exc)
+        if made:
+            _discard_quietly(current)
+        return _Step(SETTINGS_KEY, SETTINGS_CARRY_FAILED.format(
+            old=earlier, new=current, problem=errors.said(exc, (_CopyDiffers,))), failed=True)
+    return _Step(SETTINGS_KEY, SETTINGS_CARRIED.format(old=earlier, new=current))
+
+
+def _installed_program() -> bool:
+    """Whether this is the packaged program rather than a run from source:
+    the earlier name's task is removed only then. Its own function so the
+    tests can stand in for the packaged program here alone, without the
+    frozen paths every other module takes."""
+    return bool(getattr(sys, "frozen", False))
+
+
+def _replace_earlier_task(schedule: _Step) -> _Step:
+    """The rename's second job (SPEC-rename R6): once the schedule job has
+    run, remove this computer's task under the earlier name - that name and
+    nothing else, never the firm's production task - so the pass is not
+    started twice. Kept when the schedule failed this run, so the pass
+    still runs on a schedule until the new task is there; the schedule's own
+    failure already keeps the step from being recorded as done. A failed
+    delete is a failure, tried again at the next launch. From the packaged
+    program only, like the settings copy: a run from source must never
+    delete the task of a copy installed on the same computer, which would
+    only register it again at its next start."""
+    old, new = settings.EARLIER_PRODUCT_NAME, scheduling.TASK_NAME
+    if not _installed_program():
+        return _Step(EARLIER_TASK_KEY, EARLIER_TASK_FROM_SOURCE.format(old=old))
+    if schedule.failed:
+        return _Step(EARLIER_TASK_KEY, EARLIER_TASK_KEPT.format(old=old))
+    try:
+        removed = scheduling.remove_task(task_name=old)
+    except (RuntimeError, OSError) as exc:
+        errors.keep("after_install: removing the earlier name's scheduled task", exc)
+        # remove_task's RuntimeError is its own worded sentence; anything
+        # else is said by its class (decision 190).
+        return _Step(EARLIER_TASK_KEY, EARLIER_TASK_FAILED.format(
+            old=old, problem=errors.said(exc, (RuntimeError,))), failed=True)
+    if not removed:
+        return _Step(EARLIER_TASK_KEY, EARLIER_TASK_NONE.format(old=old))
+    _note_removed(f"it was the earlier name's task, {old}, replaced by {new}")
+    return _Step(EARLIER_TASK_KEY, EARLIER_TASK_REMOVED.format(old=old, new=new))
+
+
 class _Busy(Exception):
     """This run could not have the step's lock; the sentence saying why."""
 
@@ -967,6 +1097,9 @@ def _run(*, reason: str, start: str | None = None, every: int | None = None,
     once. The caller holds the step's lock.
     """
     ran_at = dt.datetime.now().isoformat(timespec="seconds")
+    # The rename's settings carry-over (SPEC-rename 3.1) runs before anything
+    # reads the settings file, so this same run uses what it copied.
+    carried_settings = _carry_over_settings()
     unusable = _save_choice(start, every) if start is not None or every is not None else ""
     preference, unreadable = _saved_preference()
     root, refused = _saved_root()
@@ -984,8 +1117,12 @@ def _run(*, reason: str, start: str | None = None, every: int | None = None,
         else:
             schedule = _schedule(root, preference)
         check = _check(root)
+    # After the schedule has registered the new name (SPEC-rename 3.2).
+    earlier_task = _replace_earlier_task(schedule)
+    carried = [carried_settings.sentence, earlier_task.sentence]
     cache = _clear_test_cache(checkout)
-    failed = list(dict.fromkeys(step.sentence for step in (moving, schedule, check, cache)
+    failed = list(dict.fromkeys(step.sentence for step in (carried_settings, moving, schedule,
+                                                           earlier_task, check, cache)
                                 if step is not None and step.failed))
     identity = "" if failed else program_identity()
     now = designation_now(root)
@@ -996,12 +1133,15 @@ def _run(*, reason: str, start: str | None = None, every: int | None = None,
             "program": identity, "ran_at": ran_at, "reason": reason, "schedule": schedule.key,
             "designated": now if isinstance(now, str) else None,
             "preference": _preference_record(preference),
-            "findings": list(check.findings), "failed": failed,
+            "findings": list(check.findings), "failed": failed, "carried": carried,
         })
     except OSError:
         failed.append(RECORD_UNWRITABLE.format(file=record_path()))
         identity = ""
-    lines = [moving.sentence] if moving is not None and not moving.failed else []
+    # The carry-over's sentences lead (a failed one is said here, once).
+    lines = list(carried)
+    if moving is not None and not moving.failed:
+        lines.append(moving.sentence)
     lines.append(schedule.sentence)
     if check.sentence != schedule.sentence:
         lines.append(check.sentence)
@@ -1015,7 +1155,7 @@ def _run(*, reason: str, start: str | None = None, every: int | None = None,
                         schedule_sentence=schedule.sentence, check=check.key,
                         check_sentence=check.sentence, schedule_host=schedule.host,
                         cache_sentence=cache.sentence if cache is not None else "",
-                        findings=check.findings,
+                        findings=check.findings, carried=tuple(carried),
                         failed=tuple(failed), program=identity, command=schedule.command,
                         xml=schedule.xml, lines=tuple(lines))
 
@@ -1023,12 +1163,16 @@ def _run(*, reason: str, start: str | None = None, every: int | None = None,
 def read_record() -> dict | None:
     """The note of the last run, or ``None`` when there is none a program
     could trust (missing, unreadable, not one object) - which is the same as
-    never having run."""
+    never having run. A note written before the rename has no ``carried``
+    (SPEC-rename 3.3): it reads as nothing carried over."""
     try:
         data = json.loads(record_path().read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return None
-    return data if isinstance(data, dict) else None
+    if not isinstance(data, dict):
+        return None
+    data.setdefault("carried", [])
+    return data
 
 
 #: What :func:`designation_now` says of a file that names no computer it
@@ -1172,7 +1316,8 @@ def main(argv: list[str]) -> int:
 
     parser = argparse.ArgumentParser(
         prog="python -m tracker.after_install",
-        description="Run every one-time step after installing or upgrading: register the "
+        description="Run every one-time step after installing or upgrading: carry over the "
+                    "settings and replace the scheduled task the earlier name left, register the "
                     "schedule on the computer that runs it, check the record, and clear the "
                     "test cache earlier versions left.")
     parser.add_argument("--reason", choices=REASONS, default=REASON_SETUP,

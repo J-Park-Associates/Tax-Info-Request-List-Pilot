@@ -231,7 +231,7 @@ TOO_SMALL = Reason(
 TOO_LARGE = Reason(
     "too-large", "Too large to read ({size}). A person looks at it.",
     "Too large to read", firm_side=True,
-    firm_note=f"too large for the tracker to read; a person opens it, if at all, {OTHER_MACHINE}",
+    firm_note=f"too large for the app to read; a person opens it, if at all, {OTHER_MACHINE}",
 )
 PENDING_SYNC = Reason(
     "pending-sync", "cloud-only placeholder; waiting for OneDrive/Google Drive to sync",
@@ -561,7 +561,7 @@ IN_CONSOLIDATED_CLIENT = "included in your consolidated brokerage statement"
 #: Until 168 a request whose folder was not there said
 #: "request folder not found; the next pass creates it" - retired with the
 #: folder, because a request can no longer lack one.
-PERSONS_FOLDER = ("{folder} is a folder inside {prepared}. The tracker files into {prepared} "
+PERSONS_FOLDER = ("{folder} is a folder inside {prepared}. The app files into {prepared} "
                   "itself and counts nothing in this folder.")
 
 #: A reading that hit the safety stop (decision 137, B1.2; the owner's

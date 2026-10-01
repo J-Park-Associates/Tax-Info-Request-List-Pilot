@@ -244,12 +244,12 @@ STORE_OVERRIDE_NOT_ABSOLUTE = ENV_STORE + " must name a whole path, got {value!r
 STORE_OVERRIDE_IN_PROGRAM = (ENV_STORE + " names {path}, inside the program's own folder {program}; "
                              "client data never sits beside the program")
 STORE_OVERRIDE_NOT_LOCAL = (ENV_STORE + " names {path}, which is not on this computer's own disk; "
-                            "the tracker keeps its database only on a fixed disk")
+                            "the app keeps its database only on a fixed disk")
 #: What the command line says of a copy named inside the app's own folder
 #: (decision 186's review, N4): client data never lives in a code checkout,
 #: and ``rebuild`` would create it there.
 COPY_INSIDE_APP = ("{path} is inside the app's own folder {app}; a copy of the database is never "
-                   "kept there. Copy it into the tracker's data folder under a new name and name "
+                   "kept there. Copy it into the app's data folder under a new name and name "
                    "that instead")
 
 #: What this version of the code knows how to read, written into the file as
@@ -2548,7 +2548,7 @@ def _catching_up(conn: sqlite3.Connection, root: Path | str | None, engagement_d
 #: What the store says of a journal whose applied lines no longer chain to
 #: the digest it kept (decision 137, A3). The same shape as the refusal of a
 #: truncated journal: what happened, that nothing was applied, what to do.
-REWRITTEN = ("The record for {rel} was changed behind the tracker's back (line {line} onward "
+REWRITTEN = ("The record for {rel} was changed behind the app's back (line {line} onward "
              "no longer matches). Nothing was applied. " + ledger.RUN_RECOVER)
 
 
@@ -2638,7 +2638,7 @@ AN_EARLIER_LINE = "an earlier line"
 CLAIMS_THIS_MACHINE = ("Line {n} of the record for {rel} says it was written on this machine, and "
                        "this machine did not write it. Nothing was applied. " + ledger.RUN_RECOVER)
 NO_WRITER = ("Line {n} of the record for {rel} carries no writer - written by an older version of "
-             "the tracker or by hand. Nothing was applied. " + ledger.RUN_RECOVER)
+             "the app or by hand. Nothing was applied. " + ledger.RUN_RECOVER)
 FOREIGN = ("Line {n} of the record for {rel} was written on {host}; this machine is the one that "
            "writes (decision 159). Nothing was applied. " + ledger.RUN_RECOVER)
 #: What a rebuild says instead of losing what the checkpoint vouches for.
@@ -3944,7 +3944,7 @@ def verify(conn: sqlite3.Connection, held: sqlite3.Connection | None, root: Path
 #: The one spelling the command line refuses by name (decision 186): the
 #: store an earlier version kept beside the program.
 OLD_STORE_NAMED = ("{path} is the old database beside the program; it is no longer used and "
-                   "nothing was opened. The tracker's database is {store}. Delete the old one.")
+                   "nothing was opened. The app's database is {store}. Delete the old one.")
 
 
 def store_named(given: Path) -> Path | str | None:

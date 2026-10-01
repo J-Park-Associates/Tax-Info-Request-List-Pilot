@@ -139,7 +139,7 @@ SHORT_NAME_RESERVE = 12
 #: so a return's room is the same number at every run (pilot decision P29).
 TEMP_NAME_RESERVE = len("/x." + "9" * 10 + "." + "f" * 8 + ".tmp")
 #: What such a refusal says.
-PATH_TOO_LONG = ("the deepest file the tracker would write under {folder} would be {length} "
+PATH_TOO_LONG = ("the deepest file the app would write under {folder} would be {length} "
                  "characters, past the {limit} Windows allows; shorten the household or the return name")
 #: Readers with a documented limit shorter than Windows's, by extension,
 #: lower-case without the dot (decision 131). A working copy is written
@@ -727,7 +727,7 @@ NOT_A_HOUSEHOLD = ("{name} is not a household's folder (a household sits at <cli
 #: What a write the one door refuses is told (decision 188, R9): only a
 #: household's own client folder, its inbox and its year folders of
 #: originals are places the tracker writes in the tree a client is shared.
-OUTSIDE_CLIENT_PLACE = ("{path} is not a place the tracker writes for the household {household} "
+OUTSIDE_CLIENT_PLACE = ("{path} is not a place the app writes for the household {household} "
                         "in the tree its client is shared; nothing was written")
 
 

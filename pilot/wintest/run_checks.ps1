@@ -24,7 +24,17 @@ $Test     = Join-Path $env:USERPROFILE "PilotTest"
 $Results  = Join-Path $Test "results"
 $Log      = Join-Path $Results "run_checks.log"
 $Json     = Join-Path $Results "checks.json"
-$AppDir   = Join-Path $env:LOCALAPPDATA "Programs\Tax Document Tracker Pilot"
+$ProductName = "Tax Document Console"
+# The pilot's earlier name, tracker.settings.EARLIER_PRODUCT_NAME (a test holds
+# this copy equal to it). A new install goes to Programs\<new name>; a PC
+# upgraded from the earlier name keeps that program's own folder (P155,
+# SPEC-rename R2), so the new folder is looked for first, then the earlier one.
+$EarlierName = "Tax Document Tracker Pilot"
+$AppDir   = Join-Path $env:LOCALAPPDATA "Programs\$ProductName"
+if (-not (Test-Path $AppDir)) {
+    $earlierDir = Join-Path $env:LOCALAPPDATA "Programs\$EarlierName"
+    if (Test-Path $earlierDir) { $AppDir = $earlierDir }
+}
 New-Item -ItemType Directory -Force -Path $Results | Out-Null
 $checks = [ordered]@{}
 
@@ -175,7 +185,7 @@ Remove-Item Env:PYTHONIOENCODING
 $env:TRACKER_BUILD_NONINTERACTIVE = "1"
 $build = Run "cmd.exe" @("/c", "pilot\Build Pilot Installer.bat")
 Remove-Item Env:TRACKER_BUILD_NONINTERACTIVE
-$setup = Get-ChildItem "build-portable\installer\Tax-Document-Tracker-Pilot-Setup-*.exe" -ErrorAction SilentlyContinue |
+$setup = Get-ChildItem "build-portable\installer\Tax-Document-Console-Setup-*.exe" -ErrorAction SilentlyContinue |
          Sort-Object LastWriteTime -Descending | Select-Object -First 1
 # The named test files, collected now that the build is done
 foreach ($r in $running) {
@@ -194,10 +204,17 @@ Record "build" "PASS" "$($setup.FullName) SHA-256 $sha"
 # 6. Silent per-user install
 $instLog = Join-Path $Results "install.log"
 $p = Start-Process -FilePath $setup.FullName -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/LOG=`"$instLog`"" -Wait -PassThru
-$exe = Join-Path $AppDir "Tax Document Tracker Pilot.exe"
-$shortcut = Get-ChildItem "$env:APPDATA\Microsoft\Windows\Start Menu\Programs" -Recurse -Filter "Tax Document Tracker Pilot*.lnk" -ErrorAction SilentlyContinue | Select-Object -First 1
+# The folder is found again after the install, as the one that now holds the
+# program: on a first install neither existed when the script started, and an
+# earlier folder may hold only the settings an uninstall left.
+foreach ($name in @($ProductName, $EarlierName)) {
+    $dir = Join-Path $env:LOCALAPPDATA "Programs\$name"
+    if (Test-Path (Join-Path $dir "$ProductName.exe")) { $AppDir = $dir; break }
+}
+$exe = Join-Path $AppDir "$ProductName.exe"
+$shortcut = Get-ChildItem "$env:APPDATA\Microsoft\Windows\Start Menu\Programs" -Recurse -Filter "$ProductName*.lnk" -ErrorAction SilentlyContinue | Select-Object -First 1
 $uninst = Get-ChildItem "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall" -ErrorAction SilentlyContinue |
-          Where-Object { (Get-ItemProperty $_.PSPath -ErrorAction SilentlyContinue).DisplayName -like "Tax Document Tracker Pilot*" } | Select-Object -First 1
+          Where-Object { (Get-ItemProperty $_.PSPath -ErrorAction SilentlyContinue).DisplayName -like "$ProductName*" } | Select-Object -First 1
 $installed = ($p.ExitCode -eq 0) -and (Test-Path $exe) -and [bool]$shortcut -and [bool]$uninst
 Record "install" (Verdict $installed) "exit $($p.ExitCode); program $(Test-Path $exe); Start-menu shortcut $([bool]$shortcut); uninstall entry $([bool]$uninst); per-user, no admin prompt"
 

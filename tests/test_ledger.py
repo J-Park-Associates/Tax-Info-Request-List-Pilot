@@ -890,7 +890,7 @@ def test_a_line_of_a_newer_format_is_refused_by_name(bare):
         f'"{ledger.FORMAT_KEY}": {ledger.RECORD_FORMAT + 1}'.encode())
     path.write_bytes(newer)
     with pytest.raises(ledger.LedgerError,
-                       match=f"newer version of the tracker \\(format {ledger.RECORD_FORMAT + 1}\\)"):
+                       match=f"newer version of the app \\(format {ledger.RECORD_FORMAT + 1}\\)"):
         ledger.read_events(bare)
     with engagement_lock(bare), pytest.raises(ledger.LedgerError, match="newer version"):
         ledger.append(bare, ledger.new(ledger.SCANNED))

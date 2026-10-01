@@ -20,6 +20,14 @@ const REPO_ROOT = path.resolve(__dirname, "..");
 const PKG = require("./package.json");
 const PRODUCT_NAME = PKG.productName;
 const API_NAME = PKG.config.apiName;
+// Electron keeps the page's own storage (the column widths, the cached terms
+// and tour answers) in its userData folder, which it names after productName.
+// The rename to Tax Document Console (P155) would silently start a new, empty
+// folder, so the folder keeps the earlier name, package.json's
+// config.userDataName (SPEC-rename R4): nothing to copy or move. Set before
+// anything asks for a path and before the single-instance lock, which
+// Electron keys on this folder, so the lock is the same across the upgrade.
+app.setPath("userData", path.join(app.getPath("appData"), PKG.config.userDataName));
 
 // Portable build: the PyInstaller-frozen API executable (package.json's
 // config.apiName) ships inside resources/. From source, the app's private
@@ -96,10 +104,10 @@ let killedWriteNote = "It May Be Partly Done.";
 let killedRead = "Stopped: Ran Too Long.";
 let writingCommands = new Set();   // vocab.writing_commands, once seen
 let killedAt = "It Was on {household}: {name}.";
-let noReply = "No Reply From the Tracker";
-let couldNotStart = "The Tracker Could Not Start";
+let noReply = "No Reply From the App";
+let couldNotStart = "The App Could Not Start";
 let couldNotSend = "Could Not Send; Nothing Changed";
-let noLog = "Tracker Failed";
+let noLog = "App Failed";
 // The error log beside the tracker's database, as the API reports it
 // (vocab.shell.error_log): the shell never builds that path, and never
 // writes a log beside the program or in the settings folder (decision
@@ -109,8 +117,10 @@ let noLog = "Tracker Failed";
 let errorLog = null;
 // The fallback (Jason, 2026-09-29): with no log named, a failure is still
 // SAVED, in this one file in a LOCAL, NON-ROAMING per-user folder -
-// %LOCALAPPDATA%\Tax Document Tracker Pilot\error.log on Windows (Jason's
-// ruling: not %APPDATA%, which roams with a domain profile) - not the data
+// %LOCALAPPDATA%\<productName>\error.log on Windows (Jason's ruling: not
+// %APPDATA%, which roams with a domain profile; on a PC upgraded from the
+// earlier name, %LOCALAPPDATA%\Tax Document Tracker Pilot may still hold an
+// earlier log, which nothing here reads or moves - P155) - not the data
 // home (nothing here creates a folder the data-home rules deny to a package;
 // that one is tax-document-tracker-pilot, with hyphens), not beside the
 // program, not in the settings folder. Its text may name a client: it stays
@@ -413,7 +423,7 @@ function spawnTracker(args, payload, onProgress, onEnded) {
 // refusal - a file name on the page, never a new path.
 async function openPath(p, reveal) {
   if (typeof p !== "string" || !openable.has(p)) {
-    return "That path is not one the tracker reported; nothing was opened.";
+    return "That path is not one the app reported; nothing was opened.";
   }
   return openChecked(p, openable.get(p), reveal === "reveal");
 }

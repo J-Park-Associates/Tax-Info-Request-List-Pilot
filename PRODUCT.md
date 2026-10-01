@@ -16,7 +16,7 @@ Staff at a CPA firm (J Park & Associates first, then a small group of pilot
 firms) who prepare individual and business tax returns. In season they track
 which documents each client has sent, check the files the system could not
 place, and remind clients about what is still missing. A firm keeps roughly
-200 to 500 households in the tracker in a season (Jason, 2026-09-29).
+200 to 500 households in the app in a season (Jason, 2026-09-29).
 
 ## Product Purpose
 

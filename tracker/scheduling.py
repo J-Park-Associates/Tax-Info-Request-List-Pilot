@@ -753,7 +753,7 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser(
-        description="Generate the scheduled job that runs the tracker unattended"
+        description="Generate the scheduled job that runs the app unattended"
     )
     parser.add_argument(SETTINGS_FLAG, default="", metavar="FOLDER",
                         help=f"the app's settings folder, whose {SETTINGS_FILENAME} names the clients "
@@ -775,7 +775,7 @@ if __name__ == "__main__":
                         help="write to this file instead of standard output")
     parser.add_argument(INSTALL_FLAG, action="store_true",
                         help="also register the task with Task Scheduler (Windows); the task's file "
-                             f"goes into the tracker's data folder unless {OUT_FLAG} names another")
+                             f"goes into the app's data folder unless {OUT_FLAG} names another")
     ns = parser.parse_args()
     if ns.install and ns.format != FORMAT_XML:
         parser.error(f"{INSTALL_FLAG} needs {FORMAT_FLAG} xml")

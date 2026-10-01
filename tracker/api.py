@@ -393,8 +393,8 @@ _RUNNING: dict = {"command": ""}
 USAGE = "usage: tracker.api {commands}"
 #: What an error the tracker did not expect is said as: its class and code,
 #: never its message, and where its detail went.
-FAILED = ("The tracker hit an error it did not expect ({kind}). What it finished is on the record; "
-          "the details are in {log} beside the tracker's database.")
+FAILED = ("The app hit an error it did not expect ({kind}). What it finished is on the record; "
+          "the details are in {log} beside the app's database.")
 #: The notices' three buttons (decision 193, ruling 12). Static in
 #: ``index.html``'s template, pinned to these word for word, because a
 #: notice must work when the very first ``list`` fails, before any
@@ -442,15 +442,15 @@ SHELL_KILLED_WRITE = "Change Stopped: Ran Too Long."
 SHELL_KILLED_WRITE_NOTE = "It May Be Partly Done."
 SHELL_KILLED_READ = "Stopped: Ran Too Long."
 SHELL_KILLED_AT = "It Was on {household}: {name}."
-SHELL_NO_REPLY = "No Reply From the Tracker"
-SHELL_COULD_NOT_START = "The Tracker Could Not Start"
+SHELL_NO_REPLY = "No Reply From the App"
+SHELL_COULD_NOT_START = "The App Could Not Start"
 SHELL_COULD_NOT_SEND = "Could Not Send; Nothing Changed"
 #: With no error log named (no data folder yet) the reply says just this, two
 #: words, and the details are saved only in the shell's fallback log in
 #: Electron's per-user app folder, never shown: the shell never writes a log
 #: beside the program (decision 186's rebase review, MF2; Jason, 2026-09-29;
 #: SPEC-shell 11.2).
-SHELL_NO_LOG = "Tracker Failed"
+SHELL_NO_LOG = "App Failed"
 #: An error of the page's own, said by its class; its message goes to the
 #: error log through the shell (the review's S5).
 PAGE_ERROR = "The App Hit an Error"
@@ -605,7 +605,7 @@ ENGAGEMENT_FLAG = "--engagement"
 HOUSEHOLD_HEADING = "Household"
 HOUSEHOLD_NAME_LABEL = "Household"
 MEMBERS_LABEL = "Shared With"
-MEMBERS_HELP = ("who this household's folder is meant to be shared with - the tracker cannot "
+MEMBERS_HELP = ("who this household's folder is meant to be shared with - the app cannot "
                 "read Drive's sharing, so this is the firm's own note")
 CONTACT_LABEL = "Contact"
 CONTACT_HELP = "the greeting name in every return's letter, filled into each return when it is made"
@@ -701,7 +701,7 @@ CLIENT_TYPE_FORMS = {
     "nonprofits": ["990"],
 }
 
-MISFITS_HEADING = "Folders the Tracker Leaves Alone"
+MISFITS_HEADING = "Folders the App Leaves Alone"
 MISFITS_NOTE = ("Each is listed with the one reason it does not fit the layout; nothing in it "
                 "is ever read, moved or renamed.")
 TWO_OPEN_YEARS_NOTE = "Two Years Open; Sorting Paused"
@@ -721,7 +721,7 @@ SHARING_HEADING = "Before the client can drop anything"
 MARK_SHARED_LABEL = "Mark as Shared"
 SHARED_ON_LINE = "Shared {day}"
 NOT_YET_SHARED_LINE = "Not Yet Marked as Shared"
-SHARING_NOTE = ("The tracker cannot see Drive's sharing. The two grants are the firm's to make, once; "
+SHARING_NOTE = ("The app cannot see Drive's sharing. The two grants are the firm's to make, once; "
                 "the year folders are view-only through the household folder, and nothing is ever re-shared.")
 #: Why *Mark as shared* refuses: the inbox's link is the one part of the
 #: three the tracker can see was done, so it is the one part it insists on.
@@ -974,7 +974,7 @@ assert (sorted((*PLAIN_COLUMNS, *ROUTING_COLUMNS)) == sorted(field for _, field 
     "the plain view and the routing fold must share the request list's columns between them"
 #: The one switch that shows a row's routing columns (S5).
 EDITOR_ADVANCED_LABEL = "Advanced"
-ROUTING_HELP = ("How the tracker recognises this document when it arrives. A save checks these "
+ROUTING_HELP = ("How the app recognises this document when it arrives. A save checks these "
                 "the same way whether the fold is open or not.")
 #: Edit Request List pressed while the state on screen is still another
 #: return's, after reading it again (decision 201, the review's S4): said
@@ -1075,7 +1075,7 @@ def _new_return_dir(root: Path, household: str, year: int, return_name: str,
 #: there and holds no record (decision 137, M1): the tracker did not make
 #: it, so it is a misfit, and a misfit is left alone. Refused before
 #: anything is written.
-HOUSEHOLD_NOT_OURS = ("A folder named '{name}' is already there and the tracker did not make it. "
+HOUSEHOLD_NOT_OURS = ("A folder named '{name}' is already there and the app did not make it. "
                       "Choose another name, or move that folder aside first. Nothing was changed.")
 def _engagement_dir(argv: list[str]) -> Path:
     """The engagement a command is about: ``ENGAGEMENT_FLAG <folder>``.
@@ -1205,7 +1205,7 @@ PATH_KINDS: dict[str, str] = {
 OVERRIDE_LABELS: tuple[str, ...] = (
     "Client Confirmed Final Version",
     "Correct; Only Formatting Flagged",
-    "Received Outside the Tracker",
+    "Received Outside the App",
     "Prior-Year or Substitute Document Accepted",
 )
 
@@ -1346,11 +1346,11 @@ SCREEN: dict = {
     },
     # The side panel (pilot SPEC-lists 15, P153, P154): the brand band, the
     # section headings, Settings, and the pages that are not built yet,
-    # each marked and doing nothing but say so. New words name the app
-    # "Tax Document Console" (P155).
+    # each marked and doing nothing but say so. The product is named from
+    # its one home, app/package.json's productName (P155, SPEC-rename R1).
     "side": {
         "brand": "J Park & Associates",
-        "product": "Tax Document Console",
+        "product": product_name(),
         "types": "Client Types",
         "workspace": "Workspace",
         "settings": "Settings",
@@ -3831,7 +3831,7 @@ DUPLICATE_HOUSEHOLD = ("A household with that name is already in the list, as '{
                        "the city. Nothing was changed.")
 #: What it is told when the name is a client folder no household owns.
 CLIENT_FOLDER_TAKEN = ("A folder with that name is already in the clients' tree and no household owns "
-                       "it. It is listed under Folders the Tracker Leaves Alone; give it back to its "
+                       "it. It is listed under Folders the App Leaves Alone; give it back to its "
                        "household or move it aside first. Nothing was changed.")
 
 
@@ -5574,7 +5574,12 @@ def _cmd_after_install(argv: list[str]) -> dict:
 #: that storage showed the terms again (the pilot 0.1 Windows check).
 PILOT_RECORD_FILENAME = "pilot-record.json"
 PILOT_RECORD_REFUSED = ('pilot-record takes {{}} to read, or "terms" as the version of the terms '
-                        'accepted, or "tour_seen": true; not {asked}.')
+                        'accepted with "signed_by" as the name typed to sign them (not blank, '
+                        'at most {longest} characters), or "tour_seen": true; not {asked}.')
+#: The longest name the terms' sign-off keeps (P188): a name, not a document.
+SIGNED_BY_LONGEST = 200
+#: What a refusal shows in place of the typed name, which it never echoes.
+SIGNED_BY_WITHHELD = "(name withheld)"
 
 
 def _terms_version(value: object) -> bool:
@@ -5582,6 +5587,12 @@ def _terms_version(value: object) -> bool:
     it: a positive whole number, sent as a number or its digits."""
     text = str(value) if isinstance(value, (int, str)) and not isinstance(value, bool) else ""
     return text.isascii() and text.isdigit() and len(text) <= 6 and not text.startswith("0")
+
+
+def _signed_by(value: object) -> bool:
+    """Whether ``value`` is a name typed to sign the terms (P188): text that
+    is not blank once trimmed and no longer than ``SIGNED_BY_LONGEST``."""
+    return isinstance(value, str) and 0 < len(value.strip()) <= SIGNED_BY_LONGEST
 
 
 def _pilot_record_path() -> Path:
@@ -5600,30 +5611,53 @@ def _read_pilot_record() -> dict:
 
 def _cmd_pilot_record(argv: list[str]) -> dict:
     """The pilot's terms acceptance and "tour seen" (pilot P46): JSON on
-    stdin, ``{}`` to read, ``{"terms": "<version>"}`` when the terms are
-    accepted, ``{"tour_seen": true}`` when the tour is closed. Kept per
-    Windows account in the data home - per account, like the window's own
-    storage - so it asks no more of a person than the cache did, and
-    survives what the cache does not. Not a client record:
-    nothing here is held to the record checkpoint's root. Replies with the
-    record as it now stands: ``terms`` ("" when none) and ``tour_seen``."""
+    stdin, ``{}`` to read, ``{"terms": "<version>", "signed_by": "<name>"}``
+    when the terms are accepted, ``{"tour_seen": true}`` when the tour is
+    closed. Kept per Windows account in the data home - per account, like
+    the window's own storage - so it asks no more of a person than the cache
+    did, and survives what the cache does not. Not a client record:
+    nothing here is held to the record checkpoint's root.
+
+    The name typed to sign the terms (P188) comes only with the terms it
+    signs, and is kept trimmed as ``terms_signed_by`` beside the acceptance
+    time; a blank or oversized one refuses the whole request, so nothing is
+    written. An acceptance sent without a name - the page bringing the
+    record level with an acceptance its cache already held - is kept with
+    none, and a name kept from an earlier acceptance is dropped with it,
+    since it signed that one. It stays in the data home; nothing is sent.
+
+    Replies with the record as it now stands: ``terms``, ``terms_signed_by``
+    and ``terms_accepted_at`` ("" when none) and ``tour_seen``."""
     spec = _read_spec()
-    terms, seen = spec.get("terms"), spec.get("tour_seen")
+    terms, seen, signed = spec.get("terms"), spec.get("tour_seen"), spec.get("signed_by")
     asked = {key: value for key, value in spec.items() if key in ("terms", "tour_seen")}
-    if (set(spec) - {"terms", "tour_seen"} or (seen is not None and seen is not True)
-            or (terms is not None and not _terms_version(terms))):
-        raise ManifestError(PILOT_RECORD_REFUSED.format(asked=json.dumps(spec, sort_keys=True)))
+    if (set(spec) - {"terms", "tour_seen", "signed_by"} or (seen is not None and seen is not True)
+            or (terms is not None and not _terms_version(terms))
+            or ("signed_by" in spec and (terms is None or not _signed_by(signed)))):
+        # The rest of the request is echoed; the typed name never is, since
+        # the refusal is what the page writes to the error log.
+        shown = {**spec, "signed_by": SIGNED_BY_WITHHELD} if "signed_by" in spec else spec
+        raise ManifestError(PILOT_RECORD_REFUSED.format(
+            longest=SIGNED_BY_LONGEST, asked=json.dumps(shown, sort_keys=True)))
     record = _read_pilot_record()
     if asked:
         now = dt.datetime.now().isoformat(timespec="seconds")
         if terms is not None:
             record.update(terms=str(terms), terms_accepted_at=now)
+            if signed is None:
+                record.pop("terms_signed_by", None)
+            else:
+                record["terms_signed_by"] = signed.strip()
         if seen:
             record.update(tour_seen=True, tour_seen_at=now)
         path = _pilot_record_path()
         path.parent.mkdir(parents=True, exist_ok=True)
         write_json_atomically(path, record)
-    return {"terms": str(record.get("terms") or ""), "tour_seen": record.get("tour_seen") is True}
+    name, when = record.get("terms_signed_by"), record.get("terms_accepted_at")
+    return {"terms": str(record.get("terms") or ""),
+            "terms_signed_by": name if isinstance(name, str) else "",
+            "terms_accepted_at": when if isinstance(when, str) else "",
+            "tour_seen": record.get("tour_seen") is True}
 
 
 def _cmd_acknowledge_foreign(argv: list[str]) -> dict:

@@ -476,7 +476,7 @@ def test_the_registry_command_line_prints_households_returns_and_misfits(root, c
     assert "1 household(s)" in printed
     assert TEST_HOUSEHOLD in printed
     assert f"{TEST_HOUSEHOLD} 2025 1040 - Smith" in printed
-    assert "Folders the tracker leaves alone (1)" in printed
+    assert "Folders the app leaves alone (1)" in printed
     assert MISFIT_NOT_A_TREE.format(clients=CLIENTS_TREE, private=PRIVATE_TREE) in printed
 
 

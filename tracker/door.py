@@ -206,7 +206,7 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(
         description="Say what kind of place a path is under the clients root, and whether "
-                    "the tracker may write there for a household (it writes nothing)")
+                    "the app may write there for a household (it writes nothing)")
     parser.add_argument("path", help="the path to place")
     parser.add_argument("--root", default=None, help="the clients root (default: the saved one)")
     parser.add_argument("--household", default=None,

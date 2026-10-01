@@ -1,18 +1,23 @@
-# Pilot 0.2 - release steps
+# Pilot 0.3 - release steps
 
 Everything that can be done in the cloud is done. Builds A, B and C are
 merged into `main`, each after an independent review and a fix round
 (`pilot/reviews/review-1.md`, `review-2.md`), followed by the restart and
 after-install fixes (P46, P47) and the Windows contrast-theme support (P50,
-pull request #11). The badge in `pilot-content.js` reads **0.2**, so this is
-the 0.2 release; the earlier 0.1 was only ever a test build. What is left
+pull request #11), the four 0.3 lanes (P140) and the rename to Tax Document
+Console (P155). The badge in `pilot-content.js` reads **0.3**, so this is the
+0.3 release; the earlier 0.1 was only ever a test build. There is no 0.2 tag
+(P140): 0.2 failed its Windows check, and 0.3 fixes what it found. What is left
 needs Windows, so it is Jason's, on the office PC. Allow about 45 minutes.
 
-## What is in 0.2
+## What is in 0.3
 
-- **Its own names on the PC:** program *Tax Document Tracker Pilot*, data
+- **Its own names on the PC:** program *Tax Document Console*, data
   folder `%LOCALAPPDATA%\tax-document-tracker-pilot`, scheduled task
-  *Tax Document Tracker Pilot* - it cannot touch the real product.
+  *Tax Document Console* - it cannot touch the real product. A PC that had
+  the earlier name, *Tax Document Tracker Pilot*, is upgraded in place: its
+  settings and schedule are kept, and the earlier task is replaced at the
+  app's first start (P155).
 - **Pilot badge, terms screen and guided tour** (approved wording, P20/P22).
 - **Schedule setting:** the Schedule button - on/off, first run time, how
   often - saved per computer and used everywhere the schedule is registered.
@@ -56,12 +61,14 @@ Use a Windows account that does not run the firm's real schedule, and a
    anything fails on the office PC, stop and hand it to the orchestrator.
 4. **Build:** double-click `pilot\Build Pilot Installer.bat`. It refuses an
    uncommitted tree, builds the app, compiles the installer, and prints its
-   path (`build-portable\installer\Tax-Document-Tracker-Pilot-Setup-0.2.exe`)
+   path (`build-portable\installer\Tax-Document-Console-Setup-0.3.exe`)
    and SHA-256. Keep that hash.
 5. **Install and try it** (the checklist testers will follow):
    - SmartScreen warns (unsigned): *More info* -> *Run anyway*.
-   - First launch: the terms screen shows; Escape does nothing; tick the box,
-     *I agree. Continue.*; the tour starts. Walk all 11 steps.
+   - First launch: the terms screen shows; Escape does nothing; tick the box;
+     *Sign and Accept* stays greyed until a name is typed (spaces alone do
+     not count); type a name, *Sign and Accept*; the tour starts. Help,
+     Terms then shows *Signed by {name} on {date}*. Walk all 11 steps.
    - Choose a clients folder (the copy), create a household, drop a W-2, a
      1099, a phone photo and an unknown document into *Drop files here*,
      press **Scan**. Check: originals moved to the year folder, named copies
@@ -69,12 +76,12 @@ Use a Windows account that does not run the firm's real schedule, and a
    - **Schedule** button: turn it off -> the task disappears from Task
      Scheduler; turn it on at a new time -> the task shows that time; restart
      the app -> the choice is kept.
-   - The header shows **Pilot edition 0.2**; the Tour button replays the tour.
-6. **Uninstall** (Settings -> Apps -> Tax Document Tracker Pilot). Check: the
+   - The header shows **Pilot edition 0.3**; the Tour button replays the tour.
+6. **Uninstall** (Settings -> Apps -> Tax Document Console). Check: the
    scheduled task is gone; the clients folder copy, `settings.json` beside
    where the program was, and `%LOCALAPPDATA%\tax-document-tracker-pilot`
    are still there.
-7. **Tag and send:** `git tag pilot-0.2 && git push origin pilot-0.2` (never a
+7. **Tag and send:** `git tag pilot-0.3 && git push origin pilot-0.3` (never a
    `v...` tag). Send testers the installer, its SHA-256 and
    `pilot/Tester Guide.md`. Problems come back to admin@jparkassociates.com.
 
