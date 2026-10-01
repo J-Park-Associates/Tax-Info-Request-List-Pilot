@@ -711,7 +711,7 @@ function createWindow() {
     // 1100 px budget (SPEC-firm-columns 14, SPEC-shell's minimum window)
     // assumes the page is 1100 wide, and without this Windows counts its
     // frame in the 1100, leaving the page 1084 and the Overview list a
-    // sideways scrollbar. The window is drawn 16 px wider than the page.
+    // sideways scrollbar. The window is drawn larger than the page by its frame (on the office PC about 16 px wider and 39 px taller).
     useContentSize: true,
     width: 1400,
     height: 900,

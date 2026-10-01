@@ -12,13 +12,13 @@ Status: written 2026-10-01, 4:10 AM Pacific, by the orchestrator, for a separate
 
 ## Rulings
 
-- **R1. The window's sizes are its page's sizes.** `useContentSize: true` in the `BrowserWindow` options at `app/main.js:709-713`, so `width`, `height`, `minWidth` and `minHeight` (1400, 900, 1100, 700) are the page's. Reason: one line makes every page's 1100 px budget true at once; shrinking a column instead would fix one list and leave the assumption wrong everywhere. The window becomes 16 px wider than the page (the frame), as Windows draws it.
+- **R1. The window's sizes are its page's sizes.** `useContentSize: true` in the `BrowserWindow` options at `app/main.js:709-713`, so `width`, `height`, `minWidth` and `minHeight` (1400, 900, 1100, 700) are the page's. Reason: one line makes every page's 1100 px budget true at once; shrinking a column instead would fix one list and leave the assumption wrong everywhere. The window becomes larger than the page by its frame (about 16 px wider and 39 px taller on the office PC), as Windows draws it.
 - **R2. A test pins it.** A test in the file that already reads `main.js`'s window options (the builder finds it; expect `tests/test_shell_menu.py` or `tests/test_shell.py`) asserts `useContentSize: true` beside `minWidth: 1100`, named as its claim.
 - **R3. The words follow.** Where a SPEC or the runbook says "1100 px minimum window", nothing changes: it now means what it says. The P179 note in SPEC-firm-columns item 14 gains one sentence: the budget is the page's, and P203 makes the minimum window's page 1100.
 
 ## What staff will notice
 
-At the smallest window, no sideways scrollbar under the lists; the window itself is 16 px wider than before at its smallest and by default.
+At the smallest window, no sideways scrollbar under the lists; the window itself is about 16 px wider and 39 px taller than before, at its smallest and by default.
 
 ## Files and owning tests
 
