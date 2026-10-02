@@ -810,7 +810,7 @@ belong together (fewer buttons, and a tooltip on each that stays).
 `pip install -r requirements.lock` fails in the cloud container (a wheel will
 not build) and the system `cryptography` breaks `pypdf`. Use a fresh virtual
 environment and install only what the affected tests need:
-`pytest==9.1.1 ruff==0.14.3 pypdf==6.19.0 openpyxl==3.1.5`, plus
-`pdfplumber==0.11.10 pdfminer.six==20260107 pillow==12.3.0 pypdfium2==5.11.0
+`pytest==9.1.1 ruff==0.16.9 pypdf==6.19.0 openpyxl==3.1.5`, plus
+`pdfplumber==0.11.10 pdfminer.six==20260107 pillow==12.3.0 pypdfium2==5.13.0
 charset-normalizer==3.5.1 cryptography==50.0.1 cffi==2.1.1 pycparser==3.0`
 (`test_api` and `test_build` fail without them).
