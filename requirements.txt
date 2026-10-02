@@ -16,8 +16,8 @@ olefile==0.47
 # Pictures and scans: Pillow opens a photo (pillow-heif an iPhone's HEIC),
 # pypdfium2 renders a scanned PDF's page for the reader.
 pillow==12.3.0
-pillow-heif==1.7.0
-pypdfium2==5.11.0
+pillow-heif==1.8.0
+pypdfium2==5.13.0
 
 # The reader (decision 169): RapidOCR on ONNX Runtime, with its models
 # shipped inside the app - nothing to install on the machine, nothing
@@ -53,4 +53,4 @@ requests==2.34.2
 
 # Dev / test
 pytest==9.1.1
-ruff==0.14.3
+ruff==0.16.9
