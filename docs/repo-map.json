@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 435,
     "edges": 1195,
-    "reused": 375
+    "reused": 387
   },
   "node_types": [
     "artifact",
@@ -4766,7 +4766,7 @@
       "id": "pilot/HANDOFF.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "378ee0f29ca43028",
+      "sha256": "b37061ccd1bfae22",
       "lines": 816
     },
     {
@@ -4864,7 +4864,7 @@
       "id": "pilot/SPEC-glass.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "c46669188ca523c8",
+      "sha256": "9a9a09b990170cff",
       "lines": 986
     },
     {
