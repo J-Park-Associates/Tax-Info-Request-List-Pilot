@@ -1,6 +1,6 @@
 {
   "schema": 2,
-  "generated": "2026-10-01",
+  "generated": "2026-10-02",
   "generator": "tools/repo_map.py",
   "generator_sha256": "22c7b60a1d198289",
   "module_table_sha256": "3aa0cd2ccb5726c2",
@@ -4759,8 +4759,8 @@
       "id": "pilot/DECISIONS.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "bf0457f72546bdf9",
-      "lines": 200
+      "sha256": "c282bd30243b419d",
+      "lines": 201
     },
     {
       "id": "pilot/HANDOFF.md",
