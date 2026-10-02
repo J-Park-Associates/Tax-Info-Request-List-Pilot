@@ -700,7 +700,7 @@ from the section below.
     a `.venv` symlink, and `TRACKER_STORE` / `TRACKER_DATA_HOME` pointed at a
     short scratch root (the engine measures the deepest path against 260).
 
-## Status (2026-09-29, review session)
+## Status (2026-09-29, review session) - history, superseded by the sections below
 
 Builds A, B and C are reviewed, fixed and merged into `main` (7a8432e,
 cca50a7, 96853df; reviews `pilot/reviews/review-1.md`, `review-2.md`). The
@@ -709,7 +709,7 @@ not go to an outside firm until the five blocking findings are fixed**; the
 work that closes them is the "Before 0.1 ships" list in
 [`RECOMMENDATIONS.md`](RECOMMENDATIONS.md).
 
-## Waiting on Jason
+## Waiting on Jason (2026-09-29, review session) - history, answered since
 
 1. Read [`RECOMMENDATIONS.md`](RECOMMENDATIONS.md). For each of R-1 to R-7
    choose one row of its decision table and number it into

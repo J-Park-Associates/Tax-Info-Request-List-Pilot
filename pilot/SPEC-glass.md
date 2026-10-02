@@ -74,7 +74,7 @@ Checked 2026-09-29 against the code and the release notes:
 
 | Fact | Where |
 |---|---|
-| The app runs Electron `43.7.1` | `app/package.json` |
+| The app ran Electron `43.7.1` when this SPEC was written (44.4.5 since 2026-10-01) | `app/package.json` |
 | Electron 43 ships **Chromium 150** | electronjs.org/blog/electron-43-0 |
 | `backdrop-filter` (blur, saturate, brightness) | Chromium 76+ |
 | `backdrop-filter: url(#id)` running an SVG filter, `feDisplacementMap` included, on the backdrop | Chromium only; this app never runs elsewhere |
