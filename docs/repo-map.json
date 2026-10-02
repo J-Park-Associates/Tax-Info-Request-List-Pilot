@@ -15,9 +15,9 @@
     "a person sends the draft"
   ],
   "counts": {
-    "nodes": 431,
+    "nodes": 435,
     "edges": 1195,
-    "reused": 381
+    "reused": 375
   },
   "node_types": [
     "artifact",
@@ -66,7 +66,7 @@
       "id": ".github/workflows/audit.yml",
       "type": "workflow",
       "layer": "ci",
-      "sha256": "1c060f7d778ec24f",
+      "sha256": "5fd50349342273b4",
       "lines": 42,
       "role": "The weekly supply-chain audit (decision 191): on a schedule and by hand only, on ubuntu-latest, runs `python tools/lockfiles.py audit` with no install at all.",
       "notes": "Never on a push or a pull request, so it adds no CI to any change (the cost rule). Scheduled workflows run from the default branch. Detection, not prevention: the hashes stop a replaced file; this finds a known advisory in a file we chose, and a stale native engine."
@@ -75,7 +75,7 @@
       "id": ".github/workflows/build.yml",
       "type": "workflow",
       "layer": "ci",
-      "sha256": "0644476c928cb75e",
+      "sha256": "9072663a2755c58b",
       "lines": 238,
       "role": "Builds the portable package from a `v*` tag and nothing else (decision 191) by running Build App.bat itself on a Windows runner, proves the frozen executable answers in both of its modes, prints the build-info file, zips the package, publishes its SHA-256 beside it and on the run's summary page, and uploads the zip and the .sha256 as the run's artifact for seven days.",
       "notes": "Decision 78. It runs the batch file rather than re-implementing the build, because a second copy of the build is the one that drifts; tests/test_build.py refuses a workflow that names PyInstaller, the packager or the copy itself. The batch file pauses for a person at every exit, so it reads one documented switch that skips the waits, named in its own header and set here. The two smoke checks run the frozen executable, not the source: `list` with the shell's two environment variables set, which must answer JSON rather than a traceback on an install with no clients root yet, and one dry pass over a scratch clients root tests/samples.py builds, which walks filing, routing, scanning and drafting. Since decision 169 the root holds a scan only the reader can file (SCRATCH_SCAN), and the step compares the package's engagement line with the source's own dry pass and reads the run log's first line for reader=processor, so a package missing the reader or a model fails here. It installs the tree in the two steps every install makes (R-11): requirements.lock then rapidocr with --no-deps from requirements-nodeps.lock, both hash-checked (decision 191). Where the package landed is read back out of the batch file's own OUT/PLATFORM/ARCH and app/package.json's two names, so no path here is a second copy of one. Not on push: a freeze, an npm install, an Electron download and a few hundred megabytes of artifact are not what a commit should cost. Decision 191: no workflow_dispatch - v* tags are protected, so a package is the build of reviewed code - and a job guard `if: startsWith(github.ref, 'refs/tags/v')`; the checksum step runs after both smoke checks, and the runbook compares the summary page's hash with certutil -hashfile before a stick is written (transport, not provenance). Its checkout keeps no credentials (F-12). Decision 186: a step right after the dependencies gives every run of the tracker in the job a data folder under the runner's temp (TRACKER_DATA_HOME through GITHUB_ENV, since a job-level env cannot read the runner context), and a step before the zip fails the build when the package holds any name the data home or the settings folder holds (the store and its side files, runs.log, pass-order.json, tax-tracker.xml, ocr-scratch, the data home's own name, settings.json), each pinned to its constant by tests/test_build.py."
@@ -93,7 +93,7 @@
       "id": ".github/workflows/gate.yml",
       "type": "workflow",
       "layer": "ci",
-      "sha256": "7443cee687fedc98",
+      "sha256": "31810d0153eca64d",
       "lines": 100,
       "role": "The gate's steps, written once: the test suite, the linter, `repo_map.py check`, `vocab_report.py check` and `node --check` on the three Electron files, on whichever runner and interpreter the caller names. Called by both of ci.yml's jobs.",
       "notes": "Decision 122. `on: workflow_call` with two required string inputs, os and python-version; the job carries timeout-minutes: 60, the ceiling that stops a hung job (decision 207: the Windows suite measured 26 to 28 minutes on main on 2026-09-26, 159's tests took a healthy run past the old 30 and near 45, and a cut-off run is billed in full; Jason set 60). It exists because a job's own `if:` cannot see the matrix, which makes ci.yml two jobs rather than one conditional matrix - and the steps written out in each of them would be two copies of the gate, the second one to drift. Its job is named for the runner and the interpreter it was given, so the check names read as they did before the split. Every step after the suite reports whatever the suite did, and keeps its point: a stale map and a failing test are separate problems, and seeing both in one run beats finding the second after fixing the first. Decision 137 (B3): every action is pinned by a full commit SHA with its tag beside it (tests/test_build.py holds every workflow to it). Decision 191: it installs requirements.lock then requirements-nodeps.lock with --require-hashes, using the runner's own pip (no --upgrade pip), caches on the lock files, and its checkout keeps no credentials (F-12)."
@@ -4136,14 +4136,14 @@
       "id": "app/package-lock.json",
       "type": "file",
       "layer": "desktop-app",
-      "sha256": "8c9f7672a74c479c",
+      "sha256": "c8cb6c4325e9bdd9",
       "lines": 720
     },
     {
       "id": "app/package.json",
       "type": "file",
       "layer": "desktop-app",
-      "sha256": "e35661856cdad8d0",
+      "sha256": "ab720acc820db93f",
       "lines": 19
     },
     {
@@ -4759,15 +4759,15 @@
       "id": "pilot/DECISIONS.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "1e5442aa43683cb4",
-      "lines": 199
+      "sha256": "bf0457f72546bdf9",
+      "lines": 200
     },
     {
       "id": "pilot/HANDOFF.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "6839403961cb6646",
-      "lines": 751
+      "sha256": "378ee0f29ca43028",
+      "lines": 816
     },
     {
       "id": "pilot/PLAN-ui.md",
@@ -4789,6 +4789,13 @@
       "layer": "docs",
       "sha256": "386b2502e72a05b3",
       "lines": 56
+    },
+    {
+      "id": "pilot/RECOMMENDATIONS.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "8159e2e6694d7759",
+      "lines": 309
     },
     {
       "id": "pilot/RELEASE.md",
@@ -5069,7 +5076,7 @@
       "id": "pilot/handoffs/landing-0.3.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "077098dbb690ea37",
+      "sha256": "210d1e9f16f812b1",
       "lines": 37
     },
     {
@@ -5724,11 +5731,25 @@
       "lines": 38
     },
     {
+      "id": "pilot/reviews/security-review.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "23ab66cc6ec37ff7",
+      "lines": 334
+    },
+    {
       "id": "pilot/reviews/stuck-tip-review.md",
       "type": "doc",
       "layer": "docs",
       "sha256": "da77975a625c10ba",
       "lines": 74
+    },
+    {
+      "id": "pilot/reviews/ux-review.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "bba61b69239c22d1",
+      "lines": 439
     },
     {
       "id": "pilot/reviews/wincheck-fixes-review.md",
@@ -5822,10 +5843,17 @@
       "lines": 26
     },
     {
+      "id": "pilot/wintest/results/RESULT-2026-09-28.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "b9cc665f2c2cac53",
+      "lines": 90
+    },
+    {
       "id": "requirements-build.txt",
       "type": "doc",
       "layer": "docs",
-      "sha256": "c5072d0d9c05fc4f",
+      "sha256": "a8fc27c145536454",
       "lines": 5,
       "role": "What Build App.bat's freeze needs beyond requirements.txt: the pinned PyInstaller. Installed from requirements-build.lock (with requirements.lock), by hash (decision 191)."
     },
@@ -5847,7 +5875,7 @@
       "id": "requirements.txt",
       "type": "doc",
       "layer": "docs",
-      "sha256": "63601bf3dcad92f6",
+      "sha256": "dcd55661976973d4",
       "lines": 56,
       "role": "Runtime and dev dependencies, pinned exactly (a guard refuses a range), including the reader's runtime closure (decision 169) - rapidocr itself is in requirements-nodeps.txt. The human-edited list of direct pins: nothing installs it directly; every install reads requirements.lock, the whole tree by version and by SHA-256 (decision 191).",
       "notes": "requirements-build.txt adds the pinned freezer on top for Build App.bat; api_entry.spec is the committed freeze and app/package-lock.json the committed Electron install, so a build is made from the commit rather than from whatever was current that day (decision 46). olefile (decision 143) reads an Outlook .msg; pinned here and in requirements.lock, and frozen by the portable build. Decision 169 (R-11): rapidocr's metadata asks for the GUI opencv-python, so its real runtime dependencies are listed here with opencv-python-headless, and rapidocr is installed afterwards with --no-deps from requirements-nodeps.lock - by Setup.bat, Build App.bat, gate.yml, build.yml and the README's setup alike (tests/test_build.py pins both steps everywhere). Two pins carry markers: onnxruntime-gpu on Windows and the plain onnxruntime elsewhere (R-11b, CI has no card), numpy 2.5.3 from Python 3.12 and 2.4.6 for the 3.11 floor (R-11a). pytesseract is gone. Decision 191: constraints.txt is gone; four lock files (requirements.lock, requirements-build.lock, requirements-nodeps.lock, requirements-gpu.lock - not mapped, the map takes no .lock files) carry each pin with the hash of every file PyPI publishes for it, and tools/lockfiles.py check (run by tests/test_lockfiles.py) fails when a pin here and its lock disagree. A pin moves here and in its lock together, then `python tools/lockfiles.py hash`."
@@ -5927,7 +5955,7 @@
       "id": "pkg:pypdfium2",
       "type": "package",
       "layer": "external",
-      "pin": "5.11.0 (requirements.txt)"
+      "pin": "5.13.0 (requirements.txt)"
     },
     {
       "id": "pkg:pytest",
