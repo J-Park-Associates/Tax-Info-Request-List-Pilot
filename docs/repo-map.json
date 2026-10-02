@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 435,
     "edges": 1195,
-    "reused": 387
+    "reused": 388
   },
   "node_types": [
     "artifact",
@@ -7269,8 +7269,8 @@
       "id": "tests/test_build.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "9dcca4a6432a4daf",
-      "lines": 766,
+      "sha256": "a98b055beb2f9ebf",
+      "lines": 771,
       "exports": [
         "BUILD_ENVIRONMENT",
         "BUILD_LOCKS",

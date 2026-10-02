@@ -416,11 +416,16 @@ def test_the_build_fails_when_a_frozen_version_differs_from_the_locks():
     script = read(BUILD_SCRIPT)
     assert re.search(r"pip install --require-hashes -r requirements\.lock -r requirements-build\.lock", script)
 
-    # The rule, on the freeze of 09/17.
+    # The rule, on the freeze of 09/17. That build froze 5.13.0 against a
+    # pinned 5.11.0; since the pin itself moved to 5.13.0 (2026-10-01) the
+    # replay freezes whichever of the two the locks do not hold.
+    locked_pdfium = pinned["pypdfium2"]
+    stray = "5.13.0" if locked_pdfium != "5.13.0" else "5.11.0"
     old = ("Commit:   a1d261b\n\nPython packages frozen (pip freeze):\n"
            + "\n".join(f"{name}=={version}" for name, version in pinned.items()
-                       if name != "pypdfium2") + "\npypdfium2==5.13.0\n")
-    assert drift(frozen_in(old), pinned) == ["pypdfium2: froze 5.13.0, the locks say 5.11.0"]
+                       if name != "pypdfium2") + f"\npypdfium2=={stray}\n")
+    assert drift(frozen_in(old), pinned) == [
+        f"pypdfium2: froze {stray}, the locks say {locked_pdfium}"]
     assert drift({**pinned, "pandas": "3.0"}, pinned) == ["pandas: froze 3.0, the locks say nothing"]
     assert drift(dict(pinned), pinned) == []
 
