@@ -53,4 +53,4 @@ requests==2.34.2
 
 # Dev / test
 pytest==9.1.1
-ruff==0.16.9
+ruff==0.16.10
