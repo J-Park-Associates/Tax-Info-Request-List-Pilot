@@ -227,3 +227,92 @@ for the reading), and the guards `tests/test_layers.py`,
 
 ## 5. Measured after the build
 
+Same sandbox, the made-up firm in its second year: **1,000 households,
+2,000 returns** (each household's 2025 return sorted, its 2026 return
+holding a second sorted pile). Before = a clean worktree of `f9acc0d`; after
+= this branch; the same firm, run one after the other, after one settling
+pass of the new code (every page's note had changed, so that one pass wrote
+every page once: 97.9 s).
+
+| Component, 2,000 returns | Before | After |
+|---|---|---|
+| **A pass with nothing new** | **125.6 s** | **86.3 s** (-31%) |
+| - its disk questions (profiled) | **8.89 million** (2.53 M `stat`, 6.05 M `lstat`) | **2.43 million** (-73%; 0.71 M `stat`, 1.53 M `lstat`) |
+| - Status Reports written | 1,000 a pass | none, when nothing on them changed (30 of 30 against 0 of 30 on a 30-household copy) |
+| A draft-day pass | 132.5-138.1 s | 94.0-96.6 s (-30%) |
+| **Paused/stopped check** (New Return, every Roll Forward) | **6.35 s** | **0.77 s** |
+| `list` (Clients) | 3.2-3.5 s | 3.1-3.3 s (unchanged: P118 already held it) |
+| `firm` warm (Overview) | 6.4-7.7 s | 7.2-8.2 s (unchanged code; alternated three times, within noise - P211) |
+| `firm`, cache empty | 13.4 s | 15.0 s (the same noise) |
+| `state` (one return) | 0.35 s | 0.34 s |
+
+The year before (1,000 returns): a pass with nothing new 78.7 s, Overview
+warm 4.3-4.5 s, `list` 1.8 s, Roll Forward 7.5 s a household. So a second
+year made the pass 60% slower and Overview 70% slower, which is why the
+fingerprint (Q1) matters more each season.
+
+**On the office PC.** At its 0.1 ms a disk question, the 6.46 million
+questions removed from each pass with nothing new are about **11 minutes
+a pass**, every 2 hours, at 2,000 returns; the 2.43 million left are about
+4 minutes. The Windows check measures it (section 6).
+
+**The answers are unchanged.** Two copies of a 30-household firm sorted by
+the old and the new code end with the same files at the same sizes and the
+same line for every return, and every test file the gate names passes under
+Python 3.11 and 3.13 (section 7).
+
+## 6. What staff will notice, and the Windows check
+
+- The scheduled pass finishes sooner, and Drive for desktop stops
+  uploading every return's Status Report after every pass.
+- New Return and Roll Forward answer in under a second instead of 6-7 s at
+  this size.
+- A Status Report's "Generated" time is when it last changed; the page says
+  so in its first line.
+- Nothing else looks different.
+
+**The Windows check** (Jason's rule of 2026-09-29: only what the change
+touched). Test files, in parallel through `pilot\wintest\run_checks.ps1
+-Tests`: `tests/test_settings.py`, `tests/test_registry.py`,
+`tests/test_view.py`, `tests/test_runner.py`, `tests/test_api.py`,
+`tests/test_rollover.py`, `tests/test_store.py`, `tests/test_firm_cache.py`,
+and the guards `test_layers`, `test_single_source`, `test_repo_map`,
+`test_errors`, `test_tripwire` - chosen because the change is in those
+modules and their callers, and touches no filing, routing or reading.
+By hand, on the 22-household sample after one Sort: open a return's Status
+Report, Sort again with nothing new, and see that its "Generated" time did
+not move while the app still says it is current; then roll one household
+forward and see the dialog answer at once. Optional, if Jason wants the
+office PC's own figure: time `firm` on `PilotTest\Clients-750` as before.
+
+## 7. How it was built and checked
+
+Built in this session at Jason's word (no hand-off). Reviewed by a separate
+agent that did not build it, against sections 1-4: the first review found no
+MUST, four SHOULDs and three NITs, all folded in `469471c`; the re-review
+found one NIT (the heading of P207 item 5), folded; no findings left.
+
+The gate, after the fold, each file as its own process: `test_settings`
+72 passed, `test_registry` 38 passed, `test_view` 40, `test_runner` 208,
+`test_api` 446, `test_rollover` 59, `test_store` 178, `test_firm_cache` 31,
+`test_layers` 29, `test_single_source` 179, `test_repo_map` 80,
+`test_errors` 83, `test_tripwire` 19 - every one exit 0 under Python 3.11.17
+and 3.13.16 (the skips are the suite's own: no symbolic links here); `ruff`
+clean; `tools/repo_map.py check` current. `tests/test_store.py`'s
+`ADMISSION_PIN` is re-pinned under version 3: the admission reaches
+`settings.resolved`, whose source changed and which refuses nothing new
+(the test's own instruction for that case, as P118 did).
+
+The cloud could not install `antlr4-python3-runtime` from the lock (the
+system's setuptools cannot build it); no test file named above needs it.
+
+## 8. The generator used here
+
+For a re-measure (made-up data only; it writes nothing outside the folder
+it is given): `tests/samples.py`'s `build_samples()` builds one pile; each
+household is `create_household` + `create_engagement` + `scaffold_engagement`
+with that pile copied into its inbox, named `Smith NNNN Family`. The second
+year rolls each household with `rollover.roll_household` and drops a pile
+built with `samples.YEAR` set to the next year. Timings use
+`TRACKER_SETTINGS_DIR` and `TRACKER_DATA_HOME` pointing at folders beside
+the firm, so the real data folder is never touched.
