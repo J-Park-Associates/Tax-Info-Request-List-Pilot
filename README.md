@@ -63,7 +63,7 @@ asking the client for an exported PDF/Excel copy.
         └── 2026/
             └── 1040 - John & Maria Park/    ← the return
                 ├── _ledger.jsonl            ← the return's record: the request list, every original, every status, every rules edit
-                ├── Status Report.html       ← this return on one page, redrawn by every pass
+                ├── Status Report.html       ← this return on one page, redrawn whenever it changes
                 └── Prepared/                ← the firm's working set (the client never sees it)
                     ├── 00 - Needs Review/   ← couldn't be identified; a person decides
                     ├── A01 - W-2 - TY2025.pdf        ← named by its request (decisions 144, 168)

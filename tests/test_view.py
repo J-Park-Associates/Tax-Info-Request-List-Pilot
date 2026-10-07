@@ -494,6 +494,96 @@ def test_the_view_is_behind_after_a_person_edits_the_rules_and_after_a_new_event
     assert view.view_state(engagement) == view.CURRENT
 
 
+# ------------------------------------------- a page that says the same (P210) ----
+
+
+def _written(engagement, monkeypatch) -> list[Path]:
+    """Every page write_view hands to the atomic writer from now on."""
+    calls: list[Path] = []
+    real = view.write_text_atomically
+
+    def counted(path, text, **kwargs):
+        calls.append(Path(path))
+        return real(path, text, **kwargs)
+
+    monkeypatch.setattr(view, "write_text_atomically", counted)
+    return calls
+
+
+def test_a_page_that_would_say_the_same_is_not_written_again(engagement, monkeypatch):
+    """Every pass drew every return's page again only for its time, and
+    Drive uploaded each one: a thousand uploads a pass at 1,000 returns."""
+    first = view.write_view(engagement)
+    before = view.path_for(engagement).read_bytes()
+    calls = _written(engagement, monkeypatch)
+
+    again = view.write_view(engagement)
+    assert calls == [] and again.unchanged and not again.stale
+    assert view.path_for(engagement).read_bytes() == before
+    assert again.stamp == first.stamp, "the stamp is the page's own, generated time and all"
+    assert view.view_state(engagement) == view.CURRENT
+
+
+def test_a_page_with_anything_new_is_written(engagement, monkeypatch):
+    view.write_view(engagement)
+    calls = _written(engagement, monkeypatch)
+
+    type_a_keyword(engagement, "C01", "lender")
+    result = view.write_view(engagement)
+    assert calls == [view.path_for(engagement)] and not result.unchanged
+    assert view.view_state(engagement) == view.CURRENT
+
+    drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
+    a_pass(engagement)
+    assert not view.write_view(engagement).unchanged
+    assert len(calls) == 2
+
+
+def test_a_page_changed_by_hand_is_drawn_again(engagement, monkeypatch):
+    """Only the page word for word is left: one edited, cut short or saved
+    from a browser is drawn again."""
+    view.write_view(engagement)
+    path = view.path_for(engagement)
+    path.write_text(path.read_text(encoding="utf-8") + "<!-- edited -->", encoding="utf-8")
+    calls = _written(engagement, monkeypatch)
+
+    assert not view.write_view(engagement).unchanged
+    assert calls == [path] and "edited" not in path.read_text(encoding="utf-8")
+
+
+def test_a_page_whose_time_cannot_be_read_is_drawn_again(engagement, monkeypatch):
+    view.write_view(engagement)
+    path = view.path_for(engagement)
+    stamp = view.read_stamp(engagement)
+    path.write_text(path.read_text(encoding="utf-8").replace(stamp[view.LABEL_GENERATED], "not a time"),
+                    encoding="utf-8")
+    calls = _written(engagement, monkeypatch)
+
+    assert not view.write_view(engagement).unchanged
+    assert calls == [path] and view.view_state(engagement) == view.CURRENT
+
+
+def test_a_page_written_on_windows_compares_by_what_it_says(engagement, monkeypatch):
+    """The atomic writer turns each line end into the system's, so a page
+    written on Windows ends its lines in CRLF; it says the same."""
+    view.write_view(engagement)
+    path = view.path_for(engagement)
+    path.write_bytes(path.read_bytes().replace(b"\r\n", b"\n").replace(b"\n", b"\r\n"))
+    calls = _written(engagement, monkeypatch)
+
+    assert view.write_view(engagement).unchanged and calls == []
+
+
+def test_a_caller_that_names_the_time_gets_a_page_drawn_at_it(engagement, monkeypatch):
+    view.write_view(engagement)
+    calls = _written(engagement, monkeypatch)
+    then = dt.datetime(2026, 7, 2, 12, 0, tzinfo=dt.UTC)
+
+    result = view.write_view(engagement, now=then)
+    assert calls == [view.path_for(engagement)] and not result.unchanged
+    assert view.read_stamp(engagement)[view.LABEL_GENERATED] == then.isoformat(timespec="seconds")
+
+
 def test_a_line_appended_while_the_page_is_drawn_leaves_it_stale_not_current(
     engagement, monkeypatch
 ):

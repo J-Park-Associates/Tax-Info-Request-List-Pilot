@@ -725,6 +725,36 @@ def test_only_selects_a_subset(tmp_path, samples):
     assert not (smith.path / DRAFT_FILENAME).exists()
 
 
+def test_the_pass_holds_the_machines_answers_for_one_household_at_a_time(tmp_path, samples, monkeypatch):
+    """P207: at 1,000 households a pass with nothing new asked the disk 6.9
+    million times, nearly all of them the same few questions. Each
+    household is served inside its own hold, dropped before the next, so a
+    change a person makes between two households is seen by the second."""
+    from tracker import runner, settings
+
+    smith = build_engagement(tmp_path, samples, household="Smith Family", name="Smith TY2025")
+    jones = build_engagement(tmp_path, samples, household="Jones Family", name="Jones TY2025")
+    holds = []
+    real = runner.run_household
+
+    def watched(household, returns, **kwargs):
+        kind, before = settings._HOLDING, dict(settings._HELD)
+        runs = real(household, returns, **kwargs)
+        holds.append((household.name, kind, before, len(settings._HELD)))
+        return runs
+
+    monkeypatch.setattr(runner, "run_household", watched)
+    report = run_registry(Registry(source=tmp_path, engagements=[smith, jones]), today=SATURDAY)
+
+    assert sorted(name for name, _, _, _ in holds) == ["Jones Family", "Smith Family"]
+    assert all(kind == settings.HOLD_HOUSEHOLD for _, kind, _, _ in holds)
+    assert [before for _, _, before, _ in holds] == [{}, {}], \
+        "each household starts from nothing held: what the first held is dropped before the second"
+    assert all(after > 0 for _, _, _, after in holds), "and each holds the answers it asked"
+    assert settings._HELD is None
+    assert all(not run.error for run in report.runs)
+
+
 def test_an_app_too_deep_for_its_reader_is_warned_of_once_in_the_pass(tmp_path, samples, monkeypatch):
     """SPEC-169 section 9: an app whose folder is too deep for the
     reader's libraries says so once in the pass's warnings - and so in the

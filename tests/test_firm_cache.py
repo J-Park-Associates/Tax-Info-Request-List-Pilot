@@ -243,15 +243,15 @@ def test_an_error_in_any_thread_is_raised_to_the_caller(tmp_path, monkeypatch):
 # ------------------------------------------ the review's folds (P120) ----
 
 ANY = firm_cache.ANY
-JUDGED = firm_cache.Judged(private_whole=frozenset({(ANY, ANY, "record.jsonl")}),
-                           client_whole=frozenset({("Drop files here", "_README.txt")}),
-                           private_left_out=frozenset({(ANY, ANY, "Status Report.html")}))
+JUDGED = firm_cache.Judged(private_left_out=frozenset({(ANY, ANY, "Status Report.html")}))
 
 
-def test_a_record_rewritten_at_its_own_size_and_time_changes_the_fingerprint(tmp_path):
-    """SHOULD-2: a rewrite that keeps a record's size and puts its time back
-    (a backup restore, a copy that keeps times, a hand edit) still changes
-    its bytes, and a record is judged by its bytes."""
+def test_a_record_is_judged_by_its_size_and_time_and_a_rewrite_that_puts_both_back_is_not_seen(tmp_path):
+    """P212, Jason's trade of 2026-10-07, reversing P120's SHOULD-2: a
+    record is judged by its size and last-saved time, so a rewrite that puts
+    both back (a backup restore, a copy that keeps times) is not seen until
+    the next day's head or anything else in the household moves - while a
+    rewrite that moves either is seen at once."""
     private, client = _household(tmp_path)
     record = private / "2025" / "1040 - Ann Lee" / "record.jsonl"
     before = firm_cache.fingerprint(private, client, JUDGED)
@@ -259,7 +259,28 @@ def test_a_record_rewritten_at_its_own_size_and_time_changes_the_fingerprint(tmp
     record.write_text("uno\n", encoding="utf-8")                  # the same four bytes long
     os.utime(record, ns=(kept.st_atime_ns, kept.st_mtime_ns))
     assert record.stat().st_size == kept.st_size
-    assert firm_cache.fingerprint(private, client, JUDGED) != before
+    assert firm_cache.fingerprint(private, client, JUDGED) == before, "size and time put back: not seen"
+    os.utime(record, ns=(kept.st_atime_ns, kept.st_mtime_ns - 10 * 1_000_000_000))
+    assert firm_cache.fingerprint(private, client, JUDGED) != before, "a time that moved is seen"
+    record.write_text("one more\n", encoding="utf-8")
+    os.utime(record, ns=(kept.st_atime_ns, kept.st_mtime_ns))
+    assert firm_cache.fingerprint(private, client, JUDGED) != before, "a size that moved is seen"
+
+
+def test_the_fingerprint_opens_no_file(tmp_path, monkeypatch):
+    """P212: at 1,000 households the whole bytes of every record were read
+    on every Overview; now nothing is opened, only listed."""
+    import builtins
+    import io
+
+    private, client = _household(tmp_path)
+
+    def refuse(*args, **kwargs):
+        raise AssertionError(f"a file was opened: {args[0]}")
+
+    monkeypatch.setattr(builtins, "open", refuse)
+    monkeypatch.setattr(io, "open", refuse)
+    assert firm_cache.fingerprint(private, client, JUDGED) is not None
 
 
 def test_the_status_page_and_folder_times_leave_the_fingerprint_alone(tmp_path):
@@ -333,10 +354,10 @@ def test_a_client_file_or_folder_named_like_the_status_page_is_never_left_out(tm
     assert firm_cache.fingerprint(private, client, JUDGED) != elsewhere
 
 
-def test_a_client_file_carrying_a_tracker_name_elsewhere_is_never_read_whole(tmp_path, monkeypatch):
-    """The re-check's NIT-R1: the README is read whole only at the top of the
-    inbox; a client's file of that name in an inbox subfolder is judged by
-    its size and time like any other file, and never opened."""
+def test_a_client_file_carrying_a_tracker_name_is_never_read(tmp_path, monkeypatch):
+    """The re-check's NIT-R1, kept under P212: a client's file named like
+    the firm's README, in an inbox subfolder, is judged by its size and time
+    and never opened - and since P212 neither is the README itself."""
     private, client = _household(tmp_path)
     (client / "Drop files here" / "_README.txt").write_text("the firm's", encoding="utf-8")
     (client / "Drop files here" / "from the bank").mkdir()
@@ -351,8 +372,7 @@ def test_a_client_file_carrying_a_tracker_name_elsewhere_is_never_read_whole(tmp
 
     monkeypatch.setattr(Path, "read_bytes", watched)
     assert firm_cache.fingerprint(private, client, JUDGED) is not None
-    assert [one.relative_to(client).as_posix() for one in opened if one.is_relative_to(client)] == [
-        "Drop files here/_README.txt"]
+    assert opened == []
 
 
 def test_an_entry_whose_feeds_or_related_is_not_a_list_of_words_is_damage(tmp_path):
