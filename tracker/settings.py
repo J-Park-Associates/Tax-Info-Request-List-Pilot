@@ -453,7 +453,13 @@ def _write(data: dict) -> None:
     refuse_a_write_while_reading("the settings file")
     path = settings_path()
     path.parent.mkdir(parents=True, exist_ok=True)
-    write_json_atomically(path, data)
+    try:
+        write_json_atomically(path, data)
+    finally:
+        # Inside a household's hold (P207) everything held may follow from
+        # what the file said - the clients root, and every key under it.
+        if _HELD is not None:
+            _HELD.clear()
 
 
 class ScheduleChoiceError(ValueError):
@@ -862,10 +868,16 @@ def redirected_copies(environ=None, *, windows: bool | None = None) -> list[Path
 
 # ------------------------------------------------------- one reading ----
 
-#: The answers held for the one read-only reply under way (P118), or None
-#: when no reading is under way - which is always, outside
-#: :func:`one_reading`.
+#: The answers held for the one read-only reply under way (P118) or the one
+#: household a pass is serving (P207), or None when neither is under way -
+#: which is always, outside :func:`one_reading` and :func:`one_household`.
 _HELD: dict | None = None
+#: Which of the two holds :data:`_HELD`: :data:`HOLD_READING` refuses a
+#: write, :data:`HOLD_HOUSEHOLD` lets the pass write and forgets what a
+#: write to the settings file could change.
+_HOLDING = ""
+HOLD_READING = "reading"
+HOLD_HOUSEHOLD = "household"
 #: The key :func:`_read` holds the settings file's answer under.
 _SETTINGS_HELD = ("settings",)
 
@@ -890,16 +902,45 @@ def one_reading() -> Iterator[None]:
     the suite may change them between two questions, and outside a reading
     nothing is held: :func:`data_home` still takes an override at once. An
     error is never held; the question is asked again. Nested readings are
-    one reading."""
-    global _HELD
+    one reading, and a reading inside a household's hold is part of that
+    hold."""
+    yield from _holding(HOLD_READING)
+
+
+@contextmanager
+def one_household() -> Iterator[None]:
+    """Hold the same answers as :func:`one_reading` for one household of a
+    pass (P207, ``pilot/SPEC-scale-1000.md``), while the pass writes.
+
+    **Why.** The pass asks them as often as the firm view did: at 1,000
+    households a pass with nothing new to file asked the disk 6.9 million
+    times, nearly all of them these repeats, and on the office PC a
+    question to the disk costs a tenth of a millisecond.
+
+    **Why it is safe while the pass writes** (the doubt P121 left open).
+    The pass changes no environment variable and never writes the settings
+    file, and nothing it does moves the program or the data folder, so
+    those answers stand for the household. A path is held only once it is
+    there (:func:`resolved`): a folder the pass makes later is resolved
+    again rather than answered from before it existed. Held for one
+    household and dropped after it, so a person's change between two
+    households - a settings save, a folder renamed in the app - is seen by
+    the next one. A write to the settings file inside it drops everything
+    held (:func:`_write`). An error is never held. Nested inside a reading
+    or another household's hold, it is part of that hold."""
+    yield from _holding(HOLD_HOUSEHOLD)
+
+
+def _holding(kind: str) -> Iterator[None]:
+    global _HELD, _HOLDING
     if _HELD is not None:
         yield
         return
-    _HELD = {}
+    _HELD, _HOLDING = {}, kind
     try:
         yield
     finally:
-        _HELD = None
+        _HELD, _HOLDING = None, ""
 
 
 def _held(key: tuple, answer):
@@ -923,8 +964,9 @@ def refuse_a_write_while_reading(what: str) -> None:
     write under held answers would leave the rest of the reply answering
     from before it. The settings file and the store's recorded events ask
     it; the store's own catch-up from a journal is derivation, not a
-    write of anything new, and does not."""
-    if _HELD is not None:
+    write of anything new, and does not. Inside :func:`one_household` the
+    pass writes, and nothing is refused."""
+    if _HELD is not None and _HOLDING == HOLD_READING:
         raise RuntimeError(WRITE_WHILE_READING.format(what=what))
 
 
@@ -932,9 +974,19 @@ def resolved(path: Path | str) -> Path:
     """``Path(path).resolve()``, asked once per spelling inside
     :func:`one_reading` (P118) - the store's key for every return is its
     folder resolved, asked on every store read - and every time outside
-    one. An ``OSError`` is raised as ``resolve`` raises it, and not held."""
+    one. Inside :func:`one_household` an answer is held only when what it
+    names is there (P207): a folder the pass makes later is resolved again,
+    because a path resolves differently once it exists (Windows gives the
+    folder's own case, a link is followed). An ``OSError`` is raised as
+    ``resolve`` raises it, and not held."""
     folder = Path(path)
-    return _held(("resolved", str(folder)), folder.resolve)
+    key = ("resolved", str(folder))
+    if _HELD is not None and key in _HELD:
+        return _HELD[key]
+    answer = folder.resolve()
+    if _HELD is not None and (_HOLDING == HOLD_READING or os.path.lexists(answer)):
+        _HELD[key] = answer
+    return answer
 
 
 def default_data_home() -> Path:

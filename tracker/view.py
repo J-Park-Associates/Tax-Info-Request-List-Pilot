@@ -344,6 +344,7 @@ class ViewResult:
     rows: int = 0
     parked: int = 0
     stamp: dict[str, str] = field(default_factory=dict)
+    unchanged: bool = False          # the page on disk already said this; nothing was written (P210)
 
 
 # ------------------------------------------------------------------ cells ----
@@ -757,15 +758,31 @@ def write_view(
     raises from it; that is reported as ``stale`` and the caller carries on.
     The view holds no fact that is not in the record, so a stale one costs
     a person one pass of freshness and nothing else.
+
+    **A page that would say the same is left as it is** (P210,
+    ``pilot/SPEC-scale-1000.md``). Every pass drew every return's page
+    again only for its time, and Drive for desktop uploaded each one: at
+    1,000 returns, a thousand uploads a pass that changed nothing. So the
+    page is drawn first at the time the one on disk says it was
+    generated; when that is the page on disk word for word, nothing is
+    written and ``unchanged`` says so. Its record digest is the record's
+    head either way, so :func:`view_state` still says ``CURRENT``, and its
+    "Generated" time is when the page last said something new. Anything a
+    page would show differently - a row, a status, a count, a day's date
+    in a cell - is a different page and is written. A caller that names
+    ``now`` asks for a page drawn at that time, and it is written.
     """
     engagement_dir = Path(engagement_dir)
     path = engagement_dir / VIEW_FILENAME
     head, last, items, entries = _readers(engagement_dir, items, entries, head)
     triaged = review.triage(engagement_dir, entries, items=items)
     parked = [one.entry for one in triaged]
-    stamp = _stamp(engagement_dir, head, last, items, entries, parked, now)
-    result = ViewResult(path=path, requests=len(items), rows=len(entries),
-                        parked=len(parked), stamp=stamp)
+    result = ViewResult(path=path, requests=len(items), rows=len(entries), parked=len(parked))
+    if now is None and (kept := _kept_stamp(engagement_dir, head, last, items, entries, parked)):
+        if _says(path, _page(engagement_dir, items, entries, triaged, kept)):
+            result.stamp, result.unchanged = kept, True
+            return result
+    result.stamp = stamp = _stamp(engagement_dir, head, last, items, entries, parked, now)
     try:
         write_text_atomically(path, _page(engagement_dir, items, entries, triaged, stamp))
     except OSError as exc:
@@ -779,6 +796,31 @@ def write_view(
         )
         result.stale = True
     return result
+
+
+def _kept_stamp(engagement_dir: Path, head: str, last: dict | None,
+                items: list[RequestItem], entries: list[IndexEntry],
+                parked: list[IndexEntry]) -> dict[str, str] | None:
+    """The stamp drawn at the time the page on disk says it was generated,
+    or ``None`` when it says no readable time (P210)."""
+    old = read_stamp(engagement_dir)
+    try:
+        then = dt.datetime.fromisoformat(old[LABEL_GENERATED]) if old else None
+    except (KeyError, ValueError):
+        return None
+    if then is None or then.tzinfo is None:
+        return None
+    return _stamp(engagement_dir, head, last, items, entries, parked, then)
+
+
+def _says(path: Path, page: str) -> bool:
+    """Whether the page on disk is ``page``, word for word (P210). Read as
+    text, so a page written on Windows (CRLF) compares by what it says;
+    one that cannot be read is not the page."""
+    try:
+        return path.read_text(encoding="utf-8") == page
+    except (OSError, UnicodeDecodeError):
+        return False
 
 
 # ------------------------------------------------------------------- read ----

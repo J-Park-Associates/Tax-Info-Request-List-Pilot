@@ -752,6 +752,91 @@ def test_a_root_whose_only_household_lost_its_record_says_restore_never_nothing_
     assert [(one.path, one.problem) for one in registry.engagements] == [(folder, said)]
 
 
+# ---- P208: the stopped households, without reading a return -------------
+
+def _a_firm_with_every_kind_of_stop(root):
+    """A household copied whole (two folders, one record name: two claims),
+    one whose record is gone, one whose record is a return's (a misfit,
+    never a household), and households with nothing wrong."""
+    import shutil
+
+    make(root, household="Park Family", name="1040 - Park")
+    make(root, household="Lee Family", name="1040 - Lee")
+    make(root, household="Kim Family", name="1040 - Kim")
+    make(root, household="Ortiz Family", name="1040 - Ortiz")
+    shutil.copytree(private_household_dir(root, "Park Family"), private_household_dir(root, "Park Family (1)"))
+    ledger.path_for(private_household_dir(root, "Lee Family")).unlink()
+    return root
+
+
+def test_stopped_households_is_the_walks_own_answer(root):
+    from tracker.registry import stopped_households
+
+    _a_firm_with_every_kind_of_stop(root)
+    walked = discover_engagements(root).stopped
+    assert len(walked) == 3, "two claims stop both copies; a lost record stops its household"
+    assert stopped_households(root) == walked
+
+
+def test_stopped_households_reads_no_return(root, monkeypatch):
+    """At 1,000 households the walk read every return's record before New
+    Return or Roll Forward could ask whether one household is stopped;
+    nothing about a return decides it."""
+    from tracker import registry
+    from tracker.registry import stopped_households
+
+    _a_firm_with_every_kind_of_stop(root)
+    walked = discover_engagements(root).stopped
+
+    def refuse(*args, **kwargs):
+        raise AssertionError("a return was read")
+
+    monkeypatch.setattr(registry, "engagement_from", refuse)
+    monkeypatch.setattr(registry, "mark_superseded", refuse)
+    assert stopped_households(root) == walked
+
+
+def test_stopped_households_is_one_reading(root, monkeypatch):
+    from tracker import registry, settings
+    from tracker.registry import stopped_households
+
+    make(root)
+    seen = []
+    real = registry.household_from
+
+    def watched(folder):
+        seen.append(settings._HOLDING)
+        return real(folder)
+
+    monkeypatch.setattr(registry, "household_from", watched)
+    stopped_households(root)
+    assert seen == [settings.HOLD_READING]
+    assert settings._HELD is None
+
+
+def test_stopped_households_of_an_empty_root_stops_nothing_and_a_missing_one_is_an_error(root, tmp_path):
+    from tracker.registry import stopped_households
+
+    assert stopped_households(root) == {}
+    with pytest.raises(RegistryError):
+        stopped_households(tmp_path / "not there")
+
+
+def test_held_back_names_a_copied_household_without_the_whole_walk(root, monkeypatch):
+    from tracker import registry
+    from tracker.registry import TWO_CLAIM, held_back
+
+    _a_firm_with_every_kind_of_stop(root)
+
+    def refuse(*args, **kwargs):
+        raise AssertionError("the whole firm was walked")
+
+    monkeypatch.setattr(registry, "discover_engagements", refuse)
+    said = held_back(private_household_dir(root, "Park Family (1)"))
+    assert said == TWO_CLAIM.format(name="Park Family", a="Park Family", b="Park Family (1)")
+    assert held_back(private_household_dir(root, "Kim Family")) == ""
+
+
 # ---- S8b: every misfit carries a stable code (ruling 18) -----------------
 
 def _misfit_calls():

@@ -7582,6 +7582,34 @@ def test_no_command_outside_the_list_changing_ones_carries_the_list():
         api._RUNNING["command"] = ""
 
 
+def test_the_list_a_write_carries_is_one_reading_after_the_write(capsys, demo_root, monkeypatch):
+    """P209: the write is done, and what follows is the ``list`` command's
+    own read, held as that command holds it (P118) - and the write itself
+    is never inside the reading, which would refuse it."""
+    from tracker import settings, store
+
+    seen = {}
+    real_payload, real_record = api._list_payload, store.record
+
+    def drawn(*args, **kwargs):
+        seen["list"] = settings._HOLDING
+        return real_payload(*args, **kwargs)
+
+    def recorded(*args, **kwargs):
+        seen.setdefault("writes", set()).add(settings._HOLDING)
+        return real_record(*args, **kwargs)
+
+    monkeypatch.setattr(api, "_list_payload", drawn)
+    monkeypatch.setattr(store, "record", recorded)
+    code, payload = run(capsys, "create", stdin={
+        "household": "Other Household", "return_name": "Smith 2025", "form": "1040",
+        "items": [{"identifier": "A01", "document": "W-2"}]})
+    assert code == 0, payload
+    assert seen["list"] == settings.HOLD_READING and "list" in payload
+    assert seen["writes"] == {""}, "the write is made before the reading, holding nothing"
+    assert settings._HELD is None
+
+
 
 
 def test_the_scheduled_tasks_working_folder_is_the_apps_own_not_the_settings_folder(tmp_path, monkeypatch):

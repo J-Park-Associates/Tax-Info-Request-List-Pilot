@@ -244,6 +244,7 @@ from tracker.settings import (
     error_log,
     firm,
     logs_dir,
+    one_household,
     product_name,
     root_refusal,
     schedule_preference,
@@ -1915,11 +1916,15 @@ def run_registry(
             if any(one.path in selected for one in returns)]
     order = sorted(range(len(walk)), key=lambda at: _completed_key(hint, walk[at][0], at))
 
-    def one_household(household: Path, returns: list[Engagement],
-                      place: tuple[int, int] = (1, 1)) -> list[EngagementRun]:
-        return run_household(household, returns, root=registry.source, today=today,
-                             dry_run=dry_run, reminders=reminders, weekday=weekday,
-                             registry=registry, watch=watch, place=place)
+    def serve(household: Path, returns: list[Engagement],
+              place: tuple[int, int] = (1, 1)) -> list[EngagementRun]:
+        # The machine's answers held for this household and dropped after
+        # it (P207): at 1,000 households these repeats were nearly every
+        # question the pass asked the disk.
+        with one_household():
+            return run_household(household, returns, root=registry.source, today=today,
+                                 dry_run=dry_run, reminders=reminders, weekday=weekday,
+                                 registry=registry, watch=watch, place=place)
 
     # One reading child for the whole pass (decision 169, R-4), ended with
     # it. With a graphics card pack it starts now and settles the device,
@@ -1930,7 +1935,7 @@ def run_registry(
         for n, at in enumerate(order, start=1):
             household, returns = walk[at]
             _mark_started(hint_path, hint, household, write=not dry_run)
-            served[household] = one_household(household, returns, (n, len(order)))
+            served[household] = serve(household, returns, (n, len(order)))
             report.runs.extend(run for run in served[household]
                                if run.engagement.path in selected)
             if watch is not None and watch.stop_asked():
@@ -1943,7 +1948,7 @@ def run_registry(
             working = _working(served[household])
             if working and all(run.locked_out for run in working):
                 first = [run for run in served[household] if run.engagement.path in selected]
-                served[household] = one_household(household, returns)
+                served[household] = serve(household, returns)
                 again = [run for run in served[household] if run.engagement.path in selected]
                 at = next(k for k, run in enumerate(report.runs) if run is first[0])
                 report.runs[at:at + len(first)] = again

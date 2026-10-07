@@ -926,3 +926,111 @@ def test_a_settings_write_inside_a_reading_is_refused_outright():
             data_rules.set_firm("Written inside a reading")
     data_rules.set_firm("Written after it")
     assert data_rules.firm() == "Written after it"
+
+
+# --------------------------------------------- one household (P207) ----
+
+def test_one_household_asks_the_data_folder_once_and_drops_it_after(monkeypatch, tmp_path):
+    """A pass asked where the data folder is tens of thousands of times at
+    1,000 households; inside one household's hold the first answer stands,
+    and the next household asks again."""
+    asked = []
+    real = data_rules.resolve_data_home
+
+    def counted(*args, **kwargs):
+        asked.append(1)
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(data_rules, "resolve_data_home", counted)
+    with data_rules.one_household():
+        first = data_rules.data_home()
+        assert data_rules.data_home() == data_rules.data_home() == first
+        monkeypatch.setenv(data_rules.ENV_DATA_HOME, str(tmp_path / "elsewhere"))
+        assert data_rules.data_home() == first, "one household sees one data folder"
+    assert len(asked) == 1
+    assert data_rules._HELD is None
+    with data_rules.one_household():
+        assert data_rules.data_home() == tmp_path / "elsewhere", "the next household asks again"
+
+
+def test_one_household_lets_the_pass_write():
+    """The pass writes the store and the records while it holds; only a
+    read-only reply refuses a write (P118's SHOULD-3 is the reading's)."""
+    with data_rules.one_household():
+        data_rules.refuse_a_write_while_reading("the store")
+        data_rules.set_firm("Written inside a household")
+        assert data_rules.firm() == "Written inside a household"
+
+
+def test_a_settings_write_inside_a_household_drops_every_held_answer(tmp_path):
+    """Everything held may follow from what the settings file said - the
+    clients root, and every key under it - so a write drops it all."""
+    data_rules.set_firm("Before")
+    with data_rules.one_household():
+        assert data_rules.firm() == "Before"
+        data_rules.resolved(tmp_path)
+        data_rules.set_firm("After")
+        assert data_rules._HELD == {}
+        assert data_rules.firm() == "After"
+
+
+def test_one_household_holds_a_path_only_once_it_is_there(monkeypatch, tmp_path):
+    """A folder the pass makes later is resolved again: a path resolves
+    differently once it exists (Windows gives the folder's own case, a link
+    is followed), and a store key from before it existed would be another
+    return's key."""
+    from pathlib import Path
+
+    calls, real = [], Path.resolve
+
+    def counted(self, strict=False):
+        calls.append(str(self))
+        return real(self, strict)
+
+    monkeypatch.setattr(Path, "resolve", counted)
+    later = tmp_path / "made later"
+    with data_rules.one_household():
+        for _ in range(3):
+            assert data_rules.resolved(tmp_path) == real(tmp_path)
+            assert data_rules.resolved(later) == real(later)
+        assert calls.count(str(tmp_path)) == 1, "a folder that is there is resolved once"
+        assert calls.count(str(later)) == 3, "a folder that is not there yet is never held"
+        later.mkdir()
+        data_rules.resolved(later)
+        data_rules.resolved(later)
+        assert calls.count(str(later)) == 4, "once it is there, it is held"
+
+
+def test_one_household_never_holds_an_error(monkeypatch, tmp_path):
+    from pathlib import Path
+
+    calls, real = [], Path.resolve
+
+    def refusing(self, strict=False):
+        calls.append(str(self))
+        if self.name == "refuses":
+            raise OSError("cannot be resolved")
+        return real(self, strict)
+
+    monkeypatch.setattr(Path, "resolve", refusing)
+    with data_rules.one_household():
+        for _ in range(3):
+            with pytest.raises(OSError):
+                data_rules.resolved(tmp_path / "refuses")
+    assert calls.count(str(tmp_path / "refuses")) == 3
+
+
+def test_a_household_inside_a_reading_is_the_reading_and_still_refuses_a_write():
+    """Nested, a hold is part of the one outside it: a household's hold
+    never lifts a reading's refusal, and a reading inside a household is
+    the household's."""
+    with data_rules.one_reading():
+        with data_rules.one_household():
+            assert data_rules._HOLDING == data_rules.HOLD_READING
+            with pytest.raises(RuntimeError, match="read-only reply"):
+                data_rules.set_firm("Written inside a reading")
+    with data_rules.one_household():
+        with data_rules.one_reading():
+            assert data_rules._HOLDING == data_rules.HOLD_HOUSEHOLD
+        assert data_rules._HELD is not None
+    assert data_rules._HELD is None and data_rules._HOLDING == ""

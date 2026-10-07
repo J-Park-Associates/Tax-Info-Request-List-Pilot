@@ -719,6 +719,24 @@ def _kept(found: _Walk) -> tuple[list[Household], list[Engagement], list[Misfit]
     (decision 192), so a feed the card resolves over the households it
     names is resolved exactly as the pass resolves it over the practice.
     """
+    keep, misfits = _households_kept(found)
+    running = {household.path for household in keep}
+    engagements = mark_superseded([
+        engagement_from(folder) for folder in found.returns
+        if folder.parent.parent in running
+    ])
+    stopped = _stopped_of(keep, found)
+    # A household whose record is gone: its returns are listed, each
+    # carrying the sentence, so the pass counts them as failed.
+    for household, returns in found.record_missing.items():
+        engagements.extend(Engagement(path=one, problem=stopped[household], household_path=household)
+                           for one in returns)
+    return keep, engagements, misfits, stopped
+
+
+def _households_kept(found: _Walk) -> tuple[list[Household], list[Misfit]]:
+    """The households a walk found, read, and its misfits: the first half
+    of :func:`_kept`, which :func:`stopped_households` shares (P208)."""
     households = [household_from(folder) for folder in found.households]
     misfits = list(found.misfits)
     # A household whose record is a return's is the layout before decision
@@ -733,20 +751,17 @@ def _kept(found: _Walk) -> tuple[list[Household], list[Engagement], list[Misfit]
             misfits.append(Misfit(household.path, MISFIT_RECORD_MISPLACED, "record_misplaced"))
             continue
         keep.append(household)
-    running = {household.path for household in keep}
-    engagements = mark_superseded([
-        engagement_from(folder) for folder in found.returns
-        if folder.parent.parent in running
-    ])
+    return keep, misfits
+
+
+def _stopped_of(keep: list[Household], found: _Walk) -> dict[Path, str]:
+    """Every stopped household, with its sentence: two folders claiming one
+    household, and a household whose record is gone. One rule for
+    :func:`_kept` and :func:`stopped_households` (P208)."""
     stopped = _two_claims(keep)
-    # A household whose record is gone: its returns are listed, each
-    # carrying the sentence, so the pass counts them as failed.
-    for household, returns in found.record_missing.items():
-        said = HOUSEHOLD_RECORD_MISSING.format(folder=household.name)
-        stopped[household] = said
-        engagements.extend(Engagement(path=one, problem=said, household_path=household)
-                           for one in returns)
-    return keep, engagements, misfits, stopped
+    for household in found.record_missing:
+        stopped[household] = HOUSEHOLD_RECORD_MISSING.format(folder=household.name)
+    return stopped
 
 
 def discover_engagements(root: Path | str, *, max_depth: int = MAX_DEPTH) -> Registry:
@@ -854,6 +869,33 @@ def households_named(private: Path | str, names: Iterable[str]) -> Registry:
     )
 
 
+def stopped_households(root: Path | str) -> dict[Path, str]:
+    """``discover_engagements(root).stopped``, without reading a single
+    return (P208, ``pilot/SPEC-scale-1000.md``).
+
+    Whether one household is stopped is a question about every household -
+    two folders claim one household by their names and their records'
+    names, wherever they are in the firm - but never about a return. The
+    whole walk read every return's record too, and at 1,000 households
+    that made each New Return and each Roll Forward wait 3-8 seconds for
+    an answer that reads none of them. The same walk and the same two
+    rules (:func:`_households_kept`, :func:`_stopped_of`), so the answer is
+    the one :func:`discover_engagements` gives; the walk is one read-only
+    reading (P118), so each household's record is found without asking the
+    disk again where the store is. A root that is not a folder, or that
+    cannot be walked, raises :class:`RegistryError` as the walk does; a
+    root holding nothing stops nothing."""
+    from tracker.settings import one_reading
+
+    root = Path(root)
+    if not root.is_dir():
+        raise RegistryError(f"clients root is not a folder: {root}")
+    with one_reading():
+        found = _walk_root(root)
+        keep, _misfits = _households_kept(found)
+        return _stopped_of(keep, found)
+
+
 def held_back(household_dir: Path | str) -> str:
     """Why nothing may be written for this household now, or ``""``: it is
     stopped (its record gone while its returns hold theirs, or two folders
@@ -869,7 +911,7 @@ def held_back(household_dir: Path | str) -> str:
         returns = household_returns(folder)
         return HOUSEHOLD_RECORD_MISSING.format(folder=folder.name) if returns else ""
     try:
-        stopped = discover_engagements(folder.parent.parent).stopped
+        stopped = stopped_households(folder.parent.parent)
     except RegistryError:
         stopped = {}
     if said := stopped.get(folder):

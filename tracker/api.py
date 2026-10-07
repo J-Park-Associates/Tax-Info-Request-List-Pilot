@@ -3839,16 +3839,23 @@ def _listing(registry: Registry | None = None) -> dict | None:
     of ``registry``, or of one walk of the saved root, without the
     vocabulary. ``None`` where the root cannot be walked - said once, as
     :data:`PRACTICE_NOT_WALKED` - and the app keeps the list it has; the
-    write itself stands."""
+    write itself stands.
+
+    **One reading** (P209, ``pilot/SPEC-scale-1000.md``): the write is
+    done, and what follows is the ``list`` command's own read, so it holds
+    the machine's answers as that command does (P118) - at 1,000
+    households the list after every save asked the disk again where the
+    store is for every return in the firm."""
     try:
-        root = _saved_root()
-        if root is None or not root.is_dir():
-            return None
-        try:
-            walked = registry if registry is not None else discover_engagements(root)
-        except EmptyRoot:
-            return {"engagements": [], "households": [], "misfits": [], "root": str(root)}
-        return _list_payload(root, walked)
+        with one_reading():
+            root = _saved_root()
+            if root is None or not root.is_dir():
+                return None
+            try:
+                walked = registry if registry is not None else discover_engagements(root)
+            except EmptyRoot:
+                return {"engagements": [], "households": [], "misfits": [], "root": str(root)}
+            return _list_payload(root, walked)
     except (RegistryError, door.DoorError, SettingsError) as exc:   # the write stands (N4)
         errors.keep("api: _listing", exc)
         log.warning("The clients root could not be walked (%s)", errors.error_class(exc))
