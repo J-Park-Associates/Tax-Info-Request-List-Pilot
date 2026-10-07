@@ -9476,6 +9476,39 @@ def test_a_record_rewritten_at_its_own_size_and_time_is_seen_once_anything_else_
     cached reply, judging the record by its size and time, keeps what it
     had until anything else in the household moves (or the next day's head,
     which reads every household again) - and then says what the walk says."""
+    mixed, before, whole = _a_record_rewritten_with_its_size_and_time_put_back(capsys, demo_root, monkeypatch)
+    assert _cached_firm(capsys) == before, "size and time put back: the cache keeps what it had"
+    # Another file of the same household moves - here the household's own
+    # record, one folder up from the year - and the household is read again.
+    household_record = ledger.path_for(mixed.parent.parent)
+    os.utime(household_record, (_AGED_AT - 60, _AGED_AT - 60))
+    assert _cached_firm(capsys) == whole, "once anything else in it moves, the household is read again"
+
+
+def test_a_record_rewritten_at_its_own_size_and_time_is_seen_the_next_day(capsys, demo_root, monkeypatch):
+    """P212's bound: the head carries the day, so the first reply of the
+    next day reads every household again and says what the whole walk says."""
+    _mixed, before, _whole = _a_record_rewritten_with_its_size_and_time_put_back(capsys, demo_root, monkeypatch)
+    assert _cached_firm(capsys) == before
+
+    import types
+
+    class Tomorrow(dt.date):
+        @classmethod
+        def today(cls):
+            return dt.date.fromordinal(dt.date.today().toordinal() + 1)
+
+    # Tomorrow for the API alone, which hands the day to every firm row.
+    monkeypatch.setattr(api, "dt", types.SimpleNamespace(**{**vars(dt), "date": Tomorrow}))
+    tomorrow = _firm_whole(capsys, monkeypatch)
+    assert _cached_firm(capsys) == tomorrow and tomorrow != before
+
+
+def _a_record_rewritten_with_its_size_and_time_put_back(capsys, demo_root, monkeypatch):
+    """The practice cached, then one return's record rewritten at the same
+    length with its time put back (probe P15): the chain breaks, and the
+    whole walk says Could Not Be Read. Returns the return, the cached reply
+    from before, and the whole walk's reply now."""
     mixed, _quiet, _retired = _a_practice_for_the_firm_view(capsys, demo_root)
     _aged(demo_root)
     before = _cached_firm(capsys)
@@ -9489,9 +9522,7 @@ def test_a_record_rewritten_at_its_own_size_and_time_is_seen_once_anything_else_
     assert record.stat().st_size == kept.st_size
     whole = _firm_whole(capsys, monkeypatch)
     assert {one["path"]: one["problem"] for one in whole["returns"]}[str(mixed)] == api.FIRM_UNREADABLE
-    assert _cached_firm(capsys) == before, "size and time put back: the cache keeps what it had"
-    os.utime(record, ns=(kept.st_atime_ns, kept.st_mtime_ns - 60 * 1_000_000_000))
-    assert _cached_firm(capsys) == whole, "once the time moves, the household is read again"
+    return mixed, before, whole
 
 
 def test_the_first_overview_after_a_pass_reads_no_household_again(capsys, demo_root, monkeypatch):

@@ -335,8 +335,14 @@ each morning, and the morning pass fills the cache that way); or anything
 else in that household's two folders moves; or the program changes. A
 rewrite that moves either the size or the time is seen at once, as before;
 `RACY_SECONDS` still keeps a household whose files were just written out
-of the cache, so a save within the file system's time resolution is never
-taken for the old one. The record itself, the pass and every status the
+of the cache, so a save within a time resolution of up to 5 seconds, by this
+PC's clock, is not taken for the old one (a network share whose clock runs
+further behind is the exception the constant's comment names). On Windows a
+file open for writing can list its old size and time until it is closed
+(the directory entry lags), so an Overview taken in the middle of a pass's
+write may keep that household's old row for that one reply; the next reply
+after the file is closed sees the change - the old whole-bytes rule caught
+that mid-write case, and it is part of the trade. The record itself, the pass and every status the
 pass decides are untouched: this is what Overview shows between passes,
 never what is filed. `FORMAT` is unchanged (the file's shape is the same;
 an old cache's fingerprints simply do not match, and the program stamp
@@ -354,7 +360,11 @@ changes with the upgrade anyway).
 `test_a_record_rewritten_at_its_own_size_and_time_is_seen_once_anything_else_moves`
 (replacing `..._is_never_answered_from_the_cache`: the cached reply keeps what
 it had while the record's size and time are as they were, and says what the
-whole walk says once the time moves).
+whole walk says once another file of the household moves) and
+`test_a_record_rewritten_at_its_own_size_and_time_is_seen_the_next_day` (the
+bound: the next day's first reply reads it again). The review of P212 found
+no MUST or SHOULD; its four NITs (two "never"s too strong, the `Judged`
+example, these two test legs, the Windows mid-write case above) are folded.
 
 **Measured** (2,000 returns, this sandbox, warm, three runs):
 

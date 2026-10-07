@@ -150,15 +150,19 @@ def head(root: Path | str, today: dt.date) -> dict:
 #: read every record in the firm on every Overview, and grew with every
 #: year kept. Jason reversed it on 2026-10-07 ("lets optimize for speed and
 #: check each record's size and last saved time instead"): such a rewrite is
-#: now seen on the next day's first Overview, when the head's day changes,
-#: or after anything else in the household moves - never sooner. The API
+#: now seen on the next day's first Overview (the head's day changes), when
+#: anything else in the household moves, or when the head changes otherwise
+#: (the program, the root, the settings file) - not sooner. On Windows a file
+#: open for writing can list its old size and time until it is closed, so
+#: one reply taken in the middle of a write may keep the old row; the next
+#: reply after it closes sees the change. The API
 #: fills it from the modules that own the names; this module only applies
 #: it.
 @dataclass(frozen=True)
 class Judged:
     """Each place is a file's path below the household's folder, one name
     per level, with :data:`ANY` standing for one folder of any name (a year,
-    a return): ``(ANY, ANY, ledger.LEDGER_FILENAME)`` is a return's record. A file
+    a return): ``(ANY, ANY, view.VIEW_FILENAME)`` is a return's status page. A file
     matches only at exactly that place and only as a file - never a folder,
     never at another depth - so a client's file that happens to carry one of
     these names anywhere else is judged like every other file (the re-check

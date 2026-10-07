@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 436,
     "edges": 1196,
-    "reused": 388
+    "reused": 389
   },
   "node_types": [
     "artifact",
@@ -1377,8 +1377,8 @@
       "id": "tracker/firm_cache.py",
       "type": "module",
       "layer": "core",
-      "sha256": "11c6aec4decaa40f",
-      "lines": 397,
+      "sha256": "c7f9f67eee5692fb",
+      "lines": 401,
       "exports": [
         "ANY",
         "CACHE_FILENAME",
@@ -4921,8 +4921,8 @@
       "id": "pilot/SPEC-scale-1000.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "366193920dd92770",
-      "lines": 374
+      "sha256": "24615ee5e4f6a73f",
+      "lines": 384
     },
     {
       "id": "pilot/SPEC-shell.md",
@@ -6813,8 +6813,8 @@
       "id": "tests/test_api.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "8b06ae0be9a0e3a0",
-      "lines": 9822,
+      "sha256": "2bf8054a08f9af52",
+      "lines": 9853,
       "exports": [
         "COUNTS",
         "DEEPER_ROOT_LENGTH",
@@ -6911,6 +6911,7 @@
         "test_a_real_firm_replys_paths_reveal_a_firm_file_and_refuse_an_unreported_one",
         "test_a_real_state_paths_still_opens_a_parked_pdfs_review_copy_through_the_shell",
         "test_a_record_rewritten_at_its_own_size_and_time_is_seen_once_anything_else_moves",
+        "test_a_record_rewritten_at_its_own_size_and_time_is_seen_the_next_day",
         "test_a_redirected_app_says_its_refusal_alone_not_also_a_copy_it_never_uses",
         "test_a_refusal_is_kind_refused_and_keeps_its_sentence",
         "test_a_refused_file_has_no_open_on_the_designated_machine",
