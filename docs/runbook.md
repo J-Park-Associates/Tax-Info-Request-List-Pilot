@@ -33,7 +33,10 @@ Overview's last answer for each household, so the firm pages open in about
 two seconds instead of reading every return again: like `tracker.db` it
 holds household names, return folders and the names of files waiting for a
 person, and it is never synced. A household whose folders changed since is
-read again; deleting the file is always safe (the next Overview reads every
+read again - "changed" meaning a file added, removed, or saved at a new size
+or time; a record put back with its old size and time (a backup restore that
+keeps times) shows on the next day's first Overview, which reads every
+household again anyway (pilot P212); deleting the file is always safe (the next Overview reads every
 household once, a few seconds longer). Every scheduled pass over the saved
 clients folder ends by asking the Overview once itself, after its run log
 line and its page are written, so this file is ready before anyone opens the

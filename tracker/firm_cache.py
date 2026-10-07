@@ -95,8 +95,9 @@ RETURN_FACTS = {"path": str, "household": str, "problem": str, "active": bool,
 #: dated in the future, by a clock ahead of this one - is read fresh and not
 #: kept until it has been still for this long. The window is measured by
 #: this PC's clock: a network share whose clock runs more than this far
-#: behind could date a rewrite outside it, which is one more reason the
-#: records are judged by their bytes (:class:`Judged`).
+#: behind could date a rewrite outside it, and since P212 nothing else would
+#: catch that rewrite (every file is judged by its size and time, never its
+#: bytes) - Jason's trade of 2026-10-07, for speed.
 RACY_SECONDS = 5
 
 #: A link or junction inside a household's folders: the practice walk may
@@ -140,10 +141,19 @@ def head(root: Path | str, today: dt.date) -> dict:
             "data_home": str(settings.data_home()), "day": today.isoformat(), "settings": spelled}
 
 
-#: What a household's fingerprint is taken with (P120, and the review's
-#: SHOULD-2 and SHOULD-4): which files of each folder are digested by their
-#: whole bytes, and which files are left out. The API fills it from the
-#: modules that own the names; this module only applies it.
+#: What a household's fingerprint is taken with (P120, the review's SHOULD-4,
+#: and P212): which files of the private folder are left out. Every other
+#: file is judged by its size and modification time and never opened. P120's
+#: review had the records and the drafts digested by their whole bytes, so a
+#: rewrite that put a record's size and time back (a backup restore, a copy
+#: that keeps times, a hand edit) was still seen; at 1,000 households that
+#: read every record in the firm on every Overview, and grew with every
+#: year kept. Jason reversed it on 2026-10-07 ("lets optimize for speed and
+#: check each record's size and last saved time instead"): such a rewrite is
+#: now seen on the next day's first Overview, when the head's day changes,
+#: or after anything else in the household moves - never sooner. The API
+#: fills it from the modules that own the names; this module only applies
+#: it.
 @dataclass(frozen=True)
 class Judged:
     """Each place is a file's path below the household's folder, one name
@@ -154,19 +164,9 @@ class Judged:
     these names anywhere else is judged like every other file (the re-check
     of the review, MUST-R1 and NIT-R1)."""
 
-    #: In the household's private folder: the records the firm view reads
-    #: (the household's and every return's) and the reminder drafts, where
-    #: the tracker writes them. A rewrite that keeps a record's size and
-    #: time - a backup restore, a copy that keeps times, a hand edit put
-    #: back - still changes its bytes.
-    private_whole: frozenset[tuple[str, ...]] = frozenset()
-    #: In the household's client folder: the firm's own README, at the top
-    #: of the inbox, where the inbox count opens it. A client's documents
-    #: are never among them and are never opened.
-    client_whole: frozenset[tuple[str, ...]] = frozenset()
     #: In the household's private folder only, left out entirely: files the
     #: tracker writes from the record and the firm view never opens (a
-    #: return's status page, rewritten by every pass). Leaving one out
+    #: return's status page, redrawn when it changes). Leaving one out
     #: cannot hide a status: it holds nothing the record does not. Nothing
     #: in the client folder is ever left out.
     private_left_out: frozenset[tuple[str, ...]] = frozenset()
@@ -189,8 +189,8 @@ NOTHING_JUDGED = Judged()
 
 def fingerprint(private: Path, client: Path | None, judged: Judged = NOTHING_JUDGED) -> str | None:
     """One digest of a household's two folders: every entry's name and
-    kind; every file's size and modification time; and the whole bytes of
-    the files ``judged`` names. A folder is taken by its name and what it
+    kind, and every file's size and modification time but the ones
+    ``judged`` leaves out. No file is opened (P212). A folder is taken by its name and what it
     holds, never its own time - a folder's time moves when a lock or a
     temporary file comes and goes, and anything added or removed is in the
     listing anyway. ``client`` is ``None`` for a folder whose name no
@@ -201,13 +201,12 @@ def fingerprint(private: Path, client: Path | None, judged: Judged = NOTHING_JUD
     and never kept."""
     digest = hashlib.blake2b(digest_size=16)
     settled = time.time_ns() - RACY_SECONDS * 1_000_000_000
-    for folder, whole, left_out in ((private, judged.private_whole, judged.private_left_out),
-                                    (client, judged.client_whole, frozenset())):
+    for folder, left_out in ((private, judged.private_left_out), (client, frozenset())):
         if folder is None:
             digest.update(b"\3none\n")
             continue
         digest.update(f"\1{folder}\n".encode("utf-8", "surrogatepass"))
-        if not _listed(Path(folder), digest, settled, whole, left_out, ()):
+        if not _listed(Path(folder), digest, settled, left_out, ()):
             return None
     return digest.hexdigest()
 
@@ -246,8 +245,8 @@ def fingerprints(pairs: list[tuple[Path, Path | None]], judged: Judged = NOTHING
     return found
 
 
-def _listed(folder: Path, digest, settled: int, whole: frozenset[tuple[str, ...]],
-            left_out: frozenset[tuple[str, ...]], below: tuple[str, ...]) -> bool:
+def _listed(folder: Path, digest, settled: int, left_out: frozenset[tuple[str, ...]],
+            below: tuple[str, ...]) -> bool:
     try:
         with os.scandir(folder) as found:
             entries = sorted(found, key=lambda entry: entry.name)
@@ -266,7 +265,7 @@ def _listed(folder: Path, digest, settled: int, whole: frozenset[tuple[str, ...]
             return False
         if stat.S_ISDIR(about.st_mode):
             digest.update(f"{entry.name}\0dir\n".encode("utf-8", "surrogatepass"))
-            if not _listed(Path(entry.path), digest, settled, whole, left_out, where):
+            if not _listed(Path(entry.path), digest, settled, left_out, where):
                 return False
             continue
         if _at(left_out, where):
@@ -275,11 +274,6 @@ def _listed(folder: Path, digest, settled: int, whole: frozenset[tuple[str, ...]
             return False
         digest.update(f"{entry.name}\0{about.st_size}\0{about.st_mtime_ns}\n"
                       .encode("utf-8", "surrogatepass"))
-        if _at(whole, where):
-            try:
-                digest.update(hashlib.blake2b(Path(entry.path).read_bytes(), digest_size=16).digest())
-            except OSError:
-                return False
     return True
 
 

@@ -5994,23 +5994,15 @@ def _firm_cached(root: Path, today: dt.date) -> list[_FirmShown] | None:
     return shown
 
 
-#: What a household's fingerprint reads by its whole bytes and what it
-#: leaves out (the review of P120, SHOULD-2 and SHOULD-4). By content: the
-#: files the firm view opens - every record, the reminder drafts, the
-#: inbox's README - so a rewrite that keeps a size and a time is still
-#: seen. Left out: the return's status page, which a pass redraws
-#: from the record and no firm reader opens; ``tests/test_api.py`` pins
-#: both by watching every file a firm reply opens.
-#: Each at the one place the tracker writes it (the re-check's MUST-R1 and
-#: NIT-R1): the household's record in the household's folder; a return's
-#: record, drafts and status page in the return's folder, two levels down
-#: (year, return); the README at the top of the inbox.
+#: What a household's fingerprint leaves out (the review of P120, SHOULD-4):
+#: the return's status page, which a pass redraws from the record and no
+#: firm reader opens, at the one place the tracker writes it - a return's
+#: folder, two levels down (year, return; the re-check's MUST-R1 and
+#: NIT-R1). Every other file - every record, the reminder drafts, the
+#: inbox's README - is judged by its size and time (P212: Jason reversed
+#: P120's whole-bytes rule for speed on 2026-10-07); ``tests/test_api.py``
+#: pins that the firm view never opens a file the fingerprint leaves out.
 FIRM_JUDGED = firm_cache.Judged(
-    private_whole=frozenset({
-        (ledger.LEDGER_FILENAME,),
-        *((firm_cache.ANY, firm_cache.ANY, name)
-          for name in (ledger.LEDGER_FILENAME, reminder.DRAFT_FILENAME, reminder.NEW_DRAFT_FILENAME))}),
-    client_whole=frozenset({(layout.INBOX_DIR_NAME, layout.README_NAME)}),
     private_left_out=frozenset({(firm_cache.ANY, firm_cache.ANY, VIEW_FILENAME)}))
 
 

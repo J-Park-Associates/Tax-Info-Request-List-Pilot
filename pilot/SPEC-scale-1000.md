@@ -176,13 +176,11 @@ could go stale.
 
 1. **Overview (`firm`) warm, 4.3-4.5 s here at 1,000 returns.** The
    fingerprint reads every record's whole bytes, as P120's review ruled
-   (MUST-R1: a restore that keeps a file's size and time still changes its
+   (SHOULD-2: a restore that keeps a file's size and time still changes its
    bytes). It is linear in the records' total size, which grows with
-   documents and years. Not changed here: the cheaper fingerprint (size,
-   time and file id, without the bytes) is a ruling only Jason can reverse.
-   **Open for Jason, Q1.** The office PC measured 1.2 s for 750 returns
-   after the fold; the Windows check of this branch measures it again at
-   1,000 (section 6).
+   documents and years. Not changed here: the cheaper fingerprint (size and
+   time, without the bytes) is a ruling only Jason can reverse. **Q1 -
+   answered the same day: reversed, built as P212 (section 9).**
 2. **The reader's per-document child round trip** (24 ms a document, 266 s of
    a full season's first pass) and **the store's durable writes** (fsync per
    record, 188 s) - the first standing rule's path and the record's
@@ -190,7 +188,7 @@ could go stale.
 3. **A tool that builds the 1,000-household firm on Windows.** The
    generator used here is section 8; a Windows `make_samples`-style tool
    with its refusal rules is a SPEC of its own if Jason wants the Windows
-   check to time the pass (**Q2**).
+   check to time the pass (**Q2 - answered: no**, Jason 2026-10-07).
 
 ## 4. Files, functions and owning tests
 
@@ -249,7 +247,7 @@ every page once: 97.9 s).
 The year before (1,000 returns): a pass with nothing new 78.7 s, Overview
 warm 4.3-4.5 s, `list` 1.8 s, Roll Forward 7.5 s a household. So a second
 year made the pass 60% slower and Overview 70% slower, which is why the
-fingerprint (Q1) matters more each season.
+fingerprint (Q1, now P212) mattered more each season.
 
 **On the office PC.** At its 0.1 ms a disk question, the 6.46 million
 questions removed from each pass with nothing new are about **11 minutes
@@ -316,3 +314,61 @@ year rolls each household with `rollover.roll_household` and drops a pile
 built with `samples.YEAR` set to the next year. Timings use
 `TRACKER_SETTINGS_DIR` and `TRACKER_DATA_HOME` pointing at folders beside
 the firm, so the real data folder is never touched.
+
+## 9. P212 - Overview judges every file by its size and last-saved time
+
+Jason, 2026-10-07, answering Q1: "reverse my previous ruling. lets optimize
+for speed and check each record's size and last saved time instead." Q2:
+"No." Built and reviewed in this session.
+
+**The ruling.** `firm_cache.fingerprint` digests every entry's name and
+kind and every file's size and modification time, and opens no file.
+`firm_cache.Judged` keeps only `private_left_out` (the status page, never
+opened by the firm view and redrawn from the record); `private_whole` and
+`client_whole` are gone, and `api.FIRM_JUDGED` names only the status page.
+
+**What is given up, said plainly.** A file rewritten so that its size and
+its time both end as they were - a backup restore or a copy that keeps
+times, a hand edit put back - is not seen by a cached Overview until:
+the next day (the head carries the day, so every household is read again
+each morning, and the morning pass fills the cache that way); or anything
+else in that household's two folders moves; or the program changes. A
+rewrite that moves either the size or the time is seen at once, as before;
+`RACY_SECONDS` still keeps a household whose files were just written out
+of the cache, so a save within the file system's time resolution is never
+taken for the old one. The record itself, the pass and every status the
+pass decides are untouched: this is what Overview shows between passes,
+never what is filed. `FORMAT` is unchanged (the file's shape is the same;
+an old cache's fingerprints simply do not match, and the program stamp
+changes with the upgrade anyway).
+
+**Files and owning tests.** `tracker/firm_cache.py` (`Judged`, `fingerprint`,
+`_listed`; the `RACY_SECONDS` comment), `tracker/api.py` (`FIRM_JUDGED`),
+`docs/runbook.md` (the data folder paragraph), `docs/repo-map.curated.json`
+(`firm_cache`'s note): `tests/test_firm_cache.py` -
+`test_a_record_is_judged_by_its_size_and_time_and_a_rewrite_that_puts_both_back_is_not_seen`
+(replacing P120's SHOULD-2 test, and pinning the trade both ways),
+`test_the_fingerprint_opens_no_file`,
+`test_a_client_file_carrying_a_tracker_name_is_never_read`; `tests/test_api.py` -
+`test_every_file_a_firm_reply_opens_is_in_the_fingerprint_and_never_the_status_page`,
+`test_a_record_rewritten_at_its_own_size_and_time_is_seen_once_anything_else_moves`
+(replacing `..._is_never_answered_from_the_cache`: the cached reply keeps what
+it had while the record's size and time are as they were, and says what the
+whole walk says once the time moves).
+
+**Measured** (2,000 returns, this sandbox, warm, three runs):
+
+| Overview (`firm`) warm | Files opened | Time |
+|---|---|---|
+| Before P212 | 3,000+ (every record and draft, whole) | 7.2-8.2 s |
+| After P212 | 4 | 5.5-6.5 s |
+| First reply after the upgrade (every household read once) | - | 32 s here; the morning pass pays it |
+
+What is left is the listing of every household's folders: 13,000 folders
+and 65,000 file entries at 2,000 returns, each entry's size and time a
+separate question to the disk on Linux. On Windows the listing returns each
+entry's size and time with the folder (`os.scandir` on NTFS), which is why
+the office PC listed 750 households in 0.7 s (SPEC-firm-cache section 3a);
+the Windows check measures the real figure (`firm` on
+`PilotTest\Clients-750`, as in section 6).
+

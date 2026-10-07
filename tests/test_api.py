@@ -9468,14 +9468,18 @@ def test_list_carries_each_misfits_code_and_the_vocabulary_words_it(capsys, demo
     assert _vocab()["screen"]["misfits"]["reasons"][misfit["code"]] == "Unknown Folder"
 
 
-def test_a_record_rewritten_at_its_own_size_and_time_is_never_answered_from_the_cache(
+def test_a_record_rewritten_at_its_own_size_and_time_is_seen_once_anything_else_moves(
         capsys, demo_root, monkeypatch):
-    """The review's SHOULD-2 (probe P15): a record rewritten at the same
-    length with its time put back breaks its chain; the whole walk says
-    Could Not Be Read, and so must the cached reply."""
+    """P212, Jason's trade of 2026-10-07, reversing the review's SHOULD-2
+    (probe P15): a record rewritten at the same length with its time put
+    back breaks its chain, and the whole walk says Could Not Be Read; the
+    cached reply, judging the record by its size and time, keeps what it
+    had until anything else in the household moves (or the next day's head,
+    which reads every household again) - and then says what the walk says."""
     mixed, _quiet, _retired = _a_practice_for_the_firm_view(capsys, demo_root)
     _aged(demo_root)
-    assert _cached_firm(capsys) == _firm_whole(capsys, monkeypatch)
+    before = _cached_firm(capsys)
+    assert before == _firm_whole(capsys, monkeypatch)
     record = ledger.path_for(mixed)
     kept = record.stat()
     text = record.read_bytes()
@@ -9485,7 +9489,9 @@ def test_a_record_rewritten_at_its_own_size_and_time_is_never_answered_from_the_
     assert record.stat().st_size == kept.st_size
     whole = _firm_whole(capsys, monkeypatch)
     assert {one["path"]: one["problem"] for one in whole["returns"]}[str(mixed)] == api.FIRM_UNREADABLE
-    assert _cached_firm(capsys) == whole
+    assert _cached_firm(capsys) == before, "size and time put back: the cache keeps what it had"
+    os.utime(record, ns=(kept.st_atime_ns, kept.st_mtime_ns - 60 * 1_000_000_000))
+    assert _cached_firm(capsys) == whole, "once the time moves, the household is read again"
 
 
 def test_the_first_overview_after_a_pass_reads_no_household_again(capsys, demo_root, monkeypatch):
@@ -9507,12 +9513,12 @@ def test_the_first_overview_after_a_pass_reads_no_household_again(capsys, demo_r
     assert read == []
 
 
-def test_every_file_a_firm_reply_opens_is_judged_by_its_bytes_and_never_the_status_page(
+def test_every_file_a_firm_reply_opens_is_in_the_fingerprint_and_never_the_status_page(
         capsys, demo_root, monkeypatch):
-    """What the fingerprint reads whole and leaves out (``api.FIRM_JUDGED``)
-    is pinned to what the firm view opens: a file it opens but judges by
-    size and time alone could be rewritten unseen, and a page it leaves
-    out must be one it never opens."""
+    """What the fingerprint leaves out (``api.FIRM_JUDGED``) is pinned to
+    what the firm view opens: a page it leaves out must be one it never
+    opens, and every file it does open is judged by its size and time
+    (P212), inside the household's two folders."""
     import sys
 
     from tracker import reminder
@@ -9543,10 +9549,11 @@ def test_every_file_a_firm_reply_opens_is_judged_by_its_bytes_and_never_the_stat
     for where in opened:
         assert where.name != VIEW_FILENAME
         # Its names below its household's folder, in the tree it is in: the
-        # place must be one the fingerprint reads whole, in that tree.
+        # place must be in one of the household's two folders, and never one
+        # the fingerprint leaves out.
         tree, _household, *below = where.relative_to(demo_root.resolve()).parts
-        places = judged.private_whole if tree == PRIVATE_TREE else judged.client_whole
-        assert tree in (PRIVATE_TREE, CLIENTS_TREE) and firm_cache._at(places, tuple(below)), where
+        assert tree in (PRIVATE_TREE, CLIENTS_TREE) and below, where
+        assert not firm_cache._at(judged.private_left_out, tuple(below)), where
 
 
 @pytest.mark.parametrize("dropped", ["a file", "a folder holding a file"])
