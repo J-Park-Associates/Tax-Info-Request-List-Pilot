@@ -101,7 +101,7 @@ the data folder's answer across a pass is not proven safe"):
    copy held since the household began, so a save the app made meanwhile
    would be undone in silence. Nothing the pass runs reaches a setter; one
    that ever did fails loudly rather than losing a save.
-5. **A household's hold never refuses a write.** `refuse_a_write_while_reading`
+5. **A household's hold refuses no write to the records or the store.** `refuse_a_write_while_reading`
    refuses only inside a reading (`_HOLDING == HOLD_READING`). Nested holds
    are the outer one: a household inside a reading is still a reading and
    still refuses; a reading inside a household is the household's.

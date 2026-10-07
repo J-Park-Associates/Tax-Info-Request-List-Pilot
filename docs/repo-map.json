@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 436,
     "edges": 1196,
-    "reused": 378
+    "reused": 389
   },
   "node_types": [
     "artifact",
@@ -4921,7 +4921,7 @@
       "id": "pilot/SPEC-scale-1000.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "fa08552bcb5b4a75",
+      "sha256": "e4bd2297c93abd20",
       "lines": 229
     },
     {
