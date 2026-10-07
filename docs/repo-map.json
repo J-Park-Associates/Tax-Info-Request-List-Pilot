@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 436,
     "edges": 1196,
-    "reused": 377
+    "reused": 378
   },
   "node_types": [
     "artifact",
@@ -292,7 +292,7 @@
       "id": "tracker/api.py",
       "type": "module",
       "layer": "core",
-      "sha256": "5d784e6dfc2e9520",
+      "sha256": "19a3926435e7eeab",
       "lines": 6307,
       "cli": "python -m tracker.api",
       "exports": [
@@ -3621,8 +3621,8 @@
       "id": "tracker/settings.py",
       "type": "module",
       "layer": "core",
-      "sha256": "b3859219ee8b4c31",
-      "lines": 1214,
+      "sha256": "f86f864ffa2cb2be",
+      "lines": 1224,
       "cli": "python -m tracker.settings",
       "exports": [
         "COLUMN_CATALOG",
@@ -3694,6 +3694,7 @@
         "ScheduleChoiceError",
         "SchedulePreference",
         "SettingsError",
+        "WRITE_WHILE_HOLDING",
         "WRITE_WHILE_READING",
         "app_dir",
         "beside_the_program",
@@ -3788,6 +3789,7 @@
         "HOLD_READING": "'reading'",
         "HOLD_HOUSEHOLD": "'household'",
         "WRITE_WHILE_READING": "'{what} may not be written inside a read-only reply (P118): the reply holds its answers, and a write would leave them stale'",
+        "WRITE_WHILE_HOLDING": "\"{what} may not be written while a pass holds a household's answers (P207): it would write back the copy read when the household began\"",
         "ROOT_IS_SYSTEM_DRIVE": "'{root} is the whole system drive; the app would walk all of it. Choose the folder the firm keeps its clients in'",
         "ROOT_HOLDS_SETTINGS": "\"{root} holds the app's own settings ({settings}); choose the folder the firm keeps its clients in\"",
         "ROOT_INSIDE_SETTINGS": "\"{root} is inside the app's settings folder ({settings}); choose the folder the firm keeps its clients in\"",
@@ -3797,7 +3799,7 @@
         "ROOT_INSIDE_A_TREE": "'{root} is inside the {tree} folder of the clients root {real}; choose {real}'"
       },
       "role": "The settings file beside the app (SETTINGS_FILENAME): the one place the clients root, the firm and the firm's telephone number are kept. clients_root()/set_clients_root(), firm()/set_firm(), firm_phone()/set_firm_phone(); product_name() reads app/package.json productName (or ENV_PRODUCT_NAME from the shell). ENV_SETTINGS_DIR from the Electron shell says where beside-the-app is. ENV_REAL_CORPUS and real_corpus_dir() name the other folder outside the repository: the firm's own redacted documents, with the expectations file's name and columns beside them.",
-      "notes": "Replaced two roots (an env var for the app defaulting to a demo folder, a command-line path for the job) that nothing tied together. set_clients_root() refuses a folder that does not exist, so a typo cannot become an empty root the run walks for ever. The file is written through fsio.write_json_atomically() (decision 120; it was the manifest's until then, and that one import was the whole of this module's dependence on layer 1): the app and the scheduling CLI can both save it, and neither may swap the other's half-written temp into place. Decision 68: an empty root is refused - Path(\"\") is the working folder. Decision 69: the working folder under any spelling is refused as a root. Decision 71: real_corpus_dir() answers None when the variable is unset and when what it names is not a folder, because raising would fail the suite on every machine that has no corpus, CI included; it is an environment variable rather than a setting because it belongs to a machine, never to an engagement. Decision 117: the firm's phone is a setting for the mirror image of that reason - it belongs to the firm and not to any one engagement, so it sits beside the firm's name rather than in every client's details, and it is taken as typed because a firm writes its number its own way. Only the reminder's final notice says it, and a blank one drops that sentence. Decision 131: the scheduled job names this file's folder (runner --settings) rather than the root, and reads the root from here at every run - one home for the clients root. Decision 137 (M3) replaced decision 69's working-folder check, which meant nothing in the packaged build: root_refusal() (pure, so every rule is testable on any OS) refuses the system drive's root (system_drive_root()), the settings folder, any folder holding it and any folder inside it, and the app's own folder (app_dir(): the frozen executable's, or the repository from source) and any folder holding it, each with its own sentence. Another drive's root is allowed - a letter mapped to the clients share is a real root - and \"D:\" is still recorded as \"D:\\\\\". Review fixes (decision 137): _inside() compares the folders themselves (os.path.samefile up the parent chain) as well as their spellings, so long-path (\\\\?\\) and C$ admin-share forms are refused like plain names; clients_root_refusal() is what set_clients_root and the runner's start both ask. Decision 188: ROOT_INSIDE_A_TREE - the nearest folder above the root that holds both trees (layout.clients_tree_of and private_tree_of are folders) with the root inside one of them (layout.tree_of) is refused naming the root to choose; a lone folder named Clients is not (the runbook's example root). settings imports layout at load (same layer, reads no file). _within and _inside keep their own under-a-folder spelling for the machine's own folders, allowed by name in the layer test. Decision 193: ERROR_LOG_FILENAME and error_log(), the rotating local error log attached by api.main and runner.main for their lifetime - the one log file any logger writes (decision 190, Part 4: errors.keep's words land here through 'tracker.debug', and tests/test_errors.py fails a second one), rotated by _ErrorLog's own few lines (not logging.handlers, which loads socket - the review's S2); error_log_path() is beside the tracker's database (store.store_path()'s folder, asked at call time), so it moves with the store. Decision 185: _read() learns the file is absent by opening it, so the suite's tripwire sees every attempt; OCR_SCRATCH_DIRNAME names the retired scratch folder once; inside_the_app() is the one answer to whether a path lies in the app's folder (the checkout from source), asked by the report tools before writing and by decision 186. Decision 186: data_home() is the one per-user local folder where client-derived data lives (ENV_DATA_HOME, else %LOCALAPPDATA%\\tax-document-tracker on Windows with no fallback, else $XDG_STATE_HOME or ~/.local/state); resolve_data_home() is its pure core, testable on any OS; it refuses a folder inside or around program_folders() or not on a fixed disk (drive_type(), GetDriveTypeW through ctypes), and creates nothing - scratch_root(), process_scratch() and logs_dir() are path answers only. root_refusal() gains data= (ROOT_HOLDS_DATA, ROOT_INSIDE_DATA). OCR_SCRATCH_DIRNAME and inside_the_app() are decision 185's names, landed with 185; 186 uses them. The settings file stays beside the app as a pointer holding nothing about a client. 186c: program_drive_refusal() asks drive_type() of the program's folder and its settings folder, looked up at call time so a test's patch reaches it; only DRIVE_FIXED passes (PROGRAM_ON_REMOVABLE, PROGRAM_ON_NETWORK, PROGRAM_DRIVE_UNKNOWN). Install Schedule (api, scheduling CLI) refuses on it and the app's first screen says it; the scheduled pass never asks, since a pass that refuses goes quiet. Pilot P21: the schedule choice (KEY_SCHEDULE_ENABLED/START/EVERY, written only by set_schedule) lives here with its checks (check_start, check_every, EVERY_CHOICES, ScheduleChoiceError, SchedulePreference), not in scheduling, because the runner reads the saved choice for the last-pass line and may not import scheduling; scheduling re-exports the names. schedule_preference() refuses a hand-edited bad value naming file and key, never resetting it. P118: one_reading() holds data_home, app_dir, program_folders, the settings file (_read hands each caller its own copy) and resolved(path) for one read-only reply; outside it nothing is held, so data_home still takes an override at once. An error is never held. Review fold: refuse_a_write_while_reading() - _write and store.record raise inside one_reading(). EARLIER_PRODUCT_NAME is the pilot's name before the rename (P155), the one home of that name: setup.iss, the two Windows check scripts and package.json's config.userDataName type it and tests hold each copy equal. earlier_settings_path() is where the earlier installer put settings.json (%LOCALAPPDATA%\\Programs\\<earlier name>), or None with no LOCALAPPDATA; after_install copies from it. DATA_HOME_NAME keeps its name through the rename (SPEC-rename R3): it is package.json's internal name and holds the store. F7 (P193): Windows redirects what a program started from inside a packaged app (the Claude desktop app) writes under %LOCALAPPDATA% into %LOCALAPPDATA%\\Packages\\<package>\\LocalCache\\Local, so such a process sees a second store and checkpoint that refuse the real one's lines. R1: data_home() (through _the_data_home) refuses it with DATA_HOME_REDIRECTED, a SettingsError, on Windows only and only when ENV_DATA_HOME is unset or blank, asked once a process (_redirected_package, _redirect_answer); redirect_probe() writes a uniquely named empty file (REDIRECT_PROBE_PREFIX, pid, 16 hex) in %LOCALAPPDATA%, looks for it under Packages\\*\\LocalCache\\Local, and removes it from wherever it landed in a finally ('make' is injected, as drive_type is). Not in resolve_data_home or default_data_home: the suite always names a data home and the tripwire must still learn the real place without a probe. Rejected: asking Windows for package identity (the redirected process has none) and comparing file IDs (blind until a redirected write has made the copy). R2: redirected_copies() lists every existing Packages\\*\\LocalCache\\Local\\<DATA_HOME_NAME> (Windows, read-only, none with no Packages folder or with ENV_DATA_HOME set) for api._machine_warnings' REDIRECTED_COPY sentence; the app never removes one (client-derived, decision 186), and it is not runner.left_behind's 'beside the program'. Combined review (S2, N3): R1's refusal is its own class, DataHomeRedirected (a SettingsError), so api._machine_warnings says R1's sentence alone, with no REDIRECTED_COPY line calling the folder the process sees 'never used'; a Packages folder Windows will not list (any OSError but absent or not a folder) is a SettingsError with PACKAGES_UNREADABLE from _package_names, naming the folder and errors.error_class (imported at call time, so the load-time imports stay layout and fsio), never a raw PermissionError: the probe then refuses the data home (it cannot rule a redirect out) and still removes its file, and _machine_warnings says the sentence once and shows the rest. P207 (pilot/SPEC-scale-1000.md): one_household() holds the same answers for one household of a pass while the pass writes; _HOLDING says which hold is under way (HOLD_READING refuses a write, HOLD_HOUSEHOLD does not); inside a household resolved(path) holds only a path that is there (os.path.lexists), and _write drops everything held. Nested holds are the outer one."
+      "notes": "Replaced two roots (an env var for the app defaulting to a demo folder, a command-line path for the job) that nothing tied together. set_clients_root() refuses a folder that does not exist, so a typo cannot become an empty root the run walks for ever. The file is written through fsio.write_json_atomically() (decision 120; it was the manifest's until then, and that one import was the whole of this module's dependence on layer 1): the app and the scheduling CLI can both save it, and neither may swap the other's half-written temp into place. Decision 68: an empty root is refused - Path(\"\") is the working folder. Decision 69: the working folder under any spelling is refused as a root. Decision 71: real_corpus_dir() answers None when the variable is unset and when what it names is not a folder, because raising would fail the suite on every machine that has no corpus, CI included; it is an environment variable rather than a setting because it belongs to a machine, never to an engagement. Decision 117: the firm's phone is a setting for the mirror image of that reason - it belongs to the firm and not to any one engagement, so it sits beside the firm's name rather than in every client's details, and it is taken as typed because a firm writes its number its own way. Only the reminder's final notice says it, and a blank one drops that sentence. Decision 131: the scheduled job names this file's folder (runner --settings) rather than the root, and reads the root from here at every run - one home for the clients root. Decision 137 (M3) replaced decision 69's working-folder check, which meant nothing in the packaged build: root_refusal() (pure, so every rule is testable on any OS) refuses the system drive's root (system_drive_root()), the settings folder, any folder holding it and any folder inside it, and the app's own folder (app_dir(): the frozen executable's, or the repository from source) and any folder holding it, each with its own sentence. Another drive's root is allowed - a letter mapped to the clients share is a real root - and \"D:\" is still recorded as \"D:\\\\\". Review fixes (decision 137): _inside() compares the folders themselves (os.path.samefile up the parent chain) as well as their spellings, so long-path (\\\\?\\) and C$ admin-share forms are refused like plain names; clients_root_refusal() is what set_clients_root and the runner's start both ask. Decision 188: ROOT_INSIDE_A_TREE - the nearest folder above the root that holds both trees (layout.clients_tree_of and private_tree_of are folders) with the root inside one of them (layout.tree_of) is refused naming the root to choose; a lone folder named Clients is not (the runbook's example root). settings imports layout at load (same layer, reads no file). _within and _inside keep their own under-a-folder spelling for the machine's own folders, allowed by name in the layer test. Decision 193: ERROR_LOG_FILENAME and error_log(), the rotating local error log attached by api.main and runner.main for their lifetime - the one log file any logger writes (decision 190, Part 4: errors.keep's words land here through 'tracker.debug', and tests/test_errors.py fails a second one), rotated by _ErrorLog's own few lines (not logging.handlers, which loads socket - the review's S2); error_log_path() is beside the tracker's database (store.store_path()'s folder, asked at call time), so it moves with the store. Decision 185: _read() learns the file is absent by opening it, so the suite's tripwire sees every attempt; OCR_SCRATCH_DIRNAME names the retired scratch folder once; inside_the_app() is the one answer to whether a path lies in the app's folder (the checkout from source), asked by the report tools before writing and by decision 186. Decision 186: data_home() is the one per-user local folder where client-derived data lives (ENV_DATA_HOME, else %LOCALAPPDATA%\\tax-document-tracker on Windows with no fallback, else $XDG_STATE_HOME or ~/.local/state); resolve_data_home() is its pure core, testable on any OS; it refuses a folder inside or around program_folders() or not on a fixed disk (drive_type(), GetDriveTypeW through ctypes), and creates nothing - scratch_root(), process_scratch() and logs_dir() are path answers only. root_refusal() gains data= (ROOT_HOLDS_DATA, ROOT_INSIDE_DATA). OCR_SCRATCH_DIRNAME and inside_the_app() are decision 185's names, landed with 185; 186 uses them. The settings file stays beside the app as a pointer holding nothing about a client. 186c: program_drive_refusal() asks drive_type() of the program's folder and its settings folder, looked up at call time so a test's patch reaches it; only DRIVE_FIXED passes (PROGRAM_ON_REMOVABLE, PROGRAM_ON_NETWORK, PROGRAM_DRIVE_UNKNOWN). Install Schedule (api, scheduling CLI) refuses on it and the app's first screen says it; the scheduled pass never asks, since a pass that refuses goes quiet. Pilot P21: the schedule choice (KEY_SCHEDULE_ENABLED/START/EVERY, written only by set_schedule) lives here with its checks (check_start, check_every, EVERY_CHOICES, ScheduleChoiceError, SchedulePreference), not in scheduling, because the runner reads the saved choice for the last-pass line and may not import scheduling; scheduling re-exports the names. schedule_preference() refuses a hand-edited bad value naming file and key, never resetting it. P118: one_reading() holds data_home, app_dir, program_folders, the settings file (_read hands each caller its own copy) and resolved(path) for one read-only reply; outside it nothing is held, so data_home still takes an override at once. An error is never held. Review fold: refuse_a_write_while_reading() - _write and store.record raise inside one_reading(). EARLIER_PRODUCT_NAME is the pilot's name before the rename (P155), the one home of that name: setup.iss, the two Windows check scripts and package.json's config.userDataName type it and tests hold each copy equal. earlier_settings_path() is where the earlier installer put settings.json (%LOCALAPPDATA%\\Programs\\<earlier name>), or None with no LOCALAPPDATA; after_install copies from it. DATA_HOME_NAME keeps its name through the rename (SPEC-rename R3): it is package.json's internal name and holds the store. F7 (P193): Windows redirects what a program started from inside a packaged app (the Claude desktop app) writes under %LOCALAPPDATA% into %LOCALAPPDATA%\\Packages\\<package>\\LocalCache\\Local, so such a process sees a second store and checkpoint that refuse the real one's lines. R1: data_home() (through _the_data_home) refuses it with DATA_HOME_REDIRECTED, a SettingsError, on Windows only and only when ENV_DATA_HOME is unset or blank, asked once a process (_redirected_package, _redirect_answer); redirect_probe() writes a uniquely named empty file (REDIRECT_PROBE_PREFIX, pid, 16 hex) in %LOCALAPPDATA%, looks for it under Packages\\*\\LocalCache\\Local, and removes it from wherever it landed in a finally ('make' is injected, as drive_type is). Not in resolve_data_home or default_data_home: the suite always names a data home and the tripwire must still learn the real place without a probe. Rejected: asking Windows for package identity (the redirected process has none) and comparing file IDs (blind until a redirected write has made the copy). R2: redirected_copies() lists every existing Packages\\*\\LocalCache\\Local\\<DATA_HOME_NAME> (Windows, read-only, none with no Packages folder or with ENV_DATA_HOME set) for api._machine_warnings' REDIRECTED_COPY sentence; the app never removes one (client-derived, decision 186), and it is not runner.left_behind's 'beside the program'. Combined review (S2, N3): R1's refusal is its own class, DataHomeRedirected (a SettingsError), so api._machine_warnings says R1's sentence alone, with no REDIRECTED_COPY line calling the folder the process sees 'never used'; a Packages folder Windows will not list (any OSError but absent or not a folder) is a SettingsError with PACKAGES_UNREADABLE from _package_names, naming the folder and errors.error_class (imported at call time, so the load-time imports stay layout and fsio), never a raw PermissionError: the probe then refuses the data home (it cannot rule a redirect out) and still removes its file, and _machine_warnings says the sentence once and shows the rest. P207 (pilot/SPEC-scale-1000.md): one_household() holds the same answers for one household of a pass while the pass writes; _HOLDING says which hold is under way (HOLD_READING refuses a write, HOLD_HOUSEHOLD does not); inside a household resolved(path) holds only a path that is there (os.path.lexists), and _write refuses inside a household's hold (WRITE_WHILE_HOLDING), so a setter never writes back the held copy over a save the app made meanwhile. Nested holds are the outer one."
     },
     {
       "id": "tracker/store.py",
@@ -4058,8 +4060,8 @@
       "id": "tracker/view.py",
       "type": "module",
       "layer": "core",
-      "sha256": "c6cd8fac14bd7240",
-      "lines": 914,
+      "sha256": "929cb7ceb16257b7",
+      "lines": 916,
       "cli": "python -m tracker.view",
       "exports": [
         "BADGE_CLASS",
@@ -4105,7 +4107,7 @@
         "VIEW_FILENAME": "'Status Report.html'",
         "SUMMARY_SECTION": "'Summary'",
         "REQUESTS_SECTION": "'Requests'",
-        "VIEW_NOTE": "'This page is regenerated every pass and holds no facts of its own: every value on it comes from the record, the request list and the index.'",
+        "VIEW_NOTE": "'This page is redrawn whenever anything on it changes - Generated is when it last changed - and holds no facts of its own: every value on it comes from the record, the request list and the index.'",
         "LABEL_ENGAGEMENT": "'Engagement folder'",
         "LABEL_GENERATED": "'Generated (UTC)'",
         "LABEL_GENERATED_LOCAL": "'Generated (this machine)'",
@@ -4127,7 +4129,7 @@
         "SET_ASIDE_GROUP": "'{label} ({n})'"
       },
       "role": "The page a person opens: VIEW_FILENAME, regenerated in the engagement folder at the end of every real pass from the readers (load_manifest() for the request rows and their statuses, read_index() for the originals, review.triage() for what each parked file might be), in four sections - Summary, Requests, Index, Needs Review. Owns the file name, the Summary's labels and their meta names, the three words a view's state is said in (CURRENT / BEHIND / UNKNOWN), the chip's label and the button's, render_page(), write_view(), view_state(), read_stamp(), the two row builders (request_row(), index_row()) and the CLI that redraws one engagement and prints its state.",
-      "notes": "Decision 89, stage A step 3, as decision 91 settled it: the owner's rule is that every file staff open only to READ is a web page. IT HOLDS NO FACT, and that is the whole design: no fact is read back - only the stamp in its meta tags, by read_stamp(), for the current / behind / unknown chip - so the one failure every other file must survive costs nothing here. A page whose replace does not land is not replaced, the run carries view_stale and SUCCEEDS, the older page stands and the next pass lands one. Written through manifest.write_text_atomically(); there is no read-only attribute (a browser holds no write lock). On Windows a plain open() read handle still refuses the replace, so view_stale has a real trigger there. Every value goes through page.esc() and the page fetches nothing. The stamp lives in meta tags in the head and read_stamp() reads it with one regular expression - no HTML parser in production. Decision 104: view_state() compares ONE digest - the record's head (ledger.head()) as it was when the page was drawn, against the head now; a rules edit is an event, so an edit moves the head and the page is honestly behind, and the workbook's digest that used to be the second stamp is gone with the workbook. Section headings come from their owners (REQUESTS_SECTION here, filer.INDEX_HEADING, filer.NEEDS_REVIEW) and the review shortlist's sentences from tracker/review.py. Imports downwards only - ledger, manifest, filer, review, page - and only runner and api import it; writing the view is the last thing a pass does. tests/conftest.py draws the page again from the live readers through render_page() after every test and requires the same bytes, with only the clock excluded. Decision 103: this page is where the statuses and the Validation Notes are READ: REQUEST_COLUMNS is the manifest's ten plus the four the record holds, side by side, and a keyword a person's filing taught the row is in Any Keywords beside the ones they typed. Decision 152: the stamp's digest is read BEFORE the rows - _readers() reads ledger.head() first and hands it to _stamp(), for write_view() and render_page() alike - because the page takes no lock and a line appended between the rows and a head read after them would name a line the rows never saw, so view_state() would call a behind page current. Read first, the error runs toward one redraw (BEHIND). A caller handing in items/entries also hands in the head it read before them (head=); the pass hands in nothing (runner.write_view(engagement) reads all three here), so its single reading is unchanged. ledger.read_with_head() is not used: the rows come from the store's readers, not from that read of the file. Decision 159 (D-7): the Summary stamp carries 'Last written' - who and when the record's last line was written - through view.last_written(), and the page's meta carries it for the app. It reads that line without the store, so it shows a writer and a time only inside the admission's two rules (records.host_problem, records.stamp_problem), else LAST_WRITTEN_UNKNOWN. Decision 190: the Index table gains Code and Client's Subfolder from INDEX_LAYOUT, and NEEDS_REVIEW_FIELDS shows the subfolder. DECISION 190: the head carries page.policy() of _STYLE and _SORT_SCRIPT (_POLICY), before the style block; the sort script adds listeners only, so a hash-only policy runs it and nothing else. Decision 200: badges show STATUS_LABELS' label and are classed by the record's word. One Set aside fold (SET_ASIDE_SECTION, SET_ASIDE_GROUP) replaces NOT_ASKED_SECTION and NOT_APPLICABLE_SECTION. P210 (pilot/SPEC-scale-1000.md): write_view() with no now first draws the page at the time the page on disk says it was generated (_kept_stamp) and, when that is the page on disk word for word (_says, read as text so CRLF compares by what it says), writes nothing and returns ViewResult.unchanged; any difference is written as before. The digest is the head either way, so view_state() stays CURRENT."
+      "notes": "Decision 89, stage A step 3, as decision 91 settled it: the owner's rule is that every file staff open only to READ is a web page. IT HOLDS NO FACT, and that is the whole design: no fact is read back - only the stamp in its meta tags, by read_stamp(), for the current / behind / unknown chip - so the one failure every other file must survive costs nothing here. A page whose replace does not land is not replaced, the run carries view_stale and SUCCEEDS, the older page stands and the next pass lands one. Written through manifest.write_text_atomically(); there is no read-only attribute (a browser holds no write lock). On Windows a plain open() read handle still refuses the replace, so view_stale has a real trigger there. Every value goes through page.esc() and the page fetches nothing. The stamp lives in meta tags in the head and read_stamp() reads it with one regular expression - no HTML parser in production. Decision 104: view_state() compares ONE digest - the record's head (ledger.head()) as it was when the page was drawn, against the head now; a rules edit is an event, so an edit moves the head and the page is honestly behind, and the workbook's digest that used to be the second stamp is gone with the workbook. Section headings come from their owners (REQUESTS_SECTION here, filer.INDEX_HEADING, filer.NEEDS_REVIEW) and the review shortlist's sentences from tracker/review.py. Imports downwards only - ledger, manifest, filer, review, page - and only runner and api import it; writing the view is the last thing a pass does. tests/conftest.py draws the page again from the live readers through render_page() after every test and requires the same bytes, with only the clock excluded. Decision 103: this page is where the statuses and the Validation Notes are READ: REQUEST_COLUMNS is the manifest's ten plus the four the record holds, side by side, and a keyword a person's filing taught the row is in Any Keywords beside the ones they typed. Decision 152: the stamp's digest is read BEFORE the rows - _readers() reads ledger.head() first and hands it to _stamp(), for write_view() and render_page() alike - because the page takes no lock and a line appended between the rows and a head read after them would name a line the rows never saw, so view_state() would call a behind page current. Read first, the error runs toward one redraw (BEHIND). A caller handing in items/entries also hands in the head it read before them (head=); the pass hands in nothing (runner.write_view(engagement) reads all three here), so its single reading is unchanged. ledger.read_with_head() is not used: the rows come from the store's readers, not from that read of the file. Decision 159 (D-7): the Summary stamp carries 'Last written' - who and when the record's last line was written - through view.last_written(), and the page's meta carries it for the app. It reads that line without the store, so it shows a writer and a time only inside the admission's two rules (records.host_problem, records.stamp_problem), else LAST_WRITTEN_UNKNOWN. Decision 190: the Index table gains Code and Client's Subfolder from INDEX_LAYOUT, and NEEDS_REVIEW_FIELDS shows the subfolder. DECISION 190: the head carries page.policy() of _STYLE and _SORT_SCRIPT (_POLICY), before the style block; the sort script adds listeners only, so a hash-only policy runs it and nothing else. Decision 200: badges show STATUS_LABELS' label and are classed by the record's word. One Set aside fold (SET_ASIDE_SECTION, SET_ASIDE_GROUP) replaces NOT_ASKED_SECTION and NOT_APPLICABLE_SECTION. P210 (pilot/SPEC-scale-1000.md): write_view() with no now first draws the page at the time the page on disk says it was generated (_kept_stamp) and, when that is the page on disk word for word (_says, read as text so CRLF compares by what it says), writes nothing and returns ViewResult.unchanged; any difference is written as before. The digest is the head either way, so view_state() stays CURRENT; VIEW_NOTE says the page is redrawn whenever anything on it changes."
     },
     {
       "id": "app/main.js",
@@ -4666,7 +4668,7 @@
       "id": "README.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "ea34d32c5a6d40ab",
+      "sha256": "ec8d859f235c354c",
       "lines": 587,
       "role": "What the system is, how to run each stage, and how to set it up. Who does what is docs/workflow.md."
     },
@@ -4674,7 +4676,7 @@
       "id": "docs/ROADMAP.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "7666b7a6d6e91667",
+      "sha256": "8034eb63ef74718a",
       "lines": 442,
       "role": "The build plan, the hard constraints and the decision log. Every component, all built and tested.",
       "notes": "The decision log is the record of WHY: read it before changing behaviour that looks arbitrary."
@@ -4692,7 +4694,7 @@
       "id": "docs/repo-map.curated.json",
       "type": "file",
       "layer": "docs",
-      "sha256": "ab4a75a82274a803",
+      "sha256": "2a4838dd65ee8e3c",
       "lines": 1148,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
@@ -4701,8 +4703,8 @@
       "id": "docs/runbook.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "fbf3a0cbfc92dcc9",
-      "lines": 2701,
+      "sha256": "90333e7660cccee6",
+      "lines": 2703,
       "role": "The operator's page for one tax season: the designated machine and today's rule that only one may run a clients root, what a person does each morning and on the draft day, what every index reason and validation note means, and the thirty-minute move to another machine.",
       "notes": "Written for a person, not an agent. Roles are docs/workflow.md and the reasons behind the rules are docs/ROADMAP.md; it links to both rather than repeating them."
     },
@@ -4765,8 +4767,8 @@
       "id": "pilot/DECISIONS.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "c282bd30243b419d",
-      "lines": 201
+      "sha256": "3f178d3fdd0d2917",
+      "lines": 206
     },
     {
       "id": "pilot/HANDOFF.md",
@@ -4919,8 +4921,8 @@
       "id": "pilot/SPEC-scale-1000.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "4538d0aba0983179",
-      "lines": 225
+      "sha256": "fa08552bcb5b4a75",
+      "lines": 229
     },
     {
       "id": "pilot/SPEC-shell.md",
@@ -9034,8 +9036,8 @@
       "id": "tests/test_registry.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "a67222f2754a1191",
-      "lines": 996,
+      "sha256": "6f42a66945ee5a0c",
+      "lines": 1004,
       "exports": [
         "ITEMS",
         "make",
@@ -9570,8 +9572,8 @@
       "id": "tests/test_runner.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "da825df3cd8721e6",
-      "lines": 5257,
+      "sha256": "fe29d64b3a658931",
+      "lines": 5261,
       "exports": [
         "A_CLIENT_PATH",
         "DRAFT_DAY",
@@ -10004,8 +10006,8 @@
       "id": "tests/test_settings.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "6f873044fb01ff25",
-      "lines": 1036,
+      "sha256": "d4970d794e029271",
+      "lines": 1037,
       "exports": [
         "PACKAGE",
         "beside_the_app",
@@ -10026,7 +10028,7 @@
         "test_a_redirected_data_folder_is_refused_by_name",
         "test_a_root_one_level_too_deep_is_refused_and_the_example_root_is_not",
         "test_a_settings_file_that_will_not_read_is_not_overwritten_by_a_save",
-        "test_a_settings_write_inside_a_household_drops_every_held_answer",
+        "test_a_settings_write_inside_a_household_is_refused_and_never_undoes_a_save",
         "test_a_settings_write_inside_a_reading_is_refused_outright",
         "test_a_stale_redirected_copy_is_found_and_never_touched",
         "test_an_absent_settings_file_is_found_absent_by_opening_it",
@@ -10040,7 +10042,7 @@
         "test_nothing_set_means_none_not_a_guess",
         "test_one_household_asks_the_data_folder_once_and_drops_it_after",
         "test_one_household_holds_a_path_only_once_it_is_there",
-        "test_one_household_lets_the_pass_write",
+        "test_one_household_lets_the_pass_write_its_records_and_the_store",
         "test_one_household_never_holds_an_error",
         "test_one_reading_asks_the_data_folder_once_and_outside_it_every_time",
         "test_one_reading_holds_what_a_path_resolves_to_but_never_an_error",

@@ -5998,7 +5998,7 @@ def _firm_cached(root: Path, today: dt.date) -> list[_FirmShown] | None:
 #: leaves out (the review of P120, SHOULD-2 and SHOULD-4). By content: the
 #: files the firm view opens - every record, the reminder drafts, the
 #: inbox's README - so a rewrite that keeps a size and a time is still
-#: seen. Left out: the return's status page, which every pass rewrites
+#: seen. Left out: the return's status page, which a pass redraws
 #: from the record and no firm reader opens; ``tests/test_api.py`` pins
 #: both by watching every file a firm reply opens.
 #: Each at the one place the tracker writes it (the re-check's MUST-R1 and

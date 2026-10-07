@@ -275,7 +275,7 @@ A Shared Drive, mounted locally on Windows (decision 125)
             └── 2026/
                 ├── 1040 - John & Maria Park/
                 │   ├── _ledger.jsonl         ← the return's record: the request list, the index, the statuses
-                │   ├── Status Report.html    ← this return on one page, redrawn by every pass
+                │   ├── Status Report.html    ← this return on one page, redrawn whenever it changes
                 │   └── Prepared/             ← firm-side working set (NOT shared)
                 │       ├── 00 - Needs Review/  ← could not be identified; a person decides
                 │       ├── A01 - W-2 - TY2025.pdf        ← each copy named by its request (decisions 144, 168)

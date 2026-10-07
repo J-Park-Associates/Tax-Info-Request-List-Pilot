@@ -738,15 +738,19 @@ def test_the_pass_holds_the_machines_answers_for_one_household_at_a_time(tmp_pat
     real = runner.run_household
 
     def watched(household, returns, **kwargs):
-        holds.append((household.name, settings._HOLDING, settings._HELD))
-        return real(household, returns, **kwargs)
+        kind, before = settings._HOLDING, dict(settings._HELD)
+        runs = real(household, returns, **kwargs)
+        holds.append((household.name, kind, before, len(settings._HELD)))
+        return runs
 
     monkeypatch.setattr(runner, "run_household", watched)
     report = run_registry(Registry(source=tmp_path, engagements=[smith, jones]), today=SATURDAY)
 
-    assert sorted(name for name, _, _ in holds) == ["Jones Family", "Smith Family"]
-    assert all(kind == settings.HOLD_HOUSEHOLD for _, kind, _ in holds)
-    assert holds[0][2] is not holds[1][2], "each household starts from nothing held"
+    assert sorted(name for name, _, _, _ in holds) == ["Jones Family", "Smith Family"]
+    assert all(kind == settings.HOLD_HOUSEHOLD for _, kind, _, _ in holds)
+    assert [before for _, _, before, _ in holds] == [{}, {}], \
+        "each household starts from nothing held: what the first held is dropped before the second"
+    assert all(after > 0 for _, _, _, after in holds), "and each holds the answers it asked"
     assert settings._HELD is None
     assert all(not run.error for run in report.runs)
 

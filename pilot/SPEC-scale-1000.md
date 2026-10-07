@@ -95,9 +95,12 @@ the data folder's answer across a pass is not proven safe"):
    renames a folder in the app between two households is seen by the next
    one. Within one household the pass holds that household's locks, which
    is what already keeps the app from changing its returns underneath it.
-4. **A write to the settings file inside a hold drops everything held**
-   (`settings._write`), in case anything ever does write it: the clients
-   root and every store key follow from it.
+4. **A write to the settings file inside a household's hold is refused**
+   (`settings._write`, `WRITE_WHILE_HOLDING`; the review's SHOULD-3). Every
+   setter writes back what `_read()` handed it, which inside a hold is the
+   copy held since the household began, so a save the app made meanwhile
+   would be undone in silence. Nothing the pass runs reaches a setter; one
+   that ever did fails loudly rather than losing a save.
 5. **A household's hold never refuses a write.** `refuse_a_write_while_reading`
    refuses only inside a reading (`_HOLDING == HOLD_READING`). Nested holds
    are the outer one: a household inside a reading is still a reading and
@@ -193,16 +196,17 @@ could go stale.
 
 | File | What changes | Owning test file |
 |---|---|---|
-| `tracker/settings.py` | `one_household()`, `_holding()`, `_HOLDING`, `HOLD_READING`, `HOLD_HOUSEHOLD`; `refuse_a_write_while_reading` refuses only a reading; `resolved` holds a household's path only once it exists; `_write` drops what is held | `tests/test_settings.py` |
+| `tracker/settings.py` | `one_household()`, `_holding()`, `_HOLDING`, `HOLD_READING`, `HOLD_HOUSEHOLD`; `refuse_a_write_while_reading` refuses only a reading; `resolved` holds a household's path only once it exists; `_write` refuses inside a household's hold (`WRITE_WHILE_HOLDING`) | `tests/test_settings.py` |
 | `tracker/runner.py` | `run_registry` serves each household (`serve()`) inside `one_household()` | `tests/test_runner.py` |
 | `tracker/registry.py` | `stopped_households()`; `_households_kept()` and `_stopped_of()` out of `_kept()`; `held_back` asks `stopped_households` | `tests/test_registry.py` |
 | `tracker/api.py` | `_listing` inside `one_reading()` | `tests/test_api.py` |
-| `tracker/view.py` | `write_view` leaves a page that says the same; `_kept_stamp`, `_says`; `ViewResult.unchanged` | `tests/test_view.py` |
+| `tracker/view.py` | `write_view` leaves a page that says the same; `_kept_stamp`, `_says`; `ViewResult.unchanged`; `VIEW_NOTE` says the page is redrawn whenever anything on it changes (the review's SHOULD-1) | `tests/test_view.py` |
+| `tracker/api.py` (comment), `docs/runbook.md`, `README.md`, `docs/ROADMAP.md` (the tree diagram) | "redrawn by every pass" becomes "redrawn whenever it changes" | `tests/test_single_source.py` |
 | `docs/repo-map.curated.json`, then `tools/repo_map.py update` | the notes of the five modules | `tests/test_repo_map.py` |
 | `pilot/DECISIONS.md` | P207-P211 | - |
 
 Tests added, each named as its claim: `test_one_household_asks_the_data_folder_once_and_drops_it_after`,
-`test_one_household_lets_the_pass_write`, `test_a_settings_write_inside_a_household_drops_every_held_answer`,
+`test_one_household_lets_the_pass_write_its_records_and_the_store`, `test_a_settings_write_inside_a_household_is_refused_and_never_undoes_a_save`,
 `test_one_household_holds_a_path_only_once_it_is_there`, `test_one_household_never_holds_an_error`,
 `test_a_household_inside_a_reading_is_the_reading_and_still_refuses_a_write`;
 `test_the_pass_holds_the_machines_answers_for_one_household_at_a_time`;

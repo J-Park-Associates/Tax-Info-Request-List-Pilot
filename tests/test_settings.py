@@ -953,25 +953,26 @@ def test_one_household_asks_the_data_folder_once_and_drops_it_after(monkeypatch,
         assert data_rules.data_home() == tmp_path / "elsewhere", "the next household asks again"
 
 
-def test_one_household_lets_the_pass_write():
-    """The pass writes the store and the records while it holds; only a
-    read-only reply refuses a write (P118's SHOULD-3 is the reading's)."""
+def test_one_household_lets_the_pass_write_its_records_and_the_store():
+    """The pass writes the store and the records while it holds; the store
+    asks ``refuse_a_write_while_reading``, and only a read-only reply
+    refuses (P118's SHOULD-3 is the reading's)."""
     with data_rules.one_household():
         data_rules.refuse_a_write_while_reading("the store")
-        data_rules.set_firm("Written inside a household")
-        assert data_rules.firm() == "Written inside a household"
 
 
-def test_a_settings_write_inside_a_household_drops_every_held_answer(tmp_path):
-    """Everything held may follow from what the settings file said - the
-    clients root, and every key under it - so a write drops it all."""
+def test_a_settings_write_inside_a_household_is_refused_and_never_undoes_a_save():
+    """The review's SHOULD-3: every setter writes back what it read, which
+    inside a household is the copy held since the household began, so a
+    save the app made meanwhile would be undone in silence. The pass never
+    writes the file; one that tried is refused, and the save stands."""
     data_rules.set_firm("Before")
     with data_rules.one_household():
         assert data_rules.firm() == "Before"
-        data_rules.resolved(tmp_path)
-        data_rules.set_firm("After")
-        assert data_rules._HELD == {}
-        assert data_rules.firm() == "After"
+        settings_path().write_text(json.dumps({"firm": "Saved by the app meanwhile"}), encoding="utf-8")
+        with pytest.raises(RuntimeError, match="holds a household's answers"):
+            data_rules.set_firm_phone("555-0100")
+    assert json.loads(settings_path().read_text(encoding="utf-8")) == {"firm": "Saved by the app meanwhile"}
 
 
 def test_one_household_holds_a_path_only_once_it_is_there(monkeypatch, tmp_path):

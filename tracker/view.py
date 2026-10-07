@@ -17,8 +17,8 @@ for the index, and :func:`tracker.review.triage` for what each parked file
 might be. Four sections, in the order a person reads them:
 
 - **Summary** - the record's head, when it was drawn, the counts, and the
-  sentence that says it is regenerated every pass and holds nothing of its
-  own.
+  sentence that says it is redrawn whenever anything on it changes and
+  holds nothing of its own (P210).
 - **Requests** - the person's rules, the keywords a filing taught, and each
   row's status as a badge that says a preparer's word
   (``manifest.STATUS_LABELS``) and is classed by the record's own word,
@@ -160,7 +160,8 @@ from tracker.records import (
 
 log = logging.getLogger("tracker.view")
 
-#: The file a person opens. Regenerated every pass; it holds no facts.
+#: The file a person opens. Drawn by every pass, and written only when it
+#: would say something new (P210); it holds no facts.
 VIEW_FILENAME = "Status Report.html"
 
 #: The section carrying the stamp, and the section that lists the person's
@@ -171,8 +172,9 @@ REQUESTS_SECTION = "Requests"
 SECTIONS = (SUMMARY_SECTION, REQUESTS_SECTION, INDEX_HEADING, NEEDS_REVIEW)
 
 #: What the Summary says about itself, in the first line a person reads.
-VIEW_NOTE = ("This page is regenerated every pass and holds no facts of its own: "
-             "every value on it comes from the record, the request list and the index.")
+VIEW_NOTE = ("This page is redrawn whenever anything on it changes - Generated is when it last "
+             "changed - and holds no facts of its own: every value on it comes from the record, "
+             "the request list and the index.")
 
 #: The Summary's labels. ``view_state`` reads one of them back, so they are
 #: the stamp's field names and are worded once.

@@ -451,15 +451,16 @@ def real_corpus_dir() -> Path | None:
 
 def _write(data: dict) -> None:
     refuse_a_write_while_reading("the settings file")
+    # Inside a household's hold too (P207, the review's SHOULD-3): every
+    # setter writes back what _read() handed it, which there is the copy
+    # held since the household began, so a save the app made meanwhile
+    # would be undone in silence. The pass never writes the file; a write
+    # that ever tried is refused, loudly, rather than losing a save.
+    if _HELD is not None:
+        raise RuntimeError(WRITE_WHILE_HOLDING.format(what="the settings file"))
     path = settings_path()
     path.parent.mkdir(parents=True, exist_ok=True)
-    try:
-        write_json_atomically(path, data)
-    finally:
-        # Inside a household's hold (P207) everything held may follow from
-        # what the file said - the clients root, and every key under it.
-        if _HELD is not None:
-            _HELD.clear()
+    write_json_atomically(path, data)
 
 
 class ScheduleChoiceError(ValueError):
@@ -872,9 +873,9 @@ def redirected_copies(environ=None, *, windows: bool | None = None) -> list[Path
 #: household a pass is serving (P207), or None when neither is under way -
 #: which is always, outside :func:`one_reading` and :func:`one_household`.
 _HELD: dict | None = None
-#: Which of the two holds :data:`_HELD`: :data:`HOLD_READING` refuses a
-#: write, :data:`HOLD_HOUSEHOLD` lets the pass write and forgets what a
-#: write to the settings file could change.
+#: Which of the two holds :data:`_HELD`: :data:`HOLD_READING` refuses every
+#: write, :data:`HOLD_HOUSEHOLD` lets the pass write its records and the
+#: store and refuses only a write to the settings file.
 _HOLDING = ""
 HOLD_READING = "reading"
 HOLD_HOUSEHOLD = "household"
@@ -925,13 +926,19 @@ def one_household() -> Iterator[None]:
     again rather than answered from before it existed. Held for one
     household and dropped after it, so a person's change between two
     households - a settings save, a folder renamed in the app - is seen by
-    the next one. A write to the settings file inside it drops everything
-    held (:func:`_write`). An error is never held. Nested inside a reading
-    or another household's hold, it is part of that hold."""
+    the next one. A write to the settings file inside it is refused
+    (:func:`_write`): every setter writes back what it read, which here is
+    the held copy, and would undo a save the app made meanwhile. An error
+    is never held. Nested inside a reading or another household's hold, it
+    is part of that hold."""
     yield from _holding(HOLD_HOUSEHOLD)
 
 
 def _holding(kind: str) -> Iterator[None]:
+    """The one body of both holds: a fresh :data:`_HELD` of ``kind``, or,
+    when a hold is already under way, that hold unchanged - so a nested
+    hold is the outer one - and nothing held once the outermost ends,
+    whatever ended it."""
     global _HELD, _HOLDING
     if _HELD is not None:
         yield
@@ -956,6 +963,9 @@ def _held(key: tuple, answer):
 #: What a write inside :func:`one_reading` is refused with.
 WRITE_WHILE_READING = ("{what} may not be written inside a read-only reply (P118): the reply holds "
                        "its answers, and a write would leave them stale")
+#: What a settings write inside :func:`one_household` is refused with.
+WRITE_WHILE_HOLDING = ("{what} may not be written while a pass holds a household's answers (P207): "
+                       "it would write back the copy read when the household began")
 
 
 def refuse_a_write_while_reading(what: str) -> None:

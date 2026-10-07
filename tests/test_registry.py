@@ -763,9 +763,15 @@ def _a_firm_with_every_kind_of_stop(root):
     make(root, household="Park Family", name="1040 - Park")
     make(root, household="Lee Family", name="1040 - Lee")
     make(root, household="Kim Family", name="1040 - Kim")
-    make(root, household="Ortiz Family", name="1040 - Ortiz")
+    ortiz = make(root, household="Ortiz Family", name="1040 - Ortiz")
     shutil.copytree(private_household_dir(root, "Park Family"), private_household_dir(root, "Park Family (1)"))
     ledger.path_for(private_household_dir(root, "Lee Family")).unlink()
+    # A household folder holding a return's record (Ortiz's, copied): kept
+    # out of the households before the two claims are judged. Not named
+    # "Ortiz family", which Windows would take for Ortiz's own folder.
+    misplaced = private_household_dir(root, "Ortiz Family Records")
+    misplaced.mkdir()
+    shutil.copyfile(ledger.path_for(ortiz), ledger.path_for(misplaced))
     return root
 
 
@@ -773,8 +779,10 @@ def test_stopped_households_is_the_walks_own_answer(root):
     from tracker.registry import stopped_households
 
     _a_firm_with_every_kind_of_stop(root)
-    walked = discover_engagements(root).stopped
+    registry = discover_engagements(root)
+    walked = registry.stopped
     assert len(walked) == 3, "two claims stop both copies; a lost record stops its household"
+    assert any(m.code == "record_misplaced" for m in registry.misfits), "the misplaced record is a misfit"
     assert stopped_households(root) == walked
 
 
