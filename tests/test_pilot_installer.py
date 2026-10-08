@@ -263,3 +263,36 @@ def test_the_shortcuts_and_the_window_share_one_app_id():
     assert icons
     for line in icons:
         assert f'AppUserModelID: "{found.group(1)}"' in line, line
+
+
+def test_the_pilot_installer_makes_the_overview_ready_before_it_launches_the_app():
+    """Q1 of the speed round (Jason, 2026-10-08: "Yes, add to pilot"): the
+    pilot's installer runs the after-install step through its setup door,
+    so a tester's first Overview is warm. The packaged API is started in
+    its setup mode with the settings folder (the installed folder, where
+    the shell keeps settings.json) and the product's name, hidden and waited
+    for, before the launch entry - and not as a postinstall entry, so a
+    silent install runs it too."""
+    from tracker.runner import PRODUCT_FLAG, SETTINGS_FLAG, SETUP_MODE_FLAG
+
+    package = json.loads((REPO / "app" / "package.json").read_text(encoding="utf-8"))
+    api = package["config"]["apiName"]
+    entries = _sections(_setup())["Run"].splitlines()
+    step, launch = entries
+    assert step.startswith(f'Filename: "{{app}}\\resources\\{api}\\{api}.exe";')
+    parameters = re.search(r'Parameters: "((?:[^"]|"")*)"', step).group(1).replace('""', '"')
+    assert parameters == f'{SETUP_MODE_FLAG} {SETTINGS_FLAG} "{{app}}" {PRODUCT_FLAG} "{_product_name()}"'
+    flags = set(re.search(r"Flags: ([\w ]+)$", step).group(1).split())
+    assert flags == {"runhidden", "waituntilterminated"}
+    assert "postinstall" in launch and "Tax Document Console.exe" in launch
+
+
+def test_the_packaged_setup_mode_is_the_entrys_own_door():
+    """The flag the installer passes is the one ``api_entry.py`` reads,
+    before the API - and with it the task name - is imported."""
+    from tracker.runner import SETUP_MODE_FLAG
+
+    entry = (REPO / "api_entry.py").read_text(encoding="utf-8")
+    assert "if argv[:1] == [SETUP_MODE_FLAG]:" in entry
+    assert entry.index("[SETUP_MODE_FLAG]:") < entry.index("from tracker.api import")
+    assert SETUP_MODE_FLAG in _setup()

@@ -12,6 +12,7 @@ on that day: ``stamped_on`` does, and ``pass_on`` is a pass with it.
 
 import datetime as dt
 import html
+import json
 import re
 from pathlib import Path
 
@@ -4710,6 +4711,52 @@ def test_159s_set_asides_and_the_checkpoints_journal_left_behind_are_named_in_th
         assert (settings / name).read_bytes() == name.encode()      # named, never touched
 
 
+def test_the_checkpoints_side_files_beside_the_store_in_use_are_never_named_left_behind(tmp_path, monkeypatch):
+    """P214: while a command runs, the live checkpoint keeps its write-ahead
+    log and shared memory beside the store in use (the suite's own fixture
+    puts it beside the settings folder); neither is "left over"."""
+    from tracker import checkpoint
+    from tracker.settings import ENV_SETTINGS_DIR
+
+    app = tmp_path / "app"
+    monkeypatch.setenv(ENV_SETTINGS_DIR, str(app))
+    store.connect()
+    for name in (checkpoint.CHECKPOINT_FILENAME, checkpoint.CHECKPOINT_WAL_FILENAME,
+                 checkpoint.CHECKPOINT_SHM_FILENAME):
+        if not (app / name).exists():
+            (app / name).write_bytes(b"")
+    assert Path(store.store_path()).parent == app
+    assert runner_module.left_behind(tmp_path) == []
+    assert runner_module.left_behind_warnings(tmp_path) == []
+
+
+def test_a_checkpoint_log_left_beside_the_program_is_named_to_move_never_to_delete(tmp_path, monkeypatch):
+    """P214: a write-ahead log holds committed writes its checkpoint does
+    not yet, so one an earlier version left beside the program - with its
+    shared memory - is named in the move group with the checkpoint, never
+    in the sentence that says delete, and is never touched."""
+    from tracker import checkpoint
+    from tracker.settings import ENV_SETTINGS_DIR, data_home
+
+    settings = tmp_path / "settings"
+    settings.mkdir()
+    to_move = [checkpoint.CHECKPOINT_FILENAME, checkpoint.CHECKPOINT_WAL_FILENAME,
+               checkpoint.CHECKPOINT_SHM_FILENAME]
+    for name in to_move:
+        (settings / name).write_bytes(name.encode())
+    monkeypatch.setenv(ENV_SETTINGS_DIR, str(settings))
+    monkeypatch.setenv(store.ENV_STORE, str(data_home() / store.STORE_FILENAME))
+    store.close()
+
+    said = dict(runner_module.left_behind_warnings(None))
+    assert runner_module.CODE_LEFT_BEHIND not in said
+    moving = said[runner_module.CODE_LEFT_BEHIND_TO_MOVE].split(": ", 1)[1].split(". These cannot", 1)[0]
+    assert sorted(Path(one).name for one in moving.split("; ")) == sorted(to_move)
+    assert sorted(path.name for path in runner_module.left_behind_to_move(None)) == sorted(to_move)
+    for name in to_move:
+        assert (settings / name).read_bytes() == name.encode()
+
+
 def test_a_pass_serves_no_household_while_the_old_checkpoint_sits_beside_the_program(tmp_path, monkeypatch):
     """The rebase review of 186 (MF1): a machine upgraded before its
     checkpoint was moved. The scheduled pass makes no fresh checkpoint - that
@@ -4725,8 +4772,8 @@ def test_a_pass_serves_no_household_while_the_old_checkpoint_sits_beside_the_pro
     make_engagement(clients, [RequestItem(identifier="A01", document="W-2")], household="Smith Family")
     set_clients_root(clients)
     old = settings_dir() / checkpoint.CHECKPOINT_FILENAME    # the fixture's: 159's layout
+    store.close()           # its write-ahead log folded in and let go of first (P214)
     before = old.read_bytes()
-    store.close()
     monkeypatch.setenv(store.ENV_STORE, str(data_home() / store.STORE_FILENAME))
     new = checkpoint.path_for(store.store_path())
 
@@ -5076,25 +5123,20 @@ def _run_now_warm(root, household, monkeypatch, capsys) -> tuple[int, list[dict]
     return code, _lines(capsys.readouterr().out)
 
 
-def test_run_now_fills_only_the_households_it_touched_so_only_while_the_cache_is_warm(
-        tmp_path, samples, monkeypatch, capsys, fills_asked):
-    """R4 as the engine review's SHOULD-3 ruled it: a person's Sort asks the
-    summary only while the cache holds today's head, when the summary reads
-    just the households whose fingerprint changed (the one the Sort
-    touched) and keeps the rest; on a cold head it would read the whole
-    firm, so it is not asked and the next Overview fills it. Either way
-    before the final line, and no pass warning."""
-    from tracker import door
-
+def test_a_sort_leaves_the_overview_to_the_app(tmp_path, samples, monkeypatch, capsys, fills_asked):
+    """P218 (S1; Jason, 2026-10-08): a person's Sort never asks the summary,
+    cold cache or warm - the app asks the Overview the moment the Sort
+    ends, and that reply fills the cache as every Overview does. No pass
+    warning either way."""
     root = tmp_path / "root"
     engagement = build_engagement(root, samples)
     code, said = _run_now(root, household_of(engagement.path), monkeypatch, capsys)
     assert code == 0 and said[-1]["pass_warnings"] == []
-    assert fills_asked == [], "a cold cache: the whole firm's fill is not a Sort's to pay"
+    assert fills_asked == []
 
     code, said = _run_now_warm(root, household_of(engagement.path), monkeypatch, capsys)
     assert code == 0 and said[-1]["pass_warnings"] == []
-    assert fills_asked == [(str(door.checked_root(None)), "")]
+    assert fills_asked == [], "a warm cache: still the app's Overview to fill"
 
 
 def test_the_scheduled_pass_fills_the_whole_firm_on_a_cold_cache(tmp_path, samples, monkeypatch, fills_asked):
@@ -5189,9 +5231,9 @@ def test_a_fill_that_fails_is_a_pass_warning_and_never_the_exit_code(tmp_path, s
     assert CACHE_NOT_FILLED.format(why=why) in _page(root)
     assert CACHE_NOT_FILLED.format(why=why) in capsys.readouterr().out
 
-    # A Sort fills only while the cache is warm.
+    # A Sort asks no fill (P218), so it has none to fail.
     code, said = _run_now_warm(root, household_of(engagement.path), monkeypatch, capsys)
-    assert code == 0 and said[-1]["pass_warnings"] == [CACHE_NOT_FILLED.format(why=why)]
+    assert code == 0 and said[-1]["pass_warnings"] == []
 
 
 @pytest.mark.parametrize("ending", ["no start", "stopped", "too long", "not kept"])
@@ -5259,3 +5301,295 @@ def test_the_product_name_reaches_the_fill_and_never_the_page(tmp_path, samples,
     assert seen["command"][-1] == runner_module.FIRM_COMMAND
     assert seen["streams"] == {subprocess.DEVNULL}, "the reply names clients; none of it is kept"
     capsys.readouterr()
+
+
+# ------------------------------- the pass's two firm-wide reads (P215) ----
+
+
+def test_the_passs_discovery_and_its_page_read_hold_the_machines_answers(tmp_path, samples, monkeypatch):
+    """P215 (findings-1 #1): discovery and the practice page's parked-file
+    read only read, so each runs inside a reading - the machine's answers
+    held for the call, and dropped when it returns."""
+    from tracker import settings
+
+    _two_households(tmp_path, samples)
+    seen = {}
+    for name in ("discover_engagements", "_parked_files"):
+        real = getattr(runner_module, name)
+
+        def watched(*args, _real=real, _name=name, **kwargs):
+            seen[_name] = settings._HOLDING
+            return _real(*args, **kwargs)
+
+        monkeypatch.setattr(runner_module, name, watched)
+    assert _the_scheduled_job(tmp_path, monkeypatch, "--reminders", "never") == 0
+    assert seen == {"discover_engagements": settings.HOLD_READING, "_parked_files": settings.HOLD_READING}
+    assert settings._HELD is None
+
+
+def test_the_page_is_written_outside_the_reading(tmp_path, samples, monkeypatch):
+    """Only the read is held: the page's write follows the hold's end, so a
+    write inside it can never be refused as a write while reading."""
+    from tracker import settings
+
+    _two_households(tmp_path, samples)
+    holding = []
+    real = runner_module.write_text_atomically
+
+    def watched(path, *args, **kwargs):
+        if Path(path).name == STATUS_PAGE_FILENAME:
+            holding.append(settings._HOLDING)
+        return real(path, *args, **kwargs)
+
+    monkeypatch.setattr(runner_module, "write_text_atomically", watched)
+    assert _the_scheduled_job(tmp_path, monkeypatch, "--reminders", "never") == 0
+    assert holding == [""]
+    assert (tmp_path / STATUS_PAGE_FILENAME).is_file()
+
+
+# ------------------------------------------ the pass-order hint (P217) ----
+
+
+def _hint_file() -> Path:
+    path = store.store_path().parent / runner_module.PASS_ORDER_FILENAME
+    path.parent.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def _hint_lines(path: Path) -> list[str]:
+    return path.read_text(encoding="ascii").splitlines()
+
+
+def _whole_writes_of_the_hint(monkeypatch, *, refuse: bool = False) -> list[Path]:
+    """Every whole write of the hint from here on; ``refuse`` makes each fail."""
+    writes = []
+    real = runner_module.write_text_atomically
+
+    def watched(path, *args, **kwargs):
+        if Path(path).name == runner_module.PASS_ORDER_FILENAME:
+            writes.append(Path(path))
+            if refuse:
+                raise PermissionError(13, "fabricated: the file is held")
+        return real(path, *args, **kwargs)
+
+    monkeypatch.setattr(runner_module, "write_text_atomically", watched)
+    return writes
+
+
+def test_a_hint_for_a_thousand_households_is_read_back_whole(tmp_path):
+    """P217: at 64 KiB the hint was unreadable from about 370 households up,
+    and decision 189's order was lost. A thousand households' hint - one
+    compact line - is read back whole, settled, with no warning."""
+    hint = {f"Household {n:04d} of a Fabricated Firm": {
+        "completed": "2026-10-07T02:14:09", "ended": "2026-10-07T02:14:09",
+        "started": "2026-10-07T02:13:58", "not_served": 0} for n in range(1000)}
+    path = _hint_file()
+    assert runner_module._write_order_hint(path, hint)
+    assert len(_hint_lines(path)) == 1
+    assert 65_536 < path.stat().st_size < runner_module.PASS_ORDER_MAX_BYTES
+    report = RunReport(today=FRIDAY)
+    assert runner_module._read_order_hint(report) == (path, hint, True)
+    assert report.warnings == []
+
+
+def test_each_household_start_is_one_appended_line_and_the_hint_is_written_once_a_pass(
+        tmp_path, samples, monkeypatch):
+    _three_households(tmp_path, samples)
+    run_registry(discover_engagements(tmp_path), today=FRIDAY)          # settles the hint
+    path = _hint_file()
+    assert len(_hint_lines(path)) == 1
+    writes = _whole_writes_of_the_hint(monkeypatch)
+    seen = []
+    real = runner_module.run_household
+
+    def watched(household, *args, **kwargs):
+        lines = _hint_lines(path)
+        seen.append((household.name, len(lines), json.loads(lines[-1])))
+        return real(household, *args, **kwargs)
+
+    monkeypatch.setattr(runner_module, "run_household", watched)
+    run_registry(discover_engagements(tmp_path), today=FRIDAY)
+
+    assert [count for _name, count, _last in seen] == [2, 3, 4]
+    for name, _count, last in seen:
+        assert set(last) == {"started", "household"} and last["household"] == name
+    assert writes == [path]                                              # once, at the end
+    (whole,) = _hint_lines(path)
+    assert json.loads(whole)["version"] == runner_module.PASS_ORDER_VERSION == 2
+
+
+def test_a_pass_killed_in_a_household_leaves_its_mark_and_the_next_pass_puts_it_last(
+        tmp_path, samples, monkeypatch):
+    """Decision 189's crash mark still lands before the household's work:
+    the pass killed in Birch leaves Alder's and Birch's marks after line 1,
+    and the next pass folds them, takes the household never started first,
+    and settles the file to one line again."""
+    _three_households(tmp_path, samples)
+    path = _hint_file()
+    real = runner_module.run_household
+
+    def killed_in_birch(household, *args, **kwargs):
+        if household.name == "Birch Household":
+            raise SystemExit("killed")
+        return real(household, *args, **kwargs)
+
+    with monkeypatch.context() as patched:
+        patched.setattr(runner_module, "run_household", killed_in_birch)
+        with pytest.raises(SystemExit):
+            run_registry(discover_engagements(tmp_path), today=FRIDAY)
+    lines = _hint_lines(path)
+    assert [json.loads(line)["household"] for line in lines[1:]] == ["Alder Household", "Birch Household"]
+
+    taken = households_in_order(monkeypatch)
+    run_registry(discover_engagements(tmp_path), today=FRIDAY)
+    assert taken[0] == "Cedar Household" and taken[-1] in ("Alder Household", "Birch Household")
+    assert len(_hint_lines(path)) == 1
+
+
+def test_a_torn_last_mark_is_skipped_without_a_warning(tmp_path, caplog):
+    path = _hint_file()
+    path.write_text(
+        '{"version":2,"households":{"Alder Household":{"completed":"2026-10-06T02:00:00"}}}\n'
+        '{"started":"2026-10-07T02:00:00","household":"Alder Household"}\n'
+        '{"started":"2026-10-07T02:00:05","household":"Birch Household"}\n'
+        '{"started":"2026-10-07T02:00:1', encoding="ascii")
+    report = RunReport(today=FRIDAY)
+    with caplog.at_level("WARNING"):
+        found, hint, settled = runner_module._read_order_hint(report)
+    assert found == path and not settled
+    assert hint == {"Alder Household": {"completed": "2026-10-06T02:00:00", "started": "2026-10-07T02:00:00"},
+                    "Birch Household": {"started": "2026-10-07T02:00:05"}}
+    assert report.warnings == [] and caplog.records == []
+
+
+def test_an_earlier_versions_hint_is_read_and_settled_before_the_first_mark(tmp_path, samples, monkeypatch):
+    _three_households(tmp_path, samples)
+    path = _hint_file()
+    path.write_text(json.dumps({"version": 1, "households": {
+        "Alder Household": {"completed": "2026-03-13T09:00:00", "not_served": 0},
+        "Birch Household": {"completed": "2026-03-12T09:00:00", "not_served": 0}}}, indent=2),
+        encoding="utf-8")
+    seen = []
+    real = runner_module.run_household
+
+    def watched(household, *args, **kwargs):
+        seen.append(_hint_lines(path))
+        return real(household, *args, **kwargs)
+
+    monkeypatch.setattr(runner_module, "run_household", watched)
+    report = run_registry(discover_engagements(tmp_path), today=FRIDAY)
+
+    assert runner_module.ORDER_HINT_UNREADABLE not in report.warnings
+    first, mark = seen[0]
+    settled = json.loads(first)
+    assert settled["version"] == 2
+    assert settled["households"]["Birch Household"]["completed"] == "2026-03-12T09:00:00"
+    assert json.loads(mark)["household"] == "Cedar Household"            # never completed: first
+
+
+def test_a_hint_that_cannot_be_settled_takes_no_marks(tmp_path, samples, monkeypatch):
+    """A mark appended to an earlier version's file would make it
+    unreadable: when the settling write fails, no mark is appended this
+    pass, and the end-of-pass write is still tried."""
+    _three_households(tmp_path, samples)
+    path = _hint_file()
+    before = json.dumps({"version": 1, "households": {}}, indent=2)
+    path.write_text(before, encoding="utf-8")
+    writes = _whole_writes_of_the_hint(monkeypatch, refuse=True)
+
+    run_registry(discover_engagements(tmp_path), today=FRIDAY)
+
+    assert writes == [path, path]                     # the settling write, then the end's
+    assert path.read_text(encoding="utf-8") == before
+
+
+# ------------------------------------------- a budget in counts (P223) ----
+
+
+def _an_idle_pass_counted(tmp_path, samples, monkeypatch) -> dict:
+    """One scheduled pass with nothing new over the suite's three-household
+    made-up firm, after one settling pass: what the budget counts, by the
+    code alone - never seconds, never questions to the disk."""
+    import math
+
+    from tracker import checkpoint, settings
+
+    root = tmp_path / "Clients"
+    _three_households(root, samples)
+    assert _the_scheduled_job(root, monkeypatch, "--reminders", REMINDERS_NEVER) == 0     # settles
+    store.close()
+    counted = {"statements": 0, "rules": [], "checkpoints": 0, "hint writes": 0, "unheld": 0}
+    real_execute = store._Cursor.execute
+
+    def execute(self, *args, **kwargs):
+        counted["statements"] += 1
+        return real_execute(self, *args, **kwargs)
+
+    real_rules, real_connect = store.rules, checkpoint._connect
+    real_write = runner_module.write_text_atomically
+    real_resolved, real_data_home = settings.resolved, settings.data_home
+
+    def rules(conn, folder):
+        counted["rules"].append(str(folder))
+        return real_rules(conn, folder)
+
+    def connect(path):
+        counted["checkpoints"] += 1
+        return real_connect(path)
+
+    def write(path, *args, **kwargs):
+        counted["hint writes"] += Path(path).name == runner_module.PASS_ORDER_FILENAME
+        return real_write(path, *args, **kwargs)
+
+    def unheld(real):
+        def asked(*args, **kwargs):
+            counted["unheld"] += settings._HELD is None
+            return real(*args, **kwargs)
+        return asked
+
+    with monkeypatch.context() as patch:
+        patch.setattr(store._Cursor, "execute", execute)
+        patch.setattr(store, "rules", rules)
+        patch.setattr(checkpoint, "_connect", connect)
+        patch.setattr(runner_module, "write_text_atomically", write)
+        patch.setattr(settings, "resolved", unheld(real_resolved))
+        patch.setattr(settings, "data_home", unheld(real_data_home))
+        assert _the_scheduled_job(root, monkeypatch, "--reminders", REMINDERS_NEVER) == 0
+    returns = len(set(counted["rules"])) or 1
+    return {"statements per household": math.ceil(counted["statements"] / 3),
+            "rules per return": max((counted["rules"].count(one) for one in set(counted["rules"])), default=0),
+            "returns": returns, "checkpoints": counted["checkpoints"],
+            "hint writes": counted["hint writes"], "unheld": counted["unheld"]}
+
+
+#: The idle pass's counts measured once the speed round was built (pilot
+#: P223), on Python 3.11 and 3.13 alike; the budget is each times 1.2,
+#: rounded up, where a count is a measure rather than a rule.
+IDLE_PASS_MEASURED = {"statements per household": 89, "unheld": 3}
+
+
+def test_an_idle_pass_stays_within_its_budget(tmp_path, samples, monkeypatch):
+    """P223: a budget in counts, so a change that quietly undoes the speed
+    round fails here - in counts the code alone decides, the same on
+    Windows and Linux, never seconds (four shared cores, the office PC's
+    Defender) and never questions to the disk (one ``lstat`` a segment on
+    Linux, two handle opens on Windows, and the test folder's depth).
+
+    Measured after the build, one idle pass over three households: 89 store
+    statements a household (123 before the round), ``store.rules`` once a
+    return (9 before), one checkpoint connection for the whole pass (4
+    before, one a question), one whole write of the pass-order hint, and 3
+    machine questions (``settings.resolved``, ``settings.data_home``)
+    outside any hold for the pass (111 before). A change that needs a
+    higher budget raises it in the same commit with a decision row saying
+    why. Run locally, in the gate, like every test (decisions 207, 211)."""
+    import math
+
+    counted = _an_idle_pass_counted(tmp_path, samples, monkeypatch)
+    assert counted["returns"] == 3
+    assert counted["statements per household"] <= math.ceil(
+        IDLE_PASS_MEASURED["statements per household"] * 1.2), counted
+    assert counted["rules per return"] <= 2, counted
+    assert counted["checkpoints"] == 1, counted
+    assert counted["hint writes"] == 1, counted
+    assert counted["unheld"] <= math.ceil(IDLE_PASS_MEASURED["unheld"] * 1.2), counted

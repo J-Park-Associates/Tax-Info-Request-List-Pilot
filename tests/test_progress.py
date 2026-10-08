@@ -9,6 +9,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 from tracker import progress
 from tracker.progress import (
     CANCEL_SUFFIX,
@@ -166,3 +168,69 @@ def test_a_failure_reply_says_its_sentence_once_as_the_error_and_in_the_failure(
     odd = failure_reply("no", "refused", seq="12", identifier=["x"])
     assert odd["failure"]["seq"] is None and odd["failure"]["identifier"] is None
     assert set(FAILURE_KINDS) == {"stale", "locked", "refused", "failed"}
+
+
+# --------------------------------------- the progress file's scan lines (P219) ----
+
+
+class _Clock:
+    """A monotonic clock a test moves by hand."""
+
+    def __init__(self) -> None:
+        self.now = 100.0
+
+    def __call__(self) -> float:
+        return self.now
+
+
+def test_a_scan_line_is_kept_at_most_once_a_second_and_every_other_line_at_once(tmp_path):
+    clock = _Clock()
+    watch = Watch(tmp_path, emit=[].append, limit_seconds=60, clock=clock)
+    watch.say("household", household="Sample Household", n=1, of=1)
+    watch.say("file", step=progress.SCAN_STEP, name="A01")
+    assert read_latest(tmp_path, watch.pass_id)["event"] == "household"       # under a second: held
+    clock.now += progress.SCAN_KEPT_EVERY_SECONDS
+    watch.say("file", step=progress.SCAN_STEP, name="A02")
+    assert read_latest(tmp_path, watch.pass_id)["name"] == "A02"
+    clock.now += 0.2
+    watch.say("file", step=progress.SCAN_STEP, name="A03")
+    assert read_latest(tmp_path, watch.pass_id)["name"] == "A02"
+    watch.say("stopping")                                                     # not a scan line: at once
+    assert read_latest(tmp_path, watch.pass_id)["event"] == "stopping"
+
+
+def test_a_sort_line_is_always_kept(tmp_path):
+    """A sort line comes before a document's reading - the slow step the
+    lock notice names - so it is never held, however close behind another."""
+    clock = _Clock()
+    watch = Watch(tmp_path, emit=[].append, limit_seconds=60, clock=clock)
+    for name in ("one.pdf", "two.pdf", "three.pdf"):
+        watch.say("file", step="sort", name=name)
+        assert read_latest(tmp_path, watch.pass_id)["name"] == name
+
+
+def test_every_line_is_still_printed(tmp_path):
+    """Run now's reader is unchanged: every line reaches stdout."""
+    printed: list[str] = []
+    clock = _Clock()
+    watch = Watch(tmp_path, emit=printed.append, limit_seconds=60, clock=clock)
+    for n in range(5):
+        watch.say("file", step=progress.SCAN_STEP, name=f"A0{n}")
+    assert [json.loads(one)[PROGRESS_KEY]["name"] for one in printed] == [f"A0{n}" for n in range(5)]
+
+
+def test_a_count_line_carries_no_pass_and_no_name():
+    """P222's count line: one ASCII line, the format's version, the count
+    event - which no pass can say - and two integers; never a pass id, a
+    household's name, a place in a walk or a limit."""
+    said = progress.count_line(25, 1000)
+    assert said.endswith("\n") and said.count("\n") == 1 and said.isascii()
+    assert json.loads(said) == {PROGRESS_KEY: {"v": progress.FORMAT_VERSION, "event": progress.COUNT_EVENT,
+                                               "done": 25, "total": 1000}}
+    assert progress.COUNT_EVENT not in progress.EVENTS
+    for wrong in ((-1, 3), (4, 3), (0, 0), (1.0, 3), (True, 3), ("1", 3)):
+        with pytest.raises(ValueError):
+            progress.count_line(*wrong)
+    watch = Watch(None, limit_seconds=60)
+    with pytest.raises(ValueError):
+        watch.say(progress.COUNT_EVENT, done=1, total=2)

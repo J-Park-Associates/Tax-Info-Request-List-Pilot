@@ -2717,3 +2717,67 @@ def test_an_ocr_reading_is_cut_to_the_budget_and_says_so(tmp_path, monkeypatch):
     said["text"] = "Form W-2 Wage and Tax Statement 2025"
     short = content_check.extract_by_ocr(photo)
     assert short.from_ocr and not short.cut and short.text == said["text"]
+
+
+# --------------------------------------- the cache's key (P216) ----
+
+
+def test_a_files_cache_key_is_its_folders_held_answer_and_its_own_name(tmp_path, monkeypatch):
+    """P216: inside a household's hold the folder is resolved once and every
+    file in it is keyed by that answer and its own name - not a whole
+    resolve a file."""
+    from tracker import settings
+
+    folder = tmp_path / "Inbox"
+    folder.mkdir()
+    files = [folder / name for name in ("One.pdf", "two.PDF", "three.jpg")]
+    for file in files:
+        file.write_bytes(b"fabricated")
+    resolves = []
+    real = type(folder).resolve
+
+    def counted(self, *args, **kwargs):
+        resolves.append(self)
+        return real(self, *args, **kwargs)
+
+    monkeypatch.setattr(type(folder), "resolve", counted)
+    with settings.one_household():
+        keys = [ContentCache._key(file) for file in files]
+    assert keys == [str(real(folder) / file.name).lower() for file in files]
+    assert resolves == [folder]
+
+
+def test_a_file_that_is_a_link_is_keyed_by_where_it_leads(tmp_path):
+    target = tmp_path / "elsewhere" / "Real Name.pdf"
+    target.parent.mkdir()
+    target.write_bytes(b"fabricated")
+    link = tmp_path / "Inbox" / "Link.pdf"
+    link.parent.mkdir()
+    try:
+        link.symlink_to(target)
+    except OSError:
+        pytest.skip("this machine makes no symbolic links")
+    assert ContentCache._key(link) == str(target.resolve()).lower()
+
+
+def test_the_key_is_the_one_a_whole_resolve_gives(tmp_path):
+    """The same key string as before (P216): a file in a folder reached
+    through a link, a file not there yet, a name in another case, and the
+    names that are not plain names."""
+    from tracker import settings
+
+    real = tmp_path / "Real Folder"
+    real.mkdir()
+    (real / "Statement.PDF").write_bytes(b"fabricated")
+    through = tmp_path / "Through"
+    try:
+        through.symlink_to(real, target_is_directory=True)
+    except OSError:
+        through = real
+    cases = [real / "Statement.PDF", through / "Statement.PDF", real / "not yet.pdf",
+             tmp_path / "Real Folder" / "..", tmp_path / "Real Folder" / "."]
+    for case in cases:
+        assert ContentCache._key(case) == str(case.resolve()).lower(), case
+    with settings.one_household():
+        for case in cases:
+            assert ContentCache._key(case) == str(case.resolve()).lower(), case

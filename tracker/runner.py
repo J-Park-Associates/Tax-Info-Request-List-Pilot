@@ -245,6 +245,7 @@ from tracker.settings import (
     firm,
     logs_dir,
     one_household,
+    one_reading,
     product_name,
     root_refusal,
     schedule_preference,
@@ -313,9 +314,9 @@ def _set_asides(filename: str) -> str:
 def left_behind(root: Path | None) -> list[Path]:
     """What an earlier version left where client data no longer lives: the store
     and its two SQLite side files, the pass-order hint, decision 159's record
-    checkpoint (with its rollback journal and a copy a person renamed
-    ``.damaged``), ``recovered`` folder, last-pass file and decision 209's after-install
-    note, what 159's
+    checkpoint (with its rollback journal, its write-ahead log and shared
+    memory (P214) and a copy a person renamed ``.damaged``), ``recovered``
+    folder, last-pass file and decision 209's after-install note, what 159's
     set-aside renamed out of the way (the store's and the checkpoint's
     ``.v<N>.old`` files), decision 193's error log (and its rotated copies)
     and ``passes`` folder, and the old OCR scratch folder - beside the
@@ -323,7 +324,7 @@ def left_behind(root: Path | None) -> list[Path]:
     folder, and the frozen executable's where a package without the shell
     kept them). Only what exists; nothing is opened, moved or deleted. The
     store in use and every file that follows it - its two side files, the
-    hint, the checkpoint and its journal, the ``recovered`` folder, the
+    hint, the checkpoint and its side files, the ``recovered`` folder, the
     last-pass file, the error log, ``passes`` and the set-asides beside it -
     are never named (``TRACKER_STORE`` may point beside the settings file:
     the suite's own fixture does). ``root`` is the clients root, whose old
@@ -339,6 +340,7 @@ def left_behind(root: Path | None) -> list[Path]:
     # made again, so they are in the delete group.
     beside = (store.STORE_WAL_FILENAME, store.STORE_SHM_FILENAME, PASS_ORDER_FILENAME,
               checkpoint.CHECKPOINT_FILENAME, checkpoint.CHECKPOINT_JOURNAL_FILENAME,
+              checkpoint.CHECKPOINT_WAL_FILENAME, checkpoint.CHECKPOINT_SHM_FILENAME,
               checkpoint.CHECKPOINT_DAMAGED_FILENAME, store.RECOVERED_DIR, LAST_PASS_FILENAME,
               AFTER_INSTALL_FILENAME, ERROR_LOG_FILENAME,
               *(f"{ERROR_LOG_FILENAME}.{n}" for n in range(1, ERROR_LOG_BACKUPS + 1)),
@@ -369,10 +371,12 @@ def log_path() -> Path:
 def _to_move(path: Path) -> bool:
     """Whether a left-behind path is one to move into the data home rather
     than delete: what cannot be made again or is evidence - the record
-    checkpoint with its rollback journal, a copy renamed ``.damaged``, its
-    set-asides, and the ``recovered`` folder. The store's set-asides are
+    checkpoint with its rollback journal, its write-ahead log (which holds
+    committed writes) and shared memory (P214), a copy renamed ``.damaged``,
+    its set-asides, and the ``recovered`` folder. The store's set-asides are
     rebuilt from the records, so they are in the delete group."""
     return (path.name in (checkpoint.CHECKPOINT_FILENAME, checkpoint.CHECKPOINT_JOURNAL_FILENAME,
+                          checkpoint.CHECKPOINT_WAL_FILENAME, checkpoint.CHECKPOINT_SHM_FILENAME,
                           checkpoint.CHECKPOINT_DAMAGED_FILENAME, store.RECOVERED_DIR)
             or fnmatch.fnmatchcase(path.name, _set_asides(checkpoint.CHECKPOINT_FILENAME)))
 
@@ -559,6 +563,14 @@ def _one_folder(path: Path) -> str:
 #: scheduled job rather than the API: this flag first, then the runner's own
 #: arguments. tracker.scheduling builds the packaged command line from it.
 RUNNER_MODE_FLAG = "--run"
+#: How the pilot's installer tells the packaged executable to run the
+#: after-install step through its setup door (pilot P218, Q1): this flag
+#: first, then :data:`SETTINGS_FLAG` and :data:`PRODUCT_FLAG` with their
+#: values - the installer has neither the shell's environment nor a
+#: package.json beside the executable. Named here, beside the runner's own
+#: mode, because ``api_entry.py`` must read it before anything imports
+#: ``tracker.scheduling``, which needs the product's name at import.
+SETUP_MODE_FLAG = "--after-install-setup"
 
 
 def run_now_arguments(settings_dir: Path | str, household: Path | str) -> list[str]:
@@ -641,7 +653,7 @@ def fill_firm_cache(root: str, *, product: str = "") -> str:
     return "" if filled else FILL_NOT_KEPT
 
 
-def _fills_the_cache(ns, root: str, *, outcome: str, unproved, household: Path | None) -> bool:
+def _fills_the_cache(ns, *, outcome: str, unproved, household: Path | None) -> bool:
     """Whether this pass fills the firm view's cache at its end (P201,
     ``pilot/SPEC-firm-cache-fill.md`` R4, as the engine review's rulings
     changed it). A real pass over the saved root that served its
@@ -653,26 +665,17 @@ def _fills_the_cache(ns, root: str, *, outcome: str, unproved, household: Path |
       household work has ended, and a fill would keep Stop waiting. The
       next Overview fills the cache, as it did before P201. A pass that
       lost its app is stopped the same way.
-    - **a person's Sort fills only the households its pass touched**
-      (SHOULD-3): it asks the summary only while the cache already holds
-      today's head, when the summary reads just the households whose
-      fingerprint changed - the one the Sort touched, and any a person
-      changed meanwhile - and keeps the rest. On a cold head (a new day,
-      an upgrade, a settings change) the summary would read every
-      household, the whole firm's cost for one household's Sort, so it is
-      not asked: the cache's own staleness rules leave that to the next
-      Overview, which reads every household as it would have anyway. The
-      household the Sort just wrote is inside :data:`firm_cache.RACY_SECONDS`
-      in any case, so a cold fill could not have kept it.
+    - **a person's Sort leaves the cache to the app** (pilot P218, S1;
+      Jason, 2026-10-08): the app asks the Overview the moment the Sort
+      ends, and that reply fills the cache as every Overview does - a fill
+      here as well was one more walk of the firm at the same moment. A Sort
+      run by hand from the command line leaves the cache to the next
+      Overview. (Until P218 a Sort filled while the cache held today's
+      head, SHOULD-3.)
     - the scheduled pass fills the whole firm, cold or warm."""
     if ns.dry_run or ns.root or unproved is not None or outcome == "stopped":
         return False
-    if household is None:
-        return True
-    try:
-        return firm_cache.holds(firm_cache.cache_path(), [firm_cache.head(root, dt.date.today())])
-    except (OSError, SettingsError):
-        return False            # a head that cannot be asked: the next Overview fills it
+    return household is None
 #: What the run says about an engagement it drafted nothing for.
 NOTHING_OUTSTANDING = "Nothing Outstanding; No Reminder Needed"
 #: Which rung of the reminder a draft was written at (decision 117), said
@@ -777,12 +780,26 @@ APP_CLOSED_NO_DRAFT = "not drafted this pass: the app that started it closed"
 #: beside the store, so it holds household names only where the store
 #: already does and moves with it. A hint, never a record: nothing but the
 #: order and the not-served count reads it, and deleting it resets both.
+#:
+#: **Version 2 is JSON lines** (pilot P217): line 1 is the whole hint,
+#: compact, written once a pass; each further line is one household's
+#: start mark, appended (and synced) as the household starts, so decision
+#: 189's crash mark costs a few dozen bytes instead of a whole rewrite.
+#: The next whole write folds the marks into line 1. Version 1 (one
+#: indented object) is still read.
 PASS_ORDER_FILENAME = "pass-order.json"
-PASS_ORDER_VERSION = 1
+PASS_ORDER_VERSION = 2
+#: The versions read: today's, and the one indented object before it.
+_PASS_ORDER_READ = (1, PASS_ORDER_VERSION)
 #: The largest hint read (the review's S1): a file past it is not parsed.
-#: A real hint is one short line per household, well under a kilobyte for
-#: a practice's worth; anything this large is not one.
-PASS_ORDER_MAX_BYTES = 64 * 1024
+#: About 125 bytes a household on line 1 and a few dozen a mark: room for
+#: some 30,000 households (P217 - at 64 KiB a hint was unreadable from
+#: about 370 households up, and the order was lost); anything this large
+#: is not a hint.
+PASS_ORDER_MAX_BYTES = 4 * 1024 * 1024
+#: The largest last-pass file read (:func:`last_pass_line`): what the hint's
+#: cap was before P217 raised it; a last-pass file is one short object.
+LAST_PASS_MAX_BYTES = 64 * 1024
 ORDER_HINT_UNREADABLE = ("the pass order could not be read; households ran in folder order "
                          "this pass")
 #: The exit code of a pass in which some household was not served for the
@@ -1911,7 +1928,13 @@ def run_registry(
         # than every scan waiting as "the reader could not run" (SPEC-169 section 9).
         _warn(report, CODE_READER_PATH_WARNING, warning)
     # Least recently completed first (decision 189), ties in the walk's order.
-    hint_path, hint = _read_order_hint(report)
+    hint_path, hint, settled = _read_order_hint(report)
+    # Settled once, before the first mark (P217): a hint that is missing,
+    # an earlier version's or carrying a killed pass's marks is written
+    # whole first, folding those marks in. A hint that cannot be written
+    # takes no mark this pass - a mark appended to an unsettled file would
+    # make it unreadable - and the end-of-pass write is still tried.
+    marking = not dry_run and hint_path is not None and (settled or _write_order_hint(hint_path, hint))
     walk = [(household, returns) for household, returns in registry.by_household().items()
             if any(one.path in selected for one in returns)]
     order = sorted(range(len(walk)), key=lambda at: _completed_key(hint, walk[at][0], at))
@@ -1934,7 +1957,7 @@ def run_registry(
         report.reader, report.reader_note = reader.device, reader.note
         for n, at in enumerate(order, start=1):
             household, returns = walk[at]
-            _mark_started(hint_path, hint, household, write=not dry_run)
+            _mark_started(hint_path, hint, household, write=marking)
             served[household] = serve(household, returns, (n, len(order)))
             report.runs.extend(run for run in served[household]
                                if run.engagement.path in selected)
@@ -1967,10 +1990,18 @@ def _working(runs: list[EngagementRun]) -> list[EngagementRun]:
     return [run for run in runs if not skipped_because(run.engagement)]
 
 
-def _read_order_hint(report: RunReport) -> tuple[Path | None, dict]:
-    """Where the pass-order hint lives and what it says, by household
-    folder name. Missing is the walk's order in silence; there and
+def _read_order_hint(report: RunReport) -> tuple[Path | None, dict, bool]:
+    """Where the pass-order hint lives, what it says, by household folder
+    name, and whether it is **settled** - version 2 on one line, with no
+    marks after it (P217). Missing is the walk's order in silence; there and
     unreadable is the walk's order and :data:`ORDER_HINT_UNREADABLE`.
+
+    The whole file parsed as one object of a version read
+    (:data:`_PASS_ORDER_READ`) is the hint. Otherwise line 1 must be a
+    version 2 hint, and each further line naming a string ``household``
+    and ``started`` is folded in order, the later winning; a line that does
+    not parse - the torn end of an append the machine died in - is skipped
+    with a debug line, never a warning.
 
     **Only ever a hint** (SPEC 2.3; the review's S1): a file past
     :data:`PASS_ORDER_MAX_BYTES` is not parsed, and every error reading or
@@ -1982,24 +2013,69 @@ def _read_order_hint(report: RunReport) -> tuple[Path | None, dict]:
     except Exception as exc:
         log.warning("Could not tell where the pass order lives (%s)", errors.error_class(exc))
         _warn(report, CODE_ORDER_HINT_UNREADABLE, ORDER_HINT_UNREADABLE)
-        return None, {}
+        return None, {}, False
     try:
         with path.open("rb") as handle:
             raw = handle.read(PASS_ORDER_MAX_BYTES + 1)
         if len(raw) > PASS_ORDER_MAX_BYTES:
             raise ValueError("past the hint's size")
-        payload = json.loads(raw.decode("utf-8"))
+        hint, settled = _parsed_order_hint(raw.decode("utf-8"))
     except FileNotFoundError:
-        return path, {}
+        return path, {}, False
     except Exception as exc:
         log.warning("Could not read %s (%s)", path.name, errors.error_class(exc))
         _warn(report, CODE_ORDER_HINT_UNREADABLE, ORDER_HINT_UNREADABLE)
-        return path, {}
-    households = payload.get("households") if isinstance(payload, dict) else None
-    if not isinstance(households, dict) or payload.get("version") != PASS_ORDER_VERSION:
+        return path, {}, False
+    if hint is None:
         _warn(report, CODE_ORDER_HINT_UNREADABLE, ORDER_HINT_UNREADABLE)
-        return path, {}
-    return path, {name: entry for name, entry in households.items() if isinstance(entry, dict)}
+        return path, {}, False
+    return path, hint, settled
+
+
+def _hint_households(payload, versions: tuple[int, ...]) -> dict | None:
+    """The households of one parsed hint object of a version in
+    ``versions``, keeping only entries that are objects; None for anything
+    else."""
+    households = payload.get("households") if isinstance(payload, dict) else None
+    if not isinstance(households, dict) or payload.get("version") not in versions:
+        return None
+    return {name: entry for name, entry in households.items() if isinstance(entry, dict)}
+
+
+def _parsed_order_hint(text: str) -> tuple[dict | None, bool]:
+    """The hint a pass-order file's text holds and whether it is settled,
+    or ``(None, False)`` for one that is not a hint (P217)."""
+    try:
+        whole = json.loads(text)
+    except ValueError:
+        whole = None
+    else:
+        hint = _hint_households(whole, _PASS_ORDER_READ)
+        one_line = "\n" not in text.rstrip("\n")
+        return hint, hint is not None and whole.get("version") == PASS_ORDER_VERSION and one_line
+    first, _, rest = text.partition("\n")
+    try:
+        hint = _hint_households(json.loads(first), (PASS_ORDER_VERSION,))
+    except ValueError:
+        return None, False
+    if hint is None:
+        return None, False
+    for line in rest.split("\n"):
+        if not line.strip():
+            continue
+        try:
+            mark = json.loads(line)
+        except ValueError:
+            # The torn end of an append the machine died in: the mark is
+            # lost, the hint is not (decision 189 puts that household last
+            # only when its mark reached the disk).
+            log.debug("Skipped a torn mark in %s", PASS_ORDER_FILENAME)
+            continue
+        name = mark.get("household") if isinstance(mark, dict) else None
+        at = mark.get("started") if isinstance(mark, dict) else None
+        if isinstance(name, str) and isinstance(at, str):
+            hint[name] = {**hint.get(name, {}), "started": at}
+    return hint, False
 
 
 def _completed_key(hint: dict, household: Path, at: int) -> tuple:
@@ -2024,21 +2100,39 @@ def _completed_key(hint: dict, household: Path, at: int) -> tuple:
 def _mark_started(path: Path | None, hint: dict, household: Path, *, write: bool) -> None:
     """Say in the hint that this household's pass began, before it does
     anything, so a pass killed in it leaves the mark :func:`_completed_key`
-    reads. Not on a dry run; a hint that cannot be written is a log line."""
+    reads. One line appended, flushed and synced (P217) - on the disk before
+    the household's work begins, as the whole rewrite it replaces was. Not
+    on a dry run, nor on a hint that could not be settled; a mark that
+    cannot be written is a log line."""
     if not write or path is None:
         return
-    hint[household.name] = {**hint.get(household.name, {}),
-                            "started": dt.datetime.now().isoformat(timespec="seconds")}
-    _write_order_hint(path, hint)
-
-
-def _write_order_hint(path: Path, hint: dict) -> None:
+    at = dt.datetime.now().isoformat(timespec="seconds")
+    hint[household.name] = {**hint.get(household.name, {}), "started": at}
+    line = json.dumps({"started": at, "household": household.name}, ensure_ascii=True,
+                      separators=(",", ":")) + "\n"
     try:
-        write_json_atomically(path, {"version": PASS_ORDER_VERSION, "households": hint})
+        with path.open("ab") as handle:
+            handle.write(line.encode("ascii"))
+            handle.flush()
+            os.fsync(handle.fileno())
+    except OSError as exc:
+        log.warning("Could not mark %s (%s)", path.name, errors.error_class(exc))
+
+
+def _write_order_hint(path: Path, hint: dict) -> bool:
+    """The whole hint as line 1 of a version 2 file, compact and ASCII,
+    replacing the file - and every mark in it, which ``hint`` already
+    holds (P217). True when it was written."""
+    text = json.dumps({"version": PASS_ORDER_VERSION, "households": hint}, ensure_ascii=True,
+                      separators=(",", ":")) + "\n"
+    try:
+        write_text_atomically(path, text, encoding="ascii", newline="\n")
     except OSError as exc:
         # A hint: a pass that cannot keep it runs in the walk's order next
         # time, which is where every pass started before decision 189.
         log.warning("Could not write %s (%s)", path.name, errors.error_class(exc))
+        return False
+    return True
 
 
 def _why_not_served(runs: list[EngagementRun]) -> str:
@@ -2326,7 +2420,7 @@ def last_pass_line(path: Path | None = None, *, now: dt.datetime | None = None) 
     The words are here so the app types none of them (UX principle 6).
 
     Read as decision 189 reads its order hint: at most
-    :data:`PASS_ORDER_MAX_BYTES`, every error - a nested file's
+    :data:`LAST_PASS_MAX_BYTES`, every error - a nested file's
     ``RecursionError`` included - is "could not be read", said by its
     class, and nothing the file holds is echoed: a result is one of the
     three this module writes, a reason one of its codes. Never raises: it
@@ -2343,13 +2437,13 @@ def last_pass_line(path: Path | None = None, *, now: dt.datetime | None = None) 
     try:
         path = path or last_pass_path()
         with path.open("rb") as handle:
-            raw = handle.read(PASS_ORDER_MAX_BYTES + 1)
+            raw = handle.read(LAST_PASS_MAX_BYTES + 1)
     except FileNotFoundError:
         return {"text": LAST_PASS_NEVER, "level": LEVEL_WARN}
     except Exception as exc:
         return {"text": LAST_PASS_UNREADABLE.format(error=errors.error_class(exc)), "level": LEVEL_ERR}
     try:
-        if len(raw) > PASS_ORDER_MAX_BYTES:
+        if len(raw) > LAST_PASS_MAX_BYTES:
             raise ValueError("past the file's size")
         data = json.loads(raw.decode("utf-8"))
         started = dt.datetime.fromisoformat(data["started"])
@@ -2566,7 +2660,11 @@ def write_status_page(root: Path | str, report: RunReport, *,
     """
     root = Path(root)
     stamp = (now or dt.datetime.now()).isoformat(sep=" ", timespec="seconds")
-    parked, problems = _parked_files(report)
+    # Inside a reading (pilot P215): the parked-file read only reads, so the
+    # machine's answers are held for it - and only for it; the page is
+    # written after the hold ends.
+    with one_reading():
+        parked, problems = _parked_files(report)
     # The pass's own sentences first (decision 189): a pass that stopped, a
     # run log that could not be written - what a person must see before
     # any one return's problem.
@@ -2990,7 +3088,12 @@ def _pass(ns, parser, reached: dict) -> int:
 
     reached["root"] = root
     try:
-        loaded = discover_engagements(root)
+        # Inside a reading (pilot P215): discovery only reads - its
+        # catch-ups are derivation - so the machine's answers are held for
+        # the walk, and dropped when it returns, before the pass makes
+        # anything.
+        with one_reading():
+            loaded = discover_engagements(root)
     except RegistryError as exc:
         raise PassFailed(PASS_ROOT_UNREADABLE, f"Clients folder problem: {exc}") from None
     # Run now's household (decision 203): named, never guessed, and held
@@ -3139,7 +3242,7 @@ def _pass(ns, parser, reached: dict) -> int:
     # that failed is said after the fact - its code added to the run log as
     # a page that could not be written is, the page written again with its
     # sentence, and the sentence on the console or in Run now's final line.
-    if _fills_the_cache(ns, root, outcome=outcome, unproved=unproved, household=household):
+    if _fills_the_cache(ns, outcome=outcome, unproved=unproved, household=household):
         why = fill_firm_cache(root, product=ns.product)
         if why:
             _warn(result, CODE_CACHE_NOT_FILLED, CACHE_NOT_FILLED.format(why=why))

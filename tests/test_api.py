@@ -9851,3 +9851,291 @@ def test_a_cached_rows_links_follow_a_change_to_another_households_record(capsys
     read = _rows_read(monkeypatch)
     assert _cached_firm(capsys) == whole
     assert not any(str(one).startswith(str(park)) for one in read), "Park's row came from the cache"
+
+
+def test_importing_the_api_loads_no_pdf_reader():
+    """P219 (findings-1 #6, findings-3 #6): pypdf, with its cryptography,
+    was 136 ms of every command's start; it is imported when the first PDF
+    is opened, so a command that opens none never pays it."""
+    import subprocess
+    import sys
+
+    from tests.conftest import REPO, child_env
+
+    probe = "import sys\nimport tracker.api\nprint(sorted(m for m in sys.modules if m.split('.')[0] == 'pypdf'))\n"
+    done = subprocess.run([sys.executable, "-c", probe], cwd=REPO, env=child_env(),
+                          capture_output=True, text=True, timeout=120)
+    assert done.returncode == 0, done.stderr
+    assert done.stdout.strip() == "[]"
+
+
+# ------------------------------------------------------ the warm spare (P220) ----
+
+
+def _tracker_api(args, stdin: bytes, env=None):
+    """``python -m tracker.api`` as the shell starts it, from the checkout."""
+    import subprocess
+    import sys
+
+    from tests.conftest import REPO, child_env
+
+    return subprocess.run([sys.executable, "-m", "tracker.api", *args], cwd=REPO,
+                          env=env or child_env(), input=stdin, capture_output=True, timeout=180)
+
+
+def _handed(argv, payload: bytes = b"") -> bytes:
+    """What the shell writes a spare: the one line, then the payload."""
+    return json.dumps({"argv": argv}).encode("utf-8") + b"\n" + payload
+
+
+def test_a_spare_runs_the_one_command_it_is_handed_and_replies_as_a_fresh_process_does(capsys, demo_root):
+    """P220: the same command in a process that started earlier - stdout
+    and exit code byte for byte a fresh process's, a ``state`` and an
+    ``edit`` that carries a payload alike."""
+    spec = {"household": HOUSEHOLD, "return_name": "Smith", "items": [
+        {"identifier": "A01", "document": "W-2", "required_keywords": "W-2"}]}
+    assert run(capsys, "create", stdin=spec)[0] == 0
+    engagement = where(demo_root, "Smith")
+    rules = payload_of_state(capsys, engagement)["rules"]
+    store.close()
+
+    state = ["state", api.ENGAGEMENT_FLAG, str(engagement)]
+    fresh = _tracker_api(state, b"")
+    warm = _tracker_api([api.SPARE_FLAG], _handed(state))
+    assert fresh.returncode == warm.returncode == 0, warm.stderr
+    assert warm.stdout == fresh.stdout
+
+    edit = ["edit", api.ENGAGEMENT_FLAG, str(engagement)]
+    body = json.dumps({"items": rules, "engagement": {}, "head": _head_now(edit)}).encode("utf-8")
+    fresh = _tracker_api(edit, body)
+    warm = _tracker_api([api.SPARE_FLAG], _handed(edit, body))
+    assert fresh.returncode == warm.returncode == 0, warm.stderr
+    assert warm.stdout == fresh.stdout
+    assert json.loads(warm.stdout)["saved"]["recorded"] is False
+
+
+def test_a_spare_handed_nothing_exits_quietly():
+    """The app closed, or killed the spare it no longer needs: the end of
+    input before a newline runs nothing and says nothing."""
+    for stdin in (b"", b'{"argv": ["sta'):
+        done = _tracker_api([api.SPARE_FLAG], stdin)
+        assert done.returncode == 0 and done.stdout == b"", done.stderr
+
+
+def test_a_spare_handed_a_malformed_line_says_the_usage_and_runs_nothing():
+    """A line not of the agreed shape - or too long - is answered as every
+    unknown command is: ``main([])``'s usage envelope, no words of its own."""
+    usage = _tracker_api([], b"")
+    assert usage.returncode == 1 and json.loads(usage.stdout)["error"].startswith("usage")
+    too_long = json.dumps({"argv": ["state", "x" * (api.SPARE_LINE_MAX + 10)]}).encode() + b"\n"
+    for line in (b"not json\n", b'{"argv": []}\n', b'{"argv": ["state", 3]}\n', b'["state"]\n',
+                 b"\xff\xfe\n", too_long):
+        done = _tracker_api([api.SPARE_FLAG], line)
+        assert done.returncode == 1, line[:40]
+        assert done.stdout == usage.stdout, line[:40]
+
+
+#: What ``import tracker.api`` may open or list (P220): the interpreter's
+#: own files, its packages, the checkout's ``tracker/`` - and a folder on the
+#: import path, which the import system lists to find a module.
+_IMPORT_PROBE = """
+import json, os, sys, sysconfig
+seen = []
+def hook(event, args):
+    if event in ("open", "os.listdir", "os.scandir") and args and isinstance(args[0], (str, bytes, os.PathLike)):
+        seen.append((event, os.fsdecode(args[0])))
+sys.addaudithook(hook)
+import tracker.api
+roots = {sys.prefix, sys.base_prefix, sys.exec_prefix, *(p for p in sysconfig.get_paths().values())}
+print(json.dumps({"seen": seen, "roots": sorted(roots), "path": sys.path}))
+"""
+
+
+def test_importing_the_api_opens_no_file_but_the_programs_own():
+    """P220: a spare is the API imported before the click, so importing it
+    must read nothing a command would read differently later - no settings
+    file, no data folder, no clients root: every file opened and every
+    folder listed is the interpreter's, its packages', the checkout's
+    ``tracker/``, or a folder on the import path."""
+    import os
+    import subprocess
+    import sys
+
+    from tests.conftest import REPO, TRIPWIRE_DIR, child_env
+
+    done = subprocess.run([sys.executable, "-c", _IMPORT_PROBE], cwd=REPO,
+                          env=child_env(TRACKER_PRODUCT_NAME="Fabricated Product"),
+                          capture_output=True, text=True, timeout=180)
+    assert done.returncode == 0, done.stderr
+    said = json.loads(done.stdout.splitlines()[-1])
+    # The suite's own tripwire (decision 185) is loaded first in every child.
+    own = [os.path.realpath(root) for root in said["roots"]] + [
+        os.path.realpath(REPO / "tracker"), os.path.realpath(TRIPWIRE_DIR)]
+    on_the_path = {os.path.realpath(entry or REPO) for entry in said["path"]}
+    strays = []
+    for event, where in said["seen"]:
+        real = os.path.realpath(os.path.join(REPO, where))
+        if event != "open" and real in on_the_path:
+            continue
+        if not any(real == root or real.startswith(root + os.sep) for root in own):
+            strays.append((event, where))
+    assert strays == []
+
+
+#: Everything at a module's top level that asks the machine (P220): the
+#: environment, the clock, the disk, the program's place - by the calls and
+#: values that do, and the settings' own questions.
+_ASKS_BY_CALL = frozenset({
+    "getenv", "now", "today", "time", "monotonic", "perf_counter", "read_text", "read_bytes", "open",
+    "resolve", "cwd", "home", "exists", "is_file", "is_dir", "iterdir", "stat", "lstat", "listdir",
+    "scandir", "glob", "rglob", "expanduser", "getcwd", "gethostname", "getpid", "urandom", "getuser",
+    "node", "localtime", "product_name", "data_home", "settings_dir", "settings_path", "clients_root",
+    "app_dir", "program_folders", "default_data_home", "schedule_preference", "firm",
+    "beside_the_program", "resolved", "_read"})
+_ASKS_BY_VALUE = frozenset({"environ", "__file__", "executable", "argv"})
+
+
+def _fixed_at_import() -> set[tuple[str, str]]:
+    """Each ``(module file, name)`` a top-level statement of ``tracker/``
+    binds from the machine, following calls into the module's own
+    functions; ``if __name__ == "__main__"`` blocks are a command line's."""
+    import ast
+
+    from tests.conftest import REPO
+
+    def asks(node, defined, seen):
+        for sub in ast.walk(node):
+            if isinstance(sub, ast.Call):
+                func = sub.func
+                name = func.id if isinstance(func, ast.Name) else getattr(func, "attr", None)
+                if name in _ASKS_BY_CALL:
+                    return True
+                if isinstance(func, ast.Name) and func.id in defined and func.id not in seen:
+                    seen.add(func.id)
+                    if asks(defined[func.id], defined, seen):
+                        return True
+            elif (isinstance(sub, ast.Attribute) and sub.attr in _ASKS_BY_VALUE) or (
+                    isinstance(sub, ast.Name) and sub.id in _ASKS_BY_VALUE):
+                return True
+        return False
+
+    fixed = set()
+    for path in sorted((REPO / "tracker").glob("*.py")):
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        defined = {node.name: node for node in tree.body
+                   if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))}
+        for node in tree.body:
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Import,
+                                 ast.ImportFrom)):
+                continue
+            if isinstance(node, ast.If) and "__main__" in ast.unparse(node.test):
+                continue
+            if asks(node, defined, set()):
+                targets = getattr(node, "targets", None) or [getattr(node, "target", None)]
+                fixed |= {(path.name, ast.unparse(target)) for target in targets if target is not None}
+                if not any(targets):
+                    fixed.add((path.name, f"line {node.lineno}"))
+    return fixed
+
+
+def test_only_the_task_name_and_the_programs_own_place_are_fixed_at_import():
+    """P220: a spare imports the API before its command, so what a module
+    works out at import must be the same for a fresh command and a spare.
+    The true list (an AST scan of every module's top level): the product's
+    name - the scheduled task's, and the side panel's word in ``SCREEN`` -
+    from the environment the shell gives both alike, and the program's own
+    place, twice. Nothing reads the clock, the settings file, the data
+    folder or the clients root at import."""
+    assert _fixed_at_import() == {("scheduling.py", "TASK_NAME"), ("api.py", "SCREEN"),
+                                  ("settings.py", "PACKAGE_JSON"), ("after_install.py", "CHECKOUT")}
+
+
+# ------------------------------------------- a wait says what it shows (P222) ----
+
+
+def _a_practice_of_five_households(capsys, demo_root) -> int:
+    """Five households for the batches (made-up names): the three-return
+    practice, two more, a Roll Forward that retires a prior, and one whose
+    household record is gone. Returns how many household folders there are."""
+    from tracker.layout import private_household_dir
+
+    _a_practice_for_the_firm_view(capsys, demo_root)
+    items = [{"identifier": "A01", "document": "W-2"}]
+    for household, name in (("Lee Family", "1040 - Ann Lee"), ("Kim Family", "1040 - Kim"),
+                            ("Oak Family", "1040 - Oak"), ("Gone Family", "1040 - Gone")):
+        assert run(capsys, "create", stdin={"household": household, "return_name": name,
+                                            "items": items})[0] == 0
+    assert run(capsys, "create", stdin={
+        "household_path": str(private_household_dir(demo_root, "Kim Family")),
+        "return_name": "1040 - Kim Old", "year": default_tax_year() - 1, "items": items})[0] == 0
+    kim_old = where(demo_root, "1040 - Kim Old", household="Kim Family", year=default_tax_year() - 1)
+    assert run(capsys, "rollover", stdin={"prior": str(kim_old), "year": default_tax_year()})[0] == 0
+    store.close()
+    ledger.path_for(private_household_dir(demo_root, "Gone Family")).unlink()
+    _aged(demo_root)
+    return len([folder for folder in (demo_root / PRIVATE_TREE).iterdir() if folder.is_dir()])
+
+
+def _firm_lines(capsys) -> list[dict]:
+    """Every line ``firm`` printed, the reply last."""
+    code = api.main(["firm"])
+    lines = [json.loads(line) for line in capsys.readouterr().out.strip().splitlines()]
+    assert code == 0, lines[-1]
+    return lines
+
+
+def test_a_cold_overview_says_each_batch_of_households_it_reads(capsys, demo_root, monkeypatch):
+    """P222: reading households afresh, ``firm`` says how far it is - one
+    count line before the first batch and one after each, flushed before
+    the reply: ``done`` from 0 to every household read, never falling, and
+    nothing but the format's version, the event and the two counts."""
+    from tracker import firm_cache, progress
+
+    households = _a_practice_of_five_households(capsys, demo_root)
+    firm_cache.cache_path().unlink(missing_ok=True)
+    monkeypatch.setattr(api, "FIRM_READ_BATCH", 2)
+    *counts, reply = _firm_lines(capsys)
+    assert progress.PROGRESS_KEY not in reply and reply["returns"]
+    said = [line[progress.PROGRESS_KEY] for line in counts]
+    assert [one["done"] for one in said] == [0, *range(2, households, 2), households]
+    for one in said:
+        assert one == {"v": progress.FORMAT_VERSION, "event": progress.COUNT_EVENT,
+                       "done": one["done"], "total": households}
+
+
+def test_a_warm_overview_prints_no_count(capsys, demo_root):
+    """Nothing read afresh, nothing to count: the reply is the one line.
+    (A household with a problem is never kept, so a practice without one.)"""
+    _a_practice_for_the_firm_view(capsys, demo_root)
+    _aged(demo_root)
+    assert len(_firm_lines(capsys)) > 1                      # cold: counted, and the cache filled
+    assert len(_firm_lines(capsys)) == 1
+
+
+def test_an_overview_read_in_batches_is_the_whole_walks_answer(capsys, demo_root, monkeypatch):
+    """The batches change when a row is built, never what it says: with one
+    and two households a batch - across a Roll Forward and a household whose
+    record is gone - the cold reply is the whole walk's, field for field."""
+    from tracker import firm_cache
+
+    _a_practice_of_five_households(capsys, demo_root)
+    whole = _firm_whole(capsys, monkeypatch)
+    for batch in (1, 2):
+        firm_cache.cache_path().unlink(missing_ok=True)
+        monkeypatch.setattr(api, "FIRM_READ_BATCH", batch)
+        assert _firm_lines(capsys)[-1] == whole, batch
+        assert _firm_lines(capsys)[-1] == whole, batch          # and kept, the same
+
+
+def test_the_speed_round_words_are_in_the_screen_vocabulary():
+    """P222's two words, approved by Jason 2026-10-08: the shell types
+    neither; it fills ``reading_households`` with a count line's numbers."""
+    screen = api._vocab()["screen"]
+    assert screen["updating"] == "Updating"
+    assert screen["reading_households"] == "Reading {n} of {total} Households"
+    rows = [line.split("\t") for line in
+            (Path(__file__).resolve().parents[1] / "pilot" / "wording-shell.tsv").read_text(
+                encoding="utf-8").splitlines()]
+    proposed = {row[1]: row[4] for row in rows if len(row) > 4}
+    assert proposed["screen.updating"] == screen["updating"]
+    assert proposed["screen.reading_households"] == screen["reading_households"]

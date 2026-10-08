@@ -407,3 +407,49 @@ def test_the_review_widened_the_program_and_macro_lists_and_left_web_pages_alone
         path = tmp_path / name
         path.write_bytes(b"not an office file")
         assert bears_macros(path), name
+
+
+# ------------------------------------------- pypdf on first use (P219) ----
+
+
+def test_the_pdf_reader_is_imported_only_when_a_pdf_is_opened(tmp_path):
+    """P219 (findings-1 #6): importing the validators loads no PDF reader;
+    opening the first PDF does, once."""
+    import subprocess
+    import sys
+
+    from tests.conftest import REPO, child_env
+
+    pdf = tmp_path / "statement.pdf"
+    writer = PdfWriter()
+    writer.add_blank_page(width=612, height=792)
+    with pdf.open("wb") as handle:
+        writer.write(handle)
+    probe = ("import sys\n"
+             "from pathlib import Path\n"
+             "from tracker import validators\n"
+             "print('pypdf' in sys.modules)\n"
+             "print(validators._pdf_error_uncached(Path(sys.argv[1])))\n"
+             "print('pypdf' in sys.modules)\n")
+    done = subprocess.run([sys.executable, "-c", probe, str(pdf)], cwd=REPO, env=child_env(),
+                          capture_output=True, text=True, timeout=120)
+    assert done.returncode == 0, done.stderr
+    assert done.stdout.splitlines() == ["False", "", "True"]
+
+
+def test_a_reader_a_test_puts_in_place_is_the_one_used(tmp_path, monkeypatch):
+    """``validators.PdfReader`` still reads and replaces (``test_errors``,
+    ``tests/child_readers.py``): the stand-in is the reader used."""
+    from tracker import validators
+
+    opened = []
+
+    class StandIn:
+        def __init__(self, path):
+            opened.append(Path(path).name)
+            self.is_encrypted = False
+            self.pages = []
+
+    monkeypatch.setattr(validators, "PdfReader", StandIn)
+    assert validators._pdf_error_uncached(tmp_path / "any.pdf") == reasons.NO_PAGES.format()
+    assert opened == ["any.pdf"]

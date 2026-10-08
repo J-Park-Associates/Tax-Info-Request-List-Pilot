@@ -103,3 +103,54 @@ def test_runner_mode_reads_a_drop_in_a_child_and_files_it(tmp_path):
     assert code == 0, out
     assert spawned                                   # the drop was read in a child
     assert "filed 1," in out                         # and filed on what the child read
+
+
+def test_the_setup_mode_runs_the_after_install_step_with_what_its_command_line_names(tmp_path, monkeypatch, capsys):
+    """Pilot P218, Q1: the installer starts the packaged executable with
+    ``SETUP_MODE_FLAG``, the settings folder and the product's name - it has
+    no environment to give - and the after-install step runs through its
+    setup door with both in place. In this process, so the suite's own
+    after-install fakes (the test cache it may not clear) hold; the order
+    of imports is ``test_pilot_installer``'s static claim."""
+    import json
+    import os
+    import runpy
+
+    from tracker import after_install
+    from tracker.runner import PRODUCT_FLAG, SETUP_MODE_FLAG
+
+    monkeypatch.delenv(ENV_PRODUCT_NAME, raising=False)
+    monkeypatch.delenv(ENV_SETTINGS_DIR, raising=False)
+    settings = tmp_path / "installed"
+    settings.mkdir()
+    entry = runpy.run_path(str(REPO / "api_entry.py"), run_name="api_entry")
+
+    code = entry["run_setup_step"]([SETTINGS_FLAG, str(settings), PRODUCT_FLAG, "Fabricated Product"])
+
+    assert os.environ[ENV_SETTINGS_DIR] == str(settings)
+    assert os.environ[ENV_PRODUCT_NAME] == "Fabricated Product"
+    assert code == 0, capsys.readouterr().out
+    record = json.loads(after_install.record_path().read_text(encoding="utf-8"))
+    assert record["reason"] == after_install.REASON_SETUP
+    assert SETUP_MODE_FLAG == "--after-install-setup"
+    capsys.readouterr()
+
+
+def test_the_entry_given_the_spare_flag_waits_for_its_command():
+    """Pilot P220: the packaged executable started as a spare imports the
+    API, then runs the one command the shell hands it on stdin - the reply a
+    fresh ``templates`` gives - and, handed nothing, exits quietly."""
+    import json
+
+    from tracker.api import SPARE_FLAG
+
+    def entry(args, stdin: bytes):
+        return subprocess.run([sys.executable, "api_entry.py", *args], cwd=REPO, env=child_env(),
+                              input=stdin, capture_output=True, timeout=120)
+
+    fresh = entry(["templates"], b"")
+    warm = entry([SPARE_FLAG], json.dumps({"argv": ["templates"]}).encode() + b"\n")
+    assert fresh.returncode == warm.returncode == 0, warm.stderr
+    assert warm.stdout == fresh.stdout and warm.stdout.strip().startswith(b"{")
+    idle = entry([SPARE_FLAG], b"")
+    assert idle.returncode == 0 and idle.stdout == b""

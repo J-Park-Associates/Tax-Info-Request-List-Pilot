@@ -246,6 +246,14 @@ CACHE_CLEARED = ("Removed the test cache left in the app's folder by earlier ver
                  "nothing the app uses was in it.")
 CACHE_NOT_CLEARED = ("The test cache left in the app's folder by earlier versions (.pytest_cache) could "
                      "not be removed; the app tries again at its next start.")
+#: The setup door's last job (pilot P218, S3): the Overview made ready, so
+#: the first one after an install opens at once - console only (Setup
+#: prints ``lines``; the app's notice shows findings and failures, never
+#: this). ``{why}`` is :func:`tracker.runner.fill_firm_cache`'s own kind
+#: sentence.
+OVERVIEW_READY = "Made the Overview ready, so the first one after this install opens at once."
+OVERVIEW_NOT_READY = ("The Overview could not be made ready ({why}); the first one reads every "
+                      "household and takes a little longer.")
 #: The careful mover (R9): what it says when it moved decision 186's move
 #: group into the data home, and each way it refused or failed (constant
 #: sentences; no operating-system message is quoted).
@@ -254,10 +262,16 @@ LEFT_BEHIND_MOVED = ("Moved the record checkpoint and recovered records an earli
 LEFT_BEHIND_DESTINATION_TAKEN = ("{name} is already in {home}, so the files an earlier version left "
                                  "beside the program were not moved; a person must compare the two and "
                                  "keep one (runbook, decision 186).")
-#: The record checkpoint, its rollback journal and a copy a person renamed
-#: ``.damaged``, by 186's own names: moved together or not at all (MF1).
+#: The record checkpoint, its rollback journal, its write-ahead log and
+#: shared memory (P214) and a copy a person renamed ``.damaged``, by 186's
+#: own names: moved together or not at all (MF1).
 CHECKPOINT_UNIT = (checkpoint.CHECKPOINT_FILENAME, checkpoint.CHECKPOINT_JOURNAL_FILENAME,
+                   checkpoint.CHECKPOINT_WAL_FILENAME, checkpoint.CHECKPOINT_SHM_FILENAME,
                    checkpoint.CHECKPOINT_DAMAGED_FILENAME)
+#: The side files that would be replayed into whatever checkpoint they are
+#: found beside: never moved without their own (P214).
+_CHECKPOINT_SIDE_FILES = (checkpoint.CHECKPOINT_JOURNAL_FILENAME, checkpoint.CHECKPOINT_WAL_FILENAME,
+                          checkpoint.CHECKPOINT_SHM_FILENAME)
 LEFT_BEHIND_JOURNAL_ALONE = ("The record checkpoint's journal beside the program has no checkpoint with "
                              "it, or {home} already holds part of the checkpoint; nothing was moved - a "
                              "person must look (runbook, decision 186).")
@@ -389,6 +403,9 @@ class AfterInstall:
     #: move the schedule here; else "".
     schedule_host: str = ""
     cache_sentence: str = ""
+    #: The setup door's Overview job (P218): :data:`OVERVIEW_READY`,
+    #: :data:`OVERVIEW_NOT_READY`, or "" where it did not run.
+    overview_sentence: str = ""
     #: The rename's carry-over sentences (settings, then the earlier task).
     carried: tuple[str, ...] = ()
     findings: tuple[str, ...] = ()
@@ -595,6 +612,38 @@ def _check(root: Path | None) -> _Step:
     if not findings:
         return _Step(CHECK_CLEAN_KEY, CHECK_CLEAN.format(n=judged))
     return _Step(CHECK_FOUND_KEY, CHECK_FOUND.format(n=len(findings)), findings=tuple(findings))
+
+
+def _ready_the_overview(root: Path | None, reason: str, check: _Step) -> str:
+    """The setup door's last job (pilot P218, S3; Q1 for the pilot's own
+    installer): ask the firm summary once, so the first Overview after an
+    install or an upgrade is warm instead of reading every household.
+
+    **Only the setup door.** The launch door runs beside the app's own
+    first Overview, which the app asks at once (P221) - a fill there would
+    be a second cold walk of the firm at the same moment; the root door
+    and the Repair door are followed at once by an Overview that fills the
+    cache likewise. Setup is the one door with no Overview after it.
+
+    **Only with somewhere to read**: a saved root that was not refused and
+    a store already on this computer (the check's own rule) - the summary
+    of a firm with no store would build one.
+
+    **Never a failure.** The summary is :func:`tracker.runner.fill_firm_cache`
+    - the app's own ``firm`` as its own process, the cache's own staleness
+    rules, its own time limit - and one that did not finish is a console
+    line, never a failed job: the step's identity is still recorded, so the
+    app does not run the whole step again at every launch for a cache.
+    Returns the sentence, or "" where the job did not run."""
+    if reason != REASON_SETUP or root is None or check.key == CHECK_NO_STORE_KEY:
+        return ""
+    if not Path(store.store_path()).is_file():
+        return ""
+    # Let go of the store and the checkpoint first (P214): the summary is
+    # another process, and nothing of this one's is held across it.
+    store.close()
+    why = runner.fill_firm_cache(str(root))
+    return OVERVIEW_NOT_READY.format(why=why) if why else OVERVIEW_READY
 
 
 #: The two reparse tags that are links (``stat`` names them on Windows):
@@ -882,11 +931,12 @@ def move_left_behind(items: list[Path], home: Path) -> MoveOutcome:
     if len({item.name for item in present}) != len(present):
         return MoveOutcome(sentence=LEFT_BEHIND_MOVE_FAILED.format(home=home), failed=True)
     # The checkpoint and its journal are one unit (the merge review's MF1): a
-    # rollback journal beside a checkpoint that is not its own is replayed
-    # into it at its next open. A journal without its checkpoint beside it,
-    # or a home already holding any part of the unit, moves nothing.
+    # rollback journal - or, since P214, a write-ahead log or its shared
+    # memory - beside a checkpoint that is not its own is replayed into it
+    # at its next open. Any of them without its checkpoint beside it, or a
+    # home already holding any part of the unit, moves nothing.
     if any(item.name in CHECKPOINT_UNIT for item in present) and (
-            any(item.name == checkpoint.CHECKPOINT_JOURNAL_FILENAME
+            any(item.name in _CHECKPOINT_SIDE_FILES
                 and not os.path.lexists(item.parent / checkpoint.CHECKPOINT_FILENAME)
                 for item in present)
             or any(os.path.lexists(home / name) for name in CHECKPOINT_UNIT)):
@@ -1125,6 +1175,8 @@ def _run(*, reason: str, start: str | None = None, every: int | None = None,
     earlier_task = _replace_earlier_task(schedule)
     carried = [carried_settings.sentence, earlier_task.sentence]
     cache = _clear_test_cache(checkout)
+    # The last job before the record (P218, S3): never a failure.
+    overview = "" if refused else _ready_the_overview(root, reason, check)
     failed = list(dict.fromkeys(step.sentence for step in (carried_settings, moving, schedule,
                                                            earlier_task, check, cache)
                                 if step is not None and step.failed))
@@ -1154,11 +1206,14 @@ def _run(*, reason: str, start: str | None = None, every: int | None = None,
         lines.append(FINDINGS_WAIT)
     if cache is not None and not cache.failed:
         lines.append(cache.sentence)
+    if overview:
+        lines.append(overview)
     lines += [sentence for sentence in failed if sentence not in lines]
     return AfterInstall(reason=reason, ran_at=ran_at, schedule=schedule.key,
                         schedule_sentence=schedule.sentence, check=check.key,
                         check_sentence=check.sentence, schedule_host=schedule.host,
                         cache_sentence=cache.sentence if cache is not None else "",
+                        overview_sentence=overview,
                         findings=check.findings, carried=tuple(carried),
                         failed=tuple(failed), program=identity, command=schedule.command,
                         xml=schedule.xml, lines=tuple(lines))

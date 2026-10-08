@@ -135,12 +135,15 @@ def test_the_package_is_proved_to_hold_no_store_log_task_file_or_settings():
     """The proof (decision 186): a step before the package is zipped and
     uploaded fails the build when anything in it bears a name the data
     home or the settings folder holds - each spelled by its constant,
-    decision 159's three files and decision 193's error log, its rotated
+    decision 159's files (the checkpoint's write-ahead log and shared memory
+    among them, P214) and decision 193's error log, its rotated
     copies and its ``passes`` folder beside the store among them."""
     from tracker.checkpoint import (
         CHECKPOINT_DAMAGED_FILENAME,
         CHECKPOINT_FILENAME,
         CHECKPOINT_JOURNAL_FILENAME,
+        CHECKPOINT_SHM_FILENAME,
+        CHECKPOINT_WAL_FILENAME,
         SET_ASIDE_SUFFIX,
     )
     from tracker.progress import PASSES_DIRNAME
@@ -163,7 +166,8 @@ def test_the_package_is_proved_to_hold_no_store_log_task_file_or_settings():
     listed = re.search(r"\$names = @\(([^)]*)\)", body).group(1)
     assert set(re.findall(r"'([^']+)'", listed)) == {
         STORE_FILENAME, STORE_WAL_FILENAME, STORE_SHM_FILENAME, LOG_FILENAME, PASS_ORDER_FILENAME,
-        CHECKPOINT_FILENAME, CHECKPOINT_JOURNAL_FILENAME, CHECKPOINT_DAMAGED_FILENAME,
+        CHECKPOINT_FILENAME, CHECKPOINT_JOURNAL_FILENAME, CHECKPOINT_WAL_FILENAME,
+        CHECKPOINT_SHM_FILENAME, CHECKPOINT_DAMAGED_FILENAME,
         RECOVERED_DIR, LAST_PASS_FILENAME,
         ERROR_LOG_FILENAME, *(f"{ERROR_LOG_FILENAME}.{n}" for n in range(1, ERROR_LOG_BACKUPS + 1)),
         PASSES_DIRNAME,

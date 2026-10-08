@@ -1002,3 +1002,26 @@ def test_household_positions_are_the_walks_households_in_the_walks_order(root):
     empty = root.parent / "Empty root"
     empty.mkdir()
     assert household_positions(empty) is None
+
+
+def test_a_legacy_folder_is_still_found_by_whether_it_has_rules(root, monkeypatch):
+    """P219: discovery asks whether a record has rules, not for its rules -
+    and a record with none beside the old workbook is still the legacy
+    folder, while one with rules is an engagement like any other."""
+    from tracker import store
+
+    make(root)
+    year = private_household_dir(root, "Smith Family") / "2025"
+    half = year / "1065 - Half Set Up"
+    half.mkdir()
+    ledger.path_for(half).write_text("", encoding="utf-8")
+    (half / LEGACY_MANIFEST_FILENAME).write_bytes(b"PK")
+    (year / "1040 - Smith" / LEGACY_MANIFEST_FILENAME).write_bytes(b"PK")
+
+    def parsed(*_args, **_kwargs):
+        raise AssertionError("discovery parsed every rule to learn whether there was one")
+
+    monkeypatch.setattr(store, "rules", parsed)
+    listed = {e.path.name: e for e in discover_engagements(root).engagements}
+    assert listed["1065 - Half Set Up"].problem == LEGACY_FOLDER.format(name=LEGACY_MANIFEST_FILENAME)
+    assert not listed["1040 - Smith"].problem

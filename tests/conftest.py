@@ -723,7 +723,7 @@ def real_places(repo: Path) -> tuple[tuple[str, Path], ...]:
     the suite names instead. The tripwire guards each; decision 186 adds the
     data home - the account's real one, worked out with ``ENV_DATA_HOME``
     set aside (none, if this machine has none), and one the shell names."""
-    from tracker.checkpoint import CHECKPOINT_FILENAME
+    from tracker.checkpoint import CHECKPOINT_FILENAME, CHECKPOINT_SHM_FILENAME, CHECKPOINT_WAL_FILENAME
     from tracker.progress import PASSES_DIRNAME
     from tracker.reminder import DRAFT_FILENAME, NEW_DRAFT_FILENAME
     from tracker.runner import AFTER_INSTALL_FILENAME, LAST_PASS_FILENAME, LOG_FILENAME, STATUS_PAGE_FILENAME
@@ -744,6 +744,9 @@ def real_places(repo: Path) -> tuple[tuple[str, Path], ...]:
                    # checkpoint, the last pass's outcome, and the recovered
                    # copies of a return's lines (record-derived, like the store).
                    ("record checkpoint", where.with_name(CHECKPOINT_FILENAME)),
+                   # Its write-ahead log and shared memory (P214), as the store's.
+                   ("record checkpoint's write-ahead log", where.with_name(CHECKPOINT_WAL_FILENAME)),
+                   ("record checkpoint's shared memory", where.with_name(CHECKPOINT_SHM_FILENAME)),
                    ("last-pass file", where.with_name(LAST_PASS_FILENAME)),
                    # Decision 209's note of the last after-install run, beside the store too.
                    ("after-install note", where.with_name(AFTER_INSTALL_FILENAME)),

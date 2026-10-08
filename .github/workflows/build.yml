@@ -203,7 +203,7 @@ jobs:
       # checked before the package is zipped.
       - name: The package holds no store, run log, task file or settings
         run: |
-          $names = @('tracker.db', 'tracker.db-wal', 'tracker.db-shm', 'runs.log', 'pass-order.json', 'record-heads.db', 'record-heads.db-journal', 'record-heads.db.damaged', 'recovered', 'last-pass.json', 'tracker-errors.log', 'tracker-errors.log.1', 'tracker-errors.log.2', 'tracker-errors.log.3', 'passes', 'tax-tracker.xml', 'ocr-scratch', 'tax-document-tracker-pilot', 'settings.json')
+          $names = @('tracker.db', 'tracker.db-wal', 'tracker.db-shm', 'runs.log', 'pass-order.json', 'record-heads.db', 'record-heads.db-journal', 'record-heads.db-wal', 'record-heads.db-shm', 'record-heads.db.damaged', 'recovered', 'last-pass.json', 'tracker-errors.log', 'tracker-errors.log.1', 'tracker-errors.log.2', 'tracker-errors.log.3', 'passes', 'tax-tracker.xml', 'ocr-scratch', 'tax-document-tracker-pilot', 'settings.json')
           $patterns = @('tracker.db.v*.old*', 'record-heads.db.v*.old*')
           $found = Get-ChildItem -LiteralPath $env:PACKAGE_DIR -Recurse -Force | Where-Object { $name = $_.Name; ($names -contains $name) -or ($patterns | Where-Object { $name -like $_ }) }
           if ($found) { throw "the package holds what belongs in a data folder or a settings folder: $($found.FullName -join ', ')" }

@@ -30,9 +30,10 @@ refuses one whose progress file does not say it may be stopped.
 L0: it imports nothing of the package at load time, so the runner, the
 filer and the scanner can take a :class:`Watch` without reaching up to
 :mod:`tracker.api`; :func:`tracker.locking.pid_alive` is imported at call
-time, to tell a dead pass's leftovers from a live one's. It holds no clock
-of its own: the budget stays decision 189's. No network module, like the
-rest of the package.
+time, to tell a dead pass's leftovers from a live one's. It reads the
+monotonic clock only to space the progress file's scan lines (pilot
+P219); the budget stays decision 189's. No network module, like the rest
+of the package.
 """
 
 from __future__ import annotations
@@ -41,6 +42,7 @@ import datetime as dt
 import json
 import logging
 import os
+import time
 from collections.abc import Callable
 from pathlib import Path
 
@@ -53,6 +55,11 @@ FORMAT_VERSION = 1
 #: What a line can say: the pass began (with its run limit), it is on a
 #: household, it is on a file or request, a stop was seen, it ended.
 EVENTS = ("started", "household", "file", "stopping", "ended")
+#: The one event that is not a pass's (pilot P222): how many households
+#: the firm summary has read of those it reads afresh, said on ``firm``'s
+#: stdout before its reply. Not in :data:`EVENTS`, so a :class:`Watch` can
+#: never say it, and it carries no pass, no name and no limit.
+COUNT_EVENT = "households"
 #: How a pass ended, on its ``ended`` line.
 OUTCOMES = ("finished", "stopped", "out_of_time", "failed")
 #: Why a pass stopped before its end (decision 203): the app that started
@@ -70,6 +77,13 @@ PROGRESS_MAX_BYTES = 4096
 #: A name longer than this is cut on a line, so one line stays inside
 #: :data:`PROGRESS_MAX_BYTES` whatever a client called a file.
 NAME_MAX_CHARS = 200
+#: The progress file keeps a scan line at most this often (pilot P219,
+#: findings-1 #3): a scan says one line a request - 27,002 whole rewrites a
+#: pass at 1,000 households - and the file is a hint a person reads at a
+#: glance. Every line is still printed; every other line is kept at once.
+SCAN_KEPT_EVERY_SECONDS = 1.0
+#: The step a scan's ``file`` lines carry (``tracker.scanner``).
+SCAN_STEP = "scan"
 
 
 #: How a failure is said to a person (decision 193): the record moved
@@ -125,6 +139,19 @@ def line(pass_id: int, event: str, **fields) -> str:
     ending in a newline, so a reader splitting stdout on newlines can never
     see half of one."""
     return json.dumps({PROGRESS_KEY: _fields(pass_id, event, fields)}, ensure_ascii=True) + "\n"
+
+
+def count_line(done: int, total: int) -> str:
+    """One count line (pilot P222): ``{"progress": {"v", "event", "done",
+    "total"}}``, ASCII, one line ending in a newline - the format version,
+    :data:`COUNT_EVENT`, and two integers with ``0 <= done <= total`` and
+    ``total >= 1``. Never a pass id, a household's name or a limit: the
+    shell routes it by the command that printed it, never as a pass's."""
+    if (not all(isinstance(n, int) and not isinstance(n, bool) for n in (done, total))
+            or total < 1 or not 0 <= done <= total):
+        raise ValueError(f"not a count: {done!r} of {total!r}")
+    return json.dumps({PROGRESS_KEY: {"v": FORMAT_VERSION, "event": COUNT_EVENT, "done": done,
+                                      "total": total}}, ensure_ascii=True) + "\n"
 
 
 def _read_bounded(path: Path) -> dict | None:
@@ -185,8 +212,13 @@ class Watch:
     """
 
     def __init__(self, folder: Path | None, *, emit: Callable[[str], None] | None = None,
-                 limit_seconds: int, pass_id: int | None = None) -> None:
+                 limit_seconds: int, pass_id: int | None = None,
+                 clock: Callable[[], float] = time.monotonic) -> None:
         self.folder = Path(folder) if folder is not None else None
+        #: The monotonic clock the scan lines are spaced by, and when the
+        #: progress file last kept a line (P219).
+        self._clock = clock
+        self._kept_at: float | None = None
         self.emit = emit
         self.limit_seconds = int(limit_seconds)
         self.pass_id = int(pass_id if pass_id is not None else os.getpid())
@@ -226,6 +258,15 @@ class Watch:
     def _keep(self, said: dict) -> None:
         if self.folder is None:
             return
+        # A scan line only once a second has passed since the last line
+        # kept (P219). A sort line is always kept: it comes before a
+        # document's reading - the slow step the lock notice exists to
+        # name - and a held one would leave the notice on the previous file.
+        now = self._clock()
+        if (said.get("event") == "file" and said.get("step") == SCAN_STEP
+                and self._kept_at is not None and now - self._kept_at < SCAN_KEPT_EVERY_SECONDS):
+            return
+        self._kept_at = now
         target = _progress_file(self.folder, self.pass_id)
         temp = target.with_name(target.name + _TEMP_SUFFIX)
         body = json.dumps({PROGRESS_KEY: said, "stoppable": self.stoppable},

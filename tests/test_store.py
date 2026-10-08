@@ -3104,18 +3104,19 @@ ADMISSION_PIN: dict[int, dict[str, str]] = {2: {
     "tracker.layout._ONE_SCRIPT": "17235d2097441c94",
     "tracker.layout._character": "bd5a8cc4e82855fc",
     "tracker.layout._parts": "a2847013a67202c7",
+    "tracker.layout._parts_below_of": "d63148cddae165ef",
     "tracker.layout._script": "f890f9bb62d24799",
-    "tracker.layout.is_invisible": "2b17b033d61a3df2",
+    "tracker.layout.is_invisible": "0c3785b4672742ba",
     "tracker.layout.is_reserved_name": "3ee144cf8f5c095d",
     "tracker.layout.is_year_folder": "c89c110db3cb607d",
-    "tracker.layout.name_key": "749d88cbbd6eb3c3",
-    "tracker.layout.parts_below": "522d9b67dfe50b6a",
+    "tracker.layout.name_key": "26ebf92810e1480a",
+    "tracker.layout.parts_below": "ee1aa9d90b7c189a",
     "tracker.layout.place_of": "fc1a78ab7179dd32",
     "tracker.layout.place_problem": "2e94883c849c9d08",
     "tracker.layout.recorded_name": "84bfdf3a851f4652",
     "tracker.layout.recorded_subfolder_part": "50620c73d7ae6dab",
     "tracker.layout.root_of": "a6c7013a757965b4",
-    "tracker.layout.segment_problem": "13e273e844d2cc2b",
+    "tracker.layout.segment_problem": "0dbab0f3b9ccfed7",
     "tracker.ledger.ACCEPTED_KEY": "f4764fc7a8ddd588",
     "tracker.ledger.ALSO_KEY": "da42922852e5dfcd",
     "tracker.ledger.ASKED_KEY": "46da5b49eea2fbee",
@@ -3289,6 +3290,7 @@ ADMISSION_PIN: dict[int, dict[str, str]] = {2: {
     "tracker.settings._SETTINGS_HELD": "6c71e2207cf64f31",
     "tracker.settings._read": "9a09d08e256be9de",
     "tracker.settings.clients_root": "8fbaef8c43dcb573",
+    "tracker.settings.held": "19183d0915cfb77e",
     "tracker.settings.resolved": "dc9902a73c0115e2",
     "tracker.settings.settings_dir": "0468e63b780056c5",
     "tracker.settings.settings_path": "8a79e7ca2ca7f66a",
@@ -3299,7 +3301,7 @@ ADMISSION_PIN: dict[int, dict[str, str]] = {2: {
     "tracker.store.RULE_LIST_FIELDS": "8b3d25ca8662bd02",
     "tracker.store.STATUS_COLUMNS": "072efbf3b12ac0bd",
     "tracker.store.UNKNOWN_EVENT": "099e89ceccd1e5e9",
-    "tracker.store._engagement_row": "e7254ccc28e41fad",
+    "tracker.store._engagement_row": "f7af91c2d1b8ade0",
     "tracker.store._line_keys_problem": "0d6016b3dab0c236",
     "tracker.store._positional_root": "f2fce089ca54ef5a",
     "tracker.store._recorded_root_over": "6447409cff0d940e",
@@ -3361,6 +3363,9 @@ def admission_closure() -> dict[str, str]:
             if found is None:
                 continue
             where, value = found
+            # A remembered rule (P219's ``functools.lru_cache``) is the rule
+            # it wraps: followed through, so the pin still reaches it.
+            value = inspect.unwrap(value) if callable(value) and hasattr(value, "__wrapped__") else value
             if inspect.isfunction(value) and value.__module__.startswith("tracker"):
                 todo.append(value)
             elif isinstance(value, (set, frozenset)):
@@ -4233,6 +4238,7 @@ def test_a_checkpoint_that_will_not_open_is_that_returns_problem_by_name(conn, r
     SF1), so its caller never says it as a root the checkpoint does not
     belong to."""
     where = checkpoint.path_for(tmp_path / "app" / store.STORE_FILENAME)
+    store.close()           # the checkpoint the setup held (P214), as a person closes the app first
     where.write_bytes(b"fabricated garbage, not a database" * 40)
     with pytest.raises(store.StoreError, match="cannot read this machine's record checkpoint"):
         build(conn, root, by_hand)
@@ -4714,3 +4720,199 @@ def test_a_store_at_version_19_gains_the_related_column_in_place_as_a_rebuild_wr
         assert store.check(upgraded, root, by_hand) == []
     finally:
         upgraded.close()
+
+
+# ------------------------------------- the checkpoint held a command (P214) ----
+
+
+def _counting_opens(monkeypatch) -> list[Path]:
+    """Every checkpoint connection opened from here on, by file."""
+    opened: list[Path] = []
+    real = checkpoint._connect
+
+    def counted(path):
+        opened.append(Path(path))
+        return real(path)
+
+    monkeypatch.setattr(checkpoint, "_connect", counted)
+    return opened
+
+
+def test_one_command_opens_the_checkpoint_once(root, by_hand, monkeypatch):
+    """P214: the checkpoint is held beside the store for the command - one
+    open, however many records are proved, written and read."""
+    store.close()                                   # what the fixtures' setup held
+    opened = _counting_opens(monkeypatch)
+    conn = store.connect()
+    build(conn, root, by_hand)
+    with engagement_lock(by_hand):
+        store.record(conn, by_hand, scanned(A01=Status.RECEIVED))
+        store.record(conn, by_hand, scanned(C01=Status.RECEIVED))
+    load_manifest(by_hand)
+    store.foreign_lines()
+    store.prove_the_root(root)
+    assert len(opened) == 1
+    assert store._CHECKPOINT is not None
+
+
+def test_closing_the_store_closes_the_checkpoint_and_takes_its_side_files(root, by_hand):
+    """The last connection's close folds the write-ahead log into the file
+    and removes it: with the app closed the checkpoint is one file."""
+    conn = store.connect()
+    build(conn, root, by_hand)
+    with engagement_lock(by_hand):
+        store.record(conn, by_hand, scanned(A01=Status.RECEIVED))
+    where = checkpoint.path_for(store.store_path())
+    assert where.with_name(checkpoint.CHECKPOINT_WAL_FILENAME).exists()
+    store.close()
+    assert store._CHECKPOINT is None
+    assert where.is_file()
+    for side in (checkpoint.CHECKPOINT_WAL_FILENAME, checkpoint.CHECKPOINT_SHM_FILENAME,
+                 checkpoint.CHECKPOINT_JOURNAL_FILENAME):
+        assert not where.with_name(side).exists(), side
+    with checkpoint.opened(where) as again:
+        assert checkpoint.vouched(again, key_of(by_hand))[0] == len(ledger.read_events(by_hand))
+
+
+def test_a_checkpoint_error_drops_the_held_connection_and_the_next_question_opens_it_again(
+        root, by_hand, monkeypatch):
+    """A busy or damaged checkpoint is never held open against the
+    runbook's set-aside step: the error is said as before, the connection
+    let go of, and the next question opens the file afresh."""
+    conn = store.connect()
+    build(conn, root, by_hand)
+    store.close()
+    conn = store.connect()
+    opened = _counting_opens(monkeypatch)
+    real = checkpoint.vouched
+    refusals = iter([checkpoint.CheckpointUnavailable("record-heads.db", "SQLITE_BUSY")])
+
+    def busy_once(held, key):
+        for refusal in refusals:
+            raise refusal
+        return real(held, key)
+
+    monkeypatch.setattr(checkpoint, "vouched", busy_once)
+    with engagement_lock(by_hand), pytest.raises(store.StoreError, match="checkpoint is busy"):
+        store.record(conn, by_hand, scanned(A01=Status.RECEIVED))
+    assert store._CHECKPOINT is None
+    with engagement_lock(by_hand):
+        store.record(conn, by_hand, scanned(A01=Status.RECEIVED))
+    assert len(opened) == 2 and store._CHECKPOINT is not None     # the first open, then afresh
+
+
+def test_expect_is_on_disk_before_the_journal_line_and_advance_after_it(root, by_hand, monkeypatch):
+    """``record()``'s two checkpoint transactions keep their order and
+    number: the intent is committed - another connection sees it - before
+    the journal line is appended, and the advance after it."""
+    conn = store.connect()
+    build(conn, root, by_hand)
+    where = checkpoint.path_for(store.store_path())
+    key = key_of(by_hand)
+    seen = []
+    real_append = ledger.append
+
+    def watched(engagement_dir, event):
+        with checkpoint.opened(where) as other:
+            seen.append((checkpoint.vouched(other, key), checkpoint.intent(other, key)))
+        return real_append(engagement_dir, event)
+
+    already = len(ledger.read_events(by_hand))
+    monkeypatch.setattr(ledger, "append", watched)
+    with engagement_lock(by_hand):
+        store.record(conn, by_hand, scanned(A01=Status.RECEIVED))
+    (vouched_before, intent_before), = seen
+    assert vouched_before[0] == already
+    assert intent_before is not None and intent_before.start == already and len(intent_before.heads) == 1
+    with checkpoint.opened(where) as other:
+        assert checkpoint.vouched(other, key)[0] == already + 1 and checkpoint.intent(other, key) is None
+
+
+# ----------------------------------------- answers kept for one hold (P215) ----
+
+
+def _counting(monkeypatch, module, name) -> list:
+    calls = []
+    real = getattr(module, name)
+
+    def counted(*args, **kwargs):
+        calls.append(args)
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(module, name, counted)
+    return calls
+
+
+def test_an_engagements_key_is_worked_out_once_per_hold(root, by_hand, monkeypatch):
+    """P215 (findings-2 #2): inside a household's hold the key is worked
+    out once; the row itself is read every time."""
+    from tracker import settings
+
+    conn = store.connect()
+    build(conn, root, by_hand)
+    asked = _counting(monkeypatch, store, "engagement_path")
+    with settings.one_household():
+        first = store._engagement_row(conn, by_hand)
+        again = store._engagement_row(conn, by_hand)
+    assert first is not None and dict(first) == dict(again)
+    assert len(asked) == 1
+    store._engagement_row(conn, by_hand)                       # outside a hold: asked afresh
+    assert len(asked) == 2
+
+
+def test_a_key_asked_before_its_folder_existed_is_asked_again_after(root, monkeypatch):
+    """A folder the pass makes later is never answered from before it
+    existed (P207's rule 2): its key is kept only once it is there."""
+    from tracker import settings
+
+    conn = store.connect()
+    later = root / "J Park & Associates" / "Later Family" / "2025" / "1040 - Later Client"
+    asked = _counting(monkeypatch, store, "engagement_path")
+    with settings.one_household():
+        assert store._engagement_row(conn, later) is None
+        assert store._engagement_row(conn, later) is None
+        assert len(asked) == 2
+        later.mkdir(parents=True)
+        store._engagement_row(conn, later)
+        store._engagement_row(conn, later)
+    assert len(asked) == 3
+
+
+def test_a_record_read_is_never_kept_past_a_rebuild_of_its_row(root, by_hand):
+    """P215 (E2): a held read is kept while the row's head and applied
+    lines are as they were, built again once a line is recorded, and built
+    again after the row is rebuilt from the same journal."""
+    from tracker import settings
+
+    conn = store.connect()
+    build(conn, root, by_hand)
+    built = []
+
+    def read():
+        built.append(1)
+        return [len(built)]
+
+    with settings.one_household():
+        assert store.held_read(conn, by_hand, "probe", read) == [1]
+        kept = store.held_read(conn, by_hand, "probe", read)
+        assert kept == [1] and len(built) == 1
+        kept.append("a caller's own change")
+        assert store.held_read(conn, by_hand, "probe", read) == [1]       # each caller its own list
+        with engagement_lock(by_hand):
+            store.record(conn, by_hand, scanned(A01=Status.RECEIVED))
+        assert store.held_read(conn, by_hand, "probe", read) == [2]
+        build(conn, root, by_hand)                                        # the same journal, rebuilt
+        assert store.held_read(conn, by_hand, "probe", read) == [3]
+        assert store.held_read(conn, by_hand, "probe", read) == [3]
+    assert store.held_read(conn, by_hand, "probe", read) == [4]           # nothing past the hold
+
+
+def test_has_rules_is_whether_rules_has_any(root, by_hand, tmp_path):
+    """P219: whether, not what - the same answer as ``bool(rules(...))``,
+    and False for an engagement the store does not hold."""
+    conn = store.connect()
+    build(conn, root, by_hand)
+    assert store.has_rules(conn, by_hand) is bool(store.rules(conn, by_hand)) is True
+    elsewhere = tmp_path / "not held"
+    elsewhere.mkdir()
+    assert store.rules(conn, elsewhere) is None and store.has_rules(conn, elsewhere) is False
