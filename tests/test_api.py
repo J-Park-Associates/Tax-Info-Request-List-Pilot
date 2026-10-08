@@ -7569,12 +7569,12 @@ def test_the_writes_that_cannot_change_the_list_do_not_walk(capsys, demo_root, t
     assert walked == []
 
 
-def test_sort_and_scan_ends_with_one_list_then_one_state(capsys, demo_root, monkeypatch):
+def test_sort_and_scan_ends_with_one_list_and_one_state(capsys, demo_root, monkeypatch):
     """Decision 203 (the lane's ruling on 194's Q5): the pass is the
     runner's, which walks the root once and prints no list; when it ends
-    the app asks ``list`` once, then ``state`` - which is how a folder made
-    by hand reaches the picker. Neither the pass's final line nor the state
-    walks again."""
+    the app asks ``list`` once and ``state`` once, at the same time (P228) -
+    the list is how a folder made by hand reaches the picker. Neither the
+    pass's final line nor the state walks again."""
     engagement = chased_engagement(capsys, demo_root, name="Scanned")
     walked = _count_walks(monkeypatch)
     code, payload = scan(capsys, engagement)

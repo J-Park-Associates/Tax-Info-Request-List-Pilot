@@ -683,10 +683,12 @@ input, textarea, select { caret-color: var(--text); accent-color: var(--accent);
    figures and statuses are muted until the new reply is drawn. Rows stay
    usable, and stay put: the word is in the bar, which has its own height.
    Its slot is kept the same width whether the word shows or not, so the
-   path beside it is never narrowed when it comes (Jason, 2026-10-08). */
+   path beside it is never narrowed when it comes (Jason, 2026-10-08) - wide
+   enough for its longest words, the launch's "Updating, as of 12:59 PM"
+   (P229). */
 .page-updating {
   flex: none;
-  inline-size: 8ch;
+  inline-size: 24ch;
   margin: 0;
   overflow: hidden;
   text-align: end;
