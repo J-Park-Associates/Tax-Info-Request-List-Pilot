@@ -633,5 +633,47 @@ also approve the words "Updating, as of {time}".
 
 ## 8. Measured before and after
 
-To be filled at merge, by section 6 on a fresh copy, beside the figures
-of section 1.
+Measured 2026-10-08 with the speed round's script (`SPEC-speed-round.md`
+section 8) on two fresh copies of the made-up 1,000-household firm (2,000
+returns, a new pile in every inbox; the checkpoint told of each copy's root
+by `move-root`, so the Roll Forward names point at a root that moved, as on
+every tester's copy), back to back, nothing else running, Linux sandbox, 4
+cores, Python 3.13. After: `29d3374`. Before: `483ec80` (main, the speed
+round merged). Seconds; the median of three for the commands, one run for
+the passes. This machine ran faster this evening than at the speed round's
+measurement, so compare the two columns here, not with section 1.
+
+| Step | Before | After | Change |
+|---|---|---|---|
+| Sort & Scan, one household (first Sort after a scheduled pass) | 6.4 | 3.6 | -44% |
+| Sort & Scan, one household (later Sorts) | 6.0 | 2.4 | -60% |
+| Client list | 2.4 | 1.7 | -31% |
+| Overview, kept copy current | 4.8 | 4.4 | -8% |
+| Overview, kept copy gone | 10.0 | 9.0 | -10% |
+| Last counts at launch (`firm-last`, P229) | - | 0.48 | new |
+| One return's page | 0.24 | 0.24 | same |
+| Scheduled pass, nothing new | 38.2 | 36.5 | -4% |
+| Scheduled pass, draft day | 55.9 | 54.1 | -3% |
+| Scheduled pass, draft day again | 41.3 | 38.4 | -7% |
+| First pass, 1,000 new piles | 612 | 620 | same (noise) |
+
+The first Sort after a scheduled pass reads every other return's counts
+once (the pass keeps their parked rows, not their counts - Lane P's
+departure 3); every Sort after it reads only its own household's records.
+
+**What the window waits for** (reasoned from the steps above, not timed in
+the window). After a Sort, the sorted return's page is fresh at about
+2.4 + 0.24 = 2.7 s (before: the Sort, then the list, then the page, about
+6.0 + 2.4 + 0.24 = 8.7 s) and the Overview at about 2.4 + 4.4 = 6.8 s
+(before about 6.0 + 2.4 + 4.8 = 13.2 s). At launch, today's last counts
+show, marked, at about 0.5 s plus start-up; the fresh ones replace them at
+about 4.4 s.
+
+**The answers are the same.** After one first pass each, both copies hold
+49,000 files with the same names and sizes (no difference), the same
+journal events count for count (filed 14,000, parked 8,000, moving 22,000,
+drafted 2,000 and the rest), and the practice page `status.html` is the
+same, line for line, once its clock times are masked (P227's kept rows draw
+the page a full redraw draws). P225 gains only where the clients folder has
+moved since the Roll Forward, as here; the office's own copy may not have
+moved, and the Windows check says which.
