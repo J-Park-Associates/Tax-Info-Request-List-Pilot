@@ -37,6 +37,7 @@ See docs/ROADMAP.md for the build plan. Component modules:
 - errors        : an error named by its class where a person sees it; its words kept apart
 - api           : the desktop app's command layer, one JSON command in, one JSON reply out
 - firm_cache    : the firm view's cache in the data folder - its head, each household's fingerprint, and a damaged or stale file never used
+- page_rows     : the practice page's kept rows in the data folder - each return's read counts and parked files, used only while its record is unchanged
 
 The standing rules below are the ones every module upholds. They are read
 by the app (through the API's vocabulary) and pinned into CLAUDE.md, the

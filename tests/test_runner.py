@@ -4380,6 +4380,63 @@ def test_an_index_the_page_cannot_read_is_said_by_its_class_never_its_message(
     assert where not in page
 
 
+def test_the_practice_pages_report_asks_each_machine_question_once(tmp_path, samples, monkeypatch):
+    """P226: the report reads every return the pass did not run inside one
+    reading, as P215 held the parked files - so where the store is and what
+    each folder resolves to are asked of the machine once per folder and
+    once in all, not once per record read, as P223 counts them."""
+    from collections import Counter
+
+    from tracker import settings
+
+    root = tmp_path / "Clients"
+    _three_households(root, samples)
+    assert _the_scheduled_job(root, monkeypatch, "--reminders", REMINDERS_NEVER) == 0
+    with settings.one_reading():
+        registry = discover_engagements(root)
+    asked: Counter = Counter()
+    real_resolved, real_data_home = settings.resolved, settings.data_home
+
+    def resolved(path):
+        key = ("resolved", str(Path(path)))
+        if settings._HELD is None or key not in settings._HELD:
+            asked[key] += 1
+        return real_resolved(path)
+
+    def data_home():
+        if settings._HELD is None or ("data_home",) not in settings._HELD:
+            asked["data_home"] += 1
+        return real_data_home()
+
+    monkeypatch.setattr(settings, "resolved", resolved)
+    monkeypatch.setattr(settings, "data_home", data_home)
+    report = runner_module.status_report(registry)
+    assert len(report.runs) == 3 and not report.errors
+    assert asked["data_home"] <= 1, asked
+    assert max(asked.values()) == 1, asked
+
+
+def test_the_practice_page_is_written_after_its_readings_end(tmp_path, samples, monkeypatch):
+    """P226 keeps P215's rule: the report and the parked files are read
+    inside a reading, and ``status.html`` is written after it ends - a
+    write is never made under held answers."""
+    from tracker import settings
+
+    root = tmp_path / "Clients"
+    _three_households(root, samples)
+    held = []
+    real = runner_module.write_text_atomically
+
+    def write(path, *args, **kwargs):
+        if Path(path).name == STATUS_PAGE_FILENAME:
+            held.append(settings._HELD is None)
+        return real(path, *args, **kwargs)
+
+    monkeypatch.setattr(runner_module, "write_text_atomically", write)
+    assert _the_scheduled_job(root, monkeypatch, "--reminders", REMINDERS_NEVER) == 0
+    assert held == [True]
+
+
 def test_only_the_practice_page_reads_the_store_without_following_the_journal():
     """R6: a writer or a card that read without following could act on
     rows behind the journal, so ``follow=False`` is passed in the runner's

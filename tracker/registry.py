@@ -641,6 +641,7 @@ class _Priors:
             if folder is not None:
                 self.by_folder.setdefault(folder, []).append(position)
         self._names: dict[int, tuple[str, ...]] | None = None
+        self._by_tail: dict[tuple[str, ...], list[int]] | None = None
 
     def names(self) -> dict[int, tuple[str, ...]]:
         """Each readable return's folder names, in walk order, made the
@@ -649,6 +650,25 @@ class _Priors:
             self._names = {position: layout.tail_names(self.engagements[position].path)
                            for position in self.readable}
         return self._names
+
+    def by_tail(self) -> dict[tuple[str, ...], list[int]]:
+        """The readable returns grouped by their last
+        ``layout.ROLLED_FROM_TAIL`` folder names, in walk order, made once
+        (P225).
+
+        Only a return in Rolled From's own group can ever be its prior: one
+        that ends in at least ``ROLLED_FROM_TAIL`` of its names shares
+        exactly its last three, and one that ends in fewer is refused by the
+        fallback's own floor. Comparing with every return instead took
+        1,999,000 ``common_tail`` calls, about 0.9 s, at 1,000 rolled
+        households after a root move - paid by every discovery.
+        """
+        if self._by_tail is None:
+            self._by_tail = {}
+            for position, names in self.names().items():
+                if len(names) >= layout.ROLLED_FROM_TAIL:
+                    self._by_tail.setdefault(names[-layout.ROLLED_FROM_TAIL:], []).append(position)
+        return self._by_tail
 
 
 def _prior_of(candidate: Engagement, index: int, priors: _Priors) -> int | None:
@@ -670,8 +690,15 @@ def _prior_of(candidate: Engagement, index: int, priors: _Priors) -> int | None:
             if position != index:
                 return position
     named = layout.tail_names(candidate.rolled_from)
-    tails = {position: layout.common_tail(named, names)
-             for position, names in priors.names().items() if position != index}
+    if len(named) < layout.ROLLED_FROM_TAIL:
+        return None             # too few names to reach the floor: matches nothing, as ever
+    # Only Rolled From's own group (P225): every return outside it ends in
+    # fewer than ``ROLLED_FROM_TAIL`` of its names, which the floor refuses,
+    # so the longest tail and the tie are decided over the same candidates.
+    names = priors.names()
+    tails = {position: layout.common_tail(named, names[position])
+             for position in priors.by_tail().get(named[-layout.ROLLED_FROM_TAIL:], ())
+             if position != index}
     if not tails:
         return None
     longest = max(tails.values())
