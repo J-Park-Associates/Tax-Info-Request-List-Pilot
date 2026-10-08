@@ -3104,18 +3104,19 @@ ADMISSION_PIN: dict[int, dict[str, str]] = {2: {
     "tracker.layout._ONE_SCRIPT": "17235d2097441c94",
     "tracker.layout._character": "bd5a8cc4e82855fc",
     "tracker.layout._parts": "a2847013a67202c7",
+    "tracker.layout._parts_below_of": "d63148cddae165ef",
     "tracker.layout._script": "f890f9bb62d24799",
-    "tracker.layout.is_invisible": "2b17b033d61a3df2",
+    "tracker.layout.is_invisible": "0c3785b4672742ba",
     "tracker.layout.is_reserved_name": "3ee144cf8f5c095d",
     "tracker.layout.is_year_folder": "c89c110db3cb607d",
-    "tracker.layout.name_key": "749d88cbbd6eb3c3",
-    "tracker.layout.parts_below": "522d9b67dfe50b6a",
+    "tracker.layout.name_key": "26ebf92810e1480a",
+    "tracker.layout.parts_below": "ee1aa9d90b7c189a",
     "tracker.layout.place_of": "fc1a78ab7179dd32",
     "tracker.layout.place_problem": "2e94883c849c9d08",
     "tracker.layout.recorded_name": "84bfdf3a851f4652",
     "tracker.layout.recorded_subfolder_part": "50620c73d7ae6dab",
     "tracker.layout.root_of": "a6c7013a757965b4",
-    "tracker.layout.segment_problem": "13e273e844d2cc2b",
+    "tracker.layout.segment_problem": "0dbab0f3b9ccfed7",
     "tracker.ledger.ACCEPTED_KEY": "f4764fc7a8ddd588",
     "tracker.ledger.ALSO_KEY": "da42922852e5dfcd",
     "tracker.ledger.ASKED_KEY": "46da5b49eea2fbee",
@@ -3362,6 +3363,9 @@ def admission_closure() -> dict[str, str]:
             if found is None:
                 continue
             where, value = found
+            # A remembered rule (P219's ``functools.lru_cache``) is the rule
+            # it wraps: followed through, so the pin still reaches it.
+            value = inspect.unwrap(value) if callable(value) and hasattr(value, "__wrapped__") else value
             if inspect.isfunction(value) and value.__module__.startswith("tracker"):
                 todo.append(value)
             elif isinstance(value, (set, frozenset)):
@@ -4901,3 +4905,14 @@ def test_a_record_read_is_never_kept_past_a_rebuild_of_its_row(root, by_hand):
         assert store.held_read(conn, by_hand, "probe", read) == [3]
         assert store.held_read(conn, by_hand, "probe", read) == [3]
     assert store.held_read(conn, by_hand, "probe", read) == [4]           # nothing past the hold
+
+
+def test_has_rules_is_whether_rules_has_any(root, by_hand, tmp_path):
+    """P219: whether, not what - the same answer as ``bool(rules(...))``,
+    and False for an engagement the store does not hold."""
+    conn = store.connect()
+    build(conn, root, by_hand)
+    assert store.has_rules(conn, by_hand) is bool(store.rules(conn, by_hand)) is True
+    elsewhere = tmp_path / "not held"
+    elsewhere.mkdir()
+    assert store.rules(conn, elsewhere) is None and store.has_rules(conn, elsewhere) is False

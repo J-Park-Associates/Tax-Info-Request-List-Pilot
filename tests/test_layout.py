@@ -687,3 +687,51 @@ def test_shared_tail_is_its_two_halves_and_names_one_folder_is_its_key():
     for a in ("Park", "PARK", "park ", "Lee"):
         for b in ("Park", "park", "Lee"):
             assert names_one_folder(a, b) == (folder_name_key(a) == folder_name_key(b))
+
+
+# ------------------------------------------ pure answers remembered (P219) ----
+
+
+def test_the_name_rules_answer_from_memory_as_they_answer_fresh():
+    """P219: ``name_key``, ``segment_problem`` and ``is_invisible`` are pure
+    functions of one ``str`` and remember their answers; a remembered answer
+    is the one asked fresh."""
+    from tracker import layout
+
+    names = ["Smith Family", "SMITH  family", "Muñoz Household", "Muñoz Household", "Smith​",
+             "1040 - John & Maria Park", "", " leading", "CON", "a/b", "rn and m", "I0 l1"]
+    for function in (layout.name_key, layout.segment_problem):
+        function.cache_clear()
+        first = [function(name) for name in names]
+        again = [function(name) for name in names]
+        assert first == again == [function.__wrapped__(name) for name in names]
+        assert function.cache_info().hits >= len(names)
+    characters = [" ", "​", "a", " ", "️", " ", "é"]
+    assert [layout.is_invisible(c) for c in characters] == [layout.is_invisible.__wrapped__(c)
+                                                            for c in characters]
+
+
+def test_parts_below_never_answers_one_spelling_with_anothers_case():
+    """The cache is keyed by each path's text, never by its equality: a path
+    type whose equality folds case (as Windows' does) still gets back its
+    own spelling, which becomes a store key."""
+    from pathlib import PurePosixPath
+
+    from tracker import layout
+
+    class Folding(PurePosixPath):
+        """Equal, and hashed alike, without case - Windows' rule, here."""
+
+        def __eq__(self, other):
+            return str(self).lower() == str(other).lower()
+
+        def __hash__(self):
+            return hash(str(self).lower())
+
+    root = Folding("/Root")
+    assert Folding("/Root/Smith") == Folding("/Root/SMITH")
+    assert layout.parts_below(root, Folding("/Root/Smith")) == ("Smith",)
+    assert layout.parts_below(root, Folding("/Root/SMITH")) == ("SMITH",)
+    assert layout.parts_below(root, Folding("/Root/Smith")) == ("Smith",)
+    assert layout.parts_below("", "a/b") == ("a", "b")
+    assert layout.parts_below(Path("/Root"), "/Root/../Other") is None

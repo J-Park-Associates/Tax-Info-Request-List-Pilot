@@ -947,3 +947,26 @@ def test_a_folder_inside_prepared_is_a_persons_and_counts_nothing(engagement):
         assert report.updates["A01"].file_count == 0
         assert report.warnings.count(said) == 1
         assert [w for w in report.warnings if "chase" in w] == []   # never file by file
+
+
+def test_each_names_owner_is_worked_out_once_per_scan(engagement, monkeypatch):
+    """P219 (findings-1 #5): the identifier list is fixed for a scan, so the
+    owner of each copy's name is worked out once, whatever the number of
+    requests that ask - and the statuses are the ones worked out fresh."""
+    import tracker.scanner as scanner
+
+    text_pdf(folder(engagement, "A01") / "chase.pdf", "Chase Bank Statement Dec 2025")
+    (folder(engagement, "A02") / "jan.csv").write_text("jan data", encoding="utf-8")
+    asked = []
+    real = scanner.owner_of
+
+    def counted(name, identifiers):
+        asked.append(name)
+        return real(name, identifiers)
+
+    monkeypatch.setattr(scanner, "owner_of", counted)
+    report = scan_engagement(engagement, today=DAY1)
+    assert report.recorded == 3
+    assert asked and len(asked) == len(set(asked))
+    rows = statuses(engagement)
+    assert rows["A01"].status == Status.RECEIVED and rows["B01"].status == Status.MISSING

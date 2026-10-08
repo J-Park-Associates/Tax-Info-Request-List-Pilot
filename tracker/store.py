@@ -1468,6 +1468,17 @@ def rules(conn: sqlite3.Connection, engagement_dir: Path | str) -> list[dict] | 
     ]
 
 
+def has_rules(conn: sqlite3.Connection, engagement_dir: Path | str) -> bool:
+    """Whether the store holds any request rule for one engagement - what
+    ``not rules(...)`` asked by parsing every rule (pilot P219). False for
+    an engagement the store does not hold."""
+    row = _engagement_row(conn, engagement_dir)
+    if row is None:
+        return False
+    return conn.execute("SELECT 1 FROM requests WHERE engagement_id = ? LIMIT 1",
+                        (row["id"],)).fetchone() is not None
+
+
 def statuses(conn: sqlite3.Connection, engagement_dir: Path | str) -> dict[str, StatusUpdate]:
     """Every identifier's status, by the identifier folded without case.
 

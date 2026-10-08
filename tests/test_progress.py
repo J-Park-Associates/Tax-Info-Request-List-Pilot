@@ -166,3 +166,52 @@ def test_a_failure_reply_says_its_sentence_once_as_the_error_and_in_the_failure(
     odd = failure_reply("no", "refused", seq="12", identifier=["x"])
     assert odd["failure"]["seq"] is None and odd["failure"]["identifier"] is None
     assert set(FAILURE_KINDS) == {"stale", "locked", "refused", "failed"}
+
+
+# --------------------------------------- the progress file's scan lines (P219) ----
+
+
+class _Clock:
+    """A monotonic clock a test moves by hand."""
+
+    def __init__(self) -> None:
+        self.now = 100.0
+
+    def __call__(self) -> float:
+        return self.now
+
+
+def test_a_scan_line_is_kept_at_most_once_a_second_and_every_other_line_at_once(tmp_path):
+    clock = _Clock()
+    watch = Watch(tmp_path, emit=[].append, limit_seconds=60, clock=clock)
+    watch.say("household", household="Sample Household", n=1, of=1)
+    watch.say("file", step=progress.SCAN_STEP, name="A01")
+    assert read_latest(tmp_path, watch.pass_id)["event"] == "household"       # under a second: held
+    clock.now += progress.SCAN_KEPT_EVERY_SECONDS
+    watch.say("file", step=progress.SCAN_STEP, name="A02")
+    assert read_latest(tmp_path, watch.pass_id)["name"] == "A02"
+    clock.now += 0.2
+    watch.say("file", step=progress.SCAN_STEP, name="A03")
+    assert read_latest(tmp_path, watch.pass_id)["name"] == "A02"
+    watch.say("stopping")                                                     # not a scan line: at once
+    assert read_latest(tmp_path, watch.pass_id)["event"] == "stopping"
+
+
+def test_a_sort_line_is_always_kept(tmp_path):
+    """A sort line comes before a document's reading - the slow step the
+    lock notice names - so it is never held, however close behind another."""
+    clock = _Clock()
+    watch = Watch(tmp_path, emit=[].append, limit_seconds=60, clock=clock)
+    for name in ("one.pdf", "two.pdf", "three.pdf"):
+        watch.say("file", step="sort", name=name)
+        assert read_latest(tmp_path, watch.pass_id)["name"] == name
+
+
+def test_every_line_is_still_printed(tmp_path):
+    """Run now's reader is unchanged: every line reaches stdout."""
+    printed: list[str] = []
+    clock = _Clock()
+    watch = Watch(tmp_path, emit=printed.append, limit_seconds=60, clock=clock)
+    for n in range(5):
+        watch.say("file", step=progress.SCAN_STEP, name=f"A0{n}")
+    assert [json.loads(one)[PROGRESS_KEY]["name"] for one in printed] == [f"A0{n}" for n in range(5)]

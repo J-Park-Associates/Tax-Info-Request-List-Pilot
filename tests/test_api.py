@@ -9851,3 +9851,19 @@ def test_a_cached_rows_links_follow_a_change_to_another_households_record(capsys
     read = _rows_read(monkeypatch)
     assert _cached_firm(capsys) == whole
     assert not any(str(one).startswith(str(park)) for one in read), "Park's row came from the cache"
+
+
+def test_importing_the_api_loads_no_pdf_reader():
+    """P219 (findings-1 #6, findings-3 #6): pypdf, with its cryptography,
+    was 136 ms of every command's start; it is imported when the first PDF
+    is opened, so a command that opens none never pays it."""
+    import subprocess
+    import sys
+
+    from tests.conftest import REPO, child_env
+
+    probe = "import sys\nimport tracker.api\nprint(sorted(m for m in sys.modules if m.split('.')[0] == 'pypdf'))\n"
+    done = subprocess.run([sys.executable, "-c", probe], cwd=REPO, env=child_env(),
+                          capture_output=True, text=True, timeout=120)
+    assert done.returncode == 0, done.stderr
+    assert done.stdout.strip() == "[]"
