@@ -1450,8 +1450,8 @@ def main(argv: list[str]) -> int:
                         help="make this computer the one that runs the schedule for the clients "
                              "folder, then register it here (a deliberate move, runbook section 6)")
     parser.add_argument(INSTALLER_CODES_FLAG, action="store_true",
-                        help="exit with the pilot installer's codes: 1 when the step could not "
-                             "finish, 2 when the Overview could not be prepared")
+                        help="exit with the pilot installer's codes: 10 when the step could not "
+                             "finish, 11 when the Overview could not be prepared")
     ns = parser.parse_args(argv)
     try:
         if ns.move_schedule_here:

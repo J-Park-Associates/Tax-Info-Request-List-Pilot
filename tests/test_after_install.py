@@ -2048,4 +2048,4 @@ def test_the_installer_is_told_when_the_overview_could_not_be_prepared_and_setup
     assert after_install.installer_exit_code(not_run) == 0
     assert after_install.installer_exit_code(not_ready) == SETUP_OVERVIEW_NOT_READY
     assert after_install.installer_exit_code(broken) == SETUP_STEP_FAILED
-    assert not_ready.failed == () and SETUP_STEP_FAILED == 1   # Setup.bat's errorlevel 1 is a failed job only
+    assert {SETUP_STEP_FAILED, SETUP_OVERVIEW_NOT_READY}.isdisjoint({0, 1, 2})   # never a crash's or argparse's code

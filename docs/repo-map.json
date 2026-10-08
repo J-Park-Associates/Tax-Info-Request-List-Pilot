@@ -16,8 +16,8 @@
   ],
   "counts": {
     "nodes": 439,
-    "edges": 1209,
-    "reused": 382
+    "edges": 1210,
+    "reused": 392
   },
   "node_types": [
     "artifact",
@@ -135,7 +135,7 @@
       "id": "tracker/after_install.py",
       "type": "module",
       "layer": "core",
-      "sha256": "87da653c273d1c85",
+      "sha256": "09777591c95b70bc",
       "lines": 1473,
       "cli": "python -m tracker.after_install",
       "exports": [
@@ -293,7 +293,7 @@
         "INSTALLER_CODES_FLAG": "'--installer-codes'"
       },
       "role": "Every one-time step after installing or upgrading, in one function (decision 209, Jason's standing preference): run(reason) registers the schedule on the computer the designation file names (scheduling.schedule_decision) and runs decision 187's record check (store.check per record folder, store.gone_journals), then records what it did in after-install.json beside the store.",
-      "notes": "Three doors, one function: Setup.bat runs it last (--reason setup, after the lock stamp); the app's shell runs the API's after-install command before the page's first call, which returns {ran: false} at once when program_identity() (sys.executable, package.json's version, store.SCHEMA_VERSION, and every tracker/*.py from source or BUILD-INFO.txt when frozen) matches the record - measured at about 7 ms; and set-root runs it, so the first root saved on the office computer registers the schedule with no button. install-schedule (the app's Repair the schedule) is the deliberate re-run. A finding is not a failure: exit 0 with the findings listed (FINDINGS_WAIT); exit 1 only when a job could not run (designation unreadable, schtasks refused, store will not open, saved root refused), each one sentence, never a traceback or a file's content. The program identity is recorded only when nothing failed, so a failed run is tried again at the next launch. It never creates a store: the check is skipped when the store file is not there, and a folder the store never met (store.holds) is left to the first catch-up rather than named. The first screen's list reply carries after_install.notice() while the record holds findings or failures; the app shows it at the top, not dismissible. --move-schedule-here rewrites the designation to this computer (runbook section 6). Layer 4: imports scheduling, store, registry, ledger, door, settings, locking, fsio; the API imports it. The review fixes: launch() also runs the step when designation_now(root) differs from the record's 'designated' (so the old computer removes its task at its next start after a move); only the claim's OSError is DESIGNATION_UNWRITABLE, a job file or schtasks that cannot be reached is SCHEDULE_FAILED with the constant SCHEDULE_UNREACHABLE; an unnameable computer is scheduling.UNNAMED_HOST; the check counts what it judged (CHECK_CLEAN names n, CHECK_NOTHING_HELD for a store holding none); move_schedule_here() says MOVED_FROM_UNREADABLE over a garbage file and is also the API's move-schedule-here; record_failure(LAUNCH_FAILED) is what the API's launch door writes when launch() raises. FINDINGS_WAIT claims waiting only for malformed and changed-behind-the-back returns - both proved by tests, the first true since store R3b (the strict xfail is now a plain pass). R8, the third job: _clear_test_cache() removes CHECKOUT/.pytest_cache from source only, by lstat and an explicit bottom-up walk that unlinks any link and never descends into one - a link is a symbolic link or a junction only (S_ISLNK or the reparse tag IO_REPARSE_TAG_SYMLINK/MOUNT_POINT); any other reparse point, such as a cloud placeholder folder, is walked as a folder (CACHE_CLEARED / CACHE_NOT_CLEARED); run(checkout=...) lets tests name a fabricated checkout, and tests/conftest.py points CHECKOUT at a folder never made so the suite never clears its own cache. The command line is main(argv) in the imported module and the __main__ block only calls it: a runpy copy of the module had its own CHECKOUT, so tests reached the real cache (second review, MF1); the tests call main() and a guard test asserts the real checkout's cache is untouched. The careful mover (SPEC-209 R9) is move_left_behind(items, home) -> MoveOutcome, a pure function over decision 186's move group: every destination checked, and two items of one name or any link or junction (_is_link) refused, before anything moves; nothing is ever overwritten (no os.replace: a rename that refuses an existing name on one volume, each destination re-checked just before its move, otherwise a copy into a name it creates, with size and SHA-256 compared before the source is removed, a folder first renamed aside to <name>.moving-<pid>); a failure removes only what the mover created, keeps the source whole and moves earlier items back; nothing present is nothing to do; its sentences are the LEFT_BEHIND_* constants. Not yet wired into run(): it is wired first there, fed by runner.left_behind_to_move, when 186 lands. At the merge with main (decision 186 landed): run()'s first job is _move_what_186_lists - move_left_behind(runner.left_behind_to_move(root), store.store_path().parent), a SettingsError (no data home) being nothing to do - before the schedule, the check and the cache; its sentence leads the lines and its failure joins failed. RECORD_FILENAME is runner.AFTER_INSTALL_FILENAME (one spelling; runner cannot import this module). _schedule answers scheduling.REFUSED_DRIVE with 186's sentence as a failure. _check says an OSError by errors.said (its class), the record's and the store's own errors whole. Merge review fixes: move_left_behind treats CHECKPOINT_UNIT (checkpoint, its journal, a .damaged copy, by checkpoint's constants) as one - a journal without its checkpoint beside it, or a home holding any part, moves nothing (LEFT_BEHIND_JOURNAL_ALONE); move_schedule_here asks settings.program_drive_refusal() first and changes nothing when it refuses; every OSError said by class (the check, the claim, the registration, the mover) is also kept whole with errors.keep on the local debug log. Pilot P21: run(start=None, every=None) registers the choice saved in settings.json at every door; a named start/every is checked and saved first; off removes this computer's task and leaves the designation alone; a refused saved choice is a recorded failure (PREFERENCE_KEY) and registers nothing; the record holds the preference and launch() runs the step again when it differs. Pilot P47: one run at a time - run() and launch() hold after-install.lock beside the record (locking.acquire_lock, so a lock whose process ended is taken over) from before the saved choice is read until the record is written, waiting up to LOCK_WAIT_SECONDS and otherwise changing nothing (STEP_BUSY); every task it removes is noted on the debug log with why. The rename's carry-over (P155 Q2, pilot/SPEC-rename.md section 3): _carry_over_settings() runs first in _run(), before the settings are read - from the packaged program only, it copies settings.json byte for byte from settings.earlier_settings_path() when this program has none (an in-place upgrade finds one file; an existing file wins), verified by SHA-256, the earlier file left, its path checks inside its own error handling so an access error is SETTINGS_CARRY_FAILED; _replace_earlier_task() runs right after _schedule() and, from the packaged program only (_installed_program(), the seam its tests set; from source it says EARLIER_TASK_FROM_SOURCE and asks Task Scheduler nothing, so a checkout never deletes an installed copy's task), removes the task named settings.EARLIER_PRODUCT_NAME through scheduling.remove_task(task_name=...) - that name only, never the production task - unless the schedule failed this run, when it is kept. Each says one sentence every run (SETTINGS_* and EARLIER_TASK_*), kept in the record's 'carried' list and leading the printed lines; read_record() reads a record without it as nothing carried. A failed copy or removal is in 'failed', so no identity is recorded and the next launch runs the step again; a carry-over that is not a failure raises no notice. P198 (F6, pilot/SPEC-F6-schedule-after-reinstall.md): launch()'s _unchanged() asks _task_missing(record) last - only when the record's schedule is scheduling.REGISTERING (this computer claimed or registered it, and the designation already matched), one scheduling.task_query() (schtasks /query) on the designated computer; anything but exit 0 runs the step - a refusal's exit code kept on the debug log once per start (QUERY_REFUSED), an OSError (a schtasks that cannot start or runs past its 60 s limit) kept whole and said by the step as SCHEDULE_UNREACHABLE - whose /create /f registers the task again or says SCHEDULE_FAILED - so a task an uninstall or a person deleted comes back at the next start, and a computer the designation does not name, or a schedule that is off, is never asked. P218 (pilot/SPEC-speed-round.md, S3): the setup door's last job, _ready_the_overview(root, reason, check), makes the Overview ready - only for REASON_SETUP, a saved root not refused and a store file present; it calls store.close() first, so this process lets go of its store and checkpoint before another process reads, then runner.fill_firm_cache(str(root)); never a failure; its sentence (OVERVIEW_READY / OVERVIEW_NOT_READY, AfterInstall.overview_sentence) is the last of lines, before any failure. The launch, root and Repair doors leave the Overview to the app, which asks one at once. The pilot installer reaches this door through api_entry's setup mode (Q1). P214: CHECKPOINT_UNIT names the checkpoint's -wal and -shm, and _CHECKPOINT_SIDE_FILES moves nothing when a journal, log or shared memory is found without its checkpoint. installer_exit_code (behind INSTALLER_CODES_FLAG, passed only by api_entry's setup mode) tells the pilot installer when the step could not finish (1) or the Overview could not be prepared (2); exit_code is untouched, so Setup.bat and the app's doors still count an unprepared Overview as no failure."
+      "notes": "Three doors, one function: Setup.bat runs it last (--reason setup, after the lock stamp); the app's shell runs the API's after-install command before the page's first call, which returns {ran: false} at once when program_identity() (sys.executable, package.json's version, store.SCHEMA_VERSION, and every tracker/*.py from source or BUILD-INFO.txt when frozen) matches the record - measured at about 7 ms; and set-root runs it, so the first root saved on the office computer registers the schedule with no button. install-schedule (the app's Repair the schedule) is the deliberate re-run. A finding is not a failure: exit 0 with the findings listed (FINDINGS_WAIT); exit 1 only when a job could not run (designation unreadable, schtasks refused, store will not open, saved root refused), each one sentence, never a traceback or a file's content. The program identity is recorded only when nothing failed, so a failed run is tried again at the next launch. It never creates a store: the check is skipped when the store file is not there, and a folder the store never met (store.holds) is left to the first catch-up rather than named. The first screen's list reply carries after_install.notice() while the record holds findings or failures; the app shows it at the top, not dismissible. --move-schedule-here rewrites the designation to this computer (runbook section 6). Layer 4: imports scheduling, store, registry, ledger, door, settings, locking, fsio; the API imports it. The review fixes: launch() also runs the step when designation_now(root) differs from the record's 'designated' (so the old computer removes its task at its next start after a move); only the claim's OSError is DESIGNATION_UNWRITABLE, a job file or schtasks that cannot be reached is SCHEDULE_FAILED with the constant SCHEDULE_UNREACHABLE; an unnameable computer is scheduling.UNNAMED_HOST; the check counts what it judged (CHECK_CLEAN names n, CHECK_NOTHING_HELD for a store holding none); move_schedule_here() says MOVED_FROM_UNREADABLE over a garbage file and is also the API's move-schedule-here; record_failure(LAUNCH_FAILED) is what the API's launch door writes when launch() raises. FINDINGS_WAIT claims waiting only for malformed and changed-behind-the-back returns - both proved by tests, the first true since store R3b (the strict xfail is now a plain pass). R8, the third job: _clear_test_cache() removes CHECKOUT/.pytest_cache from source only, by lstat and an explicit bottom-up walk that unlinks any link and never descends into one - a link is a symbolic link or a junction only (S_ISLNK or the reparse tag IO_REPARSE_TAG_SYMLINK/MOUNT_POINT); any other reparse point, such as a cloud placeholder folder, is walked as a folder (CACHE_CLEARED / CACHE_NOT_CLEARED); run(checkout=...) lets tests name a fabricated checkout, and tests/conftest.py points CHECKOUT at a folder never made so the suite never clears its own cache. The command line is main(argv) in the imported module and the __main__ block only calls it: a runpy copy of the module had its own CHECKOUT, so tests reached the real cache (second review, MF1); the tests call main() and a guard test asserts the real checkout's cache is untouched. The careful mover (SPEC-209 R9) is move_left_behind(items, home) -> MoveOutcome, a pure function over decision 186's move group: every destination checked, and two items of one name or any link or junction (_is_link) refused, before anything moves; nothing is ever overwritten (no os.replace: a rename that refuses an existing name on one volume, each destination re-checked just before its move, otherwise a copy into a name it creates, with size and SHA-256 compared before the source is removed, a folder first renamed aside to <name>.moving-<pid>); a failure removes only what the mover created, keeps the source whole and moves earlier items back; nothing present is nothing to do; its sentences are the LEFT_BEHIND_* constants. Not yet wired into run(): it is wired first there, fed by runner.left_behind_to_move, when 186 lands. At the merge with main (decision 186 landed): run()'s first job is _move_what_186_lists - move_left_behind(runner.left_behind_to_move(root), store.store_path().parent), a SettingsError (no data home) being nothing to do - before the schedule, the check and the cache; its sentence leads the lines and its failure joins failed. RECORD_FILENAME is runner.AFTER_INSTALL_FILENAME (one spelling; runner cannot import this module). _schedule answers scheduling.REFUSED_DRIVE with 186's sentence as a failure. _check says an OSError by errors.said (its class), the record's and the store's own errors whole. Merge review fixes: move_left_behind treats CHECKPOINT_UNIT (checkpoint, its journal, a .damaged copy, by checkpoint's constants) as one - a journal without its checkpoint beside it, or a home holding any part, moves nothing (LEFT_BEHIND_JOURNAL_ALONE); move_schedule_here asks settings.program_drive_refusal() first and changes nothing when it refuses; every OSError said by class (the check, the claim, the registration, the mover) is also kept whole with errors.keep on the local debug log. Pilot P21: run(start=None, every=None) registers the choice saved in settings.json at every door; a named start/every is checked and saved first; off removes this computer's task and leaves the designation alone; a refused saved choice is a recorded failure (PREFERENCE_KEY) and registers nothing; the record holds the preference and launch() runs the step again when it differs. Pilot P47: one run at a time - run() and launch() hold after-install.lock beside the record (locking.acquire_lock, so a lock whose process ended is taken over) from before the saved choice is read until the record is written, waiting up to LOCK_WAIT_SECONDS and otherwise changing nothing (STEP_BUSY); every task it removes is noted on the debug log with why. The rename's carry-over (P155 Q2, pilot/SPEC-rename.md section 3): _carry_over_settings() runs first in _run(), before the settings are read - from the packaged program only, it copies settings.json byte for byte from settings.earlier_settings_path() when this program has none (an in-place upgrade finds one file; an existing file wins), verified by SHA-256, the earlier file left, its path checks inside its own error handling so an access error is SETTINGS_CARRY_FAILED; _replace_earlier_task() runs right after _schedule() and, from the packaged program only (_installed_program(), the seam its tests set; from source it says EARLIER_TASK_FROM_SOURCE and asks Task Scheduler nothing, so a checkout never deletes an installed copy's task), removes the task named settings.EARLIER_PRODUCT_NAME through scheduling.remove_task(task_name=...) - that name only, never the production task - unless the schedule failed this run, when it is kept. Each says one sentence every run (SETTINGS_* and EARLIER_TASK_*), kept in the record's 'carried' list and leading the printed lines; read_record() reads a record without it as nothing carried. A failed copy or removal is in 'failed', so no identity is recorded and the next launch runs the step again; a carry-over that is not a failure raises no notice. P198 (F6, pilot/SPEC-F6-schedule-after-reinstall.md): launch()'s _unchanged() asks _task_missing(record) last - only when the record's schedule is scheduling.REGISTERING (this computer claimed or registered it, and the designation already matched), one scheduling.task_query() (schtasks /query) on the designated computer; anything but exit 0 runs the step - a refusal's exit code kept on the debug log once per start (QUERY_REFUSED), an OSError (a schtasks that cannot start or runs past its 60 s limit) kept whole and said by the step as SCHEDULE_UNREACHABLE - whose /create /f registers the task again or says SCHEDULE_FAILED - so a task an uninstall or a person deleted comes back at the next start, and a computer the designation does not name, or a schedule that is off, is never asked. P218 (pilot/SPEC-speed-round.md, S3): the setup door's last job, _ready_the_overview(root, reason, check), makes the Overview ready - only for REASON_SETUP, a saved root not refused and a store file present; it calls store.close() first, so this process lets go of its store and checkpoint before another process reads, then runner.fill_firm_cache(str(root)); never a failure; its sentence (OVERVIEW_READY / OVERVIEW_NOT_READY, AfterInstall.overview_sentence) is the last of lines, before any failure. The launch, root and Repair doors leave the Overview to the app, which asks one at once. The pilot installer reaches this door through api_entry's setup mode (Q1). P214: CHECKPOINT_UNIT names the checkpoint's -wal and -shm, and _CHECKPOINT_SIDE_FILES moves nothing when a journal, log or shared memory is found without its checkpoint. installer_exit_code (behind INSTALLER_CODES_FLAG, passed only by api_entry's setup mode) tells the pilot installer when the step could not finish (10) or the Overview could not be prepared (11); exit_code is untouched, so Setup.bat and the app's doors still count an unprepared Overview as no failure."
     },
     {
       "id": "tracker/api.py",
@@ -3081,8 +3081,8 @@
       "id": "tracker/runner.py",
       "type": "module",
       "layer": "core",
-      "sha256": "93dfb9d143a7e5c0",
-      "lines": 3358,
+      "sha256": "0c77498aa979aac0",
+      "lines": 3362,
       "cli": "python -m tracker.runner",
       "exports": [
         "ACKNOWLEDGE_COMMAND",
@@ -3317,8 +3317,8 @@
         "LAST_PASS_UNREADABLE": "'The last scheduled pass could not be read ({error}).'",
         "RUNNER_MODE_FLAG": "'--run'",
         "SETUP_MODE_FLAG": "'--after-install-setup'",
-        "SETUP_STEP_FAILED": "1",
-        "SETUP_OVERVIEW_NOT_READY": "2",
+        "SETUP_STEP_FAILED": "10",
+        "SETUP_OVERVIEW_NOT_READY": "11",
         "FIRM_COMMAND": "'firm'",
         "PRODUCT_FLAG": "'--product'",
         "FILL_TIME_LIMIT_SECONDS": "300",
@@ -4728,7 +4728,7 @@
       "id": "docs/repo-map.curated.json",
       "type": "file",
       "layer": "docs",
-      "sha256": "8aaa6c34aa8ec41c",
+      "sha256": "11e62bb0a820d61b",
       "lines": 1148,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
@@ -4801,7 +4801,7 @@
       "id": "pilot/DECISIONS.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "f209cf4c813531d5",
+      "sha256": "52ddcc7a11d42f6b",
       "lines": 219
     },
     {
@@ -6733,7 +6733,7 @@
       "id": "tests/test_after_install.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "8dfa7df2b8e4a348",
+      "sha256": "6e67e6f660061838",
       "lines": 2051,
       "exports": [
         "CARRIED",
@@ -7298,8 +7298,8 @@
       "id": "tests/test_api_entry.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "d8fb58d155af69d9",
-      "lines": 156,
+      "sha256": "cf7d9ff8890f68ef",
+      "lines": 159,
       "exports": [
         "REPO",
         "run_entry",
@@ -8930,8 +8930,8 @@
       "id": "tests/test_pilot_installer.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "5ea9eb585a096b9f",
-      "lines": 320,
+      "sha256": "4fdebc5a41a6f295",
+      "lines": 322,
       "exports": [
         "APP_ID",
         "BUILD",
@@ -10202,8 +10202,8 @@
       "id": "tests/test_shell.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "846f7537c73049e3",
-      "lines": 5106,
+      "sha256": "86459678dd555567",
+      "lines": 5109,
       "exports": [
         "COLUMN_FUNCTIONS",
         "CONTRAST",
@@ -15570,6 +15570,12 @@
       "from": "tests/test_shell.py",
       "to": "pkg:tests",
       "type": "depends_on",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_shell.py",
+      "to": "tracker/__init__.py",
+      "type": "exercises",
       "source": "derived"
     },
     {

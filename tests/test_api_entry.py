@@ -119,8 +119,11 @@ def test_the_setup_mode_runs_the_after_install_step_with_what_its_command_line_n
     from tracker import after_install
     from tracker.runner import PRODUCT_FLAG, SETUP_MODE_FLAG
 
-    monkeypatch.delenv(ENV_PRODUCT_NAME, raising=False)
-    monkeypatch.delenv(ENV_SETTINGS_DIR, raising=False)
+    # setenv first records the variables as they were (set or not), so the
+    # teardown restores them after run_setup_step writes os.environ itself.
+    for name in (ENV_PRODUCT_NAME, ENV_SETTINGS_DIR):
+        monkeypatch.setenv(name, "placeholder")
+        monkeypatch.delenv(name)
     settings = tmp_path / "installed"
     settings.mkdir()
     entry = runpy.run_path(str(REPO / "api_entry.py"), run_name="api_entry")

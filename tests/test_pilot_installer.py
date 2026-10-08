@@ -305,7 +305,9 @@ def test_the_pilot_installer_says_so_in_a_small_window_when_the_step_fails():
     assert code.index("if WizardSilent then") < code.index("MsgBox(")
     assert "if ResultCode = SetupOverviewNotReady then" in code
     assert "else if ResultCode <> 0 then" in code
-    assert code.count("mbError, MB_OK)") == 2
+    overview = code[code.index("if ResultCode = SetupOverviewNotReady then"):code.index("else if ResultCode <> 0 then")]
+    assert "mbInformation, MB_OK)" in overview   # nothing needs doing
+    assert "mbError, MB_OK)" in code[code.index("else if ResultCode <> 0 then"):]
     assert "Abort" not in code and "RaiseException" not in code
 
 

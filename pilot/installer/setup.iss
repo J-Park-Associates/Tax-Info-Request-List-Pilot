@@ -93,10 +93,13 @@ Filename: "{sys}\schtasks.exe"; Parameters: "/Delete /TN ""Tax Document Tracker 
 // (Jason, 2026-10-08: "show a small failure message window if the step
 // fails"), left out on a silent install so nothing waits for a click. The
 // codes are tracker.runner's SETUP_STEP_FAILED and SETUP_OVERVIEW_NOT_READY;
-// a step that could not even start counts as one that could not finish.
+// a step that could not even start, or exited with any other code (a crash,
+// a usage error), counts as one that could not finish. An Overview that
+// could not be prepared needs nothing done, so its window informs; the
+// other is an error.
 const
-  SetupStepFailed = 1;
-  SetupOverviewNotReady = 2;
+  SetupStepFailed = 10;
+  SetupOverviewNotReady = 11;
 
 procedure CurStepChanged(CurStep: TSetupStep);
 var
@@ -114,7 +117,7 @@ begin
     if ResultCode = SetupOverviewNotReady then
       MsgBox('Tax Document Console is installed, but the Overview could not be prepared. ' +
              'The first time you open it, it will take longer while it reads every household.',
-             mbError, MB_OK)
+             mbInformation, MB_OK)
     else if ResultCode <> 0 then
       MsgBox('Tax Document Console is installed, but its setup step could not finish. ' +
              'It will try again the first time you start the app, and the first Overview may take longer.',

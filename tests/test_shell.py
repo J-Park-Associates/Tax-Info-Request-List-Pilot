@@ -4769,6 +4769,9 @@ def test_the_path_beside_updating_keeps_its_width_when_the_word_comes():
     body = body[:body.index("}")]
     for declaration in ("flex: none;", "inline-size: 8ch;", "overflow: hidden;", "white-space: nowrap;"):
         assert declaration in body, declaration
+    from tracker import api
+
+    assert len(api.SCREEN["updating"]) <= 8, "a longer word needs a wider slot in shell.css"
 
 
 def test_a_household_or_year_page_marks_its_held_statuses_while_they_are_asked_again(tmp_path):

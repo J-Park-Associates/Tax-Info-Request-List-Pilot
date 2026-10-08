@@ -574,9 +574,13 @@ SETUP_MODE_FLAG = "--after-install-setup"
 #: What the setup mode exits with, for the pilot installer's failure window
 #: (Jason, 2026-10-08: "show a small failure message window if the step
 #: fails"): the step could not finish, or it finished and the Overview could
-#: not be prepared. 0 is neither. ``setup.iss`` names the same numbers.
-SETUP_STEP_FAILED = 1
-SETUP_OVERVIEW_NOT_READY = 2
+#: not be prepared. 0 is neither. Numbers Python itself never exits with
+#: (1 is an uncaught exception, 2 an argparse usage error), so the installer
+#: never takes a crash for an Overview it could not prepare; it counts any
+#: other non-zero code as a step that could not finish. ``setup.iss`` names
+#: the same numbers.
+SETUP_STEP_FAILED = 10
+SETUP_OVERVIEW_NOT_READY = 11
 
 
 def run_now_arguments(settings_dir: Path | str, household: Path | str) -> list[str]:
