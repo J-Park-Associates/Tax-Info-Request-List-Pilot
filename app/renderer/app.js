@@ -1949,6 +1949,9 @@ async function showReturn(path) {
 // folder is set (decision 194, R8), since the vocabulary depends on the
 // settings that writes.
 async function bootstrap(preferPath) {
+  // The Overview's counts are asked beside the list, not after it (P221):
+  // the two read-only replies run at once.
+  shellAskFirmEarly();
   try {
     const listed = await loadEngagements(preferPath, viewGeneration);
     if (!listed) return;   // a later choice owns the page now, or no folder or return yet

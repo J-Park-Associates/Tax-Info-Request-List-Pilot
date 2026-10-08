@@ -4935,3 +4935,62 @@ def test_the_first_paint_is_the_outline_not_a_blank_shell():
     draw = js_function("drawPage")
     assert 'page.setAttribute("aria-busy", busy || updating ? "true" : "false")' in draw and "page.replaceChildren(" in draw
     assert "pagesDraw(route, page)" in draw
+
+
+#: The early Overview (P221): window.tracker.call answers when the probe says.
+EARLY_FIRM = r"""
+const sentEarly = [];
+window.tracker.call = (args) => new Promise((resolve) => sentEarly.push({ args, resolve }));
+"""
+
+
+def test_the_overview_is_asked_beside_the_list_and_drawn_once_the_words_arrive(tmp_path):
+    """P221 (A2, findings-4 #7): `firm` is sent before the list is awaited,
+    through window.tracker.call itself, so the first Overview no longer waits
+    3 s for the list and then 6 s for itself. Nothing is drawn before the
+    vocabulary; the load the list starts adopts the early reply - one `firm`,
+    not two - and says its warnings and its failure once the words are there."""
+    said = run_firm_load("""
+      const words = vocab; vocab = null;
+      shellRoute = { level: "overview" };
+      shellAskFirmEarly();
+      shellAskFirmEarly();                       // a Retry of the start-up: still one
+      const before = { sent: sentEarly.length, status: shellFirmNow.status, drawn: drawn.length };
+      vocab = words;                             // the list's reply
+      shellAdopt({ root: "/root" });
+      sentEarly[0].resolve({ ...firmOf(3), warnings: ["Read slowly"] });
+      await tick();
+      const ok = { sent: sentEarly.length, viaCall: firms(), status: shellFirmNow.status, n: shellFirmNow.data.returns[0].counts.needs_you,
+                   notices: notices.slice(), drawn: drawn.slice(), clock: shellFirmTimer };
+      notices.length = 0;
+      shellFirmNow = { status: "idle", data: null };
+      shellAskFirmEarly();
+      shellAdopt({ root: "/root" });
+      sentEarly[1].resolve({ error: "The store is busy.", failure: { sentence: "The store is busy." }, warnings: [] });
+      await tick();
+      return { before, ok, failed: { status: shellFirmNow.status, notices } };
+    """, tmp_path, EARLY_FIRM)
+    assert said["before"] == {"sent": 1, "status": "loading", "drawn": 0}
+    assert said["ok"]["sent"] == 1 and said["ok"]["viaCall"] == 0, "the list's load adopts the early reply"
+    assert said["ok"]["status"] == "ok" and said["ok"]["n"] == 3 and said["ok"]["drawn"] == ["overview"]
+    assert said["ok"]["notices"] == ["Read slowly"] and said["ok"]["clock"] is None
+    assert said["failed"] == {"status": "failed", "notices": ["Counts Not Available"]}
+    boot = js_function("bootstrap", "app.js")
+    assert boot.index("shellAskFirmEarly();") < boot.index("await loadEngagements(")
+    early = js_function("shellAskFirmEarly")
+    assert 'window.tracker.call(["firm"])' in early and "call([" not in early.replace("tracker.call([", "")
+
+
+def test_an_early_overview_is_dropped_when_the_list_asks_for_a_folder(tmp_path):
+    """P221: a list that says needs_root has no Overview to show: the early
+    reply is dropped, its clock stopped, and it draws nothing when it lands."""
+    said = run_firm_load("""
+      shellRoute = { level: "overview" };
+      shellAskFirmEarly();
+      shellAdopt({ needs_root: true, root: "" });
+      const dropped = { status: shellFirmNow.status, early: shellFirmEarly === null, clock: shellFirmTimer };
+      sentEarly[0].resolve(firmOf(3));
+      await tick();
+      return { dropped, data: shellFirmNow.data, status: shellFirmNow.status, drawn, viaCall: firms() };
+    """, tmp_path, EARLY_FIRM)
+    assert said == {"dropped": {"status": "idle", "early": True, "clock": None}, "data": None, "status": "idle", "drawn": [], "viaCall": 0}

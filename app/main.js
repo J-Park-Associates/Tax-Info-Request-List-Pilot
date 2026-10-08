@@ -66,11 +66,15 @@ const PROGRESS_KEY = "progress";
 // never on screen (decision 193, security principle 7).
 const STDERR_CAP = 64 * 1024;
 
-// The command the renderer runs first, and the only one allowed before the
-// API has said which commands exist: its reply carries vocab.commands (the
+// The command the renderer runs first: its reply carries vocab.commands (the
 // allowlist) and vocab.engagement_flag. Pinned to tracker.api.COMMANDS and
 // to the renderer's first call by tests/test_single_source.py.
 const BOOTSTRAP_COMMAND = "list";
+// What may run before the API has said which commands exist (decision 176):
+// the list, and since P221 the Overview's counts asked beside it, so the
+// first Overview no longer waits for the list to finish. Both are read-only
+// replies (tracker.api.HELD_READING_COMMANDS, neither a writing command).
+const EARLY_COMMANDS = new Set([BOOTSTRAP_COMMAND, "firm"]);
 // The after-install step's launch door (decision 209): the shell runs it
 // itself, once, at start. It returns at once when the program has not
 // changed since it last ran cleanly and the designation still names the
@@ -263,7 +267,7 @@ function commandProblem(args) {
     return "Malformed command.";
   }
   const [command, ...rest] = args;
-  if (allowedCommands ? !allowedCommands.has(command) : command !== BOOTSTRAP_COMMAND) {
+  if (allowedCommands ? !allowedCommands.has(command) : !EARLY_COMMANDS.has(command)) {
     return `Unknown command: ${command}`;
   }
   if (rest.length === 0) return null;

@@ -218,8 +218,7 @@ function shellAskFirmEarly() {
   if (shellFirmEarly || shellFirmNow.status === "loading") return;   // one is on its way already
   shellFirmNow = { status: "loading", data: shellFirmNow.data };
   shellFirmSent();
-  shellFirmEarly = Promise.resolve()
-    .then(() => window.tracker.call(["firm"]))
+  shellFirmEarly = new Promise((resolve) => resolve(window.tracker.call(["firm"])))
     .then((reply) => ({ reply }), (err) => ({ err }));
   shellUpdating();
 }
