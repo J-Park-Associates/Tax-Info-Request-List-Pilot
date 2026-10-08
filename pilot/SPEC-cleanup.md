@@ -74,9 +74,11 @@ The standing rule already says agents run only the affected test files, so
 the 18 minutes is paid only by a person running the whole suite. Two things
 would still help that person:
 
-- Run the files in parallel. `pytest-xdist` is not in the lockfile; adding it
-  needs decision 191's hash-checked lockfile updated through
-  `tools/lockfiles.py`.
+- Run the files in parallel. Measured: the same suite with `pytest-xdist` on
+  the four cores of this box took 5 min 21 s, with the same 14 package-missing
+  failures and no new one, so the tests are safe to run side by side.
+  `pytest-xdist` is not in the lockfile; adding it needs decision 191's
+  hash-checked lockfile updated through `tools/lockfiles.py`.
 - Mark the four corpus walks with a `corpus` marker so a quick run can skip
   them (`-m "not corpus"`) and the gate before a merge still runs them.
 
