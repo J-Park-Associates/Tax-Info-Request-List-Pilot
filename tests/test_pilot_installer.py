@@ -271,20 +271,42 @@ def test_the_pilot_installer_makes_the_overview_ready_before_it_launches_the_app
     so a tester's first Overview is warm. The packaged API is started in
     its setup mode with the settings folder (the installed folder, where
     the shell keeps settings.json) and the product's name, hidden and waited
-    for, before the launch entry - and not as a postinstall entry, so a
-    silent install runs it too."""
+    for, once the files are in place (``ssPostInstall``) - before the
+    finished page's launch entry, and on a silent install too. The status
+    line is Jason's wording ("Preparing Overview...", 2026-10-08)."""
     from tracker.runner import PRODUCT_FLAG, SETTINGS_FLAG, SETUP_MODE_FLAG
 
     package = json.loads((REPO / "app" / "package.json").read_text(encoding="utf-8"))
     api = package["config"]["apiName"]
-    entries = _sections(_setup())["Run"].splitlines()
-    step, launch = entries
-    assert step.startswith(f'Filename: "{{app}}\\resources\\{api}\\{api}.exe";')
-    parameters = re.search(r'Parameters: "((?:[^"]|"")*)"', step).group(1).replace('""', '"')
-    assert parameters == f'{SETUP_MODE_FLAG} {SETTINGS_FLAG} "{{app}}" {PRODUCT_FLAG} "{_product_name()}"'
-    flags = set(re.search(r"Flags: ([\w ]+)$", step).group(1).split())
-    assert flags == {"runhidden", "waituntilterminated"}
+    (launch,) = _sections(_setup())["Run"].splitlines()
     assert "postinstall" in launch and "Tax Document Console.exe" in launch
+    code = _sections(_setup())["Code"]
+    assert "if CurStep = ssPostInstall then" in code
+    assert f"Exec(ExpandConstant('{{app}}\\resources\\{api}\\{api}.exe')," in code
+    assert (f"'{SETUP_MODE_FLAG} {SETTINGS_FLAG} \"' + ExpandConstant('{{app}}') + "
+            f"'\" {PRODUCT_FLAG} \"{_product_name()}\"'") in code
+    assert "SW_HIDE, ewWaitUntilTerminated, ResultCode)" in code
+    assert "WizardForm.StatusLabel.Caption := 'Preparing Overview...';" in code
+
+
+def test_the_pilot_installer_says_so_in_a_small_window_when_the_step_fails():
+    """Jason, 2026-10-08: "show a small failure message window if the step
+    fails". The installer reads the setup mode's exit code - the codes are
+    the runner's own - and shows one error window: one for an Overview that
+    could not be prepared, one for a step that could not finish (or could
+    not start). A silent install shows neither, so nothing waits for a
+    click, and neither fails the install: the app runs the step again."""
+    from tracker.runner import SETUP_OVERVIEW_NOT_READY, SETUP_STEP_FAILED
+
+    code = _sections(_setup())["Code"]
+    assert f"SetupStepFailed = {SETUP_STEP_FAILED};" in code
+    assert f"SetupOverviewNotReady = {SETUP_OVERVIEW_NOT_READY};" in code
+    assert "ResultCode := SetupStepFailed;" in code   # could not even start
+    assert code.index("if WizardSilent then") < code.index("MsgBox(")
+    assert "if ResultCode = SetupOverviewNotReady then" in code
+    assert "else if ResultCode <> 0 then" in code
+    assert code.count("mbError, MB_OK)") == 2
+    assert "Abort" not in code and "RaiseException" not in code
 
 
 def test_the_packaged_setup_mode_is_the_entrys_own_door():

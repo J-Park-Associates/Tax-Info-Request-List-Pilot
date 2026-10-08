@@ -148,12 +148,21 @@ below is the same check, for a deliberate look.
 
 **The pilot's installer runs the same step** (pilot P218). Before it offers
 to launch the app, the pilot's installer runs the after-install step while
-its window is still on screen ("Making the Overview ready..."), and the
-step's last job makes the Overview ready, so the first Overview after an
-install or an upgrade opens at once instead of reading every household.
-It never fails the install: if the step could not finish there, the app
-runs it again at its first start, and the first Overview then reads every
-household and says how many it has read.
+its window is still on screen ("Preparing Overview..."), and the step's
+last job makes the Overview ready, so the first Overview after an install
+or an upgrade opens at once instead of reading every household. It never
+fails the install, but it says so in a small window when something went
+wrong:
+
+- *"...the Overview could not be prepared..."* - the program is installed
+  and set up; only the Overview's saved copy could not be made. The first
+  Overview reads every household and says how many it has read. Nothing
+  else needs doing.
+- *"...its setup step could not finish..."* - the app runs the step again
+  at its first start. If its notice then names a problem, it is one of the
+  ones this section describes.
+
+A silent install shows neither window.
 
 **One waiting helper in Task Manager is normal** (pilot P220). While the
 app is running it keeps one process of its own started and waiting for the

@@ -681,10 +681,16 @@ input, textarea, select { caret-color: var(--text); accent-color: var(--accent);
 }
 /* Held counts asked again (P222): the path row says Updating, the page's
    figures and statuses are muted until the new reply is drawn. Rows stay
-   usable, and stay put: the word is in the bar, which has its own height. */
+   usable, and stay put: the word is in the bar, which has its own height.
+   Its slot is kept the same width whether the word shows or not, so the
+   path beside it is never narrowed when it comes (Jason, 2026-10-08). */
 .page-updating {
   flex: none;
+  inline-size: 8ch;
   margin: 0;
+  overflow: hidden;
+  text-align: end;
+  text-overflow: ellipsis;
   white-space: nowrap;
   font-size: var(--fs-caption);
   line-height: var(--lh-caption);

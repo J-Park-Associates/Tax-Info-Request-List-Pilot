@@ -63,14 +63,9 @@ Name: "{group}\Tax Document Console"; Filename: "{app}\Tax Document Console.exe"
 Name: "{autodesktop}\Tax Document Console"; Filename: "{app}\Tax Document Console.exe"; Tasks: desktopicon; AppUserModelID: "com.jparkassociates.taxdocumentconsole"
 
 [Run]
-; The after-install step through its setup door (pilot P218, Q1; Jason,
-; 2026-10-08): the packaged API in its setup mode, given the settings folder
-; and the product's name (the installer passes no environment), hidden, and
-; waited for, so the Overview is made ready while the installer is still on
-; screen. Not a postinstall entry, so it runs on a silent install too. A step
-; that fails does not fail the install: the app runs it again at its first
-; launch, as it always has.
-Filename: "{app}\resources\tracker-api\tracker-api.exe"; Parameters: "--after-install-setup --settings ""{app}"" --product ""Tax Document Console"""; StatusMsg: "Making the Overview ready..."; Flags: runhidden waituntilterminated
+; The after-install step runs in [Code] below (CurStepChanged), not here:
+; a [Run] entry cannot read the step's exit code, and the installer shows a
+; small window when the step fails (Jason, 2026-10-08).
 Filename: "{app}\Tax Document Console.exe"; Description: "Launch Tax Document Console"; Flags: postinstall nowait skipifsilent
 
 ; Uninstall removes this computer's scheduled task and the installed files,
@@ -83,3 +78,46 @@ Filename: "{app}\Tax Document Console.exe"; Description: "Launch Tax Document Co
 [UninstallRun]
 Filename: "{sys}\schtasks.exe"; Parameters: "/Delete /TN ""Tax Document Console"" /F"; Flags: runhidden; RunOnceId: "RemoveSchedule"
 Filename: "{sys}\schtasks.exe"; Parameters: "/Delete /TN ""Tax Document Tracker Pilot"" /F"; Flags: runhidden; RunOnceId: "RemoveEarlierSchedule"
+
+[Code]
+// The after-install step through its setup door (pilot P218, Q1; Jason,
+// 2026-10-08: "Yes, add to pilot"): the packaged API in its setup mode,
+// given the settings folder and the product's name (the installer passes
+// no environment), hidden, and waited for, so the Overview is prepared
+// while the installer is still on screen - after the files are in place
+// and before the finished page offers to launch the app. It runs on a
+// silent install too.
+//
+// A step that fails never fails the install: the app runs the step again
+// at its first launch, as it always has. It says so in a small window
+// (Jason, 2026-10-08: "show a small failure message window if the step
+// fails"), left out on a silent install so nothing waits for a click. The
+// codes are tracker.runner's SETUP_STEP_FAILED and SETUP_OVERVIEW_NOT_READY;
+// a step that could not even start counts as one that could not finish.
+const
+  SetupStepFailed = 1;
+  SetupOverviewNotReady = 2;
+
+procedure CurStepChanged(CurStep: TSetupStep);
+var
+  ResultCode: Integer;
+begin
+  if CurStep = ssPostInstall then
+  begin
+    WizardForm.StatusLabel.Caption := 'Preparing Overview...';
+    if not Exec(ExpandConstant('{app}\resources\tracker-api\tracker-api.exe'),
+                '--after-install-setup --settings "' + ExpandConstant('{app}') + '" --product "Tax Document Console"',
+                '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
+      ResultCode := SetupStepFailed;
+    if WizardSilent then
+      Exit;
+    if ResultCode = SetupOverviewNotReady then
+      MsgBox('Tax Document Console is installed, but the Overview could not be prepared. ' +
+             'The first time you open it, it will take longer while it reads every household.',
+             mbError, MB_OK)
+    else if ResultCode <> 0 then
+      MsgBox('Tax Document Console is installed, but its setup step could not finish. ' +
+             'It will try again the first time you start the app, and the first Overview may take longer.',
+             mbError, MB_OK);
+  end;
+end;

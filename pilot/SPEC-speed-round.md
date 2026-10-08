@@ -1199,8 +1199,12 @@ Copy before it draws (nothing is copied); quit the app and see no
 `firm-view.json` and see "Reading n of N Households" once the wait passes
 2 s; with the app closed, see `record-heads.db` alone in the data folder;
 install the pilot installer over the 22-household sample with a saved
-clients root, see "Making the Overview ready..." before it offers to launch
-the app, and see the first Overview open at once (Lane P's handoff, Q1).
+clients root, see "Preparing Overview..." before it offers to launch
+the app, see no window, and see the first Overview open at once (Lane P's
+handoff, Q1). The failure window (Jason, 2026-10-08) cannot be made to
+appear by hand on a working install; its code is pinned by
+`tests/test_pilot_installer.py` and its exit codes by
+`tests/test_after_install.py`, and the installer build compiles it.
 Optional: time `state` page changes before and after (the spare).
 
 ## 6. How to measure after
@@ -1258,7 +1262,12 @@ is not.
   packaged API's `after-install` command cannot name the setup door today,
   Lane P adds that argument to it (`tracker/api.py`, `api_entry.py`) and
   says so in its handoff. A failed step must not fail the install: the app
-  runs the step again at its first launch, as it does today. Owning test:
+  runs the step again at its first launch, as it does today. *(Jason,
+  2026-10-08, after the build: the status line reads "Preparing
+  Overview...", and a step that fails says so in a small error window - the
+  step moved to the installer's `[Code]` so it can read the setup mode's
+  exit code, `runner.SETUP_STEP_FAILED` or `SETUP_OVERVIEW_NOT_READY`; a
+  silent install shows no window. P218's row records it.)* Owning test:
   `tests/test_pilot_installer.py`
   (`test_the_pilot_installer_makes_the_overview_ready_before_it_launches_the_app`).
 

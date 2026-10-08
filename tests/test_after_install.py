@@ -2027,3 +2027,25 @@ def test_the_launch_root_and_repair_doors_leave_the_overview_to_the_app(root, mo
     done = after_install.run(reason=after_install.REASON_SETUP)
     assert done.overview_sentence == "" and fills_asked == []
     assert not store.store_path().exists()
+
+
+def test_the_installer_is_told_when_the_overview_could_not_be_prepared_and_setup_bat_is_not():
+    """Jason, 2026-10-08 ("show a small failure message window if the step
+    fails"): with ``INSTALLER_CODES_FLAG`` - the pilot installer's door -
+    the step exits ``SETUP_STEP_FAILED`` when a job could not run and
+    ``SETUP_OVERVIEW_NOT_READY`` when every job ran but the Overview could
+    not be prepared. Without it (``Setup.bat``, the app) an Overview that
+    could not be prepared is still not a failure."""
+    from types import SimpleNamespace
+
+    from tracker.runner import SETUP_OVERVIEW_NOT_READY, SETUP_STEP_FAILED
+
+    ready = SimpleNamespace(failed=(), overview_sentence=after_install.OVERVIEW_READY)
+    not_ready = SimpleNamespace(failed=(), overview_sentence=after_install.OVERVIEW_NOT_READY.format(why="x"))
+    not_run = SimpleNamespace(failed=(), overview_sentence="")
+    broken = SimpleNamespace(failed=("a job",), overview_sentence=after_install.OVERVIEW_READY)
+    assert after_install.installer_exit_code(ready) == 0
+    assert after_install.installer_exit_code(not_run) == 0
+    assert after_install.installer_exit_code(not_ready) == SETUP_OVERVIEW_NOT_READY
+    assert after_install.installer_exit_code(broken) == SETUP_STEP_FAILED
+    assert not_ready.failed == () and SETUP_STEP_FAILED == 1   # Setup.bat's errorlevel 1 is a failed job only

@@ -571,6 +571,12 @@ RUNNER_MODE_FLAG = "--run"
 #: mode, because ``api_entry.py`` must read it before anything imports
 #: ``tracker.scheduling``, which needs the product's name at import.
 SETUP_MODE_FLAG = "--after-install-setup"
+#: What the setup mode exits with, for the pilot installer's failure window
+#: (Jason, 2026-10-08: "show a small failure message window if the step
+#: fails"): the step could not finish, or it finished and the Overview could
+#: not be prepared. 0 is neither. ``setup.iss`` names the same numbers.
+SETUP_STEP_FAILED = 1
+SETUP_OVERVIEW_NOT_READY = 2
 
 
 def run_now_arguments(settings_dir: Path | str, household: Path | str) -> list[str]:

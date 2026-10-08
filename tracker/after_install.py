@@ -1404,6 +1404,26 @@ def move_schedule_here() -> tuple[str, bool]:
     return scheduling.MOVED_FROM.format(host=moved.before, here=here), True
 
 
+#: The pilot installer's door asks for :func:`installer_exit_code` instead
+#: of :attr:`AfterInstall.exit_code`; ``api_entry``'s setup mode passes it.
+INSTALLER_CODES_FLAG = "--installer-codes"
+
+
+def installer_exit_code(result: AfterInstall) -> int:
+    """What the pilot installer reads to show its failure window (Jason,
+    2026-10-08): :data:`runner.SETUP_STEP_FAILED` when a job could not run,
+    :data:`runner.SETUP_OVERVIEW_NOT_READY` when every job ran but the
+    setup door's Overview could not be prepared, else 0. The Overview is
+    still never a failed job (``exit_code`` is untouched, so ``Setup.bat``
+    and the app's own doors see what they always saw): only the installer
+    is told, so a person installing knows the first Overview will be slow."""
+    if result.failed:
+        return runner.SETUP_STEP_FAILED
+    if result.overview_sentence and result.overview_sentence != OVERVIEW_READY:
+        return runner.SETUP_OVERVIEW_NOT_READY
+    return 0
+
+
 def main(argv: list[str]) -> int:
     """``python -m tracker.after_install``: the step, and its exit code.
 
@@ -1429,6 +1449,9 @@ def main(argv: list[str]) -> int:
     parser.add_argument("--move-schedule-here", action="store_true",
                         help="make this computer the one that runs the schedule for the clients "
                              "folder, then register it here (a deliberate move, runbook section 6)")
+    parser.add_argument(INSTALLER_CODES_FLAG, action="store_true",
+                        help="exit with the pilot installer's codes: 1 when the step could not "
+                             "finish, 2 when the Overview could not be prepared")
     ns = parser.parse_args(argv)
     try:
         if ns.move_schedule_here:
@@ -1441,7 +1464,7 @@ def main(argv: list[str]) -> int:
         store.close()
     for line in result.lines:
         print(line)
-    return result.exit_code
+    return installer_exit_code(result) if ns.installer_codes else result.exit_code
 
 
 if __name__ == "__main__":

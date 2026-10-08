@@ -43,7 +43,10 @@ from tracker.settings import ENV_PRODUCT_NAME, ENV_SETTINGS_DIR
 
 def run_setup_step(argv: list[str]) -> int:
     """The after-install step through its setup door, for the installer:
-    ``SETTINGS_FLAG <folder>`` and ``PRODUCT_FLAG <name>``, both required."""
+    ``SETTINGS_FLAG <folder>`` and ``PRODUCT_FLAG <name>``, both required.
+    It exits with the installer's codes (``runner.SETUP_STEP_FAILED``,
+    ``runner.SETUP_OVERVIEW_NOT_READY``), which ``setup.iss`` turns into
+    its failure window."""
     import argparse
 
     parser = argparse.ArgumentParser(prog=f"api_entry {SETUP_MODE_FLAG}")
@@ -52,10 +55,10 @@ def run_setup_step(argv: list[str]) -> int:
     ns = parser.parse_args(argv)
     os.environ[ENV_SETTINGS_DIR] = ns.settings
     os.environ[ENV_PRODUCT_NAME] = ns.product
-    from tracker.after_install import REASON_SETUP
+    from tracker.after_install import INSTALLER_CODES_FLAG, REASON_SETUP
     from tracker.after_install import main as after_install
 
-    return after_install(["--reason", REASON_SETUP])
+    return after_install(["--reason", REASON_SETUP, INSTALLER_CODES_FLAG])
 
 
 if __name__ == "__main__":

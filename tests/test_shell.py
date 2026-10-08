@@ -4759,6 +4759,18 @@ def test_the_rows_stay_put_while_held_counts_are_asked_again(tmp_path):
     assert "page.prepend(" not in js_function("shellMarkUpdating")
 
 
+def test_the_path_beside_updating_keeps_its_width_when_the_word_comes():
+    """Jason, 2026-10-08: a long path was narrowed while "Updating" showed,
+    because the word's slot grew from nothing. The slot is a fixed width
+    whether the word shows or not, does not grow or shrink, and cuts
+    rather than spills - so the path beside it never moves."""
+    css = stripped(read("shell.css"))
+    body = css[css.index(".page-updating {"):]
+    body = body[:body.index("}")]
+    for declaration in ("flex: none;", "inline-size: 8ch;", "overflow: hidden;", "white-space: nowrap;"):
+        assert declaration in body, declaration
+
+
 def test_a_household_or_year_page_marks_its_held_statuses_while_they_are_asked_again(tmp_path):
     """P222 review: a household's and a year's pages follow the counts, so
     while held counts are asked again their status pills are muted and the
