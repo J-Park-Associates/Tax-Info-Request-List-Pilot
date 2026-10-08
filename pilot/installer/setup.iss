@@ -63,6 +63,14 @@ Name: "{group}\Tax Document Console"; Filename: "{app}\Tax Document Console.exe"
 Name: "{autodesktop}\Tax Document Console"; Filename: "{app}\Tax Document Console.exe"; Tasks: desktopicon; AppUserModelID: "com.jparkassociates.taxdocumentconsole"
 
 [Run]
+; The after-install step through its setup door (pilot P218, Q1; Jason,
+; 2026-10-08): the packaged API in its setup mode, given the settings folder
+; and the product's name (the installer passes no environment), hidden, and
+; waited for, so the Overview is made ready while the installer is still on
+; screen. Not a postinstall entry, so it runs on a silent install too. A step
+; that fails does not fail the install: the app runs it again at its first
+; launch, as it always has.
+Filename: "{app}\resources\tracker-api\tracker-api.exe"; Parameters: "--after-install-setup --settings ""{app}"" --product ""Tax Document Console"""; StatusMsg: "Making the Overview ready..."; Flags: runhidden waituntilterminated
 Filename: "{app}\Tax Document Console.exe"; Description: "Launch Tax Document Console"; Flags: postinstall nowait skipifsilent
 
 ; Uninstall removes this computer's scheduled task and the installed files,

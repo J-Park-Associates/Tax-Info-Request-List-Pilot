@@ -563,6 +563,14 @@ def _one_folder(path: Path) -> str:
 #: scheduled job rather than the API: this flag first, then the runner's own
 #: arguments. tracker.scheduling builds the packaged command line from it.
 RUNNER_MODE_FLAG = "--run"
+#: How the pilot's installer tells the packaged executable to run the
+#: after-install step through its setup door (pilot P218, Q1): this flag
+#: first, then :data:`SETTINGS_FLAG` and :data:`PRODUCT_FLAG` with their
+#: values - the installer has neither the shell's environment nor a
+#: package.json beside the executable. Named here, beside the runner's own
+#: mode, because ``api_entry.py`` must read it before anything imports
+#: ``tracker.scheduling``, which needs the product's name at import.
+SETUP_MODE_FLAG = "--after-install-setup"
 
 
 def run_now_arguments(settings_dir: Path | str, household: Path | str) -> list[str]:
@@ -645,7 +653,7 @@ def fill_firm_cache(root: str, *, product: str = "") -> str:
     return "" if filled else FILL_NOT_KEPT
 
 
-def _fills_the_cache(ns, root: str, *, outcome: str, unproved, household: Path | None) -> bool:
+def _fills_the_cache(ns, *, outcome: str, unproved, household: Path | None) -> bool:
     """Whether this pass fills the firm view's cache at its end (P201,
     ``pilot/SPEC-firm-cache-fill.md`` R4, as the engine review's rulings
     changed it). A real pass over the saved root that served its
@@ -657,26 +665,17 @@ def _fills_the_cache(ns, root: str, *, outcome: str, unproved, household: Path |
       household work has ended, and a fill would keep Stop waiting. The
       next Overview fills the cache, as it did before P201. A pass that
       lost its app is stopped the same way.
-    - **a person's Sort fills only the households its pass touched**
-      (SHOULD-3): it asks the summary only while the cache already holds
-      today's head, when the summary reads just the households whose
-      fingerprint changed - the one the Sort touched, and any a person
-      changed meanwhile - and keeps the rest. On a cold head (a new day,
-      an upgrade, a settings change) the summary would read every
-      household, the whole firm's cost for one household's Sort, so it is
-      not asked: the cache's own staleness rules leave that to the next
-      Overview, which reads every household as it would have anyway. The
-      household the Sort just wrote is inside :data:`firm_cache.RACY_SECONDS`
-      in any case, so a cold fill could not have kept it.
+    - **a person's Sort leaves the cache to the app** (pilot P218, S1;
+      Jason, 2026-10-08): the app asks the Overview the moment the Sort
+      ends, and that reply fills the cache as every Overview does - a fill
+      here as well was one more walk of the firm at the same moment. A Sort
+      run by hand from the command line leaves the cache to the next
+      Overview. (Until P218 a Sort filled while the cache held today's
+      head, SHOULD-3.)
     - the scheduled pass fills the whole firm, cold or warm."""
     if ns.dry_run or ns.root or unproved is not None or outcome == "stopped":
         return False
-    if household is None:
-        return True
-    try:
-        return firm_cache.holds(firm_cache.cache_path(), [firm_cache.head(root, dt.date.today())])
-    except (OSError, SettingsError):
-        return False            # a head that cannot be asked: the next Overview fills it
+    return household is None
 #: What the run says about an engagement it drafted nothing for.
 NOTHING_OUTSTANDING = "Nothing Outstanding; No Reminder Needed"
 #: Which rung of the reminder a draft was written at (decision 117), said
@@ -3243,7 +3242,7 @@ def _pass(ns, parser, reached: dict) -> int:
     # that failed is said after the fact - its code added to the run log as
     # a page that could not be written is, the page written again with its
     # sentence, and the sentence on the console or in Run now's final line.
-    if _fills_the_cache(ns, root, outcome=outcome, unproved=unproved, household=household):
+    if _fills_the_cache(ns, outcome=outcome, unproved=unproved, household=household):
         why = fill_firm_cache(root, product=ns.product)
         if why:
             _warn(result, CODE_CACHE_NOT_FILLED, CACHE_NOT_FILLED.format(why=why))

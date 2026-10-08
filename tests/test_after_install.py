@@ -343,7 +343,8 @@ def test_a_finding_is_not_a_failure(malformed, monkeypatch, capsys):
     assert len(record["findings"]) == 1 and "is malformed" in record["findings"][0]
     assert record["failed"] == [] and record["program"] == after_install.program_identity()
     assert after_install.CHECK_FOUND.format(n=1) in out and after_install.FINDINGS_WAIT in out
-    assert out.rstrip().splitlines()[-1] == after_install.FINDINGS_WAIT
+    # The last word on the record, before the Overview's console line (P218).
+    assert out.rstrip().splitlines()[-2:] == [after_install.FINDINGS_WAIT, after_install.OVERVIEW_READY]
 
 
 def test_a_store_that_cannot_open_is_a_failure(root, monkeypatch, capsys):
@@ -1962,3 +1963,67 @@ def test_the_carry_over_sentences_lead_the_printed_lines(root, windows, monkeypa
     assert code == 0 and out.splitlines()[:CARRIED] == carried
     assert after_install.read_record()["carried"] == carried
     assert out.count(after_install.SETTINGS_FROM_SOURCE) == 1
+
+
+# ----------------------------------- the setup door readies the Overview (P218) ----
+
+
+def test_setup_makes_the_overview_ready_after_its_other_jobs(root, monkeypatch, capsys, fills_asked):
+    """P218 (S3): the setup door's last job, before the record is written,
+    asks the firm summary once for the saved root - with this process's
+    store and checkpoint let go of first - and says so on the console."""
+    from tracker import door, runner
+
+    seen = {}
+    real = runner.fill_firm_cache
+
+    def fill(where, **kwargs):
+        seen["record written"] = after_install.record_path().exists()
+        seen["store held"] = store._CONNECTION is not None or store._CHECKPOINT is not None
+        return real(where, **kwargs)
+
+    monkeypatch.setattr(runner, "fill_firm_cache", fill)
+    after_install.record_path().unlink(missing_ok=True)
+    code, out = cli(monkeypatch, capsys, "--reason", "setup")
+
+    assert code == 0, out
+    assert fills_asked == [(str(door.checked_root()), "")]
+    assert seen == {"record written": False, "store held": False}
+    assert after_install.OVERVIEW_READY in out.splitlines()
+    record = json.loads(after_install.record_path().read_text(encoding="utf-8"))
+    assert record["failed"] == [] and record["program"] == after_install.program_identity()
+
+
+def test_a_fill_that_fails_never_fails_the_step(root, monkeypatch, capsys):
+    """A fill that did not finish is one console line, never a failure: the
+    step's identity is still recorded, so the app does not run the whole
+    step again at every launch for a cache."""
+    from tracker import runner
+
+    why = runner.FILL_STOPPED.format(code=3)
+    monkeypatch.setattr(runner, "fill_firm_cache", lambda where, **kwargs: why)
+    done = after_install.run(reason=after_install.REASON_SETUP)
+
+    assert done.exit_code == 0 and done.failed == ()
+    assert done.overview_sentence == after_install.OVERVIEW_NOT_READY.format(why=why)
+    assert done.overview_sentence in done.lines
+    assert done.reply()["overview_sentence"] == done.overview_sentence
+    record = json.loads(after_install.record_path().read_text(encoding="utf-8"))
+    assert record["failed"] == [] and record["program"] == after_install.program_identity()
+
+
+def test_the_launch_root_and_repair_doors_leave_the_overview_to_the_app(root, monkeypatch, fills_asked):
+    """Each of the other doors is followed at once by an Overview the app
+    asks, which fills the cache: none of them asks the summary itself - nor
+    does setup with no store on this computer yet."""
+    for reason in (after_install.REASON_LAUNCH, after_install.REASON_ROOT, after_install.REASON_REPAIR):
+        done = after_install.run(reason=reason)
+        assert done.overview_sentence == "" and after_install.OVERVIEW_READY not in done.lines, reason
+    assert fills_asked == []
+
+    store.close()
+    for side in ("", "-wal", "-shm"):
+        store.store_path().with_name(store.store_path().name + side).unlink(missing_ok=True)
+    done = after_install.run(reason=after_install.REASON_SETUP)
+    assert done.overview_sentence == "" and fills_asked == []
+    assert not store.store_path().exists()

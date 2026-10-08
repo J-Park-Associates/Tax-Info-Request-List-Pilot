@@ -5123,25 +5123,20 @@ def _run_now_warm(root, household, monkeypatch, capsys) -> tuple[int, list[dict]
     return code, _lines(capsys.readouterr().out)
 
 
-def test_run_now_fills_only_the_households_it_touched_so_only_while_the_cache_is_warm(
-        tmp_path, samples, monkeypatch, capsys, fills_asked):
-    """R4 as the engine review's SHOULD-3 ruled it: a person's Sort asks the
-    summary only while the cache holds today's head, when the summary reads
-    just the households whose fingerprint changed (the one the Sort
-    touched) and keeps the rest; on a cold head it would read the whole
-    firm, so it is not asked and the next Overview fills it. Either way
-    before the final line, and no pass warning."""
-    from tracker import door
-
+def test_a_sort_leaves_the_overview_to_the_app(tmp_path, samples, monkeypatch, capsys, fills_asked):
+    """P218 (S1; Jason, 2026-10-08): a person's Sort never asks the summary,
+    cold cache or warm - the app asks the Overview the moment the Sort
+    ends, and that reply fills the cache as every Overview does. No pass
+    warning either way."""
     root = tmp_path / "root"
     engagement = build_engagement(root, samples)
     code, said = _run_now(root, household_of(engagement.path), monkeypatch, capsys)
     assert code == 0 and said[-1]["pass_warnings"] == []
-    assert fills_asked == [], "a cold cache: the whole firm's fill is not a Sort's to pay"
+    assert fills_asked == []
 
     code, said = _run_now_warm(root, household_of(engagement.path), monkeypatch, capsys)
     assert code == 0 and said[-1]["pass_warnings"] == []
-    assert fills_asked == [(str(door.checked_root(None)), "")]
+    assert fills_asked == [], "a warm cache: still the app's Overview to fill"
 
 
 def test_the_scheduled_pass_fills_the_whole_firm_on_a_cold_cache(tmp_path, samples, monkeypatch, fills_asked):
@@ -5236,9 +5231,9 @@ def test_a_fill_that_fails_is_a_pass_warning_and_never_the_exit_code(tmp_path, s
     assert CACHE_NOT_FILLED.format(why=why) in _page(root)
     assert CACHE_NOT_FILLED.format(why=why) in capsys.readouterr().out
 
-    # A Sort fills only while the cache is warm.
+    # A Sort asks no fill (P218), so it has none to fail.
     code, said = _run_now_warm(root, household_of(engagement.path), monkeypatch, capsys)
-    assert code == 0 and said[-1]["pass_warnings"] == [CACHE_NOT_FILLED.format(why=why)]
+    assert code == 0 and said[-1]["pass_warnings"] == []
 
 
 @pytest.mark.parametrize("ending", ["no start", "stopped", "too long", "not kept"])
