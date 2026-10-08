@@ -9961,15 +9961,16 @@ def test_importing_the_api_opens_no_file_but_the_programs_own():
     import subprocess
     import sys
 
-    from tests.conftest import REPO
+    from tests.conftest import REPO, TRIPWIRE_DIR, child_env
 
-    env = {key: value for key, value in os.environ.items() if key != "PYTHONPATH"}
-    env["TRACKER_PRODUCT_NAME"] = "Fabricated Product"
-    done = subprocess.run([sys.executable, "-c", _IMPORT_PROBE], cwd=REPO, env=env,
+    done = subprocess.run([sys.executable, "-c", _IMPORT_PROBE], cwd=REPO,
+                          env=child_env(TRACKER_PRODUCT_NAME="Fabricated Product"),
                           capture_output=True, text=True, timeout=180)
     assert done.returncode == 0, done.stderr
     said = json.loads(done.stdout.splitlines()[-1])
-    own = [os.path.realpath(root) for root in said["roots"]] + [os.path.realpath(REPO / "tracker")]
+    # The suite's own tripwire (decision 185) is loaded first in every child.
+    own = [os.path.realpath(root) for root in said["roots"]] + [
+        os.path.realpath(REPO / "tracker"), os.path.realpath(TRIPWIRE_DIR)]
     on_the_path = {os.path.realpath(entry or REPO) for entry in said["path"]}
     strays = []
     for event, where in said["seen"]:
@@ -10047,3 +10048,94 @@ def test_only_the_task_name_and_the_programs_own_place_are_fixed_at_import():
     folder or the clients root at import."""
     assert _fixed_at_import() == {("scheduling.py", "TASK_NAME"), ("api.py", "SCREEN"),
                                   ("settings.py", "PACKAGE_JSON"), ("after_install.py", "CHECKOUT")}
+
+
+# ------------------------------------------- a wait says what it shows (P222) ----
+
+
+def _a_practice_of_five_households(capsys, demo_root) -> int:
+    """Five households for the batches (made-up names): the three-return
+    practice, two more, a Roll Forward that retires a prior, and one whose
+    household record is gone. Returns how many household folders there are."""
+    from tracker.layout import private_household_dir
+
+    _a_practice_for_the_firm_view(capsys, demo_root)
+    items = [{"identifier": "A01", "document": "W-2"}]
+    for household, name in (("Lee Family", "1040 - Ann Lee"), ("Kim Family", "1040 - Kim"),
+                            ("Oak Family", "1040 - Oak"), ("Gone Family", "1040 - Gone")):
+        assert run(capsys, "create", stdin={"household": household, "return_name": name,
+                                            "items": items})[0] == 0
+    assert run(capsys, "create", stdin={
+        "household_path": str(private_household_dir(demo_root, "Kim Family")),
+        "return_name": "1040 - Kim Old", "year": default_tax_year() - 1, "items": items})[0] == 0
+    kim_old = where(demo_root, "1040 - Kim Old", household="Kim Family", year=default_tax_year() - 1)
+    assert run(capsys, "rollover", stdin={"prior": str(kim_old), "year": default_tax_year()})[0] == 0
+    store.close()
+    ledger.path_for(private_household_dir(demo_root, "Gone Family")).unlink()
+    _aged(demo_root)
+    return len([folder for folder in (demo_root / PRIVATE_TREE).iterdir() if folder.is_dir()])
+
+
+def _firm_lines(capsys) -> list[dict]:
+    """Every line ``firm`` printed, the reply last."""
+    code = api.main(["firm"])
+    lines = [json.loads(line) for line in capsys.readouterr().out.strip().splitlines()]
+    assert code == 0, lines[-1]
+    return lines
+
+
+def test_a_cold_overview_says_each_batch_of_households_it_reads(capsys, demo_root, monkeypatch):
+    """P222: reading households afresh, ``firm`` says how far it is - one
+    count line before the first batch and one after each, flushed before
+    the reply: ``done`` from 0 to every household read, never falling, and
+    nothing but the format's version, the event and the two counts."""
+    from tracker import firm_cache, progress
+
+    households = _a_practice_of_five_households(capsys, demo_root)
+    firm_cache.cache_path().unlink(missing_ok=True)
+    monkeypatch.setattr(api, "FIRM_READ_BATCH", 2)
+    *counts, reply = _firm_lines(capsys)
+    assert progress.PROGRESS_KEY not in reply and reply["returns"]
+    said = [line[progress.PROGRESS_KEY] for line in counts]
+    assert [one["done"] for one in said] == [0, *range(2, households, 2), households]
+    for one in said:
+        assert one == {"v": progress.FORMAT_VERSION, "event": progress.COUNT_EVENT,
+                       "done": one["done"], "total": households}
+
+
+def test_a_warm_overview_prints_no_count(capsys, demo_root):
+    """Nothing read afresh, nothing to count: the reply is the one line.
+    (A household with a problem is never kept, so a practice without one.)"""
+    _a_practice_for_the_firm_view(capsys, demo_root)
+    _aged(demo_root)
+    assert len(_firm_lines(capsys)) > 1                      # cold: counted, and the cache filled
+    assert len(_firm_lines(capsys)) == 1
+
+
+def test_an_overview_read_in_batches_is_the_whole_walks_answer(capsys, demo_root, monkeypatch):
+    """The batches change when a row is built, never what it says: with one
+    and two households a batch - across a Roll Forward and a household whose
+    record is gone - the cold reply is the whole walk's, field for field."""
+    from tracker import firm_cache
+
+    _a_practice_of_five_households(capsys, demo_root)
+    whole = _firm_whole(capsys, monkeypatch)
+    for batch in (1, 2):
+        firm_cache.cache_path().unlink(missing_ok=True)
+        monkeypatch.setattr(api, "FIRM_READ_BATCH", batch)
+        assert _firm_lines(capsys)[-1] == whole, batch
+        assert _firm_lines(capsys)[-1] == whole, batch          # and kept, the same
+
+
+def test_the_speed_round_words_are_in_the_screen_vocabulary():
+    """P222's two words, approved by Jason 2026-10-08: the shell types
+    neither; it fills ``reading_households`` with a count line's numbers."""
+    screen = api._vocab()["screen"]
+    assert screen["updating"] == "Updating"
+    assert screen["reading_households"] == "Reading {n} of {total} Households"
+    rows = [line.split("\t") for line in
+            (Path(__file__).resolve().parents[1] / "pilot" / "wording-shell.tsv").read_text(
+                encoding="utf-8").splitlines()]
+    proposed = {row[1]: row[4] for row in rows if len(row) > 4}
+    assert proposed["screen.updating"] == screen["updating"]
+    assert proposed["screen.reading_households"] == screen["reading_households"]

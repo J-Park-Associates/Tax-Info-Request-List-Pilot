@@ -55,6 +55,11 @@ FORMAT_VERSION = 1
 #: What a line can say: the pass began (with its run limit), it is on a
 #: household, it is on a file or request, a stop was seen, it ended.
 EVENTS = ("started", "household", "file", "stopping", "ended")
+#: The one event that is not a pass's (pilot P222): how many households
+#: the firm summary has read of those it reads afresh, said on ``firm``'s
+#: stdout before its reply. Not in :data:`EVENTS`, so a :class:`Watch` can
+#: never say it, and it carries no pass, no name and no limit.
+COUNT_EVENT = "households"
 #: How a pass ended, on its ``ended`` line.
 OUTCOMES = ("finished", "stopped", "out_of_time", "failed")
 #: Why a pass stopped before its end (decision 203): the app that started
@@ -134,6 +139,19 @@ def line(pass_id: int, event: str, **fields) -> str:
     ending in a newline, so a reader splitting stdout on newlines can never
     see half of one."""
     return json.dumps({PROGRESS_KEY: _fields(pass_id, event, fields)}, ensure_ascii=True) + "\n"
+
+
+def count_line(done: int, total: int) -> str:
+    """One count line (pilot P222): ``{"progress": {"v", "event", "done",
+    "total"}}``, ASCII, one line ending in a newline - the format version,
+    :data:`COUNT_EVENT`, and two integers with ``0 <= done <= total`` and
+    ``total >= 1``. Never a pass id, a household's name or a limit: the
+    shell routes it by the command that printed it, never as a pass's."""
+    if (not all(isinstance(n, int) and not isinstance(n, bool) for n in (done, total))
+            or total < 1 or not 0 <= done <= total):
+        raise ValueError(f"not a count: {done!r} of {total!r}")
+    return json.dumps({PROGRESS_KEY: {"v": FORMAT_VERSION, "event": COUNT_EVENT, "done": done,
+                                      "total": total}}, ensure_ascii=True) + "\n"
 
 
 def _read_bounded(path: Path) -> dict | None:

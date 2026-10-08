@@ -9,6 +9,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 from tracker import progress
 from tracker.progress import (
     CANCEL_SUFFIX,
@@ -215,3 +217,20 @@ def test_every_line_is_still_printed(tmp_path):
     for n in range(5):
         watch.say("file", step=progress.SCAN_STEP, name=f"A0{n}")
     assert [json.loads(one)[PROGRESS_KEY]["name"] for one in printed] == [f"A0{n}" for n in range(5)]
+
+
+def test_a_count_line_carries_no_pass_and_no_name():
+    """P222's count line: one ASCII line, the format's version, the count
+    event - which no pass can say - and two integers; never a pass id, a
+    household's name, a place in a walk or a limit."""
+    said = progress.count_line(25, 1000)
+    assert said.endswith("\n") and said.count("\n") == 1 and said.isascii()
+    assert json.loads(said) == {PROGRESS_KEY: {"v": progress.FORMAT_VERSION, "event": progress.COUNT_EVENT,
+                                               "done": 25, "total": 1000}}
+    assert progress.COUNT_EVENT not in progress.EVENTS
+    for wrong in ((-1, 3), (4, 3), (0, 0), (1.0, 3), (True, 3), ("1", 3)):
+        with pytest.raises(ValueError):
+            progress.count_line(*wrong)
+    watch = Watch(None, limit_seconds=60)
+    with pytest.raises(ValueError):
+        watch.say(progress.COUNT_EVENT, done=1, total=2)
