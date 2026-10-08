@@ -3301,7 +3301,8 @@ ADMISSION_PIN: dict[int, dict[str, str]] = {2: {
     "tracker.store.RULE_LIST_FIELDS": "8b3d25ca8662bd02",
     "tracker.store.STATUS_COLUMNS": "072efbf3b12ac0bd",
     "tracker.store.UNKNOWN_EVENT": "099e89ceccd1e5e9",
-    "tracker.store._engagement_row": "f7af91c2d1b8ade0",
+    "tracker.store._engagement_key": "cf50c480b543e726",
+    "tracker.store._engagement_row": "a9108dc0e45b8442",
     "tracker.store._line_keys_problem": "0d6016b3dab0c236",
     "tracker.store._positional_root": "f2fce089ca54ef5a",
     "tracker.store._recorded_root_over": "6447409cff0d940e",
@@ -4916,3 +4917,69 @@ def test_has_rules_is_whether_rules_has_any(root, by_hand, tmp_path):
     elsewhere = tmp_path / "not held"
     elsewhere.mkdir()
     assert store.rules(conn, elsewhere) is None and store.has_rules(conn, elsewhere) is False
+
+
+# ------------------------------------- the page's kept rows' token (P227) ----
+
+def test_the_held_read_and_the_page_use_one_token(recorded_root, by_hand, monkeypatch):
+    """P227: one definition of "the record's reads are unchanged" - the
+    held read's token is ``read_token`` of the row (with what is read and
+    this process's rebuild count), and the page's kept rows key by the same
+    ``read_token``, found by ``record_key``, the key ``_engagement_row``
+    asks first."""
+    from tracker import settings
+
+    conn = store.connect()
+    build(conn, recorded_root, by_hand)
+    row = store._engagement_row(conn, by_hand)
+    assert store.record_key(by_hand) == row["path"]
+    assert store.read_tokens(conn)[row["path"]] == store.read_token(row)
+    assert store.read_tokens(conn, row["path"]) == {row["path"]: store.read_token(row)}
+    assert store.read_token(row) == (row["id"], row["path"], row["ledger_head"], row["applied_seq"],
+                                     row["applied_digest"], row["built_at"])
+    held = []
+    real = settings.held
+
+    def asked(key, answer, **kwargs):
+        if key[0] == "record read":
+            held.append(key)
+        return real(key, answer, **kwargs)
+
+    monkeypatch.setattr(settings, "held", asked)
+    store.held_read(conn, by_hand, "probe", lambda: 1)
+    assert held == [("record read", "probe", *store.read_token(row), store._REPLACED)]
+    # A rebuild from the same journal, in a later second (``built_at`` is to
+    # the second, as every stamp is): a new token, for the page as for the
+    # hold. Rebuilt within the same second it is the same token - and the
+    # same rows, derived from the same lines by the same program.
+    monkeypatch.setattr(ledger, "stamp", lambda: "2099-01-01T00:00:00Z")
+    build(conn, recorded_root, by_hand)
+    assert store.read_tokens(conn)[row["path"]] != store.read_token(row)
+
+
+def test_a_folder_outside_the_recorded_root_has_no_record_key(root, engagement, tmp_path):
+    """Outside the recorded root the store finds a folder by its tail, so
+    the page never keeps its rows by key: ``record_key`` is ``None``, and
+    the page reads that return afresh every time."""
+    assert store.record_key(engagement) is None
+    assert store.record_key(tmp_path / "nowhere at all") is None
+
+
+def test_the_tokens_of_every_record_are_one_statement(recorded_root, monkeypatch):
+    """P227: every engagement row's token in one ``SELECT``, keyed by the
+    stored path - not one statement a return."""
+    conn = store.connect()
+    folders = [make_engagement(recorded_root, ITEMS, household=f"Family {n}") for n in range(3)]
+    for folder in folders:
+        build(conn, recorded_root, folder)
+    statements = []
+    real = store._Cursor.execute
+
+    def execute(self, *args, **kwargs):
+        statements.append(args[0] if args else "")
+        return real(self, *args, **kwargs)
+
+    monkeypatch.setattr(store._Cursor, "execute", execute)
+    tokens = store.read_tokens(conn)
+    assert len(statements) == 1
+    assert {store.record_key(folder) for folder in folders} <= set(tokens)

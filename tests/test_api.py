@@ -7569,12 +7569,12 @@ def test_the_writes_that_cannot_change_the_list_do_not_walk(capsys, demo_root, t
     assert walked == []
 
 
-def test_sort_and_scan_ends_with_one_list_then_one_state(capsys, demo_root, monkeypatch):
+def test_sort_and_scan_ends_with_one_list_and_one_state(capsys, demo_root, monkeypatch):
     """Decision 203 (the lane's ruling on 194's Q5): the pass is the
     runner's, which walks the root once and prints no list; when it ends
-    the app asks ``list`` once, then ``state`` - which is how a folder made
-    by hand reaches the picker. Neither the pass's final line nor the state
-    walks again."""
+    the app asks ``list`` once and ``state`` once, at the same time (P228) -
+    the list is how a folder made by hand reaches the picker. Neither the
+    pass's final line nor the state walks again."""
     engagement = chased_engagement(capsys, demo_root, name="Scanned")
     walked = _count_walks(monkeypatch)
     code, payload = scan(capsys, engagement)
@@ -10163,3 +10163,260 @@ def test_the_speed_round_words_are_in_the_screen_vocabulary():
     proposed = {row[1]: row[4] for row in rows if len(row) > 4}
     assert proposed["screen.updating"] == screen["updating"]
     assert proposed["screen.reading_households"] == screen["reading_households"]
+
+
+# ------------------------------- the Overview's last counts at launch (P229) ----
+
+def _a_practice_kept_whole(capsys, demo_root, monkeypatch) -> dict:
+    """The firm-view practice with a paused household (two open years) and a
+    Roll Forward that retires a prior, aged past the racy window, and one
+    ``firm`` reply that kept every household: that reply."""
+    from tracker.layout import private_household_dir
+
+    _a_practice_for_the_firm_view(capsys, demo_root)
+    items = [{"identifier": "A01", "document": "W-2"}]
+    for household, name in (("Lee Family", "1040 - Ann Lee"), ("Kim Family", "1040 - Kim")):
+        assert run(capsys, "create", stdin={"household": household, "return_name": name,
+                                            "items": items})[0] == 0
+    assert run(capsys, "create", stdin={
+        "household_path": str(private_household_dir(demo_root, "Lee Family")),
+        "return_name": "1040 - Ben Lee", "year": default_tax_year() - 1, "items": items})[0] == 0
+    assert run(capsys, "create", stdin={
+        "household_path": str(private_household_dir(demo_root, "Kim Family")),
+        "return_name": "1040 - Kim Old", "year": default_tax_year() - 1, "items": items})[0] == 0
+    kim_old = where(demo_root, "1040 - Kim Old", household="Kim Family", year=default_tax_year() - 1)
+    assert run(capsys, "rollover", stdin={"prior": str(kim_old), "year": default_tax_year()})[0] == 0
+    _aged(demo_root)
+    whole = _firm_whole(capsys, monkeypatch)
+    assert _cached_firm(capsys) == whole
+    return whole
+
+
+def _firm_last(capsys) -> dict:
+    code, payload = run(capsys, "firm-last")
+    assert code == 0, payload
+    return payload
+
+
+def test_the_last_counts_are_the_firm_reply_when_nothing_changed(capsys, demo_root, monkeypatch):
+    """P229: ``firm-last`` is the ``firm`` reply - every row, file, path,
+    total and the next sort - built from the kept households alone, plus
+    ``last`` and ``as_of``: the cache file's last write, ``HH:MM`` local, as
+    ``next_sort`` is said. Paused households and a retired prior are worked
+    out again from the kept facts, as ``firm`` does."""
+    from tracker import firm_cache
+
+    whole = _a_practice_kept_whole(capsys, demo_root, monkeypatch)
+    assert any(one["paused"] for one in whole["returns"])
+    last = _firm_last(capsys)
+    assert last["last"] is True
+    written = dt.datetime.fromtimestamp(firm_cache.cache_path().stat().st_mtime)
+    assert last["as_of"] == written.strftime("%H:%M")
+    assert re.fullmatch(r"\d{2}:\d{2}", last["as_of"])
+    assert {key: value for key, value in last.items() if key not in ("last", "as_of")} == whole
+    assert api.COMMANDS["firm-last"] is api._cmd_firm_last
+
+
+def test_no_last_counts_after_a_program_change_another_root_or_another_day(capsys, demo_root, monkeypatch):
+    """Never after an upgrade or any code change, never another clients
+    folder's, data folder's or day's, never under another settings file:
+    each answers ``{"last": null}`` and the window waits for the fresh
+    reply, as before P229."""
+    from tracker import firm_cache
+
+    _a_practice_kept_whole(capsys, demo_root, monkeypatch)
+    where = firm_cache.cache_path()
+    head = firm_cache.head(str(api._saved_root()), dt.date.today())
+    households = firm_cache.load(where, head)
+    assert households and _firm_last(capsys)["last"] is True
+    for key, other in (("program", "another program"), ("root", "/another/root"), ("day", "2020-01-01"),
+                       ("data_home", "/another/data"), ("settings", [1, 2]), ("format", -1)):
+        firm_cache.save(where, {**head, key: other}, households)
+        payload = _firm_last(capsys)
+        assert payload == {"last": None, "warnings": payload["warnings"]}, key
+    firm_cache.save(where, head, households)
+    assert _firm_last(capsys)["last"] is True
+    with monkeypatch.context() as patch:
+        # A program changed since the cache was written: its stamp is not the head's.
+        patch.setattr(firm_cache, "program_stamp", lambda: "the next version")
+        assert _firm_last(capsys)["last"] is None
+    where.unlink()
+    assert _firm_last(capsys)["last"] is None
+
+
+def test_no_last_counts_while_any_household_is_not_kept(capsys, demo_root, monkeypatch):
+    """No partial practice, no partial totals: a household the walk lists
+    with no kept entry, a kept entry the walk no longer lists, a kept
+    household with a problem, and a return now shown whose row was never
+    kept - each answers nothing."""
+    from tracker import firm_cache
+    from tracker.layout import private_household_dir
+
+    _a_practice_kept_whole(capsys, demo_root, monkeypatch)
+    where = firm_cache.cache_path()
+    head = firm_cache.head(str(api._saved_root()), dt.date.today())
+    households = firm_cache.load(where, head)
+
+    newcomer = private_household_dir(demo_root, "Moon Family")
+    newcomer.mkdir()
+    assert _firm_last(capsys)["last"] is None, "a household position with no kept entry"
+    newcomer.rmdir()
+    assert _firm_last(capsys)["last"] is True
+
+    firm_cache.save(where, head, {**households, "Gone Family": next(iter(households.values()))})
+    assert _firm_last(capsys)["last"] is None, "a kept entry the walk does not list"
+
+    name = next(iter(households))
+    troubled = json.loads(json.dumps(households))
+    troubled[name]["returns"][0]["problem"] = "could not be read"
+    firm_cache.save(where, head, troubled)
+    assert _firm_last(capsys)["last"] is None, "a kept household with a problem"
+
+    unshown = json.loads(json.dumps(households))
+    shown_one = next(one for entry in unshown.values() for one in entry["returns"] if one["shown"] is not None)
+    shown_one["shown"] = None
+    firm_cache.save(where, head, unshown)
+    assert _firm_last(capsys)["last"] is None, "a shown return whose row was not kept"
+
+
+def test_every_last_counts_refusal_is_said_by_its_own_name_and_only_the_unusual_reach_the_error_log(
+        capsys, demo_root, monkeypatch, caplog):
+    """Each way ``firm-last`` answers nothing is driven once and said by
+    its name from ``FIRM_LAST_REFUSALS`` and no other: the ordinary ones
+    (no cache under today's head, no plain positions, the file rewritten
+    while read) below the error log's WARNING floor, the unusual ones
+    (households not the walk's, a problem household, a shown return
+    without a kept row) on it - never a client's words."""
+    import logging
+
+    from tracker import firm_cache
+
+    _a_practice_kept_whole(capsys, demo_root, monkeypatch)
+    where = firm_cache.cache_path()
+    head = firm_cache.head(str(api._saved_root()), dt.date.today())
+    households = firm_cache.load(where, head)
+    said: dict[str, int] = {}
+
+    def refused(name: str) -> None:
+        caplog.clear()
+        with caplog.at_level(logging.DEBUG, logger="tracker.api"):
+            assert _firm_last(capsys)["last"] is None, name
+        records = [record for record in caplog.records if "last counts were not shown" in record.getMessage()]
+        assert [record.getMessage() for record in records] == [f"The last counts were not shown ({name})"]
+        assert all(household not in records[0].getMessage() for household in households)
+        said[name] = records[0].levelno
+        firm_cache.save(where, head, households)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(api, "household_positions", lambda root: None)
+        refused("no_positions")
+    firm_cache.save(where, {**head, "day": "2020-01-01"}, households)
+    refused("no_kept_practice")
+    real_load = firm_cache.load
+
+    def load_then_rewritten(path, expected):
+        kept = real_load(path, expected)
+        stamp = path.stat().st_mtime_ns + 5_000_000_000
+        os.utime(path, ns=(stamp, stamp))
+        return kept
+
+    with monkeypatch.context() as patch:
+        patch.setattr(firm_cache, "load", load_then_rewritten)
+        refused("cache_rewritten")
+    firm_cache.save(where, head, {**households, "Gone Family": next(iter(households.values()))})
+    refused("households_differ")
+    troubled = json.loads(json.dumps(households))
+    troubled[next(iter(troubled))]["returns"][0]["problem"] = "could not be read"
+    firm_cache.save(where, head, troubled)
+    refused("household_problem")
+    unshown = json.loads(json.dumps(households))
+    next(one for entry in unshown.values() for one in entry["returns"] if one["shown"] is not None)["shown"] = None
+    firm_cache.save(where, head, unshown)
+    refused("row_not_kept")
+    assert _firm_last(capsys)["last"] is True
+
+    assert said == api.FIRM_LAST_REFUSALS
+    assert {name for name, level in said.items() if level >= logging.WARNING} == \
+        {"households_differ", "household_problem", "row_not_kept"}
+
+
+def test_the_last_counts_time_is_the_files_before_it_was_read(capsys, demo_root, monkeypatch):
+    """``as_of`` is the cache file's time taken before the load, never one
+    a ``firm`` reply wrote while it was read: a file whose time moved
+    between the load and the answer refuses (``cache_rewritten``)."""
+    from tracker import firm_cache
+
+    _a_practice_kept_whole(capsys, demo_root, monkeypatch)
+    where = firm_cache.cache_path()
+    then = dt.datetime.now().replace(hour=7, minute=5, second=0, microsecond=0).timestamp()
+    os.utime(where, (then, then))
+    assert _firm_last(capsys)["as_of"] == "07:05"
+    real_load = firm_cache.load
+
+    def rewritten_while_read(path, expected):
+        kept = real_load(path, expected)
+        later = then + 3600
+        os.utime(path, (later, later))
+        return kept
+
+    monkeypatch.setattr(firm_cache, "load", rewritten_while_read)
+    assert _firm_last(capsys)["last"] is None
+
+
+def test_the_last_counts_read_no_record_and_take_no_fingerprint(capsys, demo_root, monkeypatch):
+    """The whole point of P229: no household's folders are listed for a
+    fingerprint, no record, list, index or detail is read, and the walk's
+    per-household reading never runs - only the cache file and the walk's
+    positions (one listing of the private tree)."""
+    from tracker import firm_cache, registry
+
+    whole = _a_practice_kept_whole(capsys, demo_root, monkeypatch)
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("firm-last read what it must not")
+
+    for module, name in ((firm_cache, "fingerprint"), (firm_cache, "fingerprints"), (api, "load_manifest"),
+                         (api, "read_index"), (api, "_firm_row"), (api, "households_named"),
+                         (api, "discover_engagements"), (registry, "engagement_from"),
+                         (store, "connect"), (ledger, "read_with_chain")):
+        monkeypatch.setattr(module, name, forbidden)
+    last = _firm_last(capsys)
+    assert {key: value for key, value in last.items() if key not in ("last", "as_of")} == whole
+
+
+def test_the_last_counts_write_nothing(capsys, demo_root, monkeypatch):
+    """No cache save, no record, nothing in either client tree or the data
+    folder - asked when it answers and when it refuses."""
+    from tracker import firm_cache
+    from tracker.settings import data_home
+
+    _a_practice_kept_whole(capsys, demo_root, monkeypatch)
+
+    def snapshot():
+        return {str(path): (path.stat().st_mtime_ns, path.read_bytes() if path.is_file() else None)
+                for folder in (demo_root, data_home()) for path in sorted(folder.rglob("*"))
+                if path.name != "tracker-errors.log"}
+
+    def refused_save(*args, **kwargs):
+        raise AssertionError("firm-last saved the cache")
+
+    monkeypatch.setattr(firm_cache, "save", refused_save)
+    before = snapshot()
+    assert _firm_last(capsys)["last"] is True
+    assert snapshot() == before
+    monkeypatch.setattr(firm_cache, "program_stamp", lambda: "the next version")
+    assert _firm_last(capsys)["last"] is None
+    assert snapshot() == before
+    assert "firm-last" in api.HELD_READING_COMMANDS and "firm-last" not in api.WRITING_COMMANDS
+
+
+def test_the_last_counts_words_are_in_the_screen_vocabulary():
+    """P229's word, approved by Jason 2026-10-08 as written: the shell fills
+    ``updating_as_of`` with ``firm-last``'s ``as_of``, said as a time."""
+    screen = api._vocab()["screen"]
+    assert screen["updating_as_of"] == "Updating, as of {time}"
+    rows = [line.split("\t") for line in
+            (Path(__file__).resolve().parents[1] / "pilot" / "wording-shell.tsv").read_text(
+                encoding="utf-8").splitlines()]
+    proposed = {row[1]: row[4] for row in rows if len(row) > 4}
+    assert proposed["screen.updating_as_of"] == screen["updating_as_of"]

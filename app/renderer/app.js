@@ -1950,8 +1950,10 @@ async function showReturn(path) {
 // settings that writes.
 async function bootstrap(preferPath) {
   // The Overview's counts are asked beside the list, not after it (P221):
-  // the two read-only replies run at once.
-  shellAskFirmEarly();
+  // the read-only replies run at once - and with them the counts it last
+  // had today, drawn marked until the fresh ones land (P229).
+  shellAskFirmNow();
+  shellAskFirmLast();
   try {
     const listed = await loadEngagements(preferPath, viewGeneration);
     if (!listed) return;   // a later choice owns the page now, or no folder or return yet
@@ -2329,11 +2331,16 @@ async function runScan() {
 
 // The pass has ended (decision 203): its final line, or the shell's own
 // failure when it gave none or was killed. The counts come from the final
-// line, and then the page is redrawn from the record - the list once, then
-// the shown return's state (the lane's ruling on 194's Q5) - behind the
-// view generation, so a return chosen since is the one drawn.
+// line, and then the page is redrawn from the record. The shown return's
+// state, the Overview and the list are asked at once (P228; Jason,
+// 2026-10-08): neither reply needs the list - the state carries its own
+// household and paths (decision 194), `firm` walks the tree itself - so
+// none waits for it. The list is still asked after every Sort (194's Q5,
+// decision 203), and adopted whenever it lands. The state is drawn behind
+// the view generation, so a return chosen since is the one drawn.
 async function passEnded({ reply }) {
-  shellWriteLanded();   // the pass wrote: the list's own Overview, asked next, holds it (P218)
+  shellWriteLanded();   // the pass wrote: the Overview asked next holds it (P218)
+  shellAskFirmNow();    // shell.js: the list's adopt takes this reply, never a second `firm`
   const asked = scanning.asked;
   scanDone();
   const ended = reply || {};
@@ -2351,14 +2358,17 @@ async function passEnded({ reply }) {
   const run = runs.find((one) => one.path === asked);
   const view = viewGeneration;
   let state = null;
+  const stateAsked = call(withEng("state"));   // sent first: the page waits for it alone
+  // The list is the practice's, not the view's: kept whichever return is
+  // shown by now (the review's note). One that fails still lets the
+  // Overview asked above be adopted, so no page stays Updating.
+  call(["list"]).then(adoptList).catch((err) => {
+    if (shellRootSet) shellLoadFirm();
+    if (view === viewGeneration) failed(err, () => showReturn(active));
+  });
   try {
-    // The list is the practice's, not the view's: kept whichever return
-    // is shown by now (the review's note).
-    adoptList(await call(["list"]));
-    if (view === viewGeneration) {
-      state = await call(withEng("state"));
-      if (!renderFor(view, state)) state = null;
-    }
+    state = await stateAsked;
+    if (!renderFor(view, state)) state = null;
   } catch (err) {
     if (view === viewGeneration) failed(err, () => showReturn(active));
   }

@@ -158,7 +158,7 @@ from contextlib import ExitStack, nullcontext
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from tracker import checkpoint, content_check, door, errors, firm_cache, ledger, ocr, store
+from tracker import checkpoint, content_check, door, errors, firm_cache, ledger, ocr, page_rows, store
 from tracker.filer import (
     HOUSEHOLD_NO_ROOM,
     NEEDS_REVIEW,
@@ -2559,7 +2559,8 @@ class ParkedFile:
     candidates: str
 
 
-def _parked_files(report: RunReport) -> tuple[dict[Path, list[ParkedFile]], list[str]]:
+def _parked_files(report: RunReport,
+                  kept: page_rows.Kept | None = None) -> tuple[dict[Path, list[ParkedFile]], list[str]]:
     """Every file parked for a person, by engagement folder, and what could
     not be read.
 
@@ -2577,27 +2578,71 @@ def _parked_files(report: RunReport) -> tuple[dict[Path, list[ParkedFile]], list
     page's alone); a return the store does not hold is followed as ever.
     An index that cannot be read is said by its class and code, never its
     message, which can name a client's folder (security principle 7).
+
+    **Kept rows** (P227): with ``kept``, a return whose record's token is
+    the one its parked rows were kept under is not read again - the kept
+    rows are exactly what this read would return - and a fresh read is
+    kept when its token did not move while it was read.
     """
     parked: dict[Path, list[ParkedFile]] = {}
     problems: list[str] = []
     for run in report.runs:
         engagement = run.engagement
-        try:
-            entries = read_index(engagement.path, follow=False)
-        except Exception as exc:
-            # The firm's own sentence whole; anything else - an OS error
-            # whose message is the record's path - by its class (decision 190).
-            errors.keep("runner: the parked files", exc, name=engagement.path.name)
-            problems.append(STATUS_INDEX_UNREADABLE.format(
-                label=engagement.label, error=errors.said(exc, (ManifestError, LedgerError, StoreError))))
-            continue
+        token = _page_token(kept, engagement.path)
+        rows = kept.parked(engagement.path, token) if kept is not None else None
+        if rows is None:
+            try:
+                entries = read_index(engagement.path, follow=False)
+            except Exception as exc:
+                # The firm's own sentence whole; anything else - an OS error
+                # whose message is the record's path - by its class (decision 190).
+                errors.keep("runner: the parked files", exc, name=engagement.path.name)
+                problems.append(STATUS_INDEX_UNREADABLE.format(
+                    label=engagement.label, error=errors.said(exc, (ManifestError, LedgerError, StoreError))))
+                if kept is not None:
+                    kept.forget(engagement.path)      # never kept: read, and said, every page
+                continue
+            rows = [[entry.received, entry.original_name, entry.reason, entry.candidates]
+                    for entry in entries if entry.decision == NEEDS_REVIEW]
+            if kept is not None and token is not None:
+                if _page_token(kept, engagement.path, again=True) == token:
+                    kept.keep_parked(engagement.path, token, rows)
+                else:
+                    kept.forget(engagement.path)      # written while it was read
         parked[engagement.path] = [
-            ParkedFile(engagement=engagement.label, received=entry.received,
-                       original_name=entry.original_name, reason=entry.reason,
-                       candidates=entry.candidates)
-            for entry in entries if entry.decision == NEEDS_REVIEW
+            ParkedFile(engagement=engagement.label, received=received, original_name=original_name,
+                       reason=reason, candidates=candidates)
+            for received, original_name, reason, candidates in rows
         ]
     return parked, problems
+
+
+def _page_token(kept: page_rows.Kept | None, folder: Path, *, again: bool = False) -> tuple | None:
+    """The record's token for the practice page's kept rows (P227), or
+    ``None`` when nothing is kept for this page or the return cannot be
+    kept: outside the recorded root (the store finds it by its tail), or
+    with no row in the store. Every record's token is asked in one
+    statement, the first time the page asks; ``again`` asks this one
+    record's afresh, after its read, so a record written while it was read
+    is never kept under the older token. A store that cannot answer keeps
+    nothing, said once by its class: the tokens become none for the rest of
+    the report, so every row is then read, as before P227."""
+    if kept is None:
+        return None
+    key = store.record_key(folder)
+    if key is None:
+        return None
+    try:
+        conn = store.connect()
+        if again:
+            return store.read_tokens(conn, key).get(key)
+        if kept.tokens is None:
+            kept.tokens = store.read_tokens(conn)
+    except Exception as exc:
+        log.warning("The practice page reads every row (%s)", errors.error_class(exc))
+        kept.tokens = {}
+        return None
+    return kept.tokens.get(key)
 
 
 def _page_title(root: Path) -> str:
@@ -2653,7 +2698,7 @@ def _engagement_cells(run: EngagementRun, parked: list[ParkedFile]) -> tuple:
 
 
 def write_status_page(root: Path | str, report: RunReport, *,
-                      now: dt.datetime | None = None) -> Path:
+                      now: dt.datetime | None = None, kept: page_rows.Kept | None = None) -> Path:
     """Write the practice on one page into ``root``, and return where it went.
 
     One self-contained file: no script, no style sheet, no image, nothing
@@ -2666,7 +2711,9 @@ def write_status_page(root: Path | str, report: RunReport, *,
     was run and what was only read (see :func:`status_report`), so nothing
     here takes a lock or writes anything but this page. The parked files
     are each return's index as the store holds it after the walk and the
-    pass (decision 192), read once per return and never followed again.
+    pass (decision 192), read once per return and never followed again -
+    or, with ``kept``, taken from the rows kept under the record's own
+    token (P227), which are what that read would return.
     """
     root = Path(root)
     stamp = (now or dt.datetime.now()).isoformat(sep=" ", timespec="seconds")
@@ -2674,7 +2721,7 @@ def write_status_page(root: Path | str, report: RunReport, *,
     # machine's answers are held for it - and only for it; the page is
     # written after the hold ends.
     with one_reading():
-        parked, problems = _parked_files(report)
+        parked, problems = _parked_files(report, kept)
     # The pass's own sentences first (decision 189): a pass that stopped, a
     # run log that could not be written - what a person must see before
     # any one return's problem.
@@ -2734,6 +2781,14 @@ def write_status_page(root: Path | str, report: RunReport, *,
     ]
     path = root / STATUS_PAGE_FILENAME
     write_text_atomically(path, page_text(lines))
+    if kept is not None:
+        # After the page (P227): the kept rows only make the next page
+        # faster, so a file that cannot be written is a log line by its
+        # class and changes nothing else - the page already stands.
+        try:
+            kept.save()
+        except Exception as exc:
+            log.warning("The practice page's kept rows could not be written (%s)", errors.error_class(exc))
     return path
 
 
@@ -2754,12 +2809,17 @@ def _records_needing_a_person(root: Path, report: RunReport) -> list[str]:
             "<ul>", *(f"<li>{esc(one)}</li>" for one in said), "</ul>"]
 
 
-def _engagement_status(engagement: Engagement) -> EngagementRun:
+def _engagement_status(engagement: Engagement, kept: page_rows.Kept | None = None) -> EngagementRun:
     """One engagement's line, read rather than run.
 
     The record, the way the app reads it for one engagement - no lock, no
     scaffold, no scan, nothing written in the folder. A row the page read
     carries no pass time, because no pass was made.
+
+    With ``kept`` (P227): the skip, the problem and the warning come from
+    the walk, as ever; the counts come from the kept rows when the record's
+    token is the one they were read under, and otherwise from the read,
+    which is kept when its token did not move while it was read.
     """
     run = EngagementRun(engagement=engagement)
     run.code, run.skipped = why_skipped(engagement)
@@ -2769,19 +2829,31 @@ def _engagement_status(engagement: Engagement) -> EngagementRun:
         run.error = RECORD_UNREADABLE.format(problem=engagement.problem)
         run.code = CODE_RECORD_UNREADABLE
         return run
-    try:
-        summary = summarize(load_manifest(engagement.path, follow=False))
-    except (ManifestError, LedgerError, StoreError, OSError) as exc:
-        # One bad record costs its own row, never the page (decision 189),
-        # said by its class and code: the message can name the record's
-        # path, a client's folder (security principle 7; the review's S2).
-        # The words are kept on the debug log (decision 190).
-        errors.keep("runner: the return's record", exc, name=engagement.path.name)
-        run.error = RECORD_UNREADABLE.format(problem=errors.error_class(exc))
-        run.code = CODE_RECORD_UNREADABLE
-        return run
-    run.statuses = summary.counts
-    run.outstanding = summary.outstanding
+    token = _page_token(kept, engagement.path)
+    counted = kept.counts(engagement.path, token) if kept is not None else None
+    if counted is not None:
+        run.statuses, run.outstanding = counted
+    else:
+        try:
+            summary = summarize(load_manifest(engagement.path, follow=False))
+        except (ManifestError, LedgerError, StoreError, OSError) as exc:
+            # One bad record costs its own row, never the page (decision 189),
+            # said by its class and code: the message can name the record's
+            # path, a client's folder (security principle 7; the review's S2).
+            # The words are kept on the debug log (decision 190).
+            errors.keep("runner: the return's record", exc, name=engagement.path.name)
+            run.error = RECORD_UNREADABLE.format(problem=errors.error_class(exc))
+            run.code = CODE_RECORD_UNREADABLE
+            if kept is not None:
+                kept.forget(engagement.path)      # never kept: read, and said, every page
+            return run
+        run.statuses = summary.counts
+        run.outstanding = summary.outstanding
+        if kept is not None and token is not None:
+            if _page_token(kept, engagement.path, again=True) == token:
+                kept.keep_counts(engagement.path, token, summary.counts, summary.outstanding)
+            else:
+                kept.forget(engagement.path)      # written while it was read
     if engagement.warning:
         run.warnings.append(engagement.warning)
     return run
@@ -2796,7 +2868,7 @@ def _under(root: Path, path: Path) -> str:
 
 def status_report(registry: Registry, *, passed: Iterable[EngagementRun] = (),
                   today: dt.date | None = None, warnings: Iterable[str] = (),
-                  unread: Iterable[str] = ()) -> RunReport:
+                  unread: Iterable[str] = (), kept: page_rows.Kept | None = None) -> RunReport:
     """Every engagement in ``registry``, with the runs in ``passed`` folded in.
 
     The page is about the practice, not about whichever engagement was
@@ -2818,13 +2890,27 @@ def status_report(registry: Registry, *, passed: Iterable[EngagementRun] = (),
     its journal; a return the store does not hold is followed. So a
     return the pass did not run shows as its record stood when the pass
     began, plus anything recorded on this computer since.
+
+    ``kept`` (P227): the rows kept from earlier pages, used for a return
+    only while its record's token is the one they were read under
+    (:func:`_engagement_status`). The tokens are asked afresh for each
+    report.
     """
     ran = {run.engagement.path: run for run in passed}
-    siblings, foreign, not_listed = records_needing_a_person(registry)
+    if kept is not None:
+        kept.tokens = None
+    # Inside a reading (P226, as P215 held the parked files): the pass's
+    # work is done and every household's lock is gone, and the report only
+    # reads, so the machine's answers - where the store is, what the
+    # settings say, what each folder resolves to - are asked once for it,
+    # not once a record. The page is still written after the hold ends.
+    with one_reading():
+        siblings, foreign, not_listed = records_needing_a_person(registry)
+        runs = [ran[engagement.path] if engagement.path in ran else _engagement_status(engagement, kept)
+                for engagement in registry.engagements]
     return RunReport(
         today=today or dt.date.today(),
-        runs=[ran[engagement.path] if engagement.path in ran else _engagement_status(engagement)
-              for engagement in registry.engagements],
+        runs=runs,
         misfits=list(registry.misfits),
         warnings=list(warnings),
         siblings=siblings,
@@ -3218,9 +3304,18 @@ def _pass(ns, parser, reached: dict) -> int:
         # not an engagement failed, and whether or not the pass itself was
         # stopped: the page is how a person finds out that one did. A dry
         # run writes nothing, this included.
+        # The rows kept from earlier pages (P227), only when the walked root
+        # is the saved root (both resolved by the door, compared as the door
+        # compares paths), whose records the store keys by path; loaded once
+        # for the page and its redraw, inside a reading - it only reads.
+        kept = None
+        if saved is not None and os.path.normcase(str(saved)) == os.path.normcase(root):
+            with one_reading():
+                kept = page_rows.open_kept(loaded.source)
         try:
             page = write_status_page(loaded.source, status_report(
-                loaded, passed=result.runs, warnings=result.warnings, unread=unread))
+                loaded, passed=result.runs, warnings=result.warnings, unread=unread, kept=kept),
+                kept=kept)
         except Exception as exc:
             # Every original has already been moved and every status written
             # by the time we get here, so nothing about drawing a page may
@@ -3266,7 +3361,8 @@ def _pass(ns, parser, reached: dict) -> int:
             if page_written:
                 try:
                     write_status_page(loaded.source, status_report(
-                        loaded, passed=result.runs, warnings=result.warnings, unread=unread))
+                        loaded, passed=result.runs, warnings=result.warnings, unread=unread, kept=kept),
+                        kept=kept)
                 except Exception as late:
                     # The page written above stands, without this sentence.
                     log.warning("Could not write %s (%s)", STATUS_PAGE_FILENAME, errors.error_class(late))

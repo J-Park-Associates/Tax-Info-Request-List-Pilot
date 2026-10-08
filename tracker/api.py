@@ -21,6 +21,8 @@ Commands:
   firm      the practice at a glance, read only: for every active return the
             count of its rows in each group, the files waiting for a person,
             the due date and whether its reminder draft is ready
+  firm-last the firm reply as the cache last kept it today, read only, with
+            the time it was kept - or nothing - for the launch (pilot P229)
   priors    list engagements a new year could be rolled forward from
   rollover  build next year's list from a returning client's prior year
   roll-household  roll every ticked return of a household's open year into
@@ -1490,6 +1492,10 @@ SCREEN: dict = {
     # a count line's ``done`` and ``total``.
     "updating": "Updating",
     "reading_households": "Reading {n} of {total} Households",
+    # The Overview's last counts at launch, drawn under the Updating mark
+    # until the fresh ones land (pilot P229; approved by Jason 2026-10-08).
+    # ``time`` is ``firm-last``'s ``as_of``, said as the app says a time.
+    "updating_as_of": "Updating, as of {time}",
     # The one word for closing a sheet or a dialog (S5 review F9); the
     # ``icons.dismiss`` word above stays for the notice's own icon.
     "close": "Close",
@@ -6098,21 +6104,8 @@ def _firm_from_cache(root: Path, today: dt.date) -> list[_FirmShown]:
                                                          today)
         _say_count(min(start + FIRM_READ_BATCH, len(unread)), len(unread))
     entries.update({folder: entry for folder, (entry, _ones) in read.items()})
-    # The walk's order: every household with its record, then the returns
-    # of households whose record is gone (``registry._kept``).
-    order = [folder for folder in folders if entries[folder]["kind"] == "household"] + \
-            [folder for folder in folders if entries[folder]["kind"] == "record_missing"]
-    facts = [(folder, one) for folder in order for one in entries[folder]["returns"]]
-    marked = mark_superseded([
-        Engagement(path=Path(one["path"]), household_path=Path(one["household"]), problem=one["problem"],
-                   info=EngagementInfo(active=one["active"], tax_year=one["tax_year"],
-                                       rolled_from=one["rolled_from"]))
-        for _folder, one in facts])
-    households = [Household(path=folder) for folder in order if entries[folder]["kind"] == "household"]
-    paused = {path for path, theirs in
-              Registry(source=root, engagements=marked, households=households).by_household().items()
-              if len(open_years(theirs)) > 1}
-    showing = [not runner.why_skipped(one)[0] for one in marked]
+    order = _firm_order(folders, entries)
+    facts, marked, paused, showing = _firm_marks(root, order, entries)
     # A return now shown whose row was not kept (it was a retired prior
     # until another household changed): its household is read again.
     short = [folder for folder in dict.fromkeys(folder for (folder, one), show in zip(facts, showing, strict=True)
@@ -6130,10 +6123,7 @@ def _firm_from_cache(root: Path, today: dt.date) -> list[_FirmShown]:
             entries[folder] = {**entries[folder], "returns": [dict(one) for one in entries[folder]["returns"]]}
             read[folder] = (entries[folder], ones)
         facts = [(folder, one) for folder in order for one in entries[folder]["returns"]]
-    # Practice-wide, every reply (pilot P141, P172): a household's links
-    # depend on other households' records too, so they are never kept.
-    links = _links_from([(folder, entries[folder]["name"], entries[folder]["feeds"], entries[folder]["related"])
-                         for folder in order if entries[folder]["kind"] == "household"])
+    links = _firm_links(order, entries)
     shown: list[_FirmShown] = []
     for (folder, one), engagement, show in zip(facts, marked, showing, strict=True):
         if not show:
@@ -6144,8 +6134,7 @@ def _firm_from_cache(root: Path, today: dt.date) -> list[_FirmShown]:
             one["shown"] = {"row": row, "files": files, "paths": own}
         else:
             row, files, own = one["shown"]["row"], one["shown"]["files"], one["shown"]["paths"]
-        shown.append(({**row, "paused": engagement.household_path in paused,
-                       "links": links.get(engagement.household_path, [])}, files, own))
+        shown.append(_firm_marked(row, files, own, engagement, paused, links))
     keep = {folder.name: entry for folder, entry in entries.items() if _firm_keepable(entry)}
     # Written only when what is kept changed - or when nothing was kept and
     # the file does not already carry this head, so a practice with nothing
@@ -6156,6 +6145,52 @@ def _firm_from_cache(root: Path, today: dt.date) -> list[_FirmShown]:
     if keep != kept or (not kept and not firm_cache.holds(where, [head])):
         firm_cache.save(where, head, keep)
     return shown
+
+
+def _firm_order(folders: list[Path], entries: dict[Path, dict]) -> list[Path]:
+    """The walk's order of the households ``entries`` holds: every
+    household with its record, then the returns of households whose record
+    is gone (``registry._kept``)."""
+    return [folder for folder in folders if entries[folder]["kind"] == "household"] + \
+           [folder for folder in folders if entries[folder]["kind"] == "record_missing"]
+
+
+def _firm_marks(root: Path, order: list[Path], entries: dict[Path, dict]) \
+        -> tuple[list[tuple[Path, dict]], list[Engagement], set[Path], list[bool]]:
+    """Step 3 of :func:`_firm_from_cache`, and all of :func:`_cmd_firm_last`'s
+    deciding: the practice-wide facts worked out from every household's
+    facts, kept or fresh, with the registry's own rules - which prior a Roll
+    Forward retired (:func:`mark_superseded`), which household has two open
+    years (``open_years``) and which return is shown (``runner.why_skipped``).
+    Returns each return's facts in the walk's order, the returns marked,
+    the paused households and whether each return is shown."""
+    facts = [(folder, one) for folder in order for one in entries[folder]["returns"]]
+    marked = mark_superseded([
+        Engagement(path=Path(one["path"]), household_path=Path(one["household"]), problem=one["problem"],
+                   info=EngagementInfo(active=one["active"], tax_year=one["tax_year"],
+                                       rolled_from=one["rolled_from"]))
+        for _folder, one in facts])
+    households = [Household(path=folder) for folder in order if entries[folder]["kind"] == "household"]
+    paused = {path for path, theirs in
+              Registry(source=root, engagements=marked, households=households).by_household().items()
+              if len(open_years(theirs)) > 1}
+    showing = [not runner.why_skipped(one)[0] for one in marked]
+    return facts, marked, paused, showing
+
+
+def _firm_links(order: list[Path], entries: dict[Path, dict]) -> dict:
+    """Practice-wide, every reply (pilot P141, P172): a household's links
+    depend on other households' records too, so they are never kept."""
+    return _links_from([(folder, entries[folder]["name"], entries[folder]["feeds"], entries[folder]["related"])
+                        for folder in order if entries[folder]["kind"] == "household"])
+
+
+def _firm_marked(row: dict, files: list[dict], own: dict[str, str], engagement: Engagement,
+                 paused: set[Path], links: dict) -> _FirmShown:
+    """One shown return with this reply's practice-wide marks laid over its
+    row: whether its household is paused, and its household's links."""
+    return ({**row, "paused": engagement.household_path in paused,
+             "links": links.get(engagement.household_path, [])}, files, own)
 
 
 def _firm_keepable(entry: dict) -> bool:
@@ -6198,6 +6233,131 @@ def _firm_read_households(private: Path, folders: list[Path],
     return read
 
 
+def _cmd_firm_last(argv: list[str]) -> dict:
+    """The Overview's last counts, at launch, until the fresh ones land
+    (pilot P229, ``pilot/SPEC-sort-speed.md``; Jason, 2026-10-08: "yes,
+    build it now").
+
+    **What it answers.** :func:`_cmd_firm`'s reply - the same keys, the
+    same rows, the same totals - built from the households the firm view's
+    cache keeps, **without taking any fingerprint and without reading any
+    record**, plus ``"last": true`` and ``"as_of"``: the local time, ``HH:MM``
+    as ``next_sort`` says it, at which the cache file was last written -
+    when those rows last **changed**. Every reply since confirmed them, so
+    the time shown is never later than the truth. The window draws it under
+    the Updating mark with :data:`SCREEN`'s ``updating_as_of``, and replaces
+    it the moment the real ``firm`` lands.
+
+    **When it answers nothing** - ``{"last": null}``, and the window shows
+    today's wait: no saved root or none there; no cache under **today's
+    head** (:func:`tracker.firm_cache.head`: the same program - never after
+    an upgrade or any code change - the same clients root, data folder, day
+    and settings file); a household position
+    (:func:`tracker.registry.household_positions`) with no kept entry, or a
+    kept entry with no position - never a partial practice or partial
+    totals; a kept household with a problem; a return the practice-wide
+    marks now show whose row was never kept; the cache file written again
+    while it was read (the early ``firm`` landing at the same moment), so
+    the time would label older rows. Each is named in
+    :data:`FIRM_LAST_REFUSALS`, never in a client's words: the ordinary
+    ones - no cache under today's head (the first launch of the day, a
+    program, root, settings or data folder change), no plain household
+    positions (the fresh reply says why in its own words), the file
+    rewritten while read - are logged below the error log; the unusual ones
+    - kept households not exactly the walk's, a household with a problem,
+    a shown return without a kept row - reach the error log, by name.
+
+    **What it loosens.** P120's rule that a cache may never make a status
+    wrong, for the seconds between the launch and the fresh reply: a count
+    shown may be as old as the cache file's last write today, marked as
+    such. Every action reads afresh and every write is judged under the
+    household's lock against the record, so a marked count can never make
+    a write land wrong. It writes nothing: no cache save, no record, no
+    setting."""
+    del argv
+    try:
+        root = _saved_root()
+    except (door.DoorError, SettingsError) as exc:
+        raise ManifestError(str(exc)) from None
+    refused = {"last": None}
+    if root is None or not root.is_dir():
+        return refused
+    today = dt.date.today()
+    shown = _firm_last(root, today)
+    if shown is None:
+        return refused
+    shown, written = shown
+    reply = {"returns": [], "files": [], "totals": {"need": 0, "waiting": 0, "complete": 0,
+                                                     "files": 0, "drafts": 0},
+             "paths": {}, "next_sort": _next_sort()}
+    _firm_reply(reply, shown)
+    reply["last"] = True
+    reply["as_of"] = written.strftime("%H:%M")
+    return reply
+
+
+#: Why :func:`_firm_last` answered nothing, by name, and how loudly: the
+#: ordinary ones stay below the error log (``logging.INFO``), the unusual
+#: ones reach it (``logging.WARNING``, the error log's floor). ``refuse``
+#: looks the name up here, so a refusal never named here cannot be said.
+FIRM_LAST_REFUSALS = {
+    "no_positions": logging.INFO,        # the fresh reply says why, in its own words
+    "no_kept_practice": logging.INFO,    # no cache under today's head, or no household
+    "cache_rewritten": logging.INFO,     # a firm write landed while it was read
+    "households_differ": logging.WARNING,
+    "household_problem": logging.WARNING,
+    "row_not_kept": logging.WARNING,
+}
+
+
+def _firm_last(root: Path, today: dt.date) -> tuple[list[_FirmShown], dt.datetime] | None:
+    """:func:`_cmd_firm_last`'s work: the shown returns from the kept
+    households alone and the cache file's last write, or ``None`` - with
+    the refusal's name on the log - when any household is not kept.
+
+    The file's time is taken **before** it is loaded and asked again after
+    the marks: a ``firm`` reply that saved it in between would otherwise
+    label the rows read with its newer time, so a moved time refuses."""
+    def refuse(why: str) -> None:
+        log.log(FIRM_LAST_REFUSALS[why], "The last counts were not shown (%s)", why)
+
+    positions = household_positions(root)
+    if positions is None:
+        return refuse("no_positions")
+    _private, folders = positions
+    where = firm_cache.cache_path()
+    try:
+        before = where.stat().st_mtime_ns
+    except OSError:
+        return refuse("no_kept_practice")
+    kept = firm_cache.load(where, firm_cache.head(root, today))
+    if not kept or not folders:
+        return refuse("no_kept_practice")
+    if set(kept) != {folder.name for folder in folders} or len(folders) != len(kept):
+        return refuse("households_differ")
+    entries = {folder: kept[folder.name] for folder in folders}
+    if not all(_firm_keepable(entry) for entry in entries.values()):
+        return refuse("household_problem")
+    order = _firm_order(folders, entries)
+    facts, marked, paused, showing = _firm_marks(root, order, entries)
+    links = _firm_links(order, entries)
+    shown: list[_FirmShown] = []
+    for (_folder, one), engagement, show in zip(facts, marked, showing, strict=True):
+        if not show:
+            continue
+        if one["shown"] is None:
+            return refuse("row_not_kept")
+        shown.append(_firm_marked(one["shown"]["row"], one["shown"]["files"], one["shown"]["paths"],
+                                  engagement, paused, links))
+    try:
+        after = where.stat().st_mtime_ns
+    except OSError:
+        after = None
+    if after != before:
+        return refuse("cache_rewritten")
+    return shown, dt.datetime.fromtimestamp(before / 1e9)
+
+
 def _next_sort() -> str | None:
     """The time of the schedule's next run, ``HH:MM``, as the Schedule dialog
     reports it (:func:`next_run`), or ``None`` when the schedule is off or
@@ -6209,6 +6369,12 @@ def _next_sort() -> str | None:
     return said[-5:] if said else None
 
 
+#: P229's command, the Overview's last counts at launch, named once: the
+#: shell's early and held lists (``app/main.js``) are pinned to it by
+#: ``tests/test_single_source.py``.
+FIRM_LAST_COMMAND = "firm-last"
+
+
 #: The commands that write nothing - no record, no file, no setting, not the
 #: store's own rows beyond the reader's top-up from a journal - and so run
 #: inside :func:`tracker.settings.one_reading` (P118): each machine question
@@ -6216,7 +6382,7 @@ def _next_sort() -> str | None:
 #: to) is asked once per reply instead of thousands of times. A command joins
 #: only when it writes nothing; ``tests/test_api.py`` pins that this and
 #: :data:`WRITING_COMMANDS` never meet.
-HELD_READING_COMMANDS = frozenset({"firm", "list", "state"})
+HELD_READING_COMMANDS = frozenset({"firm", "list", "state", FIRM_LAST_COMMAND})
 
 
 #: The commands that write a record, a file or the store. Each holds the
@@ -6264,6 +6430,7 @@ def _prove_the_root() -> None:
 COMMANDS = {
     "state": _cmd_state,
     "firm": _cmd_firm,
+    FIRM_LAST_COMMAND: _cmd_firm_last,
     "priors": _cmd_priors,
     "rollover": _cmd_rollover,
     "roll-household": _cmd_roll_household,

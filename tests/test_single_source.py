@@ -146,7 +146,7 @@ def test_the_shell_runs_only_commands_the_api_has():
     # P221: what else may run before the allowlist is a read-only reply.
     early = re.search(r"const EARLY_COMMANDS = new Set\(\[([^\]]*)\]\);", main_js).group(1)
     early = set(re.findall(r'"([a-z-]+)"', early)) | ({bootstrap} if "BOOTSTRAP_COMMAND" in early else set())
-    assert bootstrap in early and early <= api.HELD_READING_COMMANDS and not early & api.WRITING_COMMANDS
+    assert bootstrap in early and early <= set(api.HELD_READING_COMMANDS) and not early & api.WRITING_COMMANDS
     assert "vocab.commands" in main_js and "vocab.engagement_flag" in main_js
     assert "openable.has(" in main_js                       # opens only paths the API reported
     assert 'proc.on("close", (code)' in main_js             # the exit code is not discarded
@@ -1440,6 +1440,7 @@ def test_documents_name_only_runtime_files_the_code_owns():
     from tracker.firm_cache import CACHE_FILENAME
     from tracker.ledger import LEDGER_FILENAME
     from tracker.locking import LOCK_FILENAME, RACE_LOCK_FILENAME
+    from tracker.page_rows import ROWS_FILENAME
     from tracker.registry import LEGACY_MANIFEST_FILENAME
     from tracker.reminder import DRAFT_FILENAME, NEW_DRAFT_FILENAME
     from tracker.runner import LAST_PASS_FILENAME, LOG_FILENAME, PASS_ORDER_FILENAME, STATUS_PAGE_FILENAME
@@ -1458,8 +1459,8 @@ def test_documents_name_only_runtime_files_the_code_owns():
              CHECKPOINT_FILENAME, LAST_PASS_FILENAME, RACE_LOCK_FILENAME,
              # Decision 209: the after-install step's note, and the build's.
              RECORD_FILENAME, BUILD_INFO_FILENAME,
-             # P120: the firm view's cache.
-             CACHE_FILENAME}
+             # P120: the firm view's cache. P227: the practice page's kept rows.
+             CACHE_FILENAME, ROWS_FILENAME}
     tracked = subprocess.run(["git", "ls-files"], cwd=REPO, capture_output=True, text=True).stdout.split()
     repo_files = {Path(t).name for t in tracked} | {t for t in tracked}
     for rel in DOCUMENTS:
@@ -3334,7 +3335,8 @@ def test_switching_returns_is_one_state_call():
     else, the three places a person switches and a refusal all go through
     it, and the list is read once, at start-up (and again only after the
     clients folder is set, R8) - and once when a Sort & Scan pass ends,
-    before its one ``state`` (decision 203, the lane's ruling on 194's Q5)."""
+    beside its one ``state``, sent after it and awaited by nothing (decision
+    203, the lane's ruling on 194's Q5; P228)."""
     js = read("app/renderer/app.js")
     show = _body(js, "async function showReturn(path) {")
     assert show.count("call(") == 1 and 'call(["state", ' in show
@@ -3355,7 +3357,8 @@ def test_switching_returns_is_one_state_call():
     assert 'renderAfterInstall((await call(["list"])).after_install)' in js
     assert 'call(["list"])' in _body(js, "async function loadEngagements(preferPath, asked) {")
     ended = _body(js, "async function passEnded({ reply }) {")
-    assert ended.index('call(["list"])') < ended.index('call(withEng("state"))')
+    assert ended.index('call(withEng("state"))') < ended.index('call(["list"])')
+    assert 'await call(["list"])' not in ended
     calls = [m.start() for m in re.finditer(r"(?<![\w.])bootstrap\(", js)]
     assert len(calls) == 3        # its definition, its own Retry and saveRoot; start-up is startWhenLoaded
     assert "await bootstrap();" in _body(js, "async function saveRoot() {")
@@ -4487,15 +4490,16 @@ def _commands(ran: dict) -> list:
 def test_the_shell_allows_the_read_only_overview_before_the_first_reply(tmp_path):
     """P221: before the first reply has said which commands exist, main.js
     runs the list and the Overview's counts asked beside it (decision 176,
-    widened by one read-only command) and refuses anything else; once the
-    allowlist is learned, it is the rule."""
+    widened by one read-only command) - and since P229 the counts the
+    Overview last had today, a second read-only command - and refuses
+    anything else; once the allowlist is learned, it is the rule."""
     import tracker.api as api
 
     main_js = read("app/main.js")
     early = set(re.findall(r'"([a-z-]+)"', re.search(r"const EARLY_COMMANDS = new Set\(\[([^\]]*)\]\);", main_js).group(1)))
     early.add(re.search(r'const BOOTSTRAP_COMMAND = "([a-z-]+)";', main_js).group(1))
-    assert early == {"list", "firm"}
-    assert early <= api.HELD_READING_COMMANDS and not early & api.WRITING_COMMANDS
+    assert early == {"list", "firm", api.FIRM_LAST_COMMAND}
+    assert early <= set(api.HELD_READING_COMMANDS) and not early & api.WRITING_COMMANDS
     ran = _run_spawns(tmp_path, [{"tracker": ["firm"]}, {"tracker": ["state"]}, {"tracker": ["list"]}, {"tracker": ["state"]}])
     firm, refused, _listed, state = ran["replies"]
     assert firm["command"] == "firm" and not firm.get("error")
@@ -4596,8 +4600,9 @@ def test_quitting_kills_the_spare(tmp_path):
 
 
 def test_no_spare_starts_before_the_first_list(tmp_path):
-    """P220: start-up gains no third process beside the list and the early
-    Overview: the first spare is started once the first list's reply is learned."""
+    """P220: start-up gains no spare beside its own reads (the list, the
+    early Overview and, since P229, the last counts): the first spare is
+    started once the first list's reply is learned."""
     ran = _run_spawns(tmp_path, [{"tracker": ["firm"]}, {"tracker": ["list"]}])
     assert [one["argv"] for one in _commands(ran)] == [["after-install"], ["firm"], ["list"], ["--spare"]]
     assert _spares(ran)[0]["handed"] is None
@@ -4639,7 +4644,7 @@ def test_the_shell_and_the_api_agree_on_the_spare_the_early_overview_and_the_cou
     if "BOOTSTRAP_COMMAND" in early_source:
         early.add(re.search(r'const BOOTSTRAP_COMMAND = "([a-z-]+)";', main_js).group(1))
     assert runner.FIRM_COMMAND in early
-    assert early <= api.HELD_READING_COMMANDS and not early & api.WRITING_COMMANDS
+    assert early <= set(api.HELD_READING_COMMANDS) and not early & api.WRITING_COMMANDS
 
     app_js = read("app/renderer/app.js")
     routed = app_js[app_js.index("function onPassMessage(m) {"):]
@@ -4655,3 +4660,32 @@ def test_the_shell_and_the_api_agree_on_the_spare_the_early_overview_and_the_cou
     reader = shell_js[shell_js.index("function shellFirmProgress(said) {"):]
     reader = reader[:reader.index("\n}\n")]
     assert "const { done, total } = said;" in reader
+
+
+def test_the_last_counts_are_an_early_read_only_command_the_api_answers():
+    """P229, met at the merge of its two lanes: the shell lets the API's
+    ``firm-last`` run before the allowlist, beside the list and the
+    Overview, and asks it once more of a fresh process when a spare closed
+    without a word - so main.js's early and held lists carry the API's own
+    constant, the API lists it as a held reading and never as a write, and
+    the renderer asks it by that name. The words the renderer reads for it
+    are the API's ``updating`` and ``updating_as_of`` keys, by those names."""
+    import tracker.api as api
+
+    main_js = read("app/main.js")
+    early = set(re.findall(r'"([a-z-]+)"', re.search(r"const EARLY_COMMANDS = new Set\(\[([^\]]*)\]\);", main_js).group(1)))
+    held = set(re.findall(r'"([a-z-]+)"', re.search(r"const HELD_READING_COMMANDS = new Set\(\[([^\]]*)\]\);", main_js).group(1)))
+    assert api.FIRM_LAST_COMMAND in early and api.FIRM_LAST_COMMAND in held
+    assert api.FIRM_LAST_COMMAND in api.COMMANDS
+    assert api.FIRM_LAST_COMMAND in api.HELD_READING_COMMANDS and api.FIRM_LAST_COMMAND not in api.WRITING_COMMANDS
+    shell_js = read("app/renderer/shell.js")
+    assert f'window.tracker.call(["{api.FIRM_LAST_COMMAND}"])' in shell_js
+    # The key the renderer reads for the phrase is the API's, word for word.
+    renderer = shell_js + read("app/renderer/pages.js")
+    read_keys = set(re.findall(r"screenWords\(\)\.(updating\w*)", renderer))
+    assert read_keys == {"updating", "updating_as_of"}
+    assert read_keys <= set(api.SCREEN) and "{time}" in api.SCREEN["updating_as_of"]
+    # The time it fills in is the reply's own ``as_of``, read by that name.
+    last_of = shell_js[shell_js.index("function shellLastOf(reply) {"):]
+    last_of = last_of[:last_of.index("\n}\n")]
+    assert "reply.last !== true" in last_of and "reply.as_of" in last_of

@@ -11,6 +11,7 @@ the owner's rule and the whole of what a misfit is.
 
 import datetime as dt
 import os
+from pathlib import Path
 
 import pytest
 
@@ -946,6 +947,144 @@ def test_the_rolled_forward_prior_is_found_as_every_pair_compared_found_it(root,
     for index, candidate in enumerate(found):
         if candidate.rolled_from:
             assert _prior_of(candidate, index, priors) == _prior_as_every_pair_compared(candidate, index, found)
+
+
+# ------------------------- the name match by its last three names (P225) --
+
+def _prior_as_every_name_compared(candidate, index, priors):
+    """``_prior_of`` as it was before P225, word for word: the fallback
+    compares Rolled From's names with every readable return's."""
+    from tracker import layout
+    from tracker.registry import _resolved
+
+    folder = _resolved(candidate.rolled_from)
+    if folder is not None:
+        for position in priors.by_folder.get(folder, ()):
+            if position != index:
+                return position
+    named = layout.tail_names(candidate.rolled_from)
+    tails = {position: layout.common_tail(named, names)
+             for position, names in priors.names().items() if position != index}
+    if not tails:
+        return None
+    longest = max(tails.values())
+    if longest < layout.ROLLED_FROM_TAIL:
+        return None
+    matches = [position for position, tail in tails.items() if tail == longest]
+    return matches[0] if len(matches) == 1 else None
+
+
+def _moved_practice(base, seed):
+    """A made-up practice whose clients root moved after its Roll Forwards:
+    every Rolled From names the old root, so only the names can match."""
+    import random
+
+    from tracker.registry import Engagement
+
+    rng = random.Random(seed)
+    now = base / "Now root" / PRIVATE_TREE
+    olds = [base / "Old root" / PRIVATE_TREE,                        # the same depth
+            base / "Old" / "deeper" / "root" / PRIVATE_TREE,          # a deeper old root
+            Path("/") / PRIVATE_TREE]                                 # a shallower one
+    found = []
+    households = [f"Family {n:03d}" for n in range(rng.randint(5, 25))]
+    for household in households:
+        for name in rng.sample(["1040 - Ann", "1040 - Bo", "1065 - Shop", "1120 - Corp"], rng.randint(1, 3)):
+            found.append(Engagement(path=now / household / "2025" / name, household_path=now / household))
+            old = rng.choice(olds)
+            found.append(Engagement(path=now / household / "2026" / name, household_path=now / household,
+                                    info=EngagementInfo(rolled_from=str(old / household / "2025" / name))))
+    # Two candidates that tie: the same four last names under two roots,
+    # and a Rolled From that names a third - two that tie decide nothing.
+    for tied in (now, base / "Copy" / PRIVATE_TREE):
+        found.append(Engagement(path=tied / "Tie Family" / "2025" / "1040 - Tie"))
+    found.append(Engagement(path=now / "Tie Family" / "2026" / "1040 - Tie",
+                            info=EngagementInfo(rolled_from=str(olds[0] / "Tie Family" / "2025" / "1040 - Tie"))))
+    # A Rolled From of one name and of two.
+    found.append(Engagement(path=now / "Solo" / "2026" / "1040 - Solo",
+                            info=EngagementInfo(rolled_from="1040 - Ann")))
+    found.append(Engagement(path=now / "Duo" / "2026" / "1040 - Ann",
+                            info=EngagementInfo(rolled_from=str(Path("2025") / "1040 - Ann"))))
+    # A candidate whose own folder is the best match: it is never its own prior.
+    own = now / "Self Family" / "2026" / "1040 - Self"
+    found.append(Engagement(path=own, info=EngagementInfo(rolled_from=str(base / "Old root" / PRIVATE_TREE
+                                                                          / "Self Family" / "2026" / "1040 - Self"))))
+    # A problem return never retires: it is no candidate.
+    found.append(Engagement(path=now / "Gone Family" / "2025" / "1040 - Gone", problem="could not be listed"))
+    found.append(Engagement(path=now / "Gone Family" / "2026" / "1040 - Gone",
+                            info=EngagementInfo(rolled_from=str(olds[0] / "Gone Family" / "2025" / "1040 - Gone"))))
+    rng.shuffle(found)
+    return found
+
+
+def test_the_name_match_retires_the_same_prior_as_comparing_every_pair(tmp_path, monkeypatch):
+    """P225: the fallback asks only the returns ending in Rolled From's own
+    last three names. Any return that could win shares those three, and any
+    other ends in fewer, which the floor already refused - so over moved,
+    deeper and shallower old roots, ties, short Rolled Froms, a candidate
+    matching itself and a case-only difference, every candidate's prior is
+    the one the every-pair rule picks."""
+    from tracker.registry import _prior_of, _Priors
+
+    def every_answer(found):
+        priors, reference = _Priors(found), _Priors(found)
+        mine = [_prior_of(c, i, priors) for i, c in enumerate(found) if c.rolled_from]
+        theirs = [_prior_as_every_name_compared(c, i, reference) for i, c in enumerate(found) if c.rolled_from]
+        return mine, theirs
+
+    retired = 0
+    for seed in range(12):
+        found = _moved_practice(tmp_path, seed)
+        mine, theirs = every_answer(found)
+        assert mine == theirs, seed
+        retired += sum(1 for one in mine if one is not None)
+        rolled = [one for one in found if one.rolled_from]
+        tie = next(i for i, one in enumerate(rolled) if one.path.parts[-3] == "Tie Family")
+        assert mine[tie] is None, seed       # the tie decided nothing
+    assert retired > 0                       # the fallback is what decided them
+
+    # A case-only difference: where the folder names fold case (Windows),
+    # the group key folds them too.
+    monkeypatch.setattr(os.path, "normcase", str.lower)
+    found = _moved_practice(tmp_path, 99)
+    shouted = [replace_rolled(one, one.rolled_from.upper()) if one.rolled_from else one for one in found]
+    mine, theirs = every_answer(shouted)
+    assert mine == theirs
+    assert any(one is not None for one in mine)
+
+
+def replace_rolled(engagement, rolled_from):
+    from dataclasses import replace
+
+    return replace(engagement, info=replace(engagement.info, rolled_from=rolled_from))
+
+
+def test_a_moved_root_compares_each_rolled_return_only_with_its_own_group(tmp_path, monkeypatch):
+    """P225's gain, counted: 200 rolled households after a root move cost
+    at most 2 ``common_tail`` calls a rolled return (its own group, less
+    itself), not 399 - and each prior is still retired."""
+    from tracker import layout, registry
+    from tracker.registry import Engagement, mark_superseded
+
+    now, old = tmp_path / "Now" / PRIVATE_TREE, tmp_path / "Old" / PRIVATE_TREE
+    found = []
+    for n in range(200):
+        household = f"Family {n:03d}"
+        found.append(Engagement(path=now / household / "2025" / "1040 - One"))
+        found.append(Engagement(path=now / household / "2026" / "1040 - One",
+                                info=EngagementInfo(rolled_from=str(old / household / "2025" / "1040 - One"))))
+    calls = []
+    real = layout.common_tail
+
+    def counted(named, folder):
+        calls.append(1)
+        return real(named, folder)
+
+    monkeypatch.setattr(registry.layout, "common_tail", counted)
+    marked = mark_superseded(found)
+    assert len(calls) <= 2 * 200
+    assert sum(1 for one in marked if one.superseded_by) == 200
+    assert not any(one.warning for one in marked)
 
 
 def test_two_claims_are_grouped_as_every_pair_compared_grouped_them(root):

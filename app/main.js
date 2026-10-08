@@ -72,13 +72,15 @@ const STDERR_CAP = 64 * 1024;
 const BOOTSTRAP_COMMAND = "list";
 // What may run before the API has said which commands exist (decision 176):
 // the list, and since P221 the Overview's counts asked beside it, so the
-// first Overview no longer waits for the list to finish. Both are read-only
-// replies (tracker.api.HELD_READING_COMMANDS, neither a writing command).
-const EARLY_COMMANDS = new Set([BOOTSTRAP_COMMAND, "firm"]);
+// first Overview no longer waits for the list to finish, and since P229 the
+// counts it last had today, drawn marked until those land. All are
+// read-only replies (tracker.api.HELD_READING_COMMANDS, none a writing
+// command).
+const EARLY_COMMANDS = new Set([BOOTSTRAP_COMMAND, "firm", "firm-last"]);
 // The read-only replies, word for word tracker.api.HELD_READING_COMMANDS
 // (tests/test_single_source.py): the only commands run again when the spare
 // they were handed closed without a word (P220). A write is never run twice.
-const HELD_READING_COMMANDS = new Set(["firm", "list", "state"]);
+const HELD_READING_COMMANDS = new Set(["firm", "firm-last", "list", "state"]);
 // The after-install step's launch door (decision 209): the shell runs it
 // itself, once, at start. It returns at once when the program has not
 // changed since it last ran cleanly and the designation still names the
@@ -235,7 +237,8 @@ function learn(result) {
   const first = allowedCommands === null;
   if (vocab && Array.isArray(vocab.commands)) allowedCommands = new Set(vocab.commands);
   // The first spare waits for the first list's reply (P220), so start-up
-  // never has a third process beside the list and the early Overview.
+  // adds no spare beside the list, the early Overview and the last counts
+  // (P229's firm-last, a third process of its own).
   if (first && allowedCommands) startSpare();
   if (vocab && typeof vocab.engagement_flag === "string") engagementFlag = vocab.engagement_flag;
   if (vocab && typeof vocab.pass_command === "string") passCommand = vocab.pass_command;

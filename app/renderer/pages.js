@@ -269,6 +269,15 @@ function pagesNextSort(firm) {
   return firm.next_sort ? fill(screenWords().empty.next_sort, { time: pagesTime(firm.next_sort) }) : "";
 }
 
+// While the launch's last counts stand (P229), the Overview says their time
+// in its own Work line (Jason, 2026-10-08: "Time on Overview page"): a line
+// the page always draws, whose height the words never change, so no row
+// moves when they come or go, and the path row's slot keeps its 8 ch.
+function pagesAsOf() {
+  const asOf = shellFirm().asOf;
+  return asOf ? fill(screenWords().updating_as_of, { time: pagesTime(asOf) }) : "";
+}
+
 // A return's status word and tone from its counts (SPEC 6.1, 6.4).
 function pagesCounts(counts, problem) {
   const words = screenWords().counts;
@@ -652,9 +661,11 @@ function pagesGroup(spec) {
     return [fold];
   }
   // `heads`: a list's column headers, between its heading and its rows;
-  // `tools`: what sits at the heading's end (Overview's tabs, a Needs
-  // Review group's count and More Actions).
-  return [h("div", { className: headClass }, lead, title, meta, spec.tools || null, start), body ? spec.heads : null, body].filter(Boolean);
+  // `note`: words after the count on the heading's own line (the
+  // Overview's "Updating, as of {time}", P229); `tools`: what sits at the
+  // heading's end (Overview's tabs, a Needs Review group's count and More
+  // Actions).
+  return [h("div", { className: headClass }, lead, title, meta, spec.note || null, spec.tools || null, start), body ? spec.heads : null, body].filter(Boolean);
 }
 
 // A link in a heading or a caption (a return's name, a household's): outside
@@ -1120,7 +1131,9 @@ function pagesOverview() {
       h("span", { className: "figure-top" }, h("span", { className: "figure-label" }, label), h("span", { className: `figure-icon ${PAGES_TONES[tone]}` }, icon(name))),
       h("b", { className: "figure-number" }, String(n)))));
   const all = [...pagesPausedRows(firm), ...pagesWorkRows(firm.returns)];
-  if (!all.length) return [figures, pagesEmpty(words.empty.overview, pagesNextSort(firm))];
+  const asOf = pagesAsOf();
+  // An Overview with no work says the time under its empty line: no row is below it.
+  if (!all.length) return [figures, pagesEmpty(words.empty.overview, pagesNextSort(firm), asOf ? h("p", { className: "page-empty-note page-as-of" }, asOf) : null)];
   // The tab narrows the whole list, then the order and the pages apply.
   const need = all.filter((spec) => spec.tone === "needs");
   const waiting = all.filter((spec) => spec.tone === "waiting");
@@ -1128,6 +1141,7 @@ function pagesOverview() {
   const { part, foot } = pagesPaged("overview", pagesOrdered("overview", shown));
   const rows = pagesEach(part, (spec) => spec.name, pagesRow);
   return [figures, ...pagesGroup({ heading: words.work, caption: String(shown.length), first: true, tools: pagesTabs(need.length, waiting.length),
+                                   note: asOf ? h("span", { className: "page-as-of" }, asOf) : null,
                                    heads: pagesColumnHeads("overview"), none: words.empty.work, blocks: [{ rows }] }), foot];
 }
 
