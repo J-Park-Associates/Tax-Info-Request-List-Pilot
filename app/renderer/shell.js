@@ -56,7 +56,9 @@ let shellLastPass = null;      // the list's last_pass: {text, level, ok, when}
 let shellProgressNow = null;   // the running pass's last line: {n, total}
 let shellFirmNow = { status: "idle", data: null };   // idle, loading, ok, failed
 let shellFirmAsked = false;    // a second ask arrived while one ran
-let shellFirmEarly = null;     // the `firm` asked beside the first `list` (P221), until a load adopts it
+let shellFirmEarly = null;     // a `firm` asked before the load that adopts it (P221, P228)
+let shellFirmLast = null;      // the last counts asked at launch (P229): {reply} until drawn or dropped
+let shellFirmAsOf = "";        // the counts shown are the last counts, as of this time (P229); "" once fresh
 let shellClock = 0;            // orders a load's sending against a write's landing (P218)
 let shellFirmSentAt = 0;       // when the running load sent its `firm`
 let shellWroteAt = 0;          // when a write's reply last landed
@@ -206,15 +208,20 @@ function shellAdopt(listed) {
   shellRootSet = !listed.needs_root && Boolean(listed.root);
   if (listed.needs_root) shellDropEarlyFirm();
   if (shellRootSet) shellLoadFirm();
+  shellShowLast();   // the launch's last counts, if they landed before the words did (P229)
   shellChanged();
 }
 
-// The Overview asked beside the list at launch (P221): main.js allows `firm`
-// before the allowlist is learned, so it is sent before the list is awaited,
-// through window.tracker.call itself - call() says a reply's warnings, which
-// needs the vocabulary the list brings. The load that follows the list
-// adopts its reply instead of sending another.
-function shellAskFirmEarly() {
+// The Overview asked now, before the list that would start it has landed:
+// at launch beside the list (P221) - main.js allows `firm` before the
+// allowlist is learned - and when a Sort ends, beside the list and the
+// shown return's state (P228). It is sent through window.tracker.call
+// itself - call() says a reply's warnings, which needs the vocabulary the
+// list brings. The load that follows the list adopts its reply instead of
+// sending another. A load already running sends nothing more here (P218):
+// one sent before a write cannot hold it, so the list's adopt queues one
+// more, as it always has.
+function shellAskFirmNow() {
   if (shellFirmEarly || shellFirmNow.status === "loading") return;   // one is on its way already
   shellFirmNow = { status: "loading", data: shellFirmNow.data };
   shellFirmSent();
@@ -224,12 +231,71 @@ function shellAskFirmEarly() {
 }
 
 // A list that asks for a clients folder has no Overview to show: the early
-// reply is never drawn.
+// reply is never drawn, and neither are the last counts (P229), asked or shown.
 function shellDropEarlyFirm() {
-  if (!shellFirmEarly) return;
+  shellFirmLast = null;
+  const shown = shellFirmAsOf !== "";
+  shellFirmAsOf = "";
+  if (!shellFirmEarly && !shown) return;
   shellFirmEarly = null;
   shellFirmDone();
-  shellFirmNow = { status: "idle", data: shellFirmNow.data };
+  shellFirmNow = { status: "idle", data: shown ? null : shellFirmNow.data };
+}
+
+// ── the last counts at launch (P229; Jason, 2026-10-08) ───────────────
+// While the launch's Overview is read afresh, the counts it last had today
+// - the API's `firm-last`, read from the firm cache with no fingerprint
+// taken and no record read - are drawn marked "Updating, as of {time}"
+// (P222's marker: the page busy, figures, statuses and side counts muted).
+// The API answers {last: null} unless the cache is today's, this program's,
+// this clients folder's and holds every household; a refused or failed ask
+// shows nothing, and the page waits as it did. The fresh reply replaces the
+// last counts in place; one that lands after it is dropped; a fresh reply
+// that fails takes them down, so held counts never outlive a failed
+// refresh. Rows stay usable meanwhile, and every action reads afresh as it
+// does during any "Updating": Open and Check read the return's state, Copy
+// and Approve act only on a card drawn from that read, and every write is
+// judged under the household's lock against the record.
+function shellAskFirmLast() {
+  if (shellFirmLast || shellFirmNow.data) return;   // asked already, or counts are drawn
+  const mine = { reply: null };
+  shellFirmLast = mine;
+  new Promise((resolve) => resolve(window.tracker.call(["firm-last"])))
+    .then((reply) => {
+      if (shellFirmLast !== mine) return;   // dropped: the fresh counts, or a list that asks for a folder
+      mine.reply = reply;
+      shellShowLast();
+    }, () => {
+      if (shellFirmLast === mine) shellFirmLast = null;   // a failed ask shows nothing
+    });
+}
+
+// The reply's counts and their time, or null: a refusal ({last: null}), an
+// error, or a reply without the counts or the time shows nothing.
+function shellLastOf(reply) {
+  const last = reply && !reply.error ? reply.last : null;
+  if (!last || typeof last !== "object" || !Array.isArray(last.returns)) return null;
+  const asOf = typeof last.as_of === "string" ? last.as_of : reply.as_of;
+  return typeof asOf === "string" && asOf ? { data: last, asOf } : null;
+}
+
+// Draw the last counts once they, the words and the clients folder are all
+// here - and only while the fresh reply is still on its way with nothing
+// drawn. Each reply is drawn at most once.
+function shellShowLast() {
+  const mine = shellFirmLast;
+  if (!mine || !mine.reply || !vocab || !vocab.screen || !shellRootSet) return;
+  shellFirmLast = null;
+  const last = shellLastOf(mine.reply);
+  if (!last || shellFirmNow.status !== "loading" || shellFirmNow.data) return;
+  if (!screenWords().updating_as_of) {
+    window.tracker.logError("vocab.screen.updating_as_of");   // the key it lacks: loud, never a guess
+    return;
+  }
+  shellFirmAsOf = last.asOf;
+  shellFirmNow = { status: "loading", data: last.data };
+  shellChanged();
+  if (shellFollowsCounts()) shellDraw();
 }
 
 // The early reply, said as call() says any reply: its warnings as notices,
@@ -341,12 +407,17 @@ async function shellLoadFirm() {
   shellChanged();
   shellUpdating();
   try {
-    shellFirmNow = { status: "ok", data: early ? await shellAdoptEarly(early) : await shellAskFirm() };
+    const fresh = early ? await shellAdoptEarly(early) : await shellAskFirm();
+    shellFirmNow = { status: "ok", data: fresh };
   } catch (err) {
     failureSentence(err);
-    shellFirmNow = { status: "failed", data: shellFirmNow.data };
+    // The launch's last counts are never kept past a failed refresh (P229).
+    shellFirmNow = { status: "failed", data: shellFirmAsOf ? null : shellFirmNow.data };
     notice({ sentence: screenWords().notices.firm_failed, kind: "failed" }, { retry: shellLoadFirm });
   }
+  // A reply, fresh or failed, ends the last counts: drawn or still on their way.
+  shellFirmLast = null;
+  shellFirmAsOf = "";
   shellFirmDone();
   // A state that arrived during this load, after the write it shows, was
   // held back (P218): one more load only if these counts still differ.
@@ -390,7 +461,9 @@ function shellUpdating() {
 function shellMarkUpdating(page, on) {
   page.classList.toggle("is-updating", on);
   const said = $("page-updating");
-  const words = on ? screenWords().updating : "";
+  // The launch's last counts say their time (P229); counts held after a
+  // reply of this run say Updating alone.
+  const words = !on ? "" : shellFirmAsOf ? fill(screenWords().updating_as_of, { time: shellFirmAsOf }) : screenWords().updating;
   if (said.textContent !== words) said.textContent = words;
 }
 

@@ -2966,6 +2966,7 @@ def test_the_sorts_answer_is_built_line_by_line_from_the_pass(tmp_path):
       let scanning = null, active = "r25", viewGeneration = 1, kept = [];
       function scanDone() {}
       function shellWriteLanded() {}
+      function shellAskFirmNow() {}
       function warningNotices() {}
       function adoptList() {}
       function withEng(c) { return [c]; }
@@ -4246,6 +4247,7 @@ def test_another_returns_line_keeps_its_bullet_and_says_the_return_by_its_fields
       let scanning = null, active = "r25", viewGeneration = 1, kept = [];
       function scanDone() {}
       function shellWriteLanded() {}
+      function shellAskFirmNow() {}
       function warningNotices() {}
       function adoptList() {}
       function withEng(c) { return [c]; }
@@ -4566,14 +4568,21 @@ def test_a_check_sheet_waiting_on_its_return_is_an_outline(tmp_path):
     assert said == {"outline": 3, "word": ["Loading"], "ready": False}
 
 
+#: Jason's words for the launch's last counts (P229, approved 2026-10-08).
+#: Lane R was built before Lane P's vocabulary carried them as
+#: ``api.SCREEN["updating_as_of"]``; the harness below uses the same words.
+APPROVED_UPDATING_AS_OF = "Updating, as of {time}"
+
+
 #: shell.js's load of the firm's counts, lifted whole, with a `firm` that
 #: answers only when the probe says so.
 FIRM_LOAD = r"""
 let vocab = { commands: ["list", "firm"], screen: { loading: "Loading", updating: "Updating", reading_households: "Reading {n} of {total} Households",
-                                                    notices: { firm_failed: "Counts Not Available" } } };
+                                                    updating_as_of: "Updating, as of {time}", notices: { firm_failed: "Counts Not Available" } } };
 const fill = (p, v) => p.replace(/\{(\w+)\}/g, (_, k) => v[k] ?? "");
 let shellRoute = { level: "return" }; let shellPageBusy = false; let shellRootSet = false; let shellPaths = {}; let shellLastPass = null;
 let shellFirmNow = { status: "idle", data: null }; let shellFirmAsked = false; let shellFirmEarly = null; let shellClock = 0;
+let shellFirmLast = null; let shellFirmAsOf = "";
 let shellFirmSentAt = 0; let shellWroteAt = 0; const shellFirmHeld = new Map(); let shellFirmCount = null; let shellFirmSlow = false;
 let shellFirmTimer = null; const SHELL_FIRM_SLOW_MS = 2000;
 const FIRM_LEVELS = ["overview", "needs-review", "reminders", "clients"];
@@ -4592,7 +4601,8 @@ const firms = () => asked.filter((one) => one.args[0] === "firm").length;
 const land = async (i, reply) => { asked[i].resolve(reply); await tick(); };
 """
 
-FIRM_LOAD_FUNCTIONS = ("h", "screenWords", "shellAdopt", "shellAskFirmEarly", "shellDropEarlyFirm", "shellAdoptEarly", "shellAskFirm", "shellFirmSent",
+FIRM_LOAD_FUNCTIONS = ("h", "screenWords", "shellAdopt", "shellAskFirmNow", "shellDropEarlyFirm", "shellAskFirmLast", "shellLastOf", "shellShowLast",
+                       "shellAdoptEarly", "shellAskFirm", "shellFirmSent",
                        "shellFirmDone", "shellFirmTookLong", "shellWriteLanded", "shellFirmProgress", "shellReading", "shellReadingNodes",
                        "shellSetReading", "shellDrawReading", "shellLoadFirm", "shellFollowsCounts", "shellFirmUpdating", "shellUpdating",
                        "shellMarkUpdating", "shellStateArrived", "shellCountsDiffer")
@@ -4763,15 +4773,22 @@ def test_the_path_beside_updating_keeps_its_width_when_the_word_comes():
     """Jason, 2026-10-08: a long path was narrowed while "Updating" showed,
     because the word's slot grew from nothing. The slot is a fixed width
     whether the word shows or not, does not grow or shrink, and cuts
-    rather than spills - so the path beside it never moves."""
+    rather than spills - so the path beside it never moves. P229: the slot
+    is as wide as its longest words, the launch's last counts with the
+    longest time ("Updating, as of 12:59 PM"), whether they show or not."""
     css = stripped(read("shell.css"))
     body = css[css.index(".page-updating {"):]
     body = body[:body.index("}")]
-    for declaration in ("flex: none;", "inline-size: 8ch;", "overflow: hidden;", "white-space: nowrap;"):
+    for declaration in ("flex: none;", "overflow: hidden;", "white-space: nowrap;"):
         assert declaration in body, declaration
+    width = int(re.search(r"inline-size: (\d+)ch;", body).group(1))
     from tracker import api
 
-    assert len(api.SCREEN["updating"]) <= 8, "a longer word needs a wider slot in shell.css"
+    # Jason's approved words (2026-10-08), until Lane P's vocabulary carries them.
+    as_of = api.SCREEN.get("updating_as_of", APPROVED_UPDATING_AS_OF)
+    longest = max(len(api.SCREEN["updating"]), len(as_of.replace("{time}", "12:59 PM")))
+    assert longest <= width, "a longer word needs a wider slot in shell.css"
+    assert width <= longest + 2, "the slot is no wider than its words need: the path keeps the rest"
 
 
 def test_a_household_or_year_page_marks_its_held_statuses_while_they_are_asked_again(tmp_path):
@@ -4811,7 +4828,8 @@ let vocab = null; let formsUnloaded = null; const viewGeneration = 0; let refuse
 const failures = [];
 const failed = (err, retry) => failures.push([err.message, typeof retry]);
 const failureSentence = () => "";
-const shellAskFirmEarly = () => {};
+const shellAskFirmNow = () => {};
+const shellAskFirmLast = () => {};
 const loadEngagements = async () => { if (refuse) throw new Error("list refused"); return false; };
 const loadForms = async () => {};
 """
@@ -5066,8 +5084,8 @@ def test_the_overview_is_asked_beside_the_list_and_drawn_once_the_words_arrive(t
     said = run_firm_load("""
       const words = vocab; vocab = null;
       shellRoute = { level: "overview" };
-      shellAskFirmEarly();
-      shellAskFirmEarly();                       // a Retry of the start-up: still one
+      shellAskFirmNow();
+      shellAskFirmNow();                       // a Retry of the start-up: still one
       const before = { sent: sentEarly.length, status: shellFirmNow.status, drawn: drawn.length };
       vocab = words;                             // the list's reply
       shellAdopt({ root: "/root" });
@@ -5077,7 +5095,7 @@ def test_the_overview_is_asked_beside_the_list_and_drawn_once_the_words_arrive(t
                    notices: notices.slice(), drawn: drawn.slice(), clock: shellFirmTimer };
       notices.length = 0;
       shellFirmNow = { status: "idle", data: null };
-      shellAskFirmEarly();
+      shellAskFirmNow();
       shellAdopt({ root: "/root" });
       sentEarly[1].resolve({ error: "The store is busy.", failure: { sentence: "The store is busy." }, warnings: [] });
       await tick();
@@ -5089,8 +5107,8 @@ def test_the_overview_is_asked_beside_the_list_and_drawn_once_the_words_arrive(t
     assert said["ok"]["notices"] == ["Read slowly"] and said["ok"]["clock"] is None
     assert said["failed"] == {"status": "failed", "notices": ["Counts Not Available"]}
     boot = js_function("bootstrap", "app.js")
-    assert boot.index("shellAskFirmEarly();") < boot.index("await loadEngagements(")
-    early = js_function("shellAskFirmEarly")
+    assert boot.index("shellAskFirmNow();") < boot.index("await loadEngagements(")
+    early = js_function("shellAskFirmNow")
     assert 'window.tracker.call(["firm"])' in early and "call([" not in early.replace("tracker.call([", "")
 
 
@@ -5099,7 +5117,7 @@ def test_an_early_overview_is_dropped_when_the_list_asks_for_a_folder(tmp_path):
     reply is dropped, its clock stopped, and it draws nothing when it lands."""
     said = run_firm_load("""
       shellRoute = { level: "overview" };
-      shellAskFirmEarly();
+      shellAskFirmNow();
       shellAdopt({ needs_root: true, root: "" });
       const dropped = { status: shellFirmNow.status, early: shellFirmEarly === null, clock: shellFirmTimer };
       sentEarly[0].resolve(firmOf(3));
@@ -5107,3 +5125,349 @@ def test_an_early_overview_is_dropped_when_the_list_asks_for_a_folder(tmp_path):
       return { dropped, data: shellFirmNow.data, status: shellFirmNow.status, drawn, viaCall: firms() };
     """, tmp_path, EARLY_FIRM)
     assert said == {"dropped": {"status": "idle", "early": True, "clock": None}, "data": None, "status": "idle", "drawn": [], "viaCall": 0}
+
+
+#: A Sort's end as app.js's passEnded meets it (P228): the shown return's
+#: state and the list through call() (the probe lands each), the Overview
+#: through window.tracker.call (EARLY_FIRM), and app.js's other names faked.
+SORT_END = EARLY_FIRM + r"""
+let scanning = null; let active = "r1"; let viewGeneration = 1; const kept = []; const rendered = [];
+const scanDone = () => {};
+const adoptList = (listed) => shellAdopt(listed);
+const withEng = (command) => [command, "--engagement", active];
+const renderFor = (view, state) => { if (view !== viewGeneration) return false; rendered.push(state.paths.engagement); shellStateArrived(state); return true; };
+const showReturn = () => {};
+const runScan = () => {};
+const scanSummary = () => ({ cls: "ok", text: "" });
+const sortReturnSaid = () => "";
+const keepSortAnswer = (ran, asked, answer) => kept.push({ ran, asked, answer: answer.length });
+const sent = () => [...asked.map((one) => one.args[0]), ...sentEarly.map((one) => one.args[0])];
+const ofCommand = (name) => asked.find((one) => one.args[0] === name);
+const landOf = async (name, reply) => { ofCommand(name).resolve(reply); await tick(); };
+"""
+
+
+def run_sort_end(probe: str, tmp_path: Path):
+    return run_firm_load(probe, tmp_path, SORT_END, ("passEnded",))
+
+
+def test_after_a_sort_the_return_and_the_overview_are_asked_beside_the_list(tmp_path):
+    """P228 (Jason, 2026-10-08: "Yes, ask all at once"): after a Sort the
+    window waited for the whole list (2.5-3 s) before it asked the shown
+    return's state, and the list's adoption was what started the Overview.
+    Neither needs the list, so the state, the list and `firm` are all sent
+    before any lands - the state first - and the list is still asked, once."""
+    said = run_sort_end("""
+      shellRootSet = true;
+      shellFirmNow = { status: "ok", data: firmOf(1) };
+      scanning = { asked: "r1" };
+      const ending = passEnded({ reply: { runs: [{ path: "r1" }] } });
+      const before = { sent: sent(), status: shellFirmNow.status };
+      await landOf("state", stateOf(2));
+      await ending;
+      const drawnBeforeList = { rendered: rendered.slice(), kept: kept.length };
+      await landOf("list", { root: "/root" });
+      sentEarly[0].resolve(firmOf(2));
+      await tick();
+      return { before, drawnBeforeList, sent: sent(), viaCall: firms(), status: shellFirmNow.status,
+               n: shellFirmNow.data.returns[0].counts.needs_you, held: shellFirmHeld.size };
+    """, tmp_path)
+    assert said["before"] == {"sent": ["state", "list", "firm"], "status": "loading"}, "all three before any lands, the state first"
+    assert said["drawnBeforeList"] == {"rendered": ["r1"], "kept": 1}, "the sorted return and its answer wait for no list"
+    assert said["sent"] == ["state", "list", "firm"] and said["viaCall"] == 0, "the list's adopt takes the Overview asked, never a second"
+    assert said["status"] == "ok" and said["n"] == 2 and said["held"] == 0
+
+
+def test_a_sorts_list_that_lands_last_changes_nothing_the_state_drew(tmp_path):
+    """P228: the list, landing after the state, is adopted - and draws no
+    return, asks no state again, and leaves the page the state drew as it
+    was; the Overview it adopts is the one asked at the Sort's end."""
+    said = run_sort_end("""
+      shellRootSet = true;
+      shellRoute = { level: "return", ret: "r1" };
+      shellFirmNow = { status: "ok", data: firmOf(1) };
+      scanning = { asked: "r1" };
+      const ending = passEnded({ reply: { runs: [{ path: "r1" }] } });
+      await landOf("state", stateOf(2));
+      await ending;
+      const afterState = { rendered: rendered.slice(), drawn: drawn.slice() };
+      await landOf("list", { root: "/root", last_pass: { when: "now" } });
+      const afterList = { rendered: rendered.slice(), drawn: drawn.slice(), states: asked.filter((one) => one.args[0] === "state").length,
+                          lastPass: shellLastPass };
+      sentEarly[0].resolve(firmOf(2));
+      await tick();
+      return { afterState, afterList, firms: sentEarly.length + firms() };
+    """, tmp_path)
+    assert said["afterList"]["rendered"] == said["afterState"]["rendered"] == ["r1"]
+    assert said["afterList"]["drawn"] == said["afterState"]["drawn"], "the list draws nothing over the state's page"
+    assert said["afterList"]["states"] == 1 and said["afterList"]["lastPass"] == {"when": "now"}, "the list is still adopted"
+    assert said["firms"] == 1
+
+
+def test_a_return_chosen_during_the_sort_is_the_one_drawn(tmp_path):
+    """P228, with the state now sent first: a return chosen while the Sort's
+    state was on its way moves the view on, so that state lands on nothing -
+    the return chosen is the one drawn - and the Sort's answer is still kept
+    under the return it was asked for."""
+    said = run_sort_end("""
+      shellRootSet = true;
+      shellFirmNow = { status: "ok", data: firmOf(1) };
+      scanning = { asked: "r1" };
+      const ending = passEnded({ reply: { runs: [{ path: "r1" }] } });
+      viewGeneration += 1; active = "r2";       // another return chosen meanwhile
+      await landOf("state", stateOf(2));
+      await ending;
+      await landOf("list", { root: "/root" });
+      sentEarly[0].resolve(firmOf(1));
+      await tick();
+      return { rendered, kept };
+    """, tmp_path)
+    assert said["rendered"] == [], "the Sort's state never draws over the return chosen since"
+    assert said["kept"] == [{"ran": ["r1"], "asked": "r1", "answer": 0}]
+
+
+def test_a_sorts_list_that_fails_still_lets_its_overview_land(tmp_path):
+    """P228: the Overview asked at a Sort's end is adopted by the list's load;
+    a list that fails starts that load itself, so no page is left saying
+    Updating for ever, and the failure is said as before."""
+    said = run_sort_end("""
+      const failures = [];
+      process.on("unhandledRejection", (err) => failures.push(String(err.message)));
+      shellRootSet = true;
+      shellFirmNow = { status: "ok", data: firmOf(1) };
+      scanning = { asked: "r1" };
+      const ending = passEnded({ reply: { runs: [{ path: "r1" }] } });
+      await landOf("state", stateOf(1));
+      await ending;
+      ofCommand("list").resolve({ error: "The list could not be read." });
+      await tick();
+      sentEarly[0].resolve(firmOf(2));
+      await tick();
+      return { status: shellFirmNow.status, n: shellFirmNow.data.returns[0].counts.needs_you, firms: sentEarly.length + firms(), failures };
+    """, tmp_path)
+    assert said["status"] == "ok" and said["n"] == 2 and said["firms"] == 1
+    assert said["failures"] == ["The list could not be read."], "the list's failure is still said (failed())"
+
+
+def test_the_sorts_end_asks_the_overview_through_the_one_early_ask():
+    """P228: passEnded asks the Overview with shellAskFirmNow (P221's early
+    ask, renamed now that it is not only early) after it says the write
+    landed, and sends the state before the list, without awaiting the list."""
+    ended = js_function("passEnded", "app.js")
+    assert ended.index("shellWriteLanded();") < ended.index("shellAskFirmNow();")
+    assert ended.index('call(withEng("state"))') < ended.index('call(["list"])')
+    assert 'await call(["list"])' not in ended and "adoptList(await" not in ended
+    assert "shellAskFirmEarly" not in read("app.js") + read("shell.js")
+
+
+#: The launch (P229): the probe lands `firm` (sentEarly[0]) and `firm-last`
+#: (sentEarly[1]) when it says, before or after the list's words arrive.
+LAST_COUNTS = EARLY_FIRM + FIRM_PAGE + r"""
+const lastOf = (n, asOf = "9:14 AM") => ({ last: { ...firmOf(n), as_of: asOf } });
+const words = vocab;
+const launch = () => { vocab = null; shellRoute = { level: "overview" }; shellAskFirmNow(); shellAskFirmLast(); };
+const listLands = () => { vocab = words; shellAdopt({ root: "/root" }); };
+const early = (name) => sentEarly.find((one) => one.args[0] === name);
+const counts = () => (shellFirmNow.data ? shellFirmNow.data.returns[0].counts.needs_you : null);
+"""
+
+
+def run_last_counts(probe: str, tmp_path: Path):
+    return run_firm_load(probe, tmp_path, LAST_COUNTS, FIRM_PAGE_FUNCTIONS)
+
+
+def test_the_last_counts_are_drawn_marked_updating_as_of_their_time(tmp_path):
+    """P229 (Jason, 2026-10-08: build it now, "Updating, as of {time}"
+    approved): at launch `firm-last` is asked beside the list and `firm`.
+    Its counts are drawn once the words are here, under P222's marker - the
+    page busy, the path row's one status saying "Updating, as of 9:14 AM",
+    figures, statuses and side counts muted - with the rows usable."""
+    said = run_last_counts("""
+      launch();
+      const sentAtLaunch = sentEarly.map((one) => one.args[0]);
+      early("firm-last").resolve(lastOf(4));
+      await tick();
+      const beforeWords = { drawn: drawn.length, data: shellFirmNow.data };
+      listLands();
+      return { sentAtLaunch, beforeWords, marked: looks(), n: counts(), status: shellFirmNow.status };
+    """, tmp_path)
+    assert said["sentAtLaunch"] == ["firm", "firm-last"]
+    assert said["beforeWords"] == {"drawn": 0, "data": None}, "nothing is drawn before the vocabulary"
+    marked = said["marked"]
+    assert marked["busy"] == "true" and marked["updating"] and marked["said"] == "Updating, as of 9:14 AM"
+    assert marked["held"] == [True, True] and marked["rows"] == ["figure-number", "row"] and marked["hidden"] == []
+    assert said["n"] == 4 and said["status"] == "loading", "the fresh reply is still on its way"
+    boot = js_function("bootstrap", "app.js")
+    assert boot.index("shellAskFirmLast();") < boot.index("await loadEngagements(")
+    assert 'window.tracker.call(["firm-last"])' in js_function("shellAskFirmLast")
+
+
+def test_the_fresh_counts_replace_the_last_in_place(tmp_path):
+    """P229: when the fresh `firm` lands it replaces the last counts as W1's
+    refresh does - the same rows in the same places, the marker gone, the
+    fresh numbers drawn - and no other `firm` is asked."""
+    said = run_last_counts("""
+      launch();
+      listLands();
+      early("firm-last").resolve(lastOf(4));
+      await tick();
+      const marked = looks();
+      early("firm").resolve(firmOf(5));
+      await tick();
+      return { marked, fresh: looks(), n: counts(), status: shellFirmNow.status, asOf: shellFirmAsOf, viaCall: firms() };
+    """, tmp_path)
+    assert said["marked"]["said"] == "Updating, as of 9:14 AM", "the last counts landing after the words are drawn at once"
+    fresh = said["fresh"]
+    assert fresh["rows"] == said["marked"]["rows"], "no row moves under the mouse"
+    assert fresh["busy"] == "false" and not fresh["updating"] and fresh["said"] == "" and fresh["held"] == [False, False]
+    assert said["n"] == 5 and said["status"] == "ok" and said["asOf"] == "" and said["viaCall"] == 0
+
+
+def test_last_counts_that_land_after_the_fresh_are_dropped(tmp_path):
+    """P229: a `firm-last` reply that lands after the fresh `firm` is never
+    drawn: the fresh counts stay, unmarked."""
+    said = run_last_counts("""
+      launch();
+      listLands();
+      early("firm").resolve(firmOf(5));
+      await tick();
+      early("firm-last").resolve(lastOf(4));
+      await tick();
+      return { looks: looks(), n: counts(), status: shellFirmNow.status };
+    """, tmp_path)
+    assert said["n"] == 5 and said["status"] == "ok"
+    assert not said["looks"]["updating"] and said["looks"]["said"] == "" and said["looks"]["busy"] == "false"
+
+
+def test_a_failed_refresh_takes_the_last_counts_down(tmp_path):
+    """P229: held counts never outlive a failed refresh. The fresh `firm`
+    fails: the last counts are taken down, the page shows its failed state
+    (its frame alone), and the failure is the one notice with Retry, as today."""
+    said = run_last_counts("""
+      launch();
+      early("firm-last").resolve(lastOf(4));
+      await tick();
+      listLands();
+      const marked = looks();
+      early("firm").resolve({ error: "The store is busy.", failure: { sentence: "The store is busy." } });
+      await tick();
+      return { marked, failed: looks(), data: shellFirmNow.data, status: shellFirmNow.status, notices, asOf: shellFirmAsOf };
+    """, tmp_path)
+    assert said["marked"]["said"] == "Updating, as of 9:14 AM"
+    assert said["data"] is None and said["status"] == "failed" and said["asOf"] == ""
+    assert said["notices"] == ["Counts Not Available"]
+    failed = said["failed"]
+    assert failed["rows"] == [] and not failed["updating"] and failed["said"] == "" and failed["held"] == [False, False]
+
+
+def test_a_refused_or_failed_last_count_ask_shows_nothing(tmp_path):
+    """P229: the API answers {last: null} unless the cache is today's, this
+    program's, this clients folder's and whole; that, an error reply, an ask
+    that failed, or counts without their time show nothing - the page waits
+    for the fresh reply as it did (its outline, the hidden Loading)."""
+    said = run_last_counts("""
+      const out = [];
+      for (const reply of [{ last: null }, { error: "Unknown command: firm-last" }, "throw", { last: { ...firmOf(4) } }]) {
+        sentEarly.length = 0;
+        shellFirmNow = { status: "idle", data: null }; shellFirmEarly = null; shellFirmLast = null;
+        launch();
+        listLands();
+        if (reply === "throw") window.tracker.call = () => { throw new Error("gone"); };
+        if (reply === "throw") { shellFirmLast = null; shellAskFirmLast(); }
+        else early("firm-last").resolve(reply);
+        await tick();
+        drawPage();
+        out.push({ data: shellFirmNow.data, hidden: looks().hidden, said: looks().said, pending: shellFirmLast });
+        window.tracker.call = (args) => new Promise((resolve) => sentEarly.push({ args, resolve }));
+        early("firm").resolve(firmOf(5));
+        await tick();
+      }
+      return out;
+    """, tmp_path)
+    for one in said:
+        assert one == {"data": None, "hidden": ["Loading"], "said": "", "pending": None}
+
+
+def test_a_list_that_asks_for_a_folder_drops_the_last_counts(tmp_path):
+    """P229, as P221 drops the early Overview: a list that asks for a clients
+    folder drops the last counts, asked or already drawn."""
+    said = run_last_counts("""
+      launch();
+      vocab = words;
+      shellAdopt({ needs_root: true, root: "" });
+      early("firm-last").resolve(lastOf(4));
+      await tick();
+      const asked = { data: shellFirmNow.data, status: shellFirmNow.status };
+      sentEarly.length = 0; shellFirmNow = { status: "idle", data: null };
+      launch();
+      listLands();
+      early("firm-last").resolve(lastOf(4));
+      await tick();
+      const drawnN = counts();
+      shellAdopt({ needs_root: true, root: "" });
+      return { asked, drawnN, shown: { data: shellFirmNow.data, status: shellFirmNow.status, asOf: shellFirmAsOf } };
+    """, tmp_path)
+    assert said["asked"] == {"data": None, "status": "idle"}
+    assert said["drawnN"] == 4
+    assert said["shown"] == {"data": None, "status": "idle", "asOf": ""}
+
+
+def test_the_last_counts_wait_for_their_own_words(tmp_path):
+    """P229: the renderer types no word of its own. A vocabulary without
+    `updating_as_of` draws no last counts - the key it lacks goes to the
+    error log, loud, never a guess - and the page waits for the fresh reply."""
+    said = run_last_counts("""
+      const logged = [];
+      window.tracker.logError = (text) => logged.push(text);
+      launch();
+      const { updating_as_of, ...rest } = words.screen;
+      words.screen = rest;
+      listLands();
+      early("firm-last").resolve(lastOf(4));
+      await tick();
+      drawPage();
+      return { data: shellFirmNow.data, logged, said: looks().said };
+    """, tmp_path)
+    assert said == {"data": None, "logged": ["vocab.screen.updating_as_of"], "said": ""}
+
+
+def test_a_household_page_opened_on_the_last_counts_is_marked_with_their_time(tmp_path):
+    """P229: a household's or a year's page follows the counts (P222), so
+    while the last counts stand it says their time as the firm pages do; a
+    return page shows no counts and no marker."""
+    said = run_last_counts("""
+      const out = {};
+      for (const level of ["household", "return"]) {
+        sentEarly.length = 0; shellFirmNow = { status: "idle", data: null }; shellFirmEarly = null; shellFirmLast = null;
+        launch();
+        shellRoute = { level };
+        listLands();
+        early("firm-last").resolve(lastOf(4, "8:05 AM"));
+        await tick();
+        drawPage();
+        out[level] = looks().said;
+        early("firm").resolve(firmOf(5));
+        await tick();
+      }
+      return out;
+    """, tmp_path)
+    assert said == {"household": "Updating, as of 8:05 AM", "return": ""}
+
+
+def test_no_action_reads_the_counts_it_was_drawn_from():
+    """P229's safeguard, as W1's "Updating" has it: Open reads the return's
+    state afresh, Check opens on a fresh state from a firm page and offers no
+    file no longer waiting, and the reminder sheet's Copy and Approve act only
+    on a card from the return's own fresh read (P213). None of them reads the
+    firm's counts, held, last or fresh - so a marked count can make no action
+    act on an old number. Every write is judged under the lock in the engine."""
+    for name, source in (("showReturn", "app.js"), ("shellGo", "shell.js"), ("shellOpenState", "shell.js"),
+                         ("openCheck", "sheet.js"), ("sheetShow", "sheet.js"), ("sheetDrawCheck", "sheet.js"),
+                         ("openReminder", "sheet.js"), ("copyReminder", "app.js"), ("approveReminder", "app.js")):
+        body = js_function(name, source)
+        for counts in ("shellFirm(", "shellFirmNow", "shellFirmAsOf", "shellFirmLast"):
+            assert counts not in body, (name, counts)
+    check = js_function("openCheck", "sheet.js")
+    assert "FIRM_LEVELS.indexOf(shellRoute.level) === -1" in check and "showReturn(ret)" in check
+    assert "forgetReminderCard();" in js_function("openReminder", "sheet.js")
+

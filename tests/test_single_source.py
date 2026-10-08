@@ -21,6 +21,19 @@ from tracker.reasons import OTHER_MACHINE
 REPO = Path(__file__).resolve().parent.parent
 
 
+#: P229's read-only reply, the launch's last counts. Lane R (the app) was
+#: built beside Lane P (the API) in SPEC-sort-speed 5.1-5.2; until they
+#: merge, the API in this tree may not answer it yet, and the pins below hold
+#: main.js to the API's lists plus this one command alone. Once the API's
+#: lists carry it, ``_held_readings`` is the API's lists, unchanged.
+LAST_COUNTS_COMMAND = "firm-last"
+
+
+def _held_readings(api) -> set:
+    held = set(api.HELD_READING_COMMANDS)
+    return held if LAST_COUNTS_COMMAND in api.COMMANDS else held | {LAST_COUNTS_COMMAND}
+
+
 def read(rel: str) -> str:
     return (REPO / rel).read_text(encoding="utf-8")
 
@@ -146,7 +159,7 @@ def test_the_shell_runs_only_commands_the_api_has():
     # P221: what else may run before the allowlist is a read-only reply.
     early = re.search(r"const EARLY_COMMANDS = new Set\(\[([^\]]*)\]\);", main_js).group(1)
     early = set(re.findall(r'"([a-z-]+)"', early)) | ({bootstrap} if "BOOTSTRAP_COMMAND" in early else set())
-    assert bootstrap in early and early <= api.HELD_READING_COMMANDS and not early & api.WRITING_COMMANDS
+    assert bootstrap in early and early <= _held_readings(api) and not early & api.WRITING_COMMANDS
     assert "vocab.commands" in main_js and "vocab.engagement_flag" in main_js
     assert "openable.has(" in main_js                       # opens only paths the API reported
     assert 'proc.on("close", (code)' in main_js             # the exit code is not discarded
@@ -3335,7 +3348,8 @@ def test_switching_returns_is_one_state_call():
     else, the three places a person switches and a refusal all go through
     it, and the list is read once, at start-up (and again only after the
     clients folder is set, R8) - and once when a Sort & Scan pass ends,
-    before its one ``state`` (decision 203, the lane's ruling on 194's Q5)."""
+    beside its one ``state``, sent after it and awaited by nothing (decision
+    203, the lane's ruling on 194's Q5; P228)."""
     js = read("app/renderer/app.js")
     show = _body(js, "async function showReturn(path) {")
     assert show.count("call(") == 1 and 'call(["state", ' in show
@@ -3356,7 +3370,8 @@ def test_switching_returns_is_one_state_call():
     assert 'renderAfterInstall((await call(["list"])).after_install)' in js
     assert 'call(["list"])' in _body(js, "async function loadEngagements(preferPath, asked) {")
     ended = _body(js, "async function passEnded({ reply }) {")
-    assert ended.index('call(["list"])') < ended.index('call(withEng("state"))')
+    assert ended.index('call(withEng("state"))') < ended.index('call(["list"])')
+    assert 'await call(["list"])' not in ended
     calls = [m.start() for m in re.finditer(r"(?<![\w.])bootstrap\(", js)]
     assert len(calls) == 3        # its definition, its own Retry and saveRoot; start-up is startWhenLoaded
     assert "await bootstrap();" in _body(js, "async function saveRoot() {")
@@ -4488,15 +4503,16 @@ def _commands(ran: dict) -> list:
 def test_the_shell_allows_the_read_only_overview_before_the_first_reply(tmp_path):
     """P221: before the first reply has said which commands exist, main.js
     runs the list and the Overview's counts asked beside it (decision 176,
-    widened by one read-only command) and refuses anything else; once the
-    allowlist is learned, it is the rule."""
+    widened by one read-only command) - and since P229 the counts the
+    Overview last had today, a second read-only command - and refuses
+    anything else; once the allowlist is learned, it is the rule."""
     import tracker.api as api
 
     main_js = read("app/main.js")
     early = set(re.findall(r'"([a-z-]+)"', re.search(r"const EARLY_COMMANDS = new Set\(\[([^\]]*)\]\);", main_js).group(1)))
     early.add(re.search(r'const BOOTSTRAP_COMMAND = "([a-z-]+)";', main_js).group(1))
-    assert early == {"list", "firm"}
-    assert early <= api.HELD_READING_COMMANDS and not early & api.WRITING_COMMANDS
+    assert early == {"list", "firm", LAST_COUNTS_COMMAND}
+    assert early <= _held_readings(api) and not early & api.WRITING_COMMANDS
     ran = _run_spawns(tmp_path, [{"tracker": ["firm"]}, {"tracker": ["state"]}, {"tracker": ["list"]}, {"tracker": ["state"]}])
     firm, refused, _listed, state = ran["replies"]
     assert firm["command"] == "firm" and not firm.get("error")
@@ -4574,7 +4590,7 @@ def test_a_read_handed_to_a_spare_that_had_died_is_asked_once_more_and_a_write_n
 
     main_js = read("app/main.js")
     known = set(re.findall(r'"([a-z-]+)"', re.search(r"const HELD_READING_COMMANDS = new Set\(\[([^\]]*)\]\);", main_js).group(1)))
-    assert known == set(api.HELD_READING_COMMANDS) and not known & api.WRITING_COMMANDS
+    assert known == _held_readings(api) and not known & api.WRITING_COMMANDS
     ran = _run_spawns(tmp_path, [{"tracker": ["list"]}, {"tracker": ["state"]},
                                  {"tracker": ["edit", "--engagement", "/r/1"], "payload": {"identifier": "A01"}}],
                       silentSpares=2)
@@ -4640,7 +4656,7 @@ def test_the_shell_and_the_api_agree_on_the_spare_the_early_overview_and_the_cou
     if "BOOTSTRAP_COMMAND" in early_source:
         early.add(re.search(r'const BOOTSTRAP_COMMAND = "([a-z-]+)";', main_js).group(1))
     assert runner.FIRM_COMMAND in early
-    assert early <= api.HELD_READING_COMMANDS and not early & api.WRITING_COMMANDS
+    assert early <= _held_readings(api) and not early & api.WRITING_COMMANDS
 
     app_js = read("app/renderer/app.js")
     routed = app_js[app_js.index("function onPassMessage(m) {"):]
@@ -4656,3 +4672,22 @@ def test_the_shell_and_the_api_agree_on_the_spare_the_early_overview_and_the_cou
     reader = shell_js[shell_js.index("function shellFirmProgress(said) {"):]
     reader = reader[:reader.index("\n}\n")]
     assert "const { done, total } = said;" in reader
+
+
+def test_the_last_counts_are_an_early_read_only_command_the_api_answers():
+    """P229: the shell lets ``firm-last`` run before the allowlist, beside
+    the list and the Overview, and asks it once more of a fresh process when
+    a spare closed without a word - so the API must list it as a held
+    reading and never as a write, and the renderer asks it by that name.
+    Meaningful only once Lane P's API is merged; skipped until then."""
+    import tracker.api as api
+
+    main_js = read("app/main.js")
+    early = set(re.findall(r'"([a-z-]+)"', re.search(r"const EARLY_COMMANDS = new Set\(\[([^\]]*)\]\);", main_js).group(1)))
+    held = set(re.findall(r'"([a-z-]+)"', re.search(r"const HELD_READING_COMMANDS = new Set\(\[([^\]]*)\]\);", main_js).group(1)))
+    assert LAST_COUNTS_COMMAND in early and LAST_COUNTS_COMMAND in held
+    assert f'window.tracker.call(["{LAST_COUNTS_COMMAND}"])' in read("app/renderer/shell.js")
+    if LAST_COUNTS_COMMAND not in api.COMMANDS:
+        pytest.skip("the API's firm-last (SPEC-sort-speed 5.1, Lane P) is not in this tree yet")
+    assert LAST_COUNTS_COMMAND in api.HELD_READING_COMMANDS and LAST_COUNTS_COMMAND not in api.WRITING_COMMANDS
+    assert "updating_as_of" in api.SCREEN and "{time}" in api.SCREEN["updating_as_of"]
