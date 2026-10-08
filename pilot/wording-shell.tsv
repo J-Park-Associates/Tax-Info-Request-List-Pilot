@@ -155,7 +155,7 @@ api._vocab	screen.notices.reader	(none: a long sentence)	reword	Install Folder N
 api._vocab	screen.notices.renamed	(none: a long sentence)	reword	Folder Renamed	2	Notice	SPEC E47; notice with one action, Accept	Folder Renamed	
 api._vocab	screen.reading_households	(new)	reword	Reading {n} of {total} Households	5	A firm page's loading state, after about 2 s	P222; approved by Jason 2026-10-08	Reading {n} of {total} Households	
 api._vocab	screen.updating	(new)	reword	Updating	1	Firm pages and side counts, while held counts are asked again	P222; approved by Jason 2026-10-08	Updating	
-api._vocab	screen.updating_as_of	(new)	reword	Updating, as of {time}	4	Overview and firm pages at launch, while the counts last kept today are shown until the fresh ones land	P229; approved by Jason 2026-10-08 as written (sentence case kept)	Updating, as of {time}	
+api._vocab	screen.updating_as_of	(new)	reword	Updating, as of {time}	4	Overview at launch, while the counts last kept today are shown until the fresh ones land	P229; approved by Jason 2026-10-08 as written (sentence case kept)	Updating, as of {time}	
 api._vocab	settings.firm_help	as it should sign the reminders	cut		0	Nowhere; was setup help	Audit §3: help cut		-
 api._vocab	settings.phone_help	named in the final-notice reminder; blank drops that sentence	cut		0	Nowhere; was setup help	Audit §3: help cut		-
 api._vocab	shell.could_not_send	The app could not send that to the tracker ({kind}); nothing was changed.	error-log	Could not send; nothing changed	5	Notice area	Error kind to error log	Could Not Send; Nothing Changed	case

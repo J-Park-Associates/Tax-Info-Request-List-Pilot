@@ -2625,7 +2625,8 @@ def _page_token(kept: page_rows.Kept | None, folder: Path, *, again: bool = Fals
     statement, the first time the page asks; ``again`` asks this one
     record's afresh, after its read, so a record written while it was read
     is never kept under the older token. A store that cannot answer keeps
-    nothing, said by its class: every row is then read, as before P227."""
+    nothing, said once by its class: the tokens become none for the rest of
+    the report, so every row is then read, as before P227."""
     if kept is None:
         return None
     key = store.record_key(folder)
@@ -2639,6 +2640,7 @@ def _page_token(kept: page_rows.Kept | None, folder: Path, *, again: bool = Fals
             kept.tokens = store.read_tokens(conn)
     except Exception as exc:
         log.warning("The practice page reads every row (%s)", errors.error_class(exc))
+        kept.tokens = {}
         return None
     return kept.tokens.get(key)
 
@@ -3302,11 +3304,12 @@ def _pass(ns, parser, reached: dict) -> int:
         # not an engagement failed, and whether or not the pass itself was
         # stopped: the page is how a person finds out that one did. A dry
         # run writes nothing, this included.
-        # The rows kept from earlier pages (P227), only for the saved root,
-        # whose records the store keys by path; loaded once for the page
-        # and its redraw, inside a reading - it only reads.
+        # The rows kept from earlier pages (P227), only when the walked root
+        # is the saved root (both resolved by the door, compared as the door
+        # compares paths), whose records the store keys by path; loaded once
+        # for the page and its redraw, inside a reading - it only reads.
         kept = None
-        if saved is not None:
+        if saved is not None and os.path.normcase(str(saved)) == os.path.normcase(root):
             with one_reading():
                 kept = page_rows.open_kept(loaded.source)
         try:

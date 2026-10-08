@@ -237,7 +237,8 @@ function learn(result) {
   const first = allowedCommands === null;
   if (vocab && Array.isArray(vocab.commands)) allowedCommands = new Set(vocab.commands);
   // The first spare waits for the first list's reply (P220), so start-up
-  // never has a third process beside the list and the early Overview.
+  // adds no spare beside the list, the early Overview and the last counts
+  // (P229's firm-last, a third process of its own).
   if (first && allowedCommands) startSpare();
   if (vocab && typeof vocab.engagement_flag === "string") engagementFlag = vocab.engagement_flag;
   if (vocab && typeof vocab.pass_command === "string") passCommand = vocab.pass_command;

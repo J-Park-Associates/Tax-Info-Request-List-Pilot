@@ -5359,6 +5359,28 @@ def test_last_counts_that_land_after_the_fresh_are_dropped(tmp_path):
     assert not said["looks"]["updating"] and said["looks"]["said"] == "" and said["looks"]["busy"] == "false"
 
 
+def test_last_counts_that_land_after_an_unadopted_fresh_reply_are_dropped(tmp_path):
+    """P229, the SPEC: "if the real one lands first, firm-last's reply is
+    dropped" - also when it lands before the list whose load adopts it.
+    The early `firm` lands, then `firm-last`, then the list: the Overview is
+    drawn once, from the fresh counts, and the last counts' time is never
+    set."""
+    said = run_last_counts("""
+      launch();
+      early("firm").resolve(firmOf(5));
+      await tick();
+      early("firm-last").resolve(lastOf(4));
+      await tick();
+      listLands();
+      const atList = { asOf: shellFirmAsOf, n: counts() };
+      await tick();
+      return { atList, drawn: drawn.slice(), n: counts(), status: shellFirmNow.status, asOf: shellFirmAsOf, line: overviewSays() };
+    """, tmp_path)
+    assert said["atList"] == {"asOf": "", "n": None}, "the last counts are never drawn over a fresh reply"
+    assert said["drawn"] == ["overview"], "drawn once"
+    assert said["n"] == 5 and said["status"] == "ok" and said["asOf"] == "" and said["line"] == ""
+
+
 def test_a_failed_refresh_takes_the_last_counts_down(tmp_path):
     """P229: held counts never outlive a failed refresh. The fresh `firm`
     fails: the last counts are taken down, the page shows its failed state

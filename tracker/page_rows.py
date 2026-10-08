@@ -23,7 +23,13 @@ token is the one it was read under, so a kept row is exactly what a fresh
 read of the store as the walk left it would return (decision 192): **a cache may never make
 a status wrong** (P120). A read is kept only when the token read before it
 equals the token read after it, so a record another process wrote while it
-was read is never kept under the older token.
+was read is never kept under the older token. Two things heal only at
+the next page, never on this one: the store's tokens are taken once, at the
+start of the report, so a record written after that is drawn from its kept
+row as it stood then (as a fresh read at that moment would have drawn it);
+and a kept line skips the journal-exists check a fresh read makes, so a
+journal removed after this pass's walk found it is left to the next page's
+walk.
 
 **Rejected** (the SPEC's options): the firm view's rows (``firm-view.json``)
 - built for the Overview, not ``summarize``'s counts, so turning one into
@@ -225,7 +231,15 @@ class Kept:
         entry["outstanding"] = int(outstanding)
 
     def keep_parked(self, folder: Path, token: tuple, rows: list[list[str]]) -> None:
-        """Keep a fresh read's parked rows under the token it was read under."""
+        """Keep a fresh read's parked rows under the token it was read under
+        - only when every row is :data:`PARKED_FIELDS` words. A row with a
+        field that is not text (an index line with a field left empty as
+        ``null``) is drawn from this read and the return is forgotten, read
+        afresh every page: kept, it would make :func:`load` refuse the
+        whole file as damaged."""
+        if not all(len(row) == PARKED_FIELDS and all(isinstance(one, str) for one in row) for row in rows):
+            self.forget(folder)
+            return
         self._fresh(folder, token)["parked"] = [list(row) for row in rows]
 
     def forget(self, folder: Path) -> None:

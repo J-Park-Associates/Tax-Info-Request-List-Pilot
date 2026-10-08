@@ -57,6 +57,7 @@ let shellProgressNow = null;   // the running pass's last line: {n, total}
 let shellFirmNow = { status: "idle", data: null };   // idle, loading, ok, failed
 let shellFirmAsked = false;    // a second ask arrived while one ran
 let shellFirmEarly = null;     // a `firm` asked before the load that adopts it (P221, P228)
+let shellFirmEarlyLanded = false;   // that `firm`'s reply is here, adopted or not: the last counts are dropped (P229)
 let shellFirmLast = null;      // the last counts asked at launch (P229): {reply} until drawn or dropped
 let shellFirmAsOf = "";        // the counts shown are the last counts, as of this "HH:MM" (P229); "" once fresh
 let shellClock = 0;            // orders a load's sending against a write's landing (P218)
@@ -225,8 +226,10 @@ function shellAskFirmNow() {
   if (shellFirmEarly || shellFirmNow.status === "loading") return;   // one is on its way already
   shellFirmNow = { status: "loading", data: shellFirmNow.data };
   shellFirmSent();
+  shellFirmEarlyLanded = false;
   shellFirmEarly = new Promise((resolve) => resolve(window.tracker.call(["firm"])))
-    .then((reply) => ({ reply }), (err) => ({ err }));
+    .then((reply) => ({ reply }), (err) => ({ err }))
+    .then((got) => { shellFirmEarlyLanded = true; return got; });
   shellUpdating();
 }
 
@@ -258,6 +261,9 @@ function shellDropEarlyFirm() {
 // as it does during any "Updating": Open and Check read the return's state,
 // Copy and Approve act only on a card drawn from that read, and every write
 // is judged under the household's lock against the record.
+// A Retry of the start-up after a failed first list asks again only when
+// this ask failed; one held or drawn is not asked twice - harmless, since all
+// it brings is today's counts for the seconds before the fresh ones.
 function shellAskFirmLast() {
   if (shellFirmLast || shellFirmNow.data) return;   // asked already, or counts are drawn
   const mine = { reply: null };
@@ -288,11 +294,14 @@ function shellLastOf(reply) {
 
 // Draw the last counts once they, the words and the clients folder are all
 // here - and only while the fresh reply is still on its way with nothing
-// drawn. Each reply is drawn at most once.
+// drawn. Each reply is drawn at most once. A fresh reply that has already
+// landed, even one the list's load has not adopted yet, drops them: "if the
+// real one lands first, firm-last's reply is dropped" (the SPEC).
 function shellShowLast() {
   const mine = shellFirmLast;
   if (!mine || !mine.reply || !vocab || !vocab.screen || !shellRootSet) return;
   shellFirmLast = null;
+  if (shellFirmEarlyLanded) return;
   const last = shellLastOf(mine.reply);
   if (!last || shellFirmNow.status !== "loading" || shellFirmNow.data) return;
   if (!screenWords().updating_as_of) {

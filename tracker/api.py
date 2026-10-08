@@ -21,7 +21,7 @@ Commands:
   firm      the practice at a glance, read only: for every active return the
             count of its rows in each group, the files waiting for a person,
             the due date and whether its reminder draft is ready
-  firm-last  the firm reply as the cache last kept it today, read only, with
+  firm-last the firm reply as the cache last kept it today, read only, with
             the time it was kept - or nothing - for the launch (pilot P229)
   priors   list engagements a new year could be rolled forward from
   rollover  build next year's list from a returning client's prior year
@@ -6256,8 +6256,16 @@ def _cmd_firm_last(argv: list[str]) -> dict:
     (:func:`tracker.registry.household_positions`) with no kept entry, or a
     kept entry with no position - never a partial practice or partial
     totals; a kept household with a problem; a return the practice-wide
-    marks now show whose row was never kept. Which of these it was is said
-    on the error log by its name, never a client's words.
+    marks now show whose row was never kept; the cache file written again
+    while it was read (the early ``firm`` landing at the same moment), so
+    the time would label older rows. Each is named in
+    :data:`FIRM_LAST_REFUSALS`, never in a client's words: the ordinary
+    ones - no cache under today's head (the first launch of the day, a
+    program, root, settings or data folder change), no plain household
+    positions (the fresh reply says why in its own words), the file
+    rewritten while read - are logged below the error log; the unusual ones
+    - kept households not exactly the walk's, a household with a problem,
+    a shown return without a kept row - reach the error log, by name.
 
     **What it loosens.** P120's rule that a cache may never make a status
     wrong, for the seconds between the launch and the fresh reply: a count
@@ -6288,23 +6296,40 @@ def _cmd_firm_last(argv: list[str]) -> dict:
     return reply
 
 
-#: Why :func:`_firm_last` answered nothing, by name, for the error log.
-FIRM_LAST_REFUSALS = ("no_positions", "no_kept_practice", "households_differ", "household_problem",
-                      "row_not_kept")
+#: Why :func:`_firm_last` answered nothing, by name, and how loudly: the
+#: ordinary ones stay below the error log (``logging.INFO``), the unusual
+#: ones reach it (``logging.WARNING``, the error log's floor). ``refuse``
+#: looks the name up here, so a refusal never named here cannot be said.
+FIRM_LAST_REFUSALS = {
+    "no_positions": logging.INFO,        # the fresh reply says why, in its own words
+    "no_kept_practice": logging.INFO,    # no cache under today's head, or no household
+    "cache_rewritten": logging.INFO,     # a firm write landed while it was read
+    "households_differ": logging.WARNING,
+    "household_problem": logging.WARNING,
+    "row_not_kept": logging.WARNING,
+}
 
 
 def _firm_last(root: Path, today: dt.date) -> tuple[list[_FirmShown], dt.datetime] | None:
     """:func:`_cmd_firm_last`'s work: the shown returns from the kept
     households alone and the cache file's last write, or ``None`` - with
-    the refusal's name on the log - when any household is not kept."""
+    the refusal's name on the log - when any household is not kept.
+
+    The file's time is taken **before** it is loaded and asked again after
+    the marks: a ``firm`` reply that saved it in between would otherwise
+    label the rows read with its newer time, so a moved time refuses."""
     def refuse(why: str) -> None:
-        log.info("The last counts were not shown (%s)", why)
+        log.log(FIRM_LAST_REFUSALS[why], "The last counts were not shown (%s)", why)
 
     positions = household_positions(root)
     if positions is None:
         return refuse("no_positions")
     _private, folders = positions
     where = firm_cache.cache_path()
+    try:
+        before = where.stat().st_mtime_ns
+    except OSError:
+        return refuse("no_kept_practice")
     kept = firm_cache.load(where, firm_cache.head(root, today))
     if not kept or not folders:
         return refuse("no_kept_practice")
@@ -6325,10 +6350,12 @@ def _firm_last(root: Path, today: dt.date) -> tuple[list[_FirmShown], dt.datetim
         shown.append(_firm_marked(one["shown"]["row"], one["shown"]["files"], one["shown"]["paths"],
                                   engagement, paused, links))
     try:
-        written = dt.datetime.fromtimestamp(where.stat().st_mtime)
+        after = where.stat().st_mtime_ns
     except OSError:
-        return refuse("no_kept_practice")
-    return shown, written
+        after = None
+    if after != before:
+        return refuse("cache_rewritten")
+    return shown, dt.datetime.fromtimestamp(before / 1e9)
 
 
 def _next_sort() -> str | None:

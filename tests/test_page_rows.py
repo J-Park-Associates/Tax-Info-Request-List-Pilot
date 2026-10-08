@@ -12,6 +12,7 @@ or root, or a damaged one, is set aside. Made-up households only.
 import datetime as dt
 import json
 import logging
+from pathlib import Path
 
 import pytest
 
@@ -21,6 +22,7 @@ from tests.test_runner import (  # noqa: F401 - ``samples`` is a fixture
     _run_now,
     _the_scheduled_job,
     _three_households,
+    build_engagement,
     edit_rows,
     samples,
 )
@@ -221,6 +223,50 @@ def test_a_damaged_kept_rows_file_is_set_aside_and_said_by_its_class(firm, caplo
     assert page_rows.load(path, head) == {}               # missing: the ordinary first page
 
 
+def test_a_parked_row_with_a_field_that_is_not_text_forgets_its_return_and_never_damages_the_file(
+        firm, caplog):
+    """A return whose parked rows hold one field that is not text (an index
+    line with a field left ``null``) is forgotten, read afresh every page -
+    never kept, where it would make the whole file read as damaged and
+    every other return's rows be read again."""
+    root, folders = firm
+    _draw(root, _kept(root))
+    kept = _kept(root)
+    tokens = page_rows.load(page_rows.rows_path(), kept.head)
+    token = tuple(tokens[str(folders[0])]["token"])
+    assert kept.parked(folders[0], token) is not None
+    kept.keep_parked(folders[0], token, [["2026-02-03", "a scan.pdf", "no request matched", None]])
+    assert kept.parked(folders[0], token) is None
+    kept.save()
+    caplog.clear()
+    with caplog.at_level(logging.WARNING, logger="tracker.page_rows"):
+        entries = page_rows.load(page_rows.rows_path(), kept.head)
+    assert caplog.records == []
+    assert str(folders[0]) not in entries
+    assert {str(folders[1]), str(folders[2])} <= set(entries)
+
+
+def test_a_store_that_cannot_give_the_tokens_is_said_once_and_every_row_is_read(firm, monkeypatch, caplog, reads):
+    """The first ``read_tokens`` that fails is said once by its class; the
+    rest of the report asks nothing more of the store's tokens, reads every
+    return's records and keeps nothing."""
+    root, folders = firm
+    asked = []
+
+    def unanswered(*args, **kwargs):
+        asked.append(args)
+        raise OSError("the store is busy")
+
+    monkeypatch.setattr(store, "read_tokens", unanswered)
+    with caplog.at_level(logging.WARNING, logger="tracker.runner"):
+        _draw(root, _kept(root))
+    said = [record for record in caplog.records if "reads every row" in record.getMessage()]
+    assert [record.getMessage() for record in said] == ["The practice page reads every row (OSError)"]
+    assert len(asked) == 1
+    assert sorted(reads["index"]) == sorted(folders)
+    assert not page_rows.rows_path().exists()
+
+
 def test_a_return_whose_record_cannot_be_read_is_never_kept(firm, monkeypatch, reads):
     """A read that raised costs its own row, as ever, and is not kept: the
     next page reads it again and says it again."""
@@ -278,11 +324,38 @@ def test_a_dry_run_and_a_page_with_no_data_home_keep_nothing(firm, monkeypatch):
     assert page_rows.open_kept(root) is None
 
 
-def test_the_kept_rows_are_kept_only_for_the_saved_root(firm, monkeypatch):
+def test_the_kept_rows_are_kept_only_for_the_saved_root(firm, monkeypatch, tmp_path, samples):  # noqa: F811
     """A pass over the saved root keeps the page's rows; their file sits in
-    the data folder, never in a client tree (decision 186)."""
+    the data folder, never in a client tree (decision 186). A pass over a
+    root typed on the command line while another root is saved - one that
+    reaches its page because the record checkpoint could not be read -
+    draws its page from fresh reads and neither opens nor keeps any row."""
+    from tracker import checkpoint
+
     root, _folders = firm
+    opened = []
+    real_open = page_rows.open_kept
+
+    def open_kept(source):
+        opened.append(Path(source))
+        return real_open(source)
+
+    def unreadable(*args, **kwargs):
+        raise checkpoint.CheckpointError("the checkpoint could not be opened")
+
+    monkeypatch.setattr(page_rows, "open_kept", open_kept)
+    other = tmp_path / "Elsewhere" / "Clients"
+    build_engagement(other, samples, household="Dogwood Household", name="Dogwood TY2025")
+    with monkeypatch.context() as patch:
+        patch.setattr(runner_module.store, "prove_the_root", unreadable)
+        runner_module.main([runner_module.SETTINGS_FLAG, str(root.parent / "settings"), str(other),
+                            "--reminders", REMINDERS_NEVER])
+    assert (other / STATUS_PAGE_FILENAME).is_file()
+    assert opened == []
+    assert not page_rows.rows_path().exists()
+
     assert _the_scheduled_job(root, monkeypatch, "--reminders", REMINDERS_NEVER) == 0
+    assert opened == [root.resolve()]
     path = page_rows.rows_path()
     assert path.is_file()
     assert root not in path.parents

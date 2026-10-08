@@ -10279,6 +10279,90 @@ def test_no_last_counts_while_any_household_is_not_kept(capsys, demo_root, monke
     assert _firm_last(capsys)["last"] is None, "a shown return whose row was not kept"
 
 
+def test_every_last_counts_refusal_is_said_by_its_own_name_and_only_the_unusual_reach_the_error_log(
+        capsys, demo_root, monkeypatch, caplog):
+    """Each way ``firm-last`` answers nothing is driven once and said by
+    its name from ``FIRM_LAST_REFUSALS`` and no other: the ordinary ones
+    (no cache under today's head, no plain positions, the file rewritten
+    while read) below the error log's WARNING floor, the unusual ones
+    (households not the walk's, a problem household, a shown return
+    without a kept row) on it - never a client's words."""
+    import logging
+
+    from tracker import firm_cache
+
+    _a_practice_kept_whole(capsys, demo_root, monkeypatch)
+    where = firm_cache.cache_path()
+    head = firm_cache.head(str(api._saved_root()), dt.date.today())
+    households = firm_cache.load(where, head)
+    said: dict[str, int] = {}
+
+    def refused(name: str) -> None:
+        caplog.clear()
+        with caplog.at_level(logging.DEBUG, logger="tracker.api"):
+            assert _firm_last(capsys)["last"] is None, name
+        records = [record for record in caplog.records if "last counts were not shown" in record.getMessage()]
+        assert [record.getMessage() for record in records] == [f"The last counts were not shown ({name})"]
+        assert all(household not in records[0].getMessage() for household in households)
+        said[name] = records[0].levelno
+        firm_cache.save(where, head, households)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(api, "household_positions", lambda root: None)
+        refused("no_positions")
+    firm_cache.save(where, {**head, "day": "2020-01-01"}, households)
+    refused("no_kept_practice")
+    real_load = firm_cache.load
+
+    def load_then_rewritten(path, expected):
+        kept = real_load(path, expected)
+        stamp = path.stat().st_mtime_ns + 5_000_000_000
+        os.utime(path, ns=(stamp, stamp))
+        return kept
+
+    with monkeypatch.context() as patch:
+        patch.setattr(firm_cache, "load", load_then_rewritten)
+        refused("cache_rewritten")
+    firm_cache.save(where, head, {**households, "Gone Family": next(iter(households.values()))})
+    refused("households_differ")
+    troubled = json.loads(json.dumps(households))
+    troubled[next(iter(troubled))]["returns"][0]["problem"] = "could not be read"
+    firm_cache.save(where, head, troubled)
+    refused("household_problem")
+    unshown = json.loads(json.dumps(households))
+    next(one for entry in unshown.values() for one in entry["returns"] if one["shown"] is not None)["shown"] = None
+    firm_cache.save(where, head, unshown)
+    refused("row_not_kept")
+    assert _firm_last(capsys)["last"] is True
+
+    assert said == api.FIRM_LAST_REFUSALS
+    assert {name for name, level in said.items() if level >= logging.WARNING} == \
+        {"households_differ", "household_problem", "row_not_kept"}
+
+
+def test_the_last_counts_time_is_the_files_before_it_was_read(capsys, demo_root, monkeypatch):
+    """``as_of`` is the cache file's time taken before the load, never one
+    a ``firm`` reply wrote while it was read: a file whose time moved
+    between the load and the answer refuses (``cache_rewritten``)."""
+    from tracker import firm_cache
+
+    _a_practice_kept_whole(capsys, demo_root, monkeypatch)
+    where = firm_cache.cache_path()
+    then = dt.datetime.now().replace(hour=7, minute=5, second=0, microsecond=0).timestamp()
+    os.utime(where, (then, then))
+    assert _firm_last(capsys)["as_of"] == "07:05"
+    real_load = firm_cache.load
+
+    def rewritten_while_read(path, expected):
+        kept = real_load(path, expected)
+        later = then + 3600
+        os.utime(path, (later, later))
+        return kept
+
+    monkeypatch.setattr(firm_cache, "load", rewritten_while_read)
+    assert _firm_last(capsys)["last"] is None
+
+
 def test_the_last_counts_read_no_record_and_take_no_fingerprint(capsys, demo_root, monkeypatch):
     """The whole point of P229: no household's folders are listed for a
     fingerprint, no record, list, index or detail is read, and the walk's

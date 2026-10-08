@@ -132,8 +132,13 @@ pins). Not pushed. DECISIONS rows P225-P230 are the orchestrator's, at merge.
   settings file) or it keeps nothing; the kept households are not exactly
   the walk's household positions (one missing or one extra); a kept
   household has a problem; a return the practice-wide marks now show has no
-  kept row. The refusal's name (`FIRM_LAST_REFUSALS`) goes to the error log
-  at info level, never a client's words. A root the door refuses is the
+  kept row; the cache file's time moved between the load and the answer
+  (`as_of` is the time taken before the load). Each refusal is said by its
+  name from `FIRM_LAST_REFUSALS`, never a client's words: the ordinary ones
+  (no positions, no cache under today's head, the file rewritten while read)
+  at info level, below the error log; the unusual ones (households not the
+  walk's, a problem household, a shown return without a kept row) at
+  warning, on the error log. A root the door refuses is the
   same error envelope `firm` gives.
 - **What it never does:** take a fingerprint, read a record, list, index or
   detail, run `households_named`/`discover_engagements`, open the store, or
