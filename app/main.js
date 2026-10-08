@@ -66,11 +66,19 @@ const PROGRESS_KEY = "progress";
 // never on screen (decision 193, security principle 7).
 const STDERR_CAP = 64 * 1024;
 
-// The command the renderer runs first, and the only one allowed before the
-// API has said which commands exist: its reply carries vocab.commands (the
+// The command the renderer runs first: its reply carries vocab.commands (the
 // allowlist) and vocab.engagement_flag. Pinned to tracker.api.COMMANDS and
 // to the renderer's first call by tests/test_single_source.py.
 const BOOTSTRAP_COMMAND = "list";
+// What may run before the API has said which commands exist (decision 176):
+// the list, and since P221 the Overview's counts asked beside it, so the
+// first Overview no longer waits for the list to finish. Both are read-only
+// replies (tracker.api.HELD_READING_COMMANDS, neither a writing command).
+const EARLY_COMMANDS = new Set([BOOTSTRAP_COMMAND, "firm"]);
+// The read-only replies, word for word tracker.api.HELD_READING_COMMANDS
+// (tests/test_single_source.py): the only commands run again when the spare
+// they were handed closed without a word (P220). A write is never run twice.
+const HELD_READING_COMMANDS = new Set(["firm", "list", "state"]);
 // The after-install step's launch door (decision 209): the shell runs it
 // itself, once, at start. It returns at once when the program has not
 // changed since it last ran cleanly and the designation still names the
@@ -224,7 +232,11 @@ function learnMenu(words) {
 
 function learn(result) {
   const vocab = result && result.vocab;
+  const first = allowedCommands === null;
   if (vocab && Array.isArray(vocab.commands)) allowedCommands = new Set(vocab.commands);
+  // The first spare waits for the first list's reply (P220), so start-up
+  // never has a third process beside the list and the early Overview.
+  if (first && allowedCommands) startSpare();
   if (vocab && typeof vocab.engagement_flag === "string") engagementFlag = vocab.engagement_flag;
   if (vocab && typeof vocab.pass_command === "string") passCommand = vocab.pass_command;
   if (vocab && vocab.path_kinds && typeof vocab.path_kinds === "object") pathKinds = vocab.path_kinds;
@@ -263,7 +275,7 @@ function commandProblem(args) {
     return "Malformed command.";
   }
   const [command, ...rest] = args;
-  if (allowedCommands ? !allowedCommands.has(command) : command !== BOOTSTRAP_COMMAND) {
+  if (allowedCommands ? !allowedCommands.has(command) : !EARLY_COMMANDS.has(command)) {
     return `Unknown command: ${command}`;
   }
   if (rest.length === 0) return null;
@@ -285,7 +297,7 @@ function runTracker(args, payload, onProgress, onEnded) {
 
 // Start the tracker with one command already allowed: the renderer's
 // through runTracker's check, and the shell's own launch door (decision 209).
-function spawnTracker(args, payload, onProgress, onEnded) {
+function spawnTracker(args, payload, onProgress, onEnded, { fresh = false } = {}) {
   // Serialised before anything starts (decision 176): a payload that will
   // not serialise used to throw once the tracker was already running and
   // waiting on stdin, which it then did until the timeout below.
@@ -299,24 +311,23 @@ function spawnTracker(args, payload, onProgress, onEnded) {
   }
   if (!FROZEN_API && !fs.existsSync(SOURCE_PYTHON)) return Promise.resolve(shellFailure(NOT_SET_UP, "refused"));
   return new Promise((resolve) => {
-    const env = { ...process.env, TRACKER_SETTINGS_DIR: SETTINGS_DIR, TRACKER_PRODUCT_NAME: PRODUCT_NAME };
-    const proc = FROZEN_API
-      ? spawn(FROZEN_API, args, { windowsHide: true, env })
-      : spawn(SOURCE_PYTHON, ["-m", "tracker.api", ...args], {
-          cwd: REPO_ROOT,
-          windowsHide: true,
-          env,
-        });
-    const startedAt = Date.now();
     const isPass = passCommand !== null && args[0] === passCommand;
+    // A command that is not a pass goes to the waiting spare when there is
+    // one from this program (P220); otherwise, and always for a pass, a
+    // process of its own is started for it, as before.
+    const handed = isPass || fresh ? null : takeSpare();
+    const proc = handed ? handed.proc : startTracker(args);
+    if (!isPass) startSpare();   // the next one waits for the next command
+    const startedAt = Date.now();
     if (isPass && proc.pid) passes.set(proc.pid, proc);
     let running = false;      // a pass that said it started: the click has its answer
     let killedReply = null;   // what a pass killed after it started ends with
     let limitMs = TRACKER_TIMEOUT_MS;
-    let pending = "";         // stdout not yet ended by a newline
+    let pieces = [];          // stdout not yet ended by a newline, as it came
     let reply;                // the last line that was not a progress line
     let last = null;          // the last progress line's fields
-    let stderr = "";
+    let stderr = handed ? handed.stderr : "";   // a spare's own, from before the hand-over
+    let heard = false;        // anything at all on stdout
     let settled = false;
     let timer = null;
     const settle = (value) => {
@@ -374,14 +385,22 @@ function spawnTracker(args, payload, onProgress, onEnded) {
       }
       reply = parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : undefined;
     };
+    // Read once (P220, findings-3 #3): each piece is searched for a newline
+    // on its own, and the pieces of a line are joined once, when it ends -
+    // never the whole of what came so far, again for every piece, which
+    // cost 176 ms of the window's process for a 3.9 MB Overview.
     proc.stdout.setEncoding("utf8");
     proc.stdout.on("data", (d) => {
-      pending += d;
+      heard = true;
+      let from = 0;
       let at;
-      while ((at = pending.indexOf("\n")) >= 0) {
-        take(pending.slice(0, at));
-        pending = pending.slice(at + 1);
+      while ((at = d.indexOf("\n", from)) >= 0) {
+        pieces.push(d.slice(from, at));
+        take(pieces.join(""));
+        pieces = [];
+        from = at + 1;
       }
+      if (from < d.length) pieces.push(from ? d.slice(from) : d);
     });
     proc.stderr.on("data", (d) => {
       if (stderr.length < STDERR_CAP) stderr += d;
@@ -392,10 +411,20 @@ function spawnTracker(args, payload, onProgress, onEnded) {
       settle(shellFailure(fill(couldNotStart, { code: (err && err.code) || "?" }), "failed"))
     );
     proc.on("close", (code) => {
-      take(pending);
-      pending = "";
+      take(pieces.join(""));
+      pieces = [];
       clearTimeout(timer);
       passes.delete(proc.pid);
+      // A spare that died while it waited - its exit not yet seen when it
+      // was handed the command - closes without a word. A read-only reply
+      // is asked once more, of a process of its own; a write never is, since
+      // it cannot be known that it did nothing (P220).
+      if (handed && !heard && !killedReply && !settled && HELD_READING_COMMANDS.has(args[0]) && !writingCommands.has(args[0])) {
+        if (stderr) keepInLog("shell stderr of a spare that closed without a reply", stderr);
+        settled = true;
+        resolve(spawnTracker(args, payload, onProgress, onEnded, { fresh: true }));
+        return;
+      }
       // Nothing of stderr goes on screen: a
       // failed command's goes to the log beside the tracker's database, for
       // a developer at this machine (decision 193, security principle 7).
@@ -409,9 +438,103 @@ function spawnTracker(args, payload, onProgress, onEnded) {
       if (!running) settle(ending);
       else if (onEnded) onEnded({ reply: ending, code });
     });
+    // A spare is told its command line first, one line of JSON, then the
+    // payload exactly as a fresh process reads it (tracker.api's spare()).
+    if (handed) proc.stdin.write(`${JSON.stringify({ argv: args })}\n`, "utf8");
     if (body !== undefined) proc.stdin.write(body, "utf8");
     proc.stdin.end();
   });
+}
+
+// One tracker process, started as every command's is: the packaged API, or
+// the checkout's private Python from the checkout, with the settings folder
+// and the product's name in its environment, its window hidden.
+function startTracker(args) {
+  const env = { ...process.env, TRACKER_SETTINGS_DIR: SETTINGS_DIR, TRACKER_PRODUCT_NAME: PRODUCT_NAME };
+  return FROZEN_API
+    ? spawn(FROZEN_API, args, { windowsHide: true, env })
+    : spawn(SOURCE_PYTHON, ["-m", "tracker.api", ...args], {
+        cwd: REPO_ROOT,
+        windowsHide: true,
+        env,
+      });
+}
+
+// ── the warm spare (P220, Jason 2026-10-08, A1) ───────────────────────
+// Starting Python and importing the tracker is most of what a small command
+// costs (state 306-368 ms fresh, 90-98 ms from a spare; about 0.85 s on the
+// office PC). So one tracker process is kept started, waiting on its stdin
+// with tracker.api's --spare: the next command that is not a pass is handed
+// to it - its command line, then its payload, then the end of input - and
+// another is started at once. It is still one command per process (decision
+// 171's lock rule, one store per process, the kill per command): a spare
+// runs the one command it is handed and exits. A pass is never handed to
+// one. What the tracker fixes at import is the program's own place and the
+// product's name (the environment it is started with, the same a fresh
+// process gets), so a spare from before the program changed - an upgrade, a
+// pull from source - is killed and the command runs fresh. Quitting kills it.
+const SPARE_FLAG = "--spare";
+let spare = null;   // {proc, stamp, stderr}
+
+// The program as it is now: the packaged API's size and time, or from source
+// the newest time of the tracker's modules. null when it cannot be read, and
+// then no spare is used.
+function programStamp() {
+  try {
+    if (FROZEN_API) {
+      const info = fs.statSync(FROZEN_API);
+      return `${info.size}:${info.mtimeMs}`;
+    }
+    const folder = path.join(REPO_ROOT, "tracker");
+    let newest = 0;
+    for (const name of fs.readdirSync(folder)) {
+      if (name.endsWith(".py")) newest = Math.max(newest, fs.statSync(path.join(folder, name)).mtimeMs);
+    }
+    return `source:${newest}`;
+  } catch {
+    return null;
+  }
+}
+
+// Start the spare, when the allowlist is known and none is waiting.
+function startSpare() {
+  if (spare || allowedCommands === null) return;
+  if (!FROZEN_API && !fs.existsSync(SOURCE_PYTHON)) return;
+  const stamp = programStamp();
+  if (stamp === null) return;
+  let proc;
+  try {
+    proc = startTracker([SPARE_FLAG]);
+  } catch {
+    return;   // a spare that cannot start is no spare: commands start their own
+  }
+  const mine = { proc, stamp, stderr: "" };
+  mine.collect = (d) => {
+    if (mine.stderr.length < STDERR_CAP) mine.stderr += d;
+  };
+  const forget = () => {
+    if (spare === mine) spare = null;
+  };
+  proc.stderr.on("data", mine.collect);
+  proc.on("exit", forget);
+  proc.on("error", forget);
+  if (proc.stdin) proc.stdin.on("error", () => {});
+  spare = mine;
+}
+
+// The waiting spare, taken for a command, or null. One from before the
+// program changed is killed, never used.
+function takeSpare() {
+  const mine = spare;
+  if (!mine) return null;
+  spare = null;
+  if (mine.proc.exitCode !== null && mine.proc.exitCode !== undefined) return null;
+  if (mine.stamp !== programStamp()) {
+    mine.proc.kill();
+    return null;
+  }
+  mine.proc.stderr.removeListener("data", mine.collect);
+  return mine;
 }
 
 // Opened only while it is still what the API reported it as (decision 188,
@@ -799,4 +922,10 @@ app.on("window-all-closed", () => app.quit());
 // pass left running where no one can stop it.
 app.on("will-quit", () => {
   for (const proc of passes.values()) proc.stdout.destroy();
+  // The spare has been handed nothing: it is killed, never left waiting (P220).
+  if (spare) {
+    const { proc } = spare;
+    spare = null;
+    proc.kill();
+  }
 });

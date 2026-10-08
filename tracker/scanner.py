@@ -93,7 +93,7 @@ from tracker.manifest import (
     summarize,
     with_statuses,
 )
-from tracker.progress import Watch
+from tracker.progress import SCAN_STEP, Watch
 from tracker.records import (
     CANDIDATE_SEP,
     IndexEntry,
@@ -827,11 +827,19 @@ def scan_engagement(
         identifiers = [i.identifier for i in items]
         assigned = assign_files(prepared_dir, identifiers)
 
+        # Each name's owner, worked out once for the scan (pilot P219): the
+        # identifier list is fixed for the scan, so the answer is too.
+        owners: dict[str, str | None] = {}
+
+        def owner(name: str) -> str | None:
+            if name not in owners:
+                owners[name] = owner_of(name, identifiers)
+            return owners[name]
+
         def belongs_to(identifier: str):
             """Whether a path - there or not - is a place ``identifier``'s
             copies sit: directly in the firm's folder, named for it."""
-            return lambda path: (path.parent == prepared_dir
-                                 and owner_of(path.name, identifiers) == identifier)
+            return lambda path: path.parent == prepared_dir and owner(path.name) == identifier
 
         # The record, read once, for the five things this scan asks of it:
         # which copies a person filed, which paths the record claims, which
@@ -856,7 +864,7 @@ def scan_engagement(
                 # person's stop is the deadline, now; a request whose
                 # verdicts are all kept is still scanned, and the first that
                 # would read stops the scan (``unreached``).
-                watch.say("file", step="scan", name=item.identifier)
+                watch.say("file", step=SCAN_STEP, name=item.identifier)
                 if watch.stop_asked():
                     cache.deadline = -math.inf
             try:

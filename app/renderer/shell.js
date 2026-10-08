@@ -56,6 +56,15 @@ let shellLastPass = null;      // the list's last_pass: {text, level, ok, when}
 let shellProgressNow = null;   // the running pass's last line: {n, total}
 let shellFirmNow = { status: "idle", data: null };   // idle, loading, ok, failed
 let shellFirmAsked = false;    // a second ask arrived while one ran
+let shellFirmEarly = null;     // the `firm` asked beside the first `list` (P221), until a load adopts it
+let shellClock = 0;            // orders a load's sending against a write's landing (P218)
+let shellFirmSentAt = 0;       // when the running load sent its `firm`
+let shellWroteAt = 0;          // when a write's reply last landed
+const shellFirmHeld = new Map();   // return path -> a state whose counts differed while a load sent after the write ran
+let shellFirmCount = null;     // the running `firm`'s last count line: {done, total} (P222)
+let shellFirmSlow = false;     // the running `firm` has taken longer than SHELL_FIRM_SLOW_MS
+let shellFirmTimer = null;
+const SHELL_FIRM_SLOW_MS = 2000;   // past this a firm page's wait says how many households are read (P222)
 let shellPageBusy = false;     // a return's state is on its way
 let shellPageFailed = false;   // it could not be had (the notice says why, with Retry)
 let shellFound = [];           // the search list's options
@@ -195,29 +204,154 @@ function shellAdopt(listed) {
   if (listed.paths) shellPaths = listed.paths;
   if (listed.last_pass) shellLastPass = listed.last_pass;
   shellRootSet = !listed.needs_root && Boolean(listed.root);
+  if (listed.needs_root) shellDropEarlyFirm();
   if (shellRootSet) shellLoadFirm();
   shellChanged();
 }
 
-// The Overview's counts (SPEC 4.2): after `list`, after a sort ends, after
-// F5 and after a write that changes a count. While it runs the firm pages
-// show their loading state; a failure is one notice with Retry and the
-// pages keep what they last had.
+// The Overview asked beside the list at launch (P221): main.js allows `firm`
+// before the allowlist is learned, so it is sent before the list is awaited,
+// through window.tracker.call itself - call() says a reply's warnings, which
+// needs the vocabulary the list brings. The load that follows the list
+// adopts its reply instead of sending another.
+function shellAskFirmEarly() {
+  if (shellFirmEarly || shellFirmNow.status === "loading") return;   // one is on its way already
+  shellFirmNow = { status: "loading", data: shellFirmNow.data };
+  shellFirmSent();
+  shellFirmEarly = new Promise((resolve) => resolve(window.tracker.call(["firm"])))
+    .then((reply) => ({ reply }), (err) => ({ err }));
+  shellUpdating();
+}
+
+// A list that asks for a clients folder has no Overview to show: the early
+// reply is never drawn.
+function shellDropEarlyFirm() {
+  if (!shellFirmEarly) return;
+  shellFirmEarly = null;
+  shellFirmDone();
+  shellFirmNow = { status: "idle", data: shellFirmNow.data };
+}
+
+// The early reply, said as call() says any reply: its warnings as notices,
+// its error thrown.
+async function shellAdoptEarly(early) {
+  const got = await early;
+  if (got.err) throw got.err;
+  const reply = got.reply;
+  if (reply && Array.isArray(reply.warnings) && reply.warnings.length) warningNotices(reply.warnings);
+  if (reply.error) throw new TrackerError(reply, ["firm"]);
+  return reply;
+}
+
+async function shellAskFirm() {
+  if (!Array.isArray(vocab.commands) || vocab.commands.indexOf("firm") === -1) throw new Error("firm");
+  return call(["firm"]);
+}
+
+// A `firm` has been sent: when, for the writes that land meanwhile (P218),
+// and the clock after which its wait says how far it has read (P222).
+function shellFirmSent() {
+  shellFirmSentAt = ++shellClock;
+  shellFirmCount = null;
+  shellFirmSlow = false;
+  clearTimeout(shellFirmTimer);
+  shellFirmTimer = setTimeout(shellFirmTookLong, SHELL_FIRM_SLOW_MS);
+}
+
+// Its reply has landed (or it was dropped): the count and the clock go.
+function shellFirmDone() {
+  clearTimeout(shellFirmTimer);
+  shellFirmTimer = null;
+  shellFirmSlow = false;
+  shellFirmCount = null;
+}
+
+function shellFirmTookLong() {
+  shellFirmTimer = null;
+  shellFirmSlow = true;
+  shellDrawReading();
+}
+
+// app.js: a write's reply has landed (P218). A load sent before it cannot
+// hold what it wrote; one sent after it can.
+function shellWriteLanded() {
+  shellWroteAt = ++shellClock;
+}
+
+// app.js: one count line of the running `firm` (P222; progress.count_line):
+// how many of the households it reads afresh it has read. Never a pass's.
+function shellFirmProgress(said) {
+  if (!said || shellFirmNow.status !== "loading") return;
+  const { done, total } = said;
+  if (!Number.isInteger(done) || !Number.isInteger(total) || total < 1 || done < 0 || done > total) return;
+  shellFirmCount = { done, total };
+  shellDrawReading();
+}
+
+// How far the running `firm` has read, once its wait has passed
+// SHELL_FIRM_SLOW_MS and it has said so - only while no counts are held.
+function shellReading() {
+  if (!shellFirmSlow || !shellFirmCount || shellFirmNow.status !== "loading" || shellFirmNow.data) return null;
+  return shellFirmCount;
+}
+
+// The words and the bar for that count, built as the last-sort bar is.
+function shellReadingNodes(count) {
+  const words = h("span", { className: "firm-reading-words", id: "firm-reading-words" });
+  const bar = h("div", { className: "last-sort-bar firm-reading-bar", role: "progressbar", "aria-valuemin": "0", "aria-labelledby": "firm-reading-words" }, h("span"));
+  shellSetReading(words, bar, count);
+  return h("div", { className: "firm-reading" }, words, bar);
+}
+
+function shellSetReading(words, bar, count) {
+  words.textContent = fill(screenWords().reading_households, { n: count.done, total: count.total });
+  bar.setAttribute("aria-valuemax", String(count.total));
+  bar.setAttribute("aria-valuenow", String(count.done));
+  bar.querySelector("span").style.setProperty("width", `${Math.round((count.done / count.total) * 100)}%`);
+}
+
+// A firm page waiting with no counts held says the count where it said the
+// hidden Loading: updated in place once it is drawn, so a screen reader's
+// place in the page is kept.
+function shellDrawReading() {
+  if (!vocab || !vocab.screen || FIRM_LEVELS.indexOf(shellRoute.level) === -1) return;
+  const count = shellReading();
+  if (!count) return;
+  const page = $("page");
+  const words = page.querySelector(".firm-reading-words");
+  const bar = page.querySelector(".firm-reading-bar");
+  if (words && bar) shellSetReading(words, bar, count);
+  else drawPage();
+}
+
+// The Overview's counts (SPEC 4.2): at start, beside the list (P221); after
+// a sort ends, after F5 and after a write that changes a count. While it
+// runs a firm page with no counts shows its loading state, and one drawn
+// from counts held says Updating (P222); a failure is one notice with Retry
+// and the pages keep what they last had.
 async function shellLoadFirm() {
-  if (shellFirmNow.status === "loading") {
+  const early = shellFirmEarly;
+  shellFirmEarly = null;
+  if (!early && shellFirmNow.status === "loading") {
     shellFirmAsked = true;
     return;
   }
   shellFirmNow = { status: "loading", data: shellFirmNow.data };
+  if (!early) shellFirmSent();
   shellChanged();
+  shellUpdating();
   try {
-    if (!Array.isArray(vocab.commands) || vocab.commands.indexOf("firm") === -1) throw new Error("firm");
-    shellFirmNow = { status: "ok", data: await call(["firm"]) };
+    shellFirmNow = { status: "ok", data: early ? await shellAdoptEarly(early) : await shellAskFirm() };
   } catch (err) {
     failureSentence(err);
     shellFirmNow = { status: "failed", data: shellFirmNow.data };
     notice({ sentence: screenWords().notices.firm_failed, kind: "failed" }, { retry: shellLoadFirm });
   }
+  shellFirmDone();
+  // A state that arrived during this load, after the write it shows, was
+  // held back (P218): one more load only if these counts still differ.
+  if (shellFirmNow.status === "ok" && [...shellFirmHeld.values()].some(shellCountsDiffer)) shellFirmAsked = true;
+  shellFirmHeld.clear();
   if (shellFirmAsked) {
     shellFirmAsked = false;
     shellFirmNow = { status: "idle", data: shellFirmNow.data };
@@ -225,7 +359,39 @@ async function shellLoadFirm() {
     return;
   }
   shellChanged();
-  if (FIRM_LEVELS.indexOf(shellRoute.level) !== -1) shellDraw();
+  if (shellFollowsCounts()) shellDraw();
+}
+
+// The pages drawn from the firm's counts: the firm pages, and a household's
+// and a year's, whose rows carry each return's status (P222).
+function shellFollowsCounts() {
+  return FIRM_LEVELS.indexOf(shellRoute.level) !== -1 || shellRoute.level === "household" || shellRoute.level === "year";
+}
+
+// Counts are held and asked again.
+function shellFirmUpdating() {
+  return shellFirmNow.status === "loading" && Boolean(shellFirmNow.data);
+}
+
+// "Updating" on a page drawn from the counts as a load starts, without
+// drawing it again (P222): the page's rows stay usable.
+function shellUpdating() {
+  if (!vocab || !vocab.screen || !shellFollowsCounts() || shellPageBusy || !shellFirmUpdating()) return;
+  const page = $("page");
+  page.setAttribute("aria-busy", "true");
+  shellMarkUpdating(page, true);
+}
+
+// The word sits in the path row, in #page-updating, which index.html keeps
+// from the start: nothing on the page moves when it comes or goes, so a
+// click aimed at a row never lands on its neighbour. The one status is
+// reused and its words set only when they change, so a redraw is not read
+// out again.
+function shellMarkUpdating(page, on) {
+  page.classList.toggle("is-updating", on);
+  const said = $("page-updating");
+  const words = on ? screenWords().updating : "";
+  if (said.textContent !== words) said.textContent = words;
 }
 
 // What pages.js reads (with shellRoute, shellLoading and shellGo).
@@ -315,14 +481,25 @@ function shellStateArrived(state) {
   try {
     shellDraw();
     if (typeof sheetStateArrived === "function") sheetStateArrived(state);   // sheet.js: the file answered leaves, the next comes
-    const firm = shellFirmNow.data;
-    const mine = firm && state.paths ? firm.returns.find((one) => one.path === state.paths.engagement) : null;
-    if (!mine || typeof pagesTally !== "function") return;
-    const tally = pagesTally(state);
-    if (Object.keys(tally).some((key) => tally[key] !== mine.counts[key])) shellLoadFirm();
+    if (!shellCountsDiffer(state)) return;
+    // A load sent after the last write landed may already hold what this
+    // state shows (after a Sort, the list's own load): it is remembered and
+    // compared when that load lands, never a second load queued against the
+    // old counts (P218). A load sent before it is followed by another.
+    if (shellFirmNow.status === "loading" && shellFirmSentAt > shellWroteAt) shellFirmHeld.set(state.paths.engagement, state);
+    else shellLoadFirm();
   } catch (err) {
     failed(err);
   }
+}
+
+// The state's own tally differs from the firm's counts for its return.
+function shellCountsDiffer(state) {
+  const firm = shellFirmNow.data;
+  const mine = firm && state.paths ? firm.returns.find((one) => one.path === state.paths.engagement) : null;
+  if (!mine || typeof pagesTally !== "function") return false;
+  const tally = pagesTally(state);
+  return Object.keys(tally).some((key) => tally[key] !== mine.counts[key]);
 }
 
 function shellDraw() {
@@ -585,9 +762,12 @@ function syncSortNotice() {
 
 function drawCounts() {
   const counts = shellCounts();
+  const held = shellFirmUpdating();   // the counts shown are asked again: muted until the reply (P222)
   for (const node of document.querySelectorAll(".side-section[data-section]")) {
     const n = shellRoute.level === "setup" ? 0 : counts[node.dataset.section] || 0;
-    node.querySelector(".side-count").textContent = n > 0 ? String(n) : "";
+    const count = node.querySelector(".side-count");
+    count.textContent = n > 0 ? String(n) : "";
+    count.classList.toggle("is-held", held);
   }
 }
 
@@ -710,13 +890,37 @@ function shellSkeleton(count) {
   return Array.from({ length: count }, () => h("div", { className: "row-skeleton", "aria-hidden": "true" }, h("i"), h("i")));
 }
 
-function shellLoading(title) {
+// The outline stands in its own page's shape (P222): the Overview's three
+// figures and its group head's line, a return page's caption line. No
+// words, no numbers, no dots. A firm page whose wait has passed about 2 s
+// says how many households `firm` has read, with a bar, where the hidden
+// Loading was.
+function shellLoading(title, level) {
   const words = screenWords();
+  const reading = FIRM_LEVELS.indexOf(level) !== -1 ? shellReading() : null;
+  const overview = level === "overview";
+  const outline = () => h("i", { className: "outline-bar", "aria-hidden": "true" });
   return [
     ...(title ? [h("h1", { className: "page-title" }, title)] : []),
-    h("div", { className: "group-head is-first" }, h("span", { className: "visually-hidden" }, words.loading)),
+    ...(level === "return" ? [h("div", { className: "page-caption is-outline", "aria-hidden": "true" }, outline())] : []),
+    ...(overview ? [h("div", { className: "figures", "aria-hidden": "true" }, [0, 1, 2].map(() => h("div", { className: "figure is-outline" }, outline())))] : []),
+    h("div", { className: "group-head is-first" },
+      reading ? shellReadingNodes(reading) : h("span", { className: "visually-hidden" }, words.loading),
+      overview && !reading ? outline() : null),
     ...shellSkeleton(6),
   ];
+}
+
+// The first list could not be had: with no vocabulary nothing can draw the
+// page, so the first paint's outline (index.html, P222) would wait, busy,
+// for ever. It goes as a firm page's failed state does - its frame alone,
+// not busy - and the failure's own notice says why, with Retry. A page
+// already drawn from an earlier list keeps what it shows.
+function shellStartFailed() {
+  if (vocab) return;
+  const page = $("page");
+  page.setAttribute("aria-busy", "false");
+  page.replaceChildren();
 }
 
 // The page's title alone; a firm page has none, so it draws only its frame.
@@ -731,17 +935,26 @@ function drawPage() {
   if (route.level === "setup") {
     if (typeof pagesLeave === "function") pagesLeave();
     page.setAttribute("aria-busy", "false");
+    shellMarkUpdating(page, false);
     page.replaceChildren(...setupPage());
     return;
   }
   // A firm page waits for its counts: outline rows until they arrive; when
   // they cannot be had (the notice says so, with Retry) it shows its title.
+  // A page drawn from counts held while they are asked again - a firm page,
+  // a household's or a year's (shellFollowsCounts) - says Updating (P222);
+  // its rows stay usable. The marker is set once per draw, never cleared and
+  // set again, so its status is not read out on every redraw.
   const firmPage = FIRM_LEVELS.indexOf(route.level) !== -1;
   const waiting = firmPage && !shellFirmNow.data && shellFirmNow.status !== "failed";
   const busy = shellPageBusy || waiting;
-  page.setAttribute("aria-busy", busy ? "true" : "false");
+  const updating = shellFollowsCounts() && !busy && shellFirmUpdating();
+  page.setAttribute("aria-busy", busy || updating ? "true" : "false");
+  shellMarkUpdating(page, updating);
   if (busy) {
-    page.replaceChildren(...shellLoading(routeTitle()));
+    // The outline in its own page's grid: a return page borrows no list's (P222).
+    page.dataset.list = typeof pagesListOf === "function" ? pagesListOf(route) : "";
+    page.replaceChildren(...shellLoading(routeTitle(), route.level));
     return;
   }
   if ((firmPage && !shellFirmNow.data) || shellPageFailed) {
@@ -776,14 +989,20 @@ function setupPage() {
     chosen.textContent = folderName(picked);
     start.disabled = false;
   });
+  // While set-root runs the page shows the outline below the form (P222).
+  const wait = h("div", { className: "setup-wait", "aria-hidden": "true" });
   start.addEventListener("click", async () => {
     $("firm-input").value = firm.value;
     $("phone-input").value = phone.value;
     start.disabled = true;
+    wait.replaceChildren(...shellSkeleton(3));
+    $("page").setAttribute("aria-busy", "true");
     try {
       await saveRoot();
     } finally {
       start.disabled = !$("root-input").value.trim();
+      wait.replaceChildren();
+      if (shellRoute.level === "setup") $("page").setAttribute("aria-busy", "false");
     }
   });
   const actions = [start];
@@ -799,6 +1018,7 @@ function setupPage() {
       h("label", { className: "setup-field" }, h("span", {}, vocab.settings.firm_label), firm),
       h("label", { className: "setup-field" }, h("span", {}, vocab.settings.phone_label), phone),
       h("div", { className: "setup-actions" }, ...actions)),
+    wait,
   ];
 }
 

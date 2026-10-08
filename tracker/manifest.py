@@ -1253,10 +1253,17 @@ def load_manifest(engagement_dir: Path | str, *, follow: bool = True) -> list[Re
 
     folder = Path(engagement_dir)
     conn = _the_record(folder, follow=follow)
-    items = [item_from_record(row) for row in store.rules(conn, folder) or []]
-    return _with_the_record(
-        items, store.statuses(conn, folder), store.learned_keywords(conn, folder)
-    )
+
+    def build() -> list[RequestItem]:
+        items = [item_from_record(row) for row in store.rules(conn, folder) or []]
+        return _with_the_record(
+            items, store.statuses(conn, folder), store.learned_keywords(conn, folder)
+        )
+
+    # Built once per state of the record inside a hold (pilot P215, E2):
+    # the journal was followed above, every time; the rows are rebuilt
+    # only when the record's head or applied lines moved.
+    return store.held_read(conn, folder, "manifest", build)
 
 
 def _with_the_record(
@@ -1325,7 +1332,9 @@ def load_engagement_info(engagement_dir: Path | str) -> EngagementInfo:
 
     folder = Path(engagement_dir)
     conn = _the_record(folder)
-    return store.engagement_info(conn, folder) or EngagementInfo()
+    # Once per state of the record inside a hold (P215), after the follow.
+    return store.held_read(conn, folder, "details",
+                           lambda: store.engagement_info(conn, folder) or EngagementInfo())
 
 
 # --------------------------------------------------------------- writing ----

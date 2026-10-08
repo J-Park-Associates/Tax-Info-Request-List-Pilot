@@ -596,7 +596,9 @@ def engagement_from(folder: Path) -> Engagement:
     household_path = layout.household_of(folder) if len(folder.parts) >= 3 else Path()
     try:
         info: EngagementInfo = load_engagement_info(folder)
-        rules = store.rules(store.connect(), folder) or []
+        # Whether, not what (P219): parsing every rule to learn "none" was
+        # the cost of every return's discovery.
+        has_rules = store.has_rules(store.connect(), folder)
     except (ManifestError, LedgerError, StoreError) as exc:
         return Engagement(path=folder, problem=str(exc), household_path=household_path)
     except Exception as exc:        # one folder's surprise, said by its class, not fatal
@@ -606,7 +608,7 @@ def engagement_from(folder: Path) -> Engagement:
         errors.keep("registry: the return's record", exc, name=folder.name)
         return Engagement(path=folder, problem=errors.error_class(exc),
                           household_path=household_path)
-    if not rules and (folder / LEGACY_MANIFEST_FILENAME).is_file():
+    if not has_rules and (folder / LEGACY_MANIFEST_FILENAME).is_file():
         return Engagement(path=folder, info=info, household_path=household_path,
                           problem=LEGACY_FOLDER.format(name=LEGACY_MANIFEST_FILENAME))
     return Engagement(path=folder, info=info, household_path=household_path)

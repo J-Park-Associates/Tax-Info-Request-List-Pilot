@@ -1297,3 +1297,96 @@ def test_the_shown_line_and_the_run_log_line_are_one_count_part_for_part():
     for (word, _), (said, _) in zip(record, shown, strict=True):
         assert said == (STATUS_LABELS[word].label if word in STATUS_LABELS
                         and word != Override.NOT_APPLICABLE else word)
+
+
+# ------------------------------------- a record's reads held per head (P215) ----
+
+
+def _rules_built(monkeypatch) -> list:
+    """Every time the list's rows are parsed from the store."""
+    calls = []
+    real = store.rules
+
+    def counted(conn, folder):
+        calls.append(folder)
+        return real(conn, folder)
+
+    monkeypatch.setattr(store, "rules", counted)
+    return calls
+
+
+def test_a_held_reading_builds_the_list_once_per_record_head(engagement, monkeypatch):
+    """P215 (E2): inside a hold the journal is followed every time, and the
+    list is built once while the record's head is unchanged."""
+    from tracker import settings
+
+    built = _rules_built(monkeypatch)
+    followed = []
+    real_follow = store.follow_the_journal
+
+    def follow(*args):
+        followed.append(1)
+        return real_follow(*args)
+
+    monkeypatch.setattr(store, "follow_the_journal", follow)
+    with settings.one_reading():
+        first = load_manifest(engagement)
+        second = load_manifest(engagement)
+        load_engagement_info(engagement)
+        load_engagement_info(engagement)
+    assert first == second and first is not second
+    assert len(built) == 1
+    assert len(followed) == 4
+
+
+def test_a_held_list_is_built_again_once_the_journal_moves(engagement, monkeypatch):
+    from tests.conftest import seed_statuses
+    from tracker import settings
+    from tracker.records import StatusUpdate
+
+    built = _rules_built(monkeypatch)
+    with settings.one_household():
+        before = load_manifest(engagement)
+        seed_statuses(engagement, {"A01": StatusUpdate(status=Status.RECEIVED, file_count=1)})
+        after = load_manifest(engagement)
+    assert len(built) == 2
+    assert before[0].status != Status.RECEIVED and after[0].status == Status.RECEIVED
+
+
+#: A second process recording one scan of the first row (the suite's own seeding).
+_ANOTHER_PROCESS = """
+import sys
+from pathlib import Path
+from tests.conftest import seed_statuses
+from tracker.manifest import Status
+from tracker.records import StatusUpdate
+seed_statuses(Path(sys.argv[1]), {"A01": StatusUpdate(status=Status.RECEIVED, file_count=1)})
+"""
+
+
+def test_a_line_another_process_appends_is_seen_by_the_next_read_in_the_hold(engagement):
+    """The journal is still followed on every read: a line another process
+    appended moves the record's head before the held list is asked."""
+    import subprocess
+    import sys
+
+    from tests.conftest import REPO, child_env
+    from tracker import settings
+
+    with settings.one_reading():
+        assert load_manifest(engagement)[0].status != Status.RECEIVED
+        done = subprocess.run([sys.executable, "-c", _ANOTHER_PROCESS, str(engagement)], cwd=REPO,
+                              env=child_env(), capture_output=True, text=True)
+        assert done.returncode == 0, done.stderr
+        assert load_manifest(engagement)[0].status == Status.RECEIVED
+
+
+def test_nothing_is_kept_once_the_hold_ends(engagement, monkeypatch):
+    from tracker import settings
+
+    built = _rules_built(monkeypatch)
+    with settings.one_reading():
+        load_manifest(engagement)
+    load_manifest(engagement)
+    load_manifest(engagement)
+    assert len(built) == 3

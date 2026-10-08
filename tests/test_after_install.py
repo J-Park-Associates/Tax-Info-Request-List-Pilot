@@ -343,7 +343,8 @@ def test_a_finding_is_not_a_failure(malformed, monkeypatch, capsys):
     assert len(record["findings"]) == 1 and "is malformed" in record["findings"][0]
     assert record["failed"] == [] and record["program"] == after_install.program_identity()
     assert after_install.CHECK_FOUND.format(n=1) in out and after_install.FINDINGS_WAIT in out
-    assert out.rstrip().splitlines()[-1] == after_install.FINDINGS_WAIT
+    # The last word on the record, before the Overview's console line (P218).
+    assert out.rstrip().splitlines()[-2:] == [after_install.FINDINGS_WAIT, after_install.OVERVIEW_READY]
 
 
 def test_a_store_that_cannot_open_is_a_failure(root, monkeypatch, capsys):
@@ -830,17 +831,21 @@ def test_setup_moves_what_186_lists_to_move_and_nothing_it_lists_to_delete(app, 
 
 CHECKPOINT = "record-heads.db"
 JOURNAL = "record-heads.db-journal"
+WAL = "record-heads.db-wal"
+SHM = "record-heads.db-shm"
 
 
 def left_behind(beside):
-    """A fabricated checkpoint, its journal and ``recovered/`` beside a
-    fabricated program folder, as an earlier version left them."""
+    """A fabricated checkpoint, its journal, its write-ahead log (P214) and
+    ``recovered/`` beside a fabricated program folder, as an earlier
+    version left them."""
     beside.mkdir(parents=True, exist_ok=True)
     (beside / CHECKPOINT).write_bytes(b"checkpoint\x00heads")
     (beside / JOURNAL).write_bytes(b"journal")
+    (beside / WAL).write_bytes(b"write-ahead log")
     (beside / "recovered" / "Household A").mkdir(parents=True)
     (beside / "recovered" / "Household A" / "record.json").write_text('{"fabricated": 1}', encoding="utf-8")
-    return [beside / CHECKPOINT, beside / JOURNAL, beside / "recovered"]
+    return [beside / CHECKPOINT, beside / JOURNAL, beside / WAL, beside / "recovered"]
 
 
 def test_the_left_behind_checkpoint_moves_into_the_data_home(tmp_path):
@@ -910,6 +915,45 @@ def test_a_checkpoint_never_moves_beside_another_journal(tmp_path):
         sentence=after_install.LEFT_BEHIND_JOURNAL_ALONE.format(home=home), failed=True)
     assert (beside / CHECKPOINT).read_bytes() == b"checkpoint\x00heads"
     assert sorted(os.listdir(home)) == [JOURNAL]
+
+
+def test_the_checkpoint_its_log_and_its_shared_memory_move_as_one(tmp_path):
+    """P214: the checkpoint keeps a write-ahead log, which holds committed
+    writes the file does not yet; the file, its log and its shared memory
+    are one unit and move together."""
+    beside, home = tmp_path / "program", tmp_path / "data home"
+    beside.mkdir()
+    for name, data in ((CHECKPOINT, b"checkpoint\x00heads"), (WAL, b"write-ahead log"),
+                       (SHM, b"shared memory")):
+        (beside / name).write_bytes(data)
+    items = [beside / CHECKPOINT, beside / WAL, beside / SHM]
+    done = after_install.move_left_behind(items, home)
+    assert not done.failed and done.moved == tuple(items)
+    assert sorted(os.listdir(home)) == sorted([CHECKPOINT, WAL, SHM])
+    assert (home / WAL).read_bytes() == b"write-ahead log"
+    assert not any(os.path.lexists(item) for item in items)
+
+
+def test_a_write_ahead_log_without_its_checkpoint_moves_nothing(tmp_path):
+    """A write-ahead log or its shared memory left without the checkpoint
+    it belongs to would be replayed into whatever checkpoint it is put
+    beside: it moves nothing, in the journal's own sentence, and a home
+    holding any part of the unit refuses the move as well."""
+    beside, home = tmp_path / "program", tmp_path / "data home"
+    beside.mkdir()
+    home.mkdir()
+    for side in (WAL, SHM):
+        (beside / side).write_bytes(b"an old side file")
+        done = after_install.move_left_behind([beside / side], home)
+        assert done == after_install.MoveOutcome(
+            sentence=after_install.LEFT_BEHIND_JOURNAL_ALONE.format(home=home), failed=True)
+        assert (beside / side).read_bytes() == b"an old side file"
+        assert os.listdir(home) == []
+    (beside / CHECKPOINT).write_bytes(b"checkpoint\x00heads")
+    (home / WAL).write_bytes(b"the home's own log")
+    done = after_install.move_left_behind([beside / CHECKPOINT], home)
+    assert done.failed and done.sentence == after_install.LEFT_BEHIND_JOURNAL_ALONE.format(home=home)
+    assert (beside / CHECKPOINT).is_file() and os.listdir(home) == [WAL]
 
 
 def test_move_schedule_here_from_a_removable_drive_changes_nothing(root, windows, monkeypatch, capsys):
@@ -1032,9 +1076,9 @@ def test_a_failed_copy_keeps_the_source_and_cleans_the_destination(tmp_path, mon
     assert TRACEBACK not in done.sentence
     assert items[0].read_bytes() == b"checkpoint\x00heads"
     assert items[1].read_bytes() == b"journal"
-    assert (items[2] / "Household A" / "record.json").read_text(encoding="utf-8") == '{"fabricated": 1}'
+    assert (items[-1] / "Household A" / "record.json").read_text(encoding="utf-8") == '{"fabricated": 1}'
     assert os.listdir(home) == []
-    assert sorted(os.listdir(items[0].parent)) == [CHECKPOINT, JOURNAL, "recovered"]
+    assert sorted(os.listdir(items[0].parent)) == sorted([CHECKPOINT, JOURNAL, WAL, "recovered"])
 
 
 def test_a_file_whose_source_cannot_be_removed_leaves_no_copy_behind(tmp_path, monkeypatch):
@@ -1919,3 +1963,89 @@ def test_the_carry_over_sentences_lead_the_printed_lines(root, windows, monkeypa
     assert code == 0 and out.splitlines()[:CARRIED] == carried
     assert after_install.read_record()["carried"] == carried
     assert out.count(after_install.SETTINGS_FROM_SOURCE) == 1
+
+
+# ----------------------------------- the setup door readies the Overview (P218) ----
+
+
+def test_setup_makes_the_overview_ready_after_its_other_jobs(root, monkeypatch, capsys, fills_asked):
+    """P218 (S3): the setup door's last job, before the record is written,
+    asks the firm summary once for the saved root - with this process's
+    store and checkpoint let go of first - and says so on the console."""
+    from tracker import door, runner
+
+    seen = {}
+    real = runner.fill_firm_cache
+
+    def fill(where, **kwargs):
+        seen["record written"] = after_install.record_path().exists()
+        seen["store held"] = store._CONNECTION is not None or store._CHECKPOINT is not None
+        return real(where, **kwargs)
+
+    monkeypatch.setattr(runner, "fill_firm_cache", fill)
+    after_install.record_path().unlink(missing_ok=True)
+    code, out = cli(monkeypatch, capsys, "--reason", "setup")
+
+    assert code == 0, out
+    assert fills_asked == [(str(door.checked_root()), "")]
+    assert seen == {"record written": False, "store held": False}
+    assert after_install.OVERVIEW_READY in out.splitlines()
+    record = json.loads(after_install.record_path().read_text(encoding="utf-8"))
+    assert record["failed"] == [] and record["program"] == after_install.program_identity()
+
+
+def test_a_fill_that_fails_never_fails_the_step(root, monkeypatch, capsys):
+    """A fill that did not finish is one console line, never a failure: the
+    step's identity is still recorded, so the app does not run the whole
+    step again at every launch for a cache."""
+    from tracker import runner
+
+    why = runner.FILL_STOPPED.format(code=3)
+    monkeypatch.setattr(runner, "fill_firm_cache", lambda where, **kwargs: why)
+    done = after_install.run(reason=after_install.REASON_SETUP)
+
+    assert done.exit_code == 0 and done.failed == ()
+    assert done.overview_sentence == after_install.OVERVIEW_NOT_READY.format(why=why)
+    assert done.overview_sentence in done.lines
+    assert done.reply()["overview_sentence"] == done.overview_sentence
+    record = json.loads(after_install.record_path().read_text(encoding="utf-8"))
+    assert record["failed"] == [] and record["program"] == after_install.program_identity()
+
+
+def test_the_launch_root_and_repair_doors_leave_the_overview_to_the_app(root, monkeypatch, fills_asked):
+    """Each of the other doors is followed at once by an Overview the app
+    asks, which fills the cache: none of them asks the summary itself - nor
+    does setup with no store on this computer yet."""
+    for reason in (after_install.REASON_LAUNCH, after_install.REASON_ROOT, after_install.REASON_REPAIR):
+        done = after_install.run(reason=reason)
+        assert done.overview_sentence == "" and after_install.OVERVIEW_READY not in done.lines, reason
+    assert fills_asked == []
+
+    store.close()
+    for side in ("", "-wal", "-shm"):
+        store.store_path().with_name(store.store_path().name + side).unlink(missing_ok=True)
+    done = after_install.run(reason=after_install.REASON_SETUP)
+    assert done.overview_sentence == "" and fills_asked == []
+    assert not store.store_path().exists()
+
+
+def test_the_installer_is_told_when_the_overview_could_not_be_prepared_and_setup_bat_is_not():
+    """Jason, 2026-10-08 ("show a small failure message window if the step
+    fails"): with ``INSTALLER_CODES_FLAG`` - the pilot installer's door -
+    the step exits ``SETUP_STEP_FAILED`` when a job could not run and
+    ``SETUP_OVERVIEW_NOT_READY`` when every job ran but the Overview could
+    not be prepared. Without it (``Setup.bat``, the app) an Overview that
+    could not be prepared is still not a failure."""
+    from types import SimpleNamespace
+
+    from tracker.runner import SETUP_OVERVIEW_NOT_READY, SETUP_STEP_FAILED
+
+    ready = SimpleNamespace(failed=(), overview_sentence=after_install.OVERVIEW_READY)
+    not_ready = SimpleNamespace(failed=(), overview_sentence=after_install.OVERVIEW_NOT_READY.format(why="x"))
+    not_run = SimpleNamespace(failed=(), overview_sentence="")
+    broken = SimpleNamespace(failed=("a job",), overview_sentence=after_install.OVERVIEW_READY)
+    assert after_install.installer_exit_code(ready) == 0
+    assert after_install.installer_exit_code(not_run) == 0
+    assert after_install.installer_exit_code(not_ready) == SETUP_OVERVIEW_NOT_READY
+    assert after_install.installer_exit_code(broken) == SETUP_STEP_FAILED
+    assert {SETUP_STEP_FAILED, SETUP_OVERVIEW_NOT_READY}.isdisjoint({0, 1, 2})   # never a crash's or argparse's code

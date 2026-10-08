@@ -153,6 +153,8 @@ api._vocab	screen.notices.paused	(none: a long sentence)	reword	Two Years Open; 
 api._vocab	screen.notices.pick_request	(new)	reword	Pick a Request First	4	Request list editor, beside a disabled action	Approved by Jason (rulings 18/18a/23)	Pick a Request First	
 api._vocab	screen.notices.reader	(none: a long sentence)	reword	Install Folder Name Too Long	5	Notice	SPEC E28; the reader warning's sentence goes to the error log	Install Folder Name Too Long	
 api._vocab	screen.notices.renamed	(none: a long sentence)	reword	Folder Renamed	2	Notice	SPEC E47; notice with one action, Accept	Folder Renamed	
+api._vocab	screen.reading_households	(new)	reword	Reading {n} of {total} Households	5	A firm page's loading state, after about 2 s	P222; approved by Jason 2026-10-08	Reading {n} of {total} Households	
+api._vocab	screen.updating	(new)	reword	Updating	1	Firm pages and side counts, while held counts are asked again	P222; approved by Jason 2026-10-08	Updating	
 api._vocab	settings.firm_help	as it should sign the reminders	cut		0	Nowhere; was setup help	Audit §3: help cut		-
 api._vocab	settings.phone_help	named in the final-notice reminder; blank drops that sentence	cut		0	Nowhere; was setup help	Audit §3: help cut		-
 api._vocab	shell.could_not_send	The app could not send that to the tracker ({kind}); nothing was changed.	error-log	Could not send; nothing changed	5	Notice area	Error kind to error log	Could Not Send; Nothing Changed	case

@@ -143,6 +143,10 @@ def test_the_shell_runs_only_commands_the_api_has():
     assert bootstrap in api.COMMANDS
     first_call = re.search(r'call\(\["([a-z-]+)"\]', read("app/renderer/app.js")).group(1)
     assert first_call == bootstrap
+    # P221: what else may run before the allowlist is a read-only reply.
+    early = re.search(r"const EARLY_COMMANDS = new Set\(\[([^\]]*)\]\);", main_js).group(1)
+    early = set(re.findall(r'"([a-z-]+)"', early)) | ({bootstrap} if "BOOTSTRAP_COMMAND" in early else set())
+    assert bootstrap in early and early <= api.HELD_READING_COMMANDS and not early & api.WRITING_COMMANDS
     assert "vocab.commands" in main_js and "vocab.engagement_flag" in main_js
     assert "openable.has(" in main_js                       # opens only paths the API reported
     assert 'proc.on("close", (code)' in main_js             # the exit code is not discarded
@@ -2654,49 +2658,63 @@ const event = { sender: { isDestroyed: () => false,
 #: The fake tracker: what each command prints, as the real API would.
 _FAKE_TRACKER = r"""
 const given = process.argv.slice(2);
-const command = given[given.indexOf("tracker.api") + 1];
-const folder = given[given.indexOf("tracker.api") + 3];
 const say = (o) => process.stdout.write(JSON.stringify(o) + "\n");
 const line = (fields) => say({ progress: { v: 1, pass: 4242, at: "2026-01-02T03:04:05", ...fields } });
-if (command === "list") {
-  say({ vocab: { commands: ["list", "run-now", "scan", "state", "rename", "templates", "priors"],
-                 writing_commands: ["rename"],
-                 engagement_flag: "--engagement", pass_command: "run-now",
-                 shell: { error_log: process.env.FAKE_LOG } } });
-} else if (command === "run-now" && folder === "/sample/return") {
-  // A pass (decision 203): it begins, runs on, and ends with its final line.
-  line({ event: "started", limit_seconds: 7200, households: 1 });
-  line({ event: "household", household: "Sample Household", n: 1, of: 1 });
-  setTimeout(() => {
+const run = (command, folder) => {
+  if (command === "list") {
+    say({ vocab: { commands: ["list", "run-now", "scan", "state", "rename", "templates", "priors"],
+                   writing_commands: ["rename"],
+                   engagement_flag: "--engagement", pass_command: "run-now",
+                   shell: { error_log: process.env.FAKE_LOG } } });
+  } else if (command === "run-now" && folder === "/sample/return") {
+    // A pass (decision 203): it begins, runs on, and ends with its final line.
+    line({ event: "started", limit_seconds: 7200, households: 1 });
+    line({ event: "household", household: "Sample Household", n: 1, of: 1 });
+    setTimeout(() => {
+      line({ event: "file", step: "sort", name: "W-2 Sample.pdf", household: "Sample Household" });
+      say({ pass: 4242, exit: 0, runs: [{ label: "Sample", filed: 1 }], pass_warnings: [], warnings: [] });
+    }, 1500);
+  } else if (command === "run-now" && folder === "/sample/slow") {
+    // A pass that outlives the limit its own first line states.
+    line({ event: "started", limit_seconds: 1, households: 1 });
     line({ event: "file", step: "sort", name: "W-2 Sample.pdf", household: "Sample Household" });
-    say({ pass: 4242, exit: 0, runs: [{ label: "Sample", filed: 1 }], pass_warnings: [], warnings: [] });
-  }, 1500);
-} else if (command === "run-now" && folder === "/sample/slow") {
-  // A pass that outlives the limit its own first line states.
-  line({ event: "started", limit_seconds: 1, households: 1 });
-  line({ event: "file", step: "sort", name: "W-2 Sample.pdf", household: "Sample Household" });
-  setTimeout(() => {}, 60000);
-} else if (command === "run-now" && folder === "/sample/stays") {
-  // A pass still running when the app closes: it stops when its pipe breaks.
-  line({ event: "started", limit_seconds: 7200, households: 1 });
-  process.stdout.on("error", () => {
-    require("fs").writeFileSync(process.env.FAKE_LOG + ".pipe-broke", "");
-    process.exit(0);
+    setTimeout(() => {}, 60000);
+  } else if (command === "run-now" && folder === "/sample/stays") {
+    // A pass still running when the app closes: it stops when its pipe breaks.
+    line({ event: "started", limit_seconds: 7200, households: 1 });
+    process.stdout.on("error", () => {
+      require("fs").writeFileSync(process.env.FAKE_LOG + ".pipe-broke", "");
+      process.exit(0);
+    });
+    setInterval(() => line({ event: "file", step: "sort", name: "W-2 Sample.pdf" }), 100);
+  } else if (command === "run-now") {
+    // Refused before it began: one reply, as any command's.
+    say({ error: "refused", failure: { sentence: "refused", kind: "refused", seq: null, identifier: null },
+          warnings: [] });
+    process.exit(1);
+  } else if (command === "state" || command === "rename") {
+    line({ event: "started", limit_seconds: 1, households: 1 });
+    line({ event: "household", household: "Sample Household", n: 1, of: 1 });
+    line({ event: "file", step: "scan", name: "A01", household: "Sample Household" });
+    setTimeout(() => {}, 60000);
+  } else if (command === "templates") {
+    process.stderr.write("Traceback: a fabricated message naming Sample Client's folder\n");
+    process.exit(1);
+  }
+};
+if (given.includes("--spare")) {
+  // A spare (P220): it waits for its command line, the first line of stdin.
+  let got = "";
+  process.stdin.setEncoding("utf8");
+  process.stdin.on("data", (d) => { got += d; });
+  process.stdin.on("end", () => {
+    const at = got.indexOf("\n");
+    if (at === -1) process.exit(0);
+    const argv = JSON.parse(got.slice(0, at)).argv;
+    run(argv[0], argv[2]);
   });
-  setInterval(() => line({ event: "file", step: "sort", name: "W-2 Sample.pdf" }), 100);
-} else if (command === "run-now") {
-  // Refused before it began: one reply, as any command's.
-  say({ error: "refused", failure: { sentence: "refused", kind: "refused", seq: null, identifier: null },
-        warnings: [] });
-  process.exit(1);
-} else if (command === "state" || command === "rename") {
-  line({ event: "started", limit_seconds: 1, households: 1 });
-  line({ event: "household", household: "Sample Household", n: 1, of: 1 });
-  line({ event: "file", step: "scan", name: "A01", household: "Sample Household" });
-  setTimeout(() => {}, 60000);
-} else if (command === "templates") {
-  process.stderr.write("Traceback: a fabricated message naming Sample Client's folder\n");
-  process.exit(1);
+} else {
+  run(given[given.indexOf("tracker.api") + 1], given[given.indexOf("tracker.api") + 3]);
 }
 """
 
@@ -4303,3 +4321,337 @@ def test_no_person_facing_document_calls_the_program_the_tracker():
             if _calls_the_program_the_tracker(judged):
                 wrong.append((rel, sentence))
     assert wrong == []
+
+
+#: The real ``main.js`` run by node against a stand-in for Electron and for
+#: child_process (P220, P221): every tracker process is recorded - what it
+#: was started with, what it was handed on stdin, whether it was killed -
+#: and answers as tracker.api would, a spare (``--spare``) only once it has
+#: been handed its command line. ``program`` steps move the program's stamp
+#: (the newest time of tracker/*.py), as an upgrade from source does.
+_SPAWN_HARNESS = r"""
+const Module = require("module");
+const EventEmitter = require("events");
+const realFs = require("fs");
+const path = require("path");
+const [mainJs, scenarioJson] = process.argv.slice(2);
+const sc = JSON.parse(scenarioJson);
+const log = { spawned: [], replies: [], sends: [] };
+let stamp = 1;
+let trackerHandler = null;
+const appHandlers = {};
+// What main.js has started and not yet seen finish: a command once its
+// stdin has ended, until it closes. A spare waiting for its line is not.
+let pending = 0;
+const track = (promise) => { pending += 1; const done = () => { pending -= 1; }; promise.then(done, done); return promise; };
+const settle = async () => { do { await new Promise((resolve) => setImmediate(resolve)); } while (pending > 0); };
+const win = { isDestroyed: () => false, getContentBounds: () => ({ width: 1400, height: 900 }), setBackgroundColor() {}, loadFile() {}, on() {},
+              isMinimized: () => false, focus() {},
+              webContents: { setWindowOpenHandler() {}, on() {}, session: { flushStorageData() {} }, send() {} } };
+class BrowserWindow { constructor() { return win; } static getAllWindows() { return [win]; } }
+const electron = {
+  app: { isPackaged: false, requestSingleInstanceLock: () => true, quit() {}, on(name, fn) { appHandlers[name] = fn; }, setPath() {},
+         setAppUserModelId() {}, getPath: () => "/fake", whenReady: () => track(Promise.resolve()) },
+  BrowserWindow,
+  Menu: { buildFromTemplate: (template) => ({ template, popup() {} }), setApplicationMenu() {} },
+  ipcMain: { handle(name, fn) { if (name === "tracker-cmd") trackerHandler = fn; }, on() {} },
+  nativeTheme: { shouldUseDarkColors: false, shouldUseHighContrastColors: false, themeSource: "", on() {} },
+  shell: {}, dialog: {},
+};
+const LIST = { vocab: { commands: ["list", "firm", "state", "edit", "run-now", "after-install"], pass_command: "run-now",
+                        writing_commands: ["edit"], engagement_flag: "--engagement" } };
+// What the tracker would print for one command line: progress lines, then the reply.
+const answerFor = (argv) => {
+  const [command] = argv;
+  if (command === "list") return [LIST];
+  if (command === "after-install") return [{ ran: false, warnings: [] }];
+  if (command === "run-now") return [{ progress: { event: "started", pass: "p1", limit_seconds: 60 } }, { runs: [], warnings: [] }];
+  if (command === "firm" && sc.bigFirm) {
+    const lines = [0, 25, 50].map((done) => ({ progress: { v: 1, event: "households", done, total: 50 } }));
+    return [...lines, { returns: Array.from({ length: 400 }, (_, i) => ({ path: `r${i}`, label: `Return ${i} é` })), warnings: [] }];
+  }
+  return [{ command, argv, warnings: [] }];
+};
+const fakeSpawn = (cmd, args, options) => {
+  const proc = new EventEmitter();
+  const entry = { cmd, args, cwd: (options && options.cwd) || "", settings: Boolean(options && options.env && options.env.TRACKER_SETTINGS_DIR),
+                  hidden: Boolean(options && options.windowsHide), stdin: "", ended: false, killed: false, exited: false, counted: false, handed: null };
+  log.spawned.push(entry);
+  proc.stdout = new EventEmitter();
+  proc.stdout.setEncoding = () => {};
+  proc.stdout.destroy = () => {};
+  proc.stderr = new EventEmitter();
+  proc.pid = log.spawned.length;
+  const finish = (code) => {
+    if (entry.exited) return;
+    entry.exited = true;
+    setImmediate(() => {
+      proc.emit("exit", code, null);
+      proc.emit("close", code, null);
+      if (entry.counted) pending -= 1;
+    });
+  };
+  proc.kill = () => { entry.killed = true; finish(null); };
+  const answer = () => {
+    let argv = args[0] === "-m" ? args.slice(2) : args;
+    if (argv.length === 1 && argv[0] === "--spare") {
+      const at = entry.stdin.indexOf("\n");
+      if (at === -1) { finish(0); return; }
+      argv = JSON.parse(entry.stdin.slice(0, at)).argv;
+      entry.handed = argv;
+      entry.payload = entry.stdin.slice(at + 1);
+      // A spare that had died while it waited: handed a command, it closes
+      // without a word.
+      if (sc.silentSpares > 0) { sc.silentSpares -= 1; finish(1); return; }
+    } else {
+      entry.payload = entry.stdin;
+    }
+    const text = answerFor(argv).map((one) => JSON.stringify(one) + "\n").join("");
+    const pieces = argv[0] === "firm" && sc.pieces ? sc.pieces : 1;
+    const size = Math.ceil(text.length / pieces);
+    for (let at = 0; at < text.length; at += size) proc.stdout.emit("data", text.slice(at, at + size));
+    finish(0);
+  };
+  proc.stdin = new EventEmitter();
+  proc.stdin.write = (chunk) => { entry.stdin += chunk; return true; };
+  proc.stdin.end = () => {
+    if (entry.ended) return;
+    entry.ended = true;
+    entry.counted = true;
+    pending += 1;
+    setImmediate(answer);
+  };
+  return proc;
+};
+const trackerDir = path.join(path.dirname(path.dirname(mainJs)), "tracker");
+const load = Module._load;
+Module._load = function (request, ...rest) {
+  if (request === "electron") return electron;
+  if (request === "child_process") return { spawn: fakeSpawn };
+  if (request === "fs") {
+    return { ...realFs, existsSync: () => true,
+      readdirSync(p, ...more) { return path.resolve(String(p)) === trackerDir ? ["api.py", "store.py", "README.txt"] : realFs.readdirSync(p, ...more); },
+      statSync(p, ...more) {
+        if (path.dirname(path.resolve(String(p))) === trackerDir) return { size: 100, mtimeMs: String(p).endsWith("store.py") ? stamp : 1 };
+        return realFs.statSync(p, ...more);
+      } };
+  }
+  return load.call(this, request, ...rest);
+};
+(async () => {
+  require(mainJs);
+  await settle();
+  for (const step of sc.steps) {
+    if (step.tracker) {
+      const sender = { isDestroyed: () => false, send: (channel, message) => log.sends.push({ channel, message }) };
+      log.replies.push(await trackerHandler({ sender }, step.tracker, step.payload));
+    } else if (step.program) {
+      stamp += 1;
+    } else if (step.quit) {
+      appHandlers["will-quit"]();
+    }
+    await settle();
+  }
+  process.stdout.write(JSON.stringify(log));
+})();
+"""
+
+
+def _run_spawns(tmp_path, steps, **scenario) -> dict:
+    """The harness above, run once; what main.js started and answered."""
+    import shutil
+    import subprocess
+
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node is not on PATH (CI installs it)")
+    harness = tmp_path / "spawn_harness.js"
+    harness.write_text(_SPAWN_HARNESS, encoding="utf-8", newline="\n")
+    done = subprocess.run([node, str(harness), str(REPO / "app" / "main.js"), json.dumps({"steps": steps, **scenario})],
+                          capture_output=True, text=True, encoding="utf-8", timeout=60, check=False)
+    assert done.returncode == 0, done.stderr
+    return json.loads(done.stdout)
+
+
+def _commands(ran: dict) -> list:
+    """Each tracker process main.js started, as the command it ran: a fresh
+    one's argv, a spare's ``--spare`` and what it was handed."""
+    out = []
+    for one in ran["spawned"]:
+        argv = one["args"][2:] if one["args"][:1] == ["-m"] else one["args"]
+        out.append({"argv": argv, "handed": one["handed"], "killed": one["killed"], "cwd": bool(one["cwd"]),
+                    "settings": one["settings"], "hidden": one["hidden"]})
+    return out
+
+
+def test_the_shell_allows_the_read_only_overview_before_the_first_reply(tmp_path):
+    """P221: before the first reply has said which commands exist, main.js
+    runs the list and the Overview's counts asked beside it (decision 176,
+    widened by one read-only command) and refuses anything else; once the
+    allowlist is learned, it is the rule."""
+    import tracker.api as api
+
+    main_js = read("app/main.js")
+    early = set(re.findall(r'"([a-z-]+)"', re.search(r"const EARLY_COMMANDS = new Set\(\[([^\]]*)\]\);", main_js).group(1)))
+    early.add(re.search(r'const BOOTSTRAP_COMMAND = "([a-z-]+)";', main_js).group(1))
+    assert early == {"list", "firm"}
+    assert early <= api.HELD_READING_COMMANDS and not early & api.WRITING_COMMANDS
+    ran = _run_spawns(tmp_path, [{"tracker": ["firm"]}, {"tracker": ["state"]}, {"tracker": ["list"]}, {"tracker": ["state"]}])
+    firm, refused, _listed, state = ran["replies"]
+    assert firm["command"] == "firm" and not firm.get("error")
+    assert refused["error"] == "Unknown command: state", "nothing else runs before the allowlist"
+    assert state["command"] == "state"
+
+
+def _spares(ran: dict) -> list:
+    return [one for one in _commands(ran) if one["argv"] == ["--spare"]]
+
+
+def test_the_shell_hands_a_waiting_spare_the_next_command_and_starts_another(tmp_path):
+    """P220 (A1, findings-3 #4): one tracker process is kept started with
+    ``--spare``, as every command's is started (the checkout, the settings
+    folder in its environment, no window). The next command that is not a
+    pass is handed to it - one line ``{"argv": [...]}``, then the payload as a
+    fresh process reads it, then the end of input - and another spare is
+    started at once. Still one command per process: each spare runs one."""
+    payload = {"identifier": "A01", "note": "café"}
+    ran = _run_spawns(tmp_path, [{"tracker": ["list"]}, {"tracker": ["state"]},
+                                 {"tracker": ["edit", "--engagement", "/r/1"], "payload": payload}])
+    commands = _commands(ran)
+    assert [one["argv"] for one in commands] == [["after-install"], ["list"], ["--spare"], ["--spare"], ["--spare"]]
+    first, second, third = _spares(ran)
+    assert first["handed"] == ["state"] and second["handed"] == ["edit", "--engagement", "/r/1"] and third["handed"] is None
+    assert not any(one["killed"] for one in commands)
+    fresh = commands[1]
+    assert all((one["cwd"], one["settings"], one["hidden"]) == (fresh["cwd"], fresh["settings"], fresh["hidden"]) == (True, True, True)
+               for one in _spares(ran))
+    edit = ran["spawned"][3]
+    assert edit["stdin"] == json.dumps({"argv": ["edit", "--engagement", "/r/1"]}, separators=(",", ":")) + "\n" \
+        + json.dumps(payload, separators=(",", ":"), ensure_ascii=False)
+    assert json.loads(edit["payload"]) == payload
+    _listed, state, edited = ran["replies"]
+    assert state["command"] == "state" and edited["argv"] == ["edit", "--engagement", "/r/1"]
+    main_js = read("app/main.js")
+    assert 'const SPARE_FLAG = "--spare";' in main_js
+    spawn_tracker = main_js[main_js.index("function spawnTracker"):main_js.index("function startTracker")]
+    # The kill is armed when the command is handed over, never at the spare's start.
+    assert spawn_tracker.index("takeSpare()") < spawn_tracker.index("arm(TRACKER_TIMEOUT_MS)")
+
+
+def test_a_pass_is_never_handed_to_the_spare(tmp_path):
+    """P220: Sort & Scan (the pass, decision 203) always runs in a process of
+    its own, watched as a pass is; the spare keeps waiting for the next
+    command that is not one."""
+    ran = _run_spawns(tmp_path, [{"tracker": ["list"]}, {"tracker": ["run-now", "--engagement", "/r/1"]}, {"tracker": ["state"]}])
+    commands = _commands(ran)
+    assert [one["argv"] for one in commands] == [["after-install"], ["list"], ["--spare"], ["run-now", "--engagement", "/r/1"], ["--spare"]]
+    assert [one["handed"] for one in _spares(ran)] == [["state"], None]
+    assert ran["replies"][1]["pass"] == "p1"
+
+
+def test_a_spare_from_before_the_program_changed_is_not_used(tmp_path):
+    """P220: what the tracker fixes at import is the program's own; a spare
+    started before the program changed (an upgrade, a pull from source) is
+    killed, the command runs in a fresh process, and the next spare is the
+    new program's."""
+    ran = _run_spawns(tmp_path, [{"tracker": ["list"]}, {"program": "changed"}, {"tracker": ["state"]}, {"tracker": ["firm"]}])
+    commands = _commands(ran)
+    assert [one["argv"] for one in commands] == [["after-install"], ["list"], ["--spare"], ["state"], ["--spare"], ["--spare"]]
+    old, new, last = _spares(ran)
+    assert old["killed"] and old["handed"] is None
+    assert new["handed"] == ["firm"] and not new["killed"] and last["handed"] is None
+    assert ran["replies"][1]["command"] == "state" and ran["replies"][2]["command"] == "firm"
+
+
+def test_a_read_handed_to_a_spare_that_had_died_is_asked_once_more_and_a_write_never(tmp_path):
+    """P220 review: a spare that died while it waited, its exit not yet seen,
+    was handed the next command and closed without a word, so the click
+    ended with no reply. A read-only reply (tracker.api's held readings, as
+    main.js knows them) is asked once more of a process of its own; a write
+    is never run twice - it ends with no reply, as before."""
+    import tracker.api as api
+
+    main_js = read("app/main.js")
+    known = set(re.findall(r'"([a-z-]+)"', re.search(r"const HELD_READING_COMMANDS = new Set\(\[([^\]]*)\]\);", main_js).group(1)))
+    assert known == set(api.HELD_READING_COMMANDS) and not known & api.WRITING_COMMANDS
+    ran = _run_spawns(tmp_path, [{"tracker": ["list"]}, {"tracker": ["state"]},
+                                 {"tracker": ["edit", "--engagement", "/r/1"], "payload": {"identifier": "A01"}}],
+                      silentSpares=2)
+    assert [one["argv"] for one in _commands(ran)] == [["after-install"], ["list"], ["--spare"], ["--spare"], ["state"], ["--spare"]]
+    assert [one["handed"] for one in _spares(ran)] == [["state"], ["edit", "--engagement", "/r/1"], None]
+    _listed, state, edited = ran["replies"]
+    assert state["command"] == "state" and not state.get("error")
+    assert edited.get("error"), "a write handed to a dead spare is never run again"
+    assert sum(1 for one in _commands(ran) if one["argv"] == ["edit", "--engagement", "/r/1"] or one["handed"] and one["handed"][0] == "edit") == 1
+
+
+def test_quitting_kills_the_spare(tmp_path):
+    """P220: a spare handed nothing is killed when the app quits, never left
+    waiting; a pass still running is told to stop as before (its pipe)."""
+    ran = _run_spawns(tmp_path, [{"tracker": ["list"]}, {"quit": True}])
+    [spare] = _spares(ran)
+    assert spare["killed"] and spare["handed"] is None
+    will_quit = read("app/main.js").split('app.on("will-quit", () => {', 1)[1].split("\n});", 1)[0]
+    assert "proc.stdout.destroy()" in will_quit and "proc.kill()" in will_quit
+
+
+def test_no_spare_starts_before_the_first_list(tmp_path):
+    """P220: start-up gains no third process beside the list and the early
+    Overview: the first spare is started once the first list's reply is learned."""
+    ran = _run_spawns(tmp_path, [{"tracker": ["firm"]}, {"tracker": ["list"]}])
+    assert [one["argv"] for one in _commands(ran)] == [["after-install"], ["firm"], ["list"], ["--spare"]]
+    assert _spares(ran)[0]["handed"] is None
+
+
+def test_a_reply_in_a_thousand_pieces_is_read_once_and_whole(tmp_path):
+    """P220 (findings-3 #3): stdout arrives in pieces; each piece is searched
+    for a newline on its own and a line's pieces are joined once, so a large
+    Overview is no longer searched again from its start for every piece. The
+    lines are the same: the count lines reach the page on the progress
+    channel, and the reply is whole."""
+    ran = _run_spawns(tmp_path, [{"tracker": ["list"]}, {"tracker": ["firm"]}], pieces=1000, bigFirm=True)
+    firm = ran["replies"][1]
+    assert len(firm["returns"]) == 400 and firm["returns"][399] == {"path": "r399", "label": "Return 399 é"}
+    counts = [one["message"] for one in ran["sends"] if one["channel"] == "tracker-progress"]
+    assert [one["progress"]["done"] for one in counts] == [0, 25, 50] and all(one["args"] == ["firm"] for one in counts)
+    reader = read("app/main.js")
+    reader = reader[reader.index('proc.stdout.on("data", (d) => {'):]
+    reader = reader[:reader.index("\n    });\n")]
+    assert 'd.indexOf("\\n", from)' in reader and 'pieces.join("")' in reader
+    assert "+= d" not in reader and "pending" not in reader
+
+
+def test_the_shell_and_the_api_agree_on_the_spare_the_early_overview_and_the_count_line():
+    """The speed round's one join between its lanes (SPEC-speed-round 5.5.2),
+    built apart and met only here. P220: the shell starts its spare with the
+    flag the API's entry waits on. P221: every command the shell lets run
+    before the allowlist is a held reading and never a write. P222: the
+    renderer takes a count line for the Overview's by the command that
+    printed it - the runner's ``firm`` - and reads the two fields
+    ``progress.count_line`` writes, under the key ``main.js`` passes on."""
+    import tracker.api as api
+    from tracker import progress, runner
+
+    main_js = read("app/main.js")
+    assert re.search(r'const SPARE_FLAG = "([^"]+)";', main_js).group(1) == api.SPARE_FLAG
+    early_source = re.search(r"const EARLY_COMMANDS = new Set\(\[([^\]]*)\]\);", main_js).group(1)
+    early = set(re.findall(r'"([a-z-]+)"', early_source))
+    if "BOOTSTRAP_COMMAND" in early_source:
+        early.add(re.search(r'const BOOTSTRAP_COMMAND = "([a-z-]+)";', main_js).group(1))
+    assert runner.FIRM_COMMAND in early
+    assert early <= api.HELD_READING_COMMANDS and not early & api.WRITING_COMMANDS
+
+    app_js = read("app/renderer/app.js")
+    routed = app_js[app_js.index("function onPassMessage(m) {"):]
+    routed = routed[:routed.index("\n}\n")]
+    assert re.findall(r'm\.args\[0\] === "([a-z-]+)"', routed) == [runner.FIRM_COMMAND]
+    assert routed.index("shellFirmProgress(m.progress)") < routed.index("scanning")
+
+    said = json.loads(progress.count_line(3, 7))
+    assert list(said) == [progress.PROGRESS_KEY] and f'const PROGRESS_KEY = "{progress.PROGRESS_KEY}";' in main_js
+    assert said[progress.PROGRESS_KEY] == {"v": progress.FORMAT_VERSION, "event": progress.COUNT_EVENT,
+                                            "done": 3, "total": 7}
+    shell_js = read("app/renderer/shell.js")
+    reader = shell_js[shell_js.index("function shellFirmProgress(said) {"):]
+    reader = reader[:reader.index("\n}\n")]
+    assert "const { done, total } = said;" in reader

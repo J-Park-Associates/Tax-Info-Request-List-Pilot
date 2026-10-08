@@ -48,10 +48,11 @@ import os
 import re
 import secrets
 import sys
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TypeVar
 
 from tracker import layout
 from tracker.fsio import write_json_atomically
@@ -568,7 +569,7 @@ def app_dir() -> Path:
     this is where the program itself lives, whatever the settings say.
     Answered once per reading inside :func:`one_reading` (P118).
     """
-    return _held(("app_dir",), _the_app_dir)
+    return held(("app_dir",), _the_app_dir)
 
 
 def _the_app_dir() -> Path:
@@ -629,7 +630,7 @@ def program_folders() -> list[Path]:
     package the executable sits inside. A settings folder that does not
     hold the program (the suite's per-test folder) is not the program.
     Answered once per reading inside :func:`one_reading` (P118)."""
-    return list(_held(("program_folders",), _the_program_folders))
+    return list(held(("program_folders",), _the_program_folders))
 
 
 def _the_program_folders() -> list[Path]:
@@ -732,7 +733,7 @@ def data_home() -> Path:
 
     On Windows, with no ``ENV_DATA_HOME``, a data home Windows is
     redirecting is refused (F7, P193): see :func:`_the_data_home`."""
-    return _held(("data_home",), lambda: _the_data_home(os.environ, windows=os.name == "nt"))
+    return held(("data_home",), lambda: _the_data_home(os.environ, windows=os.name == "nt"))
 
 
 def _the_data_home(environ, *, windows: bool) -> Path:
@@ -881,6 +882,8 @@ HOLD_READING = "reading"
 HOLD_HOUSEHOLD = "household"
 #: The key :func:`_read` holds the settings file's answer under.
 _SETTINGS_HELD = ("settings",)
+#: Whatever one held answer is (:func:`held`).
+T = TypeVar("T")
 
 
 @contextmanager
@@ -950,14 +953,38 @@ def _holding(kind: str) -> Iterator[None]:
         _HELD, _HOLDING = None, ""
 
 
-def _held(key: tuple, answer):
-    """``answer()``, asked once per reading inside :func:`one_reading` and
-    every time outside one."""
+def held(key: tuple, answer: Callable[[], T], *, there: Path | str | None = None) -> T:
+    """``answer()``, kept for the hold under way: **the one memo whose life
+    is a hold** (pilot P215). Every answer the package keeps for one reply
+    or one household is kept here, so what is held, and for how long, is
+    worded once.
+
+    - Outside a hold: ``answer()`` every time - nothing is kept.
+    - Inside a reading (P118): asked once and kept for the reading, which
+      changes nothing.
+    - Inside a household's hold (P207): asked once, and kept only when
+      ``there`` is None or the folder ``there`` names resolves to an answer
+      that is itself held - which, by :func:`resolved`'s rule, means it was
+      there when it was resolved. An answer about a folder the pass makes
+      later is never kept from before the folder existed.
+    - An exception is never kept: the question is asked again.
+
+    ``key`` must name everything the answer depends on, as text - never a
+    ``Path``'s equality, which on Windows folds case (P219)."""
     if _HELD is None:
         return answer()
-    if key not in _HELD:
-        _HELD[key] = answer()
-    return _HELD[key]
+    if key in _HELD:
+        return _HELD[key]
+    value = answer()
+    if there is not None and _HOLDING != HOLD_READING:
+        try:
+            resolved(there)
+        except OSError:
+            return value
+        if ("resolved", str(Path(there))) not in _HELD:
+            return value
+    _HELD[key] = value
+    return value
 
 
 #: What a write inside :func:`one_reading` is refused with.

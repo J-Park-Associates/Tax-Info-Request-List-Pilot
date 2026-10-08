@@ -1484,6 +1484,12 @@ SCREEN: dict = {
         "drafted": "Drafted {date}, Stage {n}",
     },
     "loading": "Loading",
+    # A firm page drawn from counts already held while they are asked
+    # again, and how far a long firm wait has read (pilot P222; both
+    # approved by Jason 2026-10-08). ``reading_households`` is filled with
+    # a count line's ``done`` and ``total``.
+    "updating": "Updating",
+    "reading_households": "Reading {n} of {total} Households",
     # The one word for closing a sheet or a dialog (S5 review F9); the
     # ``icons.dismiss`` word above stays for the notice's own icon.
     "close": "Close",
@@ -3805,8 +3811,8 @@ def _last_pass() -> dict:
     ok, when = False, None
     try:
         with runner.last_pass_path().open("rb") as handle:
-            raw = handle.read(runner.PASS_ORDER_MAX_BYTES + 1)
-        if len(raw) <= runner.PASS_ORDER_MAX_BYTES:
+            raw = handle.read(runner.LAST_PASS_MAX_BYTES + 1)
+        if len(raw) <= runner.LAST_PASS_MAX_BYTES:
             data = json.loads(raw.decode("utf-8"))
             when = dt.datetime.fromisoformat(data["started"]).isoformat(timespec="seconds")
             ok = data["result"] == runner.PASS_SUCCEEDED
@@ -6010,6 +6016,24 @@ class _FirmUnsure(Exception):
     """The cached path cannot give the walk's answer by itself."""
 
 
+#: How many households the firm summary reads afresh at a time (pilot
+#: P222): after each batch it says how far it is (:func:`_say_count`), so
+#: a long wait shows "Reading {n} of {total} Households".
+FIRM_READ_BATCH = 25
+
+
+def _say_count(done: int, total: int) -> None:
+    """One count line on stdout before the reply (pilot P222, the lanes'
+    contract): flushed, so the shell can show it while the read goes on. A
+    stdout that cannot take it - the cache fill's child has none - is
+    ignored: the count is for a person watching, never part of the reply."""
+    try:
+        sys.stdout.write(progress.count_line(done, total))
+        sys.stdout.flush()
+    except (OSError, ValueError, AttributeError):
+        pass
+
+
 def _firm_from_cache(root: Path, today: dt.date) -> list[_FirmShown]:
     """:func:`_firm_cached`'s work, in four steps.
 
@@ -6047,7 +6071,32 @@ def _firm_from_cache(root: Path, today: dt.date) -> list[_FirmShown]:
         entry = kept.get(folder.name)
         if entry is not None and prints[folder] is not None and entry["fingerprint"] == prints[folder]:
             entries[folder] = entry
-    read = _firm_read_households(private, [folder for folder in folders if folder not in entries], prints)
+    # Read afresh in batches (pilot P222), saying how far after each, and
+    # the row of every return each batch's own facts would show built at
+    # once. The practice-wide step below stays the authority: it uses a row
+    # built early for a return it shows and builds any other, and a row
+    # built early for a return it does not show is dropped. _firm_row is a
+    # function of the household's read and the day, not of the marks, so a
+    # row is the same whenever it is built.
+    unread = [folder for folder in folders if folder not in entries]
+    read: dict[Path, tuple[dict, dict[str, Engagement]]] = {}
+    early: dict[tuple[Path, str], _FirmShown] = {}
+    if unread:
+        _say_count(0, len(unread))
+    for start in range(0, len(unread), FIRM_READ_BATCH):
+        batch = _firm_read_households(private, unread[start:start + FIRM_READ_BATCH], prints)
+        read.update(batch)
+        batch_facts = [(folder, one) for folder, (entry, _ones) in batch.items() for one in entry["returns"]]
+        batch_marked = mark_superseded([
+            Engagement(path=Path(one["path"]), household_path=Path(one["household"]), problem=one["problem"],
+                       info=EngagementInfo(active=one["active"], tax_year=one["tax_year"],
+                                           rolled_from=one["rolled_from"]))
+            for _folder, one in batch_facts])
+        for (folder, one), engagement in zip(batch_facts, batch_marked, strict=True):
+            if not runner.why_skipped(engagement)[0]:
+                early[(folder, one["path"])] = _firm_row(batch[folder][1][one["path"]], batch[folder][0]["name"],
+                                                         today)
+        _say_count(min(start + FIRM_READ_BATCH, len(unread)), len(unread))
     entries.update({folder: entry for folder, (entry, _ones) in read.items()})
     # The walk's order: every household with its record, then the returns
     # of households whose record is gone (``registry._kept``).
@@ -6090,7 +6139,8 @@ def _firm_from_cache(root: Path, today: dt.date) -> list[_FirmShown]:
         if not show:
             continue
         if folder in read:
-            row, files, own = _firm_row(read[folder][1][one["path"]], entries[folder]["name"], today)
+            row, files, own = early.get((folder, one["path"])) or _firm_row(
+                read[folder][1][one["path"]], entries[folder]["name"], today)
             one["shown"] = {"row": row, "files": files, "paths": own}
         else:
             row, files, own = one["shown"]["row"], one["shown"]["files"], one["shown"]["paths"]
@@ -6295,5 +6345,51 @@ def main(argv: list[str]) -> int:
         return 0
 
 
+#: How the app starts a warm spare (pilot P220): this flag, alone. The
+#: shell's ``main.js`` names the same word (``test_single_source``).
+SPARE_FLAG = "--spare"
+#: The longest command line a spare reads, in bytes, before its newline.
+SPARE_LINE_MAX = 64 * 1024
+
+
+def spare(stream=None) -> int:
+    """A warm spare: the API imported before the click, then **exactly one
+    command**, handed on stdin, run as a fresh process runs it (pilot P220,
+    findings-3 #4).
+
+    The shell keeps one spare started and hands it the next command that is
+    not a pass. stdin is one line - UTF-8 JSON ``{"argv": [str, ...]}`` with
+    at least one string, at most :data:`SPARE_LINE_MAX` bytes - then the
+    command's payload exactly as a fresh process reads it (:func:`main`'s
+    ``_read_spec`` reads the rest of stdin), then the end of input. stdout
+    and the exit code are exactly :func:`main`'s.
+
+    **Still one command a process.** The spare runs one command and exits:
+    decision 171's dead-owner lock rule (one process per command), one
+    store per process closed after the command, P118's holds per reply and
+    the shell's kill per command are all unchanged. What is fixed at import
+    is the product's task name and the program's own place (``tests``
+    pins the list), and the spare is started with the environment a fresh
+    command gets and replaced when the program changes.
+
+    **The end of input before a newline** - the app closed, or killed the
+    spare it no longer needs - runs nothing, prints nothing and exits 0. A
+    line that is not that shape, or too long, is answered as every unknown
+    command is: the usage envelope, ``main([])`` - no words of its own.
+    """
+    stream = stream if stream is not None else sys.stdin.buffer
+    line = stream.readline(SPARE_LINE_MAX + 1)
+    if not line.endswith(b"\n"):
+        return main([]) if len(line) > SPARE_LINE_MAX else 0
+    try:
+        handed = json.loads(line.decode("utf-8"))
+    except ValueError:
+        return main([])
+    argv = handed.get("argv") if isinstance(handed, dict) else None
+    if not (isinstance(argv, list) and argv and all(isinstance(one, str) for one in argv)):
+        return main([])
+    return main(argv)
+
+
 if __name__ == "__main__":
-    raise SystemExit(main(sys.argv[1:]))
+    raise SystemExit(spare() if sys.argv[1:] == [SPARE_FLAG] else main(sys.argv[1:]))

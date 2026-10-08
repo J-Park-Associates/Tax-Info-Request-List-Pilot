@@ -72,6 +72,7 @@ screen - so it is not asked, and the next Overview reads every household as
 it would have before P201. Still one writer of the cache's shape: no
 household-limited mode was added to the summary, since the household a Sort
 just wrote is inside the 5 s racy window and could not have been kept.
+*Changed by P218 (Jason, 2026-10-08): a Sort no longer fills the cache; the app's own Overview, asked the moment the Sort ends, does.*
 
 **R3. When: after the households' locks are released and the progress file
 is closed, before the run log, the console report, the practice page and
@@ -108,6 +109,7 @@ Stop waiting - up to 65 s cold at 750 returns, 300 s at the cap - with
 nothing on the screen; the next Overview fills the cache as it did before
 P201. A pass that ran out of time, or whose own code failed, still fills. A
 person's Sort fills only while the cache is warm (R2, as changed).
+*Changed by P218 (Jason, 2026-10-08): a Sort no longer fills the cache; the app's own Overview, asked the moment the Sort ends, does.*
 
 **R5. A fill that fails never fails the pass: it is said, loudly, and the
 pass's exit code is unchanged.** One pass warning through `_warn`, the one
@@ -252,6 +254,7 @@ measured then; 65 s in the 0.3 Windows check's cold run, N4), inside the
   750), and Overview after it is warm. On the first Sort of a day before any
   scheduled pass, it takes no longer (engine review, SHOULD-3); a Sort that
   is stopped ends at once (SHOULD-1).
+  *Changed by P218 (Jason, 2026-10-08): a Sort no longer fills the cache; the app's own Overview, asked the moment the Sort ends, does.*
 - If the fill ever fails, the practice page's Problems list and the Sort
   result say *the Overview could not be made ready after the pass (...)*;
   nothing else changes, and the next Overview is simply slower.

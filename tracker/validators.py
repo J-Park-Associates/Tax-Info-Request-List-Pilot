@@ -48,15 +48,37 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
-from pypdf import PdfReader
-
 from tracker import errors, layout, reasons
 from tracker.fsio import TEMP_SUFFIX
 from tracker.manifest import RequestItem
 
 # pypdf logs its own warnings while parsing corrupt files; we already surface
-# every failure as a FileResult.reason, so keep the console clean.
+# every failure as a FileResult.reason, so keep the console clean. (Naming
+# its logger imports nothing.)
 logging.getLogger("pypdf").setLevel(logging.ERROR)
+
+
+def _pdf_reader():
+    """pypdf's ``PdfReader``, imported when the first PDF is opened (pilot
+    P219): with its cryptography it was 136 ms of every command's start,
+    and most commands open no PDF. Kept as this module's ``PdfReader`` once
+    imported - or whatever a test put there in its place - so it is
+    imported once. PyInstaller follows an import inside a function, so the
+    build still carries pypdf."""
+    reader = globals().get("PdfReader")
+    if reader is None:
+        from pypdf import PdfReader as reader
+
+        globals()["PdfReader"] = reader
+    return reader
+
+
+def __getattr__(name: str):
+    """``validators.PdfReader`` before any PDF was opened: the reader,
+    imported now (P219), so a test that reads or replaces it still can."""
+    if name == "PdfReader":
+        return _pdf_reader()
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 #: Whether an iPhone's HEIC/HEIF photo can be opened on this machine.
 #: ``pillow_heif`` teaches Pillow the format, once, at import - Pillow has
@@ -397,8 +419,12 @@ def _pdf_error(path: Path, cache: PdfVerdictCache | None) -> str:
 
 
 def _pdf_error_uncached(path: Path) -> str:
+    # The reader is fetched outside the ``try``: a reader that cannot be
+    # imported is the firm's fault, never the client's, so it fails loudly
+    # rather than refusing the file as "not a readable PDF" (P219).
+    open_pdf = _pdf_reader()
     try:
-        reader = PdfReader(path)
+        reader = open_pdf(path)
         if reader.is_encrypted:
             if not reader.decrypt(""):
                 return reasons.PASSWORD_PROTECTED.format()

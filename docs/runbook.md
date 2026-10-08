@@ -41,11 +41,12 @@ household once, a few seconds longer). Every scheduled pass over the saved
 clients folder ends by asking the Overview once itself, after its run log
 line and its page are written, so this file is ready before anyone opens the
 app: the first Overview of the day, after the morning's scheduled pass, opens
-in about two seconds (pilot P201). A Sort does the same only while the file
-is already ready for today, when it re-reads just the households that
-changed; on a new day, after an upgrade or after a settings change it leaves
-that to the next Overview, so one household's Sort never waits for the whole
-firm. A pass someone stopped asks nothing: Stop means stop.
+in about two seconds (pilot P201). A Sort leaves it to the app, which asks
+the Overview the moment the Sort ends (pilot P218). Setup asks it once at
+its end too, so the first Overview after an install or an upgrade opens at
+once. The first Overview reads every household, with its count on screen,
+only when that step could not make the Overview ready, or after an update
+from source. A pass someone stopped asks nothing: Stop means stop.
 
 **The app's data folder is private to one Windows account.** `tracker.db`
 holds every client's index rows, and it lives in
@@ -144,6 +145,35 @@ every start also asks Windows whether the scheduled task is still there:
 one that an uninstall (or a person, in Task Scheduler) deleted is
 registered again at that start, with no Repair (P198). The store check
 below is the same check, for a deliberate look.
+
+**The pilot's installer runs the same step** (pilot P218). Before it offers
+to launch the app, the pilot's installer runs the after-install step while
+its window is still on screen ("Preparing Overview..."), and the step's
+last job makes the Overview ready, so the first Overview after an install
+or an upgrade opens at once instead of reading every household. It never
+fails the install, but it says so in a small window when something went
+wrong:
+
+- *"...the Overview could not be prepared..."* - the program is installed
+  and set up; only the Overview's saved copy could not be made. The first
+  Overview reads every household and says how many it has read. Nothing
+  else needs doing.
+- *"...its setup step could not finish..."* - the app runs the step again
+  at its first start. If its notice then names a problem, it is one of the
+  ones this section describes.
+
+A silent install shows neither window.
+
+**One waiting helper in Task Manager is normal** (pilot P220). While the
+app is running it keeps one process of its own started and waiting for the
+next click - `tracker-api.exe` in the installed app, a `python` process
+when it runs from source - so a click does not wait for a program to
+start. It uses no processor while it waits, holds no client file open,
+and still does one thing and ends: each click is handed to the waiting
+one, and another is started to wait in its place. A Sort always starts a
+process of its own. When the app quits, the waiting one is ended with it;
+one still there after the app has closed (other than a scheduled pass
+that is running) is worth a look.
 
 **The clients root is a folder of clients, and only that.** The app refuses
 the system drive's root (`C:\`), the app's own folder, the folder holding its
@@ -566,19 +596,20 @@ changes nothing:
   office hours. Its version does not change. Until you delete them, the
   app's first screen names what the old version left beside the app, in
   two sentences. **To move, never to delete:** the record checkpoint
-  `record-heads.db` with its `record-heads.db-journal` if there is one, a
+  `record-heads.db` with its `record-heads.db-journal`, `record-heads.db-wal`
+  and `record-heads.db-shm` if there are any, a
   copy of it renamed `record-heads.db.damaged` or set aside as
   `record-heads.db.v1.old`, and a `recovered` folder (decision 159) - the
   checkpoint cannot be made again, a journal can hold its last write, and
   the old copies and the records in `recovered` are evidence. **Setup moves
   them** (decision 209): its after-install step, whose first job this is,
-  moves `record-heads.db` and its journal together, the other copies and
+  moves `record-heads.db` and its journal and write-ahead log together, the other copies and
   `recovered` from beside the app into `%LOCALAPPDATA%\tax-document-tracker`
   under their own names, before it registers the schedule; the packaged
   app does the same at its first start after the upgrade. The checkpoint,
-  its journal and a `.damaged` copy move as one: a journal found without
-  its checkpoint beside it, or a data folder that already holds any of the
-  three, moves nothing - a journal beside a checkpoint that is not its own
+  its journal, its write-ahead log and shared memory, and a `.damaged` copy
+  move as one: a journal or write-ahead log found without its checkpoint
+  beside it, or a data folder that already holds any of them, moves nothing - a journal beside a checkpoint that is not its own
   would be replayed into it. It never overwrites: if the data folder
   already holds one of those names, nothing moves, and the step says so in
   one sentence - then, and only then, a person acts, as below. It moves nothing on the delete list. Until
@@ -1973,7 +2004,8 @@ already.
 (`tracker.settings.SETTINGS_FILENAME`), the app's data folder
 (`%LOCALAPPDATA%\tax-document-tracker`, decision 186: the database
 `tracker.store.STORE_FILENAME`, the record checkpoint beside it
-(`record-heads.db`, `tracker.checkpoint.CHECKPOINT_FILENAME`), the folder
+(`record-heads.db`, `tracker.checkpoint.CHECKPOINT_FILENAME`, and, while a
+command runs, its `-wal` and `-shm` beside it), the folder
 `recovered` beside them if a recovery was ever run, the last-pass file
 (`last-pass.json`), the pass-order hint (`tracker.runner.PASS_ORDER_FILENAME`),
 the error log (`tracker.settings.ERROR_LOG_FILENAME`) and the `passes`
@@ -1992,7 +2024,10 @@ data.** Copy them **over the office network**, straight from the old
 machine's data folder into the new machine's data folder (the same
 `%LOCALAPPDATA%\tax-document-tracker`, under the Windows account that runs
 the app and the schedule there), with the app
-closed and the old machine's schedule off. **Never** by any other road:
+closed and the old machine's schedule off. With the app closed and the
+schedule off the checkpoint is one file; if a `record-heads.db-wal` is
+beside it (the machine stopped mid-write), copy it with it - it holds
+writes the file does not yet. **Never** by any other road:
 not the desktop, a USB drive, an email or a chat, the program's own folder
 in the repository or the Shared Drive. Then delete any copy left anywhere
 else. Copy `recovered` the same way if
@@ -2267,7 +2302,8 @@ Then run `recover` again to check the record now reads.
 If the pass or a return says *the app cannot read this machine's
 record checkpoint*, the file is damaged; the app never moves it by
 itself, because a damaged checkpoint is exactly what a person must see.
-Close the app, turn the schedule off, and rename the file (for example to
+Close the app, turn the schedule off, and rename the file - and a
+`record-heads.db-wal` and `-shm` beside it, the same way - (for example to
 `record-heads.db.damaged`) - keep it, never delete it - then run one pass:
 the checkpoint starts again from every record as it then is. That pass is
 the moment of trust, so run `verify` first and tell Jason.

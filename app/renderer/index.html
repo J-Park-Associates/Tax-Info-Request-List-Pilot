@@ -60,6 +60,9 @@
     <div id="main">
       <header id="bar">
         <nav id="crumbs"><ol id="crumb-list"></ol></nav>
+        <!-- "Updating" while held counts are asked again (P222): here from the
+             start, empty when idle, so the page never moves when it comes. -->
+        <p id="page-updating" class="page-updating" role="status" aria-live="polite"></p>
         <div id="find-wrap">
           <svg class="icon" aria-hidden="true"><use href="#i-search" /></svg>
           <input id="find" type="text" role="combobox" data-tip-key="screen.find"
@@ -83,7 +86,15 @@
           <svg class="icon" aria-hidden="true"><use href="#i-dismiss" /></svg>
         </button>
       </template>
-      <main id="page" tabindex="-1"></main>
+      <!-- The first paint is the outline, not a blank shell (P222): shellDraw replaces it. -->
+      <main id="page" tabindex="-1" aria-busy="true">
+        <div class="row-skeleton" aria-hidden="true"><i></i><i></i></div>
+        <div class="row-skeleton" aria-hidden="true"><i></i><i></i></div>
+        <div class="row-skeleton" aria-hidden="true"><i></i><i></i></div>
+        <div class="row-skeleton" aria-hidden="true"><i></i><i></i></div>
+        <div class="row-skeleton" aria-hidden="true"><i></i><i></i></div>
+        <div class="row-skeleton" aria-hidden="true"><i></i><i></i></div>
+      </main>
     </div>
   </div>
 
@@ -118,6 +129,8 @@
            (vocab.reminder); the page types neither, and the preview is built
            from the letter's own shape with DOM nodes, never from markup. -->
       <div id="sheet-reminder" hidden>
+        <!-- The outline while the return is read (P213): only it shows. -->
+        <div id="reminder-wait" class="hidden"></div>
         <p id="reminder-status" class="rem-status"></p>
         <div id="reminder-hold" class="hidden">
           <p id="reminder-held" class="rem-hold" role="status"></p>

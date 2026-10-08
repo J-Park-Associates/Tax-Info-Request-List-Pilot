@@ -52,12 +52,26 @@ make the firm's own record unwritable.
 handed keys, counts, heads and hosts, and hands them back. The store, which
 knows what a record is, does the proving (``store._prove_against_checkpoint``).
 
-**Its own short transactions.** The app and the pass on one machine share
-this file, and two returns under two different locks may advance at once,
-so every write is one ``BEGIN IMMEDIATE`` with a busy timeout, opened and
-closed around the one question - the file is small and asked rarely (only
-when a store applies lines), and a connection held for the life of a
-process would be one more handle Windows refuses to delete a folder under.
+**Its own short transactions, one connection a command** (pilot P214).
+The app and the pass on one machine share this file, and two returns under
+two different locks may advance at once, so every write is one
+``BEGIN IMMEDIATE`` with a busy timeout. The connection is opened once a
+command and held by the store beside its own (``store._held_checkpoint``),
+and closed by ``store.close()`` with the store's - the handle Windows
+refuses to delete a folder under is the one the store already holds, and
+every entry point that closes the store closes this too. It runs in
+autocommit, with no read transaction left open between questions, so a
+held connection never answers from an old snapshot.
+
+**A write-ahead log at full sync** (P214). Opening switches the file to
+SQLite's write-ahead log (``journal_mode`` persists in the file) and sets
+``synchronous = FULL`` on every connection (it does not persist): each
+COMMIT is on disk before it returns, as the rollback journal's was, at
+about a quarter of the syncs, and a reader no longer waits for a writer.
+A switch refused as busy - another connection is reading - leaves the file
+in its mode for this connection and is tried again at the next open; it is
+never an error. Its ``-wal`` and ``-shm`` sit beside it while a command
+runs, and move with it wherever it is moved, set aside or kept.
 """
 
 from __future__ import annotations
@@ -74,11 +88,19 @@ from pathlib import Path
 #: The file, beside the store in the data home.
 CHECKPOINT_FILENAME = "record-heads.db"
 
-#: The engine's rollback journal beside it (the checkpoint keeps SQLite's
-#: default journal mode): a crash can leave one holding the last write, so
-#: it moves with the file and is never deleted apart from it (the rebase
-#: review's N1).
+#: The engine's rollback journal beside it: the file an earlier version
+#: (or a switch to the write-ahead log refused as busy) left, which can hold
+#: the last write, so it moves with the file and is never deleted apart from
+#: it (the rebase review's N1).
 CHECKPOINT_JOURNAL_FILENAME = CHECKPOINT_FILENAME + "-journal"
+
+#: The engine's write-ahead log beside it (P214): it holds committed writes
+#: the file does not yet, so it moves with the file and is never deleted.
+CHECKPOINT_WAL_FILENAME = CHECKPOINT_FILENAME + "-wal"
+
+#: The write-ahead log's shared-memory index beside it (P214): moves with
+#: the file, as the store's own does.
+CHECKPOINT_SHM_FILENAME = CHECKPOINT_FILENAME + "-shm"
 
 #: What the runbook asks a person to rename a checkpoint that will not open
 #: to (runbook §6): kept as evidence, never deleted.
@@ -405,10 +427,31 @@ def _opened(path: Path) -> sqlite3.Connection:
             conn.close()
             raise CheckpointError(NEWER_FILE.format(path=path, version=version, known=CHECKPOINT_VERSION,
                                                     what="record checkpoint"))
+        _write_ahead(conn)
     except BaseException:
         _close_after_failure(conn)
         raise
     return conn
+
+
+def _write_ahead(conn: sqlite3.Connection) -> None:
+    """Keep the checkpoint in SQLite's write-ahead log at full sync (P214).
+
+    ``journal_mode`` persists in the file, so the switch is made once and
+    asked again (a no-op) at every open; ``synchronous`` does not, so it is
+    set on every connection - at FULL, each COMMIT is synced before it
+    returns, so ``expect`` is on disk before a journal line is appended and
+    ``advance`` after it, as under the rollback journal. A switch refused as
+    busy (another connection holds a read) leaves the file in its own mode
+    for this connection - still durable, still correct - and the next open
+    tries again. Any other refusal is raised (the caller closes the
+    connection)."""
+    try:
+        conn.execute("PRAGMA journal_mode = WAL").fetchone()
+    except CheckpointUnavailable as exc:
+        if not exc.busy:
+            raise
+    conn.execute("PRAGMA synchronous = FULL")
 
 
 def open_read_only(path: Path | str) -> sqlite3.Connection | None:

@@ -506,11 +506,13 @@ The last route is not remembered across launches.
 
 - `list` at start (as today, `BOOTSTRAP_COMMAND`): households, returns,
   vocabulary, last pass, warnings, and (section 9) `paths`.
-- `firm` (section 9) after `list`, and again after a sort ends, after F5,
-  and after any write that changes a count (file, unfile, not requested,
-  put back, keep here, mark missing, approve, edit). While it runs the firm
-  pages show their loading state; a failure is one notice with Retry and
-  the pages show what they last had.
+- `firm` (section 9) at start, beside `list` (P221), and again after a
+  sort ends, after F5, and after any write that changes a count (file,
+  unfile, not requested, put back, keep here, mark missing, approve, edit).
+  While it runs a firm page with no counts yet shows its loading state,
+  with "Reading {n} of {total} Households" after about 2 s (P222), and one
+  drawn from counts already held says "Updating"; a failure is one notice
+  with Retry and the pages show what they last had.
 - `state` for one return when its page opens or its sheet opens, as today
   (`showReturn`). A household page needs no `state`: it draws from `list`
   and `firm`.
@@ -774,7 +776,8 @@ Common states, used by every page below:
   one), then six outline rows per group it will draw: 40px rows holding two
   static bars in `--bg-hover` at the name and status columns. No spinner,
   no shimmer (Remote Desktop, and motion that says nothing). `#page` has
-  `aria-busy="true"` and a visually hidden "Loading".
+  `aria-busy="true"` and a visually hidden "Loading" - visible, with its
+  count and a bar, on a firm page whose wait passes about 2 s (P222).
 - **Failed read:** the notice for it (4.2), and the page keeps what it last
   drew; with nothing drawn yet, it draws only its frame.
 - **Locked return:** the lock notice; writing menu items greyed (5.1); the
@@ -1562,7 +1565,9 @@ Where an existing key does the same job, the existing key is reworded
 | `icons.dismiss` / `open` / `next` / `more` | Dismiss / Open / Next / More | icon tooltips |
 | `sheet.reminder` | Reminder | sheet title |
 | `sheet.drafted` | Drafted {date}, Stage {n} | sheet caption |
-| `loading` | Loading | screen readers only |
+| `loading` | Loading | screen readers only, but for P222's wait |
+| `updating` | Updating | firm pages and side counts while held counts are asked again |
+| `reading_households` | Reading {n} of {total} Households | a firm page's wait over about 2 s |
 | `setup.title` / `choose` / `start` / `missing` | Choose Your Clients Folder / Choose Folder… / Start / Folder Not Found | setup page |
 | `notices.firm_failed` | Counts Not Available | notice |
 | `notices.skipped` / `show` | {n} Folders Skipped / Show | notice |

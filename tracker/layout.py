@@ -305,6 +305,9 @@ _IGNORABLE_CODES = frozenset(
 )
 
 
+#: Remembered (pilot P219): a pure function of one ``str``, asked hundreds
+#: of thousands of times a firm-wide reply; the answer is the one asked fresh.
+@functools.lru_cache(maxsize=8192)
 def is_invisible(char: str) -> bool:
     """Whether ``char`` draws nothing a person could read (decision 188, R2
     rule 5): a control, format, surrogate, private-use or unassigned
@@ -359,6 +362,9 @@ def normalised_name(typed: object) -> str:
     return unicodedata.normalize("NFC", " ".join(str(typed if typed is not None else "").split()))
 
 
+#: Remembered (pilot P219): a pure function of one ``str``, asked hundreds
+#: of thousands of times a firm-wide reply; the answer is the one asked fresh.
+@functools.lru_cache(maxsize=8192)
 def segment_problem(name: str) -> str | None:
     """Why ``name`` is not a household or return name, as a fixed phrase -
     or ``None`` where it is one (decisions 187 and 188).
@@ -458,6 +464,9 @@ LOOK_ALIKES: dict[str, str] = {
 _ASCII_LOOK_ALIKES = str.maketrans({"1": "l", "i": "l", "|": "l", "0": "o"})
 
 
+#: Remembered (pilot P219): a pure function of one ``str``, asked hundreds
+#: of thousands of times a firm-wide reply; the answer is the one asked fresh.
+@functools.lru_cache(maxsize=8192)
 def name_key(name: str) -> str:
     """The one key two household or return names are compared by (decision
     188, R3): NFKC; every invisible character removed; white space
@@ -765,9 +774,24 @@ def parts_below(outer: Path | str, inner: Path | str) -> tuple[str, ...] | None:
     link resolves first. The one place a path is tested for lying under
     another (decision 188): every ``relative_to`` it replaces answered the
     same question with its own rule about case and ``..``.
+
+    **Remembered by text, never by a ``Path``** (pilot P219): the answer is
+    kept under each argument's type and spelling. On Windows
+    ``PureWindowsPath("C:/Root/Smith") == PureWindowsPath("C:/Root/SMITH")``
+    with the same hash, and the answer carries the inner path's own
+    spelling, which becomes a store key - a cache keyed by a ``Path``'s
+    equality would answer one spelling with another's case.
     """
-    top, below = _parts(outer), _parts(inner)
-    if outer in ("", ".") or top == (os.curdir,):
+    return _parts_below_of(type(outer).__name__, os.fspath(outer), type(inner).__name__, os.fspath(inner))
+
+
+@functools.lru_cache(maxsize=8192)
+def _parts_below_of(outer_kind: str, outer_text: str, inner_kind: str,
+                    inner_text: str) -> tuple[str, ...] | None:
+    """:func:`parts_below` of two paths given as their type's name and their
+    text: the key its cache holds."""
+    top, below = _parts(outer_text), _parts(inner_text)
+    if (outer_kind == "str" and outer_text in ("", ".")) or top == (os.curdir,):
         top = ()
     if len(below) < len(top) or [os.path.normcase(p) for p in below[:len(top)]] != [
             os.path.normcase(p) for p in top]:
