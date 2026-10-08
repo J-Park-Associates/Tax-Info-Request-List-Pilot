@@ -2249,7 +2249,13 @@ let scanning = null;
 // Everything the shell says about the running pass: a progress line, or -
 // once, when its process closes - its ending. Only the running pass's.
 function onPassMessage(m) {
-  if (!scanning || JSON.stringify(m.args) !== JSON.stringify(scanning.args)) return;
+  // The Overview's count lines (P222) come on the same channel, from the
+  // `firm` command: never the pass's, whatever is running.
+  if (m && Array.isArray(m.args) && m.args[0] === "firm") {
+    shellFirmProgress(m.progress);
+    return;
+  }
+  if (!scanning ||JSON.stringify(m.args) !== JSON.stringify(scanning.args)) return;
   if (m.reply !== undefined) {
     passEnded(m);
     return;

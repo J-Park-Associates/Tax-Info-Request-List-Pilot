@@ -758,9 +758,12 @@ function syncSortNotice() {
 
 function drawCounts() {
   const counts = shellCounts();
+  const held = shellFirmUpdating();   // the counts shown are asked again: muted until the reply (P222)
   for (const node of document.querySelectorAll(".side-section[data-section]")) {
     const n = shellRoute.level === "setup" ? 0 : counts[node.dataset.section] || 0;
-    node.querySelector(".side-count").textContent = n > 0 ? String(n) : "";
+    const count = node.querySelector(".side-count");
+    count.textContent = n > 0 ? String(n) : "";
+    count.classList.toggle("is-held", held);
   }
 }
 
@@ -883,11 +886,23 @@ function shellSkeleton(count) {
   return Array.from({ length: count }, () => h("div", { className: "row-skeleton", "aria-hidden": "true" }, h("i"), h("i")));
 }
 
-function shellLoading(title) {
+// The outline stands in its own page's shape (P222): the Overview's three
+// figures and its group head's line, a return page's caption line. No
+// words, no numbers, no dots. A firm page whose wait has passed about 2 s
+// says how many households `firm` has read, with a bar, where the hidden
+// Loading was.
+function shellLoading(title, level) {
   const words = screenWords();
+  const reading = FIRM_LEVELS.indexOf(level) !== -1 ? shellReading() : null;
+  const overview = level === "overview";
+  const outline = () => h("i", { className: "outline-bar", "aria-hidden": "true" });
   return [
     ...(title ? [h("h1", { className: "page-title" }, title)] : []),
-    h("div", { className: "group-head is-first" }, h("span", { className: "visually-hidden" }, words.loading)),
+    ...(level === "return" ? [h("div", { className: "page-caption is-outline", "aria-hidden": "true" }, outline())] : []),
+    ...(overview ? [h("div", { className: "figures", "aria-hidden": "true" }, [0, 1, 2].map(() => h("div", { className: "figure is-outline" }, outline())))] : []),
+    h("div", { className: "group-head is-first" },
+      reading ? shellReadingNodes(reading) : h("span", { className: "visually-hidden" }, words.loading),
+      overview && !reading ? outline() : null),
     ...shellSkeleton(6),
   ];
 }
@@ -909,12 +924,18 @@ function drawPage() {
   }
   // A firm page waits for its counts: outline rows until they arrive; when
   // they cannot be had (the notice says so, with Retry) it shows its title.
+  // One drawn from counts held while they are asked again says Updating
+  // (P222); its rows stay usable.
   const firmPage = FIRM_LEVELS.indexOf(route.level) !== -1;
   const waiting = firmPage && !shellFirmNow.data && shellFirmNow.status !== "failed";
   const busy = shellPageBusy || waiting;
-  page.setAttribute("aria-busy", busy ? "true" : "false");
+  const updating = firmPage && !busy && shellFirmUpdating();
+  page.setAttribute("aria-busy", busy || updating ? "true" : "false");
+  shellMarkUpdating(page, false);
   if (busy) {
-    page.replaceChildren(...shellLoading(routeTitle()));
+    // The outline in its own page's grid: a return page borrows no list's (P222).
+    page.dataset.list = typeof pagesListOf === "function" ? pagesListOf(route) : "";
+    page.replaceChildren(...shellLoading(routeTitle(), route.level));
     return;
   }
   if ((firmPage && !shellFirmNow.data) || shellPageFailed) {
@@ -923,6 +944,7 @@ function drawPage() {
   }
   if (typeof pagesDraw === "function") {
     pagesDraw(route, page);
+    if (updating) shellMarkUpdating(page, true);
     return;
   }
   drawTitleOnly(page);
@@ -949,14 +971,20 @@ function setupPage() {
     chosen.textContent = folderName(picked);
     start.disabled = false;
   });
+  // While set-root runs the page shows the outline below the form (P222).
+  const wait = h("div", { className: "setup-wait", "aria-hidden": "true" });
   start.addEventListener("click", async () => {
     $("firm-input").value = firm.value;
     $("phone-input").value = phone.value;
     start.disabled = true;
+    wait.replaceChildren(...shellSkeleton(3));
+    $("page").setAttribute("aria-busy", "true");
     try {
       await saveRoot();
     } finally {
       start.disabled = !$("root-input").value.trim();
+      wait.replaceChildren();
+      if (shellRoute.level === "setup") $("page").setAttribute("aria-busy", "false");
     }
   });
   const actions = [start];
@@ -972,6 +1000,7 @@ function setupPage() {
       h("label", { className: "setup-field" }, h("span", {}, vocab.settings.firm_label), firm),
       h("label", { className: "setup-field" }, h("span", {}, vocab.settings.phone_label), phone),
       h("div", { className: "setup-actions" }, ...actions)),
+    wait,
   ];
 }
 

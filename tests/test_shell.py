@@ -4578,11 +4578,12 @@ let shellFirmSentAt = 0; let shellWroteAt = 0; const shellFirmHeld = new Map(); 
 let shellFirmTimer = null; const SHELL_FIRM_SLOW_MS = 2000;
 const FIRM_LEVELS = ["overview", "needs-review", "reminders", "clients"];
 const asked = []; const notices = []; const drawn = [];
-const call = (args) => new Promise((resolve) => asked.push({ args, resolve }));
+// As call() does: a reply with an error throws its envelope.
+const call = (args) => new Promise((resolve, reject) => asked.push({ args, resolve: (reply) => (reply.error ? reject(new TrackerError(reply)) : resolve(reply)) }));
 const firmOf = (n) => ({ returns: [{ path: "r1", counts: { needs_you: n } }], totals: {} });
 const stateOf = (n) => ({ paths: { engagement: "r1" }, counts: { needs_you: n } });
 const pagesTally = (state) => state.counts;
-const shellChanged = () => {}; const shellDraw = () => drawn.push(shellRoute.level); const drawPage = () => drawn.push("page");
+let shellChanged = () => {};
 const notice = (failure) => notices.push(failure.sentence); const failureSentence = () => ""; const failed = (err) => { throw err; };
 const warningNotices = (list) => notices.push(...list);
 class TrackerError extends Error { constructor(result) { super(result.error); this.result = result; } }
@@ -4597,9 +4598,12 @@ FIRM_LOAD_FUNCTIONS = ("h", "screenWords", "shellAdopt", "shellAskFirmEarly", "s
                        "shellMarkUpdating", "shellStateArrived", "shellCountsDiffer")
 
 
-def run_firm_load(probe: str, tmp_path: Path, setup: str = ""):
+def run_firm_load(probe: str, tmp_path: Path, setup: str = "", functions=()):
+    """FIRM_LOAD, with the page's draw faked unless ``functions`` lifts it."""
+    if "drawPage" not in functions:
+        setup += '\nconst shellDraw = () => drawn.push(shellRoute.level); const drawPage = () => drawn.push("page");\n'
     consts = lift_line("const H_ATTRIBUTES = new Set([", "shell.js")
-    return run_speed(FIRM_LOAD + setup, FIRM_LOAD_FUNCTIONS, probe, tmp_path, consts)
+    return run_speed(FIRM_LOAD + setup, (*FIRM_LOAD_FUNCTIONS, *functions), probe, tmp_path, consts)
 
 
 def test_after_a_sort_one_overview_is_asked_not_two(tmp_path):
@@ -4644,3 +4648,290 @@ def test_a_write_that_lands_during_a_load_still_asks_again(tmp_path):
       return [during, after, firms(), shellFirmNow.status];
     """, tmp_path)
     assert said == [1, 2, 2, "ok"]
+
+
+#: The firm pages drawn while their counts are asked (P222): a clock the probe
+#: moves on, two side counts, and a page the fake pagesDraw fills.
+FIRM_PAGE = r"""
+const timers = [];
+const setTimeout = (fn, ms) => { timers.push({ fn, ms }); return timers.length; };
+const clearTimeout = (id) => { if (id && timers[id - 1]) timers[id - 1].fn = null; };
+const waiting = () => timers.filter((one) => one.fn).map((one) => one.ms);
+const passTime = () => { for (const one of timers) if (one.fn) { const fn = one.fn; one.fn = null; fn(); } };
+const pagesDraw = (route, page) => {
+  const figure = new El("b"); figure.className = "figure-number"; figure.append("3");
+  const row = new El("div"); row.className = "row"; row.append("a row");
+  page.replaceChildren(figure, row);
+  page.dataset.list = pagesListOf(route);
+};
+const routeTitle = () => "";
+let shellPageFailed = false;
+const shellDraw = () => { drawn.push(shellRoute.level); drawCounts(); drawPage(); };
+shellChanged = () => drawCounts();
+const sides = [0, 1].map(() => { const side = new El("button"); side.dataset.section = "overview"; const count = new El("span"); count.className = "side-count"; side.append(count); return side; });
+document.querySelectorAll = (selector) => (selector === ".side-section[data-section]" ? sides : []);
+const shellCounts = () => ({ overview: 3 });
+const looks = () => {
+  const page = $("page");
+  return { busy: page.getAttribute("aria-busy"), updating: page.classList.contains("is-updating"),
+           said: page.byClass("page-updating").map((one) => [one.getAttribute("role"), one.textContent]),
+           first: page.children[0] ? page.children[0].className : "",
+           held: sides.map((one) => one.byClass("side-count")[0].classList.contains("is-held")),
+           reading: page.byClass("firm-reading-words").map((one) => one.textContent),
+           bars: page.find((one) => one.getAttribute("role") === "progressbar").map((one) =>
+             [one.getAttribute("aria-valuenow"), one.getAttribute("aria-valuemax"), one.getAttribute("aria-labelledby")]),
+           hidden: page.byClass("visually-hidden").map((one) => one.textContent) };
+};
+"""
+
+FIRM_PAGE_FUNCTIONS = ("drawPage", "shellLoading", "shellSkeleton", "drawTitleOnly", "drawCounts", "pagesListOf")
+
+
+def run_firm_page(probe: str, tmp_path: Path):
+    return run_firm_load(probe, tmp_path, FIRM_PAGE, FIRM_PAGE_FUNCTIONS)
+
+
+def test_a_firm_page_drawn_from_held_counts_while_they_are_asked_again_says_updating(tmp_path):
+    """P222, W1 (findings-4 #1): a firm page redrawn from old counts for 5-9 s
+    after a Sort said nothing of it. While held counts are asked again the page
+    is busy, says "Updating" (a status, first on the page), and its figures,
+    statuses and the side counts are marked to be muted; a redraw meanwhile
+    keeps one marker."""
+    said = run_firm_page("""
+      shellRoute = { level: "overview" };
+      shellFirmNow = { status: "ok", data: firmOf(1) };
+      shellDraw();
+      const before = looks();
+      shellLoadFirm();
+      const during = looks();
+      drawPage();
+      const again = looks();
+      await land(0, firmOf(1));
+      return { before, during, again };
+    """, tmp_path)
+    assert said["before"]["busy"] == "false" and not said["before"]["updating"] and said["before"]["said"] == []
+    assert said["before"]["held"] == [False, False]
+    for one in (said["during"], said["again"]):
+        assert one["busy"] == "true" and one["updating"]
+        assert one["said"] == [["status", "Updating"]] and one["first"] == "page-updating"
+        assert one["held"] == [True, True]
+    css = read("shell.css")
+    assert "#page.is-updating .figure-number, #page.is-updating .row-status" in css
+    assert ".side-section .side-count.is-held:not(:empty) { color: var(--text-caption); }" in css
+
+
+def test_updating_goes_when_the_new_counts_are_drawn(tmp_path):
+    """P222, W1: all of it goes when the new reply is drawn - and when it fails,
+    the pages keep what they had, unmarked, and the notice says so."""
+    said = run_firm_page("""
+      shellRoute = { level: "needs-review" };
+      shellFirmNow = { status: "ok", data: firmOf(1) };
+      shellDraw();
+      shellLoadFirm();
+      await land(0, firmOf(2));
+      const landed = looks();
+      shellLoadFirm();
+      asked[1].resolve({ error: "refused" });
+      await tick();
+      return { landed, failed: looks(), status: shellFirmNow.status, notices };
+    """, tmp_path)
+    for one in (said["landed"], said["failed"]):
+        assert one["busy"] == "false" and not one["updating"] and one["said"] == [] and one["held"] == [False, False]
+    assert said["status"] == "failed" and said["notices"] == ["Counts Not Available"]
+
+
+def test_a_firm_wait_over_two_seconds_says_how_many_households_are_read(tmp_path):
+    """P222, W2 (findings-4 #8): past 2 s, a firm page waiting with no counts
+    says "Reading {n} of {total} Households" from `firm`'s count lines, with a
+    determinate progress bar named by those words, updated in place; it goes
+    when the reply lands."""
+    said = run_firm_page("""
+      shellRoute = { level: "overview" };
+      shellLoadFirm();
+      drawPage();
+      const start = looks();
+      shellFirmProgress({ v: 1, event: "households", done: 0, total: 50 });
+      const early = looks();
+      const clock = waiting();
+      passTime();
+      const shown = looks();
+      const node = $("page").byClass("firm-reading-words")[0];
+      shellFirmProgress({ v: 1, event: "households", done: 25, total: 50 });
+      const moved = looks();
+      const same = $("page").byClass("firm-reading-words")[0] === node;
+      await land(0, firmOf(1));
+      return { start, early, clock, shown, moved, same, after: looks(), left: waiting() };
+    """, tmp_path)
+    assert said["start"]["hidden"] == ["Loading"] and said["start"]["reading"] == [] and said["start"]["busy"] == "true"
+    assert said["early"] == said["start"], "under 2 s a count line changes nothing on screen"
+    assert said["clock"] == [2000]
+    assert said["shown"]["reading"] == ["Reading 0 of 50 Households"] and said["shown"]["hidden"] == []
+    assert said["shown"]["bars"] == [["0", "50", "firm-reading-words"]]
+    assert said["moved"]["reading"] == ["Reading 25 of 50 Households"] and said["moved"]["bars"] == [["25", "50", "firm-reading-words"]]
+    assert said["same"], "the count is updated in place, never the page drawn again"
+    assert said["after"]["reading"] == [] and said["after"]["bars"] == [] and said["left"] == []
+    bar = js_function("shellReadingNodes")
+    assert 'role: "progressbar"' in bar and '"aria-valuemin": "0"' in bar and "last-sort-bar" in bar
+
+
+def test_a_firm_wait_under_two_seconds_shows_only_the_outline(tmp_path):
+    """P222, W2: under 2 s, or with no count line, the outline stays as it is;
+    a page drawn from held counts keeps "Updating", never the count."""
+    said = run_firm_page("""
+      shellRoute = { level: "overview" };
+      shellLoadFirm();
+      drawPage();
+      shellFirmProgress({ v: 1, event: "households", done: 25, total: 50 });
+      const quick = looks();
+      await land(0, firmOf(1));
+      shellFirmNow = { status: "idle", data: null };
+      shellLoadFirm();
+      drawPage();
+      passTime();
+      const silent = looks();
+      await land(1, firmOf(1));
+      shellLoadFirm();
+      shellFirmProgress({ v: 1, event: "households", done: 25, total: 50 });
+      passTime();
+      const held = looks();
+      await land(2, firmOf(1));
+      return { quick, silent, held };
+    """, tmp_path)
+    for one in (said["quick"], said["silent"]):
+        assert one["hidden"] == ["Loading"] and one["reading"] == [] and one["bars"] == []
+    assert said["held"]["reading"] == [] and said["held"]["said"] == [["status", "Updating"]]
+
+
+def test_a_count_line_is_never_taken_for_the_passes(tmp_path):
+    """P222: `firm`'s count lines come on the pass's progress channel. They go
+    to the Overview's wait, never to the last-sort line, whatever is running."""
+    said = run_speed(r"""
+      const firmSaid = []; const passSaid = []; const ended = [];
+      let scanning = { args: ["run-now", "--engagement", "r1"], pass: null };
+      const shellFirmProgress = (said) => firmSaid.push(said);
+      const shellProgress = (said) => passSaid.push(said);
+      const shellChanged = () => {};
+      const passEnded = (m) => ended.push(m);
+    """, ("onPassMessage", "drawProgress"), """
+      const count = { v: 1, event: "households", done: 25, total: 50 };
+      onPassMessage({ args: ["firm"], progress: count });
+      onPassMessage({ args: ["run-now", "--engagement", "r1"], progress: { n: 1, of: 3, pass: "p1" } });
+      scanning = { args: ["firm"], pass: null };
+      onPassMessage({ args: ["firm"], progress: count });
+      scanning = null;
+      onPassMessage({ args: ["firm"], progress: count });
+      return { firmSaid, passSaid, ended };
+    """, tmp_path)
+    assert len(said["firmSaid"]) == 3
+    assert said["passSaid"] == [{"n": 1, "of": 3, "pass": "p1"}] and said["ended"] == []
+
+
+def test_household_and_year_pages_follow_the_counts_when_they_arrive(tmp_path):
+    """P222, 3 (findings-4 #3): a household's and a year's rows carry each
+    return's status from the firm's counts, so they are drawn again when the
+    counts land, as the firm pages are; a return's own page is not."""
+    said = run_firm_load("""
+      const out = {};
+      for (const level of ["household", "year", "return", "overview", "clients"]) {
+        drawn.length = 0; asked.length = 0;
+        shellRoute = { level };
+        shellFirmNow = { status: "idle", data: null };
+        shellLoadFirm();
+        await land(0, firmOf(1));
+        out[level] = drawn.includes(level);
+      }
+      return out;
+    """, tmp_path)
+    assert said == {"household": True, "year": True, "return": False, "overview": True, "clients": True}
+
+
+def test_a_return_row_waiting_for_its_counts_shows_an_outline_never_a_blank(tmp_path):
+    """P222, 3: on a household or year page, while the firm's counts are on
+    their way with none held, a return row's status is an aria-hidden outline
+    bar - never a pill, never a blank; with the counts failed it is empty (the
+    notice says why); with them in, it is the status."""
+    probe = """
+      const one = { path: "r1", return_name: "1040 - John & Jane Smith", form: "1040", year: 2025, active: true };
+      const cell = (status, data) => {
+        firmNow = { status, data };
+        const [spec] = pagesReturnSpecs([one]);
+        const node = pagesRow(spec);
+        const box = node.byClass("row-status")[0];
+        return { waiting: Boolean(spec.waiting), hidden: box.getAttribute("aria-hidden") || "", outline: box.byClass("outline-bar").length,
+                 pill: box.byClass("pill").length, text: box.textContent };
+      };
+      return [cell("loading", null), cell("failed", null), cell("ok", { returns: [{ path: "r1", counts: { needs_you: 2, waiting: 0 } }] }),
+              cell("loading", { returns: [{ path: "r1", counts: { needs_you: 2, waiting: 0 } }] })];
+    """
+    setup = """
+      let firmNow = { status: "idle", data: null };
+      const shellFirm = () => firmNow;
+      let shellRoute = { level: "household", household: "h1" };
+    """
+    said = run_pages_dom(probe, tmp_path, setup)
+    assert said[0] == {"waiting": True, "hidden": "true", "outline": 1, "pill": 0, "text": ""}
+    assert said[1] == {"waiting": False, "hidden": "", "outline": 0, "pill": 0, "text": ""}
+    assert said[2]["waiting"] is False and said[2]["outline"] == 0 and said[2]["text"] == "2 need you"
+    assert said[3]["text"] == "2 need you", "counts held are drawn while they are asked again"
+
+
+def test_a_skeleton_stands_in_the_grid_of_its_own_page(tmp_path):
+    """P222, 4 (findings-4 #4): the busy page takes its own list's grid (a
+    return page none, never the last list's) and its own shape: the
+    Overview's three figures and its group head's line, a return page's
+    caption line - with no words, numbers or dots but the hidden Loading."""
+    said = run_firm_page("""
+      const out = {};
+      for (const [level, busy] of [["overview", false], ["needs-review", false], ["return", true]]) {
+        $("page").dataset.list = "clients";
+        shellRoute = { level }; shellPageBusy = busy; shellFirmNow = { status: "loading", data: null };
+        drawPage();
+        const page = $("page");
+        out[level] = { list: page.dataset.list, figures: page.byClass("figure").length, outlines: page.byClass("outline-bar").length,
+                       caption: page.byClass("page-caption").length, rows: page.byClass("row-skeleton").length, text: page.textContent,
+                       hidden: page.find((one) => one.byClass("outline-bar").length && one.getAttribute("aria-hidden") === "true").length };
+      }
+      shellPageBusy = false;
+      return out;
+    """, tmp_path)
+    assert said["overview"] == {"list": "overview", "figures": 3, "outlines": 4, "caption": 0, "rows": 6, "text": "Loading", "hidden": 1}
+    assert said["needs-review"] == {"list": "needs_review", "figures": 0, "outlines": 0, "caption": 0, "rows": 6, "text": "Loading", "hidden": 0}
+    assert said["return"] == {"list": "", "figures": 0, "outlines": 1, "caption": 1, "rows": 6, "text": "Loading", "hidden": 1}
+
+
+def _forced_colours() -> dict[str, dict[str, str]]:
+    """The shell's forced-colors block, selector by selector."""
+    prelude, inner, _end = list(top_level(stripped(read("shell.css"))))[-1]
+    assert prelude == "@media (forced-colors: active)"
+    found = {}
+    for _media, selector, body in blocks(inner):
+        for part in selector.split(","):
+            found.setdefault(" ".join(part.split()), {}).update(dict(declarations(body)))
+    return found
+
+
+def test_skeleton_bars_are_greytext_in_a_contrast_theme():
+    """P222, 5 (findings-4 #5): in a Windows contrast theme an outline bar in
+    --bg-hover vanished into Canvas; every outline is GrayText, kept so."""
+    rules = _forced_colours()
+    for selector in (".row-skeleton > i", ".outline-bar", ".side-name:empty::before"):
+        assert rules[selector]["background"] == "GrayText", selector
+        assert rules[selector]["forced-color-adjust"] == "none", selector
+    for selector in ("#page.is-updating .figure-number", "#page.is-updating .row-status", ".side-count.is-held"):
+        assert rules[selector]["color"] == "GrayText", selector
+
+
+def test_the_first_paint_is_the_outline_not_a_blank_shell():
+    """P222, 6 (findings-4 #6): before the first reply the page is busy and
+    holds six outline rows, and the side panel's names are outlines; the
+    first draw replaces all of it."""
+    html = read("index.html")
+    main = html[html.index('<main id="page"'):html.index("</main>")]
+    assert main.startswith('<main id="page" tabindex="-1" aria-busy="true">')
+    assert main.count('<div class="row-skeleton" aria-hidden="true"><i></i><i></i></div>') == 6
+    assert re.sub(r"<!--.*?-->", "", main, flags=re.S).count("<div") == 6, "nothing but the outline"
+    side = next(body for _m, selector, body in blocks(read("shell.css")) if selector.strip() == ".side-name:empty:not(.hidden)::before")
+    assert dict(declarations(side))["background"] == "var(--bg-hover)"
+    draw = js_function("drawPage")
+    assert 'page.setAttribute("aria-busy", busy || updating ? "true" : "false")' in draw and "page.replaceChildren(" in draw
+    assert "pagesDraw(route, page)" in draw

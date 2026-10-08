@@ -83,7 +83,15 @@
           <svg class="icon" aria-hidden="true"><use href="#i-dismiss" /></svg>
         </button>
       </template>
-      <main id="page" tabindex="-1"></main>
+      <!-- The first paint is the outline, not a blank shell (P222): shellDraw replaces it. -->
+      <main id="page" tabindex="-1" aria-busy="true">
+        <div class="row-skeleton" aria-hidden="true"><i></i><i></i></div>
+        <div class="row-skeleton" aria-hidden="true"><i></i><i></i></div>
+        <div class="row-skeleton" aria-hidden="true"><i></i><i></i></div>
+        <div class="row-skeleton" aria-hidden="true"><i></i><i></i></div>
+        <div class="row-skeleton" aria-hidden="true"><i></i><i></i></div>
+        <div class="row-skeleton" aria-hidden="true"><i></i><i></i></div>
+      </main>
     </div>
   </div>
 
