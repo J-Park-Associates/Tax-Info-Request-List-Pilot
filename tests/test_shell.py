@@ -4341,3 +4341,223 @@ def test_the_schedule_dialog_says_its_next_run_in_the_apps_clock_style(tmp_path)
     assert "#sc-next" in [part.strip() for part in selector.split(",")]
     assert "${scheduleClock(result.next_run)}" in js
     assert 'toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })' in js_function("pagesTime", "pages.js")
+
+
+
+# ── the speed round (pilot SPEC-speed-round.md, P213-P222): node probes ─────
+
+#: The renderer files a probe may lift a function from, in the order searched.
+SPEED_SOURCES = ("app.js", "sheet.js", "shell.js", "pages.js")
+
+
+def lift(*names: str) -> str:
+    """The named functions as they are written, each from the renderer file
+    that defines it."""
+    out = []
+    for name in names:
+        source = next((one for one in SPEED_SOURCES if f"function {name}(" in read(one)), None)
+        assert source, name
+        out.append(js_function(name, source))
+    return "\n".join(out)
+
+
+def lift_line(head: str, source: str) -> str:
+    """One top-level declaration that starts with ``head``, to its end (a
+    one-line ``let``, or a ``new Set([`` list)."""
+    text = read(source)
+    start = text.index(head)
+    end = text.index("]);\n", start) + 4 if head.endswith("[") else text.index("\n", start) + 1
+    return text[start:end]
+
+
+#: A DOM for the speed round's probes: any id is an element, made on first
+#: ask, and every element keeps its parent, classes, attributes and children.
+SPEED_DOM = r"""
+class Node {}
+class Text extends Node { constructor(data) { super(); this.data = data; this.parent = null; } get textContent() { return this.data; } }
+class El extends Node {
+  constructor(tag, id) { super(); this.tag = tag; this.id = id || ""; this.className = ""; this.dataset = {}; this.attrs = {}; this.kids = [];
+    this.hidden = false; this.disabled = false; this.parent = null; this.handlers = {};
+    this.style = { props: {}, setProperty(key, value) { this.props[key] = value; }, removeProperty(key) { delete this.props[key]; } }; }
+  get classList() {
+    const self = this;
+    const now = () => self.className.split(" ").filter(Boolean);
+    return { add(...names) { self.className = [...new Set([...now(), ...names])].join(" "); },
+             remove(...names) { self.className = now().filter((one) => !names.includes(one)).join(" "); },
+             toggle(name, on) { const want = on === undefined ? !now().includes(name) : Boolean(on); if (want) this.add(name); else this.remove(name); return want; },
+             contains(name) { return now().includes(name); } };
+  }
+  setAttribute(key, value) { this.attrs[key] = String(value); }
+  getAttribute(key) { return key in this.attrs ? this.attrs[key] : null; }
+  removeAttribute(key) { delete this.attrs[key]; }
+  adopt(one) { const node = one instanceof Node ? one : new Text(String(one)); if (node.parent) node.remove(); node.parent = this; return node; }
+  append(...nodes) { for (const one of nodes) this.kids.push(this.adopt(one)); }
+  prepend(...nodes) { this.kids.unshift(...nodes.map((one) => this.adopt(one))); }
+  replaceChildren(...nodes) { for (const one of this.kids) one.parent = null; this.kids = []; this.append(...nodes); }
+  remove() { if (this.parent) { this.parent.kids = this.parent.kids.filter((one) => one !== this); this.parent = null; } }
+  get childNodes() { return this.kids; }
+  get children() { return this.kids.filter((one) => one instanceof El); }
+  focus() {}
+  addEventListener(type, fn) { (this.handlers[type] = this.handlers[type] || []).push(fn); }
+  get textContent() { return this.kids.map((one) => one.textContent).join(""); }
+  set textContent(value) { this.replaceChildren(String(value)); }
+  find(test, out = []) { for (const one of this.kids) if (one instanceof El) { if (test(one)) out.push(one); one.find(test, out); } return out; }
+  byClass(name) { return this.find((one) => one.classList.contains(name)); }
+  querySelector(selector) { return this.querySelectorAll(selector)[0] || null; }
+  querySelectorAll(selector) {
+    const own = selector.replace(/^:scope > /, "");
+    const pool = own === selector ? this.find(() => true) : this.children;
+    if (own.startsWith(".")) return pool.filter((one) => one.classList.contains(own.slice(1)));
+    if (own.startsWith("#")) return pool.filter((one) => one.id === own.slice(1));
+    return pool.filter((one) => one.tag === own);
+  }
+}
+const ELS = {};
+const $ = (id) => ELS[id] || (ELS[id] = new El("div", id));
+const document = { createElement: (tag) => new El(tag), createElementNS: (_ns, tag) => new El(tag), contains: () => true };
+const window = { tracker: { logError() {} } };
+"""
+
+#: The reminder sheet's world: two returns' cards, a read that waits until the
+#: probe lets it land, and a clipboard that records what was put on it.
+REMINDER_SHEET = r"""
+let vocab = {
+  screen: { loading: "Loading", sheet: { reminder: "Draft Reminder" } },
+  reminder: { stages: [], palette: { ink: "#000" }, hold_colour: "ink", stage_group: "Stage", edited_by_hand: "Edited", subject_prefix: "Subject: ",
+              heading: "Letter", letter_ink: { body: "ink", muted: "ink", paper: "ink" }, never_drafted_line: "Never drafted", copied: "Copied", approve: "Approve" },
+};
+const card = (ret) => ({ held: [], unsorted: 0, stage: 1, editable: true, file: { edited: false }, subject: `For ${ret}`, letter: { greeting: `Dear ${ret}` },
+                         html: `<p>${ret}</p>`, text: `Letter for ${ret}`, last: null, approved: null, lapsed: false, fingerprint: `fp-${ret}` });
+let active = "A"; let lastState = { paths: { engagement: "A" }, reminder_card: { reminder: card("A") } };
+let shellRoute = { level: "reminders" };
+const FIRM_LEVELS = ["overview", "needs-review", "reminders", "clients"];
+const reads = [];
+const showReturn = (path) => new Promise((resolve) => reads.push({ path, land() {
+  active = path; lastState = { paths: { engagement: path }, reminder_card: { reminder: card(path) } };
+  drawReminderReply(lastState.reminder_card); resolve(true); } }));
+let drafts = [{ ret: "B" }, { ret: "C" }];
+const pagesDrafts = () => drafts; const pagesWhere = () => null; const pagesDay = (d) => d;
+const openDialog = () => {}; const setTipIfCut = () => {}; const applyLock = () => {}; const closeSheet = () => {};
+const failed = (err) => { throw err; }; const outcome = () => {};
+const clipboard = []; const sent = [];
+const navigator = { clipboard: { write: async (items) => { clipboard.push(items[0].parts["text/plain"].text); } } };
+class ClipboardItem { constructor(parts) { this.parts = parts; } }
+class Blob { constructor([text]) { this.text = text; } }
+const call = async (args, payload) => { sent.push([args[0], payload]); return { reminder: card(active) }; };
+const withEng = (name) => [name, "--engagement", active];
+const loadReminder = async () => {};
+let sheetNow = null; let sheetGeneration = 0;
+const tick = () => new Promise((resolve) => setImmediate(resolve));
+const actions = () => ({ card: reminderCard ? reminderCard.text : null, shown: !$("reminder-actions").hidden, busy: $("sheet").getAttribute("aria-busy"),
+                         outline: $("reminder-wait").byClass("row-skeleton").length, word: $("reminder-wait").textContent });
+"""
+
+REMINDER_FUNCTIONS = ("el", "h", "show", "fill", "screenWords", "shellSkeleton", "stageOf", "stageInk", "marked", "holdLine", "reminderStatus", "lines",
+                      "letterNodes", "drawReminderReply", "drawReminderLine", "drawReminder", "forgetReminderCard", "reminderWaitOver",
+                      "reminderCardReady", "copyReminder", "approveReminder", "sheetSet", "sheetMore", "sheetFrame", "openReminder",
+                      "sheetDraftsAfter", "sheetNextDraft", "sheetShow", "sheetDrawCheck", "sheetAfter")
+
+
+def run_speed(setup: str, functions, probe: str, tmp_path: Path, consts: str = ""):
+    """Run a probe against the named functions, lifted as written, in SPEED_DOM."""
+    if NODE is None:
+        pytest.skip("node is not on PATH (CI installs it)")
+    script = tmp_path / "speed_probe.js"
+    script.write_text(f"{SPEED_DOM}\n{setup}\n{consts}\n{lift(*functions)}\n"
+                      f"(async () => {{ {probe} }})().then((out) => process.stdout.write(JSON.stringify(out)));\n",
+                      encoding="utf-8", newline="\n")
+    done = subprocess.run([NODE, str(script)], capture_output=True, text=True, encoding="utf-8", timeout=60, check=False)
+    assert done.returncode == 0, done.stderr
+    return json.loads(done.stdout)
+
+
+def run_reminder_sheet(probe: str, tmp_path: Path):
+    consts = "let reminderCard = null; let reminderCardFor = null;\n" + lift_line("const EL_ATTRIBUTES = new Set([", "app.js") \
+        + lift_line("const H_ATTRIBUTES = new Set([", "shell.js")
+    return run_speed(REMINDER_SHEET, REMINDER_FUNCTIONS, probe, tmp_path, consts)
+
+
+def test_the_reminder_sheet_offers_nothing_to_copy_until_its_own_return_is_read(tmp_path):
+    """P213 (findings-4 #2): opened from Reminders on another client, the sheet
+    held the return on screen's card and showed Copy, so Copy put that
+    client's letter on the clipboard while the next was read. Now the card
+    is forgotten, the buttons hidden and the sheet busy, with an outline,
+    until the return's own state draws its own card."""
+    said = run_reminder_sheet("""
+      drawReminder(card("A"));
+      const before = actions();
+      const opening = openReminder("B");
+      const waiting = actions();
+      await copyReminder();
+      const copiedWhileWaiting = clipboard.length;
+      reads[0].land();
+      await opening;
+      await tick();
+      const after = actions();
+      await copyReminder();
+      return { before, waiting, copiedWhileWaiting, after, clipboard };
+    """, tmp_path)
+    assert said["before"]["card"] == "Letter for A" and said["before"]["shown"]
+    assert said["waiting"] == {"card": None, "shown": False, "busy": "true", "outline": 3, "word": "Loading"}
+    assert said["copiedWhileWaiting"] == 0, "another client's letter never reaches the clipboard"
+    assert said["after"] == {"card": "Letter for B", "shown": True, "busy": None, "outline": 0, "word": ""}
+    assert said["clipboard"] == ["Letter for B"]
+
+
+def test_next_draft_offers_nothing_to_copy_until_its_return_is_read(tmp_path):
+    """P213: Next on the reminder sheet had the same window - the last draft's
+    card, with Copy, until the next return's state arrived."""
+    said = run_reminder_sheet("""
+      const opening = openReminder("B");
+      reads[0].land();
+      await opening;
+      const next = sheetNextDraft();
+      const waiting = actions();
+      const ready = sheetNow.ready;
+      await copyReminder();
+      await approveReminder();
+      const before = [clipboard.length, sent.length];
+      reads[1].land();
+      await next;
+      await copyReminder();
+      return { waiting, ready, before, clipboard, ret: sheetNow.ret, nowReady: sheetNow.ready };
+    """, tmp_path)
+    assert said["waiting"]["card"] is None and not said["waiting"]["shown"] and said["waiting"]["busy"] == "true"
+    assert said["ready"] is False and said["before"] == [0, 0], "neither Copy nor Approve acts while the next draft is read"
+    assert said["ret"] == "C" and said["nowReady"] is True
+    assert said["clipboard"] == ["Letter for C"]
+
+
+def test_copy_refuses_a_card_drawn_for_another_return(tmp_path):
+    """P213, 4: on a reminder sheet, Copy and Approve act only on a card drawn
+    for the sheet's own return, once its read is in; off the sheet the card is
+    the return on screen's."""
+    said = run_reminder_sheet("""
+      const out = [];
+      const attempt = async (now, drawnFor, ready) => {
+        clipboard.length = 0; sent.length = 0;
+        active = drawnFor; drawReminder(card(drawnFor));
+        sheetNow = now ? { kind: "reminder", ret: now, ready } : null;
+        await copyReminder(); await approveReminder();
+        out.push([clipboard.length, sent.length]);
+      };
+      await attempt("B", "A", true);
+      await attempt("B", "B", false);
+      await attempt("B", "B", true);
+      await attempt(null, "A", false);
+      return out;
+    """, tmp_path)
+    assert said == [[0, 0], [0, 0], [1, 1], [1, 1]]
+
+
+def test_a_check_sheet_waiting_on_its_return_is_an_outline(tmp_path):
+    """P213, 5: Next on a check sheet to a file of another return reads that
+    return first; the sheet shows an outline meanwhile, not a blank."""
+    said = run_reminder_sheet("""
+      const now = { kind: "check", ret: "A", handle: "a", order: [], ready: true, row: {} };
+      sheetNow = now;
+      sheetShow(now, { ret: "B", handle: "b", name: "b.pdf" });
+      const body = $("sheet-check");
+      return { outline: body.byClass("row-skeleton").length, word: body.byClass("visually-hidden").map((one) => one.textContent), ready: now.ready };
+    """, tmp_path)
+    assert said == {"outline": 3, "word": ["Loading"], "ready": False}

@@ -405,6 +405,7 @@ function render(state) {
 let reminderStage = null;    // the stage a person picked, or null for the record's
 let reminderFor = null;      // which engagement that choice belongs to
 let reminderCard = null;     // the payload the card was last drawn from
+let reminderCardFor = null;  // the return that card was drawn for (P213)
 
 function stageOf(number) {
   return vocab.reminder.stages.find((s) => s.number === number) || null;
@@ -463,9 +464,35 @@ async function loadReminder() {
   }
 }
 
+// The sheet's reminder while its return is read (P213): no card, so nothing
+// to copy or approve, and an outline where the letter will be. Until the
+// return's own state arrives the card held is another return's - the one
+// on screen when the sheet opened, or the draft before Next - and Copy
+// would put that client's letter on the clipboard.
+function forgetReminderCard() {
+  reminderCard = null;
+  reminderCardFor = null;
+  $("sheet-reminder").classList.remove("line-only");
+  $("sheet-reminder").classList.add("is-waiting");
+  $("reminder-wait").replaceChildren(el("span", { className: "visually-hidden" }, screenWords().loading), ...shellSkeleton(3));
+  $("reminder-wait").classList.remove("hidden");
+  $("reminder-actions").hidden = true;
+  $("sheet").setAttribute("aria-busy", "true");
+}
+
+// The card's own draw ends the wait: the outline goes and the sheet is
+// no longer busy.
+function reminderWaitOver() {
+  $("sheet-reminder").classList.remove("is-waiting");
+  $("reminder-wait").replaceChildren();
+  $("reminder-wait").classList.add("hidden");
+  $("sheet").removeAttribute("aria-busy");
+}
+
 // The sheet's reminder with one line and nothing to copy or approve
 // (decision 193): the sheet stays, whatever the read said.
 function drawReminderLine(line) {
+  reminderWaitOver();
   $("sheet-reminder").classList.add("line-only");
   $("reminder-actions").classList.add("hidden");
   $("reminder-status").textContent = line;
@@ -474,6 +501,8 @@ function drawReminderLine(line) {
 
 function drawReminder(card) {
   reminderCard = card;
+  reminderCardFor = active;
+  reminderWaitOver();
   $("sheet-reminder").classList.remove("line-only");
   const words = vocab.reminder;
   const rows = (card.held || []).length;
@@ -545,7 +574,20 @@ function drawReminder(card) {
 
   // Held: the hold line, the rows and the toggle, and nothing that reads
   // like something to send. There is no file to open at all (SPEC 7.2).
+  // The buttons appear only with the letter they act on (P213): the sheet's
+  // frame never shows them.
+  $("reminder-actions").hidden = false;
   $("reminder-actions").classList.toggle("hidden", held);
+}
+
+// Copy and Approve act only on a card drawn for the return the reminder
+// sheet holds, once that return's read is in (P213). Off the sheet a card
+// is the return on screen's.
+function reminderCardReady() {
+  if (!reminderCard) return false;
+  const now = typeof sheetNow === "undefined" ? null : sheetNow;
+  if (!now || now.kind !== "reminder") return true;
+  return reminderCardFor === now.ret && now.ready === true;
 }
 
 // The hold, in the API's words: the rows' line, the inbox's line, or both.
@@ -624,7 +666,7 @@ function letterNodes(card) {
 // on the clipboard - it goes in Outlook's own box, and the card shows it
 // as text a person selects.
 async function copyReminder() {
-  if (!reminderCard) return;
+  if (!reminderCardReady()) return;
   const btn = $("btn-copy");
   btn.disabled = true;
   try {
@@ -644,7 +686,7 @@ async function copyReminder() {
 // goes with the click, and a panel the record has moved under is refused
 // by the API and read again (decision 112's rule, on this card).
 async function approveReminder() {
-  if (!reminderCard) return;
+  if (!reminderCardReady()) return;
   const btn = $("btn-approve");
   btn.disabled = true;
   try {

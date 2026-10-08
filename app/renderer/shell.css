@@ -842,6 +842,9 @@ input, textarea, select { caret-color: var(--text); accent-color: var(--accent);
 .sheet-more .btn { justify-self: start; }
 .sheet-actions:not([hidden]):not(.hidden) { display: flex; gap: var(--sp-2); justify-content: flex-end; width: 100%; }
 #sheet-reminder.line-only > :not(#reminder-status) { display: none; }
+/* While the reminder's return is read (P213): the outline alone. */
+#sheet-reminder.is-waiting > :not(#reminder-wait) { display: none; }
+#reminder-wait:not(.hidden) { display: grid; gap: var(--sp-2); }
 #sheet .rem-stages { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 #sheet .rem-preview { max-height: none; }
 
