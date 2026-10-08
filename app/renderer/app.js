@@ -166,6 +166,9 @@ class TrackerError extends Error {
 // label (decision 194's review, S1), never as if about the return shown.
 async function call(args, payload, { ofAnother = false } = {}) {
   const result = await window.tracker.call(args, payload);
+  // A write's reply has landed (P218): the Overview a load sent after this
+  // asks may already hold it (shell.js). Said before its state is drawn.
+  if (vocab && Array.isArray(vocab.writing_commands) && vocab.writing_commands.indexOf(args[0]) !== -1) shellWriteLanded();
   if (result && Array.isArray(result.warnings) && result.warnings.length) {
     warningNotices(ofAnother ? result.warnings.map((sentence) =>
       fill(vocab.notices.about, { label: labelOfState(result), sentence })) : result.warnings);
@@ -2320,6 +2323,7 @@ async function runScan() {
 // the shown return's state (the lane's ruling on 194's Q5) - behind the
 // view generation, so a return chosen since is the one drawn.
 async function passEnded({ reply }) {
+  shellWriteLanded();   // the pass wrote: the list's own Overview, asked next, holds it (P218)
   const asked = scanning.asked;
   scanDone();
   const ended = reply || {};

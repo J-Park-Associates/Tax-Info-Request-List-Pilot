@@ -1539,8 +1539,9 @@ def test_an_error_after_the_state_arrives_never_reaches_the_write_that_brought_i
       let shellDraw = null; let pagesTally = null;
       const shellFirmNow = { data: { returns: [{ path: "r1", counts: {} }] } };
       const shellLoadFirm = () => {};
+      const shellFirmSentAt = 0; const shellWroteAt = 0; const shellFirmHeld = new Map();
     """
-    assert run_shell(["shellStateArrived"], setup, probe, tmp_path) == [None, ["draw", "tally"]]
+    assert run_shell(["shellStateArrived", "shellCountsDiffer"], setup, probe, tmp_path) == [None, ["draw", "tally"]]
 
 
 def test_the_year_page_leaves_a_gap_under_its_h1_before_its_rows(tmp_path):
@@ -2964,6 +2965,7 @@ def test_the_sorts_answer_is_built_line_by_line_from_the_pass(tmp_path):
              f"const vocab = {{ scan: {json.dumps(words)} }};\n") + r"""
       let scanning = null, active = "r25", viewGeneration = 1, kept = [];
       function scanDone() {}
+      function shellWriteLanded() {}
       function warningNotices() {}
       function adoptList() {}
       function withEng(c) { return [c]; }
@@ -4243,6 +4245,7 @@ def test_another_returns_line_keeps_its_bullet_and_says_the_return_by_its_fields
              + SORT_SAID + js_function("pagesTaxpayer", "pages.js") + r"""
       let scanning = null, active = "r25", viewGeneration = 1, kept = [];
       function scanDone() {}
+      function shellWriteLanded() {}
       function warningNotices() {}
       function adoptList() {}
       function withEng(c) { return [c]; }
@@ -4561,3 +4564,83 @@ def test_a_check_sheet_waiting_on_its_return_is_an_outline(tmp_path):
       return { outline: body.byClass("row-skeleton").length, word: body.byClass("visually-hidden").map((one) => one.textContent), ready: now.ready };
     """, tmp_path)
     assert said == {"outline": 3, "word": ["Loading"], "ready": False}
+
+
+#: shell.js's load of the firm's counts, lifted whole, with a `firm` that
+#: answers only when the probe says so.
+FIRM_LOAD = r"""
+let vocab = { commands: ["list", "firm"], screen: { loading: "Loading", updating: "Updating", reading_households: "Reading {n} of {total} Households",
+                                                    notices: { firm_failed: "Counts Not Available" } } };
+const fill = (p, v) => p.replace(/\{(\w+)\}/g, (_, k) => v[k] ?? "");
+let shellRoute = { level: "return" }; let shellPageBusy = false; let shellRootSet = false; let shellPaths = {}; let shellLastPass = null;
+let shellFirmNow = { status: "idle", data: null }; let shellFirmAsked = false; let shellFirmEarly = null; let shellClock = 0;
+let shellFirmSentAt = 0; let shellWroteAt = 0; const shellFirmHeld = new Map(); let shellFirmCount = null; let shellFirmSlow = false;
+let shellFirmTimer = null; const SHELL_FIRM_SLOW_MS = 2000;
+const FIRM_LEVELS = ["overview", "needs-review", "reminders", "clients"];
+const asked = []; const notices = []; const drawn = [];
+const call = (args) => new Promise((resolve) => asked.push({ args, resolve }));
+const firmOf = (n) => ({ returns: [{ path: "r1", counts: { needs_you: n } }], totals: {} });
+const stateOf = (n) => ({ paths: { engagement: "r1" }, counts: { needs_you: n } });
+const pagesTally = (state) => state.counts;
+const shellChanged = () => {}; const shellDraw = () => drawn.push(shellRoute.level); const drawPage = () => drawn.push("page");
+const notice = (failure) => notices.push(failure.sentence); const failureSentence = () => ""; const failed = (err) => { throw err; };
+const warningNotices = (list) => notices.push(...list);
+class TrackerError extends Error { constructor(result) { super(result.error); this.result = result; } }
+const tick = async () => { for (let i = 0; i < 5; i += 1) await new Promise((resolve) => setImmediate(resolve)); };
+const firms = () => asked.filter((one) => one.args[0] === "firm").length;
+const land = async (i, reply) => { asked[i].resolve(reply); await tick(); };
+"""
+
+FIRM_LOAD_FUNCTIONS = ("h", "screenWords", "shellAdopt", "shellAskFirmEarly", "shellDropEarlyFirm", "shellAdoptEarly", "shellAskFirm", "shellFirmSent",
+                       "shellFirmDone", "shellFirmTookLong", "shellWriteLanded", "shellFirmProgress", "shellReading", "shellReadingNodes",
+                       "shellSetReading", "shellDrawReading", "shellLoadFirm", "shellFollowsCounts", "shellFirmUpdating", "shellUpdating",
+                       "shellMarkUpdating", "shellStateArrived", "shellCountsDiffer")
+
+
+def run_firm_load(probe: str, tmp_path: Path, setup: str = ""):
+    consts = lift_line("const H_ATTRIBUTES = new Set([", "shell.js")
+    return run_speed(FIRM_LOAD + setup, FIRM_LOAD_FUNCTIONS, probe, tmp_path, consts)
+
+
+def test_after_a_sort_one_overview_is_asked_not_two(tmp_path):
+    """P218 (findings-3 #2): a Sort's list starts a `firm`; its state then
+    arrived and was compared with the old counts, which queued a second whole
+    `firm` whose answer could not differ. A state that arrives while a load
+    sent after the write runs is remembered and compared with the new counts:
+    one more load only if they still differ."""
+    said = run_firm_load("""
+      shellFirmNow = { status: "ok", data: firmOf(1) };
+      const out = [];
+      for (const after of [2, 1]) {
+        asked.length = 0;
+        shellFirmNow = { status: "ok", data: firmOf(1) };
+        shellWriteLanded();                 // passEnded
+        shellAdopt({ root: "/root" });      // the list the pass ends with
+        shellStateArrived(stateOf(2));      // the shown return's state, after the Sort
+        const during = firms();
+        await land(0, firmOf(after));
+        if (asked.length > 1) await land(1, firmOf(2));
+        out.push([during, firms(), shellFirmNow.status, shellFirmHeld.size]);
+      }
+      return out;
+    """, tmp_path)
+    assert said[0] == [1, 1, "ok", 0], "the list's own load held what the Sort wrote: no second Overview"
+    assert said[1] == [1, 2, "ok", 0], "counts that still differ ask once more"
+
+
+def test_a_write_that_lands_during_a_load_still_asks_again(tmp_path):
+    """P218: a load sent before a write cannot hold what it wrote, so a state
+    whose counts differ, from a write that landed while it ran, is followed
+    by one more load, as before."""
+    said = run_firm_load("""
+      shellFirmNow = { status: "ok", data: firmOf(1) };
+      shellLoadFirm();                      // F5, say
+      shellWriteLanded();                   // a write's reply lands while it runs
+      shellStateArrived(stateOf(2));
+      const during = firms();
+      await land(0, firmOf(1));
+      const after = firms();
+      await land(1, firmOf(2));
+      return [during, after, firms(), shellFirmNow.status];
+    """, tmp_path)
+    assert said == [1, 2, 2, "ok"]
