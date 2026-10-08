@@ -47,6 +47,14 @@ its end too, so the first Overview after an install or an upgrade opens at
 once. The first Overview reads every household, with its count on screen,
 only when that step could not make the Overview ready, or after an update
 from source. A pass someone stopped asks nothing: Stop means stop.
+When the app opens, the Overview first shows the counts this file last
+held today, greyed and marked "Updating, as of" the time it was last
+written, and swaps in the fresh counts the moment they arrive (pilot
+P229): never yesterday's, never after a program update, never for another
+clients folder, and never while any household is missing from the file -
+then it simply waits, as before. Every button reads the return afresh, so
+nothing is ever done on a marked count; if the fresh check fails, the
+marked counts are taken down and the failure is shown with Retry.
 
 A fourth, `page-rows.json` (pilot P227), keeps what the practice page
 (`status.html`) last read from each return - its counts and the files
