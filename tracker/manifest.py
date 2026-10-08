@@ -1653,8 +1653,6 @@ def unlearn_keyword(
     engagement_dir: Path | str,
     identifier: str,
     keyword: str,
-    *,
-    lock_held: bool = False,
 ) -> KeywordUnlearned:
     """Take back a keyword a person's filing taught one request (decision 113).
 
@@ -1669,8 +1667,7 @@ def unlearn_keyword(
     take the word out of every reader's answer until the next rebuild put
     it back, because the journal is the record and the store is its
     derivation. So a word taught by an event is taken back by an event:
-    one ``keyword_unlearned``, under the engagement lock (taken here
-    unless the caller already holds it), through
+    one ``keyword_unlearned``, under the engagement lock, through
     :func:`tracker.store.record` - journal first - and the history says
     who took it back and when.
 
@@ -1701,13 +1698,11 @@ def unlearn_keyword(
     word when the document was filed and wants it still, and guessing
     which word to take back would be guessing.
     """
-    from contextlib import nullcontext
-
     from tracker import ledger, store
     from tracker.locking import engagement_lock
 
     folder = Path(engagement_dir)
-    with nullcontext() if lock_held else engagement_lock(folder):
+    with engagement_lock(folder):
         conn = _the_record(folder)
         taught = store.learned_keywords(conn, folder)
         if keyword not in taught.get(identifier_key(identifier), ()):

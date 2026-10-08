@@ -921,7 +921,7 @@ def test_read_index_keeps_the_place_of_a_row_that_changed_identity(engagement):
     rows = read_index(engagement)
     assert [e.original_name for e in rows] == before          # the place, not the new name
     assert rows[0].pbc_location.endswith("z renamed.pdf")
-    assert list(ledger.fold(ledger.read_events(engagement))) == [
+    assert list(ledger.replay(ledger.read_events(engagement)).rows) == [
         e.pbc_location for e in rows]
 
 

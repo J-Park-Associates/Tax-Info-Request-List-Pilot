@@ -33,7 +33,7 @@ journal - under the engagement lock, fsync-ed, one line each - and only
 then opens a single immediate transaction that inserts those same events
 and folds them into the tables. If the machine dies between the two, the
 journal is ahead of the store by some lines and nothing is lost:
-:func:`sync` compares the journal's line count with what the store says it
+:func:`catch_up` compares the journal's line count with what the store says it
 has applied and replays the difference. The reverse order would lose the
 event itself, which is the one thing that cannot be recovered. This is
 also why the store may run with ``synchronous`` at NORMAL: a write-ahead
@@ -2408,7 +2408,7 @@ def record(conn: sqlite3.Connection, engagement_dir: Path | str, *events: dict) 
     :func:`tracker.ledger.append` - one fsync-ed line, under the engagement
     lock - and only then does one immediate transaction insert them all and
     fold them into the tables. A crash between the two leaves the journal
-    ahead by some lines, which :func:`sync` replays; a crash the other way
+    ahead by some lines, which :func:`catch_up` replays; a crash the other way
     round would lose the event, which nothing can replay.
 
     Refuses outside the engagement lock, and writes nothing to either side
@@ -2417,7 +2417,7 @@ def record(conn: sqlite3.Connection, engagement_dir: Path | str, *events: dict) 
     Refuses too when the store has not been built for this engagement, or
     when it is behind the journal - a batch numbered from a stale seq would
     collide with lines already there. :func:`rebuild_engagement` and
-    :func:`sync` are the two answers to that.
+    :func:`catch_up` are the two answers to that.
 
     The apply reads the journal again inside its transaction and applies
     from the store's applied seq as it is then (decision 135), so a reader
@@ -2444,7 +2444,7 @@ def record(conn: sqlite3.Connection, engagement_dir: Path | str, *events: dict) 
     if already != row["applied_seq"]:
         raise StoreError(
             f"{engagement_dir.name}: the store has applied {row['applied_seq']} of the journal's "
-            f"{already} line(s); sync() it before recording to it"
+            f"{already} line(s); catch_up() it before recording to it"
         )
     # The same count is not the same lines (decision 137, A3): a journal
     # rewritten to its own length would otherwise have this call's line
@@ -2509,14 +2509,16 @@ def record(conn: sqlite3.Connection, engagement_dir: Path | str, *events: dict) 
         return _catch_up(conn, None, engagement_dir, build=False)
 
 
-def sync(conn: sqlite3.Connection, root: Path | str, engagement_dir: Path | str) -> int:
-    """Apply the journal lines the store has not. Returns the new applied seq.
+def catch_up(conn: sqlite3.Connection, root: Path | str, engagement_dir: Path | str) -> int:
+    """Apply the journal lines the store has not, building the engagement
+    if the store holds none. Returns the new applied seq.
 
     The repair for the one gap :func:`record` can leave - the journal
-    written, the transaction not - and the cheap thing to do before
-    trusting the store for an engagement. A torn last line is not a line:
-    :func:`tracker.ledger.read_events` ignores bytes a killed run left with
-    no newline after them, so the tail is replayed once it is whole.
+    written, the transaction not - and the full catch-up the filer's
+    ``ensure()`` runs at the start of every pass (decision 135). A torn last
+    line is not a line: :func:`tracker.ledger.read_events` ignores bytes a
+    killed run left with no newline after them, so the tail is replayed once
+    it is whole.
 
     A store that has applied *more* than the journal holds is not something
     to patch up: the journal has been truncated or replaced under it, and
@@ -2526,23 +2528,10 @@ def sync(conn: sqlite3.Connection, root: Path | str, engagement_dir: Path | str)
     **By count, not by head.** It compares the number of lines the store
     has applied with the number the journal holds, whatever the stored head
     says - which is what repairs a store an earlier version left with a
-    head that names a line it never applied (decision 135). A look that
-    finds nothing to apply takes no lock; everything it writes from, it
-    reads again inside its own transaction (:func:`_look_then_catch_up`).
-    """
-    return _look_then_catch_up(conn, root, engagement_dir, build=False)
-
-
-def catch_up(conn: sqlite3.Connection, root: Path | str, engagement_dir: Path | str) -> int:
-    """:func:`sync` for an engagement the store holds, a first build for
-    one it does not. Returns the applied seq.
-
-    The full catch-up the filer's ``ensure()`` runs at the start of
-    every pass (decision 135): it parses the journal and compares by count,
-    so a store whose head matches while its applied seq is short is
-    repaired by the next pass rather than refusing it for the rest of the
-    season. A pass parses the journal anyway, so this costs it one parse -
-    and, when there is nothing to apply, no lock (:func:`_look_then_catch_up`).
+    head that names a line it never applied (decision 135), rather than
+    refusing the pass for the rest of the season. A pass parses the journal
+    anyway, so this costs it one parse - and, when there is nothing to
+    apply, no lock (:func:`_look_then_catch_up`).
     """
     return _look_then_catch_up(conn, root, engagement_dir, build=True)
 
@@ -2609,7 +2598,7 @@ def _catching_up(conn: sqlite3.Connection, root: Path | str | None, engagement_d
 
     ``build`` is what an engagement the store does not hold gets: a first
     build from the lines (a reader's top-up, :func:`catch_up`) or the
-    refusal :func:`sync` and :func:`record` give. A refusal raised here
+    refusal :func:`catch_up` and :func:`record` give. A refusal raised here
     rolls the caller's transaction back, and nothing was written.
 
     ``known`` is the look :func:`_look_then_catch_up` made outside; it
@@ -3048,10 +3037,9 @@ def _intend(conn: sqlite3.Connection, key: str, chain: list[str], already: int, 
         return start, said
 
 
-def _expect(conn: sqlite3.Connection, key: str, start: int, heads: list[str], *,
-            held: sqlite3.Connection | None = None) -> None:
+def _expect(conn: sqlite3.Connection, key: str, start: int, heads: list[str]) -> None:
     """:func:`tracker.checkpoint.expect`, beside this store."""
-    with _beside(conn, held) as held:
+    with _beside(conn) as held:
         if held is not None:
             checkpoint.expect(held, key, start, heads)
 
@@ -3925,7 +3913,7 @@ def _described(payload: str | None) -> tuple[str, str, str]:
 
 
 def recover(conn: sqlite3.Connection, root: Path | str, engagement_dir: Path | str, *,
-            accept_loss: str | None = None, now: dt.datetime | None = None) -> Recovery:
+            accept_loss: str | None = None) -> Recovery:
     """Compare, export, and replay only when the loss is accepted by name
     (decision 159, G-2). The runbook's recovery; what ``rebuild`` refuses
     to do silently.
@@ -3955,7 +3943,7 @@ def recover(conn: sqlite3.Connection, root: Path | str, engagement_dir: Path | s
         one["seq"]: one["payload"]
         for one in conn.execute("SELECT seq, payload FROM events WHERE engagement_id = ? ORDER BY seq",
                                 (row["id"],))}
-    stamp = (now or dt.datetime.now()).strftime("%Y-%m-%d-%H%M%S")
+    stamp = dt.datetime.now().strftime("%Y-%m-%d-%H%M%S")
     base = _store_file(conn).parent / RECOVERED_DIR / f"{rel.replace('/', '__')}-{stamp}.jsonl"
     now_bytes = ledger._bytes_of(ledger.path_for(engagement_dir))
     try:
