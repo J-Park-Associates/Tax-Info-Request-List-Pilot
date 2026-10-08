@@ -9867,3 +9867,183 @@ def test_importing_the_api_loads_no_pdf_reader():
                           capture_output=True, text=True, timeout=120)
     assert done.returncode == 0, done.stderr
     assert done.stdout.strip() == "[]"
+
+
+# ------------------------------------------------------ the warm spare (P220) ----
+
+
+def _tracker_api(args, stdin: bytes, env=None):
+    """``python -m tracker.api`` as the shell starts it, from the checkout."""
+    import subprocess
+    import sys
+
+    from tests.conftest import REPO, child_env
+
+    return subprocess.run([sys.executable, "-m", "tracker.api", *args], cwd=REPO,
+                          env=env or child_env(), input=stdin, capture_output=True, timeout=180)
+
+
+def _handed(argv, payload: bytes = b"") -> bytes:
+    """What the shell writes a spare: the one line, then the payload."""
+    return json.dumps({"argv": argv}).encode("utf-8") + b"\n" + payload
+
+
+def test_a_spare_runs_the_one_command_it_is_handed_and_replies_as_a_fresh_process_does(capsys, demo_root):
+    """P220: the same command in a process that started earlier - stdout
+    and exit code byte for byte a fresh process's, a ``state`` and an
+    ``edit`` that carries a payload alike."""
+    spec = {"household": HOUSEHOLD, "return_name": "Smith", "items": [
+        {"identifier": "A01", "document": "W-2", "required_keywords": "W-2"}]}
+    assert run(capsys, "create", stdin=spec)[0] == 0
+    engagement = where(demo_root, "Smith")
+    rules = payload_of_state(capsys, engagement)["rules"]
+    store.close()
+
+    state = ["state", api.ENGAGEMENT_FLAG, str(engagement)]
+    fresh = _tracker_api(state, b"")
+    warm = _tracker_api([api.SPARE_FLAG], _handed(state))
+    assert fresh.returncode == warm.returncode == 0, warm.stderr
+    assert warm.stdout == fresh.stdout
+
+    edit = ["edit", api.ENGAGEMENT_FLAG, str(engagement)]
+    body = json.dumps({"items": rules, "engagement": {}, "head": _head_now(edit)}).encode("utf-8")
+    fresh = _tracker_api(edit, body)
+    warm = _tracker_api([api.SPARE_FLAG], _handed(edit, body))
+    assert fresh.returncode == warm.returncode == 0, warm.stderr
+    assert warm.stdout == fresh.stdout
+    assert json.loads(warm.stdout)["saved"]["recorded"] is False
+
+
+def test_a_spare_handed_nothing_exits_quietly():
+    """The app closed, or killed the spare it no longer needs: the end of
+    input before a newline runs nothing and says nothing."""
+    for stdin in (b"", b'{"argv": ["sta'):
+        done = _tracker_api([api.SPARE_FLAG], stdin)
+        assert done.returncode == 0 and done.stdout == b"", done.stderr
+
+
+def test_a_spare_handed_a_malformed_line_says_the_usage_and_runs_nothing():
+    """A line not of the agreed shape - or too long - is answered as every
+    unknown command is: ``main([])``'s usage envelope, no words of its own."""
+    usage = _tracker_api([], b"")
+    assert usage.returncode == 1 and json.loads(usage.stdout)["error"].startswith("usage")
+    too_long = json.dumps({"argv": ["state", "x" * (api.SPARE_LINE_MAX + 10)]}).encode() + b"\n"
+    for line in (b"not json\n", b'{"argv": []}\n', b'{"argv": ["state", 3]}\n', b'["state"]\n',
+                 b"\xff\xfe\n", too_long):
+        done = _tracker_api([api.SPARE_FLAG], line)
+        assert done.returncode == 1, line[:40]
+        assert done.stdout == usage.stdout, line[:40]
+
+
+#: What ``import tracker.api`` may open or list (P220): the interpreter's
+#: own files, its packages, the checkout's ``tracker/`` - and a folder on the
+#: import path, which the import system lists to find a module.
+_IMPORT_PROBE = """
+import json, os, sys, sysconfig
+seen = []
+def hook(event, args):
+    if event in ("open", "os.listdir", "os.scandir") and args and isinstance(args[0], (str, bytes, os.PathLike)):
+        seen.append((event, os.fsdecode(args[0])))
+sys.addaudithook(hook)
+import tracker.api
+roots = {sys.prefix, sys.base_prefix, sys.exec_prefix, *(p for p in sysconfig.get_paths().values())}
+print(json.dumps({"seen": seen, "roots": sorted(roots), "path": sys.path}))
+"""
+
+
+def test_importing_the_api_opens_no_file_but_the_programs_own():
+    """P220: a spare is the API imported before the click, so importing it
+    must read nothing a command would read differently later - no settings
+    file, no data folder, no clients root: every file opened and every
+    folder listed is the interpreter's, its packages', the checkout's
+    ``tracker/``, or a folder on the import path."""
+    import os
+    import subprocess
+    import sys
+
+    from tests.conftest import REPO
+
+    env = {key: value for key, value in os.environ.items() if key != "PYTHONPATH"}
+    env["TRACKER_PRODUCT_NAME"] = "Fabricated Product"
+    done = subprocess.run([sys.executable, "-c", _IMPORT_PROBE], cwd=REPO, env=env,
+                          capture_output=True, text=True, timeout=180)
+    assert done.returncode == 0, done.stderr
+    said = json.loads(done.stdout.splitlines()[-1])
+    own = [os.path.realpath(root) for root in said["roots"]] + [os.path.realpath(REPO / "tracker")]
+    on_the_path = {os.path.realpath(entry or REPO) for entry in said["path"]}
+    strays = []
+    for event, where in said["seen"]:
+        real = os.path.realpath(os.path.join(REPO, where))
+        if event != "open" and real in on_the_path:
+            continue
+        if not any(real == root or real.startswith(root + os.sep) for root in own):
+            strays.append((event, where))
+    assert strays == []
+
+
+#: Everything at a module's top level that asks the machine (P220): the
+#: environment, the clock, the disk, the program's place - by the calls and
+#: values that do, and the settings' own questions.
+_ASKS_BY_CALL = frozenset({
+    "getenv", "now", "today", "time", "monotonic", "perf_counter", "read_text", "read_bytes", "open",
+    "resolve", "cwd", "home", "exists", "is_file", "is_dir", "iterdir", "stat", "lstat", "listdir",
+    "scandir", "glob", "rglob", "expanduser", "getcwd", "gethostname", "getpid", "urandom", "getuser",
+    "node", "localtime", "product_name", "data_home", "settings_dir", "settings_path", "clients_root",
+    "app_dir", "program_folders", "default_data_home", "schedule_preference", "firm",
+    "beside_the_program", "resolved", "_read"})
+_ASKS_BY_VALUE = frozenset({"environ", "__file__", "executable", "argv"})
+
+
+def _fixed_at_import() -> set[tuple[str, str]]:
+    """Each ``(module file, name)`` a top-level statement of ``tracker/``
+    binds from the machine, following calls into the module's own
+    functions; ``if __name__ == "__main__"`` blocks are a command line's."""
+    import ast
+
+    from tests.conftest import REPO
+
+    def asks(node, defined, seen):
+        for sub in ast.walk(node):
+            if isinstance(sub, ast.Call):
+                func = sub.func
+                name = func.id if isinstance(func, ast.Name) else getattr(func, "attr", None)
+                if name in _ASKS_BY_CALL:
+                    return True
+                if isinstance(func, ast.Name) and func.id in defined and func.id not in seen:
+                    seen.add(func.id)
+                    if asks(defined[func.id], defined, seen):
+                        return True
+            elif (isinstance(sub, ast.Attribute) and sub.attr in _ASKS_BY_VALUE) or (
+                    isinstance(sub, ast.Name) and sub.id in _ASKS_BY_VALUE):
+                return True
+        return False
+
+    fixed = set()
+    for path in sorted((REPO / "tracker").glob("*.py")):
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        defined = {node.name: node for node in tree.body
+                   if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))}
+        for node in tree.body:
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Import,
+                                 ast.ImportFrom)):
+                continue
+            if isinstance(node, ast.If) and "__main__" in ast.unparse(node.test):
+                continue
+            if asks(node, defined, set()):
+                targets = getattr(node, "targets", None) or [getattr(node, "target", None)]
+                fixed |= {(path.name, ast.unparse(target)) for target in targets if target is not None}
+                if not any(targets):
+                    fixed.add((path.name, f"line {node.lineno}"))
+    return fixed
+
+
+def test_only_the_task_name_and_the_programs_own_place_are_fixed_at_import():
+    """P220: a spare imports the API before its command, so what a module
+    works out at import must be the same for a fresh command and a spare.
+    The true list (an AST scan of every module's top level): the product's
+    name - the scheduled task's, and the side panel's word in ``SCREEN`` -
+    from the environment the shell gives both alike, and the program's own
+    place, twice. Nothing reads the clock, the settings file, the data
+    folder or the clients root at import."""
+    assert _fixed_at_import() == {("scheduling.py", "TASK_NAME"), ("api.py", "SCREEN"),
+                                  ("settings.py", "PACKAGE_JSON"), ("after_install.py", "CHECKOUT")}

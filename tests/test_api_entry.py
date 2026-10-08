@@ -134,3 +134,23 @@ def test_the_setup_mode_runs_the_after_install_step_with_what_its_command_line_n
     assert record["reason"] == after_install.REASON_SETUP
     assert SETUP_MODE_FLAG == "--after-install-setup"
     capsys.readouterr()
+
+
+def test_the_entry_given_the_spare_flag_waits_for_its_command():
+    """Pilot P220: the packaged executable started as a spare imports the
+    API, then runs the one command the shell hands it on stdin - the reply a
+    fresh ``templates`` gives - and, handed nothing, exits quietly."""
+    import json
+
+    from tracker.api import SPARE_FLAG
+
+    def entry(args, stdin: bytes):
+        return subprocess.run([sys.executable, "api_entry.py", *args], cwd=REPO, env=child_env(),
+                              input=stdin, capture_output=True, timeout=120)
+
+    fresh = entry(["templates"], b"")
+    warm = entry([SPARE_FLAG], json.dumps({"argv": ["templates"]}).encode() + b"\n")
+    assert fresh.returncode == warm.returncode == 0, warm.stderr
+    assert warm.stdout == fresh.stdout and warm.stdout.strip().startswith(b"{")
+    idle = entry([SPARE_FLAG], b"")
+    assert idle.returncode == 0 and idle.stdout == b""

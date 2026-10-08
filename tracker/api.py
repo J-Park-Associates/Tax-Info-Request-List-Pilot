@@ -6295,5 +6295,51 @@ def main(argv: list[str]) -> int:
         return 0
 
 
+#: How the app starts a warm spare (pilot P220): this flag, alone. The
+#: shell's ``main.js`` names the same word (``test_single_source``).
+SPARE_FLAG = "--spare"
+#: The longest command line a spare reads, in bytes, before its newline.
+SPARE_LINE_MAX = 64 * 1024
+
+
+def spare(stream=None) -> int:
+    """A warm spare: the API imported before the click, then **exactly one
+    command**, handed on stdin, run as a fresh process runs it (pilot P220,
+    findings-3 #4).
+
+    The shell keeps one spare started and hands it the next command that is
+    not a pass. stdin is one line - UTF-8 JSON ``{"argv": [str, ...]}`` with
+    at least one string, at most :data:`SPARE_LINE_MAX` bytes - then the
+    command's payload exactly as a fresh process reads it (:func:`main`'s
+    ``_read_spec`` reads the rest of stdin), then the end of input. stdout
+    and the exit code are exactly :func:`main`'s.
+
+    **Still one command a process.** The spare runs one command and exits:
+    decision 171's dead-owner lock rule (one process per command), one
+    store per process closed after the command, P118's holds per reply and
+    the shell's kill per command are all unchanged. What is fixed at import
+    is the product's task name and the program's own place (``tests``
+    pins the list), and the spare is started with the environment a fresh
+    command gets and replaced when the program changes.
+
+    **The end of input before a newline** - the app closed, or killed the
+    spare it no longer needs - runs nothing, prints nothing and exits 0. A
+    line that is not that shape, or too long, is answered as every unknown
+    command is: the usage envelope, ``main([])`` - no words of its own.
+    """
+    stream = stream if stream is not None else sys.stdin.buffer
+    line = stream.readline(SPARE_LINE_MAX + 1)
+    if not line.endswith(b"\n"):
+        return main([]) if len(line) > SPARE_LINE_MAX else 0
+    try:
+        handed = json.loads(line.decode("utf-8"))
+    except ValueError:
+        return main([])
+    argv = handed.get("argv") if isinstance(handed, dict) else None
+    if not (isinstance(argv, list) and argv and all(isinstance(one, str) for one in argv)):
+        return main([])
+    return main(argv)
+
+
 if __name__ == "__main__":
-    raise SystemExit(main(sys.argv[1:]))
+    raise SystemExit(spare() if sys.argv[1:] == [SPARE_FLAG] else main(sys.argv[1:]))

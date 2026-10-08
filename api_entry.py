@@ -27,6 +27,10 @@ installer passes no environment, and a frozen build has no package.json.
 Both are put in the environment before ``tracker.after_install`` (and with
 it ``tracker.scheduling``, which reads the product's name at import) is
 imported.
+
+**And a warm spare** (pilot P220): given ``tracker.api.SPARE_FLAG`` alone,
+the API is imported at once and waits for its one command on stdin
+(``tracker.api.spare``), so a click does not wait for the import.
 """
 import multiprocessing
 import os
@@ -61,6 +65,7 @@ if __name__ == "__main__":
         raise SystemExit(run_pass(argv[1:]))
     if argv[:1] == [SETUP_MODE_FLAG]:
         raise SystemExit(run_setup_step(argv[1:]))
-    from tracker.api import main
+    from tracker.api import SPARE_FLAG, main, spare
 
-    raise SystemExit(main(argv))
+    # A warm spare (pilot P220): imported now, its one command read later.
+    raise SystemExit(spare() if argv == [SPARE_FLAG] else main(argv))

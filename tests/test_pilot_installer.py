@@ -294,5 +294,5 @@ def test_the_packaged_setup_mode_is_the_entrys_own_door():
 
     entry = (REPO / "api_entry.py").read_text(encoding="utf-8")
     assert "if argv[:1] == [SETUP_MODE_FLAG]:" in entry
-    assert entry.index("[SETUP_MODE_FLAG]:") < entry.index("from tracker.api import main")
+    assert entry.index("[SETUP_MODE_FLAG]:") < entry.index("from tracker.api import")
     assert SETUP_MODE_FLAG in _setup()
