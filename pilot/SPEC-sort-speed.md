@@ -426,6 +426,9 @@ give is already on disk: `firm-view.json`, today's, under this program.
   counts are taken down and the failure is shown with Retry, as today:
   held counts never outlive a failed refresh. A list that asks for a
   folder drops both, as P221 does.
+  *Changed at merge (Jason, 2026-10-08: "Time on Overview page"): the path
+  row's slot stays 8 ch and says "Updating" alone; "Updating, as of {time}"
+  is on the Overview's own Work line (P229 in `pilot/DECISIONS.md`).*
 - **What each action does while marked.** Exactly what it does during
   W1's "Updating" today: rows stay usable; **Open** reads the return's
   `state` afresh; **Check** opens the check sheet on a fresh `state`, and
