@@ -619,6 +619,15 @@ office PC's start-up Overview still takes more than about 3 s; it is the
 only item here that shows a number before it is proved. If yes, please
 also approve the words "Updating, as of {time}".
 
+### 7.1 Jason's answers (2026-10-08)
+
+- **Q1 (P227): yes** - "Yes, build it."
+- **Q2(a) (P228): yes** - "Yes, ask all at once."
+- **Q2(b): no** - the client list after a Sort stays; held.
+- **Q3 (P229): yes, build it now** - not after the office timing. The
+  words "Updating, as of {time}" are approved with it. Built in this round,
+  in both lanes (5.1, 5.2), with every safeguard P229 names.
+
 ## 8. Measured before and after
 
 To be filled at merge, by section 6 on a fresh copy, beside the figures
