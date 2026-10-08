@@ -270,7 +270,8 @@ after an upgrade, a new day or a sort that touched many households reads
 those households fresh (about 9 s for all 750 on this PC after P118 and
 P119, instead of 53-131 s), and meanwhile every firm page shows the loading
 state it already has (`shellLoading` in `app/renderer/shell.js`: the
-title, then outline rows). No new words, no shell change.
+title, then outline rows). No new words, no shell change. Since P222 the
+wait says how many households it has read, after about 2 s.
 
 **Racily clean.** A file rewritten twice within one tick of the disk's
 clock, at the same size, would keep its fingerprint. So a household with
@@ -435,7 +436,8 @@ names its data folder in the environment.
   a minute.
 - The first firm page of a day, after an upgrade, or after a sort that
   touched many households, still shows the loading outline for a few
-  seconds while the changed households are read.
+  seconds while the changed households are read, and, past about 2 s,
+  Reading {n} of {total} Households.
 - The Clients page (`list`) opens several times faster.
 - Nothing else: no new words, buttons, settings or files in any client
   folder. Deleting `firm-view.json` is always safe; the next Overview

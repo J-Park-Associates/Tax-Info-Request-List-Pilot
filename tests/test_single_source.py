@@ -4594,3 +4594,39 @@ def test_a_reply_in_a_thousand_pieces_is_read_once_and_whole(tmp_path):
     reader = reader[:reader.index("\n    });\n")]
     assert 'd.indexOf("\\n", from)' in reader and 'pieces.join("")' in reader
     assert "+= d" not in reader and "pending" not in reader
+
+
+def test_the_shell_and_the_api_agree_on_the_spare_the_early_overview_and_the_count_line():
+    """The speed round's one join between its lanes (SPEC-speed-round 5.5.2),
+    built apart and met only here. P220: the shell starts its spare with the
+    flag the API's entry waits on. P221: every command the shell lets run
+    before the allowlist is a held reading and never a write. P222: the
+    renderer takes a count line for the Overview's by the command that
+    printed it - the runner's ``firm`` - and reads the two fields
+    ``progress.count_line`` writes, under the key ``main.js`` passes on."""
+    import tracker.api as api
+    from tracker import progress, runner
+
+    main_js = read("app/main.js")
+    assert re.search(r'const SPARE_FLAG = "([^"]+)";', main_js).group(1) == api.SPARE_FLAG
+    early_source = re.search(r"const EARLY_COMMANDS = new Set\(\[([^\]]*)\]\);", main_js).group(1)
+    early = set(re.findall(r'"([a-z-]+)"', early_source))
+    if "BOOTSTRAP_COMMAND" in early_source:
+        early.add(re.search(r'const BOOTSTRAP_COMMAND = "([a-z-]+)";', main_js).group(1))
+    assert runner.FIRM_COMMAND in early
+    assert early <= api.HELD_READING_COMMANDS and not early & api.WRITING_COMMANDS
+
+    app_js = read("app/renderer/app.js")
+    routed = app_js[app_js.index("function onPassMessage(m) {"):]
+    routed = routed[:routed.index("\n}\n")]
+    assert re.findall(r'm\.args\[0\] === "([a-z-]+)"', routed) == [runner.FIRM_COMMAND]
+    assert routed.index("shellFirmProgress(m.progress)") < routed.index("scanning")
+
+    said = json.loads(progress.count_line(3, 7))
+    assert list(said) == [progress.PROGRESS_KEY] and f'const PROGRESS_KEY = "{progress.PROGRESS_KEY}";' in main_js
+    assert said[progress.PROGRESS_KEY] == {"v": progress.FORMAT_VERSION, "event": progress.COUNT_EVENT,
+                                            "done": 3, "total": 7}
+    shell_js = read("app/renderer/shell.js")
+    reader = shell_js[shell_js.index("function shellFirmProgress(said) {"):]
+    reader = reader[:reader.index("\n}\n")]
+    assert "const { done, total } = said;" in reader

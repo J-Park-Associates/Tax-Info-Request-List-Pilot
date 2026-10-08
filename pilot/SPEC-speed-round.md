@@ -1193,7 +1193,10 @@ Sort, and see one Overview reply after it (the error log shows no second
 Copy before it draws (nothing is copied); quit the app and see no
 `python`/tracker process left; open Overview after deleting
 `firm-view.json` and see "Reading n of N Households" once the wait passes
-2 s; with the app closed, see `record-heads.db` alone in the data folder.
+2 s; with the app closed, see `record-heads.db` alone in the data folder;
+install the pilot installer over the 22-household sample with a saved
+clients root, see "Making the Overview ready..." before it offers to launch
+the app, and see the first Overview open at once (Lane P's handoff, Q1).
 Optional: time `state` page changes before and after (the spare).
 
 ## 6. How to measure after

@@ -92,7 +92,10 @@ would say the new thing with confidence and lose the old. So:
   read; the store's own version is unchanged.
 - **The checkpoint** (`record-heads.db`, `tracker/checkpoint.py`, its own
   version 1) sits beside the store on the machine that writes, is never
-  synced and survives deleting the store. Per return it keeps how many
+  synced and survives deleting the store. It is kept in SQLite's
+  write-ahead log at full sync (pilot P214), opened once a command and
+  held by the store until the command closes it; its `-wal` and `-shm`
+  sit beside it while a command runs, and move with it. Per return it keeps how many
   lines this machine has written or accepted and the hash of the last one,
   the clients root it belongs to, and the lines it has seen from other
   machines. The store checks every catch-up against it: a record shorter
