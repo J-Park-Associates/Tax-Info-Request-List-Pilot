@@ -52,7 +52,10 @@ function sheetFrame(now, title) {
   sheetSet("sheet-check", now.kind === "check");
   sheetSet("check-actions", now.kind === "check");
   sheetSet("sheet-reminder", now.kind === "reminder");
-  sheetSet("reminder-actions", now.kind === "reminder");
+  // The reminder's buttons are shown by the card's own draw, with the
+  // letter they act on (P213), never by the frame.
+  sheetSet("reminder-actions", false);
+  $("sheet").removeAttribute("aria-busy");
   for (const id of ["sheet-open", "sheet-more", "sheet-next"]) sheetSet(id, false);
   sheetMore(false);
   if (now.kind === "check") {
@@ -194,7 +197,8 @@ async function sheetShow(now, step) {
   $("sheet-title").textContent = step.name;
   const onScreen = lastState && lastState.paths && lastState.paths.engagement === step.ret;
   if (!onScreen) {
-    $("sheet-check").replaceChildren(h("span", { className: "visually-hidden" }, screenWords().loading));
+    // An outline, as the frame draws one, never a blank sheet (P213).
+    $("sheet-check").replaceChildren(h("span", { className: "visually-hidden" }, screenWords().loading), ...shellSkeleton(3));
     if (!(await showReturn(step.ret))) {
       if (gen === sheetGeneration) closeSheet();
       return true;
@@ -279,9 +283,18 @@ async function openReminder(ret) {
   const gen = sheetGeneration;
   try {
     const onScreen = FIRM_LEVELS.indexOf(shellRoute.level) === -1 && lastState && lastState.paths && lastState.paths.engagement === target;
-    if (!onScreen && !(await showReturn(target))) {
-      if (gen === sheetGeneration) closeSheet();
-      return;
+    if (!onScreen) {
+      // Until this return's own state is in, the card held is another
+      // return's: nothing on the sheet may copy or approve it (P213).
+      forgetReminderCard();
+      if (!(await showReturn(target))) {
+        if (gen === sheetGeneration) closeSheet();
+        return;
+      }
+    } else if (reminderCard && reminderCardFor === target) {
+      drawReminder(reminderCard);   // the card on screen is this return's: its buttons come back with it
+    } else {
+      drawReminderReply(lastState.reminder_card || { reminder: null, not_yet: "" });   // the state on screen is this return's
     }
     if (gen !== sheetGeneration) return;
     now.ready = true;
@@ -306,11 +319,14 @@ async function sheetNextDraft() {
   const gen = sheetGeneration;
   try {
     now.ret = next.ret;
+    now.ready = false;
+    forgetReminderCard();   // the draft on the sheet is the last one's until this one is read (P213)
     if (!(await showReturn(next.ret))) {
       if (gen === sheetGeneration) closeSheet();
       return;
     }
     if (gen !== sheetGeneration) return;
+    now.ready = true;
     sheetSet("sheet-next", sheetDraftsAfter(now).length > 0);
     applyLock();
   } catch (err) {

@@ -506,6 +506,8 @@ function pagesReasonTip(spec) {
 // reason's icon) and the words - in the status's colour on its tint (P145,
 // P149). The tooltip is the full words, shown when they are cut.
 function pagesStatusCell(spec) {
+  // A status still on its way: an outline bar, never a pill and never a blank (P222).
+  if (spec.waiting) return h("span", { className: "row-status is-waiting-counts", "aria-hidden": "true" }, h("i", { className: "outline-bar" }));
   const tone = PAGES_TONES[spec.tone] || "";
   // A status that is a tag for longer words (P116) shows them as its tooltip
   // every time; any other status shows its own words only when they are cut.
@@ -1372,6 +1374,11 @@ function pagesHouseholdCaption(route) {
 
 function pagesReturnSpecs(returns) {
   const words = screenWords();
+  // While the firm's counts are on their way with none held, a row's status
+  // is an outline until they arrive (P222); when they could not be had it is
+  // empty, and the notice says so.
+  const counts = shellFirm();
+  const waiting = counts.status === "loading" && !counts.data;
   return pagesEach(returns.slice().sort((a, b) => pagesByName(a.return_name || a.label, b.return_name || b.label)), (one) => one.return_name || one.label, (one) => {
     const firm = pagesFirmReturn(one.path);
     const said = firm ? pagesCounts(firm.counts, firm.problem) : { text: "", tone: "plain" };
@@ -1379,6 +1386,7 @@ function pagesReturnSpecs(returns) {
     // The form tag and the taxpayer, each once; the year is the heading
     // above the rows or the page's title (P195).
     return { name: pagesTaxpayer(one.return_name || pagesReturnName(one.path), one.form || ""), form: one.form || "", detail, status: said.text, tone: said.tone, date: "", menu: "return",
+             waiting: waiting && !firm,
              nameLink: { kind: "return", path: one.path },
              step: { kind: "open", route: { level: "return", household: shellRoute.household, year: one.year, ret: one.path } } };
   });

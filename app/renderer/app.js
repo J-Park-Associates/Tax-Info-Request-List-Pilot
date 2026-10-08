@@ -166,6 +166,9 @@ class TrackerError extends Error {
 // label (decision 194's review, S1), never as if about the return shown.
 async function call(args, payload, { ofAnother = false } = {}) {
   const result = await window.tracker.call(args, payload);
+  // A write's reply has landed (P218): the Overview a load sent after this
+  // asks may already hold it (shell.js). Said before its state is drawn.
+  if (vocab && Array.isArray(vocab.writing_commands) && vocab.writing_commands.indexOf(args[0]) !== -1) shellWriteLanded();
   if (result && Array.isArray(result.warnings) && result.warnings.length) {
     warningNotices(ofAnother ? result.warnings.map((sentence) =>
       fill(vocab.notices.about, { label: labelOfState(result), sentence })) : result.warnings);
@@ -405,6 +408,7 @@ function render(state) {
 let reminderStage = null;    // the stage a person picked, or null for the record's
 let reminderFor = null;      // which engagement that choice belongs to
 let reminderCard = null;     // the payload the card was last drawn from
+let reminderCardFor = null;  // the return that card was drawn for (P213)
 
 function stageOf(number) {
   return vocab.reminder.stages.find((s) => s.number === number) || null;
@@ -463,9 +467,35 @@ async function loadReminder() {
   }
 }
 
+// The sheet's reminder while its return is read (P213): no card, so nothing
+// to copy or approve, and an outline where the letter will be. Until the
+// return's own state arrives the card held is another return's - the one
+// on screen when the sheet opened, or the draft before Next - and Copy
+// would put that client's letter on the clipboard.
+function forgetReminderCard() {
+  reminderCard = null;
+  reminderCardFor = null;
+  $("sheet-reminder").classList.remove("line-only");
+  $("sheet-reminder").classList.add("is-waiting");
+  $("reminder-wait").replaceChildren(el("span", { className: "visually-hidden" }, screenWords().loading), ...shellSkeleton(3));
+  $("reminder-wait").classList.remove("hidden");
+  $("reminder-actions").hidden = true;
+  $("sheet").setAttribute("aria-busy", "true");
+}
+
+// The card's own draw ends the wait: the outline goes and the sheet is
+// no longer busy.
+function reminderWaitOver() {
+  $("sheet-reminder").classList.remove("is-waiting");
+  $("reminder-wait").replaceChildren();
+  $("reminder-wait").classList.add("hidden");
+  $("sheet").removeAttribute("aria-busy");
+}
+
 // The sheet's reminder with one line and nothing to copy or approve
 // (decision 193): the sheet stays, whatever the read said.
 function drawReminderLine(line) {
+  reminderWaitOver();
   $("sheet-reminder").classList.add("line-only");
   $("reminder-actions").classList.add("hidden");
   $("reminder-status").textContent = line;
@@ -474,6 +504,8 @@ function drawReminderLine(line) {
 
 function drawReminder(card) {
   reminderCard = card;
+  reminderCardFor = active;
+  reminderWaitOver();
   $("sheet-reminder").classList.remove("line-only");
   const words = vocab.reminder;
   const rows = (card.held || []).length;
@@ -545,7 +577,20 @@ function drawReminder(card) {
 
   // Held: the hold line, the rows and the toggle, and nothing that reads
   // like something to send. There is no file to open at all (SPEC 7.2).
+  // The buttons appear only with the letter they act on (P213): the sheet's
+  // frame never shows them.
+  $("reminder-actions").hidden = false;
   $("reminder-actions").classList.toggle("hidden", held);
+}
+
+// Copy and Approve act only on a card drawn for the return the reminder
+// sheet holds, once that return's read is in (P213). Off the sheet a card
+// is the return on screen's.
+function reminderCardReady() {
+  if (!reminderCard) return false;
+  const now = typeof sheetNow === "undefined" ? null : sheetNow;
+  if (!now || now.kind !== "reminder") return true;
+  return reminderCardFor === now.ret && now.ready === true;
 }
 
 // The hold, in the API's words: the rows' line, the inbox's line, or both.
@@ -624,7 +669,7 @@ function letterNodes(card) {
 // on the clipboard - it goes in Outlook's own box, and the card shows it
 // as text a person selects.
 async function copyReminder() {
-  if (!reminderCard) return;
+  if (!reminderCardReady()) return;
   const btn = $("btn-copy");
   btn.disabled = true;
   try {
@@ -644,7 +689,7 @@ async function copyReminder() {
 // goes with the click, and a panel the record has moved under is refused
 // by the API and read again (decision 112's rule, on this card).
 async function approveReminder() {
-  if (!reminderCard) return;
+  if (!reminderCardReady()) return;
   const btn = $("btn-approve");
   btn.disabled = true;
   try {
@@ -1904,6 +1949,9 @@ async function showReturn(path) {
 // folder is set (decision 194, R8), since the vocabulary depends on the
 // settings that writes.
 async function bootstrap(preferPath) {
+  // The Overview's counts are asked beside the list, not after it (P221):
+  // the two read-only replies run at once.
+  shellAskFirmEarly();
   try {
     const listed = await loadEngagements(preferPath, viewGeneration);
     if (!listed) return;   // a later choice owns the page now, or no folder or return yet
@@ -2204,7 +2252,13 @@ let scanning = null;
 // Everything the shell says about the running pass: a progress line, or -
 // once, when its process closes - its ending. Only the running pass's.
 function onPassMessage(m) {
-  if (!scanning || JSON.stringify(m.args) !== JSON.stringify(scanning.args)) return;
+  // The Overview's count lines (P222) come on the same channel, from the
+  // `firm` command: never the pass's, whatever is running.
+  if (m && Array.isArray(m.args) && m.args[0] === "firm") {
+    shellFirmProgress(m.progress);
+    return;
+  }
+  if (!scanning ||JSON.stringify(m.args) !== JSON.stringify(scanning.args)) return;
   if (m.reply !== undefined) {
     passEnded(m);
     return;
@@ -2278,6 +2332,7 @@ async function runScan() {
 // the shown return's state (the lane's ruling on 194's Q5) - behind the
 // view generation, so a return chosen since is the one drawn.
 async function passEnded({ reply }) {
+  shellWriteLanded();   // the pass wrote: the list's own Overview, asked next, holds it (P218)
   const asked = scanning.asked;
   scanDone();
   const ended = reply || {};

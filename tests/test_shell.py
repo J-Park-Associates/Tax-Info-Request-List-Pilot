@@ -1539,8 +1539,9 @@ def test_an_error_after_the_state_arrives_never_reaches_the_write_that_brought_i
       let shellDraw = null; let pagesTally = null;
       const shellFirmNow = { data: { returns: [{ path: "r1", counts: {} }] } };
       const shellLoadFirm = () => {};
+      const shellFirmSentAt = 0; const shellWroteAt = 0; const shellFirmHeld = new Map();
     """
-    assert run_shell(["shellStateArrived"], setup, probe, tmp_path) == [None, ["draw", "tally"]]
+    assert run_shell(["shellStateArrived", "shellCountsDiffer"], setup, probe, tmp_path) == [None, ["draw", "tally"]]
 
 
 def test_the_year_page_leaves_a_gap_under_its_h1_before_its_rows(tmp_path):
@@ -2964,6 +2965,7 @@ def test_the_sorts_answer_is_built_line_by_line_from_the_pass(tmp_path):
              f"const vocab = {{ scan: {json.dumps(words)} }};\n") + r"""
       let scanning = null, active = "r25", viewGeneration = 1, kept = [];
       function scanDone() {}
+      function shellWriteLanded() {}
       function warningNotices() {}
       function adoptList() {}
       function withEng(c) { return [c]; }
@@ -4243,6 +4245,7 @@ def test_another_returns_line_keeps_its_bullet_and_says_the_return_by_its_fields
              + SORT_SAID + js_function("pagesTaxpayer", "pages.js") + r"""
       let scanning = null, active = "r25", viewGeneration = 1, kept = [];
       function scanDone() {}
+      function shellWriteLanded() {}
       function warningNotices() {}
       function adoptList() {}
       function withEng(c) { return [c]; }
@@ -4341,3 +4344,656 @@ def test_the_schedule_dialog_says_its_next_run_in_the_apps_clock_style(tmp_path)
     assert "#sc-next" in [part.strip() for part in selector.split(",")]
     assert "${scheduleClock(result.next_run)}" in js
     assert 'toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })' in js_function("pagesTime", "pages.js")
+
+
+
+# ── the speed round (pilot SPEC-speed-round.md, P213-P222): node probes ─────
+
+#: The renderer files a probe may lift a function from, in the order searched.
+SPEED_SOURCES = ("app.js", "sheet.js", "shell.js", "pages.js")
+
+
+def lift(*names: str) -> str:
+    """The named functions as they are written, each from the renderer file
+    that defines it."""
+    out = []
+    for name in names:
+        source = next((one for one in SPEED_SOURCES if f"function {name}(" in read(one)), None)
+        assert source, name
+        out.append(js_function(name, source))
+    return "\n".join(out)
+
+
+def lift_line(head: str, source: str) -> str:
+    """One top-level declaration that starts with ``head``, to its end (a
+    one-line ``let``, or a ``new Set([`` list)."""
+    text = read(source)
+    start = text.index(head)
+    end = text.index("]);\n", start) + 4 if head.endswith("[") else text.index("\n", start) + 1
+    return text[start:end]
+
+
+#: A DOM for the speed round's probes: any id is an element, made on first
+#: ask, and every element keeps its parent, classes, attributes and children.
+SPEED_DOM = r"""
+class Node {}
+class Text extends Node { constructor(data) { super(); this.data = data; this.parent = null; } get textContent() { return this.data; } }
+class El extends Node {
+  constructor(tag, id) { super(); this.tag = tag; this.id = id || ""; this.className = ""; this.dataset = {}; this.attrs = {}; this.kids = [];
+    this.hidden = false; this.disabled = false; this.parent = null; this.handlers = {};
+    this.style = { props: {}, setProperty(key, value) { this.props[key] = value; }, removeProperty(key) { delete this.props[key]; } }; }
+  get classList() {
+    const self = this;
+    const now = () => self.className.split(" ").filter(Boolean);
+    return { add(...names) { self.className = [...new Set([...now(), ...names])].join(" "); },
+             remove(...names) { self.className = now().filter((one) => !names.includes(one)).join(" "); },
+             toggle(name, on) { const want = on === undefined ? !now().includes(name) : Boolean(on); if (want) this.add(name); else this.remove(name); return want; },
+             contains(name) { return now().includes(name); } };
+  }
+  setAttribute(key, value) { this.attrs[key] = String(value); }
+  getAttribute(key) { return key in this.attrs ? this.attrs[key] : null; }
+  removeAttribute(key) { delete this.attrs[key]; }
+  adopt(one) { const node = one instanceof Node ? one : new Text(String(one)); if (node.parent) node.remove(); node.parent = this; return node; }
+  append(...nodes) { for (const one of nodes) this.kids.push(this.adopt(one)); }
+  prepend(...nodes) { this.kids.unshift(...nodes.map((one) => this.adopt(one))); }
+  replaceChildren(...nodes) { for (const one of this.kids) one.parent = null; this.kids = []; this.append(...nodes); }
+  remove() { if (this.parent) { this.parent.kids = this.parent.kids.filter((one) => one !== this); this.parent = null; } }
+  get childNodes() { return this.kids; }
+  get children() { return this.kids.filter((one) => one instanceof El); }
+  focus() {}
+  addEventListener(type, fn) { (this.handlers[type] = this.handlers[type] || []).push(fn); }
+  get textContent() { return this.kids.map((one) => one.textContent).join(""); }
+  set textContent(value) { this.replaceChildren(String(value)); }
+  find(test, out = []) { for (const one of this.kids) if (one instanceof El) { if (test(one)) out.push(one); one.find(test, out); } return out; }
+  byClass(name) { return this.find((one) => one.classList.contains(name)); }
+  querySelector(selector) { return this.querySelectorAll(selector)[0] || null; }
+  querySelectorAll(selector) {
+    const own = selector.replace(/^:scope > /, "");
+    const pool = own === selector ? this.find(() => true) : this.children;
+    if (own.startsWith(".")) return pool.filter((one) => one.classList.contains(own.slice(1)));
+    if (own.startsWith("#")) return pool.filter((one) => one.id === own.slice(1));
+    return pool.filter((one) => one.tag === own);
+  }
+}
+const ELS = {};
+const $ = (id) => ELS[id] || (ELS[id] = new El("div", id));
+const document = { createElement: (tag) => new El(tag), createElementNS: (_ns, tag) => new El(tag), contains: () => true };
+const window = { tracker: { logError() {} } };
+"""
+
+#: The reminder sheet's world: two returns' cards, a read that waits until the
+#: probe lets it land, and a clipboard that records what was put on it.
+REMINDER_SHEET = r"""
+let vocab = {
+  screen: { loading: "Loading", sheet: { reminder: "Draft Reminder" } },
+  reminder: { stages: [], palette: { ink: "#000" }, hold_colour: "ink", stage_group: "Stage", edited_by_hand: "Edited", subject_prefix: "Subject: ",
+              heading: "Letter", letter_ink: { body: "ink", muted: "ink", paper: "ink" }, never_drafted_line: "Never drafted", copied: "Copied", approve: "Approve" },
+};
+const card = (ret) => ({ held: [], unsorted: 0, stage: 1, editable: true, file: { edited: false }, subject: `For ${ret}`, letter: { greeting: `Dear ${ret}` },
+                         html: `<p>${ret}</p>`, text: `Letter for ${ret}`, last: null, approved: null, lapsed: false, fingerprint: `fp-${ret}` });
+let active = "A"; let lastState = { paths: { engagement: "A" }, reminder_card: { reminder: card("A") } };
+let shellRoute = { level: "reminders" };
+const FIRM_LEVELS = ["overview", "needs-review", "reminders", "clients"];
+const reads = [];
+const showReturn = (path) => new Promise((resolve) => reads.push({ path, land() {
+  active = path; lastState = { paths: { engagement: path }, reminder_card: { reminder: card(path) } };
+  drawReminderReply(lastState.reminder_card); resolve(true); } }));
+let drafts = [{ ret: "B" }, { ret: "C" }];
+const pagesDrafts = () => drafts; const pagesWhere = () => null; const pagesDay = (d) => d;
+const openDialog = () => {}; const setTipIfCut = () => {}; const applyLock = () => {}; const closeSheet = () => {};
+const failed = (err) => { throw err; }; const outcome = () => {};
+const clipboard = []; const sent = [];
+const navigator = { clipboard: { write: async (items) => { clipboard.push(items[0].parts["text/plain"].text); } } };
+class ClipboardItem { constructor(parts) { this.parts = parts; } }
+class Blob { constructor([text]) { this.text = text; } }
+const call = async (args, payload) => { sent.push([args[0], payload]); return { reminder: card(active) }; };
+const withEng = (name) => [name, "--engagement", active];
+const loadReminder = async () => {};
+let sheetNow = null; let sheetGeneration = 0;
+const tick = () => new Promise((resolve) => setImmediate(resolve));
+const actions = () => ({ card: reminderCard ? reminderCard.text : null, shown: !$("reminder-actions").hidden, busy: $("sheet").getAttribute("aria-busy"),
+                         outline: $("reminder-wait").byClass("row-skeleton").length, word: $("reminder-wait").textContent });
+"""
+
+REMINDER_FUNCTIONS = ("el", "h", "show", "fill", "screenWords", "shellSkeleton", "stageOf", "stageInk", "marked", "holdLine", "reminderStatus", "lines",
+                      "letterNodes", "drawReminderReply", "drawReminderLine", "drawReminder", "forgetReminderCard", "reminderWaitOver",
+                      "reminderCardReady", "copyReminder", "approveReminder", "sheetSet", "sheetMore", "sheetFrame", "openReminder",
+                      "sheetDraftsAfter", "sheetNextDraft", "sheetShow", "sheetDrawCheck", "sheetAfter")
+
+
+def run_speed(setup: str, functions, probe: str, tmp_path: Path, consts: str = ""):
+    """Run a probe against the named functions, lifted as written, in SPEED_DOM."""
+    if NODE is None:
+        pytest.skip("node is not on PATH (CI installs it)")
+    script = tmp_path / "speed_probe.js"
+    script.write_text(f"{SPEED_DOM}\n{setup}\n{consts}\n{lift(*functions)}\n"
+                      f"(async () => {{ {probe} }})().then((out) => process.stdout.write(JSON.stringify(out)));\n",
+                      encoding="utf-8", newline="\n")
+    done = subprocess.run([NODE, str(script)], capture_output=True, text=True, encoding="utf-8", timeout=60, check=False)
+    assert done.returncode == 0, done.stderr
+    return json.loads(done.stdout)
+
+
+def run_reminder_sheet(probe: str, tmp_path: Path):
+    consts = "let reminderCard = null; let reminderCardFor = null;\n" + lift_line("const EL_ATTRIBUTES = new Set([", "app.js") \
+        + lift_line("const H_ATTRIBUTES = new Set([", "shell.js")
+    return run_speed(REMINDER_SHEET, REMINDER_FUNCTIONS, probe, tmp_path, consts)
+
+
+def test_the_reminder_sheet_offers_nothing_to_copy_until_its_own_return_is_read(tmp_path):
+    """P213 (findings-4 #2): opened from Reminders on another client, the sheet
+    held the return on screen's card and showed Copy, so Copy put that
+    client's letter on the clipboard while the next was read. Now the card
+    is forgotten, the buttons hidden and the sheet busy, with an outline,
+    until the return's own state draws its own card."""
+    said = run_reminder_sheet("""
+      drawReminder(card("A"));
+      const before = actions();
+      const opening = openReminder("B");
+      const waiting = actions();
+      await copyReminder();
+      const copiedWhileWaiting = clipboard.length;
+      reads[0].land();
+      await opening;
+      await tick();
+      const after = actions();
+      await copyReminder();
+      return { before, waiting, copiedWhileWaiting, after, clipboard };
+    """, tmp_path)
+    assert said["before"]["card"] == "Letter for A" and said["before"]["shown"]
+    assert said["waiting"] == {"card": None, "shown": False, "busy": "true", "outline": 3, "word": "Loading"}
+    assert said["copiedWhileWaiting"] == 0, "another client's letter never reaches the clipboard"
+    assert said["after"] == {"card": "Letter for B", "shown": True, "busy": None, "outline": 0, "word": ""}
+    assert said["clipboard"] == ["Letter for B"]
+
+
+def test_next_draft_offers_nothing_to_copy_until_its_return_is_read(tmp_path):
+    """P213: Next on the reminder sheet had the same window - the last draft's
+    card, with Copy, until the next return's state arrived."""
+    said = run_reminder_sheet("""
+      const opening = openReminder("B");
+      reads[0].land();
+      await opening;
+      const next = sheetNextDraft();
+      const waiting = actions();
+      const ready = sheetNow.ready;
+      await copyReminder();
+      await approveReminder();
+      const before = [clipboard.length, sent.length];
+      reads[1].land();
+      await next;
+      await copyReminder();
+      return { waiting, ready, before, clipboard, ret: sheetNow.ret, nowReady: sheetNow.ready };
+    """, tmp_path)
+    assert said["waiting"]["card"] is None and not said["waiting"]["shown"] and said["waiting"]["busy"] == "true"
+    assert said["ready"] is False and said["before"] == [0, 0], "neither Copy nor Approve acts while the next draft is read"
+    assert said["ret"] == "C" and said["nowReady"] is True
+    assert said["clipboard"] == ["Letter for C"]
+
+
+def test_copy_refuses_a_card_drawn_for_another_return(tmp_path):
+    """P213, 4: on a reminder sheet, Copy and Approve act only on a card drawn
+    for the sheet's own return, once its read is in; off the sheet the card is
+    the return on screen's."""
+    said = run_reminder_sheet("""
+      const out = [];
+      const attempt = async (now, drawnFor, ready) => {
+        clipboard.length = 0; sent.length = 0;
+        active = drawnFor; drawReminder(card(drawnFor));
+        sheetNow = now ? { kind: "reminder", ret: now, ready } : null;
+        await copyReminder(); await approveReminder();
+        out.push([clipboard.length, sent.length]);
+      };
+      await attempt("B", "A", true);
+      await attempt("B", "B", false);
+      await attempt("B", "B", true);
+      await attempt(null, "A", false);
+      return out;
+    """, tmp_path)
+    assert said == [[0, 0], [0, 0], [1, 1], [1, 1]]
+
+
+def test_a_check_sheet_waiting_on_its_return_is_an_outline(tmp_path):
+    """P213, 5: Next on a check sheet to a file of another return reads that
+    return first; the sheet shows an outline meanwhile, not a blank."""
+    said = run_reminder_sheet("""
+      const now = { kind: "check", ret: "A", handle: "a", order: [], ready: true, row: {} };
+      sheetNow = now;
+      sheetShow(now, { ret: "B", handle: "b", name: "b.pdf" });
+      const body = $("sheet-check");
+      return { outline: body.byClass("row-skeleton").length, word: body.byClass("visually-hidden").map((one) => one.textContent), ready: now.ready };
+    """, tmp_path)
+    assert said == {"outline": 3, "word": ["Loading"], "ready": False}
+
+
+#: shell.js's load of the firm's counts, lifted whole, with a `firm` that
+#: answers only when the probe says so.
+FIRM_LOAD = r"""
+let vocab = { commands: ["list", "firm"], screen: { loading: "Loading", updating: "Updating", reading_households: "Reading {n} of {total} Households",
+                                                    notices: { firm_failed: "Counts Not Available" } } };
+const fill = (p, v) => p.replace(/\{(\w+)\}/g, (_, k) => v[k] ?? "");
+let shellRoute = { level: "return" }; let shellPageBusy = false; let shellRootSet = false; let shellPaths = {}; let shellLastPass = null;
+let shellFirmNow = { status: "idle", data: null }; let shellFirmAsked = false; let shellFirmEarly = null; let shellClock = 0;
+let shellFirmSentAt = 0; let shellWroteAt = 0; const shellFirmHeld = new Map(); let shellFirmCount = null; let shellFirmSlow = false;
+let shellFirmTimer = null; const SHELL_FIRM_SLOW_MS = 2000;
+const FIRM_LEVELS = ["overview", "needs-review", "reminders", "clients"];
+const asked = []; const notices = []; const drawn = [];
+// As call() does: a reply with an error throws its envelope.
+const call = (args) => new Promise((resolve, reject) => asked.push({ args, resolve: (reply) => (reply.error ? reject(new TrackerError(reply)) : resolve(reply)) }));
+const firmOf = (n) => ({ returns: [{ path: "r1", counts: { needs_you: n } }], totals: {} });
+const stateOf = (n) => ({ paths: { engagement: "r1" }, counts: { needs_you: n } });
+const pagesTally = (state) => state.counts;
+let shellChanged = () => {};
+const notice = (failure) => notices.push(failure.sentence); const failureSentence = () => ""; const failed = (err) => { throw err; };
+const warningNotices = (list) => notices.push(...list);
+class TrackerError extends Error { constructor(result) { super(result.error); this.result = result; } }
+const tick = async () => { for (let i = 0; i < 5; i += 1) await new Promise((resolve) => setImmediate(resolve)); };
+const firms = () => asked.filter((one) => one.args[0] === "firm").length;
+const land = async (i, reply) => { asked[i].resolve(reply); await tick(); };
+"""
+
+FIRM_LOAD_FUNCTIONS = ("h", "screenWords", "shellAdopt", "shellAskFirmEarly", "shellDropEarlyFirm", "shellAdoptEarly", "shellAskFirm", "shellFirmSent",
+                       "shellFirmDone", "shellFirmTookLong", "shellWriteLanded", "shellFirmProgress", "shellReading", "shellReadingNodes",
+                       "shellSetReading", "shellDrawReading", "shellLoadFirm", "shellFollowsCounts", "shellFirmUpdating", "shellUpdating",
+                       "shellMarkUpdating", "shellStateArrived", "shellCountsDiffer")
+
+
+def run_firm_load(probe: str, tmp_path: Path, setup: str = "", functions=()):
+    """FIRM_LOAD, with the page's draw faked unless ``functions`` lifts it."""
+    if "drawPage" not in functions:
+        setup += '\nconst shellDraw = () => drawn.push(shellRoute.level); const drawPage = () => drawn.push("page");\n'
+    consts = lift_line("const H_ATTRIBUTES = new Set([", "shell.js")
+    return run_speed(FIRM_LOAD + setup, (*FIRM_LOAD_FUNCTIONS, *functions), probe, tmp_path, consts)
+
+
+def test_after_a_sort_one_overview_is_asked_not_two(tmp_path):
+    """P218 (findings-3 #2): a Sort's list starts a `firm`; its state then
+    arrived and was compared with the old counts, which queued a second whole
+    `firm` whose answer could not differ. A state that arrives while a load
+    sent after the write runs is remembered and compared with the new counts:
+    one more load only if they still differ."""
+    said = run_firm_load("""
+      shellFirmNow = { status: "ok", data: firmOf(1) };
+      const out = [];
+      for (const after of [2, 1]) {
+        asked.length = 0;
+        shellFirmNow = { status: "ok", data: firmOf(1) };
+        shellWriteLanded();                 // passEnded
+        shellAdopt({ root: "/root" });      // the list the pass ends with
+        shellStateArrived(stateOf(2));      // the shown return's state, after the Sort
+        const during = firms();
+        await land(0, firmOf(after));
+        if (asked.length > 1) await land(1, firmOf(2));
+        out.push([during, firms(), shellFirmNow.status, shellFirmHeld.size]);
+      }
+      return out;
+    """, tmp_path)
+    assert said[0] == [1, 1, "ok", 0], "the list's own load held what the Sort wrote: no second Overview"
+    assert said[1] == [1, 2, "ok", 0], "counts that still differ ask once more"
+
+
+def test_a_write_that_lands_during_a_load_still_asks_again(tmp_path):
+    """P218: a load sent before a write cannot hold what it wrote, so a state
+    whose counts differ, from a write that landed while it ran, is followed
+    by one more load, as before."""
+    said = run_firm_load("""
+      shellFirmNow = { status: "ok", data: firmOf(1) };
+      shellLoadFirm();                      // F5, say
+      shellWriteLanded();                   // a write's reply lands while it runs
+      shellStateArrived(stateOf(2));
+      const during = firms();
+      await land(0, firmOf(1));
+      const after = firms();
+      await land(1, firmOf(2));
+      return [during, after, firms(), shellFirmNow.status];
+    """, tmp_path)
+    assert said == [1, 2, 2, "ok"]
+
+
+#: The firm pages drawn while their counts are asked (P222): a clock the probe
+#: moves on, two side counts, and a page the fake pagesDraw fills.
+FIRM_PAGE = r"""
+const timers = [];
+const setTimeout = (fn, ms) => { timers.push({ fn, ms }); return timers.length; };
+const clearTimeout = (id) => { if (id && timers[id - 1]) timers[id - 1].fn = null; };
+const waiting = () => timers.filter((one) => one.fn).map((one) => one.ms);
+const passTime = () => { for (const one of timers) if (one.fn) { const fn = one.fn; one.fn = null; fn(); } };
+const pagesDraw = (route, page) => {
+  const figure = new El("b"); figure.className = "figure-number"; figure.append("3");
+  const row = new El("div"); row.className = "row"; row.append("a row");
+  page.replaceChildren(figure, row);
+  page.dataset.list = pagesListOf(route);
+};
+const routeTitle = () => "";
+let shellPageFailed = false;
+const shellDraw = () => { drawn.push(shellRoute.level); drawCounts(); drawPage(); };
+shellChanged = () => drawCounts();
+const sides = [0, 1].map(() => { const side = new El("button"); side.dataset.section = "overview"; const count = new El("span"); count.className = "side-count"; side.append(count); return side; });
+document.querySelectorAll = (selector) => (selector === ".side-section[data-section]" ? sides : []);
+const shellCounts = () => ({ overview: 3 });
+const looks = () => {
+  const page = $("page");
+  return { busy: page.getAttribute("aria-busy"), updating: page.classList.contains("is-updating"),
+           said: page.byClass("page-updating").map((one) => [one.getAttribute("role"), one.textContent]),
+           first: page.children[0] ? page.children[0].className : "",
+           held: sides.map((one) => one.byClass("side-count")[0].classList.contains("is-held")),
+           reading: page.byClass("firm-reading-words").map((one) => one.textContent),
+           bars: page.find((one) => one.getAttribute("role") === "progressbar").map((one) =>
+             [one.getAttribute("aria-valuenow"), one.getAttribute("aria-valuemax"), one.getAttribute("aria-labelledby")]),
+           hidden: page.byClass("visually-hidden").map((one) => one.textContent) };
+};
+"""
+
+FIRM_PAGE_FUNCTIONS = ("drawPage", "shellLoading", "shellSkeleton", "drawTitleOnly", "drawCounts", "pagesListOf")
+
+
+def run_firm_page(probe: str, tmp_path: Path):
+    return run_firm_load(probe, tmp_path, FIRM_PAGE, FIRM_PAGE_FUNCTIONS)
+
+
+def test_a_firm_page_drawn_from_held_counts_while_they_are_asked_again_says_updating(tmp_path):
+    """P222, W1 (findings-4 #1): a firm page redrawn from old counts for 5-9 s
+    after a Sort said nothing of it. While held counts are asked again the page
+    is busy, says "Updating" (a status, first on the page), and its figures,
+    statuses and the side counts are marked to be muted; a redraw meanwhile
+    keeps one marker."""
+    said = run_firm_page("""
+      shellRoute = { level: "overview" };
+      shellFirmNow = { status: "ok", data: firmOf(1) };
+      shellDraw();
+      const before = looks();
+      shellLoadFirm();
+      const during = looks();
+      drawPage();
+      const again = looks();
+      await land(0, firmOf(1));
+      return { before, during, again };
+    """, tmp_path)
+    assert said["before"]["busy"] == "false" and not said["before"]["updating"] and said["before"]["said"] == []
+    assert said["before"]["held"] == [False, False]
+    for one in (said["during"], said["again"]):
+        assert one["busy"] == "true" and one["updating"]
+        assert one["said"] == [["status", "Updating"]] and one["first"] == "page-updating"
+        assert one["held"] == [True, True]
+    css = read("shell.css")
+    assert "#page.is-updating .figure-number, #page.is-updating .row-status" in css
+    assert ".side-section .side-count.is-held:not(:empty) { color: var(--text-caption); }" in css
+
+
+def test_updating_goes_when_the_new_counts_are_drawn(tmp_path):
+    """P222, W1: all of it goes when the new reply is drawn - and when it fails,
+    the pages keep what they had, unmarked, and the notice says so."""
+    said = run_firm_page("""
+      shellRoute = { level: "needs-review" };
+      shellFirmNow = { status: "ok", data: firmOf(1) };
+      shellDraw();
+      shellLoadFirm();
+      await land(0, firmOf(2));
+      const landed = looks();
+      shellLoadFirm();
+      asked[1].resolve({ error: "refused" });
+      await tick();
+      return { landed, failed: looks(), status: shellFirmNow.status, notices };
+    """, tmp_path)
+    for one in (said["landed"], said["failed"]):
+        assert one["busy"] == "false" and not one["updating"] and one["said"] == [] and one["held"] == [False, False]
+    assert said["status"] == "failed" and said["notices"] == ["Counts Not Available"]
+
+
+def test_a_firm_wait_over_two_seconds_says_how_many_households_are_read(tmp_path):
+    """P222, W2 (findings-4 #8): past 2 s, a firm page waiting with no counts
+    says "Reading {n} of {total} Households" from `firm`'s count lines, with a
+    determinate progress bar named by those words, updated in place; it goes
+    when the reply lands."""
+    said = run_firm_page("""
+      shellRoute = { level: "overview" };
+      shellLoadFirm();
+      drawPage();
+      const start = looks();
+      shellFirmProgress({ v: 1, event: "households", done: 0, total: 50 });
+      const early = looks();
+      const clock = waiting();
+      passTime();
+      const shown = looks();
+      const node = $("page").byClass("firm-reading-words")[0];
+      shellFirmProgress({ v: 1, event: "households", done: 25, total: 50 });
+      const moved = looks();
+      const same = $("page").byClass("firm-reading-words")[0] === node;
+      await land(0, firmOf(1));
+      return { start, early, clock, shown, moved, same, after: looks(), left: waiting() };
+    """, tmp_path)
+    assert said["start"]["hidden"] == ["Loading"] and said["start"]["reading"] == [] and said["start"]["busy"] == "true"
+    assert said["early"] == said["start"], "under 2 s a count line changes nothing on screen"
+    assert said["clock"] == [2000]
+    assert said["shown"]["reading"] == ["Reading 0 of 50 Households"] and said["shown"]["hidden"] == []
+    assert said["shown"]["bars"] == [["0", "50", "firm-reading-words"]]
+    assert said["moved"]["reading"] == ["Reading 25 of 50 Households"] and said["moved"]["bars"] == [["25", "50", "firm-reading-words"]]
+    assert said["same"], "the count is updated in place, never the page drawn again"
+    assert said["after"]["reading"] == [] and said["after"]["bars"] == [] and said["left"] == []
+    bar = js_function("shellReadingNodes")
+    assert 'role: "progressbar"' in bar and '"aria-valuemin": "0"' in bar and "last-sort-bar" in bar
+
+
+def test_a_firm_wait_under_two_seconds_shows_only_the_outline(tmp_path):
+    """P222, W2: under 2 s, or with no count line, the outline stays as it is;
+    a page drawn from held counts keeps "Updating", never the count."""
+    said = run_firm_page("""
+      shellRoute = { level: "overview" };
+      shellLoadFirm();
+      drawPage();
+      shellFirmProgress({ v: 1, event: "households", done: 25, total: 50 });
+      const quick = looks();
+      await land(0, firmOf(1));
+      shellFirmNow = { status: "idle", data: null };
+      shellLoadFirm();
+      drawPage();
+      passTime();
+      const silent = looks();
+      await land(1, firmOf(1));
+      shellLoadFirm();
+      shellFirmProgress({ v: 1, event: "households", done: 25, total: 50 });
+      passTime();
+      const held = looks();
+      await land(2, firmOf(1));
+      return { quick, silent, held };
+    """, tmp_path)
+    for one in (said["quick"], said["silent"]):
+        assert one["hidden"] == ["Loading"] and one["reading"] == [] and one["bars"] == []
+    assert said["held"]["reading"] == [] and said["held"]["said"] == [["status", "Updating"]]
+
+
+def test_a_count_line_is_never_taken_for_the_passes(tmp_path):
+    """P222: `firm`'s count lines come on the pass's progress channel. They go
+    to the Overview's wait, never to the last-sort line, whatever is running."""
+    said = run_speed(r"""
+      const firmSaid = []; const passSaid = []; const ended = [];
+      let scanning = { args: ["run-now", "--engagement", "r1"], pass: null };
+      const shellFirmProgress = (said) => firmSaid.push(said);
+      const shellProgress = (said) => passSaid.push(said);
+      const shellChanged = () => {};
+      const passEnded = (m) => ended.push(m);
+    """, ("onPassMessage", "drawProgress"), """
+      const count = { v: 1, event: "households", done: 25, total: 50 };
+      onPassMessage({ args: ["firm"], progress: count });
+      onPassMessage({ args: ["run-now", "--engagement", "r1"], progress: { n: 1, of: 3, pass: "p1" } });
+      scanning = { args: ["firm"], pass: null };
+      onPassMessage({ args: ["firm"], progress: count });
+      scanning = null;
+      onPassMessage({ args: ["firm"], progress: count });
+      return { firmSaid, passSaid, ended };
+    """, tmp_path)
+    assert len(said["firmSaid"]) == 3
+    assert said["passSaid"] == [{"n": 1, "of": 3, "pass": "p1"}] and said["ended"] == []
+
+
+def test_household_and_year_pages_follow_the_counts_when_they_arrive(tmp_path):
+    """P222, 3 (findings-4 #3): a household's and a year's rows carry each
+    return's status from the firm's counts, so they are drawn again when the
+    counts land, as the firm pages are; a return's own page is not."""
+    said = run_firm_load("""
+      const out = {};
+      for (const level of ["household", "year", "return", "overview", "clients"]) {
+        drawn.length = 0; asked.length = 0;
+        shellRoute = { level };
+        shellFirmNow = { status: "idle", data: null };
+        shellLoadFirm();
+        await land(0, firmOf(1));
+        out[level] = drawn.includes(level);
+      }
+      return out;
+    """, tmp_path)
+    assert said == {"household": True, "year": True, "return": False, "overview": True, "clients": True}
+
+
+def test_a_return_row_waiting_for_its_counts_shows_an_outline_never_a_blank(tmp_path):
+    """P222, 3: on a household or year page, while the firm's counts are on
+    their way with none held, a return row's status is an aria-hidden outline
+    bar - never a pill, never a blank; with the counts failed it is empty (the
+    notice says why); with them in, it is the status."""
+    probe = """
+      const one = { path: "r1", return_name: "1040 - John & Jane Smith", form: "1040", year: 2025, active: true };
+      const cell = (status, data) => {
+        firmNow = { status, data };
+        const [spec] = pagesReturnSpecs([one]);
+        const node = pagesRow(spec);
+        const box = node.byClass("row-status")[0];
+        return { waiting: Boolean(spec.waiting), hidden: box.getAttribute("aria-hidden") || "", outline: box.byClass("outline-bar").length,
+                 pill: box.byClass("pill").length, text: box.textContent };
+      };
+      return [cell("loading", null), cell("failed", null), cell("ok", { returns: [{ path: "r1", counts: { needs_you: 2, waiting: 0 } }] }),
+              cell("loading", { returns: [{ path: "r1", counts: { needs_you: 2, waiting: 0 } }] })];
+    """
+    setup = """
+      let firmNow = { status: "idle", data: null };
+      const shellFirm = () => firmNow;
+      let shellRoute = { level: "household", household: "h1" };
+    """
+    said = run_pages_dom(probe, tmp_path, setup)
+    assert said[0] == {"waiting": True, "hidden": "true", "outline": 1, "pill": 0, "text": ""}
+    assert said[1] == {"waiting": False, "hidden": "", "outline": 0, "pill": 0, "text": ""}
+    assert said[2]["waiting"] is False and said[2]["outline"] == 0 and said[2]["text"] == "2 need you"
+    assert said[3]["text"] == "2 need you", "counts held are drawn while they are asked again"
+
+
+def test_a_skeleton_stands_in_the_grid_of_its_own_page(tmp_path):
+    """P222, 4 (findings-4 #4): the busy page takes its own list's grid (a
+    return page none, never the last list's) and its own shape: the
+    Overview's three figures and its group head's line, a return page's
+    caption line - with no words, numbers or dots but the hidden Loading."""
+    said = run_firm_page("""
+      const out = {};
+      for (const [level, busy] of [["overview", false], ["needs-review", false], ["return", true]]) {
+        $("page").dataset.list = "clients";
+        shellRoute = { level }; shellPageBusy = busy; shellFirmNow = { status: "loading", data: null };
+        drawPage();
+        const page = $("page");
+        out[level] = { list: page.dataset.list, figures: page.byClass("figure").length, outlines: page.byClass("outline-bar").length,
+                       caption: page.byClass("page-caption").length, rows: page.byClass("row-skeleton").length, text: page.textContent,
+                       hidden: page.find((one) => one.byClass("outline-bar").length && one.getAttribute("aria-hidden") === "true").length };
+      }
+      shellPageBusy = false;
+      return out;
+    """, tmp_path)
+    assert said["overview"] == {"list": "overview", "figures": 3, "outlines": 4, "caption": 0, "rows": 6, "text": "Loading", "hidden": 1}
+    assert said["needs-review"] == {"list": "needs_review", "figures": 0, "outlines": 0, "caption": 0, "rows": 6, "text": "Loading", "hidden": 0}
+    assert said["return"] == {"list": "", "figures": 0, "outlines": 1, "caption": 1, "rows": 6, "text": "Loading", "hidden": 1}
+
+
+def _forced_colours() -> dict[str, dict[str, str]]:
+    """The shell's forced-colors block, selector by selector."""
+    prelude, inner, _end = list(top_level(stripped(read("shell.css"))))[-1]
+    assert prelude == "@media (forced-colors: active)"
+    found = {}
+    for _media, selector, body in blocks(inner):
+        for part in selector.split(","):
+            found.setdefault(" ".join(part.split()), {}).update(dict(declarations(body)))
+    return found
+
+
+def test_skeleton_bars_are_greytext_in_a_contrast_theme():
+    """P222, 5 (findings-4 #5): in a Windows contrast theme an outline bar in
+    --bg-hover vanished into Canvas; every outline is GrayText, kept so."""
+    rules = _forced_colours()
+    drawn = {" ".join(part.split()): dict(declarations(body)) for media, selector, body in blocks(read("shell.css"))
+             if not media for part in selector.split(",")}
+    for selector in (".row-skeleton > i:not(.hidden)", ".outline-bar:not(.hidden)", ".side-name:empty:not(.hidden)::before"):
+        assert rules[selector]["background"] == "GrayText", selector
+        assert rules[selector]["forced-color-adjust"] == "none", selector
+        assert drawn[selector]["background"] == "var(--bg-hover)", f"{selector}: the bar's own rule, no more specific than this one"
+    for selector in ("#page.is-updating .figure-number", "#page.is-updating .row-status", ".side-count.is-held"):
+        assert rules[selector]["color"] == "GrayText", selector
+
+
+def test_the_first_paint_is_the_outline_not_a_blank_shell():
+    """P222, 6 (findings-4 #6): before the first reply the page is busy and
+    holds six outline rows, and the side panel's names are outlines; the
+    first draw replaces all of it."""
+    html = read("index.html")
+    main = html[html.index('<main id="page"'):html.index("</main>")]
+    assert main.startswith('<main id="page" tabindex="-1" aria-busy="true">')
+    assert main.count('<div class="row-skeleton" aria-hidden="true"><i></i><i></i></div>') == 6
+    assert re.sub(r"<!--.*?-->", "", main, flags=re.S).count("<div") == 6, "nothing but the outline"
+    side = next(body for _m, selector, body in blocks(read("shell.css")) if selector.strip() == ".side-name:empty:not(.hidden)::before")
+    assert dict(declarations(side))["background"] == "var(--bg-hover)"
+    draw = js_function("drawPage")
+    assert 'page.setAttribute("aria-busy", busy || updating ? "true" : "false")' in draw and "page.replaceChildren(" in draw
+    assert "pagesDraw(route, page)" in draw
+
+
+#: The early Overview (P221): window.tracker.call answers when the probe says.
+EARLY_FIRM = r"""
+const sentEarly = [];
+window.tracker.call = (args) => new Promise((resolve) => sentEarly.push({ args, resolve }));
+"""
+
+
+def test_the_overview_is_asked_beside_the_list_and_drawn_once_the_words_arrive(tmp_path):
+    """P221 (A2, findings-4 #7): `firm` is sent before the list is awaited,
+    through window.tracker.call itself, so the first Overview no longer waits
+    3 s for the list and then 6 s for itself. Nothing is drawn before the
+    vocabulary; the load the list starts adopts the early reply - one `firm`,
+    not two - and says its warnings and its failure once the words are there."""
+    said = run_firm_load("""
+      const words = vocab; vocab = null;
+      shellRoute = { level: "overview" };
+      shellAskFirmEarly();
+      shellAskFirmEarly();                       // a Retry of the start-up: still one
+      const before = { sent: sentEarly.length, status: shellFirmNow.status, drawn: drawn.length };
+      vocab = words;                             // the list's reply
+      shellAdopt({ root: "/root" });
+      sentEarly[0].resolve({ ...firmOf(3), warnings: ["Read slowly"] });
+      await tick();
+      const ok = { sent: sentEarly.length, viaCall: firms(), status: shellFirmNow.status, n: shellFirmNow.data.returns[0].counts.needs_you,
+                   notices: notices.slice(), drawn: drawn.slice(), clock: shellFirmTimer };
+      notices.length = 0;
+      shellFirmNow = { status: "idle", data: null };
+      shellAskFirmEarly();
+      shellAdopt({ root: "/root" });
+      sentEarly[1].resolve({ error: "The store is busy.", failure: { sentence: "The store is busy." }, warnings: [] });
+      await tick();
+      return { before, ok, failed: { status: shellFirmNow.status, notices } };
+    """, tmp_path, EARLY_FIRM)
+    assert said["before"] == {"sent": 1, "status": "loading", "drawn": 0}
+    assert said["ok"]["sent"] == 1 and said["ok"]["viaCall"] == 0, "the list's load adopts the early reply"
+    assert said["ok"]["status"] == "ok" and said["ok"]["n"] == 3 and said["ok"]["drawn"] == ["overview"]
+    assert said["ok"]["notices"] == ["Read slowly"] and said["ok"]["clock"] is None
+    assert said["failed"] == {"status": "failed", "notices": ["Counts Not Available"]}
+    boot = js_function("bootstrap", "app.js")
+    assert boot.index("shellAskFirmEarly();") < boot.index("await loadEngagements(")
+    early = js_function("shellAskFirmEarly")
+    assert 'window.tracker.call(["firm"])' in early and "call([" not in early.replace("tracker.call([", "")
+
+
+def test_an_early_overview_is_dropped_when_the_list_asks_for_a_folder(tmp_path):
+    """P221: a list that says needs_root has no Overview to show: the early
+    reply is dropped, its clock stopped, and it draws nothing when it lands."""
+    said = run_firm_load("""
+      shellRoute = { level: "overview" };
+      shellAskFirmEarly();
+      shellAdopt({ needs_root: true, root: "" });
+      const dropped = { status: shellFirmNow.status, early: shellFirmEarly === null, clock: shellFirmTimer };
+      sentEarly[0].resolve(firmOf(3));
+      await tick();
+      return { dropped, data: shellFirmNow.data, status: shellFirmNow.status, drawn, viaCall: firms() };
+    """, tmp_path, EARLY_FIRM)
+    assert said == {"dropped": {"status": "idle", "early": True, "clock": None}, "data": None, "status": "idle", "drawn": [], "viaCall": 0}
