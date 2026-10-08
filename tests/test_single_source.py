@@ -4600,8 +4600,9 @@ def test_quitting_kills_the_spare(tmp_path):
 
 
 def test_no_spare_starts_before_the_first_list(tmp_path):
-    """P220: start-up gains no third process beside the list and the early
-    Overview: the first spare is started once the first list's reply is learned."""
+    """P220: start-up gains no spare beside its own reads (the list, the
+    early Overview and, since P229, the last counts): the first spare is
+    started once the first list's reply is learned."""
     ran = _run_spawns(tmp_path, [{"tracker": ["firm"]}, {"tracker": ["list"]}])
     assert [one["argv"] for one in _commands(ran)] == [["after-install"], ["firm"], ["list"], ["--spare"]]
     assert _spares(ran)[0]["handed"] is None
