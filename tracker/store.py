@@ -976,6 +976,7 @@ def _rows_replaced() -> None:
     global _REPLACED
     _REPLACED += 1
 
+
 #: This machine's record checkpoint, held open for the command beside the
 #: store's own connection (pilot P214) and closed by :func:`close` first:
 #: one open a command instead of one a question. ``_CHECKPOINT_PATH`` is the

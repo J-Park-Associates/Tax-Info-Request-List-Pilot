@@ -43,9 +43,10 @@ line and its page are written, so this file is ready before anyone opens the
 app: the first Overview of the day, after the morning's scheduled pass, opens
 in about two seconds (pilot P201). A Sort leaves it to the app, which asks
 the Overview the moment the Sort ends (pilot P218). Setup asks it once at
-its end too, so the first Overview after an install opens at once; the
-app's first Overview after an upgrade reads every household and says how
-many it has read. A pass someone stopped asks nothing: Stop means stop.
+its end too, so the first Overview after an install or an upgrade opens at
+once. The first Overview reads every household, with its count on screen,
+only when that step could not make the Overview ready, or after an update
+from source. A pass someone stopped asks nothing: Stop means stop.
 
 **The app's data folder is private to one Windows account.** `tracker.db`
 holds every client's index rows, and it lives in

@@ -2051,6 +2051,30 @@ def test_the_app_state_reports_the_last_pass(capsys, tmp_path, monkeypatch):
     assert run(capsys, "list")[1]["last_pass"]["ok"] is True
 
 
+def test_the_last_pass_reply_and_its_line_agree_on_an_oversized_file(tmp_path, monkeypatch):
+    """The reply's ``ok`` and ``when`` read the last-pass file under the cap
+    its line reads it under (``runner.LAST_PASS_MAX_BYTES``): a file past
+    it is "could not be read" in the line and neither ok nor dated in the
+    reply, never a red line beside a green tick."""
+    import datetime as dt
+    import json
+
+    from tracker import api, runner
+    from tracker.settings import ENV_SETTINGS_DIR
+
+    monkeypatch.setenv(ENV_SETTINGS_DIR, str(tmp_path / "app"))
+    now = dt.datetime.now()
+    runner.write_last_pass(runner.last_pass_path(), started=now, ended=now, root="",
+                           result=runner.PASS_SUCCEEDED)
+    data = json.loads(runner.last_pass_path().read_text(encoding="utf-8"))
+    padded = json.dumps(data) + " " * runner.LAST_PASS_MAX_BYTES
+    assert len(padded) < runner.PASS_ORDER_MAX_BYTES
+    runner.last_pass_path().write_text(padded, encoding="utf-8")
+    reply = api._last_pass()
+    assert reply["level"] == runner.LEVEL_ERR
+    assert reply["ok"] is False and reply["when"] is None
+
+
 def test_the_short_path_warning_comes_with_the_returns_too(capsys, demo_root, monkeypatch):
     from tracker import ocr
 

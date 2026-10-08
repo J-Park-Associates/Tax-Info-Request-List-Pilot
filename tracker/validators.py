@@ -419,8 +419,12 @@ def _pdf_error(path: Path, cache: PdfVerdictCache | None) -> str:
 
 
 def _pdf_error_uncached(path: Path) -> str:
+    # The reader is fetched outside the ``try``: a reader that cannot be
+    # imported is the firm's fault, never the client's, so it fails loudly
+    # rather than refusing the file as "not a readable PDF" (P219).
+    open_pdf = _pdf_reader()
     try:
-        reader = _pdf_reader()(path)
+        reader = open_pdf(path)
         if reader.is_encrypted:
             if not reader.decrypt(""):
                 return reasons.PASSWORD_PROTECTED.format()

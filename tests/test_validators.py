@@ -453,3 +453,22 @@ def test_a_reader_a_test_puts_in_place_is_the_one_used(tmp_path, monkeypatch):
     monkeypatch.setattr(validators, "PdfReader", StandIn)
     assert validators._pdf_error_uncached(tmp_path / "any.pdf") == reasons.NO_PAGES.format()
     assert opened == ["any.pdf"]
+
+
+def test_a_pdf_reader_that_cannot_be_imported_fails_loudly_and_never_refuses_the_file(
+    tmp_path, monkeypatch,
+):
+    """P219: the late import runs outside the corrupt-file ``except``, so a
+    reader missing from this machine is the firm's error, raised - never a
+    client's PDF called unreadable and asked for again."""
+    from tracker import validators
+
+    def missing():
+        raise ModuleNotFoundError("No module named 'pypdf'")
+
+    monkeypatch.setattr(validators, "_pdf_reader", missing)
+    pdf = write_pdf(tmp_path / "statement.pdf")
+    with pytest.raises(ModuleNotFoundError):
+        validators._pdf_error_uncached(pdf)
+    with pytest.raises(ModuleNotFoundError):
+        check_file(pdf, PDF_ITEM)

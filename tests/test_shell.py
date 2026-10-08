@@ -4671,11 +4671,19 @@ shellChanged = () => drawCounts();
 const sides = [0, 1].map(() => { const side = new El("button"); side.dataset.section = "overview"; const count = new El("span"); count.className = "side-count"; side.append(count); return side; });
 document.querySelectorAll = (selector) => (selector === ".side-section[data-section]" ? sides : []);
 const shellCounts = () => ({ overview: 3 });
+// index.html's one status for "Updating": every time its words are set is
+// counted, since a status set again is read out again.
+let saidSet = 0;
+Object.defineProperty($("page-updating"), "textContent", {
+  get() { return this.kids.map((one) => one.textContent).join(""); },
+  set(value) { saidSet += 1; this.replaceChildren(String(value)); },
+});
 const looks = () => {
   const page = $("page");
   return { busy: page.getAttribute("aria-busy"), updating: page.classList.contains("is-updating"),
-           said: page.byClass("page-updating").map((one) => [one.getAttribute("role"), one.textContent]),
-           first: page.children[0] ? page.children[0].className : "",
+           said: $("page-updating").textContent, saidSet,
+           rows: page.children.map((one) => one.className),
+           inPage: page.byClass("page-updating").length,
            held: sides.map((one) => one.byClass("side-count")[0].classList.contains("is-held")),
            reading: page.byClass("firm-reading-words").map((one) => one.textContent),
            bars: page.find((one) => one.getAttribute("role") === "progressbar").map((one) =>
@@ -4694,7 +4702,7 @@ def run_firm_page(probe: str, tmp_path: Path):
 def test_a_firm_page_drawn_from_held_counts_while_they_are_asked_again_says_updating(tmp_path):
     """P222, W1 (findings-4 #1): a firm page redrawn from old counts for 5-9 s
     after a Sort said nothing of it. While held counts are asked again the page
-    is busy, says "Updating" (a status, first on the page), and its figures,
+    is busy, says "Updating" (the path row's one status), and its figures,
     statuses and the side counts are marked to be muted; a redraw meanwhile
     keeps one marker."""
     said = run_firm_page("""
@@ -4709,15 +4717,102 @@ def test_a_firm_page_drawn_from_held_counts_while_they_are_asked_again_says_upda
       await land(0, firmOf(1));
       return { before, during, again };
     """, tmp_path)
-    assert said["before"]["busy"] == "false" and not said["before"]["updating"] and said["before"]["said"] == []
+    assert said["before"]["busy"] == "false" and not said["before"]["updating"] and said["before"]["said"] == ""
     assert said["before"]["held"] == [False, False]
     for one in (said["during"], said["again"]):
         assert one["busy"] == "true" and one["updating"]
-        assert one["said"] == [["status", "Updating"]] and one["first"] == "page-updating"
+        assert one["said"] == "Updating" and one["inPage"] == 0
         assert one["held"] == [True, True]
     css = read("shell.css")
     assert "#page.is-updating .figure-number, #page.is-updating .row-status" in css
     assert ".side-section .side-count.is-held:not(:empty) { color: var(--text-caption); }" in css
+
+
+def test_the_rows_stay_put_while_held_counts_are_asked_again(tmp_path):
+    """P222 review: "Updating" was put in as the page's first line and taken
+    out again, so every row moved under the pointer and a click could open a
+    neighbouring client's return. The word is in the path row's one status,
+    kept from the start: the page's rows are the same nodes in the same
+    places whether a refresh runs or not, and a redraw meanwhile does not set
+    the status's words again, so it is not read out again."""
+    said = run_firm_page("""
+      shellRoute = { level: "overview" };
+      shellFirmNow = { status: "ok", data: firmOf(1) };
+      shellDraw();
+      const idle = looks();
+      shellLoadFirm();
+      const during = looks();
+      drawPage();
+      drawPage();
+      const redrawn = looks();
+      await land(0, firmOf(1));
+      return { idle, during, redrawn, after: looks() };
+    """, tmp_path)
+    assert said["idle"]["rows"] == said["during"]["rows"] == said["redrawn"]["rows"] == said["after"]["rows"]
+    assert said["idle"]["rows"] == ["figure-number", "row"]
+    assert [one["said"] for one in (said["idle"], said["during"], said["redrawn"], said["after"])] == ["", "Updating", "Updating", ""]
+    assert said["during"]["saidSet"] == said["redrawn"]["saidSet"], "a redraw sets the status's words no more"
+    assert all(one["inPage"] == 0 for one in said.values())
+    html = read("index.html")
+    bar = html[html.index('<header id="bar">'):html.index("</header>")]
+    assert '<p id="page-updating" class="page-updating" role="status" aria-live="polite"></p>' in bar
+    assert "page.prepend(" not in js_function("shellMarkUpdating")
+
+
+def test_a_household_or_year_page_marks_its_held_statuses_while_they_are_asked_again(tmp_path):
+    """P222 review: a household's and a year's pages follow the counts, so
+    while held counts are asked again their status pills are muted and the
+    page says Updating, as a firm page does; a return page does not."""
+    said = run_firm_page("""
+      const out = {};
+      for (const level of ["household", "year", "return"]) {
+        asked.length = 0;
+        shellRoute = { level };
+        shellFirmNow = { status: "ok", data: firmOf(1) };
+        shellDraw();
+        shellLoadFirm();
+        const started = looks();
+        drawPage();
+        out[level] = [started, looks()];
+        await land(0, firmOf(1));
+      }
+      return out;
+    """, tmp_path)
+    for level in ("household", "year"):
+        for one in said[level]:
+            assert one["updating"] and one["said"] == "Updating" and one["busy"] == "true", level
+    for one in said["return"]:
+        assert not one["updating"] and one["said"] == "", "a return page shows no held counts"
+
+
+def test_a_first_list_that_fails_leaves_no_page_busy_for_ever(tmp_path):
+    """P222 review: the first paint is the outline, busy; when the first
+    `list` failed nothing drew the page again, so it stayed an outline that
+    said it was busy for ever. It goes - the page not busy, its frame alone
+    - and the failure's notice keeps its Retry; a page drawn from an earlier
+    list keeps what it shows."""
+    setup = r"""
+let vocab = null; let formsUnloaded = null; const viewGeneration = 0; let refuse = true;
+const failures = [];
+const failed = (err, retry) => failures.push([err.message, typeof retry]);
+const failureSentence = () => "";
+const shellAskFirmEarly = () => {};
+const loadEngagements = async () => { if (refuse) throw new Error("list refused"); return false; };
+const loadForms = async () => {};
+"""
+    said = run_speed(setup, ("bootstrap", "shellStartFailed"), """
+      const page = $("page");
+      page.setAttribute("aria-busy", "true");
+      for (let i = 0; i < 6; i += 1) { const row = new El("div"); row.className = "row-skeleton"; page.append(row); }
+      await bootstrap();
+      const first = { busy: page.getAttribute("aria-busy"), kids: page.children.length, failures: failures.slice() };
+      vocab = { screen: {} };
+      const drawn = new El("div"); drawn.className = "row"; page.replaceChildren(drawn);
+      await bootstrap();
+      return { first, later: { kids: page.children.map((one) => one.className), failures: failures.length } };
+    """, tmp_path)
+    assert said["first"] == {"busy": "false", "kids": 0, "failures": [["list refused", "function"]]}
+    assert said["later"] == {"kids": ["row"], "failures": 2}
 
 
 def test_updating_goes_when_the_new_counts_are_drawn(tmp_path):
@@ -4736,7 +4831,7 @@ def test_updating_goes_when_the_new_counts_are_drawn(tmp_path):
       return { landed, failed: looks(), status: shellFirmNow.status, notices };
     """, tmp_path)
     for one in (said["landed"], said["failed"]):
-        assert one["busy"] == "false" and not one["updating"] and one["said"] == [] and one["held"] == [False, False]
+        assert one["busy"] == "false" and not one["updating"] and one["said"] == "" and one["held"] == [False, False]
     assert said["status"] == "failed" and said["notices"] == ["Counts Not Available"]
 
 
@@ -4799,7 +4894,7 @@ def test_a_firm_wait_under_two_seconds_shows_only_the_outline(tmp_path):
     """, tmp_path)
     for one in (said["quick"], said["silent"]):
         assert one["hidden"] == ["Loading"] and one["reading"] == [] and one["bars"] == []
-    assert said["held"]["reading"] == [] and said["held"]["said"] == [["status", "Updating"]]
+    assert said["held"]["reading"] == [] and said["held"]["said"] == "Updating"
 
 
 def test_a_count_line_is_never_taken_for_the_passes(tmp_path):

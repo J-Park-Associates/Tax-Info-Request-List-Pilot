@@ -373,20 +373,25 @@ function shellFirmUpdating() {
   return shellFirmNow.status === "loading" && Boolean(shellFirmNow.data);
 }
 
-// "Updating" on the firm page on screen as a load starts, without drawing
-// it again (P222): the page's rows stay usable.
+// "Updating" on a page drawn from the counts as a load starts, without
+// drawing it again (P222): the page's rows stay usable.
 function shellUpdating() {
-  if (!vocab || !vocab.screen || FIRM_LEVELS.indexOf(shellRoute.level) === -1 || shellPageBusy || !shellFirmUpdating()) return;
+  if (!vocab || !vocab.screen || !shellFollowsCounts() || shellPageBusy || !shellFirmUpdating()) return;
   const page = $("page");
   page.setAttribute("aria-busy", "true");
   shellMarkUpdating(page, true);
 }
 
+// The word sits in the path row, in #page-updating, which index.html keeps
+// from the start: nothing on the page moves when it comes or goes, so a
+// click aimed at a row never lands on its neighbour. The one status is
+// reused and its words set only when they change, so a redraw is not read
+// out again.
 function shellMarkUpdating(page, on) {
   page.classList.toggle("is-updating", on);
-  const had = page.querySelector(":scope > .page-updating");
-  if (had) had.remove();
-  if (on) page.prepend(h("p", { className: "page-updating", role: "status" }, screenWords().updating));
+  const said = $("page-updating");
+  const words = on ? screenWords().updating : "";
+  if (said.textContent !== words) said.textContent = words;
 }
 
 // What pages.js reads (with shellRoute, shellLoading and shellGo).
@@ -906,6 +911,18 @@ function shellLoading(title, level) {
   ];
 }
 
+// The first list could not be had: with no vocabulary nothing can draw the
+// page, so the first paint's outline (index.html, P222) would wait, busy,
+// for ever. It goes as a firm page's failed state does - its frame alone,
+// not busy - and the failure's own notice says why, with Retry. A page
+// already drawn from an earlier list keeps what it shows.
+function shellStartFailed() {
+  if (vocab) return;
+  const page = $("page");
+  page.setAttribute("aria-busy", "false");
+  page.replaceChildren();
+}
+
 // The page's title alone; a firm page has none, so it draws only its frame.
 function drawTitleOnly(page) {
   const title = routeTitle();
@@ -918,19 +935,22 @@ function drawPage() {
   if (route.level === "setup") {
     if (typeof pagesLeave === "function") pagesLeave();
     page.setAttribute("aria-busy", "false");
+    shellMarkUpdating(page, false);
     page.replaceChildren(...setupPage());
     return;
   }
   // A firm page waits for its counts: outline rows until they arrive; when
   // they cannot be had (the notice says so, with Retry) it shows its title.
-  // One drawn from counts held while they are asked again says Updating
-  // (P222); its rows stay usable.
+  // A page drawn from counts held while they are asked again - a firm page,
+  // a household's or a year's (shellFollowsCounts) - says Updating (P222);
+  // its rows stay usable. The marker is set once per draw, never cleared and
+  // set again, so its status is not read out on every redraw.
   const firmPage = FIRM_LEVELS.indexOf(route.level) !== -1;
   const waiting = firmPage && !shellFirmNow.data && shellFirmNow.status !== "failed";
   const busy = shellPageBusy || waiting;
-  const updating = firmPage && !busy && shellFirmUpdating();
+  const updating = shellFollowsCounts() && !busy && shellFirmUpdating();
   page.setAttribute("aria-busy", busy || updating ? "true" : "false");
-  shellMarkUpdating(page, false);
+  shellMarkUpdating(page, updating);
   if (busy) {
     // The outline in its own page's grid: a return page borrows no list's (P222).
     page.dataset.list = typeof pagesListOf === "function" ? pagesListOf(route) : "";
@@ -943,7 +963,6 @@ function drawPage() {
   }
   if (typeof pagesDraw === "function") {
     pagesDraw(route, page);
-    if (updating) shellMarkUpdating(page, true);
     return;
   }
   drawTitleOnly(page);

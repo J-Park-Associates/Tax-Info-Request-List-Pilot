@@ -272,9 +272,11 @@ CHECKPOINT_UNIT = (checkpoint.CHECKPOINT_FILENAME, checkpoint.CHECKPOINT_JOURNAL
 #: found beside: never moved without their own (P214).
 _CHECKPOINT_SIDE_FILES = (checkpoint.CHECKPOINT_JOURNAL_FILENAME, checkpoint.CHECKPOINT_WAL_FILENAME,
                           checkpoint.CHECKPOINT_SHM_FILENAME)
-LEFT_BEHIND_JOURNAL_ALONE = ("The record checkpoint's journal beside the program has no checkpoint with "
-                             "it, or {home} already holds part of the checkpoint; nothing was moved - a "
-                             "person must look (runbook, decision 186).")
+#: Said for a rollback journal, a write-ahead log or its shared memory alike
+#: (P214's review): "side file(s)" names all three, where "journal" named one.
+LEFT_BEHIND_JOURNAL_ALONE = ("The record checkpoint's side file(s) beside the program have no checkpoint "
+                             "with them, or {home} already holds part of the checkpoint; nothing was moved "
+                             "- a person must look (runbook, decision 186).")
 LEFT_BEHIND_IS_LINK = ("{name}, left beside the program by an earlier version, is a link, so nothing was "
                        "moved into {home}; a person must move what it points at (runbook, decision 186).")
 LEFT_BEHIND_MOVE_FAILED = ("The files an earlier version left beside the program could not all be moved "

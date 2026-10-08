@@ -1964,6 +1964,7 @@ async function bootstrap(preferPath) {
     }
   } catch (err) {
     failed(err, () => bootstrap(preferPath));
+    shellStartFailed();   // shell.js: the first paint's outline does not wait for ever
   }
 }
 
@@ -2258,7 +2259,7 @@ function onPassMessage(m) {
     shellFirmProgress(m.progress);
     return;
   }
-  if (!scanning ||JSON.stringify(m.args) !== JSON.stringify(scanning.args)) return;
+  if (!scanning || JSON.stringify(m.args) !== JSON.stringify(scanning.args)) return;
   if (m.reply !== undefined) {
     passEnded(m);
     return;

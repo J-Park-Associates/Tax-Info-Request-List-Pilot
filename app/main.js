@@ -75,6 +75,10 @@ const BOOTSTRAP_COMMAND = "list";
 // first Overview no longer waits for the list to finish. Both are read-only
 // replies (tracker.api.HELD_READING_COMMANDS, neither a writing command).
 const EARLY_COMMANDS = new Set([BOOTSTRAP_COMMAND, "firm"]);
+// The read-only replies, word for word tracker.api.HELD_READING_COMMANDS
+// (tests/test_single_source.py): the only commands run again when the spare
+// they were handed closed without a word (P220). A write is never run twice.
+const HELD_READING_COMMANDS = new Set(["firm", "list", "state"]);
 // The after-install step's launch door (decision 209): the shell runs it
 // itself, once, at start. It returns at once when the program has not
 // changed since it last ran cleanly and the designation still names the
@@ -293,7 +297,7 @@ function runTracker(args, payload, onProgress, onEnded) {
 
 // Start the tracker with one command already allowed: the renderer's
 // through runTracker's check, and the shell's own launch door (decision 209).
-function spawnTracker(args, payload, onProgress, onEnded) {
+function spawnTracker(args, payload, onProgress, onEnded, { fresh = false } = {}) {
   // Serialised before anything starts (decision 176): a payload that will
   // not serialise used to throw once the tracker was already running and
   // waiting on stdin, which it then did until the timeout below.
@@ -311,7 +315,7 @@ function spawnTracker(args, payload, onProgress, onEnded) {
     // A command that is not a pass goes to the waiting spare when there is
     // one from this program (P220); otherwise, and always for a pass, a
     // process of its own is started for it, as before.
-    const handed = isPass ? null : takeSpare();
+    const handed = isPass || fresh ? null : takeSpare();
     const proc = handed ? handed.proc : startTracker(args);
     if (!isPass) startSpare();   // the next one waits for the next command
     const startedAt = Date.now();
@@ -323,6 +327,7 @@ function spawnTracker(args, payload, onProgress, onEnded) {
     let reply;                // the last line that was not a progress line
     let last = null;          // the last progress line's fields
     let stderr = handed ? handed.stderr : "";   // a spare's own, from before the hand-over
+    let heard = false;        // anything at all on stdout
     let settled = false;
     let timer = null;
     const settle = (value) => {
@@ -386,6 +391,7 @@ function spawnTracker(args, payload, onProgress, onEnded) {
     // cost 176 ms of the window's process for a 3.9 MB Overview.
     proc.stdout.setEncoding("utf8");
     proc.stdout.on("data", (d) => {
+      heard = true;
       let from = 0;
       let at;
       while ((at = d.indexOf("\n", from)) >= 0) {
@@ -409,6 +415,16 @@ function spawnTracker(args, payload, onProgress, onEnded) {
       pieces = [];
       clearTimeout(timer);
       passes.delete(proc.pid);
+      // A spare that died while it waited - its exit not yet seen when it
+      // was handed the command - closes without a word. A read-only reply
+      // is asked once more, of a process of its own; a write never is, since
+      // it cannot be known that it did nothing (P220).
+      if (handed && !heard && !killedReply && !settled && HELD_READING_COMMANDS.has(args[0]) && !writingCommands.has(args[0])) {
+        if (stderr) keepInLog("shell stderr of a spare that closed without a reply", stderr);
+        settled = true;
+        resolve(spawnTracker(args, payload, onProgress, onEnded, { fresh: true }));
+        return;
+      }
       // Nothing of stderr goes on screen: a
       // failed command's goes to the log beside the tracker's database, for
       // a developer at this machine (decision 193, security principle 7).

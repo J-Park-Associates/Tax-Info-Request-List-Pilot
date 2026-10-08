@@ -60,6 +60,9 @@
     <div id="main">
       <header id="bar">
         <nav id="crumbs"><ol id="crumb-list"></ol></nav>
+        <!-- "Updating" while held counts are asked again (P222): here from the
+             start, empty when idle, so the page never moves when it comes. -->
+        <p id="page-updating" class="page-updating" role="status" aria-live="polite"></p>
         <div id="find-wrap">
           <svg class="icon" aria-hidden="true"><use href="#i-search" /></svg>
           <input id="find" type="text" role="combobox" data-tip-key="screen.find"

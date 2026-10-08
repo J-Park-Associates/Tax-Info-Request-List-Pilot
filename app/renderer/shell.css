@@ -679,10 +679,13 @@ input, textarea, select { caret-color: var(--text); accent-color: var(--accent);
   line-height: var(--lh-caption);
   color: var(--text-secondary);
 }
-/* Held counts asked again (P222): the page says Updating, its figures and
-   statuses are muted until the new reply is drawn. Rows stay usable. */
+/* Held counts asked again (P222): the path row says Updating, the page's
+   figures and statuses are muted until the new reply is drawn. Rows stay
+   usable, and stay put: the word is in the bar, which has its own height. */
 .page-updating {
-  margin: var(--sp-2) var(--sp-8) 0;
+  flex: none;
+  margin: 0;
+  white-space: nowrap;
   font-size: var(--fs-caption);
   line-height: var(--lh-caption);
   color: var(--text-secondary);

@@ -4400,6 +4400,9 @@ const fakeSpawn = (cmd, args, options) => {
       argv = JSON.parse(entry.stdin.slice(0, at)).argv;
       entry.handed = argv;
       entry.payload = entry.stdin.slice(at + 1);
+      // A spare that had died while it waited: handed a command, it closes
+      // without a word.
+      if (sc.silentSpares > 0) { sc.silentSpares -= 1; finish(1); return; }
     } else {
       entry.payload = entry.stdin;
     }
@@ -4558,6 +4561,28 @@ def test_a_spare_from_before_the_program_changed_is_not_used(tmp_path):
     assert old["killed"] and old["handed"] is None
     assert new["handed"] == ["firm"] and not new["killed"] and last["handed"] is None
     assert ran["replies"][1]["command"] == "state" and ran["replies"][2]["command"] == "firm"
+
+
+def test_a_read_handed_to_a_spare_that_had_died_is_asked_once_more_and_a_write_never(tmp_path):
+    """P220 review: a spare that died while it waited, its exit not yet seen,
+    was handed the next command and closed without a word, so the click
+    ended with no reply. A read-only reply (tracker.api's held readings, as
+    main.js knows them) is asked once more of a process of its own; a write
+    is never run twice - it ends with no reply, as before."""
+    import tracker.api as api
+
+    main_js = read("app/main.js")
+    known = set(re.findall(r'"([a-z-]+)"', re.search(r"const HELD_READING_COMMANDS = new Set\(\[([^\]]*)\]\);", main_js).group(1)))
+    assert known == set(api.HELD_READING_COMMANDS) and not known & api.WRITING_COMMANDS
+    ran = _run_spawns(tmp_path, [{"tracker": ["list"]}, {"tracker": ["state"]},
+                                 {"tracker": ["edit", "--engagement", "/r/1"], "payload": {"identifier": "A01"}}],
+                      silentSpares=2)
+    assert [one["argv"] for one in _commands(ran)] == [["after-install"], ["list"], ["--spare"], ["--spare"], ["state"], ["--spare"]]
+    assert [one["handed"] for one in _spares(ran)] == [["state"], ["edit", "--engagement", "/r/1"], None]
+    _listed, state, edited = ran["replies"]
+    assert state["command"] == "state" and not state.get("error")
+    assert edited.get("error"), "a write handed to a dead spare is never run again"
+    assert sum(1 for one in _commands(ran) if one["argv"] == ["edit", "--engagement", "/r/1"] or one["handed"] and one["handed"][0] == "edit") == 1
 
 
 def test_quitting_kills_the_spare(tmp_path):

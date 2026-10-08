@@ -3811,8 +3811,8 @@ def _last_pass() -> dict:
     ok, when = False, None
     try:
         with runner.last_pass_path().open("rb") as handle:
-            raw = handle.read(runner.PASS_ORDER_MAX_BYTES + 1)
-        if len(raw) <= runner.PASS_ORDER_MAX_BYTES:
+            raw = handle.read(runner.LAST_PASS_MAX_BYTES + 1)
+        if len(raw) <= runner.LAST_PASS_MAX_BYTES:
             data = json.loads(raw.decode("utf-8"))
             when = dt.datetime.fromisoformat(data["started"]).isoformat(timespec="seconds")
             ok = data["result"] == runner.PASS_SUCCEEDED
