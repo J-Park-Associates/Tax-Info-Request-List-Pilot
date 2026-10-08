@@ -128,8 +128,11 @@ LAYERS: dict[int, frozenset[str]] = {
     # ``firm_cache`` joins L0 with P120: the firm view's cache file, its head
     # and the households' fingerprints - the standard library, ``settings``,
     # ``fsio`` and ``errors``; the API does the reading and decides what is kept.
+    # ``page_rows`` joins L0 with P227: the practice page's kept rows - the
+    # standard library, ``settings``, ``fsio``, ``errors`` and ``firm_cache``'s
+    # head; the runner reads the records and asks the store for the tokens.
     0: frozenset({"__init__", "reasons", "locking", "checkpoint", "page", "fsio", "settings",
-                  "layout", "door", "errors", "progress", "firm_cache"}),
+                  "layout", "door", "errors", "progress", "firm_cache", "page_rows"}),
     1: frozenset({"households", "ledger", "manifest", "records", "scaffold", "store",
                   "templates", "validators"}),
     2: frozenset({"containers", "content_check", "names", "ocr", "router"}),

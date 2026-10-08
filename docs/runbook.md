@@ -48,6 +48,16 @@ once. The first Overview reads every household, with its count on screen,
 only when that step could not make the Overview ready, or after an update
 from source. A pass someone stopped asks nothing: Stop means stop.
 
+A fourth, `page-rows.json` (pilot P227), keeps what the practice page
+(`status.html`) last read from each return - its counts and the files
+waiting for a person - so a Sort & Scan, which still draws the whole page
+before it answers, reads again only the records that moved since: each
+kept line is used only while that return's record is provably unchanged
+(the record's own fingerprint of its history), and every line is read
+again on the day's first page and after every program update. It holds
+client file names, so like the others it is never synced; deleting it is
+always safe (the next page reads every return once).
+
 **The app's data folder is private to one Windows account.** `tracker.db`
 holds every client's index rows, and it lives in
 `%LOCALAPPDATA%\tax-document-tracker` (decision 186): the account's own local

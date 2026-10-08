@@ -1440,6 +1440,7 @@ def test_documents_name_only_runtime_files_the_code_owns():
     from tracker.firm_cache import CACHE_FILENAME
     from tracker.ledger import LEDGER_FILENAME
     from tracker.locking import LOCK_FILENAME, RACE_LOCK_FILENAME
+    from tracker.page_rows import ROWS_FILENAME
     from tracker.registry import LEGACY_MANIFEST_FILENAME
     from tracker.reminder import DRAFT_FILENAME, NEW_DRAFT_FILENAME
     from tracker.runner import LAST_PASS_FILENAME, LOG_FILENAME, PASS_ORDER_FILENAME, STATUS_PAGE_FILENAME
@@ -1458,8 +1459,8 @@ def test_documents_name_only_runtime_files_the_code_owns():
              CHECKPOINT_FILENAME, LAST_PASS_FILENAME, RACE_LOCK_FILENAME,
              # Decision 209: the after-install step's note, and the build's.
              RECORD_FILENAME, BUILD_INFO_FILENAME,
-             # P120: the firm view's cache.
-             CACHE_FILENAME}
+             # P120: the firm view's cache. P227: the practice page's kept rows.
+             CACHE_FILENAME, ROWS_FILENAME}
     tracked = subprocess.run(["git", "ls-files"], cwd=REPO, capture_output=True, text=True).stdout.split()
     repo_files = {Path(t).name for t in tracked} | {t for t in tracked}
     for rel in DOCUMENTS:

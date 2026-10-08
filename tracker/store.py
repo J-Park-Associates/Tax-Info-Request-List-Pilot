@@ -1198,6 +1198,63 @@ def engagement_path(root: Path | str, engagement_dir: Path | str) -> str:
     return "/".join(below) or "."
 
 
+def _engagement_key(folder: Path, root: Path | str | None = None) -> str:
+    """The stored path :func:`_engagement_row` asks first for ``folder``.
+
+    Once per hold (pilot P215, findings-2 #2): a function of the settings
+    file's root and the folder's and the root's resolved spellings, each
+    already held for exactly this hold - so it cannot differ from asking
+    again. The row itself is never held: its applied_seq moves whenever
+    anything is written."""
+    from tracker import settings
+
+    return settings.held(("engagement key", str(folder), "" if root is None else str(root)),
+                         lambda: engagement_path(key_root(folder, root), folder), there=folder)
+
+
+def record_key(folder: Path | str) -> str | None:
+    """The stored path of the return at ``folder`` when it is under the
+    recorded clients root, where that key is the only answer (decision
+    106); else ``None`` - a folder the store finds by its tail, which a
+    caller keeping reads by key (the practice page's kept rows, P227)
+    always reads afresh. A folder that cannot be resolved or keyed is
+    ``None`` too: its read is made, and fails, where it always did."""
+    folder = Path(folder)
+    try:
+        if _recorded_root_over(folder) is None:
+            return None
+        return _engagement_key(folder)
+    except (OSError, StoreError):
+        return None
+
+
+#: The columns :func:`read_token` is made of, in its order.
+_TOKEN_COLUMNS = ("id", "path", "ledger_head", "applied_seq", "applied_digest", "built_at")
+
+
+def read_token(row: sqlite3.Row) -> tuple:
+    """What proves a record's reads unchanged (pilot P215, P227): the row's
+    id, path, journal head, applied seq and digest, and the time it was
+    built. Every table the list, the details and the index are read from is
+    written only by applying journal lines, which moves the seq, head and
+    digest, or by deleting the row, which a rebuild's new ``built_at``
+    says. One definition for :func:`held_read` and the practice page's
+    kept rows, so the two can never disagree about what "unchanged" is."""
+    return tuple(row[column] for column in _TOKEN_COLUMNS)
+
+
+def read_tokens(conn: sqlite3.Connection, path: str | None = None) -> dict[str, tuple]:
+    """:func:`read_token` of every engagement row, keyed by its stored path,
+    in **one** statement (P227) - or of the one row stored at ``path``. A
+    path with no row is absent."""
+    columns = ", ".join(_TOKEN_COLUMNS)
+    if path is None:
+        found = conn.execute(f"SELECT {columns} FROM engagements")
+    else:
+        found = conn.execute(f"SELECT {columns} FROM engagements WHERE path = ?", (path,))
+    return {row["path"]: read_token(row) for row in found}
+
+
 def _engagement_row(conn: sqlite3.Connection, engagement_dir: Path | str,
                     root: Path | str | None = None) -> sqlite3.Row | None:
     """The stored engagement a folder on disk is, or None.
@@ -1232,16 +1289,8 @@ def _engagement_row(conn: sqlite3.Connection, engagement_dir: Path | str,
     command line, and the two disagreed on a machine with no settings
     file. Two spellings of one folder must never be two rows.
     """
-    from tracker import settings
-
     folder = Path(engagement_dir)
-    # The key once per hold (pilot P215, findings-2 #2): a function of the
-    # settings file's root and the folder's and the root's resolved
-    # spellings, each already held for exactly this hold - so it cannot
-    # differ from asking again. The row itself is never held: its
-    # applied_seq moves whenever anything is written.
-    key = settings.held(("engagement key", str(folder), "" if root is None else str(root)),
-                        lambda: engagement_path(key_root(folder, root), folder), there=folder)
+    key = _engagement_key(folder, root)
     exact = conn.execute("SELECT * FROM engagements WHERE path = ?", (key,)).fetchone()
     if exact is not None or _recorded_root_over(folder) is not None:
         return exact
@@ -1276,8 +1325,7 @@ def held_read(conn: sqlite3.Connection, engagement_dir: Path | str, what: str,
     row = _engagement_row(conn, engagement_dir)
     if row is None:
         return build()
-    token = (what, row["id"], row["path"], row["ledger_head"], row["applied_seq"], row["applied_digest"],
-             row["built_at"], _REPLACED)
+    token = (what, *read_token(row), _REPLACED)
     value = settings.held(("record read", *token), build, there=engagement_dir)
     return list(value) if isinstance(value, list) else value
 
