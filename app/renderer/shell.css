@@ -1194,10 +1194,11 @@ input, textarea, select { caret-color: var(--text); accent-color: var(--accent);
   .side-section.is-soon, .side-heading, .link-kind, .page-count { color: CanvasText; }
   #side-brand-words { color: CanvasText; }
   .last-sort-bar { background: Canvas; border: 1px solid CanvasText; }
-  .last-sort-bar > span { background: Highlight; }
-  /* Outline bars and held counts (P222): the system's grey. */
-  .row-skeleton > i { background: GrayText; forced-color-adjust: none; }
-  .outline-bar, .side-name:empty::before { background: GrayText; forced-color-adjust: none; }
+  .last-sort-bar > span:not(.hidden) { background: Highlight; forced-color-adjust: none; }
+  /* Outline bars and held counts (P222): the system's grey. Each selector
+     is as specific as the rule that draws the bar, so this one wins. */
+  .row-skeleton > i:not(.hidden) { background: GrayText; forced-color-adjust: none; }
+  .outline-bar:not(.hidden), .side-name:empty:not(.hidden)::before { background: GrayText; forced-color-adjust: none; }
   #page.is-updating .figure-number, #page.is-updating .row-status, #page.is-updating .pill-word, .side-count.is-held { color: GrayText; }
   #sheet-scrim { background: transparent; }
   :focus-visible { outline: 2px solid CanvasText; }

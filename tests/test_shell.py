@@ -4914,9 +4914,12 @@ def test_skeleton_bars_are_greytext_in_a_contrast_theme():
     """P222, 5 (findings-4 #5): in a Windows contrast theme an outline bar in
     --bg-hover vanished into Canvas; every outline is GrayText, kept so."""
     rules = _forced_colours()
-    for selector in (".row-skeleton > i", ".outline-bar", ".side-name:empty::before"):
+    drawn = {" ".join(part.split()): dict(declarations(body)) for media, selector, body in blocks(read("shell.css"))
+             if not media for part in selector.split(",")}
+    for selector in (".row-skeleton > i:not(.hidden)", ".outline-bar:not(.hidden)", ".side-name:empty:not(.hidden)::before"):
         assert rules[selector]["background"] == "GrayText", selector
         assert rules[selector]["forced-color-adjust"] == "none", selector
+        assert drawn[selector]["background"] == "var(--bg-hover)", f"{selector}: the bar's own rule, no more specific than this one"
     for selector in ("#page.is-updating .figure-number", "#page.is-updating .row-status", ".side-count.is-held"):
         assert rules[selector]["color"] == "GrayText", selector
 
