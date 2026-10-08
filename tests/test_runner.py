@@ -12,6 +12,7 @@ on that day: ``stamped_on`` does, and ``pass_on`` is a pass with it.
 
 import datetime as dt
 import html
+import json
 import re
 from pathlib import Path
 
@@ -5349,3 +5350,159 @@ def test_the_page_is_written_outside_the_reading(tmp_path, samples, monkeypatch)
     assert _the_scheduled_job(tmp_path, monkeypatch, "--reminders", "never") == 0
     assert holding == [""]
     assert (tmp_path / STATUS_PAGE_FILENAME).is_file()
+
+
+# ------------------------------------------ the pass-order hint (P217) ----
+
+
+def _hint_file() -> Path:
+    path = store.store_path().parent / runner_module.PASS_ORDER_FILENAME
+    path.parent.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def _hint_lines(path: Path) -> list[str]:
+    return path.read_text(encoding="ascii").splitlines()
+
+
+def _whole_writes_of_the_hint(monkeypatch, *, refuse: bool = False) -> list[Path]:
+    """Every whole write of the hint from here on; ``refuse`` makes each fail."""
+    writes = []
+    real = runner_module.write_text_atomically
+
+    def watched(path, *args, **kwargs):
+        if Path(path).name == runner_module.PASS_ORDER_FILENAME:
+            writes.append(Path(path))
+            if refuse:
+                raise PermissionError(13, "fabricated: the file is held")
+        return real(path, *args, **kwargs)
+
+    monkeypatch.setattr(runner_module, "write_text_atomically", watched)
+    return writes
+
+
+def test_a_hint_for_a_thousand_households_is_read_back_whole(tmp_path):
+    """P217: at 64 KiB the hint was unreadable from about 370 households up,
+    and decision 189's order was lost. A thousand households' hint - one
+    compact line - is read back whole, settled, with no warning."""
+    hint = {f"Household {n:04d} of a Fabricated Firm": {
+        "completed": "2026-10-07T02:14:09", "ended": "2026-10-07T02:14:09",
+        "started": "2026-10-07T02:13:58", "not_served": 0} for n in range(1000)}
+    path = _hint_file()
+    assert runner_module._write_order_hint(path, hint)
+    assert len(_hint_lines(path)) == 1
+    assert 65_536 < path.stat().st_size < runner_module.PASS_ORDER_MAX_BYTES
+    report = RunReport(today=FRIDAY)
+    assert runner_module._read_order_hint(report) == (path, hint, True)
+    assert report.warnings == []
+
+
+def test_each_household_start_is_one_appended_line_and_the_hint_is_written_once_a_pass(
+        tmp_path, samples, monkeypatch):
+    _three_households(tmp_path, samples)
+    run_registry(discover_engagements(tmp_path), today=FRIDAY)          # settles the hint
+    path = _hint_file()
+    assert len(_hint_lines(path)) == 1
+    writes = _whole_writes_of_the_hint(monkeypatch)
+    seen = []
+    real = runner_module.run_household
+
+    def watched(household, *args, **kwargs):
+        lines = _hint_lines(path)
+        seen.append((household.name, len(lines), json.loads(lines[-1])))
+        return real(household, *args, **kwargs)
+
+    monkeypatch.setattr(runner_module, "run_household", watched)
+    run_registry(discover_engagements(tmp_path), today=FRIDAY)
+
+    assert [count for _name, count, _last in seen] == [2, 3, 4]
+    for name, _count, last in seen:
+        assert set(last) == {"started", "household"} and last["household"] == name
+    assert writes == [path]                                              # once, at the end
+    (whole,) = _hint_lines(path)
+    assert json.loads(whole)["version"] == runner_module.PASS_ORDER_VERSION == 2
+
+
+def test_a_pass_killed_in_a_household_leaves_its_mark_and_the_next_pass_puts_it_last(
+        tmp_path, samples, monkeypatch):
+    """Decision 189's crash mark still lands before the household's work:
+    the pass killed in Birch leaves Alder's and Birch's marks after line 1,
+    and the next pass folds them, takes the household never started first,
+    and settles the file to one line again."""
+    _three_households(tmp_path, samples)
+    path = _hint_file()
+    real = runner_module.run_household
+
+    def killed_in_birch(household, *args, **kwargs):
+        if household.name == "Birch Household":
+            raise SystemExit("killed")
+        return real(household, *args, **kwargs)
+
+    with monkeypatch.context() as patched:
+        patched.setattr(runner_module, "run_household", killed_in_birch)
+        with pytest.raises(SystemExit):
+            run_registry(discover_engagements(tmp_path), today=FRIDAY)
+    lines = _hint_lines(path)
+    assert [json.loads(line)["household"] for line in lines[1:]] == ["Alder Household", "Birch Household"]
+
+    taken = households_in_order(monkeypatch)
+    run_registry(discover_engagements(tmp_path), today=FRIDAY)
+    assert taken[0] == "Cedar Household" and taken[-1] in ("Alder Household", "Birch Household")
+    assert len(_hint_lines(path)) == 1
+
+
+def test_a_torn_last_mark_is_skipped_without_a_warning(tmp_path, caplog):
+    path = _hint_file()
+    path.write_text(
+        '{"version":2,"households":{"Alder Household":{"completed":"2026-10-06T02:00:00"}}}\n'
+        '{"started":"2026-10-07T02:00:00","household":"Alder Household"}\n'
+        '{"started":"2026-10-07T02:00:05","household":"Birch Household"}\n'
+        '{"started":"2026-10-07T02:00:1', encoding="ascii")
+    report = RunReport(today=FRIDAY)
+    with caplog.at_level("WARNING"):
+        found, hint, settled = runner_module._read_order_hint(report)
+    assert found == path and not settled
+    assert hint == {"Alder Household": {"completed": "2026-10-06T02:00:00", "started": "2026-10-07T02:00:00"},
+                    "Birch Household": {"started": "2026-10-07T02:00:05"}}
+    assert report.warnings == [] and caplog.records == []
+
+
+def test_an_earlier_versions_hint_is_read_and_settled_before_the_first_mark(tmp_path, samples, monkeypatch):
+    _three_households(tmp_path, samples)
+    path = _hint_file()
+    path.write_text(json.dumps({"version": 1, "households": {
+        "Alder Household": {"completed": "2026-03-13T09:00:00", "not_served": 0},
+        "Birch Household": {"completed": "2026-03-12T09:00:00", "not_served": 0}}}, indent=2),
+        encoding="utf-8")
+    seen = []
+    real = runner_module.run_household
+
+    def watched(household, *args, **kwargs):
+        seen.append(_hint_lines(path))
+        return real(household, *args, **kwargs)
+
+    monkeypatch.setattr(runner_module, "run_household", watched)
+    report = run_registry(discover_engagements(tmp_path), today=FRIDAY)
+
+    assert runner_module.ORDER_HINT_UNREADABLE not in report.warnings
+    first, mark = seen[0]
+    settled = json.loads(first)
+    assert settled["version"] == 2
+    assert settled["households"]["Birch Household"]["completed"] == "2026-03-12T09:00:00"
+    assert json.loads(mark)["household"] == "Cedar Household"            # never completed: first
+
+
+def test_a_hint_that_cannot_be_settled_takes_no_marks(tmp_path, samples, monkeypatch):
+    """A mark appended to an earlier version's file would make it
+    unreadable: when the settling write fails, no mark is appended this
+    pass, and the end-of-pass write is still tried."""
+    _three_households(tmp_path, samples)
+    path = _hint_file()
+    before = json.dumps({"version": 1, "households": {}}, indent=2)
+    path.write_text(before, encoding="utf-8")
+    writes = _whole_writes_of_the_hint(monkeypatch, refuse=True)
+
+    run_registry(discover_engagements(tmp_path), today=FRIDAY)
+
+    assert writes == [path, path]                     # the settling write, then the end's
+    assert path.read_text(encoding="utf-8") == before
