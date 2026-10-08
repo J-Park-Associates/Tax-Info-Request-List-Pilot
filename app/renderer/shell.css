@@ -683,12 +683,13 @@ input, textarea, select { caret-color: var(--text); accent-color: var(--accent);
    figures and statuses are muted until the new reply is drawn. Rows stay
    usable, and stay put: the word is in the bar, which has its own height.
    Its slot is kept the same width whether the word shows or not, so the
-   path beside it is never narrowed when it comes (Jason, 2026-10-08) - wide
-   enough for its longest words, the launch's "Updating, as of 12:59 PM"
-   (P229). */
+   path beside it is never narrowed when it comes (Jason, 2026-10-08). The
+   launch's last counts (P229) say Updating here too; their time is on the
+   Overview's own Work line (.page-as-of; Jason, 2026-10-08: "Time on
+   Overview page"), so the slot stays 8 ch. */
 .page-updating {
   flex: none;
-  inline-size: 24ch;
+  inline-size: 8ch;
   margin: 0;
   overflow: hidden;
   text-align: end;
@@ -699,6 +700,19 @@ input, textarea, select { caret-color: var(--text); accent-color: var(--accent);
   color: var(--text-secondary);
 }
 #page.is-updating .figure-number, #page.is-updating .row-status, #page.is-updating .pill-word { color: var(--text-caption); }
+/* "Updating, as of {time}" on the Overview's Work line (P229): one line of
+   caption type on a line the h2 sets, cut rather than wrapped, so the line
+   is as tall with it as without it and no row moves when it comes or goes. */
+.page-as-of {
+  flex: 0 1 auto;
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--fs-caption);
+  line-height: var(--lh-caption);
+  color: var(--text-secondary);
+}
 /* The setup page while set-root runs. */
 .setup-wait:not(:empty) { display: grid; margin-top: var(--sp-6); }
 /* On the five-column lists the status is the fourth column. */

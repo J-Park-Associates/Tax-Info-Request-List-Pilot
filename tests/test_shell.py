@@ -2538,7 +2538,7 @@ def test_a_household_paused_for_two_open_years_is_marked_and_listed_from_the_fir
 
 
 def _stub_replies(scenario: str) -> dict:
-    """The stub's ``list``, ``firm`` and first three ``state`` replies, run in node
+    """The stub's ``list``, ``firm``, ``firm-last`` and first three ``state`` replies, run in node
     on the live vocabulary, as the harness serves it."""
     if NODE is None:
         pytest.skip("node is not on PATH (CI installs it)")
@@ -2550,9 +2550,10 @@ vm.runInContext({json.dumps(stub)}, vm.createContext({{ window, location: {{ sea
 (async () => {{
   const list = await window.tracker.call(["list"]);
   const firm = await window.tracker.call(["firm"]);
+  const firm_last = await window.tracker.call(["firm-last"]);
   const states = [];
   for (const one of list.engagements.slice(0, 3)) states.push(await window.tracker.call(["state", "--engagement", one.path]));
-  console.log(JSON.stringify({{ list, firm, states }}));
+  console.log(JSON.stringify({{ list, firm, firm_last, states }}));
 }})();
 """
     # From a file, never ``node -e``: the stub alone is longer than Windows'
@@ -2619,7 +2620,8 @@ def test_the_harness_stub_replies_have_the_shape_of_the_engines(capsys, scratch_
     assert scan(capsys, engagement)[0] == 0
     (scratch_root / "Clients" / "Stray Folder").mkdir()
     real = {"list": run(capsys, "list")[1], "firm": run(capsys, "firm")[1],
-            "state": run(capsys, "state", api.ENGAGEMENT_FLAG, str(engagement))[1]}
+            "state": run(capsys, "state", api.ENGAGEMENT_FLAG, str(engagement))[1],
+            "firm_last": run(capsys, api.FIRM_LAST_COMMAND)[1]}
     stub = _stub_replies("notices")
 
     # list
@@ -2646,6 +2648,16 @@ def test_the_harness_stub_replies_have_the_shape_of_the_engines(capsys, scratch_
         opened = {one["open_key"] for one in reply["files"]} - {""}
         assert opened and opened <= set(reply["paths"]), "every file's open key is a key of paths"
         assert {key.split(" ")[0] for key in reply["paths"]} <= set(api.PATH_KINDS)
+
+    # firm-last (P229): the refusal is the API's {last: null, warnings}; the
+    # answer is the firm reply's own fields at the top level, plus `last:
+    # true` and `as_of` ("HH:MM") - tracker.api's contract, which the
+    # renderer's shellLastOf accepts and nothing else.
+    assert set(real["firm_last"]) == set(stub["firm_last"]) == {"last", "warnings"}
+    assert real["firm_last"]["last"] is None and stub["firm_last"]["last"] is None
+    answered = _stub_replies("last-counts")["firm_last"]
+    assert set(answered) - {"last", "as_of"} == set(real["firm"]) - {"warnings"}
+    assert answered["last"] is True and re.fullmatch(r"\d{2}:\d{2}", answered["as_of"])
 
     # state: the stub is a subset of the engine's, level by level
     for reply in stub["states"]:
@@ -3203,7 +3215,8 @@ def test_a_link_differs_from_plain_text_by_more_than_its_colour():
 #: One firm reply for the four lists: five returns (one unreadable), three
 #: waiting files in two returns, three drafts (one held).
 FIRM_LISTS = r"""
-  let shellFirmData = null; const shellFirm = () => ({ data: shellFirmData }); const openNewHousehold = () => {};
+  let shellFirmData = null; let shellFirmAsOf = ""; const openNewHousehold = () => {};
+  const shellFirm = () => (shellFirmAsOf ? { data: shellFirmData, asOf: shellFirmAsOf } : { data: shellFirmData });
   let shellRoute = { level: "overview" };
   const box = new Element("div"); const $ = (id) => box;
   Object.assign(vocab.screen, {
@@ -4568,12 +4581,6 @@ def test_a_check_sheet_waiting_on_its_return_is_an_outline(tmp_path):
     assert said == {"outline": 3, "word": ["Loading"], "ready": False}
 
 
-#: Jason's words for the launch's last counts (P229, approved 2026-10-08).
-#: Lane R was built before Lane P's vocabulary carried them as
-#: ``api.SCREEN["updating_as_of"]``; the harness below uses the same words.
-APPROVED_UPDATING_AS_OF = "Updating, as of {time}"
-
-
 #: shell.js's load of the firm's counts, lifted whole, with a `firm` that
 #: answers only when the probe says so.
 FIRM_LOAD = r"""
@@ -4773,22 +4780,17 @@ def test_the_path_beside_updating_keeps_its_width_when_the_word_comes():
     """Jason, 2026-10-08: a long path was narrowed while "Updating" showed,
     because the word's slot grew from nothing. The slot is a fixed width
     whether the word shows or not, does not grow or shrink, and cuts
-    rather than spills - so the path beside it never moves. P229: the slot
-    is as wide as its longest words, the launch's last counts with the
-    longest time ("Updating, as of 12:59 PM"), whether they show or not."""
+    rather than spills - so the path beside it never moves. It is 8 ch, the
+    launch's last counts too: their time is on the Overview's own line
+    (P229; Jason, 2026-10-08: "Time on Overview page")."""
     css = stripped(read("shell.css"))
     body = css[css.index(".page-updating {"):]
     body = body[:body.index("}")]
-    for declaration in ("flex: none;", "overflow: hidden;", "white-space: nowrap;"):
+    for declaration in ("flex: none;", "inline-size: 8ch;", "overflow: hidden;", "white-space: nowrap;"):
         assert declaration in body, declaration
-    width = int(re.search(r"inline-size: (\d+)ch;", body).group(1))
     from tracker import api
 
-    # Jason's approved words (2026-10-08), until Lane P's vocabulary carries them.
-    as_of = api.SCREEN.get("updating_as_of", APPROVED_UPDATING_AS_OF)
-    longest = max(len(api.SCREEN["updating"]), len(as_of.replace("{time}", "12:59 PM")))
-    assert longest <= width, "a longer word needs a wider slot in shell.css"
-    assert width <= longest + 2, "the slot is no wider than its words need: the path keeps the rest"
+    assert len(api.SCREEN["updating"]) <= 8, "a longer word needs a wider slot in shell.css"
 
 
 def test_a_household_or_year_page_marks_its_held_statuses_while_they_are_asked_again(tmp_path):
@@ -5262,8 +5264,16 @@ def test_the_sorts_end_asks_the_overview_through_the_one_early_ask():
 
 #: The launch (P229): the probe lands `firm` (sentEarly[0]) and `firm-last`
 #: (sentEarly[1]) when it says, before or after the list's words arrive.
+#: ``lastOf`` is tracker.api's firm-last as it answers (handoff P229, "The
+#: contract"): the firm reply's own fields at the top level, with
+#: ``last: true`` and ``as_of``, the cache's "HH:MM"; ``refused`` is its
+#: refusal. ``overviewSays`` is the Overview's own line (pagesAsOf), and
+#: ``timeOf`` the app's words for a time (pagesTime).
 LAST_COUNTS = EARLY_FIRM + FIRM_PAGE + r"""
-const lastOf = (n, asOf = "9:14 AM") => ({ last: { ...firmOf(n), as_of: asOf } });
+const lastOf = (n, asOf = "09:14") => ({ ...firmOf(n), files: [], paths: {}, next_sort: null, warnings: [], last: true, as_of: asOf });
+const refused = { last: null, warnings: [] };
+const overviewSays = () => pagesAsOf();
+const timeOf = (clock) => pagesTime(clock);
 const words = vocab;
 const launch = () => { vocab = null; shellRoute = { level: "overview" }; shellAskFirmNow(); shellAskFirmLast(); };
 const listLands = () => { vocab = words; shellAdopt({ root: "/root" }); };
@@ -5273,15 +5283,18 @@ const counts = () => (shellFirmNow.data ? shellFirmNow.data.returns[0].counts.ne
 
 
 def run_last_counts(probe: str, tmp_path: Path):
-    return run_firm_load(probe, tmp_path, LAST_COUNTS, FIRM_PAGE_FUNCTIONS)
+    return run_firm_load(probe, tmp_path, LAST_COUNTS, (*FIRM_PAGE_FUNCTIONS, "shellFirm", "pagesAsOf", "pagesTime"))
 
 
 def test_the_last_counts_are_drawn_marked_updating_as_of_their_time(tmp_path):
     """P229 (Jason, 2026-10-08: build it now, "Updating, as of {time}"
-    approved): at launch `firm-last` is asked beside the list and `firm`.
-    Its counts are drawn once the words are here, under P222's marker - the
-    page busy, the path row's one status saying "Updating, as of 9:14 AM",
-    figures, statuses and side counts muted - with the rows usable."""
+    approved; "Time on Overview page"): at launch `firm-last` is asked
+    beside the list and `firm`. Its reply - the firm reply's own fields with
+    `last: true` and `as_of` - is drawn once the words are here, under
+    P222's marker: the page busy, the path row's 8 ch slot saying Updating
+    alone, figures, statuses and side counts muted, the rows usable - and
+    the Overview's own line says "Updating, as of {time}", the time in the
+    app's words. `last` and `as_of` are not taken for counts."""
     said = run_last_counts("""
       launch();
       const sentAtLaunch = sentEarly.map((one) => one.args[0]);
@@ -5289,12 +5302,17 @@ def test_the_last_counts_are_drawn_marked_updating_as_of_their_time(tmp_path):
       await tick();
       const beforeWords = { drawn: drawn.length, data: shellFirmNow.data };
       listLands();
-      return { sentAtLaunch, beforeWords, marked: looks(), n: counts(), status: shellFirmNow.status };
+      return { sentAtLaunch, beforeWords, marked: looks(), n: counts(), status: shellFirmNow.status,
+               overview: overviewSays(), want: `Updating, as of ${timeOf("09:14")}`,
+               kept: Object.keys(shellFirmNow.data).sort(), asOf: shellFirm().asOf };
     """, tmp_path)
     assert said["sentAtLaunch"] == ["firm", "firm-last"]
     assert said["beforeWords"] == {"drawn": 0, "data": None}, "nothing is drawn before the vocabulary"
     marked = said["marked"]
-    assert marked["busy"] == "true" and marked["updating"] and marked["said"] == "Updating, as of 9:14 AM"
+    assert marked["busy"] == "true" and marked["updating"] and marked["said"] == "Updating", "the slot says the word alone"
+    assert said["overview"] == said["want"], "the time in the app's own words (pagesTime)"
+    assert said["overview"].startswith("Updating, as of ") and said["asOf"] == "09:14"
+    assert said["kept"] == ["files", "next_sort", "paths", "returns", "totals", "warnings"]
     assert marked["held"] == [True, True] and marked["rows"] == ["figure-number", "row"] and marked["hidden"] == []
     assert said["n"] == 4 and said["status"] == "loading", "the fresh reply is still on its way"
     boot = js_function("bootstrap", "app.js")
@@ -5312,11 +5330,13 @@ def test_the_fresh_counts_replace_the_last_in_place(tmp_path):
       early("firm-last").resolve(lastOf(4));
       await tick();
       const marked = looks();
+      const markedLine = overviewSays();
       early("firm").resolve(firmOf(5));
       await tick();
-      return { marked, fresh: looks(), n: counts(), status: shellFirmNow.status, asOf: shellFirmAsOf, viaCall: firms() };
+      return { marked, markedLine, fresh: looks(), freshLine: overviewSays(), n: counts(), status: shellFirmNow.status, asOf: shellFirmAsOf, viaCall: firms() };
     """, tmp_path)
-    assert said["marked"]["said"] == "Updating, as of 9:14 AM", "the last counts landing after the words are drawn at once"
+    assert said["marked"]["said"] == "Updating", "the last counts landing after the words are drawn at once"
+    assert said["markedLine"].startswith("Updating, as of ") and said["freshLine"] == ""
     fresh = said["fresh"]
     assert fresh["rows"] == said["marked"]["rows"], "no row moves under the mouse"
     assert fresh["busy"] == "false" and not fresh["updating"] and fresh["said"] == "" and fresh["held"] == [False, False]
@@ -5351,9 +5371,9 @@ def test_a_failed_refresh_takes_the_last_counts_down(tmp_path):
       const marked = looks();
       early("firm").resolve({ error: "The store is busy.", failure: { sentence: "The store is busy." } });
       await tick();
-      return { marked, failed: looks(), data: shellFirmNow.data, status: shellFirmNow.status, notices, asOf: shellFirmAsOf };
+      return { marked, failed: looks(), data: shellFirmNow.data, status: shellFirmNow.status, notices, asOf: shellFirmAsOf, line: overviewSays() };
     """, tmp_path)
-    assert said["marked"]["said"] == "Updating, as of 9:14 AM"
+    assert said["marked"]["said"] == "Updating" and said["line"] == ""
     assert said["data"] is None and said["status"] == "failed" and said["asOf"] == ""
     assert said["notices"] == ["Counts Not Available"]
     failed = said["failed"]
@@ -5361,13 +5381,20 @@ def test_a_failed_refresh_takes_the_last_counts_down(tmp_path):
 
 
 def test_a_refused_or_failed_last_count_ask_shows_nothing(tmp_path):
-    """P229: the API answers {last: null} unless the cache is today's, this
-    program's, this clients folder's and whole; that, an error reply, an ask
-    that failed, or counts without their time show nothing - the page waits
-    for the fresh reply as it did (its outline, the hidden Loading)."""
+    """P229: the API answers {last: null, warnings} unless the cache is
+    today's, this program's, this clients folder's and whole; that, an error
+    reply, an ask that failed, and every shape but the API's own show
+    nothing - counts without `last: true` or without an "HH:MM" `as_of`,
+    or the counts nested under `last` (the shape Lane R first assumed) - and
+    the page waits for the fresh reply as it did (its outline, the hidden
+    Loading)."""
     said = run_last_counts("""
       const out = [];
-      for (const reply of [{ last: null }, { error: "Unknown command: firm-last" }, "throw", { last: { ...firmOf(4) } }]) {
+      const { last, ...noLast } = lastOf(4);
+      const { as_of, ...noTime } = lastOf(4);
+      const shapes = [refused, { error: "Unknown command: firm-last" }, "throw", noLast, noTime, { ...lastOf(4), last: 1 },
+                      lastOf(4, "9:14 AM"), { last: { ...firmOf(4), as_of: "09:14" } }, { last: true, as_of: "09:14" }];
+      for (const reply of shapes) {
         sentEarly.length = 0;
         shellFirmNow = { status: "idle", data: null }; shellFirmEarly = null; shellFirmLast = null;
         launch();
@@ -5431,10 +5458,11 @@ def test_the_last_counts_wait_for_their_own_words(tmp_path):
     assert said == {"data": None, "logged": ["vocab.screen.updating_as_of"], "said": ""}
 
 
-def test_a_household_page_opened_on_the_last_counts_is_marked_with_their_time(tmp_path):
+def test_a_household_page_opened_on_the_last_counts_says_updating_in_its_slot(tmp_path):
     """P229: a household's or a year's page follows the counts (P222), so
-    while the last counts stand it says their time as the firm pages do; a
-    return page shows no counts and no marker."""
+    while the last counts stand its slot says Updating, as a firm page's
+    does - the time is the Overview's own line alone (Jason, 2026-10-08:
+    "Time on Overview page"); a return page shows no counts and no marker."""
     said = run_last_counts("""
       const out = {};
       for (const level of ["household", "return"]) {
@@ -5442,7 +5470,7 @@ def test_a_household_page_opened_on_the_last_counts_is_marked_with_their_time(tm
         launch();
         shellRoute = { level };
         listLands();
-        early("firm-last").resolve(lastOf(4, "8:05 AM"));
+        early("firm-last").resolve(lastOf(4, "08:05"));
         await tick();
         drawPage();
         out[level] = looks().said;
@@ -5451,7 +5479,72 @@ def test_a_household_page_opened_on_the_last_counts_is_marked_with_their_time(tm
       }
       return out;
     """, tmp_path)
-    assert said == {"household": "Updating, as of 8:05 AM", "return": ""}
+    assert said == {"household": "Updating", "return": ""}
+
+
+def test_the_overview_says_the_last_counts_time_on_its_own_work_line(tmp_path):
+    """Jason, 2026-10-08: "Time on Overview page". While the launch's last
+    counts stand, "Updating, as of {time}" is on the Overview itself, after
+    the Work line's count - the page's first group-head line, drawn whenever
+    it has rows - with the time in the app's own words; an Overview with no
+    work says it under its empty line, below which there is no row. Fresh
+    counts say nothing."""
+    ran = run_lists("""
+      vocab.screen.updating_as_of = "Updating, as of {time}";
+      const fresh = draw("overview");
+      const freshSaid = fresh.byClass("page-as-of").length;
+      shellFirmAsOf = "09:14";
+      const marked = draw("overview");
+      const head = marked.byClass("group-head")[0];
+      const out = { freshSaid, said: marked.byClass("page-as-of").map((one) => one.textContent), want: `Updating, as of ${pagesTime("09:14")}`,
+                    head: head.kids.filter((one) => one instanceof Element).map((one) => one.className.split(" ")[0]) };
+      const rows = shellFirmData.returns;
+      shellFirmData = { ...shellFirmData, returns: [] };
+      const empty = draw("overview");
+      const kids = empty.kids.filter((one) => one instanceof Element);
+      const block = kids[kids.length - 1];
+      out.empty = { last: block.className, said: block.byClass("page-as-of").map((one) => one.textContent),
+                    lastInBlock: block.kids[block.kids.length - 1].className };
+      shellFirmData = { ...shellFirmData, returns: rows };
+      return out;
+    """, tmp_path)
+    assert ran["freshSaid"] == 0, "fresh counts say no time"
+    assert ran["said"] == [ran["want"]] and ran["want"].startswith("Updating, as of ")
+    assert ran["head"] == ["group-title", "group-count", "page-as-of", "switch"], "after the count, before the tabs"
+    assert ran["empty"] == {"last": "page-empty", "said": [ran["want"]], "lastInBlock": "page-empty-note page-as-of"}
+    assert 'note: asOf ? h("span", { className: "page-as-of" }, asOf) : null' in js_function("pagesOverview", "pages.js")
+    assert "screenWords().updating_as_of, { time: pagesTime(asOf) }" in js_function("pagesAsOf", "pages.js")
+
+
+def test_no_overview_row_moves_when_the_time_comes_or_goes(tmp_path):
+    """Jason's rule (2026-10-08), with the time on the Overview: nothing may
+    squeeze the path or move a row. The Overview drawn from the last counts
+    and from the fresh ones has the same lines in the same order - the time
+    is words inside the Work line, never a line of its own - and the words
+    are one line of caption type, cut rather than wrapped, on a line the
+    heading sets, so the Work line is as tall with them as without them."""
+    ran = run_lists("""
+      vocab.screen.updating_as_of = "Updating, as of {time}";
+      const lines = (page) => page.kids.filter((one) => one instanceof Element).map((one) => one.className);
+      shellFirmAsOf = "09:14";
+      const last = draw("overview");
+      const marked = { lines: lines(last), rows: names(last) };
+      shellFirmAsOf = "";
+      const fresh = draw("overview");
+      return { marked, fresh: { lines: lines(fresh), rows: names(fresh) } };
+    """, tmp_path)
+    assert ran["marked"] == ran["fresh"]
+    assert ran["marked"]["rows"], "the probe has rows to move"
+    css = stripped(read("shell.css"))
+    body = css[css.index(".page-as-of {"):]
+    body = body[:body.index("}")]
+    for declaration in ("min-inline-size: 0;", "overflow: hidden;", "text-overflow: ellipsis;", "white-space: nowrap;",
+                        "font-size: var(--fs-caption);", "line-height: var(--lh-caption);"):
+        assert declaration in body, declaration
+    head = css[css.index(".group-head:not(.hidden) {"):]
+    head = head[:head.index("}")]
+    assert "display: flex;" in head and "min-height: var(--size-control-sm);" in head
+    assert "flex-wrap" not in head, "the line never wraps its words onto a second line"
 
 
 def test_no_action_reads_the_counts_it_was_drawn_from():

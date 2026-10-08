@@ -399,11 +399,12 @@
         }
         return wait(scenario === "slow" || scenario === "last-counts" ? 1500 : 30, firm());
       }
-      // P229: the counts the Overview last had today, with the time the API
-      // says them at; every other scenario is the API's refusal.
+      // P229: the counts the Overview last had today - the firm reply's own
+      // fields, with last: true and the cache's "HH:MM" - as tracker.api's
+      // firm-last answers; every other scenario is the API's refusal.
       if (command === "firm-last") {
-        if (scenario !== "last-counts" && scenario !== "last-counts-fail") return wait(10, { last: null });
-        return wait(10, { last: { ...firm(), as_of: "9:14 AM" } });
+        if (scenario !== "last-counts" && scenario !== "last-counts-fail") return wait(10, { last: null, warnings: [] });
+        return wait(10, { ...firm(), last: true, as_of: "09:14" });
       }
       if (command === "state") {
         if (scenario === "state-fails" && calls.filter((c) => c === "state").length > 0) return wait(20, { error: "The return could not be read.", failure: { sentence: "The return could not be read.", kind: "failed" } });

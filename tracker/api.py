@@ -6342,6 +6342,12 @@ def _next_sort() -> str | None:
     return said[-5:] if said else None
 
 
+#: P229's command, the Overview's last counts at launch, named once: the
+#: shell's early and held lists (``app/main.js``) are pinned to it by
+#: ``tests/test_single_source.py``.
+FIRM_LAST_COMMAND = "firm-last"
+
+
 #: The commands that write nothing - no record, no file, no setting, not the
 #: store's own rows beyond the reader's top-up from a journal - and so run
 #: inside :func:`tracker.settings.one_reading` (P118): each machine question
@@ -6349,7 +6355,7 @@ def _next_sort() -> str | None:
 #: to) is asked once per reply instead of thousands of times. A command joins
 #: only when it writes nothing; ``tests/test_api.py`` pins that this and
 #: :data:`WRITING_COMMANDS` never meet.
-HELD_READING_COMMANDS = frozenset({"firm", "list", "state", "firm-last"})
+HELD_READING_COMMANDS = frozenset({"firm", "list", "state", FIRM_LAST_COMMAND})
 
 
 #: The commands that write a record, a file or the store. Each holds the
@@ -6397,7 +6403,7 @@ def _prove_the_root() -> None:
 COMMANDS = {
     "state": _cmd_state,
     "firm": _cmd_firm,
-    "firm-last": _cmd_firm_last,
+    FIRM_LAST_COMMAND: _cmd_firm_last,
     "priors": _cmd_priors,
     "rollover": _cmd_rollover,
     "roll-household": _cmd_roll_household,

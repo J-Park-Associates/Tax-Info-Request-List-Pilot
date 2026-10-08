@@ -58,7 +58,7 @@ let shellFirmNow = { status: "idle", data: null };   // idle, loading, ok, faile
 let shellFirmAsked = false;    // a second ask arrived while one ran
 let shellFirmEarly = null;     // a `firm` asked before the load that adopts it (P221, P228)
 let shellFirmLast = null;      // the last counts asked at launch (P229): {reply} until drawn or dropped
-let shellFirmAsOf = "";        // the counts shown are the last counts, as of this time (P229); "" once fresh
+let shellFirmAsOf = "";        // the counts shown are the last counts, as of this "HH:MM" (P229); "" once fresh
 let shellClock = 0;            // orders a load's sending against a write's landing (P218)
 let shellFirmSentAt = 0;       // when the running load sent its `firm`
 let shellWroteAt = 0;          // when a write's reply last landed
@@ -245,17 +245,19 @@ function shellDropEarlyFirm() {
 // ── the last counts at launch (P229; Jason, 2026-10-08) ───────────────
 // While the launch's Overview is read afresh, the counts it last had today
 // - the API's `firm-last`, read from the firm cache with no fingerprint
-// taken and no record read - are drawn marked "Updating, as of {time}"
-// (P222's marker: the page busy, figures, statuses and side counts muted).
-// The API answers {last: null} unless the cache is today's, this program's,
-// this clients folder's and holds every household; a refused or failed ask
-// shows nothing, and the page waits as it did. The fresh reply replaces the
-// last counts in place; one that lands after it is dropped; a fresh reply
-// that fails takes them down, so held counts never outlive a failed
-// refresh. Rows stay usable meanwhile, and every action reads afresh as it
-// does during any "Updating": Open and Check read the return's state, Copy
-// and Approve act only on a card drawn from that read, and every write is
-// judged under the household's lock against the record.
+// taken and no record read - are drawn under P222's marker (the page busy,
+// figures, statuses and side counts muted; the path row's slot says
+// Updating) and the Overview says "Updating, as of {time}" in its own Work
+// line (Jason, 2026-10-08: "Time on Overview page"; pagesAsOf). The API
+// answers {last: null, warnings} unless the cache is today's, this
+// program's, this clients folder's and holds every household; a refused or
+// failed ask shows nothing, and the page waits as it did. The fresh reply
+// replaces the last counts in place; one that lands after it is dropped; a
+// fresh reply that fails takes them down, so held counts never outlive a
+// failed refresh. Rows stay usable meanwhile, and every action reads afresh
+// as it does during any "Updating": Open and Check read the return's state,
+// Copy and Approve act only on a card drawn from that read, and every write
+// is judged under the household's lock against the record.
 function shellAskFirmLast() {
   if (shellFirmLast || shellFirmNow.data) return;   // asked already, or counts are drawn
   const mine = { reply: null };
@@ -270,13 +272,18 @@ function shellAskFirmLast() {
     });
 }
 
-// The reply's counts and their time, or null: a refusal ({last: null}), an
-// error, or a reply without the counts or the time shows nothing.
+// The reply's counts and their time, or null. `firm-last` answers the
+// `firm` reply's own fields with `last: true` and `as_of` ("HH:MM", as
+// next_sort says a time) beside them, or refuses with {last: null,
+// warnings}. A refusal, an error, or any other shape shows nothing.
 function shellLastOf(reply) {
-  const last = reply && !reply.error ? reply.last : null;
-  if (!last || typeof last !== "object" || !Array.isArray(last.returns)) return null;
-  const asOf = typeof last.as_of === "string" ? last.as_of : reply.as_of;
-  return typeof asOf === "string" && asOf ? { data: last, asOf } : null;
+  if (!reply || typeof reply !== "object" || reply.error || reply.last !== true) return null;
+  if (typeof reply.as_of !== "string" || !/^\d{2}:\d{2}$/.test(reply.as_of)) return null;
+  if (!Array.isArray(reply.returns) || !reply.totals || typeof reply.totals !== "object") return null;
+  const data = { ...reply };
+  delete data.last;
+  delete data.as_of;
+  return { data, asOf: reply.as_of };
 }
 
 // Draw the last counts once they, the words and the clients folder are all
@@ -461,15 +468,17 @@ function shellUpdating() {
 function shellMarkUpdating(page, on) {
   page.classList.toggle("is-updating", on);
   const said = $("page-updating");
-  // The launch's last counts say their time (P229); counts held after a
-  // reply of this run say Updating alone.
-  const words = !on ? "" : shellFirmAsOf ? fill(screenWords().updating_as_of, { time: shellFirmAsOf }) : screenWords().updating;
+  // Updating alone, the launch's last counts too: their time is said on
+  // the Overview itself (P229; pagesAsOf), so the slot stays 8 ch and the
+  // path beside it is never squeezed.
+  const words = on ? screenWords().updating : "";
   if (said.textContent !== words) said.textContent = words;
 }
 
-// What pages.js reads (with shellRoute, shellLoading and shellGo).
+// What pages.js reads (with shellRoute, shellLoading and shellGo): the
+// counts, and while the launch's last counts stand, their time (P229).
 function shellFirm() {
-  return shellFirmNow;
+  return shellFirmAsOf ? { ...shellFirmNow, asOf: shellFirmAsOf } : shellFirmNow;
 }
 
 // ── the household and return a route names ────────────────────────────
