@@ -4233,6 +4233,7 @@ def test_a_checkpoint_that_will_not_open_is_that_returns_problem_by_name(conn, r
     SF1), so its caller never says it as a root the checkpoint does not
     belong to."""
     where = checkpoint.path_for(tmp_path / "app" / store.STORE_FILENAME)
+    store.close()           # the checkpoint the setup held (P214), as a person closes the app first
     where.write_bytes(b"fabricated garbage, not a database" * 40)
     with pytest.raises(store.StoreError, match="cannot read this machine's record checkpoint"):
         build(conn, root, by_hand)
@@ -4714,3 +4715,109 @@ def test_a_store_at_version_19_gains_the_related_column_in_place_as_a_rebuild_wr
         assert store.check(upgraded, root, by_hand) == []
     finally:
         upgraded.close()
+
+
+# ------------------------------------- the checkpoint held a command (P214) ----
+
+
+def _counting_opens(monkeypatch) -> list[Path]:
+    """Every checkpoint connection opened from here on, by file."""
+    opened: list[Path] = []
+    real = checkpoint._connect
+
+    def counted(path):
+        opened.append(Path(path))
+        return real(path)
+
+    monkeypatch.setattr(checkpoint, "_connect", counted)
+    return opened
+
+
+def test_one_command_opens_the_checkpoint_once(root, by_hand, monkeypatch):
+    """P214: the checkpoint is held beside the store for the command - one
+    open, however many records are proved, written and read."""
+    store.close()                                   # what the fixtures' setup held
+    opened = _counting_opens(monkeypatch)
+    conn = store.connect()
+    build(conn, root, by_hand)
+    with engagement_lock(by_hand):
+        store.record(conn, by_hand, scanned(A01=Status.RECEIVED))
+        store.record(conn, by_hand, scanned(C01=Status.RECEIVED))
+    load_manifest(by_hand)
+    store.foreign_lines()
+    store.prove_the_root(root)
+    assert len(opened) == 1
+    assert store._CHECKPOINT is not None
+
+
+def test_closing_the_store_closes_the_checkpoint_and_takes_its_side_files(root, by_hand):
+    """The last connection's close folds the write-ahead log into the file
+    and removes it: with the app closed the checkpoint is one file."""
+    conn = store.connect()
+    build(conn, root, by_hand)
+    with engagement_lock(by_hand):
+        store.record(conn, by_hand, scanned(A01=Status.RECEIVED))
+    where = checkpoint.path_for(store.store_path())
+    assert where.with_name(checkpoint.CHECKPOINT_WAL_FILENAME).exists()
+    store.close()
+    assert store._CHECKPOINT is None
+    assert where.is_file()
+    for side in (checkpoint.CHECKPOINT_WAL_FILENAME, checkpoint.CHECKPOINT_SHM_FILENAME,
+                 checkpoint.CHECKPOINT_JOURNAL_FILENAME):
+        assert not where.with_name(side).exists(), side
+    with checkpoint.opened(where) as again:
+        assert checkpoint.vouched(again, key_of(by_hand))[0] == len(ledger.read_events(by_hand))
+
+
+def test_a_checkpoint_error_drops_the_held_connection_and_the_next_question_opens_it_again(
+        root, by_hand, monkeypatch):
+    """A busy or damaged checkpoint is never held open against the
+    runbook's set-aside step: the error is said as before, the connection
+    let go of, and the next question opens the file afresh."""
+    conn = store.connect()
+    build(conn, root, by_hand)
+    store.close()
+    conn = store.connect()
+    opened = _counting_opens(monkeypatch)
+    real = checkpoint.vouched
+    refusals = iter([checkpoint.CheckpointUnavailable("record-heads.db", "SQLITE_BUSY")])
+
+    def busy_once(held, key):
+        for refusal in refusals:
+            raise refusal
+        return real(held, key)
+
+    monkeypatch.setattr(checkpoint, "vouched", busy_once)
+    with engagement_lock(by_hand), pytest.raises(store.StoreError, match="checkpoint is busy"):
+        store.record(conn, by_hand, scanned(A01=Status.RECEIVED))
+    assert store._CHECKPOINT is None
+    with engagement_lock(by_hand):
+        store.record(conn, by_hand, scanned(A01=Status.RECEIVED))
+    assert len(opened) == 2 and store._CHECKPOINT is not None     # the first open, then afresh
+
+
+def test_expect_is_on_disk_before_the_journal_line_and_advance_after_it(root, by_hand, monkeypatch):
+    """``record()``'s two checkpoint transactions keep their order and
+    number: the intent is committed - another connection sees it - before
+    the journal line is appended, and the advance after it."""
+    conn = store.connect()
+    build(conn, root, by_hand)
+    where = checkpoint.path_for(store.store_path())
+    key = key_of(by_hand)
+    seen = []
+    real_append = ledger.append
+
+    def watched(engagement_dir, event):
+        with checkpoint.opened(where) as other:
+            seen.append((checkpoint.vouched(other, key), checkpoint.intent(other, key)))
+        return real_append(engagement_dir, event)
+
+    already = len(ledger.read_events(by_hand))
+    monkeypatch.setattr(ledger, "append", watched)
+    with engagement_lock(by_hand):
+        store.record(conn, by_hand, scanned(A01=Status.RECEIVED))
+    (vouched_before, intent_before), = seen
+    assert vouched_before[0] == already
+    assert intent_before is not None and intent_before.start == already and len(intent_before.heads) == 1
+    with checkpoint.opened(where) as other:
+        assert checkpoint.vouched(other, key)[0] == already + 1 and checkpoint.intent(other, key) is None

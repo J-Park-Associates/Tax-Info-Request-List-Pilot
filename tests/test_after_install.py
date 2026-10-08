@@ -830,17 +830,21 @@ def test_setup_moves_what_186_lists_to_move_and_nothing_it_lists_to_delete(app, 
 
 CHECKPOINT = "record-heads.db"
 JOURNAL = "record-heads.db-journal"
+WAL = "record-heads.db-wal"
+SHM = "record-heads.db-shm"
 
 
 def left_behind(beside):
-    """A fabricated checkpoint, its journal and ``recovered/`` beside a
-    fabricated program folder, as an earlier version left them."""
+    """A fabricated checkpoint, its journal, its write-ahead log (P214) and
+    ``recovered/`` beside a fabricated program folder, as an earlier
+    version left them."""
     beside.mkdir(parents=True, exist_ok=True)
     (beside / CHECKPOINT).write_bytes(b"checkpoint\x00heads")
     (beside / JOURNAL).write_bytes(b"journal")
+    (beside / WAL).write_bytes(b"write-ahead log")
     (beside / "recovered" / "Household A").mkdir(parents=True)
     (beside / "recovered" / "Household A" / "record.json").write_text('{"fabricated": 1}', encoding="utf-8")
-    return [beside / CHECKPOINT, beside / JOURNAL, beside / "recovered"]
+    return [beside / CHECKPOINT, beside / JOURNAL, beside / WAL, beside / "recovered"]
 
 
 def test_the_left_behind_checkpoint_moves_into_the_data_home(tmp_path):
@@ -910,6 +914,45 @@ def test_a_checkpoint_never_moves_beside_another_journal(tmp_path):
         sentence=after_install.LEFT_BEHIND_JOURNAL_ALONE.format(home=home), failed=True)
     assert (beside / CHECKPOINT).read_bytes() == b"checkpoint\x00heads"
     assert sorted(os.listdir(home)) == [JOURNAL]
+
+
+def test_the_checkpoint_its_log_and_its_shared_memory_move_as_one(tmp_path):
+    """P214: the checkpoint keeps a write-ahead log, which holds committed
+    writes the file does not yet; the file, its log and its shared memory
+    are one unit and move together."""
+    beside, home = tmp_path / "program", tmp_path / "data home"
+    beside.mkdir()
+    for name, data in ((CHECKPOINT, b"checkpoint\x00heads"), (WAL, b"write-ahead log"),
+                       (SHM, b"shared memory")):
+        (beside / name).write_bytes(data)
+    items = [beside / CHECKPOINT, beside / WAL, beside / SHM]
+    done = after_install.move_left_behind(items, home)
+    assert not done.failed and done.moved == tuple(items)
+    assert sorted(os.listdir(home)) == sorted([CHECKPOINT, WAL, SHM])
+    assert (home / WAL).read_bytes() == b"write-ahead log"
+    assert not any(os.path.lexists(item) for item in items)
+
+
+def test_a_write_ahead_log_without_its_checkpoint_moves_nothing(tmp_path):
+    """A write-ahead log or its shared memory left without the checkpoint
+    it belongs to would be replayed into whatever checkpoint it is put
+    beside: it moves nothing, in the journal's own sentence, and a home
+    holding any part of the unit refuses the move as well."""
+    beside, home = tmp_path / "program", tmp_path / "data home"
+    beside.mkdir()
+    home.mkdir()
+    for side in (WAL, SHM):
+        (beside / side).write_bytes(b"an old side file")
+        done = after_install.move_left_behind([beside / side], home)
+        assert done == after_install.MoveOutcome(
+            sentence=after_install.LEFT_BEHIND_JOURNAL_ALONE.format(home=home), failed=True)
+        assert (beside / side).read_bytes() == b"an old side file"
+        assert os.listdir(home) == []
+    (beside / CHECKPOINT).write_bytes(b"checkpoint\x00heads")
+    (home / WAL).write_bytes(b"the home's own log")
+    done = after_install.move_left_behind([beside / CHECKPOINT], home)
+    assert done.failed and done.sentence == after_install.LEFT_BEHIND_JOURNAL_ALONE.format(home=home)
+    assert (beside / CHECKPOINT).is_file() and os.listdir(home) == [WAL]
 
 
 def test_move_schedule_here_from_a_removable_drive_changes_nothing(root, windows, monkeypatch, capsys):
@@ -1032,9 +1075,9 @@ def test_a_failed_copy_keeps_the_source_and_cleans_the_destination(tmp_path, mon
     assert TRACEBACK not in done.sentence
     assert items[0].read_bytes() == b"checkpoint\x00heads"
     assert items[1].read_bytes() == b"journal"
-    assert (items[2] / "Household A" / "record.json").read_text(encoding="utf-8") == '{"fabricated": 1}'
+    assert (items[-1] / "Household A" / "record.json").read_text(encoding="utf-8") == '{"fabricated": 1}'
     assert os.listdir(home) == []
-    assert sorted(os.listdir(items[0].parent)) == [CHECKPOINT, JOURNAL, "recovered"]
+    assert sorted(os.listdir(items[0].parent)) == sorted([CHECKPOINT, JOURNAL, WAL, "recovered"])
 
 
 def test_a_file_whose_source_cannot_be_removed_leaves_no_copy_behind(tmp_path, monkeypatch):

@@ -960,6 +960,18 @@ def open_read_only(path: Path | str) -> sqlite3.Connection:
 _CONNECTION: sqlite3.Connection | None = None
 _CONNECTION_PATH: Path | None = None
 
+#: This machine's record checkpoint, held open for the command beside the
+#: store's own connection (pilot P214) and closed by :func:`close` first:
+#: one open a command instead of one a question. ``_CHECKPOINT_PATH`` is the
+#: file it is open on.
+_CHECKPOINT: checkpoint._Connection | None = None
+_CHECKPOINT_PATH: Path | None = None
+
+#: Which checkpoint file belongs beside which store connection, asked of the
+#: engine once per connection (:func:`_checkpoint_file`) and forgotten by
+#: :func:`close`: the connection it was asked of, and the answer.
+_CHECKPOINT_FILE: tuple[sqlite3.Connection, Path | None] | None = None
+
 
 def store_path() -> Path:
     """The store this process uses: :data:`ENV_STORE` if it is set, else the
@@ -1020,7 +1032,11 @@ def close() -> None:
     A database with an open connection cannot be deleted on Windows, which
     is why the suite closes it before the temporary folder goes.
     """
-    global _CONNECTION, _CONNECTION_PATH
+    global _CONNECTION, _CONNECTION_PATH, _CHECKPOINT_FILE
+    # The checkpoint first (P214): a failure closing it is a warning by its
+    # class and never stops the store closing.
+    _drop_the_checkpoint()
+    _CHECKPOINT_FILE = None
     if _CONNECTION is not None:
         _CONNECTION.close()
     _CONNECTION, _CONNECTION_PATH = None, None
@@ -2653,11 +2669,18 @@ ROOT_NOT_CLAIMED = ("this machine's record checkpoint belongs to {claimed}; this
 
 def _checkpoint_file(conn: sqlite3.Connection) -> Path | None:
     """The checkpoint beside the store ``conn`` is open on, or None for a
-    store that is not a file."""
+    store that is not a file. Asked of the engine once per connection
+    (P214) and kept until :func:`close`."""
+    global _CHECKPOINT_FILE
+    if _CHECKPOINT_FILE is not None and _CHECKPOINT_FILE[0] is conn:
+        return _CHECKPOINT_FILE[1]
+    found = None
     for row in conn.execute("PRAGMA database_list"):
         if row[1] == "main":
-            return checkpoint.path_for(row[2]) if row[2] else None
-    return None
+            found = checkpoint.path_for(row[2]) if row[2] else None
+            break
+    _CHECKPOINT_FILE = (conn, found)
+    return found
 
 
 def _spelled(path: Path) -> str:
@@ -2698,12 +2721,54 @@ def _checkpoint_may_be_made(where: Path) -> None:
             raise checkpoint.CheckpointLeftBehind(old, where.parent)
 
 
+def _drop_the_checkpoint() -> None:
+    """Close and forget the held checkpoint connection, if there is one. A
+    failure closing it is a warning by its class and code (decision 190),
+    never an error: the connection is forgotten either way, so the next
+    question opens the file afresh."""
+    global _CHECKPOINT, _CHECKPOINT_PATH
+    held, _CHECKPOINT, _CHECKPOINT_PATH = _CHECKPOINT, None, None
+    if held is None:
+        return
+    try:
+        held.close()
+    except checkpoint.CheckpointError as exc:
+        # At call time: the store imports only the record, the journal,
+        # the lock and the checkpoint at load.
+        from tracker import errors
+
+        log.warning("Could not close the record checkpoint (%s)", errors.error_class(exc))
+
+
+def _held_checkpoint(where: Path) -> checkpoint._Connection:
+    """The checkpoint at ``where``, held open for the command (pilot P214).
+
+    Opened - after :func:`_checkpoint_may_be_made`, as every open was -
+    only when none is held or the one held is another file, which is
+    closed first. Closed by :func:`close` with the store's own connection,
+    and dropped by :func:`_beside` and the root's proof on any error, so a
+    busy or damaged file is opened afresh at the next question and a
+    refused checkpoint is never held open against the runbook's set-aside
+    step. Errors leave as the checkpoint's own (``CheckpointError``)."""
+    global _CHECKPOINT, _CHECKPOINT_PATH
+    if _CHECKPOINT is not None:
+        if _CHECKPOINT_PATH == where or _spelled(_CHECKPOINT_PATH) == _spelled(where):
+            return _CHECKPOINT
+        _drop_the_checkpoint()
+    _checkpoint_may_be_made(where)
+    _CHECKPOINT = checkpoint.open(where)
+    _CHECKPOINT_PATH = where
+    return _CHECKPOINT
+
+
 @contextmanager
 def _beside(conn: sqlite3.Connection, held: sqlite3.Connection | None = None):
-    """The checkpoint beside ``conn``'s store, opened for one question and
-    closed after it - or ``held``, when the caller already has it open for
-    several (a catch-up proves, applies, then vouches: one open). None for
-    a store that is not a file."""
+    """The checkpoint beside ``conn``'s store, held open for the command
+    (:func:`_held_checkpoint`, P214) - or ``held``, when the caller already
+    has it for several questions (a catch-up proves, applies, then
+    vouches). None for a store that is not a file. Any checkpoint error
+    inside drops the held connection before it leaves, as a
+    :class:`StoreError` in the checkpoint's own sentence."""
     if held is not None:
         yield held
         return
@@ -2712,30 +2777,22 @@ def _beside(conn: sqlite3.Connection, held: sqlite3.Connection | None = None):
         yield None
         return
     try:
-        _checkpoint_may_be_made(where)
-        opened = checkpoint.open(where)
+        opened = _held_checkpoint(where)
     except checkpoint.CheckpointLeftBehind as exc:
         # Every return says it (MF1), in the same sentence, as its own.
         raise CheckpointNotMade(exc) from None
     except checkpoint.CheckpointError as exc:
         # One return's problem, said by name (the review's S4).
+        _drop_the_checkpoint()
         raise StoreError(str(exc)) from None
     try:
         yield opened
     except checkpoint.CheckpointError as exc:
         # A read or a write that failed after the open (the rebase review's
-        # MF1): the same return's problem, in the same sentence.
+        # MF1): the same return's problem, in the same sentence - and the
+        # connection is let go of, so the next question opens it afresh.
+        _drop_the_checkpoint()
         raise StoreError(str(exc)) from None
-    finally:
-        try:
-            opened.close()
-        except checkpoint.CheckpointError as exc:
-            # At call time: the store imports only the record, the journal,
-            # the lock and the checkpoint at load. By its class and code
-            # (decision 190).
-            from tracker import errors
-
-            log.warning("Could not close the record checkpoint (%s)", errors.error_class(exc))
 
 
 @dataclass
@@ -2916,8 +2973,12 @@ def prove_the_root(root: Path | str, *, claim: bool = True) -> None:
     _checkpoint_may_be_made(where)
     if not claim and not where.is_file():
         return
-    with checkpoint.opened(where) as held:
+    try:
+        held = _held_checkpoint(where)
         claimed = checkpoint.claim_root(held, str(now)) if claim else checkpoint.root_of(held)
+    except checkpoint.CheckpointError:
+        _drop_the_checkpoint()
+        raise
     # Whether the root is the claimed one or inside it is decision 188's
     # one question of a path under another (``layout.parts_below``); only
     # whether this machine's checkpoint belongs to it is this function's.
@@ -2933,8 +2994,11 @@ def foreign_lines() -> list[checkpoint.Foreign]:
     where = checkpoint.path_for(store_path())
     if not where.is_file():
         return []
-    with checkpoint.opened(where) as held:
-        return checkpoint.unacknowledged(held)
+    try:
+        return checkpoint.unacknowledged(_held_checkpoint(where))
+    except checkpoint.CheckpointError:
+        _drop_the_checkpoint()
+        raise
 
 
 def acknowledge_foreign(engagement_dir: Path | str) -> int:
@@ -2945,9 +3009,11 @@ def acknowledge_foreign(engagement_dir: Path | str) -> int:
     row = _engagement_row(conn, engagement_dir)
     key = row["path"] if row is not None else engagement_path(key_root(engagement_dir), engagement_dir)
     where = checkpoint.path_for(store_path())
-    _checkpoint_may_be_made(where)
-    with checkpoint.opened(where) as held:
-        return checkpoint.acknowledge(held, key)
+    try:
+        return checkpoint.acknowledge(_held_checkpoint(where), key)
+    except checkpoint.CheckpointError:
+        _drop_the_checkpoint()
+        raise
 
 
 # --------------------------------------------------------- the verdict cache ----

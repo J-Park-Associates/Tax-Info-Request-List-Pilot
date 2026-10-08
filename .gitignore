@@ -90,6 +90,9 @@ pass-order.json
 # keeps them out of the repository.
 record-heads.db
 record-heads.db-*
+# P214: its write-ahead log and shared memory, each named as the tripwire guards it.
+record-heads.db-wal
+record-heads.db-shm
 last-pass.json
 last-pass.json.*
 recovered/

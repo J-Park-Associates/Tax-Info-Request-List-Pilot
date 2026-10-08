@@ -313,9 +313,9 @@ def _set_asides(filename: str) -> str:
 def left_behind(root: Path | None) -> list[Path]:
     """What an earlier version left where client data no longer lives: the store
     and its two SQLite side files, the pass-order hint, decision 159's record
-    checkpoint (with its rollback journal and a copy a person renamed
-    ``.damaged``), ``recovered`` folder, last-pass file and decision 209's after-install
-    note, what 159's
+    checkpoint (with its rollback journal, its write-ahead log and shared
+    memory (P214) and a copy a person renamed ``.damaged``), ``recovered``
+    folder, last-pass file and decision 209's after-install note, what 159's
     set-aside renamed out of the way (the store's and the checkpoint's
     ``.v<N>.old`` files), decision 193's error log (and its rotated copies)
     and ``passes`` folder, and the old OCR scratch folder - beside the
@@ -323,7 +323,7 @@ def left_behind(root: Path | None) -> list[Path]:
     folder, and the frozen executable's where a package without the shell
     kept them). Only what exists; nothing is opened, moved or deleted. The
     store in use and every file that follows it - its two side files, the
-    hint, the checkpoint and its journal, the ``recovered`` folder, the
+    hint, the checkpoint and its side files, the ``recovered`` folder, the
     last-pass file, the error log, ``passes`` and the set-asides beside it -
     are never named (``TRACKER_STORE`` may point beside the settings file:
     the suite's own fixture does). ``root`` is the clients root, whose old
@@ -339,6 +339,7 @@ def left_behind(root: Path | None) -> list[Path]:
     # made again, so they are in the delete group.
     beside = (store.STORE_WAL_FILENAME, store.STORE_SHM_FILENAME, PASS_ORDER_FILENAME,
               checkpoint.CHECKPOINT_FILENAME, checkpoint.CHECKPOINT_JOURNAL_FILENAME,
+              checkpoint.CHECKPOINT_WAL_FILENAME, checkpoint.CHECKPOINT_SHM_FILENAME,
               checkpoint.CHECKPOINT_DAMAGED_FILENAME, store.RECOVERED_DIR, LAST_PASS_FILENAME,
               AFTER_INSTALL_FILENAME, ERROR_LOG_FILENAME,
               *(f"{ERROR_LOG_FILENAME}.{n}" for n in range(1, ERROR_LOG_BACKUPS + 1)),
@@ -369,10 +370,12 @@ def log_path() -> Path:
 def _to_move(path: Path) -> bool:
     """Whether a left-behind path is one to move into the data home rather
     than delete: what cannot be made again or is evidence - the record
-    checkpoint with its rollback journal, a copy renamed ``.damaged``, its
-    set-asides, and the ``recovered`` folder. The store's set-asides are
+    checkpoint with its rollback journal, its write-ahead log (which holds
+    committed writes) and shared memory (P214), a copy renamed ``.damaged``,
+    its set-asides, and the ``recovered`` folder. The store's set-asides are
     rebuilt from the records, so they are in the delete group."""
     return (path.name in (checkpoint.CHECKPOINT_FILENAME, checkpoint.CHECKPOINT_JOURNAL_FILENAME,
+                          checkpoint.CHECKPOINT_WAL_FILENAME, checkpoint.CHECKPOINT_SHM_FILENAME,
                           checkpoint.CHECKPOINT_DAMAGED_FILENAME, store.RECOVERED_DIR)
             or fnmatch.fnmatchcase(path.name, _set_asides(checkpoint.CHECKPOINT_FILENAME)))
 

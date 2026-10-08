@@ -13,6 +13,7 @@ from __future__ import annotations
 import sqlite3
 import subprocess
 import sys
+from contextlib import closing
 from pathlib import Path
 
 import pytest
@@ -210,19 +211,98 @@ def test_an_engine_error_after_the_open_leaves_as_the_checkpoints_own_error(tmp_
 
 def test_a_busy_checkpoint_is_said_as_busy_and_never_as_one_to_set_aside(tmp_path, monkeypatch):
     """SF1: another run holding the file is not damage. Setting a healthy
-    checkpoint aside would make the next pass a moment of trust."""
+    checkpoint aside would make the next pass a moment of trust. Since P214
+    the file keeps a write-ahead log, where a reader no longer waits for a
+    writer, so the holder blocks a write."""
     monkeypatch.setattr(checkpoint, "BUSY_TIMEOUT_MS", 100)
     where = tmp_path / checkpoint.CHECKPOINT_FILENAME
     checkpoint.open(where).close()
     holder = sqlite3.connect(where, isolation_level=None)
-    holder.execute("BEGIN EXCLUSIVE")
+    holder.execute("BEGIN IMMEDIATE")
     try:
         with pytest.raises(checkpoint.CheckpointUnavailable) as refused, \
                 checkpoint.opened(where) as held:
-            checkpoint.root_of(held)
+            checkpoint.advance(held, KEY, 1, "c1", seeded=True)
     finally:
         holder.execute("ROLLBACK")
         holder.close()
     assert refused.value.busy and refused.value.code.startswith("SQLITE_BUSY")
     assert "the next pass tries again" in str(refused.value)
     assert "Set the file aside" not in str(refused.value)
+
+
+# ------------------------------------------- the write-ahead log (P214) ----
+
+
+def test_the_checkpoint_keeps_a_write_ahead_log_at_full_sync(tmp_path):
+    """P214: the log persists in the file; full sync is set on every
+    connection, so each COMMIT is on disk before it returns."""
+    where = tmp_path / checkpoint.CHECKPOINT_FILENAME
+    with checkpoint.opened(where) as held:
+        assert held.execute("PRAGMA journal_mode").fetchone()[0] == "wal"
+        assert held.execute("PRAGMA synchronous").fetchone()[0] == 2      # FULL
+    with closing(sqlite3.connect(where)) as plain:
+        assert plain.execute("PRAGMA journal_mode").fetchone()[0] == "wal"
+    with checkpoint.opened(where) as again:
+        assert again.execute("PRAGMA synchronous").fetchone()[0] == 2
+
+
+def test_a_switch_another_connection_refuses_leaves_the_checkpoint_working_in_its_own_mode(
+        tmp_path, monkeypatch):
+    """A file an earlier version kept in its rollback journal, read by
+    another connection at the moment of the switch: the switch is refused
+    as busy, which is not an error - the connection works in the file's own
+    mode, and the next open switches it."""
+    monkeypatch.setattr(checkpoint, "BUSY_TIMEOUT_MS", 100)
+    where = tmp_path / checkpoint.CHECKPOINT_FILENAME
+    with checkpoint.opened(where) as first:
+        checkpoint.advance(first, KEY, 2, "c2", seeded=True)
+        first.execute("PRAGMA journal_mode = DELETE").fetchone()
+    reader = sqlite3.connect(where, isolation_level=None)
+    reader.execute("BEGIN")
+    reader.execute("SELECT count(*) FROM heads").fetchone()
+    try:
+        held = checkpoint.open(where)
+    finally:
+        reader.execute("ROLLBACK")
+        reader.close()
+    try:
+        assert held.execute("PRAGMA journal_mode").fetchone()[0] == "delete"
+        assert held.execute("PRAGMA synchronous").fetchone()[0] == 2
+        assert checkpoint.vouched(held, KEY) == (2, "c2")
+        checkpoint.advance(held, KEY, 3, "c3", seeded=False)
+    finally:
+        held.close()
+    with checkpoint.opened(where) as next_open:
+        assert next_open.execute("PRAGMA journal_mode").fetchone()[0] == "wal"
+        assert checkpoint.vouched(next_open, KEY) == (3, "c3")
+
+
+def test_a_held_checkpoint_sees_what_another_process_advanced_since(tmp_path):
+    """A connection held for a command runs in autocommit with no read left
+    open between questions, so it never answers from an old snapshot."""
+    where = tmp_path / checkpoint.CHECKPOINT_FILENAME
+    with checkpoint.opened(where) as held:
+        assert checkpoint.vouched(held, KEY) is None
+        advanced = subprocess.run(
+            [sys.executable, "-c",
+             "import sys; from tracker import checkpoint\n"
+             "with checkpoint.opened(sys.argv[1]) as c: checkpoint.advance(c, sys.argv[2], 4, 'c4', seeded=True)",
+             str(where), KEY], cwd=REPO, capture_output=True, text=True)
+        assert advanced.returncode == 0, advanced.stderr
+        assert checkpoint.vouched(held, KEY) == (4, "c4")
+        assert not held.in_transaction
+
+
+def test_the_read_only_open_reads_a_checkpoint_in_its_write_ahead_log(tmp_path):
+    """What the read-only verify opens: a write still only in the log (a
+    writer holds the file open) is read."""
+    where = tmp_path / checkpoint.CHECKPOINT_FILENAME
+    with checkpoint.opened(where) as writer:
+        checkpoint.advance(writer, KEY, 5, "c5", seeded=False)
+        assert (tmp_path / checkpoint.CHECKPOINT_WAL_FILENAME).exists()
+        reader = checkpoint.open_read_only(where)
+        try:
+            assert checkpoint.vouched(reader, KEY) == (5, "c5")
+        finally:
+            reader.close()

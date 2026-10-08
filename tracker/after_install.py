@@ -254,10 +254,16 @@ LEFT_BEHIND_MOVED = ("Moved the record checkpoint and recovered records an earli
 LEFT_BEHIND_DESTINATION_TAKEN = ("{name} is already in {home}, so the files an earlier version left "
                                  "beside the program were not moved; a person must compare the two and "
                                  "keep one (runbook, decision 186).")
-#: The record checkpoint, its rollback journal and a copy a person renamed
-#: ``.damaged``, by 186's own names: moved together or not at all (MF1).
+#: The record checkpoint, its rollback journal, its write-ahead log and
+#: shared memory (P214) and a copy a person renamed ``.damaged``, by 186's
+#: own names: moved together or not at all (MF1).
 CHECKPOINT_UNIT = (checkpoint.CHECKPOINT_FILENAME, checkpoint.CHECKPOINT_JOURNAL_FILENAME,
+                   checkpoint.CHECKPOINT_WAL_FILENAME, checkpoint.CHECKPOINT_SHM_FILENAME,
                    checkpoint.CHECKPOINT_DAMAGED_FILENAME)
+#: The side files that would be replayed into whatever checkpoint they are
+#: found beside: never moved without their own (P214).
+_CHECKPOINT_SIDE_FILES = (checkpoint.CHECKPOINT_JOURNAL_FILENAME, checkpoint.CHECKPOINT_WAL_FILENAME,
+                          checkpoint.CHECKPOINT_SHM_FILENAME)
 LEFT_BEHIND_JOURNAL_ALONE = ("The record checkpoint's journal beside the program has no checkpoint with "
                              "it, or {home} already holds part of the checkpoint; nothing was moved - a "
                              "person must look (runbook, decision 186).")
@@ -882,11 +888,12 @@ def move_left_behind(items: list[Path], home: Path) -> MoveOutcome:
     if len({item.name for item in present}) != len(present):
         return MoveOutcome(sentence=LEFT_BEHIND_MOVE_FAILED.format(home=home), failed=True)
     # The checkpoint and its journal are one unit (the merge review's MF1): a
-    # rollback journal beside a checkpoint that is not its own is replayed
-    # into it at its next open. A journal without its checkpoint beside it,
-    # or a home already holding any part of the unit, moves nothing.
+    # rollback journal - or, since P214, a write-ahead log or its shared
+    # memory - beside a checkpoint that is not its own is replayed into it
+    # at its next open. Any of them without its checkpoint beside it, or a
+    # home already holding any part of the unit, moves nothing.
     if any(item.name in CHECKPOINT_UNIT for item in present) and (
-            any(item.name == checkpoint.CHECKPOINT_JOURNAL_FILENAME
+            any(item.name in _CHECKPOINT_SIDE_FILES
                 and not os.path.lexists(item.parent / checkpoint.CHECKPOINT_FILENAME)
                 for item in present)
             or any(os.path.lexists(home / name) for name in CHECKPOINT_UNIT)):

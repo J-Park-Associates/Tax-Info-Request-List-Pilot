@@ -4710,6 +4710,52 @@ def test_159s_set_asides_and_the_checkpoints_journal_left_behind_are_named_in_th
         assert (settings / name).read_bytes() == name.encode()      # named, never touched
 
 
+def test_the_checkpoints_side_files_beside_the_store_in_use_are_never_named_left_behind(tmp_path, monkeypatch):
+    """P214: while a command runs, the live checkpoint keeps its write-ahead
+    log and shared memory beside the store in use (the suite's own fixture
+    puts it beside the settings folder); neither is "left over"."""
+    from tracker import checkpoint
+    from tracker.settings import ENV_SETTINGS_DIR
+
+    app = tmp_path / "app"
+    monkeypatch.setenv(ENV_SETTINGS_DIR, str(app))
+    store.connect()
+    for name in (checkpoint.CHECKPOINT_FILENAME, checkpoint.CHECKPOINT_WAL_FILENAME,
+                 checkpoint.CHECKPOINT_SHM_FILENAME):
+        if not (app / name).exists():
+            (app / name).write_bytes(b"")
+    assert Path(store.store_path()).parent == app
+    assert runner_module.left_behind(tmp_path) == []
+    assert runner_module.left_behind_warnings(tmp_path) == []
+
+
+def test_a_checkpoint_log_left_beside_the_program_is_named_to_move_never_to_delete(tmp_path, monkeypatch):
+    """P214: a write-ahead log holds committed writes its checkpoint does
+    not yet, so one an earlier version left beside the program - with its
+    shared memory - is named in the move group with the checkpoint, never
+    in the sentence that says delete, and is never touched."""
+    from tracker import checkpoint
+    from tracker.settings import ENV_SETTINGS_DIR, data_home
+
+    settings = tmp_path / "settings"
+    settings.mkdir()
+    to_move = [checkpoint.CHECKPOINT_FILENAME, checkpoint.CHECKPOINT_WAL_FILENAME,
+               checkpoint.CHECKPOINT_SHM_FILENAME]
+    for name in to_move:
+        (settings / name).write_bytes(name.encode())
+    monkeypatch.setenv(ENV_SETTINGS_DIR, str(settings))
+    monkeypatch.setenv(store.ENV_STORE, str(data_home() / store.STORE_FILENAME))
+    store.close()
+
+    said = dict(runner_module.left_behind_warnings(None))
+    assert runner_module.CODE_LEFT_BEHIND not in said
+    moving = said[runner_module.CODE_LEFT_BEHIND_TO_MOVE].split(": ", 1)[1].split(". These cannot", 1)[0]
+    assert sorted(Path(one).name for one in moving.split("; ")) == sorted(to_move)
+    assert sorted(path.name for path in runner_module.left_behind_to_move(None)) == sorted(to_move)
+    for name in to_move:
+        assert (settings / name).read_bytes() == name.encode()
+
+
 def test_a_pass_serves_no_household_while_the_old_checkpoint_sits_beside_the_program(tmp_path, monkeypatch):
     """The rebase review of 186 (MF1): a machine upgraded before its
     checkpoint was moved. The scheduled pass makes no fresh checkpoint - that
@@ -4725,8 +4771,8 @@ def test_a_pass_serves_no_household_while_the_old_checkpoint_sits_beside_the_pro
     make_engagement(clients, [RequestItem(identifier="A01", document="W-2")], household="Smith Family")
     set_clients_root(clients)
     old = settings_dir() / checkpoint.CHECKPOINT_FILENAME    # the fixture's: 159's layout
+    store.close()           # its write-ahead log folded in and let go of first (P214)
     before = old.read_bytes()
-    store.close()
     monkeypatch.setenv(store.ENV_STORE, str(data_home() / store.STORE_FILENAME))
     new = checkpoint.path_for(store.store_path())
 
