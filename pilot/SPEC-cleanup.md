@@ -31,13 +31,15 @@ three other things, in this order:
    that `store.py` and `checkpoint.py` both carry.
 
 Truly dead code (nothing references it, tests included) is about 130 lines.
+With the seven decisions in section 5 taken, everything in this SPEC is
+buildable; nothing waits on a further word.
 
 Totals, all areas:
 
-| What | Removable now | Needs a decision from Jason first |
+| What | Removable with no decision | Needed a decision (all seven taken, section 5) |
 |---|---|---|
-| Files in the repository | 163 files, 8.7 MB | +120 files, 2.8 MB (brand exports, `.claude/skills`) |
-| Python lines (`tracker/`, `tools/`) | about 1,600 of 57,000 | +about 500 (unused CLIs, migration shims, one tidy-up that runs every pass) |
+| Files in the repository | 163 files, 8.7 MB | +120 files, 2.8 MB (brand exports, `.claude/skills`) — decided, P231/P232 |
+| Python lines (`tracker/`, `tools/`) | about 1,600 of 57,000 | +about 500 (unused CLIs, migration shims, one tidy-up that runs every pass) — decided, P233–P236 |
 | JavaScript and CSS lines (`app/`) | about 420 of 12,750 | 0 |
 
 ## 2. Runtimes, measured
@@ -318,22 +320,28 @@ architecture sections above the 560 KB log would help a newcomer),
 sets, every PDF in `tests/irs/`, the module CLIs the conventions ask for, and
 the reasoning prose the conventions ask for.
 
-## 5. Decisions needed from Jason
+## 5. Decisions taken (Jason, 2026-10-08, rows P231–P237 in `pilot/DECISIONS.md`)
 
-1. Remove `.claude/skills/` and `.mcp.json` (reverses P56/P57)?
-2. Stop `export.py` writing the unused brand tiles and delete them?
-3. Drop the module CLIs nothing runs (`validators` 68 lines, `names` 16,
-   `containers` 22)? The convention says each module keeps one.
-4. Move the decision-107 tidy-up (deleting the old `_content_cache.json`),
-   which runs on every pass, into `after_install.py` per decision 209, or
-   drop it if every install is past 107?
-5. The about 250 lines of migration code for files an earlier version left
-   beside the program, the rename carry-over, and the n8n output of the
-   scheduling CLI: time-bound, not dead. Retire now or name a date?
-6. Delete the two unreachable `reminder.client_ask` branches, or keep them
-   for the future action the docstring names?
-7. Add `pytest-xdist` to the lockfile and a `corpus` marker for the four slow
-   tests?
+Each was put to Jason with its options in the session that wrote this SPEC;
+he took the recommended option on all seven.
+
+1. **P231.** Remove `.claude/skills/` and `.mcp.json` (reverses P56/P57).
+   Keep `.claude/settings.json`. → job 1.
+2. **P232.** Change `export.py` to stop writing the unused brand tiles and
+   delete the 57 exported images. → job 1.
+3. **P233.** Drop the `__main__` blocks of `validators`, `names` and
+   `containers`; narrow the CLAUDE.md convention to "a module keeps a
+   command line when something runs it". → job 6, with the CLAUDE.md line.
+4. **P234.** Move the decision-107 cache tidy-up from the pass into
+   `after_install.run()`. → job 5 (the pass side) and job 4 (the
+   after-install job), landed together.
+5. **P235.** Retire the three upgrade carry-overs (files beside the program,
+   the old-name settings file, the n8n output), about 250 lines; one runbook
+   line says older installs are set up fresh. → job 4.
+6. **P236.** Delete the two unreachable `reminder.client_ask` branches. →
+   job 6.
+7. **P237.** Add `pytest-xdist` to the lockfile and a `corpus` marker on the
+   four corpus walks. → job 7.
 
 ## 6. Rules for every job below
 
@@ -357,18 +365,18 @@ the reasoning prose the conventions ask for.
 ## 7. The jobs
 
 Jobs 1, 2 and 3–6 are independent and can run as separate lanes at once;
-each touches different files. Job 7 runs last because it re-pins the map
-after the others.
+each touches different files, except that P234 spans jobs 4 and 5 and they
+land together. Job 7 runs last because it re-pins the map after the others.
 
 | # | Job | Files | Tests to run | Appendix |
 |---|---|---|---|---|
-| 1 | Delete the repository residue (4.1, "delete now"), fix the three `test_shell.py` comments, rewrite `pilot/HANDOFF.md` to point here | `pilot/`, `tests/test_shell.py` | `test_shell`, `test_pilot`, `test_pilot_installer`, `test_single_source`, `test_repo_map` | A |
+| 1 | Delete the repository residue (4.1, "delete now"), remove `.claude/skills/` and `.mcp.json` (P231), trim `export.py` and delete the 57 brand exports (P232), fix the three `test_shell.py` comments, rewrite `pilot/HANDOFF.md` to point here, update `.gitignore`'s skills lines | `pilot/`, `.claude/`, `.mcp.json`, `.gitignore`, `tests/test_shell.py` | `test_shell`, `test_pilot`, `test_pilot_installer`, `test_single_source`, `test_repo_map` | A |
 | 2 | Electron folds, dead CSS, overridden CSS, unreachable guards | `app/renderer/*.js`, `app/renderer/*.css` | `test_shell`, `test_shell_menu`, `test_pilot_ui`, `test_tour`, `test_row_columns`, `test_single_source` | F |
 | 3 | Storage: the SQLite-helper fold, `_the_record`, the `_from_json` pair, dead names, the schema changelog | `store`, `checkpoint`, `ledger`, `records`, `manifest`, `households`, `fsio` | their own tests, `test_api`, `test_runner`, `test_layers`, `test_single_source`, `test_repo_map` | C |
-| 4 | App face: the row-action handlers, `_info_payload`, `settings`/`scheduling` pairs, the `api.py` refrains, defects 1 and 2 | `api`, `settings`, `scheduling`, `firm_cache`, `page_rows`, `after_install`, `view` | their own tests, `test_single_source`, `test_layers`, `test_repo_map`, `test_errors` | D |
-| 5 | Sorting engine: `find_*` fold, OCR exception tail, wrappers, dead names, the changelogs, defects 3, 5 and 6 | `filer`, `scanner`, `router`, `content_check`, `ocr` | their own tests, `test_runner`, `test_catalog`, `test_irs_forms`, `test_single_source`, `test_layers`, `test_repo_map`, `vocab_report.py check` | B |
-| 6 | Runner and the rest: the door helper, the two draft loops, unused parameters, `reasons`/`__init__` history, defect 4 | `runner`, `reminder`, `scaffold`, `registry`, `layout`, `review`, `names`, `rollover`, `door`, `reasons`, `tracker/__init__.py`, `tools/repo_map.py` | their own tests, `test_api`, `test_single_source`, `test_layers`, `test_repo_map` | E |
-| 7 | Test runtime: `corpus` marker, `pytest-xdist` in the lockfile (if Jason says yes to 5.7), `docs/storage.md` trim | `pyproject.toml`, `requirements*.txt/.lock`, `tests/conftest.py`, `docs/storage.md` | `test_tripwire`, `test_single_source`, `test_repo_map`, `tools/lockfiles.py` check | – |
+| 4 | App face: the row-action handlers, `_info_payload`, `settings`/`scheduling` pairs, the `api.py` refrains, defects 1 and 2; retire the three carry-overs (P235) with the runbook line; the after-install job for P234 | `api`, `settings`, `scheduling`, `firm_cache`, `page_rows`, `after_install`, `view` | their own tests, `test_single_source`, `test_layers`, `test_repo_map`, `test_errors` | D |
+| 5 | Sorting engine: `find_*` fold, OCR exception tail, wrappers, dead names, the changelogs, defects 3, 5 and 6; take the decision-107 tidy-up out of the pass (P234) | `filer`, `scanner`, `router`, `content_check`, `ocr` | their own tests, `test_runner`, `test_catalog`, `test_irs_forms`, `test_single_source`, `test_layers`, `test_repo_map`, `vocab_report.py check` | B |
+| 6 | Runner and the rest: the door helper, the two draft loops, unused parameters, `reasons`/`__init__` history, defect 4; drop the three unused CLIs and narrow the CLAUDE.md line (P233); delete the two `client_ask` branches (P236) | `runner`, `reminder`, `scaffold`, `registry`, `layout`, `review`, `names`, `rollover`, `door`, `reasons`, `tracker/__init__.py`, `tools/repo_map.py` | their own tests, `test_api`, `test_single_source`, `test_layers`, `test_repo_map` | E |
+| 7 | Test runtime: `corpus` marker and `pytest-xdist` in the lockfile (P237), `docs/storage.md` trim | `pyproject.toml`, `requirements*.txt/.lock`, `tests/conftest.py`, `docs/storage.md` | `test_tripwire`, `test_single_source`, `test_repo_map`, `tools/lockfiles.py` check | – |
 
 Each job ends with a handoff note in its pull request description, not a
 file in `pilot/handoffs/` (that folder is gone after job 1).

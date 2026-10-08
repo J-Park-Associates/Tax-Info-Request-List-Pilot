@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 446,
     "edges": 1233,
-    "reused": 398
+    "reused": 397
   },
   "node_types": [
     "artifact",
@@ -4832,8 +4832,8 @@
       "id": "pilot/DECISIONS.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "72f9fc1abc6fc040",
-      "lines": 225
+      "sha256": "5b8c0062f511c2f3",
+      "lines": 232
     },
     {
       "id": "pilot/HANDOFF.md",
@@ -4909,8 +4909,8 @@
       "id": "pilot/SPEC-cleanup.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "2b16bd1410a69cf5",
-      "lines": 1335
+      "sha256": "946e5e7cb908a4d8",
+      "lines": 1343
     },
     {
       "id": "pilot/SPEC-email-zip-tag.md",
