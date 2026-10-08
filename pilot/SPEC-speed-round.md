@@ -231,7 +231,7 @@ store's own connection already is, and `store.close()` already lets go of.
   | Place | Change | Lane |
   |---|---|---|
   | `tracker/after_install.py:259` `CHECKPOINT_UNIT` | add `CHECKPOINT_WAL_FILENAME`, `CHECKPOINT_SHM_FILENAME` | P |
-  | `tracker/after_install.py:888-893` (the unit rule in `move_left_behind`) | a journal **or write-ahead log or shared memory** found without its checkpoint moves nothing (each would be replayed into a checkpoint not its own); a home holding any part of the unit moves nothing. `LEFT_BEHIND_JOURNAL_ALONE`'s words are kept: SQLite calls the `-wal` its write-ahead log journal, and a new sentence would be new wording for a case no earlier version can produce | P |
+  | `tracker/after_install.py:888-893` (the unit rule in `move_left_behind`) | a journal **or write-ahead log or shared memory** found without its checkpoint moves nothing (each would be replayed into a checkpoint not its own); a home holding any part of the unit moves nothing. `LEFT_BEHIND_JOURNAL_ALONE`'s words are kept: SQLite calls the `-wal` its write-ahead log journal, and a new sentence would be new wording for a case no earlier version can produce *(changed by the review, 9fbf844: the sentence now says "side file(s)", which fits all three; P214's row records it)* | P |
   | `tracker/runner.py:340-345` `left_behind`'s `beside` | add both names, so the live checkpoint's side files beside a store in use (the suite's fixture) are never named as left behind | P |
   | `tracker/runner.py:375-377` `_to_move` | add both names: to move, never to delete (the `-wal` holds committed writes) | P |
   | `.github/workflows/build.yml:206` `$names` | add `'record-heads.db-wal', 'record-heads.db-shm'` | P |
@@ -769,6 +769,10 @@ held (`:739-741`). Now, when it is a firm page and `shellFirmNow.status ===
 - `#page` gets `aria-busy="true"` and the class `is-updating`;
 - the page's first child is `h("p", { className: "page-updating", role:
   "status" }, screenWords().updating)`;
+  *(Changed by the review, 9fbf844: the word sits instead in a permanent
+  `#page-updating` element (`role="status"`) in the path bar `#bar`, its
+  text set only when it changes, so no row moves and a redraw does not
+  announce it again; P222's row records it.)*
 - `drawCounts` (`shell.js:586`) gives each `.side-count` the class
   `is-held`;
 - `shell.css` mutes the figures, the status pills and the side counts

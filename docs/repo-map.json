@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 439,
     "edges": 1209,
-    "reused": 377
+    "reused": 392
   },
   "node_types": [
     "artifact",
@@ -4962,8 +4962,8 @@
       "id": "pilot/SPEC-speed-round.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "2d5f0abdabf838d5",
-      "lines": 1259
+      "sha256": "cb97b2120bbea8c0",
+      "lines": 1263
     },
     {
       "id": "pilot/SPEC-stuck-tip.md",
