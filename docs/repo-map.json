@@ -15,9 +15,9 @@
     "a person sends the draft"
   ],
   "counts": {
-    "nodes": 445,
+    "nodes": 446,
     "edges": 1233,
-    "reused": 397
+    "reused": 398
   },
   "node_types": [
     "artifact",
@@ -4904,6 +4904,13 @@
       "layer": "docs",
       "sha256": "870e96be6a1082c2",
       "lines": 180
+    },
+    {
+      "id": "pilot/SPEC-cleanup.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "f374b5dd41dddb89",
+      "lines": 1333
     },
     {
       "id": "pilot/SPEC-email-zip-tag.md",
