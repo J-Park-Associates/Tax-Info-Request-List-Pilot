@@ -5501,3 +5501,95 @@ def test_a_hint_that_cannot_be_settled_takes_no_marks(tmp_path, samples, monkeyp
 
     assert writes == [path, path]                     # the settling write, then the end's
     assert path.read_text(encoding="utf-8") == before
+
+
+# ------------------------------------------- a budget in counts (P223) ----
+
+
+def _an_idle_pass_counted(tmp_path, samples, monkeypatch) -> dict:
+    """One scheduled pass with nothing new over the suite's three-household
+    made-up firm, after one settling pass: what the budget counts, by the
+    code alone - never seconds, never questions to the disk."""
+    import math
+
+    from tracker import checkpoint, settings
+
+    root = tmp_path / "Clients"
+    _three_households(root, samples)
+    assert _the_scheduled_job(root, monkeypatch, "--reminders", REMINDERS_NEVER) == 0     # settles
+    store.close()
+    counted = {"statements": 0, "rules": [], "checkpoints": 0, "hint writes": 0, "unheld": 0}
+    real_execute = store._Cursor.execute
+
+    def execute(self, *args, **kwargs):
+        counted["statements"] += 1
+        return real_execute(self, *args, **kwargs)
+
+    real_rules, real_connect = store.rules, checkpoint._connect
+    real_write = runner_module.write_text_atomically
+    real_resolved, real_data_home = settings.resolved, settings.data_home
+
+    def rules(conn, folder):
+        counted["rules"].append(str(folder))
+        return real_rules(conn, folder)
+
+    def connect(path):
+        counted["checkpoints"] += 1
+        return real_connect(path)
+
+    def write(path, *args, **kwargs):
+        counted["hint writes"] += Path(path).name == runner_module.PASS_ORDER_FILENAME
+        return real_write(path, *args, **kwargs)
+
+    def unheld(real):
+        def asked(*args, **kwargs):
+            counted["unheld"] += settings._HELD is None
+            return real(*args, **kwargs)
+        return asked
+
+    with monkeypatch.context() as patch:
+        patch.setattr(store._Cursor, "execute", execute)
+        patch.setattr(store, "rules", rules)
+        patch.setattr(checkpoint, "_connect", connect)
+        patch.setattr(runner_module, "write_text_atomically", write)
+        patch.setattr(settings, "resolved", unheld(real_resolved))
+        patch.setattr(settings, "data_home", unheld(real_data_home))
+        assert _the_scheduled_job(root, monkeypatch, "--reminders", REMINDERS_NEVER) == 0
+    returns = len(set(counted["rules"])) or 1
+    return {"statements per household": math.ceil(counted["statements"] / 3),
+            "rules per return": max((counted["rules"].count(one) for one in set(counted["rules"])), default=0),
+            "returns": returns, "checkpoints": counted["checkpoints"],
+            "hint writes": counted["hint writes"], "unheld": counted["unheld"]}
+
+
+#: The idle pass's counts measured once the speed round was built (pilot
+#: P223), on Python 3.11 and 3.13 alike; the budget is each times 1.2,
+#: rounded up, where a count is a measure rather than a rule.
+IDLE_PASS_MEASURED = {"statements per household": 89, "unheld": 3}
+
+
+def test_an_idle_pass_stays_within_its_budget(tmp_path, samples, monkeypatch):
+    """P223: a budget in counts, so a change that quietly undoes the speed
+    round fails here - in counts the code alone decides, the same on
+    Windows and Linux, never seconds (four shared cores, the office PC's
+    Defender) and never questions to the disk (one ``lstat`` a segment on
+    Linux, two handle opens on Windows, and the test folder's depth).
+
+    Measured after the build, one idle pass over three households: 89 store
+    statements a household (123 before the round), ``store.rules`` once a
+    return (9 before), one checkpoint connection for the whole pass (4
+    before, one a question), one whole write of the pass-order hint, and 3
+    machine questions (``settings.resolved``, ``settings.data_home``)
+    outside any hold for the pass (111 before). A change that needs a
+    higher budget raises it in the same commit with a decision row saying
+    why. Run locally, in the gate, like every test (decisions 207, 211)."""
+    import math
+
+    counted = _an_idle_pass_counted(tmp_path, samples, monkeypatch)
+    assert counted["returns"] == 3
+    assert counted["statements per household"] <= math.ceil(
+        IDLE_PASS_MEASURED["statements per household"] * 1.2), counted
+    assert counted["rules per return"] <= 2, counted
+    assert counted["checkpoints"] == 1, counted
+    assert counted["hint writes"] == 1, counted
+    assert counted["unheld"] <= math.ceil(IDLE_PASS_MEASURED["unheld"] * 1.2), counted
