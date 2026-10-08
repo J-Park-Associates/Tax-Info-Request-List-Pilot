@@ -23,7 +23,7 @@ Commands:
             the due date and whether its reminder draft is ready
   firm-last the firm reply as the cache last kept it today, read only, with
             the time it was kept - or nothing - for the launch (pilot P229)
-  priors   list engagements a new year could be rolled forward from
+  priors    list engagements a new year could be rolled forward from
   rollover  build next year's list from a returning client's prior year
   roll-household  roll every ticked return of a household's open year into
             the next one, and retire the returns left out (JSON on stdin)
