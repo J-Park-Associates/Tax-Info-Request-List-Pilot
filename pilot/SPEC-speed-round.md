@@ -1261,3 +1261,55 @@ is not.
   runs the step again at its first launch, as it does today. Owning test:
   `tests/test_pilot_installer.py`
   (`test_the_pilot_installer_makes_the_overview_ready_before_it_launches_the_app`).
+
+## 8. Measured before and after (2026-10-08)
+
+The same script, on the same Linux sandbox (4 cores, Python 3.13), with
+nothing else running, on two fresh copies of the made-up 1,000-household
+firm (2,000 returns, a new pile of 13 sample files in every household's
+inbox; the checkpoint told of each copy's root by the runbook's
+`move-root`). After: `a3cf636`. Before: `8e18570`, run straight after it.
+A first before-run an hour earlier agreed within 5%. Seconds, one run for
+the passes, the median of three for the commands.
+
+| Step | Before | After | Change |
+|---|---|---|---|
+| Start the engine (`import tracker.api`) | 0.28 | 0.20 | -30% |
+| First pass, 1,000 new piles | 740 | 672 | -9% |
+| Overview, kept copy current | 7.0 | 6.7 | -5% |
+| Overview, kept copy gone | 14.4 | 12.2 | -15% |
+| Client list | 4.0 | 3.0 | -24% |
+| One return's page | 0.34 | 0.27 | -21% |
+| Sort & Scan, one household | 19.4 | 7.0 | -64% |
+| Scheduled pass, nothing new | 79.8 | 47.0 | -41% |
+| Scheduled pass, draft day | 106.8 | 65.2 | -39% |
+| Scheduled pass, draft day again | 86.7 | 51.6 | -40% |
+
+The app's side, timed apart (the script above runs no window):
+
+| Step | Before | After |
+|---|---|---|
+| A return's page, engine started cold vs. handed to the waiting spare (P220) | 0.27 | 0.08 |
+| The form templates, likewise | 0.22 | 0.03 |
+| The window reading a 3.99 MB Overview reply in 64 KB pieces (P220's reader; both loops copied from `main.js`) | 79 ms | 14 ms |
+| The same in 8 KB pieces | 678 ms | 10 ms |
+| The same in 4 KB pieces | 1,289 ms | 12 ms |
+
+**The answers are the same.** After one first pass each, both copies hold
+49,000 files and the same journal events, count for count (filed 14,000,
+parked 8,000, moving 22,000, drafted 2,000 and the rest). The only names
+that differ are two prepared copies per return (`A02 - 1 - TY2026.csv`
+before, `A02 - 109 - TY2026.csv` after; `D01 - TY2026.xlsx`, `D01 - Ch -
+TY2026.xlsx`): both end at exactly 218 characters, because the name is
+shortened to fit the path limit and the after-copy's folder name is two
+characters shorter. Not the code.
+
+**Not measured here.** The Overview kept copy's walk is the Linux folder
+listing (findings-1, "looked at"), which Windows answers from the listing
+itself. The checkpoint's syncs (P214) and the hint's (P217) cost more on
+Windows than here. Python's start-up is about 0.85 s on the office PC
+against 0.2-0.3 s here, so the spare saves more there. The launch-time
+gain of P221 and the second Overview a Sort no longer asks (P218) happen
+in the window and are reasoned, not timed: after a Sort the window used to
+wait for the Sort, a list, and two Overviews (about 19 + 4 + 7 + 7 s here),
+and now waits for the Sort, a list and one (about 7 + 3 + 7 s).
