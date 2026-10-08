@@ -9992,3 +9992,30 @@ def test_an_opened_folder_is_cut_to_fit_where_long_paths_are_off(monkeypatch):
     assert layout.folder_need(cut) <= layout.path_limit()
     assert cut.parent == whole.parent and len(cut.name) < len(whole.name)
     assert whole.name.startswith(cut.name)
+
+
+def test_a_held_index_is_read_again_after_a_file_is_recorded(engagement, monkeypatch):
+    """P215 (E2): inside a household's hold the index is built once per
+    state of the record - kept while nothing is recorded, built again the
+    moment a filing moves the record's head."""
+    from tracker import settings
+
+    built = []
+    real = store.documents
+
+    def counted(conn, folder):
+        built.append(folder)
+        return real(conn, folder)
+
+    monkeypatch.setattr(store, "documents", counted)
+    with settings.one_household():
+        assert read_index(engagement) == []
+        assert read_index(engagement) == []
+        assert len(built) == 1
+        drop(engagement, "scan0012.pdf", "Form W-2 Wage and Tax Statement 2025")
+        sort(engagement, today=DAY1)
+        before = len(built)
+        rows = read_index(engagement)
+        assert [row.original_name for row in rows] == ["scan0012.pdf"]
+        assert read_index(engagement) == rows
+        assert len(built) == before + 1

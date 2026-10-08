@@ -196,10 +196,12 @@ import json
 import logging
 import os
 import sqlite3
+from collections.abc import Callable
 from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass, fields
 from dataclasses import field as _default
 from pathlib import Path
+from typing import TypeVar
 
 from tracker import checkpoint, ledger, records
 from tracker.locking import is_this_host, lock_is_held
@@ -960,6 +962,20 @@ def open_read_only(path: Path | str) -> sqlite3.Connection:
 _CONNECTION: sqlite3.Connection | None = None
 _CONNECTION_PATH: Path | None = None
 
+#: Whatever one held read is (:func:`held_read`).
+T = TypeVar("T")
+
+#: How many engagement rows this process has deleted (:func:`forget`,
+#: :func:`rebuild_engagement`): part of every held read's token, so a row
+#: deleted and built again - whatever id, head and seq it comes back with -
+#: is never answered from a read of the rows it replaced (P215).
+_REPLACED = 0
+
+
+def _rows_replaced() -> None:
+    global _REPLACED
+    _REPLACED += 1
+
 #: This machine's record checkpoint, held open for the command beside the
 #: store's own connection (pilot P214) and closed by :func:`close` first:
 #: one open a command instead of one a question. ``_CHECKPOINT_PATH`` is the
@@ -1215,15 +1231,54 @@ def _engagement_row(conn: sqlite3.Connection, engagement_dir: Path | str,
     command line, and the two disagreed on a machine with no settings
     file. Two spellings of one folder must never be two rows.
     """
+    from tracker import settings
+
     folder = Path(engagement_dir)
-    exact = conn.execute("SELECT * FROM engagements WHERE path = ?",
-                         (engagement_path(key_root(folder, root), folder),)).fetchone()
+    # The key once per hold (pilot P215, findings-2 #2): a function of the
+    # settings file's root and the folder's and the root's resolved
+    # spellings, each already held for exactly this hold - so it cannot
+    # differ from asking again. The row itself is never held: its
+    # applied_seq moves whenever anything is written.
+    key = settings.held(("engagement key", str(folder), "" if root is None else str(root)),
+                        lambda: engagement_path(key_root(folder, root), folder), there=folder)
+    exact = conn.execute("SELECT * FROM engagements WHERE path = ?", (key,)).fetchone()
     if exact is not None or _recorded_root_over(folder) is not None:
         return exact
     resolved = folder.resolve().as_posix()
     matches = [row for row in conn.execute("SELECT * FROM engagements")
                if resolved == row["path"] or resolved.endswith("/" + row["path"])]
     return max(matches, key=lambda row: len(row["path"]), default=None)
+
+
+def held_read(conn: sqlite3.Connection, engagement_dir: Path | str, what: str,
+              build: Callable[[], T]) -> T:
+    """``build()``, kept for the hold under way while the record's rows are
+    exactly as they were (pilot P215, E2).
+
+    The record's reads - the list (``manifest.load_manifest``), its details
+    (``manifest.load_engagement_info``) and the index
+    (``filer.read_index``) - each follow the journal first, every time, and
+    then ask this instead of rebuilding. The token is the row's id, path,
+    head, applied seq and digest: every table those reads come from is
+    written only by applying journal lines (which moves the seq, head and
+    digest) or by deleting the row, so any change moves the token and the
+    next read builds afresh. Nothing is kept outside a
+    hold (:func:`tracker.settings.held`), nor past it; a list is handed out
+    as a copy, so no caller changes another's. ``what`` names the read.
+
+    Beyond the SPEC's token: the row's ``built_at`` and the count of rows
+    this process deleted (:data:`_REPLACED`), so a row rebuilt from the
+    same journal - same head, same seq, an id SQLite may reuse - is read
+    afresh all the same."""
+    from tracker import settings
+
+    row = _engagement_row(conn, engagement_dir)
+    if row is None:
+        return build()
+    token = (what, row["id"], row["path"], row["ledger_head"], row["applied_seq"], row["applied_digest"],
+             row["built_at"], _REPLACED)
+    value = settings.held(("record read", *token), build, there=engagement_dir)
+    return list(value) if isinstance(value, list) else value
 
 
 # ------------------------------------------------------------- values ----
@@ -1602,6 +1657,7 @@ def forget(conn: sqlite3.Connection, engagement_dir: Path | str) -> bool:
     if row is not None:
         with _transaction(conn):
             conn.execute("DELETE FROM engagements WHERE id = ?", (row["id"],))
+        _rows_replaced()
     # And what this machine vouched for about it (decision 159) - whether or
     # not the store holds it (the review's M2): after a store was set aside
     # or deleted, a return created again under a removed one's name must
@@ -3296,6 +3352,7 @@ def rebuild_engagement(
         known = _engagement_row(conn, engagement_dir, root)
         if known is not None:
             conn.execute("DELETE FROM engagements WHERE id = ?", (known["id"],))
+            _rows_replaced()
         defaults = _new_engagement_defaults()
         # The applied chain is computed as the lines are replayed
         # (decision 137, A3): a rebuild is how an older store upgrades.

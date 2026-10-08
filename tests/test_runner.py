@@ -5305,3 +5305,47 @@ def test_the_product_name_reaches_the_fill_and_never_the_page(tmp_path, samples,
     assert seen["command"][-1] == runner_module.FIRM_COMMAND
     assert seen["streams"] == {subprocess.DEVNULL}, "the reply names clients; none of it is kept"
     capsys.readouterr()
+
+
+# ------------------------------- the pass's two firm-wide reads (P215) ----
+
+
+def test_the_passs_discovery_and_its_page_read_hold_the_machines_answers(tmp_path, samples, monkeypatch):
+    """P215 (findings-1 #1): discovery and the practice page's parked-file
+    read only read, so each runs inside a reading - the machine's answers
+    held for the call, and dropped when it returns."""
+    from tracker import settings
+
+    _two_households(tmp_path, samples)
+    seen = {}
+    for name in ("discover_engagements", "_parked_files"):
+        real = getattr(runner_module, name)
+
+        def watched(*args, _real=real, _name=name, **kwargs):
+            seen[_name] = settings._HOLDING
+            return _real(*args, **kwargs)
+
+        monkeypatch.setattr(runner_module, name, watched)
+    assert _the_scheduled_job(tmp_path, monkeypatch, "--reminders", "never") == 0
+    assert seen == {"discover_engagements": settings.HOLD_READING, "_parked_files": settings.HOLD_READING}
+    assert settings._HELD is None
+
+
+def test_the_page_is_written_outside_the_reading(tmp_path, samples, monkeypatch):
+    """Only the read is held: the page's write follows the hold's end, so a
+    write inside it can never be refused as a write while reading."""
+    from tracker import settings
+
+    _two_households(tmp_path, samples)
+    holding = []
+    real = runner_module.write_text_atomically
+
+    def watched(path, *args, **kwargs):
+        if Path(path).name == STATUS_PAGE_FILENAME:
+            holding.append(settings._HOLDING)
+        return real(path, *args, **kwargs)
+
+    monkeypatch.setattr(runner_module, "write_text_atomically", watched)
+    assert _the_scheduled_job(tmp_path, monkeypatch, "--reminders", "never") == 0
+    assert holding == [""]
+    assert (tmp_path / STATUS_PAGE_FILENAME).is_file()

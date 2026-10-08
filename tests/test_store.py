@@ -3289,6 +3289,7 @@ ADMISSION_PIN: dict[int, dict[str, str]] = {2: {
     "tracker.settings._SETTINGS_HELD": "6c71e2207cf64f31",
     "tracker.settings._read": "9a09d08e256be9de",
     "tracker.settings.clients_root": "8fbaef8c43dcb573",
+    "tracker.settings.held": "19183d0915cfb77e",
     "tracker.settings.resolved": "dc9902a73c0115e2",
     "tracker.settings.settings_dir": "0468e63b780056c5",
     "tracker.settings.settings_path": "8a79e7ca2ca7f66a",
@@ -3299,7 +3300,7 @@ ADMISSION_PIN: dict[int, dict[str, str]] = {2: {
     "tracker.store.RULE_LIST_FIELDS": "8b3d25ca8662bd02",
     "tracker.store.STATUS_COLUMNS": "072efbf3b12ac0bd",
     "tracker.store.UNKNOWN_EVENT": "099e89ceccd1e5e9",
-    "tracker.store._engagement_row": "e7254ccc28e41fad",
+    "tracker.store._engagement_row": "f7af91c2d1b8ade0",
     "tracker.store._line_keys_problem": "0d6016b3dab0c236",
     "tracker.store._positional_root": "f2fce089ca54ef5a",
     "tracker.store._recorded_root_over": "6447409cff0d940e",
@@ -4821,3 +4822,82 @@ def test_expect_is_on_disk_before_the_journal_line_and_advance_after_it(root, by
     assert intent_before is not None and intent_before.start == already and len(intent_before.heads) == 1
     with checkpoint.opened(where) as other:
         assert checkpoint.vouched(other, key)[0] == already + 1 and checkpoint.intent(other, key) is None
+
+
+# ----------------------------------------- answers kept for one hold (P215) ----
+
+
+def _counting(monkeypatch, module, name) -> list:
+    calls = []
+    real = getattr(module, name)
+
+    def counted(*args, **kwargs):
+        calls.append(args)
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(module, name, counted)
+    return calls
+
+
+def test_an_engagements_key_is_worked_out_once_per_hold(root, by_hand, monkeypatch):
+    """P215 (findings-2 #2): inside a household's hold the key is worked
+    out once; the row itself is read every time."""
+    from tracker import settings
+
+    conn = store.connect()
+    build(conn, root, by_hand)
+    asked = _counting(monkeypatch, store, "engagement_path")
+    with settings.one_household():
+        first = store._engagement_row(conn, by_hand)
+        again = store._engagement_row(conn, by_hand)
+    assert first is not None and dict(first) == dict(again)
+    assert len(asked) == 1
+    store._engagement_row(conn, by_hand)                       # outside a hold: asked afresh
+    assert len(asked) == 2
+
+
+def test_a_key_asked_before_its_folder_existed_is_asked_again_after(root, monkeypatch):
+    """A folder the pass makes later is never answered from before it
+    existed (P207's rule 2): its key is kept only once it is there."""
+    from tracker import settings
+
+    conn = store.connect()
+    later = root / "J Park & Associates" / "Later Family" / "2025" / "1040 - Later Client"
+    asked = _counting(monkeypatch, store, "engagement_path")
+    with settings.one_household():
+        assert store._engagement_row(conn, later) is None
+        assert store._engagement_row(conn, later) is None
+        assert len(asked) == 2
+        later.mkdir(parents=True)
+        store._engagement_row(conn, later)
+        store._engagement_row(conn, later)
+    assert len(asked) == 3
+
+
+def test_a_record_read_is_never_kept_past_a_rebuild_of_its_row(root, by_hand):
+    """P215 (E2): a held read is kept while the row's head and applied
+    lines are as they were, built again once a line is recorded, and built
+    again after the row is rebuilt from the same journal."""
+    from tracker import settings
+
+    conn = store.connect()
+    build(conn, root, by_hand)
+    built = []
+
+    def read():
+        built.append(1)
+        return [len(built)]
+
+    with settings.one_household():
+        assert store.held_read(conn, by_hand, "probe", read) == [1]
+        kept = store.held_read(conn, by_hand, "probe", read)
+        assert kept == [1] and len(built) == 1
+        kept.append("a caller's own change")
+        assert store.held_read(conn, by_hand, "probe", read) == [1]       # each caller its own list
+        with engagement_lock(by_hand):
+            store.record(conn, by_hand, scanned(A01=Status.RECEIVED))
+        assert store.held_read(conn, by_hand, "probe", read) == [2]
+        build(conn, root, by_hand)                                        # the same journal, rebuilt
+        assert store.held_read(conn, by_hand, "probe", read) == [3]
+        assert store.held_read(conn, by_hand, "probe", read) == [3]
+    assert store.held_read(conn, by_hand, "probe", read) == [4]           # nothing past the hold

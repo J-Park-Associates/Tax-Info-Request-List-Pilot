@@ -1318,7 +1318,10 @@ def read_index(engagement: Path | str, *, follow: bool = True) -> list[IndexEntr
     conn = store.connect()
     if follow or store.kind(conn, folder) is None:
         store.follow_the_journal(conn, clients_root_of(folder), folder)
-    return [entry_from_json(row) for row in store.documents(conn, folder)]
+    # Built once per state of the record inside a hold (pilot P215, E2):
+    # the journal was followed above, every time.
+    return store.held_read(conn, folder, "index",
+                           lambda: [entry_from_json(row) for row in store.documents(conn, folder)])
 
 
 # ------------------------------------------------- what the client is told ----

@@ -245,6 +245,7 @@ from tracker.settings import (
     firm,
     logs_dir,
     one_household,
+    one_reading,
     product_name,
     root_refusal,
     schedule_preference,
@@ -2569,7 +2570,11 @@ def write_status_page(root: Path | str, report: RunReport, *,
     """
     root = Path(root)
     stamp = (now or dt.datetime.now()).isoformat(sep=" ", timespec="seconds")
-    parked, problems = _parked_files(report)
+    # Inside a reading (pilot P215): the parked-file read only reads, so the
+    # machine's answers are held for it - and only for it; the page is
+    # written after the hold ends.
+    with one_reading():
+        parked, problems = _parked_files(report)
     # The pass's own sentences first (decision 189): a pass that stopped, a
     # run log that could not be written - what a person must see before
     # any one return's problem.
@@ -2993,7 +2998,12 @@ def _pass(ns, parser, reached: dict) -> int:
 
     reached["root"] = root
     try:
-        loaded = discover_engagements(root)
+        # Inside a reading (pilot P215): discovery only reads - its
+        # catch-ups are derivation - so the machine's answers are held for
+        # the walk, and dropped when it returns, before the pass makes
+        # anything.
+        with one_reading():
+            loaded = discover_engagements(root)
     except RegistryError as exc:
         raise PassFailed(PASS_ROOT_UNREADABLE, f"Clients folder problem: {exc}") from None
     # Run now's household (decision 203): named, never guessed, and held

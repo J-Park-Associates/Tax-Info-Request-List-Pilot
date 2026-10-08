@@ -1035,3 +1035,57 @@ def test_a_household_inside_a_reading_is_the_reading_and_still_refuses_a_write()
             assert data_rules._HOLDING == data_rules.HOLD_HOUSEHOLD
         assert data_rules._HELD is not None
     assert data_rules._HELD is None and data_rules._HOLDING == ""
+
+
+# ----------------------------------------------- the one hold memo (P215) ----
+
+
+def test_held_keeps_an_answer_for_the_hold_and_only_once_its_path_is_there(tmp_path):
+    """P215: outside a hold every ask is answered afresh; inside a reading
+    the first answer stands; inside a household's hold an answer about a
+    folder is kept only once the folder is there, so a folder the pass makes
+    later is never answered from before it existed."""
+    asked = []
+
+    def answer():
+        asked.append(1)
+        return len(asked)
+
+    assert data_rules.held(("a question",), answer) == 1
+    assert data_rules.held(("a question",), answer) == 2            # nothing kept outside a hold
+    with data_rules.one_reading():
+        assert data_rules.held(("a question",), answer) == 3
+        assert data_rules.held(("a question",), answer) == 3
+    assert data_rules.held(("a question",), answer) == 4            # dropped with the hold
+
+    later = tmp_path / "made later"
+    asked.clear()
+    with data_rules.one_household():
+        assert data_rules.held(("about", str(later)), answer, there=later) == 1
+        assert data_rules.held(("about", str(later)), answer, there=later) == 2   # not there: asked again
+        later.mkdir()
+        assert data_rules.held(("about", str(later)), answer, there=later) == 3
+        assert data_rules.held(("about", str(later)), answer, there=later) == 3   # there: kept
+        assert data_rules.held(("no folder",), answer) == 4
+        assert data_rules.held(("no folder",), answer) == 4
+    with data_rules.one_reading():
+        gone = tmp_path / "never made"
+        assert data_rules.held(("about", str(gone)), answer, there=gone) == 5
+        assert data_rules.held(("about", str(gone)), answer, there=gone) == 5     # a reading keeps it
+
+
+def test_held_never_keeps_an_error():
+    calls = []
+
+    def failing():
+        calls.append(1)
+        if len(calls) == 1:
+            raise OSError("fabricated")
+        return "answered"
+
+    with data_rules.one_reading():
+        with pytest.raises(OSError):
+            data_rules.held(("flaky",), failing)
+        assert data_rules.held(("flaky",), failing) == "answered"
+        assert data_rules.held(("flaky",), failing) == "answered"
+    assert len(calls) == 2
