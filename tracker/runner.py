@@ -2820,11 +2820,18 @@ def status_report(registry: Registry, *, passed: Iterable[EngagementRun] = (),
     began, plus anything recorded on this computer since.
     """
     ran = {run.engagement.path: run for run in passed}
-    siblings, foreign, not_listed = records_needing_a_person(registry)
+    # Inside a reading (P226, as P215 held the parked files): the pass's
+    # work is done and every household's lock is gone, and the report only
+    # reads, so the machine's answers - where the store is, what the
+    # settings say, what each folder resolves to - are asked once for it,
+    # not once a record. The page is still written after the hold ends.
+    with one_reading():
+        siblings, foreign, not_listed = records_needing_a_person(registry)
+        runs = [ran[engagement.path] if engagement.path in ran else _engagement_status(engagement)
+                for engagement in registry.engagements]
     return RunReport(
         today=today or dt.date.today(),
-        runs=[ran[engagement.path] if engagement.path in ran else _engagement_status(engagement)
-              for engagement in registry.engagements],
+        runs=runs,
         misfits=list(registry.misfits),
         warnings=list(warnings),
         siblings=siblings,
