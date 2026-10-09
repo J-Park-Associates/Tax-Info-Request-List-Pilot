@@ -3,7 +3,7 @@
   "generated": "2026-10-08",
   "generator": "tools/repo_map.py",
   "generator_sha256": "22c7b60a1d198289",
-  "module_table_sha256": "c0a660acf371a340",
+  "module_table_sha256": "61c5a0269ab6357a",
   "pipeline": [
     "tracker.api / create",
     "tracker.scaffold",
@@ -15,9 +15,9 @@
     "a person sends the draft"
   ],
   "counts": {
-    "nodes": 446,
+    "nodes": 254,
     "edges": 1233,
-    "reused": 397
+    "reused": 204
   },
   "node_types": [
     "artifact",
@@ -4364,356 +4364,6 @@
       "lines": 1
     },
     {
-      "id": ".claude/skills/frontend-design/LICENSE.txt",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "0d542e0c8804e39a",
-      "lines": 177
-    },
-    {
-      "id": ".claude/skills/frontend-design/SKILL.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "d91970639e9f5c37",
-      "lines": 71
-    },
-    {
-      "id": ".claude/skills/impeccable/NOTICE.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "c60a093c2845fd9f",
-      "lines": 11
-    },
-    {
-      "id": ".claude/skills/impeccable/SKILL.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "23a81333bef9efcf",
-      "lines": 87
-    },
-    {
-      "id": ".claude/skills/impeccable/reference/adapt.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "0648e4e06d01cabc",
-      "lines": 318
-    },
-    {
-      "id": ".claude/skills/impeccable/reference/adapt.native.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "17c583cf8ad41266",
-      "lines": 58
-    },
-    {
-      "id": ".claude/skills/impeccable/reference/android.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "058f81f256134841",
-      "lines": 46
-    },
-    {
-      "id": ".claude/skills/impeccable/reference/animate.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "94b4ce6299fea93d",
-      "lines": 89
-    },
-    {
-      "id": ".claude/skills/impeccable/reference/audit.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "d9963fd73bf6129f",
-      "lines": 137
-    },
-    {
-      "id": ".claude/skills/impeccable/reference/audit.native.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "fe91fcf28638f955",
-      "lines": 139
-    },
-    {
-      "id": ".claude/skills/impeccable/reference/bolder.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "4879f38b23d0a251",
-      "lines": 33
-    },
-    {
-      "id": ".claude/skills/impeccable/reference/clarify.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "6c382f8283756e8a",
-      "lines": 94
-    },
-    {
-      "id": ".claude/skills/impeccable/reference/colorize.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "d1fbd55074abb225",
-      "lines": 86
-    },
-    {
-      "id": ".claude/skills/impeccable/reference/component-review.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "4af5f5bd6ad27703",
-      "lines": 71
-    },
-    {
-      "id": ".claude/skills/impeccable/reference/craft-floor.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "96e2e6bd4fcf9a2c",
-      "lines": 44
-    },
-    {
-      "id": ".claude/skills/impeccable/reference/craft.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "9205e222bc6565b3",
-      "lines": 5
-    },
-    {
-      "id": ".claude/skills/impeccable/reference/critique.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "c9284892cb1f21aa",
-      "lines": 806
-    },
-    {
-      "id": ".claude/skills/impeccable/reference/degraded/asset-producer.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "89e92f00d3a2f5c4",
-      "lines": 41
-    },
-    {
-      "id": ".claude/skills/impeccable/reference/degraded/documenter.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "bcc05ea92faebb5c",
-      "lines": 24
-    },
-    {
-      "id": ".claude/skills/impeccable/reference/degraded/finish-reviewer.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "275dd1b6e63bbd30",
-      "lines": 38
-    },
-    {
-      "id": ".claude/skills/impeccable/reference/degraded/manual-edit-applier.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "5fae7f8a2fc3ddd4",
-      "lines": 92
-    },
-    {
-      "id": ".claude/skills/impeccable/reference/delight.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "56500b1f9d2fcec8",
-      "lines": 70
-    },
-    {
-      "id": ".claude/skills/impeccable/reference/distill.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "b2f60e0154bf0e68",
-      "lines": 111
-    },
-    {
-      "id": ".claude/skills/impeccable/reference/doctor.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "d6a1fa1689642a6d",
-      "lines": 54
-    },
-    {
-      "id": ".claude/skills/impeccable/reference/document.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "87b3db688c796389",
-      "lines": 416
-    },
-    {
-      "id": ".claude/skills/impeccable/reference/extract.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "bfc51972fbf38756",
-      "lines": 69
-    },
-    {
-      "id": ".claude/skills/impeccable/reference/generate.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "fc149b5bc7a8d0cc",
-      "lines": 101
-    },
-    {
-      "id": ".claude/skills/impeccable/reference/harden.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "3898bd9b56a042e8",
-      "lines": 345
-    },
-    {
-      "id": ".claude/skills/impeccable/reference/hooks.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "51032bb883137007",
-      "lines": 113
-    },
-    {
-      "id": ".claude/skills/impeccable/reference/init.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "78c236dadb7e7033",
-      "lines": 131
-    },
-    {
-      "id": ".claude/skills/impeccable/reference/ios.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "40c87038b5f75147",
-      "lines": 51
-    },
-    {
-      "id": ".claude/skills/impeccable/reference/layout.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "64802d14087fc96b",
-      "lines": 84
-    },
-    {
-      "id": ".claude/skills/impeccable/reference/live-setup.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "6e7e3b7c4cf331cd",
-      "lines": 104
-    },
-    {
-      "id": ".claude/skills/impeccable/reference/live.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "b4def5b57733b6ba",
-      "lines": 325
-    },
-    {
-      "id": ".claude/skills/impeccable/reference/new-work.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "d51f25532b76add4",
-      "lines": 154
-    },
-    {
-      "id": ".claude/skills/impeccable/reference/onboard.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "9a2c08ee2516d2ee",
-      "lines": 234
-    },
-    {
-      "id": ".claude/skills/impeccable/reference/operate.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "a9d2203acd45ca33",
-      "lines": 61
-    },
-    {
-      "id": ".claude/skills/impeccable/reference/optimize.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "6d368b679a0ed181",
-      "lines": 258
-    },
-    {
-      "id": ".claude/skills/impeccable/reference/overdrive.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "a9856cb40da6519b",
-      "lines": 127
-    },
-    {
-      "id": ".claude/skills/impeccable/reference/polish.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "b8d49a3cab3428d9",
-      "lines": 105
-    },
-    {
-      "id": ".claude/skills/impeccable/reference/quieter.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "ee6d6d127c1c2ab3",
-      "lines": 99
-    },
-    {
-      "id": ".claude/skills/impeccable/reference/region-map.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "2bf1231cb5aeab97",
-      "lines": 20
-    },
-    {
-      "id": ".claude/skills/impeccable/reference/routing.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "56285b28b0ffe471",
-      "lines": 24
-    },
-    {
-      "id": ".claude/skills/impeccable/reference/shape.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "a55f016c046cb6a2",
-      "lines": 59
-    },
-    {
-      "id": ".claude/skills/impeccable/reference/typeset.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "696c15f96d49a030",
-      "lines": 80
-    },
-    {
-      "id": ".claude/skills/impeccable/reference/visualize.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "82a5e564563333aa",
-      "lines": 46
-    },
-    {
-      "id": ".claude/skills/winui-design/SKILL.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "dea0912e3e58bc88",
-      "lines": 175
-    },
-    {
-      "id": ".claude/skills/winui-design/references/brushes-and-icons.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "6ad5799cf4e6fcdd",
-      "lines": 207
-    },
-    {
-      "id": ".claude/skills/winui-design/references/layout-review.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "12210e16f1562687",
-      "lines": 41
-    },
-    {
-      "id": ".claude/skills/winui-design/references/theme-accessibility.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "79179212801c3edc",
-      "lines": 57
-    },
-    {
       "id": "CLAUDE.md",
       "type": "doc",
       "layer": "docs",
@@ -4759,7 +4409,7 @@
       "id": "docs/repo-map.curated.json",
       "type": "file",
       "layer": "docs",
-      "sha256": "7c9b1e27e3cc7ec8",
+      "sha256": "3563560a5ec965c4",
       "lines": 1167,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
@@ -4815,20 +4465,6 @@
       "role": "How the day-to-day workflow runs."
     },
     {
-      "id": "pilot/AUDIT-shell.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "1775bf96512e78d6",
-      "lines": 219
-    },
-    {
-      "id": "pilot/BRIEF-shell.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "007c01c2ae746448",
-      "lines": 182
-    },
-    {
       "id": "pilot/DECISIONS.md",
       "type": "doc",
       "layer": "docs",
@@ -4839,42 +4475,21 @@
       "id": "pilot/HANDOFF.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "b37061ccd1bfae22",
-      "lines": 816
-    },
-    {
-      "id": "pilot/PLAN-ui.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "29870e5e3dbd0aa6",
-      "lines": 226
-    },
-    {
-      "id": "pilot/PROMPTS.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "eb53ccc23948c364",
-      "lines": 153
+      "sha256": "07a096b78e562e11",
+      "lines": 79
     },
     {
       "id": "pilot/README.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "386b2502e72a05b3",
+      "sha256": "58dbf4cde5f3b5c7",
       "lines": 56
-    },
-    {
-      "id": "pilot/RECOMMENDATIONS.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "8159e2e6694d7759",
-      "lines": 309
     },
     {
       "id": "pilot/RELEASE.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "27378a3a23de8ac5",
+      "sha256": "52bb7eae08422ad0",
       "lines": 94
     },
     {
@@ -4883,13 +4498,6 @@
       "layer": "docs",
       "sha256": "be1f3ac7540b9cd8",
       "lines": 134
-    },
-    {
-      "id": "pilot/SPEC-F7-redirected-data-folder.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "ceb8abc1e876aaf5",
-      "lines": 228
     },
     {
       "id": "pilot/SPEC-check-notes-0.3.md",
@@ -4941,13 +4549,6 @@
       "lines": 213
     },
     {
-      "id": "pilot/SPEC-glass.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "9a9a09b990170cff",
-      "lines": 986
-    },
-    {
       "id": "pilot/SPEC-hide-under-construction.md",
       "type": "doc",
       "layer": "docs",
@@ -4974,13 +4575,6 @@
       "layer": "docs",
       "sha256": "e2006f3a8f20ffcd",
       "lines": 756
-    },
-    {
-      "id": "pilot/SPEC-min-page-width.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "851980491994f5f4",
-      "lines": 27
     },
     {
       "id": "pilot/SPEC-rename.md",
@@ -5016,13 +4610,6 @@
       "layer": "docs",
       "sha256": "84be83d5a981a34e",
       "lines": 1324
-    },
-    {
-      "id": "pilot/SPEC-stuck-tip.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "442ae74129f6a89a",
-      "lines": 31
     },
     {
       "id": "pilot/SPEC-taxpayer-words.md",
@@ -5063,619 +4650,10 @@
       "id": "pilot/brand/tax-document-console/README.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "c0e435c163b889c3",
-      "lines": 74,
-      "role": "Says what each file of the Tax Document Console artwork folder is and where it is seen (the app icon, the installer's icon and wizard images, the lockups, the packaged-app tiles).",
+      "sha256": "731e2afd6aab9baf",
+      "lines": 70,
+      "role": "Says what each file of the Tax Document Console artwork folder is and where it is seen (the app icon, the installer's icon and wizard images, the lockups).",
       "notes": "Everything in pilot/brand/tax-document-console/ except this file and source/ is GENERATED by source/export.py and is never edited by hand: change source/mark.py and re-run `python export.py ..`. The app's copy, app/assets/icon.ico (committed because the unpackaged launch needs it; .ico is not a mapped suffix), must stay byte-identical to app/icon.ico here, which tests/test_build.py holds; Build App.bat (--icon), api_entry.spec (icon=), app/main.js (BrowserWindow icon) and pilot/installer/setup.iss ([Setup] icon keys) name these files."
-    },
-    {
-      "id": "pilot/handoff-sort-speed-lane-P.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "47c2fd490c48bfbb",
-      "lines": 239
-    },
-    {
-      "id": "pilot/handoff-sort-speed-lane-R.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "c9fb83fbe0a5fd5b",
-      "lines": 227
-    },
-    {
-      "id": "pilot/handoff-speed-lane-P.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "cf403792fececda5",
-      "lines": 329
-    },
-    {
-      "id": "pilot/handoff-speed-lane-R.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "b44ef392fae7d967",
-      "lines": 284
-    },
-    {
-      "id": "pilot/handoffs/F6-build.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "97fb5bd8c3a8ae92",
-      "lines": 130
-    },
-    {
-      "id": "pilot/handoffs/F7-build.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "d2fae232a6061d23",
-      "lines": 114
-    },
-    {
-      "id": "pilot/handoffs/F7-root-cause.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "467bab4957595025",
-      "lines": 24
-    },
-    {
-      "id": "pilot/handoffs/brand-icon-ledger.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "c2be5c5de676fc84",
-      "lines": 33
-    },
-    {
-      "id": "pilot/handoffs/brand-icon.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "aea79646d08642e3",
-      "lines": 37
-    },
-    {
-      "id": "pilot/handoffs/cache-fill-build.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "6499c4ad064e432c",
-      "lines": 119
-    },
-    {
-      "id": "pilot/handoffs/check-notes-build.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "371e11976f6a7bb0",
-      "lines": 97
-    },
-    {
-      "id": "pilot/handoffs/check-scripts-build.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "1b9e468077e1d97e",
-      "lines": 55
-    },
-    {
-      "id": "pilot/handoffs/column-order-build.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "037d25e9af14cdfc",
-      "lines": 128
-    },
-    {
-      "id": "pilot/handoffs/combined-fold.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "cd1c534390ba46ee",
-      "lines": 93
-    },
-    {
-      "id": "pilot/handoffs/email-zip-tag-build.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "3fc085d906e1b3c9",
-      "lines": 132
-    },
-    {
-      "id": "pilot/handoffs/firm-cache-build.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "be85cd2a7ec78673",
-      "lines": 153
-    },
-    {
-      "id": "pilot/handoffs/firm-columns-build.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "b6ac6f8425b058fc",
-      "lines": 80
-    },
-    {
-      "id": "pilot/handoffs/hide-under-construction-build.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "e893efbdf4544f3a",
-      "lines": 105
-    },
-    {
-      "id": "pilot/handoffs/icon-wiring.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "c3769e3f296c48b8",
-      "lines": 52
-    },
-    {
-      "id": "pilot/handoffs/landing-0.3.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "210d1e9f16f812b1",
-      "lines": 37
-    },
-    {
-      "id": "pilot/handoffs/lists-4b-build.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "8fb81b74c21953af",
-      "lines": 101
-    },
-    {
-      "id": "pilot/handoffs/min-page-width-build.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "be3c52728fae4e6f",
-      "lines": 28
-    },
-    {
-      "id": "pilot/handoffs/rename-build.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "cee5d566b56d3817",
-      "lines": 290
-    },
-    {
-      "id": "pilot/handoffs/shell-S1-rebuild-1.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "ce146c77f30d6d90",
-      "lines": 92
-    },
-    {
-      "id": "pilot/handoffs/shell-S1-rebuild-2.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "82dfe68338e80873",
-      "lines": 20
-    },
-    {
-      "id": "pilot/handoffs/shell-S1-rebuild-3.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "18571942de42d4ec",
-      "lines": 68
-    },
-    {
-      "id": "pilot/handoffs/shell-S1-rebuild-4.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "27fa6c6c0eee6dcf",
-      "lines": 22
-    },
-    {
-      "id": "pilot/handoffs/shell-S1-review-1.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "c115847957327361",
-      "lines": 181
-    },
-    {
-      "id": "pilot/handoffs/shell-S1-review-2.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "9dae0c48aee4d0ff",
-      "lines": 130
-    },
-    {
-      "id": "pilot/handoffs/shell-S1-review-3.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "605b8e56ae29b6c6",
-      "lines": 59
-    },
-    {
-      "id": "pilot/handoffs/shell-S1-review-4.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "c0ea1a2e1d3f6c34",
-      "lines": 149
-    },
-    {
-      "id": "pilot/handoffs/shell-S1-review-5.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "d2282762379b9d59",
-      "lines": 42
-    },
-    {
-      "id": "pilot/handoffs/shell-S1.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "83f533d60824c060",
-      "lines": 125
-    },
-    {
-      "id": "pilot/handoffs/shell-S2-rebuild-1.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "ebebf297b229de72",
-      "lines": 45
-    },
-    {
-      "id": "pilot/handoffs/shell-S2-rebuild-2.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "b8a0de143ae4e3a0",
-      "lines": 23
-    },
-    {
-      "id": "pilot/handoffs/shell-S2-rebuild-3.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "3ce571e7e85b7013",
-      "lines": 80
-    },
-    {
-      "id": "pilot/handoffs/shell-S2-rebuild-4.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "2530b695cd305802",
-      "lines": 98
-    },
-    {
-      "id": "pilot/handoffs/shell-S2-review-1.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "c747a27aeb0bc16f",
-      "lines": 180
-    },
-    {
-      "id": "pilot/handoffs/shell-S2-review-2.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "fe42f00abb17303e",
-      "lines": 154
-    },
-    {
-      "id": "pilot/handoffs/shell-S2-review-3.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "cd1761666f86aef0",
-      "lines": 93
-    },
-    {
-      "id": "pilot/handoffs/shell-S2-review-4.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "7b7ba3cd61f4970c",
-      "lines": 239
-    },
-    {
-      "id": "pilot/handoffs/shell-S2-review-5.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "fd501320911c43b9",
-      "lines": 194
-    },
-    {
-      "id": "pilot/handoffs/shell-S2.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "060b9b1eb97ee332",
-      "lines": 135
-    },
-    {
-      "id": "pilot/handoffs/shell-S3-rebuild-1.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "92ee12f9907b9f61",
-      "lines": 35
-    },
-    {
-      "id": "pilot/handoffs/shell-S3-rebuild-2.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "12aa346c382d9ee4",
-      "lines": 63
-    },
-    {
-      "id": "pilot/handoffs/shell-S3-review-1.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "05f0d99681f9e2c2",
-      "lines": 234
-    },
-    {
-      "id": "pilot/handoffs/shell-S3-review-2.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "e98c47b3efa45c56",
-      "lines": 179
-    },
-    {
-      "id": "pilot/handoffs/shell-S3-review-3.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "cb75aa3a28335844",
-      "lines": 115
-    },
-    {
-      "id": "pilot/handoffs/shell-S3.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "ce8116808c56e87a",
-      "lines": 158
-    },
-    {
-      "id": "pilot/handoffs/shell-S4-rebuild-1.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "282980d45675f0a8",
-      "lines": 218
-    },
-    {
-      "id": "pilot/handoffs/shell-S4-review-1.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "1f0aab5d20326a2d",
-      "lines": 271
-    },
-    {
-      "id": "pilot/handoffs/shell-S4-review-2.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "2c85d165c0628310",
-      "lines": 153
-    },
-    {
-      "id": "pilot/handoffs/shell-S4.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "06aeab0649af47d9",
-      "lines": 199
-    },
-    {
-      "id": "pilot/handoffs/shell-S5-rebuild-1.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "9230e364fde34245",
-      "lines": 73
-    },
-    {
-      "id": "pilot/handoffs/shell-S5-rebuild-2.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "f74dcda98a89621d",
-      "lines": 50
-    },
-    {
-      "id": "pilot/handoffs/shell-S5-review-1.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "6b1210a151703cfe",
-      "lines": 213
-    },
-    {
-      "id": "pilot/handoffs/shell-S5.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "60080f7072e1e186",
-      "lines": 200
-    },
-    {
-      "id": "pilot/handoffs/shell-S6a.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "754be90434450374",
-      "lines": 95
-    },
-    {
-      "id": "pilot/handoffs/shell-S6b.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "c1be58a134bf4f0d",
-      "lines": 100
-    },
-    {
-      "id": "pilot/handoffs/shell-S7-rebuild-1.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "efd34ed88db374e8",
-      "lines": 84
-    },
-    {
-      "id": "pilot/handoffs/shell-S7-rebuild-2.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "a42971973353ac06",
-      "lines": 30
-    },
-    {
-      "id": "pilot/handoffs/shell-S7-review-1.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "83ea0e5f5c634596",
-      "lines": 222
-    },
-    {
-      "id": "pilot/handoffs/shell-S7-review-2.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "2e818ffab4988a40",
-      "lines": 183
-    },
-    {
-      "id": "pilot/handoffs/shell-S7-review-3.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "40ba9a0ad367161f",
-      "lines": 76
-    },
-    {
-      "id": "pilot/handoffs/shell-S7.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "73d6316945e78155",
-      "lines": 144
-    },
-    {
-      "id": "pilot/handoffs/shell-S8a-rebuild-1.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "f6ec3d1d915635fb",
-      "lines": 96
-    },
-    {
-      "id": "pilot/handoffs/shell-S8a-rebuild-2.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "c235bc5c51b4f7ca",
-      "lines": 47
-    },
-    {
-      "id": "pilot/handoffs/shell-S8a-rebuild-3.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "c0a21bcb00eee71b",
-      "lines": 69
-    },
-    {
-      "id": "pilot/handoffs/shell-S8a-review-1.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "17744312189a2741",
-      "lines": 275
-    },
-    {
-      "id": "pilot/handoffs/shell-S8a-review-2.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "7d854d8a43a1e61c",
-      "lines": 224
-    },
-    {
-      "id": "pilot/handoffs/shell-S8a-review-3.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "c9a16d8ceb991a87",
-      "lines": 146
-    },
-    {
-      "id": "pilot/handoffs/shell-S8a.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "8b702b45cbdce226",
-      "lines": 218
-    },
-    {
-      "id": "pilot/handoffs/shell-S8b.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "3f692443a841a7fb",
-      "lines": 60
-    },
-    {
-      "id": "pilot/handoffs/shell-final-check2.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "5cfd801140bab436",
-      "lines": 200
-    },
-    {
-      "id": "pilot/handoffs/shell-final-rereview.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "43a7a3c122828d87",
-      "lines": 266
-    },
-    {
-      "id": "pilot/handoffs/shell-final-review-A.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "ac8c09508f5cc0a4",
-      "lines": 134
-    },
-    {
-      "id": "pilot/handoffs/shell-final-review-B.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "c09561c97783fcb2",
-      "lines": 159
-    },
-    {
-      "id": "pilot/handoffs/shell-final-review-C.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "a7add34088d1ac39",
-      "lines": 189
-    },
-    {
-      "id": "pilot/handoffs/shell-fixpass.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "9f53544201a5759d",
-      "lines": 90
-    },
-    {
-      "id": "pilot/handoffs/shell-ledger.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "2806646ec7783cdc",
-      "lines": 54
-    },
-    {
-      "id": "pilot/handoffs/shell-rulings.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "1dcbed14faf6ec36",
-      "lines": 39
-    },
-    {
-      "id": "pilot/handoffs/shell-spec-sync.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "7c02c87c49fd8232",
-      "lines": 114
-    },
-    {
-      "id": "pilot/handoffs/stuck-tip-build.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "e5eb73580b62f655",
-      "lines": 46
-    },
-    {
-      "id": "pilot/handoffs/taxpayer-words-build.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "718a72a4babb598b",
-      "lines": 109
-    },
-    {
-      "id": "pilot/handoffs/wincheck-0.3.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "168c59bbe58f7734",
-      "lines": 69
-    },
-    {
-      "id": "pilot/handoffs/wincheck-fixes-build.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "c784e44fb977d749",
-      "lines": 117
-    },
-    {
-      "id": "pilot/handoffs/wincheck-shell.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "c62f922644deac9f",
-      "lines": 52
     },
     {
       "id": "pilot/harness/README.md",
@@ -5685,235 +4663,11 @@
       "lines": 27
     },
     {
-      "id": "pilot/review/wording-table.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "6968d704ca55cea8",
-      "lines": 123
-    },
-    {
-      "id": "pilot/reviews/combined-review.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "4f6f042c642ee1c7",
-      "lines": 291
-    },
-    {
-      "id": "pilot/reviews/combined-rulings.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "6744eac797f59a16",
-      "lines": 19
-    },
-    {
-      "id": "pilot/reviews/email-zip-tag-review.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "661429975c063e71",
-      "lines": 143
-    },
-    {
-      "id": "pilot/reviews/email-zip-tag-rulings.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "577159529716de6e",
-      "lines": 14
-    },
-    {
-      "id": "pilot/reviews/firm-cache-recheck.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "f15c76a9148e5764",
-      "lines": 138
-    },
-    {
-      "id": "pilot/reviews/firm-cache-review.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "ebb632d1e9344648",
-      "lines": 246
-    },
-    {
-      "id": "pilot/reviews/firm-cache-rulings-2.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "90a673edcce6d499",
-      "lines": 10
-    },
-    {
-      "id": "pilot/reviews/firm-cache-rulings.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "b0a34f036b5f1079",
-      "lines": 14
-    },
-    {
-      "id": "pilot/reviews/hide-under-construction-review.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "935fe573442813ab",
-      "lines": 164
-    },
-    {
-      "id": "pilot/reviews/hide-under-construction-rulings.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "09df9df5dc8c8bee",
-      "lines": 1
-    },
-    {
-      "id": "pilot/reviews/lanes-engine-review.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "89366a68ad4a5558",
-      "lines": 74
-    },
-    {
-      "id": "pilot/reviews/lanes-rulings.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "33207271c71403bd",
-      "lines": 24
-    },
-    {
-      "id": "pilot/reviews/lanes-screen-review.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "1a917754ba695210",
-      "lines": 85
-    },
-    {
-      "id": "pilot/reviews/lists-recheck-2.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "77f16bb5c495e9e5",
-      "lines": 50
-    },
-    {
-      "id": "pilot/reviews/lists-recheck.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "4570940f20309cd4",
-      "lines": 76
-    },
-    {
-      "id": "pilot/reviews/lists-review.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "3b172c0a3f1e2e20",
-      "lines": 179
-    },
-    {
-      "id": "pilot/reviews/lists-rulings-2.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "1379f148efa0569e",
-      "lines": 9
-    },
-    {
-      "id": "pilot/reviews/lists-rulings.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "3dc512ec8e8f347c",
-      "lines": 16
-    },
-    {
-      "id": "pilot/reviews/min-width-review.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "7b2f20c9484c1bf7",
-      "lines": 43
-    },
-    {
-      "id": "pilot/reviews/review-1.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "995f1148a9b83aaf",
-      "lines": 47
-    },
-    {
-      "id": "pilot/reviews/review-2.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "6f4e1530c056c1b1",
-      "lines": 38
-    },
-    {
-      "id": "pilot/reviews/review-e1.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "134a9051a7b02405",
-      "lines": 303
-    },
-    {
-      "id": "pilot/reviews/review-e2.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "76bde552eda00d61",
-      "lines": 204
-    },
-    {
-      "id": "pilot/reviews/review-e3.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "5fd51bf85e2fd261",
-      "lines": 38
-    },
-    {
-      "id": "pilot/reviews/security-review.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "23ab66cc6ec37ff7",
-      "lines": 334
-    },
-    {
-      "id": "pilot/reviews/stuck-tip-review.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "da77975a625c10ba",
-      "lines": 74
-    },
-    {
-      "id": "pilot/reviews/ux-review.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "bba61b69239c22d1",
-      "lines": 439
-    },
-    {
-      "id": "pilot/reviews/wincheck-fixes-review.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "c4f834edd407be83",
-      "lines": 126
-    },
-    {
-      "id": "pilot/reviews/wincheck-fixes-rulings.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "ccfe8cb67023478e",
-      "lines": 17
-    },
-    {
-      "id": "pilot/shell-test-pins.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "a5a64f9aec32017a",
-      "lines": 316
-    },
-    {
       "id": "pilot/wintest/PROMPT-0.3.md",
       "type": "doc",
       "layer": "docs",
       "sha256": "00da2a8e0e1ab507",
       "lines": 107
-    },
-    {
-      "id": "pilot/wintest/PROMPT-RERUN-3.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "2997d274d9686c8b",
-      "lines": 56
     },
     {
       "id": "pilot/wintest/PROMPT-shell-local.md",
@@ -5937,20 +4691,6 @@
       "lines": 88
     },
     {
-      "id": "pilot/wintest/RESULTS-0.3-followup.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "6f4ddc96c7d3c571",
-      "lines": 49
-    },
-    {
-      "id": "pilot/wintest/RESULTS-0.3.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "742abea02c28dd7b",
-      "lines": 140
-    },
-    {
       "id": "pilot/wintest/RESULTS-TEMPLATE.md",
       "type": "doc",
       "layer": "docs",
@@ -5958,25 +4698,11 @@
       "lines": 57
     },
     {
-      "id": "pilot/wintest/RESULTS-shell.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "c98390a2be159914",
-      "lines": 102
-    },
-    {
       "id": "pilot/wintest/SAMPLE-DOCUMENTS.md",
       "type": "doc",
       "layer": "docs",
       "sha256": "df568354d562ae8c",
       "lines": 26
-    },
-    {
-      "id": "pilot/wintest/results/RESULT-2026-09-28.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "b9cc665f2c2cac53",
-      "lines": 90
     },
     {
       "id": "requirements-build.txt",
@@ -6120,69 +4846,6 @@
       "lines": 89
     },
     {
-      "id": ".claude/skills/impeccable/scripts/command-metadata.json",
-      "type": "file",
-      "layer": "root",
-      "sha256": "e8720f3aa4113521",
-      "lines": 98
-    },
-    {
-      "id": ".claude/skills/impeccable/scripts/data/font-index-failures.json",
-      "type": "file",
-      "layer": "root",
-      "sha256": "835f19a0a3812f36",
-      "lines": 121
-    },
-    {
-      "id": ".claude/skills/impeccable/scripts/data/font-index.json",
-      "type": "file",
-      "layer": "root",
-      "sha256": "47edbdfaf27073c4",
-      "lines": 1
-    },
-    {
-      "id": ".claude/skills/impeccable/scripts/live-browser-dom.js",
-      "type": "module",
-      "layer": "root",
-      "sha256": "de1b7404f4cdfd7b",
-      "lines": 167
-    },
-    {
-      "id": ".claude/skills/impeccable/scripts/live-browser-ignores.js",
-      "type": "module",
-      "layer": "root",
-      "sha256": "c1cb6877ca99a0c1",
-      "lines": 242
-    },
-    {
-      "id": ".claude/skills/impeccable/scripts/live-browser-session.js",
-      "type": "module",
-      "layer": "root",
-      "sha256": "edddeb3fad88adec",
-      "lines": 144
-    },
-    {
-      "id": ".claude/skills/impeccable/scripts/live-browser.js",
-      "type": "module",
-      "layer": "root",
-      "sha256": "f68a3d68ac92606e",
-      "lines": 13510
-    },
-    {
-      "id": ".claude/skills/impeccable/scripts/modern-screenshot.umd.js",
-      "type": "module",
-      "layer": "root",
-      "sha256": "bb36665889124a0b",
-      "lines": 14
-    },
-    {
-      "id": ".mcp.json",
-      "type": "file",
-      "layer": "root",
-      "sha256": "e38a124368a21b1b",
-      "lines": 8
-    },
-    {
       "id": "Build App.bat",
       "type": "script",
       "layer": "root",
@@ -6288,18 +4951,15 @@
       "id": "pilot/brand/tax-document-console/source/export.py",
       "type": "module",
       "layer": "root",
-      "sha256": "0aa8743631cdfc9a",
-      "lines": 81,
+      "sha256": "f4fa9f78fe4cf304",
+      "lines": 69,
       "cli": "python -m pilot.brand.tax-document-console.source.export",
       "exports": [
-        "SCALES",
-        "TARGETS",
-        "TARGET_FORMS",
         "WIZARD_LARGE",
         "WIZARD_SMALL",
         "export"
       ],
-      "role": "The artwork's generator: rewrites app/, installer/, brand/ and windows/ of pilot/brand/tax-document-console/ from mark.py.",
+      "role": "The artwork's generator: rewrites app/, installer/ and brand/ of pilot/brand/tax-document-console/ from mark.py (no Windows packaged-app tiles, P232).",
       "notes": "The artwork folder is output; this folder is the source. A design tool, not an app dependency (fonttools, uharfbuzz, pillow, playwright are in no lock file). Never hand-edit a generated icon, bitmap or SVG: re-run it, then copy app/icon.ico to app/assets/icon.ico."
     },
     {
@@ -6388,11 +5048,10 @@
       "id": "pilot/brand/tax-document-console/source/raster.py",
       "type": "module",
       "layer": "root",
-      "sha256": "f47559eb220da6a4",
-      "lines": 42,
+      "sha256": "4890f9a0c65fb19b",
+      "lines": 34,
       "exports": [
-        "icon_png",
-        "tile_png"
+        "icon_png"
       ]
     },
     {
@@ -6468,13 +5127,6 @@
       "layer": "root",
       "sha256": "184d5e89c3925a1a",
       "lines": 448
-    },
-    {
-      "id": "pilot/mockup-shell.html",
-      "type": "ui",
-      "layer": "root",
-      "sha256": "e962c9d2f39c06a8",
-      "lines": 1078
     },
     {
       "id": "pilot/wintest/make_samples.py",
@@ -10304,8 +8956,8 @@
       "id": "tests/test_shell.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "b8539191413cf55b",
-      "lines": 5588,
+      "sha256": "f4b927f11bd18669",
+      "lines": 5587,
       "exports": [
         "COLUMN_FUNCTIONS",
         "CONTRAST",

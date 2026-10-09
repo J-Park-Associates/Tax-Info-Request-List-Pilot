@@ -2,9 +2,8 @@
 
 Jason picked this mark on 2026-10-01 (P191): concept 4e, "Gold tab", from the
 concept page (https://claude.ai/artifact/MF8rLu5xoeTXdhFdYZHPgJ). It replaces
-the monogram of P190; `concept-approved.png` is that earlier mark's concept,
-kept for the record. [`../../SPEC-icon-ledger.md`](../../SPEC-icon-ledger.md)
-is the drawing's SPEC.
+the monogram of P190 (that earlier mark's concept image was deleted by P232).
+[`../../SPEC-icon-ledger.md`](../../SPEC-icon-ledger.md) is the drawing's SPEC.
 
 The mark: a navy folder with a mid-blue rim, its tab in gold; a cream request
 list standing in it with a gold tick and two rules; an angled navy front flap,
@@ -52,9 +51,6 @@ Every size is drawn at that size; none is a resize of another.
 | `installer/wizard-small-1.bmp` ... `-7.bmp` | The setup wizard's corner image at the same seven scalings (55x55 to 138x140) |
 | `brand/lockup-light.svg`, `lockup-dark.svg` | Mark and wordmark side by side for light and navy grounds; the letters are outlines, so they look the same with or without the fonts installed |
 | `brand/lockup-light.png`, `lockup-dark.png` | The lockups at 2x, for documents and email |
-| `windows/Square44x44Logo.scale-100.png` ... `scale-400.png` | The packaged-app icon at Microsoft's seven scales, 44 to 176px |
-| `windows/Square44x44Logo.targetsize-N.png` | The icon at each target size Microsoft lists, 16 to 256px, with `_altform-unplated` (taskbar, dark theme) and `_altform-lightunplated` (light theme) copies; the three are one image, since the mark meets 3:1 on both themes |
-| `windows/Square150x150Logo.scale-100.png` ... `scale-400.png` | The Start tile at the seven scales, 150 to 600px; the icon is fitted at two thirds of the tile, its box centred on a whole pixel |
 
 ## Rebuilding
 
@@ -66,7 +62,7 @@ typefaces are downloaded from Google Fonts into `source/fonts/` on first run
 
 ```
 cd pilot/brand/tax-document-console/source
-python export.py ..        # rewrites app/, installer/, brand/ and windows/
+python export.py ..        # rewrites app/, installer/ and brand/
 python sheet.py sheet.png  # every size 1:1 on light and dark, plus 8x zooms
 ```
 
