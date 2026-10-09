@@ -20,6 +20,8 @@ import pytest
 
 from tests.conftest import TEST_HOUSEHOLD, make_engagement
 from tracker import after_install, ledger, scheduling, settings, store
+from tracker.content_check import RETIRED_CACHE_FILENAME
+from tracker.fsio import TEMP_SUFFIX
 from tracker.layout import PRIVATE_TREE, designation_file
 from tracker.locking import engagement_lock
 from tracker.records import rule_to_json
@@ -657,6 +659,69 @@ def test_a_missing_test_cache_is_nothing_to_do(app, checkout):
 
     assert done.cache_sentence == "" and done.exit_code == 0
     assert not any("pytest_cache" in line for line in done.lines)
+
+
+def _a_retired_cache_in(folder: Path) -> list[Path]:
+    """The verdict cache's old file and a temp file its atomic write left
+    beside it (``fsio.temp_path_for``: the process id and a token between the
+    name and ``TEMP_SUFFIX``), as an earlier version left them."""
+    old_file = folder / RETIRED_CACHE_FILENAME
+    old_file.write_text('{"version": 13, "files": {}, "verdicts": {}}', encoding="utf-8")
+    old_temp = folder / f"{RETIRED_CACHE_FILENAME}.4242.abcd{TEMP_SUFFIX}"
+    old_temp.write_text("{", encoding="utf-8")
+    return [old_file, old_temp]
+
+
+def test_setup_removes_the_retired_verdict_cache_from_every_record_folder_and_says_so_once(
+    app, short_root, windows, checkout,
+):
+    """P234, decision 107's tidy-up: it used to run in every pass; it is a
+    one-time step, so the after-install step does it - from the return's
+    folder and the household's alike, the cache and its temp file, and
+    nothing else that sits beside them."""
+    engagement = make_engagement(short_root, template_items("1040", core_only=True), household=TEST_HOUSEHOLD)
+    household = engagement.parent.parent
+    set_clients_root(short_root)
+    gone = _a_retired_cache_in(engagement) + _a_retired_cache_in(household)
+    (household / "_content_cache.json.notes.txt").write_text("a person's own file", encoding="utf-8")
+    other = engagement / "notes.json"
+    other.write_text("{}", encoding="utf-8")
+
+    done = after_install.run(reason=after_install.REASON_SETUP, checkout=checkout)
+
+    assert not any(path.exists() for path in gone)
+    assert (household / "_content_cache.json.notes.txt").is_file() and other.is_file()
+    assert after_install.RETIRED_CACHE_REMOVED.format(n=4) in done.lines and done.exit_code == 0
+    again = after_install.run(reason=after_install.REASON_SETUP, checkout=checkout)
+    assert not any("old verdict cache" in line for line in again.lines)           # said once
+
+
+def test_a_retired_cache_that_cannot_be_removed_is_left_and_fails_nothing(
+    app, short_root, windows, checkout, monkeypatch,
+):
+    engagement = make_engagement(short_root, template_items("1040", core_only=True), household=TEST_HOUSEHOLD)
+    set_clients_root(short_root)
+    [old_file, old_temp] = _a_retired_cache_in(engagement)
+    real_unlink = Path.unlink
+
+    def refuse_the_file(path, *args, **kwargs):
+        if path == old_file:
+            raise PermissionError("held open")
+        return real_unlink(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "unlink", refuse_the_file)
+
+    done = after_install.run(reason=after_install.REASON_SETUP, checkout=checkout)
+
+    assert old_file.exists() and not old_temp.exists()
+    assert done.exit_code == 0 and not done.failed
+    assert after_install.RETIRED_CACHE_REMOVED.format(n=1) in done.lines
+
+
+def test_with_no_clients_root_the_retired_cache_job_does_nothing(app, checkout):
+    done = after_install.run(reason=after_install.REASON_SETUP, checkout=checkout)
+
+    assert not any("old verdict cache" in line for line in done.lines) and done.exit_code == 0
 
 
 def _link_or_skip(link, target):

@@ -651,11 +651,12 @@ def test_a_sort_past_its_deadline_takes_no_file_and_leaves_each_where_it_was(eng
     assert sort(engagement, today=DAY1).handled == 2, "the next pass takes them"
 
 
-def test_a_retired_cache_file_is_removed_by_the_next_real_pass_and_never_read(engagement, monkeypatch):
+def test_a_retired_cache_file_is_never_read_and_is_not_the_passs_to_remove(engagement, monkeypatch):
     """Decision 107: nothing is read from the old file. A well-formed cache
     of the last layout, whose memo and verdict would have spared the scan
-    its one reading, is removed by the first real pass and the scan reads
-    the document all the same."""
+    its one reading, spares it nothing: the scan reads the document all the
+    same. Removing the file is the after-install step's (P234), so a pass
+    leaves it where it is."""
     import json
 
     from tests.test_content_check import counting_extractor
@@ -680,23 +681,14 @@ def test_a_retired_cache_file_is_removed_by_the_next_real_pass_and_never_read(en
     old_temp = engagement / f"{RETIRED_CACHE_FILENAME}.4242.abcd{TEMP_SUFFIX}"
     old_temp.write_text("{", encoding="utf-8")
 
-    sort(engagement, today=DAY1, dry_run=True)
-    assert old_file.exists() and old_temp.exists()          # a dry run leaves it where it is
-
-    from tracker.filer import RETIRED_CACHE_REMOVED
-
     report = sort(engagement, today=DAY1)
-    assert report.handled == 0                              # nothing to sort; the tidy-up still runs
-    assert not old_file.exists() and not old_temp.exists()
+    assert report.handled == 0                              # nothing to sort
+    assert old_file.exists() and old_temp.exists()          # and the pass does not tidy up after install
     # Nothing of it reached the store: no verdict of its, and the one memo
     # there is the sweep's own reading of a file no row names (decision
     # 109), not the old file's - the scan below reads the document all the
     # same, which is the claim.
     assert cache_rows(engagement)[1] == {}
-    said = [a for a in report.attention if a.error == RETIRED_CACHE_REMOVED]
-    assert sorted(a.name for a in said) == sorted([old_file.name, old_temp.name])  # said once each
-    assert not any(a.error == RETIRED_CACHE_REMOVED
-                   for a in sort(engagement, today=DAY2).attention)          # and not again
 
     report = scan_engagement(engagement, today=DAY1)
     assert calls["n"] == 1                                  # read once: the file was never a hit

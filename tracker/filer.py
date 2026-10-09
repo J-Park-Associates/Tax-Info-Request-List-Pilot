@@ -193,7 +193,6 @@ from pathlib import Path, PurePosixPath
 
 from tracker import containers, door, errors, ledger, ocr, reasons, store
 from tracker.content_check import (
-    RETIRED_CACHE_FILENAME,
     ContentCache,
     Judgment,
     NameQuestion,
@@ -2403,15 +2402,6 @@ def replaced_in_pbc(
     return replaced
 
 
-#: The verdict cache's old file, found in the engagement folder and removed
-#: by a real pass (decision 107: the cache lives in the store and nothing
-#: reads the file). Said once, on the pass that removed it - on the console,
-#: in the app's warnings, and counted on the practice page - one line per
-#: file removed; the next pass finds nothing and says nothing.
-RETIRED_CACHE_REMOVED = (
-    "removed from the engagement folder: the verdict cache lives in the store since "
-    "decision 107 and nothing reads the file"
-)
 #: The sentence a recorded original that has left the year's folder gets. The
 #: client can see that folder and Explorer offers Delete, Rename and drag:
 #: every other disagreement between the index and the disk is said every
@@ -3832,9 +3822,6 @@ def file_household_drops(
                 for run in runs:
                     run.cache.save()
     if not dry_run:
-        for run in runs:
-            for name in _remove_the_retired_cache(run.engagement_dir):
-                run.report.attention.append(FileError(name, RETIRED_CACHE_REMOVED, False))
         # The tidy-up is owed to every pass, not only one that sorted
         # something: an empty folder the client dragged in outlives the
         # files that were in it, and a pass that found nothing to do used
@@ -4099,39 +4086,6 @@ def _follow_and_say(
                 prepared=earlier.prepared_location or "(none)",
             ), True))
     return strays
-
-
-def _remove_the_retired_cache(engagement_dir: Path) -> list[str]:
-    """Take the verdict cache's old file out of the engagement folder.
-    Returns the names removed, for the report to say once.
-
-    Until decision 107 the cache was a JSON file here that every pass
-    rewrote; it lives in the store now and **nothing reads the file** -
-    the owner's rule is that nothing the machine can derive stays in the
-    synced folder, and reading it once would keep its loader alive for a
-    release to save one cold pass. So the first real pass after the
-    upgrade removes it, and any temp file the atomic write it used to go
-    through left beside it (``fsio.temp_path_for`` put the process id
-    and a token between the name and ``TEMP_SUFFIX``), and the report says
-    so on ``FileReport.attention`` for that one pass, as ``MOVED_IN_PBC``
-    is said - on the console, in the app's warnings, and counted on the
-    practice page. A dry run leaves it where it is, like everything else.
-    """
-    leftovers = [engagement_dir / RETIRED_CACHE_FILENAME,
-                 *engagement_dir.glob(f"{RETIRED_CACHE_FILENAME}*{TEMP_SUFFIX}")]
-    removed: list[str] = []
-    for path in leftovers:
-        try:
-            path.unlink()
-        except FileNotFoundError:
-            continue
-        except OSError as exc:
-            errors.keep("filer", exc, name=path.name)
-            log.warning("Could not remove the retired verdict cache file %s (%s)",
-                        path.name, errors.error_class(exc))
-            continue
-        removed.append(path.name)
-    return removed
 
 
 def _sort_all(

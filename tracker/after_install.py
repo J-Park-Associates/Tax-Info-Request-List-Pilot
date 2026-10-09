@@ -162,7 +162,8 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 from tracker import checkpoint, door, errors, ledger, registry, runner, scheduling, settings, store
-from tracker.fsio import write_bytes_atomically, write_json_atomically
+from tracker.content_check import RETIRED_CACHE_FILENAME
+from tracker.fsio import TEMP_SUFFIX, write_bytes_atomically, write_json_atomically
 from tracker.locking import EngagementLockedError, acquire_lock, release_lock, this_host
 
 #: The note of the last run, beside the store - in the data home (decision
@@ -246,6 +247,11 @@ CACHE_CLEARED = ("Removed the test cache left in the app's folder by earlier ver
                  "nothing the app uses was in it.")
 CACHE_NOT_CLEARED = ("The test cache left in the app's folder by earlier versions (.pytest_cache) could "
                      "not be removed; the app tries again at its next start.")
+#: The retired-cache job (decision 107's tidy-up, moved here by P234): what
+#: it says when it removed something; it removes nothing a run can fail on.
+RETIRED_CACHE_KEY = "retired_cache"
+RETIRED_CACHE_REMOVED = ("Removed {n} file(s) of the old verdict cache from the engagement folders; the "
+                         "cache lives in the store since decision 107 and nothing reads the file.")
 #: The setup door's last job (pilot P218, S3): the Overview made ready, so
 #: the first one after an install opens at once - console only (Setup
 #: prints ``lines``; the app's notice shows findings and failures, never
@@ -1078,6 +1084,40 @@ def _replace_earlier_task(schedule: _Step) -> _Step:
     return _Step(EARLIER_TASK_KEY, EARLIER_TASK_REMOVED.format(old=old, new=new))
 
 
+def _remove_the_retired_caches(root: Path | None) -> _Step | None:
+    """The retired-cache job (decision 107's tidy-up, moved here from the
+    pass by P234): take the verdict cache's old file, and any temp file the
+    atomic write it went through left beside it, out of every folder under
+    the clients root that has a record, walking the root once.
+
+    Until decision 107 the cache was a JSON file in the engagement folder
+    that every pass rewrote; it lives in the store now and **nothing reads
+    the file** - the owner's rule is that nothing the machine can derive
+    stays in the synced folder, and reading it once would keep its loader
+    alive for a release to save one cold pass. It is a one-time step, so it
+    runs here (decision 209) and a pass no longer looks for a file no
+    version writes. ``None`` when there is no root or nothing was removed,
+    so it says nothing; its sentence, with the count, when it removed some.
+    A file that cannot be removed is inert: it is kept on the local debug
+    log and left, and the next run tries again.
+    """
+    if root is None:
+        return None
+    removed = 0
+    for folder in registry.record_dirs(root):
+        for path in (folder / RETIRED_CACHE_FILENAME,
+                     *folder.glob(f"{RETIRED_CACHE_FILENAME}*{TEMP_SUFFIX}")):
+            try:
+                path.unlink()
+            except FileNotFoundError:
+                continue
+            except OSError as exc:
+                errors.keep("after_install: removing the retired verdict cache", exc, name=path.name)
+                continue
+            removed += 1
+    return _Step(RETIRED_CACHE_KEY, RETIRED_CACHE_REMOVED.format(n=removed)) if removed else None
+
+
 class _Busy(Exception):
     """This run could not have the step's lock; the sentence saying why."""
 
@@ -1177,6 +1217,7 @@ def _run(*, reason: str, start: str | None = None, every: int | None = None,
     earlier_task = _replace_earlier_task(schedule)
     carried = [carried_settings.sentence, earlier_task.sentence]
     cache = _clear_test_cache(checkout)
+    retired = _remove_the_retired_caches(root)
     # The last job before the record (P218, S3): never a failure.
     overview = "" if refused else _ready_the_overview(root, reason, check)
     failed = list(dict.fromkeys(step.sentence for step in (carried_settings, moving, schedule,
@@ -1208,6 +1249,8 @@ def _run(*, reason: str, start: str | None = None, every: int | None = None,
         lines.append(FINDINGS_WAIT)
     if cache is not None and not cache.failed:
         lines.append(cache.sentence)
+    if retired is not None:
+        lines.append(retired.sentence)
     if overview:
         lines.append(overview)
     lines += [sentence for sentence in failed if sentence not in lines]

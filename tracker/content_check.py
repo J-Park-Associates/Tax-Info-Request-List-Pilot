@@ -76,7 +76,7 @@ each document once - slower, never wrong. A save is one transaction of
 the store's own, under the engagement lock every writer already holds,
 and never ``store.record()``: there is no event. A cache built with no
 engagement - the command line's, a test's - lives in memory and never
-touches the store. The old file is never read; the next real pass
+touches the store. The old file is never read; the after-install step
 removes it (:data:`RETIRED_CACHE_FILENAME`).
 
 :class:`Evidence` itself, the rule and place vocabularies and the cell format
@@ -144,7 +144,7 @@ logging.getLogger("pdfminer").setLevel(logging.ERROR)
 
 #: The file the verdict cache was, in the engagement folder, until decision
 #: 107 moved it into the store. Never read again: the one use left is the
-#: filer's tidy-up, which removes it from a folder a pass finds it in.
+#: after-install step (P234), which removes it from every folder that has one.
 RETIRED_CACHE_FILENAME = "_content_cache.json"
 #: The cache's layout, carried on every verdict row in the store; a row at
 #: any other version is ignored on load and deleted on save (the cache is
