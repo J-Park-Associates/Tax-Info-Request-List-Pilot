@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 446,
     "edges": 1236,
-    "reused": 396
+    "reused": 398
   },
   "node_types": [
     "artifact",
@@ -9774,8 +9774,8 @@
       "id": "tests/test_runner.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "eb9e72bef646d4ef",
-      "lines": 5647,
+      "sha256": "a9ff71105204dfab",
+      "lines": 5644,
       "exports": [
         "A_CLIENT_PATH",
         "DRAFT_DAY",

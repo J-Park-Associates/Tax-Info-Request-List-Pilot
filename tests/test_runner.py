@@ -2026,10 +2026,9 @@ def _a_pass_over(engagement, **kwargs):
 def test_a_return_short_of_room_files_everything_and_is_not_warned(tmp_path, path_setting):
     """Nine characters short: the W-2 files all the same, under a name cut
     to fit - and the pass does **not** warn (the lead's L-1 on decision
-    131): nothing in the run's warnings, the run log's lines or the
-    practice page's Warnings column. With a reader's 218 for spreadsheets
-    every 1040 at the firm's root would warn every pass, and a warning that
-    is always on is a warning nobody reads."""
+    131): nothing in the run's warnings. With a reader's 218 for
+    spreadsheets every 1040 at the firm's root would warn every pass, and a
+    warning that is always on is a warning nobody reads."""
     from tests.test_filer import OVER, TIGHT_PERIOD, drop, tight_return
 
     engagement = tight_return(tmp_path, OVER)
@@ -2041,8 +2040,6 @@ def test_a_return_short_of_room_files_everything_and_is_not_warned(tmp_path, pat
     assert run.filed == 1
     [entry] = read_index(engagement)
     assert entry.prepared_location.endswith(f"/A01 - W-2 Wage S - {TIGHT_PERIOD}.pdf")
-    report = RunReport(today=FRIDAY, runs=[run])
-    write_status_page(tmp_path, report)
 
 
 def test_a_return_with_requests_that_cannot_receive_says_how_many(tmp_path, path_setting):
