@@ -16,7 +16,7 @@
   ],
   "counts": {
     "nodes": 254,
-    "edges": 1232,
+    "edges": 1229,
     "reused": 206
   },
   "node_types": [
@@ -936,8 +936,8 @@
       "id": "tracker/content_check.py",
       "type": "module",
       "layer": "core",
-      "sha256": "92dc6cbb235b895f",
-      "lines": 2504,
+      "sha256": "6d0bc9c77470aedb",
+      "lines": 2499,
       "cli": "python -m tracker.content_check",
       "exports": [
         "BROKER_FORM",
@@ -1057,7 +1057,7 @@
         "NOT_UNDER_ROOT": "'{path} is not under the clients root {root}'"
       },
       "role": "The disk half of the layout (decision 188): checked_root (the clients root, given or saved, resolved and held to settings.clients_root_refusal on every entry), return_dir/household_dir (a typed or sent path placed by layout.return_at/household_at and rebuilt through the layout's constructors), through_a_link (the one link check, moved from the filer) and client_write(root, household, target, *, making) - the one door every write into the client tree passes. Its own CLI prints a path's place and whether a write for the household may go there; it writes nothing.",
-      "notes": "Why it is not in layout: layout promises to open no file (its tests open none), which is what lets every layer ask it, and a link can only be seen with lstat, a root only checked against the disk. So the three things that must touch the disk live here, each worded 'resolve or lstat, then ask layout': door holds no rule of its own and every sentence it raises is layout's (OUTSIDE_CLIENT_PLACE, NOT_A_RETURN, NOT_A_HOUSEHOLD) or the settings' ('Clients folder problem: ' + the refusal). Layer 0, importing layout, fsio and settings and nothing else. client_write approves only INBOX/IN_INBOX/ORIGINALS/IN_ORIGINALS of exactly that household's folder, and CLIENT_HOUSEHOLD only with making=True; callers are the scaffold (each mkdir, one level at a time), write_readme, filer._do_op's destination and every folder made for it, and sweep_stranded_temps in the inbox. A command line on a machine with no saved root reads the root off the typed path's position (four levels up for a return, two for a household) and holds it to the same rule; relative paths are the caller's to make absolute (from the working folder at a shell, from the root in the API). Which household is this, and may this path exist: layout; the guard is tests/test_layers.py::test_no_under_the_root_decision_survives_outside_the_layout. Review of 188 (M3): client_folder_missing(root, household, *, had_one) decides, once, that a household's client folder is gone while its record shows it had one; households.client_folder_missing reads the record's half and every writer asks it. typed_return(parser, typed) and typed_household_or_return(parser, typed) are the block a command line parses its typed folder with (return_dir / household_dir, the door's sentence through parser.error): the reminder, review, scaffold, validators and rollover command lines call them; the other modules' command lines still carry their own copy."
+      "notes": "Why it is not in layout: layout promises to open no file (its tests open none), which is what lets every layer ask it, and a link can only be seen with lstat, a root only checked against the disk. So the three things that must touch the disk live here, each worded 'resolve or lstat, then ask layout': door holds no rule of its own and every sentence it raises is layout's (OUTSIDE_CLIENT_PLACE, NOT_A_RETURN, NOT_A_HOUSEHOLD) or the settings' ('Clients folder problem: ' + the refusal). Layer 0, importing layout, fsio and settings and nothing else. client_write approves only INBOX/IN_INBOX/ORIGINALS/IN_ORIGINALS of exactly that household's folder, and CLIENT_HOUSEHOLD only with making=True; callers are the scaffold (each mkdir, one level at a time), write_readme, filer._do_op's destination and every folder made for it, and sweep_stranded_temps in the inbox. A command line on a machine with no saved root reads the root off the typed path's position (four levels up for a return, two for a household) and holds it to the same rule; relative paths are the caller's to make absolute (from the working folder at a shell, from the root in the API). Which household is this, and may this path exist: layout; the guard is tests/test_layers.py::test_no_under_the_root_decision_survives_outside_the_layout. Review of 188 (M3): client_folder_missing(root, household, *, had_one) decides, once, that a household's client folder is gone while its record shows it had one; households.client_folder_missing reads the record's half and every writer asks it. typed_return(parser, typed) and typed_household_or_return(parser, typed) are the block a command line parses its typed folder with (return_dir / household_dir, the door's sentence through parser.error): they are the one spelling for every module command line that takes a return (the household or a return, for the rollover): content_check, filer, ledger, reminder, review, rollover, router, scaffold, scanner, validators and view call them. A command line that checks something else keeps its own call: a clients root (door.checked_root), or a root with extra flags (store's --root with --engagement, runner's --root with --household)."
     },
     {
       "id": "tracker/errors.py",
@@ -1091,8 +1091,8 @@
       "id": "tracker/filer.py",
       "type": "module",
       "layer": "core",
-      "sha256": "83a06f8e543d0cc9",
-      "lines": 7831,
+      "sha256": "f19c1e3ed2e1fa98",
+      "lines": 7824,
       "cli": "python -m tracker.filer",
       "exports": [
         "ALREADY_SPELLED",
@@ -1647,8 +1647,8 @@
       "id": "tracker/ledger.py",
       "type": "module",
       "layer": "core",
-      "sha256": "884c7f24360a7292",
-      "lines": 1334,
+      "sha256": "59331883291f131f",
+      "lines": 1329,
       "cli": "python -m tracker.ledger",
       "exports": [
         "ACCEPTED_KEY",
@@ -3030,8 +3030,8 @@
       "id": "tracker/router.py",
       "type": "module",
       "layer": "core",
-      "sha256": "f21c848af54a153d",
-      "lines": 1110,
+      "sha256": "cee38b77bb0348d7",
+      "lines": 1106,
       "cli": "python -m tracker.router",
       "exports": [
         "ALSO_ANSWERS",
@@ -3449,8 +3449,8 @@
       "id": "tracker/scanner.py",
       "type": "module",
       "layer": "core",
-      "sha256": "397bac97c632752f",
-      "lines": 971,
+      "sha256": "ea222a60edaff15a",
+      "lines": 967,
       "cli": "python -m tracker.scanner",
       "exports": [
         "ACCEPTED_NOTE",
@@ -4055,8 +4055,8 @@
       "id": "tracker/view.py",
       "type": "module",
       "layer": "core",
-      "sha256": "403b4875dcba4499",
-      "lines": 921,
+      "sha256": "96d708a963e0754f",
+      "lines": 917,
       "cli": "python -m tracker.view",
       "exports": [
         "BADGE_CLASS",
@@ -4339,7 +4339,7 @@
       "id": "docs/repo-map.curated.json",
       "type": "file",
       "layer": "docs",
-      "sha256": "6d6e5a2fccbfec5e",
+      "sha256": "328e0048803cdc43",
       "lines": 1167,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
@@ -15740,12 +15740,6 @@
     },
     {
       "from": "tracker/content_check.py",
-      "to": "tracker/layout.py",
-      "type": "imports_at_call",
-      "source": "derived"
-    },
-    {
-      "from": "tracker/content_check.py",
       "to": "tracker/names.py",
       "type": "imports_at_call",
       "source": "derived"
@@ -16119,12 +16113,6 @@
     {
       "from": "tracker/ledger.py",
       "to": "tracker/errors.py",
-      "type": "imports_at_call",
-      "source": "derived"
-    },
-    {
-      "from": "tracker/ledger.py",
-      "to": "tracker/layout.py",
       "type": "imports_at_call",
       "source": "derived"
     },
@@ -16791,12 +16779,6 @@
     {
       "from": "tracker/router.py",
       "to": "tracker/door.py",
-      "type": "imports_at_call",
-      "source": "derived"
-    },
-    {
-      "from": "tracker/router.py",
-      "to": "tracker/layout.py",
       "type": "imports_at_call",
       "source": "derived"
     },

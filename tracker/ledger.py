@@ -1299,15 +1299,10 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Show one engagement's own record")
     parser.add_argument("engagement_dir", help="the engagement folder")
     ns = parser.parse_args()
-    # A typed folder is parsed, never trusted: it must be a return's
-    # place under the checked clients root (decision 188).
+    # A typed folder is parsed, never trusted (decision 188).
     from tracker import door
-    from tracker.layout import LayoutError
 
-    try:
-        ns.engagement_dir = door.return_dir(Path(ns.engagement_dir).absolute())
-    except (door.DoorError, LayoutError) as exc:     # the door's own sentences
-        parser.error(str(exc))
+    ns.engagement_dir = door.typed_return(parser, ns.engagement_dir)
 
     # There is nothing left here to compare with a workbook. Until decision
     # 103 the manifest carried each request's status as well, and
