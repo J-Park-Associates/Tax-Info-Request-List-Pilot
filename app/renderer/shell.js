@@ -9,8 +9,8 @@
 // the page and which page. It types no word of its own: every name, tooltip
 // and line is the API's vocabulary (vocab.screen), and a word the vocabulary
 // lacks is a loud failure, never a guess. It builds the page from DOM nodes
-// only, with its own builder `h`, which sets only the attributes it names
-// (the pattern of app.js's `el`, decision 137).
+// only, with app.js's builder `el` (named `h` here), which sets only the
+// attributes it names (decision 137).
 //
 // What app.js calls (each one line in app.js, so the seam is visible):
 //   shellVocabulary()   the vocabulary has arrived or changed
@@ -44,7 +44,6 @@
 
 const LEVELS = ["overview", "needs-review", "reminders", "clients", "household", "year", "return", "setup"];
 const FIRM_LEVELS = ["overview", "needs-review", "reminders", "clients"];
-const SIDE_KEYS = ["overview", "needs-review", "reminders", "clients"];
 const SCREEN_KEYS = { "needs-review": "needs_review" };
 const SOON_KEY = "tracker.underConstruction";   // this PC's own storage, never the record (P197)
 
@@ -109,30 +108,11 @@ function shellWords(key) {
   return String(at);
 }
 
-// ── a builder that sets only what it names ────────────────────────────
-const H_ATTRIBUTES = new Set([
-  "className", "id", "type", "disabled", "hidden", "tabindex", "role", "value", "dataset",
-  "aria-label", "aria-current", "aria-selected", "aria-expanded", "aria-busy", "aria-hidden",
-  "aria-labelledby", "aria-valuemin", "aria-valuemax", "aria-valuenow", "aria-live",
-  "aria-controls", "aria-description", "aria-keyshortcuts", "aria-disabled", "aria-pressed",
-  "aria-sort", "aria-haspopup",
-]);
-
+// ── the builder that sets only what it names ──────────────────────────
+// This file and pages.js build with app.js's `el` (its attribute list is the
+// union of what every file draws); `h` is its short name here.
 function h(tag, attrs = {}, ...children) {
-  const node = document.createElement(tag);
-  for (const [key, value] of Object.entries(attrs)) {
-    if (!H_ATTRIBUTES.has(key)) throw new Error(`h.${key}`);
-    if (value === undefined || value === null || value === false) continue;
-    if (key === "className") node.className = value;
-    else if (key === "dataset") Object.assign(node.dataset, value);
-    else if (typeof value === "boolean") node[key] = value;
-    else node.setAttribute(key, value);
-  }
-  for (const child of children.flat()) {
-    if (child === null || child === undefined || child === false) continue;
-    node.append(child instanceof Node ? child : String(child));
-  }
-  return node;
+  return el(tag, attrs, ...children);
 }
 
 // A drawn icon (SPEC 3.8) from the sprite in index.html.
@@ -314,15 +294,11 @@ function shellShowLast() {
   if (shellFollowsCounts()) shellDraw();
 }
 
-// The early reply, said as call() says any reply: its warnings as notices,
-// its error thrown.
+// The early reply, said as call() says any reply (takeReply).
 async function shellAdoptEarly(early) {
   const got = await early;
   if (got.err) throw got.err;
-  const reply = got.reply;
-  if (reply && Array.isArray(reply.warnings) && reply.warnings.length) warningNotices(reply.warnings);
-  if (reply.error) throw new TrackerError(reply, ["firm"]);
-  return reply;
+  return takeReply(got.reply, ["firm"]);
 }
 
 async function shellAskFirm() {
@@ -624,7 +600,7 @@ function drawSide() {
     const here = key ? key === shellSection() && !type : Boolean(type) && node.dataset.type === type;
     if (here) node.setAttribute("aria-current", "page");
     else node.removeAttribute("aria-current");
-    if (key) node.setAttribute("aria-keyshortcuts", `Control+${SIDE_KEYS.indexOf(key) + 1}`);
+    if (key) node.setAttribute("aria-keyshortcuts", `Control+${FIRM_LEVELS.indexOf(key) + 1}`);
   }
   drawSoon();
 }
@@ -635,12 +611,7 @@ function drawSide() {
 // the choice while the app is open.
 function shellReadSoon() {
   if (shellSoonHidden !== null) return shellSoonHidden;
-  shellSoonHidden = false;
-  try {
-    shellSoonHidden = window.localStorage.getItem(SOON_KEY) === "hidden";
-  } catch (err) {
-    // Unreadable: shown, which shellSoonHidden now says.
-  }
+  shellSoonHidden = storeRead(SOON_KEY) === "hidden";   // unreadable: shown
   return shellSoonHidden;
 }
 
@@ -671,12 +642,7 @@ function drawSoon() {
 function shellToggleSoon() {
   const hide = !shellReadSoon();
   shellSoonHidden = hide;
-  try {
-    if (hide) window.localStorage.setItem(SOON_KEY, "hidden");
-    else window.localStorage.removeItem(SOON_KEY);
-  } catch (err) {
-    // Not kept past a restart; the choice holds while the app is open.
-  }
+  storeWrite(SOON_KEY, hide ? "hidden" : null);
   const held = document.activeElement;
   const lost = Boolean(hide && held && held.closest && held.closest(".side-section[data-soon]"));
   drawSoon();

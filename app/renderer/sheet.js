@@ -45,7 +45,6 @@ function sheetSet(id, on) {
 }
 
 function sheetFrame(now, title) {
-  const words = screenWords();
   sheetNow = now;
   $("sheet-title").textContent = title;
   setTipIfCut($("sheet-title"), title);
@@ -60,7 +59,7 @@ function sheetFrame(now, title) {
   sheetMore(false);
   if (now.kind === "check") {
     $("check-actions").replaceChildren();
-    $("sheet-check").replaceChildren(h("span", { className: "visually-hidden" }, words.loading), ...shellSkeleton(3));
+    $("sheet-check").replaceChildren(...shellWaiting());
   }
   $("sheet-scrim").hidden = false;
   openDialog("sheet");
@@ -179,9 +178,11 @@ function sheetDrawCheck(handle) {
   return true;
 }
 
-// The files that follow this one in the order the page was drawn.
+// What follows this one in the order the page was drawn: a file is found by
+// its return and its handle, a reminder by its return alone (the order of
+// drafts holds one entry per return).
 function sheetAfter(now) {
-  const at = now.order.findIndex((one) => one.ret === now.ret && one.handle === now.handle);
+  const at = now.order.findIndex((one) => one.ret === now.ret && (now.kind === "reminder" || one.handle === now.handle));
   return at === -1 ? [] : now.order.slice(at + 1);
 }
 
@@ -198,7 +199,7 @@ async function sheetShow(now, step) {
   const onScreen = lastState && lastState.paths && lastState.paths.engagement === step.ret;
   if (!onScreen) {
     // An outline, as the frame draws one, never a blank sheet (P213).
-    $("sheet-check").replaceChildren(h("span", { className: "visually-hidden" }, screenWords().loading), ...shellSkeleton(3));
+    $("sheet-check").replaceChildren(...shellWaiting());
     if (!(await showReturn(step.ret))) {
       if (gen === sheetGeneration) closeSheet();
       return true;
@@ -308,8 +309,7 @@ async function openReminder(ret) {
 }
 
 function sheetDraftsAfter(now) {
-  const at = now.order.findIndex((one) => one.ret === now.ret);
-  return at === -1 ? [] : now.order.slice(at + 1);
+  return sheetAfter({ ...now, kind: "reminder" });
 }
 
 async function sheetNextDraft() {

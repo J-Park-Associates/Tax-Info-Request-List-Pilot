@@ -656,11 +656,12 @@ def test_the_new_renderer_files_type_no_words_of_their_own():
 
 
 def test_every_attribute_the_shell_builds_a_node_with_is_on_its_list():
-    """h() throws on an attribute it does not name (the pattern of app.js's
-    el(), decision 137). A key used at a call site but missing from the list
+    """h() is app.js's el(), which throws on an attribute it does not name
+    (decision 137). A key used at a call site but missing from the list
     would throw when that node is first drawn - the harness found one."""
     text = stripped_js("shell.js")
-    listed = set(re.findall(r'"([\w-]+)"', text[text.index("const H_ATTRIBUTES = new Set(["):text.index("]);")]))
+    builder = stripped_js("app.js")
+    listed = set(re.findall(r'"([\w-]+)"', builder[builder.index("const EL_ATTRIBUTES = new Set(["):builder.index("]);")]))
     used = set(re.findall(r'"(aria-[\w-]+)":', text)) | set(re.findall(r"\b(role|tabindex|type|disabled|hidden|value|dataset|className)\s*:", text))
     used |= set(re.findall(r'\{ id: "|, id: "|\bid: ', text)) and {"id"}
     assert used <= listed, sorted(used - listed)
@@ -734,6 +735,12 @@ def js_function(name: str, source: str = "shell.js") -> str:
     if text[max(0, start - 6):start] == "async ":
         start -= 6
     return text[start:text.index("\n}\n", start) + 3]
+
+
+def store_functions() -> str:
+    """app.js's storeRead and storeWrite, which the lists and the shell keep
+    their choices on this PC through."""
+    return js_function("storeRead", "app.js") + "\n" + js_function("storeWrite", "app.js")
 
 
 def run_shell(functions: list[str], setup: str, probe: str, tmp_path: Path, source: str = "shell.js"):
@@ -1088,7 +1095,7 @@ COLUMN_FUNCTIONS = ("pagesListOf", "pagesUrgent", "pagesIsBlank", "pagesCompareK
                     "pagesStoredOrder", "pagesSaveOrder",
                     # The raised lists (pilot SPEC-lists 10-17).
                     "pagesDetailCell", "pagesReasonTip", "pagesStatusCell", "pagesLinkMark", "pagesLinkMarkIn", "pagesShowPanel", "pagesPanelOpen",
-                    "pagesClosePanel", "pagesOpenRowLinks", "pagesPaged", "pagesFoot", "pagesTurn", "pagesPick", "pagesTabs",
+                    "pagesClosePanel", "pagesOpenRowLinks", "pagesPaged", "pagesFoot", "pagesTurn", "pagesPick", "pagesRedraw", "pagesPickButton", "pagesTabs",
                     "pagesFileCount", "pagesReasonCards", "pagesReviewGroup", "pagesSwitch", "pagesTypeFilter", "pagesReopenPanel",
                     # One field per column (pilot SPEC-firm-columns; P194, P195).
                     "pagesTaxpayer", "pagesFormKey", "pagesFormCell", "pagesReturnHeading", "pagesReturnCells", "pagesReturnKeys")
@@ -1130,9 +1137,8 @@ def run_pages_dom(probe: str, tmp_path: Path, setup: str = "", functions=None):
         *COLUMN_FUNCTIONS,
     ]
     shell = read("shell.js")
-    consts = "\n".join(shell[shell.index(head):shell.index(");\n", shell.index(head)) + 3] if head.endswith("[") else shell[shell.index(head):shell.index("\n", shell.index(head))]
-                       for head in ("const H_ATTRIBUTES = new Set([", 'const SVG_NS = '))
-    lifted = consts + "\n" + pages_consts() + "\n" + "\n".join(js_function(name, "pages.js" if f"function {name}(" in read("pages.js") else "shell.js") for name in wanted)
+    consts = lift_line("const EL_ATTRIBUTES = new Set([", "app.js") + js_function("el", "app.js") + "\n" + shell[shell.index("const SVG_NS = "):shell.index("\n", shell.index("const SVG_NS = "))]
+    lifted = consts + "\n" + pages_consts() + "\n" + store_functions() + "\n" + "\n".join(js_function(name, "pages.js" if f"function {name}(" in read("pages.js") else "shell.js") for name in wanted)
     script = tmp_path / "pages_probe.js"
     script.write_text(f"{FAKE_DOM}\n{PAGE_WORDS}\n{RETURN_STATE}\n{setup}\n{lifted}\nprocess.stdout.write(JSON.stringify((() => {{ {probe} }})()));\n",
                       encoding="utf-8", newline="\n")
@@ -2186,7 +2192,7 @@ def test_a_second_unfile_or_mark_missing_before_the_reply_is_not_sent_and_the_me
     would carry the seq the first used and be refused, a failure notice for
     a write that worked. It is not sent, its menu id is grey meanwhile, and
     it is free again once the reply (or the refusal) is in."""
-    ran = run_shell(["writeKey", "writeBusy", "writeStart", "writeDone", "unfileDocument", "withdrawAnswer"], """
+    ran = run_shell(["writeKey", "writeBusy", "writeStart", "writeDone", "writeRow", "sayNotes", "unfileDocument", "withdrawAnswer"], """
       const viewGeneration = 1; const writesInFlight = new Set(); const sent = []; const refusals = []; const releases = []; let reject = false;
       const withEng = (c) => c;
       const call = (command, payload) => { sent.push([command, payload.original]); return new Promise((resolve, fail) => { releases.push(() => (reject ? fail(new Error("no")) : resolve({ state: {}, unfiled: { original_name: "a", decision: "d" }, marked_missing: { original_name: "a", reason: "r" } }))); }); };
@@ -4071,7 +4077,7 @@ def test_hiding_takes_the_five_under_construction_items_and_the_workspace_headin
     Workspace heading and list with the .hidden class (display: none, so out
     of the Tab order and the accessibility tree); the pages, the Taxpayer
     Types and their heading stay; the menu's tick is off."""
-    ran = run_shell(SOON_FUNCTIONS, SOON_PANEL, """
+    ran = run_shell(SOON_FUNCTIONS, SOON_PANEL + store_functions(), """
       store.data[SOON_KEY] = "hidden";
       drawSoon();
       return { hidden: hiddenNow(), checked: shellChecked() };
@@ -4088,7 +4094,7 @@ def test_a_new_install_shows_them_and_the_menu_flips_keeps_and_says_the_tick(tmp
     focus that sat on a hidden item to the side panel's current page (F6's
     place) and tells the menu; choosing it again shows them and forgets the
     key, and focus elsewhere is left where it is."""
-    ran = run_shell(SOON_FUNCTIONS, SOON_PANEL, """
+    ran = run_shell(SOON_FUNCTIONS, SOON_PANEL + store_functions(), """
       drawSoon();
       const first = { hidden: hiddenNow(), checked: shellChecked() };
       document.activeElement = soonButton("portal_settings");
@@ -4109,7 +4115,7 @@ def test_storage_that_cannot_be_read_shows_them_and_the_choice_holds_while_the_a
     """P197 ruling 5: the column widths' fallback - unreadable storage shows
     the items, and a choice it refuses to keep still holds until the app
     closes."""
-    ran = run_shell(SOON_FUNCTIONS, SOON_PANEL, """
+    ran = run_shell(SOON_FUNCTIONS, SOON_PANEL + store_functions(), """
       store.broken = true;
       drawSoon();
       const first = hiddenNow();
@@ -4136,7 +4142,7 @@ def test_the_setting_is_this_pcs_and_the_side_panel_draws_it_on_every_draw():
 def test_a_damaged_stored_value_shows_them(tmp_path):
     """P197 ruling 5 (review NIT 2a): only the exact word "hidden" hides; any
     other stored value reads as shown, the new install's default."""
-    ran = run_shell(SOON_FUNCTIONS, SOON_PANEL, """
+    ran = run_shell(SOON_FUNCTIONS, SOON_PANEL + store_functions(), """
       const seen = [];
       for (const value of ["HIDDEN", "1", "true", ""]) {
         store.data[SOON_KEY] = value; shellSoonHidden = null; drawSoon();
@@ -4150,7 +4156,7 @@ def test_a_damaged_stored_value_shows_them(tmp_path):
 def test_hiding_while_focus_is_elsewhere_leaves_focus_where_it_is(tmp_path):
     """P197 ruling 3 (review NIT 2b): focus moves only when it sat on an item
     now hidden; on a page item it stays."""
-    ran = run_shell(SOON_FUNCTIONS, SOON_PANEL, """
+    ran = run_shell(SOON_FUNCTIONS, SOON_PANEL + store_functions(), """
       document.activeElement = root.querySelectorAll(".side-section")[0];
       shellToggleSoon();
       return { hidden: hiddenNow().length, focus: said.focus, stored: store.data[SOON_KEY] };
@@ -4468,7 +4474,7 @@ const actions = () => ({ card: reminderCard ? reminderCard.text : null, shown: !
                          outline: $("reminder-wait").byClass("row-skeleton").length, word: $("reminder-wait").textContent });
 """
 
-REMINDER_FUNCTIONS = ("el", "h", "show", "fill", "screenWords", "shellSkeleton", "stageOf", "stageInk", "marked", "holdLine", "reminderStatus", "lines",
+REMINDER_FUNCTIONS = ("el", "h", "show", "fill", "screenWords", "shellSkeleton", "shellWaiting", "stageOf", "stageInk", "marked", "holdLine", "reminderStatus", "lines",
                       "letterNodes", "drawReminderReply", "drawReminderLine", "drawReminder", "forgetReminderCard", "reminderWaitOver",
                       "reminderCardReady", "copyReminder", "approveReminder", "sheetSet", "sheetMore", "sheetFrame", "openReminder",
                       "sheetDraftsAfter", "sheetNextDraft", "sheetShow", "sheetDrawCheck", "sheetAfter")
@@ -4488,8 +4494,7 @@ def run_speed(setup: str, functions, probe: str, tmp_path: Path, consts: str = "
 
 
 def run_reminder_sheet(probe: str, tmp_path: Path):
-    consts = "let reminderCard = null; let reminderCardFor = null;\n" + lift_line("const EL_ATTRIBUTES = new Set([", "app.js") \
-        + lift_line("const H_ATTRIBUTES = new Set([", "shell.js")
+    consts = "let reminderCard = null; let reminderCardFor = null;\n" + lift_line("const EL_ATTRIBUTES = new Set([", "app.js")
     return run_speed(REMINDER_SHEET, REMINDER_FUNCTIONS, probe, tmp_path, consts)
 
 
@@ -4606,8 +4611,8 @@ const firms = () => asked.filter((one) => one.args[0] === "firm").length;
 const land = async (i, reply) => { asked[i].resolve(reply); await tick(); };
 """
 
-FIRM_LOAD_FUNCTIONS = ("h", "screenWords", "shellAdopt", "shellAskFirmNow", "shellDropEarlyFirm", "shellAskFirmLast", "shellLastOf", "shellShowLast",
-                       "shellAdoptEarly", "shellAskFirm", "shellFirmSent",
+FIRM_LOAD_FUNCTIONS = ("el", "h", "screenWords", "shellAdopt", "shellAskFirmNow", "shellDropEarlyFirm", "shellAskFirmLast", "shellLastOf", "shellShowLast",
+                       "takeReply", "shellAdoptEarly", "shellAskFirm", "shellFirmSent",
                        "shellFirmDone", "shellFirmTookLong", "shellWriteLanded", "shellFirmProgress", "shellReading", "shellReadingNodes",
                        "shellSetReading", "shellDrawReading", "shellLoadFirm", "shellFollowsCounts", "shellFirmUpdating", "shellUpdating",
                        "shellMarkUpdating", "shellStateArrived", "shellCountsDiffer")
@@ -4617,7 +4622,7 @@ def run_firm_load(probe: str, tmp_path: Path, setup: str = "", functions=()):
     """FIRM_LOAD, with the page's draw faked unless ``functions`` lifts it."""
     if "drawPage" not in functions:
         setup += '\nconst shellDraw = () => drawn.push(shellRoute.level); const drawPage = () => drawn.push("page");\n'
-    consts = lift_line("const H_ATTRIBUTES = new Set([", "shell.js")
+    consts = lift_line("const EL_ATTRIBUTES = new Set([", "app.js")
     return run_speed(FIRM_LOAD + setup, (*FIRM_LOAD_FUNCTIONS, *functions), probe, tmp_path, consts)
 
 

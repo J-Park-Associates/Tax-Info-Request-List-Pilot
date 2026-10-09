@@ -105,25 +105,28 @@ const passes = new Map();
 // The renderer never names a path of its own, so anything else is refused.
 const openable = new Map();
 let pathKinds = {};           // vocab.path_kinds, once seen
-let notOpened = "Not Opened; It Has Changed";
-// The shell's own sentences (decision 193): learned from vocab.shell, with
-// these defaults - word for word tracker.api's SHELL_* - for a first start.
-let killed = "Sort Stopped: Ran Too Long.";
-let killedWrite = "Change Stopped: Ran Too Long.";
-let killedWriteNote = "It May Be Partly Done.";
-let killedRead = "Stopped: Ran Too Long.";
+// The shell's own sentences (decision 193), keyed as vocab.shell keys them:
+// learned from it, with these defaults - word for word tracker.api's SHELL_*
+// - for a first start. learn() copies every key the API sent as a string.
+const shellSays = {
+  not_opened: "Not Opened; It Has Changed",
+  killed: "Sort Stopped: Ran Too Long.",
+  killed_write: "Change Stopped: Ran Too Long.",
+  killed_write_note: "It May Be Partly Done.",
+  killed_read: "Stopped: Ran Too Long.",
+  killed_at: "It Was on {household}: {name}.",
+  no_reply: "No Reply From the App",
+  could_not_start: "The App Could Not Start",
+  could_not_send: "Could Not Send; Nothing Changed",
+  no_log: "App Failed",
+};
 let writingCommands = new Set();   // vocab.writing_commands, once seen
-let killedAt = "It Was on {household}: {name}.";
-let noReply = "No Reply From the App";
-let couldNotStart = "The App Could Not Start";
-let couldNotSend = "Could Not Send; Nothing Changed";
-let noLog = "App Failed";
 // The error log beside the tracker's database, as the API reports it
 // (vocab.shell.error_log): the shell never builds that path, and never
 // writes a log beside the program or in the settings folder (decision
 // 186's rebase review, MF2). Until the API has named one - a failed first
 // start, or no data folder - the details go to the fallback log below
-// instead, and a failed command's reply says only noLog.
+// instead, and a failed command's reply says only shellSays.no_log.
 let errorLog = null;
 // The fallback (Jason, 2026-09-29): with no log named, a failure is still
 // SAVED, in this one file in a LOCAL, NON-ROAMING per-user folder -
@@ -214,7 +217,7 @@ function keepInLog(heading, text) {
 // in two words, and the stderr - which may name a client's folder - is kept
 // only in the fallback log, never shown (SPEC-shell 11.2).
 function withNoLog(reply) {
-  const sentence = `${reply.error}\n\n${noLog}`;
+  const sentence = `${reply.error}\n\n${shellSays.no_log}`;
   return { ...reply, error: sentence, failure: { ...(reply.failure || {}), sentence } };
 }
 
@@ -243,18 +246,11 @@ function learn(result) {
   if (vocab && typeof vocab.engagement_flag === "string") engagementFlag = vocab.engagement_flag;
   if (vocab && typeof vocab.pass_command === "string") passCommand = vocab.pass_command;
   if (vocab && vocab.path_kinds && typeof vocab.path_kinds === "object") pathKinds = vocab.path_kinds;
-  if (vocab && vocab.shell && typeof vocab.shell.not_opened === "string") notOpened = vocab.shell.not_opened;
   const said = vocab && vocab.shell;
-  if (said && typeof said.killed === "string") killed = said.killed;
-  if (said && typeof said.killed_write === "string") killedWrite = said.killed_write;
-  if (said && typeof said.killed_write_note === "string") killedWriteNote = said.killed_write_note;
-  if (said && typeof said.killed_read === "string") killedRead = said.killed_read;
+  for (const key of Object.keys(shellSays)) {
+    if (said && typeof said[key] === "string") shellSays[key] = said[key];
+  }
   if (vocab && Array.isArray(vocab.writing_commands)) writingCommands = new Set(vocab.writing_commands);
-  if (said && typeof said.killed_at === "string") killedAt = said.killed_at;
-  if (said && typeof said.no_reply === "string") noReply = said.no_reply;
-  if (said && typeof said.could_not_start === "string") couldNotStart = said.could_not_start;
-  if (said && typeof said.could_not_send === "string") couldNotSend = said.could_not_send;
-  if (said && typeof said.no_log === "string") noLog = said.no_log;
   learnMenu(vocab && vocab.menu);
   if (said && typeof said.error_log === "string" && said.error_log) {
     errorLog = said.error_log;
@@ -310,7 +306,7 @@ function spawnTracker(args, payload, onProgress, onEnded, { fresh = false } = {}
   } catch (err) {
     // Said by its class; its message goes to the error log only (the review's S5).
     keepInLog("shell could not serialise a payload", `${err.name}: ${err.message}`);
-    return Promise.resolve(shellFailure(fill(couldNotSend, { kind: err.name || "Error" }), "refused"));
+    return Promise.resolve(shellFailure(fill(shellSays.could_not_send, { kind: err.name || "Error" }), "refused"));
   }
   if (!FROZEN_API && !fs.existsSync(SOURCE_PYTHON)) return Promise.resolve(shellFailure(NOT_SET_UP, "refused"));
   return new Promise((resolve) => {
@@ -343,12 +339,12 @@ function spawnTracker(args, payload, onProgress, onEnded, { fresh = false } = {}
     const kill = () => {
       proc.kill();
       const minutes = Math.max(1, Math.round(limitMs / 60000));
-      const where = last && last.name ? ` ${fill(killedAt, last)}` : "";
+      const where = last && last.name ? ` ${fill(shellSays.killed_at, last)}` : "";
       // A sort says a sort stopped; a change says it may be partly done; any
       // other command only that it stopped (final review A, finding 5).
-      const said = isPass ? fill(killed, { minutes })
-        : writingCommands.has(args[0]) ? `${fill(killedWrite, { minutes })} ${killedWriteNote}`
-        : fill(killedRead, { minutes });
+      const said = isPass ? fill(shellSays.killed, { minutes })
+        : writingCommands.has(args[0]) ? `${fill(shellSays.killed_write, { minutes })} ${shellSays.killed_write_note}`
+        : fill(shellSays.killed_read, { minutes });
       const failure = shellFailure(said + where, "failed", { progress: last, killed: true });
       if (running) killedReply = failure;   // said when it closes, as its ending
       else settle(failure);
@@ -411,7 +407,7 @@ function spawnTracker(args, payload, onProgress, onEnded, { fresh = false } = {}
     proc.stdin.on("error", () => {});   // a process that died before reading stdin is reported by "close"
     // Said by its code, never its message, which names the executable's path.
     proc.on("error", (err) =>
-      settle(shellFailure(fill(couldNotStart, { code: (err && err.code) || "?" }), "failed"))
+      settle(shellFailure(fill(shellSays.could_not_start, { code: (err && err.code) || "?" }), "failed"))
     );
     proc.on("close", (code) => {
       take(pieces.join(""));
@@ -432,9 +428,9 @@ function spawnTracker(args, payload, onProgress, onEnded, { fresh = false } = {}
       // failed command's goes to the log beside the tracker's database, for
       // a developer at this machine (decision 193, security principle 7).
       // With none named - no data folder yet - the stderr goes to the
-      // fallback log and the reply says just noLog (Jason, 2026-09-29),
+      // fallback log and the reply says just no_log (Jason, 2026-09-29),
       // never a log beside the program (decision 186's rebase review, MF2).
-      const out = killedReply || reply || shellFailure(fill(noReply, { code }), "failed", { progress: last });
+      const out = killedReply || reply || shellFailure(fill(shellSays.no_reply, { code }), "failed", { progress: last });
       const failed = !reply || reply.error;
       if (failed) keepInLog("shell stderr of a failed command", stderr);
       const ending = failed && stderr && !errorLog ? withNoLog(out) : out;
@@ -561,15 +557,15 @@ async function openChecked(p, kind, reveal) {
   try {
     info = await fs.promises.lstat(p);
   } catch {
-    return notOpened;
+    return shellSays.not_opened;
   }
   const same = kind === "folder" ? info.isDirectory()
     : kind === "file" || kind === "reveal" ? info.isFile() : false;
-  if (info.isSymbolicLink() || !same) return notOpened;
+  if (info.isSymbolicLink() || !same) return shellSays.not_opened;
   // A reveal-only kind (a filed, moved or set-aside working copy) is shown,
   // never opened: only a marked review copy opens in the default program
   // (decision 190). A plain open of one is refused, as any other unreported path.
-  if (kind === "reveal" && !reveal) return notOpened;
+  if (kind === "reveal" && !reveal) return shellSays.not_opened;
   if (reveal && (kind === "file" || kind === "reveal")) {
     shell.showItemInFolder(p);
     return "";

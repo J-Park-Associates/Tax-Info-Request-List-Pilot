@@ -879,13 +879,13 @@ def test_the_renderer_keeps_no_hidden_household_choice():
                   "wf-back", 'btn-new"'):
         assert ident not in js and ident not in html, ident
     assigned = re.findall(r"\baddingTo = ([^;]+);", js)
-    assert len(assigned) == 4, assigned          # the declaration, and the three below
-    opening = _js_function(js, "async function openAddReturn(hh) {")
-    fresh = _js_function(js, "async function openNewHousehold() {")
+    assert len(assigned) == 3, assigned          # the declaration, and the two below
+    opening = _js_function(js, "async function openReturnDialog(hh) {")
     closing = _js_function(js, "function closeNewReturn() {")
-    assert re.findall(r"\baddingTo = ([^;]+);", opening) == ["hh.path"]
-    assert re.findall(r"\baddingTo = ([^;]+);", fresh) == ["null"]
+    assert re.findall(r"\baddingTo = ([^;]+);", opening) == ["hh ? hh.path : null"]
     assert re.findall(r"\baddingTo = ([^;]+);", closing) == ["null"]
+    assert "openReturnDialog(hh)" in _js_function(js, "async function openAddReturn(hh) {")
+    assert "openReturnDialog(null)" in _js_function(js, "async function openNewHousehold() {")
     assert "let addingTo = null;" in js
 
 
@@ -1958,12 +1958,12 @@ def test_every_review_action_the_renderer_sends_carries_the_rows_seq():
 
     js = read("app/renderer/app.js")
     # The sheet's dismissal reads the row's version off the row on the sheet...
-    sent = re.search(r'call\(withEng\("dismiss"\), \{(.*?)\}\)', js, re.S)
+    sent = re.search(r'writeRow\(withEng\("dismiss"\), \{(.*?)\}, \{', js, re.S)
     assert sent and "seq:" in sent.group(1) and "li.dataset.seq" in sent.group(1)
     # ...and the right-click writes of a filed row (Unfile, Mark missing) read
     # it from the spec the page built from the same index row (pages.js).
     for command in ("unfile", "mark-missing"):
-        sent = re.search(rf'call\(withEng\("{command}"\), \{{(.*?)\}}\)', js, re.S)
+        sent = re.search(rf'writeRow\(withEng\("{command}"\), \{{(.*?)\}}, \{{', js, re.S)
         assert sent and "seq: Number(spec.seq)" in sent.group(1), command
     pages = read("app/renderer/pages.js")
     assert "{ original: direct[0].handle, seq: direct[0].seq, name: direct[0].original_name }" in pages
@@ -1972,7 +1972,7 @@ def test_every_review_action_the_renderer_sends_carries_the_rows_seq():
     # ...and since decision 114 the filing has one call site for the three
     # buttons that make it, so each of them reads the version off the element
     # it was drawn on and hands it to that one function.
-    sent = re.search(r'call\(withEng\("assign"\), \{(.*?)\}\)', js, re.S)
+    sent = re.search(r'writeRow\(withEng\("assign"\), \{(.*?)\}, \{', js, re.S)
     assert sent and "seq" in sent.group(1)
     body = re.search(r"async function assignParked\(.*?\n\}", js, re.S)
     assert body
@@ -2260,7 +2260,7 @@ def test_the_shell_lstats_before_it_opens_and_refuses_a_link_or_a_changed_kind()
     assert opener.index("fs.promises.lstat(") < opener.index("shell.showItemInFolder(")
     assert opener.index("fs.promises.lstat(") < opener.index("shell.openPath(")
     assert "isSymbolicLink()" in opener and "isDirectory()" in opener and "isFile()" in opener
-    assert "vocab.path_kinds" in main and "vocab.shell.not_opened" in main
+    assert "vocab.path_kinds" in main and "shellSays.not_opened" in opener
     # One call site of each, both behind openChecked (after the lstat and the kind check).
     assert main.count("shell.openPath(") == 1 and main.count("shell.showItemInFolder(") == 1
     vocab = api._vocab()
@@ -3063,19 +3063,20 @@ def test_the_shells_default_words_are_the_apis_word_for_word():
 
     main_js = read("app/main.js")
 
-    def default(name):
-        head = main_js.split(f"let {name} =", 1)[1].split(";\n", 1)[0]
-        return "".join(re.findall(r'"([^"]*)"', head))
+    says = main_js.split("const shellSays = {", 1)[1].split("\n};\n", 1)[0]
+
+    def default(key):
+        return re.search(rf'^  {key}: "([^"]*)",$', says, re.MULTILINE).group(1)
 
     assert default("killed") == api.SHELL_KILLED
-    assert default("killedAt") == api.SHELL_KILLED_AT
-    assert default("killedWrite") == api.SHELL_KILLED_WRITE
-    assert default("killedWriteNote") == api.SHELL_KILLED_WRITE_NOTE
-    assert default("killedRead") == api.SHELL_KILLED_READ
-    assert default("noReply") == api.SHELL_NO_REPLY
-    assert default("couldNotStart") == api.SHELL_COULD_NOT_START
-    assert default("couldNotSend") == api.SHELL_COULD_NOT_SEND
-    assert default("noLog") == api.SHELL_NO_LOG
+    assert default("killed_at") == api.SHELL_KILLED_AT
+    assert default("killed_write") == api.SHELL_KILLED_WRITE
+    assert default("killed_write_note") == api.SHELL_KILLED_WRITE_NOTE
+    assert default("killed_read") == api.SHELL_KILLED_READ
+    assert default("no_reply") == api.SHELL_NO_REPLY
+    assert default("could_not_start") == api.SHELL_COULD_NOT_START
+    assert default("could_not_send") == api.SHELL_COULD_NOT_SEND
+    assert default("no_log") == api.SHELL_NO_LOG
     shell = api._vocab()["shell"]
     assert (shell["killed"], shell["killed_at"], shell["no_reply"], shell["could_not_start"]) == (
         api.SHELL_KILLED, api.SHELL_KILLED_AT, api.SHELL_NO_REPLY, api.SHELL_COULD_NOT_START)
@@ -3137,7 +3138,9 @@ def test_the_reminder_card_is_never_hidden_on_an_error():
 
 def test_every_reply_warning_becomes_a_notice():
     js = read("app/renderer/app.js")
-    body = js.split("async function call(args, payload, { ofAnother = false } = {}) {", 1)[1].split("\n}\n", 1)[0]
+    called = js.split("async function call(args, payload, { ofAnother = false } = {}) {", 1)[1].split("\n}\n", 1)[0]
+    assert "takeReply(result, args, payload, { ofAnother })" in called
+    body = js.split("function takeReply(result, args, payload, { ofAnother = false } = {}) {", 1)[1].split("\n}\n", 1)[0]
     assert "result.warnings" in body and "warningNotices(" in body
     assert "throw new TrackerError(" in body
     assert "warningNotices(ended.pass_warnings" in js     # a pass's own, from its final line (203)
@@ -3312,7 +3315,7 @@ def test_an_error_of_the_page_or_the_shell_is_said_by_class_and_its_message_only
     # shares it), read as the one path a command takes.
     run = main_js[main_js.index("function runTracker"):]
     run = run[:run.index("\n}\n", run.index("function spawnTracker"))]
-    assert "shellFailure(fill(couldNotSend" in run and "`The app could not send" not in run
+    assert "shellFailure(fill(shellSays.could_not_send" in run and "`The app could not send" not in run
     assert "err.message" not in run.split("keepInLog(", 1)[0]
     assert 'ipcMain.handle("log-error"' in main_js
     assert api._vocab()["shell"]["page_error"] == api.PAGE_ERROR
@@ -3412,7 +3415,8 @@ def test_a_warning_about_another_return_is_said_under_its_label():
     js = read("app/renderer/app.js")
     handover = _body(js, "async function loadHandOverRequests() {")
     assert "{ ofAnother: true }" in handover
-    head = "async function call(args, payload, { ofAnother = false } = {}) {"
+    assert "takeReply(result, args, payload, { ofAnother })" in _body(js, "async function call(args, payload, { ofAnother = false } = {}) {")
+    head = "function takeReply(result, args, payload, { ofAnother = false } = {}) {"
     body = _body(js, head)
     assert "vocab.notices.about" in body and "labelOfState(result)" in body
     assert js.count("ofAnother: true") == 1
@@ -4023,8 +4027,7 @@ def test_every_dialog_opens_with_focus_inside_and_gives_it_back():
     for opener, ident in (("async function openEditor(focus) {", "editor"),
                           ("function openHouseholdEditor() {", "household-modal"),
                           ("async function openHandOver(original, seq) {", "handover-modal"),
-                          ("async function openAddReturn(hh) {", "modal"),
-                          ("async function openNewHousehold() {", "modal"),
+                          ("async function openReturnDialog(hh) {", "modal"),
                           ("async function openSchedule() {", "schedule-modal"),
                           ("function openRoll() {", "roll-modal"),
                           ("function openSafeguards() {", "safeguards-modal"),
@@ -4090,10 +4093,10 @@ def test_no_text_box_is_named_only_by_its_placeholder():
     for cls, builder in (("r-keyword", "function keywordBox() {"),
                          ("r-note", "function noteBox(words) {"),
                          ("r-spelling", "function teachSpelling(triage, people) {")):
-        assert js.count(f'className: "{cls}"') == 1, cls
-        body = _js_function(js, builder)
-        label = body.split('el("label", { className: "field', 1)[1]
-        assert f'className: "{cls}"' in label, cls
+        assert js.count(f'"{cls}")') == 1, cls
+        assert f'"{cls}")' in _js_function(js, builder) and "labelledInput(" in _js_function(js, builder), cls
+    label = _js_function(js, "function labelledInput(boxClass, words, inputClass) {")
+    assert 'el("label", { className: boxClass ?' in label and 'className: inputClass' in label
     assert len(re.findall(r"\bkeywordBox\(\)", js)) == 3        # the builder and its two places
     # The setup page (shell.js) builds its two boxes inside labels; the three
     # inputs index.html keeps are hidden, for saveRoot(), and carry no name.
@@ -4115,7 +4118,7 @@ def test_the_issuer_action_has_one_call_site():
     js = read("app/renderer/app.js")
     assert js.count('withEng("add-issuer-and-file")') == 1
     assert len(re.findall(r"\baddIssuerAndFile\(", js)) == 2     # the definition and its one caller
-    sent = re.search(r'call\(withEng\("add-issuer-and-file"\), \{(.*?)\}\)', js, re.S).group(1)
+    sent = re.search(r'writeRow\(withEng\("add-issuer-and-file"\), \{(.*?)\}, \{', js, re.S).group(1)
     assert set(re.findall(r"(\w+):", sent)) == {"original", "seq", "head", "issuer"}
 
 
@@ -4279,8 +4282,8 @@ def test_no_sentence_the_app_shows_calls_it_the_tracker():
     pilot = json.loads(content.split("// PILOT-CONTENT-BEGIN", 1)[1].split("// PILOT-CONTENT-END", 1)[0])
     said.update({f"pilot-content: {s}": s for s in _strings(pilot)})
     main_js = read("app/main.js")
-    for name in ("noReply", "couldNotStart", "noLog"):
-        said[f"main.js {name}"] = re.search(rf'^let {name} = "([^"]*)";$', main_js, re.MULTILINE).group(1)
+    for name in ("no_reply", "could_not_start", "no_log"):
+        said[f"main.js {name}"] = re.search(rf'^  {name}: "([^"]*)",$', main_js, re.MULTILINE).group(1)
     # And every other sentence the shell says itself: its string literals
     # with a space in them, comments left out.
     code = "\n".join(line for line in main_js.splitlines() if not line.lstrip().startswith("//"))

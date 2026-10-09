@@ -20,7 +20,7 @@
 // Escape, no click outside, and Tab stays in the card.
 
 // Acceptance and "tour seen", kept in the durable record and cached in the
-// window's storage. The one thing tour.js uses from this file.
+// window's storage. With PilotDom below, all tour.js uses from this file.
 const PilotRecord = (() => {
   const TERMS_KEY = "pilot.terms.accepted";
   const TOUR_KEY = "pilot.tour.seen";
@@ -104,10 +104,10 @@ const PilotRecord = (() => {
   };
 })();
 
-// The terms card. gate() is the one-time screen, which cannot be escaped;
-// show() is Help > Terms: the same card read only, its Accept and Quit
-// become one Close, and Escape closes it.
-const PilotTerms = (() => {
+// The one element builder of the pilot layer, here and in tour.js: a tag,
+// its classes, and its text with the contact email filled in. Text only, so
+// nothing the content file holds is ever read as markup.
+const PilotDom = (() => {
   function fill(text) {
     return String(text).split("{email}").join(PILOT.contact.email);
   }
@@ -120,6 +120,15 @@ const PilotTerms = (() => {
     if (text !== undefined) el.textContent = fill(text);
     return el;
   }
+
+  return { make };
+})();
+
+// The terms card. gate() is the one-time screen, which cannot be escaped;
+// show() is Help > Terms: the same card read only, its Accept and Quit
+// become one Close, and Escape closes it.
+const PilotTerms = (() => {
+  const { make } = PilotDom;
 
   // The overlay, its card and the controls; the caller wires them.
   function build(readOnly) {
