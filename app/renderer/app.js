@@ -814,7 +814,7 @@ function movedRow(m, choices, items = choices) {
 async function restoreMoved(li, btn) {
   await writeRow(withEng("restore"), { original: li.dataset.original, seq: Number(li.dataset.seq) }, {
     btn,
-    say: ({ restored: r }) => sayNotes([`${r.original_name}: ${r.decision}`, r.reason], [r.scan_note], r.parked_as || r.scan_note),
+    say: ({ restored: r }) => sayNotes([`${r.original_name}: ${r.decision}`, r.reason], [r.scan_note], Boolean(r.parked_as || r.scan_note)),
   });
 }
 
@@ -1005,7 +1005,7 @@ async function fileRow(original, identifier, seq, keyword, spelling, btn) {
       // the API's sentence, shown as it stands.
       a.overrode_shortlist,
       a.scan_note,
-    ], a.keyword_note || a.spelling_note || a.left_in_review || a.overrode_shortlist || a.scan_note),
+    ], Boolean(a.keyword_note || a.spelling_note || a.left_in_review || a.overrode_shortlist || a.scan_note)),
   });
 }
 
@@ -2171,13 +2171,16 @@ async function saveSchedule() {
 // The shell's launch step ran in the background and finished (decision
 // 209, the review's S7): ask again for what it left, and show only that -
 // the rest of the page, and anything a person is editing, is left alone.
-window.tracker.onAfterInstallDone(async () => {
-  try {
-    renderAfterInstall((await call(["list"])).after_install);
-  } catch (err) {
-    failed(err);        // said by the one rule (decision 193), never its message
-  }
-});
+// (The screenshot tool's stub sets onAfterInstallDone to null on purpose.)
+if (window.tracker.onAfterInstallDone) {
+  window.tracker.onAfterInstallDone(async () => {
+    try {
+      renderAfterInstall((await call(["list"])).after_install);
+    } catch (err) {
+      failed(err);        // said by the one rule (decision 193), never its message
+    }
+  });
+}
 
 // A failed sort as the banner says it (rulings 25 and 29): the API's failure word and
 // a short reason from the API by the kind of failure the pass reported, five

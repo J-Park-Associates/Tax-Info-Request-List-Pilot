@@ -21,8 +21,10 @@
 //   shellKey(e)         one keydown, before app.js's own (true = handled)
 //   shellStateArrived(state)  one return's state arrived: draw its page, and
 //                       ask the firm's counts again if the state moved them
-// What this file calls in app.js: appRouteChanged(route), so the lock (a
-// notice) follows the return on screen.
+// What this file calls in app.js: the shared helpers el (as `h`),
+// storeRead/storeWrite, takeReply, shellWaiting() and the setupDraft object,
+// and appRouteChanged(route), so the lock (a notice) follows the return on
+// screen.
 // What this file calls in pages.js, sheet.js and app.js (all loaded before it):
 //   pagesDraw(route, page)   draw the route's page into #page
 //   pagesLeave()             the setup page took the screen: the pages' notices go

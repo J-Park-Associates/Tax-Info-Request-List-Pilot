@@ -3079,6 +3079,7 @@ def test_the_shells_default_words_are_the_apis_word_for_word():
     assert default("could_not_start") == api.SHELL_COULD_NOT_START
     assert default("could_not_send") == api.SHELL_COULD_NOT_SEND
     assert default("no_log") == api.SHELL_NO_LOG
+    assert default("not_opened") == api.SHELL_NOT_OPENED
     shell = api._vocab()["shell"]
     assert (shell["killed"], shell["killed_at"], shell["no_reply"], shell["could_not_start"]) == (
         api.SHELL_KILLED, api.SHELL_KILLED_AT, api.SHELL_NO_REPLY, api.SHELL_COULD_NOT_START)
