@@ -2222,12 +2222,15 @@ DOOR_EXEMPT = {
 def test_every_command_line_that_takes_a_root_or_a_folder_checks_it():
     """Decision 188 (T17, R11, C-9/E-5): every command line that takes a
     clients root, a household's or a return's folder reads it through the
-    one door - ``door.checked_root``, ``door.return_dir`` or
-    ``door.household_dir`` - so no command line walks a root the rule
-    refuses or reads a folder in the client tree as a return."""
+    one door - ``door.checked_root``, ``door.return_dir``,
+    ``door.household_dir`` or the typed-folder helpers built on them
+    (``door.typed_return``, ``door.typed_household_or_return``) - so no
+    command line walks a root the rule refuses or reads a folder in the
+    client tree as a return."""
     import ast
 
-    asked = {"checked_root", "return_dir", "household_dir"}
+    asked = {"checked_root", "return_dir", "household_dir", "typed_return",
+             "typed_household_or_return"}
     taking = []
     for path in sorted([*(REPO / "tracker").glob("*.py"), *(REPO / "tools").glob("*.py")]):
         rel = path.relative_to(REPO).as_posix()

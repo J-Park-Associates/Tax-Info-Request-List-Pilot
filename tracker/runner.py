@@ -304,6 +304,14 @@ def _spelled(path: Path) -> str:
     return os.path.normcase(os.path.abspath(str(path)))
 
 
+#: The record checkpoint and the files that follow it, which cannot be made
+#: again: the database, its rollback journal, its write-ahead log and shared
+#: memory (P214), and a copy a person renamed ``.damaged``.
+_CHECKPOINT_FILES = (checkpoint.CHECKPOINT_FILENAME, checkpoint.CHECKPOINT_JOURNAL_FILENAME,
+                     checkpoint.CHECKPOINT_WAL_FILENAME, checkpoint.CHECKPOINT_SHM_FILENAME,
+                     checkpoint.CHECKPOINT_DAMAGED_FILENAME)
+
+
 def _set_asides(filename: str) -> str:
     """The pattern decision 159's set-aside gives ``filename`` and its side
     files (``.v15.old``, ``.v15.old.1``, ``.v15.old-wal`` after its name):
@@ -339,9 +347,7 @@ def left_behind(root: Path | None) -> list[Path]:
     # store too, as does decision 209's after-install note; each can be
     # made again, so they are in the delete group.
     beside = (store.STORE_WAL_FILENAME, store.STORE_SHM_FILENAME, PASS_ORDER_FILENAME,
-              checkpoint.CHECKPOINT_FILENAME, checkpoint.CHECKPOINT_JOURNAL_FILENAME,
-              checkpoint.CHECKPOINT_WAL_FILENAME, checkpoint.CHECKPOINT_SHM_FILENAME,
-              checkpoint.CHECKPOINT_DAMAGED_FILENAME, store.RECOVERED_DIR, LAST_PASS_FILENAME,
+              *_CHECKPOINT_FILES, store.RECOVERED_DIR, LAST_PASS_FILENAME,
               AFTER_INSTALL_FILENAME, ERROR_LOG_FILENAME,
               *(f"{ERROR_LOG_FILENAME}.{n}" for n in range(1, ERROR_LOG_BACKUPS + 1)),
               PASSES_DIRNAME)
@@ -375,9 +381,7 @@ def _to_move(path: Path) -> bool:
     committed writes) and shared memory (P214), a copy renamed ``.damaged``,
     its set-asides, and the ``recovered`` folder. The store's set-asides are
     rebuilt from the records, so they are in the delete group."""
-    return (path.name in (checkpoint.CHECKPOINT_FILENAME, checkpoint.CHECKPOINT_JOURNAL_FILENAME,
-                          checkpoint.CHECKPOINT_WAL_FILENAME, checkpoint.CHECKPOINT_SHM_FILENAME,
-                          checkpoint.CHECKPOINT_DAMAGED_FILENAME, store.RECOVERED_DIR)
+    return (path.name in (*_CHECKPOINT_FILES, store.RECOVERED_DIR)
             or fnmatch.fnmatchcase(path.name, _set_asides(checkpoint.CHECKPOINT_FILENAME)))
 
 
@@ -400,8 +404,8 @@ def left_behind_warnings(root: Path | None) -> list[tuple[str, str]]:
     if not found:
         return []
     home = data_home()
-    move = left_behind_to_move(root)
-    delete = [path for path in found if path not in move]
+    move = [path for path in found if _to_move(path)]
+    delete = [path for path in found if not _to_move(path)]
     said = []
     if delete:
         said.append((CODE_LEFT_BEHIND, LEFT_BEHIND.format(paths="; ".join(map(str, delete)), home=home)))
@@ -1670,12 +1674,6 @@ def why_skipped(engagement: Engagement) -> tuple[str, str]:
     return "", ""
 
 
-def skipped_because(engagement: Engagement) -> str:
-    """Why this engagement is passed over, or "" if it is not: the sentence
-    half of :func:`why_skipped`."""
-    return why_skipped(engagement)[1]
-
-
 def _worth_a_pass(run: EngagementRun) -> bool:
     """Whether this engagement gets a pass at all; if not, ``run`` says why.
 
@@ -1808,21 +1806,33 @@ def _record(engagement_dir: Path, previous: dict | None, event: dict, *,
         record_draft(engagement_dir, event)
 
 
+def _each_own_draft(engagement_dir: Path, approved_since: dt.date | None, act, verb: str) -> list:
+    """Do ``act(path)`` to each of the run's own draft files that is there
+    and that a person has neither edited nor approved this week (decision
+    118), and return what ``act`` returned for each. A file a person owns is
+    left byte for byte; a file the machine cannot touch (open in Word, a sync
+    client mid-upload) is kept in the error log, said as ``verb`` in the run
+    log, and tried again next time."""
+    done = []
+    for name in (DRAFT_FILENAME, NEW_DRAFT_FILENAME):
+        path = engagement_dir / name
+        if not path.is_file() or is_protected(engagement_dir, path, approved_since=approved_since):
+            continue
+        try:
+            done.append(act(path))
+        except OSError as exc:
+            errors.keep("runner", exc, name=path.name)
+            log.warning("Could not %s %s (%s)", verb, path.name, errors.error_class(exc))
+    return done
+
+
 def _retire_unedited_drafts(engagement_dir: Path, *,
                             approved_since: dt.date | None = None) -> None:
     """A held client has no draft file (decision 115): the run's own
     unedited drafts from an earlier week are removed, and one a person has
     edited - or approved this week (decision 118) - is left byte for byte;
     it is their work, not the run's."""
-    for name in (DRAFT_FILENAME, NEW_DRAFT_FILENAME):
-        path = engagement_dir / name
-        if not path.is_file() or is_protected(engagement_dir, path, approved_since=approved_since):
-            continue
-        try:
-            path.unlink()
-        except OSError as exc:    # open in Word, or a sync client mid-upload: next time
-            errors.keep("runner", exc, name=path.name)
-            log.warning("Could not retire %s (%s)", path.name, errors.error_class(exc))
+    _each_own_draft(engagement_dir, approved_since, Path.unlink, "retire")
 
 
 def _refresh_stale_draft(draft, engagement_dir: Path, *, changed_from: dict | None = None,
@@ -1837,17 +1847,9 @@ def _refresh_stale_draft(draft, engagement_dir: Path, *, changed_from: dict | No
     ``last_drafted`` reads this draft day and no weekday pass mistakes the
     quiet week for a missed one.
     """
-    refreshed: list[Path] = []
-    for name in (DRAFT_FILENAME, NEW_DRAFT_FILENAME):
-        path = engagement_dir / name
-        if not path.is_file() or is_protected(engagement_dir, path, approved_since=approved_since):
-            continue
-        try:
-            refreshed.append(write_draft(draft, path=path, changed_from=changed_from))
-        except OSError as exc:    # open in Word, or a sync client mid-upload: next time
-            errors.keep("runner", exc, name=path.name)
-            log.warning("Could not refresh %s (%s)", path.name, errors.error_class(exc))
-    return refreshed
+    return _each_own_draft(
+        engagement_dir, approved_since,
+        lambda path: write_draft(draft, path=path, changed_from=changed_from), "refresh")
 
 
 def _why_no_draft(engagement: Engagement, mode: str, weekday: int) -> str:
@@ -1991,7 +1993,7 @@ def run_registry(
 def _working(runs: list[EngagementRun]) -> list[EngagementRun]:
     """A household's runs that were owed a pass: not rolled forward, not
     inactive - those skips are not failures and serve nothing."""
-    return [run for run in runs if not skipped_because(run.engagement)]
+    return [run for run in runs if not why_skipped(run.engagement)[0]]
 
 
 def _read_order_hint(report: RunReport) -> tuple[Path | None, dict, bool]:
@@ -2204,7 +2206,7 @@ def records_needing_a_person(
         # other machines are not listed.
         errors.keep("runner", exc, name="record checkpoint")
         log.warning("Could not read the record checkpoint (%s)", errors.error_class(exc))
-        return siblings, [], [FOREIGN_UNLISTED.format(why=errors.said(exc, (checkpoint.CheckpointError,)))]
+        return siblings, [], [FOREIGN_UNLISTED.format(why=checkpoint_said(exc))]
 
 
 def checkpoint_said(exc: BaseException) -> str:

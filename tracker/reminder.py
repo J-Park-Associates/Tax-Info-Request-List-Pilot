@@ -875,10 +875,6 @@ def _firm_side_reason(item: RequestItem) -> str:
     return ""
 
 
-def _missing_detail(item: RequestItem) -> str:
-    return item.expected_text
-
-
 # ---------------------------------------------------------------- sorting ----
 
 
@@ -1083,7 +1079,7 @@ def triage(items: Sequence[RequestItem], parked: Sequence = ()) -> tuple[
             continue
 
         section = _section_for(item)
-        ask = client_ask(item) if section != SECTION_MISSING else _missing_detail(item)
+        ask = client_ask(item) if section != SECTION_MISSING else item.expected_text
         lines.append(ReminderLine(item=item, section=section, ask=ask))
 
     holds = _parked_holds(items, parked)
@@ -2185,15 +2181,10 @@ if __name__ == "__main__":
     parser.add_argument("--write", action="store_true",
                         help=f"also write {DRAFT_FILENAME} into the engagement folder")
     ns = parser.parse_args()
-    # A typed folder is parsed, never trusted: it must be a return's
-    # place under the checked clients root (decision 188).
+    # A typed folder is parsed, never trusted (decision 188).
     from tracker import door
-    from tracker.layout import LayoutError
 
-    try:
-        ns.engagement_dir = door.return_dir(Path(ns.engagement_dir).absolute())
-    except (door.DoorError, LayoutError) as exc:     # the door's own sentences
-        parser.error(str(exc))
+    ns.engagement_dir = door.typed_return(parser, ns.engagement_dir)
 
     def _day(flag: str, typed: str) -> dt.date | None:
         if not typed:
