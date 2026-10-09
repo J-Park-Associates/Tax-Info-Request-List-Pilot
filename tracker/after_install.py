@@ -137,7 +137,8 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 from tracker import door, errors, ledger, registry, runner, scheduling, settings, store
-from tracker.fsio import is_link, write_json_atomically
+from tracker.fsio import is_link as _is_link_or_unreadable
+from tracker.fsio import write_json_atomically
 from tracker.locking import EngagementLockedError, acquire_lock, release_lock, this_host
 
 #: The note of the last run, beside the store - in the data home (decision
@@ -560,6 +561,18 @@ def _ready_the_overview(root: Path | None, reason: str, check: _Step) -> str:
     return OVERVIEW_NOT_READY.format(why=why) if why else OVERVIEW_READY
 
 
+def is_link(path: Path) -> bool:
+    """:func:`tracker.fsio.is_link`, but failing closed: a name that cannot be
+    looked at for any reason but being absent raises, so the test-cache delete
+    stops rather than going through something it could not prove is no link
+    (the package's own test reads an unreadable name as no link)."""
+    try:
+        os.lstat(path)
+    except FileNotFoundError:
+        return False
+    return _is_link_or_unreadable(path)
+
+
 def _unlink(path: Path) -> None:
     """Remove one entry - a file or a link - never what a link points at.
     A directory link on Windows (a junction) is removed as a directory
@@ -952,10 +965,9 @@ def main(argv: list[str]) -> int:
 
     parser = argparse.ArgumentParser(
         prog="python -m tracker.after_install",
-        description="Run every one-time step after installing or upgrading: carry over the "
-                    "settings and replace the scheduled task the earlier name left, register the "
-                    "schedule on the computer that runs it, check the record, and clear the "
-                    "test cache earlier versions left.")
+        description="Run every one-time step after installing or upgrading: register the "
+                    "schedule on the computer that runs it, check the record, clear the "
+                    "test cache earlier versions left, and make the Overview ready.")
     parser.add_argument("--reason", choices=REASONS, default=REASON_SETUP,
                         help="which door ran it (default: setup)")
     parser.add_argument("--move-schedule-here", action="store_true",

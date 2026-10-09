@@ -140,11 +140,11 @@ EXECUTION_TIME_LIMIT = iso_duration(RUN_TIME_LIMIT_SECONDS)
 
 #: The namespace of Task Scheduler's task XML.
 TASK_XML_NAMESPACE = "http://schemas.microsoft.com/windows/2004/02/mit/task"
-#: How a person is told to install the schedule, wherever they are told.
 #: Task Scheduler imports XML in this encoding; the declaration and both
 #: writers (CLI and app) say so from here.
 SCHEDULE_XML_ENCODING = "utf-16"
-#: How the scheduler module is invoked, for every hint that says so.
+#: How a person is told to install the schedule, wherever they are told:
+#: how the scheduler module is invoked, for every hint that says so.
 MODULE_INVOCATION = "python -m tracker.scheduling"
 INSTALL_FLAG = "--install"
 OUT_FLAG = "--out"

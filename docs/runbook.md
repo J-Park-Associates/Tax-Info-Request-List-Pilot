@@ -744,7 +744,7 @@ the schedule runs whatever program sits there on every pass, so it must be
 on this computer's own disk. The app's first screen says the same for as
 long as it runs from such a drive.
 
-**Column widths keep the earlier name's folder.** Each list's column widths and the order it was left in live in `%APPDATA%\Tax Document Tracker Pilot`, the earlier name, kept on purpose so they survive the rename; the data folder (`%LOCALAPPDATA%\tax-document-tracker-pilot`) keeps its name too.
+**Where the program is, and where it keeps column widths.** A copy upgraded from the earlier name stays in `%LOCALAPPDATA%\Programs\Tax Document Tracker Pilot`; a new install goes to `%LOCALAPPDATA%\Programs\Tax Document Console`. Each list's column widths and the order it was left in live in `%APPDATA%\Tax Document Tracker Pilot`, the earlier name, kept on purpose so they survive the rename; the data folder (`%LOCALAPPDATA%\tax-document-tracker-pilot`) keeps its name too.
 
 **It only runs while someone is logged on.** The task is registered to run
 as the logged-on person, not as a background service, so the designated

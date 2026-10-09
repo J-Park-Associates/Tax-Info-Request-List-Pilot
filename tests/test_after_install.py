@@ -639,6 +639,32 @@ def test_a_link_in_the_test_cache_is_removed_not_followed(app, checkout, tmp_pat
     assert (outside / "keep.txt").read_text(encoding="utf-8") == "not the cache's"
 
 
+def test_a_test_cache_that_cannot_be_looked_at_is_never_deleted_through(app, checkout, tmp_path, monkeypatch):
+    """The delete fails closed: a name whose ``lstat`` is refused is not
+    assumed to be a plain folder, so a link that cannot be checked is not
+    followed into its target. The failure is the job's own sentence."""
+    import errno
+
+    outside = tmp_path / "elsewhere-cache"
+    (outside / "v").mkdir(parents=True)
+    (outside / "v" / "keep.txt").write_text("not the checkout's", encoding="utf-8")
+    cache = checkout / after_install.TEST_CACHE_DIRNAME
+    _link_or_skip(cache, outside)
+    real_lstat = os.lstat
+
+    def refused(path, *args, **kwargs):
+        if Path(path) == cache:
+            raise PermissionError(errno.EACCES, "denied")
+        return real_lstat(path, *args, **kwargs)
+
+    monkeypatch.setattr(os, "lstat", refused)
+
+    done = after_install.run(reason=after_install.REASON_SETUP, checkout=checkout)
+
+    assert done.cache_sentence == after_install.CACHE_NOT_CLEARED and done.exit_code == 1
+    assert (outside / "v" / "keep.txt").read_text(encoding="utf-8") == "not the checkout's"
+
+
 def test_a_linked_test_cache_removes_only_the_link(app, checkout, tmp_path):
     outside = tmp_path / "elsewhere-cache"
     (outside / "v").mkdir(parents=True)

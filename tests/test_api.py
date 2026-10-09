@@ -7233,7 +7233,7 @@ def test_a_returns_reminder_line_that_cannot_be_read_says_so(capsys, demo_root, 
     [line] = [r["reminder"] for r in payload["household"]["returns"] if r["path"] == str(folder)]
     assert line["unreadable"] is True and line["kind"] == "OSError (EIO)"
     [label] = [r["label"] for r in payload["household"]["returns"] if r["path"] == str(folder)]
-    said = api.REMINDER_LINE_UNREADABLE.format(label=label)
+    said = api.REMINDER_LINE_UNREADABLE_WARNING.format(label=label)
     assert label in said, "the warning must name the return"
     assert said in payload["warnings"]
 

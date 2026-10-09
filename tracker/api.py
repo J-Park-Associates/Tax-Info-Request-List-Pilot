@@ -413,9 +413,11 @@ PRACTICE_NOT_WALKED = ("The clients folder could not be walked just now, so what
                        f"practice is not shown; the details are in {ERROR_LOG_FILENAME}.")
 #: The Reminder card kept on screen when its reminder cannot be read (D7).
 REMINDER_UNREADABLE = "Reminder Could Not Be Read"
-#: One return's reminder line on the household card that could not be read,
-#: said as a warning that names the return by its label.
-REMINDER_LINE_UNREADABLE = "Reminder Could Not Be Read: {label}"
+#: One return's reminder line on the household card that could not be read.
+REMINDER_LINE_UNREADABLE = "Reminder Could Not Be Read"
+#: The same, said as a warning, which names the return by its label. The
+#: bare constant above is what the app is sent (``vocab.reminder``).
+REMINDER_LINE_UNREADABLE_WARNING = REMINDER_LINE_UNREADABLE + ": {label}"
 #: Stop asked of a pass this app is not running (ruling 7 and the lane's).
 NOTHING_TO_STOP = "There is no pass this app started running to stop; nothing was changed."
 #: How often the app asks whether a lock it shows has gone (ruling 10).
@@ -2630,7 +2632,7 @@ def _return_reminder(path: Path, today: dt.date, label: str = "") -> dict:
         kind = errors.error_class(exc)
         errors.keep("api: _return_reminder", exc)
         log.warning("A reminder line could not be read (%s)", kind)
-        _warn(REMINDER_LINE_UNREADABLE.format(label=label or path.name))
+        _warn(REMINDER_LINE_UNREADABLE_WARNING.format(label=label or path.name))
         return {**blank, "unreadable": True, "kind": kind}
     return {
         "last": _event_day(last) if last else None,
@@ -3252,7 +3254,7 @@ def _refresh_readmes(*engagements: Path) -> None:
         refresh_household_readme(household_dir, said=_WARNINGS)
 
 
-def _rescan(folder: Path, *, note: str | None = None) -> str:
+def _rescan(folder: Path, *, note: str | None = None, kept_as: str = "re-scan") -> str:
     """Re-scan one return after an act changed its rules or its documents, and
     say in a sentence if another run holds it (decision 103).
 
@@ -3266,7 +3268,7 @@ def _rescan(folder: Path, *, note: str | None = None) -> str:
     except ScanLockedError as exc:
         if note is None:
             return f"not re-scanned: {exc}"
-        errors.keep("api: re-scan", exc)
+        errors.keep("api: " + kept_as, exc)
         return note
     return ""
 
@@ -5012,7 +5014,7 @@ def _cmd_add_issuer_and_file(argv: list[str]) -> dict:
         engagement, original, identifier, seq=seq, shortlist=_shortlist_now(engagement, original),
         adding=row, head=head,
     )
-    scan_note = _rescan(engagement, note=ISSUER_NOT_RESCANNED)
+    scan_note = _rescan(engagement, note=ISSUER_NOT_RESCANNED, kept_as="add issuer")
     _refresh_readmes(engagement)
     return {
         "added_and_filed": {
