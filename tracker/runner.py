@@ -2198,7 +2198,10 @@ def records_needing_a_person(
         # other machines are not listed.
         errors.keep("runner", exc, name="record checkpoint")
         log.warning("Could not read the record checkpoint (%s)", errors.error_class(exc))
-        return siblings, [], [FOREIGN_UNLISTED.format(why=checkpoint_said(exc))]
+        # Spelled inline, not through checkpoint_said(): tests/test_errors.py's
+        # static guard knows errors.said() alone as the one sanitizer of an
+        # exception's words (decision 190).
+        return siblings, [], [FOREIGN_UNLISTED.format(why=errors.said(exc, (checkpoint.CheckpointError,)))]
 
 
 def checkpoint_said(exc: BaseException) -> str:
