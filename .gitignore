@@ -123,9 +123,8 @@ ocr-scratch/
 # tooling runs under.
 .claude/*
 !.claude/settings.json
-# Design skills for every session on this repo (P56): Anthropic's
-# frontend-design and Impeccable, both Apache 2.0.
-!.claude/skills/
+# The vendored design skill packs (P56, P57) and .mcp.json were removed by
+# P231; install design skills per user, not in the repository.
 graphify-out/
 tax-tracker.xml
 reminder-draft.txt
