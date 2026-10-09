@@ -1,11 +1,9 @@
 """Why a file was refused, said once (component 14).
 
 Every sentence the validators, the content check and the scanner write into
-Validation Notes used to be typed where it was produced, and the reminder
-then recognised it by a substring typed again in reminder.py. Rewording a
-producer silently changed what the client was asked for - or turned "a
-person here has not read it yet" into a request to the client - with no
-test failing at either end.
+Validation Notes is defined here once, so rewording a producer cannot
+silently change what the client is asked for - or turn "a person here has
+not read it yet" into a request to the client.
 
 Each :class:`Reason` here is the one definition of one cause: its code,
 the sentence the scanner writes (a template, since most carry a detail),
@@ -15,12 +13,11 @@ decision 140 - whether a parked file carrying it holds the client's
 reminder. Producers call ``REASON.format(...)``; the reminder consults the
 same objects. There is nothing to keep in step.
 
-**Codes are columns (decision 190).** Until then the reminder and the
-review card found a row's cause by searching its sentence for a marker.
-The sentence carries what the client chose - a file's name, a subfolder's
-name, a parser's words - so a subfolder called "not allowed" turned a
-password-protected PDF into a file-type ask, and quoting the client's text
-(SPEC-167) only moved the problem. The search is gone. A sentence is said
+**Codes are columns (decision 190).** The reminder and the review card
+find a row's cause by its code, never by searching its sentence for a
+marker: the sentence carries what the client chose - a file's name, a
+subfolder's name, a parser's words - so a subfolder called "not allowed"
+could turn a password-protected PDF into a file-type ask. A sentence is said
 as a :class:`Said`, which carries its Reason's code; every record that
 keeps a sentence keeps the code beside it (``IndexEntry.code``,
 ``StatusUpdate.note_codes``, ...), and every reader reads the code:
@@ -123,9 +120,8 @@ class Reason:
     code: str
     template: str      # the note as written; {placeholders} carry the detail
     #: A literal part of the template: what the review card names the
-    #: refusal by (``review._refusals_for``). Until decision 190 it was also
-    #: what a note was searched for; nothing searches a sentence now - a
-    #: row's cause is its code.
+    #: refusal by (``review._refusals_for``). Nothing searches a sentence for
+    #: it: a row's cause is its code.
     marker: str
     ask: str = ""      # the client-facing sentence; "" means GENERIC_ASK
     firm_side: bool = False   # True: waiting on a person here, never put to the client

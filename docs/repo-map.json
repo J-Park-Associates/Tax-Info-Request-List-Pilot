@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 446,
     "edges": 1231,
-    "reused": 398
+    "reused": 397
   },
   "node_types": [
     "artifact",
@@ -126,8 +126,8 @@
       "id": "tracker/__init__.py",
       "type": "module",
       "layer": "core",
-      "sha256": "693fb902a33008cb",
-      "lines": 85,
+      "sha256": "c94f3ec5148aaf20",
+      "lines": 83,
       "role": "Package docstring listing every component, and STANDING_RULES - the four rules worded once.",
       "notes": "Imports nothing of the package at load time since decision 99: the re-exports of the manifest and scaffold APIs (thirteen names no file in tracker/, tools/, tests/ or the entry point consumed) are gone, and with them the package's one load-time cycle (this package -> tracker/manifest.py -> from tracker import ledger). Its module list names the manifest as the request list - its schema, validation, and its reading from and writing to the record - and the scanner as an orchestrator that records rather than writes back (decision 104). There is no load-time cycle left to name: tests/test_layers.py pins the layer of every module and that no load-time import points upward. Every cycle the derived edges show closes through an import at call time (the map labels those separately), and tracker/filer.py <-> tracker/scanner.py inside _rescan() is the deliberate one. Standing rule 1 still says 'deterministic rules in the manifest': the manifest is the request list, and its home changed with decision 104, not the word. SAFEGUARDS (P64): the four standing rules again in one short line each, in the same order, for the app's Safeguards dialog; STANDING_RULES keeps the full wording that every doc quotes."
     },
@@ -2309,8 +2309,8 @@
       "id": "tracker/reasons.py",
       "type": "module",
       "layer": "core",
-      "sha256": "af4d101d83c161b5",
-      "lines": 899,
+      "sha256": "23c700121ed4a3b3",
+      "lines": 895,
       "exports": [
         "ALSO_ANSWERS",
         "AMBIGUOUS",

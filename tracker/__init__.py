@@ -47,9 +47,7 @@ so they are worded here and nowhere else.
 The package imports nothing at load time (decision 99). Every component is
 reached by its own name - ``from tracker import manifest`` - and
 ``tests/test_layers.py`` pins which layer each one sits in and that no
-load-time import points upward. The re-exports that used to live here
-were thirteen names no file consumed, and they were the package's one
-load-time cycle.
+load-time import points upward.
 """
 
 #: (headline, detail) - the detail names folders and the record by
