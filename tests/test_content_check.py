@@ -543,9 +543,9 @@ def test_own_forms_is_none_for_one_family_and_the_named_set_for_two():
     one = "\n".join(scanned_w2_lines(2025))
     two = "\n".join(scanned_w2_lines(2025) + scanned_1098_lines(2025))
     assert MULTI_FORM_FAMILIES == 2
-    assert own_forms(one) is None                                  # the ordinary reading
-    assert own_forms("a letter about nothing in particular") is None
-    assert own_forms(two) == set(self_named_forms(two)) == {"w2", "1098"}
+    assert own_forms(self_named_forms(one)) is None                # the ordinary reading
+    assert own_forms(self_named_forms("a letter about nothing in particular")) is None
+    assert own_forms(self_named_forms(two)) == set(self_named_forms(two)) == {"w2", "1098"}
 
 
 def test_on_every_corpus_form_the_scans_miss_verdict_equals_the_routers_kept_verdict():
@@ -1508,9 +1508,10 @@ def test_a_reading_on_time_returns_what_it_returned_in_process(tmp_path, in_a_ch
     assert len(documents) >= 12
     for document in documents:
         in_process = content_check.open_and_read(document)
-        in_child = content_check.extract_bounded(document)
+        in_child = content_check.judge_bounded(document, content_check.Questions()).extraction
         assert in_child.opened is not None, document.name
-        assert replace(in_child, seconds=0.0) == replace(in_process, seconds=0.0), document.name
+        words_let_go = content_check.unjudged(in_process).extraction
+        assert replace(in_child, seconds=0.0) == replace(words_let_go, seconds=0.0), document.name
     assert no_child_left()
 
 
@@ -1568,7 +1569,7 @@ def test_no_child_is_left_running_after_a_stop(tmp_path, a_short_stop):
                          child_readers.a_reader_that_starts_a_reader_of_its_own)
     pdf = text_pdf(tmp_path / "page.pdf", "Form W-2 2025")
 
-    reading = content_check.extract_bounded(pdf)
+    reading = content_check.judge_bounded(pdf, content_check.Questions()).extraction
 
     assert reading.text is None and reading.reason == STOPPED and not reading.transient
     helper = child_readers.reached(pdf, "helper")
@@ -1591,7 +1592,7 @@ from tracker import content_check, ocr
 content_check._CHILD_READER = child_readers.a_reader_that_starts_a_reader_of_its_own
 if sys.argv[2] == "lifeline":
     ocr._kill_on_close_job = lambda pid, **_limits: None
-content_check.extract_bounded(Path(sys.argv[1]))
+content_check.judge_bounded(Path(sys.argv[1]), content_check.Questions())
 """
 
 
@@ -1834,7 +1835,7 @@ def test_a_reader_that_cannot_start_keeps_no_verdict(tmp_path, in_a_child):
     page = text_pdf(tmp_path / "page.pdf", "Form W-2 2025")
 
     # Dies before "started": transient, and nothing is kept.
-    reading = content_check.extract_bounded(page)
+    reading = content_check.judge_bounded(page, content_check.Questions()).extraction
     assert reading.text is None and reading.transient and reading.reason == unavailable
     cache = ContentCache()
     verdict = check_content(page, rules, cache)
@@ -1849,7 +1850,7 @@ def test_a_reader_that_cannot_start_keeps_no_verdict(tmp_path, in_a_child):
 
     with pytest.MonkeyPatch.context() as patch:
         patch.setattr(multiprocessing.context.SpawnProcess, "_Popen", staticmethod(no_process))
-        assert content_check.extract_bounded(page).reason == unavailable
+        assert content_check.judge_bounded(page, content_check.Questions()).extraction.reason == unavailable
     content_check.readers_that_could_not_start()          # the claims above were not a pass
 
     # A pass: two documents wait for the next pass - no row, nothing kept
@@ -2572,9 +2573,9 @@ def _the_pass_before_189(text: str, row: RequestItem):
     """What the pass computed in its own process before decision 189, call
     for call: the router's ordinary reading, its ``_required_matched`` and
     ``any_keyword_matched`` - each reading the form scan for itself."""
-    from tracker.content_check import any_keyword_matched, own_forms, says
+    from tracker.content_check import any_keyword_matched, own_forms, says, self_named_forms
 
-    own = own_forms(text) if text else None
+    own = own_forms(self_named_forms(text)) if text else None
     required = bool(row.required_keywords) and all(says(text, k) for k in row.required_keywords)
     return evaluate_rules(text, row, own), required, any_keyword_matched(text, row)
 
@@ -2641,7 +2642,7 @@ def test_every_verdict_is_the_same_judged_in_the_child_as_in_the_pass(tmp_path, 
         if not words:
             assert not judged.has_words, name
             continue
-        own = own_forms(words)
+        own = own_forms(self_named_forms(words))
         assert judged.own == (frozenset(own) if own is not None else None), name
         assert judged.self_named == self_named_forms(words), name
         assert judged.carries_1099b == carries_a_1099b_section(words), name

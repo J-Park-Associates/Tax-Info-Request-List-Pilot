@@ -435,8 +435,8 @@ def test_a_long_lived_reader_is_replaced_after_a_crash(tmp_path, in_a_child):
         before = pid_of_the_reader(after)
         answer, failed = content_check.in_a_child(crash, child_readers.a_reader_that_dies_on_a_crash)
         assert answer is None and failed.reason == CRASHED and not failed.transient
-        reading = content_check.extract_bounded(after)
-        assert reading.text and "W-2" in reading.text
+        judgment = content_check.judge_bounded(after, content_check.Questions())
+        assert judgment.has_words and "w2" in judgment.self_named
         assert pid_of_the_reader(after) != before
     assert no_child_left()
 
@@ -450,7 +450,7 @@ def test_the_document_stop_ends_a_page_the_reader_never_finishes(tmp_path, a_sho
     a_short_stop.setattr(content_check, "_CHILD_READER", child_readers.a_page_read_that_never_finishes)
     scan = w2_scan(tmp_path / "scan.pdf")
 
-    reading = content_check.extract_bounded(scan)
+    reading = content_check.judge_bounded(scan, content_check.Questions()).extraction
 
     mark = child_readers.reached(scan, "page")
     assert mark.is_file()                                          # it was inside the page

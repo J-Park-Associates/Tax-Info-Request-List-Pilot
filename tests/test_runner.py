@@ -2031,20 +2031,18 @@ def test_a_return_short_of_room_files_everything_and_is_not_warned(tmp_path, pat
     every 1040 at the firm's root would warn every pass, and a warning that
     is always on is a warning nobody reads."""
     from tests.test_filer import OVER, TIGHT_PERIOD, drop, tight_return
-    from tracker.filer import ROOM_SHORT
 
     engagement = tight_return(tmp_path, OVER)
     drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
 
     [run] = _a_pass_over(engagement)
 
-    said = ROOM_SHORT.format(short=OVER)
     assert run.warnings == [] and not run.skipped and not run.error
     assert run.filed == 1
     [entry] = read_index(engagement)
     assert entry.prepared_location.endswith(f"/A01 - W-2 Wage S - {TIGHT_PERIOD}.pdf")
     report = RunReport(today=FRIDAY, runs=[run])
-    assert said not in format_report(report)
+    assert "characters short of the room" not in format_report(report)
     page = write_status_page(tmp_path, report).read_text(encoding="utf-8")
     assert "characters short of the room" not in page
 
@@ -2054,7 +2052,7 @@ def test_a_return_with_requests_that_cannot_receive_says_how_many(tmp_path, path
     counted and said: a document for it parks until the root is shorter."""
     from tests.conftest import root_for_a_return_of
     from tests.test_filer import ROOM_ITEMS, no_room_return, with_the_long_period
-    from tracker.filer import ROOM_PARKS, ROOM_SHORT, room_for
+    from tracker.filer import ROOM_PARKS, room_for
     from tracker.manifest import load_manifest
 
     engagement = make_engagement(root_for_a_return_of(tmp_path, no_room_return()),
@@ -2065,7 +2063,7 @@ def test_a_return_with_requests_that_cannot_receive_says_how_many(tmp_path, path
     [run] = _a_pass_over(engagement)
 
     assert ROOM_PARKS.format(count=1) in run.warnings
-    assert ROOM_SHORT.format(short=room.short) not in run.warnings   # L-1: the figure is no warning
+    assert not any("characters short of the room" in warning for warning in run.warnings)   # L-1: the figure is no warning
     assert not run.skipped and not run.error
 
 

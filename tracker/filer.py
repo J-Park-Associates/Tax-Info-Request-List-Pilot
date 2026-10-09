@@ -708,14 +708,6 @@ REVIEW_COPY_FAILED = "no review copy of {name} could be made ({problem})"
 #: open it where it is (decision 131's review, deviation 4).
 REVIEW_COPY_PAST_READER = ("the review copy's path is longer than a spreadsheet program may open; "
                            "open it from a shorter folder")
-#: What the return's page and the reply to setting the root say of a return
-#: whose canonical copies no longer fit: the number, and the three levers a
-#: person has. **Information, not a warning** (the lead's L-1): the names
-#: are cut to fit and everything still files, and a warning that is on
-#: every pass is a warning nobody reads.
-ROOM_SHORT = ("{short} characters short of the room its working copies need, so their names are cut "
-              "to fit; a shorter clients root, a request's Short name shortened in the editor, or a "
-              "shorter return name at the next rollover gives it back")
 #: The warning, when some request cannot receive at all.
 ROOM_PARKS = ("{count} request(s) have no room for a working copy under this root; a document for "
               "them parks for a person until the clients root is shorter")
@@ -2513,19 +2505,6 @@ def _missing_positions(engagement_dir: Path, entries: list[IndexEntry]) -> list[
             newest[entry.pbc_location] = position     # the newest row for a location wins
     return [position for location, position in newest.items()
             if not marked_missing(entries[position]) and _absent(locate(engagement_dir, location))]
-
-
-def missing_in_pbc(engagement_dir: Path, entries: list[IndexEntry]) -> list[IndexEntry]:
-    """Recorded originals that are no longer where their row says they are.
-
-    Every row that names a location is looked at - filed, parked and
-    duplicate alike - because each is a promise that the client's own file
-    is still in the folder they can see. Nothing else in a pass would
-    notice: an untouched row is not a drop, not a stray and not a
-    replacement, so the record could empty out while the scan went on
-    reading the working copies and calling every request Received.
-    """
-    return [entries[position] for position in _missing_positions(engagement_dir, entries)]
 
 
 def _row_these_bytes_left(path: Path, waiting: dict[str, list[int]]) -> int | None:
@@ -5210,7 +5189,7 @@ def _decide_across(
     # (decision 129): the original rests under the household the return
     # that takes it lives in, and until a person says which return that
     # is, the household that was dropped in is the one that has it.
-    home, home_routing = _the_home(accepting, routed, runs)
+    home, home_routing = _the_home(accepting, routed)
     home_routing = stage.graded.get(id(home), home_routing)
 
     if no_room is not None:
@@ -5367,19 +5346,13 @@ def _waits_for(run: _ReturnRun, routing) -> str:
     ))
 
 
-def _the_home(accepting, routed, runs: list[_ReturnRun]) -> tuple[_ReturnRun, object]:
+def _the_home(accepting, routed) -> tuple[_ReturnRun, object]:
     """The return a document nobody may file parks in, and what its own
-    request list made of it.
-
-    Decision 125's home return, read across the feed list (decision 129):
-    the **dropping household's own** return of the first request that
-    accepted the document, and where none of its own did, its first return
-    by order. A bank statement only the 1120S's list asks for, naming
-    nobody, parks in the 1120S's queue - where the row that wanted it is -
-    rather than in a 1040 that never asked for it; and a document only a
-    **fed** return accepted parks at home all the same, because the
-    original has not moved and the household that has it is the one that
-    was dropped in.
+    request list made of it (decisions 125 and 129): the **dropping
+    household's own** return of the first request that accepted it, else its
+    first return by order - a document only a fed return accepted parks at
+    home all the same, because the household that has the original is the
+    one that was dropped in.
     """
     for run, routing in [*accepting, *routed]:
         if run.home:
@@ -6756,7 +6729,7 @@ def find_parked(
 
     Public since decision 112, because the caller that draws the card has
     to find the same row this module will act on to say what the evidence
-    pointed at; the underscored name is kept for one release.
+    pointed at.
     """
     wanted = _wanted(original)
     for position in range(len(entries) - 1, -1, -1):
@@ -6772,11 +6745,6 @@ def find_parked(
                 + ")"
             )
     raise FilingError(f"nothing in the index is called {original!r}")
-
-
-#: The name this lookup had while it was the filer's alone; kept for one
-#: release, as the module does elsewhere.
-_find_parked = find_parked
 
 
 # ---------------------------------------------------------- not requested ----

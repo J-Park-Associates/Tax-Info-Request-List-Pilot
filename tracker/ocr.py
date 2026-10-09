@@ -1189,11 +1189,6 @@ def reading_session(*, settle: bool = False, in_a_child: bool = True) -> Iterato
         session.close()
 
 
-def current_session() -> Session | None:
-    """The session open in this process, or None."""
-    return _SESSION
-
-
 def run_in_child(job, args: tuple, kwargs: dict, stop: float) -> Outcome:
     """Run one job in the open session's child - or, with none open, in a
     session of its own that ends with the job."""

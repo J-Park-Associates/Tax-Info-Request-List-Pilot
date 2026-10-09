@@ -166,14 +166,8 @@ from dataclasses import replace
 from pathlib import Path
 
 from tracker import reasons
-
-# MULTI_FORM_FAMILIES moved to tracker/content_check.py with decision 107
-# (the scanner's miss path reads through the same rule); re-exported here
-# for one release so `from tracker.router import MULTI_FORM_FAMILIES` still
-# resolves to the same object.
 from tracker.content_check import (
     BROKER_FORM,
-    MULTI_FORM_FAMILIES,  # noqa: F401
     OPEN_TEST_FINGERPRINT,
     ContentCache,
     ContentResult,

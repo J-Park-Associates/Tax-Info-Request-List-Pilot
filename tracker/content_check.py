@@ -918,9 +918,10 @@ def form_family(key: str) -> str:
 MULTI_FORM_FAMILIES = 2
 
 
-def own_forms(text: str) -> set[str] | None:
-    """The forms ``text`` counts as its own when it names two or more
-    families as itself, else ``None`` - the ordinary reading.
+def own_forms(named: tuple[str, ...]) -> set[str] | None:
+    """The forms a page counts as its own when ``named``, its self-named
+    forms (:func:`self_named_forms`, read once by the judgment), come from
+    two or more families, else ``None`` - the ordinary reading.
 
     **The one reading of which forms a page is** (decision 107). Decision
     94 files a page that prints two forms' own names under both requests,
@@ -935,13 +936,6 @@ def own_forms(text: str) -> set[str] | None:
     path (:func:`check_content`) both read through this, and the cache
     holds nothing a reader cannot recompute from the bytes.
     """
-    return _own_of(self_named_forms(text))
-
-
-def _own_of(named: tuple[str, ...]) -> set[str] | None:
-    """:func:`own_forms` from the page's self-named forms, already read
-    (:func:`self_named_forms`): a judgment reads them once and hands them
-    to both the ordinary reading and the router's split (decision 189)."""
     if len({form_family(key) for key in named}) >= MULTI_FORM_FAMILIES:
         return set(named)
     return None
@@ -1573,13 +1567,13 @@ def judgment_of(reading: Extraction, questions: Questions) -> Judgment:
     """
     # A scan with no text layer, read without OCR, is no reading at all
     # (the router's words, decision 92): nothing of it is judged.
-    words = "" if reading.needs_ocr else (reading.text or "")
     base = unjudged(reading)
     if reading.text is None or reading.needs_ocr:
         return base
+    words = reading.text
     dominant = dominant_forms(words)
     self_named = self_named_forms(words) if words else ()
-    own = _own_of(self_named)
+    own = own_forms(self_named)
     rows: dict[RowQuestion, RowJudgment] = {}
     for question in questions.rows:
         if question in rows:
@@ -2092,8 +2086,7 @@ def abandoned(seconds: float) -> Extraction:
 # And the child never outlives its pass: a lifeline pipe and, on Windows, a
 # job object (tracker.ocr says how).
 
-#: Whether :func:`judge_bounded` and :func:`extract_bounded` read in a
-#: child process (decision 150).
+#: Whether :func:`judge_bounded` reads in a child process (decision 150).
 #: Always, in the tracker. The suite turns it off for every test but the
 #: ones about the child (``tests/conftest.py``): its stand-in readers are
 #: patched into the test's own process, which a child never shares.
@@ -2119,32 +2112,6 @@ def reading_stop_seconds(path: Path) -> float:
     if extension_of(path) in IMAGE_EXTENSIONS:
         return READING_STOP_PAGE_SECONDS
     return READING_STOP_DOCUMENT_SECONDS
-
-
-def extract_bounded(path: Path, *, ocr: bool = True) -> Extraction:
-    """:func:`extract`, in a process the pass can stop (decision 150).
-
-    What the pass read through until decision 189 - the router's one
-    reading of a drop and the scanner's reading on a cache miss - so the
-    safety stop bounds the whole reading, text layer
-    and render included, and a reader that crashes parks the file instead
-    of ending the pass. A cached verdict never gets here, so it never
-    starts a child. The child writes nothing anywhere: it hands back the
-    reading, and the pass does every write, as before. The reader writes no
-    temporary file either (SPEC-169 section 6), and whatever a library might
-    write goes to the child's own folder in the data home, removed when the
-    child ends (decision 186). The benchmark calls :func:`extract`
-    itself: it measures the reader, not the stop.
-
-    **Not what the pass reads through since decision 189.** The pass asks
-    :func:`judge_bounded`, which judges in the same child and hands back no
-    text; this is the bounded reading for a caller that wants the words
-    themselves, and the claims about the child that are about the reading.
-    """
-    if not READ_IN_A_CHILD:
-        return open_and_read(Path(path), ocr=ocr)
-    answer, failed = in_a_child(Path(path), _CHILD_READER, ocr=ocr)
-    return failed if failed is not None else answer
 
 
 def open_and_read(path: Path, *, ocr: bool = True) -> Extraction:
