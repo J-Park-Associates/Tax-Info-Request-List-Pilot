@@ -1,7 +1,7 @@
 """Stand-in readers for the reading's child process (decision 150).
 
 The pass reads each document in a child process it can stop
-(``tracker.content_check.extract_bounded``). A child imports the reader
+(``tracker.content_check.judge_bounded``). A child imports the reader
 afresh, so a patch made in the test's own process never reaches it; the
 tests hand the child one of these instead, through
 ``content_check._CHILD_READER``, and each one makes its patch **inside**

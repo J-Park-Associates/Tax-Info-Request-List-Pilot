@@ -76,7 +76,7 @@ each document once - slower, never wrong. A save is one transaction of
 the store's own, under the engagement lock every writer already holds,
 and never ``store.record()``: there is no event. A cache built with no
 engagement - the command line's, a test's - lives in memory and never
-touches the store. The old file is never read; the next real pass
+touches the store. The old file is never read; the after-install step
 removes it (:data:`RETIRED_CACHE_FILENAME`).
 
 :class:`Evidence` itself, the rule and place vocabularies and the cell format
@@ -95,6 +95,7 @@ import re
 import time
 import zipfile
 from collections import OrderedDict
+from collections.abc import Callable, Iterable
 from dataclasses import MISSING, asdict, dataclass, field, fields, replace
 from pathlib import Path
 
@@ -143,32 +144,13 @@ logging.getLogger("pdfminer").setLevel(logging.ERROR)
 
 #: The file the verdict cache was, in the engagement folder, until decision
 #: 107 moved it into the store. Never read again: the one use left is the
-#: filer's tidy-up, which removes it from a folder a pass finds it in.
+#: after-install step (P234), which removes it from every folder that has one.
 RETIRED_CACHE_FILENAME = "_content_cache.json"
 #: The cache's layout, carried on every verdict row in the store; a row at
 #: any other version is ignored on load and deleted on save (the cache is
 #: disposable), so a matcher change invalidates without a store version.
-#: 3: verdicts that were the machine's (no OCR, OCR failed) are no longer
-#: stored; a cache written before that carried them for ever.
-#: 4: says() changed what a keyword verdict means (a form number is title evidence).
-#: 5: a form number in the title is weighed by its shape too; a keyword's words sit on one line.
-#: 6: a keyword on a menu line, or one an ask-word asked for, is no longer said.
-#: 7: a verdict carries the evidence behind it (an Evidence per matched rule).
-#: 8: a form heading its line with its own printed title and its year names
-#:    itself, so a one-copy W-2 says "W-2" where it said nothing before.
-#: 9: a keyword may name alternatives ("|") and join the phrases one of
-#:    them wants together ("+"), so a row can accept either of two
-#:    documents; a verdict cached before that read the characters as words.
-#: 10 (decision 127): the reading turns a page or a photo upright before
-#:    OCR, so a verdict on a scan read at 9 may have been read sideways.
-#: 11 (decision 141): a notice's header phrases (``FIRST_PAGE_PHRASES``)
-#:    count on the first page only, so a verdict that found one deeper is void.
-#: 12 (decision 169): RapidOCR reads instead of Tesseract, so every verdict
-#:    on a scan or a photo was reached on another reader's words. The first
-#:    pass after the install reads every scan and photo again, once.
-#: 13 (decision 190): a verdict carries its cause's code, and a reason
-#:    names a parser's failure by its class, never its words; a verdict
-#:    kept before either says neither.
+#: Bump it whenever what a verdict means changes; docs/ROADMAP.md holds
+#: what each bump (3 to 13) was for.
 CACHE_VERSION = 13
 
 #: A "text" PDF with fewer stripped characters than this *per page read*
@@ -192,7 +174,6 @@ MAX_PAGES = 10
 #: The other file types whose text can be read (PDF_EXTENSION is the third).
 XLSX_EXTENSIONS = ("xlsx", "xlsm")
 TEXT_EXTENSIONS = ("csv", "tsv", "txt")
-_MAX_OCR_PAGES = MAX_PAGES
 #: The most pixels one page or one photo is read at (decision 137, B1).
 #: Rendering has to stay bounded: a PDF page may be 14,400 points square,
 #: which at the old fixed scale of 2 is some 830 million pixels, and
@@ -918,9 +899,10 @@ def form_family(key: str) -> str:
 MULTI_FORM_FAMILIES = 2
 
 
-def own_forms(text: str) -> set[str] | None:
-    """The forms ``text`` counts as its own when it names two or more
-    families as itself, else ``None`` - the ordinary reading.
+def own_forms(named: tuple[str, ...]) -> set[str] | None:
+    """The forms a page counts as its own when ``named``, its self-named
+    forms (:func:`self_named_forms`, read once by the judgment), come from
+    two or more families, else ``None`` - the ordinary reading.
 
     **The one reading of which forms a page is** (decision 107). Decision
     94 files a page that prints two forms' own names under both requests,
@@ -935,13 +917,6 @@ def own_forms(text: str) -> set[str] | None:
     path (:func:`check_content`) both read through this, and the cache
     holds nothing a reader cannot recompute from the bytes.
     """
-    return _own_of(self_named_forms(text))
-
-
-def _own_of(named: tuple[str, ...]) -> set[str] | None:
-    """:func:`own_forms` from the page's self-named forms, already read
-    (:func:`self_named_forms`): a judgment reads them once and hands them
-    to both the ordinary reading and the router's split (decision 189)."""
     if len({form_family(key) for key in named}) >= MULTI_FORM_FAMILIES:
         return set(named)
     return None
@@ -959,18 +934,14 @@ def carries_a_1099b_section(text: str, dominant: set[str] | None = None) -> bool
     **Not the word "consolidated".** A bank's "Consolidated Statement", the
     consolidated-return blanks and a broker's "your Consolidated Form 1099
     is available" email all say it, and none of them is a brokerage
-    statement. What a consolidated statement with a 1099-B section has and
-    a bank's combined 1099-INT and 1099-DIV page does not is the 1099-B,
-    read as a form label exactly the way a ``1099-b`` keyword is read
-    (:func:`_one_says_where`): named in its own right in the title
-    (``_title_forms``, which keeps every 1099 variant a consolidated
-    statement names because they are one family), or as the page's own
-    dominant number. So this is true of a page exactly when a row asking
+    statement. What decides is the 1099-B section, read as a form label
+    exactly the way a ``1099-b`` keyword is read (:func:`_one_says_where`):
+    named in its own right in the title (``_title_forms``), or as the page's
+    own dominant number. So this is true of a page exactly when a row asking
     for ``1099-b`` could be accepted *because of* the 1099-B - a checklist
-    that lists it (a menu names nothing in its title) and a notice that
-    only mentions it are not. A statement with only interest and dividend
-    sections carries none and still files with the 1099-INT/DIV row: what
-    decides is the 1099-B section, not who issued the statement.
+    that lists it and a notice that only mentions it are not, and a
+    statement with only interest and dividend sections carries none and
+    still files with the 1099-INT/DIV row.
 
     It says what the page carries and nothing more. Which request the page
     then files under is :mod:`tracker.router`'s: exactly one of the rows
@@ -1254,6 +1225,18 @@ def says(text: str, keyword: str, dominant: set[str] | None = None) -> bool:
     return _says_where(text, keyword, dominant) is not None
 
 
+def _keywords_said(text: str, keywords: tuple[str, ...], combine: Callable[[Iterable[bool]], bool],
+                   dominant: set[str] | None) -> bool:
+    """``combine`` (``any`` or ``all``) over whether each of ``keywords`` is
+    said in ``text``; False for none. ``dominant`` as
+    :func:`carries_a_1099b_section` takes it."""
+    if not keywords:
+        return False
+    if dominant is None:
+        dominant = dominant_forms(text)
+    return combine(says(text, k, dominant) for k in keywords)
+
+
 def any_keyword_matched(text: str, item: RequestItem, dominant: set[str] | None = None) -> bool:
     """Whether the row's any-keywords accept ``text``, apart from every other rule.
 
@@ -1261,13 +1244,8 @@ def any_keyword_matched(text: str, item: RequestItem, dominant: set[str] | None 
     matched, never evidence on its own (decision 40). When only that check
     fails, the row is still the lead a person needs, and this is how
     :mod:`tracker.router` asks for it without reading a verdict's sentence.
-    ``dominant`` as :func:`carries_a_1099b_section` takes it.
     """
-    if not item.any_keywords:
-        return False
-    if dominant is None:
-        dominant = dominant_forms(text)
-    return any(says(text, k, dominant) for k in item.any_keywords)
+    return _keywords_said(text, item.any_keywords, any, dominant)
 
 
 def required_matched(text: str, item: RequestItem, dominant: set[str] | None = None) -> bool:
@@ -1277,17 +1255,9 @@ def required_matched(text: str, item: RequestItem, dominant: set[str] | None = N
     document *is* ("a W-2 says W-2"), which is why they both outrank
     ``any_keywords`` when :mod:`tracker.router` chooses between requests
     and, when they match a request whose other rules then fail, stop the
-    file being filed elsewhere. Moved here from the router with decision
-    189, beside :func:`any_keyword_matched`, because it reads the
-    document's words and so runs in the judgment. ``dominant`` as
-    :func:`carries_a_1099b_section` takes it: it was once read afresh for
-    every keyword of every row, a whole scan of the text each time.
+    file being filed elsewhere.
     """
-    if not item.required_keywords:
-        return False
-    if dominant is None:
-        dominant = dominant_forms(text)
-    return all(says(text, k, dominant) for k in item.required_keywords)
+    return _keywords_said(text, item.required_keywords, all, dominant)
 
 
 def _found(rule: str, text: str, keyword: str, dominant: set[str]) -> Evidence | None:
@@ -1399,21 +1369,17 @@ def evaluate_rules(text: str, item: RequestItem, dominant: set[str] | None = Non
 # Decision 189. Everything that reads a client's words - the form scan, the
 # rules, the name - runs where the reading ran: in the pass's one reader
 # child, under the document's stop and the child's memory cap
-# (:func:`judge`). Until then the child handed the whole text back across
-# the pipe and the pass asked every rule of it in its own process, with no
-# stop: a typed Date Pattern that backtracks, or a one-line workbook the
-# form scan crawls through, could hold the pass for hours, and the scanner
-# held up to eight whole texts in memory. What crosses now is the answer
-# to the questions the pass asked (:class:`Judgment`), in the firm's own
-# words - a row's keyword, a reason sentence, a form number the catalog
-# knows, one of the firm's spellings - and never a word of the document.
+# (:func:`judge`). So a typed Date Pattern that backtracks, or a one-line
+# workbook the form scan crawls through, costs one stop and never the pass,
+# and the pass holds no text. What crosses is the answer to the questions the
+# pass asked (:class:`Judgment`), in the firm's own words - a row's keyword,
+# a reason sentence, a form number the catalog knows, one of the firm's
+# spellings - and never a word of the document.
 #
-# The rules did not change, and neither did a verdict: each question is
-# answered by the very function the pass called before, on the same text,
-# with the same arguments (``tests/test_content_check.py`` compares the two
-# on the suite's corpus). So :data:`CACHE_VERSION` did not move. Callers
-# outside the pass - the command lines, the backtest, the vocabulary
-# report - still read and judge in their own process
+# Each question is answered by the very function the rules always called, on
+# the same text (``tests/test_content_check.py`` compares the two on the
+# suite's corpus). Callers outside the pass - the command lines, the
+# backtest, the vocabulary report - read and judge in their own process
 # (:func:`judgment_of` on an :class:`Extraction`, or :func:`says` itself).
 
 
@@ -1573,13 +1539,13 @@ def judgment_of(reading: Extraction, questions: Questions) -> Judgment:
     """
     # A scan with no text layer, read without OCR, is no reading at all
     # (the router's words, decision 92): nothing of it is judged.
-    words = "" if reading.needs_ocr else (reading.text or "")
     base = unjudged(reading)
     if reading.text is None or reading.needs_ocr:
         return base
+    words = reading.text
     dominant = dominant_forms(words)
     self_named = self_named_forms(words) if words else ()
-    own = _own_of(self_named)
+    own = own_forms(self_named)
     rows: dict[RowQuestion, RowJudgment] = {}
     for question in questions.rows:
         if question in rows:
@@ -1818,35 +1784,20 @@ def _ocr_pdf(path: Path) -> str | None:
     except ImportError:
         return None
 
+    parts: list[str] = []
+    doc = pdfium.PdfDocument(path)
     try:
-        parts: list[str] = []
-        doc = pdfium.PdfDocument(path)
-        try:
-            for index in range(min(len(doc), _MAX_OCR_PAGES)):
-                if _STOP is not None:
-                    _STOP.page()              # no page starts past the stop
-                page_of = doc[index]
-                bitmap = page_of.render(scale=render_scale(*page_of.get_size()))
-                if _STOP is not None:
-                    _STOP.remaining()         # the render counts against the budget
-                parts.append(ocr.read_page(bitmap.to_pil().convert("RGB"), name=path.name))
-        finally:
-            doc.close()
-        return "\n".join(parts)
-    except ocr.ReaderUnavailable as exc:
-        log.warning("The reader cannot run on this machine (%s)", exc)
-        return None
-    except ReadingStopped:
-        raise
-    except MemoryError:
-        raise           # the child's memory limit: a crash, not a retry (SPEC-169 section 9)
-    except Exception as exc:
-        # The class alone (decisions 189 and 190): a reader's message can
-        # quote the document or its path. The run log names the class; the
-        # words stay on the debug log.
-        log.warning("OCR failed on %s (%s)", path.name, errors.error_class(exc))
-        errors.keep("content_check: OCR", exc, name=path.name)
-        raise OcrError(errors.error_class(exc)) from exc
+        for index in range(min(len(doc), MAX_PAGES)):
+            if _STOP is not None:
+                _STOP.page()              # no page starts past the stop
+            page_of = doc[index]
+            bitmap = page_of.render(scale=render_scale(*page_of.get_size()))
+            if _STOP is not None:
+                _STOP.remaining()         # the render counts against the budget
+            parts.append(ocr.read_page(bitmap.to_pil().convert("RGB"), name=path.name))
+    finally:
+        doc.close()
+    return "\n".join(parts)
 
 
 def _ocr_image(path: Path) -> str | None:
@@ -1879,37 +1830,11 @@ def _ocr_image(path: Path) -> str | None:
                 opened.draft("RGB", (int(opened.width * factor), int(opened.height * factor)))
             image = _within_budget(ImageOps.exif_transpose(opened).convert("RGB"))
         return ocr.read_page(image, name=path.name)
-    except ocr.ReaderUnavailable as exc:
-        log.warning("The reader cannot run on this machine (%s)", exc)
-        return None
-    except ReadingStopped:
-        raise
     except Image.DecompressionBombError as exc:
         # Pillow's own guard, which stays on (decision 137, B1): a picture
         # too large even to decode smaller. A size rule, so it is a kept
         # verdict for a person, not a retry every pass.
         raise TooLargeToRead(picture_too_large_reason(exc)) from exc
-    except MemoryError:
-        raise           # the child's memory limit: a crash, not a retry (SPEC-169 section 9)
-    except Exception as exc:
-        # The class alone (decisions 189 and 190): a reader's message can
-        # quote the document or its path. The run log names the class; the
-        # words stay on the debug log.
-        log.warning("OCR failed on %s (%s)", path.name, errors.error_class(exc))
-        errors.keep("content_check: OCR", exc, name=path.name)
-        raise OcrError(errors.error_class(exc)) from exc
-
-
-class OcrError(RuntimeError):
-    """The reader ran but failed on this file this time; try again later.
-
-    Its one argument is the failure's class (:func:`tracker.errors.error_class`),
-    never its message: that is what the reason shows (decision 190)."""
-
-    @property
-    def error(self) -> str:
-        """The class of the failure underneath, as the reason shows it."""
-        return str(self.args[0]) if self.args else type(self).__name__
 
 
 class TooLargeToRead(Exception):
@@ -2003,15 +1928,26 @@ def extract_by_ocr(path: Path) -> Extraction:
     _STOP.page()
     try:
         ocr_text = reader(path)
+    except ocr.ReaderUnavailable as exc:
+        log.warning("The reader cannot run on this machine (%s)", exc)
+        ocr_text = None
     except ReadingStopped as exc:
         return abandoned(exc.seconds)
     except TooLargeToRead as exc:
         return Extraction(None, reason=str(exc), extractable=False, code=reasons.TOO_LARGE.code)
-    except OcrError as exc:
+    except MemoryError:
+        raise           # the child's memory limit: a crash, not a retry (SPEC-169 section 9)
+    except Exception as exc:
         # Ours to retry, not the client's to resend: the file may be fine.
+        # The class alone is the reason (decisions 189 and 190): a reader's
+        # message can quote the document or its path. The run log names the
+        # class; the words stay on the debug log.
+        error = errors.error_class(exc)
+        log.warning("OCR failed on %s (%s)", path.name, error)
+        errors.keep("content_check: OCR", exc, name=path.name)
         return Extraction(
-            None, reason=reasons.OCR_FAILED.format(error=exc.error),
-            extractable=False, error=exc.error, transient=True, code=reasons.OCR_FAILED.code,
+            None, reason=reasons.OCR_FAILED.format(error=error),
+            extractable=False, error=error, transient=True, code=reasons.OCR_FAILED.code,
         )
     finally:
         _STOP = None
@@ -2046,54 +1982,25 @@ def abandoned(seconds: float) -> Extraction:
 
 # ----------------------------------------------- a reading the pass can stop ----
 #
-# Decision 150. The stop above is noticed between pages, and nothing in
-# the reading's own process can interrupt a page being read, the PDF text
-# layer, a page's render or a workbook: a compressed PDF of a few megabytes
-# can hold hours of drawing commands for pdfplumber or pdfium, far under
-# the size ceiling. So the pass reads in a child process and waits for each
-# document at most the document's stop. On time, the child hands back the
-# Extraction it made, exactly what extract() returns in the pass's own
-# process. Over time, the child is ended - with everything it started - and
-# the reading is abandoned: the same kept verdict as above. A child that
-# ends without answering - pdfium or the reader crashing, memory running
-# out - is a reading that failed, kept the same way: the file waits for a
-# person, and the pass goes on to the next one.
+# Decision 150. The stop above is noticed between pages, and nothing in the
+# reading's own process can interrupt a page being read, the PDF text layer,
+# a render or a workbook (a few megabytes of PDF can hold hours of drawing
+# commands). So the pass reads and judges in a child process, one per pass
+# (tracker.ocr, which also says how it is replaced and how it never outlives
+# its pass: a lifeline pipe and, on Windows, a job object), and waits for each
+# document at most its stop. Over time the child is ended with everything it
+# started and the reading is abandoned, the kept verdict above; a child that
+# ends after "started" without answering is a reading that failed, kept the
+# same way. A child that never says "started" is the machine's fault and not
+# the file's: reasons.READER_UNAVAILABLE, transient, nothing kept, the drop
+# left for the next pass and the pass warned once.
 #
-# Since decision 169 (R-4) the child is **one per pass**, serving documents
-# one at a time, and it lives in tracker.ocr with the reader it runs: the
-# reader's engine takes about a second to load on either device, and a
-# child per document paid it every time. It is replaced after a stop, a
-# crash, a fault on the graphics card and every hundred documents
-# (ocr.ReadingChild, ocr.reading_session). This module words what became
-# of each document.
-#
-# The child makes tier 2's open test too, before it reads (the designer's
-# ruling on 150's review): opening a PDF is parsing it, and a page tree of a
-# few kilobytes can keep pypdf counting pages for ever. So nothing of a
-# client's file is parsed in the pass's own process: the open test's
-# verdict comes back with the reading (Extraction.opened), and the router
-# and the scanner take it from there (open_verdict, kept by fingerprint).
-#
-# A child that cannot start at all is the machine's fault and not the
-# file's. It says "started" before it does anything with a file, and an
-# end before that - or no word by the stop - is a reader that could not
-# start (reasons.READER_UNAVAILABLE): transient, nothing kept, the drop
-# neither decided nor recorded (tracker.filer leaves it for the next pass)
-# and the pass warned once. Only an end after "started" is kept against
-# the file.
-#
-# Opening an email or a zip is parsing it too (decision 154): olefile, the
-# standard library's email and zipfile, on bytes a client sent. So it is
-# one more job for the same child (in_a_child, the one mechanism), under
-# the stop for a file: tracker.containers.open_bounded hands the child the
-# container, and the child hands back the parts as plain data. The pass
-# writes every attachment, and only once the child has answered.
-#
-# And the child never outlives its pass: a lifeline pipe and, on Windows, a
-# job object (tracker.ocr says how).
+# The open test (a PDF parsed, decision 150) and the opening of an email or a
+# zip (decision 154, in_a_child) are parsing a client's file too, so they run
+# in the same child under the same stop: nothing of a client's file is parsed
+# in the pass's own process.
 
-#: Whether :func:`judge_bounded` and :func:`extract_bounded` read in a
-#: child process (decision 150).
+#: Whether :func:`judge_bounded` reads in a child process (decision 150).
 #: Always, in the tracker. The suite turns it off for every test but the
 #: ones about the child (``tests/conftest.py``): its stand-in readers are
 #: patched into the test's own process, which a child never shares.
@@ -2119,32 +2026,6 @@ def reading_stop_seconds(path: Path) -> float:
     if extension_of(path) in IMAGE_EXTENSIONS:
         return READING_STOP_PAGE_SECONDS
     return READING_STOP_DOCUMENT_SECONDS
-
-
-def extract_bounded(path: Path, *, ocr: bool = True) -> Extraction:
-    """:func:`extract`, in a process the pass can stop (decision 150).
-
-    What the pass read through until decision 189 - the router's one
-    reading of a drop and the scanner's reading on a cache miss - so the
-    safety stop bounds the whole reading, text layer
-    and render included, and a reader that crashes parks the file instead
-    of ending the pass. A cached verdict never gets here, so it never
-    starts a child. The child writes nothing anywhere: it hands back the
-    reading, and the pass does every write, as before. The reader writes no
-    temporary file either (SPEC-169 section 6), and whatever a library might
-    write goes to the child's own folder in the data home, removed when the
-    child ends (decision 186). The benchmark calls :func:`extract`
-    itself: it measures the reader, not the stop.
-
-    **Not what the pass reads through since decision 189.** The pass asks
-    :func:`judge_bounded`, which judges in the same child and hands back no
-    text; this is the bounded reading for a caller that wants the words
-    themselves, and the claims about the child that are about the reading.
-    """
-    if not READ_IN_A_CHILD:
-        return open_and_read(Path(path), ocr=ocr)
-    answer, failed = in_a_child(Path(path), _CHILD_READER, ocr=ocr)
-    return failed if failed is not None else answer
 
 
 def open_and_read(path: Path, *, ocr: bool = True) -> Extraction:

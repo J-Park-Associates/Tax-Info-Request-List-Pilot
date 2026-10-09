@@ -282,15 +282,16 @@ def _interrupted(engagement_dir: Path, rows: list[IndexEntry]) -> dict[Path, str
     counted and the request is told in the row's own sentence instead.
     Firm-side, always: no draft asks a client about a power cut here.
     """
-    from tracker.filer import interrupted_at, interrupted_note
+    from tracker.filer import interrupted
 
     found: dict[Path, str] = {}
     for row in rows:
-        where = interrupted_at(row)
-        if where:
+        stopped = interrupted(row)
+        if stopped:
             # Said with the row's own code (decision 190), so the request's
             # note records the cause the row recorded.
-            found[locate(engagement_dir, where)] = reasons.Said(interrupted_note(row), row.code)
+            where, sentence = stopped
+            found[locate(engagement_dir, where)] = reasons.Said(sentence, row.code)
     return found
 
 

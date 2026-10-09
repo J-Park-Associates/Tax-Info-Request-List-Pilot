@@ -204,7 +204,7 @@ def an_app_folder_of_its_own(tmp_path):
 def reading_in_this_process():
     """Every test reads a document in its own process (decision 150).
 
-    ``content_check.extract_bounded()`` reads in a child process in the
+    ``content_check.judge_bounded()`` reads in a child process in the
     tracker, and a child imports the reader afresh: the patches the suite
     makes to it would not be there. A ``MonkeyPatch`` of its own, like the
     store's, so a test calling ``monkeypatch.undo()`` does not turn the
