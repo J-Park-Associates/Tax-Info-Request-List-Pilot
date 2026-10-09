@@ -557,9 +557,10 @@ SHELL_NAMED_REACH = textwrap.dedent('''
 
 
 def test_a_folder_the_shell_names_is_guarded_in_a_pytest_xdist_worker(office_shaped_copy):
-    """A worker uses the controller's places, worked out before the session
-    pointed the environment at its own folders, so the settings folder the
-    user's shell names stays guarded in it."""
+    """Pins the guard a worker already has from ``sitecustomize``: the worker
+    is a Python child that inherits the session's environment, so it arms
+    itself from it at start-up and the settings folder the user's shell names
+    is stopped and logged there, and the controller fails the session."""
     copy, fabricated = office_shaped_copy
     named = copy.parent / "named-by-the-shell"
     canary = copy / "tests" / "test_shell_named_xdist_185.py"

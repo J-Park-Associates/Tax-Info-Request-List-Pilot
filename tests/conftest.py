@@ -871,9 +871,7 @@ def _configure_worker(config):
 
     The controller armed the tripwire once, before it started the worker, and
     the worker inherited that environment: its folders are the session's, and
-    its places are the controller's. A worker that armed its own would work
-    out the places from an environment already pointing at the session, so a
-    folder the user's shell names would go unguarded in it, and it would keep
+    its places are the controller's. A worker that armed its own would keep
     a verdict of its own that xdist never reads back - xdist ignores a
     worker's exit status. So the worker reads the places and the log from the
     inherited :data:`ENV_TRIPWIRE`, watches its own process and the Python

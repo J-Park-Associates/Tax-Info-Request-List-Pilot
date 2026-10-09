@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 254,
     "edges": 1232,
-    "reused": 204
+    "reused": 205
   },
   "node_types": [
     "artifact",
@@ -5258,8 +5258,8 @@
       "id": "tests/conftest.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "514d05670ad9e343",
-      "lines": 1049,
+      "sha256": "64cc691f55ed443a",
+      "lines": 1047,
       "exports": [
         "APP_FOLDER",
         "ENV_OFFICE_SHAPED_FULL",
@@ -9723,8 +9723,8 @@
       "id": "tests/test_tripwire.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "9994c3277c29e73b",
-      "lines": 599,
+      "sha256": "d21b1f24a24f09b3",
+      "lines": 600,
       "exports": [
         "ALL_PASS",
         "CANARIES",
