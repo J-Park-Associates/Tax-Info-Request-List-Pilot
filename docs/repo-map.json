@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 446,
     "edges": 1233,
-    "reused": 398
+    "reused": 394
   },
   "node_types": [
     "artifact",
@@ -970,8 +970,8 @@
       "id": "tracker/content_check.py",
       "type": "module",
       "layer": "core",
-      "sha256": "483d73432e19ef64",
-      "lines": 2560,
+      "sha256": "25b1c29a78d34683",
+      "lines": 2505,
       "cli": "python -m tracker.content_check",
       "exports": [
         "BROKER_FORM",
@@ -1123,8 +1123,8 @@
       "id": "tracker/filer.py",
       "type": "module",
       "layer": "core",
-      "sha256": "bbe51246a381f860",
-      "lines": 7887,
+      "sha256": "298bd101de91ed1e",
+      "lines": 7877,
       "cli": "python -m tracker.filer",
       "exports": [
         "ALREADY_SPELLED",
@@ -2116,8 +2116,8 @@
       "id": "tracker/ocr.py",
       "type": "module",
       "layer": "core",
-      "sha256": "c2bc80ed7b315fad",
-      "lines": 1232,
+      "sha256": "e0c5217de71a3b8e",
+      "lines": 1231,
       "cli": "python -m tracker.ocr",
       "exports": [
         "CHILD_EXIT_SECONDS",
@@ -3071,8 +3071,8 @@
       "id": "tracker/router.py",
       "type": "module",
       "layer": "core",
-      "sha256": "441dd18ad734ab98",
-      "lines": 1114,
+      "sha256": "f21c848af54a153d",
+      "lines": 1110,
       "cli": "python -m tracker.router",
       "exports": [
         "ALSO_ANSWERS",
@@ -4785,7 +4785,7 @@
       "id": "docs/vocab-coverage.json",
       "type": "file",
       "layer": "docs",
-      "sha256": "3e010ee9d3b6e6b3",
+      "sha256": "3bd8872452c66791",
       "lines": 9415,
       "role": "The coverage report as data, with the SHA-256 of every input it was built from; `check` and the suite compare against these. Generated; never edited by hand."
     },

@@ -835,12 +835,11 @@ def refuse_a_path_past_the_limit(engagement_dir: Path, items: Sequence[RequestIt
     trees, because Windows normalises them away before the limit applies
     and :func:`tracker.layout.locate` normalises them first too.
 
-    Decision 125 put this refusal on creation; decision 126 gave the
-    household rollover the same one, and it lives here rather than in
-    ``tracker.api`` because a rollover at layer 3 cannot reach the API at
-    layer 5 - and because the file it measures is the one this module
-    writes. Decision 131 gave the editor's save the same standard for the
-    rows it changes, and measured every later write where it happens.
+    Creation, the household rollover and the editor's save all refuse
+    through this one (decisions 125, 126 and 131). It lives here rather
+    than in ``tracker.api`` because a rollover at layer 3 cannot reach the
+    API at layer 5 - and because the file it measures is the one this
+    module writes.
 
     Where long paths are off the review folder is measured too, as Windows
     measures a folder it makes (``layout.folder_need``): the scaffold makes
@@ -1717,9 +1716,7 @@ def ensure(engagement_dir: Path | str, root: Path | None = None) -> str:
     engagement folder - the store is the machine's own derivation and
     building it moves nothing of the client's - so a dry run, the Status
     Report and the app showing an engagement another run is holding all
-    call it as freely as a pass does. Until decision 104 this is also
-    where a folder that still kept facts in a workbook was migrated and
-    where the request list was imported; both left with the workbook.
+    call it as freely as a pass does.
 
     **By count, not by head** (decision 135). The readers trust a stored
     head that matches the journal's and parse nothing; this compares the
@@ -1825,8 +1822,7 @@ def _record(
     the lock this caller already holds, and then folds them all into the
     store inside a single immediate transaction: either the whole of what
     this call decided is recorded or none of it is. There is no second
-    copy to keep in step and nothing to defer, which is the whole of what
-    decision 102 took away.
+    copy to keep in step and nothing to defer (decision 102).
 
     ``before`` is the engagement's rows as this call found them, which is
     the store's own answer, because that is what :func:`read_index` gave
@@ -2407,10 +2403,6 @@ def replaced_in_pbc(
     return replaced
 
 
-#: The sentence a recorded original that has left the year's folder gets. The
-#: client can see that folder and Explorer offers Delete, Rename and drag:
-#: every other disagreement between the index and the disk is said every
-#: pass, and this one was said by nothing at all while the row went on
 #: The verdict cache's old file, found in the engagement folder and removed
 #: by a real pass (decision 107: the cache lives in the store and nothing
 #: reads the file). Said once, on the pass that removed it - on the console,
@@ -2420,6 +2412,10 @@ RETIRED_CACHE_REMOVED = (
     "removed from the engagement folder: the verdict cache lives in the store since "
     "decision 107 and nothing reads the file"
 )
+#: The sentence a recorded original that has left the year's folder gets. The
+#: client can see that folder and Explorer offers Delete, Rename and drag:
+#: every other disagreement between the index and the disk is said every
+#: pass, and this one was said by nothing at all while the row went on
 #: naming a path that holds no file. Said every pass until it is back or a
 #: person has looked; the working copy is not touched over it.
 MISSING_IN_PBC = (
@@ -2760,14 +2756,12 @@ def moved_to(entry: IndexEntry) -> str | None:
     """Where this row's working copy is now, or None.
 
     The row's home stays in ``prepared_location`` - every reader treats
-    that column as "where this row's copy belongs", from the re-file rule
-    to the app's filed list, and rewriting it to the path somebody dragged
-    the copy to would make each of them read a drag as a filing. So where
-    the bytes *are* is a sentence on the row, and this is its reader: the
-    scanner keeps the wanderer out of the count of whatever request it
-    happens to sit in, and the app's answer to it reads the same sentence.
-    None for a row that is not ``FILE_MOVED``, and for one whose bytes are
-    nowhere in the firm's folder at all.
+    that column as "where this row's copy belongs", and rewriting it to the
+    path somebody dragged the copy to would make each of them read a drag
+    as a filing. So where the bytes *are* is a sentence on the row, and this
+    is its reader (the scanner keeps the wanderer out of the count of
+    whatever request it sits in). None for a row that is not ``FILE_MOVED``,
+    and for one whose bytes are nowhere in the firm's folder at all.
     """
     if entry.decision != FILE_MOVED:
         return None
@@ -2827,13 +2821,12 @@ def marked_missing(entry: IndexEntry) -> bool:
     ruling B6): a ``FILE_MOVED`` row that names no working copy.
 
     Mark missing takes the row's claim on its copies away - its Prepared
-    Location, its other copies and what it answered - and appends the
-    person's sentence, so the row stays on the record and counts for
-    nothing: the sweep never makes its copy again or flags it again, the
-    scanner reads no copy of it, the client README leaves it out, and the
-    same bytes sent again are filed as a new arrival. Nothing else ever
-    writes a ``FILE_MOVED`` row without a copy - the sweep moves only rows
-    that name one - so the shape is the mark.
+    Location, its other copies and what it answered - so the row stays on
+    the record and counts for nothing: the sweep never makes its copy again
+    or flags it, the scanner reads no copy of it, the client README leaves
+    it out, and the same bytes sent again are filed as a new arrival.
+    Nothing else ever writes a ``FILE_MOVED`` row without a copy, so the
+    shape is the mark.
     """
     return entry.decision == FILE_MOVED and not entry.prepared_location
 
@@ -7275,13 +7268,10 @@ def holds_the_row(path: Path, digest: str) -> bool:
     A person's click, not the unchanged-tree path: the file is read rather
     than remembered, because what is about to be moved is proved in the
     moment it is moved. A placeholder is never read (hashing one would make
-    the sync client download it) and is not here as far as this is
-    concerned - the caller refuses first, so it never reaches this.
+    the sync client download it); the caller refuses first.
 
-    Public because it is the one proof of a row's bytes a read-only check
-    reuses: ``tracker.store.verify`` (decision 159, G-10) holds every
-    recorded original and working copy to it rather than hashing a second
-    way.
+    Public because it is the one proof of a row's bytes: ``tracker.store.verify``
+    (decision 159) holds every recorded original and working copy to it.
     """
     return path.is_file() and not is_cloud_placeholder(path) and sha256_of(path) == digest
 

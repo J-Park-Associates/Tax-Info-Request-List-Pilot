@@ -526,13 +526,12 @@ def awake_clock() -> float:
 
     **Every stop that bounds a reading reads this**, and the household's
     time budget with them: :meth:`ReadingChild.run` and
-    :meth:`Session._run_once` in the pass, the child's own safety stop
-    (``content_check._clock``), and ``runner.HOUSEHOLD_BUDGET_SECONDS``.
+    :meth:`Session._run_once`, the child's own safety stop
+    (``content_check._clock``) and ``runner.HOUSEHOLD_BUDGET_SECONDS``.
     ``time.monotonic`` on Windows counts sleep, so a laptop that slept
-    through the night woke to every reading in flight judged past its stop
-    and parked as a file that stalled the reader - a verdict about the
-    machine's lid, kept as one about the client's file. Task Scheduler's
-    own limit stays wall-clock: that is its business.
+    through the night would wake to every reading in flight parked as a file
+    that stalled the reader - a verdict about the machine's lid, kept as one
+    about the client's file. Task Scheduler's own limit stays wall-clock.
     """
     return _AWAKE()
 
