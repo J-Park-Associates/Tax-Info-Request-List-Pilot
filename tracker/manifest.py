@@ -784,7 +784,7 @@ def narrowing_rows(items: Iterable[RequestItem]) -> dict[str, tuple[str, ...]]:
 
     - the **broad** row recognises its document on looser words alone -
       Any Keywords, and no Required Keywords, so it can never be the
-      strongest evidence for anything (:func:`tracker.router._required_matched`);
+      strongest evidence for anything (:func:`tracker.content_check.required_matched`);
     - the **narrowing** row shares at least one of those looser words, so
       it is asking about the same document, and requires something on top.
 
@@ -1021,16 +1021,6 @@ def _yes_no(value: object, column: str, where: str) -> bool:
     raise ManifestError(f"{where}: {column} must be {YES} or {NO} (or blank), got {value!r}")
 
 
-def _named(value: object, where: str) -> bool:
-    """A Named mark (decision 128); blank is yes (:func:`_yes_no`)."""
-    return _yes_no(value, COL_NAMED, where)
-
-
-def _asked(value: object, where: str) -> bool:
-    """An Asked mark (decision 142); blank is yes (:func:`_yes_no`)."""
-    return _yes_no(value, COL_ASKED, where)
-
-
 def _short_title(value: object, where: str) -> str:
     """A Short name as typed (decision 144): blank is derived, anything
     else must be legal in a file name, within :data:`SHORT_TITLE_MAX`."""
@@ -1085,8 +1075,8 @@ def item_from_fields(fields: Mapping[str, object], *, where: str) -> RequestItem
         date_pattern="" if fields.get("date_pattern_derived") else text("date_pattern"),
         manual_override=_override(fields.get("manual_override"), where),
         override_reason=text("override_reason"),
-        named=_named(fields.get("named"), where),
-        asked=_asked(fields.get("asked"), where),
+        named=_yes_no(fields.get("named"), COL_NAMED, where),
+        asked=_yes_no(fields.get("asked"), COL_ASKED, where),
         short_title=_short_title(fields.get("short_title"), where),
     )
 
@@ -1208,7 +1198,7 @@ def validated(
 # --------------------------------------------------------------- reading ----
 
 
-def _the_record(engagement_dir: Path | str, *, follow: bool = True):
+def the_record(engagement_dir: Path | str, *, follow: bool = True):
     """The store's connection, brought up to this engagement's journal.
 
     Imported here, not at the top: this module owns the list, the store
@@ -1216,7 +1206,8 @@ def _the_record(engagement_dir: Path | str, *, follow: bool = True):
     edge between them (``tests/test_layers.py``). A folder with no journal
     is refused: it has nothing to fold and is nobody's engagement - a
     folder somebody made a moment ago, or one that holds only a workbook
-    the tracker no longer reads.
+    the tracker no longer reads. A household's journal is read the same
+    way, so :mod:`tracker.households` calls this too.
     """
     from tracker import ledger, store
 
@@ -1252,7 +1243,7 @@ def load_manifest(engagement_dir: Path | str, *, follow: bool = True) -> list[Re
     from tracker import store
 
     folder = Path(engagement_dir)
-    conn = _the_record(folder, follow=follow)
+    conn = the_record(folder, follow=follow)
 
     def build() -> list[RequestItem]:
         items = [item_from_record(row) for row in store.rules(conn, folder) or []]
@@ -1331,7 +1322,7 @@ def load_engagement_info(engagement_dir: Path | str) -> EngagementInfo:
     from tracker import store
 
     folder = Path(engagement_dir)
-    conn = _the_record(folder)
+    conn = the_record(folder)
     # Once per state of the record inside a hold (P215), after the follow.
     return store.held_read(conn, folder, "details",
                            lambda: store.engagement_info(conn, folder) or EngagementInfo())
@@ -1478,7 +1469,7 @@ def save_rules(
     rows = [rule_to_json(item) for item in checked]
     now = info_to_json(info)
     with nullcontext() if lock_held else engagement_lock(folder):
-        conn = _the_record(folder)
+        conn = the_record(folder)
         if head is not None:
             refuse_a_stale_list(conn, folder, head)
         if check is not None:
@@ -1562,7 +1553,7 @@ def list_head(engagement_dir: Path | str) -> str:
     is a detail a save does write (the people). A read: no lock.
     """
     folder = Path(engagement_dir)
-    return _head_of(_the_record(folder), folder)
+    return _head_of(the_record(folder), folder)
 
 
 def refuse_a_stale_list(conn, engagement_dir: Path | str, head: object) -> None:
@@ -1595,7 +1586,7 @@ def recorded_rules(engagement_dir: Path | str) -> list[dict]:
     from tracker import store
 
     folder = Path(engagement_dir)
-    return [rule_as_read(row) for row in store.rules(_the_record(folder), folder) or []]
+    return [rule_as_read(row) for row in store.rules(the_record(folder), folder) or []]
 
 
 def renamed_rules(engagement_dir: Path | str, old: str, new: str) -> list[dict]:
@@ -1616,7 +1607,7 @@ def renamed_rules(engagement_dir: Path | str, old: str, new: str) -> list[dict]:
     from tracker import ledger, store
 
     folder = Path(engagement_dir)
-    conn = _the_record(folder)
+    conn = the_record(folder)
     items = [item_from_record(row) for row in store.rules(conn, folder) or []]
     position = next((n for n, item in enumerate(items) if item.identifier == old), None)
     if position is None:
@@ -1653,8 +1644,6 @@ def unlearn_keyword(
     engagement_dir: Path | str,
     identifier: str,
     keyword: str,
-    *,
-    lock_held: bool = False,
 ) -> KeywordUnlearned:
     """Take back a keyword a person's filing taught one request (decision 113).
 
@@ -1669,8 +1658,7 @@ def unlearn_keyword(
     take the word out of every reader's answer until the next rebuild put
     it back, because the journal is the record and the store is its
     derivation. So a word taught by an event is taken back by an event:
-    one ``keyword_unlearned``, under the engagement lock (taken here
-    unless the caller already holds it), through
+    one ``keyword_unlearned``, under the engagement lock, through
     :func:`tracker.store.record` - journal first - and the history says
     who took it back and when.
 
@@ -1701,14 +1689,12 @@ def unlearn_keyword(
     word when the document was filed and wants it still, and guessing
     which word to take back would be guessing.
     """
-    from contextlib import nullcontext
-
     from tracker import ledger, store
     from tracker.locking import engagement_lock
 
     folder = Path(engagement_dir)
-    with nullcontext() if lock_held else engagement_lock(folder):
-        conn = _the_record(folder)
+    with engagement_lock(folder):
+        conn = the_record(folder)
         taught = store.learned_keywords(conn, folder)
         if keyword not in taught.get(identifier_key(identifier), ()):
             raise ManifestError(UNLEARN_REFUSED.format(identifier=identifier, keyword=keyword))

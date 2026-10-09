@@ -387,7 +387,7 @@ def test_one_call_is_one_transaction_over_the_journal_and_the_tables(conn, root,
         "SELECT applied_seq FROM engagements WHERE id = ?", mine).fetchone()[0] == 3
 
 
-def test_a_failure_after_the_journal_leaves_the_store_behind_and_sync_catches_it_up(
+def test_a_failure_after_the_journal_leaves_the_store_behind_and_catch_up_catches_it_up(
         conn, root, by_hand, monkeypatch):
     """The journal-then-apply guarantee: the line survives, the tables lag,
     and nothing has to be reconstructed from anything but the journal."""
@@ -406,13 +406,13 @@ def test_a_failure_after_the_journal_leaves_the_store_behind_and_sync_catches_it
     assert rows(conn, "documents") == []                   # the store does not
     monkeypatch.undo()
 
-    assert store.sync(conn, root, by_hand) == 2
+    assert store.catch_up(conn, root, by_hand) == 2
     mine = (id_of(conn, by_hand),)
     assert conn.execute(
         "SELECT decision FROM documents WHERE engagement_id = ?", mine).fetchone()[0] == "Filed"
     assert conn.execute(
         "SELECT applied_seq FROM engagements WHERE id = ?", mine).fetchone()[0] == 2
-    assert store.sync(conn, root, by_hand) == 2         # and again changes nothing
+    assert store.catch_up(conn, root, by_hand) == 2         # and again changes nothing
 
 
 def test_a_torn_last_line_is_not_replayed_until_it_is_whole(conn, root, by_hand):
@@ -423,7 +423,7 @@ def test_a_torn_last_line_is_not_replayed_until_it_is_whole(conn, root, by_hand)
     path = ledger.path_for(by_hand)
     path.write_bytes(path.read_bytes() + b'{"event": "filed", "key": "../../../../Clients/tor')
 
-    assert store.sync(conn, root, by_hand) == 2           # the create's line and the filing
+    assert store.catch_up(conn, root, by_hand) == 2           # the create's line and the filing
     assert len(rows(conn, "documents")) == 1
 
 
@@ -432,7 +432,7 @@ def test_recording_while_the_store_is_behind_the_journal_is_refused(conn, root, 
     with engagement_lock(by_hand):
         ledger.append(by_hand, ledger.new(
             ledger.FILED, key=A_ROW_ORIGINAL, row=a_row()))
-        with pytest.raises(store.StoreError, match="sync"):
+        with pytest.raises(store.StoreError, match="catch_up"):
             store.record(conn, by_hand, ledger.new(
                 ledger.FILED, key=A_ROW_ORIGINAL.replace("w2.pdf", "other.pdf"), row=a_row()))
 
@@ -533,7 +533,7 @@ def test_a_row_that_changed_identity_keeps_the_place_the_index_keeps_it_in(
     order = [row[0] for row in conn.execute(
         'SELECT key FROM documents ORDER BY "position"')]
     assert order == ["p/elsewhere", "p/two", "p/three"]
-    assert order == list(ledger.fold(ledger.read_events(by_hand)))
+    assert order == list(ledger.replay(ledger.read_events(by_hand)).rows)
 
 
 # ----------------------------------------------------------------- the state ----
@@ -1215,7 +1215,7 @@ def test_a_malformed_unlearn_line_is_refused_by_name(conn, root, by_hand):
     })
 
     with pytest.raises(store.StoreError) as refused:
-        store.sync(conn, root, by_hand)
+        store.catch_up(conn, root, by_hand)
     said_so = str(refused.value)
     assert ledger.KEYWORD_UNLEARNED in said_so and "line 2" in said_so
     assert repr(ledger.KEYWORD_KEY) in said_so and "not applied past it" in said_so
@@ -1382,14 +1382,13 @@ def test_a_rebuild_keeps_the_last_scans_status_across_spellings(conn, root, by_h
     assert said(conn, root, by_hand) == []
 
 
-@pytest.mark.parametrize("apply", [store.catch_up, store.sync], ids=["catch_up", "sync"])
-def test_catch_up_keeps_the_last_scans_status_across_spellings(conn, root, by_hand, apply):
+def test_catch_up_keeps_the_last_scans_status_across_spellings(conn, root, by_hand):
     """The store built, then behind the journal by the three lines, which
     the top-up applies as one batch (decision 138)."""
     build(conn, root, by_hand)
     with engagement_lock(by_hand):
         unapplied(conn, by_hand, *three_scans())
-    apply(conn, root, by_hand)
+    store.catch_up(conn, root, by_hand)
 
     assert held_statuses(conn, by_hand) == [("a01", Status.PARTIAL)]
     assert said(conn, root, by_hand) == []
@@ -1406,7 +1405,7 @@ def test_one_record_of_several_scan_lines_keeps_the_last(conn, root, by_hand):
 
 def test_the_writer_and_the_check_use_one_rule(conn, root):
     """Forty seeded journals of mixed-spelling scans, each written as a few
-    batches - some by ``record()``, some appended and then ``sync()``-ed -
+    batches - some by ``record()``, some appended and then ``catch_up()``-ed -
     and the store the batches left agrees with the check, as does a store
     rebuilt from nothing (decision 138). The seed is fixed so a failure
     names the same journal every run."""
@@ -1430,7 +1429,7 @@ def test_the_writer_and_the_check_use_one_rule(conn, root):
                         store.record(conn, folder, *lines)
                     else:
                         unapplied(conn, folder, *lines)
-                        store.sync(conn, root, folder)
+                        store.catch_up(conn, root, folder)
                 assert said(conn, root, folder) == [], f"journal {number}"
             build(conn, root, folder)
             assert said(conn, root, folder) == [], f"journal {number}, rebuilt"
@@ -1862,7 +1861,7 @@ def test_the_two_retired_names_read_once_and_are_never_written(conn, root, by_ha
     with engagement_lock(by_hand):
         store.record(conn, by_hand, ledger.new(ledger.PARKED, key=A_ROW_ORIGINAL, row=a_row()))
         written_elsewhere(by_hand, handed)                           # as 129 wrote it
-    store.sync(conn, root, by_hand)
+    store.catch_up(conn, root, by_hand)
 
     assert ledger.replay(ledger.read_events(by_hand)).rows == {}
     assert store.documents(conn, by_hand) == []
@@ -1883,7 +1882,7 @@ def test_the_two_retired_names_read_once_and_are_never_written(conn, root, by_ha
     with engagement_lock(by_hand):
         written_elsewhere(by_hand, moving)
     with pytest.raises(store.StoreError, match=repr(store.ALSO_IN)):
-        store.sync(conn, root, by_hand)
+        store.catch_up(conn, root, by_hand)
 
 
 def test_a_released_line_takes_the_row_out_and_closes_its_intent_in_both_folds(
@@ -1973,7 +1972,7 @@ def test_a_reader_that_syncs_while_a_writer_records_leaves_the_store_at_the_jour
                 ledger.FILED, key=A_ROW_ORIGINAL, row=a_row(decision="Filed", identifier="A01")))
 
             def the_pass_finishes_and_parks_it():
-                store.sync(writer, root, by_hand)
+                store.catch_up(writer, root, by_hand)
                 store.record(writer, by_hand, ledger.new(
                     ledger.PARKED, key=A_ROW_ORIGINAL, row=a_row(decision="Needs Review")))
 
@@ -2214,7 +2213,7 @@ def test_a_catch_up_with_nothing_to_apply_takes_no_lock(root, by_hand, tmp_path)
     waits on the same immediate lock. A store that has applied every line
     is answered from a look that takes no lock: with another connection
     holding ``BEGIN IMMEDIATE`` - and no patience at all for waiting on it -
-    the caught-up store's catch-up, sync and top-up all still answer."""
+    the caught-up store's catch-up and top-up still answer."""
     path = tmp_path / "shared" / store.STORE_FILENAME
     looker, the_pass = store.open(path), store.open(path)
     try:
@@ -2223,7 +2222,6 @@ def test_a_catch_up_with_nothing_to_apply_takes_no_lock(root, by_hand, tmp_path)
         the_pass.execute("BEGIN IMMEDIATE")
         try:
             assert store.catch_up(looker, root, by_hand) == 1
-            assert store.sync(looker, root, by_hand) == 1
             assert store.follow_the_journal(looker, root, by_hand) == 1
             assert not looker.in_transaction
         finally:
@@ -2250,7 +2248,7 @@ def test_a_malformed_row_or_rule_line_is_refused_as_line_n_of_the_record(conn, r
         path.write_bytes(first)
         written_elsewhere(by_hand, event)
         with pytest.raises(store.StoreError) as refused:
-            store.sync(conn, root, by_hand)
+            store.catch_up(conn, root, by_hand)
         said_so = str(refused.value)
         assert "line 2 of the record is malformed" in said_so, said_so
         assert "not applied past it" in said_so
@@ -2268,7 +2266,7 @@ def test_a_malformed_row_or_rule_line_is_refused_as_line_n_of_the_record(conn, r
         ledger.RULES_KEY: [{**rule, "any_keywords": "W-2"}], ledger.REMOVED_KEY: []})
     assert "'any_keywords'" in said_so and "not a list of words" in said_so
     path.write_bytes(first)
-    store.sync(conn, root, by_hand)                   # the record as it was still reads
+    store.catch_up(conn, root, by_hand)                   # the record as it was still reads
 
     # Written: the table refuses a row whose list is a string.
     with pytest.raises(store.StoreError, match="not a list of words"):
@@ -2282,12 +2280,12 @@ def test_a_malformed_row_or_rule_line_is_refused_as_line_n_of_the_record(conn, r
         rule_from_json({**rule, "any_keywords": "W-2"})
 
 
-def test_a_journal_rewritten_to_the_same_length_is_refused_by_sync_and_by_record(
+def test_a_journal_rewritten_to_the_same_length_is_refused_by_catch_up_and_by_record(
         conn, root, by_hand):
     """Decision 137 (A3): a rewrite or a reorder of the journal that keeps
     its line count - a sync client resolving a conflict - is refused, by
     the sentence a truncated journal gets, and nothing is applied: by
-    ``sync``, by the pass's full catch-up and its no-lock look (equal
+    the pass's full catch-up and its no-lock look (equal
     counts with a different chain is never "nothing to do", SPEC §5.0), by
     a reader whose head moved, and by ``record``, which would otherwise
     append to it and bless the new head. The check names it."""
@@ -2305,7 +2303,7 @@ def test_a_journal_rewritten_to_the_same_length_is_refused_by_sync_and_by_record
     path.write_bytes(b"\n".join([first, parked, filed]) + b"\n")     # reordered, same length
 
     # The link in every line refuses a reorder first (decision 159).
-    for reading in (store.sync, store.catch_up, store.follow_the_journal):
+    for reading in (store.catch_up, store.follow_the_journal):
         with pytest.raises(ledger.LedgerError, match="line 2 does not follow the line before it"):
             reading(conn, root, by_hand)
 
@@ -2315,7 +2313,7 @@ def test_a_journal_rewritten_to_the_same_length_is_refused_by_sync_and_by_record
     written_elsewhere(by_hand, events[2])
     written_elsewhere(by_hand, events[1])
     sentence = "was changed behind the app's back (line 2 onward no longer matches)"
-    for reading in (store.sync, store.catch_up, store.follow_the_journal):
+    for reading in (store.catch_up, store.follow_the_journal):
         with pytest.raises(store.StoreError, match=re.escape(sentence)) as refused:
             reading(conn, root, by_hand)
         assert str(refused.value).endswith("Nothing was applied. " + ledger.RUN_RECOVER)
@@ -2332,7 +2330,7 @@ def test_a_journal_rewritten_to_the_same_length_is_refused_by_sync_and_by_record
         build(conn, root, by_hand)
     store.rebuild_engagement(conn, root, by_hand, discard=True)
     assert said(conn, root, by_hand) == []
-    assert store.sync(conn, root, by_hand) == 3
+    assert store.catch_up(conn, root, by_hand) == 3
 
 
 def test_a_rebuild_computes_the_applied_digest_and_an_old_store_upgrades(
@@ -2571,7 +2569,7 @@ def test_an_impossible_value_is_refused_before_any_table_is_touched(conn, root, 
 
     _forge(by_hand, event)
     with pytest.raises(store.StoreError) as refused:
-        store.sync(conn, root, by_hand)
+        store.catch_up(conn, root, by_hand)
     said_so = str(refused.value)
     assert "is malformed" in said_so and f"'{field}'" in said_so and f"line {lines + 1}" in said_so
     assert _tables(conn, by_hand) == before
@@ -2720,7 +2718,7 @@ def test_an_applied_line_the_rule_now_refuses_stops_its_household(conn, root, by
     sentence = "line 2 of the record is malformed"
 
     for _ in range(2):
-        for reading in (store.sync, store.catch_up, store.follow_the_journal):
+        for reading in (store.catch_up, store.follow_the_journal):
             with pytest.raises(store.StoreError, match=sentence):
                 reading(conn, root, by_hand)
     assert admitted_by(conn, by_hand) == 0
@@ -2741,14 +2739,14 @@ def test_a_repaired_line_lets_the_household_go_on_and_is_not_judged_again(conn, 
         store.record(conn, by_hand, ledger.new(ledger.PARKED, key=A_ROW_ORIGINAL, row=a_row()))
     conn.execute("UPDATE engagements SET admitted_by = 0")
 
-    assert store.sync(conn, root, by_hand) == 2
+    assert store.catch_up(conn, root, by_hand) == 2
     assert admitted_by(conn, by_hand) == store.ADMISSION_VERSION
 
     def judged(*args, **kwargs):
         raise AssertionError("an applied line was judged again")
 
     monkeypatch.setattr(store, "_judge_the_applied_lines", judged)
-    for reading in (store.sync, store.catch_up, store.follow_the_journal):
+    for reading in (store.catch_up, store.follow_the_journal):
         assert reading(conn, root, by_hand) == 2
     with engagement_lock(by_hand):
         store.record(conn, by_hand, ledger.new(ledger.FILED, key=A_ROW_ORIGINAL,
@@ -2776,7 +2774,7 @@ def test_a_store_at_version_18_gains_admitted_by_in_place(conn, root, by_hand, t
         assert upgraded.execute("PRAGMA user_version").fetchone()[0] == store.SCHEMA_VERSION == 20
         assert not list(path.parent.glob(f"{store.STORE_FILENAME}.v*.old*"))
         assert admitted_by(upgraded, by_hand) == 0
-        store.sync(upgraded, root, by_hand)
+        store.catch_up(upgraded, root, by_hand)
         assert admitted_by(upgraded, by_hand) == store.ADMISSION_VERSION
     finally:
         upgraded.close()
@@ -3246,6 +3244,7 @@ ADMISSION_PIN: dict[int, dict[str, str]] = {2: {
     "tracker.records._field": "190cfe96c598c222",
     "tracker.records._first": "afafd6bbd03b4d5a",
     "tracker.records._is_number": "b55a28bc0ae446c7",
+    "tracker.records._objects_from_json": "150fd8d193ee1603",
     "tracker.records._walk": "58be230437faa42c",
     "tracker.records._ways": "73d93a78035726fd",
     "tracker.records._width": "971b31440953101e",
@@ -3255,7 +3254,7 @@ ADMISSION_PIN: dict[int, dict[str, str]] = {2: {
     "tracker.records.digest_problem": "217cc9c49f9a6e20",
     "tracker.records.entry_problem": "a79ea9e62a85223a",
     "tracker.records.feed_from_json": "b2e5148af638d97c",
-    "tracker.records.feeds_from_json": "b108fd6888f95ec6",
+    "tracker.records.feeds_from_json": "73f791f77660a6d8",
     "tracker.records.flag_problem": "1082a26284942f5c",
     "tracker.records.format_waits_for": "a9f50749433f46ce",
     "tracker.records.host_problem": "7d98945bc57bd382",
@@ -3268,7 +3267,7 @@ ADMISSION_PIN: dict[int, dict[str, str]] = {2: {
     "tracker.records.name_words": "888ff2df30e14d73",
     "tracker.records.number_problem": "b8e64da5f5e20b1a",
     "tracker.records.parse_waits_for": "fe2da49df5b9f8ce",
-    "tracker.records.people_from_json": "f450ab3614ffbb7c",
+    "tracker.records.people_from_json": "bd021c769cc1a5d8",
     "tracker.records.person_from_json": "7e7a8fed1cb8c27a",
     "tracker.records.received_problem": "2fe803ce248363ca",
     "tracker.records.rule_row_fault": "e63ac46148a8c37f",
@@ -3836,7 +3835,7 @@ def test_a_hand_appended_line_is_refused_by_a_fresh_store(conn, fresh, root, by_
     with pytest.raises(store.StoreError, match="Line 4 .* says it was written on this machine"):
         store.catch_up(fresh, root, by_hand)
     with pytest.raises(store.StoreError, match="says it was written on this machine"):
-        store.sync(conn, root, by_hand)                                   # and the store in use too
+        store.catch_up(conn, root, by_hand)                                   # and the store in use too
     assert store._engagement_row(fresh, by_hand) is None
 
 
@@ -3862,9 +3861,9 @@ def test_the_one_switch_refuses_a_line_from_another_machine(conn, root, by_hand,
                       host="laptop-2")
     monkeypatch.setattr(checkpoint, "foreign_lines_refused", lambda: True)
     with pytest.raises(store.StoreError, match="was written on laptop-2; this machine is the one"):
-        store.sync(conn, root, by_hand)
+        store.catch_up(conn, root, by_hand)
     monkeypatch.undo()
-    assert store.sync(conn, root, by_hand) == 2                          # (a): accepted, and named
+    assert store.catch_up(conn, root, by_hand) == 2                          # (a): accepted, and named
     assert [(one.seq, one.host) for one in store.foreign_lines()] == [(2, "laptop-2")]
 
 
@@ -3885,7 +3884,7 @@ def test_an_append_interrupted_before_the_checkpoint_moved_is_this_machines_own(
     monkeypatch.undo()
     assert len(ledger.read_events(by_hand)) == 2
     assert store.catch_up(fresh, root, by_hand) == 2                     # a fresh store accepts it
-    assert store.sync(conn, root, by_hand) == 2                          # and so does the one in use
+    assert store.catch_up(conn, root, by_hand) == 2                          # and so does the one in use
     the_store_is_the_journal(conn, root, by_hand)
 
 
@@ -3944,7 +3943,7 @@ def test_recover_writes_the_export_and_the_difference_before_anything(conn, root
     assert (rows(conn, "events"), rows(conn, "documents")) == before       # nothing changed
     assert ledger.path_for(by_hand).read_bytes() == record_now
     with pytest.raises(store.StoreError, match="holds fewer lines than the store has applied"):
-        store.sync(conn, root, by_hand)                                    # still refused
+        store.catch_up(conn, root, by_hand)                                    # still refused
 
     again = store.recover(conn, root, by_hand)                             # never over the first
     assert again.export != done.export and done.export.is_file()
@@ -3964,7 +3963,7 @@ def test_recover_replays_only_when_the_loss_is_accepted_by_the_returns_name(conn
     with checkpoint.opened(checkpoint.path_for(conn.execute("PRAGMA database_list").fetchone()[2])) \
             as held:
         assert checkpoint.vouched(held, KEY) == (2, ledger.chain_at(chain, 2))   # seeded again
-    assert store.sync(conn, root, by_hand) == 2
+    assert store.catch_up(conn, root, by_hand) == 2
     assert said(conn, root, by_hand) == []
 
 
@@ -4225,7 +4224,7 @@ def test_verify_names_a_line_with_no_writer_as_the_pass_refuses_it(conn, root, b
     with ledger.path_for(by_hand).open("a", encoding="utf-8") as handle:
         handle.write(_json.dumps(ledger.new(ledger.PARKED, key=A_ROW_ORIGINAL, row=a_row())) + "\n")
     with pytest.raises(store.StoreError, match="Line 2 .* carries no writer"):
-        store.sync(conn, root, by_hand)
+        store.catch_up(conn, root, by_hand)
     conn.close()
     store.close()
     shown = cli(tmp_path / "app" / store.STORE_FILENAME, "verify", root)

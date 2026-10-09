@@ -257,6 +257,7 @@ from tracker.records import (
     IndexEntry,
     Person,
     identifier_key,
+    info_to_json,
     is_a_spelling,
     ledger_key,
     person_to_json,
@@ -2098,19 +2099,13 @@ def _lock_label(folder: Path) -> str:
 def _info_payload(info: EngagementInfo) -> dict:
     """The engagement's details as JSON: every field, with dates as ISO text.
 
-    Which fields are dates is the record's answer (``records.DATE_FIELDS``),
-    so a date added to the details reaches the app's boxes without a second
-    edit here. A blank date travels as "" rather than null, because the
-    renderer puts it straight into a date box.
+    The record's own writer (``records.info_to_json``), so a date added to
+    the details reaches the app's boxes without a second edit here. A blank
+    date travels as "" rather than null, because the renderer puts it
+    straight into a date box; the people go in the shape the editor sends
+    back (decision 128).
     """
-    payload = asdict(info)
-    for name in DATE_FIELDS:
-        value = getattr(info, name)
-        payload[name] = value.isoformat() if value else ""
-    # The people through their own writer, so the editor's block gets the
-    # shape it sends back (decision 128).
-    payload["people"] = [person_to_json(one) for one in info.people]
-    return payload
+    return info_to_json(info, blank_date="")
 
 
 def _info_from_spec(spec: dict, *, carry: EngagementInfo | None = None,

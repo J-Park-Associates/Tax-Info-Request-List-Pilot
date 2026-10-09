@@ -347,7 +347,7 @@ def _through_the_record(values, status, ctx):
     folder = _new_return(ctx, [COMPANION, RequestItem(identifier=identifier, document="Placeholder")])
     save_rules(folder, [COMPANION, _item(values)], load_engagement_info(folder))
     read = {i.identifier: i for i in load_manifest(folder)}[identifier]
-    folded = item_from_record(ledger.rules(ledger.read_events(folder))[identifier])
+    folded = item_from_record(ledger.replay(ledger.read_events(folder)).rules[identifier])
     store.rebuild_engagement(store.connect(), ctx.root, folder)
     rebuilt = {i.identifier: i for i in load_manifest(folder)}[identifier]
     assert records.rule_to_json(read) == records.rule_to_json(folded) == records.rule_to_json(rebuilt)

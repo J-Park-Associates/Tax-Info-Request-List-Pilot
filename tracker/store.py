@@ -33,7 +33,7 @@ journal - under the engagement lock, fsync-ed, one line each - and only
 then opens a single immediate transaction that inserts those same events
 and folds them into the tables. If the machine dies between the two, the
 journal is ahead of the store by some lines and nothing is lost:
-:func:`sync` compares the journal's line count with what the store says it
+:func:`catch_up` compares the journal's line count with what the store says it
 has applied and replays the difference. The reverse order would lose the
 event itself, which is the one thing that cannot be recovered. This is
 also why the store may run with ``synchronous`` at NORMAL: a write-ahead
@@ -258,121 +258,23 @@ COPY_INSIDE_APP = ("{path} is inside the app's own folder {app}; a copy of the d
 #: ``user_version``. A file carrying anything else is refused by name rather
 #: than opened hopefully: a schema this code does not understand is not a
 #: store, and guessing past it would write rows a later version cannot fold.
-#: Version 2 (decision 104) dropped the workbook digest from ``engagements``;
-#: a version-1 file is deleted and rebuilt, which costs nothing because the
-#: store is a derivation of the journals.
-#: Version 3 (decision 107) added the verdict cache's two tables,
-#: ``verdicts`` and ``file_memos``; a version-2 file is refused by the same
-#: sentence and deleted and rebuilt the same way - the cache it never held
-#: is refilled by the next pass, one reading per document.
-#: Version 4 (decision 116) added the ``override_reason`` column to
-#: ``requests``: a version-3 file has no column for the reason a person
-#: gives, so it is refused, deleted and rebuilt from the journals like the
-#: others - the reason itself travels in the ``rules_changed`` event.
-#: Version 5 (decision 117) added the Filing Deadline to the engagement's
-#: details, which is a column of ``engagements``: a version-4 file has no
-#: column for it, so it is refused, moved aside and rebuilt from the
-#: journals like every version before it - the date itself travels in the
-#: ``rules_changed`` event, and only the first pass is slower.
-#: Version 6 (decision 119) added the ``intents`` table, the moves begun
-#: and not yet finished: ``CREATE TABLE IF NOT EXISTS`` on open would make
-#: the table and leave a version-5 file's earlier lines unfolded into it,
-#: so the file is refused, deleted and rebuilt from the journals like the
-#: others - the intents are ``moving`` lines in them.
-#: Version 7 (decision 125) added the household, the tax year and the
-#: return name to the engagement's details, which are columns of
-#: ``engagements``, and the household record's own columns and ``kind``: a
-#: version-6 file has none of them, so it is refused, deleted and rebuilt
-#: from the journals like every version before it - the details travel in
-#: the ``rules_changed`` and ``household_changed`` lines.
-#: Version 8 (decision 128) added the return's people to the engagement's
-#: details - one column of ``engagements``, holding the list as JSON text -
-#: and the ``named`` mark to ``requests``: a version-7 file has neither, so
-#: it is refused, deleted and rebuilt from the journals like every version
-#: before it, and both travel in the ``rules_changed`` lines.
-#: Version 9 (decision 129) added the household's feed list - the return
-#: lines in other households its drop folder also feeds - which is one
-#: column of ``engagements`` holding the list as JSON text: a version-8
-#: file has no column for it, so it is refused, deleted and rebuilt from
-#: the journals like every version before it, and the feeds travel in the
-#: ``household_changed`` lines.
-#: Version 10 (decision 132) changed no column and changed the fold: a
-#: ``released`` line takes a row out of the index, and a version-9 file
-#: folded by the old code may hold ``Handed Over`` rows this version never
-#: produces - so it is refused, deleted and rebuilt from the journals like
-#: every version before it, and the retired ``handed_over_by_person`` lines
-#: in them are folded as the releases they meant.
-#: Version 11 (decision 134) changed no column and changed the key: a
-#: return is keyed by where it sits in the layout when no root is in
-#: hand, where it was keyed by its parent - its year folder - so a
-#: version-10 file may hold two years of one return as one row. It is
-#: refused, deleted and rebuilt from the journals like every version
-#: before it, and each return is keyed by household, year and return.
-#: Version 12 (decision 137, A3) added ``applied_digest`` to
-#: ``engagements``: the running chain over the journal lines the store has
-#: applied (``ledger.read_with_chain``), so a journal rewritten or reordered
-#: to the same length is refused rather than blessed. A version-11 file has
-#: no such column, so it is refused, deleted and rebuilt from the journals
-#: like every version before it, and the rebuild computes the chain as it
-#: replays.
-#: Version 13 (decision 142) added the ``asked`` mark to ``requests``: a
-#: version-12 file has no column for it, so it is refused, deleted and
-#: rebuilt from the journals like every version before it - the mark
-#: travels in the ``rules_changed`` lines, and a line written before it
-#: existed reads as asked.
-#: Version 14 (decision 143) added ``container`` to ``documents``: where
-#: the email or zip a document came out of rests, and the ``opened`` row
-#: event that records the container itself. A version-13 file has no such
-#: column, so it is refused, deleted and rebuilt from the journals like
-#: every version before it - the field travels in the row events, and a
-#: row written before it existed reads as having come on its own.
-#: Version 15 (decision 144) added ``short_title`` to ``requests``: the
-#: short name the working folder and copies are named by. A version-14
-#: file has no column for it, so it is refused, deleted and rebuilt from
-#: the journals like every version before it - the field travels in the
-#: ``rules_changed`` lines, and a line written before it existed reads as
-#: blank, which derives the short name from the document title.
-#: Version 16 (decision 146) added ``answers`` to ``documents``: the other
-#: requests a broker's consolidated statement answers without a copy, and
-#: the sections that answered each. A version-15 file has no such column,
-#: so it is refused, deleted and rebuilt from the journals like every
-#: version before it - the field travels in the row events, and a row
-#: written before it existed reads as answering nothing.
-#: Version 17 (decision 204) added ``waits_for`` to ``documents``: what a
-#: row parked because it names another household's person waits for - the
-#: fed return line and what its list accepted. It is the store's first
-#: **in-place** step (the module docstring's rule, :data:`_IN_PLACE`): no
-#: journal line before 204 carries the field, so every version-16 row
-#: waits for nothing, and a version-16 file gains the column (NULL, as a
-#: rebuild writes it - decision 190) and keeps its verdict cache. Every
-#: other earlier version is set aside and rebuilt (decision 159, E3); a
-#: newer one refused.
-#: Version 18 (decision 190) added ``code`` and ``subfolder`` to
-#: ``documents`` and ``note_codes`` to ``statuses``: a row's cause, the
-#: client subfolder it came from and the causes a request's notes say, each
-#: a column rather than a phrase inside a sentence. It is an in-place step
-#: too, by the same rule applied to each column: all three are additive,
-#: and no journal line before 190 carries any of them, so
-#: every version-17 row's cause reads as ``""`` - not recorded, and nothing
-#: reads one out of its words - which is what a rebuild from the journals
-#: would give. The verdicts a version-17 file cached are kept as rows but no
-#: longer answer: they were cached before a verdict carried its code, and
-#: :data:`tracker.content_check.CACHE_VERSION` moved with this step.
-#: Version 19 (decision 209, R3b) added ``admitted_by`` to ``engagements``:
-#: which admission judged the lines a row applied. In place, like 17 and 18:
-#: no journal line carries it, and every version-18 row's true value is the
-#: default 0 - judged by no admission this version knows - so its applied
-#: lines are judged again at its next sync, and nothing is set aside. It is
-#: the one in-place column with a default: it is bookkeeping, like
-#: ``built_at``, not a value any journal line carries, and ``store check``
-#: does not compare it.
-#: Version 20 (pilot P170) added ``household_related`` to ``engagements``:
-#: the households a person marked as related to a household, a JSON list
-#: in one text column. In place, like 17 to 19: no journal line before it
-#: carries the field, and the column is added with the record's own
-#: default, ``'[]'`` - exactly what a rebuild writes for a row whose lines
-#: never name it (``_new_engagement_defaults``), so ``store check`` finds
-#: nothing on an upgraded file and the verdict cache is kept.
+#: Every bump is a decision-log row. A file at a version below 16 is set
+#: aside and rebuilt from the journals (decision 159, E3), which costs a
+#: slower first pass and nothing else: the store is a derivation, and the
+#: columns and folds those bumps changed are all in the journal lines.
+#: Versions 16 to 19 are upgraded where they stand (:data:`_IN_PLACE`),
+#: because each step only adds columns that no journal line before it can
+#: carry, so the added value is what a rebuild would have written and the
+#: verdict cache is kept:
+#: 17 (decision 204) added ``waits_for`` to ``documents``; 18 (decision 190)
+#: added ``code`` and ``subfolder`` to ``documents`` and ``note_codes`` to
+#: ``statuses`` (the verdicts a version-17 file cached are kept as rows but
+#: no longer answer: :data:`tracker.content_check.CACHE_VERSION` moved with
+#: the step); 19 (decision 209, R3b) added ``admitted_by`` to
+#: ``engagements``, which admission judged the lines a row applied -
+#: bookkeeping with a default of 0 that ``store check`` does not compare;
+#: 20 (pilot P170) added ``household_related``, a JSON list in one text
+#: column defaulting to ``'[]'``, the record's own default.
 SCHEMA_VERSION = 20
 
 #: The explicit in-place upgrades (the module docstring's rule): the
@@ -509,112 +411,21 @@ def _unavailable(exc: sqlite3.Error) -> StoreUnavailable:
     return StoreUnavailable(getattr(exc, "sqlite_errorname", None) or "SQLITE_ERROR")
 
 
-def _let_go_of(cursor: sqlite3.Cursor) -> None:
-    """Close a cursor whose statement failed, before the error leaves it.
-
-    Why (decision 159, Python 3.11 on Windows): the error's traceback holds
-    the frame that raised it, the frame holds the cursor, and on Python
-    3.11 the cursor holds its prepared statement. Closing the connection
-    does not close the file while a statement is outstanding - SQLite
-    keeps the handle until the statement is finalized - so anything that
-    keeps the error (a caller, a log record, a report of the pass) kept the
-    file open, and Windows refused to rename or delete it (WinError 32).
-    Python 3.14 lets go regardless; 3.11, the floor, does not. A closed
-    cursor holds no statement.
-    """
-    try:
-        cursor.close()
-    except sqlite3.Error:
-        pass
+class _Cursor(checkpoint.GuardedCursor):
+    """The store's cursor: its statements and rows fail as
+    :class:`StoreUnavailable` (decision 189), through
+    :class:`tracker.checkpoint.GuardedCursor`."""
 
 
-class _Cursor(sqlite3.Cursor):
-    """A cursor whose rows fail as :class:`StoreUnavailable` too: SQLite
-    steps a query as its rows are read, so a disk error can arrive on the
-    second row as well as on the statement.
+class _Connection(checkpoint.GuardedConnection):
+    """The store's connection (decision 189): every statement in this
+    module goes through it, and the engine's refusal leaves as
+    :class:`StoreUnavailable`."""
 
-    A cursor that failed is closed before its error is raised
-    (:meth:`_say`, decision 159, Python 3.11 on Windows).
-    """
+    _cursor_class = _Cursor
 
-    def _say(self, exc: sqlite3.Error) -> StoreUnavailable:
-        _let_go_of(self)
+    def _refused(self, exc: sqlite3.Error) -> StoreUnavailable:
         return _unavailable(exc)
-
-    def execute(self, sql, parameters=(), /):
-        try:
-            return super().execute(sql, parameters)
-        except sqlite3.Error as exc:
-            raise self._say(exc) from exc
-
-    def executemany(self, sql, parameters, /):
-        try:
-            return super().executemany(sql, parameters)
-        except sqlite3.Error as exc:
-            raise self._say(exc) from exc
-
-    def fetchone(self):
-        try:
-            return super().fetchone()
-        except sqlite3.Error as exc:
-            raise self._say(exc) from exc
-
-    def fetchall(self):
-        try:
-            return super().fetchall()
-        except sqlite3.Error as exc:
-            raise self._say(exc) from exc
-
-    def fetchmany(self, size=None):
-        try:
-            return super().fetchmany(self.arraysize if size is None else size)
-        except sqlite3.Error as exc:
-            raise self._say(exc) from exc
-
-    def __next__(self):
-        try:
-            return super().__next__()
-        except sqlite3.Error as exc:
-            raise self._say(exc) from exc
-
-
-class _Connection(sqlite3.Connection):
-    """The store's connection: **the one choke point** every statement in
-    this module goes through (decision 189). Every query here is
-    ``conn.execute`` on a connection :func:`open` made, so wrapping the
-    connection's own calls - rather than two hundred call sites - is what
-    makes "no ``sqlite3.Error`` leaves this module raw" true of the next
-    query somebody writes too."""
-
-    def cursor(self, factory=_Cursor):
-        try:
-            return super().cursor(factory)
-        except sqlite3.Error as exc:
-            raise _unavailable(exc) from exc
-
-    def execute(self, sql, parameters=(), /):
-        return self.cursor().execute(sql, parameters)
-
-    def executemany(self, sql, parameters, /):
-        return self.cursor().executemany(sql, parameters)
-
-    def executescript(self, script, /):
-        try:
-            return super().executescript(script)
-        except sqlite3.Error as exc:
-            raise _unavailable(exc) from exc
-
-    def commit(self):
-        try:
-            return super().commit()
-        except sqlite3.Error as exc:
-            raise _unavailable(exc) from exc
-
-    def close(self):
-        try:
-            return super().close()
-        except sqlite3.Error as exc:
-            raise _unavailable(exc) from exc
 
 
 # --------------------------------------------------------------- columns ----
@@ -840,18 +651,14 @@ def open(path: Path | str) -> sqlite3.Connection:  # noqa: A001 - the store is o
     # whole batch or none of it and a driver-invented transaction boundary
     # is not a guarantee anybody wrote down.
     conn = _connect(path)
-    # Closed on any failure below, not left to the garbage collector: on
-    # Windows an open handle keeps the file from being renamed or deleted,
-    # so a store that could not be opened stayed locked by this process -
-    # a long pass included - for the person told to move it aside
-    # (decision 159, Windows).
+    # Closed on any failure below, not left to the garbage collector
+    # (:func:`tracker.checkpoint.close_after_failure` says why).
     try:
         version = conn.execute("PRAGMA user_version").fetchone()[0]
         while version in _IN_PLACE and version < SCHEMA_VERSION:
             # One transaction per step: the column and the version land
             # together or not at all.
-            conn.execute("BEGIN IMMEDIATE")
-            try:
+            with _transaction(conn):
                 # Read again under the write lock: another opener (the app and
                 # a pass starting at once) may have made this step since the
                 # version was read, and a step made twice would fail on the
@@ -862,11 +669,6 @@ def open(path: Path | str) -> sqlite3.Connection:  # noqa: A001 - the store is o
                         conn.execute(statement)
                     conn.execute(f"PRAGMA user_version = {version + 1}")
                     now = version + 1
-                conn.execute("COMMIT")
-            except BaseException:
-                conn.execute("ROLLBACK")
-                conn.close()
-                raise
             version = now
         # **One upgrade policy** (decisions 204 and 159): a version
         # :data:`_IN_PLACE` names is upgraded where it stands, above; an older
@@ -887,7 +689,7 @@ def open(path: Path | str) -> sqlite3.Connection:  # noqa: A001 - the store is o
             raise StoreError(checkpoint.NEWER_FILE.format(path=path, version=version, known=SCHEMA_VERSION,
                                                           what="store"))
     except BaseException:
-        _close_after_failure(conn)
+        checkpoint.close_after_failure(conn)
         raise
     return conn
 
@@ -895,38 +697,15 @@ def open(path: Path | str) -> sqlite3.Connection:  # noqa: A001 - the store is o
 def _connect(path: Path) -> sqlite3.Connection:
     # The factory is the one choke point (decision 189): every statement
     # below and in every function of this module goes through it.
+    conn = checkpoint.connected(path, _Connection, _unavailable, timeout_ms=BUSY_TIMEOUT_MS)
     try:
-        conn = sqlite3.connect(path, isolation_level=None, factory=_Connection)
-    except sqlite3.Error as exc:
-        raise _unavailable(exc) from exc
-    try:
-        conn.row_factory = sqlite3.Row
-        conn.execute(f"PRAGMA busy_timeout = {BUSY_TIMEOUT_MS}")
         conn.execute("PRAGMA journal_mode = WAL")
         conn.execute("PRAGMA synchronous = NORMAL")
         conn.execute("PRAGMA foreign_keys = ON")
     except BaseException:
-        _close_after_failure(conn)       # a file that is not a database: see open()
+        checkpoint.close_after_failure(conn)       # a file that is not a database: see open()
         raise
     return conn
-
-
-def _close_after_failure(conn: sqlite3.Connection) -> None:
-    """Close a connection whose opening failed, keeping the failure that is
-    being raised as the one reported.
-
-    Why not leave it to Python: the connection is still referenced from the
-    exception's traceback and a cursor's cycle, so it stays open until the
-    garbage collector runs. On Windows an open SQLite handle is an open
-    file, and an open file cannot be renamed or deleted (WinError 32): the
-    damaged file this process refused would stay locked against the very
-    step the refusal names (decision 159, Windows). A close that fails
-    itself says nothing new; the error already being raised does.
-    """
-    try:
-        conn.close()
-    except (sqlite3.Error, StoreError):
-        pass
 
 
 def open_read_only(path: Path | str) -> sqlite3.Connection:
@@ -936,17 +715,12 @@ def open_read_only(path: Path | str) -> sqlite3.Connection:
     path = Path(path)
     if not path.is_file():
         raise StoreError(f"there is no store at {path}; nothing was created")
+    conn = checkpoint.connected(f"{path.resolve().as_uri()}?mode=ro", _Connection, _unavailable,
+                                timeout_ms=BUSY_TIMEOUT_MS, uri=True)
     try:
-        conn = sqlite3.connect(f"{path.resolve().as_uri()}?mode=ro", uri=True, isolation_level=None,
-                               factory=_Connection)
-    except sqlite3.Error as exc:
-        raise _unavailable(exc) from exc
-    try:
-        conn.row_factory = sqlite3.Row
-        conn.execute(f"PRAGMA busy_timeout = {BUSY_TIMEOUT_MS}")
         version = conn.execute("PRAGMA user_version").fetchone()[0]
     except BaseException:
-        _close_after_failure(conn)
+        checkpoint.close_after_failure(conn)
         raise
     if version != SCHEMA_VERSION:
         conn.close()
@@ -1059,21 +833,10 @@ def close() -> None:
     _CONNECTION, _CONNECTION_PATH = None, None
 
 
-@contextmanager
-def _transaction(conn: sqlite3.Connection):
-    """One immediate transaction: everything in it, or none of it.
-
-    IMMEDIATE rather than DEFERRED because every caller here is about to
-    write, and a deferred transaction that discovers that on its first
-    write can fail to upgrade against a concurrent reader.
-    """
-    conn.execute("BEGIN IMMEDIATE")
-    try:
-        yield
-    except BaseException:
-        conn.execute("ROLLBACK")
-        raise
-    conn.execute("COMMIT")
+#: One immediate transaction: everything in it, or none of it
+#: (:func:`tracker.checkpoint.transaction`). Named here because the tests
+#: patch it by this name.
+_transaction = checkpoint.transaction
 
 
 def _recorded_root_over(folder: Path) -> Path | None:
@@ -1381,6 +1144,30 @@ def _new_engagement_defaults() -> list[object]:
     )
 
 
+def _build_engagement(conn: sqlite3.Connection, rel: str, events: list[dict], head: str,
+                      chain: list[str], built_at: str,
+                      foreign: list[tuple[int, str, str]],
+                      held: sqlite3.Connection | None) -> None:
+    """A new row for ``rel``, built from all of ``events``, and the checkpoint
+    told what was applied. The caller holds the transaction.
+
+    The one insert behind a reader's first build and a rebuild, which
+    differ only in the ``built_at`` stamp they pass. The applied chain is
+    computed as the lines are replayed (decision 137, A3): a rebuild is how
+    an older store upgrades.
+    """
+    defaults = _new_engagement_defaults()
+    cursor = conn.execute(
+        f"INSERT INTO engagements ({_NEW_ENGAGEMENT_COLUMNS}) "
+        f"VALUES ({_marks(len(defaults) + 6)})",
+        (rel, *defaults, head, len(events), ledger.chain_at(chain, len(events)), built_at,
+         ADMISSION_VERSION),
+    )
+    if events:
+        _apply(conn, cursor.lastrowid, events, start=1)
+    _vouch_for(conn, rel, events, chain, foreign, held=held)
+
+
 def _rule_from_sql(stored: sqlite3.Row) -> dict:
     """One stored rule row in the shape a ``rules_changed`` event carries it.
 
@@ -1563,12 +1350,16 @@ def learned_keywords(
     sequence number.
     """
     row = _engagement_row(conn, engagement_dir)
-    if row is None:
-        return {}
+    return {} if row is None else _stored_learned(conn, row["id"])
+
+
+def _stored_learned(conn: sqlite3.Connection, engagement_id: int) -> dict[str, tuple[str, ...]]:
+    """The learned keywords table for one engagement, by identifier, each
+    request's words in the order they were taught."""
     out: dict[str, tuple[str, ...]] = {}
     for stored in conn.execute(
-        "SELECT identifier, keyword FROM learned_keywords WHERE engagement_id = ? ORDER BY seq, keyword",
-        (row["id"],),
+        'SELECT "identifier", keyword FROM learned_keywords WHERE engagement_id = ? ORDER BY seq, keyword',
+        (engagement_id,),
     ):
         out[stored["identifier"]] = out.get(stored["identifier"], ()) + (stored["keyword"],)
     return out
@@ -2408,7 +2199,7 @@ def record(conn: sqlite3.Connection, engagement_dir: Path | str, *events: dict) 
     :func:`tracker.ledger.append` - one fsync-ed line, under the engagement
     lock - and only then does one immediate transaction insert them all and
     fold them into the tables. A crash between the two leaves the journal
-    ahead by some lines, which :func:`sync` replays; a crash the other way
+    ahead by some lines, which :func:`catch_up` replays; a crash the other way
     round would lose the event, which nothing can replay.
 
     Refuses outside the engagement lock, and writes nothing to either side
@@ -2417,7 +2208,7 @@ def record(conn: sqlite3.Connection, engagement_dir: Path | str, *events: dict) 
     Refuses too when the store has not been built for this engagement, or
     when it is behind the journal - a batch numbered from a stale seq would
     collide with lines already there. :func:`rebuild_engagement` and
-    :func:`sync` are the two answers to that.
+    :func:`catch_up` are the two answers to that.
 
     The apply reads the journal again inside its transaction and applies
     from the store's applied seq as it is then (decision 135), so a reader
@@ -2444,7 +2235,7 @@ def record(conn: sqlite3.Connection, engagement_dir: Path | str, *events: dict) 
     if already != row["applied_seq"]:
         raise StoreError(
             f"{engagement_dir.name}: the store has applied {row['applied_seq']} of the journal's "
-            f"{already} line(s); sync() it before recording to it"
+            f"{already} line(s); catch_up() it before recording to it"
         )
     # The same count is not the same lines (decision 137, A3): a journal
     # rewritten to its own length would otherwise have this call's line
@@ -2509,14 +2300,16 @@ def record(conn: sqlite3.Connection, engagement_dir: Path | str, *events: dict) 
         return _catch_up(conn, None, engagement_dir, build=False)
 
 
-def sync(conn: sqlite3.Connection, root: Path | str, engagement_dir: Path | str) -> int:
-    """Apply the journal lines the store has not. Returns the new applied seq.
+def catch_up(conn: sqlite3.Connection, root: Path | str, engagement_dir: Path | str) -> int:
+    """Apply the journal lines the store has not, building the engagement
+    if the store holds none. Returns the new applied seq.
 
     The repair for the one gap :func:`record` can leave - the journal
-    written, the transaction not - and the cheap thing to do before
-    trusting the store for an engagement. A torn last line is not a line:
-    :func:`tracker.ledger.read_events` ignores bytes a killed run left with
-    no newline after them, so the tail is replayed once it is whole.
+    written, the transaction not - and the full catch-up the filer's
+    ``ensure()`` runs at the start of every pass (decision 135). A torn last
+    line is not a line: :func:`tracker.ledger.read_events` ignores bytes a
+    killed run left with no newline after them, so the tail is replayed once
+    it is whole.
 
     A store that has applied *more* than the journal holds is not something
     to patch up: the journal has been truncated or replaced under it, and
@@ -2526,29 +2319,15 @@ def sync(conn: sqlite3.Connection, root: Path | str, engagement_dir: Path | str)
     **By count, not by head.** It compares the number of lines the store
     has applied with the number the journal holds, whatever the stored head
     says - which is what repairs a store an earlier version left with a
-    head that names a line it never applied (decision 135). A look that
-    finds nothing to apply takes no lock; everything it writes from, it
-    reads again inside its own transaction (:func:`_look_then_catch_up`).
+    head that names a line it never applied (decision 135), rather than
+    refusing the pass for the rest of the season. A pass parses the journal
+    anyway, so this costs it one parse - and, when there is nothing to
+    apply, no lock (:func:`_look_then_catch_up`).
     """
-    return _look_then_catch_up(conn, root, engagement_dir, build=False)
+    return _look_then_catch_up(conn, root, engagement_dir)
 
 
-def catch_up(conn: sqlite3.Connection, root: Path | str, engagement_dir: Path | str) -> int:
-    """:func:`sync` for an engagement the store holds, a first build for
-    one it does not. Returns the applied seq.
-
-    The full catch-up the filer's ``ensure()`` runs at the start of
-    every pass (decision 135): it parses the journal and compares by count,
-    so a store whose head matches while its applied seq is short is
-    repaired by the next pass rather than refusing it for the rest of the
-    season. A pass parses the journal anyway, so this costs it one parse -
-    and, when there is nothing to apply, no lock (:func:`_look_then_catch_up`).
-    """
-    return _look_then_catch_up(conn, root, engagement_dir, build=True)
-
-
-def _look_then_catch_up(conn: sqlite3.Connection, root: Path | str, engagement_dir: Path | str,
-                        *, build: bool) -> int:
+def _look_then_catch_up(conn: sqlite3.Connection, root: Path | str, engagement_dir: Path | str) -> int:
     """:func:`_catch_up` behind a look that takes no lock.
 
     ``filer.ensure()`` runs :func:`catch_up` after nearly every action in
@@ -2578,7 +2357,7 @@ def _look_then_catch_up(conn: sqlite3.Connection, root: Path | str, engagement_d
                           engagement_path(key_root(engagement_dir, root), engagement_dir))
         return row["applied_seq"]
     with _transaction(conn):
-        return _catch_up(conn, root, engagement_dir, build=build, known=look)
+        return _catch_up(conn, root, engagement_dir, build=True, known=look)
 
 
 def _catch_up(conn: sqlite3.Connection, root: Path | str | None, engagement_dir: Path | str,
@@ -2609,7 +2388,7 @@ def _catching_up(conn: sqlite3.Connection, root: Path | str | None, engagement_d
 
     ``build`` is what an engagement the store does not hold gets: a first
     build from the lines (a reader's top-up, :func:`catch_up`) or the
-    refusal :func:`sync` and :func:`record` give. A refusal raised here
+    refusal :func:`record` gives. A refusal raised here
     rolls the caller's transaction back, and nothing was written.
 
     ``known`` is the look :func:`_look_then_catch_up` made outside; it
@@ -2634,16 +2413,7 @@ def _catching_up(conn: sqlite3.Connection, root: Path | str | None, engagement_d
         # nothing: the record is held to this machine's checkpoint first
         # (decision 159), which survives the store being deleted.
         foreign = _prove_against_checkpoint(conn, rel, events, chain, held=held)
-        defaults = _new_engagement_defaults()
-        cursor = conn.execute(
-            f"INSERT INTO engagements ({_NEW_ENGAGEMENT_COLUMNS}) "
-            f"VALUES ({_marks(len(defaults) + 6)})",
-            (rel, *defaults, head, len(events), ledger.chain_at(chain, len(events)), ledger.stamp(),
-             ADMISSION_VERSION),
-        )
-        if events:
-            _apply(conn, cursor.lastrowid, events, start=1)
-        _vouch_for(conn, rel, events, chain, foreign, held=held)
+        _build_engagement(conn, rel, events, head, chain, ledger.stamp(), foreign, held)
         return len(events)
     # A journal shorter than the store applied is said first in decision
     # 188's sentence, which says to restore it before anything else and
@@ -3048,10 +2818,9 @@ def _intend(conn: sqlite3.Connection, key: str, chain: list[str], already: int, 
         return start, said
 
 
-def _expect(conn: sqlite3.Connection, key: str, start: int, heads: list[str], *,
-            held: sqlite3.Connection | None = None) -> None:
+def _expect(conn: sqlite3.Connection, key: str, start: int, heads: list[str]) -> None:
     """:func:`tracker.checkpoint.expect`, beside this store."""
-    with _beside(conn, held) as held:
+    with _beside(conn) as held:
         if held is not None:
             checkpoint.expect(held, key, start, heads)
 
@@ -3413,18 +3182,7 @@ def rebuild_engagement(
         if known is not None:
             conn.execute("DELETE FROM engagements WHERE id = ?", (known["id"],))
             _rows_replaced()
-        defaults = _new_engagement_defaults()
-        # The applied chain is computed as the lines are replayed
-        # (decision 137, A3): a rebuild is how an older store upgrades.
-        cursor = conn.execute(
-            f"INSERT INTO engagements ({_NEW_ENGAGEMENT_COLUMNS}) "
-            f"VALUES ({_marks(len(defaults) + 6)})",
-            (rel, *defaults, head, len(events), ledger.chain_at(chain, len(events)), built_at,
-             ADMISSION_VERSION),
-        )
-        if events:
-            _apply(conn, cursor.lastrowid, events, start=1)
-        _vouch_for(conn, rel, events, chain, foreign, held=held)
+        _build_engagement(conn, rel, events, head, chain, built_at, foreign, held)
     return lost
 
 
@@ -3719,12 +3477,7 @@ def _check_learned(
     are one list, in the order the words were taught, and a word taken
     back under either spelling is gone from it.
     """
-    stored: dict[str, tuple[str, ...]] = {}
-    for row in conn.execute(
-        'SELECT "identifier", keyword FROM learned_keywords WHERE engagement_id = ? '
-        "ORDER BY seq, keyword", (engagement_id,),
-    ):
-        stored[row["identifier"]] = stored.get(row["identifier"], ()) + (row["keyword"],)
+    stored = _stored_learned(conn, engagement_id)
     return [
         f"{name}: request {key}, the keywords filings taught: the store says "
         f"{list(stored.get(key, ()))!r}, the record says {list(recorded.get(key, ()))!r}"
@@ -3925,7 +3678,7 @@ def _described(payload: str | None) -> tuple[str, str, str]:
 
 
 def recover(conn: sqlite3.Connection, root: Path | str, engagement_dir: Path | str, *,
-            accept_loss: str | None = None, now: dt.datetime | None = None) -> Recovery:
+            accept_loss: str | None = None) -> Recovery:
     """Compare, export, and replay only when the loss is accepted by name
     (decision 159, G-2). The runbook's recovery; what ``rebuild`` refuses
     to do silently.
@@ -3955,7 +3708,7 @@ def recover(conn: sqlite3.Connection, root: Path | str, engagement_dir: Path | s
         one["seq"]: one["payload"]
         for one in conn.execute("SELECT seq, payload FROM events WHERE engagement_id = ? ORDER BY seq",
                                 (row["id"],))}
-    stamp = (now or dt.datetime.now()).strftime("%Y-%m-%d-%H%M%S")
+    stamp = dt.datetime.now().strftime("%Y-%m-%d-%H%M%S")
     base = _store_file(conn).parent / RECOVERED_DIR / f"{rel.replace('/', '__')}-{stamp}.jsonl"
     now_bytes = ledger._bytes_of(ledger.path_for(engagement_dir))
     try:

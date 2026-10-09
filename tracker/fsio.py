@@ -388,9 +388,9 @@ def stranded_temps(
     return sorted(found)
 
 
-def write_json_atomically(path: Path, payload: object, *, indent: int = 2) -> None:
+def write_json_atomically(path: Path, payload: object) -> None:
     """Write ``payload`` as JSON to ``path`` all-or-nothing; the cache and the settings use this."""
-    write_text_atomically(path, json.dumps(payload, indent=indent))
+    write_text_atomically(path, json.dumps(payload, indent=2))
 
 
 #: The file a rotation holds while it turns the log over (decision 186's

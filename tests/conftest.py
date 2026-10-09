@@ -688,9 +688,10 @@ def written_elsewhere(engagement_dir, event, host="another-machine"):
     record that no writer on this machine would make - a line of the wrong
     shape, a retired name - without it reading as a hand edit."""
     _lines, _head, chain = ledger.read_with_chain(engagement_dir)
-    ledger._write_line(ledger.path_for(engagement_dir), {
-        **event, ledger.LINK_KEY: ledger.chain_at(chain, len(chain)), ledger.HOST_KEY: host,
-        ledger.FORMAT_KEY: ledger.RECORD_FORMAT})
+    line = {**event, ledger.LINK_KEY: ledger.chain_at(chain, len(chain)), ledger.HOST_KEY: host,
+            ledger.FORMAT_KEY: ledger.RECORD_FORMAT}
+    ledger._write_raw(ledger.path_for(engagement_dir),
+                      json.dumps(line, ensure_ascii=False, sort_keys=True).encode("utf-8"))
 
 
 def seed_statuses(engagement_dir, updates):

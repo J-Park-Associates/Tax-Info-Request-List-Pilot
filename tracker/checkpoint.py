@@ -80,7 +80,7 @@ import datetime as dt
 import json
 import os
 import sqlite3
-from collections.abc import Iterable, Iterator
+from collections.abc import Callable, Iterable, Iterator
 from contextlib import closing, contextmanager
 from dataclasses import dataclass
 from pathlib import Path
@@ -219,29 +219,43 @@ def _unavailable(exc: sqlite3.Error, path: Path | str) -> CheckpointUnavailable:
 
 
 def _let_go_of(cursor: sqlite3.Cursor) -> None:
-    """Close a failed cursor, so it holds no statement (see ``_Cursor._say``)."""
+    """Close a cursor whose statement failed, before the error leaves it.
+
+    Why (decision 159, Python 3.11 on Windows): the error's traceback holds
+    the frame that raised it, the frame holds the cursor, and on Python
+    3.11 the cursor holds its prepared statement. Closing the connection
+    does not close the file while a statement is outstanding - SQLite
+    keeps the handle until the statement is finalized - so anything that
+    keeps the error (a caller, a log record, a report of the pass) kept the
+    file open, and Windows refused to rename or delete it (WinError 32).
+    Python 3.14 lets go regardless; 3.11, the floor, does not. A closed
+    cursor holds no statement.
+    """
     try:
         cursor.close()
     except sqlite3.Error:
         pass
 
 
-class _Cursor(sqlite3.Cursor):
-    """A cursor whose statements and rows fail as :class:`CheckpointUnavailable`."""
+class GuardedCursor(sqlite3.Cursor):
+    """A cursor whose statements and rows fail as its connection's refusal:
+    SQLite steps a query as its rows are read, so a disk error can arrive
+    on the second row as well as on the statement. A cursor that failed is
+    closed before its error is raised (:func:`_let_go_of`)."""
 
-    def _say(self, exc: sqlite3.Error) -> CheckpointUnavailable:
-        # Closed before the error leaves: on Python 3.11 a failed cursor
-        # kept by the error's traceback holds its statement, and SQLite
-        # keeps the file open for it after the connection is closed - a
-        # damaged checkpoint stayed locked (WinError 32) for as long as
-        # anything kept the error. See store._let_go_of (decision 159,
-        # Python 3.11 on Windows).
+    def _say(self, exc: sqlite3.Error) -> Exception:
         _let_go_of(self)
-        return _unavailable(exc, getattr(self.connection, "where", "record checkpoint"))
+        return self.connection._refused(exc)
 
     def execute(self, sql, parameters=(), /):
         try:
             return super().execute(sql, parameters)
+        except sqlite3.Error as exc:
+            raise self._say(exc) from exc
+
+    def executemany(self, sql, parameters, /):
+        try:
+            return super().executemany(sql, parameters)
         except sqlite3.Error as exc:
             raise self._say(exc) from exc
 
@@ -257,6 +271,12 @@ class _Cursor(sqlite3.Cursor):
         except sqlite3.Error as exc:
             raise self._say(exc) from exc
 
+    def fetchmany(self, size=None):
+        try:
+            return super().fetchmany(self.arraysize if size is None else size)
+        except sqlite3.Error as exc:
+            raise self._say(exc) from exc
+
     def __next__(self):
         try:
             return super().__next__()
@@ -264,67 +284,111 @@ class _Cursor(sqlite3.Cursor):
             raise self._say(exc) from exc
 
 
-class _Connection(sqlite3.Connection):
-    """The checkpoint's connection: the one choke point every statement in
-    this module goes through, so no ``sqlite3.Error`` leaves it raw."""
+class GuardedConnection(sqlite3.Connection):
+    """**The one choke point** every statement goes through (decision 189):
+    every query is ``conn.execute`` on a connection of this class, so
+    wrapping the connection's own calls - rather than two hundred call
+    sites - is what makes "no ``sqlite3.Error`` leaves the module raw" true
+    of the next query somebody writes too.
 
-    where: str = "record checkpoint"
+    The store and the checkpoint each subclass it and say, in
+    :meth:`_refused`, which error their callers catch; ``_cursor_class`` is
+    the subclass's own cursor, where it has one."""
 
-    def cursor(self, factory=_Cursor):
+    _cursor_class = GuardedCursor
+
+    #: The file this connection was opened on, for a refusal that names it.
+    where: str = ""
+
+    def _refused(self, exc: sqlite3.Error) -> Exception:
+        raise NotImplementedError
+
+    def cursor(self, factory=None):
         try:
-            return super().cursor(factory)
+            return super().cursor(factory or self._cursor_class)
         except sqlite3.Error as exc:
-            raise _unavailable(exc, self.where) from exc
+            raise self._refused(exc) from exc
 
     def execute(self, sql, parameters=(), /):
         return self.cursor().execute(sql, parameters)
 
     def executemany(self, sql, parameters, /):
-        cursor = self.cursor()
+        return self.cursor().executemany(sql, parameters)
+
+    def executescript(self, script, /):
         try:
-            return cursor.executemany(sql, parameters)
+            return super().executescript(script)
         except sqlite3.Error as exc:
-            _let_go_of(cursor)
-            raise _unavailable(exc, self.where) from exc
+            raise self._refused(exc) from exc
+
+    def commit(self):
+        try:
+            return super().commit()
+        except sqlite3.Error as exc:
+            raise self._refused(exc) from exc
 
     def close(self):
         try:
             return super().close()
         except sqlite3.Error as exc:
-            raise _unavailable(exc, self.where) from exc
+            raise self._refused(exc) from exc
 
 
-def _connected(target: str | Path, where: Path, **options) -> _Connection:
-    """A connection through :class:`_Connection`, naming ``where``."""
+class _Connection(GuardedConnection):
+    """The checkpoint's connection: a failure leaves as
+    :class:`CheckpointUnavailable`, naming the file."""
+
+    where: str = "record checkpoint"
+
+    def _refused(self, exc: sqlite3.Error) -> CheckpointUnavailable:
+        return _unavailable(exc, self.where)
+
+
+def connected(target: str | Path, factory: type[GuardedConnection],
+              refuse: Callable[[sqlite3.Error], Exception], *, timeout_ms: int,
+              where: Path | str | None = None, **options) -> GuardedConnection:
+    """A connection through ``factory``: autocommit, rows by name, a busy
+    timeout of ``timeout_ms``. A refusal to open is ``refuse(exc)``; a
+    failure after it closes the connection first (:func:`close_after_failure`).
+    ``where`` is the file a refusal names."""
     try:
-        conn = sqlite3.connect(target, isolation_level=None, factory=_Connection, **options)
+        conn = sqlite3.connect(target, isolation_level=None, factory=factory, **options)
     except sqlite3.Error as exc:
-        raise _unavailable(exc, where) from exc
+        raise refuse(exc) from exc
     try:
-        conn.where = str(where)
+        if where is not None:
+            conn.where = str(where)
         conn.row_factory = sqlite3.Row
-        conn.execute(f"PRAGMA busy_timeout = {BUSY_TIMEOUT_MS}")
+        conn.execute(f"PRAGMA busy_timeout = {timeout_ms}")
     except BaseException:
-        _close_after_failure(conn)
+        close_after_failure(conn)
         raise
     return conn
 
 
-def _close_after_failure(conn: sqlite3.Connection) -> None:
-    """Close a connection whose opening failed, keeping the failure being
-    raised as the one reported.
+def _connected(target: str | Path, where: Path, **options) -> _Connection:
+    """A connection through :class:`_Connection`, naming ``where``."""
+    return connected(target, _Connection, lambda exc: _unavailable(exc, where),
+                     timeout_ms=BUSY_TIMEOUT_MS, where=where, **options)
 
-    Not left to Python: the connection is still referenced from the
-    exception's traceback, so it stays open until the garbage collector
-    runs, and on Windows an open SQLite handle is a file that cannot be
-    renamed or deleted (WinError 32). A damaged checkpoint refused by name
-    - "set it aside, runbook section 6" - stayed locked by the refusing
-    process against exactly that step (decision 159, Windows). A close
-    that fails itself says nothing new; the error already raised does.
+
+def close_after_failure(conn: sqlite3.Connection) -> None:
+    """Close a connection whose opening failed, keeping the failure that is
+    being raised as the one reported.
+
+    Why not leave it to Python: the connection is still referenced from the
+    exception's traceback and a cursor's cycle, so it stays open until the
+    garbage collector runs. On Windows an open SQLite handle is an open
+    file, and an open file cannot be renamed or deleted (WinError 32): the
+    damaged file this process refused would stay locked against the very
+    step the refusal names (decision 159, Windows). A close that fails
+    itself says nothing new; the error already being raised does - so it
+    closes through ``sqlite3``'s own ``close``, which can raise only
+    ``sqlite3.Error``, and says nothing of that.
     """
     try:
-        conn.close()
-    except (sqlite3.Error, CheckpointError):
+        sqlite3.Connection.close(conn)
+    except sqlite3.Error:
         pass
 
 
@@ -410,7 +474,7 @@ def open(path: Path | str) -> sqlite3.Connection:  # noqa: A001 - the checkpoint
 def _opened(path: Path) -> sqlite3.Connection:
     conn = _connect(path)
     # Closed on any failure, never left to the garbage collector: see
-    # _close_after_failure (decision 159, Windows).
+    # close_after_failure (decision 159, Windows).
     try:
         version = conn.execute("PRAGMA user_version").fetchone()[0]
         if 0 < version < CHECKPOINT_VERSION:
@@ -419,7 +483,7 @@ def _opened(path: Path) -> sqlite3.Connection:
             conn = _connect(path)
             version = 0
         if version == 0:
-            with _transaction(conn):
+            with transaction(conn):
                 for statement in SCHEMA:
                     conn.execute(statement)
                 conn.execute(f"PRAGMA user_version = {CHECKPOINT_VERSION}")
@@ -429,7 +493,7 @@ def _opened(path: Path) -> sqlite3.Connection:
                                                     what="record checkpoint"))
         _write_ahead(conn)
     except BaseException:
-        _close_after_failure(conn)
+        close_after_failure(conn)
         raise
     return conn
 
@@ -465,7 +529,7 @@ def open_read_only(path: Path | str) -> sqlite3.Connection | None:
     try:
         version = conn.execute("PRAGMA user_version").fetchone()[0]
     except BaseException:
-        _close_after_failure(conn)
+        close_after_failure(conn)
         raise
     if version != CHECKPOINT_VERSION:
         conn.close()
@@ -486,7 +550,13 @@ def opened(path: Path | str) -> Iterator[sqlite3.Connection]:
 
 
 @contextmanager
-def _transaction(conn: sqlite3.Connection):
+def transaction(conn: sqlite3.Connection):
+    """One immediate transaction: everything in it, or none of it.
+
+    IMMEDIATE rather than DEFERRED because every caller is about to write,
+    and a deferred transaction that discovers that on its first write can
+    fail to upgrade against a concurrent reader.
+    """
     conn.execute("BEGIN IMMEDIATE")
     try:
         yield
@@ -523,7 +593,7 @@ def advance(conn: sqlite3.Connection, key: str, count: int, head: str, *, seeded
     writer's batch leaves the rest of the batch still expected. ``seeded`` says the value was taken on trust (a first sight, a
     person's acceptance, or a line from another machine) rather than
     because this machine wrote the last line."""
-    with _transaction(conn):
+    with transaction(conn):
         conn.execute(
             'INSERT INTO heads ("key", count, head, at, seeded, pending) VALUES (?, ?, ?, ?, ?, 0) '
             'ON CONFLICT("key") DO UPDATE SET count = excluded.count, head = excluded.head, '
@@ -543,7 +613,7 @@ def expect(conn: sqlite3.Connection, key: str, start: int, heads: list[str]) -> 
     when they are exactly those lines, so a line forged later in the same
     place is still refused. An empty ``heads`` clears the intent. Only for
     a record this machine already vouches for."""
-    with _transaction(conn):
+    with transaction(conn):
         changed = conn.execute('UPDATE heads SET pending = ?, pending_heads = ? WHERE "key" = ?',
                                (start + len(heads) if heads else 0, json.dumps(list(heads)), key))
         if changed.rowcount != 1:
@@ -554,7 +624,7 @@ def expect(conn: sqlite3.Connection, key: str, start: int, heads: list[str]) -> 
 def forget(conn: sqlite3.Connection, key: str) -> None:
     """Drop everything this machine vouched for about one record: a return a
     failed create removed, or one a person's accepted recovery re-seeds."""
-    with _transaction(conn):
+    with transaction(conn):
         conn.execute('DELETE FROM heads WHERE "key" = ?', (key,))
         conn.execute('DELETE FROM foreign_lines WHERE "key" = ?', (key,))
 
@@ -568,7 +638,7 @@ def note_foreign(conn: sqlite3.Connection, key: str, lines: Iterable[tuple[int, 
     Returns how many were new."""
     seen = _now()
     added = 0
-    with _transaction(conn):
+    with transaction(conn):
         for seq, host, at in lines:
             cursor = conn.execute(
                 'INSERT OR IGNORE INTO foreign_lines ("key", seq, host, at, seen) VALUES (?, ?, ?, ?, ?)',
@@ -589,7 +659,7 @@ def unacknowledged(conn: sqlite3.Connection) -> list[Foreign]:
 def acknowledge(conn: sqlite3.Connection, key: str) -> int:
     """A person has seen every line from another machine in one record.
     Returns how many were acknowledged now."""
-    with _transaction(conn):
+    with transaction(conn):
         return conn.execute('UPDATE foreign_lines SET acknowledged = ? '
                             'WHERE "key" = ? AND acknowledged IS NULL', (_now(), key)).rowcount
 
@@ -607,7 +677,7 @@ def claim_root(conn: sqlite3.Connection, root: str) -> str:
     """Claim ``root`` for this checkpoint when none is claimed yet. Returns
     the root it belongs to - the one claimed before, if there was one: a
     claim never moves (:func:`move_root` does, when a person says so)."""
-    with _transaction(conn):
+    with transaction(conn):
         claimed = root_of(conn)
         if claimed is None:
             conn.execute("INSERT INTO root (path, since) VALUES (?, ?)", (str(root), _now()))
@@ -618,7 +688,7 @@ def claim_root(conn: sqlite3.Connection, root: str) -> str:
 def move_root(conn: sqlite3.Connection, root: str) -> None:
     """The clients root really moved: the checkpoint belongs to ``root`` now.
     The keys are relative to the root, so nothing else changes."""
-    with _transaction(conn):
+    with transaction(conn):
         conn.execute("DELETE FROM root")
         conn.execute("INSERT INTO root (path, since) VALUES (?, ?)", (str(root), _now()))
 
