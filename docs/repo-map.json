@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 254,
     "edges": 1232,
-    "reused": 200
+    "reused": 206
   },
   "node_types": [
     "artifact",
@@ -4339,7 +4339,7 @@
       "id": "docs/repo-map.curated.json",
       "type": "file",
       "layer": "docs",
-      "sha256": "dd318f20d8dc6ec2",
+      "sha256": "b49ab9c43dbd18ab",
       "lines": 1167,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
@@ -5258,11 +5258,12 @@
       "id": "tests/conftest.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "e53a78a93a878522",
-      "lines": 1001,
+      "sha256": "514d05670ad9e343",
+      "lines": 1049,
       "exports": [
         "APP_FOLDER",
         "ENV_OFFICE_SHAPED_FULL",
+        "LOST_WORKER",
         "PATH_SETTINGS",
         "REAL_FILL",
         "REAL_SCHTASKS",
@@ -5278,6 +5279,7 @@
         "UNREADABLE_LOG",
         "UNREADABLE_LOG_LINE",
         "WINDOWS_PIPE_ENCODING",
+        "WORKER_SAID_KEY",
         "an_app_folder_of_its_own",
         "app_stdin",
         "checkout_folders",
@@ -5296,6 +5298,7 @@
         "pytest_configure",
         "pytest_sessionfinish",
         "pytest_terminal_summary",
+        "pytest_testnodedown",
         "pytest_unconfigure",
         "read_tripwire_log",
         "reading_in_this_process",
@@ -5324,10 +5327,12 @@
         "TRIPWIRE_HEADING": "'decision 185: the suite reached a real place'",
         "UNREADABLE_LOG_LINE": "\"the tripwire's log has a line it cannot read\"",
         "UNREADABLE_LOG": "\"the tripwire's log could not be read\"",
+        "WORKER_SAID_KEY": "'tripwire_said'",
+        "LOST_WORKER": "\"a pytest-xdist worker ended without giving the tripwire's verdict\"",
         "ENV_OFFICE_SHAPED_FULL": "'TRACKER_OFFICE_SHAPED_FULL'"
       },
       "role": "What every test pays for once: an app folder of its own (settings and store, via own_folders()), the tripwire's arming and its session verdict (decision 185), the store and view agreement checks, and the one way to make an engagement, sort an inbox and start a Python child (child_env()).",
-      "notes": "Decision 185: own_folders() is the one place a process is told where beside-the-app is - the session calls it in pytest_configure before collection, every test through an_app_folder_of_its_own (its own MonkeyPatch, so a test's undo cannot take it); real_places() is the one list of places a real settings file, store, scratch or client tree resolves to, from the constants that name them, and 186 adds the data home to both. pytest_configure installs the hook with the session's TRACKER_TEST_TRIPWIRE value and the session log, so this process also judges the Python children it starts by the routes the tripwire's docstring lists (and what escapes is listed there too); a process it forks writes its records to the log. pytest_sessionfinish fails the session on any tripwire record, the pytest process's or a child's (the session log, read_tripwire_log(): a line it cannot read, or a log it cannot read at all (any OSError), is itself said as a violation, never an internal error), and on any folder the session left in the checkout (checkout_folders(), which never lists a guarded place). office_shaped_copy is the checkout copied with fabricated real-looking files beside it, for the nested proofs. Decision 186: own_folders() also sets TRACKER_DATA_HOME to data_home_for(folder), a sibling of the folder holding the app folder (<tmp_path>-data for a test, <session>-data for the session, removed at unconfigure), so no clients root a test makes of tmp_path holds it (ROOT_HOLDS_DATA); real_places() guards the account's real data home (settings.default_data_home(), none on a machine without one) and one the shell names, and names the store by where.with_name(STORE_FILENAME) since store.path_for() is gone; run_in_copy() drops the suite's data home, as a fresh shell has none."
+      "notes": "Decision 185: own_folders() is the one place a process is told where beside-the-app is - the session calls it in pytest_configure before collection, every test through an_app_folder_of_its_own (its own MonkeyPatch, so a test's undo cannot take it); real_places() is the one list of places a real settings file, store, scratch or client tree resolves to, from the constants that name them, and 186 adds the data home to both. pytest_configure installs the hook with the session's TRACKER_TEST_TRIPWIRE value and the session log, so this process also judges the Python children it starts by the routes the tripwire's docstring lists (and what escapes is listed there too); a process it forks writes its records to the log. Under pytest-xdist the controller alone arms the session: a worker reads the places and log from the inherited TRACKER_TEST_TRIPWIRE (_configure_worker), hands its hits back in workeroutput, and pytest_testnodedown collects them, because xdist ignores a worker's exit status. pytest_sessionfinish fails the session on any tripwire record, the pytest process's or a child's (the session log, read_tripwire_log(): a line it cannot read, or a log it cannot read at all (any OSError), is itself said as a violation, never an internal error), and on any folder the session left in the checkout (checkout_folders(), which never lists a guarded place). office_shaped_copy is the checkout copied with fabricated real-looking files beside it, for the nested proofs. Decision 186: own_folders() also sets TRACKER_DATA_HOME to data_home_for(folder), a sibling of the folder holding the app folder (<tmp_path>-data for a test, <session>-data for the session, removed at unconfigure), so no clients root a test makes of tmp_path holds it (ROOT_HOLDS_DATA); real_places() guards the account's real data home (settings.default_data_home(), none on a machine without one) and one the shell names, and names the store by where.with_name(STORE_FILENAME) since store.path_for() is gone; run_in_copy() drops the suite's data home, as a fresh shell has none."
     },
     {
       "id": "tests/samples.py",
@@ -9718,14 +9723,17 @@
       "id": "tests/test_tripwire.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "a81bd94589a3b7fa",
-      "lines": 526,
+      "sha256": "9994c3277c29e73b",
+      "lines": 599,
       "exports": [
         "ALL_PASS",
         "CANARIES",
         "CANARY",
         "FOLDER_LABELS",
+        "SHELL_NAMED_REACH",
+        "UNARMED_CHILD",
         "fabricated_places",
+        "test_a_folder_the_shell_names_is_guarded_in_a_pytest_xdist_worker",
         "test_a_line_of_the_tripwires_log_it_cannot_read_is_said_as_a_violation",
         "test_a_link_to_or_from_a_guarded_place_is_judged",
         "test_a_place_is_judged_by_the_folder_itself_not_its_spelling",
@@ -9739,6 +9747,7 @@
         "test_no_test_opens_the_real_data_home",
         "test_no_test_sees_the_real_corpus_unless_it_names_one",
         "test_no_test_starts_a_python_child_around_the_tripwire",
+        "test_pytest_xdist_workers_hand_their_hits_to_the_one_verdict",
         "test_the_atomic_writes_temporary_beside_a_guarded_file_is_guarded_too",
         "test_the_ignore_file_knows_every_place_the_tripwire_guards",
         "test_the_rest_of_the_checkout_is_not_guarded",

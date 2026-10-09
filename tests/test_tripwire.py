@@ -504,6 +504,79 @@ def test_a_session_where_every_test_passes_still_fails_for_a_reach(office_shaped
     _unchanged(copy, fabricated)
 
 
+#: A test that starts a Python child around the tripwire; it passes (the child is fine).
+UNARMED_CHILD = textwrap.dedent('''
+    import subprocess
+    import sys
+
+
+    def test_an_unarmed_child_whose_answer_is_right():
+        done = subprocess.run([sys.executable, "-c", "print(1)"], env={}, capture_output=True, text=True,
+                              timeout=120)
+        assert done.stdout.strip() == "1"
+''')
+
+
+def test_pytest_xdist_workers_hand_their_hits_to_the_one_verdict(office_shaped_copy):
+    """Under ``-n 2`` each worker has its own process, so the verdict is the
+    controller's: a hit a worker saw and its test tolerated still fails the
+    session with the same heading and exit code as a single process. xdist
+    itself ignores a worker's exit status."""
+    copy, fabricated = office_shaped_copy
+    canary = copy / "tests" / "test_unarmed_xdist_185.py"
+    canary.write_text(UNARMED_CHILD, encoding="utf-8")
+    try:
+        done = run_in_copy(copy, "-p", "no:cacheprovider", "-n", "2", "tests/test_unarmed_xdist_185.py")
+    finally:
+        canary.unlink()
+    output = done.stdout + done.stderr
+    assert done.returncode == 1, output[-4000:]
+    assert re.search(r"^1 passed in ", output, re.M), output[-2000:]          # the test itself is green
+    said = _section(output)
+    # a start may be heard twice (``subprocess.Popen`` and then ``os.posix_spawn``)
+    assert said and all(tripwire.UNARMED in line and "test_an_unarmed_child_whose_answer_is_right" in line
+                        for line in said), said
+    _unchanged(copy, fabricated)
+
+
+#: A test that reaches a folder the shell names as the settings folder, and tolerates the refusal.
+SHELL_NAMED_REACH = textwrap.dedent('''
+    from tests.conftest import REPO
+    from tests.tripwire.sitecustomize import TripwireError
+    from tracker import settings
+
+
+    def test_a_reach_for_the_folder_the_shell_names():
+        import os
+        named = os.environ["SHELL_NAMED_FOLDER"]
+        try:
+            open(os.path.join(named, settings.SETTINGS_FILENAME), encoding="utf-8").close()
+        except (TripwireError, OSError):
+            pass
+''')
+
+
+def test_a_folder_the_shell_names_is_guarded_in_a_pytest_xdist_worker(office_shaped_copy):
+    """A worker uses the controller's places, worked out before the session
+    pointed the environment at its own folders, so the settings folder the
+    user's shell names stays guarded in it."""
+    copy, fabricated = office_shaped_copy
+    named = copy.parent / "named-by-the-shell"
+    canary = copy / "tests" / "test_shell_named_xdist_185.py"
+    canary.write_text(SHELL_NAMED_REACH, encoding="utf-8")
+    try:
+        done = run_in_copy(copy, "-p", "no:cacheprovider", "-n", "2", "tests/test_shell_named_xdist_185.py",
+                           SHELL_NAMED_FOLDER=str(named), **{settings.ENV_SETTINGS_DIR: str(named)})
+    finally:
+        canary.unlink()
+    output = done.stdout + done.stderr
+    assert done.returncode == 1, output[-4000:]
+    said = _section(output)
+    assert len(said) == 1 and "test_a_reach_for_the_folder_the_shell_names" in said[0], said
+    assert not named.exists()
+    _unchanged(copy, fabricated)
+
+
 def test_the_suite_in_an_office_shaped_copy_creates_no_folder_in_the_checkout(office_shaped_copy):
     copy, fabricated = office_shaped_copy
     folders = checkout_folders(copy, ())

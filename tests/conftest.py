@@ -844,6 +844,10 @@ TRIPWIRE_HEADING = "decision 185: the suite reached a real place"
 
 
 def pytest_configure(config):
+    worker = getattr(config, "workerinput", None)
+    if worker is not None:
+        _configure_worker(config)
+        return
     places = real_places(REPO)                     # before own_folders(): the shell's own values count
     session = Path(tempfile.mkdtemp(prefix="tracker-suite-"))
     log = session / "tripwire.log"
@@ -859,7 +863,27 @@ def pytest_configure(config):
     # The log is written only from a process this one forks (a fork that execs).
     tripwire.install(tripwire.prepare(places), log=str(log), children=os.environ[tripwire.ENV_TRIPWIRE])
     config.stash[_STATE] = {"patch": patch, "session": session, "log": log,
-                            "places": places, "before": before, "said": []}
+                            "places": places, "before": before, "said": [], "workers": []}
+
+
+def _configure_worker(config):
+    """A pytest-xdist worker joins the controller's session and arms no new one.
+
+    The controller armed the tripwire once, before it started the worker, and
+    the worker inherited that environment: its folders are the session's, and
+    its places are the controller's. A worker that armed its own would work
+    out the places from an environment already pointing at the session, so a
+    folder the user's shell names would go unguarded in it, and it would keep
+    a verdict of its own that xdist never reads back - xdist ignores a
+    worker's exit status. So the worker reads the places and the log from the
+    inherited :data:`ENV_TRIPWIRE`, watches its own process and the Python
+    children it starts, and hands the hits it saw to the controller in
+    ``workeroutput`` (:func:`pytest_sessionfinish`)."""
+    armed = os.environ[tripwire.ENV_TRIPWIRE]
+    spec = json.loads(armed)
+    places = tuple((label, Path(path)) for label, path in spec["places"])
+    tripwire.install(tripwire.prepare(places), log=spec["log"], children=armed)
+    config.stash[_STATE] = {"worker": True, "said": []}
 
 
 #: What the session says of a line in the tripwire's log it cannot read.
@@ -908,12 +932,34 @@ def read_tripwire_log(log: Path) -> list[str]:
 def pytest_sessionfinish(session):
     state = session.config.stash[_STATE]
     said = [_hit_said(test, event, label) for test, event, label in tripwire.SEEN]
+    if state.get("worker"):
+        session.config.workeroutput[WORKER_SAID_KEY] = said     # the controller gives the verdict
+        return
+    said += state["workers"]
     said += read_tripwire_log(state["log"])
     said += [f"the session left a new folder in the checkout: {rel}"
              for rel in sorted(checkout_folders(REPO, state["places"]) - state["before"])]
     if said:
         state["said"] = said
         session.exitstatus = pytest.ExitCode.TESTS_FAILED
+
+
+#: Where a pytest-xdist worker puts the hits it saw, for the controller to collect.
+WORKER_SAID_KEY = "tripwire_said"
+#: What the session says of a worker that ended without handing over its hits.
+LOST_WORKER = "a pytest-xdist worker ended without giving the tripwire's verdict"
+
+
+@pytest.hookimpl(optionalhook=True)
+def pytest_testnodedown(node, error):
+    """The controller collects what each pytest-xdist worker saw. A worker
+    that ended without saying is itself said: its hits might be lost."""
+    workers = node.config.stash[_STATE]["workers"]
+    output = getattr(node, "workeroutput", None) or {}
+    if WORKER_SAID_KEY in output:
+        workers += output[WORKER_SAID_KEY]
+    else:
+        workers.append(f"{LOST_WORKER} ({node.gateway.id})")
 
 
 def pytest_terminal_summary(terminalreporter, config):
@@ -929,6 +975,8 @@ def pytest_unconfigure(config):
     if state is None:
         return
     store.close()
+    if state.get("worker"):
+        return                         # the controller made the session's folders and removes them
     state["patch"].undo()
     shutil.rmtree(state["session"], ignore_errors=True)
     shutil.rmtree(data_home_for(state["session"] / APP_FOLDER), ignore_errors=True)
