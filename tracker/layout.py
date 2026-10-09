@@ -776,7 +776,7 @@ def parts_below(outer: Path | str, inner: Path | str) -> tuple[str, ...] | None:
     same question with its own rule about case and ``..``.
 
     **Remembered by text, never by a ``Path``** (pilot P219): the answer is
-    kept under each argument's type and spelling. On Windows
+    kept under the outer argument's type and both spellings. On Windows
     ``PureWindowsPath("C:/Root/Smith") == PureWindowsPath("C:/Root/SMITH")``
     with the same hash, and the answer carries the inner path's own
     spelling, which becomes a store key - a cache keyed by a ``Path``'s

@@ -388,9 +388,10 @@ def _to_move(path: Path) -> bool:
 def left_behind_to_move(root: Path | None) -> list[Path]:
     """The move group of :func:`left_behind`: what cannot be made again or is
     evidence (:func:`_to_move`), to be moved into the data home and never
-    deleted. Spelled once, here: the first screen's :data:`LEFT_BEHIND_TO_MOVE`
-    and the after-install step that moves them (decision 209, R9) both read
-    it, so neither keeps a list of its own."""
+    deleted. Spelled once, here: the after-install step that moves them
+    (decision 209, R9) reads it, and :func:`left_behind_warnings` splits the
+    same walk by the same :func:`_to_move` test, so neither keeps a list of
+    its own."""
     return [path for path in left_behind(root) if _to_move(path)]
 
 
@@ -722,7 +723,8 @@ IGNORED_NOTE = "{n} system or temporary files in the inbox were left alone"
 #: the run's line mentions the document. Photos and scans are the readings
 #: the owner's speed ceiling will be measured against, and a pass that
 #: quietly abandoned the slow ones could not measure them. The one stop is
-#: the safety stop beside it, ten times that ceiling (decision 137, B1.2).
+#: the reader's safety stop (``content_check.READING_STOP_*``), ten times that
+#: ceiling (decision 137, B1.2).
 SLOW_READING_SECONDS = 20.0
 SLOW_READING_NOTE = "slow reading: {name} took {seconds:.0f} s"
 #: What a pass says, once, when the reader could not start for some of its

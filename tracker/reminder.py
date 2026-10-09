@@ -374,11 +374,9 @@ SECTION_MISSING = "NOT YET RECEIVED"
 SECTION_PARTIAL = "STARTED, BUT NOT COMPLETE"
 #: The section a Failed row used to be asked under. Unreachable from a pass
 #: since decision 115 - a Failed row with no firm-side code holds the
-#: draft instead - so it is not in ``SECTION_ORDER``; the name stays because
-#: an "ask the client again" action a person records would put a row here.
-#: Since decision 190 it heads the files that are not documents
-#: (:func:`unusable_files`), which name no request and are asked about
-#: after every request's section.
+#: draft instead - so it is not in ``SECTION_ORDER``. Since decision 190 it
+#: heads the files that are not documents (:func:`unusable_files`), which
+#: name no request and are asked about after every request's section.
 SECTION_FAILED = "RECEIVED, BUT WE COULD NOT USE IT"
 
 SECTION_ORDER = (SECTION_MISSING, SECTION_PARTIAL)
