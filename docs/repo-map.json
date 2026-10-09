@@ -1,6 +1,6 @@
 {
   "schema": 2,
-  "generated": "2026-10-08",
+  "generated": "2026-10-09",
   "generator": "tools/repo_map.py",
   "generator_sha256": "22c7b60a1d198289",
   "module_table_sha256": "c0a660acf371a340",
@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 446,
     "edges": 1233,
-    "reused": 398
+    "reused": 397
   },
   "node_types": [
     "artifact",
@@ -853,8 +853,8 @@
       "id": "tracker/checkpoint.py",
       "type": "module",
       "layer": "core",
-      "sha256": "f2d62978b9b0f7a2",
-      "lines": 682,
+      "sha256": "0eb9682e48eb0a8f",
+      "lines": 752,
       "cli": "python -m tracker.checkpoint",
       "exports": [
         "BUSY",
@@ -869,6 +869,8 @@
         "CheckpointLeftBehind",
         "CheckpointUnavailable",
         "Foreign",
+        "GuardedConnection",
+        "GuardedCursor",
         "Intent",
         "LEFT_BEHIND",
         "NEWER_FILE",
@@ -877,6 +879,8 @@
         "acknowledge",
         "advance",
         "claim_root",
+        "close_after_failure",
+        "connected",
         "expect",
         "foreign_lines_refused",
         "forget",
@@ -889,6 +893,7 @@
         "path_for",
         "root_of",
         "set_aside",
+        "transaction",
         "unacknowledged",
         "vouched"
       ],
@@ -3859,8 +3864,8 @@
       "id": "tracker/store.py",
       "type": "module",
       "layer": "core",
-      "sha256": "0f41c14e272aed73",
-      "lines": 4352,
+      "sha256": "ecfe207948066d8c",
+      "lines": 4213,
       "cli": "python -m tracker.store",
       "exports": [
         "ACCEPTED",

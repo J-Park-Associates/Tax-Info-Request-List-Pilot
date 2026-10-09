@@ -509,112 +509,21 @@ def _unavailable(exc: sqlite3.Error) -> StoreUnavailable:
     return StoreUnavailable(getattr(exc, "sqlite_errorname", None) or "SQLITE_ERROR")
 
 
-def _let_go_of(cursor: sqlite3.Cursor) -> None:
-    """Close a cursor whose statement failed, before the error leaves it.
-
-    Why (decision 159, Python 3.11 on Windows): the error's traceback holds
-    the frame that raised it, the frame holds the cursor, and on Python
-    3.11 the cursor holds its prepared statement. Closing the connection
-    does not close the file while a statement is outstanding - SQLite
-    keeps the handle until the statement is finalized - so anything that
-    keeps the error (a caller, a log record, a report of the pass) kept the
-    file open, and Windows refused to rename or delete it (WinError 32).
-    Python 3.14 lets go regardless; 3.11, the floor, does not. A closed
-    cursor holds no statement.
-    """
-    try:
-        cursor.close()
-    except sqlite3.Error:
-        pass
+class _Cursor(checkpoint.GuardedCursor):
+    """The store's cursor: its statements and rows fail as
+    :class:`StoreUnavailable` (decision 189), through
+    :class:`tracker.checkpoint.GuardedCursor`."""
 
 
-class _Cursor(sqlite3.Cursor):
-    """A cursor whose rows fail as :class:`StoreUnavailable` too: SQLite
-    steps a query as its rows are read, so a disk error can arrive on the
-    second row as well as on the statement.
+class _Connection(checkpoint.GuardedConnection):
+    """The store's connection (decision 189): every statement in this
+    module goes through it, and the engine's refusal leaves as
+    :class:`StoreUnavailable`."""
 
-    A cursor that failed is closed before its error is raised
-    (:meth:`_say`, decision 159, Python 3.11 on Windows).
-    """
+    _cursor_class = _Cursor
 
-    def _say(self, exc: sqlite3.Error) -> StoreUnavailable:
-        _let_go_of(self)
+    def _refused(self, exc: sqlite3.Error) -> StoreUnavailable:
         return _unavailable(exc)
-
-    def execute(self, sql, parameters=(), /):
-        try:
-            return super().execute(sql, parameters)
-        except sqlite3.Error as exc:
-            raise self._say(exc) from exc
-
-    def executemany(self, sql, parameters, /):
-        try:
-            return super().executemany(sql, parameters)
-        except sqlite3.Error as exc:
-            raise self._say(exc) from exc
-
-    def fetchone(self):
-        try:
-            return super().fetchone()
-        except sqlite3.Error as exc:
-            raise self._say(exc) from exc
-
-    def fetchall(self):
-        try:
-            return super().fetchall()
-        except sqlite3.Error as exc:
-            raise self._say(exc) from exc
-
-    def fetchmany(self, size=None):
-        try:
-            return super().fetchmany(self.arraysize if size is None else size)
-        except sqlite3.Error as exc:
-            raise self._say(exc) from exc
-
-    def __next__(self):
-        try:
-            return super().__next__()
-        except sqlite3.Error as exc:
-            raise self._say(exc) from exc
-
-
-class _Connection(sqlite3.Connection):
-    """The store's connection: **the one choke point** every statement in
-    this module goes through (decision 189). Every query here is
-    ``conn.execute`` on a connection :func:`open` made, so wrapping the
-    connection's own calls - rather than two hundred call sites - is what
-    makes "no ``sqlite3.Error`` leaves this module raw" true of the next
-    query somebody writes too."""
-
-    def cursor(self, factory=_Cursor):
-        try:
-            return super().cursor(factory)
-        except sqlite3.Error as exc:
-            raise _unavailable(exc) from exc
-
-    def execute(self, sql, parameters=(), /):
-        return self.cursor().execute(sql, parameters)
-
-    def executemany(self, sql, parameters, /):
-        return self.cursor().executemany(sql, parameters)
-
-    def executescript(self, script, /):
-        try:
-            return super().executescript(script)
-        except sqlite3.Error as exc:
-            raise _unavailable(exc) from exc
-
-    def commit(self):
-        try:
-            return super().commit()
-        except sqlite3.Error as exc:
-            raise _unavailable(exc) from exc
-
-    def close(self):
-        try:
-            return super().close()
-        except sqlite3.Error as exc:
-            raise _unavailable(exc) from exc
 
 
 # --------------------------------------------------------------- columns ----
@@ -840,18 +749,14 @@ def open(path: Path | str) -> sqlite3.Connection:  # noqa: A001 - the store is o
     # whole batch or none of it and a driver-invented transaction boundary
     # is not a guarantee anybody wrote down.
     conn = _connect(path)
-    # Closed on any failure below, not left to the garbage collector: on
-    # Windows an open handle keeps the file from being renamed or deleted,
-    # so a store that could not be opened stayed locked by this process -
-    # a long pass included - for the person told to move it aside
-    # (decision 159, Windows).
+    # Closed on any failure below, not left to the garbage collector
+    # (:func:`tracker.checkpoint.close_after_failure` says why).
     try:
         version = conn.execute("PRAGMA user_version").fetchone()[0]
         while version in _IN_PLACE and version < SCHEMA_VERSION:
             # One transaction per step: the column and the version land
             # together or not at all.
-            conn.execute("BEGIN IMMEDIATE")
-            try:
+            with _transaction(conn):
                 # Read again under the write lock: another opener (the app and
                 # a pass starting at once) may have made this step since the
                 # version was read, and a step made twice would fail on the
@@ -862,11 +767,6 @@ def open(path: Path | str) -> sqlite3.Connection:  # noqa: A001 - the store is o
                         conn.execute(statement)
                     conn.execute(f"PRAGMA user_version = {version + 1}")
                     now = version + 1
-                conn.execute("COMMIT")
-            except BaseException:
-                conn.execute("ROLLBACK")
-                conn.close()
-                raise
             version = now
         # **One upgrade policy** (decisions 204 and 159): a version
         # :data:`_IN_PLACE` names is upgraded where it stands, above; an older
@@ -887,7 +787,7 @@ def open(path: Path | str) -> sqlite3.Connection:  # noqa: A001 - the store is o
             raise StoreError(checkpoint.NEWER_FILE.format(path=path, version=version, known=SCHEMA_VERSION,
                                                           what="store"))
     except BaseException:
-        _close_after_failure(conn)
+        checkpoint.close_after_failure(conn)
         raise
     return conn
 
@@ -895,38 +795,15 @@ def open(path: Path | str) -> sqlite3.Connection:  # noqa: A001 - the store is o
 def _connect(path: Path) -> sqlite3.Connection:
     # The factory is the one choke point (decision 189): every statement
     # below and in every function of this module goes through it.
+    conn = checkpoint.connected(path, _Connection, _unavailable, timeout_ms=BUSY_TIMEOUT_MS)
     try:
-        conn = sqlite3.connect(path, isolation_level=None, factory=_Connection)
-    except sqlite3.Error as exc:
-        raise _unavailable(exc) from exc
-    try:
-        conn.row_factory = sqlite3.Row
-        conn.execute(f"PRAGMA busy_timeout = {BUSY_TIMEOUT_MS}")
         conn.execute("PRAGMA journal_mode = WAL")
         conn.execute("PRAGMA synchronous = NORMAL")
         conn.execute("PRAGMA foreign_keys = ON")
     except BaseException:
-        _close_after_failure(conn)       # a file that is not a database: see open()
+        checkpoint.close_after_failure(conn)       # a file that is not a database: see open()
         raise
     return conn
-
-
-def _close_after_failure(conn: sqlite3.Connection) -> None:
-    """Close a connection whose opening failed, keeping the failure that is
-    being raised as the one reported.
-
-    Why not leave it to Python: the connection is still referenced from the
-    exception's traceback and a cursor's cycle, so it stays open until the
-    garbage collector runs. On Windows an open SQLite handle is an open
-    file, and an open file cannot be renamed or deleted (WinError 32): the
-    damaged file this process refused would stay locked against the very
-    step the refusal names (decision 159, Windows). A close that fails
-    itself says nothing new; the error already being raised does.
-    """
-    try:
-        conn.close()
-    except (sqlite3.Error, StoreError):
-        pass
 
 
 def open_read_only(path: Path | str) -> sqlite3.Connection:
@@ -936,17 +813,12 @@ def open_read_only(path: Path | str) -> sqlite3.Connection:
     path = Path(path)
     if not path.is_file():
         raise StoreError(f"there is no store at {path}; nothing was created")
+    conn = checkpoint.connected(f"{path.resolve().as_uri()}?mode=ro", _Connection, _unavailable,
+                                timeout_ms=BUSY_TIMEOUT_MS, uri=True)
     try:
-        conn = sqlite3.connect(f"{path.resolve().as_uri()}?mode=ro", uri=True, isolation_level=None,
-                               factory=_Connection)
-    except sqlite3.Error as exc:
-        raise _unavailable(exc) from exc
-    try:
-        conn.row_factory = sqlite3.Row
-        conn.execute(f"PRAGMA busy_timeout = {BUSY_TIMEOUT_MS}")
         version = conn.execute("PRAGMA user_version").fetchone()[0]
     except BaseException:
-        _close_after_failure(conn)
+        checkpoint.close_after_failure(conn)
         raise
     if version != SCHEMA_VERSION:
         conn.close()
@@ -1059,21 +931,10 @@ def close() -> None:
     _CONNECTION, _CONNECTION_PATH = None, None
 
 
-@contextmanager
-def _transaction(conn: sqlite3.Connection):
-    """One immediate transaction: everything in it, or none of it.
-
-    IMMEDIATE rather than DEFERRED because every caller here is about to
-    write, and a deferred transaction that discovers that on its first
-    write can fail to upgrade against a concurrent reader.
-    """
-    conn.execute("BEGIN IMMEDIATE")
-    try:
-        yield
-    except BaseException:
-        conn.execute("ROLLBACK")
-        raise
-    conn.execute("COMMIT")
+#: One immediate transaction: everything in it, or none of it
+#: (:func:`tracker.checkpoint.transaction`). Named here because the tests
+#: patch it by this name.
+_transaction = checkpoint.transaction
 
 
 def _recorded_root_over(folder: Path) -> Path | None:
