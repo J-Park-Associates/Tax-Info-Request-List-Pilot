@@ -585,27 +585,6 @@ def _named(stem: str, counter: int, suffix: str) -> str:
     return f"{stem}{suffix}" if counter == 1 else numbered(stem, counter, suffix)
 
 
-def _fitted(identifier: str, document: str, period: str, counter: int, suffix: str,
-            room: int | None) -> str | None:
-    """The ``counter``-th name of a request's series cut to ``room``
-    characters, or None when not even its shortest form fits.
-
-    Only the **document part** is cut, from its end (decision 131): the
-    identifier the copy is found by, the period that says which year,
-    the numbered suffix that keeps a series one series and the extension a
-    program opens it by are never cut. ``None`` for ``room`` is no limit:
-    the canonical name, exactly as it was before there was a room.
-    """
-    name = _named(_stem_of(identifier, document, period), counter, suffix)
-    if room is None or len(name) <= room:
-        return name
-    for keep in range(len(document) - 1, -1, -1):
-        name = _named(_stem_of(identifier, document[:keep].rstrip(". -"), period), counter, suffix)
-        if len(name) <= room:
-            return name
-    return None
-
-
 def prepared_name_for(item: RequestItem, extension: str, taken: set[str], *,
                       room: int | None = None) -> str:
     """Canonical working-copy name: ``label_for(identifier, short name, period)`` plus the extension.
@@ -631,7 +610,19 @@ def prepared_name_for(item: RequestItem, extension: str, taken: set[str], *,
     suffix = f".{extension}" if extension else ""
     counter = 1
     while True:
-        candidate = _fitted(identifier, document, period, counter, suffix, room)
+        # The ``counter``-th name cut to ``room``. Only the **document part**
+        # is cut, from its end (decision 131): the identifier the copy is
+        # found by, the period that says which year, the numbered suffix
+        # that keeps a series one series and the extension a program opens
+        # it by are never cut. ``None`` for ``room`` is no limit: the
+        # canonical name, exactly as it was before there was a room.
+        candidate = None
+        for keep in range(len(document), -1, -1):
+            cut = document if keep == len(document) else document[:keep].rstrip(". -")
+            name = _named(_stem_of(identifier, cut, period), counter, suffix)
+            if room is None or len(name) <= room:
+                candidate = name
+                break
         if candidate is None:
             shortest = _named(_stem_of(identifier, "", period), counter, suffix)
             limit = limit_for(extension)
@@ -1151,7 +1142,7 @@ def _unique_path(
     (decision 147, ruling 9; audit F-1). ``recorded`` is every place the
     household-year's rows name as an original's resting place, each with
     that row's bytes (:func:`_on_record`), and every path an open intent
-    will still write to, with none (:func:`_taken_names`). A client who deletes ``W2.pdf``
+    will still write to, with none (:func:`_taken_in_the_year`). A client who deletes ``W2.pdf``
     from the year's folder and drops a corrected ``W2.pdf`` would otherwise
     have the new file take the old row's identity, and the old row would
     vanish from every reader.
@@ -1221,21 +1212,15 @@ def _on_record(engagements: Iterable[tuple[Path, Iterable[IndexEntry]]]) -> dict
     }
 
 
-def _taken_names(recorded: dict[Path, str], intended: Iterable[Path]) -> dict[Path, str]:
-    """``recorded`` with every path an open intent will write to added, as
-    a name no bytes can claim back (decision 147): the one union
-    :func:`_unique_path` is handed, rows and open intents together."""
-    return {**recorded, **dict.fromkeys(intended, "")}
-
-
 def _taken_in_the_year(first: _ReturnRun, runs: list[_ReturnRun]) -> dict[Path, str]:
     """Every name the pass's own household-year holds (decision 147, ruling
     9 and the review's N-1): the rows of **every** return of that year -
     the pass's own rows as they stand now, and the record's for a return
     the pass left out, one marked inactive while another of the same year
-    is still worked - and every path an open intent will write to."""
+    is still worked - and every path an open intent will write to, as a
+    name no bytes can claim back."""
     held = {run.engagement_dir: run.entries for run in runs}
-    return _taken_names(_year_on_record(first.engagement_dir, held), first.context.intended)
+    return {**_year_on_record(first.engagement_dir, held), **dict.fromkeys(first.context.intended, "")}
 
 
 def _year_on_record(engagement_dir: Path, held: Mapping[Path, list[IndexEntry]]) -> dict[Path, str]:
@@ -1270,18 +1255,6 @@ def _year_on_record(engagement_dir: Path, held: Mapping[Path, list[IndexEntry]])
 # ------------------------------------------------------------------ index ----
 
 
-def clients_root_of(engagement_dir: Path | str) -> Path:
-    """The clients root the store keys this engagement's rows under.
-
-    :func:`tracker.store.root_for` is the rule; this is the name it has
-    always had here, kept because the readers in this module and the
-    commands that drive them call it. The rule moved down to the store
-    with decision 103, because the manifest's own reader needs the same
-    answer and may not import this module.
-    """
-    return store.root_for(engagement_dir)
-
-
 def read_index(engagement: Path | str, *, follow: bool = True) -> list[IndexEntry]:
     """Every index row, oldest first. Empty where nothing is recorded yet.
 
@@ -1309,7 +1282,7 @@ def read_index(engagement: Path | str, *, follow: bool = True) -> list[IndexEntr
     folder = Path(engagement)
     conn = store.connect()
     if follow or store.kind(conn, folder) is None:
-        store.follow_the_journal(conn, clients_root_of(folder), folder)
+        store.follow_the_journal(conn, store.root_for(folder), folder)
     # Built once per state of the record inside a hold (pilot P215, E2):
     # the journal was followed above, every time.
     return store.held_read(conn, folder, "index",
@@ -1760,7 +1733,7 @@ def ensure(engagement_dir: Path | str, root: Path | None = None) -> str:
     pass's ``record()`` behind them.
     """
     folder = Path(engagement_dir)
-    root = Path(root) if root is not None else clients_root_of(folder)
+    root = Path(root) if root is not None else store.root_for(folder)
     conn = store.connect()
     store.catch_up(conn, root, folder)
     return store.state(conn, folder, ledger_head_now=ledger.head(folder))
@@ -1940,20 +1913,12 @@ def _refuse_a_step_through_a_link(engagement_dir: Path, op: dict) -> None:
             raise MovedThroughALinkError(MOVE_THROUGH_A_LINK.format(name=path.name, within=root))
 
 
-def _through_the_door(engagement_dir: Path, target: Path) -> None:
-    """Ask the one door into the client tree (``door.client_write``,
-    decision 188) for a step's destination there, and for every folder
-    that will be made above it, before anything is made. A destination in
-    the firm's tree is not the door's to ask: the place rule and the link
-    check already confined it."""
-    _door_for(root_of(engagement_dir), household_name_of(engagement_dir), target)
-
-
 def _door_for(root: Path, household: str, target: Path) -> None:
-    """:func:`_through_the_door` for a root and a household in hand: the
-    door asked for ``target`` in the client tree and every folder a write
-    there would make above it, a :class:`FilingError` with its sentence
-    when it refuses."""
+    """Ask the one door into the client tree (``door.client_write``,
+    decision 188) for ``target`` and every folder a write there would make
+    above it, before anything is made; a :class:`FilingError` with its
+    sentence when it refuses. A destination in the firm's tree is not the
+    door's to ask: the place rule and the link check already confined it."""
     if place_of(root, target).kind not in CLIENT_KINDS:
         return
     for folder in (*reversed(target.parents), target):
@@ -2014,7 +1979,7 @@ def _do_op(engagement_dir: Path, op: dict, *, cache: ContentCache | None = None)
     if kind == ledger.OP_COPY and not op.get(ledger.DIGEST_KEY):
         raise FilingError(COPY_UNPROVED.format(
             source=recorded_name(source.name), target=recorded_name(target.name)))
-    _through_the_door(engagement_dir, target)
+    _door_for(root_of(engagement_dir), household_name_of(engagement_dir), target)    # the door, before any folder is made
     target.parent.mkdir(parents=True, exist_ok=True)
     if kind == ledger.OP_MOVE:
         _mark_a_move_into_review(engagement_dir, op)
@@ -2989,15 +2954,7 @@ def _make_again(
     ops = [_op(engagement_dir, ledger.OP_COPY, source, locate(engagement_dir, location), entry.digest)
            for location in locations]
     _intend(engagement_dir, key, ops, by=by, row=entry_to_json(remade), then=then)
-    done: list[dict] = []
-    try:
-        for op in ops:
-            _do_op(engagement_dir, op, cache=cache)
-            done.append(op)
-    except (OSError, FilingError):
-        _take_back(engagement_dir, done)
-        _abandon(engagement_dir, key)
-        raise
+    _do_all_or_take_back(engagement_dir, key, ops, cache)
 
 
 def _make_again_or_hold(
@@ -3307,16 +3264,20 @@ _INTERRUPTED_TAIL = re.compile(
 )
 
 
-def interrupted_at(entry: IndexEntry) -> str | None:
-    """The path an interrupted step was putting this row's copy at, or None.
+def interrupted(entry: IndexEntry) -> tuple[str, str] | None:
+    """``(path, sentence)`` of the step that was interrupted putting this
+    row's copy somewhere, or None: the path it was putting it at, and the
+    interrupted-step sentence the row ends with.
 
-    The file there is not this row's - that is the whole of why the row
-    parked - and it is not the request's either: nothing on the record
+    The file at that path is not this row's - that is the whole of why the
+    row parked - and it is not the request's either: nothing on the record
     filed it, and counting it would be the corruption decision 109's sweep
     exists to stop, with a truncated copy standing in for the document the
     client sent. So the scanner keeps it out of the count and says the
     firm-side sentence instead, exactly as it does for a copy somebody
-    dragged (:func:`moved_to`).
+    dragged (:func:`moved_to`). The sentence is read off the row rather
+    than written again, so the request's note and the row's Reason are one
+    sentence.
 
     Only while the row is still parked. Once a person has filed it, set it
     aside or sent it back, what sits in that folder is a file they have
@@ -3325,19 +3286,7 @@ def interrupted_at(entry: IndexEntry) -> str | None:
     if entry.decision != NEEDS_REVIEW:
         return None
     found = _INTERRUPTED_TAIL.match(entry.reason)
-    return found.group("to") if found else None
-
-
-def interrupted_note(entry: IndexEntry) -> str:
-    """The interrupted-step sentence this row ends with, or ``""``.
-
-    Read off the row rather than written again, so the request's note and
-    the row's Reason are one sentence: the filer wrote it when it could not
-    finish the step, and the scanner puts it in front of the request whose
-    folder the file was going into.
-    """
-    found = _INTERRUPTED_TAIL.match(entry.reason) if entry.decision == NEEDS_REVIEW else None
-    return entry.reason[len(found.group("base")) + 2:] if found else ""
+    return (found.group("to"), entry.reason[len(found.group("base")) + 2:]) if found else None
 
 
 #: What :func:`_finish_the_ops` found: every step is done, a file at one
@@ -3975,7 +3924,7 @@ def _named_by_another_records_intent(path: Path, runs: list[_ReturnRun]) -> bool
             if folder in own:
                 continue
             try:
-                store.follow_the_journal(conn, clients_root_of(folder), folder)
+                store.follow_the_journal(conn, store.root_for(folder), folder)
                 intents = store.open_intents(conn, folder)
             except Exception as exc:      # a record nobody can read names nothing it can prove
                 errors.keep("filer", exc, name=folder.name)
@@ -4497,14 +4446,9 @@ def _put_back_home(
                 for location in copies]
         _intend(engagement_dir, key, ops, by=ledger.BY_PASS, row=entry_to_json(new),
                 then=ledger.ORIGINAL_RETURNED)
-        done: list[dict] = []
         try:
-            for op in ops:
-                _do_op(engagement_dir, op, cache=run.cache)
-                done.append(op)
+            _do_all_or_take_back(engagement_dir, key, ops, run.cache)
         except (OSError, FilingError) as exc:
-            _take_back(engagement_dir, done)
-            _abandon(engagement_dir, key)
             first.report.errors.append(FileError(
                 drop.name,
                 f"could not be moved back to {_shown(entry.pbc_location)} ({errors.error_class(exc)}); left in place",
@@ -4520,6 +4464,24 @@ def _put_back_home(
     log.warning("%s is the original recorded at %s, back in the inbox; moved back",
                 arrived, entry.pbc_location)
     return True
+
+
+def _do_all_or_take_back(engagement_dir: Path, key: str, ops: list[dict],
+                         cache: ContentCache | None = None) -> None:
+    """Do every operation of an intent already written, all or nothing: a
+    step that fails (an ``OSError`` or a :class:`FilingError`) takes back
+    what this call already did (:func:`_take_back`), abandons the intent
+    (:func:`_abandon`) and raises for the caller to say. A kill is not a
+    failure: nothing is taken back, and the next pass finishes the intent."""
+    done: list[dict] = []
+    try:
+        for op in ops:
+            _do_op(engagement_dir, op, cache=cache)
+            done.append(op)
+    except (OSError, FilingError):
+        _take_back(engagement_dir, done)
+        _abandon(engagement_dir, key)
+        raise
 
 
 def _take_back(engagement_dir: Path, done: list[dict]) -> None:
@@ -4911,19 +4873,6 @@ NAME_CONFIRMED_NOTE = "name confirmed ({spelling})"
 _NAME_REASONS = (reasons.NAME_NOT_ON_PAGE, reasons.NAMES_ANOTHER_RETURN, reasons.NO_PEOPLE_ON_FILE)
 
 
-def _is_named(run: _ReturnRun, routing) -> bool:
-    """Whether the request this return accepted the document under carries a
-    name (decision 128).
-
-    A page decision 94 split across several requests is named when **any**
-    of them is: a sheet holding a W-2 and a 1099-INT is two documents and
-    both are addressed to somebody, so the strict rule applies to the whole
-    page rather than to whichever request happened to be named first.
-    """
-    return any(item.named for identifier in routing.filed_to
-               if (item := run.context.by_id.get(identifier)) is not None)
-
-
 def _with_the_name(routing, verdict: NameVerdict):
     """``routing`` with the name's own evidence added to every candidate it
     names (decision 128, :data:`tracker.records.RULE_NAME`).
@@ -4984,16 +4933,6 @@ def _name_question(run: _ReturnRun, runs: list[_ReturnRun]) -> NameQuestion:
     )
 
 
-def _judged(judged: Path, runs: list[_ReturnRun], items: list[RequestItem]) -> Judgment:
-    """The drop judged once, in the reader child, against ``items`` - every
-    row it may be routed on - and whose it is for every return in ``runs``
-    (decision 189): the rules and the name run under the document's stop,
-    and no word of it comes back."""
-    names = tuple(_name_question(run, runs) for run in runs)
-    before_a_judgment(runs[0].cache)      # the household's time (ruling 2.2)
-    return read_once(judged, questions_for(items, names=names))
-
-
 def _by_the_name(
     judgment: Judgment, accepting: list[tuple[_ReturnRun, object]], runs: list[_ReturnRun]
 ) -> _NameStage:
@@ -5028,7 +4967,8 @@ def _by_the_name(
         elif verdict.outcome == NAME_VETOED:
             stage.met.append((reasons.NAMES_ANOTHER_RETURN, reasons.NAME_AND_RETURN.format(
                 spelling=verdict.other, label=verdict.other_label)))
-        elif not _is_named(run, routing):
+        elif not any(item.named for identifier in routing.filed_to      # decision 128: a page split across
+                     if (item := run.context.by_id.get(identifier)) is not None):   # requests is named if any is
             stage.kept.append((run, routing))   # a receipt, a log, a headerless export
         elif run.people:
             stage.met.append((reasons.NAME_NOT_ON_PAGE, run.label))
@@ -5125,7 +5065,13 @@ def _decide_across(
     # One reading, however many returns judge it (decision 128). A dry run
     # judges the drop where it lies, as it always has.
     judged = drop if runs[0].context.dry_run else original
-    judgment = _judged(judged, runs, [item for run in runs for item in run.items])
+    # The drop is judged once, in the reader child, against every row it may
+    # be routed on and whose it is for every return in ``runs`` (decision
+    # 189): the rules and the name run under the document's stop, and no word
+    # of it comes back.
+    names = tuple(_name_question(run, runs) for run in runs)
+    before_a_judgment(runs[0].cache)      # the household's time (ruling 2.2)
+    judgment = read_once(judged, questions_for([item for run in runs for item in run.items], names=names))
     reading = judgment.extraction
     if _not_read(reading):
         return None
@@ -5156,14 +5102,14 @@ def _decide_across(
         # is the firm's copy of a part of the client's file, and it never
         # moves into another household's folder. It waits at home, named
         # or not, for a person to file it by hand.
-        if item is not None and _across_households(run) and run.context.container:
+        if item is not None and not run.home and run.context.container:
             opened_across, item = True, None
         # Across households, filing needs a confirmed name (decision 137,
         # B2; the owner's Q-2). A document the name tier kept only because
         # its request is unnamed would otherwise move into another
         # household's folder, which that household's people can open, on
         # the strength of its keywords alone. It waits at home for a person.
-        if item is not None and _across_households(run) and id(run) not in stage.confirmed:
+        if item is not None and not run.home and id(run) not in stage.confirmed:
             unnamed_across, item = True, None
         # And with the name confirmed, it still waits (decision 204, the
         # owner's lane-B ruling, revising 132): a printed name is the
@@ -5172,7 +5118,7 @@ def _decide_across(
         # name was the pass's last road across, so the pass now never files
         # there at all; the row keeps what that return's list accepted, and
         # a person's one click hands it over.
-        if item is not None and _across_households(run):
+        if item is not None and not run.home:
             named_across, item = True, None
         if item is not None:
             try:
@@ -5286,18 +5232,6 @@ def _not_read(reading) -> bool:
     return bool(reading.transient) and reading.code == reasons.READER_UNAVAILABLE.code
 
 
-def _across_households(run: _ReturnRun) -> bool:
-    """Whether ``run`` lives in another household than the one the drop was
-    made in, so filing there would move the original into a folder other
-    people are shared on (decision 129's feeds).
-
-    Read off the run itself: ``home`` marks the dropping household's own
-    returns, and every other run is one its drop folder feeds. Never
-    against a "first" run, which falls back to a fed return when a
-    household has none of its own (decision 137's review, B #4)."""
-    return not run.home
-
-
 def _may_hold(run: _ReturnRun) -> bool:
     """Whether ``run``'s record may answer for the bytes of the document
     being decided (decision 143's review, B1): any return for a loose drop
@@ -5305,7 +5239,7 @@ def _may_hold(run: _ReturnRun) -> bool:
     attachment, whose name and ``_Opened`` path never enter another
     household's record. ``context.container`` is set on every run around
     one attachment's decision, so the run itself says which it is."""
-    return not (run.context.container and _across_households(run))
+    return not (run.context.container and not run.home)
 
 
 def _with_the_wanting_return(home_routing, run: _ReturnRun, routing) -> str:
@@ -5406,7 +5340,7 @@ class _SortContext:
     #: Every path an open intent of the household's pass will still write
     #: to (decision 147, the designer's ruling on deviation 3), read once
     #: per pass after recovery and set on every run: a name taken as a
-    #: row's resting place is, for :func:`_taken_names`.
+    #: row's resting place is, for :func:`_taken_in_the_year`.
     intended: frozenset[Path] = frozenset()
 
 
@@ -5472,22 +5406,25 @@ def _plan_working_copy(
     return prepared_location(dest_folder, filed_as), dest_folder / filed_as
 
 
-def _carry_out(entry: IndexEntry, ops: list[dict], then: str, run: _SortContext) -> None:
-    """Write down what this drop's parked copy will be, then make it.
+def _intend_and_do(
+    engagement_dir: Path, entry: IndexEntry, ops: list[dict], *, by: str, then: str,
+    cache: ContentCache | None, dry_run: bool, also: Sequence[dict] = (),
+) -> None:
+    """Write down what ``entry`` will be, then do ``ops``: the pass's park
+    and a filing's one shape of "intend, then act".
 
-    The intent carries the row this pass will record at the end of it and
-    the event it will be recorded as, so a pass killed between the copy and
-    the batch record is finished from the record: the copies that are
-    already there are left alone, the ones that are not are made, and the
-    row is recorded as it was decided (decision 119). A dry run writes
-    nothing, here as everywhere.
+    The intent carries the row the caller will record and the event it will
+    be recorded as, so a pass killed between the copy and the record is
+    finished from the record: the copies that are already there are left
+    alone, the ones that are not are made, and the row is recorded as it was
+    decided (decision 119). A dry run, or no operation, writes nothing.
     """
-    if run.dry_run or not ops:
+    if dry_run or not ops:
         return
-    _intend(run.engagement_dir, ledger_key(entry), ops, by=ledger.BY_PASS,
-            row=entry_to_json(entry), then=then)
+    _intend(engagement_dir, ledger_key(entry), ops, by=by, row=entry_to_json(entry), then=then,
+            also=list(also))
     for op in ops:
-        _do_op(run.engagement_dir, op, cache=run.cache)
+        _do_op(engagement_dir, op, cache=cache)
 
 
 def _file_into(
@@ -5534,12 +5471,7 @@ def _file_into(
     ops = ([] if resting == original
            else [_op(target, ledger.OP_MOVE, original, resting, digest)])
     ops += [_op(target, ledger.OP_COPY, resting, copy, digest) for copy in copies]
-    if dry_run or not ops:
-        return
-    _intend(target, ledger_key(row), ops, by=by, row=entry_to_json(row), then=then,
-            also=list(also))
-    for op in ops:
-        _do_op(target, op, cache=cache)
+    _intend_and_do(target, row, ops, by=by, then=then, cache=cache, dry_run=dry_run, also=also)
 
 
 def _file_it(
@@ -5705,7 +5637,8 @@ def _park_it(
         waits_for=waits_for,
         code=code, subfolder=context.subfolder,
     )
-    _carry_out(entry, parking, ledger.PARKED, context)
+    _intend_and_do(context.engagement_dir, entry, parking, by=ledger.BY_PASS, then=ledger.PARKED,
+                   cache=context.cache, dry_run=context.dry_run)
     run.report.review.append(entry)
     return entry
 
@@ -5841,7 +5774,7 @@ def _sort_one(
         # person vetoes it, and on a named request a page naming nobody
         # parks it.
         stage = _by_the_name(judgment, [(run, routing)], runs)
-        if stage.kept and _across_households(run):
+        if stage.kept and not run.home:
             # A re-send whose bytes a return in another household already
             # holds is held to the same rule as a first arrival (decision
             # 137's review, B #5, the owner's "never"; decision 204): it is
@@ -6711,6 +6644,29 @@ def _names_row(entry: IndexEntry, original: str, wanted: str, *, recorded: bool 
     return entry.original_name in ((wanted, recorded_name(wanted)) if recorded else (wanted,))
 
 
+def _find_row(
+    entries: list[IndexEntry], original: str, decisions: Sequence[str],
+    refusal: Callable[[IndexEntry], str],
+) -> int:
+    """Index of the newest row ``original`` names whose decision is one of
+    ``decisions``: the one scan behind :func:`find_parked`, :func:`find_filed`
+    and :func:`find_moved`, which differ only in the decisions a person may
+    act on and in the sentence for a row that is something else
+    (``refusal``). A same-name ``DUPLICATE`` is a re-send, so the older row
+    it repeats is the one named.
+    """
+    wanted = _wanted(original)
+    for position in range(len(entries) - 1, -1, -1):
+        entry = entries[position]
+        if _names_row(entry, original, wanted):
+            if entry.decision in decisions:
+                return position
+            if entry.decision == DUPLICATE and entry.original_name in (wanted, recorded_name(wanted)):
+                continue          # a re-send under the same name; the older row is the one named
+            raise FilingError(refusal(entry))
+    raise FilingError(f"nothing in the index is called {original!r}")
+
+
 def find_parked(
     entries: list[IndexEntry], original: str, *, accepting: Sequence[str] = ()
 ) -> int:
@@ -6731,20 +6687,11 @@ def find_parked(
     to find the same row this module will act on to say what the evidence
     pointed at.
     """
-    wanted = _wanted(original)
-    for position in range(len(entries) - 1, -1, -1):
-        entry = entries[position]
-        if _names_row(entry, original, wanted):
-            if entry.decision in _PARKED or entry.decision in accepting:
-                return position
-            if entry.decision == DUPLICATE and entry.original_name in (wanted, recorded_name(wanted)):
-                continue          # a re-send under the same name; the parked row is older
-            raise FilingError(
-                f"{entry.original_name} is not waiting for review (it is {entry.decision}"
-                + (f" as {entry.prepared_location}" if entry.prepared_location else "")
-                + ")"
-            )
-    raise FilingError(f"nothing in the index is called {original!r}")
+    return _find_row(entries, original, (*_PARKED, *accepting), lambda entry: (
+        f"{entry.original_name} is not waiting for review (it is {entry.decision}"
+        + (f" as {entry.prepared_location}" if entry.prepared_location else "")
+        + ")"
+    ))
 
 
 # ---------------------------------------------------------- not requested ----
@@ -7175,19 +7122,10 @@ def find_filed(
     send-to-review passes ``FILE_MOVED``, because a copy nobody meant to
     move is a copy that may go back to review.
 
-    Public since decision 112, beside :func:`find_parked`; the underscored
-    name is kept for one release.
+    Public since decision 112, beside :func:`find_parked`.
     """
-    wanted = _wanted(original)
-    for position in range(len(entries) - 1, -1, -1):
-        entry = entries[position]
-        if _names_row(entry, original, wanted):
-            if entry.decision == FILED or entry.decision in accepting:
-                return position
-            if entry.decision == DUPLICATE and entry.original_name in (wanted, recorded_name(wanted)):
-                continue          # a re-send under the same name; the filed row is older
-            raise FilingError(f"{entry.original_name} is not filed (it is {entry.decision})")
-    raise FilingError(f"nothing in the index is called {original!r}")
+    return _find_row(entries, original, (FILED, *accepting),
+                     lambda entry: f"{entry.original_name} is not filed (it is {entry.decision})")
 
 
 
@@ -7252,16 +7190,8 @@ def find_moved(entries: list[IndexEntry], original: str) -> int:
     answer to "the copy is not where the record put it", and a row nobody
     said that about has nothing to put back.
     """
-    wanted = _wanted(original)
-    for position in range(len(entries) - 1, -1, -1):
-        entry = entries[position]
-        if _names_row(entry, original, wanted):
-            if entry.decision == FILE_MOVED:
-                return position
-            if entry.decision == DUPLICATE and entry.original_name in (wanted, recorded_name(wanted)):
-                continue          # a re-send under the same name; the moved row is older
-            raise FilingError(f"{entry.original_name} is not a moved copy (it is {entry.decision})")
-    raise FilingError(f"nothing in the index is called {original!r}")
+    return _find_row(entries, original, (FILE_MOVED,),
+                     lambda entry: f"{entry.original_name} is not a moved copy (it is {entry.decision})")
 
 
 def _gone_copies(engagement_dir: Path, entries: list[IndexEntry], position: int) -> list[str]:

@@ -715,10 +715,8 @@ def test_the_guard_passes_a_class_and_a_firm_constant(shape):
 #: under the scheduled job no handler is configured and Python's last-resort
 #: handler prints every warning to the console window (decision 190, D-6).
 LOGGED_WHOLE_ON_PURPOSE = {
-    ("content_check.py", "_ocr_pdf"): "ocr.ReaderUnavailable: the machine's words "
-                                      "(an import, a model, a device), never a document's",
-    ("content_check.py", "_ocr_image"): "ocr.ReaderUnavailable: the machine's words "
-                                        "(an import, a model, a device), never a document's",
+    ("content_check.py", "extract_by_ocr"): "ocr.ReaderUnavailable: the machine's words "
+                                            "(an import, a model, a device), never a document's",
 }
 
 #: The names a logger goes by under tracker/, and the calls that log.

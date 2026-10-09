@@ -1078,7 +1078,7 @@ def test_a_giant_pdf_page_is_rendered_within_the_pixel_budget(tmp_path, monkeypa
     monkeypatch.setattr(pypdfium2.PdfPage, "render", render)
 
     for path in (pdf(tmp_path / "giant.pdf", 14400, 14400), pdf(tmp_path / "letter.pdf", 612, 792)):
-        with pytest.raises(content_check.OcrError):
+        with pytest.raises(Stop):
             content_check._ocr_pdf(path)
     (giant_w, giant_h), (letter_w, letter_h) = asked
     assert giant_w * giant_h <= content_check.PIXEL_BUDGET * 1.0001
@@ -1156,14 +1156,18 @@ def test_a_picture_past_pillows_guard_is_a_kept_too_large_verdict_not_a_retry(tm
     first = check_content(photo, rules, cache)
     assert not first.ok and first.code == reasons.TOO_LARGE.code
 
-    def never(_path):
-        raise AssertionError("a kept verdict was read again")
+    read: list = []
 
-    monkeypatch.setattr(content_check, "_ocr_image", never)
+    def reading(path):
+        read.append(path)
+        return None
+
+    monkeypatch.setattr(content_check, "_ocr_image", reading)
     assert check_content(photo, rules, cache) == first                 # not retried
+    assert read == []
     Image.new("L", (100, 101), "white").save(photo)                     # the file changed
-    with pytest.raises(AssertionError, match="read again"):
-        check_content(photo, rules, cache)
+    check_content(photo, rules, cache)
+    assert read == [photo]                                              # read again
 
 
 def test_no_page_starts_past_the_safety_stop_and_the_stopped_reading_is_kept(tmp_path, monkeypatch):
@@ -2061,7 +2065,7 @@ def test_running_out_of_memory_is_never_a_retry_or_a_corrupt_file(tmp_path, monk
     Image.new("RGB", (40, 40), "white").save(photo)
     monkeypatch.setattr(ocr, "read_page", out_of_memory)
     with pytest.raises(MemoryError):
-        content_check._ocr_image(photo)
+        content_check.extract_by_ocr(photo)
 
     scan = tmp_path / "scan.pdf"
     writer = PdfWriter()
@@ -2070,7 +2074,7 @@ def test_running_out_of_memory_is_never_a_retry_or_a_corrupt_file(tmp_path, monk
         writer.write(fh)
     monkeypatch.setattr(pypdfium2.PdfPage, "render", out_of_memory)
     with pytest.raises(MemoryError):
-        content_check._ocr_pdf(scan)
+        content_check.extract_by_ocr(scan)
 
     monkeypatch.setattr(content_check, "extract_text", out_of_memory)
     with pytest.raises(MemoryError):
