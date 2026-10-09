@@ -184,7 +184,7 @@ that wording.
 ```
 pip install --require-hashes -r requirements.lock                     # hash-checked (decision 191)
 pip install --require-hashes --no-deps -r requirements-nodeps.lock    # the reader (decision 169)
-python -m pytest -q                 # the whole suite (for a person; agents run the affected tests, below)
+python -m pytest -q -n auto        # the whole suite, in parallel (a quick local run adds -m "not corpus"; a gate never adds it, so an affected file's corpus walk still runs; agents run the affected tests, below)
 python tools/repo_map.py check      # map matches the tree
 python -m ruff check .              # no dead code, no unused imports (CI runs this too)
 ```
@@ -293,7 +293,7 @@ global `~/.claude/CLAUDE.md`, in the project-folder `CLAUDE.md`, and here — so
 it binds every session and every agent, not only work in this repo.
 
 - **Subagents and builder agents run the suite on this machine, never on
-  GitHub Actions.** The local gate — `python -m pytest -q`,
+  GitHub Actions.** The local gate — `python -m pytest -q -n auto`,
   `python tools/repo_map.py check`, `python -m ruff check .` and the
   vocab/backtest checks — is run in the worktree before any push. CI is a rare
   safety net, not the test runner; an agent never pushes a branch to "let CI

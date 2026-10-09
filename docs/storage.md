@@ -136,7 +136,7 @@ lock, one `os.write` then `fsync` — and only then opens one immediate
 transaction that inserts those events and folds them into the tables.
 
 That order is the guarantee. If the machine dies between the two, the journal
-is ahead of the store by some lines and **nothing is lost**: `store.sync()`
+is ahead of the store by some lines and **nothing is lost**: `store.catch_up()`
 compares the journal's line count with the store's own `applied_seq` and
 replays the difference, and a torn last line is simply not a line yet. The
 other order would lose the event itself, and an event is the one thing
@@ -374,8 +374,8 @@ Three functions, and the one a caller wants depends on what it can afford:
 **A read never outruns a write** (decision 135). The readers take no lock,
 and the app's process and the pass's share one store, so a reader can be
 waiting for the pass's transaction to finish at the very moment it catches
-up. Everything that applies journal lines — `sync()`, the top-up's slow
-path, `record()`'s apply and the rebuild — therefore reads the
+up. Everything that applies journal lines — `catch_up()` (the pass's and the readers'
+top-up), `record()`'s apply and the rebuild — therefore reads the
 engagement's row, the journal's lines and the journal's head *inside* its
 own `BEGIN IMMEDIATE`, and takes the lines and the head from one read of
 the file (`ledger.read_with_head()`). Read before the transaction, a
@@ -444,20 +444,60 @@ cannot stop a keyword being mistyped, but it can say when it changed and to
 what, which is the difference between a rule that went wrong and a rule
 nobody can account for.
 
-## History
+## What the store is now
 
-Two migrations existed and are gone. Decision 102 read a folder's index
-workbook and its sidecar once, into the journal, and renamed them aside;
-decision 103 read the four scanner columns an older request list still
-carried, into the journal, and slimmed that workbook; and until 104 the
-request list itself was a workbook, read once a pass and journalled as
-`rules_imported` when its digest moved. Decision 104 retired all of it —
-the readers, the import, the migration and the tests that proved them are
-set aside in `Retired - Excel manifest` outside the tree, with a README
-saying how they would come back. A folder that still holds only the old
-workbook and no record is listed by the registry as a legacy folder, not an
-engagement, and is set up again in the app; nothing imports it, by the
-owner's word.
+The plan these rows built is finished: what a person typed and what the
+machine decided are both in the record, there is no workbook to read, import
+or write over (`openpyxl` is imported only by tier 3, to read a client's own
+spreadsheet), and the only file a person opens is the page. A folder that
+holds only an old workbook and no record is listed by the registry as a
+legacy folder, not an engagement, and is set up again in the app; nothing
+imports it. How it got here, stage by stage, is in the decision log
+([ROADMAP.md](ROADMAP.md), rows 101 to 104 and the rows after them).
+
+Rules that came with the later rows and hold now:
+
+- **A working copy is proved against the record each pass** (decision 109).
+  The fingerprint each row carries is read against the file, so a working
+  copy that is not where the record put it is identified and said rather
+  than silently counted or silently lost. Every hash of a file under the
+  firm's folder goes through `file_memos`, so a second pass over an unchanged
+  tree reads one file per preserved original and no working copy at all.
+- **Learning can be un-learned** (decision 113). A person takes a taught
+  keyword back in the app's editor as one `keyword_unlearned` event carrying
+  the request and the word. A pair nobody taught is refused by name, and the
+  request is re-scanned at once, because its rules just moved. Firm-wide
+  keywords are untouched: `tracker/templates.py` and a commit.
+- **The override is recorded with its reason** (decision 116). The second
+  override value is `Not Applicable`; the spelling older journals hold for it
+  is folded to it on every read by the one reader of a stored rule row and
+  is never written again. The journal and the store keep their bytes; a list
+  read out and saved back unchanged is not an event.
+- **The firm's phone number is not in the record** (decision 117). It
+  belongs to the firm rather than to an engagement, and is kept beside the
+  firm's name in the settings file.
+- **A return's household, tax year and return name are written at creation
+  and at rollover and never edited** (decision 125), so a folder somebody
+  renames is still processed as the record says.
+- **The record notices a rewrite that keeps the line count** (decision
+  137). `engagements` keeps `applied_digest`, the running chain over exactly
+  the lines applied: `d0` is empty and each line's step is the SHA-256 of the
+  chain so far followed by that line's own bytes as the file holds them
+  (`ledger.read_with_chain()`, from the same one read that gives the lines
+  and the head). Before anything is applied - in `catch_up()`, in its
+  look that takes no lock (equal counts with a
+  different chain is a refusal, never "nothing to do"), in `record()` before
+  it appends, and in a reader whose head moved - the chain over that many
+  lines of the journal as it is now must equal the one kept, or the
+  engagement is refused: *"The record for <return> was changed behind the
+  app's back (line N onward no longer matches). Nothing was applied. Run
+  recover (runbook §6)."* Recover exports the store's copy itself, and a
+  conflict copy is never deleted and is named every pass. `check()` names it
+  too. It never repairs itself. The line named is the first whose event the
+  store holds differently; a rewrite that changed only bytes (a key
+  reordered) is named from line 1. Every new journal line also carries the
+  previous line's chain (`prev`), its writer and its format (decision 159),
+  older lines still read, and the store's chain is computed as it replays.
 
 ## The check is the gate
 
@@ -505,147 +545,3 @@ a store in a throwaway database and assert the check says nothing. That runs
 the store over every drop sorted, every parked file a person filed, every
 rules edit and every journal path the suite has. It was the gate each stage
 was built on.
-
-## What each stage did, and what is left
-
-**Stage 1 (decision 101) — the store, and nothing reads it.** Purely
-additive: no reader answered from it, no writer stopped writing what it
-wrote, both workbooks and both sidecars were written exactly as they were,
-and deleting the database changed no behaviour at all. That is the same shape
-decision 87 used for the journal, and it is what made the step reversible.
-
-**Stage 2 (decision 102) — the index moves into the store.** The index
-workbook was never written again: `read_index()` answers from the
-`documents` table, every writer calls `store.record()`, and the deferred-write
-machinery that existed only because Excel could hold a workbook open went
-with it — the whole class of failure the decision log spent thirteen
-readings on.
-
-**Stage 3 (decision 103) — the statuses and the person's rules move into
-the record.** The scanner records a `scanned` event, a filing records the
-keyword it taught in the same call, and the request list's differences
-were journalled from the one workbook that remained.
-
-**Stage 4 (decision 104) — the workbook is gone.** The request list and
-the engagement's details are created, edited and read only in the record:
-`manifest.create_engagement()` and `manifest.save_rules()` write
-`rules_changed` events, the app's editor is the only way a rule is entered,
-there is no import and no export, and the store is at `user_version` 2
-without the workbook's digest. What went with it: the workbook reader, the
-thin workbook's writer, the import, the migration and its legacy index
-reader, the Carried Forward page of the rollover workbook, and decision 98's real-handle fixture —
-all set aside outside the tree. `openpyxl` stays for the tier-3 reader of a
-client's own spreadsheet and for nothing else.
-
-**The plan is finished.** What a person typed and what the machine decided
-are both in the record, and the only file a person opens is the page.
-
-**Afterwards (decision 107) — the verdict cache leaves the synced folder.**
-Not a stage of the plan, but the same lesson applied to the one derived
-file the plan had left in the engagement folder: the tier-3 verdict cache
-moved into two tables of the store, `user_version` 3, not journalled, and
-a pass now writes nothing under the clients root but the journal, the
-Status Report and the client's own files.
-
-**Afterwards (decision 109) — every working copy is proved against the
-record each pass.** Not a stage of the plan either, but what the record
-being the whole of the truth is *for*: the fingerprint each row has
-carried since decision 50 is now read against the file each pass, so a
-working copy that is not where the record put it is identified and said
-rather than silently counted or silently lost. One new event name,
-`copy_moved`, in `ROW_EVENTS`, folding like every other row event; no
-column, no schema change, `user_version` still 4. And every hash of a file
-under the firm's folder now goes through `file_memos`, so a second pass
-over an unchanged tree reads one file per preserved original and no
-working copy at all.
-
-**Afterwards (decision 113) — learning can be un-learned.** A keyword a
-person's filing taught one request is taken back by a person, in the app's
-editor, as one `keyword_unlearned` event carrying the request and the word.
-No schema change: the table is the same table and the event is the fold's
-business. What did change is that the fold is now in both places — the
-journal's `Folded.learned` and the store's insert and delete — and that
-`check()` compares them, so the one part of the store the record could not
-vouch for is inside the gate, and the suite's rebuild-and-check fixture
-proves it after every test. A pair nobody taught is refused by name, and
-the request is re-scanned at once, because its rules just moved. Firm-wide
-is untouched: `tracker/templates.py` and a commit, as before.
-
-**Afterwards (decision 116) — the override is recorded with its reason.**
-`override_reason` is a rule field: it travels in the `rules_changed` event
-beside the override and is a column of `requests` (`user_version` 4). The
-second override value is `Not Applicable`; the spelling journals written
-before that decision hold for it is folded to it on every read by the one
-reader of a stored rule row and is never written again — the retired-value
-rule of decision 104 applied to a value. The journal and the store keep
-their bytes; a list read out and saved back unchanged is not an event.
-
-**Afterwards (decision 117) — the engagement records its filing deadline.**
-The reminder escalates in four stages against the Due Date and names the
-statutory date beside it from the third stage on, so the date is a detail
-of the engagement: it travels in the `rules_changed` event with the rest of
-them and is a column of `engagements` (`user_version` 5). The columns of
-that table are the fields of the details record itself, so the column cost
-nothing; the version is what a file written before it cannot have. The
-firm's phone number, which only the final notice says, is **not** here at
-all: it belongs to the firm rather than to an engagement, and it is kept
-beside the firm's name in the settings file.
-
-**Afterwards (decision 118) — a person approves the week's draft.** No
-schema change at all: `draft_approved` is an event in `events`, folded by
-nothing, exactly as `drafted` is. The reminder is a fact about a week
-rather than about a row, and both lines say the same kind of thing — this
-is what the week's letter asked for, this is the file it is in, this is the
-fingerprint of that file's header — so the store answers "was this draft
-approved this week?" with the same `last_event` query it already answers
-"when was this engagement last drafted?" with. Nothing about the letter's
-words goes in either line, and neither is ever rewritten.
-
-**Afterwards (decision 125) — the household is a row of the same table
-(`user_version` 7).** A client folder is a household with one folder per
-year inside it and one folder per return inside that, and the household has
-a record of its own: its name, the members a person typed as who its folder
-is meant to be shared with, the contact its letters greet and the inbox link
-they paste. It is a `_ledger.jsonl` in the private tree like any other, and
-it is held in `engagements` like any other — a `kind` column says whether a
-row is a `return` or a `household`, the four `household_` columns hold the
-record, and `_check_household` compares them with the fold of that journal.
-A household holds no documents, no requests and no statuses. In the same
-version each return's details gain three fields it could previously only
-infer from its path — the household, the tax year and the return name —
-written at creation and at rollover and never edited, so a folder somebody
-renames is still processed as the record says. Nothing else about the
-tables changed, and a version-6 file is refused by name, deleted and built
-again from the journals.
-
-**Afterwards (decision 137) — the record notices a rewrite that keeps the
-line count (`user_version` 12).** `sync()` replayed only the lines past
-`applied_seq`, and `record()` checked only that the count matched, so a
-journal rewritten or reordered to its own length — a sync client resolving
-a conflict is the realistic cause — was accepted silently, and the next
-`record()` saved the new head as if the store described it. Truncation and
-a torn tail were already refused. Now `engagements` keeps `applied_digest`,
-the running chain over exactly the lines applied: `d0` is empty and each
-line's step is the SHA-256 of the chain so far followed by that line's own
-bytes as the file holds them (`ledger.read_with_chain()`, from the same one
-read that gives the lines and the head). Before anything is applied — in
-`sync()` and the pass's catch-up, in their look that takes no lock (equal
-counts with a different chain is a refusal, never "nothing to do"), in
-`record()` before it appends, and in a reader whose head moved — the chain
-over that many lines of the journal as it is now must equal the one kept,
-or the engagement is refused: *"The record for <return> was changed behind
-the tracker's back (line N onward no longer matches). Nothing was applied.
-Run recover (runbook §6)."* (since decision 159; decision 184 had it say to
-copy the store aside and keep any conflict copy before a rebuild, and before
-that "run the store check, then rebuild" - until a rebuild could drop lines
-nobody exported; recover now exports the store's copy itself, and a conflict
-copy is never deleted and is named every pass). `check()` names it too. It never
-repairs itself. The line named is the first whose event the store holds
-differently; a rewrite that changed only bytes (a key reordered) is named
-from line 1. **Not chosen then:** a sequence number and previous-line hash
-written into each journal line - it would change the journal's format for
-every existing folder. **Since decision 159, chosen:** every new line
-carries the previous line's chain (`prev`), its writer and its format,
-older lines still read, and the store's chain stays as it was. A version-11 file has no column for it, so it is refused
-by name, deleted and rebuilt, and the rebuild computes the chain as it
-replays.

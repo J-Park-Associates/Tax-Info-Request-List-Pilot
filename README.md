@@ -534,7 +534,7 @@ own:
 ```
 pip install --require-hashes -r requirements.lock
 pip install --require-hashes --no-deps -r requirements-nodeps.lock
-python -m pytest -q        # verify: all green
+python -m pytest -q -n auto        # verify: all green
 ```
 
 Every install reads a lock file and checks every file's SHA-256 (decision

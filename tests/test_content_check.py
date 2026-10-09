@@ -548,6 +548,7 @@ def test_own_forms_is_none_for_one_family_and_the_named_set_for_two():
     assert own_forms(self_named_forms(two)) == set(self_named_forms(two)) == {"w2", "1098"}
 
 
+@pytest.mark.corpus
 def test_on_every_corpus_form_the_scans_miss_verdict_equals_the_routers_kept_verdict():
     """For every placement in tests/irs/: route with a memory cache, then
     read the same file through check_content() with an empty cache on the
@@ -2584,6 +2585,7 @@ def _the_pass_before_189(text: str, row: RequestItem):
     return evaluate_rules(text, row, own), required, any_keyword_matched(text, row)
 
 
+@pytest.mark.corpus
 def test_every_verdict_is_the_same_judged_in_the_child_as_in_the_pass(tmp_path, in_a_child):
     """The proof that CACHE_VERSION need not move. Every IRS form in the
     suite's corpus and the suite's own sample pages, judged against every

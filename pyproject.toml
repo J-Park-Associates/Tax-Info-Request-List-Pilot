@@ -17,6 +17,9 @@ python-version = "3.14"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
+markers = [
+    "corpus: walks the whole blank-IRS corpus; skip locally with -m 'not corpus'",
+]
 
 # ruff is the linter (CI runs `ruff check .`): pyflakes for dead code, the
 # pycodestyle errors, bugbear, pyupgrade at the floor above, and import
