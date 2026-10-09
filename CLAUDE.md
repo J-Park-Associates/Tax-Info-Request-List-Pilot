@@ -184,7 +184,7 @@ that wording.
 ```
 pip install --require-hashes -r requirements.lock                     # hash-checked (decision 191)
 pip install --require-hashes --no-deps -r requirements-nodeps.lock    # the reader (decision 169)
-python -m pytest -q                 # the whole suite (for a person; agents run the affected tests, below)
+python -m pytest -q -n auto        # the whole suite, in parallel (a quick local run adds -m "not corpus"; the gate before a merge runs everything; agents run the affected tests, below)
 python tools/repo_map.py check      # map matches the tree
 python -m ruff check .              # no dead code, no unused imports (CI runs this too)
 ```
