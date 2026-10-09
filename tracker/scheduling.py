@@ -1,6 +1,6 @@
 """Generate the scheduled job that runs the tracker unattended (component 10).
 
-Emits a Windows Task Scheduler job definition, or the n8n equivalent, for::
+Emits a Windows Task Scheduler job definition for::
 
     python -m tracker.runner --settings <the app's settings folder> --log
 
@@ -74,7 +74,6 @@ from __future__ import annotations
 
 import datetime as dt
 import html
-import json
 import os
 import re
 import subprocess
@@ -139,16 +138,8 @@ def iso_duration(seconds: int) -> str:
 #: number), so the limit is the lock's, rendered here rather than typed twice.
 EXECUTION_TIME_LIMIT = iso_duration(RUN_TIME_LIMIT_SECONDS)
 
-
-def start_hour(start_time: str = DEFAULT_START) -> int:
-    """The hour of an ``HH:MM`` start time - the n8n form of the same default."""
-    return int(start_time.split(":")[0])
-
-
-#: The two n8n nodes the workflow is made of; the connection names them again.
+#: The namespace of Task Scheduler's task XML.
 TASK_XML_NAMESPACE = "http://schemas.microsoft.com/windows/2004/02/mit/task"
-N8N_TRIGGER_NODE = "Every day"
-N8N_RUN_NODE = "File, scan, draft"
 #: How a person is told to install the schedule, wherever they are told.
 #: Task Scheduler imports XML in this encoding; the declaration and both
 #: writers (CLI and app) say so from here.
@@ -157,11 +148,8 @@ SCHEDULE_XML_ENCODING = "utf-16"
 MODULE_INVOCATION = "python -m tracker.scheduling"
 INSTALL_FLAG = "--install"
 OUT_FLAG = "--out"
-FORMAT_FLAG = "--format"
 START_FLAG = "--start"
-FORMAT_XML = "xml"
-FORMAT_N8N = "n8n"
-FORMATS = (FORMAT_XML, FORMAT_N8N)
+
 
 def task_scheduler_here() -> bool:
     """Whether this computer has Task Scheduler at all - that is, whether it
@@ -211,33 +199,6 @@ def quote_argument(value: str | Path) -> str:
         trailing = len(text) - len(text.rstrip("\\"))
         text += "\\" * trailing
     return f'"{text}"'
-
-
-#: What a value in the n8n command may not hold, by what it is (D-11): each
-#: means one thing to ``cmd`` and another to ``sh``, or ends the quoting in
-#: one of them, so a command holding it would not read the same in both.
-#: A Windows path cannot hold ``"``, so refusing these loses nothing real.
-SHELL_SPECIAL = (
-    ('"', "a double quote"),
-    ("%", "a percent sign"),
-    ("$", "a dollar sign"),
-    ("`", "a backtick"),
-    ("!", "an exclamation mark"),
-)
-
-
-def refuse_shell_special(field: str, value: str | Path) -> None:
-    """Refuse ``value`` if it holds a character ``cmd`` and ``sh`` read differently.
-
-    The ``ValueError`` names the field and the kind of character, never the
-    value: a path can carry a client's name, and an error is printed.
-    """
-    text = str(value)
-    for char, kind in SHELL_SPECIAL:
-        if char in text:
-            raise ValueError(f"{field} holds {kind}, which a shell would read as something else")
-    if any(ord(char) < 32 or ord(char) == 127 for char in text):
-        raise ValueError(f"{field} holds a control character, which a shell would read as something else")
 
 
 def _xml_escape(value: str) -> str:
@@ -365,62 +326,6 @@ On {draft_day}s it also drafts the client reminder emails. It never sends them.<
   </Actions>
 </Task>
 """
-
-
-def n8n_workflow(
-    *,
-    python: str | Path,
-    settings: str | Path,
-    working_dir: str | Path,
-    hour: int | None = None,
-    task_name: str = TASK_NAME,
-    frozen: bool = False,
-) -> dict:
-    """An n8n workflow: one cron trigger into one Execute Command node.
-
-    n8n runs the command through the host's shell - ``cmd`` on Windows,
-    ``sh`` elsewhere - so the one line has to read the same in both (D-11).
-    Every value is quoted by the rule the settings folder is
-    (:func:`quote_argument`), and a value holding a character the two
-    shells read differently is refused (:func:`refuse_shell_special`)
-    rather than escaped for one of them and wrong in the other.
-    """
-    if hour is None:
-        hour = start_hour()
-    if not 0 <= hour <= 23:
-        raise ValueError(f"hour must be 0-23, got {hour}")
-    for field, value in (("working_dir", working_dir), ("python", python), ("settings", settings)):
-        refuse_shell_special(field, value)
-
-    command = (f"cd {quote_argument(working_dir)} && {quote_argument(python)} "
-               f"{runner_arguments(settings, frozen=frozen)}")
-    return {
-        "name": task_name,
-        "nodes": [
-            {
-                "parameters": {
-                    "rule": {"interval": [{"field": "days", "triggerAtHour": hour}]}
-                },
-                "name": N8N_TRIGGER_NODE,
-                "type": "n8n-nodes-base.scheduleTrigger",
-                "typeVersion": 1.1,
-                "position": [260, 300],
-            },
-            {
-                "parameters": {"command": command},
-                "name": N8N_RUN_NODE,
-                "type": "n8n-nodes-base.executeCommand",
-                "typeVersion": 1,
-                "position": [500, 300],
-            },
-        ],
-        "connections": {
-            N8N_TRIGGER_NODE: {
-                "main": [[{"node": N8N_RUN_NODE, "type": "main", "index": 0}]]
-            }
-        },
-        "settings": {"executionOrder": "v1"},
-    }
 
 
 # ---------------------------------------------------------------- install ----
@@ -821,16 +726,12 @@ if __name__ == "__main__":
                              f"{DEFAULT_REPEAT_MINUTES}; 0 = once a day)")
     parser.add_argument("--author", default="", help="task author, for the XML")
     parser.add_argument("--name", default=TASK_NAME, help="task name")
-    parser.add_argument(FORMAT_FLAG, choices=FORMATS, default=FORMAT_XML,
-                        help="Windows Task Scheduler XML (default) or an n8n workflow")
     parser.add_argument(OUT_FLAG, default="",
                         help="write to this file instead of standard output")
     parser.add_argument(INSTALL_FLAG, action="store_true",
                         help="also register the task with Task Scheduler (Windows); the task's file "
                              f"goes into the app's data folder unless {OUT_FLAG} names another")
     ns = parser.parse_args()
-    if ns.install and ns.format != FORMAT_XML:
-        parser.error(f"{INSTALL_FLAG} needs {FORMAT_FLAG} xml")
     if ns.install and not ns.out:
         from tracker.settings import SettingsError
 
@@ -857,37 +758,22 @@ if __name__ == "__main__":
             parser.error(refusal)
 
     try:
-        if ns.format == FORMAT_XML:
-            hhmm = check_start(ns.start)
-            payload = task_scheduler_xml(
-                python=ns.python,
-                settings=settings_arg,
-                working_dir=ns.working_dir,
-                start_time=hhmm,
-                repeat_minutes=check_every(ns.every),
-                author=ns.author,
-                task_name=ns.name,
-            )
-            encoding = SCHEDULE_XML_ENCODING
-        else:
-            payload = json.dumps(
-                n8n_workflow(
-                    python=ns.python,
-                    settings=settings_arg,
-                    working_dir=ns.working_dir,
-                    hour=start_hour(check_start(ns.start)),
-                    task_name=ns.name,
-                ),
-                indent=2,
-            ) + "\n"
-            encoding = "utf-8"
+        payload = task_scheduler_xml(
+            python=ns.python,
+            settings=settings_arg,
+            working_dir=ns.working_dir,
+            start_time=check_start(ns.start),
+            repeat_minutes=check_every(ns.every),
+            author=ns.author,
+            task_name=ns.name,
+        )
     except ValueError as exc:
         parser.error(str(exc))
 
     if ns.out:
         # Task Scheduler wants SCHEDULE_XML_ENCODING for an XML it will import.
         Path(ns.out).parent.mkdir(parents=True, exist_ok=True)
-        write_text_atomically(Path(ns.out), payload, encoding=encoding)
+        write_text_atomically(Path(ns.out), payload, encoding=SCHEDULE_XML_ENCODING)
         print(f"Wrote {ns.out}")
         if ns.install:
             try:
@@ -898,7 +784,7 @@ if __name__ == "__main__":
                 print(f'Installed as "{ns.name}" - it runs daily from {ns.start}.')
             else:
                 print("Not Windows; run this on the scheduling machine:  " + " ".join(command))
-        elif ns.format == FORMAT_XML:
+        else:
             print(f'Install it with:  {MODULE_INVOCATION} {SETTINGS_FLAG} "{ns.settings}" '
                   f'{OUT_FLAG} "{ns.out}" {INSTALL_FLAG}')
     else:

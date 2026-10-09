@@ -39,45 +39,17 @@ class Said:
         self.returncode, self.stdout, self.stderr = returncode, "", stderr
 
 
-def task_named(command: list[str]) -> str:
-    """The task a fake ``schtasks`` command names."""
-    return command[command.index("/tn") + 1]
-
-
-def is_earlier(command: list[str]) -> bool:
-    """Whether a ``schtasks`` command names the earlier name's task, which
-    the rename's carry-over removes (SPEC-rename 3.2). Its commands are kept
-    apart from ours, so a test about this computer's own task sees only its
-    own."""
-    return task_named(command) == settings.EARLIER_PRODUCT_NAME
-
-
 @pytest.fixture
 def windows(monkeypatch):
     """This computer is ``HERE``, has Task Scheduler, and its ``schtasks`` is
     a fake that keeps every command; a task of ours exists when ``exists``
     is set on the returned state - ``/create`` sets it and ``/delete``
     clears it, as Windows does (P198), and ``query_fails`` makes every
-    ``/query`` of ours refuse - and the earlier name's when
-    ``earlier_exists`` is (its commands are kept in ``earlier_calls``);
-    ``order`` has every command's task and verb, in the order made."""
+    ``/query`` refuse."""
     calls: list[list[str]] = []
-    earlier_calls: list[list[str]] = []
-    order: list[tuple[str, str]] = []
-    calls_state = {"exists": False, "earlier_exists": False, "earlier_delete_fails": False,
-                   "query_fails": False, "earlier_calls": earlier_calls, "order": order}
+    calls_state = {"exists": False, "query_fails": False}
 
     def answer(command):
-        order.append((task_named(command), command[1]))
-        if is_earlier(command):
-            earlier_calls.append(command)
-            if command[1] == "/query":
-                return Said(0 if calls_state["earlier_exists"] else 1)
-            if command[1] == "/delete":
-                if calls_state["earlier_delete_fails"]:
-                    return Said(1, "ERROR: Access is denied.")
-                calls_state["earlier_exists"] = False
-            return Said()
         calls.append(command)
         if command[1] == "/query":
             if calls_state["query_fails"]:
@@ -123,19 +95,6 @@ def cli(monkeypatch, capsys, *argv) -> tuple[int, str]:
     return code, capsys.readouterr().out
 
 
-#: How many sentences the rename's carry-over puts first (SPEC-rename 3.3):
-#: the settings file's, then the earlier task's.
-CARRIED = 2
-
-
-def after_carry_over(lines) -> list[str]:
-    """The step's lines after the carry-over's two, which lead them; the
-    carry-over's own tests are below."""
-    lines = list(lines)
-    assert len(lines) >= CARRIED
-    return lines[CARRIED:]
-
-
 # ------------------------------------------------------------ the schedule ----
 
 
@@ -147,7 +106,7 @@ def test_setup_registers_the_schedule_on_the_designated_computer(root, windows, 
     assert code == 0, out
     said = scheduling.SCHEDULE_REGISTERED.format(start=scheduling.DEFAULT_START,
                                                 every=scheduling.DEFAULT_REPEAT_MINUTES)
-    assert after_carry_over(out.splitlines())[0] == said
+    assert out.splitlines()[0] == said
     assert len(creates(windows["calls"])) == 1
     assert scheduling.schedule_xml_path().is_file()
     assert json.loads(after_install.record_path().read_text(encoding="utf-8"))["reason"] == "setup"
@@ -190,7 +149,7 @@ def test_no_root_means_the_schedule_waits_for_the_folder(app, windows, monkeypat
     code, out = cli(monkeypatch, capsys, "--reason", "setup")
 
     assert code == 0, out
-    assert after_carry_over(out.splitlines()) == [scheduling.SCHEDULE_WAITS_FOR_ROOT,
+    assert out.splitlines() == [scheduling.SCHEDULE_WAITS_FOR_ROOT,
                                                   after_install.CHECK_SKIPPED_NO_ROOT]
     assert windows["calls"] == []
 
@@ -232,7 +191,7 @@ def test_an_unreadable_designation_changes_no_schedule(root, windows, monkeypatc
 
     assert code == 1
     sentence = scheduling.DESIGNATION_UNREADABLE.format(file=designation_file(root))
-    assert after_carry_over(out.splitlines())[0] == sentence
+    assert out.splitlines()[0] == sentence
     assert "secret-laptop" not in out and "front-desk" not in out and TRACEBACK not in out
     assert windows["calls"] == []
     record = json.loads(after_install.record_path().read_text(encoding="utf-8"))
@@ -247,7 +206,7 @@ def test_move_schedule_here_rewrites_the_designation(root, windows, monkeypatch,
     assert code == 0, out
     lines = out.splitlines()
     assert lines[0] == scheduling.MOVED_FROM.format(host=ELSEWHERE, here=HERE)
-    assert after_carry_over(lines[1:])[0] == scheduling.SCHEDULE_REGISTERED.format(
+    assert lines[1:][0] == scheduling.SCHEDULE_REGISTERED.format(
         start=scheduling.DEFAULT_START, every=scheduling.DEFAULT_REPEAT_MINUTES)
     assert designation_file(root).read_text(encoding="utf-8") == f"{HERE}\n"
     assert len(creates(windows["calls"])) == 1
@@ -789,173 +748,6 @@ def test_a_junction_in_the_test_cache_is_removed_not_followed(app, checkout, tmp
     assert (outside / "keep.txt").read_text(encoding="utf-8") == "not the cache's"
 
 
-def test_setup_moves_what_186_lists_to_move_and_nothing_it_lists_to_delete(app, monkeypatch, capsys):
-    """R9 wired: the step's first job moves decision 186's move group - the
-    record checkpoint, its journal and ``recovered/``, as
-    ``runner.left_behind_to_move`` lists them - from beside a fabricated
-    program folder into the folder the store lives in (the suite's data
-    home), and leaves 186's delete group - an old store, last-pass and
-    after-install notes - exactly where it was, for a person to delete."""
-    from tracker import runner, store
-    from tracker.settings import data_home
-
-    monkeypatch.setenv(store.ENV_STORE, str(data_home() / store.STORE_FILENAME))
-    store.close()
-    beside = app.resolve()
-    moving = left_behind(beside)
-    deleting = {store.STORE_FILENAME: b"an old store", runner.LAST_PASS_FILENAME: b"{}",
-                runner.AFTER_INSTALL_FILENAME: b"{}"}
-    for name, data in deleting.items():
-        (beside / name).write_bytes(data)
-    assert sorted(runner.left_behind_to_move(None)) == sorted(moving)
-    home = store.store_path().parent
-    assert home == data_home() and home != beside
-
-    code, out = cli(monkeypatch, capsys, "--reason", "setup")
-
-    assert code == 0, out
-    assert after_install.LEFT_BEHIND_MOVED.format(home=home) in out.splitlines()
-    assert not any(os.path.lexists(item) for item in moving)
-    assert (home / CHECKPOINT).read_bytes() == b"checkpoint\x00heads"
-    assert (home / JOURNAL).read_bytes() == b"journal"
-    assert (home / "recovered" / "Household A" / "record.json").is_file()
-    for name, data in deleting.items():                       # 186's delete group: untouched
-        assert (beside / name).read_bytes() == data, name
-    assert runner.left_behind_to_move(None) == []
-    assert [code for code, _ in runner.left_behind_warnings(None)] == [runner.CODE_LEFT_BEHIND]
-    assert after_install.record_path() == home / after_install.RECORD_FILENAME
-    assert after_install.record_path().is_file()
-
-
-# --- The careful mover (R9): decision 186's move group into the data home ---
-
-CHECKPOINT = "record-heads.db"
-JOURNAL = "record-heads.db-journal"
-WAL = "record-heads.db-wal"
-SHM = "record-heads.db-shm"
-
-
-def left_behind(beside):
-    """A fabricated checkpoint, its journal, its write-ahead log (P214) and
-    ``recovered/`` beside a fabricated program folder, as an earlier
-    version left them."""
-    beside.mkdir(parents=True, exist_ok=True)
-    (beside / CHECKPOINT).write_bytes(b"checkpoint\x00heads")
-    (beside / JOURNAL).write_bytes(b"journal")
-    (beside / WAL).write_bytes(b"write-ahead log")
-    (beside / "recovered" / "Household A").mkdir(parents=True)
-    (beside / "recovered" / "Household A" / "record.json").write_text('{"fabricated": 1}', encoding="utf-8")
-    return [beside / CHECKPOINT, beside / JOURNAL, beside / WAL, beside / "recovered"]
-
-
-def test_the_left_behind_checkpoint_moves_into_the_data_home(tmp_path):
-    items = left_behind(tmp_path / "program")
-    home = tmp_path / "data home"
-    done = after_install.move_left_behind(items, home)
-    assert done == after_install.MoveOutcome(
-        moved=tuple(items), sentence=after_install.LEFT_BEHIND_MOVED.format(home=home))
-    assert not any(os.path.lexists(item) for item in items)
-    assert (home / CHECKPOINT).read_bytes() == b"checkpoint\x00heads"
-    assert (home / JOURNAL).read_bytes() == b"journal"
-    assert (home / "recovered" / "Household A" / "record.json").read_text(encoding="utf-8") == '{"fabricated": 1}'
-    # Run again: what was moved is no longer left behind.
-    assert after_install.move_left_behind(items, home) == after_install.MoveOutcome()
-
-
-def test_a_taken_destination_moves_nothing_and_says_so(tmp_path):
-    items = left_behind(tmp_path / "program")
-    home = tmp_path / "data home"
-    (home / "recovered").mkdir(parents=True)
-    (home / "recovered" / "own.json").write_bytes(b"the data home's own")
-    done = after_install.move_left_behind(items, home)
-    assert done.failed and done.moved == ()
-    assert done.sentence == after_install.LEFT_BEHIND_DESTINATION_TAKEN.format(name="recovered", home=home)
-    assert all(os.path.lexists(item) for item in items)
-    assert sorted(os.listdir(home)) == ["recovered"]
-    assert (home / "recovered" / "own.json").read_bytes() == b"the data home's own"
-    # A part of the checkpoint already in the home is the unit's refusal (MF1).
-    (home / JOURNAL).write_bytes(b"the data home's own")
-    done = after_install.move_left_behind(items, home)
-    assert done.failed and done.sentence == after_install.LEFT_BEHIND_JOURNAL_ALONE.format(home=home)
-    assert all(os.path.lexists(item) for item in items)
-
-
-def test_a_lone_journal_never_moves_beside_another_checkpoint(tmp_path):
-    """The merge review's MF1, probe 1: a rollback journal left beside the
-    program without its checkpoint, while the data home holds a checkpoint
-    of its own, would be replayed into that checkpoint at its next open. It
-    moves nothing and fails in one sentence; the home is untouched."""
-    beside, home = tmp_path / "program", tmp_path / "data home"
-    beside.mkdir()
-    home.mkdir()
-    (beside / JOURNAL).write_bytes(b"an old journal")
-    (home / CHECKPOINT).write_bytes(b"the home's own checkpoint")
-    done = after_install.move_left_behind([beside / JOURNAL], home)
-    assert done == after_install.MoveOutcome(
-        sentence=after_install.LEFT_BEHIND_JOURNAL_ALONE.format(home=home), failed=True)
-    assert (beside / JOURNAL).read_bytes() == b"an old journal"
-    assert sorted(os.listdir(home)) == [CHECKPOINT]
-    # With no checkpoint in the home either, a journal alone still moves nothing.
-    (home / CHECKPOINT).unlink()
-    assert after_install.move_left_behind([beside / JOURNAL], home).failed
-    assert os.listdir(home) == []
-
-
-def test_a_checkpoint_never_moves_beside_another_journal(tmp_path):
-    """MF1, probe 2, the reverse: the checkpoint left behind while the data
-    home holds a lone journal moves nothing - it would meet a journal that
-    is not its own."""
-    beside, home = tmp_path / "program", tmp_path / "data home"
-    beside.mkdir()
-    home.mkdir()
-    (beside / CHECKPOINT).write_bytes(b"checkpoint\x00heads")
-    (home / JOURNAL).write_bytes(b"a stranger's journal")
-    done = after_install.move_left_behind([beside / CHECKPOINT], home)
-    assert done == after_install.MoveOutcome(
-        sentence=after_install.LEFT_BEHIND_JOURNAL_ALONE.format(home=home), failed=True)
-    assert (beside / CHECKPOINT).read_bytes() == b"checkpoint\x00heads"
-    assert sorted(os.listdir(home)) == [JOURNAL]
-
-
-def test_the_checkpoint_its_log_and_its_shared_memory_move_as_one(tmp_path):
-    """P214: the checkpoint keeps a write-ahead log, which holds committed
-    writes the file does not yet; the file, its log and its shared memory
-    are one unit and move together."""
-    beside, home = tmp_path / "program", tmp_path / "data home"
-    beside.mkdir()
-    for name, data in ((CHECKPOINT, b"checkpoint\x00heads"), (WAL, b"write-ahead log"),
-                       (SHM, b"shared memory")):
-        (beside / name).write_bytes(data)
-    items = [beside / CHECKPOINT, beside / WAL, beside / SHM]
-    done = after_install.move_left_behind(items, home)
-    assert not done.failed and done.moved == tuple(items)
-    assert sorted(os.listdir(home)) == sorted([CHECKPOINT, WAL, SHM])
-    assert (home / WAL).read_bytes() == b"write-ahead log"
-    assert not any(os.path.lexists(item) for item in items)
-
-
-def test_a_write_ahead_log_without_its_checkpoint_moves_nothing(tmp_path):
-    """A write-ahead log or its shared memory left without the checkpoint
-    it belongs to would be replayed into whatever checkpoint it is put
-    beside: it moves nothing, in the journal's own sentence, and a home
-    holding any part of the unit refuses the move as well."""
-    beside, home = tmp_path / "program", tmp_path / "data home"
-    beside.mkdir()
-    home.mkdir()
-    for side in (WAL, SHM):
-        (beside / side).write_bytes(b"an old side file")
-        done = after_install.move_left_behind([beside / side], home)
-        assert done == after_install.MoveOutcome(
-            sentence=after_install.LEFT_BEHIND_JOURNAL_ALONE.format(home=home), failed=True)
-        assert (beside / side).read_bytes() == b"an old side file"
-        assert os.listdir(home) == []
-    (beside / CHECKPOINT).write_bytes(b"checkpoint\x00heads")
-    (home / WAL).write_bytes(b"the home's own log")
-    done = after_install.move_left_behind([beside / CHECKPOINT], home)
-    assert done.failed and done.sentence == after_install.LEFT_BEHIND_JOURNAL_ALONE.format(home=home)
-    assert (beside / CHECKPOINT).is_file() and os.listdir(home) == [WAL]
-
-
 def test_move_schedule_here_from_a_removable_drive_changes_nothing(root, windows, monkeypatch, capsys):
     """The merge review's SF2: from a copy on a stick, ``--move-schedule-here``
     asks decision 186's refusal first - the designation still names the old
@@ -996,209 +788,6 @@ def test_an_os_error_in_the_record_check_is_said_by_class_and_kept_whole(root, m
     assert any("PermissionError (EACCES)" in finding for finding in done.findings)
     assert secret not in "\n".join(done.lines)
     assert secret in caplog.text
-
-
-def test_a_linked_left_behind_item_is_refused(tmp_path):
-    beside = tmp_path / "program"
-    items = left_behind(beside)
-    outside = tmp_path / "elsewhere"
-    outside.mkdir()
-    (outside / "keep.json").write_text("not the program's", encoding="utf-8")
-    after_install._remove_tree(beside / "recovered")
-    try:
-        os.symlink(outside, beside / "recovered", target_is_directory=True)
-    except OSError:
-        pytest.skip("this computer cannot make a symbolic link")
-    home = tmp_path / "data home"
-    done = after_install.move_left_behind(items, home)
-    assert done.failed and done.moved == ()
-    assert done.sentence == after_install.LEFT_BEHIND_IS_LINK.format(name="recovered", home=home)
-    assert all(os.path.lexists(item) for item in items) and not home.exists()
-    assert (outside / "keep.json").read_text(encoding="utf-8") == "not the program's"
-
-
-def test_nothing_left_behind_is_nothing_to_do(tmp_path):
-    beside = tmp_path / "program"
-    beside.mkdir()
-    home = tmp_path / "data home"
-    items = [beside / CHECKPOINT, beside / JOURNAL, beside / "recovered"]
-    assert after_install.move_left_behind(items, home) == after_install.MoveOutcome()
-    assert after_install.move_left_behind([], home) == after_install.MoveOutcome()
-    assert not home.exists()
-
-
-def test_a_copy_across_volumes_is_verified_before_the_source_goes(tmp_path, monkeypatch):
-    beside = tmp_path / "program"
-    items = left_behind(beside)
-    try:
-        os.symlink("Household A", beside / "recovered" / "linked", target_is_directory=True)
-        linked = True
-    except OSError:
-        linked = False
-    home = tmp_path / "data home"
-    monkeypatch.setattr(after_install, "_same_volume", lambda source, folder: False)
-
-    def no_rename(*args, **kwargs):
-        raise AssertionError("a move across volumes must never rename")
-
-    monkeypatch.setattr(os, "replace", no_rename)
-    compared = []
-    real_match = after_install._copies_match
-
-    def watched(source, copy):
-        compared.append((source.name, os.path.lexists(source)))
-        return real_match(source, copy)
-
-    monkeypatch.setattr(after_install, "_copies_match", watched)
-    done = after_install.move_left_behind(items, home)
-    assert not done.failed and done.moved == tuple(items)
-    assert [name for name, _ in compared[:1]] == [CHECKPOINT]
-    assert all(present for _, present in compared), "a source went before its copy was compared"
-    assert not any(os.path.lexists(item) for item in items)
-    assert (home / CHECKPOINT).read_bytes() == b"checkpoint\x00heads"
-    assert (home / "recovered" / "Household A" / "record.json").read_text(encoding="utf-8") == '{"fabricated": 1}'
-    if linked:
-        assert os.path.islink(home / "recovered" / "linked")
-        assert os.readlink(home / "recovered" / "linked") == "Household A"
-
-
-def test_a_failed_copy_keeps_the_source_and_cleans_the_destination(tmp_path, monkeypatch):
-    items = left_behind(tmp_path / "program")
-    home = tmp_path / "data home"
-    monkeypatch.setattr(after_install, "_same_volume", lambda source, folder: False)
-    real_match = after_install._copies_match
-    # The folder's copy comes out wrong; the two files before it copied cleanly.
-    monkeypatch.setattr(after_install, "_copies_match",
-                        lambda source, copy: not source.name.startswith("recovered") and real_match(source, copy))
-    done = after_install.move_left_behind(items, home)
-    assert done == after_install.MoveOutcome(
-        sentence=after_install.LEFT_BEHIND_MOVE_FAILED.format(home=home), failed=True)
-    assert TRACEBACK not in done.sentence
-    assert items[0].read_bytes() == b"checkpoint\x00heads"
-    assert items[1].read_bytes() == b"journal"
-    assert (items[-1] / "Household A" / "record.json").read_text(encoding="utf-8") == '{"fabricated": 1}'
-    assert os.listdir(home) == []
-    assert sorted(os.listdir(items[0].parent)) == sorted([CHECKPOINT, JOURNAL, WAL, "recovered"])
-
-
-def test_a_file_whose_source_cannot_be_removed_leaves_no_copy_behind(tmp_path, monkeypatch):
-    """Review MF1 (probe P3): the journal's copy is verified but its source
-    is locked. The copy goes, the source stays whole, the checkpoint moved
-    before it comes back, and the next run simply moves everything."""
-    items = left_behind(tmp_path / "program")
-    home = tmp_path / "data home"
-    monkeypatch.setattr(after_install, "_same_volume", lambda source, folder: False)
-    real_unlink = after_install._unlink
-
-    def locked(path):
-        if path == items[1]:
-            raise PermissionError(13, "locked")
-        real_unlink(path)
-
-    monkeypatch.setattr(after_install, "_unlink", locked)
-    done = after_install.move_left_behind(items, home)
-    assert done == after_install.MoveOutcome(
-        sentence=after_install.LEFT_BEHIND_MOVE_FAILED.format(home=home), failed=True)
-    assert items[0].read_bytes() == b"checkpoint\x00heads" and items[1].read_bytes() == b"journal"
-    assert os.listdir(home) == []
-    monkeypatch.setattr(after_install, "_unlink", real_unlink)
-    assert after_install.move_left_behind(items, home).moved == tuple(items)
-    assert (home / JOURNAL).read_bytes() == b"journal"
-
-
-def test_a_copy_never_removes_a_destination_it_did_not_make(tmp_path, monkeypatch):
-    """Review MF2 (probe P7): a destination that appeared after the first
-    check - a folder or a file - is refused and left exactly as it was."""
-    monkeypatch.setattr(after_install, "_same_volume", lambda source, folder: False)
-    (tmp_path / "src" / "a").mkdir(parents=True)
-    (tmp_path / "src.txt").write_text("ours", encoding="utf-8")
-    there = tmp_path / "dst"
-    (there / "src").mkdir(parents=True)
-    (there / "src" / "theirs").write_text("keep", encoding="utf-8")
-    (there / "src.txt").write_text("theirs", encoding="utf-8")
-    for name in ("src", "src.txt"):
-        with pytest.raises(OSError):
-            after_install._move_one(tmp_path / name, there / name)
-    assert (there / "src" / "theirs").read_text(encoding="utf-8") == "keep"
-    assert (there / "src.txt").read_text(encoding="utf-8") == "theirs"
-    assert (tmp_path / "src" / "a").is_dir() and (tmp_path / "src.txt").read_text(encoding="utf-8") == "ours"
-    assert sorted(os.listdir(tmp_path)) == ["dst", "src", "src.txt"]
-
-
-def test_nothing_is_ever_overwritten_forward_or_back(tmp_path, monkeypatch):
-    """Review SF2 (probe P6): on one volume, an old pass writes a new
-    checkpoint beside the program while the journal's move fails. The move
-    back finds the name taken and leaves the moved checkpoint whole in the
-    data home; the new one is untouched. A rename onto a taken name is
-    refused."""
-    items = left_behind(tmp_path / "program")
-    home = tmp_path / "data home"
-    real_rename = after_install._rename
-
-    def racing(source, destination):
-        if source == items[1]:
-            items[0].write_bytes(b"new from an old pass")
-            raise PermissionError(13, "locked")
-        real_rename(source, destination)
-
-    monkeypatch.setattr(after_install, "_rename", racing)
-    done = after_install.move_left_behind(items, home)
-    assert done.failed and done.moved == ()
-    assert items[0].read_bytes() == b"new from an old pass"
-    assert (home / CHECKPOINT).read_bytes() == b"checkpoint\x00heads"
-    assert items[1].read_bytes() == b"journal"
-    monkeypatch.setattr(after_install, "_rename", real_rename)
-    with pytest.raises(OSError):
-        after_install._rename(items[1], home / CHECKPOINT)
-    assert items[1].read_bytes() == b"journal"
-    assert (home / CHECKPOINT).read_bytes() == b"checkpoint\x00heads"
-
-
-def test_a_folder_partly_removed_after_its_copy_is_said_so(tmp_path, monkeypatch):
-    """Review SF1 (probe P4): the folder is renamed aside before it is
-    copied, so when removing the old copy fails part way, the name 186
-    lists is gone, the data home holds the whole verified copy, and the
-    sentence names the leftover."""
-    beside = tmp_path / "program"
-    items = left_behind(beside)
-    (beside / "recovered" / "Household A" / "second.json").write_text("{}", encoding="utf-8")
-    home = tmp_path / "data home"
-    monkeypatch.setattr(after_install, "_same_volume", lambda source, folder: False)
-    real_unlink = after_install._unlink
-    removed = []
-
-    def partly(path):
-        if ".moving-" in str(path) and path.suffix == ".json":
-            removed.append(path)
-            if len(removed) == 2:
-                raise PermissionError(13, "locked")
-        real_unlink(path)
-
-    monkeypatch.setattr(after_install, "_unlink", partly)
-    done = after_install.move_left_behind(items, home)
-    aside = f"recovered.moving-{os.getpid()}"
-    assert done == after_install.MoveOutcome(
-        moved=tuple(items), failed=True,
-        sentence=after_install.LEFT_BEHIND_PARTLY_REMOVED.format(home=home, name="recovered", aside=aside))
-    assert sorted(os.listdir(home / "recovered" / "Household A")) == ["record.json", "second.json"]
-    assert sorted(os.listdir(beside)) == [aside]
-    monkeypatch.setattr(after_install, "_unlink", real_unlink)
-    assert after_install.move_left_behind(items, home) == after_install.MoveOutcome()
-
-
-def test_two_left_behind_items_of_one_name_move_nothing(tmp_path):
-    """Review SF3 (probe P8): the second would land on the first."""
-    (tmp_path / "a").mkdir()
-    (tmp_path / "b").mkdir()
-    (tmp_path / "a" / "x").write_text("A", encoding="utf-8")
-    (tmp_path / "b" / "x").write_text("B", encoding="utf-8")
-    home = tmp_path / "data home"
-    done = after_install.move_left_behind([tmp_path / "a" / "x", tmp_path / "b" / "x"], home)
-    assert done == after_install.MoveOutcome(
-        sentence=after_install.LEFT_BEHIND_MOVE_FAILED.format(home=home), failed=True)
-    assert (tmp_path / "a" / "x").read_text(encoding="utf-8") == "A"
-    assert (tmp_path / "b" / "x").read_text(encoding="utf-8") == "B"
-    assert not home.exists()
 
 
 # ------------------------------------------ the schedule setting (P21) ----
@@ -1256,7 +845,7 @@ def test_off_removes_this_computers_task_claims_nothing_and_says_so(root, window
     assert creates(windows["calls"]) == []
     assert ["schtasks", "/delete", "/tn", scheduling.TASK_NAME, "/f"] in windows["calls"]
     assert not designation_file(root).exists()                    # not claimed, not changed
-    assert after_carry_over(done.lines)[0] == scheduling.SCHEDULE_OFF
+    assert done.lines[0] == scheduling.SCHEDULE_OFF
 
 
 def test_off_leaves_the_designation_as_it_was(root, windows):
@@ -1514,8 +1103,6 @@ def task_scheduler(monkeypatch, *, exists=False):
     state = {"exists": exists, "calls": []}
 
     def answer(command):
-        if is_earlier(command):
-            return Said(1 if command[1] == "/query" else 0)    # none under the earlier name
         state["calls"].append(command[1])
         if command[1] == "/create":
             state["exists"] = True
@@ -1562,9 +1149,9 @@ def test_a_run_that_read_off_never_removes_what_a_later_on_registered(root, wind
     task = task_scheduler(monkeypatch, exists=True)
     first = {}
     read_off, go_on = threading.Event(), threading.Event()
-    real_move = after_install._move_what_186_lists
+    real_schedule = after_install._schedule
 
-    def held_up(root_):
+    def held_up(root_, preference):
         # Called after the choice is read: the first run stops here until
         # the second has had its chance to act.
         if not first:
@@ -1572,9 +1159,9 @@ def test_a_run_that_read_off_never_removes_what_a_later_on_registered(root, wind
         if first["thread"] == threading.get_ident():
             read_off.set()
             go_on.wait(10)
-        return real_move(root_)
+        return real_schedule(root_, preference)
 
-    monkeypatch.setattr(after_install, "_move_what_186_lists", held_up)
+    monkeypatch.setattr(after_install, "_schedule", held_up)
     results = {}
     slow = threading.Thread(target=lambda: results.update(
         slow=after_install.run(reason=after_install.REASON_LAUNCH)))
@@ -1651,318 +1238,6 @@ def test_every_task_the_step_removes_is_noted_with_why(root, windows, monkeypatc
         after_install.run(reason=after_install.REASON_REPAIR)
     assert "removed this computer's scheduled task" in caplog.text
     assert "the saved schedule choice is off" in caplog.text
-
-
-# ------------------------------------- the rename's carry-over (P155 Q2) ----
-#
-# pilot/SPEC-rename.md section 3: the settings file the earlier name left in
-# its own program folder, and its scheduled task. The earlier program folder
-# is under a LOCALAPPDATA of this test's own; nothing here reads the real one.
-
-
-@pytest.fixture
-def packaged(app, tmp_path, monkeypatch):
-    """The packaged program (frozen), with a LOCALAPPDATA of this test's
-    own; the path where the earlier installer kept the settings file."""
-    monkeypatch.setattr(sys, "frozen", True, raising=False)
-    local = tmp_path / "local"
-    local.mkdir()
-    monkeypatch.setenv("LOCALAPPDATA", str(local))
-    earlier = settings.earlier_settings_path()
-    assert earlier == local / "Programs" / settings.EARLIER_PRODUCT_NAME / settings.SETTINGS_FILENAME
-    earlier.parent.mkdir(parents=True)
-    return earlier
-
-
-def settings_saved_by_the_earlier_name(earlier: Path, app: Path, monkeypatch, root: Path) -> None:
-    """Save a clients root and a schedule choice (06:30, every 240 minutes)
-    in the earlier program's settings file, as the earlier name did, and
-    point the settings back at this program's own, empty, folder."""
-    monkeypatch.setenv(ENV_SETTINGS_DIR, str(earlier.parent))
-    set_clients_root(root)
-    settings.set_schedule(True, "06:30", 240)
-    monkeypatch.setenv(ENV_SETTINGS_DIR, str(app))
-
-
-def test_a_fresh_install_copies_the_earlier_settings_file_byte_for_byte_and_leaves_it(packaged):
-    original = b'{"clients_root": "G:\\\\Made Up\\\\Clients"}\r\n\xef\xbb\xbf trailing bytes kept as they are'
-    packaged.write_bytes(original)
-    current = settings.settings_path()
-    assert not current.exists()
-
-    step = after_install._carry_over_settings()
-
-    assert not step.failed
-    assert step.sentence == after_install.SETTINGS_CARRIED.format(old=packaged, new=current)
-    assert current.read_bytes() == original                 # never parsed or rewritten
-    assert packaged.read_bytes() == original                # the earlier file is left
-
-
-def test_the_carried_settings_are_used_by_the_same_run(packaged, app, short_root, windows, monkeypatch):
-    make_engagement(short_root, template_items("1040", core_only=True), household=TEST_HOUSEHOLD)
-    settings_saved_by_the_earlier_name(packaged, app, monkeypatch, short_root)
-    designation_file(short_root).write_text(f"{HERE}\n", encoding="utf-8")
-
-    done = after_install.run(reason=after_install.REASON_LAUNCH)
-
-    assert done.exit_code == 0, done.lines
-    assert done.carried[0] == after_install.SETTINGS_CARRIED.format(old=packaged, new=settings.settings_path())
-    assert settings.clients_root() == short_root
-    assert done.schedule_sentence == scheduling.SCHEDULE_REGISTERED.format(start="06:30", every=240)
-    assert len(creates(windows["calls"])) == 1
-    assert after_install.notice() is None                   # carrying over is not a finding
-
-
-def test_settings_already_beside_the_program_win_and_the_earlier_file_is_named_and_left(packaged):
-    packaged.write_bytes(b"theirs")
-    current = settings.settings_path()
-    current.write_bytes(b"mine")
-
-    step = after_install._carry_over_settings()
-
-    assert not step.failed
-    assert step.sentence == after_install.SETTINGS_BOTH.format(new=current, old=packaged)
-    assert current.read_bytes() == b"mine" and packaged.read_bytes() == b"theirs"
-
-
-def test_an_upgrade_in_place_has_no_settings_to_carry_and_says_so(packaged, monkeypatch):
-    # R2: the upgrade installed over the earlier copy, so this program's own
-    # settings file is the earlier one.
-    monkeypatch.setenv(ENV_SETTINGS_DIR, str(packaged.parent))
-    packaged.write_bytes(b"kept")
-
-    step = after_install._carry_over_settings()
-
-    assert not step.failed and step.sentence == after_install.SETTINGS_IN_PLACE
-    assert packaged.read_bytes() == b"kept"
-
-
-def test_with_no_earlier_settings_file_nothing_is_copied_and_it_says_so(packaged, monkeypatch):
-    current = settings.settings_path()
-
-    step = after_install._carry_over_settings()
-
-    assert not step.failed and step.sentence == after_install.SETTINGS_NO_EARLIER
-    assert not current.exists()
-    # No LOCALAPPDATA at all: there is no earlier folder to look in.
-    monkeypatch.delenv("LOCALAPPDATA")
-    assert settings.earlier_settings_path() is None
-    assert after_install._carry_over_settings().sentence == after_install.SETTINGS_NO_EARLIER
-    assert not current.exists()
-
-
-def test_from_source_the_settings_are_never_carried_over(app, tmp_path, monkeypatch):
-    monkeypatch.delattr(sys, "frozen", raising=False)
-    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "local"))
-    earlier = settings.earlier_settings_path()
-    earlier.parent.mkdir(parents=True)
-    earlier.write_bytes(b"the installed pilot's settings")
-
-    step = after_install._carry_over_settings()
-
-    assert not step.failed and step.sentence == after_install.SETTINGS_FROM_SOURCE
-    assert not settings.settings_path().exists()
-
-
-def test_a_settings_copy_that_fails_leaves_nothing_behind_and_is_a_failure(packaged, windows, monkeypatch):
-    packaged.write_bytes(b"the earlier settings")
-    current = settings.settings_path()
-
-    # A copy that does not read back as the earlier file is removed.
-    monkeypatch.setattr(after_install, "write_bytes_atomically",
-                        lambda path, data: path.write_bytes(data[:-1]))
-    step = after_install._carry_over_settings()
-    assert step.failed and not current.exists()
-    assert step.sentence == after_install.SETTINGS_CARRY_FAILED.format(
-        old=packaged, new=current, problem="the copy read back did not match the earlier file")
-
-    # A copy the disk refuses is said by its class, never its message, and
-    # the step is not recorded as done.
-    def refused(path, data):
-        raise PermissionError(13, "a message that could name a client")
-
-    monkeypatch.setattr(after_install, "write_bytes_atomically", refused)
-    done = after_install.run(reason=after_install.REASON_LAUNCH)
-    sentence = after_install.SETTINGS_CARRY_FAILED.format(old=packaged, new=current,
-                                                          problem="PermissionError (EACCES)")
-    assert done.exit_code == 1 and sentence in done.failed and done.carried[0] == sentence
-    assert "could name a client" not in "\n".join(done.lines) and TRACEBACK not in "\n".join(done.lines)
-    assert not current.exists() and packaged.read_bytes() == b"the earlier settings"
-    record = after_install.read_record()
-    assert record["program"] == "" and sentence in record["failed"]
-
-
-@pytest.fixture
-def installed(monkeypatch):
-    """The packaged program, for the earlier name's task alone: every other
-    path stays the checkout's, so no test reaches a real program folder."""
-    monkeypatch.setattr(after_install, "_installed_program", lambda: True)
-
-
-def test_the_earlier_task_is_removed_after_the_new_one_is_registered(root, windows, installed):
-    designation_file(root).write_text(f"{HERE}\n", encoding="utf-8")
-    windows["earlier_exists"] = True
-
-    done = after_install.run(reason=after_install.REASON_LAUNCH)
-
-    assert done.exit_code == 0 and done.installed
-    assert done.carried[1] == after_install.EARLIER_TASK_REMOVED.format(
-        old=settings.EARLIER_PRODUCT_NAME, new=scheduling.TASK_NAME)
-    order = windows["order"]
-    assert order.index((scheduling.TASK_NAME, "/create")) < order.index((settings.EARLIER_PRODUCT_NAME, "/delete"))
-    assert not windows["earlier_exists"]
-
-
-def test_the_earlier_task_is_removed_when_the_schedule_is_off_or_elsewhere(root, windows, installed):
-    removed = after_install.EARLIER_TASK_REMOVED.format(old=settings.EARLIER_PRODUCT_NAME,
-                                                         new=scheduling.TASK_NAME)
-    settings.set_schedule(False, "07:00", 120)
-    windows["earlier_exists"] = True
-    done = after_install.run(reason=after_install.REASON_REPAIR)
-    assert done.schedule == scheduling.OFF and done.carried[1] == removed and not windows["earlier_exists"]
-
-    settings.set_schedule(True, "07:00", 120)
-    designation_file(root).write_text(f"{ELSEWHERE}\n", encoding="utf-8")
-    windows["earlier_exists"] = True
-    done = after_install.run(reason=after_install.REASON_LAUNCH)
-    assert done.schedule == scheduling.ELSEWHERE and done.carried[1] == removed
-    assert not windows["earlier_exists"]
-
-
-def test_the_earlier_task_is_kept_when_the_new_one_could_not_be_registered(root, windows, installed):
-    designation_file(root).write_text("front-desk\nsecret-laptop\n", encoding="utf-8")
-    windows["earlier_exists"] = True
-
-    done = after_install.run(reason=after_install.REASON_LAUNCH)
-
-    assert done.failed_schedule and done.exit_code == 1
-    kept = after_install.EARLIER_TASK_KEPT.format(old=settings.EARLIER_PRODUCT_NAME)
-    assert done.carried[1] == kept and kept not in done.failed      # the schedule's failure is the one
-    assert windows["earlier_calls"] == [] and windows["earlier_exists"]
-
-
-def test_with_no_earlier_task_nothing_is_removed_and_it_says_so(root, windows, installed, monkeypatch):
-    designation_file(root).write_text(f"{HERE}\n", encoding="utf-8")
-    none = after_install.EARLIER_TASK_NONE.format(old=settings.EARLIER_PRODUCT_NAME)
-
-    done = after_install.run(reason=after_install.REASON_LAUNCH)
-
-    assert done.exit_code == 0 and done.carried[1] == none
-    assert [command[1] for command in windows["earlier_calls"]] == ["/query"]
-    # With no Task Scheduler (off Windows) there is none to remove either.
-    monkeypatch.setattr(scheduling, "task_scheduler_here", lambda: False)
-    windows["earlier_calls"].clear()
-    assert after_install.run(reason=after_install.REASON_REPAIR).carried[1] == none
-    assert windows["earlier_calls"] == []
-
-
-def test_a_failed_removal_of_the_earlier_task_is_a_failure_and_runs_again_at_launch(root, windows, installed):
-    designation_file(root).write_text(f"{HERE}\n", encoding="utf-8")
-    windows["earlier_exists"] = True
-    windows["earlier_delete_fails"] = True
-
-    done = after_install.run(reason=after_install.REASON_LAUNCH)
-
-    [sentence] = done.failed
-    assert done.exit_code == 1 and done.carried[1] == sentence and done.installed
-    assert sentence.startswith(after_install.EARLIER_TASK_FAILED.split("{problem}")[0].format(
-        old=settings.EARLIER_PRODUCT_NAME))
-    assert "Access is denied" in sentence and TRACEBACK not in sentence
-    assert after_install.read_record()["program"] == ""
-    assert after_install.notice()["failed"] == [sentence]
-    # The next launch tries again; once the task is gone, the step is done.
-    windows["earlier_delete_fails"] = False
-    again = after_install.launch()
-    assert again is not None and again.exit_code == 0 and not windows["earlier_exists"]
-    assert after_install.launch() is None
-
-
-def test_only_the_earlier_pilot_name_is_ever_removed_never_the_production_task(root, windows, installed):
-    production = "Tax Document Tracker"                       # the firm's product, R8
-    assert settings.EARLIER_PRODUCT_NAME == production + " Pilot"
-    assert settings.EARLIER_PRODUCT_NAME != scheduling.TASK_NAME
-    settings.set_schedule(False, "07:00", 120)
-    windows["exists"] = windows["earlier_exists"] = True
-
-    after_install.run(reason=after_install.REASON_REPAIR)
-
-    named = {task for task, _verb in windows["order"]}
-    deleted = {task for task, verb in windows["order"] if verb == "/delete"}
-    assert production not in named
-    assert deleted == {scheduling.TASK_NAME, settings.EARLIER_PRODUCT_NAME}
-
-
-def test_running_the_step_twice_changes_nothing_the_second_time(packaged, app, short_root, windows, monkeypatch):
-    make_engagement(short_root, template_items("1040", core_only=True), household=TEST_HOUSEHOLD)
-    settings_saved_by_the_earlier_name(packaged, app, monkeypatch, short_root)
-    designation_file(short_root).write_text(f"{HERE}\n", encoding="utf-8")
-    windows["earlier_exists"] = True
-    old, current = settings.EARLIER_PRODUCT_NAME, settings.settings_path()
-
-    first = after_install.run(reason=after_install.REASON_LAUNCH)
-    carried = current.read_bytes()
-    second = after_install.run(reason=after_install.REASON_LAUNCH)
-
-    assert first.carried == (after_install.SETTINGS_CARRIED.format(old=packaged, new=current),
-                             after_install.EARLIER_TASK_REMOVED.format(old=old, new=scheduling.TASK_NAME))
-    assert second.carried == (after_install.SETTINGS_BOTH.format(new=current, old=packaged),
-                              after_install.EARLIER_TASK_NONE.format(old=old))
-    assert current.read_bytes() == carried and first.exit_code == second.exit_code == 0
-    assert [command[1] for command in windows["earlier_calls"]].count("/delete") == 1
-
-
-def test_from_source_the_earlier_task_is_never_removed(root, windows):
-    """A run from source must never delete the task of a copy installed on
-    the same computer: it says why in one sentence and asks Task Scheduler
-    nothing about the earlier name."""
-    designation_file(root).write_text(f"{HERE}\n", encoding="utf-8")
-    windows["earlier_exists"] = True
-
-    done = after_install.run(reason=after_install.REASON_LAUNCH)
-
-    assert done.exit_code == 0 and done.carried[1] == after_install.EARLIER_TASK_FROM_SOURCE.format(
-        old=settings.EARLIER_PRODUCT_NAME)
-    assert windows["earlier_calls"] == [] and windows["earlier_exists"]
-
-
-def test_a_settings_folder_that_cannot_be_read_is_the_carry_over_s_own_failure(packaged, monkeypatch):
-    """The path checks sit inside the job's error handling: an access error
-    there is the job's worded failure, said by its class, never an error
-    that stops the whole step."""
-    packaged.write_bytes(b"the earlier settings")
-    current = settings.settings_path()
-
-    def refused(self):
-        raise PermissionError(13, "a message that could name a client")
-
-    monkeypatch.setattr(type(packaged), "is_file", refused)
-    step = after_install._carry_over_settings()
-
-    assert step.failed and not current.exists()
-    assert step.sentence == after_install.SETTINGS_CARRY_FAILED.format(
-        old=packaged, new=current, problem="PermissionError (EACCES)")
-
-
-def test_a_record_from_before_the_rename_reads_as_nothing_carried(app):
-    path = after_install.record_path()
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps({"program": "", "ran_at": "2026-09-29T08:00:00", "reason": "launch",
-                                "schedule": "", "designated": None, "findings": [], "failed": []}),
-                    encoding="utf-8")
-
-    assert after_install.read_record()["carried"] == []
-
-
-def test_the_carry_over_sentences_lead_the_printed_lines(root, windows, monkeypatch, capsys):
-    designation_file(root).write_text(f"{HERE}\n", encoding="utf-8")
-
-    code, out = cli(monkeypatch, capsys, "--reason", "setup")
-
-    carried = [after_install.SETTINGS_FROM_SOURCE,
-               after_install.EARLIER_TASK_FROM_SOURCE.format(old=settings.EARLIER_PRODUCT_NAME)]
-    assert code == 0 and out.splitlines()[:CARRIED] == carried
-    assert after_install.read_record()["carried"] == carried
-    assert out.count(after_install.SETTINGS_FROM_SOURCE) == 1
 
 
 # ----------------------------------- the setup door readies the Overview (P218) ----

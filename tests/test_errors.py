@@ -380,8 +380,6 @@ SAID_WHOLE_ON_PURPOSE = {
     ("after_install.py", "move_schedule_here"): "scheduling's DesignationError, always one of its constants",
     ("after_install.py", "_off"): "Task Scheduler refusing to delete this computer's task: the machine's "
                                    "words, as in _schedule (pilot P21)",
-    ("after_install.py", "move_left_behind"): "the mover's own _Taken and _PartlyRemoved, which carry "
-                                              "the left-behind item's name, never a document's words",
     ("ledger.py", "_bytes_of"): "the return's own event log could not be read (SPEC-190 R2: stays)",
     ("ledger.py", "_parse_lines"): "a line of the firm's own event log that does not parse (R2: stays)",
     ("manifest.py", "validated"): "the firm's own date pattern that does not compile",

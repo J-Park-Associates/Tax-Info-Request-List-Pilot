@@ -167,6 +167,8 @@ one that an uninstall (or a person, in Task Scheduler) deleted is
 registered again at that start, with no Repair (P198). The store check
 below is the same check, for a deliberate look.
 
+**An install older than decision 186 (the data folder, 2026-09-27) or than the rename to Tax Document Console (Pilot 0.3) is set up fresh** (P235): nothing is moved from beside the program and nothing carried over from the earlier name's settings file or task - choose the clients folder and the schedule again.
+
 **The pilot's installer runs the same step** (pilot P218). Before it offers
 to launch the app, the pilot's installer runs the after-install step while
 its window is still on screen ("Preparing Overview..."), and the step's
@@ -622,18 +624,15 @@ changes nothing:
   copy of it renamed `record-heads.db.damaged` or set aside as
   `record-heads.db.v1.old`, and a `recovered` folder (decision 159) - the
   checkpoint cannot be made again, a journal can hold its last write, and
-  the old copies and the records in `recovered` are evidence. **Setup moves
-  them** (decision 209): its after-install step, whose first job this is,
-  moves `record-heads.db` and its journal and write-ahead log together, the other copies and
-  `recovered` from beside the app into `%LOCALAPPDATA%\tax-document-tracker`
-  under their own names, before it registers the schedule; the packaged
-  app does the same at its first start after the upgrade. The checkpoint,
-  its journal, its write-ahead log and shared memory, and a `.damaged` copy
-  move as one: a journal or write-ahead log found without its checkpoint
-  beside it, or a data folder that already holds any of them, moves nothing - a journal beside a checkpoint that is not its own
-  would be replayed into it. It never overwrites: if the data folder
-  already holds one of those names, nothing moves, and the step says so in
-  one sentence - then, and only then, a person acts, as below. It moves nothing on the delete list. Until
+  the old copies and the records in `recovered` are evidence. **Nothing moves them for
+  you** (P235): an install older than this decision is set up fresh (above, under *The
+  record check after every install and upgrade runs itself*), and one upgraded anyway is moved
+  by hand into `%LOCALAPPDATA%\tax-document-tracker`, under their own names.
+  The checkpoint, its journal, its write-ahead log and shared memory, and a
+  `.damaged` copy move as one; never put a journal or write-ahead log beside a
+  checkpoint that is not its own, because it would be replayed into it, and never
+  overwrite a name the data folder already holds. Nothing on the delete list is
+  moved. Until
   `record-heads.db` is moved the app makes no new checkpoint - one
   would trust every record as it is that day (*the moment of trust*, §6) -
   so nothing is written: the pass serves no household, writes its page
@@ -745,57 +744,7 @@ the schedule runs whatever program sits there on every pass, so it must be
 on this computer's own disk. The app's first screen says the same for as
 long as it runs from such a drive.
 
-**After the rename (P155).** Before Pilot 0.3 the app was called Tax
-Document Tracker Pilot, the earlier name; it is now Tax Document Console.
-Installing 0.3 over the earlier name upgrades it in place, in its own
-folder `%LOCALAPPDATA%\Programs\Tax Document Tracker Pilot` (a new install
-goes to `%LOCALAPPDATA%\Programs\Tax Document Console`), replaces the
-earlier Start menu entry and desktop icon, and keeps `settings.json`
-beside the program. The data folder keeps its name,
-`%LOCALAPPDATA%\tax-document-tracker-pilot`, and nothing in it moves; the
-column widths (and, since P199, the order each list was left in) stay
-where they were, in `%APPDATA%\Tax Document Tracker
-Pilot` (the earlier name, kept on purpose). The first start after the
-upgrade, or `Setup.bat`, runs two carry-over jobs in the after-install
-step, and each says one sentence every time, first among the step's lines:
-
-- **The settings file,** copied from the earlier program folder only when
-  this program has none (the earlier name uninstalled, then 0.3 installed
-  fresh): "Run from source: the settings file is the checkout's own, so
-  nothing is carried over from the earlier name." / "The program was
-  upgraded in its own folder, so its settings file stayed where it was." /
-  "This program already has its settings file (<file>), so the one left by
-  the earlier name (<earlier file>) was not used; it was left where it
-  was." / "There was no settings file from the earlier name to carry
-  over." / "Copied the settings file left by the earlier name (<earlier
-  file>) to <file>, so the clients folder and the schedule choice carry
-  over; the earlier file was left where it was." If the copy fails: "The
-  settings file left by the earlier name (<earlier file>) could not be
-  copied to <file> (<problem>); nothing was changed. Start the app: it
-  tries again at launch."
-- **The scheduled task** under the earlier name, removed once the new
-  task, Tax Document Console, is registered: "Removed the scheduled task
-  under the earlier name, Tax Document Tracker Pilot; the schedule now runs
-  as Tax Document Console where it is on." / "There was no scheduled task
-  under the earlier name, Tax Document Tracker Pilot, on this computer."
-  Only the installed program removes it; the app run from source says "Run
-  from source: the scheduled task under the earlier name, Tax Document
-  Tracker Pilot, belongs to an installed copy, so it was left alone." If
-  the new task could not be registered the earlier one is kept, so the pass
-  still runs: "The scheduled task under the earlier name, Tax Document
-  Tracker Pilot, was kept because the new one could not be registered
-  (above); the app tries again at its next start." If it cannot be
-  removed: "The scheduled task under the earlier name, Tax Document Tracker
-  Pilot, could not be removed (<problem>); until it is, both tasks start
-  the pass, and the second finds the first's lock and moves nothing. Start
-  the app: it tries again at launch, and Repair the Schedule tries at
-  once."
-
-A failed carry-over is a failure like any other: the first screen's notice
-says it and the next start tries again. The firm's production product,
-Tax Document Tracker, its task and its folders are never touched. An
-earlier fallback error log may remain in `%LOCALAPPDATA%\Tax Document
-Tracker Pilot\` (above).
+**Column widths keep the earlier name's folder.** Each list's column widths and the order it was left in live in `%APPDATA%\Tax Document Tracker Pilot`, the earlier name, kept on purpose so they survive the rename; the data folder (`%LOCALAPPDATA%\tax-document-tracker-pilot`) keeps its name too.
 
 **It only runs while someone is logged on.** The task is registered to run
 as the logged-on person, not as a background service, so the designated

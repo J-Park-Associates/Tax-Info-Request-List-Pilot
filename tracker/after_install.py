@@ -52,34 +52,12 @@ else - not a line in the runbook, not a button.
    rather than ``shutil.rmtree`` (whose handling of junctions differs by
    version). Absent is nothing to do and says nothing.
 
-**The rename's carry-over** (P155 Q2, ``pilot/SPEC-rename.md`` section 3) -
-two jobs around the others, each saying one sentence every run, "nothing to
-do" included, kept in the record's ``carried`` and leading the printed
-lines. First of all, before anything reads the settings file, the settings
-file the earlier name left in its program folder is copied to this
-program's, byte for byte and only when this one has none (a PC that
-uninstalled the earlier name and installed this one fresh; an upgrade
-installs in place and keeps its file). Right after the schedule, the
-earlier name's scheduled task is removed - that name and nothing else,
-never the firm's production task - unless the schedule failed this run,
-when it is kept so the pass still runs. A failure of either is a failure
-like any other: nothing is recorded as done, and the next launch tries
-again. Carrying over is not a finding, so the first screen's notice does
-not show it.
-
-**The careful mover** (SPEC-209 R9, by the standing preference) -
-decision 186's hand step, moving the record checkpoint and ``recovered/``
-from beside the program into the data home, becomes
-:func:`move_left_behind`: it moves 186's own move group and never a list of
-its own, and never touches 186's delete group (deleting what holds client
-names stays a person's call). It checks every destination and refuses any
-link before moving anything, because a checkpoint split from its journal
-is worse than one not moved. It never overwrites anything - no
-``os.replace``: a rename that refuses an existing name on one volume, and
-otherwise a copy into a name it creates, compared by size and SHA-256
-before the source is removed; a failure leaves the source whole beside the
-program and removes only what the mover itself created (the R9 review).
-It is wired first into :func:`run` when 186 lands.
+**What it does not carry over** (P235). An install older than decision 186
+(its store, run log and checkpoint beside the program) or older than the
+rename to Tax Document Console (the earlier name's settings file and its
+scheduled task) is set up fresh: this step moves, copies and removes
+nothing of theirs. The first screen still names whatever an old install left
+beside the program, for a person to move or delete (runbook).
 
 **A finding names a household that waits** - for the kinds that do. A
 line an earlier version applied that today's admission refuses stops its
@@ -148,11 +126,9 @@ nothing lower does (layer 4, ``tests/test_layers.py``).
 from __future__ import annotations
 
 import datetime as dt
-import errno
 import hashlib
 import json
 import os
-import shutil
 import sys
 import time
 from collections.abc import Iterator
@@ -160,8 +136,8 @@ from contextlib import contextmanager
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
-from tracker import checkpoint, door, errors, ledger, registry, runner, scheduling, settings, store
-from tracker.fsio import is_link, write_bytes_atomically, write_json_atomically
+from tracker import door, errors, ledger, registry, runner, scheduling, settings, store
+from tracker.fsio import is_link, write_json_atomically
 from tracker.locking import EngagementLockedError, acquire_lock, release_lock, this_host
 
 #: The note of the last run, beside the store - in the data home (decision
@@ -253,38 +229,6 @@ CACHE_NOT_CLEARED = ("The test cache left in the app's folder by earlier version
 OVERVIEW_READY = "Made the Overview ready, so the first one after this install opens at once."
 OVERVIEW_NOT_READY = ("The Overview could not be made ready ({why}); the first one reads every "
                       "household and takes a little longer.")
-#: The careful mover (R9): what it says when it moved decision 186's move
-#: group into the data home, and each way it refused or failed (constant
-#: sentences; no operating-system message is quoted).
-LEFT_BEHIND_MOVED = ("Moved the record checkpoint and recovered records an earlier version kept beside "
-                     "the program into {home}; nothing was deleted.")
-LEFT_BEHIND_DESTINATION_TAKEN = ("{name} is already in {home}, so the files an earlier version left "
-                                 "beside the program were not moved; a person must compare the two and "
-                                 "keep one (runbook, decision 186).")
-#: The record checkpoint, its rollback journal, its write-ahead log and
-#: shared memory (P214) and a copy a person renamed ``.damaged``, by 186's
-#: own names: moved together or not at all (MF1).
-CHECKPOINT_UNIT = (checkpoint.CHECKPOINT_FILENAME, checkpoint.CHECKPOINT_JOURNAL_FILENAME,
-                   checkpoint.CHECKPOINT_WAL_FILENAME, checkpoint.CHECKPOINT_SHM_FILENAME,
-                   checkpoint.CHECKPOINT_DAMAGED_FILENAME)
-#: The side files that would be replayed into whatever checkpoint they are
-#: found beside: never moved without their own (P214).
-_CHECKPOINT_SIDE_FILES = (checkpoint.CHECKPOINT_JOURNAL_FILENAME, checkpoint.CHECKPOINT_WAL_FILENAME,
-                          checkpoint.CHECKPOINT_SHM_FILENAME)
-#: Said for a rollback journal, a write-ahead log or its shared memory alike
-#: (P214's review): "side file(s)" names all three, where "journal" named one.
-LEFT_BEHIND_JOURNAL_ALONE = ("The record checkpoint's side file(s) beside the program have no checkpoint "
-                             "with them, or {home} already holds part of the checkpoint; nothing was moved "
-                             "- a person must look (runbook, decision 186).")
-LEFT_BEHIND_IS_LINK = ("{name}, left beside the program by an earlier version, is a link, so nothing was "
-                       "moved into {home}; a person must move what it points at (runbook, decision 186).")
-LEFT_BEHIND_MOVE_FAILED = ("The files an earlier version left beside the program could not all be moved "
-                           "into {home}; a person must compare the program's folder with {home} and finish "
-                           "the move (runbook, decision 186).")
-LEFT_BEHIND_PARTLY_REMOVED = ("{home} now holds the whole copy of {name}; part of the old copy is still "
-                              "beside the program as {aside} and can be deleted.")
-#: The mover's step key (R9), beside the schedule's and the check's.
-MOVE_KEY = "left_behind"
 #: The one lock every run of the step holds (pilot P47), beside the record;
 #: how long a run waits for another to finish, and how often it looks.
 LOCK_FILENAME = "after-install.lock"
@@ -301,34 +245,6 @@ LOCK_UNAVAILABLE = ("The after-install step could not take its lock ({file}), so
                     "Start the app: it tries again at launch.")
 #: What Setup prints when the step exits 1 (``Setup.bat`` echoes the same words).
 SETUP_RETRY = "The after-install step could not finish (above). Start the app: it tries again at launch."
-#: The rename's carry-over (P155 Q2, SPEC-rename section 3): the settings
-#: file left by the earlier name, and its scheduled task. Each job says one
-#: of these every run, "nothing to do" included; the record keeps them in
-#: ``carried``. {old} and {new} are filled from ``settings`` and
-#: ``scheduling``, so no sentence types either name.
-SETTINGS_KEY = "settings"
-EARLIER_TASK_KEY = "earlier_task"
-SETTINGS_FROM_SOURCE = ("Run from source: the settings file is the checkout's own, so nothing is carried "
-                        "over from the earlier name.")
-SETTINGS_IN_PLACE = "The program was upgraded in its own folder, so its settings file stayed where it was."
-SETTINGS_BOTH = ("This program already has its settings file ({new}), so the one left by the earlier "
-                 "name ({old}) was not used; it was left where it was.")
-SETTINGS_NO_EARLIER = "There was no settings file from the earlier name to carry over."
-SETTINGS_CARRIED = ("Copied the settings file left by the earlier name ({old}) to {new}, so the clients "
-                    "folder and the schedule choice carry over; the earlier file was left where it was.")
-SETTINGS_CARRY_FAILED = ("The settings file left by the earlier name ({old}) could not be copied to {new} "
-                         "({problem}); nothing was changed. Start the app: it tries again at launch.")
-EARLIER_TASK_KEPT = ("The scheduled task under the earlier name, {old}, was kept because the new one could "
-                     "not be registered (above); the app tries again at its next start.")
-EARLIER_TASK_REMOVED = ("Removed the scheduled task under the earlier name, {old}; the schedule now runs as "
-                        "{new} where it is on.")
-EARLIER_TASK_NONE = "There was no scheduled task under the earlier name, {old}, on this computer."
-EARLIER_TASK_FROM_SOURCE = ("Run from source: the scheduled task under the earlier name, {old}, belongs to "
-                            "an installed copy, so it was left alone.")
-EARLIER_TASK_FAILED = ("The scheduled task under the earlier name, {old}, could not be removed ({problem}); "
-                       "until it is, both tasks start the pass, and the second finds the first's lock and "
-                       "moves nothing. Start the app: it tries again at launch, and Repair the Schedule "
-                       "tries at once.")
 
 
 def record_path() -> Path:
@@ -407,8 +323,6 @@ class AfterInstall:
     #: The setup door's Overview job (P218): :data:`OVERVIEW_READY`,
     #: :data:`OVERVIEW_NOT_READY`, or "" where it did not run.
     overview_sentence: str = ""
-    #: The rename's carry-over sentences (settings, then the earlier task).
-    carried: tuple[str, ...] = ()
     findings: tuple[str, ...] = ()
     failed: tuple[str, ...] = ()
     program: str = ""
@@ -434,7 +348,6 @@ class AfterInstall:
         """The run as the API hands it to the app."""
         said = asdict(self)
         said.update(lines=list(self.lines), findings=list(self.findings), failed=list(self.failed),
-                    carried=list(self.carried),
                     command=list(self.command), installed=self.installed, exit=self.exit_code)
         return said
 
@@ -695,367 +608,6 @@ def _clear_test_cache(checkout: Path | None = None) -> _Step | None:
     return _Step(CACHE_CLEARED_KEY, CACHE_CLEARED)
 
 
-@dataclass(frozen=True, slots=True)
-class MoveOutcome:
-    """What :func:`move_left_behind` did: the items it moved (their old
-    paths), its one sentence - ``None`` when there was nothing to do - and
-    whether it failed."""
-
-    moved: tuple[Path, ...] = ()
-    sentence: str | None = None
-    failed: bool = False
-
-
-def _same_volume(source: Path, home: Path) -> bool:
-    """Whether ``source`` (never followed) and the existing folder ``home``
-    are on one volume, so a rename moves without copying."""
-    return os.lstat(source).st_dev == os.stat(home).st_dev
-
-
-def _size_and_digest(path: Path) -> tuple[int, str]:
-    """The size and SHA-256 of one regular file, read from one handle."""
-    digest = hashlib.sha256()
-    with path.open("rb") as handle:
-        size = os.fstat(handle.fileno()).st_size
-        for block in iter(lambda: handle.read(1 << 20), b""):
-            digest.update(block)
-    return size, digest.hexdigest()
-
-
-def _copies_match(source: Path, copy: Path) -> bool:
-    """Whether ``copy`` is ``source`` entry for entry: a link is a link to
-    the same target (never followed), a folder holds the same names, and a
-    file has the same size and SHA-256."""
-    if is_link(source):
-        return is_link(copy) and os.readlink(source) == os.readlink(copy)
-    if is_link(copy):
-        return False
-    if source.is_dir():
-        if not copy.is_dir():
-            return False
-        names = sorted(os.listdir(source))
-        return names == sorted(os.listdir(copy)) and all(
-            _copies_match(source / name, copy / name) for name in names)
-    return copy.is_file() and _size_and_digest(source) == _size_and_digest(copy)
-
-
-def _discard(path: Path) -> None:
-    """Remove ``path`` - an entry, or a real folder and everything in it -
-    never what a link points at; absent is nothing to do. Called only on
-    what this module itself created."""
-    if not os.path.lexists(path):
-        return
-    if is_link(path) or not path.is_dir():
-        _unlink(path)
-    else:
-        _remove_tree(path)
-
-
-class _Taken(OSError):
-    """A destination that exists at the moment of a move: nothing is
-    overwritten, and the job says whose name it is."""
-
-    def __init__(self, name: str) -> None:
-        super().__init__(errno.EEXIST, "taken")
-        self.name = name
-
-
-class _PartlyRemoved(OSError):
-    """A folder copied whole and verified whose old copy, set aside beside
-    the program, could not be removed completely."""
-
-    def __init__(self, name: str, aside: Path) -> None:
-        super().__init__(errno.EIO, "partly removed")
-        self.name, self.aside = name, aside
-
-
-def _rename(source: Path, destination: Path) -> None:
-    """Rename on one volume, never over an existing name: ``os.rename`` on
-    Windows, which refuses one; elsewhere a file is hard-linked (which
-    refuses one) and then unlinked from its old name, and a folder is
-    renamed after the check - the one race left, stated: a folder that
-    appears empty at that name between the check and the rename is
-    replaced, which loses nothing. Raises :class:`_Taken` when the name is
-    taken."""
-    if os.path.lexists(destination):
-        raise _Taken(destination.name)
-    try:
-        if os.name == "nt" or source.is_dir():
-            os.rename(source, destination)
-            return
-        os.link(source, destination)
-    except FileExistsError:
-        raise _Taken(destination.name) from None
-    try:
-        os.unlink(source)
-    except OSError:
-        os.unlink(destination)
-        raise
-
-
-def _copy_file_across(source: Path, destination: Path) -> None:
-    """Copy one file to another volume into a name this call creates
-    (``open(..., "xb")`` refuses an existing one), verify size and SHA-256,
-    then remove the source. A failed or mismatched copy, **or a source that
-    cannot be removed** (an unlink fails whole, so the source is still
-    complete), removes the copy and keeps the source (review MF1)."""
-    try:
-        with source.open("rb") as original, open(destination, "xb") as copy:
-            shutil.copyfileobj(original, copy)
-    except FileExistsError:
-        raise _Taken(destination.name) from None
-    except OSError:
-        _discard_quietly(destination)
-        raise
-    try:
-        shutil.copystat(source, destination)
-        if not _copies_match(source, destination):
-            raise OSError(errno.EIO, "the copy does not match its source")
-        _unlink(source)
-    except OSError:
-        _discard_quietly(destination)
-        raise
-
-
-def _copy_folder_across(source: Path, destination: Path) -> None:
-    """Copy one folder to another volume (review SF1): first rename it
-    aside, beside itself, to ``<name>.moving-<pid>``, so the name decision
-    186 lists is never left holding part of a copy; create the destination
-    (refusing an existing one), copy into it with ``copytree(symlinks=True)``
-    (a link inside is copied as a link), verify every file, then remove the
-    aside copy. A failure before the copy is verified removes what this
-    call created and renames the aside copy back; a failure while removing
-    it leaves the verified copy in place and says so."""
-    aside = source.with_name(f"{source.name}.moving-{os.getpid()}")
-    _rename(source, aside)
-    try:
-        try:
-            destination.mkdir()
-        except FileExistsError:
-            raise _Taken(destination.name) from None
-        try:
-            shutil.copytree(aside, destination, symlinks=True, dirs_exist_ok=True)
-            if not _copies_match(aside, destination):
-                raise OSError(errno.EIO, "the copy does not match its source")
-        except OSError:
-            _discard_quietly(destination)
-            raise
-    except OSError:
-        try:
-            _rename(aside, source)
-        except OSError:
-            pass
-        raise
-    try:
-        _remove_tree(aside)
-    except OSError:
-        raise _PartlyRemoved(source.name, aside) from None
-
-
-def _discard_quietly(path: Path) -> None:
-    """:func:`_discard` for a cleanup inside a failure already being
-    raised: the first failure is the one reported."""
-    try:
-        _discard(path)
-    except OSError:
-        pass
-
-
-def _move_one(source: Path, destination: Path) -> None:
-    """Move one entry to ``destination``, whose folder exists, **never over
-    anything** (review SF2; there is no ``os.replace`` here): a rename that
-    refuses an existing name on one volume (:func:`_rename`), and otherwise
-    - or when the rename finds another volume after all, a bind mount say -
-    a verified copy. The destination is checked again immediately before
-    the move (review MF2) and only what this call created is ever removed.
-    Raises :class:`OSError` on failure, :class:`_Taken` when the name is
-    taken."""
-    if os.path.lexists(destination):
-        raise _Taken(destination.name)
-    if _same_volume(source, destination.parent):
-        try:
-            _rename(source, destination)
-            return
-        except OSError as problem:
-            if problem.errno != errno.EXDEV:
-                raise
-    if source.is_dir():
-        _copy_folder_across(source, destination)
-    else:
-        _copy_file_across(source, destination)
-
-
-def move_left_behind(items: list[Path], home: Path) -> MoveOutcome:
-    """Move what an earlier version left beside the program into ``home``,
-    each under its own name (R9). ``items`` is decision 186's move group,
-    never a list of this module's own; one absent, or already in ``home``,
-    is not left behind.
-
-    Nothing present is nothing to do and no sentence. Otherwise it checks
-    everything before moving anything: two items of one name, an item that
-    is a link or junction (:func:`tracker.fsio.is_link`), or a name already in ``home``,
-    moves nothing and fails in its own sentence - the checkpoint and its
-    journal are never split. A move that fails part way moves back what it
-    had already moved, by the same careful move, so a failure leaves the
-    items where they were (or, where a move back itself fails or finds its
-    old name taken, whole in ``home``). Nothing is ever overwritten, and
-    nothing is removed that was not first copied whole and verified.
-
-    On Windows ``copytree`` follows a junction inside ``recovered/``; the
-    verification then finds a folder where the source has a link, the copy
-    is removed and the job fails, safely, until a person looks."""
-    present = [Path(item) for item in items
-               if os.path.lexists(item) and Path(item).parent != home]
-    if not present:
-        return MoveOutcome()
-    if len({item.name for item in present}) != len(present):
-        return MoveOutcome(sentence=LEFT_BEHIND_MOVE_FAILED.format(home=home), failed=True)
-    # The checkpoint and its journal are one unit (the merge review's MF1): a
-    # rollback journal - or, since P214, a write-ahead log or its shared
-    # memory - beside a checkpoint that is not its own is replayed into it
-    # at its next open. Any of them without its checkpoint beside it, or a
-    # home already holding any part of the unit, moves nothing.
-    if any(item.name in CHECKPOINT_UNIT for item in present) and (
-            any(item.name in _CHECKPOINT_SIDE_FILES
-                and not os.path.lexists(item.parent / checkpoint.CHECKPOINT_FILENAME)
-                for item in present)
-            or any(os.path.lexists(home / name) for name in CHECKPOINT_UNIT)):
-        return MoveOutcome(sentence=LEFT_BEHIND_JOURNAL_ALONE.format(home=home), failed=True)
-    for item in present:
-        if is_link(item):
-            return MoveOutcome(sentence=LEFT_BEHIND_IS_LINK.format(name=item.name, home=home),
-                               failed=True)
-    for item in present:
-        if os.path.lexists(home / item.name):
-            return MoveOutcome(sentence=LEFT_BEHIND_DESTINATION_TAKEN.format(name=item.name, home=home),
-                               failed=True)
-    done: list[Path] = []
-    try:
-        home.mkdir(parents=True, exist_ok=True)
-        for item in present:
-            _move_one(item, home / item.name)
-            done.append(item)
-    except _PartlyRemoved as partly:
-        return MoveOutcome(moved=tuple(present[:len(done) + 1]),
-                           sentence=LEFT_BEHIND_PARTLY_REMOVED.format(
-                               home=home, name=partly.name, aside=partly.aside.name),
-                           failed=True)
-    except OSError as problem:
-        errors.keep("after_install: moving what was left behind", problem)
-        for item in reversed(done):
-            try:
-                _move_one(home / item.name, item)
-            except OSError:
-                pass
-        if isinstance(problem, _Taken):
-            sentence = LEFT_BEHIND_DESTINATION_TAKEN.format(name=problem.name, home=home)
-        else:
-            sentence = LEFT_BEHIND_MOVE_FAILED.format(home=home)
-        return MoveOutcome(sentence=sentence, failed=True)
-    return MoveOutcome(moved=tuple(present), sentence=LEFT_BEHIND_MOVED.format(home=home))
-
-
-def _move_what_186_lists(root: Path | None) -> _Step | None:
-    """:func:`move_left_behind` on decision 186's own move group
-    (``runner.left_behind_to_move``) into ``store.store_path().parent``;
-    ``None`` when there is nothing to do. With no data home to move into
-    there is nothing it can do: the first screen already says why (186's
-    ``machine_warnings``), and the store cannot open either."""
-    try:
-        items = runner.left_behind_to_move(root)
-        home = Path(store.store_path()).parent
-    except settings.SettingsError:
-        return None
-    done = move_left_behind(items, home)
-    if done.sentence is None:
-        return None
-    return _Step(MOVE_KEY, done.sentence, failed=done.failed)
-
-
-class _CopyDiffers(OSError):
-    """The settings copy, read back, is not the earlier file byte for byte."""
-
-
-def _carry_over_settings() -> _Step:
-    """The rename's first job (SPEC-rename R5): copy the settings file the
-    earlier name left in its own program folder to this program's, only
-    when this program has none - so a PC that uninstalled the earlier name
-    and installed this one fresh keeps its clients folder and schedule
-    choice. From the packaged program only: from source the settings file
-    is the checkout's own, and the office PC may have the pilot installed
-    beside it. The file is copied as bytes, never parsed or rewritten here
-    (whether it is usable is :func:`_saved_root`'s and
-    :func:`_saved_preference`'s to say), and the earlier file is left where
-    it was. An upgrade in place (R2) finds the two paths are one file.
-    Runs before anything reads the settings, so the same run uses them."""
-    if not getattr(sys, "frozen", False):
-        return _Step(SETTINGS_KEY, SETTINGS_FROM_SOURCE)
-    earlier = settings.earlier_settings_path()
-    current = settings.settings_path()
-    if earlier is None:
-        return _Step(SETTINGS_KEY, SETTINGS_NO_EARLIER)
-    made = False
-    try:
-        # Inside the try, so a folder this account may not read is this
-        # job's own worded failure, not an error that stops the whole step.
-        if earlier.resolve() == current.resolve():
-            return _Step(SETTINGS_KEY, SETTINGS_IN_PLACE)
-        if not earlier.is_file():
-            return _Step(SETTINGS_KEY, SETTINGS_NO_EARLIER)
-        if current.exists():
-            return _Step(SETTINGS_KEY, SETTINGS_BOTH.format(new=current, old=earlier))
-        original = earlier.read_bytes()
-        write_bytes_atomically(current, original)
-        made = True
-        if hashlib.sha256(current.read_bytes()).digest() != hashlib.sha256(original).digest():
-            raise _CopyDiffers("the copy read back did not match the earlier file")
-    except OSError as exc:
-        errors.keep("after_install: carrying the earlier settings file over", exc)
-        if made:
-            _discard_quietly(current)
-        return _Step(SETTINGS_KEY, SETTINGS_CARRY_FAILED.format(
-            old=earlier, new=current, problem=errors.said(exc, (_CopyDiffers,))), failed=True)
-    return _Step(SETTINGS_KEY, SETTINGS_CARRIED.format(old=earlier, new=current))
-
-
-def _installed_program() -> bool:
-    """Whether this is the packaged program rather than a run from source:
-    the earlier name's task is removed only then. Its own function so the
-    tests can stand in for the packaged program here alone, without the
-    frozen paths every other module takes."""
-    return bool(getattr(sys, "frozen", False))
-
-
-def _replace_earlier_task(schedule: _Step) -> _Step:
-    """The rename's second job (SPEC-rename R6): once the schedule job has
-    run, remove this computer's task under the earlier name - that name and
-    nothing else, never the firm's production task - so the pass is not
-    started twice. Kept when the schedule failed this run, so the pass
-    still runs on a schedule until the new task is there; the schedule's own
-    failure already keeps the step from being recorded as done. A failed
-    delete is a failure, tried again at the next launch. From the packaged
-    program only, like the settings copy: a run from source must never
-    delete the task of a copy installed on the same computer, which would
-    only register it again at its next start."""
-    old, new = settings.EARLIER_PRODUCT_NAME, scheduling.TASK_NAME
-    if not _installed_program():
-        return _Step(EARLIER_TASK_KEY, EARLIER_TASK_FROM_SOURCE.format(old=old))
-    if schedule.failed:
-        return _Step(EARLIER_TASK_KEY, EARLIER_TASK_KEPT.format(old=old))
-    try:
-        removed = scheduling.remove_task(task_name=old)
-    except (RuntimeError, OSError) as exc:
-        errors.keep("after_install: removing the earlier name's scheduled task", exc)
-        # remove_task's RuntimeError is its own worded sentence; anything
-        # else is said by its class (decision 190).
-        return _Step(EARLIER_TASK_KEY, EARLIER_TASK_FAILED.format(
-            old=old, problem=errors.said(exc, (RuntimeError,))), failed=True)
-    if not removed:
-        return _Step(EARLIER_TASK_KEY, EARLIER_TASK_NONE.format(old=old))
-    _note_removed(f"it was the earlier name's task, {old}, replaced by {new}")
-    return _Step(EARLIER_TASK_KEY, EARLIER_TASK_REMOVED.format(old=old, new=new))
-
-
 class _Busy(Exception):
     """This run could not have the step's lock; the sentence saying why."""
 
@@ -1131,17 +683,9 @@ def _run(*, reason: str, start: str | None = None, every: int | None = None,
     once. The caller holds the step's lock.
     """
     ran_at = dt.datetime.now().isoformat(timespec="seconds")
-    # The rename's settings carry-over (SPEC-rename 3.1) runs before anything
-    # reads the settings file, so this same run uses what it copied.
-    carried_settings = _carry_over_settings()
     unusable = _save_choice(start, every) if start is not None or every is not None else ""
     preference, unreadable = _saved_preference()
     root, refused = _saved_root()
-    # The first job (R9): what decision 186 lists to move, from beside the
-    # program into the folder the store now lives in, before the schedule,
-    # the check and the cache - the store and the check must find the
-    # checkpoint where 186 expects it. 186's delete group is not touched.
-    moving = _move_what_186_lists(root)
     if refused:
         schedule = _Step(scheduling.NO_ROOT, refused, failed=True)
         check = _Step(CHECK_FAILED_KEY, refused, failed=True)
@@ -1151,14 +695,10 @@ def _run(*, reason: str, start: str | None = None, every: int | None = None,
         else:
             schedule = _schedule(root, preference)
         check = _check(root)
-    # After the schedule has registered the new name (SPEC-rename 3.2).
-    earlier_task = _replace_earlier_task(schedule)
-    carried = [carried_settings.sentence, earlier_task.sentence]
     cache = _clear_test_cache(checkout)
     # The last job before the record (P218, S3): never a failure.
     overview = "" if refused else _ready_the_overview(root, reason, check)
-    failed = list(dict.fromkeys(step.sentence for step in (carried_settings, moving, schedule,
-                                                           earlier_task, check, cache)
+    failed = list(dict.fromkeys(step.sentence for step in (schedule, check, cache)
                                 if step is not None and step.failed))
     identity = "" if failed else program_identity()
     now = designation_now(root)
@@ -1169,16 +709,12 @@ def _run(*, reason: str, start: str | None = None, every: int | None = None,
             "program": identity, "ran_at": ran_at, "reason": reason, "schedule": schedule.key,
             "designated": now if isinstance(now, str) else None,
             "preference": _preference_record(preference),
-            "findings": list(check.findings), "failed": failed, "carried": carried,
+            "findings": list(check.findings), "failed": failed,
         })
     except OSError:
         failed.append(RECORD_UNWRITABLE.format(file=record_path()))
         identity = ""
-    # The carry-over's sentences lead (a failed one is said here, once).
-    lines = list(carried)
-    if moving is not None and not moving.failed:
-        lines.append(moving.sentence)
-    lines.append(schedule.sentence)
+    lines = [schedule.sentence]
     if check.sentence != schedule.sentence:
         lines.append(check.sentence)
     lines += [f"  {finding}" for finding in check.findings]
@@ -1194,7 +730,7 @@ def _run(*, reason: str, start: str | None = None, every: int | None = None,
                         check_sentence=check.sentence, schedule_host=schedule.host,
                         cache_sentence=cache.sentence if cache is not None else "",
                         overview_sentence=overview,
-                        findings=check.findings, carried=tuple(carried),
+                        findings=check.findings,
                         failed=tuple(failed), program=identity, command=schedule.command,
                         xml=schedule.xml, lines=tuple(lines))
 
@@ -1202,15 +738,13 @@ def _run(*, reason: str, start: str | None = None, every: int | None = None,
 def read_record() -> dict | None:
     """The note of the last run, or ``None`` when there is none a program
     could trust (missing, unreadable, not one object) - which is the same as
-    never having run. A note written before the rename has no ``carried``
-    (SPEC-rename 3.3): it reads as nothing carried over."""
+    never having run."""
     try:
         data = json.loads(record_path().read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return None
     if not isinstance(data, dict):
         return None
-    data.setdefault("carried", [])
     return data
 
 

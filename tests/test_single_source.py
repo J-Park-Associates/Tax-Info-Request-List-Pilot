@@ -4190,24 +4190,6 @@ def test_the_runbook_says_where_the_fallback_error_log_is_and_to_delete_it_by_ha
         assert part in note, part
 
 
-def test_the_runbook_quotes_every_sentence_of_the_rename_carry_over():
-    """SPEC-rename section 8: the runbook's "After the rename (P155)" says
-    what the first start after the upgrade does, quoting each carry-over
-    sentence exactly - the task's with the two names filled in, the settings
-    file's with its paths and problem left as placeholders."""
-    from tracker import after_install, scheduling, settings
-
-    runbook = " ".join(read("docs/runbook.md").split())
-    note = runbook.split("**After the rename (P155).**", 1)[1].split("**It only runs while someone is logged on.**", 1)[0]
-    for name in ("SETTINGS_FROM_SOURCE", "SETTINGS_IN_PLACE", "SETTINGS_BOTH", "SETTINGS_NO_EARLIER",
-                 "SETTINGS_CARRIED", "SETTINGS_CARRY_FAILED", "EARLIER_TASK_KEPT", "EARLIER_TASK_REMOVED",
-                 "EARLIER_TASK_NONE", "EARLIER_TASK_FAILED", "EARLIER_TASK_FROM_SOURCE"):
-        sentence = getattr(after_install, name)
-        if name.startswith("EARLIER_TASK"):
-            sentence = sentence.replace("{old}", settings.EARLIER_PRODUCT_NAME).replace("{new}", scheduling.TASK_NAME)
-        for part in re.split(r"\{\w+\}", sentence):
-            assert part.strip() in note, (name, part)
-
 # ========== P155 Q3 (SPEC-rename R9, 7.4): the program is "the app" to a person ==========
 
 #: What "tracker" may still be in something a person reads: the internal names
@@ -4239,7 +4221,7 @@ def _calls_the_program_the_tracker(text: str) -> bool:
 #: its reason (SPEC-rename 7.4).
 _NAMES_NOT_SENTENCES = {
     # The pilot's name before the rename, the one home of it (R1): a name,
-    # which the carry-over's sentences put beside the words "earlier name".
+    # typed by the installer script and the Windows check scripts.
     "tracker.settings.EARLIER_PRODUCT_NAME",
     # The redirect probe's file name (F7, P193, R1): a name no person reads,
     # written and removed in one breath.

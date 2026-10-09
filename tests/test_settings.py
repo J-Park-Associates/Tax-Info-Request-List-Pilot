@@ -676,20 +676,6 @@ def test_the_earlier_product_name_is_the_pilots_old_name_not_the_current_or_prod
     assert data_rules.EARLIER_PRODUCT_NAME != "Tax Document Tracker"
 
 
-def test_the_earlier_settings_path_is_under_local_app_data_programs(tmp_path, monkeypatch):
-    """Where the earlier installer put the program, and settings.json beside
-    it; None where there is no LOCALAPPDATA to look in."""
-    from pathlib import Path
-
-    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
-    assert data_rules.earlier_settings_path() == (
-        Path(tmp_path) / "Programs" / data_rules.EARLIER_PRODUCT_NAME / SETTINGS_FILENAME)
-    monkeypatch.setenv("LOCALAPPDATA", "")
-    assert data_rules.earlier_settings_path() is None
-    monkeypatch.delenv("LOCALAPPDATA")
-    assert data_rules.earlier_settings_path() is None
-
-
 def test_the_data_folder_keeps_its_name_through_the_rename():
     """R3: the data folder holds the store, the checkpoint and the run log,
     and a scheduled pass can start between the upgrade and the app's first
