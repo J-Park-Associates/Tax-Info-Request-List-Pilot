@@ -474,7 +474,7 @@ def open(path: Path | str) -> sqlite3.Connection:  # noqa: A001 - the checkpoint
 def _opened(path: Path) -> sqlite3.Connection:
     conn = _connect(path)
     # Closed on any failure, never left to the garbage collector: see
-    # _close_after_failure (decision 159, Windows).
+    # close_after_failure (decision 159, Windows).
     try:
         version = conn.execute("PRAGMA user_version").fetchone()[0]
         if 0 < version < CHECKPOINT_VERSION:

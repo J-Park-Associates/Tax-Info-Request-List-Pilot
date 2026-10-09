@@ -387,7 +387,7 @@ def test_one_call_is_one_transaction_over_the_journal_and_the_tables(conn, root,
         "SELECT applied_seq FROM engagements WHERE id = ?", mine).fetchone()[0] == 3
 
 
-def test_a_failure_after_the_journal_leaves_the_store_behind_and_sync_catches_it_up(
+def test_a_failure_after_the_journal_leaves_the_store_behind_and_catch_up_catches_it_up(
         conn, root, by_hand, monkeypatch):
     """The journal-then-apply guarantee: the line survives, the tables lag,
     and nothing has to be reconstructed from anything but the journal."""
@@ -1405,7 +1405,7 @@ def test_one_record_of_several_scan_lines_keeps_the_last(conn, root, by_hand):
 
 def test_the_writer_and_the_check_use_one_rule(conn, root):
     """Forty seeded journals of mixed-spelling scans, each written as a few
-    batches - some by ``record()``, some appended and then ``sync()``-ed -
+    batches - some by ``record()``, some appended and then ``catch_up()``-ed -
     and the store the batches left agrees with the check, as does a store
     rebuilt from nothing (decision 138). The seed is fixed so a failure
     names the same journal every run."""
@@ -2213,7 +2213,7 @@ def test_a_catch_up_with_nothing_to_apply_takes_no_lock(root, by_hand, tmp_path)
     waits on the same immediate lock. A store that has applied every line
     is answered from a look that takes no lock: with another connection
     holding ``BEGIN IMMEDIATE`` - and no patience at all for waiting on it -
-    the caught-up store's catch-up, sync and top-up all still answer."""
+    the caught-up store's catch-up and top-up still answer."""
     path = tmp_path / "shared" / store.STORE_FILENAME
     looker, the_pass = store.open(path), store.open(path)
     try:
@@ -2221,7 +2221,6 @@ def test_a_catch_up_with_nothing_to_apply_takes_no_lock(root, by_hand, tmp_path)
         looker.execute("PRAGMA busy_timeout = 0")
         the_pass.execute("BEGIN IMMEDIATE")
         try:
-            assert store.catch_up(looker, root, by_hand) == 1
             assert store.catch_up(looker, root, by_hand) == 1
             assert store.follow_the_journal(looker, root, by_hand) == 1
             assert not looker.in_transaction

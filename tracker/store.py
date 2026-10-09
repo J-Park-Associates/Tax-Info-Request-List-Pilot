@@ -2324,11 +2324,10 @@ def catch_up(conn: sqlite3.Connection, root: Path | str, engagement_dir: Path | 
     anyway, so this costs it one parse - and, when there is nothing to
     apply, no lock (:func:`_look_then_catch_up`).
     """
-    return _look_then_catch_up(conn, root, engagement_dir, build=True)
+    return _look_then_catch_up(conn, root, engagement_dir)
 
 
-def _look_then_catch_up(conn: sqlite3.Connection, root: Path | str, engagement_dir: Path | str,
-                        *, build: bool) -> int:
+def _look_then_catch_up(conn: sqlite3.Connection, root: Path | str, engagement_dir: Path | str) -> int:
     """:func:`_catch_up` behind a look that takes no lock.
 
     ``filer.ensure()`` runs :func:`catch_up` after nearly every action in
@@ -2358,7 +2357,7 @@ def _look_then_catch_up(conn: sqlite3.Connection, root: Path | str, engagement_d
                           engagement_path(key_root(engagement_dir, root), engagement_dir))
         return row["applied_seq"]
     with _transaction(conn):
-        return _catch_up(conn, root, engagement_dir, build=build, known=look)
+        return _catch_up(conn, root, engagement_dir, build=True, known=look)
 
 
 def _catch_up(conn: sqlite3.Connection, root: Path | str | None, engagement_dir: Path | str,
@@ -2389,7 +2388,7 @@ def _catching_up(conn: sqlite3.Connection, root: Path | str | None, engagement_d
 
     ``build`` is what an engagement the store does not hold gets: a first
     build from the lines (a reader's top-up, :func:`catch_up`) or the
-    refusal :func:`catch_up` and :func:`record` give. A refusal raised here
+    refusal :func:`record` gives. A refusal raised here
     rolls the caller's transaction back, and nothing was written.
 
     ``known`` is the look :func:`_look_then_catch_up` made outside; it
