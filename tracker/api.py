@@ -1632,7 +1632,9 @@ def _vocab() -> dict:
     sentence pattern of its own: it reads this once and derives everything
     (chip classes from the status key, a set-aside row from the override
     value and its label from the row's year, the parked list from the
-    decision value, the picker from candidates).
+    decision value, the picker from candidates). That holds for every key
+    below, so the comments do not repeat it: each says only whose words it
+    is and which decision put it here.
     """
     error_log = _error_log_said()
     return {
@@ -1766,7 +1768,7 @@ def _vocab() -> dict:
         # The name tier's words (decision 128), from the two modules that
         # own them: the three kinds of person, the labels each is shown
         # under, the two refusals, and what the card says and offers where
-        # a page named nobody. The page types none of them.
+        # a page named nobody.
         "people": {
             "label": PEOPLE_LABEL,
             "help": PEOPLE_HELP,
@@ -1809,8 +1811,7 @@ def _vocab() -> dict:
             "engagement_label_pattern": ENGAGEMENT_LABEL_PATTERN,
         },
         # Every word the household's card, its roll fold, the Add a return
-        # and New household dialog and the misfit list show. The page types
-        # none of them.
+        # and New household dialog and the misfit list show.
         "household": {
             "heading": HOUSEHOLD_HEADING,
             "name_label": HOUSEHOLD_NAME_LABEL,
@@ -1846,8 +1847,8 @@ def _vocab() -> dict:
             "two_open_years": TWO_OPEN_YEARS_NOTE,
             "editable": list(HOUSEHOLD_EDITABLE),
             # The sharing checklist and the firm's dated word about it
-            # (decision 126). The page shows these and types none of them;
-            # the three lines themselves arrive filled, in `checklist`.
+            # (decision 126); the three lines themselves arrive filled, in
+            # `checklist`.
             "sharing_heading": SHARING_HEADING,
             "sharing_note": SHARING_NOTE,
             "mark_shared": MARK_SHARED_LABEL,
@@ -1868,8 +1869,7 @@ def _vocab() -> dict:
             "roll_forms_unloaded": ROLL_FORMS_UNLOADED,
             # The feed list (decision 129): what this drop folder also
             # feeds, who feeds it, the word that adds one, and the two
-            # warnings a person reads before extending either. The page
-            # shows them and types none of them.
+            # warnings a person reads before extending either.
             "feeds_label": FEEDS_LABEL,
             "feeds_help": FEEDS_HELP,
             "feeds_line": FEEDS_LINE,
@@ -1891,7 +1891,7 @@ def _vocab() -> dict:
         "engagement_flag": ENGAGEMENT_FLAG,
         "commands": sorted(COMMANDS),
         # The commands that change something, so the shell can say a killed
-        # one may be partly done (SHELL_KILLED_WRITE); it types none itself.
+        # one may be partly done (SHELL_KILLED_WRITE).
         "writing_commands": sorted(WRITING_COMMANDS - {PASS_COMMAND}),
         # The menu bar's words and the new screen's (SPEC-shell 11.3-11.4):
         # every label, heading and tooltip of the shell, five words or fewer.
@@ -1954,7 +1954,7 @@ def _vocab() -> dict:
             "draft_day": WEEKDAY_NAMES[DRAFT_WEEKDAY],
             "task_name": TASK_NAME,
             # The repair path (decision 209): the button's label and its
-            # tooltip, and the confirm dialog's words. The page types none.
+            # tooltip, and the confirm dialog's words.
             "repair": SCHEDULE_REPAIR_LABEL,
             "repair_help": SCHEDULE_REPAIR_HELP,
             "repair_confirm": SCHEDULE_REPAIR_CONFIRM.format(
@@ -1985,12 +1985,12 @@ def _vocab() -> dict:
         # two sentences the return's page, the warnings and the set-root
         # reply fill - ROOM_SHORT as information, ROOM_PARKS as a warning
         # (the lead's L-1) - and the heading the root dialog lists them
-        # under. The renderer types none.
+        # under.
         "room": {"short": ROOM_SHORT_WORDS, "parks": ROOM_PARKS_WORDS, "heading": ROOM_HEADING},
         "keyword_default_note": KEYWORD_DEFAULT_NOTE,
         # Every word and colour the Reminder card shows (decisions 115 and
-        # 118), from the module that owns the draft. The card types none of
-        # it: the four stages with the palette key each carries and where
+        # 118), from the module that owns the draft: the four stages with
+        # the palette key each carries and where
         # each spends its emphasis, the palette those keys name, the
         # colour a hold is said in and the three the letter's own surface
         # takes. A hex never reaches the renderer or the stylesheet.
@@ -2055,11 +2055,11 @@ def _vocab() -> dict:
             "paste_hint": EDITOR_PASTE_HINT, "warnings_heading": EDITOR_WARNINGS_HEADING,
             "saved": RULES_SAVED, "nothing_changed": NOTHING_CHANGED, "learned_note": LEARNED_NOTE,
             # Taking a taught keyword back is its own event, so it has its
-            # own button beside the word and its own sentence afterwards;
-            # the renderer types neither (decision 113).
+            # own button beside the word and its own sentence afterwards
+            # (decision 113).
             "unlearn_label": UNLEARN_LABEL, "unlearned_note": UNLEARNED_NOTE,
             # The rename (decision 160), its own act beside the list, as
-            # unlearning is; every word here, none in the renderer.
+            # unlearning is.
             "rename_title": RENAME_TITLE, "rename_hint": RENAME_HINT,
             "rename_from": RENAME_FROM_LABEL, "rename_to": RENAME_TO_LABEL,
             "rename": RENAME_LABEL, "renamed_note": RENAMED_NOTE, "rename_left_note": RENAME_LEFT_NOTE,
@@ -2998,6 +2998,16 @@ def file_group(entry: IndexEntry) -> str:
 
 
 def _state(engagement: Path) -> dict:
+    """Everything the app draws one return from, in one read (decision 194).
+
+    **Two rules hold for every key, so the comments below do not repeat
+    them.** The renderer types none of the words (they come from
+    :func:`_vocab`) and works none of the facts out: a count, a group, a
+    side, a year or a key arrives computed. And the shell opens only the
+    paths ``paths`` holds - it lstats before it acts - so every folder or
+    file a button opens is named there, each by a key the row carries, never
+    by a path on the row (P63).
+    """
     root = _saved_root()
     # The store is brought up to the record before anything is read, and
     # showing an engagement stays a read - the app shows one a pass is
@@ -3051,9 +3061,9 @@ def _state(engagement: Path) -> dict:
         # labels a set-aside row without reading the Period's text, and
         # the record's word for its status (decision 200), the key the
         # renderer shows through ``vocab.labels`` - "Not asked" for a row
-        # nobody asked for with nothing in (decision 142) - so it types
-        # none. An outstanding row carries whose move
-        # it is and the row's own sentence; any other row has no side.
+        # nobody asked for with nothing in (decision 142). An outstanding
+        # row carries whose move it is and the row's own sentence; any
+        # other row has no side.
         "items": [
             asdict(i) | {"received_date": i.received_date.isoformat() if i.received_date else None,
                          "year": i.year, "status_key": status_key(i),
@@ -3093,11 +3103,10 @@ def _state(engagement: Path) -> dict:
         # A request that cannot receive is a warning; a return merely short
         # of room is not (the lead's L-1): its names are cut to fit and
         # everything files, so the figure is information on its page.
-        "warnings": check_rules(items) + (
-            [ROOM_PARKS_WORDS.format(count=room.parks)] if room.parks else []),
+        "warnings": check_rules(items) + _room_parks(room),
         "room": {"need": room.need, "least": room.least, "floor": room.floor,
                  "short": room.short, "parks": room.parks, "limit": room.limit},
-        "room_note": ROOM_SHORT_WORDS.format(short=room.short) if room.short else "",
+        "room_note": ROOM_SHORT_WORDS if room.short else "",
         # The index's packed cells travel as data, not as text the app
         # would have to parse: the candidates as a list, the evidence as
         # the record it was written from keyed by candidate identifier,
@@ -3146,37 +3155,29 @@ def _state(engagement: Path) -> dict:
         "reminder_card": _reminder_said(engagement),
         # The household this return belongs to (decision 125): its own
         # record, the years still open across it, its returns and the one
-        # queue a person works. The card is drawn from this and types
-        # nothing of its own.
+        # queue a person works.
         "household": household,
         "paths": {
             "engagement": str(engagement),
             # The household's one inbox and the folder the client sees for
-            # the year, both in the tree a client is shared. The shell
-            # opens only the paths this map holds, so the two buttons that
-            # open them are named here.
+            # the year, both in the tree a client is shared.
             "inbox": str(inbox_of(engagement)),
             "originals": str(_originals_of(engagement)),
             "client_folder": str(client_household_dir(_root_of(engagement),
                                                       household_of(engagement).name)),
             "household": str(household_of(engagement)),
             "prepared": str(engagement / PREPARED_DIR_NAME),
-            # The one a person is meant to open. Named here as well as
-            # above because the shell opens only paths this map holds.
+            # The one a person is meant to open.
             "view": str(view_path),
-            # The week's draft, so the Reminder card's quiet button can
-            # open it (decision 118). Named here for the same reason the
-            # two above are: the shell opens only the paths this map
-            # holds, and the card names no path of its own.
+            # The week's draft, for the Reminder card's quiet button
+            # (decision 118).
             "draft": str(engagement / reminder.DRAFT_FILENAME),
             # The practice's page, not this engagement's: it lives in the
-            # clients root. Reported here because the shell opens only the
-            # paths the API has named, and a person looking at one
-            # engagement is one click from the whole practice.
+            # clients root, and a person looking at one engagement is one
+            # click from the whole practice.
             "status": str(root / STATUS_PAGE_FILENAME) if root else "",
             # Each parked document's review copy (decision 190), for its
-            # card's Open: named here because the shell opens only the
-            # paths this map holds, and never for a not-a-document row.
+            # card's Open - never for a not-a-document row.
             **{key: str(locate(engagement, e.prepared_location)) for e in entries
                if (key := _review_copy_key(e))},
             # The same copy, to be shown and never opened (F2).
@@ -3185,7 +3186,7 @@ def _state(engagement: Path) -> dict:
             # The working copy of each filed document, and where each
             # moved-by-hand copy is now: the file names on the page are
             # links that show that exact copy in File Explorer. Only paths
-            # the record already holds; the shell lstats before it acts.
+            # the record already holds.
             **{key: str(locate(engagement, where)) for e in entries
                if e.decision == FILED for key, where in zip(_filed_copy_keys(e), e.filed_locations, strict=True)},
             **{key: str(locate(engagement, moved_to(e))) for e in entries
@@ -3198,8 +3199,14 @@ def _room_sentences(room) -> list[str]:
     """What the reply to setting the root says about one return's room
     (decision 131), filled: the figure it is short by, as information, and
     the requests that cannot receive, as the warning they are."""
-    said = [ROOM_SHORT_WORDS.format(short=room.short)] if room.short else []
-    return said + ([ROOM_PARKS_WORDS.format(count=room.parks)] if room.parks else [])
+    return ([ROOM_SHORT_WORDS] if room.short else []) + _room_parks(room)
+
+
+def _room_parks(room) -> list[str]:
+    """The warning that some requests cannot receive a document for want of
+    room, or nothing (the lead's L-1: a return merely short of room is
+    information, not a warning)."""
+    return [ROOM_PARKS_WORDS.format(count=room.parks)] if room.parks else []
 
 
 def _reminder_payload(engagement: Path, triaged) -> dict:
@@ -4702,11 +4709,14 @@ def _seq_of(spec: dict) -> int:
     """The row's record version the app sent, refused when it sent none.
 
     Every review command is made from a card the app drew out of ``state``,
-    and every row there carries its own sequence number (decision 112). A
-    spec without one is a caller acting against no view of the record, so
-    it is refused here rather than passed to the filer, which treats
-    ``None`` as "nothing to be stale against" for the scripts and tests
-    that genuinely have no view.
+    and every row there carries its own sequence number (decision 112):
+    ``seq`` is the row as the person saw it, and a row somebody filed,
+    dismissed, re-filed or rewrote while the card was open is refused by the
+    filer with what the record now says, before a byte is read. A spec
+    without one is a caller acting against no view of the record, so it is
+    refused here rather than passed to the filer, which treats ``None`` as
+    "nothing to be stale against" for the scripts and tests that genuinely
+    have no view. The other handlers' docstrings point here.
     """
     seq = spec.get("seq")
     if seq is None:
@@ -4898,9 +4908,8 @@ def _cmd_assign(argv: list[str]) -> dict:
     that prints it confirms itself (decision 128), and the engagement is
     re-scanned so the status reflects it straight away.
 
-    The row is judged against the record it was picked from: ``seq`` is the
-    row's own sequence number as the card showed it, and a row rewritten
-    since is refused before a file is touched (decision 112). The shortlist
+    The row is judged against the record it was picked from (``seq`` is
+    required, :func:`_seq_of`). The shortlist
     the evidence points at is computed here, from the same row the filer
     will act on, and handed in, so a pick that overrules it is recorded on
     the row in words.
@@ -5034,9 +5043,7 @@ def _cmd_dismiss(argv: list[str]) -> dict:
     nothing moves: the working copy stays where it is and the client's
     original is untouched. Filing it afterwards is how the decision is undone.
 
-    ``seq`` is the row as the person saw it and is required (decision 112):
-    a row somebody filed or dismissed while the card was open is refused
-    with what the record now says.
+    ``seq`` is required (:func:`_seq_of`).
 
     There is no re-scan. The document was never filed under a request, so no
     row's status can change; re-scanning would take the lock again and read
@@ -5063,9 +5070,9 @@ def _cmd_unfile(argv: list[str]) -> dict:
     summary comes back in ``state`` - it is summarize() over the rows the
     re-scan has just left, and there is nowhere else it lives.
 
-    ``seq`` is the row as the person saw it and is required (decision 112):
-    a row somebody re-filed in between is a newer filing, and unfiling it
-    would undo a decision this person never saw.
+    ``seq`` is required (:func:`_seq_of`): a row somebody re-filed in between
+    is a newer filing, and unfiling it would undo a decision this person
+    never saw.
     """
     engagement = _engagement_dir(argv)
     spec = _read_spec()
@@ -5122,9 +5129,7 @@ def _cmd_restore(argv: list[str]) -> dict:
     row whose copy was simply deleted is accepted too, and the copy is made
     again from the original, as the pass would.
 
-    ``seq`` is the row as the person saw it and is required (decision 112),
-    as it is for the other three: a row the pass rewrote while the card was
-    open is refused before a byte is read.
+    ``seq`` is required (:func:`_seq_of`).
     """
     engagement = _engagement_dir(argv)
     spec = _read_spec()
@@ -6445,8 +6450,6 @@ COMMANDS = {
     "acknowledge-foreign": _cmd_acknowledge_foreign,
     "pilot-record": _cmd_pilot_record,
 }
-
-
 
 
 def main(argv: list[str]) -> int:

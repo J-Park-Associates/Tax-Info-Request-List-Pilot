@@ -1,6 +1,6 @@
 {
   "schema": 2,
-  "generated": "2026-10-08",
+  "generated": "2026-10-09",
   "generator": "tools/repo_map.py",
   "generator_sha256": "22c7b60a1d198289",
   "module_table_sha256": "c0a660acf371a340",
@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 446,
     "edges": 1232,
-    "reused": 398
+    "reused": 397
   },
   "node_types": [
     "artifact",
@@ -299,8 +299,8 @@
       "id": "tracker/api.py",
       "type": "module",
       "layer": "core",
-      "sha256": "a1fdb572aa2eac26",
-      "lines": 6537,
+      "sha256": "8507914817972c48",
+      "lines": 6540,
       "cli": "python -m tracker.api",
       "exports": [
         "ACCEPT_FOLDER_NAME_HELP",
@@ -6949,8 +6949,8 @@
       "id": "tests/test_api.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "0b57b92edc4e00dc",
-      "lines": 10422,
+      "sha256": "eca8aca2a517d8c4",
+      "lines": 10450,
       "exports": [
         "COUNTS",
         "DEEPER_ROOT_LENGTH",
@@ -7030,6 +7030,8 @@
         "test_a_name_whose_folder_was_deleted_by_hand_can_be_created_again",
         "test_a_new_client_engagement_is_named_from_client_year_and_form",
         "test_a_new_return_drops_a_households_old_link_with_the_reason_not_a_refusal",
+        "test_a_null_original_is_the_same_refusal_as_a_blank_one",
+        "test_a_null_text_field_reads_as_missing_and_other_values_as_their_text",
         "test_a_one_sided_related_link_is_repaired_by_saving_either_side",
         "test_a_packages_folder_windows_will_not_list_is_one_sentence_and_the_rest_still_shows",
         "test_a_page_filed_under_two_requests_has_its_open_keys_in_filed_names_order",
