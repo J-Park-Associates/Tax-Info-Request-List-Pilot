@@ -834,33 +834,19 @@ def stage_named(number: int) -> Stage:
 def client_ask(item: RequestItem) -> str:
     """One plain sentence telling the client what to do about ``item``.
 
-    Driven by the codes of the scanner's validation note (decision 190),
-    never by its words and never quoting it. A Partial row's sentence is
-    the count, and the row's own reason after it when the note carries a
-    client-side one. A Failed row's sentence still translates
-    here - the generic ask when nothing in the note is recognised - but
-    since decision 115 no pass asks it: :func:`triage` holds a Failed row
-    for a person instead, and this branch waits for the action that would
-    put one back to the client on a person's say-so.
+    Only a Partial row has one here: the count. A row whose note carries a
+    reason never reaches this - :func:`triage` has already sent a Failed row
+    (decision 115) and a Partial row with a reason to a person - so the
+    reason's own ask (:func:`_ask_for`) is the parked-file hold's, not this
+    sentence's. Any other status asks nothing.
     """
-    if item.status == Status.PARTIAL:
-        expected = item.expected_count
-        have = item.file_count or 0
-        missing = max(expected - have, 0)
-        ask = (PARTIAL_ASK.format(have=have, expected=expected, missing=missing)
-               if missing else PARTIAL_ASK_COMPLETE.format(have=have, expected=expected))
-        # A count alone hides why: the client who sent both W-2s, one of
-        # them password-protected, is told what to fix, not just "1 of 2".
-        reason = reasons.first_of(item.note_code_list)
-        if reason is not None and not reason.firm_side:
-            ask = f"{ask}; {_ask_for(reason, item)}"
-        return ask
-
-    if item.status != Status.FAILED:
+    if item.status != Status.PARTIAL:
         return ""
-
-    reason = reasons.first_of(item.note_code_list)
-    return _ask_for(reason, item) if reason else GENERIC_ASK
+    expected = item.expected_count
+    have = item.file_count or 0
+    missing = max(expected - have, 0)
+    return (PARTIAL_ASK.format(have=have, expected=expected, missing=missing)
+            if missing else PARTIAL_ASK_COMPLETE.format(have=have, expected=expected))
 
 
 def _ask_for(reason: reasons.Reason, item: RequestItem) -> str:

@@ -229,20 +229,6 @@ def test_partial_says_how_many_are_left():
     assert client_ask(SCANNED[1]) == PARTIAL_ASK.format(have=2, expected=3, missing=1)
 
 
-@pytest.mark.parametrize("note, expected_fragment", [
-    (failure("x.pdf", reasons.PASSWORD_PROTECTED.format()), reasons.PASSWORD_PROTECTED.client_ask),
-    (failure("x.gdoc", reasons.GOOGLE_STUB.format(extension="gdoc")), reasons.GOOGLE_STUB.client_ask),
-    (failure("x.pdf", reasons.TOO_SMALL.format(size_kb=0.1, minimum=5)), reasons.TOO_SMALL.client_ask),
-    (failure("x.zip", reasons.EXTENSION_NOT_ALLOWED.format(extension="zip", allowed="pdf")),
-     reasons.EXTENSION_NOT_ALLOWED.client_ask),
-    (failure("x.pdf", reasons.WRONG_DOCUMENT.format(listed="'W-2'")), reasons.WRONG_DOCUMENT.client_ask),
-    (failure("x.pdf", reasons.WRONG_PERIOD.format(pattern="2025")), reasons.WRONG_PERIOD.client_ask),
-])
-def test_failures_translate_to_a_plain_instruction(note, expected_fragment):
-    ask = client_ask(item("A01", "Doc", Status.FAILED, validation_notes=note))
-    assert expected_fragment in ask
-
-
 def test_internal_vocabulary_never_reaches_the_client(tmp_path):
     draft = draft_reminder(engagement(tmp_path), client_name="Dana")
     body = draft.body.lower()
@@ -2044,8 +2030,8 @@ def _filled(reason, text):
 
 def _what_the_letter_does(reason, text):
     """What one reason, its detail and its file named ``text``, makes the
-    letter do: the Failed row's ask, the hold of a parked row pointing at
-    A01, and where a Failed row goes."""
+    letter do: the hold of a parked row pointing at A01, and where a Failed
+    row goes."""
     from tests.test_review import parked_row
     from tracker.records import RULE_REQUIRED, WHERE_TITLE, Evidence
     from tracker.reminder import _parked_holds
@@ -2058,7 +2044,7 @@ def _what_the_letter_does(reason, text):
     lines, attention, held = triage([failed])
     holds = {identifier: (flag.reason, flag.confirm)
              for identifier, flag in _parked_holds(DROPPED, [row]).items()}
-    return (row.code, client_ask(failed), holds,
+    return (row.code, holds,
             [f.reason for f in attention], [f.reason for f in held], len(lines))
 
 
@@ -2067,7 +2053,7 @@ def test_no_client_text_can_change_what_a_row_means(reason):
     """Decision 190, the SPEC-167 cross product re-aimed. Every reason's
     placeholders, and the file's own name, filled with each other reason's
     marker - the words a search used to find another cause by - and the
-    row's code, the ask and the hold are exactly what they are with
+    row's code and the hold are exactly what they are with
     placeholders that say nothing."""
     plain = _what_the_letter_does(reason, "x")
     assert plain[0] == reason.code
@@ -2080,7 +2066,7 @@ def test_rows_written_before_190_read_as_cause_not_recorded():
     was not recorded, and nothing reads one back out of its words: a
     parked row holds where its shortlist names a request - the safe
     direction, since a person confirms it - and is asked with the generic
-    sentence; a Failed request's ask is the generic one and it is held."""
+    sentence; a Failed request is held."""
     from tests.test_review import parked_row
     from tracker.records import RULE_REQUIRED, WHERE_TITLE, Evidence
     from tracker.reminder import _parked_holds
@@ -2098,7 +2084,6 @@ def test_rows_written_before_190_read_as_cause_not_recorded():
     failed = item("A01", "W-2 Wage Statements", Status.FAILED,
                   validation_notes="x.pdf: " + str(reasons.NO_TEXT_LAYER.format()))
     assert failed.note_codes == ""
-    assert client_ask(failed) == GENERIC_ASK
     lines, attention, held = triage([failed])
     assert attention == [] and [f.reason for f in held] == [AMBIGUOUS_HOLD]
 
