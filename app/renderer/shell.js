@@ -1021,7 +1021,7 @@ function drawPage() {
 }
 
 // ── the setup page (SPEC 6.8) ─────────────────────────────────────────
-// The path is app.js's #root-input, kept for saveRoot(); what shows is the
+// The path is app.js's setupDraft.root, kept for saveRoot(); what shows is the
 // folder's own name, never its path.
 function folderName(path) {
   return path.split(/[\\/]/).filter(Boolean).pop() || "";
@@ -1029,30 +1029,30 @@ function folderName(path) {
 
 function setupPage() {
   const words = screenWords().setup;
-  const chosen = h("span", { id: "setup-chosen" }, folderName($("root-input").value));
-  const firm = h("input", { id: "setup-firm", type: "text", value: $("firm-input").value });
-  const phone = h("input", { id: "setup-phone", type: "text", value: $("phone-input").value });
-  const start = h("button", { id: "setup-start", type: "button", className: "btn btn-primary", disabled: !$("root-input").value.trim() }, words.start);
+  const chosen = h("span", { id: "setup-chosen" }, folderName(setupDraft.root));
+  const firm = h("input", { id: "setup-firm", type: "text", value: setupDraft.firm });
+  const phone = h("input", { id: "setup-phone", type: "text", value: setupDraft.phone });
+  const start = h("button", { id: "setup-start", type: "button", className: "btn btn-primary", disabled: !setupDraft.root.trim() }, words.start);
   const pick = h("button", { id: "setup-pick", type: "button", className: "btn" }, words.choose);
   pick.addEventListener("click", async () => {
     const picked = await window.tracker.pickFolder(words.title);
     if (!picked) return;
-    $("root-input").value = picked;
+    setupDraft.root = picked;
     chosen.textContent = folderName(picked);
     start.disabled = false;
   });
   // While set-root runs the page shows the outline below the form (P222).
   const wait = h("div", { className: "setup-wait", "aria-hidden": "true" });
   start.addEventListener("click", async () => {
-    $("firm-input").value = firm.value;
-    $("phone-input").value = phone.value;
+    setupDraft.firm = firm.value;
+    setupDraft.phone = phone.value;
     start.disabled = true;
     wait.replaceChildren(...shellSkeleton(3));
     $("page").setAttribute("aria-busy", "true");
     try {
       await saveRoot();
     } finally {
-      start.disabled = !$("root-input").value.trim();
+      start.disabled = !setupDraft.root.trim();
       wait.replaceChildren();
       if (shellRoute.level === "setup") $("page").setAttribute("aria-busy", "false");
     }
@@ -1092,8 +1092,8 @@ function shellNeedsRoot(on, listed) {
 // File › Change clients folder…
 function shellChangeRoot() {
   // app.js fills these two only at first run; saveRoot() sends them, so keep the saved values.
-  $("firm-input").value = vocab.firm || "";
-  $("phone-input").value = vocab.settings.phone || "";
+  setupDraft.firm = vocab.firm || "";
+  setupDraft.phone = vocab.settings.phone || "";
   shellGo({ level: "setup" });
 }
 

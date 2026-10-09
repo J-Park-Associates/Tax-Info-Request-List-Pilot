@@ -1882,6 +1882,9 @@ function applyVocabulary() {
 }
 
 let clientsRoot = "";      // the one folder every engagement sits under
+// What the setup page holds for saveRoot(): the folder chosen and the two
+// words the firm typed (shell.js fills it; nothing in the page keeps them).
+let setupDraft = { root: "", firm: "", phone: "" };
 
 async function loadEngagements(preferPath, asked) {
   const listed = await call(["list"]);
@@ -1893,9 +1896,7 @@ async function loadEngagements(preferPath, asked) {
   renderMachineNotices(listed);
   renderAfterInstall(listed.after_install);
   if (listed.needs_root) {
-    $("root-input").value = clientsRoot;
-    $("firm-input").value = vocab.firm || "";
-    $("phone-input").value = vocab.settings.phone || "";
+    setupDraft = { root: clientsRoot, firm: vocab.firm || "", phone: vocab.settings.phone || "" };
     shellNeedsRoot(true, listed);   // shell.js: the setup page, and its "Folder not found" notice
     return false;
   }
@@ -1987,9 +1988,9 @@ async function bootstrap(preferPath) {
 async function saveRoot() {
   try {
     const result = await call(["set-root"], {
-      root: $("root-input").value.trim(),
-      firm: $("firm-input").value.trim(),
-      phone: $("phone-input").value.trim(),
+      root: setupDraft.root.trim(),
+      firm: setupDraft.firm.trim(),
+      phone: setupDraft.phone.trim(),
     });
     // What the after-install step did with the schedule (decision 209): a
     // step that could not run is the setup notice, with its lines in the
@@ -3502,7 +3503,7 @@ async function saveEditor() {
   }
 }
 
-// ── the four dialogs: one way in, one way out (decision 201) ─────────────
+// ── the dialogs: one way in, one way out (decision 201) ───────────────────
 // Every dialog is in this registry, and every one opens through
 // openDialog and closes through requestClose - Cancel, Escape and a click
 // on the dim behind it alike (D10). A dialog with a model keeps a snapshot
@@ -3664,7 +3665,7 @@ function trapTab(e, id) {
   }
 }
 
-// ── the four dialogs the menu and the notices open (SPEC 2.7, E92-E95) ────
+// ── the three dialogs the menu and the notices open (SPEC 2.7, E92-E95) ───
 // Safeguards and About are Help's; the folders the walk left alone is a
 // notice's Show. Every word is the API's, and no path is drawn: a folder is
 // its own name (the last part of where it is), never where it is.

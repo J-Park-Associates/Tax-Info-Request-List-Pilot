@@ -598,8 +598,7 @@ def test_a_word_from_the_api_rebuilds_the_menu_only_when_it_differs(tmp_path):
 
 
 def test_the_window_paints_the_pages_colour_for_the_systems_theme(tmp_path):
-    css = {"pilot-ui.css": ":root { --window-light: #ffffff; }\n:root { --window-dark: #1b1e24; }\n",
-           "style.css": ":root { --bg: #f5f5f5; }"}
+    css = {"pilot-ui.css": ":root { --window-light: #ffffff; }\n:root { --window-dark: #1b1e24; }\n"}
     assert _run(tmp_path, [], css=css)["windowOptions"].get("backgroundColor") == "#ffffff"
     assert _run(tmp_path, [], css=css, dark=True)["windowOptions"].get("backgroundColor") == "#1b1e24"
     # A contrast theme paints its own.
@@ -608,9 +607,9 @@ def test_the_window_paints_the_pages_colour_for_the_systems_theme(tmp_path):
 
 def test_the_window_colour_is_read_defensively(tmp_path):
     # Without the names (the stylesheet before they exist) or without the file: never a thrown error.
-    older = {"pilot-ui.css": ":root { --other: #123456; }", "style.css": ":root { --bg: #f5f5f5; }"}
-    assert _run(tmp_path, [], css=older)["windowOptions"].get("backgroundColor") == "#f5f5f5"
-    none = {"pilot-ui.css": None, "style.css": None}
+    older = {"pilot-ui.css": ":root { --other: #123456; }"}
+    assert _run(tmp_path, [], css=older)["windowOptions"].get("backgroundColor") is None
+    none = {"pilot-ui.css": None}
     ran = _run(tmp_path, [], css=none)
     assert ran["windowOptions"].get("backgroundColor") is None and len(ran["menus"]) == 1
 

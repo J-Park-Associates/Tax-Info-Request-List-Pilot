@@ -803,7 +803,7 @@ ipcMain.on(MENU_CHANNEL, onMenuMessage);
 // defined - pilot-ui.css's --window-light and --window-dark - and left to the
 // page when a Windows contrast theme is on (it paints its own). Read
 // defensively: a stylesheet without the names (or without the file) gives
-// the older page background, then nothing, never a thrown error at start.
+// nothing, never a thrown error at start.
 function tokenColour(css, name) {
   const match = new RegExp(`${name}:\\s*(#[0-9a-fA-F]{3,8})`).exec(css);
   return match ? match[1] : undefined;
@@ -819,7 +819,7 @@ function pageBackground() {
     }
   };
   const name = nativeTheme.shouldUseDarkColors ? "--window-dark" : "--window-light";
-  return tokenColour(read("pilot-ui.css"), name) || tokenColour(read("style.css"), "--bg");
+  return tokenColour(read("pilot-ui.css"), name);
 }
 
 function createWindow() {

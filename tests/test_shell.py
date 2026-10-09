@@ -534,29 +534,29 @@ def test_shell_key_hands_escape_to_the_tip_first_wherever_the_focus_is(tmp_path)
     assert "tipShowing" not in read("tooltip.js") and "hideTip" not in js_function("shellKey")
 
 
-def test_the_skeleton_is_the_specs_and_the_legacy_box_holds_only_the_three_inputs_saveroot_reads():
+def test_the_skeleton_is_the_specs_and_no_hidden_box_is_used_as_a_variable():
     """SPEC 3.1 and 13. The pages took the toolbar, the banners, the request
     table, the household card and the setup card; the side sheet took the
     reminder, moved, review and filed cards; the dialogs took the roll fold
-    and the standing rules. What #legacy still holds is the three boxes
-    saveRoot() reads."""
+    and the standing rules. The three hidden boxes saveRoot() once read are
+    one object in app.js (setupDraft)."""
     html = read("index.html")
     for wanted in ('id="shell"', 'id="side"', 'id="side-brand"', 'id="side-sections"', 'id="side-foot"', 'id="last-sort"',
                    'id="main"', 'id="bar"', 'id="crumbs"', 'id="find-wrap"', 'id="find"', 'id="find-list"', 'id="sort"',
                    'id="notices"', 'id="page"', 'id="sheet"', 'id="sheet-scrim"', 'id="tip"', 'id="toast"'):
         assert wanted in html, wanted
     assert html.count('data-section="') == 4
-    assert re.search(r'<div id="legacy" class="hidden">', html)
-    outside = html[:html.index('<div id="legacy"')]
-    legacy = html[html.index('<div id="legacy"'):html.index('<div id="household-modal"')]
+    assert 'id="legacy"' not in html
+    outside = html[:html.index('<div id="household-modal"')]
     for gone in ("topbar", "brand-logo", 'id="eng-select"', "btn-scan", "btn-inbox", 'id="toolbar"', 'class="toolbar"', "eng-form", "view-state",
                  'id="banner"', 'id="reader-warning"', 'id="last-pass"', 'id="machine-warnings"', 'id="after-install"',
                  'id="lock-notice"', 'id="misfits-card"', 'id="room-card"', 'id="setup-card"', 'id="household-card"',
                  'id="rows"', 'id="summary"', 'id="pass-progress"', "btn-unlock", "btn-stop-pass", "household-returns",
                  "review-deck", "review-mode", "mode-toggle", "deck"):
-        assert gone not in outside and gone not in legacy, gone
-    for kept in ('id="root-input"', 'id="firm-input"', 'id="phone-input"'):
-        assert kept in legacy, kept
+        assert gone not in outside, gone
+    for gone in ('id="root-input"', 'id="firm-input"', 'id="phone-input"'):
+        assert gone not in html, gone
+    assert 'let setupDraft = { root: "", firm: "", phone: "" };' in read("app.js")
     for taken in ('id="reminder-card"', 'id="moved-card"', 'id="review-card"', 'id="filed-card"', 'id="assurances"', 'id="household-roll"',
                   'id="dismissed-card"', 'id="btn-open-draft"', 'id="reminder-hint"', 'id="reminder-heading"'):
         assert taken not in html, taken
@@ -688,40 +688,14 @@ def test_the_harness_is_never_loaded_by_the_app():
 
 # ── the style.css literals that still draw ────────────────────────────────
 
-#: Rules of style.css that write a literal colour and whose elements the
-#: shell removes; each needs no dark value because nothing draws it. S4 took
-#: the toolbar, the chips, the request table, the household card and the
-#: setup card away; S5 deleted the review list, the reminder card, the
-#: assurances and their rules: only :root is left.
-RETIRED = (":root",)
-
-
-def family(prop: str) -> str:
-    return prop.split("-")[0]
-
-
-def test_every_literal_colour_still_in_use_has_a_dark_value():
-    """SPEC 10.4: a rule of style.css with a literal colour whose selector
-    still matches markup is restated in pilot-ui.css through a token, selector
-    for selector, so the dark values reach it."""
-    restated: dict[str, set[str]] = {}
-    for _media, selector, body in blocks(read("pilot-ui.css")):
-        if selector.strip() == ":root":
-            continue
-        for part in selector.split(","):
-            restated.setdefault(" ".join(part.split()), set()).update(family(p) for p, _v in declarations(body))
-    checked = 0
-    for _media, selector, body in blocks(read("style.css")):
-        literal = {family(p) for p, v in declarations(body) if re.search(r"#[0-9a-fA-F]{3,8}\b|\brgba?\(", v)}
-        if not literal:
-            continue
-        for part in selector.split(","):
-            part = " ".join(part.split())
-            if part.startswith(RETIRED):
-                continue
-            checked += 1
-            assert literal <= restated.get(part, set()), f"{part}: style.css writes a literal {sorted(literal)}; pilot-ui.css does not restate it"
-    assert checked > 20
+def test_style_css_writes_no_literal_colour():
+    """SPEC 10.4: pilot-ui.css restated every literal colour of style.css
+    through a token, selector for selector, so the dark values reach it; once
+    each was overridden whole the literals were deleted. A colour written in
+    style.css again would be one with no dark value."""
+    literal = [(selector.strip(), prop) for _media, selector, body in blocks(read("style.css"))
+               for prop, value in declarations(body) if re.search(r"#[0-9a-fA-F]{3,8}\b|\brgba?\(", value)]
+    assert literal == []
 
 
 # ── node: the shell's own functions ───────────────────────────────────────
@@ -902,11 +876,10 @@ def test_the_menus_enable_list_follows_the_rules_of_the_template(tmp_path):
 def test_changing_the_clients_folder_keeps_the_firms_name_and_phone(tmp_path):
     setup = """
       const vocab = { firm: "Harbor Tax Partners", settings: { phone: "555-0100" } };
-      const fields = { "firm-input": { value: "" }, "phone-input": { value: "" } };
-      const $ = (id) => fields[id];
+      const setupDraft = { root: "", firm: "", phone: "" };
       let went = null; const shellGo = (route) => { went = route; };
     """
-    probe = 'shellChangeRoot(); return [fields["firm-input"].value, fields["phone-input"].value, went.level];'
+    probe = 'shellChangeRoot(); return [setupDraft.firm, setupDraft.phone, went.level];'
     assert run_shell(["shellChangeRoot"], setup, probe, tmp_path) == ["Harbor Tax Partners", "555-0100", "setup"]
 
 

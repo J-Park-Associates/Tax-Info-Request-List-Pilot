@@ -362,8 +362,10 @@ def test_the_renderer_builds_the_page_from_data_not_html():
 
 
 def test_the_window_colour_is_read_from_the_stylesheet():
-    assert re.search(r"--bg:\s*#", read("app/renderer/style.css"))
+    assert re.search(r"--window-light:\s*#", read("app/renderer/pilot-ui.css"))
+    assert re.search(r"--window-dark:\s*#", read("app/renderer/pilot-ui.css"))
     main_js = read("app/main.js")
+    assert "style.css" not in main_js
     assert "backgroundColor: pageBackground()" in main_js
     assert not re.search(r'backgroundColor:\s*"#', main_js)
 
@@ -4098,16 +4100,13 @@ def test_no_text_box_is_named_only_by_its_placeholder():
     label = _js_function(js, "function labelledInput(boxClass, words, inputClass) {")
     assert 'el("label", { className: boxClass ?' in label and 'className: inputClass' in label
     assert len(re.findall(r"\bkeywordBox\(\)", js)) == 3        # the builder and its two places
-    # The setup page (shell.js) builds its two boxes inside labels; the three
-    # inputs index.html keeps are hidden, for saveRoot(), and carry no name.
+    # The setup page (shell.js) builds its two boxes inside labels; index.html
+    # keeps no hidden input for them (saveRoot() reads setupDraft).
     shell = read("app/renderer/shell.js")
     assert 'h("label", { className: "setup-field" }, h("span", {}, vocab.settings.firm_label), firm)' in shell
     assert 'h("label", { className: "setup-field" }, h("span", {}, vocab.settings.phone_label), phone)' in shell
-    legacy = html[html.index('<div id="legacy" class="hidden">'):]
     for ident in ("phone-input", "firm-input", "root-input"):
-        assert f'<input id="{ident}"' in legacy, ident
-        tag = re.search(rf'<input id="{ident}"[^>]*>', html).group(0)
-        assert "placeholder=" not in tag and "aria-label=" not in tag, tag
+        assert ident not in html and ident not in js and ident not in shell, ident
 
 
 def test_the_issuer_action_has_one_call_site():
