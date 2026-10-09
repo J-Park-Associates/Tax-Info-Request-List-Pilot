@@ -6,8 +6,7 @@ guards every renderer file keeps, the words the new files may not type, and -
 run in node against the files' own functions, as the repository's other
 renderer tests do - the route, the search, the sort icon and the menu's
 enable list. The rendered claims (a screenshot of every scenario, light and
-dark, at both sizes) come from ``pilot/harness/shoot.mjs`` and are reported in
-``pilot/handoffs/shell-S3.md``.
+dark, at both sizes) come from ``pilot/harness/shoot.mjs``.
 
 This file is S3's part of SPEC section 14.1. S2 adds the menu half (the
 template, the ``menu`` channel, the first paint), S4 the pages' node tests and
@@ -2127,7 +2126,7 @@ def test_a_row_menu_offers_only_what_applies_and_the_page_answers_only_its_own_t
 #: What each right-click template must carry in main.js's POPUPS for the page's row menus to appear (S6's
 #: join of S2 and S8a; F13). main.js drops an id its template lacks, so a join that forgets one passes
 #: every renderer test and the item silently never shows. The renderer's side is pinned here; the join
-#: itself is the checklist in pilot/handoffs/shell-S5-rebuild-1.md (POPUPS lives on S2's branch).
+#: itself is the checklist of S6's join (POPUPS lives in main.js).
 JOIN_POPUPS = {
     "file": ["check", "not_requested", "another_return", "show_in_explorer"],
     "moved": ["check", "put_back", "keep_here", "show_in_explorer"],
@@ -3773,7 +3772,7 @@ def test_the_new_tokens_and_every_new_pair_meet_their_contrast_in_both_themes():
             assert ratio(fg, bg, theme) >= needs, (fg, bg, theme)
 
 
-# ── lane 4b review fold (pilot/reviews/lists-rulings.md: S2-S5, N3-N5) ──
+# ── lane 4b review fold (S2-S5, N3-N5 of that review) ──
 
 #: What the panel's probes need of a DOM beyond FAKE_DOM: focus, removal, a
 #: body, Floating UI's placement, and the two selectors the panel code asks.

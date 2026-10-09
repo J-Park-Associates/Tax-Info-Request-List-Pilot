@@ -53,4 +53,4 @@ original. The original's improvements come in only when Jason asks for a merge.
 - [`RELEASE.md`](RELEASE.md) - the Windows steps to build, check, tag and send.
 - [`Tester Guide.md`](<Tester Guide.md>) - what a tester is given.
 - `wintest/` - the Windows test kit (P28).
-- [`SPEC-glass.md`](SPEC-glass.md) - **withdrawn** (P50); kept as the record of the glass theme and Mica.
+- [`SPEC-cleanup.md`](SPEC-cleanup.md) - the current work: dead code, folds and repository residue.
