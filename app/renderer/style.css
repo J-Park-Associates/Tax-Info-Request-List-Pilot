@@ -4,7 +4,6 @@
 
 :root {
   --navy: #14335c;
-  --navy-deep: #0e2544;
   --blue: #2563eb;
   --blue-dark: #1d4ed8;
   --bg: #f5f7fa;
@@ -95,21 +94,6 @@ body {
 /* The row a notice is about, outlined on every redraw until it is dismissed. */
 .refused { outline: 2px solid #b91c1c; outline-offset: -2px; }
 
-.card {
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  box-shadow: var(--shadow);
-  overflow: hidden;
-}
-
-.card-head {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  padding: 14px 18px 10px;
-}
-.card-head h3 { font-size: 15px; font-weight: 600; color: var(--navy); }
 .summary { font-size: 12.5px; color: var(--subtle); }
 
 /* ── The reminder (decision 118) ─────────────────────────────────────── */
@@ -308,7 +292,6 @@ body {
 .tmpl-item:hover { background: #f8fafc; }
 .tmpl-item input { cursor: pointer; accent-color: var(--blue); }
 
-.tmpl-id { font-weight: 700; color: var(--navy); width: 36px; flex-shrink: 0; }
 .tmpl-doc { font-weight: 600; }
 .tmpl-rules { display: block; font-weight: 400; font-size: 12px; color: var(--subtle); }
 
@@ -348,9 +331,7 @@ body {
 .editor-table input:focus-visible,
 .editor-table select:focus-visible { outline: 2px solid var(--blue); outline-offset: 1px; }
 .editor-table .ed-id { width: 44px; }
-.editor-table .ed-identifier input { min-width: 64px; }
-.editor-table .ed-expected_count input,
-.editor-table .ed-min_size_kb input { min-width: 56px; width: 64px; }
+.editor-table .ed-expected_count input { min-width: 56px; width: 64px; }
 .editor-table .ed-document input { min-width: 180px; }
 .editor-table .ed-learned { font-size: 12px; color: var(--subtle); white-space: nowrap; }
 /* One taught keyword and the button that takes it back (decision 113). */
@@ -421,8 +402,6 @@ body {
 
 /* The dialog's form step — tax form type picker */
 
-.wiz-sub { font-size: 13px; color: var(--subtle); margin: -8px 0 14px; }
-
 .form-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
@@ -453,7 +432,6 @@ body {
 
 .form-num { font-size: 17px; font-weight: 700; color: var(--navy); }
 .form-who { font-size: 13px; font-weight: 600; color: var(--muted); }
-.form-blurb { font-size: 12px; color: var(--subtle); }
 
 /* The dialog's request list — chosen-form header */
 
@@ -463,16 +441,6 @@ body {
   justify-content: space-between;
   gap: 10px;
   margin: -6px 0 14px;
-}
-
-.chosen-badge {
-  font-size: 12.5px;
-  font-weight: 700;
-  color: var(--blue-dark);
-  background: #eff6ff;
-  border: 1px solid #bfdbfe;
-  border-radius: 999px;
-  padding: 4px 12px;
 }
 
 .wiz-back {
@@ -618,7 +586,6 @@ body {
    outline. Nothing here changes the normal appearance. */
 @media (forced-colors: active) {
   .btn,
-  .card,
   .modal {
     border: 1px solid CanvasText;
   }

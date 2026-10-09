@@ -550,7 +550,6 @@ function pagesActivate(list, row, byKey) {
   row.setAttribute("aria-selected", "true");
   list.setAttribute("aria-activedescendant", row.id);
   if (row.scrollIntoView) row.scrollIntoView({ block: "nearest" });
-  if (typeof showTipNow !== "function") return;
   hideTip();
   const status = byKey ? row.querySelector(".row-status [data-tip], .row-status[data-tip]") : null;
   if (status) showTipNow(status);
@@ -573,11 +572,9 @@ function pagesRunStep(step) {
   else if (step.kind === "edit") {
     if (!locked) openEditor(step.identifier);
   } else if (step.kind === "check") {
-    if (typeof openCheck === "function") openCheck(step.ret, step.name, step.handle);
-    else unanswered("check");
+    openCheck(step.ret, step.name, step.handle);
   } else if (step.kind === "draft") {
-    if (typeof openReminder === "function") openReminder(step.ret);
-    else unanswered("draft_reminder");
+    openReminder(step.ret);
   }
 }
 
@@ -1748,7 +1745,7 @@ function pagesDraw(route, page) {
   // review's S2): it is opened again on the same household's mark, or, when
   // that mark is gone, focus goes to the page's list rather than be lost.
   const panel = pagesPanel && route.level === pagesLastLevel ? { owner: pagesPanel.owner } : null;
-  if (typeof pagesClosePanel === "function") pagesClosePanel(false);
+  pagesClosePanel(false);
   pagesLastLevel = route.level;
   const key = pagesRouteKey(route);
   if (pagesDrawn !== key) pagesSetAsideOpen = false;   // Set aside is shut each time the page opens

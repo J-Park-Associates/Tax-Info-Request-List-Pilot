@@ -23,7 +23,7 @@
 //                       ask the firm's counts again if the state moved them
 // What this file calls in app.js: appRouteChanged(route), so the lock (a
 // notice) follows the return on screen.
-// What this file calls, if it exists (the pages are pages.js, the sheet sheet.js):
+// What this file calls in pages.js, sheet.js and app.js (all loaded before it):
 //   pagesDraw(route, page)   draw the route's page into #page
 //   pagesLeave()             the setup page took the screen: the pages' notices go
 //   pagesTally(state)        how many of each group a state holds
@@ -511,7 +511,7 @@ function shellHasClient() {
 function shellGo(next) {
   if (LEVELS.indexOf(next.level) === -1) throw new Error(next.level);
   if (shellRoute.level === "setup" && next.level !== "setup" && !shellRootSet) return Promise.resolve();   // the folder comes first
-  if (typeof closeSheet === "function") closeSheet();
+  closeSheet();
   hideFound();
   hideTip();   // tooltip.js: a tip goes with its page, even under a resting mouse (P202 R2)
   if (next.level === "setup") shellBack = shellRoute.level === "setup" ? shellBack : shellRoute;
@@ -571,7 +571,7 @@ function shellStateArrived(state) {
   // would say a write that worked had failed.
   try {
     shellDraw();
-    if (typeof sheetStateArrived === "function") sheetStateArrived(state);   // sheet.js: the file answered leaves, the next comes
+    sheetStateArrived(state);   // sheet.js: the file answered leaves, the next comes
     if (!shellCountsDiffer(state)) return;
     // A load sent after the last write landed may already hold what this
     // state shows (after a Sort, the list's own load): it is remembered and
@@ -588,7 +588,7 @@ function shellStateArrived(state) {
 function shellCountsDiffer(state) {
   const firm = shellFirmNow.data;
   const mine = firm && state.paths ? firm.returns.find((one) => one.path === state.paths.engagement) : null;
-  if (!mine || typeof pagesTally !== "function") return false;
+  if (!mine) return false;
   const tally = pagesTally(state);
   return Object.keys(tally).some((key) => tally[key] !== mine.counts[key]);
 }
@@ -617,7 +617,7 @@ function drawSide() {
   // panel stays enabled (SPEC 6.8).
   const off = shellRoute.level === "setup" && !shellRootSet;
   // A Client Type is the current item while Clients shows it (P153).
-  const type = shellRoute.level === "clients" && typeof pagesClientType === "string" ? pagesClientType : "";
+  const type = shellRoute.level === "clients" ? pagesClientType : "";
   for (const node of document.querySelectorAll(".side-section")) {
     const key = node.dataset.section;
     node.disabled = off;
@@ -950,8 +950,7 @@ function openFound(index) {
   $("find").value = "";
   hideFound();
   if (one.check) {
-    if (typeof openCheck === "function") openCheck(one.check.ret, one.check.name, one.check.handle);
-    else unanswered("check");
+    openCheck(one.check.ret, one.check.name, one.check.handle);
     return;
   }
   shellGo(one.route);
@@ -1024,7 +1023,7 @@ function drawPage() {
   const page = $("page");
   const route = shellRoute;
   if (route.level === "setup") {
-    if (typeof pagesLeave === "function") pagesLeave();
+    pagesLeave();
     page.setAttribute("aria-busy", "false");
     shellMarkUpdating(page, false);
     page.replaceChildren(...setupPage());
@@ -1044,7 +1043,7 @@ function drawPage() {
   shellMarkUpdating(page, updating);
   if (busy) {
     // The outline in its own page's grid: a return page borrows no list's (P222).
-    page.dataset.list = typeof pagesListOf === "function" ? pagesListOf(route) : "";
+    page.dataset.list = pagesListOf(route);
     page.replaceChildren(...shellLoading(routeTitle(), route.level));
     return;
   }
@@ -1052,11 +1051,7 @@ function drawPage() {
     drawTitleOnly(page);
     return;
   }
-  if (typeof pagesDraw === "function") {
-    pagesDraw(route, page);
-    return;
-  }
-  drawTitleOnly(page);
+  pagesDraw(route, page);
 }
 
 // ── the setup page (SPEC 6.8) ─────────────────────────────────────────
@@ -1265,10 +1260,10 @@ const MENU_ANSWERS = {
   clear_lock: () => clearLock(),
   tour: () => PilotTour.start(),
   terms: () => PilotTerms.show(),
-  roll_forward: () => (typeof openRoll === "function" ? openRoll() : unanswered("roll_forward")),
-  draft_reminder: () => (typeof openReminder === "function" ? openReminder() : unanswered("draft_reminder")),
-  safeguards: () => (typeof openSafeguards === "function" ? openSafeguards() : unanswered("safeguards")),
-  about: () => (typeof openAbout === "function" ? openAbout() : unanswered("about")),
+  roll_forward: () => openRoll(),
+  draft_reminder: () => openReminder(),
+  safeguards: () => openSafeguards(),
+  about: () => openAbout(),
 };
 
 function shellAnswer(id) {
@@ -1283,7 +1278,7 @@ function shellMenu(message) {
     return;
   }
   const id = String(message.id);
-  if (message.token && typeof pagesMenu === "function" && pagesMenu(id, message.token) !== false) return;
+  if (message.token && pagesMenu(id, message.token) !== false) return;
   shellAnswer(id);
 }
 
@@ -1321,12 +1316,12 @@ function shellKey(e) {
   if (e.target === $("find")) return findKey(e);
   if (e.key === "Escape") {
     if (dialogStack.length) return false;   // a dialog's own rule
-    if (typeof pagesPanelOpen === "function" && pagesPanelOpen()) {
+    if (pagesPanelOpen()) {
       e.preventDefault();
       pagesClosePanel(true);
       return true;
     }
-    if (!$("sheet").hidden && typeof closeSheet === "function") {
+    if (!$("sheet").hidden) {
       e.preventDefault();
       closeSheet();
       return true;
@@ -1338,7 +1333,7 @@ function shellKey(e) {
     }
     return false;
   }
-  if (e.target.closest && e.target.closest('[role="listbox"]') && typeof pagesKey === "function") return pagesKey(e) === true;
+  if (e.target.closest && e.target.closest('[role="listbox"]')) return pagesKey(e) === true;
   if (e.target.closest && e.target.closest(".col-head") && typeof pagesColumnKey === "function") return pagesColumnKey(e) === true;
   return false;
 }
@@ -1394,9 +1389,7 @@ $("find").addEventListener("focus", () => {
 document.addEventListener("click", (e) => {
   if (!e.target.closest("#find-wrap")) hideFound();
   // A click outside the Linked Households panel closes it (P171).
-  if (!e.target.closest("#link-panel") && !e.target.closest(".link-mark") && typeof pagesClosePanel === "function") pagesClosePanel(false);
+  if (!e.target.closest("#link-panel") && !e.target.closest(".link-mark")) pagesClosePanel(false);
 });
-$("sheet-close").addEventListener("click", () => {
-  if (typeof closeSheet === "function") closeSheet();
-});
-if (window.tracker.menu) window.tracker.menu.onCommand(shellMenu);
+$("sheet-close").addEventListener("click", () => closeSheet());
+window.tracker.menu.onCommand(shellMenu);

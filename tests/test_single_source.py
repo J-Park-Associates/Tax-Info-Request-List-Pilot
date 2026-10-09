@@ -125,7 +125,7 @@ def test_accept_and_file_it_are_one_call_site():
     """
     js = read("app/renderer/app.js")
     assert js.count('withEng("assign")') == 2
-    assert len(re.findall(r"\bfileRow\(", js)) == 3      # the one definition and its two callers
+    assert len(re.findall(r"\bfileRow\(", js)) == 2      # the one definition and its one caller
     # The hand-over's own call site is the only one that names a target,
     # and the two buttons that offer it both reach it.
     assert js.count("target: $(\"ho-return\").value") == 1
@@ -1974,10 +1974,9 @@ def test_every_review_action_the_renderer_sends_carries_the_rows_seq():
     # it was drawn on and hands it to that one function.
     sent = re.search(r'call\(withEng\("assign"\), \{(.*?)\}\)', js, re.S)
     assert sent and "seq" in sent.group(1)
-    for handler in ("assignParked", "keepMoved"):
-        body = re.search(rf"async function {handler}\(.*?\n\}}", js, re.S)
-        assert body, handler
-        assert "fileRow(" in body.group(0) and "dataset.seq" in body.group(0), handler
+    body = re.search(r"async function assignParked\(.*?\n\}", js, re.S)
+    assert body
+    assert "fileRow(" in body.group(0) and "dataset.seq" in body.group(0)
     # Every row builder puts it on the element the handlers read it back
     # from - since decision 190 one more: the row that is not a document.
     assert js.count("seq: e.seq") == 1 and js.count("seq: m.seq") == 2

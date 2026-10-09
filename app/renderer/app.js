@@ -588,9 +588,8 @@ function drawReminder(card) {
 // is the return on screen's.
 function reminderCardReady() {
   if (!reminderCard) return false;
-  const now = typeof sheetNow === "undefined" ? null : sheetNow;
-  if (!now || now.kind !== "reminder") return true;
-  return reminderCardFor === now.ret && now.ready === true;
+  if (!sheetNow || sheetNow.kind !== "reminder") return true;
+  return reminderCardFor === sheetNow.ret && sheetNow.ready === true;
 }
 
 // The hold, in the API's words: the rows' line, the inbox's line, or both.
@@ -780,22 +779,6 @@ async function restoreMoved(li, btn) {
     const notes = [`${r.original_name}: ${r.decision}`, r.reason];
     if (r.scan_note) notes.push(r.scan_note);
     outcome(notes.join(". ") + ".", r.parked_as || r.scan_note ? "warn" : "ok");
-  } catch (err) {
-    await refused(err, btn);
-  }
-}
-
-// Keeping the copy where it is, is a filing, so it is the filing command,
-// with the request the person left the picker on and the keyword they typed.
-async function keepMoved(li, btn) {
-  const identifier = li.querySelector("select").value;
-  if (!identifier) {
-    toastWord("pick_request");
-    return;
-  }
-  btn.disabled = true;
-  try {
-    await fileRow(li.dataset.original, identifier, Number(li.dataset.seq), typed(li, ".r-keyword"));
   } catch (err) {
     await refused(err, btn);
   }
@@ -1126,6 +1109,10 @@ async function fileWhereItWaits(original, seq, btn) {
   }
 }
 
+// Filing is one command for a parked file and for keeping a moved copy where
+// it is: the request the person left the picker on, the keyword they typed,
+// and the spelling box if the row drew one (a moved row draws none, so
+// nothing is taught there).
 async function assignParked(li, btn) {
   const identifier = li.querySelector("select").value;
   if (!identifier) {
@@ -1303,7 +1290,7 @@ function renderMisfits() {
   }
   const words = vocab.screen.notices;
   keyedNotice("misfits", { sentence: fill(words.skipped, { n: misfits.length }), kind: "warning" },
-    { action: { label: words.show, run: () => (typeof openMisfits === "function" ? openMisfits() : unanswered("misfits")) } });
+    { action: { label: words.show, run: () => openMisfits() } });
 }
 
 // ── the household's roll dialog (decisions 126 and 196) ────────────────────
@@ -2156,15 +2143,13 @@ async function saveSchedule() {
 // The shell's launch step ran in the background and finished (decision
 // 209, the review's S7): ask again for what it left, and show only that -
 // the rest of the page, and anything a person is editing, is left alone.
-if (window.tracker.onAfterInstallDone) {
-  window.tracker.onAfterInstallDone(async () => {
-    try {
-      renderAfterInstall((await call(["list"])).after_install);
-    } catch (err) {
-      failed(err);        // said by the one rule (decision 193), never its message
-    }
-  });
-}
+window.tracker.onAfterInstallDone(async () => {
+  try {
+    renderAfterInstall((await call(["list"])).after_install);
+  } catch (err) {
+    failed(err);        // said by the one rule (decision 193), never its message
+  }
+});
 
 // A failed sort as the banner says it (rulings 25 and 29): the API's failure word and
 // a short reason from the API by the kind of failure the pass reported, five
@@ -3848,7 +3833,7 @@ $("sheet").addEventListener("click", (e) => {
   const restore = on(".r-restore");
   if (restore) restoreMoved(li, restore);
   const keep = on(".r-keep");
-  if (keep) keepMoved(li, keep);
+  if (keep) assignParked(li, keep);
   const withdraw = on(".r-withdraw");
   if (withdraw) withdrawAnswer({ original: li.dataset.original, identifier: withdraw.dataset.identifier, seq: li.dataset.seq }, withdraw);
   const issuer = on(".r-add-issuer");

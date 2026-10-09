@@ -108,7 +108,7 @@
   --ease: cubic-bezier(0.2, 0, 0, 1); --dur: 150ms;
 
   /* the tour's spot ring: unchanged in both themes */
-  --amber: #f59e0b; --amber-deep: #d97706; --amber-soft: #fcd34d;
+  --amber: #f59e0b;
 
   /* kept names, so every rule already written picks up the right value */
   --bg: var(--bg-page);
@@ -116,16 +116,8 @@
   --muted: var(--text-secondary);
   --subtle: var(--text-caption);
   --navy: var(--accent);
-  --navy-deep: var(--accent-hover);
   --blue: var(--focus);
   --blue-dark: var(--focus);
-  --surface-hover: var(--bg-hover);
-  --surface-pressed: var(--bg-pressed);
-  --surface-selected: var(--bg-selected);
-  --surface-sunken: var(--bg-nav);
-  --surface-disabled: var(--bg-nav);
-  --danger-hover-bg: var(--err-bg);
-  --danger-border: var(--err-border);
 }
 
 /* ── Tokens, dark (P73) ──────────────────────────────────────────────────
@@ -179,7 +171,7 @@
     --scrim: rgba(0, 0, 0, 0.56);
     --scroll-thumb: #737f8e;
     --shadow-overlay: 0 8px 32px rgba(0, 0, 0, 0.48), 0 2px 8px rgba(0, 0, 0, 0.32);
-    --amber: #f59e0b; --amber-deep: #d97706; --amber-soft: #fcd34d;
+    --amber: #f59e0b;
   }
 }
 
@@ -203,15 +195,8 @@ button, input, select, textarea {
   line-height: var(--lh-body);
 }
 
-/* Titles that name a card or a dialog use the display cut. A dialog title is
-   H2, one step under the page's H1, so a dialog never out-shouts the page. */
-.card-head h3 {
-  font-family: var(--font-display);
-  font-size: var(--fs-h2);
-  line-height: var(--lh-h2);
-  font-weight: var(--fw-strong);
-  color: var(--accent);
-}
+/* A dialog title uses the display cut. It is H2, one step under the page's
+   H1, so a dialog never out-shouts the page. */
 .modal h3 {
   font-family: var(--font-display);
   font-size: var(--fs-h2);
@@ -229,7 +214,7 @@ button, input, select, textarea {
 /* Body size: every 13, 13.5, 14 and 15px of style.css. */
 .rem-hold, .rem-hold-rows li, .rem-subject,
 .editor-table,
-.field input, .field select, .tmpl-item, .form-who, .wiz-sub, .wiz-note,
+.field input, .field select, .tmpl-item, .form-who, .wiz-note,
 .wiz-check, .toast, .prior-item,
 .editor-table input, .editor-table select, .ed-paste textarea,
 .sc-radio, .household-feeds li,
@@ -244,7 +229,7 @@ button, input, select, textarea {
 .field span, .tmpl-head, .tmpl-rules, .editor-table th,
 .editor-table .ed-learned, .editor-table .ed-unlearn,
 .ed-set-aside > summary, .ed-paste summary,
-.ed-engagement legend, .form-blurb, .chosen-badge, .wiz-back, .prior-meta,
+.ed-engagement legend, .wiz-back, .prior-meta,
 .roll-return .roll-form span, .sc-choice legend {
   font-size: var(--fs-caption);
   line-height: var(--lh-caption);
@@ -254,8 +239,8 @@ button, input, select, textarea {
    user-agent bold of th, legend and strong. */
 th, legend, strong,
 .rem-stage[aria-pressed="true"],
-.req-id, .tmpl-head, .tmpl-id, .editor-table th, .side,
-.ed-engagement legend, .chosen-badge {
+.req-id, .tmpl-head, .editor-table th, .side,
+.ed-engagement legend {
   font-weight: var(--fw-strong);
 }
 
@@ -341,7 +326,6 @@ th, legend, strong,
 }
 
 /* Danger: removes, undoes or discards something. */
-.btn-danger,
 .dlg-discard,
 .hh-feed-remove,
 .ed-unlearn,
@@ -408,34 +392,18 @@ th, legend, strong,
 
 /* ── Surfaces: page, cards, rows, tables (P52, section 7) ────────────────── */
 
-/* A card never shrinks inside the scrolling column (P55). style.css has
-   .card { overflow: hidden } in a flex column, which lets every card, and the
-   toolbar's second row, collapse to a sliver when notices fill the window
-   instead of #page scrolling. Present in 0.1; fixed here, not in style.css. */
+/* Nothing shrinks inside the scrolling column (P55). A flex child with
+   overflow: hidden would let every block, and the toolbar's second row,
+   collapse to a sliver when notices fill the window instead of #page
+   scrolling. */
 #page > * { flex-shrink: 0; }
-
-.card {
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  box-shadow: none;
-}
-.card-head {
-  align-items: center;
-  padding: var(--sp-2) var(--sp-4);
-}
 
 .editor-actions { gap: var(--sp-2); }
 
 /* The chosen form's header row: labels never wrap inside a pill or a link;
    the row wraps between items instead. */
 .form-chosen { flex-wrap: wrap; row-gap: var(--sp-2); }
-.wiz-back, .chosen-badge { white-space: nowrap; }
-.chosen-badge:not(.hidden) { display: inline-flex; }
-.chosen-badge {
-  align-items: center;
-  min-height: var(--ctl-h-sm);
-  padding: 0 var(--sp-4);
-}
+.wiz-back { white-space: nowrap; }
 
 /* Two answers in two blocks: this one is set apart so its primary leads it
    (SPEC 5.7). Across the whole row, under the reasons. */
@@ -577,7 +545,6 @@ input[type="checkbox"], input[type="radio"],
 .tmpl-item:hover { background: var(--bg-hover); }
 .prior-item { border-bottom: 1px solid var(--border); }
 .prior-item:hover { background: var(--bg-hover); }
-.chosen-badge { background: var(--info-bg); border: 1px solid var(--info-border); }
 .wiz-back:hover { background: var(--bg-hover); }
 
 /* ── Motion (SPEC-shell 8.6): 150ms for hover, press, the sheet and a

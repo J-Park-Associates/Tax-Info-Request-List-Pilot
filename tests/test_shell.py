@@ -232,9 +232,7 @@ def test_the_kept_names_are_aliases_of_the_purpose_names():
     themes because the old names resolve through the new ones."""
     light, dark = root_blocks()
     aliases = {"--bg": "--bg-page", "--card": "--bg-raised", "--muted": "--text-secondary", "--subtle": "--text-caption",
-               "--navy": "--accent", "--navy-deep": "--accent-hover", "--blue": "--focus", "--blue-dark": "--focus",
-               "--surface-hover": "--bg-hover", "--surface-pressed": "--bg-pressed", "--surface-selected": "--bg-selected",
-               "--surface-sunken": "--bg-nav", "--surface-disabled": "--bg-nav"}
+               "--navy": "--accent", "--blue": "--focus", "--blue-dark": "--focus"}
     for old, new in aliases.items():
         assert light[old] == f"var({new})", old
         assert old not in dark, f"{old} resolves through {new}; the dark block does not repeat it"
@@ -482,7 +480,7 @@ def test_a_page_change_hides_a_showing_tip(tmp_path):
     setup = TIP_PAGE + read("tooltip.js") + """
       const LEVELS = ["overview", "needs-review", "reminders", "clients", "household", "year", "return", "setup"];
       let shellRoute = { level: "overview" }, shellBack = null, shellRootSet = true, shellPageBusy = false, shellPageFailed = false;
-      const hideFound = () => {}, appRouteChanged = () => {}, failed = (err) => { throw err; };
+      const hideFound = () => {}, appRouteChanged = () => {}, closeSheet = () => {}, failed = (err) => { throw err; };
       const atDraw = [];
       const shellDraw = () => { atDraw.push(tipBox.hidden); };
       const $ = () => ({ scrollTop: 0, focus() {} });
@@ -1536,7 +1534,7 @@ def test_an_error_after_the_state_arrives_never_reaches_the_write_that_brought_i
     """
     setup = """
       const said = []; const failed = (err) => said.push(err.message);
-      let shellDraw = null; let pagesTally = null;
+      let shellDraw = null; let pagesTally = null; const sheetStateArrived = () => {};
       const shellFirmNow = { data: { returns: [{ path: "r1", counts: {} }] } };
       const shellLoadFirm = () => {};
       const shellFirmSentAt = 0; const shellWroteAt = 0; const shellFirmHeld = new Map();
@@ -3901,8 +3899,8 @@ def test_overview_and_reminders_say_tax_year_taxpayer_and_form_type_once_each_in
     assert first['.col-table[data-list="overview"] .col-heads:not(.hidden)']["grid-template-columns"] == grid
     assert first['.col-table[data-list="reminders"] .col-heads:not(.hidden)']["grid-template-columns"] == grid
     css = read("shell.css")
-    tabular = next(body for _m, selector, body in blocks(css) if selector.strip().startswith(".tabular,"))
-    selector = next(selector for _m, selector, body in blocks(css) if selector.strip().startswith(".tabular,"))
+    tabular = next(body for _m, selector, body in blocks(css) if selector.strip().startswith(".side-count,"))
+    selector = next(selector for _m, selector, body in blocks(css) if selector.strip().startswith(".side-count,"))
     assert ".row-year" in selector and ".head-year" in selector and ".row-date" in selector and "tabular-nums" in tabular
     assert "monospace" not in css.lower()
 
@@ -4355,7 +4353,7 @@ def test_the_schedule_dialog_says_its_next_run_in_the_apps_clock_style(tmp_path)
     assert '$("sc-next").textContent = scheduleClock(current.next_run);' in js
     # The time in the sentence lines up as every date and time does (the
     # screen review's N4: tabular-nums, never a typewriter font).
-    selector = next(selector for _m, selector, _b in blocks(read("shell.css")) if selector.strip().startswith(".tabular,"))
+    selector = next(selector for _m, selector, _b in blocks(read("shell.css")) if selector.strip().startswith(".side-count,"))
     assert "#sc-next" in [part.strip() for part in selector.split(",")]
     assert "${scheduleClock(result.next_run)}" in js
     assert 'toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })' in js_function("pagesTime", "pages.js")
@@ -4598,7 +4596,7 @@ const asked = []; const notices = []; const drawn = [];
 const call = (args) => new Promise((resolve, reject) => asked.push({ args, resolve: (reply) => (reply.error ? reject(new TrackerError(reply)) : resolve(reply)) }));
 const firmOf = (n) => ({ returns: [{ path: "r1", counts: { needs_you: n } }], totals: {} });
 const stateOf = (n) => ({ paths: { engagement: "r1" }, counts: { needs_you: n } });
-const pagesTally = (state) => state.counts;
+const pagesTally = (state) => state.counts; const sheetStateArrived = () => {};
 let shellChanged = () => {};
 const notice = (failure) => notices.push(failure.sentence); const failureSentence = () => ""; const failed = (err) => { throw err; };
 const warningNotices = (list) => notices.push(...list);
