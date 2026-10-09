@@ -9,8 +9,8 @@
 // the page and which page. It types no word of its own: every name, tooltip
 // and line is the API's vocabulary (vocab.screen), and a word the vocabulary
 // lacks is a loud failure, never a guess. It builds the page from DOM nodes
-// only, with its own builder `h`, which sets only the attributes it names
-// (the pattern of app.js's `el`, decision 137).
+// only, with app.js's builder `el` (named `h` here), which sets only the
+// attributes it names (decision 137).
 //
 // What app.js calls (each one line in app.js, so the seam is visible):
 //   shellVocabulary()   the vocabulary has arrived or changed
@@ -21,9 +21,11 @@
 //   shellKey(e)         one keydown, before app.js's own (true = handled)
 //   shellStateArrived(state)  one return's state arrived: draw its page, and
 //                       ask the firm's counts again if the state moved them
-// What this file calls in app.js: appRouteChanged(route), so the lock (a
-// notice) follows the return on screen.
-// What this file calls, if it exists (the pages are pages.js, the sheet sheet.js):
+// What this file calls in app.js: the shared helpers el (as `h`),
+// storeRead/storeWrite, takeReply, shellWaiting() and the setupDraft object,
+// and appRouteChanged(route), so the lock (a notice) follows the return on
+// screen.
+// What this file calls in pages.js, sheet.js and app.js (all loaded before it):
 //   pagesDraw(route, page)   draw the route's page into #page
 //   pagesLeave()             the setup page took the screen: the pages' notices go
 //   pagesTally(state)        how many of each group a state holds
@@ -44,7 +46,6 @@
 
 const LEVELS = ["overview", "needs-review", "reminders", "clients", "household", "year", "return", "setup"];
 const FIRM_LEVELS = ["overview", "needs-review", "reminders", "clients"];
-const SIDE_KEYS = ["overview", "needs-review", "reminders", "clients"];
 const SCREEN_KEYS = { "needs-review": "needs_review" };
 const SOON_KEY = "tracker.underConstruction";   // this PC's own storage, never the record (P197)
 
@@ -109,30 +110,11 @@ function shellWords(key) {
   return String(at);
 }
 
-// ── a builder that sets only what it names ────────────────────────────
-const H_ATTRIBUTES = new Set([
-  "className", "id", "type", "disabled", "hidden", "tabindex", "role", "value", "dataset",
-  "aria-label", "aria-current", "aria-selected", "aria-expanded", "aria-busy", "aria-hidden",
-  "aria-labelledby", "aria-valuemin", "aria-valuemax", "aria-valuenow", "aria-live",
-  "aria-controls", "aria-description", "aria-keyshortcuts", "aria-disabled", "aria-pressed",
-  "aria-sort", "aria-haspopup",
-]);
-
+// ── the builder that sets only what it names ──────────────────────────
+// This file and pages.js build with app.js's `el` (its attribute list is the
+// union of what every file draws); `h` is its short name here.
 function h(tag, attrs = {}, ...children) {
-  const node = document.createElement(tag);
-  for (const [key, value] of Object.entries(attrs)) {
-    if (!H_ATTRIBUTES.has(key)) throw new Error(`h.${key}`);
-    if (value === undefined || value === null || value === false) continue;
-    if (key === "className") node.className = value;
-    else if (key === "dataset") Object.assign(node.dataset, value);
-    else if (typeof value === "boolean") node[key] = value;
-    else node.setAttribute(key, value);
-  }
-  for (const child of children.flat()) {
-    if (child === null || child === undefined || child === false) continue;
-    node.append(child instanceof Node ? child : String(child));
-  }
-  return node;
+  return el(tag, attrs, ...children);
 }
 
 // A drawn icon (SPEC 3.8) from the sprite in index.html.
@@ -314,15 +296,11 @@ function shellShowLast() {
   if (shellFollowsCounts()) shellDraw();
 }
 
-// The early reply, said as call() says any reply: its warnings as notices,
-// its error thrown.
+// The early reply, said as call() says any reply (takeReply).
 async function shellAdoptEarly(early) {
   const got = await early;
   if (got.err) throw got.err;
-  const reply = got.reply;
-  if (reply && Array.isArray(reply.warnings) && reply.warnings.length) warningNotices(reply.warnings);
-  if (reply.error) throw new TrackerError(reply, ["firm"]);
-  return reply;
+  return takeReply(got.reply, ["firm"]);
 }
 
 async function shellAskFirm() {
@@ -511,7 +489,7 @@ function shellHasClient() {
 function shellGo(next) {
   if (LEVELS.indexOf(next.level) === -1) throw new Error(next.level);
   if (shellRoute.level === "setup" && next.level !== "setup" && !shellRootSet) return Promise.resolve();   // the folder comes first
-  if (typeof closeSheet === "function") closeSheet();
+  closeSheet();
   hideFound();
   hideTip();   // tooltip.js: a tip goes with its page, even under a resting mouse (P202 R2)
   if (next.level === "setup") shellBack = shellRoute.level === "setup" ? shellBack : shellRoute;
@@ -571,7 +549,7 @@ function shellStateArrived(state) {
   // would say a write that worked had failed.
   try {
     shellDraw();
-    if (typeof sheetStateArrived === "function") sheetStateArrived(state);   // sheet.js: the file answered leaves, the next comes
+    sheetStateArrived(state);   // sheet.js: the file answered leaves, the next comes
     if (!shellCountsDiffer(state)) return;
     // A load sent after the last write landed may already hold what this
     // state shows (after a Sort, the list's own load): it is remembered and
@@ -588,7 +566,7 @@ function shellStateArrived(state) {
 function shellCountsDiffer(state) {
   const firm = shellFirmNow.data;
   const mine = firm && state.paths ? firm.returns.find((one) => one.path === state.paths.engagement) : null;
-  if (!mine || typeof pagesTally !== "function") return false;
+  if (!mine) return false;
   const tally = pagesTally(state);
   return Object.keys(tally).some((key) => tally[key] !== mine.counts[key]);
 }
@@ -617,14 +595,14 @@ function drawSide() {
   // panel stays enabled (SPEC 6.8).
   const off = shellRoute.level === "setup" && !shellRootSet;
   // A Client Type is the current item while Clients shows it (P153).
-  const type = shellRoute.level === "clients" && typeof pagesClientType === "string" ? pagesClientType : "";
+  const type = shellRoute.level === "clients" ? pagesClientType : "";
   for (const node of document.querySelectorAll(".side-section")) {
     const key = node.dataset.section;
     node.disabled = off;
     const here = key ? key === shellSection() && !type : Boolean(type) && node.dataset.type === type;
     if (here) node.setAttribute("aria-current", "page");
     else node.removeAttribute("aria-current");
-    if (key) node.setAttribute("aria-keyshortcuts", `Control+${SIDE_KEYS.indexOf(key) + 1}`);
+    if (key) node.setAttribute("aria-keyshortcuts", `Control+${FIRM_LEVELS.indexOf(key) + 1}`);
   }
   drawSoon();
 }
@@ -635,12 +613,7 @@ function drawSide() {
 // the choice while the app is open.
 function shellReadSoon() {
   if (shellSoonHidden !== null) return shellSoonHidden;
-  shellSoonHidden = false;
-  try {
-    shellSoonHidden = window.localStorage.getItem(SOON_KEY) === "hidden";
-  } catch (err) {
-    // Unreadable: shown, which shellSoonHidden now says.
-  }
+  shellSoonHidden = storeRead(SOON_KEY) === "hidden";   // unreadable: shown
   return shellSoonHidden;
 }
 
@@ -671,12 +644,7 @@ function drawSoon() {
 function shellToggleSoon() {
   const hide = !shellReadSoon();
   shellSoonHidden = hide;
-  try {
-    if (hide) window.localStorage.setItem(SOON_KEY, "hidden");
-    else window.localStorage.removeItem(SOON_KEY);
-  } catch (err) {
-    // Not kept past a restart; the choice holds while the app is open.
-  }
+  storeWrite(SOON_KEY, hide ? "hidden" : null);
   const held = document.activeElement;
   const lost = Boolean(hide && held && held.closest && held.closest(".side-section[data-soon]"));
   drawSoon();
@@ -950,8 +918,7 @@ function openFound(index) {
   $("find").value = "";
   hideFound();
   if (one.check) {
-    if (typeof openCheck === "function") openCheck(one.check.ret, one.check.name, one.check.handle);
-    else unanswered("check");
+    openCheck(one.check.ret, one.check.name, one.check.handle);
     return;
   }
   shellGo(one.route);
@@ -1024,7 +991,7 @@ function drawPage() {
   const page = $("page");
   const route = shellRoute;
   if (route.level === "setup") {
-    if (typeof pagesLeave === "function") pagesLeave();
+    pagesLeave();
     page.setAttribute("aria-busy", "false");
     shellMarkUpdating(page, false);
     page.replaceChildren(...setupPage());
@@ -1044,7 +1011,7 @@ function drawPage() {
   shellMarkUpdating(page, updating);
   if (busy) {
     // The outline in its own page's grid: a return page borrows no list's (P222).
-    page.dataset.list = typeof pagesListOf === "function" ? pagesListOf(route) : "";
+    page.dataset.list = pagesListOf(route);
     page.replaceChildren(...shellLoading(routeTitle(), route.level));
     return;
   }
@@ -1052,15 +1019,11 @@ function drawPage() {
     drawTitleOnly(page);
     return;
   }
-  if (typeof pagesDraw === "function") {
-    pagesDraw(route, page);
-    return;
-  }
-  drawTitleOnly(page);
+  pagesDraw(route, page);
 }
 
 // ── the setup page (SPEC 6.8) ─────────────────────────────────────────
-// The path is app.js's #root-input, kept for saveRoot(); what shows is the
+// The path is app.js's setupDraft.root, kept for saveRoot(); what shows is the
 // folder's own name, never its path.
 function folderName(path) {
   return path.split(/[\\/]/).filter(Boolean).pop() || "";
@@ -1068,30 +1031,30 @@ function folderName(path) {
 
 function setupPage() {
   const words = screenWords().setup;
-  const chosen = h("span", { id: "setup-chosen" }, folderName($("root-input").value));
-  const firm = h("input", { id: "setup-firm", type: "text", value: $("firm-input").value });
-  const phone = h("input", { id: "setup-phone", type: "text", value: $("phone-input").value });
-  const start = h("button", { id: "setup-start", type: "button", className: "btn btn-primary", disabled: !$("root-input").value.trim() }, words.start);
+  const chosen = h("span", { id: "setup-chosen" }, folderName(setupDraft.root));
+  const firm = h("input", { id: "setup-firm", type: "text", value: setupDraft.firm });
+  const phone = h("input", { id: "setup-phone", type: "text", value: setupDraft.phone });
+  const start = h("button", { id: "setup-start", type: "button", className: "btn btn-primary", disabled: !setupDraft.root.trim() }, words.start);
   const pick = h("button", { id: "setup-pick", type: "button", className: "btn" }, words.choose);
   pick.addEventListener("click", async () => {
     const picked = await window.tracker.pickFolder(words.title);
     if (!picked) return;
-    $("root-input").value = picked;
+    setupDraft.root = picked;
     chosen.textContent = folderName(picked);
     start.disabled = false;
   });
   // While set-root runs the page shows the outline below the form (P222).
   const wait = h("div", { className: "setup-wait", "aria-hidden": "true" });
   start.addEventListener("click", async () => {
-    $("firm-input").value = firm.value;
-    $("phone-input").value = phone.value;
+    setupDraft.firm = firm.value;
+    setupDraft.phone = phone.value;
     start.disabled = true;
     wait.replaceChildren(...shellSkeleton(3));
     $("page").setAttribute("aria-busy", "true");
     try {
       await saveRoot();
     } finally {
-      start.disabled = !$("root-input").value.trim();
+      start.disabled = !setupDraft.root.trim();
       wait.replaceChildren();
       if (shellRoute.level === "setup") $("page").setAttribute("aria-busy", "false");
     }
@@ -1131,8 +1094,8 @@ function shellNeedsRoot(on, listed) {
 // File › Change clients folder…
 function shellChangeRoot() {
   // app.js fills these two only at first run; saveRoot() sends them, so keep the saved values.
-  $("firm-input").value = vocab.firm || "";
-  $("phone-input").value = vocab.settings.phone || "";
+  setupDraft.firm = vocab.firm || "";
+  setupDraft.phone = vocab.settings.phone || "";
   shellGo({ level: "setup" });
 }
 
@@ -1265,10 +1228,10 @@ const MENU_ANSWERS = {
   clear_lock: () => clearLock(),
   tour: () => PilotTour.start(),
   terms: () => PilotTerms.show(),
-  roll_forward: () => (typeof openRoll === "function" ? openRoll() : unanswered("roll_forward")),
-  draft_reminder: () => (typeof openReminder === "function" ? openReminder() : unanswered("draft_reminder")),
-  safeguards: () => (typeof openSafeguards === "function" ? openSafeguards() : unanswered("safeguards")),
-  about: () => (typeof openAbout === "function" ? openAbout() : unanswered("about")),
+  roll_forward: () => openRoll(),
+  draft_reminder: () => openReminder(),
+  safeguards: () => openSafeguards(),
+  about: () => openAbout(),
 };
 
 function shellAnswer(id) {
@@ -1283,7 +1246,7 @@ function shellMenu(message) {
     return;
   }
   const id = String(message.id);
-  if (message.token && typeof pagesMenu === "function" && pagesMenu(id, message.token) !== false) return;
+  if (message.token && pagesMenu(id, message.token) !== false) return;
   shellAnswer(id);
 }
 
@@ -1321,12 +1284,12 @@ function shellKey(e) {
   if (e.target === $("find")) return findKey(e);
   if (e.key === "Escape") {
     if (dialogStack.length) return false;   // a dialog's own rule
-    if (typeof pagesPanelOpen === "function" && pagesPanelOpen()) {
+    if (pagesPanelOpen()) {
       e.preventDefault();
       pagesClosePanel(true);
       return true;
     }
-    if (!$("sheet").hidden && typeof closeSheet === "function") {
+    if (!$("sheet").hidden) {
       e.preventDefault();
       closeSheet();
       return true;
@@ -1338,7 +1301,7 @@ function shellKey(e) {
     }
     return false;
   }
-  if (e.target.closest && e.target.closest('[role="listbox"]') && typeof pagesKey === "function") return pagesKey(e) === true;
+  if (e.target.closest && e.target.closest('[role="listbox"]')) return pagesKey(e) === true;
   if (e.target.closest && e.target.closest(".col-head") && typeof pagesColumnKey === "function") return pagesColumnKey(e) === true;
   return false;
 }
@@ -1394,9 +1357,7 @@ $("find").addEventListener("focus", () => {
 document.addEventListener("click", (e) => {
   if (!e.target.closest("#find-wrap")) hideFound();
   // A click outside the Linked Households panel closes it (P171).
-  if (!e.target.closest("#link-panel") && !e.target.closest(".link-mark") && typeof pagesClosePanel === "function") pagesClosePanel(false);
+  if (!e.target.closest("#link-panel") && !e.target.closest(".link-mark")) pagesClosePanel(false);
 });
-$("sheet-close").addEventListener("click", () => {
-  if (typeof closeSheet === "function") closeSheet();
-});
-if (window.tracker.menu) window.tracker.menu.onCommand(shellMenu);
+$("sheet-close").addEventListener("click", () => closeSheet());
+window.tracker.menu.onCommand(shellMenu);

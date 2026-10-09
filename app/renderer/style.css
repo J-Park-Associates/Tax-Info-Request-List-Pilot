@@ -2,29 +2,11 @@
    Light, trustworthy financial-services aesthetic. Navy primary, generous
    whitespace, one row style. Segoe UI (native, offline-safe). */
 
-:root {
-  --navy: #14335c;
-  --navy-deep: #0e2544;
-  --blue: #2563eb;
-  --blue-dark: #1d4ed8;
-  --bg: #f5f7fa;
-  --card: #ffffff;
-  --border: #e2e8f0;
-  --text: #0f172a;
-  --muted: #475569;
-  --subtle: #64748b;
-  --radius: 10px;
-  --shadow: 0 1px 3px rgba(15, 23, 42, 0.08), 0 1px 2px rgba(15, 23, 42, 0.04);
-}
-
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
 html, body { height: 100%; }
 
 body {
-  font-family: "Segoe UI", "Segoe UI Variable", system-ui, -apple-system, sans-serif;
-  font-size: 15px;
-  line-height: 1.55;
   color: var(--text);
   background: var(--bg);
   display: flex;
@@ -36,42 +18,21 @@ body {
 
 .btn {
   display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 9px 16px;
   font: inherit;
-  font-size: 13.5px;
-  font-weight: 600;
-  color: var(--navy);
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: 8px;
   cursor: pointer;
-  box-shadow: var(--shadow);
-  transition: background-color 180ms ease, border-color 180ms ease, color 180ms ease;
 }
-.btn:hover { background: #f1f5f9; border-color: #cbd5e1; }
-.btn:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
-.btn:disabled { opacity: 0.55; cursor: default; }
 
 .btn-primary {
-  color: #fff;
   background: var(--blue);
   border-color: var(--blue);
 }
 .btn-primary:hover { background: var(--blue-dark); border-color: var(--blue-dark); }
 
-/* ── Banner + cards ──────────────────────────────────────────────────── */
+/* ── Banner ──────────────────────────────────────────────────────────── */
 
 .banner {
-  padding: 11px 16px;
-  border-radius: var(--radius);
-  font-size: 13.5px;
-  font-weight: 600;
   border: 1px solid;
 }
-.banner.ok    { background: #ecfdf5; border-color: #a7f3d0; color: #065f46; }
-.banner.warn  { background: #fffbeb; border-color: #fde68a; color: #92400e; }
 
 /* Notices (decision 193): each failure or warning stays until dismissed. */
 #notices { display: flex; flex-direction: column; gap: 6px; }
@@ -79,38 +40,13 @@ body {
 .notice {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 9px 14px;
-  border-radius: var(--radius);
-  font-size: 13.5px;
-  font-weight: 600;
   border: 1px solid;
 }
 .notice-text { flex: 1; white-space: pre-line; }
-.notice-failed  { background: #fef2f2; border-color: #fecaca; color: #991b1b; }
-.notice-stale   { background: #eff6ff; border-color: #bfdbfe; color: #1e3a8a; }
-.notice-locked  { background: #fffbeb; border-color: #fde68a; color: #92400e; }
-.notice-refused { background: #fef2f2; border-color: #fecaca; color: #991b1b; }
-.notice-warning { background: #fffbeb; border-color: #fde68a; color: #92400e; }
 /* The row a notice is about, outlined on every redraw until it is dismissed. */
-.refused { outline: 2px solid #b91c1c; outline-offset: -2px; }
+.refused { outline-offset: -2px; }
 
-.card {
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  box-shadow: var(--shadow);
-  overflow: hidden;
-}
-
-.card-head {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  padding: 14px 18px 10px;
-}
-.card-head h3 { font-size: 15px; font-weight: 600; color: var(--navy); }
-.summary { font-size: 12.5px; color: var(--subtle); }
+.summary { color: var(--subtle); }
 
 /* ── The reminder (decision 118) ─────────────────────────────────────── */
 /* Not one colour of the ladder is written here. The four stage colours,
@@ -119,14 +55,13 @@ body {
    --rem-ink, --rem-muted and --rem-paper on the elements below, so this
    file and the page alike stay free of a hex the design system owns. */
 
-.rem-status { font-size: 12.5px; color: var(--subtle); }
-.rem-hold { font-size: 13px; font-weight: 600; color: var(--stage-ink, var(--muted)); }
+.rem-status { color: var(--subtle); }
+.rem-hold { font-weight: 600; color: var(--stage-ink, var(--muted)); }
 .rem-hold-rows { list-style: none; margin: 8px 0 0; padding: 0; }
 .rem-hold-rows li {
   padding: 7px 0 7px 12px;
   border-left: 2px solid var(--stage-ink, var(--muted));
   margin-bottom: 6px;
-  font-size: 13px;
   color: var(--text);
 }
 .rem-hold-rows li:last-child { margin-bottom: 0; }
@@ -136,17 +71,13 @@ body {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 9px 12px;
   font: inherit;
-  font-size: 12.5px;
   font-weight: 600;
   text-align: left;
   color: var(--stage-ink, var(--muted));
   background: var(--card);
   border: 1px solid var(--border);
-  border-radius: 8px;
   cursor: pointer;
-  transition: background-color 180ms ease, border-color 180ms ease, color 180ms ease;
 }
 .rem-stage::before {
   content: "";
@@ -156,15 +87,13 @@ body {
   border-radius: 50%;
   background: var(--stage-ink, var(--muted));
 }
-.rem-stage .rem-stage-n { font-variant-numeric: tabular-nums; opacity: 0.75; }
-.rem-stage:hover { border-color: var(--stage-ink, #cbd5e1); background: #f8fafc; }
+.rem-stage .rem-stage-n { font-variant-numeric: tabular-nums; }
 .rem-stage:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
 /* Pressed is a ring and heavier ink, not a filled block: the card is where
    the stage is chosen and the letter is where it is spent, and four solid
    fills would make every rung equally loud. */
 .rem-stage[aria-pressed="true"] {
   color: var(--stage-ink, var(--muted));
-  font-weight: 700;
   background: var(--card);
   border-color: transparent;
   box-shadow: inset 0 0 0 2px var(--stage-ink, var(--muted));
@@ -176,15 +105,12 @@ body {
 .rem-stage[aria-pressed="true"]:disabled:hover { border-color: transparent; }
 
 .rem-edited {
-  font-size: 12.5px;
   color: var(--muted);
-  padding: 9px 12px;
-  background: #f8fafc;
   border: 1px solid var(--border);
   border-radius: 8px;
 }
 
-.rem-subject { font-size: 13.5px; font-weight: 600; color: var(--text); padding-bottom: 2px; }
+.rem-subject { font-weight: 600; color: var(--text); padding-bottom: 2px; }
 .rem-preview {
   font-family: Arial, Helvetica, sans-serif;
   font-size: 13px;
@@ -222,7 +148,7 @@ body {
 
 /* ── A request's identifier, in the editor ───────────────────────────── */
 
-.req-id { font-weight: 700; color: var(--navy); }
+.req-id { color: var(--navy); }
 
 /* ── Engagement picker ───────────────────────────────────────────────── */
 /* The status report's state, beside the engagement. One class per word
@@ -244,7 +170,6 @@ body {
 .modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(15, 23, 42, 0.45);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -257,33 +182,21 @@ body {
   max-height: calc(100vh - 64px);
   overflow-y: auto;
   background: var(--card);
-  border-radius: 14px;
-  padding: 22px 24px;
-  box-shadow: 0 20px 50px rgba(15, 23, 42, 0.35);
 }
 
-.modal h3 { font-size: 17px; color: var(--navy); margin-bottom: 14px; }
-
 .field { display: block; margin-bottom: 14px; }
-.field span { display: block; font-size: 12.5px; font-weight: 600; color: var(--muted); margin-bottom: 5px; }
+.field span { display: block; font-weight: 600; color: var(--muted); margin-bottom: 5px; }
 .field input {
   width: 100%;
   font: inherit;
-  font-size: 14px;
   padding: 9px 12px;
   border: 1px solid var(--border);
   border-radius: 8px;
   color: var(--text);
-  background: #fbfcfe;
 }
 .field input:focus-visible { outline: 2px solid var(--blue); outline-offset: 1px; }
 
 .tmpl-head {
-  font-size: 11.5px;
-  font-weight: 700;
-  letter-spacing: 0.5px;
-  text-transform: uppercase;
-  color: var(--subtle);
   margin: 14px 0 8px;
 }
 
@@ -299,18 +212,14 @@ body {
   align-items: baseline;
   gap: 10px;
   padding: 8px 12px;
-  border-bottom: 1px solid #eef2f7;
-  font-size: 13.5px;
   cursor: pointer;
   transition: background-color 150ms ease;
 }
 .tmpl-item:last-child { border-bottom: none; }
-.tmpl-item:hover { background: #f8fafc; }
 .tmpl-item input { cursor: pointer; accent-color: var(--blue); }
 
-.tmpl-id { font-weight: 700; color: var(--navy); width: 36px; flex-shrink: 0; }
 .tmpl-doc { font-weight: 600; }
-.tmpl-rules { display: block; font-weight: 400; font-size: 12px; color: var(--subtle); }
+.tmpl-rules { display: block; font-weight: 400; color: var(--subtle); }
 
 /* ── The request-list editor, and the dialog's custom rows (one component) ── */
 
@@ -320,54 +229,41 @@ body {
 .editor-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 13px;
 }
 .editor-table th {
   text-align: left;
-  font-size: 11.5px;
-  font-weight: 700;
-  letter-spacing: 0.3px;
-  color: var(--subtle);
-  padding: 6px 6px 6px 0;
-  border-bottom: 1px solid var(--border);
   white-space: nowrap;
 }
-.editor-table td { padding: 4px 6px 4px 0; vertical-align: middle; }
+.editor-table td { vertical-align: middle; }
 .editor-table input,
 .editor-table select {
   width: 100%;
   min-width: 72px;
   font: inherit;
-  font-size: 13px;
   padding: 6px 8px;
   border: 1px solid var(--border);
   border-radius: 6px;
   color: var(--text);
-  background: #fbfcfe;
 }
 .editor-table input:focus-visible,
 .editor-table select:focus-visible { outline: 2px solid var(--blue); outline-offset: 1px; }
 .editor-table .ed-id { width: 44px; }
-.editor-table .ed-identifier input { min-width: 64px; }
-.editor-table .ed-expected_count input,
-.editor-table .ed-min_size_kb input { min-width: 56px; width: 64px; }
+.editor-table .ed-expected_count input { min-width: 56px; width: 64px; }
 .editor-table .ed-document input { min-width: 180px; }
-.editor-table .ed-learned { font-size: 12px; color: var(--subtle); white-space: nowrap; }
+.editor-table .ed-learned { color: var(--subtle); white-space: nowrap; }
 /* One taught keyword and the button that takes it back (decision 113). */
 .editor-table .ed-learned-note { margin-right: 2px; }
 .editor-table .ed-learned-word { display: inline-flex; align-items: center; gap: 4px;
                                  margin: 0 4px 2px 0; }
-.editor-table .ed-unlearn { padding: 2px 6px; font-size: 11px; }
 .editor-table .ed-reason { display: flex; gap: 4px; }
 .editor-table .ed-reason select { min-width: 160px; }
 .editor-table .ed-reason input { min-width: 160px; }
 .ed-set-aside { margin-top: 8px; }
-.ed-set-aside > summary { cursor: pointer; font-size: 12.5px; color: var(--subtle); }
+.ed-set-aside > summary { cursor: pointer; color: var(--subtle); }
 .ed-set-aside .editor-table td { color: var(--subtle); }
 /* Whose move a row is, and a Set aside group's heading (decision 200):
    a bold word and its sentence as text, wrapped - never cut to an ellipsis. */
-.side { font-weight: 700; }
-.req-side { font-size: 12px; color: var(--subtle); white-space: normal; }
+.req-side { color: var(--subtle); white-space: normal; }
 .r-set-aside { color: var(--subtle); }
 .editor-table .ed-remove { text-align: right; }
 
@@ -380,11 +276,6 @@ body {
   margin-bottom: 8px;
 }
 .ed-engagement legend {
-  font-size: 11.5px;
-  font-weight: 700;
-  letter-spacing: 0.5px;
-  text-transform: uppercase;
-  color: var(--subtle);
   padding: 0 6px;
 }
 .ed-fields {
@@ -396,16 +287,14 @@ body {
 .ed-fields .wiz-check { margin: 4px 0 10px; }
 
 .ed-paste { margin-top: 14px; }
-.ed-paste summary { cursor: pointer; font-size: 12.5px; font-weight: 600; color: var(--muted); }
+.ed-paste summary { cursor: pointer; font-weight: 600; color: var(--muted); }
 .ed-paste textarea {
   width: 100%;
   font: inherit;
-  font-size: 13px;
   padding: 8px 10px;
   border: 1px solid var(--border);
   border-radius: 8px;
   color: var(--text);
-  background: #fbfcfe;
   resize: vertical;
 }
 .ed-paste textarea:focus-visible { outline: 2px solid var(--blue); outline-offset: 1px; }
@@ -414,14 +303,9 @@ body {
 
 .modal-actions {
   display: flex;
-  justify-content: flex-end;
-  gap: 10px;
-  margin-top: 18px;
 }
 
 /* The dialog's form step — tax form type picker */
-
-.wiz-sub { font-size: 13px; color: var(--subtle); margin: -8px 0 14px; }
 
 .form-grid {
   display: grid;
@@ -434,26 +318,13 @@ body {
   flex-direction: column;
   align-items: flex-start;
   gap: 2px;
-  padding: 14px 16px;
   font: inherit;
   text-align: left;
-  background: #fbfcfe;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
   cursor: pointer;
-  transition: border-color 150ms ease, background-color 150ms ease,
-    box-shadow 150ms ease;
 }
-.form-card:hover {
-  background: #eff6ff;
-  border-color: var(--blue);
-  box-shadow: var(--shadow);
-}
-.form-card:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
 
-.form-num { font-size: 17px; font-weight: 700; color: var(--navy); }
-.form-who { font-size: 13px; font-weight: 600; color: var(--muted); }
-.form-blurb { font-size: 12px; color: var(--subtle); }
+.form-num { color: var(--navy); }
+.form-who { font-weight: 600; color: var(--muted); }
 
 /* The dialog's request list — chosen-form header */
 
@@ -465,30 +336,9 @@ body {
   margin: -6px 0 14px;
 }
 
-.chosen-badge {
-  font-size: 12.5px;
-  font-weight: 700;
-  color: var(--blue-dark);
-  background: #eff6ff;
-  border: 1px solid #bfdbfe;
-  border-radius: 999px;
-  padding: 4px 12px;
-}
-
 .wiz-back {
-  border: none;
-  background: none;
   font: inherit;
-  font-size: 12.5px;
-  font-weight: 600;
-  color: var(--subtle);
-  cursor: pointer;
-  padding: 4px 6px;
-  border-radius: 6px;
-  transition: color 150ms ease, background-color 150ms ease;
 }
-.wiz-back:hover { color: var(--blue-dark); background: #f1f5f9; }
-.wiz-back:focus-visible { outline: 2px solid var(--blue); outline-offset: 1px; }
 
 /* ── Toast ───────────────────────────────────────────────────────────── */
 
@@ -497,12 +347,6 @@ body {
   bottom: 22px;
   right: 22px;
   max-width: 440px;
-  padding: 13px 18px;
-  background: #1e293b;
-  color: #f8fafc;
-  border-radius: var(--radius);
-  font-size: 13.5px;
-  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.35);
   z-index: 50;
 }
 
@@ -517,23 +361,20 @@ body {
 
 /* The roll fold's returns (the household card) */
 
-.wiz-note { font-size: 13px; color: var(--subtle); margin: 8px 0 0; }
+.wiz-note { color: var(--subtle); margin: 8px 0 0; }
 
 .prior-item {
   display: flex;
   align-items: baseline;
   gap: 10px;
   padding: 8px 12px;
-  border-bottom: 1px solid #eef2f7;
-  font-size: 13.5px;
   cursor: pointer;
   transition: background-color 150ms ease;
 }
 .prior-item:last-child { border-bottom: none; }
-.prior-item:hover { background: #f8fafc; }
 .prior-item input { cursor: pointer; accent-color: var(--blue); }
 .prior-name { font-weight: 600; flex: 1; }
-.prior-meta { font-size: 12px; color: var(--subtle); white-space: nowrap; }
+.prior-meta { color: var(--subtle); white-space: nowrap; }
 
 .roll-grid {
   display: grid;
@@ -544,12 +385,10 @@ body {
 .field select {
   width: 100%;
   font: inherit;
-  font-size: 14px;
   padding: 9px 12px;
   border: 1px solid var(--border);
   border-radius: 8px;
   color: var(--text);
-  background: #fbfcfe;
 }
 .field select:focus-visible { outline: 2px solid var(--blue); outline-offset: 1px; }
 
@@ -557,7 +396,6 @@ body {
   display: flex;
   align-items: flex-start;
   gap: 8px;
-  font-size: 13px;
   color: var(--muted);
   margin: 2px 0 6px;
   cursor: pointer;
@@ -566,9 +404,6 @@ body {
 
 .roll-grid.three { grid-template-columns: 1.2fr 1.6fr 1fr; margin-top: 0; }
 
-/* ── Small buttons ───────────────────────────────────────────────────── */
-.btn-small { padding: 5px 10px; font-size: 12.5px; }
-.banner.err { background: #fef2f2; border-color: #fecaca; color: #991b1b; }
 .banner.multi { white-space: pre-line; }
 
 .roll-grid.four { grid-template-columns: 1.2fr 0.6fr 1.6fr 1fr; margin-top: 0; }
@@ -584,7 +419,6 @@ body {
   align-items: center;
   gap: 8px;
   margin: 2px 0;
-  font-size: 13px;
   overflow-wrap: anywhere;
 }
 .feed-add { display: flex; gap: 6px; align-items: center; }
@@ -595,20 +429,20 @@ body {
 .roll-return { display: block; padding: 10px 12px; cursor: default; }
 .prior-head { display: flex; align-items: baseline; gap: 10px; cursor: pointer; }
 .roll-return .roll-form { display: block; margin: 8px 0 6px; }
-.roll-return .roll-form span { font-size: 12px; color: var(--subtle); }
-.roll-return input[type="checkbox"] { cursor: pointer; accent-color: var(--blue); }
+.roll-return .roll-form span { color: var(--subtle); }
+.roll-return input[type="checkbox"] { cursor: pointer; }
 
 /* ── Changes not saved (decision 201) ────────────────────────────────── */
 /* One bar per dialog, in the banner's warn colours: the dialog stays
    open until Keep editing or Discard my changes is pressed. */
-.dlg-unsaved { display: flex; align-items: center; gap: 8px; margin-top: 12px; }
+.dlg-unsaved { display: flex; align-items: center; }
 .dlg-unsaved.hidden { display: none; }
 
 /* The Schedule dialog (pilot P21): the on/off pair sits on one row, and
    greyed fields read as greyed. */
 .sc-choice { border: 0; padding: 0; margin: 0 0 14px; }
-.sc-choice legend { font-size: 12.5px; font-weight: 600; color: var(--muted); padding: 0; margin-bottom: 5px; }
-.sc-radio { display: inline-flex; align-items: center; gap: 6px; margin-right: 18px; font-size: 14px; }
+.sc-choice legend { font-weight: 600; color: var(--muted); padding: 0; margin-bottom: 5px; }
+.sc-radio { display: inline-flex; align-items: center; gap: 6px; margin-right: 18px; }
 .field input:disabled, .field select:disabled { opacity: 0.55; cursor: not-allowed; }
 
 /* Windows contrast themes (Microsoft Learn: "Contrast themes - Windows apps").
@@ -618,7 +452,6 @@ body {
    outline. Nothing here changes the normal appearance. */
 @media (forced-colors: active) {
   .btn,
-  .card,
   .modal {
     border: 1px solid CanvasText;
   }

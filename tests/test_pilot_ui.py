@@ -246,7 +246,7 @@ def test_the_tour_leads_with_next():
 
 
 def test_cards_never_shrink_inside_the_scrolling_column():
-    """P55: without it .card { overflow: hidden } collapses every card to a
+    """P55: without it a flex child with overflow: hidden collapses to a
     sliver when notices fill the window, instead of #page scrolling."""
     rules = {sel.strip(): dict(declarations(body)) for _m, sel, body in blocks(read(CSS_NAME))}
     assert rules["#page > *"]["flex-shrink"] == "0"
