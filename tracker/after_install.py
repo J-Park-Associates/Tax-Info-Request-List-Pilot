@@ -151,6 +151,7 @@ import datetime as dt
 import errno
 import hashlib
 import json
+import logging
 import os
 import shutil
 import stat
@@ -165,6 +166,8 @@ from tracker import checkpoint, door, errors, ledger, registry, runner, scheduli
 from tracker.content_check import RETIRED_CACHE_FILENAME
 from tracker.fsio import TEMP_SUFFIX, write_bytes_atomically, write_json_atomically
 from tracker.locking import EngagementLockedError, acquire_lock, release_lock, this_host
+
+log = logging.getLogger(__name__)
 
 #: The note of the last run, beside the store - in the data home (decision
 #: 186) - and named by ``runner.left_behind`` when an old copy is beside
@@ -1113,6 +1116,8 @@ def _remove_the_retired_caches(root: Path | None) -> _Step | None:
                 continue
             except OSError as exc:
                 errors.keep("after_install: removing the retired verdict cache", exc, name=path.name)
+                log.warning("Could not remove the retired verdict cache file %s (%s)",
+                            path.name, errors.error_class(exc))
                 continue
             removed += 1
     return _Step(RETIRED_CACHE_KEY, RETIRED_CACHE_REMOVED.format(n=removed)) if removed else None

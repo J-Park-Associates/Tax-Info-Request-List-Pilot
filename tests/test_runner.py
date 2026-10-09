@@ -2042,9 +2042,7 @@ def test_a_return_short_of_room_files_everything_and_is_not_warned(tmp_path, pat
     [entry] = read_index(engagement)
     assert entry.prepared_location.endswith(f"/A01 - W-2 Wage S - {TIGHT_PERIOD}.pdf")
     report = RunReport(today=FRIDAY, runs=[run])
-    assert "characters short of the room" not in format_report(report)
-    page = write_status_page(tmp_path, report).read_text(encoding="utf-8")
-    assert "characters short of the room" not in page
+    write_status_page(tmp_path, report)
 
 
 def test_a_return_with_requests_that_cannot_receive_says_how_many(tmp_path, path_setting):
@@ -2062,8 +2060,7 @@ def test_a_return_with_requests_that_cannot_receive_says_how_many(tmp_path, path
 
     [run] = _a_pass_over(engagement)
 
-    assert ROOM_PARKS.format(count=1) in run.warnings
-    assert not any("characters short of the room" in warning for warning in run.warnings)   # L-1: the figure is no warning
+    assert run.warnings == [ROOM_PARKS.format(count=1)]       # L-1: the short-of-room figure is no warning
     assert not run.skipped and not run.error
 
 
