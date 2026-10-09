@@ -2126,7 +2126,7 @@ def test_a_row_menu_offers_only_what_applies_and_the_page_answers_only_its_own_t
 #: What each right-click template must carry in main.js's POPUPS for the page's row menus to appear (S6's
 #: join of S2 and S8a; F13). main.js drops an id its template lacks, so a join that forgets one passes
 #: every renderer test and the item silently never shows. The renderer's side is pinned here; the join
-#: itself is the checklist of S6's join (POPUPS lives in main.js).
+#: itself is pinned in tests/test_shell_menu.py against main.js's POPUPS.
 JOIN_POPUPS = {
     "file": ["check", "not_requested", "another_return", "show_in_explorer"],
     "moved": ["check", "put_back", "keep_here", "show_in_explorer"],

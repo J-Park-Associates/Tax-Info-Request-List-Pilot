@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 254,
     "edges": 1233,
-    "reused": 0
+    "reused": 204
   },
   "node_types": [
     "artifact",
@@ -4475,8 +4475,8 @@
       "id": "pilot/HANDOFF.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "72092b2eef8f463a",
-      "lines": 59
+      "sha256": "07a096b78e562e11",
+      "lines": 79
     },
     {
       "id": "pilot/README.md",
@@ -4489,7 +4489,7 @@
       "id": "pilot/RELEASE.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "27378a3a23de8ac5",
+      "sha256": "52bb7eae08422ad0",
       "lines": 94
     },
     {
@@ -8956,7 +8956,7 @@
       "id": "tests/test_shell.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "df5e07a80390629f",
+      "sha256": "f4b927f11bd18669",
       "lines": 5587,
       "exports": [
         "COLUMN_FUNCTIONS",

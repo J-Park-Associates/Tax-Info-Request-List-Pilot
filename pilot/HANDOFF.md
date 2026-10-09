@@ -7,6 +7,9 @@ this repository; [`SPEC.md`](SPEC.md) says what it builds.
 
 ## Where the record is
 
+- **`main` is `213d876`** (pull request #32, the Sort & Scan speed round,
+  P216-P230); this branch is cut from it.
+
 - **Decisions live in [`DECISIONS.md`](DECISIONS.md), rows P1 to P237.** Code
   and tests cite those numbers, so a row is never renumbered or removed. Why
   a thing is the way it is: search the row, do not guess.
@@ -20,8 +23,8 @@ this repository; [`SPEC.md`](SPEC.md) says what it builds.
 [`SPEC-cleanup.md`](SPEC-cleanup.md): dead code, folds, bloat and repository
 residue, in seven jobs.
 
-1. Delete the repository residue (this handoff, the old `handoffs/`,
-   `reviews/` and `review/` folders, the design skill packs, the unused brand
+1. Delete the repository residue (the old handoff, rewritten as this note,
+   the old `handoffs/`, `reviews/` and `review/` folders, the design skill packs, the unused brand
    exports; P231, P232).
 2. The Electron side: folds, dead and overridden CSS, unreachable guards.
 3. Storage: the SQLite-helper fold, dead names, the schema changelog.
@@ -57,3 +60,20 @@ first.
 - Check once by hand that a tooltip does not outlive its page (hover a name,
   press Ctrl+4; P202), and that a laptop at 125-150 % display scaling opens
   within its screen (older than P203).
+
+## Left
+
+- F6 by hand needs the schedule on.
+- `run_checks.ps1` runs whole at the next Windows check.
+- The production tracker's own private copy under the Claude package, and its
+  `checkpoint-left-behind` pass, belong to its own repository.
+
+## Environment notes for cloud sessions
+
+`pip install -r requirements.lock` fails in the cloud container (a wheel will
+not build) and the system `cryptography` breaks `pypdf`. Use a fresh virtual
+environment and install only what the affected tests need:
+`pytest==9.1.1 ruff==0.16.9 pypdf==6.19.0 openpyxl==3.1.5`, plus
+`pdfplumber==0.11.10 pdfminer.six==20260107 pillow==12.3.0 pypdfium2==5.13.0
+charset-normalizer==3.5.1 cryptography==50.0.1 cffi==2.1.1 pycparser==3.0`
+(`test_api` and `test_build` fail without them).
