@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 254,
     "edges": 1232,
-    "reused": 0
+    "reused": 200
   },
   "node_types": [
     "artifact",
@@ -4297,7 +4297,7 @@
       "id": "CLAUDE.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "0175a800f78dc654",
+      "sha256": "4e75e96be53985f6",
       "lines": 330,
       "role": "Agent entry point. Says to read the map instead of re-scanning, how to keep it current, and the standing rules that hold across every module.",
       "notes": "Points at docs/repo-map.md as the first thing to read in a session."
@@ -4339,7 +4339,7 @@
       "id": "docs/repo-map.curated.json",
       "type": "file",
       "layer": "docs",
-      "sha256": "6d6e5a2fccbfec5e",
+      "sha256": "dd318f20d8dc6ec2",
       "lines": 1167,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
@@ -4357,10 +4357,10 @@
       "id": "docs/storage.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "3fcc8a5588314cc4",
-      "lines": 651,
-      "role": "The storage plan in prose: the three words (the record, the ledger, the store) and what each means, why the journal syncs with the engagement folder and the database does not, the journal-then-apply order, the schema table, the edit as the event the rules travel in, rebuild as recovery, the check as the gate, what each of the four stages took away, and (decision 107) why the verdict cache is in the store and not in the record.",
-      "notes": "Written with decision 101 and finished with 104. It is the page to read before touching storage. The migrations of decisions 102 and 103, which it described step by step, are gone from the tree and from this page; the History section says they existed and where their reading copy is."
+      "sha256": "0a1492bb883ba0fa",
+      "lines": 546,
+      "role": "The storage plan in prose: the three words (the record, the ledger, the store) and what each means, why the journal syncs with the engagement folder and the database does not, the journal-then-apply order, the schema table, the edit as the event the rules travel in, rebuild as recovery, the check as the gate, what the store is now and the later rules that hold (the working copy proved each pass, un-learning, the override reason, the applied chain), and (decision 107) why the verdict cache is in the store and not in the record.",
+      "notes": "Written with decision 101 and finished with 104. It is the page to read before touching storage. The stage-by-stage history of decisions 101 to 104 is not here: the page says what the store is now and points at the decision log for how it got there."
     },
     {
       "id": "docs/tools.md",
@@ -4660,8 +4660,8 @@
       "id": "requirements.txt",
       "type": "doc",
       "layer": "docs",
-      "sha256": "dcd55661976973d4",
-      "lines": 56,
+      "sha256": "7d2c593cd1ed470f",
+      "lines": 57,
       "role": "Runtime and dev dependencies, pinned exactly (a guard refuses a range), including the reader's runtime closure (decision 169) - rapidocr itself is in requirements-nodeps.txt. The human-edited list of direct pins: nothing installs it directly; every install reads requirements.lock, the whole tree by version and by SHA-256 (decision 191).",
       "notes": "requirements-build.txt adds the pinned freezer on top for Build App.bat; api_entry.spec is the committed freeze and app/package-lock.json the committed Electron install, so a build is made from the commit rather than from whatever was current that day (decision 46). olefile (decision 143) reads an Outlook .msg; pinned here and in requirements.lock, and frozen by the portable build. Decision 169 (R-11): rapidocr's metadata asks for the GUI opencv-python, so its real runtime dependencies are listed here with opencv-python-headless, and rapidocr is installed afterwards with --no-deps from requirements-nodeps.lock - by Setup.bat, Build App.bat, gate.yml, build.yml and the README's setup alike (tests/test_build.py pins both steps everywhere). Two pins carry markers: onnxruntime-gpu on Windows and the plain onnxruntime elsewhere (R-11b, CI has no card), numpy 2.5.3 from Python 3.12 and 2.4.6 for the 3.11 floor (R-11a). pytesseract is gone. Decision 191: constraints.txt is gone; four lock files (requirements.lock, requirements-build.lock, requirements-nodeps.lock, requirements-gpu.lock - not mapped, the map takes no .lock files) carry each pin with the hash of every file PyPI publishes for it, and tools/lockfiles.py check (run by tests/test_lockfiles.py) fails when a pin here and its lock disagree. A pin moves here and in its lock together, then `python tools/lockfiles.py hash`."
     },
@@ -6200,8 +6200,8 @@
       "id": "tests/test_content_check.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "7ea8bd77bf65d1f5",
-      "lines": 2788,
+      "sha256": "f10f54d08437f0dd",
+      "lines": 2790,
       "exports": [
         "A_PASS_READING",
         "BOMB_REFUSED",
@@ -6973,8 +6973,8 @@
       "id": "tests/test_irs_forms.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "2fe13a8d8708d896",
-      "lines": 292,
+      "sha256": "bae23f848b3fc7fc",
+      "lines": 293,
       "exports": [
         "EXPECT",
         "IRS",
@@ -7087,8 +7087,8 @@
       "id": "tests/test_learned_keywords.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "ff6e116a1cc1aff9",
-      "lines": 382,
+      "sha256": "e458f9c72d1ae3b0",
+      "lines": 383,
       "exports": [
         "CARRIED",
         "REPO",
