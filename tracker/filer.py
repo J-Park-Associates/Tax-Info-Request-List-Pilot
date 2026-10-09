@@ -7786,8 +7786,6 @@ if __name__ == "__main__":
     )
     ns = parser.parse_args()
     # A typed folder is parsed, never trusted (decision 188).
-    from tracker import door
-
     ns.engagement_dir = door.typed_return(parser, ns.engagement_dir)
 
     # One inbox feeds every return of the household (decision 125), so a

@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 254,
     "edges": 1229,
-    "reused": 200
+    "reused": 206
   },
   "node_types": [
     "artifact",
@@ -1091,8 +1091,8 @@
       "id": "tracker/filer.py",
       "type": "module",
       "layer": "core",
-      "sha256": "6ac77c1b1f8c06bf",
-      "lines": 7826,
+      "sha256": "f19c1e3ed2e1fa98",
+      "lines": 7824,
       "cli": "python -m tracker.filer",
       "exports": [
         "ALREADY_SPELLED",
