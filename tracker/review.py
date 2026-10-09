@@ -142,11 +142,9 @@ PLACE_STRENGTH: dict[str, int] = {
 #: suggestion whose row carries a **confirmed name**
 #: (:data:`tracker.records.RULE_NAME`) ranks ``IDENTITY_AGREES`` and sorts
 #: above every content tier; everything else is ``IDENTITY_UNKNOWN``.
-#: ``IDENTITY_AGREES_WRONG_YEAR`` stays reserved on purpose: the year is a
-#: *check* on a document and never evidence of which one it is (decision
-#: 40), so nothing may rank on it.
+#: The year never ranks: it is a *check* on a document and never evidence
+#: of which one it is (decision 40).
 IDENTITY_AGREES = 0
-IDENTITY_AGREES_WRONG_YEAR = 1
 IDENTITY_UNKNOWN = 2
 
 #: What the card says the page said about whose it is (decision 128). One
@@ -518,15 +516,10 @@ if __name__ == "__main__":
     )
     parser.add_argument("engagement_dir", help="the engagement folder")
     ns = parser.parse_args()
-    # A typed folder is parsed, never trusted: it must be a return's
-    # place under the checked clients root (decision 188).
+    # A typed folder is parsed, never trusted (decision 188).
     from tracker import door
-    from tracker.layout import LayoutError
 
-    try:
-        ns.engagement_dir = door.return_dir(Path(ns.engagement_dir).absolute())
-    except (door.DoorError, LayoutError) as exc:     # the door's own sentences
-        parser.error(str(exc))
+    ns.engagement_dir = door.typed_return(parser, ns.engagement_dir)
 
     from tracker.filer import ensure, read_index
 

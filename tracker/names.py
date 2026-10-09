@@ -74,7 +74,6 @@ NO_PEOPLE = "Add at Least One Person"
 NAME_CONFIRMED = "confirmed"
 NAME_VETOED = "another return's"
 NAME_ABSENT = "absent"
-NAME_OUTCOMES: tuple[str, ...] = (NAME_CONFIRMED, NAME_VETOED, NAME_ABSENT)
 
 #: The suffixes an entity's name may end with and still be the same entity.
 #: Both spellings of each are listed as a person would type them; they are
@@ -301,23 +300,3 @@ def check_name(
                 return NameVerdict(NAME_VETOED, other=spelling, other_label=label,
                                    where=where, page=page_number)
     return NameVerdict(NAME_ABSENT)
-
-
-# -------------------------------------------------------------------- CLI ----
-
-if __name__ == "__main__":
-    import argparse
-
-    from tracker.page import tolerant_console
-
-    tolerant_console()   # a client's name the console cannot encode is no traceback
-
-    parser = argparse.ArgumentParser(
-        description="What would the app propose as spellings of this name? Read-only."
-    )
-    parser.add_argument("name", help="the name as a person would type it")
-    parser.add_argument("--kind", default="taxpayer", help="one of the person kinds")
-    ns = parser.parse_args()
-
-    for proposal in propose_spellings(ns.name, ns.kind):
-        print(proposal)

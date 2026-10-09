@@ -329,9 +329,11 @@ he took the recommended option on all seven.
    Keep `.claude/settings.json`. → job 1.
 2. **P232.** Change `export.py` to stop writing the unused brand tiles and
    delete the 57 exported images. → job 1.
-3. **P233.** Drop the `__main__` blocks of `validators`, `names` and
-   `containers`; narrow the CLAUDE.md convention to "a module keeps a
-   command line when something runs it". → job 6, with the CLAUDE.md line.
+3. **P233.** Drop the `__main__` blocks nothing runs and narrow the
+   CLAUDE.md convention to "a module keeps a command line when something
+   runs it". → job 6, with the CLAUDE.md line. *Built as:* only `names`
+   lost its block; a test runs `validators` and `containers` in a
+   subprocess, which the analysis had missed, so under the rule they stay.
 4. **P234.** Move the decision-107 cache tidy-up from the pass into
    `after_install.run()`. → job 5 (the pass side) and job 4 (the
    after-install job), landed together.

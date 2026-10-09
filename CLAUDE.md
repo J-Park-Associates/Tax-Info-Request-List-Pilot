@@ -192,8 +192,9 @@ python -m ruff check .              # no dead code, no unused imports (CI runs t
 Conventions worth matching:
 
 - Python at the floor `pyproject.toml` declares, `pathlib.Path` throughout, standard library preferred.
-- One component per module, each with its own CLI under
-  `if __name__ == "__main__":` and its own `tests/test_<module>.py`.
+- One component per module, with its own `tests/test_<module>.py`. A module
+  keeps a CLI under `if __name__ == "__main__":` when the runbook, a batch
+  file, a tool or a test runs it, and has none otherwise (P233).
 - Module docstrings carry the *reasoning*, not just the description — the
   trade-off, the rejected alternative, the rule being upheld. Match that.
 - Fail loudly with context. A silent skip in a scheduled job surfaces at a

@@ -432,16 +432,11 @@ class ModuleTable:
 # ---------------------------------------------------------------- parsing ----
 
 
-def parse_python(text: str, path: str) -> tuple[list[str], list[tuple[str, str]], bool]:
-    """Exported names, (module, kind) imports, and whether it has a CLI."""
-    exports, imports, has_cli, _ = parse_python_full(text, path)
-    return exports, [(name, kind) for name, kind, _scope in imports], has_cli
-
-
 def parse_python_full(
     text: str, path: str
 ) -> tuple[list[str], list[tuple[str, str, str]], bool, dict[str, str]]:
-    """As parse_python, plus the module's literal constants and each import's scope.
+    """Exported names, imports with their scope, whether it has a CLI, and
+    the module's literal constants.
 
     Imports are ``(name, kind, scope)``. ``kind`` is ``import``, ``from`` (the
     module a from-import names) or ``from-name`` (that module joined to one
