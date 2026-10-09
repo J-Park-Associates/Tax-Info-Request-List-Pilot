@@ -782,14 +782,15 @@ def parts_below(outer: Path | str, inner: Path | str) -> tuple[str, ...] | None:
     spelling, which becomes a store key - a cache keyed by a ``Path``'s
     equality would answer one spelling with another's case.
     """
-    return _parts_below_of(type(outer).__name__, os.fspath(outer), type(inner).__name__, os.fspath(inner))
+    return _parts_below_of(type(outer).__name__, os.fspath(outer), os.fspath(inner))
 
 
 @functools.lru_cache(maxsize=8192)
-def _parts_below_of(outer_kind: str, outer_text: str, inner_kind: str,
+def _parts_below_of(outer_kind: str, outer_text: str,
                     inner_text: str) -> tuple[str, ...] | None:
-    """:func:`parts_below` of two paths given as their type's name and their
-    text: the key its cache holds."""
+    """:func:`parts_below` of two paths given as the outer one's type name
+    and both texts: the key its cache holds. The answer depends on the inner
+    text alone, never on the inner path's type."""
     top, below = _parts(outer_text), _parts(inner_text)
     if (outer_kind == "str" and outer_text in ("", ".")) or top == (os.curdir,):
         top = ()
@@ -857,19 +858,14 @@ def same_folder_name(a: str, b: str) -> bool:
     return str(a).casefold() == str(b).casefold()
 
 
-def names_one_folder(a: str, b: str) -> bool:
-    """Whether two names in one folder are one folder as the file system
-    compares them (``os.path.normcase``). What says a client folder is a
-    household's own (the re-check of decision 188, R1): the comparison key
-    refuses a new name, it never identifies a folder on the disk."""
-    return folder_name_key(a) == folder_name_key(b)
-
-
 def folder_name_key(name: str) -> str:
-    """What :func:`names_one_folder` compares (``os.path.normcase``): two
-    names with one such key are one folder. A key, so a walk can put many
-    names in a set and look each folder up once (P119) rather than compare
-    every folder with every name."""
+    """The file system's own comparison of two folder names
+    (``os.path.normcase``): two names with one such key are one folder, which
+    is what says a client folder is a household's own (the re-check of
+    decision 188, R1; the name_key refuses a look-alike, it never identifies
+    a folder on the disk). A key, so a walk can put many names in a set and
+    look each folder up once (P119) rather than compare every folder with
+    every name."""
     return os.path.normcase(str(name))
 
 

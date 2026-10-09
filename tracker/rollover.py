@@ -183,7 +183,6 @@ class RolledItem:
     origin: str
     note: str = ""
     prior_status: str = ""
-    prior_file_count: int | None = None
 
 
 @dataclass(slots=True)
@@ -493,7 +492,7 @@ def roll_forward(
         report.rolled.append(
             RolledItem(
                 item=item, origin=origin, note=note,
-                prior_status=prior.status, prior_file_count=prior.file_count,
+                prior_status=prior.status,
             )
         )
 

@@ -720,11 +720,6 @@ IGNORED_NOTE = "{n} system or temporary files in the inbox were left alone"
 #: quietly abandoned the slow ones could not measure them. The one stop is
 #: the safety stop beside it, ten times that ceiling (decision 137, B1.2).
 SLOW_READING_SECONDS = 20.0
-#: The safety stop, a minute a page and ten minutes a document: the reader
-#: owns them (``tracker.content_check``) and they are named here beside the
-#: number a slow reading is said at, so the two are read together.
-READING_STOP_PAGE_SECONDS = content_check.READING_STOP_PAGE_SECONDS
-READING_STOP_DOCUMENT_SECONDS = content_check.READING_STOP_DOCUMENT_SECONDS
 SLOW_READING_NOTE = "slow reading: {name} took {seconds:.0f} s"
 #: What a pass says, once, when the reader could not start for some of its
 #: files (decision 150): the machine's fault, not the files'. Nothing was
@@ -1611,7 +1606,7 @@ def run_engagement(
                             created=created_on(engagement.path) if drafted is None else None):
                 _draft_step(run, dry_run=dry_run, today=today, weekday=weekday)
             else:
-                run.draft_note = _why_no_draft(engagement, today, reminders, weekday)
+                run.draft_note = _why_no_draft(engagement, reminders, weekday)
 
             if not dry_run and not run.error:
                 _view_step(run)
@@ -1855,8 +1850,7 @@ def _refresh_stale_draft(draft, engagement_dir: Path, *, changed_from: dict | No
     return refreshed
 
 
-def _why_no_draft(engagement: Engagement, today: dt.date,
-                  mode: str, weekday: int) -> str:
+def _why_no_draft(engagement: Engagement, mode: str, weekday: int) -> str:
     if not engagement.reminders:
         return "reminders are off for this engagement"
     if mode == REMINDERS_NEVER:

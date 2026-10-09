@@ -96,13 +96,6 @@ ROLLED_FROM_UNMATCHED = (
     "whichever engagement that was is not retired"
 )
 
-#: How far below the root discovery looks, and what each level is:
-#: ``root(0) / PRIVATE_TREE(1) / household(2) / year(3) / return(4)``.
-#: Nothing below a return is ever walked - it is the return's own folders -
-#: so a record nested deeper sits inside a folder already listed as holding
-#: no return.
-MAX_DEPTH = 4
-
 #: A folder at the top of the clients root that is neither of the two trees.
 MISFIT_NOT_A_TREE = "is not one of the two trees the app reads ({clients} and {private}); left alone"
 #: A record where the layout before decision 125 put one: straight under a
@@ -533,14 +526,12 @@ def _walk_year(year: Path, household: Path, found: _Walk) -> None:
         found.misfits.append(Misfit(child, MISFIT_NO_RETURN, "no_return"))
 
 
-def engagement_dirs(root: Path | str, *, max_depth: int = MAX_DEPTH) -> list[Path]:
-    """Every return folder under ``root``, in the walk's order.
-
-    ``max_depth`` is the layout's and is not a dial any more: a return is
-    the fourth level and nothing else is a return. It is kept in the
-    signature because every caller passes the default and a keyword that
-    disappeared would be an import error in a script nobody reran.
-    """
+def engagement_dirs(root: Path | str) -> list[Path]:
+    """Every return folder under ``root``, in the walk's order: a return is
+    the fourth level below the root
+    (``root / PRIVATE_TREE / household / year / return``) and nothing else
+    is one. Nothing below a return is walked - those are the return's own
+    folders."""
     return _walk_root(Path(root)).returns
 
 
@@ -793,7 +784,7 @@ def _stopped_of(keep: list[Household], found: _Walk) -> dict[Path, str]:
     return stopped
 
 
-def discover_engagements(root: Path | str, *, max_depth: int = MAX_DEPTH) -> Registry:
+def discover_engagements(root: Path | str) -> Registry:
     """Walk ``root`` and return every household, return and misfit under it."""
     root = Path(root)
     if not root.is_dir():
@@ -826,7 +817,7 @@ def discover_engagements(root: Path | str, *, max_depth: int = MAX_DEPTH) -> Reg
     # listed with its own sentence and never adopted or read.
     names = [one.name for one in [*(household.path for household in keep), *found.record_missing]]
     by_key = {layout.name_key(name): name for name in names}
-    # One lookup per client folder (P119), by what names_one_folder compares.
+    # One lookup per client folder (P119), by folder_name_key, the file system's own compare.
     own = {layout.folder_name_key(name) for name in names}
     for folder in found.client_folders:
         if layout.folder_name_key(folder.name) in own:

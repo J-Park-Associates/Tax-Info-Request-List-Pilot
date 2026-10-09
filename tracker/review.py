@@ -142,11 +142,9 @@ PLACE_STRENGTH: dict[str, int] = {
 #: suggestion whose row carries a **confirmed name**
 #: (:data:`tracker.records.RULE_NAME`) ranks ``IDENTITY_AGREES`` and sorts
 #: above every content tier; everything else is ``IDENTITY_UNKNOWN``.
-#: ``IDENTITY_AGREES_WRONG_YEAR`` stays reserved on purpose: the year is a
-#: *check* on a document and never evidence of which one it is (decision
-#: 40), so nothing may rank on it.
+#: The year never ranks: it is a *check* on a document and never evidence
+#: of which one it is (decision 40).
 IDENTITY_AGREES = 0
-IDENTITY_AGREES_WRONG_YEAR = 1
 IDENTITY_UNKNOWN = 2
 
 #: What the card says the page said about whose it is (decision 128). One

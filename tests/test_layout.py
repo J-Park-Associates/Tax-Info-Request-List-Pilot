@@ -671,12 +671,11 @@ def test_a_recorded_name_keeps_no_line_or_paragraph_separator():
     assert recorded_name("a b.pdf") == "a b.pdf"
 
 
-def test_shared_tail_is_its_two_halves_and_names_one_folder_is_its_key():
+def test_shared_tail_is_its_two_halves():
     """P119: a practice-wide match makes each path's names once
-    (``tail_names``) and counts from them (``common_tail``); a walk puts
-    household names in a set by ``folder_name_key``. Each is the old rule,
-    worded once."""
-    from tracker.layout import common_tail, folder_name_key, names_one_folder, shared_tail, tail_names
+    (``tail_names``) and counts from them (``common_tail``). That is the
+    old rule, worded once."""
+    from tracker.layout import common_tail, shared_tail, tail_names
 
     paths = [str(return_dir_for(ROOT, HOUSEHOLD, 2025, RETURN)),
              str(return_dir_for(Path("E:/Archive/JPA Clients"), HOUSEHOLD, 2025, RETURN)),
@@ -684,9 +683,6 @@ def test_shared_tail_is_its_two_halves_and_names_one_folder_is_its_key():
     for a in paths:
         for b in paths:
             assert shared_tail(a, b) == common_tail(tail_names(a), tail_names(b))
-    for a in ("Park", "PARK", "park ", "Lee"):
-        for b in ("Park", "park", "Lee"):
-            assert names_one_folder(a, b) == (folder_name_key(a) == folder_name_key(b))
 
 
 # ------------------------------------------ pure answers remembered (P219) ----

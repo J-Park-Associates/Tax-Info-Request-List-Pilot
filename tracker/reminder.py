@@ -748,8 +748,6 @@ class ReminderDraft:
     #: draft, as one ambiguous row does; ``held`` stays the rows alone.
     unsorted: int = 0
     needs_review_files: int = 0
-    total_requests: int = 0
-    received_requests: int = 0
     #: Every request on the list, identifier -> label, so a what-changed
     #: line can name a request the draft no longer asks for.
     labels: dict[str, str] = field(default_factory=dict)
@@ -1570,8 +1568,6 @@ def draft_reminder(
         held=held,
         unsorted=unsorted_in_inbox(engagement_dir),
         needs_review_files=count_needs_review(engagement_dir),
-        total_requests=total,
-        received_requests=received,
         labels={item.identifier: item.label for item in items},
         letter=letter,
         link_dropped=link_dropped,
@@ -1873,7 +1869,23 @@ def approval_state(engagement_dir: Path | str, path: Path | str, *,
     letter a person approved in the week of the deploy with no copy set
     aside; an approval that has lapsed still keeps its file.
 
-    ``since`` is read as :func:`is_approved_this_week` reads it.
+    ``since`` is the draft day that went by (``tracker.runner.last_draft_day``),
+    handed in rather than worked out here: the runner decides the draft day
+    (decision 12) and this module is below it. With one, the approval is
+    spent when that day moves - next week's pass writes the week's draft as
+    before. **``None`` asks only whether this is the approved file**,
+    whenever it was approved: a caller that cannot measure the week - the
+    command line, a layer below the runner - would otherwise write over a
+    draft a person approved in the app an hour earlier, and approving is the
+    same act as editing (decision 118). A file we are not certain is ours to
+    replace is left where it is, as for :func:`is_unedited`.
+
+    Matched on the fingerprint in the file's own header, not on its name: a
+    different draft written to the same name is not the one that was
+    approved. **And on the letter's own fingerprint** (decision 190): a file
+    a person edited after approving it is no longer approved - the approval
+    covered the text they read, not the text it became - though it is still
+    protected, because they edited it.
     """
     event = last_approved_event(engagement_dir)
     if event is None or event.get(ledger.FILE_KEY) != Path(path).name:
@@ -1887,35 +1899,6 @@ def approval_state(engagement_dir: Path | str, path: Path | str, *,
     if not approved_text:
         return APPROVED_THEN_EDITED
     return APPROVED_NOTE if letter_fingerprint(path) == approved_text else APPROVED_THEN_EDITED
-
-
-def is_approved_this_week(engagement_dir: Path | str, path: Path | str, *,
-                          since: dt.date | None) -> bool:
-    """Whether the file at ``path`` is the draft a person approved.
-
-    ``since`` is the draft day that went by (``tracker.runner.last_draft_day``),
-    handed in rather than worked out here: the runner decides the draft day
-    (decision 12) and this module is below it. With one, the approval is
-    spent when that day moves - next week's pass writes the week's draft as
-    before, which is the bound the pass needs and the only caller that ever
-    needed it.
-
-    **``None`` asks only whether this is the approved file**, whenever it
-    was approved. A caller that cannot measure the week - the command line,
-    which is a layer below the runner - would otherwise write over a draft
-    a person approved in the app an hour earlier, and approving is the same
-    act as editing (decision 118). So the conservative answer is the right
-    one, exactly as it is for :func:`is_unedited`: a file we are not certain
-    is ours to replace is left where it is.
-
-    Matched on the fingerprint in the file's own header, not on its name: a
-    different draft written to the same name is not the one that was
-    approved. **And on the letter's own fingerprint** (decision 190): a
-    file a person edited after approving it is no longer approved - the
-    approval covered the text they read, not the text it became - though it
-    is still protected, because they edited it. See :func:`approval_state`.
-    """
-    return approval_state(engagement_dir, path, since=since) == APPROVED_NOTE
 
 
 def is_protected(engagement_dir: Path | str, path: Path | str, *,

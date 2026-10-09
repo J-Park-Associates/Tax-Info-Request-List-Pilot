@@ -74,7 +74,6 @@ NO_PEOPLE = "Add at Least One Person"
 NAME_CONFIRMED = "confirmed"
 NAME_VETOED = "another return's"
 NAME_ABSENT = "absent"
-NAME_OUTCOMES: tuple[str, ...] = (NAME_CONFIRMED, NAME_VETOED, NAME_ABSENT)
 
 #: The suffixes an entity's name may end with and still be the same entity.
 #: Both spellings of each are listed as a person would type them; they are
