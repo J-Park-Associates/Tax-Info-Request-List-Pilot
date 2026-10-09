@@ -880,6 +880,32 @@ def test_dismiss_refuses_a_file_the_index_does_not_know(capsys, demo_root, tmp_p
     assert code == 1 and payload["error"]
 
 
+@pytest.mark.parametrize("command, refusal, spec", [
+    ("dismiss", "Pick the file no request asks for", {}),
+    ("unfile", "Pick the document to send back for review", {}),
+    ("restore", "Pick the working copy to put back", {}),
+    ("mark-missing", "Pick the statement and the request to mark missing", {"identifier": "A01"}),
+    ("assign", "Pick the file and the request it belongs to", {"identifier": "A01"}),
+])
+def test_a_null_original_is_the_same_refusal_as_a_blank_one(capsys, demo_root, tmp_path,
+                                                            command, refusal, spec):
+    """A JSON ``null`` is no file. It was once turned into the text ``None``,
+    which passed the "Pick the file" refusal and went on to look for a
+    document of that name."""
+    engagement = sample_engagement(capsys, demo_root, tmp_path, "nothing")
+    for given in (None, "", "   "):
+        code, payload = run(capsys, command, api.ENGAGEMENT_FLAG, str(engagement),
+                            stdin={**spec, "original": given, "seq": 1})
+        assert code == 1 and payload["error"] == refusal, (given, payload)
+
+
+def test_a_null_text_field_reads_as_missing_and_other_values_as_their_text():
+    assert api._text({"original": None}, "original") == ""
+    assert api._text({}, "original") == ""
+    assert api._text({"original": "  a.pdf "}, "original") == "a.pdf"
+    assert api._text({"original": 7}, "original") == "7"
+
+
 # ------------------------------------------------- the review queue, triaged ----
 
 
@@ -7212,7 +7238,9 @@ def test_a_returns_reminder_line_that_cannot_be_read_says_so(capsys, demo_root, 
     [line] = [r["reminder"] for r in payload["household"]["returns"] if r["path"] == str(folder)]
     assert line["unreadable"] is True and line["kind"] == "OSError (EIO)"
     [label] = [r["label"] for r in payload["household"]["returns"] if r["path"] == str(folder)]
-    assert api.REMINDER_LINE_UNREADABLE.format(label=label, kind="OSError (EIO)") in payload["warnings"]
+    said = api.REMINDER_LINE_UNREADABLE.format(label=label)
+    assert label in said, "the warning must name the return"
+    assert said in payload["warnings"]
 
 
 def test_a_root_that_cannot_be_walked_says_so_on_the_feeds_and_the_list(capsys, demo_root,

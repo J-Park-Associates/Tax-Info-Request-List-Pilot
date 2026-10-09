@@ -413,8 +413,9 @@ PRACTICE_NOT_WALKED = ("The clients folder could not be walked just now, so what
                        f"practice is not shown; the details are in {ERROR_LOG_FILENAME}.")
 #: The Reminder card kept on screen when its reminder cannot be read (D7).
 REMINDER_UNREADABLE = "Reminder Could Not Be Read"
-#: One return's reminder line on the household card that could not be read.
-REMINDER_LINE_UNREADABLE = "Reminder Could Not Be Read"
+#: One return's reminder line on the household card that could not be read,
+#: said as a warning that names the return by its label.
+REMINDER_LINE_UNREADABLE = "Reminder Could Not Be Read: {label}"
 #: Stop asked of a pass this app is not running (ruling 7 and the lane's).
 NOTHING_TO_STOP = "There is no pass this app started running to stop; nothing was changed."
 #: How often the app asks whether a lock it shows has gone (ruling 10).
@@ -2629,7 +2630,7 @@ def _return_reminder(path: Path, today: dt.date, label: str = "") -> dict:
         kind = errors.error_class(exc)
         errors.keep("api: _return_reminder", exc)
         log.warning("A reminder line could not be read (%s)", kind)
-        _warn(REMINDER_LINE_UNREADABLE.format(label=label or path.name, kind=kind))
+        _warn(REMINDER_LINE_UNREADABLE.format(label=label or path.name))
         return {**blank, "unreadable": True, "kind": kind}
     return {
         "last": _event_day(last) if last else None,

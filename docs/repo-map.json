@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 446,
     "edges": 1232,
-    "reused": 397
+    "reused": 398
   },
   "node_types": [
     "artifact",
@@ -299,8 +299,8 @@
       "id": "tracker/api.py",
       "type": "module",
       "layer": "core",
-      "sha256": "8507914817972c48",
-      "lines": 6540,
+      "sha256": "68231b678662281a",
+      "lines": 6541,
       "cli": "python -m tracker.api",
       "exports": [
         "ACCEPT_FOLDER_NAME_HELP",
@@ -589,7 +589,7 @@
         "USAGE": "'usage: tracker.api {commands}'",
         "FAILED": "\"The app hit an error it did not expect ({kind}). What it finished is on the record; the details are in {log} beside the app's database.\"",
         "REMINDER_UNREADABLE": "'Reminder Could Not Be Read'",
-        "REMINDER_LINE_UNREADABLE": "'Reminder Could Not Be Read'",
+        "REMINDER_LINE_UNREADABLE": "'Reminder Could Not Be Read: {label}'",
         "NOTHING_TO_STOP": "'There is no pass this app started running to stop; nothing was changed.'",
         "LOCK_WATCH_SECONDS": "5",
         "LOCK_RUNNING": "'In Use on {host}'",
