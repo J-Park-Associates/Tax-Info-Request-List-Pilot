@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 254,
     "edges": 1229,
-    "reused": 199
+    "reused": 205
   },
   "node_types": [
     "artifact",
@@ -4373,7 +4373,7 @@
       "id": "docs/vocab-coverage.json",
       "type": "file",
       "layer": "docs",
-      "sha256": "8924c96e6bda17fc",
+      "sha256": "22f248eb03d1d6b9",
       "lines": 9415,
       "role": "The coverage report as data, with the SHA-256 of every input it was built from; `check` and the suite compare against these. Generated; never edited by hand."
     },
@@ -4398,7 +4398,7 @@
       "id": "pilot/DECISIONS.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "b9e547f73a5c5699",
+      "sha256": "62fcd55eda6b3652",
       "lines": 232
     },
     {
@@ -4447,8 +4447,8 @@
       "id": "pilot/SPEC-cleanup.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "8c29bcdaa9cb876e",
-      "lines": 1345
+      "sha256": "901a03fb4ffd3bc1",
+      "lines": 1411
     },
     {
       "id": "pilot/SPEC-email-zip-tag.md",

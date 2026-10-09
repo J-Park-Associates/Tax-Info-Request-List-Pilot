@@ -383,6 +383,72 @@ land together. Job 7 runs last because it re-pins the map after the others.
 Each job ends with a handoff note in its pull request description, not a
 file in `pilot/handoffs/` (that folder is gone after job 1).
 
+
+## 8. Built (2026-10-09)
+
+All seven jobs and one follow-up landed on `claude/zealous-faraday-hw5sga`,
+each lane built by Sonnet in its own worktree, reviewed by an Opus session
+that did not build it, rebuilt on the findings, and reviewed again until
+clean; every lane landed as its own merge commit. The branch is cut from
+`main` at 213d876.
+
+| Job | Review rounds | What the reviewer caught before landing |
+|---|---|---|
+| 1 residue | 4 findings, 1 rebuild | a live pointer in `RELEASE.md` to deleted reviews; `HANDOFF.md` had dropped the "Left" items |
+| 2 Electron | 6 findings, 1 rebuild | the screenshot tool's stub relied on the removed guards and no longer loaded |
+| 3 storage | 5 findings, 1 rebuild | a docstring naming the wrong function for a refusal; map notes behind the fold |
+| 4 app face | 8 findings, 2 rebuilds | the defect-1 fix had changed a reply's wording the app shows; the link check in the test-cache delete could follow a link it could not inspect |
+| 5 engine | 5 findings, 2 rebuilds | three assertions that could never fail; no routing decision changed (22,684 comparisons, 0 mismatches) |
+| 6 runner and rest | 5 findings, 1 rebuild | stale comments and a map note behind the fold |
+| 7 test runtime | 7 findings, 2 rebuilds | the decision-185 tripwire lost its verdict under `pytest-xdist` workers; fixed, with two nested `-n 2` tests |
+| 8 door helper | 1 finding, 1 rebuild | a redundant import |
+
+Deviations from the plan, each recorded where it belongs:
+
+- **P233 built narrower than decided.** Only `names` lost its command line.
+  Tests run `validators` and `containers` in a subprocess, which the
+  analysis had missed; under the rule P233 sets, a test is a reader, so
+  they stay. The P233 row says so.
+- **One function died at a merge.** `runner.left_behind_to_move` lost its
+  last production reader when P235 (job 4) retired the mover and job 6 made
+  `left_behind_warnings` split the walk itself; it went with its one
+  assertion in the job-4 landing commit.
+- **One guard came back.** `app.js` keeps the `onAfterInstallDone` guard,
+  because the screenshot tool's stub sets that hook to null on purpose.
+- **The after-install job for P234 covers every record folder**, households
+  included, where the pass had covered only the returns it sorted; the
+  reviewer judged that right under decisions 107 and 209 (nothing reads the
+  file; it is a one-time step).
+- **Items the appendices list that no job row named** were left and are
+  listed as SKIPPED, with reasons, in each lane's handoff (the pull-request
+  description carries them).
+
+Measured after the build, against `main` at 213d876:
+
+| | Before | After |
+|---|---|---|
+| Tracked files | 641 | 361 |
+| Tracked tree | 66.8 MB | 55.5 MB |
+| `tracker/` lines | 53,486 | 52,252 (functions 1,574 → 1,548) |
+| `app/` lines | 13,530 | 13,250 |
+| `tests/` lines | 82,128 | 81,377 |
+| `pilot/` lines | 32,127 | 14,371 |
+| `.claude/` lines | 20,390 | 89 |
+| Whole suite, 4 cores | 5 min 21 s, 4,381 passed | 5 min 15 s, 4,325 passed |
+
+The final gate on the integrated branch: `python -m pytest -q -n auto`
+gave 15 failures, the 14 missing-package ones this Linux box always shows
+(the OCR reader, `olefile`, `tqdm`, HEIC) plus the vocabulary report, which
+was rebuilt after. `ruff`, `repo_map.py check`, `lockfiles.py check` and
+`vocab_report.py check` are clean. Only Python 3.13 on Linux was run; the
+floor interpreter and the office's Windows check are still owed before a
+merge, per the standing rule.
+
+Left for the next session: the Windows check (`pilot/wintest`; the after-
+install retired-cache job and the strict link test are the parts that touch
+Windows paths), opening the draft pull request, and the decision-100
+re-exports and the `extractable` fields, which Appendix B left to Jason.
+
 ---
 
 
