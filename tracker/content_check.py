@@ -174,7 +174,6 @@ MAX_PAGES = 10
 #: The other file types whose text can be read (PDF_EXTENSION is the third).
 XLSX_EXTENSIONS = ("xlsx", "xlsm")
 TEXT_EXTENSIONS = ("csv", "tsv", "txt")
-_MAX_OCR_PAGES = MAX_PAGES
 #: The most pixels one page or one photo is read at (decision 137, B1).
 #: Rendering has to stay bounded: a PDF page may be 14,400 points square,
 #: which at the old fixed scale of 2 is some 830 million pixels, and
@@ -1788,7 +1787,7 @@ def _ocr_pdf(path: Path) -> str | None:
     parts: list[str] = []
     doc = pdfium.PdfDocument(path)
     try:
-        for index in range(min(len(doc), _MAX_OCR_PAGES)):
+        for index in range(min(len(doc), MAX_PAGES)):
             if _STOP is not None:
                 _STOP.page()              # no page starts past the stop
             page_of = doc[index]
