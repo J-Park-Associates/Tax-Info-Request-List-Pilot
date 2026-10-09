@@ -784,7 +784,7 @@ def narrowing_rows(items: Iterable[RequestItem]) -> dict[str, tuple[str, ...]]:
 
     - the **broad** row recognises its document on looser words alone -
       Any Keywords, and no Required Keywords, so it can never be the
-      strongest evidence for anything (:func:`tracker.router._required_matched`);
+      strongest evidence for anything (:func:`tracker.content_check.required_matched`);
     - the **narrowing** row shares at least one of those looser words, so
       it is asking about the same document, and requires something on top.
 

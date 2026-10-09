@@ -258,121 +258,23 @@ COPY_INSIDE_APP = ("{path} is inside the app's own folder {app}; a copy of the d
 #: ``user_version``. A file carrying anything else is refused by name rather
 #: than opened hopefully: a schema this code does not understand is not a
 #: store, and guessing past it would write rows a later version cannot fold.
-#: Version 2 (decision 104) dropped the workbook digest from ``engagements``;
-#: a version-1 file is deleted and rebuilt, which costs nothing because the
-#: store is a derivation of the journals.
-#: Version 3 (decision 107) added the verdict cache's two tables,
-#: ``verdicts`` and ``file_memos``; a version-2 file is refused by the same
-#: sentence and deleted and rebuilt the same way - the cache it never held
-#: is refilled by the next pass, one reading per document.
-#: Version 4 (decision 116) added the ``override_reason`` column to
-#: ``requests``: a version-3 file has no column for the reason a person
-#: gives, so it is refused, deleted and rebuilt from the journals like the
-#: others - the reason itself travels in the ``rules_changed`` event.
-#: Version 5 (decision 117) added the Filing Deadline to the engagement's
-#: details, which is a column of ``engagements``: a version-4 file has no
-#: column for it, so it is refused, moved aside and rebuilt from the
-#: journals like every version before it - the date itself travels in the
-#: ``rules_changed`` event, and only the first pass is slower.
-#: Version 6 (decision 119) added the ``intents`` table, the moves begun
-#: and not yet finished: ``CREATE TABLE IF NOT EXISTS`` on open would make
-#: the table and leave a version-5 file's earlier lines unfolded into it,
-#: so the file is refused, deleted and rebuilt from the journals like the
-#: others - the intents are ``moving`` lines in them.
-#: Version 7 (decision 125) added the household, the tax year and the
-#: return name to the engagement's details, which are columns of
-#: ``engagements``, and the household record's own columns and ``kind``: a
-#: version-6 file has none of them, so it is refused, deleted and rebuilt
-#: from the journals like every version before it - the details travel in
-#: the ``rules_changed`` and ``household_changed`` lines.
-#: Version 8 (decision 128) added the return's people to the engagement's
-#: details - one column of ``engagements``, holding the list as JSON text -
-#: and the ``named`` mark to ``requests``: a version-7 file has neither, so
-#: it is refused, deleted and rebuilt from the journals like every version
-#: before it, and both travel in the ``rules_changed`` lines.
-#: Version 9 (decision 129) added the household's feed list - the return
-#: lines in other households its drop folder also feeds - which is one
-#: column of ``engagements`` holding the list as JSON text: a version-8
-#: file has no column for it, so it is refused, deleted and rebuilt from
-#: the journals like every version before it, and the feeds travel in the
-#: ``household_changed`` lines.
-#: Version 10 (decision 132) changed no column and changed the fold: a
-#: ``released`` line takes a row out of the index, and a version-9 file
-#: folded by the old code may hold ``Handed Over`` rows this version never
-#: produces - so it is refused, deleted and rebuilt from the journals like
-#: every version before it, and the retired ``handed_over_by_person`` lines
-#: in them are folded as the releases they meant.
-#: Version 11 (decision 134) changed no column and changed the key: a
-#: return is keyed by where it sits in the layout when no root is in
-#: hand, where it was keyed by its parent - its year folder - so a
-#: version-10 file may hold two years of one return as one row. It is
-#: refused, deleted and rebuilt from the journals like every version
-#: before it, and each return is keyed by household, year and return.
-#: Version 12 (decision 137, A3) added ``applied_digest`` to
-#: ``engagements``: the running chain over the journal lines the store has
-#: applied (``ledger.read_with_chain``), so a journal rewritten or reordered
-#: to the same length is refused rather than blessed. A version-11 file has
-#: no such column, so it is refused, deleted and rebuilt from the journals
-#: like every version before it, and the rebuild computes the chain as it
-#: replays.
-#: Version 13 (decision 142) added the ``asked`` mark to ``requests``: a
-#: version-12 file has no column for it, so it is refused, deleted and
-#: rebuilt from the journals like every version before it - the mark
-#: travels in the ``rules_changed`` lines, and a line written before it
-#: existed reads as asked.
-#: Version 14 (decision 143) added ``container`` to ``documents``: where
-#: the email or zip a document came out of rests, and the ``opened`` row
-#: event that records the container itself. A version-13 file has no such
-#: column, so it is refused, deleted and rebuilt from the journals like
-#: every version before it - the field travels in the row events, and a
-#: row written before it existed reads as having come on its own.
-#: Version 15 (decision 144) added ``short_title`` to ``requests``: the
-#: short name the working folder and copies are named by. A version-14
-#: file has no column for it, so it is refused, deleted and rebuilt from
-#: the journals like every version before it - the field travels in the
-#: ``rules_changed`` lines, and a line written before it existed reads as
-#: blank, which derives the short name from the document title.
-#: Version 16 (decision 146) added ``answers`` to ``documents``: the other
-#: requests a broker's consolidated statement answers without a copy, and
-#: the sections that answered each. A version-15 file has no such column,
-#: so it is refused, deleted and rebuilt from the journals like every
-#: version before it - the field travels in the row events, and a row
-#: written before it existed reads as answering nothing.
-#: Version 17 (decision 204) added ``waits_for`` to ``documents``: what a
-#: row parked because it names another household's person waits for - the
-#: fed return line and what its list accepted. It is the store's first
-#: **in-place** step (the module docstring's rule, :data:`_IN_PLACE`): no
-#: journal line before 204 carries the field, so every version-16 row
-#: waits for nothing, and a version-16 file gains the column (NULL, as a
-#: rebuild writes it - decision 190) and keeps its verdict cache. Every
-#: other earlier version is set aside and rebuilt (decision 159, E3); a
-#: newer one refused.
-#: Version 18 (decision 190) added ``code`` and ``subfolder`` to
-#: ``documents`` and ``note_codes`` to ``statuses``: a row's cause, the
-#: client subfolder it came from and the causes a request's notes say, each
-#: a column rather than a phrase inside a sentence. It is an in-place step
-#: too, by the same rule applied to each column: all three are additive,
-#: and no journal line before 190 carries any of them, so
-#: every version-17 row's cause reads as ``""`` - not recorded, and nothing
-#: reads one out of its words - which is what a rebuild from the journals
-#: would give. The verdicts a version-17 file cached are kept as rows but no
-#: longer answer: they were cached before a verdict carried its code, and
-#: :data:`tracker.content_check.CACHE_VERSION` moved with this step.
-#: Version 19 (decision 209, R3b) added ``admitted_by`` to ``engagements``:
-#: which admission judged the lines a row applied. In place, like 17 and 18:
-#: no journal line carries it, and every version-18 row's true value is the
-#: default 0 - judged by no admission this version knows - so its applied
-#: lines are judged again at its next sync, and nothing is set aside. It is
-#: the one in-place column with a default: it is bookkeeping, like
-#: ``built_at``, not a value any journal line carries, and ``store check``
-#: does not compare it.
-#: Version 20 (pilot P170) added ``household_related`` to ``engagements``:
-#: the households a person marked as related to a household, a JSON list
-#: in one text column. In place, like 17 to 19: no journal line before it
-#: carries the field, and the column is added with the record's own
-#: default, ``'[]'`` - exactly what a rebuild writes for a row whose lines
-#: never name it (``_new_engagement_defaults``), so ``store check`` finds
-#: nothing on an upgraded file and the verdict cache is kept.
+#: Every bump is a decision-log row. A file at a version below 16 is set
+#: aside and rebuilt from the journals (decision 159, E3), which costs a
+#: slower first pass and nothing else: the store is a derivation, and the
+#: columns and folds those bumps changed are all in the journal lines.
+#: Versions 16 to 19 are upgraded where they stand (:data:`_IN_PLACE`),
+#: because each step only adds columns that no journal line before it can
+#: carry, so the added value is what a rebuild would have written and the
+#: verdict cache is kept:
+#: 17 (decision 204) added ``waits_for`` to ``documents``; 18 (decision 190)
+#: added ``code`` and ``subfolder`` to ``documents`` and ``note_codes`` to
+#: ``statuses`` (the verdicts a version-17 file cached are kept as rows but
+#: no longer answer: :data:`tracker.content_check.CACHE_VERSION` moved with
+#: the step); 19 (decision 209, R3b) added ``admitted_by`` to
+#: ``engagements``, which admission judged the lines a row applied -
+#: bookkeeping with a default of 0 that ``store check`` does not compare;
+#: 20 (pilot P170) added ``household_related``, a JSON list in one text
+#: column defaulting to ``'[]'``, the record's own default.
 SCHEMA_VERSION = 20
 
 #: The explicit in-place upgrades (the module docstring's rule): the
