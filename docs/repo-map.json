@@ -16,8 +16,8 @@
   ],
   "counts": {
     "nodes": 446,
-    "edges": 1233,
-    "reused": 398
+    "edges": 1232,
+    "reused": 395
   },
   "node_types": [
     "artifact",
@@ -2091,9 +2091,8 @@
       "id": "tracker/names.py",
       "type": "module",
       "layer": "core",
-      "sha256": "6282d7f6b3a0533f",
-      "lines": 322,
-      "cli": "python -m tracker.names",
+      "sha256": "e04abda490511525",
+      "lines": 302,
       "exports": [
         "NAME_ABSENT",
         "NAME_CONFIRMED",
@@ -2116,7 +2115,7 @@
         "NAME_ABSENT": "'absent'"
       },
       "role": "Whose document is this: the matcher for the names a return's people put on their papers (decision 128). normalise() folds a name for matching - lower case, everything that is not a letter or a digit a space, padded so a phrase has boundaries; spelling_in() is that phrase test; propose_spellings() is what the app offers a person to tick for a name they typed; check_name() answers confirmed, another return's, or absent, with the spelling that decided it and the page it was on.",
-      "notes": "Pure functions over text the caller already has: nothing here reads a file, takes a lock or knows what a return is. The check itself runs one layer up, in the filer's household pass, after the request lists have accepted a document and before the exactly-one rule; the router is untouched, because the router judges a request list and knows no person. A spelling is at least two words (records.MIN_SPELLING_WORDS): a family name alone is a whole phrase inside a company's name, so `Park` would confirm `Park Landscaping LLC`'s bank statement as the family's - the two-word rule is kept wherever a spelling is accepted and again in check_name(). Confirmed beats vetoed beats absent, so a joint page naming both spouses is confirmed for both returns and the exactly-one rule decides. Nothing is inferred: the app proposes and a person ticks, no spelling is ever learned from a document, and no fuzzy match is made. The CLI (python -m tracker.names \"John A. Park\") prints the proposals and records nothing. The matcher is unchanged. Since decision 189 it runs in the reader child: content_check.judgment_of imports it at call time (names imports content_check at load time for PAGE_BREAK, so the call-time import is what keeps layers acyclic). A page is folded once (read_names gives NamesOnPage), and check_name(..., page=) searches it for every spelling. It used to re-fold the whole page per spelling (the SPEC-189 second cost)."
+      "notes": "Pure functions over text the caller already has: nothing here reads a file, takes a lock or knows what a return is. The check itself runs one layer up, in the filer's household pass, after the request lists have accepted a document and before the exactly-one rule; the router is untouched, because the router judges a request list and knows no person. A spelling is at least two words (records.MIN_SPELLING_WORDS): a family name alone is a whole phrase inside a company's name, so `Park` would confirm `Park Landscaping LLC`'s bank statement as the family's - the two-word rule is kept wherever a spelling is accepted and again in check_name(). Confirmed beats vetoed beats absent, so a joint page naming both spouses is confirmed for both returns and the exactly-one rule decides. Nothing is inferred: the app proposes and a person ticks, no spelling is ever learned from a document, and no fuzzy match is made. It has no command line (P233): nothing ran it. The matcher is unchanged. Since decision 189 it runs in the reader child: content_check.judgment_of imports it at call time (names imports content_check at load time for PAGE_BREAK, so the call-time import is what keeps layers acyclic). A page is folded once (read_names gives NamesOnPage), and check_name(..., page=) searches it for every spelling. It used to re-fold the whole page per spelling (the SPEC-189 second cost)."
     },
     {
       "id": "tracker/ocr.py",
@@ -4709,8 +4708,8 @@
       "id": "CLAUDE.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "4a8f028732a5b259",
-      "lines": 329,
+      "sha256": "0175a800f78dc654",
+      "lines": 330,
       "role": "Agent entry point. Says to read the map instead of re-scanning, how to keep it current, and the standing rules that hold across every module.",
       "notes": "Points at docs/repo-map.md as the first thing to read in a session."
     },
@@ -4751,7 +4750,7 @@
       "id": "docs/repo-map.curated.json",
       "type": "file",
       "layer": "docs",
-      "sha256": "6d75eed5894bf7c4",
+      "sha256": "dff7b1f025e59218",
       "lines": 1167,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
@@ -10672,7 +10671,7 @@
       "id": "tests/test_single_source.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "9b357c89b895cf5a",
+      "sha256": "eadb4ce6a2b9ff40",
       "lines": 4691,
       "exports": [
         "AFTER_WHAT",
@@ -10877,7 +10876,7 @@
         "ROLL_AND_ADD_KEYS": "('roll_forward_to', 'roll_ticked', 'roll_no_template', 'roll_done', 'roll_carried', 'roll_unfiled', 'roll_retired_line', 'roll_forms_unloaded', 'add_return_title', 'form_step_title', 'change_form', 'change_household', 'items_title', 'create_return', 'return_created')",
         "DOCUMENTS": "('README.md', 'docs/ROADMAP.md', 'docs/workflow.md', 'docs/runbook.md', 'docs/storage.md', 'CLAUDE.md')",
         "GUARD_NAME": "'test_the_command_center_is_gone_from_everything_but_the_decision_log'",
-        "CONSOLE_GUARDED": "('rollover', 'filer', 'scanner', 'registry', 'review', 'scaffold', 'store', 'reminder', 'runner', 'router', 'content_check', 'view', 'ledger', 'validators', 'names', 'containers', 'ocr', 'door', 'checkpoint', 'locking', 'after_install')",
+        "CONSOLE_GUARDED": "('rollover', 'filer', 'scanner', 'registry', 'review', 'scaffold', 'store', 'reminder', 'runner', 'router', 'content_check', 'view', 'ledger', 'validators', 'containers', 'ocr', 'door', 'checkpoint', 'locking', 'after_install')",
         "NUMBER_WORDS": "('ten', 'eleven', 'twelve', 'thirteen', 'fourteen', 'fifteen', 'sixteen', 'seventeen', 'eighteen', 'nineteen', 'twenty')",
         "STRUCK": "('open it yourself', 'open it on this machine', 'on this machine, and drop', \"drop any document you find into the client's folder\", \"drop the documents in the client's folder\", \"drop the documents you find in the client's folder\", \"drop a copy in the client's folder\", \"drop it in the client's folder\", 'the record itself is the truth', 'nothing is lost either way', 'and run `rebuild` \u2014 nothing is lost')",
         "ONE_TIME_STEP_DOCUMENTS": "('README.md', 'docs/runbook.md', 'Setup.bat', 'Start App.bat')"
@@ -17668,12 +17667,6 @@
       "from": "tracker/names.py",
       "to": "tracker/records.py",
       "type": "imports",
-      "source": "derived"
-    },
-    {
-      "from": "tracker/names.py",
-      "to": "tracker/page.py",
-      "type": "imports_at_call",
       "source": "derived"
     },
     {

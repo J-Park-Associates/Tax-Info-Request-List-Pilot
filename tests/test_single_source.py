@@ -1840,7 +1840,7 @@ def test_tree_diagrams_name_only_runtime_files_the_code_owns():
 #: tolerant_console(), and each of these takes it before it parses a flag.
 CONSOLE_GUARDED = ("rollover", "filer", "scanner", "registry", "review", "scaffold",
                    "store", "reminder", "runner", "router", "content_check",
-                   "view", "ledger", "validators", "names", "containers", "ocr", "door",
+                   "view", "ledger", "validators", "containers", "ocr", "door",
                    "checkpoint", "locking", "after_install")
 #: The command lines that print no client's name, each with why it is not
 #: guarded - so a new command line has to be named in one list or the other.
