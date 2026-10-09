@@ -416,6 +416,9 @@ PRACTICE_NOT_WALKED = ("The clients folder could not be walked just now, so what
 REMINDER_UNREADABLE = "Reminder Could Not Be Read"
 #: One return's reminder line on the household card that could not be read.
 REMINDER_LINE_UNREADABLE = "Reminder Could Not Be Read"
+#: The same, said as a warning, which names the return by its label. The
+#: bare constant above is what the app is sent (``vocab.reminder``).
+REMINDER_LINE_UNREADABLE_WARNING = REMINDER_LINE_UNREADABLE + ": {label}"
 #: Stop asked of a pass this app is not running (ruling 7 and the lane's).
 NOTHING_TO_STOP = "There is no pass this app started running to stop; nothing was changed."
 #: How often the app asks whether a lock it shows has gone (ruling 10).
@@ -527,6 +530,23 @@ def _warn(sentence: str) -> None:
         _WARNINGS.append(sentence)
 
 
+def _not_walked(where: str, exc: BaseException,
+                what: str = "The clients root could not be walked", *, warn: bool = True) -> str:
+    """Keep and log a root that could not be walked, and return
+    :data:`PRACTICE_NOT_WALKED`, the sentence the page is given (decision 193).
+
+    The class goes to the log line, the words and trace to the error log
+    only. ``warn`` also adds the sentence to this reply's ``warnings``; the
+    firm view raises it as the refusal instead, whose reply carries
+    ``warnings`` of its own.
+    """
+    errors.keep("api: " + where, exc)
+    log.warning("%s (%s)", what, errors.error_class(exc))
+    if warn:
+        _warn(PRACTICE_NOT_WALKED)
+    return PRACTICE_NOT_WALKED
+
+
 def _failure_of(exc: BaseException) -> dict:
     """The one rule for how an error is said (decision 193, ruling 3):
     ``{"sentence", "kind", "seq", "identifier"}``, plus ``lock`` when
@@ -578,13 +598,20 @@ def _left_behind_to_move(exc: store.CheckpointNotMade | checkpoint.CheckpointLef
     return LEFT_BEHIND_TO_MOVE.format(paths=exc.old, home=exc.home)
 
 
-def _reply_failure(exc: BaseException) -> int:
+def _say_failure(command: str, exc: BaseException) -> int:
+    """Print the one error envelope for ``exc`` and return the exit code 1.
+
+    The failure is worked out once, since ``_failure_of`` may read a lock
+    from the disk. An unexpected one (kind ``failed``) keeps its class on the
+    log line and its words and trace apart in the error log only (decision
+    190); a refusal or a stale row is the person's to read and logs nothing.
+    """
     failure = _failure_of(exc)
-    reply = progress.failure_reply(failure["sentence"], failure["kind"], seq=failure["seq"],
-                                   identifier=failure["identifier"], warnings=_WARNINGS,
-                                   **{k: v for k, v in failure.items()
-                                      if k not in ("sentence", "kind", "seq", "identifier")})
-    print(json.dumps(reply))
+    if failure["kind"] == "failed":
+        errors.keep("api: " + command, exc)
+        log.error("%s failed (%s)", command, errors.error_class(exc))
+    print(json.dumps({"error": failure["sentence"], "failure": failure,
+                      "warnings": list(_WARNINGS)}))
     return 1
 
 
@@ -594,11 +621,12 @@ def _root() -> Path:
     188, E-13): a root saved before a rule, or one a person has since made
     one level too deep by moving the trees around it, is refused with
     "Clients folder problem: " and the refusal, never walked."""
-    if clients_root() is None:
+    root = _saved_root()
+    if root is None:
         raise ManifestError(
             f"Tell the app where your clients live first (Settings, or `{SET_ROOT_HINT}`)"
         )
-    return door.checked_root()
+    return root
 
 
 def _saved_root() -> Path | None:
@@ -1104,14 +1132,24 @@ def _engagement_dir(argv: list[str]) -> Path:
     levels down, under a year - so a year or a household folder is refused
     rather than read one level too high.
     """
-    hint = f"Pick an engagement first ({ENGAGEMENT_FLAG} <folder>)"
-    if ENGAGEMENT_FLAG not in argv:
-        raise ManifestError(hint)
-    position = argv.index(ENGAGEMENT_FLAG) + 1
-    given = argv[position].strip() if position < len(argv) else ""
+    given = _flag_value(argv)
     if not given:
-        raise ManifestError(hint)
+        raise ManifestError(f"Pick an engagement first ({ENGAGEMENT_FLAG} <folder>)")
     return _return_dir(given)
+
+
+def _flag_value(argv: list[str]) -> str:
+    """What follows ``ENGAGEMENT_FLAG``, trimmed: ``""`` when the flag is
+    absent, last, or followed by nothing."""
+    position = argv.index(ENGAGEMENT_FLAG) + 1 if ENGAGEMENT_FLAG in argv else len(argv)
+    return argv[position].strip() if position < len(argv) else ""
+
+
+def _label(path: Path, household_dir: Path, info: EngagementInfo | None = None) -> str:
+    """A return's label, as everything that lists returns says it, from its
+    record (or from ``info``, where the caller has just read or written it)."""
+    return Engagement(path=path, household_path=household_dir,
+                      info=load_engagement_info(path) if info is None else info).label
 
 
 def _return_dir(given: str | Path) -> Path:
@@ -1170,7 +1208,7 @@ def default_return_name(form: str, client: str) -> str:
 
 #: A word as a class name, from the module that owns how the firm's pages
 #: spell one, so a status chip in the app and a status badge on the view
-#: are classed the same way by the same code.
+#: are classed the same way by the same code (the tests name it ``_slug``).
 _slug = slug
 
 
@@ -1598,7 +1636,9 @@ def _vocab() -> dict:
     sentence pattern of its own: it reads this once and derives everything
     (chip classes from the status key, a set-aside row from the override
     value and its label from the row's year, the parked list from the
-    decision value, the picker from candidates).
+    decision value, the picker from candidates). That holds for every key
+    below, so the comments do not repeat it: each says only whose words it
+    is and which decision put it here.
     """
     error_log = _error_log_said()
     return {
@@ -1732,7 +1772,7 @@ def _vocab() -> dict:
         # The name tier's words (decision 128), from the two modules that
         # own them: the three kinds of person, the labels each is shown
         # under, the two refusals, and what the card says and offers where
-        # a page named nobody. The page types none of them.
+        # a page named nobody.
         "people": {
             "label": PEOPLE_LABEL,
             "help": PEOPLE_HELP,
@@ -1775,8 +1815,7 @@ def _vocab() -> dict:
             "engagement_label_pattern": ENGAGEMENT_LABEL_PATTERN,
         },
         # Every word the household's card, its roll fold, the Add a return
-        # and New household dialog and the misfit list show. The page types
-        # none of them.
+        # and New household dialog and the misfit list show.
         "household": {
             "heading": HOUSEHOLD_HEADING,
             "name_label": HOUSEHOLD_NAME_LABEL,
@@ -1812,8 +1851,8 @@ def _vocab() -> dict:
             "two_open_years": TWO_OPEN_YEARS_NOTE,
             "editable": list(HOUSEHOLD_EDITABLE),
             # The sharing checklist and the firm's dated word about it
-            # (decision 126). The page shows these and types none of them;
-            # the three lines themselves arrive filled, in `checklist`.
+            # (decision 126); the three lines themselves arrive filled, in
+            # `checklist`.
             "sharing_heading": SHARING_HEADING,
             "sharing_note": SHARING_NOTE,
             "mark_shared": MARK_SHARED_LABEL,
@@ -1834,8 +1873,7 @@ def _vocab() -> dict:
             "roll_forms_unloaded": ROLL_FORMS_UNLOADED,
             # The feed list (decision 129): what this drop folder also
             # feeds, who feeds it, the word that adds one, and the two
-            # warnings a person reads before extending either. The page
-            # shows them and types none of them.
+            # warnings a person reads before extending either.
             "feeds_label": FEEDS_LABEL,
             "feeds_help": FEEDS_HELP,
             "feeds_line": FEEDS_LINE,
@@ -1857,7 +1895,7 @@ def _vocab() -> dict:
         "engagement_flag": ENGAGEMENT_FLAG,
         "commands": sorted(COMMANDS),
         # The commands that change something, so the shell can say a killed
-        # one may be partly done (SHELL_KILLED_WRITE); it types none itself.
+        # one may be partly done (SHELL_KILLED_WRITE).
         "writing_commands": sorted(WRITING_COMMANDS - {PASS_COMMAND}),
         # The menu bar's words and the new screen's (SPEC-shell 11.3-11.4):
         # every label, heading and tooltip of the shell, five words or fewer.
@@ -1920,7 +1958,7 @@ def _vocab() -> dict:
             "draft_day": WEEKDAY_NAMES[DRAFT_WEEKDAY],
             "task_name": TASK_NAME,
             # The repair path (decision 209): the button's label and its
-            # tooltip, and the confirm dialog's words. The page types none.
+            # tooltip, and the confirm dialog's words.
             "repair": SCHEDULE_REPAIR_LABEL,
             "repair_help": SCHEDULE_REPAIR_HELP,
             "repair_confirm": SCHEDULE_REPAIR_CONFIRM.format(
@@ -1951,12 +1989,12 @@ def _vocab() -> dict:
         # two sentences the return's page, the warnings and the set-root
         # reply fill - ROOM_SHORT as information, ROOM_PARKS as a warning
         # (the lead's L-1) - and the heading the root dialog lists them
-        # under. The renderer types none.
+        # under.
         "room": {"short": ROOM_SHORT_WORDS, "parks": ROOM_PARKS_WORDS, "heading": ROOM_HEADING},
         "keyword_default_note": KEYWORD_DEFAULT_NOTE,
         # Every word and colour the Reminder card shows (decisions 115 and
-        # 118), from the module that owns the draft. The card types none of
-        # it: the four stages with the palette key each carries and where
+        # 118), from the module that owns the draft: the four stages with
+        # the palette key each carries and where
         # each spends its emphasis, the palette those keys name, the
         # colour a hold is said in and the three the letter's own surface
         # takes. A hex never reaches the renderer or the stylesheet.
@@ -2021,11 +2059,11 @@ def _vocab() -> dict:
             "paste_hint": EDITOR_PASTE_HINT, "warnings_heading": EDITOR_WARNINGS_HEADING,
             "saved": RULES_SAVED, "nothing_changed": NOTHING_CHANGED, "learned_note": LEARNED_NOTE,
             # Taking a taught keyword back is its own event, so it has its
-            # own button beside the word and its own sentence afterwards;
-            # the renderer types neither (decision 113).
+            # own button beside the word and its own sentence afterwards
+            # (decision 113).
             "unlearn_label": UNLEARN_LABEL, "unlearned_note": UNLEARNED_NOTE,
             # The rename (decision 160), its own act beside the list, as
-            # unlearning is; every word here, none in the renderer.
+            # unlearning is.
             "rename_title": RENAME_TITLE, "rename_hint": RENAME_HINT,
             "rename_from": RENAME_FROM_LABEL, "rename_to": RENAME_TO_LABEL,
             "rename": RENAME_LABEL, "renamed_note": RENAMED_NOTE, "rename_left_note": RENAME_LEFT_NOTE,
@@ -2256,16 +2294,6 @@ def true_extension(entry: IndexEntry) -> str:
     return extension_of(Path(recorded_name(_name_on_disk(entry)).rstrip(". ")))
 
 
-def handle_of(entry: IndexEntry) -> str:
-    """The one handle a review command names a row by (decision 190's
-    review, M3): its original's location, or - for a program never written
-    out of its email or zip, which has none - the record's key for the row
-    (:func:`tracker.records.ledger_key`), which is unique where ``""``
-    would name every such row at once. Every lookup the review commands
-    make (:func:`tracker.filer.find_parked` and its siblings) accepts it."""
-    return ledger_key(entry)
-
-
 def review_bucket(entry: IndexEntry) -> str:
     """Which of the review card's buckets a parked row sits in (decision
     190): read from its code, and from its type on disk, never from its
@@ -2377,7 +2405,9 @@ def _triage_payload(triaged: review.Triage, seqs: dict[str, int],
 
     The row itself is already in ``state["index"]``; what travels here is
     the part only :mod:`tracker.review` knows, joined back to that row by
-    ``handle`` (:func:`handle_of`) - the same handle every review command takes. The
+    ``handle`` - the row's record key (:func:`tracker.records.ledger_key`, which
+    names a row with no original's location too), the same handle every review
+    command takes and every lookup in :mod:`tracker.filer` accepts. The
     row's sequence number travels here too, beside the row rather than in
     it, so the card a person acts from carries the version of the record
     it was drawn on (decision 112).
@@ -2413,7 +2443,7 @@ def _triage_payload(triaged: review.Triage, seqs: dict[str, int],
     return {
         "original_name": triaged.entry.original_name,
         "pbc_location": triaged.entry.pbc_location,
-        "handle": handle_of(triaged.entry),
+        "handle": ledger_key(triaged.entry),
         "seq": seqs.get(ledger_key(triaged.entry)),
         "shortlist": [asdict(suggestion) for suggestion in triaged.shortlist],
         # The set-aside rows the evidence points at, named with their
@@ -2509,7 +2539,7 @@ def _moved_payload(engagement: Path, entries: list[IndexEntry], items,
         rows.append({
             "original_name": entry.original_name,
             "pbc_location": entry.pbc_location,
-            "handle": handle_of(entry),
+            "handle": ledger_key(entry),
             "seq": seqs.get(ledger_key(entry)),
             "home": entry.prepared_location,
             "now": now,
@@ -2597,20 +2627,24 @@ def _return_reminder(path: Path, today: dt.date, label: str = "") -> dict:
         kind = errors.error_class(exc)
         errors.keep("api: _return_reminder", exc)
         log.warning("A reminder line could not be read (%s)", kind)
-        _warn(REMINDER_LINE_UNREADABLE.format(label=label or path.name, kind=kind))
+        _warn(REMINDER_LINE_UNREADABLE_WARNING.format(label=label or path.name))
         return {**blank, "unreadable": True, "kind": kind}
     return {
-        "last": ({"date": ledger.day_of(str(last.get(ledger.AT_KEY, ""))).isoformat(),
-                  "stage": last.get(reminder.STAGE_KEY) or 0} if last else None),
-        "approved": ({"date": ledger.day_of(str(approved.get(ledger.AT_KEY, ""))).isoformat(),
-                      "stage": approved.get(reminder.STAGE_KEY) or 0}
-                     if approved and in_force else None),
+        "last": _event_day(last) if last else None,
+        "approved": _event_day(approved) if approved and in_force else None,
         # An approval the letter was edited after (decision 190): said as
         # ``vocab.reminder.approved_then_edited`` in place of "approved".
         "lapsed": approval == reminder.APPROVED_THEN_EDITED,
         "held": len(held),
         "unsorted": unsorted,
     }
+
+
+def _event_day(event: dict, **more) -> dict:
+    """A draft or approval event as the reminder card says it: the day it was
+    recorded and the stage it was for, plus what the caller adds."""
+    return {"date": ledger.day_of(str(event.get(ledger.AT_KEY, ""))).isoformat(),
+            "stage": event.get(reminder.STAGE_KEY) or 0, **more}
 
 
 def _feed_payload(household_dir: Path, years: list[int]) -> tuple[list[dict], list[dict]]:
@@ -2648,11 +2682,9 @@ def _feed_payload(household_dir: Path, years: list[int]) -> tuple[list[dict], li
         try:
             practice = households_named(household_dir.parent, [one.household for one in info.feeds])
         except RegistryError as exc:
-            errors.keep("api: _feed_payload", exc)
-            log.warning("The feeds could not be resolved (%s)", errors.error_class(exc))
-            _warn(PRACTICE_NOT_WALKED)
+            sentence = _not_walked("_feed_payload", exc, "The feeds could not be resolved")
             return ([{"household": one.household, "return_name": one.return_name,
-                      "label": "", "path": "", "warning": PRACTICE_NOT_WALKED}
+                      "label": "", "path": "", "warning": sentence}
                      for one in info.feeds], fed)
         found, said = resolve_feeds(household_dir, info.feeds, year, practice)
     by_line = {(one.info.household or one.household_path.name, one.info.return_name or one.path.name):
@@ -2885,12 +2917,9 @@ def _household_payload(engagement: Path) -> dict:
         # offered (decision 196).
         "roll_year": roll_year,
         "returns": [
-            {"label": one.label, "path": str(one.path),
-             "year": one.tax_year if one.tax_year is not None else year_of(one.path),
-             "return_name": one.info.return_name or one.path.name,
+            {"label": one.label, **_return_row(one),
              "active": one.active, "superseded_by": one.superseded_by,
              "rollable": one.path in rollable,
-             "form": one.info.form,
              "people": [person.name for person in one.info.people],
              "reminder": (_return_reminder(one.path, today, one.label)
                           if one.active and one.tax_year in years else None)}
@@ -2967,6 +2996,16 @@ def file_group(entry: IndexEntry) -> str:
 
 
 def _state(engagement: Path) -> dict:
+    """Everything the app draws one return from, in one read (decision 194).
+
+    **Two rules hold for every key, so the comments below do not repeat
+    them.** The renderer types none of the words (they come from
+    :func:`_vocab`) and works none of the facts out: a count, a group, a
+    side, a year or a key arrives computed. And the shell opens only the
+    paths ``paths`` holds - it lstats before it acts - so every folder or
+    file a button opens is named there, each by a key the row carries, never
+    by a path on the row (P63).
+    """
     root = _saved_root()
     # The store is brought up to the record before anything is read, and
     # showing an engagement stays a read - the app shows one a pass is
@@ -3020,9 +3059,9 @@ def _state(engagement: Path) -> dict:
         # labels a set-aside row without reading the Period's text, and
         # the record's word for its status (decision 200), the key the
         # renderer shows through ``vocab.labels`` - "Not asked" for a row
-        # nobody asked for with nothing in (decision 142) - so it types
-        # none. An outstanding row carries whose move
-        # it is and the row's own sentence; any other row has no side.
+        # nobody asked for with nothing in (decision 142). An outstanding
+        # row carries whose move it is and the row's own sentence; any
+        # other row has no side.
         "items": [
             asdict(i) | {"received_date": i.received_date.isoformat() if i.received_date else None,
                          "year": i.year, "status_key": status_key(i),
@@ -3062,11 +3101,10 @@ def _state(engagement: Path) -> dict:
         # A request that cannot receive is a warning; a return merely short
         # of room is not (the lead's L-1): its names are cut to fit and
         # everything files, so the figure is information on its page.
-        "warnings": check_rules(items) + (
-            [ROOM_PARKS_WORDS.format(count=room.parks)] if room.parks else []),
+        "warnings": check_rules(items) + _room_parks(room),
         "room": {"need": room.need, "least": room.least, "floor": room.floor,
                  "short": room.short, "parks": room.parks, "limit": room.limit},
-        "room_note": ROOM_SHORT_WORDS.format(short=room.short) if room.short else "",
+        "room_note": ROOM_SHORT_WORDS if room.short else "",
         # The index's packed cells travel as data, not as text the app
         # would have to parse: the candidates as a list, the evidence as
         # the record it was written from keyed by candidate identifier,
@@ -3081,7 +3119,7 @@ def _state(engagement: Path) -> dict:
                                "candidates": e.candidate_list,
                                "answered": [identifier for identifier, _ in e.answered],
                                "evidence": _evidence_payload(e),
-                               "handle": handle_of(e), "group": file_group(e),
+                               "handle": ledger_key(e), "group": file_group(e),
                                "seq": seqs.get(ledger_key(e)),
                                # One key per working copy, in filed_names'
                                # order: each name is a live link (P63: the
@@ -3115,37 +3153,29 @@ def _state(engagement: Path) -> dict:
         "reminder_card": _reminder_said(engagement),
         # The household this return belongs to (decision 125): its own
         # record, the years still open across it, its returns and the one
-        # queue a person works. The card is drawn from this and types
-        # nothing of its own.
+        # queue a person works.
         "household": household,
         "paths": {
             "engagement": str(engagement),
             # The household's one inbox and the folder the client sees for
-            # the year, both in the tree a client is shared. The shell
-            # opens only the paths this map holds, so the two buttons that
-            # open them are named here.
+            # the year, both in the tree a client is shared.
             "inbox": str(inbox_of(engagement)),
             "originals": str(_originals_of(engagement)),
             "client_folder": str(client_household_dir(_root_of(engagement),
                                                       household_of(engagement).name)),
             "household": str(household_of(engagement)),
             "prepared": str(engagement / PREPARED_DIR_NAME),
-            # The one a person is meant to open. Named here as well as
-            # above because the shell opens only paths this map holds.
+            # The one a person is meant to open.
             "view": str(view_path),
-            # The week's draft, so the Reminder card's quiet button can
-            # open it (decision 118). Named here for the same reason the
-            # two above are: the shell opens only the paths this map
-            # holds, and the card names no path of its own.
+            # The week's draft, for the Reminder card's quiet button
+            # (decision 118).
             "draft": str(engagement / reminder.DRAFT_FILENAME),
             # The practice's page, not this engagement's: it lives in the
-            # clients root. Reported here because the shell opens only the
-            # paths the API has named, and a person looking at one
-            # engagement is one click from the whole practice.
+            # clients root, and a person looking at one engagement is one
+            # click from the whole practice.
             "status": str(root / STATUS_PAGE_FILENAME) if root else "",
             # Each parked document's review copy (decision 190), for its
-            # card's Open: named here because the shell opens only the
-            # paths this map holds, and never for a not-a-document row.
+            # card's Open - never for a not-a-document row.
             **{key: str(locate(engagement, e.prepared_location)) for e in entries
                if (key := _review_copy_key(e))},
             # The same copy, to be shown and never opened (F2).
@@ -3154,7 +3184,7 @@ def _state(engagement: Path) -> dict:
             # The working copy of each filed document, and where each
             # moved-by-hand copy is now: the file names on the page are
             # links that show that exact copy in File Explorer. Only paths
-            # the record already holds; the shell lstats before it acts.
+            # the record already holds.
             **{key: str(locate(engagement, where)) for e in entries
                if e.decision == FILED for key, where in zip(_filed_copy_keys(e), e.filed_locations, strict=True)},
             **{key: str(locate(engagement, moved_to(e))) for e in entries
@@ -3167,8 +3197,14 @@ def _room_sentences(room) -> list[str]:
     """What the reply to setting the root says about one return's room
     (decision 131), filled: the figure it is short by, as information, and
     the requests that cannot receive, as the warning they are."""
-    said = [ROOM_SHORT_WORDS.format(short=room.short)] if room.short else []
-    return said + ([ROOM_PARKS_WORDS.format(count=room.parks)] if room.parks else [])
+    return ([ROOM_SHORT_WORDS] if room.short else []) + _room_parks(room)
+
+
+def _room_parks(room) -> list[str]:
+    """The warning that some requests cannot receive a document for want of
+    room, or nothing (the lead's L-1: a return merely short of room is
+    information, not a warning)."""
+    return [ROOM_PARKS_WORDS.format(count=room.parks)] if room.parks else []
 
 
 def _reminder_payload(engagement: Path, triaged) -> dict:
@@ -3211,6 +3247,25 @@ def _refresh_readmes(*engagements: Path) -> None:
     a refused action refreshes nothing."""
     for household_dir in dict.fromkeys(household_of(Path(one)) for one in engagements):
         refresh_household_readme(household_dir, said=_WARNINGS)
+
+
+def _rescan(folder: Path, *, note: str | None = None, kept_as: str = "re-scan") -> str:
+    """Re-scan one return after an act changed its rules or its documents, and
+    say in a sentence if another run holds it (decision 103).
+
+    The act itself has landed, so a held lock is a note on the reply, never a
+    refusal: the next pass scans the same folder under the same lock. ``note``
+    replaces the default sentence, and the lock's own words are then kept in
+    the error log instead.
+    """
+    try:
+        scan_engagement(folder)
+    except ScanLockedError as exc:
+        if note is None:
+            return f"not re-scanned: {exc}"
+        errors.keep("api: " + kept_as, exc)
+        return note
+    return ""
 
 
 def _error_log_said() -> str:
@@ -3264,12 +3319,7 @@ def _cmd_run_now(argv: list[str]) -> int:
                     raise EngagementLockedError(
                         LOCKED.format(seconds=int(status.age_seconds)), one / LOCK_FILENAME)
         except Exception as exc:  # said as the one envelope, never a traceback
-            if _failure_of(exc)["kind"] == "failed":
-                # Its class on the log line; its words and trace kept apart
-                # (decision 190), in the error log only.
-                errors.keep("api: " + PASS_COMMAND, exc)
-                log.error("%s failed (%s)", PASS_COMMAND, errors.error_class(exc))
-            return _reply_failure(exc)
+            return _say_failure(PASS_COMMAND, exc)
         finally:
             store.close()
     return runner.main(runner.run_now_arguments(settings_dir(), household))
@@ -3287,10 +3337,10 @@ def _cmd_watch(argv: list[str]) -> dict:
     try:
         folder = _engagement_dir(argv)
     except (ManifestError, door.DoorError, layout.LayoutError):
-        at = argv.index(ENGAGEMENT_FLAG) + 1 if ENGAGEMENT_FLAG in argv else len(argv)
-        if at >= len(argv) or not argv[at].strip():
+        given = _flag_value(argv)
+        if not given:
             raise
-        folder = _household_dir(argv[at].strip())
+        folder = _household_dir(given)
     return {"lock": _lock_payload(folder)}
 
 
@@ -3326,7 +3376,7 @@ def _cmd_propose_spellings(argv: list[str]) -> dict:
     somebody is still typing.
     """
     spec = _read_spec()
-    kind = str(spec.get("kind", "") or "").strip()
+    kind = _text(spec, "kind")
     if kind not in PERSON_KINDS:
         raise ManifestError(f"'{kind}' is not one of {', '.join(PERSON_KINDS)}")
     return {"spellings": list(propose_spellings(str(spec.get("name", "") or ""), kind))}
@@ -3370,9 +3420,7 @@ def _cmd_edit(argv: list[str]) -> dict:
     rows = spec.get("items")
     if not isinstance(rows, list):
         raise ManifestError("The editor sent no rows")
-    head = spec.get("head")
-    if not isinstance(head, str) or not head.strip():
-        raise ManifestError(NO_LIST_HEAD)
+    head = _head_of(spec)
     recorded = recorded_rules(engagement)
     exact = {str(rule["identifier"]): rule for rule in recorded}
     folded = {identifier_key(str(rule["identifier"])): rule for rule in recorded}
@@ -3522,21 +3570,16 @@ def _cmd_unlearn(argv: list[str]) -> dict:
     """
     engagement = _engagement_dir(argv)
     spec = _read_spec()
-    identifier = str(spec.get("identifier", "")).strip()
-    keyword = str(spec.get("keyword", "")).strip()
+    identifier = _text(spec, "identifier")
+    keyword = _text(spec, "keyword")
     if not identifier or not keyword:
         raise ManifestError("Pick the request and the keyword to take back")
     taken = unlearn_keyword(engagement, identifier, keyword)
-    scan_note = ""
-    try:
-        scan_engagement(engagement)
-    except ScanLockedError as exc:
-        scan_note = f"not re-scanned: {exc}"
     return {
         "unlearned": {
             "identifier": taken.identifier,
             "keyword": taken.keyword,
-            "scan_note": scan_note,
+            "scan_note": _rescan(engagement),
         },
         "state": _state(engagement),
     }
@@ -3666,17 +3709,24 @@ def _cmd_list(argv: list[str]) -> dict:
     except RegistryError as exc:
         # One that could not be walked is said, never answered as empty
         # (decision 193): the class to the log, the sentence to the page.
-        errors.keep("api: _cmd_list", exc)
-        log.warning("The clients root could not be walked (%s)", errors.error_class(exc))
-        _warn(PRACTICE_NOT_WALKED)
         return {**empty, "needs_root": False, "root": str(root),
-                "root_problem": PRACTICE_NOT_WALKED, "vocab": _vocab(),
+                "root_problem": _not_walked("_cmd_list", exc), "vocab": _vocab(),
                 "paths": _list_paths(root), "machine_warnings": _machine_warnings(root)}
-    return {**_list_payload(root, registry), "needs_root": False, "vocab": _vocab(),
-            "paths": _list_paths(root),
-            "reader_warning": empty["reader_warning"], "last_pass": empty["last_pass"],
-            "after_install": empty["after_install"],
-            "machine_warnings": _machine_warnings(root)}
+    return {**empty, **_list_payload(root, registry), "needs_root": False, "vocab": _vocab(),
+            "paths": _list_paths(root), "machine_warnings": _machine_warnings(root)}
+
+
+def _year(one: Engagement) -> int | None:
+    """The return's tax year: the record's, or the one its folder is named for."""
+    return one.tax_year if one.tax_year is not None else year_of(one.path)
+
+
+def _return_row(one: Engagement) -> dict:
+    """What every list of returns says of one: where it is, its year, its name
+    and the catalog form it was cut from (pilot P172) - the form chip and the
+    Client Types, read from the record, never a folder name."""
+    return {"path": str(one.path), "year": _year(one),
+            "return_name": one.info.return_name or one.path.name, "form": one.info.form}
 
 
 def _list_payload(root: Path, registry: Registry) -> dict:
@@ -3702,24 +3752,13 @@ def _list_payload(root: Path, registry: Registry) -> dict:
             "links": links.get(household.path, []),
             "open_years": open_years(returns),
             "returns": [
-                {"label": one.label, "path": str(one.path),
-                 "year": one.tax_year if one.tax_year is not None else year_of(one.path),
-                 "return_name": one.info.return_name or one.path.name,
-                 "active": one.active, "superseded_by": one.superseded_by,
-                 "form": one.info.form}
+                {"label": one.label, **_return_row(one),
+                 "active": one.active, "superseded_by": one.superseded_by}
                 for one in returns
             ],
         })
-    engagements = [
-        {"name": one.label, "path": str(one.path),
-         "household": str(one.household_path),
-         "year": one.tax_year if one.tax_year is not None else year_of(one.path),
-         "return_name": one.info.return_name or one.path.name,
-         # The catalog the return was cut from (pilot P172): the form chip
-         # and the Client Types, read from the record, never a folder name.
-         "form": one.info.form}
-        for one in registry.engagements
-    ]
+    engagements = [{"name": one.label, "household": str(one.household_path), **_return_row(one)}
+                   for one in registry.engagements]
     return {
         "engagements": engagements,
         "households": households,
@@ -3864,9 +3903,7 @@ def _listing(registry: Registry | None = None) -> dict | None:
                 return {"engagements": [], "households": [], "misfits": [], "root": str(root)}
             return _list_payload(root, walked)
     except (RegistryError, door.DoorError, SettingsError) as exc:   # the write stands (N4)
-        errors.keep("api: _listing", exc)
-        log.warning("The clients root could not be walked (%s)", errors.error_class(exc))
-        _warn(PRACTICE_NOT_WALKED)
+        _not_walked("_listing", exc)
         return None
 
 
@@ -3956,14 +3993,14 @@ def _cmd_create(argv: list[str]) -> dict:
     """
     spec = _read_spec()
     root = _root()
-    form = str(spec.get("form", "")).strip()
+    form = _text(spec, "form")
     if form:
         require_form(form)
-    client = str(spec.get("client", "") or "").strip()
+    client = _text(spec, "client")
     # The return's tax year: the calendar's default unless chosen.
     year = _tax_year(spec.get("year"), default_tax_year())
 
-    given = str(spec.get("household_path", "") or "").strip()
+    given = _text(spec, "household_path")
     if given:
         household_dir = _household_dir(given)
         if not ledger.path_for(household_dir).is_file():
@@ -4011,7 +4048,7 @@ def _cmd_create(argv: list[str]) -> dict:
     if base:
         items = [shift_item(item, year - base) for item in items]
 
-    return_name = str(spec.get("return_name", "") or "").strip() or default_return_name(form, client)
+    return_name = _text(spec, "return_name") or default_return_name(form, client)
     engagement = _new_return_dir(root, household, year, return_name, items)
 
     # The dialog's dates, or the form's own (decision 117) - a new return
@@ -4062,8 +4099,7 @@ def _cmd_create(argv: list[str]) -> dict:
         _undo_made(made, owned)
         raise
     _refresh_readmes(engagement)
-    reply = {"created": Engagement(path=engagement, info=info,
-                                   household_path=household_dir).label,
+    reply = {"created": _label(engagement, household_dir, info),
              "state": _state(engagement),
              "link_dropped": link_dropped}
     # A household's **first** return is the moment the two grants have to
@@ -4361,7 +4397,7 @@ def _cmd_rollover(argv: list[str]) -> dict:
     (decision 142).
     """
     spec = _read_spec()
-    prior_raw = str(spec.get("prior", "")).strip()
+    prior_raw = _text(spec, "prior")
     if not prior_raw:
         raise ManifestError("Pick the engagement to roll forward")
     prior = _return_dir(prior_raw)
@@ -4376,7 +4412,7 @@ def _cmd_rollover(argv: list[str]) -> dict:
     if held := registry_held_back(household_of(prior)):
         raise ManifestError(held)
 
-    form = str(spec.get("form", "")).strip()
+    form = _text(spec, "form")
     template = template_items(form) if form else []
 
     report = roll_forward(
@@ -4396,7 +4432,7 @@ def _cmd_rollover(argv: list[str]) -> dict:
     # in and its own folder name, never the names its record carries.
     household_dir = household_of(prior)
     household = household_dir.name
-    return_name = str(spec.get("return_name", "") or "").strip() or prior.name
+    return_name = _text(spec, "return_name") or prior.name
     engagement = _new_return_dir(_root(), household, report.target_year, return_name,
                                  report.items)
 
@@ -4437,8 +4473,7 @@ def _cmd_rollover(argv: list[str]) -> dict:
     _refresh_readmes(engagement)
 
     return _with_list({   # next year's return is in the list now (decision 194)
-        "created": Engagement(path=engagement, info=info,
-                              household_path=household_dir).label,
+        "created": _label(engagement, household_dir, info),
         "rollover": {
             "prior": prior.name,
             "prior_year": report.prior_year,
@@ -4535,8 +4570,7 @@ def _cmd_roll_household(argv: list[str]) -> dict:
         done, not_retired, warning = exc.result, exc.not_retired, str(exc)
     rolled = [
         {"prior": was.name, "created": str(created),
-         "label": Engagement(path=created, household_path=household_dir,
-                             info=load_engagement_info(created)).label,
+         "label": _label(created, household_dir),
          **_carried_payload(one_report, was)}
         for was, created, one_report in done.rolled
     ]
@@ -4548,12 +4582,8 @@ def _cmd_roll_household(argv: list[str]) -> dict:
     return _with_list({
         "rolled": rolled,
         "skipped": [{"prior": was.name, "reason": why} for was, why in done.skipped],
-        "retired": [Engagement(path=one, household_path=household_dir,
-                               info=load_engagement_info(one)).label
-                    for one in done.retired],
-        "not_retired": [Engagement(path=one, household_path=household_dir,
-                                   info=load_engagement_info(one)).label
-                        for one in not_retired],
+        "retired": [_label(one, household_dir) for one in done.retired],
+        "not_retired": [_label(one, household_dir) for one in not_retired],
         "warning": warning,
         "target_year": target_year,
         "state": _state(landed),
@@ -4677,16 +4707,61 @@ def _seq_of(spec: dict) -> int:
     """The row's record version the app sent, refused when it sent none.
 
     Every review command is made from a card the app drew out of ``state``,
-    and every row there carries its own sequence number (decision 112). A
-    spec without one is a caller acting against no view of the record, so
-    it is refused here rather than passed to the filer, which treats
-    ``None`` as "nothing to be stale against" for the scripts and tests
-    that genuinely have no view.
+    and every row there carries its own sequence number (decision 112):
+    ``seq`` is the row as the person saw it, and a row somebody filed,
+    dismissed, re-filed or rewrote while the card was open is refused by the
+    filer with what the record now says, before a byte is read. A spec
+    without one is a caller acting against no view of the record, so it is
+    refused here rather than passed to the filer, which treats ``None`` as
+    "nothing to be stale against" for the scripts and tests that genuinely
+    have no view. The other handlers' docstrings point here.
     """
     seq = spec.get("seq")
     if seq is None:
         raise ManifestError(NO_SEQ)
     return int(seq)
+
+
+def _text(spec: dict, key: str) -> str:
+    """One text field of a command's spec, trimmed; a missing field or a JSON
+    ``null`` is the empty string, so it meets the same "Pick the file..."
+    refusal as a blank one rather than becoming the word ``None``."""
+    value = spec.get(key)
+    return "" if value is None else str(value).strip()
+
+
+def _head_of(spec: dict) -> str:
+    """The version of the list the editor or the card was drawn from
+    (``state``'s ``list_head``), refused when the spec sent none."""
+    head = spec.get("head")
+    if not isinstance(head, str) or not head.strip():
+        raise ManifestError(NO_LIST_HEAD)
+    return head
+
+
+def _original_of(spec: dict, refusal: str) -> str:
+    """The document a row action names, or ``refusal`` when it names none."""
+    original = _text(spec, "original")
+    if not original:
+        raise ManifestError(refusal)
+    return original
+
+
+def _row_reply(engagement: Path, key: str, entry, *, full: bool = True, **extra) -> dict:
+    """The reply every row action makes: the README refreshed (the action
+    succeeded, so what the client reads is current at once), the row as it
+    now stands under ``key`` - name, reason and, unless ``full`` is false,
+    its decision and where its copy sits - then what the action adds, and the
+    fresh ``state``."""
+    _refresh_readmes(engagement)
+    row = {"original_name": entry.original_name}
+    if full:
+        row["decision"] = entry.decision
+    row["reason"] = entry.reason
+    if full:
+        row["prepared_location"] = entry.prepared_location
+    row.update(extra)
+    return {key: row, "state": _state(engagement)}
 
 
 def _shortlist_now(engagement: Path, original: str) -> list[str]:
@@ -4754,11 +4829,7 @@ def _hand_over(engagement: Path, original: str, target: Path, identifier: str, *
     result = hand_over(engagement, original, target, identifier,
                        seq=seq, keyword=keyword, spelling=spelling,
                        also=also, answers=answers, waiting=waiting)
-    scan_note = ""
-    try:
-        scan_engagement(target)
-    except ScanLockedError as exc:
-        scan_note = f"not re-scanned: {exc}"
+    scan_note = _rescan(target)
     _refresh_readmes(engagement, target)
     return {
         "handed_over": {
@@ -4835,9 +4906,8 @@ def _cmd_assign(argv: list[str]) -> dict:
     that prints it confirms itself (decision 128), and the engagement is
     re-scanned so the status reflects it straight away.
 
-    The row is judged against the record it was picked from: ``seq`` is the
-    row's own sequence number as the card showed it, and a row rewritten
-    since is refused before a file is touched (decision 112). The shortlist
+    The row is judged against the record it was picked from (``seq`` is
+    required, :func:`_seq_of`). The shortlist
     the evidence points at is computed here, from the same row the filer
     will act on, and handed in, so a pick that overrules it is recorded on
     the row in words.
@@ -4849,8 +4919,8 @@ def _cmd_assign(argv: list[str]) -> dict:
     """
     engagement = _engagement_dir(argv)
     spec = _read_spec()
-    original = str(spec.get("original", "")).strip()
-    identifier = str(spec.get("identifier", "")).strip()
+    original = _text(spec, "original")
+    identifier = _text(spec, "identifier")
     if original and spec.get("waiting") is True:
         return _hand_over_waiting(engagement, original, _seq_of(spec))
     if not original or not identifier:
@@ -4861,7 +4931,7 @@ def _cmd_assign(argv: list[str]) -> dict:
         person=str(taught.get("person", "") or "").strip(),
         spelling=str(taught.get("spelling", "") or "").strip(),
     ) if taught else None
-    target = str(spec.get("target", "") or "").strip()
+    target = _text(spec, "target")
     if target:
         return _hand_over(engagement, original, Path(target), identifier,
                           seq=seq, keyword=str(spec.get("keyword", "") or ""), spelling=spelling)
@@ -4872,11 +4942,7 @@ def _cmd_assign(argv: list[str]) -> dict:
     # The re-scan puts the request's status right straight away. There is
     # one reason left for it not to (decision 103): another run holds the
     # engagement.
-    scan_note = ""
-    try:
-        scan_engagement(engagement)
-    except ScanLockedError as exc:
-        scan_note = f"not re-scanned: {exc}"
+    scan_note = _rescan(engagement)
     _refresh_readmes(engagement)
     return {
         "assigned": {
@@ -4926,13 +4992,9 @@ def _cmd_add_issuer_and_file(argv: list[str]) -> dict:
     """
     engagement = _engagement_dir(argv)
     spec = _read_spec()
-    original = str(spec.get("original", "")).strip()
-    if not original:
-        raise ManifestError("Pick the file whose issuer this is")
+    original = _original_of(spec, "Pick the file whose issuer this is")
     seq = _seq_of(spec)
-    head = spec.get("head")
-    if not isinstance(head, str) or not head.strip():
-        raise ManifestError(NO_LIST_HEAD)
+    head = _head_of(spec)
     issuer = spec.get("issuer", "") or ""
     if not isinstance(issuer, str):
         raise ManifestError(ISSUER_NOT_TEXT)
@@ -4947,12 +5009,7 @@ def _cmd_add_issuer_and_file(argv: list[str]) -> dict:
         engagement, original, identifier, seq=seq, shortlist=_shortlist_now(engagement, original),
         adding=row, head=head,
     )
-    scan_note = ""
-    try:
-        scan_engagement(engagement)
-    except ScanLockedError as exc:
-        errors.keep("api: add issuer", exc)
-        scan_note = ISSUER_NOT_RESCANNED
+    scan_note = _rescan(engagement, note=ISSUER_NOT_RESCANNED, kept_as="add issuer")
     _refresh_readmes(engagement)
     return {
         "added_and_filed": {
@@ -4984,9 +5041,7 @@ def _cmd_dismiss(argv: list[str]) -> dict:
     nothing moves: the working copy stays where it is and the client's
     original is untouched. Filing it afterwards is how the decision is undone.
 
-    ``seq`` is the row as the person saw it and is required (decision 112):
-    a row somebody filed or dismissed while the card was open is refused
-    with what the record now says.
+    ``seq`` is required (:func:`_seq_of`).
 
     There is no re-scan. The document was never filed under a request, so no
     row's status can change; re-scanning would take the lock again and read
@@ -4994,21 +5049,10 @@ def _cmd_dismiss(argv: list[str]) -> dict:
     """
     engagement = _engagement_dir(argv)
     spec = _read_spec()
-    original = str(spec.get("original", "")).strip()
-    if not original:
-        raise ManifestError("Pick the file no request asks for")
+    original = _original_of(spec, "Pick the file no request asks for")
     result = dismiss_review_file(engagement, original, str(spec.get("note", "") or ""),
                                  seq=_seq_of(spec))
-    _refresh_readmes(engagement)
-    return {
-        "dismissed": {
-            "original_name": result.entry.original_name,
-            "decision": result.entry.decision,
-            "reason": result.entry.reason,
-            "prepared_location": result.entry.prepared_location,
-        },
-        "state": _state(engagement),
-    }
+    return _row_reply(engagement, "dismissed", result.entry)
 
 
 def _cmd_unfile(argv: list[str]) -> dict:
@@ -5024,30 +5068,18 @@ def _cmd_unfile(argv: list[str]) -> dict:
     summary comes back in ``state`` - it is summarize() over the rows the
     re-scan has just left, and there is nowhere else it lives.
 
-    ``seq`` is the row as the person saw it and is required (decision 112):
-    a row somebody re-filed in between is a newer filing, and unfiling it
-    would undo a decision this person never saw.
+    ``seq`` is required (:func:`_seq_of`): a row somebody re-filed in between
+    is a newer filing, and unfiling it would undo a decision this person
+    never saw.
     """
     engagement = _engagement_dir(argv)
     spec = _read_spec()
-    original = str(spec.get("original", "")).strip()
-    if not original:
-        raise ManifestError("Pick the document to send back for review")
+    original = _original_of(spec, "Pick the document to send back for review")
     result = unfile_document(engagement, original, str(spec.get("note", "") or ""),
                              seq=_seq_of(spec))
-    _refresh_readmes(engagement)
-    return {
-        "unfiled": {
-            "original_name": result.entry.original_name,
-            "decision": result.entry.decision,
-            "reason": result.entry.reason,
-            "prepared_location": result.entry.prepared_location,
-            "moved_working_copy": result.moved_working_copy,
-            "left_filed": result.left_filed,
-            "scan_note": result.scan_note,
-        },
-        "state": _state(engagement),
-    }
+    return _row_reply(engagement, "unfiled", result.entry,
+                      moved_working_copy=result.moved_working_copy,
+                      left_filed=result.left_filed, scan_note=result.scan_note)
 
 
 def _cmd_mark_missing(argv: list[str]) -> dict:
@@ -5069,22 +5101,14 @@ def _cmd_mark_missing(argv: list[str]) -> dict:
     """
     engagement = _engagement_dir(argv)
     spec = _read_spec()
-    original = str(spec.get("original", "")).strip()
-    identifier = str(spec.get("identifier", "")).strip()
+    original = _text(spec, "original")
+    identifier = _text(spec, "identifier")
     if not original or not identifier:
         raise ManifestError("Pick the statement and the request to mark missing")
     result = mark_missing_again(engagement, original, identifier,
                                 str(spec.get("note", "") or ""), seq=_seq_of(spec))
-    _refresh_readmes(engagement)
-    return {
-        "marked_missing": {
-            "original_name": result.entry.original_name,
-            "identifier": result.identifier,
-            "reason": result.entry.reason,
-            "scan_note": result.scan_note,
-        },
-        "state": _state(engagement),
-    }
+    return _row_reply(engagement, "marked_missing", result.entry, full=False,
+                      identifier=result.identifier, scan_note=result.scan_note)
 
 
 def _cmd_restore(argv: list[str]) -> dict:
@@ -5103,31 +5127,17 @@ def _cmd_restore(argv: list[str]) -> dict:
     row whose copy was simply deleted is accepted too, and the copy is made
     again from the original, as the pass would.
 
-    ``seq`` is the row as the person saw it and is required (decision 112),
-    as it is for the other three: a row the pass rewrote while the card was
-    open is refused before a byte is read.
+    ``seq`` is required (:func:`_seq_of`).
     """
     engagement = _engagement_dir(argv)
     spec = _read_spec()
-    original = str(spec.get("original", "")).strip()
-    if not original:
-        raise ManifestError("Pick the working copy to put back")
+    original = _original_of(spec, "Pick the working copy to put back")
     result = restore_working_copy(engagement, original, seq=_seq_of(spec))
-    _refresh_readmes(engagement)
-    return {
-        "restored": {
-            "original_name": result.entry.original_name,
-            "decision": result.entry.decision,
-            "reason": result.entry.reason,
-            "prepared_location": result.entry.prepared_location,
-            "moved_home": result.moved_home,
-            "copied_from_original": result.copied_from_original,
-            "already_home": result.already_home,
-            "parked_as": result.parked_as,
-            "scan_note": result.scan_note,
-        },
-        "state": _state(engagement),
-    }
+    return _row_reply(engagement, "restored", result.entry,
+                      moved_home=result.moved_home,
+                      copied_from_original=result.copied_from_original,
+                      already_home=result.already_home, parked_as=result.parked_as,
+                      scan_note=result.scan_note)
 
 
 # --------------------------------------------------------------- the reminder ----
@@ -5207,11 +5217,8 @@ def _reminder_now(engagement: Path, requested: int | None, today: dt.date) -> di
     way: ``held`` is the rows (none), ``unsorted`` is the count, and the
     card's hold line comes from ``vocab.reminder.inbox_held_line``.
     """
-    try:
-        info = load_engagement_info(engagement)
-        draft = reminder.draft_reminder(engagement, today=today)
-    except reminder.ReminderError as exc:
-        raise ManifestError(str(exc)) from None
+    info = load_engagement_info(engagement)
+    draft = reminder.draft_reminder(engagement, today=today)
 
     day_stage = reminder.stage_for(info.due, today)
     last = reminder.last_draft_event(engagement, carrying=ledger.FILE_KEY)
@@ -5239,10 +5246,7 @@ def _reminder_now(engagement: Path, requested: int | None, today: dt.date) -> di
         # only asks about a file that is not a document has none (decision
         # 190's re-check, S-N1).
         if draft.lines and stage != draft.stage:
-            try:
-                draft = reminder.draft_reminder(engagement, today=today, stage=int(stage))
-            except reminder.ReminderError as exc:
-                raise ManifestError(str(exc)) from None
+            draft = reminder.draft_reminder(engagement, today=today, stage=int(stage))
 
     if draft.is_held:
         subject, text, html, letter = "", "", "", None
@@ -5270,13 +5274,9 @@ def _reminder_now(engagement: Path, requested: int | None, today: dt.date) -> di
         "unsorted_files": reminder.unsorted_files_in_inbox(engagement) if draft.unsorted else [],
         "refusal": reminder.held_refusal(draft) if draft.is_held else "",
         "held_too_long": late,
-        "last": ({"date": ledger.day_of(str(last.get(ledger.AT_KEY, ""))).isoformat(),
-                  "stage": last.get(reminder.STAGE_KEY) or 0,
-                  "asked": list(last.get(ledger.ASKED_KEY) or []),
-                  "file": last.get(ledger.FILE_KEY, "")} if last else None),
-        "approved": ({"date": ledger.day_of(str(approved.get(ledger.AT_KEY, ""))).isoformat(),
-                      "stage": approved.get(reminder.STAGE_KEY) or 0,
-                      "file": approved.get(ledger.FILE_KEY, "")}
+        "last": (_event_day(last, asked=list(last.get(ledger.ASKED_KEY) or []),
+                            file=last.get(ledger.FILE_KEY, "")) if last else None),
+        "approved": (_event_day(approved, file=approved.get(ledger.FILE_KEY, ""))
                      if approved and in_force else None),
         # The approval lapsed because the letter was edited after it
         # (decision 190): the card says so rather than "approved".
@@ -5427,10 +5427,7 @@ def _cmd_set_root(argv: list[str]) -> dict:
     leaves what is recorded alone.
     """
     spec = _read_spec()
-    try:
-        root = set_clients_root(str(spec.get("root", "")))
-    except SettingsError as exc:
-        raise ManifestError(str(exc)) from None
+    root = set_clients_root(str(spec.get("root", "")))
     if spec.get("firm") is not None:
         set_firm(str(spec["firm"]))
     if spec.get("phone") is not None:
@@ -5513,6 +5510,16 @@ SCHEDULE_CANCEL = "Cancel"
 AFTER_INSTALL_HEADING = "Setup Needs Attention"
 
 
+def _schedule_reply(done, *, sentence_key: str = "sentence") -> dict:
+    """What every schedule reply takes from the after-install step that ran:
+    whether a task was registered here, the outcome key, the step's sentence
+    (under ``sentence_key``: ``move-schedule-here`` already uses ``sentence``
+    for the move's own, so the page reads this one as ``schedule_sentence``
+    there) and the step's whole reply."""
+    return {"installed": done.installed, "outcome": done.schedule,
+            sentence_key: done.schedule_sentence, "after_install": done.reply()}
+
+
 def _cmd_install_schedule(argv: list[str]) -> dict:
     """The repair path (decision 209): run the after-install step again, now.
 
@@ -5540,9 +5547,7 @@ def _cmd_install_schedule(argv: list[str]) -> dict:
     except ScheduleChoiceError:
         chosen = None    # the step already said so, as its failure
     return {
-        "installed": done.installed,
-        "outcome": done.schedule,
-        "sentence": done.schedule_sentence,
+        **_schedule_reply(done),
         "xml": done.xml,
         "command": list(done.command),
         "root": str(clients_root() or ""),
@@ -5554,7 +5559,6 @@ def _cmd_install_schedule(argv: list[str]) -> dict:
         # The computer that runs it, when that is another one, else "": the
         # page offers to move it here (move-schedule-here) only when set.
         "host": done.schedule_host,
-        "after_install": done.reply(),
     }
 
 
@@ -5574,14 +5578,11 @@ def _cmd_set_schedule(argv: list[str]) -> dict:
         raise ManifestError(str(exc)) from None
     done = after_install.run(reason=after_install.REASON_REPAIR)
     return {
+        **_schedule_reply(done),
         "enabled": chosen.enabled,
         "start": chosen.start,
         "every": chosen.every,
-        "outcome": done.schedule,
-        "sentence": done.schedule_sentence,
         "next_run": next_run(chosen) if done.installed else "",
-        "installed": done.installed,
-        "after_install": done.reply(),
     }
 
 
@@ -5598,9 +5599,8 @@ def _cmd_move_schedule_here(argv: list[str]) -> dict:
     if not moved:
         return {"moved": False, "sentence": said, "installed": False}
     done = after_install.run(reason=after_install.REASON_REPAIR)
-    return {"moved": True, "sentence": said, "installed": done.installed,
-            "outcome": done.schedule, "schedule_sentence": done.schedule_sentence,
-            "after_install": done.reply()}
+    return {"moved": True, "sentence": said,
+            **_schedule_reply(done, sentence_key="schedule_sentence")}
 
 
 def _cmd_after_install(argv: list[str]) -> dict:
@@ -5774,7 +5774,7 @@ def _firm_row(one, household: str, today: dt.date) -> tuple[dict, list[dict], di
     no document is read."""
     row = {"path": str(one.path), "household": household, "label": one.label,
            "form": one.info.form,
-           "year": one.tax_year if one.tax_year is not None else year_of(one.path),
+           "year": _year(one),
            "counts": dict.fromkeys(GROUPS, 0), "files": 0, "oldest": None, "due": None,
            "draft": {"ready": False, "stage": 0, "held": 0, "drafted": None}, "problem": ""}
     if one.problem:
@@ -5815,7 +5815,7 @@ def _firm_row(one, household: str, today: dt.date) -> tuple[dict, list[dict], di
         return key
 
     files = [{"return": row["path"], "year": row["year"], "name": t.entry.original_name,
-              "handle": handle_of(t.entry), "code": t.entry.code, "received": t.entry.received,
+              "handle": ledger_key(t.entry), "code": t.entry.code, "received": t.entry.received,
               "suggestion": by_name[t.shortlist[0].identifier].label if t.shortlist else "",
               # The request's short name, for Needs Review's chip (pilot
               # P149); the full label above is the chip's tooltip.
@@ -5823,7 +5823,7 @@ def _firm_row(one, household: str, today: dt.date) -> tuple[dict, list[dict], di
               "open_key": shown(_shown_copy_key(t.entry), t.entry.prepared_location)}
              for t in parked]
     files.extend({"return": row["path"], "year": row["year"], "name": entry.original_name,
-                  "handle": handle_of(entry), "code": reasons.FILE_MOVED.code,
+                  "handle": ledger_key(entry), "code": reasons.FILE_MOVED.code,
                   "received": entry.received, "suggestion": "", "suggestion_short": "",
                   "open_key": shown(_moved_copy_key(entry), moved_to(entry))}
                  for entry in entries
@@ -5851,14 +5851,7 @@ def _firm_key(paths: dict[str, str], key: str, path: str,
     each is still checked against ``paths``, so a spelling is never one
     another path holds. Without ``spelled_for``, or for a key that already
     holds `` #``, it is the plain walk from the start."""
-    if spelled_for is None or " #" in key:
-        spelled, n = key, 1
-        while paths.get(spelled, path) != path:
-            n += 1
-            spelled = f"{key} #{n}"
-        paths[spelled] = path
-        return spelled
-    given = spelled_for.setdefault(key, {})
+    given = {} if spelled_for is None or " #" in key else spelled_for.setdefault(key, {})
     if path in given:
         return given[path]
     n = len(given) + 1
@@ -5869,6 +5862,17 @@ def _firm_key(paths: dict[str, str], key: str, path: str,
     paths[spelled] = path
     given[path] = spelled
     return spelled
+
+
+def _firm_reply_shell() -> dict:
+    """The empty firm reply, which :func:`_cmd_firm` and :func:`_cmd_firm_last`
+    both fill with :func:`_firm_reply`: the one place the two replies' keys
+    are written, so they cannot drift apart. ``paths`` holds each parked or
+    moved file's copy, for its name's link (ruling 15): the state's ``paths``
+    shape and kinds, reveal only."""
+    return {"returns": [], "files": [], "totals": {"need": 0, "waiting": 0, "complete": 0,
+                                                    "files": 0, "drafts": 0},
+            "paths": {}, "next_sort": _next_sort()}
 
 
 def _cmd_firm(argv: list[str]) -> dict:
@@ -5890,15 +5894,8 @@ def _cmd_firm(argv: list[str]) -> dict:
     path is unsure of anything it gives way to :func:`_firm_fresh`, the
     whole walk as it always was, which is the reference the suite holds the
     cached reply to."""
-    try:
-        root = _saved_root()
-    except (door.DoorError, SettingsError) as exc:
-        raise ManifestError(str(exc)) from None
-    reply = {"returns": [], "files": [], "totals": {"need": 0, "waiting": 0, "complete": 0,
-                                                     "files": 0, "drafts": 0},
-             # Each parked or moved file's copy, for its name's link
-             # (ruling 15): the state's ``paths`` shape and kinds, reveal only.
-             "paths": {}, "next_sort": _next_sort()}
+    root = _saved_root()
+    reply = _firm_reply_shell()
     if root is None or not root.is_dir():
         return reply
     today = dt.date.today()
@@ -5953,9 +5950,7 @@ def _firm_fresh(root: Path, today: dt.date) -> list[_FirmShown]:
     except EmptyRoot:
         return []
     except RegistryError as exc:
-        errors.keep("api: firm", exc)
-        log.warning("The clients root could not be walked (%s)", errors.error_class(exc))
-        raise ManifestError(PRACTICE_NOT_WALKED) from None
+        raise ManifestError(_not_walked("firm", exc, warn=False)) from None
     names = {household.path: household.name for household in registry.households}
     # Ruling 21: a household with two open years is paused - the pass sorts
     # nothing from its inbox (``runner.TWO_OPEN_YEARS``, the same
@@ -5970,9 +5965,7 @@ def _firm_fresh(root: Path, today: dt.date) -> list[_FirmShown]:
         if runner.why_skipped(one)[0]:
             continue
         row, files, own = _firm_row(one, names.get(one.household_path, ""), today)
-        row["paused"] = one.household_path in paused
-        row["links"] = links.get(one.household_path, [])
-        shown.append((row, files, own))
+        shown.append(_firm_marked(row, files, own, one, paused, links))
     return shown
 
 
@@ -6088,11 +6081,7 @@ def _firm_from_cache(root: Path, today: dt.date) -> list[_FirmShown]:
         batch = _firm_read_households(private, unread[start:start + FIRM_READ_BATCH], prints)
         read.update(batch)
         batch_facts = [(folder, one) for folder, (entry, _ones) in batch.items() for one in entry["returns"]]
-        batch_marked = mark_superseded([
-            Engagement(path=Path(one["path"]), household_path=Path(one["household"]), problem=one["problem"],
-                       info=EngagementInfo(active=one["active"], tax_year=one["tax_year"],
-                                           rolled_from=one["rolled_from"]))
-            for _folder, one in batch_facts])
+        batch_marked = mark_superseded([_fact_engagement(one) for _folder, one in batch_facts])
         for (folder, one), engagement in zip(batch_facts, batch_marked, strict=True):
             if not runner.why_skipped(engagement)[0]:
                 early[(folder, one["path"])] = _firm_row(batch[folder][1][one["path"]], batch[folder][0]["name"],
@@ -6150,6 +6139,15 @@ def _firm_order(folders: list[Path], entries: dict[Path, dict]) -> list[Path]:
            [folder for folder in folders if entries[folder]["kind"] == "record_missing"]
 
 
+def _fact_engagement(one: dict) -> Engagement:
+    """A kept return's facts as the :class:`Engagement` the registry's rules
+    (:func:`mark_superseded`, ``runner.why_skipped``) judge."""
+    return Engagement(path=Path(one["path"]), household_path=Path(one["household"]),
+                      problem=one["problem"],
+                      info=EngagementInfo(active=one["active"], tax_year=one["tax_year"],
+                                          rolled_from=one["rolled_from"]))
+
+
 def _firm_marks(root: Path, order: list[Path], entries: dict[Path, dict]) \
         -> tuple[list[tuple[Path, dict]], list[Engagement], set[Path], list[bool]]:
     """Step 3 of :func:`_firm_from_cache`, and all of :func:`_cmd_firm_last`'s
@@ -6160,11 +6158,7 @@ def _firm_marks(root: Path, order: list[Path], entries: dict[Path, dict]) \
     Returns each return's facts in the walk's order, the returns marked,
     the paused households and whether each return is shown."""
     facts = [(folder, one) for folder in order for one in entries[folder]["returns"]]
-    marked = mark_superseded([
-        Engagement(path=Path(one["path"]), household_path=Path(one["household"]), problem=one["problem"],
-                   info=EngagementInfo(active=one["active"], tax_year=one["tax_year"],
-                                       rolled_from=one["rolled_from"]))
-        for _folder, one in facts])
+    marked = mark_superseded([_fact_engagement(one) for _folder, one in facts])
     households = [Household(path=folder) for folder in order if entries[folder]["kind"] == "household"]
     paused = {path for path, theirs in
               Registry(source=root, engagements=marked, households=households).by_household().items()
@@ -6269,11 +6263,7 @@ def _cmd_firm_last(argv: list[str]) -> dict:
     household's lock against the record, so a marked count can never make
     a write land wrong. It writes nothing: no cache save, no record, no
     setting."""
-    del argv
-    try:
-        root = _saved_root()
-    except (door.DoorError, SettingsError) as exc:
-        raise ManifestError(str(exc)) from None
+    root = _saved_root()
     refused = {"last": None}
     if root is None or not root.is_dir():
         return refused
@@ -6282,9 +6272,7 @@ def _cmd_firm_last(argv: list[str]) -> dict:
     if shown is None:
         return refused
     shown, written = shown
-    reply = {"returns": [], "files": [], "totals": {"need": 0, "waiting": 0, "complete": 0,
-                                                     "files": 0, "drafts": 0},
-             "paths": {}, "next_sort": _next_sort()}
+    reply = _firm_reply_shell()
     _firm_reply(reply, shown)
     reply["last"] = True
     reply["as_of"] = written.strftime("%H:%M")
@@ -6462,8 +6450,6 @@ COMMANDS = {
 }
 
 
-
-
 def main(argv: list[str]) -> int:
     """Run one command and print its one reply (decision 193's envelope):
     ``warnings`` on every reply, ``failure`` beside ``error`` on every
@@ -6478,7 +6464,7 @@ def main(argv: list[str]) -> int:
         return _cmd_run_now(argv[1:])
     with error_log("tracker"):
         if not argv or argv[0] not in COMMANDS:
-            return _reply_failure(ManifestError(USAGE.format(commands="|".join(COMMANDS))))
+            return _say_failure("", ManifestError(USAGE.format(commands="|".join(COMMANDS))))
         try:
             if argv[0] in WRITING_COMMANDS:
                 _prove_the_root()
@@ -6491,12 +6477,7 @@ def main(argv: list[str]) -> int:
                 held.enter_context(ocr.reading_session(in_a_child=content_check.READ_IN_A_CHILD))
                 payload = COMMANDS[argv[0]](argv[1:])
         except Exception as exc:  # said as JSON, never a traceback on screen
-            if _failure_of(exc)["kind"] == "failed":
-                # Its class on the log line; its words and trace kept apart
-                # (decision 190), in the error log only.
-                errors.keep("api: " + argv[0], exc)
-                log.error("%s failed (%s)", argv[0], errors.error_class(exc))
-            return _reply_failure(exc)
+            return _say_failure(argv[0], exc)
         finally:
             # The store is opened on first use by whatever command needed it;
             # closing it here checkpoints the write-ahead log and takes its two

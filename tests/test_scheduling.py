@@ -6,7 +6,6 @@ command, and says plainly that it drafts rather than sends.
 """
 
 import datetime as dt
-import json
 import os
 from xml.etree import ElementTree
 
@@ -18,12 +17,9 @@ from tracker import scheduling
 from tracker import settings as settings_module
 from tracker.scheduling import (
     DEFAULT_START,
-    N8N_RUN_NODE,
-    N8N_TRIGGER_NODE,
     TASK_NAME,
     TASK_XML_NAMESPACE,
     is_absolute_path,
-    n8n_workflow,
     resolve_folder,
     task_scheduler_xml,
 )
@@ -126,67 +122,6 @@ def test_a_relative_folder_joins_in_the_flavour_of_the_working_directory():
         r"C:\Tools\tax-tracker\app"
     )
     assert resolve_folder("app", "/opt/tracker") == "/opt/tracker/app"
-
-
-# ---------------------------------------------------------------------- n8n ----
-
-
-def test_the_n8n_workflow_is_valid_json_with_one_wired_connection():
-    workflow = json.loads(json.dumps(n8n_workflow(**ARGS)))
-
-    assert workflow["name"] == TASK_NAME
-    assert [node["name"] for node in workflow["nodes"]] == [N8N_TRIGGER_NODE, N8N_RUN_NODE]
-    wired = workflow["connections"][N8N_TRIGGER_NODE]["main"][0][0]["node"]
-    assert wired == N8N_RUN_NODE
-
-
-def test_the_n8n_command_runs_the_runner_from_the_working_directory():
-    command = n8n_workflow(**ARGS)["nodes"][1]["parameters"]["command"]
-    assert ARGS["working_dir"] in command
-    assert "-m tracker.runner" in command
-    assert ARGS["settings"] in command
-
-
-def test_the_n8n_hour_is_validated():
-    assert n8n_workflow(**ARGS, hour=18)["nodes"][0]["parameters"]["rule"][
-        "interval"][0]["triggerAtHour"] == 18
-    with pytest.raises(ValueError, match="hour must be 0-23"):
-        n8n_workflow(**ARGS, hour=25)
-
-
-def test_the_n8n_command_reads_the_same_in_cmd_and_sh():
-    """D-11: n8n hands the one line to cmd on Windows and to sh elsewhere.
-    Every value is quoted by the settings folder's rule, and the line holds
-    none of the characters the two shells read differently - so what is
-    inside each pair of quotes is the value itself, in either shell."""
-    from tracker.scheduling import SHELL_SPECIAL, quote_argument, runner_arguments
-
-    command = n8n_workflow(**ARGS)["nodes"][1]["parameters"]["command"]
-    assert command == (f"cd {quote_argument(ARGS['working_dir'])} && {quote_argument(ARGS['python'])} "
-                       f"{runner_arguments(ARGS['settings'])}")
-    outside = command.split('"')[0::2]                      # the text outside every quoted value
-    assert command.count('"') == 6                          # three values, each quoted once
-    for char, _kind in SHELL_SPECIAL:
-        assert all(char not in part for part in outside), char
-    drive = "D:" + chr(92)
-    assert f"cd {quote_argument(drive)} &&" in n8n_workflow(**{**ARGS, "working_dir": drive})[
-        "nodes"][1]["parameters"]["command"]
-
-
-@pytest.mark.parametrize("field", ["working_dir", "python", "settings"])
-@pytest.mark.parametrize("char, kind", [('"', "a double quote"), ("%", "a percent sign"),
-                                        ("$", "a dollar sign"), ("`", "a backtick"),
-                                        ("!", "an exclamation mark"), ("\n", "a control character"),
-                                        ("\x07", "a control character")])
-def test_a_value_that_means_something_else_in_a_shell_is_refused(field, char, kind):
-    """Refused, naming the field and the kind of character - never the value,
-    which is a path and can carry a client's name."""
-    value = ARGS[field] + char + "Secret Name"
-    with pytest.raises(ValueError) as refused:
-        n8n_workflow(**{**ARGS, field: value})
-    message = str(refused.value)
-    assert message.startswith(f"{field} holds {kind}")
-    assert "Secret Name" not in message and ARGS[field] not in message
 
 
 class Said:
@@ -402,16 +337,10 @@ def test_the_designation_is_one_computer_name(tmp_path, content, named):
         assert word not in str(refused.value)
 
 
-def test_the_command_line_is_built_once_for_both_schedulers():
-    from tracker.scheduling import runner_arguments, start_hour
+def test_the_job_carries_the_runners_command_line_as_the_runner_builds_it():
+    from tracker.scheduling import runner_arguments
 
-    xml = task_scheduler_xml(**ARGS)
-    flow = n8n_workflow(**ARGS)
-    command = flow["nodes"][1]["parameters"]["command"]
-    assert runner_arguments(ARGS["settings"]) in xml
-    assert runner_arguments(ARGS["settings"]) in command
-    assert start_hour(DEFAULT_START) == int(DEFAULT_START.split(":")[0]) and start_hour("18:30") == 18
-    assert flow["nodes"][0]["parameters"]["rule"]["interval"][0]["triggerAtHour"] == start_hour()
+    assert runner_arguments(ARGS["settings"]) in task_scheduler_xml(**ARGS)
 
 
 def test_the_packaged_job_is_the_same_command_line_behind_the_api_executable():
@@ -426,8 +355,6 @@ def test_the_packaged_job_is_the_same_command_line_behind_the_api_executable():
     assert root.find(".//t:Exec/t:Command", NS).text == exe
     assert arguments.startswith(RUNNER_MODE_FLAG) and "-m tracker.runner" not in arguments
     assert arguments == runner_arguments(ARGS["settings"], frozen=True)
-    flow = n8n_workflow(**{**ARGS, "python": exe}, frozen=True)
-    assert runner_arguments(ARGS["settings"], frozen=True) in flow["nodes"][1]["parameters"]["command"]
 
     tail = f'"{ARGS["settings"]}" {LOG_FLAG}'
     assert runner_arguments(ARGS["settings"]).endswith(tail)

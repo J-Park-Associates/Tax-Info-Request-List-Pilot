@@ -72,9 +72,9 @@ def test_uninstalling_removes_the_schedule_it_ran():
 
 
 def test_uninstalling_removes_the_task_under_either_name():
-    """An upgrade's first start removes the earlier name's task (P155), but a
-    PC uninstalled before the app ever started again still has it: the
-    uninstaller removes the task under both names, each once."""
+    """A PC that ran the earlier name may still carry its task (P155; the
+    app's own removal of it was retired by P235): the uninstaller removes the
+    task under both names, each once."""
     from tracker import scheduling, settings
 
     run = _sections(_setup())["UninstallRun"].splitlines()

@@ -385,16 +385,6 @@ def _to_move(path: Path) -> bool:
             or fnmatch.fnmatchcase(path.name, _set_asides(checkpoint.CHECKPOINT_FILENAME)))
 
 
-def left_behind_to_move(root: Path | None) -> list[Path]:
-    """The move group of :func:`left_behind`: what cannot be made again or is
-    evidence (:func:`_to_move`), to be moved into the data home and never
-    deleted. Spelled once, here: the after-install step that moves them
-    (decision 209, R9) reads it, and :func:`left_behind_warnings` splits the
-    same walk by the same :func:`_to_move` test, so neither keeps a list of
-    its own."""
-    return [path for path in left_behind(root) if _to_move(path)]
-
-
 def left_behind_warnings(root: Path | None) -> list[tuple[str, str]]:
     """What :func:`left_behind` found, as ``(code, sentence)`` pairs, one per
     group that is not empty: :data:`LEFT_BEHIND` for what to delete

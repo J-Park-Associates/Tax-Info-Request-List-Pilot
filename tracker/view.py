@@ -713,6 +713,17 @@ def _page(
     return page_text(lines)
 
 
+def _drawn(engagement_dir: Path, items, entries, head):
+    """What a page is drawn from, before its stamp: the readers' answers (the
+    record's head first, :func:`_readers`), the parked rows' triage and the
+    parked rows themselves. The one prologue of :func:`render_page` and
+    :func:`write_view`, so the fixture's page and the written one are drawn
+    from the same reading."""
+    head, last, items, entries = _readers(engagement_dir, items, entries, head)
+    triaged = review.triage(engagement_dir, entries, items=items)
+    return head, last, items, entries, triaged, [one.entry for one in triaged]
+
+
 def render_page(
     engagement_dir: Path | str,
     *,
@@ -730,9 +741,7 @@ def render_page(
     the only claim the fixture makes.
     """
     engagement_dir = Path(engagement_dir)
-    head, last, items, entries = _readers(engagement_dir, items, entries, head)
-    triaged = review.triage(engagement_dir, entries, items=items)
-    parked = [one.entry for one in triaged]
+    head, last, items, entries, triaged, parked = _drawn(engagement_dir, items, entries, head)
     stamp = _stamp(engagement_dir, head, last, items, entries, parked, now)
     return _page(engagement_dir, items, entries, triaged, stamp)
 
@@ -776,9 +785,7 @@ def write_view(
     """
     engagement_dir = Path(engagement_dir)
     path = engagement_dir / VIEW_FILENAME
-    head, last, items, entries = _readers(engagement_dir, items, entries, head)
-    triaged = review.triage(engagement_dir, entries, items=items)
-    parked = [one.entry for one in triaged]
+    head, last, items, entries, triaged, parked = _drawn(engagement_dir, items, entries, head)
     result = ViewResult(path=path, requests=len(items), rows=len(entries), parked=len(parked))
     if now is None and (kept := _kept_stamp(engagement_dir, head, last, items, entries, parked)):
         if _says(path, _page(engagement_dir, items, entries, triaged, kept)):
@@ -873,9 +880,7 @@ def view_state(engagement_dir: Path | str) -> str:
     """
     engagement_dir = Path(engagement_dir)
     stamp = read_stamp(engagement_dir)
-    if not stamp:
-        return UNKNOWN
-    if LABEL_RECORD_DIGEST not in stamp:
+    if not stamp or LABEL_RECORD_DIGEST not in stamp:
         return UNKNOWN
     return CURRENT if stamp[LABEL_RECORD_DIGEST] == ledger.head(engagement_dir) else BEHIND
 

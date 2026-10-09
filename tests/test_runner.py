@@ -4809,7 +4809,6 @@ def test_a_checkpoint_log_left_beside_the_program_is_named_to_move_never_to_dele
     assert runner_module.CODE_LEFT_BEHIND not in said
     moving = said[runner_module.CODE_LEFT_BEHIND_TO_MOVE].split(": ", 1)[1].split(". These cannot", 1)[0]
     assert sorted(Path(one).name for one in moving.split("; ")) == sorted(to_move)
-    assert sorted(path.name for path in runner_module.left_behind_to_move(None)) == sorted(to_move)
     for name in to_move:
         assert (settings / name).read_bytes() == name.encode()
 
