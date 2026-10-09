@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 446,
     "edges": 1233,
-    "reused": 397
+    "reused": 398
   },
   "node_types": [
     "artifact",
@@ -299,8 +299,8 @@
       "id": "tracker/api.py",
       "type": "module",
       "layer": "core",
-      "sha256": "5b6e0ff3d33eb972",
-      "lines": 6562,
+      "sha256": "d90e41ed33493d90",
+      "lines": 6557,
       "cli": "python -m tracker.api",
       "exports": [
         "ACCEPT_FOLDER_NAME_HELP",
@@ -1475,8 +1475,8 @@
       "id": "tracker/households.py",
       "type": "module",
       "layer": "core",
-      "sha256": "5c85ef2b2f2570e5",
-      "lines": 493,
+      "sha256": "1d6d70c5bdd0be1e",
+      "lines": 476,
       "exports": [
         "CLIENT_FOLDER_MISSING",
         "FEED_UNRESOLVED",
@@ -1937,8 +1937,8 @@
       "id": "tracker/manifest.py",
       "type": "module",
       "layer": "core",
-      "sha256": "ff9bd84e4d45a500",
-      "lines": 1947,
+      "sha256": "e170965880fce0bd",
+      "lines": 1938,
       "exports": [
         "ALSO_RECEIVED_LABEL",
         "ANY_EXTENSION",
@@ -2034,6 +2034,7 @@
         "status_key",
         "status_label",
         "summarize",
+        "the_record",
         "unlearn_keyword",
         "validated",
         "with_statuses"
@@ -2440,8 +2441,8 @@
       "id": "tracker/records.py",
       "type": "module",
       "layer": "core",
-      "sha256": "4b665ca742f0b1aa",
-      "lines": 2093,
+      "sha256": "028f945ea740188d",
+      "lines": 2089,
       "exports": [
         "ANSWER_SEP",
         "BEHIND",
@@ -3864,8 +3865,8 @@
       "id": "tracker/store.py",
       "type": "module",
       "layer": "core",
-      "sha256": "ecfe207948066d8c",
-      "lines": 4213,
+      "sha256": "6f961a4ef3207664",
+      "lines": 4216,
       "cli": "python -m tracker.store",
       "exports": [
         "ACCEPTED",
@@ -10894,8 +10895,8 @@
       "id": "tests/test_store.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "a659298acff3f4b4",
-      "lines": 4984,
+      "sha256": "971b0c636e017f70",
+      "lines": 4985,
       "exports": [
         "AS_AT_16",
         "AS_AT_17",

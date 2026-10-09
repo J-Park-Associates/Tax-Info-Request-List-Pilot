@@ -1242,6 +1242,30 @@ def _new_engagement_defaults() -> list[object]:
     )
 
 
+def _build_engagement(conn: sqlite3.Connection, rel: str, events: list[dict], head: str,
+                      chain: list[str], built_at: str,
+                      foreign: list[tuple[int, str, str]],
+                      held: sqlite3.Connection | None) -> None:
+    """A new row for ``rel``, built from all of ``events``, and the checkpoint
+    told what was applied. The caller holds the transaction.
+
+    The one insert behind a reader's first build and a rebuild, which
+    differ only in the ``built_at`` stamp they pass. The applied chain is
+    computed as the lines are replayed (decision 137, A3): a rebuild is how
+    an older store upgrades.
+    """
+    defaults = _new_engagement_defaults()
+    cursor = conn.execute(
+        f"INSERT INTO engagements ({_NEW_ENGAGEMENT_COLUMNS}) "
+        f"VALUES ({_marks(len(defaults) + 6)})",
+        (rel, *defaults, head, len(events), ledger.chain_at(chain, len(events)), built_at,
+         ADMISSION_VERSION),
+    )
+    if events:
+        _apply(conn, cursor.lastrowid, events, start=1)
+    _vouch_for(conn, rel, events, chain, foreign, held=held)
+
+
 def _rule_from_sql(stored: sqlite3.Row) -> dict:
     """One stored rule row in the shape a ``rules_changed`` event carries it.
 
@@ -1424,12 +1448,16 @@ def learned_keywords(
     sequence number.
     """
     row = _engagement_row(conn, engagement_dir)
-    if row is None:
-        return {}
+    return {} if row is None else _stored_learned(conn, row["id"])
+
+
+def _stored_learned(conn: sqlite3.Connection, engagement_id: int) -> dict[str, tuple[str, ...]]:
+    """The learned keywords table for one engagement, by identifier, each
+    request's words in the order they were taught."""
     out: dict[str, tuple[str, ...]] = {}
     for stored in conn.execute(
-        "SELECT identifier, keyword FROM learned_keywords WHERE engagement_id = ? ORDER BY seq, keyword",
-        (row["id"],),
+        'SELECT "identifier", keyword FROM learned_keywords WHERE engagement_id = ? ORDER BY seq, keyword',
+        (engagement_id,),
     ):
         out[stored["identifier"]] = out.get(stored["identifier"], ()) + (stored["keyword"],)
     return out
@@ -2484,16 +2512,7 @@ def _catching_up(conn: sqlite3.Connection, root: Path | str | None, engagement_d
         # nothing: the record is held to this machine's checkpoint first
         # (decision 159), which survives the store being deleted.
         foreign = _prove_against_checkpoint(conn, rel, events, chain, held=held)
-        defaults = _new_engagement_defaults()
-        cursor = conn.execute(
-            f"INSERT INTO engagements ({_NEW_ENGAGEMENT_COLUMNS}) "
-            f"VALUES ({_marks(len(defaults) + 6)})",
-            (rel, *defaults, head, len(events), ledger.chain_at(chain, len(events)), ledger.stamp(),
-             ADMISSION_VERSION),
-        )
-        if events:
-            _apply(conn, cursor.lastrowid, events, start=1)
-        _vouch_for(conn, rel, events, chain, foreign, held=held)
+        _build_engagement(conn, rel, events, head, chain, ledger.stamp(), foreign, held)
         return len(events)
     # A journal shorter than the store applied is said first in decision
     # 188's sentence, which says to restore it before anything else and
@@ -3262,18 +3281,7 @@ def rebuild_engagement(
         if known is not None:
             conn.execute("DELETE FROM engagements WHERE id = ?", (known["id"],))
             _rows_replaced()
-        defaults = _new_engagement_defaults()
-        # The applied chain is computed as the lines are replayed
-        # (decision 137, A3): a rebuild is how an older store upgrades.
-        cursor = conn.execute(
-            f"INSERT INTO engagements ({_NEW_ENGAGEMENT_COLUMNS}) "
-            f"VALUES ({_marks(len(defaults) + 6)})",
-            (rel, *defaults, head, len(events), ledger.chain_at(chain, len(events)), built_at,
-             ADMISSION_VERSION),
-        )
-        if events:
-            _apply(conn, cursor.lastrowid, events, start=1)
-        _vouch_for(conn, rel, events, chain, foreign, held=held)
+        _build_engagement(conn, rel, events, head, chain, built_at, foreign, held)
     return lost
 
 
@@ -3568,12 +3576,7 @@ def _check_learned(
     are one list, in the order the words were taught, and a word taken
     back under either spelling is gone from it.
     """
-    stored: dict[str, tuple[str, ...]] = {}
-    for row in conn.execute(
-        'SELECT "identifier", keyword FROM learned_keywords WHERE engagement_id = ? '
-        "ORDER BY seq, keyword", (engagement_id,),
-    ):
-        stored[row["identifier"]] = stored.get(row["identifier"], ()) + (row["keyword"],)
+    stored = _stored_learned(conn, engagement_id)
     return [
         f"{name}: request {key}, the keywords filings taught: the store says "
         f"{list(stored.get(key, ()))!r}, the record says {list(recorded.get(key, ()))!r}"
