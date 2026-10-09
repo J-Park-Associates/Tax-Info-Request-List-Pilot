@@ -136,8 +136,7 @@ from contextlib import contextmanager
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
-from tracker import door, errors, ledger, registry, runner, scheduling, settings, store
-from tracker.fsio import is_link as _is_link_or_unreadable
+from tracker import door, errors, fsio, ledger, registry, runner, scheduling, settings, store
 from tracker.fsio import write_json_atomically
 from tracker.locking import EngagementLockedError, acquire_lock, release_lock, this_host
 
@@ -561,7 +560,7 @@ def _ready_the_overview(root: Path | None, reason: str, check: _Step) -> str:
     return OVERVIEW_NOT_READY.format(why=why) if why else OVERVIEW_READY
 
 
-def is_link(path: Path) -> bool:
+def _is_link(path: Path) -> bool:
     """:func:`tracker.fsio.is_link`, but failing closed: a name that cannot be
     looked at for any reason but being absent raises, so the test-cache delete
     stops rather than going through something it could not prove is no link
@@ -570,7 +569,7 @@ def is_link(path: Path) -> bool:
         os.lstat(path)
     except FileNotFoundError:
         return False
-    return _is_link_or_unreadable(path)
+    return fsio.is_link(path)
 
 
 def _unlink(path: Path) -> None:
@@ -580,7 +579,7 @@ def _unlink(path: Path) -> None:
     try:
         os.unlink(path)
     except (IsADirectoryError, PermissionError):
-        if not is_link(path):
+        if not _is_link(path):
             raise
         os.rmdir(path)
 
@@ -593,7 +592,7 @@ def _remove_tree(folder: Path) -> None:
         entries = list(scanned)
     for entry in entries:
         path = Path(entry.path)
-        if not is_link(path) and entry.is_dir(follow_symlinks=False):
+        if not _is_link(path) and entry.is_dir(follow_symlinks=False):
             _remove_tree(path)
         else:
             _unlink(path)
@@ -610,7 +609,7 @@ def _clear_test_cache(checkout: Path | None = None) -> _Step | None:
         return None
     folder = Path(checkout if checkout is not None else CHECKOUT) / TEST_CACHE_DIRNAME
     try:
-        if is_link(folder) or folder.is_file():
+        if _is_link(folder) or folder.is_file():
             _unlink(folder)
         elif folder.is_dir():
             _remove_tree(folder)
