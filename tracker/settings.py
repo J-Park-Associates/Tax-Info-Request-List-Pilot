@@ -539,12 +539,18 @@ def set_schedule(enabled: object, start: object, every: object) -> SchedulePrefe
     return chosen
 
 
+def _set_text(key: str, value: object) -> str:
+    """Record one piece of text the firm typed under ``key``, stripped and
+    otherwise as typed, and return what was recorded."""
+    data = _read()
+    data[key] = str(value).strip()
+    _write(data)
+    return data[key]
+
+
 def set_firm(name: str) -> str:
     """Record the firm's name beside the clients root."""
-    data = _read()
-    data[KEY_FIRM] = str(name).strip()
-    _write(data)
-    return data[KEY_FIRM]
+    return _set_text(KEY_FIRM, name)
 
 
 def set_firm_phone(number: str) -> str:
@@ -555,10 +561,7 @@ def set_firm_phone(number: str) -> str:
     format this code invented would be a number read out to a client in
     the firm's name that the firm never wrote.
     """
-    data = _read()
-    data[KEY_FIRM_PHONE] = str(number).strip()
-    _write(data)
-    return data[KEY_FIRM_PHONE]
+    return _set_text(KEY_FIRM_PHONE, number)
 
 
 def app_dir() -> Path:

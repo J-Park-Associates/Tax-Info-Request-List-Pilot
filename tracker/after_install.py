@@ -153,7 +153,6 @@ import hashlib
 import json
 import os
 import shutil
-import stat
 import sys
 import time
 from collections.abc import Iterator
@@ -162,7 +161,7 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 from tracker import checkpoint, door, errors, ledger, registry, runner, scheduling, settings, store
-from tracker.fsio import write_bytes_atomically, write_json_atomically
+from tracker.fsio import is_link, write_bytes_atomically, write_json_atomically
 from tracker.locking import EngagementLockedError, acquire_lock, release_lock, this_host
 
 #: The note of the last run, beside the store - in the data home (decision
@@ -648,27 +647,6 @@ def _ready_the_overview(root: Path | None, reason: str, check: _Step) -> str:
     return OVERVIEW_NOT_READY.format(why=why) if why else OVERVIEW_READY
 
 
-#: The two reparse tags that are links (``stat`` names them on Windows):
-#: a symbolic link and a junction (a mount point). Spelled here too, so the
-#: rule reads the same off Windows, where ``lstat`` carries no tag.
-_LINK_TAGS = frozenset({getattr(stat, "IO_REPARSE_TAG_SYMLINK", 0xA000000C),
-                        getattr(stat, "IO_REPARSE_TAG_MOUNT_POINT", 0xA0000003)})
-
-
-def _is_link(path: Path) -> bool:
-    """Whether ``path`` is a link - a symbolic link, or on Windows a
-    junction - by ``lstat``, which never follows it. **Only those two**
-    (the re-review's SF3): any other reparse point - a OneDrive Files
-    On-Demand placeholder folder, say - is an ordinary folder or file and
-    is walked as one; called a link, it could be neither unlinked nor
-    removed, and the job would fail at every start."""
-    try:
-        status = os.lstat(path)
-    except FileNotFoundError:
-        return False
-    return stat.S_ISLNK(status.st_mode) or getattr(status, "st_reparse_tag", 0) in _LINK_TAGS
-
-
 def _unlink(path: Path) -> None:
     """Remove one entry - a file or a link - never what a link points at.
     A directory link on Windows (a junction) is removed as a directory
@@ -676,7 +654,7 @@ def _unlink(path: Path) -> None:
     try:
         os.unlink(path)
     except (IsADirectoryError, PermissionError):
-        if not _is_link(path):
+        if not is_link(path):
             raise
         os.rmdir(path)
 
@@ -689,7 +667,7 @@ def _remove_tree(folder: Path) -> None:
         entries = list(scanned)
     for entry in entries:
         path = Path(entry.path)
-        if not _is_link(path) and entry.is_dir(follow_symlinks=False):
+        if not is_link(path) and entry.is_dir(follow_symlinks=False):
             _remove_tree(path)
         else:
             _unlink(path)
@@ -706,7 +684,7 @@ def _clear_test_cache(checkout: Path | None = None) -> _Step | None:
         return None
     folder = Path(checkout if checkout is not None else CHECKOUT) / TEST_CACHE_DIRNAME
     try:
-        if _is_link(folder) or folder.is_file():
+        if is_link(folder) or folder.is_file():
             _unlink(folder)
         elif folder.is_dir():
             _remove_tree(folder)
@@ -748,9 +726,9 @@ def _copies_match(source: Path, copy: Path) -> bool:
     """Whether ``copy`` is ``source`` entry for entry: a link is a link to
     the same target (never followed), a folder holds the same names, and a
     file has the same size and SHA-256."""
-    if _is_link(source):
-        return _is_link(copy) and os.readlink(source) == os.readlink(copy)
-    if _is_link(copy):
+    if is_link(source):
+        return is_link(copy) and os.readlink(source) == os.readlink(copy)
+    if is_link(copy):
         return False
     if source.is_dir():
         if not copy.is_dir():
@@ -767,7 +745,7 @@ def _discard(path: Path) -> None:
     what this module itself created."""
     if not os.path.lexists(path):
         return
-    if _is_link(path) or not path.is_dir():
+    if is_link(path) or not path.is_dir():
         _unlink(path)
     else:
         _remove_tree(path)
@@ -915,7 +893,7 @@ def move_left_behind(items: list[Path], home: Path) -> MoveOutcome:
 
     Nothing present is nothing to do and no sentence. Otherwise it checks
     everything before moving anything: two items of one name, an item that
-    is a link or junction (:func:`_is_link`), or a name already in ``home``,
+    is a link or junction (:func:`tracker.fsio.is_link`), or a name already in ``home``,
     moves nothing and fails in its own sentence - the checkpoint and its
     journal are never split. A move that fails part way moves back what it
     had already moved, by the same careful move, so a failure leaves the
@@ -944,7 +922,7 @@ def move_left_behind(items: list[Path], home: Path) -> MoveOutcome:
             or any(os.path.lexists(home / name) for name in CHECKPOINT_UNIT)):
         return MoveOutcome(sentence=LEFT_BEHIND_JOURNAL_ALONE.format(home=home), failed=True)
     for item in present:
-        if _is_link(item):
+        if is_link(item):
             return MoveOutcome(sentence=LEFT_BEHIND_IS_LINK.format(name=item.name, home=home),
                                failed=True)
     for item in present:

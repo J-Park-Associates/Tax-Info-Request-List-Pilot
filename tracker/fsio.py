@@ -320,16 +320,16 @@ def _born(info: os.stat_result) -> float:
     return max(info.st_mtime, created)
 
 
-#: The reparse tags that make a name a link to somewhere else. A cloud
-#: sync client's placeholder is a reparse point too (its tag is the
-#: client's own) and is a file of the client's, not a link. Moved here from
-#: the filer by decision 155's review, so the sweep's walk and the drop's
-#: walk ask one question.
-_LINK_TAGS = frozenset(
-    tag for tag in (getattr(stat, "IO_REPARSE_TAG_MOUNT_POINT", None),
-                    getattr(stat, "IO_REPARSE_TAG_SYMLINK", None))
-    if tag is not None
-)
+#: The reparse tags that make a name a link to somewhere else: a symbolic
+#: link and a junction (a mount point). Spelled here too, so the rule reads
+#: the same off Windows, where ``lstat`` carries no tag. A cloud sync
+#: client's placeholder is a reparse point too (its tag is the client's own)
+#: and is a file of the client's, not a link. The one set of them: the
+#: sweep's walk, the drop's walk, the firm view's fingerprint and the
+#: after-install step's test-cache job all ask this one question.
+LINK_TAGS = frozenset({getattr(stat, "IO_REPARSE_TAG_SYMLINK", 0xA000000C),
+                       getattr(stat, "IO_REPARSE_TAG_MOUNT_POINT", 0xA0000003)})
+_LINK_TAGS = LINK_TAGS      # the name tests/test_filer.py reads it by
 
 
 def is_link(path: Path | str) -> bool:
@@ -345,7 +345,7 @@ def is_link(path: Path | str) -> bool:
         info = os.lstat(path)
     except OSError:
         return False
-    return stat.S_ISLNK(info.st_mode) or getattr(info, "st_reparse_tag", 0) in _LINK_TAGS
+    return stat.S_ISLNK(info.st_mode) or getattr(info, "st_reparse_tag", 0) in LINK_TAGS
 
 
 def stranded_temps(

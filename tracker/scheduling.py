@@ -437,12 +437,7 @@ def install_task(xml_path: Path | str, task_name: str = TASK_NAME) -> list[str]:
     command = ["schtasks", "/create", "/xml", str(xml_path), "/tn", task_name, "/f"]
     if not task_scheduler_here():
         return command
-    completed = _schtasks(command)
-    if completed.returncode != 0:
-        raise RuntimeError(
-            f"schtasks failed ({completed.returncode}): "
-            f"{(completed.stderr or completed.stdout).strip()}"
-        )
+    _schtasks_or_raise(command, "schtasks failed")
     return command
 
 
@@ -501,6 +496,17 @@ def register_here(settings_folder: str | Path, *, start: str = DEFAULT_START,
     return install_task(xml_path)
 
 
+def _schtasks_or_raise(command: list[str], failure: str) -> None:
+    """Run one ``schtasks`` command that must succeed: a non-zero exit raises
+    ``RuntimeError`` naming ``failure``, the code, and what ``schtasks`` said
+    (its stderr, else its stdout)."""
+    completed = _schtasks(command)
+    if completed.returncode != 0:
+        raise RuntimeError(
+            f"{failure} ({completed.returncode}): {(completed.stderr or completed.stdout).strip()}"
+        )
+
+
 def task_exists(task_name: str = TASK_NAME) -> bool:
     """Whether Task Scheduler holds a task of this name: ``schtasks /query
     /tn`` exits 0 for one that exists. Off Windows there is none.
@@ -536,12 +542,8 @@ def remove_task(task_name: str = TASK_NAME) -> bool:
     """
     if not task_exists(task_name):
         return False
-    completed = _schtasks(["schtasks", "/delete", "/tn", task_name, "/f"])
-    if completed.returncode != 0:
-        raise RuntimeError(
-            f"schtasks could not delete the task ({completed.returncode}): "
-            f"{(completed.stderr or completed.stdout).strip()}"
-        )
+    _schtasks_or_raise(["schtasks", "/delete", "/tn", task_name, "/f"],
+                       "schtasks could not delete the task")
     return True
 
 

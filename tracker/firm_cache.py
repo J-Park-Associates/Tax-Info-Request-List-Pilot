@@ -61,7 +61,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from tracker import errors, settings
-from tracker.fsio import write_text_atomically
+from tracker.fsio import LINK_TAGS, write_text_atomically
 
 log = logging.getLogger(__name__)
 
@@ -99,12 +99,6 @@ RETURN_FACTS = {"path": str, "household": str, "problem": str, "active": bool,
 #: catch that rewrite (every file is judged by its size and time, never its
 #: bytes) - Jason's trade of 2026-10-07, for speed.
 RACY_SECONDS = 5
-
-#: A link or junction inside a household's folders: the practice walk may
-#: follow it where this walk does not look, so such a household is never
-#: kept and is read fresh on every reply.
-_LINK_TAGS = frozenset({getattr(stat, "IO_REPARSE_TAG_SYMLINK", 0xA000000C),
-                        getattr(stat, "IO_REPARSE_TAG_MOUNT_POINT", 0xA0000003)})
 
 
 def cache_path() -> Path:
@@ -265,7 +259,10 @@ def _listed(folder: Path, digest, settled: int, left_out: frozenset[tuple[str, .
             about = entry.stat(follow_symlinks=False)
         except OSError:
             return False
-        if entry.is_symlink() or getattr(about, "st_reparse_tag", 0) in _LINK_TAGS:
+        # A link or junction inside a household's folders: the practice walk
+        # may follow it where this walk does not look, so such a household is
+        # never kept and is read fresh on every reply.
+        if entry.is_symlink() or getattr(about, "st_reparse_tag", 0) in LINK_TAGS:
             return False
         if stat.S_ISDIR(about.st_mode):
             digest.update(f"{entry.name}\0dir\n".encode("utf-8", "surrogatepass"))
@@ -284,8 +281,40 @@ def _listed(folder: Path, digest, settled: int, left_out: frozenset[tuple[str, .
 def _households_digest(households: dict) -> str:
     """A digest of the kept households, stored with them and checked on
     every load, so a file damaged into other valid JSON is still refused."""
-    text = json.dumps(households, sort_keys=True, separators=(",", ":"))
-    return hashlib.blake2b(text.encode("utf-8"), digest_size=16).hexdigest()
+    return digest_of(json.dumps(households, sort_keys=True, separators=(",", ":")))
+
+
+def digest_of(text: str) -> str:
+    """The 16-byte BLAKE2b digest of ``text``, in hex: how a kept file proves
+    its body whole. Shared with :mod:`tracker.page_rows`, whose file is kept
+    the same way."""
+    return hashlib.blake2b(text.encode("utf-8", "surrogatepass"), digest_size=16).hexdigest()
+
+
+def read_kept(path: Path, unreadable: str) -> str | None:
+    """The text of a kept file, or ``None`` - a missing file is the ordinary
+    first reply and is not said; one that cannot be read is said on the error
+    log by its class, in ``unreadable`` (a ``%s`` for the class), never in the
+    operating system's words. Shared with :mod:`tracker.page_rows`."""
+    try:
+        return path.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return None
+    except (OSError, UnicodeDecodeError) as exc:
+        log.warning(unreadable, errors.error_class(exc))
+        return None
+
+
+def save_kept(path: Path, text: str, unwritten: str) -> None:
+    """Write a kept file whole or not at all (``fsio.write_text_atomically``).
+    One that cannot be written is said on the error log by its class, in
+    ``unwritten`` (a ``%s`` for the class), and the reply goes on: a kept
+    file only makes the next reply faster. Shared with :mod:`tracker.page_rows`."""
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        write_text_atomically(path, text)
+    except OSError as exc:
+        log.warning(unwritten, errors.error_class(exc))
 
 
 def load(path: Path, expected: dict) -> dict[str, dict]:
@@ -294,12 +323,8 @@ def load(path: Path, expected: dict) -> dict[str, dict]:
     log by its reason (never a client's words), so the reply reads every
     household and the file is replaced. A missing file is the ordinary
     first reply and is not said."""
-    try:
-        text = path.read_text(encoding="utf-8")
-    except FileNotFoundError:
-        return {}
-    except (OSError, UnicodeDecodeError) as exc:
-        log.warning("The firm view's cache could not be read (%s); rebuilding it", errors.error_class(exc))
+    text = read_kept(path, "The firm view's cache could not be read (%s); rebuilding it")
+    if text is None:
         return {}
     try:
         kept = json.loads(text)
@@ -366,11 +391,8 @@ def save(path: Path, expected: dict, households: dict[str, dict]) -> None:
     makes the next reply faster, and two replies racing each write a whole
     file whose every entry is true for its fingerprint."""
     payload = {"head": expected, "digest": _households_digest(households), "households": households}
-    try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        write_text_atomically(path, json.dumps(payload, separators=(",", ":")))
-    except OSError as exc:
-        log.warning("The firm view's cache could not be written (%s)", errors.error_class(exc))
+    save_kept(path, json.dumps(payload, separators=(",", ":")),
+              "The firm view's cache could not be written (%s)")
 
 
 #: Beside the cache: the class of the last surprise the cached path was set
