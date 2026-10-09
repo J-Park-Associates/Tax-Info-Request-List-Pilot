@@ -3,9 +3,10 @@
     python export.py OUT_DIR
 
 Writes app/ (the .ico, PNGs, the in-app SVG marks), installer/ (the Inno Setup
-icon and the wizard bitmaps at every DPI Inno Setup 6 accepts), brand/
-(lockups for documents and the client-facing pages) and windows/ (every
-Square44x44Logo and Square150x150Logo file on Microsoft's construction page).
+icon and the wizard bitmaps at every DPI Inno Setup 6 accepts) and brand/
+(lockups for documents and the client-facing pages). It writes no Windows
+packaged-app tiles: nothing here is packaged as an MSIX, so none would be read
+(P232).
 """
 import io
 import sys
@@ -15,18 +16,12 @@ from ico import pack
 from lockup import lockup
 from mark import CREAM, NAVY, SIZES, app_icon, bare_mark, icon_svg
 from PIL import Image
-from raster import icon_png, tile_png
+from raster import icon_png
 from render import Renderer
 
 # Inno Setup 6 picks the bitmap that fits the screen's scaling (100%-250%).
 WIZARD_LARGE = [(164, 314), (192, 386), (246, 459), (273, 523), (328, 628), (355, 665), (410, 797)]
 WIZARD_SMALL = [(55, 55), (64, 68), (83, 80), (92, 97), (110, 106), (119, 123), (138, 140)]
-
-# Microsoft's scale qualifiers (percent) and target sizes for packaged app icons
-SCALES = [100, 125, 150, 200, 250, 300, 400]
-TARGETS = [16, 20, 24, 30, 32, 36, 40, 48, 60, 64, 72, 80, 96, 256]   # all in SIZES, so the .ico's renders serve
-# One image serves all three target-size forms: it meets 3:1 on both themes as drawn.
-TARGET_FORMS = ["", "_altform-unplated", "_altform-lightunplated"]
 
 
 def _bmp(png: bytes, path: Path):
@@ -44,8 +39,8 @@ def _panel(w, h, mark_frac, ground):
 
 
 def export(out: Path):
-    app, inst, brand, win = out / "app", out / "installer", out / "brand", out / "windows"
-    for d in (app, inst, brand, win):
+    app, inst, brand = out / "app", out / "installer", out / "brand"
+    for d in (app, inst, brand):
         d.mkdir(parents=True, exist_ok=True)
     with Renderer() as r:
         pngs = {s: icon_png(r, s) for s in SIZES}
@@ -57,12 +52,6 @@ def export(out: Path):
         (app / "icon.svg").write_text(app_icon(256), encoding="utf-8")
         (app / "mark.svg").write_text(bare_mark("color"), encoding="utf-8")
         (app / "mark-mono.svg").write_text(bare_mark("mono"), encoding="utf-8")
-        for pct in SCALES:
-            (win / f"Square44x44Logo.scale-{pct}.png").write_bytes(icon_png(r, round(44 * pct / 100)))
-            (win / f"Square150x150Logo.scale-{pct}.png").write_bytes(tile_png(r, round(150 * pct / 100)))
-        for t in TARGETS:
-            for form in TARGET_FORMS:
-                (win / f"Square44x44Logo.targetsize-{t}{form}.png").write_bytes(pngs[t])
         for i, (w, h) in enumerate(WIZARD_LARGE):
             _bmp(r.png(_panel(w, h, 0.62, NAVY), w, h), inst / f"wizard-large-{i + 1}.bmp")
         for i, (w, h) in enumerate(WIZARD_SMALL):
@@ -71,8 +60,7 @@ def export(out: Path):
             svg, w, h = lockup(theme)
             (brand / f"lockup-{theme}.svg").write_text(svg, encoding="utf-8")
             (brand / f"lockup-{theme}.png").write_bytes(r.png(svg, round(w), round(h), scale=2))
-    print(f"exported to {out}: .ico {len(ico):,} bytes, {len(SIZES)} sizes, "
-          f"{len(list(win.glob('*.png')))} Windows assets")
+    print(f"exported to {out}: .ico {len(ico):,} bytes, {len(SIZES)} sizes")
 
 
 if __name__ == "__main__":

@@ -32,11 +32,3 @@ def icon_png(r, s) -> bytes:
     im = Image.open(io.BytesIO(r.png(icon_svg(s), s))).convert("RGBA")
     im.putalpha(im.getchannel("A").point(lambda a: 0 if a < 8 else a))   # no near-invisible fringe
     return _png(im)
-
-
-def tile_png(r, tile) -> bytes:
-    """A Square150x150Logo tile: the icon fitted at two thirds of the tile, centred on a whole pixel."""
-    art = round(tile * 2 / 3)
-    im = Image.new("RGBA", (tile, tile), (0, 0, 0, 0))
-    im.alpha_composite(Image.open(io.BytesIO(icon_png(r, art))).convert("RGBA"), ((tile - art) // 2,) * 2)
-    return _png(im)
