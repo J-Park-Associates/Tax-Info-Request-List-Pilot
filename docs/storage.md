@@ -374,8 +374,8 @@ Three functions, and the one a caller wants depends on what it can afford:
 **A read never outruns a write** (decision 135). The readers take no lock,
 and the app's process and the pass's share one store, so a reader can be
 waiting for the pass's transaction to finish at the very moment it catches
-up. Everything that applies journal lines — `catch_up()`, the top-up's slow
-path, `record()`'s apply and the rebuild — therefore reads the
+up. Everything that applies journal lines — `catch_up()` (the pass's and the readers'
+top-up), `record()`'s apply and the rebuild — therefore reads the
 engagement's row, the journal's lines and the journal's head *inside* its
 own `BEGIN IMMEDIATE`, and takes the lines and the head from one read of
 the file (`ledger.read_with_head()`). Read before the transaction, a
@@ -448,7 +448,8 @@ nobody can account for.
 
 The plan these rows built is finished: what a person typed and what the
 machine decided are both in the record, there is no workbook to read, import
-or write over, and the only file a person opens is the page. A folder that
+or write over (`openpyxl` is imported only by tier 3, to read a client's own
+spreadsheet), and the only file a person opens is the page. A folder that
 holds only an old workbook and no record is listed by the registry as a
 legacy folder, not an engagement, and is set up again in the app; nothing
 imports it. How it got here, stage by stage, is in the decision log
@@ -489,7 +490,7 @@ Rules that came with the later rows and hold now:
   it appends, and in a reader whose head moved - the chain over that many
   lines of the journal as it is now must equal the one kept, or the
   engagement is refused: *"The record for <return> was changed behind the
-  tracker's back (line N onward no longer matches). Nothing was applied. Run
+  app's back (line N onward no longer matches). Nothing was applied. Run
   recover (runbook §6)."* Recover exports the store's copy itself, and a
   conflict copy is never deleted and is named every pass. `check()` names it
   too. It never repairs itself. The line named is the first whose event the
