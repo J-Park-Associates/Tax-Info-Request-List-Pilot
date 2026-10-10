@@ -144,8 +144,8 @@ const openable = new Map();
 let pathKinds = {};           // vocab.path_kinds, once seen
 // The paths among them whose copy Windows would have marked as from the
 // internet (state.carries_code, SPEC-mac R8): a Mac cannot mark one, so each
-// time it opens one the shell says shellSays.protected_view_mac. Only ever
-// added to, like `openable`: saying it once too often costs a click, and
+// time it opens one the page says shellSays.protected_view_mac. Only ever
+// added to, like `openable`: saying it once too often is one more notice, and
 // saying it once too few is the failure.
 const carriesCode = new Set();
 // The shell's own sentences (decision 193), keyed as vocab.shell keys them:
@@ -598,7 +598,16 @@ async function openPath(p, reveal) {
   if (typeof p !== "string" || !openable.has(p)) {
     return "That path is not one the app reported; nothing was opened.";
   }
-  return openChecked(p, openable.get(p), reveal === "reveal");
+  const failed = await openChecked(p, openable.get(p), reveal === "reveal");
+  // R8 (P240): the file has opened, normally, and a Mac has no Protected View
+  // to open it in. The reply is then not "" but the sentence, for the page to
+  // say in the notice where Open's own result appears (renderer/shell.js):
+  // each time, nothing waits on it, nothing is refused. Only the path the API
+  // listed in state.carries_code, only opened and never revealed.
+  if (!failed && reveal !== "reveal" && process.platform === "darwin" && carriesCode.has(p)) {
+    return { says: shellSays.protected_view_mac };
+  }
+  return failed;
 }
 
 // The check itself, shared with Open error log's fallback, which is the
@@ -621,20 +630,7 @@ async function openChecked(p, kind, reveal) {
     shell.showItemInFolder(p);
     return "";
   }
-  const failed = await shell.openPath(p);
-  if (!failed && process.platform === "darwin" && carriesCode.has(p)) sayProtectedViewMac();
-  return failed;
-}
-
-// R8: the file has opened, normally, and this is said beside it - a notice,
-// not a confirmation: nothing waits on it and nothing is refused. Attached to
-// the window when there is one, so it is seen where the person is.
-function sayProtectedViewMac() {
-  const options = { type: "info", message: shellSays.protected_view_mac, buttons: ["OK"] };
-  const shown = mainWindow && !mainWindow.isDestroyed()
-    ? dialog.showMessageBox(mainWindow, options)
-    : dialog.showMessageBox(options);
-  shown.catch(() => null);
+  return shell.openPath(p);
 }
 
 // A pass's progress lines go to the window that asked, on their own channel

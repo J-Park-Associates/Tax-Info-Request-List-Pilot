@@ -1164,12 +1164,17 @@ function unanswered(id) {
 // Open a path the API reported, or (`how` "reveal") show that file in File
 // Explorer. The shell answers "" or the sentence for a path that is no longer
 // what it was; that is a notice in the API's words, and what the operating
-// system said goes to the error log.
+// system said goes to the error log. On a Mac the shell answers a file it
+// opened that Windows would have opened in Protected View with
+// `{ says: <the sentence> }` (R8, P240): the same notice, every time, in the
+// API's words; the file has opened and nothing waits on it.
 async function openPath(path, how) {
   if (!path) return;
   try {
     const said = await window.tracker.open(path, how);
-    if (said) {
+    if (said && said.says) {
+      notice({ sentence: said.says, kind: "warning" });
+    } else if (said) {
       window.tracker.logError(String(said));
       notice({ sentence: vocab.shell.not_opened, kind: "warning" });
     }

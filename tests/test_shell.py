@@ -2362,6 +2362,31 @@ def test_opening_a_path_says_not_opened_in_the_apis_words_and_logs_the_systems(t
     assert ran["logged"] == ["the operating system said something with a path C:\\x"] and ran["failures"] == ["boom"]
 
 
+def test_a_file_the_shell_opened_without_protected_view_is_said_in_the_same_notice_each_time(tmp_path):
+    """SPEC-mac R8 (P240): the shell answers such an open with ``{ says }``; the
+    page says it as a notice - the place Open's own result appears - each time,
+    logs nothing as an error, and waits for nothing."""
+    ran = run_shell(["openPath"], """
+      const vocab = { shell: { not_opened: "Not Opened; It Has Changed" } };
+      const seen = []; const logged = []; const failures = [];
+      const notice = (n) => seen.push([n.sentence, n.kind]);
+      const failed = (err) => failures.push(err.message);
+      let answer = { says: "Protected View does not exist on a Mac." };
+      const window = { tracker: { open: async () => answer, logError: (t) => logged.push(t) } };
+    """, """
+      return (async () => {
+        await openPath("/macros.xlsm");
+        await openPath("/macros.xlsm");
+        answer = "refused";
+        await openPath("/gone.xlsm");
+        return { seen, logged, failures };
+      })();
+    """, tmp_path)
+    said = ["Protected View does not exist on a Mac.", "warning"]
+    assert ran["seen"] == [said, said, ["Not Opened; It Has Changed", "warning"]]
+    assert ran["logged"] == ["refused"] and ran["failures"] == []
+
+
 def test_the_four_dialogs_draw_the_apis_words_and_never_a_path(tmp_path):
     """SPEC 2.7 (E93-E95): Safeguards is one short line per rule, About the
     product and the edition, Folders skipped a folder's own name per row;

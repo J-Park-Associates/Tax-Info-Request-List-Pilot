@@ -428,7 +428,7 @@ const realFs = require("fs");
 const [mainJs, target, other, platform] = process.argv.slice(2);
 Object.defineProperty(process, "platform", { value: platform });
 const ipc = {};
-const seen = { boxes: [], opened: [], revealed: [] };
+const seen = { opened: [], revealed: [] };
 const reply = { vocab: { commands: ["list"], path_kinds: { review_copy: "file" },
                          shell: { protected_view_mac: "Said by the API." } },
                 state: { paths: { "review_copy K1": target, "review_copy K2": other }, carries_code: [target] },
@@ -442,8 +442,7 @@ const electron = {
   nativeTheme: { shouldUseDarkColors: false, shouldUseHighContrastColors: false, themeSource: "", on() {} },
   shell: { openPath: async (p) => { seen.opened.push(p); return ""; },
            showItemInFolder: (p) => { seen.revealed.push(p); } },
-  dialog: { showMessageBox: (...args) => { seen.boxes.push(args[args.length - 1].message);
-                                           return Promise.resolve({ response: 0 }); } },
+  dialog: {},
 };
 const childProcess = {
   spawn() {
@@ -498,10 +497,11 @@ def _opening_on(tmp_path, platform: str) -> dict:
 
 def test_the_shell_says_protected_view_does_not_exist_each_time_a_macro_copy_opens_on_a_mac(tmp_path):
     """SPEC-mac R8 (P240): the sentence is the API's (learned, with a pinned
-    default for a first start), and the shell says it each time it opens a
-    path the API listed in ``carries_code`` - not when it only shows the file,
-    not for any other file, not on Windows, where the mark itself does it - and
-    never refuses or asks first."""
+    default for a first start). The shell answers an open of a path the API
+    listed in ``carries_code`` with ``{ says: <sentence> }`` - for the page to
+    say as a notice (``test_shell.py``), never a dialog or a sheet with a
+    button - each time, not when it only shows the file, not for any other
+    file, not on Windows, where the mark itself does it - and never refuses."""
     import tracker.api as api
 
     main_js = read("app/main.js")
@@ -509,14 +509,16 @@ def test_the_shell_says_protected_view_does_not_exist_each_time_a_macro_copy_ope
     assert _joined_string(says, "protected_view_mac:") == api.PROTECTED_VIEW_MAC
     assert api._vocab()["shell"]["protected_view_mac"] == api.PROTECTED_VIEW_MAC
     assert main_js.count("shell.openPath(") == 1                       # the one door, still
+    assert "showMessageBox(" not in main_js.replace("showMessageBoxSync(", "")
+    assert "said.says" in read("app/renderer/shell.js")
 
     mac = _opening_on(tmp_path, "darwin")
-    assert mac["results"] == [""] * 5, "never refused"
+    sentence = {"says": "Said by the API."}
+    assert mac["results"] == [sentence, sentence, "", "", sentence], "each time, never refused"
     assert mac["opened"] == [mac["macros"], mac["macros"], mac["plain"], mac["macros"]]
     assert mac["revealed"] == [mac["macros"]]
-    assert mac["boxes"] == ["Said by the API."] * 3, "each time it opens, and no other time"
-    assert _opening_on(tmp_path, "win32")["boxes"] == []
-    assert _opening_on(tmp_path, "linux")["boxes"] == []
+    for platform in ("win32", "linux"):
+        assert _opening_on(tmp_path, platform)["results"] == [""] * 5
 
 
 def test_the_side_panel_names_the_product_from_its_one_home():
