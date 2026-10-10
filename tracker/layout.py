@@ -68,6 +68,7 @@ import ntpath
 import os
 import posixpath
 import re
+import sys
 import unicodedata
 from collections.abc import Iterable
 from dataclasses import dataclass
@@ -138,6 +139,14 @@ SHORT_NAME_RESERVE = 12
 #: (``fsio.TEMP_NAME``). Twenty-six. The longest, not this process's own,
 #: so a return's room is the same number at every run (pilot decision P29).
 TEMP_NAME_RESERVE = len("/x." + "9" * 10 + "." + "f" * 8 + ".tmp")
+#: The length of a Google Drive for desktop root on Windows with a
+#: 30-character shared-drive name (``G:\Shared drives\`` and the name):
+#: what a Mac measures room against, whatever its own clients root is
+#: (SPEC-mac R9, pilot decisions P241 and P244). Not a setting. It covers a
+#: buying firm's root as well as the runbook's 28-character one, and it costs
+#: a Mac path 20 characters of room beside the firm's own root. The figure is
+#: picked once, because changing it re-measures every return.
+WINDOWS_ROOT_LENGTH = 48
 #: What such a refusal says.
 PATH_TOO_LONG = ("the deepest file the app would write under {folder} would be {length} "
                  "characters, past the {limit} Windows allows; shorten the household or the return name")
@@ -1002,15 +1011,63 @@ def place_problem(return_dir: Path | str, location: str, *, writes: bool,
     return STEP_NOT_A_PLACE
 
 
+def on_a_mac() -> bool:
+    """Whether this is macOS, read when called so a test stands in for a Mac
+    by replacing this function and never by changing ``sys.platform``
+    (``tests/conftest.py`` pins it off for every test, as the room fixture)."""
+    return sys.platform == "darwin"
+
+
+def measured_length(path: Path | str, root: Path | str) -> int:
+    """How many characters ``path`` counts, for every comparison with
+    :func:`path_limit`, :func:`limit_for` or :func:`folder_need`
+    (SPEC-mac R9, P241).
+
+    ``len(str(path))`` - except on a Mac, which measures room as if the
+    clients folder sat under a Windows root: :data:`WINDOWS_ROOT_LENGTH`
+    plus each name below ``root`` and the separator before it, one character
+    each. So a household folder made on a Mac opens on any Windows desk, the
+    names are shortened and the returns parked by the rule Windows applies
+    (not a Mac-only rule), and a return that fits on one platform fits on
+    the other. ``root`` is the clients root; ``path`` must lie under it - a
+    path outside it has no Windows spelling, and measuring it as if it had
+    would hide the bug that put it there, so it raises ``ValueError``."""
+    if not on_a_mac():
+        return len(str(path))
+    below = parts_below(root, path)
+    if below is None:
+        raise ValueError(f"{path} is not under the clients root {root}; "
+                         "room cannot be measured as if on Windows")
+    return WINDOWS_ROOT_LENGTH + sum(1 + len(part) for part in below)
+
+
+def room_root(return_dir: Path | str) -> Path:
+    """The clients root that room is counted from for a path under
+    ``return_dir`` (:func:`root_of`): asked only where it is used, on a
+    Mac. Elsewhere :func:`measured_length` counts the path whole and wants
+    no root, so none is looked for - a folder too shallow to have one
+    (a test's) is not an error there."""
+    return root_of(return_dir) if on_a_mac() else Path(return_dir)
+
+
+def local_limit(path: Path | str, root: Path | str) -> int:
+    """:func:`path_limit` in this machine's own characters for a file at
+    ``path``: the number a writer that measures ``len(str(...))`` itself
+    (``fsio.temp_path_for``, which imports nothing of the package) is handed,
+    so a temp beside a Mac file is cut by the Windows measure too."""
+    return path_limit() - (measured_length(path, root) - len(str(path)))
+
+
 def deepest_path_length(return_dir: Path | str, subpaths: Iterable[str]) -> int:
     """The longest path the tracker would write under ``return_dir``, in
-    characters, over ``subpaths``.
+    characters (:func:`measured_length`), over ``subpaths``.
 
     What creation measures against :func:`path_limit` before a folder
     is made: the deepest working copy a request list implies. ``0`` for no
     subpaths at all, because a return with no request has nothing to write.
     """
-    lengths = [len(str(Path(return_dir) / sub)) for sub in subpaths]
+    root = room_root(return_dir)
+    lengths = [measured_length(Path(return_dir) / sub, root) for sub in subpaths]
     return max(lengths, default=0)
 
 
@@ -1043,11 +1100,14 @@ def _long_paths_on() -> bool:
 
 def short_paths() -> bool:
     """True on a Windows that holds this process to ``MAX_PATH`` - long
-    paths off, the Windows default (pilot decision P29).
+    paths off, the Windows default (pilot decision P29) - and on a Mac,
+    which measures as that Windows (:func:`measured_length`, P241): the
+    reserves of P29 apply there too, so a folder it makes opens on any
+    Windows desk.
 
     Read when called, so a test stands in for either setting on any
     machine by replacing this function."""
-    return os.name == "nt" and not _long_paths_on()
+    return (os.name == "nt" and not _long_paths_on()) or on_a_mac()
 
 
 def path_limit() -> int:
@@ -1060,16 +1120,19 @@ def path_limit() -> int:
     the longest Windows opens. Pilot decision P29 found the 260 the room
     rule allowed failing on a default Windows as "could not be filed
     (FileNotFoundError)" instead of the room's own sentence. The figure is
-    not lowered everywhere: Linux, macOS and a long-path Windows write a
+    not lowered everywhere: Linux and a long-path Windows write a
     path of 260 characters, and every return measured there keeps the
-    room it had.
+    room it had. A Mac answers the default Windows's 259, because it is
+    measured as that Windows (:func:`measured_length`), and its refusals
+    quote Windows numbers.
     """
     return MAX_PATH_LENGTH - 1 if short_paths() else MAX_PATH_LENGTH
 
 
-def folder_need(folder: Path | str) -> int:
+def folder_need(folder: Path | str, root: Path | str) -> int:
     """What a folder the tracker makes and writes into costs against
-    :func:`path_limit`: its length and the larger of
+    :func:`path_limit`: its length (:func:`measured_length` under ``root``,
+    the clients root) and the larger of
     :data:`SHORT_NAME_RESERVE` and :data:`TEMP_NAME_RESERVE` where long
     paths are off, else ``0`` - a folder is then never deeper than the
     files it holds.
@@ -1084,7 +1147,7 @@ def folder_need(folder: Path | str) -> int:
     every write into it, its temp included."""
     if not short_paths():
         return 0
-    return len(str(folder)) + max(SHORT_NAME_RESERVE, TEMP_NAME_RESERVE)
+    return measured_length(folder, root) + max(SHORT_NAME_RESERVE, TEMP_NAME_RESERVE)
 
 
 def limit_for(extension: str) -> int:

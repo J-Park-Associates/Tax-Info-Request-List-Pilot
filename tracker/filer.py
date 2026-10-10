@@ -221,9 +221,11 @@ from tracker.layout import (
     household_of,
     inbox_of,
     limit_for,
+    local_limit,
     locate,
     location_of,
     lock_order_key,
+    measured_length,
     name_key,
     opened_dir_of,
     originals_of,
@@ -234,6 +236,7 @@ from tracker.layout import (
     private_tree_of,
     recorded_name,
     recorded_subfolder_part,
+    room_root,
     root_of,
     year_of,
 )
@@ -595,7 +598,7 @@ def prepared_name_for(item: RequestItem, extension: str, taken: set[str], *,
     one predictable series, sorted together.
 
     ``room`` is how many characters the whole file name may take - the
-    caller's ``limit_for(extension) - len(str(prepared_dir)) - 1`` - and
+    caller's ``limit_for(extension)`` less the folder as room measures it and one - and
     ``None`` is the canonical name exactly (creation's measure passes none;
     every writer passes one). A name longer than its room is **cut to fit**
     (decision 131): the document part alone, from its end, with the
@@ -788,6 +791,7 @@ def room_for(engagement_dir: Path, items: Sequence[RequestItem]) -> Room:
     """
     engagement_dir = Path(engagement_dir)
     prepared = engagement_dir / PREPARED_DIR_NAME
+    root = room_root(engagement_dir)
     canonical: list[str] = []
     least = short = parks = 0
     longest_of_all = ""
@@ -803,19 +807,22 @@ def room_for(engagement_dir: Path, items: Sequence[RequestItem]) -> Room:
         # the path measured is PREPARED_DIR_NAME/<name>, one folder shorter
         # than it was while each request had a folder of its own.
         canonical.append(f"{PREPARED_DIR_NAME}/{prepared_name_for(item, longest, set())}")
-        least = max(least, len(str(prepared / shortest_name_for(item, longest))))
+        least = max(least, measured_length(prepared / shortest_name_for(item, longest), root))
         parked = False
         for extension in extensions:
             limit = limit_for(extension)
-            short = max(short, len(str(prepared / prepared_name_for(item, extension, set()))) - limit)
-            parked = parked or len(str(prepared / shortest_name_for(item, extension))) > limit
+            short = max(short, measured_length(
+                prepared / prepared_name_for(item, extension, set()), root) - limit)
+            parked = parked or measured_length(
+                prepared / shortest_name_for(item, extension), root) > limit
         parks += parked
     # The floor at the longest extension the list allows; a list with no
     # active row still parks everything, at the defaults' longest.
     longest_of_all = longest_of_all or max(DEFAULT_EXTENSIONS, key=len)
     review = prepared / REVIEW_DIR_NAME / numbered("x", _ROOM_COUNTER, f".{longest_of_all}")
     return Room(need=deepest_path_length(engagement_dir, canonical), least=least,
-                floor=max(len(str(review)), folder_need(review.parent)), parks=parks,
+                floor=max(measured_length(review, root), folder_need(review.parent, root)),
+                parks=parks,
                 short=max(0, short), limit=path_limit())
 
 
@@ -848,7 +855,8 @@ def refuse_a_path_past_the_limit(engagement_dir: Path, items: Sequence[RequestIt
     """
     limit = path_limit()
     need = max(room_for(engagement_dir, items).need,
-               folder_need(Path(engagement_dir) / PREPARED_DIR_NAME / REVIEW_DIR_NAME))
+               folder_need(Path(engagement_dir) / PREPARED_DIR_NAME / REVIEW_DIR_NAME,
+                           room_root(engagement_dir)))
     if need > limit:
         raise ManifestError(PATH_TOO_LONG.format(
             folder=engagement_dir, length=need, limit=limit))
@@ -938,7 +946,8 @@ class CopyMismatchError(FilingError):
 
 
 def _copy_whole(
-    source: Path, target: Path, *, expect: str = "", cache: ContentCache | None = None
+    source: Path, target: Path, *, expect: str = "", cache: ContentCache | None = None,
+    root: Path | None = None,
 ) -> None:
     """Copy whole or not at all, proved against the bytes it was made from
     before it takes the proper name, and writable (decision 155).
@@ -969,7 +978,10 @@ def _copy_whole(
 
     The temp's name is cut to fit Windows's limit where the target sits
     near it (``limit``): the target was named to fit decision 131's room,
-    and its temp must not be what refuses the copy.
+    and its temp must not be what refuses the copy. On a Mac the limit is
+    taken in its own characters (``layout.local_limit`` under ``root``, the
+    clients root) so the temp is cut by the Windows measure too (SPEC-mac
+    R9); a caller with no root has the plain limit.
 
     ``cache`` is the pass's, where the caller has one: the copy keeps the
     modification time and the rename keeps the size, so the digest proved
@@ -996,7 +1008,8 @@ def _copy_whole(
             # report names (decision 190).
             _mark_for_review(temp, name=target.name)
 
-    copy_atomically(source, target, prove=prove, limit=path_limit())
+    copy_atomically(source, target, prove=prove,
+                    limit=path_limit() if root is None else local_limit(target, root))
     if cache is not None:
         cache.remember_digest(target, expect)
 
@@ -1109,10 +1122,19 @@ def _move_whole(source: Path, target: Path, *, within: Path) -> None:
 _AN_EXTENSION = re.compile(r"\.[A-Za-z0-9]{1,10}")
 
 
+def _room_in(folder: Path, extension: str, root: Path) -> int:
+    """How many characters a working copy's file name may take in ``folder``:
+    the limit that applies to its ``extension`` less the folder as room
+    measures it (``layout.measured_length`` under ``root``, the clients
+    root) and one separator (decision 131; SPEC-mac R9). The one spelling of
+    that arithmetic, so no writer counts the folder by ``len(str(...))``."""
+    return limit_for(extension) - measured_length(folder, root) - 1
+
+
 def _unique_path(
     folder: Path, name: str, *, room: int | None = None, spare: int = 0,
     recorded: Mapping[Path, str] | None = None, digest: str | Callable[[], str | None] = "",
-    reuse: bool = False, claimed: set[Path] | None = None,
+    reuse: bool = False, claimed: set[Path] | None = None, root: Path | None = None,
 ) -> Path:
     """A free path in ``folder`` for ``name``, never overwriting anything -
     **the one numbering function** (decision 147): an original out of the
@@ -1127,7 +1149,10 @@ def _unique_path(
     a copy. ``None`` is no limit. Only ever a copy's name - an original is
     moved under its own name, uncut, always. ``spare`` is room kept beside
     the name for the temporary name an atomic write passes through; it is
-    taken off ``room`` and counted in what :class:`NoRoom` reports.
+    taken off ``room`` and counted in what :class:`NoRoom` reports. The
+    figures it reports are counted as room is (``layout.measured_length``
+    under ``root``, the clients root, which a caller that passes a ``room``
+    passes too), so a Mac's refusal quotes Windows's numbers.
 
     A suffix that is not an extension - ``Scan 2026.01.15 from the phone``
     has ``.15 from the phone`` for one - is no promise the pass's floor
@@ -1161,6 +1186,8 @@ def _unique_path(
     met. ``claimed`` is the names this caller has handed out already,
     skipped.
     """
+    if room is not None and root is None:
+        raise TypeError("a room is counted from the clients root; pass root with it")
     stem, suffix = Path(name).stem, Path(name).suffix
     if room is not None and suffix and not _AN_EXTENSION.fullmatch(suffix):
         stem, suffix = name, ""
@@ -1180,8 +1207,8 @@ def _unique_path(
             fitted = next((_named(cut, counter, suffix) for cut in cuts
                            if cut and len(_named(cut, counter, suffix)) <= fits), None)
             if fitted is None:
-                length = len(str(folder / _named(stem[:1], counter, suffix))) + spare
-                limit = len(str(folder)) + 1 + room
+                length = measured_length(folder / _named(stem[:1], counter, suffix), root) + spare
+                limit = measured_length(folder, root) + 1 + room
                 raise NoRoom(length, limit, suffix, sentence=REVIEW_NO_ROOM.format(
                     name=name, length=length, limit=limit, ext=_kind_of(suffix)))
         target = folder / fitted
@@ -1980,7 +2007,8 @@ def _do_op(engagement_dir: Path, op: dict, *, cache: ContentCache | None = None)
         _mark_a_move_into_review(engagement_dir, op)
         _move_whole(source, target, within=root_of(engagement_dir))
     else:
-        _copy_whole(source, target, expect=op[ledger.DIGEST_KEY], cache=cache)
+        _copy_whole(source, target, expect=op[ledger.DIGEST_KEY], cache=cache,
+                    root=room_root(engagement_dir))
 
 
 def _intend(
@@ -3413,9 +3441,11 @@ def _a_copy_to_act_on(
     if waiting is not None:
         return prepared_location(review_dir, waiting.name), ""
     try:
-        parked, past_reader = _review_copy_path(review_dir, entry.original_name)
+        parked, past_reader = _review_copy_path(review_dir, entry.original_name,
+                                                room_root(engagement_dir))
         review_dir.mkdir(parents=True, exist_ok=True)
-        _copy_whole(source, parked, expect=entry.digest or sha256_of(source), cache=cache)
+        _copy_whole(source, parked, expect=entry.digest or sha256_of(source), cache=cache,
+                    root=room_root(engagement_dir))
     except NoRoom as exc:
         errors.keep("filer", exc, name=entry.original_name)
         log.error("Could not park a review copy (%s)", errors.error_class(exc))
@@ -4523,7 +4553,7 @@ def _opened_folder(home: _ReturnRun, original: Path, runs: list[_ReturnRun]) -> 
         # A Windows with long paths off will not make the folder, or write
         # into it, past its limit: the stem is cut until it fits (pilot
         # decision P29, the review's finding 3). Elsewhere folder_need is 0.
-        while folder_need(folder) > path_limit() and len(stem) > 1:
+        while folder_need(folder, room_root(home.engagement_dir)) > path_limit() and len(stem) > 1:
             stem = stem[:-1].rstrip(". ") or _OPENED_FALLBACK[:1]
             folder = base / _named(stem, counter, "")
         if folder not in elsewhere:
@@ -4532,7 +4562,7 @@ def _opened_folder(home: _ReturnRun, original: Path, runs: list[_ReturnRun]) -> 
 
 
 def _take_out(folder: Path, attachment: containers.Attachment, claimed: set[Path], *,
-              recorded: Mapping[Path, str] | None = None) -> tuple[Path, str]:
+              root: Path, recorded: Mapping[Path, str] | None = None) -> tuple[Path, str]:
     """Write one attachment into its container's folder, whole or not at
     all, and say where and what bytes (decision 143).
 
@@ -4545,7 +4575,8 @@ def _take_out(folder: Path, attachment: containers.Attachment, claimed: set[Path
     (:func:`_unique_path`, decision 147), so a name a row still names
     (``recorded``) is taken here too - whatever the bytes, since decision
     157: a file on the disk holding these bytes is reused, a name only a
-    row holds is never handed back.
+    row holds is never handed back. ``root`` is the clients root room is
+    counted from (SPEC-mac R9).
     """
     data = attachment.data
     digest = hashlib.sha256(data).hexdigest()
@@ -4553,9 +4584,9 @@ def _take_out(folder: Path, attachment: containers.Attachment, claimed: set[Path
     if suffix and not _AN_EXTENSION.fullmatch(suffix):
         suffix = ""
     folder.mkdir(parents=True, exist_ok=True)
-    target = _unique_path(folder, attachment.name, room=limit_for(suffix) - len(str(folder)) - 1,
+    target = _unique_path(folder, attachment.name, room=_room_in(folder, suffix, root),
                           spare=_TEMP_ROOM, recorded=recorded, digest=digest, reuse=True,
-                          claimed=claimed)
+                          claimed=claimed, root=root)
     if not target.exists():
         write_bytes_atomically(target, data)
     claimed.add(target)
@@ -4629,7 +4660,8 @@ def _open_container(
             # its row parks as not a document, naming no file.
             taken.append((one, folder / one.name, hashlib.sha256(one.data).hexdigest()))
         else:
-            taken.append((one, *_take_out(folder, one, claimed, recorded=in_the_year)))
+            taken.append((one, *_take_out(folder, one, claimed, recorded=in_the_year,
+                                          root=room_root(home.engagement_dir))))
     entry = IndexEntry(
         received=stamp, original_name=recorded_name(drop.name), size_kb=size_kb, digest=digest,
         identifier="", prepared_location="", pbc_location=at[id(home)], decision=OPENED,
@@ -5347,7 +5379,8 @@ def _plan_working_copy(
     # caller parks the document instead, with nothing made.
     extension = extension_of(drop)
     filed_as = prepared_name_for(item, extension, run.reserved[dest_folder],
-                                 room=limit_for(extension) - len(str(dest_folder)) - 1)
+                                 room=_room_in(dest_folder, extension,
+                                               room_root(run.engagement_dir)))
     if run.dry_run:
         return prepared_location(dest_folder, filed_as), None
     return prepared_location(dest_folder, filed_as), dest_folder / filed_as
@@ -5490,7 +5523,7 @@ def _file_it(
     return entry
 
 
-def _review_copy_path(review_dir: Path, name: str) -> tuple[Path, str]:
+def _review_copy_path(review_dir: Path, name: str, root: Path) -> tuple[Path, str]:
     """Where a review copy goes, and what its row must say about it: the
     client's own name, cut to the room the review folder leaves (decision
     131). Every review copy is named here - the pass's park, the recovery's
@@ -5519,14 +5552,15 @@ def _review_copy_path(review_dir: Path, name: str) -> tuple[Path, str]:
     name = recorded_name(name)
     if is_program(name):
         raise FilingError(REVIEW_OF_A_PROGRAM.format(name=name))
-    folder = len(str(review_dir)) + 1
+    folder = measured_length(review_dir, root) + 1
     limit = limit_for(extension_of(Path(name)))
     try:
-        return _unique_path(review_dir, name, room=limit - folder), ""
+        return _unique_path(review_dir, name, room=limit - folder, root=root), ""
     except NoRoom:
         if limit >= path_limit():
             raise
-    return _unique_path(review_dir, name, room=path_limit() - folder), REVIEW_COPY_PAST_READER
+    return (_unique_path(review_dir, name, room=path_limit() - folder, root=root),
+            REVIEW_COPY_PAST_READER)
 
 
 def _park_it(
@@ -5562,7 +5596,8 @@ def _park_it(
             # Named before the folder is made: a name that cannot fit
             # (NoRoom, a review copy's sentence) leaves no empty folder, and
             # the pass records the drop as one that could not be filed.
-            review_target, past_reader = _review_copy_path(context.review_dir, drop.name)
+            review_target, past_reader = _review_copy_path(
+                context.review_dir, drop.name, room_root(run.engagement_dir))
             parking.append(_op(run.engagement_dir, ledger.OP_COPY,
                                original, review_target, digest))
         context.review_dir.mkdir(parents=True, exist_ok=True)
@@ -6094,7 +6129,8 @@ def assign_review_file(
                                   among=copies_of(item, list(items.values()), dest_folder))
         extension = extension_of(source)
         filed_as = existing.name if existing is not None else prepared_name_for(
-            item, extension, taken, room=limit_for(extension) - len(str(dest_folder)) - 1)
+            item, extension, taken,
+            room=_room_in(dest_folder, extension, room_root(engagement_dir)))
         dest_folder.mkdir(parents=True, exist_ok=True)
         target = dest_folder / filed_as
 
@@ -6199,7 +6235,8 @@ def assign_review_file(
                     if moved:
                         _move_whole(target, parked, within=engagement_dir)
                     elif parked_stood_in:
-                        _copy_whole(target, parked, expect=digest or sha256_of(target))
+                        _copy_whole(target, parked, expect=digest or sha256_of(target),
+                                    root=room_root(engagement_dir))
                     elif not reused:          # a copy that was already there stays
                         target.unlink(missing_ok=True)
                 except (OSError, FilingError) as undo:  # the copy stays where it is; the real error is the one to hear
@@ -6497,7 +6534,8 @@ def hand_over_copies(
             continue
         try:
             name = prepared_name_for(one, extension, taken,
-                                     room=limit_for(extension) - len(str(dest_folder)) - 1)
+                                     room=_room_in(dest_folder, extension,
+                                                   room_root(target_return)))
         except NoRoom as exc:
             label = _label_of(target_return, _details_of(target_return))
             raise NoRoom(exc.length, exc.limit, exc.extension, sentence=PATH_NO_ROOM_IN.format(
@@ -6888,7 +6926,8 @@ def unfile_document(
 
         # Named as every review copy is, to fit (decision 131): no room
         # refuses with the review copy's sentence, and nothing has moved.
-        parked, past_reader = _review_copy_path(review_dir, entry.original_name)
+        parked, past_reader = _review_copy_path(review_dir, entry.original_name,
+                                                room_root(engagement_dir))
         review_dir.mkdir(parents=True, exist_ok=True)
         left_filed = "; ".join(
             LEFT_FILED.format(location=location, parked=parked.name) for location in strangers
@@ -6938,7 +6977,8 @@ def unfile_document(
                     # one that went back, which is them byte for byte.
                     for copy in stood_down:
                         _copy_whole(working or source, copy,
-                                    expect=entry.digest or sha256_of(working or source))
+                                    expect=entry.digest or sha256_of(working or source),
+                                    root=room_root(engagement_dir))
                 except (OSError, FilingError) as undo:
                     errors.keep("filer", undo, name=parked.name)
                     log.error("Could not put a file back after the record refused it (%s)",
@@ -7375,7 +7415,8 @@ def _put_back_a_moved_copy(
         # to act on and both files are still on disk.
         # Named as every review copy is, to fit (decision 131): no room
         # refuses with the review copy's sentence, nothing touched.
-        parked, past_reader = _review_copy_path(review_dir, entry.original_name)
+        parked, past_reader = _review_copy_path(review_dir, entry.original_name,
+                                                room_root(engagement_dir))
         review_dir.mkdir(parents=True, exist_ok=True)
         if wanderer is not None and holds_the_row(wanderer, entry.digest):
             ops.append(_op(engagement_dir, ledger.OP_MOVE, wanderer, parked, entry.digest))
@@ -7703,9 +7744,10 @@ def rename_request(
                     raise FilingError(RENAME_COPY_CHANGED.format(location=was, old=old))
                 if target.exists() or now.casefold() in destinations:
                     raise FilingError(RENAME_COPY_TAKEN.format(location=now))
-                if len(str(target)) > path_limit():
+                length = measured_length(target, room_root(engagement_dir))
+                if length > path_limit():
                     raise FilingError(RENAME_PATH_TOO_LONG.format(
-                        location=now, length=len(str(target)), limit=path_limit()))
+                        location=now, length=length, limit=path_limit()))
                 destinations.add(now.casefold())
                 ops.append(_op(engagement_dir, ledger.OP_MOVE, source, target, entry.digest))
             now_locations = [mapped.get(location, location) for location in locations]

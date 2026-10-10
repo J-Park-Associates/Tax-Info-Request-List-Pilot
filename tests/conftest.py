@@ -102,7 +102,17 @@ from pathlib import Path
 import pytest
 
 from tests.tripwire import sitecustomize as tripwire
-from tracker import after_install, content_check, ledger, runner, scheduling, settings, store, view
+from tracker import (
+    after_install,
+    content_check,
+    layout,
+    ledger,
+    runner,
+    scheduling,
+    settings,
+    store,
+    view,
+)
 from tracker.filer import ensure, file_household_drops, refresh_household_readme
 from tracker.households import create_household
 from tracker.layout import (
@@ -216,6 +226,33 @@ def reading_in_this_process():
         yield
     finally:
         patch.undo()
+
+
+@pytest.fixture(autouse=True)
+def room_is_the_absolute_length():
+    """Room is measured as the absolute length of a path, on every machine
+    (SPEC-mac R9).
+
+    On a Mac the tracker measures room as if the clients folder sat under a
+    Windows root (``layout.measured_length``). The suite's root-length tests
+    are written against absolute lengths, so they mean the same on a Mac as
+    on Linux and Windows: this pins ``layout.on_a_mac`` off for every test.
+    A test that is about a Mac says so with the :func:`on_a_mac` fixture. A
+    ``MonkeyPatch`` of its own, like the store's, so ``monkeypatch.undo()``
+    in a test cannot lift it."""
+    patch = pytest.MonkeyPatch()
+    patch.setattr(layout, "on_a_mac", lambda: False)
+    try:
+        yield
+    finally:
+        patch.undo()
+
+
+@pytest.fixture
+def on_a_mac(monkeypatch):
+    """This test is on a Mac as far as room is measured: lifts
+    :func:`room_is_the_absolute_length` for it (``layout.on_a_mac``)."""
+    monkeypatch.setattr(layout, "on_a_mac", lambda: True)
 
 
 #: The real answer to "is there a Task Scheduler here", for the one test
@@ -543,7 +580,7 @@ def floor_return() -> int:
     from tracker.layout import PREPARED_DIR_NAME, REVIEW_DIR_NAME, folder_need, path_limit
 
     review = len(f"/{PREPARED_DIR_NAME}/{REVIEW_DIR_NAME}")
-    return path_limit() - review - max(len("/x (99).pdf"), folder_need(""))
+    return path_limit() - review - max(len("/x (99).pdf"), folder_need("", ""))
 
 
 def sort_all(returns, *, home=None, today=None, dry_run: bool = False):

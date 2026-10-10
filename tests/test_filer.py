@@ -4473,7 +4473,7 @@ def test_a_power_loss_mid_copy_leaves_a_truncated_file_that_is_named_and_the_row
 
     drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
 
-    def power_loss(source, target, *, expect="", cache=None):
+    def power_loss(source, target, *, expect="", cache=None, root=None):
         Path(target).write_bytes(b"%PDF-1.4 half")   # nothing tidies up after a power cut
         raise KeyboardInterrupt
 
@@ -6637,7 +6637,7 @@ def test_the_room_is_measured_from_the_list_alone_and_creations_figure_is_unchan
     # a folder the tracker makes and writes into, its temp names included:
     # fifteen deeper than ``x (99).pdf`` (pilot decision P29).
     floor = len(str(engagement / PREPARED_DIR_NAME / REVIEW_DIR_NAME / "x (99).pdf"))
-    assert room.floor == max(floor, folder_need(engagement / PREPARED_DIR_NAME / REVIEW_DIR_NAME))
+    assert room.floor == max(floor, folder_need(engagement / PREPARED_DIR_NAME / REVIEW_DIR_NAME, root))
     assert room.floor == (143 if short_paths() else 128)
     assert room.parks == 0
 
@@ -6668,7 +6668,7 @@ def test_the_room_is_measured_from_the_list_alone_and_creations_figure_is_unchan
 
     aside = replace(long_row, manual_override=Override.NOT_APPLICABLE)
     nothing = max(len(str(engagement / PREPARED_DIR_NAME / REVIEW_DIR_NAME / "x (99).xlsx")),
-                  folder_need(engagement / PREPARED_DIR_NAME / REVIEW_DIR_NAME))
+                  folder_need(engagement / PREPARED_DIR_NAME / REVIEW_DIR_NAME, root))
     assert room_for(engagement, [aside]) == Room(need=0, least=0, floor=nothing, parks=0, short=0,
                                                  limit=path_limit())
 
@@ -6886,6 +6886,81 @@ def test_creation_and_the_rollover_still_refuse_the_canonical_name_past_the_limi
     assert str(refused.value) == PATH_TOO_LONG.format(folder=engagement, length=265, limit=path_limit())
 
 
+def test_a_return_that_fits_on_windows_fits_on_a_mac_and_one_character_more_does_not(on_a_mac):
+    """SPEC-mac R9, P241 and P244. A Mac measures a return against the
+    259 a default Windows opens, as if the folder sat under a Windows root
+    of 48 characters: the household name that makes the deepest working
+    copy exactly 259 characters there is accepted, and one character more
+    is refused in Windows's numbers - whatever the Mac's own root."""
+    from pathlib import PureWindowsPath
+
+    from tracker.filer import refuse_a_path_past_the_limit, room_for
+    from tracker.layout import (
+        PATH_TOO_LONG,
+        PREPARED_DIR_NAME,
+        REVIEW_DIR_NAME,
+        folder_need,
+        path_limit,
+        return_dir_for,
+    )
+    from tracker.manifest import ManifestError
+
+    root = Path("/Users/jpark/Library/CloudStorage/GoogleDrive-jpark@jparkassociates.com"
+                "/Shared drives/JPA Clients")
+
+    def the_need_of(extra: int) -> tuple[Path, int]:
+        """The return with ``extra`` more characters in its names (a
+        household and a return name each take at most 80)."""
+        in_the_household = min(extra, 60)
+        engagement = return_dir_for(root, "Park Family" + "h" * in_the_household, 2026,
+                                    "1040 - John & Maria Park" + "q" * (extra - in_the_household))
+        review = engagement / PREPARED_DIR_NAME / REVIEW_DIR_NAME
+        return engagement, max(room_for(engagement, ROOM_ITEMS).need, folder_need(review, root))
+
+    _engagement, base = the_need_of(0)
+    assert path_limit() == 259
+    extra = path_limit() - base
+    engagement, need = the_need_of(extra)
+    assert need == 259
+    refuse_a_path_past_the_limit(engagement, ROOM_ITEMS)              # fits: accepted
+
+    deepest = engagement / PREPARED_DIR_NAME / prepared_name_for(ROOM_ITEMS[0], "pdf", set())
+    windows = PureWindowsPath("G:/Shared drives/" + "x" * 31).joinpath(*deepest.relative_to(root).parts)
+    assert len(str(windows)) == room_for(engagement, ROOM_ITEMS).need, "the length it has on Windows"
+
+    longer, need = the_need_of(extra + 1)
+    assert need == 260
+    with pytest.raises(ManifestError) as refused:
+        refuse_a_path_past_the_limit(longer, ROOM_ITEMS)
+    assert str(refused.value) == PATH_TOO_LONG.format(folder=longer, length=260, limit=259)
+    assert "past the 259 Windows allows" in str(refused.value)
+
+
+def test_a_mac_cuts_a_working_copys_name_to_the_room_a_windows_desk_leaves(on_a_mac):
+    """SPEC-mac R9: the room a name may take in a folder, and the figures a
+    refusal quotes, are Windows's - so the name cut on a Mac is the name cut
+    under the Windows root (names and parks match on both)."""
+    from pathlib import PureWindowsPath
+
+    from tracker.filer import REVIEW_NO_ROOM, NoRoom, _review_copy_path, _room_in, _unique_path
+
+    root = Path("/Users/jpark/Library/CloudStorage/GoogleDrive-a@b.com/Shared drives/JPA Clients")
+    folder = root / "J Park & Associates" / "Park Family" / "2026" / "1040 - John Park" / "Prepared"
+    windows = PureWindowsPath("G:/Shared drives/" + "x" * 31).joinpath(*folder.relative_to(root).parts)
+    assert _room_in(folder, "pdf", root) == 259 - len(str(windows)) - 1
+    assert _room_in(folder, "xlsx", root) == 218 - len(str(windows)) - 1
+
+    with pytest.raises(NoRoom) as refused:
+        _unique_path(folder, "statement.pdf", room=4, root=root)
+    assert str(refused.value) == REVIEW_NO_ROOM.format(
+        name="statement.pdf", length=len(str(windows)) + len("/s.pdf"),
+        limit=len(str(windows)) + 1 + 4, ext=".pdf")
+    long_name = "n" * 300 + ".pdf"
+    cut, said = _review_copy_path(folder, long_name, root)
+    assert said == "" and cut.name.endswith(".pdf")
+    assert len(cut.name) == 259 - len(str(windows)) - 1
+
+
 # --------------------------- decision 131's review: the lead's rulings ----
 
 
@@ -6942,7 +7017,7 @@ def test_a_recovery_copy_is_cut_to_fit_and_one_that_cannot_be_made_names_no_copy
     copy.unlink()
     sentence = REVIEW_NO_ROOM.format(name="w2.pdf", length=270, limit=260, ext=".pdf")
 
-    def no_room(_folder, _name):
+    def no_room(_folder, _name, _root):
         raise NoRoom(270, 260, "pdf", sentence=sentence)
 
     monkeypatch.setattr(filer, "_review_copy_path", no_room)
@@ -6990,17 +7065,17 @@ def test_a_review_copy_with_an_odd_suffix_is_cut_to_fit_or_said_as_a_review_copy
     folder = tmp_path / "review"
     folder.mkdir()
     odd = "Scan 2026.01.15 from the phone of the client for the W-2"
-    cut = _unique_path(folder, odd, room=30)
+    cut = _unique_path(folder, odd, room=30, root=tmp_path)
     assert len(cut.name) <= 30 and cut.name.startswith("Scan 2026.01")
     cut.write_text("one")
-    again = _unique_path(folder, odd, room=30)
+    again = _unique_path(folder, odd, room=30, root=tmp_path)
     assert again != cut and len(again.name) <= 30 and again.name.endswith("(2)")
     # Through the one function every review copy is named by.
-    fitted, said = _review_copy_path(folder, odd * 5)
+    fitted, said = _review_copy_path(folder, odd * 5, tmp_path)
     assert said == "" and len(str(fitted)) <= path_limit()
 
     with pytest.raises(NoRoom) as refused:
-        _unique_path(folder, "statement.pdf", room=4)
+        _unique_path(folder, "statement.pdf", room=4, root=tmp_path)
     assert str(refused.value) == REVIEW_NO_ROOM.format(
         name="statement.pdf", length=len(str(folder / "s.pdf")), limit=len(str(folder)) + 1 + 4,
         ext=".pdf")
@@ -7797,11 +7872,11 @@ def test_an_attachment_is_not_written_under_a_name_a_row_still_names(tmp_path):
     folder = tmp_path / "_Opened" / "docs"
     gone = folder / "W2.pdf"
     new = Attachment("W2.pdf", b"%PDF-1.4 the corrected one")
-    target, _digest = _take_out(folder, new, set(), recorded={gone: "a" * 64})
+    target, _digest = _take_out(folder, new, set(), root=tmp_path, recorded={gone: "a" * 64})
     assert target.name == "W2 (2).pdf" and target.read_bytes() == new.data
     same = Attachment("W2.pdf", b"%PDF-1.4 the row's own")
     own = hashlib.sha256(same.data).hexdigest()
-    target, _digest = _take_out(folder, same, set(), recorded={gone: own})
+    target, _digest = _take_out(folder, same, set(), root=tmp_path, recorded={gone: own})
     assert target.name == "W2 (3).pdf" and not gone.exists()
 
 
@@ -9593,7 +9668,7 @@ def test_no_review_copy_is_ever_named_for_a_program(tmp_path):
     from tracker.filer import REVIEW_OF_A_PROGRAM, _review_copy_path
 
     with pytest.raises(FilingError) as refused:
-        _review_copy_path(tmp_path, "Pay.scr\ufeff")
+        _review_copy_path(tmp_path, "Pay.scr\ufeff", tmp_path)
     assert str(refused.value) == REVIEW_OF_A_PROGRAM.format(name="Pay.scr")
     assert list(tmp_path.iterdir()) == []
 
@@ -9981,7 +10056,7 @@ def test_an_opened_folder_is_cut_to_fit_where_long_paths_are_off(monkeypatch):
     whole = filer._opened_folder(home, original, [home])
     monkeypatch.setattr(layout, "short_paths", lambda: True)
     cut = filer._opened_folder(home, original, [home])
-    assert layout.folder_need(cut) <= layout.path_limit()
+    assert layout.folder_need(cut, layout.root_of(engagement)) <= layout.path_limit()
     assert cut.parent == whole.parent and len(cut.name) < len(whole.name)
     assert whole.name.startswith(cut.name)
 

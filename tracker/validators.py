@@ -212,6 +212,11 @@ _PLACEHOLDER_MASK = (
     | _FILE_ATTRIBUTE_RECALL_ON_DATA_ACCESS
 )
 
+#: The ``st_flags`` bit macOS sets on a file whose data is not on this Mac
+#: (``SF_DATALESS``): a Google Drive for desktop file in Stream mode that is
+#: not downloaded yet. Read from ``os.stat`` without opening the file.
+SF_DATALESS = 0x40000000
+
 
 # ---------------------------------------------------------------- results ----
 
@@ -340,15 +345,22 @@ def is_cloud_placeholder(path: Path) -> bool:
     """True if ``path`` is a cloud-only placeholder (OneDrive Files
     On-Demand or Google Drive for desktop streaming mode).
 
-    Passive: inspects Windows file-attribute flags only, never opens the
-    file (opening would force a download). On non-Windows platforms, or on
+    Passive: inspects the file's attribute flags only, never opens the
+    file (opening would force a download). On Windows those are the
+    attribute flags above. **On a Mac** a Drive file in Stream mode that is
+    not downloaded is *dataless*: ``os.stat`` reports ``SF_DATALESS`` in
+    ``st_flags`` (SPEC-mac R10), and reading it would force a download
+    inside the reading's safety stop - so it is a placeholder, and the pass
+    waits for the sync exactly as it does for Windows's. On Linux, or on
     any ordinary local file, this is simply False.
     """
     try:
-        attrs = getattr(path.stat(), "st_file_attributes", 0)
+        info = path.stat()
     except OSError:
         return False
-    return bool(attrs & _PLACEHOLDER_MASK)
+    if layout.on_a_mac():
+        return bool(getattr(info, "st_flags", 0) & SF_DATALESS)
+    return bool(getattr(info, "st_file_attributes", 0) & _PLACEHOLDER_MASK)
 
 
 def iter_candidate_files(folder: Path) -> list[Path]:
