@@ -351,6 +351,8 @@ def _name(package: str) -> str:
 #: CI's floor row, Linux on Python 3.11. A pin's marker is read for each.
 BUILD_ENVIRONMENT = {"sys_platform": "win32", "python_version": "3.14"}
 FLOOR_ENVIRONMENT = {"sys_platform": "linux", "python_version": "3.11"}
+#: The Mac (SPEC-mac R12): Apple silicon on the office's interpreter.
+MAC_ENVIRONMENT = {"sys_platform": "darwin", "python_version": "3.14"}
 
 
 def _pin_lines(lines) -> list[tuple[str, str, str]]:
@@ -439,6 +441,101 @@ def test_the_build_fails_when_a_frozen_version_differs_from_the_locks():
         frozen = frozen_in(info.read_text(encoding="utf-8", errors="replace"))
         assert frozen, info
         assert drift(frozen, built) == [], info
+
+
+#: What PyInstaller 6.22.3 asks for on a Mac, from its published metadata
+#: (``Requires-Dist``): macholib only there, as pefile and pywin32-ctypes are
+#: only Windows'. The lock must name each by hash, or --require-hashes
+#: refuses the whole install (decision 191).
+PYINSTALLER_ON_A_MAC = ("altgraph", "macholib", "packaging", "pyinstaller-hooks-contrib", "setuptools")
+#: The wheel each binary package installs from on an Apple silicon Mac on
+#: Python 3.14, read off PyPI: name -> (version, file, SHA-256). A pin that
+#: moves fails here until its row is read off PyPI again, so a release that
+#: dropped its Apple silicon wheel is found on Linux, not on a Mac. ONNX
+#: Runtime ships arm64 wheels only (macosx_14_0). pyclipper and PyInstaller
+#: ship no arm64-only wheel: their universal2 wheel holds an arm64 slice and
+#: is the one pip takes on an Apple silicon Mac.
+MAC_WHEELS = {
+    "onnxruntime": ("1.30.0", "onnxruntime-1.30.0-cp314-cp314-macosx_14_0_arm64.whl",
+                    "8b6169c16a48429890d2f4a0c774ebf54dfe9066a998514aad0518a16d398547"),
+    "opencv-python-headless": ("5.0.0.93", "opencv_python_headless-5.0.0.93-cp37-abi3-macosx_13_0_arm64.whl",
+                               "030ca5e0837a2963ab36ef896baa9767eb8d2b83353fb28af5a521e40dd8756f"),
+    "numpy": ("2.5.3", "numpy-2.5.3-cp314-cp314-macosx_14_0_arm64.whl",
+              "adc1ada2662f8a5f960b8a10d9986897e7499ef07e06d4cfe7197f8cce923c07"),
+    "shapely": ("2.1.2", "shapely-2.1.2-cp314-cp314-macosx_11_0_arm64.whl",
+                "1ff629e00818033b8d71139565527ced7d776c269a49bd78c9df84e8f852190c"),
+    "pyclipper": ("1.4.0", "pyclipper-1.4.0-cp314-cp314-macosx_10_15_universal2.whl",
+                  "7c87480fc91a5af4c1ba310bdb7de2f089a3eeef5fe351a3cedc37da1fcced1c"),
+    "pillow": ("12.3.0", "pillow-12.3.0-cp314-cp314-macosx_11_0_arm64.whl",
+               "e158cb00350dc278f3b91551101aa7d12415a66ebf2c91d8d5ac14e56ddd3ad0"),
+    "pillow-heif": ("1.8.0", "pillow_heif-1.8.0-cp314-cp314-macosx_11_0_arm64.whl",
+                    "d953c39095d98584b7c60696b4bf25be561ef43a9441c44349e322b8f8a3233e"),
+    "pypdfium2": ("5.13.0", "pypdfium2-5.13.0-py3-none-macosx_13_0_arm64.whl",
+                  "da5c7b74eebf40b5c1fbe1de01aa1edc8827a79fb1efd999616bc20dcaf77ba4"),
+    "pyinstaller": ("6.22.3", "pyinstaller-6.22.3-py3-none-macosx_10_13_universal2.whl",
+                    "052f4a1cd4f81092ccb7a18fe8ebc9ecf832a5917317e39fb3775af4e959b253"),
+}
+
+
+def _mac_hashes(environment: dict[str, str]) -> dict[str, set[str]]:
+    """Every hash the build's locks name for each package that holds in ``environment``."""
+    from packaging.markers import Marker, default_environment
+
+    from tools.lockfiles import read_lock
+
+    where = {**default_environment(), **environment}
+    found: dict[str, set[str]] = {}
+    for lock in BUILD_LOCKS:
+        for name, _version, marker, hashes in read_lock(REPO / lock):
+            if not marker or Marker(marker).evaluate(where):
+                found.setdefault(_name(name), set()).update(hashes)
+    return found
+
+
+def test_every_lock_resolves_for_an_apple_silicon_mac():
+    """SPEC-mac R12. A Mac installs the locks in hash mode like every other
+    machine, and --require-hashes refuses a package no lock names. So in a
+    Mac's environment every direct pin of every requirements file the build
+    reads is in a lock, PyInstaller's own Mac requirement (macholib, as
+    Windows has pefile) is locked by hash with the rest of its list, nothing
+    Windows-only or graphics-card is asked for, and each binary package has
+    the wheel an Apple silicon Mac installs among its hashes."""
+    hashes = _mac_hashes(MAC_ENVIRONMENT)
+    mac = locked(MAC_ENVIRONMENT)
+    for rel in ("requirements.txt", NODEPS, "requirements-build.txt"):
+        for name in _pins(read(rel).splitlines(), MAC_ENVIRONMENT):
+            assert name in mac, (rel, name)
+    assert _name("macholib") in _pins(read("requirements-build.txt").splitlines(), MAC_ENVIRONMENT)
+    assert _name("macholib") not in locked(BUILD_ENVIRONMENT) and _name("macholib") not in locked(FLOOR_ENVIRONMENT)
+    for name in PYINSTALLER_ON_A_MAC:
+        assert hashes.get(name), name
+    assert all(hashes[name] for name in mac), [name for name in mac if not hashes[name]]
+    for name in ("pefile", "pywin32-ctypes", "onnxruntime-gpu", "colorama"):
+        assert name not in mac, name
+    assert mac["onnxruntime"] == "1.30.0" and mac["numpy"] == "2.5.3"
+    for name, (version, wheel, digest) in MAC_WHEELS.items():
+        assert mac[name] == version, (name, "read its Apple silicon wheel off PyPI again", mac[name])
+        assert re.search(r"-macosx_\d+_\d+_(arm64|universal2)\.whl$", wheel), wheel
+        assert digest in hashes[name], (name, wheel)
+
+
+def test_the_frozen_api_is_built_for_apple_silicon_only_and_unsigned_but_ad_hoc():
+    """SPEC-mac R13: on darwin the spec freezes arm64 alone (ONNX Runtime has
+    no x86_64 Mac wheel, so universal2 is impossible), gives the console
+    binary no icon (it sits inside the bundle), has PyInstaller sign it ad hoc
+    and names no entitlements until signing lands (P239); every other
+    platform keeps the .ico and none of these."""
+    spec = read("api_entry.spec")
+    mac, other = re.search(
+        r'(?ms)^if sys\.platform == "darwin":\n(.*?)^else:\n(.*?)^$', spec).groups()
+    assert re.search(r'PLATFORM_OPTIONS = \{"target_arch": "arm64", "codesign_identity": None, '
+                     r'"entitlements_file": None\}', mac)
+    assert "icon" not in mac and "universal2" not in mac
+    assert 'PLATFORM_OPTIONS = {"icon": "app/assets/icon.ico"}' in other
+    assert not re.search(r"target_arch|codesign|entitlements", other)
+    assert re.search(r"^    \*\*PLATFORM_OPTIONS,$", spec, re.M)
+    assert not re.search(r"^\s+(icon|target_arch|codesign_identity|entitlements_file)=", spec, re.M)
+    assert "freeze_support()" in read("api_entry.py")
 
 
 # ---------------------------------- decision 169: the reader, installed in two steps ----
@@ -765,7 +862,7 @@ def test_the_packaged_exe_carries_the_console_icon():
     packager = next(line for line in read(BUILD_SCRIPT).splitlines() if "electron-packager.mjs" in line)
     assert "--icon=assets\\icon.ico" in packager
     spec = read("api_entry.spec")
-    assert re.search(rf'^\s+icon="{re.escape(ICON_COPY)}",$', spec, re.M)
+    assert f'PLATFORM_OPTIONS = {{"icon": "{ICON_COPY}"}}' in spec
     assert (REPO / ICON_COPY).is_file()
 
 

@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 255,
     "edges": 1233,
-    "reused": 184
+    "reused": 205
   },
   "node_types": [
     "artifact",
@@ -4395,7 +4395,7 @@
       "id": "docs/repo-map.curated.json",
       "type": "file",
       "layer": "docs",
-      "sha256": "62ac188910743605",
+      "sha256": "fcca6b762885eced",
       "lines": 1167,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
@@ -4701,9 +4701,9 @@
       "id": "requirements-build.txt",
       "type": "doc",
       "layer": "docs",
-      "sha256": "a8fc27c145536454",
-      "lines": 5,
-      "role": "What Build App.bat's freeze needs beyond requirements.txt: the pinned PyInstaller. Installed from requirements-build.lock (with requirements.lock), by hash (decision 191)."
+      "sha256": "70f411837f03b8b2",
+      "lines": 8,
+      "role": "What Build App.bat's freeze needs beyond requirements.txt: the pinned PyInstaller, and macholib, which PyInstaller needs on a Mac only (SPEC-mac R12; tests/test_build.py resolves every lock in a Mac's environment and pins an Apple silicon wheel for each binary package). Installed from requirements-build.lock (with requirements.lock), by hash (decision 191)."
     },
     {
       "id": "requirements-gpu.txt",
@@ -6051,8 +6051,8 @@
       "id": "tests/test_build.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "96542c52198b8e21",
-      "lines": 775,
+      "sha256": "94baba55f0deba51",
+      "lines": 872,
       "exports": [
         "BUILD_ENVIRONMENT",
         "BUILD_LOCKS",
@@ -6064,6 +6064,8 @@
         "ICON_COPY",
         "ICON_SOURCE",
         "LAUNCHER",
+        "MAC_ENVIRONMENT",
+        "MAC_WHEELS",
         "NODEPS",
         "NODEPS_STEP",
         "NPM_COMMAND",
@@ -6071,6 +6073,7 @@
         "NPM_SPELLINGS",
         "PIP_INSTALL",
         "PIP_SPELLINGS",
+        "PYINSTALLER_ON_A_MAC",
         "PYPDF_ADVISORIES_FIXED_IN",
         "REPO",
         "RUNTIME_LOCK",
@@ -6095,6 +6098,7 @@
         "test_every_batch_file_ignores_its_own_folder_when_it_finds_a_command",
         "test_every_checkout_leaves_no_credentials_behind",
         "test_every_install_is_hash_checked_from_a_lock",
+        "test_every_lock_resolves_for_an_apple_silicon_mac",
         "test_every_run_of_the_tracker_in_the_build_has_a_data_home_of_its_own",
         "test_every_spelling_of_an_install_is_recognised",
         "test_setup_runs_the_after_install_step_last_after_the_stamp",
@@ -6103,6 +6107,7 @@
         "test_the_build_workflow_is_never_run_per_commit",
         "test_the_build_workflow_runs_the_repositorys_own_build_script",
         "test_the_dev_launch_icon_is_a_byte_identical_copy_of_the_artworks",
+        "test_the_frozen_api_is_built_for_apple_silicon_only_and_unsigned_but_ad_hoc",
         "test_the_graphics_card_pack_is_pinned_apart_and_read_by_its_own_build_step",
         "test_the_gui_opencv_is_never_pinned_and_the_locks_cover_every_reader_pin",
         "test_the_launcher_never_installs_and_says_when_setup_must_run",
@@ -6127,6 +6132,7 @@
         "BUILD_LOCKS": "('requirements.lock', 'requirements-build.lock', 'requirements-nodeps.lock')",
         "RUNTIME_LOCK": "'requirements.lock'",
         "FROZEN_HEADING": "'Python packages frozen'",
+        "PYINSTALLER_ON_A_MAC": "('altgraph', 'macholib', 'packaging', 'pyinstaller-hooks-contrib', 'setuptools')",
         "NODEPS": "'requirements-nodeps.txt'",
         "SETUP_SCRIPT": "'Setup.bat'",
         "LAUNCHER": "'Start App.bat'",
