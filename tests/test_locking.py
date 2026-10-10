@@ -213,6 +213,84 @@ def test_a_pass_killed_while_holding_leaves_a_lock_the_dead_owner_rule_clears(tm
         assert lock.read_text(encoding="utf-8") == ours.token
 
 
+@on_posix
+def test_a_lock_retaken_after_it_was_judged_stale_is_not_the_one_deleted(tmp_path, monkeypatch):
+    """The gap between the judgment and the flock probe (R19): the stale lock
+    goes and a new taker creates its own - unflocked for the instant before
+    its owner takes the flock. The probe compares the file it opened with the
+    one judged, before it asks for the flock, so it neither takes the new
+    lock's flock nor deletes it."""
+    import tracker.locking as locking_module
+    from tracker.locking import clear_stale_lock
+
+    lock = tmp_path / LOCK_FILENAME
+    lock.write_text(f"pid={os.getpid()} started=2026-03-14T07:03:00", encoding="utf-8")
+    old = (dt.datetime.now() - dt.timedelta(seconds=STALE_LOCK_SECONDS + 1)).timestamp()
+    os.utime(lock, (old, old))
+    real_look, looks = locking_module._look, []
+
+    def look(path):
+        looks.append(path)
+        seen = real_look(path)
+        if len(looks) == 2:                  # the re-look under the breaker; then the swap
+            lock.unlink()
+            lock.write_text(lock_line(os.getpid(), dt.datetime.now()), encoding="utf-8")
+        return seen
+
+    flocked = []
+    monkeypatch.setattr(locking_module, "_look", look)
+    monkeypatch.setattr(locking_module, "_flock_exclusively", lambda fd: flocked.append(fd))
+    with pytest.raises(EngagementLockedError, match="was taken while it was being judged stale"):
+        clear_stale_lock(tmp_path)
+    assert flocked == [], "the new lock's flock was never asked for"
+    assert "pid=" in lock.read_text(encoding="utf-8") and "2026-03-14" not in lock.read_text(encoding="utf-8")
+
+
+@on_posix
+def test_a_flock_that_fails_for_another_reason_fails_the_take_loudly_and_leaves_no_file(
+        tmp_path, monkeypatch):
+    """A volume that cannot flock (a File Provider, kit step H4): the take is
+    an OSError, never a silent unlocked lock, and removes the file it made."""
+    import errno
+
+    import tracker.locking as locking_module
+
+    def refused(fd):
+        raise OSError(errno.ENOTSUP, "Operation not supported")
+
+    monkeypatch.setattr(locking_module, "_flock_exclusively", refused)
+    with pytest.raises(OSError) as raised:
+        acquire_lock(tmp_path)
+    assert raised.value.errno == errno.ENOTSUP
+    assert not (tmp_path / LOCK_FILENAME).exists()
+
+
+@on_posix
+def test_a_flock_that_fails_for_another_reason_refuses_the_clear_and_keeps_why(
+        tmp_path, monkeypatch):
+    import errno
+
+    import tracker.errors as errors
+    import tracker.locking as locking_module
+    from tracker.locking import clear_stale_lock
+
+    lock = tmp_path / LOCK_FILENAME
+    lock.write_text(f"pid={os.getpid()} started=2026-03-14T07:03:00", encoding="utf-8")
+    old = (dt.datetime.now() - dt.timedelta(seconds=STALE_LOCK_SECONDS + 1)).timestamp()
+    os.utime(lock, (old, old))
+    kept = []
+
+    def refused(fd):
+        raise OSError(errno.ENOTSUP, "Operation not supported")
+
+    monkeypatch.setattr(locking_module, "_flock_exclusively", refused)
+    monkeypatch.setattr(errors, "keep", lambda where, exc, **kw: kept.append((where, exc)))
+    with pytest.raises(EngagementLockedError, match="could not be checked for a running owner"):
+        clear_stale_lock(tmp_path)
+    assert lock.exists(), "never deleted on a guess"
+    assert [where for where, _exc in kept] == ["locking"]
+
+
 def test_a_lock_whose_owner_is_gone_is_stale_at_any_age(tmp_path):
     # The desktop shell kills the API at its own timeout, long before the
     # scheduled job's limit; the lock it leaves names a process that is not

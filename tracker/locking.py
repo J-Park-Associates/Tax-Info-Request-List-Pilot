@@ -677,7 +677,7 @@ def _replace_stale(lock: Path, judged: Identity, age: float, why: str) -> None:
                 f"another scan or sort appears to be running ({lock.name} was taken "
                 "while it was being judged stale)", lock
             )
-        with _no_running_owner(lock, age):
+        with _no_running_owner(lock, judged, age):
             log.warning("Replacing stale engagement lock (%.0f s old%s)", age, why)
             _delete_judged(lock, judged, age)
     finally:
@@ -685,7 +685,7 @@ def _replace_stale(lock: Path, judged: Identity, age: float, why: str) -> None:
 
 
 @contextmanager
-def _no_running_owner(lock: Path, age: float) -> Iterator[None]:
+def _no_running_owner(lock: Path, judged: Identity, age: float) -> Iterator[None]:
     """On POSIX, prove no running process holds ``lock`` before it is
     deleted, and keep the proof while it is (SPEC-mac R19).
 
@@ -697,9 +697,13 @@ def _no_running_owner(lock: Path, age: float) -> Iterator[None]:
     (:data:`STILL_HELD`). Given, the lock is held *here* until the block
     ends, so the delete is made under the very lock that proved it unowned.
     ``flock`` belongs to the open file, so this holds inside one process
-    too. The file opened is checked to be the one the name still points to:
-    a lock released and retaken between the judgment and this open is the
-    new owner's, never deleted.
+    too. **The file opened is checked to be the very file judged stale**,
+    before the flock is asked for: its text, modification time and file
+    number, read from the descriptor, must equal ``judged`` (decision 159's
+    identity). A lock released and retaken between the judgment and this
+    open is the new owner's: asking it for the flock first would let this
+    take it before its owner did, and delete it. After the flock the open
+    file is also checked to be the one the name still points to.
 
     Nothing on Windows: its delete is the refusal. A lock that has gone is
     left to the caller's ``missing_ok`` delete and the next take's
@@ -717,6 +721,16 @@ def _no_running_owner(lock: Path, age: float) -> Iterator[None]:
     except OSError as exc:
         raise _unchecked(lock, exc) from None
     try:
+        try:
+            with os.fdopen(os.dup(fd), "rb", closefd=True) as handle:
+                data = handle.read()
+            seen = os.fstat(fd)
+        except OSError as exc:
+            raise _unchecked(lock, exc) from None
+        if (data.decode("utf-8", errors="replace"), seen.st_mtime_ns, seen.st_ino) != judged:
+            raise EngagementLockedError(
+                f"another scan or sort appears to be running ({lock.name} was taken "
+                "while it was being judged stale)", lock)
         try:
             _flock_exclusively(fd)
         except BlockingIOError:
