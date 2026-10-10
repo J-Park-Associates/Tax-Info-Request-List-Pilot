@@ -9300,7 +9300,7 @@ def test_a_real_state_paths_still_opens_a_parked_pdfs_review_copy_through_the_sh
 
 
 def test_no_return_or_household_row_carries_an_open_key_and_their_words_navigate(
-        capsys, demo_root, tmp_path):
+        capsys, demo_root, tmp_path, monkeypatch):
     """Household and return names navigate inside the app (S8a ruling), so
     neither their rows nor the list carry a key for opening a folder."""
     engagement = sample_engagement(capsys, demo_root, tmp_path, "Form 1098 Mortgage Interest.pdf")
@@ -9315,6 +9315,9 @@ def test_no_return_or_household_row_carries_an_open_key_and_their_words_navigate
     code, state = run(capsys, "state", api.ENGAGEMENT_FLAG, str(engagement))
     assert code == 0, state
     assert all("open_key" not in one for one in state["household"]["returns"])
+    from tracker import settings
+
+    monkeypatch.setattr(settings, "host_system", lambda: "posix")   # a Mac says Finder (R11)
     screen = api._vocab()["screen"]
     assert screen["navigate_client"] == "Navigate to Household"
     assert screen["navigate_return"] == "Navigate to Return"

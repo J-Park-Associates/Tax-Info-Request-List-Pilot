@@ -6,9 +6,11 @@
   and icon come from the packager's own flags, so this holds only what has no
   flag.
 
-  LSMinimumSystemVersion is the floor of R6 (P243): macOS 14, so a Mac below it
-  is refused by macOS itself with its own message, and tests/test_build.py holds
-  it equal to tracker.settings.MAC_FLOOR_MACOS. The three usage strings are the
+  LSMinimumSystemVersion is Electron's own floor at the pinned Electron 44
+  (macOS 13), deliberately below the app's floor of macOS 14 (R6, P243): a
+  Mac on macOS 13 starts the app, which says its own sentence and quits, and
+  only macOS 12, which Electron 44 cannot run on, gets macOS's own refusal.
+  tests/test_build.py pins it. The three usage strings are the
   sentences macOS shows under its own question, once, when the app first reads a clients folder that
   sits in the Desktop, Documents or Downloads folder; each says what the
   Console does there and nothing it does not do (it never sends anything).
@@ -16,7 +18,7 @@
 <plist version="1.0">
 <dict>
   <key>LSMinimumSystemVersion</key>
-  <string>14.0</string>
+  <string>13.0</string>
   <key>NSDesktopFolderUsageDescription</key>
   <string>It sorts the tax documents in the clients folder you chose, which is on your Desktop.</string>
   <key>NSDocumentsFolderUsageDescription</key>

@@ -150,10 +150,14 @@ echo "[5/7] Signing the app ad hoc, inside out..."
 # Copying the freeze into a packaged app breaks Electron's seal, and on Apple
 # silicon an app with a broken seal is called damaged. The freeze is not
 # nested code the OS looks for, so each Mach-O in it is signed by hand first;
-# then the app, whose resource seal now covers them. --deep also re-signs
-# the helpers and frameworks Electron ships, so that one identity (ad hoc,
-# none) signs the whole bundle: a main program and a framework signed by
-# different teams are refused when the app starts.
+# then the app, whose resource seal now covers them. --deep is a deviation
+# from R17's plain codesign --force --sign -, kept for this ad-hoc test build
+# only: electron-packager renames Electron's helper apps and rewrites their
+# Info.plist files, which breaks their seals, and without re-signing them
+# codesign --verify --deep --strict below fails. With no identity, no hardened
+# runtime and no entitlements, one ad-hoc pass over everything nested does no
+# harm. A Developer-ID build (R37) signs each helper and framework explicitly,
+# inside out, instead.
 find "$APP/Contents/Resources/$API" -type f -print0 | while IFS= read -r -d '' file; do
   if file -b "$file" | grep -q "Mach-O"; then
     codesign --force --sign - "$file" || exit 1

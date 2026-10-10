@@ -42,9 +42,14 @@ def _bar_ids_and_accelerators() -> tuple[list[str], list[str]]:
     return ids, re.findall(r'"((?:CmdOrCtrl\+[A-Za-z0-9]|F\d+)[^"]*)"', block)
 
 
-def test_the_menus_default_words_are_the_apis_word_for_word():
+def test_the_menus_default_words_are_the_apis_word_for_word(monkeypatch):
     """main.js holds the menu's words so it is there from the first frame
-    (SPEC-shell 5.1); the API's ``MENU`` is the source and they are equal."""
+    (SPEC-shell 5.1); the API's ``MENU`` is the source and they are equal.
+    (On a Mac the reply replaces one word, which another test holds, so this
+    stands in for a machine that is not one.)"""
+    from tracker import settings
+
+    monkeypatch.setattr(settings, "host_system", lambda: "posix")
     assert _menu_words_in_main() == api.MENU
     assert api._vocab()["menu"] == api.MENU
 

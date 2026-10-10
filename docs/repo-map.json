@@ -16,8 +16,8 @@
   ],
   "counts": {
     "nodes": 257,
-    "edges": 1237,
-    "reused": 207
+    "edges": 1239,
+    "reused": 204
   },
   "node_types": [
     "artifact",
@@ -4401,7 +4401,7 @@
       "id": "docs/repo-map.curated.json",
       "type": "file",
       "layer": "docs",
-      "sha256": "e785a374acb112f9",
+      "sha256": "7b0ad17d2eb60207",
       "lines": 1181,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
@@ -4460,7 +4460,7 @@
       "id": "pilot/DECISIONS.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "8ce38d1f9b58aa5e",
+      "sha256": "936cda34f46844aa",
       "lines": 247
     },
     {
@@ -5162,7 +5162,7 @@
       "id": "artifact:.venv/tracker-lock.json",
       "type": "artifact",
       "layer": "runtime",
-      "role": "Setup.bat's stamp, inside the checkout's private environment (decision 191): the SHA-256 of each lock file and of app/package-lock.json as they were when Setup installed them. Start App.bat compares it at every launch through tools/lockfiles.py verify and refuses to start, naming Setup.bat, when it is missing or differs. Not client data; .venv is gitignored."
+      "role": "Setup.bat's (on a Mac setup.command's) stamp, inside the checkout's private environment (decision 191): the SHA-256 of each lock file and of app/package-lock.json as they were when Setup installed them. Start App.bat (on a Mac start.command) compares it at every launch through tools/lockfiles.py verify and refuses to start, naming Setup.bat (on a Mac setup.command), when it is missing or differs. Not client data; .venv is gitignored."
     },
     {
       "id": "artifact:Prepared/",
@@ -5582,8 +5582,8 @@
       "id": "tests/test_api.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "a0e3e3ccaaf9c1ae",
-      "lines": 10564,
+      "sha256": "ccf4da45d8c479ce",
+      "lines": 10567,
       "exports": [
         "COUNTS",
         "DEEPER_ROOT_LENGTH",
@@ -6084,14 +6084,15 @@
       "id": "tests/test_build.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "9cc4e84ee40a6ffe",
-      "lines": 1294,
+      "sha256": "3b3bf111028028a3",
+      "lines": 1306,
       "exports": [
         "ARTWORK_APP",
         "BUILD_ENVIRONMENT",
         "BUILD_LOCKS",
         "BUILD_SCRIPT",
         "BUILD_WORKFLOW",
+        "ELECTRON_MACOS_FLOOR",
         "FLOOR_ENVIRONMENT",
         "FROZEN_HEADING",
         "GATE_WORKFLOW",
@@ -6204,6 +6205,7 @@
         "PYPDF_ADVISORIES_FIXED_IN": "(6, 16, 1)",
         "ICON_SOURCE": "'pilot/brand/tax-document-console/app/icon.ico'",
         "ICON_COPY": "'app/assets/icon.ico'",
+        "ELECTRON_MACOS_FLOOR": "'13.0'",
         "MAC_ICON_SOURCE": "'pilot/brand/tax-document-console/app/icon.icns'",
         "MAC_ICON_COPY": "'app/assets/icon.icns'",
         "ARTWORK_APP": "'pilot/brand/tax-document-console/app'",
@@ -9350,8 +9352,8 @@
       "id": "tests/test_shell_menu.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "b857fab211a3b532",
-      "lines": 866,
+      "sha256": "9638546c11bdae25",
+      "lines": 871,
       "exports": [
         "MAC",
         "NOT_OPENED",
@@ -14660,7 +14662,19 @@
     },
     {
       "from": "tests/test_shell_menu.py",
+      "to": "tracker/__init__.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_shell_menu.py",
       "to": "tracker/api.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_shell_menu.py",
+      "to": "tracker/settings.py",
       "type": "exercises",
       "source": "derived"
     },

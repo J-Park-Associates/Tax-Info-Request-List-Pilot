@@ -496,6 +496,14 @@ MAC_WHEELS = {
                   "da5c7b74eebf40b5c1fbe1de01aa1edc8827a79fb1efd999616bc20dcaf77ba4"),
     "pyinstaller": ("6.22.3", "pyinstaller-6.22.3-py3-none-macosx_10_13_universal2.whl",
                     "052f4a1cd4f81092ccb7a18fe8ebc9ecf832a5917317e39fb3775af4e959b253"),
+    "cffi": ("2.1.1", "cffi-2.1.1-cp314-cp314-macosx_11_0_arm64.whl",
+             "661c298b4821edebead0c91edd2b00374d67ad7c5a1f7a91d4442633b79d6a72"),
+    "cryptography": ("50.0.1", "cryptography-50.0.1-cp311-abi3-macosx_11_0_arm64.whl",
+                     "b8f852c65863251b9e3a1b8c150ce21e59b522dbb6a7d4bc80e680d38388e986"),
+    "pyyaml": ("6.0.3", "pyyaml-6.0.3-cp314-cp314-macosx_11_0_arm64.whl",
+               "34d5fcd24b8445fadc33f9cf348c1047101756fd760b4dacb5c3e99755703310"),
+    "ruff": ("0.16.9", "ruff-0.16.9-py3-none-macosx_11_0_arm64.whl",
+             "1632eb1d6197f33bd00b1acbc5b71009e89a8895c158e2d2b03a834fac964ab6"),
 }
 
 
@@ -901,6 +909,8 @@ def test_the_dev_launch_icon_is_a_byte_identical_copy_of_the_artworks():
     assert (REPO / ICON_COPY).read_bytes() == (REPO / ICON_SOURCE).read_bytes()
 
 
+#: The oldest macOS the pinned Electron (44) runs on; R6's bundle minimum.
+ELECTRON_MACOS_FLOOR = "13.0"
 MAC_ICON_SOURCE = "pilot/brand/tax-document-console/app/icon.icns"
 MAC_ICON_COPY = "app/assets/icon.icns"
 ARTWORK_APP = "pilot/brand/tax-document-console/app"
@@ -1215,18 +1225,20 @@ def test_the_mac_build_reads_the_version_the_badge_shows():
 
 def test_the_mac_bundle_is_given_its_icon_floor_and_folder_strings():
     """The packager is given the .icns, the identifier and the plist; the
-    plist holds R6's floor (the shell's own constant) and the three folder
+    plist holds Electron's own floor, below the app's (R6), and the three folder
     strings macOS shows when the clients folder sits in Desktop, Documents or
     Downloads."""
     import plistlib
-
-    from tracker.settings import MAC_FLOOR_MACOS
 
     text = read(MAC_BUILD)
     assert "--icon=assets/icon.icns" in text and "--extend-info=assets/Info-mac.plist" in text
     assert (REPO / "app/assets/icon.icns").is_file() and (REPO / "app/assets/Info-mac.plist").is_file()
     info = plistlib.loads((REPO / "app/assets/Info-mac.plist").read_bytes())
-    assert info["LSMinimumSystemVersion"] == f"{MAC_FLOOR_MACOS}.0"
+    # Electron's own floor, not the app's: the bundle must let a Mac below the
+    # app's floor (macOS 14) start, so the app can say its own sentence (R6);
+    # only a Mac Electron cannot run on (macOS 12, dropped in Electron 44) is
+    # refused by macOS itself.
+    assert info["LSMinimumSystemVersion"] == ELECTRON_MACOS_FLOOR
     for folder in ("Desktop", "Documents", "Downloads"):
         sentence = info[f"NS{folder}FolderUsageDescription"]
         assert sentence.endswith(f"in your {folder} folder.") or sentence.endswith(f"on your {folder}.")

@@ -379,7 +379,7 @@
     "artifact:.venv/tracker-lock.json": {
       "type": "artifact",
       "layer": "runtime",
-      "role": "Setup.bat's stamp, inside the checkout's private environment (decision 191): the SHA-256 of each lock file and of app/package-lock.json as they were when Setup installed them. Start App.bat compares it at every launch through tools/lockfiles.py verify and refuses to start, naming Setup.bat, when it is missing or differs. Not client data; .venv is gitignored."
+      "role": "Setup.bat's (on a Mac setup.command's) stamp, inside the checkout's private environment (decision 191): the SHA-256 of each lock file and of app/package-lock.json as they were when Setup installed them. Start App.bat (on a Mac start.command) compares it at every launch through tools/lockfiles.py verify and refuses to start, naming Setup.bat (on a Mac setup.command), when it is missing or differs. Not client data; .venv is gitignored."
     },
     "artifact:pass-order.json": {
       "type": "artifact",
