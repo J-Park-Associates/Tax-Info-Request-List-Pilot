@@ -208,6 +208,20 @@ DESIGNATION_UNWRITABLE = ("The file naming the computer that runs the schedule (
 #: or ``schtasks`` could not be started - the operating system's words are
 #: not a sentence for a person.
 SCHEDULE_UNREACHABLE = "the job file could not be written, or Task Scheduler could not be started"
+#: The same on a Mac, where the job is a launchd agent and there is no Task
+#: Scheduler to name (SPEC-mac R11). Said instead of the Windows words, never
+#: beside them.
+SCHEDULE_UNREACHABLE_MAC = "the job file could not be written, or launchd refused it"
+
+
+def schedule_unreachable() -> str:
+    """:data:`SCHEDULE_UNREACHABLE`'s words for the computer this runs on: the
+    Windows ones, or on a Mac :data:`SCHEDULE_UNREACHABLE_MAC`. Asked when
+    said, through ``settings.host_system``, the seam a test stands in for a
+    Mac with."""
+    return SCHEDULE_UNREACHABLE_MAC if settings.host_system() == "darwin" else SCHEDULE_UNREACHABLE
+
+
 #: What the launch door records when the step itself raised something it
 #: does not name (the review's N1), so the notice says it rather than the
 #: launch dropping it.
@@ -439,7 +453,7 @@ def _off() -> _Step:
         return _Step(scheduling.OFF, SCHEDULE_FAILED.format(problem=exc), failed=True)
     except OSError as exc:
         errors.keep("after_install: removing the task", exc)
-        return _Step(scheduling.OFF, SCHEDULE_FAILED.format(problem=SCHEDULE_UNREACHABLE), failed=True)
+        return _Step(scheduling.OFF, SCHEDULE_FAILED.format(problem=schedule_unreachable()), failed=True)
     return _Step(scheduling.OFF, scheduling.SCHEDULE_OFF)
 
 
@@ -489,7 +503,7 @@ def _schedule(root: Path | None, preference: scheduling.SchedulePreference) -> _
         return _Step(outcome, SCHEDULE_FAILED.format(problem=exc), failed=True)
     except OSError as exc:
         errors.keep("after_install: registering the schedule", exc)
-        return _Step(outcome, SCHEDULE_FAILED.format(problem=SCHEDULE_UNREACHABLE), failed=True)
+        return _Step(outcome, SCHEDULE_FAILED.format(problem=schedule_unreachable()), failed=True)
     claimed = outcome == scheduling.CLAIMED
     if every:
         sentence = scheduling.SCHEDULE_CLAIMED if claimed else scheduling.SCHEDULE_REGISTERED
@@ -877,7 +891,7 @@ def _task_missing(record: dict) -> bool:
     ``schtasks`` that cannot be started, or that does not answer within its
     limit (:data:`tracker.scheduling.SCHTASKS_TIME_LIMIT_SECONDS`), is kept
     on the local error log and runs the step the same way; the step's own
-    ``schtasks`` then says it as :data:`SCHEDULE_UNREACHABLE`. A query that
+    ``schtasks`` then says it as :func:`schedule_unreachable`. A query that
     is refused keeps its exit code on the error log, once per start (the
     engine review's NIT-2), so a task registered again at every start has
     its reason written down."""

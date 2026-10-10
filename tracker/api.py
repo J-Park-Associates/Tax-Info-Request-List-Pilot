@@ -1333,6 +1333,16 @@ MENU: dict[str, str] = {
     "show_in_explorer": "Show in File Explorer",
 }
 
+#: What a Mac says where the words above name a Windows program or place
+#: (SPEC-mac R11): File Explorer is Finder, and another computer sorting is
+#: another Mac, because the Mac is the one machine (P238). One small table per
+#: place the words are kept, laid over the Windows words by :func:`_vocab` on a
+#: Mac and nowhere else, so a Windows or Linux reply is unchanged and no Mac
+#: is ever shown a Windows word (``test_a_mac_is_never_shown_a_windows_word``).
+MAC_MENU = {"show_in_explorer": "Show in Finder"}
+MAC_SCREEN = {"show_in_explorer": "Show in Finder"}
+MAC_SCAN_REASONS = {"lock-held": "Another Mac Sorting"}
+
 #: The words of the new screen that no existing key already says (SPEC-shell
 #: 11.4, P84), nested by where each is shown. ``vocab.screen`` carries it.
 SCREEN: dict = {
@@ -1652,6 +1662,7 @@ def _vocab() -> dict:
     is and which decision put it here.
     """
     error_log = _error_log_said()
+    mac = settings.host_system() == "darwin"
     return {
         "product": product_name(),
         "firm": firm(),
@@ -1910,8 +1921,8 @@ def _vocab() -> dict:
         "writing_commands": sorted(WRITING_COMMANDS - {PASS_COMMAND}),
         # The menu bar's words and the new screen's (SPEC-shell 11.3-11.4):
         # every label, heading and tooltip of the shell, five words or fewer.
-        "menu": dict(MENU),
-        "screen": SCREEN,
+        "menu": {**MENU, **(MAC_MENU if mac else {})},
+        "screen": {**SCREEN, **(MAC_SCREEN if mac else {})},
         # The forms of each Client Type (pilot SPEC-lists 15.3): catalog ids,
         # not words, matched on each return's recorded form, never a name.
         "client_type_forms": CLIENT_TYPE_FORMS,
@@ -1947,7 +1958,7 @@ def _vocab() -> dict:
         "scan": {"scanning": SCAN_SCANNING, "nothing_done": SCAN_NOTHING_DONE,
                  "nothing_done_bare": SCAN_NOTHING_DONE_BARE,
                  "problem": SCAN_PROBLEM, "problem_reason": SCAN_PROBLEM_REASON,
-                 "reasons": dict(SCAN_REASONS),
+                 "reasons": {**SCAN_REASONS, **(MAC_SCAN_REASONS if mac else {})},
                  "skipped": {"inactive": SCREEN["inactive"], "rolled-forward": SCREEN["rolled"],
                              "no-room": SCAN_NO_ROOM},
                  "complete": SCAN_COMPLETE, "filed": SCAN_FILED,

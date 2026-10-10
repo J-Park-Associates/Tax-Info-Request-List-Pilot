@@ -68,7 +68,12 @@ def test_the_frozen_api_name_has_one_home():
     # folder, a subfolder named after the API, holding <api>.exe. The shell
     # looks there and the build script copies there.
     assert "resources\\%API%" in read("Build App.bat")
-    assert "process.resourcesPath, API_NAME, `${API_NAME}.exe`" in read("app/main.js")
+    assert 'process.resourcesPath, API_NAME, process.platform === "win32" ? `${API_NAME}.exe` : API_NAME' in read(
+        "app/main.js")
+    # On a Mac the bundle's Resources folder is that resources folder, and the
+    # build copies the freeze into a subfolder named after the API, no suffix.
+    assert 'ditto "$OUT/py/$API" "$APP/Contents/Resources/$API"' in read("build-mac.sh")
+    assert api_name not in read("build-mac.sh") and "config.apiName" in read("build-mac.sh")
 
 
 def test_the_shell_and_the_preload_agree_on_every_ipc_channel():
@@ -174,7 +179,7 @@ def test_the_apps_menu_is_the_template_in_both_builds_and_the_source_app_runs_it
     removes it. From source, the shell runs the Python Setup.bat made, by
     its full path, never a bare ``python`` from the search path, and when
     that is missing it says so in the lock tool's own sentence."""
-    from tools.lockfiles import NOT_SET_UP
+    from tools.lockfiles import NOT_SET_UP, NOT_SET_UP_MAC
 
     main_js = read("app/main.js")
     window = main_js[main_js.index("function createWindow"):]
@@ -187,6 +192,11 @@ def test_the_apps_menu_is_the_template_in_both_builds_and_the_source_app_runs_it
     assert 'path.join(REPO_ROOT, ".venv", "bin", "python")' in main_js
     sentence = "".join(re.findall(r'"([^"]*)"', main_js.split("const NOT_SET_UP =", 1)[1].split(";", 1)[0]))
     assert sentence == NOT_SET_UP
+    # Its Mac row (SPEC-mac R11): the same sentence naming setup.command, chosen by platform.
+    mac_sentence = "".join(re.findall(
+        r'"([^"]*)"', main_js.split("const NOT_SET_UP_MAC =", 1)[1].split(";", 1)[0]))
+    assert mac_sentence == NOT_SET_UP_MAC
+    assert 'process.platform === "darwin" ? NOT_SET_UP_MAC : NOT_SET_UP' in main_js
 
 
 #: The Electron module main.js is run against in the claim below: an app that

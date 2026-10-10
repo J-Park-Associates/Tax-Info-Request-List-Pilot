@@ -10503,3 +10503,62 @@ def test_a_mac_says_protected_view_does_not_exist_each_time_a_macro_copy_opens(
     assert code == 0, replied
     [path] = replied["carries_code"]
     assert path == replied["paths"][parked["open_key"]]
+
+
+#: A word that names a Windows program, place or file (SPEC-mac R11): none may
+#: reach a Mac, whose Finder, launchd and setup.command stand in their places.
+WINDOWS_WORDS = re.compile(r"File Explorer|\bPC\b|Task Scheduler|schtasks|Setup\.bat|\.bat\b|\bWindows\b")
+
+
+def _every_string(value, path=""):
+    """(dotted path, text) for every string in a nested reply."""
+    if isinstance(value, dict):
+        for key, inner in value.items():
+            yield from _every_string(inner, f"{path}.{key}" if path else str(key))
+    elif isinstance(value, (list, tuple)):
+        for n, inner in enumerate(value):
+            yield from _every_string(inner, f"{path}[{n}]")
+    elif isinstance(value, str):
+        yield path, value
+
+
+def test_a_mac_is_never_shown_a_windows_word(monkeypatch):
+    """SPEC-mac R11. Where a sentence the app shows names a Windows program or
+    place, darwin gets its own words from the same table: Finder for File
+    Explorer, another Mac for another PC, launchd for Task Scheduler, setup.command
+    for Setup.bat. Nothing else in the vocabulary changes, and Windows and Linux
+    are told what they always were."""
+    from tools.lockfiles import CHANGED_MAC, NOT_SET_UP_MAC
+    from tracker import after_install, settings
+
+    changed = {"menu.show_in_explorer", "screen.show_in_explorer", "scan.reasons.lock-held"}
+    monkeypatch.setattr(settings, "host_system", lambda: "posix")
+    windows = dict(_every_string(api._vocab()))
+    assert {path for path, text in windows.items() if WINDOWS_WORDS.search(text)} == changed
+    assert after_install.schedule_unreachable() == after_install.SCHEDULE_UNREACHABLE
+    monkeypatch.setattr(settings, "host_system", lambda: "darwin")
+    mac = dict(_every_string(api._vocab()))
+    assert [path for path, text in mac.items() if WINDOWS_WORDS.search(text)] == []
+    assert mac["menu.show_in_explorer"] == mac["screen.show_in_explorer"] == "Show in Finder"
+    assert mac["scan.reasons.lock-held"] == "Another Mac Sorting"
+    # (``shell.error_log`` is a folder this machine names, not a word.)
+    other = changed | {"shell.error_log"}
+    assert {path: text for path, text in mac.items() if path not in other} == {
+        path: text for path, text in windows.items() if path not in other}
+    # The same house style as every other word: title case, five words or fewer.
+    for path in changed:
+        assert title_case(mac[path]) == mac[path] and len(mac[path].split()) <= 5, path
+    # And the two sentences outside the vocabulary that a Mac's person is shown.
+    said = after_install.SCHEDULE_FAILED.format(problem=after_install.schedule_unreachable())
+    assert "launchd refused it" in said and not WINDOWS_WORDS.search(said)
+    for sentence in (NOT_SET_UP_MAC, CHANGED_MAC):
+        assert not WINDOWS_WORDS.search(sentence)
+
+
+def test_the_apis_mac_words_replace_only_what_names_windows():
+    assert set(api.MAC_MENU) <= set(api.MENU) and set(api.MAC_SCREEN) <= set(api.SCREEN)
+    assert set(api.MAC_SCAN_REASONS) <= set(api.SCAN_REASONS)
+    for table, windows in ((api.MAC_MENU, api.MENU), (api.MAC_SCREEN, api.SCREEN),
+                           (api.MAC_SCAN_REASONS, api.SCAN_REASONS)):
+        for key, word in table.items():
+            assert WINDOWS_WORDS.search(windows[key]) and not WINDOWS_WORDS.search(word), key
