@@ -773,7 +773,7 @@ def test_the_watch_does_not_stretch_a_readings_stop(tmp_path, in_a_child):
 @OFF_WINDOWS
 def test_a_footprint_that_cannot_be_read_is_no_cap_and_is_said_once(tmp_path, in_a_child, caplog):
     """R31: when the child's memory cannot be read the reading goes on to
-    the stop - no guessed figure ends it - and the run log says so once,
+    the stop - no guessed figure ends it - and the error log says so once,
     however many slices and children it happens in."""
     from tests import child_readers
 
@@ -866,11 +866,14 @@ def test_a_short_junction_to_a_deep_folder_is_still_too_deep(tmp_path, monkeypat
 # ------------------------------------------------ the awake clock (189) ----
 
 
-def test_time_asleep_does_not_count_toward_the_reading_stop(monkeypatch):
+@pytest.mark.parametrize("watches_memory", [False, True], ids=["one wait (Windows)", "watch slices"])
+def test_time_asleep_does_not_count_toward_the_reading_stop(monkeypatch, watches_memory):
     """SPEC-161 A-F9: the machine sleeps mid-reading. The biased clock (the
     wall, and ``time.monotonic`` on Windows) jumps past the stop; the awake
     clock moves one second. The reading is not ended, and its answer is
-    taken when the machine wakes."""
+    taken when the machine wakes. Both waits are held, on every platform:
+    the single ``poll(left)`` Windows keeps, and the watch's slices (R31),
+    where the memory is never read on Windows."""
     import time
 
     awake = [1000.0]
@@ -902,8 +905,13 @@ def test_time_asleep_does_not_count_toward_the_reading_stop(monkeypatch):
     child._jobs = SimpleNamespace(send=lambda job: None)
     child._answers = Answers()
     child.served = 0
-    child._watches_memory = True        # the sleep is slept through between watch slices too
-    monkeypatch.setattr(child.__class__, "_past_its_memory", lambda self: False)
+    child._watches_memory = watches_memory
+
+    def past_its_memory(self):
+        assert watches_memory, "Windows' job object caps the child; the pass never reads its memory"
+        return False
+
+    monkeypatch.setattr(child.__class__, "_past_its_memory", past_its_memory)
     monkeypatch.setattr(child.__class__, "end", lambda self: ended.append(True))
 
     outcome = child.run(len, ("x",), {}, stop)

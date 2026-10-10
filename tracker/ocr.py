@@ -74,7 +74,7 @@ still holds, for this child:
   child is ended and the reading is a crash with the same words.
   ``setrlimit(RLIMIT_AS)`` was the rejected alternative - macOS does not
   honour it reliably, and it would cap address space, not memory. A
-  footprint that cannot be read is no cap, and the run log says so once.
+  footprint that cannot be read is no cap, and the error log says so once.
 
 **Nothing a reading does may outlive it in the child.** The child serves
 many documents, so a reader must never change module state (a global, a
@@ -490,7 +490,7 @@ GRAPHICS_CARD_CHILD_MEMORY = 6 * 1024**3
 #: second: a reading that runs away is ended within the second, while the
 #: cost is one small read of /proc (or one call into libproc) per slice.
 MEMORY_WATCH_SECONDS = 0.5
-#: What the run log says, once, when the child's memory cannot be read: the
+#: What the error log says, once, when the child's memory cannot be read: the
 #: cap is then off, and the log says so rather than guessing a figure.
 MEMORY_UNREADABLE = ("the reading's memory could not be read ({reason}); "
                      "its memory limit is not enforced")
@@ -752,7 +752,7 @@ class ReadingChild:
 
     def _past_its_memory(self) -> bool:
         """Whether the child's memory is past ``memory_limit`` (R31). A
-        footprint that cannot be read is no cap: said once on the run log
+        footprint that cannot be read is no cap: said once on the error log
         (:data:`MEMORY_UNREADABLE`), never replaced by a guess - unless the
         child is simply gone, which is no news."""
         try:
@@ -1025,7 +1025,7 @@ _SAID: set[str] = set()
 
 
 def _say_once(words: str) -> None:
-    """Put ``words`` on the run log the first time this process has them."""
+    """Put ``words`` on the error log the first time this process has them."""
     if words not in _SAID:
         _SAID.add(words)
         log.warning("%s", words)
