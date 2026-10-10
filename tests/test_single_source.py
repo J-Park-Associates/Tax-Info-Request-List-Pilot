@@ -41,6 +41,7 @@ def test_the_product_name_has_one_home():
     # The renderer and the shell read it at runtime; nothing else types it.
     for rel in ("app/renderer/index.html", "app/renderer/app.js", "app/renderer/style.css",
                 "Build App.bat", "Start App.bat", "docs/workflow.md",
+                "setup.command", "start.command", "build-mac.sh", "app/assets/Info-mac.plist",
                 "tracker/settings.py", "tracker/scheduling.py"):
         assert package["productName"] not in read(rel), rel
     # The two documents titled after the product carry it in their title only.
@@ -67,7 +68,12 @@ def test_the_frozen_api_name_has_one_home():
     # folder, a subfolder named after the API, holding <api>.exe. The shell
     # looks there and the build script copies there.
     assert "resources\\%API%" in read("Build App.bat")
-    assert "process.resourcesPath, API_NAME, `${API_NAME}.exe`" in read("app/main.js")
+    assert 'process.resourcesPath, API_NAME, process.platform === "win32" ? `${API_NAME}.exe` : API_NAME' in read(
+        "app/main.js")
+    # On a Mac the bundle's Resources folder is that resources folder, and the
+    # build copies the freeze into a subfolder named after the API, no suffix.
+    assert 'ditto "$OUT/py/$API" "$APP/Contents/Resources/$API"' in read("build-mac.sh")
+    assert api_name not in read("build-mac.sh") and "config.apiName" in read("build-mac.sh")
 
 
 def test_the_shell_and_the_preload_agree_on_every_ipc_channel():
@@ -173,7 +179,7 @@ def test_the_apps_menu_is_the_template_in_both_builds_and_the_source_app_runs_it
     removes it. From source, the shell runs the Python Setup.bat made, by
     its full path, never a bare ``python`` from the search path, and when
     that is missing it says so in the lock tool's own sentence."""
-    from tools.lockfiles import NOT_SET_UP
+    from tools.lockfiles import NOT_SET_UP, NOT_SET_UP_MAC
 
     main_js = read("app/main.js")
     window = main_js[main_js.index("function createWindow"):]
@@ -186,6 +192,11 @@ def test_the_apps_menu_is_the_template_in_both_builds_and_the_source_app_runs_it
     assert 'path.join(REPO_ROOT, ".venv", "bin", "python")' in main_js
     sentence = "".join(re.findall(r'"([^"]*)"', main_js.split("const NOT_SET_UP =", 1)[1].split(";", 1)[0]))
     assert sentence == NOT_SET_UP
+    # Its Mac row (SPEC-mac R11): the same sentence naming setup.command, chosen by platform.
+    mac_sentence = "".join(re.findall(
+        r'"([^"]*)"', main_js.split("const NOT_SET_UP_MAC =", 1)[1].split(";", 1)[0]))
+    assert mac_sentence == NOT_SET_UP_MAC
+    assert 'process.platform === "darwin" ? NOT_SET_UP_MAC : NOT_SET_UP' in main_js
 
 
 #: The Electron module main.js is run against in the claim below: an app that
@@ -574,6 +585,8 @@ def test_ci_tests_the_python_floor_pyproject_declares():
     # Setup.bat is where a machine's Python is first asked (decision 191).
     assert f"Install Python {floor}+" in read("Setup.bat")
     assert f"sys.version_info < ({floor.replace('.', ', ')})" in read("Setup.bat")
+    assert f"Install Python {floor}+" in read("setup.command")
+    assert f"sys.version_info < ({floor.replace('.', ', ')})" in read("setup.command")
     # Prose says "the floor pyproject.toml declares"; nobody types the number.
     for rel in ("README.md", "docs/ROADMAP.md", "CLAUDE.md", "docs/workflow.md"):
         assert not re.search(r"Python 3\.\d+\+?", read(rel)), rel
@@ -1703,6 +1716,8 @@ def test_the_build_is_made_from_what_is_committed():
     assert "*.spec" not in ignored and "app/package-lock.json" not in ignored
     assert "npm ci" in read("Build App.bat") and "npm ci" in read("Setup.bat")
     assert "npm install" not in read("Build App.bat") and "npm install" not in read("Setup.bat")
+    assert "npm ci" in read("build-mac.sh") and "npm ci" in read("setup.command")
+    assert "npm install" not in read("build-mac.sh") and "npm install" not in read("setup.command")
     build = read("Build App.bat")
     assert "requirements-build.lock" in build and "api_entry.spec" in build
     assert "pip install pyinstaller" not in build            # pinned in requirements-build.txt, locked by hash
@@ -2477,11 +2492,12 @@ def test_the_shell_lstats_before_it_opens_and_refuses_a_link_or_a_changed_kind()
 
 #: Where a person is told what to do: the two documents and the two batch
 #: files a person double-clicks (decision 209, R5).
-ONE_TIME_STEP_DOCUMENTS = ("README.md", "docs/runbook.md", "Setup.bat", "Start App.bat")
+ONE_TIME_STEP_DOCUMENTS = ("README.md", "docs/runbook.md", "Setup.bat", "Start App.bat",
+                           "setup.command", "start.command")
 #: The first word of a clause that is an instruction to a person.
 INSTRUCTIONS = frozenset({"press", "run", "click", "double-click", "type", "open"})
 #: What "after installing" may be said with, within three words of "after".
-AFTER_WHAT = frozenset({"installing", "upgrading", "install", "upgrade", "setup", "setup.bat"})
+AFTER_WHAT = frozenset({"installing", "upgrading", "install", "upgrade", "setup", "setup.bat", "setup.command"})
 
 
 def one_time_step_clauses(text: str) -> list[str]:
@@ -2493,11 +2509,11 @@ def one_time_step_clauses(text: str) -> list[str]:
     three words by installing, upgrading or Setup; or a clause that is
     itself the lead-in "Once, after installing ..." (the review's S1, the
     shape of the base runbook's decision-187 heading). Wrapped lines are
-    joined (a ``rem`` prefix and Markdown list and quote markers dropped);
+    joined (a ``rem`` or ``#`` prefix and Markdown list and quote markers dropped);
     clauses end at ``.``, ``:``, ``;`` and blank lines."""
     lines = []
     for line in text.splitlines():
-        line = re.sub(r"^\s*rem(\s|$)", "", line, flags=re.I)
+        line = re.sub(r"^\s*(?:rem(?:\s|$)|#+\s*)", "", line, flags=re.I)
         line = re.sub(r"^\s*(?:[-*+>]|\d+\.)\s+", "", line)
         lines.append(line.strip())
     joined = "\n".join(lines)
@@ -2525,6 +2541,8 @@ def one_time_step_clauses(text: str) -> list[str]:
     ("Setup runs it once, after installing.", False),
     ("Press Repair the schedule to register it again.", False),
     ("Run Setup.bat once.", False),
+    ("Run setup.command once.", False),
+    ("# Double-click it once after `setup.command` finishes.", True),
     ("rem Double-click it once after `Setup.bat` finishes.", True),
     ("Open the app once a week after lunch.", False),
     # The review's S1: the base runbook's decision-187 lead-in, and the

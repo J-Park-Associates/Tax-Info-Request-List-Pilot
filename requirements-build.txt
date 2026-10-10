@@ -3,3 +3,6 @@
 # from requirements-build.lock (with requirements.lock), by hash (decision 191).
 -r requirements.txt
 pyinstaller==6.22.3
+# PyInstaller's own on a Mac, as pefile is on Windows: without it the lock does not
+# resolve there and --require-hashes refuses the install (SPEC-mac R12).
+macholib==1.16.4; sys_platform == "darwin"

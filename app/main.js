@@ -37,8 +37,10 @@ app.setPath("userData", path.join(app.getPath("appData"), PKG.config.userDataNam
 // The settings file (the clients root) lives beside the app: next to the
 // packaged executable, or in the repository root from source (SETTINGS_DIR
 // below says where it goes on a Mac).
+// Only Windows gives an executable a suffix: the frozen API on a Mac is
+// Contents/Resources/<apiName>/<apiName> (SPEC-mac R14).
 const FROZEN_API = app.isPackaged
-  ? path.join(process.resourcesPath, API_NAME, `${API_NAME}.exe`)
+  ? path.join(process.resourcesPath, API_NAME, process.platform === "win32" ? `${API_NAME}.exe` : API_NAME)
   : null;
 const SOURCE_PYTHON = process.platform === "win32"
   ? path.join(REPO_ROOT, ".venv", "Scripts", "python.exe")
@@ -47,6 +49,11 @@ const SOURCE_PYTHON = process.platform === "win32"
 const NOT_SET_UP =
   "The app's private Python is not set up on this computer. " +
   "Run Setup.bat once (it needs the internet), then start the app again.";
+// And its Mac form, NOT_SET_UP_MAC: the file a person runs there is setup.command
+// (SPEC-mac R11). Said instead of the Windows sentence, never beside it.
+const NOT_SET_UP_MAC =
+  "The app's private Python is not set up on this computer. " +
+  "Run setup.command once (it needs the internet), then start the app again.";
 // Where the settings file lives (decision 131). Beside the executable on
 // Windows; on a Mac, in the product's folder in Application Support instead,
 // because a Mac app is a bundle replaced whole by dragging a newer one over
@@ -359,7 +366,9 @@ function spawnTracker(args, payload, onProgress, onEnded, { fresh = false } = {}
     keepInLog("shell could not serialise a payload", `${err.name}: ${err.message}`);
     return Promise.resolve(shellFailure(fill(shellSays.could_not_send, { kind: err.name || "Error" }), "refused"));
   }
-  if (!FROZEN_API && !fs.existsSync(SOURCE_PYTHON)) return Promise.resolve(shellFailure(NOT_SET_UP, "refused"));
+  if (!FROZEN_API && !fs.existsSync(SOURCE_PYTHON)) {
+    return Promise.resolve(shellFailure(process.platform === "darwin" ? NOT_SET_UP_MAC : NOT_SET_UP, "refused"));
+  }
   return new Promise((resolve) => {
     const isPass = passCommand !== null && args[0] === passCommand;
     // A command that is not a pass goes to the waiting spare when there is
@@ -774,7 +783,7 @@ async function openErrorLog() {
 // answer, with the row's own token when there is one.
 function menuItem(id, enabled, token) {
   return {
-    label: menuWords[id],
+    label: shown(menuWords[id]),
     enabled,
     click: () => {
       if (id === "error_log") openErrorLog().catch(() => null);
@@ -787,16 +796,29 @@ function menuItem(id, enabled, token) {
   };
 }
 
+// A menu word as the platform shows it. The & of "&Tools" is a Windows
+// mnemonic (Alt+T); a Mac has none, and a label that carried one would show
+// the ampersand if Electron does not strip it (SPEC-mac R11, kit step H11), so
+// it is taken out here, once, for every label and item.
+function shown(word) {
+  return process.platform === "darwin" ? word.replace(/&(?!&)/g, "") : word;
+}
+
 function buildTemplate() {
-  return BAR.map(([key, items]) => {
-    // Edit is Windows' own: Undo, Redo, Cut, Copy, Paste and Select all.
-    if (!items) return { label: menuWords[key], role: "editMenu" };
+  const mac = process.platform === "darwin";
+  const bar = BAR.map(([key, items]) => {
+    // Edit is the platform's own: Undo, Redo, Cut, Copy, Paste and Select all.
+    if (!items) return { label: shown(menuWords[key]), role: "editMenu" };
+    // Quit lives in the app menu on a Mac (below), so File has no Exit there,
+    // and nor the separator that stood before it.
+    const entries = mac ? items.filter((item) => item[0] !== "exit") : items;
+    if (mac && entries[entries.length - 1] === SEPARATOR) entries.pop();
     return {
-      label: menuWords[key],
-      submenu: items.map((item) => {
+      label: shown(menuWords[key]),
+      submenu: entries.map((item) => {
         if (item === SEPARATOR) return { type: "separator" };
         const [id, accelerator] = item;
-        if (id === "exit") return { label: menuWords.exit, role: "quit" };
+        if (id === "exit") return { label: shown(menuWords.exit), role: "quit" };
         const built = menuItem(id, ALWAYS.has(id) || menuEnabled.has(id), "");
         if (accelerator) built.accelerator = accelerator;
         if (CHECKABLE.has(id)) Object.assign(built, { type: "checkbox", checked: menuChecked.has(id) });
@@ -804,6 +826,10 @@ function buildTemplate() {
       }),
     };
   });
+  // On a Mac the first menu is the application's own: About, Hide, Hide
+  // Others, Show All and Quit with Cmd+Q, all Electron's roles, named for the
+  // product by the system. It adds no reload, zoom or developer-tools item.
+  return mac ? [{ role: "appMenu" }, ...bar] : bar;
 }
 
 function buildMenu() {
@@ -902,6 +928,8 @@ function createWindow() {
     title: PRODUCT_NAME,
     // The title bar and taskbar icon of the unpackaged launch (Start App.bat);
     // the packaged .exe carries the same file, written in by electron-packager.
+    // macOS ignores a window icon: the bundle's icon is the .icns the packager
+    // is given (SPEC-mac R14, R15).
     icon: path.join(__dirname, "assets", "icon.ico"),
     backgroundColor: pageBackground(),
     autoHideMenuBar: true,
@@ -947,8 +975,10 @@ if (floorRefusal) {
   // Before the window opens: Windows groups a running window with its
   // shortcut, and shows the shortcut's icon on the taskbar button, by this
   // id. It is a fixed string, never derived from the name, so a rename does
-  // not split a pinned button from its window.
-  app.setAppUserModelId("com.jparkassociates.taxdocumentconsole");
+  // not split a pinned button from its window. A Mac has no such id; its
+  // bundle identifier is the same string, given to the packager by
+  // build-mac.sh (SPEC-mac R14).
+  if (process.platform === "win32") app.setAppUserModelId("com.jparkassociates.taxdocumentconsole");
   app.on("second-instance", () => {
     const [win] = BrowserWindow.getAllWindows();
     if (!win) return;

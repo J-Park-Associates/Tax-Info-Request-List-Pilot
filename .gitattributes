@@ -22,3 +22,11 @@ docs/repo-map.md linguist-generated=true
 docs/repo-map.json linguist-generated=true
 docs/vocab-coverage.md linguist-generated=true
 docs/vocab-coverage.json linguist-generated=true
+
+# The Mac's scripts (setup.command, start.command, build-mac.sh; SPEC-mac R16)
+# check out with LF through the rule at the top and need no line of their own:
+# bash reads a carriage return as part of the interpreter's name ("bad
+# interpreter"), and tests/test_repo_map.py allows no rule for any suffix but
+# the batch files', so nothing can quietly give them CRLF. Their mode is not an
+# attribute - git keeps it in the index (100755) - and tests/test_build.py holds
+# both.
