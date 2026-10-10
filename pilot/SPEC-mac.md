@@ -249,9 +249,10 @@ runs:
 - **The API.** `api_entry.py` makes the same check
   (`platform.machine()`, `platform.mac_ver()`) and exits 1 with the same
   sentence, because the schedule runs the API directly.
-- **The bundle.** Info.plist sets `LSMinimumSystemVersion` to `12.0`,
-  Electron's own floor since Electron 38, so the app's sentence is what
-  macOS 12 and 13 show. An Intel Mac cannot run an arm64 binary at all, and
+- **The bundle.** Info.plist sets `LSMinimumSystemVersion` to `13.0`,
+  Electron's own floor at the pinned Electron 44 (macOS 12 was dropped), so
+  the app's sentence is what macOS 13 shows; macOS 12 gets macOS's own
+  refusal. An Intel Mac cannot run an arm64 binary at all, and
   gets macOS's own "not supported on this type of Mac".
 
 `MAC_FLOOR`: "Tax Document Console needs a Mac with Apple silicon running
