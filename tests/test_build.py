@@ -131,13 +131,10 @@ def test_every_run_of_the_tracker_in_the_build_has_a_data_home_of_its_own():
     assert tracker_runs and home < min(tracker_runs)
 
 
-def test_the_package_is_proved_to_hold_no_store_log_task_file_or_settings():
-    """The proof (decision 186): a step before the package is zipped and
-    uploaded fails the build when anything in it bears a name the data
-    home or the settings folder holds - each spelled by its constant,
-    decision 159's files (the checkpoint's write-ahead log and shared memory
-    among them, P214) and decision 193's error log, its rotated
-    copies and its ``passes`` folder beside the store among them."""
+def data_home_names() -> tuple[set[str], set[str]]:
+    """Every name the data home or the settings folder holds, and the
+    patterns of 159's set-asides, each spelled by the constant that owns it:
+    what no package may carry (decision 186), on Windows and on a Mac alike."""
     from tracker.checkpoint import (
         CHECKPOINT_DAMAGED_FILENAME,
         CHECKPOINT_FILENAME,
@@ -158,13 +155,7 @@ def test_the_package_is_proved_to_hold_no_store_log_task_file_or_settings():
     )
     from tracker.store import RECOVERED_DIR, STORE_FILENAME, STORE_SHM_FILENAME, STORE_WAL_FILENAME
 
-    run = commands()
-    step = run.index("- name: The package holds no store, run log, task file or settings")
-    assert step < run.index("- name: Zip the package and publish its SHA-256") < run.index(
-        "- name: Upload the package")
-    body = run[step:run.index("- name: Zip the package and publish its SHA-256")]
-    listed = re.search(r"\$names = @\(([^)]*)\)", body).group(1)
-    assert set(re.findall(r"'([^']+)'", listed)) == {
+    names = {
         STORE_FILENAME, STORE_WAL_FILENAME, STORE_SHM_FILENAME, LOG_FILENAME, PASS_ORDER_FILENAME,
         CHECKPOINT_FILENAME, CHECKPOINT_JOURNAL_FILENAME, CHECKPOINT_WAL_FILENAME,
         CHECKPOINT_SHM_FILENAME, CHECKPOINT_DAMAGED_FILENAME,
@@ -173,9 +164,27 @@ def test_the_package_is_proved_to_hold_no_store_log_task_file_or_settings():
         PASSES_DIRNAME,
         SCHEDULE_XML_FILENAME, OCR_SCRATCH_DIRNAME, DATA_HOME_NAME, SETTINGS_FILENAME}
     # 159's set-asides by the pattern set_aside() gives them (186's rebase review, SF3).
-    patterns = re.search(r"\$patterns = @\(([^)]*)\)", body).group(1)
-    assert set(re.findall(r"'([^']+)'", patterns)) == {
-        name + SET_ASIDE_SUFFIX.format(version="*") + "*" for name in (STORE_FILENAME, CHECKPOINT_FILENAME)}
+    patterns = {name + SET_ASIDE_SUFFIX.format(version="*") + "*" for name in (STORE_FILENAME, CHECKPOINT_FILENAME)}
+    return names, patterns
+
+
+def test_the_package_is_proved_to_hold_no_store_log_task_file_or_settings():
+    """The proof (decision 186): a step before the package is zipped and
+    uploaded fails the build when anything in it bears a name the data
+    home or the settings folder holds - each spelled by its constant,
+    decision 159's files (the checkpoint's write-ahead log and shared memory
+    among them, P214) and decision 193's error log, its rotated
+    copies and its ``passes`` folder beside the store among them."""
+    run = commands()
+    step = run.index("- name: The package holds no store, run log, task file or settings")
+    assert step < run.index("- name: Zip the package and publish its SHA-256") < run.index(
+        "- name: Upload the package")
+    body = run[step:run.index("- name: Zip the package and publish its SHA-256")]
+    names, patterns = data_home_names()
+    listed = re.search(r"\$names = @\(([^)]*)\)", body).group(1)
+    assert set(re.findall(r"'([^']+)'", listed)) == names
+    listed_patterns = re.search(r"\$patterns = @\(([^)]*)\)", body).group(1)
+    assert set(re.findall(r"'([^']+)'", listed_patterns)) == patterns
     assert "$names -contains $name" in body and "$name -like $_" in body
     assert "$env:PACKAGE_DIR -Recurse -Force" in body and "throw" in body
 
@@ -276,7 +285,9 @@ def test_ci_never_fires_per_commit():
     assert types == {"ready_for_review", "labeled"}                  # never per commit
     assert "cancel-in-progress: true" in ci
     linux = re.search(r"^\s*if: (.+)$", ci.split("\n  linux:\n", 1)[1].split("\n  windows:\n", 1)[0], re.M).group(1)
-    windows = re.search(r"^\s*if: (.+)$", ci.split("\n  windows:\n", 1)[1], re.M).group(1)
+    windows = re.search(r"^\s*if: (.+)$", ci.split("\n  windows:\n", 1)[1].split("\n  macos:\n", 1)[0],
+                        re.M).group(1)
+    macos = re.search(r"^\s*if: (.+)$", ci.split("\n  macos:\n", 1)[1], re.M).group(1)
     # The conditions are pinned whole, not by fragments: the same pieces in
     # another order (`A || B && C`) would say something else.
     assert linux == (                                                 # main, or a ready non-draft PR; never a label
@@ -286,6 +297,17 @@ def test_ci_never_fires_per_commit():
         "github.event_name == 'pull_request' && github.event.pull_request.draft == false"
         " && contains(github.event.pull_request.labels.*.name, 'windows')"
         " && (github.event.action == 'ready_for_review' || github.event.label.name == 'windows')")
+    # macOS is the Windows job with `macos` in its condition (SPEC-mac R18): a
+    # run on a Mac bills at ten times a Linux one, so it is the explicit ask
+    # and nothing else - never a push to main, a draft or another branch.
+    assert macos == windows.replace("'windows'", "'macos'")
+    assert "'macos'" in macos and "windows" not in macos and "push" not in macos
+    macos_job = ci.split("\n  macos:\n", 1)[1]
+    assert re.search(r"^\s+os: macos-latest$", macos_job, re.M)
+    assert re.search(r'^\s+python-version: "3\.14"$', macos_job, re.M)
+    assert "uses: ./.github/workflows/gate.yml" in macos_job
+    assert not re.search(r"^\s*(strategy|matrix):", macos_job, re.M)
+    assert ci.count("macos-latest") == 1 and ci.count("windows-latest") == 1
     # A label run is its own concurrency group: adding any label must never
     # cancel the required Linux checks already running on the pull request.
     group = re.search(r"^\s*group: (.+)$", ci.split("\nconcurrency:", 1)[1], re.M).group(1)
@@ -548,6 +570,13 @@ NODEPS_STEP = re.compile(r"pip install --require-hashes --no-deps -r requirement
 TREE_STEP = re.compile(r"pip install --require-hashes -r requirements\.lock")
 SETUP_SCRIPT = "Setup.bat"
 LAUNCHER = "Start App.bat"
+#: The Mac's three scripts for the batch files (SPEC-mac R16): setup, the
+#: launcher, and the build, which is Build App.bat and the pilot installer's
+#: build in one.
+MAC_SETUP = "setup.command"
+MAC_LAUNCHER = "start.command"
+MAC_BUILD = "build-mac.sh"
+MAC_SCRIPTS = (MAC_SETUP, MAC_LAUNCHER, MAC_BUILD)
 
 
 def batch_files() -> list[str]:
@@ -557,7 +586,7 @@ def batch_files() -> list[str]:
 def installing_places() -> dict[str, str]:
     """Every file that installs the tree, by name: the batch files and each
     workflow that runs ``pip install``."""
-    places = {name: read(name) for name in (BUILD_SCRIPT, SETUP_SCRIPT)}
+    places = {name: read(name) for name in (BUILD_SCRIPT, SETUP_SCRIPT, MAC_SETUP, MAC_BUILD)}
     for path in sorted((REPO / ".github" / "workflows").glob("*.yml")):
         text = path.read_text(encoding="utf-8")
         if re.search(r"pip install", text):
@@ -572,7 +601,7 @@ def test_the_reader_is_installed_in_two_steps_everywhere_the_tree_is_installed()
     files and in every workflow that installs - and in the README's
     developer setup, which is how a person installs it by hand."""
     places = installing_places()
-    assert {BUILD_SCRIPT, SETUP_SCRIPT, GATE_WORKFLOW, BUILD_WORKFLOW} <= set(places)
+    assert {BUILD_SCRIPT, SETUP_SCRIPT, MAC_SETUP, MAC_BUILD, GATE_WORKFLOW, BUILD_WORKFLOW} <= set(places)
     for name, text in {**places, "README.md": read("README.md"), "CLAUDE.md": read("CLAUDE.md")}.items():
         first, second = TREE_STEP.search(text), NODEPS_STEP.search(text)
         assert first and second and first.start() < second.start(), name
@@ -625,7 +654,7 @@ def test_every_install_is_hash_checked_from_a_lock():
     reads a lock and checks every file's hash; none reads a requirements
     file or a constraint, and none upgrades pip (an unpinned, unhashed
     install)."""
-    sources = {name: read(name) for name in batch_files()}
+    sources = {name: read(name) for name in (*batch_files(), *MAC_SCRIPTS)}
     sources.update({path.name: path.read_text(encoding="utf-8")
                     for path in sorted((REPO / ".github" / "workflows").glob("*.yml"))})
     seen = 0
@@ -637,7 +666,7 @@ def test_every_install_is_hash_checked_from_a_lock():
             assert files and all(file.endswith(".lock") for file in files), (name, line)
             assert not re.search(r"\s-c\s", line) and "--upgrade" not in line and not re.search(r"\s-U\b", line), (
                 name, line)
-    assert seen >= 8                                   # Setup, the build, the pack, gate and build workflows
+    assert seen >= 12                      # Setup, the build, the pack, their Mac scripts, gate and build workflows
 
 
 def test_the_launcher_never_installs_and_says_when_setup_must_run():
@@ -958,3 +987,308 @@ def test_the_icns_packer_refuses_a_missing_wrong_sized_or_non_png_render():
         packer.pack({**renders, 512: _png(256)})
     with pytest.raises(ValueError, match="PNG"):
         packer.pack({**renders, 64: b"BM" + bytes(64)})
+
+
+# ------------------------------------- SPEC-mac R16, R17: the Mac's scripts and bundle ----
+
+
+def _bash() -> str:
+    import shutil
+
+    import pytest
+
+    found = shutil.which("bash")
+    if found is None:
+        pytest.skip("bash is not on PATH")
+    return found
+
+
+def _sh(rel: str) -> list[str]:
+    """A shell script's lines that run something: comments and echoes dropped."""
+    return [line for line in _commands(read(rel)) if not line.startswith("#!")]
+
+
+def _between(text: str, first: str, last: str) -> str:
+    return text[text.index(first):text.index(last)]
+
+
+#: The block every Mac script opens with, after its cd: PATH reduced to its
+#: absolute folders, from the line that starts it to the line that ends it.
+PATH_BLOCK = ('clean_path=""', "PATH=$clean_path")
+
+
+def _path_block(rel: str) -> str:
+    text = read(rel)
+    return text[text.index(PATH_BLOCK[0]):text.index(PATH_BLOCK[1]) + len(PATH_BLOCK[1])]
+
+
+def test_every_mac_script_runs_under_the_bash_macos_ships_and_parses():
+    """SPEC-mac R16: /bin/bash is 3.2 on every Mac, whatever else is
+    installed, so no script uses what 3.2 lacks - mapfile and readarray,
+    ${x,,} and ${x^^}, associative arrays, namerefs, |&, &>> and coproc -
+    and each starts with the interpreter it means and ``bash -n`` parses it."""
+    import subprocess
+
+    bash = _bash()
+    for name in MAC_SCRIPTS:
+        text = read(name)
+        assert text.startswith("#!/bin/bash\n"), name
+        code = "\n".join(line for line in text.splitlines() if not line.lstrip().startswith("#"))
+        for lacking in (r"\bmapfile\b", r"\breadarray\b", r"\$\{[^}]*(,,|\^\^)", r"\bdeclare\s+-A\b",
+                        r"\blocal\s+-n\b", r"\|&", r"&>>", r"\bcoproc\b", r"\bdeclare\s+-n\b"):
+            assert not re.search(lacking, code), (name, lacking)
+        checked = subprocess.run([bash, "-n", str(REPO / name)], capture_output=True, text=True, check=False)
+        assert checked.returncode == 0, (name, checked.stderr)
+
+
+def test_every_mac_script_opens_in_its_own_folder_and_finds_tools_by_command_v():
+    """SPEC-mac R16 (E-10 for bash): the first command is ``cd`` to the script's
+    own folder, tools are found with ``command -v``, and before any is run PATH
+    is cut to its absolute folders - bash looks in the current folder only for
+    an empty or relative PATH entry, and this takes those out - so a file
+    dropped beside the script named like python3, node, npm or git cannot run
+    in its place. The block is one text in all three, so it is fixed in one."""
+    tools = re.compile(r"\b(python3|node|npm|git|codesign|ditto|hdiutil|shasum|find|file)\b")
+    blocks = set()
+    for name in MAC_SCRIPTS:
+        commands_ = _sh(name)
+        assert commands_[0] == 'cd "$(dirname "$0")" || exit 1', name
+        path_done = commands_.index("PATH=$clean_path")
+        for line in commands_[1:path_done]:
+            assert not tools.search(line), (name, line)
+        assert any("command -v" in line for line in commands_[path_done:]), name
+        blocks.add(_path_block(name))
+    assert len(blocks) == 1
+
+
+def test_the_path_block_drops_an_empty_or_relative_folder_and_keeps_the_rest():
+    import os
+    import subprocess
+
+    bash = _bash()
+    block = _path_block(MAC_SETUP)
+    run = subprocess.run([bash, "-c", block + '\nprintf %s "$PATH"'], capture_output=True, text=True, check=True,
+                         env={**os.environ, "PATH": ":.:rel/bin:/usr/bin:/bin:"})
+    assert run.stdout == "/usr/bin:/bin"
+
+
+def test_the_mac_launcher_never_installs_and_says_when_setup_must_run():
+    """Decision 191 for start.command: not even the word pip, no install of
+    either kind, the lock tool's stamp checked first, and the one sentence
+    the lock tool owns (its Mac form) when there is no private Python."""
+    from tools.lockfiles import NOT_SET_UP_MAC
+
+    launcher = read(MAC_LAUNCHER)
+    assert "pip" not in launcher.lower()
+    for line in _sh(MAC_LAUNCHER):
+        assert not PIP_INSTALL.search(line) and not NPM_INSTALL.search(line), line
+    assert ".venv/bin/python tools/lockfiles.py verify .venv" in launcher
+    assert f'echo "{NOT_SET_UP_MAC}"' in launcher
+    assert '[ -x ".venv/bin/python" ] || not_set_up' in launcher
+    assert '[ -d "app/node_modules/electron" ] || not_set_up' in launcher
+    # Started through Electron's own entry script, as the Windows launcher does.
+    assert "node node_modules/electron/cli.js ." in launcher
+    assert "npx" not in "\n".join(_sh(MAC_LAUNCHER))
+
+
+def test_mac_setup_installs_by_hash_then_stamps_and_runs_the_after_install_step_last():
+    """Decisions 169, 191 and 209 for setup.command: the venv is made fresh,
+    both hash-checked installs are the reader's two steps in order, npm ci
+    follows, the stamp comes after every install, and the after-install step
+    is the last command - its failure said in the module's own words."""
+    from tracker.after_install import SETUP_RETRY
+
+    commands_ = _sh(MAC_SETUP)
+    assert any(line.startswith("python3 -m venv --clear .venv") for line in commands_)
+    installs = [i for i, line in enumerate(commands_) if PIP_INSTALL.search(line)]
+    assert len(installs) == 2
+    assert commands_[installs[0]].startswith('"$PY" -m pip install --require-hashes -r requirements.lock')
+    assert commands_[installs[1]].startswith('"$PY" -m pip install --require-hashes --no-deps -r requirements-nodeps.lock')
+    [npm] = [i for i, line in enumerate(commands_) if NPM_INSTALL.search(line)]
+    assert "npm ci --no-audit --no-fund" in commands_[npm] and npm > installs[1]
+    [stamp_at] = [i for i, line in enumerate(commands_) if '"$PY" tools/lockfiles.py stamp .venv' in line]
+    [step] = [i for i, line in enumerate(commands_) if '-m tracker.after_install --reason setup' in line]
+    assert stamp_at > max(installs) and stamp_at > npm and step > stamp_at
+    assert not any(PIP_INSTALL.search(line) or NPM_INSTALL.search(line) for line in commands_[step:])
+    assert f'echo "{SETUP_RETRY}"' in read(MAC_SETUP)
+
+
+def test_mac_setup_and_build_ask_for_the_python_floor_pyproject_declares():
+    """The floor is typed in the scripts as the interpreter's own test and as
+    a sentence; pyproject.toml's ``requires-python`` is the one source."""
+    floor = re.search(r'requires-python\s*=\s*">=([\d.]+)"', read("pyproject.toml")).group(1)
+    for name in (MAC_SETUP, MAC_BUILD):
+        text = read(name)
+        assert f"Install Python {floor}+" in text, name
+        assert f"sys.version_info < ({floor.replace('.', ', ')})" in text, name
+
+
+def test_scripts_check_out_with_lf_and_execute():
+    """SPEC-mac R16: bash reads a carriage return as part of the interpreter's
+    name ("bad interpreter"), and Finder will not run a file that is not
+    executable, so each script checks out LF (.gitattributes) with mode
+    100755 (the index), and holds no carriage return at all."""
+    import shutil
+    import subprocess
+
+    import pytest
+
+    for name in MAC_SCRIPTS:
+        assert b"\r" not in (REPO / name).read_bytes(), name
+    if shutil.which("git") is None:
+        pytest.skip("git is not on PATH; the attribute and the mode cannot be asked")
+    said = subprocess.run(["git", "check-attr", "eol", "--", *MAC_SCRIPTS], cwd=REPO,
+                          capture_output=True, text=True, check=True).stdout.splitlines()
+    assert said == [f"{name}: eol: lf" for name in MAC_SCRIPTS], said
+    listed = subprocess.run(["git", "ls-files", "--stage", "--", *MAC_SCRIPTS], cwd=REPO,
+                            capture_output=True, text=True, check=True).stdout.splitlines()
+    assert [(line.split()[0], line.split("\t")[1]) for line in listed] == [("100755", name) for name in sorted(MAC_SCRIPTS)]
+
+
+def test_the_mac_build_runs_its_seven_steps_in_the_order_that_keeps_the_seal():
+    """SPEC-mac R17: freeze, package, copy, BUILD-INFO, sign, check, image. The
+    order is the claim: BUILD-INFO before signing (a file written after breaks
+    the seal), signing before the image (an image of a broken seal is the app
+    Apple silicon calls damaged), the seal verified before it, each inner
+    Mach-O signed before the app that holds them, and the proof that no data
+    folder's file is in the bundle before anything is imaged."""
+    text = read(MAC_BUILD)
+    marks = [text.index(f'echo "[{n}/7]') for n in range(1, 8)]
+    assert marks == sorted(marks)
+    freeze, package, copy_, info, sign, proof, image = (
+        text[a:b] for a, b in zip(marks, [*marks[1:], len(text)], strict=True))
+    assert "-m PyInstaller --noconfirm --clean" in freeze and "api_entry.spec" in freeze
+    assert "electron-packager.mjs" in package and "--platform=\"$PLATFORM\" --arch=\"$ARCH\"" in package
+    assert re.search(r'^PLATFORM=darwin$', text, re.M) and re.search(r'^ARCH=arm64$', text, re.M)
+    assert 'ditto "$OUT/py/$API" "$APP/Contents/Resources/$API"' in copy_
+    assert '> "$APP/Contents/Resources/BUILD-INFO.txt"' in info
+    inner = sign.index('codesign --force --sign - "$file"')
+    outer = sign.index('codesign --force --deep --sign - "$APP"')
+    verify = sign.index('codesign --verify --deep --strict "$APP"')
+    assert inner < outer < verify
+    assert 'file -b "$file" | grep -q "Mach-O"' in sign
+    assert 'hdiutil create -volname "$NAME" -srcfolder "$STAGE" -ov -format UDZO "$DMG"' in image
+    assert 'ln -s /Applications "$STAGE/Applications"' in image
+    assert 'shasum -a 256 "$DMG_NAME" > "$DMG_NAME.sha256"' in image
+    # Nothing after the signing alters the bundle: the proof only reads it and
+    # the image only copies it.
+    assert "codesign" not in image and "codesign" not in proof
+    assert not re.search(r">\s*\"\$APP|\brm\b[^\n]*\$APP|\bditto\b[^\n]*\"\$APP/Contents", proof + image)
+
+
+def test_the_mac_build_names_everything_from_package_json_and_the_pilots_version():
+    """The product's and the API's names are package.json's, the version is
+    pilot-content.js's (P13), the image is named as the installer is, and the
+    app's identifier is the one the shell gives Windows (never typed twice)."""
+    text = read(MAC_BUILD)
+    package = json.loads(read("app/package.json"))
+    assert "node -p \"require('./app/package.json').productName\"" in text
+    assert "node -p \"require('./app/package.json').config.apiName\"" in text
+    assert "node -p \"require('./app/renderer/pilot-content.js').edition.version\"" in text
+    assert package["productName"] not in text and package["config"]["apiName"] not in text
+    assert 'DMG_NAME="$(echo "$NAME" | tr \' \' \'-\')-$VER-mac-$ARCH.dmg"' in text
+    setup_iss = read("pilot/installer/setup.iss")
+    assert re.search(r"^OutputBaseFilename=" + re.escape(package["productName"].replace(" ", "-"))
+                     + r"-Setup-\{#AppVersion\}$", setup_iss, re.M)
+    identifier = re.search(r'^APP_ID="([^"]+)"$', text, re.M).group(1)
+    assert f'setAppUserModelId("{identifier}")' in read("app/main.js")
+    assert '--app-bundle-id="$APP_ID"' in text
+    # The disk image is of a commit, refused otherwise, as the pilot installer is (P13).
+    assert text.index("git rev-parse --verify HEAD") < text.index("git status --porcelain") < text.index(
+        '"[1/7]')
+    assert "Commit or discard your changes first" in text
+
+
+def test_the_mac_build_reads_the_version_the_badge_shows():
+    """The build's own node expression, run against the real pilot-content.js."""
+    import shutil
+    import subprocess
+
+    import pytest
+
+    if shutil.which("node") is None:
+        pytest.skip("node is not installed")
+    expr = re.search(r"node -p \"(require\('\./app/renderer/pilot-content\.js'\)[^\"]*)\"", read(MAC_BUILD)).group(1)
+    out = subprocess.run(["node", "-p", expr], cwd=REPO, capture_output=True, text=True, check=True)
+    assert re.fullmatch(r"\d+\.\d+(\.\d+)?", out.stdout.strip())
+
+
+def test_the_mac_bundle_is_given_its_icon_floor_and_folder_strings():
+    """The packager is given the .icns, the identifier and the plist; the
+    plist holds R6's floor (the shell's own constant) and the three folder
+    strings macOS shows when the clients folder sits in Desktop, Documents or
+    Downloads."""
+    import plistlib
+
+    from tracker.settings import MAC_FLOOR_MACOS
+
+    text = read(MAC_BUILD)
+    assert "--icon=assets/icon.icns" in text and "--extend-info=assets/Info-mac.plist" in text
+    assert (REPO / "app/assets/icon.icns").is_file() and (REPO / "app/assets/Info-mac.plist").is_file()
+    info = plistlib.loads((REPO / "app/assets/Info-mac.plist").read_bytes())
+    assert info["LSMinimumSystemVersion"] == f"{MAC_FLOOR_MACOS}.0"
+    for folder in ("Desktop", "Documents", "Downloads"):
+        sentence = info[f"NS{folder}FolderUsageDescription"]
+        assert sentence.endswith(f"in your {folder} folder.") or sentence.endswith(f"on your {folder}.")
+    assert set(info) == {"LSMinimumSystemVersion", "NSDesktopFolderUsageDescription",
+                         "NSDocumentsFolderUsageDescription", "NSDownloadsFolderUsageDescription"}
+
+
+def test_the_mac_build_info_sits_where_the_after_install_step_looks_in_a_bundle(tmp_path):
+    """BUILD-INFO.txt is written to Contents/Resources, which is two folders
+    above the frozen executable at Contents/Resources/<api>/<api>: exactly
+    where ``after_install.build_info`` looks."""
+    from tracker.after_install import BUILD_INFO_FILENAME, build_info
+
+    text = read(MAC_BUILD)
+    assert f'"$APP/Contents/Resources/{BUILD_INFO_FILENAME}"' in text
+    assert 'ditto "$OUT/py/$API" "$APP/Contents/Resources/$API"' in text
+    resources = tmp_path / "Console.app" / "Contents" / "Resources"
+    executable = resources / "tracker-api" / "tracker-api"
+    executable.parent.mkdir(parents=True)
+    executable.write_bytes(b"")
+    assert build_info(executable) is None
+    (resources / BUILD_INFO_FILENAME).write_text("built", encoding="utf-8")
+    assert build_info(executable) == resources / BUILD_INFO_FILENAME
+
+
+def test_the_mac_build_proves_the_bundle_holds_no_store_log_task_file_or_settings(tmp_path):
+    """SPEC-mac R17 step 6: the same names and patterns the Windows workflow
+    checks (each spelled by the constant that owns it), and the check itself
+    is run: a clean bundle passes and one holding any named file or a
+    set-aside fails with the file's path."""
+    import subprocess
+
+    bash = _bash()
+    text = read(MAC_BUILD)
+    step = _between(text, 'echo "[6/7]', 'echo "[7/7]')
+    names, patterns = data_home_names()
+    listed = re.search(r"^names=\(([^)]*)\)$", step, re.M).group(1).split()
+    listed_patterns = re.findall(r"'([^']+)'", re.search(r"^patterns=\(([^)]*)\)$", step, re.M).group(1))
+    assert set(listed) == names and len(listed) == len(names)
+    assert set(listed_patterns) == patterns
+
+    def run(app) -> subprocess.CompletedProcess:
+        script = 'fail() { echo "$1"; exit 1; }\nAPP="$1"\n' + step
+        return subprocess.run([bash, "-c", script, "probe", str(app)], capture_output=True, text=True, check=False)
+
+    clean = tmp_path / "Clean.app"
+    (clean / "Contents" / "Resources" / "tracker-api").mkdir(parents=True)
+    (clean / "Contents" / "Resources" / "BUILD-INFO.txt").write_text("x", encoding="utf-8")
+    assert run(clean).returncode == 0
+    for leaked in sorted(names | {"tracker.db.v3.old1", "record-heads.db.v7.old2"}):
+        app = tmp_path / f"{leaked}.app"
+        (app / "Contents" / "Resources").mkdir(parents=True)
+        (app / "Contents" / "Resources" / leaked).write_text("x", encoding="utf-8")
+        ran = run(app)
+        assert ran.returncode == 1 and leaked in ran.stdout, (leaked, ran.stdout)
+
+
+def test_the_mac_launcher_and_setup_sentences_are_the_ones_their_owners_say():
+    """The sentences the scripts print are the modules' own, word for word
+    (the Windows files are held the same way): the launcher's refusal is the
+    lock tool's, setup's failure is the after-install module's."""
+    from tools.lockfiles import NOT_SET_UP, NOT_SET_UP_MAC
+
+    assert NOT_SET_UP_MAC == NOT_SET_UP.replace("Setup.bat", "setup.command")
+    assert NOT_SET_UP_MAC in read(MAC_LAUNCHER)

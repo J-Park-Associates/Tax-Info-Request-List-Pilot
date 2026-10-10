@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  What electron-packager merges into the app's Info.plist on a Mac
+  (build-mac.sh, the packager's extend-info option; SPEC-mac R17). The bundle's name, identifier
+  and icon come from the packager's own flags, so this holds only what has no
+  flag.
+
+  LSMinimumSystemVersion is the floor of R6 (P243): macOS 14, so a Mac below it
+  is refused by macOS itself with its own message, and tests/test_build.py holds
+  it equal to tracker.settings.MAC_FLOOR_MACOS. The three usage strings are the
+  sentences macOS shows under its own question, once, when the app first reads a clients folder that
+  sits in the Desktop, Documents or Downloads folder; each says what the
+  Console does there and nothing it does not do (it never sends anything).
+-->
+<plist version="1.0">
+<dict>
+  <key>LSMinimumSystemVersion</key>
+  <string>14.0</string>
+  <key>NSDesktopFolderUsageDescription</key>
+  <string>It sorts the tax documents in the clients folder you chose, which is on your Desktop.</string>
+  <key>NSDocumentsFolderUsageDescription</key>
+  <string>It sorts the tax documents in the clients folder you chose, which is in your Documents folder.</string>
+  <key>NSDownloadsFolderUsageDescription</key>
+  <string>It sorts the tax documents in the clients folder you chose, which is in your Downloads folder.</string>
+</dict>
+</plist>

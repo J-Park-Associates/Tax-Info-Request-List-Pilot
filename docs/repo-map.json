@@ -15,9 +15,9 @@
     "a person sends the draft"
   ],
   "counts": {
-    "nodes": 256,
-    "edges": 1235,
-    "reused": 0
+    "nodes": 262,
+    "edges": 1244,
+    "reused": 203
   },
   "node_types": [
     "artifact",
@@ -84,10 +84,10 @@
       "id": ".github/workflows/ci.yml",
       "type": "workflow",
       "layer": "ci",
-      "sha256": "106fb22b22cfb9a7",
-      "lines": 112,
-      "role": "CI: the triggers, the concurrency rule and two jobs that both call .github/workflows/gate.yml \u2014 `linux`, a matrix of the floor interpreter and the office's, and `windows`, the office's interpreter on a pull request labelled `windows`. Since decision 211 (revising 207) it runs on a push to main (Linux only) and on a pull request into main marked ready (`ready_for_review`); Windows also on `labeled` for the `windows` label; never on `opened` or `synchronize`, and both jobs skip drafts. It has no steps of its own.",
-      "notes": "The map check is the point. docs/repo-map.md is what agents read instead of re-scanning, its freshness is guarded by test_the_committed_map_is_current, and this workflow is what makes that guard run without anyone remembering to. Every step always reports, so a stale map and a failing test surface in the same run. Windows is checked because the firm's machine is Windows and the held lock, the atomic replace and the Windows-only tests behave differently there; the python-version lines are pinned to pyproject's floor and to [tool.office] by guards. Decision 78: the matrix carries the interpreter the office runs beside that floor, because the package is frozen on the office's Python and a suite that has never run there proves nothing about it; the rows are written out one at a time rather than crossed so the floor stays one readable literal for the guard that pins it. Decision 122: a Windows minute is billed at twice a Linux one, so the two Windows rows were four fifths of the price of a run, and a series that pushes three to five times per pull request re-ran them every time \u2014 while the gate that precedes every push already runs on Windows, so those jobs repeated a check just made. Under 122 a pull request ran Linux only, Windows ran on every push to main and on a labelled pull request, and `labeled` was a trigger (history). Decision 207 (revising 122) made CI one final check before a merge and dropped the push-to-main run (history). Decision 211 (revising 207, Jason 2026-09-26: CI never fires per commit): every session runs the whole local gate before it pushes; CI runs on a push to main (Linux, the net under what merged) and once when a pull request is marked ready (the run branch protection needs); no `opened` or `synchronize`, so a push to a pull request re-runs nothing; Windows only on a ready pull request with the `windows` label (`ready_for_review`, or `labeled` for `windows`), never on main; Linux never on `labeled`; a draft runs nothing. A pull request based on another branch runs nothing until it is retargeted onto main, and retargeting (`edited`) is not a trigger, so a stacked pull request stays a draft until retargeted and is marked ready then. Windows on the floor interpreter is run nowhere, because the floor is a language-version check and Linux makes it. The steps moved out to gate.yml in decision 122: a job's own `if:` is evaluated before a matrix is expanded and cannot see the `matrix` context, so this could not be one matrix with a condition on its Windows rows, and two jobs that each wrote the steps out would be two copies of the gate. Windows is now skipped as a whole on a pull request that did not ask - never started, never billed, and reported as skipped rather than as a check that passed. Since 207 (and 211) there is no Windows run on main, so a Windows-only regression in an unlabelled pull request is run on Windows nowhere before it merges unless the office PC ran the tests it touches - which is why the label is put on anything touching the lock, the atomic replace or paths, and why no Windows check may be made a required status check (a skipped job reports only as \"Windows\", so a required gate name would wait forever); the gate and the package build both carry a timeout, so a hung job stops costing after it instead of after GitHub's six hours."
+      "sha256": "fd1bf17865643dc3",
+      "lines": 133,
+      "role": "CI: the triggers, the concurrency rule and three jobs that each call .github/workflows/gate.yml \u2014 `linux`, a matrix of the floor interpreter and the office's, `windows`, the office's interpreter on a pull request labelled `windows`, and `macos`, the same on a Mac runner for a pull request labelled `macos` (SPEC-mac R18). Since decision 211 (revising 207) it runs on a push to main (Linux only) and on a pull request into main marked ready (`ready_for_review`); Windows also on `labeled` for the `windows` label; never on `opened` or `synchronize`, and both jobs skip drafts. It has no steps of its own.",
+      "notes": "The map check is the point. docs/repo-map.md is what agents read instead of re-scanning, its freshness is guarded by test_the_committed_map_is_current, and this workflow is what makes that guard run without anyone remembering to. Every step always reports, so a stale map and a failing test surface in the same run. Windows is checked because the firm's machine is Windows and the held lock, the atomic replace and the Windows-only tests behave differently there; the python-version lines are pinned to pyproject's floor and to [tool.office] by guards. Decision 78: the matrix carries the interpreter the office runs beside that floor, because the package is frozen on the office's Python and a suite that has never run there proves nothing about it; the rows are written out one at a time rather than crossed so the floor stays one readable literal for the guard that pins it. Decision 122: a Windows minute is billed at twice a Linux one, so the two Windows rows were four fifths of the price of a run, and a series that pushes three to five times per pull request re-ran them every time \u2014 while the gate that precedes every push already runs on Windows, so those jobs repeated a check just made. Under 122 a pull request ran Linux only, Windows ran on every push to main and on a labelled pull request, and `labeled` was a trigger (history). Decision 207 (revising 122) made CI one final check before a merge and dropped the push-to-main run (history). Decision 211 (revising 207, Jason 2026-09-26: CI never fires per commit): every session runs the whole local gate before it pushes; CI runs on a push to main (Linux, the net under what merged) and once when a pull request is marked ready (the run branch protection needs); no `opened` or `synchronize`, so a push to a pull request re-runs nothing; Windows only on a ready pull request with the `windows` label (`ready_for_review`, or `labeled` for `windows`), never on main; Linux never on `labeled`; a draft runs nothing. A pull request based on another branch runs nothing until it is retargeted onto main, and retargeting (`edited`) is not a trigger, so a stacked pull request stays a draft until retargeted and is marked ready then. Windows on the floor interpreter is run nowhere, because the floor is a language-version check and Linux makes it. The steps moved out to gate.yml in decision 122: a job's own `if:` is evaluated before a matrix is expanded and cannot see the `matrix` context, so this could not be one matrix with a condition on its Windows rows, and two jobs that each wrote the steps out would be two copies of the gate. Windows is now skipped as a whole on a pull request that did not ask - never started, never billed, and reported as skipped rather than as a check that passed. Since 207 (and 211) there is no Windows run on main, so a Windows-only regression in an unlabelled pull request is run on Windows nowhere before it merges unless the office PC ran the tests it touches - which is why the label is put on anything touching the lock, the atomic replace or paths, and why no Windows check may be made a required status check (a skipped job reports only as \"Windows\", so a required gate name would wait forever); the gate and the package build both carry a timeout, so a hung job stops costing after it instead of after GitHub's six hours. SPEC-mac R18: the `macos` job is the `windows` job with 'macos' in its condition and os: macos-latest on Python 3.14, run once when a draft is marked ready with the label on or when the label is added to a ready pull request, and never on a push to main, a draft or another branch; a macOS minute bills at ten times a Linux one (about 150 Linux-minute equivalents for one ~15-minute gate run), so the label is the explicit ask, for work touching the POSIX lock and durability (R19-R22), the Mac's homes, guards and schedule (R23-R30) or a darwin-only test. tests/test_build.py::test_ci_never_fires_per_commit pins the condition whole, as Windows'."
     },
     {
       "id": ".github/workflows/gate.yml",
@@ -4395,8 +4395,8 @@
       "id": "docs/repo-map.curated.json",
       "type": "file",
       "layer": "docs",
-      "sha256": "a526ec585491c3ad",
-      "lines": 1170,
+      "sha256": "6694e2ae9be18b2e",
+      "lines": 1250,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
     },
@@ -4886,7 +4886,7 @@
         "told_product"
       ],
       "role": "PyInstaller entry point: the portable app's one executable, which is the tracker API by default and the scheduled job (tracker.runner.main) when RUNNER_MODE_FLAG comes first.",
-      "notes": "PyInstaller needs a real script, not a -m module. Runner mode is dispatched before tracker.api is imported, because the API imports tracker.scheduling whose TASK_NAME needs the product name the Electron shell passes in the environment - and Task Scheduler passes nothing; the job needs neither of the shell's variables. api_entry.spec (committed; reads config.apiName from app/package.json) is how it is frozen. Decision 150: multiprocessing.freeze_support() is the first statement of the main block, so a reading's child - the frozen executable started again by multiprocessing's spawn - runs as the child and never as the API or the job. Speed round (pilot/SPEC-speed-round.md): P220 - given exactly [SPARE_FLAG] it runs api.spare(), waiting for its one command. Q1 / P218 - run_setup_step(argv) for runner.SETUP_MODE_FLAG (--after-install-setup --settings <folder> --product <name>, both required): it puts the settings folder and product name in the environment before tracker.after_install (and so tracker.scheduling) is imported, then runs after_install.main(['--reason', 'setup']). pilot/installer/setup.iss's [Run] starts it (StatusMsg 'Making the Overview ready...', runhidden waituntilterminated) before the launch entry, so the first Overview after a pilot install opens warm; a step that fails there runs again at the app's first launch. The setup mode exits with the pilot installer's codes (runner.SETUP_STEP_FAILED, SETUP_OVERVIEW_NOT_READY, via after_install's INSTALLER_CODES_FLAG), which setup.iss's [Code] turns into a small error window (Jason, 2026-10-08). SPEC-mac R6 (P243): second after freeze_support, the entry asks tracker.settings.mac_floor_refusal(product=told_product(argv)) and on a Mac below Apple silicon / macOS 14 writes the sentence to stderr and exits 1 before the runner, the setup door, the spare or the API is touched; told_product() reads the product's name the scheduled job or installer was given on its command line (neither has the shell's environment)."
+      "notes": "PyInstaller needs a real script, not a -m module. Runner mode is dispatched before tracker.api is imported, because the API imports tracker.scheduling whose TASK_NAME needs the product name the Electron shell passes in the environment - and Task Scheduler passes nothing; the job needs neither of the shell's variables. api_entry.spec (committed; reads config.apiName from app/package.json) is how it is frozen. Decision 150: multiprocessing.freeze_support() is the first statement of the main block, so a reading's child - the frozen executable started again by multiprocessing's spawn - runs as the child and never as the API or the job. Speed round (pilot/SPEC-speed-round.md): P220 - given exactly [SPARE_FLAG] it runs api.spare(), waiting for its one command. Q1 / P218 - run_setup_step(argv) for runner.SETUP_MODE_FLAG (--after-install-setup --settings <folder> --product <name>, both required): it puts the settings folder and product name in the environment before tracker.after_install (and so tracker.scheduling) is imported, then runs after_install.main(['--reason', 'setup']). pilot/installer/setup.iss's [Run] starts it (StatusMsg 'Making the Overview ready...', runhidden waituntilterminated) before the launch entry, so the first Overview after a pilot install opens warm; a step that fails there runs again at the app's first launch. The setup mode exits with the pilot installer's codes (runner.SETUP_STEP_FAILED, SETUP_OVERVIEW_NOT_READY, via after_install's INSTALLER_CODES_FLAG), which setup.iss's [Code] turns into a small error window (Jason, 2026-10-08). SPEC-mac R6 (P243): second after freeze_support, the entry asks tracker.settings.mac_floor_refusal(product=told_product(argv)) and on a Mac below Apple silicon / macOS 14 writes the sentence to stderr and exits 1 before the runner, the setup door, the spare or the API is touched; told_product() reads the product's name the scheduled job or installer was given on its command line (neither has the shell's environment). SPEC-mac R13: api_entry.spec has a darwin branch - target_arch arm64 (universal2 is impossible, onnxruntime has no x86_64 Mac wheel), no icon, codesign_identity None (PyInstaller signs ad hoc), entitlements_file None until signing lands - and build-mac.sh freezes it; the frozen smoke check (kit H1) must prove a reading child starts under spawn."
     },
     {
       "id": "conftest.py",
@@ -5195,10 +5195,23 @@
       "role": "What the last after-install run did (decision 209): {program, ran_at, reason, schedule, designated, findings, failed}, written atomically by tracker.after_install beside the store (the checkpoint's rule, as last-pass.json is), so it moves into the data home with the store. program is the program identity, written only when nothing failed, so the launch door runs the step again after a failed run; designated is the computer the designation named after the run, and a launch runs the step again when the file names another. api list reads it for the first screen's notice. Ignored by git: it can name a client's folder. runner.left_behind names an old copy beside the program (runner.AFTER_INSTALL_FILENAME), in 186's delete group."
     },
     {
+      "id": "artifact:build-mac.sh",
+      "type": "artifact",
+      "layer": "runtime",
+      "role": "Build App.bat and pilot/Build Pilot Installer.bat for a Mac in one script (SPEC-mac R16, R17): refuses a tree with uncommitted changes (P13), then in seven steps freezes the API for arm64 in build-portable/venv, packages Electron with electron-packager for darwin/arm64 (icon.icns, the bundle id, Info-mac.plist), copies the freeze into Contents/Resources/<apiName>/ with ditto, writes BUILD-INFO.txt into Contents/Resources, signs ad hoc from the inside out and verifies the seal, proves the bundle holds no data-home or settings file, and makes <productName>-<version>-mac-arm64.dmg with its .sha256.",
+      "notes": "The order is the claim (tests/test_build.py pins it): BUILD-INFO before signing because a later write breaks the seal, signing before the image because Apple silicon calls an app with a broken seal damaged. The product's and the API's names are app/package.json's and the version is pilot-content.js's; the app's identifier is the one main.js gives Windows. Step 6's names are the same constants as build.yml's Windows proof. Signing is ad hoc and unnotarized (P239); the signing job (R37) lands later. Needs a Mac (codesign, ditto, hdiutil), so only its parse and its order are proved on Linux; the kit proves the build (H1, H2)."
+    },
+    {
       "id": "artifact:firm-view.json",
       "type": "artifact",
       "layer": "runtime",
       "role": "The firm view's cache (P120): in the data home beside tracker.db, never synced, never under the clients root, never beside the program. Per household of the private tree: its fingerprint, its kind and name, each return's facts (path, household, problem, active, tax year, rolled from) and, for a shown return, its firm row, files and paths as api._firm_row built them. Client data: household names, return folders and the names of files waiting for a person (allowed by Jason, P123, like tracker.db). Disposable: deleting it costs the next Overview one full read. Written only when what is kept changed, atomically (fsio.write_text_atomically). Read alone by api firm-last at launch (P229): today's counts, marked, until the fresh firm reply lands."
+    },
+    {
+      "id": "artifact:icon.icns",
+      "type": "artifact",
+      "layer": "runtime",
+      "role": "The Mac app's icon: ten PNG elements packed by the artwork generator's source/icns.py from the same renders as icon.ico plus 512 and 1024px, committed as pilot/brand/tax-document-console/app/icon.icns with a byte-identical copy at app/assets/icon.icns (SPEC-mac R15)."
     },
     {
       "id": "artifact:last-pass.json",
@@ -5257,6 +5270,20 @@
       "write_only": true
     },
     {
+      "id": "artifact:setup.command",
+      "type": "artifact",
+      "layer": "runtime",
+      "role": "Setup.bat for a Mac (SPEC-mac R16), at the repository root, mode 100755, LF: checks python3 at pyproject's floor and npm, makes .venv with python3 -m venv --clear, installs requirements.lock then requirements-nodeps.lock (--no-deps) with --require-hashes, runs npm ci in app/, stamps what it installed with tools/lockfiles.py stamp .venv, and last runs python -m tracker.after_install --reason setup (decision 209).",
+      "notes": "Runs under the /bin/bash 3.2 macOS ships (no mapfile, no ${x,,}); starts with cd to its own folder and cuts PATH to its absolute folders before it finds anything with command -v, so a file dropped beside it cannot stand in for python3, npm or node (E-10; a test runs the block and holds it identical in the three scripts). A failed after-install step prints after_install.SETUP_RETRY word for word and exits 1 with the stamp kept. No wording tells a person to run a one-time step after installing (tests/test_single_source.py scans it). Not a mapped suffix, so this node is curated; a person double-clicks it in Finder."
+    },
+    {
+      "id": "artifact:start.command",
+      "type": "artifact",
+      "layer": "runtime",
+      "role": "Start App.bat for a Mac (SPEC-mac R16): runs tools/lockfiles.py verify .venv, refuses in one sentence when .venv or app/node_modules/electron is missing or the locks moved, then exec's node node_modules/electron/cli.js . from app/. It never installs.",
+      "notes": "No pip, no npm ci, no npm install appear in it (tests/test_build.py). Its not-set-up sentence is tools/lockfiles.py's NOT_SET_UP_MAC word for word, which is NOT_SET_UP with setup.command for Setup.bat. Same opening and PATH block as setup.command. The app itself runs the after-install step at launch when the program changed (decision 209)."
+    },
+    {
       "id": "artifact:status.html",
       "type": "artifact",
       "layer": "runtime",
@@ -5268,6 +5295,20 @@
       "type": "artifact",
       "layer": "runtime",
       "role": "The Task Scheduler definition scheduling.register_here (the after-install step and the repair path, decision 209) and the scheduling CLI write into the data home (scheduling.schedule_xml_path(), decision 186) and hands to schtasks; holds the program's path and the settings folder, nothing about a client.",
+      "write_only": true
+    },
+    {
+      "id": "artifact:the .dmg",
+      "type": "artifact",
+      "layer": "runtime",
+      "role": "build-portable/installer/<productName>-<version>-mac-arm64.dmg (UDZO), holding the app and a link to /Applications, with <name>.dmg.sha256 in the `<hex>  <name>` form beside it: what the firm downloads and drags to Applications (P246). No .pkg.",
+      "write_only": true
+    },
+    {
+      "id": "artifact:the Mac app bundle",
+      "type": "artifact",
+      "layer": "runtime",
+      "role": "<productName>.app under build-portable/dist/<productName>-darwin-arm64/: the Electron shell with the frozen API in Contents/Resources/<apiName>/ and BUILD-INFO.txt in Contents/Resources, ad-hoc signed (P239). It holds no store, log, task file or settings: they live in the data home and in ~/Library/Application Support/<productName> (R1, R2).",
       "write_only": true
     },
     {
@@ -6068,8 +6109,8 @@
       "id": "tests/test_build.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "47c4f1c36d4098e7",
-      "lines": 960,
+      "sha256": "9cc4e84ee40a6ffe",
+      "lines": 1294,
       "exports": [
         "ARTWORK_APP",
         "BUILD_ENVIRONMENT",
@@ -6082,15 +6123,20 @@
         "ICON_COPY",
         "ICON_SOURCE",
         "LAUNCHER",
+        "MAC_BUILD",
         "MAC_ENVIRONMENT",
         "MAC_ICON_COPY",
         "MAC_ICON_SOURCE",
+        "MAC_LAUNCHER",
+        "MAC_SCRIPTS",
+        "MAC_SETUP",
         "MAC_WHEELS",
         "NODEPS",
         "NODEPS_STEP",
         "NPM_COMMAND",
         "NPM_INSTALL",
         "NPM_SPELLINGS",
+        "PATH_BLOCK",
         "PIP_INSTALL",
         "PIP_SPELLINGS",
         "PYINSTALLER_ON_A_MAC",
@@ -6101,6 +6147,7 @@
         "TREE_STEP",
         "batch_files",
         "commands",
+        "data_home_names",
         "drift",
         "fired_at_the_frozen_executable",
         "frozen_in",
@@ -6119,8 +6166,13 @@
         "test_every_checkout_leaves_no_credentials_behind",
         "test_every_install_is_hash_checked_from_a_lock",
         "test_every_lock_resolves_for_an_apple_silicon_mac",
+        "test_every_mac_script_opens_in_its_own_folder_and_finds_tools_by_command_v",
+        "test_every_mac_script_runs_under_the_bash_macos_ships_and_parses",
         "test_every_run_of_the_tracker_in_the_build_has_a_data_home_of_its_own",
         "test_every_spelling_of_an_install_is_recognised",
+        "test_mac_setup_and_build_ask_for_the_python_floor_pyproject_declares",
+        "test_mac_setup_installs_by_hash_then_stamps_and_runs_the_after_install_step_last",
+        "test_scripts_check_out_with_lf_and_execute",
         "test_setup_runs_the_after_install_step_last_after_the_stamp",
         "test_the_audit_runs_weekly_on_linux_and_never_on_a_push",
         "test_the_build_fails_when_a_frozen_version_differs_from_the_locks",
@@ -6133,12 +6185,21 @@
         "test_the_icns_packer_refuses_a_missing_wrong_sized_or_non_png_render",
         "test_the_icns_packer_writes_apples_ten_elements_with_their_own_lengths",
         "test_the_launcher_never_installs_and_says_when_setup_must_run",
+        "test_the_mac_build_info_sits_where_the_after_install_step_looks_in_a_bundle",
+        "test_the_mac_build_names_everything_from_package_json_and_the_pilots_version",
+        "test_the_mac_build_proves_the_bundle_holds_no_store_log_task_file_or_settings",
+        "test_the_mac_build_reads_the_version_the_badge_shows",
+        "test_the_mac_build_runs_its_seven_steps_in_the_order_that_keeps_the_seal",
+        "test_the_mac_bundle_is_given_its_icon_floor_and_folder_strings",
         "test_the_mac_icon_is_a_byte_identical_copy_of_the_artworks",
         "test_the_mac_icon_is_made_from_the_same_renders_as_the_windows_one",
+        "test_the_mac_launcher_and_setup_sentences_are_the_ones_their_owners_say",
+        "test_the_mac_launcher_never_installs_and_says_when_setup_must_run",
         "test_the_onnx_runtime_and_numpy_are_pinned_by_platform_and_interpreter",
         "test_the_package_is_proved_to_hold_no_store_log_task_file_or_settings",
         "test_the_package_is_published_with_its_sha256_after_the_smoke_checks",
         "test_the_packaged_exe_carries_the_console_icon",
+        "test_the_path_block_drops_an_empty_or_relative_folder_and_keeps_the_rest",
         "test_the_pinned_pypdf_is_at_least_the_advisories_fix",
         "test_the_reader_is_installed_in_two_steps_everywhere_the_tree_is_installed",
         "test_the_scratch_roots_scan_is_filed_by_the_reader_and_by_nothing_else",
@@ -6160,6 +6221,9 @@
         "NODEPS": "'requirements-nodeps.txt'",
         "SETUP_SCRIPT": "'Setup.bat'",
         "LAUNCHER": "'Start App.bat'",
+        "MAC_SETUP": "'setup.command'",
+        "MAC_LAUNCHER": "'start.command'",
+        "MAC_BUILD": "'build-mac.sh'",
         "PIP_SPELLINGS": "('pip install -r requirements.txt', 'pip3 install pyinstaller', 'pip3.14 install x', 'PIP.EXE Install x', 'python -m pip  install -r requirements.txt', 'py -m pip install x', '%PY% -m pip install x', 'python3 -m   pip\\tinstall x')",
         "NPM_SPELLINGS": "('npm ci', 'call npm.cmd ci', 'npm install', 'npm i electron', 'NPM   Install', 'call npm.CMD i')",
         "PYPDF_ADVISORIES_FIXED_IN": "(6, 16, 1)",
@@ -6167,7 +6231,8 @@
         "ICON_COPY": "'app/assets/icon.ico'",
         "MAC_ICON_SOURCE": "'pilot/brand/tax-document-console/app/icon.icns'",
         "MAC_ICON_COPY": "'app/assets/icon.icns'",
-        "ARTWORK_APP": "'pilot/brand/tax-document-console/app'"
+        "ARTWORK_APP": "'pilot/brand/tax-document-console/app'",
+        "PATH_BLOCK": "('clean_path=\"\"', 'PATH=$clean_path')"
       },
       "role": "Guards what only the build workflow could otherwise discover ten minutes into a release: that it runs the batch file the repository owns rather than a copy of the build, that the switch it sets is the one that batch file reads, that the flags it fires at the frozen executable are flags tracker/runner.py declares, that it passes the two environment variables tracker/settings.py names, and that both workflows quote the one interpreter pyproject.toml writes down.",
       "notes": "Decision 78. It also asserts the fixture: a scratch root is one engagement discovery finds and a whole dry pass walks, because a smoke check over an empty folder proves only that discovery does not crash. Nothing here can prove the package runs - only the Windows runner can. Decision 137 (M5), on decision 191's locks: requirements.lock, requirements-build.lock and requirements-nodeps.lock pin the whole tree the portable build freezes, by hash; the suite holds requirements*.txt to them, \"Build App.bat\" to installing them with --require-hashes, and every BUILD-INFO.txt under build-portable/dist to freezing nothing else. Decision 191 also: every pip install in every batch file and workflow is --require-hashes from a .lock and none upgrades pip; the build runs from a v* tag only, with a job guard; the checksum step follows the smoke checks and the upload carries the zip and its .sha256; the launcher installs nothing and speaks the lock tool's sentence; every batch file sets NoDefaultCurrentDirectoryInExePath first and calls Windows' own tools by path (E-10); every checkout keeps no credentials (F-12); the audit workflow is scheduled, Linux-only and never on a push."
@@ -7322,8 +7387,8 @@
       "id": "tests/test_lockfiles.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "60b2df311f76ba11",
-      "lines": 342,
+      "sha256": "6247631c211629cd",
+      "lines": 375,
       "exports": [
         "DIGEST_A",
         "DIGEST_B",
@@ -7333,6 +7398,7 @@
         "test_a_direct_pin_the_lock_holds_at_another_version_is_named",
         "test_a_direct_pin_whose_marker_differs_is_named",
         "test_a_fabricated_repository_that_agrees_is_clean",
+        "test_a_mac_is_told_to_run_setup_command_and_never_setup_bat",
         "test_a_package_pinned_twice_under_one_marker_is_named",
         "test_a_pin_missing_its_hash_is_named",
         "test_a_range_in_a_lock_is_refused_with_its_line",
@@ -7350,6 +7416,7 @@
         "test_the_gui_opencv_is_in_no_lock",
         "test_the_native_engines_are_pinned_in_the_runtime_lock",
         "test_the_verify_command_prints_the_sentence_and_exits_one",
+        "test_this_machine_is_a_mac_only_where_the_platform_says_so",
         "test_verify_is_quiet_when_the_stamp_matches",
         "test_verify_names_setup_when_a_lock_changed_after_the_stamp",
         "test_verify_names_setup_when_the_npm_lock_changed_after_the_stamp",
@@ -9363,8 +9430,8 @@
       "id": "tests/test_single_source.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "94567525094921a1",
-      "lines": 4876,
+      "sha256": "c3cd7aa91cbee7b1",
+      "lines": 4884,
       "exports": [
         "AFTER_WHAT",
         "CONSOLE_EXEMPT",
@@ -9575,7 +9642,7 @@
         "CONSOLE_GUARDED": "('rollover', 'filer', 'scanner', 'registry', 'review', 'scaffold', 'store', 'reminder', 'runner', 'router', 'content_check', 'view', 'ledger', 'validators', 'containers', 'ocr', 'door', 'checkpoint', 'locking', 'after_install')",
         "NUMBER_WORDS": "('ten', 'eleven', 'twelve', 'thirteen', 'fourteen', 'fifteen', 'sixteen', 'seventeen', 'eighteen', 'nineteen', 'twenty')",
         "STRUCK": "('open it yourself', 'open it on this machine', 'on this machine, and drop', \"drop any document you find into the client's folder\", \"drop the documents in the client's folder\", \"drop the documents you find in the client's folder\", \"drop a copy in the client's folder\", \"drop it in the client's folder\", 'the record itself is the truth', 'nothing is lost either way', 'and run `rebuild` \u2014 nothing is lost')",
-        "ONE_TIME_STEP_DOCUMENTS": "('README.md', 'docs/runbook.md', 'Setup.bat', 'Start App.bat')"
+        "ONE_TIME_STEP_DOCUMENTS": "('README.md', 'docs/runbook.md', 'Setup.bat', 'Start App.bat', 'setup.command', 'start.command')"
       }
     },
     {
@@ -10257,15 +10324,17 @@
       "id": "tools/lockfiles.py",
       "type": "tool",
       "layer": "tooling",
-      "sha256": "3e3f38a41a647e57",
-      "lines": 421,
+      "sha256": "22be5d07bf48f403",
+      "lines": 443,
       "cli": "python -m tools.lockfiles",
       "exports": [
         "CHANGED",
+        "CHANGED_MAC",
         "GUI_OPENCV",
         "LockError",
         "NATIVE_ENGINES",
         "NOT_SET_UP",
+        "NOT_SET_UP_MAC",
         "NPM_LOCK",
         "OSV_BATCH",
         "OSV_BATCH_SIZE",
@@ -10281,6 +10350,7 @@
         "hash_locks",
         "main",
         "normalise",
+        "on_a_mac",
         "read_lock",
         "stamp",
         "verify"
@@ -10296,10 +10366,12 @@
         "OSV_BATCH": "'https://api.osv.dev/v1/querybatch'",
         "OSV_BATCH_SIZE": "1000",
         "NOT_SET_UP": "\"The app's private Python is not set up on this computer. Run Setup.bat once (it needs the internet), then start the app again.\"",
-        "CHANGED": "'The package list changed since Setup ran on this computer. Run Setup.bat again, then start the app again.'"
+        "CHANGED": "'The package list changed since Setup ran on this computer. Run Setup.bat again, then start the app again.'",
+        "NOT_SET_UP_MAC": "\"The app's private Python is not set up on this computer. Run setup.command once (it needs the internet), then start the app again.\"",
+        "CHANGED_MAC": "'The package list changed since setup.command ran on this computer. Run setup.command again, then start the app again.'"
       },
       "role": "The supply-chain lock (decision 191), standard library only: `hash` fills every lock's hashes from PyPI's JSON API, `check` holds the locks to the requirements*.txt pins (every line hashed, no name twice under one marker, the GUI OpenCV in none), `stamp`/`verify` record and compare the locks inside Setup.bat's .venv, `audit` asks OSV about every locked Python and npm package and fails a native engine (NATIVE_ENGINES: pillow, pypdfium2) whose first release newer than the pin is older than STALE_DAYS - measured from the first newer release, not the newest (review S-1).",
-      "notes": "hash and audit reach the network; they are a maintainer's and the weekly workflow's commands, never on the app's or the scheduled pass's path, and nothing under tracker/ imports this module (the fourth standing rule; tests/test_lockfiles.py checks). The network is one injectable fetch(url, body), so the tests run on fabricated answers. Rejected: pip-tools and uv pip compile (each re-resolves and would move pins), pip-audit (one more package to lock and trust). verify returns NOT_SET_UP when there is no stamp and CHANGED when a lock or app/package-lock.json differs from it; the CLI prints the sentence and exits 1, which is what Start App.bat shows."
+      "notes": "hash and audit reach the network; they are a maintainer's and the weekly workflow's commands, never on the app's or the scheduled pass's path, and nothing under tracker/ imports this module (the fourth standing rule; tests/test_lockfiles.py checks). The network is one injectable fetch(url, body), so the tests run on fabricated answers. Rejected: pip-tools and uv pip compile (each re-resolves and would move pins), pip-audit (one more package to lock and trust). verify returns NOT_SET_UP when there is no stamp and CHANGED when a lock or app/package-lock.json differs from it; the CLI prints the sentence and exits 1, which is what Start App.bat shows. SPEC-mac R11: on a Mac (on_a_mac(), the one seam, sys.platform read when called; this tool imports nothing of tracker) verify returns NOT_SET_UP_MAC and CHANGED_MAC, the same two sentences naming setup.command for Setup.bat, and start.command prints the first word for word."
     },
     {
       "id": "tools/repo_map.py",
@@ -10620,6 +10692,54 @@
       "source": "derived"
     },
     {
+      "from": "artifact:build-mac.sh",
+      "to": "api_entry.py",
+      "type": "freezes",
+      "source": "curated"
+    },
+    {
+      "from": "artifact:build-mac.sh",
+      "to": "artifact:icon.icns",
+      "type": "reads",
+      "source": "curated"
+    },
+    {
+      "from": "artifact:build-mac.sh",
+      "to": "artifact:the .dmg",
+      "type": "writes",
+      "source": "curated"
+    },
+    {
+      "from": "artifact:build-mac.sh",
+      "to": "artifact:the Mac app bundle",
+      "type": "writes",
+      "source": "curated"
+    },
+    {
+      "from": "artifact:setup.command",
+      "to": "artifact:start.command",
+      "type": "precedes",
+      "source": "curated"
+    },
+    {
+      "from": "artifact:setup.command",
+      "to": "tools/lockfiles.py",
+      "type": "runs",
+      "source": "curated"
+    },
+    {
+      "from": "artifact:start.command",
+      "to": "app/main.js",
+      "type": "launches",
+      "source": "curated"
+    },
+    {
+      "from": "artifact:start.command",
+      "to": "tools/lockfiles.py",
+      "type": "runs",
+      "source": "curated"
+    },
+    {
       "from": "docs/ROADMAP.md",
       "to": "tracker/__init__.py",
       "type": "documents",
@@ -10678,6 +10798,12 @@
       "to": "pilot/brand/tax-document-console/source/render.py",
       "type": "imports",
       "source": "derived"
+    },
+    {
+      "from": "pilot/brand/tax-document-console/source/export.py",
+      "to": "artifact:icon.icns",
+      "type": "writes",
+      "source": "curated"
     },
     {
       "from": "pilot/brand/tax-document-console/source/ico.py",

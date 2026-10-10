@@ -10,6 +10,7 @@ never opens a socket. The packages and advisories below are fabricated.
 from __future__ import annotations
 
 import json
+import sys
 from datetime import date
 from pathlib import Path
 
@@ -18,9 +19,11 @@ import pytest
 from tools import lockfiles
 from tools.lockfiles import (
     CHANGED,
+    CHANGED_MAC,
     LOCK_FILES,
     NATIVE_ENGINES,
     NOT_SET_UP,
+    NOT_SET_UP_MAC,
     NPM_LOCK,
     OSV_BATCH,
     STALE_DAYS,
@@ -37,6 +40,13 @@ REPO = Path(__file__).resolve().parent.parent
 DIGEST_A = "a" * 64
 DIGEST_B = "b" * 64
 DIGEST_C = "c" * 64
+
+
+@pytest.fixture(autouse=True)
+def _not_a_mac(monkeypatch):
+    """The Windows sentences are asserted below on whatever machine runs the
+    suite, a Mac included; a test that is about a Mac says so itself."""
+    monkeypatch.setattr(lockfiles, "on_a_mac", lambda: False)
 
 
 def fake_repo(root: Path, overrides: dict[str, str] | None = None) -> Path:
@@ -194,6 +204,29 @@ def test_verify_names_setup_when_the_npm_lock_changed_after_the_stamp(tmp_path):
     stamp(venv, repo)
     (repo / NPM_LOCK).write_text("{}", encoding="utf-8")
     assert verify(venv, repo) == CHANGED
+
+
+def test_a_mac_is_told_to_run_setup_command_and_never_setup_bat(tmp_path, monkeypatch):
+    """SPEC-mac R11: where Setup.bat does not exist, the launcher's two
+    sentences name the file that does."""
+    monkeypatch.setattr(lockfiles, "on_a_mac", lambda: True)
+    repo = fake_repo(tmp_path / "repo")
+    venv = tmp_path / "venv"
+    venv.mkdir()
+    assert verify(venv, repo) == NOT_SET_UP_MAC
+    stamp(venv, repo)
+    assert verify(venv, repo) is None
+    lock = repo / "requirements.lock"
+    lock.write_text(lock.read_text(encoding="utf-8") + "# a comment is a change too\n", encoding="utf-8")
+    assert verify(venv, repo) == CHANGED_MAC
+    for sentence in (NOT_SET_UP_MAC, CHANGED_MAC):
+        assert "setup.command" in sentence and ".bat" not in sentence
+    assert NOT_SET_UP_MAC == NOT_SET_UP.replace("Setup.bat", "setup.command")
+
+
+def test_this_machine_is_a_mac_only_where_the_platform_says_so(monkeypatch):
+    monkeypatch.undo()
+    assert lockfiles.on_a_mac() is (sys.platform == "darwin")
 
 
 def test_the_verify_command_prints_the_sentence_and_exits_one(tmp_path, capsys, monkeypatch):

@@ -37,10 +37,12 @@ The commands, none of which the app or the scheduled pass ever runs:
   a maintainer's command, after a pin moves).
 * ``check`` proves the locks agree with the ``requirements*.txt`` pins and
   that every line carries a hash (no network; the suite runs it).
-* ``stamp <venv>`` / ``verify <venv>`` - ``Setup.bat`` records the hash of
-  each lock (and of ``app/package-lock.json``) in the private environment it
-  made; ``Start App.bat`` refuses to start, in one sentence, when the locks
-  have changed since, because the launcher never installs anything.
+* ``stamp <venv>`` / ``verify <venv>`` - ``Setup.bat`` (``setup.command`` on
+  a Mac) records the hash of each lock (and of ``app/package-lock.json``) in
+  the private environment it made; ``Start App.bat`` (``start.command``)
+  refuses to start, in one sentence, when the locks have changed since,
+  because the launcher never installs anything. On a Mac the sentence names
+  ``setup.command``, not a file that is not there.
 * ``audit`` asks OSV about every pin in the four locks and every package in
   ``app/package-lock.json`` (network; the weekly workflow). It also enforces
   the native-engine cadence: ``NATIVE_ENGINES`` below.
@@ -105,6 +107,14 @@ NOT_SET_UP = ("The app's private Python is not set up on this computer. "
               "Run Setup.bat once (it needs the internet), then start the app again.")
 CHANGED = ("The package list changed since Setup ran on this computer. "
            "Run Setup.bat again, then start the app again.")
+#: The same two sentences for a Mac, where the file a person runs is
+#: ``setup.command`` and Setup.bat is not there to run (SPEC-mac R11). Said
+#: instead of, never beside, the Windows ones; ``start.command`` and the
+#: shell's ``NOT_SET_UP_MAC`` hold the first word for word.
+NOT_SET_UP_MAC = ("The app's private Python is not set up on this computer. "
+                  "Run setup.command once (it needs the internet), then start the app again.")
+CHANGED_MAC = ("The package list changed since setup.command ran on this computer. "
+               "Run setup.command again, then start the app again.")
 
 _PIN = re.compile(r"^([A-Za-z0-9][A-Za-z0-9._-]*)==([^\s;]+)\s*(?:;\s*(.+?))?\s*$")
 _HASH = re.compile(r"^--hash=sha256:([0-9a-f]{64})$")
@@ -239,14 +249,26 @@ def stamp(venv: Path, repo: Path = ROOT) -> Path:
     return target
 
 
+def on_a_mac() -> bool:
+    """Whether this is a Mac, asked when called: the one seam the two Mac
+    sentences go through (a test stands in for a Mac by patching it, never
+    the platform). This tool imports nothing of ``tracker`` - the fourth
+    standing rule keeps the network out of it, and a launcher that read the
+    package to ask would load all of it to say one sentence."""
+    return sys.platform == "darwin"
+
+
 def verify(venv: Path, repo: Path = ROOT) -> str | None:
     """The launcher's sentence when the environment is not the locks' own; None when it is."""
+    mac = on_a_mac()
     target = venv / STAMP_NAME
     try:
         recorded = json.loads(target.read_text(encoding="utf-8")).get("files")
     except (OSError, ValueError, AttributeError):
-        return NOT_SET_UP
-    return None if recorded == _fingerprint(repo) else CHANGED
+        return NOT_SET_UP_MAC if mac else NOT_SET_UP
+    if recorded == _fingerprint(repo):
+        return None
+    return CHANGED_MAC if mac else CHANGED
 
 
 # ----------------------------------------------------------------- network ----

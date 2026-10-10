@@ -41,6 +41,7 @@ def test_the_product_name_has_one_home():
     # The renderer and the shell read it at runtime; nothing else types it.
     for rel in ("app/renderer/index.html", "app/renderer/app.js", "app/renderer/style.css",
                 "Build App.bat", "Start App.bat", "docs/workflow.md",
+                "setup.command", "start.command", "build-mac.sh", "app/assets/Info-mac.plist",
                 "tracker/settings.py", "tracker/scheduling.py"):
         assert package["productName"] not in read(rel), rel
     # The two documents titled after the product carry it in their title only.
@@ -574,6 +575,8 @@ def test_ci_tests_the_python_floor_pyproject_declares():
     # Setup.bat is where a machine's Python is first asked (decision 191).
     assert f"Install Python {floor}+" in read("Setup.bat")
     assert f"sys.version_info < ({floor.replace('.', ', ')})" in read("Setup.bat")
+    assert f"Install Python {floor}+" in read("setup.command")
+    assert f"sys.version_info < ({floor.replace('.', ', ')})" in read("setup.command")
     # Prose says "the floor pyproject.toml declares"; nobody types the number.
     for rel in ("README.md", "docs/ROADMAP.md", "CLAUDE.md", "docs/workflow.md"):
         assert not re.search(r"Python 3\.\d+\+?", read(rel)), rel
@@ -1703,6 +1706,8 @@ def test_the_build_is_made_from_what_is_committed():
     assert "*.spec" not in ignored and "app/package-lock.json" not in ignored
     assert "npm ci" in read("Build App.bat") and "npm ci" in read("Setup.bat")
     assert "npm install" not in read("Build App.bat") and "npm install" not in read("Setup.bat")
+    assert "npm ci" in read("build-mac.sh") and "npm ci" in read("setup.command")
+    assert "npm install" not in read("build-mac.sh") and "npm install" not in read("setup.command")
     build = read("Build App.bat")
     assert "requirements-build.lock" in build and "api_entry.spec" in build
     assert "pip install pyinstaller" not in build            # pinned in requirements-build.txt, locked by hash
@@ -2477,11 +2482,12 @@ def test_the_shell_lstats_before_it_opens_and_refuses_a_link_or_a_changed_kind()
 
 #: Where a person is told what to do: the two documents and the two batch
 #: files a person double-clicks (decision 209, R5).
-ONE_TIME_STEP_DOCUMENTS = ("README.md", "docs/runbook.md", "Setup.bat", "Start App.bat")
+ONE_TIME_STEP_DOCUMENTS = ("README.md", "docs/runbook.md", "Setup.bat", "Start App.bat",
+                           "setup.command", "start.command")
 #: The first word of a clause that is an instruction to a person.
 INSTRUCTIONS = frozenset({"press", "run", "click", "double-click", "type", "open"})
 #: What "after installing" may be said with, within three words of "after".
-AFTER_WHAT = frozenset({"installing", "upgrading", "install", "upgrade", "setup", "setup.bat"})
+AFTER_WHAT = frozenset({"installing", "upgrading", "install", "upgrade", "setup", "setup.bat", "setup.command"})
 
 
 def one_time_step_clauses(text: str) -> list[str]:
@@ -2493,11 +2499,11 @@ def one_time_step_clauses(text: str) -> list[str]:
     three words by installing, upgrading or Setup; or a clause that is
     itself the lead-in "Once, after installing ..." (the review's S1, the
     shape of the base runbook's decision-187 heading). Wrapped lines are
-    joined (a ``rem`` prefix and Markdown list and quote markers dropped);
+    joined (a ``rem`` or ``#`` prefix and Markdown list and quote markers dropped);
     clauses end at ``.``, ``:``, ``;`` and blank lines."""
     lines = []
     for line in text.splitlines():
-        line = re.sub(r"^\s*rem(\s|$)", "", line, flags=re.I)
+        line = re.sub(r"^\s*(?:rem(?:\s|$)|#+\s*)", "", line, flags=re.I)
         line = re.sub(r"^\s*(?:[-*+>]|\d+\.)\s+", "", line)
         lines.append(line.strip())
     joined = "\n".join(lines)
@@ -2525,6 +2531,8 @@ def one_time_step_clauses(text: str) -> list[str]:
     ("Setup runs it once, after installing.", False),
     ("Press Repair the schedule to register it again.", False),
     ("Run Setup.bat once.", False),
+    ("Run setup.command once.", False),
+    ("# Double-click it once after `setup.command` finishes.", True),
     ("rem Double-click it once after `Setup.bat` finishes.", True),
     ("Open the app once a week after lunch.", False),
     # The review's S1: the base runbook's decision-187 lead-in, and the

@@ -25,6 +25,14 @@
 #     push to main: the office PC, which is Windows, runs the gate before
 #     the push. `labeled` with any other label runs nothing, and Linux
 #     never runs on `labeled`;
+#   * macOS is Windows's twin and runs only on a ready pull request
+#     labelled `macos` - on `ready_for_review`, or on `labeled` when the
+#     label added is `macos` - and never on a push to main, on a draft or on
+#     any other branch (SPEC-mac R18). A macOS minute bills at 10x a Linux
+#     one, so one ~15-minute gate run is about 150 Linux-minute
+#     equivalents: the label is the explicit ask, and only for work that
+#     touches the POSIX lock and durability, the Mac's homes and guards, the
+#     launchd schedule, or a darwin-only test;
 #   * a pull request based on another branch runs nothing, and retargeting
 #     it onto main starts nothing, so a stacked pull request stays a draft
 #     until it is retargeted, then is marked ready;
@@ -36,13 +44,13 @@
 # and both call .github/workflows/gate.yml so that the gate is written once.
 # On a pull request that did not ask for Windows the second job is skipped as
 # a whole — never started, never billed, and reported as skipped rather than
-# as a check that passed - reported only as "Windows", never as the gate's
-# own name, so no Windows check may be made a required status check: it would
-# wait forever on every unlabelled pull request. The same holds for Linux: a
-# Linux job skipped (on a label event) reports only as "Linux", never as the
-# required "Linux (3.11) / ..." and "Linux (3.14) / ..." names, so a skipped
-# run can never stand in for a real Linux pass. The timeout lives with the
-# steps, in gate.yml.
+# as a check that passed - reported only as "Windows" (and "macOS"), never as
+# the gate's own name, so no Windows or macOS check may be made a required
+# status check: it would wait forever on every unlabelled pull request. The
+# same holds for Linux: a Linux job skipped (on a label event) reports only
+# as "Linux", never as the required "Linux (3.11) / ..." and "Linux (3.14) /
+# ..." names, so a skipped run can never stand in for a real Linux pass. The
+# timeout lives with the steps, in gate.yml.
 #
 # The trade-off taken: main's Windows run, the old safety net, is gone. A
 # cloud session tests on Linux, so a Windows-only regression in an
@@ -109,4 +117,17 @@ jobs:
       # On the office's interpreter only: what Windows has to prove is how the
       # interpreter the office runs behaves there, not that the floor is still
       # the floor.
+      python-version: "3.14"
+
+  # macOS on a ready pull request that asked, by its label: when it is marked
+  # ready with the label on, or when the label is added to it (SPEC-mac R18).
+  # The `windows` job with `macos` in its condition and a Mac runner, and
+  # nothing else: no push to main, no draft, no other branch.
+  macos:
+    name: macOS
+    if: github.event_name == 'pull_request' && github.event.pull_request.draft == false && contains(github.event.pull_request.labels.*.name, 'macos') && (github.event.action == 'ready_for_review' || github.event.label.name == 'macos')
+    uses: ./.github/workflows/gate.yml
+    with:
+      os: macos-latest
+      # The office Mac's interpreter, as Windows runs the office PC's.
       python-version: "3.14"
