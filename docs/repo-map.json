@@ -1,6 +1,6 @@
 {
   "schema": 2,
-  "generated": "2026-10-09",
+  "generated": "2026-10-10",
   "generator": "tools/repo_map.py",
   "generator_sha256": "8acd85195c3c1023",
   "module_table_sha256": "61c5a0269ab6357a",
@@ -15,9 +15,9 @@
     "a person sends the draft"
   ],
   "counts": {
-    "nodes": 254,
+    "nodes": 255,
     "edges": 1229,
-    "reused": 205
+    "reused": 207
   },
   "node_types": [
     "artifact",
@@ -4505,6 +4505,13 @@
       "layer": "docs",
       "sha256": "e2006f3a8f20ffcd",
       "lines": 756
+    },
+    {
+      "id": "pilot/SPEC-mac.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "3a192980570c9c3b",
+      "lines": 152
     },
     {
       "id": "pilot/SPEC-rename.md",
