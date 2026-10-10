@@ -108,6 +108,7 @@ from tracker import (
     reminder,
     review,
     runner,
+    settings,
     store,
 )
 from tracker.containers import is_container
@@ -121,6 +122,7 @@ from tracker.filer import (
     FilingError,
     Spelling,
     StaleRowError,
+    _may_carry_code,
     assign_review_file,
     both_gone,
     dismiss_review_file,
@@ -1627,6 +1629,15 @@ ACTIVE_HELP = "No: Sorting Skips This Return"
 
 #: What the shell says when a reported path is no longer what it was.
 SHELL_NOT_OPENED = "Not Opened; It Has Changed"
+#: What the shell says on a Mac each time it opens a review copy that can
+#: carry code (P240, R8). Windows marks such a copy as from the internet so
+#: Office opens it in Protected View; a Mac has no mark that does that, so the
+#: copy opens normally, which is true to say, and the setting that stands in
+#: for the mark is Office's. Not a confirmation and not a refusal: the file has
+#: opened, and the sentence is for the next one.
+PROTECTED_VIEW_MAC = ("Protected View does not exist on a Mac, so this file opened normally. Keep "
+                      "macros off in Excel, Word and PowerPoint: Settings > Security > Macro "
+                      "Security > Disable all macros without notification.")
 
 
 def _vocab() -> dict:
@@ -1918,7 +1929,8 @@ def _vocab() -> dict:
         # defaults in main.js for a first start, and the error log it appends
         # a failed child's stderr to: beside the tracker's database, a path
         # the shell never builds itself.
-        "shell": {"not_opened": SHELL_NOT_OPENED, "killed": SHELL_KILLED,
+        "shell": {"not_opened": SHELL_NOT_OPENED, "protected_view_mac": PROTECTED_VIEW_MAC,
+                  "killed": SHELL_KILLED,
                   "killed_write": SHELL_KILLED_WRITE, "killed_write_note": SHELL_KILLED_WRITE_NOTE,
                   "killed_read": SHELL_KILLED_READ,
                   "killed_at": SHELL_KILLED_AT, "no_reply": SHELL_NO_REPLY,
@@ -2328,6 +2340,22 @@ def _review_copy_key(entry: IndexEntry) -> str:
     if review_bucket(entry) != BUCKET_DOCUMENT or entry.code not in READ_AND_PARKED_CODES:
         return ""
     return f"review_copy {ledger_key(entry)}"
+
+
+def _code_copies(engagement: Path, entries: list[IndexEntry]) -> list[str]:
+    """The paths of the review copies the card can open that may carry code
+    (P240, R8): the ones ``filer._may_carry_code`` marks for Protected View on
+    Windows - a macro-capable Office file, an email, a zip.
+
+    Nothing on Windows or Linux: there the copy is marked, and there is nothing
+    to say. On a Mac, ``fsio.mark_from_internet`` still returns False and the
+    copy is made unmarked as before; this is the sentence that stands in for
+    the mark. A path is listed whatever the file proves to be, because the
+    question is the Windows one, asked of the same copy."""
+    if settings.host_system() != "darwin":
+        return []
+    copies = (locate(engagement, e.prepared_location) for e in entries if _review_copy_key(e))
+    return [str(copy) for copy in copies if _may_carry_code(copy)]
 
 
 def _filed_copy_keys(entry: IndexEntry) -> list[str]:
@@ -3190,6 +3218,10 @@ def _state(engagement: Path) -> dict:
             **{key: str(locate(engagement, moved_to(e))) for e in entries
                if (key := _moved_copy_key(e))},
         },
+        # The openable paths whose copy Windows would have marked as from the
+        # internet (R8), so the shell says PROTECTED_VIEW_MAC each time it
+        # opens one. On a Mac only; elsewhere the mark itself is the answer.
+        "carries_code": _code_copies(engagement, entries),
     }
 
 

@@ -34,8 +34,9 @@ app.setPath("userData", path.join(app.getPath("appData"), PKG.config.userDataNam
 // Python that Setup.bat made in the checkout's .venv, by its full path
 // (decision 191): never a bare "python", which is whatever the search path
 // finds first, and never the machine's own Python, which Setup never touches.
-// The settings file (the clients root) lives beside the app either way: next
-// to the packaged executable, or in the repository root from source.
+// The settings file (the clients root) lives beside the app: next to the
+// packaged executable, or in the repository root from source (SETTINGS_DIR
+// below says where it goes on a Mac).
 const FROZEN_API = app.isPackaged
   ? path.join(process.resourcesPath, API_NAME, `${API_NAME}.exe`)
   : null;
@@ -46,7 +47,43 @@ const SOURCE_PYTHON = process.platform === "win32"
 const NOT_SET_UP =
   "The app's private Python is not set up on this computer. " +
   "Run Setup.bat once (it needs the internet), then start the app again.";
-const SETTINGS_DIR = app.isPackaged ? path.dirname(process.execPath) : REPO_ROOT;
+// Where the settings file lives (decision 131). Beside the executable on
+// Windows; on a Mac, in the product's folder in Application Support instead,
+// because a Mac app is a bundle replaced whole by dragging a newer one over
+// it (P155), and a file inside it would go with it, losing the clients root
+// (SPEC-mac R2). Word for word tracker.settings.mac_settings_dir:
+// ~/Library/Application Support/<productName>, pinned equal by a test. This
+// is not Electron's own userData folder above, which keeps its earlier name.
+const SETTINGS_DIR = !app.isPackaged
+  ? REPO_ROOT
+  : process.platform === "darwin"
+    ? path.join(app.getPath("appData"), PRODUCT_NAME)
+    : path.dirname(process.execPath);
+
+// The hardware floor (SPEC-mac R6, P243): Apple silicon on macOS 14 or later.
+// A Drag-to-Applications install has no installer program to refuse with, so
+// the first code that runs says this and stops, before the one-instance lock
+// (which writes to userData) and before any window. Word for word
+// tracker.settings.MAC_FLOOR; the API makes the same check for the schedule,
+// which runs it without this shell. macOS 14 is Darwin 23.
+const MAC_FLOOR =
+  "{product} needs a Mac with Apple silicon running macOS 14 or later; " +
+  "this Mac has {what}, so the app stops here and changes nothing.";
+const MAC_FLOOR_DARWIN = 23;
+
+// MAC_FLOOR filled with what this Mac has, or "" where this is not a Mac or
+// it meets the floor. The macOS release is named from the Darwin major
+// version os.release() gives: 20 is macOS 11 and 25 is macOS 26.
+function macFloorRefusal() {
+  if (process.platform !== "darwin") return "";
+  const darwin = parseInt(os.release().split(".")[0], 10);
+  const silicon = process.arch === "arm64";
+  if (silicon && darwin >= MAC_FLOOR_DARWIN) return "";
+  const chip = silicon ? "Apple silicon" : process.arch === "x64" ? "an Intel processor" : process.arch;
+  const macos = Number.isNaN(darwin) ? "a macOS it cannot name"
+    : `macOS ${darwin >= 25 ? darwin + 1 : darwin >= 20 ? darwin - 9 : `10.${darwin - 4}`}`;
+  return MAC_FLOOR.replace("{product}", PRODUCT_NAME).replace("{what}", `${chip} running ${macos}`);
+}
 
 // A command that outlives this is killed and reported, so the button it
 // disabled comes back. A pass says its own limit in its first progress line
@@ -105,11 +142,21 @@ const passes = new Map();
 // The renderer never names a path of its own, so anything else is refused.
 const openable = new Map();
 let pathKinds = {};           // vocab.path_kinds, once seen
+// The paths among them whose copy Windows would have marked as from the
+// internet (state.carries_code, SPEC-mac R8): a Mac cannot mark one, so each
+// time it opens one the page says shellSays.protected_view_mac. Only ever
+// added to, like `openable`: saying it once too often is one more notice, and
+// saying it once too few is the failure.
+const carriesCode = new Set();
 // The shell's own sentences (decision 193), keyed as vocab.shell keys them:
 // learned from it, with these defaults - word for word tracker.api's SHELL_*
 // - for a first start. learn() copies every key the API sent as a string.
 const shellSays = {
   not_opened: "Not Opened; It Has Changed",
+  protected_view_mac:
+    "Protected View does not exist on a Mac, so this file opened normally. Keep macros off in " +
+    "Excel, Word and PowerPoint: Settings > Security > Macro Security > Disable all macros " +
+    "without notification.",
   killed: "Sort Stopped: Ran Too Long.",
   killed_write: "Change Stopped: Ran Too Long.",
   killed_write_note: "It May Be Partly Done.",
@@ -257,6 +304,10 @@ function learn(result) {
     openable.set(errorLog, "file");   // Help > Open error log, through openPath (5.5)
   }
   // A row's key is "word row" (a file name on the page), and its kind is the word's.
+  const code = (result && result.carries_code) || (result && result.state && result.state.carries_code);
+  if (Array.isArray(code)) {
+    for (const p of code) if (typeof p === "string" && p) carriesCode.add(p);
+  }
   const paths = (result && result.paths) || (result && result.state && result.state.paths);
   if (paths && typeof paths === "object") {
     for (const [key, value] of Object.entries(paths)) {
@@ -547,7 +598,16 @@ async function openPath(p, reveal) {
   if (typeof p !== "string" || !openable.has(p)) {
     return "That path is not one the app reported; nothing was opened.";
   }
-  return openChecked(p, openable.get(p), reveal === "reveal");
+  const failed = await openChecked(p, openable.get(p), reveal === "reveal");
+  // R8 (P240): the file has opened, normally, and a Mac has no Protected View
+  // to open it in. The reply is then not "" but the sentence, for the page to
+  // say in the notice where Open's own result appears (renderer/shell.js):
+  // each time, nothing waits on it, nothing is refused. Only the path the API
+  // listed in state.carries_code, only opened and never revealed.
+  if (!failed && reveal !== "reveal" && process.platform === "darwin" && carriesCode.has(p)) {
+    return { says: shellSays.protected_view_mac };
+  }
+  return failed;
 }
 
 // The check itself, shared with Open error log's fallback, which is the
@@ -878,7 +938,10 @@ function createWindow() {
 // first saved over the other's save. So the shell takes the single-instance
 // lock; a launch that cannot have it quits before any window is made, and
 // the running one answers it by bringing its window forward.
-if (!app.requestSingleInstanceLock()) {
+const floorRefusal = macFloorRefusal();
+if (floorRefusal) {
+  stopAtTheFloor(floorRefusal);
+} else if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
   // Before the window opens: Windows groups a running window with its
@@ -902,6 +965,14 @@ if (!app.requestSingleInstanceLock()) {
         if (result && result.ran && !win.isDestroyed()) win.webContents.send(LAUNCH_DONE_CHANNEL);
       })
       .catch(() => null);
+  });
+}
+// R6: said once the app is ready (a message box needs it), and nothing else
+// runs: no lock, no window, no tracker, nothing written.
+function stopAtTheFloor(sentence) {
+  app.whenReady().then(() => {
+    dialog.showMessageBoxSync({ type: "error", message: sentence, buttons: ["OK"] });
+    app.quit();
   });
 }
 // A switch between light and dark while the app is open sets the window's

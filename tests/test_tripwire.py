@@ -116,6 +116,21 @@ def test_no_test_opens_the_real_data_home(tmp_path):
     assert not mine.is_relative_to(tmp_path)                 # a root at tmp_path never holds it
 
 
+def test_the_tripwire_arms_a_macs_real_data_home_too(tmp_path, monkeypatch):
+    """SPEC-mac R1: the place the session arms is :func:`settings.default_data_home`,
+    whatever the system, so on a Mac it is the account's Application Support
+    folder - found with an override set, and without reading ``$XDG_STATE_HOME``,
+    which no Mac sets. Nothing is made there."""
+    monkeypatch.setattr(settings, "host_system", lambda: "darwin")
+    monkeypatch.setattr(settings, "drive_type", lambda _path: settings.DRIVE_FIXED)
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+    monkeypatch.setenv(settings.ENV_DATA_HOME, str(tmp_path / "override"))
+    real = settings.default_data_home()
+    assert real == tmp_path / "Library" / "Application Support" / settings.DATA_HOME_NAME
+    assert not real.exists()
+
+
 def test_the_ignore_file_knows_every_place_the_tripwire_guards(monkeypatch):
     """A place the wire guards is a place a real file lands in a checkout;
     the ignore file must keep each out of a commit, by the same name."""

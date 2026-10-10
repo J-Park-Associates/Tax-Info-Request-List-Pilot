@@ -15,7 +15,7 @@ from pathlib import Path
 
 from tests.conftest import child_env, make_engagement
 from tracker.manifest import RequestItem
-from tracker.runner import RUNNER_MODE_FLAG, SETTINGS_FLAG
+from tracker.runner import PRODUCT_FLAG, RUNNER_MODE_FLAG, SETTINGS_FLAG
 from tracker.settings import ENV_PRODUCT_NAME, ENV_SETTINGS_DIR
 
 REPO = Path(__file__).resolve().parent.parent
@@ -157,3 +157,72 @@ def test_the_entry_given_the_spare_flag_waits_for_its_command():
     assert warm.stdout == fresh.stdout and warm.stdout.strip().startswith(b"{")
     idle = entry([SPARE_FLAG], b"")
     assert idle.returncode == 0 and idle.stdout == b""
+
+
+def _on_a_mac(monkeypatch, *, machine: str, version: str):
+    """This process standing in for a Mac, through the seams the entry reads
+    when it runs: the system, and the machine and macOS version it reports."""
+    import platform
+
+    from tracker import settings
+
+    monkeypatch.setattr(settings, "host_system", lambda: "darwin")
+    monkeypatch.setattr(platform, "machine", lambda: machine)
+    monkeypatch.setattr(platform, "mac_ver", lambda: (version, ("", "", ""), machine))
+
+
+def _run_the_entry(monkeypatch, args: list[str]) -> tuple[object, list[str]]:
+    """Run api_entry.py as ``__main__`` in this process with every part it can
+    start replaced by one that records the call; its exit code and the calls
+    made, in order."""
+    import runpy
+
+    from tracker import api, runner
+
+    calls: list[str] = []
+    monkeypatch.setattr(runner, "main", lambda argv: calls.append("runner") or 0)
+    monkeypatch.setattr(api, "main", lambda argv: calls.append("api") or 0)
+    monkeypatch.setattr(api, "spare", lambda: calls.append("spare") or 0)
+    monkeypatch.setattr(sys, "argv", ["api_entry.py", *args])
+    try:
+        runpy.run_path(str(REPO / "api_entry.py"), run_name="__main__")
+    except SystemExit as exc:
+        return exc.code, calls
+    return None, calls
+
+
+def test_a_mac_below_the_floor_is_refused_before_anything_runs(monkeypatch, capsys, tmp_path):
+    """SPEC-mac R6: Apple silicon on macOS 14 or later, or the entry says so on
+    stderr and exits 1 - for the API, the scheduled job and the setup door
+    alike - having started none of them and made nothing."""
+    from tracker import settings
+    from tracker.runner import SETUP_MODE_FLAG
+
+    monkeypatch.setenv(settings.ENV_DATA_HOME, str(tmp_path / "data"))
+    for machine, version, what in (("arm64", "13.6.1", "Apple silicon running macOS 13.6.1"),
+                                   ("x86_64", "14.5", "an Intel processor running macOS 14.5"),
+                                   ("arm64", "", "Apple silicon running a macOS it cannot name")):
+        _on_a_mac(monkeypatch, machine=machine, version=version)
+        for args in (["templates"], [RUNNER_MODE_FLAG, str(tmp_path)], [SETUP_MODE_FLAG], ["--spare"]):
+            assert _run_the_entry(monkeypatch, args) == (1, [])        # exit 1, nothing started
+            assert capsys.readouterr().err == settings.MAC_FLOOR.format(
+                product=settings.product_name(), what=what) + "\n"
+        # The scheduled job and the installer's door are told the product's name on
+        # their command lines; the sentence names the product they were told.
+        for args in ([RUNNER_MODE_FLAG, str(tmp_path), PRODUCT_FLAG, "Told Product"],
+                     [SETUP_MODE_FLAG, PRODUCT_FLAG, "Told Product"]):
+            assert _run_the_entry(monkeypatch, args) == (1, [])
+            assert capsys.readouterr().err == settings.MAC_FLOOR.format(product="Told Product", what=what) + "\n"
+    assert not (tmp_path / "data").exists()
+
+
+def test_a_mac_at_the_floor_or_another_system_runs_the_entry_as_before(monkeypatch, capsys):
+    from tracker.runner import RUNNER_MODE_FLAG as job
+
+    _on_a_mac(monkeypatch, machine="arm64", version="14.0")
+    assert _run_the_entry(monkeypatch, ["templates"]) == (0, ["api"])
+    assert _run_the_entry(monkeypatch, [job, "x"]) == (0, ["runner"])
+    _on_a_mac(monkeypatch, machine="x86_64", version="10.13")
+    monkeypatch.setattr("tracker.settings.host_system", lambda: "nt")
+    assert _run_the_entry(monkeypatch, ["templates"]) == (0, ["api"])
+    assert capsys.readouterr().err == ""
