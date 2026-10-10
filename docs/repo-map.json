@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 255,
     "edges": 1229,
-    "reused": 206
+    "reused": 204
   },
   "node_types": [
     "artifact",
@@ -2080,8 +2080,8 @@
       "id": "tracker/ocr.py",
       "type": "module",
       "layer": "core",
-      "sha256": "e0c5217de71a3b8e",
-      "lines": 1231,
+      "sha256": "1053c85c1ca94d44",
+      "lines": 1356,
       "cli": "python -m tracker.ocr",
       "exports": [
         "CHILD_EXIT_SECONDS",
@@ -2094,6 +2094,8 @@
         "GPU_FAULT_WARNING",
         "GPU_PACK_DIR_NAME",
         "GRAPHICS_CARD_CHILD_MEMORY",
+        "MEMORY_UNREADABLE",
+        "MEMORY_WATCH_SECONDS",
         "MODEL_DIR_NAME",
         "ORPHANED_EXIT_CODE",
         "OUT_OF_MEMORY_EXIT_CODE",
@@ -2145,6 +2147,8 @@
         "READER_PATH_LIMIT": "240",
         "READER_PATH_WARNING": "\"Move the app to a shorter folder, for example C:\\\\JPA App; scans can't be read from here\"",
         "DOCUMENTS_PER_CHILD": "100",
+        "MEMORY_WATCH_SECONDS": "0.5",
+        "MEMORY_UNREADABLE": "\"the reading's memory could not be read ({reason}); its memory limit is not enforced\"",
         "WARM_UP_STOP_SECONDS": "120.0",
         "CHILD_EXIT_SECONDS": "30.0",
         "ORPHANED_EXIT_CODE": "86",
@@ -2153,7 +2157,7 @@
         "SCRATCH_ENV": "('TMP', 'TEMP', 'TMPDIR')"
       },
       "role": "The reader (decision 169): RapidOCR on ONNX Runtime with its three models shipped in the app, on the graphics card when the pack beside the app works and on the processor otherwise - and the pass's one long-lived reading child that every parse of a client's file runs in.",
-      "notes": "Rulings 1-3 and 6, R-2 and R-4 of SPEC-169. Engine: _build_engine() names every model by path (models_folder(), inside the rapidocr package, collected as data by api_entry.spec) and _refuse_downloads() replaces rapidocr's DownloadFile.run with a refusal, so nothing is ever fetched; rapidocr imports requests at load time for that downloader, which tests/test_layers.py allows and tests/test_ocr.py pins to open no socket in a full read. Device: gpu_pack() is the gpu-runtime folder beside the frozen exe (never from source); none means the processor with no CUDA request at all (onnxruntime-gpu 'offers' CUDA everywhere, so offered is never the test). With a pack, _on_the_card() calls onnxruntime.preload_dlls() on it, builds asking for CUDA, requires each of SESSIONS (text_det, text_cls, text_rec) to have CUDAExecutionProvider first, and runs _self_test() on a line drawn in memory; any failure is the processor plus PACK_UNUSABLE (a run-log line, not a warning). read_page(): any exception from the card's engine is a fault (the card poisons the process - 'CUDA failure 999'): the engine is dropped, the processor's built, the same page read again, processor_only() for the rest of the pass, and a ('gpu-fault', file) note becomes GPU_FAULT_WARNING once in the pass; reset() lets the next pass try the card. _upright_lines() is ruling 6's seam: lines in reading order from the boxes (the harness's lines_from_boxes), never a turn. The child: ReadingChild is one spawned process serving jobs one at a time over three pipes (jobs, answers, lifeline), saying 'started' before each job touches a file, answering with take_notes(); a job it cannot unpickle exits UNREADABLE_JOB_EXIT_CODE (the machine's, before 'started'). _watch_the_pass/_orphaned (the lifeline) and _kill_on_close_job/_close_job (the Windows job object) and _end() (the whole tree) moved here from content_check. Session (reading_session(), run_in_child()) owns the child for a pass - runner.run_registry with settle=True, which with a pack starts the child at once for warm_up() so the run log's first line is settled - or for one app command (api.main); a reading with none open gets a session of its own. It replaces the child after a stop, a crash, a child that never started, a fault on the card and every DOCUMENTS_PER_CHILD (100) documents. content_check.in_a_child() words each Outcome. The CLI (python -m tracker.ocr [photo]) says which reader this machine uses and times one reading. Decision 189 (SPEC-161 A-F9): awake_clock() - QueryUnbiasedInterruptTime on Windows, time.monotonic elsewhere - is the one clock of every part of a reading's stop: ReadingChild.run() and Session._run_once() in the pass, content_check._clock in the child; ReadingChild.run() re-measures what is left after every message and every wake, so a poll the machine slept through is not a stop. Unchanged by decision 189's judgment worker in code: its one reader child now runs content_check.judge (read plus judgment) as the job for every document the pass decides, so the document's stop and the child's memory cap bound the rules and the name check as well as the reading, and the answer crossing the pipe is a small Judgment with no text. Containers (decision 154) still open through the same run_in_child. Decision 190: a job that raises in the reading child is sent back as three parts - errors.error_class(), the message and the trace (Outcome.error, Outcome.message, Outcome.trace) - and the child never opens a log; the pass shows the class and keeps the rest. The warm-up's words are the self-test's and are still said in PACK_UNUSABLE / READER_CANNOT_RUN. Decision 186: nor may anything a reading writes outlive it - each ReadingChild asks settings.scratch_root() before any process starts (no data home: not_started, the machine's), and the child's first act (_take_scratch()) is to sweep folders of dead processes (sweep_scratch(), by locking.pid_alive(), never a live or unknowable one - D-14) and point TMP, TEMP, TMPDIR and tempfile.tempdir at scratch/<its pid>; end() removes that folder once the child is gone, and a killed child's is swept by the next. Not covered: reading_session(in_a_child=False), the suite's in-process reading and the tools that call extract() directly."
+      "notes": "Rulings 1-3 and 6, R-2 and R-4 of SPEC-169. Engine: _build_engine() names every model by path (models_folder(), inside the rapidocr package, collected as data by api_entry.spec) and _refuse_downloads() replaces rapidocr's DownloadFile.run with a refusal, so nothing is ever fetched; rapidocr imports requests at load time for that downloader, which tests/test_layers.py allows and tests/test_ocr.py pins to open no socket in a full read. Device: gpu_pack() is the gpu-runtime folder beside the frozen exe (never from source); none means the processor with no CUDA request at all (onnxruntime-gpu 'offers' CUDA everywhere, so offered is never the test). With a pack, _on_the_card() calls onnxruntime.preload_dlls() on it, builds asking for CUDA, requires each of SESSIONS (text_det, text_cls, text_rec) to have CUDAExecutionProvider first, and runs _self_test() on a line drawn in memory; any failure is the processor plus PACK_UNUSABLE (a run-log line, not a warning). read_page(): any exception from the card's engine is a fault (the card poisons the process - 'CUDA failure 999'): the engine is dropped, the processor's built, the same page read again, processor_only() for the rest of the pass, and a ('gpu-fault', file) note becomes GPU_FAULT_WARNING once in the pass; reset() lets the next pass try the card. _upright_lines() is ruling 6's seam: lines in reading order from the boxes (the harness's lines_from_boxes), never a turn. The child: ReadingChild is one spawned process serving jobs one at a time over three pipes (jobs, answers, lifeline), saying 'started' before each job touches a file, answering with take_notes(); a job it cannot unpickle exits UNREADABLE_JOB_EXIT_CODE (the machine's, before 'started'). _watch_the_pass/_orphaned (the lifeline) and _kill_on_close_job/_close_job (the Windows job object) and _end() (the whole tree) moved here from content_check. Session (reading_session(), run_in_child()) owns the child for a pass - runner.run_registry with settle=True, which with a pack starts the child at once for warm_up() so the run log's first line is settled - or for one app command (api.main); a reading with none open gets a session of its own. It replaces the child after a stop, a crash, a child that never started, a fault on the card and every DOCUMENTS_PER_CHILD (100) documents. content_check.in_a_child() words each Outcome. The CLI (python -m tracker.ocr [photo]) says which reader this machine uses and times one reading. Decision 189 (SPEC-161 A-F9): awake_clock() - QueryUnbiasedInterruptTime on Windows, time.monotonic elsewhere - is the one clock of every part of a reading's stop: ReadingChild.run() and Session._run_once() in the pass, content_check._clock in the child; ReadingChild.run() re-measures what is left after every message and every wake, so a poll the machine slept through is not a stop. Unchanged by decision 189's judgment worker in code: its one reader child now runs content_check.judge (read plus judgment) as the job for every document the pass decides, so the document's stop and the child's memory cap bound the rules and the name check as well as the reading, and the answer crossing the pipe is a small Judgment with no text. Containers (decision 154) still open through the same run_in_child. Decision 190: a job that raises in the reading child is sent back as three parts - errors.error_class(), the message and the trace (Outcome.error, Outcome.message, Outcome.trace) - and the child never opens a log; the pass shows the class and keeps the rest. The warm-up's words are the self-test's and are still said in PACK_UNUSABLE / READER_CANNOT_RUN. Decision 186: nor may anything a reading writes outlive it - each ReadingChild asks settings.scratch_root() before any process starts (no data home: not_started, the machine's), and the child's first act (_take_scratch()) is to sweep folders of dead processes (sweep_scratch(), by locking.pid_alive(), never a live or unknowable one - D-14) and point TMP, TEMP, TMPDIR and tempfile.tempdir at scratch/<its pid>; end() removes that folder once the child is gone, and a killed child's is swept by the next. Not covered: reading_session(in_a_child=False), the suite's in-process reading and the tools that call extract() directly. Memory cap off Windows (R31 of SPEC-mac, P248): with no job object, ReadingChild.run waits in slices of MEMORY_WATCH_SECONDS (0.5 s, never longer than what is left of the stop) and reads the child's memory between them through _footprint(pid, system) - ri_phys_footprint from libproc's proc_pid_rusage(RUSAGE_INFO_V2) over ctypes on darwin (the Activity Monitor figure), the resident pages of /proc/<pid>/statm on Linux; past memory_limit the child is ended whole and the reading is a crash with the same 'reached its memory limit' words, replaced like a Windows one. setrlimit(RLIMIT_AS) was rejected (not reliable on macOS). A footprint that cannot be read is no cap and is said once on the error log (tracker-errors.log; MEMORY_UNREADABLE), never guessed. The Linux cap is a behaviour change named in SPEC-mac section 6. Windows is unchanged: the job object still enforces, the watch is off."
     },
     {
       "id": "tracker/page.py",
@@ -4339,7 +4343,7 @@
       "id": "docs/repo-map.curated.json",
       "type": "file",
       "layer": "docs",
-      "sha256": "4f4c73473e9e962e",
+      "sha256": "bb1b0aa7a6224118",
       "lines": 1167,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
@@ -4398,8 +4402,8 @@
       "id": "pilot/DECISIONS.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "90dfde015f5bb555",
-      "lines": 242
+      "sha256": "0a184e3bc8382ff9",
+      "lines": 243
     },
     {
       "id": "pilot/HANDOFF.md",
@@ -7429,14 +7433,16 @@
       "id": "tests/test_ocr.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "86a9e4f18e019e3c",
-      "lines": 847,
+      "sha256": "a0493f80f0d8a07e",
+      "lines": 1023,
       "exports": [
         "A_PASS_BETWEEN_DOCUMENTS",
         "FakeEngine",
+        "OFF_WINDOWS",
         "PAGE_WORDS",
         "W2_WORDS",
         "a_card",
+        "a_footprint_that_is_over_for",
         "a_pack_here",
         "a_pass",
         "a_short_stop",
@@ -7447,20 +7453,26 @@
         "test_a_card_fault_in_a_child_moves_the_rest_of_the_pass_to_the_processor",
         "test_a_child_over_its_memory_limit_is_replaced_and_the_next_document_reads",
         "test_a_child_that_is_killed_leaves_its_folder_for_the_next_childs_sweep",
+        "test_a_child_under_its_limit_is_left_to_read",
         "test_a_death_in_a_used_child_is_retried_once_on_a_fresh_one",
         "test_a_folder_the_tracker_did_not_name_is_never_swept",
+        "test_a_footprint_that_cannot_be_read_is_no_cap_and_is_said_once",
         "test_a_full_read_opens_no_socket_writes_no_temporary_file_and_fetches_nothing",
         "test_a_gpu_fault_switches_the_rest_of_the_pass_to_the_cpu",
         "test_a_library_past_the_limit_means_the_app_must_move",
+        "test_a_linux_childs_memory_is_its_resident_pages",
         "test_a_long_lived_reader_is_replaced_after_a_crash",
         "test_a_long_lived_reader_is_replaced_after_a_stop",
         "test_a_long_lived_reader_is_replaced_every_hundred_documents",
+        "test_a_macs_memory_is_the_physical_footprint_libproc_reports",
         "test_a_missing_model_means_the_reader_cannot_run_and_the_scan_waits",
         "test_a_pack_found_unusable_in_a_child_keeps_every_later_child_off_the_card",
         "test_a_pack_is_used_only_when_every_session_is_on_cuda_and_the_self_test_reads",
         "test_a_photo_is_read_by_rapidocr",
+        "test_a_platform_with_no_way_to_read_memory_says_so",
         "test_a_reader_that_cannot_run_is_not_blamed_on_the_card",
         "test_a_reading_child_keeps_every_temporary_file_in_its_own_folder_in_the_data_home",
+        "test_a_reading_past_its_memory_on_posix_ends_as_a_crash_and_is_replaced",
         "test_a_scan_is_read_by_rapidocr",
         "test_a_short_junction_to_a_deep_folder_is_still_too_deep",
         "test_a_sideways_page_keeps_its_words",
@@ -7472,8 +7484,10 @@
         "test_run_from_source_the_app_is_never_too_deep",
         "test_the_document_stop_ends_a_page_the_reader_never_finishes",
         "test_the_lines_are_built_from_the_boxes_in_reading_order",
+        "test_the_posix_watch_caps_a_child_the_way_the_job_object_does",
         "test_the_reading_childs_job_caps_its_memory",
         "test_the_readings_own_stop_reads_the_awake_clock",
+        "test_the_watch_does_not_stretch_a_readings_stop",
         "test_time_asleep_does_not_count_toward_the_reading_stop",
         "w2_photo",
         "w2_rows",
