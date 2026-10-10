@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 255,
     "edges": 1229,
-    "reused": 207
+    "reused": 206
   },
   "node_types": [
     "artifact",
@@ -4398,8 +4398,8 @@
       "id": "pilot/DECISIONS.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "0c2e66ed65ea4182",
-      "lines": 238
+      "sha256": "90dfde015f5bb555",
+      "lines": 242
     },
     {
       "id": "pilot/HANDOFF.md",
@@ -4510,8 +4510,8 @@
       "id": "pilot/SPEC-mac.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "c84afe0869dfec7f",
-      "lines": 916
+      "sha256": "2fed71569c108262",
+      "lines": 924
     },
     {
       "id": "pilot/SPEC-rename.md",

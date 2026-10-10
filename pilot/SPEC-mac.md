@@ -1,6 +1,6 @@
 # SPEC — Tax Document Console on a Mac
 
-Status: **SPEC, written before the build** (2026-10-10). Rulings P238–P243
+Status: **SPEC, written before the build** (2026-10-10). Rulings P238–P247
 in [`DECISIONS.md`](DECISIONS.md) (Jason, 2026-10-10). Nothing here is built.
 It replaces the read-only assessment of the same date, whose facts were
 checked against `claude/zealous-faraday-hw5sga` (map current, 255 nodes) and
@@ -47,6 +47,10 @@ do not change. A new firm on a Mac has this first day:
 | P241 | A Mac measures room as if the folder sat under a Windows root, against one constant. Names and parks therefore match Windows. | 125, 131, P29 |
 | P242 | The after-install step excludes the Mac's data home from Time Machine. | 186, 209 |
 | P243 | The floor is Apple silicon on macOS 14 or later. Anything else is refused with one sentence. Whether to use CoreML is decided after a timed season-sized pass on the CPU reader. | 169, 191 |
+| P244 | The Windows root a Mac measures room against is 48 characters, fixed: a Google Drive shared drive with a 30-character name, not the firm's own 28-character root. No setting. | P241, 131, P29 |
+| P245 | Windows keeps accepting a OneDrive or Dropbox clients root. Parity with the Mac's refusals is a separate decision, outside this port. | 137, 171 |
+| P246 | The Mac ships as a `.dmg`, and the floor refusal runs at the app's first start, before anything is written. No `.pkg`. An Intel Mac gets macOS's own message. | P243 |
+| P247 | The CoreML yardstick: the kit's season-sized pass on the CPU reader must finish well inside the two-hour schedule slot. If it does, CoreML is not built; if it does not, CoreML is its own measured job that may not lower the backtest baseline. | P243, 169 |
 
 ## 3. What a buyer experiences, step by step
 
@@ -294,10 +298,13 @@ learned from the API, as `shellSays` is. *Files:* `tracker/api.py`,
 `test_api.py::test_a_mac_says_protected_view_does_not_exist_each_time_a_macro_copy_opens`,
 and the shell pin in `test_single_source.py`. Mac: walk step 10.
 
-**R9. Room as if under Windows (P241).** One constant, `layout.WINDOWS_ROOT =
-r"G:\Shared drives\JPA Clients"` (the runbook §1 root, 28 characters). On
-darwin, every measure of room uses `layout.measured_length(path, root)`:
-`len(WINDOWS_ROOT)` plus the length of `path` relative to the clients root,
+**R9. Room as if under Windows (P241, P244).** One constant,
+`layout.WINDOWS_ROOT_LENGTH = 48`: the length of a Google Drive for desktop
+root on Windows with a 30-character shared-drive name, which covers a buying
+firm's root as well as the runbook §1 root (28 characters). It is not a
+setting. On darwin, every measure of room uses
+`layout.measured_length(path, root)`: `WINDOWS_ROOT_LENGTH` plus the length
+of `path` relative to the clients root,
 counting each separator as one character. That replaces `len(str(path))` at
 every site compared with `path_limit()`, `limit_for()` or `folder_need()`;
 the builder lists every site in the pull request. On darwin `short_paths()`
@@ -308,7 +315,7 @@ Windows numbers ("past the 259 Windows allows"). Off darwin,
 autouse fixture that pins the measure to the absolute length unless a test
 says it is on a Mac, so the suite's root-length tests mean the same on every
 machine. *Files:* `tracker/layout.py`, `tracker/filer.py` (and any other site the
-builder finds), `tests/conftest.py`. *Respects:* 125, 131, P29.
+builder finds), `tests/conftest.py`. *Respects:* 125, 131, P29, P244.
 *Acceptance (Linux):*
 `test_layout.py::test_a_mac_measures_room_as_if_under_the_windows_root`,
 `test_filer.py::test_a_return_that_fits_on_windows_fits_on_a_mac_and_one_character_more_does_not`.
@@ -687,7 +694,8 @@ reading under the frozen API).
 **R32. The CPU reader is the Mac reader.** Plain `onnxruntime` already
 installs on a Mac (`sys_platform != "win32"`), and `gpu_pack()` finds none.
 Nothing else is required. The kit times a season-sized pass on the CPU reader
-(kit step H10) for the CoreML decision (section 8).
+(kit step H10) for the CoreML decision: the pass must finish well inside the
+two-hour schedule slot (P247, section 8).
 
 ### F. Check kit and runbook
 
@@ -725,7 +733,8 @@ It lists the hands-on steps, with why each is chosen:
 - H8, a Stream-mode Drive file: the pass waits on it, and the Overview's
   stat-only fingerprint does not download it (R10).
 - H9, `tmutil isexcluded` (R7).
-- H10, a season-sized pass timed on the CPU reader (R32).
+- H10, a season-sized pass timed on the CPU reader, against the two-hour
+  slot (R32, P247).
 - H11, the menu bar and ⌘Q (R14).
 - H12, an accented name written on the PC and moved on the Mac (190 (5)).
 - H13, sleep and wake around a scheduled time (R23).
@@ -868,27 +877,26 @@ job 3.
 
 ## 8. Open items
 
-1. **CoreML (P243).** Decided after kit step H10 times a season-sized pass on
-   the CPU reader on the office Mac. If CoreML is wanted, it is a measured job
-   of its own. rapidocr 3.9.2 accepts `EngineConfig.onnxruntime.use_coreml`,
-   and the macOS onnxruntime wheel carries `CoreMLExecutionProvider`. The job
-   would need decision 169's "really got the provider" check and self-test,
-   and must not lower the backtest baseline.
-2. **The Windows root constant (R9).** `WINDOWS_ROOT` is the runbook's
-   office root (28 characters). A buying firm whose Windows desks sit under a
-   longer root would want a larger figure. Jason confirms the value or names
-   another.
-3. **Windows parity for R5.** The Mac refuses a clients root in iCloud,
-   Dropbox or OneDrive, but Windows accepts a OneDrive or Dropbox root today.
-   Should Windows refuse it too? That is a separate decision, outside this
-   port.
-4. **"The installer refuses" (P243).** A `.dmg` has no installer program, so
-   the sentence is shown at the app's first start (R6), and an Intel Mac gets
-   macOS's own message. A `.pkg` could refuse before copying anything, with
-   our words, at the cost of a second, root-run package format. This SPEC
-   takes the `.dmg`; Jason may rule otherwise.
+The four questions the SPEC first left open were ruled by Jason on
+2026-10-10 (P244–P247) and are folded into the requirements above:
 
-**What the assessment missed**, all now in an R above:
+1. **CoreML (P243, P247).** Kit step H10 times a season-sized pass on the
+   CPU reader on the office Mac. If it finishes well inside the two-hour
+   schedule slot, CoreML is not built. If it does not, CoreML is a measured
+   job of its own: rapidocr 3.9.2 accepts
+   `EngineConfig.onnxruntime.use_coreml`, the macOS onnxruntime wheel carries
+   `CoreMLExecutionProvider`, and the job would need decision 169's "really
+   got the provider" check and self-test, and may not lower the backtest
+   baseline.
+2. **The Windows root constant (R9, P244).** 48 characters, fixed, no
+   setting. Raising it later re-measures every return, so it is not changed
+   lightly.
+3. **Windows parity for R5 (P245).** Windows keeps accepting a OneDrive or
+   Dropbox root. Parity is a separate decision, outside this port.
+4. **The package (R6, P246).** A `.dmg`, with the floor refusal at the app's
+   first start; an Intel Mac gets macOS's own message. No `.pkg`.
+
+Nothing else is open. **What the assessment missed**, all now in an R above:
 
 5. The Mac placeholder check (R10). `is_cloud_placeholder` reads only Windows
    attributes, so a Stream-mode Drive file is read (a download inside the
