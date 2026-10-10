@@ -743,7 +743,7 @@ MAC_ROOT = Path("/Users/jpark/Library/CloudStorage/GoogleDrive-jpark@jparkassoci
 def test_a_mac_measures_room_as_if_under_the_windows_root(on_a_mac):
     """P241 and P244: whatever the Mac's own root, a path counts as if it
     sat under a Windows root of 48 characters (a Google Drive shared drive
-    with a 30-character name), each name below the clients root and the
+    with a 31-character name), each name below the clients root and the
     separator before it one character - the length the same path has there."""
     from pathlib import PureWindowsPath
 

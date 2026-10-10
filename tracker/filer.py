@@ -946,8 +946,8 @@ class CopyMismatchError(FilingError):
 
 
 def _copy_whole(
-    source: Path, target: Path, *, expect: str = "", cache: ContentCache | None = None,
-    root: Path | None = None,
+    source: Path, target: Path, *, root: Path, expect: str = "",
+    cache: ContentCache | None = None,
 ) -> None:
     """Copy whole or not at all, proved against the bytes it was made from
     before it takes the proper name, and writable (decision 155).
@@ -981,7 +981,8 @@ def _copy_whole(
     and its temp must not be what refuses the copy. On a Mac the limit is
     taken in its own characters (``layout.local_limit`` under ``root``, the
     clients root) so the temp is cut by the Windows measure too (SPEC-mac
-    R9); a caller with no root has the plain limit.
+    R9); ``root`` is required, so no caller measures the temp by the Mac's
+    own longer path without saying so.
 
     ``cache`` is the pass's, where the caller has one: the copy keeps the
     modification time and the rename keeps the size, so the digest proved
@@ -1009,7 +1010,7 @@ def _copy_whole(
             _mark_for_review(temp, name=target.name)
 
     copy_atomically(source, target, prove=prove,
-                    limit=path_limit() if root is None else local_limit(target, root))
+                    limit=local_limit(target, root))
     if cache is not None:
         cache.remember_digest(target, expect)
 

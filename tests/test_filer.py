@@ -4473,7 +4473,7 @@ def test_a_power_loss_mid_copy_leaves_a_truncated_file_that_is_named_and_the_row
 
     drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
 
-    def power_loss(source, target, *, expect="", cache=None, root=None):
+    def power_loss(source, target, *, root, expect="", cache=None):
         Path(target).write_bytes(b"%PDF-1.4 half")   # nothing tidies up after a power cut
         raise KeyboardInterrupt
 
@@ -9241,7 +9241,7 @@ def test_an_open_copy_with_no_digest_is_refused_where_it_is_carried_out(engageme
         _do_op(engagement, copy)
     assert refused.value.args[0] == COPY_UNPROVED.format(source="w2.pdf", target="w2.pdf")
     with pytest.raises(FilingError):
-        _copy_whole(original, target, expect="")
+        _copy_whole(original, target, expect="", root=engagement.parents[3])
     assert not target.parent.exists()
 
 
@@ -9261,7 +9261,7 @@ def test_an_unproved_copy_says_its_names_as_the_record_keeps_them(engagement):
     target = engagement / PREPARED_DIR_NAME / "new" / "w2.pdf"
 
     with pytest.raises(FilingError) as refused:
-        _copy_whole(original, target, expect="")
+        _copy_whole(original, target, expect="", root=engagement.parents[3])
     said = refused.value.args[0]
     assert said == COPY_UNPROVED.format(source="w2fdp.pdf", target="w2.pdf"), said
     assert "\u202e" not in said and "\x07" not in said

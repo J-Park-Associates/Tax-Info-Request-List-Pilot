@@ -140,7 +140,8 @@ SHORT_NAME_RESERVE = 12
 #: so a return's room is the same number at every run (pilot decision P29).
 TEMP_NAME_RESERVE = len("/x." + "9" * 10 + "." + "f" * 8 + ".tmp")
 #: The length of a Google Drive for desktop root on Windows with a
-#: 30-character shared-drive name (``G:\Shared drives\`` and the name):
+#: 31-character shared-drive name (``G:\Shared drives\``, 17 characters, and
+#: the name):
 #: what a Mac measures room against, whatever its own clients root is
 #: (SPEC-mac R9, pilot decisions P241 and P244). Not a setting. It covers a
 #: buying firm's root as well as the runbook's 28-character one, and it costs
