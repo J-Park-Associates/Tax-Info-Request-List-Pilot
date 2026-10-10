@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 255,
     "edges": 1229,
-    "reused": 207
+    "reused": 206
   },
   "node_types": [
     "artifact",
@@ -4402,7 +4402,7 @@
       "id": "pilot/DECISIONS.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "0a184e3bc8382ff9",
+      "sha256": "7c0378707c696230",
       "lines": 243
     },
     {
@@ -4514,7 +4514,7 @@
       "id": "pilot/SPEC-mac.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "5dea008d326a7ee4",
+      "sha256": "8fa9f12030543e92",
       "lines": 926
     },
     {

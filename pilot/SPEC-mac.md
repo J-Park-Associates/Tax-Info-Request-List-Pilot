@@ -47,7 +47,7 @@ do not change. A new firm on a Mac has this first day:
 | P241 | A Mac measures room as if the folder sat under a Windows root, against one constant. Names and parks therefore match Windows. | 125, 131, P29 |
 | P242 | The after-install step excludes the Mac's data home from Time Machine. | 186, 209 |
 | P243 | The floor is Apple silicon on macOS 14 or later. Anything else is refused with one sentence. Whether to use CoreML is decided after a timed season-sized pass on the CPU reader. | 169, 191 |
-| P244 | The Windows root a Mac measures room against is 48 characters, fixed: a Google Drive shared drive with a 30-character name, not the firm's own 28-character root. No setting. | P241, 131, P29 |
+| P244 | The Windows root a Mac measures room against is 48 characters, fixed: a Google Drive shared drive with a 31-character name, not the firm's own 28-character root. No setting. | P241, 131, P29 |
 | P245 | Windows keeps accepting a OneDrive or Dropbox clients root. Parity with the Mac's refusals is a separate decision, outside this port. | 137, 171 |
 | P246 | The Mac ships as a `.dmg`, and the floor refusal runs at the app's first start, before anything is written. No `.pkg`. An Intel Mac gets macOS's own message. | P243 |
 | P247 | The CoreML yardstick: the kit's season-sized pass on the CPU reader must finish well inside the two-hour schedule slot. If it does, CoreML is not built; if it does not, CoreML is its own measured job that may not lower the backtest baseline. | P243, 169 |
@@ -302,7 +302,7 @@ and the shell pin in `test_single_source.py`. Mac: walk step 10.
 
 **R9. Room as if under Windows (P241, P244).** One constant,
 `layout.WINDOWS_ROOT_LENGTH = 48`: the length of a Google Drive for desktop
-root on Windows with a 30-character shared-drive name, which covers a buying
+root on Windows with a 31-character shared-drive name, which covers a buying
 firm's root as well as the runbook §1 root (28 characters). It is not a
 setting. On darwin, every measure of room uses
 `layout.measured_length(path, root)`: `WINDOWS_ROOT_LENGTH` plus the length
