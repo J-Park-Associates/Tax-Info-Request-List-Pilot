@@ -158,6 +158,7 @@ from tracker.locking import (
     BREAKER_STALE_SECONDS,
     BREAKER_SUFFIX,
     LOCK_FILENAME,
+    full_sync,
     lock_is_held,
     this_host,
 )
@@ -720,7 +721,7 @@ def _write_raw(path: Path, line: bytes) -> None:
         fd = os.open(path, os.O_WRONLY | os.O_APPEND | os.O_CREAT | _BINARY, 0o666)
         try:
             os.write(fd, line)
-            os.fsync(fd)
+            full_sync(fd)
         finally:
             os.close(fd)
     except OSError as exc:
@@ -756,7 +757,7 @@ def _truncate_torn_tail(path: Path, data: bytes) -> None:
             fd = os.open(path, os.O_WRONLY | os.O_APPEND | _BINARY)
             try:
                 os.write(fd, _NEWLINE)
-                os.fsync(fd)
+                full_sync(fd)
             finally:
                 os.close(fd)
         except OSError as exc:
@@ -768,7 +769,7 @@ def _truncate_torn_tail(path: Path, data: bytes) -> None:
         with open(path, "r+b") as handle:
             handle.truncate(keep)
             handle.flush()
-            os.fsync(handle.fileno())
+            full_sync(handle.fileno())
     except OSError as exc:
         raise _not_written(exc) from exc
 

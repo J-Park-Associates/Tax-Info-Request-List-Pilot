@@ -306,3 +306,14 @@ def test_the_read_only_open_reads_a_checkpoint_in_its_write_ahead_log(tmp_path):
             assert checkpoint.vouched(reader, KEY) == (5, "c5")
         finally:
             reader.close()
+
+
+def test_every_checkpoint_connection_asks_sqlite_for_a_full_flush(tmp_path):
+    """SPEC-mac R22: on a Mac SQLite flushes with F_FULLFSYNC only when
+    ``fullfsync`` and ``checkpoint_fullfsync`` are on. They do not persist
+    in the file, so a second open sets them again."""
+    where = tmp_path / checkpoint.CHECKPOINT_FILENAME
+    for _open in (1, 2):
+        with checkpoint.opened(where) as held:
+            assert held.execute("PRAGMA fullfsync").fetchone()[0] == 1
+            assert held.execute("PRAGMA checkpoint_fullfsync").fetchone()[0] == 1

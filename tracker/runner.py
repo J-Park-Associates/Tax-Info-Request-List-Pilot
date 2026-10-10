@@ -170,7 +170,7 @@ from tracker.filer import (
     room_for,
     sweep_stranded_temps,
 )
-from tracker.fsio import append_rotating, write_json_atomically, write_text_atomically
+from tracker.fsio import append_rotating, full_sync, write_json_atomically, write_text_atomically
 from tracker.households import (
     client_folder_missing,
     load_household_info,
@@ -2112,7 +2112,7 @@ def _mark_started(path: Path | None, hint: dict, household: Path, *, write: bool
         with path.open("ab") as handle:
             handle.write(line.encode("ascii"))
             handle.flush()
-            os.fsync(handle.fileno())
+            full_sync(handle.fileno())
     except OSError as exc:
         log.warning("Could not mark %s (%s)", path.name, errors.error_class(exc))
 

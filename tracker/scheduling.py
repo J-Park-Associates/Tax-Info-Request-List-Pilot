@@ -81,7 +81,7 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath, PureWindowsPath
 
-from tracker.fsio import write_text_atomically
+from tracker.fsio import full_sync, write_text_atomically
 from tracker.layout import designation_file
 from tracker.locking import RUN_TIME_LIMIT_SECONDS, is_this_host, this_host
 from tracker.runner import DRAFT_DAY_NAME, LOG_FLAG, PRODUCT_FLAG, RUNNER_MODE_FLAG, SETTINGS_FLAG
@@ -632,7 +632,7 @@ def claim(root: str | Path) -> None:
             with os.fdopen(handle, "wb") as written:
                 written.write(line.encode("utf-8"))
                 written.flush()
-                os.fsync(written.fileno())
+                full_sync(written.fileno())
             return
     if named is not None and not is_this_host(named):
         raise DesignationError(CLAIM_TAKEN.format(host=named))

@@ -360,6 +360,14 @@ def connected(target: str | Path, factory: type[GuardedConnection],
             conn.where = str(where)
         conn.row_factory = sqlite3.Row
         conn.execute(f"PRAGMA busy_timeout = {timeout_ms}")
+        # On a Mac neither fsync nor synchronous = FULL reaches the drive's
+        # cache (SPEC-mac R22): SQLite flushes with F_FULLFSYNC only when
+        # these two are on, for a commit and for a checkpoint. They do not
+        # persist in the file, so every connection sets them; elsewhere
+        # they change nothing. Here because every connection of the
+        # checkpoint and of the store is made through this function.
+        conn.execute("PRAGMA fullfsync = ON")
+        conn.execute("PRAGMA checkpoint_fullfsync = ON")
     except BaseException:
         close_after_failure(conn)
         raise

@@ -488,6 +488,20 @@ def tmp_store(engagement: Path) -> Path:
     return engagement.parent.parent / "another" / store.STORE_FILENAME
 
 
+def test_every_store_connection_asks_sqlite_for_a_full_flush(tmp_path):
+    """SPEC-mac R22: ``fullfsync`` and ``checkpoint_fullfsync`` do not
+    persist in the file, so every connection sets them - a writer's and a
+    read-only one's alike."""
+    path = tmp_path / "app" / store.STORE_FILENAME
+    first = store.open(path)
+    try:
+        for connection in (first, store.open_read_only(path)):
+            assert connection.execute("PRAGMA fullfsync").fetchone()[0] == 1
+            assert connection.execute("PRAGMA checkpoint_fullfsync").fetchone()[0] == 1
+    finally:
+        first.close()
+
+
 def test_one_process_has_one_connection_and_a_second_file_is_refused(tmp_path):
     """One store per process: every writer deep in the package asks for the
     connection by name rather than being handed one, so two files open at
