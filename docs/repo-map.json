@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 255,
     "edges": 1233,
-    "reused": 192
+    "reused": 184
   },
   "node_types": [
     "artifact",
@@ -9549,8 +9549,8 @@
       "id": "tests/test_store.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "cf53725bf50c3284",
-      "lines": 4998,
+      "sha256": "089c6842855ee270",
+      "lines": 5005,
       "exports": [
         "AS_AT_16",
         "AS_AT_17",
