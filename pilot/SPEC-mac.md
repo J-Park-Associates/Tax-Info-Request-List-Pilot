@@ -292,8 +292,10 @@ Open's own result appears. It is not a confirmation, and not refused.
 `PROTECTED_VIEW_MAC`: "Protected View does not exist on a Mac, so this file
 opened normally. Keep macros off in Excel, Word and PowerPoint: Settings >
 Security > Macro Security > Disable all macros without notification." It is
-learned from the API, as `shellSays` is. *Files:* `tracker/api.py`,
-`app/main.js`. *Respects:* 190 (a Windows copy is still never made unmarked;
+learned from the API, as `shellSays` is. The place is the page notice the
+renderer shows for Open's result (`app/renderer/shell.js`), never a dialog
+or a sheet with a button. *Files:* `tracker/api.py`, `app/main.js`,
+`app/renderer/shell.js`. *Respects:* 190 (a Windows copy is still never made unmarked;
 `NO_OPEN_CODES` is unchanged). *Acceptance:* Linux:
 `test_api.py::test_a_mac_says_protected_view_does_not_exist_each_time_a_macro_copy_opens`,
 and the shell pin in `test_single_source.py`. Mac: walk step 10.
@@ -863,7 +865,7 @@ the one machine. The table is in landing order.
 
 | # | Job | Files | Tests to run | R | Where it finishes |
 |---|---|---|---|---|---|
-| 1 | **Mac homes and guards**: the data home, settings out of the bundle, disks, program location, the clients-root guard, the floor (Python and shell), the Protected View sentence | `settings`, `api`, `api_entry.py`, `app/main.js` (`SETTINGS_DIR`, floor, R8) | `test_settings`, `test_after_install`, `test_api`, `test_api_entry`, `test_scheduling`, `test_tripwire`, `test_errors`, `test_single_source`, `test_layers`, `test_repo_map` | R1–R6, R8 | **Linux alone**; walk steps 4–7 and 10 in job 8's kit run |
+| 1 | **Mac homes and guards**: the data home, settings out of the bundle, disks, program location, the clients-root guard, the floor (Python and shell), the Protected View sentence | `settings`, `api`, `api_entry.py`, `app/main.js` (`SETTINGS_DIR`, floor, R8), `app/renderer/shell.js` (R8's notice) | `test_settings`, `test_after_install`, `test_api`, `test_api_entry`, `test_scheduling`, `test_tripwire`, `test_errors`, `test_single_source`, `test_layers`, `test_repo_map` | R1–R6, R8 | **Linux alone**; walk steps 4–7 and 10 in job 8's kit run |
 | 5 | **Lock, host, durability, room and placeholders on POSIX** | `locking`, `ledger`, `store`, `checkpoint`, `fsio`, `runner` and `scheduling` (the flush sites only), `layout`, `filer`, `validators`, `tests/conftest.py` (the room fixture) | the whole suite (it reaches the engine), then `vocab_report.py check` | R9, R10, R19–R22 | **Linux alone**; H4, H7 and H8 in the kit |
 | 7 | **The reader on the Mac**: the POSIX memory watch | `ocr` | `test_ocr`, `test_content_check`, `test_filer`, `test_runner`, `test_single_source`, `test_layers`, `test_repo_map` | R31, R32 | **Linux alone**; H1 and H10 in the kit |
 | 2 | **Build, launch and words**: build lock, spec branch, shell changes, `.icns`, the three scripts, the bundle and `.dmg`, the `macos` label, the Mac words | `requirements-build.txt/.lock`, `api_entry.spec`, `app/main.js`, `app/renderer/pages.js`, `app/assets/icon.icns`, `pilot/brand/tax-document-console/source/export.py` and a new `icns.py` beside it, `setup.command`, `start.command`, `build-mac.sh`, `app/assets/Info-mac.plist`, `.gitattributes`, `.github/workflows/ci.yml`, `tracker/api.py` and `tools/lockfiles.py` (words) | `test_build`, `test_lockfiles`, `test_shell`, `test_shell_menu`, `test_api`, `test_pilot`, `test_single_source`, `test_layers`, `test_repo_map`; `bash -n` on each script | R11–R18 | **Needs the Mac kit**: H1, H2 steps 1–3, H11 |

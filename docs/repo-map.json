@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 255,
     "edges": 1229,
-    "reused": 204
+    "reused": 207
   },
   "node_types": [
     "artifact",
@@ -4514,8 +4514,8 @@
       "id": "pilot/SPEC-mac.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "2fed71569c108262",
-      "lines": 924
+      "sha256": "5dea008d326a7ee4",
+      "lines": 926
     },
     {
       "id": "pilot/SPEC-rename.md",
