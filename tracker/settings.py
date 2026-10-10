@@ -1272,7 +1272,7 @@ def _mac_program_refusal(app: Path) -> str:
 
 
 def program_drive_refusal(*, app: Path | None = None, settings: Path | None = None,
-                          drive_type=None, system: str | None = None,
+                          drive_type=None, host: str | None = None,
                           frozen: bool | None = None) -> str:
     """Why the schedule may not run the program from where it is, or "".
 
@@ -1285,7 +1285,7 @@ def program_drive_refusal(*, app: Path | None = None, settings: Path | None = No
     :func:`_mac_program_refusal`): the disk rule above would pass a disk image's
     mount or a translocated copy as readily as ``/Applications``, and the
     place says why not in words a Mac user has. A source checkout is never
-    refused for its folder, only for its disk. ``system`` and ``frozen`` are
+    refused for its folder, only for its disk. ``host`` and ``frozen`` are
     read when called unless a test gives them.
 
     Asked by the schedule's registration (``scheduling.schedule_decision``,
@@ -1301,7 +1301,7 @@ def program_drive_refusal(*, app: Path | None = None, settings: Path | None = No
     ask = drive_type if drive_type is not None else globals()["drive_type"]
     folders = (app if app is not None else app_dir(),
                settings if settings is not None else settings_dir().resolve())
-    if (host_system() if system is None else system) == "darwin" and (
+    if (host_system() if host is None else host) == "darwin" and (
             getattr(sys, "frozen", False) if frozen is None else frozen):
         if refusal := _mac_program_refusal(Path(folders[0])):
             return refusal
@@ -1398,7 +1398,8 @@ def _icloud_desktop_and_documents(root: Path, home: Path) -> bool:
     refuses both folders outright, because nothing is guessed."""
     if not home.joinpath(*ICLOUD_DESKTOP_SIGNAL).is_dir():
         return False
-    return any(_within(root, home / name) for name in ("Desktop", "Documents"))
+    folded = Path(str(root).casefold())       # APFS keeps a name's case and ignores it
+    return any(_within(folded, Path(str(home / name).casefold())) for name in ("Desktop", "Documents"))
 
 
 def _mac_root_refusal(root: Path, home: Path) -> str:

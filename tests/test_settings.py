@@ -1221,7 +1221,7 @@ def test_a_mac_program_outside_applications_is_not_scheduled(tmp_path, monkeypat
 
     def refusal(app, **kwargs):
         return data_rules.program_drive_refusal(app=app, settings=settings, drive_type=fixed,
-                                                system="darwin", frozen=True, **kwargs)
+                                                host="darwin", frozen=True, **kwargs)
 
     # Directly in /Applications or ~/Applications, under its own name: scheduled.
     assert refusal(Path("/Applications") / name) == ""
@@ -1240,15 +1240,15 @@ def test_a_mac_program_outside_applications_is_not_scheduled(tmp_path, monkeypat
             folder=elsewhere.parent)
     # A source checkout is never refused for its folder, only for its disk (R3).
     source = dict(app=home / "Downloads" / "checkout", settings=settings, drive_type=fixed,
-                  system="darwin", frozen=False)
+                  host="darwin", frozen=False)
     assert data_rules.program_drive_refusal(**source) == ""
     assert data_rules.program_drive_refusal(
         **{**source, "drive_type": lambda _path: data_rules.DRIVE_REMOTE}) == (
         data_rules.PROGRAM_ON_NETWORK.format(folder=source["app"]))
     # Windows and Linux ask nothing of the folder.
-    for system in ("nt", "posix"):
+    for host in ("nt", "posix"):
         assert data_rules.program_drive_refusal(app=home / "Downloads" / name, settings=settings,
-                                                drive_type=fixed, system=system, frozen=True) == ""
+                                                drive_type=fixed, host=host, frozen=True) == ""
 
 
 def _mac_root(root, home):
@@ -1267,6 +1267,9 @@ def test_a_mac_refuses_an_icloud_root(tmp_path):
         (home.joinpath(*data_rules.ICLOUD_DESKTOP_SIGNAL)).mkdir(parents=True, exist_ok=True)
         assert _mac_root(clients, home) == data_rules.ROOT_IN_ICLOUD.format(root=clients)
         assert _mac_root(home / folder, home) == data_rules.ROOT_IN_ICLOUD.format(root=home / folder)
+        # APFS ignores case, so a root typed in another case is the same folder.
+        mixed = home / folder.swapcase() / "Clients"
+        assert _mac_root(mixed, home) == data_rules.ROOT_IN_ICLOUD.format(root=mixed)
         shutil.rmtree(home / "Library")
     # Another folder of the home is not iCloud's, signal or no signal.
     home.joinpath(*data_rules.ICLOUD_DESKTOP_SIGNAL).mkdir(parents=True)
