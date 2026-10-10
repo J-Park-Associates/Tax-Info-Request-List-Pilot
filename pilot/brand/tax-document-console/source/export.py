@@ -2,9 +2,9 @@
 
     python export.py OUT_DIR
 
-Writes app/ (the .ico, PNGs, the in-app SVG marks), installer/ (the Inno Setup
-icon and the wizard bitmaps at every DPI Inno Setup 6 accepts) and brand/
-(lockups for documents and the client-facing pages). It writes no Windows
+Writes app/ (the .ico, the Mac's .icns, PNGs, the in-app SVG marks), installer/
+(the Inno Setup icon and the wizard bitmaps at every DPI Inno Setup 6 accepts)
+and brand/ (lockups for documents and the client-facing pages). It writes no Windows
 packaged-app tiles: nothing here is packaged as an MSIX, so none would be read
 (P232).
 """
@@ -12,6 +12,7 @@ import io
 import sys
 from pathlib import Path
 
+import icns
 from ico import pack
 from lockup import lockup
 from mark import CREAM, NAVY, SIZES, app_icon, bare_mark, icon_svg
@@ -46,6 +47,10 @@ def export(out: Path):
         pngs = {s: icon_png(r, s) for s in SIZES}
         ico = pack(pngs)
         (app / "icon.ico").write_bytes(ico)
+        # The Mac's icon from the same renders (SPEC-mac R15): the sizes the .ico
+        # already has are reused as they are, and only 512 and 1024 are drawn for it.
+        mac = {s: pngs[s] if s in pngs else icon_png(r, s) for s in icns.SIZES}
+        (app / "icon.icns").write_bytes(icns.pack(mac))
         (inst / "setup.ico").write_bytes(ico)
         for s in (16, 32, 48, 64, 128, 256):
             (app / f"icon-{s}.png").write_bytes(pngs[s])
@@ -60,7 +65,7 @@ def export(out: Path):
             svg, w, h = lockup(theme)
             (brand / f"lockup-{theme}.svg").write_text(svg, encoding="utf-8")
             (brand / f"lockup-{theme}.png").write_bytes(r.png(svg, round(w), round(h), scale=2))
-    print(f"exported to {out}: .ico {len(ico):,} bytes, {len(SIZES)} sizes")
+    print(f"exported to {out}: .ico {len(ico):,} bytes, {len(SIZES)} sizes; .icns {len(mac)} sizes")
 
 
 if __name__ == "__main__":

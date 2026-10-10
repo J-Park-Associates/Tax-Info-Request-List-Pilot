@@ -42,6 +42,7 @@ Every size is drawn at that size; none is a resize of another.
 | File | Where it is seen |
 |---|---|
 | `app/icon.ico` | The program file, its shortcuts on the desktop and Start menu, the taskbar, the title bar and Alt+Tab: 15 sizes, 16 to 256px. Below 256 the sizes are 32-bit bitmaps, 256 is PNG |
+| `app/icon.icns` | The Mac app's icon in Finder, the Dock and the disk image: the same renders as the `.ico`'s (16 to 256px) plus 512 and 1024px drawn for it, packed by `source/icns.py` with no Mac needed (SPEC-mac R15) |
 | `app/icon-16.png` ... `icon-256.png` | The same icon as single PNGs, for anything that takes one image |
 | `app/icon.svg` | The icon as vector, with its shadow |
 | `app/mark.svg` | The mark alone, the same on any ground |

@@ -870,3 +870,91 @@ def test_the_dev_launch_icon_is_a_byte_identical_copy_of_the_artworks():
     """app/assets/icon.ico is committed because the unpackaged launch needs it;
     the artwork's generator owns the original, so the copy cannot drift."""
     assert (REPO / ICON_COPY).read_bytes() == (REPO / ICON_SOURCE).read_bytes()
+
+
+MAC_ICON_SOURCE = "pilot/brand/tax-document-console/app/icon.icns"
+MAC_ICON_COPY = "app/assets/icon.icns"
+ARTWORK_APP = "pilot/brand/tax-document-console/app"
+
+
+def _icns_module():
+    """The artwork generator's packer, loaded by path: it lives in a design tool's
+    folder that is not a package, beside the .ico packer it is written like."""
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(
+        "brand_icns", REPO / "pilot/brand/tax-document-console/source/icns.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _icns_elements(data: bytes) -> list[tuple[str, bytes]]:
+    """(type, payload) of each element of an .icns, after checking its two lengths."""
+    import struct
+
+    assert data[:4] == b"icns" and struct.unpack(">I", data[4:8])[0] == len(data)
+    found, at = [], 8
+    while at < len(data):
+        kind, length = data[at:at + 4].decode("ascii"), struct.unpack(">I", data[at + 4:at + 8])[0]
+        found.append((kind, data[at + 8:at + length]))
+        at += length
+    assert at == len(data)
+    return found
+
+
+def _png(size: int) -> bytes:
+    import io
+
+    from PIL import Image
+
+    out = io.BytesIO()
+    Image.new("RGBA", (size, size), (0, 0, 0, 255)).save(out, "PNG")
+    return out.getvalue()
+
+
+def test_the_mac_icon_is_a_byte_identical_copy_of_the_artworks():
+    """SPEC-mac R15: app/assets/icon.icns is what electron-packager puts in the
+    bundle and what the unpackaged launch needs; the artwork's generator owns
+    the original, so the copy cannot drift - the same rule as the .ico's."""
+    assert (REPO / MAC_ICON_COPY).read_bytes() == (REPO / MAC_ICON_SOURCE).read_bytes()
+
+
+def test_the_mac_icon_is_made_from_the_same_renders_as_the_windows_one():
+    """P232 (one export, both icons): the five sizes the .ico also holds and
+    the artwork's own single PNGs are the very bytes inside the .icns, and the
+    two sizes only a Mac wants (512 and 1024) are drawn at their own size."""
+    packer = _icns_module()
+    elements = dict(_icns_elements((REPO / MAC_ICON_SOURCE).read_bytes()))
+    assert [kind for kind, _png_bytes in _icns_elements((REPO / MAC_ICON_SOURCE).read_bytes())] == [
+        kind for kind, _pixels in packer.ELEMENTS]
+    for kind, pixels in packer.ELEMENTS:
+        assert packer._png_size(elements[kind]) == (pixels, pixels), kind
+        single = REPO / ARTWORK_APP / f"icon-{pixels}.png"
+        if single.is_file():
+            assert elements[kind] == single.read_bytes(), kind
+
+
+def test_the_icns_packer_writes_apples_ten_elements_with_their_own_lengths():
+    packer = _icns_module()
+    renders = {size: _png(size) for size in packer.SIZES}
+    elements = _icns_elements(packer.pack(renders))
+    assert [kind for kind, _body in elements] == [
+        "icp4", "icp5", "ic11", "ic12", "ic07", "ic13", "ic08", "ic14", "ic09", "ic10"]
+    assert dict(packer.ELEMENTS) == {
+        "icp4": 16, "icp5": 32, "ic07": 128, "ic08": 256, "ic09": 512, "ic10": 1024,
+        "ic11": 32, "ic12": 64, "ic13": 256, "ic14": 512}
+    assert [body for _kind, body in elements] == [renders[pixels] for _kind, pixels in packer.ELEMENTS]
+
+
+def test_the_icns_packer_refuses_a_missing_wrong_sized_or_non_png_render():
+    import pytest
+
+    packer = _icns_module()
+    renders = {size: _png(size) for size in packer.SIZES}
+    with pytest.raises(ValueError, match="1024"):
+        packer.pack({size: png for size, png in renders.items() if size != 1024})
+    with pytest.raises(ValueError, match="came back"):
+        packer.pack({**renders, 512: _png(256)})
+    with pytest.raises(ValueError, match="PNG"):
+        packer.pack({**renders, 64: b"BM" + bytes(64)})
