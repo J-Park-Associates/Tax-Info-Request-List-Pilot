@@ -15,7 +15,7 @@ from pathlib import Path
 
 from tests.conftest import child_env, make_engagement
 from tracker.manifest import RequestItem
-from tracker.runner import RUNNER_MODE_FLAG, SETTINGS_FLAG
+from tracker.runner import PRODUCT_FLAG, RUNNER_MODE_FLAG, SETTINGS_FLAG
 from tracker.settings import ENV_PRODUCT_NAME, ENV_SETTINGS_DIR
 
 REPO = Path(__file__).resolve().parent.parent
@@ -205,7 +205,14 @@ def test_a_mac_below_the_floor_is_refused_before_anything_runs(monkeypatch, caps
         _on_a_mac(monkeypatch, machine=machine, version=version)
         for args in (["templates"], [RUNNER_MODE_FLAG, str(tmp_path)], [SETUP_MODE_FLAG], ["--spare"]):
             assert _run_the_entry(monkeypatch, args) == (1, [])        # exit 1, nothing started
-            assert capsys.readouterr().err == settings.MAC_FLOOR.format(what=what) + "\n"
+            assert capsys.readouterr().err == settings.MAC_FLOOR.format(
+                product=settings.product_name(), what=what) + "\n"
+        # The scheduled job and the installer's door are told the product's name on
+        # their command lines; the sentence names the product they were told.
+        for args in ([RUNNER_MODE_FLAG, str(tmp_path), PRODUCT_FLAG, "Told Product"],
+                     [SETUP_MODE_FLAG, PRODUCT_FLAG, "Told Product"]):
+            assert _run_the_entry(monkeypatch, args) == (1, [])
+            assert capsys.readouterr().err == settings.MAC_FLOOR.format(product="Told Product", what=what) + "\n"
     assert not (tmp_path / "data").exists()
 
 

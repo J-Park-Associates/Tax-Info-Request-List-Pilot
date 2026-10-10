@@ -10443,3 +10443,63 @@ def test_the_last_counts_words_are_in_the_screen_vocabulary():
                 encoding="utf-8").splitlines()]
     proposed = {row[1]: row[4] for row in rows if len(row) > 4}
     assert proposed["screen.updating_as_of"] == screen["updating_as_of"]
+
+
+def _zip_bytes(*names: str) -> bytes:
+    import io
+    import zipfile
+
+    packed = io.BytesIO()
+    with zipfile.ZipFile(packed, "w") as archive:
+        for name in names:
+            archive.writestr(name, b"made-up")
+    return packed.getvalue()
+
+
+def test_a_mac_says_protected_view_does_not_exist_each_time_a_macro_copy_opens(
+        capsys, demo_root, tmp_path, monkeypatch):
+    """SPEC-mac R8 (P240): a Mac cannot mark a review copy for Protected View,
+    so the copy is made unmarked as before, and the API names - for the shell -
+    each openable path whose copy Windows would have marked
+    (``filer._may_carry_code``), with the one sentence the shell then says each
+    time it opens one. Windows and Linux name none: there the mark itself is
+    the answer."""
+    from tracker import fsio, settings
+
+    assert fsio.mark_from_internet(tmp_path / "budget.xlsm", _opener=lambda *a, **k: None) is False
+    # The sentence is learned from the API, as the shell's others are.
+    assert api._vocab()["shell"]["protected_view_mac"] == api.PROTECTED_VIEW_MAC
+    assert api.PROTECTED_VIEW_MAC.startswith("Protected View does not exist on a Mac")
+
+    engagement = tmp_path / "return"
+    review = engagement / REVIEW_DIR_NAME
+    review.mkdir(parents=True)
+    copies = {
+        "macros.xlsm": b"made-up",                                   # a macro-enabled type
+        "packaged.xlsx": _zip_bytes("[Content_Types].xml", "xl/vbaProject.bin"),   # a VBA project inside
+        "plain.xlsx": _zip_bytes("[Content_Types].xml", "xl/workbook.xml"),
+        "statement.pdf": b"%PDF-made-up",
+    }
+    for name, content in copies.items():
+        (review / name).write_bytes(content)
+    code = sorted(api.READ_AND_PARKED_CODES)[0]
+    rows = [_parked_row(name, code) for name in copies]
+    rows.append(_parked_row("mail.eml", sorted(api._CONTAINER_CODES)[0]))     # never opens, so never named
+    (review / "mail.eml").write_bytes(b"made-up")
+
+    monkeypatch.setattr(settings, "host_system", lambda: "darwin")
+    assert api._code_copies(engagement, rows) == [str(review / "macros.xlsm"), str(review / "packaged.xlsx")]
+    for system in ("nt", "posix"):
+        monkeypatch.setattr(settings, "host_system", lambda system=system: system)
+        assert api._code_copies(engagement, rows) == []
+
+    # And the state the shell reads carries the list beside its paths.
+    state, parked = _parked_read_pdf_state(capsys, demo_root, tmp_path)
+    assert state["carries_code"] == []
+    monkeypatch.setattr(settings, "host_system", lambda: "darwin")
+    monkeypatch.setattr(settings, "_statfs", lambda path: (settings.MNT_LOCAL, "/"))   # the test's disk
+    monkeypatch.setattr(api, "_may_carry_code", lambda copy: copy.suffix == ".pdf")
+    code, replied = run(capsys, "state", api.ENGAGEMENT_FLAG, str(where(demo_root, "Smith Family 2025")))
+    assert code == 0, replied
+    [path] = replied["carries_code"]
+    assert path == replied["paths"][parked["open_key"]]

@@ -37,8 +37,8 @@ so there is no installer to refuse a Mac it was never proved on, and the
 schedule runs this executable directly, without the shell. The check
 (``tracker.settings.mac_floor_refusal``: Apple silicon, macOS 14 or later)
 therefore comes second, right after ``freeze_support`` and before the
-arguments are read: a refusal says the shell's own sentence on stderr and exits
-1 having read, written and locked nothing.
+arguments are acted on: a refusal says the shell's own sentence on stderr and
+exits 1 having read, written and locked nothing.
 """
 import multiprocessing
 import os
@@ -47,6 +47,16 @@ import sys
 from tracker.runner import PRODUCT_FLAG, RUNNER_MODE_FLAG, SETTINGS_FLAG, SETUP_MODE_FLAG
 from tracker.runner import main as run_pass
 from tracker.settings import ENV_PRODUCT_NAME, ENV_SETTINGS_DIR, mac_floor_refusal
+
+
+def told_product(argv: list[str]) -> str | None:
+    """The product's name the scheduled job or the installer's door was given
+    on its command line (``PRODUCT_FLAG``), or ``None``. Neither has the
+    shell's environment, so the floor's sentence (R6) takes the name from here
+    rather than type it a second time."""
+    if PRODUCT_FLAG in argv[:-1]:
+        return argv[argv.index(PRODUCT_FLAG) + 1] or None
+    return None
 
 
 def run_setup_step(argv: list[str]) -> int:
@@ -71,10 +81,10 @@ def run_setup_step(argv: list[str]) -> int:
 
 if __name__ == "__main__":
     multiprocessing.freeze_support()
-    if refusal := mac_floor_refusal():
+    argv = sys.argv[1:]
+    if refusal := mac_floor_refusal(product=told_product(argv)):
         sys.stderr.write(refusal + "\n")
         raise SystemExit(1)
-    argv = sys.argv[1:]
     if argv[:1] == [RUNNER_MODE_FLAG]:
         raise SystemExit(run_pass(argv[1:]))
     if argv[:1] == [SETUP_MODE_FLAG]:

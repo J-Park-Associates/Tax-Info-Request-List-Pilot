@@ -31,6 +31,16 @@ reading's temporary files, the run log and the scheduler's task file live in
 never beside the program, in a checkout, on removable media or in the temp
 folder, and :func:`data_home` refuses rather than fall back to any of them.
 
+**On a Mac** (SPEC-mac R1-R6) every platform branch reads :func:`host_system`
+when called, so a test stands in for a Mac on any machine. The data home is in
+``~/Library/Application Support`` and never inside a sync service's tree
+(:func:`synced_tree`); a packaged program's settings file is in the product's
+own Application Support folder, outside the bundle a newer copy replaces
+whole, and the program is the whole ``.app``; a disk is judged by its mount
+(``statfs``); the program the schedule runs must sit in Applications; the
+clients root may not be in iCloud Drive or kept by a sync service the app is
+not proved on; and :func:`mac_floor_refusal` is the hardware floor.
+
 ``ENV_REAL_CORPUS`` sits here for the same reason the clients root does:
 it is the other folder outside the repository the code is told about - the
 firm's own redacted documents, which the harness and the coverage report
@@ -219,7 +229,7 @@ NO_HOME_FOR_SETTINGS = ("this account has no home folder, so the app has nowhere
 #: it was downloaded runs from a random read-only copy that is gone after a
 #: restart; a disk image is gone when it is ejected.
 PROGRAM_TRANSLOCATED = ("macOS is running the app from a temporary copy ({folder}) because it was "
-                        "opened where it was downloaded. Drag Tax Document Console into Applications "
+                        "opened where it was downloaded. Drag {product} into Applications "
                         "and open it from there; the schedule runs only the copy in Applications.")
 PROGRAM_ON_DISK_IMAGE = ("The app is running from {folder}, a disk image or a disk other than this "
                          "Mac's own. Drag it into Applications and open it from there; the schedule "
@@ -240,10 +250,14 @@ ICLOUD_DESKTOP_SIGNAL = ("Library", "Mobile Documents", "com~apple~CloudDocs", "
 #: The hardware floor (P243, R6): Apple silicon on macOS 14 or later. A
 #: Drag-to-Applications install has no installer program to refuse with, so the
 #: app's first code says this and stops; the shell says the same sentence (a
-#: test holds the two copies equal). {what} is what this Mac has.
-MAC_FLOOR = ("Tax Document Console needs a Mac with Apple silicon running macOS 14 or later; "
+#: test holds the two copies equal). {what} is what this Mac has, {product} the
+#: product's name from its one home (:func:`product_name`), never typed here.
+MAC_FLOOR = ("{product} needs a Mac with Apple silicon running macOS 14 or later; "
              "this Mac has {what}, so the app stops here and changes nothing.")
 MAC_FLOOR_MACOS = 14
+#: What the floor sentence calls the app when nothing has told it the product's
+#: name: a frozen program started by hand, without the shell's environment.
+MAC_FLOOR_UNNAMED = "The app"
 #: The file beside them that says where each one belongs, and its columns:
 #: the document's own name, the catalog it is routed against, the
 #: engagement year, and the identifier it must file under - blank for a
@@ -1251,7 +1265,7 @@ def _mac_program_refusal(app: Path) -> str:
     if folder in homes and app.name == product_name() + ".app":
         return ""
     if TRANSLOCATION in str(app):
-        return PROGRAM_TRANSLOCATED.format(folder=folder)
+        return PROGRAM_TRANSLOCATED.format(folder=folder, product=product_name())
     if str(app).startswith(MAC_VOLUMES + "/"):
         return PROGRAM_ON_DISK_IMAGE.format(folder=folder)
     return PROGRAM_NOT_IN_APPLICATIONS.format(folder=folder)
@@ -1445,7 +1459,7 @@ def root_refusal(root: Path, *, settings: Path, app: Path, system: Path,
 
 
 def mac_floor_refusal(*, system: str | None = None, machine: str | None = None,
-                      mac_ver: str | None = None) -> str:
+                      mac_ver: str | None = None, product: str | None = None) -> str:
     """``MAC_FLOOR`` filled with what this Mac has, or "" when it is Apple
     silicon on macOS 14 or later, or when this is not a Mac (R6, P243).
 
@@ -1454,7 +1468,11 @@ def mac_floor_refusal(*, system: str | None = None, machine: str | None = None,
     it reads, writes or locks anything: the schedule runs the API directly,
     and it would otherwise start on a Mac the app was never proved on. A
     version this cannot read is below the floor - nothing is guessed. Read when
-    called; ``system``, ``machine`` and ``mac_ver`` are a test's."""
+    called; ``system``, ``machine`` and ``mac_ver`` are a test's. ``product`` is
+    the name the scheduled job was told on its command line, which has no
+    environment of the shell's; failing that the product's name from its one
+    home, and failing that ``MAC_FLOOR_UNNAMED``, because a refusal that
+    could not be said would be a silent skip."""
     if (host_system() if system is None else system) != "darwin":
         return ""
     import platform
@@ -1470,7 +1488,12 @@ def mac_floor_refusal(*, system: str | None = None, machine: str | None = None,
         return ""
     chip = ("Apple silicon" if silicon else "an Intel processor" if machine in ("x86_64", "i386")
             else machine or "a processor it cannot name")
-    return MAC_FLOOR.format(what=f"{chip} running macOS {version}" if version
+    if not product:
+        try:
+            product = product_name()
+        except SettingsError:
+            product = MAC_FLOOR_UNNAMED
+    return MAC_FLOOR.format(product=product, what=f"{chip} running macOS {version}" if version
                             else f"{chip} running a macOS it cannot name")
 
 

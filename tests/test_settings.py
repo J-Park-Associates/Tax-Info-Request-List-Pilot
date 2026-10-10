@@ -1228,7 +1228,8 @@ def test_a_mac_program_outside_applications_is_not_scheduled(tmp_path, monkeypat
     assert refusal(home / "Applications" / name) == ""
     # A quarantined app opened where it was downloaded.
     moved = Path("/private/var/folders/ab/xyz/T/AppTranslocation/3F2A/d") / name
-    assert refusal(moved) == data_rules.PROGRAM_TRANSLOCATED.format(folder=moved.parent)
+    assert refusal(moved) == data_rules.PROGRAM_TRANSLOCATED.format(
+        folder=moved.parent, product=data_rules.product_name())
     # A disk image, or a disk other than this Mac's own.
     image = Path("/Volumes/Tax Document Console") / name
     assert refusal(image) == data_rules.PROGRAM_ON_DISK_IMAGE.format(folder=image.parent)
@@ -1298,16 +1299,24 @@ def test_a_mac_accepts_a_google_drive_root(tmp_path):
         data_rules.ROOT_HOLDS_SETTINGS.format(root=home, settings=home / "settings"))
 
 
-def test_a_mac_below_the_hardware_floor_is_named_with_what_it_has():
+def test_a_mac_below_the_hardware_floor_is_named_with_what_it_has(monkeypatch):
     floor = data_rules.mac_floor_refusal
     assert floor(system="darwin", machine="arm64", mac_ver="14.0") == ""
     assert floor(system="darwin", machine="arm64", mac_ver="26.1") == ""
     assert floor(system="posix", machine="x86_64", mac_ver="10.13") == ""          # not a Mac
+    product = data_rules.product_name()
     assert floor(system="darwin", machine="arm64", mac_ver="13.6.1") == data_rules.MAC_FLOOR.format(
-        what="Apple silicon running macOS 13.6.1")
+        product=product, what="Apple silicon running macOS 13.6.1")
     assert floor(system="darwin", machine="x86_64", mac_ver="14.5") == data_rules.MAC_FLOOR.format(
-        what="an Intel processor running macOS 14.5")
+        product=product, what="an Intel processor running macOS 14.5")
     # A version nobody can read is below the floor: nothing is guessed.
     assert floor(system="darwin", machine="arm64", mac_ver="") == data_rules.MAC_FLOOR.format(
-        what="Apple silicon running a macOS it cannot name")
+        product=product, what="Apple silicon running a macOS it cannot name")
+    # The product's name is told, or comes from its one home, or is "The app" - never silent.
+    assert floor(system="darwin", machine="arm64", mac_ver="13.0", product="Told Name").startswith(
+        "Told Name needs a Mac with Apple silicon running macOS 14 or later; this Mac has Apple silicon")
+    monkeypatch.setattr(data_rules, "PACKAGE_JSON", Path("/nowhere/package.json"))
+    monkeypatch.delenv(data_rules.ENV_PRODUCT_NAME, raising=False)
+    assert floor(system="darwin", machine="arm64", mac_ver="13.0").startswith(
+        data_rules.MAC_FLOOR_UNNAMED + " needs a Mac")
     assert "{what}" in data_rules.MAC_FLOOR and "Apple silicon" in data_rules.MAC_FLOOR

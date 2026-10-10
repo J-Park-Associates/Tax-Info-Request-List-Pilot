@@ -193,8 +193,18 @@ def test_the_apps_menu_is_the_template_in_both_builds_and_the_source_app_runs_it
 #: brought forward. Every other part of the shell is left real.
 _ELECTRON_STUB = r"""
 const Module = require("module");
-const seen = { asked: false, quit: 0, windows: 0, restored: 0, focused: 0, events: [], spawned: [], setPaths: [] };
+const seen = { asked: false, quit: 0, windows: 0, restored: 0, focused: 0, events: [], spawned: [], setPaths: [],
+               dialogs: [], settingsDirs: [], execPath: process.execPath };
 const handlers = {};
+// A fourth argument stands the process in for another machine (SPEC-mac): its
+// platform, chip and OS release, and whether it is the packaged app.
+const system = process.argv[4] ? JSON.parse(process.argv[4]) : null;
+if (system) {
+  Object.defineProperty(process, "platform", { value: system.platform });
+  Object.defineProperty(process, "arch", { value: system.arch });
+  require("os").release = () => system.release;
+  process.resourcesPath = "/fake/resources";
+}
 const win = {
   isMinimized: () => true,
   restore() { seen.restored += 1; },
@@ -212,7 +222,7 @@ class BrowserWindow {
 }
 const electron = {
   app: {
-    isPackaged: false,
+    isPackaged: Boolean(system && system.packaged),
     getPath: (name) => `/fake/${name}`,
     setPath(name, value) { seen.setPaths.push({ name, value, beforeLock: !seen.asked }); },
     requestSingleInstanceLock() { seen.asked = true; return process.argv[3] === "first"; },
@@ -221,7 +231,8 @@ const electron = {
     on(name, fn) { seen.events.push(name); handlers[name] = fn; },
     whenReady: () => Promise.resolve(),
   },
-  BrowserWindow, ipcMain: { handle() {}, on() {} }, shell: {}, dialog: {},
+  BrowserWindow, ipcMain: { handle() {}, on() {} }, shell: {},
+  dialog: { showMessageBoxSync(options) { seen.dialogs.push(options.message); return 0; } },
   Menu: { buildFromTemplate: (template) => ({ template }), setApplicationMenu() {} },
   nativeTheme: { shouldUseDarkColors: false, shouldUseHighContrastColors: false, themeSource: "", on() {} },
 };
@@ -231,8 +242,9 @@ const electron = {
 // with an empty reply and exit 0 (the review of SPEC-wincheck-fixes, S5).
 const { EventEmitter } = require("events");
 const childProcess = {
-  spawn(command) {
+  spawn(command, args, options) {
     seen.spawned.push(command);
+    seen.settingsDirs.push(options && options.env && options.env.TRACKER_SETTINGS_DIR);
     const stream = () => Object.assign(new EventEmitter(), { setEncoding() {} });
     const child = Object.assign(new EventEmitter(), { stdout: stream(), stderr: stream(), kill() {} });
     child.stdin = Object.assign(new EventEmitter(), { write() {}, end() {} });
@@ -321,6 +333,190 @@ def test_the_electron_user_data_folder_keeps_its_earlier_name(tmp_path):
     assert set_path["name"] == "userData" and set_path["beforeLock"]
     parts = re.split(r"[\\/]", set_path["value"])
     assert parts[-2:] == ["appData", EARLIER_PRODUCT_NAME]
+
+
+def _joined_string(source: str, after: str) -> str:
+    """The string literal, possibly several joined by ``+`` over lines, that
+    follows ``after`` in a JavaScript source up to its ``;`` or ``,`` line end."""
+    tail = source.split(after, 1)[1]
+    end = re.search(r'";\n|",\n', tail).end()
+    return "".join(re.findall(r'"([^"]*)"', tail[:end]))
+
+
+def _on_another_machine(tmp_path, system: dict, which: str = "first") -> dict:
+    """main.js run by node against the Electron stand-in, on the machine
+    ``system`` describes (platform, arch, OS release, packaged or not)."""
+    import shutil
+    import subprocess
+
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node is not on PATH (CI installs it)")
+    harness = tmp_path / "another_machine.js"
+    harness.write_text(_ELECTRON_STUB, encoding="utf-8", newline="\n")
+    done = subprocess.run([node, str(harness), str(REPO / "app" / "main.js"), which, json.dumps(system)],
+                          capture_output=True, text=True, encoding="utf-8", timeout=60, check=False)
+    assert done.returncode == 0, done.stderr
+    return json.loads(done.stdout)
+
+
+def test_the_shell_and_the_api_say_the_mac_floor_in_the_same_words():
+    """SPEC-mac R6 (P243): the floor sentence is spelled once in Python and
+    once in the shell, and the two are held equal. The shell fills ``{what}``
+    itself, so its marker must be the one the Python sentence has."""
+    from tracker.settings import MAC_FLOOR, MAC_FLOOR_MACOS
+
+    main_js = read("app/main.js")
+    assert _joined_string(main_js, "const MAC_FLOOR =") == MAC_FLOOR
+    assert "{what}" in MAC_FLOOR
+    assert f"const MAC_FLOOR_DARWIN = {MAC_FLOOR_MACOS + 9};" in main_js     # macOS 14 is Darwin 23
+    assert read("api_entry.py").count("mac_floor_refusal(product=") == 1
+
+
+@pytest.mark.parametrize("system, what", [
+    ({"platform": "darwin", "arch": "arm64", "release": "22.6.0"}, "Apple silicon running macOS 13"),
+    ({"platform": "darwin", "arch": "x64", "release": "23.1.0"}, "an Intel processor running macOS 14"),
+    ({"platform": "darwin", "arch": "arm64", "release": "19.6.0"}, "Apple silicon running macOS 10.15"),
+])
+def test_a_mac_below_the_floor_is_refused_by_the_shell_before_the_lock_and_any_window(
+        tmp_path, system, what):
+    from tracker.settings import MAC_FLOOR, product_name
+
+    seen = _on_another_machine(tmp_path, system)
+    assert seen["dialogs"] == [MAC_FLOOR.format(product=product_name(), what=what)]
+    assert seen["quit"] == 1 and seen["windows"] == 0
+    assert seen["asked"] is False, "the one-instance lock writes to userData; nothing is written"
+    assert seen["spawned"] == []
+
+
+@pytest.mark.parametrize("system", [
+    {"platform": "darwin", "arch": "arm64", "release": "23.0.0"},       # macOS 14, the floor itself
+    {"platform": "darwin", "arch": "arm64", "release": "25.1.0"},       # macOS 26
+    {"platform": "linux", "arch": "x64", "release": "6.1.0"},
+    {"platform": "win32", "arch": "x64", "release": "10.0.19045"},
+])
+def test_a_machine_at_the_floor_or_not_a_mac_opens_the_one_window_as_before(tmp_path, system):
+    seen = _on_another_machine(tmp_path, system)
+    assert seen["dialogs"] == [] and seen["asked"] is True and seen["windows"] == 1
+
+
+def test_a_packaged_mac_keeps_its_settings_in_application_support_and_windows_beside_the_program(tmp_path):
+    """SPEC-mac R2: the shell names the settings folder to the API, and on a
+    Mac it is ``Application Support/<productName>`` - the same folder the API's
+    own fallback, ``settings.mac_settings_dir``, builds - never inside the
+    bundle a newer copy replaces whole."""
+    from tracker.settings import MAC_SUPPORT, mac_settings_dir, product_name
+
+    main_js = read("app/main.js")
+    assert 'path.join(app.getPath("appData"), PRODUCT_NAME)' in main_js
+    assert MAC_SUPPORT == ("Library", "Application Support")
+    assert mac_settings_dir(Path("/home/me")) == Path("/home/me/Library/Application Support") / product_name()
+    mac = _on_another_machine(tmp_path, {"platform": "darwin", "arch": "arm64", "release": "23.0.0",
+                                         "packaged": True})
+    assert mac["settingsDirs"] and set(mac["settingsDirs"]) == {f"/fake/appData/{product_name()}"}
+    windows = _on_another_machine(tmp_path, {"platform": "win32", "arch": "x64", "release": "10.0",
+                                             "packaged": True})
+    assert windows["settingsDirs"] and set(windows["settingsDirs"]) == {str(Path(windows["execPath"]).parent)}
+
+
+#: main.js run by node, its ``tracker-cmd`` reply teaching it a macro-capable
+#: review copy, then ``open-path`` called on it, to see what the shell says.
+_PROTECTED_VIEW_HARNESS = r"""
+const Module = require("module");
+const { EventEmitter } = require("events");
+const realFs = require("fs");
+const [mainJs, target, other, platform] = process.argv.slice(2);
+Object.defineProperty(process, "platform", { value: platform });
+const ipc = {};
+const seen = { boxes: [], opened: [], revealed: [] };
+const reply = { vocab: { commands: ["list"], path_kinds: { review_copy: "file" },
+                         shell: { protected_view_mac: "Said by the API." } },
+                state: { paths: { "review_copy K1": target, "review_copy K2": other }, carries_code: [target] },
+                warnings: [] };
+const electron = {
+  app: { isPackaged: false, getPath: () => "/fake", setPath() {}, requestSingleInstanceLock: () => true,
+         quit() {}, setAppUserModelId() {}, on() {}, whenReady: () => new Promise(() => {}) },
+  BrowserWindow: class {},
+  Menu: { buildFromTemplate: (template) => ({ template }), setApplicationMenu() {} },
+  ipcMain: { handle(name, fn) { ipc[name] = fn; }, on() {} },
+  nativeTheme: { shouldUseDarkColors: false, shouldUseHighContrastColors: false, themeSource: "", on() {} },
+  shell: { openPath: async (p) => { seen.opened.push(p); return ""; },
+           showItemInFolder: (p) => { seen.revealed.push(p); } },
+  dialog: { showMessageBox: (...args) => { seen.boxes.push(args[args.length - 1].message);
+                                           return Promise.resolve({ response: 0 }); } },
+};
+const childProcess = {
+  spawn() {
+    const stream = () => Object.assign(new EventEmitter(), { setEncoding() {} });
+    const child = Object.assign(new EventEmitter(), { stdout: stream(), stderr: stream(), kill() {} });
+    child.stdin = Object.assign(new EventEmitter(), { write() {}, end() {} });
+    setImmediate(() => {
+      child.stdout.emit("data", JSON.stringify(reply) + "\n");
+      child.emit("exit", 0, null);
+      child.emit("close", 0, null);
+    });
+    return child;
+  },
+};
+const load = Module._load;
+Module._load = function (request, ...rest) {
+  if (request === "electron") return electron;
+  if (request === "child_process") return childProcess;
+  if (request === "fs") return { ...realFs, existsSync: () => true };
+  return load.call(this, request, ...rest);
+};
+require(mainJs);
+(async () => {
+  const event = { sender: { isDestroyed: () => false, send() {} } };
+  await ipc["tracker-cmd"](event, ["list"]);
+  const results = [];
+  for (const [path, how] of [[target], [target], [target, "reveal"], [other], [target]]) {
+    results.push(await ipc["open-path"](event, path, how));
+  }
+  process.stdout.write(JSON.stringify({ ...seen, results }));
+})();
+"""
+
+
+def _opening_on(tmp_path, platform: str) -> dict:
+    import shutil
+    import subprocess
+
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node is not on PATH (CI installs it)")
+    harness = tmp_path / "protected_view.js"
+    harness.write_text(_PROTECTED_VIEW_HARNESS, encoding="utf-8", newline="\n")
+    macros, plain = tmp_path / "budget.xlsm", tmp_path / "statement.pdf"
+    macros.write_bytes(b"made-up")
+    plain.write_bytes(b"made-up")
+    done = subprocess.run([node, str(harness), str(REPO / "app" / "main.js"), str(macros), str(plain), platform],
+                          capture_output=True, text=True, encoding="utf-8", timeout=60, check=False)
+    assert done.returncode == 0, done.stderr
+    return {**json.loads(done.stdout), "macros": str(macros), "plain": str(plain)}
+
+
+def test_the_shell_says_protected_view_does_not_exist_each_time_a_macro_copy_opens_on_a_mac(tmp_path):
+    """SPEC-mac R8 (P240): the sentence is the API's (learned, with a pinned
+    default for a first start), and the shell says it each time it opens a
+    path the API listed in ``carries_code`` - not when it only shows the file,
+    not for any other file, not on Windows, where the mark itself does it - and
+    never refuses or asks first."""
+    import tracker.api as api
+
+    main_js = read("app/main.js")
+    says = main_js.split("const shellSays = {", 1)[1].split("\n};\n", 1)[0]
+    assert _joined_string(says, "protected_view_mac:") == api.PROTECTED_VIEW_MAC
+    assert api._vocab()["shell"]["protected_view_mac"] == api.PROTECTED_VIEW_MAC
+    assert main_js.count("shell.openPath(") == 1                       # the one door, still
+
+    mac = _opening_on(tmp_path, "darwin")
+    assert mac["results"] == [""] * 5, "never refused"
+    assert mac["opened"] == [mac["macros"], mac["macros"], mac["plain"], mac["macros"]]
+    assert mac["revealed"] == [mac["macros"]]
+    assert mac["boxes"] == ["Said by the API."] * 3, "each time it opens, and no other time"
+    assert _opening_on(tmp_path, "win32")["boxes"] == []
+    assert _opening_on(tmp_path, "linux")["boxes"] == []
 
 
 def test_the_side_panel_names_the_product_from_its_one_home():
