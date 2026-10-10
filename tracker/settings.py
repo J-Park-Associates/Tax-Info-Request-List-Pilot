@@ -1266,7 +1266,7 @@ def _mac_program_refusal(app: Path) -> str:
         return ""
     if TRANSLOCATION in str(app):
         return PROGRAM_TRANSLOCATED.format(folder=folder, product=product_name())
-    if str(app).startswith(MAC_VOLUMES + "/"):
+    if Path(MAC_VOLUMES) in app.parents:
         return PROGRAM_ON_DISK_IMAGE.format(folder=folder)
     return PROGRAM_NOT_IN_APPLICATIONS.format(folder=folder)
 
