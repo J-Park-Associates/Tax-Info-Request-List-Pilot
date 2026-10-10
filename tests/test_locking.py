@@ -23,6 +23,7 @@ from tracker.locking import (
 )
 
 on_windows = pytest.mark.skipif(os.name != "nt", reason="Windows refuses to delete an open file")
+on_posix = pytest.mark.skipif(os.name == "nt", reason="POSIX holds a lock with flock (SPEC-mac R19)")
 
 
 def test_lock_is_taken_and_released(tmp_path):
@@ -115,8 +116,10 @@ def test_a_held_lock_cannot_be_deleted_from_outside(tmp_path):
     assert not lock.exists()
 
 
-@on_windows
 def test_clearing_a_stale_lock_that_is_still_held_is_refused(tmp_path):
+    """Pinned on both systems: no taker and no clear replaces a lock its
+    owner still holds - on Windows by the open handle, on POSIX by flock,
+    which belongs to the open file and so holds inside one process too."""
     from tracker.locking import clear_stale_lock
 
     lock = tmp_path / LOCK_FILENAME
@@ -126,6 +129,88 @@ def test_clearing_a_stale_lock_that_is_still_held_is_refused(tmp_path):
         with pytest.raises(EngagementLockedError, match="still held by a running process"):
             clear_stale_lock(tmp_path)
         assert lock.exists()
+
+
+@on_posix
+def test_an_unlink_from_outside_is_not_refused_on_posix(tmp_path):
+    """POSIX unlinks an open file: the Windows half of
+    ``test_a_held_lock_cannot_be_deleted_from_outside`` does not hold, and
+    release then finds the name gone and leaves it so."""
+    lock = tmp_path / LOCK_FILENAME
+    with engagement_lock(tmp_path):
+        lock.unlink()
+    assert not lock.exists()
+
+
+@on_posix
+def test_a_held_lock_that_looks_stale_is_refused_on_posix(tmp_path):
+    lock = tmp_path / LOCK_FILENAME
+    with engagement_lock(tmp_path) as held:
+        old = (dt.datetime.now() - dt.timedelta(seconds=STALE_LOCK_SECONDS + 1)).timestamp()
+        os.utime(lock, (old, old))
+        with pytest.raises(EngagementLockedError, match="still held by a running process"):
+            acquire_lock(tmp_path)
+        assert lock.read_text(encoding="utf-8") == held.token, "the held lock was left as it was"
+        assert not (tmp_path / (LOCK_FILENAME + ".breaking")).exists(), "the breaker was let go"
+    assert not lock.exists()
+
+
+_HOLDER = """
+import sys, time
+from pathlib import Path
+from tracker.locking import acquire_lock
+
+acquire_lock(Path(sys.argv[1]))
+print("held", flush=True)
+time.sleep(600)
+"""
+
+
+def _a_process_holding(folder):
+    """A child process that has taken the lock in ``folder`` and keeps it."""
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    repo = Path(__file__).resolve().parents[1]
+    child = subprocess.Popen([sys.executable, "-c", _HOLDER, str(folder)], cwd=repo,
+                             stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    assert child.stdout.readline().strip() == "held", child.stderr.read()
+    return child
+
+
+@on_posix
+def test_clearing_a_stale_lock_that_is_still_held_is_refused_on_posix(tmp_path):
+    """The owner is another process, as in the office: its flock outlives the
+    age the file shows, and the clear is refused (SPEC-mac R19)."""
+    from tracker.locking import clear_stale_lock
+
+    lock = tmp_path / LOCK_FILENAME
+    child = _a_process_holding(tmp_path)
+    try:
+        old = (dt.datetime.now() - dt.timedelta(seconds=STALE_LOCK_SECONDS + 1)).timestamp()
+        os.utime(lock, (old, old))
+        with pytest.raises(EngagementLockedError, match="still held by a running process"):
+            clear_stale_lock(tmp_path)
+        with pytest.raises(EngagementLockedError, match="still held by a running process"):
+            acquire_lock(tmp_path)
+        assert lock.exists()
+    finally:
+        child.kill()
+        child.wait()
+
+
+@on_posix
+def test_a_pass_killed_while_holding_leaves_a_lock_the_dead_owner_rule_clears(tmp_path):
+    """The kernel releases a flock when its owner dies, so a killed pass
+    leaves a file that is stale by the dead-owner rule, as before the flock."""
+    lock = tmp_path / LOCK_FILENAME
+    child = _a_process_holding(tmp_path)
+    child.kill()
+    child.wait()
+    assert lock.exists()
+    with engagement_lock(tmp_path) as ours:
+        assert lock.read_text(encoding="utf-8") == ours.token
 
 
 def test_a_lock_whose_owner_is_gone_is_stale_at_any_age(tmp_path):
@@ -598,6 +683,81 @@ def test_the_lock_line_is_fsynced(tmp_path, monkeypatch):
     monkeypatch.setattr(locking_module.os, "fsync", fsync)
     with engagement_lock(tmp_path) as lock:
         assert synced == [lock.token.encode("utf-8")]
+
+
+def test_a_mac_knows_when_it_last_started(monkeypatch):
+    """R20: on a Mac ``kern.boottime`` is a ``struct timeval`` read through
+    ``sysctlbyname``; here the call is stood in."""
+    import ctypes
+
+    import tracker.locking as locking_module
+
+    asked = []
+
+    class FakeLibc:
+        def __init__(self, result):
+            self.result = result
+
+            def sysctlbyname(name, old, size, new, new_size):
+                asked.append((name, size.contents.value))
+                if self.result == 0:
+                    old.contents.tv_sec = 1_760_000_000
+                    old.contents.tv_usec = 250_000
+                return self.result
+
+            self.sysctlbyname = sysctlbyname
+
+    monkeypatch.setattr(locking_module, "_on_a_mac", lambda: True)
+    monkeypatch.setattr(ctypes, "CDLL", lambda *a, **k: FakeLibc(0))
+    assert locking_module.boot_time() == 1_760_000_000.25
+    assert asked == [(b"kern.boottime", 16)]
+    monkeypatch.setattr(ctypes, "CDLL", lambda *a, **k: FakeLibc(-1))
+    assert locking_module.boot_time() is None, "a refused call is no boot rule, not a guess"
+
+
+def test_a_mac_names_itself_by_its_local_host_name(monkeypatch):
+    """R21: the name in Sharing settings, asked once and case-folded, so the
+    lock line and the designation do not follow a DHCP or Bonjour suffix."""
+    import subprocess
+
+    import tracker.locking as locking_module
+
+    calls = []
+
+    def scutil(command, **kwargs):
+        calls.append(command)
+        return subprocess.CompletedProcess(command, 0, stdout="Office-Mac\n", stderr="")
+
+    monkeypatch.setattr(locking_module, "_on_a_mac", lambda: True)
+    monkeypatch.setattr(locking_module, "_mac_host", None)
+    monkeypatch.setattr(locking_module.platform, "node", lambda: "Office-Mac-2.local")
+    monkeypatch.setattr(locking_module.subprocess, "run", scutil)
+    assert locking_module.this_host() == "office-mac"
+    assert locking_module.this_host() == "office-mac"
+    assert calls == [["scutil", "--get", "LocalHostName"]], "asked once per process"
+    assert locking_module.is_this_host("OFFICE-MAC ")
+    assert "host=office-mac " in locking_module.lock_line(1, dt.datetime(2026, 3, 14, 7, 3)) + " "
+
+
+def test_a_mac_whose_scutil_fails_falls_back_to_the_platform_name_and_keeps_the_failure(
+        monkeypatch):
+    import tracker.errors as errors
+    import tracker.locking as locking_module
+
+    kept = []
+
+    def scutil(command, **kwargs):
+        raise FileNotFoundError("scutil")
+
+    monkeypatch.setattr(locking_module, "_on_a_mac", lambda: True)
+    monkeypatch.setattr(locking_module, "_mac_host", None)
+    monkeypatch.setattr(locking_module.platform, "node", lambda: "Office-Mac-2.local")
+    monkeypatch.setattr(locking_module.subprocess, "run", scutil)
+    monkeypatch.setattr(errors, "keep", lambda where, exc, **kw: kept.append((where, exc)))
+    assert locking_module.this_host() == "office-mac-2.local"
+    assert locking_module.this_host() == "office-mac-2.local"
+    assert [where for where, _exc in kept] == ["locking"], "kept once, not on every call"
+    assert isinstance(kept[0][1], FileNotFoundError)
 
 
 def test_the_boot_time_is_in_the_past_or_unknown():

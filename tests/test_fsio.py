@@ -316,3 +316,117 @@ def test_a_rotation_lock_a_killed_writer_left_is_removed_and_the_next_append_rot
     fsio_module.append_rotating(log, "three\n", max_bytes=50, keep=3)
     assert (tmp_path / "runs.log.1").read_text(encoding="utf-8") == "x" * 100 + "one\ntwo\n"
     assert log.read_text(encoding="utf-8") == "three\n"
+
+
+# ------------------------------------------ a flush reaches the disk (R22) ----
+
+
+def test_every_flush_goes_through_full_sync():
+    """SPEC-mac R22: no module of the package calls ``os.fsync`` but the two
+    copies of ``full_sync`` (``fsio``'s and ``locking``'s), so a flush on a
+    Mac is never the plain one that leaves the drive's cache unflushed."""
+    callers = []
+
+    class Finder(ast.NodeVisitor):
+        def __init__(self, filename):
+            self.filename, self.inside = filename, ["<module>"]
+
+        def visit_FunctionDef(self, node):
+            self.inside.append(node.name)
+            self.generic_visit(node)
+            self.inside.pop()
+
+        def visit_Call(self, node):
+            if isinstance(node.func, ast.Attribute) and node.func.attr == "fsync":
+                callers.append((self.filename, self.inside[-1]))
+            self.generic_visit(node)
+
+    for path in sorted((REPO / "tracker").glob("*.py")):
+        Finder(path.name).visit(ast.parse(path.read_text(encoding="utf-8"), filename=str(path)))
+    assert sorted(set(callers)) == [("fsio.py", "full_sync"), ("locking.py", "full_sync")]
+
+
+def test_the_two_copies_of_full_sync_are_identical():
+    """The layering's price (R22): ``fsio`` imports nothing of the package
+    and ``ledger``, ``locking`` and ``store`` may not import ``fsio``, so the
+    flush is written twice - and the two are the same text, so they cannot
+    drift."""
+    import inspect
+
+    from tracker import fsio, locking
+
+    assert inspect.getsource(fsio.full_sync) == inspect.getsource(locking.full_sync)
+    assert inspect.getsource(fsio._on_a_mac) == inspect.getsource(locking._on_a_mac)
+
+
+class _FakeFcntl:
+    """A stand-in for ``fcntl`` on a Linux box, which has no F_FULLFSYNC."""
+
+    F_FULLFSYNC = 51
+
+    def __init__(self, refuse=None):
+        self.asked = []
+        self.refuse = refuse
+
+    def fcntl(self, fd, command, *args):
+        self.asked.append((fd, command))
+        if self.refuse is not None:
+            raise OSError(self.refuse, os.strerror(self.refuse))
+        return 0
+
+
+@pytest.fixture(params=["fsio", "locking"])
+def flusher(request, monkeypatch):
+    """Each copy of ``full_sync``, on a "Mac" with ``fcntl`` stood in, and
+    the plain ``os.fsync`` recorded."""
+    import importlib
+
+    module = importlib.import_module(f"tracker.{request.param}")
+    synced = []
+    monkeypatch.setattr(module, "_on_a_mac", lambda: True)
+    monkeypatch.setattr(module, "_full_sync_said", False)
+    monkeypatch.setattr(module.os, "fsync", lambda fd: synced.append(fd))
+    return module, synced
+
+
+def test_a_mac_flush_asks_for_a_full_sync(flusher, monkeypatch):
+    module, synced = flusher
+    fake = _FakeFcntl()
+    monkeypatch.setitem(__import__("sys").modules, "fcntl", fake)
+    module.full_sync(7)
+    assert fake.asked == [(7, 51)] and synced == [], "F_FULLFSYNC, and not the plain flush"
+
+
+@pytest.mark.parametrize("code", [95, 22])           # ENOTSUP on Linux's table, EINVAL
+def test_a_volume_that_refuses_the_full_sync_gets_the_plain_one_and_says_so_once(
+        flusher, monkeypatch, caplog, code):
+    import errno as errno_module
+
+    module, synced = flusher
+    refusal = errno_module.ENOTSUP if code == 95 else errno_module.EINVAL
+    monkeypatch.setitem(__import__("sys").modules, "fcntl", _FakeFcntl(refuse=refusal))
+    module.full_sync(7)
+    module.full_sync(8)
+    assert synced == [7, 8]
+    assert caplog.text.count("refuses a full flush") == 1
+
+
+def test_a_flush_that_fails_for_another_reason_is_raised(flusher, monkeypatch):
+    import errno as errno_module
+
+    module, synced = flusher
+    monkeypatch.setitem(__import__("sys").modules, "fcntl", _FakeFcntl(refuse=errno_module.EIO))
+    with pytest.raises(OSError):
+        module.full_sync(7)
+    assert synced == []
+
+
+def test_off_a_mac_a_flush_is_the_plain_one(monkeypatch):
+    from tracker import fsio, locking
+
+    for module in (fsio, locking):
+        synced = []
+        monkeypatch.setattr(module, "_on_a_mac", lambda: False)
+        monkeypatch.setattr(module.os, "fsync", lambda fd, into=synced: into.append(fd))
+        module.full_sync(5)
+        assert synced == [5]

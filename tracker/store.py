@@ -204,7 +204,7 @@ from pathlib import Path
 from typing import TypeVar
 
 from tracker import checkpoint, ledger, records
-from tracker.locking import is_this_host, lock_is_held
+from tracker.locking import full_sync, is_this_host, lock_is_held
 from tracker.records import (
     BEHIND,
     CURRENT,
@@ -3578,7 +3578,7 @@ def _write_csv(path: Path, header: list[str], rows) -> None:
             for row in rows:
                 writer.writerow([_as_text(value) for value in row])
             handle.flush()
-            os.fsync(handle.fileno())
+            full_sync(handle.fileno())
 
 
 # ------------------------------------------------------------ recover ----
@@ -3648,7 +3648,7 @@ def _exclusively(path: Path, data: bytes) -> Path:
             with candidate.open("xb") as handle:
                 handle.write(data)
                 handle.flush()
-                os.fsync(handle.fileno())
+                full_sync(handle.fileno())
             return candidate
         except FileExistsError:
             n += 1

@@ -23,7 +23,14 @@ they write nothing, so they cannot race.
 NTFS and POSIX) that names the process and the time, and the descriptor
 stays open for as long as the lock is held. On Windows that makes the file
 undeletable by anyone else, so a lock that merely *looks* stale but belongs
-to a run still going cannot be swept aside. Release removes the file only
+to a run still going cannot be swept aside. POSIX will unlink an open file,
+so there the same refusal is made by ``flock`` (the Mac port, SPEC-mac
+R19): the descriptor the take keeps open holds ``LOCK_EX | LOCK_NB`` on the
+file, and a take or a clear that judged a lock stale tries the same ``flock``
+on it before it deletes anything - refused means a running owner. The kernel
+releases a ``flock`` when its owner dies, so a killed pass leaves a file the
+dead-owner rule clears, as always. Advisory locks are local to one machine,
+so nothing changes between machines. Release removes the file only
 if it still carries this run's own line; a lock another run replaced in the
 meantime is theirs to remove.
 
@@ -133,7 +140,8 @@ running process, whatever its process id says now - Windows reuses ids,
 and a reused one looked alive to the dead-owner rule, so after a power
 cut the household waited out the age rule. :func:`boot_time` is now
 minus the time since boot (``GetTickCount64`` on Windows,
-``/proc/uptime`` elsewhere); where neither can be read there is no boot
+``kern.boottime`` through ``sysctlbyname`` on a Mac, ``/proc/uptime``
+elsewhere); where none can be read there is no boot
 rule and the age rule decides, as before. A lock file with no line at
 all - empty, or holding no ``pid=`` - is a take the machine never
 finished writing, and is stale once its file is older than
@@ -219,11 +227,14 @@ the reason decision 171 keyed the record by token and not by path.
 from __future__ import annotations
 
 import datetime as dt
+import errno
 import hashlib
 import logging
 import os
 import platform
 import secrets
+import subprocess
+import sys
 import threading
 import time
 from collections.abc import Iterator
@@ -280,6 +291,55 @@ BREAKER_STALE_SECONDS = 60
 #: for that breaker's identity: the breaker's name, this, and 16 hex digits.
 BREAKER_CLEARED_INFIX = ".cleared-"
 
+def _on_a_mac() -> bool:
+    """Whether this is macOS, read when called (SPEC-mac, section 4's
+    opening rule) so a test stands in for a Mac by replacing this function
+    and never by changing ``sys.platform``."""
+    return sys.platform == "darwin"
+
+
+#: Whether the one sentence about a volume that refuses a full flush has
+#: been said in this process (:func:`full_sync`).
+_full_sync_said = False
+
+
+def full_sync(fd: int) -> None:
+    """Flush a descriptor's data to the disk itself.
+
+    On macOS ``fsync`` hands the data to the drive and not through the
+    drive's own cache, and SQLite's ``synchronous = FULL`` does no better;
+    only ``fcntl(fd, F_FULLFSYNC)`` reaches the platter or the flash. So on
+    a Mac that is asked for, and where a volume refuses it (``ENOTSUP``,
+    ``EINVAL`` - a network or File Provider volume) the flush falls back to
+    ``os.fsync`` and says so once on the error log, never raising for what
+    the plain flush can still do. Elsewhere it is ``os.fsync``.
+
+    **There are two copies of this function, identical, and a test holds
+    them so** (SPEC-mac R22): ``tracker.fsio`` imports nothing of the
+    package, and ``ledger``, ``locking`` and ``store`` may not import
+    ``fsio``, so the one place a flush is made lives in ``tracker.fsio``
+    (for ``fsio``, ``runner`` and ``scheduling``) and in ``tracker.locking``
+    (for ``locking``, ``ledger`` and ``store``). That is the layering's
+    price; a module that needs a flush calls one of the two and never calls
+    ``os.fsync``.
+    """
+    global _full_sync_said
+    if _on_a_mac():
+        import fcntl
+
+        try:
+            fcntl.fcntl(fd, fcntl.F_FULLFSYNC)
+            return
+        except OSError as exc:
+            if exc.errno not in (errno.ENOTSUP, errno.EINVAL):
+                raise
+            if not _full_sync_said:
+                _full_sync_said = True
+                log.warning("This volume refuses a full flush to the disk; "
+                            "plain fsync is used instead")
+    os.fsync(fd)
+
+
 #: What a lock file is, as judged: its text, and the file's modification
 #: time in nanoseconds and file number, all from one open handle
 #: (decision 159, the review's M2).
@@ -307,6 +367,11 @@ def _age_of(identity: Identity) -> float:
 #: lock is the app's **Clear lock**, which proves it stale first (decision 171).
 LOCKED = ("another pass holds this return's lock (taken {seconds} s ago); "
           "nothing was changed, and it is let go when that pass ends")
+
+
+#: What a take or a clear says of a lock that looks stale and is not: its
+#: owner is running (a delete Windows refused, or a ``flock`` POSIX did).
+STILL_HELD = "{name} looks stale ({age}s old) but is still held by a running process"
 
 
 class EngagementLockedError(RuntimeError):
@@ -384,12 +449,37 @@ def boot_time() -> float | None:
             kernel32 = ctypes.WinDLL("kernel32")
             kernel32.GetTickCount64.restype = ctypes.c_ulonglong
             up = kernel32.GetTickCount64() / 1000.0
+        elif _on_a_mac():
+            return _mac_boot_time()
         else:
             with open("/proc/uptime", encoding="ascii") as handle:
                 up = float(handle.read().split()[0])
     except (OSError, ValueError, IndexError, AttributeError):
         return None
     return time.time() - up
+
+
+def _mac_boot_time() -> float:
+    """``kern.boottime`` on a Mac: a ``struct timeval`` (seconds, then
+    microseconds) read through ``sysctlbyname``, as a ``time.time()``
+    stamp. A Mac has no ``/proc/uptime``, and without this the boot rule
+    (decision 189) would never apply on the machine that most needs it - a
+    laptop's lid shut on a held lock and its process ids reused after the
+    next start. Raises ``OSError`` for a call the system refuses; the
+    caller reads that as "no boot rule"."""
+    import ctypes
+
+    class _Timeval(ctypes.Structure):
+        _fields_ = [("tv_sec", ctypes.c_long), ("tv_usec", ctypes.c_int)]
+
+    libc = ctypes.CDLL(None, use_errno=True)
+    booted = _Timeval()
+    size = ctypes.c_size_t(ctypes.sizeof(booted))
+    if libc.sysctlbyname(b"kern.boottime", ctypes.pointer(booted), ctypes.pointer(size),
+                         None, 0) != 0:
+        code = ctypes.get_errno()
+        raise OSError(code, os.strerror(code), "kern.boottime")
+    return booted.tv_sec + booted.tv_usec / 1_000_000
 
 
 #: How far before this machine's boot a lock's ``started=`` must be for
@@ -486,10 +576,11 @@ def acquire_lock(engagement_dir: Path, name: str = LOCK_FILENAME) -> EngagementL
         token = lock_line(os.getpid(), dt.datetime.now())
         try:
             with _held_guard:
+                _flock_exclusively(fd)
                 os.write(fd, token.encode("utf-8"))
                 # On the disk before the take counts (decision 189): a
                 # power cut must not leave an empty file behind a run.
-                os.fsync(fd)
+                full_sync(fd)
                 _held[token] = lock
         except OSError:
             os.close(fd)
@@ -586,40 +677,122 @@ def _replace_stale(lock: Path, judged: Identity, age: float, why: str) -> None:
                 f"another scan or sort appears to be running ({lock.name} was taken "
                 "while it was being judged stale)", lock
             )
-        log.warning("Replacing stale engagement lock (%.0f s old%s)", age, why)
-        for attempt in range(1, _CHANGING_HANDS_ATTEMPTS + 1):
-            try:
-                lock.unlink(missing_ok=True)
-                return
-            except PermissionError:
-                # Windows refuses a delete while any process has the file
-                # open: its owner - then it is not dead after all - or,
-                # for the moment one read takes, another run judging this
-                # same lock (decision 159, Windows). An owner keeps it open;
-                # a reader lets go at once. So it is looked at again and
-                # tried again briefly, and refused as held only after that.
-                if attempt == _CHANGING_HANDS_ATTEMPTS:
-                    raise EngagementLockedError(
-                        f"{lock.name} looks stale ({age:.0f}s old) but is still held "
-                        "by a running process", lock
-                    ) from None
-            time.sleep(_CHANGING_HANDS_DELAY)
-            try:
-                again = _look(lock)
-            except OSError:
-                continue                 # refused a read too: try the delete again
-            if again is None:
-                return
-            if again != judged:
-                raise EngagementLockedError(
-                    f"another scan or sort appears to be running ({lock.name} was taken "
-                    "while it was being judged stale)", lock
-                )
-            # Still the lock judged. The name cannot change hands before the
-            # next delete: the dead file stands until it is deleted, and
-            # every other take's O_EXCL create is refused while it does.
+        with _no_running_owner(lock, age):
+            log.warning("Replacing stale engagement lock (%.0f s old%s)", age, why)
+            _delete_judged(lock, judged, age)
     finally:
         _release_breaker(breaker, token)
+
+
+@contextmanager
+def _no_running_owner(lock: Path, age: float) -> Iterator[None]:
+    """On POSIX, prove no running process holds ``lock`` before it is
+    deleted, and keep the proof while it is (SPEC-mac R19).
+
+    POSIX unlinks a file whatever has it open, so the refusal Windows makes
+    is made by ``flock``: the take keeps a ``LOCK_EX | LOCK_NB`` on the file
+    through its open descriptor, and this opens the file and asks for the
+    same lock. Refused - the owner is alive, however old the file looks,
+    and the take or the clear is refused with Windows's own sentence
+    (:data:`STILL_HELD`). Given, the lock is held *here* until the block
+    ends, so the delete is made under the very lock that proved it unowned.
+    ``flock`` belongs to the open file, so this holds inside one process
+    too. The file opened is checked to be the one the name still points to:
+    a lock released and retaken between the judgment and this open is the
+    new owner's, never deleted.
+
+    Nothing on Windows: its delete is the refusal. A lock that has gone is
+    left to the caller's ``missing_ok`` delete and the next take's
+    ``O_EXCL`` create. Any other failure asking is kept on the error log and
+    refused as a lock that could not be checked - never deleted on a guess.
+    """
+    if os.name == "nt":
+        yield
+        return
+    try:
+        fd = os.open(lock, os.O_RDONLY)
+    except FileNotFoundError:
+        yield
+        return
+    except OSError as exc:
+        raise _unchecked(lock, exc) from None
+    try:
+        try:
+            _flock_exclusively(fd)
+        except BlockingIOError:
+            raise EngagementLockedError(
+                STILL_HELD.format(name=lock.name, age=f"{age:.0f}"), lock) from None
+        except OSError as exc:
+            raise _unchecked(lock, exc) from None
+        try:
+            named = os.stat(lock)
+        except FileNotFoundError:
+            named = None
+        if named is not None and not os.path.samestat(os.fstat(fd), named):
+            raise EngagementLockedError(
+                f"another scan or sort appears to be running ({lock.name} was taken "
+                "while it was being judged stale)", lock)
+        yield
+    finally:
+        os.close(fd)
+
+
+def _unchecked(lock: Path, exc: OSError) -> EngagementLockedError:
+    """The refusal for a lock that could not be asked about, after keeping
+    why on the error log."""
+    # At call time: locking imports nothing of the package at load.
+    from tracker import errors
+
+    errors.keep("locking", exc, name=lock.name)
+    return EngagementLockedError(
+        f"{lock.name} could not be checked for a running owner "
+        f"({errors.error_class(exc)}) - try again", lock)
+
+
+def _flock_exclusively(fd: int) -> None:
+    """Take the advisory lock on an open lock file, without waiting:
+    ``BlockingIOError`` when another open file holds it. POSIX only; on
+    Windows the open descriptor itself is the hold, and nothing is asked."""
+    if os.name == "nt":
+        return
+    import fcntl
+
+    fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+
+
+def _delete_judged(lock: Path, judged: Identity, age: float) -> None:
+    """Delete the lock judged stale, trying again where Windows refuses
+    for a moment, and refusing as held after that; a lock that changed
+    meanwhile is left alone (:func:`_replace_stale`)."""
+    for attempt in range(1, _CHANGING_HANDS_ATTEMPTS + 1):
+        try:
+            lock.unlink(missing_ok=True)
+            return
+        except PermissionError:
+            # Windows refuses a delete while any process has the file
+            # open: its owner - then it is not dead after all - or,
+            # for the moment one read takes, another run judging this
+            # same lock (decision 159, Windows). An owner keeps it open;
+            # a reader lets go at once. So it is looked at again and
+            # tried again briefly, and refused as held only after that.
+            if attempt == _CHANGING_HANDS_ATTEMPTS:
+                raise EngagementLockedError(
+                    STILL_HELD.format(name=lock.name, age=f"{age:.0f}"), lock) from None
+        time.sleep(_CHANGING_HANDS_DELAY)
+        try:
+            again = _look(lock)
+        except OSError:
+            continue                 # refused a read too: try the delete again
+        if again is None:
+            return
+        if again != judged:
+            raise EngagementLockedError(
+                f"another scan or sort appears to be running ({lock.name} was taken "
+                "while it was being judged stale)", lock
+            )
+        # Still the lock judged. The name cannot change hands before the
+        # next delete: the dead file stands until it is deleted, and
+        # every other take's O_EXCL create is refused while it does.
 
 
 def breaker_of(lock: Path) -> Path:
@@ -998,11 +1171,50 @@ def lock_is_held(engagement_dir: Path | str) -> bool:
     return holds(engagement_dir)
 
 
+#: This process's answer to :func:`this_host` on a Mac, asked of ``scutil``
+#: once and kept (SPEC-mac R21): ``None`` until asked.
+_mac_host: str | None = None
+
+
 def this_host() -> str:
     """This machine's name, as the lock line carries it. From ``platform``,
     not ``socket``: the name is a local fact, and no module under the
-    package imports a network module (decision 115's guard)."""
-    return platform.node().strip().casefold()
+    package imports a network module (decision 115's guard).
+
+    **On a Mac it is ``LocalHostName``** (SPEC-mac R21), the name in the
+    Sharing settings, which does not change with the network:
+    ``platform.node()`` there can follow DHCP or Bonjour (a ``-2`` suffix
+    when the name is taken), so the Mac would meet its own lock as another
+    host's and its designation would name a computer that is gone. Asked of
+    ``scutil`` once per process; the answer is case-folded like every
+    other."""
+    name = platform.node().strip().casefold()
+    if _on_a_mac():
+        global _mac_host
+        if _mac_host is None:
+            _mac_host = _local_host_name() or name
+        return _mac_host
+    return name
+
+
+def _local_host_name() -> str:
+    """``scutil --get LocalHostName``, case-folded; empty when ``scutil``
+    fails, with the failure kept on the error log - the caller then keeps
+    ``platform.node()``, a name that may wander being the lesser harm and a
+    Mac locked out of its own locks the greater."""
+    try:
+        done = subprocess.run(["scutil", "--get", "LocalHostName"], capture_output=True,
+                              text=True, timeout=10, check=True)
+        name = done.stdout.strip().casefold()
+        if not name:
+            raise ValueError("scutil answered an empty name")
+    except (OSError, subprocess.SubprocessError, ValueError) as exc:
+        # At call time: locking imports nothing of the package at load.
+        from tracker import errors
+
+        errors.keep("locking", exc)
+        return ""
+    return name
 
 
 def is_this_host(host: object) -> bool:
