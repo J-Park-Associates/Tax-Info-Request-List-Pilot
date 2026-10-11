@@ -670,7 +670,13 @@ def _deny_list_from_the_constants() -> list[str]:
     from tracker.registry import LEGACY_MANIFEST_FILENAME
     from tracker.reminder import DRAFT_FILENAME
     from tracker.runner import LAST_PASS_FILENAME, LOG_FILENAME, PASS_ORDER_FILENAME, STATUS_PAGE_FILENAME
-    from tracker.settings import DATA_HOME_NAME, ERROR_LOG_FILENAME, EXPECTATIONS_FILENAME, OCR_SCRATCH_DIRNAME
+    from tracker.settings import (
+        DATA_HOME_NAME,
+        ERROR_LOG_FILENAME,
+        EXPECTATIONS_FILENAME,
+        MAC_SUPPORT,
+        OCR_SCRATCH_DIRNAME,
+    )
     from tracker.store import RECOVERED_DIR, STORE_FILENAME, STORE_SHM_FILENAME, STORE_WAL_FILENAME
     from tracker.view import VIEW_FILENAME
 
@@ -678,7 +684,9 @@ def _deny_list_from_the_constants() -> list[str]:
     stem, ext = DRAFT_FILENAME.rsplit(".", 1)
     year = "[12][0-9][0-9][0-9]"
     a_return = RETURN_NAME_PATTERN.format(form="[0-9]*", client="*")    # every form id begins with a digit
+    mac_support = "~/" + "/".join(MAC_SUPPORT)      # the Mac's data home and Electron's folder (SPEC-mac R1, R2)
     places = [f"//c/Users/*/AppData/Local/{DATA_HOME_NAME}/**", f"~/.local/state/{DATA_HOME_NAME}/**",
+              f"{mac_support}/{DATA_HOME_NAME}/**",
               "//g/Shared drives/**",
               f"//**/{CLIENTS_TREE}/*/{INBOX_DIR_NAME}/**", f"//**/{CLIENTS_TREE}/*/{year}/**",
               f"//**/{PRIVATE_TREE}/*/{year}/{a_return}/**", f"//**/{PRIVATE_TREE}/*/{year}/{OPENED_DIR_NAME}/**",
@@ -697,19 +705,23 @@ def _deny_list_from_the_constants() -> list[str]:
 def _fallback_log_rules() -> list[str]:
     """The shell's fallback error log and its one rotated copy (Jason,
     2026-09-29: the log can name a client, so the agent's file tools are
-    denied it, in the two path styles the data-home rules use: Windows'
-    %LOCALAPPDATA% folder and, off Windows, Electron's userData).
+    denied it, in the three path styles the data-home rules use: Windows'
+    %LOCALAPPDATA% folder, Linux's Electron userData under ~/.config and,
+    on a Mac, Application Support, where the settings file sits too
+    (SPEC-mac R2; Jason, 2026-10-11, from the audit's S2).
 
     The rules name both products' folders (P189): the earlier one first,
     which an upgraded PC may still hold and where Electron's userData stays
     (SPEC-rename R4), then the current one, package.json's productName,
     where the renamed app writes its log on Windows. Both can name a client."""
-    from tracker.settings import EARLIER_PRODUCT_NAME
+    from tracker.settings import EARLIER_PRODUCT_NAME, MAC_SUPPORT
 
     current = json.loads(read("app/package.json"))["productName"]
+    mac_support = "~/" + "/".join(MAC_SUPPORT)
     return [f"{tool}({folder}/error.log{suffix})"
             for product in (EARLIER_PRODUCT_NAME, current)
-            for folder in (f"//c/Users/*/AppData/Local/{product}", f"~/.config/{product}")
+            for folder in (f"//c/Users/*/AppData/Local/{product}", f"~/.config/{product}",
+                           f"{mac_support}/{product}")
             for suffix in ("", ".*") for tool in ("Read", "Edit")]
 
 
@@ -770,18 +782,20 @@ def test_the_fallback_log_rules_deny_the_current_and_the_earlier_folder():
     writes its fallback log under the current product's folder, and an
     upgraded PC may still hold one under the earlier folder; either can name
     a client, so the deny list refuses both, the log and its rotated copy,
-    in both path styles, to reading and editing alike. Tightening only."""
-    from tracker.settings import EARLIER_PRODUCT_NAME
+    in all three path styles, to reading and editing alike. Tightening only."""
+    from tracker.settings import EARLIER_PRODUCT_NAME, MAC_SUPPORT
 
     deny = json.loads(read(".claude/settings.json"))["permissions"]["deny"]
     current = json.loads(read("app/package.json"))["productName"]
     assert current != EARLIER_PRODUCT_NAME
     rules = _fallback_log_rules()
-    assert len(rules) == 16 and deny[-16:] == rules
+    assert len(rules) == 24 and deny[-24:] == rules
+    mac_support = "~/" + "/".join(MAC_SUPPORT)
     for product in (EARLIER_PRODUCT_NAME, current):
         for name in ("error.log", "error.log.1"):
             assert _denied(deny, f"/c/Users/someone/AppData/Local/{product}/{name}"), (product, name)
-        for style in (f"//c/Users/*/AppData/Local/{product}", f"~/.config/{product}"):
+        for style in (f"//c/Users/*/AppData/Local/{product}", f"~/.config/{product}",
+                      f"{mac_support}/{product}"):
             for tool in ("Read", "Edit"):
                 assert f"{tool}({style}/error.log)" in deny and f"{tool}({style}/error.log.*)" in deny
 

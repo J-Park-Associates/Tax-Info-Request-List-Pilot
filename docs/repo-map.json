@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 268,
     "edges": 1247,
-    "reused": 215
+    "reused": 216
   },
   "node_types": [
     "artifact",
@@ -4516,7 +4516,7 @@
       "id": "pilot/AUDIT-2026-10-11.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "0a9c2100861c4835",
+      "sha256": "97b799fcb2e01095",
       "lines": 68
     },
     {
@@ -4914,8 +4914,8 @@
       "id": ".claude/settings.json",
       "type": "file",
       "layer": "root",
-      "sha256": "289b40e608a41f9d",
-      "lines": 89
+      "sha256": "b6f667e73c2f99b9",
+      "lines": 99
     },
     {
       "id": "Build App.bat",
@@ -9661,8 +9661,8 @@
       "id": "tests/test_single_source.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "513614f6455a3e7b",
-      "lines": 4945,
+      "sha256": "805e29a6d984e6de",
+      "lines": 4959,
       "exports": [
         "AFTER_WHAT",
         "CONSOLE_EXEMPT",
