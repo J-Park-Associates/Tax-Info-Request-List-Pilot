@@ -1,16 +1,41 @@
-# Pilot 0.3 - release steps
+# Pilot 0.4 - release steps
 
 Everything that can be done in the cloud is done. Builds A, B and C are
 merged into `main`, each after an independent review and a fix round,
 followed by the restart and
 after-install fixes (P46, P47) and the Windows contrast-theme support (P50,
 pull request #11), the four 0.3 lanes (P140) and the rename to Tax Document
-Console (P155). The badge in `pilot-content.js` reads **0.3**, so this is the
-0.3 release; the earlier 0.1 was only ever a test build. There is no 0.2 tag
-(P140): 0.2 failed its Windows check, and 0.3 fixes what it found. What is left
-needs Windows, so it is Jason's, on the office PC. Allow about 45 minutes.
+Console (P155), then the UI review's work of 2026-10-11 (P264-P280). The badge
+in `pilot-content.js` reads **0.4** (P281: Jason, "this is a larger change,
+bump the version number by 0.1"), so this is the 0.4 release; the earlier 0.1
+was only ever a test build. There is no 0.2 tag (P140): 0.2 failed its Windows
+check, and 0.3 fixed what it found. What is left needs Windows, so it is
+Jason's, on the office PC. Allow about 45 minutes.
 
-## What is in 0.3
+## What is in 0.4
+
+- **Faster everywhere (SPEC-ui-polish §1, SPEC-ui-menu-speed):** one engine
+  process for the session answers every ordinary command (a click that cost
+  about 0.85 s on the office PC should cost well under a quarter second;
+  passes, the after-install step and the schedule commands keep a process
+  of their own, so Stop still works); the app watches the last-pass file
+  instead of asking every minute; long lists draw only the rows in view;
+  the firm lists are paged by the engine; one draw per page visit, keyed
+  lookups, a debounced search, timers that sleep while the window is hidden.
+- **The lists (SPEC-ui-menu-small):** names underline on hover only; the Tax
+  Year column shows only when a list holds more than one year; each Date
+  cell says "Since Mar 3" or "Due Apr 15"; a quiet chevron rests on every
+  row with a step; the sort icon is a labelled Sort Now button; the side
+  panel's unbuilt items carry a Soon tag; the brand band is the firm's mark
+  with the product's name; the type is the system face on a Mac.
+- **The layout (SPEC-ui-menu-layout):** View › Compact Rows; Needs Review as
+  one flat list with a heading per return; notices in a right-hand panel at
+  1388px and wider; the household page as a header card beside its returns.
+- **The Mac (SPEC-mac, SPEC-mac-check-fixes, SPEC-mac-rerun1-fixes):** a
+  Mac build and disk image, the Login Items switch told apart from a
+  missing agent, the suite standing on the floor's computer on a Mac.
+
+## What was in 0.3
 
 - **Its own names on the PC:** program *Tax Document Console*, data
   folder `%LOCALAPPDATA%\tax-document-tracker-pilot`, scheduled task
@@ -61,7 +86,7 @@ Use a Windows account that does not run the firm's real schedule, and a
    anything fails on the office PC, stop and hand it to the orchestrator.
 4. **Build:** double-click `pilot\Build Pilot Installer.bat`. It refuses an
    uncommitted tree, builds the app, compiles the installer, and prints its
-   path (`build-portable\installer\Tax-Document-Console-Setup-0.3.exe`)
+   path (`build-portable\installer\Tax-Document-Console-Setup-0.4.exe`)
    and SHA-256. Keep that hash.
 5. **Install and try it** (the checklist testers will follow):
    - SmartScreen warns (unsigned): *More info* -> *Run anyway*.
@@ -76,12 +101,12 @@ Use a Windows account that does not run the firm's real schedule, and a
    - **Schedule** button: turn it off -> the task disappears from Task
      Scheduler; turn it on at a new time -> the task shows that time; restart
      the app -> the choice is kept.
-   - The header shows **Pilot edition 0.3**; the Tour button replays the tour.
+   - The header shows **Pilot edition 0.4**; the Tour button replays the tour.
 6. **Uninstall** (Settings -> Apps -> Tax Document Console). Check: the
    scheduled task is gone; the clients folder copy, `settings.json` beside
    where the program was, and `%LOCALAPPDATA%\tax-document-tracker-pilot`
    are still there.
-7. **Tag and send:** `git tag pilot-0.3 && git push origin pilot-0.3` (never a
+7. **Tag and send:** `git tag pilot-0.4 && git push origin pilot-0.4` (never a
    `v...` tag). Send testers the installer, its SHA-256 and
    `pilot/Tester Guide.md`. Problems come back to admin@jparkassociates.com.
 

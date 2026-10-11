@@ -12,7 +12,8 @@ this repository; [`SPEC.md`](SPEC.md) says what it builds.
   review's no-brainers, built) and Jason's sixteen menu answers, P265-P280
   (recorded; their SPECs follow).
 
-- **Decisions live in [`DECISIONS.md`](DECISIONS.md), rows P1 to P280.** Code
+- **Decisions live in [`DECISIONS.md`](DECISIONS.md), rows P1 to P281.** The
+  badge reads **Pilot 0.4** (P281, 2026-10-11): 0.3 plus the UI review's work. Code
   and tests cite those numbers, so a row is never renumbered or removed. Why
   a thing is the way it is: search the row, do not guess.
 - **Pilot decisions never go in `docs/ROADMAP.md`**, which stays the

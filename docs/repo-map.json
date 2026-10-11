@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 277,
     "edges": 1278,
-    "reused": 0
+    "reused": 218
   },
   "node_types": [
     "artifact",
@@ -4358,7 +4358,7 @@
       "id": "app/renderer/pilot-content.js",
       "type": "module",
       "layer": "desktop-app",
-      "sha256": "339741dcf4b318d7",
+      "sha256": "22ab464d888862b5",
       "lines": 168
     },
     {
@@ -4569,15 +4569,15 @@
       "id": "pilot/DECISIONS.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "6867c32681885922",
-      "lines": 275
+      "sha256": "3db4e50c3e50b1d7",
+      "lines": 276
     },
     {
       "id": "pilot/HANDOFF.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "d83dd32bf927abec",
-      "lines": 151
+      "sha256": "1c2db6dd068479f7",
+      "lines": 152
     },
     {
       "id": "pilot/README.md",
@@ -4590,8 +4590,8 @@
       "id": "pilot/RELEASE.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "52bb7eae08422ad0",
-      "lines": 94
+      "sha256": "b9f1c1ea6307a2e4",
+      "lines": 119
     },
     {
       "id": "pilot/SPEC-F6-schedule-after-reinstall.md",
@@ -4847,7 +4847,7 @@
       "id": "pilot/wintest/PROMPT-shell.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "98363feb5f993bb1",
+      "sha256": "ea4ebfa8b108c716",
       "lines": 169
     },
     {
@@ -4861,7 +4861,7 @@
       "id": "pilot/wintest/RESULTS-TEMPLATE.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "9c3a61ad01d07d8a",
+      "sha256": "2c3c6b9e0d27fa92",
       "lines": 57
     },
     {
@@ -9459,7 +9459,7 @@
       "id": "tests/test_shell.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "d96a0bd7e06d5bfc",
+      "sha256": "a7c98103821bbdc0",
       "lines": 8391,
       "exports": [
         "CARD_HOUSEHOLD",
@@ -9969,8 +9969,8 @@
       "id": "tests/test_single_source.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "588f887adeda84c3",
-      "lines": 5333,
+      "sha256": "4662f63ff53b3980",
+      "lines": 5334,
       "exports": [
         "AFTER_WHAT",
         "CONSOLE_EXEMPT",
@@ -10181,7 +10181,7 @@
         "test_the_stylesheet_carries_no_stage_colour",
         "test_the_tools_ask_one_rule_whether_a_path_is_inside_the_repository",
         "test_the_version_and_package_name_have_one_home",
-        "test_the_version_is_0_3_in_the_badge_and_the_release_steps",
+        "test_the_version_is_0_4_in_the_badge_and_the_release_steps",
         "test_the_window_colour_is_read_from_the_stylesheet",
         "test_the_words_for_the_engagements_page_are_pythons_alone",
         "test_the_workflow_document_names_every_status_and_override",
