@@ -1387,14 +1387,14 @@ def process_state(pid: int) -> str | None:
         return None
 
 
-def running(pid: int, *, own_child: bool = False) -> bool:
+def running(pid: int) -> bool:
     """Whether the process ``pid`` is still running, asked of the system.
 
-    ``own_child`` says this test started the process and so may ask the one way
-    that is exact: ``waitpid`` with ``WNOHANG``, which also reaps a child that
-    has ended (a second ask finds it gone). A process this test did not start
-    - a reader's helper, the pass's child - is asked of the system instead,
-    where a zombie has ended though its number is still taken."""
+    Every caller asks about a process this test did not start - a reader's
+    helper, the pass's child - so the system is asked, and a zombie has ended
+    though its number is still taken. (A child the test started itself could
+    be asked exactly by ``os.waitpid(pid, os.WNOHANG)``; none is asked today,
+    and a parameter nothing uses was not kept for the one that will.)"""
     import os
     import sys
 
@@ -1413,12 +1413,6 @@ def running(pid: int, *, own_child: bool = False) -> bool:
             return code.value == 259                          # STILL_ACTIVE
         finally:
             kernel32.CloseHandle(handle)
-    if own_child:
-        try:
-            ended, _status = os.waitpid(pid, os.WNOHANG)
-        except ChildProcessError:
-            return False                                      # reaped already
-        return ended == 0
     try:
         os.kill(pid, 0)
     except ProcessLookupError:
@@ -1492,25 +1486,6 @@ def test_a_mac_asks_ps_and_reads_its_state_letters_not_proc(monkeypatch):
         monkeypatch.setattr(here, "_ps_state", lambda pid, said=said: asked.append(pid) or said)
         assert running(4242) is alive, said
     assert asked == [4242] * 7
-
-
-def test_a_child_this_test_started_is_asked_by_waitpid_and_reaped_when_it_has_ended():
-    """R36: where the test owns the child, ``waitpid(WNOHANG)`` is exact - no
-    ``/proc``, no ``ps`` - and reaps what has ended, so asking again finds it
-    gone rather than a zombie."""
-    import subprocess
-    import sys
-
-    if sys.platform == "win32":
-        pytest.skip("waitpid is POSIX's")
-    live = subprocess.Popen(["sleep", "60"])
-    try:
-        assert running(live.pid, own_child=True)
-    finally:
-        live.kill()
-    assert eventually(lambda: not running(live.pid, own_child=True))
-    assert not running(live.pid, own_child=True)
-    assert live.wait() in (0, -9)             # reaped by the helper; Popen finds nothing left to wait for
 
 
 def test_a_text_layer_that_never_finishes_is_stopped_and_abandoned(tmp_path, a_short_stop):
