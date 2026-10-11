@@ -1,6 +1,6 @@
 {
   "schema": 2,
-  "generated": "2026-10-10",
+  "generated": "2026-10-11",
   "generator": "tools/repo_map.py",
   "generator_sha256": "8acd85195c3c1023",
   "module_table_sha256": "18d13e30b652a475",
@@ -16,8 +16,8 @@
   ],
   "counts": {
     "nodes": 257,
-    "edges": 1239,
-    "reused": 204
+    "edges": 1240,
+    "reused": 208
   },
   "node_types": [
     "artifact",
@@ -6084,8 +6084,8 @@
       "id": "tests/test_build.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "3b3bf111028028a3",
-      "lines": 1306,
+      "sha256": "8e54d4c9a27441c7",
+      "lines": 1309,
       "exports": [
         "ARTWORK_APP",
         "BUILD_ENVIRONMENT",
@@ -11664,6 +11664,12 @@
       "from": "tests/test_build.py",
       "to": "tracker/store.py",
       "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_build.py",
+      "to": "tests/conftest.py",
+      "type": "imports",
       "source": "derived"
     },
     {
