@@ -893,7 +893,7 @@ def test_the_preload_passes_the_optional_second_argument_on_the_same_open_and_ad
     assert 'open: (p, how) => ipcRenderer.invoke("open-path", p, how),' in preload
     assert re.findall(r'ipcRenderer\.(?:invoke|send|on)\("([a-z-]+)"', preload) == [
         "tracker-cmd", "open-path", "pick-folder", "log-error", "tracker-progress", "after-install-done",
-        "menu", "menu"]
+        "last-pass-changed", "menu", "menu"]   # P277 added the last-pass channel; open's own channel is still the one
     main_js = read("app/main.js")
     assert main_js.count('ipcMain.handle("open-path"') == 1
     assert main_js.count("shell.showItemInFolder(") == 1 and main_js.count("shell.openPath(") == 1

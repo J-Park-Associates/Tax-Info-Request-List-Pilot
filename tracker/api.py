@@ -430,14 +430,6 @@ REMINDER_LINE_UNREADABLE_WARNING = REMINDER_LINE_UNREADABLE + ": {label}"
 NOTHING_TO_STOP = "There is no pass this app started running to stop; nothing was changed."
 #: How often the app asks whether a lock it shows has gone (ruling 10).
 LOCK_WATCH_SECONDS = 5
-#: How often the shell asks for the scheduled pass's last-pass file while a
-#: pass is running (pilot P256): the lock watch's cadence, so a pass that
-#: ends is noticed as fast as a lock that goes.
-LAST_PASS_WATCH_RUNNING_SECONDS = 5
-#: ... and when none is: one spawn of the engine a minute is the most an idle
-#: window may cost on a Mac on battery (SPEC-mac-check-fixes Q1). The window's
-#: focus asks at once besides, so a click catches the page up sooner.
-LAST_PASS_WATCH_IDLE_SECONDS = 60
 #: The lock notice's words (D4): nothing waits, and nothing needs clearing.
 LOCK_RUNNING = "In Use on {host}"
 #: The same, about a lock that is not the shown return's - a sibling, a fed
@@ -1988,16 +1980,16 @@ def _vocab() -> dict:
                   "could_not_start": SHELL_COULD_NOT_START,
                   "could_not_send": SHELL_COULD_NOT_SEND, "no_log": SHELL_NO_LOG,
                   "page_error": PAGE_ERROR,
-                  "error_log": error_log},
+                  "error_log": error_log,
+                  # The scheduled pass's last-pass file, for main.js to watch
+                  # the folder of (P277): the shell never builds the path and
+                  # never reads the file; None with no data home.
+                  "last_pass_file": _last_pass_file()},
         # The lock notice (decision 193, D4): when, where, and - on this
         # machine - which file; nothing waits and nothing needs clearing.
         "lock": {"running": LOCK_RUNNING, "running_other": LOCK_RUNNING_OTHER, "on": LOCK_ON, "greyed": LOCK_GREYED,
                  "left_behind": LOCK_LEFT_BEHIND, "cleared": LOCK_CLEARED,
                  "buttons_back": LOCK_BUTTONS_BACK, "watch_seconds": LOCK_WATCH_SECONDS},
-        # How often the shell asks `last-pass` (pilot P256): two numbers the
-        # page never types, in seconds.
-        "last_pass_watch": {"running": LAST_PASS_WATCH_RUNNING_SECONDS,
-                            "idle": LAST_PASS_WATCH_IDLE_SECONDS},
         # What a Sort & Scan reply is said as (decision 193's review, S4).
         "scan": {"scanning": SCAN_SCANNING, "nothing_done": SCAN_NOTHING_DONE,
                  "nothing_done_bare": SCAN_NOTHING_DONE_BARE,
@@ -3369,6 +3361,19 @@ def _error_log_said() -> str:
         return ""
 
 
+def _last_pass_file() -> str | None:
+    """The last-pass file's path for the shell to watch (pilot P277), or
+    ``None`` when no data home can be had. That state is already said by
+    ``list``'s ``machine_warnings`` (decision 186), so nothing is said here.
+    The shell never builds this path itself (the error log's rule, word for
+    word), and never reads the file: it learns only that the file's folder
+    changed, and the page then asks :func:`_cmd_last_pass`."""
+    try:
+        return str(runner.last_pass_path())
+    except (SettingsError, OSError):
+        return None
+
+
 def _cmd_state(argv: list[str]) -> dict:
     return _state(_engagement_dir(argv))
 
@@ -3437,8 +3442,10 @@ def _cmd_last_pass(argv: list[str]) -> dict:
     (pilot P256, SPEC-mac-check-fixes 1.1): ``{"last_pass": {...}}``, the
     very dict ``list`` carries. The shell learned it only from a ``list``,
     so a pass started by launchd or Task Scheduler told it nothing and the
-    page kept a stale word until Refresh; it now asks this on a timer, and
-    asks ``list`` again only when a pass has ended.
+    page kept a stale word until Refresh; it now asks this when ``main.js``
+    says the file changed (P277: the folder of ``vocab.shell.last_pass_file``
+    is watched) and when the window is clicked into, and asks ``list`` again
+    only when a pass has ended.
 
     A read of the settings file and the last-pass file and nothing else - no
     root walk, no store, no journal, no lock - so it answers with no clients

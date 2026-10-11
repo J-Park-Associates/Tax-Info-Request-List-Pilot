@@ -58,7 +58,9 @@ Opus review:
    questions (J1-J5) were built as the defaults. Not run here: the floor
    interpreter; interact.mjs under real Playwright (through the shim: no
    new failure).
-3. `SPEC-ui-menu-speed.md`: P277 (the app watches the last-pass file), P279
+3. `SPEC-ui-menu-speed.md`: P277 (the app watches the last-pass file;
+   **built on `claude/ui-menu-speed-1`**, two Opus reviews, the second with
+   no findings; write-to-message 263 ms on this Mac), P279
    (virtualized rows), P276 (one long-lived engine process; decision 193
    re-read; passes keep their own process), P278 (the engine pages the firm
    lists, last because its page turns become engine requests).

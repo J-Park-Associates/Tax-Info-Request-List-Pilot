@@ -2114,10 +2114,10 @@ def test_the_last_pass_reply_and_its_line_agree_on_an_oversized_file(tmp_path, m
 
 
 def test_last_pass_is_answered_without_a_root_or_a_store(capsys, tmp_path, monkeypatch):
-    """Pilot P256: the shell asks ``last-pass`` on a timer, so it reads the
-    settings and the last-pass file and nothing else - no clients root chosen,
-    no store opened - and answers the dict ``list`` carries. It is not a
-    writing command, and the two numbers of its watch are the vocabulary's."""
+    """Pilot P256: the shell asks ``last-pass`` when the file changes (P277;
+    on a timer before), so it reads the settings and the last-pass file and
+    nothing else - no clients root chosen, no store opened - and answers the
+    dict ``list`` carries. It is not a writing command."""
     from tracker import runner
     from tracker.settings import ENV_SETTINGS_DIR
 
@@ -2143,8 +2143,44 @@ def test_last_pass_is_answered_without_a_root_or_a_store(capsys, tmp_path, monke
     code, asked = run(capsys, "last-pass")
     assert code == 0 and asked["last_pass"]["running"] is True
     assert asked["last_pass"] == run(capsys, "list")[1]["last_pass"]
-    assert listed["vocab"]["last_pass_watch"] == {"running": 5, "idle": 60}
-    assert api.LAST_PASS_WATCH_RUNNING_SECONDS == 5 and api.LAST_PASS_WATCH_IDLE_SECONDS == 60
+    # P277: the polling watch is gone - the key and both constants with it.
+    assert "last_pass_watch" not in listed["vocab"]
+    assert not hasattr(api, "LAST_PASS_WATCH_RUNNING_SECONDS") and not hasattr(api, "LAST_PASS_WATCH_IDLE_SECONDS")
+
+
+# ── P277 (SPEC-ui-menu-speed §1): the list names the last-pass file ───────
+
+
+def test_the_list_names_the_last_pass_file_the_runner_writes(capsys, tmp_path, monkeypatch):
+    """P277: ``vocab.shell.last_pass_file`` is the very path the runner writes
+    (``runner.last_pass_path()``), so ``main.js`` watches its folder and never
+    builds the path itself."""
+    from tracker import runner
+    from tracker.settings import ENV_DATA_HOME, ENV_SETTINGS_DIR
+
+    monkeypatch.setenv(ENV_SETTINGS_DIR, str(tmp_path / "app"))
+    monkeypatch.delenv(store.ENV_STORE, raising=False)
+    monkeypatch.setenv(ENV_DATA_HOME, str(tmp_path / "home"))
+    code, listed = run(capsys, "list")
+    assert code == 0
+    named = listed["vocab"]["shell"]["last_pass_file"]
+    assert named == str(runner.last_pass_path())
+    assert Path(named).parent == tmp_path / "home" and Path(named).name == runner.LAST_PASS_FILENAME
+
+
+def test_the_list_names_no_last_pass_file_when_the_data_home_cannot_be_had(capsys, tmp_path, monkeypatch):
+    """P277: with no data home to be had, ``list`` still answers (its
+    ``machine_warnings`` say why, decision 186) and names no last-pass file,
+    which ``main.js`` takes as "watch nothing"."""
+    from tracker.settings import DATA_HOME_NOT_ABSOLUTE, ENV_DATA_HOME, ENV_SETTINGS_DIR
+
+    monkeypatch.setenv(ENV_SETTINGS_DIR, str(tmp_path / "app"))
+    monkeypatch.delenv(store.ENV_STORE, raising=False)
+    monkeypatch.setenv(ENV_DATA_HOME, "relative-data")
+    code, listed = run(capsys, "list")
+    assert code == 0 and listed["vocab"]["shell"]["last_pass_file"] is None
+    assert listed["machine_warnings"] == [DATA_HOME_NOT_ABSOLUTE.format(value="relative-data")]
+    assert api._last_pass_file() is None
 
 
 def test_the_scheduled_sorting_word_is_in_the_screen_vocabulary():

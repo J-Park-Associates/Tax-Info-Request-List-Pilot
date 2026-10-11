@@ -4573,7 +4573,7 @@ let shellFirmNow = { status: "idle", data: null }; let shellFirmAsked = false; l
 let shellFirmLast = null; let shellFirmAsOf = "";
 let shellFirmSentAt = 0; let shellWroteAt = 0; const shellFirmHeld = new Map(); let shellFirmCount = null; let shellFirmSlow = false;
 let shellFirmTimer = null; const SHELL_FIRM_SLOW_MS = 2000;
-let shellLastPassStopped = false; const shellArmLastPass = () => {};   // the last-pass watch (P256) is not this probe's
+let shellLastPassStopped = false;   // the last-pass asking (P256, P277) is not this probe's
 const FIRM_LEVELS = ["overview", "needs-review", "reminders", "clients"];
 const asked = []; const notices = []; const drawn = [];
 // As call() does: a reply with an error throws its envelope.
@@ -5649,16 +5649,15 @@ LAST_PASS_STEPS = [
 ]
 
 LAST_PASS_WATCH_FAKES = r"""
-let vocab = { last_pass_watch: { running: 5, idle: 60 } };
+let vocab = {};
 let scanning = null; let shellLastPass = null;
-let shellLastPassTimer = null; let shellLastPassAsking = false; let shellLastPassStopped = false; let shellLastPassAt = 0;
+let shellLastPassAsking = false; let shellLastPassStopped = false; let shellLastPassAt = 0;
+let shellLastPassOwed = false; let shellLastPassAgain = false;
 const SHELL_FOCUS_QUIET_MS = 5000; const document = { hidden: false };
-const seen = []; let timerId = 0; const timers = new Map(); let reply = null; let asked = 0;
+const seen = []; let reply = null; let asked = 0;
 let listReply = { listed: true }; let during = null;
 let shellRoute = { level: "overview" }; let dialogStack = []; let shellReturnStale = false; let throwing = false;
 const showReturn = async (path) => { seen.push("showReturn:" + path); if (throwing) throw new Error("boom return"); };
-const setTimeout = (fn, ms) => { timerId += 1; timers.set(timerId, [fn, ms]); return timerId; };
-const clearTimeout = (id) => { timers.delete(id); };
 const shellChanged = () => seen.push("changed");
 const adoptList = (listed) => seen.push(listed === listReply ? "adopt-list" : "adopt-other");
 const failed = (err) => seen.push("failed:" + err.message);
@@ -5669,26 +5668,24 @@ const call = async (args) => {
   if (out instanceof Error) throw out;
   return args[0] === "list" ? out : { last_pass: out };
 };
-const armed = () => [...timers.values()].map((one) => one[1] / 1000);
 const tick = async (held, fresh, running = null) => {
   seen.length = 0; shellLastPass = held; reply = fresh; scanning = running; shellLastPassStopped = false;
-  clearTimeout(shellLastPassTimer); timers.clear();
-  await shellWatchLastPass();
-  return { seen: seen.slice(), armed: armed(), held: shellLastPass };
+  await shellAskLastPass();
+  return { seen: seen.slice(), held: shellLastPass };
 };
 """
 
 
 def test_the_shell_asks_list_again_once_a_scheduled_pass_has_ended(tmp_path):
     """P256: ``lastPassStep`` says what a fresh last-pass means to the shell
-    (every row of its table by the claim it makes), and a tick of the watch
-    acts on it: a pass that ended asks ``list`` once and adopts it, as F5 and
+    (every row of its table by the claim it makes), and an ask (P277: made
+    when the file changes) acts on it: a pass that ended asks ``list`` once and adopts it, as F5 and
     ``passEnded`` do (never the start-up path, ``loadEngagements``: it would
     rebuild an open Schedule dialog's interval list and redraw the page); a
     pass that started is adopted and drawn; nothing changed does nothing; the
     app's own pass is not interrupted; a failing ask is said once and stops
-    the watch, which the next list adopt starts again."""
-    ran = run_shell(["lastPassStep", "shellArmLastPass", "shellWatchLastPass"], LAST_PASS_WATCH_FAKES, f"""
+    the asking, which the next list adopt starts again."""
+    ran = run_shell(["lastPassStep", "shellAskLastPass"], LAST_PASS_WATCH_FAKES, f"""
       const steps = {json.dumps(LAST_PASS_STEPS)}.map(([claim, held, fresh]) => lastPassStep(held, fresh));
       return (async () => {{
         const ended = await tick({{ running: true, when: "A" }}, {{ running: false, when: "A", ok: true }});
@@ -5698,10 +5695,8 @@ def test_the_shell_asks_list_again_once_a_scheduled_pass_has_ended(tmp_path):
         const own = await tick({{ running: false, when: "A" }}, {{ running: false, when: "B" }}, {{ pass: "p" }});
         const broken = await tick({{ running: true, when: "A" }}, new Error("boom"));
         const stopped = shellLastPassStopped;
-        seen.length = 0; await shellWatchLastPass(); const stoppedTicks = seen.slice();
-        shellLastPassStopped = false; vocab = {{ last_pass_watch: null }};
-        let missing = ""; try {{ shellArmLastPass(); }} catch (err) {{ missing = err.message; }}
-        return {{ steps, ended, started, same, idle, own, broken, stoppedTicks, stopped, missing }};
+        seen.length = 0; await shellAskLastPass(); const stoppedTicks = seen.slice();
+        return {{ steps, ended, started, same, idle, own, broken, stoppedTicks, stopped }};
       }})();
     """, tmp_path)
     assert ran["steps"] == [row[3] for row in LAST_PASS_STEPS], [row[0] for row in LAST_PASS_STEPS]
@@ -5709,54 +5704,50 @@ def test_the_shell_asks_list_again_once_a_scheduled_pass_has_ended(tmp_path):
     assert ran["started"]["seen"] == ["call:last-pass", "changed"]
     assert ran["started"]["held"] == {"running": True, "when": "B"}, "and the page draws the new state"
     assert ran["same"]["seen"] == ["call:last-pass"] and ran["idle"]["seen"] == ["call:last-pass"]
-    assert ran["same"]["armed"] == [5], "five seconds while a pass runs"
-    assert ran["idle"]["armed"] == [60], "sixty otherwise"
-    assert ran["own"]["seen"] == [] and ran["own"]["armed"] == [60], "a tick during the app's own pass calls nothing"
-    assert ran["broken"]["seen"] == ["call:last-pass", "failed:boom"] and ran["broken"]["armed"] == [], \
-        "a throwing call is handed to failed once and stops the timer"
-    assert ran["stoppedTicks"] == [] and ran["stopped"] is True, "no notice per tick once stopped"
-    assert ran["missing"] == "vocab.last_pass_watch", "a vocabulary without the numbers is a loud failure"
-    assert "loadEngagements" not in re.sub(r"//.*", "", js_function("shellWatchLastPass", "shell.js")), \
+    assert ran["own"]["seen"] == [], "an ask during the app's own pass calls nothing"
+    assert ran["broken"]["seen"] == ["call:last-pass", "failed:boom"], "a throwing call is handed to failed once"
+    assert ran["stoppedTicks"] == [] and ran["stopped"] is True, "no notice per ask once stopped"
+    assert "loadEngagements" not in re.sub(r"//.*", "", js_function("shellAskLastPass", "shell.js")), \
         "the reread is the list adopted, never the start-up path"
 
 
 def test_a_throwing_reread_is_said_once_and_stops_the_watch(tmp_path):
-    """P256 (the builder's deviation 2, SPEC 1.2): the ``list`` a tick asks
+    """P256 (the builder's deviation 2, SPEC 1.2): the ``list`` an ask makes
     when a pass has ended can throw too. It is said once by ``failed`` and
-    the watch stops - no five-second loop on a failing ``list`` - until the
-    next list adopt starts it again."""
-    ran = run_shell(["lastPassStep", "shellArmLastPass", "shellWatchLastPass"], LAST_PASS_WATCH_FAKES, """
+    the asking stops - no loop on a failing ``list`` - until the next list
+    adopt starts it again."""
+    ran = run_shell(["lastPassStep", "shellAskLastPass"], LAST_PASS_WATCH_FAKES, """
       listReply = new Error("boom list");
       return (async () => {
         const broken = await tick({ running: true, when: "A" }, { running: false, when: "A", ok: true });
         const stopped = shellLastPassStopped;
-        seen.length = 0; const before = asked; await shellWatchLastPass();
+        seen.length = 0; const before = asked; await shellAskLastPass();
         return { broken, stopped, quiet: seen.slice(), askedAgain: asked - before };
       })();
     """, tmp_path)
     assert ran["broken"]["seen"] == ["call:last-pass", "call:list", "failed:boom list"], "said once, and not adopted"
-    assert ran["broken"]["armed"] == [] and ran["stopped"] is True, "the watch is stopped"
-    assert ran["quiet"] == [] and ran["askedAgain"] == 0, "and a later tick says and asks nothing"
+    assert ran["stopped"] is True, "the asking is stopped"
+    assert ran["quiet"] == [] and ran["askedAgain"] == 0, "and a later ask says and asks nothing"
 
 
-def test_a_tick_before_the_first_list_or_after_a_stop_does_nothing(tmp_path):
+def test_an_ask_before_the_first_list_or_after_a_stop_does_nothing(tmp_path):
     """P256 (the builder's deviation 3): a focus tick before the first list
     has landed (no vocabulary, so the shell has not learned which commands it
     may send) and one after a stop are \"not started\" and \"stopped\", not
-    silent errors: nothing is asked, drawn, said or timed."""
-    ran = run_shell(["lastPassStep", "shellArmLastPass", "shellWatchLastPass"], LAST_PASS_WATCH_FAKES, """
+    silent errors: nothing is asked, drawn or said."""
+    ran = run_shell(["lastPassStep", "shellAskLastPass"], LAST_PASS_WATCH_FAKES, """
       return (async () => {
         vocab = null; shellLastPass = null; reply = { running: false, when: "A" };
-        await shellWatchLastPass();
-        const early = { seen: seen.slice(), asked, armed: armed() };
-        vocab = { last_pass_watch: { running: 5, idle: 60 } }; shellLastPassStopped = true;
-        await shellWatchLastPass();
-        return { early, late: { seen: seen.slice(), asked, armed: armed() } };
+        await shellAskLastPass();
+        const early = { seen: seen.slice(), asked };
+        vocab = {}; shellLastPassStopped = true;
+        await shellAskLastPass();
+        return { early, late: { seen: seen.slice(), asked } };
       })();
     """, tmp_path)
-    assert ran["early"] == {"seen": [], "asked": 0, "armed": []}, "before the first list"
-    assert ran["late"] == {"seen": [], "asked": 0, "armed": []}, "after a stop"
-    assert re.search(r"if \(shellLastPassAsking \|\| shellLastPassStopped \|\| !vocab\) return;", js_function("shellWatchLastPass", "shell.js"))
+    assert ran["early"] == {"seen": [], "asked": 0}, "before the first list"
+    assert ran["late"] == {"seen": [], "asked": 0}, "after a stop"
+    assert re.search(r"if \(shellLastPassAsking \|\| shellLastPassStopped \|\| !vocab\) return;", js_function("shellAskLastPass", "shell.js"))
 
 
 def test_a_reply_landing_after_the_apps_own_sort_began_does_nothing(tmp_path):
@@ -5764,7 +5755,7 @@ def test_a_reply_landing_after_the_apps_own_sort_began_does_nothing(tmp_path):
     reply lands, not only before the call. A ``last-pass`` reply, or the
     ``list`` a reread asked, that arrives after the app's own Sort started
     adopts, draws and reads nothing - the pass's end asks ``list`` itself."""
-    ran = run_shell(["lastPassStep", "shellArmLastPass", "shellWatchLastPass"], LAST_PASS_WATCH_FAKES, """
+    ran = run_shell(["lastPassStep", "shellAskLastPass"], LAST_PASS_WATCH_FAKES, """
       const landed = async (which, held, fresh) => {
         during = (name) => { if (name === which) scanning = { pass: "p" }; };
         const out = await tick(held, fresh);
@@ -5781,7 +5772,6 @@ def test_a_reply_landing_after_the_apps_own_sort_began_does_nothing(tmp_path):
     assert ran["reread"]["seen"] == ["call:last-pass"] and ran["reread"]["held"] == {"running": True, "when": "A"}, "no list asked"
     assert ran["adopt"]["seen"] == ["call:last-pass"] and ran["adopt"]["held"] == {"running": False, "when": "A"}, "nothing adopted or drawn"
     assert ran["list"]["seen"] == ["call:last-pass", "call:list"], "a list landing late is not adopted"
-    assert [ran[name]["armed"] for name in ("reread", "adopt", "list")] == [[5], [60], [5]], "the watch is still timed, by what is held"
     assert all(ran[name]["scanning"] for name in ran), "the app's own pass was running when each reply landed"
 
 
@@ -5819,29 +5809,100 @@ const mirror = JSON.parse({json.dumps(json.dumps(api._vocab()))});
     assert ran["normal"]["list"]["running"] is False and ran["failed"]["list"]["ok"] is False and ran["setup"]["list"] is None
 
 
-def test_the_watch_never_overlaps_itself_and_the_adopt_and_the_focus_start_it(tmp_path):
+def test_an_ask_never_overlaps_itself_and_a_list_landing_clears_a_stop(tmp_path):
     """P256: one ask at a time (an ``asking`` flag, as the lock watch has);
-    ``shellAdopt`` times the watch whenever a list lands (and clears a stop);
-    the window's ``focus`` ticks it once at once; and the page types neither
-    number."""
-    ran = run_shell(["lastPassStep", "shellArmLastPass", "shellWatchLastPass"], LAST_PASS_WATCH_FAKES, """
+    ``shellAdopt`` clears a stop whenever a list lands and arms nothing (P277:
+    there is no timer); the window's ``focus`` asks once at once."""
+    ran = run_shell(["lastPassStep", "shellAskLastPass"], LAST_PASS_WATCH_FAKES, """
       shellLastPass = { running: false, when: "A" }; reply = { running: false, when: "A" }; scanning = null;
       return (async () => {
-        const first = shellWatchLastPass();
-        const second = shellWatchLastPass();
+        const first = shellAskLastPass();
+        const second = shellAskLastPass();
         await Promise.all([first, second]);
         return { asked };
       })();
     """, tmp_path)
-    assert ran["asked"] == 1, "a tick that arrives while one is asking is dropped"
+    assert ran["asked"] == 1, "an ask that arrives while one is on its way is dropped"
     shell = stripped_js("shell.js")
     adopt = js_function("shellAdopt", "shell.js")
-    assert adopt.index("shellLastPassStopped = false;") < adopt.index("shellArmLastPass();"), "a list landing clears a stop, then times the watch"
+    assert "shellLastPassStopped = false;" in adopt and "LastPass(" not in adopt, "a list landing clears a stop and arms nothing"
     assert 'window.addEventListener("focus", shellFocused);' in shell
-    assert "vocab.last_pass_watch" in js_function("shellArmLastPass", "shell.js")
-    # The watch's two delays are the vocabulary's; the one number the page keeps is the quiet after an ask that a focus waits out.
-    watch = shell.replace("const SHELL_FOCUS_QUIET_MS = 5000;", "")
-    assert not re.search(r"\b(?:60|5)\s*\*\s*1000|\b(?:5000|60000)\b", watch), "the page types neither number"
+
+
+# ── P277 (SPEC-ui-menu-speed §1): the page asks when the file changes ─────
+
+def test_a_change_of_the_last_pass_file_asks_last_pass_once(tmp_path):
+    """P277: the ``last-pass-changed`` message (which carries nothing) makes
+    the page ask ``last-pass`` once; a pass that has ended then asks ``list``
+    once and adopts it, and a message with nothing new asks nothing more."""
+    ran = run_shell(["lastPassStep", "shellAskLastPass", "shellLastPassChanged"], LAST_PASS_WATCH_FAKES, """
+      return (async () => {
+        const settle = () => new Promise((r) => setImmediate(r));
+        shellLastPass = { running: true, when: "A" }; reply = { running: false, when: "A", ok: true };
+        seen.length = 0; shellLastPassChanged(); await settle();
+        const ended = seen.slice();
+        seen.length = 0; reply = { running: false, when: "A", ok: true }; shellLastPass = reply; shellLastPassChanged(); await settle();
+        return { ended, quiet: seen.slice(), asked };
+      })();
+    """, tmp_path)
+    assert ran["ended"] == ["call:last-pass", "call:list", "adopt-list"], "one ask, and the list once because a pass ended"
+    assert ran["quiet"] == ["call:last-pass"], "nothing new: one ask and nothing more"
+    assert ran["asked"] == 3
+    assert re.search(r"window\.tracker\.onLastPassChanged\(shellLastPassChanged\);", stripped_js("shell.js"))
+
+
+def test_a_change_while_hidden_is_asked_when_the_window_is_shown(tmp_path):
+    """P277: a hidden window sends nothing; the change is owed, and the window
+    being shown asks once (not once per change that came while it was hidden)."""
+    ran = run_shell(["lastPassStep", "shellAskLastPass", "shellLastPassChanged", "shellShown"], LAST_PASS_WATCH_FAKES, """
+      return (async () => {
+        const settle = () => new Promise((r) => setImmediate(r));
+        shellLastPass = { running: false, when: "A" }; reply = { running: false, when: "A" };
+        document.hidden = true;
+        shellLastPassChanged(); shellLastPassChanged(); shellLastPassChanged(); await settle();
+        const hidden = { asked, owed: shellLastPassOwed };
+        document.hidden = false; shellShown(); await settle();
+        return { hidden, shown: { asked, owed: shellLastPassOwed } };
+      })();
+    """, tmp_path)
+    assert ran["hidden"] == {"asked": 0, "owed": True}
+    assert ran["shown"] == {"asked": 1, "owed": False}
+
+
+def test_a_change_during_an_ask_asks_once_more_when_it_lands(tmp_path):
+    """P277: a change is never dropped. One that comes while an ask is on its
+    way sets a flag, and one more ask follows when that one lands - however
+    many changes came - so a sort that starts and ends inside one ask is
+    still seen. An ask that fails does not follow itself."""
+    ran = run_shell(["lastPassStep", "shellAskLastPass", "shellLastPassChanged"], LAST_PASS_WATCH_FAKES, """
+      return (async () => {
+        const settle = () => new Promise((r) => setImmediate(r));
+        shellLastPass = { running: false, when: "A" }; reply = { running: false, when: "A" };
+        let fired = false;
+        during = () => { if (!fired) { fired = true; shellLastPassChanged(); shellLastPassChanged(); } };
+        shellLastPassChanged(); await settle(); await settle();
+        const followed = { asked, again: shellLastPassAgain, asking: shellLastPassAsking };
+        during = () => { shellLastPassChanged(); }; reply = new Error("boom"); asked = 0; seen.length = 0;
+        shellLastPassChanged(); await settle(); await settle();
+        return { followed, failed: { asked, again: shellLastPassAgain, seen: seen.slice() } };
+      })();
+    """, tmp_path)
+    assert ran["followed"] == {"asked": 2, "again": False, "asking": False}, "two changes during one ask: one more ask"
+    assert ran["failed"] == {"asked": 1, "again": False, "seen": ["call:last-pass", "failed:boom"]}, "a failed ask does not ask again"
+
+
+def test_no_timer_asks_last_pass():
+    """P277: nothing in the renderer times the last-pass ask (no ``setTimeout``
+    reaches ``shellAskLastPass``), the polling watch and its vocabulary are
+    gone, and the page is not told where the file is."""
+    shell = stripped_js("shell.js")
+    ask = js_function("shellAskLastPass", "shell.js")
+    assert "setTimeout" not in ask and "setInterval" not in ask
+    assert not re.search(r"set(?:Timeout|Interval)\([^)]*(?:AskLastPass|LastPassChanged|shellFocused|shellShown)", shell)
+    for gone in ("last_pass_watch", "shellArmLastPass", "shellWatchLastPass", "shellLastPassTimer"):
+        assert gone not in shell, gone
+    assert "last_pass_watch" not in "".join(read(name) for name in ("app.js", "pages.js", "sheet.js"))
+    assert "last_pass_file" not in shell, "the page is not told where the file is"
 
 
 # ── a notice's Details (pilot P257) ───────────────────────────────────────
@@ -6198,7 +6259,7 @@ def test_a_scheduled_pass_that_ended_redraws_an_open_return_page(tmp_path):
     and a draw that throws is said once by ``failed``. (The real
     ``showReturn`` says its own read's failure itself and the watch goes on;
     the reread's catch takes only a throw.)"""
-    ran = run_shell(["lastPassStep", "shellArmLastPass", "shellWatchLastPass"], RETURN_FOLLOWS_FAKES, """
+    ran = run_shell(["lastPassStep", "shellAskLastPass"], RETURN_FOLLOWS_FAKES, """
       return (async () => {
         const open = await ended({ level: "return", ret: "r1" }, []);
         const dialog = await ended({ level: "return", ret: "r1" }, ["sheet"]);
@@ -6319,7 +6380,7 @@ def test_the_return_page_is_redrawn_only_on_a_return_route(tmp_path):
     only when the route is a return page."""
     refresh = re.sub(r"//.*", "", js_function("shellRefresh", "shell.js"))
     assert 'if (shellRoute.level === "return") await showReturn(shellRoute.ret);' in refresh
-    reread = js_function("shellWatchLastPass", "shell.js")
+    reread = js_function("shellAskLastPass", "shell.js")
     assert re.search(r'if \(shellRoute\.level === "return"\) \{\s*if \(dialogStack\.length === 0\) await showReturn\(shellRoute\.ret\);\s*else shellReturnStale = true;', reread)
     assert reread.count("showReturn(") == 1
 
@@ -6586,18 +6647,20 @@ def test_search_draws_once_the_typing_pauses_and_folds_each_name_once(tmp_path):
 
 
 def test_the_last_pass_watch_and_the_lock_watch_send_nothing_while_the_window_is_hidden(tmp_path):
-    """N6: a hidden window sends no ``last-pass`` and no ``watch``; becoming
-    visible asks each once at once; two focus events 2 s apart send one ask."""
-    ran = run_shell(["lastPassStep", "shellArmLastPass", "shellWatchLastPass", "shellFocused", "shellShown"], LAST_PASS_WATCH_FAKES, """
+    """N6 (P277): a hidden window sends no ``last-pass`` and no ``watch``; a
+    change of the last-pass file while it is hidden is owed, and becoming
+    visible asks once; each lock tick resumes once; two focus events 2 s apart
+    send one ask."""
+    ran = run_shell(["lastPassStep", "shellAskLastPass", "shellLastPassChanged", "shellFocused", "shellShown"], LAST_PASS_WATCH_FAKES, """
       shellLastPass = { running: false, when: "A" }; reply = { running: false, when: "A" };
       return (async () => {
       const out = {};
       let clock = 100000; const realNow = Date.now; Date.now = () => clock;
       document.hidden = true;
-      await shellWatchLastPass(); await shellFocused();
-      out.hidden = { asked, armed: armed() };
+      await shellAskLastPass(); await shellFocused(); shellLastPassChanged();
+      out.hidden = { asked, owed: shellLastPassOwed };
       document.hidden = false; shellShown(); await new Promise((r) => setImmediate(r));
-      out.shown = asked;
+      out.shown = asked; out.owedAfter = shellLastPassOwed;
       clock += 2000; shellFocused(); await new Promise((r) => setImmediate(r));
       out.twoSecondsLater = asked;
       clock += 6000; shellFocused(); await new Promise((r) => setImmediate(r));
@@ -6608,8 +6671,9 @@ def test_the_last_pass_watch_and_the_lock_watch_send_nothing_while_the_window_is
       return out;
       })();
     """, tmp_path)
-    assert ran["hidden"] == {"asked": 0, "armed": [60.0]}, "no ask while hidden, and the timer goes on"
-    assert ran["shown"] == 1 and ran["twoSecondsLater"] == 1 and ran["eightSecondsLater"] == 2 and ran["hiddenAgain"] == 2
+    assert ran["hidden"] == {"asked": 0, "owed": True}, "no ask while hidden, and the change is owed"
+    assert ran["shown"] == 1 and ran["owedAfter"] is False, "shown again: one ask pays it"
+    assert ran["twoSecondsLater"] == 1 and ran["eightSecondsLater"] == 2 and ran["hiddenAgain"] == 2
     shell = stripped_js("shell.js")
     assert 'window.addEventListener("focus", shellFocused);' in shell and 'document.addEventListener("visibilitychange", shellShown);' in shell
 

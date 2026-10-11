@@ -57,8 +57,9 @@ let shellReturnStale = false;  // a pass ended while a dialog was open: its retu
 let shellRootSet = false;      // a clients folder is set (the menu's "a clients folder is set")
 let shellPaths = {};           // the list's `paths`: clients_root, status
 let shellLastPass = null;      // the list's last_pass: {text, level, ok, running, when}
-let shellLastPassTimer = null;     // the one last-pass watch timer (P256); null when none is armed
-let shellLastPassAsking = false;   // a `last-pass` ask is on its way: a tick never overlaps itself
+let shellLastPassAsking = false;   // a `last-pass` ask is on its way: an ask never overlaps itself
+let shellLastPassOwed = false;     // the file changed while the window was hidden: shellShown asks (P277)
+let shellLastPassAgain = false;    // the file changed during an ask: one more follows when it lands (P277)
 let shellLastPassAt = 0;           // when the last ask was sent (Date.now()); a focus within SHELL_FOCUS_QUIET_MS of it asks nothing
 const SHELL_FOCUS_QUIET_MS = 5000;
 let shellLastPassStopped = false;  // an ask failed and was said once; the next list adopt starts it again
@@ -205,23 +206,26 @@ function shellAdopt(listed) {
   if (shellRootSet) shellLoadFirm();
   shellShowLast();   // the launch's last counts, if they landed before the words did (P229)
   shellChanged();
-  shellLastPassStopped = false;
-  shellArmLastPass();   // a list landed: the last pass is known again, so the watch is (re)timed (P256)
+  shellLastPassStopped = false;   // a list landed: a failed ask starts being listened to again
 }
 
-// ── the scheduled pass, watched (SPEC-mac-check-fixes 1.2, P256) ────────
+// ── the scheduled pass, watched (SPEC-mac-check-fixes 1.2, P256; P277) ──
 // The shell learned the last pass only from a `list`, so a pass started by
 // launchd or Task Scheduler told it nothing and the page kept a stale word
-// until Refresh. It now asks the engine's `last-pass` - one read of one
-// file, no root walk - every `last_pass_watch.running` seconds while a pass
-// runs and every `idle` seconds otherwise, never while the window is hidden,
-// and once when the window is clicked into unless it asked within the last
-// 5 s (N6). It asks `list` again only when a pass has ended, as
-// decision 203 does for the app's own Sort: the counts, Needs Review and the
-// last-sort line then all follow, as after F5 - the same `list` adopted the
-// same way, never the start-up path (`loadEngagements` re-applies the
-// vocabulary, rebuilds the Schedule dialog's interval list under an open
-// dialog and redraws the page under the person).
+// until Refresh. It first asked the engine's `last-pass` on a timer; now
+// main.js watches the folder of the file `list` names
+// (vocab.shell.last_pass_file) and sends `last-pass-changed`, which carries
+// nothing, and the page asks `last-pass` once - one read of one file, no root
+// walk. Neither the page nor main.js reads the file. A click into the window
+// asks once more, unless it asked within the last 5 s (N6): Node does not
+// promise every folder event (a full change buffer, a sync tool or a virus
+// scanner holding the file), so that is the safety net, not a timer. It asks
+// `list` again only when a pass has ended, as decision 203 does for the app's
+// own Sort: the counts, Needs Review and the last-sort line then all follow,
+// as after F5 - the same `list` adopted the same way, never the start-up path
+// (`loadEngagements` re-applies the vocabulary, rebuilds the Schedule
+// dialog's interval list under an open dialog and redraws the page under the
+// person).
 
 // What a fresh last-pass says to a shell holding `held`: "reread" when a pass
 // has ended since the shell last looked (it held a running one and the file
@@ -238,36 +242,21 @@ function lastPassStep(held, fresh) {
   return freshWhen && freshWhen !== heldWhen ? "reread" : "same";
 }
 
-// (Re)time the watch: one timer at a time, its delay the vocabulary's - a
-// number the page never types. A vocabulary without it throws, which the
-// list's adopt says as a notice (loud, never a guess).
-function shellArmLastPass() {
-  clearTimeout(shellLastPassTimer);
-  shellLastPassTimer = null;
-  if (shellLastPassStopped) return;
-  const watch = vocab && vocab.last_pass_watch;
-  if (!watch || !Number.isFinite(watch.running) || !Number.isFinite(watch.idle)) throw new Error("vocab.last_pass_watch");
-  const seconds = shellLastPass && shellLastPass.running ? watch.running : watch.idle;
-  shellLastPassTimer = setTimeout(shellWatchLastPass, seconds * 1000);
-}
-
-// One tick, from the timer, the window's focus and its being shown again. A
-// hidden window sends nothing (each ask is an engine process, and nobody sees
-// the page catch up); the timer goes on, and shellShown asks at once when the
-// window is back. During the app's own
+// One ask, from a change of the file, the window's focus and its being shown
+// again. A hidden window sends nothing (each ask is an engine command, and
+// nobody sees the page catch up); shellShown asks once when the window is
+// back. During the app's own
 // pass nothing is asked (its end asks `list` already), and a reply that lands
 // after the app's own pass began is dropped, not acted on: the pass's end
-// asks `list` itself. A `last-pass` or a `list` that throws stops the watch
-// and is said once by the one rule (decision 193); no notice per tick, and
+// asks `list` itself. A `last-pass` or a `list` that throws stops the asking
+// and is said once by the one rule (decision 193); no notice per ask, and
 // the next list adopt starts it again.
-async function shellWatchLastPass() {
+async function shellAskLastPass() {
   // Before the first list has landed there is no vocabulary and the shell has
-  // not learned which commands it may send: the list's adopt starts the watch.
+  // not learned which commands it may send: the list's adopt starts the asking.
   if (shellLastPassAsking || shellLastPassStopped || !vocab) return;
-  if (scanning || document.hidden) {
-    shellArmLastPass();
-    return;
-  }
+  if (scanning || document.hidden) return;
+  shellLastPassOwed = false;
   shellLastPassAsking = true;
   shellLastPassAt = Date.now();
   try {
@@ -290,28 +279,54 @@ async function shellWatchLastPass() {
     }
   } catch (err) {
     shellLastPassStopped = true;
-    clearTimeout(shellLastPassTimer);
-    shellLastPassTimer = null;
+    shellLastPassAgain = false;
     failed(err);
     return;
   } finally {
     shellLastPassAsking = false;
   }
-  shellArmLastPass();
+  // A change that came while that ask was on its way is never dropped: a
+  // sort that starts and ends inside one ask is still seen.
+  if (shellLastPassAgain) {
+    shellLastPassAgain = false;
+    shellAskLastPass();
+  }
+}
+
+// main.js says the last-pass file changed (P277). A hidden window is owed the
+// ask and shellShown pays it; an ask already on its way is followed by one
+// more; otherwise one ask now.
+function shellLastPassChanged() {
+  if (document.hidden) {
+    shellLastPassOwed = true;
+    return;
+  }
+  if (shellLastPassAsking) {
+    shellLastPassAgain = true;
+    return;
+  }
+  shellAskLastPass();
 }
 
 // The window was clicked into. A click within a few seconds of an ask asks
 // nothing: the page was just brought up to date, and every click back into the
-// window would otherwise start another engine process.
+// window would otherwise send another command.
 function shellFocused() {
   if (Date.now() - shellLastPassAt < SHELL_FOCUS_QUIET_MS) return;
-  shellWatchLastPass();
+  shellAskLastPass();
 }
 
-// The window is shown again after being hidden or minimised: the watch asked
-// nothing meanwhile, so it asks once now, whatever the last ask's time.
+// The window is shown again after being hidden or minimised: nothing was
+// asked meanwhile, so it asks once now, whatever the last ask's time. A change
+// owed from the hidden time while an ask is on its way is followed by one more.
 function shellShown() {
-  if (!document.hidden) shellWatchLastPass();
+  if (document.hidden) return;
+  if (shellLastPassAsking) {
+    if (shellLastPassOwed) shellLastPassAgain = true;
+    shellLastPassOwed = false;
+    return;
+  }
+  shellAskLastPass();
 }
 
 // The Overview asked now, before the list that would start it has landed:
@@ -1641,8 +1656,10 @@ for (const node of document.querySelectorAll(".side-section[data-soon]")) {
 // Settings: the settings the app already has, through the menu's own answer (P175).
 $("side-settings").addEventListener("click", () => shellAnswer("change_root"));
 $("sort").addEventListener("click", sortClicked);
-// A click into the window asks the last pass (P256), so the page catches up
-// sooner than the idle timer would - unless it asked within the last 5 s (N6).
+// The last-pass file changed (P277): ask once. A click into the window asks
+// besides (P256), the safety net for an event Node never delivered - unless it
+// asked within the last 5 s (N6).
+window.tracker.onLastPassChanged(shellLastPassChanged);
 window.addEventListener("focus", shellFocused);
 document.addEventListener("visibilitychange", shellShown);
 $("find").addEventListener("input", drawFoundSoon);

@@ -140,6 +140,23 @@ const HELD_READING_COMMANDS = new Set(["firm", "firm-last", "list", "state"]);
 // this computer now runs the schedule. Nothing else of the reply crosses.
 const LAUNCH_COMMAND = "after-install";
 const LAUNCH_DONE_CHANNEL = "after-install-done";
+// The last-pass watch (SPEC-ui-menu-speed 1, P277): the scheduled pass writes
+// last-pass.json when it starts and when it ends, and the page used to ask
+// the engine for it on a timer - an engine process a minute while nothing
+// happened. Now `list` names the file (vocab.shell.last_pass_file) and this
+// file watches its FOLDER; a change becomes one message on LAST_PASS_CHANNEL
+// that carries nothing, and the page asks the engine's `last-pass` once. The
+// file itself is never read here: the engine is its one reader, and the
+// message cannot carry what the shell never saw.
+const LAST_PASS_CHANNEL = "last-pass-changed";
+// A burst - the create, the write and the rename one atomic replace makes -
+// is one message, sent this long after the last event of it.
+const LAST_PASS_SETTLE_MS = 250;
+// The stat fallback's interval, used only where fs.watch cannot be set: a
+// stat in this process, never an engine process.
+const LAST_PASS_POLL_MS = 5000;
+let lastPassWatch = null;     // {file, watcher | null, polling} while a file is watched
+let lastPassTimer = null;     // the settle timer
 let allowedCommands = null;   // vocab.commands, once seen
 let engagementFlag = null;    // vocab.engagement_flag, once seen
 // Sort & Scan's command (decision 203), learned, never typed: a process
@@ -293,6 +310,73 @@ function learnMenu(words) {
   if (changed && menuBuilt) buildMenu();
 }
 
+// A change was seen (or may have been): one message, once the burst settles.
+function lastPassSoon() {
+  clearTimeout(lastPassTimer);
+  lastPassTimer = setTimeout(() => {
+    lastPassTimer = null;
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(LAST_PASS_CHANNEL);
+  }, LAST_PASS_SETTLE_MS);
+}
+
+// The stat watch, only where fs.watch cannot be had: the file's size or
+// modified time moved. The reason is said once, as a code with no path.
+function pollLastPass(file, code) {
+  keepInLog("shell's last-pass watch", `fs.watch failed (${code}); the file is looked at every ${LAST_PASS_POLL_MS / 1000} s instead`);
+  fs.watchFile(file, { interval: LAST_PASS_POLL_MS, persistent: false }, (now, before) => {
+    if (now.mtimeMs !== before.mtimeMs || now.size !== before.size) lastPassSoon();
+  });
+  lastPassWatch.polling = true;
+}
+
+// Watch the folder of `file`, not the file: the pass replaces the file whole
+// (a temporary file, then a rename), so the file is a new file after every
+// write and a watch on the old one is lost (kqueue, inotify). An event for
+// another file in the folder is ignored; one with no name is taken as
+// ours, since Node does not promise a name.
+function watchLastPass(file) {
+  if (lastPassWatch && lastPassWatch.file === file) return;
+  unwatchLastPass();
+  lastPassWatch = { file, watcher: null, polling: false };
+  const mine = path.basename(file);
+  try {
+    const watcher = fs.watch(path.dirname(file), { persistent: false }, (_event, name) => {
+      if (name && String(name) !== mine) return;
+      lastPassSoon();
+    });
+    lastPassWatch.watcher = watcher;
+    watcher.on("error", (err) => {
+      try {
+        watcher.close();
+      } catch {
+        // already closed
+      }
+      if (lastPassWatch && lastPassWatch.watcher === watcher) {
+        lastPassWatch.watcher = null;
+        pollLastPass(file, (err && err.code) || "error");
+      }
+    });
+  } catch (err) {
+    pollLastPass(file, (err && err.code) || "error");
+  }
+}
+
+function unwatchLastPass() {
+  clearTimeout(lastPassTimer);
+  lastPassTimer = null;
+  const held = lastPassWatch;
+  lastPassWatch = null;
+  if (!held) return;
+  if (held.watcher) {
+    try {
+      held.watcher.close();
+    } catch {
+      // already closed
+    }
+  }
+  if (held.polling) fs.unwatchFile(held.file);
+}
+
 function learn(result) {
   const vocab = result && result.vocab;
   const first = allowedCommands === null;
@@ -313,6 +397,13 @@ function learn(result) {
   if (said && typeof said.error_log === "string" && said.error_log) {
     errorLog = said.error_log;
     openable.set(errorLog, "file");   // Help > Open error log, through openPath (5.5)
+  }
+  // The last-pass file the API named: its folder is watched (P277). A list
+  // that names none (no data home) ends the watch; a reply with no shell
+  // words at all (a firm, a state) leaves it alone.
+  if (said && typeof said === "object") {
+    if (typeof said.last_pass_file === "string" && said.last_pass_file) watchLastPass(said.last_pass_file);
+    else unwatchLastPass();
   }
   // A row's key is "word row" (a file name on the page), and its kind is the word's.
   const code = (result && result.carries_code) || (result && result.state && result.state.carries_code);
@@ -1039,6 +1130,7 @@ app.on("window-all-closed", () => app.quit());
 // Not a kill, which would leave the lock for two hours and more, and not a
 // pass left running where no one can stop it.
 app.on("will-quit", () => {
+  unwatchLastPass();
   for (const proc of passes.values()) proc.stdout.destroy();
   // The spare has been handed nothing: it is killed, never left waiting (P220).
   if (spare) {

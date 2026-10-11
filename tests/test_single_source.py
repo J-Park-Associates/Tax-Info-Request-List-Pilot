@@ -81,15 +81,18 @@ def test_the_shell_and_the_preload_agree_on_every_ipc_channel():
     invoked = set(re.findall(r'ipcRenderer\.invoke\("([a-z-]+)"', read("app/preload.js")))
     assert handled == invoked and handled
     # The channels the shell sends on outside a reply (decision 209, the
-    # review's S7; SPEC-shell 5.4): the launch step finished having run, and
-    # a menu item chosen. The page listens for both.
+    # review's S7; SPEC-shell 5.4): the launch step finished having run, a
+    # menu item chosen, and the last-pass file changed (P277). The page
+    # listens for all three.
     sent = set(re.findall(r'const [A-Z_]+_CHANNEL = "([a-z-]+)"', read("app/main.js")))
     heard = set(re.findall(r'ipcRenderer\.on\("([a-z-]+)"', read("app/preload.js")))
-    assert sent == {"after-install-done", "menu"} and sent <= heard
+    assert sent == {"after-install-done", "menu", "last-pass-changed"} and sent <= heard
     # With the pass's progress channel (decision 193), those are all it hears.
     sent |= set(re.findall(r'event\.sender\.send\("([a-z-]+)"', read("app/main.js")))
-    assert sent == heard == {"after-install-done", "tracker-progress", "menu"}
+    assert sent == heard == {"after-install-done", "tracker-progress", "menu", "last-pass-changed"}
     assert "webContents.send(LAUNCH_DONE_CHANNEL, {" in read("app/main.js")
+    assert "webContents.send(LAST_PASS_CHANNEL);" in read("app/main.js")
+    assert "window.tracker.onLastPassChanged(" in read("app/renderer/shell.js")
     assert "webContents.send(MENU_CHANNEL, message)" in read("app/main.js")
     # The menu channel goes both ways, once: the shell listens on it with
     # ipcMain.on (a one-way message, not a call that has a reply), and the
@@ -3416,9 +3419,10 @@ def test_the_lock_notice_types_no_sentence_and_polls_only_while_a_lock_shows():
 def test_the_shell_sends_on_only_the_channels_the_preload_listens_to():
     sent = set(re.findall(r'event\.sender\.send\("([a-z-]+)"', read("app/main.js")))
     heard = set(re.findall(r'ipcRenderer\.on\("([a-z-]+)"', read("app/preload.js")))
-    # Decision 209's launch channel and SPEC-shell 5.4's menu channel are the
-    # others the preload hears; both are sent with webContents.send.
-    assert sent == {"tracker-progress"} and heard == sent | {"after-install-done", "menu"}
+    # Decision 209's launch channel, SPEC-shell 5.4's menu channel and P277's
+    # last-pass channel are the others the preload hears; all are sent with
+    # webContents.send.
+    assert sent == {"tracker-progress"} and heard == sent | {"after-install-done", "menu", "last-pass-changed"}
 
 
 # ------------------------------------------ decision 193: the review's fixes ----
@@ -4559,7 +4563,9 @@ const realFs = require("fs");
 const path = require("path");
 const [mainJs, scenarioJson] = process.argv.slice(2);
 const sc = JSON.parse(scenarioJson);
-const log = { spawned: [], replies: [], sends: [] };
+const log = { spawned: [], replies: [], sends: [], sent: [], watches: [], watchFiles: [], unwatched: [], closed: [], reads: [], logged: [] };
+const watchers = [];
+let pollListener = null;
 let stamp = 1;
 let trackerHandler = null;
 const appHandlers = {};
@@ -4570,7 +4576,8 @@ const track = (promise) => { pending += 1; const done = () => { pending -= 1; };
 const settle = async () => { do { await new Promise((resolve) => setImmediate(resolve)); } while (pending > 0); };
 const win = { isDestroyed: () => false, getContentBounds: () => ({ width: 1400, height: 900 }), setBackgroundColor() {}, loadFile() {}, on() {},
               isMinimized: () => false, focus() {},
-              webContents: { setWindowOpenHandler() {}, on() {}, session: { flushStorageData() {} }, send() {} } };
+              webContents: { setWindowOpenHandler() {}, on() {}, session: { flushStorageData() {} },
+                             send(channel, ...args) { log.sent.push({ channel, args }); } } };
 class BrowserWindow { constructor() { return win; } static getAllWindows() { return [win]; } }
 const electron = {
   app: { isPackaged: false, requestSingleInstanceLock: () => true, quit() {}, on(name, fn) { appHandlers[name] = fn; }, setPath() {},
@@ -4586,7 +4593,11 @@ const LIST = { vocab: { commands: ["list", "firm", "state", "edit", "run-now", "
 // What the tracker would print for one command line: progress lines, then the reply.
 const answerFor = (argv) => {
   const [command] = argv;
-  if (command === "list") return [LIST];
+  if (command === "list") {
+    // sc.listShells: the vocab.shell each successive list names (P277); none, the plain list.
+    const shell = sc.listShells && sc.listShells.length ? sc.listShells.shift() : undefined;
+    return [shell === undefined ? LIST : { ...LIST, vocab: { ...LIST.vocab, shell } }];
+  }
   if (command === "after-install") return [{ ran: false, warnings: [] }];
   if (command === "run-now") return [{ progress: { event: "started", pass: "p1", limit_seconds: 60 } }, { runs: [], warnings: [] }];
   if (command === "firm" && sc.bigFirm) {
@@ -4652,7 +4663,33 @@ Module._load = function (request, ...rest) {
   if (request === "electron") return electron;
   if (request === "child_process") return { spawn: fakeSpawn };
   if (request === "fs") {
+    const noted = (name) => (p, ...more) => { if (String(p).includes("last-pass")) log.reads.push(name); return realFs[name](p, ...more); };
     return { ...realFs, existsSync: () => true,
+      readFileSync: noted("readFileSync"), readFile: noted("readFile"), createReadStream: noted("createReadStream"),
+      openSync: noted("openSync"),
+      // The fallback error log: recorded, never written (the fake userData folder is "/fake").
+      lstatSync(p, ...more) {
+        if (String(p).startsWith("/fake")) throw Object.assign(new Error("gone"), { code: "ENOENT" });
+        return realFs.lstatSync(p, ...more);
+      },
+      mkdirSync(p, ...more) { if (!String(p).startsWith("/fake")) return realFs.mkdirSync(p, ...more); },
+      appendFileSync(file, text, ...more) {
+        if (!String(file).startsWith("/fake")) return realFs.appendFileSync(file, text, ...more);
+        log.logged.push({ file, text });
+      },
+      // P277: the folder watch and the stat watch are recorded and fired by a step, never real.
+      watch(dir, options, listener) {
+        if (sc.watchThrows) throw Object.assign(new Error("no watch"), { code: sc.watchThrows });
+        const watcher = new EventEmitter();
+        watcher.id = watchers.length;
+        watcher.listener = listener;
+        watcher.close = () => { log.closed.push(watcher.id); };
+        watchers.push(watcher);
+        log.watches.push({ dir, persistent: options.persistent });
+        return watcher;
+      },
+      watchFile(file, options, listener) { log.watchFiles.push({ file, interval: options.interval, persistent: options.persistent }); pollListener = listener; },
+      unwatchFile(file) { log.unwatched.push(file); },
       readdirSync(p, ...more) { return path.resolve(String(p)) === trackerDir ? ["api.py", "store.py", "README.txt"] : realFs.readdirSync(p, ...more); },
       statSync(p, ...more) {
         if (path.dirname(path.resolve(String(p))) === trackerDir) return { size: 100, mtimeMs: String(p).endsWith("store.py") ? stamp : 1 };
@@ -4672,7 +4709,15 @@ Module._load = function (request, ...rest) {
       stamp += 1;
     } else if (step.quit) {
       appHandlers["will-quit"]();
+    } else if (step.events) {
+      const watcher = watchers[watchers.length - 1];
+      for (const name of step.events) watcher.listener("change", name === null ? null : Buffer.from(name));
+    } else if (step.watcherError) {
+      watchers[watchers.length - 1].emit("error", Object.assign(new Error("watch failed"), { code: step.watcherError }));
+    } else if (step.poll) {
+      pollListener({ mtimeMs: step.poll[0], size: step.poll[1] }, { mtimeMs: step.poll[2], size: step.poll[3] });
     }
+    if (step.wait) await new Promise((resolve) => setTimeout(resolve, step.wait));
     await settle();
   }
   process.stdout.write(JSON.stringify(log));
@@ -4705,6 +4750,108 @@ def _commands(ran: dict) -> list:
         out.append({"argv": argv, "handed": one["handed"], "killed": one["killed"], "cwd": bool(one["cwd"]),
                     "settings": one["settings"], "hidden": one["hidden"]})
     return out
+
+
+# ── P277 (SPEC-ui-menu-speed §1): main.js watches the last-pass file's folder ─────
+
+_LAST_PASS_FILE = "/data/home/last-pass.json"
+
+
+def _sent_last_pass(ran: dict) -> list:
+    return [one for one in ran["sent"] if one["channel"] == "last-pass-changed"]
+
+
+def test_the_shell_watches_the_folder_of_the_last_pass_file_the_list_names(tmp_path):
+    """P277: ``learn`` hands the folder of ``vocab.shell.last_pass_file`` to
+    ``fs.watch`` (not the file: the pass replaces it whole, and a watch on
+    the old file is lost), without keeping the process alive, and starts no
+    stat watch; the shell never builds the path."""
+    ran = _run_spawns(tmp_path, [{"tracker": ["list"]}], listShells=[{"last_pass_file": _LAST_PASS_FILE}])
+    assert ran["watches"] == [{"dir": "/data/home", "persistent": False}]
+    assert ran["watchFiles"] == [] and ran["closed"] == []
+    main_js = read("app/main.js")
+    assert "fs.watch(path.dirname(file)," in main_js and 'LAST_PASS_CHANNEL = "last-pass-changed";' in main_js
+    assert "last-pass.json" not in re.sub(r"//.*", "", main_js), "the file's name is never typed here"
+
+
+def test_a_burst_of_changes_is_one_message_and_other_files_are_ignored(tmp_path):
+    """P277: the create, the write and the rename one atomic replace makes
+    are one ``last-pass-changed`` message that carries nothing; an event for
+    another file in the folder makes none; one with no name is taken as the
+    file's own (Node does not promise a name)."""
+    ran = _run_spawns(tmp_path, [{"tracker": ["list"]},
+                                 {"events": ["tracker.db", "last-pass.json.tmp1", "error.log"], "wait": 400},
+                                 {"events": ["last-pass.json", "last-pass.json", None, "last-pass.json"], "wait": 400},
+                                 {"events": [None], "wait": 400}],
+                      listShells=[{"last_pass_file": _LAST_PASS_FILE}])
+    assert _sent_last_pass(ran) == [{"channel": "last-pass-changed", "args": []}] * 2, \
+        "none for other files; one for the burst; one for the nameless event after it"
+
+
+def test_the_shell_never_reads_the_last_pass_file_and_sends_the_page_nothing_of_it(tmp_path):
+    """P277: ``main.js`` learns only that the folder changed. It opens the
+    file with no ``readFile``, ``readFileSync``, stream or descriptor, and
+    the message has no argument - not the path, not a time."""
+    ran = _run_spawns(tmp_path, [{"tracker": ["list"]}, {"events": ["last-pass.json"], "wait": 400}],
+                      listShells=[{"last_pass_file": _LAST_PASS_FILE}])
+    assert ran["reads"] == []
+    assert _sent_last_pass(ran) == [{"channel": "last-pass-changed", "args": []}]
+    code = re.sub(r"//.*", "", read("app/main.js"))
+    for name in ("lastPassSoon", "watchLastPass", "pollLastPass", "unwatchLastPass"):
+        body = code.split(f"function {name}(", 1)[1].split("\n}\n", 1)[0]
+        assert not re.search(r"readFile|createReadStream|openSync|readSync", body), name
+    assert "webContents.send(LAST_PASS_CHANNEL);" in code
+    assert "onLastPassChanged: (listener) => ipcRenderer.on(\"last-pass-changed\", () => listener())," in read("app/preload.js")
+
+
+def test_a_watch_that_fails_falls_back_to_a_stat_watch_and_says_its_code_in_the_error_log(tmp_path):
+    """P277: where ``fs.watch`` throws at start, or emits ``error`` later, the
+    file is looked at with ``fs.watchFile`` every 5 s (a stat in ``main.js``,
+    never an engine process), a moved size or time is one message, and the
+    reason is said once in the error log as a code with no path."""
+    start = _run_spawns(tmp_path, [{"tracker": ["list"]}, {"poll": [5, 10, 5, 10], "wait": 400},
+                                   {"poll": [5, 10, 6, 10], "wait": 400}, {"poll": [6, 10, 6, 11], "wait": 400}],
+                        listShells=[{"last_pass_file": _LAST_PASS_FILE}], watchThrows="ENOENT")
+    assert start["watches"] == [] and start["watchFiles"] == [{"file": _LAST_PASS_FILE, "interval": 5000, "persistent": False}]
+    assert len(_sent_last_pass(start)) == 2, "a stat that moved is a message; one that did not is not"
+    assert len(start["logged"]) == 1
+    said = start["logged"][0]
+    assert "last-pass watch" in said["text"] and "ENOENT" in said["text"], "said once, with its code"
+    assert "/data/home" not in said["text"] and "last-pass.json" not in said["text"], "and no path"
+    later = _run_spawns(tmp_path, [{"tracker": ["list"]}, {"watcherError": "EMFILE"}, {"poll": [1, 1, 2, 1], "wait": 400}],
+                        listShells=[{"last_pass_file": _LAST_PASS_FILE}])
+    assert later["closed"] == [0] and len(later["watchFiles"]) == 1 and len(_sent_last_pass(later)) == 1
+    assert len(later["logged"]) == 1 and "EMFILE" in later["logged"][0]["text"]
+
+
+def test_a_list_that_names_another_file_moves_the_watch_and_one_that_names_none_ends_it(tmp_path):
+    """P277: the same file again changes nothing; another file closes the old
+    watch and watches its folder; a ``null`` ends the watch; a reply with no
+    shell words at all (a plain list here, a firm or state in life) leaves it."""
+    other = "/elsewhere/last-pass.json"
+    ran = _run_spawns(tmp_path, [{"tracker": ["list"]}] * 5,
+                      listShells=[{"last_pass_file": _LAST_PASS_FILE}, {"last_pass_file": _LAST_PASS_FILE},
+                                  {"last_pass_file": other}, {}, {"last_pass_file": _LAST_PASS_FILE}])
+    assert ran["watches"] == [{"dir": "/data/home", "persistent": False}, {"dir": "/elsewhere", "persistent": False},
+                              {"dir": "/data/home", "persistent": False}], "the same file again changed nothing"
+    assert ran["closed"] == [0, 1], "moved: the old watch closed; named no file at all: the new one closed"
+    nulled = _run_spawns(tmp_path, [{"tracker": ["list"]}, {"tracker": ["list"]}],
+                         listShells=[{"last_pass_file": _LAST_PASS_FILE}, {"last_pass_file": None}])
+    assert nulled["closed"] == [0] and len(nulled["watches"]) == 1
+    plain = _run_spawns(tmp_path, [{"tracker": ["list"]}, {"tracker": ["list"]}, {"tracker": ["state"]}],
+                        listShells=[{"last_pass_file": _LAST_PASS_FILE}])
+    assert plain["watches"] == [{"dir": "/data/home", "persistent": False}] and plain["closed"] == [], \
+        "a reply that says nothing of the file leaves its watch alone"
+
+
+def test_quitting_closes_the_last_pass_watch(tmp_path):
+    """P277: ``will-quit`` closes the watch and drops a message still settling."""
+    ran = _run_spawns(tmp_path, [{"tracker": ["list"]}, {"events": ["last-pass.json"]}, {"quit": True}, {"wait": 400}],
+                      listShells=[{"last_pass_file": _LAST_PASS_FILE}])
+    assert ran["closed"] == [0] and _sent_last_pass(ran) == []
+    stat = _run_spawns(tmp_path, [{"tracker": ["list"]}, {"quit": True}],
+                       listShells=[{"last_pass_file": _LAST_PASS_FILE}], watchThrows="ENOENT")
+    assert stat["unwatched"] == [_LAST_PASS_FILE], "a stat watch is ended too"
 
 
 def test_the_shell_allows_the_read_only_overview_before_the_first_reply(tmp_path):
