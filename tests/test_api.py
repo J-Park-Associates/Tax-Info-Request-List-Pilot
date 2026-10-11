@@ -2159,7 +2159,8 @@ def _on_the_office_computer(monkeypatch, *, task_exists=False):
         return Said(0 if task_exists or command[1] != "/query" else 1)
 
     monkeypatch.setattr(platform, "node", lambda: "OFFICE-PC")
-    monkeypatch.setattr(settings, "host_system", lambda: "posix")     # Windows' scheduler, whatever this is
+    # Windows' scheduler, whatever this is; a Windows runner stays Windows.
+    monkeypatch.setattr(settings, "host_system", lambda: "nt" if os.name == "nt" else "posix")
     monkeypatch.setattr(scheduling, "scheduler_here", lambda: True)
     monkeypatch.setattr(scheduling, "_schtasks", answer)
     return calls
