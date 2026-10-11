@@ -61,7 +61,9 @@ Opus review:
 3. `SPEC-ui-menu-speed.md`: P277 (the app watches the last-pass file;
    **built on `claude/ui-menu-speed-1`**, two Opus reviews, the second with
    no findings; write-to-message 263 ms on this Mac), P279
-   (virtualized rows), P276 (one long-lived engine process; decision 193
+   (long lists draw only the rows in view; **built on
+   `claude/ui-menu-speed-2`**, two Opus reviews, the second with no
+   findings; return page at 1,050 rows 46 -> 18 ms, 10,178 -> 782 nodes), P276 (one long-lived engine process; decision 193
    re-read; passes keep their own process), P278 (the engine pages the firm
    lists, last because its page turns become engine requests).
 

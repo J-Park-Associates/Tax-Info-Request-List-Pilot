@@ -269,8 +269,11 @@ scroll. Lists of an ordinary size are drawn exactly as today.
   hairline as the stylesheet draws it. No 40 or 32 is typed in `pages.js`.
   An H that is not a positive number (a list not laid out) throws
   `Error("row height")`, which the page's draw says as its failure notice
-  (decision 193) - never a guessed height. Switching the density redraws the
-  page (P271 does), which measures again. The rows' own CSS is P271's
+  (decision 193) - never a guessed height. Switching the density measures
+every long list again from `shellToggleCompact` (P271 only toggles the
+class; it does not redraw the page, as this SPEC first assumed: build
+deviation 1), through the said form that routes a throw to the failure
+notice. The rows' own CSS is P271's
   (`min-height` only, as its test holds); a virtual list adds one rule of its
   own, `.rows.is-virtual > .row` (`position: absolute`, `left: 0`, `right: 0`,
   `white-space: nowrap`, the name and status cells' ellipsis), which names no
