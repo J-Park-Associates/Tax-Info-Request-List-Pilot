@@ -261,11 +261,13 @@ suite's pile and every count it pins are untouched:
 
 | File | How it is made | What it proves |
 |---|---|---|
-| `Donation Receipts {YEAR} with macros.xlsm` | `tests/samples.sheet_xlsx`'s bytes written under the `.xlsm` name (a zip of parts; no macro inside, the suffix is what `filer.bears_macros` reads) | step 10: the review copy is marked for Protected View on Windows; on a Mac the app shows R8's sentence |
-| `Email from John Smith.msg` | `tests/samples.msg_bytes([{...}])` holding one made-up PDF attachment from `text_pdf` (a 1099-INT) | the email path and its "Came in Email" word (P116) |
+| `Donation Receipts {YEAR} with macros.xlsm` | `tests/samples.donations_xlsx`'s archive, rewritten with the workbook part's content type set to `application/vnd.ms-excel.sheet.macroEnabled.main+xml` in `[Content_Types].xml` (Excel refuses a file whose suffix and declared type disagree; review 1, finding 1). Still no macro inside; the suffix is what `filer.bears_macros` reads. The test asserts the content type. | step 10: the review copy is marked for Protected View on Windows and opens in Excel; on a Mac the app shows R8's sentence |
+| `Email from John Smith.msg` | `tests/samples.msg_bytes([{...}])` holding one made-up PDF attachment from `text_pdf`: a 1099-INT from a payer the pile does not hold ("Riverside Savings Bank"), so it is filed as its own document and not as a duplicate of the pile's (review 1, finding 3) | the email path and its "Came in Email" word (P116) |
 | `Scanned forms.zip` | `zipfile` (standard library) holding one made-up PDF from `scanned_pdf` | the zip path |
 
-The script's docstring names them. Where a kit document quotes the pile's
+The script's docstring names them, and `pilot/wintest/SAMPLE-DOCUMENTS.md`
+says its zip holds 14 of the made-up documents and names the three the
+script adds beyond it (review 1, finding 8). Where a kit document quotes the pile's
 counts ("14 files", "filed 9, review 4, …"), the builder runs the pile once
 through the engine's dry pass and updates the quote; nothing in the suite
 pins those numbers (the frozen smoke compares the package with the source
@@ -282,9 +284,11 @@ whatever reads it) to one attachment, the zip to one member.
 - Step 5: "the first screen shows **Machine Needs Attention**; its Details
   shows the sentence for that place (…)". Record the sentence from Details.
 - Step 8: "a toast (bottom of the window, six seconds) says 'This computer
-  (<name>) now runs the schedule…'; read it at once". The Time Machine
-  line stays a Details line under Setup Needs Attention when it is a
-  finding, else it is in the error log only (unchanged).
+  (<name>) now runs the schedule…'; read it at once". The Time Machine job
+  shows nothing when it works (its success line lives only in the step's
+  own lines; H9 proves the exclusion with `tmutil`); a refusal is a finding
+  under Setup Needs Attention's Details, recorded word for word (review 1,
+  finding 2).
 - Step 9: add "while the pass runs the side panel says Sorting; when it
   ends the counts and Needs Review follow by themselves within a minute
   (sooner on a click into the window), with no Refresh".
@@ -325,7 +329,7 @@ that holds the prompt, the template and the script to one another).
 | Job | Scope | Files | Builder | Tests it runs (both interpreters: 3.11, the floor, and the office's) |
 |---|---|---|---|---|
 | **1** | Sections 1 and 2 | `tracker/api.py`, `app/renderer/shell.js`, `app/renderer/app.js`, `app/main.js`, `app/preload.js`, `app/renderer/pilot-ui.css`, `pilot/SPEC-shell.md`, `pilot/wording-shell.tsv`, `docs/runbook.md`, `tests/test_api.py`, `tests/test_shell.py` | sonnet | `tests/test_shell.py`, `tests/test_shell_menu.py`, `tests/test_api.py`, `tests/test_single_source.py`, `tests/test_tripwire.py`, `tests/test_errors.py`, `tests/test_layers.py` |
-| **2** | Section 3 | `pilot/mactest/run_checks.sh`, `pilot/mactest/PROMPT.md`, `pilot/mactest/RESULTS-TEMPLATE.md`, `pilot/wintest/make_samples.py`, `pilot/SPEC-mac.md` (section 3 only), `tracker/runner.py` (one comment), `tests/test_pilot.py` | sonnet | `tests/test_pilot.py`, `tests/test_pilot_installer.py`, `tests/test_single_source.py`, `tests/test_runner.py` (the comment is in a dataclass; prove nothing moved) |
+| **2** | Section 3 | `pilot/mactest/run_checks.sh`, `pilot/mactest/PROMPT.md`, `pilot/mactest/RESULTS-TEMPLATE.md`, `pilot/wintest/make_samples.py`, `pilot/wintest/SAMPLE-DOCUMENTS.md`, `pilot/SPEC-mac.md` (section 3 only), `tracker/runner.py` (one comment), `tests/test_pilot.py` | sonnet | `tests/test_pilot.py`, `tests/test_pilot_installer.py`, `tests/test_single_source.py`, `tests/test_runner.py` (the comment is in a dataclass; prove nothing moved) |
 
 The two jobs share no file and run side by side. Neither runs
 `tools/repo_map.py update` or commits: the orchestrating session refreshes
