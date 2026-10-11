@@ -270,9 +270,9 @@ def test_a_clean_record_is_said_to_be_clean(root):
 
 
 def _returns(root):
-    from tracker.registry import engagement_dirs
+    from tracker.registry import _walk_root
 
-    return engagement_dirs(root)
+    return _walk_root(Path(root)).returns
 
 
 @pytest.fixture

@@ -11,12 +11,18 @@ from tracker.names import (
     NAME_ABSENT,
     NAME_CONFIRMED,
     NAME_VETOED,
+    _said_at,
     check_name,
     normalise,
     propose_spellings,
-    spelling_in,
 )
 from tracker.records import WHERE_DEEP, WHERE_FIRST_PAGE
+
+
+def spelling_in(text: str, spelling: str) -> bool:
+    """The phrase test as the suite asks it: whether ``text`` says ``spelling``
+    as a whole phrase (``names._said_at``, the one search every check runs)."""
+    return _said_at(text, spelling) is not None
 
 
 def test_normalise_ignores_case_and_punctuation_and_a_spelling_matches_only_as_a_whole_phrase():

@@ -9,8 +9,8 @@ carries the names its documents will show, and a document is filed only
 where the name on it confirms.
 
 **What this module is, and is not.** It is the matcher and nothing else:
-:func:`normalise`, :func:`spelling_in`, :func:`propose_spellings` and
-:func:`check_name` are pure functions over text the caller already has.
+:func:`normalise`, :func:`propose_spellings` and :func:`check_name` are pure
+functions over text the caller already has.
 Nothing here reads a file, takes a lock, or knows what a return is. The
 check is asked in the reader child, beside the rules (decision 189,
 :func:`tracker.content_check.judge`), and its verdict read in the
@@ -101,19 +101,6 @@ def normalise(text: str) -> str:
     return " " + " ".join(name_words(text)) + " "
 
 
-def spelling_in(text: str, spelling: str) -> bool:
-    """Whether ``text`` says ``spelling`` as a whole phrase.
-
-    The phrase test and nothing else: ``Park`` *is* a whole phrase inside
-    ``Park Landscaping LLC``, which is precisely why a one-word spelling
-    may never be recorded as one. That rule is kept where a spelling is
-    accepted - the editor, the new-return dialog, a filing that teaches one, the
-    store's guard against a hand-edited journal - and again in
-    :func:`check_name`, which is the thing that confirms.
-    """
-    return _said_at(text, spelling) is not None
-
-
 @dataclass(frozen=True, slots=True)
 class NamesOnPage:
     """A page's words folded once for the name check (:func:`read_names`):
@@ -143,6 +130,13 @@ def read_names(text: str) -> NamesOnPage:
 
 def _said_at(text: str, spelling: str, page: NamesOnPage | None = None) -> int | None:
     """Where in ``text`` a spelling's first word begins, or None.
+
+    The phrase test and nothing else: ``Park`` *is* a whole phrase inside
+    ``Park Landscaping LLC``, which is precisely why a one-word spelling
+    may never be recorded as one. That rule is kept where a spelling is
+    accepted - the editor, the new-return dialog, a filing that teaches one,
+    the store's guard against a hand-edited journal - and again in
+    :func:`check_name`, which is the thing that confirms.
 
     The search is over the folded copy (:func:`normalise`); the offset
     comes back in the *original* text, because the place a record names is

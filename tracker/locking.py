@@ -1003,10 +1003,31 @@ _UNCONFIRMED = "could not confirm the lock was removed"
 
 
 def _release(lock: EngagementLock) -> None:
+    # Windows cannot delete an open file, so the descriptor goes first. On
+    # POSIX the descriptor is the hold (SPEC-mac R19: the advisory lock lives
+    # on it), so it is closed only after the delete; closed first, another
+    # run could take the name in the gap between the read of our token and
+    # our unlink, and the unlink would then be of their lock.
+    if os.name == "nt":
+        _close_quietly(lock.fd)
     try:
-        os.close(lock.fd)
+        _delete_own(lock)
+    finally:
+        if os.name != "nt":
+            _close_quietly(lock.fd)
+
+
+def _close_quietly(fd: int) -> None:
+    try:
+        os.close(fd)
     except OSError:
         pass  # already closed; the file is what matters
+
+
+def _delete_own(lock: EngagementLock) -> None:
+    """Delete the lock file if it still says what we wrote, mark it released
+    if it cannot be deleted, and leave it alone if another run's token is
+    in it (:func:`_release`)."""
     try:
         current = lock.path.read_text(encoding="utf-8", errors="replace")
     except OSError:

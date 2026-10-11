@@ -526,15 +526,6 @@ def _walk_year(year: Path, household: Path, found: _Walk) -> None:
         found.misfits.append(Misfit(child, MISFIT_NO_RETURN, "no_return"))
 
 
-def engagement_dirs(root: Path | str) -> list[Path]:
-    """Every return folder under ``root``, in the walk's order: a return is
-    the fourth level below the root
-    (``root / PRIVATE_TREE / household / year / return``) and nothing else
-    is one. Nothing below a return is walked - those are the return's own
-    folders."""
-    return _walk_root(Path(root)).returns
-
-
 def record_dirs(root: Path | str) -> list[Path]:
     """Every folder under ``root`` that has a record: the households first,
     then the returns, in the walk's order.

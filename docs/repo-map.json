@@ -2,7 +2,7 @@
   "schema": 2,
   "generated": "2026-10-11",
   "generator": "tools/repo_map.py",
-  "generator_sha256": "8acd85195c3c1023",
+  "generator_sha256": "a394d7104da5155d",
   "module_table_sha256": "18d13e30b652a475",
   "pipeline": [
     "tracker.api / create",
@@ -15,9 +15,9 @@
     "a person sends the draft"
   ],
   "counts": {
-    "nodes": 262,
+    "nodes": 267,
     "edges": 1247,
-    "reused": 204
+    "reused": 214
   },
   "node_types": [
     "artifact",
@@ -1881,8 +1881,8 @@
       "id": "tracker/locking.py",
       "type": "module",
       "layer": "core",
-      "sha256": "45c368290798d6aa",
-      "lines": 1462,
+      "sha256": "48806013424b072d",
+      "lines": 1483,
       "cli": "python -m tracker.locking",
       "exports": [
         "BOOT_MARGIN_SECONDS",
@@ -2094,8 +2094,8 @@
       "id": "tracker/names.py",
       "type": "module",
       "layer": "core",
-      "sha256": "e04abda490511525",
-      "lines": 302,
+      "sha256": "d8c634dce73b45f9",
+      "lines": 296,
       "exports": [
         "NAME_ABSENT",
         "NAME_CONFIRMED",
@@ -2107,8 +2107,7 @@
         "check_name",
         "normalise",
         "propose_spellings",
-        "read_names",
-        "spelling_in"
+        "read_names"
       ],
       "constants": {
         "ONE_WORD_SPELLING": "'Spelling Needs Two Words'",
@@ -2117,7 +2116,7 @@
         "NAME_VETOED": "\"another return's\"",
         "NAME_ABSENT": "'absent'"
       },
-      "role": "Whose document is this: the matcher for the names a return's people put on their papers (decision 128). normalise() folds a name for matching - lower case, everything that is not a letter or a digit a space, padded so a phrase has boundaries; spelling_in() is that phrase test; propose_spellings() is what the app offers a person to tick for a name they typed; check_name() answers confirmed, another return's, or absent, with the spelling that decided it and the page it was on.",
+      "role": "Whose document is this: the matcher for the names a return's people put on their papers (decision 128). normalise() folds a name for matching - lower case, everything that is not a letter or a digit a space, padded so a phrase has boundaries; _said_at() is that phrase test; propose_spellings() is what the app offers a person to tick for a name they typed; check_name() answers confirmed, another return's, or absent, with the spelling that decided it and the page it was on.",
       "notes": "Pure functions over text the caller already has: nothing here reads a file, takes a lock or knows what a return is. The check itself runs one layer up, in the filer's household pass, after the request lists have accepted a document and before the exactly-one rule; the router is untouched, because the router judges a request list and knows no person. A spelling is at least two words (records.MIN_SPELLING_WORDS): a family name alone is a whole phrase inside a company's name, so `Park` would confirm `Park Landscaping LLC`'s bank statement as the family's - the two-word rule is kept wherever a spelling is accepted and again in check_name(). Confirmed beats vetoed beats absent, so a joint page naming both spouses is confirmed for both returns and the exactly-one rule decides. Nothing is inferred: the app proposes and a person ticks, no spelling is ever learned from a document, and no fuzzy match is made. It has no command line (P233): nothing ran it. The matcher is unchanged. Since decision 189 it runs in the reader child: content_check.judgment_of imports it at call time (names imports content_check at load time for PAGE_BREAK, so the call-time import is what keeps layers acyclic). A page is folded once (read_names gives NamesOnPage), and check_name(..., page=) searches it for every spelling. It used to re-fold the whole page per spelling (the SPEC-189 second cost)."
     },
     {
@@ -2678,8 +2677,8 @@
       "id": "tracker/registry.py",
       "type": "module",
       "layer": "core",
-      "sha256": "692e6e8f427e469f",
-      "lines": 1037,
+      "sha256": "42f6beeba8d7ed42",
+      "lines": 1028,
       "cli": "python -m tracker.registry",
       "exports": [
         "EmptyRoot",
@@ -2704,7 +2703,6 @@
         "TWO_CLAIM",
         "UNLISTED",
         "discover_engagements",
-        "engagement_dirs",
         "engagement_from",
         "held_back",
         "household_from",
@@ -4459,8 +4457,8 @@
       "id": "docs/repo-map.curated.json",
       "type": "file",
       "layer": "docs",
-      "sha256": "4152df6b8e4f2eeb",
-      "lines": 1239,
+      "sha256": "5d66b76027138002",
+      "lines": 1263,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
     },
@@ -4477,7 +4475,7 @@
       "id": "docs/storage.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "d8bd6cc5680132ce",
+      "sha256": "e5c970c791d98e16",
       "lines": 547,
       "role": "The storage plan in prose: the three words (the record, the ledger, the store) and what each means, why the journal syncs with the engagement folder and the database does not, the journal-then-apply order, the schema table, the edit as the event the rules travel in, rebuild as recovery, the check as the gate, what the store is now and the later rules that hold (the working copy proved each pass, un-learning, the override reason, the applied chain), and (decision 107) why the verdict cache is in the store and not in the record.",
       "notes": "Written with decision 101 and finished with 104. It is the page to read before touching storage. The stage-by-stage history of decisions 101 to 104 is not here: the page says what the store is now and points at the decision log for how it got there."
@@ -4737,13 +4735,6 @@
       "role": "The result file the Mac check fills in: the machine, the automated checks (one row per check the script records and per test file), the walk's fourteen steps and H1-H14. tests/test_pilot.py holds its rows to the script's and the prompt's."
     },
     {
-      "id": "pilot/wintest/PROMPT-0.3.md",
-      "type": "doc",
-      "layer": "docs",
-      "sha256": "00da2a8e0e1ab507",
-      "lines": 107
-    },
-    {
       "id": "pilot/wintest/PROMPT-shell-local.md",
       "type": "doc",
       "layer": "docs",
@@ -4968,6 +4959,15 @@
       ],
       "role": "PyInstaller entry point: the portable app's one executable, which is the tracker API by default and the scheduled job (tracker.runner.main) when RUNNER_MODE_FLAG comes first.",
       "notes": "PyInstaller needs a real script, not a -m module. Runner mode is dispatched before tracker.api is imported, because the API imports tracker.scheduling whose TASK_NAME needs the product name the Electron shell passes in the environment - and Task Scheduler passes nothing; the job needs neither of the shell's variables. api_entry.spec (committed; reads config.apiName from app/package.json) is how it is frozen. Decision 150: multiprocessing.freeze_support() is the first statement of the main block, so a reading's child - the frozen executable started again by multiprocessing's spawn - runs as the child and never as the API or the job. Speed round (pilot/SPEC-speed-round.md): P220 - given exactly [SPARE_FLAG] it runs api.spare(), waiting for its one command. Q1 / P218 - run_setup_step(argv) for runner.SETUP_MODE_FLAG (--after-install-setup --settings <folder> --product <name>, both required): it puts the settings folder and product name in the environment before tracker.after_install (and so tracker.scheduling) is imported, then runs after_install.main(['--reason', 'setup']). pilot/installer/setup.iss's [Run] starts it (StatusMsg 'Making the Overview ready...', runhidden waituntilterminated) before the launch entry, so the first Overview after a pilot install opens warm; a step that fails there runs again at the app's first launch. The setup mode exits with the pilot installer's codes (runner.SETUP_STEP_FAILED, SETUP_OVERVIEW_NOT_READY, via after_install's INSTALLER_CODES_FLAG), which setup.iss's [Code] turns into a small error window (Jason, 2026-10-08). SPEC-mac R6 (P243): second after freeze_support, the entry asks tracker.settings.mac_floor_refusal(product=told_product(argv)) and on a Mac below Apple silicon / macOS 14 writes the sentence to stderr and exits 1 before the runner, the setup door, the spare or the API is touched; told_product() reads the product's name the scheduled job or installer was given on its command line (neither has the shell's environment). SPEC-mac R13: api_entry.spec has a darwin branch - target_arch arm64 (universal2 is impossible, onnxruntime has no x86_64 Mac wheel), no icon, codesign_identity None (PyInstaller signs ad hoc), entitlements_file None until signing lands - and build-mac.sh freezes it; the frozen smoke check (kit H1) must prove a reading child starts under spawn."
+    },
+    {
+      "id": "build-mac.sh",
+      "type": "script",
+      "layer": "root",
+      "sha256": "e8eeae11f0e16575",
+      "lines": 200,
+      "role": "Builds the Mac app and its disk image from a clean commit (SPEC-mac R17), the counterpart of Build App.bat: freezes the API with PyInstaller for arm64 (api_entry.spec's darwin branch), packages Electron, copies the freeze into Contents/Resources with BUILD-INFO.txt, signs ad hoc, proves the bundle holds no store, log or settings, then writes the .dmg and its SHA-256.",
+      "notes": "Refuses a dirty tree and reads the version from the Pilot's content file, as the installer batch file does. The ad-hoc signature is --deep for the unsigned test build only (P252); job 3's explicit inside-out signing with a Developer ID (R37, P239) replaces it. Nothing here runs on Linux; the Mac check kit (pilot/mactest/run_checks.sh) is what proves it."
     },
     {
       "id": "conftest.py",
@@ -5221,6 +5221,15 @@
       "lines": 448
     },
     {
+      "id": "pilot/mactest/run_checks.sh",
+      "type": "script",
+      "layer": "root",
+      "sha256": "e38108c9886ed9ca",
+      "lines": 485,
+      "role": "The Mac check kit's script (SPEC-mac R33, P254), the counterpart of pilot/wintest/run_checks.ps1: checks the tools and the Mac against the floor, installs the locked packages into a throwaway environment, runs the named test files side by side, builds the disk image with build-mac.sh, checks what is inside the bundle, runs the frozen smoke on made-up documents, and writes checks.json for pilot/mactest/PROMPT.md's hands-on part.",
+      "notes": "bash 3.2, the shared PATH block, no sudo, no password, nothing installed on the Mac itself. It reads no folder but the checkout and ~/PilotTest, so it prints and stores no client's name. An empty --tests list stops with a sentence rather than running the whole suite."
+    },
+    {
       "id": "pilot/wintest/make_samples.py",
       "type": "module",
       "layer": "root",
@@ -5233,7 +5242,43 @@
         "main"
       ],
       "role": "Builds the sandbox clients folder of the Windows check and of the Mac check (P28): the suite's own made-up documents (tests/samples.py) under the PilotTest folder, refused anywhere else.",
-      "notes": "Used by path from both kits - pilot/wintest/run_checks.ps1 and pilot/mactest/run_checks.sh - never copied (SPEC-mac R33). Neither kit script is a node here: tools/repo_map.py maps no .ps1, .sh or .command suffix, so the kits are described in the notes of the files around them. The Mac kit (P254) mirrors the Windows one: run_checks.sh, in bash 3.2 with PATH cut to absolute folders as build-mac.sh does, stops on anything but an Apple silicon Mac on macOS 14 or later, reports a missing tool with where to get it and installs none, resolves every --tests name before anything else, runs each named test file as its own process side by side, builds the disk image only after every one has ended (the end-of-run guard of decision 185), then checks the bundle (ad-hoc seal, arm64, BUILD-INFO.txt, minimum macOS, folder strings, icon) and makes the frozen smoke in throwaway folders: the package answers JSON, reads the pile as the source does and starts a reading child under spawn. checks.json is written in pure bash. PROMPT.md is the safety block of the Windows prompt plus the Mac's own (no password typed by the assistant, no sudo, Gatekeeper and the quarantine mark untouched) and the hands-on steps H1-H14 with SPEC-mac section 3's buyer's walk as H2; RESULTS-TEMPLATE.md has a row for each. tests/test_pilot.py holds the Windows kit's tests and the Mac kit's: the script's helpers lifted and run in bash, the script itself run against stand-in uname, sw_vers and sysctl so every stop is proved on Linux, and the prompt, template and script held to one another."
+      "notes": "Used by path from both kits - pilot/wintest/run_checks.ps1 and pilot/mactest/run_checks.sh - never copied (SPEC-mac R33). The Mac kit (P254) mirrors the Windows one: run_checks.sh, in bash 3.2 with PATH cut to absolute folders as build-mac.sh does, stops on anything but an Apple silicon Mac on macOS 14 or later, reports a missing tool with where to get it and installs none, resolves every --tests name before anything else, runs each named test file as its own process side by side, builds the disk image only after every one has ended (the end-of-run guard of decision 185), then checks the bundle (ad-hoc seal, arm64, BUILD-INFO.txt, minimum macOS, folder strings, icon) and makes the frozen smoke in throwaway folders: the package answers JSON, reads the pile as the source does and starts a reading child under spawn. checks.json is written in pure bash. PROMPT.md is the safety block of the Windows prompt plus the Mac's own (no password typed by the assistant, no sudo, Gatekeeper and the quarantine mark untouched) and the hands-on steps H1-H14 with SPEC-mac section 3's buyer's walk as H2; RESULTS-TEMPLATE.md has a row for each. tests/test_pilot.py holds the Windows kit's tests and the Mac kit's: the script's helpers lifted and run in bash, the script itself run against stand-in uname, sw_vers and sysctl so every stop is proved on Linux, and the prompt, template and script held to one another."
+    },
+    {
+      "id": "pilot/wintest/run_checks.ps1",
+      "type": "script",
+      "layer": "root",
+      "sha256": "f916df1d5a081e14",
+      "lines": 348,
+      "role": "The Windows check kit's script: runs the named test files as separate processes alongside the installer build, installs the installer silently for this user, and makes the sample clients folder from pilot/wintest/make_samples.py; pilot/wintest/PROMPT.md drives it and the hands-on part that follows (CLAUDE.md, 'Test minimally').",
+      "notes": "-Tests <file>,<file> names the files to run (Jason, 2026-09-29); without it the whole suite runs, which is for a change that reaches the engine or when Jason asks."
+    },
+    {
+      "id": "pilot/wintest/uninstall_checks.ps1",
+      "type": "script",
+      "layer": "root",
+      "sha256": "7ad260ec66d567fd",
+      "lines": 59,
+      "role": "The Windows check kit's uninstall script: removes the installed program and checks that the schedule, the data folder and the settings are left as the runbook says they are (pilot/RELEASE.md names when it runs).",
+      "notes": "Run by hand at the end of a Windows check, never by run_checks.ps1, so a check that stops part-way leaves the installed app for a person to look at."
+    },
+    {
+      "id": "setup.command",
+      "type": "script",
+      "layer": "root",
+      "sha256": "738bea861899adc1",
+      "lines": 124,
+      "role": "The Mac's one-time setup for running from source (SPEC-mac R16), the counterpart of Setup.bat: makes the app's private Python in .venv, installs requirements.lock then requirements-nodeps.lock with --require-hashes, runs npm ci in app/, stamps what it installed with tools/lockfiles.py stamp, and runs the after-install step last (decision 209).",
+      "notes": "bash 3.2, because that is what macOS ships; opens with cd to its own folder and cuts PATH to absolute folders before any command -v, in the one block the three Mac scripts share (tests/test_build.py holds the copies equal). It refuses a Python below pyproject.toml's floor with the sentence tests/test_single_source.py pins, and installs nothing into the machine's own Python."
+    },
+    {
+      "id": "start.command",
+      "type": "script",
+      "layer": "root",
+      "sha256": "001f6b57f6d58cd5",
+      "lines": 68,
+      "role": "Starts the app from source on a Mac (SPEC-mac R16), the counterpart of Start App.bat: verifies the stamp tools/lockfiles.py wrote, says NOT_SET_UP_MAC or CHANGED_MAC when setup.command has not run or the locks changed, and launches Electron under node, never the npx shim.",
+      "notes": "Never installs: a launch that installed would run a package's install hooks at every start (decision 191). The same PATH block as setup.command."
     },
     {
       "id": "artifact:.venv/tracker-lock.json",
@@ -5270,7 +5315,7 @@
       "id": "artifact:_Scheduling computer.txt",
       "type": "artifact",
       "layer": "runtime",
-      "role": "One line in the firm's private tree (layout.designation_file, DESIGNATION_FILENAME) naming the computer that runs the schedule for this clients root, as locking.this_host normalises it (decision 209). Written by scheduling.claim (the first Windows computer to run the after-install step with a root set) or scheduling.move_here (--move-schedule-here); read by scheduling.designated_machine, the one reader decision 210 will ask too. Checked when written, read and acted on; a file that is not one computer's name is DESIGNATION_UNREADABLE, a failure naming the path and never the content. A file, never a folder, so discovery never lists it as a misfit. Detection, not a lock: two desks claiming before sync carries the first can both claim."
+      "role": "One line in the firm's private tree (layout.designation_file, DESIGNATION_FILENAME) naming the computer that runs the schedule for this clients root, as locking.this_host normalises it (decision 209). Written by scheduling.claim (the first computer, Windows or Mac (P238), to run the after-install step with a root set) or scheduling.move_here (--move-schedule-here); read by scheduling.designated_machine, the one reader decision 210 will ask too. Checked when written, read and acted on; a file that is not one computer's name is DESIGNATION_UNREADABLE, a failure naming the path and never the content. A file, never a folder, so discovery never lists it as a misfit. Detection, not a lock: two desks claiming before sync carries the first can both claim."
     },
     {
       "id": "artifact:_ledger.jsonl",
@@ -5391,7 +5436,7 @@
       "id": "artifact:the data home",
       "type": "artifact",
       "layer": "runtime",
-      "role": "The one per-user local folder on the designated machine where the tracker keeps what it derives from clients (decision 186): settings.data_home(), %LOCALAPPDATA%\\tax-document-tracker (or TRACKER_DATA_HOME). Holds the store, decision 189's pass-order.json beside it, decision 159's record checkpoint (checkpoint.CHECKPOINT_FILENAME), recovered/ folder (store.RECOVERED_DIR) and last-pass file (runner.LAST_PASS_FILENAME) beside it too - each one an older version left beside the settings file or the frozen executable named by runner.left_behind() and refused in the package by build.yml's proof; decision 193's error log (settings.ERROR_LOG_FILENAME, with its rotated copies) and passes/ folder (progress.PASSES_DIRNAME) beside it too, in the same way; the checkpoint and recovered/ are named only in LEFT_BEHIND_TO_MOVE (move, never delete: security principle 10), the rest in LEFT_BEHIND - the scheduler's task file, scratch/<pid> for each reading child and logs/ for the run log. Never beside the program, in a checkout, on removable media or in the temp folder; data_home() refuses rather than fall back, and creates nothing. Decision 186's rebase review: runner.left_behind() also names 159's set-asides (the store's to delete, the checkpoint's to move) and the checkpoint's journal and .damaged copy, and build.yml's proof refuses them; while the old checkpoint sits beside the program no fresh one is made here (MF1)."
+      "role": "The one per-user local folder on the designated machine where the tracker keeps what it derives from clients (decision 186): settings.data_home(), %LOCALAPPDATA% plus settings.DATA_HOME_NAME on Windows, ~/Library/Application Support plus the same name on a Mac (SPEC-mac R1), or TRACKER_DATA_HOME. Holds the store, decision 189's pass-order.json beside it, decision 159's record checkpoint (checkpoint.CHECKPOINT_FILENAME), recovered/ folder (store.RECOVERED_DIR) and last-pass file (runner.LAST_PASS_FILENAME) beside it too - each one an older version left beside the settings file or the frozen executable named by runner.left_behind() and refused in the package by build.yml's proof; decision 193's error log (settings.ERROR_LOG_FILENAME, with its rotated copies) and passes/ folder (progress.PASSES_DIRNAME) beside it too, in the same way; the checkpoint and recovered/ are named only in LEFT_BEHIND_TO_MOVE (move, never delete: security principle 10), the rest in LEFT_BEHIND - the scheduler's task file, scratch/<pid> for each reading child and logs/ for the run log. Never beside the program, in a checkout, on removable media or in the temp folder; data_home() refuses rather than fall back, and creates nothing. Decision 186's rebase review: runner.left_behind() also names 159's set-asides (the store's to delete, the checkpoint's to move) and the checkpoint's journal and .damaged copy, and build.yml's proof refuses them; while the old checkpoint sits beside the program no fresh one is made here (MF1)."
     },
     {
       "id": "artifact:the household inbox",
@@ -5586,7 +5631,7 @@
       "id": "tests/test_after_install.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "bf41c503ea356371",
+      "sha256": "5c78c2df0a97884e",
       "lines": 1782,
       "exports": [
         "ELSEWHERE",
@@ -7542,8 +7587,8 @@
       "id": "tests/test_locking.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "af17beefa03def71",
-      "lines": 1323,
+      "sha256": "c62d4e64fe3fb4d8",
+      "lines": 1355,
       "exports": [
         "test_a_breaker_another_racer_is_reading_is_still_removed_on_release",
         "test_a_breaker_from_before_the_boot_is_abandoned_whatever_its_pid_says_now",
@@ -7579,6 +7624,7 @@
         "test_a_mac_whose_scutil_fails_falls_back_to_the_platform_name_and_keeps_the_failure",
         "test_a_pass_killed_while_holding_leaves_a_lock_the_dead_owner_rule_clears",
         "test_a_permission_error_while_taking_the_lock_is_a_lock_not_a_crash",
+        "test_a_posix_release_deletes_the_lock_while_it_still_holds_it",
         "test_a_process_is_never_refused_by_its_own_leftover_lock",
         "test_a_racer_that_cannot_delete_an_abandoned_breaker_gives_up_its_claim",
         "test_a_read_refused_after_the_delete_is_no_proof_it_went",
@@ -7715,9 +7761,10 @@
       "id": "tests/test_names.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "a4cb209213762bdc",
-      "lines": 138,
+      "sha256": "5280337bd506a5f4",
+      "lines": 144,
       "exports": [
+        "spelling_in",
         "test_a_name_is_parsed_once_per_text",
         "test_an_entitys_proposals_include_the_name_without_its_suffix_when_two_words_remain",
         "test_confirmed_beats_vetoed_beats_absent_and_a_page_naming_two_returns_people_confirms_both",
@@ -8125,10 +8172,11 @@
       "id": "tests/test_registry.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "7c814076489e715c",
-      "lines": 1166,
+      "sha256": "ea2d1685ff52961f",
+      "lines": 1173,
       "exports": [
         "ITEMS",
+        "engagement_dirs",
         "make",
         "misfits",
         "replace_rolled",
@@ -8325,8 +8373,8 @@
       "id": "tests/test_repo_map.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "ebf27e257305fdb2",
-      "lines": 882,
+      "sha256": "c3ec61069bd79165",
+      "lines": 884,
       "exports": [
         "ENFORCERS",
         "ROOT",
@@ -10555,7 +10603,7 @@
       "id": "tools/repo_map.py",
       "type": "tool",
       "layer": "tooling",
-      "sha256": "8acd85195c3c1023",
+      "sha256": "a394d7104da5155d",
       "lines": 1234,
       "cli": "python -m tools.repo_map",
       "exports": [

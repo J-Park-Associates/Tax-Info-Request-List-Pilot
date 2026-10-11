@@ -58,7 +58,7 @@ So the split is:
   whole history goes with it.
 - **On one machine, local, never synced:** `tracker.db`, one file in the
   tracker's data folder on the machine that runs the schedule
-  (`settings.data_home()`: `%LOCALAPPDATA%\tax-document-tracker`, decision
+  (`settings.data_home()`: `%LOCALAPPDATA%\tax-document-tracker-pilot`, decision
   186), never beside the app or in a checkout, every row keyed by its
   clients root. `store.store_path()` is the whole of that rule, and
   the suite walks a clients root after a build to prove nothing of the

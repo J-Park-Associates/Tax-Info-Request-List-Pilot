@@ -143,6 +143,38 @@ def test_an_unlink_from_outside_is_not_refused_on_posix(tmp_path):
 
 
 @on_posix
+def test_a_posix_release_deletes_the_lock_while_it_still_holds_it(tmp_path, monkeypatch):
+    """The flock lives on the descriptor, so release deletes the file before
+    it closes: at the moment of the unlink no other open file can take the
+    lock, and the name cannot change hands between our read and our delete."""
+    import fcntl
+
+    import tracker.locking as locking_module
+
+    lock = tmp_path / LOCK_FILENAME
+    real_unlink = locking_module.Path.unlink
+    seen: list[bool] = []
+
+    def still_held(self, *args, **kwargs):
+        if self == lock:
+            other = os.open(lock, os.O_RDONLY)
+            try:
+                fcntl.flock(other, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                seen.append(True)
+            else:
+                seen.append(False)
+            finally:
+                os.close(other)
+        return real_unlink(self, *args, **kwargs)
+    monkeypatch.setattr(locking_module.Path, "unlink", still_held)
+    with engagement_lock(tmp_path):
+        pass
+    assert seen == [True], "the lock was let go before its file was deleted"
+    assert not lock.exists()
+
+
+@on_posix
 def test_a_held_lock_that_looks_stale_is_refused_on_posix(tmp_path):
     lock = tmp_path / LOCK_FILENAME
     with engagement_lock(tmp_path) as held:
