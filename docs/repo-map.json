@@ -15,9 +15,9 @@
     "a person sends the draft"
   ],
   "counts": {
-    "nodes": 268,
-    "edges": 1247,
-    "reused": 216
+    "nodes": 269,
+    "edges": 1252,
+    "reused": 208
   },
   "node_types": [
     "artifact",
@@ -3106,7 +3106,7 @@
       "id": "tracker/runner.py",
       "type": "module",
       "layer": "core",
-      "sha256": "b34a9972cb63840e",
+      "sha256": "e576d48ef881ef80",
       "lines": 3643,
       "cli": "python -m tracker.runner",
       "exports": [
@@ -4523,8 +4523,8 @@
       "id": "pilot/DECISIONS.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "e2d94b93fc258f27",
-      "lines": 250
+      "sha256": "c7cdd6e53ea20155",
+      "lines": 253
     },
     {
       "id": "pilot/HANDOFF.md",
@@ -4632,11 +4632,18 @@
       "lines": 756
     },
     {
+      "id": "pilot/SPEC-mac-check-fixes.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "e8d8b890abcc0e84",
+      "lines": 347
+    },
+    {
       "id": "pilot/SPEC-mac.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "0bb77bdaa9f6bb0f",
-      "lines": 960
+      "sha256": "9b89cbe642b0045a",
+      "lines": 963
     },
     {
       "id": "pilot/SPEC-rename.md",
@@ -4728,8 +4735,8 @@
       "id": "pilot/mactest/PROMPT.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "e31669fb7ec0152c",
-      "lines": 378,
+      "sha256": "46e88ce6255a3e0c",
+      "lines": 392,
       "role": "The prompt for Claude Code on the test Mac (SPEC-mac R33): the safety rules, the run of pilot/mactest/run_checks.sh with the exact test files, and the hands-on steps H1-H14 with the buyer's walk as H2 and why each was chosen.",
       "notes": "Carries the proof items the Mac jobs' reviews left for a Mac under the step that matches them: job 1 in H2 steps 4-7 and 10 and H6, job 2 in H1, H2 steps 2-3 and H11, job 5 in H4, H7 and H8, job 6 in H3, H5, H9, H13 and H14, job 7 in H1 and H10. Its season builder (for H10's timing) is lifted and run by tests/test_pilot.py. The 60-minute figure H10 passes at is the kit's reading of P247's 'well inside' the two-hour slot, for Jason to change."
     },
@@ -4737,8 +4744,8 @@
       "id": "pilot/mactest/RESULTS-TEMPLATE.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "49e6bd20148cc167",
-      "lines": 114,
+      "sha256": "087c48197a83ede5",
+      "lines": 117,
       "role": "The result file the Mac check fills in: the machine, the automated checks (one row per check the script records and per test file), the walk's fourteen steps and H1-H14. tests/test_pilot.py holds its rows to the script's and the prompt's."
     },
     {
@@ -4773,8 +4780,8 @@
       "id": "pilot/wintest/SAMPLE-DOCUMENTS.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "df568354d562ae8c",
-      "lines": 26
+      "sha256": "59554bb3fdc532e9",
+      "lines": 31
     },
     {
       "id": "requirements-build.txt",
@@ -5231,8 +5238,8 @@
       "id": "pilot/mactest/run_checks.sh",
       "type": "script",
       "layer": "root",
-      "sha256": "e38108c9886ed9ca",
-      "lines": 485,
+      "sha256": "c1f5d23029bcecc3",
+      "lines": 488,
       "role": "The Mac check kit's script (SPEC-mac R33, P254), the counterpart of pilot/wintest/run_checks.ps1: checks the tools and the Mac against the floor, installs the locked packages into a throwaway environment, runs the named test files side by side, builds the disk image with build-mac.sh, checks what is inside the bundle, runs the frozen smoke on made-up documents, and writes checks.json for pilot/mactest/PROMPT.md's hands-on part.",
       "notes": "bash 3.2, the shared PATH block, no sudo, no password, nothing installed on the Mac itself. It reads no folder but the checkout and ~/PilotTest, so it prints and stores no client's name. An empty --tests list stops with a sentence rather than running the whole suite."
     },
@@ -5240,14 +5247,29 @@
       "id": "pilot/wintest/make_samples.py",
       "type": "module",
       "layer": "root",
-      "sha256": "e5e1530cc4354e48",
-      "lines": 73,
+      "sha256": "78a10e2859e4cc4b",
+      "lines": 152,
       "cli": "python -m pilot.wintest.make_samples",
       "exports": [
+        "EMAIL_SAMPLE",
+        "MACRO_MAIN_TYPE",
+        "MACRO_WORKBOOK",
+        "PLAIN_MAIN_TYPE",
         "REPO",
         "SANDBOX_PARENT",
+        "ZIP_SAMPLE",
+        "ZIP_STAMP",
+        "add_container_samples",
         "main"
       ],
+      "constants": {
+        "MACRO_WORKBOOK": "'Donation Receipts {year} with macros.xlsm'",
+        "EMAIL_SAMPLE": "'Email from John Smith.msg'",
+        "ZIP_SAMPLE": "'Scanned forms.zip'",
+        "ZIP_STAMP": "(2025, 1, 1, 0, 0, 0)",
+        "MACRO_MAIN_TYPE": "'application/vnd.ms-excel.sheet.macroEnabled.main+xml'",
+        "PLAIN_MAIN_TYPE": "'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml'"
+      },
       "role": "Builds the sandbox clients folder of the Windows check and of the Mac check (P28): the suite's own made-up documents (tests/samples.py) under the PilotTest folder, refused anywhere else.",
       "notes": "Used by path from both kits - pilot/wintest/run_checks.ps1 and pilot/mactest/run_checks.sh - never copied (SPEC-mac R33). The Mac kit (P254) mirrors the Windows one: run_checks.sh, in bash 3.2 with PATH cut to absolute folders as build-mac.sh does, stops on anything but an Apple silicon Mac on macOS 14 or later, reports a missing tool with where to get it and installs none, resolves every --tests name before anything else, runs each named test file as its own process side by side, builds the disk image only after every one has ended (the end-of-run guard of decision 185), then checks the bundle (ad-hoc seal, arm64, BUILD-INFO.txt, minimum macOS, folder strings, icon) and makes the frozen smoke in throwaway folders: the package answers JSON, reads the pile as the source does and starts a reading child under spawn. checks.json is written in pure bash. PROMPT.md is the safety block of the Windows prompt plus the Mac's own (no password typed by the assistant, no sudo, Gatekeeper and the quarantine mark untouched) and the hands-on steps H1-H14 with SPEC-mac section 3's buyer's walk as H2; RESULTS-TEMPLATE.md has a row for each. tests/test_pilot.py holds the Windows kit's tests and the Mac kit's: the script's helpers lifted and run in bash, the script itself run against stand-in uname, sw_vers and sysctl so every stop is proved on Linux, and the prompt, template and script held to one another."
     },
@@ -7893,8 +7915,8 @@
       "id": "tests/test_pilot.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "246b31e6fbf95c38",
-      "lines": 877,
+      "sha256": "d742214f099ed4ba",
+      "lines": 986,
       "exports": [
         "KIT_PROMPT",
         "KIT_RESULTS",
@@ -7930,6 +7952,7 @@
         "test_the_check_script_takes_only_py_files_says_where_it_looked_and_runs_a_file_named_twice_once",
         "test_the_contact_is_the_firms_admin_address",
         "test_the_edition_version_is_a_plain_version_number",
+        "test_the_kit_reads_the_whole_run_log_for_the_reader_because_the_first_line_is_pass_started",
         "test_the_kit_stops_on_a_mac_the_app_would_refuse_and_says_why",
         "test_the_kit_writes_every_result_as_json_in_the_order_it_ran",
         "test_the_mac_kit_builds_only_after_every_named_test_file_has_ended",
@@ -7948,6 +7971,8 @@
         "test_the_pilot_files_build_the_page_only_with_text",
         "test_the_pilot_never_types_the_product_name",
         "test_the_pilot_style_targets_only_its_own_names",
+        "test_the_prompt_the_template_and_the_walk_say_what_the_app_shows_and_name_the_pile_s_files",
+        "test_the_sample_pile_holds_a_macro_workbook_an_email_and_a_zip",
         "test_the_season_builder_in_the_prompt_makes_scans_no_two_of_which_share_their_bytes",
         "test_the_shell_writes_the_pages_storage_as_the_window_closes",
         "test_the_signed_name_is_sent_with_the_acceptance",
@@ -13488,13 +13513,43 @@
     },
     {
       "from": "tests/test_pilot.py",
+      "to": "tracker/__init__.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_pilot.py",
       "to": "tracker/api.py",
       "type": "exercises",
       "source": "derived"
     },
     {
       "from": "tests/test_pilot.py",
+      "to": "tracker/containers.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_pilot.py",
+      "to": "tracker/runner.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_pilot.py",
+      "to": "tracker/validators.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_pilot.py",
       "to": "tests/conftest.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_pilot.py",
+      "to": "tests/samples.py",
       "type": "imports",
       "source": "derived"
     },

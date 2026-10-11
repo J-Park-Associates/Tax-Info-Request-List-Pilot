@@ -62,6 +62,12 @@ SAFETY - never break these:
   named PilotTest-Empty that H6 and step 7 of the walk make (in ~/Documents, in iCloud Drive and in
   Dropbox or OneDrive), ~/Downloads (only the disk image and the app copied there for steps 1 and 5,
   removed afterwards), ~/pt-source (the fresh clone H1b makes), or Jason's Drive test folder.
+- If this session's permission rules deny a folder the walk needs (the app's data folder, the run
+  log, the inbox), record that step NOT VERIFIED naming the rule and tell Jason; never work around
+  a rule. If desktop computer use is absent, the app may be driven through its own page
+  (Electron's debugging port) with the folder picker stood in for at the app's picker boundary;
+  say so at the top of the result, and every step that needs a macOS dialog or the Mac's password
+  is NOT VERIFIED.
 
 1. GET THE CODE. If the code is not already in this folder, clone
    https://github.com/J-Park-Associates/Tax-Info-Request-List-Pilot (the branch Jason names; main if
@@ -138,13 +144,13 @@ SAFETY - never break these:
      5. Opened from the wrong place. Done after step 14, so the first launches of the walk are the
         right ones. Mount the disk image again and open the app straight from it, and once from
         ~/Downloads (copy it there first with ditto, quarantined as in step 1; delete the copy after).
-        The first screen must show the sentence for that place ("The app is running from … a disk
-        image or a disk other than this Mac's own …", and "macOS is running the app from a temporary
-        copy …"), each ending "the schedule runs only the copy in Applications", and no schedule is
-        set up: check that
+        The first screen must show the heading Machine Needs Attention; its Details shows the
+        sentence for that place ("The app is running from … a disk image or a disk other than this
+        Mac's own …", and "macOS is running the app from a temporary copy …"), each ending "the
+        schedule runs only the copy in Applications", and no schedule is set up: check that
           launchctl print gui/$(id -u)/com.jparkassociates.taxdocumentconsole.schedule
-        answers that it cannot find the service. Record both sentences word for word. (Open Anyway
-        may be needed again for these copies; quit each with Command-Q.)
+        answers that it cannot find the service. Record both sentences word for word, from Details.
+        (Open Anyway may be needed again for these copies; quit each with Command-Q.)
      6. The terms. The app opens on "Before you start: this is a Pilot". Tick "I have read this and
         will keep my own backups", type a name (a made-up one), and click Sign and Accept.
      7. The clients folder. "Choose Your Clients Folder" appears. First the refusals, without
@@ -160,19 +166,27 @@ SAFETY - never break these:
         words (this is H14, below). Do the walk on the Drive folder if Jason has Google Drive for
         desktop; on ~/PilotTest/Clients otherwise, and say which.
      8. The schedule installs itself. macOS shows "Background Items Added": record which name it
-        gives (the app's, or its developer's). The app's notice says "This computer (<name>) now runs
-        the schedule for this clients folder: every day from 07:00, every 120 minutes." No button
-        was pressed. The Time Machine job runs here too: the notice says "Left the app's data folder
-        out of Time Machine backups." once (and not at the next start).
+        gives (the app's, or its developer's). A toast (bottom of the window, six seconds) says
+        "This computer (<name>) now runs the schedule for this clients folder: every day from 07:00,
+        every 120 minutes."; read it at once. No button was pressed. The Time Machine job runs here
+        too, and the app says nothing when it works (H9 checks the exclusion with tmutil). If it was
+        refused, Details under Setup Needs Attention says "The app's data folder (...) could not be
+        left out of Time Machine backups ..."; record it word for word.
      9. The first pass. Within a minute the schedule's first pass runs. If macOS asks again whether
-        the schedule may use Google Drive's files, click Allow (record the words). Then the
+        the schedule may use Google Drive's files, click Allow (record the words). While the pass
+        runs the side panel says Sorting; when it ends the counts and Needs Review follow by
+        themselves within a minute (sooner on a click into the window), with no Refresh. Then the
         Overview's line reads "Last scheduled pass: <time>, succeeded." The sample documents are
         filed and their originals have moved, byte for byte, into the client's folder for the year.
-     10. Open a review copy. In Needs Review, open the sample macro workbook. It opens in Excel (or
-        the default spreadsheet program), and the app shows "Protected View does not exist on a Mac,
-        so this file opened normally. Keep macros off in Excel, Word and PowerPoint: Settings >
-        Security > Macro Security > Disable all macros without notification." as a notice on the
-        page, not a dialog, each time it is opened (open it twice).
+     10. Open a review copy. The sample pile holds three files for this step, made up by make_samples.py:
+        Donation Receipts 2025 with macros.xlsm (the macro workbook; no macro is inside, its name is
+        what marks it), Email from John Smith.msg (an email holding one made-up PDF) and Scanned
+        forms.zip (a zip holding one made-up scan). In Needs Review, open the sample macro workbook.
+        It opens in Excel (or the default spreadsheet program), and the app shows "Protected View
+        does not exist on a Mac, so this file opened normally. Keep macros off in Excel, Word and
+        PowerPoint: Settings > Security > Macro Security > Disable all macros without notification."
+        as a notice on the page, not a dialog, each time it is opened (open it twice). Record where
+        the email and the zip ended up (the _Opened folder for the year, and what Needs Review holds).
      11. The next morning. Leave the Mac on and signed in overnight (asleep is fine; Jason closes the
         lid or lets it sleep). The next day, the last-pass line names a pass from that morning and
         is not amber. Record the time.
@@ -180,7 +194,7 @@ SAFETY - never break these:
         image from the same commit (an ad-hoc signed rebuild is a different build to macOS, which is
         what an upgrade is to its permissions; record its SHA-256 beside the first), mark it as
         downloaded as in step 1, install it as in step 2, choosing Replace, and repeat step 3's Open
-        Anyway. At its first open the app sets the schedule up again by itself, and the notice repeats step
+        Anyway. At its first open the app sets the schedule up again by itself, and a toast repeats step
         8's sentence. The clients folder is still chosen. If the next pass reports "macOS did not let
         the schedule read the clients folder", open the app and allow it when asked; the pass after
         that succeeds. Record whether the Drive prompt came back (it should, for an unsigned build).

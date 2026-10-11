@@ -453,7 +453,10 @@ fi
 if printf '%s\n%s\n' "$frozen" "$source_pass" | grep -q "The reader cannot run"; then
   note_smoke "the reader could not run (a reading child did not start under spawn, or a library is missing)"
 fi
-head -1 "$SMOKE/runs.log" 2>/dev/null | grep -q "reader=processor" || note_smoke "the run log's first line names no processor"
+# The reader is named by the pass's closing summary (runner.append_log), not by
+# the log's first line, which since decision 189 is "pass started" - so the
+# whole log is read (SPEC-mac-check-fixes 3.1, P258).
+grep -q "reader=processor" "$SMOKE/runs.log" 2>/dev/null || note_smoke "the run log names no processor"
 # R31: a footprint that cannot be read is no cap, and is said once on the
 # error log. On a Mac that sentence must not be there.
 unreadable=$("$VPY" -c "from tracker import ocr; print(ocr.MEMORY_UNREADABLE.split('(')[0].strip())" 2>>"$LOG")

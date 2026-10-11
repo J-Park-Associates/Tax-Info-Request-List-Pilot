@@ -1,6 +1,6 @@
 # The sample documents
 
-`Pilot-Sample-Documents.zip` holds the 14 made-up documents the Windows check
+`Pilot-Sample-Documents.zip` holds 14 of the made-up documents the Windows check
 uses. They are the same files that `make_samples.py` puts in the sample
 household's "Drop files here" folder. Every byte comes from the suite's own
 fixtures in `tests/samples.py`, so no real client's data is in them.
@@ -20,6 +20,11 @@ fixtures in `tests/samples.py`, so no real client's data is in them.
 | `W-2 Jane Smith 2025.pdf.tmp.driveupload` | A half-finished upload. |
 | `vacation photo.bmp` | A photo that is not a tax document. |
 | `scan 0001.pdf` | A scanned W-2 that only the page reader can file. |
+
+`make_samples.py` also adds three files the zip does not hold (P258): `Donation Receipts 2025 with
+macros.xlsm` (a workbook under a macro workbook's name, no macro inside), `Email from John Smith.msg` (an
+email holding one made-up PDF) and `Scanned forms.zip` (a zip holding one made-up scan), so the kit's inbox
+holds 17 files.
 
 The kit builds the full sample clients folder itself, with the household, the
 return and these files in its inbox. The zip is there to look at, or to drop

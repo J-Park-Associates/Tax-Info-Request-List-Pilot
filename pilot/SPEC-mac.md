@@ -78,8 +78,9 @@ made-up sample documents (`pilot/wintest/make_samples.py`).
    this type of Mac"). On Apple silicon below macOS 14, the app shows R6's
    sentence and quits, and nothing is written.
 5. **Opened from the wrong place.** If the app is opened straight from the
-   disk image or from Downloads, the first screen shows R4's sentence ("…the
-   schedule runs only the copy in Applications"), and no schedule is set up.
+   disk image or from Downloads, the first screen shows Machine Needs
+   Attention and, under its Details, R4's sentence ("…the schedule runs only
+   the copy in Applications"), and no schedule is set up.
 6. **The terms.** The app opens on "Before you start: this is a Pilot". Tick
    "I have read this and will keep my own backups", type a name, and click
    **Sign and Accept**.
@@ -90,14 +91,16 @@ made-up sample documents (`pilot/wintest/make_samples.py`).
    kit records the prompt's exact words). A folder in iCloud Drive, Dropbox
    or OneDrive is refused here with R5's sentence.
 8. **The schedule installs itself.** macOS shows "Background Items Added"
-   (the kit records which name it gives). The app's notice says "This
+   (the kit records which name it gives). A toast (six seconds) says "This
    computer (<name>) now runs the schedule for this clients folder: every
    day from 07:00, every 120 minutes." No button was pressed.
 9. **The first pass.** Within a minute the schedule's first pass runs (R27).
    If macOS asks again whether the schedule may use Google Drive's files,
    click **Allow**. Then the Overview's line reads "Last scheduled pass:
-   <time>, succeeded." The sample documents are filed and their originals
-   have moved, byte for byte, into the client's folder for the year.
+   <time>, succeeded." While the pass runs the side panel says Sorting, and
+   when it ends the counts follow by themselves, with no Refresh. The sample
+   documents are filed and their originals have moved, byte for byte, into
+   the client's folder for the year.
 10. **Open a review copy.** In Needs Review, open the sample macro workbook.
     It opens in Excel, and the app shows R8's sentence each time it is
     opened.
@@ -106,7 +109,7 @@ made-up sample documents (`pilot/wintest/make_samples.py`).
     and the line is not amber.
 12. **An upgrade.** Quit the app. Install the next build as in step 2,
     choosing **Replace**, and repeat step 3's Open Anyway. At its first open
-    the app sets the schedule up again by itself, and the notice repeats step
+    the app sets the schedule up again by itself, and a toast repeats step
     8's sentence. The clients folder is still chosen. If the next pass
     reports "macOS did not let the schedule read the clients folder", open
     the app and allow it when asked (P239). The pass after that succeeds.

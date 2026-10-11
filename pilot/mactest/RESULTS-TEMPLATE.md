@@ -12,6 +12,9 @@
 - **Google Drive for desktop:** version, Stream or Mirror mode, the test folder's place
   (write GoogleDrive-<account>, never the address)
 - **Had the Console been on this Mac before?** no / yes, and what Jason decided
+- **How the app was driven:** desktop computer use / the app's own page through Electron's
+  debugging port with the folder picker stood in for (then every step that needs a macOS
+  dialog or the Mac's password is NOT VERIFIED). A step a permission rule denied: the rule's name
 - **How the disk image was marked as downloaded:** a real download (how) / the
   quarantine mark set by hand
 - **Other machines at hand:** a macOS 13 Mac (yes/no); the office PC (yes/no);
@@ -69,17 +72,17 @@ H2, the buyer's walk (SPEC-mac section 3), step by step.
 | 2 | Install: window shows the app and Applications; dragged; ejected | | |
 | 3 | First open: macOS's block (15+: "Not Opened"; 14: "can't be opened because Apple cannot check it"), then Open Anyway and the password | | |
 | 4 | The wrong Mac: macOS 13 shows the floor sentence and writes nothing (the data, settings and window folders in Application Support are all absent); Intel gets macOS's message | | |
-| 5a | Opened from the disk image: the app's sentence, no schedule | | |
-| 5b | Opened from Downloads (translocated): the app's sentence, no schedule | | |
+| 5a | Opened from the disk image: Machine Needs Attention, and under Details the app's sentence (word for word); no schedule | | |
+| 5b | Opened from Downloads (translocated): Machine Needs Attention, and under Details the app's sentence (word for word); no schedule | | |
 | 6 | Terms: tick, type a name, Sign and Accept | | |
 | 7a | An empty PilotTest-Empty folder in iCloud Drive is refused with its sentence | | |
 | 7b | An empty PilotTest-Empty folder in Dropbox or OneDrive is refused with its sentence | | |
 | 7c | The test folder is accepted; macOS's Drive prompt (words in H14) | | |
-| 8 | "Background Items Added" (which name); the notice "…now runs the schedule…every day from 07:00, every 120 minutes" with no button pressed | | |
-| 9 | First pass within a minute; "Last scheduled pass: <time>, succeeded."; samples filed; originals moved byte for byte | | |
-| 10 | Review copy opens normally; the Protected View sentence is a page notice, each time (twice) | | |
+| 8 | "Background Items Added" (which name); the toast (six seconds) "…now runs the schedule…every day from 07:00, every 120 minutes" with no button pressed, read at once; the Time Machine job shows nothing when it works, and a refusal is recorded word for word from Details under Setup Needs Attention | | |
+| 9 | First pass within a minute; the side panel says Sorting while it runs, then counts and Needs Review follow by themselves (within a minute, no Refresh); "Last scheduled pass: <time>, succeeded."; samples filed; originals moved byte for byte | | |
+| 10 | The macro workbook, the email and the zip are in the pile; review copy opens normally; the Protected View sentence is a page notice, each time (twice) | | |
 | 11 | Next morning: a pass from that morning, not amber | | |
-| 12 | Upgrade: Replace, Open Anyway, schedule set up again, notice repeats, clients folder kept; the Drive prompt came back (yes/no) | | |
+| 12 | Upgrade: Replace, Open Anyway, schedule set up again, a toast repeats step 8's sentence, clients folder kept; the Drive prompt came back (yes/no) | | |
 | 13 | Switched off by hand: the app's next start shows the switched-off sentence | | |
 | 14 | Removal: the app says it is removed; launchctl cannot find the service; plist gone; data folder, settings and clients folder remain | | |
 
