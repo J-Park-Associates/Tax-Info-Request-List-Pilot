@@ -412,9 +412,12 @@ function dismissNotice(entry) {
   outlineRefused();
 }
 
+// Only the side sheet's file rows carry a `data-row` (reviewRow and movedRow,
+// which sheet.js draws into #sheet), so that is all this looks through: a
+// query of the whole document ran on every state and every notice.
 function outlineRefused() {
   const named = new Set(notices.map((one) => one.identifier).filter(Boolean));
-  for (const row of document.querySelectorAll("[data-row]")) {
+  for (const row of $("sheet").querySelectorAll("[data-row]")) {
     row.classList.toggle("refused", named.has(row.dataset.row));
   }
 }
@@ -457,7 +460,21 @@ function render(state) {
   if (state.household && rollChoice && rollChoice.household !== state.household.path) rollChoice = null;
   try {
     renderLock(state);
-    renderReminder(state);
+    // The letter is built for a sheet that is open or being opened (its open
+    // path starts the read that lands here). With the sheet closed nobody can
+    // see it, and every state - each write's reply, each pass's redraw - used
+    // to rebuild it. The card held is dropped instead, so the sheet draws the
+    // state on screen when it is next opened (openReminder), and a rung a
+    // person had picked goes with it: it survives a write by one call, and
+    // only then (decision 194, R3), and a shut sheet is no longer picking.
+    if (sheetNow && sheetNow.kind === "reminder") {
+      renderReminder(state);
+    } else {
+      reminderCard = null;
+      reminderCardFor = null;
+      reminderStage = null;
+      reminderFor = active;
+    }
   } catch (err) {
     failed(err);
   }
@@ -1731,6 +1748,7 @@ let locked = false;
 let lockStale = false;    // the lock shown was left behind (the menu's Clear stuck lock)
 let lockWatch = null;
 let lockWatched = null;   // the folder the running watch asks about
+let lockTick = null;      // the running watch's one ask, so a window shown again can make it at once
 
 function lockStarted(lock) {
   return (lock.started || "").replace("T", " ").slice(0, 16);
@@ -1795,6 +1813,14 @@ function stopLockWatch() {
   clearInterval(lockWatch);
   lockWatch = null;
   lockWatched = null;
+  lockTick = null;
+}
+
+// The window is shown again after being hidden or minimised: the watch sent
+// nothing meanwhile (watchLock), so it asks once now rather than up to
+// `watch_seconds` from now.
+function lockWatchResume() {
+  if (!document.hidden && lockTick) lockTick();
 }
 
 // The shell moved to another page (shell.js): the lock belongs to the return
@@ -1830,12 +1856,15 @@ function watchLock(lock) {
   lockWatched = target;
   const view = viewGeneration;
   let asking = false;
-  lockWatch = setInterval(async () => {
+  // A hidden window shows no buttons that could come back, so a tick sends
+  // nothing while `document.hidden` (each ask is an engine process); the
+  // window's return asks at once (lockWatchResume).
+  lockTick = async () => {
     if (view !== viewGeneration) {
       stopLockWatch();
       return;
     }
-    if (asking) return;
+    if (asking || document.hidden) return;
     asking = true;
     try {
       const result = await call(["watch", vocab.engagement_flag, target]);
@@ -1855,7 +1884,8 @@ function watchLock(lock) {
     } finally {
       asking = false;
     }
-  }, vocab.lock.watch_seconds * 1000);
+  };
+  lockWatch = setInterval(lockTick, vocab.lock.watch_seconds * 1000);
 }
 
 async function clearLock() {
@@ -3956,6 +3986,8 @@ document.addEventListener("keydown", (e) => {
     trapTab(e, id);
   }
 });
+
+document.addEventListener("visibilitychange", lockWatchResume);
 
 // The first `list` may answer before pages.js, sheet.js and shell.js have
 // run (they load after this file), and bootstrap draws through them: it

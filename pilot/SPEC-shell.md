@@ -368,6 +368,10 @@ var(--sp-8)`. Each notice is one 40px line, `--radius-control`: its fill
 and ink say the kind (err, warn, info tokens) and its words say what
 happened, so the kind is never colour alone. At most one action button
 (small, secondary) and the dismiss icon (tooltip "Dismiss") at its right.
+A notice that carries a **Details** disclosure (8.4) shows it, closed, at
+the right end of the same line, before the action and the dismiss, so the
+notice stays 40px; opened (P264), the disclosure drops under the line at the
+notice's width.
 Failures and warnings stay until dismissed or fixed (decision 193
 unchanged). Notices never push the path row away: the page area scrolls,
 the bar and notices do not.
@@ -1071,7 +1075,9 @@ one action. A notice may carry a **Details** disclosure holding the
 engine's sentence (pilot P257); the line stays one line, and E28/E30's "no
 path" is read as "no path on the line" - opened by the person, the detail
 may name the program's, the data or the clients folder, never a client's
-file (P63). A Details disclosure drawn while the setup page is shown is
+file (P63). Closed, the disclosure sits at the right end of the notice's
+line, before the action and the dismiss (P264); opened, the sentence
+unfolds under the line at the notice's width. A Details disclosure drawn while the setup page is shown is
 open, and elsewhere closed until clicked (P259): it is drawn once and a
 notice stays as the person left it. The machine and setup findings, the
 reader's warning, the household's pause and its prior-year feed all carry

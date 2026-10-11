@@ -515,7 +515,7 @@ def test_shell_key_hands_escape_to_the_tip_first_wherever_the_focus_is(tmp_path)
     showing. Reproduced before the fix: focus in the search box, a hover tip
     on the Sort icon, Escape - the search box was cleared and the tip stayed."""
     setup = """
-      let tipFor = null, dialogStack = [], cleared = 0;
+      let tipFor = null, dialogStack = [], cleared = 0, shellFindTimer = null;
       function hideTip() { tipFor = null; }
       const nodes = { find: { value: "Smi" }, sheet: { hidden: true }, "find-list": { hidden: true } };
       const $ = (id) => nodes[id];
@@ -724,6 +724,8 @@ def run_shell(functions: list[str], setup: str, probe: str, tmp_path: Path, sour
     if NODE is None:
         pytest.skip("node is not on PATH (CI installs it)")
     lifted = "\n".join(js_function(name, source if f"function {name}(" in read(source) else "shell.js") for name in functions)
+    if "PAGES_COLLATOR" in lifted:
+        lifted = lift_line("const PAGES_COLLATOR = ", "pages.js") + lifted   # a module-level const the lifted sorts compare through
     script = tmp_path / "probe.js"
     script.write_text(f"{setup}\n{lifted}\nPromise.resolve((() => {{ {probe} }})()).then((out) => process.stdout.write(JSON.stringify(out)));\n",
                       encoding="utf-8", newline="\n")
@@ -761,7 +763,7 @@ def test_search_finds_a_household_by_any_part_of_its_name_without_calling_the_ap
       return { smith: names("smith"), inner: names("ily"), accent: names("renee"), upper: names("RIVERA"), none: names("zzz"),
                empty: names("  "), notes: findOptions("smith").map((o) => o.note), route: findOptions("rivera")[1].route, calls };
     """
-    ran = run_shell(["screenWords", "fold", "shellHousehold", "shellOwnReturns", "findOptions"], PEOPLE, probe, tmp_path)
+    ran = run_shell(["screenWords", "fold", "foldedName", "shellHousehold", "shellOwnReturns", "findOptions"], PEOPLE, probe, tmp_path)
     assert ran["smith"] == ["Smith Family", "1040 - John & Jane Smith", "1040 - John & Jane Smith"]
     assert ran["inner"] == ["Smith Family"] and ran["accent"] == ["Ren\u00e9e Okafor"]
     assert ran["upper"] == ["Rivera Design", "1120-S - Rivera Design LLC"]
@@ -774,7 +776,7 @@ def test_search_finds_a_household_by_any_part_of_its_name_without_calling_the_ap
 def test_the_search_list_shows_at_most_eight_options(tmp_path):
     setup = PEOPLE + "for (let i = 0; i < 30; i++) households.push({ name: `Client ${i}`, path: `x${i}`, returns: [] });"
     probe = 'return findOptions("client").length;'
-    assert run_shell(["screenWords", "fold", "shellHousehold", "shellOwnReturns", "findOptions"], setup, probe, tmp_path) == 8
+    assert run_shell(["screenWords", "fold", "foldedName", "shellHousehold", "shellOwnReturns", "findOptions"], setup, probe, tmp_path) == 8
 
 
 def test_the_path_names_every_level_and_the_year_always_shows(tmp_path):
@@ -1056,7 +1058,9 @@ PAGES_CONSTS = ("const PAGES_COLUMNS = {", "const PAGES_CELLS = ", "const PAGES_
                 "const PAGES_WIDTHS_KEY = ", "const PAGES_ORDER_KEY = ", "const PAGES_URGENCY = ", "let pagesOrder = ", "let pagesWidths = ",
                 # The raised lists (pilot SPEC-lists 10-17): pages, tabs, reason cards, types, the panel.
                 "const PAGES_PER_PAGE = ", "const PAGES_REASON_ICONS = {", "const PAGES_SECTIONS = ", "let pagesPageAt = ",
-                "let pagesTab = ", "let pagesReasonPick = ", "let pagesClientType = ", "let pagesPanel = ")
+                "let pagesTab = ", "let pagesReasonPick = ", "let pagesClientType = ", "let pagesPanel = ",
+                # The one collator every name sort compares through (P264 N1).
+                "const PAGES_COLLATOR = ")
 
 
 #: The column headers' own functions (SPEC-lists), which every firm page and
@@ -1517,8 +1521,9 @@ def test_an_error_after_the_state_arrives_never_reaches_the_write_that_brought_i
       const shellFirmNow = { data: { returns: [{ path: "r1", counts: {} }] } };
       const shellLoadFirm = () => {};
       const shellFirmSentAt = 0; const shellWroteAt = 0; const shellFirmHeld = new Map();
+      const shellRoute = { level: "return" }; const shellPageBusy = false; const FIRM_LEVELS = ["overview"]; const shellChanged = () => {};
     """
-    assert run_shell(["shellStateArrived", "shellCountsDiffer"], setup, probe, tmp_path) == [None, ["draw", "tally"]]
+    assert run_shell(["shellStateArrived", "shellPageReadsState", "shellCountsDiffer"], setup, probe, tmp_path) == [None, ["draw", "tally"]]
 
 
 def test_the_year_page_leaves_a_gap_under_its_h1_before_its_rows(tmp_path):
@@ -3700,7 +3705,7 @@ def test_the_search_finds_waiting_files_on_needs_review_and_its_placeholder_says
       const found = findOptions("smith", files);
       return { names: found.map((o) => o.name), note: found[0].note, check: found[0].check, without: findOptions("smith").length };
     """
-    ran = run_shell(["screenWords", "fold", "shellHousehold", "shellOwnReturns", "shellReturn", "findOptions"], PEOPLE, probe, tmp_path)
+    ran = run_shell(["screenWords", "fold", "foldedName", "shellHousehold", "shellOwnReturns", "shellReturn", "findOptions"], PEOPLE, probe, tmp_path)
     assert ran["names"][0] == "Smith W-2.pdf" and ran["note"] == "1040 - John & Jane Smith 2025"
     assert ran["check"] == {"ret": "r1", "name": "Smith W-2.pdf", "handle": "h1"} and ran["without"] == 3
     assert api.SCREEN["find_placeholder"] == "Households and Returns"
@@ -4625,7 +4630,7 @@ FIRM_LOAD_FUNCTIONS = ("el", "h", "screenWords", "shellAdopt", "shellAskFirmNow"
                        "takeReply", "shellAdoptEarly", "shellAskFirm", "shellFirmSent",
                        "shellFirmDone", "shellFirmTookLong", "shellWriteLanded", "shellFirmProgress", "shellReading", "shellReadingNodes",
                        "shellSetReading", "shellDrawReading", "shellLoadFirm", "shellFollowsCounts", "shellFirmUpdating", "shellUpdating",
-                       "shellMarkUpdating", "shellStateArrived", "shellCountsDiffer")
+                       "shellMarkUpdating", "shellStateArrived", "shellPageReadsState", "shellCountsDiffer")
 
 
 def run_firm_load(probe: str, tmp_path: Path, setup: str = "", functions=()):
@@ -5682,7 +5687,8 @@ LAST_PASS_STEPS = [
 LAST_PASS_WATCH_FAKES = r"""
 let vocab = { last_pass_watch: { running: 5, idle: 60 } };
 let scanning = null; let shellLastPass = null;
-let shellLastPassTimer = null; let shellLastPassAsking = false; let shellLastPassStopped = false;
+let shellLastPassTimer = null; let shellLastPassAsking = false; let shellLastPassStopped = false; let shellLastPassAt = 0;
+const SHELL_FOCUS_QUIET_MS = 5000; const document = { hidden: false };
 const seen = []; let timerId = 0; const timers = new Map(); let reply = null; let asked = 0;
 let listReply = { listed: true }; let during = null;
 let shellRoute = { level: "overview" }; let dialogStack = []; let shellReturnStale = false; let throwing = false;
@@ -5867,9 +5873,11 @@ def test_the_watch_never_overlaps_itself_and_the_adopt_and_the_focus_start_it(tm
     shell = stripped_js("shell.js")
     adopt = js_function("shellAdopt", "shell.js")
     assert adopt.index("shellLastPassStopped = false;") < adopt.index("shellArmLastPass();"), "a list landing clears a stop, then times the watch"
-    assert 'window.addEventListener("focus", () => shellWatchLastPass());' in shell
+    assert 'window.addEventListener("focus", shellFocused);' in shell
     assert "vocab.last_pass_watch" in js_function("shellArmLastPass", "shell.js")
-    assert not re.search(r"\b(?:60|5)\s*\*\s*1000|\b(?:5000|60000)\b", shell), "the page types neither number"
+    # The watch's two delays are the vocabulary's; the one number the page keeps is the quiet after an ask that a focus waits out.
+    watch = shell.replace("const SHELL_FOCUS_QUIET_MS = 5000;", "")
+    assert not re.search(r"\b(?:60|5)\s*\*\s*1000|\b(?:5000|60000)\b", watch), "the page types neither number"
 
 
 # ── a notice's Details (pilot P257) ───────────────────────────────────────
@@ -6373,3 +6381,399 @@ def test_a_navigation_that_closes_the_sheet_does_not_redraw_the_page_it_leaves(t
       return shellGo({ level: "overview" }).then(() => ({ seen, stale: shellReturnStale, level: shellRoute.level }));
     """, tmp_path, "app.js")
     assert ran == {"seen": [], "stale": False, "level": "overview"}
+
+
+# ── P264: the UI polish, section 1 (pilot/SPEC-ui-polish.md) ──────────────
+# Nothing here changes a word, a column, a token's value or a ruling; every
+# claim is a speed or a seam that the pages' own tests could not see.
+
+def test_one_collator_orders_every_name_sort_as_localecompare_did(tmp_path):
+    """N1: ``pagesByName`` compares through one module-level collator with the
+    options the sorts always used, so a list of mixed names and numbers sorts
+    to the same order both ways. (The sensitivity stays the default: "base"
+    would make "okafor" and "Okafor" tie and so change an order people have
+    seen; the SPEC's sentence says "same order as before".)"""
+    ran = run_pages(["pagesByName"], "", """
+      const names = ["Client 10", "client 2", "Client 2", "Ren\\u00e9e", "Renee", "okafor", "Okafor", "Smith 1040", "Smith 9", "Smith 10", "\\u00c1lvarez", "Alvarez", "", "Zed"];
+      const old = (a, b) => a.localeCompare(b, undefined, { numeric: true });
+      return { now: names.slice().sort(pagesByName), before: names.slice().sort(old),
+               nowBack: names.slice().reverse().sort(pagesByName), beforeBack: names.slice().reverse().sort(old) };
+    """, tmp_path)
+    assert ran["now"] == ran["before"] and ran["nowBack"] == ran["beforeBack"]
+    pages = stripped_js("pages.js")
+    assert pages.count("new Intl.Collator(") == 1 and "const PAGES_COLLATOR = new Intl.Collator(undefined, { numeric: true });" in pages
+    for name in ("app.js", "pages.js", "shell.js", "sheet.js"):
+        assert not re.search(r"localeCompare\([^)]*numeric", stripped_js(name)), name
+
+
+def test_a_lookup_by_path_or_name_answers_what_the_scan_answered_and_follows_a_new_list(tmp_path):
+    """N2: ``shellReturn``, ``shellHousehold``, ``pagesFirmReturn``,
+    ``pagesHouseholdPath`` and ``pagesFormKey`` read an index built once for
+    the list or reply on screen. Each answers what a scan answered - the first
+    entry of a path, null for none, "" for a household not listed - and an
+    array adopted later is indexed afresh."""
+    setup = r"""
+      let engagements = [{ path: "r1", return_name: "one" }, { path: "r2", return_name: "two" }, { path: "r1", return_name: "again" }];
+      let households = [{ name: "Smith", path: "h1" }, { name: "Rivera", path: "h2" }, { name: "Smith", path: "h3" }];
+      let shellFirmData = { returns: [{ path: "r1", n: 1 }, { path: "r2", n: 2 }, { path: "r1", n: 3 }] };
+      const shellFirm = () => ({ data: shellFirmData });
+      let vocab = { client_type_forms: { business: ["1120-S", "1065"], personal: ["1040"] } };
+    """
+    ran = run_shell(["shellReturn", "shellHousehold"], setup + js_function("pagesFirmReturn", "pages.js") + js_function("pagesHouseholdPath", "pages.js")
+                    + js_function("pagesFormKey", "pages.js"), """
+      const scanReturn = (p) => engagements.find((one) => one.path === p) || null;
+      const scanHousehold = (p) => households.find((one) => one.path === p) || null;
+      const scanFirm = (p) => shellFirmData.returns.find((one) => one.path === p) || null;
+      const scanPath = (n) => { const one = households.find((other) => other.name === n); return one ? one.path : ""; };
+      const known = () => Object.values(vocab.client_type_forms).flat();
+      const scanKey = (f) => (f ? [known().indexOf(f) === -1 ? known().length : known().indexOf(f), f] : "");
+      const same = () => ({
+        ret: ["r1", "r2", "nope"].map((p) => shellReturn(p) === scanReturn(p)),
+        household: ["h1", "h2", "h3", "nope"].map((p) => shellHousehold(p) === scanHousehold(p)),
+        firm: ["r1", "r2", "nope"].map((p) => pagesFirmReturn(p) === scanFirm(p)),
+        path: ["Smith", "Rivera", "Nobody"].map((n) => pagesHouseholdPath(n) === scanPath(n)),
+        key: ["1065", "1040", "990", "", "1120-S"].map((f) => JSON.stringify(pagesFormKey(f)) === JSON.stringify(scanKey(f))) });
+      const first = same();
+      engagements = [{ path: "r9", return_name: "nine" }];
+      households = [{ name: "Okafor", path: "h9" }];
+      shellFirmData = { returns: [{ path: "r9" }] };
+      vocab = { client_type_forms: { personal: ["1040"], business: ["1065"] } };
+      const second = same();
+      return { first, second, newRet: shellReturn("r9").return_name, goneRet: shellReturn("r1"), newPath: pagesHouseholdPath("Okafor"), goneFirm: pagesFirmReturn("r1"),
+               newKey: pagesFormKey("1065") };
+    """, tmp_path)
+    for answers in (ran["first"], ran["second"]):
+        assert all(all(row) for row in answers.values()), answers
+    assert ran["newRet"] == "nine" and ran["goneRet"] is None and ran["newPath"] == "h9" and ran["goneFirm"] is None
+    assert ran["newKey"] == [1, "1065"], "the flattened form table is rebuilt for a new vocabulary"
+    # No comparator or per-row call scans an array any more.
+    for name, source in (("shellReturn", "shell.js"), ("shellHousehold", "shell.js"), ("pagesFirmReturn", "pages.js"), ("pagesHouseholdPath", "pages.js"),
+                         ("pagesReturnName", "pages.js")):
+        body = js_function(name, source)
+        assert ".find(" not in body and ".filter(" not in body, name
+    form = js_function("pagesFormKey", "pages.js")
+    assert form.count("Object.values(") == 1 and form.index("if (pagesFormKey.from !==") < form.index("Object.values("), "the table is flattened on a new vocabulary only"
+    returns = js_function("pagesReturnGroups", "pages.js")
+    assert "index.filter(" not in returns.split("const filedBy")[1].split("for (const item of items)")[0] and "filedUnder" in returns
+
+
+def test_the_files_filed_under_a_request_are_the_same_as_the_scan_found(tmp_path):
+    """N2: ``pagesReturnGroups`` reads the files filed under each request from
+    a map built once from the index: a file counts under its own identifier and
+    under each request it answered, once under each, in index order."""
+    ran = run_pages_dom("""
+      const filed = (handle, identifier, answered = []) => ({ handle, original_name: `${handle}.pdf`, decision: "Filed", group: "received", identifier, answered, received: "2026-03-01" });
+      const index = [filed("a", "W2", ["W2", "1099"]), filed("b", "1099"), { ...filed("c", "W2"), decision: "Needs Review" }, filed("d", "K1", ["1099"])];
+      const scan = (identifier) => index.filter((one) => one.decision === "Filed" && (one.identifier === identifier || (one.answered || []).indexOf(identifier) !== -1)).map((one) => one.handle);
+      lastState = { ...stateOf([item("W2", "received", { status_key: "Received" }), item("1099", "received", { status_key: "Received" }), item("K1", "received", { status_key: "Received" })], index),
+                    review_labels: {} };
+      const box = page(pagesReturn({ level: "return", ret: "r1", year: 2025 }));
+      const rows = box.byClass("row").map((row) => [row.byClass("row-name")[0].textContent, (row.byClass("row-detail")[0] || { textContent: "" }).textContent]);
+      return { rows, scan: ["W2", "1099", "K1"].map(scan) };
+    """, tmp_path)
+    assert ran["scan"] == [["a"], ["a", "b", "d"], ["d"]]
+    details = dict(ran["rows"])
+    assert (details["Doc W2"], details["Doc K1"]) == ("a.pdf", "d.pdf") and details["Doc 1099"] == "3 files", ran["rows"]
+
+
+SHELL_ROUTE_FAKES = r"""
+const LEVELS = ["overview", "needs-review", "reminders", "clients", "household", "year", "return", "setup"];
+const FIRM_LEVELS = ["overview", "needs-review", "reminders", "clients"];
+let shellRoute = { level: "overview" }; let shellBack = null; let shellReturnStale = false; let shellRootSet = true;
+let shellPageBusy = false; let shellPageFailed = false; let shellFirmNow = { status: "ok", data: null };
+let shellFirmSentAt = 0; let shellWroteAt = 0; const shellFirmHeld = new Map();
+let households = [{ name: "Smith Family", path: "h1", returns: [{ path: "r1", active: true }] }, { name: "Rivera", path: "h2", returns: [{ path: "r3", active: true }] }];
+let engagements = [{ path: "r1", household: "h1", year: 2025 }, { path: "r2", household: "h1", year: 2024 }, { path: "r3", household: "h2", year: 2025 }];
+let lastState = null; let active = "r1"; const drawn = []; const events = [];
+const closeSheet = () => {}; const hideFound = () => {}; const hideTip = () => {}; const appRouteChanged = () => {}; const failed = (err) => { throw err; };
+const $ = () => ({ focus() {}, scrollTop: 0 });
+const shellDraw = () => drawn.push(shellRoute.level); const shellChanged = () => events.push("changed");
+const sheetStateArrived = () => events.push("sheet"); const shellLoadFirm = () => {};
+const pagesTally = () => ({}); 
+const stateFor = (path, household) => ({ paths: { engagement: path }, household: { path: household } });
+// As app.js's showReturn does: the state is read, becomes the one on screen, and the shell is told.
+const showReturn = async (path) => {
+  const owner = engagements.find((one) => one.path === path).household;
+  lastState = stateFor(path, owner); active = path;
+  shellStateArrived(lastState);
+  return true;
+};
+"""
+
+
+def test_a_page_is_drawn_once_per_visit_and_a_firm_page_under_the_sheet_is_not_rebuilt(tmp_path):
+    """N3: the household page is drawn when the route changes and again only
+    if the state that arrives is its own household's (its caption reads it); a
+    year page the same; the return page is the outline, then the page (two
+    draws, not three); a firm page is not rebuilt when the sheet's state lands,
+    though the sheet is told and the shell's controls follow."""
+    ran = run_shell(["shellGo", "shellOpenState", "shellStateArrived", "shellPageReadsState", "shellCountsDiffer", "shellHousehold", "shellOwnReturns"],
+                    SHELL_ROUTE_FAKES, """
+      return (async () => {
+      const count = async (route, shown) => {
+        lastState = shown; drawn.length = 0; events.length = 0;
+        await shellGo(route);
+        return drawn.length;
+      };
+      const out = {};
+      out.householdWarm = await count({ level: "household", household: "h1" }, stateFor("r1", "h1"));
+      out.householdCold = await count({ level: "household", household: "h1" }, stateFor("r3", "h2"));
+      out.yearWarm = await count({ level: "year", household: "h1", year: 2025 }, stateFor("r2", "h1"));
+      out.yearCold = await count({ level: "year", household: "h1", year: 2025 }, null);
+      out.returnPage = await count({ level: "return", household: "h1", year: 2025, ret: "r1" }, stateFor("r3", "h2"));
+      out.returnBusyAtDraws = [];
+      shellRoute = { level: "overview" }; drawn.length = 0; events.length = 0;
+      shellStateArrived(stateFor("r1", "h1"));
+      out.firmDraws = drawn.length; out.firmEvents = events.slice();
+      shellRoute = { level: "household", household: "h1" }; drawn.length = 0;
+      shellStateArrived(stateFor("r3", "h2"));
+      out.otherHouseholdDraws = drawn.length;
+      shellStateArrived(stateFor("r1", "h1"));
+      out.ownHouseholdDraws = drawn.length;
+      shellRoute = { level: "return", ret: "r1" }; drawn.length = 0; shellPageBusy = true;
+      shellStateArrived(stateFor("r1", "h1"));
+      out.busyDraws = drawn.length;
+      shellPageBusy = false; shellStateArrived(stateFor("r1", "h1"));
+      out.writeOnAReturnPage = drawn.length;
+      return out;
+      })();
+    """, tmp_path)
+    assert (ran["householdWarm"], ran["yearWarm"]) == (1, 1), "a state already on screen is not read again"
+    assert ran["householdCold"] == 2 and ran["yearCold"] == 2, "the route's draw, then the one with its household's state (the caption reads it); never a third"
+    assert ran["returnPage"] == 2, "the outline, then the page"
+    assert ran["firmDraws"] == 0 and ran["firmEvents"] == ["changed", "sheet"], "a firm page is left alone; the sheet and the controls still follow"
+    assert ran["otherHouseholdDraws"] == 0 and ran["ownHouseholdDraws"] == 1
+    assert ran["busyDraws"] == 0 and ran["writeOnAReturnPage"] == 1, "no outline drawn again while the wait lasts; a write's state redraws the return"
+
+
+def test_the_hidden_reminder_letter_is_built_only_for_an_open_reminder_sheet(tmp_path):
+    """N4: ``render`` builds the letter only while the reminder sheet is open
+    or being opened; with the sheet shut (or showing a file) the card held is
+    dropped, so the sheet's open path draws the state on screen."""
+    setup = r"""
+      let sheetNow = null; let paths = null; let lastState = null; let rollChoice = null; let active = "r1";
+      let reminderCard = { stale: true }; let reminderCardFor = "r1"; let reminderStage = 2; let reminderFor = "r0";
+      const seen = []; const renderLock = () => seen.push("lock"); const renderReminder = (state) => seen.push("reminder:" + state.paths.engagement);
+      const shellStateArrived = () => seen.push("shell"); const failed = (err) => seen.push("failed:" + err.message);
+    """
+    ran = run_shell(["render"], setup, """
+      const state = { paths: { engagement: "r1" } };
+      const out = {};
+      render(state); out.closed = { seen: seen.splice(0), card: reminderCard, stage: reminderStage, forWhom: reminderFor };
+      sheetNow = { kind: "check" }; render(state); out.check = seen.splice(0);
+      sheetNow = { kind: "reminder", ret: "r1" }; render(state); out.open = seen.splice(0);
+      return out;
+    """, tmp_path, "app.js")
+    assert ran["closed"] == {"seen": ["lock", "shell"], "card": None, "stage": None, "forWhom": "r1"}, "no letter, no held card, no stale pick"
+    assert ran["check"] == ["lock", "shell"]
+    assert ran["open"] == ["lock", "reminder:r1", "shell"]
+
+
+def test_search_draws_once_the_typing_pauses_and_folds_each_name_once(tmp_path):
+    """N5: three keystrokes inside 80 ms are one draw; emptying the box hides
+    the list at once; an arrow or Enter draws what is pending first, so a key
+    never acts on the list of the letter before; hiding the list cancels a
+    pending draw. ``findOptions`` folds a name the first time it reads it and
+    never again for the same list, and a new list is folded afresh."""
+    setup = r"""
+      let now = 0; let nextTimer = 0; const timers = new Map();
+      const setTimeout = (fn, ms) => { nextTimer += 1; timers.set(nextTimer, { fn, at: now + ms }); return nextTimer; };
+      const clearTimeout = (id) => { timers.delete(id); };
+      const advance = (ms) => { now += ms; for (const [id, one] of [...timers]) if (one.at <= now) { timers.delete(id); one.fn(); } };
+      const box = { value: "", attrs: {}, setAttribute(k, v) { this.attrs[k] = v; }, removeAttribute(k) { delete this.attrs[k]; } };
+      const list = { hidden: false, replaceChildren() {} };
+      const $ = (id) => (id === "find" ? box : list);
+      const draws = []; const drawFound = () => { clearTimeout(shellFindTimer); shellFindTimer = null; draws.push(box.value); };
+      let shellFound = []; const moves = []; const moveFound = (by) => moves.push([by, draws.length]);
+      const openFound = (i) => moves.push(["open", draws.length]); const chosenFound = () => 0;
+      const key = (k) => ({ key: k, preventDefault() {} });
+    """
+    ran = run_shell(["drawFoundSoon", "findKey", "hideFound"], setup + "let shellFindTimer = null; const SHELL_FIND_WAIT_MS = 80;", """
+      const out = {};
+      for (const v of ["s", "sm", "smi"]) { box.value = v; drawFoundSoon(); advance(20); }
+      out.within = draws.length; advance(80); out.after = draws.splice(0);
+      box.value = "smith"; drawFoundSoon(); findKey(key("ArrowDown")); out.flushed = [draws.splice(0), moves.splice(0)];
+      advance(200); out.noSecond = draws.length;
+      box.value = "smi"; drawFoundSoon(); hideFound(); advance(200); out.cancelled = draws.length;
+      box.value = "smi"; drawFoundSoon(); findKey(key("Enter")); out.enter = [draws.splice(0), moves.splice(0)];
+      box.value = "  "; drawFoundSoon(); out.empty = draws.splice(0).length;
+      return out;
+    """, tmp_path)
+    assert ran["within"] == 0 and ran["after"] == ["smi"], "three keystrokes inside the wait are one draw, of the last"
+    assert ran["flushed"] == [["smith"], [[1, 1]]] and ran["noSecond"] == 0, "the arrow draws the pending list first, then moves"
+    assert ran["cancelled"] == 0, "a hidden list is not drawn again by a keystroke already waiting"
+    assert ran["enter"] == [["smi"], [["open", 1]]]
+    assert ran["empty"] == 1, "an empty box hides the list at once"
+    shell = stripped_js("shell.js")
+    assert '$("find").addEventListener("input", drawFoundSoon);' in shell
+    folds = run_shell(["screenWords", "fold", "foldedName", "shellHousehold", "shellOwnReturns", "shellReturn", "findOptions"], PEOPLE.replace("const households", "let households").replace("const engagements", "let engagements"), """
+      const real = fold; let count = 0; fold = (text) => { count += 1; return real(text); };
+      const names = (q) => findOptions(q).map((o) => o.name);
+      const out = {};
+      names("smith"); out.firstQuery = count;          // 1 for the needle, then each household and return once
+      names("smit"); names("smi"); out.threeQueries = count;
+      households = [{ name: "Smith Other", path: "x1", returns: [] }]; engagements = [];
+      const before = count; const found = names("smith"); out.newList = [count - before, found];
+      return out;
+    """, tmp_path)
+    assert folds["firstQuery"] == 1 + 4 + 3, "the needle, four households and three returns, once each"
+    assert folds["threeQueries"] == folds["firstQuery"] + 2, "later queries fold only the needle"
+    assert folds["newList"] == [1 + 1, ["Smith Other"]], "a list adopted later is folded afresh"
+
+
+def test_the_last_pass_watch_and_the_lock_watch_send_nothing_while_the_window_is_hidden(tmp_path):
+    """N6: a hidden window sends no ``last-pass`` and no ``watch``; becoming
+    visible asks each once at once; two focus events 2 s apart send one ask."""
+    ran = run_shell(["lastPassStep", "shellArmLastPass", "shellWatchLastPass", "shellFocused", "shellShown"], LAST_PASS_WATCH_FAKES, """
+      shellLastPass = { running: false, when: "A" }; reply = { running: false, when: "A" };
+      return (async () => {
+      const out = {};
+      let clock = 100000; const realNow = Date.now; Date.now = () => clock;
+      document.hidden = true;
+      await shellWatchLastPass(); await shellFocused();
+      out.hidden = { asked, armed: armed() };
+      document.hidden = false; shellShown(); await new Promise((r) => setImmediate(r));
+      out.shown = asked;
+      clock += 2000; shellFocused(); await new Promise((r) => setImmediate(r));
+      out.twoSecondsLater = asked;
+      clock += 6000; shellFocused(); await new Promise((r) => setImmediate(r));
+      out.eightSecondsLater = asked;
+      document.hidden = true; shellShown(); await new Promise((r) => setImmediate(r));
+      out.hiddenAgain = asked;
+      Date.now = realNow;
+      return out;
+      })();
+    """, tmp_path)
+    assert ran["hidden"] == {"asked": 0, "armed": [60.0]}, "no ask while hidden, and the timer goes on"
+    assert ran["shown"] == 1 and ran["twoSecondsLater"] == 1 and ran["eightSecondsLater"] == 2 and ran["hiddenAgain"] == 2
+    shell = stripped_js("shell.js")
+    assert 'window.addEventListener("focus", shellFocused);' in shell and 'document.addEventListener("visibilitychange", shellShown);' in shell
+
+    lock = run_shell(["stopLockWatch", "lockWatchResume", "watchLock"], r"""
+      const document = { hidden: false }; let lockWatch = null; let lockWatched = null; let lockTick = null; let active = "A"; let viewGeneration = 0;
+      const vocab = { engagement_flag: "--engagement", lock: { watch_seconds: 5, buttons_back: "back" } };
+      const intervals = []; const setInterval = (fn) => { intervals.push(fn); return intervals.length; }; const clearInterval = () => {};
+      const asked = []; const call = async (args) => { asked.push(args[2]); return { lock: { engagement: "A" } }; };
+      const showLock = () => {}; const clearNotice = () => {}; const setLocked = () => {}; const notice = () => {}; const showReturn = () => {}; const failed = () => {};
+    """, """
+      return (async () => {
+      watchLock({ engagement: "A" });
+      document.hidden = true;
+      await intervals[0](); await intervals[0]();
+      const hidden = asked.length;
+      lockWatchResume();                       // still hidden: nothing
+      document.hidden = false; lockWatchResume(); await new Promise((r) => setImmediate(r));
+      const shown = asked.length;
+      stopLockWatch(); lockWatchResume();      // no watch running: nothing
+      return { hidden, shown, after: asked.length };
+      })();
+    """, tmp_path, "app.js")
+    assert lock == {"hidden": 0, "shown": 1, "after": 1}
+    assert 'document.addEventListener("visibilitychange", lockWatchResume);' in stripped_js("app.js")
+
+
+def test_the_small_hot_paths_do_their_work_once(tmp_path):
+    """N7: (a) the column grip writes its width once a frame and the release
+    writes the last one; (b) the refused outline looks through the sheet only;
+    (c) the Clients page computes its specs once per draw; (d) a scroll with no
+    tip showing does nothing."""
+    grip = run_shell(["pagesGripStart"], r"""
+      const frames = []; const requestAnimationFrame = (fn) => { frames.push(fn); return frames.length; };
+      const cancelAnimationFrame = (id) => { if (id) frames[id - 1] = null; };
+      const widths = []; const pagesSetWidth = (list, cell, px) => widths.push(px); const pagesSaveWidths = () => widths.push("saved");
+      const handlers = {};
+      const grip = { parentNode: { getBoundingClientRect: () => ({ width: 100 }) }, classList: { add() {}, remove() {} }, setPointerCapture() {},
+                     addEventListener(type, fn) { handlers[type] = fn; }, removeEventListener() {} };
+    """, """
+      pagesGripStart("list", "cell", grip, { button: 0, clientX: 10, pointerId: 1, preventDefault() {} });
+      for (const x of [20, 30, 40]) handlers.pointermove({ clientX: x });
+      const queued = frames.filter(Boolean).length;
+      frames.filter(Boolean)[0]();                                 // the frame comes: the latest position, once
+      const afterFrame = widths.slice();
+      handlers.pointermove({ clientX: 50 });                       // moved, then released before the frame
+      handlers.pointerup();
+      return { queued, afterFrame, final: widths.slice() };
+    """, tmp_path, "pages.js")
+    assert grip["queued"] == 1 and grip["afterFrame"] == [130]
+    assert grip["final"] == [130, 140, "saved"], "the release writes what was waiting, then saves"
+    app = stripped_js("app.js")
+    assert '$("sheet").querySelectorAll("[data-row]")' in js_function("outlineRefused", "app.js") and 'document.querySelectorAll("[data-row]")' not in app
+    clients = run_lists("""
+      const real = pagesClientSpecs; let calls = 0; pagesClientSpecs = (...args) => { calls += 1; return real(...args); };
+      const out = {};
+      for (const all of [false, true]) { pagesClientsAll = all; calls = 0; draw("clients"); out[all ? "all" : "work"] = calls; }
+      pagesClientsAll = false;
+      return out;
+    """, tmp_path)
+    assert clients == {"work": 1, "all": 1}
+    tip = js_function("replaceTip", "tooltip.js")
+    assert tip.index("if (tipFor === null && tipWaitFor === null) return;") < tip.index("placeTip(tipFor")
+    ran = run_shell(["replaceTip"], "let tipFor = null; let tipWaitFor = null; const calls = []; const placeTip = () => calls.push('place'); const hideTip = () => calls.push('hide'); const tipNode = () => null;\n",
+                    "replaceTip(); tipWaitFor = {}; replaceTip(); return calls;", tmp_path, "tooltip.js")
+    assert ran == ["hide"], "nothing showing or waiting: nothing; a tip waiting on its delay is still cancelled by a scroll"
+
+
+def test_dead_css_is_gone_from_style_css_and_its_restatements_with_it():
+    """N8: the spinner's keyframes, the four-column roll grid, the ``.summary``
+    colour (and the two lists in pilot-ui.css that restated it), the
+    ``.btn-primary`` block the button tokens override whole (and its one-line
+    restatement), and the 1100px rule the sheet's own grid made moot."""
+    style, ui = stripped(read("style.css")), stripped(read("pilot-ui.css"))
+    assert "@keyframes spin" not in style and ".roll-grid.four" not in style and ".summary" not in style and ".btn-primary" not in style
+    assert "max-width: 1100px" not in style
+    assert ".summary" not in ui and ".btn-primary { color" not in ui
+    assert re.search(r"\n\.btn-primary \{\s*--b-fg: var\(--on-accent\);", ui), "the primary's tokens, the one place it is drawn"
+    assert "#sheet .rem-stages { grid-template-columns: repeat(2" in read("shell.css"), "the only .rem-stages on screen is the sheet's, two columns always"
+    for name in ("index.html", "app.js", "pages.js", "shell.js", "sheet.js"):
+        assert "roll-grid four" not in read(name) and 'class="summary' not in read(name) and "animation: spin" not in read(name), name
+
+
+def test_native_controls_follow_the_theme():
+    """N9: ``color-scheme`` is light in the light block and dark in the dark one."""
+    ui = stripped(read("pilot-ui.css"))
+    light = next(body for _media, selector, body in blocks(ui) if selector.strip() == ":root" and not _media)
+    dark = next(body for media, selector, body in blocks(ui) if selector.strip() == ":root" and media == ("@media (prefers-color-scheme: dark)",))
+    assert "color-scheme: light;" in light and "color-scheme: dark;" in dark
+    assert "color-scheme: dark" not in light and "color-scheme: light" not in dark
+
+
+def test_a_list_of_one_page_draws_no_pager(tmp_path):
+    """N10: Previous and Next are drawn when there is more than one page; the
+    "Showing 1-3 of 3 Drafts" line stays either way."""
+    ran = run_lists("""
+      const buttons = (node) => node.find((one) => one.tag === "button").map((one) => one.textContent);
+      const one = pagesFoot("reminders", 1, 3, 3, 0, 1);
+      const many = pagesFoot("reminders", 1, 50, 83, 0, 2);
+      const last = pagesFoot("reminders", 51, 83, 83, 1, 2);
+      const count = (node) => node.byClass("page-count")[0].textContent;
+      return { one: [count(one), buttons(one)], many: [count(many), buttons(many)], last: [count(last), buttons(last)] };
+    """, tmp_path)
+    assert ran["one"][1] == [] and ran["one"][0].startswith("Showing 1-3 of 3")
+    assert ran["many"][1] == ["Previous", "Next"] and ran["last"][1] == ["Previous", "Next"]
+
+
+def test_the_reason_cards_sit_in_a_grid_of_full_rows():
+    """N11: three columns up to 1240px of window, six above it."""
+    css = stripped(read("shell.css"))
+    base = next(body for media, selector, body in blocks(css) if selector.strip() == ".reason-cards:not(.hidden)" and not media)
+    wide = next(body for media, selector, body in blocks(css) if selector.strip() == ".reason-cards:not(.hidden)" and media == ("@media (min-width: 1241px)",))
+    assert "display: grid;" in base and "grid-template-columns: repeat(3, minmax(0, 1fr));" in base and "flex" not in base
+    assert wide.strip() == "grid-template-columns: repeat(6, minmax(0, 1fr));"
+    card = next(body for media, selector, body in blocks(css) if selector.strip() == ".reason-card:not(.hidden)")
+    assert "min-width: 0;" in card, "a card is as wide as its column, not as wide as its words"
+
+
+def test_a_notices_closed_details_sits_on_its_line_and_an_open_one_drops_under_it():
+    """N12: closed, the summary is an item of the notice's one line (after the
+    sentence, before the buttons - the markup order drawNotice builds); open,
+    the disclosure takes the next line at the notice's width, its summary kept
+    at the right."""
+    css = stripped(read("pilot-ui.css"))
+    rules = {selector.strip(): body for media, selector, body in blocks(css) if not media}
+    closed = rules["#notices .notice-detail"]
+    assert "flex: 0 0 auto;" in closed and "order" not in closed and "padding-block" not in closed and "flex: 0 0 100%" not in closed
+    opened = rules["#notices .notice-detail[open]"]
+    assert "order: 1;" in opened and "flex: 0 0 100%;" in opened
+    assert "margin-inline-start: auto;" in rules["#notices .notice-detail[open] > summary"]
+    assert "flex-wrap: wrap" in rules["#notices .notice:has(.notice-detail)"]
+    assert 'el("span", { className: "notice-text" }, text), ...detailOf(entry), ...buttons, dismiss)' in js_function("drawNotice", "app.js")

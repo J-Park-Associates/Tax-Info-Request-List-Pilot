@@ -117,7 +117,10 @@ buttons; with 50 of 83 draws both.
 **N11. Even filter cards.** The Needs Review reason cards (`pagesReasonCards`,
 styled in `shell.css`) sit in a grid whose rows are always full: three
 columns up to 1240px of window width, six above it, so six cards are 2 × 3
-or 1 × 6 and never 4 + 2. Acceptance: a text pin on the two rules.
+or 1 × 6 and never 4 + 2. Acceptance: a text pin on the two rules. (Review
+1, note 4: the page draws "All" plus one card per reason present, so the
+count varies; a row is full only when the count is a multiple of three.
+Q8's answer, P272, redraws the page and is where this is settled.)
 
 **N12. Details on the notice's line.** A notice's closed `Details`
 summary sits at the right end of the notice's one line, before the action
