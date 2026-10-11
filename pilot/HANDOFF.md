@@ -32,19 +32,22 @@ Measured on the 500-household harness: the Clients draw 31 -> 10 ms, a search
 keystroke 9.7 -> 0.1 ms.
 
 Section 2 is the menu Jason answered on 2026-10-11, one P-row per answer
-(P265-P280). Three SPECs are being written from them and build in this order,
-each item its own sonnet build and Opus review:
+(P265-P280; P269 re-decided the same day when the Date column's real content
+came to light, and P272 reworded to one heading per return). Three SPECs are
+written from them and build in this order, each item its own sonnet build and
+Opus review:
 
 1. `SPEC-ui-menu-small.md`: P265 (Soon tag), P266 (brand band), P267
    (underline on hover), P268 (Tax Year column only when years differ), P269
-   ("Last Activity"), P270 (chevron at rest), P274 ("Sort now" button), P280
+   ("Since Mar 3" / "Due Apr 15" cells), P270 (chevron at rest), P274 ("Sort now" button), P280
    (the type stack by platform).
 2. `SPEC-ui-menu-layout.md`: P271 (Compact Rows), P272 (Needs Review as one
    flat list), P273 (notices in a right-hand panel), P275 (the household
    page's header card).
-3. `SPEC-ui-menu-speed.md`: P277 (the app watches the last-pass file), P278
-   (the engine pages the firm lists), P279 (virtualized rows), P276 (one
-   long-lived engine process; decision 193 re-read).
+3. `SPEC-ui-menu-speed.md`: P277 (the app watches the last-pass file), P279
+   (virtualized rows), P276 (one long-lived engine process; decision 193
+   re-read; passes keep their own process), P278 (the engine pages the firm
+   lists, last because its page turns become engine requests).
 
 Left from review 1 of section 1, outside its build: after a failed return
 read, Retry calls `showReturn` directly and the page keeps showing its title

@@ -15,7 +15,7 @@
     "a person sends the draft"
   ],
   "counts": {
-    "nodes": 272,
+    "nodes": 275,
     "edges": 1257,
     "reused": 219
   },
@@ -4529,15 +4529,15 @@
       "id": "pilot/DECISIONS.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "6e0558e0a80d87e1",
+      "sha256": "d08e5fde433b26e7",
       "lines": 275
     },
     {
       "id": "pilot/HANDOFF.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "89d71c7446a0ec13",
-      "lines": 124
+      "sha256": "3424c288a224f644",
+      "lines": 127
     },
     {
       "id": "pilot/README.md",
@@ -4699,6 +4699,27 @@
       "layer": "docs",
       "sha256": "f330c9bad0f4e33e",
       "lines": 228
+    },
+    {
+      "id": "pilot/SPEC-ui-menu-layout.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "8a91d454f8fb383b",
+      "lines": 1016
+    },
+    {
+      "id": "pilot/SPEC-ui-menu-small.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "cbc2feb3d2a2bad9",
+      "lines": 916
+    },
+    {
+      "id": "pilot/SPEC-ui-menu-speed.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "a44cd33c3832225d",
+      "lines": 1304
     },
     {
       "id": "pilot/SPEC-ui-polish.md",
