@@ -387,10 +387,14 @@ def a_mac(monkeypatch, tmp_path):
     platform), the scheduler is there, the account's home is a folder of the
     test's own - the agent's file lands in its ``Library/LaunchAgents`` - every
     disk is a fixed one (the disk rule is job 1's), and ``launchctl`` and
-    ``tmutil`` are the fakes above."""
+    ``tmutil`` are the fakes above. The user id is 501, a Mac's first account."""
     home = tmp_path / "home"
     home.mkdir()
+    # ``Path.home()`` reads HOME on a Mac and Linux and USERPROFILE on Windows;
+    # both are the test's own, and the user id is a seam (Windows has no getuid).
     monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("USERPROFILE", str(home))
+    monkeypatch.setattr(scheduling, "_uid", lambda: 501)
     monkeypatch.setattr(settings, "host_system", lambda: "darwin")
     monkeypatch.setattr(settings, "drive_type", lambda path: settings.DRIVE_FIXED)
     monkeypatch.setattr(scheduling, "scheduler_here", lambda: True)

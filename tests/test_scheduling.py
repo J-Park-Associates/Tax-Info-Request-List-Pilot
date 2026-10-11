@@ -150,7 +150,8 @@ def fake_schtasks(monkeypatch, *, exists=False, delete_fails=False, create_fails
             return Said(1, "ERROR: Access is denied.") if delete_fails else Said()
         return Said(1, "ERROR: Access is denied.") if create_fails else Said()
 
-    monkeypatch.setattr(settings_module, "host_system", lambda: "posix")    # Windows' scheduler, whatever this is
+    # Windows' scheduler, whatever this is; a Windows runner stays Windows.
+    monkeypatch.setattr(settings_module, "host_system", lambda: "nt" if os.name == "nt" else "posix")
     monkeypatch.setattr(scheduling, "scheduler_here", lambda: True)
     monkeypatch.setattr(scheduling, "_schtasks", answer)
     return calls
@@ -730,7 +731,7 @@ def test_a_mac_registers_through_launchctl_bootstrap(a_mac, tmp_path):
     assert scheduling.launch_agent_path() == agent and agent.is_file()
     assert not (scheduling.schedule_xml_path()).exists(), "the Windows task file is not written on a Mac"
     assert not list(agent.parent.glob("*.tmp")) and scheduling.schedule_file() == agent
-    domain = f"gui/{os.getuid()}"
+    domain = scheduling._domain()
     service = f"{domain}/{scheduling.LAUNCH_AGENT_LABEL}"
     assert a_mac.launchd.calls == [["launchctl", "bootout", service],
                                    ["launchctl", "bootstrap", domain, str(agent)],
@@ -755,9 +756,15 @@ def test_a_mac_refusal_to_load_the_agent_is_said_with_what_launchctl_said(a_mac,
         scheduling.register_here(tmp_path)
 
 
+def test_the_agents_domain_is_the_signed_in_persons_through_the_one_user_id_seam(a_mac):
+    """Windows has no ``os.getuid``; the Mac branch asks only ``scheduling._uid``."""
+    assert scheduling._domain() == "gui/501" and scheduling._service() == (
+        f"gui/501/{scheduling.LAUNCH_AGENT_LABEL}")
+
+
 def test_a_mac_asks_whether_its_agent_is_loaded_with_launchctl_print(a_mac):
     assert scheduling.task_query() == 113 and scheduling.task_exists() is False
-    assert a_mac.launchd.calls[0] == ["launchctl", "print", f"gui/{os.getuid()}/{scheduling.LAUNCH_AGENT_LABEL}"]
+    assert a_mac.launchd.calls[0] == ["launchctl", "print", scheduling._service()]
     a_mac.launchd.loaded = True
     assert scheduling.task_query() == 0 and scheduling.task_exists() is True
     a_mac.launchd.refuse["print"] = (5, "Operation not permitted")
@@ -831,7 +838,7 @@ def test_the_switch_is_read_from_the_fake_launchd_too(a_mac):
     assert scheduling.agent_switched_off() is False
     a_mac.launchd.switched_off = True
     assert scheduling.agent_switched_off() is True
-    assert a_mac.launchd.calls[-1] == ["launchctl", "print-disabled", f"gui/{os.getuid()}"]
+    assert a_mac.launchd.calls[-1] == ["launchctl", "print-disabled", scheduling._domain()]
     a_mac.launchd.refuse["print-disabled"] = (1, "Unrecognized")
     with pytest.raises(RuntimeError, match="could not list the switched-off items"):
         scheduling.agent_switched_off()
@@ -843,7 +850,7 @@ def test_the_first_pass_is_started_with_launchctl_kickstart(a_mac, tmp_path):
     scheduling.register_here(tmp_path)
     a_mac.launchd.calls.clear()
     assert scheduling.start_agent_now() == ["launchctl", "kickstart",
-                                            f"gui/{os.getuid()}/{scheduling.LAUNCH_AGENT_LABEL}"]
+                                            scheduling._service()]
     assert a_mac.launchd.verbs() == ["kickstart"]
 
 

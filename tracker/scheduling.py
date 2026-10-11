@@ -557,11 +557,18 @@ def _launchctl_or_raise(command: list[str], failure: str) -> None:
     _raise_unless_done(_launchctl(command), failure)
 
 
+def _uid() -> int:
+    """The signed-in person's user id (``os.getuid``), which only a Mac has to
+    answer. A seam, so the suite stands in for a Mac on a Windows runner, which
+    has no ``os.getuid``."""
+    return os.getuid()
+
+
 def _domain() -> str:
     """The launchd domain of the signed-in person: ``gui/<uid>``. The agent
     lives in it, so it runs only while that person is signed in - what Task
     Scheduler's ``InteractiveToken`` said."""
-    return f"gui/{os.getuid()}"
+    return f"gui/{_uid()}"
 
 
 def _service() -> str:
