@@ -13,6 +13,9 @@ contextBridge.exposeInMainWorld("tracker", {
   // asks again, so what it left is shown. What crosses is the two facts the
   // page says aloud (pilot P257): {installed, schedule_sentence}.
   onAfterInstallDone: (listener) => ipcRenderer.on("after-install-done", (_e, done) => listener(done)),
+  // The scheduled pass's file changed (P277): the listener is given nothing.
+  // The page asks the engine's `last-pass`; the file is never read here.
+  onLastPassChanged: (listener) => ipcRenderer.on("last-pass-changed", () => listener()),
   // The one menu channel (SPEC-shell 5.4). Nothing here reaches the tracker.
   menu: {
     // A menu item was chosen: {id, token}. token is the page's own, echoed.

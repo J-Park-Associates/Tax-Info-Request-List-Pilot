@@ -1496,8 +1496,8 @@ household and cannot clear it. Notices (a failure, a warning) sit in a panel at 
    app's settings folder is the scheduled job's shape, and does). The
    line follows the file by itself (pilot P256): while a scheduled pass is
    running the side panel says *Sorting* with a quiet bar, never *Sort
-   Failed*; the app looks again every few seconds while a pass runs and about
-   once a minute otherwise, and at once when the window is clicked into, and
+   Failed*; the computer tells the app the moment the file changes, and the
+   app looks again when the window is clicked into, and
    when it sees a pass has ended it reads the counts and Needs Review again
    - no **Refresh** is needed.
    - **Plain:** the schedule is running. Nothing to do.

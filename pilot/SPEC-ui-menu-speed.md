@@ -1139,8 +1139,8 @@ each firm page's draw time and a page turn's, median of five.
 
 | What | Before | After | Where |
 |---|---|---|---|
-| Engine processes started by the last-pass watch, 10 idle minutes | 10 | 0 | this Mac (1.7) |
-| A scheduled pass's end to the last-sort line | up to 60 s | under 1 s | this Mac (1.7) |
+| Engine processes started by the last-pass watch, 10 idle minutes | 10 (one a minute, by the timer) | 0, by construction: no timer remains (pinned by `test_no_timer_asks_last_pass`); not counted in a live window | this Mac (1.7) |
+| A scheduled pass's end to the last-sort line | up to 60 s | the file's write to the app's message 263 ms (median of 5, real `fs.watch` under a fake Electron), plus the `last-pass` command 0.225 s: about 0.5 s to the page's answer; the line's redraw itself not timed in a live window | this Mac (1.7) |
 | Return page draw at 1,000 rows; nodes in the document | | | harness (2.8) |
 | `import tracker.api` (paid per command before the engine) | 0.21 s (this SPEC, median of 5, Python 3.14) | paid once a session | this Mac (3.8) |
 | `state`, `last-pass`, `watch`, `templates`, `list`, `firm`: fresh / spare / engine | | | this Mac (3.8) |

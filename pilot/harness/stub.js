@@ -448,6 +448,7 @@
     logError: (text) => window.HARNESS.logged.push(text),
     onProgress: () => {},
     onAfterInstallDone: null,
+    onLastPassChanged: () => {},
     menu: {
       onCommand: (listener) => { window.HARNESS.menuListener = listener; },
       send: (message) => {

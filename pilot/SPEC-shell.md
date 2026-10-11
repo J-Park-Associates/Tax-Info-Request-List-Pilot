@@ -699,7 +699,10 @@ menu: {
   asked (or, for the menu bar, to the one window), except `exit` (role) and
   `error_log` (5.5).
 
-No command reaches the tracker through this channel: the page answers a
+The main-to-renderer channels are four: `tracker-progress`, `menu`,
+`after-install-done` and `last-pass-changed`, which carries nothing (P277).
+
+No command reaches the tracker through the `menu` channel: the page answers a
 menu id exactly as it answers a click, through `window.tracker.call`, with
 every existing check in place.
 
@@ -736,6 +739,9 @@ every existing check in place.
   sentence, a blank line, then "Tracker Failed" (`shell.no_log`, in
   ruling 10's casing). Not reduced to the two words for this pilot.
 - **Menu bar:** it stays hidden until Alt (`autoHideMenuBar`; ruling 3).
+- **The last-pass watch (P277):** `fs.watch` on the folder of the file `list`
+  names as `vocab.shell.last_pass_file`, a stat watch only where that cannot
+  be set; the file is never read here.
 - **Exit:** role `quit`.
 
 ### 5.6 Light and dark at first paint (P59, P73)
@@ -1092,7 +1098,11 @@ The file being read is never named (P63).
 
 When a scheduled pass ends, the open return page follows the reread: its
 rows are drawn again, as F5 draws them. While a sheet or a dialog is open the
-page waits, and the closing of the last one draws it (P262).
+page waits, and the closing of the last one draws it (P262). The line
+follows the last-pass file without a timer (P277): `main.js` watches the
+file's folder and tells the page when the file changes; the page then asks
+`last-pass` once - a hidden window asks when it is shown - and clicking
+into the window asks once more unless it asked in the last 5 seconds.
 
 ### 8.4 Notices
 
