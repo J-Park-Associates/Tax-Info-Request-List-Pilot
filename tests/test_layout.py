@@ -10,6 +10,7 @@ from pathlib import Path
 
 import pytest
 
+from tracker import layout
 from tracker.filer import prepared_name_for
 from tracker.layout import (
     CLIENTS_TREE,
@@ -250,17 +251,17 @@ def test_the_limit_is_260_unless_windows_holds_the_process_to_max_path(monkeypat
 
     folder = "C:/" + "f" * 230
     monkeypatch.setattr(layout, "short_paths", lambda: False)
-    assert path_limit() == MAX_PATH_LENGTH == 260 and folder_need(folder) == 0
+    assert path_limit() == MAX_PATH_LENGTH == 260 and folder_need(folder, "C:/") == 0
     monkeypatch.setattr(layout, "short_paths", lambda: True)
     assert path_limit() == 259
     assert SHORT_NAME_RESERVE == 12 and TEMP_NAME_RESERVE == 26
-    assert folder_need(folder) == len(folder) + 26
+    assert folder_need(folder, "C:/") == len(folder) + 26
     # A folder fits exactly when Windows makes it (under 248) and the
     # longest temp in it is under 260.
     widest = "/" + "x" + "." + "9" * 10 + "." + "f" * 8 + ".tmp"
     assert len(widest) == TEMP_NAME_RESERVE
     deepest = "C:/" + "f" * (path_limit() - TEMP_NAME_RESERVE - len("C:/"))
-    assert folder_need(deepest) == path_limit() and len(deepest) < 248
+    assert folder_need(deepest, "C:/") == path_limit() and len(deepest) < 248
     assert len(deepest + widest) == path_limit()
 
 
@@ -671,12 +672,11 @@ def test_a_recorded_name_keeps_no_line_or_paragraph_separator():
     assert recorded_name("a b.pdf") == "a b.pdf"
 
 
-def test_shared_tail_is_its_two_halves_and_names_one_folder_is_its_key():
+def test_shared_tail_is_its_two_halves():
     """P119: a practice-wide match makes each path's names once
-    (``tail_names``) and counts from them (``common_tail``); a walk puts
-    household names in a set by ``folder_name_key``. Each is the old rule,
-    worded once."""
-    from tracker.layout import common_tail, folder_name_key, names_one_folder, shared_tail, tail_names
+    (``tail_names``) and counts from them (``common_tail``). That is the
+    old rule, worded once."""
+    from tracker.layout import common_tail, shared_tail, tail_names
 
     paths = [str(return_dir_for(ROOT, HOUSEHOLD, 2025, RETURN)),
              str(return_dir_for(Path("E:/Archive/JPA Clients"), HOUSEHOLD, 2025, RETURN)),
@@ -684,9 +684,6 @@ def test_shared_tail_is_its_two_halves_and_names_one_folder_is_its_key():
     for a in paths:
         for b in paths:
             assert shared_tail(a, b) == common_tail(tail_names(a), tail_names(b))
-    for a in ("Park", "PARK", "park ", "Lee"):
-        for b in ("Park", "park", "Lee"):
-            assert names_one_folder(a, b) == (folder_name_key(a) == folder_name_key(b))
 
 
 # ------------------------------------------ pure answers remembered (P219) ----
@@ -735,3 +732,59 @@ def test_parts_below_never_answers_one_spelling_with_anothers_case():
     assert layout.parts_below(root, Folding("/Root/Smith")) == ("Smith",)
     assert layout.parts_below("", "a/b") == ("a", "b")
     assert layout.parts_below(Path("/Root"), "/Root/../Other") is None
+
+
+# ----------------------------- room on a Mac (SPEC-mac R9, P241, P244) ----
+
+MAC_ROOT = Path("/Users/jpark/Library/CloudStorage/GoogleDrive-jpark@jparkassociates.com"
+                "/Shared drives/JPA Clients")
+
+
+def test_a_mac_measures_room_as_if_under_the_windows_root(on_a_mac):
+    """P241 and P244: whatever the Mac's own root, a path counts as if it
+    sat under a Windows root of 48 characters (a Google Drive shared drive
+    with a 31-character name), each name below the clients root and the
+    separator before it one character - the length the same path has there."""
+    from pathlib import PureWindowsPath
+
+    windows_root = PureWindowsPath("G:/Shared drives/" + "x" * 31)
+    assert layout.WINDOWS_ROOT_LENGTH == len(str(windows_root)) == 48
+
+    engagement = return_dir_for(MAC_ROOT, HOUSEHOLD, 2026, RETURN)
+    copy = engagement / PREPARED_DIR_NAME / "A01 - W-2 Wage Statements - TY2026.pdf"
+    for path in (MAC_ROOT, engagement, copy):
+        windows = windows_root.joinpath(*path.relative_to(MAC_ROOT).parts)
+        assert layout.measured_length(path, MAC_ROOT) == len(str(windows))
+    assert layout.measured_length(MAC_ROOT, MAC_ROOT) == 48
+    assert len(str(copy)) != layout.measured_length(copy, MAC_ROOT), "not the absolute length"
+
+    # The Windows default, with its reserves, and the Windows numbers.
+    assert layout.short_paths() and path_limit() == 259
+    review = engagement / PREPARED_DIR_NAME / "00 - Needs Review"
+    assert folder_need(review, MAC_ROOT) == layout.measured_length(review, MAC_ROOT) + 26
+    assert deepest_path_length(engagement, [f"{PREPARED_DIR_NAME}/{copy.name}"]) == \
+        layout.measured_length(copy, MAC_ROOT)
+    assert layout.local_limit(copy, MAC_ROOT) == 259 - (
+        layout.measured_length(copy, MAC_ROOT) - len(str(copy)))
+
+    # A path outside the clients root has no Windows spelling: loud, never a guess.
+    with pytest.raises(ValueError, match="not under the clients root"):
+        layout.measured_length("/elsewhere/file.pdf", MAC_ROOT)
+
+
+def test_off_a_mac_room_is_the_absolute_length_of_a_path():
+    """The suite pins ``layout.on_a_mac`` off (the conftest fixture): the
+    same claim on Linux, a Mac and Windows, so no root-length test changes
+    its meaning with the machine it runs on."""
+    engagement = return_dir_for(MAC_ROOT, HOUSEHOLD, 2026, RETURN)
+    copy = engagement / PREPARED_DIR_NAME / "A01.pdf"
+    assert layout.measured_length(copy, MAC_ROOT) == len(str(copy))
+    assert layout.measured_length(copy, "/not/its/root") == len(str(copy))
+    assert layout.local_limit(copy, MAC_ROOT) == path_limit()
+    assert layout.short_paths() is (os.name == "nt" and not layout._long_paths_on())
+    assert layout.room_root(Path("a/b")) == Path("a/b"), "no root is looked for where none is used"
+
+
+def test_a_mac_finds_the_clients_root_positionally(on_a_mac):
+    engagement = return_dir_for(MAC_ROOT, HOUSEHOLD, 2026, RETURN)
+    assert layout.room_root(engagement) == MAC_ROOT

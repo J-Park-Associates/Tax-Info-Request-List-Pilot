@@ -18,7 +18,7 @@
 ::selection { background: var(--bg-selected); color: var(--text); }
 input, textarea, select { caret-color: var(--text); accent-color: var(--accent); }
 #page, #sheet-body, .modal { scrollbar-color: var(--scroll-thumb) transparent; }
-.tabular, .side-count, .group-count, .list-count, .row-date, .row-year, .head-year, .figure-number, .last-sort-text, .page-count, .reason-card-number, .switch-count, .group-docs, #sc-next {
+.side-count, .group-count, .list-count, .row-date, .row-year, .head-year, .figure-number, .last-sort-text, .page-count, .reason-card-number, .switch-count, .group-docs, #sc-next {
   font-variant-numeric: tabular-nums;
 }
 :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
@@ -327,7 +327,6 @@ input, textarea, select { caret-color: var(--text); accent-color: var(--accent);
   stroke-linejoin: round;
 }
 .icon-small { width: calc(var(--size-icon) - var(--sp-1)); height: calc(var(--size-icon) - var(--sp-1)); }
-.icon-fill { fill: currentColor; stroke: none; }
 
 /* ── Notices (SPEC 3.5): one line each, in the kind's tokens ─────────── */
 

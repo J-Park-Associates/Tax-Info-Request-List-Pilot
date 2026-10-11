@@ -822,9 +822,9 @@ def person_from_json(raw: object) -> Person:
     return Person(kind=kind, name=str(raw.get("name", "")), spellings=listed)
 
 
-def people_from_json(raw: object) -> tuple[Person, ...]:
-    """A return's people as the record holds them: a list of objects from a
-    journal line, or the JSON text one column holds.
+def _objects_from_json(raw: object, one, what: str) -> tuple:
+    """A list of ``what`` as the record holds it: a list of objects from a
+    journal line, or the JSON text one column holds, each read by ``one``.
 
     SQLite cannot tell a JSON array in a text column from a string, so the
     text is read back here for the same reason a rule row's keywords are
@@ -835,8 +835,13 @@ def people_from_json(raw: object) -> tuple[Person, ...]:
     if isinstance(raw, str):
         raw = json.loads(raw)
     if not isinstance(raw, (list, tuple)):
-        raise ValueError(f"the people are {type(raw).__name__}, not a list")
-    return tuple(person_from_json(one) for one in raw)
+        raise ValueError(f"the {what} are {type(raw).__name__}, not a list")
+    return tuple(one(item) for item in raw)
+
+
+def people_from_json(raw: object) -> tuple[Person, ...]:
+    """A return's people as the record holds them (:func:`_objects_from_json`)."""
+    return _objects_from_json(raw, person_from_json, "people")
 
 
 # ------------------------------------------------------------ engagement ----
@@ -1000,8 +1005,11 @@ DATE_FIELDS: tuple[str, ...] = ("due", "filing_deadline")
 assert set(DATE_FIELDS) <= {field_name for _, field_name in ENGAGEMENT_FIELDS}
 
 
-def info_to_json(info: EngagementInfo) -> dict:
+def info_to_json(info: EngagementInfo, *, blank_date: str | None = None) -> dict:
     """The engagement's details as they are stored: the fields, the dates as text.
+
+    A date nobody set is ``None`` in the record; the app's renderer puts a
+    date straight into a date box, so it asks for ``blank_date=""``.
 
     The shape a ``rules_changed`` event carries the engagement's own
     details in (and a ``rules_imported`` line from before decision 104),
@@ -1011,7 +1019,7 @@ def info_to_json(info: EngagementInfo) -> dict:
     payload = asdict(info)
     for name in DATE_FIELDS:
         value = getattr(info, name)
-        payload[name] = value.isoformat() if value else None
+        payload[name] = value.isoformat() if value else blank_date
     # The people as a list of objects, through their own writer, so the
     # journal's line and the store's column hold exactly one shape
     # (``asdict`` would give the same keys and no owner for them).
@@ -1106,20 +1114,8 @@ def feed_from_json(raw: object) -> Feed:
 
 
 def feeds_from_json(raw: object) -> tuple[Feed, ...]:
-    """A household's feed list as the record holds it: a list of objects
-    from a journal line, or the JSON text one column holds.
-
-    SQLite cannot tell a JSON array in a text column from a string, so the
-    text is read back here for the same reason the people are
-    (:func:`people_from_json`).
-    """
-    if raw in (None, "", ()):
-        return ()
-    if isinstance(raw, str):
-        raw = json.loads(raw)
-    if not isinstance(raw, (list, tuple)):
-        raise ValueError(f"the feeds are {type(raw).__name__}, not a list")
-    return tuple(feed_from_json(one) for one in raw)
+    """A household's feed list as the record holds it (:func:`_objects_from_json`)."""
+    return _objects_from_json(raw, feed_from_json, "feeds")
 
 
 @dataclass(frozen=True, slots=True)

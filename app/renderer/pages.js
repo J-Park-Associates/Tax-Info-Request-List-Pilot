@@ -535,8 +535,7 @@ function pagesStatusCell(spec) {
 }
 
 function pagesStepWords(step) {
-  const steps = screenWords().steps;
-  return { open: steps.open, check: steps.check, draft: steps.draft, edit: steps.edit }[step.kind];
+  return screenWords().steps[step.kind];
 }
 
 // `byKey`: the keyboard made the row active, so its status's tooltip - the
@@ -550,7 +549,6 @@ function pagesActivate(list, row, byKey) {
   row.setAttribute("aria-selected", "true");
   list.setAttribute("aria-activedescendant", row.id);
   if (row.scrollIntoView) row.scrollIntoView({ block: "nearest" });
-  if (typeof showTipNow !== "function") return;
   hideTip();
   const status = byKey ? row.querySelector(".row-status [data-tip], .row-status[data-tip]") : null;
   if (status) showTipNow(status);
@@ -573,11 +571,9 @@ function pagesRunStep(step) {
   else if (step.kind === "edit") {
     if (!locked) openEditor(step.identifier);
   } else if (step.kind === "check") {
-    if (typeof openCheck === "function") openCheck(step.ret, step.name, step.handle);
-    else unanswered("check");
+    openCheck(step.ret, step.name, step.handle);
   } else if (step.kind === "draft") {
-    if (typeof openReminder === "function") openReminder(step.ret);
-    else unanswered("draft_reminder");
+    openReminder(step.ret);
   }
 }
 
@@ -785,11 +781,7 @@ function pagesOrderBy(list, cell) {
   else if (now.dir > 0) held[list] = { cell, dir: -1 };
   else delete held[list];
   pagesSaveOrder();
-  delete pagesPageAt[list];      // any change of order returns to page 1 (P174)
-  const page = $("page");
-  pagesDraw(shellRoute, page);
-  const again = page.querySelector(`.col-head[data-cell="${cell}"]`);
-  if (again) again.focus();
+  pagesRedraw(list, `.col-head[data-cell="${cell}"]`);   // any change of order returns to page 1 (P174)
 }
 
 // The header row of a list: one `role="columnheader"` cell per column in the
@@ -885,17 +877,13 @@ function pagesColumnKey(e) {
 function pagesStoredOrder() {
   if (pagesOrder) return pagesOrder;
   pagesOrder = {};
-  try {
-    const held = JSON.parse(window.localStorage.getItem(PAGES_ORDER_KEY) || "{}");
-    if (held && typeof held === "object" && !Array.isArray(held)) {
-      for (const [list, one] of Object.entries(held)) {
-        const columns = PAGES_COLUMNS[list];
-        if (columns && one && typeof one === "object" && Object.prototype.hasOwnProperty.call(columns, one.cell)
-            && columns[one.cell] && (one.dir === 1 || one.dir === -1)) pagesOrder[list] = { cell: one.cell, dir: one.dir };
-      }
+  const held = storeRead(PAGES_ORDER_KEY, true);   // nothing held: every list in its usual order
+  if (held && typeof held === "object" && !Array.isArray(held)) {
+    for (const [list, one] of Object.entries(held)) {
+      const columns = PAGES_COLUMNS[list];
+      if (columns && one && typeof one === "object" && Object.prototype.hasOwnProperty.call(columns, one.cell)
+          && columns[one.cell] && (one.dir === 1 || one.dir === -1)) pagesOrder[list] = { cell: one.cell, dir: one.dir };
     }
-  } catch (err) {
-    // Unreadable or not JSON: every list in its usual order, which pagesOrder now holds.
   }
   return pagesOrder;
 }
@@ -903,11 +891,7 @@ function pagesStoredOrder() {
 // Kept on this PC; a profile that refuses the write keeps the order while
 // the app is open.
 function pagesSaveOrder() {
-  try {
-    window.localStorage.setItem(PAGES_ORDER_KEY, JSON.stringify(pagesStoredOrder()));
-  } catch (err) {
-    // Not kept past a restart; the order holds while the app is open.
-  }
+  storeWrite(PAGES_ORDER_KEY, JSON.stringify(pagesStoredOrder()));
 }
 
 // The widths this PC holds, read once. Storage that cannot be read (a locked
@@ -915,13 +899,8 @@ function pagesSaveOrder() {
 // a fact about a return, and the page works the same without it.
 function pagesStoredWidths() {
   if (pagesWidths) return pagesWidths;
-  pagesWidths = {};
-  try {
-    const held = JSON.parse(window.localStorage.getItem(PAGES_WIDTHS_KEY) || "{}");
-    if (held && typeof held === "object" && !Array.isArray(held)) pagesWidths = held;
-  } catch (err) {
-    // Unreadable or not JSON: the usual widths, which pagesWidths now holds.
-  }
+  const held = storeRead(PAGES_WIDTHS_KEY, true);
+  pagesWidths = held && typeof held === "object" && !Array.isArray(held) ? held : {};
   return pagesWidths;
 }
 
@@ -949,11 +928,7 @@ function pagesSetWidth(list, cell, px) {
 // Kept on this PC; a profile that refuses the write keeps the width while
 // the app is open, as the read above does.
 function pagesSaveWidths() {
-  try {
-    window.localStorage.setItem(PAGES_WIDTHS_KEY, JSON.stringify(pagesStoredWidths()));
-  } catch (err) {
-    // Not kept past a restart; the width holds while the app is open.
-  }
+  storeWrite(PAGES_WIDTHS_KEY, JSON.stringify(pagesStoredWidths()));
 }
 
 // The list's widths on the page (the tokens the rows' grid reads), or the
@@ -969,11 +944,7 @@ function pagesApplyWidths(page, list) {
 // View › Reset Column Widths: every list back to the usual widths.
 function pagesResetWidths() {
   pagesWidths = {};
-  try {
-    window.localStorage.removeItem(PAGES_WIDTHS_KEY);
-  } catch (err) {
-    // Nothing held to forget: the usual widths are what the page now shows.
-  }
+  storeWrite(PAGES_WIDTHS_KEY, null);
   pagesApplyWidths($("page"), pagesListOf(shellRoute));
 }
 
@@ -1040,21 +1011,32 @@ function pagesTurn(list, by, key) {
 // to the control that was pressed (found by its data-pick).
 function pagesPick(list, set, pick) {
   set();
+  pagesRedraw(list, `[data-pick="${pick}"]`);
+}
+
+// The list starts again at its first page and the page is drawn again, with
+// focus back on the control (`selector`) that was pressed.
+function pagesRedraw(list, selector) {
   delete pagesPageAt[list];
   const page = $("page");
   pagesDraw(shellRoute, page);
-  const again = page.querySelector(`[data-pick="${pick}"]`);
+  const again = page.querySelector(selector);
   if (again) again.focus();
+}
+
+// A button that is pressed or not and picks one choice of a list's filter
+// (a tab, a reason card, a switch option): `set` makes the choice and the
+// redraw puts focus back on the button by its data-pick.
+function pagesPickButton(list, className, pressed, pick, set, ...children) {
+  const node = h("button", { type: "button", className, "aria-pressed": pressed ? "true" : "false", dataset: { pick } }, ...children);
+  node.addEventListener("click", () => pagesPick(list, set, pick));
+  return node;
 }
 
 // Overview's filter tabs: All, Need You (n), Waiting (n) (P145).
 function pagesTabs(need, waiting) {
   const words = screenWords();
-  const tab = (key, label) => {
-    const node = h("button", { type: "button", className: "switch-option", "aria-pressed": pagesTab === key ? "true" : "false", dataset: { pick: `tab-${key}` } }, label);
-    node.addEventListener("click", () => pagesPick("overview", () => { pagesTab = key; }, `tab-${key}`));
-    return node;
-  };
+  const tab = (key, label) => pagesPickButton("overview", "switch-option", pagesTab === key, `tab-${key}`, () => { pagesTab = key; }, label);
   return h("div", { className: "switch is-tabs", role: "group", "aria-label": words.work },
     tab("all", words.filters.all), tab("need", fill(words.tabs.need, { n: need })), tab("waiting", fill(words.tabs.waiting, { n: waiting })));
 }
@@ -1199,13 +1181,9 @@ function pagesFileCount(n) {
 // reason present with its count, each a filter (aria-pressed).
 function pagesReasonCards(counts, total) {
   const words = screenWords();
-  const card = (code, label, n, name) => {
-    const node = h("button", { type: "button", className: "reason-card", "aria-pressed": pagesReasonPick === code ? "true" : "false", dataset: { pick: `reason-${code || "all"}` } },
-      h("span", { className: "reason-card-top" }, name ? h("span", { className: "reason-card-icon is-attention" }, icon(name, true)) : null, h("span", { className: "reason-card-word" }, label)),
-      h("b", { className: "reason-card-number" }, String(n)));
-    node.addEventListener("click", () => pagesPick("needs_review", () => { pagesReasonPick = code; }, `reason-${code || "all"}`));
-    return node;
-  };
+  const card = (code, label, n, name) => pagesPickButton("needs_review", "reason-card", pagesReasonPick === code, `reason-${code || "all"}`, () => { pagesReasonPick = code; },
+    h("span", { className: "reason-card-top" }, name ? h("span", { className: "reason-card-icon is-attention" }, icon(name, true)) : null, h("span", { className: "reason-card-word" }, label)),
+    h("b", { className: "reason-card-number" }, String(n)));
   const reasons = [...counts.entries()].map(([code, n]) => [code, pagesReason(code), n]).sort((a, b) => b[2] - a[2] || pagesByName(a[1], b[1]));
   return h("div", { className: "reason-cards", role: "group", "aria-label": words.sections.needs_review },
     card("", words.filters.all, total, ""), ...reasons.map(([code, label, n]) => card(code, label, n, PAGES_REASON_ICONS[code] || "alert")));
@@ -1334,12 +1312,8 @@ function pagesClientSpecs(firm, all) {
 // The Clients switch: Work Waiting (with its count, P153) and All.
 function pagesSwitch(work) {
   const words = screenWords().filters;
-  const option = (label, all, count) => {
-    const node = h("button", { type: "button", className: "switch-option", "aria-pressed": pagesClientsAll === all ? "true" : "false", dataset: { pick: all ? "all" : "work" } },
-      label, count === undefined ? null : h("span", { className: "switch-count" }, String(count)));
-    node.addEventListener("click", () => pagesPick("clients", () => { pagesClientsAll = all; }, all ? "all" : "work"));
-    return node;
-  };
+  const option = (label, all, count) => pagesPickButton("clients", "switch-option", pagesClientsAll === all, all ? "all" : "work", () => { pagesClientsAll = all; },
+    label, count === undefined ? null : h("span", { className: "switch-count" }, String(count)));
   return h("div", { className: "switch", role: "group", "aria-label": screenWords().sections.clients }, option(words.work, false, work), option(words.all, true));
 }
 
@@ -1748,7 +1722,7 @@ function pagesDraw(route, page) {
   // review's S2): it is opened again on the same household's mark, or, when
   // that mark is gone, focus goes to the page's list rather than be lost.
   const panel = pagesPanel && route.level === pagesLastLevel ? { owner: pagesPanel.owner } : null;
-  if (typeof pagesClosePanel === "function") pagesClosePanel(false);
+  pagesClosePanel(false);
   pagesLastLevel = route.level;
   const key = pagesRouteKey(route);
   if (pagesDrawn !== key) pagesSetAsideOpen = false;   // Set aside is shut each time the page opens

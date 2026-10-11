@@ -35,6 +35,7 @@ it imports.
 
 from __future__ import annotations
 
+import argparse
 import os
 from pathlib import Path
 
@@ -124,6 +125,30 @@ def household_dir(given: Path | str, *, root: Path | str | None = None) -> Path:
     :func:`return_dir` rebuilds a return."""
     base = _base(given, root, 2)
     return layout.private_household_dir(base, layout.household_at(base, _placed(given, base)))
+
+
+def typed_return(parser: argparse.ArgumentParser, typed: Path | str) -> Path:
+    """The return a command line was handed, parsed and never trusted
+    (decision 188): :func:`return_dir` of its absolute path, or the door's
+    own sentence through ``parser.error``, which exits. The one block every
+    module's command line that takes a return's folder used to copy."""
+    try:
+        return return_dir(Path(typed).absolute())
+    except (DoorError, layout.LayoutError) as exc:
+        parser.error(str(exc))
+
+
+def typed_household_or_return(parser: argparse.ArgumentParser, typed: Path | str) -> Path:
+    """As :func:`typed_return`, for a command line that takes either a
+    household's folder or one of its returns (the rollover's): the household
+    first, else the return."""
+    try:
+        try:
+            return household_dir(Path(typed).absolute())
+        except ValueError:
+            return return_dir(Path(typed).absolute())
+    except (DoorError, layout.LayoutError) as exc:
+        parser.error(str(exc))
 
 
 def through_a_link(path: Path | str, root: Path | str) -> bool:

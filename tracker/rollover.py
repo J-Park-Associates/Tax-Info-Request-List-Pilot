@@ -183,7 +183,6 @@ class RolledItem:
     origin: str
     note: str = ""
     prior_status: str = ""
-    prior_file_count: int | None = None
 
 
 @dataclass(slots=True)
@@ -493,7 +492,7 @@ def roll_forward(
         report.rolled.append(
             RolledItem(
                 item=item, origin=origin, note=note,
-                prior_status=prior.status, prior_file_count=prior.file_count,
+                prior_status=prior.status,
             )
         )
 
@@ -984,14 +983,8 @@ if __name__ == "__main__":
     # own names - a folder in the client tree is neither, whatever journal
     # somebody put in it.
     from tracker import door
-    from tracker.layout import LayoutError
-    try:
-        try:
-            given = door.household_dir(Path(ns.folder).absolute())
-        except ValueError:
-            given = door.return_dir(Path(ns.folder).absolute())
-    except (door.DoorError, LayoutError) as exc:     # the door's own sentences
-        parser.error(str(exc))
+
+    given = door.typed_household_or_return(parser, ns.folder)
     if not ledger.path_for(given).is_file():
         parser.error(f"no record in {given}")
     store.follow_the_journal(store.connect(), store.root_for(given), given)

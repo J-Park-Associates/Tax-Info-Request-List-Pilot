@@ -30,10 +30,17 @@ from tracker.registry import (
     UNLISTED,
     Engagement,
     RegistryError,
+    _walk_root,
     discover_engagements,
-    engagement_dirs,
 )
 from tracker.scaffold import PREPARED_DIR_NAME
+
+
+def engagement_dirs(root):
+    """Every return folder under ``root`` in the walk's order: the fourth
+    level below the root and nothing else, as the registry's own walk
+    reads it (``registry._walk_root``)."""
+    return _walk_root(Path(root)).returns
 
 ITEMS = [RequestItem(identifier="A01", document="W-2")]
 

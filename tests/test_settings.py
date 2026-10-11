@@ -7,6 +7,7 @@ empty folder for the run to walk for ever.
 
 import errno
 import json
+import shutil
 from pathlib import Path
 
 import pytest
@@ -374,8 +375,8 @@ def _fixed(_path):
     return data_rules.DRIVE_FIXED
 
 
-def _resolve(environ, *, windows=False, home=None, program=(), drive_type=_fixed):
-    return data_rules.resolve_data_home(environ, windows=windows, home=home, program=program,
+def _resolve(environ, *, system="posix", home=None, program=(), drive_type=_fixed):
+    return data_rules.resolve_data_home(environ, system=system, home=home, program=program,
                                         drive_type=drive_type)
 
 
@@ -389,21 +390,21 @@ def _refused(sentence, **kwargs):
 def test_the_data_home_is_the_accounts_own_local_application_data_folder(tmp_path):
     local = tmp_path / "Local"
     local.mkdir()
-    assert _resolve({"LOCALAPPDATA": str(local)}, windows=True) == local / data_rules.DATA_HOME_NAME
+    assert _resolve({"LOCALAPPDATA": str(local)}, system="nt") == local / data_rules.DATA_HOME_NAME
 
 
 def test_a_missing_local_application_data_is_refused_and_nothing_falls_back_to_the_program_or_temp(
         tmp_path):
     a_file = tmp_path / "not-a-folder"
     a_file.write_text("", encoding="utf-8")
-    _refused(data_rules.NO_LOCAL_APPDATA, environ={}, windows=True)
-    _refused(data_rules.NO_LOCAL_APPDATA, environ={"LOCALAPPDATA": "  "}, windows=True)
+    _refused(data_rules.NO_LOCAL_APPDATA, environ={}, system="nt")
+    _refused(data_rules.NO_LOCAL_APPDATA, environ={"LOCALAPPDATA": "  "}, system="nt")
     for named in ("AppData/Local", str(a_file), str(tmp_path / "gone")):
         _refused(data_rules.LOCAL_APPDATA_NOT_A_FOLDER.format(folder=named),
-                 environ={"LOCALAPPDATA": named}, windows=True)
+                 environ={"LOCALAPPDATA": named}, system="nt")
     # Even with a home folder and a state folder to hand, Windows never
     # borrows them: the answer is LOCALAPPDATA's or nothing.
-    _refused(data_rules.NO_LOCAL_APPDATA, environ={"XDG_STATE_HOME": str(tmp_path)}, windows=True,
+    _refused(data_rules.NO_LOCAL_APPDATA, environ={"XDG_STATE_HOME": str(tmp_path)}, system="nt",
              home=tmp_path)
 
 
@@ -413,7 +414,7 @@ def test_a_data_home_override_must_be_a_whole_path(tmp_path):
     mine = tmp_path / "somewhere" / "of-its-own"
     assert _resolve({data_rules.ENV_DATA_HOME: str(mine)}) == mine
     assert _resolve({data_rules.ENV_DATA_HOME: str(mine), "LOCALAPPDATA": str(tmp_path)},
-                    windows=True) == mine                      # the override wins on Windows too
+                    system="nt") == mine                      # the override wins on Windows too
     assert _resolve({data_rules.ENV_DATA_HOME: "  "}, home=tmp_path) == (
         tmp_path / ".local" / "state" / data_rules.DATA_HOME_NAME)   # blank is unset
 
@@ -522,7 +523,7 @@ def test_a_redirected_data_folder_is_refused_by_name(tmp_path, monkeypatch, unas
     local = _local(tmp_path)
     monkeypatch.setattr(data_rules, "redirect_probe", lambda _local: PACKAGE)
     with pytest.raises(SettingsError) as caught:
-        data_rules._the_data_home({"LOCALAPPDATA": str(local)}, windows=True)
+        data_rules._the_data_home({"LOCALAPPDATA": str(local)}, system="nt")
     assert str(caught.value) == data_rules.DATA_HOME_REDIRECTED.format(package=PACKAGE,
                                                                         product=data_rules.product_name())
     assert PACKAGE in str(caught.value) and "Start menu" in str(caught.value)
@@ -531,7 +532,7 @@ def test_a_redirected_data_folder_is_refused_by_name(tmp_path, monkeypatch, unas
 def test_an_unredirected_data_folder_is_answered_as_before(tmp_path, monkeypatch, unasked):
     local = _local(tmp_path)
     monkeypatch.setattr(data_rules, "redirect_probe", lambda _local: None)
-    assert data_rules._the_data_home({"LOCALAPPDATA": str(local)}, windows=True) == (
+    assert data_rules._the_data_home({"LOCALAPPDATA": str(local)}, system="nt") == (
         local / data_rules.DATA_HOME_NAME)
 
 
@@ -544,8 +545,8 @@ def test_a_named_data_folder_is_never_probed(tmp_path, monkeypatch, unasked):
     monkeypatch.setattr(data_rules, "redirect_probe", never)
     mine = tmp_path / "of-its-own"
     assert data_rules._the_data_home({data_rules.ENV_DATA_HOME: str(mine),
-                                      "LOCALAPPDATA": str(_local(tmp_path))}, windows=True) == mine
-    assert data_rules._the_data_home({"XDG_STATE_HOME": str(tmp_path / "state")}, windows=False) == (
+                                      "LOCALAPPDATA": str(_local(tmp_path))}, system="nt") == mine
+    assert data_rules._the_data_home({"XDG_STATE_HOME": str(tmp_path / "state")}, system="posix") == (
         tmp_path / "state" / data_rules.DATA_HOME_NAME)
     assert data_rules._redirect_answer is data_rules._UNASKED
 
@@ -561,7 +562,7 @@ def test_the_probe_runs_once_a_process(tmp_path, monkeypatch, unasked):
     environ = {"LOCALAPPDATA": str(_local(tmp_path))}
     for _ in range(3):
         with pytest.raises(SettingsError):
-            data_rules._the_data_home(environ, windows=True)
+            data_rules._the_data_home(environ, system="nt")
     assert len(asked) == 1
 
 
@@ -650,7 +651,7 @@ def test_a_redirected_data_folder_is_refused_by_its_own_kind_of_settings_error(t
     other data-home refusal by its class, not by its words."""
     monkeypatch.setattr(data_rules, "redirect_probe", lambda _local: PACKAGE)
     with pytest.raises(data_rules.DataHomeRedirected):
-        data_rules._the_data_home({"LOCALAPPDATA": str(_local(tmp_path))}, windows=True)
+        data_rules._the_data_home({"LOCALAPPDATA": str(_local(tmp_path))}, system="nt")
 
 
 def test_no_packages_folder_names_no_copy(tmp_path):
@@ -674,20 +675,6 @@ def test_the_earlier_product_name_is_the_pilots_old_name_not_the_current_or_prod
     assert data_rules.EARLIER_PRODUCT_NAME == "Tax Document Tracker Pilot"
     assert data_rules.EARLIER_PRODUCT_NAME != data_rules.product_name()
     assert data_rules.EARLIER_PRODUCT_NAME != "Tax Document Tracker"
-
-
-def test_the_earlier_settings_path_is_under_local_app_data_programs(tmp_path, monkeypatch):
-    """Where the earlier installer put the program, and settings.json beside
-    it; None where there is no LOCALAPPDATA to look in."""
-    from pathlib import Path
-
-    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
-    assert data_rules.earlier_settings_path() == (
-        Path(tmp_path) / "Programs" / data_rules.EARLIER_PRODUCT_NAME / SETTINGS_FILENAME)
-    monkeypatch.setenv("LOCALAPPDATA", "")
-    assert data_rules.earlier_settings_path() is None
-    monkeypatch.delenv("LOCALAPPDATA")
-    assert data_rules.earlier_settings_path() is None
 
 
 def test_the_data_folder_keeps_its_name_through_the_rename():
@@ -1089,3 +1076,250 @@ def test_held_never_keeps_an_error():
         assert data_rules.held(("flaky",), failing) == "answered"
         assert data_rules.held(("flaky",), failing) == "answered"
     assert len(calls) == 2
+
+
+# ------------------------------------------------------ a Mac (SPEC-mac R1-R6) ----
+
+
+@pytest.fixture
+def a_mac(monkeypatch):
+    """This process, standing in for a Mac: the one seam every darwin branch
+    of settings reads when called (``host_system``), never the platform."""
+    monkeypatch.setattr(data_rules, "host_system", lambda: "darwin")
+
+
+def test_a_mac_keeps_its_data_in_application_support(tmp_path):
+    home = tmp_path / "home"
+    assert _resolve({}, system="darwin", home=home) == (
+        home / "Library" / "Application Support" / data_rules.DATA_HOME_NAME)
+    _refused(data_rules.NO_HOME, environ={}, system="darwin", home=None)
+    # An override still wins, as on every system, and is held to the same checks.
+    mine = tmp_path / "of-its-own"
+    assert _resolve({data_rules.ENV_DATA_HOME: str(mine)}, system="darwin", home=home) == mine
+    around = home / "Library"
+    _refused(data_rules.DATA_HOME_BESIDE_PROGRAM.format(home=home / "Library" / "Application Support"
+                                                        / data_rules.DATA_HOME_NAME, program=around),
+             environ={}, system="darwin", home=home, program=[around])
+
+
+def test_a_mac_never_reads_xdg_state_home(tmp_path):
+    home = tmp_path / "home"
+    state = tmp_path / "state"
+    assert _resolve({"XDG_STATE_HOME": str(state)}, system="darwin", home=home) == (
+        home / "Library" / "Application Support" / data_rules.DATA_HOME_NAME)
+    # Linux still does, so the seam is the whole difference.
+    assert _resolve({"XDG_STATE_HOME": str(state)}, system="posix", home=home) == (
+        state / data_rules.DATA_HOME_NAME)
+
+
+def test_a_packaged_mac_keeps_its_settings_outside_the_bundle(tmp_path, monkeypatch, a_mac):
+    home = tmp_path / "home"
+    bundle = tmp_path / "Applications" / "Tax Document Console.app"
+    executable = bundle / "Contents" / "Resources" / "tracker-api" / "tracker-api"
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.delenv(ENV_SETTINGS_DIR, raising=False)
+    monkeypatch.setattr("sys.frozen", True, raising=False)
+    monkeypatch.setattr("sys.executable", str(executable))
+
+    expected = home / "Library" / "Application Support" / data_rules.product_name()
+    assert data_rules.settings_dir() == expected
+    assert not data_rules._inside(data_rules.settings_dir(), bundle)
+    assert data_rules.mac_settings_dir(home) == expected
+    # The shell's own word for it still wins, as on Windows.
+    monkeypatch.setenv(ENV_SETTINGS_DIR, str(tmp_path / "told"))
+    assert data_rules.settings_dir() == tmp_path / "told"
+    # Source checkouts and other systems are untouched.
+    monkeypatch.delenv(ENV_SETTINGS_DIR)
+    monkeypatch.setattr("sys.frozen", False, raising=False)
+    assert data_rules.settings_dir() == Path(data_rules.__file__).resolve().parent.parent
+
+
+def test_a_mac_bundle_is_the_program_folder(tmp_path, monkeypatch, a_mac):
+    bundle = tmp_path / "Applications" / "Tax Document Console.app"
+    executable = bundle / "Contents" / "Resources" / "tracker-api" / "tracker-api"
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    monkeypatch.delenv(ENV_SETTINGS_DIR, raising=False)
+    monkeypatch.setattr("sys.frozen", True, raising=False)
+    monkeypatch.setattr("sys.executable", str(executable))
+
+    assert data_rules.app_dir() == bundle.resolve()
+    # The settings folder is outside it, so the bundle alone is the program.
+    assert data_rules.program_folders() == [bundle.resolve()]
+    assert data_rules.inside_the_app(bundle / "Contents" / "Info.plist")
+    # A root holding the bundle is refused by the sentence that names the app.
+    rules = dict(settings=data_rules.settings_dir().resolve(), app=data_rules.app_dir(),
+                 system=Path("/"))
+    assert data_rules.root_refusal(bundle.parent, **rules, host="darwin", home=tmp_path / "home") == (
+        data_rules.ROOT_HOLDS_APP.format(root=bundle.parent, app=bundle.resolve()))
+    # A bare folder that is no bundle is its own program folder, as on Windows.
+    bare = tmp_path / "tracker-api"
+    monkeypatch.setattr("sys.executable", str(bare / "tracker-api"))
+    assert data_rules.app_dir() == bare.resolve()
+
+
+def test_a_mac_volume_is_judged_by_its_mount(tmp_path, monkeypatch, a_mac):
+    seen = []
+    mounts = {"remote": (0, "/Volumes/Firm Share"), "also remote": (0, "/"),
+              "disk image": (data_rules.MNT_LOCAL, "/Volumes/Tax Document Console"),
+              "second volume": (data_rules.MNT_LOCAL | 0x1, "/Volumes"),
+              "startup volume": (data_rules.MNT_LOCAL, "/System/Volumes/Data"),
+              "the root": (data_rules.MNT_LOCAL, "/"),
+              "failed": None}
+    kinds = {"remote": data_rules.DRIVE_REMOTE, "also remote": data_rules.DRIVE_REMOTE,
+             "disk image": data_rules.DRIVE_REMOVABLE, "second volume": data_rules.DRIVE_REMOVABLE,
+             "startup volume": data_rules.DRIVE_FIXED, "the root": data_rules.DRIVE_FIXED,
+             "failed": data_rules.DRIVE_UNKNOWN}
+    for name, answer in mounts.items():
+        def statfs(path, answer=answer):
+            seen.append(path)
+            return answer
+        monkeypatch.setattr(data_rules, "_statfs", statfs)
+        assert data_rules.drive_type(tmp_path) == kinds[name], name
+    # A folder not made yet is asked by the nearest one above it that is there.
+    seen.clear()
+    data_rules.drive_type(tmp_path / "not" / "yet" / "made")
+    assert seen == [tmp_path]
+    # Every existing caller keeps its sentence: a disk image refuses the data home.
+    monkeypatch.setattr(data_rules, "_statfs", lambda path: (data_rules.MNT_LOCAL, "/Volumes/Backup"))
+    _refused(data_rules.DATA_HOME_NOT_LOCAL.format(home=tmp_path / "d"),
+             environ={data_rules.ENV_DATA_HOME: str(tmp_path / "d")}, system="darwin",
+             drive_type=data_rules.drive_type)
+
+
+def test_a_data_home_in_a_synced_tree_is_refused(tmp_path):
+    home = tmp_path / "home"
+    storage = home / "Library" / "CloudStorage"
+    trees = [
+        ("Google Drive", storage / "GoogleDrive-jason@example.com" / "My Drive"),
+        ("OneDrive", storage / "OneDrive-Personal" / "app"),
+        ("Dropbox", storage / "Dropbox" / "app"),
+        ("Box", storage / "Box-Box" / "app"),
+        ("iCloud Drive", home / "Library" / "Mobile Documents" / "com~apple~CloudDocs" / "app"),
+        ("Dropbox", home / "Dropbox" / "app"),
+        # A provider with no name here is named by its folder; APFS ignores case.
+        ("Synology Drive-share", home / "library" / "cloudstorage" / "Synology Drive-share" / "app"),
+    ]
+    for service, tree in trees:
+        assert data_rules.synced_tree(tree, home=home) == service
+        _refused(data_rules.DATA_HOME_SYNCED.format(home=tree, service=service),
+                 environ={data_rules.ENV_DATA_HOME: str(tree)}, system="darwin", home=home)
+    # The provider folders' parent is no provider, and a plain folder is none.
+    for plain in (storage, home / "Library" / "Application Support" / "x", home / "Documents",
+                  tmp_path / "Dropbox"):
+        assert data_rules.synced_tree(plain, home=home) == ""
+    # The same folder on another system is nobody's business.
+    dropbox = home / "Dropbox" / "app"
+    assert _resolve({data_rules.ENV_DATA_HOME: str(dropbox)}, system="posix", home=home) == dropbox
+
+
+def test_a_mac_program_outside_applications_is_not_scheduled(tmp_path, monkeypatch):
+    home = tmp_path / "home"
+    monkeypatch.setenv("HOME", str(home))
+    name = data_rules.product_name() + ".app"
+    fixed = _fixed
+    settings = tmp_path / "settings"
+
+    def refusal(app, **kwargs):
+        return data_rules.program_drive_refusal(app=app, settings=settings, drive_type=fixed,
+                                                host="darwin", frozen=True, **kwargs)
+
+    # Directly in /Applications or ~/Applications, under its own name: scheduled.
+    assert refusal(Path("/Applications") / name) == ""
+    assert refusal(home / "Applications" / name) == ""
+    # A quarantined app opened where it was downloaded.
+    moved = Path("/private/var/folders/ab/xyz/T/AppTranslocation/3F2A/d") / name
+    assert refusal(moved) == data_rules.PROGRAM_TRANSLOCATED.format(
+        folder=moved.parent, product=data_rules.product_name())
+    # A disk image, or a disk other than this Mac's own.
+    image = Path("/Volumes/Tax Document Console") / name
+    assert refusal(image) == data_rules.PROGRAM_ON_DISK_IMAGE.format(folder=image.parent)
+    # Anywhere else, and a renamed copy, and one folder too deep.
+    for elsewhere in (home / "Downloads" / name, Path("/Applications") / "Tools" / name,
+                      Path("/Applications") / "Tax Document Console 2.app"):
+        assert refusal(elsewhere) == data_rules.PROGRAM_NOT_IN_APPLICATIONS.format(
+            folder=elsewhere.parent)
+    # A source checkout is never refused for its folder, only for its disk (R3).
+    source = dict(app=home / "Downloads" / "checkout", settings=settings, drive_type=fixed,
+                  host="darwin", frozen=False)
+    assert data_rules.program_drive_refusal(**source) == ""
+    assert data_rules.program_drive_refusal(
+        **{**source, "drive_type": lambda _path: data_rules.DRIVE_REMOTE}) == (
+        data_rules.PROGRAM_ON_NETWORK.format(folder=source["app"]))
+    # Windows and Linux ask nothing of the folder.
+    for host in ("nt", "posix"):
+        assert data_rules.program_drive_refusal(app=home / "Downloads" / name, settings=settings,
+                                                drive_type=fixed, host=host, frozen=True) == ""
+
+
+def _mac_root(root, home):
+    return data_rules.root_refusal(root, settings=home / "settings", app=home / "program",
+                                   system=Path("/"), host="darwin", home=home)
+
+
+def test_a_mac_refuses_an_icloud_root(tmp_path):
+    home = tmp_path / "home"
+    icloud = home / "Library" / "Mobile Documents" / "com~apple~CloudDocs" / "Clients"
+    assert _mac_root(icloud, home) == data_rules.ROOT_IN_ICLOUD.format(root=icloud)
+    # Desktop and Documents are iCloud's only while "Desktop & Documents Folders" is on.
+    for folder in ("Desktop", "Documents"):
+        clients = home / folder / "Clients"
+        assert _mac_root(clients, home) == ""
+        (home.joinpath(*data_rules.ICLOUD_DESKTOP_SIGNAL)).mkdir(parents=True, exist_ok=True)
+        assert _mac_root(clients, home) == data_rules.ROOT_IN_ICLOUD.format(root=clients)
+        assert _mac_root(home / folder, home) == data_rules.ROOT_IN_ICLOUD.format(root=home / folder)
+        # APFS ignores case, so a root typed in another case is the same folder.
+        mixed = home / folder.swapcase() / "Clients"
+        assert _mac_root(mixed, home) == data_rules.ROOT_IN_ICLOUD.format(root=mixed)
+        shutil.rmtree(home / "Library")
+    # Another folder of the home is not iCloud's, signal or no signal.
+    home.joinpath(*data_rules.ICLOUD_DESKTOP_SIGNAL).mkdir(parents=True)
+    assert _mac_root(home / "Clients", home) == ""
+    # Off a Mac the rule does not exist.
+    assert data_rules.root_refusal(icloud, settings=home / "settings", app=home / "program",
+                                   system=Path("/"), host="posix", home=home) == ""
+
+
+def test_a_mac_refuses_a_root_another_sync_service_keeps(tmp_path):
+    home = tmp_path / "home"
+    storage = home / "Library" / "CloudStorage"
+    for service, root in (("OneDrive", storage / "OneDrive-Personal" / "Clients"),
+                          ("Dropbox", storage / "Dropbox" / "Clients"),
+                          ("Box", storage / "Box-Box" / "Clients"),
+                          ("Dropbox", home / "Dropbox" / "Clients")):
+        assert _mac_root(root, home) == data_rules.ROOT_IN_OTHER_SYNC.format(root=root, service=service)
+
+
+def test_a_mac_accepts_a_google_drive_root(tmp_path):
+    home = tmp_path / "home"
+    drive = home / "Library" / "CloudStorage" / "GoogleDrive-jason@example.com" / "Shared drives" / "Clients"
+    assert _mac_root(drive, home) == ""
+    # And a plain folder on the Mac's own disk, and a root on another volume.
+    assert _mac_root(home / "Clients", home) == ""
+    assert _mac_root(Path("/Volumes/Firm Disk/Clients"), home) == ""
+    # The earlier rules still hold on a Mac: the data home, the app, the settings.
+    assert data_rules.root_refusal(home, settings=home / "settings", app=home / "program",
+                                   system=Path("/"), host="darwin", home=home) == (
+        data_rules.ROOT_HOLDS_SETTINGS.format(root=home, settings=home / "settings"))
+
+
+def test_a_mac_below_the_hardware_floor_is_named_with_what_it_has(monkeypatch):
+    floor = data_rules.mac_floor_refusal
+    assert floor(system="darwin", machine="arm64", mac_ver="14.0") == ""
+    assert floor(system="darwin", machine="arm64", mac_ver="26.1") == ""
+    assert floor(system="posix", machine="x86_64", mac_ver="10.13") == ""          # not a Mac
+    product = data_rules.product_name()
+    assert floor(system="darwin", machine="arm64", mac_ver="13.6.1") == data_rules.MAC_FLOOR.format(
+        product=product, what="Apple silicon running macOS 13.6.1")
+    assert floor(system="darwin", machine="x86_64", mac_ver="14.5") == data_rules.MAC_FLOOR.format(
+        product=product, what="an Intel processor running macOS 14.5")
+    # A version nobody can read is below the floor: nothing is guessed.
+    assert floor(system="darwin", machine="arm64", mac_ver="") == data_rules.MAC_FLOOR.format(
+        product=product, what="Apple silicon running a macOS it cannot name")
+    # The product's name is told, or comes from its one home, or is "The app" - never silent.
+    assert floor(system="darwin", machine="arm64", mac_ver="13.0", product="Told Name").startswith(
+        "Told Name needs a Mac with Apple silicon running macOS 14 or later; this Mac has Apple silicon")
+    monkeypatch.setattr(data_rules, "PACKAGE_JSON", Path("/nowhere/package.json"))
+    monkeypatch.delenv(data_rules.ENV_PRODUCT_NAME, raising=False)
+    assert floor(system="darwin", machine="arm64", mac_ver="13.0").startswith(
+        data_rules.MAC_FLOOR_UNNAMED + " needs a Mac")
+    assert "{what}" in data_rules.MAC_FLOOR and "Apple silicon" in data_rules.MAC_FLOOR

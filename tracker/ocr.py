@@ -66,7 +66,15 @@ still holds, for this child:
   writes to, and on Windows it sits in a job object that kills everything
   in it when the pass's only handle closes. The same job caps its memory
   (:data:`PROCESSOR_CHILD_MEMORY`, :data:`GRAPHICS_CARD_CHILD_MEMORY`): a
-  child past it fails its reading, ends and is replaced, as a crash.
+  child past it fails its reading, ends and is replaced, as a crash. Off
+  Windows there is no job object, so the pass waits in slices of
+  :data:`MEMORY_WATCH_SECONDS` and reads the child's memory between them
+  (R31 of SPEC-mac): ``ri_phys_footprint`` from libproc on a Mac, the
+  resident pages of ``/proc/<pid>/statm`` on Linux. Past the same limit the
+  child is ended and the reading is a crash with the same words.
+  ``setrlimit(RLIMIT_AS)`` was the rejected alternative - macOS does not
+  honour it reliably, and it would cap address space, not memory. A
+  footprint that cannot be read is no cap, and the error log says so once.
 
 **Nothing a reading does may outlive it in the child.** The child serves
 many documents, so a reader must never change module state (a global, a
@@ -472,10 +480,20 @@ def _upright_lines(page_result) -> list[str]:
 #: A child serves this many documents and is then replaced (R-4's hygiene).
 DOCUMENTS_PER_CHILD = 100
 #: The most memory a reading child may commit (SPEC-169 section 9), set on
-#: its job object: a processor child, and a child on the graphics card.
-#: Past it the child's allocations fail; it ends and is replaced.
+#: its job object on Windows and watched by the pass elsewhere: a processor
+#: child, and a child on the graphics card. Past it the child ends and is
+#: replaced.
 PROCESSOR_CHILD_MEMORY = 2 * 1024**3
 GRAPHICS_CARD_CHILD_MEMORY = 6 * 1024**3
+#: Off Windows no job object caps a child, so the pass reads the child's
+#: memory itself, between the slices it waits for an answer in (R31). Half a
+#: second: a reading that runs away is ended within the second, while the
+#: cost is one small read of /proc (or one call into libproc) per slice.
+MEMORY_WATCH_SECONDS = 0.5
+#: What the error log says, once, when the child's memory cannot be read: the
+#: cap is then off, and the log says so rather than guessing a figure.
+MEMORY_UNREADABLE = ("the reading's memory could not be read ({reason}); "
+                     "its memory limit is not enforced")
 #: How long the pass gives its child to build the engine and read the
 #: self-test at the start of a pass with a graphics card pack.
 WARM_UP_STOP_SECONDS = 120.0
@@ -526,13 +544,12 @@ def awake_clock() -> float:
 
     **Every stop that bounds a reading reads this**, and the household's
     time budget with them: :meth:`ReadingChild.run` and
-    :meth:`Session._run_once` in the pass, the child's own safety stop
-    (``content_check._clock``), and ``runner.HOUSEHOLD_BUDGET_SECONDS``.
+    :meth:`Session._run_once`, the child's own safety stop
+    (``content_check._clock``) and ``runner.HOUSEHOLD_BUDGET_SECONDS``.
     ``time.monotonic`` on Windows counts sleep, so a laptop that slept
-    through the night woke to every reading in flight judged past its stop
-    and parked as a file that stalled the reader - a verdict about the
-    machine's lid, kept as one about the client's file. Task Scheduler's
-    own limit stays wall-clock: that is its business.
+    through the night would wake to every reading in flight parked as a file
+    that stalled the reader - a verdict about the machine's lid, kept as one
+    about the client's file. Task Scheduler's own limit stays wall-clock.
     """
     return _AWAKE()
 
@@ -659,6 +676,9 @@ class ReadingChild:
                 end.close()
         self._pid = self._process.pid
         self._job_object = _kill_on_close_job(self._process.pid, memory_limit=self.memory_limit)
+        #: Windows caps the child in its job object; everywhere else the
+        #: pass watches (R31).
+        self._watches_memory = sys.platform != "win32"
 
     @property
     def pid(self) -> int | None:
@@ -673,17 +693,25 @@ class ReadingChild:
         except OSError as exc:
             return Outcome("not_started", error=f"the reading's process was gone ({errors.error_class(exc)})",
                            seconds=awake_clock() - started)
-        kind, answer, begun, over = "died", (), False, False
+        kind, answer, begun, over, capped = "died", (), False, False, False
         while True:
             # Measured again after every message and every wake, on the
             # awake clock (decision 189): a wait the machine slept through
-            # is not the file's time.
+            # is not the file's time. Off Windows the wait is in slices of
+            # MEMORY_WATCH_SECONDS, never longer than what is left, so the
+            # watch cannot stretch the stop.
             left = started + stop - awake_clock()
             if left <= 0:
                 over = True
                 self.end()
                 break
-            if not self._answers.poll(left):
+            if not self._answers.poll(min(left, MEMORY_WATCH_SECONDS) if self._watches_memory else left):
+                if self._watches_memory and self._past_its_memory():
+                    # Ended here, joined below with today's words: the
+                    # whole tree, as a stop ends it.
+                    capped = True
+                    _end(self._process)
+                    break
                 continue
             try:
                 kind, *answer = self._answers.recv()
@@ -698,6 +726,8 @@ class ReadingChild:
             exit_code = None if over else self._exit_code()
             error = ("the reader did not start within the safety stop" if over else
                      f"the reading's process ended with exit code {exit_code} before it started")
+            if capped:
+                error += self._memory_words()
             if not over:
                 self.end()
             return Outcome("not_started", error=error, seconds=seconds)
@@ -711,10 +741,26 @@ class ReadingChild:
             return Outcome("failed", error=answer[0], message=answer[1], trace=answer[2],
                            notes=answer[3], kept=answer[4], seconds=seconds)
         error = f"the reading's process ended with exit code {self._exit_code()}"
-        if _job_memory(self._job_object)[1] >= self.memory_limit * 0.9:
-            error += f"; it had reached its memory limit ({self.memory_limit / 1024**3:.0f} GB)"
+        if capped or _job_memory(self._job_object)[1] >= self.memory_limit * 0.9:
+            error += self._memory_words()
         self.end()
         return Outcome("died", error=error, seconds=seconds)
+
+    def _memory_words(self) -> str:
+        """The words a crash at the memory limit carries, on Windows and off."""
+        return f"; it had reached its memory limit ({self.memory_limit / 1024**3:.0f} GB)"
+
+    def _past_its_memory(self) -> bool:
+        """Whether the child's memory is past ``memory_limit`` (R31). A
+        footprint that cannot be read is no cap: said once on the error log
+        (:data:`MEMORY_UNREADABLE`), never replaced by a guess - unless the
+        child is simply gone, which is no news."""
+        try:
+            return _footprint(self._process.pid) > self.memory_limit
+        except (OSError, ValueError, AttributeError) as exc:
+            if self._process.is_alive():
+                _say_once(MEMORY_UNREADABLE.format(reason=errors.error_class(exc)))
+            return False
 
     def _exit_code(self) -> int | None:
         self._process.join(CHILD_EXIT_SECONDS)
@@ -974,6 +1020,84 @@ def _close_job(job) -> None:
     kernel32.CloseHandle(job)
 
 
+#: The memory limit's warnings already said by this process (R31's "once").
+_SAID: set[str] = set()
+
+
+def _say_once(words: str) -> None:
+    """Put ``words`` on the error log the first time this process has them."""
+    if words not in _SAID:
+        _SAID.add(words)
+        log.warning("%s", words)
+
+
+#: libproc's number for the rusage record carrying ``ri_phys_footprint``.
+_RUSAGE_INFO_V2 = 2
+
+
+def _libproc():
+    """The library holding ``proc_pid_rusage``: a macOS system library,
+    named apart so a test can hand the watch one of its own."""
+    import ctypes
+
+    return ctypes.CDLL("libSystem.dylib", use_errno=True)
+
+
+def _rusage_info_v2():
+    """libproc's ``rusage_info_v2``, whose field after ``ri_resident_size``
+    is ``ri_phys_footprint`` - what Activity Monitor calls Memory."""
+    import ctypes
+
+    class RusageInfoV2(ctypes.Structure):
+        _fields_ = [("ri_uuid", ctypes.c_uint8 * 16)] + [
+            (name, ctypes.c_uint64) for name in (
+                "ri_user_time", "ri_system_time", "ri_pkg_idle_wkups", "ri_interrupt_wkups",
+                "ri_pageins", "ri_wired_size", "ri_resident_size", "ri_phys_footprint",
+                "ri_proc_start_abstime", "ri_proc_exit_abstime", "ri_child_user_time",
+                "ri_child_system_time", "ri_child_pkg_idle_wkups", "ri_child_interrupt_wkups",
+                "ri_child_pageins", "ri_child_elapsed_abstime", "ri_diskio_bytesread",
+                "ri_diskio_byteswritten")]
+
+    return RusageInfoV2
+
+
+def _darwin_footprint(pid: int) -> int:
+    """A process's physical footprint in bytes on macOS, from
+    ``proc_pid_rusage(pid, RUSAGE_INFO_V2)`` through ``ctypes`` (R31).
+    ``ri_phys_footprint`` rather than the resident size: it is the figure
+    Activity Monitor shows as Memory, and counts compressed pages the
+    resident size forgets. ``setrlimit(RLIMIT_AS)`` was rejected: macOS does
+    not honour it reliably. Raises OSError for a process that cannot be read."""
+    import ctypes
+
+    info = _rusage_info_v2()()
+    libproc = _libproc()
+    libproc.proc_pid_rusage.argtypes = (ctypes.c_int, ctypes.c_int, ctypes.c_void_p)
+    if libproc.proc_pid_rusage(pid, _RUSAGE_INFO_V2, ctypes.byref(info)) != 0:
+        raise OSError(ctypes.get_errno(), f"proc_pid_rusage refused process {pid}")
+    return info.ri_phys_footprint
+
+
+def _linux_footprint(pid: int) -> int:
+    """A process's resident memory in bytes on Linux: the second field of
+    ``/proc/<pid>/statm`` (resident pages) times the page size (R31).
+    Raises OSError for a process that is gone, ValueError for a file that
+    is not a statm."""
+    fields = Path(f"/proc/{pid}/statm").read_text(encoding="ascii").split()
+    return int(fields[1]) * os.sysconf("SC_PAGE_SIZE")
+
+
+def _footprint(pid: int, system: str = sys.platform) -> int:
+    """The memory ``pid`` holds, in bytes (R31). ``system`` is the seam a
+    test hands a platform's name; a platform with no reader raises OSError,
+    which the watch turns into "no cap, said once" rather than a guess."""
+    if system == "darwin":
+        return _darwin_footprint(pid)
+    if system.startswith("linux"):
+        return _linux_footprint(pid)
+    raise OSError(f"no way to read a process's memory on {system}")
+
+
 def _end(process) -> None:
     """End a reading's child and everything it started, the whole tree."""
     if sys.platform == "win32":
@@ -1187,11 +1311,6 @@ def reading_session(*, settle: bool = False, in_a_child: bool = True) -> Iterato
     finally:
         _SESSION = None
         session.close()
-
-
-def current_session() -> Session | None:
-    """The session open in this process, or None."""
-    return _SESSION
 
 
 def run_in_child(job, args: tuple, kwargs: dict, stop: float) -> Outcome:

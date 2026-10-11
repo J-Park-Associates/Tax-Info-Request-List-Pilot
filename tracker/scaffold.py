@@ -430,16 +430,6 @@ def _open_year_of(household_dir: Path, returns: list[Path] | None = None
     return open_years(engagements), engagements
 
 
-def _readme_returns(household_dir: Path) -> tuple[int, list[_ReturnLine]] | None:
-    """The one open year and its active returns, in the household's order -
-    or ``None`` when the household has not exactly one open year."""
-    years, engagements = _open_year_of(household_dir)
-    if len(years) != 1:
-        return None
-    [year] = years
-    return year, [one for one in engagements if one.active and one.tax_year == year]
-
-
 def readme_returns(household_dir: Path | str) -> list[_ReturnLine] | None:
     """The returns the household's README speaks for - the active returns
     of its one open year, in the order the README lists them, each with its
@@ -451,8 +441,11 @@ def readme_returns(household_dir: Path | str) -> list[_ReturnLine] | None:
     ``tracker.filer.received_for`` and :func:`write_readme` (decision 130,
     the review's F3), so one refresh reads each return's details and list
     once."""
-    found = _readme_returns(Path(household_dir))
-    return None if found is None else found[1]
+    years, engagements = _open_year_of(Path(household_dir))
+    if len(years) != 1:
+        return None
+    [year] = years
+    return [one for one in engagements if one.active and one.tax_year == year]
 
 
 @dataclass(slots=True)
@@ -574,10 +567,9 @@ def write_readme(
     root = household_dir.parent.parent
     household = household_dir.name
     if returns is None:
-        found = _readme_returns(household_dir)
-        if found is None:
+        returns = readme_returns(household_dir)
+        if returns is None:
             return None
-        returns = found[1]
     active = list(returns)
     if contact is None:
         try:
@@ -791,14 +783,10 @@ if __name__ == "__main__":
     )
     parser.add_argument("engagement_dir", help="the return folder")
     ns = parser.parse_args()
-    # A typed folder is parsed, never trusted: it must be a return's
-    # place under the checked clients root (decision 188).
+    # A typed folder is parsed, never trusted (decision 188).
     from tracker import door
-    from tracker.layout import LayoutError
-    try:
-        ns.engagement_dir = door.return_dir(Path(ns.engagement_dir).absolute())
-    except (door.DoorError, LayoutError) as exc:     # the door's own sentences
-        parser.error(str(exc))
+
+    ns.engagement_dir = door.typed_return(parser, ns.engagement_dir)
 
     res = scaffold_engagement(ns.engagement_dir)
     for line in res.describe():

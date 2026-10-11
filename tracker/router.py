@@ -166,14 +166,8 @@ from dataclasses import replace
 from pathlib import Path
 
 from tracker import reasons
-
-# MULTI_FORM_FAMILIES moved to tracker/content_check.py with decision 107
-# (the scanner's miss path reads through the same rule); re-exported here
-# for one release so `from tracker.router import MULTI_FORM_FAMILIES` still
-# resolves to the same object.
 from tracker.content_check import (
     BROKER_FORM,
-    MULTI_FORM_FAMILIES,  # noqa: F401
     OPEN_TEST_FINGERPRINT,
     ContentCache,
     ContentResult,
@@ -589,31 +583,27 @@ def questions_for(items: list[RequestItem], *, names: tuple = ()) -> Questions:
 
 
 def read_once(path: Path, questions: Questions) -> Judgment:
-    """The document judged, the way the scanner will read it.
+    """The document judged, once, the way the scanner will read it.
 
     The text layer first; a scan with none is read by OCR, if OCR is
-    installed. The file's own name used to excuse that reading - a scan
-    whose name said which request it was routed on the name, cheaply -
-    and since decision 92 it does not: nothing is filed on a name, so OCR
-    is the only thing that can still file a scan, and the scan whose name
-    says "W-2" is exactly the one whose content has to be read. It is the
-    same reading the scanner makes of the same bytes later, so the two
-    never disagree about what the file says.
+    installed. The file's name never excuses that reading (decision 92:
+    nothing is filed on a name, so the scan whose name says "W-2" is exactly
+    the one whose content has to be read). It is the same reading the
+    scanner makes of the same bytes later, so the two never disagree about
+    what the file says.
 
     Public since decision 128: a household's pass reads each drop **once**
     and routes it against every return the drop may feed
     (:func:`tracker.filer.file_household_drops`), so a two-return household
-    does not OCR every photo twice. The reading is handed back into
-    :func:`route_file` as ``reading``.
+    does not OCR every photo twice. The judgment is handed back into
+    :func:`route_file` as ``judgment``.
 
-    Read in a process the pass can stop (decision 150): the safety stop
-    bounds the whole reading - text layer, render and OCR - and a reader
-    that crashes parks this file rather than ending the pass. And judged
-    there (decision 189, :func:`tracker.content_check.judge_bounded`):
-    ``questions`` is every row of every return the drop is judged against
-    and each return's name question (:func:`questions_for`), asked once,
-    so the rules, the form scan and the name run under the same stop and
-    no word of the document comes back to the pass.
+    The reading and the judgment run in the pass's reader child, under the
+    document's stop (decisions 150 and 189,
+    :func:`tracker.content_check.judge_bounded`): ``questions`` is every row
+    of every return the drop is judged against and each return's name
+    question (:func:`questions_for`), and no word of the document comes back
+    to the pass.
     """
     return judge_bounded(path, questions)
 
@@ -1099,14 +1089,10 @@ if __name__ == "__main__":
     parser.add_argument("engagement_dir", help="the engagement folder")
     parser.add_argument("files", nargs="+", help="the dropped file(s) to route")
     ns = parser.parse_args()
-    # A typed folder is parsed, never trusted: it must be a return's
-    # place under the checked clients root (decision 188).
+    # A typed folder is parsed, never trusted (decision 188).
     from tracker import door
-    from tracker.layout import LayoutError
-    try:
-        ns.engagement_dir = door.return_dir(Path(ns.engagement_dir).absolute())
-    except (door.DoorError, LayoutError) as exc:     # the door's own sentences
-        parser.error(str(exc))
+
+    ns.engagement_dir = door.typed_return(parser, ns.engagement_dir)
 
     manifest_items = load_manifest(Path(ns.engagement_dir))
     for decision in route_files([Path(f) for f in ns.files], manifest_items):

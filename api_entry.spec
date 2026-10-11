@@ -1,15 +1,25 @@
 # -*- mode: python ; coding: utf-8 -*-
-"""PyInstaller spec for the frozen tracker API that "Build App.bat" ships
-beside the Electron shell.
+"""PyInstaller spec for the frozen tracker API that "Build App.bat" (and, on a
+Mac, "build-mac.sh") ships beside the Electron shell.
 
 Committed, rather than regenerated from command-line flags on every build,
 so what gets frozen is part of the commit that gets built: the same spec,
 the same pinned freezer (requirements-build.txt), the same output. The
 executable's name is read from app/package.json (config.apiName), the one
 place it lives - the shell looks for the same name at run time.
+
+On a Mac (SPEC-mac R13) the freeze is Apple silicon only: ``target_arch`` is
+"arm64", not "universal2", because ONNX Runtime publishes no x86_64 Mac wheel
+and a universal2 freeze would be a lie about half its slices (P243). The API
+is a console binary inside the app bundle, so it carries no icon (the bundle's
+own icon is the shell's), and ``codesign_identity=None`` has PyInstaller sign
+it ad hoc, which Apple silicon requires of any Mach-O it runs; the entitlements
+file stays None until signing lands (P239). ``freeze_support()`` already runs
+in api_entry.py, which is what lets a reading child start under ``spawn``.
 """
 
 import json
+import sys
 from pathlib import Path
 
 from PyInstaller.utils.hooks import collect_data_files, collect_submodules
@@ -48,6 +58,14 @@ a.binaries = [entry for entry in a.binaries
               if not Path(entry[0]).name.startswith(NOT_SHIPPED_BINARIES)]
 pyz = PYZ(a.pure)
 
+# What differs by platform and nothing else: see the docstring for the Mac.
+if sys.platform == "darwin":
+    PLATFORM_OPTIONS = {"target_arch": "arm64", "codesign_identity": None, "entitlements_file": None}
+else:
+    # The same icon as the shell's program file (pilot SPEC-icon, item 6); the
+    # path is relative to where Build App.bat runs PyInstaller, the repo root.
+    PLATFORM_OPTIONS = {"icon": "app/assets/icon.ico"}
+
 exe = EXE(
     pyz,
     a.scripts,
@@ -59,9 +77,7 @@ exe = EXE(
     strip=False,
     upx=False,
     console=True,
-    # The same icon as the shell's program file (pilot SPEC-icon, item 6); the
-    # path is relative to where Build App.bat runs PyInstaller, the repo root.
-    icon="app/assets/icon.ico",
+    **PLATFORM_OPTIONS,
 )
 coll = COLLECT(
     exe,

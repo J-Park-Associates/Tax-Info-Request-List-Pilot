@@ -1,6 +1,7 @@
 """Tests for tracker/content_check.py — tier-3 rules, all local files."""
 
 import datetime as dt
+from pathlib import Path
 
 import pytest
 from openpyxl import Workbook
@@ -543,11 +544,12 @@ def test_own_forms_is_none_for_one_family_and_the_named_set_for_two():
     one = "\n".join(scanned_w2_lines(2025))
     two = "\n".join(scanned_w2_lines(2025) + scanned_1098_lines(2025))
     assert MULTI_FORM_FAMILIES == 2
-    assert own_forms(one) is None                                  # the ordinary reading
-    assert own_forms("a letter about nothing in particular") is None
-    assert own_forms(two) == set(self_named_forms(two)) == {"w2", "1098"}
+    assert own_forms(self_named_forms(one)) is None                # the ordinary reading
+    assert own_forms(self_named_forms("a letter about nothing in particular")) is None
+    assert own_forms(self_named_forms(two)) == set(self_named_forms(two)) == {"w2", "1098"}
 
 
+@pytest.mark.corpus
 def test_on_every_corpus_form_the_scans_miss_verdict_equals_the_routers_kept_verdict():
     """For every placement in tests/irs/: route with a memory cache, then
     read the same file through check_content() with an empty cache on the
@@ -1078,7 +1080,7 @@ def test_a_giant_pdf_page_is_rendered_within_the_pixel_budget(tmp_path, monkeypa
     monkeypatch.setattr(pypdfium2.PdfPage, "render", render)
 
     for path in (pdf(tmp_path / "giant.pdf", 14400, 14400), pdf(tmp_path / "letter.pdf", 612, 792)):
-        with pytest.raises(content_check.OcrError):
+        with pytest.raises(Stop):
             content_check._ocr_pdf(path)
     (giant_w, giant_h), (letter_w, letter_h) = asked
     assert giant_w * giant_h <= content_check.PIXEL_BUDGET * 1.0001
@@ -1156,14 +1158,18 @@ def test_a_picture_past_pillows_guard_is_a_kept_too_large_verdict_not_a_retry(tm
     first = check_content(photo, rules, cache)
     assert not first.ok and first.code == reasons.TOO_LARGE.code
 
-    def never(_path):
-        raise AssertionError("a kept verdict was read again")
+    read: list = []
 
-    monkeypatch.setattr(content_check, "_ocr_image", never)
+    def reading(path):
+        read.append(path)
+        return None
+
+    monkeypatch.setattr(content_check, "_ocr_image", reading)
     assert check_content(photo, rules, cache) == first                 # not retried
+    assert read == []
     Image.new("L", (100, 101), "white").save(photo)                     # the file changed
-    with pytest.raises(AssertionError, match="read again"):
-        check_content(photo, rules, cache)
+    check_content(photo, rules, cache)
+    assert read == [photo]                                              # read again
 
 
 def test_no_page_starts_past_the_safety_stop_and_the_stopped_reading_is_kept(tmp_path, monkeypatch):
@@ -1344,11 +1350,53 @@ def no_child_left():
     return multiprocessing.active_children() == []
 
 
+#: Where Linux keeps what it knows of a process. A Mac has no such folder, and
+#: a test stands in for one by pointing this at a place that is not there (the
+#: suite stands in for a platform by a seam, never by changing ``sys.platform``).
+PROC = Path("/proc")
+
+
+def _ps_state(pid: int) -> str | None:
+    """The state letters ``ps`` gives process ``pid`` (a zombie's start with
+    "Z"), "" for a process that is not there, None when ``ps`` cannot say.
+    A Mac's way to ask, and Linux's when there is no ``/proc``; ``ps -o stat=``
+    is the form both understand."""
+    import subprocess
+
+    try:
+        done = subprocess.run(["ps", "-o", "stat=", "-p", str(pid)], capture_output=True, text=True, check=False)
+    except OSError:
+        return None
+    return done.stdout.strip() if done.returncode in (0, 1) else None
+
+
+def process_state(pid: int) -> str | None:
+    """What the system says of process ``pid``: its state letters (a zombie's
+    start with "Z"), "" for a process that is not there, None when it cannot
+    be asked. Linux is asked in ``/proc``; anywhere that has none (a Mac), in
+    ``ps``. Before this, a Mac fell back to "alive" for a zombie and every test
+    waiting for a stopped reader's child to end waited out its whole fifteen
+    seconds."""
+    if not PROC.is_dir():
+        return _ps_state(pid)
+    try:
+        return (PROC / str(pid) / "stat").read_text().rsplit(")", 1)[1].split()[0]
+    except FileNotFoundError:
+        return ""
+    except (OSError, IndexError):
+        return None
+
+
 def running(pid: int) -> bool:
-    """Whether the process ``pid`` is still running, asked of the system."""
+    """Whether the process ``pid`` is still running, asked of the system.
+
+    Every caller asks about a process this test did not start - a reader's
+    helper, the pass's child - so the system is asked, and a zombie has ended
+    though its number is still taken. (A child the test started itself could
+    be asked exactly by ``os.waitpid(pid, os.WNOHANG)``; none is asked today,
+    and a parameter nothing uses was not kept for the one that will.)"""
     import os
     import sys
-    from pathlib import Path
 
     if sys.platform == "win32":
         import ctypes
@@ -1371,11 +1419,8 @@ def running(pid: int) -> bool:
         return False
     except PermissionError:
         return True
-    stat = Path(f"/proc/{pid}/stat")
-    try:
-        return stat.read_text().rsplit(")", 1)[1].split()[0] != "Z"   # a zombie has ended
-    except (OSError, IndexError):
-        return True
+    state = process_state(pid)
+    return state is None or (state != "" and not state.startswith("Z"))   # a zombie has ended
 
 
 def eventually(check, within: float = 15.0) -> bool:
@@ -1387,6 +1432,60 @@ def eventually(check, within: float = 15.0) -> bool:
             return True
         time.sleep(0.1)
     return check()
+
+
+def _a_child_that_has_ended_unreaped():
+    """A child of this test that has ended and not been waited for: a zombie,
+    whose number the system still holds."""
+    import subprocess
+
+    child = subprocess.Popen(["true"])
+    assert eventually(lambda: process_state(child.pid) not in (None, "") and process_state(child.pid).startswith("Z"))
+    return child
+
+
+def test_a_zombie_has_ended_and_a_live_process_has_not_whichever_way_the_system_is_asked(monkeypatch):
+    """R36: the helper asked ``/proc`` alone, so a Mac - which has none - took
+    every zombie for a live process and waited out its fifteen seconds. Where
+    there is no ``/proc`` (the seam stood on a place that is not there) the
+    answer comes from ``ps -o stat=``, and it agrees with Linux's for a process
+    that is running and for one that has ended."""
+    import shutil
+    import subprocess
+    import sys
+
+    if sys.platform == "win32" or shutil.which("ps") is None:
+        pytest.skip("this is the POSIX way to ask, and it needs ps")
+    live = subprocess.Popen(["sleep", "60"])
+    zombie = _a_child_that_has_ended_unreaped()
+    try:
+        for proc in (Path("/proc"), Path("/not/a/proc")):
+            monkeypatch.setattr(sys.modules[__name__], "PROC", proc)
+            assert running(live.pid), proc
+            assert not running(zombie.pid), proc
+    finally:
+        live.kill()
+        live.wait()
+        zombie.wait()
+    assert not running(zombie.pid)
+
+
+def test_a_mac_asks_ps_and_reads_its_state_letters_not_proc(monkeypatch):
+    """R36: with no ``/proc`` the answer is ``ps``'s, and a Mac's state letters
+    carry flags ("Z+", "Ss", "R+"): only a leading Z is an ended process, an
+    empty answer is a process that is not there, and a ``ps`` that cannot say is
+    taken as running, as the helper always did for what it could not ask."""
+    import os
+    import sys
+
+    here = sys.modules[__name__]
+    monkeypatch.setattr(here, "PROC", Path("/not/a/proc"))
+    monkeypatch.setattr(os, "kill", lambda pid, signal: None)       # the number is taken
+    asked = []
+    for said, alive in (("Z", False), ("Z+", False), ("S", True), ("Ss", True), ("R+", True), ("", False), (None, True)):
+        monkeypatch.setattr(here, "_ps_state", lambda pid, said=said: asked.append(pid) or said)
+        assert running(4242) is alive, said
+    assert asked == [4242] * 7
 
 
 def test_a_text_layer_that_never_finishes_is_stopped_and_abandoned(tmp_path, a_short_stop):
@@ -1508,9 +1607,10 @@ def test_a_reading_on_time_returns_what_it_returned_in_process(tmp_path, in_a_ch
     assert len(documents) >= 12
     for document in documents:
         in_process = content_check.open_and_read(document)
-        in_child = content_check.extract_bounded(document)
+        in_child = content_check.judge_bounded(document, content_check.Questions()).extraction
         assert in_child.opened is not None, document.name
-        assert replace(in_child, seconds=0.0) == replace(in_process, seconds=0.0), document.name
+        words_let_go = content_check.unjudged(in_process).extraction
+        assert replace(in_child, seconds=0.0) == replace(words_let_go, seconds=0.0), document.name
     assert no_child_left()
 
 
@@ -1568,7 +1668,7 @@ def test_no_child_is_left_running_after_a_stop(tmp_path, a_short_stop):
                          child_readers.a_reader_that_starts_a_reader_of_its_own)
     pdf = text_pdf(tmp_path / "page.pdf", "Form W-2 2025")
 
-    reading = content_check.extract_bounded(pdf)
+    reading = content_check.judge_bounded(pdf, content_check.Questions()).extraction
 
     assert reading.text is None and reading.reason == STOPPED and not reading.transient
     helper = child_readers.reached(pdf, "helper")
@@ -1591,7 +1691,7 @@ from tracker import content_check, ocr
 content_check._CHILD_READER = child_readers.a_reader_that_starts_a_reader_of_its_own
 if sys.argv[2] == "lifeline":
     ocr._kill_on_close_job = lambda pid, **_limits: None
-content_check.extract_bounded(Path(sys.argv[1]))
+content_check.judge_bounded(Path(sys.argv[1]), content_check.Questions())
 """
 
 
@@ -1834,7 +1934,7 @@ def test_a_reader_that_cannot_start_keeps_no_verdict(tmp_path, in_a_child):
     page = text_pdf(tmp_path / "page.pdf", "Form W-2 2025")
 
     # Dies before "started": transient, and nothing is kept.
-    reading = content_check.extract_bounded(page)
+    reading = content_check.judge_bounded(page, content_check.Questions()).extraction
     assert reading.text is None and reading.transient and reading.reason == unavailable
     cache = ContentCache()
     verdict = check_content(page, rules, cache)
@@ -1849,7 +1949,7 @@ def test_a_reader_that_cannot_start_keeps_no_verdict(tmp_path, in_a_child):
 
     with pytest.MonkeyPatch.context() as patch:
         patch.setattr(multiprocessing.context.SpawnProcess, "_Popen", staticmethod(no_process))
-        assert content_check.extract_bounded(page).reason == unavailable
+        assert content_check.judge_bounded(page, content_check.Questions()).extraction.reason == unavailable
     content_check.readers_that_could_not_start()          # the claims above were not a pass
 
     # A pass: two documents wait for the next pass - no row, nothing kept
@@ -2060,7 +2160,7 @@ def test_running_out_of_memory_is_never_a_retry_or_a_corrupt_file(tmp_path, monk
     Image.new("RGB", (40, 40), "white").save(photo)
     monkeypatch.setattr(ocr, "read_page", out_of_memory)
     with pytest.raises(MemoryError):
-        content_check._ocr_image(photo)
+        content_check.extract_by_ocr(photo)
 
     scan = tmp_path / "scan.pdf"
     writer = PdfWriter()
@@ -2069,7 +2169,7 @@ def test_running_out_of_memory_is_never_a_retry_or_a_corrupt_file(tmp_path, monk
         writer.write(fh)
     monkeypatch.setattr(pypdfium2.PdfPage, "render", out_of_memory)
     with pytest.raises(MemoryError):
-        content_check._ocr_pdf(scan)
+        content_check.extract_by_ocr(scan)
 
     monkeypatch.setattr(content_check, "extract_text", out_of_memory)
     with pytest.raises(MemoryError):
@@ -2572,13 +2672,14 @@ def _the_pass_before_189(text: str, row: RequestItem):
     """What the pass computed in its own process before decision 189, call
     for call: the router's ordinary reading, its ``_required_matched`` and
     ``any_keyword_matched`` - each reading the form scan for itself."""
-    from tracker.content_check import any_keyword_matched, own_forms, says
+    from tracker.content_check import any_keyword_matched, own_forms, says, self_named_forms
 
-    own = own_forms(text) if text else None
+    own = own_forms(self_named_forms(text)) if text else None
     required = bool(row.required_keywords) and all(says(text, k) for k in row.required_keywords)
     return evaluate_rules(text, row, own), required, any_keyword_matched(text, row)
 
 
+@pytest.mark.corpus
 def test_every_verdict_is_the_same_judged_in_the_child_as_in_the_pass(tmp_path, in_a_child):
     """The proof that CACHE_VERSION need not move. Every IRS form in the
     suite's corpus and the suite's own sample pages, judged against every
@@ -2641,7 +2742,7 @@ def test_every_verdict_is_the_same_judged_in_the_child_as_in_the_pass(tmp_path, 
         if not words:
             assert not judged.has_words, name
             continue
-        own = own_forms(words)
+        own = own_forms(self_named_forms(words))
         assert judged.own == (frozenset(own) if own is not None else None), name
         assert judged.self_named == self_named_forms(words), name
         assert judged.carries_1099b == carries_a_1099b_section(words), name

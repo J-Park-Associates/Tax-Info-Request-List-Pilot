@@ -34,10 +34,13 @@ app.setPath("userData", path.join(app.getPath("appData"), PKG.config.userDataNam
 // Python that Setup.bat made in the checkout's .venv, by its full path
 // (decision 191): never a bare "python", which is whatever the search path
 // finds first, and never the machine's own Python, which Setup never touches.
-// The settings file (the clients root) lives beside the app either way: next
-// to the packaged executable, or in the repository root from source.
+// The settings file (the clients root) lives beside the app: next to the
+// packaged executable, or in the repository root from source (SETTINGS_DIR
+// below says where it goes on a Mac).
+// Only Windows gives an executable a suffix: the frozen API on a Mac is
+// Contents/Resources/<apiName>/<apiName> (SPEC-mac R14).
 const FROZEN_API = app.isPackaged
-  ? path.join(process.resourcesPath, API_NAME, `${API_NAME}.exe`)
+  ? path.join(process.resourcesPath, API_NAME, process.platform === "win32" ? `${API_NAME}.exe` : API_NAME)
   : null;
 const SOURCE_PYTHON = process.platform === "win32"
   ? path.join(REPO_ROOT, ".venv", "Scripts", "python.exe")
@@ -46,7 +49,48 @@ const SOURCE_PYTHON = process.platform === "win32"
 const NOT_SET_UP =
   "The app's private Python is not set up on this computer. " +
   "Run Setup.bat once (it needs the internet), then start the app again.";
-const SETTINGS_DIR = app.isPackaged ? path.dirname(process.execPath) : REPO_ROOT;
+// And its Mac form, NOT_SET_UP_MAC: the file a person runs there is setup.command
+// (SPEC-mac R11). Said instead of the Windows sentence, never beside it.
+const NOT_SET_UP_MAC =
+  "The app's private Python is not set up on this computer. " +
+  "Run setup.command once (it needs the internet), then start the app again.";
+// Where the settings file lives (decision 131). Beside the executable on
+// Windows; on a Mac, in the product's folder in Application Support instead,
+// because a Mac app is a bundle replaced whole by dragging a newer one over
+// it (P155), and a file inside it would go with it, losing the clients root
+// (SPEC-mac R2). Word for word tracker.settings.mac_settings_dir:
+// ~/Library/Application Support/<productName>, pinned equal by a test. This
+// is not Electron's own userData folder above, which keeps its earlier name.
+const SETTINGS_DIR = !app.isPackaged
+  ? REPO_ROOT
+  : process.platform === "darwin"
+    ? path.join(app.getPath("appData"), PRODUCT_NAME)
+    : path.dirname(process.execPath);
+
+// The hardware floor (SPEC-mac R6, P243): Apple silicon on macOS 14 or later.
+// A Drag-to-Applications install has no installer program to refuse with, so
+// the first code that runs says this and stops, before the one-instance lock
+// (which writes to userData) and before any window. Word for word
+// tracker.settings.MAC_FLOOR; the API makes the same check for the schedule,
+// which runs it without this shell. macOS 14 is Darwin 23.
+const MAC_FLOOR =
+  "{product} needs a Mac with Apple silicon running macOS 14 or later; " +
+  "this Mac has {what}, so the app stops here and changes nothing.";
+const MAC_FLOOR_DARWIN = 23;
+
+// MAC_FLOOR filled with what this Mac has, or "" where this is not a Mac or
+// it meets the floor. The macOS release is named from the Darwin major
+// version os.release() gives: 20 is macOS 11 and 25 is macOS 26.
+function macFloorRefusal() {
+  if (process.platform !== "darwin") return "";
+  const darwin = parseInt(os.release().split(".")[0], 10);
+  const silicon = process.arch === "arm64";
+  if (silicon && darwin >= MAC_FLOOR_DARWIN) return "";
+  const chip = silicon ? "Apple silicon" : process.arch === "x64" ? "an Intel processor" : process.arch;
+  const macos = Number.isNaN(darwin) ? "a macOS it cannot name"
+    : `macOS ${darwin >= 25 ? darwin + 1 : darwin >= 20 ? darwin - 9 : `10.${darwin - 4}`}`;
+  return MAC_FLOOR.replace("{product}", PRODUCT_NAME).replace("{what}", `${chip} running ${macos}`);
+}
 
 // A command that outlives this is killed and reported, so the button it
 // disabled comes back. A pass says its own limit in its first progress line
@@ -105,25 +149,38 @@ const passes = new Map();
 // The renderer never names a path of its own, so anything else is refused.
 const openable = new Map();
 let pathKinds = {};           // vocab.path_kinds, once seen
-let notOpened = "Not Opened; It Has Changed";
-// The shell's own sentences (decision 193): learned from vocab.shell, with
-// these defaults - word for word tracker.api's SHELL_* - for a first start.
-let killed = "Sort Stopped: Ran Too Long.";
-let killedWrite = "Change Stopped: Ran Too Long.";
-let killedWriteNote = "It May Be Partly Done.";
-let killedRead = "Stopped: Ran Too Long.";
+// The paths among them whose copy Windows would have marked as from the
+// internet (state.carries_code, SPEC-mac R8): a Mac cannot mark one, so each
+// time it opens one the page says shellSays.protected_view_mac. Only ever
+// added to, like `openable`: saying it once too often is one more notice, and
+// saying it once too few is the failure.
+const carriesCode = new Set();
+// The shell's own sentences (decision 193), keyed as vocab.shell keys them:
+// learned from it, with these defaults - word for word tracker.api's SHELL_*
+// - for a first start. learn() copies every key the API sent as a string.
+const shellSays = {
+  not_opened: "Not Opened; It Has Changed",
+  protected_view_mac:
+    "Protected View does not exist on a Mac, so this file opened normally. Keep macros off in " +
+    "Excel, Word and PowerPoint: Settings > Security > Macro Security > Disable all macros " +
+    "without notification.",
+  killed: "Sort Stopped: Ran Too Long.",
+  killed_write: "Change Stopped: Ran Too Long.",
+  killed_write_note: "It May Be Partly Done.",
+  killed_read: "Stopped: Ran Too Long.",
+  killed_at: "It Was on {household}: {name}.",
+  no_reply: "No Reply From the App",
+  could_not_start: "The App Could Not Start",
+  could_not_send: "Could Not Send; Nothing Changed",
+  no_log: "App Failed",
+};
 let writingCommands = new Set();   // vocab.writing_commands, once seen
-let killedAt = "It Was on {household}: {name}.";
-let noReply = "No Reply From the App";
-let couldNotStart = "The App Could Not Start";
-let couldNotSend = "Could Not Send; Nothing Changed";
-let noLog = "App Failed";
 // The error log beside the tracker's database, as the API reports it
 // (vocab.shell.error_log): the shell never builds that path, and never
 // writes a log beside the program or in the settings folder (decision
 // 186's rebase review, MF2). Until the API has named one - a failed first
 // start, or no data folder - the details go to the fallback log below
-// instead, and a failed command's reply says only noLog.
+// instead, and a failed command's reply says only shellSays.no_log.
 let errorLog = null;
 // The fallback (Jason, 2026-09-29): with no log named, a failure is still
 // SAVED, in this one file in a LOCAL, NON-ROAMING per-user folder -
@@ -214,7 +271,7 @@ function keepInLog(heading, text) {
 // in two words, and the stderr - which may name a client's folder - is kept
 // only in the fallback log, never shown (SPEC-shell 11.2).
 function withNoLog(reply) {
-  const sentence = `${reply.error}\n\n${noLog}`;
+  const sentence = `${reply.error}\n\n${shellSays.no_log}`;
   return { ...reply, error: sentence, failure: { ...(reply.failure || {}), sentence } };
 }
 
@@ -243,24 +300,21 @@ function learn(result) {
   if (vocab && typeof vocab.engagement_flag === "string") engagementFlag = vocab.engagement_flag;
   if (vocab && typeof vocab.pass_command === "string") passCommand = vocab.pass_command;
   if (vocab && vocab.path_kinds && typeof vocab.path_kinds === "object") pathKinds = vocab.path_kinds;
-  if (vocab && vocab.shell && typeof vocab.shell.not_opened === "string") notOpened = vocab.shell.not_opened;
   const said = vocab && vocab.shell;
-  if (said && typeof said.killed === "string") killed = said.killed;
-  if (said && typeof said.killed_write === "string") killedWrite = said.killed_write;
-  if (said && typeof said.killed_write_note === "string") killedWriteNote = said.killed_write_note;
-  if (said && typeof said.killed_read === "string") killedRead = said.killed_read;
+  for (const key of Object.keys(shellSays)) {
+    if (said && typeof said[key] === "string") shellSays[key] = said[key];
+  }
   if (vocab && Array.isArray(vocab.writing_commands)) writingCommands = new Set(vocab.writing_commands);
-  if (said && typeof said.killed_at === "string") killedAt = said.killed_at;
-  if (said && typeof said.no_reply === "string") noReply = said.no_reply;
-  if (said && typeof said.could_not_start === "string") couldNotStart = said.could_not_start;
-  if (said && typeof said.could_not_send === "string") couldNotSend = said.could_not_send;
-  if (said && typeof said.no_log === "string") noLog = said.no_log;
   learnMenu(vocab && vocab.menu);
   if (said && typeof said.error_log === "string" && said.error_log) {
     errorLog = said.error_log;
     openable.set(errorLog, "file");   // Help > Open error log, through openPath (5.5)
   }
   // A row's key is "word row" (a file name on the page), and its kind is the word's.
+  const code = (result && result.carries_code) || (result && result.state && result.state.carries_code);
+  if (Array.isArray(code)) {
+    for (const p of code) if (typeof p === "string" && p) carriesCode.add(p);
+  }
   const paths = (result && result.paths) || (result && result.state && result.state.paths);
   if (paths && typeof paths === "object") {
     for (const [key, value] of Object.entries(paths)) {
@@ -310,9 +364,11 @@ function spawnTracker(args, payload, onProgress, onEnded, { fresh = false } = {}
   } catch (err) {
     // Said by its class; its message goes to the error log only (the review's S5).
     keepInLog("shell could not serialise a payload", `${err.name}: ${err.message}`);
-    return Promise.resolve(shellFailure(fill(couldNotSend, { kind: err.name || "Error" }), "refused"));
+    return Promise.resolve(shellFailure(fill(shellSays.could_not_send, { kind: err.name || "Error" }), "refused"));
   }
-  if (!FROZEN_API && !fs.existsSync(SOURCE_PYTHON)) return Promise.resolve(shellFailure(NOT_SET_UP, "refused"));
+  if (!FROZEN_API && !fs.existsSync(SOURCE_PYTHON)) {
+    return Promise.resolve(shellFailure(process.platform === "darwin" ? NOT_SET_UP_MAC : NOT_SET_UP, "refused"));
+  }
   return new Promise((resolve) => {
     const isPass = passCommand !== null && args[0] === passCommand;
     // A command that is not a pass goes to the waiting spare when there is
@@ -343,12 +399,12 @@ function spawnTracker(args, payload, onProgress, onEnded, { fresh = false } = {}
     const kill = () => {
       proc.kill();
       const minutes = Math.max(1, Math.round(limitMs / 60000));
-      const where = last && last.name ? ` ${fill(killedAt, last)}` : "";
+      const where = last && last.name ? ` ${fill(shellSays.killed_at, last)}` : "";
       // A sort says a sort stopped; a change says it may be partly done; any
       // other command only that it stopped (final review A, finding 5).
-      const said = isPass ? fill(killed, { minutes })
-        : writingCommands.has(args[0]) ? `${fill(killedWrite, { minutes })} ${killedWriteNote}`
-        : fill(killedRead, { minutes });
+      const said = isPass ? fill(shellSays.killed, { minutes })
+        : writingCommands.has(args[0]) ? `${fill(shellSays.killed_write, { minutes })} ${shellSays.killed_write_note}`
+        : fill(shellSays.killed_read, { minutes });
       const failure = shellFailure(said + where, "failed", { progress: last, killed: true });
       if (running) killedReply = failure;   // said when it closes, as its ending
       else settle(failure);
@@ -411,7 +467,7 @@ function spawnTracker(args, payload, onProgress, onEnded, { fresh = false } = {}
     proc.stdin.on("error", () => {});   // a process that died before reading stdin is reported by "close"
     // Said by its code, never its message, which names the executable's path.
     proc.on("error", (err) =>
-      settle(shellFailure(fill(couldNotStart, { code: (err && err.code) || "?" }), "failed"))
+      settle(shellFailure(fill(shellSays.could_not_start, { code: (err && err.code) || "?" }), "failed"))
     );
     proc.on("close", (code) => {
       take(pieces.join(""));
@@ -432,9 +488,9 @@ function spawnTracker(args, payload, onProgress, onEnded, { fresh = false } = {}
       // failed command's goes to the log beside the tracker's database, for
       // a developer at this machine (decision 193, security principle 7).
       // With none named - no data folder yet - the stderr goes to the
-      // fallback log and the reply says just noLog (Jason, 2026-09-29),
+      // fallback log and the reply says just no_log (Jason, 2026-09-29),
       // never a log beside the program (decision 186's rebase review, MF2).
-      const out = killedReply || reply || shellFailure(fill(noReply, { code }), "failed", { progress: last });
+      const out = killedReply || reply || shellFailure(fill(shellSays.no_reply, { code }), "failed", { progress: last });
       const failed = !reply || reply.error;
       if (failed) keepInLog("shell stderr of a failed command", stderr);
       const ending = failed && stderr && !errorLog ? withNoLog(out) : out;
@@ -551,7 +607,16 @@ async function openPath(p, reveal) {
   if (typeof p !== "string" || !openable.has(p)) {
     return "That path is not one the app reported; nothing was opened.";
   }
-  return openChecked(p, openable.get(p), reveal === "reveal");
+  const failed = await openChecked(p, openable.get(p), reveal === "reveal");
+  // R8 (P240): the file has opened, normally, and a Mac has no Protected View
+  // to open it in. The reply is then not "" but the sentence, for the page to
+  // say in the notice where Open's own result appears (renderer/shell.js):
+  // each time, nothing waits on it, nothing is refused. Only the path the API
+  // listed in state.carries_code, only opened and never revealed.
+  if (!failed && reveal !== "reveal" && process.platform === "darwin" && carriesCode.has(p)) {
+    return { says: shellSays.protected_view_mac };
+  }
+  return failed;
 }
 
 // The check itself, shared with Open error log's fallback, which is the
@@ -561,15 +626,15 @@ async function openChecked(p, kind, reveal) {
   try {
     info = await fs.promises.lstat(p);
   } catch {
-    return notOpened;
+    return shellSays.not_opened;
   }
   const same = kind === "folder" ? info.isDirectory()
     : kind === "file" || kind === "reveal" ? info.isFile() : false;
-  if (info.isSymbolicLink() || !same) return notOpened;
+  if (info.isSymbolicLink() || !same) return shellSays.not_opened;
   // A reveal-only kind (a filed, moved or set-aside working copy) is shown,
   // never opened: only a marked review copy opens in the default program
   // (decision 190). A plain open of one is refused, as any other unreported path.
-  if (kind === "reveal" && !reveal) return notOpened;
+  if (kind === "reveal" && !reveal) return shellSays.not_opened;
   if (reveal && (kind === "file" || kind === "reveal")) {
     shell.showItemInFolder(p);
     return "";
@@ -634,6 +699,7 @@ const DEFAULT_MENU_WORDS = {
   stop_sorting: "Stop Sorting",
   schedule: "Schedule…",
   repair_schedule: "Repair Schedule",
+  remove_schedule_here: "Remove the Schedule From This Mac…",
   firm_report: "Firm Report",
   clear_lock: "Clear Stuck Lock",
   help: "&Help",
@@ -672,7 +738,7 @@ const BAR = [
     ["open_client_folder"], ["open_inbox"], ["open_working"]]],
   ["view", [["overview", "CmdOrCtrl+1"], ["needs_review", "CmdOrCtrl+2"], ["reminders", "CmdOrCtrl+3"],
     ["clients", "CmdOrCtrl+4"], SEPARATOR, ["find", "CmdOrCtrl+F"], ["refresh", "F5"], SEPARATOR, ["reset_columns"], ["show_under_construction"]]],
-  ["tools", [["sort_now", "F9"], ["stop_sorting"], SEPARATOR, ["schedule"], ["repair_schedule"],
+  ["tools", [["sort_now", "F9"], ["stop_sorting"], SEPARATOR, ["schedule"], ["repair_schedule"], ["remove_schedule_here"],
     ["firm_report"], SEPARATOR, ["clear_lock"]]],
   ["help", [["tour"], ["safeguards"], ["terms"], ["error_log"], SEPARATOR, ["about"]]],
 ];
@@ -686,9 +752,13 @@ const POPUPS = new Map([
   ["request", ["edit_request"]],
   ["received", ["unfile", "mark_missing", "show_in_explorer"]],
 ]);
-// What needs nothing of the page: enabled from the first frame.
+// What needs nothing of the page: enabled from the first frame. Removing a
+// Mac's schedule needs no clients folder: it is for the app's last act.
 const ALWAYS = new Set(["change_root", "exit", "refresh", "tour", "safeguards", "terms", "error_log", "about",
-  "show_under_construction"]);
+  "show_under_construction", "remove_schedule_here"]);
+// The items a Mac alone has (SPEC-mac R29): dragging an app to the Bin leaves
+// its launchd agent behind, so a Mac can take the schedule away first.
+const MAC_ONLY = new Set(["remove_schedule_here"]);
 const BAR_IDS = new Set(BAR.flatMap(([, items]) => (items || []).filter((i) => i !== SEPARATOR).map((i) => i[0])));
 // The bar's checked items: Windows draws the tick. The page owns what each
 // one says and sends the ticked ids as `checked` (P197).
@@ -718,7 +788,7 @@ async function openErrorLog() {
 // answer, with the row's own token when there is one.
 function menuItem(id, enabled, token) {
   return {
-    label: menuWords[id],
+    label: shown(menuWords[id]),
     enabled,
     click: () => {
       if (id === "error_log") openErrorLog().catch(() => null);
@@ -731,16 +801,29 @@ function menuItem(id, enabled, token) {
   };
 }
 
+// A menu word as the platform shows it. The & of "&Tools" is a Windows
+// mnemonic (Alt+T); a Mac has none, and a label that carried one would show
+// the ampersand if Electron does not strip it (SPEC-mac R11, kit step H11), so
+// it is taken out here, once, for every label and item.
+function shown(word) {
+  return process.platform === "darwin" ? word.replace(/&(?!&)/g, "") : word;
+}
+
 function buildTemplate() {
-  return BAR.map(([key, items]) => {
-    // Edit is Windows' own: Undo, Redo, Cut, Copy, Paste and Select all.
-    if (!items) return { label: menuWords[key], role: "editMenu" };
+  const mac = process.platform === "darwin";
+  const bar = BAR.map(([key, items]) => {
+    // Edit is the platform's own: Undo, Redo, Cut, Copy, Paste and Select all.
+    if (!items) return { label: shown(menuWords[key]), role: "editMenu" };
+    // Quit lives in the app menu on a Mac (below), so File has no Exit there,
+    // and nor the separator that stood before it.
+    const entries = (mac ? items.filter((item) => item[0] !== "exit") : items.filter((item) => !MAC_ONLY.has(item[0])));
+    if (mac && entries[entries.length - 1] === SEPARATOR) entries.pop();
     return {
-      label: menuWords[key],
-      submenu: items.map((item) => {
+      label: shown(menuWords[key]),
+      submenu: entries.map((item) => {
         if (item === SEPARATOR) return { type: "separator" };
         const [id, accelerator] = item;
-        if (id === "exit") return { label: menuWords.exit, role: "quit" };
+        if (id === "exit") return { label: shown(menuWords.exit), role: "quit" };
         const built = menuItem(id, ALWAYS.has(id) || menuEnabled.has(id), "");
         if (accelerator) built.accelerator = accelerator;
         if (CHECKABLE.has(id)) Object.assign(built, { type: "checkbox", checked: menuChecked.has(id) });
@@ -748,6 +831,10 @@ function buildTemplate() {
       }),
     };
   });
+  // On a Mac the first menu is the application's own: About, Hide, Hide
+  // Others, Show All and Quit with Cmd+Q, all Electron's roles, named for the
+  // product by the system. It adds no reload, zoom or developer-tools item.
+  return mac ? [{ role: "appMenu" }, ...bar] : bar;
 }
 
 function buildMenu() {
@@ -807,7 +894,7 @@ ipcMain.on(MENU_CHANNEL, onMenuMessage);
 // defined - pilot-ui.css's --window-light and --window-dark - and left to the
 // page when a Windows contrast theme is on (it paints its own). Read
 // defensively: a stylesheet without the names (or without the file) gives
-// the older page background, then nothing, never a thrown error at start.
+// nothing, never a thrown error at start.
 function tokenColour(css, name) {
   const match = new RegExp(`${name}:\\s*(#[0-9a-fA-F]{3,8})`).exec(css);
   return match ? match[1] : undefined;
@@ -823,7 +910,7 @@ function pageBackground() {
     }
   };
   const name = nativeTheme.shouldUseDarkColors ? "--window-dark" : "--window-light";
-  return tokenColour(read("pilot-ui.css"), name) || tokenColour(read("style.css"), "--bg");
+  return tokenColour(read("pilot-ui.css"), name);
 }
 
 function createWindow() {
@@ -846,6 +933,8 @@ function createWindow() {
     title: PRODUCT_NAME,
     // The title bar and taskbar icon of the unpackaged launch (Start App.bat);
     // the packaged .exe carries the same file, written in by electron-packager.
+    // macOS ignores a window icon: the bundle's icon is the .icns the packager
+    // is given (SPEC-mac R14, R15).
     icon: path.join(__dirname, "assets", "icon.ico"),
     backgroundColor: pageBackground(),
     autoHideMenuBar: true,
@@ -882,14 +971,19 @@ function createWindow() {
 // first saved over the other's save. So the shell takes the single-instance
 // lock; a launch that cannot have it quits before any window is made, and
 // the running one answers it by bringing its window forward.
-if (!app.requestSingleInstanceLock()) {
+const floorRefusal = macFloorRefusal();
+if (floorRefusal) {
+  stopAtTheFloor(floorRefusal);
+} else if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
   // Before the window opens: Windows groups a running window with its
   // shortcut, and shows the shortcut's icon on the taskbar button, by this
   // id. It is a fixed string, never derived from the name, so a rename does
-  // not split a pinned button from its window.
-  app.setAppUserModelId("com.jparkassociates.taxdocumentconsole");
+  // not split a pinned button from its window. A Mac has no such id; its
+  // bundle identifier is the same string, given to the packager by
+  // build-mac.sh (SPEC-mac R14).
+  if (process.platform === "win32") app.setAppUserModelId("com.jparkassociates.taxdocumentconsole");
   app.on("second-instance", () => {
     const [win] = BrowserWindow.getAllWindows();
     if (!win) return;
@@ -906,6 +1000,14 @@ if (!app.requestSingleInstanceLock()) {
         if (result && result.ran && !win.isDestroyed()) win.webContents.send(LAUNCH_DONE_CHANNEL);
       })
       .catch(() => null);
+  });
+}
+// R6: said once the app is ready (a message box needs it), and nothing else
+// runs: no lock, no window, no tracker, nothing written.
+function stopAtTheFloor(sentence) {
+  app.whenReady().then(() => {
+    dialog.showMessageBoxSync({ type: "error", message: sentence, buttons: ["OK"] });
+    app.quit();
   });
 }
 // A switch between light and dark while the app is open sets the window's

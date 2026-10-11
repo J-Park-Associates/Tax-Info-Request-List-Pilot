@@ -282,15 +282,16 @@ def _interrupted(engagement_dir: Path, rows: list[IndexEntry]) -> dict[Path, str
     counted and the request is told in the row's own sentence instead.
     Firm-side, always: no draft asks a client about a power cut here.
     """
-    from tracker.filer import interrupted_at, interrupted_note
+    from tracker.filer import interrupted
 
     found: dict[Path, str] = {}
     for row in rows:
-        where = interrupted_at(row)
-        if where:
+        stopped = interrupted(row)
+        if stopped:
             # Said with the row's own code (decision 190), so the request's
             # note records the cause the row recorded.
-            found[locate(engagement_dir, where)] = reasons.Said(interrupted_note(row), row.code)
+            where, sentence = stopped
+            found[locate(engagement_dir, where)] = reasons.Said(sentence, row.code)
     return found
 
 
@@ -940,14 +941,10 @@ if __name__ == "__main__":
         "--dry-run", action="store_true", help="report only; write nothing"
     )
     ns = parser.parse_args()
-    # A typed folder is parsed, never trusted: it must be a return's
-    # place under the checked clients root (decision 188).
+    # A typed folder is parsed, never trusted (decision 188).
     from tracker import door
-    from tracker.layout import LayoutError
-    try:
-        ns.engagement_dir = door.return_dir(Path(ns.engagement_dir).absolute())
-    except (door.DoorError, LayoutError) as exc:     # the door's own sentences
-        parser.error(str(exc))
+
+    ns.engagement_dir = door.typed_return(parser, ns.engagement_dir)
 
     engagement = Path(ns.engagement_dir)
     # One log for the system - the runner's LOG_FILENAME. A hand-run scan just

@@ -21,7 +21,7 @@ See docs/ROADMAP.md for the build plan. Component modules:
 - reminder      : draft (never send) the client reminder email
 - registry      : finds every engagement under the clients root (no registry file)
 - runner        : the unattended pass (file -> scan -> weekly draft)
-- scheduling    : generate the Task Scheduler / n8n job
+- scheduling    : generate the Task Scheduler job
 - after_install : every one-time step after installing or upgrading - the schedule on the computer that runs it, the record check - run by Setup, the app's launch and the first root saved
 - templates     : the per-form request catalog, the one place the checklists live
 - locking       : the one lock per engagement that sort and scan both hold
@@ -47,9 +47,7 @@ so they are worded here and nowhere else.
 The package imports nothing at load time (decision 99). Every component is
 reached by its own name - ``from tracker import manifest`` - and
 ``tests/test_layers.py`` pins which layer each one sits in and that no
-load-time import points upward. The re-exports that used to live here
-were thirteen names no file consumed, and they were the package's one
-load-time cycle.
+load-time import points upward.
 """
 
 #: (headline, detail) - the detail names folders and the record by

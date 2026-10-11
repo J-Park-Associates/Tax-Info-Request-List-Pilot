@@ -9,8 +9,8 @@ carries the names its documents will show, and a document is filed only
 where the name on it confirms.
 
 **What this module is, and is not.** It is the matcher and nothing else:
-:func:`normalise`, :func:`spelling_in`, :func:`propose_spellings` and
-:func:`check_name` are pure functions over text the caller already has.
+:func:`normalise`, :func:`propose_spellings` and :func:`check_name` are pure
+functions over text the caller already has.
 Nothing here reads a file, takes a lock, or knows what a return is. The
 check is asked in the reader child, beside the rules (decision 189,
 :func:`tracker.content_check.judge`), and its verdict read in the
@@ -74,7 +74,6 @@ NO_PEOPLE = "Add at Least One Person"
 NAME_CONFIRMED = "confirmed"
 NAME_VETOED = "another return's"
 NAME_ABSENT = "absent"
-NAME_OUTCOMES: tuple[str, ...] = (NAME_CONFIRMED, NAME_VETOED, NAME_ABSENT)
 
 #: The suffixes an entity's name may end with and still be the same entity.
 #: Both spellings of each are listed as a person would type them; they are
@@ -100,19 +99,6 @@ def normalise(text: str) -> str:
     be, because every separator became a space before the search.
     """
     return " " + " ".join(name_words(text)) + " "
-
-
-def spelling_in(text: str, spelling: str) -> bool:
-    """Whether ``text`` says ``spelling`` as a whole phrase.
-
-    The phrase test and nothing else: ``Park`` *is* a whole phrase inside
-    ``Park Landscaping LLC``, which is precisely why a one-word spelling
-    may never be recorded as one. That rule is kept where a spelling is
-    accepted - the editor, the new-return dialog, a filing that teaches one, the
-    store's guard against a hand-edited journal - and again in
-    :func:`check_name`, which is the thing that confirms.
-    """
-    return _said_at(text, spelling) is not None
 
 
 @dataclass(frozen=True, slots=True)
@@ -144,6 +130,13 @@ def read_names(text: str) -> NamesOnPage:
 
 def _said_at(text: str, spelling: str, page: NamesOnPage | None = None) -> int | None:
     """Where in ``text`` a spelling's first word begins, or None.
+
+    The phrase test and nothing else: ``Park`` *is* a whole phrase inside
+    ``Park Landscaping LLC``, which is precisely why a one-word spelling
+    may never be recorded as one. That rule is kept where a spelling is
+    accepted - the editor, the new-return dialog, a filing that teaches one,
+    the store's guard against a hand-edited journal - and again in
+    :func:`check_name`, which is the thing that confirms.
 
     The search is over the folded copy (:func:`normalise`); the offset
     comes back in the *original* text, because the place a record names is
@@ -301,23 +294,3 @@ def check_name(
                 return NameVerdict(NAME_VETOED, other=spelling, other_label=label,
                                    where=where, page=page_number)
     return NameVerdict(NAME_ABSENT)
-
-
-# -------------------------------------------------------------------- CLI ----
-
-if __name__ == "__main__":
-    import argparse
-
-    from tracker.page import tolerant_console
-
-    tolerant_console()   # a client's name the console cannot encode is no traceback
-
-    parser = argparse.ArgumentParser(
-        description="What would the app propose as spellings of this name? Read-only."
-    )
-    parser.add_argument("name", help="the name as a person would type it")
-    parser.add_argument("--kind", default="taxpayer", help="one of the person kinds")
-    ns = parser.parse_args()
-
-    for proposal in propose_spellings(ns.name, ns.kind):
-        print(proposal)

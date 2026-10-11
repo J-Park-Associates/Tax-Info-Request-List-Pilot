@@ -158,6 +158,7 @@ from tracker.locking import (
     BREAKER_STALE_SECONDS,
     BREAKER_SUFFIX,
     LOCK_FILENAME,
+    full_sync,
     lock_is_held,
     this_host,
 )
@@ -186,10 +187,6 @@ STATUSES_KEY = "statuses"
 #: writer and every reader of the record spell them once.
 IDENTIFIER_KEY = "identifier"
 KEYWORD_KEY = "keyword"
-#: What a ``MIGRATED`` event carried: the files the migration moved aside,
-#: by the names they then had. It carries no row - it is a statement about
-#: the folder, not about a document - which is why it is not a row event.
-FILES_KEY = "files"
 #: What a ``MOVING`` event carries besides ``KEY_KEY`` and ``ROW_KEY``
 #: (decision 119). ``OPS_KEY`` is the file operations the decision is about
 #: to make, in order, each ``{OP_KEY: "move"|"copy"|"remove", FROM_KEY: …,
@@ -472,7 +469,7 @@ MOVE_ABANDONED = "move_abandoned"
 IMPORTED = "imported"
 #: The index workbook was moved aside, and this engagement's index now lives
 #: in the record alone (decision 102). Written once per engagement, after the
-#: rename, carrying :data:`FILES_KEY`. It carries no row, so it is
+#: rename. It carries no row, so it is
 #: deliberately *not* a row event: a reader that folded it as one would
 #: look for a row that was never there. Nothing writes one since decision
 #: 104 took the migration out of the tree; it stays readable.
@@ -718,18 +715,13 @@ def intended_heads(before: str, events: list[dict]) -> list[str]:
     return heads
 
 
-def _write_line(path: Path, event: dict) -> None:
-    """One event, one line, one write, flushed to the platter before we go on."""
-    _write_raw(path, json.dumps(event, ensure_ascii=False, sort_keys=True).encode("utf-8"))
-
-
 def _write_raw(path: Path, line: bytes) -> None:
     line = line + _NEWLINE
     try:
         fd = os.open(path, os.O_WRONLY | os.O_APPEND | os.O_CREAT | _BINARY, 0o666)
         try:
             os.write(fd, line)
-            os.fsync(fd)
+            full_sync(fd)
         finally:
             os.close(fd)
     except OSError as exc:
@@ -765,7 +757,7 @@ def _truncate_torn_tail(path: Path, data: bytes) -> None:
             fd = os.open(path, os.O_WRONLY | os.O_APPEND | _BINARY)
             try:
                 os.write(fd, _NEWLINE)
-                os.fsync(fd)
+                full_sync(fd)
             finally:
                 os.close(fd)
         except OSError as exc:
@@ -777,7 +769,7 @@ def _truncate_torn_tail(path: Path, data: bytes) -> None:
         with open(path, "r+b") as handle:
             handle.truncate(keep)
             handle.flush()
-            os.fsync(handle.fileno())
+            full_sync(handle.fileno())
     except OSError as exc:
         raise _not_written(exc) from exc
 
@@ -978,11 +970,7 @@ def read_events(engagement_dir: Path | str) -> list[dict]:
     return [] if data is None else _parse(data, path.name)
 
 
-def read_with_head(
-    engagement_dir: Path | str,
-    *,
-    known: tuple[list[dict], str] | None = None,
-) -> tuple[list[dict], str]:
+def read_with_head(engagement_dir: Path | str) -> tuple[list[dict], str]:
     """The record's events and its head, both from **one** read of the file.
 
     What the store applies and the head it saves beside them (decision
@@ -994,18 +982,10 @@ def read_with_head(
     torn tail is not a line, corruption is refused) and digested exactly as
     :func:`head` digests, torn tail included, so the pair equals the two
     calls on a file nobody is writing.
-
-    ``known`` is a pair this function returned earlier. When the bytes read
-    now still digest to its head they are the bytes its events came from,
-    and those events are returned without parsing the file a second time:
-    the store's look outside its transaction and its read inside are then
-    one parse, and still one read of the file each.
     """
     path = path_for(engagement_dir)
     data = _bytes_of(path)
     now = _digest(data)
-    if known is not None and known[1] == now:
-        return known[0], now
     return ([] if data is None else _parse(data, path.name)), now
 
 
@@ -1026,9 +1006,11 @@ def read_with_chain(
     chain lives in the store, which is rebuildable, and not in the journal,
     whose format is the record's and unchanged.
 
-    ``known`` is a triple this function returned earlier, reused exactly as
-    :func:`read_with_head` reuses its pair: when the bytes read now still
-    digest to its head, they are the bytes it came from.
+    ``known`` is a triple this function returned earlier: when the bytes
+    read now still digest to its head, they are the bytes its events came
+    from, and those events are returned without parsing the file a second
+    time - the store's look outside its transaction and its read inside are
+    then one parse, and still one read of the file each.
     """
     path = path_for(engagement_dir)
     data = _bytes_of(path)
@@ -1050,51 +1032,6 @@ def chain_at(chain: list[str], count: int) -> str:
     return chain[count - 1] if count else ""
 
 
-def fold(events: list[dict]) -> dict[str, dict]:
-    """The index the events add up to: the last index-shaped event per original.
-
-    Keyed by the identity the writer recorded the row under (the index's own,
-    its location among the client's preserved originals). An event carrying
-    ``WAS_KEY`` says the row arrived from another identity - the client moved
-    the original and the row followed the bytes - and the one it left is
-    dropped, exactly as the index has only the one row for it.
-
-    **In the index's order.** The rows come back in the order the record
-    first saw each original, and a row that changed identity keeps the place
-    the one it left held: the writer rewrites that row where it sits rather
-    than moving it to the end. The order is the audit trail's own and there
-    is no second copy of it to drift from - :mod:`tracker.store` lays its
-    ``position`` column from this fold, and
-    :func:`tracker.filer.read_index` reads it back.
-
-    An event whose name this version does not know as index-shaped is passed
-    over rather than refused: a later version may write one, and a reader
-    that refuses what it does not know cannot read a record written by the
-    run after it.
-    """
-    return replay(events).rows
-
-
-def statuses(events: list[dict]) -> dict[str, dict]:
-    """The last status each identifier was scanned to, by identifier.
-
-    A pass appends only what it changed, so the answer is built up across
-    every ``SCANNED`` event rather than read off the last one.
-    """
-    return replay(events).statuses
-
-
-def rules(events: list[dict]) -> dict[str, dict]:
-    """The person's request rows as the record last left them, by
-    identifier, in the order the record first saw each one.
-
-    Empty where no rules event has ever been appended: an engagement whose
-    list nobody has recorded, which since decision 104 is not an
-    engagement anything runs.
-    """
-    return replay(events).rules
-
-
 @dataclass
 class Folded:
     """What the record adds up to: the index, the statuses, the rules and
@@ -1105,10 +1042,28 @@ class Folded:
     (:mod:`tracker.store`) needs to carry the lot between lines.
     """
 
+    #: The index the events add up to: the last index-shaped event per
+    #: original, keyed by the identity the writer recorded the row under
+    #: (its location among the client's preserved originals). An event
+    #: carrying ``WAS_KEY`` says the row arrived from another identity - the
+    #: client moved the original and the row followed the bytes - and the one
+    #: it left is dropped, as the index has only the one row for it.
+    #:
+    #: **In the index's order.** The rows come back in the order the record
+    #: first saw each original, and a row that changed identity keeps the
+    #: place the one it left held: the writer rewrites that row where it sits
+    #: rather than moving it to the end. The order is the audit trail's own
+    #: and there is no second copy of it to drift from - :mod:`tracker.store`
+    #: lays its ``position`` column from this fold, and
+    #: :func:`tracker.filer.read_index` reads it back.
     rows: dict[str, dict] = field(default_factory=dict)
+    #: The last status each identifier was scanned to, by identifier. A pass
+    #: appends only what it changed, so the answer is built up across every
+    #: ``SCANNED`` event rather than read off the last one.
     statuses: dict[str, dict] = field(default_factory=dict)
     #: identifier -> the person's rule row, as ``records.rule_to_json``
-    #: writes it. Keyed by the identifier as the person spelt it; the
+    #: writes it, in the order the record first saw each one; empty where no
+    #: rules event has ever been appended. Keyed by the identifier as the person spelt it; the
     #: validation refuses two rows whose identifiers differ only in case,
     #: so one spelling per row is all there can be.
     rules: dict[str, dict] = field(default_factory=dict)
@@ -1144,8 +1099,8 @@ class Folded:
 def apply(state: Folded, event: dict) -> Folded:
     """One event folded into what the record said before it. Returns ``state``.
 
-    **The whole of both fold rules, in one place.** :func:`fold` and
-    :func:`statuses` are this function over a whole file, and the store of
+    **The whole of both fold rules, in one place.** :func:`replay` is this
+    function over a whole file, and the store of
     decision 101 is this function over the lines it has not applied yet -
     so an index that is replayed a line at a time and one that is folded
     from the start cannot come out different. Anything that has to change
@@ -1317,7 +1272,7 @@ def replay(events: list[dict]) -> Folded:
     and the keywords filings taught.
 
     One walk for a caller that wants all of them, and the definition
-    :func:`fold`, :func:`statuses` and :func:`rules` are each one part of.
+    of what the rows, the statuses and the rules each are.
     """
     state = Folded()
     for event in events:
@@ -1345,15 +1300,10 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Show one engagement's own record")
     parser.add_argument("engagement_dir", help="the engagement folder")
     ns = parser.parse_args()
-    # A typed folder is parsed, never trusted: it must be a return's
-    # place under the checked clients root (decision 188).
+    # A typed folder is parsed, never trusted (decision 188).
     from tracker import door
-    from tracker.layout import LayoutError
 
-    try:
-        ns.engagement_dir = door.return_dir(Path(ns.engagement_dir).absolute())
-    except (door.DoorError, LayoutError) as exc:     # the door's own sentences
-        parser.error(str(exc))
+    ns.engagement_dir = door.typed_return(parser, ns.engagement_dir)
 
     # There is nothing left here to compare with a workbook. Until decision
     # 103 the manifest carried each request's status as well, and

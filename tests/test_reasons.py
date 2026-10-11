@@ -157,8 +157,7 @@ def test_a_program_is_asked_about_in_the_words_any_unusable_file_gets():
 #: review, S-2). A new one is a decision, made here where it shows.
 TAIL_READERS = {
     ("filer", "moved_to"): "where the firm's moved sentence says a working copy now is",
-    ("filer", "interrupted_at"): "the path the firm's interrupted-move sentence names",
-    ("filer", "interrupted_note"): "the firm's interrupted-move sentence, said again",
+    ("filer", "interrupted"): "the path the firm's interrupted-move sentence names, and the sentence itself",
     ("review", "_label_of"): "the return's label the firm's own veto sentence names",
     ("scanner", "_regression_why"): "the count the firm's own regression sentence names",
     ("containers", "add"): "which limit (LIMIT_DEPTH) the firm's own container-limit sentence names",

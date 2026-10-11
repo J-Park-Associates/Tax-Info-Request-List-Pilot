@@ -27,6 +27,24 @@ else - not a line in the runbook, not a button.
    task, leaves the designation alone and says so. A saved choice that is
    refused (a hand-edited file) is a failure and registers nothing from a
    guess.
+   **On a Mac** (SPEC-mac R23-R30) the same job registers a launchd agent
+   (``scheduling.register_here``: the plist, ``bootout``, ``bootstrap``,
+   ``enable``), and the launch door adds three things Windows has no use
+   for. A person who switched the agent off under Login Items is told
+   (:data:`SCHEDULE_SWITCHED_OFF`) and not overridden. A program the agent
+   has not run before gets one ``launchctl kickstart`` right after it is
+   registered, so the first pass - and any permission macOS asks of the
+   schedule's own program - happens while a person is at the Mac and never
+   waits for someone to remember (decision 209). And **Remove the Schedule
+   From This Mac** (:func:`remove_here`) is the one deliberate act, because
+   dragging the app to the Bin leaves the agent behind.
+
+   The **Time Machine** job (:func:`_time_machine`, SPEC-mac R7, P242) runs
+   next, on a Mac only: it leaves the data home, and Electron's own folder,
+   out of Time Machine backups with the sticky ``tmutil addexclusion``,
+   asking ``tmutil isexcluded`` first so a second run changes and says
+   nothing. Both are derived from clients, which is decision 186's reason
+   they are never synced, and a backup is a sync of its own.
 2. **The record check** - decision 187's ``store.check`` for every folder
    with a record, and ``store.gone_journals``, as the store's command line
    runs them. It changes no record (opening the store may set an older one
@@ -52,34 +70,12 @@ else - not a line in the runbook, not a button.
    rather than ``shutil.rmtree`` (whose handling of junctions differs by
    version). Absent is nothing to do and says nothing.
 
-**The rename's carry-over** (P155 Q2, ``pilot/SPEC-rename.md`` section 3) -
-two jobs around the others, each saying one sentence every run, "nothing to
-do" included, kept in the record's ``carried`` and leading the printed
-lines. First of all, before anything reads the settings file, the settings
-file the earlier name left in its program folder is copied to this
-program's, byte for byte and only when this one has none (a PC that
-uninstalled the earlier name and installed this one fresh; an upgrade
-installs in place and keeps its file). Right after the schedule, the
-earlier name's scheduled task is removed - that name and nothing else,
-never the firm's production task - unless the schedule failed this run,
-when it is kept so the pass still runs. A failure of either is a failure
-like any other: nothing is recorded as done, and the next launch tries
-again. Carrying over is not a finding, so the first screen's notice does
-not show it.
-
-**The careful mover** (SPEC-209 R9, by the standing preference) -
-decision 186's hand step, moving the record checkpoint and ``recovered/``
-from beside the program into the data home, becomes
-:func:`move_left_behind`: it moves 186's own move group and never a list of
-its own, and never touches 186's delete group (deleting what holds client
-names stays a person's call). It checks every destination and refuses any
-link before moving anything, because a checkpoint split from its journal
-is worse than one not moved. It never overwrites anything - no
-``os.replace``: a rename that refuses an existing name on one volume, and
-otherwise a copy into a name it creates, compared by size and SHA-256
-before the source is removed; a failure leaves the source whole beside the
-program and removes only what the mover itself created (the R9 review).
-It is wired first into :func:`run` when 186 lands.
+**What it does not carry over** (P235). An install older than decision 186
+(its store, run log and checkpoint beside the program) or older than the
+rename to Tax Document Console (the earlier name's settings file and its
+scheduled task) is set up fresh: this step moves, copies and removes
+nothing of theirs. The first screen still names whatever an old install left
+beside the program, for a person to move or delete (runbook).
 
 **A finding names a household that waits** - for the kinds that do. A
 line an earlier version applied that today's admission refuses stops its
@@ -148,22 +144,24 @@ nothing lower does (layer 4, ``tests/test_layers.py``).
 from __future__ import annotations
 
 import datetime as dt
-import errno
 import hashlib
 import json
+import logging
 import os
-import shutil
-import stat
+import subprocess
 import sys
 import time
 from collections.abc import Iterator
 from contextlib import contextmanager
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
 
-from tracker import checkpoint, door, errors, ledger, registry, runner, scheduling, settings, store
-from tracker.fsio import write_bytes_atomically, write_json_atomically
-from tracker.locking import EngagementLockedError, acquire_lock, release_lock, this_host
+from tracker import door, errors, fsio, ledger, registry, runner, scheduling, settings, store
+from tracker.content_check import RETIRED_CACHE_FILENAME
+from tracker.fsio import TEMP_SUFFIX, write_json_atomically
+from tracker.locking import EngagementLockedError, acquire_lock, is_this_host, release_lock, this_host
+
+log = logging.getLogger(__name__)
 
 #: The note of the last run, beside the store - in the data home (decision
 #: 186) - and named by ``runner.left_behind`` when an old copy is beside
@@ -229,6 +227,49 @@ DESIGNATION_UNWRITABLE = ("The file naming the computer that runs the schedule (
 #: or ``schtasks`` could not be started - the operating system's words are
 #: not a sentence for a person.
 SCHEDULE_UNREACHABLE = "the job file could not be written, or Task Scheduler could not be started"
+#: The same on a Mac, where the job is a launchd agent and there is no Task
+#: Scheduler to name (SPEC-mac R11). Said instead of the Windows words, never
+#: beside them.
+SCHEDULE_UNREACHABLE_MAC = "the job file could not be written, or launchd refused it"
+
+
+def schedule_unreachable() -> str:
+    """:data:`SCHEDULE_UNREACHABLE`'s words for the computer this runs on: the
+    Windows ones, or on a Mac :data:`SCHEDULE_UNREACHABLE_MAC`. Asked when
+    said, through ``settings.host_system``, the seam a test stands in for a
+    Mac with."""
+    return SCHEDULE_UNREACHABLE_MAC if settings.host_system() == "darwin" else SCHEDULE_UNREACHABLE
+
+
+#: A Mac's schedule that the person switched off under Login Items (SPEC-mac
+#: R27). Not registered again, because macOS would refuse and a person's
+#: switch is theirs; said at every start until they switch it back on.
+#: ``{product}`` is the app's name, which the Login Items list shows.
+SCHEDULE_SWITCHED_OFF = ("macOS has switched the schedule off for this app (System Settings > General > "
+                         "Login Items, Allow in the Background). Switch {product} back on there; the app "
+                         "cannot do it for you.")
+#: The schedule key the record holds while it is switched off.
+SWITCHED_OFF_KEY = "switched_off"
+#: The agent was loaded but its first pass could not be started (SPEC-mac
+#: R27): failed, so the step is tried again at the next start.
+FIRST_PASS_REFUSED = ("The schedule is set, but its first pass could not be started ({problem}); the app "
+                      "tries again at its next start.")
+#: The Time Machine job (SPEC-mac R7, P242): what it says when it newly left
+#: a folder out, and when it could not (``{folder}`` is the folder, ``{problem}``
+#: the machine's own words).
+TIME_MACHINE_EXCLUDED = "Left the app's data folder out of Time Machine backups."
+TIME_MACHINE_REFUSED = ("The app's data folder ({folder}) could not be left out of Time Machine backups "
+                        "({problem}); the app tries again at its next start.")
+TIME_MACHINE_KEY = "time_machine"
+#: ``tmutil`` gets the same time as the schedulers do (``scheduling.SCHTASKS_TIME_LIMIT_SECONDS``).
+TMUTIL_TOO_LONG = "tmutil did not answer within {seconds} seconds"
+#: Removing a Mac's schedule (SPEC-mac R29): the sentence, what a refusal
+#: says, and what a computer that is not a Mac is told.
+SCHEDULE_REMOVED_FROM_MAC = ("The schedule is removed from this Mac. To remove the app, quit it now and drag "
+                             "it from Applications to the Bin; opening it again sets the schedule up again.")
+SCHEDULE_NOT_REMOVED = ("The schedule could not be removed from this Mac ({problem}). Nothing else was "
+                        "changed.")
+REMOVE_ONLY_ON_A_MAC = "Removing the schedule this way is for a Mac; nothing was changed on this computer."
 #: What the launch door records when the step itself raised something it
 #: does not name (the review's N1), so the notice says it rather than the
 #: launch dropping it.
@@ -246,6 +287,11 @@ CACHE_CLEARED = ("Removed the test cache left in the app's folder by earlier ver
                  "nothing the app uses was in it.")
 CACHE_NOT_CLEARED = ("The test cache left in the app's folder by earlier versions (.pytest_cache) could "
                      "not be removed; the app tries again at its next start.")
+#: The retired-cache job (decision 107's tidy-up, moved here by P234): what
+#: it says when it removed something; it removes nothing a run can fail on.
+RETIRED_CACHE_KEY = "retired_cache"
+RETIRED_CACHE_REMOVED = ("Removed {n} file(s) of the old verdict cache from the engagement folders; the "
+                         "cache lives in the store since decision 107 and nothing reads the file.")
 #: The setup door's last job (pilot P218, S3): the Overview made ready, so
 #: the first one after an install opens at once - console only (Setup
 #: prints ``lines``; the app's notice shows findings and failures, never
@@ -254,38 +300,6 @@ CACHE_NOT_CLEARED = ("The test cache left in the app's folder by earlier version
 OVERVIEW_READY = "Made the Overview ready, so the first one after this install opens at once."
 OVERVIEW_NOT_READY = ("The Overview could not be made ready ({why}); the first one reads every "
                       "household and takes a little longer.")
-#: The careful mover (R9): what it says when it moved decision 186's move
-#: group into the data home, and each way it refused or failed (constant
-#: sentences; no operating-system message is quoted).
-LEFT_BEHIND_MOVED = ("Moved the record checkpoint and recovered records an earlier version kept beside "
-                     "the program into {home}; nothing was deleted.")
-LEFT_BEHIND_DESTINATION_TAKEN = ("{name} is already in {home}, so the files an earlier version left "
-                                 "beside the program were not moved; a person must compare the two and "
-                                 "keep one (runbook, decision 186).")
-#: The record checkpoint, its rollback journal, its write-ahead log and
-#: shared memory (P214) and a copy a person renamed ``.damaged``, by 186's
-#: own names: moved together or not at all (MF1).
-CHECKPOINT_UNIT = (checkpoint.CHECKPOINT_FILENAME, checkpoint.CHECKPOINT_JOURNAL_FILENAME,
-                   checkpoint.CHECKPOINT_WAL_FILENAME, checkpoint.CHECKPOINT_SHM_FILENAME,
-                   checkpoint.CHECKPOINT_DAMAGED_FILENAME)
-#: The side files that would be replayed into whatever checkpoint they are
-#: found beside: never moved without their own (P214).
-_CHECKPOINT_SIDE_FILES = (checkpoint.CHECKPOINT_JOURNAL_FILENAME, checkpoint.CHECKPOINT_WAL_FILENAME,
-                          checkpoint.CHECKPOINT_SHM_FILENAME)
-#: Said for a rollback journal, a write-ahead log or its shared memory alike
-#: (P214's review): "side file(s)" names all three, where "journal" named one.
-LEFT_BEHIND_JOURNAL_ALONE = ("The record checkpoint's side file(s) beside the program have no checkpoint "
-                             "with them, or {home} already holds part of the checkpoint; nothing was moved "
-                             "- a person must look (runbook, decision 186).")
-LEFT_BEHIND_IS_LINK = ("{name}, left beside the program by an earlier version, is a link, so nothing was "
-                       "moved into {home}; a person must move what it points at (runbook, decision 186).")
-LEFT_BEHIND_MOVE_FAILED = ("The files an earlier version left beside the program could not all be moved "
-                           "into {home}; a person must compare the program's folder with {home} and finish "
-                           "the move (runbook, decision 186).")
-LEFT_BEHIND_PARTLY_REMOVED = ("{home} now holds the whole copy of {name}; part of the old copy is still "
-                              "beside the program as {aside} and can be deleted.")
-#: The mover's step key (R9), beside the schedule's and the check's.
-MOVE_KEY = "left_behind"
 #: The one lock every run of the step holds (pilot P47), beside the record;
 #: how long a run waits for another to finish, and how often it looks.
 LOCK_FILENAME = "after-install.lock"
@@ -302,34 +316,6 @@ LOCK_UNAVAILABLE = ("The after-install step could not take its lock ({file}), so
                     "Start the app: it tries again at launch.")
 #: What Setup prints when the step exits 1 (``Setup.bat`` echoes the same words).
 SETUP_RETRY = "The after-install step could not finish (above). Start the app: it tries again at launch."
-#: The rename's carry-over (P155 Q2, SPEC-rename section 3): the settings
-#: file left by the earlier name, and its scheduled task. Each job says one
-#: of these every run, "nothing to do" included; the record keeps them in
-#: ``carried``. {old} and {new} are filled from ``settings`` and
-#: ``scheduling``, so no sentence types either name.
-SETTINGS_KEY = "settings"
-EARLIER_TASK_KEY = "earlier_task"
-SETTINGS_FROM_SOURCE = ("Run from source: the settings file is the checkout's own, so nothing is carried "
-                        "over from the earlier name.")
-SETTINGS_IN_PLACE = "The program was upgraded in its own folder, so its settings file stayed where it was."
-SETTINGS_BOTH = ("This program already has its settings file ({new}), so the one left by the earlier "
-                 "name ({old}) was not used; it was left where it was.")
-SETTINGS_NO_EARLIER = "There was no settings file from the earlier name to carry over."
-SETTINGS_CARRIED = ("Copied the settings file left by the earlier name ({old}) to {new}, so the clients "
-                    "folder and the schedule choice carry over; the earlier file was left where it was.")
-SETTINGS_CARRY_FAILED = ("The settings file left by the earlier name ({old}) could not be copied to {new} "
-                         "({problem}); nothing was changed. Start the app: it tries again at launch.")
-EARLIER_TASK_KEPT = ("The scheduled task under the earlier name, {old}, was kept because the new one could "
-                     "not be registered (above); the app tries again at its next start.")
-EARLIER_TASK_REMOVED = ("Removed the scheduled task under the earlier name, {old}; the schedule now runs as "
-                        "{new} where it is on.")
-EARLIER_TASK_NONE = "There was no scheduled task under the earlier name, {old}, on this computer."
-EARLIER_TASK_FROM_SOURCE = ("Run from source: the scheduled task under the earlier name, {old}, belongs to "
-                            "an installed copy, so it was left alone.")
-EARLIER_TASK_FAILED = ("The scheduled task under the earlier name, {old}, could not be removed ({problem}); "
-                       "until it is, both tasks start the pass, and the second finds the first's lock and "
-                       "moves nothing. Start the app: it tries again at launch, and Repair the Schedule "
-                       "tries at once.")
 
 
 def record_path() -> Path:
@@ -408,8 +394,6 @@ class AfterInstall:
     #: The setup door's Overview job (P218): :data:`OVERVIEW_READY`,
     #: :data:`OVERVIEW_NOT_READY`, or "" where it did not run.
     overview_sentence: str = ""
-    #: The rename's carry-over sentences (settings, then the earlier task).
-    carried: tuple[str, ...] = ()
     findings: tuple[str, ...] = ()
     failed: tuple[str, ...] = ()
     program: str = ""
@@ -435,7 +419,6 @@ class AfterInstall:
         """The run as the API hands it to the app."""
         said = asdict(self)
         said.update(lines=list(self.lines), findings=list(self.findings), failed=list(self.failed),
-                    carried=list(self.carried),
                     command=list(self.command), installed=self.installed, exit=self.exit_code)
         return said
 
@@ -449,6 +432,8 @@ class _Step:
     failed: bool = False
     command: tuple[str, ...] = ()
     xml: str = ""
+    #: The agent's first pass was started by this step (SPEC-mac R27).
+    kicked: bool = False
 
 
 def _saved_root() -> tuple[Path | None, str]:
@@ -518,7 +503,7 @@ def _off() -> _Step:
         return _Step(scheduling.OFF, SCHEDULE_FAILED.format(problem=exc), failed=True)
     except OSError as exc:
         errors.keep("after_install: removing the task", exc)
-        return _Step(scheduling.OFF, SCHEDULE_FAILED.format(problem=SCHEDULE_UNREACHABLE), failed=True)
+        return _Step(scheduling.OFF, SCHEDULE_FAILED.format(problem=schedule_unreachable()), failed=True)
     return _Step(scheduling.OFF, scheduling.SCHEDULE_OFF)
 
 
@@ -568,14 +553,110 @@ def _schedule(root: Path | None, preference: scheduling.SchedulePreference) -> _
         return _Step(outcome, SCHEDULE_FAILED.format(problem=exc), failed=True)
     except OSError as exc:
         errors.keep("after_install: registering the schedule", exc)
-        return _Step(outcome, SCHEDULE_FAILED.format(problem=SCHEDULE_UNREACHABLE), failed=True)
+        return _Step(outcome, SCHEDULE_FAILED.format(problem=schedule_unreachable()), failed=True)
     claimed = outcome == scheduling.CLAIMED
     if every:
         sentence = scheduling.SCHEDULE_CLAIMED if claimed else scheduling.SCHEDULE_REGISTERED
     else:
         sentence = scheduling.SCHEDULE_CLAIMED_DAILY if claimed else scheduling.SCHEDULE_REGISTERED_DAILY
     return _Step(outcome, sentence.format(host=decision.host, start=start, every=every),
-                 command=tuple(command), xml=str(scheduling.schedule_xml_path()))
+                 command=tuple(command), xml=str(scheduling.schedule_file()))
+
+
+def _first_pass(registered: _Step) -> _Step:
+    """The first pass of a program the agent has not run before (SPEC-mac
+    R27): ``launchctl kickstart`` once, right after it is registered, so the
+    pass - and any permission macOS asks of the schedule's own program (R30)
+    - happens while a person is at the Mac, and nothing waits for someone to
+    remember (decision 209). A step that registered nothing is returned as it
+    is. A kickstart that is refused fails the step with
+    :data:`FIRST_PASS_REFUSED`, so it is tried again at the next start; the
+    agent itself stays registered."""
+    if registered.failed or registered.key not in scheduling.REGISTERING:
+        return registered
+    try:
+        scheduling.start_agent_now()
+    except RuntimeError as exc:
+        problem = str(exc)
+    except OSError as exc:
+        errors.keep("after_install: starting the first pass", exc)
+        problem = schedule_unreachable()
+    else:
+        return replace(registered, kicked=True)
+    return replace(registered, sentence=FIRST_PASS_REFUSED.format(problem=problem), failed=True)
+
+
+def _tmutil(command: list[str]) -> subprocess.CompletedProcess:
+    """Run one ``tmutil`` command line and hand back what it said. **The one
+    seam for Time Machine** (SPEC-mac R7), as ``scheduling._schtasks`` is for
+    Task Scheduler: the suite's autouse guard (``tests/conftest.py``) fails a
+    test that reaches the real one. One that does not answer within the
+    schedulers' limit is stopped and raises ``TimeoutError``, an ``OSError``."""
+    try:
+        return subprocess.run(command, capture_output=True, text=True,
+                              timeout=scheduling.SCHTASKS_TIME_LIMIT_SECONDS)
+    except subprocess.TimeoutExpired:
+        raise TimeoutError(TMUTIL_TOO_LONG.format(seconds=scheduling.SCHTASKS_TIME_LIMIT_SECONDS)) from None
+
+
+def _left_out(folder: Path) -> bool:
+    """Whether Time Machine already leaves ``folder`` out: ``tmutil
+    isexcluded`` says ``[Excluded]`` or ``[Included]``, exit 0 either way.
+    Asked first, so the job does nothing and says nothing the second time."""
+    done = _tmutil(["tmutil", "isexcluded", str(folder)])
+    if done.returncode != 0:
+        raise RuntimeError(f"tmutil isexcluded failed ({done.returncode}): "
+                           f"{(done.stderr or done.stdout).strip()}")
+    return "[Excluded]" in done.stdout
+
+
+def _time_machine_folders() -> list[Path]:
+    """The folders a Mac leaves out of Time Machine: the data home - the
+    store, the run log and the scratch folder, which are derived from
+    clients (decision 186) - and Electron's own folder, whose fallback error
+    log can name a client for the same reason (SPEC-mac R2). Both under the
+    account's Application Support."""
+    return [settings.data_home(),
+            Path.home().joinpath(*settings.MAC_SUPPORT, settings.EARLIER_PRODUCT_NAME)]
+
+
+def _time_machine() -> _Step | None:
+    """The Time Machine job (SPEC-mac R7, P242), on a Mac only: make each
+    folder of :func:`_time_machine_folders`, ask ``tmutil isexcluded``, and
+    ``tmutil addexclusion`` the ones still in - the sticky form, which needs
+    no administrator and travels with the folder. Idempotent, so Repair runs
+    it again: it says :data:`TIME_MACHINE_EXCLUDED` only when it newly
+    excluded one and nothing otherwise. A refusal fails the step, so it is
+    tried again at the next start (no identity is recorded). The other
+    folder is still tried when the first is refused. ``None`` off a Mac and
+    where there is no data home to leave out (the record's own write says
+    that one loudly)."""
+    if settings.host_system() != "darwin":
+        return None
+    try:
+        folders = _time_machine_folders()
+    except settings.SettingsError:
+        return None
+    newly = False
+    refused = ""
+    for folder in folders:
+        try:
+            folder.mkdir(parents=True, exist_ok=True)
+            if _left_out(folder):
+                continue
+            done = _tmutil(["tmutil", "addexclusion", str(folder)])
+            if done.returncode != 0:
+                raise RuntimeError(f"tmutil addexclusion failed ({done.returncode}): "
+                                   f"{(done.stderr or done.stdout).strip()}")
+            newly = True
+        except RuntimeError as exc:
+            refused = refused or TIME_MACHINE_REFUSED.format(folder=folder, problem=exc)
+        except OSError as exc:
+            errors.keep("after_install: leaving a folder out of Time Machine", exc, name=folder.name)
+            refused = refused or TIME_MACHINE_REFUSED.format(folder=folder, problem=errors.error_class(exc))
+    if refused:
+        return _Step(TIME_MACHINE_KEY, refused, failed=True)
+    return _Step(TIME_MACHINE_KEY, TIME_MACHINE_EXCLUDED if newly else "")
 
 
 def _check(root: Path | None) -> _Step:
@@ -648,25 +729,16 @@ def _ready_the_overview(root: Path | None, reason: str, check: _Step) -> str:
     return OVERVIEW_NOT_READY.format(why=why) if why else OVERVIEW_READY
 
 
-#: The two reparse tags that are links (``stat`` names them on Windows):
-#: a symbolic link and a junction (a mount point). Spelled here too, so the
-#: rule reads the same off Windows, where ``lstat`` carries no tag.
-_LINK_TAGS = frozenset({getattr(stat, "IO_REPARSE_TAG_SYMLINK", 0xA000000C),
-                        getattr(stat, "IO_REPARSE_TAG_MOUNT_POINT", 0xA0000003)})
-
-
 def _is_link(path: Path) -> bool:
-    """Whether ``path`` is a link - a symbolic link, or on Windows a
-    junction - by ``lstat``, which never follows it. **Only those two**
-    (the re-review's SF3): any other reparse point - a OneDrive Files
-    On-Demand placeholder folder, say - is an ordinary folder or file and
-    is walked as one; called a link, it could be neither unlinked nor
-    removed, and the job would fail at every start."""
+    """:func:`tracker.fsio.is_link`, but failing closed: a name that cannot be
+    looked at for any reason but being absent raises, so the test-cache delete
+    stops rather than going through something it could not prove is no link
+    (the package's own test reads an unreadable name as no link)."""
     try:
-        status = os.lstat(path)
+        os.lstat(path)
     except FileNotFoundError:
         return False
-    return stat.S_ISLNK(status.st_mode) or getattr(status, "st_reparse_tag", 0) in _LINK_TAGS
+    return fsio.is_link(path)
 
 
 def _unlink(path: Path) -> None:
@@ -717,365 +789,40 @@ def _clear_test_cache(checkout: Path | None = None) -> _Step | None:
     return _Step(CACHE_CLEARED_KEY, CACHE_CLEARED)
 
 
-@dataclass(frozen=True, slots=True)
-class MoveOutcome:
-    """What :func:`move_left_behind` did: the items it moved (their old
-    paths), its one sentence - ``None`` when there was nothing to do - and
-    whether it failed."""
+def _remove_the_retired_caches(root: Path | None) -> _Step | None:
+    """The retired-cache job (decision 107's tidy-up, moved here from the
+    pass by P234): take the verdict cache's old file, and any temp file the
+    atomic write it went through left beside it, out of every folder under
+    the clients root that has a record, walking the root once.
 
-    moved: tuple[Path, ...] = ()
-    sentence: str | None = None
-    failed: bool = False
-
-
-def _same_volume(source: Path, home: Path) -> bool:
-    """Whether ``source`` (never followed) and the existing folder ``home``
-    are on one volume, so a rename moves without copying."""
-    return os.lstat(source).st_dev == os.stat(home).st_dev
-
-
-def _size_and_digest(path: Path) -> tuple[int, str]:
-    """The size and SHA-256 of one regular file, read from one handle."""
-    digest = hashlib.sha256()
-    with path.open("rb") as handle:
-        size = os.fstat(handle.fileno()).st_size
-        for block in iter(lambda: handle.read(1 << 20), b""):
-            digest.update(block)
-    return size, digest.hexdigest()
-
-
-def _copies_match(source: Path, copy: Path) -> bool:
-    """Whether ``copy`` is ``source`` entry for entry: a link is a link to
-    the same target (never followed), a folder holds the same names, and a
-    file has the same size and SHA-256."""
-    if _is_link(source):
-        return _is_link(copy) and os.readlink(source) == os.readlink(copy)
-    if _is_link(copy):
-        return False
-    if source.is_dir():
-        if not copy.is_dir():
-            return False
-        names = sorted(os.listdir(source))
-        return names == sorted(os.listdir(copy)) and all(
-            _copies_match(source / name, copy / name) for name in names)
-    return copy.is_file() and _size_and_digest(source) == _size_and_digest(copy)
-
-
-def _discard(path: Path) -> None:
-    """Remove ``path`` - an entry, or a real folder and everything in it -
-    never what a link points at; absent is nothing to do. Called only on
-    what this module itself created."""
-    if not os.path.lexists(path):
-        return
-    if _is_link(path) or not path.is_dir():
-        _unlink(path)
-    else:
-        _remove_tree(path)
-
-
-class _Taken(OSError):
-    """A destination that exists at the moment of a move: nothing is
-    overwritten, and the job says whose name it is."""
-
-    def __init__(self, name: str) -> None:
-        super().__init__(errno.EEXIST, "taken")
-        self.name = name
-
-
-class _PartlyRemoved(OSError):
-    """A folder copied whole and verified whose old copy, set aside beside
-    the program, could not be removed completely."""
-
-    def __init__(self, name: str, aside: Path) -> None:
-        super().__init__(errno.EIO, "partly removed")
-        self.name, self.aside = name, aside
-
-
-def _rename(source: Path, destination: Path) -> None:
-    """Rename on one volume, never over an existing name: ``os.rename`` on
-    Windows, which refuses one; elsewhere a file is hard-linked (which
-    refuses one) and then unlinked from its old name, and a folder is
-    renamed after the check - the one race left, stated: a folder that
-    appears empty at that name between the check and the rename is
-    replaced, which loses nothing. Raises :class:`_Taken` when the name is
-    taken."""
-    if os.path.lexists(destination):
-        raise _Taken(destination.name)
-    try:
-        if os.name == "nt" or source.is_dir():
-            os.rename(source, destination)
-            return
-        os.link(source, destination)
-    except FileExistsError:
-        raise _Taken(destination.name) from None
-    try:
-        os.unlink(source)
-    except OSError:
-        os.unlink(destination)
-        raise
-
-
-def _copy_file_across(source: Path, destination: Path) -> None:
-    """Copy one file to another volume into a name this call creates
-    (``open(..., "xb")`` refuses an existing one), verify size and SHA-256,
-    then remove the source. A failed or mismatched copy, **or a source that
-    cannot be removed** (an unlink fails whole, so the source is still
-    complete), removes the copy and keeps the source (review MF1)."""
-    try:
-        with source.open("rb") as original, open(destination, "xb") as copy:
-            shutil.copyfileobj(original, copy)
-    except FileExistsError:
-        raise _Taken(destination.name) from None
-    except OSError:
-        _discard_quietly(destination)
-        raise
-    try:
-        shutil.copystat(source, destination)
-        if not _copies_match(source, destination):
-            raise OSError(errno.EIO, "the copy does not match its source")
-        _unlink(source)
-    except OSError:
-        _discard_quietly(destination)
-        raise
-
-
-def _copy_folder_across(source: Path, destination: Path) -> None:
-    """Copy one folder to another volume (review SF1): first rename it
-    aside, beside itself, to ``<name>.moving-<pid>``, so the name decision
-    186 lists is never left holding part of a copy; create the destination
-    (refusing an existing one), copy into it with ``copytree(symlinks=True)``
-    (a link inside is copied as a link), verify every file, then remove the
-    aside copy. A failure before the copy is verified removes what this
-    call created and renames the aside copy back; a failure while removing
-    it leaves the verified copy in place and says so."""
-    aside = source.with_name(f"{source.name}.moving-{os.getpid()}")
-    _rename(source, aside)
-    try:
-        try:
-            destination.mkdir()
-        except FileExistsError:
-            raise _Taken(destination.name) from None
-        try:
-            shutil.copytree(aside, destination, symlinks=True, dirs_exist_ok=True)
-            if not _copies_match(aside, destination):
-                raise OSError(errno.EIO, "the copy does not match its source")
-        except OSError:
-            _discard_quietly(destination)
-            raise
-    except OSError:
-        try:
-            _rename(aside, source)
-        except OSError:
-            pass
-        raise
-    try:
-        _remove_tree(aside)
-    except OSError:
-        raise _PartlyRemoved(source.name, aside) from None
-
-
-def _discard_quietly(path: Path) -> None:
-    """:func:`_discard` for a cleanup inside a failure already being
-    raised: the first failure is the one reported."""
-    try:
-        _discard(path)
-    except OSError:
-        pass
-
-
-def _move_one(source: Path, destination: Path) -> None:
-    """Move one entry to ``destination``, whose folder exists, **never over
-    anything** (review SF2; there is no ``os.replace`` here): a rename that
-    refuses an existing name on one volume (:func:`_rename`), and otherwise
-    - or when the rename finds another volume after all, a bind mount say -
-    a verified copy. The destination is checked again immediately before
-    the move (review MF2) and only what this call created is ever removed.
-    Raises :class:`OSError` on failure, :class:`_Taken` when the name is
-    taken."""
-    if os.path.lexists(destination):
-        raise _Taken(destination.name)
-    if _same_volume(source, destination.parent):
-        try:
-            _rename(source, destination)
-            return
-        except OSError as problem:
-            if problem.errno != errno.EXDEV:
-                raise
-    if source.is_dir():
-        _copy_folder_across(source, destination)
-    else:
-        _copy_file_across(source, destination)
-
-
-def move_left_behind(items: list[Path], home: Path) -> MoveOutcome:
-    """Move what an earlier version left beside the program into ``home``,
-    each under its own name (R9). ``items`` is decision 186's move group,
-    never a list of this module's own; one absent, or already in ``home``,
-    is not left behind.
-
-    Nothing present is nothing to do and no sentence. Otherwise it checks
-    everything before moving anything: two items of one name, an item that
-    is a link or junction (:func:`_is_link`), or a name already in ``home``,
-    moves nothing and fails in its own sentence - the checkpoint and its
-    journal are never split. A move that fails part way moves back what it
-    had already moved, by the same careful move, so a failure leaves the
-    items where they were (or, where a move back itself fails or finds its
-    old name taken, whole in ``home``). Nothing is ever overwritten, and
-    nothing is removed that was not first copied whole and verified.
-
-    On Windows ``copytree`` follows a junction inside ``recovered/``; the
-    verification then finds a folder where the source has a link, the copy
-    is removed and the job fails, safely, until a person looks."""
-    present = [Path(item) for item in items
-               if os.path.lexists(item) and Path(item).parent != home]
-    if not present:
-        return MoveOutcome()
-    if len({item.name for item in present}) != len(present):
-        return MoveOutcome(sentence=LEFT_BEHIND_MOVE_FAILED.format(home=home), failed=True)
-    # The checkpoint and its journal are one unit (the merge review's MF1): a
-    # rollback journal - or, since P214, a write-ahead log or its shared
-    # memory - beside a checkpoint that is not its own is replayed into it
-    # at its next open. Any of them without its checkpoint beside it, or a
-    # home already holding any part of the unit, moves nothing.
-    if any(item.name in CHECKPOINT_UNIT for item in present) and (
-            any(item.name in _CHECKPOINT_SIDE_FILES
-                and not os.path.lexists(item.parent / checkpoint.CHECKPOINT_FILENAME)
-                for item in present)
-            or any(os.path.lexists(home / name) for name in CHECKPOINT_UNIT)):
-        return MoveOutcome(sentence=LEFT_BEHIND_JOURNAL_ALONE.format(home=home), failed=True)
-    for item in present:
-        if _is_link(item):
-            return MoveOutcome(sentence=LEFT_BEHIND_IS_LINK.format(name=item.name, home=home),
-                               failed=True)
-    for item in present:
-        if os.path.lexists(home / item.name):
-            return MoveOutcome(sentence=LEFT_BEHIND_DESTINATION_TAKEN.format(name=item.name, home=home),
-                               failed=True)
-    done: list[Path] = []
-    try:
-        home.mkdir(parents=True, exist_ok=True)
-        for item in present:
-            _move_one(item, home / item.name)
-            done.append(item)
-    except _PartlyRemoved as partly:
-        return MoveOutcome(moved=tuple(present[:len(done) + 1]),
-                           sentence=LEFT_BEHIND_PARTLY_REMOVED.format(
-                               home=home, name=partly.name, aside=partly.aside.name),
-                           failed=True)
-    except OSError as problem:
-        errors.keep("after_install: moving what was left behind", problem)
-        for item in reversed(done):
+    Until decision 107 the cache was a JSON file in the engagement folder
+    that every pass rewrote; it lives in the store now and **nothing reads
+    the file** - the owner's rule is that nothing the machine can derive
+    stays in the synced folder, and reading it once would keep its loader
+    alive for a release to save one cold pass. It is a one-time step, so it
+    runs here (decision 209) and a pass no longer looks for a file no
+    version writes. ``None`` when there is no root or nothing was removed,
+    so it says nothing; its sentence, with the count, when it removed some.
+    A file that cannot be removed is inert: it is kept on the local debug
+    log and left, and the next run tries again.
+    """
+    if root is None:
+        return None
+    removed = 0
+    for folder in registry.record_dirs(root):
+        for path in (folder / RETIRED_CACHE_FILENAME,
+                     *folder.glob(f"{RETIRED_CACHE_FILENAME}*{TEMP_SUFFIX}")):
             try:
-                _move_one(home / item.name, item)
-            except OSError:
-                pass
-        if isinstance(problem, _Taken):
-            sentence = LEFT_BEHIND_DESTINATION_TAKEN.format(name=problem.name, home=home)
-        else:
-            sentence = LEFT_BEHIND_MOVE_FAILED.format(home=home)
-        return MoveOutcome(sentence=sentence, failed=True)
-    return MoveOutcome(moved=tuple(present), sentence=LEFT_BEHIND_MOVED.format(home=home))
-
-
-def _move_what_186_lists(root: Path | None) -> _Step | None:
-    """:func:`move_left_behind` on decision 186's own move group
-    (``runner.left_behind_to_move``) into ``store.store_path().parent``;
-    ``None`` when there is nothing to do. With no data home to move into
-    there is nothing it can do: the first screen already says why (186's
-    ``machine_warnings``), and the store cannot open either."""
-    try:
-        items = runner.left_behind_to_move(root)
-        home = Path(store.store_path()).parent
-    except settings.SettingsError:
-        return None
-    done = move_left_behind(items, home)
-    if done.sentence is None:
-        return None
-    return _Step(MOVE_KEY, done.sentence, failed=done.failed)
-
-
-class _CopyDiffers(OSError):
-    """The settings copy, read back, is not the earlier file byte for byte."""
-
-
-def _carry_over_settings() -> _Step:
-    """The rename's first job (SPEC-rename R5): copy the settings file the
-    earlier name left in its own program folder to this program's, only
-    when this program has none - so a PC that uninstalled the earlier name
-    and installed this one fresh keeps its clients folder and schedule
-    choice. From the packaged program only: from source the settings file
-    is the checkout's own, and the office PC may have the pilot installed
-    beside it. The file is copied as bytes, never parsed or rewritten here
-    (whether it is usable is :func:`_saved_root`'s and
-    :func:`_saved_preference`'s to say), and the earlier file is left where
-    it was. An upgrade in place (R2) finds the two paths are one file.
-    Runs before anything reads the settings, so the same run uses them."""
-    if not getattr(sys, "frozen", False):
-        return _Step(SETTINGS_KEY, SETTINGS_FROM_SOURCE)
-    earlier = settings.earlier_settings_path()
-    current = settings.settings_path()
-    if earlier is None:
-        return _Step(SETTINGS_KEY, SETTINGS_NO_EARLIER)
-    made = False
-    try:
-        # Inside the try, so a folder this account may not read is this
-        # job's own worded failure, not an error that stops the whole step.
-        if earlier.resolve() == current.resolve():
-            return _Step(SETTINGS_KEY, SETTINGS_IN_PLACE)
-        if not earlier.is_file():
-            return _Step(SETTINGS_KEY, SETTINGS_NO_EARLIER)
-        if current.exists():
-            return _Step(SETTINGS_KEY, SETTINGS_BOTH.format(new=current, old=earlier))
-        original = earlier.read_bytes()
-        write_bytes_atomically(current, original)
-        made = True
-        if hashlib.sha256(current.read_bytes()).digest() != hashlib.sha256(original).digest():
-            raise _CopyDiffers("the copy read back did not match the earlier file")
-    except OSError as exc:
-        errors.keep("after_install: carrying the earlier settings file over", exc)
-        if made:
-            _discard_quietly(current)
-        return _Step(SETTINGS_KEY, SETTINGS_CARRY_FAILED.format(
-            old=earlier, new=current, problem=errors.said(exc, (_CopyDiffers,))), failed=True)
-    return _Step(SETTINGS_KEY, SETTINGS_CARRIED.format(old=earlier, new=current))
-
-
-def _installed_program() -> bool:
-    """Whether this is the packaged program rather than a run from source:
-    the earlier name's task is removed only then. Its own function so the
-    tests can stand in for the packaged program here alone, without the
-    frozen paths every other module takes."""
-    return bool(getattr(sys, "frozen", False))
-
-
-def _replace_earlier_task(schedule: _Step) -> _Step:
-    """The rename's second job (SPEC-rename R6): once the schedule job has
-    run, remove this computer's task under the earlier name - that name and
-    nothing else, never the firm's production task - so the pass is not
-    started twice. Kept when the schedule failed this run, so the pass
-    still runs on a schedule until the new task is there; the schedule's own
-    failure already keeps the step from being recorded as done. A failed
-    delete is a failure, tried again at the next launch. From the packaged
-    program only, like the settings copy: a run from source must never
-    delete the task of a copy installed on the same computer, which would
-    only register it again at its next start."""
-    old, new = settings.EARLIER_PRODUCT_NAME, scheduling.TASK_NAME
-    if not _installed_program():
-        return _Step(EARLIER_TASK_KEY, EARLIER_TASK_FROM_SOURCE.format(old=old))
-    if schedule.failed:
-        return _Step(EARLIER_TASK_KEY, EARLIER_TASK_KEPT.format(old=old))
-    try:
-        removed = scheduling.remove_task(task_name=old)
-    except (RuntimeError, OSError) as exc:
-        errors.keep("after_install: removing the earlier name's scheduled task", exc)
-        # remove_task's RuntimeError is its own worded sentence; anything
-        # else is said by its class (decision 190).
-        return _Step(EARLIER_TASK_KEY, EARLIER_TASK_FAILED.format(
-            old=old, problem=errors.said(exc, (RuntimeError,))), failed=True)
-    if not removed:
-        return _Step(EARLIER_TASK_KEY, EARLIER_TASK_NONE.format(old=old))
-    _note_removed(f"it was the earlier name's task, {old}, replaced by {new}")
-    return _Step(EARLIER_TASK_KEY, EARLIER_TASK_REMOVED.format(old=old, new=new))
+                path.unlink()
+            except FileNotFoundError:
+                continue
+            except OSError as exc:
+                errors.keep("after_install: removing the retired verdict cache", exc, name=path.name)
+                log.warning("Could not remove the retired verdict cache file %s (%s)",
+                            path.name, errors.error_class(exc))
+                continue
+            removed += 1
+    return _Step(RETIRED_CACHE_KEY, RETIRED_CACHE_REMOVED.format(n=removed)) if removed else None
 
 
 class _Busy(Exception):
@@ -1139,68 +886,73 @@ def run(*, reason: str, start: str | None = None, every: int | None = None,
 
 
 def _run(*, reason: str, start: str | None = None, every: int | None = None,
-         checkout: Path | None = None) -> AfterInstall:
+         checkout: Path | None = None, switched_off: bool = False) -> AfterInstall:
     """Every one-time job, in order, and the record of what they did.
 
     The schedule registers the choice saved in the settings file (pilot
     P21) - on or off, the first run's time, how often - so every door
     registers what the Schedule button shows. ``start`` and ``every``, when
     a caller names them outright (the command line's Repair), are checked
-    and saved first.
+    and saved first. ``switched_off`` (the launch door, a Mac whose person
+    switched the agent off under Login Items; SPEC-mac R27) registers
+    nothing and says :data:`SCHEDULE_SWITCHED_OFF`; every other job runs.
 
-    Idempotent: registering is ``schtasks /create ... /f``, the check
-    changes no record, and the note is replaced whole - twice in a row is
-    once. The caller holds the step's lock.
+    Idempotent: registering is ``schtasks /create ... /f`` (a Mac's is
+    ``bootout`` then ``bootstrap``), the check changes no record, the Time
+    Machine job asks before it excludes, and the note is replaced whole -
+    twice in a row is once. The caller holds the step's lock.
     """
     ran_at = dt.datetime.now().isoformat(timespec="seconds")
-    # The rename's settings carry-over (SPEC-rename 3.1) runs before anything
-    # reads the settings file, so this same run uses what it copied.
-    carried_settings = _carry_over_settings()
     unusable = _save_choice(start, every) if start is not None or every is not None else ""
     preference, unreadable = _saved_preference()
     root, refused = _saved_root()
-    # The first job (R9): what decision 186 lists to move, from beside the
-    # program into the folder the store now lives in, before the schedule,
-    # the check and the cache - the store and the check must find the
-    # checkpoint where 186 expects it. 186's delete group is not touched.
-    moving = _move_what_186_lists(root)
+    # A Mac starts the agent's first pass once for each program it registers
+    # (R27); the record keeps which program that was, so an upgrade does it
+    # again, a Repair of the same program does not, and a step that failed
+    # after the kick does not repeat it. Nowhere else is the record read here.
+    on_a_mac = settings.host_system() == "darwin"
+    program = program_identity() if on_a_mac else ""
+    previous = (read_record() or {}) if on_a_mac else {}
+    kick = on_a_mac and previous.get("kicked") != program
     if refused:
         schedule = _Step(scheduling.NO_ROOT, refused, failed=True)
-        check = _Step(CHECK_FAILED_KEY, refused, failed=True)
+    elif preference is None or unusable:
+        schedule = _Step(PREFERENCE_KEY, unusable or unreadable, failed=True)
+    elif switched_off:
+        schedule = _Step(SWITCHED_OFF_KEY, SCHEDULE_SWITCHED_OFF.format(product=settings.product_name()),
+                         failed=True)
     else:
-        if preference is None or unusable:
-            schedule = _Step(PREFERENCE_KEY, unusable or unreadable, failed=True)
-        else:
-            schedule = _schedule(root, preference)
-        check = _check(root)
-    # After the schedule has registered the new name (SPEC-rename 3.2).
-    earlier_task = _replace_earlier_task(schedule)
-    carried = [carried_settings.sentence, earlier_task.sentence]
+        schedule = _schedule(root, preference)
+        if kick:
+            schedule = _first_pass(schedule)
+    excluded = _time_machine()
+    check = _Step(CHECK_FAILED_KEY, refused, failed=True) if refused else _check(root)
     cache = _clear_test_cache(checkout)
+    retired = _remove_the_retired_caches(root)
     # The last job before the record (P218, S3): never a failure.
     overview = "" if refused else _ready_the_overview(root, reason, check)
-    failed = list(dict.fromkeys(step.sentence for step in (carried_settings, moving, schedule,
-                                                           earlier_task, check, cache)
+    failed = list(dict.fromkeys(step.sentence for step in (schedule, excluded, check, cache)
                                 if step is not None and step.failed))
-    identity = "" if failed else program_identity()
+    identity = "" if failed else (program or program_identity())
     now = designation_now(root)
+    record = {
+        "program": identity, "ran_at": ran_at, "reason": reason, "schedule": schedule.key,
+        "designated": now if isinstance(now, str) else None,
+        "preference": _preference_record(preference),
+        "findings": list(check.findings), "failed": failed,
+    }
+    if kicked := program if schedule.kicked else previous.get("kicked"):
+        record["kicked"] = kicked
     try:
         path = record_path()
         path.parent.mkdir(parents=True, exist_ok=True)
-        write_json_atomically(path, {
-            "program": identity, "ran_at": ran_at, "reason": reason, "schedule": schedule.key,
-            "designated": now if isinstance(now, str) else None,
-            "preference": _preference_record(preference),
-            "findings": list(check.findings), "failed": failed, "carried": carried,
-        })
+        write_json_atomically(path, record)
     except OSError:
         failed.append(RECORD_UNWRITABLE.format(file=record_path()))
         identity = ""
-    # The carry-over's sentences lead (a failed one is said here, once).
-    lines = list(carried)
-    if moving is not None and not moving.failed:
-        lines.append(moving.sentence)
-    lines.append(schedule.sentence)
+    lines = [schedule.sentence]
+    if excluded is not None and excluded.sentence and not excluded.failed:
+        lines.append(excluded.sentence)
     if check.sentence != schedule.sentence:
         lines.append(check.sentence)
     lines += [f"  {finding}" for finding in check.findings]
@@ -1208,6 +960,8 @@ def _run(*, reason: str, start: str | None = None, every: int | None = None,
         lines.append(FINDINGS_WAIT)
     if cache is not None and not cache.failed:
         lines.append(cache.sentence)
+    if retired is not None:
+        lines.append(retired.sentence)
     if overview:
         lines.append(overview)
     lines += [sentence for sentence in failed if sentence not in lines]
@@ -1216,7 +970,7 @@ def _run(*, reason: str, start: str | None = None, every: int | None = None,
                         check_sentence=check.sentence, schedule_host=schedule.host,
                         cache_sentence=cache.sentence if cache is not None else "",
                         overview_sentence=overview,
-                        findings=check.findings, carried=tuple(carried),
+                        findings=check.findings,
                         failed=tuple(failed), program=identity, command=schedule.command,
                         xml=schedule.xml, lines=tuple(lines))
 
@@ -1224,15 +978,13 @@ def _run(*, reason: str, start: str | None = None, every: int | None = None,
 def read_record() -> dict | None:
     """The note of the last run, or ``None`` when there is none a program
     could trust (missing, unreadable, not one object) - which is the same as
-    never having run. A note written before the rename has no ``carried``
-    (SPEC-rename 3.3): it reads as nothing carried over."""
+    never having run."""
     try:
         data = json.loads(record_path().read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return None
     if not isinstance(data, dict):
         return None
-    data.setdefault("carried", [])
     return data
 
 
@@ -1265,14 +1017,51 @@ def launch() -> AfterInstall | None:
     until its next upgrade. The third is P198 (F6): on the computer that
     registered the schedule, the task itself must still be there - an
     uninstall deletes it and keeps the note. Compared and run under the
-    step's lock (pilot P47), so what it compares is not changing under it."""
+    step's lock (pilot P47), so what it compares is not changing under it.
+
+    On a Mac the step it runs may leave the schedule job out: when the person
+    switched the agent off under Login Items it says so instead of
+    registering over their switch (:func:`_switched_off`, SPEC-mac R27)."""
     try:
         with _one_at_a_time():
-            if _unchanged(read_record()):
+            record = read_record()
+            if _unchanged(record):
                 return None
-            return _run(reason=REASON_LAUNCH)
+            return _run(reason=REASON_LAUNCH, switched_off=_switched_off(record))
     except _Busy as busy:
         return _busy(REASON_LAUNCH, str(busy))
+
+
+def _switched_off(record: dict | None) -> bool:
+    """Whether the launch should leave a Mac's schedule alone because the
+    person switched it off (SPEC-mac R27). On a Mac only; on the computer the
+    designation names and whose saved choice is on; one whose last run
+    registered the schedule (or found it switched off); and ``launchctl
+    print-disabled`` lists the agent as disabled. Registering over a switch
+    would be refused by macOS, and a person's switch is theirs - so the step
+    runs without the schedule job and says :data:`SCHEDULE_SWITCHED_OFF`, at
+    every start, until the switch is turned back on.
+
+    A ``launchctl`` that cannot answer the question is kept on the error log
+    and is not "switched off": the step runs, and its own ``launchctl`` says
+    what is wrong. **Kit step H5 records whether ``print-disabled`` reflects
+    the Login Items switch;** if it does not, the last-pass line's amber
+    (``runner.LAST_PASS_OLD``) is the signal (R27)."""
+    if settings.host_system() != "darwin" or record is None:
+        return False
+    if record.get("schedule") not in scheduling.REGISTERING | {SWITCHED_OFF_KEY}:
+        return False
+    root, refused = _saved_root()
+    preference, _ = _saved_preference()
+    named = None if refused else designation_now(root)
+    if not (isinstance(named, str) and is_this_host(named) and preference is not None
+            and preference.enabled):
+        return False
+    try:
+        return scheduling.agent_switched_off()
+    except (RuntimeError, OSError) as exc:
+        errors.keep(ASKING_FOR_THE_TASK, exc)
+        return False
 
 
 def _unchanged(record: dict | None) -> bool:
@@ -1295,9 +1084,9 @@ def _task_missing(record: dict) -> bool:
     gone (P198, F6). Asked only when ``record`` says this computer claimed
     or registered the schedule - the designation already matched it, so a
     computer the designation does not name, a schedule that is off, no root
-    and no Task Scheduler expect no task and are never asked (decision 159,
-    M1). One ``schtasks /query`` on the designated computer, in the launch
-    step's background run.
+    and no scheduler expect no task and are never asked (decision 159,
+    M1). One ``schtasks /query`` (on a Mac, ``launchctl print``) on the
+    designated computer, in the launch step's background run.
 
     Anything but "it exists" is missing: a query that fails runs the step,
     whose ``/create /f`` either registers the task again or says in
@@ -1305,7 +1094,7 @@ def _task_missing(record: dict) -> bool:
     ``schtasks`` that cannot be started, or that does not answer within its
     limit (:data:`tracker.scheduling.SCHTASKS_TIME_LIMIT_SECONDS`), is kept
     on the local error log and runs the step the same way; the step's own
-    ``schtasks`` then says it as :data:`SCHEDULE_UNREACHABLE`. A query that
+    ``schtasks`` then says it as :func:`schedule_unreachable`. A query that
     is refused keeps its exit code on the error log, once per start (the
     engine review's NIT-2), so a task registered again at every start has
     its reason written down."""
@@ -1317,14 +1106,27 @@ def _task_missing(record: dict) -> bool:
         errors.keep(ASKING_FOR_THE_TASK, exc)
         return True
     if code:
-        errors.keep(ASKING_FOR_THE_TASK, QUERY_REFUSED.format(code=code))
-    return code != 0
+        errors.keep(ASKING_FOR_THE_TASK, query_refused().format(code=code))
+    # On a Mac the agent a person switched off under Login Items counts as
+    # missing too, whether or not macOS left it loaded (SPEC-mac R27): the
+    # launch then says so and registers nothing (:func:`_switched_off`).
+    return code != 0 or _switched_off(record)
 
 
 #: Where the launch's question to Task Scheduler is said on the error log.
 ASKING_FOR_THE_TASK = "after_install: asking whether the scheduled task exists"
 #: A refused query, by its exit code only: ``schtasks``'s own words are not kept.
 QUERY_REFUSED = "schtasks /query refused with exit code {code}; the step runs to register the task again"
+#: The same on a Mac, where the question is ``launchctl print`` (SPEC-mac R27).
+QUERY_REFUSED_MAC = "launchctl print refused with exit code {code}; the step runs to register the agent again"
+
+
+def query_refused() -> str:
+    """:data:`QUERY_REFUSED`'s words for the computer this runs on: Windows' own,
+    word for word, or on a Mac :data:`QUERY_REFUSED_MAC`; through
+    ``settings.host_system``, as :func:`schedule_unreachable` is."""
+    return QUERY_REFUSED_MAC if settings.host_system() == "darwin" else QUERY_REFUSED
+
 
 
 def record_failure(sentence: str) -> None:
@@ -1404,6 +1206,51 @@ def move_schedule_here() -> tuple[str, bool]:
     return scheduling.MOVED_FROM.format(host=moved.before, here=here), True
 
 
+def remove_here() -> tuple[str, bool]:
+    """``--remove-here`` and the API's ``remove-schedule-here`` (SPEC-mac R29):
+    take this Mac's schedule away - the agent unloaded and its file deleted
+    (``scheduling.remove_task``) - and forget the record's program, so the
+    app sets the schedule up again the next time it is opened. The sentence
+    saying what happened, and whether the schedule is gone.
+
+    Dragging an app to the Bin leaves the agent behind, and until a signed
+    build moves it inside the bundle (job 3) this is how the schedule
+    leaves with the app (P12). **It leaves everything else alone:** the
+    designation, the data home, the settings and the clients folder. A
+    wrapper that removed the agent and then the app was rejected: running
+    the removal through ``/bin/sh`` would change which program macOS names
+    as responsible for the Drive permission (R30). Under the step's lock, so
+    a launch cannot register it again between the two halves."""
+    if settings.host_system() != "darwin":
+        return REMOVE_ONLY_ON_A_MAC, False
+    try:
+        with _one_at_a_time():
+            try:
+                scheduling.remove_task()
+            except RuntimeError as exc:
+                return SCHEDULE_NOT_REMOVED.format(problem=exc), False
+            except OSError as exc:
+                errors.keep("after_install: removing the schedule from this Mac", exc)
+                return SCHEDULE_NOT_REMOVED.format(problem=schedule_unreachable()), False
+            _forget_the_program()
+    except _Busy as busy:
+        return str(busy), False
+    return SCHEDULE_REMOVED_FROM_MAC, True
+
+
+def _forget_the_program() -> None:
+    """Blank the program the record says last ran the step cleanly, so the
+    next launch runs the step. A record that is not there, or cannot be
+    written, leaves nothing to forget: with none the launch runs the step
+    already."""
+    try:
+        record = read_record()
+        if record is not None:
+            write_json_atomically(record_path(), {**record, "program": ""})
+    except (OSError, settings.SettingsError) as exc:
+        errors.keep("after_install: forgetting the program", exc)
+
+
 #: The pilot installer's door asks for :func:`installer_exit_code` instead
 #: of :attr:`AfterInstall.exit_code`; ``api_entry``'s setup mode passes it.
 INSTALLER_CODES_FLAG = "--installer-codes"
@@ -1440,20 +1287,27 @@ def main(argv: list[str]) -> int:
 
     parser = argparse.ArgumentParser(
         prog="python -m tracker.after_install",
-        description="Run every one-time step after installing or upgrading: carry over the "
-                    "settings and replace the scheduled task the earlier name left, register the "
-                    "schedule on the computer that runs it, check the record, and clear the "
-                    "test cache earlier versions left.")
+        description="Run every one-time step after installing or upgrading: register the "
+                    "schedule on the computer that runs it, check the record, clear the "
+                    "test cache earlier versions left, and make the Overview ready.")
     parser.add_argument("--reason", choices=REASONS, default=REASON_SETUP,
                         help="which door ran it (default: setup)")
     parser.add_argument("--move-schedule-here", action="store_true",
                         help="make this computer the one that runs the schedule for the clients "
                              "folder, then register it here (a deliberate move, runbook section 6)")
+    parser.add_argument("--remove-here", action="store_true",
+                        help="take this Mac's schedule away: unload the launchd agent and delete its "
+                             "file, leaving the designation, the data, the settings and the clients "
+                             "folder alone (for a Mac, before dragging the app to the Bin)")
     parser.add_argument(INSTALLER_CODES_FLAG, action="store_true",
                         help="exit with the pilot installer's codes: 10 when the step could not "
                              "finish, 11 when the Overview could not be prepared")
     ns = parser.parse_args(argv)
     try:
+        if ns.remove_here:
+            said, removed = remove_here()
+            print(said)
+            return 0 if removed else 1
         if ns.move_schedule_here:
             said, moved = move_schedule_here()
             print(said)

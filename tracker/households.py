@@ -76,27 +76,6 @@ class HouseholdSaved:
     recorded: bool
 
 
-def _the_record(household_dir: Path | str):
-    """The store's connection, brought up to this household's journal.
-
-    Imported here and not at the top, exactly as ``tracker.manifest``
-    does it: this module owns the household, the store owns the tables,
-    and the two sit in one layer with no load-time edge between them. A
-    folder with no journal is refused: it has nothing to fold and is
-    nobody's household.
-    """
-    from tracker import ledger, store
-    from tracker.manifest import NOT_AN_ENGAGEMENT, ManifestError
-
-    folder = Path(household_dir)
-    if not ledger.path_for(folder).exists():
-        raise ManifestError(NOT_AN_ENGAGEMENT.format(name=folder.name,
-                                                     ledger=ledger.LEDGER_FILENAME))
-    conn = store.connect()
-    store.follow_the_journal(conn, store.root_for(folder), folder)
-    return conn
-
-
 def create_household(household_dir: Path | str, info: HouseholdInfo) -> None:
     """Write a household's first record into its folder.
 
@@ -142,9 +121,10 @@ def load_household_info(household_dir: Path | str) -> HouseholdInfo:
     record.
     """
     from tracker import store
+    from tracker.manifest import the_record
 
     folder = Path(household_dir)
-    conn = _the_record(folder)
+    conn = the_record(folder)
     return store.household_info(conn, folder) or HouseholdInfo()
 
 
@@ -169,11 +149,12 @@ def save_household(
 
     from tracker import ledger, store
     from tracker.locking import engagement_lock
+    from tracker.manifest import the_record
 
     folder = Path(household_dir)
     now = household_to_json(info)
     with nullcontext() if lock_held else engagement_lock(folder):
-        conn = _the_record(folder)
+        conn = the_record(folder)
         before = household_to_json(store.household_info(conn, folder) or HouseholdInfo())
         moved = {name: value for name, value in now.items() if before.get(name) != value}
         if not moved:
@@ -209,9 +190,10 @@ def shared_on(household_dir: Path | str) -> dt.date | None:
     of which the tracker could make wait on a share it cannot see.
     """
     from tracker import ledger, store
+    from tracker.manifest import the_record
 
     folder = Path(household_dir)
-    conn = _the_record(folder)
+    conn = the_record(folder)
     event = store.last_event(conn, folder, ledger.SHARING_CONFIRMED)
     return ledger.day_of(str(event.get(ledger.AT_KEY, ""))) if event else None
 
@@ -459,6 +441,7 @@ def client_side_expected(household_dir: Path | str, returns: Iterable[Path]) -> 
     household renamed or moved - :data:`CLIENT_FOLDER_MISSING`, and nothing
     is made - and never a new household to lay out again."""
     from tracker import layout, store
+    from tracker.manifest import the_record
 
     folder = Path(household_dir)
     try:
@@ -469,7 +452,7 @@ def client_side_expected(household_dir: Path | str, returns: Iterable[Path]) -> 
     root = folder.parent.parent
     for one in returns:
         try:
-            held = store.documents(_the_record(one), one)
+            held = store.documents(the_record(one), one)
         except Exception:
             continue
         for row in held:

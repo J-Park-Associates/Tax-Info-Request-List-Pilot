@@ -102,7 +102,17 @@ from pathlib import Path
 import pytest
 
 from tests.tripwire import sitecustomize as tripwire
-from tracker import after_install, content_check, ledger, runner, scheduling, settings, store, view
+from tracker import (
+    after_install,
+    content_check,
+    layout,
+    ledger,
+    runner,
+    scheduling,
+    settings,
+    store,
+    view,
+)
 from tracker.filer import ensure, file_household_drops, refresh_household_readme
 from tracker.households import create_household
 from tracker.layout import (
@@ -204,7 +214,7 @@ def an_app_folder_of_its_own(tmp_path):
 def reading_in_this_process():
     """Every test reads a document in its own process (decision 150).
 
-    ``content_check.extract_bounded()`` reads in a child process in the
+    ``content_check.judge_bounded()`` reads in a child process in the
     tracker, and a child imports the reader afresh: the patches the suite
     makes to it would not be there. A ``MonkeyPatch`` of its own, like the
     store's, so a test calling ``monkeypatch.undo()`` does not turn the
@@ -218,16 +228,54 @@ def reading_in_this_process():
         patch.undo()
 
 
-#: The real answer to "is there a Task Scheduler here", for the one test
-#: that asks it of the platform (decision 209).
-REAL_TASK_SCHEDULER_HERE = scheduling.task_scheduler_here
+@pytest.fixture(autouse=True)
+def room_is_the_absolute_length():
+    """Room is measured as the absolute length of a path, on every machine
+    (SPEC-mac R9).
+
+    On a Mac the tracker measures room as if the clients folder sat under a
+    Windows root (``layout.measured_length``). The suite's root-length tests
+    are written against absolute lengths, so they mean the same on a Mac as
+    on Linux and Windows: this pins ``layout.on_a_mac`` off for every test.
+    A test that is about a Mac says so with the :func:`on_a_mac` fixture. A
+    ``MonkeyPatch`` of its own, like the store's, so ``monkeypatch.undo()``
+    in a test cannot lift it."""
+    patch = pytest.MonkeyPatch()
+    patch.setattr(layout, "on_a_mac", lambda: False)
+    try:
+        yield
+    finally:
+        patch.undo()
+
+
+@pytest.fixture
+def on_a_mac(monkeypatch):
+    """This test is on a Mac as far as room is measured: lifts
+    :func:`room_is_the_absolute_length` for it (``layout.on_a_mac``)."""
+    monkeypatch.setattr(layout, "on_a_mac", lambda: True)
+
+
+#: The real answer to "is there a scheduler here", for the one test that
+#: asks it of the machine (decision 209; SPEC-mac R24 renamed it).
+REAL_SCHEDULER_HERE = scheduling.scheduler_here
 #: The real ``schtasks`` runner, for the one test of its time limit, which
 #: stands in for ``subprocess.run`` so no real Task Scheduler is reached.
 REAL_SCHTASKS = scheduling._schtasks
+#: The same for ``launchctl`` and ``tmutil`` (SPEC-mac R7, R24).
+REAL_LAUNCHCTL = scheduling._launchctl
+REAL_TMUTIL = after_install._tmutil
 
 
 def _schtasks_unfaked(command):
     raise AssertionError(f"a test reached schtasks without faking it: {command}")
+
+
+def _launchctl_unfaked(command):
+    raise AssertionError(f"a test reached launchctl without faking it: {command}")
+
+
+def _tmutil_unfaked(command):
+    raise AssertionError(f"a test reached tmutil without faking it: {command}")
 
 
 @pytest.fixture(autouse=True)
@@ -236,19 +284,124 @@ def no_task_scheduler_unless_faked():
 
     Saving a clients root, the app's launch and Setup all run the
     after-install step, which registers the daily job on a Windows machine
-    that has Task Scheduler - the Windows CI runner included. Every test
-    starts on a computer with none; a test about registering says it is on
-    Windows and fakes ``schtasks`` itself, and one that forgets fails here
-    rather than reaching the real one. A ``MonkeyPatch`` of its own, like
-    the store's, so ``monkeypatch.undo()`` in a test cannot lift it.
+    that has Task Scheduler - the Windows CI runner included - and on a Mac
+    as a launchd agent that excludes the data home from Time Machine
+    (SPEC-mac R7, R24). Every test starts on a computer with none; a test
+    about registering says it is on Windows (and fakes ``schtasks`` itself)
+    or on a Mac (:func:`a_mac`, which fakes ``launchctl`` and ``tmutil``),
+    and one that forgets fails here rather than reaching the real one. A
+    ``MonkeyPatch`` of its own, like the store's, so ``monkeypatch.undo()``
+    in a test cannot lift it.
     """
     patch = pytest.MonkeyPatch()
-    patch.setattr(scheduling, "task_scheduler_here", lambda: False)
+    patch.setattr(scheduling, "scheduler_here", lambda: False)
     patch.setattr(scheduling, "_schtasks", _schtasks_unfaked)
+    patch.setattr(scheduling, "_launchctl", _launchctl_unfaked)
+    patch.setattr(after_install, "_tmutil", _tmutil_unfaked)
     try:
         yield
     finally:
         patch.undo()
+
+
+class Said:
+    """What a faked ``launchctl`` or ``tmutil`` answers: an exit code and
+    what it printed."""
+
+    def __init__(self, returncode=0, stdout="", stderr=""):
+        self.returncode, self.stdout, self.stderr = returncode, stdout, stderr
+
+
+class FakeLaunchd:
+    """A launchd that keeps every ``launchctl`` command it is given, in order,
+    and answers as the real one does for the verbs the schedule uses: an
+    agent is loaded after ``bootstrap`` and not after ``bootout``; ``print``,
+    ``kickstart`` and ``bootout`` of one that is not loaded say so (exit 113
+    and 3); ``print-disabled`` lists the label when ``switched_off`` is set.
+    ``refuse`` maps a verb to the exit code and words it answers with
+    instead."""
+
+    def __init__(self):
+        self.calls: list[list[str]] = []
+        self.loaded = False
+        self.switched_off = False
+        self.refuse: dict[str, tuple[int, str]] = {}
+
+    def verbs(self) -> list[str]:
+        return [command[1] for command in self.calls]
+
+    def __call__(self, command):
+        self.calls.append(list(command))
+        verb = command[1]
+        if verb in self.refuse:
+            code, words = self.refuse[verb]
+            return Said(code, stderr=words)
+        if verb == "bootstrap":
+            self.loaded = True
+        elif verb == "bootout":
+            was, self.loaded = self.loaded, False
+            return Said(0 if was else 3, stderr="" if was else "Boot-out failed: 3: No such process")
+        elif verb in ("print", "kickstart"):
+            return Said(0 if self.loaded else 113, stderr="" if self.loaded else "Could not find service")
+        elif verb == "print-disabled":
+            state = "disabled" if self.switched_off else "enabled"
+            return Said(0, stdout=f'disabled services = {{\n\t"{scheduling.LAUNCH_AGENT_LABEL}" => {state}\n}}\n')
+        return Said()
+
+
+class FakeTmutil:
+    """A ``tmutil`` that keeps every command and holds a set of excluded
+    folders: ``addexclusion`` adds one, ``isexcluded`` answers the way
+    ``tmutil`` does (``[Excluded]`` or ``[Included]``, exit 0 either way).
+    ``refuse`` maps a verb to the exit code and words it answers with."""
+
+    def __init__(self):
+        self.calls: list[list[str]] = []
+        self.excluded: set[str] = set()
+        self.refuse: dict[str, tuple[int, str]] = {}
+
+    def __call__(self, command):
+        self.calls.append(list(command))
+        verb, folder = command[1], command[-1]
+        if verb in self.refuse:
+            code, words = self.refuse[verb]
+            return Said(code, stderr=words)
+        if verb == "addexclusion":
+            self.excluded.add(folder)
+        elif verb == "isexcluded":
+            return Said(0, stdout=f"[{'Excluded' if folder in self.excluded else 'Included'}]    {folder}\n")
+        return Said()
+
+
+class AMac:
+    """What :func:`a_mac` hands a test: the fake launchd and the fake tmutil."""
+
+    def __init__(self, launchd, tmutil):
+        self.launchd, self.tmutil = launchd, tmutil
+
+
+@pytest.fixture
+def a_mac(monkeypatch, tmp_path):
+    """This test runs on a Mac, as far as the schedule goes (SPEC-mac R7, R24):
+    ``settings.host_system`` answers ``"darwin"`` (the seam, never the
+    platform), the scheduler is there, the account's home is a folder of the
+    test's own - the agent's file lands in its ``Library/LaunchAgents`` - every
+    disk is a fixed one (the disk rule is job 1's), and ``launchctl`` and
+    ``tmutil`` are the fakes above. The user id is 501, a Mac's first account."""
+    home = tmp_path / "home"
+    home.mkdir()
+    # ``Path.home()`` reads HOME on a Mac and Linux and USERPROFILE on Windows;
+    # both are the test's own, and the user id is a seam (Windows has no getuid).
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("USERPROFILE", str(home))
+    monkeypatch.setattr(scheduling, "_uid", lambda: 501)
+    monkeypatch.setattr(settings, "host_system", lambda: "darwin")
+    monkeypatch.setattr(settings, "drive_type", lambda path: settings.DRIVE_FIXED)
+    monkeypatch.setattr(scheduling, "scheduler_here", lambda: True)
+    mac = AMac(FakeLaunchd(), FakeTmutil())
+    monkeypatch.setattr(scheduling, "_launchctl", mac.launchd)
+    monkeypatch.setattr(after_install, "_tmutil", mac.tmutil)
+    return mac
 
 
 #: The pass's real fill of the firm view's cache (P201), kept before any
@@ -543,7 +696,7 @@ def floor_return() -> int:
     from tracker.layout import PREPARED_DIR_NAME, REVIEW_DIR_NAME, folder_need, path_limit
 
     review = len(f"/{PREPARED_DIR_NAME}/{REVIEW_DIR_NAME}")
-    return path_limit() - review - max(len("/x (99).pdf"), folder_need(""))
+    return path_limit() - review - max(len("/x (99).pdf"), folder_need("", ""))
 
 
 def sort_all(returns, *, home=None, today=None, dry_run: bool = False):
@@ -688,9 +841,10 @@ def written_elsewhere(engagement_dir, event, host="another-machine"):
     record that no writer on this machine would make - a line of the wrong
     shape, a retired name - without it reading as a hand edit."""
     _lines, _head, chain = ledger.read_with_chain(engagement_dir)
-    ledger._write_line(ledger.path_for(engagement_dir), {
-        **event, ledger.LINK_KEY: ledger.chain_at(chain, len(chain)), ledger.HOST_KEY: host,
-        ledger.FORMAT_KEY: ledger.RECORD_FORMAT})
+    line = {**event, ledger.LINK_KEY: ledger.chain_at(chain, len(chain)), ledger.HOST_KEY: host,
+            ledger.FORMAT_KEY: ledger.RECORD_FORMAT}
+    ledger._write_raw(ledger.path_for(engagement_dir),
+                      json.dumps(line, ensure_ascii=False, sort_keys=True).encode("utf-8"))
 
 
 def seed_statuses(engagement_dir, updates):
@@ -766,6 +920,10 @@ def real_places(repo: Path) -> tuple[tuple[str, Path], ...]:
         pass
     if os.environ.get(settings.ENV_DATA_HOME, "").strip():
         places.append(("data home", Path(os.environ[settings.ENV_DATA_HOME])))
+    try:
+        places.append(("launch agent file", scheduling.launch_agent_path()))
+    except RuntimeError:     # no home folder for this account: no agent to guard
+        pass
     app = settings.app_dir()
     places += [("OCR scratch folder", app / settings.OCR_SCRATCH_DIRNAME),
                ("client tree", repo / CLIENTS_TREE),
@@ -843,6 +1001,10 @@ TRIPWIRE_HEADING = "decision 185: the suite reached a real place"
 
 
 def pytest_configure(config):
+    worker = getattr(config, "workerinput", None)
+    if worker is not None:
+        _configure_worker(config)
+        return
     places = real_places(REPO)                     # before own_folders(): the shell's own values count
     session = Path(tempfile.mkdtemp(prefix="tracker-suite-"))
     log = session / "tripwire.log"
@@ -858,7 +1020,25 @@ def pytest_configure(config):
     # The log is written only from a process this one forks (a fork that execs).
     tripwire.install(tripwire.prepare(places), log=str(log), children=os.environ[tripwire.ENV_TRIPWIRE])
     config.stash[_STATE] = {"patch": patch, "session": session, "log": log,
-                            "places": places, "before": before, "said": []}
+                            "places": places, "before": before, "said": [], "workers": []}
+
+
+def _configure_worker(config):
+    """A pytest-xdist worker joins the controller's session and arms no new one.
+
+    The controller armed the tripwire once, before it started the worker, and
+    the worker inherited that environment: its folders are the session's, and
+    its places are the controller's. A worker that armed its own would keep
+    a verdict of its own that xdist never reads back - xdist ignores a
+    worker's exit status. So the worker reads the places and the log from the
+    inherited :data:`ENV_TRIPWIRE`, watches its own process and the Python
+    children it starts, and hands the hits it saw to the controller in
+    ``workeroutput`` (:func:`pytest_sessionfinish`)."""
+    armed = os.environ[tripwire.ENV_TRIPWIRE]
+    spec = json.loads(armed)
+    places = tuple((label, Path(path)) for label, path in spec["places"])
+    tripwire.install(tripwire.prepare(places), log=spec["log"], children=armed)
+    config.stash[_STATE] = {"worker": True, "said": []}
 
 
 #: What the session says of a line in the tripwire's log it cannot read.
@@ -907,12 +1087,34 @@ def read_tripwire_log(log: Path) -> list[str]:
 def pytest_sessionfinish(session):
     state = session.config.stash[_STATE]
     said = [_hit_said(test, event, label) for test, event, label in tripwire.SEEN]
+    if state.get("worker"):
+        session.config.workeroutput[WORKER_SAID_KEY] = said     # the controller gives the verdict
+        return
+    said += state["workers"]
     said += read_tripwire_log(state["log"])
     said += [f"the session left a new folder in the checkout: {rel}"
              for rel in sorted(checkout_folders(REPO, state["places"]) - state["before"])]
     if said:
         state["said"] = said
         session.exitstatus = pytest.ExitCode.TESTS_FAILED
+
+
+#: Where a pytest-xdist worker puts the hits it saw, for the controller to collect.
+WORKER_SAID_KEY = "tripwire_said"
+#: What the session says of a worker that ended without handing over its hits.
+LOST_WORKER = "a pytest-xdist worker ended without giving the tripwire's verdict"
+
+
+@pytest.hookimpl(optionalhook=True)
+def pytest_testnodedown(node, error):
+    """The controller collects what each pytest-xdist worker saw. A worker
+    that ended without saying is itself said: its hits might be lost."""
+    workers = node.config.stash[_STATE]["workers"]
+    output = getattr(node, "workeroutput", None) or {}
+    if WORKER_SAID_KEY in output:
+        workers += output[WORKER_SAID_KEY]
+    else:
+        workers.append(f"{LOST_WORKER} ({node.gateway.id})")
 
 
 def pytest_terminal_summary(terminalreporter, config):
@@ -928,6 +1130,8 @@ def pytest_unconfigure(config):
     if state is None:
         return
     store.close()
+    if state.get("worker"):
+        return                         # the controller made the session's folders and removes them
     state["patch"].undo()
     shutil.rmtree(state["session"], ignore_errors=True)
     shutil.rmtree(data_home_for(state["session"] / APP_FOLDER), ignore_errors=True)

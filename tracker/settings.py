@@ -31,6 +31,16 @@ reading's temporary files, the run log and the scheduler's task file live in
 never beside the program, in a checkout, on removable media or in the temp
 folder, and :func:`data_home` refuses rather than fall back to any of them.
 
+**On a Mac** (SPEC-mac R1-R6) every platform branch reads :func:`host_system`
+when called, so a test stands in for a Mac on any machine. The data home is in
+``~/Library/Application Support`` and never inside a sync service's tree
+(:func:`synced_tree`); a packaged program's settings file is in the product's
+own Application Support folder, outside the bundle a newer copy replaces
+whole, and the program is the whole ``.app``; a disk is judged by its mount
+(``statfs``); the program the schedule runs must sit in Applications; the
+clients root may not be in iCloud Drive or kept by a sync service the app is
+not proved on; and :func:`mac_floor_refusal` is the hardware floor.
+
 ``ENV_REAL_CORPUS`` sits here for the same reason the clients root does:
 it is the other folder outside the repository the code is told about - the
 firm's own redacted documents, which the harness and the coverage report
@@ -121,13 +131,11 @@ ENV_DATA_HOME = "TRACKER_DATA_HOME"
 #: The data home's folder name: app/package.json's "name", held equal by a test.
 DATA_HOME_NAME = "tax-document-tracker-pilot"
 #: The pilot's name before the rename (P155, product_name() says the new one): the one home
-#: of the earlier name. The after-install step reads the settings file left in
-#: its program folder and removes its scheduled task (SPEC-rename R5, R6); the
-#: installer script, the two Windows check scripts and package.json's
-#: config.userDataName type it, and a test holds each copy equal to this. It is
-#: never the firm's production product ("Tax Document Tracker", no "Pilot"),
-#: whose task and folders nothing here touches. The data home above keeps its
-#: name through the rename (R3): it is package.json's internal "name".
+#: of the earlier name. The installer script, the two Windows check scripts and
+#: package.json's config.userDataName type it, and a test holds each copy equal
+#: to this. It is never the firm's production product ("Tax Document Tracker",
+#: no "Pilot"), whose task and folders nothing here touches. The data home above
+#: keeps its name through the rename (R3): it is package.json's internal "name".
 EARLIER_PRODUCT_NAME = "Tax Document Tracker Pilot"
 SCRATCH_DIR_NAME = "scratch"
 LOGS_DIR_NAME = "logs"
@@ -194,6 +202,62 @@ PROGRAM_DRIVE_UNKNOWN = ("Windows cannot say what kind of drive the app is runni
                          "so the schedule is not installed from here: copy the app's folder to this "
                          "computer's own disk (a short path, such as C:\\Tools), start it from there "
                          "and press Install Schedule.")
+#: On a Mac (SPEC-mac R1-R6). The data home is where the platform keeps an
+#: account's own application data, not ``$XDG_STATE_HOME``, which no Mac
+#: program sets; the settings file leaves the app bundle, because a bundle is
+#: replaced whole by dragging a newer one over it (P155) and a file inside it
+#: would go with it.
+MAC_SUPPORT = ("Library", "Application Support")
+#: ``statfs(2)``'s ``f_flags`` bit for a mount on a disk of this Mac (sys/mount.h).
+MNT_LOCAL = 0x00001000
+#: Where the startup volume is not: a disk image, an external disk or a second
+#: volume is mounted under this folder.
+MAC_VOLUMES = "/Volumes"
+#: The sync services whose folders sit on this Mac's own disk, so ``MNT_LOCAL``
+#: alone passes them, and which copy what is in them somewhere else. Named in
+#: the sentences below; the data home is refused inside any of them, and the
+#: clients root inside any but Google Drive.
+GOOGLE_DRIVE = "Google Drive"
+ICLOUD_DRIVE = "iCloud Drive"
+MAC_SYNC_NAMES = {"googledrive": GOOGLE_DRIVE, "onedrive": "OneDrive", "dropbox": "Dropbox", "box": "Box"}
+DATA_HOME_SYNCED = ("the app's data folder {home} is inside {service}, which copies it off this Mac; "
+                    "it must stay on this Mac only")
+NO_HOME_FOR_SETTINGS = ("this account has no home folder, so the app has nowhere to keep its settings; "
+                        "set " + ENV_SETTINGS_DIR + " to a folder of its own")
+#: Why a Mac will not schedule the program from where it is (R4): the schedule
+#: runs the copy in Applications and no other. A quarantined app opened where
+#: it was downloaded runs from a random read-only copy that is gone after a
+#: restart; a disk image is gone when it is ejected.
+PROGRAM_TRANSLOCATED = ("macOS is running the app from a temporary copy ({folder}) because it was "
+                        "opened where it was downloaded. Drag {product} into Applications "
+                        "and open it from there; the schedule runs only the copy in Applications.")
+PROGRAM_ON_DISK_IMAGE = ("The app is running from {folder}, a disk image or a disk other than this "
+                         "Mac's own. Drag it into Applications and open it from there; the schedule "
+                         "runs only the copy in Applications.")
+PROGRAM_NOT_IN_APPLICATIONS = ("The app is running from {folder}. Move it into Applications and open "
+                               "it from there; the schedule runs only the copy in Applications.")
+#: The marker in the path of the read-only copy macOS makes of a quarantined app.
+TRANSLOCATION = "/AppTranslocation/"
+#: The clients root on a Mac (R5). iCloud Drive can take a file's contents off
+#: the Mac to save space, and the unattended pass would read a stub; the other
+#: services are not what the lock race was measured on (decision 171).
+ROOT_IN_ICLOUD = ("{root} is in iCloud Drive, which can take a file's contents off this Mac to save "
+                  "space; choose the clients folder in Google Drive, or a folder on this Mac.")
+ROOT_IN_OTHER_SYNC = ("{root} is kept by {service}; the app is proved only on Google Drive for desktop "
+                      "and on this Mac's own disk. Choose the clients folder in one of those.")
+#: iCloud's "Desktop & Documents Folders" is on when this folder exists.
+ICLOUD_DESKTOP_SIGNAL = ("Library", "Mobile Documents", "com~apple~CloudDocs", "Desktop")
+#: The hardware floor (P243, R6): Apple silicon on macOS 14 or later. A
+#: Drag-to-Applications install has no installer program to refuse with, so the
+#: app's first code says this and stops; the shell says the same sentence (a
+#: test holds the two copies equal). {what} is what this Mac has, {product} the
+#: product's name from its one home (:func:`product_name`), never typed here.
+MAC_FLOOR = ("{product} needs a Mac with Apple silicon running macOS 14 or later; "
+             "this Mac has {what}, so the app stops here and changes nothing.")
+MAC_FLOOR_MACOS = 14
+#: What the floor sentence calls the app when nothing has told it the product's
+#: name: a frozen program started by hand, without the shell's environment.
+MAC_FLOOR_UNNAMED = "The app"
 #: The file beside them that says where each one belongs, and its columns:
 #: the document's own name, the catalog it is routed against, the
 #: engagement year, and the identifier it must file under - blank for a
@@ -223,39 +287,56 @@ class DataHomeRedirected(SettingsError):
     process is using as a stale copy the app "never uses" (combined review N3)."""
 
 
+def host_system() -> str:
+    """The kind of machine this is: ``"nt"``, ``"darwin"`` or ``"posix"``.
+
+    Read when called, never at import, and the one seam every platform branch
+    of this module goes through (SPEC-mac): a test stands in for a Mac on any
+    machine by patching this, never the platform itself, as the Windows rules
+    were always testable by their ``windows`` argument."""
+    if os.name == "nt":
+        return "nt"
+    return "darwin" if sys.platform == "darwin" else "posix"
+
+
+def mac_settings_dir(home: Path | None = None) -> Path:
+    """Where a packaged Mac app keeps its settings file (R2): the product's
+    folder in the account's Application Support, ``~/Library/Application
+    Support/<productName>``. Electron's ``app.getPath("appData")`` is that
+    same folder, and the shell builds its ``SETTINGS_DIR`` from the same
+    product name (a test holds the two spellings equal).
+
+    Not beside the app, as on Windows: a Mac app is a bundle replaced whole
+    by dragging a newer one over it (P155), and a settings file inside it
+    would be replaced with it, losing the clients root. Electron's own folder
+    (``config.userDataName``) is another folder and stays as it is."""
+    home = _home() if home is None else Path(home)
+    if home is None:
+        raise SettingsError(NO_HOME_FOR_SETTINGS)
+    return home.joinpath(*MAC_SUPPORT, product_name())
+
+
 def settings_dir() -> Path:
     """Where ``SETTINGS_FILENAME`` lives: beside the app.
 
     The Electron shell passes the folder in ``ENV_SETTINGS_DIR`` (next to
-    the packaged executable). A frozen API without it uses its own folder;
-    source checkouts use the repository root. It holds the settings file
-    and nothing derived from a client (decision 186).
+    the packaged executable). A frozen API without it uses its own folder
+    (on a Mac, the app's settings folder outside the bundle,
+    :func:`mac_settings_dir`); source checkouts use the repository root. It
+    holds the settings file and nothing derived from a client (decision 186).
     """
     override = os.environ.get(ENV_SETTINGS_DIR)
     if override:
         return Path(override)
     if getattr(sys, "frozen", False):
+        if host_system() == "darwin":
+            return mac_settings_dir()
         return Path(sys.executable).resolve().parent
     return Path(__file__).resolve().parent.parent
 
 
 def settings_path() -> Path:
     return settings_dir() / SETTINGS_FILENAME
-
-
-def earlier_settings_path() -> Path | None:
-    """Where the earlier name's installer put the settings file, or None.
-
-    Inno Setup installed the pilot under ``%LOCALAPPDATA%\\Programs\\<name>``,
-    and the settings file lives beside the program, so this is the file a PC
-    uninstalled under the earlier name left behind (the uninstaller keeps
-    it on purpose). None where ``LOCALAPPDATA`` is unset: there is then no
-    such folder to look in, and the caller says there was nothing to carry.
-    """
-    local = os.environ.get("LOCALAPPDATA")
-    if not local:
-        return None
-    return Path(local) / "Programs" / EARLIER_PRODUCT_NAME / SETTINGS_FILENAME
 
 
 #: The local debug log (decision 193, security principle 7): an
@@ -539,12 +620,18 @@ def set_schedule(enabled: object, start: object, every: object) -> SchedulePrefe
     return chosen
 
 
+def _set_text(key: str, value: object) -> str:
+    """Record one piece of text the firm typed under ``key``, stripped and
+    otherwise as typed, and return what was recorded."""
+    data = _read()
+    data[key] = str(value).strip()
+    _write(data)
+    return data[key]
+
+
 def set_firm(name: str) -> str:
     """Record the firm's name beside the clients root."""
-    data = _read()
-    data[KEY_FIRM] = str(name).strip()
-    _write(data)
-    return data[KEY_FIRM]
+    return _set_text(KEY_FIRM, name)
 
 
 def set_firm_phone(number: str) -> str:
@@ -555,10 +642,7 @@ def set_firm_phone(number: str) -> str:
     format this code invented would be a number read out to a client in
     the firm's name that the firm never wrote.
     """
-    data = _read()
-    data[KEY_FIRM_PHONE] = str(number).strip()
-    _write(data)
-    return data[KEY_FIRM_PHONE]
+    return _set_text(KEY_FIRM_PHONE, number)
 
 
 def app_dir() -> Path:
@@ -574,7 +658,15 @@ def app_dir() -> Path:
 
 def _the_app_dir() -> Path:
     if getattr(sys, "frozen", False):
-        return Path(sys.executable).resolve().parent
+        executable = Path(sys.executable).resolve()
+        if host_system() == "darwin":
+            # The program is the whole bundle, not the folder the executable
+            # sits in (Contents/Resources/tracker-api): the roots, the data
+            # home and the program-location rule all judge the .app (R2).
+            for level in executable.parents:
+                if level.suffix == ".app":
+                    return level
+        return executable.parent
     return Path(__file__).resolve().parent.parent
 
 
@@ -598,9 +690,67 @@ def system_drive_root() -> Path:
     return Path("/")
 
 
+def _statfs(path: Path) -> tuple[int, str] | None:
+    """``statfs(2)`` of ``path``: ``(f_flags, f_mntonname)``, or ``None`` when
+    it cannot be asked. The one place a Mac's disk is asked (R3), so a test
+    stands in for it on any machine. Any failure is ``None``: nothing is
+    guessed."""
+    import ctypes
+
+    class Statfs(ctypes.Structure):   # struct statfs, sys/mount.h (the 64-bit inode layout)
+        _fields_ = [("f_bsize", ctypes.c_uint32), ("f_iosize", ctypes.c_int32),
+                    ("f_blocks", ctypes.c_uint64), ("f_bfree", ctypes.c_uint64),
+                    ("f_bavail", ctypes.c_uint64), ("f_files", ctypes.c_uint64),
+                    ("f_ffree", ctypes.c_uint64), ("f_fsid", ctypes.c_int32 * 2),
+                    ("f_owner", ctypes.c_uint32), ("f_type", ctypes.c_uint32),
+                    ("f_flags", ctypes.c_uint32), ("f_fssubtype", ctypes.c_uint32),
+                    ("f_fstypename", ctypes.c_char * 16), ("f_mntonname", ctypes.c_char * 1024),
+                    ("f_mntfromname", ctypes.c_char * 1024), ("f_flags_ext", ctypes.c_uint32),
+                    ("f_reserved", ctypes.c_uint32 * 7)]
+
+    try:
+        libc = ctypes.CDLL(None, use_errno=True)
+        libc.statfs.argtypes = (ctypes.c_char_p, ctypes.POINTER(Statfs))
+        libc.statfs.restype = ctypes.c_int
+    except (OSError, AttributeError):
+        return None
+    answer = Statfs()
+    if libc.statfs(os.fsencode(path), ctypes.byref(answer)) != 0:
+        return None
+    return int(answer.f_flags), os.fsdecode(answer.f_mntonname)
+
+
+def _mac_drive_type(path: Path) -> int:
+    """A Mac's answer to :func:`drive_type` (R3), from the mount ``path`` is on.
+
+    A mount without ``MNT_LOCAL`` is a network share (DRIVE_REMOTE). A mount
+    under ``/Volumes`` is an external disk, a disk image or a second volume,
+    which can leave with the person who carries it (DRIVE_REMOVABLE). The
+    startup volume is fixed. What cannot be asked is unknown. A sync
+    service's folder is on the local volume and passes here; that is
+    :func:`synced_tree`'s question.
+
+    A folder not made yet - the data home, before anything writes - is asked
+    by the nearest folder above it that is there, which is on the same mount."""
+    here = Path(os.path.abspath(str(path)))
+    for level in (here, *here.parents):
+        if os.path.lexists(level):
+            break
+    asked = _statfs(level)
+    if asked is None:
+        return DRIVE_UNKNOWN
+    flags, mount = asked
+    if not flags & MNT_LOCAL:
+        return DRIVE_REMOTE
+    if mount == MAC_VOLUMES or mount.startswith(MAC_VOLUMES + "/"):
+        return DRIVE_REMOVABLE
+    return DRIVE_FIXED
+
+
 def drive_type(path: Path) -> int:
-    """GetDriveTypeW for the drive ``path`` is on (DRIVE_*). Off Windows there
-    are no drive letters to ask about and the program is never scheduled from
+    """GetDriveTypeW for the drive ``path`` is on (DRIVE_*). On a Mac, the
+    mount it is on (:func:`_mac_drive_type`). On any other system there are no
+    drive letters to ask about and the program is never scheduled from
     there (install_task only prints the command), so it answers DRIVE_FIXED.
 
     What it buys (SPEC-186 section 10, the review's S2): it refuses what
@@ -612,7 +762,10 @@ def drive_type(path: Path) -> int:
     spelling names: :func:`app_dir` and :func:`settings_dir` are resolved
     first and are seen through a junction, the data home is not.
     """
-    if os.name != "nt":
+    system = host_system()
+    if system == "darwin":
+        return _mac_drive_type(path)
+    if system != "nt":
         return DRIVE_FIXED
     import ctypes
     drive = os.path.splitdrive(os.path.abspath(str(path)))[0]   # "E:" or "\\\\server\\share"
@@ -660,26 +813,65 @@ def beside_the_program() -> list[Path]:
     return folders
 
 
-def resolve_data_home(environ, *, windows: bool, home: Path | None, program, drive_type) -> Path:
+def _mac_sync_service(path: Path, home: Path) -> str:
+    """The sync service whose folder on this Mac ``path`` lies under, or ""."""
+    where = Path(os.path.normpath(str(path)))
+    folded = Path(str(where).casefold())      # APFS keeps a name's case and ignores it
+    storage = home.joinpath("Library", "CloudStorage")
+    if _within(folded, Path(str(storage).casefold())) and len(where.parts) > len(storage.parts):
+        provider = where.parts[len(storage.parts)]
+        return MAC_SYNC_NAMES.get(provider.split("-")[0].casefold(), provider)
+    for folder, service in ((home.joinpath("Library", "Mobile Documents"), ICLOUD_DRIVE),
+                            (home / "Dropbox", MAC_SYNC_NAMES["dropbox"])):
+        if _within(folded, Path(str(folder).casefold())):
+            return service
+    return ""
+
+
+def synced_tree(path: Path | str, *, home: Path | None = None) -> str:
+    """The name of the sync service ``path`` lies under on a Mac, or ``""``
+    (R3): a folder under ``~/Library/CloudStorage/<provider>-...`` (Google
+    Drive, OneDrive, Dropbox and Box through File Provider), ``~/Library/Mobile
+    Documents`` (iCloud Drive) or ``~/Dropbox``.
+
+    Asked beside :func:`drive_type`, not inside it, because every one of these
+    is on the Mac's own APFS volume: ``MNT_LOCAL`` passes them, and what they
+    do is copy the folder somewhere else (the data home, which must stay on
+    this Mac only) or put a file's contents out of reach (the clients root).
+    A provider this module has no name for is named by its folder, so the
+    sentence still says who keeps the tree. Pure: ``home`` is the account's
+    home folder, this process's own unless a test gives one."""
+    home = _home() if home is None else Path(home)
+    if home is None:
+        return ""
+    return _mac_sync_service(Path(path), home)
+
+
+def resolve_data_home(environ, *, system: str, home: Path | None, program, drive_type) -> Path:
     """The data home for this environment - the pure core of :func:`data_home`,
     so every branch is testable on any machine (decision 186).
 
+    ``system`` is ``"nt"``, ``"darwin"`` or ``"posix"`` (:func:`host_system`).
     In order: ``ENV_DATA_HOME`` when set and not blank, which must be a whole
     path (a relative one would land in the working folder, which for a
     source install's scheduled job is the checkout); on Windows
     ``%LOCALAPPDATA%`` + ``DATA_HOME_NAME`` - the account's own local
     application-data folder, never roamed, unlike ``%APPDATA%`` - and **no
-    fallback** when it is unset or not a folder; elsewhere
+    fallback** when it is unset or not a folder; on a Mac
+    ``~/Library/Application Support`` + ``DATA_HOME_NAME`` (R1: no Mac program
+    sets ``$XDG_STATE_HOME``, so it is not read there); elsewhere
     ``$XDG_STATE_HOME`` (when absolute) or ``~/.local/state``. Then, whoever
-    answered: never inside any of ``program`` nor holding one, and only on a
-    disk ``drive_type`` calls fixed. Only a path is answered; nothing is made.
+    answered: never inside any of ``program`` nor holding one, on a Mac never
+    inside a sync service's tree (R3: ``DATA_HOME_SYNCED``, an override
+    included), and only on a disk ``drive_type`` calls fixed. Only a path is
+    answered; nothing is made.
     """
     override = (environ.get(ENV_DATA_HOME) or "").strip()
     if override:
         answer = Path(override)
         if not answer.is_absolute():
             raise SettingsError(DATA_HOME_NOT_ABSOLUTE.format(value=override))
-    elif windows:
+    elif system == "nt":
         local = (environ.get("LOCALAPPDATA") or "").strip()
         if not local:
             raise SettingsError(NO_LOCAL_APPDATA)
@@ -687,6 +879,10 @@ def resolve_data_home(environ, *, windows: bool, home: Path | None, program, dri
         if not folder.is_absolute() or not folder.is_dir():
             raise SettingsError(LOCAL_APPDATA_NOT_A_FOLDER.format(folder=local))
         answer = folder / DATA_HOME_NAME
+    elif system == "darwin":
+        if home is None:
+            raise SettingsError(NO_HOME)
+        answer = Path(home).joinpath(*MAC_SUPPORT, DATA_HOME_NAME)
     else:
         state = (environ.get("XDG_STATE_HOME") or "").strip()
         if state and Path(state).is_absolute():
@@ -698,6 +894,8 @@ def resolve_data_home(environ, *, windows: bool, home: Path | None, program, dri
     for folder in program:
         if _inside(answer, Path(folder)) or _inside(Path(folder), answer):
             raise SettingsError(DATA_HOME_BESIDE_PROGRAM.format(home=answer, program=folder))
+    if system == "darwin" and home is not None and (service := synced_tree(answer, home=home)):
+        raise SettingsError(DATA_HOME_SYNCED.format(home=answer, service=service))
     if drive_type(answer) != DRIVE_FIXED:
         raise SettingsError(DATA_HOME_NOT_LOCAL.format(home=answer))
     return answer
@@ -733,10 +931,10 @@ def data_home() -> Path:
 
     On Windows, with no ``ENV_DATA_HOME``, a data home Windows is
     redirecting is refused (F7, P193): see :func:`_the_data_home`."""
-    return held(("data_home",), lambda: _the_data_home(os.environ, windows=os.name == "nt"))
+    return held(("data_home",), lambda: _the_data_home(os.environ, system=host_system()))
 
 
-def _the_data_home(environ, *, windows: bool) -> Path:
+def _the_data_home(environ, *, system: str) -> Path:
     """:func:`resolve_data_home`, then the redirect refusal (F7, P193, R1).
 
     Why here and not in :func:`resolve_data_home` or
@@ -751,9 +949,9 @@ def _the_data_home(environ, *, windows: bool) -> Path:
     each copy refuses the other's lines, and a pass on the copy would record
     moves in a store the schedule never reads - so the copy is refused
     before anything reads or writes it."""
-    answer = resolve_data_home(environ, windows=windows, home=_home(),
+    answer = resolve_data_home(environ, system=system, home=_home(),
                                program=program_folders(), drive_type=drive_type)
-    if windows and not (environ.get(ENV_DATA_HOME) or "").strip():
+    if system == "nt" and not (environ.get(ENV_DATA_HOME) or "").strip():
         package = _redirected_package(Path(environ["LOCALAPPDATA"].strip()))
         if package:
             raise DataHomeRedirected(DATA_HOME_REDIRECTED.format(package=package, product=product_name()))
@@ -1031,7 +1229,7 @@ def default_data_home() -> Path:
     place on this machine, for a guard that must know it while an override
     is set."""
     environ = {key: value for key, value in os.environ.items() if key != ENV_DATA_HOME}
-    return resolve_data_home(environ, windows=os.name == "nt", home=_home(),
+    return resolve_data_home(environ, system=host_system(), home=_home(),
                              program=program_folders(), drive_type=drive_type)
 
 
@@ -1051,14 +1249,44 @@ def logs_dir() -> Path:
     return data_home() / LOGS_DIR_NAME
 
 
+def _mac_program_refusal(app: Path) -> str:
+    """Why a packaged Mac program may not be the one the schedule runs (R4), or "".
+
+    It must be ``<product>.app`` directly in ``/Applications`` or
+    ``~/Applications``: the only place a Mac app stays put. A quarantined app
+    opened where it was downloaded runs from a random read-only copy that is
+    gone after a restart (``PROGRAM_TRANSLOCATED``); one run from a disk image
+    or another disk goes when the disk does (``PROGRAM_ON_DISK_IMAGE``);
+    anywhere else is just not where the schedule looks
+    (``PROGRAM_NOT_IN_APPLICATIONS``). Each names the folder the app sits in."""
+    folder = app.parent
+    home = _home()
+    homes = (Path("/Applications"),) + ((home / "Applications",) if home is not None else ())
+    if folder in homes and app.name == product_name() + ".app":
+        return ""
+    if TRANSLOCATION in str(app):
+        return PROGRAM_TRANSLOCATED.format(folder=folder, product=product_name())
+    if Path(MAC_VOLUMES) in app.parents:
+        return PROGRAM_ON_DISK_IMAGE.format(folder=folder)
+    return PROGRAM_NOT_IN_APPLICATIONS.format(folder=folder)
+
+
 def program_drive_refusal(*, app: Path | None = None, settings: Path | None = None,
-                          drive_type=None) -> str:
+                          drive_type=None, host: str | None = None,
+                          frozen: bool | None = None) -> str:
     """Why the schedule may not run the program from where it is, or "".
 
     The program's folder and its settings folder are each asked; only
     DRIVE_FIXED passes. DRIVE_REMOVABLE and DRIVE_CDROM -> PROGRAM_ON_REMOVABLE,
     DRIVE_REMOTE -> PROGRAM_ON_NETWORK, anything else (unknown, no root, a RAM
     disk) -> PROGRAM_DRIVE_UNKNOWN: nothing is guessed (decision 186).
+
+    On a Mac a packaged program is asked its place first (R4,
+    :func:`_mac_program_refusal`): the disk rule above would pass a disk image's
+    mount or a translocated copy as readily as ``/Applications``, and the
+    place says why not in words a Mac user has. A source checkout is never
+    refused for its folder, only for its disk. ``host`` and ``frozen`` are
+    read when called unless a test gives them.
 
     Asked by the schedule's registration (``scheduling.schedule_decision``,
     the first answer of every door of the after-install step, decision 209)
@@ -1067,12 +1295,16 @@ def program_drive_refusal(*, app: Path | None = None, settings: Path | None = No
     job installed from a stick keeps running until the schedule is
     registered again from the copy on the disk. ``drive_type`` is
     looked up when called, not bound at definition, so a test's patch of
-    the module's :func:`drive_type` reaches it. Off Windows every drive is
-    fixed and the answer is "".
+    the module's :func:`drive_type` reaches it. Off Windows and off a Mac every
+    drive is fixed and the answer is "".
     """
     ask = drive_type if drive_type is not None else globals()["drive_type"]
     folders = (app if app is not None else app_dir(),
                settings if settings is not None else settings_dir().resolve())
+    if (host_system() if host is None else host) == "darwin" and (
+            getattr(sys, "frozen", False) if frozen is None else frozen):
+        if refusal := _mac_program_refusal(Path(folders[0])):
+            return refusal
     for folder in folders:
         kind = ask(Path(folder))
         if kind == DRIVE_FIXED:
@@ -1158,8 +1390,35 @@ def _inside(inner: Path, outer: Path) -> bool:
     return False
 
 
+def _icloud_desktop_and_documents(root: Path, home: Path) -> bool:
+    """Whether ``root`` is in the Desktop or Documents folder while iCloud's
+    "Desktop & Documents Folders" is on. That setting is read from the folder
+    iCloud makes for it (``ICLOUD_DESKTOP_SIGNAL``) existing; the kit's step H6
+    checks the signal on a real Mac, and if it proves unreliable the rule
+    refuses both folders outright, because nothing is guessed."""
+    if not home.joinpath(*ICLOUD_DESKTOP_SIGNAL).is_dir():
+        return False
+    folded = Path(str(root).casefold())       # APFS keeps a name's case and ignores it
+    return any(_within(folded, Path(str(home / name).casefold())) for name in ("Desktop", "Documents"))
+
+
+def _mac_root_refusal(root: Path, home: Path) -> str:
+    """The Mac's two further reasons for a clients root (R5), or "": iCloud
+    Drive (the folder, or Desktop and Documents while they are in it), and
+    every sync service but Google Drive for desktop, which is where the
+    lock race was measured (decision 171). A plain folder on this Mac's own
+    disk, or a root on another volume, is accepted."""
+    service = synced_tree(root, home=home)
+    if service == ICLOUD_DRIVE or _icloud_desktop_and_documents(root, home):
+        return ROOT_IN_ICLOUD.format(root=root)
+    if service and service != GOOGLE_DRIVE:
+        return ROOT_IN_OTHER_SYNC.format(root=root, service=service)
+    return ""
+
+
 def root_refusal(root: Path, *, settings: Path, app: Path, system: Path,
-                 data: Path | None = None) -> str:
+                 data: Path | None = None, host: str | None = None,
+                 home: Path | None = None) -> str:
     """Why ``root`` may not be the clients root, or ``""`` when it may.
 
     Pure, so every rule is testable on any machine: ``settings`` is the
@@ -1173,6 +1432,11 @@ def root_refusal(root: Path, *, settings: Path, app: Path, system: Path,
     since decision 188 a folder inside one of the two trees of a real root
     (``ROOT_INSIDE_A_TREE``), which is the one rule here that looks at what
     is on the disk: whether a folder above the root holds both trees.
+
+    ``system`` is the system drive's root, as it always was; ``host`` is
+    the kind of machine (:func:`host_system`, this one's unless given) and
+    ``home`` the account's home folder, for a Mac's rules (R5,
+    :func:`_mac_root_refusal`), which a test gives to run them anywhere.
     """
     if _inside(system, root) and _inside(root, system):
         return ROOT_IS_SYSTEM_DRIVE.format(root=root)
@@ -1186,9 +1450,52 @@ def root_refusal(root: Path, *, settings: Path, app: Path, system: Path,
         return ROOT_INSIDE_DATA.format(root=root, data=data)
     if _inside(app, root):
         return ROOT_HOLDS_APP.format(root=root, app=app)
+    if (host_system() if host is None else host) == "darwin":
+        account = _home() if home is None else Path(home)
+        if account is not None and (refusal := _mac_root_refusal(root, account)):
+            return refusal
     if (deeper := _holding_both_trees(root)) is not None:
         return ROOT_INSIDE_A_TREE.format(root=root, tree=deeper[1], real=deeper[0])
     return ""
+
+
+def mac_floor_refusal(*, system: str | None = None, machine: str | None = None,
+                      mac_ver: str | None = None, product: str | None = None) -> str:
+    """``MAC_FLOOR`` filled with what this Mac has, or "" when it is Apple
+    silicon on macOS 14 or later, or when this is not a Mac (R6, P243).
+
+    A Drag-to-Applications install has no installer to refuse with, so the
+    shell asks this in words of its own and the API asks it here, first, before
+    it reads, writes or locks anything: the schedule runs the API directly,
+    and it would otherwise start on a Mac the app was never proved on. A
+    version this cannot read is below the floor - nothing is guessed. Read when
+    called; ``system``, ``machine`` and ``mac_ver`` are a test's. ``product`` is
+    the name the scheduled job was told on its command line, which has no
+    environment of the shell's; failing that the product's name from its one
+    home, and failing that ``MAC_FLOOR_UNNAMED``, because a refusal that
+    could not be said would be a silent skip."""
+    if (host_system() if system is None else system) != "darwin":
+        return ""
+    import platform
+
+    machine = platform.machine() if machine is None else machine
+    version = platform.mac_ver()[0] if mac_ver is None else mac_ver
+    try:
+        major = int(version.split(".")[0])
+    except ValueError:
+        major = 0
+    silicon = machine == "arm64"
+    if silicon and major >= MAC_FLOOR_MACOS:
+        return ""
+    chip = ("Apple silicon" if silicon else "an Intel processor" if machine in ("x86_64", "i386")
+            else machine or "a processor it cannot name")
+    if not product:
+        try:
+            product = product_name()
+        except SettingsError:
+            product = MAC_FLOOR_UNNAMED
+    return MAC_FLOOR.format(product=product, what=f"{chip} running macOS {version}" if version
+                            else f"{chip} running a macOS it cannot name")
 
 
 def clients_root_refusal(root: Path | str) -> str:

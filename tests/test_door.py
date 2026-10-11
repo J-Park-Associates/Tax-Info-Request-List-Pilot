@@ -111,6 +111,29 @@ def test_a_typed_path_is_a_return_or_a_household_rebuilt_from_its_own_names(root
         door.household_dir(ret, root=root)
 
 
+def test_a_command_line_parses_its_typed_folder_through_the_door(root, capsys):
+    """The block every command line copied is the door's: a return (or, for
+    the rollover, a household) comes back rebuilt, and anything else ends
+    the command through ``parser.error`` with the door's own sentence."""
+    import argparse
+
+    from tracker.settings import set_clients_root
+
+    set_clients_root(root)
+    parser = argparse.ArgumentParser(prog="tool")
+    ret = layout.return_dir_for(root, HOUSEHOLD, 2025, RETURN)
+    assert door.typed_return(parser, ret / "Prepared" / "..") == ret
+    assert door.typed_household_or_return(parser, ret.parent.parent) == ret.parent.parent
+    assert door.typed_household_or_return(parser, ret) == ret
+    for refused, ask in ((ret.parent, door.typed_return),
+                         (root.parent, door.typed_household_or_return)):
+        with pytest.raises(SystemExit) as stopped:
+            ask(parser, refused)
+        assert stopped.value.code == 2
+    said = capsys.readouterr().err
+    assert "is not a return's folder" in said and "is not under the clients root" in said
+
+
 def test_the_root_is_checked_wherever_it_enters(root, tmp_path, monkeypatch):
     """R11: given or saved, the root is resolved and held to the settings'
     rule - no saved root is a sentence, and a root one level too deep,

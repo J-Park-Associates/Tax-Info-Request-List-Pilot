@@ -94,6 +94,41 @@ def test_local_files_are_not_placeholders(tmp_path):
     assert is_cloud_placeholder(tmp_path / "gone.pdf") is False  # no crash
 
 
+class _Stat:
+    """A path that can only be ``stat``-ed: asking anything else of it - to
+    open it, which would force a download - is an ``AttributeError``."""
+
+    def __init__(self, **fields):
+        self.fields = fields
+
+    def stat(self):
+        from types import SimpleNamespace
+
+        return SimpleNamespace(**self.fields)
+
+
+def test_a_mac_dataless_file_is_waiting_for_sync(on_a_mac):
+    """SPEC-mac R10: a Stream-mode Drive file not downloaded yet is
+    ``SF_DATALESS`` in ``st_flags``, read from ``os.stat`` without opening
+    the file, and the pass treats it as waiting for sync, as Windows's
+    placeholder; an ordinary file on the same Mac is not."""
+    from tracker.validators import SF_DATALESS
+
+    assert SF_DATALESS == 0x40000000
+    assert is_cloud_placeholder(_Stat(st_flags=SF_DATALESS | 0x20)) is True
+    assert is_cloud_placeholder(_Stat(st_flags=0x20)) is False
+    assert is_cloud_placeholder(_Stat(st_flags=0)) is False
+    assert is_cloud_placeholder(_Stat()) is False, "a platform that reports no flags"
+
+
+def test_a_dataless_flag_means_nothing_off_a_mac():
+    """Linux and Windows read their own flags: ``st_flags`` is not theirs."""
+    from tracker.validators import SF_DATALESS
+
+    assert is_cloud_placeholder(_Stat(st_flags=SF_DATALESS)) is False
+    assert is_cloud_placeholder(_Stat(st_file_attributes=0x00400000)) is True
+
+
 # ----------------------------------------------------------------- tier 2 ----
 
 

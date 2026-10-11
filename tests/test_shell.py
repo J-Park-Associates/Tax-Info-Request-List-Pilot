@@ -6,8 +6,7 @@ guards every renderer file keeps, the words the new files may not type, and -
 run in node against the files' own functions, as the repository's other
 renderer tests do - the route, the search, the sort icon and the menu's
 enable list. The rendered claims (a screenshot of every scenario, light and
-dark, at both sizes) come from ``pilot/harness/shoot.mjs`` and are reported in
-``pilot/handoffs/shell-S3.md``.
+dark, at both sizes) come from ``pilot/harness/shoot.mjs``.
 
 This file is S3's part of SPEC section 14.1. S2 adds the menu half (the
 template, the ``menu`` channel, the first paint), S4 the pages' node tests and
@@ -232,9 +231,7 @@ def test_the_kept_names_are_aliases_of_the_purpose_names():
     themes because the old names resolve through the new ones."""
     light, dark = root_blocks()
     aliases = {"--bg": "--bg-page", "--card": "--bg-raised", "--muted": "--text-secondary", "--subtle": "--text-caption",
-               "--navy": "--accent", "--navy-deep": "--accent-hover", "--blue": "--focus", "--blue-dark": "--focus",
-               "--surface-hover": "--bg-hover", "--surface-pressed": "--bg-pressed", "--surface-selected": "--bg-selected",
-               "--surface-sunken": "--bg-nav", "--surface-disabled": "--bg-nav"}
+               "--navy": "--accent", "--blue": "--focus", "--blue-dark": "--focus"}
     for old, new in aliases.items():
         assert light[old] == f"var({new})", old
         assert old not in dark, f"{old} resolves through {new}; the dark block does not repeat it"
@@ -482,7 +479,7 @@ def test_a_page_change_hides_a_showing_tip(tmp_path):
     setup = TIP_PAGE + read("tooltip.js") + """
       const LEVELS = ["overview", "needs-review", "reminders", "clients", "household", "year", "return", "setup"];
       let shellRoute = { level: "overview" }, shellBack = null, shellRootSet = true, shellPageBusy = false, shellPageFailed = false;
-      const hideFound = () => {}, appRouteChanged = () => {}, failed = (err) => { throw err; };
+      const hideFound = () => {}, appRouteChanged = () => {}, closeSheet = () => {}, failed = (err) => { throw err; };
       const atDraw = [];
       const shellDraw = () => { atDraw.push(tipBox.hidden); };
       const $ = () => ({ scrollTop: 0, focus() {} });
@@ -536,29 +533,29 @@ def test_shell_key_hands_escape_to_the_tip_first_wherever_the_focus_is(tmp_path)
     assert "tipShowing" not in read("tooltip.js") and "hideTip" not in js_function("shellKey")
 
 
-def test_the_skeleton_is_the_specs_and_the_legacy_box_holds_only_the_three_inputs_saveroot_reads():
+def test_the_skeleton_is_the_specs_and_no_hidden_box_is_used_as_a_variable():
     """SPEC 3.1 and 13. The pages took the toolbar, the banners, the request
     table, the household card and the setup card; the side sheet took the
     reminder, moved, review and filed cards; the dialogs took the roll fold
-    and the standing rules. What #legacy still holds is the three boxes
-    saveRoot() reads."""
+    and the standing rules. The three hidden boxes saveRoot() once read are
+    one object in app.js (setupDraft)."""
     html = read("index.html")
     for wanted in ('id="shell"', 'id="side"', 'id="side-brand"', 'id="side-sections"', 'id="side-foot"', 'id="last-sort"',
                    'id="main"', 'id="bar"', 'id="crumbs"', 'id="find-wrap"', 'id="find"', 'id="find-list"', 'id="sort"',
                    'id="notices"', 'id="page"', 'id="sheet"', 'id="sheet-scrim"', 'id="tip"', 'id="toast"'):
         assert wanted in html, wanted
     assert html.count('data-section="') == 4
-    assert re.search(r'<div id="legacy" class="hidden">', html)
-    outside = html[:html.index('<div id="legacy"')]
-    legacy = html[html.index('<div id="legacy"'):html.index('<div id="household-modal"')]
+    assert 'id="legacy"' not in html
+    outside = html[:html.index('<div id="household-modal"')]
     for gone in ("topbar", "brand-logo", 'id="eng-select"', "btn-scan", "btn-inbox", 'id="toolbar"', 'class="toolbar"', "eng-form", "view-state",
                  'id="banner"', 'id="reader-warning"', 'id="last-pass"', 'id="machine-warnings"', 'id="after-install"',
                  'id="lock-notice"', 'id="misfits-card"', 'id="room-card"', 'id="setup-card"', 'id="household-card"',
                  'id="rows"', 'id="summary"', 'id="pass-progress"', "btn-unlock", "btn-stop-pass", "household-returns",
                  "review-deck", "review-mode", "mode-toggle", "deck"):
-        assert gone not in outside and gone not in legacy, gone
-    for kept in ('id="root-input"', 'id="firm-input"', 'id="phone-input"'):
-        assert kept in legacy, kept
+        assert gone not in outside, gone
+    for gone in ('id="root-input"', 'id="firm-input"', 'id="phone-input"'):
+        assert gone not in html, gone
+    assert 'let setupDraft = { root: "", firm: "", phone: "" };' in read("app.js")
     for taken in ('id="reminder-card"', 'id="moved-card"', 'id="review-card"', 'id="filed-card"', 'id="assurances"', 'id="household-roll"',
                   'id="dismissed-card"', 'id="btn-open-draft"', 'id="reminder-hint"', 'id="reminder-heading"'):
         assert taken not in html, taken
@@ -658,11 +655,12 @@ def test_the_new_renderer_files_type_no_words_of_their_own():
 
 
 def test_every_attribute_the_shell_builds_a_node_with_is_on_its_list():
-    """h() throws on an attribute it does not name (the pattern of app.js's
-    el(), decision 137). A key used at a call site but missing from the list
+    """h() is app.js's el(), which throws on an attribute it does not name
+    (decision 137). A key used at a call site but missing from the list
     would throw when that node is first drawn - the harness found one."""
     text = stripped_js("shell.js")
-    listed = set(re.findall(r'"([\w-]+)"', text[text.index("const H_ATTRIBUTES = new Set(["):text.index("]);")]))
+    builder = stripped_js("app.js")
+    listed = set(re.findall(r'"([\w-]+)"', builder[builder.index("const EL_ATTRIBUTES = new Set(["):builder.index("]);")]))
     used = set(re.findall(r'"(aria-[\w-]+)":', text)) | set(re.findall(r"\b(role|tabindex|type|disabled|hidden|value|dataset|className)\s*:", text))
     used |= set(re.findall(r'\{ id: "|, id: "|\bid: ', text)) and {"id"}
     assert used <= listed, sorted(used - listed)
@@ -689,40 +687,14 @@ def test_the_harness_is_never_loaded_by_the_app():
 
 # ── the style.css literals that still draw ────────────────────────────────
 
-#: Rules of style.css that write a literal colour and whose elements the
-#: shell removes; each needs no dark value because nothing draws it. S4 took
-#: the toolbar, the chips, the request table, the household card and the
-#: setup card away; S5 deleted the review list, the reminder card, the
-#: assurances and their rules: only :root is left.
-RETIRED = (":root",)
-
-
-def family(prop: str) -> str:
-    return prop.split("-")[0]
-
-
-def test_every_literal_colour_still_in_use_has_a_dark_value():
-    """SPEC 10.4: a rule of style.css with a literal colour whose selector
-    still matches markup is restated in pilot-ui.css through a token, selector
-    for selector, so the dark values reach it."""
-    restated: dict[str, set[str]] = {}
-    for _media, selector, body in blocks(read("pilot-ui.css")):
-        if selector.strip() == ":root":
-            continue
-        for part in selector.split(","):
-            restated.setdefault(" ".join(part.split()), set()).update(family(p) for p, _v in declarations(body))
-    checked = 0
-    for _media, selector, body in blocks(read("style.css")):
-        literal = {family(p) for p, v in declarations(body) if re.search(r"#[0-9a-fA-F]{3,8}\b|\brgba?\(", v)}
-        if not literal:
-            continue
-        for part in selector.split(","):
-            part = " ".join(part.split())
-            if part.startswith(RETIRED):
-                continue
-            checked += 1
-            assert literal <= restated.get(part, set()), f"{part}: style.css writes a literal {sorted(literal)}; pilot-ui.css does not restate it"
-    assert checked > 20
+def test_style_css_writes_no_literal_colour():
+    """SPEC 10.4: pilot-ui.css restated every literal colour of style.css
+    through a token, selector for selector, so the dark values reach it; once
+    each was overridden whole the literals were deleted. A colour written in
+    style.css again would be one with no dark value."""
+    literal = [(selector.strip(), prop) for _media, selector, body in blocks(read("style.css"))
+               for prop, value in declarations(body) if re.search(r"#[0-9a-fA-F]{3,8}\b|\brgba?\(", value)]
+    assert literal == []
 
 
 # ── node: the shell's own functions ───────────────────────────────────────
@@ -736,6 +708,12 @@ def js_function(name: str, source: str = "shell.js") -> str:
     if text[max(0, start - 6):start] == "async ":
         start -= 6
     return text[start:text.index("\n}\n", start) + 3]
+
+
+def store_functions() -> str:
+    """app.js's storeRead and storeWrite, which the lists and the shell keep
+    their choices on this PC through."""
+    return js_function("storeRead", "app.js") + "\n" + js_function("storeWrite", "app.js")
 
 
 def run_shell(functions: list[str], setup: str, probe: str, tmp_path: Path, source: str = "shell.js"):
@@ -897,11 +875,10 @@ def test_the_menus_enable_list_follows_the_rules_of_the_template(tmp_path):
 def test_changing_the_clients_folder_keeps_the_firms_name_and_phone(tmp_path):
     setup = """
       const vocab = { firm: "Harbor Tax Partners", settings: { phone: "555-0100" } };
-      const fields = { "firm-input": { value: "" }, "phone-input": { value: "" } };
-      const $ = (id) => fields[id];
+      const setupDraft = { root: "", firm: "", phone: "" };
       let went = null; const shellGo = (route) => { went = route; };
     """
-    probe = 'shellChangeRoot(); return [fields["firm-input"].value, fields["phone-input"].value, went.level];'
+    probe = 'shellChangeRoot(); return [setupDraft.firm, setupDraft.phone, went.level];'
     assert run_shell(["shellChangeRoot"], setup, probe, tmp_path) == ["Harbor Tax Partners", "555-0100", "setup"]
 
 
@@ -954,7 +931,7 @@ def test_every_menu_id_the_page_answers_is_in_the_template_and_the_rest_are_the_
     log (main.js's alone, 5.5); the row menus' ids go to pages.js first."""
     template = {"new_household", "change_root", "open_root", "exit", "edit_household", "add_return", "roll_forward", "mark_shared",
                 "edit_list", "draft_reminder", "open_client_folder", "open_inbox", "open_working", "overview", "needs_review",
-                "reminders", "clients", "find", "refresh", "reset_columns", "show_under_construction", "sort_now", "stop_sorting", "schedule", "repair_schedule", "firm_report",
+                "reminders", "clients", "find", "refresh", "reset_columns", "show_under_construction", "sort_now", "stop_sorting", "schedule", "repair_schedule", "remove_schedule_here", "firm_report",
                 "clear_lock", "tour", "safeguards", "terms", "error_log", "about"}
     rows = {"check", "not_requested", "another_return", "put_back", "keep_here", "edit_request", "unfile", "mark_missing", "show_in_explorer"}
     text = read("shell.js")
@@ -1090,7 +1067,7 @@ COLUMN_FUNCTIONS = ("pagesListOf", "pagesUrgent", "pagesIsBlank", "pagesCompareK
                     "pagesStoredOrder", "pagesSaveOrder",
                     # The raised lists (pilot SPEC-lists 10-17).
                     "pagesDetailCell", "pagesReasonTip", "pagesStatusCell", "pagesLinkMark", "pagesLinkMarkIn", "pagesShowPanel", "pagesPanelOpen",
-                    "pagesClosePanel", "pagesOpenRowLinks", "pagesPaged", "pagesFoot", "pagesTurn", "pagesPick", "pagesTabs",
+                    "pagesClosePanel", "pagesOpenRowLinks", "pagesPaged", "pagesFoot", "pagesTurn", "pagesPick", "pagesRedraw", "pagesPickButton", "pagesTabs",
                     "pagesFileCount", "pagesReasonCards", "pagesReviewGroup", "pagesSwitch", "pagesTypeFilter", "pagesReopenPanel",
                     # One field per column (pilot SPEC-firm-columns; P194, P195).
                     "pagesTaxpayer", "pagesFormKey", "pagesFormCell", "pagesReturnHeading", "pagesReturnCells", "pagesReturnKeys")
@@ -1132,9 +1109,8 @@ def run_pages_dom(probe: str, tmp_path: Path, setup: str = "", functions=None):
         *COLUMN_FUNCTIONS,
     ]
     shell = read("shell.js")
-    consts = "\n".join(shell[shell.index(head):shell.index(");\n", shell.index(head)) + 3] if head.endswith("[") else shell[shell.index(head):shell.index("\n", shell.index(head))]
-                       for head in ("const H_ATTRIBUTES = new Set([", 'const SVG_NS = '))
-    lifted = consts + "\n" + pages_consts() + "\n" + "\n".join(js_function(name, "pages.js" if f"function {name}(" in read("pages.js") else "shell.js") for name in wanted)
+    consts = lift_line("const EL_ATTRIBUTES = new Set([", "app.js") + js_function("el", "app.js") + "\n" + shell[shell.index("const SVG_NS = "):shell.index("\n", shell.index("const SVG_NS = "))]
+    lifted = consts + "\n" + pages_consts() + "\n" + store_functions() + "\n" + "\n".join(js_function(name, "pages.js" if f"function {name}(" in read("pages.js") else "shell.js") for name in wanted)
     script = tmp_path / "pages_probe.js"
     script.write_text(f"{FAKE_DOM}\n{PAGE_WORDS}\n{RETURN_STATE}\n{setup}\n{lifted}\nprocess.stdout.write(JSON.stringify((() => {{ {probe} }})()));\n",
                       encoding="utf-8", newline="\n")
@@ -1536,7 +1512,7 @@ def test_an_error_after_the_state_arrives_never_reaches_the_write_that_brought_i
     """
     setup = """
       const said = []; const failed = (err) => said.push(err.message);
-      let shellDraw = null; let pagesTally = null;
+      let shellDraw = null; let pagesTally = null; const sheetStateArrived = () => {};
       const shellFirmNow = { data: { returns: [{ path: "r1", counts: {} }] } };
       const shellLoadFirm = () => {};
       const shellFirmSentAt = 0; const shellWroteAt = 0; const shellFirmHeld = new Map();
@@ -2127,7 +2103,7 @@ def test_a_row_menu_offers_only_what_applies_and_the_page_answers_only_its_own_t
 #: What each right-click template must carry in main.js's POPUPS for the page's row menus to appear (S6's
 #: join of S2 and S8a; F13). main.js drops an id its template lacks, so a join that forgets one passes
 #: every renderer test and the item silently never shows. The renderer's side is pinned here; the join
-#: itself is the checklist in pilot/handoffs/shell-S5-rebuild-1.md (POPUPS lives on S2's branch).
+#: itself is pinned in tests/test_shell_menu.py against main.js's POPUPS.
 JOIN_POPUPS = {
     "file": ["check", "not_requested", "another_return", "show_in_explorer"],
     "moved": ["check", "put_back", "keep_here", "show_in_explorer"],
@@ -2188,7 +2164,7 @@ def test_a_second_unfile_or_mark_missing_before_the_reply_is_not_sent_and_the_me
     would carry the seq the first used and be refused, a failure notice for
     a write that worked. It is not sent, its menu id is grey meanwhile, and
     it is free again once the reply (or the refusal) is in."""
-    ran = run_shell(["writeKey", "writeBusy", "writeStart", "writeDone", "unfileDocument", "withdrawAnswer"], """
+    ran = run_shell(["writeKey", "writeBusy", "writeStart", "writeDone", "writeRow", "sayNotes", "unfileDocument", "withdrawAnswer"], """
       const viewGeneration = 1; const writesInFlight = new Set(); const sent = []; const refusals = []; const releases = []; let reject = false;
       const withEng = (c) => c;
       const call = (command, payload) => { sent.push([command, payload.original]); return new Promise((resolve, fail) => { releases.push(() => (reject ? fail(new Error("no")) : resolve({ state: {}, unfiled: { original_name: "a", decision: "d" }, marked_missing: { original_name: "a", reason: "r" } }))); }); };
@@ -2384,6 +2360,31 @@ def test_opening_a_path_says_not_opened_in_the_apis_words_and_logs_the_systems(t
     """, tmp_path)
     assert ran["seen"] == [["/p", "reveal"], ["/q", None], "Not Opened; It Has Changed", ["/r", "reveal"]]
     assert ran["logged"] == ["the operating system said something with a path C:\\x"] and ran["failures"] == ["boom"]
+
+
+def test_a_file_the_shell_opened_without_protected_view_is_said_in_the_same_notice_each_time(tmp_path):
+    """SPEC-mac R8 (P240): the shell answers such an open with ``{ says }``; the
+    page says it as a notice - the place Open's own result appears - each time,
+    logs nothing as an error, and waits for nothing."""
+    ran = run_shell(["openPath"], """
+      const vocab = { shell: { not_opened: "Not Opened; It Has Changed" } };
+      const seen = []; const logged = []; const failures = [];
+      const notice = (n) => seen.push([n.sentence, n.kind]);
+      const failed = (err) => failures.push(err.message);
+      let answer = { says: "Protected View does not exist on a Mac." };
+      const window = { tracker: { open: async () => answer, logError: (t) => logged.push(t) } };
+    """, """
+      return (async () => {
+        await openPath("/macros.xlsm");
+        await openPath("/macros.xlsm");
+        answer = "refused";
+        await openPath("/gone.xlsm");
+        return { seen, logged, failures };
+      })();
+    """, tmp_path)
+    said = ["Protected View does not exist on a Mac.", "warning"]
+    assert ran["seen"] == [said, said, ["Not Opened; It Has Changed", "warning"]]
+    assert ran["logged"] == ["refused"] and ran["failures"] == []
 
 
 def test_the_four_dialogs_draw_the_apis_words_and_never_a_path(tmp_path):
@@ -3773,7 +3774,7 @@ def test_the_new_tokens_and_every_new_pair_meet_their_contrast_in_both_themes():
             assert ratio(fg, bg, theme) >= needs, (fg, bg, theme)
 
 
-# ── lane 4b review fold (pilot/reviews/lists-rulings.md: S2-S5, N3-N5) ──
+# ── lane 4b review fold (S2-S5, N3-N5 of that review) ──
 
 #: What the panel's probes need of a DOM beyond FAKE_DOM: focus, removal, a
 #: body, Floating UI's placement, and the two selectors the panel code asks.
@@ -3901,8 +3902,8 @@ def test_overview_and_reminders_say_tax_year_taxpayer_and_form_type_once_each_in
     assert first['.col-table[data-list="overview"] .col-heads:not(.hidden)']["grid-template-columns"] == grid
     assert first['.col-table[data-list="reminders"] .col-heads:not(.hidden)']["grid-template-columns"] == grid
     css = read("shell.css")
-    tabular = next(body for _m, selector, body in blocks(css) if selector.strip().startswith(".tabular,"))
-    selector = next(selector for _m, selector, body in blocks(css) if selector.strip().startswith(".tabular,"))
+    tabular = next(body for _m, selector, body in blocks(css) if selector.strip().startswith(".side-count,"))
+    selector = next(selector for _m, selector, body in blocks(css) if selector.strip().startswith(".side-count,"))
     assert ".row-year" in selector and ".head-year" in selector and ".row-date" in selector and "tabular-nums" in tabular
     assert "monospace" not in css.lower()
 
@@ -4073,7 +4074,7 @@ def test_hiding_takes_the_five_under_construction_items_and_the_workspace_headin
     Workspace heading and list with the .hidden class (display: none, so out
     of the Tab order and the accessibility tree); the pages, the Taxpayer
     Types and their heading stay; the menu's tick is off."""
-    ran = run_shell(SOON_FUNCTIONS, SOON_PANEL, """
+    ran = run_shell(SOON_FUNCTIONS, SOON_PANEL + store_functions(), """
       store.data[SOON_KEY] = "hidden";
       drawSoon();
       return { hidden: hiddenNow(), checked: shellChecked() };
@@ -4090,7 +4091,7 @@ def test_a_new_install_shows_them_and_the_menu_flips_keeps_and_says_the_tick(tmp
     focus that sat on a hidden item to the side panel's current page (F6's
     place) and tells the menu; choosing it again shows them and forgets the
     key, and focus elsewhere is left where it is."""
-    ran = run_shell(SOON_FUNCTIONS, SOON_PANEL, """
+    ran = run_shell(SOON_FUNCTIONS, SOON_PANEL + store_functions(), """
       drawSoon();
       const first = { hidden: hiddenNow(), checked: shellChecked() };
       document.activeElement = soonButton("portal_settings");
@@ -4111,7 +4112,7 @@ def test_storage_that_cannot_be_read_shows_them_and_the_choice_holds_while_the_a
     """P197 ruling 5: the column widths' fallback - unreadable storage shows
     the items, and a choice it refuses to keep still holds until the app
     closes."""
-    ran = run_shell(SOON_FUNCTIONS, SOON_PANEL, """
+    ran = run_shell(SOON_FUNCTIONS, SOON_PANEL + store_functions(), """
       store.broken = true;
       drawSoon();
       const first = hiddenNow();
@@ -4138,7 +4139,7 @@ def test_the_setting_is_this_pcs_and_the_side_panel_draws_it_on_every_draw():
 def test_a_damaged_stored_value_shows_them(tmp_path):
     """P197 ruling 5 (review NIT 2a): only the exact word "hidden" hides; any
     other stored value reads as shown, the new install's default."""
-    ran = run_shell(SOON_FUNCTIONS, SOON_PANEL, """
+    ran = run_shell(SOON_FUNCTIONS, SOON_PANEL + store_functions(), """
       const seen = [];
       for (const value of ["HIDDEN", "1", "true", ""]) {
         store.data[SOON_KEY] = value; shellSoonHidden = null; drawSoon();
@@ -4152,7 +4153,7 @@ def test_a_damaged_stored_value_shows_them(tmp_path):
 def test_hiding_while_focus_is_elsewhere_leaves_focus_where_it_is(tmp_path):
     """P197 ruling 3 (review NIT 2b): focus moves only when it sat on an item
     now hidden; on a page item it stays."""
-    ran = run_shell(SOON_FUNCTIONS, SOON_PANEL, """
+    ran = run_shell(SOON_FUNCTIONS, SOON_PANEL + store_functions(), """
       document.activeElement = root.querySelectorAll(".side-section")[0];
       shellToggleSoon();
       return { hidden: hiddenNow().length, focus: said.focus, stored: store.data[SOON_KEY] };
@@ -4355,7 +4356,7 @@ def test_the_schedule_dialog_says_its_next_run_in_the_apps_clock_style(tmp_path)
     assert '$("sc-next").textContent = scheduleClock(current.next_run);' in js
     # The time in the sentence lines up as every date and time does (the
     # screen review's N4: tabular-nums, never a typewriter font).
-    selector = next(selector for _m, selector, _b in blocks(read("shell.css")) if selector.strip().startswith(".tabular,"))
+    selector = next(selector for _m, selector, _b in blocks(read("shell.css")) if selector.strip().startswith(".side-count,"))
     assert "#sc-next" in [part.strip() for part in selector.split(",")]
     assert "${scheduleClock(result.next_run)}" in js
     assert 'toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })' in js_function("pagesTime", "pages.js")
@@ -4470,7 +4471,7 @@ const actions = () => ({ card: reminderCard ? reminderCard.text : null, shown: !
                          outline: $("reminder-wait").byClass("row-skeleton").length, word: $("reminder-wait").textContent });
 """
 
-REMINDER_FUNCTIONS = ("el", "h", "show", "fill", "screenWords", "shellSkeleton", "stageOf", "stageInk", "marked", "holdLine", "reminderStatus", "lines",
+REMINDER_FUNCTIONS = ("el", "h", "show", "fill", "screenWords", "shellSkeleton", "shellWaiting", "stageOf", "stageInk", "marked", "holdLine", "reminderStatus", "lines",
                       "letterNodes", "drawReminderReply", "drawReminderLine", "drawReminder", "forgetReminderCard", "reminderWaitOver",
                       "reminderCardReady", "copyReminder", "approveReminder", "sheetSet", "sheetMore", "sheetFrame", "openReminder",
                       "sheetDraftsAfter", "sheetNextDraft", "sheetShow", "sheetDrawCheck", "sheetAfter")
@@ -4490,8 +4491,7 @@ def run_speed(setup: str, functions, probe: str, tmp_path: Path, consts: str = "
 
 
 def run_reminder_sheet(probe: str, tmp_path: Path):
-    consts = "let reminderCard = null; let reminderCardFor = null;\n" + lift_line("const EL_ATTRIBUTES = new Set([", "app.js") \
-        + lift_line("const H_ATTRIBUTES = new Set([", "shell.js")
+    consts = "let reminderCard = null; let reminderCardFor = null;\n" + lift_line("const EL_ATTRIBUTES = new Set([", "app.js")
     return run_speed(REMINDER_SHEET, REMINDER_FUNCTIONS, probe, tmp_path, consts)
 
 
@@ -4598,7 +4598,7 @@ const asked = []; const notices = []; const drawn = [];
 const call = (args) => new Promise((resolve, reject) => asked.push({ args, resolve: (reply) => (reply.error ? reject(new TrackerError(reply)) : resolve(reply)) }));
 const firmOf = (n) => ({ returns: [{ path: "r1", counts: { needs_you: n } }], totals: {} });
 const stateOf = (n) => ({ paths: { engagement: "r1" }, counts: { needs_you: n } });
-const pagesTally = (state) => state.counts;
+const pagesTally = (state) => state.counts; const sheetStateArrived = () => {};
 let shellChanged = () => {};
 const notice = (failure) => notices.push(failure.sentence); const failureSentence = () => ""; const failed = (err) => { throw err; };
 const warningNotices = (list) => notices.push(...list);
@@ -4608,8 +4608,8 @@ const firms = () => asked.filter((one) => one.args[0] === "firm").length;
 const land = async (i, reply) => { asked[i].resolve(reply); await tick(); };
 """
 
-FIRM_LOAD_FUNCTIONS = ("h", "screenWords", "shellAdopt", "shellAskFirmNow", "shellDropEarlyFirm", "shellAskFirmLast", "shellLastOf", "shellShowLast",
-                       "shellAdoptEarly", "shellAskFirm", "shellFirmSent",
+FIRM_LOAD_FUNCTIONS = ("el", "h", "screenWords", "shellAdopt", "shellAskFirmNow", "shellDropEarlyFirm", "shellAskFirmLast", "shellLastOf", "shellShowLast",
+                       "takeReply", "shellAdoptEarly", "shellAskFirm", "shellFirmSent",
                        "shellFirmDone", "shellFirmTookLong", "shellWriteLanded", "shellFirmProgress", "shellReading", "shellReadingNodes",
                        "shellSetReading", "shellDrawReading", "shellLoadFirm", "shellFollowsCounts", "shellFirmUpdating", "shellUpdating",
                        "shellMarkUpdating", "shellStateArrived", "shellCountsDiffer")
@@ -4619,7 +4619,7 @@ def run_firm_load(probe: str, tmp_path: Path, setup: str = "", functions=()):
     """FIRM_LOAD, with the page's draw faked unless ``functions`` lifts it."""
     if "drawPage" not in functions:
         setup += '\nconst shellDraw = () => drawn.push(shellRoute.level); const drawPage = () => drawn.push("page");\n'
-    consts = lift_line("const H_ATTRIBUTES = new Set([", "shell.js")
+    consts = lift_line("const EL_ATTRIBUTES = new Set([", "app.js")
     return run_speed(FIRM_LOAD + setup, (*FIRM_LOAD_FUNCTIONS, *functions), probe, tmp_path, consts)
 
 

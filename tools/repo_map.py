@@ -94,7 +94,7 @@ UNMERGED_ADVICE = "Resolve these and `git add` them first"
 #: works, not decoration around it — and an agent reading the map should know a
 #: workflow exists. Only tracked files are mapped, so gitignored runtime files
 #: (settings.json, drafts, logs) never appear.
-SOURCE_SUFFIXES = {".py", ".js", ".html", ".css", ".md", ".bat",
+SOURCE_SUFFIXES = {".py", ".js", ".html", ".css", ".md", ".bat", ".sh", ".command", ".ps1",
                    ".json", ".txt", ".svg", ".yml", ".yaml"}
 
 #: The map's own output. Writing the map changes these files, so mapping them
@@ -343,7 +343,7 @@ def classify(path: str) -> tuple[str, str]:
         node_type = "module"
     elif suffix in (".html", ".css", ".svg"):
         node_type = "ui"
-    elif suffix == ".bat":
+    elif suffix in (".bat", ".sh", ".command", ".ps1"):
         node_type = "script"
     elif suffix in (".yml", ".yaml"):
         node_type = "workflow"
@@ -432,16 +432,11 @@ class ModuleTable:
 # ---------------------------------------------------------------- parsing ----
 
 
-def parse_python(text: str, path: str) -> tuple[list[str], list[tuple[str, str]], bool]:
-    """Exported names, (module, kind) imports, and whether it has a CLI."""
-    exports, imports, has_cli, _ = parse_python_full(text, path)
-    return exports, [(name, kind) for name, kind, _scope in imports], has_cli
-
-
 def parse_python_full(
     text: str, path: str
 ) -> tuple[list[str], list[tuple[str, str, str]], bool, dict[str, str]]:
-    """As parse_python, plus the module's literal constants and each import's scope.
+    """Exported names, imports with their scope, whether it has a CLI, and
+    the module's literal constants.
 
     Imports are ``(name, kind, scope)``. ``kind`` is ``import``, ``from`` (the
     module a from-import names) or ``from-name`` (that module joined to one

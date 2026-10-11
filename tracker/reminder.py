@@ -374,11 +374,9 @@ SECTION_MISSING = "NOT YET RECEIVED"
 SECTION_PARTIAL = "STARTED, BUT NOT COMPLETE"
 #: The section a Failed row used to be asked under. Unreachable from a pass
 #: since decision 115 - a Failed row with no firm-side code holds the
-#: draft instead - so it is not in ``SECTION_ORDER``; the name stays because
-#: an "ask the client again" action a person records would put a row here.
-#: Since decision 190 it heads the files that are not documents
-#: (:func:`unusable_files`), which name no request and are asked about
-#: after every request's section.
+#: draft instead - so it is not in ``SECTION_ORDER``. Since decision 190 it
+#: heads the files that are not documents (:func:`unusable_files`), which
+#: name no request and are asked about after every request's section.
 SECTION_FAILED = "RECEIVED, BUT WE COULD NOT USE IT"
 
 SECTION_ORDER = (SECTION_MISSING, SECTION_PARTIAL)
@@ -748,8 +746,6 @@ class ReminderDraft:
     #: draft, as one ambiguous row does; ``held`` stays the rows alone.
     unsorted: int = 0
     needs_review_files: int = 0
-    total_requests: int = 0
-    received_requests: int = 0
     #: Every request on the list, identifier -> label, so a what-changed
     #: line can name a request the draft no longer asks for.
     labels: dict[str, str] = field(default_factory=dict)
@@ -836,33 +832,19 @@ def stage_named(number: int) -> Stage:
 def client_ask(item: RequestItem) -> str:
     """One plain sentence telling the client what to do about ``item``.
 
-    Driven by the codes of the scanner's validation note (decision 190),
-    never by its words and never quoting it. A Partial row's sentence is
-    the count, and the row's own reason after it when the note carries a
-    client-side one. A Failed row's sentence still translates
-    here - the generic ask when nothing in the note is recognised - but
-    since decision 115 no pass asks it: :func:`triage` holds a Failed row
-    for a person instead, and this branch waits for the action that would
-    put one back to the client on a person's say-so.
+    Only a Partial row has one here: the count. A row whose note carries a
+    reason never reaches this - :func:`triage` has already sent a Failed row
+    (decision 115) and a Partial row with a reason to a person - so the
+    reason's own ask (:func:`_ask_for`) is the parked-file hold's, not this
+    sentence's. Any other status asks nothing.
     """
-    if item.status == Status.PARTIAL:
-        expected = item.expected_count
-        have = item.file_count or 0
-        missing = max(expected - have, 0)
-        ask = (PARTIAL_ASK.format(have=have, expected=expected, missing=missing)
-               if missing else PARTIAL_ASK_COMPLETE.format(have=have, expected=expected))
-        # A count alone hides why: the client who sent both W-2s, one of
-        # them password-protected, is told what to fix, not just "1 of 2".
-        reason = reasons.first_of(item.note_code_list)
-        if reason is not None and not reason.firm_side:
-            ask = f"{ask}; {_ask_for(reason, item)}"
-        return ask
-
-    if item.status != Status.FAILED:
+    if item.status != Status.PARTIAL:
         return ""
-
-    reason = reasons.first_of(item.note_code_list)
-    return _ask_for(reason, item) if reason else GENERIC_ASK
+    expected = item.expected_count
+    have = item.file_count or 0
+    missing = max(expected - have, 0)
+    return (PARTIAL_ASK.format(have=have, expected=expected, missing=missing)
+            if missing else PARTIAL_ASK_COMPLETE.format(have=have, expected=expected))
 
 
 def _ask_for(reason: reasons.Reason, item: RequestItem) -> str:
@@ -889,10 +871,6 @@ def _firm_side_reason(item: RequestItem) -> str:
         if reason.code in reasons.FIRM_SIDE and reason.code in item.note_code_list:
             return reason.firm_side_note
     return ""
-
-
-def _missing_detail(item: RequestItem) -> str:
-    return item.expected_text
 
 
 # ---------------------------------------------------------------- sorting ----
@@ -1099,7 +1077,7 @@ def triage(items: Sequence[RequestItem], parked: Sequence = ()) -> tuple[
             continue
 
         section = _section_for(item)
-        ask = client_ask(item) if section != SECTION_MISSING else _missing_detail(item)
+        ask = client_ask(item) if section != SECTION_MISSING else item.expected_text
         lines.append(ReminderLine(item=item, section=section, ask=ask))
 
     holds = _parked_holds(items, parked)
@@ -1570,8 +1548,6 @@ def draft_reminder(
         held=held,
         unsorted=unsorted_in_inbox(engagement_dir),
         needs_review_files=count_needs_review(engagement_dir),
-        total_requests=total,
-        received_requests=received,
         labels={item.identifier: item.label for item in items},
         letter=letter,
         link_dropped=link_dropped,
@@ -1873,7 +1849,23 @@ def approval_state(engagement_dir: Path | str, path: Path | str, *,
     letter a person approved in the week of the deploy with no copy set
     aside; an approval that has lapsed still keeps its file.
 
-    ``since`` is read as :func:`is_approved_this_week` reads it.
+    ``since`` is the draft day that went by (``tracker.runner.last_draft_day``),
+    handed in rather than worked out here: the runner decides the draft day
+    (decision 12) and this module is below it. With one, the approval is
+    spent when that day moves - next week's pass writes the week's draft as
+    before. **``None`` asks only whether this is the approved file**,
+    whenever it was approved: a caller that cannot measure the week - the
+    command line, a layer below the runner - would otherwise write over a
+    draft a person approved in the app an hour earlier, and approving is the
+    same act as editing (decision 118). A file we are not certain is ours to
+    replace is left where it is, as for :func:`is_unedited`.
+
+    Matched on the fingerprint in the file's own header, not on its name: a
+    different draft written to the same name is not the one that was
+    approved. **And on the letter's own fingerprint** (decision 190): a file
+    a person edited after approving it is no longer approved - the approval
+    covered the text they read, not the text it became - though it is still
+    protected, because they edited it.
     """
     event = last_approved_event(engagement_dir)
     if event is None or event.get(ledger.FILE_KEY) != Path(path).name:
@@ -1887,35 +1879,6 @@ def approval_state(engagement_dir: Path | str, path: Path | str, *,
     if not approved_text:
         return APPROVED_THEN_EDITED
     return APPROVED_NOTE if letter_fingerprint(path) == approved_text else APPROVED_THEN_EDITED
-
-
-def is_approved_this_week(engagement_dir: Path | str, path: Path | str, *,
-                          since: dt.date | None) -> bool:
-    """Whether the file at ``path`` is the draft a person approved.
-
-    ``since`` is the draft day that went by (``tracker.runner.last_draft_day``),
-    handed in rather than worked out here: the runner decides the draft day
-    (decision 12) and this module is below it. With one, the approval is
-    spent when that day moves - next week's pass writes the week's draft as
-    before, which is the bound the pass needs and the only caller that ever
-    needed it.
-
-    **``None`` asks only whether this is the approved file**, whenever it
-    was approved. A caller that cannot measure the week - the command line,
-    which is a layer below the runner - would otherwise write over a draft
-    a person approved in the app an hour earlier, and approving is the same
-    act as editing (decision 118). So the conservative answer is the right
-    one, exactly as it is for :func:`is_unedited`: a file we are not certain
-    is ours to replace is left where it is.
-
-    Matched on the fingerprint in the file's own header, not on its name: a
-    different draft written to the same name is not the one that was
-    approved. **And on the letter's own fingerprint** (decision 190): a
-    file a person edited after approving it is no longer approved - the
-    approval covered the text they read, not the text it became - though it
-    is still protected, because they edited it. See :func:`approval_state`.
-    """
-    return approval_state(engagement_dir, path, since=since) == APPROVED_NOTE
 
 
 def is_protected(engagement_dir: Path | str, path: Path | str, *,
@@ -2216,15 +2179,10 @@ if __name__ == "__main__":
     parser.add_argument("--write", action="store_true",
                         help=f"also write {DRAFT_FILENAME} into the engagement folder")
     ns = parser.parse_args()
-    # A typed folder is parsed, never trusted: it must be a return's
-    # place under the checked clients root (decision 188).
+    # A typed folder is parsed, never trusted (decision 188).
     from tracker import door
-    from tracker.layout import LayoutError
 
-    try:
-        ns.engagement_dir = door.return_dir(Path(ns.engagement_dir).absolute())
-    except (door.DoorError, LayoutError) as exc:     # the door's own sentences
-        parser.error(str(exc))
+    ns.engagement_dir = door.typed_return(parser, ns.engagement_dir)
 
     def _day(flag: str, typed: str) -> dt.date | None:
         if not typed:

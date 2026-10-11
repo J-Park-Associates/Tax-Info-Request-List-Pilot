@@ -880,6 +880,32 @@ def test_dismiss_refuses_a_file_the_index_does_not_know(capsys, demo_root, tmp_p
     assert code == 1 and payload["error"]
 
 
+@pytest.mark.parametrize("command, refusal, spec", [
+    ("dismiss", "Pick the file no request asks for", {}),
+    ("unfile", "Pick the document to send back for review", {}),
+    ("restore", "Pick the working copy to put back", {}),
+    ("mark-missing", "Pick the statement and the request to mark missing", {"identifier": "A01"}),
+    ("assign", "Pick the file and the request it belongs to", {"identifier": "A01"}),
+])
+def test_a_null_original_is_the_same_refusal_as_a_blank_one(capsys, demo_root, tmp_path,
+                                                            command, refusal, spec):
+    """A JSON ``null`` is no file. It was once turned into the text ``None``,
+    which passed the "Pick the file" refusal and went on to look for a
+    document of that name."""
+    engagement = sample_engagement(capsys, demo_root, tmp_path, "nothing")
+    for given in (None, "", "   "):
+        code, payload = run(capsys, command, api.ENGAGEMENT_FLAG, str(engagement),
+                            stdin={**spec, "original": given, "seq": 1})
+        assert code == 1 and payload["error"] == refusal, (given, payload)
+
+
+def test_a_null_text_field_reads_as_missing_and_other_values_as_their_text():
+    assert api._text({"original": None}, "original") == ""
+    assert api._text({}, "original") == ""
+    assert api._text({"original": "  a.pdf "}, "original") == "a.pdf"
+    assert api._text({"original": 7}, "original") == "7"
+
+
 # ------------------------------------------------- the review queue, triaged ----
 
 
@@ -2117,10 +2143,7 @@ def test_the_firm_is_typed_once_in_settings_and_signs_every_engagement(capsys, d
 
 def _on_the_office_computer(monkeypatch, *, task_exists=False):
     """This computer is ``office-pc`` with Task Scheduler, and its
-    ``schtasks`` a fake that keeps every command (decision 209). The
-    earlier name's task, which the after-install step looks for since the
-    rename (SPEC-rename 3.2), is not on this computer, and its query is
-    not kept: these tests are about this computer's own task."""
+    ``schtasks`` a fake that keeps every command (decision 209)."""
     import platform
 
     from tracker import scheduling, settings
@@ -2132,13 +2155,13 @@ def _on_the_office_computer(monkeypatch, *, task_exists=False):
             self.returncode, self.stdout, self.stderr = returncode, "", ""
 
     def answer(command):
-        if settings.EARLIER_PRODUCT_NAME in command:
-            return Said(1)
         calls.append(command)
         return Said(0 if task_exists or command[1] != "/query" else 1)
 
     monkeypatch.setattr(platform, "node", lambda: "OFFICE-PC")
-    monkeypatch.setattr(scheduling, "task_scheduler_here", lambda: True)
+    # Windows' scheduler, whatever this is; a Windows runner stays Windows.
+    monkeypatch.setattr(settings, "host_system", lambda: "nt" if os.name == "nt" else "posix")
+    monkeypatch.setattr(scheduling, "scheduler_here", lambda: True)
     monkeypatch.setattr(scheduling, "_schtasks", answer)
     return calls
 
@@ -2627,6 +2650,45 @@ def test_move_schedule_here_moves_the_schedule_from_the_packaged_app(capsys, dem
     assert "front-desk" not in api.SCHEDULE_MOVE_CONFIRM and "{host}" in api.SCHEDULE_MOVE_CONFIRM
 
 
+def test_a_mac_removes_its_schedule_from_the_tools_menu_and_nothing_else(capsys, demo_root, a_mac, monkeypatch):
+    """SPEC-mac R29: ``remove-schedule-here`` is a writing command (the vocabulary says so,
+    so the app refreshes after it) that runs ``after_install.remove_here``: the agent and
+    its file go, the clients folder and the designation stay, and the page types none of
+    the words - the question is the API's, and the sentence is the step's own."""
+    import platform
+
+    from tracker import after_install, scheduling
+    from tracker.layout import designation_file
+
+    monkeypatch.setattr(platform, "node", lambda: "OFFICE-MAC")
+    assert run(capsys, "after-install", stdin={"reason": "launch"})[0] == 0
+    assert scheduling.launch_agent_path().is_file() and a_mac.launchd.loaded
+    designated = designation_file(demo_root).read_text(encoding="utf-8")
+
+    code, payload = run(capsys, "remove-schedule-here", stdin={})
+
+    assert code == 0, payload
+    assert payload["removed"] is True and payload["sentence"] == after_install.SCHEDULE_REMOVED_FROM_MAC
+    assert not scheduling.launch_agent_path().exists() and not a_mac.launchd.loaded
+    assert designation_file(demo_root).read_text(encoding="utf-8") == designated and demo_root.is_dir()
+    assert "remove-schedule-here" in api.WRITING_COMMANDS and "remove-schedule-here" in api.COMMANDS
+    assert "remove-schedule-here" in run(capsys, "list")[1]["vocab"]["writing_commands"]
+    assert api._vocab()["schedule"]["remove_confirm"] == "Remove the Schedule From This Mac?"
+    here = Path(__file__).resolve().parent.parent / "app" / "renderer"
+    js, shell = (here / "app.js").read_text(encoding="utf-8"), (here / "shell.js").read_text(encoding="utf-8")
+    assert "confirm(vocab.schedule.remove_confirm)" in js and 'call(["remove-schedule-here"]' in js
+    assert "remove_schedule_here: () => removeScheduleHere()," in shell
+    for literal in (api.SCHEDULE_REMOVE_CONFIRM, after_install.SCHEDULE_REMOVED_FROM_MAC):
+        assert literal not in js, literal
+
+
+def test_removing_the_schedule_where_there_is_no_mac_changes_nothing(capsys, demo_root):
+    from tracker import after_install
+
+    code, payload = run(capsys, "remove-schedule-here", stdin={})
+    assert code == 0 and payload["removed"] is False and payload["sentence"] == after_install.REMOVE_ONLY_ON_A_MAC
+
+
 def test_a_launch_step_that_raises_is_recorded_for_the_notice(capsys, tmp_path, monkeypatch):
     """The review's N1: the shell does not read the launch door's reply, so
     anything the step raises is recorded in one constant sentence, which
@@ -2785,6 +2847,7 @@ def test_the_renderer_gets_its_vocabulary_from_the_api(capsys, demo_root):
                                      draft_day=WEEKDAY_NAMES[DRAFT_WEEKDAY]),
                                  "move_confirm": api.SCHEDULE_MOVE_CONFIRM,
                                  "move_warning": api.SCHEDULE_MOVE_WARNING,
+                                 "remove_confirm": api.SCHEDULE_REMOVE_CONFIRM,
                                  "button": "Schedule", "title": "Schedule on This Computer",
                                  "enabled_label": "Run the Schedule", "on": "On", "off": "Off",
                                  "start_label": "First Run At", "every_label": "How Often",
@@ -7212,7 +7275,9 @@ def test_a_returns_reminder_line_that_cannot_be_read_says_so(capsys, demo_root, 
     [line] = [r["reminder"] for r in payload["household"]["returns"] if r["path"] == str(folder)]
     assert line["unreadable"] is True and line["kind"] == "OSError (EIO)"
     [label] = [r["label"] for r in payload["household"]["returns"] if r["path"] == str(folder)]
-    assert api.REMINDER_LINE_UNREADABLE.format(label=label, kind="OSError (EIO)") in payload["warnings"]
+    said = api.REMINDER_LINE_UNREADABLE_WARNING.format(label=label)
+    assert label in said, "the warning must name the return"
+    assert said in payload["warnings"]
 
 
 def test_a_root_that_cannot_be_walked_says_so_on_the_feeds_and_the_list(capsys, demo_root,
@@ -9092,10 +9157,14 @@ def test_every_short_word_the_engine_adds_is_five_words_or_fewer():
         else:
             yield path, node
 
+    #: Words that are longer on purpose, with why. SPEC-mac R29 names this
+    #: menu item, and the Mac check kit's walk (step 14) chooses it by those words.
+    longer_on_purpose = {"menu.remove_schedule_here": "SPEC-mac R29's own label, chosen by the kit's walk"}
     for path, text in [*walk(api.MENU, "menu"), *walk(api.SCREEN, "screen"),
                        *walk(reasons.SHORT_REASONS, "reasons"), *walk(reasons.REASON_TIPS, "reason_tips")]:
         counted = re.sub(r"\{[a-z_]+\}", "x", text.replace("&", "")).split()
-        assert 1 <= len(counted) <= 5, (path, text)
+        assert 1 <= len(counted) <= (6 if path in longer_on_purpose else 5), (path, text)
+    assert api.MENU["remove_schedule_here"] == "Remove the Schedule From This Mac…"
 
 
 # ------------------------------------ every file name on the page is a live link (S8a) ----
@@ -9277,7 +9346,7 @@ def test_a_real_state_paths_still_opens_a_parked_pdfs_review_copy_through_the_sh
 
 
 def test_no_return_or_household_row_carries_an_open_key_and_their_words_navigate(
-        capsys, demo_root, tmp_path):
+        capsys, demo_root, tmp_path, monkeypatch):
     """Household and return names navigate inside the app (S8a ruling), so
     neither their rows nor the list carry a key for opening a folder."""
     engagement = sample_engagement(capsys, demo_root, tmp_path, "Form 1098 Mortgage Interest.pdf")
@@ -9292,6 +9361,9 @@ def test_no_return_or_household_row_carries_an_open_key_and_their_words_navigate
     code, state = run(capsys, "state", api.ENGAGEMENT_FLAG, str(engagement))
     assert code == 0, state
     assert all("open_key" not in one for one in state["household"]["returns"])
+    from tracker import settings
+
+    monkeypatch.setattr(settings, "host_system", lambda: "posix")   # a Mac says Finder (R11)
     screen = api._vocab()["screen"]
     assert screen["navigate_client"] == "Navigate to Household"
     assert screen["navigate_return"] == "Navigate to Return"
@@ -10420,3 +10492,122 @@ def test_the_last_counts_words_are_in_the_screen_vocabulary():
                 encoding="utf-8").splitlines()]
     proposed = {row[1]: row[4] for row in rows if len(row) > 4}
     assert proposed["screen.updating_as_of"] == screen["updating_as_of"]
+
+
+def _zip_bytes(*names: str) -> bytes:
+    import io
+    import zipfile
+
+    packed = io.BytesIO()
+    with zipfile.ZipFile(packed, "w") as archive:
+        for name in names:
+            archive.writestr(name, b"made-up")
+    return packed.getvalue()
+
+
+def test_a_mac_says_protected_view_does_not_exist_each_time_a_macro_copy_opens(
+        capsys, demo_root, tmp_path, monkeypatch):
+    """SPEC-mac R8 (P240): a Mac cannot mark a review copy for Protected View,
+    so the copy is made unmarked as before, and the API names - for the shell -
+    each openable path whose copy Windows would have marked
+    (``filer._may_carry_code``), with the one sentence the shell then says each
+    time it opens one. Windows and Linux name none: there the mark itself is
+    the answer."""
+    from tracker import fsio, settings
+
+    assert fsio.mark_from_internet(tmp_path / "budget.xlsm", _opener=lambda *a, **k: None) is False
+    # The sentence is learned from the API, as the shell's others are.
+    assert api._vocab()["shell"]["protected_view_mac"] == api.PROTECTED_VIEW_MAC
+    assert api.PROTECTED_VIEW_MAC.startswith("Protected View does not exist on a Mac")
+
+    engagement = tmp_path / "return"
+    review = engagement / REVIEW_DIR_NAME
+    review.mkdir(parents=True)
+    copies = {
+        "macros.xlsm": b"made-up",                                   # a macro-enabled type
+        "packaged.xlsx": _zip_bytes("[Content_Types].xml", "xl/vbaProject.bin"),   # a VBA project inside
+        "plain.xlsx": _zip_bytes("[Content_Types].xml", "xl/workbook.xml"),
+        "statement.pdf": b"%PDF-made-up",
+    }
+    for name, content in copies.items():
+        (review / name).write_bytes(content)
+    code = sorted(api.READ_AND_PARKED_CODES)[0]
+    rows = [_parked_row(name, code) for name in copies]
+    rows.append(_parked_row("mail.eml", sorted(api._CONTAINER_CODES)[0]))     # never opens, so never named
+    (review / "mail.eml").write_bytes(b"made-up")
+
+    monkeypatch.setattr(settings, "host_system", lambda: "darwin")
+    assert api._code_copies(engagement, rows) == [str(review / "macros.xlsm"), str(review / "packaged.xlsx")]
+    for system in ("nt", "posix"):
+        monkeypatch.setattr(settings, "host_system", lambda system=system: system)
+        assert api._code_copies(engagement, rows) == []
+
+    # And the state the shell reads carries the list beside its paths.
+    state, parked = _parked_read_pdf_state(capsys, demo_root, tmp_path)
+    assert state["carries_code"] == []
+    monkeypatch.setattr(settings, "host_system", lambda: "darwin")
+    monkeypatch.setattr(settings, "_statfs", lambda path: (settings.MNT_LOCAL, "/"))   # the test's disk
+    monkeypatch.setattr(api, "_may_carry_code", lambda copy: copy.suffix == ".pdf")
+    code, replied = run(capsys, "state", api.ENGAGEMENT_FLAG, str(where(demo_root, "Smith Family 2025")))
+    assert code == 0, replied
+    [path] = replied["carries_code"]
+    assert path == replied["paths"][parked["open_key"]]
+
+
+#: A word that names a Windows program, place or file (SPEC-mac R11): none may
+#: reach a Mac, whose Finder, launchd and setup.command stand in their places.
+WINDOWS_WORDS = re.compile(r"File Explorer|\bPC\b|Task Scheduler|schtasks|Setup\.bat|\.bat\b|\bWindows\b")
+
+
+def _every_string(value, path=""):
+    """(dotted path, text) for every string in a nested reply."""
+    if isinstance(value, dict):
+        for key, inner in value.items():
+            yield from _every_string(inner, f"{path}.{key}" if path else str(key))
+    elif isinstance(value, (list, tuple)):
+        for n, inner in enumerate(value):
+            yield from _every_string(inner, f"{path}[{n}]")
+    elif isinstance(value, str):
+        yield path, value
+
+
+def test_a_mac_is_never_shown_a_windows_word(monkeypatch):
+    """SPEC-mac R11. Where a sentence the app shows names a Windows program or
+    place, darwin gets its own words from the same table: Finder for File
+    Explorer, another Mac for another PC, launchd for Task Scheduler, setup.command
+    for Setup.bat. Nothing else in the vocabulary changes, and Windows and Linux
+    are told what they always were."""
+    from tools.lockfiles import CHANGED_MAC, NOT_SET_UP_MAC
+    from tracker import after_install, settings
+
+    changed = {"menu.show_in_explorer", "screen.show_in_explorer", "scan.reasons.lock-held"}
+    monkeypatch.setattr(settings, "host_system", lambda: "posix")
+    windows = dict(_every_string(api._vocab()))
+    assert {path for path, text in windows.items() if WINDOWS_WORDS.search(text)} == changed
+    assert after_install.schedule_unreachable() == after_install.SCHEDULE_UNREACHABLE
+    monkeypatch.setattr(settings, "host_system", lambda: "darwin")
+    mac = dict(_every_string(api._vocab()))
+    assert [path for path, text in mac.items() if WINDOWS_WORDS.search(text)] == []
+    assert mac["menu.show_in_explorer"] == mac["screen.show_in_explorer"] == "Show in Finder"
+    assert mac["scan.reasons.lock-held"] == "Another Mac Sorting"
+    # (``shell.error_log`` is a folder this machine names, not a word.)
+    other = changed | {"shell.error_log"}
+    assert {path: text for path, text in mac.items() if path not in other} == {
+        path: text for path, text in windows.items() if path not in other}
+    # The same house style as every other word: title case, five words or fewer.
+    for path in changed:
+        assert title_case(mac[path]) == mac[path] and len(mac[path].split()) <= 5, path
+    # And the two sentences outside the vocabulary that a Mac's person is shown.
+    said = after_install.SCHEDULE_FAILED.format(problem=after_install.schedule_unreachable())
+    assert "launchd refused it" in said and not WINDOWS_WORDS.search(said)
+    for sentence in (NOT_SET_UP_MAC, CHANGED_MAC):
+        assert not WINDOWS_WORDS.search(sentence)
+
+
+def test_the_apis_mac_words_replace_only_what_names_windows():
+    assert set(api.MAC_MENU) <= set(api.MENU) and set(api.MAC_SCREEN) <= set(api.SCREEN)
+    assert set(api.MAC_SCAN_REASONS) <= set(api.SCAN_REASONS)
+    for table, windows in ((api.MAC_MENU, api.MENU), (api.MAC_SCREEN, api.SCREEN),
+                           (api.MAC_SCAN_REASONS, api.SCAN_REASONS)):
+        for key, word in table.items():
+            assert WINDOWS_WORDS.search(windows[key]) and not WINDOWS_WORDS.search(word), key

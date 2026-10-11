@@ -69,6 +69,7 @@ from tracker.reminder import (
     Emphasis,
     ReminderError,
     ReminderHeldError,
+    approval_state,
     approved_event,
     client_ask,
     count_needs_review,
@@ -76,7 +77,6 @@ from tracker.reminder import (
     draft_reminder,
     drafted_event,
     held_refusal,
-    is_approved_this_week,
     is_protected,
     is_unedited,
     pasted_text,
@@ -229,20 +229,6 @@ def test_partial_says_how_many_are_left():
     assert client_ask(SCANNED[1]) == PARTIAL_ASK.format(have=2, expected=3, missing=1)
 
 
-@pytest.mark.parametrize("note, expected_fragment", [
-    (failure("x.pdf", reasons.PASSWORD_PROTECTED.format()), reasons.PASSWORD_PROTECTED.client_ask),
-    (failure("x.gdoc", reasons.GOOGLE_STUB.format(extension="gdoc")), reasons.GOOGLE_STUB.client_ask),
-    (failure("x.pdf", reasons.TOO_SMALL.format(size_kb=0.1, minimum=5)), reasons.TOO_SMALL.client_ask),
-    (failure("x.zip", reasons.EXTENSION_NOT_ALLOWED.format(extension="zip", allowed="pdf")),
-     reasons.EXTENSION_NOT_ALLOWED.client_ask),
-    (failure("x.pdf", reasons.WRONG_DOCUMENT.format(listed="'W-2'")), reasons.WRONG_DOCUMENT.client_ask),
-    (failure("x.pdf", reasons.WRONG_PERIOD.format(pattern="2025")), reasons.WRONG_PERIOD.client_ask),
-])
-def test_failures_translate_to_a_plain_instruction(note, expected_fragment):
-    ask = client_ask(item("A01", "Doc", Status.FAILED, validation_notes=note))
-    assert expected_fragment in ask
-
-
 def test_internal_vocabulary_never_reaches_the_client(tmp_path):
     draft = draft_reminder(engagement(tmp_path), client_name="Dana")
     body = draft.body.lower()
@@ -388,7 +374,7 @@ def test_draft_greets_signs_and_counts(tmp_path):
     assert draft.stage == 2
     # A03 holds the draft rather than being asked for; the subject counts the asks.
     assert draft.subject == SUBJECT_NEEDED.format(engagement=LABEL, n=2)
-    assert draft.total_requests == 6 and draft.received_requests == 2
+    assert draft.letter.progress == "Of the 6 items we asked for, 2 are in."
 
 
 def test_draft_with_nothing_outstanding_says_so(tmp_path):
@@ -496,7 +482,7 @@ def test_the_draft_is_built_from_the_record_and_nothing_else(tmp_path):
     })
     draft = draft_reminder(folder)
     assert [line.item.identifier for line in draft.lines] == ["A02"]
-    assert draft.received_requests == 1
+    assert draft.letter.progress == "Of the 2 items we asked for, 1 is in."
 
 
 def test_needs_review_count_ignores_junk_and_sees_nested_files(tmp_path):
@@ -1449,15 +1435,15 @@ def test_an_approved_draft_is_protected_for_the_week_and_the_approval_is_spent_n
     week = dt.date.today() - dt.timedelta(days=1)
     approve(folder, draft, written)
 
-    assert is_approved_this_week(folder, written, since=week)
+    assert approval_state(folder, written, since=week) == APPROVED_NOTE
     assert is_protected(folder, written, approved_since=week)
     # A writer that cannot measure the week - the command line is a layer
     # below the runner - still may not write over what a person approved.
     assert is_protected(folder, written), "an approval holds against every writer"
-    assert is_approved_this_week(folder, written, since=None)
+    assert approval_state(folder, written, since=None) == APPROVED_NOTE
     # The pass, which knows the week, is the one caller that spends it.
-    assert not is_approved_this_week(folder, written,
-                                     since=dt.date.today() + dt.timedelta(days=7))
+    assert approval_state(folder, written,
+                          since=dt.date.today() + dt.timedelta(days=7)) != APPROVED_NOTE
     # The event carries a number, a name and identifiers - no word of the letter.
     event = approved_event(draft, written)
     assert event[STAGE_KEY] == draft.stage
@@ -1475,12 +1461,12 @@ def test_an_approval_names_a_text_and_not_a_filename(tmp_path):
     written = write_draft(draft, engagement_dir=folder)
     week = dt.date.today() - dt.timedelta(days=1)
     approve(folder, draft, written)
-    assert is_approved_this_week(folder, written, since=week)
+    assert approval_state(folder, written, since=week) == APPROVED_NOTE
 
     # The same file name, a different letter: the approval does not follow it.
     other = write_draft(draft_reminder(folder, due_date=DUE, today=DUE, stage=1),
                         engagement_dir=folder)
-    assert other == written and not is_approved_this_week(folder, written, since=week)
+    assert other == written and approval_state(folder, written, since=week) != APPROVED_NOTE
     assert not is_protected(folder, written, approved_since=week)
 
     written.write_bytes(written.read_bytes() + b"\r\nPS: and the boat.\r\n")
@@ -1498,7 +1484,6 @@ def test_an_approval_lapses_when_the_letter_is_edited(tmp_path):
     from tracker.locking import engagement_lock
     from tracker.reminder import (
         APPROVED_THEN_EDITED,
-        approval_state,
         draft_fingerprint,
         letter_fingerprint,
         shown_text,
@@ -1517,8 +1502,8 @@ def test_an_approval_lapses_when_the_letter_is_edited(tmp_path):
     written.write_bytes(written.read_bytes() + b"\r\nPS: and the boat.\r\n")
     assert letter_fingerprint(written) != event[ledger.TEXT_FINGERPRINT_KEY]
     assert approval_state(folder, written, since=week) == APPROVED_THEN_EDITED
-    assert not is_approved_this_week(folder, written, since=week)
-    assert not is_approved_this_week(folder, written, since=None)
+    assert approval_state(folder, written, since=week) != APPROVED_NOTE
+    assert approval_state(folder, written, since=None) != APPROVED_NOTE
     assert is_protected(folder, written, approved_since=week), "edited, so still protected"
 
     # Approved again as it now stands: in force, and the edit is covered.
@@ -1531,7 +1516,7 @@ def test_an_approval_lapses_when_the_letter_is_edited(tmp_path):
     with engagement_lock(folder):
         store.record(store.connect(), folder, legacy)
     assert approval_state(folder, written, since=week) == APPROVED_THEN_EDITED
-    assert not is_approved_this_week(folder, written, since=week)
+    assert approval_state(folder, written, since=week) != APPROVED_NOTE
 
 
 def test_an_approval_from_before_190_still_protects_its_letter_in_the_deploy_week(tmp_path):
@@ -1542,7 +1527,7 @@ def test_an_approval_from_before_190_still_protects_its_letter_in_the_deploy_wee
     never over it, though nobody has edited it (nothing vanishes)."""
     from tracker import store
     from tracker.locking import engagement_lock
-    from tracker.reminder import APPROVED_THEN_EDITED, approval_state, is_unedited
+    from tracker.reminder import APPROVED_THEN_EDITED, is_unedited
 
     folder = engagement(tmp_path, SENDABLE, name="Deploy Week TY2025")
     draft = draft_reminder(folder, due_date=DUE, today=DUE)
@@ -1556,7 +1541,7 @@ def test_an_approval_from_before_190_still_protects_its_letter_in_the_deploy_wee
 
     assert is_unedited(written), "nobody edited the approved letter"
     assert approval_state(folder, written, since=week) == APPROVED_THEN_EDITED
-    assert not is_approved_this_week(folder, written, since=week)
+    assert approval_state(folder, written, since=week) != APPROVED_NOTE
     assert is_protected(folder, written, approved_since=week)
 
     regenerated = write_draft(draft_reminder(folder, due_date=DUE, today=DUE, stage=1),
@@ -1997,7 +1982,7 @@ def test_the_reminder_never_chases_or_reports_a_not_asked_row(tmp_path):
     assert "Of the 5 items we asked for, 2 are in." in draft.body
     # B04 is a not-asked row that received a document: thanked apart.
     assert "We have also received 1 other document from you." in draft.body
-    assert draft.total_requests == 5 and draft.received_requests == 2
+    assert draft.letter.progress.startswith("Of the 5 items we asked for, 2 are in.")
     for word in ("Social Security", "1099-C", "W-2G", "1098-E"):
         assert word not in draft.body, word
 
@@ -2045,8 +2030,8 @@ def _filled(reason, text):
 
 def _what_the_letter_does(reason, text):
     """What one reason, its detail and its file named ``text``, makes the
-    letter do: the Failed row's ask, the hold of a parked row pointing at
-    A01, and where a Failed row goes."""
+    letter do: the hold of a parked row pointing at A01, and where a Failed
+    row goes."""
     from tests.test_review import parked_row
     from tracker.records import RULE_REQUIRED, WHERE_TITLE, Evidence
     from tracker.reminder import _parked_holds
@@ -2059,7 +2044,7 @@ def _what_the_letter_does(reason, text):
     lines, attention, held = triage([failed])
     holds = {identifier: (flag.reason, flag.confirm)
              for identifier, flag in _parked_holds(DROPPED, [row]).items()}
-    return (row.code, client_ask(failed), holds,
+    return (row.code, holds,
             [f.reason for f in attention], [f.reason for f in held], len(lines))
 
 
@@ -2068,7 +2053,7 @@ def test_no_client_text_can_change_what_a_row_means(reason):
     """Decision 190, the SPEC-167 cross product re-aimed. Every reason's
     placeholders, and the file's own name, filled with each other reason's
     marker - the words a search used to find another cause by - and the
-    row's code, the ask and the hold are exactly what they are with
+    row's code and the hold are exactly what they are with
     placeholders that say nothing."""
     plain = _what_the_letter_does(reason, "x")
     assert plain[0] == reason.code
@@ -2081,7 +2066,7 @@ def test_rows_written_before_190_read_as_cause_not_recorded():
     was not recorded, and nothing reads one back out of its words: a
     parked row holds where its shortlist names a request - the safe
     direction, since a person confirms it - and is asked with the generic
-    sentence; a Failed request's ask is the generic one and it is held."""
+    sentence; a Failed request is held."""
     from tests.test_review import parked_row
     from tracker.records import RULE_REQUIRED, WHERE_TITLE, Evidence
     from tracker.reminder import _parked_holds
@@ -2099,7 +2084,6 @@ def test_rows_written_before_190_read_as_cause_not_recorded():
     failed = item("A01", "W-2 Wage Statements", Status.FAILED,
                   validation_notes="x.pdf: " + str(reasons.NO_TEXT_LAYER.format()))
     assert failed.note_codes == ""
-    assert client_ask(failed) == GENERIC_ASK
     lines, attention, held = triage([failed])
     assert attention == [] and [f.reason for f in held] == [AMBIGUOUS_HOLD]
 

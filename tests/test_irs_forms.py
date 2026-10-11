@@ -275,6 +275,7 @@ def test_a_1099_g_read_as_1099_c_does_not_file_a08(catalogs, tmp_path):
     assert route_file(IRS / "f1099c.pdf", rows).identifier == "A08"   # the real form still files
 
 
+@pytest.mark.corpus
 def test_a_notice_files_z01_and_no_return_or_form_does(catalogs, tmp_path):
     """The notices row files a CP notice on every catalog, and no blank the
     IRS or a state publishes - return, schedule, information return,

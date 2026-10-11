@@ -8,6 +8,8 @@
       "Edit(//c/Users/*/AppData/Local/tax-document-tracker-pilot/**)",
       "Read(~/.local/state/tax-document-tracker-pilot/**)",
       "Edit(~/.local/state/tax-document-tracker-pilot/**)",
+      "Read(~/Library/Application Support/tax-document-tracker-pilot/**)",
+      "Edit(~/Library/Application Support/tax-document-tracker-pilot/**)",
       "Read(//g/Shared drives/**)",
       "Edit(//g/Shared drives/**)",
       "Read(//**/Clients/*/Drop files here/**)",
@@ -76,6 +78,10 @@
       "Edit(~/.config/Tax Document Tracker Pilot/error.log)",
       "Read(~/.config/Tax Document Tracker Pilot/error.log.*)",
       "Edit(~/.config/Tax Document Tracker Pilot/error.log.*)",
+      "Read(~/Library/Application Support/Tax Document Tracker Pilot/error.log)",
+      "Edit(~/Library/Application Support/Tax Document Tracker Pilot/error.log)",
+      "Read(~/Library/Application Support/Tax Document Tracker Pilot/error.log.*)",
+      "Edit(~/Library/Application Support/Tax Document Tracker Pilot/error.log.*)",
       "Read(//c/Users/*/AppData/Local/Tax Document Console/error.log)",
       "Edit(//c/Users/*/AppData/Local/Tax Document Console/error.log)",
       "Read(//c/Users/*/AppData/Local/Tax Document Console/error.log.*)",
@@ -83,7 +89,11 @@
       "Read(~/.config/Tax Document Console/error.log)",
       "Edit(~/.config/Tax Document Console/error.log)",
       "Read(~/.config/Tax Document Console/error.log.*)",
-      "Edit(~/.config/Tax Document Console/error.log.*)"
+      "Edit(~/.config/Tax Document Console/error.log.*)",
+      "Read(~/Library/Application Support/Tax Document Console/error.log)",
+      "Edit(~/Library/Application Support/Tax Document Console/error.log)",
+      "Read(~/Library/Application Support/Tax Document Console/error.log.*)",
+      "Edit(~/Library/Application Support/Tax Document Console/error.log.*)"
     ]
   }
 }

@@ -17,6 +17,7 @@
 // change the page while the tester is reading.
 
 const PilotTour = (() => {
+  const { make } = PilotDom;   // pilot.js, loaded before this file
   const GAP = 12;
   const PAD = 6;
   const MARGIN = 8;
@@ -30,19 +31,6 @@ const PilotTour = (() => {
 
   function steps() {
     return PILOT.tour.steps;
-  }
-
-  function fill(text) {
-    return String(text).split("{email}").join(PILOT.contact.email);
-  }
-
-  function make(tag, className, text) {
-    const el = document.createElement(tag);
-    if (className) {
-      for (const name of className.split(" ")) el.classList.add(name);
-    }
-    if (text !== undefined) el.textContent = fill(text);
-    return el;
   }
 
   function button(label, onClick) {

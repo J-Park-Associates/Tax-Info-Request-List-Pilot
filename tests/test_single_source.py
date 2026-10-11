@@ -41,6 +41,7 @@ def test_the_product_name_has_one_home():
     # The renderer and the shell read it at runtime; nothing else types it.
     for rel in ("app/renderer/index.html", "app/renderer/app.js", "app/renderer/style.css",
                 "Build App.bat", "Start App.bat", "docs/workflow.md",
+                "setup.command", "start.command", "build-mac.sh", "app/assets/Info-mac.plist",
                 "tracker/settings.py", "tracker/scheduling.py"):
         assert package["productName"] not in read(rel), rel
     # The two documents titled after the product carry it in their title only.
@@ -67,7 +68,12 @@ def test_the_frozen_api_name_has_one_home():
     # folder, a subfolder named after the API, holding <api>.exe. The shell
     # looks there and the build script copies there.
     assert "resources\\%API%" in read("Build App.bat")
-    assert "process.resourcesPath, API_NAME, `${API_NAME}.exe`" in read("app/main.js")
+    assert 'process.resourcesPath, API_NAME, process.platform === "win32" ? `${API_NAME}.exe` : API_NAME' in read(
+        "app/main.js")
+    # On a Mac the bundle's Resources folder is that resources folder, and the
+    # build copies the freeze into a subfolder named after the API, no suffix.
+    assert 'ditto "$OUT/py/$API" "$APP/Contents/Resources/$API"' in read("build-mac.sh")
+    assert api_name not in read("build-mac.sh") and "config.apiName" in read("build-mac.sh")
 
 
 def test_the_shell_and_the_preload_agree_on_every_ipc_channel():
@@ -125,7 +131,7 @@ def test_accept_and_file_it_are_one_call_site():
     """
     js = read("app/renderer/app.js")
     assert js.count('withEng("assign")') == 2
-    assert len(re.findall(r"\bfileRow\(", js)) == 3      # the one definition and its two callers
+    assert len(re.findall(r"\bfileRow\(", js)) == 2      # the one definition and its one caller
     # The hand-over's own call site is the only one that names a target,
     # and the two buttons that offer it both reach it.
     assert js.count("target: $(\"ho-return\").value") == 1
@@ -173,7 +179,7 @@ def test_the_apps_menu_is_the_template_in_both_builds_and_the_source_app_runs_it
     removes it. From source, the shell runs the Python Setup.bat made, by
     its full path, never a bare ``python`` from the search path, and when
     that is missing it says so in the lock tool's own sentence."""
-    from tools.lockfiles import NOT_SET_UP
+    from tools.lockfiles import NOT_SET_UP, NOT_SET_UP_MAC
 
     main_js = read("app/main.js")
     window = main_js[main_js.index("function createWindow"):]
@@ -186,6 +192,11 @@ def test_the_apps_menu_is_the_template_in_both_builds_and_the_source_app_runs_it
     assert 'path.join(REPO_ROOT, ".venv", "bin", "python")' in main_js
     sentence = "".join(re.findall(r'"([^"]*)"', main_js.split("const NOT_SET_UP =", 1)[1].split(";", 1)[0]))
     assert sentence == NOT_SET_UP
+    # Its Mac row (SPEC-mac R11): the same sentence naming setup.command, chosen by platform.
+    mac_sentence = "".join(re.findall(
+        r'"([^"]*)"', main_js.split("const NOT_SET_UP_MAC =", 1)[1].split(";", 1)[0]))
+    assert mac_sentence == NOT_SET_UP_MAC
+    assert 'process.platform === "darwin" ? NOT_SET_UP_MAC : NOT_SET_UP' in main_js
 
 
 #: The Electron module main.js is run against in the claim below: an app that
@@ -193,8 +204,18 @@ def test_the_apps_menu_is_the_template_in_both_builds_and_the_source_app_runs_it
 #: brought forward. Every other part of the shell is left real.
 _ELECTRON_STUB = r"""
 const Module = require("module");
-const seen = { asked: false, quit: 0, windows: 0, restored: 0, focused: 0, events: [], spawned: [], setPaths: [] };
+const seen = { asked: false, quit: 0, windows: 0, restored: 0, focused: 0, events: [], spawned: [], setPaths: [],
+               dialogs: [], settingsDirs: [], execPath: process.execPath };
 const handlers = {};
+// A fourth argument stands the process in for another machine (SPEC-mac): its
+// platform, chip and OS release, and whether it is the packaged app.
+const system = process.argv[4] ? JSON.parse(process.argv[4]) : null;
+if (system) {
+  Object.defineProperty(process, "platform", { value: system.platform });
+  Object.defineProperty(process, "arch", { value: system.arch });
+  require("os").release = () => system.release;
+  process.resourcesPath = "/fake/resources";
+}
 const win = {
   isMinimized: () => true,
   restore() { seen.restored += 1; },
@@ -212,7 +233,7 @@ class BrowserWindow {
 }
 const electron = {
   app: {
-    isPackaged: false,
+    isPackaged: Boolean(system && system.packaged),
     getPath: (name) => `/fake/${name}`,
     setPath(name, value) { seen.setPaths.push({ name, value, beforeLock: !seen.asked }); },
     requestSingleInstanceLock() { seen.asked = true; return process.argv[3] === "first"; },
@@ -221,7 +242,8 @@ const electron = {
     on(name, fn) { seen.events.push(name); handlers[name] = fn; },
     whenReady: () => Promise.resolve(),
   },
-  BrowserWindow, ipcMain: { handle() {}, on() {} }, shell: {}, dialog: {},
+  BrowserWindow, ipcMain: { handle() {}, on() {} }, shell: {},
+  dialog: { showMessageBoxSync(options) { seen.dialogs.push(options.message); return 0; } },
   Menu: { buildFromTemplate: (template) => ({ template }), setApplicationMenu() {} },
   nativeTheme: { shouldUseDarkColors: false, shouldUseHighContrastColors: false, themeSource: "", on() {} },
 };
@@ -231,8 +253,9 @@ const electron = {
 // with an empty reply and exit 0 (the review of SPEC-wincheck-fixes, S5).
 const { EventEmitter } = require("events");
 const childProcess = {
-  spawn(command) {
+  spawn(command, args, options) {
     seen.spawned.push(command);
+    seen.settingsDirs.push(options && options.env && options.env.TRACKER_SETTINGS_DIR);
     const stream = () => Object.assign(new EventEmitter(), { setEncoding() {} });
     const child = Object.assign(new EventEmitter(), { stdout: stream(), stderr: stream(), kill() {} });
     child.stdin = Object.assign(new EventEmitter(), { write() {}, end() {} });
@@ -323,6 +346,192 @@ def test_the_electron_user_data_folder_keeps_its_earlier_name(tmp_path):
     assert parts[-2:] == ["appData", EARLIER_PRODUCT_NAME]
 
 
+def _joined_string(source: str, after: str) -> str:
+    """The string literal, possibly several joined by ``+`` over lines, that
+    follows ``after`` in a JavaScript source up to its ``;`` or ``,`` line end."""
+    tail = source.split(after, 1)[1]
+    end = re.search(r'";\n|",\n', tail).end()
+    return "".join(re.findall(r'"([^"]*)"', tail[:end]))
+
+
+def _on_another_machine(tmp_path, system: dict, which: str = "first") -> dict:
+    """main.js run by node against the Electron stand-in, on the machine
+    ``system`` describes (platform, arch, OS release, packaged or not)."""
+    import shutil
+    import subprocess
+
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node is not on PATH (CI installs it)")
+    harness = tmp_path / "another_machine.js"
+    harness.write_text(_ELECTRON_STUB, encoding="utf-8", newline="\n")
+    done = subprocess.run([node, str(harness), str(REPO / "app" / "main.js"), which, json.dumps(system)],
+                          capture_output=True, text=True, encoding="utf-8", timeout=60, check=False)
+    assert done.returncode == 0, done.stderr
+    return json.loads(done.stdout)
+
+
+def test_the_shell_and_the_api_say_the_mac_floor_in_the_same_words():
+    """SPEC-mac R6 (P243): the floor sentence is spelled once in Python and
+    once in the shell, and the two are held equal. The shell fills ``{what}``
+    itself, so its marker must be the one the Python sentence has."""
+    from tracker.settings import MAC_FLOOR, MAC_FLOOR_MACOS
+
+    main_js = read("app/main.js")
+    assert _joined_string(main_js, "const MAC_FLOOR =") == MAC_FLOOR
+    assert "{what}" in MAC_FLOOR
+    assert f"const MAC_FLOOR_DARWIN = {MAC_FLOOR_MACOS + 9};" in main_js     # macOS 14 is Darwin 23
+    assert read("api_entry.py").count("mac_floor_refusal(product=") == 1
+
+
+@pytest.mark.parametrize("system, what", [
+    ({"platform": "darwin", "arch": "arm64", "release": "22.6.0"}, "Apple silicon running macOS 13"),
+    ({"platform": "darwin", "arch": "x64", "release": "23.1.0"}, "an Intel processor running macOS 14"),
+    ({"platform": "darwin", "arch": "arm64", "release": "19.6.0"}, "Apple silicon running macOS 10.15"),
+])
+def test_a_mac_below_the_floor_is_refused_by_the_shell_before_the_lock_and_any_window(
+        tmp_path, system, what):
+    from tracker.settings import MAC_FLOOR, product_name
+
+    seen = _on_another_machine(tmp_path, system)
+    assert seen["dialogs"] == [MAC_FLOOR.format(product=product_name(), what=what)]
+    assert seen["quit"] == 1 and seen["windows"] == 0
+    assert seen["asked"] is False, "the one-instance lock writes to userData; nothing is written"
+    assert seen["spawned"] == []
+
+
+@pytest.mark.parametrize("system", [
+    {"platform": "darwin", "arch": "arm64", "release": "23.0.0"},       # macOS 14, the floor itself
+    {"platform": "darwin", "arch": "arm64", "release": "25.1.0"},       # macOS 26
+    {"platform": "linux", "arch": "x64", "release": "6.1.0"},
+    {"platform": "win32", "arch": "x64", "release": "10.0.19045"},
+])
+def test_a_machine_at_the_floor_or_not_a_mac_opens_the_one_window_as_before(tmp_path, system):
+    seen = _on_another_machine(tmp_path, system)
+    assert seen["dialogs"] == [] and seen["asked"] is True and seen["windows"] == 1
+
+
+def test_a_packaged_mac_keeps_its_settings_in_application_support_and_windows_beside_the_program(tmp_path):
+    """SPEC-mac R2: the shell names the settings folder to the API, and on a
+    Mac it is ``Application Support/<productName>`` - the same folder the API's
+    own fallback, ``settings.mac_settings_dir``, builds - never inside the
+    bundle a newer copy replaces whole."""
+    from tracker.settings import MAC_SUPPORT, mac_settings_dir, product_name
+
+    main_js = read("app/main.js")
+    assert 'path.join(app.getPath("appData"), PRODUCT_NAME)' in main_js
+    assert MAC_SUPPORT == ("Library", "Application Support")
+    assert mac_settings_dir(Path("/home/me")) == Path("/home/me/Library/Application Support") / product_name()
+    mac = _on_another_machine(tmp_path, {"platform": "darwin", "arch": "arm64", "release": "23.0.0",
+                                         "packaged": True})
+    assert mac["settingsDirs"] and set(mac["settingsDirs"]) == {f"/fake/appData/{product_name()}"}
+    windows = _on_another_machine(tmp_path, {"platform": "win32", "arch": "x64", "release": "10.0",
+                                             "packaged": True})
+    assert windows["settingsDirs"] and set(windows["settingsDirs"]) == {str(Path(windows["execPath"]).parent)}
+
+
+#: main.js run by node, its ``tracker-cmd`` reply teaching it a macro-capable
+#: review copy, then ``open-path`` called on it, to see what the shell says.
+_PROTECTED_VIEW_HARNESS = r"""
+const Module = require("module");
+const { EventEmitter } = require("events");
+const realFs = require("fs");
+const [mainJs, target, other, platform] = process.argv.slice(2);
+Object.defineProperty(process, "platform", { value: platform });
+const ipc = {};
+const seen = { opened: [], revealed: [] };
+const reply = { vocab: { commands: ["list"], path_kinds: { review_copy: "file" },
+                         shell: { protected_view_mac: "Said by the API." } },
+                state: { paths: { "review_copy K1": target, "review_copy K2": other }, carries_code: [target] },
+                warnings: [] };
+const electron = {
+  app: { isPackaged: false, getPath: () => "/fake", setPath() {}, requestSingleInstanceLock: () => true,
+         quit() {}, setAppUserModelId() {}, on() {}, whenReady: () => new Promise(() => {}) },
+  BrowserWindow: class {},
+  Menu: { buildFromTemplate: (template) => ({ template }), setApplicationMenu() {} },
+  ipcMain: { handle(name, fn) { ipc[name] = fn; }, on() {} },
+  nativeTheme: { shouldUseDarkColors: false, shouldUseHighContrastColors: false, themeSource: "", on() {} },
+  shell: { openPath: async (p) => { seen.opened.push(p); return ""; },
+           showItemInFolder: (p) => { seen.revealed.push(p); } },
+  dialog: {},
+};
+const childProcess = {
+  spawn() {
+    const stream = () => Object.assign(new EventEmitter(), { setEncoding() {} });
+    const child = Object.assign(new EventEmitter(), { stdout: stream(), stderr: stream(), kill() {} });
+    child.stdin = Object.assign(new EventEmitter(), { write() {}, end() {} });
+    setImmediate(() => {
+      child.stdout.emit("data", JSON.stringify(reply) + "\n");
+      child.emit("exit", 0, null);
+      child.emit("close", 0, null);
+    });
+    return child;
+  },
+};
+const load = Module._load;
+Module._load = function (request, ...rest) {
+  if (request === "electron") return electron;
+  if (request === "child_process") return childProcess;
+  if (request === "fs") return { ...realFs, existsSync: () => true };
+  return load.call(this, request, ...rest);
+};
+require(mainJs);
+(async () => {
+  const event = { sender: { isDestroyed: () => false, send() {} } };
+  await ipc["tracker-cmd"](event, ["list"]);
+  const results = [];
+  for (const [path, how] of [[target], [target], [target, "reveal"], [other], [target]]) {
+    results.push(await ipc["open-path"](event, path, how));
+  }
+  process.stdout.write(JSON.stringify({ ...seen, results }));
+})();
+"""
+
+
+def _opening_on(tmp_path, platform: str) -> dict:
+    import shutil
+    import subprocess
+
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node is not on PATH (CI installs it)")
+    harness = tmp_path / "protected_view.js"
+    harness.write_text(_PROTECTED_VIEW_HARNESS, encoding="utf-8", newline="\n")
+    macros, plain = tmp_path / "budget.xlsm", tmp_path / "statement.pdf"
+    macros.write_bytes(b"made-up")
+    plain.write_bytes(b"made-up")
+    done = subprocess.run([node, str(harness), str(REPO / "app" / "main.js"), str(macros), str(plain), platform],
+                          capture_output=True, text=True, encoding="utf-8", timeout=60, check=False)
+    assert done.returncode == 0, done.stderr
+    return {**json.loads(done.stdout), "macros": str(macros), "plain": str(plain)}
+
+
+def test_the_shell_says_protected_view_does_not_exist_each_time_a_macro_copy_opens_on_a_mac(tmp_path):
+    """SPEC-mac R8 (P240): the sentence is the API's (learned, with a pinned
+    default for a first start). The shell answers an open of a path the API
+    listed in ``carries_code`` with ``{ says: <sentence> }`` - for the page to
+    say as a notice (``test_shell.py``), never a dialog or a sheet with a
+    button - each time, not when it only shows the file, not for any other
+    file, not on Windows, where the mark itself does it - and never refuses."""
+    import tracker.api as api
+
+    main_js = read("app/main.js")
+    says = main_js.split("const shellSays = {", 1)[1].split("\n};\n", 1)[0]
+    assert _joined_string(says, "protected_view_mac:") == api.PROTECTED_VIEW_MAC
+    assert api._vocab()["shell"]["protected_view_mac"] == api.PROTECTED_VIEW_MAC
+    assert main_js.count("shell.openPath(") == 1                       # the one door, still
+    assert "showMessageBox(" not in main_js.replace("showMessageBoxSync(", "")
+    assert "said.says" in read("app/renderer/shell.js")
+
+    mac = _opening_on(tmp_path, "darwin")
+    sentence = {"says": "Said by the API."}
+    assert mac["results"] == [sentence, sentence, "", "", sentence], "each time, never refused"
+    assert mac["opened"] == [mac["macros"], mac["macros"], mac["plain"], mac["macros"]]
+    assert mac["revealed"] == [mac["macros"]]
+    for platform in ("win32", "linux"):
+        assert _opening_on(tmp_path, platform)["results"] == [""] * 5
+
+
 def test_the_side_panel_names_the_product_from_its_one_home():
     """SPEC-rename R1: the side panel's brand band says the product's name
     as package.json's productName says it, with no second typed copy."""
@@ -362,8 +571,10 @@ def test_the_renderer_builds_the_page_from_data_not_html():
 
 
 def test_the_window_colour_is_read_from_the_stylesheet():
-    assert re.search(r"--bg:\s*#", read("app/renderer/style.css"))
+    assert re.search(r"--window-light:\s*#", read("app/renderer/pilot-ui.css"))
+    assert re.search(r"--window-dark:\s*#", read("app/renderer/pilot-ui.css"))
     main_js = read("app/main.js")
+    assert "style.css" not in main_js
     assert "backgroundColor: pageBackground()" in main_js
     assert not re.search(r'backgroundColor:\s*"#', main_js)
 
@@ -374,6 +585,8 @@ def test_ci_tests_the_python_floor_pyproject_declares():
     # Setup.bat is where a machine's Python is first asked (decision 191).
     assert f"Install Python {floor}+" in read("Setup.bat")
     assert f"sys.version_info < ({floor.replace('.', ', ')})" in read("Setup.bat")
+    assert f"Install Python {floor}+" in read("setup.command")
+    assert f"sys.version_info < ({floor.replace('.', ', ')})" in read("setup.command")
     # Prose says "the floor pyproject.toml declares"; nobody types the number.
     for rel in ("README.md", "docs/ROADMAP.md", "CLAUDE.md", "docs/workflow.md"):
         assert not re.search(r"Python 3\.\d+\+?", read(rel)), rel
@@ -457,7 +670,13 @@ def _deny_list_from_the_constants() -> list[str]:
     from tracker.registry import LEGACY_MANIFEST_FILENAME
     from tracker.reminder import DRAFT_FILENAME
     from tracker.runner import LAST_PASS_FILENAME, LOG_FILENAME, PASS_ORDER_FILENAME, STATUS_PAGE_FILENAME
-    from tracker.settings import DATA_HOME_NAME, ERROR_LOG_FILENAME, EXPECTATIONS_FILENAME, OCR_SCRATCH_DIRNAME
+    from tracker.settings import (
+        DATA_HOME_NAME,
+        ERROR_LOG_FILENAME,
+        EXPECTATIONS_FILENAME,
+        MAC_SUPPORT,
+        OCR_SCRATCH_DIRNAME,
+    )
     from tracker.store import RECOVERED_DIR, STORE_FILENAME, STORE_SHM_FILENAME, STORE_WAL_FILENAME
     from tracker.view import VIEW_FILENAME
 
@@ -465,7 +684,9 @@ def _deny_list_from_the_constants() -> list[str]:
     stem, ext = DRAFT_FILENAME.rsplit(".", 1)
     year = "[12][0-9][0-9][0-9]"
     a_return = RETURN_NAME_PATTERN.format(form="[0-9]*", client="*")    # every form id begins with a digit
+    mac_support = "~/" + "/".join(MAC_SUPPORT)      # the Mac's data home and Electron's folder (SPEC-mac R1, R2)
     places = [f"//c/Users/*/AppData/Local/{DATA_HOME_NAME}/**", f"~/.local/state/{DATA_HOME_NAME}/**",
+              f"{mac_support}/{DATA_HOME_NAME}/**",
               "//g/Shared drives/**",
               f"//**/{CLIENTS_TREE}/*/{INBOX_DIR_NAME}/**", f"//**/{CLIENTS_TREE}/*/{year}/**",
               f"//**/{PRIVATE_TREE}/*/{year}/{a_return}/**", f"//**/{PRIVATE_TREE}/*/{year}/{OPENED_DIR_NAME}/**",
@@ -484,19 +705,23 @@ def _deny_list_from_the_constants() -> list[str]:
 def _fallback_log_rules() -> list[str]:
     """The shell's fallback error log and its one rotated copy (Jason,
     2026-09-29: the log can name a client, so the agent's file tools are
-    denied it, in the two path styles the data-home rules use: Windows'
-    %LOCALAPPDATA% folder and, off Windows, Electron's userData).
+    denied it, in the three path styles the data-home rules use: Windows'
+    %LOCALAPPDATA% folder, Linux's Electron userData under ~/.config and,
+    on a Mac, Application Support, where the settings file sits too
+    (SPEC-mac R2; Jason, 2026-10-11, from the audit's S2).
 
     The rules name both products' folders (P189): the earlier one first,
     which an upgraded PC may still hold and where Electron's userData stays
     (SPEC-rename R4), then the current one, package.json's productName,
     where the renamed app writes its log on Windows. Both can name a client."""
-    from tracker.settings import EARLIER_PRODUCT_NAME
+    from tracker.settings import EARLIER_PRODUCT_NAME, MAC_SUPPORT
 
     current = json.loads(read("app/package.json"))["productName"]
+    mac_support = "~/" + "/".join(MAC_SUPPORT)
     return [f"{tool}({folder}/error.log{suffix})"
             for product in (EARLIER_PRODUCT_NAME, current)
-            for folder in (f"//c/Users/*/AppData/Local/{product}", f"~/.config/{product}")
+            for folder in (f"//c/Users/*/AppData/Local/{product}", f"~/.config/{product}",
+                           f"{mac_support}/{product}")
             for suffix in ("", ".*") for tool in ("Read", "Edit")]
 
 
@@ -557,18 +782,20 @@ def test_the_fallback_log_rules_deny_the_current_and_the_earlier_folder():
     writes its fallback log under the current product's folder, and an
     upgraded PC may still hold one under the earlier folder; either can name
     a client, so the deny list refuses both, the log and its rotated copy,
-    in both path styles, to reading and editing alike. Tightening only."""
-    from tracker.settings import EARLIER_PRODUCT_NAME
+    in all three path styles, to reading and editing alike. Tightening only."""
+    from tracker.settings import EARLIER_PRODUCT_NAME, MAC_SUPPORT
 
     deny = json.loads(read(".claude/settings.json"))["permissions"]["deny"]
     current = json.loads(read("app/package.json"))["productName"]
     assert current != EARLIER_PRODUCT_NAME
     rules = _fallback_log_rules()
-    assert len(rules) == 16 and deny[-16:] == rules
+    assert len(rules) == 24 and deny[-24:] == rules
+    mac_support = "~/" + "/".join(MAC_SUPPORT)
     for product in (EARLIER_PRODUCT_NAME, current):
         for name in ("error.log", "error.log.1"):
             assert _denied(deny, f"/c/Users/someone/AppData/Local/{product}/{name}"), (product, name)
-        for style in (f"//c/Users/*/AppData/Local/{product}", f"~/.config/{product}"):
+        for style in (f"//c/Users/*/AppData/Local/{product}", f"~/.config/{product}",
+                      f"{mac_support}/{product}"):
             for tool in ("Read", "Edit"):
                 assert f"{tool}({style}/error.log)" in deny and f"{tool}({style}/error.log.*)" in deny
 
@@ -879,13 +1106,13 @@ def test_the_renderer_keeps_no_hidden_household_choice():
                   "wf-back", 'btn-new"'):
         assert ident not in js and ident not in html, ident
     assigned = re.findall(r"\baddingTo = ([^;]+);", js)
-    assert len(assigned) == 4, assigned          # the declaration, and the three below
-    opening = _js_function(js, "async function openAddReturn(hh) {")
-    fresh = _js_function(js, "async function openNewHousehold() {")
+    assert len(assigned) == 3, assigned          # the declaration, and the two below
+    opening = _js_function(js, "async function openReturnDialog(hh) {")
     closing = _js_function(js, "function closeNewReturn() {")
-    assert re.findall(r"\baddingTo = ([^;]+);", opening) == ["hh.path"]
-    assert re.findall(r"\baddingTo = ([^;]+);", fresh) == ["null"]
+    assert re.findall(r"\baddingTo = ([^;]+);", opening) == ["hh ? hh.path : null"]
     assert re.findall(r"\baddingTo = ([^;]+);", closing) == ["null"]
+    assert "openReturnDialog(hh)" in _js_function(js, "async function openAddReturn(hh) {")
+    assert "openReturnDialog(null)" in _js_function(js, "async function openNewHousehold() {")
     assert "let addingTo = null;" in js
 
 
@@ -1503,6 +1730,8 @@ def test_the_build_is_made_from_what_is_committed():
     assert "*.spec" not in ignored and "app/package-lock.json" not in ignored
     assert "npm ci" in read("Build App.bat") and "npm ci" in read("Setup.bat")
     assert "npm install" not in read("Build App.bat") and "npm install" not in read("Setup.bat")
+    assert "npm ci" in read("build-mac.sh") and "npm ci" in read("setup.command")
+    assert "npm install" not in read("build-mac.sh") and "npm install" not in read("setup.command")
     build = read("Build App.bat")
     assert "requirements-build.lock" in build and "api_entry.spec" in build
     assert "pip install pyinstaller" not in build            # pinned in requirements-build.txt, locked by hash
@@ -1840,7 +2069,7 @@ def test_tree_diagrams_name_only_runtime_files_the_code_owns():
 #: tolerant_console(), and each of these takes it before it parses a flag.
 CONSOLE_GUARDED = ("rollover", "filer", "scanner", "registry", "review", "scaffold",
                    "store", "reminder", "runner", "router", "content_check",
-                   "view", "ledger", "validators", "names", "containers", "ocr", "door",
+                   "view", "ledger", "validators", "containers", "ocr", "door",
                    "checkpoint", "locking", "after_install")
 #: The command lines that print no client's name, each with why it is not
 #: guarded - so a new command line has to be named in one list or the other.
@@ -1958,12 +2187,12 @@ def test_every_review_action_the_renderer_sends_carries_the_rows_seq():
 
     js = read("app/renderer/app.js")
     # The sheet's dismissal reads the row's version off the row on the sheet...
-    sent = re.search(r'call\(withEng\("dismiss"\), \{(.*?)\}\)', js, re.S)
+    sent = re.search(r'writeRow\(withEng\("dismiss"\), \{(.*?)\}, \{', js, re.S)
     assert sent and "seq:" in sent.group(1) and "li.dataset.seq" in sent.group(1)
     # ...and the right-click writes of a filed row (Unfile, Mark missing) read
     # it from the spec the page built from the same index row (pages.js).
     for command in ("unfile", "mark-missing"):
-        sent = re.search(rf'call\(withEng\("{command}"\), \{{(.*?)\}}\)', js, re.S)
+        sent = re.search(rf'writeRow\(withEng\("{command}"\), \{{(.*?)\}}, \{{', js, re.S)
         assert sent and "seq: Number(spec.seq)" in sent.group(1), command
     pages = read("app/renderer/pages.js")
     assert "{ original: direct[0].handle, seq: direct[0].seq, name: direct[0].original_name }" in pages
@@ -1972,12 +2201,11 @@ def test_every_review_action_the_renderer_sends_carries_the_rows_seq():
     # ...and since decision 114 the filing has one call site for the three
     # buttons that make it, so each of them reads the version off the element
     # it was drawn on and hands it to that one function.
-    sent = re.search(r'call\(withEng\("assign"\), \{(.*?)\}\)', js, re.S)
+    sent = re.search(r'writeRow\(withEng\("assign"\), \{(.*?)\}, \{', js, re.S)
     assert sent and "seq" in sent.group(1)
-    for handler in ("assignParked", "keepMoved"):
-        body = re.search(rf"async function {handler}\(.*?\n\}}", js, re.S)
-        assert body, handler
-        assert "fileRow(" in body.group(0) and "dataset.seq" in body.group(0), handler
+    body = re.search(r"async function assignParked\(.*?\n\}", js, re.S)
+    assert body
+    assert "fileRow(" in body.group(0) and "dataset.seq" in body.group(0)
     # Every row builder puts it on the element the handlers read it back
     # from - since decision 190 one more: the row that is not a document.
     assert js.count("seq: e.seq") == 1 and js.count("seq: m.seq") == 2
@@ -2222,12 +2450,15 @@ DOOR_EXEMPT = {
 def test_every_command_line_that_takes_a_root_or_a_folder_checks_it():
     """Decision 188 (T17, R11, C-9/E-5): every command line that takes a
     clients root, a household's or a return's folder reads it through the
-    one door - ``door.checked_root``, ``door.return_dir`` or
-    ``door.household_dir`` - so no command line walks a root the rule
-    refuses or reads a folder in the client tree as a return."""
+    one door - ``door.checked_root``, ``door.return_dir``,
+    ``door.household_dir`` or the typed-folder helpers built on them
+    (``door.typed_return``, ``door.typed_household_or_return``) - so no
+    command line walks a root the rule refuses or reads a folder in the
+    client tree as a return."""
     import ast
 
-    asked = {"checked_root", "return_dir", "household_dir"}
+    asked = {"checked_root", "return_dir", "household_dir", "typed_return",
+             "typed_household_or_return"}
     taking = []
     for path in sorted([*(REPO / "tracker").glob("*.py"), *(REPO / "tools").glob("*.py")]):
         rel = path.relative_to(REPO).as_posix()
@@ -2261,7 +2492,7 @@ def test_the_shell_lstats_before_it_opens_and_refuses_a_link_or_a_changed_kind()
     assert opener.index("fs.promises.lstat(") < opener.index("shell.showItemInFolder(")
     assert opener.index("fs.promises.lstat(") < opener.index("shell.openPath(")
     assert "isSymbolicLink()" in opener and "isDirectory()" in opener and "isFile()" in opener
-    assert "vocab.path_kinds" in main and "vocab.shell.not_opened" in main
+    assert "vocab.path_kinds" in main and "shellSays.not_opened" in opener
     # One call site of each, both behind openChecked (after the lstat and the kind check).
     assert main.count("shell.openPath(") == 1 and main.count("shell.showItemInFolder(") == 1
     vocab = api._vocab()
@@ -2275,11 +2506,13 @@ def test_the_shell_lstats_before_it_opens_and_refuses_a_link_or_a_changed_kind()
 
 #: Where a person is told what to do: the two documents and the two batch
 #: files a person double-clicks (decision 209, R5).
-ONE_TIME_STEP_DOCUMENTS = ("README.md", "docs/runbook.md", "Setup.bat", "Start App.bat")
+ONE_TIME_STEP_DOCUMENTS = ("README.md", "docs/runbook.md", "Setup.bat", "Start App.bat",
+                           "setup.command", "start.command", "pilot/mactest/PROMPT.md",
+                           "pilot/mactest/run_checks.sh")
 #: The first word of a clause that is an instruction to a person.
 INSTRUCTIONS = frozenset({"press", "run", "click", "double-click", "type", "open"})
 #: What "after installing" may be said with, within three words of "after".
-AFTER_WHAT = frozenset({"installing", "upgrading", "install", "upgrade", "setup", "setup.bat"})
+AFTER_WHAT = frozenset({"installing", "upgrading", "install", "upgrade", "setup", "setup.bat", "setup.command"})
 
 
 def one_time_step_clauses(text: str) -> list[str]:
@@ -2291,11 +2524,11 @@ def one_time_step_clauses(text: str) -> list[str]:
     three words by installing, upgrading or Setup; or a clause that is
     itself the lead-in "Once, after installing ..." (the review's S1, the
     shape of the base runbook's decision-187 heading). Wrapped lines are
-    joined (a ``rem`` prefix and Markdown list and quote markers dropped);
+    joined (a ``rem`` or ``#`` prefix and Markdown list and quote markers dropped);
     clauses end at ``.``, ``:``, ``;`` and blank lines."""
     lines = []
     for line in text.splitlines():
-        line = re.sub(r"^\s*rem(\s|$)", "", line, flags=re.I)
+        line = re.sub(r"^\s*(?:rem(?:\s|$)|#+\s*)", "", line, flags=re.I)
         line = re.sub(r"^\s*(?:[-*+>]|\d+\.)\s+", "", line)
         lines.append(line.strip())
     joined = "\n".join(lines)
@@ -2323,6 +2556,8 @@ def one_time_step_clauses(text: str) -> list[str]:
     ("Setup runs it once, after installing.", False),
     ("Press Repair the schedule to register it again.", False),
     ("Run Setup.bat once.", False),
+    ("Run setup.command once.", False),
+    ("# Double-click it once after `setup.command` finishes.", True),
     ("rem Double-click it once after `Setup.bat` finishes.", True),
     ("Open the app once a week after lunch.", False),
     # The review's S1: the base runbook's decision-187 lead-in, and the
@@ -3064,19 +3299,21 @@ def test_the_shells_default_words_are_the_apis_word_for_word():
 
     main_js = read("app/main.js")
 
-    def default(name):
-        head = main_js.split(f"let {name} =", 1)[1].split(";\n", 1)[0]
-        return "".join(re.findall(r'"([^"]*)"', head))
+    says = main_js.split("const shellSays = {", 1)[1].split("\n};\n", 1)[0]
+
+    def default(key):
+        return re.search(rf'^  {key}: "([^"]*)",$', says, re.MULTILINE).group(1)
 
     assert default("killed") == api.SHELL_KILLED
-    assert default("killedAt") == api.SHELL_KILLED_AT
-    assert default("killedWrite") == api.SHELL_KILLED_WRITE
-    assert default("killedWriteNote") == api.SHELL_KILLED_WRITE_NOTE
-    assert default("killedRead") == api.SHELL_KILLED_READ
-    assert default("noReply") == api.SHELL_NO_REPLY
-    assert default("couldNotStart") == api.SHELL_COULD_NOT_START
-    assert default("couldNotSend") == api.SHELL_COULD_NOT_SEND
-    assert default("noLog") == api.SHELL_NO_LOG
+    assert default("killed_at") == api.SHELL_KILLED_AT
+    assert default("killed_write") == api.SHELL_KILLED_WRITE
+    assert default("killed_write_note") == api.SHELL_KILLED_WRITE_NOTE
+    assert default("killed_read") == api.SHELL_KILLED_READ
+    assert default("no_reply") == api.SHELL_NO_REPLY
+    assert default("could_not_start") == api.SHELL_COULD_NOT_START
+    assert default("could_not_send") == api.SHELL_COULD_NOT_SEND
+    assert default("no_log") == api.SHELL_NO_LOG
+    assert default("not_opened") == api.SHELL_NOT_OPENED
     shell = api._vocab()["shell"]
     assert (shell["killed"], shell["killed_at"], shell["no_reply"], shell["could_not_start"]) == (
         api.SHELL_KILLED, api.SHELL_KILLED_AT, api.SHELL_NO_REPLY, api.SHELL_COULD_NOT_START)
@@ -3138,7 +3375,9 @@ def test_the_reminder_card_is_never_hidden_on_an_error():
 
 def test_every_reply_warning_becomes_a_notice():
     js = read("app/renderer/app.js")
-    body = js.split("async function call(args, payload, { ofAnother = false } = {}) {", 1)[1].split("\n}\n", 1)[0]
+    called = js.split("async function call(args, payload, { ofAnother = false } = {}) {", 1)[1].split("\n}\n", 1)[0]
+    assert "takeReply(result, args, payload, { ofAnother })" in called
+    body = js.split("function takeReply(result, args, payload, { ofAnother = false } = {}) {", 1)[1].split("\n}\n", 1)[0]
     assert "result.warnings" in body and "warningNotices(" in body
     assert "throw new TrackerError(" in body
     assert "warningNotices(ended.pass_warnings" in js     # a pass's own, from its final line (203)
@@ -3313,7 +3552,7 @@ def test_an_error_of_the_page_or_the_shell_is_said_by_class_and_its_message_only
     # shares it), read as the one path a command takes.
     run = main_js[main_js.index("function runTracker"):]
     run = run[:run.index("\n}\n", run.index("function spawnTracker"))]
-    assert "shellFailure(fill(couldNotSend" in run and "`The app could not send" not in run
+    assert "shellFailure(fill(shellSays.could_not_send" in run and "`The app could not send" not in run
     assert "err.message" not in run.split("keepInLog(", 1)[0]
     assert 'ipcMain.handle("log-error"' in main_js
     assert api._vocab()["shell"]["page_error"] == api.PAGE_ERROR
@@ -3413,7 +3652,8 @@ def test_a_warning_about_another_return_is_said_under_its_label():
     js = read("app/renderer/app.js")
     handover = _body(js, "async function loadHandOverRequests() {")
     assert "{ ofAnother: true }" in handover
-    head = "async function call(args, payload, { ofAnother = false } = {}) {"
+    assert "takeReply(result, args, payload, { ofAnother })" in _body(js, "async function call(args, payload, { ofAnother = false } = {}) {")
+    head = "function takeReply(result, args, payload, { ofAnother = false } = {}) {"
     body = _body(js, head)
     assert "vocab.notices.about" in body and "labelOfState(result)" in body
     assert js.count("ofAnother: true") == 1
@@ -4024,8 +4264,7 @@ def test_every_dialog_opens_with_focus_inside_and_gives_it_back():
     for opener, ident in (("async function openEditor(focus) {", "editor"),
                           ("function openHouseholdEditor() {", "household-modal"),
                           ("async function openHandOver(original, seq) {", "handover-modal"),
-                          ("async function openAddReturn(hh) {", "modal"),
-                          ("async function openNewHousehold() {", "modal"),
+                          ("async function openReturnDialog(hh) {", "modal"),
                           ("async function openSchedule() {", "schedule-modal"),
                           ("function openRoll() {", "roll-modal"),
                           ("function openSafeguards() {", "safeguards-modal"),
@@ -4091,21 +4330,18 @@ def test_no_text_box_is_named_only_by_its_placeholder():
     for cls, builder in (("r-keyword", "function keywordBox() {"),
                          ("r-note", "function noteBox(words) {"),
                          ("r-spelling", "function teachSpelling(triage, people) {")):
-        assert js.count(f'className: "{cls}"') == 1, cls
-        body = _js_function(js, builder)
-        label = body.split('el("label", { className: "field', 1)[1]
-        assert f'className: "{cls}"' in label, cls
+        assert js.count(f'"{cls}")') == 1, cls
+        assert f'"{cls}")' in _js_function(js, builder) and "labelledInput(" in _js_function(js, builder), cls
+    label = _js_function(js, "function labelledInput(boxClass, words, inputClass) {")
+    assert 'el("label", { className: boxClass ?' in label and 'className: inputClass' in label
     assert len(re.findall(r"\bkeywordBox\(\)", js)) == 3        # the builder and its two places
-    # The setup page (shell.js) builds its two boxes inside labels; the three
-    # inputs index.html keeps are hidden, for saveRoot(), and carry no name.
+    # The setup page (shell.js) builds its two boxes inside labels; index.html
+    # keeps no hidden input for them (saveRoot() reads setupDraft).
     shell = read("app/renderer/shell.js")
     assert 'h("label", { className: "setup-field" }, h("span", {}, vocab.settings.firm_label), firm)' in shell
     assert 'h("label", { className: "setup-field" }, h("span", {}, vocab.settings.phone_label), phone)' in shell
-    legacy = html[html.index('<div id="legacy" class="hidden">'):]
     for ident in ("phone-input", "firm-input", "root-input"):
-        assert f'<input id="{ident}"' in legacy, ident
-        tag = re.search(rf'<input id="{ident}"[^>]*>', html).group(0)
-        assert "placeholder=" not in tag and "aria-label=" not in tag, tag
+        assert ident not in html and ident not in js and ident not in shell, ident
 
 
 def test_the_issuer_action_has_one_call_site():
@@ -4116,7 +4352,7 @@ def test_the_issuer_action_has_one_call_site():
     js = read("app/renderer/app.js")
     assert js.count('withEng("add-issuer-and-file")') == 1
     assert len(re.findall(r"\baddIssuerAndFile\(", js)) == 2     # the definition and its one caller
-    sent = re.search(r'call\(withEng\("add-issuer-and-file"\), \{(.*?)\}\)', js, re.S).group(1)
+    sent = re.search(r'writeRow\(withEng\("add-issuer-and-file"\), \{(.*?)\}, \{', js, re.S).group(1)
     assert set(re.findall(r"(\w+):", sent)) == {"original", "seq", "head", "issuer"}
 
 
@@ -4190,24 +4426,6 @@ def test_the_runbook_says_where_the_fallback_error_log_is_and_to_delete_it_by_ha
         assert part in note, part
 
 
-def test_the_runbook_quotes_every_sentence_of_the_rename_carry_over():
-    """SPEC-rename section 8: the runbook's "After the rename (P155)" says
-    what the first start after the upgrade does, quoting each carry-over
-    sentence exactly - the task's with the two names filled in, the settings
-    file's with its paths and problem left as placeholders."""
-    from tracker import after_install, scheduling, settings
-
-    runbook = " ".join(read("docs/runbook.md").split())
-    note = runbook.split("**After the rename (P155).**", 1)[1].split("**It only runs while someone is logged on.**", 1)[0]
-    for name in ("SETTINGS_FROM_SOURCE", "SETTINGS_IN_PLACE", "SETTINGS_BOTH", "SETTINGS_NO_EARLIER",
-                 "SETTINGS_CARRIED", "SETTINGS_CARRY_FAILED", "EARLIER_TASK_KEPT", "EARLIER_TASK_REMOVED",
-                 "EARLIER_TASK_NONE", "EARLIER_TASK_FAILED", "EARLIER_TASK_FROM_SOURCE"):
-        sentence = getattr(after_install, name)
-        if name.startswith("EARLIER_TASK"):
-            sentence = sentence.replace("{old}", settings.EARLIER_PRODUCT_NAME).replace("{new}", scheduling.TASK_NAME)
-        for part in re.split(r"\{\w+\}", sentence):
-            assert part.strip() in note, (name, part)
-
 # ========== P155 Q3 (SPEC-rename R9, 7.4): the program is "the app" to a person ==========
 
 #: What "tracker" may still be in something a person reads: the internal names
@@ -4239,7 +4457,7 @@ def _calls_the_program_the_tracker(text: str) -> bool:
 #: its reason (SPEC-rename 7.4).
 _NAMES_NOT_SENTENCES = {
     # The pilot's name before the rename, the one home of it (R1): a name,
-    # which the carry-over's sentences put beside the words "earlier name".
+    # typed by the installer script and the Windows check scripts.
     "tracker.settings.EARLIER_PRODUCT_NAME",
     # The redirect probe's file name (F7, P193, R1): a name no person reads,
     # written and removed in one breath.
@@ -4280,8 +4498,8 @@ def test_no_sentence_the_app_shows_calls_it_the_tracker():
     pilot = json.loads(content.split("// PILOT-CONTENT-BEGIN", 1)[1].split("// PILOT-CONTENT-END", 1)[0])
     said.update({f"pilot-content: {s}": s for s in _strings(pilot)})
     main_js = read("app/main.js")
-    for name in ("noReply", "couldNotStart", "noLog"):
-        said[f"main.js {name}"] = re.search(rf'^let {name} = "([^"]*)";$', main_js, re.MULTILINE).group(1)
+    for name in ("no_reply", "could_not_start", "no_log"):
+        said[f"main.js {name}"] = re.search(rf'^  {name}: "([^"]*)",$', main_js, re.MULTILINE).group(1)
     # And every other sentence the shell says itself: its string literals
     # with a space in them, comments left out.
     code = "\n".join(line for line in main_js.splitlines() if not line.lstrip().startswith("//"))
@@ -4689,3 +4907,53 @@ def test_the_last_counts_are_an_early_read_only_command_the_api_answers():
     last_of = shell_js[shell_js.index("function shellLastOf(reply) {"):]
     last_of = last_of[:last_of.index("\n}\n")]
     assert "reply.last !== true" in last_of and "reply.as_of" in last_of
+
+
+# ------------------------------ SPEC-mac R34, R35: the documents say a Mac's words ----
+
+def _prose(rel: str) -> str:
+    """A document's text on one line, so a sentence wrapped over lines is found."""
+    return " ".join(read(rel).split())
+
+
+def test_the_documents_state_the_mac_floor_in_the_words_of_the_sentence_the_app_shows():
+    """R35 (P243): the product page and the README state the floor in one
+    sentence and name the ``.dmg``; the words after the program's name are
+    ``settings.MAC_FLOOR``'s own, so the day the floor moves the documents
+    fail until they follow. The runbook quotes the whole refusal."""
+    from tracker.settings import MAC_FLOOR, product_name
+
+    floor = MAC_FLOOR.split("{product}", 1)[1].split(";", 1)[0]
+    assert floor == " needs a Mac with Apple silicon running macOS 14 or later"
+    for rel in ("PRODUCT.md", "README.md"):
+        text = _prose(rel)
+        assert text.count(floor) == 1, rel
+        assert "`.dmg`" in text, rel
+    assert MAC_FLOOR.format(product=product_name(), what="...") in _prose("docs/runbook.md")
+
+
+def test_the_runbooks_mac_paragraphs_quote_the_sentences_the_app_shows_and_name_the_places_the_code_owns():
+    """R34: the Mac paragraphs of the runbook, under the heading the pass's own
+    reason points at (``runbook, 'On a Mac'``), quote the app's sentences word for
+    word and name the folders the code names - the data folder by
+    ``DATA_HOME_NAME`` on both systems (the Windows lines said
+    ``tax-document-tracker``; the folder is the pilot's), the settings folder by
+    the product name, the agent by its label."""
+    from tracker import after_install, api, runner, scheduling, settings
+
+    runbook = read("docs/runbook.md")
+    assert runbook.count("### On a Mac\n") == 1 and "'On a Mac'" in runner.PASS_REASONS[runner.PASS_ROOT_NOT_PERMITTED]
+    mac = _prose("docs/runbook.md")
+    for sentence in (api.PROTECTED_VIEW_MAC, after_install.TIME_MACHINE_EXCLUDED, after_install.SCHEDULE_REMOVED_FROM_MAC,
+                     after_install.SCHEDULE_SWITCHED_OFF.format(product=settings.product_name()),
+                     runner.PASS_REASONS[runner.PASS_ROOT_NOT_PERMITTED].split(" (runbook")[0]):
+        assert sentence in mac, sentence
+    for place in (f"~/Library/Application Support/{settings.DATA_HOME_NAME}",
+                  f"~/Library/Application Support/{settings.product_name()}",
+                  f"~/Library/LaunchAgents/{scheduling.LAUNCH_AGENT_LABEL}.plist",
+                  f"launchctl bootout gui/$(id -u)/{scheduling.LAUNCH_AGENT_LABEL}"):
+        assert place in mac, place
+    assert f"~/Library/Application Support/{settings.EARLIER_PRODUCT_NAME}/error.log" in mac
+    # Section 8, item 13 of the SPEC: the Windows lines named a folder the app does not make.
+    assert re.findall(r"%LOCALAPPDATA%\\tax-document-tracker(?!-pilot)", runbook) == []
+    assert f"%LOCALAPPDATA%\\{settings.DATA_HOME_NAME}" in runbook

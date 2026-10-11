@@ -435,8 +435,8 @@ def test_a_long_lived_reader_is_replaced_after_a_crash(tmp_path, in_a_child):
         before = pid_of_the_reader(after)
         answer, failed = content_check.in_a_child(crash, child_readers.a_reader_that_dies_on_a_crash)
         assert answer is None and failed.reason == CRASHED and not failed.transient
-        reading = content_check.extract_bounded(after)
-        assert reading.text and "W-2" in reading.text
+        judgment = content_check.judge_bounded(after, content_check.Questions())
+        assert judgment.has_words and "w2" in judgment.self_named
         assert pid_of_the_reader(after) != before
     assert no_child_left()
 
@@ -450,7 +450,7 @@ def test_the_document_stop_ends_a_page_the_reader_never_finishes(tmp_path, a_sho
     a_short_stop.setattr(content_check, "_CHILD_READER", child_readers.a_page_read_that_never_finishes)
     scan = w2_scan(tmp_path / "scan.pdf")
 
-    reading = content_check.extract_bounded(scan)
+    reading = content_check.judge_bounded(scan, content_check.Questions()).extraction
 
     mark = child_readers.reached(scan, "page")
     assert mark.is_file()                                          # it was inside the page
@@ -631,6 +631,172 @@ def test_a_child_over_its_memory_limit_is_replaced_and_the_next_document_reads(t
     assert no_child_left()
 
 
+# ----------------------------- the memory watch off Windows (R31, SPEC-mac) ----
+
+OFF_WINDOWS = pytest.mark.skipif(sys.platform == "win32", reason="Windows' cap is the job object's")
+
+
+def a_footprint_that_is_over_for(pid_mark: Path, over: int):
+    """A stand-in for the child's memory reading: ``over`` for the one
+    process whose id the mark file holds (the child that is reading the
+    runaway document), a few bytes for every other. The seam is the
+    reading, not the platform."""
+    def footprint(pid, system=None):
+        try:
+            return over if int(pid_mark.read_text()) == pid else 1
+        except (OSError, ValueError):
+            return 1
+
+    return footprint
+
+
+@OFF_WINDOWS
+def test_the_posix_watch_caps_a_child_the_way_the_job_object_does(a_pack_here):
+    """R31: the same 2 GB for a processor child and 6 GB for a child on the
+    graphics card, held by the pass's watch where Windows holds it in a job
+    object - and no job object here to hold it."""
+    for processor_only, cap in ((True, ocr.PROCESSOR_CHILD_MEMORY),
+                                (False, ocr.GRAPHICS_CARD_CHILD_MEMORY)):
+        child = ocr.ReadingChild(processor_only=processor_only)
+        try:
+            assert child.memory_limit == cap
+            assert child._watches_memory and child._job_object is None
+        finally:
+            child.finish()
+
+
+@pytest.mark.skipif(not sys.platform.startswith("linux"), reason="/proc/<pid>/statm is Linux's")
+def test_a_linux_childs_memory_is_its_resident_pages():
+    """R31: the second field of /proc/<pid>/statm, in bytes. A process that
+    touches 64 MB holds at least that much more than it did."""
+    before = ocr._footprint(os.getpid())
+    held = bytearray(b"x" * (64 * 1024**2))
+    after = ocr._footprint(os.getpid())
+    assert before > 0 and after - before >= 48 * 1024**2, (before, after)
+    del held
+    with pytest.raises(OSError):
+        ocr._footprint(2**22 + os.getpid())               # past pid_max: no such process
+
+
+def test_a_macs_memory_is_the_physical_footprint_libproc_reports(monkeypatch):
+    """R31: proc_pid_rusage(pid, RUSAGE_INFO_V2) through ctypes, the field
+    Activity Monitor calls Memory - not the resident size beside it. The
+    library is handed in; the structure is the real one."""
+    asked = []
+
+    def proc_pid_rusage(pid, flavor, buffer):
+        info = buffer._obj
+        info.ri_resident_size, info.ri_phys_footprint = 111, 987_654_321
+        asked.append((pid, flavor))
+        return 0
+
+    monkeypatch.setattr(ocr, "_libproc", lambda: SimpleNamespace(proc_pid_rusage=proc_pid_rusage))
+    assert ocr._footprint(4242, "darwin") == 987_654_321
+    assert asked == [(4242, 2)]                           # RUSAGE_INFO_V2
+
+    monkeypatch.setattr(ocr, "_libproc", lambda: SimpleNamespace(proc_pid_rusage=lambda *a: -1))
+    with pytest.raises(OSError, match="refused process 4242"):
+        ocr._footprint(4242, "darwin")
+
+
+def test_a_platform_with_no_way_to_read_memory_says_so():
+    with pytest.raises(OSError, match="plan9"):
+        ocr._footprint(1, "plan9")
+
+
+@OFF_WINDOWS
+def test_a_reading_past_its_memory_on_posix_ends_as_a_crash_and_is_replaced(tmp_path, in_a_child):
+    """R31, the twin of the Windows job object's test: the child that is
+    past the limit when the pass looks is ended whole, the document gets
+    the crash's "could not be read" with today's words, kept for a person,
+    and the next document is read by a fresh child."""
+    from tests import child_readers
+
+    in_a_child.setattr(ocr, "MEMORY_WATCH_SECONDS", 0.1)
+    big = text_pdf(tmp_path / "big.pdf", "Form W-2 2025")
+    again = text_pdf(tmp_path / "again.pdf", "Form W-2 2025")
+    after = text_pdf(tmp_path / "after.pdf", "Form W-2 2025")
+    over = ocr.PROCESSOR_CHILD_MEMORY + 1
+    in_a_child.setattr(ocr, "_footprint", a_footprint_that_is_over_for(
+        child_readers.reached(big, "text-layer"), over))
+    with ocr.reading_session() as session:
+        outcome = session.run(child_readers.a_text_layer_that_never_finishes, (big,), {}, 60)
+        assert outcome.kind == "died" and outcome.seconds < 30
+        assert outcome.error.endswith("; it had reached its memory limit (2 GB)"), outcome.error
+        assert session.child is None                      # let go, not asked again
+        in_a_child.setattr(ocr, "_footprint", a_footprint_that_is_over_for(
+            child_readers.reached(again, "text-layer"), over))
+        answer, failed = content_check.in_a_child(again, child_readers.a_text_layer_that_never_finishes,
+                                                  stop=60)
+        assert answer is None and failed.reason == CRASHED and not failed.transient
+        pid, _ = who_read(session, after, child_readers.a_reader_that_tells_the_pass)
+        assert running(pid)
+    assert no_child_left()
+
+
+@OFF_WINDOWS
+def test_a_child_under_its_limit_is_left_to_read(tmp_path, in_a_child):
+    """R31: the watch ends a child only when its memory is past the limit -
+    a figure at the limit itself is a reading that goes on."""
+    from tests import child_readers
+
+    in_a_child.setattr(ocr, "MEMORY_WATCH_SECONDS", 0.1)
+    in_a_child.setattr(ocr, "_footprint", lambda pid, system=None: ocr.PROCESSOR_CHILD_MEMORY)
+    slow = text_pdf(tmp_path / "slow.pdf", "Form W-2 2025")
+    child = ocr.ReadingChild(processor_only=True)
+    try:
+        assert child.run(child_readers.the_childs_process_id, (slow,), {}, 60).kind == "read"
+        outcome = child.run(child_readers.a_text_layer_that_never_finishes, (slow,), {}, 1.0)
+        assert outcome.kind == "stopped"                  # by the stop, not by the memory
+    finally:
+        child.finish()
+
+
+@OFF_WINDOWS
+def test_the_watch_does_not_stretch_a_readings_stop(tmp_path, in_a_child):
+    """R31: the wait is in slices, never longer than what is left of the
+    stop, so a slice longer than the stop still ends the reading at the stop."""
+    from tests import child_readers
+
+    in_a_child.setattr(ocr, "MEMORY_WATCH_SECONDS", 30.0)
+    in_a_child.setattr(ocr, "_footprint", lambda pid, system=None: 1)
+    slow = text_pdf(tmp_path / "slow.pdf", "Form W-2 2025")
+    child = ocr.ReadingChild(processor_only=True)
+    try:
+        assert child.run(child_readers.the_childs_process_id, (slow,), {}, 60).kind == "read"
+        outcome = child.run(child_readers.a_text_layer_that_never_finishes, (slow,), {}, 0.6)
+        assert outcome.kind == "stopped" and 0.5 <= outcome.seconds < 5, outcome.seconds
+    finally:
+        child.finish()
+
+
+@OFF_WINDOWS
+def test_a_footprint_that_cannot_be_read_is_no_cap_and_is_said_once(tmp_path, in_a_child, caplog):
+    """R31: when the child's memory cannot be read the reading goes on to
+    the stop - no guessed figure ends it - and the error log says so once,
+    however many slices and children it happens in."""
+    from tests import child_readers
+
+    def unreadable(pid, system=None):
+        raise OSError("no /proc")
+
+    in_a_child.setattr(ocr, "MEMORY_WATCH_SECONDS", 0.1)
+    in_a_child.setattr(ocr, "_footprint", unreadable)
+    in_a_child.setattr(ocr, "_SAID", set())
+    slow = text_pdf(tmp_path / "slow.pdf", "Form W-2 2025")
+    for _ in range(2):
+        child = ocr.ReadingChild(processor_only=True)
+        try:
+            assert child.run(child_readers.the_childs_process_id, (slow,), {}, 60).kind == "read"
+            with caplog.at_level("WARNING", logger=ocr.log.name):
+                outcome = child.run(child_readers.a_text_layer_that_never_finishes, (slow,), {}, 0.8)
+            assert outcome.kind == "stopped"
+        finally:
+            child.finish()
+    said = [r.getMessage() for r in caplog.records if "memory could not be read" in r.getMessage()]
+    assert said == [ocr.MEMORY_UNREADABLE.format(reason="OSError")]
+
+
 def test_a_reader_that_cannot_run_is_not_blamed_on_the_card(monkeypatch, a_card):
     """N-1: with a pack here and not even the processor's engine buildable
     (a model missing), the run log says the reader could not run on this
@@ -700,11 +866,14 @@ def test_a_short_junction_to_a_deep_folder_is_still_too_deep(tmp_path, monkeypat
 # ------------------------------------------------ the awake clock (189) ----
 
 
-def test_time_asleep_does_not_count_toward_the_reading_stop(monkeypatch):
+@pytest.mark.parametrize("watches_memory", [False, True], ids=["one wait (Windows)", "watch slices"])
+def test_time_asleep_does_not_count_toward_the_reading_stop(monkeypatch, watches_memory):
     """SPEC-161 A-F9: the machine sleeps mid-reading. The biased clock (the
     wall, and ``time.monotonic`` on Windows) jumps past the stop; the awake
     clock moves one second. The reading is not ended, and its answer is
-    taken when the machine wakes."""
+    taken when the machine wakes. Both waits are held, on every platform:
+    the single ``poll(left)`` Windows keeps, and the watch's slices (R31),
+    where the memory is never read on Windows."""
     import time
 
     awake = [1000.0]
@@ -736,6 +905,13 @@ def test_time_asleep_does_not_count_toward_the_reading_stop(monkeypatch):
     child._jobs = SimpleNamespace(send=lambda job: None)
     child._answers = Answers()
     child.served = 0
+    child._watches_memory = watches_memory
+
+    def past_its_memory(self):
+        assert watches_memory, "Windows' job object caps the child; the pass never reads its memory"
+        return False
+
+    monkeypatch.setattr(child.__class__, "_past_its_memory", past_its_memory)
     monkeypatch.setattr(child.__class__, "end", lambda self: ended.append(True))
 
     outcome = child.run(len, ("x",), {}, stop)

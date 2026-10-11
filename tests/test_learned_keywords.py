@@ -335,6 +335,7 @@ def test_the_report_writes_nothing_under_the_repository_and_refuses_an_out_path_
 # -------------------------------------------------------------------- lint ----
 
 
+@pytest.mark.corpus
 def test_lint_marks_a_keyword_that_would_misfile_a_corpus_form_and_leaves_the_rest_alone(tmp_path, capsys):
     """A keyword is promoted into the catalog or it is not, and the blank forms
     in tests/irs/ already say where each of them belongs: one that would move a form

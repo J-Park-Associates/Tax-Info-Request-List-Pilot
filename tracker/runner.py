@@ -140,6 +140,19 @@ lock is tried once more at the end of the pass; and one not served two
 passes running exits the pass with :data:`NOT_SERVED_TWICE_EXIT_CODE`
 and is named on the page. A logged pass says it started, and the next
 one says when a start never finished (:data:`PASS_DID_NOT_FINISH`).
+
+**And the pass ends itself off Windows** (SPEC-mac R26). Task Scheduler
+kills a job at its ``ExecutionTimeLimit``, and the lock's stale rule assumes
+it did (137 L6); launchd has no such limit. So a scheduled pass on any other
+system stops as Stop does when the wall clock reaches the run limit less one
+household's budget (:class:`SelfLimitedWatch`, said as :data:`PASS_RUN_LIMIT`),
+and a watchdog thread ends the process at the limit itself
+(:func:`_watch_the_run_limit`): the kernel releases its lock and the
+dead-owner rule clears it. Both read the wall clock, because a lock's age is
+wall time and a Mac's awake clock stops while it sleeps. On a Mac a clients
+folder macOS will not let this program list is its own reason
+(:data:`PASS_ROOT_NOT_PERMITTED`), not "could not be walked": the permission
+is granted to the program asking, and the one launchd starts is the API.
 """
 
 from __future__ import annotations
@@ -152,13 +165,25 @@ import os
 import re
 import subprocess
 import sys
+import threading
 import time
 from collections.abc import Iterable
 from contextlib import ExitStack, nullcontext
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from tracker import checkpoint, content_check, door, errors, firm_cache, ledger, ocr, page_rows, store
+from tracker import (
+    checkpoint,
+    content_check,
+    door,
+    errors,
+    firm_cache,
+    ledger,
+    ocr,
+    page_rows,
+    settings,
+    store,
+)
 from tracker.filer import (
     HOUSEHOLD_NO_ROOM,
     NEEDS_REVIEW,
@@ -170,7 +195,7 @@ from tracker.filer import (
     room_for,
     sweep_stranded_temps,
 )
-from tracker.fsio import append_rotating, write_json_atomically, write_text_atomically
+from tracker.fsio import append_rotating, full_sync, write_json_atomically, write_text_atomically
 from tracker.households import (
     client_folder_missing,
     load_household_info,
@@ -304,6 +329,14 @@ def _spelled(path: Path) -> str:
     return os.path.normcase(os.path.abspath(str(path)))
 
 
+#: The record checkpoint and the files that follow it, which cannot be made
+#: again: the database, its rollback journal, its write-ahead log and shared
+#: memory (P214), and a copy a person renamed ``.damaged``.
+_CHECKPOINT_FILES = (checkpoint.CHECKPOINT_FILENAME, checkpoint.CHECKPOINT_JOURNAL_FILENAME,
+                     checkpoint.CHECKPOINT_WAL_FILENAME, checkpoint.CHECKPOINT_SHM_FILENAME,
+                     checkpoint.CHECKPOINT_DAMAGED_FILENAME)
+
+
 def _set_asides(filename: str) -> str:
     """The pattern decision 159's set-aside gives ``filename`` and its side
     files (``.v15.old``, ``.v15.old.1``, ``.v15.old-wal`` after its name):
@@ -339,9 +372,7 @@ def left_behind(root: Path | None) -> list[Path]:
     # store too, as does decision 209's after-install note; each can be
     # made again, so they are in the delete group.
     beside = (store.STORE_WAL_FILENAME, store.STORE_SHM_FILENAME, PASS_ORDER_FILENAME,
-              checkpoint.CHECKPOINT_FILENAME, checkpoint.CHECKPOINT_JOURNAL_FILENAME,
-              checkpoint.CHECKPOINT_WAL_FILENAME, checkpoint.CHECKPOINT_SHM_FILENAME,
-              checkpoint.CHECKPOINT_DAMAGED_FILENAME, store.RECOVERED_DIR, LAST_PASS_FILENAME,
+              *_CHECKPOINT_FILES, store.RECOVERED_DIR, LAST_PASS_FILENAME,
               AFTER_INSTALL_FILENAME, ERROR_LOG_FILENAME,
               *(f"{ERROR_LOG_FILENAME}.{n}" for n in range(1, ERROR_LOG_BACKUPS + 1)),
               PASSES_DIRNAME)
@@ -375,19 +406,8 @@ def _to_move(path: Path) -> bool:
     committed writes) and shared memory (P214), a copy renamed ``.damaged``,
     its set-asides, and the ``recovered`` folder. The store's set-asides are
     rebuilt from the records, so they are in the delete group."""
-    return (path.name in (checkpoint.CHECKPOINT_FILENAME, checkpoint.CHECKPOINT_JOURNAL_FILENAME,
-                          checkpoint.CHECKPOINT_WAL_FILENAME, checkpoint.CHECKPOINT_SHM_FILENAME,
-                          checkpoint.CHECKPOINT_DAMAGED_FILENAME, store.RECOVERED_DIR)
+    return (path.name in (*_CHECKPOINT_FILES, store.RECOVERED_DIR)
             or fnmatch.fnmatchcase(path.name, _set_asides(checkpoint.CHECKPOINT_FILENAME)))
-
-
-def left_behind_to_move(root: Path | None) -> list[Path]:
-    """The move group of :func:`left_behind`: what cannot be made again or is
-    evidence (:func:`_to_move`), to be moved into the data home and never
-    deleted. Spelled once, here: the first screen's :data:`LEFT_BEHIND_TO_MOVE`
-    and the after-install step that moves them (decision 209, R9) both read
-    it, so neither keeps a list of its own."""
-    return [path for path in left_behind(root) if _to_move(path)]
 
 
 def left_behind_warnings(root: Path | None) -> list[tuple[str, str]]:
@@ -400,8 +420,8 @@ def left_behind_warnings(root: Path | None) -> list[tuple[str, str]]:
     if not found:
         return []
     home = data_home()
-    move = left_behind_to_move(root)
-    delete = [path for path in found if path not in move]
+    move = [path for path in found if _to_move(path)]
+    delete = [path for path in found if not _to_move(path)]
     said = []
     if delete:
         said.append((CODE_LEFT_BEHIND, LEFT_BEHIND.format(paths="; ".join(map(str, delete)), home=home)))
@@ -491,6 +511,12 @@ PASS_NO_ROOT = "no-root"
 PASS_ROOT_REFUSED = "root-refused"
 PASS_ROOT_NOT_CLAIMED = "root-not-claimed"
 PASS_ROOT_UNREADABLE = "root-unreadable"
+#: On a Mac, macOS refused the schedule's own program the clients folder
+#: (SPEC-mac R30): its Files and Folders permission for Google Drive is
+#: granted to the program asking, which for the pass launchd starts is the
+#: API itself, not the app. Its own code, because "could not be walked" sends
+#: a person to the folder and this one sends them to the permission prompt.
+PASS_ROOT_NOT_PERMITTED = "root-not-permitted"
 PASS_RETURN_ERRORS = "return-errors"
 PASS_NOT_SERVED = "not-served-twice"
 #: This machine's record checkpoint could not be asked whether the root is
@@ -509,6 +535,8 @@ PASS_REASONS = {
     PASS_ROOT_REFUSED: "the clients folder was refused",
     PASS_ROOT_NOT_CLAIMED: "the clients folder is not the one this machine's record checkpoint belongs to",
     PASS_ROOT_UNREADABLE: "the clients folder could not be walked",
+    PASS_ROOT_NOT_PERMITTED: ("macOS did not let the schedule read the clients folder; open the app, and "
+                              "allow it when macOS asks (runbook, 'On a Mac')"),
     PASS_RETURN_ERRORS: ("the pass ended with a problem - a return that failed, or a log or page it "
                          "could not write; the practice page and runs.log say which"),
     PASS_NOT_SERVED: ("a household has not been served two passes running; the practice page says "
@@ -718,13 +746,9 @@ IGNORED_NOTE = "{n} system or temporary files in the inbox were left alone"
 #: the run's line mentions the document. Photos and scans are the readings
 #: the owner's speed ceiling will be measured against, and a pass that
 #: quietly abandoned the slow ones could not measure them. The one stop is
-#: the safety stop beside it, ten times that ceiling (decision 137, B1.2).
+#: the reader's safety stop (``content_check.READING_STOP_*``), ten times that
+#: ceiling (decision 137, B1.2).
 SLOW_READING_SECONDS = 20.0
-#: The safety stop, a minute a page and ten minutes a document: the reader
-#: owns them (``tracker.content_check``) and they are named here beside the
-#: number a slow reading is said at, so the two are read together.
-READING_STOP_PAGE_SECONDS = content_check.READING_STOP_PAGE_SECONDS
-READING_STOP_DOCUMENT_SECONDS = content_check.READING_STOP_DOCUMENT_SECONDS
 SLOW_READING_NOTE = "slow reading: {name} took {seconds:.0f} s"
 #: What a pass says, once, when the reader could not start for some of its
 #: files (decision 150): the machine's fault, not the files'. Nothing was
@@ -770,6 +794,25 @@ DATA_FOLDER_PROBLEM = "Data folder problem: {problem}"
 #: two hours while the order below serves the rest next pass. A threshold
 #: stated in advance (UX 9), not measured into place.
 HOUSEHOLD_BUDGET_SECONDS = 15 * 60
+#: launchd has no execution time limit, and the lock's stale rule assumes the
+#: scheduler killed an owner by :data:`RUN_TIME_LIMIT_SECONDS` (137 L6,
+#: SPEC-mac R26). So a scheduled pass off Windows enforces it itself, on the
+#: **wall clock** (the lock's age is wall time, and the reading's awake clock,
+#: 189 A-F9, does not advance while a Mac sleeps): it stops as Stop does at
+#: the limit less one household's budget - after the file it is on, recording
+#: the stop and letting go of its locks - and a watchdog ends the process at
+#: the limit itself, whose lock the dead-owner rule then clears. Windows is
+#: unchanged: Task Scheduler kills the job at its own ``ExecutionTimeLimit``.
+SELF_STOP_AFTER_SECONDS = RUN_TIME_LIMIT_SECONDS - HOUSEHOLD_BUDGET_SECONDS
+#: How often the watchdog looks at the wall clock. A single sleep to the
+#: limit would be measured on the awake clock a Mac stops while asleep.
+WATCHDOG_SLICE_SECONDS = 15.0
+#: The exit code of a pass its own watchdog ended (1 is a return that failed,
+#: 2 is argparse's, 3 is :data:`NOT_SERVED_TWICE_EXIT_CODE`).
+RUN_LIMIT_EXIT_CODE = 4
+#: Why a pass is stopping when it reached the run limit (:class:`SelfLimitedWatch`),
+#: beside ``progress.APP_CLOSED`` and ``progress.ASKED``.
+RUN_LIMIT = "run_limit"
 #: What each working return of a household out of time says. ``n`` is the
 #: files its sort took this pass; nothing is drafted for it this pass.
 OUT_OF_TIME = ("this household's time for this pass ran out after {n} file(s); the rest wait "
@@ -786,6 +829,10 @@ CANCELLED_NO_DRAFT = "not drafted this pass: a person stopped it"
 PASS_APP_CLOSED = ("stopped when the app that started it closed, after {n} file(s); the rest wait "
                    "for the next pass")
 APP_CLOSED_NO_DRAFT = "not drafted this pass: the app that started it closed"
+#: A scheduled pass that reached its own run limit (SPEC-mac R26): a stop
+#: like a person's, at the next file, said with who stopped it.
+PASS_RUN_LIMIT = ("stopped at the run limit after {n} file(s); the rest wait for the next pass")
+RUN_LIMIT_NO_DRAFT = "not drafted this pass: it reached the run limit"
 #: The hint of when each household last completed a pass (decision 189),
 #: beside the store, so it holds household names only where the store
 #: already does and moves with it. A hint, never a record: nothing but the
@@ -823,6 +870,9 @@ WHY_HELD_LOCK = "held lock"
 WHY_NO_ROOM = "no room"
 WHY_FAILED = "failed"
 WHY_CANCELLED = "stopped by a person"
+#: A scheduled pass off Windows that ended itself at the run limit (SPEC-mac
+#: R26): no person stopped it, so it is not :data:`WHY_CANCELLED`.
+WHY_RUN_LIMIT = "reached the run limit"
 #: The run log's line before a logged pass does anything, and what the
 #: next pass says when the last such line has no pass summary after it
 #: (decision 189, SPEC-161 ruling 3): killed, or the machine went off.
@@ -863,6 +913,7 @@ CODE_ORDER_HINT_UNREADABLE = "order-hint-unreadable"
 CODE_NOT_SERVED_TWICE = "not-served-twice"
 CODE_PASS_STOPPED = "pass-stopped"
 CODE_PASS_APP_CLOSED = "pass-app-closed"
+CODE_PASS_RUN_LIMIT = "pass-run-limit"
 CODE_PASS_DID_NOT_FINISH = "pass-did-not-finish"
 CODE_LOG_NOT_WRITTEN = "log-not-written"
 CODE_PAGE_NOT_WRITTEN = "page-not-written"
@@ -938,6 +989,10 @@ class EngagementRun:
     #: A person stopped the pass before this household's work was done
     #: (decision 193): what was done is recorded, the rest waits.
     cancelled: bool = False
+    #: The pass ended itself at the run limit before this household's work was
+    #: done (SPEC-mac R26): a stop like a person's, but nobody's, so it is not
+    #: ``cancelled`` and the run log does not count it as one.
+    run_limit: bool = False
     #: The return whose lock a take met, when ``locked_out`` (decision
     #: 193): the app's notice says who holds it and since when.
     locked_at: Path | None = None
@@ -1399,18 +1454,22 @@ def run_household(
         errors.keep("runner: household pass", exc, name=household.name)
         log.error("A household stopped early (%s)", errors.error_class(exc))
     stopped = watch is not None and watch.stop_asked()
-    closed = stopped and watch.why_stopped == APP_CLOSED
+    why = watch.why_stopped if stopped else ""
     if unreached or any(run.out_of_time for run in working):
         # The household's time ran out (decision 189), or a person stopped
         # it (decision 193, the same deadline brought to now): every working
         # return says which, whichever step it ended in, and the rest waits.
         for run in working:
             if stopped:
-                run.cancelled = True
+                run.cancelled = why != RUN_LIMIT
+                run.run_limit = why == RUN_LIMIT
                 run.out_of_time = False
-                run.warnings.append((PASS_APP_CLOSED if closed else PASS_CANCELLED).format(n=taken))
+                said, no_draft = ((PASS_APP_CLOSED, APP_CLOSED_NO_DRAFT) if why == APP_CLOSED
+                                  else (PASS_RUN_LIMIT, RUN_LIMIT_NO_DRAFT) if why == RUN_LIMIT
+                                  else (PASS_CANCELLED, CANCELLED_NO_DRAFT))
+                run.warnings.append(said.format(n=taken))
                 if run.draft_note == OUT_OF_TIME_NO_DRAFT:
-                    run.draft_note = APP_CLOSED_NO_DRAFT if closed else CANCELLED_NO_DRAFT
+                    run.draft_note = no_draft
             else:
                 run.out_of_time = True
                 run.warnings.append(OUT_OF_TIME.format(n=taken))
@@ -1611,7 +1670,7 @@ def run_engagement(
                             created=created_on(engagement.path) if drafted is None else None):
                 _draft_step(run, dry_run=dry_run, today=today, weekday=weekday)
             else:
-                run.draft_note = _why_no_draft(engagement, today, reminders, weekday)
+                run.draft_note = _why_no_draft(engagement, reminders, weekday)
 
             if not dry_run and not run.error:
                 _view_step(run)
@@ -1673,12 +1732,6 @@ def why_skipped(engagement: Engagement) -> tuple[str, str]:
     if not engagement.active:
         return CODE_INACTIVE, SKIP_INACTIVE
     return "", ""
-
-
-def skipped_because(engagement: Engagement) -> str:
-    """Why this engagement is passed over, or "" if it is not: the sentence
-    half of :func:`why_skipped`."""
-    return why_skipped(engagement)[1]
 
 
 def _worth_a_pass(run: EngagementRun) -> bool:
@@ -1813,21 +1866,33 @@ def _record(engagement_dir: Path, previous: dict | None, event: dict, *,
         record_draft(engagement_dir, event)
 
 
+def _each_own_draft(engagement_dir: Path, approved_since: dt.date | None, act, verb: str) -> list:
+    """Do ``act(path)`` to each of the run's own draft files that is there
+    and that a person has neither edited nor approved this week (decision
+    118), and return what ``act`` returned for each. A file a person owns is
+    left byte for byte; a file the machine cannot touch (open in Word, a sync
+    client mid-upload) is kept in the error log, said as ``verb`` in the run
+    log, and tried again next time."""
+    done = []
+    for name in (DRAFT_FILENAME, NEW_DRAFT_FILENAME):
+        path = engagement_dir / name
+        if not path.is_file() or is_protected(engagement_dir, path, approved_since=approved_since):
+            continue
+        try:
+            done.append(act(path))
+        except OSError as exc:
+            errors.keep("runner", exc, name=path.name)
+            log.warning("Could not %s %s (%s)", verb, path.name, errors.error_class(exc))
+    return done
+
+
 def _retire_unedited_drafts(engagement_dir: Path, *,
                             approved_since: dt.date | None = None) -> None:
     """A held client has no draft file (decision 115): the run's own
     unedited drafts from an earlier week are removed, and one a person has
     edited - or approved this week (decision 118) - is left byte for byte;
     it is their work, not the run's."""
-    for name in (DRAFT_FILENAME, NEW_DRAFT_FILENAME):
-        path = engagement_dir / name
-        if not path.is_file() or is_protected(engagement_dir, path, approved_since=approved_since):
-            continue
-        try:
-            path.unlink()
-        except OSError as exc:    # open in Word, or a sync client mid-upload: next time
-            errors.keep("runner", exc, name=path.name)
-            log.warning("Could not retire %s (%s)", path.name, errors.error_class(exc))
+    _each_own_draft(engagement_dir, approved_since, Path.unlink, "retire")
 
 
 def _refresh_stale_draft(draft, engagement_dir: Path, *, changed_from: dict | None = None,
@@ -1842,21 +1907,12 @@ def _refresh_stale_draft(draft, engagement_dir: Path, *, changed_from: dict | No
     ``last_drafted`` reads this draft day and no weekday pass mistakes the
     quiet week for a missed one.
     """
-    refreshed: list[Path] = []
-    for name in (DRAFT_FILENAME, NEW_DRAFT_FILENAME):
-        path = engagement_dir / name
-        if not path.is_file() or is_protected(engagement_dir, path, approved_since=approved_since):
-            continue
-        try:
-            refreshed.append(write_draft(draft, path=path, changed_from=changed_from))
-        except OSError as exc:    # open in Word, or a sync client mid-upload: next time
-            errors.keep("runner", exc, name=path.name)
-            log.warning("Could not refresh %s (%s)", path.name, errors.error_class(exc))
-    return refreshed
+    return _each_own_draft(
+        engagement_dir, approved_since,
+        lambda path: write_draft(draft, path=path, changed_from=changed_from), "refresh")
 
 
-def _why_no_draft(engagement: Engagement, today: dt.date,
-                  mode: str, weekday: int) -> str:
+def _why_no_draft(engagement: Engagement, mode: str, weekday: int) -> str:
     if not engagement.reminders:
         return "reminders are off for this engagement"
     if mode == REMINDERS_NEVER:
@@ -1997,7 +2053,7 @@ def run_registry(
 def _working(runs: list[EngagementRun]) -> list[EngagementRun]:
     """A household's runs that were owed a pass: not rolled forward, not
     inactive - those skips are not failures and serve nothing."""
-    return [run for run in runs if not skipped_because(run.engagement)]
+    return [run for run in runs if not why_skipped(run.engagement)[0]]
 
 
 def _read_order_hint(report: RunReport) -> tuple[Path | None, dict, bool]:
@@ -2124,7 +2180,7 @@ def _mark_started(path: Path | None, hint: dict, household: Path, *, write: bool
         with path.open("ab") as handle:
             handle.write(line.encode("ascii"))
             handle.flush()
-            os.fsync(handle.fileno())
+            full_sync(handle.fileno())
     except OSError as exc:
         log.warning("Could not mark %s (%s)", path.name, errors.error_class(exc))
 
@@ -2151,6 +2207,8 @@ def _why_not_served(runs: list[EngagementRun]) -> str:
     working = _working(runs)
     if any(run.cancelled for run in working):
         return WHY_CANCELLED
+    if any(run.run_limit for run in working):
+        return WHY_RUN_LIMIT
     if any(run.out_of_time for run in working):
         return WHY_OUT_OF_TIME
     if any(run.locked_out for run in working):
@@ -2210,6 +2268,9 @@ def records_needing_a_person(
         # other machines are not listed.
         errors.keep("runner", exc, name="record checkpoint")
         log.warning("Could not read the record checkpoint (%s)", errors.error_class(exc))
+        # Spelled inline, not through checkpoint_said(): tests/test_errors.py's
+        # static guard knows errors.said() alone as the one sanitizer of an
+        # exception's words (decision 190).
         return siblings, [], [FOREIGN_UNLISTED.format(why=errors.said(exc, (checkpoint.CheckpointError,)))]
 
 
@@ -2964,6 +3025,105 @@ def _parser():
     return parser
 
 
+def wall_clock() -> float:
+    """The wall clock, in seconds (``time.time``): the one the run limit is
+    measured on (SPEC-mac R26), because a lock's age is wall time. The seam a
+    test moves; nothing else here reads the wall clock for the limit."""
+    return time.time()
+
+
+def _end_the_process(code: int) -> None:
+    """End this process now, without cleanup (``os._exit``): the watchdog's
+    last word. The kernel releases the pass's ``flock`` (R19) and its lock is
+    cleared by the dead-owner rule. The seam a test replaces."""
+    os._exit(code)
+
+
+class SelfLimitedWatch(Watch):
+    """A scheduled pass's watch off Windows (SPEC-mac R26): it also *asks to
+    stop* once the wall clock passes :data:`SELF_STOP_AFTER_SECONDS` from the
+    pass's start, which the sort and the scan take as they take a person's
+    Stop - at the next file, recording what was done and letting go of the
+    locks - and says :data:`RUN_LIMIT` as the reason. It never replaces the
+    reasons the base watch knows: a scheduled pass is not stoppable from the
+    app, so those are only ever the shell's pipe breaking."""
+
+    def __init__(self, *args, started_at: float, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self._stop_at = started_at + SELF_STOP_AFTER_SECONDS
+        self._limit_seen = False
+
+    def stop_asked(self) -> bool:
+        if super().stop_asked():
+            return True
+        if not self._limit_seen and wall_clock() >= self._stop_at:
+            self._limit_seen = True
+            self.say("stopping")
+        return self._limit_seen
+
+    @property
+    def why_stopped(self) -> str:
+        return super().why_stopped or (RUN_LIMIT if self._limit_seen else "")
+
+
+def _limited_from(ns) -> float | None:
+    """The wall-clock moment this pass began, when it ends itself at the run
+    limit (SPEC-mac R26); else ``None``. Only the scheduled job's shape does -
+    the settings folder, no root, no household (Run now names one; the app can
+    Stop it), not a dry run - and only off Windows, where Task Scheduler's own
+    ``ExecutionTimeLimit`` is the scheduler's to enforce. Windows is unchanged."""
+    scheduled = bool(ns.settings and not ns.root and ns.household is None and not ns.dry_run)
+    return wall_clock() if scheduled and settings.host_system() != "nt" else None
+
+
+def _watch_the_run_limit(started_at: float, done: threading.Event) -> threading.Thread:
+    """Start the watchdog (SPEC-mac R26): a daemon thread that looks at the
+    wall clock every :data:`WATCHDOG_SLICE_SECONDS` until ``done`` is set and
+    ends the process at :data:`RUN_TIME_LIMIT_SECONDS` from ``started_at`` -
+    what Task Scheduler's ``ExecutionTimeLimit`` does on Windows, and launchd
+    does not. In slices, never one sleep to the limit: a Mac's sleeping
+    clock stops during sleep and the lock's age does not."""
+    limit_at = started_at + RUN_TIME_LIMIT_SECONDS
+
+    def watch() -> None:
+        while not done.wait(WATCHDOG_SLICE_SECONDS):
+            if wall_clock() >= limit_at:
+                log.error("The pass reached its run limit of %s seconds and was ended", RUN_TIME_LIMIT_SECONDS)
+                _end_the_process(RUN_LIMIT_EXIT_CODE)
+                return
+
+    thread = threading.Thread(target=watch, name="run-limit-watchdog", daemon=True)
+    thread.start()
+    return thread
+
+
+def _refuse_a_root_macos_withholds(root: str) -> None:
+    """On a Mac, a root macOS will not let this program list is its own
+    refusal (SPEC-mac R30): :data:`PASS_ROOT_NOT_PERMITTED`. The walk
+    would otherwise meet a ``PermissionError`` as a folder it cannot list -
+    a misfit, or "not a folder" on Python 3.13 and later - and say the root
+    was unreadable. The Files and Folders permission for Google Drive is
+    granted per program, and the pass launchd starts is the API itself, so
+    the app being allowed says nothing about it. Asked first, before any
+    discovery; nothing is read."""
+    if settings.host_system() != "darwin":
+        return
+    try:
+        _list_the_root(root)
+    except PermissionError:
+        raise PassFailed(PASS_ROOT_NOT_PERMITTED,
+                         f"Clients folder problem: {PASS_REASONS[PASS_ROOT_NOT_PERMITTED]}") from None
+    except OSError:
+        return          # not here: the walk says it in its own words
+
+
+def _list_the_root(root: str) -> None:
+    """Ask the operating system to open the root's listing, and read none of
+    it. The seam a test moves."""
+    with os.scandir(root):
+        pass
+
+
 def main(argv: list[str] | None = None) -> int:
     """The command line, as a function: ``python -m tracker.runner`` and the
     packaged executable in runner mode (``api_entry.py``) both call this.
@@ -3018,6 +3178,12 @@ def main(argv: list[str] | None = None) -> int:
         reached = {"root": ""}
         if last is not None:
             _say_last_pass(last, started=started, ended=None, root="", result=PASS_RUNNING)
+        # A scheduled pass off Windows ends itself at the run limit (SPEC-mac
+        # R26): launchd has no execution time limit to do it.
+        ns.limited_from = _limited_from(ns)
+        done = threading.Event()
+        if ns.limited_from is not None:
+            _watch_the_run_limit(ns.limited_from, done)
         try:
             code = _pass(ns, parser, reached)
         except BaseException as exc:
@@ -3039,6 +3205,8 @@ def main(argv: list[str] | None = None) -> int:
                 _print_line(json.dumps(failure_reply(exc.code, "refused"), ensure_ascii=True))
                 return 1
             raise
+        finally:
+            done.set()          # the watchdog's job ends with the pass
         if last is not None:
             reason = (PASS_NOT_SERVED if code == NOT_SERVED_TWICE_EXIT_CODE
                       else reached.get("reason") or PASS_RETURN_ERRORS if code else "")
@@ -3114,7 +3282,10 @@ def _say_last_pass(path: Path, **said) -> None:
 def _pass(ns, parser, reached: dict) -> int:
     """The pass itself, after the command line is read: :func:`main`'s body,
     apart so ``main`` can record how it ended. ``reached["root"]`` is set
-    once the root is known and allowed."""
+    once the root is known and allowed. ``ns.limited_from`` is the wall-clock
+    moment a scheduled pass off Windows began (SPEC-mac R26), set by ``main``
+    beside its watchdog, else ``None``: the pass then stops itself at the run
+    limit less a household's budget."""
     # The run log is the data home's (decision 186): the flag alone means
     # log_path(), a whole path means that file (CI names one), and a
     # relative one is refused - it would land in the working folder, which
@@ -3183,6 +3354,7 @@ def _pass(ns, parser, reached: dict) -> int:
         raise PassFailed(PASS_ROOT_NOT_CLAIMED, f"Clients folder problem: {exc}") from None
 
     reached["root"] = root
+    _refuse_a_root_macos_withholds(root)
     try:
         # Inside a reading (pilot P215): discovery only reads - its
         # catch-ups are derivation - so the machine's answers are held for
@@ -3241,8 +3413,12 @@ def _pass(ns, parser, reached: dict) -> int:
     # stopped, and stops at its next file when the app that started it
     # closes. A dry run keeps no file.
     lines = ns.progress_lines
-    watch = Watch(None if ns.dry_run else store.store_path().parent,
-                  emit=_emit_line if lines else None, limit_seconds=RUN_TIME_LIMIT_SECONDS)
+    folder = None if ns.dry_run else store.store_path().parent
+    emit = _emit_line if lines else None
+    limited_from = getattr(ns, "limited_from", None)
+    watch = (Watch(folder, emit=emit, limit_seconds=RUN_TIME_LIMIT_SECONDS) if limited_from is None
+             else SelfLimitedWatch(folder, emit=emit, limit_seconds=RUN_TIME_LIMIT_SECONDS,
+                                   started_at=limited_from))
     outcome = "failed"
     unread: list[str] = []
     try:
@@ -3257,7 +3433,7 @@ def _pass(ns, parser, reached: dict) -> int:
             run_registry(loaded, today=when, dry_run=ns.dry_run, reminders=ns.reminders,
                          weekday=day, only=ns.only, report=result, watch=watch,
                          household=household)
-            outcome = ("stopped" if any(run.cancelled for run in result.runs)
+            outcome = ("stopped" if any(run.cancelled or run.run_limit for run in result.runs)
                        else "out_of_time" if any(run.out_of_time for run in result.runs)
                        else "finished")
     except Exception as exc:
@@ -3282,6 +3458,15 @@ def _pass(ns, parser, reached: dict) -> int:
                   if said.startswith(PASS_APP_CLOSED.split("{", 1)[0])]
         for said in dict.fromkeys(closed or [PASS_APP_CLOSED.format(n=0)]):
             _warn(result, CODE_PASS_APP_CLOSED, said)
+    if watch.why_stopped == RUN_LIMIT:
+        # A scheduled pass that stopped itself at the run limit (SPEC-mac
+        # R26) says so as the pass's own, as a closed app's is: no one is
+        # at the console to be told, so it is on the page and its code is in
+        # the run log.
+        reached_limit = [said for run in result.runs for said in run.warnings
+                         if said.startswith(PASS_RUN_LIMIT.split("{", 1)[0])]
+        for said in dict.fromkeys(reached_limit or [PASS_RUN_LIMIT.format(n=0)]):
+            _warn(result, CODE_PASS_RUN_LIMIT, said)
     # With progress lines the console is the shell's pipe (decision 203):
     # what is said below goes in the final line instead.
     say = (lambda text: None) if lines else print

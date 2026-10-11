@@ -333,7 +333,7 @@ def test_the_fold_is_the_last_event_for_each_original():
     later = ledger.new(ledger.ASSIGNED_BY_PERSON, key="p/one", row=row(decision="Filed"))
     other = ledger.new(ledger.FILED, key="p/two", row=row(original_name="1098.pdf"))
 
-    folded = ledger.fold([first, other, later])
+    folded = ledger.replay([first, other, later]).rows
     assert set(folded) == {"p/one", "p/two"}
     assert folded["p/one"]["decision"] == "Filed"
     assert folded["p/two"]["original_name"] == "1098.pdf"
@@ -344,7 +344,7 @@ def test_a_row_that_followed_a_moved_original_leaves_no_ghost_behind():
     moved = ledger.new(ledger.PRESERVED, key="p/moved", was="p/one",
                        row=row(pbc_location="p/moved"))
 
-    assert set(ledger.fold([first, moved])) == {"p/moved"}
+    assert set(ledger.replay([first, moved]).rows) == {"p/moved"}
 
 
 def test_a_row_that_changed_identity_keeps_the_place_the_index_keeps_it_in():
@@ -357,14 +357,14 @@ def test_a_row_that_changed_identity_keeps_the_place_the_index_keeps_it_in():
     moved = ledger.new(ledger.PRESERVED, key="p/elsewhere", was="p/one",
                        row=row(pbc_location="p/elsewhere"))
 
-    assert list(ledger.fold([one, two, three, moved])) == ["p/elsewhere", "p/two", "p/three"]
+    assert list(ledger.replay([one, two, three, moved]).rows) == ["p/elsewhere", "p/two", "p/three"]
 
 
 def test_the_statuses_are_built_up_across_the_passes_that_changed_something():
     one = ledger.new(ledger.SCANNED, statuses={"A01": {"status": "Missing"}})
     two = ledger.new(ledger.SCANNED, statuses={"A01": {"status": "Received"}})
 
-    assert ledger.statuses([one, two]) == {"A01": {"status": "Received"}}
+    assert ledger.replay([one, two]).statuses == {"A01": {"status": "Received"}}
 
 
 def taught(identifier: str, keyword: str) -> dict:
@@ -477,7 +477,7 @@ def test_a_pass_records_what_it_filed_and_what_it_parked(engagement):
     events = ledger.read_events(engagement)
     names = [e[ledger.EVENT_KEY] for e in events if e[ledger.EVENT_KEY] in ledger.ROW_EVENTS]
     assert sorted(names) == [ledger.FILED, ledger.PARKED]
-    folded = ledger.fold(events)
+    folded = ledger.replay(events).rows
     assert folded == {ledger_key(e): asdict(e) for e in read_index(engagement)}
 
 
@@ -512,7 +512,7 @@ def test_a_scan_that_changes_a_status_records_it(engagement):
     scan_engagement(engagement, today=DAY2)
 
     assert ledger.head(engagement) != head
-    assert ledger.statuses(ledger.read_events(engagement))["A01"]["status"] == "Received"
+    assert ledger.replay(ledger.read_events(engagement)).statuses["A01"]["status"] == "Received"
 
 
 # --------------------------------------------------------- the readers ----
@@ -534,7 +534,7 @@ def test_the_index_is_the_record_folded_and_nothing_else(engagement):
     # The same rows, in the same order. The order is the audit trail's and
     # there is no second copy of it any more: the fold lays it and the
     # store's position column keeps it (decision 102).
-    assert [asdict(e) for e in rows] == list(ledger.fold(ledger.read_events(engagement)).values())
+    assert [asdict(e) for e in rows] == list(ledger.replay(ledger.read_events(engagement)).rows.values())
     assert list(engagement.glob("*.xlsx")) == []
 
 
@@ -560,7 +560,7 @@ def test_every_status_comes_from_the_record_and_nowhere_else(engagement):
     drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
     sort(engagement, today=DAY1)
     scan_engagement(engagement, today=DAY1)
-    assert ledger.statuses(ledger.read_events(engagement))["A01"]["status"] == Status.RECEIVED
+    assert ledger.replay(ledger.read_events(engagement)).statuses["A01"]["status"] == Status.RECEIVED
 
     by_id = {item.identifier: item for item in load_manifest(engagement)}
     assert by_id["A01"].status == Status.RECEIVED
@@ -651,7 +651,7 @@ def test_the_cli_prints_what_the_folder_holds(tmp_path):
     ).stdout
     assert f"events: {len(ledger.read_events(engagement))}" in out
     assert "rows:     1" in out
-    assert f"rules:    {len(ledger.rules(ledger.read_events(engagement)))}" in out
+    assert f"rules:    {len(ledger.replay(ledger.read_events(engagement)).rules)}" in out
     assert ledger.head(engagement) in out
 
 
@@ -678,7 +678,7 @@ def test_a_copy_moved_event_folds_as_a_row_event_in_both_folds_and_check_agrees(
     [row] = read_index(engagement)
     assert row.decision == FILE_MOVED and moved_to(row)
     # The fold from the first line, and the store's line-at-a-time replay.
-    assert ledger.fold(events) == {ledger_key(e): asdict(e) for e in read_index(engagement)}
+    assert ledger.replay(events).rows == {ledger_key(e): asdict(e) for e in read_index(engagement)}
     conn = store.connect()
     assert store.check(conn, tmp_path, engagement) == []
     assert conn.execute(
@@ -716,7 +716,7 @@ def test_a_moving_event_folds_to_an_open_intent_and_the_row_event_that_names_its
     assert [e[ledger.EVENT_KEY] for e in events][-1] == ledger.MOVING
     assert list(open_now) == [A_ROW_ORIGINAL]
     assert open_now == {events[-1][ledger.KEY_KEY]: events[-1]}
-    assert ledger.fold(events) == {}                 # and no row yet: it was not recorded
+    assert ledger.replay(events).rows == {}                 # and no row yet: it was not recorded
 
     conn = store.connect()
     assert store.open_intents(conn, engagement) == list(open_now.values())
@@ -735,7 +735,7 @@ def test_a_moving_event_folds_to_an_open_intent_and_the_row_event_that_names_its
     closed = ledger.read_events(engagement)
     assert ledger.replay(closed).intents == {}
     assert store.open_intents(store.connect(), engagement) == []
-    assert list(ledger.fold(closed)) == [A_ROW_ORIGINAL]
+    assert list(ledger.replay(closed).rows) == [A_ROW_ORIGINAL]
     assert store.check(store.connect(), tmp_path, engagement) == []
 
 

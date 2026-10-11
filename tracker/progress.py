@@ -134,11 +134,17 @@ def _fields(pass_id: int, event: str, fields: dict) -> dict:
     return said
 
 
-def line(pass_id: int, event: str, **fields) -> str:
+def _encoded(said: dict) -> str:
     """One progress line: one ASCII JSON object under :data:`PROGRESS_KEY`,
     ending in a newline, so a reader splitting stdout on newlines can never
-    see half of one."""
-    return json.dumps({PROGRESS_KEY: _fields(pass_id, event, fields)}, ensure_ascii=True) + "\n"
+    see half of one. The one place a line is encoded."""
+    return json.dumps({PROGRESS_KEY: said}, ensure_ascii=True) + "\n"
+
+
+def line(pass_id: int, event: str, **fields) -> str:
+    """:func:`_encoded` for a line built from its parts (the tests read the
+    format through this; a running pass encodes the line it also keeps)."""
+    return _encoded(_fields(pass_id, event, fields))
 
 
 def count_line(done: int, total: int) -> str:
@@ -304,25 +310,23 @@ class Watch:
         said = _fields(self.pass_id, event, fields)
         if self.emit is not None:
             try:
-                self.emit(json.dumps({PROGRESS_KEY: said}, ensure_ascii=True) + "\n")
-            except OSError as exc:
-                # Nobody is listening any more (decision 203): the app that
-                # started this pass closed, and its pipe broke - EPIPE here,
-                # EINVAL on Windows, both OSError. That is a stop, the same
-                # as a person's, at the next file: what was done is
-                # recorded, the locks are let go and the rest waits (119).
-                # Not a kill, which would leave the lock for 2 h 05 m, and
-                # not a pass left running where no one can stop it.
+                self.emit(_encoded(said))
+            except (OSError, ValueError) as exc:
                 from tracker import errors  # at call time, as above
 
                 log.debug("Could not print a progress line (%s)", errors.error_class(exc))
-                self.emit = None
-                self._gone = True
-            except ValueError as exc:
-                # A closed stream in this process, not a reader gone.
-                from tracker import errors  # at call time, as above
-
-                log.debug("Could not print a progress line (%s)", errors.error_class(exc))
+                if isinstance(exc, OSError):
+                    # Nobody is listening any more (decision 203): the app that
+                    # started this pass closed, and its pipe broke - EPIPE here,
+                    # EINVAL on Windows, both OSError. That is a stop, the same
+                    # as a person's, at the next file: what was done is
+                    # recorded, the locks are let go and the rest waits (119).
+                    # Not a kill, which would leave the lock for 2 h 05 m, and
+                    # not a pass left running where no one can stop it. (A
+                    # ValueError is a closed stream in this process, not a
+                    # reader gone.)
+                    self.emit = None
+                    self._gone = True
         self._keep(said)
 
     def stop_asked(self) -> bool:

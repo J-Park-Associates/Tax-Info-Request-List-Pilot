@@ -378,10 +378,11 @@ SAID_WHOLE_ON_PURPOSE = {
     ("after_install.py", "_schedule"): "Task Scheduler refusing a task: the machine's words; and "
                                          "scheduling's DesignationError, always one of its constants",
     ("after_install.py", "move_schedule_here"): "scheduling's DesignationError, always one of its constants",
+    ("after_install.py", "_first_pass"): "launchctl refusing the first pass: the machine's words, as in _schedule (SPEC-mac R27)",
+    ("after_install.py", "_time_machine"): "tmutil refusing an exclusion: the machine's words (SPEC-mac R7)",
+    ("after_install.py", "remove_here"): "launchctl refusing to unload the agent: the machine's words (SPEC-mac R29)",
     ("after_install.py", "_off"): "Task Scheduler refusing to delete this computer's task: the machine's "
                                    "words, as in _schedule (pilot P21)",
-    ("after_install.py", "move_left_behind"): "the mover's own _Taken and _PartlyRemoved, which carry "
-                                              "the left-behind item's name, never a document's words",
     ("ledger.py", "_bytes_of"): "the return's own event log could not be read (SPEC-190 R2: stays)",
     ("ledger.py", "_parse_lines"): "a line of the firm's own event log that does not parse (R2: stays)",
     ("manifest.py", "validated"): "the firm's own date pattern that does not compile",
@@ -715,10 +716,8 @@ def test_the_guard_passes_a_class_and_a_firm_constant(shape):
 #: under the scheduled job no handler is configured and Python's last-resort
 #: handler prints every warning to the console window (decision 190, D-6).
 LOGGED_WHOLE_ON_PURPOSE = {
-    ("content_check.py", "_ocr_pdf"): "ocr.ReaderUnavailable: the machine's words "
-                                      "(an import, a model, a device), never a document's",
-    ("content_check.py", "_ocr_image"): "ocr.ReaderUnavailable: the machine's words "
-                                        "(an import, a model, a device), never a document's",
+    ("content_check.py", "extract_by_ocr"): "ocr.ReaderUnavailable: the machine's words "
+                                            "(an import, a model, a device), never a document's",
 }
 
 #: The names a logger goes by under tracker/, and the calls that log.

@@ -42,9 +42,14 @@ def _bar_ids_and_accelerators() -> tuple[list[str], list[str]]:
     return ids, re.findall(r'"((?:CmdOrCtrl\+[A-Za-z0-9]|F\d+)[^"]*)"', block)
 
 
-def test_the_menus_default_words_are_the_apis_word_for_word():
+def test_the_menus_default_words_are_the_apis_word_for_word(monkeypatch):
     """main.js holds the menu's words so it is there from the first frame
-    (SPEC-shell 5.1); the API's ``MENU`` is the source and they are equal."""
+    (SPEC-shell 5.1); the API's ``MENU`` is the source and they are equal.
+    (On a Mac the reply replaces one word, which another test holds, so this
+    stands in for a machine that is not one.)"""
+    from tracker import settings
+
+    monkeypatch.setattr(settings, "host_system", lambda: "posix")
     assert _menu_words_in_main() == api.MENU
     assert api._vocab()["menu"] == api.MENU
 
@@ -52,14 +57,17 @@ def test_the_menus_default_words_are_the_apis_word_for_word():
 def test_the_menu_has_no_reload_zoom_or_developer_tools():
     main_js = read("app/main.js")
     for role in ("reload", "forceReload", "toggleDevTools", "zoomIn", "zoomOut", "resetZoom",
-                 "togglefullscreen", "viewMenu", "windowMenu", "appMenu"):
+                 "togglefullscreen", "viewMenu", "windowMenu"):
         assert not re.search(rf'role:\s*"{role}"', main_js, flags=re.I), role
     for accelerator in ("CmdOrCtrl+R", "CmdOrCtrl+Shift+R", "CmdOrCtrl+Shift+I", "F12", "Ctrl+R",
                         "CmdOrCtrl+Plus", "CmdOrCtrl+-", "CmdOrCtrl+0", "F11"):
         assert f'"{accelerator}"' not in main_js, accelerator
     assert "devTools: !app.isPackaged" in main_js
-    # Edit is Windows' own by role; Exit is the quit role; nothing else is.
-    assert re.findall(r'role:\s*"(\w+)"', main_js) == ["editMenu", "quit"]
+    # Edit is the platform's own by role; Exit is the quit role; and a Mac's
+    # first menu is the application menu, by role, built on darwin alone
+    # (SPEC-mac R14); nothing else is a role.
+    assert re.findall(r'role:\s*"(\w+)"', main_js) == ["editMenu", "quit", "appMenu"]
+    assert 'return mac ? [{ role: "appMenu" }, ...bar] : bar;' in main_js
 
 
 def test_every_accelerator_is_named_once():
@@ -146,9 +154,14 @@ const [mainJs, scenarioJson] = process.argv.slice(2);
 const sc = JSON.parse(scenarioJson);
 // Off Windows the fallback is Electron's userData; "win32" is %LOCALAPPDATA%.
 Object.defineProperty(process, "platform", { value: sc.platform || "linux" });
+// A Mac is refused below Apple silicon and macOS 14 (SPEC-mac R6), so a scenario
+// that stands in for one says which chip and which Darwin release it has.
+if (sc.arch) Object.defineProperty(process, "arch", { value: sc.arch });
+if (sc.release) require("os").release = () => sc.release;
 if (sc.localAppData !== undefined) process.env.LOCALAPPDATA = sc.localAppData;
 process.resourcesPath = process.resourcesPath || "/resources";
-const log = { menus: [], popups: [], sends: [], opened: [], revealed: [], answers: [], backgrounds: [], windowOptions: null };
+const log = { menus: [], popups: [], sends: [], opened: [], revealed: [], answers: [], backgrounds: [], windowOptions: null,
+              userModelIds: [], spawned: [] };
 let openHandler = null;
 let menuHandler = null;
 let trackerHandler = null;
@@ -189,7 +202,7 @@ class BrowserWindow {
 }
 const electron = {
   app: { isPackaged: !!sc.packaged, requestSingleInstanceLock: () => true, quit() {}, on() {},
-         setPath() {}, setAppUserModelId() {},
+         setPath() {}, setAppUserModelId(id) { log.userModelIds.push(id); },
          getPath: (name) => { if (name === "appData") return "appdata";
                               if (!sc.userData) throw new Error("no such path"); return sc.userData; },
          whenReady: () => track(Promise.resolve()) },
@@ -219,6 +232,7 @@ const listReply = () => ({ vocab: { commands: ["list", "after-install"], menu: s
                                     shell: { error_log: sc.errorLog } }, paths: sc.paths });
 const fakeSpawn = (cmd, args) => {
   const proc = new EventEmitter();
+  log.spawned.push(cmd);
   proc.stdout = new EventEmitter();
   proc.stdout.setEncoding = () => {};
   proc.stderr = new EventEmitter();
@@ -330,6 +344,129 @@ def test_the_menu_is_set_before_the_first_frame_from_the_apis_words_in_both_buil
                               _word("exit")]
         exit_item = _flat(menu)[_word("exit")]
         assert exit_item["role"] == "quit" and not exit_item.get("accelerator")
+
+
+#: Stands the harness in for an Apple silicon Mac on macOS 15 (Darwin 24).
+MAC = {"platform": "darwin", "arch": "arm64", "release": "24.1.0"}
+
+
+def _top(menu: list[dict]) -> list[str]:
+    return [top.get("label") or top.get("role") for top in menu]
+
+
+def _without_mnemonics(items: list[dict]) -> list[dict]:
+    """The same menu with the Windows ampersand taken out of every label."""
+    return [{**item, **({"label": item["label"].replace("&", "")} if item.get("label") else {}),
+             **({"submenu": _without_mnemonics(item["submenu"])} if item.get("submenu") else {})}
+            for item in items]
+
+
+def test_a_mac_gets_the_application_menu_first_and_file_has_no_exit(tmp_path):
+    """SPEC-mac R14: on darwin the bar starts with the application menu (a
+    role: About, Hide, Hide Others and Quit with Cmd+Q are Electron's), File
+    loses its Exit and the separator before it, and every other menu is the
+    same. Quit lives in the app menu, so there is exactly one way to it."""
+    [mac] = _run(tmp_path, [], **MAC)["menus"]
+    [other] = _run(tmp_path, [], platform="linux")["menus"]
+    assert mac[0] == {"role": "appMenu"}
+    file_items = [i.get("label") or "-" for i in mac[1]["submenu"]]
+    assert file_items == [_word("new_household"), _word("change_root"), _word("open_root")]
+    assert not any(i.get("role") == "quit" for top in mac[1:] for i in top.get("submenu") or [])
+    # Everything after File is the other platforms' menu, to the mnemonic - but
+    # Tools, which has the Mac's one item more (SPEC-mac R29, below).
+    remove = {"label": _word("remove_schedule_here"), "enabled": True}
+    tools = [top for top in mac if top.get("label") == _word("tools").replace("&", "")][0]
+    assert remove in tools["submenu"]
+    without = [{**top, "submenu": [i for i in top["submenu"] if i != remove]} if top is tools else top
+               for top in mac]
+    assert without[2:] == _without_mnemonics(other)[1:]
+    assert mac[1]["label"] == other[0]["label"].replace("&", "")
+    assert mac[1]["submenu"] == _without_mnemonics(other[0]["submenu"])[:3]
+    # No other platform has it, and Windows and Linux keep Exit exactly as before.
+    for platform in ("win32", "linux"):
+        [menu] = _run(tmp_path, [], platform=platform)["menus"]
+        assert menu[0]["label"] == _word("file") and menu[0].get("role") is None
+        assert [i.get("label") or "-" for i in menu[0]["submenu"]][-2:] == ["-", _word("exit")]
+
+
+def test_a_mac_shows_no_windows_mnemonic_and_every_other_platform_keeps_it(tmp_path):
+    """The & in &View, &Tools, &Help and Show &Under Construction is Alt+letter on
+    Windows; a Mac has none, so no label there carries one (SPEC-mac R11)."""
+    def labels(menu):
+        found = []
+        for top in menu:
+            found.append(top.get("label") or "")
+            found += [item.get("label") or "" for item in top.get("submenu") or []]
+        return found
+
+    [mac] = _run(tmp_path, [], **MAC)["menus"]
+    [win] = _run(tmp_path, [], platform="win32")["menus"]
+    assert not any("&" in label for label in labels(mac))
+    assert {"&Tools", "&View", "&Help", "Show &Under Construction"} <= set(labels(win))
+    assert {"Tools", "View", "Help", "Show Under Construction"} <= set(labels(mac))
+
+
+def test_only_a_mac_has_remove_the_schedule_from_this_mac_and_it_needs_no_clients_folder(tmp_path):
+    """SPEC-mac R29: dragging the app to the Bin leaves its launchd agent behind, so a
+    Mac's Tools menu gains one item after Repair Schedule - the API's word, enabled from
+    the first frame (it needs no clients folder) and answered by the page; no other
+    system's menu has it."""
+    assert _menu_words_in_main()["remove_schedule_here"] == "Remove the Schedule From This Mac…"
+    assert _word("remove_schedule_here") == "Remove the Schedule From This Mac…" == api.MENU["remove_schedule_here"]
+    [mac] = _run(tmp_path, [], **MAC)["menus"]
+    tools = [top for top in mac if top.get("label") == "Tools"][0]
+    labels = [i.get("label") for i in tools["submenu"]]
+    assert labels[labels.index(_word("repair_schedule")) + 1] == _word("remove_schedule_here")
+    assert next(i for i in tools["submenu"] if i.get("label") == _word("remove_schedule_here"))["enabled"]
+    for platform in ("win32", "linux"):
+        [menu] = _run(tmp_path, [], platform=platform)["menus"]
+        assert _word("remove_schedule_here") not in _flat(menu), platform
+    clicked = _run(tmp_path, [{"clickBar": _word("remove_schedule_here")}], **MAC)
+    assert clicked["sends"] == [{"channel": "menu", "message": {"id": "remove_schedule_here", "token": ""}}]
+
+
+def test_a_right_click_menu_has_no_windows_mnemonic_on_a_mac_either(tmp_path):
+    ran = _run(tmp_path, [{"menu": {"popup": "household", "enable": []}}], **MAC)
+    assert not any("&" in (item.get("label") or "") for item in ran["popups"][0]["items"])
+
+
+def test_the_app_user_model_id_is_set_on_windows_only(tmp_path):
+    """SPEC-mac R14: the taskbar-grouping id is a Windows thing; the same string
+    is the bundle's identifier on a Mac, given to the packager."""
+    for where, expected in (({"platform": "win32"}, ["com.jparkassociates.taxdocumentconsole"]), (MAC, []),
+                            ({"platform": "linux"}, [])):
+        assert _run(tmp_path, [], **where)["userModelIds"] == expected, where
+
+
+def test_the_frozen_api_has_an_exe_suffix_on_windows_alone(tmp_path):
+    """SPEC-mac R14: packaged, the shell starts resources/<apiName>/<apiName>.exe on
+    Windows and the same name without the suffix on a Mac (and Linux)."""
+    api_name = json.loads(read("app/package.json"))["config"]["apiName"]
+    for where, suffix in (({"platform": "win32"}, ".exe"), (MAC, ""), ({"platform": "linux"}, "")):
+        ran = _run(tmp_path, [{"tracker": ["list"]}], packaged=True, **where)
+        assert ran["spawned"], where
+        for command in ran["spawned"]:
+            assert re.fullmatch(rf".*[\\/]{api_name}[\\/]{api_name}{re.escape(suffix)}", command), (where, command)
+
+
+def test_a_mac_learns_finder_where_windows_says_file_explorer(tmp_path):
+    """SPEC-mac R11: main.js keeps the API's default words (the Windows ones, word
+    for word), and the API's own reply on a Mac replaces the one that names a
+    Windows program; the right-click menus then say it."""
+    assert _menu_words_in_main()["show_in_explorer"] == "Show in File Explorer"
+    steps = [{"tracker": ["list"]}, {"menu": {"popup": "file", "enable": ["show_in_explorer"]}}]
+    ran = _run(tmp_path, steps, vocabMenu={**api.MENU, **api.MAC_MENU}, **MAC)
+    assert [i["label"] for i in ran["popups"][0]["items"]][-1] == "Show in Finder"
+    ran = _run(tmp_path, steps, vocabMenu=dict(api.MENU), platform="linux")
+    assert [i["label"] for i in ran["popups"][0]["items"]][-1] == "Show in File Explorer"
+
+
+def test_the_window_icon_stays_the_ico_on_every_platform(tmp_path):
+    """macOS ignores a window icon, so the .ico stays; the bundle's icon is the .icns
+    the packager is given (SPEC-mac R14, R15)."""
+    for where in ({"platform": "win32"}, MAC):
+        icon = _run(tmp_path, [], **where)["windowOptions"]["icon"]
+        assert icon.endswith("icon.ico"), where
 
 
 def test_the_template_carries_the_accelerators_of_the_spec_and_no_others(tmp_path):
@@ -598,8 +735,7 @@ def test_a_word_from_the_api_rebuilds_the_menu_only_when_it_differs(tmp_path):
 
 
 def test_the_window_paints_the_pages_colour_for_the_systems_theme(tmp_path):
-    css = {"pilot-ui.css": ":root { --window-light: #ffffff; }\n:root { --window-dark: #1b1e24; }\n",
-           "style.css": ":root { --bg: #f5f5f5; }"}
+    css = {"pilot-ui.css": ":root { --window-light: #ffffff; }\n:root { --window-dark: #1b1e24; }\n"}
     assert _run(tmp_path, [], css=css)["windowOptions"].get("backgroundColor") == "#ffffff"
     assert _run(tmp_path, [], css=css, dark=True)["windowOptions"].get("backgroundColor") == "#1b1e24"
     # A contrast theme paints its own.
@@ -608,9 +744,9 @@ def test_the_window_paints_the_pages_colour_for_the_systems_theme(tmp_path):
 
 def test_the_window_colour_is_read_defensively(tmp_path):
     # Without the names (the stylesheet before they exist) or without the file: never a thrown error.
-    older = {"pilot-ui.css": ":root { --other: #123456; }", "style.css": ":root { --bg: #f5f5f5; }"}
-    assert _run(tmp_path, [], css=older)["windowOptions"].get("backgroundColor") == "#f5f5f5"
-    none = {"pilot-ui.css": None, "style.css": None}
+    older = {"pilot-ui.css": ":root { --other: #123456; }"}
+    assert _run(tmp_path, [], css=older)["windowOptions"].get("backgroundColor") is None
+    none = {"pilot-ui.css": None}
     ran = _run(tmp_path, [], css=none)
     assert ran["windowOptions"].get("backgroundColor") is None and len(ran["menus"]) == 1
 

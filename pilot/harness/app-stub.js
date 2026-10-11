@@ -28,6 +28,58 @@ function toast(msg) {
   box._t = setTimeout(() => box.classList.add("hidden"), 6000);
 }
 
+// The builder and the per-PC store, as app.js defines them (shell.js and
+// pages.js build with `el` under the name `h`).
+const EL_ATTRIBUTES = new Set([
+  "className", "dataset", "id", "type", "value", "placeholder",
+  "label", "rows", "checked", "selected", "disabled", "hidden", "tabindex", "role",
+  "aria-label", "aria-current", "aria-selected", "aria-expanded", "aria-busy", "aria-hidden",
+  "aria-labelledby", "aria-valuemin", "aria-valuemax", "aria-valuenow", "aria-live",
+  "aria-controls", "aria-description", "aria-keyshortcuts", "aria-disabled", "aria-pressed",
+  "aria-sort", "aria-haspopup",
+]);
+
+function el(tag, attrs = {}, ...children) {
+  const node = document.createElement(tag);
+  for (const [key, value] of Object.entries(attrs)) {
+    if (!EL_ATTRIBUTES.has(key)) throw new Error(`el(): attribute not allowed: ${key}`);
+    if (value === undefined || value === null || value === false) continue;
+    if (key === "className") node.className = value;
+    else if (key === "dataset") Object.assign(node.dataset, value);
+    else if (typeof value === "boolean") node[key] = value;   // checked, selected, disabled
+    else node.setAttribute(key, value);
+  }
+  for (const child of children.flat()) {
+    if (child === null || child === undefined || child === false) continue;
+    node.append(child instanceof Node ? child : String(child));
+  }
+  return node;
+}
+
+function storeRead(key, json = false) {
+  try {
+    const held = window.localStorage.getItem(key);
+    return json && held !== null ? JSON.parse(held) : held;
+  } catch (err) {
+    return null;
+  }
+}
+
+// A null value forgets the key.
+function storeWrite(key, value) {
+  try {
+    if (value === null) window.localStorage.removeItem(key);
+    else window.localStorage.setItem(key, value);
+  } catch (err) {
+    // Not kept past a restart.
+  }
+}
+
+// What a place shows while its read is on its way.
+function shellWaiting() {
+  return [el("span", { className: "visually-hidden" }, screenWords().loading), ...shellSkeleton(3)];
+}
+
 class TrackerError extends Error {
   constructor(result) {
     super(result.error);
@@ -36,7 +88,11 @@ class TrackerError extends Error {
 }
 
 async function call(args, payload) {
-  const result = await window.tracker.call(args, payload);
+  return takeReply(await window.tracker.call(args, payload));
+}
+
+// A reply with an error throws its envelope (the double says no warnings).
+function takeReply(result) {
   if (result.error) throw new TrackerError(result);
   return result;
 }
@@ -166,7 +222,7 @@ async function bootstrap() {
 
 async function saveRoot() {
   try {
-    await call(["set-root"], { root: $("root-input").value });
+    await call(["set-root"], { root: setupDraft.root });
     await bootstrap();
   } catch (err) {
     failed(err, saveRoot);
@@ -220,5 +276,17 @@ function overrideLabel(override, year) {
   return isSetAside(override) && year ? fill(vocab.labels[vocab.overrides.not_applicable].label, { year }) : override || "";
 }
 
-// shell.js reads the setup inputs (#root-input, #firm-input, #phone-input)
-// that index.html keeps hidden for saveRoot().
+// shell.js fills the setup page's draft, which saveRoot() sends.
+let setupDraft = { root: "", firm: "", phone: "" };
+
+// The side sheet is sheet.js's and the rest of these are app.js's; the double
+// has neither, so a Check or Draft reminder step, a dialog or a navigation that
+// would close the sheet says so in a notice or does nothing.
+function closeSheet() {}
+function sheetStateArrived() {}
+const openCheck = () => unanswered("check");
+const openReminder = () => unanswered("draft_reminder");
+const openRoll = () => unanswered("roll_forward");
+const openSafeguards = () => unanswered("safeguards");
+const openAbout = () => unanswered("about");
+const openMisfits = () => unanswered("misfits");

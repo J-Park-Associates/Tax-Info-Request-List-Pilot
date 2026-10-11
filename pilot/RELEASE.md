@@ -1,8 +1,8 @@
 # Pilot 0.3 - release steps
 
 Everything that can be done in the cloud is done. Builds A, B and C are
-merged into `main`, each after an independent review and a fix round
-(`pilot/reviews/review-1.md`, `review-2.md`), followed by the restart and
+merged into `main`, each after an independent review and a fix round,
+followed by the restart and
 after-install fixes (P46, P47) and the Windows contrast-theme support (P50,
 pull request #11), the four 0.3 lanes (P140) and the rename to Tax Document
 Console (P155). The badge in `pilot-content.js` reads **0.3**, so this is the

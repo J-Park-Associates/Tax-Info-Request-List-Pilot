@@ -23,6 +23,11 @@ So there is one way to do it, and it is here:
   :func:`write_bytes_atomically` / :func:`copy_atomically` - the writers
   over it, each flushing its bytes to the disk before the swap, which is
   all most callers want.
+- :func:`full_sync` - the one flush of a descriptor to the disk (a Mac's
+  ``fsync`` does not reach the drive; ``F_FULLFSYNC`` does), which every
+  writer here, and ``runner`` and ``scheduling``, call instead of
+  ``os.fsync``. ``tracker.locking`` holds an identical copy for the
+  modules that may not import this one (SPEC-mac R22).
 - :func:`stranded_temps` - the temps of that shape a killed write left in
   a folder (decision 155), for the module that owns the folder to remove,
   walked never through a link (:func:`is_link`, the package's one test of
@@ -70,6 +75,7 @@ bottom layer, where anything may reach it.
 
 from __future__ import annotations
 
+import errno
 import json
 import logging
 import os
@@ -77,6 +83,7 @@ import re
 import secrets
 import shutil
 import stat
+import sys
 import time
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
@@ -138,6 +145,55 @@ def temp_owner(name: str, *, target: str | None = None) -> int | None:
     return int(matched["pid"])
 
 
+def _on_a_mac() -> bool:
+    """Whether this is macOS, read when called (SPEC-mac, section 4's
+    opening rule) so a test stands in for a Mac by replacing this function
+    and never by changing ``sys.platform``."""
+    return sys.platform == "darwin"
+
+
+#: Whether the one sentence about a volume that refuses a full flush has
+#: been said in this process (:func:`full_sync`).
+_full_sync_said = False
+
+
+def full_sync(fd: int) -> None:
+    """Flush a descriptor's data to the disk itself.
+
+    On macOS ``fsync`` hands the data to the drive and not through the
+    drive's own cache, and SQLite's ``synchronous = FULL`` does no better;
+    only ``fcntl(fd, F_FULLFSYNC)`` reaches the platter or the flash. So on
+    a Mac that is asked for, and where a volume refuses it (``ENOTSUP``,
+    ``EINVAL`` - a network or File Provider volume) the flush falls back to
+    ``os.fsync`` and says so once on the error log, never raising for what
+    the plain flush can still do. Elsewhere it is ``os.fsync``.
+
+    **There are two copies of this function, identical, and a test holds
+    them so** (SPEC-mac R22): ``tracker.fsio`` imports nothing of the
+    package, and ``ledger``, ``locking`` and ``store`` may not import
+    ``fsio``, so the one place a flush is made lives in ``tracker.fsio``
+    (for ``fsio``, ``runner`` and ``scheduling``) and in ``tracker.locking``
+    (for ``locking``, ``ledger`` and ``store``). That is the layering's
+    price; a module that needs a flush calls one of the two and never calls
+    ``os.fsync``.
+    """
+    global _full_sync_said
+    if _on_a_mac():
+        import fcntl
+
+        try:
+            fcntl.fcntl(fd, fcntl.F_FULLFSYNC)
+            return
+        except OSError as exc:
+            if exc.errno not in (errno.ENOTSUP, errno.EINVAL):
+                raise
+            if not _full_sync_said:
+                _full_sync_said = True
+                log.warning("This volume refuses a full flush to the disk; "
+                            "plain fsync is used instead")
+    os.fsync(fd)
+
+
 def _fsync_folder(folder: Path) -> None:
     """Flush a folder's entry for a file just renamed into it, where the
     platform allows.
@@ -154,7 +210,7 @@ def _fsync_folder(folder: Path) -> None:
     except OSError:
         return
     try:
-        os.fsync(handle)
+        full_sync(handle)
     except OSError:
         pass
     finally:
@@ -223,7 +279,7 @@ def write_text_atomically(
         with temp.open("w", encoding=encoding, newline=newline) as handle:
             handle.write(text)
             handle.flush()
-            os.fsync(handle.fileno())
+            full_sync(handle.fileno())
 
 
 def write_bytes_atomically(path: Path, data: bytes) -> None:
@@ -237,7 +293,7 @@ def write_bytes_atomically(path: Path, data: bytes) -> None:
         with temp.open("wb") as handle:
             handle.write(data)
             handle.flush()
-            os.fsync(handle.fileno())
+            full_sync(handle.fileno())
 
 
 def make_writable(path: Path) -> None:
@@ -278,7 +334,7 @@ def copy_atomically(
         shutil.copy2(source, temp)
         make_writable(temp)
         with temp.open("r+b") as handle:
-            os.fsync(handle.fileno())
+            full_sync(handle.fileno())
         if prove is not None:
             prove(temp)
 
@@ -320,16 +376,16 @@ def _born(info: os.stat_result) -> float:
     return max(info.st_mtime, created)
 
 
-#: The reparse tags that make a name a link to somewhere else. A cloud
-#: sync client's placeholder is a reparse point too (its tag is the
-#: client's own) and is a file of the client's, not a link. Moved here from
-#: the filer by decision 155's review, so the sweep's walk and the drop's
-#: walk ask one question.
-_LINK_TAGS = frozenset(
-    tag for tag in (getattr(stat, "IO_REPARSE_TAG_MOUNT_POINT", None),
-                    getattr(stat, "IO_REPARSE_TAG_SYMLINK", None))
-    if tag is not None
-)
+#: The reparse tags that make a name a link to somewhere else: a symbolic
+#: link and a junction (a mount point). Spelled here too, so the rule reads
+#: the same off Windows, where ``lstat`` carries no tag. A cloud sync
+#: client's placeholder is a reparse point too (its tag is the client's own)
+#: and is a file of the client's, not a link. The one set of them: the
+#: sweep's walk, the drop's walk, the firm view's fingerprint and the
+#: after-install step's test-cache job all ask this one question.
+LINK_TAGS = frozenset({getattr(stat, "IO_REPARSE_TAG_SYMLINK", 0xA000000C),
+                       getattr(stat, "IO_REPARSE_TAG_MOUNT_POINT", 0xA0000003)})
+_LINK_TAGS = LINK_TAGS      # the name tests/test_filer.py reads it by
 
 
 def is_link(path: Path | str) -> bool:
@@ -345,7 +401,7 @@ def is_link(path: Path | str) -> bool:
         info = os.lstat(path)
     except OSError:
         return False
-    return stat.S_ISLNK(info.st_mode) or getattr(info, "st_reparse_tag", 0) in _LINK_TAGS
+    return stat.S_ISLNK(info.st_mode) or getattr(info, "st_reparse_tag", 0) in LINK_TAGS
 
 
 def stranded_temps(
@@ -388,9 +444,9 @@ def stranded_temps(
     return sorted(found)
 
 
-def write_json_atomically(path: Path, payload: object, *, indent: int = 2) -> None:
+def write_json_atomically(path: Path, payload: object) -> None:
     """Write ``payload`` as JSON to ``path`` all-or-nothing; the cache and the settings use this."""
-    write_text_atomically(path, json.dumps(payload, indent=indent))
+    write_text_atomically(path, json.dumps(payload, indent=2))
 
 
 #: The file a rotation holds while it turns the log over (decision 186's

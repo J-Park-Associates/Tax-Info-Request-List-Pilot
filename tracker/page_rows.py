@@ -57,13 +57,11 @@ the tokens; this module only keeps what it is handed.
 from __future__ import annotations
 
 import datetime as dt
-import hashlib
 import json
 import logging
 from pathlib import Path
 
 from tracker import errors, firm_cache, settings
-from tracker.fsio import write_text_atomically
 
 log = logging.getLogger(__name__)
 
@@ -90,8 +88,7 @@ def page_head(root: Path | str, today: dt.date) -> dict:
     return {**firm_cache.head(root, today), "rows_format": FORMAT}
 
 
-def _digest(text: str) -> str:
-    return hashlib.blake2b(text.encode("utf-8", "surrogatepass"), digest_size=16).hexdigest()
+_digest = firm_cache.digest_of      # the name tests/test_page_rows.py forges a file with
 
 
 def _token_is_whole(token: object) -> bool:
@@ -134,13 +131,9 @@ def load(path: Path, expected: dict) -> dict[str, dict]:
     The file is two lines: the head and the digest of the second, then the
     entries. The digest is of the entries' text as written, so a file
     damaged into other valid JSON is refused without re-encoding 2 MB."""
-    try:
-        text = path.read_text(encoding="utf-8")
-    except FileNotFoundError:
-        return {}
-    except (OSError, UnicodeDecodeError) as exc:
-        log.warning("The practice page's kept rows could not be read (%s); reading every row",
-                    errors.error_class(exc))
+    text = firm_cache.read_kept(
+        path, "The practice page's kept rows could not be read (%s); reading every row")
+    if text is None:
         return {}
     first, _, rest = text.partition("\n")
     try:
@@ -172,11 +165,7 @@ def save(path: Path, expected: dict, entries: dict[str, dict]) -> None:
     what it must."""
     rest = json.dumps(entries, separators=(",", ":"))
     first = json.dumps({"head": expected, "digest": _digest(rest)}, separators=(",", ":"))
-    try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        write_text_atomically(path, f"{first}\n{rest}")
-    except OSError as exc:
-        log.warning("The practice page's kept rows could not be written (%s)", errors.error_class(exc))
+    firm_cache.save_kept(path, f"{first}\n{rest}", "The practice page's kept rows could not be written (%s)")
 
 
 class Kept:

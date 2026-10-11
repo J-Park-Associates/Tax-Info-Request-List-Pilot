@@ -542,6 +542,8 @@ def test_node_builtins_are_not_dependencies_of_the_shell(repo):
     ("README.md", ("doc", "docs")),
     ("requirements.txt", ("doc", "docs")),
     ("Build App.bat", ("script", "root")),
+    ("build-mac.sh", ("script", "root")),
+    ("setup.command", ("script", "root")),
     ("pyproject.toml", ("file", "root")),
 ])
 def test_type_comes_from_the_suffix_and_layer_from_the_directory(path, expected):
