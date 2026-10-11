@@ -24,6 +24,10 @@
    below. */
 
 :root {
+  /* The native parts (a select's popup, a checkbox's box, a date field, the
+     scrollbar of a textarea) follow the theme the tokens below draw. */
+  color-scheme: light;
+
   /* type */
   --font-ui: "Segoe UI Variable Text", "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
   --font-display: "Segoe UI Variable Display", "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
@@ -127,6 +131,7 @@
 
 @media (prefers-color-scheme: dark) {
   :root {
+    color-scheme: dark;
     --bg-page: var(--window-dark);
     --bg-nav: #15171c;
     --bg-raised: #23272f;
@@ -224,7 +229,7 @@ button, input, select, textarea {
 }
 
 /* Caption size: every 11, 11.5, 12 and 12.5px of style.css. */
-.btn-small, .summary, .rem-status, .rem-edited, .rem-stage,
+.btn-small, .rem-status, .rem-edited, .rem-stage,
 .req-side,
 .field span, .tmpl-head, .tmpl-rules, .editor-table th,
 .editor-table .ed-learned, .editor-table .ed-unlearn,
@@ -253,7 +258,7 @@ th, legend, strong,
 }
 
 /* Figures line up. */
-.editor-table, .summary, .rem-stage-n,
+.editor-table, .rem-stage-n,
 .prior-meta {
   font-variant-numeric: tabular-nums;
 }
@@ -535,7 +540,6 @@ input[type="checkbox"], input[type="radio"],
    not in its list of retired ones). */
 
 .modal-overlay { background: var(--scrim); }
-.btn-primary { color: var(--b-fg); }
 .refused { outline: 2px solid var(--danger); }
 .rem-stage:hover { border-color: var(--stage-ink, var(--border-strong)); background: var(--bg-nav); }
 .rem-edited { background: var(--bg-nav); }
@@ -557,21 +561,28 @@ input[type="checkbox"], input[type="radio"],
   }
 }
 
-/* ── A notice's Details (pilot P257, SPEC-mac-check-fixes 2.1) ───────────
-   The notice stays one line; its Details disclosure, closed, sits under it
-   at the notice's width. The engine's sentence may name a folder, so it
-   wraps anywhere and never widens the notice. */
+/* ── A notice's Details (pilot P257, SPEC-mac-check-fixes 2.1, P264 N12) ──
+   The notice stays one line: its Details disclosure, closed, sits at the
+   right end of that line, before the action and the dismiss, so a closed
+   notice is the 40px of every other. Opened, the disclosure drops under the
+   line at the notice's width, its summary kept at the right so it is the
+   same click to close. The engine's sentence may name a folder, so it wraps
+   anywhere and never widens the notice. */
 
-#notices .notice:has(.notice-detail) { flex-wrap: wrap; align-content: center; }
+#notices .notice:has(.notice-detail) { flex-wrap: wrap; align-content: center; row-gap: 0; }
 #notices .notice-detail {
-  order: 1;
-  flex: 0 0 100%;
-  padding-block: var(--sp-2);
+  flex: 0 0 auto;
   min-width: 0;
   font-size: var(--fs-caption);
   line-height: var(--lh-caption);
 }
+#notices .notice-detail[open] {
+  order: 1;
+  flex: 0 0 100%;
+  padding-block: var(--sp-2);
+}
 #notices .notice-detail > summary { cursor: pointer; color: inherit; width: max-content; }
+#notices .notice-detail[open] > summary { margin-inline-start: auto; }
 #notices .notice-detail-text {
   margin-top: var(--sp-1);
   white-space: pre-wrap;

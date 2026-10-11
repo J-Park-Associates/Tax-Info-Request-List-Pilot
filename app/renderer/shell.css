@@ -1072,16 +1072,21 @@ input, textarea, select { caret-color: var(--text); accent-color: var(--accent);
 .rows.edge-done .row::before { background: var(--st-done); }
 
 /* Needs Review (P149): the reason cards, and each return as a card group. */
+/* A grid, not a wrapping row: six cards were 4 and 2, ragged. Three columns up
+   to 1240px of window, six above it, so six cards are 2 x 3 or 1 x 6. */
 .reason-cards:not(.hidden) {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: var(--sp-2);
   margin: var(--sp-4) var(--sp-8) var(--sp-6);
+}
+@media (min-width: 1241px) {
+  .reason-cards:not(.hidden) { grid-template-columns: repeat(6, minmax(0, 1fr)); }
 }
 .reason-card:not(.hidden) {
   display: grid;
   gap: var(--sp-1);
-  min-width: var(--size-crumb-household);
+  min-width: 0;
   padding: var(--sp-2) var(--sp-4);
   border: 1px solid var(--border);
   border-radius: var(--radius);

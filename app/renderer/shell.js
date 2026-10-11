@@ -19,8 +19,9 @@
 //   shellChanged()      the sort, the lock or the pass's progress changed
 //   shellProgress(said) one progress line of the running pass
 //   shellKey(e)         one keydown, before app.js's own (true = handled)
-//   shellStateArrived(state)  one return's state arrived: draw its page, and
-//                       ask the firm's counts again if the state moved them
+//   shellStateArrived(state)  one return's state arrived: draw the page if it
+//                       reads that state and is not waiting (N3), and ask the
+//                       firm's counts again if the state moved them
 // What this file calls in app.js: the shared helpers el (as `h`),
 // storeRead/storeWrite, takeReply, shellWaiting() and the setupDraft object,
 // and appRouteChanged(route), so the lock (a notice) follows the return on
@@ -57,6 +58,8 @@ let shellPaths = {};           // the list's `paths`: clients_root, status
 let shellLastPass = null;      // the list's last_pass: {text, level, ok, running, when}
 let shellLastPassTimer = null;     // the one last-pass watch timer (P256); null when none is armed
 let shellLastPassAsking = false;   // a `last-pass` ask is on its way: a tick never overlaps itself
+let shellLastPassAt = 0;           // when the last ask was sent (Date.now()); a focus within SHELL_FOCUS_QUIET_MS of it asks nothing
+const SHELL_FOCUS_QUIET_MS = 5000;
 let shellLastPassStopped = false;  // an ask failed and was said once; the next list adopt starts it again
 let shellProgressNow = null;   // the running pass's last line: {n, total}
 let shellFirmNow = { status: "idle", data: null };   // idle, loading, ok, failed
@@ -206,8 +209,9 @@ function shellAdopt(listed) {
 // launchd or Task Scheduler told it nothing and the page kept a stale word
 // until Refresh. It now asks the engine's `last-pass` - one read of one
 // file, no root walk - every `last_pass_watch.running` seconds while a pass
-// runs and every `idle` seconds otherwise, and once at once when the window
-// is clicked into. It asks `list` again only when a pass has ended, as
+// runs and every `idle` seconds otherwise, never while the window is hidden,
+// and once when the window is clicked into unless it asked within the last
+// 5 s (N6). It asks `list` again only when a pass has ended, as
 // decision 203 does for the app's own Sort: the counts, Needs Review and the
 // last-sort line then all follow, as after F5 - the same `list` adopted the
 // same way, never the start-up path (`loadEngagements` re-applies the
@@ -242,7 +246,10 @@ function shellArmLastPass() {
   shellLastPassTimer = setTimeout(shellWatchLastPass, seconds * 1000);
 }
 
-// One tick, from the timer and from the window's focus. During the app's own
+// One tick, from the timer, the window's focus and its being shown again. A
+// hidden window sends nothing (each ask is an engine process, and nobody sees
+// the page catch up); the timer goes on, and shellShown asks at once when the
+// window is back. During the app's own
 // pass nothing is asked (its end asks `list` already), and a reply that lands
 // after the app's own pass began is dropped, not acted on: the pass's end
 // asks `list` itself. A `last-pass` or a `list` that throws stops the watch
@@ -252,11 +259,12 @@ async function shellWatchLastPass() {
   // Before the first list has landed there is no vocabulary and the shell has
   // not learned which commands it may send: the list's adopt starts the watch.
   if (shellLastPassAsking || shellLastPassStopped || !vocab) return;
-  if (scanning) {
+  if (scanning || document.hidden) {
     shellArmLastPass();
     return;
   }
   shellLastPassAsking = true;
+  shellLastPassAt = Date.now();
   try {
     const fresh = (await call(["last-pass"])).last_pass;
     const step = scanning ? "same" : lastPassStep(shellLastPass, fresh);
@@ -285,6 +293,20 @@ async function shellWatchLastPass() {
     shellLastPassAsking = false;
   }
   shellArmLastPass();
+}
+
+// The window was clicked into. A click within a few seconds of an ask asks
+// nothing: the page was just brought up to date, and every click back into the
+// window would otherwise start another engine process.
+function shellFocused() {
+  if (Date.now() - shellLastPassAt < SHELL_FOCUS_QUIET_MS) return;
+  shellWatchLastPass();
+}
+
+// The window is shown again after being hidden or minimised: the watch asked
+// nothing meanwhile, so it asks once now, whatever the last ask's time.
+function shellShown() {
+  if (!document.hidden) shellWatchLastPass();
 }
 
 // The Overview asked now, before the list that would start it has landed:
@@ -561,11 +583,27 @@ function shellFirm() {
 }
 
 // ── the household and return a route names ────────────────────────────
+// Both look a path up in an index of the list on screen. A sort calls
+// shellReturn once per row it compares, so a scan of the list there made a
+// sort of n returns cost n log n scans. The index is built on the first read
+// after a list is adopted (adoptList replaces the array; nothing edits it in
+// place) and belongs to that array, so a later list has its own. The first
+// entry with a path answers, as the scan did.
 function shellHousehold(path) {
-  return households.find((one) => one.path === path) || null;
+  if (shellHousehold.from !== households) {
+    shellHousehold.from = households;
+    shellHousehold.byPath = new Map();
+    for (const one of households) if (!shellHousehold.byPath.has(one.path)) shellHousehold.byPath.set(one.path, one);
+  }
+  return shellHousehold.byPath.get(path) || null;
 }
 function shellReturn(path) {
-  return engagements.find((one) => one.path === path) || null;
+  if (shellReturn.from !== engagements) {
+    shellReturn.from = engagements;
+    shellReturn.byPath = new Map();
+    for (const one of engagements) if (!shellReturn.byPath.has(one.path)) shellReturn.byPath.set(one.path, one);
+  }
+  return shellReturn.byPath.get(path) || null;
 }
 function shellOwnReturns(household) {
   return engagements.filter((one) => one.household === household);
@@ -625,14 +663,33 @@ function shellOpenState() {
   if (!path) return Promise.resolve();
   return showReturn(path).then((drawn) => {
     if (shellRoute !== route) return;
+    // Only a return's page waits on its state (the outline, then the page):
+    // the draw that lifts the wait is this one. A household's or a year's page
+    // was drawn when the route changed and again when the state arrived, if
+    // that state was the one it reads (shellStateArrived): a third draw here
+    // changed nothing.
+    if (route.level !== "return") return;
     shellPageBusy = false;
-    shellPageFailed = route.level === "return" && !drawn;
+    shellPageFailed = !drawn;
     shellDraw();
   });
 }
 
+// Does the page on screen read this state? A firm page is drawn from the
+// firm's counts and never from a return's state, so the state of the file
+// opened on the sheet over it changes nothing under the sheet. A household's
+// or a year's page reads only its own household's state (the caption). A
+// return's page reads the state it shows.
+function shellPageReadsState(state) {
+  const route = shellRoute;
+  if (FIRM_LEVELS.indexOf(route.level) !== -1) return false;
+  if (route.level === "household" || route.level === "year") return Boolean(state.household) && state.household.path === route.household;
+  return true;
+}
+
 // app.js: one return's `state` has arrived (a read, or a write's reply). The
-// page is drawn from it; if what it holds no longer matches the firm's
+// page is drawn from it when it reads that state and is not waiting on its
+// own read (N3); if what it holds no longer matches the firm's
 // counts for that return, the counts are asked again (SPEC 4.2: after any
 // write that changes a count) - never on a plain read, which changes none.
 function shellStateArrived(state) {
@@ -641,7 +698,12 @@ function shellStateArrived(state) {
   // details in the error log) and never escapes to the write's caller, which
   // would say a write that worked had failed.
   try {
-    shellDraw();
+    // The page is drawn from the state when it reads it, and not while a
+    // return's outline waits: shellOpenState draws the page once the wait is
+    // lifted, so a draw here would be the outline again. The rest of the shell
+    // (the sort icon, the lock, the counts) follows every state.
+    if (shellPageBusy || !shellPageReadsState(state)) shellChanged();
+    else shellDraw();
     sheetStateArrived(state);   // sheet.js: the file answered leaves, the next comes
     if (!shellCountsDiffer(state)) return;
     // A load sent after the last write landed may already hold what this
@@ -943,22 +1005,36 @@ function fold(text) {
   return String(text).normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
 }
 
+// The folded form of one name on a list, folded once. Every keystroke asked
+// every household, return and file to be folded again (an NFD pass and a
+// regex each); a name is now folded the first time a search reads it and kept
+// with the object it belongs to, so the next list a reply brings has fresh
+// objects and so a fresh fold, and the old ones go with the old list.
+function foldedName(one, field) {
+  foldedName.cache = foldedName.cache || new WeakMap();
+  let folds = foldedName.cache.get(one);
+  if (folds === undefined) foldedName.cache.set(one, (folds = {}));
+  if (folds[field] === undefined) folds[field] = fold(one[field]);
+  return folds[field];
+}
+
 // `files`: the waiting files the box also finds on Needs Review (P173), each
 // noted with its return and year; choosing one opens Check on it.
 function findOptions(query, files) {
   const needle = fold(query).trim();
   if (!needle) return [];
   const words = screenWords();
-  const waiting = (files || []).filter((one) => fold(one.name).indexOf(needle) !== -1).map((one) => {
+  const max = 8;   // the list shows at most this many; a group never needs to build more, so each is cut before its rows are made
+  const waiting = (files || []).filter((one) => foldedName(one, "name").indexOf(needle) !== -1).slice(0, max).map((one) => {
     const ret = shellReturn(one.return);
     return { name: one.name, note: `${ret ? ret.return_name : ""} ${one.year || ""}`.trim(), check: { ret: one.return, name: one.name, handle: one.handle } };
   });
-  const people = households.filter((one) => fold(one.name).indexOf(needle) !== -1).map((one) => ({
+  const people = households.filter((one) => foldedName(one, "name").indexOf(needle) !== -1).slice(0, max).map((one) => ({
     name: one.name,
     note: fill(shellOwnReturns(one.path).length === 1 ? words.counts.one_return : words.counts.returns, { n: shellOwnReturns(one.path).length }),
     route: { level: "household", household: one.path },
   }));
-  const returns = engagements.filter((one) => fold(one.return_name).indexOf(needle) !== -1).map((one) => {
+  const returns = engagements.filter((one) => foldedName(one, "return_name").indexOf(needle) !== -1).slice(0, max).map((one) => {
     const owner = shellHousehold(one.household);
     return {
       name: one.return_name,
@@ -966,10 +1042,29 @@ function findOptions(query, files) {
       route: { level: "return", household: one.household, year: one.year, ret: one.path },
     };
   });
-  return [...waiting, ...people, ...returns].slice(0, 8);
+  return [...waiting, ...people, ...returns].slice(0, max);
+}
+
+// A keystroke asks for the list; the list is drawn once the typing pauses, so
+// "smith" typed at speed is one search, not five. Emptying the box hides the
+// list at once. Anything that needs the list as it is now (an arrow, Enter,
+// the box gaining focus) draws it first, so a key never acts on the list of
+// the letter before.
+const SHELL_FIND_WAIT_MS = 80;
+let shellFindTimer = null;   // the one pending draw; null when none waits
+
+function drawFoundSoon() {
+  clearTimeout(shellFindTimer);
+  if (!$("find").value.trim()) {
+    drawFound();
+    return;
+  }
+  shellFindTimer = setTimeout(drawFound, SHELL_FIND_WAIT_MS);
 }
 
 function drawFound() {
+  clearTimeout(shellFindTimer);
+  shellFindTimer = null;
   hideTip();
   const list = $("find-list");
   const box = $("find");
@@ -996,6 +1091,8 @@ function drawFound() {
 }
 
 function hideFound() {
+  clearTimeout(shellFindTimer);   // a list hidden is not drawn again by a keystroke already waiting
+  shellFindTimer = null;
   const list = $("find-list");
   list.hidden = true;
   list.replaceChildren();
@@ -1417,6 +1514,7 @@ function shellKey(e) {
 }
 
 function findKey(e) {
+  if (shellFindTimer !== null && (e.key === "ArrowDown" || e.key === "ArrowUp" || e.key === "Enter")) drawFound();
   if (e.key === "ArrowDown" || e.key === "ArrowUp") {
     e.preventDefault();
     moveFound(e.key === "ArrowDown" ? 1 : -1);
@@ -1460,10 +1558,11 @@ for (const node of document.querySelectorAll(".side-section[data-soon]")) {
 // Settings: the settings the app already has, through the menu's own answer (P175).
 $("side-settings").addEventListener("click", () => shellAnswer("change_root"));
 $("sort").addEventListener("click", sortClicked);
-// A click into the window asks the last pass at once (P256), so the page
-// catches up sooner than the idle timer would.
-window.addEventListener("focus", () => shellWatchLastPass());
-$("find").addEventListener("input", drawFound);
+// A click into the window asks the last pass (P256), so the page catches up
+// sooner than the idle timer would - unless it asked within the last 5 s (N6).
+window.addEventListener("focus", shellFocused);
+document.addEventListener("visibilitychange", shellShown);
+$("find").addEventListener("input", drawFoundSoon);
 $("find").addEventListener("focus", () => {
   if ($("find").value.trim()) drawFound();
 });

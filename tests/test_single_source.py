@@ -3437,7 +3437,8 @@ const node = () => ({ classList: { toggle() {}, add() {}, remove() {} }, textCon
                       querySelectorAll: () => [], dataset: {} });
 const nodes = {};
 const body = `
-let active = "A"; let viewGeneration = 0; let locked = false; let lockWatch = null; let lockWatched = null;
+let active = "A"; let viewGeneration = 0; let locked = false; let lockWatch = null; let lockWatched = null; let lockTick = null;
+const document = { hidden: false };   // a watch sends nothing while the window is hidden (P264 N6)
 const vocab = { engagement_flag: "--engagement",
   lock: { running: "r", running_other: "o", on: "o", greyed: "g", left_behind: "l", watch_seconds: 5,
           buttons_back: "back" } };
@@ -3884,6 +3885,7 @@ const all = [];
 const walk = (n) => { if (n instanceof Element) { all.push(n); n.childNodes.forEach(walk); } };
 [table, editor, wizard].forEach(walk);
 document.querySelectorAll = (selector) => all.filter((n) => selector === "[data-row]" && "row" in n.dataset);
+const $ = () => document;   // outlineRefused looks through #sheet only (P264 N7): here the fake document stands for it
 const notices = [{ identifier: "2" }];
 outlineRefused();
 const outlined = (root) => { const found = []; const look = (n) => { if (n instanceof Element) {

@@ -146,9 +146,20 @@ function pagesFirm() {
   return data;
 }
 
+// The firm's returns by path, built once for the reply on screen and read by
+// every comparator and row (a scan per call made a sort of n returns n log n
+// scans). The index belongs to the `returns` array it was built from, so a
+// reply adopted later has its own; the first return with a path answers, as the
+// scan did.
 function pagesFirmReturn(path) {
   const data = shellFirm().data;
-  return data ? data.returns.find((one) => one.path === path) || null : null;
+  if (!data) return null;
+  if (pagesFirmReturn.from !== data.returns) {
+    pagesFirmReturn.from = data.returns;
+    pagesFirmReturn.byPath = new Map();
+    for (const one of data.returns) if (!pagesFirmReturn.byPath.has(one.path)) pagesFirmReturn.byPath.set(one.path, one);
+  }
+  return pagesFirmReturn.byPath.get(path) || null;
 }
 
 function pagesReturnName(path) {
@@ -199,13 +210,24 @@ function pagesTaxpayer(name, form) {
 function pagesFormKey(form) {
   if (!form) return "";
   if (!vocab.client_type_forms) throw new Error("client_type_forms");
-  const known = Object.values(vocab.client_type_forms).flat();
-  const at = known.indexOf(form);
-  return [at === -1 ? known.length : at, form];
+  // The flattened table is built once per vocabulary, not once per row a sort asks.
+  if (pagesFormKey.from !== vocab.client_type_forms) {
+    pagesFormKey.from = vocab.client_type_forms;
+    pagesFormKey.known = Object.values(vocab.client_type_forms).flat();
+  }
+  const at = pagesFormKey.known.indexOf(form);
+  return [at === -1 ? pagesFormKey.known.length : at, form];
 }
 
+// A household's path from its name, through an index of the list on screen
+// (the first household of a name answers, as the scan did).
 function pagesHouseholdPath(name) {
-  const one = households.find((other) => other.name === name);
+  if (pagesHouseholdPath.from !== households) {
+    pagesHouseholdPath.from = households;
+    pagesHouseholdPath.byName = new Map();
+    for (const one of households) if (!pagesHouseholdPath.byName.has(one.name)) pagesHouseholdPath.byName.set(one.name, one);
+  }
+  const one = pagesHouseholdPath.byName.get(name);
   return one ? one.path : "";
 }
 
@@ -323,8 +345,16 @@ function pagesSafeName(nameOf, one) {
   }
 }
 
+// One collator for every name sort: `localeCompare` with options builds a
+// collator on each call, and a sort of a few hundred names calls it thousands
+// of times. The options are the ones the sorts always used (numbers inside a
+// name compare as numbers, "Client 2" before "Client 10"), the sensitivity the
+// default: "base" would make "Okafor" and "okafor" equal and so change an order
+// the people have always seen.
+const PAGES_COLLATOR = new Intl.Collator(undefined, { numeric: true });
+
 function pagesByName(a, b) {
-  return a.localeCompare(b, undefined, { numeric: true });
+  return PAGES_COLLATOR.compare(a, b);
 }
 
 // The name cell, and beside the name the row's marker when it has one (a
@@ -825,8 +855,24 @@ function pagesGripStart(list, cell, grip, e) {
   const start = e.clientX;
   grip.setPointerCapture(e.pointerId);
   grip.classList.add("is-dragging");
-  const move = (m) => pagesSetWidth(list, cell, from + m.clientX - start);
+  // A pointer moves many times a frame, and each width written restyles the
+  // page's grid: the latest position is written once per frame, and the
+  // release writes whatever is waiting, so the width saved is the last one.
+  let frame = 0;
+  let latest = null;
+  const apply = () => {
+    frame = 0;
+    if (latest === null) return;
+    pagesSetWidth(list, cell, latest);
+    latest = null;
+  };
+  const move = (m) => {
+    latest = from + m.clientX - start;
+    if (!frame) frame = requestAnimationFrame(apply);
+  };
   const done = () => {
+    cancelAnimationFrame(frame);
+    apply();
     grip.removeEventListener("pointermove", move);
     grip.removeEventListener("pointerup", done);
     grip.removeEventListener("pointercancel", done);
@@ -980,6 +1026,8 @@ function pagesPaged(list, items, sizeOf) {
 }
 
 // "Showing 1-50 of 750 Returns", with Previous and Next (disabled at the ends).
+// A list of one page has nowhere to turn to, so it is the count line alone:
+// two buttons that can only be grey are not offered.
 function pagesFoot(list, from, to, total, at, count) {
   const words = screenWords().paging;
   const noun = words.nouns[list];
@@ -990,7 +1038,7 @@ function pagesFoot(list, from, to, total, at, count) {
     return button;
   };
   return h("div", { className: "page-foot" }, h("span", { className: "page-count" }, fill(words.showing, { from, to, total, noun })),
-    h("span", { className: "page-steps" }, step(-1, "previous"), step(1, "next")));
+    count > 1 ? h("span", { className: "page-steps" }, step(-1, "previous"), step(1, "next")) : null);
 }
 
 // Previous or Next: the page drawn again at its top, focus kept on the
@@ -1276,9 +1324,18 @@ function pagesReminders() {
 }
 
 // ── Clients (SPEC 6.4) ────────────────────────────────────────────────
+// Each spec carries `work` (a household with something waiting, a problem or a
+// pause), so one call serves the Work Waiting count and either tab's list
+// (pagesClients draws once from one call). The firm's returns are grouped by
+// household once: a scan of them for each of the n households was n times r.
 function pagesClientSpecs(firm, all) {
   const words = screenWords().counts;
-  const own = (name) => firm.returns.filter((one) => one.household === name);
+  const ownReturns = new Map();
+  for (const one of firm.returns) {
+    if (!ownReturns.has(one.household)) ownReturns.set(one.household, []);
+    ownReturns.get(one.household).push(one);
+  }
+  const own = (name) => ownReturns.get(name) || [];
   const pausedNames = pagesPaused(firm);
   const kind = pagesClientType ? (vocab.client_type_forms || {})[pagesClientType] : null;
   if (pagesClientType && !kind) throw new Error(`client_type_forms.${pagesClientType}`);
@@ -1298,15 +1355,16 @@ function pagesClientSpecs(firm, all) {
           : returns.length ? { text: words.complete, tone: "done" } : { text: "", tone: "plain" };
     const paused = pausedNames.has(one.name);
     const rank = !need && problem ? PAGES_URGENCY.problem : PAGES_URGENCY[said.tone];
-    return { work: need + wait > 0 || Boolean(problem) || paused, spec: {
+    return {
+      work: need + wait > 0 || Boolean(problem) || paused,
       name: one.name, detail: returns.length ? fill(returns.length === 1 ? words.one_return : words.returns, { n: returns.length }) : "",
       mark: paused ? screenWords().notices.paused : "",
       status: said.text, tone: said.tone, date: "", menu: "household", pill: true, links: one.links || [], linksIn: "name",
       nameLink: { kind: "household", path: one.path },
       step: { kind: "open", route: { level: "household", household: one.path } },
       keys: { name: one.name, detail: returns.length || "", status: pagesUrgent(rank, need || wait, said.text), end: "" },
-    } };
-  }).filter((one) => all || one.work).map((one) => one.spec);
+    };
+  }).filter((one) => all || one.work);
 }
 
 // The Clients switch: Work Waiting (with its count, P153) and All.
@@ -1339,8 +1397,9 @@ function pagesClients() {
   }
   // One order for both tabs of the switch (SPEC-lists 3); the type and the
   // tab narrow the whole list, then the order and the pages apply.
-  const work = pagesClientSpecs(firm, false).length;
-  const specs = pagesOrdered("clients", pagesClientSpecs(firm, pagesClientsAll));
+  const every = pagesClientSpecs(firm, true);
+  const work = every.filter((one) => one.work).length;
+  const specs = pagesOrdered("clients", pagesClientsAll ? every : every.filter((one) => one.work));
   const bar = h("div", { className: "clients-bar" }, pagesSwitch(work), pagesTypeFilter());
   if (!specs.length) return [bar, pagesEmpty(words.empty.work)];
   const { part, foot } = pagesPaged("clients", specs);
@@ -1476,8 +1535,18 @@ function pagesReturnGroups(state, year) {
     step: { kind: "check", ret: state.paths.engagement, name: one.original_name, handle: one.handle },
   })));
 
-  const filedBy = (identifier) => index.filter((one) => one.decision === decisions.filed
-    && (one.identifier === identifier || (one.answered || []).indexOf(identifier) !== -1));
+  // The files filed under each request, in index order, read once from the
+  // index: a file counts under its own identifier and under each request it
+  // answered (decision 146), once under each.
+  const filedUnder = new Map();
+  for (const one of index) {
+    if (one.decision !== decisions.filed) continue;
+    for (const identifier of new Set([one.identifier, ...(one.answered || [])])) {
+      if (!filedUnder.has(identifier)) filedUnder.set(identifier, []);
+      filedUnder.get(identifier).push(one);
+    }
+  }
+  const filedBy = (identifier) => filedUnder.get(identifier) || [];
   // An item with no known group is not guessed at and not drawn: it is set
   // aside (pagesSafe) and named in a notice at the end of the draw, while
   // every other row is drawn (SPEC 6, loud and safe).

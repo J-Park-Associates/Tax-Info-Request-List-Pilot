@@ -161,8 +161,11 @@ document.addEventListener("focusin", (e) => {
 });
 document.addEventListener("focusout", hideTip);
 document.addEventListener("pointerdown", hideTip, true);
-// Scrolling or resizing while a tip shows moves it with its element.
+// Scrolling or resizing while a tip shows moves it with its element. A scroll
+// fires many times a second, almost always with no tip showing or waiting on
+// its delay, and then there is nothing to move or to cancel.
 function replaceTip() {
+  if (tipFor === null && tipWaitFor === null) return;
   if (tipFor && tipFor.isConnected) placeTip(tipFor, tipNode());
   else hideTip();
 }
