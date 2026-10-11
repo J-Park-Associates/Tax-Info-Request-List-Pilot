@@ -274,7 +274,7 @@ else
     record "tree" FAIL "uncommitted changes in the checkout"
     stop_here "commit or discard them first"
   fi
-  if ! run git fetch origin; then
+  if ! run env GIT_TERMINAL_PROMPT=0 git fetch origin; then
     record "tree" "NOT VERIFIED" "branch $branch at $head_sha, clean; GitHub could not be reached to compare"
   else
     # The port is checked on its own branch before it reaches main, so the
