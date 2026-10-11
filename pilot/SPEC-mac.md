@@ -925,3 +925,36 @@ Nothing else is open. **What the assessment missed**, all now in an R above:
     `%LOCALAPPDATA%\tax-document-tracker` (§1, §6), but
     `settings.DATA_HOME_NAME` is `tax-document-tracker-pilot`. Job 8 corrects
     the Windows line while it writes the Mac one.
+
+## 9. Built (2026-10-10 to 2026-10-11)
+
+Every job the Linux box could build is landed on `claude/zealous-faraday-hw5sga`,
+each as a merge commit after an Opus review at high effort in a session that
+did not build it; a rebuild fixed each round's findings and a second review
+found none. Job 3 (signing) waits for P239's membership. The build loop was
+Sonnet builds, Opus reviews, as section 6 asks.
+
+| Job | Rounds | Findings fixed | Landed as |
+|---|---|---|---|
+| 7, the reader's memory watch | 2 | 2 (error-log wording; the Windows wait branch untested) | `aa5787c` |
+| 1, Mac homes and guards | 2 | 3 (R8 built as a sheet, not the page notice; `host=` naming; a case-sensitive iCloud check) plus the store's admission pin, which job 1's row had not named | `41b960e`, `da158bb` |
+| 5, lock, host, durability, room, placeholders | 2 | 4 (a stale clear could delete a lock retaken in the gap; no test for a flock that fails for another reason; the 47/48 prose; `_copy_whole`'s optional root) | `758ffa5` |
+| 2, build, launch and words | 2 | 6 (`LSMinimumSystemVersion` 14.0; four binary packages unpinned; two tests reading `_vocab()` without pinning the platform; `--deep`'s comment; scope; a curated role) plus a tripwire guard on its build test | `fce5ae6`, `5e2f45c` |
+| 6, the schedule on launchd and Time Machine | 2 | 7 (the Mac tests on a Windows runner; R26's test; R27's switched-off check in the wrong place; a Windows sentence reworded; the run-limit stop's wording; scope; the Windows pins) | `b67d725` |
+| 8, Mac check kit, runbook, product page | 2 | 6 (folders outside the safety block; H5's second command; three undeclared departures; an empty `--tests` list; walk step 4; an unused parameter) | `44792c9` |
+
+**The SPEC changed three times during the build**, each with a decision or a
+row in section 4: R8's place is the page notice, so `app/renderer/shell.js`
+joined job 1 (`abe6dd9`); R6's bundle minimum is macOS 13, Electron 44's own
+floor (`6a5ef22`); the 48-character root is a 31-character shared-drive name,
+not 30 (`204416d`). Rulings P244–P247 closed section 8's four open items
+before the build; P248–P254 are the jobs' own rows; P255 is the audit's.
+
+**After the build**, `pilot/AUDIT-2026-10-11.md` records the security and
+design audit of the whole tree and the cleanup it made.
+
+**Not run anywhere**: the floor interpreter (3.11), Python 3.14, Windows and
+any Mac. The pull request carries the `windows` label (the lock and path
+handling changed), so Windows runs once when it is marked ready. The Mac
+check kit (`pilot/mactest/PROMPT.md`) is the port's acceptance and has not
+run; its last section is the plain-English walk for the person at the Mac.
