@@ -801,6 +801,132 @@ const settle = (page) => page.waitForTimeout(250);
   }
 }
 
+{ // P279 (SPEC-ui-menu-speed 2.7): a long list draws only the rows in view; the keys reach every row; focus stays on the list
+  const smith = "/clients/J Park & Associates/Smith Family";
+  const ret = { level: "return", household: smith, year: 2025, ret: `${smith}/2025/1040 - John & Jane Smith` };
+  const { context, page } = await open("?mode=real&scenario=long-return&n=500");
+  await page.evaluate((route) => shellGo(route), ret);
+  await page.waitForFunction(() => document.querySelectorAll("#page .rows.is-virtual").length > 0, null, { timeout: 15000 });
+  await page.waitForTimeout(400);
+  // What the document holds, and what it may: the rows in view, a screen either side, the active row (one row of slack for a sub-heading's slot).
+  const state = () => page.evaluate(() => {
+    const list = document.querySelector("#page .rows.is-virtual");
+    const model = list.pagesModel;
+    const view = document.getElementById("page").clientHeight;
+    const over = Math.max(15, Math.ceil(view / model.H));
+    const active = list.getAttribute("aria-activedescendant");
+    return { drawn: list.children.length, allowed: Math.ceil(view / model.H) + 2 * over + 2, rows: model.ids.length, registered: pagesTokens.size, active: model.active, H: model.H,
+             activeDrawn: active ? Boolean(document.getElementById(active)) : null, focusOnList: document.activeElement === list, step: Math.max(1, Math.floor(view / model.H) - 1),
+             height: list.style.height, items: model.items.length, top: document.getElementById("page").scrollTop };
+  });
+  // After every step: the document holds at most the allowed rows and the active row is drawn (SPEC 2.7).
+  const bounded = (one) => one.drawn <= one.allowed + 1 && (one.active < 0 || one.activeDrawn === true);
+  const holds = async (step) => {
+    const one = await state();
+    check(`after ${step}, the document holds at most window + over + 1 rows and the active row is drawn`, bounded(one), one);
+    return one;
+  };
+  let at = await state();
+  check("a long return draws a window of its rows, and every row stays registered", at.rows > 400 && at.drawn <= at.allowed && at.registered >= at.rows, at);
+  await page.focus("#page .rows.is-virtual");
+  at = await holds("focusing the list");
+  check("focusing the list makes its first row active", at.active === 0 && at.activeDrawn === true && at.focusOnList, at);
+  await page.keyboard.press("End");
+  const end = await holds("End");
+  check("End goes to the last row of the list, drawn now, and focus stays on the list", end.active === end.rows - 1 && end.activeDrawn && end.focusOnList && end.drawn <= end.allowed, end);
+  for (let i = 0; i < 3; i += 1) {
+    await page.keyboard.press("PageUp");
+    await holds(`PageUp ${i + 1}`);
+  }
+  at = await state();
+  check("PageUp three times moves three screens back through rows never drawn before", at.active === end.rows - 1 - 3 * at.step && at.activeDrawn && at.focusOnList && at.drawn <= at.allowed, [at, end.rows]);
+  const say = await page.evaluate(() => { const row = document.getElementById(document.querySelector("#page .rows.is-virtual").getAttribute("aria-activedescendant")); return [row.getAttribute("aria-posinset"), row.getAttribute("aria-setsize"), row.getAttribute("aria-selected")]; });
+  check("every drawn row says its place and the list's size", say[0] === String(at.active + 1) && say[1] === String(at.rows) && say[2] === "true", say);
+  await page.evaluate(() => { document.getElementById("page").scrollTop = 0; });
+  await page.waitForTimeout(250);
+  at = await holds("a scroll to the top");
+  check("a scroll to the top draws the top and keeps the active row in the document", at.drawn <= at.allowed + 1 && at.activeDrawn && at.focusOnList, at);
+  const clicked = await page.evaluate(() => { const list = document.querySelector("#page .rows.is-virtual"); const row = list.querySelectorAll(".row")[3]; row.click(); return row.id; });
+  at = await holds("a click on a row");
+  check("a click makes the row clicked the active one", at.active === 3 && (await page.evaluate((id) => document.getElementById(id).classList.contains("is-active"), clicked)), at);
+  await page.keyboard.press("Home");
+  const home = await holds("Home");
+  check("Home goes back to the first row", home.active === 0, home);
+  // The registered rows reach the sheet's next arrow: every Check step of the page, in order.
+  const steps = await page.evaluate(() => pagesFiles().length);
+  check("the sheet's next arrow sees every file, drawn or not", steps >= 500, steps);
+  await page.evaluate(() => shellToggleCompact());
+  await page.waitForTimeout(300);
+  at = await holds("Compact Rows");
+  check("Compact Rows measures the rows again: the height is the density's, the list is as tall", at.H === 32 && at.height === `${at.items * 32}px` && at.drawn <= at.allowed + 1, at);
+  const rowHeight = await page.evaluate(() => document.querySelector("#page .rows.is-virtual .row").getBoundingClientRect().height);
+  check("a drawn row is the density's own height", rowHeight === 32, rowHeight);
+  await context.close();
+}
+
+{ // P279: the editor's long table keeps the row being typed in on the page, and Tab walks every row's inputs in order
+  const smith = "/clients/J Park & Associates/Smith Family";
+  const ret = { level: "return", household: smith, year: 2025, ret: `${smith}/2025/1040 - John & Jane Smith` };
+  const { context, page } = await open("?mode=real&scenario=long-editor&n=300");
+  await page.evaluate((route) => shellGo(route), ret);
+  await page.waitForFunction(() => document.querySelectorAll("#page .group-title").length > 0, null, { timeout: 15000 });
+  await page.evaluate(() => openEditor());
+  await page.waitForTimeout(500);
+  const table = () => page.evaluate(() => {
+    const box = document.querySelector("#ed-rows .editor-rows");
+    const modal = document.querySelector("#editor .modal");
+    const held = document.activeElement.closest && document.activeElement.closest("tr[data-index]");
+    const indexes = [...new Set([...box.querySelectorAll("tr[data-index]")].map((tr) => Number(tr.dataset.index)))];
+    const first = box.querySelector("tr[data-index]");
+    const rowHeight = first ? first.offsetHeight : 1;
+    const view = Math.ceil(modal.clientHeight / rowHeight);
+    const over = Math.max(15, view);
+    // The rows in view, a screen either side, and the `over` rows a focus at an edge widens by (+ 1 of slack).
+    return { rows: box.editorWindow ? box.editorWindow.rows.length : null, drawn: box.querySelectorAll("tr[data-index]").length, spacers: box.querySelectorAll(".ed-spacer").length,
+             top: Math.round(modal.scrollTop), held: held ? Number(held.dataset.index) : null, indexes: indexes.length, first: Math.min(...indexes), last: Math.max(...indexes), allowed: view + 3 * over + 1 };
+  });
+  const tableHolds = async (step) => {
+    const one = await table();
+    check(`after ${step}, the editor's document holds at most window + over + 1 rows and the focused row is drawn`, one.indexes <= one.allowed && (one.held === null || one.held >= one.first && one.held <= one.last), one);
+    return one;
+  };
+  let t = await tableHolds("opening the editor");
+  check("the editor's long table draws a window of its rows between two spacers", t.rows > 250 && t.spacers === 2 && t.drawn < t.rows, t);
+  await page.evaluate(() => { const m = document.querySelector("#editor .modal"); m.scrollTop = (m.scrollHeight - m.clientHeight) / 2; });
+  await page.waitForTimeout(300);
+  t = await tableHolds("a scroll to the middle");
+  check("a scroll to the middle draws the middle and drops the top", t.drawn < t.rows && t.drawn > 10 && !(await page.evaluate(() => Boolean(document.querySelector("#ed-rows .editor-rows").querySelector("tr[data-index='2']")))), t);
+  await page.evaluate(() => focusEditorRow("R141"));
+  await page.waitForTimeout(300);
+  t = await tableHolds("focus_editor_row");
+  check("focus_editor_row draws the row it was asked for, focuses it and scrolls to it", t.held !== null && (await page.evaluate(() => document.activeElement.closest("tr").querySelector(".req-id").textContent.startsWith("R141"))), t);
+  // The walk starts at the window's last drawn row, so it crosses the edge, and runs far enough to pass it.
+  const edge = (await table()).last;
+  await page.focus(`#ed-rows .editor-rows tr[data-index='${edge}'] input, #ed-rows .editor-rows tr[data-index='${edge}'] select`);
+  const rowOf = () => page.evaluate(() => { const tr = document.activeElement.closest && document.activeElement.closest("tr[data-index]"); return tr ? Number(tr.dataset.index) : -1; });
+  const walked = [await rowOf()];
+  const overs = [];
+  for (let i = 0; i < 120; i += 1) {
+    await page.keyboard.press("Tab");
+    walked.push(await rowOf());
+    const one = await table();
+    if (one.indexes > one.allowed || one.held === null) overs.push([i, one]);
+  }
+  check("Tab walks every row's inputs from the window's edge in order, never skipping a row", walked.every((n, i) => i === 0 || (n - walked[i - 1] === 0 || n - walked[i - 1] === 1)) && walked[0] === edge && walked.at(-1) >= edge + 3, [edge, walked]);
+  check("after every Tab, the editor's document holds at most window + over + 1 rows and the focused row is drawn", overs.length === 0, overs.slice(0, 2));
+  // A value typed in a row that then leaves the document is in the rows the save reads.
+  const row = walked.at(-1);
+  await page.focus(`#ed-rows .editor-rows tr[data-index='${row}'] .ed-expected_count input`);
+  await page.keyboard.press("End");
+  await page.keyboard.type("7");
+  const typed = await page.evaluate((i) => document.querySelector("#ed-rows .editor-rows").editorWindow.rows[i].expected_count, row);
+  await page.evaluate(() => { document.activeElement.blur(); const m = document.querySelector("#editor .modal"); m.scrollTop = 0; });
+  await page.waitForTimeout(300);
+  const left = await page.evaluate((i) => { const box = document.querySelector("#ed-rows .editor-rows"); return [!box.querySelector(`tr[data-index='${i}']`), box.editorWindow.rows[i].expected_count, editorRows.includes(box.editorWindow.rows[i])]; }, row);
+  check("a value typed in a row scrolled out of the document is in the saved list", left[0] === true && left[2] === true && String(left[1]).endsWith("7") && String(typed).endsWith("7"), [left, typed, row]);
+  await context.close();
+}
+
 await browser.close();
 server.close();
 if (failures.length) {

@@ -3788,6 +3788,8 @@ function setAsideGroups(rows) {
   return rows.map((row) => ({ label: row.group, sentence: "A fabricated sentence.", rows: [row] }));
 }
 const page = { "ed-rows": document.createElement("div"), "ed-advanced-body": { classList: { toggle: () => {} } } };
+page["ed-rows"].closest = () => null;   // no dialog around it here: the long tables' window has nothing to scroll
+const updateEditorWindows = () => {};
 const $ = (id) => page[id];
 renderEditorRows();
 process.stdout.write(JSON.stringify(tree(page["ed-rows"])));
@@ -3820,6 +3822,7 @@ def test_the_plain_view_draws_one_box_per_column_and_a_custom_rows_document_in_t
     drawn = _run_renderer(tmp_path, "plain_view", (
         "function requestRows(container, rows, { columns, onChange, onRemove, onTakeBack, "
         "learned = {}, keyed = true, fold = null }) {",), """
+const PAGES_VIRTUAL_FROM = 100;   // pages.js's, which requestRows reads for the editor's long table (P279)
 const vocab = { editor: { routing: "Routing", routing_help: "How it is recognised.", remove_row: "Remove" },
                 triage: { identifier_separator: " - " } };
 const keys = ["identifier", "document", "required_keywords", "expected_count", "asked"];
@@ -3871,6 +3874,7 @@ Object.defineProperty(Element.prototype, "classList", { get() {
     node.className = [...names].join(" ");
   } };
 } });
+const PAGES_VIRTUAL_FROM = 100;
 const vocab = { editor: { routing: "Routing", routing_help: "", remove_row: "Remove" },
                 triage: { identifier_separator: " - " } };
 const columns = ["identifier", "document", "expected_count"].map((key) => ({ key, label: key, help: "" }));

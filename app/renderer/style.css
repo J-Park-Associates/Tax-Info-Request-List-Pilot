@@ -223,6 +223,11 @@ body {
   white-space: nowrap;
 }
 .editor-table td { vertical-align: middle; }
+/* A long request list draws only the rows in view (P279): a spacer row above and below stands for the rows left
+   out, its height set by the script. The script keeps the row at the top of the view where it is, so the browser's
+   own scroll anchoring is off here. */
+.editor-table { overflow-anchor: none; }
+.editor-table .ed-spacer td { padding: 0; border: 0; line-height: 0; }
 .editor-table input,
 .editor-table select {
   width: 100%;

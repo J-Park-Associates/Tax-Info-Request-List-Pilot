@@ -295,13 +295,14 @@ scroll. Lists of an ordinary size are drawn exactly as today.
   sub-heading is not drawn). Child rows (`row-child`, a file under its
   request, ruling 17) are items of height H like any row.
 - **One line per row.** In a virtual list `row-wrap` is not applied: a long
-  name ends in "…" with the full name as its tooltip, as a file name does
-  everywhere (Jason's question B, section 8). Every drawn row carries
+  name ends in "…", cut or not, and keeps its tooltip - the link's "Navigate
+  to Return" or "Navigate to Client" (P117's ruling O2 and SPEC-shell 3.6
+  stand), as a file name keeps its own (Jason's question B, section 8). Every drawn row carries
   `aria-posinset` (its place, from 1) and `aria-setsize` (the list's rows).
-- **A row that cannot be made** when it scrolls in (its spec built, its node
-  not) draws an empty row of height H in its place and goes through
-  `pagesReportBroken`'s notice once, naming the row as every page does -
-  never a silent gap.
+- **A row that cannot be made** when it scrolls in, or when a key or a
+  restore reaches it (its spec built, its node not), draws an empty row of
+  height H in its place and goes through `pagesReportBroken`'s notice once,
+  naming the row as every page does - never a silent gap.
 - A redraw of the same route keeps `#page`'s scroll position: the sizer's
   height is set before rows are drawn, and the window is computed after the
   new list is in the document.
@@ -337,13 +338,19 @@ holding focus is never taken out of the document**:
   drawn counts as the plain row's measured height, or that plus the median of
   measured open folds when its fold is open (`fold.isOpen(row)`). The window
   is the rows meeting the view plus one viewport either side, by the running
-  sum of those heights.
+  sum of those heights. Switching the density (Compact Rows) drops what was
+  measured - the medians included - so a row never drawn counts as the new
+  density's own height, and the drawn rows are measured again.
 - **Focus decides the window's edges.** The window is always widened to
   contain the row holding `document.activeElement`, so a mouse scroll never
   removes an input being typed in, and an input method's composition is
   never interrupted. A `focusin` in the first or last drawn row widens the
   window by `over` rows in that direction before Tab moves on, so Tab and
-  Shift+Tab walk every row's inputs in order.
+  Shift+Tab walk every row's inputs in order. A pin is kept only for the edge
+  just widened and only near the focused row: a `focusin` drops any pin more
+  than `over` rows from the focused row (`reveal`'s pins likewise do not
+  outlive focus moving that far), so a Tab walk never ends with the whole
+  table drawn.
 - **Nothing lives only in a node.** Every input writes to its row object as
   it is typed (`cellInput`'s handler on `input`; if any field writes on
   `change` only, the builder adds `input`), so a row taken out of the

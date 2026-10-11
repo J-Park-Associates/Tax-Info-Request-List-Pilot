@@ -857,6 +857,9 @@ function shellToggleCompact() {
   storeWrite(ROWS_KEY, on ? "compact" : null);
   drawCompact();
   hideTip();
+  // A long list's rows are placed by their measured height, which the density just changed (P279).
+  pagesVirtualMeasureSaid($("page"));
+  editorDensityChanged();
   // The focused list's active row first (every list a person has visited keeps
   // its own), else the first active row on the page.
   const focused = document.activeElement && document.activeElement.closest ? document.activeElement.closest(".rows") : null;
