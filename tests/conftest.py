@@ -24,6 +24,12 @@ escapes), stops and records any reach for a place
 :func:`real_places` names; any record, or any folder the session leaves in
 the checkout, fails the whole session.
 
+**A short temporary root on a Mac.** pytest's default on this Mac puts a
+test's ``tmp_path`` about 145 characters deep, the floor's about 40, and the
+room a return's path has is the absolute length (``layout.on_a_mac`` is
+pinned off), so on a Mac the controller points ``basetemp`` at a folder of
+its own under ``/private/tmp`` (``_short_temp_root``) unless one was given.
+
 **And the view agrees with the readers** (decisions 89 and 91). Wherever a
 test left a view behind, the page is **drawn again from the live readers**
 through ``view.render_page()`` - the one function that writes it - and the
@@ -327,12 +333,24 @@ def _not_a_mac(original):
     return not_a_mac
 
 
+def _the_floors_answer(original):
+    """``settings.host_system`` answering ``"posix"``, still *reading* as the
+    original (``functools.wraps``), because ``tests/test_store.py`` digests
+    ``inspect.getsource(settings.host_system)`` into the store's admission
+    version and the pin must not change it."""
+    @functools.wraps(original)
+    def posix() -> str:
+        return "posix"
+
+    return posix
+
+
 def stand_on_the_floor(patch: pytest.MonkeyPatch) -> None:
     """On a Mac, make the seams that name the computer answer the Linux
     floor's through ``patch``; on any other computer, do nothing. Its own
     function so the suite-shape test can run it against a faked Mac."""
     if settings.host_system() == "darwin":
-        patch.setattr(settings, "host_system", lambda: "posix")
+        patch.setattr(settings, "host_system", _the_floors_answer(settings.host_system))
         for module in (locking, fsio):
             patch.setattr(module, "_on_a_mac", _not_a_mac(module._on_a_mac))
         patch.setattr(locking, "platform", _TheFloorsPlatform())
@@ -1101,11 +1119,39 @@ _STATE = pytest.StashKey[dict]()
 TRIPWIRE_HEADING = "decision 185: the suite reached a real place"
 
 
+#: Where a Mac's suite keeps its temporary folders. ``/tmp`` is a link to
+#: ``/private/tmp`` there; the real path is used, so ``resolve()`` changes nothing.
+SHORT_TEMP_PARENT = Path("/private/tmp")
+
+
+def _short_temp_root(config) -> Path | None:
+    """On a Mac, a temporary root of the suite's own under ``/private/tmp``,
+    unless ``--basetemp`` was given; ``None`` otherwise (and always off a Mac).
+
+    pytest's default root on this Mac is the account's per-user cache folder,
+    ``/private/var/folders/xx/<long>/T/pytest-of-<user>/pytest-N``: a test's
+    ``tmp_path`` is about 145 characters long, where the floor's
+    ``/tmp/pytest-of-<user>/pytest-N`` is about 40. ``layout.on_a_mac`` is
+    pinned off for every test, so the room a return's path has is the absolute
+    length, and the longer root fails tests (filer, content check, runner,
+    shell) that fit with room to spare on the floor. A root of its own, one
+    per session so a second run beside it never clears it, makes the length
+    the floor's. A pytest-xdist worker is given ``<this root>/popen-gwN`` by
+    its controller (``xdist.workermanage``), so the workers do not collide."""
+    if sys.platform != "darwin" or config.option.basetemp is not None:
+        return None
+    return Path(tempfile.mkdtemp(prefix="ts-", dir=SHORT_TEMP_PARENT)).resolve()
+
+
+@pytest.hookimpl(tryfirst=True)
 def pytest_configure(config):
     worker = getattr(config, "workerinput", None)
     if worker is not None:
         _configure_worker(config)
         return
+    short = _short_temp_root(config)
+    if short is not None:
+        config.option.basetemp = str(short)         # before pytest's own tmpdir plugin reads it
     places = real_places(REPO)                     # before own_folders(): the shell's own values count
     session = Path(tempfile.mkdtemp(prefix="tracker-suite-"))
     log = session / "tripwire.log"
@@ -1120,7 +1166,7 @@ def pytest_configure(config):
     # watched route is judged (the tripwire's docstring lists the routes).
     # The log is written only from a process this one forks (a fork that execs).
     tripwire.install(tripwire.prepare(places), log=str(log), children=os.environ[tripwire.ENV_TRIPWIRE])
-    config.stash[_STATE] = {"patch": patch, "session": session, "log": log,
+    config.stash[_STATE] = {"patch": patch, "session": session, "log": log, "short": short,
                             "places": places, "before": before, "said": [], "workers": []}
 
 
@@ -1236,6 +1282,8 @@ def pytest_unconfigure(config):
     state["patch"].undo()
     shutil.rmtree(state["session"], ignore_errors=True)
     shutil.rmtree(data_home_for(state["session"] / APP_FOLDER), ignore_errors=True)
+    if state["short"] is not None:
+        shutil.rmtree(state["short"], ignore_errors=True)
 
 
 # ---------------------------------------------------- the office-shaped copy ----
@@ -1271,7 +1319,24 @@ def office_shaped_copy(tmp_path_factory):
         shutil.copy2(source, target)
 
     office_root = base / "office-root"
-    make_engagement(office_root, [RequestItem(identifier="A01", document="W-2")])
+    # A session fixture is set up before the function-scoped autouse fixtures
+    # that give a test its own store and its pins, so here it has only the
+    # session's: under pytest-xdist every worker's session fixture and the
+    # tests it ran shared the one store file of the controller's app folder,
+    # and a second "Test Household / 2025 / 1040 - Test Client" met the first
+    # one's applied line with a journal of its own that had none (the store
+    # refused it: the journal 0, the store 1). So the engagement is made in a
+    # store of this fixture's own, under the suite's default computer, and the
+    # connection is let go before the patch is.
+    with pytest.MonkeyPatch.context() as patch:
+        own_folders(patch, base / APP_FOLDER)
+        stand_on_the_floor(patch)
+        patch.setattr(layout, "on_a_mac", lambda: False)
+        store.close()
+        try:
+            make_engagement(office_root, [RequestItem(identifier="A01", document="W-2")])
+        finally:
+            store.close()
     (copy / settings.SETTINGS_FILENAME).write_text(json.dumps(
         {settings.KEY_CLIENTS_ROOT: str(office_root), settings.KEY_FIRM: PRIVATE_TREE}), encoding="utf-8")
     store.open(copy / store.STORE_FILENAME).close()

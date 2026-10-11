@@ -16,8 +16,8 @@
   ],
   "counts": {
     "nodes": 271,
-    "edges": 1256,
-    "reused": 219
+    "edges": 1257,
+    "reused": 217
   },
   "node_types": [
     "artifact",
@@ -4648,8 +4648,8 @@
       "id": "pilot/SPEC-mac-rerun1-fixes.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "776fcebcc260b7f0",
-      "lines": 302
+      "sha256": "9ccf5937105a8bfe",
+      "lines": 336
     },
     {
       "id": "pilot/SPEC-mac.md",
@@ -5544,8 +5544,8 @@
       "id": "tests/conftest.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "7e9909a198e8c489",
-      "lines": 1305,
+      "sha256": "dd05305f0a6bfff8",
+      "lines": 1370,
       "exports": [
         "AMac",
         "APP_FOLDER",
@@ -5562,6 +5562,7 @@
         "REAL_SCHTASKS",
         "REAL_TMUTIL",
         "REPO",
+        "SHORT_TEMP_PARENT",
         "Said",
         "TEST_CLIENT",
         "TEST_HOUSEHOLD",
@@ -10348,8 +10349,8 @@
       "id": "tests/test_view.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "708f901f2d259948",
-      "lines": 992,
+      "sha256": "84c2993344a4cac2",
+      "lines": 993,
       "exports": [
         "DAY1",
         "ITEMS",
@@ -15689,6 +15690,12 @@
     {
       "from": "tests/test_view.py",
       "to": "tests/conftest.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_view.py",
+      "to": "tests/test_registry.py",
       "type": "imports",
       "source": "derived"
     },

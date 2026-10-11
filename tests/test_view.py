@@ -28,6 +28,7 @@ from pathlib import Path
 import pytest
 
 from tests.conftest import make_engagement, named_page, sort
+from tests.test_registry import engagement_dirs
 from tests.test_scanner import text_pdf
 from tracker import ledger, review, view
 from tracker.filer import NEEDS_REVIEW, read_index
@@ -44,7 +45,7 @@ from tracker.manifest import (
 )
 from tracker.page import slug
 from tracker.records import rule_from_json
-from tracker.registry import RegistryError, discover_engagements, engagement_dirs
+from tracker.registry import RegistryError, discover_engagements
 from tracker.runner import run_household
 from tracker.scanner import scan_engagement
 
