@@ -379,3 +379,20 @@ the pull request description); the orchestrator folds the two notes into
 **Review** (opus, high effort, a session that did not build): numbered
 findings against this SPEC's sections, each with the line it fails. A
 finding that survives one rebuild is fixed by the reviewer's tier.
+
+## Built (2026-10-11)
+
+Both jobs landed on `claude/trusting-tesla-or0wm2`, each built by Sonnet in
+the shared tree on disjoint files, reviewed by an Opus session that did not
+build it, rebuilt on the findings and reviewed again.
+
+| Job | Rounds | Findings fixed | Commit |
+|---|---|---|---|
+| 2, the kit | build, review (8), rebuild, review (0) | the `.xlsm` content type, step 8's Time Machine wording, the email's payer, the run-log test's environment, the zip's comment and compression, the step 9 check's scope, the workbook's reuse, SAMPLE-DOCUMENTS.md | `1fa43af` |
+| 1, the app | build, review (7), rebuild, review (0) | the reread through `adoptList`, details for the machine and setup notices only, the after-install `wait` on every path, the `scanning` re-check, the harness stub, the store-unopened proof and the deviation tests, the runbook and E30 | `cb1b295` |
+
+Four of the fifteen findings were the SPEC's own wording (the `.xlsm` type,
+step 8's Time Machine line, `loadEngagements`, every caller's detail on
+screen); the SPEC was amended before each rebuild. The gate ran in the
+cloud session on 3.11 and 3.13: the affected tests and the guards, ruff,
+`repo_map.py check`. Nothing has run on a Mac yet.
