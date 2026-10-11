@@ -14,7 +14,8 @@
    fail on the first one. The reminder letter (.rem-preview) mirrors the
    emailed letter and is never named here. No !important outside a
    prefers-reduced-motion block, no url(), no @import, no @font-face, no
-   bundled font: the face is the one Windows already has. */
+   bundled font: the face is the one the system already has - Segoe UI
+   Variable on Windows, the system face on a Mac, chosen once (P280). */
 
 /* ── Tokens, light (P72) ─────────────────────────────────────────────────
    Names say what a colour is for, never its hue, except the kept aliases at
@@ -180,12 +181,19 @@
   }
 }
 
+/* P280: a Mac's own face. The one platform switch: app.js puts on-mac on <html>. */
+:root.on-mac {
+  --font-ui: -apple-system, system-ui, sans-serif;
+  --font-display: var(--font-ui);
+}
+
 /* ── Type (P53, P62) ─────────────────────────────────────────────────────
    One family, five roles: H1 20/28, H2 16/24, body 14/20, caption 12/16 and
    the Overview's figure 28/36 (H3 is body at 600). Two weights (400 and 600).
-   Every size times its line height lands on the 4px grid. Windows 11's own
-   Segoe UI Variable is already installed; Segoe UI comes before the system
-   face on older Windows. */
+   Every size times its line height lands on the 4px grid. The face is one
+   choice per platform (P280): Windows 11's own Segoe UI Variable is already
+   installed (Segoe UI comes before the system face on older Windows), and a
+   Mac takes its own system face from the on-mac switch above. */
 
 body {
   font-family: var(--font-ui);

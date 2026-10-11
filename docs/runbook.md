@@ -448,7 +448,7 @@ Unknown Folder, Old Layout, No Household, Unowned Folder, Name Refused, No
 Return, Cannot List, Look-Alike Folder, Old Workbook or Bad Year; the long
 sentence goes to the error log), and at the end of every command line pass,
 under **Folders the app leaves alone**. The app's list is as the app
-last walked the root: when it started, at its last sort (the **Sort** icon
+last walked the root: when it started, at its last sort (the **Sort Now** button
 next to the search box, or Tools, Sort Now), or when it last created,
 rolled forward or retired a return, accepted a folder's name, changed a
 household, or had its clients folder set. So a folder made by hand shows
@@ -905,15 +905,15 @@ earlier pass, is taken whatever the time. A household out of time stops taking
 files, records what it did, drafts nothing this pass and says on every
 return *this household's time for this pass ran out after N file(s); the
 rest wait for the next pass* — nothing to do; the next pass carries on,
-and drafts the week's letter if it is owed. The app's **Sort** icon (Run now) is
+and drafts the week's letter if it is owed. The app's **Sort Now** button (Run now) is
 the scheduled pass, started by the app for one household (decision 203):
 the same runner, the same fifteen minutes and the same sentence when they
 run out, and it leaves the same line in the run log and redraws the same
-page. The app does not wait for it. The button becomes **Stop**, the
+page. The app does not wait for it. The button becomes **Stop Sorting**, the
 household and the file it is on show beneath it, every other return keeps
 working, and the return redraws when the pass ends. Nothing cuts it off
 before the run limit (`tracker.locking.RUN_TIME_LIMIT_SECONDS`, two hours).
-**Stop** ends it at the next file — what it did is recorded and the rest
+**Stop Sorting** ends it at the next file — what it did is recorded and the rest
 waits for the next pass — and closing the app does the same: its lock is
 let go, and the next pass carries on. If a pass already holds the
 household, the app says so and starts nothing. Households are
@@ -1374,9 +1374,9 @@ opened). Right-click a row for its menu (Check…, Not Requested, Show in File
 Explorer, Unfile, Mark Missing, Edit Request…); the menu bar (File, Edit,
 Household, View, Tools, Help) appears when you press Alt. **Check…** and
 **Draft Reminder…** open a side sheet; where older text here says
-"card", read the file's row on Needs Review or a side sheet. The one **Sort** icon beside the search
-box sorts the open return's household (grey on the four pages: open a household
-first); the overnight sort is the schedule. A *Sort Failed* notice with no
+"card", read the file's row on Needs Review or a side sheet. The **Sort Now** button beside the search
+box sorts the open household (it is on a household's, year's or return's page; the four
+firm pages have none); the overnight sort is the schedule. A *Sort Failed* notice with no
 button shows on every page while the last **scheduled** sort failed, and
 clears when the next scheduled sort succeeds - the app's own Sort names one
 household and cannot clear it. **Unfile** asks for an optional reason first.
@@ -2335,7 +2335,7 @@ exactly as it came.
      folder, for example C:\JPA App; scans can't be read from here", and the
      same sentence is in the error log. The scheduled pass puts it in its
      warnings once.
-6. Run one pass — the **Sort** icon on a single return — and read the run
+6. Run one pass — the **Sort Now** button on a single return — and read the run
    log before trusting the schedule.
 
 **Before the new machine's first pass**, turn the old machine's scheduled
@@ -2491,7 +2491,7 @@ version that holds decision 159, and again after moving machines):
 - **L2, a line from another machine is named.** On a second computer
   signed into the same Drive, make one small change to a test return
   through the app there (for example, edit its list and save). Let Drive
-  sync, then run one pass on the office machine (the **Sort** icon). The
+  sync, then run one pass on the office machine (the **Sort Now** button). The
   practice page's *Records that need a person* must name that return's
   line as *written on <the second computer>*. Acknowledge it with the
   command the page prints, and check the next pass no longer names it.

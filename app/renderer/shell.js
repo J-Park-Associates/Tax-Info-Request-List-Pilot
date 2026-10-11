@@ -1,6 +1,6 @@
 // The app shell (pilot SPEC-shell.md sections 3, 4, 5.3-5.4, 6.8 and 8;
-// decisions P58-P77): the side panel, the path row, the search, the sort
-// icon, the one route, the setup page, and the page's side of the `menu`
+// decisions P58-P77): the side panel, the path row, the search, the Sort Now
+// button (P274), the one route, the setup page, and the page's side of the `menu`
 // channel.
 //
 // A classic script, loaded after app.js and tooltip.js, sharing their
@@ -162,14 +162,14 @@ function shellVocabulary() {
   shellDraw();
 }
 
-// The side panel's other words (pilot SPEC-lists 15; P153-P155): the brand
-// band, the section headings, the Client Types (their forms the tooltip),
-// the items not built yet (each "Under Construction" as its tooltip) and
+// The side panel's other words (pilot SPEC-lists 15; P153-P155, P265, P266):
+// the brand band's product name, the section headings, the Client Types
+// (their forms the tooltip), the items not built yet (each a short name and a
+// "Soon" tag, "Under Construction" as its tooltip and description) and
 // Settings. A word the vocabulary lacks throws, as every word here does.
 function shellSideWords(words) {
   const side = words.side;
   if (!side) throw new Error("side");
-  $("side-brand-name").textContent = side.brand;
   $("side-brand-product").textContent = side.product;
   $("side-types-heading").textContent = side.types;
   $("side-workspace-heading").textContent = side.workspace;
@@ -177,8 +177,11 @@ function shellSideWords(words) {
   for (const node of document.querySelectorAll(".side-section[data-soon]")) {
     const said = side.soon[node.dataset.soon];
     if (!said) throw new Error(`side.soon.${node.dataset.soon}`);
+    if (!side.soon_tag) throw new Error("side.soon_tag");
     node.querySelector(".side-name").textContent = said;
+    node.querySelector(".side-soon").textContent = side.soon_tag;
     setTip(node, side.under_construction);
+    node.setAttribute("aria-description", side.under_construction);
   }
   for (const node of document.querySelectorAll(".side-section[data-type]")) {
     const label = (words.client_types || {})[node.dataset.type];
@@ -701,7 +704,7 @@ function shellStateArrived(state) {
     // The page is drawn from the state when it reads it, and not while a
     // return's outline waits: shellOpenState draws the page once the wait is
     // lifted, so a draw here would be the outline again. The rest of the shell
-    // (the sort icon, the lock, the counts) follows every state.
+    // (the Sort Now button, the lock, the counts) follows every state.
     if (shellPageBusy || !shellPageReadsState(state)) shellChanged();
     else shellDraw();
     sheetStateArrived(state);   // sheet.js: the file answered leaves, the next comes
@@ -917,32 +920,58 @@ function drawPath() {
   }));
 }
 
-// ── the sort icon (SPEC 8.1) ──────────────────────────────────────────
+// ── the Sort Now button (SPEC 8.1, P274) ──────────────────────────────
 // The state, from app.js's own: `scanning` (a pass this app started, with
-// `stopping`), `locked` (a live lock on the shown return).
+// `stopping`), `locked` (a live lock on the shown return). The button is in
+// the path row, which outlives every page draw, so it is never rebuilt
+// mid-press. A household's, a year's and a return's page offer Sort Now; a
+// firm page and the setup page have no button at all, except that while a
+// sort this app started runs, Stop Sorting shows on every page, so a
+// running sort can always be stopped.
 function sortState() {
   const words = screenWords().sort;
   if (scanning) {
-    return scanning.stopping ? { key: "stopping", words: words.stopping, icon: "stop", off: true, stop: true }
-      : { key: "stop", words: words.stop, icon: "stop", off: false, stop: true };
+    return scanning.stopping ? { key: "stopping", word: "stopping", words: words.stopping, tip: "", off: true, stop: true }
+      : { key: "stop", word: "stop", words: words.stop, tip: "", off: false, stop: true };
   }
-  if (shellRoute.level === "setup" || !shellHasClient()) return { key: "firm", words: words.firm, icon: "sort", off: true };
-  if (locked) return { key: "locked", words: words.locked, icon: "sort", off: true };
-  return { key: "now", words: words.now, icon: "sort", off: false };
+  if (!shellHasClient()) return { key: "none", hidden: true, off: true, tip: "" };
+  if (locked) return { key: "locked", word: "now", words: words.now, tip: words.locked, off: true };
+  return { key: "now", word: "now", words: words.now, tip: words.tip, off: false };
 }
 
 function drawSort() {
   const state = sortState();
   const button = $("sort");
+  const said = screenWords().sort;
+  // Its three words share one cell, so the button is as wide as the longest
+  // in every state; the ones not shown are aria-hidden (and not visible).
+  if (!button.querySelector(".sort-word")) {
+    button.replaceChildren(...["now", "stop", "stopping"].map((word) => h("span", { className: "sort-word", dataset: { word } }, said[word])));
+  }
+  for (const node of button.querySelectorAll(".sort-word")) {
+    node.textContent = said[node.dataset.word];
+    if (state.word && node.dataset.word === state.word) node.removeAttribute("aria-hidden");
+    else if (state.word) node.setAttribute("aria-hidden", "true");
+  }
+  $("find").disabled = shellRoute.level === "setup";
+  // A focused button that is about to go away - hidden, or disabled (Stopping,
+  // In Use Elsewhere), where Chromium drops focus to the window at once - hands
+  // focus on first, never to the window.
+  if ((state.hidden || state.off) && document.activeElement === button) {
+    // A keyboard's focus (the visible ring) goes on to the search box; a mouse
+    // click's goes to the page, so no caret jumps into the box after a click
+    // on Stop Sorting (review 2, note 4).
+    const byKey = typeof button.matches === "function" && button.matches(":focus-visible");
+    if (byKey && !$("find").disabled) $("find").focus();
+    else focusRegion("page");
+  }
+  button.classList.toggle("hidden", Boolean(state.hidden));
   button.disabled = state.off;
   button.classList.toggle("is-stop", Boolean(state.stop));
   button.dataset.sortState = state.key;
-  button.replaceChildren(icon(state.icon));
-  button.setAttribute("aria-label", state.words);
-  setTip(button, state.words);
+  setTip(button, state.tip);
   if (state.key === "now") button.setAttribute("aria-keyshortcuts", "F9");
   else button.removeAttribute("aria-keyshortcuts");
-  $("find").disabled = shellRoute.level === "setup";
 }
 
 function sortClicked() {

@@ -41,27 +41,19 @@ input, textarea, select { caret-color: var(--text); accent-color: var(--accent);
   border-right: 1px solid var(--border);
 }
 
-/* The one navy surface: the logo sits on the ground it was drawn for. */
+/* The brand band (pilot SPEC-lists 15.1; P266, superseding P179): the one navy
+   surface, on which the JP mark (drawn for it) sits at 32px with the product's
+   name beside it, in both themes. The firm's name is the window's title. */
 #side-brand:not(.hidden) {
   display: flex;
   align-items: center;
+  gap: var(--sp-2);
+  height: var(--size-bar);
   padding-inline: var(--sp-4);
   background: var(--brand);
 }
-#side-brand img { height: var(--size-control); width: auto; }
-/* The brand band (pilot SPEC-lists 15.1, Q14): the logo, whose wordmark is
-   the firm's name, and under it the app's name, on the navy band in both
-   themes. The firm's name is there as words for a screen reader too. */
-#side-brand:not(.hidden) {
-  flex-direction: column;
-  align-items: flex-start;
-  justify-content: center;
-  gap: var(--sp-1);
-  min-height: var(--size-bar);
-  padding-block: var(--sp-2);
-}
-#side-brand-words:not(.hidden) { display: grid; min-width: 0; color: var(--window-light); }
-#side-brand-product { font-size: var(--fs-caption); line-height: var(--lh-caption); font-weight: var(--fw-strong); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#side-brand img { width: var(--size-control); height: var(--size-control); flex: none; }
+#side-brand-product { min-width: 0; color: var(--window-light); font-size: var(--fs-body); line-height: var(--lh-body); font-weight: var(--fw-strong); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 /* The items scroll rather than cut one at a short window (P153). */
 #side-scroll { min-height: 0; overflow-y: auto; padding-bottom: var(--sp-2); }
@@ -81,10 +73,12 @@ input, textarea, select { caret-color: var(--text); accent-color: var(--accent);
 .side-icon { color: var(--text-secondary); }
 .side-section[aria-current="page"] .side-icon { color: var(--accent); }
 .side-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-/* Not built yet (P154): muted but readable, and still a control; its long
-   name wraps to a second line rather than lose "(Under Construction)". */
-.side-section.is-soon:not(.hidden) { color: var(--text-secondary); height: auto; min-height: var(--size-row); padding-block: var(--sp-1); }
-.side-section.is-soon .side-name { white-space: normal; overflow: visible; }
+/* Not built yet (P154, P265): muted but readable, and still a control; one
+   line, its short name and a small "Soon" tag at the right (the neutral count
+   badge's look). The tag is aria-hidden; the tooltip says "Under Construction". */
+.side-section.is-soon:not(.hidden) { color: var(--text-secondary); }
+.side-soon { flex: none; padding: 0 var(--sp-2); border-radius: var(--radius); background: var(--bg-pressed); color: var(--text-secondary); font-size: var(--fs-caption); line-height: var(--lh-caption); font-weight: var(--fw-strong); }
+.side-soon:empty { display: none; }
 #side-sections li:not(.hidden) { display: block; margin-bottom: var(--sp-1); }
 
 .side-section:not(.hidden) {
@@ -295,7 +289,7 @@ input, textarea, select { caret-color: var(--text); accent-color: var(--accent);
   color: var(--text-caption);
 }
 
-/* Icon buttons: the sort icon, the dismiss icon, the sheet's icons. */
+/* Icon buttons: the dismiss icon, the sheet's icons. */
 .icon-button:not(.hidden) {
   display: inline-grid;
   place-items: center;
@@ -314,8 +308,14 @@ input, textarea, select { caret-color: var(--text); accent-color: var(--accent);
 .icon-button:active { background: var(--bg-pressed); }
 .icon-button:disabled,
 .icon-button:disabled:hover { background: transparent; color: var(--text-disabled); cursor: default; }
-#sort.is-stop { color: var(--danger); }
-#sort.is-stop:disabled { color: var(--text-disabled); }
+/* The Sort Now button (P274, SPEC-shell 8.1): a labelled button at the path
+   row's right end. Its three words (Sort Now, Stop Sorting, Stopping) share
+   one grid cell, so the button is as wide as the longest in every state and
+   the search box never moves; the ones not shown are hidden, not removed. */
+#sort:not(.hidden) { display: inline-grid; flex: none; }
+#sort > .sort-word { grid-area: 1 / 1; }
+#sort > .sort-word[aria-hidden="true"] { visibility: hidden; }
+#sort.is-stop { --b-fg: var(--danger); --b-hover: var(--err-bg); --b-hover-bd: var(--err-border); --b-active: var(--err-bg); }
 .icon {
   width: var(--size-icon);
   height: var(--size-icon);
@@ -457,13 +457,15 @@ input, textarea, select { caret-color: var(--text); accent-color: var(--accent);
   min-width: 0;
 }
 /* The three kinds of link (SPEC 3.9): a name that acts. Its colour is close to
-   the plain text's (1.4:1), so colour alone would not tell a link from a name
-   (WCAG 1.4.1, final review B finding 6): a link is always underlined, and
-   nothing else on a row is - not a status such as "3 Waiting". */
+   the plain text's (1.4:1). At rest (P267) a name is told from text by its
+   column, its weight and, for a file, its icon; the underline comes back when
+   the pointer is over the name or the keyboard is on its row, and always in a
+   contrast theme (WCAG 1.4.1). Nothing else on a row is underlined or has a
+   pointer cursor - not a status such as "3 Waiting". */
 .row-link {
   color: var(--link);
   cursor: pointer;
-  text-decoration: underline;
+  text-decoration: none;
   text-decoration-thickness: 1px;
   text-underline-offset: var(--sp-1);
 }
@@ -471,7 +473,7 @@ input, textarea, select { caret-color: var(--text); accent-color: var(--accent);
 .row-mark { margin-left: var(--sp-2); font-weight: var(--fw-regular); }
 /* One of several files that answer a request: its own row, set in from the request's (ruling 17). */
 .row-child .row-name { padding-left: var(--sp-4); font-weight: var(--fw-regular); }
-.row-link:hover { text-decoration-thickness: 2px; }
+.row-link:hover, .rows:focus-visible .row.is-active .row-link { text-decoration-line: underline; }
 .row-detail {
   color: var(--text-secondary);
   overflow: hidden;
@@ -492,20 +494,31 @@ input, textarea, select { caret-color: var(--text); accent-color: var(--accent);
   color: var(--text-caption);
   text-align: right;
 }
+/* A row with a next step shows a quiet chevron at the right edge of its end
+   column at rest (P270); on hover, or on the keyboard's active row, the step's
+   words appear before it and both turn to the link colour, in place of the date. */
 .row-step:not(.hidden) {
   display: inline-flex;
   align-items: center;
+  justify-self: end;
   gap: var(--sp-1);
   padding: var(--sp-1);
   border-radius: var(--radius-control);
-  color: var(--link);
+  color: var(--text-caption);
   font-weight: var(--fw-strong);
   white-space: nowrap;
-  visibility: hidden;
+  cursor: pointer;
 }
 .row-step:hover { background: var(--bg-pressed); }
 .row:hover .row-step,
-.rows:focus-visible .row.is-active .row-step { visibility: visible; }
+.rows:focus-visible .row.is-active .row-step { color: var(--link); }
+.row-step-words { display: none; }
+.row:hover .row-step-words:not(.hidden),
+.rows:focus-visible .row.is-active .row-step-words:not(.hidden) { display: inline; }
+/* The date keeps clear of the chevron where it is drawn at the column's end
+   (a household's, a year's or a return's page): the chevron's 12px, its 4px
+   padding each side and a 4px gap. */
+.row.has-step .row-date { margin-inline-end: var(--sp-6); }
 .row.has-step:hover .row-date,
 .rows:focus-visible .row.has-step.is-active .row-date { visibility: hidden; }
 .row.is-active { background: var(--bg-selected); }
@@ -517,8 +530,9 @@ input, textarea, select { caret-color: var(--text); accent-color: var(--accent);
 
 /* Three levels on Needs Review (pilot SPEC-lists 5, P136): the return is the
    heading's bold link; the household beside it a small regular grey link
-   (still underlined, blue on hover); a file's own name, on every page, an
-   ordinary-weight link - an item, not a heading. */
+   (not underlined at rest, P267; blue and underlined on hover); a file's
+   own name, on every page, an ordinary-weight link - an item, not a
+   heading. */
 .row-file .row-name { font-weight: var(--fw-regular); }
 .group-count .row-link { color: var(--text-secondary); }
 .group-count .row-link:hover { color: var(--link); }
@@ -566,8 +580,9 @@ input, textarea, select { caret-color: var(--text); accent-color: var(--accent);
   grid-template-columns: var(--size-col-name) var(--size-col-detail) var(--size-col-status) var(--size-col-end);
 }
 /* A firm list's date starts at its column's left edge, under its header's
-   word, as File Explorer's Date column does (P199); a row's step shows in
-   the same place on hover. A return's own page keeps its date at the end. */
+   word, as File Explorer's Date column does (P199); a row's chevron rests at
+   the column's right edge and its step's words come before it on hover (P270).
+   A return's own page keeps its date at the end. */
 #page[data-list="overview"] .row-end:not(.hidden),
 #page[data-list="needs_review"] .row-end:not(.hidden),
 #page[data-list="reminders"] .row-end:not(.hidden),
@@ -575,6 +590,16 @@ input, textarea, select { caret-color: var(--text); accent-color: var(--accent);
 .col-table[data-list="overview"], .col-table[data-list="reminders"],
 #page[data-list="overview"] .rows, #page[data-list="reminders"] .rows {
   min-width: calc(var(--size-col-year) + var(--size-col-taxpayer) + var(--size-col-form) + var(--size-col-status) + var(--size-col-end) + 4 * var(--sp-4) + 2 * var(--sp-8));
+}
+/* P268: a list of returns whose rows are all one year leaves out its Tax Year column. */
+#page.is-yearless .row-return:not(.hidden),
+#page.is-yearless .col-table[data-list="overview"] .col-heads:not(.hidden),
+#page.is-yearless .col-table[data-list="reminders"] .col-heads:not(.hidden) {
+  grid-template-columns: var(--size-col-taxpayer) var(--size-col-form) var(--size-col-status) var(--size-col-end);
+}
+#page.is-yearless .col-table[data-list="overview"], #page.is-yearless .col-table[data-list="reminders"],
+#page.is-yearless[data-list="overview"] .rows, #page.is-yearless[data-list="reminders"] .rows {
+  min-width: calc(var(--size-col-taxpayer) + var(--size-col-form) + var(--size-col-status) + var(--size-col-end) + 3 * var(--sp-4) + 2 * var(--sp-8));
 }
 .row-year, .row-form { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* A Needs Review return heading says the year, the taxpayer and the form once each. */
@@ -1198,7 +1223,7 @@ input, textarea, select { caret-color: var(--text); accent-color: var(--accent);
   .switch-option[aria-pressed="true"] { background: Highlight; color: HighlightText; forced-color-adjust: none; }
   .group-step { color: LinkText; }
   .row-name, .row-detail, .row-status, .row-date, .row-step { color: inherit; }
-  .row-link { color: LinkText; }
+  .row-link { color: LinkText; text-decoration-line: underline; }
   .group-count .row-link { color: LinkText; }
   /* The column headers (SPEC-lists 4): words and hairline in the system's
      text colour; the grips always shown, so they can be found. */
@@ -1206,8 +1231,10 @@ input, textarea, select { caret-color: var(--text); accent-color: var(--accent);
   .col-heads { border-bottom: 1px solid CanvasText; }
   .col-grip::after { background: CanvasText; }
   /* The focused row has forced-color-adjust: none, so its own colours would
-     show on Highlight: the step's link colour (.row-step:not(.hidden)) and the
-     status tones outrank the inherit above. Every part takes HighlightText. */
+     show on Highlight: the step's caption colour (the at-rest .row-step rule),
+     its link colour on the active row (.rows:focus-visible .row.is-active
+     .row-step) and the status tones outrank the inherit above. Every part
+     takes HighlightText. */
   .rows:focus-visible .row.is-active .row-name, .rows:focus-visible .row.is-active .row-detail,
   .rows:focus-visible .row.is-active .row-status, .rows:focus-visible .row.is-active .row-date,
   .rows:focus-visible .row.is-active .row-step, .rows:focus-visible .row.is-active .row-link { color: HighlightText; }
@@ -1215,13 +1242,13 @@ input, textarea, select { caret-color: var(--text); accent-color: var(--accent);
   /* The raised lists (SPEC-lists 16): pills, chips, cards and badges keep an
      edge; shadings go; the link mark is a button with an edge; a section's
      icon and words carry it. */
-  .pill, .form-tag, .request-tag, .group-count.is-badge, .group-docs, .side-count:not(:empty), .switch-count, .type-filter,
+  .pill, .form-tag, .request-tag, .group-count.is-badge, .group-docs, .side-count:not(:empty), .side-soon:not(:empty), .switch-count, .type-filter,
   .figure, .reason-card, .return-card, #link-panel { border: 1px solid CanvasText; background: Canvas; color: CanvasText; }
   .reason-card[aria-pressed="true"] { background: Highlight; color: HighlightText; forced-color-adjust: none; }
   .link-mark { color: ButtonText; border-color: CanvasText; }
   .link-to { color: LinkText; }
   .side-section.is-soon, .side-heading, .link-kind, .page-count { color: CanvasText; }
-  #side-brand-words { color: CanvasText; }
+  #side-brand-product { color: CanvasText; }
   .last-sort-bar { background: Canvas; border: 1px solid CanvasText; }
   .last-sort-bar > span:not(.hidden) { background: Highlight; forced-color-adjust: none; }
   /* Outline bars and held counts (P222): the system's grey. Each selector

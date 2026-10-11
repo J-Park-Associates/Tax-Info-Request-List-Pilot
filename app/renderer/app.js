@@ -21,6 +21,16 @@ let lastState = null;      // the state the household card was drawn from
 
 const $ = (id) => document.getElementById(id);
 
+// P280: the face is chosen once, by platform, in pilot-ui.css's token block.
+// The page learns it is on a Mac from the browser's own platform (no new
+// channel from main.js), and the class goes on <html> because the token block
+// reads it before the first paint.
+function appOnMac(nav) {
+  const platform = (nav.userAgentData && nav.userAgentData.platform) || nav.platform || "";
+  return /^mac/i.test(platform);
+}
+document.documentElement.classList.toggle("on-mac", appOnMac(navigator));
+
 // Every word the app compares or shows comes from the API's vocabulary
 // (tracker.api._vocab): statuses, overrides, decisions, defaults, patterns.
 // Nothing here is typed twice; the CSS classes are derived from the keys.
@@ -1784,7 +1794,7 @@ function showLock(lock) {
 // The controls that send a write for the shown return: greyed while a live
 // pass holds it, and again after every redraw draws them anew. Only what
 // this greyed is given back, so a control the sheet drew disabled stays so.
-// (The menu and the sort icon follow `locked` through shellChanged.)
+// (The menu and the Sort Now button follow `locked` through shellChanged.)
 const LOCKED_CARDS = ["sheet-body", "sheet-foot"];
 
 function applyLock() {
@@ -1806,7 +1816,7 @@ function applyLock() {
 function setLocked(on) {
   locked = on;
   applyLock();
-  shellChanged();   // shell.js: the sort icon and the menu's enable list
+  shellChanged();   // shell.js: the Sort Now button and the menu's enable list
 }
 
 function stopLockWatch() {
@@ -1941,7 +1951,7 @@ function applyVocabulary() {
   $("ed-rename-btn").textContent = vocab.editor.rename;
   $("ed-cancel").textContent = vocab.editor.cancel;
   $("ed-save").textContent = vocab.editor.save;
-  shellVocabulary();   // shell.js: the side panel's, path row's and sort icon's words
+  shellVocabulary();   // shell.js: the side panel's, path row's and Sort Now button's words
 }
 
 let clientsRoot = "";      // the one folder every engagement sits under
@@ -2413,7 +2423,7 @@ async function stopPass() {
   }
 }
 
-// The sort icon back as Sort now. It follows `scanning` and `locked`
+// The Sort Now button back as Sort Now (P274). It follows `scanning` and `locked`
 // (decision 203's review, M2): a lock the shown return met during the pass
 // greys it through the lock's own mark, which the lock going gives back.
 function scanDone() {
@@ -2429,8 +2439,8 @@ function scanDone() {
 // returns show the lock the pass holds, as any lock shows (decision 193).
 async function runScan() {
   // Never a sort without a return chosen: the engine would answer with the
-  // command line's own sentence (final review C, C2). The sort icon is grey
-  // on firm pages; this holds for every other way in (a Retry, a key).
+  // command line's own sentence (final review C, C2). The Sort Now button is
+  // absent on firm pages (P274); this holds for every other way in (a Retry, a key).
   if (!active) return;
   const args = withEng(vocab.pass_command);
   const mine = { args, pass: null, stopping: false, asked: active };

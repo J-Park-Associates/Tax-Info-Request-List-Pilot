@@ -321,12 +321,15 @@ not lists and keep their own rules.
 - `.row-link`: `text-decoration: none` (was `underline`); keeps `color`,
   `cursor`, `text-decoration-thickness: 1px`, `text-underline-offset`.
 - `.row-link:hover { text-decoration-thickness: 2px; }` becomes
-  `.row-link:hover, .rows:focus-visible .row.is-active .row-link { text-decoration: underline; }`.
+  `.row-link:hover, .rows:focus-visible .row.is-active .row-link { text-decoration-line: underline; }`
+  (the line only: the `text-decoration` shorthand would reset the 1px
+  thickness to `auto`, review 1 finding 4; the base rule's thickness and
+  offset stay).
 - The comment above `.row-link` says P267 and the cue that remains at rest
   (the column, the weight, a file's icon), replacing "a link is always
   underlined".
 - The forced-colors block: `.row-link { color: LinkText; }` becomes
-  `.row-link { color: LinkText; text-decoration: underline; }`.
+  `.row-link { color: LinkText; text-decoration-line: underline; }`.
 
 A heading's link (`pagesHeadLink`) and the household beside it are not Tab
 stops today and stay so: the keyboard reaches what they open through the
@@ -357,8 +360,9 @@ themes.
 replacing `test_a_link_differs_from_plain_text_by_more_than_its_colour`:
 `.row-link` has `text-decoration: none` and `cursor: pointer`; one rule
 whose selectors are `.row-link:hover` and `.rows:focus-visible .row.is-active
-.row-link` sets `text-decoration: underline`; the forced-colors block has
-`.row-link { color: LinkText; text-decoration: underline; }`; the status
+.row-link` sets `text-decoration-line: underline` (and `.row-link` keeps
+`text-decoration-thickness: 1px`); the forced-colors block has
+`.row-link { color: LinkText; text-decoration-line: underline; }`; the status
 rules (`.is-waiting`, `.is-attention`, `.is-done`, `.is-plain`,
 `.row-status`) still set no `text-decoration` and no `cursor` (they never
 look pressable).
@@ -627,7 +631,12 @@ then has nothing to make room for.
     name. If the button is about to be hidden while it has focus, focus moves
     to `#find` when it is enabled, else to the page (`focusRegion("page")`),
     and a tip it showed is hidden (`hideTip()`), so focus is never lost to
-    the window.
+    the window. The same hand-off runs when a focused button is about to be
+    disabled (Stopping, In Use Elsewhere), not only hidden: Chromium drops a
+    disabled button's focus to the window at once, before any later hidden
+    state could move it (review 1 finding 5). The hand-off tells a keyboard's focus
+    from a mouse click's by `:focus-visible`: the keyboard's goes to the search box,
+    a click's to the page, so no caret jumps into the box (review 2, note 4).
   - `sortClicked()`: unchanged (`off` covers the hidden state).
   - The header comment and the section comment say "the Sort Now button
     (P274)" instead of "the sort icon (SPEC 8.1)".

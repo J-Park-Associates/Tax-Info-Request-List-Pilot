@@ -288,17 +288,18 @@ api.SCREEN	paging.nouns.overview		new	Returns	1	Page footer noun, Overview	Pilot
 api.SCREEN	paging.nouns.needs_review		new	Files	1	Page footer noun, Needs Review	Pilot 0.3 lane 4b, SPEC-lists 14 (P152)	Files	new
 api.SCREEN	paging.nouns.reminders		new	Drafts	1	Page footer noun, Reminders	Pilot 0.3 lane 4b, SPEC-lists 14 (P152)	Drafts	new
 api.SCREEN	paging.nouns.clients		new	Households	1	Page footer noun, Households	Pilot 0.3 lane 4b, SPEC-lists 14 (P152); P196, SPEC-taxpayer-words the page Jason named: was Clients	Households	new
-api.SCREEN	side.brand		new	J Park & Associates	4	Side panel brand band	Pilot 0.3 lane 4b, SPEC-lists 15.1 (P153)	J Park & Associates	new
+api.SCREEN	side.brand		cut		0	Nowhere; was the side panel's brand band	P266: the firm's name is the window's title, the band says the product's name		-
 api.SCREEN	side.product		new	Tax Document Console	3	Side panel brand band	Pilot 0.3 lane 4b, SPEC-lists 15.1 (P153, P155: new text names the app Tax Document Console)	Tax Document Console	new
 api.SCREEN	side.types		new	Taxpayer Types	2	Side panel section heading	Pilot 0.3 lane 4b, SPEC-lists 15.1 (P153); P196, SPEC-taxpayer-words R5, Q2: was Client Types	Taxpayer Types	new
 api.SCREEN	side.workspace		new	Workspace	1	Side panel section heading	Pilot 0.3 lane 4b, SPEC-lists 15.1 (P154)	Workspace	new
 api.SCREEN	side.settings		new	Settings	1	Side panel foot	Pilot 0.3 lane 4b, SPEC-lists 15.1 (P153, P175)	Settings	new
 api.SCREEN	side.under_construction		new	Under Construction	2	Tooltip of each unbuilt side panel item	Pilot 0.3 lane 4b, SPEC-lists 15.1 (P154)	Under Construction	new
-api.SCREEN	side.soon.ready_to_sign		new	Ready to Sign (Under Construction)	5	Side panel, unbuilt page	Pilot 0.3 lane 4b, SPEC-lists 15.1 (P154)	Ready to Sign (Under Construction)	new
-api.SCREEN	side.soon.family_entities		new	Family Entities (Under Construction)	4	Side panel, unbuilt page	Pilot 0.3 lane 4b, SPEC-lists 15.1 (P154)	Family Entities (Under Construction)	new
-api.SCREEN	side.soon.personal_trusts		new	Personal Trusts (Under Construction)	4	Side panel Workspace, unbuilt	Pilot 0.3 lane 4b, SPEC-lists 15.1 (P154)	Personal Trusts (Under Construction)	new
-api.SCREEN	side.soon.corporate_entities		new	Corporate Entities (Under Construction)	4	Side panel Workspace, unbuilt	Pilot 0.3 lane 4b, SPEC-lists 15.1 (P154)	Corporate Entities (Under Construction)	new
-api.SCREEN	side.soon.portal_settings		new	Portal Settings (Under Construction)	4	Side panel Workspace, unbuilt	Pilot 0.3 lane 4b, SPEC-lists 15.1 (P154)	Portal Settings (Under Construction)	new
+api.SCREEN	side.soon.ready_to_sign		new	Ready to Sign	3	Side panel, unbuilt page	Pilot 0.3 lane 4b, SPEC-lists 15.1 (P154); P265 (short name, the tag says Soon)	Ready to Sign	new
+api.SCREEN	side.soon.family_entities		new	Family Entities	2	Side panel, unbuilt page	Pilot 0.3 lane 4b, SPEC-lists 15.1 (P154); P265 (short name, the tag says Soon)	Family Entities	new
+api.SCREEN	side.soon.personal_trusts		new	Personal Trusts	2	Side panel Workspace, unbuilt	Pilot 0.3 lane 4b, SPEC-lists 15.1 (P154); P265 (short name, the tag says Soon)	Personal Trusts	new
+api.SCREEN	side.soon.corporate_entities		new	Corporate Entities	2	Side panel Workspace, unbuilt	Pilot 0.3 lane 4b, SPEC-lists 15.1 (P154); P265 (short name, the tag says Soon)	Corporate Entities	new
+api.SCREEN	side.soon.portal_settings		new	Portal Settings	2	Side panel Workspace, unbuilt	Pilot 0.3 lane 4b, SPEC-lists 15.1 (P154); P265 (short name, the tag says Soon)	Portal Settings	new
+api.SCREEN	side.soon_tag		new	Soon	1	Side panel, tag on an unbuilt page	Pilot 0.3, SPEC-ui-menu-small M1 (P265)	Soon	new
 api.SCREEN	notices.under_construction		new	Under Construction	2	Toast when an unbuilt item is chosen	Pilot 0.3 lane 4b, SPEC-lists 15.1 (P154)	Under Construction	new
 api.SCREEN	client_types.individuals		new	Individuals	1	Side panel Client Type; Clients chip	Pilot 0.3 lane 4b, SPEC-lists 15.1, 15.3 (P153)	Individuals	new
 api.SCREEN	client_types.businesses		new	Businesses	1	Side panel Client Type; Clients chip	Pilot 0.3 lane 4b, SPEC-lists 15.1, 15.3 (P153)	Businesses	new
@@ -317,7 +318,9 @@ api.MENU	clients	Clients	reword	Households	1	View menu	P196, SPEC-taxpayer-words
 api.SCREEN	sections.clients	Clients	reword	Households	1	Side panel, path row, page title	P196, SPEC-taxpayer-words the page Jason named	Households	word (P196)
 api.SCREEN	navigate_client	Navigate to Client	reword	Navigate to Household	3	A household name's tooltip	P196, SPEC-taxpayer-words R2, Q3	Navigate to Household	word (P196)
 api.SCREEN	find	Find a Client	reword	Find a Household	3	Search box tooltip	P196, SPEC-taxpayer-words R2, Q3	Find a Household	word (P196)
-api.SCREEN	sort.firm	Open a Client to Sort	reword	Open a Household to Sort	5	Sort icon tooltip on a firm page	P196, SPEC-taxpayer-words R2, Q3	Open a Household to Sort	word (P196)
+api.SCREEN	sort.firm	Open a Client to Sort	cut		0	Nowhere; firm pages have no sort control	P274		-
+api.SCREEN	sort.tip		new	Sort This Household's Inbox	4	Sort Now button tooltip	Pilot 0.3, SPEC-ui-menu-small M7 (P274)	Sort This Household's Inbox	new
+api.SCREEN	since		new	Since {date}	2	Overview date cell of a return that needs a person	Pilot 0.3, SPEC-ui-menu-small M5 (P269, option c)	Since {date}	new
 api.SCREEN	figures.waiting	Waiting on Clients	reword	Waiting on Taxpayers	3	Overview figure	P196, SPEC-taxpayer-words R1	Waiting on Taxpayers	word (P196)
 api.SCREEN	empty.clients	No Clients Yet	reword	No Households Yet	3	Households page empty state	P196, SPEC-taxpayer-words the page Jason named	No Households Yet	word (P196)
 api.SCREEN	groups.waiting	Waiting on Client	reword	Waiting on Taxpayer	3	Return page group heading	P196, SPEC-taxpayer-words R1	Waiting on Taxpayer	word (P196)

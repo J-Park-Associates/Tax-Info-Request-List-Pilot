@@ -1,5 +1,5 @@
 // Drives the shell in the harness the way a person would and asserts what
-// happens (SPEC-shell 14.4): routes, the search, the sort icon, F6, Esc, the
+// happens (SPEC-shell 14.4): routes, the search, the Sort Now button, F6, Esc, the
 // setup page, Help > Terms and Help > Take the tour. Made-up names only.
 //
 //   HARNESS_PYTHON=... node pilot/harness/interact.mjs
@@ -77,20 +77,25 @@ const crumbs = (page) => page.evaluate(() => [...document.querySelectorAll("#cru
   await context.close();
 }
 
-{ // the sort icon, F6
+{ // the Sort Now button (P274), F6
   const { context, page } = await open();
-  check("grey on a firm page", await page.evaluate(() => document.getElementById("sort").disabled), null);
+  check("absent on a firm page", await page.evaluate(() => document.getElementById("sort").classList.contains("hidden")), null);
   await page.evaluate(() => shellGo({ level: "household", household: "/clients/J Park & Associates/Smith Family" }));
-  check("ready on a household", !(await page.evaluate(() => document.getElementById("sort").disabled)), null);
+  check("ready on a household, and says Sort Now", !(await page.evaluate(() => document.getElementById("sort").disabled)) && (await page.evaluate(() => document.getElementById("sort").querySelector(".sort-word:not([aria-hidden])")?.textContent === "Sort Now")), null);
   await page.keyboard.press("F9");
   await page.waitForTimeout(300);
   check("F9 starts a sort", (await page.evaluate(() => document.getElementById("sort").dataset.sortState)) === "stop", null);
   check("the foot says how far", (await page.textContent("#last-sort")).startsWith("Sorting 1 of 12"), await page.textContent("#last-sort"));
+  await page.keyboard.press("Control+1");
+  await page.waitForTimeout(200);
+  check("Stop Sorting shows on the Overview while the app's sort runs", await page.evaluate(() => { const b = document.getElementById("sort"); return !b.classList.contains("hidden") && !b.disabled && b.dataset.sortState === "stop" && b.querySelector('.sort-word:not([aria-hidden])').textContent === "Stop Sorting"; }), null);
   await page.click("#sort");
   await page.waitForTimeout(200);
   check("a click stops it", (await page.evaluate(() => document.getElementById("sort").dataset.sortState)) === "stopping", null);
   await page.waitForTimeout(1800);
-  check("and it gives the icon back", (await page.evaluate(() => document.getElementById("sort").dataset.sortState)) === "now", null);
+  check("and it goes away on the Overview once the sort ends", await page.evaluate(() => document.getElementById("sort").classList.contains("hidden")), null);
+  await page.evaluate(() => shellGo({ level: "household", household: "/clients/J Park & Associates/Smith Family" }));
+  check("and it gives the button back on the household", (await page.evaluate(() => document.getElementById("sort").dataset.sortState)) === "now", null);
   await page.focus("#page");
   await page.keyboard.press("F6");
   check("F6 goes to the side panel", await page.evaluate(() => document.activeElement.closest("#side") !== null), null);
@@ -134,6 +139,8 @@ const crumbs = (page) => page.evaluate(() => [...document.querySelectorAll("#cru
   }
   check("the tour says one short line per step", steps.every((s) => s.split(" ").length <= 5) && steps[0] === "Sorts What Your Taxpayers Send", steps);
   check("the tour ends", await page.evaluate(() => !document.getElementById("pilot-tour")), null);
+  await page.evaluate(() => shellGo({ level: "household", household: "/clients/J Park & Associates/Smith Family" }));
+  await page.waitForFunction(() => !document.getElementById("sort").classList.contains("hidden"));
   await page.hover("#sort");
   await page.waitForTimeout(700);
   check("a tooltip shows after hover", await page.evaluate(() => !document.getElementById("tip").hidden), null);
@@ -155,10 +162,25 @@ const crumbs = (page) => page.evaluate(() => [...document.querySelectorAll("#cru
   await page.keyboard.press("Home");
   check("Home goes back to the first row", (await active()) === first, await active());
   const named = await page.evaluate(() => { const row = document.querySelector("#page .row"); return [row.getAttribute("role"), row.querySelector(".row-step").getAttribute("aria-hidden"), row.getAttribute("aria-description")]; });
-  check("a row is an option, its step hidden and named", named.join("|") === "option|true|Open", named);
+  // The step's words come first; after them the description names the household (P195), the links and
+  // (P268) the year when the list holds only one: "Open, Abbott Household (Avery 0), 2025".
+  check("a row is an option, its step hidden and named", named[0] === "option" && named[1] === "true" && /^Open(, .+)?$/.test(named[2] || ""), named);
+  // P270: the chevron rests in the caption colour with its words not drawn; under the pointer the words
+  // are drawn and the step is in the link colour. A row that is not the keyboard's active one, so the
+  // list's focus does not show it.
+  await page.evaluate(() => { const rows = [...document.querySelectorAll("#page .row")].filter((row) => row.querySelector(".row-step") && !row.classList.contains("is-active")); rows[0].setAttribute("data-probe", "step"); });
+  const stepState = () => page.evaluate(() => {
+    const row = document.querySelector("[data-probe]");
+    const token = (name) => { const probe = document.createElement("span"); probe.style.color = `var(${name})`; document.body.append(probe); const color = getComputedStyle(probe).color; probe.remove(); return color; };
+    return { words: getComputedStyle(row.querySelector(".row-step-words")).display, color: getComputedStyle(row.querySelector(".row-step")).color, caption: token("--text-caption"), link: token("--link") };
+  });
+  await page.mouse.move(1, 1);
+  const rest = await stepState();
+  check("at rest the step is a chevron in the caption colour, its words not drawn", rest.words === "none" && rest.color === rest.caption && rest.color !== rest.link, rest);
+  await page.hover("[data-probe]");
+  const under = await stepState();
+  check("hover shows the step's words, in the link colour", under.words !== "none" && under.color === under.link && under.color !== under.caption, under);
   await page.hover("#page .row");
-  const shown = await page.evaluate(() => getComputedStyle(document.querySelector("#page .row .row-step")).visibility);
-  check("hover shows the step", shown === "visible", shown);
   await page.keyboard.press("Enter");
   await page.waitForFunction(() => document.querySelector("#crumb-list li:last-child")?.textContent.startsWith("1"));
   check("Enter runs the step and opens the return", (await crumbs(page)).length === 4, await crumbs(page));
@@ -704,6 +726,8 @@ const settle = (page) => page.waitForTimeout(250);
 { // the tooltip in a contrast theme
   const { context, page } = await open("", { forcedColors: "active" });
   check("the contrast theme is on", await page.evaluate(() => matchMedia("(forced-colors: active)").matches), null);
+  await page.evaluate(() => shellGo({ level: "household", household: "/clients/J Park & Associates/Smith Family" }));
+  await page.waitForFunction(() => !document.getElementById("sort").classList.contains("hidden"));
   await page.hover("#sort");
   await page.waitForTimeout(700);
   const box = await page.evaluate(() => { const t = document.getElementById("tip"); const r = t.getBoundingClientRect(); return { shown: !t.hidden, w: r.width, h: r.height, right: r.right, bottom: r.bottom, iw: innerWidth, ih: innerHeight, color: getComputedStyle(t).color }; });
@@ -722,8 +746,13 @@ const settle = (page) => page.waitForTimeout(250);
       const total = Math.round(row.getBoundingClientRect().height), height = total > 40 ? total - Math.round(parseFloat(getComputedStyle(row).borderBottomWidth)) : total;   // the 1px rule under a row is not part of the grid
       if (height % 4) bad.push(`height ${height}: ${row.textContent}`);
     }
-    // P195: a return row on Overview and Reminders says its year in its own column; a Needs Review heading beside the taxpayer.
-    const years = [...[...document.querySelectorAll("#page .row-return")].filter((r) => r.querySelector('.row-link[data-link="return"]') && !/^\d{4}$/.test(r.querySelector(".row-year").textContent)),
+    // P195: a return row on Overview and Reminders says its year in its own column (P268: with one year in the list
+    // the column is left out and the row's description ends with the year); a Needs Review heading beside the taxpayer.
+    const years = [...[...document.querySelectorAll("#page .row-return")].filter((r) => {
+        if (!r.querySelector('.row-link[data-link="return"]')) return false;
+        const cell = r.querySelector(".row-year");
+        return cell ? !/^\d{4}$/.test(cell.textContent) : !/\d{4}$/.test(r.getAttribute("aria-description") || "");
+      }),
       ...[...document.querySelectorAll("#page .group-title")].filter((t) => t.querySelector('.row-link[data-link="return"]') && !t.querySelector(".head-year"))].map((n) => n.textContent);
     return { bad, years, links: document.querySelectorAll('#page .row-link[data-link="return"]').length };
   });
@@ -749,7 +778,7 @@ const settle = (page) => page.waitForTimeout(250);
   await context.close();
 }
 
-{ // final review B finding 6: a link is underlined in light, dark and the contrast theme; a status such as "n Waiting" is not
+{ // final review B finding 6, as P267 changed it: a name link is underlined on hover in light and dark, always in the contrast theme; a status such as "n Waiting" never is
   for (const [name, opts, scheme] of [["light", {}, "light"], ["dark", {}, "dark"], ["contrast", { forcedColors: "active" }, "light"]]) {
     const { context, page } = await open("", opts);
     await page.emulateMedia({ colorScheme: scheme });
@@ -760,7 +789,13 @@ const settle = (page) => page.waitForTimeout(250);
       return { links: links.length, plainLinks: links.filter((l) => !line(l).includes("underline")).length, waiting: waiting.length,
                underlinedWaiting: waiting.filter((w) => line(w).includes("underline") || getComputedStyle(w).cursor === "pointer").length };
     });
-    check(`links are underlined in the ${name} theme`, seen.links > 3 && seen.plainLinks === 0, seen);
+    if (opts.forcedColors) check(`links are underlined at rest in the ${name} theme`, seen.links > 3 && seen.plainLinks === 0, seen);
+    else {
+      check(`links are not underlined at rest in the ${name} theme`, seen.links > 3 && seen.plainLinks === seen.links, seen);
+      await page.hover("#page .rows .row:nth-child(2) .row-link");
+      await page.waitForTimeout(100);
+      check(`a name link is underlined under the pointer in the ${name} theme`, await page.evaluate(() => getComputedStyle(document.querySelector("#page .rows .row:nth-child(2) .row-link")).textDecorationLine.includes("underline")), null);
+    }
     check(`a status such as n Waiting does not look like a link in the ${name} theme`, seen.waiting > 0 && seen.underlinedWaiting === 0, seen);
     await context.close();
   }

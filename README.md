@@ -123,7 +123,7 @@ what has arrived shows each attachment that filed, under its request.
    initial, then the city, to tell two households apart (decision 188). The
    app is a side panel of four pages (Overview, Needs Review, Reminders,
    Households), right-click menus on rows, a menu bar behind Alt, a
-   **Folders Skipped** list for anything left alone, and one **Sort** icon
+   **Folders Skipped** list for anything left alone, and one **Sort Now** button
 2. List the engagement's document requests (and validation rules) in the
    app's request-list editor
 3. `python -m tracker.scaffold <return_dir>` — builds the household's

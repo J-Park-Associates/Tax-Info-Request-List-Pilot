@@ -39,6 +39,8 @@ const ret = { level: "return", household: smith, year: 2025, ret: smithReturn };
 const chen = "/clients/J Park & Associates/Chen Family";
 const SCENARIOS = [
   { name: "overview", query: "" },
+  { name: "overview-two-years", query: "?scenario=two-years" },
+  { name: "row-hover", query: "", hover: "#page .rows .row:nth-child(2) .row-link" },
   { name: "overview-empty", query: "?scenario=quiet" },
   { name: "overview-no-clients", query: "?scenario=empty-clients" },
   { name: "needs-review", query: "", run: go({ level: "needs-review" }) },
@@ -80,6 +82,7 @@ const SCENARIOS = [
   { name: "setup", query: "?scenario=setup" },
   { name: "loading", query: "?scenario=slow" },
   { name: "sort-running", query: "", run: `${go({ level: "household", household: smith })}; scanning = { pass: "p1", stopping: false }; shellProgress({ n: 3, of: 12, household: "Smith Family" }); shellChanged()` },
+  { name: "sort-running-firm", query: "", run: `${go({ level: "household", household: smith })}; scanning = { pass: "p1", stopping: false }; shellProgress({ n: 3, of: 12, household: "Smith Family" }); shellChanged(); shellGo({ level: "overview" })` },
   { name: "sort-failed", query: "?scenario=failed", run: "" },
   { name: "counts-fail", query: "?scenario=firm-fails" },
   { name: "search", query: "", search: "smith" },

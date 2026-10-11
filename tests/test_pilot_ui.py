@@ -260,3 +260,28 @@ def test_the_grids_retired_steps_are_gone_from_every_pilot_stylesheet():
         assert not re.search(r"--sp-(?:half|3|5)\b", css), name
     defined = set(re.findall(r"--sp-(\w+):", stripped(read(CSS_NAME))))
     assert defined == set(SP_STEPS)
+
+
+# ── P265-P280 (SPEC-ui-menu-small) ───────────────────────────────────────
+
+def test_the_face_is_chosen_once_per_platform_in_the_token_block_and_no_rule_names_a_face():
+    """P280: the light :root keeps Segoe UI Variable for Windows; one
+    :root.on-mac block, outside every @media and before the forced-colors
+    block, gives a Mac the system face; and every other font-family in the
+    three stylesheets is one of the two tokens or inherit."""
+    css = stripped(read(CSS_NAME))
+    rules = list(top_level(css))
+    roots = [dict(declarations(body)) for prelude, body, _end in rules if prelude.strip() == ":root"]
+    assert len(roots) == 1 and roots[0]["--font-ui"].startswith('"Segoe UI Variable Text"')
+    assert roots[0]["--font-display"].startswith('"Segoe UI Variable Display"')
+    macs = [(at, dict(declarations(body))) for at, (prelude, body, _end) in enumerate(rules) if prelude.strip() == ":root.on-mac"]
+    assert len(macs) == 1, "one block, outside every @media (top_level yields only top-level rules)"
+    at, mac = macs[0]
+    assert mac["--font-ui"].startswith("-apple-system") and mac["--font-display"] == "var(--font-ui)" and set(mac) == {"--font-ui", "--font-display"}
+    forced = next(i for i, (prelude, _body, _end) in enumerate(rules) if prelude.strip().startswith("@media (forced-colors"))
+    assert at < forced and forced == len(rules) - 1, "the forced-colors block stays the file's last rule"
+    for name in (CSS_NAME, "shell.css", "pilot-style.css"):
+        for _media, selector, body in blocks(read(name)):
+            for prop, value in declarations(body):
+                if prop == "font-family":
+                    assert value in ("var(--font-ui)", "var(--font-display)", "inherit"), f"{name}: {selector.strip()}: {value}"
