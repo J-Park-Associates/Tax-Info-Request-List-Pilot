@@ -332,8 +332,11 @@ The two jobs share no file and run side by side. Neither runs
 the map once, runs `python -m ruff check .`, `tools/repo_map.py check` and
 `tests/test_repo_map.py`, and commits each job as its own commit after its
 review has no findings. Each builder writes
-`pilot/handoffs/mac-check-fixes-job<N>.md`: what was built, what the tests
-said (output pasted), what is left.
+`pilot/handoffs/mac-check-fixes-job<N>.md` for the reviewer and the
+orchestrator: what was built, what the tests said (output pasted), what is
+left. That folder is never committed (SPEC-cleanup: a handoff note goes in
+the pull request description); the orchestrator folds the two notes into
+`pilot/HANDOFF.md` and the commit messages, and deletes them.
 
 **Review** (opus, high effort, a session that did not build): numbered
 findings against this SPEC's sections, each with the line it fails. A
