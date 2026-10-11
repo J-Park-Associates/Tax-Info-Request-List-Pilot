@@ -315,8 +315,8 @@ next start.
 
 **The Mac's name.** The schedule and the engagement locks know the Mac by its local
 host name (System Settings, General, Sharing), which does not change with the
-network. Renaming the Mac makes it a different computer to the schedule, and the app
-then offers to move the schedule to it (§6).
+network. Renaming the Mac makes it a different computer to the schedule, and **Repair the
+Schedule** then offers to move the schedule to it (§6).
 
 ### The layout: a household, a year, a return
 
