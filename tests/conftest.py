@@ -88,9 +88,11 @@ an engagement folder.
 from __future__ import annotations
 
 import datetime as dt
+import functools
 import io
 import json
 import os
+import platform
 import shutil
 import subprocess
 import sys
@@ -105,8 +107,10 @@ from tests.tripwire import sitecustomize as tripwire
 from tracker import (
     after_install,
     content_check,
+    fsio,
     layout,
     ledger,
+    locking,
     runner,
     scheduling,
     settings,
@@ -278,6 +282,65 @@ def _tmutil_unfaked(command):
     raise AssertionError(f"a test reached tmutil without faking it: {command}")
 
 
+#: The computer's own answer to ``settings.host_system``, kept before the
+#: autouse guard below pins it to the floor's on a Mac: for what guards the
+#: *real* computer (the tripwire's data home) and must be asked as it is.
+REAL_HOST_SYSTEM = settings.host_system
+
+
+#: ``platform.node`` as the platform itself has it, kept before any test can
+#: replace it: a test that has not is on the machine it really runs on.
+REAL_NODE = platform.node
+
+
+class _TheFloorsPlatform:
+    """``platform`` as the lock layer sees it on a Mac under the suite's
+    pin. ``this_host()`` there answers ``platform.node()`` (the floor's way)
+    and not the Mac's ``LocalHostName``, so a test that fakes the computer's
+    name through ``platform.node`` gets its fake back. A test that does not
+    fake it gets the Mac's real ``LocalHostName``, the name a child process
+    running ``this_host()`` answers, so a lock a real child holds is still
+    this machine's. Everything else is ``platform``'s own."""
+
+    _real_name: str | None = None
+
+    def __getattr__(self, name):
+        return getattr(platform, name)
+
+    @classmethod
+    def node(cls) -> str:
+        if platform.node is not REAL_NODE:
+            return platform.node()
+        if cls._real_name is None:
+            cls._real_name = locking._local_host_name() or REAL_NODE()
+        return cls._real_name
+
+
+def _not_a_mac(original):
+    """The lock layer's and the flush's ``_on_a_mac`` as ``False``, still
+    *reading* as the original (``functools.wraps``), because
+    ``tests/test_fsio.py`` holds the two copies identical by their source."""
+    @functools.wraps(original)
+    def not_a_mac() -> bool:
+        return False
+
+    return not_a_mac
+
+
+def stand_on_the_floor(patch: pytest.MonkeyPatch) -> None:
+    """On a Mac, make the seams that name the computer answer the Linux
+    floor's through ``patch``; on any other computer, do nothing. Its own
+    function so the suite-shape test can run it against a faked Mac."""
+    if settings.host_system() == "darwin":
+        patch.setattr(settings, "host_system", lambda: "posix")
+        for module in (locking, fsio):
+            patch.setattr(module, "_on_a_mac", _not_a_mac(module._on_a_mac))
+        patch.setattr(locking, "platform", _TheFloorsPlatform())
+        # Asked once now, before any test body can fake ``subprocess.run`` or
+        # the name, so the cached answer is the Mac's real one.
+        _TheFloorsPlatform.node()
+
+
 @pytest.fixture(autouse=True)
 def no_task_scheduler_unless_faked():
     """No test registers or deletes a real scheduled task (decision 209).
@@ -292,8 +355,30 @@ def no_task_scheduler_unless_faked():
     and one that forgets fails here rather than reaching the real one. A
     ``MonkeyPatch`` of its own, like the store's, so ``monkeypatch.undo()``
     in a test cannot lift it.
+
+    The suite's default computer is the Linux floor's: on a Mac,
+    ``settings.host_system`` is pinned to ``"posix"`` here, so a test that
+    never said which computer it is on does not take the Mac branches (the
+    real ``tmutil``, the Mac's own name, the Mac's vocabulary). A test about
+    a Mac says :func:`a_mac` or ``mac``, which pin ``"darwin"`` on top.
+
+    The lock layer and the flush have a seam of their own: ``_on_a_mac`` in
+    ``locking`` and in ``fsio`` reads ``sys.platform`` (neither may import
+    ``settings``). On a Mac it would make ``this_host()`` answer the Mac's
+    ``LocalHostName`` instead of the faked ``platform.node()`` every test
+    sets, the flush ask for ``F_FULLFSYNC`` instead of the ``os.fsync`` the
+    tests watch, and ``boot_time()`` read the Mac's ``sysctl`` instead of
+    answering None (no boot rule) as it does where ``/proc/uptime`` is
+    missing. So :func:`stand_on_the_floor` pins both ``False`` too -
+    :func:`a_mac` leaves them so: the tests about a Mac's schedule fake the
+    computer's name through ``platform.node()`` (the ``mac`` fixture) and
+    expect it back - and shows the lock layer ``platform.node()`` (see
+    :class:`_TheFloorsPlatform`). ``tests/test_locking.py`` and
+    ``tests/test_fsio.py`` set ``_on_a_mac`` to ``True`` where they test the
+    Mac's lock name and full flush.
     """
     patch = pytest.MonkeyPatch()
+    stand_on_the_floor(patch)
     patch.setattr(scheduling, "scheduler_here", lambda: False)
     patch.setattr(scheduling, "_schtasks", _schtasks_unfaked)
     patch.setattr(scheduling, "_launchctl", _launchctl_unfaked)
@@ -870,6 +955,14 @@ def seed_statuses(engagement_dir, updates):
 # ------------------------------------------- the suite can never see a real root ----
 
 
+def floors_data_home() -> Path:
+    """The data home the Linux floor's rules give this account: what a bare
+    test resolves on a Mac under the suite's pin (``stand_on_the_floor``)."""
+    environ = {key: value for key, value in os.environ.items() if key != settings.ENV_DATA_HOME}
+    return settings.resolve_data_home(environ, system="posix", home=Path.home(),
+                                      program=settings.program_folders(), drive_type=settings.drive_type)
+
+
 def real_places(repo: Path) -> tuple[tuple[str, Path], ...]:
     """Every place a real settings file, store, scratch folder or client tree
     resolves to on this machine when nothing of the suite's overrides it:
@@ -918,6 +1011,14 @@ def real_places(repo: Path) -> tuple[tuple[str, Path], ...]:
         places.append(("data home", settings.default_data_home()))
     except settings.SettingsError:
         pass
+    # On a Mac the suite is pinned to the floor's answer (stand_on_the_floor),
+    # so a bare test resolves the floor's data home for this account too: armed
+    # as well, or a reach there would go unseen.
+    if REAL_HOST_SYSTEM() == "darwin":
+        try:
+            places.append(("data home", floors_data_home()))
+        except settings.SettingsError:
+            pass
     if os.environ.get(settings.ENV_DATA_HOME, "").strip():
         places.append(("data home", Path(os.environ[settings.ENV_DATA_HOME])))
     try:

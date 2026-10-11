@@ -10136,13 +10136,16 @@ def test_a_spare_handed_a_malformed_line_says_the_usage_and_runs_nothing():
 #: import path, which the import system lists to find a module.
 _IMPORT_PROBE = """
 import json, os, sys, sysconfig
+# Asked before the hook is up: on a Mac ``sysconfig`` reads the system's own
+# SystemVersion.plist for its platform tag, which is the probe's open, not
+# the API's.
+roots = {sys.prefix, sys.base_prefix, sys.exec_prefix, *(p for p in sysconfig.get_paths().values())}
 seen = []
 def hook(event, args):
     if event in ("open", "os.listdir", "os.scandir") and args and isinstance(args[0], (str, bytes, os.PathLike)):
         seen.append((event, os.fsdecode(args[0])))
 sys.addaudithook(hook)
 import tracker.api
-roots = {sys.prefix, sys.base_prefix, sys.exec_prefix, *(p for p in sysconfig.get_paths().values())}
 print(json.dumps({"seen": seen, "roots": sorted(roots), "path": sys.path}))
 """
 

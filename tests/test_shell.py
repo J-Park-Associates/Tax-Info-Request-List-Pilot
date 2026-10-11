@@ -40,6 +40,7 @@ from tests.test_pilot_ui import (
     stripped,
     top_level,
 )
+from tracker import settings as settings_module
 
 REPO = Path(__file__).resolve().parent.parent
 
@@ -2584,7 +2585,16 @@ def test_the_harness_stub_speaks_the_apis_vocabulary(tmp_path):
     assert not (REPO / "pilot" / "harness" / "vocab-mirror.json").exists()
     live = json.loads(json.dumps(api._vocab()))
     dumped = tmp_path / "vocab.json"
-    done = subprocess.run([sys.executable, str(REPO / "pilot" / "harness" / "make_vocab.py"), str(dumped)],
+    # The child answers the question of the same computer as this process
+    # does: the suite's pin of ``settings.host_system`` (tests/conftest.py)
+    # is in-process, so on a Mac the child would say "Another Mac Sorting"
+    # against this process's "Another PC Sorting". The seam is handed on,
+    # never the comparison loosened.
+    pinned = (f"import runpy, sys; from tracker import settings; "
+              f"settings.host_system = lambda: {settings_module.host_system()!r}; "
+              f"sys.argv = sys.argv[1:]; runpy.run_path(sys.argv[0], run_name='__main__')")
+    done = subprocess.run([sys.executable, "-c", pinned, str(REPO / "pilot" / "harness" / "make_vocab.py"),
+                           str(dumped)],
                           capture_output=True, text=True, encoding="utf-8", timeout=60, check=False, cwd=REPO)
     assert done.returncode == 0, done.stderr
     assert json.loads(dumped.read_text(encoding="utf-8")) == live

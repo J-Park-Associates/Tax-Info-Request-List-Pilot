@@ -16,8 +16,8 @@
   ],
   "counts": {
     "nodes": 271,
-    "edges": 1253,
-    "reused": 216
+    "edges": 1256,
+    "reused": 215
   },
   "node_types": [
     "artifact",
@@ -5544,8 +5544,8 @@
       "id": "tests/conftest.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "5c62533d6928b352",
-      "lines": 1204,
+      "sha256": "7e9909a198e8c489",
+      "lines": 1305,
       "exports": [
         "AMac",
         "APP_FOLDER",
@@ -5555,7 +5555,9 @@
         "LOST_WORKER",
         "PATH_SETTINGS",
         "REAL_FILL",
+        "REAL_HOST_SYSTEM",
         "REAL_LAUNCHCTL",
+        "REAL_NODE",
         "REAL_SCHEDULER_HERE",
         "REAL_SCHTASKS",
         "REAL_TMUTIL",
@@ -5581,6 +5583,7 @@
         "data_home_for",
         "fills_asked",
         "floor_return",
+        "floors_data_home",
         "make_engagement",
         "named_page",
         "no_real_test_cache_is_cleared",
@@ -5606,6 +5609,7 @@
         "short_root",
         "sort",
         "sort_all",
+        "stand_on_the_floor",
         "the_store_agrees_with_the_record",
         "the_view_agrees_with_the_readers",
         "tripwire_log_said",
@@ -5808,8 +5812,8 @@
       "id": "tests/test_api.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "debface3b74aa564",
-      "lines": 10713,
+      "sha256": "101dfc7e797867d3",
+      "lines": 10716,
       "exports": [
         "COUNTS",
         "DEEPER_ROOT_LENGTH",
@@ -7642,8 +7646,8 @@
       "id": "tests/test_locking.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "c62d4e64fe3fb4d8",
-      "lines": 1355,
+      "sha256": "ff5fd08280be60fd",
+      "lines": 1353,
       "exports": [
         "test_a_breaker_another_racer_is_reading_is_still_removed_on_release",
         "test_a_breaker_from_before_the_boot_is_abandoned_whatever_its_pid_says_now",
@@ -9332,8 +9336,8 @@
       "id": "tests/test_shell.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "08a32c18ea7b8745",
-      "lines": 6365,
+      "sha256": "543b2d6fac5b4c77",
+      "lines": 6375,
       "exports": [
         "COLUMN_FUNCTIONS",
         "CONTRAST",
@@ -10261,8 +10265,8 @@
       "id": "tests/test_tripwire.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "e9d9323f6e8e3534",
-      "lines": 615,
+      "sha256": "41befc6cfba99761",
+      "lines": 669,
       "exports": [
         "ALL_PASS",
         "CANARIES",
@@ -10291,6 +10295,7 @@
         "test_the_rest_of_the_checkout_is_not_guarded",
         "test_the_suite_in_an_office_shaped_copy_creates_no_folder_in_the_checkout",
         "test_the_suite_in_an_office_shaped_copy_stops_every_way_to_a_real_place",
+        "test_the_suite_stands_on_the_floor_unless_a_test_says_a_mac",
         "test_the_tripwire_arms_a_macs_real_data_home_too",
         "test_the_tripwire_guards_every_place_a_real_settings_file_store_or_scratch_resolves_to"
       ]
@@ -11280,6 +11285,12 @@
     {
       "from": "tests/conftest.py",
       "to": "tracker/filer.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/conftest.py",
+      "to": "tracker/fsio.py",
       "type": "exercises",
       "source": "derived"
     },
@@ -15473,7 +15484,19 @@
     },
     {
       "from": "tests/test_tripwire.py",
+      "to": "tracker/fsio.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_tripwire.py",
       "to": "tracker/layout.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_tripwire.py",
+      "to": "tracker/locking.py",
       "type": "exercises",
       "source": "derived"
     },
