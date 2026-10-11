@@ -5641,3 +5641,213 @@ def test_an_idle_pass_stays_within_its_budget(tmp_path, samples, monkeypatch):
     assert counted["checkpoints"] == 1, counted
     assert counted["hint writes"] == 1, counted
     assert counted["unheld"] <= math.ceil(IDLE_PASS_MEASURED["unheld"] * 1.2), counted
+
+
+# ------------------------------- a scheduled pass off Windows ends itself (SPEC-mac R26, R30) ----
+
+
+def _the_scheduled_args(*extra):
+    return [runner_module.SETTINGS_FLAG, "<settings>", runner_module.LOG_FLAG, *extra]
+
+
+def test_only_a_scheduled_pass_off_windows_limits_itself(monkeypatch):
+    """R26 is the scheduled job's shape - the settings folder, no root, no household,
+    not a dry run - on any system but Windows, whose Task Scheduler kills the job at
+    its own limit. Run now (the app can Stop it), a dry run and a typed root are not it."""
+    from tracker import settings
+    from tracker.runner import _limited_from, _parser
+
+    monkeypatch.setattr(runner_module, "wall_clock", lambda: 1234.5)
+
+    def shaped(*args):
+        return _limited_from(_parser().parse_args(args))
+
+    for system, expected in (("posix", 1234.5), ("darwin", 1234.5), ("nt", None)):
+        monkeypatch.setattr(settings, "host_system", lambda system=system: system)
+        assert shaped(*_the_scheduled_args()) == expected, system
+    monkeypatch.setattr(settings, "host_system", lambda: "darwin")
+    assert shaped(runner_module.SETTINGS_FLAG, "s", runner_module.HOUSEHOLD_FLAG, "Alder") is None
+    assert shaped(runner_module.SETTINGS_FLAG, "s", "--dry-run") is None
+    assert shaped("/some/root", runner_module.SETTINGS_FLAG, "s") is None
+    assert shaped("/some/root") is None
+
+
+def test_a_scheduled_pass_off_windows_stops_itself_before_the_run_limit(tmp_path, samples, monkeypatch, capsys):
+    """R26: at the run limit less one household's budget, on the wall clock, the pass
+    stops as Stop does - after the file it is on, recording the stop and letting go of
+    its locks - and the next pass files the rest."""
+    from tracker.locking import RUN_TIME_LIMIT_SECONDS, lock_status
+    from tracker.runner import (
+        CODE_PASS_RUN_LIMIT,
+        HOUSEHOLD_BUDGET_SECONDS,
+        PASS_RUN_LIMIT,
+        SELF_STOP_AFTER_SECONDS,
+        SelfLimitedWatch,
+        log_path,
+    )
+
+    assert SELF_STOP_AFTER_SECONDS == RUN_TIME_LIMIT_SECONDS - HOUSEHOLD_BUDGET_SECONDS
+    root = tmp_path / "root"
+    engagement = build_engagement(root, samples, drops=THREE_DROPS)
+    clock = [1_700_000_000.0]
+    monkeypatch.setattr(runner_module, "wall_clock", lambda: clock[0])
+    monkeypatch.setattr(runner_module, "WATCHDOG_SLICE_SECONDS", 3600.0)
+    sorted_ = []
+    real_say = SelfLimitedWatch.say
+
+    def say(self, event, **fields):
+        real_say(self, event, **fields)
+        if event == "file" and fields.get("step") == "sort":
+            sorted_.append(fields)
+            if len(sorted_) == 2:      # on the second file, an hour and three quarters in
+                clock[0] += SELF_STOP_AFTER_SECONDS
+
+    monkeypatch.setattr(SelfLimitedWatch, "say", say)
+
+    code = _the_scheduled_job(root, monkeypatch, runner_module.LOG_FLAG, "--reminders", REMINDERS_NEVER)
+
+    assert code == 0 and len(sorted_) == 2, "the first was taken; it stopped at the second"
+    said = PASS_RUN_LIMIT.format(n=1)
+    assert said in _page(root) and f"{CODE_PASS_RUN_LIMIT}=1" in log_path().read_text(encoding="utf-8")
+    assert said not in log_path().read_text(encoding="utf-8"), "the log keeps the code, never a sentence"
+    assert len([p for p in inbox_of(engagement.path).iterdir() if p.name in THREE_DROPS]) == 2, "two wait"
+    assert lock_status(engagement.path) is None, "its locks are let go"
+    assert "succeeded" in runner_module.last_pass_line(runner_module.last_pass_path())["text"]
+    capsys.readouterr()
+
+    monkeypatch.setattr(SelfLimitedWatch, "say", real_say)
+    assert main([runner_module.SETTINGS_FLAG, str(tmp_path / "settings"), "--reminders", REMINDERS_NEVER]) == 0
+    assert not [p for p in inbox_of(engagement.path).iterdir() if p.name in THREE_DROPS], "the next pass took them"
+
+
+def test_a_pass_before_the_run_limit_is_not_stopped_early(tmp_path, samples, monkeypatch):
+    root = tmp_path / "root"
+    engagement = build_engagement(root, samples, drops=THREE_DROPS)
+    monkeypatch.setattr(runner_module, "wall_clock", lambda: 1_700_000_000.0)
+    monkeypatch.setattr(runner_module, "WATCHDOG_SLICE_SECONDS", 3600.0)
+    assert _the_scheduled_job(root, monkeypatch, runner_module.LOG_FLAG, "--reminders", REMINDERS_NEVER) == 0
+    assert not [p for p in inbox_of(engagement.path).iterdir() if p.name in THREE_DROPS]
+    assert runner_module.PASS_RUN_LIMIT.split("{")[0] not in _page(root)
+
+
+def test_the_watchdog_ends_the_process_at_the_run_limit_on_the_wall_clock(monkeypatch):
+    """R26: looked at in slices, so a clock that jumped while the Mac slept is seen;
+    never before the limit, and not at all once the pass is done."""
+    import threading
+
+    from tracker.locking import RUN_TIME_LIMIT_SECONDS
+    from tracker.runner import RUN_LIMIT_EXIT_CODE, _watch_the_run_limit
+
+    clock = [100.0]
+    ended = []
+    fired = threading.Event()
+    monkeypatch.setattr(runner_module, "wall_clock", lambda: clock[0])
+    monkeypatch.setattr(runner_module, "WATCHDOG_SLICE_SECONDS", 0.01)
+    monkeypatch.setattr(runner_module, "_end_the_process", lambda code: (ended.append(code), fired.set()))
+
+    quiet = threading.Event()
+    thread = _watch_the_run_limit(100.0, quiet)
+    clock[0] = 100.0 + RUN_TIME_LIMIT_SECONDS - 1
+    assert not fired.wait(0.3) and ended == [], "not before the limit"
+    quiet.set()
+    clock[0] = 100.0 + RUN_TIME_LIMIT_SECONDS + 5
+    thread.join(5)
+    assert not thread.is_alive() and ended == [], "a pass that is done is not ended"
+
+    thread = _watch_the_run_limit(100.0, threading.Event())
+    assert fired.wait(5) and ended == [RUN_LIMIT_EXIT_CODE]
+    thread.join(5)
+    assert not thread.is_alive(), "it ends after it has fired"
+
+
+def test_a_scheduled_pass_off_windows_ends_at_the_run_limit_and_its_lock_is_cleared_as_dead(tmp_path):
+    """R26 and R19: a real process holds a return's lock and is ended by the watchdog at
+    the limit. The kernel lets go of its lock, and the next pass finds its owner gone and
+    clears it, as it would one Task Scheduler killed."""
+    import subprocess
+    import sys
+    import time
+
+    from tests.conftest import REPO, child_env
+    from tracker.locking import acquire_lock, lock_status, release_lock
+    from tracker.runner import RUN_LIMIT_EXIT_CODE
+
+    folder = tmp_path / "return"
+    folder.mkdir()
+    child = (
+        "import sys, threading, time\n"
+        "from pathlib import Path\n"
+        "import tracker.runner as runner\n"
+        "from tracker.locking import acquire_lock\n"
+        "acquire_lock(Path(sys.argv[1]))\n"
+        "runner.WATCHDOG_SLICE_SECONDS = 0.05\n"
+        "runner.RUN_TIME_LIMIT_SECONDS = 1\n"
+        "runner._watch_the_run_limit(runner.wall_clock() - 0.5, threading.Event())\n"
+        "time.sleep(60)\n"
+    )
+    began = time.monotonic()
+    done = subprocess.run([sys.executable, "-c", child, str(folder)], cwd=REPO, env=child_env(),
+                          capture_output=True, text=True, timeout=120, check=False)
+    assert done.returncode == RUN_LIMIT_EXIT_CODE, done.stderr
+    assert time.monotonic() - began < 60, "it did not wait out its sleep"
+
+    status = lock_status(folder)
+    assert status is not None and status.owner_gone and status.stale, "a lock whose owner is dead"
+    release_lock(acquire_lock(folder))               # the next pass takes it over without a word
+
+
+def test_a_mac_pass_refused_the_root_says_macos_did_not_allow_it(tmp_path, samples, monkeypatch):
+    """R30: on a Mac a clients folder macOS will not let this program list is
+    ``root-not-permitted``, not "could not be walked": the permission is the
+    program's own, and for the pass launchd starts that is the API."""
+    from tracker import settings
+    from tracker.runner import PASS_REASONS, PASS_ROOT_NOT_PERMITTED, PASS_ROOT_UNREADABLE
+
+    assert PASS_ROOT_NOT_PERMITTED == "root-not-permitted" != PASS_ROOT_UNREADABLE
+    assert PASS_REASONS[PASS_ROOT_NOT_PERMITTED] == (
+        "macOS did not let the schedule read the clients folder; open the app, and allow it when macOS "
+        "asks (runbook, 'On a Mac')")
+    root = tmp_path / "root"
+    build_engagement(root, samples)
+    monkeypatch.setattr(settings, "host_system", lambda: "darwin")
+    monkeypatch.setattr(settings, "drive_type", lambda path: settings.DRIVE_FIXED)
+    listed = []
+
+    def refused(folder):
+        listed.append(folder)
+        raise PermissionError(1, "Operation not permitted", folder)
+
+    monkeypatch.setattr(runner_module, "_list_the_root", refused)
+    walked = []
+    monkeypatch.setattr(runner_module, "discover_engagements", lambda *args: walked.append(args))
+
+    with pytest.raises(SystemExit) as stopped:
+        _the_scheduled_job(root, monkeypatch, runner_module.LOG_FLAG)
+
+    assert stopped.value.reason_code == PASS_ROOT_NOT_PERMITTED and listed and not walked, "nothing was walked"
+    assert str(stopped.value) == f"Clients folder problem: {PASS_REASONS[PASS_ROOT_NOT_PERMITTED]}"
+    path = runner_module.last_pass_path()
+    assert json.loads(path.read_text(encoding="utf-8"))["reason_code"] == PASS_ROOT_NOT_PERMITTED
+    line = runner_module.last_pass_line(path)
+    assert line["level"] == runner_module.LEVEL_ERR and PASS_REASONS[PASS_ROOT_NOT_PERMITTED] in line["text"]
+    assert PASS_REASONS[PASS_ROOT_NOT_PERMITTED] in runner_module.log_path().read_text(encoding="utf-8")
+
+
+def test_a_root_that_lists_is_walked_on_a_mac_and_a_refusal_off_a_mac_is_the_walks_own(
+        tmp_path, samples, monkeypatch):
+    from tracker import settings
+
+    root = tmp_path / "root"
+    engagement = build_engagement(root, samples)
+    monkeypatch.setattr(settings, "host_system", lambda: "darwin")
+    monkeypatch.setattr(settings, "drive_type", lambda path: settings.DRIVE_FIXED)
+    assert _the_scheduled_job(root, monkeypatch, runner_module.LOG_FLAG, "--reminders", REMINDERS_NEVER) == 0
+    assert not [p for p in inbox_of(engagement.path).iterdir() if p.name.startswith("W-2")]
+
+    monkeypatch.setattr(settings, "host_system", lambda: "posix")
+
+    def refused(folder):
+        raise AssertionError("only a Mac asks")
+
+    monkeypatch.setattr(runner_module, "_list_the_root", refused)
+    assert _the_scheduled_job(root, monkeypatch, runner_module.LOG_FLAG, "--reminders", REMINDERS_NEVER) == 0
