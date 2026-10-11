@@ -341,20 +341,71 @@ that holds the prompt, the template and the script to one another).
 
 ---
 
-## Open for Jason
+## Decided by Jason (2026-10-11, P259)
 
-- **Q1.** The idle cadence of the last-pass watch (60 s). It costs one
-  spawn of the engine a minute while the window is open. If that is too
-  much on a laptop, the alternative is focus-only (no idle timer): the
-  page then catches up only when clicked into. Built as 60 s; one number
-  to change.
-- **Q2.** Whether the sentence should be visible without a click (an open
-  Details by default) on the setup page only, where a buyer first meets
-  it. Built closed everywhere.
-- **Q3.** Whether the household pause ("Two Years Open") and the prior-year
-  feed sentences may also show under Details. Built log-only, as before.
-- **Q4.** The reader warning ("Install Folder Name Too Long") has no
-  Details either; its sentence names the install folder. Built as before.
+- **Q1. Keep 60 seconds.** The idle cadence of the last-pass watch stays as
+  built: one spawn of the engine a minute while the window is open, so a
+  pass that starts or ends while the app sits open is seen within a minute.
+- **Q2. Open on the setup page only.** A Details disclosure drawn while the
+  setup page is shown is open; everywhere else it is closed until clicked.
+- **Q3. Yes, both.** The household pause ("Two Years Open; Sorting Paused",
+  "Folder Renamed") and the prior-year feed ("Prior Year Data Not Found")
+  show their sentences under Details.
+- **Q4. Yes.** The reader warning ("Install Folder Name Too Long") shows its
+  sentence under Details.
+
+Q2 to Q4 are section 4, Job 3.
+
+---
+
+## 4. Jason's rulings Q2 to Q4 (P259)
+
+**Ruling.** Every heading that says something needs attention has its
+sentence one click away, and no notice sends a person to the error log
+alone. The one line stays one line and path-free; the sentence under
+Details may name the program's folder, a household or a year - names the
+page already shows - and never a client's file (P63). The error log still
+gets every sentence, unchanged.
+
+### 4.1 Open on the setup page (Q2)
+
+`drawNotice` (`app/renderer/app.js`) draws the `details` element with the
+`open` attribute when `shellRoute.level === "setup"` at the moment it is
+drawn, and without it otherwise. A notice stays as the person left it:
+leaving the setup page does not close it, and a notice first drawn on a
+working page is closed. The harness's setup scenario shows it open.
+
+### 4.2 The pause and the feeds (Q3)
+
+`pagesHouseholdNotices` (`app/renderer/pages.js`) marks its pause entry
+(`renamed`/`paused`) and its feeds entry `shown: true`; their `detail` is
+already the API's sentence. The comments there that say the sentence goes
+only to the error log say "under Details, and to the error log".
+
+### 4.3 The reader warning (Q4)
+
+`renderMachineNotices` (`app/renderer/app.js`) gives the `reader` keyed
+notice `detail: listed.reader_warning` on its failure, and still logs it
+once when the notice first shows. SPEC-shell's E28 row reads "Notice; the
+path under Details" and the runbook's install-folder paragraph says the
+sentence is under Details on the notice and in the error log.
+
+### 4.4 Acceptance (`tests/test_shell.py`, node)
+
+- `test_details_are_open_on_the_setup_page_and_closed_elsewhere` (new):
+  `drawNotice` under `shellRoute.level` "setup" draws `details` with
+  `open`; under "overview" without.
+- `test_the_pause_and_feed_sentences_reach_the_screen_as_details` (new):
+  `pagesHouseholdNotices` with a paused household and a failed feed yields
+  entries marked `shown` whose detail is the API's sentence; the two-open-
+  years entry stays without one.
+- `test_the_reader_warning_reaches_the_screen_as_details` (new):
+  `renderMachineNotices` with a `reader_warning` shows the `reader` notice
+  with that sentence as its detail and logs it once; without one it is
+  cleared.
+- The existing test that proves only the machine warnings and the setup
+  findings reach the screen is extended to the new set, and still proves
+  the broken-row error and stack never do.
 
 ---
 
@@ -364,8 +415,9 @@ that holds the prompt, the template and the script to one another).
 |---|---|---|---|---|
 | **1** | Sections 1 and 2 | `tracker/api.py`, `tracker/after_install.py` (the reply's `wait` only), `app/renderer/shell.js`, `app/renderer/app.js`, `app/main.js`, `app/preload.js`, `app/renderer/pilot-ui.css`, `pilot/harness/stub.js`, `pilot/harness/app-stub.js`, `pilot/SPEC-shell.md`, `pilot/wording-shell.tsv`, `docs/runbook.md`, `tests/test_api.py`, `tests/test_shell.py`, `tests/test_single_source.py` (one pin) | sonnet | `tests/test_shell.py`, `tests/test_shell_menu.py`, `tests/test_api.py`, `tests/test_single_source.py`, `tests/test_tripwire.py`, `tests/test_errors.py`, `tests/test_layers.py` |
 | **2** | Section 3 | `pilot/mactest/run_checks.sh`, `pilot/mactest/PROMPT.md`, `pilot/mactest/RESULTS-TEMPLATE.md`, `pilot/wintest/make_samples.py`, `pilot/wintest/SAMPLE-DOCUMENTS.md`, `pilot/SPEC-mac.md` (section 3 only), `tracker/runner.py` (one comment), `tests/test_pilot.py` | sonnet | `tests/test_pilot.py`, `tests/test_pilot_installer.py`, `tests/test_single_source.py`, `tests/test_runner.py` (the comment is in a dataclass; prove nothing moved) |
+| **3** | Section 4 | `app/renderer/app.js`, `app/renderer/pages.js`, `pilot/harness/stub.js` (if the setup scenario needs it), `pilot/SPEC-shell.md`, `docs/runbook.md`, `tests/test_shell.py` | sonnet | `tests/test_shell.py`, `tests/test_pilot_ui.py`, `tests/test_single_source.py`, `tests/test_tripwire.py`, `tests/test_errors.py`, `tests/test_layers.py` |
 
-The two jobs share no file and run side by side. Neither runs
+Jobs 1 and 2 share no file and run side by side; Job 3 follows Job 1. Neither runs
 `tools/repo_map.py update` or commits: the orchestrating session refreshes
 the map once, runs `python -m ruff check .`, `tools/repo_map.py check` and
 `tests/test_repo_map.py`, and commits each job as its own commit after its
