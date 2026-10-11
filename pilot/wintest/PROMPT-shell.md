@@ -147,22 +147,22 @@ not rerun. The run also builds the installer; note its SHA-256.
 17. **Remote Desktop** at 1100 x 700: nothing cut off, no horizontal scroll.
 18. **The rename (P155), upgrade over the earlier name.** On a PC with the
     earlier name, Tax Document Tracker Pilot, installed and the schedule on:
-    install `Tax-Document-Console-Setup-0.3.exe` over it without
+    install `Tax-Document-Console-Setup-0.4.exe` over it without
     uninstalling. The Start menu and the desktop show only Tax Document
-    Console; Settings > Apps shows one entry, "Tax Document Console 0.3".
+    Console; Settings > Apps shows one entry, "Tax Document Console 0.4".
 19. **The rename, first start.** Start the app once. In a Command Prompt,
     `schtasks /Query /TN "Tax Document Console"` finds the task and
     `schtasks /Query /TN "Tax Document Tracker Pilot"` finds none (the
     earlier name). The clients folder, the schedule choice and the column
     widths are as they were.
-20. **The rename, a fresh install.** Uninstall 0.3, then install 0.3 again:
+20. **The rename, a fresh install.** Uninstall 0.4, then install 0.4 again:
     it goes to `%LOCALAPPDATA%\Programs\Tax Document Console`, and the
     settings left by the earlier name are copied (the after-install line
     says so: "Copied the settings file left by the earlier name ...").
 21. **The rename, uninstall.** Run `pilot\wintest\uninstall_checks.ps1`: both
     task names are gone, and the data folder and `settings.json` are left.
 22. **The rename, on screen.** The window title, the side panel, Help >
-    About and the badge read Tax Document Console / Pilot 0.3; a forced
+    About and the badge read Tax Document Console / Pilot 0.4; a forced
     failure reads "App Failed".
 
 Record results in `pilot/wintest/` as `RESULTS-TEMPLATE.md` asks and tell Jason

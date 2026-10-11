@@ -1,4 +1,4 @@
-# Pilot 0.3 - Windows check result
+# Pilot 0.4 - Windows check result
 
 - **Date:**
 - **Machine:** Windows version, test machine
@@ -30,7 +30,7 @@
 
 | # | Step | Result | What was seen |
 |---|---|---|---|
-| 1 | Header badge reads "Pilot edition 0.3" | | |
+| 1 | Header badge reads "Pilot edition 0.4" | | |
 | 2 | Terms: Escape does nothing | | |
 | 3 | Terms: "I agree. Continue." disabled until the box is ticked | | |
 | 4 | Accepting starts the tour | | |

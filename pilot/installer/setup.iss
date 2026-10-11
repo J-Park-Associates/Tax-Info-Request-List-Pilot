@@ -6,7 +6,7 @@
 ;
 ; Build it with "pilot\Build Pilot Installer.bat", which passes the two values
 ; below on the command line:
-;   ISCC.exe /DAppVersion=0.3 /DSourceDir="...\Tax Document Console-win32-x64" setup.iss
+;   ISCC.exe /DAppVersion=0.4 /DSourceDir="...\Tax Document Console-win32-x64" setup.iss
 
 #ifndef AppVersion
   #error AppVersion is required: compile with /DAppVersion=<version from pilot-content.js>
