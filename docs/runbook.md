@@ -191,16 +191,17 @@ wrong:
 
 A silent install shows neither window.
 
-**One waiting helper in Task Manager is normal** (pilot P220). While the
-app is running it keeps one process of its own started and waiting for the
-next click - `tracker-api.exe` in the installed app, a `python` process
-when it runs from source - so a click does not wait for a program to
-start. It uses no processor while it waits, holds no client file open,
-and still does one thing and ends: each click is handed to the waiting
-one, and another is started to wait in its place. A Sort always starts a
-process of its own. When the app quits, the waiting one is ended with it;
-one still there after the app has closed (other than a scheduled pass
-that is running) is worth a look.
+**One engine in Task Manager is normal** (pilot P276). While the app is
+running it keeps one engine process of its own - `tracker-api.exe` in the
+installed app, a `python` process when it runs from source - which answers
+the app's clicks one at a time, so a click does not wait for a program to
+start. It uses no processor while it waits, and holds no client file and no
+lock between clicks. A click that comes while it is busy, and every Sort,
+starts a process of its own. It starts afresh by itself now and then: after
+a few hundred clicks, after a click that left anything behind, and when the
+program has been updated. When the app quits it finishes what it is doing
+and ends; one still there a minute after the app has closed (other than a
+scheduled pass that is running) is worth a look.
 
 **The clients root is a folder of clients, and only that.** The app refuses
 the system drive's root (`C:\`), the app's own folder, the folder holding its

@@ -2078,6 +2078,7 @@ CONSOLE_GUARDED = ("rollover", "filer", "scanner", "registry", "review", "scaffo
 #: guarded - so a new command line has to be named in one list or the other.
 CONSOLE_EXEMPT = {
     "api": "stdout is the shell's JSON channel, written with ensure_ascii; nothing a console encodes",
+    "resident": "the engine's stdout is that same channel, framed by an end line of numbers; nothing a console encodes",
     "settings": "prints the firm's own root and settings, never a client's name (decision 97's hold)",
     "scheduling": "prints the task's root and paths, never a client's name",
     "errors": "prints an exception's class or a fixed sentence, never a client's name",
@@ -2941,20 +2942,7 @@ const run = (command, folder) => {
     process.exit(1);
   }
 };
-if (given.includes("--spare")) {
-  // A spare (P220): it waits for its command line, the first line of stdin.
-  let got = "";
-  process.stdin.setEncoding("utf8");
-  process.stdin.on("data", (d) => { got += d; });
-  process.stdin.on("end", () => {
-    const at = got.indexOf("\n");
-    if (at === -1) process.exit(0);
-    const argv = JSON.parse(got.slice(0, at)).argv;
-    run(argv[0], argv[2]);
-  });
-} else {
-  run(given[given.indexOf("tracker.api") + 1], given[given.indexOf("tracker.api") + 3]);
-}
+run(given[given.indexOf("tracker.api") + 1], given[given.indexOf("tracker.api") + 3]);
 """
 
 
@@ -4557,9 +4545,11 @@ def test_no_person_facing_document_calls_the_program_the_tracker():
 #: The real ``main.js`` run by node against a stand-in for Electron and for
 #: child_process (P220, P221): every tracker process is recorded - what it
 #: was started with, what it was handed on stdin, whether it was killed -
-#: and answers as tracker.api would, a spare (``--spare``) only once it has
-#: been handed its command line. ``program`` steps move the program's stamp
-#: (the newest time of tracker/*.py), as an upgrade from source does.
+#: and answers as tracker.api would; the engine (``--resident``, P276) answers
+#: the frames it is handed, as ``sc.engineBehaviors`` says frame by frame (ok,
+#: slow, hang, die, dieAfterReply, retire, wrongId, fail). ``program`` steps move
+#: the program's stamp (the newest time of tracker/*.py), as an upgrade from
+#: source does; ``together`` steps are several clicks at once.
 _SPAWN_HARNESS = r"""
 const Module = require("module");
 const EventEmitter = require("events");
@@ -4567,14 +4557,17 @@ const realFs = require("fs");
 const path = require("path");
 const [mainJs, scenarioJson] = process.argv.slice(2);
 const sc = JSON.parse(scenarioJson);
-const log = { spawned: [], replies: [], sends: [], sent: [], watches: [], watchFiles: [], unwatched: [], closed: [], reads: [], logged: [] };
+// sc.limitMs stands in for main.js's thirty-minute kill timer (TRACKER_TIMEOUT_MS) and nothing else.
+const realSetTimeout = global.setTimeout;
+if (sc.limitMs) global.setTimeout = (fn, ms, ...rest) => realSetTimeout(fn, ms === 30 * 60 * 1000 ? sc.limitMs : ms, ...rest);
+const log = { spawned: [], replies: [], sends: [], sent: [], watches: [], watchFiles: [], unwatched: [], closed: [], reads: [], logged: [], thrown: [] };
 const watchers = [];
 let pollListener = null;
 let stamp = 1;
 let trackerHandler = null;
 const appHandlers = {};
 // What main.js has started and not yet seen finish: a command once its
-// stdin has ended, until it closes. A spare waiting for its line is not.
+// stdin has ended, until it closes, or a frame the engine is answering.
 let pending = 0;
 const track = (promise) => { pending += 1; const done = () => { pending -= 1; }; promise.then(done, done); return promise; };
 const settle = async () => { do { await new Promise((resolve) => setImmediate(resolve)); } while (pending > 0); };
@@ -4592,7 +4585,10 @@ const electron = {
   nativeTheme: { shouldUseDarkColors: false, shouldUseHighContrastColors: false, themeSource: "", on() {} },
   shell: {}, dialog: {},
 };
-const LIST = { vocab: { commands: ["list", "firm", "state", "edit", "run-now", "after-install"], pass_command: "run-now",
+const LIST = { vocab: { commands: ["list", "firm", "state", "edit", "templates", "run-now", "after-install", "install-schedule",
+                                    "move-schedule-here", "set-schedule", "set-root"],
+                        pass_command: "run-now",
+                        own_process_commands: ["run-now", "after-install", "install-schedule", "move-schedule-here", "set-schedule", "set-root"],
                         writing_commands: ["edit"], engagement_flag: "--engagement" } };
 // What the tracker would print for one command line: progress lines, then the reply.
 const answerFor = (argv) => {
@@ -4610,10 +4606,20 @@ const answerFor = (argv) => {
   }
   return [{ command, argv, warnings: [] }];
 };
+const OWN = ["run-now", "after-install", "install-schedule", "move-schedule-here", "set-schedule", "set-root"];
 const fakeSpawn = (cmd, args, options) => {
   const proc = new EventEmitter();
+  const given = args[0] === "-m" ? args.slice(2) : args;
+  const isEngine = given.length === 1 && given[0] === "--resident";
+  // sc.engineThrows: spawn throws at the call with that code for every engine, as Node does
+  // for EINVAL, EPERM or ENOMEM (ENOENT, EACCES, EAGAIN and EMFILE come as an 'error' event).
+  if (isEngine && sc.engineThrows) {
+    log.thrown.push(sc.engineThrows);
+    throw Object.assign(new Error("spawn"), { code: sc.engineThrows });
+  }
   const entry = { cmd, args, cwd: (options && options.cwd) || "", settings: Boolean(options && options.env && options.env.TRACKER_SETTINGS_DIR),
-                  hidden: Boolean(options && options.windowsHide), stdin: "", ended: false, killed: false, exited: false, counted: false, handed: null };
+                  hidden: Boolean(options && options.windowsHide), stdin: "", ended: false, killed: false, exited: false, counted: false,
+                  frames: isEngine ? [] : null };
   log.spawned.push(entry);
   proc.stdout = new EventEmitter();
   proc.stdout.setEncoding = () => {};
@@ -4630,27 +4636,69 @@ const fakeSpawn = (cmd, args, options) => {
     });
   };
   proc.kill = () => { entry.killed = true; finish(null); };
-  const answer = () => {
-    let argv = args[0] === "-m" ? args.slice(2) : args;
-    if (argv.length === 1 && argv[0] === "--spare") {
-      const at = entry.stdin.indexOf("\n");
-      if (at === -1) { finish(0); return; }
-      argv = JSON.parse(entry.stdin.slice(0, at)).argv;
-      entry.handed = argv;
-      entry.payload = entry.stdin.slice(at + 1);
-      // A spare that had died while it waited: handed a command, it closes
-      // without a word.
-      if (sc.silentSpares > 0) { sc.silentSpares -= 1; finish(1); return; }
-    } else {
-      entry.payload = entry.stdin;
-    }
-    const text = answerFor(argv).map((one) => JSON.stringify(one) + "\n").join("");
-    const pieces = argv[0] === "firm" && sc.pieces ? sc.pieces : 1;
+  proc.stdin = new EventEmitter();
+  // The pieces a reply arrives in (a firm's, with sc.pieces), as one chunk otherwise.
+  const emitText = (text, argv0) => {
+    const pieces = argv0 === "firm" && sc.pieces ? sc.pieces : 1;
     const size = Math.ceil(text.length / pieces);
     for (let at = 0; at < text.length; at += size) proc.stdout.emit("data", text.slice(at, at + size));
+  };
+  if (isEngine) {
+    // The engine (P276): frames in - a line {id, argv, bytes}, then that many bytes - and,
+    // per frame, what sc.engineBehaviors says next: ok (default), slow, hang, die, retire,
+    // wrongId, dieAfterReply, fail (a reply that is an error, with stderr).
+    let buffered = Buffer.alloc(0);
+    let working = false;
+    // sc.engineErrors: the spawn error codes of the first engines, one each; then sc.engineError, for every engine after.
+    const spawnError = sc.engineErrors && sc.engineErrors.length ? sc.engineErrors.shift() : sc.engineError;
+    if (spawnError) {
+      pending += 1;
+      setImmediate(() => { proc.emit("error", Object.assign(new Error("spawn"), { code: spawnError })); pending -= 1; });
+    }
+    const settleFrame = () => { working = false; if (entry.endWhenIdle) finish(0); else next(); };
+    const answerFrame = (head) => {
+      const behavior = sc.engineBehaviors && sc.engineBehaviors.length ? sc.engineBehaviors.shift() : "ok";
+      const argv0 = head.argv[0];
+      const lines = answerFor(head.argv).map((one) => JSON.stringify(one) + "\n").join("");
+      const end = (id, retiring) => "\n" + JSON.stringify({ engine_end: id, code: 0, retiring }) + "\n";
+      working = true;
+      if (behavior === "hang") return;
+      pending += 1;
+      const later = behavior === "slow" ? (fn) => setTimeout(fn, sc.slowMs || 50) : setImmediate;
+      later(() => {
+        if (behavior === "die") { finish(1); }
+        else if (behavior === "dieAfterReply") { emitText(lines, argv0); finish(1); }
+        else if (behavior === "fail") {
+          proc.stderr.emit("data", "Traceback: a fabricated message\n");
+          emitText(JSON.stringify({ error: "refused", failure: { sentence: "refused", kind: "refused", seq: null, identifier: null }, warnings: [] }) + "\n" + end(head.id, false), argv0);
+        } else if (behavior === "wrongId") { emitText(lines + end(head.id + 1000, false), argv0); }
+        else if (behavior === "retire") { emitText(lines + end(head.id, true), argv0); finish(0); }
+        else { emitText(lines + end(head.id, false), argv0); }
+        pending -= 1;
+        if (behavior !== "retire" && behavior !== "die" && behavior !== "dieAfterReply") settleFrame();
+      });
+    };
+    const next = () => {
+      if (working || entry.exited) return;
+      const at = buffered.indexOf(10);
+      if (at === -1) return;
+      const head = JSON.parse(buffered.slice(0, at).toString("utf8"));
+      if (buffered.length - at - 1 < head.bytes) return;
+      const payload = buffered.slice(at + 1, at + 1 + head.bytes).toString("utf8");
+      buffered = buffered.slice(at + 1 + head.bytes);
+      entry.frames.push({ id: head.id, argv: head.argv, bytes: head.bytes, payload, line: JSON.stringify(head) });
+      answerFrame(head);
+    };
+    proc.stdin.write = (chunk) => { entry.stdin += chunk; buffered = Buffer.concat([buffered, Buffer.from(chunk)]); next(); return true; };
+    proc.stdin.end = () => { entry.ended = true; if (working) entry.endWhenIdle = true; else finish(0); };
+    return proc;
+  }
+  const answer = () => {
+    const argv = args[0] === "-m" ? args.slice(2) : args;
+    entry.payload = entry.stdin;
+    emitText(answerFor(argv).map((one) => JSON.stringify(one) + "\n").join(""), argv[0]);
     finish(0);
   };
-  proc.stdin = new EventEmitter();
   proc.stdin.write = (chunk) => { entry.stdin += chunk; return true; };
   proc.stdin.end = () => {
     if (entry.ended) return;
@@ -4708,7 +4756,14 @@ Module._load = function (request, ...rest) {
   for (const step of sc.steps) {
     if (step.tracker) {
       const sender = { isDestroyed: () => false, send: (channel, message) => log.sends.push({ channel, message }) };
-      log.replies.push(await trackerHandler({ sender }, step.tracker, step.payload));
+      const asked = trackerHandler({ sender }, step.tracker, step.payload);
+      // The app closing while this command is still being answered.
+      if (step.quitDuring) { await new Promise((resolve) => setImmediate(resolve)); appHandlers["will-quit"](); }
+      log.replies.push(await asked);
+    } else if (step.together) {
+      // Several clicks at once: each is handed over, in order, before any is answered.
+      const sender = { isDestroyed: () => false, send: (channel, message) => log.sends.push({ channel, message }) };
+      log.replies.push(...await Promise.all(step.together.map((one) => trackerHandler({ sender }, one.tracker, one.payload))));
     } else if (step.program) {
       stamp += 1;
     } else if (step.quit) {
@@ -4747,12 +4802,13 @@ def _run_spawns(tmp_path, steps, **scenario) -> dict:
 
 def _commands(ran: dict) -> list:
     """Each tracker process main.js started, as the command it ran: a fresh
-    one's argv, a spare's ``--spare`` and what it was handed."""
+    one's argv, the engine's ``--resident`` and the commands it was handed."""
     out = []
     for one in ran["spawned"]:
         argv = one["args"][2:] if one["args"][:1] == ["-m"] else one["args"]
-        out.append({"argv": argv, "handed": one["handed"], "killed": one["killed"], "cwd": bool(one["cwd"]),
-                    "settings": one["settings"], "hidden": one["hidden"]})
+        handed = None if one["frames"] is None else [frame["argv"] for frame in one["frames"]]
+        out.append({"argv": argv, "handed": handed, "killed": one["killed"], "ended": one["ended"],
+                    "cwd": bool(one["cwd"]), "settings": one["settings"], "hidden": one["hidden"]})
     return out
 
 
@@ -4878,72 +4934,106 @@ def test_the_shell_allows_the_read_only_overview_before_the_first_reply(tmp_path
     assert state["command"] == "state"
 
 
-def _spares(ran: dict) -> list:
-    return [one for one in _commands(ran) if one["argv"] == ["--spare"]]
+# ── P276 (SPEC-ui-menu-speed §3): one engine for the session ─────────────────────
+
+def _engines(ran: dict) -> list:
+    return [one for one in _commands(ran) if one["argv"] == ["--resident"]]
 
 
-def test_the_shell_hands_a_waiting_spare_the_next_command_and_starts_another(tmp_path):
-    """P220 (A1, findings-3 #4): one tracker process is kept started with
-    ``--spare``, as every command's is started (the checkout, the settings
-    folder in its environment, no window). The next command that is not a
-    pass is handed to it - one line ``{"argv": [...]}``, then the payload as a
-    fresh process reads it, then the end of input - and another spare is
-    started at once. Still one command per process: each spare runs one."""
+def _alone(ran: dict) -> list:
+    """The commands that ran in a process of their own, in the order they started."""
+    return [one["argv"] for one in _commands(ran) if one["argv"] != ["--resident"]]
+
+
+def _logged(ran: dict) -> str:
+    return "\n".join(one["text"] for one in ran["logged"])
+
+
+def test_the_shell_starts_one_engine_before_the_window_and_hands_it_each_command_while_it_is_free(tmp_path):
+    """P276: the engine is started at ``whenReady``, before the window is made,
+    as every command's process is (the checkout, the settings folder in its
+    environment, no window), and is handed each command in turn - one line
+    ``{"id", "argv", "bytes"}`` and then exactly those bytes of the payload
+    (UTF-8, never the end of input) - while the launch door has its own
+    process. The engine is never given the end of input during the session."""
     payload = {"identifier": "A01", "note": "café"}
     ran = _run_spawns(tmp_path, [{"tracker": ["list"]}, {"tracker": ["state"]},
                                  {"tracker": ["edit", "--engagement", "/r/1"], "payload": payload}])
-    commands = _commands(ran)
-    assert [one["argv"] for one in commands] == [["after-install"], ["list"], ["--spare"], ["--spare"], ["--spare"]]
-    first, second, third = _spares(ran)
-    assert first["handed"] == ["state"] and second["handed"] == ["edit", "--engagement", "/r/1"] and third["handed"] is None
-    assert not any(one["killed"] for one in commands)
-    fresh = commands[1]
-    assert all((one["cwd"], one["settings"], one["hidden"]) == (fresh["cwd"], fresh["settings"], fresh["hidden"]) == (True, True, True)
-               for one in _spares(ran))
-    edit = ran["spawned"][3]
-    assert edit["stdin"] == json.dumps({"argv": ["edit", "--engagement", "/r/1"]}, separators=(",", ":")) + "\n" \
-        + json.dumps(payload, separators=(",", ":"), ensure_ascii=False)
-    assert json.loads(edit["payload"]) == payload
+    assert [one["argv"] for one in _commands(ran)] == [["--resident"], ["after-install"]]
+    assert ran["spawned"][0]["args"] == ["-m", "tracker.resident", "--resident"]
+    [engine] = _engines(ran)
+    assert engine["handed"] == [["list"], ["state"], ["edit", "--engagement", "/r/1"]]
+    assert not engine["killed"] and not engine["ended"]
+    assert all((one["cwd"], one["settings"], one["hidden"]) == (True, True, True) for one in _commands(ran))
+    first, second, edit = ran["spawned"][0]["frames"]
+    assert [first["id"], second["id"], edit["id"]] == [1, 2, 3] and first["bytes"] == second["bytes"] == 0
+    body = json.dumps(payload, separators=(",", ":"), ensure_ascii=False)
+    assert edit["bytes"] == len(body.encode("utf-8")) > len(body) and json.loads(edit["payload"]) == payload
+    assert edit["line"] == json.dumps({"id": 3, "argv": ["edit", "--engagement", "/r/1"], "bytes": edit["bytes"]},
+                                      separators=(",", ":"))
     _listed, state, edited = ran["replies"]
     assert state["command"] == "state" and edited["argv"] == ["edit", "--engagement", "/r/1"]
     main_js = read("app/main.js")
-    assert 'const SPARE_FLAG = "--spare";' in main_js
-    spawn_tracker = main_js[main_js.index("function spawnTracker"):main_js.index("function startTracker")]
-    # The kill is armed when the command is handed over, never at the spare's start.
-    assert spawn_tracker.index("takeSpare()") < spawn_tracker.index("arm(TRACKER_TIMEOUT_MS)")
+    ready = main_js[main_js.index("startEngine();\n    const win = createWindow();") - 400:]
+    assert ready.index("app.whenReady().then(() => {") < ready.index("startEngine();") < ready.index("createWindow()")
+    spawn_tracker = main_js[main_js.index("function spawnTracker"):main_js.index("function lineReader")]
+    # The kill is armed when the command is handed over, never at the engine's start.
+    assert spawn_tracker.index("takeEngine(") < spawn_tracker.index("arm(TRACKER_TIMEOUT_MS)")
 
 
-def test_a_pass_is_never_handed_to_the_spare(tmp_path):
-    """P220: Sort & Scan (the pass, decision 203) always runs in a process of
-    its own, watched as a pass is; the spare keeps waiting for the next
-    command that is not one."""
-    ran = _run_spawns(tmp_path, [{"tracker": ["list"]}, {"tracker": ["run-now", "--engagement", "/r/1"]}, {"tracker": ["state"]}])
-    commands = _commands(ran)
-    assert [one["argv"] for one in commands] == [["after-install"], ["list"], ["--spare"], ["run-now", "--engagement", "/r/1"], ["--spare"]]
-    assert [one["handed"] for one in _spares(ran)] == [["state"], None]
+def test_a_command_that_comes_while_the_engine_is_busy_starts_a_process_of_its_own(tmp_path):
+    """P276: no queue - a slow ``firm`` never holds a ``state`` behind it. The
+    command that finds the engine busy runs in a process of its own, as every
+    command did before the spare, and the engine is not disturbed."""
+    ran = _run_spawns(tmp_path, [{"tracker": ["list"]},
+                                 {"together": [{"tracker": ["firm"]}, {"tracker": ["state"]}]}],
+                      engineBehaviors=["ok", "slow"], slowMs=80)
+    assert _alone(ran) == [["after-install"], ["state"]]
+    [engine] = _engines(ran)
+    assert engine["handed"] == [["list"], ["firm"]] and not engine["killed"] and not engine["ended"]
+    _listed, firm, state = ran["replies"]
+    assert firm["command"] == "firm" and state["command"] == "state"
+
+
+def test_a_pass_and_the_own_process_commands_never_go_to_the_engine(tmp_path):
+    """P276: a pass (``run-now``) and the commands the API names
+    (``vocab.own_process_commands``: the after-install step and what runs it)
+    each start a process of their own, whatever the engine is doing; the
+    commands between them go to the engine."""
+    import tracker.api as api
+
+    commands = ["run-now", "set-root", "after-install", "install-schedule", "move-schedule-here", "set-schedule"]
+    assert set(commands) == set(api.OWN_PROCESS_COMMANDS)
+    steps = [{"tracker": ["list"]}, *({"tracker": [one]} for one in commands[:2]), {"tracker": ["state"]},
+             *({"tracker": [one]} for one in commands[2:]), {"tracker": ["firm"]}]
+    ran = _run_spawns(tmp_path, steps)
+    [engine] = _engines(ran)
+    assert engine["handed"] == [["list"], ["state"], ["firm"]]
+    assert _alone(ran) == [["after-install"], *([one] for one in commands)]
     assert ran["replies"][1]["pass"] == "p1"
 
 
-def test_a_spare_from_before_the_program_changed_is_not_used(tmp_path):
-    """P220: what the tracker fixes at import is the program's own; a spare
+def test_an_engine_from_before_the_program_changed_is_ended_and_the_command_runs_alone(tmp_path):
+    """P276: what the tracker fixes at import is the program's own; an engine
     started before the program changed (an upgrade, a pull from source) is
-    killed, the command runs in a fresh process, and the next spare is the
-    new program's."""
-    ran = _run_spawns(tmp_path, [{"tracker": ["list"]}, {"program": "changed"}, {"tracker": ["state"]}, {"tracker": ["firm"]}])
-    commands = _commands(ran)
-    assert [one["argv"] for one in commands] == [["after-install"], ["list"], ["--spare"], ["state"], ["--spare"], ["--spare"]]
-    old, new, last = _spares(ran)
-    assert old["killed"] and old["handed"] is None
-    assert new["handed"] == ["firm"] and not new["killed"] and last["handed"] is None
-    assert ran["replies"][1]["command"] == "state" and ran["replies"][2]["command"] == "firm"
+    given the end of its input - it is idle, finishes nothing, exits - a new
+    engine starts, and this one command runs in a process of its own. Nothing
+    is killed and nothing counts against the restart budget."""
+    ran = _run_spawns(tmp_path, [{"tracker": ["list"]}, {"program": "changed"}, {"tracker": ["state"]},
+                                 {"tracker": ["firm"]}])
+    old, new = _engines(ran)
+    assert old["handed"] == [["list"]] and old["ended"] and not old["killed"]
+    assert new["handed"] == [["firm"]] and not new["ended"] and not new["killed"]
+    assert _alone(ran) == [["after-install"], ["state"]]
+    assert [one["command"] for one in ran["replies"][1:]] == ["state", "firm"]
+    assert "off for this session" not in _logged(ran)
 
 
-def test_a_read_handed_to_a_spare_that_had_died_is_asked_once_more_and_a_write_never(tmp_path):
-    """P220 review: a spare that died while it waited, its exit not yet seen,
-    was handed the next command and closed without a word, so the click
-    ended with no reply. A read-only reply (tracker.api's held readings, as
-    main.js knows them) is asked once more of a process of its own; a write
-    is never run twice - it ends with no reply, as before."""
+def test_a_read_handed_to_an_engine_that_died_is_asked_once_more_and_a_write_never(tmp_path):
+    """P276 (P220's rule, word for word): an engine that ends while it holds a
+    command, with no end line, leaves a read-only reply (tracker.api's held
+    readings, as main.js knows them) to be asked once more of a process of its
+    own; a write is never run twice - it ends with no reply."""
     import tracker.api as api
 
     main_js = read("app/main.js")
@@ -4951,32 +5041,162 @@ def test_a_read_handed_to_a_spare_that_had_died_is_asked_once_more_and_a_write_n
     assert known == set(api.HELD_READING_COMMANDS) and not known & api.WRITING_COMMANDS
     ran = _run_spawns(tmp_path, [{"tracker": ["list"]}, {"tracker": ["state"]},
                                  {"tracker": ["edit", "--engagement", "/r/1"], "payload": {"identifier": "A01"}}],
-                      silentSpares=2)
-    assert [one["argv"] for one in _commands(ran)] == [["after-install"], ["list"], ["--spare"], ["--spare"], ["state"], ["--spare"]]
-    assert [one["handed"] for one in _spares(ran)] == [["state"], ["edit", "--engagement", "/r/1"], None]
+                      engineBehaviors=["ok", "die", "die"])
+    assert _alone(ran) == [["after-install"], ["state"]]
     _listed, state, edited = ran["replies"]
     assert state["command"] == "state" and not state.get("error")
-    assert edited.get("error"), "a write handed to a dead spare is never run again"
-    assert sum(1 for one in _commands(ran) if one["argv"] == ["edit", "--engagement", "/r/1"] or one["handed"] and one["handed"][0] == "edit") == 1
+    assert edited.get("error") and edited["error"].startswith("No Reply From the App")
+    handed = [argv for one in _engines(ran) for argv in one["handed"]]
+    assert handed.count(["edit", "--engagement", "/r/1"]) == 1, "a write is never run twice"
+    assert "shell: the engine ended" in _logged(ran) and "closed on its own; exit code 1" in _logged(ran)
 
 
-def test_quitting_kills_the_spare(tmp_path):
-    """P220: a spare handed nothing is killed when the app quits, never left
-    waiting; a pass still running is told to stop as before (its pipe)."""
+def test_a_command_past_the_time_limit_kills_the_engine_says_so_and_a_new_one_starts(tmp_path):
+    """P276: the kill per command is kept by killing the engine - the only way
+    to stop a stuck command - with today's sentences (a read: stopped; a
+    change: stopped, it may be partly done), and the next command goes to a
+    new engine."""
+    ran = _run_spawns(tmp_path, [{"tracker": ["list"]}, {"tracker": ["state"]}, {"tracker": ["firm"]},
+                                 {"tracker": ["edit", "--engagement", "/r/1"], "payload": {}}],
+                      engineBehaviors=["ok", "hang", "ok", "hang"], limitMs=150)
+    _listed, stuck, firm, changed = ran["replies"]
+    assert stuck["error"] == "Stopped: Ran Too Long."
+    assert firm["command"] == "firm" and not firm.get("error")
+    assert changed["error"] == "Change Stopped: Ran Too Long. It May Be Partly Done."
+    first, second, third = _engines(ran)
+    assert first["killed"] and first["handed"] == [["list"], ["state"]]
+    assert second["killed"] and second["handed"] == [["firm"], ["edit", "--engagement", "/r/1"]]
+    assert third["handed"] == [] and not third["killed"]
+    assert _alone(ran) == [["after-install"]], "a stuck command is not asked again"
+
+
+def test_an_engine_that_keeps_stopping_is_left_off_for_the_session_and_said_in_the_error_log(tmp_path):
+    """P276 (Jason's question D): the third unplanned end within five minutes
+    leaves the engine off - every command then starts its own process, as before
+    the spare - and the error log says so once, with the exit codes; no notice
+    reaches the page. Every click is still answered."""
+    main_js = read("app/main.js")
+    assert "const ENGINE_RESTARTS = 3;" in main_js and "const ENGINE_RESTART_WINDOW_MS = 5 * 60 * 1000;" in main_js
+    ran = _run_spawns(tmp_path, [{"tracker": ["list"]}, {"tracker": ["state"]}, {"tracker": ["firm"]}, {"tracker": ["list"]},
+                                 {"tracker": ["state"]}, {"tracker": ["firm"]}],
+                      engineBehaviors=["ok", "die", "die", "die"])
+    assert len(_engines(ran)) == 3, "no fourth engine"
+    assert [one.get("command", "list") for one in ran["replies"]] == ["list", "state", "firm", "list", "state", "firm"]
+    assert not any(one.get("error") for one in ran["replies"])
+    assert _alone(ran)[-2:] == [["state"], ["firm"]]
+    said = [one["text"] for one in ran["logged"] if "engine stopped 3 times in 5 minutes" in one["text"]]
+    assert len(said) == 1 and "every command now starts its own process" in said[0] and "exit codes: 1, 1, 1" in said[0]
+    assert [one for one in ran["sent"] if one["channel"] not in ("tracker-progress", "after-install-done")] == [], "no notice"
+
+
+def test_a_retiring_engine_is_replaced_at_once(tmp_path):
+    """P276: an engine that says ``retiring`` in its end line has answered that
+    command; the next command goes to a new engine, and a retirement costs
+    nothing against the restart budget - four in a row leave the engine on."""
+    ran = _run_spawns(tmp_path, [{"tracker": ["list"]}] * 6, engineBehaviors=["retire"] * 4)
+    engines = _engines(ran)
+    assert [one["handed"] for one in engines] == [[["list"]]] * 4 + [[["list"], ["list"]]]
+    assert not any(one["killed"] for one in engines)
+    assert "off for this session" not in _logged(ran)
+    assert len(ran["replies"]) == 6 and not any(one.get("error") for one in ran["replies"])
+    assert _logged(ran).count("retired; exit code 0") == 4
+
+
+def test_an_end_line_for_another_command_is_a_broken_stream(tmp_path):
+    """P276: an end line whose ``engine_end`` is not the command in hand means
+    the stream cannot be trusted: the engine is killed, the command is answered
+    as if it had died (a read asked once more alone), and a new engine starts."""
+    ran = _run_spawns(tmp_path, [{"tracker": ["list"]}, {"tracker": ["state"]}, {"tracker": ["firm"]}],
+                      engineBehaviors=["ok", "wrongId"])
+    first, second = _engines(ran)
+    assert first["killed"] and first["handed"] == [["list"], ["state"]] and second["handed"] == [["firm"]]
+    assert _alone(ran) == [["after-install"], ["state"]]
+    assert ran["replies"][1]["command"] == "state" and "broken stream" in _logged(ran)
+
+
+def test_quitting_ends_the_engines_input_and_never_kills_it_mid_command(tmp_path):
+    """P276: ``will-quit`` ends the engine's input - one holding a write finishes
+    it and exits at the end of input - and never kills it; no new engine starts."""
     ran = _run_spawns(tmp_path, [{"tracker": ["list"]}, {"quit": True}])
-    [spare] = _spares(ran)
-    assert spare["killed"] and spare["handed"] is None
+    [engine] = _engines(ran)
+    assert engine["ended"] and not engine["killed"]
+    busy = _run_spawns(tmp_path, [{"tracker": ["list"]}, {"tracker": ["edit", "--engagement", "/r/1"], "payload": {}, "quitDuring": True}],
+                       engineBehaviors=["ok", "slow"], slowMs=100)
+    [engine] = _engines(busy)
+    assert engine["ended"] and not engine["killed"], "ended, not killed, while it held the write"
+    assert busy["replies"][1]["argv"] == ["edit", "--engagement", "/r/1"] and not busy["replies"][1].get("error"), "and it finished"
     will_quit = read("app/main.js").split('app.on("will-quit", () => {', 1)[1].split("\n});", 1)[0]
-    assert "proc.stdout.destroy()" in will_quit and "proc.kill()" in will_quit
+    code = re.sub(r"//.*", "", will_quit)
+    assert "proc.stdout.destroy()" in code and "engine.proc.stdin.end()" in code and "kill" not in code
 
 
-def test_no_spare_starts_before_the_first_list(tmp_path):
-    """P220: start-up gains no spare beside its own reads (the list, the
-    early Overview and, since P229, the last counts): the first spare is
-    started once the first list's reply is learned."""
-    ran = _run_spawns(tmp_path, [{"tracker": ["firm"]}, {"tracker": ["list"]}])
-    assert [one["argv"] for one in _commands(ran)] == [["after-install"], ["firm"], ["list"], ["--spare"]]
-    assert _spares(ran)[0]["handed"] is None
+def test_an_engine_that_cannot_start_is_no_engine_and_its_code_is_said_once(tmp_path):
+    """P276: a spawn error that says the program is missing or not runnable
+    (ENOENT, EACCES) leaves the engine off for the session - commands start
+    their own processes - and the error log says the error's code, never a
+    path, once."""
+    for code in ("ENOENT", "EACCES"):
+        ran = _run_spawns(tmp_path, [{"tracker": ["list"]}, {"tracker": ["state"]}], engineError=code)
+        assert len(_engines(ran)) == 1
+        assert [one.get("command", "list") for one in ran["replies"]] == ["list", "state"]
+        assert _alone(ran) == [["after-install"], ["list"], ["state"]]
+        assert _logged(ran).count(code) == 1
+
+
+def test_a_spawn_error_that_may_pass_costs_one_stop_in_the_budget_and_not_the_session(tmp_path):
+    """P276: EAGAIN or EMFILE may be gone in a moment, so such an error is one
+    unplanned end - a new engine is tried at once, and answers - and only the
+    third within five minutes leaves the engine off, as for any engine that
+    keeps stopping."""
+    ran = _run_spawns(tmp_path, [{"tracker": ["list"]}, {"tracker": ["state"]}], engineErrors=["EAGAIN"])
+    first, second = _engines(ran)
+    assert first["handed"] == [] and second["handed"] == [["list"], ["state"]]
+    assert _alone(ran) == [["after-install"]]
+    assert "EAGAIN" in _logged(ran) and "off for this session" not in _logged(ran)
+    off = _run_spawns(tmp_path, [{"tracker": ["list"]}, {"tracker": ["state"]}], engineErrors=["EMFILE", "EAGAIN", "EAGAIN"])
+    assert len(_engines(off)) == 3, "no fourth engine"
+    assert _alone(off) == [["after-install"], ["list"], ["state"]]
+    assert _logged(off).count("off for this session") == 1
+    assert "exit codes: EMFILE, EAGAIN, EAGAIN" in _logged(off), "the budget line names the codes itself"
+
+
+def test_a_spawn_that_throws_at_the_call_is_no_engine_and_its_code_is_said_once(tmp_path):
+    """P276: Node throws at the call only for an error time does not mend
+    (EINVAL, EPERM, ENOMEM, a bad argument), so such a throw leaves the engine
+    off for the session at once - never tried again, every command in a process
+    of its own and answered - and the error log says its code once."""
+    for code in ("EINVAL", "EPERM"):
+        ran = _run_spawns(tmp_path, [{"tracker": ["list"]}, {"tracker": ["state"]}, {"tracker": ["firm"]}], engineThrows=code)
+        assert ran["thrown"] == [code], "tried once, never again"
+        assert _engines(ran) == []
+        assert [one.get("command", "list") for one in ran["replies"]] == ["list", "state", "firm"]
+        assert not any(one.get("error") for one in ran["replies"])
+        assert _alone(ran) == [["after-install"], ["list"], ["state"], ["firm"]]
+        assert _logged(ran).count(code) == 1 and "the engine could not start" in _logged(ran)
+
+
+def test_an_engine_commands_stderr_goes_to_the_error_log_and_never_to_the_page(tmp_path):
+    """P276: the engine's stderr since the hand-over is kept for a command that
+    fails, in the error log as a failed command's is, and is not in the reply."""
+    ran = _run_spawns(tmp_path, [{"tracker": ["list"]}, {"tracker": ["state"]}], engineBehaviors=["ok", "fail"])
+    failed = ran["replies"][1]
+    assert failed["error"].startswith("refused") and "Traceback" not in json.dumps(failed)
+    assert "shell stderr of a failed command" in _logged(ran) and "a fabricated message" in _logged(ran)
+
+
+def test_the_shell_and_the_engine_agree_on_the_flag_the_end_key_and_the_line_limit():
+    """P276, built apart and met only here: the shell starts the engine with the
+    flag the entry waits on, finds an end line by the key the engine leads it
+    with, and keeps the engine's line and payload limits."""
+    from tracker import resident
+
+    main_js = read("app/main.js")
+    assert re.search(r'const RESIDENT_FLAG = "([^"]+)";', main_js).group(1) == resident.RESIDENT_FLAG
+    assert re.search(r'const ENGINE_END_KEY = "([^"]+)";', main_js).group(1) == resident.END_KEY
+    assert 'const ENGINE_END_PREFIX = `{"${ENGINE_END_KEY}"`;' in main_js
+    assert int(re.search(r"const ENGINE_LINE_MAX = (\d+) \* 1024;", main_js).group(1)) * 1024 == resident.LINE_MAX
+    assert int(re.search(r"const ENGINE_PAYLOAD_MAX = (\d+) \* 1024 \* 1024;", main_js).group(1)) * 1024 * 1024 == resident.PAYLOAD_MAX
+    assert "vocab.own_process_commands" in main_js
 
 
 def test_a_reply_in_a_thousand_pieces_is_read_once_and_whole(tmp_path):
@@ -4990,17 +5210,19 @@ def test_a_reply_in_a_thousand_pieces_is_read_once_and_whole(tmp_path):
     assert len(firm["returns"]) == 400 and firm["returns"][399] == {"path": "r399", "label": "Return 399 é"}
     counts = [one["message"] for one in ran["sends"] if one["channel"] == "tracker-progress"]
     assert [one["progress"]["done"] for one in counts] == [0, 25, 50] and all(one["args"] == ["firm"] for one in counts)
-    reader = read("app/main.js")
-    reader = reader[reader.index('proc.stdout.on("data", (d) => {'):]
-    reader = reader[:reader.index("\n    });\n")]
+    main_js = read("app/main.js")
+    reader = main_js[main_js.index("function lineReader(onLine) {"):]
+    reader = reader[:reader.index("\n}\n")]
     assert 'd.indexOf("\\n", from)' in reader and 'pieces.join("")' in reader
     assert "+= d" not in reader and "pending" not in reader
+    # The one reader serves both paths: a process of its own and the engine.
+    assert "lineReader(take)" in main_js and "lineReader((line) => engineLine(mine, line))" in main_js
 
 
-def test_the_shell_and_the_api_agree_on_the_spare_the_early_overview_and_the_count_line():
+def test_the_shell_and_the_api_agree_on_the_early_overview_and_the_count_line():
     """The speed round's one join between its lanes (SPEC-speed-round 5.5.2),
-    built apart and met only here. P220: the shell starts its spare with the
-    flag the API's entry waits on. P221: every command the shell lets run
+    built apart and met only here. (P220's spare, whose flag this once pinned,
+    is the engine of P276; its flag is pinned above.) P221: every command the shell lets run
     before the allowlist is a held reading and never a write. P222: the
     renderer takes a count line for the Overview's by the command that
     printed it - the runner's ``firm`` - and reads the two fields
@@ -5009,7 +5231,6 @@ def test_the_shell_and_the_api_agree_on_the_spare_the_early_overview_and_the_cou
     from tracker import progress, runner
 
     main_js = read("app/main.js")
-    assert re.search(r'const SPARE_FLAG = "([^"]+)";', main_js).group(1) == api.SPARE_FLAG
     early_source = re.search(r"const EARLY_COMMANDS = new Set\(\[([^\]]*)\]\);", main_js).group(1)
     early = set(re.findall(r'"([a-z-]+)"', early_source))
     if "BOOTSTRAP_COMMAND" in early_source:
@@ -5036,7 +5257,7 @@ def test_the_shell_and_the_api_agree_on_the_spare_the_early_overview_and_the_cou
 def test_the_last_counts_are_an_early_read_only_command_the_api_answers():
     """P229, met at the merge of its two lanes: the shell lets the API's
     ``firm-last`` run before the allowlist, beside the list and the
-    Overview, and asks it once more of a fresh process when a spare closed
+    Overview, and asks it once more of a process of its own when the engine closed
     without a word - so main.js's early and held lists carry the API's own
     constant, the API lists it as a held reading and never as a write, and
     the renderer asks it by that name. The words the renderer reads for it

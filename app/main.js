@@ -122,8 +122,8 @@ const BOOTSTRAP_COMMAND = "list";
 // command).
 const EARLY_COMMANDS = new Set([BOOTSTRAP_COMMAND, "firm", "firm-last"]);
 // The read-only replies, word for word tracker.api.HELD_READING_COMMANDS
-// (tests/test_single_source.py): the only commands run again when the spare
-// they were handed closed without a word (P220). A write is never run twice.
+// (tests/test_single_source.py): the only commands run again when the engine
+// they were handed to closed without a word (P220, P276). A write is never run twice.
 const HELD_READING_COMMANDS = new Set(["firm", "firm-last", "list", "state"]);
 // The after-install step's launch door (decision 209): the shell runs it
 // itself, once, at start. It returns at once when the program has not
@@ -379,12 +379,10 @@ function unwatchLastPass() {
 
 function learn(result) {
   const vocab = result && result.vocab;
-  const first = allowedCommands === null;
   if (vocab && Array.isArray(vocab.commands)) allowedCommands = new Set(vocab.commands);
-  // The first spare waits for the first list's reply (P220), so start-up
-  // adds no spare beside the list, the early Overview and the last counts
-  // (P229's firm-last, a third process of its own).
-  if (first && allowedCommands) startSpare();
+  // The commands that run a pass or the after-install step, which never go to
+  // the engine (P276); before this is seen only EARLY_COMMANDS may run.
+  if (vocab && Array.isArray(vocab.own_process_commands)) ownProcessCommands = new Set(vocab.own_process_commands);
   if (vocab && typeof vocab.engagement_flag === "string") engagementFlag = vocab.engagement_flag;
   if (vocab && typeof vocab.pass_command === "string") passCommand = vocab.pass_command;
   if (vocab && vocab.path_kinds && typeof vocab.path_kinds === "object") pathKinds = vocab.path_kinds;
@@ -449,6 +447,10 @@ function runTracker(args, payload, onProgress, onEnded) {
 
 // Start the tracker with one command already allowed: the renderer's
 // through runTracker's check, and the shell's own launch door (decision 209).
+// The command is handed to the engine (P276) while it is free; a pass, a
+// command the API says runs alone (vocab.own_process_commands), the launch
+// door, a `fresh` re-run and any command while there is no usable engine start
+// a process of their own, as every command did before the engine.
 function spawnTracker(args, payload, onProgress, onEnded, { fresh = false } = {}) {
   // Serialised before anything starts (decision 176): a payload that will
   // not serialise used to throw once the tracker was already running and
@@ -466,24 +468,21 @@ function spawnTracker(args, payload, onProgress, onEnded, { fresh = false } = {}
   }
   return new Promise((resolve) => {
     const isPass = passCommand !== null && args[0] === passCommand;
-    // A command that is not a pass goes to the waiting spare when there is
-    // one from this program (P220); otherwise, and always for a pass, a
-    // process of its own is started for it, as before.
-    const handed = isPass || fresh ? null : takeSpare();
-    const proc = handed ? handed.proc : startTracker(args);
-    if (!isPass) startSpare();   // the next one waits for the next command
+    const alone = isPass || fresh || args[0] === LAUNCH_COMMAND || ownProcessCommands.has(args[0]);
+    const handed = alone ? null : takeEngine(args, body);
+    const carrier = handed ? handed.mine : null;
+    const proc = carrier ? carrier.proc : startTracker(args);
     const startedAt = Date.now();
     if (isPass && proc.pid) passes.set(proc.pid, proc);
     let running = false;      // a pass that said it started: the click has its answer
     let killedReply = null;   // what a pass killed after it started ends with
     let limitMs = TRACKER_TIMEOUT_MS;
-    let pieces = [];          // stdout not yet ended by a newline, as it came
     let reply;                // the last line that was not a progress line
     let last = null;          // the last progress line's fields
-    let stderr = handed ? handed.stderr : "";   // a spare's own, from before the hand-over
-    let heard = false;        // anything at all on stdout
+    let ownStderr = "";       // a process of its own's; the engine's is kept on the engine
     let settled = false;
     let timer = null;
+    const stderrOf = () => (carrier ? carrier.stderr : ownStderr);
     const settle = (value) => {
       if (settled) return;
       settled = true;
@@ -492,7 +491,12 @@ function spawnTracker(args, payload, onProgress, onEnded, { fresh = false } = {}
       resolve(value);
     };
     const kill = () => {
-      proc.kill();
+      // The only way to stop a stuck command in the engine is to end the
+      // engine: it is killed and a new one started (SPEC-ui-menu-speed 3.4).
+      if (carrier) {
+        carrier.current = null;   // answered below, not by lost()
+        endEngine(carrier, { label: "killed at the time limit", planned: false });
+      } else proc.kill();
       const minutes = Math.max(1, Math.round(limitMs / 60000));
       const where = last && last.name ? ` ${fill(shellSays.killed_at, last)}` : "";
       // A sort says a sort stopped; a change says it may be partly done; any
@@ -539,25 +543,60 @@ function spawnTracker(args, payload, onProgress, onEnded, { fresh = false } = {}
       }
       reply = parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : undefined;
     };
-    // Read once (P220, findings-3 #3): each piece is searched for a newline
-    // on its own, and the pieces of a line are joined once, when it ends -
-    // never the whole of what came so far, again for every piece, which
-    // cost 176 ms of the window's process for a 3.9 MB Overview.
+    // The command's ending, for a process that closed and for an engine that
+    // said its end line alike. Nothing of stderr goes on screen: a failed
+    // command's goes to the log beside the tracker's database, for a
+    // developer at this machine (decision 193, security principle 7). With
+    // none named - no data folder yet - the stderr goes to the fallback log
+    // and the reply says just no_log (Jason, 2026-09-29), never a log beside
+    // the program (decision 186's rebase review, MF2).
+    const finish = (code) => {
+      clearTimeout(timer);
+      const out = killedReply || reply || shellFailure(fill(shellSays.no_reply, { code }), "failed", { progress: last });
+      const failed = !reply || reply.error;
+      if (failed) keepInLog("shell stderr of a failed command", stderrOf());
+      const ending = failed && stderrOf() && !errorLog ? withNoLog(out) : out;
+      if (!running) settle(ending);
+      else if (onEnded) onEnded({ reply: ending, code });
+    };
+    if (carrier) {
+      // Handed to the engine: the request line, then the payload's bytes, and
+      // no end of input (tracker.resident). The engine's reader calls take()
+      // for each line and finish() at this command's end line; if the engine
+      // ends while it holds the command, lost() answers it.
+      carrier.stderr = "";
+      carrier.current = {
+        id: handed.id,
+        take,
+        end: finish,
+        lost: (code, startError) => {
+          if (settled) return;
+          clearTimeout(timer);
+          const heard = stderrOf();
+          if (heard) keepInLog("shell stderr of an engine that closed without a reply", heard);
+          // A read is asked once more, of a process of its own; a write never
+          // is, since it cannot be known that it did nothing (P220, P276).
+          if (HELD_READING_COMMANDS.has(args[0]) && !writingCommands.has(args[0])) {
+            settled = true;
+            resolve(spawnTracker(args, payload, onProgress, onEnded, { fresh: true }));
+            return;
+          }
+          const said = startError ? fill(shellSays.could_not_start, { code: startError })
+            : fill(shellSays.no_reply, { code });
+          const out = shellFailure(said, "failed", { progress: last });
+          settle(!errorLog && heard ? withNoLog(out) : out);
+        },
+      };
+      carrier.proc.stdin.write(handed.head, "utf8");
+      if (handed.bytes > 0) carrier.proc.stdin.write(body, "utf8");
+      return;
+    }
+    // Read once (P220, findings-3 #3), by the one line reader the engine uses.
+    const reader = lineReader(take);
     proc.stdout.setEncoding("utf8");
-    proc.stdout.on("data", (d) => {
-      heard = true;
-      let from = 0;
-      let at;
-      while ((at = d.indexOf("\n", from)) >= 0) {
-        pieces.push(d.slice(from, at));
-        take(pieces.join(""));
-        pieces = [];
-        from = at + 1;
-      }
-      if (from < d.length) pieces.push(from ? d.slice(from) : d);
-    });
+    proc.stdout.on("data", reader);
     proc.stderr.on("data", (d) => {
-      if (stderr.length < STDERR_CAP) stderr += d;
+      if (ownStderr.length < STDERR_CAP) ownStderr += d;
     });
     proc.stdin.on("error", () => {});   // a process that died before reading stdin is reported by "close"
     // Said by its code, never its message, which names the executable's path.
@@ -565,74 +604,100 @@ function spawnTracker(args, payload, onProgress, onEnded, { fresh = false } = {}
       settle(shellFailure(fill(shellSays.could_not_start, { code: (err && err.code) || "?" }), "failed"))
     );
     proc.on("close", (code) => {
-      take(pieces.join(""));
-      pieces = [];
-      clearTimeout(timer);
+      reader.flush();
       passes.delete(proc.pid);
-      // A spare that died while it waited - its exit not yet seen when it
-      // was handed the command - closes without a word. A read-only reply
-      // is asked once more, of a process of its own; a write never is, since
-      // it cannot be known that it did nothing (P220).
-      if (handed && !heard && !killedReply && !settled && HELD_READING_COMMANDS.has(args[0]) && !writingCommands.has(args[0])) {
-        if (stderr) keepInLog("shell stderr of a spare that closed without a reply", stderr);
-        settled = true;
-        resolve(spawnTracker(args, payload, onProgress, onEnded, { fresh: true }));
-        return;
-      }
-      // Nothing of stderr goes on screen: a
-      // failed command's goes to the log beside the tracker's database, for
-      // a developer at this machine (decision 193, security principle 7).
-      // With none named - no data folder yet - the stderr goes to the
-      // fallback log and the reply says just no_log (Jason, 2026-09-29),
-      // never a log beside the program (decision 186's rebase review, MF2).
-      const out = killedReply || reply || shellFailure(fill(shellSays.no_reply, { code }), "failed", { progress: last });
-      const failed = !reply || reply.error;
-      if (failed) keepInLog("shell stderr of a failed command", stderr);
-      const ending = failed && stderr && !errorLog ? withNoLog(out) : out;
-      if (!running) settle(ending);
-      else if (onEnded) onEnded({ reply: ending, code });
+      finish(code);
     });
-    // A spare is told its command line first, one line of JSON, then the
-    // payload exactly as a fresh process reads it (tracker.api's spare()).
-    if (handed) proc.stdin.write(`${JSON.stringify({ argv: args })}\n`, "utf8");
     if (body !== undefined) proc.stdin.write(body, "utf8");
     proc.stdin.end();
   });
 }
 
+// Joins the pieces of a line once, when it ends - never the whole of what came
+// so far, again for every piece (which cost 176 ms of the window's process for
+// a 3.9 MB Overview, P220 findings-3 #3). Each piece is searched for a newline
+// on its own. `flush` hands over what is left when the stream closes.
+function lineReader(onLine) {
+  let pieces = [];
+  const feed = (d) => {
+    let from = 0;
+    let at;
+    while ((at = d.indexOf("\n", from)) >= 0) {
+      pieces.push(d.slice(from, at));
+      onLine(pieces.join(""));
+      pieces = [];
+      from = at + 1;
+    }
+    if (from < d.length) pieces.push(from ? d.slice(from) : d);
+  };
+  feed.flush = () => {
+    const rest = pieces.join("");
+    pieces = [];
+    onLine(rest);
+  };
+  return feed;
+}
+
 // One tracker process, started as every command's is: the packaged API, or
 // the checkout's private Python from the checkout, with the settings folder
-// and the product's name in its environment, its window hidden.
-function startTracker(args) {
+// and the product's name in its environment, its window hidden. `module` is
+// what the checkout runs with -m: the API, or the engine's.
+function startTracker(args, module = "tracker.api") {
   const env = { ...process.env, TRACKER_SETTINGS_DIR: SETTINGS_DIR, TRACKER_PRODUCT_NAME: PRODUCT_NAME };
   return FROZEN_API
     ? spawn(FROZEN_API, args, { windowsHide: true, env })
-    : spawn(SOURCE_PYTHON, ["-m", "tracker.api", ...args], {
+    : spawn(SOURCE_PYTHON, ["-m", module, ...args], {
         cwd: REPO_ROOT,
         windowsHide: true,
         env,
       });
 }
 
-// ── the warm spare (P220, Jason 2026-10-08, A1) ───────────────────────
+// ── the engine (P276, Jason 2026-10-11, Q12 b; replaces P220's spare) ──
 // Starting Python and importing the tracker is most of what a small command
-// costs (state 306-368 ms fresh, 90-98 ms from a spare; about 0.85 s on the
-// office PC). So one tracker process is kept started, waiting on its stdin
-// with tracker.api's --spare: the next command that is not a pass is handed
-// to it - its command line, then its payload, then the end of input - and
-// another is started at once. It is still one command per process (decision
-// 171's lock rule, one store per process, the kill per command): a spare
-// runs the one command it is handed and exits. A pass is never handed to
-// one. What the tracker fixes at import is the program's own place and the
-// product's name (the environment it is started with, the same a fresh
-// process gets), so a spare from before the program changed - an upgrade, a
-// pull from source - is killed and the command runs fresh. Quitting kills it.
-const SPARE_FLAG = "--spare";
-let spare = null;   // {proc, stamp, stderr}
+// costs (state about 296 ms fresh and about 7 ms from the engine on the
+// development Mac; about 0.85 s a command on the office PC). So one tracker
+// process is started when the app opens, with tracker.resident's --resident,
+// and answers each command handed to it while it is free: a request line
+// {id, argv, bytes}, then the payload's bytes, and no end of input; its reply
+// is whatever the API prints, then a line of its own {engine_end, code,
+// retiring}. A command that comes while it is busy, every pass, the launch
+// door and the commands the API names (vocab.own_process_commands) start a
+// process of their own, as before: no queue, so a slow command never holds
+// another behind it.
+//
+// Decision 171's lock rule, one store per command, P118's holds and the kill
+// per command are kept by the engine itself (tracker.resident), which ends
+// itself after any command that left the process unlike it found it; this
+// file keeps the kill (the engine is killed and a new one started), the
+// restart budget and the program stamp. What the tracker fixes at import is
+// the program's own place and the product's name (the environment it is
+// started with, the same a fresh process gets), so an engine from before the
+// program changed - an upgrade, a pull from source - is told to finish and a
+// new one started, and that one command runs in a process of its own.
+const RESIDENT_FLAG = "--resident";   // tracker.resident.RESIDENT_FLAG
+const ENGINE_END_KEY = "engine_end";  // tracker.resident.END_KEY
+// An end line starts with its key, so a reply (which never does) costs no parse.
+const ENGINE_END_PREFIX = `{"${ENGINE_END_KEY}"`;
+const ENGINE_LINE_MAX = 64 * 1024;    // tracker.resident.LINE_MAX
+const ENGINE_PAYLOAD_MAX = 32 * 1024 * 1024;   // tracker.resident.PAYLOAD_MAX
+// A spawn error with one of these codes means the program is missing or not
+// runnable: the engine is off for the session at once.
+const ENGINE_PROGRAM_ERRORS = new Set(["ENOENT", "EACCES"]);
+// A third unplanned end within five minutes leaves the engine off for the
+// session: every command then runs in a process of its own, and the error
+// log says so (Jason's question D: no notice).
+const ENGINE_RESTARTS = 3;
+const ENGINE_RESTART_WINDOW_MS = 5 * 60 * 1000;
+let engine = null;      // {proc, stamp, current, nextId, stderr, retiring, replaced, done}
+let engineOff = false;  // for the rest of the session
+let engineStops = [];   // [{at, code}] of the unplanned ends inside the window
+let quitting = false;   // will-quit has begun: no new engine
+let ownProcessCommands = new Set();   // vocab.own_process_commands, once seen
 
 // The program as it is now: the packaged API's size and time, or from source
 // the newest time of the tracker's modules. null when it cannot be read, and
-// then no spare is used.
+// then no engine is used.
 function programStamp() {
   try {
     if (FROZEN_API) {
@@ -650,45 +715,155 @@ function programStamp() {
   }
 }
 
-// Start the spare, when the allowlist is known and none is waiting.
-function startSpare() {
-  if (spare || allowedCommands === null) return;
+// Start the engine, when none is running and none is ruled out.
+function startEngine() {
+  if (engine || engineOff || quitting) return;
   if (!FROZEN_API && !fs.existsSync(SOURCE_PYTHON)) return;
   const stamp = programStamp();
   if (stamp === null) return;
   let proc;
   try {
-    proc = startTracker([SPARE_FLAG]);
-  } catch {
-    return;   // a spare that cannot start is no spare: commands start their own
+    proc = startTracker([RESIDENT_FLAG], "tracker.resident");
+  } catch (err) {
+    // Node throws at the call only for what time does not mend (EINVAL, EPERM,
+    // ENOMEM, a bad argument); ENOENT, EACCES, EAGAIN and EMFILE arrive later,
+    // as the 'error' event below. So a throw here is no engine for the
+    // session, and the error log says its code once.
+    engineCannotStart(err);
+    return;
   }
-  const mine = { proc, stamp, stderr: "" };
-  mine.collect = (d) => {
+  const mine = { proc, stamp, current: null, nextId: 1, stderr: "", retiring: false, replaced: false, done: false };
+  const reader = lineReader((line) => engineLine(mine, line));
+  proc.stdout.setEncoding("utf8");
+  proc.stdout.on("data", reader);
+  proc.stderr.on("data", (d) => {
     if (mine.stderr.length < STDERR_CAP) mine.stderr += d;
-  };
-  const forget = () => {
-    if (spare === mine) spare = null;
-  };
-  proc.stderr.on("data", mine.collect);
-  proc.on("exit", forget);
-  proc.on("error", forget);
+  });
   if (proc.stdin) proc.stdin.on("error", () => {});
-  spare = mine;
+  // A process that cannot be spawned is no engine, and commands start their own
+  // processes meanwhile. If the program is missing or not runnable (ENOENT,
+  // EACCES) no later start would do better: the engine is off for the session
+  // and the error log says the code once. Any other error (EAGAIN, EMFILE) may
+  // be passing: it is one unplanned end in the restart budget, and a new engine
+  // is tried.
+  proc.on("error", (err) => {
+    const code = (err && err.code) || "?";
+    if (ENGINE_PROGRAM_ERRORS.has(code)) {
+      engineCannotStart(err);
+      endEngine(mine, { label: "could not start", planned: true, startError: code });
+    } else {
+      endEngine(mine, { label: `could not start (${code})`, planned: false, startError: code });
+    }
+  });
+  proc.on("close", (code, signal) => {
+    reader.flush();
+    endEngine(mine, { label: "closed on its own", planned: false, code, signal });
+  });
+  engine = mine;
 }
 
-// The waiting spare, taken for a command, or null. One from before the
-// program changed is killed, never used.
-function takeSpare() {
-  const mine = spare;
-  if (!mine) return null;
-  spare = null;
+function engineCannotStart(err) {
+  if (engineOff) return;
+  engineOff = true;
+  keepInLog("shell: the engine could not start", `${(err && err.code) || "?"}; every command now starts its own process`);
+}
+
+// One line of the engine's output: its end line settles the command it holds,
+// any other line is that command's (a progress line or the reply candidate).
+function engineLine(mine, line) {
+  if (!line) return;
+  // Only the head of the line is looked at: a reply can be megabytes long.
+  if (line.slice(0, ENGINE_END_PREFIX.length) !== ENGINE_END_PREFIX) {
+    if (mine.current) mine.current.take(line);
+    return;
+  }
+  let said = null;
+  try {
+    said = JSON.parse(line);
+  } catch {
+    said = null;
+  }
+  const current = mine.current;
+  // An end line for another command, or for none, is a broken stream: the
+  // engine can no longer be trusted, so it is ended and the command is
+  // answered as if it had died.
+  if (!said || !current || said[ENGINE_END_KEY] !== current.id) {
+    mine.proc.kill();
+    endEngine(mine, { label: "broken stream", planned: false, code: null });
+    return;
+  }
+  mine.current = null;
+  if (said.retiring === true) {
+    // It ends itself after this line; the next command goes to a new engine.
+    mine.retiring = true;
+    if (engine === mine) engine = null;
+    startEngine();
+  }
+  current.end(Number.isInteger(said.code) ? said.code : null);
+}
+
+// The engine is over - killed, retired, closed, replaced or never started -
+// once. A command it still held is answered by that command's own `lost`; an
+// unplanned end counts against the budget; a new engine starts unless the
+// engine is off for the session or the app is quitting.
+function endEngine(mine, how) {
+  if (mine.done) return;
+  mine.done = true;
+  if (engine === mine) engine = null;
+  const lost = mine.current;
+  mine.current = null;
+  if (how.label === "killed at the time limit") mine.proc.kill();
+  const planned = mine.retiring || mine.replaced || quitting || how.planned === true;
+  if (!quitting) {
+    const why = mine.retiring ? "retired" : mine.replaced ? "replaced: the program changed" : how.label;
+    keepInLog("shell: the engine ended", `${why}; exit code ${how.code === undefined || how.code === null ? "none" : how.code}${how.signal ? `; signal ${how.signal}` : ""}`);
+  }
+  if (lost) lost.lost(how.code === undefined ? null : how.code, how.startError);
+  if (!planned) {
+    countUnplannedStop(how.startError || (how.code === undefined || how.code === null ? how.signal || "none" : how.code));
+  }
+  startEngine();
+}
+
+function countUnplannedStop(code) {
+  const now = Date.now();
+  engineStops = engineStops.filter((one) => now - one.at < ENGINE_RESTART_WINDOW_MS);
+  engineStops.push({ at: now, code });
+  if (engineStops.length < ENGINE_RESTARTS || engineOff) return;
+  engineOff = true;
+  keepInLog("shell: the engine is off for this session",
+    `engine stopped ${ENGINE_RESTARTS} times in ${ENGINE_RESTART_WINDOW_MS / 60000} minutes; ` +
+    `every command now starts its own process (exit codes: ${engineStops.map((one) => one.code).join(", ")})`);
+}
+
+// The engine, taken for a command that may go to it: one that is free, from
+// this program, and whose request fits the framing; otherwise null and the
+// command starts a process of its own. An engine still starting counts as
+// free: its frame waits in the pipe, which costs that click no more than a
+// fresh process would. An engine from before the program changed is told to
+// finish (its input ended: it is idle and exits at the end of input) and
+// replaced, and this one command runs alone.
+function takeEngine(args, body) {
+  const mine = engine;
+  if (!mine || engineOff || quitting || mine.current || mine.retiring || mine.done) return null;
   if (mine.proc.exitCode !== null && mine.proc.exitCode !== undefined) return null;
   if (mine.stamp !== programStamp()) {
-    mine.proc.kill();
+    mine.replaced = true;
+    engine = null;
+    try {
+      mine.proc.stdin.end();
+    } catch {
+      // already closed
+    }
+    startEngine();
     return null;
   }
-  mine.proc.stderr.removeListener("data", mine.collect);
-  return mine;
+  const bytes = body === undefined ? 0 : Buffer.byteLength(body, "utf8");
+  const head = `${JSON.stringify({ id: mine.nextId, argv: args, bytes })}\n`;
+  if (Buffer.byteLength(head, "utf8") > ENGINE_LINE_MAX || bytes > ENGINE_PAYLOAD_MAX) return null;
+  const id = mine.nextId;
+  mine.nextId += 1;
+  return { mine, id, head, bytes };
 }
 
 // Opened only while it is still what the API reported it as (decision 188,
@@ -1090,6 +1265,10 @@ if (floorRefusal) {
     win.focus();
   });
   app.whenReady().then(() => {
+    // The engine (P276) starts before the window is made, so its start overlaps
+    // the window's load; the first list is handed to it while it is still
+    // starting, which costs that click no more than a process of its own.
+    startEngine();
     const win = createWindow();
     // Not awaited by anything: a step that fails records its own sentence
     // for the notice (tracker.api's launch door), and one that cannot
@@ -1132,10 +1311,15 @@ app.on("window-all-closed", () => app.quit());
 app.on("will-quit", () => {
   unwatchLastPass();
   for (const proc of passes.values()) proc.stdout.destroy();
-  // The spare has been handed nothing: it is killed, never left waiting (P220).
-  if (spare) {
-    const { proc } = spare;
-    spare = null;
-    proc.kill();
+  // The engine's input is ended, never killed: one holding a write finishes it
+  // and exits at the end of input, as a fresh write process finishes after the
+  // app has gone (P276). If this shell dies, its pipe closes and it exits so.
+  quitting = true;
+  if (engine) {
+    try {
+      engine.proc.stdin.end();
+    } catch {
+      // already closed
+    }
   }
 });

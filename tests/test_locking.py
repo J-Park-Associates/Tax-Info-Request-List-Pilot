@@ -1351,3 +1351,52 @@ def test_a_lock_refusal_names_the_lock_it_met(tmp_path):
     with pytest.raises(EngagementLockedError) as refused:
         acquire_lock(tmp_path)
     assert refused.value.lock == tmp_path / LOCK_FILENAME
+
+
+# ------------------------------- P276 (SPEC-ui-menu-speed §3): what the engine asks ----
+# The app's engine runs many commands in one process and ends itself after one
+# that left a lock held or unreleased (tracker.resident); these are its two
+# read-only questions.
+
+
+def test_held_now_counts_the_locks_this_process_holds(tmp_path):
+    import tracker.locking as locking_module
+
+    (tmp_path / "a").mkdir()
+    (tmp_path / "b").mkdir()
+    before = locking_module.held_now()
+    first = acquire_lock(tmp_path / "a")
+    second = acquire_lock(tmp_path / "b")
+    assert locking_module.held_now() == before + 2
+    release_lock(first)
+    assert locking_module.held_now() == before + 1
+    release_lock(second)
+    assert locking_module.held_now() == before
+
+
+def test_a_release_that_can_neither_delete_nor_mark_is_named_as_left_unreleased(tmp_path, monkeypatch):
+    import tracker.locking as locking_module
+
+    monkeypatch.setattr(locking_module, "_unreleased", [])
+    lock = tmp_path / LOCK_FILENAME
+    assert locking_module.left_unreleased() == ()
+    _unlink_that_does_not_take(lock, monkeypatch)
+    real_write = locking_module.Path.write_text
+
+    def refused(self, *args, **kwargs):
+        if self == lock:
+            raise PermissionError("[WinError 5] refused")
+        return real_write(self, *args, **kwargs)
+
+    monkeypatch.setattr(locking_module.Path, "write_text", refused)
+    with engagement_lock(tmp_path):
+        pass
+    assert locking_module.left_unreleased() == (lock,)
+    # A release that marked the file is not "unreleased": the marker is a lock let go.
+    monkeypatch.undo()
+    monkeypatch.setattr(locking_module, "_unreleased", [])
+    lock.unlink()
+    _unlink_that_does_not_take(lock, monkeypatch)
+    with engagement_lock(tmp_path):
+        pass
+    assert locking_module.left_unreleased() == ()

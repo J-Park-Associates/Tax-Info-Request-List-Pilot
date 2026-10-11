@@ -141,7 +141,10 @@ LAYERS: dict[int, frozenset[str]] = {
     # drives: it imports ``scheduling`` (L4), ``store`` (L1), ``registry``
     # (L3) and L0; the API imports it, and nothing lower may.
     4: frozenset({"runner", "scheduling", "after_install"}),
-    5: frozenset({"api"}),
+    # ``resident`` joins L5 with P276: the engine's loop over ``api.main``; it
+    # imports ``api``, ``locking``, ``ocr``, ``settings`` and the standard library;
+    # nothing imports it but ``api_entry.py``, at call time.
+    5: frozenset({"api", "resident"}),
 }
 LAYER_OF: dict[str, int] = {module: layer for layer, modules in LAYERS.items() for module in modules}
 
@@ -979,3 +982,14 @@ def test_importing_the_api_loads_no_network_module():
         done = subprocess.run([sys.executable, "-c", program], capture_output=True, text=True,
                               check=True, cwd=REPO)
         assert json.loads(done.stdout) == [], module
+
+
+def test_the_engine_imports_the_api_the_lock_the_reader_and_the_settings_and_nothing_imports_the_engine():
+    """P276: ``resident`` is the app's engine, a loop over ``api.main``; it
+    reaches only those four, and nothing in the package reaches it - the
+    entry point (``api_entry.py``, outside the package) starts it."""
+    load, call = import_edges()
+    assert load["resident"] == {"api", "locking", "ocr", "settings"}, load["resident"]
+    assert call["resident"] == set(), call["resident"]
+    assert [m for m in load if "resident" in load[m] | call[m]] == []
+    assert LAYER_OF["resident"] == LAYER_OF["api"] == 5

@@ -28,9 +28,12 @@ Both are put in the environment before ``tracker.after_install`` (and with
 it ``tracker.scheduling``, which reads the product's name at import) is
 imported.
 
-**And a warm spare** (pilot P220): given ``tracker.api.SPARE_FLAG`` alone,
-the API is imported at once and waits for its one command on stdin
-(``tracker.api.spare``), so a click does not wait for the import.
+**And the engine** (pilot P276): given ``tracker.resident.RESIDENT_FLAG``
+alone, the API is imported at once and the process answers the commands the
+app hands it, one at a time, over its standard input
+(``tracker.resident.serve``), so a click does not wait for the import. It
+replaces P220's warm spare, which ran one command and exited. A pass and the
+after-install step are never handed to it.
 
 **And a floor** (SPEC-mac R6, P243). A Mac app is dragged into Applications,
 so there is no installer to refuse a Mac it was never proved on, and the
@@ -89,7 +92,8 @@ if __name__ == "__main__":
         raise SystemExit(run_pass(argv[1:]))
     if argv[:1] == [SETUP_MODE_FLAG]:
         raise SystemExit(run_setup_step(argv[1:]))
-    from tracker.api import SPARE_FLAG, main, spare
+    from tracker.api import main
+    from tracker.resident import RESIDENT_FLAG, serve
 
-    # A warm spare (pilot P220): imported now, its one command read later.
-    raise SystemExit(spare() if argv == [SPARE_FLAG] else main(argv))
+    # The engine (pilot P276): imported now, its commands read as they come.
+    raise SystemExit(serve() if argv == [RESIDENT_FLAG] else main(argv))

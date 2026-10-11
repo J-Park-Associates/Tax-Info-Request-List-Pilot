@@ -1152,8 +1152,8 @@ each firm page's draw time and a page turn's, median of five.
 | Engine processes started by the last-pass watch, 10 idle minutes | 10 (one a minute, by the timer) | 0, by construction: no timer remains (pinned by `test_no_timer_asks_last_pass`); not counted in a live window | this Mac (1.7) |
 | A scheduled pass's end to the last-sort line | up to 60 s | the file's write to the app's message 263 ms (median of 5, real `fs.watch` under a fake Electron), plus the `last-pass` command 0.225 s: about 0.5 s to the page's answer; the line's redraw itself not timed in a live window | this Mac (1.7) |
 | Return page draw at 1,000 rows; nodes in the document | | | harness (2.8) |
-| `import tracker.api` (paid per command before the engine) | 0.21 s (this SPEC, median of 5, Python 3.14) | paid once a session | this Mac (3.8) |
-| `state`, `last-pass`, `watch`, `templates`, `list`, `firm`: fresh / spare / engine | | | this Mac (3.8) |
+| `import tracker.api` (paid per command before the engine) | 0.21 s (this SPEC, median of 5, Python 3.14) | paid once a session (the fresh rows below are about 0.29 s, of which this is most) | this Mac (3.8) |
+| `templates`, `last-pass`, `watch`, `state` (one return), `list`, `firm` (warm), ms | fresh 291, 290, 292, 296, 304, 306; spare (P220) 39, 36, 39, 43, 50, 47 | engine 1, 1, 2, 7, 14, 13 | this Mac, from source, Python 3.14.8, scratch settings and data home, a made-up firm of 30 households and 40 returns (not the 50-household sample firm), **median of 5, not 20**, the engine started 1.5 s before its first request; the packaged `tracker-api` and the office PC not measured here (3.8) |
 | The same, `state`, `last-pass`, `watch` | about 0.85 s | under 0.25 s (acceptance) | office PC, Windows check |
 | Firm reply bytes at 2,000 returns | about 3.9 MB (speed round) | | sandbox (4.10) |
 | A firm page turn | | | harness and sandbox (4.10) |
