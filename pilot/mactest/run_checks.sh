@@ -56,15 +56,18 @@ mkdir -p "$RESULTS" || { echo "Could not make $RESULTS"; exit 1; }
 : > "$LOG"
 
 TESTS_ARG=""
+TESTS_GIVEN=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --tests)
       [ $# -ge 2 ] || { echo "--tests needs a list of test files, e.g. --tests test_pilot,test_after_install"; exit 2; }
       TESTS_ARG="${TESTS_ARG:+$TESTS_ARG,}$2"
+      TESTS_GIVEN=1
       shift 2
       ;;
     --tests=*)
       TESTS_ARG="${TESTS_ARG:+$TESTS_ARG,}${1#--tests=}"
+      TESTS_GIVEN=1
       shift
       ;;
     *)
@@ -151,7 +154,7 @@ split_test_list() {
 # ── END test-file helpers ──
 
 FILES=()
-if [ -n "$TESTS_ARG" ]; then
+if [ -n "$TESTS_GIVEN" ]; then
   SEEN=""
   NL="
 "
@@ -180,6 +183,13 @@ if [ -n "$TESTS_ARG" ]; then
   done <<LIST
 $names
 LIST
+  # A list that names nothing is a mistake: not a request for the whole suite
+  # (that is --tests left out, and the engine's tests run only when Jason asks),
+  # and not a run with no test in it that goes on to build.
+  if [ "${#FILES[@]}" = 0 ]; then
+    record "tests" FAIL "the --tests list names no test file"
+    stop_here "name at least one test file, or leave --tests out to run the whole suite"
+  fi
   say "Test files to run: ${FILES[*]}"
 fi
 
@@ -325,7 +335,7 @@ map=$?
 record "ruff_and_map" "$(verdict "$((ruff + map))")" "ruff=$ruff map=$map"
 
 export PYTHONIOENCODING=utf-8
-if [ -n "$TESTS_ARG" ]; then
+if [ -n "$TESTS_GIVEN" ]; then
   OUTS=()
   PIDS=()
   i=0

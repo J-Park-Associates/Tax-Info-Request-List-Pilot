@@ -679,7 +679,8 @@ def _run_kit(tmp_path: Path, *args: str, path: str | None = None) -> tuple[subpr
 def test_a_typo_in_the_test_list_stops_the_kit_at_once_naming_where_it_looked(tmp_path):
     """Every named file is found before the environment is installed or any
     tool asked for, so a typo costs nothing: the run stops, says where it
-    looked, and only a ``.py`` file counts."""
+    looked, and only a ``.py`` file counts. A list that names nothing - empty,
+    or only commas - stops the same way and is not the whole suite."""
     done, checks = _run_kit(tmp_path, "--tests", "test_pilot,test_nosuch")
     assert done.returncode == 1, done.stdout + done.stderr
     assert checks["tests"]["result"] == "FAIL"
@@ -690,6 +691,11 @@ def test_a_typo_in_the_test_list_stops_the_kit_at_once_naming_where_it_looked(tm
     assert ".py.py" not in checks["tests"]["evidence"]
     _, checks = _run_kit(tmp_path, "--tests", "../outside")
     assert checks["tests"]["evidence"].startswith("no such test file: ../outside")
+    for args in (("--tests", ""), ("--tests", ","), ("--tests", " , "), ("--tests=",), ("--tests=,",)):
+        done, checks = _run_kit(tmp_path, *args)
+        assert done.returncode == 1, (args, done.stdout)
+        assert checks["tests"] == {"result": "FAIL", "evidence": "the --tests list names no test file"}, args
+        assert list(checks) == ["tests"] and "whole suite" in done.stdout
     done, _ = _run_kit(tmp_path, "--tests")
     assert done.returncode == 2 and "--tests needs a list" in done.stdout
     done, _ = _run_kit(tmp_path, "--bogus")
