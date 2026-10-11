@@ -372,8 +372,14 @@ def test_a_mac_gets_the_application_menu_first_and_file_has_no_exit(tmp_path):
     file_items = [i.get("label") or "-" for i in mac[1]["submenu"]]
     assert file_items == [_word("new_household"), _word("change_root"), _word("open_root")]
     assert not any(i.get("role") == "quit" for top in mac[1:] for i in top.get("submenu") or [])
-    # Everything after File is the other platforms' menu, to the mnemonic.
-    assert mac[2:] == _without_mnemonics(other)[1:]
+    # Everything after File is the other platforms' menu, to the mnemonic - but
+    # Tools, which has the Mac's one item more (SPEC-mac R29, below).
+    remove = {"label": _word("remove_schedule_here"), "enabled": True}
+    tools = [top for top in mac if top.get("label") == _word("tools").replace("&", "")][0]
+    assert remove in tools["submenu"]
+    without = [{**top, "submenu": [i for i in top["submenu"] if i != remove]} if top is tools else top
+               for top in mac]
+    assert without[2:] == _without_mnemonics(other)[1:]
     assert mac[1]["label"] == other[0]["label"].replace("&", "")
     assert mac[1]["submenu"] == _without_mnemonics(other[0]["submenu"])[:3]
     # No other platform has it, and Windows and Linux keep Exit exactly as before.
@@ -398,6 +404,25 @@ def test_a_mac_shows_no_windows_mnemonic_and_every_other_platform_keeps_it(tmp_p
     assert not any("&" in label for label in labels(mac))
     assert {"&Tools", "&View", "&Help", "Show &Under Construction"} <= set(labels(win))
     assert {"Tools", "View", "Help", "Show Under Construction"} <= set(labels(mac))
+
+
+def test_only_a_mac_has_remove_the_schedule_from_this_mac_and_it_needs_no_clients_folder(tmp_path):
+    """SPEC-mac R29: dragging the app to the Bin leaves its launchd agent behind, so a
+    Mac's Tools menu gains one item after Repair Schedule - the API's word, enabled from
+    the first frame (it needs no clients folder) and answered by the page; no other
+    system's menu has it."""
+    assert _menu_words_in_main()["remove_schedule_here"] == "Remove the Schedule From This Mac…"
+    assert _word("remove_schedule_here") == "Remove the Schedule From This Mac…" == api.MENU["remove_schedule_here"]
+    [mac] = _run(tmp_path, [], **MAC)["menus"]
+    tools = [top for top in mac if top.get("label") == "Tools"][0]
+    labels = [i.get("label") for i in tools["submenu"]]
+    assert labels[labels.index(_word("repair_schedule")) + 1] == _word("remove_schedule_here")
+    assert next(i for i in tools["submenu"] if i.get("label") == _word("remove_schedule_here"))["enabled"]
+    for platform in ("win32", "linux"):
+        [menu] = _run(tmp_path, [], platform=platform)["menus"]
+        assert _word("remove_schedule_here") not in _flat(menu), platform
+    clicked = _run(tmp_path, [{"clickBar": _word("remove_schedule_here")}], **MAC)
+    assert clicked["sends"] == [{"channel": "menu", "message": {"id": "remove_schedule_here", "token": ""}}]
 
 
 def test_a_right_click_menu_has_no_windows_mnemonic_on_a_mac_either(tmp_path):

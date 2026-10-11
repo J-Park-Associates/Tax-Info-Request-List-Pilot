@@ -1229,6 +1229,7 @@ const MENU_ANSWERS = {
   stop_sorting: () => stopPass(),
   schedule: () => openSchedule(),
   repair_schedule: () => repairSchedule(),
+  remove_schedule_here: () => removeScheduleHere(),
   firm_report: () => openPath(shellPaths.status),
   clear_lock: () => clearLock(),
   tour: () => PilotTour.start(),

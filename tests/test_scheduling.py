@@ -7,12 +7,14 @@ command, and says plainly that it drafts rather than sends.
 
 import datetime as dt
 import os
+import platform
+from pathlib import Path
 from xml.etree import ElementTree
 
 import pytest
 
 # At collection, before any test's fixtures replace it (decision 209).
-from tests.conftest import REAL_TASK_SCHEDULER_HERE
+from tests.conftest import REAL_SCHEDULER_HERE
 from tracker import scheduling
 from tracker import settings as settings_module
 from tracker.scheduling import (
@@ -148,7 +150,9 @@ def fake_schtasks(monkeypatch, *, exists=False, delete_fails=False, create_fails
             return Said(1, "ERROR: Access is denied.") if delete_fails else Said()
         return Said(1, "ERROR: Access is denied.") if create_fails else Said()
 
-    monkeypatch.setattr(scheduling, "task_scheduler_here", lambda: True)
+    # Windows' scheduler, whatever this is; a Windows runner stays Windows.
+    monkeypatch.setattr(settings_module, "host_system", lambda: "nt" if os.name == "nt" else "posix")
+    monkeypatch.setattr(scheduling, "scheduler_here", lambda: True)
     monkeypatch.setattr(scheduling, "_schtasks", answer)
     return calls
 
@@ -167,18 +171,16 @@ def test_install_runs_schtasks_on_windows_and_only_shows_the_command_elsewhere(m
         install_task(tmp_path / "t.xml")
 
 
-def test_task_scheduler_here_answers_only_whether_windows(monkeypatch):
+def test_scheduler_here_answers_only_whether_this_computer_has_one(monkeypatch):
     """Decision 209 renamed the function whose name said "the scheduling
-    host" and whose body asked "is this Windows": it answers the second
-    question, and nothing about which computer runs the schedule."""
-    import platform
-
-    from tracker import scheduling
-
-    assert not hasattr(scheduling, "is_scheduling_host")
-    for system, answer in (("Windows", True), ("Linux", False), ("Darwin", False)):
-        monkeypatch.setattr(platform, "system", lambda system=system: system)
-        assert REAL_TASK_SCHEDULER_HERE() is answer
+    host" and whose body asked "is this Windows"; SPEC-mac R24 renamed it
+    again because a Mac has a scheduler too (launchd). It answers that
+    question and nothing about which computer runs the schedule - and asks
+    it through ``settings.host_system``, never the platform."""
+    assert not hasattr(scheduling, "is_scheduling_host") and not hasattr(scheduling, "task_scheduler_here")
+    for system, answer in (("nt", True), ("darwin", True), ("posix", False)):
+        monkeypatch.setattr(settings_module, "host_system", lambda system=system: system)
+        assert REAL_SCHEDULER_HERE() is answer
 
 
 def test_remove_task_deletes_only_an_existing_task(monkeypatch):
@@ -259,7 +261,7 @@ def test_a_schtasks_that_hangs_is_stopped_at_its_limit_as_an_os_error(monkeypatc
     assert given["timeout"] == scheduling.SCHTASKS_TIME_LIMIT_SECONDS == 60
     assert str(stopped.value) == scheduling.SCHTASKS_TOO_LONG.format(seconds=60)
 
-    monkeypatch.setattr(scheduling, "task_scheduler_here", lambda: True)
+    monkeypatch.setattr(scheduling, "scheduler_here", lambda: True)
     monkeypatch.setattr(scheduling, "_schtasks", REAL_SCHTASKS)
     with pytest.raises(OSError):
         scheduling.task_exists()
@@ -562,7 +564,7 @@ def test_once_a_day_is_said_as_every_day_at_the_start_time():
 
 def test_register_here_refuses_a_bad_choice_before_writing_anything(monkeypatch, tmp_path):
     fake_schtasks(monkeypatch)
-    monkeypatch.setattr(scheduling, "task_scheduler_here", lambda: True)
+    monkeypatch.setattr(scheduling, "scheduler_here", lambda: True)
     with pytest.raises(scheduling.ScheduleChoiceError):
         scheduling.register_here(tmp_path, start="25:00")
     with pytest.raises(scheduling.ScheduleChoiceError):
@@ -621,3 +623,257 @@ def test_the_next_run_is_worked_out_from_the_start_the_interval_and_the_time(sta
 
 def test_no_next_run_is_promised_while_the_schedule_is_off():
     assert scheduling.next_run(scheduling.SchedulePreference(False, "07:00", 120), NOW) == ""
+
+
+# ------------------------------------------------- the Mac: launchd (SPEC-mac R23-R25) ----
+
+REPO = Path(__file__).resolve().parent.parent
+
+
+def _plist(**overrides):
+    import plistlib
+
+    given = {"program": "/Applications/App.app/Contents/Resources/tracker-api/tracker-api",
+             "settings": "/Users/office/Library/Application Support/Tax Document Console",
+             "working_dir": "/Applications/App.app/Contents/Resources/tracker-api"}
+    return plistlib.loads(scheduling.launch_agent_plist(**{**given, **overrides}))
+
+
+def _minutes_the_windows_task_runs(xml: str) -> set[int]:
+    """The minutes of the day the Task Scheduler XML implies: the start, and -
+    with a ``Repetition`` of ``Interval`` for ``Duration P1D`` - every interval
+    after it for a day, round the clock (not until midnight)."""
+    task = ElementTree.fromstring(xml)
+    hour, minute = (int(part) for part in
+                    task.find(".//t:StartBoundary", NS).text.split("T")[1].split(":")[:2])
+    begin = hour * 60 + minute
+    repetition = task.find(".//t:Repetition", NS)
+    if repetition is None:
+        return {begin}
+    interval = int(repetition.find("t:Interval", NS).text.removeprefix("PT").removesuffix("M"))
+    assert repetition.find("t:Duration", NS).text == "P1D"
+    return {(begin + k * interval) % 1440 for k in range(1440 // interval)}
+
+
+@pytest.mark.parametrize("every", scheduling.EVERY_CHOICES)
+@pytest.mark.parametrize("start", ["07:00", "23:30", "00:15"])
+def test_the_mac_agent_runs_the_times_the_windows_task_runs(start, every):
+    """R23: Task Scheduler's ``Duration P1D`` repeats around the clock from the
+    start, so launchd - which has only calendar entries - is given the same
+    set of times, 1440 / every of them, one for "once a day"."""
+    xml = task_scheduler_xml(**ARGS, start_time=start, repeat_minutes=every)
+    entries = _plist(start=start, every=every)["StartCalendarInterval"]
+    minutes = [entry["Hour"] * 60 + entry["Minute"] for entry in entries]
+    assert set(minutes) == _minutes_the_windows_task_runs(xml)
+    assert len(minutes) == len(set(minutes)) == (1440 // every if every else 1)
+    assert all(set(entry) == {"Hour", "Minute"} for entry in entries)
+    assert all(0 <= entry["Hour"] < 24 and 0 <= entry["Minute"] < 60 for entry in entries)
+
+
+def test_the_mac_agent_names_the_settings_folder_and_no_root():
+    """R23 and decision 131: the job names the app's settings folder and the
+    clients root is read from the settings file at every run."""
+    packaged = _plist(frozen=True)
+    folder = "/Users/office/Library/Application Support/Tax Document Console"
+    assert packaged["ProgramArguments"] == [
+        "/Applications/App.app/Contents/Resources/tracker-api/tracker-api",
+        "--run", "--product", settings_module.product_name(), "--settings", folder, "--log"]
+    source = _plist(frozen=False, program="/usr/bin/python3")["ProgramArguments"]
+    assert source == ["/usr/bin/python3", "-m", "tracker.runner", "--settings", folder, "--log"]
+    assert packaged["WorkingDirectory"].endswith("tracker-api")
+    assert ROOT not in str(packaged) and "Clients" not in str(packaged)
+
+
+def test_the_mac_agent_is_a_standard_process_with_no_run_at_load_named_for_the_app():
+    plist = _plist()
+    assert plist["Label"] == scheduling.LAUNCH_AGENT_LABEL == "com.jparkassociates.taxdocumentconsole.schedule"
+    assert plist["ProcessType"] == "Standard"
+    assert "RunAtLoad" not in plist and "KeepAlive" not in plist
+    assert plist["AssociatedBundleIdentifiers"] == [scheduling.APP_BUNDLE_ID]
+    assert set(plist) == {"Label", "ProgramArguments", "WorkingDirectory", "StartCalendarInterval",
+                          "ProcessType", "AssociatedBundleIdentifiers"}
+
+
+def test_the_bundle_id_is_the_one_the_shell_and_the_mac_build_name():
+    """The agent names the app by the id the shell sets and the build gives
+    the bundle, so Allow in the Background lists the schedule under the app."""
+    assert f'app.setAppUserModelId("{scheduling.APP_BUNDLE_ID}")' in (REPO / "app" / "main.js").read_text("utf-8")
+    assert f'APP_ID="{scheduling.APP_BUNDLE_ID}"' in (REPO / "build-mac.sh").read_text("utf-8")
+
+
+@pytest.mark.parametrize("settings_folder", ["/Users/o/Library/Application Support/Tax Document Console",
+                                             r"D:\Apps\Tracker", "D:\\", "/with space/and\"quote"])
+def test_the_argument_list_and_the_windows_quoted_line_are_the_same_command(settings_folder):
+    """``runner_arguments`` is the Windows-quoted join it always was, byte for byte,
+    and ``runner_argv`` is the same tokens as the list launchd takes."""
+    from tracker.runner import LOG_FLAG, PRODUCT_FLAG, RUNNER_MODE_FLAG, SETTINGS_FLAG
+
+    quoted = scheduling.quote_argument(settings_folder)
+    assert scheduling.runner_arguments(settings_folder) == f"-m tracker.runner {SETTINGS_FLAG} {quoted} {LOG_FLAG}"
+    assert scheduling.runner_arguments(settings_folder, frozen=True) == (
+        f'{RUNNER_MODE_FLAG} {PRODUCT_FLAG} "{settings_module.product_name()}" {SETTINGS_FLAG} {quoted} {LOG_FLAG}')
+    assert scheduling.runner_argv(settings_folder) == ["-m", "tracker.runner", SETTINGS_FLAG, settings_folder, LOG_FLAG]
+    assert scheduling.runner_argv(settings_folder, frozen=True) == [
+        RUNNER_MODE_FLAG, PRODUCT_FLAG, settings_module.product_name(), SETTINGS_FLAG, settings_folder, LOG_FLAG]
+
+
+def test_a_mac_registers_through_launchctl_bootstrap(a_mac, tmp_path):
+    """R24: the plist is written to ``~/Library/LaunchAgents`` (never the data
+    home); then ``bootout`` (nothing loaded: that answer is ignored), ``bootstrap``
+    and ``enable`` for the signed-in person's ``gui/<uid>`` domain."""
+    import plistlib
+
+    folder = tmp_path / "app"
+    folder.mkdir()
+    command = scheduling.register_here(folder, start="06:30", every=60)
+
+    agent = tmp_path / "home" / "Library" / "LaunchAgents" / f"{scheduling.LAUNCH_AGENT_LABEL}.plist"
+    assert scheduling.launch_agent_path() == agent and agent.is_file()
+    assert not (scheduling.schedule_xml_path()).exists(), "the Windows task file is not written on a Mac"
+    assert not list(agent.parent.glob("*.tmp")) and scheduling.schedule_file() == agent
+    domain = scheduling._domain()
+    service = f"{domain}/{scheduling.LAUNCH_AGENT_LABEL}"
+    assert a_mac.launchd.calls == [["launchctl", "bootout", service],
+                                   ["launchctl", "bootstrap", domain, str(agent)],
+                                   ["launchctl", "enable", service]]
+    assert command == a_mac.launchd.calls[1]
+    on_disk = plistlib.loads(agent.read_bytes())
+    assert on_disk["ProgramArguments"][-3:] == [scheduling.SETTINGS_FLAG, str(folder), "--log"]
+    assert len(on_disk["StartCalendarInterval"]) == 24
+
+    # Registering again unloads the loaded agent first, and loads it again.
+    a_mac.launchd.calls.clear()
+    scheduling.register_here(folder)
+    assert a_mac.launchd.verbs() == ["bootout", "bootstrap", "enable"] and a_mac.launchd.loaded
+
+
+def test_a_mac_refusal_to_load_the_agent_is_said_with_what_launchctl_said(a_mac, tmp_path):
+    a_mac.launchd.refuse["bootstrap"] = (5, "Bootstrap failed: 5: Input/output error")
+    with pytest.raises(RuntimeError, match=r"could not load the agent \(5\): Bootstrap failed: 5"):
+        scheduling.register_here(tmp_path)
+    a_mac.launchd.refuse = {"enable": (1, "Could not enable")}
+    with pytest.raises(RuntimeError, match=r"could not enable the agent \(1\)"):
+        scheduling.register_here(tmp_path)
+
+
+def test_the_agents_domain_is_the_signed_in_persons_through_the_one_user_id_seam(a_mac):
+    """Windows has no ``os.getuid``; the Mac branch asks only ``scheduling._uid``."""
+    assert scheduling._domain() == "gui/501" and scheduling._service() == (
+        f"gui/501/{scheduling.LAUNCH_AGENT_LABEL}")
+
+
+def test_a_mac_asks_whether_its_agent_is_loaded_with_launchctl_print(a_mac):
+    assert scheduling.task_query() == 113 and scheduling.task_exists() is False
+    assert a_mac.launchd.calls[0] == ["launchctl", "print", scheduling._service()]
+    a_mac.launchd.loaded = True
+    assert scheduling.task_query() == 0 and scheduling.task_exists() is True
+    a_mac.launchd.refuse["print"] = (5, "Operation not permitted")
+    assert scheduling.task_query() == 5 and scheduling.task_exists() is False
+
+
+def test_a_mac_removes_its_agent_and_its_file(a_mac, tmp_path):
+    assert scheduling.remove_task() is False and a_mac.launchd.verbs() == ["print"], \
+        "nothing loaded and no file: nothing is removed"
+    scheduling.register_here(tmp_path)
+    a_mac.launchd.calls.clear()
+    assert scheduling.remove_task() is True
+    assert a_mac.launchd.verbs() == ["print", "bootout"] and not a_mac.launchd.loaded
+    assert not scheduling.launch_agent_path().exists()
+
+    scheduling.register_here(tmp_path)
+    a_mac.launchd.refuse["bootout"] = (1, "Boot-out failed")
+    with pytest.raises(RuntimeError, match="could not unload the agent"):
+        scheduling.remove_task()
+    assert scheduling.launch_agent_path().exists(), "a file whose agent would not unload is kept"
+
+    a_mac.launchd.refuse = {}
+    a_mac.launchd.loaded = False                       # unloaded by hand, the file left behind
+    assert scheduling.remove_task() is True and not scheduling.launch_agent_path().exists()
+
+
+def test_a_mac_has_a_scheduler_and_the_windows_install_command_is_only_shown(a_mac, tmp_path):
+    assert scheduling.scheduler_here() is True
+    assert scheduling.install_task(tmp_path / "t.xml")[0] == "schtasks"      # shown, never run (no fake is given)
+
+
+def test_a_launchctl_that_hangs_is_stopped_at_its_limit_as_an_os_error(monkeypatch):
+    """R24: the same 60 seconds as ``schtasks`` - it runs at every start inside
+    the after-install step's lock."""
+    import subprocess
+
+    from tests.conftest import REAL_LAUNCHCTL
+
+    given = {}
+
+    def hangs(command, **kwargs):
+        given.update(kwargs)
+        raise subprocess.TimeoutExpired(command, kwargs["timeout"])
+
+    monkeypatch.setattr(scheduling.subprocess, "run", hangs)
+    with pytest.raises(TimeoutError) as stopped:
+        REAL_LAUNCHCTL(["launchctl", "print", "gui/501/x"])
+    assert isinstance(stopped.value, OSError)
+    assert given["timeout"] == scheduling.SCHTASKS_TIME_LIMIT_SECONDS == 60
+    assert str(stopped.value) == scheduling.LAUNCHCTL_TOO_LONG.format(seconds=60)
+
+
+@pytest.mark.parametrize(("listed", "off"), [
+    ('"{label}" => disabled', True),
+    ('"{label}" => true', True),
+    ('"{label}" => enabled', False),
+    ('"{label}" => false', False),
+    ('"com.example.other" => disabled', False),
+    ('"{label}.other" => disabled', False),
+])
+def test_the_switch_in_login_items_is_read_from_print_disabled(a_mac, monkeypatch, listed, off):
+    from tests.conftest import Said
+
+    line = listed.format(label=scheduling.LAUNCH_AGENT_LABEL)
+    monkeypatch.setattr(scheduling, "_launchctl",
+                        lambda command: Said(0, stdout=f"disabled services = {{\n\t{line}\n}}\n"))
+    assert scheduling.agent_switched_off() is off
+
+
+def test_the_switch_is_read_from_the_fake_launchd_too(a_mac):
+    assert scheduling.agent_switched_off() is False
+    a_mac.launchd.switched_off = True
+    assert scheduling.agent_switched_off() is True
+    assert a_mac.launchd.calls[-1] == ["launchctl", "print-disabled", scheduling._domain()]
+    a_mac.launchd.refuse["print-disabled"] = (1, "Unrecognized")
+    with pytest.raises(RuntimeError, match="could not list the switched-off items"):
+        scheduling.agent_switched_off()
+
+
+def test_the_first_pass_is_started_with_launchctl_kickstart(a_mac, tmp_path):
+    with pytest.raises(RuntimeError, match="could not start the first pass"):
+        scheduling.start_agent_now()                  # nothing loaded: kickstart says so
+    scheduling.register_here(tmp_path)
+    a_mac.launchd.calls.clear()
+    assert scheduling.start_agent_now() == ["launchctl", "kickstart",
+                                            scheduling._service()]
+    assert a_mac.launchd.verbs() == ["kickstart"]
+
+
+def test_a_mac_names_its_designation_as_a_windows_computer_does(a_mac, tmp_path, monkeypatch, short_root):
+    """R25: the first Mac to register claims the schedule by ``locking.this_host``; the Mac
+    the file names registers; any other does not. Nothing about the file changes on a Mac."""
+    from tests.conftest import make_engagement
+    from tracker.layout import designation_file
+    from tracker.locking import this_host
+    from tracker.templates import template_items
+
+    make_engagement(short_root, template_items("1040", core_only=True))
+    monkeypatch.setattr(platform, "node", lambda: "Office-Mac.local")
+    decision = scheduling.schedule_decision(short_root)
+    assert decision.outcome == scheduling.CLAIMED and decision.host == this_host()
+    scheduling.claim(short_root)
+    assert designation_file(short_root).read_text(encoding="utf-8") == f"{this_host()}\n"
+    assert scheduling.schedule_decision(short_root).outcome == scheduling.REGISTERED
+    designation_file(short_root).write_text("front-desk-mac\n", encoding="utf-8")
+    other = scheduling.schedule_decision(short_root)
+    assert other.outcome == scheduling.ELSEWHERE and other.host == "front-desk-mac"
+    with pytest.raises(scheduling.DesignationError, match="front-desk-mac claimed the schedule"):
+        scheduling.claim(short_root)
+    moved = scheduling.move_here(short_root)
+    assert moved.before == "front-desk-mac"
+    assert scheduling.schedule_decision(short_root).outcome == scheduling.REGISTERED

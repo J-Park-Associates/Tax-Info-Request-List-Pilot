@@ -2067,6 +2067,20 @@ async function repairSchedule() {
   }
 }
 
+// A Mac's schedule taken away before the app is dragged to the Bin (SPEC-mac
+// R29): the API's question, and its sentence for what happened. The sentence
+// tells the person to quit now, so it stays on screen as a notice rather than
+// passing as a toast; nothing else - the folders, the settings - is touched.
+async function removeScheduleHere() {
+  if (!confirm(vocab.schedule.remove_confirm)) return;
+  try {
+    const result = await call(["remove-schedule-here"], {});
+    outcome(result.sentence, result.removed ? "warn" : "err");
+  } catch (err) {
+    failed(err, removeScheduleHere);
+  }
+}
+
 // ── the Schedule dialog (pilot P21) ──────────────────────────────────────
 // On or off, the first run's time and how often, kept per computer. Read
 // from `settings`, saved by `set-schedule`; every word is the API's

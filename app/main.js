@@ -699,6 +699,7 @@ const DEFAULT_MENU_WORDS = {
   stop_sorting: "Stop Sorting",
   schedule: "Schedule…",
   repair_schedule: "Repair Schedule",
+  remove_schedule_here: "Remove the Schedule From This Mac…",
   firm_report: "Firm Report",
   clear_lock: "Clear Stuck Lock",
   help: "&Help",
@@ -737,7 +738,7 @@ const BAR = [
     ["open_client_folder"], ["open_inbox"], ["open_working"]]],
   ["view", [["overview", "CmdOrCtrl+1"], ["needs_review", "CmdOrCtrl+2"], ["reminders", "CmdOrCtrl+3"],
     ["clients", "CmdOrCtrl+4"], SEPARATOR, ["find", "CmdOrCtrl+F"], ["refresh", "F5"], SEPARATOR, ["reset_columns"], ["show_under_construction"]]],
-  ["tools", [["sort_now", "F9"], ["stop_sorting"], SEPARATOR, ["schedule"], ["repair_schedule"],
+  ["tools", [["sort_now", "F9"], ["stop_sorting"], SEPARATOR, ["schedule"], ["repair_schedule"], ["remove_schedule_here"],
     ["firm_report"], SEPARATOR, ["clear_lock"]]],
   ["help", [["tour"], ["safeguards"], ["terms"], ["error_log"], SEPARATOR, ["about"]]],
 ];
@@ -751,9 +752,13 @@ const POPUPS = new Map([
   ["request", ["edit_request"]],
   ["received", ["unfile", "mark_missing", "show_in_explorer"]],
 ]);
-// What needs nothing of the page: enabled from the first frame.
+// What needs nothing of the page: enabled from the first frame. Removing a
+// Mac's schedule needs no clients folder: it is for the app's last act.
 const ALWAYS = new Set(["change_root", "exit", "refresh", "tour", "safeguards", "terms", "error_log", "about",
-  "show_under_construction"]);
+  "show_under_construction", "remove_schedule_here"]);
+// The items a Mac alone has (SPEC-mac R29): dragging an app to the Bin leaves
+// its launchd agent behind, so a Mac can take the schedule away first.
+const MAC_ONLY = new Set(["remove_schedule_here"]);
 const BAR_IDS = new Set(BAR.flatMap(([, items]) => (items || []).filter((i) => i !== SEPARATOR).map((i) => i[0])));
 // The bar's checked items: Windows draws the tick. The page owns what each
 // one says and sends the ticked ids as `checked` (P197).
@@ -811,7 +816,7 @@ function buildTemplate() {
     if (!items) return { label: shown(menuWords[key]), role: "editMenu" };
     // Quit lives in the app menu on a Mac (below), so File has no Exit there,
     // and nor the separator that stood before it.
-    const entries = mac ? items.filter((item) => item[0] !== "exit") : items;
+    const entries = (mac ? items.filter((item) => item[0] !== "exit") : items.filter((item) => !MAC_ONLY.has(item[0])));
     if (mac && entries[entries.length - 1] === SEPARATOR) entries.pop();
     return {
       label: shown(menuWords[key]),

@@ -378,6 +378,9 @@ SAID_WHOLE_ON_PURPOSE = {
     ("after_install.py", "_schedule"): "Task Scheduler refusing a task: the machine's words; and "
                                          "scheduling's DesignationError, always one of its constants",
     ("after_install.py", "move_schedule_here"): "scheduling's DesignationError, always one of its constants",
+    ("after_install.py", "_first_pass"): "launchctl refusing the first pass: the machine's words, as in _schedule (SPEC-mac R27)",
+    ("after_install.py", "_time_machine"): "tmutil refusing an exclusion: the machine's words (SPEC-mac R7)",
+    ("after_install.py", "remove_here"): "launchctl refusing to unload the agent: the machine's words (SPEC-mac R29)",
     ("after_install.py", "_off"): "Task Scheduler refusing to delete this computer's task: the machine's "
                                    "words, as in _schedule (pilot P21)",
     ("ledger.py", "_bytes_of"): "the return's own event log could not be read (SPEC-190 R2: stays)",

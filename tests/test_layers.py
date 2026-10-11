@@ -208,11 +208,14 @@ READER_IMPORTS_ALLOWED: frozenset[str] = frozenset(
 #: beside the program (decision 186). ``fcntl`` is POSIX's ``flock`` in
 #: ``locking`` and a Mac's ``F_FULLFSYNC`` in the two copies of ``full_sync``
 #: (``fsio`` and ``locking``; SPEC-mac R19 and R22), imported at call time.
+#: ``plistlib`` is the Mac's launchd agent in ``scheduling``: the property list
+#: is rendered with the standard library's own writer, never by hand (SPEC-mac
+#: R23); it loads no network module.
 ALLOWED_STDLIB: frozenset[str] = frozenset({
     "__future__", "argparse", "base64", "builtins", "collections", "contextlib", "csv", "ctypes",
     "dataclasses", "datetime", "email", "errno", "fcntl", "fnmatch", "functools", "hashlib", "html", "io",
     "json", "logging", "math",
-    "multiprocessing", "ntpath", "os", "pathlib", "platform", "posixpath", "re", "secrets",
+    "multiprocessing", "ntpath", "os", "pathlib", "platform", "plistlib", "posixpath", "re", "secrets",
     "shutil", "signal", "sqlite3", "stat", "subprocess", "sys", "tempfile", "threading", "time",
     "traceback", "types", "typing", "unicodedata", "xml", "zipfile", "zlib",
 })

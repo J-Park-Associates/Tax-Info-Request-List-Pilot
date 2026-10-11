@@ -255,16 +255,27 @@ def on_a_mac(monkeypatch):
     monkeypatch.setattr(layout, "on_a_mac", lambda: True)
 
 
-#: The real answer to "is there a Task Scheduler here", for the one test
-#: that asks it of the platform (decision 209).
-REAL_TASK_SCHEDULER_HERE = scheduling.task_scheduler_here
+#: The real answer to "is there a scheduler here", for the one test that
+#: asks it of the machine (decision 209; SPEC-mac R24 renamed it).
+REAL_SCHEDULER_HERE = scheduling.scheduler_here
 #: The real ``schtasks`` runner, for the one test of its time limit, which
 #: stands in for ``subprocess.run`` so no real Task Scheduler is reached.
 REAL_SCHTASKS = scheduling._schtasks
+#: The same for ``launchctl`` and ``tmutil`` (SPEC-mac R7, R24).
+REAL_LAUNCHCTL = scheduling._launchctl
+REAL_TMUTIL = after_install._tmutil
 
 
 def _schtasks_unfaked(command):
     raise AssertionError(f"a test reached schtasks without faking it: {command}")
+
+
+def _launchctl_unfaked(command):
+    raise AssertionError(f"a test reached launchctl without faking it: {command}")
+
+
+def _tmutil_unfaked(command):
+    raise AssertionError(f"a test reached tmutil without faking it: {command}")
 
 
 @pytest.fixture(autouse=True)
@@ -273,19 +284,124 @@ def no_task_scheduler_unless_faked():
 
     Saving a clients root, the app's launch and Setup all run the
     after-install step, which registers the daily job on a Windows machine
-    that has Task Scheduler - the Windows CI runner included. Every test
-    starts on a computer with none; a test about registering says it is on
-    Windows and fakes ``schtasks`` itself, and one that forgets fails here
-    rather than reaching the real one. A ``MonkeyPatch`` of its own, like
-    the store's, so ``monkeypatch.undo()`` in a test cannot lift it.
+    that has Task Scheduler - the Windows CI runner included - and on a Mac
+    as a launchd agent that excludes the data home from Time Machine
+    (SPEC-mac R7, R24). Every test starts on a computer with none; a test
+    about registering says it is on Windows (and fakes ``schtasks`` itself)
+    or on a Mac (:func:`a_mac`, which fakes ``launchctl`` and ``tmutil``),
+    and one that forgets fails here rather than reaching the real one. A
+    ``MonkeyPatch`` of its own, like the store's, so ``monkeypatch.undo()``
+    in a test cannot lift it.
     """
     patch = pytest.MonkeyPatch()
-    patch.setattr(scheduling, "task_scheduler_here", lambda: False)
+    patch.setattr(scheduling, "scheduler_here", lambda: False)
     patch.setattr(scheduling, "_schtasks", _schtasks_unfaked)
+    patch.setattr(scheduling, "_launchctl", _launchctl_unfaked)
+    patch.setattr(after_install, "_tmutil", _tmutil_unfaked)
     try:
         yield
     finally:
         patch.undo()
+
+
+class Said:
+    """What a faked ``launchctl`` or ``tmutil`` answers: an exit code and
+    what it printed."""
+
+    def __init__(self, returncode=0, stdout="", stderr=""):
+        self.returncode, self.stdout, self.stderr = returncode, stdout, stderr
+
+
+class FakeLaunchd:
+    """A launchd that keeps every ``launchctl`` command it is given, in order,
+    and answers as the real one does for the verbs the schedule uses: an
+    agent is loaded after ``bootstrap`` and not after ``bootout``; ``print``,
+    ``kickstart`` and ``bootout`` of one that is not loaded say so (exit 113
+    and 3); ``print-disabled`` lists the label when ``switched_off`` is set.
+    ``refuse`` maps a verb to the exit code and words it answers with
+    instead."""
+
+    def __init__(self):
+        self.calls: list[list[str]] = []
+        self.loaded = False
+        self.switched_off = False
+        self.refuse: dict[str, tuple[int, str]] = {}
+
+    def verbs(self) -> list[str]:
+        return [command[1] for command in self.calls]
+
+    def __call__(self, command):
+        self.calls.append(list(command))
+        verb = command[1]
+        if verb in self.refuse:
+            code, words = self.refuse[verb]
+            return Said(code, stderr=words)
+        if verb == "bootstrap":
+            self.loaded = True
+        elif verb == "bootout":
+            was, self.loaded = self.loaded, False
+            return Said(0 if was else 3, stderr="" if was else "Boot-out failed: 3: No such process")
+        elif verb in ("print", "kickstart"):
+            return Said(0 if self.loaded else 113, stderr="" if self.loaded else "Could not find service")
+        elif verb == "print-disabled":
+            state = "disabled" if self.switched_off else "enabled"
+            return Said(0, stdout=f'disabled services = {{\n\t"{scheduling.LAUNCH_AGENT_LABEL}" => {state}\n}}\n')
+        return Said()
+
+
+class FakeTmutil:
+    """A ``tmutil`` that keeps every command and holds a set of excluded
+    folders: ``addexclusion`` adds one, ``isexcluded`` answers the way
+    ``tmutil`` does (``[Excluded]`` or ``[Included]``, exit 0 either way).
+    ``refuse`` maps a verb to the exit code and words it answers with."""
+
+    def __init__(self):
+        self.calls: list[list[str]] = []
+        self.excluded: set[str] = set()
+        self.refuse: dict[str, tuple[int, str]] = {}
+
+    def __call__(self, command):
+        self.calls.append(list(command))
+        verb, folder = command[1], command[-1]
+        if verb in self.refuse:
+            code, words = self.refuse[verb]
+            return Said(code, stderr=words)
+        if verb == "addexclusion":
+            self.excluded.add(folder)
+        elif verb == "isexcluded":
+            return Said(0, stdout=f"[{'Excluded' if folder in self.excluded else 'Included'}]    {folder}\n")
+        return Said()
+
+
+class AMac:
+    """What :func:`a_mac` hands a test: the fake launchd and the fake tmutil."""
+
+    def __init__(self, launchd, tmutil):
+        self.launchd, self.tmutil = launchd, tmutil
+
+
+@pytest.fixture
+def a_mac(monkeypatch, tmp_path):
+    """This test runs on a Mac, as far as the schedule goes (SPEC-mac R7, R24):
+    ``settings.host_system`` answers ``"darwin"`` (the seam, never the
+    platform), the scheduler is there, the account's home is a folder of the
+    test's own - the agent's file lands in its ``Library/LaunchAgents`` - every
+    disk is a fixed one (the disk rule is job 1's), and ``launchctl`` and
+    ``tmutil`` are the fakes above. The user id is 501, a Mac's first account."""
+    home = tmp_path / "home"
+    home.mkdir()
+    # ``Path.home()`` reads HOME on a Mac and Linux and USERPROFILE on Windows;
+    # both are the test's own, and the user id is a seam (Windows has no getuid).
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("USERPROFILE", str(home))
+    monkeypatch.setattr(scheduling, "_uid", lambda: 501)
+    monkeypatch.setattr(settings, "host_system", lambda: "darwin")
+    monkeypatch.setattr(settings, "drive_type", lambda path: settings.DRIVE_FIXED)
+    monkeypatch.setattr(scheduling, "scheduler_here", lambda: True)
+    mac = AMac(FakeLaunchd(), FakeTmutil())
+    monkeypatch.setattr(scheduling, "_launchctl", mac.launchd)
+    monkeypatch.setattr(after_install, "_tmutil", mac.tmutil)
+    return mac
 
 
 #: The pass's real fill of the firm view's cache (P201), kept before any
@@ -804,6 +920,10 @@ def real_places(repo: Path) -> tuple[tuple[str, Path], ...]:
         pass
     if os.environ.get(settings.ENV_DATA_HOME, "").strip():
         places.append(("data home", Path(os.environ[settings.ENV_DATA_HOME])))
+    try:
+        places.append(("launch agent file", scheduling.launch_agent_path()))
+    except RuntimeError:     # no home folder for this account: no agent to guard
+        pass
     app = settings.app_dir()
     places += [("OCR scratch folder", app / settings.OCR_SCRATCH_DIRNAME),
                ("client tree", repo / CLIENTS_TREE),

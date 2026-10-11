@@ -27,6 +27,24 @@ else - not a line in the runbook, not a button.
    task, leaves the designation alone and says so. A saved choice that is
    refused (a hand-edited file) is a failure and registers nothing from a
    guess.
+   **On a Mac** (SPEC-mac R23-R30) the same job registers a launchd agent
+   (``scheduling.register_here``: the plist, ``bootout``, ``bootstrap``,
+   ``enable``), and the launch door adds three things Windows has no use
+   for. A person who switched the agent off under Login Items is told
+   (:data:`SCHEDULE_SWITCHED_OFF`) and not overridden. A program the agent
+   has not run before gets one ``launchctl kickstart`` right after it is
+   registered, so the first pass - and any permission macOS asks of the
+   schedule's own program - happens while a person is at the Mac and never
+   waits for someone to remember (decision 209). And **Remove the Schedule
+   From This Mac** (:func:`remove_here`) is the one deliberate act, because
+   dragging the app to the Bin leaves the agent behind.
+
+   The **Time Machine** job (:func:`_time_machine`, SPEC-mac R7, P242) runs
+   next, on a Mac only: it leaves the data home, and Electron's own folder,
+   out of Time Machine backups with the sticky ``tmutil addexclusion``,
+   asking ``tmutil isexcluded`` first so a second run changes and says
+   nothing. Both are derived from clients, which is decision 186's reason
+   they are never synced, and a backup is a sync of its own.
 2. **The record check** - decision 187's ``store.check`` for every folder
    with a record, and ``store.gone_journals``, as the store's command line
    runs them. It changes no record (opening the store may set an older one
@@ -130,17 +148,18 @@ import hashlib
 import json
 import logging
 import os
+import subprocess
 import sys
 import time
 from collections.abc import Iterator
 from contextlib import contextmanager
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
 
 from tracker import door, errors, fsio, ledger, registry, runner, scheduling, settings, store
 from tracker.content_check import RETIRED_CACHE_FILENAME
 from tracker.fsio import TEMP_SUFFIX, write_json_atomically
-from tracker.locking import EngagementLockedError, acquire_lock, release_lock, this_host
+from tracker.locking import EngagementLockedError, acquire_lock, is_this_host, release_lock, this_host
 
 log = logging.getLogger(__name__)
 
@@ -222,6 +241,35 @@ def schedule_unreachable() -> str:
     return SCHEDULE_UNREACHABLE_MAC if settings.host_system() == "darwin" else SCHEDULE_UNREACHABLE
 
 
+#: A Mac's schedule that the person switched off under Login Items (SPEC-mac
+#: R27). Not registered again, because macOS would refuse and a person's
+#: switch is theirs; said at every start until they switch it back on.
+#: ``{product}`` is the app's name, which the Login Items list shows.
+SCHEDULE_SWITCHED_OFF = ("macOS has switched the schedule off for this app (System Settings > General > "
+                         "Login Items, Allow in the Background). Switch {product} back on there; the app "
+                         "cannot do it for you.")
+#: The schedule key the record holds while it is switched off.
+SWITCHED_OFF_KEY = "switched_off"
+#: The agent was loaded but its first pass could not be started (SPEC-mac
+#: R27): failed, so the step is tried again at the next start.
+FIRST_PASS_REFUSED = ("The schedule is set, but its first pass could not be started ({problem}); the app "
+                      "tries again at its next start.")
+#: The Time Machine job (SPEC-mac R7, P242): what it says when it newly left
+#: a folder out, and when it could not (``{folder}`` is the folder, ``{problem}``
+#: the machine's own words).
+TIME_MACHINE_EXCLUDED = "Left the app's data folder out of Time Machine backups."
+TIME_MACHINE_REFUSED = ("The app's data folder ({folder}) could not be left out of Time Machine backups "
+                        "({problem}); the app tries again at its next start.")
+TIME_MACHINE_KEY = "time_machine"
+#: ``tmutil`` gets the same time as the schedulers do (``scheduling.SCHTASKS_TIME_LIMIT_SECONDS``).
+TMUTIL_TOO_LONG = "tmutil did not answer within {seconds} seconds"
+#: Removing a Mac's schedule (SPEC-mac R29): the sentence, what a refusal
+#: says, and what a computer that is not a Mac is told.
+SCHEDULE_REMOVED_FROM_MAC = ("The schedule is removed from this Mac. To remove the app, quit it now and drag "
+                             "it from Applications to the Bin; opening it again sets the schedule up again.")
+SCHEDULE_NOT_REMOVED = ("The schedule could not be removed from this Mac ({problem}). Nothing else was "
+                        "changed.")
+REMOVE_ONLY_ON_A_MAC = "Removing the schedule this way is for a Mac; nothing was changed on this computer."
 #: What the launch door records when the step itself raised something it
 #: does not name (the review's N1), so the notice says it rather than the
 #: launch dropping it.
@@ -384,6 +432,8 @@ class _Step:
     failed: bool = False
     command: tuple[str, ...] = ()
     xml: str = ""
+    #: The agent's first pass was started by this step (SPEC-mac R27).
+    kicked: bool = False
 
 
 def _saved_root() -> tuple[Path | None, str]:
@@ -510,7 +560,103 @@ def _schedule(root: Path | None, preference: scheduling.SchedulePreference) -> _
     else:
         sentence = scheduling.SCHEDULE_CLAIMED_DAILY if claimed else scheduling.SCHEDULE_REGISTERED_DAILY
     return _Step(outcome, sentence.format(host=decision.host, start=start, every=every),
-                 command=tuple(command), xml=str(scheduling.schedule_xml_path()))
+                 command=tuple(command), xml=str(scheduling.schedule_file()))
+
+
+def _first_pass(registered: _Step) -> _Step:
+    """The first pass of a program the agent has not run before (SPEC-mac
+    R27): ``launchctl kickstart`` once, right after it is registered, so the
+    pass - and any permission macOS asks of the schedule's own program (R30)
+    - happens while a person is at the Mac, and nothing waits for someone to
+    remember (decision 209). A step that registered nothing is returned as it
+    is. A kickstart that is refused fails the step with
+    :data:`FIRST_PASS_REFUSED`, so it is tried again at the next start; the
+    agent itself stays registered."""
+    if registered.failed or registered.key not in scheduling.REGISTERING:
+        return registered
+    try:
+        scheduling.start_agent_now()
+    except RuntimeError as exc:
+        problem = str(exc)
+    except OSError as exc:
+        errors.keep("after_install: starting the first pass", exc)
+        problem = schedule_unreachable()
+    else:
+        return replace(registered, kicked=True)
+    return replace(registered, sentence=FIRST_PASS_REFUSED.format(problem=problem), failed=True)
+
+
+def _tmutil(command: list[str]) -> subprocess.CompletedProcess:
+    """Run one ``tmutil`` command line and hand back what it said. **The one
+    seam for Time Machine** (SPEC-mac R7), as ``scheduling._schtasks`` is for
+    Task Scheduler: the suite's autouse guard (``tests/conftest.py``) fails a
+    test that reaches the real one. One that does not answer within the
+    schedulers' limit is stopped and raises ``TimeoutError``, an ``OSError``."""
+    try:
+        return subprocess.run(command, capture_output=True, text=True,
+                              timeout=scheduling.SCHTASKS_TIME_LIMIT_SECONDS)
+    except subprocess.TimeoutExpired:
+        raise TimeoutError(TMUTIL_TOO_LONG.format(seconds=scheduling.SCHTASKS_TIME_LIMIT_SECONDS)) from None
+
+
+def _left_out(folder: Path) -> bool:
+    """Whether Time Machine already leaves ``folder`` out: ``tmutil
+    isexcluded`` says ``[Excluded]`` or ``[Included]``, exit 0 either way.
+    Asked first, so the job does nothing and says nothing the second time."""
+    done = _tmutil(["tmutil", "isexcluded", str(folder)])
+    if done.returncode != 0:
+        raise RuntimeError(f"tmutil isexcluded failed ({done.returncode}): "
+                           f"{(done.stderr or done.stdout).strip()}")
+    return "[Excluded]" in done.stdout
+
+
+def _time_machine_folders() -> list[Path]:
+    """The folders a Mac leaves out of Time Machine: the data home - the
+    store, the run log and the scratch folder, which are derived from
+    clients (decision 186) - and Electron's own folder, whose fallback error
+    log can name a client for the same reason (SPEC-mac R2). Both under the
+    account's Application Support."""
+    return [settings.data_home(),
+            Path.home().joinpath(*settings.MAC_SUPPORT, settings.EARLIER_PRODUCT_NAME)]
+
+
+def _time_machine() -> _Step | None:
+    """The Time Machine job (SPEC-mac R7, P242), on a Mac only: make each
+    folder of :func:`_time_machine_folders`, ask ``tmutil isexcluded``, and
+    ``tmutil addexclusion`` the ones still in - the sticky form, which needs
+    no administrator and travels with the folder. Idempotent, so Repair runs
+    it again: it says :data:`TIME_MACHINE_EXCLUDED` only when it newly
+    excluded one and nothing otherwise. A refusal fails the step, so it is
+    tried again at the next start (no identity is recorded). The other
+    folder is still tried when the first is refused. ``None`` off a Mac and
+    where there is no data home to leave out (the record's own write says
+    that one loudly)."""
+    if settings.host_system() != "darwin":
+        return None
+    try:
+        folders = _time_machine_folders()
+    except settings.SettingsError:
+        return None
+    newly = False
+    refused = ""
+    for folder in folders:
+        try:
+            folder.mkdir(parents=True, exist_ok=True)
+            if _left_out(folder):
+                continue
+            done = _tmutil(["tmutil", "addexclusion", str(folder)])
+            if done.returncode != 0:
+                raise RuntimeError(f"tmutil addexclusion failed ({done.returncode}): "
+                                   f"{(done.stderr or done.stdout).strip()}")
+            newly = True
+        except RuntimeError as exc:
+            refused = refused or TIME_MACHINE_REFUSED.format(folder=folder, problem=exc)
+        except OSError as exc:
+            errors.keep("after_install: leaving a folder out of Time Machine", exc, name=folder.name)
+            refused = refused or TIME_MACHINE_REFUSED.format(folder=folder, problem=errors.error_class(exc))
+    if refused:
+        return _Step(TIME_MACHINE_KEY, refused, failed=True)
+    return _Step(TIME_MACHINE_KEY, TIME_MACHINE_EXCLUDED if newly else "")
 
 
 def _check(root: Path | None) -> _Step:
@@ -740,53 +886,73 @@ def run(*, reason: str, start: str | None = None, every: int | None = None,
 
 
 def _run(*, reason: str, start: str | None = None, every: int | None = None,
-         checkout: Path | None = None) -> AfterInstall:
+         checkout: Path | None = None, switched_off: bool = False) -> AfterInstall:
     """Every one-time job, in order, and the record of what they did.
 
     The schedule registers the choice saved in the settings file (pilot
     P21) - on or off, the first run's time, how often - so every door
     registers what the Schedule button shows. ``start`` and ``every``, when
     a caller names them outright (the command line's Repair), are checked
-    and saved first.
+    and saved first. ``switched_off`` (the launch door, a Mac whose person
+    switched the agent off under Login Items; SPEC-mac R27) registers
+    nothing and says :data:`SCHEDULE_SWITCHED_OFF`; every other job runs.
 
-    Idempotent: registering is ``schtasks /create ... /f``, the check
-    changes no record, and the note is replaced whole - twice in a row is
-    once. The caller holds the step's lock.
+    Idempotent: registering is ``schtasks /create ... /f`` (a Mac's is
+    ``bootout`` then ``bootstrap``), the check changes no record, the Time
+    Machine job asks before it excludes, and the note is replaced whole -
+    twice in a row is once. The caller holds the step's lock.
     """
     ran_at = dt.datetime.now().isoformat(timespec="seconds")
     unusable = _save_choice(start, every) if start is not None or every is not None else ""
     preference, unreadable = _saved_preference()
     root, refused = _saved_root()
+    # A Mac starts the agent's first pass once for each program it registers
+    # (R27); the record keeps which program that was, so an upgrade does it
+    # again, a Repair of the same program does not, and a step that failed
+    # after the kick does not repeat it. Nowhere else is the record read here.
+    on_a_mac = settings.host_system() == "darwin"
+    program = program_identity() if on_a_mac else ""
+    previous = (read_record() or {}) if on_a_mac else {}
+    kick = on_a_mac and previous.get("kicked") != program
     if refused:
         schedule = _Step(scheduling.NO_ROOT, refused, failed=True)
-        check = _Step(CHECK_FAILED_KEY, refused, failed=True)
+    elif preference is None or unusable:
+        schedule = _Step(PREFERENCE_KEY, unusable or unreadable, failed=True)
+    elif switched_off:
+        schedule = _Step(SWITCHED_OFF_KEY, SCHEDULE_SWITCHED_OFF.format(product=settings.product_name()),
+                         failed=True)
     else:
-        if preference is None or unusable:
-            schedule = _Step(PREFERENCE_KEY, unusable or unreadable, failed=True)
-        else:
-            schedule = _schedule(root, preference)
-        check = _check(root)
+        schedule = _schedule(root, preference)
+        if kick:
+            schedule = _first_pass(schedule)
+    excluded = _time_machine()
+    check = _Step(CHECK_FAILED_KEY, refused, failed=True) if refused else _check(root)
     cache = _clear_test_cache(checkout)
     retired = _remove_the_retired_caches(root)
     # The last job before the record (P218, S3): never a failure.
     overview = "" if refused else _ready_the_overview(root, reason, check)
-    failed = list(dict.fromkeys(step.sentence for step in (schedule, check, cache)
+    failed = list(dict.fromkeys(step.sentence for step in (schedule, excluded, check, cache)
                                 if step is not None and step.failed))
-    identity = "" if failed else program_identity()
+    identity = "" if failed else (program or program_identity())
     now = designation_now(root)
+    record = {
+        "program": identity, "ran_at": ran_at, "reason": reason, "schedule": schedule.key,
+        "designated": now if isinstance(now, str) else None,
+        "preference": _preference_record(preference),
+        "findings": list(check.findings), "failed": failed,
+    }
+    if kicked := program if schedule.kicked else previous.get("kicked"):
+        record["kicked"] = kicked
     try:
         path = record_path()
         path.parent.mkdir(parents=True, exist_ok=True)
-        write_json_atomically(path, {
-            "program": identity, "ran_at": ran_at, "reason": reason, "schedule": schedule.key,
-            "designated": now if isinstance(now, str) else None,
-            "preference": _preference_record(preference),
-            "findings": list(check.findings), "failed": failed,
-        })
+        write_json_atomically(path, record)
     except OSError:
         failed.append(RECORD_UNWRITABLE.format(file=record_path()))
         identity = ""
     lines = [schedule.sentence]
+    if excluded is not None and excluded.sentence and not excluded.failed:
+        lines.append(excluded.sentence)
     if check.sentence != schedule.sentence:
         lines.append(check.sentence)
     lines += [f"  {finding}" for finding in check.findings]
@@ -851,14 +1017,51 @@ def launch() -> AfterInstall | None:
     until its next upgrade. The third is P198 (F6): on the computer that
     registered the schedule, the task itself must still be there - an
     uninstall deletes it and keeps the note. Compared and run under the
-    step's lock (pilot P47), so what it compares is not changing under it."""
+    step's lock (pilot P47), so what it compares is not changing under it.
+
+    On a Mac the step it runs may leave the schedule job out: when the person
+    switched the agent off under Login Items it says so instead of
+    registering over their switch (:func:`_switched_off`, SPEC-mac R27)."""
     try:
         with _one_at_a_time():
-            if _unchanged(read_record()):
+            record = read_record()
+            if _unchanged(record):
                 return None
-            return _run(reason=REASON_LAUNCH)
+            return _run(reason=REASON_LAUNCH, switched_off=_switched_off(record))
     except _Busy as busy:
         return _busy(REASON_LAUNCH, str(busy))
+
+
+def _switched_off(record: dict | None) -> bool:
+    """Whether the launch should leave a Mac's schedule alone because the
+    person switched it off (SPEC-mac R27). On a Mac only; on the computer the
+    designation names and whose saved choice is on; one whose last run
+    registered the schedule (or found it switched off); and ``launchctl
+    print-disabled`` lists the agent as disabled. Registering over a switch
+    would be refused by macOS, and a person's switch is theirs - so the step
+    runs without the schedule job and says :data:`SCHEDULE_SWITCHED_OFF`, at
+    every start, until the switch is turned back on.
+
+    A ``launchctl`` that cannot answer the question is kept on the error log
+    and is not "switched off": the step runs, and its own ``launchctl`` says
+    what is wrong. **Kit step H5 records whether ``print-disabled`` reflects
+    the Login Items switch;** if it does not, the last-pass line's amber
+    (``runner.LAST_PASS_OLD``) is the signal (R27)."""
+    if settings.host_system() != "darwin" or record is None:
+        return False
+    if record.get("schedule") not in scheduling.REGISTERING | {SWITCHED_OFF_KEY}:
+        return False
+    root, refused = _saved_root()
+    preference, _ = _saved_preference()
+    named = None if refused else designation_now(root)
+    if not (isinstance(named, str) and is_this_host(named) and preference is not None
+            and preference.enabled):
+        return False
+    try:
+        return scheduling.agent_switched_off()
+    except (RuntimeError, OSError) as exc:
+        errors.keep(ASKING_FOR_THE_TASK, exc)
+        return False
 
 
 def _unchanged(record: dict | None) -> bool:
@@ -881,9 +1084,9 @@ def _task_missing(record: dict) -> bool:
     gone (P198, F6). Asked only when ``record`` says this computer claimed
     or registered the schedule - the designation already matched it, so a
     computer the designation does not name, a schedule that is off, no root
-    and no Task Scheduler expect no task and are never asked (decision 159,
-    M1). One ``schtasks /query`` on the designated computer, in the launch
-    step's background run.
+    and no scheduler expect no task and are never asked (decision 159,
+    M1). One ``schtasks /query`` (on a Mac, ``launchctl print``) on the
+    designated computer, in the launch step's background run.
 
     Anything but "it exists" is missing: a query that fails runs the step,
     whose ``/create /f`` either registers the task again or says in
@@ -903,14 +1106,27 @@ def _task_missing(record: dict) -> bool:
         errors.keep(ASKING_FOR_THE_TASK, exc)
         return True
     if code:
-        errors.keep(ASKING_FOR_THE_TASK, QUERY_REFUSED.format(code=code))
-    return code != 0
+        errors.keep(ASKING_FOR_THE_TASK, query_refused().format(code=code))
+    # On a Mac the agent a person switched off under Login Items counts as
+    # missing too, whether or not macOS left it loaded (SPEC-mac R27): the
+    # launch then says so and registers nothing (:func:`_switched_off`).
+    return code != 0 or _switched_off(record)
 
 
 #: Where the launch's question to Task Scheduler is said on the error log.
 ASKING_FOR_THE_TASK = "after_install: asking whether the scheduled task exists"
 #: A refused query, by its exit code only: ``schtasks``'s own words are not kept.
 QUERY_REFUSED = "schtasks /query refused with exit code {code}; the step runs to register the task again"
+#: The same on a Mac, where the question is ``launchctl print`` (SPEC-mac R27).
+QUERY_REFUSED_MAC = "launchctl print refused with exit code {code}; the step runs to register the agent again"
+
+
+def query_refused() -> str:
+    """:data:`QUERY_REFUSED`'s words for the computer this runs on: Windows' own,
+    word for word, or on a Mac :data:`QUERY_REFUSED_MAC`; through
+    ``settings.host_system``, as :func:`schedule_unreachable` is."""
+    return QUERY_REFUSED_MAC if settings.host_system() == "darwin" else QUERY_REFUSED
+
 
 
 def record_failure(sentence: str) -> None:
@@ -990,6 +1206,51 @@ def move_schedule_here() -> tuple[str, bool]:
     return scheduling.MOVED_FROM.format(host=moved.before, here=here), True
 
 
+def remove_here() -> tuple[str, bool]:
+    """``--remove-here`` and the API's ``remove-schedule-here`` (SPEC-mac R29):
+    take this Mac's schedule away - the agent unloaded and its file deleted
+    (``scheduling.remove_task``) - and forget the record's program, so the
+    app sets the schedule up again the next time it is opened. The sentence
+    saying what happened, and whether the schedule is gone.
+
+    Dragging an app to the Bin leaves the agent behind, and until a signed
+    build moves it inside the bundle (job 3) this is how the schedule
+    leaves with the app (P12). **It leaves everything else alone:** the
+    designation, the data home, the settings and the clients folder. A
+    wrapper that removed the agent and then the app was rejected: running
+    the removal through ``/bin/sh`` would change which program macOS names
+    as responsible for the Drive permission (R30). Under the step's lock, so
+    a launch cannot register it again between the two halves."""
+    if settings.host_system() != "darwin":
+        return REMOVE_ONLY_ON_A_MAC, False
+    try:
+        with _one_at_a_time():
+            try:
+                scheduling.remove_task()
+            except RuntimeError as exc:
+                return SCHEDULE_NOT_REMOVED.format(problem=exc), False
+            except OSError as exc:
+                errors.keep("after_install: removing the schedule from this Mac", exc)
+                return SCHEDULE_NOT_REMOVED.format(problem=schedule_unreachable()), False
+            _forget_the_program()
+    except _Busy as busy:
+        return str(busy), False
+    return SCHEDULE_REMOVED_FROM_MAC, True
+
+
+def _forget_the_program() -> None:
+    """Blank the program the record says last ran the step cleanly, so the
+    next launch runs the step. A record that is not there, or cannot be
+    written, leaves nothing to forget: with none the launch runs the step
+    already."""
+    try:
+        record = read_record()
+        if record is not None:
+            write_json_atomically(record_path(), {**record, "program": ""})
+    except (OSError, settings.SettingsError) as exc:
+        errors.keep("after_install: forgetting the program", exc)
+
+
 #: The pilot installer's door asks for :func:`installer_exit_code` instead
 #: of :attr:`AfterInstall.exit_code`; ``api_entry``'s setup mode passes it.
 INSTALLER_CODES_FLAG = "--installer-codes"
@@ -1034,11 +1295,19 @@ def main(argv: list[str]) -> int:
     parser.add_argument("--move-schedule-here", action="store_true",
                         help="make this computer the one that runs the schedule for the clients "
                              "folder, then register it here (a deliberate move, runbook section 6)")
+    parser.add_argument("--remove-here", action="store_true",
+                        help="take this Mac's schedule away: unload the launchd agent and delete its "
+                             "file, leaving the designation, the data, the settings and the clients "
+                             "folder alone (for a Mac, before dragging the app to the Bin)")
     parser.add_argument(INSTALLER_CODES_FLAG, action="store_true",
                         help="exit with the pilot installer's codes: 10 when the step could not "
                              "finish, 11 when the Overview could not be prepared")
     ns = parser.parse_args(argv)
     try:
+        if ns.remove_here:
+            said, removed = remove_here()
+            print(said)
+            return 0 if removed else 1
         if ns.move_schedule_here:
             said, moved = move_schedule_here()
             print(said)

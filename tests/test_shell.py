@@ -931,7 +931,7 @@ def test_every_menu_id_the_page_answers_is_in_the_template_and_the_rest_are_the_
     log (main.js's alone, 5.5); the row menus' ids go to pages.js first."""
     template = {"new_household", "change_root", "open_root", "exit", "edit_household", "add_return", "roll_forward", "mark_shared",
                 "edit_list", "draft_reminder", "open_client_folder", "open_inbox", "open_working", "overview", "needs_review",
-                "reminders", "clients", "find", "refresh", "reset_columns", "show_under_construction", "sort_now", "stop_sorting", "schedule", "repair_schedule", "firm_report",
+                "reminders", "clients", "find", "refresh", "reset_columns", "show_under_construction", "sort_now", "stop_sorting", "schedule", "repair_schedule", "remove_schedule_here", "firm_report",
                 "clear_lock", "tour", "safeguards", "terms", "error_log", "about"}
     rows = {"check", "not_requested", "another_return", "put_back", "keep_here", "edit_request", "unfile", "mark_missing", "show_in_explorer"}
     text = read("shell.js")
