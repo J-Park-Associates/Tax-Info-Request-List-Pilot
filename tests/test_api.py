@@ -2146,7 +2146,7 @@ def _on_the_office_computer(monkeypatch, *, task_exists=False):
     ``schtasks`` a fake that keeps every command (decision 209)."""
     import platform
 
-    from tracker import scheduling
+    from tracker import scheduling, settings
 
     calls = []
 
@@ -2159,7 +2159,8 @@ def _on_the_office_computer(monkeypatch, *, task_exists=False):
         return Said(0 if task_exists or command[1] != "/query" else 1)
 
     monkeypatch.setattr(platform, "node", lambda: "OFFICE-PC")
-    monkeypatch.setattr(scheduling, "task_scheduler_here", lambda: True)
+    monkeypatch.setattr(settings, "host_system", lambda: "posix")     # Windows' scheduler, whatever this is
+    monkeypatch.setattr(scheduling, "scheduler_here", lambda: True)
     monkeypatch.setattr(scheduling, "_schtasks", answer)
     return calls
 
@@ -2648,6 +2649,45 @@ def test_move_schedule_here_moves_the_schedule_from_the_packaged_app(capsys, dem
     assert "front-desk" not in api.SCHEDULE_MOVE_CONFIRM and "{host}" in api.SCHEDULE_MOVE_CONFIRM
 
 
+def test_a_mac_removes_its_schedule_from_the_tools_menu_and_nothing_else(capsys, demo_root, a_mac, monkeypatch):
+    """SPEC-mac R29: ``remove-schedule-here`` is a writing command (the vocabulary says so,
+    so the app refreshes after it) that runs ``after_install.remove_here``: the agent and
+    its file go, the clients folder and the designation stay, and the page types none of
+    the words - the question is the API's, and the sentence is the step's own."""
+    import platform
+
+    from tracker import after_install, scheduling
+    from tracker.layout import designation_file
+
+    monkeypatch.setattr(platform, "node", lambda: "OFFICE-MAC")
+    assert run(capsys, "after-install", stdin={"reason": "launch"})[0] == 0
+    assert scheduling.launch_agent_path().is_file() and a_mac.launchd.loaded
+    designated = designation_file(demo_root).read_text(encoding="utf-8")
+
+    code, payload = run(capsys, "remove-schedule-here", stdin={})
+
+    assert code == 0, payload
+    assert payload["removed"] is True and payload["sentence"] == after_install.SCHEDULE_REMOVED_FROM_MAC
+    assert not scheduling.launch_agent_path().exists() and not a_mac.launchd.loaded
+    assert designation_file(demo_root).read_text(encoding="utf-8") == designated and demo_root.is_dir()
+    assert "remove-schedule-here" in api.WRITING_COMMANDS and "remove-schedule-here" in api.COMMANDS
+    assert "remove-schedule-here" in run(capsys, "list")[1]["vocab"]["writing_commands"]
+    assert api._vocab()["schedule"]["remove_confirm"] == "Remove the Schedule From This Mac?"
+    here = Path(__file__).resolve().parent.parent / "app" / "renderer"
+    js, shell = (here / "app.js").read_text(encoding="utf-8"), (here / "shell.js").read_text(encoding="utf-8")
+    assert "confirm(vocab.schedule.remove_confirm)" in js and 'call(["remove-schedule-here"]' in js
+    assert "remove_schedule_here: () => removeScheduleHere()," in shell
+    for literal in (api.SCHEDULE_REMOVE_CONFIRM, after_install.SCHEDULE_REMOVED_FROM_MAC):
+        assert literal not in js, literal
+
+
+def test_removing_the_schedule_where_there_is_no_mac_changes_nothing(capsys, demo_root):
+    from tracker import after_install
+
+    code, payload = run(capsys, "remove-schedule-here", stdin={})
+    assert code == 0 and payload["removed"] is False and payload["sentence"] == after_install.REMOVE_ONLY_ON_A_MAC
+
+
 def test_a_launch_step_that_raises_is_recorded_for_the_notice(capsys, tmp_path, monkeypatch):
     """The review's N1: the shell does not read the launch door's reply, so
     anything the step raises is recorded in one constant sentence, which
@@ -2806,6 +2846,7 @@ def test_the_renderer_gets_its_vocabulary_from_the_api(capsys, demo_root):
                                      draft_day=WEEKDAY_NAMES[DRAFT_WEEKDAY]),
                                  "move_confirm": api.SCHEDULE_MOVE_CONFIRM,
                                  "move_warning": api.SCHEDULE_MOVE_WARNING,
+                                 "remove_confirm": api.SCHEDULE_REMOVE_CONFIRM,
                                  "button": "Schedule", "title": "Schedule on This Computer",
                                  "enabled_label": "Run the Schedule", "on": "On", "off": "Off",
                                  "start_label": "First Run At", "every_label": "How Often",
@@ -9115,10 +9156,14 @@ def test_every_short_word_the_engine_adds_is_five_words_or_fewer():
         else:
             yield path, node
 
+    #: Words that are longer on purpose, with why. SPEC-mac R29 names this
+    #: menu item, and the Mac check kit's walk (step 14) chooses it by those words.
+    longer_on_purpose = {"menu.remove_schedule_here": "SPEC-mac R29's own label, chosen by the kit's walk"}
     for path, text in [*walk(api.MENU, "menu"), *walk(api.SCREEN, "screen"),
                        *walk(reasons.SHORT_REASONS, "reasons"), *walk(reasons.REASON_TIPS, "reason_tips")]:
         counted = re.sub(r"\{[a-z_]+\}", "x", text.replace("&", "")).split()
-        assert 1 <= len(counted) <= 5, (path, text)
+        assert 1 <= len(counted) <= (6 if path in longer_on_purpose else 5), (path, text)
+    assert api.MENU["remove_schedule_here"] == "Remove the Schedule From This Mac…"
 
 
 # ------------------------------------ every file name on the page is a live link (S8a) ----

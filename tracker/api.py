@@ -57,6 +57,8 @@ Commands:
             or upgrading, run when the program changed since they last ran
   move-schedule-here  name this computer as the one that runs the schedule,
             then run the step (a deliberate move, runbook section 6)
+  remove-schedule-here  a Mac only: take this Mac's schedule away before the
+            app is dragged to the Bin (SPEC-mac R29); changes nothing else
   unlock    clear a stale engagement lock (a fresh one is refused)
   acknowledge-foreign  a person has looked at the lines another machine wrote
             in one return's record; they stop being named (decision 159)
@@ -1312,6 +1314,9 @@ MENU: dict[str, str] = {
     "stop_sorting": "Stop Sorting",
     "schedule": "Schedule…",
     "repair_schedule": "Repair Schedule",
+    # A Mac's only (the shell leaves it out elsewhere): the schedule is a
+    # launchd agent that dragging the app to the Bin leaves behind (SPEC-mac R29).
+    "remove_schedule_here": "Remove the Schedule From This Mac…",
     "firm_report": "Firm Report",
     "clear_lock": "Clear Stuck Lock",
     "help": "&Help",
@@ -1990,6 +1995,7 @@ def _vocab() -> dict:
             # S5): {host} is that computer, filled in by the page.
             "move_confirm": SCHEDULE_MOVE_CONFIRM,
             "move_warning": SCHEDULE_MOVE_WARNING,
+            "remove_confirm": SCHEDULE_REMOVE_CONFIRM,
             # The Schedule dialog (pilot P21): every word it shows.
             "button": SCHEDULE_BUTTON,
             "title": SCHEDULE_TITLE,
@@ -5527,6 +5533,9 @@ SCHEDULE_REPAIR_LABEL = "Repair the Schedule"
 SCHEDULE_REPAIR_HELP = ("Register the daily job again on this computer - only needed if the schedule "
                         "was deleted or broken")
 SCHEDULE_REPAIR_CONFIRM = "Repair the Schedule Here?"
+#: The question before a Mac's schedule is removed (SPEC-mac R29); the answer
+#: is ``after_install.SCHEDULE_REMOVED_FROM_MAC``, the step's own sentence.
+SCHEDULE_REMOVE_CONFIRM = "Remove the Schedule From This Mac?"
 #: Asked when **Repair the Schedule** finds that another computer runs it
 #: (decision 209, the review's S5): the packaged app's way to move the
 #: schedule, as ``--move-schedule-here`` is from source. ``{host}`` is the
@@ -5644,6 +5653,19 @@ def _cmd_move_schedule_here(argv: list[str]) -> dict:
     done = after_install.run(reason=after_install.REASON_REPAIR)
     return {"moved": True, "sentence": said,
             **_schedule_reply(done, sentence_key="schedule_sentence")}
+
+
+def _cmd_remove_schedule_here(argv: list[str]) -> dict:
+    """A Mac's schedule taken away (SPEC-mac R29): the same function as
+    ``python -m tracker.after_install --remove-here``, behind Tools > Remove
+    the Schedule From This Mac. Dragging an app to the Bin leaves its
+    launchd agent behind, so this unloads the agent and deletes its file and
+    forgets the record's program - and nothing else: the designation, the
+    data, the settings and the clients folder stay (P12). ``removed`` says
+    whether the schedule is gone; ``sentence`` says what the app shows. The
+    page asks first (``vocab.schedule.remove_confirm``)."""
+    said, removed = after_install.remove_here()
+    return {"removed": removed, "sentence": said}
 
 
 def _cmd_after_install(argv: list[str]) -> dict:
@@ -6422,6 +6444,9 @@ WRITING_COMMANDS = frozenset({
     # The schedule setting writes the settings file and the task (pilot
     # P21), held to the checkpoint's root like every writer.
     "set-schedule",
+    # A Mac's schedule taken away (SPEC-mac R29) writes the agent's file and
+    # the after-install record.
+    "remove-schedule-here",
     # Sort & Scan (decision 203) is the runner's pass: :func:`main` hands it
     # over before this list is asked, and ``runner.main`` proves the
     # settings' root itself, as it does for the schedule.
@@ -6488,6 +6513,7 @@ COMMANDS = {
     "set-schedule": _cmd_set_schedule,
     "after-install": _cmd_after_install,
     "move-schedule-here": _cmd_move_schedule_here,
+    "remove-schedule-here": _cmd_remove_schedule_here,
     "acknowledge-foreign": _cmd_acknowledge_foreign,
     "pilot-record": _cmd_pilot_record,
 }

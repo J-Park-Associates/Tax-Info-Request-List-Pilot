@@ -61,7 +61,10 @@ def windows(monkeypatch):
         return Said()
 
     monkeypatch.setattr(platform, "node", lambda: HERE.upper())
-    monkeypatch.setattr(scheduling, "task_scheduler_here", lambda: True)
+    # Not a Mac, whatever this machine is: the Windows words and the Windows
+    # scheduler are what these tests read (a Mac's are tested with ``a_mac``).
+    monkeypatch.setattr(settings, "host_system", lambda: "posix")
+    monkeypatch.setattr(scheduling, "scheduler_here", lambda: True)
     monkeypatch.setattr(scheduling, "_schtasks", answer)
     calls_state["calls"] = calls
     return calls_state
@@ -1415,3 +1418,319 @@ def test_the_installer_is_told_when_the_overview_could_not_be_prepared_and_setup
     assert after_install.installer_exit_code(not_ready) == SETUP_OVERVIEW_NOT_READY
     assert after_install.installer_exit_code(broken) == SETUP_STEP_FAILED
     assert {SETUP_STEP_FAILED, SETUP_OVERVIEW_NOT_READY}.isdisjoint({0, 1, 2})   # never a crash's or argparse's code
+
+
+# ------------------------------------- a Mac: launchd and Time Machine (SPEC-mac R7, R23-R30) ----
+
+
+@pytest.fixture
+def mac(a_mac, monkeypatch):
+    """A Mac named ``HERE``: the fake launchd and the fake tmutil of ``a_mac``."""
+    monkeypatch.setattr(platform, "node", lambda: HERE.upper())
+    return a_mac
+
+
+def the_folders_left_out(home):
+    """The two folders a Mac leaves out of Time Machine, in the order the step
+    asks: the data home, and Electron's own folder (R2) in the account's
+    Application Support."""
+    return [str(settings.data_home()),
+            str(home / "Library" / "Application Support" / settings.EARLIER_PRODUCT_NAME)]
+
+
+def test_a_mac_install_leaves_the_data_home_out_of_time_machine(root, mac, tmp_path):
+    """R7 and P242: after the schedule's job, the data home and Electron's own
+    folder are made, asked about and excluded with the sticky ``addexclusion``;
+    the sentence is said once, and a second run changes and says nothing."""
+    done = after_install.run(reason=after_install.REASON_SETUP)
+
+    assert done.exit_code == 0, done.failed
+    folders = the_folders_left_out(tmp_path / "home")
+    assert mac.tmutil.excluded == set(folders) and all(Path(folder).is_dir() for folder in folders)
+    assert [call for call in mac.tmutil.calls if call[1] == "addexclusion"] == [
+        ["tmutil", "addexclusion", folder] for folder in folders]
+    assert after_install.TIME_MACHINE_EXCLUDED == "Left the app's data folder out of Time Machine backups."
+    lines = list(done.lines)
+    assert lines.index(done.schedule_sentence) + 1 == lines.index(after_install.TIME_MACHINE_EXCLUDED)
+    assert lines.index(after_install.TIME_MACHINE_EXCLUDED) < lines.index(done.check_sentence)
+    assert mac.launchd.loaded
+
+    mac.tmutil.calls.clear()
+    again = after_install.run(reason=after_install.REASON_REPAIR)
+    assert again.exit_code == 0 and after_install.TIME_MACHINE_EXCLUDED not in again.lines
+    assert [call[1] for call in mac.tmutil.calls] == ["isexcluded", "isexcluded"], "asked, and nothing added"
+
+
+def test_only_a_newly_excluded_folder_is_said(root, mac, tmp_path):
+    first, second = the_folders_left_out(tmp_path / "home")
+    mac.tmutil.excluded.add(first)
+    done = after_install.run(reason=after_install.REASON_SETUP)
+    assert after_install.TIME_MACHINE_EXCLUDED in done.lines
+    assert [call[2] for call in mac.tmutil.calls if call[1] == "addexclusion"] == [second]
+    assert mac.tmutil.excluded == {first, second}
+
+
+def test_a_refused_exclusion_fails_the_step_and_is_tried_again(root, mac, tmp_path):
+    """R7: a refusal fails the step with ``TIME_MACHINE_REFUSED``, so no program
+    identity is recorded and the next start runs it again; the other folder is
+    still tried."""
+    mac.tmutil.refuse["addexclusion"] = (1, "tmutil: Operation not permitted")
+
+    done = after_install.run(reason=after_install.REASON_SETUP)
+
+    assert done.exit_code == 1 and len(done.failed) == 1
+    [sentence] = done.failed
+    folder = the_folders_left_out(tmp_path / "home")[0]
+    assert sentence.startswith(f"The app's data folder ({folder}) could not be left out of Time Machine backups (")
+    assert "Operation not permitted" in sentence and sentence.endswith("the app tries again at its next start.")
+    assert len([call for call in mac.tmutil.calls if call[1] == "addexclusion"]) == 2, "both were tried"
+    assert after_install.read_record()["program"] == "" and after_install.TIME_MACHINE_EXCLUDED not in done.lines
+
+    mac.tmutil.refuse.clear()
+    ran = after_install.launch()
+    assert ran is not None and ran.exit_code == 0
+    assert mac.tmutil.excluded == set(the_folders_left_out(tmp_path / "home"))
+    assert after_install.read_record()["program"] != ""
+
+
+def test_a_tmutil_that_cannot_start_is_said_by_its_class(root, mac, monkeypatch):
+    def missing(command):
+        raise FileNotFoundError(2, "No such file", "tmutil")
+
+    monkeypatch.setattr(after_install, "_tmutil", missing)
+    done = after_install.run(reason=after_install.REASON_SETUP)
+    assert done.exit_code == 1 and "FileNotFoundError" in done.failed[0] and "No such file" not in done.failed[0]
+
+
+def test_a_tmutil_that_hangs_is_stopped_at_its_limit_as_an_os_error(monkeypatch):
+    import subprocess
+
+    from tests.conftest import REAL_TMUTIL
+
+    def hangs(command, **kwargs):
+        assert kwargs["timeout"] == scheduling.SCHTASKS_TIME_LIMIT_SECONDS == 60
+        raise subprocess.TimeoutExpired(command, kwargs["timeout"])
+
+    monkeypatch.setattr(after_install.subprocess, "run", hangs)
+    with pytest.raises(TimeoutError, match="tmutil did not answer within 60 seconds"):
+        REAL_TMUTIL(["tmutil", "isexcluded", "/x"])
+
+
+def test_time_machine_is_left_alone_on_windows_and_linux(root, windows):
+    """The suite's guard fails a test that reaches ``tmutil``; the step runs
+    clean, and says nothing of Time Machine."""
+    done = after_install.run(reason=after_install.REASON_SETUP)
+    assert done.exit_code == 0 and after_install.TIME_MACHINE_EXCLUDED not in done.lines
+
+
+@pytest.mark.parametrize("reason", after_install.REASONS)
+def test_every_door_registers_the_launchd_agent_on_a_mac(root, mac, reason):
+    """R24, 209: setup, launch, saving the root and Repair are one registration."""
+    done = after_install.launch() if reason == after_install.REASON_LAUNCH else after_install.run(reason=reason)
+
+    assert done.exit_code == 0 and done.installed and done.schedule == scheduling.CLAIMED
+    assert done.schedule_sentence == scheduling.SCHEDULE_CLAIMED.format(
+        host=HERE, start=scheduling.DEFAULT_START, every=scheduling.DEFAULT_REPEAT_MINUTES)
+    assert mac.launchd.verbs()[:3] == ["bootout", "bootstrap", "enable"] and mac.launchd.loaded
+    assert done.xml == str(scheduling.launch_agent_path()) and done.command[:2] == ("launchctl", "bootstrap")
+    assert designation_file(root).read_text(encoding="utf-8") == f"{HERE}\n"
+
+
+def test_a_mac_the_designation_does_not_name_removes_its_own_agent(root, mac):
+    assert after_install.run(reason=after_install.REASON_SETUP).exit_code == 0
+    assert scheduling.launch_agent_path().is_file()
+    designation_file(root).write_text(f"{ELSEWHERE}\n", encoding="utf-8")
+
+    ran = after_install.launch()
+
+    assert ran is not None and ran.schedule == scheduling.ELSEWHERE and ran.exit_code == 0
+    assert ran.schedule_sentence == scheduling.SCHEDULE_ELSEWHERE.format(
+        host=ELSEWHERE, removed=scheduling.SCHEDULE_REMOVED)
+    assert not scheduling.launch_agent_path().exists() and not mac.launchd.loaded
+
+
+def test_the_launch_door_asks_a_mac_only_whether_its_agent_is_loaded(root, mac):
+    assert after_install.run(reason=after_install.REASON_SETUP).exit_code == 0
+    mac.launchd.calls.clear()
+    assert after_install.launch() is None
+    assert mac.launchd.verbs() == ["print"], "one question, and nothing registered"
+
+    mac.launchd.loaded = False                    # the agent is gone; the record still names this Mac
+    ran = after_install.launch()
+    assert ran is not None and ran.installed and mac.launchd.loaded
+
+
+def test_a_mac_whose_schedule_was_switched_off_is_told_and_not_re_registered(root, mac):
+    """R27: a person's switch under Login Items is theirs. The launch door says
+    ``SCHEDULE_SWITCHED_OFF`` at every start, registers nothing, and still runs
+    the other jobs; when the switch is turned back on the next start registers."""
+    assert after_install.run(reason=after_install.REASON_SETUP).exit_code == 0
+    mac.launchd.loaded, mac.launchd.switched_off = False, True       # macOS unloaded it
+    mac.launchd.calls.clear()
+
+    said = after_install.SCHEDULE_SWITCHED_OFF.format(product=settings.product_name())
+    assert said == ("macOS has switched the schedule off for this app (System Settings > General > Login Items, "
+                    "Allow in the Background). Switch Tax Document Console back on there; the app cannot do "
+                    "it for you.")
+    for _start in (1, 2):
+        ran = after_install.launch()
+        assert ran is not None and ran.schedule == after_install.SWITCHED_OFF_KEY
+        assert ran.schedule_sentence == said and ran.failed == (said,) and not ran.installed
+        assert said in after_install.notice()["failed"]
+        assert after_install.read_record()["program"] == "", "it is asked again at the next start"
+        assert not {"bootstrap", "bootout", "enable", "kickstart"} & set(mac.launchd.verbs())
+        assert ran.check != after_install.CHECK_FAILED_KEY and ran.check_sentence, "the record check still ran"
+
+    mac.launchd.switched_off = False                                    # the person switched it back on
+    back = after_install.launch()
+    assert back is not None and back.installed and back.failed == () and mac.launchd.loaded
+    assert after_install.notice() is None
+
+
+def test_a_schedule_the_person_turned_off_in_the_app_is_not_called_switched_off(root, mac):
+    assert after_install.run(reason=after_install.REASON_SETUP).exit_code == 0
+    settings.set_schedule(False, "07:00", 120)
+    mac.launchd.switched_off = True
+    ran = after_install.launch()
+    assert ran is not None and ran.schedule == scheduling.OFF and ran.exit_code == 0
+
+
+def test_a_mac_the_designation_does_not_name_is_not_told_the_agent_is_switched_off(root, mac):
+    assert after_install.run(reason=after_install.REASON_SETUP).exit_code == 0
+    designation_file(root).write_text(f"{ELSEWHERE}\n", encoding="utf-8")
+    mac.launchd.switched_off = True
+    ran = after_install.launch()
+    assert ran is not None and ran.schedule == scheduling.ELSEWHERE
+
+
+def test_a_print_disabled_that_will_not_answer_runs_the_step_as_before(root, mac, caplog):
+    import logging
+
+    from tracker import errors
+
+    assert after_install.run(reason=after_install.REASON_SETUP).exit_code == 0
+    mac.launchd.loaded = False
+    mac.launchd.refuse["print-disabled"] = (1, "Unrecognized subcommand")
+    with caplog.at_level(logging.WARNING, logger=errors.DEBUG_LOGGER):
+        ran = after_install.launch()
+    assert ran is not None and ran.installed and mac.launchd.loaded
+    assert "Unrecognized subcommand" in caplog.text
+
+
+def test_a_new_program_on_a_mac_starts_its_first_pass_once(root, mac, monkeypatch):
+    """R27: right after registering a program it has not run before, the step
+    ``kickstart``s the agent, once. The same program registered again (Repair,
+    a restart) does not; the next program does."""
+    first = after_install.run(reason=after_install.REASON_SETUP)
+    assert first.exit_code == 0
+    service = f"gui/{os.getuid()}/{scheduling.LAUNCH_AGENT_LABEL}"
+    assert mac.launchd.calls[-1] == ["launchctl", "kickstart", service], "after bootstrap and enable"
+    assert mac.launchd.verbs() == ["bootout", "bootstrap", "enable", "kickstart"]
+    assert after_install.read_record()["kicked"] == after_install.read_record()["program"] != ""
+
+    mac.launchd.calls.clear()
+    assert after_install.run(reason=after_install.REASON_REPAIR).exit_code == 0
+    mac.launchd.loaded = False
+    assert after_install.launch() is not None
+    assert "kickstart" not in mac.launchd.verbs()
+
+    monkeypatch.setattr(after_install, "program_identity", lambda: "the-next-build")
+    mac.launchd.calls.clear()
+    upgraded = after_install.launch()
+    assert upgraded is not None and upgraded.exit_code == 0
+    assert mac.launchd.verbs().count("kickstart") == 1
+    assert after_install.read_record()["kicked"] == "the-next-build"
+    mac.launchd.calls.clear()
+    assert after_install.launch() is None and mac.launchd.verbs() == ["print"]
+
+
+def test_a_first_pass_that_cannot_start_fails_the_step_and_is_tried_again(root, mac):
+    mac.launchd.refuse["kickstart"] = (113, "Could not find service")
+    done = after_install.run(reason=after_install.REASON_SETUP)
+    assert done.exit_code == 1 and not done.installed and mac.launchd.loaded
+    assert done.failed == (after_install.FIRST_PASS_REFUSED.format(
+        problem="launchctl could not start the first pass (113): Could not find service"),)
+    record = after_install.read_record()
+    assert record["program"] == "" and "kicked" not in record
+
+    mac.launchd.refuse.clear()
+    again = after_install.launch()
+    assert again is not None and again.exit_code == 0
+    assert mac.launchd.verbs().count("kickstart") == 2
+
+
+def test_a_launchctl_that_cannot_start_is_said_as_launchd_refusing(root, mac, monkeypatch):
+    def missing(command):
+        raise FileNotFoundError(2, "No such file", "launchctl")
+
+    monkeypatch.setattr(scheduling, "_launchctl", missing)
+    done = after_install.run(reason=after_install.REASON_SETUP)
+    assert done.failed == (after_install.SCHEDULE_FAILED.format(
+        problem=after_install.SCHEDULE_UNREACHABLE_MAC),)
+    assert "Task Scheduler" not in done.failed[0]
+
+
+def test_removing_the_schedule_from_a_mac_leaves_every_folder(root, mac, tmp_path, capsys, monkeypatch):
+    """R29 and P12: ``--remove-here`` unloads the agent, deletes its file and forgets the
+    record's program; the designation, the data, the settings and the clients folder stay,
+    and opening the app again sets the schedule up again."""
+    assert after_install.run(reason=after_install.REASON_SETUP).exit_code == 0
+
+    def tree(folder):
+        return sorted(str(p.relative_to(folder)) for p in Path(folder).rglob("*")
+                      if p.name != after_install.RECORD_FILENAME)
+
+    folders = (root, settings.data_home(), settings.settings_dir())
+    before = {str(folder): tree(folder) for folder in folders}
+    designated = designation_file(root).read_text(encoding="utf-8")
+    saved = settings.settings_path().read_bytes()
+    record_before = after_install.read_record()
+    assert record_before["program"] != ""
+
+    code, out = cli(monkeypatch, capsys, "--remove-here")
+
+    assert code == 0
+    assert out.strip() == after_install.SCHEDULE_REMOVED_FROM_MAC == (
+        "The schedule is removed from this Mac. To remove the app, quit it now and drag it from "
+        "Applications to the Bin; opening it again sets the schedule up again.")
+    assert not scheduling.launch_agent_path().exists() and not mac.launchd.loaded
+    assert {str(folder): tree(folder) for folder in folders} == before
+    assert designation_file(root).read_text(encoding="utf-8") == designated
+    assert settings.settings_path().read_bytes() == saved
+    assert after_install.read_record() == {**record_before, "program": ""}
+    assert mac.tmutil.excluded == set(the_folders_left_out(tmp_path / "home")), "the exclusion is left as it is"
+
+    reopened = after_install.launch()
+    assert reopened is not None and reopened.installed and scheduling.launch_agent_path().is_file()
+
+
+def test_removing_a_schedule_that_will_not_unload_says_so_and_changes_nothing_else(root, mac):
+    assert after_install.run(reason=after_install.REASON_SETUP).exit_code == 0
+    mac.launchd.refuse["bootout"] = (1, "Boot-out failed: 1")
+    said, removed = after_install.remove_here()
+    assert not removed and said == after_install.SCHEDULE_NOT_REMOVED.format(
+        problem="launchctl could not unload the agent (1): Boot-out failed: 1")
+    assert scheduling.launch_agent_path().is_file() and after_install.read_record()["program"] != ""
+
+
+def test_removing_the_schedule_is_for_a_mac_only(root, windows, capsys, monkeypatch):
+    said, removed = after_install.remove_here()
+    assert (said, removed) == (after_install.REMOVE_ONLY_ON_A_MAC, False)
+    assert windows["calls"] == []
+    code, out = cli(monkeypatch, capsys, "--remove-here")
+    assert code == 1 and out.strip() == after_install.REMOVE_ONLY_ON_A_MAC
+
+
+def test_a_launch_on_a_mac_is_not_stopped_by_another_run_of_the_step_that_never_ends(root, mac, monkeypatch):
+    monkeypatch.setattr(after_install, "LOCK_WAIT_SECONDS", 0.2)
+    monkeypatch.setattr(after_install, "LOCK_POLL_SECONDS", 0.05)
+    folder = after_install.record_path().parent
+    folder.mkdir(parents=True, exist_ok=True)
+    from tracker.locking import acquire_lock, release_lock
+
+    held = acquire_lock(folder, after_install.LOCK_FILENAME)
+    try:
+        said, removed = after_install.remove_here()
+    finally:
+        release_lock(held)
+    assert not removed and "was still going" in said
