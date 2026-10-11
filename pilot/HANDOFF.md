@@ -7,10 +7,12 @@ this repository; [`SPEC.md`](SPEC.md) says what it builds.
 
 ## Where the record is
 
-- **`main` is `287732c`** (pull request #35, the Mac check fixes, P256-P259);
-  this branch, `claude/mac-rerun1-fixes`, is cut from it and carries P260-P263.
+- **`main` is `401cdf4`** (pull request #36, the Mac re-run 1 fixes, P260-P263);
+  this branch, `claude/ui-polish`, is cut from it and carries P264 (the UI
+  review's no-brainers, built) and Jason's sixteen menu answers, P265-P280
+  (recorded; their SPECs follow).
 
-- **Decisions live in [`DECISIONS.md`](DECISIONS.md), rows P1 to P237.** Code
+- **Decisions live in [`DECISIONS.md`](DECISIONS.md), rows P1 to P280.** Code
   and tests cite those numbers, so a row is never renumbered or removed. Why
   a thing is the way it is: search the row, do not guess.
 - **Pilot decisions never go in `docs/ROADMAP.md`**, which stays the
@@ -20,23 +22,41 @@ this repository; [`SPEC.md`](SPEC.md) says what it builds.
 
 ## Current work
 
-[`SPEC-mac-rerun1-fixes.md`](SPEC-mac-rerun1-fixes.md): the fixes from the Mac
-check's re-run 1 of 2026-10-10 (P260-P263), built on `claude/mac-rerun1-fixes`,
-each job its own commit after a clean Opus review:
+[`SPEC-ui-polish.md`](SPEC-ui-polish.md): the UI and UX review of 2026-10-11.
+Section 1, the no-brainers (P264), is built on `claude/ui-polish` in one
+commit after a clean Opus review: one collator, keyed lookups, one draw per
+page visit, no hidden letter rebuild, debounced search, timers that sleep
+while the window is hidden, smaller hot paths, dead CSS gone, `color-scheme`,
+no pager for one page, even filter cards, a notice's Details on its one line.
+Measured on the 500-household harness: the Clients draw 31 -> 10 ms, a search
+keystroke 9.7 -> 0.1 ms.
 
-1. On a Mac, an agent launchd no longer holds while its file remains is the
-   person's Login Items switch: the launch door says so and registers nothing
-   (P260). The reader tells its library to send no telemetry (P263).
-2. The suite stands on the Linux floor's computer on a Mac unless a test says
-   `a_mac`, and the four affected files pass on a Mac (P261).
-3. An open return page follows a scheduled pass, Start on the change-folder
-   path goes to the Overview, and a refused folder's sentence is a keyed
-   notice (P262).
+Section 2 is the menu Jason answered on 2026-10-11, one P-row per answer
+(P265-P280). Three SPECs are being written from them and build in this order,
+each item its own sonnet build and Opus review:
 
-What has not run: the next Mac check on this branch (step 13 with the switch,
-step 9 on a return page, step 7's refusal, step 14 then 5); the overnight run;
-Google Drive; H10. The floor interpreter (3.11) is not installed on the test
-Mac, so the gate here ran on 3.14 only.
+1. `SPEC-ui-menu-small.md`: P265 (Soon tag), P266 (brand band), P267
+   (underline on hover), P268 (Tax Year column only when years differ), P269
+   ("Last Activity"), P270 (chevron at rest), P274 ("Sort now" button), P280
+   (the type stack by platform).
+2. `SPEC-ui-menu-layout.md`: P271 (Compact Rows), P272 (Needs Review as one
+   flat list), P273 (notices in a right-hand panel), P275 (the household
+   page's header card).
+3. `SPEC-ui-menu-speed.md`: P277 (the app watches the last-pass file), P278
+   (the engine pages the firm lists), P279 (virtualized rows), P276 (one
+   long-lived engine process; decision 193 re-read).
+
+Left from review 1 of section 1, outside its build: after a failed return
+read, Retry calls `showReturn` directly and the page keeps showing its title
+only until the person moves to another page (`shellPageFailed` is reset only
+in `shellGo`); its own small job.
+
+Landed before this: [`SPEC-mac-rerun1-fixes.md`](SPEC-mac-rerun1-fixes.md), the
+fixes from the Mac check's re-run 1 of 2026-10-10 (P260-P263, pull request
+#36): the Login Items switch is told apart from a missing agent (P260), the
+suite stands on the Linux floor's computer on a Mac (P261), an open return
+page follows a scheduled pass (P262), the reader sends no telemetry (P263).
+Re-run 2 of the Mac check on that build passed every fixed step.
 
 Landed before this: [`SPEC-mac-check-fixes.md`](SPEC-mac-check-fixes.md): the fixes from Jason's
 Mac check of 2026-10-10, built and landed on `claude/trusting-tesla-or0wm2`
