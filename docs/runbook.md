@@ -69,6 +69,12 @@ again on the day's first page and after every program update. It holds
 client file names, so like the others it is never synced; deleting it is
 always safe (the next page reads every return once).
 
+A fifth, `firm-pages.json` (pilot P278), holds the Overview's last whole
+answer so that turning a page of a firm list does not read every household
+again; like `firm-view.json` it holds household names, return folders and
+the names of files waiting for a person, it is never synced, and deleting
+it is always safe.
+
 **The app's data folder is private to one Windows account.** `tracker.db`
 holds every client's index rows, and it lives in
 `%LOCALAPPDATA%\tax-document-tracker-pilot` (decision 186): the account's own local

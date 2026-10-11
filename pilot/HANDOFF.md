@@ -71,8 +71,17 @@ Opus review:
    296 -> 7 ms on this Mac; the office PC and the packaged build go on the
    Windows check, with: after an edit that re-reads, the error log has no
    "engine retired" and Task Manager shows the same tracker-api pid; one
-   engine normally, a second only during a Sort or an overlapping click), P278 (the engine pages the firm
-   lists, last because its page turns become engine requests).
+   engine normally, a second only during a Sort or an overlapping click), P278 (the engine pages the firm lists; **built on
+   `claude/ui-menu-speed-4`**, three Opus reviews, the third with no
+   findings, a Sonnet rebuild then an Opus fix; a page turn 9-24 ms in the
+   engine where the window rebuilt the whole 1.4 MB reply; the reply fell
+   39%, and a leaner turn on the same view is left for Jason in SPEC §4).
+
+Found by review 3 of P278, outside its build and older than it: a refused
+clients folder's notice (SPEC-shell, Settings) is meant to carry a Retry, but
+the window draws Retry only for a failed or stale notice, so none appears;
+its test checks only that a retry function was handed over. Its own small
+job: let `retryOf` honour a given retry for a refusal and pin the drawn button.
 
 Left from review 1 of section 1, outside its build: after a failed return
 read, Retry calls `showReturn` directly and the page keeps showing its title

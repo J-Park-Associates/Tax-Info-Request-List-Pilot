@@ -103,6 +103,7 @@ from tracker import (
     door,
     errors,
     firm_cache,
+    firm_pages,
     layout,
     ledger,
     names,
@@ -557,7 +558,8 @@ def _not_walked(where: str, exc: BaseException,
 def _failure_of(exc: BaseException) -> dict:
     """The one rule for how an error is said (decision 193, ruling 3):
     ``{"sentence", "kind", "seq", "identifier"}``, plus ``lock`` when
-    another pass holds the return. In this order: stale, locked, a
+    another pass holds the return and ``key`` on the firm page refusal
+    (:data:`FIRM_PAGE_REFUSED_KEY`, P278). In this order: stale, locked, a
     checkpoint left behind, the disk's and the store's failures by class
     and code (:class:`~tracker.ledger.RecordNotWritten`,
     :class:`~tracker.store.StoreUnavailable`), the tracker's worded
@@ -587,6 +589,11 @@ def _failure_of(exc: BaseException) -> dict:
     elif isinstance(exc, (store.StoreUnavailable, ledger.RecordNotWritten)):
         kind, sentence = "failed", FAILED.format(kind=errors.error_class(exc),
                                                  log=ERROR_LOG_FILENAME)
+    elif isinstance(exc, _PageRefused):
+        # The one refusal the window says without Retry (P278): marked here, so
+        # no other refusal - a folder that cannot be walked just now - loses it.
+        kind, sentence = "refused", str(exc)
+        extra["key"] = FIRM_PAGE_REFUSED_KEY
     elif isinstance(exc, (ManifestError, FilingError, door.DoorError, layout.LayoutError,
                           SettingsError, reminder.ReminderError, RegistryError,
                           store.StoreError, ledger.LedgerError)):
@@ -6028,22 +6035,107 @@ def _cmd_firm(argv: list[str]) -> dict:
     practice-wide facts are worked out again every time. When the cache
     path is unsure of anything it gives way to :func:`_firm_fresh`, the
     whole walk as it always was, which is the reference the suite holds the
-    cached reply to."""
+    cached reply to.
+
+    **One page of it (P278, ``pilot/SPEC-ui-menu-speed.md`` section 4).** Asked
+    with ``{"page": {...}}`` on stdin the reply is one page of one firm list,
+    the totals and each return's counts (:func:`tracker.firm_pages.page`); a
+    fresh ask saves its whole answer as the view in the data folder and answers
+    its token, and an ask that names that token (``"view"``) is answered from
+    the saved view - no walk, no fingerprint, no record read - or, when the
+    view no longer matches, afresh with a new token. With no ``page`` the
+    reply is the whole one above, byte for byte."""
+    ask = _firm_ask()
     root = _saved_root()
+    today = dt.date.today()
+    if ask is not None and ask.view and root is not None and root.is_dir():
+        viewed = firm_pages.load_view(ask.view, firm_cache.head(root, today))
+        if viewed is not None:
+            try:
+                return _firm_paged(viewed.whole, viewed.names, ask, ask.view)
+            except Exception as exc:
+                # A view damaged into other valid JSON: it is no view. Said by its class (as a damaged cache is, P120)
+                # and answered fresh, with a new token - never a failed turn that Retry would repeat.
+                errors.keep("api: firm pages", exc)
+                log.warning("The firm view's pages could not be paged (%s); reading afresh", errors.error_class(exc))
     reply = _firm_reply_shell()
     if root is None or not root.is_dir():
-        return reply
-    today = dt.date.today()
-    shown = _firm_cached(root, today)
-    if shown is None:
-        shown = _firm_fresh(root, today)
+        return reply if ask is None else _firm_paged(reply, {"returns": {}, "households": []}, ask, None)
+    read = _firm_cached(root, today)
+    if read is None:
+        read = _firm_fresh(root, today)
+    shown, walk = read
     _firm_reply(reply, shown)
+    if ask is None:
+        return reply
+    return _firm_paged(reply, walk, ask, firm_pages.save_view(reply, walk, firm_cache.head(root, today)))
+
+
+#: The sentence for an ask of the firm pages the engine does not have (P278):
+#: an unknown list, cell or filter, a malformed page number. Its envelope
+#: carries ``key`` :data:`FIRM_PAGE_REFUSED_KEY`, and the window says it as a
+#: notice without Retry (the same ask would only be refused again).
+FIRM_PAGE_REFUSED = "The app asked for a list the engine does not have; nothing was read."
+FIRM_PAGE_REFUSED_KEY = "firm_page_refused"
+
+
+class _PageRefused(ManifestError):
+    """:data:`FIRM_PAGE_REFUSED`: a refusal like any other, whose envelope
+    :func:`_failure_of` marks with :data:`FIRM_PAGE_REFUSED_KEY`."""
+
+
+def _read_optional_spec() -> dict:
+    """:func:`_read_spec`, for a command that is also asked with nothing on
+    stdin: a terminal or a stream that gives nothing is ``{}``, so the
+    command line and a child with no input keep working."""
+    stream = sys.stdin
+    try:
+        if stream is None or stream.isatty():
+            return {}
+        return _read_spec()
+    except OSError:
+        return {}
+
+
+def _firm_ask() -> firm_pages.Ask | None:
+    """The page ``firm`` or ``firm-last`` is asked for, or ``None`` for the
+    whole reply; anything but the shape of SPEC section 4.2 is refused before
+    anything is read."""
+    try:
+        return firm_pages.ask_of(_read_optional_spec(), CLIENT_TYPE_FORMS)
+    except firm_pages.PageAskError:
+        raise _PageRefused(FIRM_PAGE_REFUSED) from None
+
+
+def _firm_words() -> dict:
+    """The words an order key depends on, from the vocabulary the window reads
+    (``vocab.screen``, ``vocab.reasons``, ``vocab.reminder.stages``,
+    ``vocab.client_type_forms``): the status words, the paused word, the held
+    word, the stage words and the reasons' short labels. Handed to
+    :mod:`tracker.firm_pages`, which types none of them."""
+    counts = SCREEN["counts"]
+    return {"need": counts["need"], "waiting": counts["waiting"], "complete": counts["complete"],
+            "paused": SCREEN["notices"]["paused"], "held": SCREEN["held"],
+            "stages": {stage.number: stage.short for stage in reminder.STAGES},
+            "reasons": dict(reasons.SHORT_REASONS), "client_types": CLIENT_TYPE_FORMS}
+
+
+def _firm_paged(whole: dict, walk: dict, ask: firm_pages.Ask, view: str | None) -> dict:
+    """The one page ``ask`` names of ``whole``, answering ``view`` as its token."""
+    reply = firm_pages.page(whole, walk, _firm_words(), ask)
+    reply["view"] = view
     return reply
 
 
 #: One shown return of the firm view: its row (``paused`` set), its files and
 #: its own ``paths``, as :func:`_firm_row` built them.
 _FirmShown = tuple[dict, list[dict], dict[str, str]]
+
+#: What a firm read answers: the shown returns and what the walk saw of names
+#: for P278's pages - ``{"returns": {path: the return's name}, "households":
+#: [{"name", "path", "links", "forms"}]}``, the households with their links and
+#: the recorded form of every return they hold, shown or not.
+_FirmRead = tuple[list[_FirmShown], dict]
 
 
 def _firm_reply(reply: dict, shown: list[_FirmShown]) -> None:
@@ -6074,16 +6166,18 @@ def _firm_reply(reply: dict, shown: list[_FirmShown]) -> None:
         totals["drafts"] += row["draft"]["ready"]
 
 
-def _firm_fresh(root: Path, today: dt.date) -> list[_FirmShown]:
+def _firm_fresh(root: Path, today: dt.date) -> _FirmRead:
     """The firm view's returns read whole: the practice walked
     (:func:`discover_engagements`) and every shown return read. The
     reference the cached path is held to, and what answers whenever it is
     unsure. A root that holds nothing is no return; one that cannot be
-    walked is :data:`PRACTICE_NOT_WALKED`."""
+    walked is :data:`PRACTICE_NOT_WALKED`. With the shown returns it
+    answers what the walk saw of names (:func:`tracker.firm_pages.page`
+    orders by them)."""
     try:
         registry = discover_engagements(root)
     except EmptyRoot:
-        return []
+        return [], {"returns": {}, "households": []}
     except RegistryError as exc:
         raise ManifestError(_not_walked("firm", exc, warn=False)) from None
     names = {household.path: household.name for household in registry.households}
@@ -6096,15 +6190,22 @@ def _firm_fresh(root: Path, today: dt.date) -> list[_FirmShown]:
     # worked out practice-wide from the records this walk already read.
     links = _household_links(registry)
     shown = []
+    walk: dict = {"returns": {}, "households": []}
     for one in registry.engagements:
         if runner.why_skipped(one)[0]:
             continue
         row, files, own = _firm_row(one, names.get(one.household_path, ""), today)
         shown.append(_firm_marked(row, files, own, one, paused, links))
-    return shown
+        walk["returns"][str(one.path)] = one.info.return_name or one.path.name
+    grouped = registry.by_household()
+    walk["households"] = [{"name": household.name, "path": str(household.path),
+                           "links": links.get(household.path, []),
+                           "forms": [one.info.form for one in grouped.get(household.path, [])]}
+                          for household in registry.households]
+    return shown, walk
 
 
-def _firm_cached(root: Path, today: dt.date) -> list[_FirmShown] | None:
+def _firm_cached(root: Path, today: dt.date) -> _FirmRead | None:
     """The firm view's returns with every unchanged household answered from
     the cache (P120), or ``None`` when this path is unsure and
     :func:`_firm_fresh` must answer. Anything unexpected here is kept on the
@@ -6163,7 +6264,7 @@ def _say_count(done: int, total: int) -> None:
         pass
 
 
-def _firm_from_cache(root: Path, today: dt.date) -> list[_FirmShown]:
+def _firm_from_cache(root: Path, today: dt.date) -> _FirmRead:
     """:func:`_firm_cached`'s work, in four steps.
 
     1. List the households as the walk lists them
@@ -6263,7 +6364,19 @@ def _firm_from_cache(root: Path, today: dt.date) -> list[_FirmShown]:
     # head, not on every reply while nothing is kept (the review's NIT-1).
     if keep != kept or (not kept and not firm_cache.holds(where, [head])):
         firm_cache.save(where, head, keep)
-    return shown
+    return shown, _firm_seen(order, entries, links, facts, showing)
+
+
+def _firm_seen(order: list[Path], entries: dict[Path, dict], links: dict,
+               facts: list[tuple[Path, dict]], showing: list[bool]) -> dict:
+    """What the walk saw of names, from the kept facts (:data:`_FirmRead`): each
+    shown return's name, and each household with its links and the recorded
+    form of every return it holds, shown or not (a Client Type keeps the
+    households with a return of one of its forms, P153)."""
+    return {"returns": {one["path"]: one["return_name"] for (_folder, one), show in zip(facts, showing, strict=True) if show},
+            "households": [{"name": entries[folder]["name"], "path": str(folder), "links": links.get(folder, []),
+                            "forms": [one["form"] for one in entries[folder]["returns"]]}
+                           for folder in order if entries[folder]["kind"] == "household"]}
 
 
 def _firm_order(folders: list[Path], entries: dict[Path, dict]) -> list[Path]:
@@ -6352,6 +6465,7 @@ def _firm_read_households(private: Path, folders: list[Path],
                  "returns": [{"path": str(one.path), "household": str(one.household_path),
                               "problem": one.problem, "active": one.info.active,
                               "tax_year": one.info.tax_year, "rolled_from": one.info.rolled_from,
+                              "return_name": one.info.return_name or one.path.name, "form": one.info.form,
                               "shown": None} for one in ones]}
         read[folder] = (entry, {str(one.path): one for one in ones})
     return read
@@ -6398,17 +6512,20 @@ def _cmd_firm_last(argv: list[str]) -> dict:
     household's lock against the record, so a marked count can never make
     a write land wrong. It writes nothing: no cache save, no record, no
     setting."""
+    ask = _firm_ask()
     root = _saved_root()
     refused = {"last": None}
     if root is None or not root.is_dir():
         return refused
     today = dt.date.today()
-    shown = _firm_last(root, today)
-    if shown is None:
+    last = _firm_last(root, today)
+    if last is None:
         return refused
-    shown, written = shown
+    shown, written, walk = last
     reply = _firm_reply_shell()
     _firm_reply(reply, shown)
+    if ask is not None:
+        reply = _firm_paged(reply, walk, ask, None)       # it saves nothing (P229): no view to turn pages of
     reply["last"] = True
     reply["as_of"] = written.strftime("%H:%M")
     return reply
@@ -6428,9 +6545,10 @@ FIRM_LAST_REFUSALS = {
 }
 
 
-def _firm_last(root: Path, today: dt.date) -> tuple[list[_FirmShown], dt.datetime] | None:
+def _firm_last(root: Path, today: dt.date) -> tuple[list[_FirmShown], dt.datetime, dict] | None:
     """:func:`_cmd_firm_last`'s work: the shown returns from the kept
-    households alone and the cache file's last write, or ``None`` - with
+    households alone, the cache file's last write and what the kept facts
+    say of names (:data:`_FirmRead`), or ``None`` - with
     the refusal's name on the log - when any household is not kept.
 
     The file's time is taken **before** it is loaded and asked again after
@@ -6473,7 +6591,7 @@ def _firm_last(root: Path, today: dt.date) -> tuple[list[_FirmShown], dt.datetim
         after = None
     if after != before:
         return refuse("cache_rewritten")
-    return shown, dt.datetime.fromtimestamp(before / 1e9)
+    return shown, dt.datetime.fromtimestamp(before / 1e9), _firm_seen(order, entries, links, facts, showing)
 
 
 def _next_sort() -> str | None:

@@ -57,6 +57,26 @@ SCRATCH_RETURN = "1040 - John A. Smith"
 #: frozen smoke check proves the package reads it on the processor.
 SCRATCH_SCAN = "scan 0001.pdf"
 
+#: Made-up names written to be ordered, and the order the window's collator
+#: (``Intl.Collator(undefined, {numeric: true})``) gave them in Node 26 / ICU
+#: 78 (P278, SPEC-ui-menu-speed 4.4): numbers inside a name as numbers, white
+#: space then punctuation then symbols then digits then letters, then accents,
+#: then lower case before upper. Both languages hold their text order to this
+#: list: ``tracker.firm_pages.name_order`` in ``tests/test_firm_pages.py`` and the
+#: window's ``PAGES_COLLATOR`` in ``tests/test_shell.py``. No client is named.
+COLLATION_NAMES = [
+    "client 10", "Client 2", "client 2", "Éclair", "eclair", "Eclair", "Zoë", "zoe", "Ångström", "alpha", "Alpha", "(parens)", "-dash",
+    "_under", "10 Main", "9 Main", "Smith & Co", "Smith, Jane", "Smith-Jones", "O'Brien", "Obrien", "OBrien", "Müller", "Muller", "Mueller",
+    "Ñandú", "Nandu", "Straße", "Strasse", "Lopez  Family", "Lopez Family", "Lopez Family 2", "Zed", "Ørsted", "Orsted", "1040", "1040-A",
+    "1040 - Smith", "1065 - Smith", "Alpha 1", "alpha 12", "Alpha 2", "Lê", "Le", "Łukasz", "Lukasz", "Dvořák", "Dvorak",
+]
+COLLATION_ORDER = [
+    "_under", "-dash", "(parens)", "9 Main", "10 Main", "1040", "1040 - Smith", "1040-A", "1065 - Smith", "alpha", "Alpha", "Alpha 1", "Alpha 2",
+    "alpha 12", "Ångström", "client 2", "Client 2", "client 10", "Dvorak", "Dvořák", "eclair", "Eclair", "Éclair", "Le", "Lê", "Lopez  Family",
+    "Lopez Family", "Lopez Family 2", "Lukasz", "Łukasz", "Mueller", "Muller", "Müller", "Nandu", "Ñandú", "O'Brien", "Obrien", "OBrien", "Orsted",
+    "Ørsted", "Smith & Co", "Smith-Jones", "Smith, Jane", "Strasse", "Straße", "Zed", "zoe", "Zoë",
+]
+
 
 def text_pdf(path: Path, lines: list[str]) -> Path:
     """Minimal but valid PDF with a real text layer (no extra deps)."""

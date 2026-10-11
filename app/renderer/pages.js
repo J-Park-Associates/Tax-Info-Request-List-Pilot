@@ -56,17 +56,17 @@
 
 const PAGES_GROUPS = ["needs_you", "waiting", "received", "set_aside"];
 const PAGES_TONES = { needs: "is-attention", waiting: "is-waiting", done: "is-done", plain: "is-plain" };
-const PAGES_LATE = "9999-99-99";
 
 let pagesUid = 0;              // ids of the rows and headings of the page being drawn
 const pagesTokens = new Map(); // a row's id -> what it is about (rebuilt with every draw)
 let pagesFocus = null;         // where focus sat in a listbox before a redraw
-let pagesLastLevel = "";       // the level drawn last, for the Clients switch
+let pagesLastLevel = "";       // the level drawn last, for the Linked Households panel
+let pagesEntered = "";         // the level whose choices (page, tab, card, switch) are held: they are forgotten when it is left (pagesEnter)
 let pagesClientsAll = false;   // the Clients switch: false is Work waiting
 let pagesSetAsideOpen = false;
 let pagesBroken = [];          // the rows of the page being drawn that could not be built: {name, err}
 let pagesDrawn = "";           // which route the page holds, so a failed draw keeps only its own
-let pagesYearless = false;     // the list being drawn leaves out its Tax Year column: one year only (P268)
+let pagesYearless = false;     // the list being drawn leaves out its Tax Year column: one year only (P268; the engine says so, `page.many_years`)
 
 // The column headers of the four firm lists (pilot SPEC-lists; P135-P139):
 // each list's columns by the vocabulary's word (vocab.screen.columns); a
@@ -95,14 +95,8 @@ const PAGES_USUAL = { needs_review: { detail: 160, status: 200 } };
 const PAGES_WIDTH_STEP = 16;               // one Ctrl+Shift+Arrow: four grid steps
 const PAGES_WIDTHS_KEY = "tracker.columns"; // this PC's own storage, never the record
 const PAGES_ORDER_KEY = "tracker.order";    // the order each list was left in, kept the same way (P199)
-// Urgency, the order the app already uses (SPEC-lists 3): a return that cannot
-// be read or a paused household first, then what needs a person, what waits
-// on the taxpayer, what is complete.
-const PAGES_URGENCY = { problem: 0, needs: 1, waiting: 2, done: 3, plain: 4 };
 let pagesOrder = null;         // list -> {cell, dir}: read once from this PC's storage (P199)
 let pagesWidths = null;        // list -> {cell: px}: read once from this PC's storage (P139)
-// Rows per page of a firm list (pilot SPEC-lists 14, P152, P174; owner question Q11).
-const PAGES_PER_PAGE = 50;
 // A list of more than this many rows draws only the rows in view (P279, SPEC-ui-menu-speed 2.1);
 // one of this many or fewer is drawn whole, as it always was (Jason's question A). The editor reads it too.
 const PAGES_VIRTUAL_FROM = 100;
@@ -154,32 +148,42 @@ function pagesSince(iso) {
   return iso ? fill(screenWords().since, { date: pagesDay(iso) }) : "";
 }
 
-// Whether a list's rows hold more than one year (P268): a blank year (a paused
-// household, a return whose record has none) is not a year.
-function pagesYearsDiffer(specs) {
-  return new Set(specs.map((spec) => (spec.year ? String(spec.year) : "")).filter(Boolean)).size > 1;
-}
-
-// The firm reply the page is drawn from (shell.js keeps it; a page that
-// needs it is only drawn once it has arrived).
+// The firm answer the page is drawn from (shell.js keeps it; a page that
+// needs it is only drawn once it has arrived): the totals, the next sort and
+// each return's counts of the newest reply of any list, and `replies`, the
+// last reply of each firm list - one page of it (P278, SPEC-ui-menu-speed 4.3).
 function pagesFirm() {
   const data = shellFirm().data;
   if (!data) throw new Error("firm");
   return data;
 }
 
+// One firm list's reply: its page, its counts and the paths its rows name.
+// A list the answer holds no reply of is a loud failure, never an empty page.
+function pagesReply(list) {
+  const reply = pagesFirm().replies[list];
+  if (!reply) throw new Error(`firm.${list}`);
+  return reply;
+}
+
+// The page of a firm list the window holds (shown or on its way), or null.
+function pagesHeldPage(list) {
+  const data = shellFirm().data;
+  return data && data.replies && data.replies[list] ? data.replies[list].page : null;
+}
+
 // The firm's returns by path, built once for the reply on screen and read by
-// every comparator and row (a scan per call made a sort of n returns n log n
-// scans). The index belongs to the `returns` array it was built from, so a
-// reply adopted later has its own; the first return with a path answers, as the
-// scan did.
+// every row that needs a return's counts (a scan per call made a sort of n
+// returns n log n scans). The index belongs to the `return_counts` array it was
+// built from, so a reply adopted later has its own; the first return with a
+// path answers, as the scan did.
 function pagesFirmReturn(path) {
   const data = shellFirm().data;
   if (!data) return null;
-  if (pagesFirmReturn.from !== data.returns) {
-    pagesFirmReturn.from = data.returns;
+  if (pagesFirmReturn.from !== data.return_counts) {
+    pagesFirmReturn.from = data.return_counts;
     pagesFirmReturn.byPath = new Map();
-    for (const one of data.returns) if (!pagesFirmReturn.byPath.has(one.path)) pagesFirmReturn.byPath.set(one.path, one);
+    for (const one of data.return_counts) if (!pagesFirmReturn.byPath.has(one.path)) pagesFirmReturn.byPath.set(one.path, one);
   }
   return pagesFirmReturn.byPath.get(path) || null;
 }
@@ -224,33 +228,6 @@ function pagesTaxpayer(name, form) {
   const same = (text) => text.replace(/-/g, "").toLowerCase();
   const rest = cut > 0 && same(name.slice(0, cut)) === same(form) ? name.slice(cut + sep.length).trim() : "";
   return rest || name;
-}
-
-// A form's order key (P195): the order the app already lists forms in, the
-// side panel's Client Types (vocab.client_type_forms), then any other form
-// by its name; a blank form is blank, so it goes last both ways.
-function pagesFormKey(form) {
-  if (!form) return "";
-  if (!vocab.client_type_forms) throw new Error("client_type_forms");
-  // The flattened table is built once per vocabulary, not once per row a sort asks.
-  if (pagesFormKey.from !== vocab.client_type_forms) {
-    pagesFormKey.from = vocab.client_type_forms;
-    pagesFormKey.known = Object.values(vocab.client_type_forms).flat();
-  }
-  const at = pagesFormKey.known.indexOf(form);
-  return [at === -1 ? pagesFormKey.known.length : at, form];
-}
-
-// A household's path from its name, through an index of the list on screen
-// (the first household of a name answers, as the scan did).
-function pagesHouseholdPath(name) {
-  if (pagesHouseholdPath.from !== households) {
-    pagesHouseholdPath.from = households;
-    pagesHouseholdPath.byName = new Map();
-    for (const one of households) if (!pagesHouseholdPath.byName.has(one.name)) pagesHouseholdPath.byName.set(one.name, one);
-  }
-  const one = pagesHouseholdPath.byName.get(name);
-  return one ? one.path : "";
 }
 
 // The absolute path the API reported under a key, from the map that came with
@@ -491,13 +468,6 @@ function pagesOpenRowLinks(list, row) {
   if (!spec || !spec.links || !spec.links.length || !mark) return false;
   pagesShowPanel(mark, spec.links, list);
   return true;
-}
-
-// The households the firm reply says are paused (`paused: true` on each of
-// their returns, S6's field); an entry without the field is not paused, and
-// nothing is drawn for it.
-function pagesPaused(firm) {
-  return new Set(firm.returns.filter((one) => one.paused === true).map((one) => one.household));
 }
 
 // ── the row and the group (SPEC 3.6) ──────────────────────────────────
@@ -806,58 +776,14 @@ function pagesCaption(text) {
 // itself and the header's name never say Sort, which also names the filing pass.
 // A header orders its list by its column: the first click in the column's
 // natural direction, the second the reverse, the third back to the list's
-// usual order. The order is a view of the rows the engine already sent, so
-// it is worked out here and nowhere else; a list keeps it while the app is
-// open. A width is this PC's: kept in its own storage across restarts,
+// usual order. The engine works the order out (tracker/firm_pages.py, P278)
+// and sends the page in it; this file only keeps the choice, on this PC, and
+// asks. A width is this PC's: kept in its own storage across restarts,
 // forgotten by View › Reset Column Widths.
 
 // The firm list a route draws, or "" for a page with no column headers.
 function pagesListOf(route) {
   return { overview: "overview", "needs-review": "needs_review", reminders: "reminders", clients: "clients" }[route.level] || "";
-}
-
-// A status's order key: its urgency, then the larger count first, then its words.
-function pagesUrgent(rank, count, text) {
-  return text ? [rank, -(count || 0), text] : "";
-}
-
-function pagesIsBlank(value) {
-  return value === "" || value === null || value === undefined;
-}
-
-function pagesCompareKeys(x, y) {
-  if (Array.isArray(x)) {
-    for (let i = 0; i < x.length; i += 1) {
-      const by = pagesCompareKeys(x[i], y[i]);
-      if (by) return by;
-    }
-    return 0;
-  }
-  if (typeof x === "number" && typeof y === "number") return x - y;
-  return pagesByName(String(x), String(y));
-}
-
-// Compares two {spec, at} entries by one column: blanks always last, in
-// either direction; a tie keeps the usual order (`at`).
-function pagesCompare(cell, dir) {
-  return (a, b) => {
-    const x = a.spec.keys ? a.spec.keys[cell] : "";
-    const y = b.spec.keys ? b.spec.keys[cell] : "";
-    if (pagesIsBlank(x) || pagesIsBlank(y)) {
-      if (pagesIsBlank(x) && pagesIsBlank(y)) return a.at - b.at;
-      return pagesIsBlank(x) ? 1 : -1;
-    }
-    return dir * pagesCompareKeys(x, y) || a.at - b.at;
-  };
-}
-
-// A list's specs in the order its header asks for, or as they came.
-function pagesOrdered(list, specs) {
-  const order = pagesStoredOrder()[list];
-  // An order by Tax Year waits, kept, while the column is not drawn (P268).
-  if (!order || (pagesYearless && order.cell === "year")) return specs;
-  const by = pagesCompare(order.cell, order.dir);
-  return specs.map((spec, at) => ({ spec, at })).sort(by).map((entry) => entry.spec);
 }
 
 // A header was pressed: the next order in its cycle, the list drawn again,
@@ -875,11 +801,12 @@ function pagesOrderBy(list, cell) {
 // The header row of a list: one `role="columnheader"` cell per column in the
 // rows' own grid, each a button (a Tab stop; Enter and Space press it) with
 // the vocabulary's word, the drawn arrow of its order and a grip on its
-// right edge. `aria-sort` says which column orders the list and which way.
-function pagesColumnHeads(list) {
+// right edge. `aria-sort` says which column orders the list and which way:
+// the order of the page drawn (`order`, as the engine echoed it), not the one
+// just asked for.
+function pagesColumnHeads(list, order = pagesStoredOrder()[list]) {
   const words = screenWords();
   const said = words.columns;
-  const order = pagesStoredOrder()[list];
   const cells = Object.keys(PAGES_COLUMNS[list]).filter((cell) => !(pagesYearless && cell === "year")).map((cell) => {
     const key = PAGES_COLUMNS[list][cell];
     if (!key) return h("div", { className: "col-cell", role: "columnheader", dataset: { cell } }, pagesGrip(list, cell));
@@ -1052,35 +979,12 @@ function pagesResetWidths() {
   pagesApplyWidths($("page"), pagesListOf(shellRoute));
 }
 
-// ── page buttons (pilot SPEC-lists 14; P152, P174) ────────────────────
-// A list's items divided into pages after its order, tabs and filters: the
-// part shown and its footer. `sizeOf` counts an item (Needs Review counts a
-// return group by its files, and never splits one); a page holds items
-// while their count stays within PAGES_PER_PAGE, and an item larger than a
-// page is a page of its own.
-function pagesPaged(list, items, sizeOf) {
-  const size = sizeOf || (() => 1);
-  const pages = [];
-  let part = [];
-  let held = 0;
-  for (const one of items) {
-    const n = size(one);
-    if (part.length && held + n > PAGES_PER_PAGE) {
-      pages.push(part);
-      part = [];
-      held = 0;
-    }
-    part.push(one);
-    held += n;
-  }
-  if (part.length) pages.push(part);
-  const at = Math.min(pagesPageAt[list] || 0, Math.max(0, pages.length - 1));
-  pagesPageAt[list] = at;
-  const count = (group) => group.reduce((n, one) => n + size(one), 0);
-  const before = pages.slice(0, at).reduce((n, group) => n + count(group), 0);
-  const shown = pages[at] || [];
-  const total = count(items);
-  return { part: shown, foot: total ? pagesFoot(list, before + 1, before + count(shown), total, at, pages.length) : null };
+// ── page buttons (pilot SPEC-lists 14; P152, P174; P278) ──────────────
+// The engine divides a list into pages after its filter and its order (50 a
+// page; Needs Review by whole returns) and sends one: `page` says where it
+// is. The footer is the count line and, past one page, Previous and Next.
+function pagesFootOf(list, page) {
+  return page.total ? pagesFoot(list, page.from, page.to, page.total, page.at, page.pages) : null;
 }
 
 // "Showing 1-50 of 750 Returns", with Previous and Next (disabled at the ends).
@@ -1099,35 +1003,40 @@ function pagesFoot(list, from, to, total, at, count) {
     count > 1 ? h("span", { className: "page-steps" }, step(-1, "previous"), step(1, "next")) : null);
 }
 
-// Previous or Next: the page drawn again at its top, focus kept on the
-// button pressed, or on the other one once this one is disabled.
+// Previous or Next: the page after this one asked of the engine; when it
+// lands it is drawn at its top, focus kept on the button pressed, or on the
+// other one once this one is disabled. The turn counts from the page last asked
+// for, else the page drawn.
 function pagesTurn(list, by, key) {
-  pagesPageAt[list] = Math.max(0, (pagesPageAt[list] || 0) + by);
-  const page = $("page");
-  pagesDraw(shellRoute, page);
-  page.scrollTop = 0;
-  const same = page.querySelector(`.page-step[data-step="${key}"]`);
-  const other = page.querySelector(`.page-step[data-step="${key === "next" ? "previous" : "next"}"]`);
-  const to = same && !same.disabled ? same : other;
-  if (to) to.focus();
+  // Counted from the page last asked for (so Next then a quick Previous asks for the page it started from), else from the page drawn.
+  const held = pagesHeldPage(list);
+  pagesPageAt[list] = Math.max(0, (list in pagesPageAt ? pagesPageAt[list] : held ? held.at : 0) + by);
+  shellTurnFirm(list, () => {
+    const page = $("page");
+    page.scrollTop = 0;
+    const same = page.querySelector(`.page-step[data-step="${key}"]`);
+    const other = page.querySelector(`.page-step[data-step="${key === "next" ? "previous" : "next"}"]`);
+    const to = same && !same.disabled ? same : other;
+    if (to) to.focus();
+  });
 }
 
 // A choice that narrows a list (a tab, a reason card, a Client Type): the
-// list starts again at its first page, is drawn again, and focus goes back
-// to the control that was pressed (found by its data-pick).
+// list starts again at its first page, the engine is asked for it, and focus
+// goes back to the control that was pressed (found by its data-pick) when it lands.
 function pagesPick(list, set, pick) {
   set();
   pagesRedraw(list, `[data-pick="${pick}"]`);
 }
 
-// The list starts again at its first page and the page is drawn again, with
-// focus back on the control (`selector`) that was pressed.
+// The list starts again at its first page and the engine is asked for it;
+// when it lands, focus goes back to the control (`selector`) that was pressed.
 function pagesRedraw(list, selector) {
-  delete pagesPageAt[list];
-  const page = $("page");
-  pagesDraw(shellRoute, page);
-  const again = page.querySelector(selector);
-  if (again) again.focus();
+  pagesPageAt[list] = 0;   // asked for, not forgotten: a Next pressed before it lands counts from it
+  shellTurnFirm(list, () => {
+    const again = $("page").querySelector(selector);
+    if (again) again.focus();
+  });
 }
 
 // A button that is pressed or not and picks one choice of a list's filter
@@ -1139,12 +1048,13 @@ function pagesPickButton(list, className, pressed, pick, set, ...children) {
   return node;
 }
 
-// Overview's filter tabs: All, Need You (n), Waiting (n) (P145).
-function pagesTabs(need, waiting) {
+// Overview's filter tabs: All, Need You (n), Waiting (n) (P145); the counts
+// and the pressed tab are the page's (`page.counts`, `page.filter.tab`).
+function pagesTabs(page) {
   const words = screenWords();
-  const tab = (key, label) => pagesPickButton("overview", "switch-option", pagesTab === key, `tab-${key}`, () => { pagesTab = key; }, label);
+  const tab = (key, label) => pagesPickButton("overview", "switch-option", page.filter.tab === key, `tab-${key}`, () => { pagesTab = key; }, label);
   return h("div", { className: "switch is-tabs", role: "group", "aria-label": words.work },
-    tab("all", words.filters.all), tab("need", fill(words.tabs.need, { n: need })), tab("waiting", fill(words.tabs.waiting, { n: waiting })));
+    tab("all", words.filters.all), tab("need", fill(words.tabs.need, { n: page.counts.need })), tab("waiting", fill(words.tabs.waiting, { n: page.counts.waiting })));
 }
 
 // ── a firm return's row (P194, P195) ──────────────────────────────────
@@ -1161,56 +1071,33 @@ function pagesReturnCells(one) {
            nameLink: { kind: "return", path: one.path, tip } };
 }
 
-// What those three cells order by: the year's number, the taxpayer as shown,
-// the form's place in the app's order of forms.
-function pagesReturnKeys(cells) {
-  return { year: cells.year, taxpayer: cells.name, form: pagesFormKey(cells.form) };
-}
-
 // ── Overview (SPEC 6.1) ───────────────────────────────────────────────
-function pagesWorkRows(returns) {
-  const name = (one) => pagesReturnName(one.path);
-  // A return whose record could not be read has no counts, and is the first
-  // thing a person must see: it leads the first bucket, saying its problem.
-  const soonest = (one) => (one.problem ? "" : one.oldest || PAGES_LATE);
-  const need = returns.filter((one) => one.counts.needs_you > 0 || one.problem)
-    .sort((a, b) => soonest(a).localeCompare(soonest(b)) || pagesByName(name(a), name(b)));
-  const wait = returns.filter((one) => !one.problem && !one.counts.needs_you && one.counts.waiting > 0)
-    .sort((a, b) => (a.due || PAGES_LATE).localeCompare(b.due || PAGES_LATE) || pagesByName(name(a), name(b)));
+// The page's rows as the engine sent them (P278), each worded and given its
+// step. A household paused for two open years is one row, first, worded by the
+// vocabulary, opening the household (ruling 21); a return needing a person or
+// waiting on the taxpayer is a row of its bucket, saying since when or due when.
+// The page's own order is the engine's: nothing is sorted here.
+function pagesWorkRows(rows) {
   const steps = { kind: "open" };
-  // `keys`: what each column orders by (SPEC-lists 3) - the year, the shown
-  // taxpayer, the form's place, the urgency and the ISO date the row was
-  // drawn from, never the drawn "Mar 3".
-  const specOf = (one, date, iso) => {
-    const said = pagesCounts(one.counts, one.problem);
-    const rank = one.problem ? PAGES_URGENCY.problem : PAGES_URGENCY[said.tone];
-    const cells = pagesReturnCells(one);
-    return { ...cells, status: said.text, tone: said.tone, date, menu: "return", pill: true,
-             step: { ...steps, route: pagesRoute(one.path) },
-             keys: { ...pagesReturnKeys(cells), status: pagesUrgent(rank, one.counts.needs_you || one.counts.waiting, said.text), end: iso || "" } };
+  const paused = (row) => {
+    // A household in the return columns: no year and no form of its own; its
+    // name stands in the Taxpayer column (P195).
+    if (!row.household_path) throw new Error("household");
+    return { returnRow: true, year: "", name: row.household, form: "", status: screenWords().notices.paused, tone: "needs", date: "", menu: "household", pill: true,
+             nameLink: { kind: "household", path: row.household_path }, step: { kind: "open", route: { level: "household", household: row.household_path } } };
   };
-  return [...pagesEach(need, name, (one) => specOf(one, pagesSince(one.oldest), one.oldest)), ...pagesEach(wait, name, (one) => specOf(one, pagesDue(one.due), one.due))];
-}
-
-// A household paused for two open years is work waiting for a person: one row
-// on the Overview, first, worded by the vocabulary, opening the household
-// (ruling 21). Nothing is hidden on its own pages.
-function pagesPausedRows(firm) {
-  const word = screenWords().notices.paused;
-  return pagesEach([...pagesPaused(firm)].sort(pagesByName), (name) => name, (name) => {
-    const path = pagesHouseholdPath(name);
-    if (!path) throw new Error("household");
-    // A household's row in the return columns: no year and no form of its
-    // own; its name stands in the Taxpayer column (P195).
-    return { returnRow: true, year: "", name, form: "", status: word, tone: "needs", date: "", menu: "household", pill: true, nameLink: { kind: "household", path },
-             step: { kind: "open", route: { level: "household", household: path } },
-             keys: { year: "", taxpayer: name, form: "", status: pagesUrgent(PAGES_URGENCY.problem, 0, word), end: "" } };
-  });
+  const made = (one) => {
+    const said = pagesCounts(one.counts, one.problem);
+    return { ...pagesReturnCells(one), status: said.text, tone: said.tone, date: one.bucket === "wait" ? pagesDue(one.due) : pagesSince(one.oldest), menu: "return", pill: true,
+             step: { ...steps, route: pagesRoute(one.path) } };
+  };
+  return pagesEach(rows, (row) => (row.kind === "paused" ? row.household : pagesReturnName(row.path)), (row) => (row.kind === "paused" ? paused(row) : made(row)));
 }
 
 function pagesOverview() {
   const words = screenWords();
   const firm = pagesFirm();
+  const { page } = pagesReply("overview");
   const totals = firm.totals;
   // The three counts, each in a raised card with its status's icon (P145).
   const figures = h("div", { className: "figures" }, ...[[totals.need, words.figures.need, "needs", "alert"], [totals.waiting, words.figures.waiting, "waiting", "clock"],
@@ -1218,64 +1105,28 @@ function pagesOverview() {
     .map(([n, label, tone, name]) => h("div", { className: "figure" },
       h("span", { className: "figure-top" }, h("span", { className: "figure-label" }, label), h("span", { className: `figure-icon ${PAGES_TONES[tone]}` }, icon(name))),
       h("b", { className: "figure-number" }, String(n)))));
-  const all = [...pagesPausedRows(firm), ...pagesWorkRows(firm.returns)];
-  pagesYearless = !pagesYearsDiffer(all);   // counted over the whole list, before its tab and its pages (P268)
+  pagesYearless = !page.many_years;   // the engine counted over the whole list, before its tab and its pages (P268)
   const asOf = pagesAsOf();
   // An Overview with no work says the time under its empty line: no row is below it.
-  if (!all.length) return [figures, pagesEmpty(words.empty.overview, pagesNextSort(firm), asOf ? h("p", { className: "page-empty-note page-as-of" }, asOf) : null)];
-  // The tab narrows the whole list, then the order and the pages apply.
-  const need = all.filter((spec) => spec.tone === "needs");
-  const waiting = all.filter((spec) => spec.tone === "waiting");
-  const shown = pagesTab === "need" ? need : pagesTab === "waiting" ? waiting : all;
-  const { part, foot } = pagesPaged("overview", pagesOrdered("overview", shown));
-  const rows = pagesEach(part, (spec) => spec.name, pagesRow);
-  return [figures, ...pagesGroup({ heading: words.work, caption: String(shown.length), first: true, tools: pagesTabs(need.length, waiting.length),
+  if (!page.counts.all) return [figures, pagesEmpty(words.empty.overview, pagesNextSort(firm), asOf ? h("p", { className: "page-empty-note page-as-of" }, asOf) : null)];
+  const rows = pagesEach(pagesWorkRows(page.rows), (spec) => spec.name, pagesRow);
+  return [figures, ...pagesGroup({ heading: words.work, caption: String(page.total), first: true, tools: pagesTabs(page),
                                    note: asOf ? h("span", { className: "page-as-of" }, asOf) : null,
-                                   heads: pagesColumnHeads("overview"), none: words.empty.work, blocks: [{ rows }] }), foot];
+                                   heads: pagesColumnHeads("overview", page.order), none: words.empty.work, blocks: [{ rows }] }), pagesFootOf("overview", page)];
 }
 
 // ── Needs review (SPEC 6.2) ───────────────────────────────────────────
-function pagesReviewGroups(firm) {
-  const byReturn = new Map();
-  for (const file of firm.files) {
-    if (!byReturn.has(file.return)) byReturn.set(file.return, []);
-    byReturn.get(file.return).push(file);
-  }
-  const oldest = (list) => list.reduce((least, one) => (one.received < least ? one.received : least), PAGES_LATE);
-  return [...byReturn.entries()]
-    .map(([path, list]) => ({ path, files: list.slice().sort((a, b) => a.received.localeCompare(b.received) || pagesByName(a.name, b.name)) }))
-    .sort((a, b) => oldest(a.files).localeCompare(oldest(b.files)) || pagesByName(pagesReturnName(a.path), pagesReturnName(b.path)));
-}
-
 // One waiting file's row. A file's name is a link to its working copy when the
-// firm's reply names one (`open_key` and the reply's `paths`, ruling 15);
-// with none it is text.
-function pagesReviewSpec(firm, group, file) {
+// reply names one (`open_key` and the reply's `paths`, ruling 15); with none it
+// is text.
+function pagesReviewSpec(reply, group, file) {
   const reason = pagesReason(file.code);
   return {
     name: file.name, detail: file.suggestion_short || file.suggestion || "", detailTip: file.suggestion || "", detailTag: true,
     status: reason, reason: file.code, tone: "needs", date: pagesDay(file.received), pill: true, reasonIcon: PAGES_REASON_ICONS[file.code] || "alert", fileIcon: true,
-    menu: "file", fileKind: "parked", nameLink: pagesFileLink(firm.paths, file.open_key),
+    menu: "file", fileKind: "parked", nameLink: pagesFileLink(reply.paths, file.open_key),
     step: { kind: "check", ret: group.path, name: file.name, handle: file.handle },
-    keys: { name: file.name, detail: file.suggestion || "", status: pagesUrgent(PAGES_URGENCY.needs, 0, reason), end: file.received || "" },
   };
-}
-
-// The returns of Needs Review in the chosen order (SPEC-lists 3): each
-// return's files ordered among themselves, and the returns following their
-// first file; with no order chosen, today's order.
-function pagesOrderedGroups(planned) {
-  const order = pagesStoredOrder().needs_review;
-  if (!order) return planned;
-  const by = pagesCompare(order.cell, order.dir);
-  return planned.map((one, at) => ({ one, at }))
-    .sort((a, b) => {
-      const x = a.one.specs[0];
-      const y = b.one.specs[0];
-      if (!x || !y) return x === y ? a.at - b.at : (x ? -1 : 1);
-      return by({ spec: x, at: a.at }, { spec: y, at: b.at });
-    })
-    .map((entry) => entry.one);
 }
 
 // "13 Files", "1 File": the count beside a title (P149).
@@ -1285,15 +1136,15 @@ function pagesFileCount(n) {
 }
 
 // The reason cards across the top of Needs Review (P149): All, then one per
-// reason present with its count, each a filter (aria-pressed).
-function pagesReasonCards(counts, total) {
+// reason present with its count, most files first (the engine's order), each a
+// filter (aria-pressed).
+function pagesReasonCards(reasons, total, pick) {
   const words = screenWords();
-  const card = (code, label, n, name) => pagesPickButton("needs_review", "reason-card", pagesReasonPick === code, `reason-${code || "all"}`, () => { pagesReasonPick = code; },
+  const card = (code, label, n, name) => pagesPickButton("needs_review", "reason-card", pick === code, `reason-${code || "all"}`, () => { pagesReasonPick = code; },
     h("span", { className: "reason-card-top" }, name ? h("span", { className: "reason-card-icon is-attention" }, icon(name, true)) : null, h("span", { className: "reason-card-word" }, label)),
     h("b", { className: "reason-card-number" }, String(n)));
-  const reasons = [...counts.entries()].map(([code, n]) => [code, pagesReason(code), n]).sort((a, b) => b[2] - a[2] || pagesByName(a[1], b[1]));
   return h("div", { className: "reason-cards", role: "group", "aria-label": words.sections.needs_review },
-    card("", words.filters.all, total, ""), ...reasons.map(([code, label, n]) => card(code, label, n, PAGES_REASON_ICONS[code] || "alert")));
+    card("", words.filters.all, total, ""), ...reasons.map(([code, n]) => card(code, pagesReason(code), n, PAGES_REASON_ICONS[code] || "alert")));
 }
 
 // A return group's heading on Needs Review (P149, P272): an ordinary group,
@@ -1304,12 +1155,12 @@ function pagesReasonCards(counts, total) {
 // (the return's; no new action). `first` is the page's first group.
 function pagesReviewGroup(group, specs, first) {
   const words = screenWords();
-  const owner = pagesFirmReturn(group.path);
   const rows = pagesEach(specs, (spec) => spec.name, pagesRow);
-  const household = owner ? owner.household : "";
-  const house = pagesHouseholdPath(household);
+  // The heading needs nothing else of the firm: the group carries its household, its household's folder and links, its year and form (P278).
+  const household = group.household;
+  const house = group.household_path;
   const caption = household ? [house ? pagesHeadLink({ kind: "household", path: house }, household) : household] : [];
-  if (owner && owner.links && owner.links.length) caption.push(pagesLinkMark(owner.links, false, household));
+  if (group.links && group.links.length) caption.push(pagesLinkMark(group.links, false, household));
   const count = rows.length === 1 ? words.documents.one : fill(words.documents.many, { n: rows.length });
   caption.push(household ? ` \u00b7 ${count}` : count);
   pagesUid += 1;
@@ -1323,7 +1174,7 @@ function pagesReviewGroup(group, specs, first) {
     const box = more.getBoundingClientRect();
     popup(box.left, box.bottom);
   });
-  const nodes = pagesGroup({ heading: pagesReturnHeading(group.path, owner ? owner.year : 0, owner ? owner.form : ""),
+  const nodes = pagesGroup({ heading: pagesReturnHeading(group.path, group.year, group.form),
                              caption, first, tools: [more], blocks: [{ rows }] });
   nodes[0].addEventListener("contextmenu", (e) => {
     e.preventDefault();
@@ -1335,123 +1186,86 @@ function pagesReviewGroup(group, specs, first) {
 function pagesNeedsReview() {
   const words = screenWords();
   const firm = pagesFirm();
-  const all = pagesReviewGroups(firm);
-  if (!all.length) return [pagesEmpty(words.empty.needs_review, pagesNextSort(firm))];
-  // The reason cards count the whole page; a card narrows it, then the
-  // order and the pages apply (P149, P174).
-  const counts = new Map();
-  for (const group of all) for (const file of group.files) counts.set(file.code, (counts.get(file.code) || 0) + 1);
-  if (pagesReasonPick && !counts.has(pagesReasonPick)) pagesReasonPick = "";
-  const groups = pagesReasonPick
-    ? all.map((group) => ({ ...group, files: group.files.filter((file) => file.code === pagesReasonPick) })).filter((group) => group.files.length)
-    : all;
-  const total = groups.reduce((n, group) => n + group.files.length, 0);
-  const planned = pagesOrderedGroups(groups.map((group) => ({
-    group, specs: pagesOrdered("needs_review", pagesEach(group.files, (file) => file.name, (file) => pagesReviewSpec(firm, group, file))),
-  })));
-  const { part, foot } = pagesPaged("needs_review", planned, (one) => one.specs.length);
+  const reply = pagesReply("needs_review");
+  const { page } = reply;
+  if (!page.counts.all) return [pagesEmpty(words.empty.needs_review, pagesNextSort(firm))];
   const head = h("div", { className: "group-head is-first page-head" }, h("h2", { className: "list-title" }, words.sections.needs_review),
-    h("span", { className: "list-count" }, pagesFileCount(total)));
-  const allFiles = all.reduce((n, group) => n + group.files.length, 0);
+    h("span", { className: "list-count" }, pagesFileCount(page.total)));
   // The first heading drawn sits 24px under the column headers; a group that
   // cannot be built is named in a notice and the next one is the first.
   let first = true;
-  const groupNodes = part.flatMap(({ group, specs }) => {
+  const groupNodes = page.rows.flatMap((group) => {
+    const specs = pagesEach(group.files, (file) => file.name, (file) => pagesReviewSpec(reply, group, file));
     const nodes = pagesSafe(pagesReturnName(group.path), () => pagesReviewGroup(group, specs, first));
     if (nodes) first = false;
     return nodes || [];
   });
-  return [head, pagesReasonCards(counts, allFiles), pagesColumnHeads("needs_review"), ...groupNodes, foot];
+  return [head, pagesReasonCards(page.counts.reasons, page.counts.all, page.filter.reason), pagesColumnHeads("needs_review", page.order), ...groupNodes, pagesFootOf("needs_review", page)];
 }
 
 // ── Reminders (SPEC 6.3) ──────────────────────────────────────────────
-function pagesReminderSpecs(firm) {
-  const ready = firm.returns.filter((one) => one.draft && one.draft.ready);
-  return pagesEach(ready.sort((a, b) => pagesByName(pagesReturnName(a.path), pagesReturnName(b.path))), (one) => pagesReturnName(one.path), (one) => {
+// The page's rows as the engine sent them (P278): the returns whose draft is
+// ready, worded; the order is the engine's.
+function pagesReminderSpecs(rows) {
+  return pagesEach(rows, (one) => pagesReturnName(one.path), (one) => {
     const held = one.draft.held > 0;
     const status = held ? screenWords().held : pagesStage(one.draft.stage);
-    const cells = pagesReturnCells(one);
     return {
-      ...cells,
+      ...pagesReturnCells(one),
       status, tone: held ? "needs" : "waiting", date: pagesDay(one.draft.drafted), menu: "return", pill: true,
       step: { kind: "draft", ret: one.path },
-      // Held first (a person must act), then the later stage first: a later
-      // reminder is the more overdue taxpayer (SPEC-lists 3).
-      keys: { ...pagesReturnKeys(cells), status: pagesUrgent(held ? PAGES_URGENCY.needs : PAGES_URGENCY.waiting, held ? 0 : one.draft.stage, status),
-              end: one.draft.drafted || "" },
     };
   });
 }
 
 function pagesReminders() {
   const words = screenWords();
-  const drafts = pagesReminderSpecs(pagesFirm());
-  pagesYearless = !pagesYearsDiffer(drafts);   // over every ready draft (P268)
-  const specs = pagesOrdered("reminders", drafts);
-  if (!specs.length) return [pagesEmpty(words.empty.reminders)];
-  const { part, foot } = pagesPaged("reminders", specs);
-  return [h("div", { className: "page-gap" }), pagesColumnHeads("reminders"),
-    pagesList({ label: words.sections.reminders }, pagesEach(part, (spec) => spec.name, pagesRow)), foot];
+  const { page } = pagesReply("reminders");
+  pagesYearless = !page.many_years;   // over every ready draft (P268)
+  if (!page.total) return [pagesEmpty(words.empty.reminders)];
+  return [h("div", { className: "page-gap" }), pagesColumnHeads("reminders", page.order),
+    pagesList({ label: words.sections.reminders }, pagesEach(pagesReminderSpecs(page.rows), (spec) => spec.name, pagesRow)), pagesFootOf("reminders", page)];
 }
 
 // ── Clients (SPEC 6.4) ────────────────────────────────────────────────
-// Each spec carries `work` (a household with something waiting, a problem or a
-// pause), so one call serves the Work Waiting count and either tab's list
-// (pagesClients draws once from one call). The firm's returns are grouped by
-// household once: a scan of them for each of the n households was n times r.
-function pagesClientSpecs(firm, all) {
+// The page's households as the engine sent them (P278), which grouped the
+// firm's returns by household once, from the same walk: a household's count of
+// returns, what needs a person, what waits and the first return that could not
+// be read, and whether it is paused. Worded here, in the order given.
+function pagesClientSpecs(rows) {
   const words = screenWords().counts;
-  const ownReturns = new Map();
-  for (const one of firm.returns) {
-    if (!ownReturns.has(one.household)) ownReturns.set(one.household, []);
-    ownReturns.get(one.household).push(one);
-  }
-  const own = (name) => ownReturns.get(name) || [];
-  const pausedNames = pagesPaused(firm);
-  const kind = pagesClientType ? (vocab.client_type_forms || {})[pagesClientType] : null;
-  if (pagesClientType && !kind) throw new Error(`client_type_forms.${pagesClientType}`);
-  // A Client Type keeps the households with a return of one of its forms,
-  // by the form each return's record holds - never read from a name (P153).
-  const ofType = (one) => !kind || (one.returns || []).some((ret) => kind.indexOf(ret.form) !== -1);
-  return pagesEach(households.filter(ofType).sort((a, b) => pagesByName(a.name, b.name)), (one) => one.name, (one) => {
-    const returns = own(one.name);
-    const need = returns.reduce((n, r) => n + r.counts.needs_you, 0);
-    const wait = returns.reduce((n, r) => n + r.counts.waiting, 0);
-    const problem = returns.find((r) => r.problem);
+  return pagesEach(rows, (one) => one.name, (one) => {
     // A household with a return whose record cannot be read is never
     // Complete: that return's problem is its status (as pagesCounts says it).
-    const said = need ? { text: fill(words.need, { n: need }), tone: "needs" }
-      : problem ? { text: problem.problem, tone: "needs" }
-        : wait ? { text: fill(words.waiting, { n: wait }), tone: "waiting" }
-          : returns.length ? { text: words.complete, tone: "done" } : { text: "", tone: "plain" };
-    const paused = pausedNames.has(one.name);
-    const rank = !need && problem ? PAGES_URGENCY.problem : PAGES_URGENCY[said.tone];
+    const said = one.need ? { text: fill(words.need, { n: one.need }), tone: "needs" }
+      : one.problem ? { text: one.problem, tone: "needs" }
+        : one.wait ? { text: fill(words.waiting, { n: one.wait }), tone: "waiting" }
+          : one.returns ? { text: words.complete, tone: "done" } : { text: "", tone: "plain" };
     return {
-      work: need + wait > 0 || Boolean(problem) || paused,
-      name: one.name, detail: returns.length ? fill(returns.length === 1 ? words.one_return : words.returns, { n: returns.length }) : "",
-      mark: paused ? screenWords().notices.paused : "",
+      name: one.name, detail: one.returns ? fill(one.returns === 1 ? words.one_return : words.returns, { n: one.returns }) : "",
+      mark: one.paused ? screenWords().notices.paused : "",
       status: said.text, tone: said.tone, date: "", menu: "household", pill: true, links: one.links || [], linksIn: "name",
       nameLink: { kind: "household", path: one.path },
       step: { kind: "open", route: { level: "household", household: one.path } },
-      keys: { name: one.name, detail: returns.length || "", status: pagesUrgent(rank, need || wait, said.text), end: "" },
     };
-  }).filter((one) => all || one.work);
+  });
 }
 
-// The Clients switch: Work Waiting (with its count, P153) and All.
-function pagesSwitch(work) {
+// The Clients switch: Work Waiting (with its count, P153) and All; the pressed
+// one is the page's (`page.filter.all`).
+function pagesSwitch(work, everyone) {
   const words = screenWords().filters;
-  const option = (label, all, count) => pagesPickButton("clients", "switch-option", pagesClientsAll === all, all ? "all" : "work", () => { pagesClientsAll = all; },
+  const option = (label, all, count) => pagesPickButton("clients", "switch-option", everyone === all, all ? "all" : "work", () => { pagesClientsAll = all; },
     label, count === undefined ? null : h("span", { className: "switch-count" }, String(count)));
   return h("div", { className: "switch", role: "group", "aria-label": screenWords().sections.clients }, option(words.work, false, work), option(words.all, true));
 }
 
 // The Client Type filter on Clients, with its dismiss (P153; SPEC-lists 15.3).
-function pagesTypeFilter() {
-  if (!pagesClientType) return null;
+function pagesTypeFilter(type) {
+  if (!type) return null;
   const words = screenWords();
-  const label = (words.client_types || {})[pagesClientType];
-  if (!label) throw new Error(`client_types.${pagesClientType}`);
+  const label = (words.client_types || {})[type];
+  if (!label) throw new Error(`client_types.${type}`);
   const dismiss = h("button", { type: "button", className: "icon-button type-dismiss", "aria-label": words.icons.remove_filter, dataset: { pick: "type" } }, icon("dismiss", true));
   setTip(dismiss, words.icons.remove_filter);
   dismiss.addEventListener("click", () => pagesPick("clients", () => { pagesClientType = ""; }, "all"));
@@ -1460,23 +1274,19 @@ function pagesTypeFilter() {
 
 function pagesClients() {
   const words = screenWords();
-  const firm = pagesFirm();
   if (!households.length) {
     const start = h("button", { type: "button", className: "btn" }, vocab.menu.new_household);
     start.addEventListener("click", () => openNewHousehold());
     return [pagesEmpty(words.empty.clients, "", start)];
   }
-  // One order for both tabs of the switch (SPEC-lists 3); the type and the
-  // tab narrow the whole list, then the order and the pages apply.
-  const every = pagesClientSpecs(firm, true);
-  const work = every.filter((one) => one.work).length;
-  const specs = pagesOrdered("clients", pagesClientsAll ? every : every.filter((one) => one.work));
-  const bar = h("div", { className: "clients-bar" }, pagesSwitch(work), pagesTypeFilter());
-  if (!specs.length) return [bar, pagesEmpty(words.empty.work)];
-  const { part, foot } = pagesPaged("clients", specs);
+  // The engine narrowed the whole list by the type and the tab, ordered it and
+  // cut the page; both tabs of the switch share one order (SPEC-lists 3).
+  const { page } = pagesReply("clients");
+  const bar = h("div", { className: "clients-bar" }, pagesSwitch(page.counts.work, page.filter.all), pagesTypeFilter(page.filter.type));
+  if (!page.total) return [bar, pagesEmpty(words.empty.work)];
   const rows = document.createDocumentFragment();
-  for (const row of pagesEach(part, (spec) => spec.name, pagesRow)) rows.append(row);
-  return [bar, pagesColumnHeads("clients"), pagesList({ label: words.sections.clients }, [rows]), foot];
+  for (const row of pagesEach(pagesClientSpecs(page.rows), (spec) => spec.name, pagesRow)) rows.append(row);
+  return [bar, pagesColumnHeads("clients", page.order), pagesList({ label: words.sections.clients }, [rows]), pagesFootOf("clients", page)];
 }
 
 // ── Household and year (SPEC 6.5, 6.6) ────────────────────────────────
@@ -1903,19 +1713,38 @@ function pagesRouteKey(route) {
   return [route.level, route.household || "", route.year || "", route.ret || ""].join("|");
 }
 
+// A firm page's pages, tab and reason card are forgotten when it is left, the
+// Clients switch when Clients is entered, and a Client Type when another firm
+// page is opened (P174, P145, P149, P153). The shell enters a firm list before
+// it asks the engine for its first page (P278), the draw enters it again: the
+// second time nothing changes.
+function pagesEnter(route) {
+  if (route.level === pagesEntered) return;
+  if (route.level === "clients") pagesClientsAll = false;
+  pagesPageAt = {};
+  pagesTab = "all";
+  pagesReasonPick = "";
+  if (["overview", "needs-review", "reminders"].indexOf(route.level) !== -1) pagesClientType = "";
+  pagesEntered = route.level;
+}
+
+// A reply has landed for a list (P278). Two things the engine corrects of what
+// was asked, and only these: a page past the end is the last page, and a
+// reason card whose reason is no longer among the files is All. Everything else
+// the person has since chosen stays chosen. Only for the firm page on screen:
+// the choices of a list that was left are already forgotten.
+function pagesAdopt(reply) {
+  const { list, at, pages, counts } = reply.page;
+  if (pagesListOf(shellRoute) !== list) return;
+  if (at < (pagesPageAt[list] || 0) && at === Math.max(0, pages - 1)) pagesPageAt[list] = at;
+  if (list === "needs_review" && pagesReasonPick && !counts.reasons.some(([code]) => code === pagesReasonPick)) pagesReasonPick = "";
+}
+
 // shell.js: draw the route's page into #page. A page that cannot be built
 // whole keeps what it held (the same page) or draws its frame, its H1, and
 // says so; it is never emptied for one bad row (SPEC 6, failed read).
 function pagesDraw(route, page) {
-  if (route.level === "clients" && pagesLastLevel !== "clients") pagesClientsAll = false;
-  // A firm page's pages, tab and reason card are forgotten when it is left;
-  // a Client Type when another firm page is opened (P174, P145, P149, P153).
-  if (route.level !== pagesLastLevel) {
-    pagesPageAt = {};
-    pagesTab = "all";
-    pagesReasonPick = "";
-    if (["overview", "needs-review", "reminders"].indexOf(route.level) !== -1) pagesClientType = "";
-  }
+  pagesEnter(route);
   // An open Linked Households panel outlives a redraw of the same page (the
   // review's S2): it is opened again on the same household's mark, or, when
   // that mark is gone, focus goes to the page's list rather than be lost.

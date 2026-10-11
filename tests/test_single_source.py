@@ -1669,6 +1669,7 @@ def test_documents_name_only_runtime_files_the_code_owns():
     from tracker.checkpoint import CHECKPOINT_FILENAME
     from tracker.filer import README_LOCK_FILENAME
     from tracker.firm_cache import CACHE_FILENAME
+    from tracker.firm_pages import PAGES_FILENAME
     from tracker.ledger import LEDGER_FILENAME
     from tracker.locking import LOCK_FILENAME, RACE_LOCK_FILENAME
     from tracker.page_rows import ROWS_FILENAME
@@ -1691,7 +1692,9 @@ def test_documents_name_only_runtime_files_the_code_owns():
              # Decision 209: the after-install step's note, and the build's.
              RECORD_FILENAME, BUILD_INFO_FILENAME,
              # P120: the firm view's cache. P227: the practice page's kept rows.
-             CACHE_FILENAME, ROWS_FILENAME}
+             CACHE_FILENAME, ROWS_FILENAME,
+             # P278: the view the firm lists' page turns read.
+             PAGES_FILENAME}
     tracked = subprocess.run(["git", "ls-files"], cwd=REPO, capture_output=True, text=True).stdout.split()
     repo_files = {Path(t).name for t in tracked} | {t for t in tracked}
     for rel in DOCUMENTS:
@@ -5272,7 +5275,7 @@ def test_the_last_counts_are_an_early_read_only_command_the_api_answers():
     assert api.FIRM_LAST_COMMAND in api.COMMANDS
     assert api.FIRM_LAST_COMMAND in api.HELD_READING_COMMANDS and api.FIRM_LAST_COMMAND not in api.WRITING_COMMANDS
     shell_js = read("app/renderer/shell.js")
-    assert f'window.tracker.call(["{api.FIRM_LAST_COMMAND}"])' in shell_js
+    assert f'window.tracker.call(["{api.FIRM_LAST_COMMAND}"], shellFirmAsk("overview"))' in shell_js   # the Overview's first page (P278)
     # The key the renderer reads for the phrase is the API's, word for word.
     renderer = shell_js + read("app/renderer/pages.js")
     read_keys = set(re.findall(r"screenWords\(\)\.(updating\w*)", renderer))

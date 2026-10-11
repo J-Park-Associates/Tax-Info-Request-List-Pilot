@@ -546,7 +546,13 @@ The last route is not remembered across launches.
   While it runs a firm page with no counts yet shows its loading state,
   with "Reading {n} of {total} Households" after about 2 s (P222), and one
   drawn from counts already held says "Updating"; a failure is one notice
-  with Retry and the pages show what they last had.
+  with Retry and the pages show what they last had. Each ask names one page
+  of one list (P278, 9.2's paged form): the firm page on screen, or the
+  Overview's first page when none is. A page turn, a column header, an
+  Overview tab, a reason card, the Clients switch or a Client Type asks for
+  that page of the same view, and the page keeps its rows, marked Updating,
+  until it lands; the asks listed above ask without a view, so the counts
+  are read afresh.
 - `state` for one return when its page opens or its sheet opens, as today
   (`showReturn`). A household page needs no `state`: it draws from `list`
   and `firm`.
@@ -904,8 +910,8 @@ Common states, used by every page below:
   returns" (this year's, "1 return" for one). Status: "{n} need you",
   "{n} waiting" or "Complete", summed over its returns. Date: empty. Step
   **Open** → the household page. Right-click: `household`.
-- 500 households draw in one pass (one `DocumentFragment`); no paging, no
-  virtual list. Search (8.2) is the fast way to one household.
+- The engine pages the list, 50 households a page (P174, P278); Search
+  (8.2) finds every household, not only the page's.
 - **Empty (no households):** "No clients yet" and one secondary button
   **New household…** - the one button a page may carry, because an empty
   firm has nothing else to act on.
@@ -1307,6 +1313,41 @@ No arguments. Reply:
   Windows check, section 16). No reading of any document.
 - `firm` is added to `COMMANDS`, not to `WRITING_COMMANDS`; `main.js`
   learns it through `vocab.commands` like every other.
+- **Paged form (P278).** Asked with a `page` on stdin, `firm` and `firm-last`
+  answer one page of one firm list, not the whole reply (the whole reply above
+  is the answer to no `page`, byte for byte). The engine filters, orders and
+  cuts each list (`tracker/firm_pages.py`); a fresh `firm` saves its whole
+  answer as the view (`firm-pages.json` in the data folder) and answers its
+  token, and an ask that names the token pages the saved copy with no walk.
+  The request (`pilot/SPEC-ui-menu-speed.md` 4.2):
+
+  ```
+  {"page": {"list": "overview" | "needs_review" | "reminders" | "clients",
+            "at": n,                                  # the page, from 0; past the end is the last page
+            "order": {"cell": str, "dir": 1 | -1} | null,   # this PC's stored order for the list (P199)
+            "filter": {...}},                         # overview {"tab": "all" | "need" | "waiting"}; needs_review {"reason": "" | <code>};
+                                                      # reminders {}; clients {"all": bool, "type": "" | <client type key>}
+   "view": "<token>"}                                 # absent: a fresh firm
+  ```
+
+  The reply (4.3 of that SPEC):
+
+  ```
+  {"view": "<token>" | null,          # null: not saved (firm-last; or a save that failed)
+   "totals": {...}, "next_sort": ..., # as above, the whole firm
+   "return_counts": [{"path", "household", "year", "form", "counts", "files", "problem", "paused"}],   # every active return, compact
+   "page": {"list", "at", "pages", "from", "to", "total", "order", "filter",
+            "counts": {...},          # overview {all, need, waiting}; needs_review {all, reasons: [[code, n], ...]}; clients {work}; reminders {}
+            "many_years": bool,       # P268: more than one tax year in the whole list, before its filter and pages
+            "rows": [...]},           # the page's rows, in order
+   "paths": {key: path},              # only the keys this page's rows name (ruling 15)
+   "files_found": [{"name", "return", "year", "handle"}],   # needs_review only: every waiting file, for Search
+   "warnings": [...]}
+  ```
+
+  A refused ask (an unknown list, cell or filter, a malformed `at`) is
+  `FIRM_PAGE_REFUSED`: "The app asked for a list the engine does not have;
+  nothing was read."
 
 ### 9.3 Two small payload fields
 
@@ -1334,6 +1375,19 @@ No arguments. Reply:
 - `test_firm_leaves_out_inactive_returns`.
 - `test_item_group_follows_its_table`: one row per line of 9.1.
 - `test_list_reports_the_clients_root_and_the_firm_report_as_openable`.
+- The paged form (P278; `pilot/SPEC-ui-menu-speed.md` 4.9):
+  `test_firm_without_a_page_answers_the_whole_reply_as_before`,
+  `test_firm_with_a_page_answers_one_page_the_totals_and_every_returns_counts`,
+  `test_the_paged_reply_carries_no_returns_or_files_list_and_paths_only_for_its_rows`,
+  `test_a_turn_with_the_view_reads_no_record_and_takes_no_fingerprint`,
+  `test_a_turn_with_a_stale_view_answers_fresh_with_a_new_view`,
+  `test_the_pages_of_one_view_together_are_the_whole_ordered_list`,
+  `test_firm_last_pages_its_reply_and_names_no_view`,
+  `test_the_firm_page_size_is_fifty`; and `tests/test_firm_pages.py` for the
+  filter, the order and the page. The window's half of 4.9 is in `tests/test_shell.py`, under the
+  heading "P278 (SPEC-ui-menu-speed §4)" and the tests that heading names: the turn, the header, tab,
+  card and type asks, the refresh, the turn during a fresh load, `return_counts` on the household and
+  year pages, Search on Needs Review, the collator list and the taxpayer, form and count words.
 
 ## 10. Tokens, light and dark (P72, P73)
 
