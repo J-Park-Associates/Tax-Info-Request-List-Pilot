@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 262,
     "edges": 1247,
-    "reused": 210
+    "reused": 204
   },
   "node_types": [
     "artifact",
@@ -4459,7 +4459,7 @@
       "id": "docs/repo-map.curated.json",
       "type": "file",
       "layer": "docs",
-      "sha256": "98225ef316c1c419",
+      "sha256": "4152df6b8e4f2eeb",
       "lines": 1239,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
@@ -4468,8 +4468,8 @@
       "id": "docs/runbook.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "e26d37f397c7942d",
-      "lines": 2844,
+      "sha256": "ba1a22cc09e52c75",
+      "lines": 2849,
       "role": "The operator's page for one tax season: the designated machine and today's rule that only one may run a clients root, what a person does each morning and on the draft day, what every index reason and validation note means, and the thirty-minute move to another machine - on a Windows PC or on a Mac.",
       "notes": "Written for a person, not an agent. Roles are docs/workflow.md and the reasons behind the rules are docs/ROADMAP.md; it links to both rather than repeating them. The Mac is written as parallel paragraphs, not edits to the Windows text (SPEC-mac R34): section 1's `### On a Mac` (the heading the pass's own root-not-permitted reason points at) and two paragraphs in section 6 (moving to or from a Mac, taking the app off one). The one-machine rule is still stated once. tests/test_single_source.py quotes the app's sentences against it and holds the data folder's name to settings.DATA_HOME_NAME on both systems (the Windows lines once named a folder the app does not make)."
     },
@@ -4518,7 +4518,7 @@
       "id": "pilot/DECISIONS.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "e4c98e053b04623d",
+      "sha256": "bd2bf29144929ada",
       "lines": 249
     },
     {
@@ -4723,8 +4723,8 @@
       "id": "pilot/mactest/PROMPT.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "d234469124a1c553",
-      "lines": 364,
+      "sha256": "e31669fb7ec0152c",
+      "lines": 378,
       "role": "The prompt for Claude Code on the test Mac (SPEC-mac R33): the safety rules, the run of pilot/mactest/run_checks.sh with the exact test files, and the hands-on steps H1-H14 with the buyer's walk as H2 and why each was chosen.",
       "notes": "Carries the proof items the Mac jobs' reviews left for a Mac under the step that matches them: job 1 in H2 steps 4-7 and 10 and H6, job 2 in H1, H2 steps 2-3 and H11, job 5 in H4, H7 and H8, job 6 in H3, H5, H9, H13 and H14, job 7 in H1 and H10. Its season builder (for H10's timing) is lifted and run by tests/test_pilot.py. The 60-minute figure H10 passes at is the kit's reading of P247's 'well inside' the two-hour slot, for Jason to change."
     },
@@ -4732,7 +4732,7 @@
       "id": "pilot/mactest/RESULTS-TEMPLATE.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "4fefeba318ca2cb7",
+      "sha256": "49e6bd20148cc167",
       "lines": 114,
       "role": "The result file the Mac check fills in: the machine, the automated checks (one row per check the script records and per test file), the walk's fourteen steps and H1-H14. tests/test_pilot.py holds its rows to the script's and the prompt's."
     },
@@ -6482,8 +6482,8 @@
       "id": "tests/test_content_check.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "a79130ee4f3f76ee",
-      "lines": 2909,
+      "sha256": "99b7d7047d56c042",
+      "lines": 2884,
       "exports": [
         "A_PASS_READING",
         "BOMB_REFUSED",
@@ -6514,7 +6514,6 @@
         "test_a_cache_with_no_engagement_never_touches_the_store",
         "test_a_cached_verdict_starts_no_child",
         "test_a_catastrophic_date_pattern_costs_one_stop_and_the_next_pass_takes_the_kept_verdict",
-        "test_a_child_this_test_started_is_asked_by_waitpid_and_reaped_when_it_has_ended",
         "test_a_date_pattern_runs_line_by_line_and_skips_lines_over_the_limit",
         "test_a_deep_any_keyword_says_it_was_deep_and_which_page",
         "test_a_document_does_not_ask_for_itself",
@@ -6616,7 +6615,7 @@
         "MARKER": "'Quendrilvax'"
       },
       "role": "Tests for the content check: the rules, the verdict cache, the reading child's stops and what it leaves behind.",
-      "notes": "Its process helper `running(pid)` asks whether a process has ended without reading anything Linux-only (SPEC-mac R36): a zombie has ended, and where there is no /proc - a Mac - the state comes from `ps -o stat=` through the seam `PROC`, which a test points at a place that is not there to stand in for a Mac; a child the test started itself is asked by `os.waitpid(pid, WNOHANG)` (`own_child=True`). Before this a Mac took every zombie for a live process and each wait-for-the-child test waited out its fifteen seconds."
+      "notes": "Its process helper `running(pid)` asks whether a process has ended without reading anything Linux-only (SPEC-mac R36): a zombie has ended, and where there is no /proc - a Mac - the state comes from `ps -o stat=` through the seam `PROC`, which a test points at a place that is not there to stand in for a Mac. Before this a Mac took every zombie for a live process and each wait-for-the-child test waited out its fifteen seconds."
     },
     {
       "id": "tests/test_door.py",
@@ -7840,8 +7839,8 @@
       "id": "tests/test_pilot.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "06db3d3c4115f887",
-      "lines": 871,
+      "sha256": "246b31e6fbf95c38",
+      "lines": 877,
       "exports": [
         "KIT_PROMPT",
         "KIT_RESULTS",

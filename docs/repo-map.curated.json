@@ -566,7 +566,7 @@
     },
     "tests/test_content_check.py": {
       "role": "Tests for the content check: the rules, the verdict cache, the reading child's stops and what it leaves behind.",
-      "notes": "Its process helper `running(pid)` asks whether a process has ended without reading anything Linux-only (SPEC-mac R36): a zombie has ended, and where there is no /proc - a Mac - the state comes from `ps -o stat=` through the seam `PROC`, which a test points at a place that is not there to stand in for a Mac; a child the test started itself is asked by `os.waitpid(pid, WNOHANG)` (`own_child=True`). Before this a Mac took every zombie for a live process and each wait-for-the-child test waited out its fifteen seconds."
+      "notes": "Its process helper `running(pid)` asks whether a process has ended without reading anything Linux-only (SPEC-mac R36): a zombie has ended, and where there is no /proc - a Mac - the state comes from `ps -o stat=` through the seam `PROC`, which a test points at a place that is not there to stand in for a Mac. Before this a Mac took every zombie for a live process and each wait-for-the-child test waited out its fifteen seconds."
     }
   },
   "edges": [

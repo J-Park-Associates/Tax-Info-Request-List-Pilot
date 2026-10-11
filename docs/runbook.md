@@ -313,6 +313,12 @@ newly does, and nothing after. To see it: `tmutil isexcluded` on each folder say
 `[Excluded]`. If macOS refuses, the app says which folder and tries again at its
 next start.
 
+**Which computer runs the schedule.** The file in §1 that names it is claimed by
+the first computer to set the root, a Mac as much as a PC, and the app registers the
+schedule there only; on a Mac the morning check of the last-pass line that sends a
+PC to Task Scheduler is System Settings, General, Login Items, Allow in the
+Background, or **Repair the Schedule**.
+
 **The Mac's name.** The schedule and the engagement locks know the Mac by its local
 host name (System Settings, General, Sharing), which does not change with the
 network. Renaming the Mac makes it a different computer to the schedule, and **Repair the
@@ -796,7 +802,7 @@ either copy arrives. From another desk, one way to work at the designated
 machine today is Remote Desktop into it. Which computer runs the schedule
 is written in one file in the firm's tree,
 `J Park & Associates\_Scheduling computer.txt` under the clients root
-(decision 209): the first computer (a PC or a Mac) to set the root claims it, and
+(decision 209): the first Windows computer to set the root claims it, and
 the app registers the schedule on that computer only. **When upgrading to
 the version that holds decision 209, upgrade the office computer first and
 start its app once before any other desk's**: every desk that once pressed
@@ -832,7 +838,7 @@ Nobody registers it by hand (decision 209). `Setup.bat` runs the
 after-install step last, the app runs it at its first start after an
 upgrade, and saving the clients root in the app runs it - and it registers
 the task only on the computer the designation file names (above). The
-first computer to run it with a root set writes its own name into
+first Windows computer to run it with a root set writes its own name into
 that file; any other computer registers none, and removes a task of its
 own if it had one. The job names the app's settings folder, never the
 clients root, and reads the root from `settings.json` there at every run
@@ -1481,8 +1487,7 @@ household and cannot clear it. **Unfile** asks for an optional reason first.
      default every-two-hours, never fewer than four, 48 hours for a
      schedule set to once a day (pilot P21); the sentence states the N it
      used. With the schedule switched off the line says so and stays
-     plain: no pass is due. On the designated machine, open Task Scheduler (on a Mac,
-     System Settings, General, Login Items, Allow in the Background) and
+     plain: no pass is due. On the designated machine, open Task Scheduler and
      check the task is there and enabled, or press **Repair the Schedule** in
      the app. Amber also shows before the first scheduled pass on a new
      machine (*No scheduled pass has run on this machine yet*). *Started <time>, not finished*
