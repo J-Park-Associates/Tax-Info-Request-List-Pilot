@@ -68,12 +68,12 @@ H2, the buyer's walk (SPEC-mac section 3), step by step.
 | 1 | Download: shasum -a 256 equals the .sha256 file | | |
 | 2 | Install: window shows the app and Applications; dragged; ejected | | |
 | 3 | First open: macOS's block (15+: "Not Opened"; 14: "can't be opened because Apple cannot check it"), then Open Anyway and the password | | |
-| 4 | The wrong Mac: macOS 13 shows the floor sentence and writes nothing; Intel gets macOS's message | | |
+| 4 | The wrong Mac: macOS 13 shows the floor sentence and writes nothing (the data, settings and window folders in Application Support are all absent); Intel gets macOS's message | | |
 | 5a | Opened from the disk image: the app's sentence, no schedule | | |
 | 5b | Opened from Downloads (translocated): the app's sentence, no schedule | | |
 | 6 | Terms: tick, type a name, Sign and Accept | | |
-| 7a | A root in iCloud Drive is refused with its sentence | | |
-| 7b | A root in Dropbox or OneDrive is refused with its sentence | | |
+| 7a | An empty PilotTest-Empty folder in iCloud Drive is refused with its sentence | | |
+| 7b | An empty PilotTest-Empty folder in Dropbox or OneDrive is refused with its sentence | | |
 | 7c | The test folder is accepted; macOS's Drive prompt (words in H14) | | |
 | 8 | "Background Items Added" (which name); the notice "…now runs the schedule…every day from 07:00, every 120 minutes" with no button pressed | | |
 | 9 | First pass within a minute; "Last scheduled pass: <time>, succeeded."; samples filed; originals moved byte for byte | | |
@@ -92,7 +92,7 @@ The other steps that need a Mac.
 | H3 | A pass started by launchd with the screen locked succeeded and filed the new document; Repair: launchctl print before and after, bootout/bootstrap words, plutil -lint, no second first pass | | |
 | H4 | `python -m tracker.locking race` on the Drive folder: "one holder in every round" (counts); the full-flush line in the error log (yes/no) | | |
 | H4b | Runbook section 6 L2: a line written on the PC is named by the Mac's pass | | |
-| H5 | `launchctl print-disabled` before/after the Allow in the Background switch (exact output); the app's sentence appears | | |
+| H5 | `launchctl print-disabled` and `launchctl print` (exit code, `state =` line) before, with the switch off, and after: does macOS unload a switched-off agent, and does print-disabled change; the app's sentence appears | | |
 | H6 | iCloud's signal folder exists / not; Jason's state; the empty Documents folder was refused / accepted accordingly | | |
 | H7 | Machine name on two networks: scutil LocalHostName, `this_host()` and `platform.node()` each time | | |
 | H8 | Stream-mode file: the pass waits on it; `ls -lO` still says dataless afterwards | | |

@@ -58,8 +58,10 @@ SAFETY - never break these:
   or any step would touch a folder outside ~/PilotTest, the checkout, /Applications, the app's own
   folders (~/Library/Application Support/tax-document-tracker-pilot, ~/Library/Application
   Support/Tax Document Console, ~/Library/Application Support/Tax Document Tracker Pilot and
-  ~/Library/LaunchAgents/com.jparkassociates.taxdocumentconsole.schedule.plist), the empty folder
-  ~/Documents/PilotTest-Empty that H6 makes, or Jason's Drive test folder.
+  ~/Library/LaunchAgents/com.jparkassociates.taxdocumentconsole.schedule.plist), the empty folders
+  named PilotTest-Empty that H6 and step 7 of the walk make (in ~/Documents, in iCloud Drive and in
+  Dropbox or OneDrive), ~/Downloads (only the disk image and the app copied there for steps 1 and 5,
+  removed afterwards), ~/pt-source (the fresh clone H1b makes), or Jason's Drive test folder.
 
 1. GET THE CODE. If the code is not already in this folder, clone
    https://github.com/J-Park-Associates/Tax-Info-Request-List-Pilot (the branch Jason names; main if
@@ -125,10 +127,14 @@ SAFETY - never break these:
         Anyway, Jason enters the Mac's password, then Open Anyway again. Record the macOS version and
         the exact words of each dialog you saw.
      4. The wrong Mac. This Mac passes the floor, so the refusal cannot be seen here: on a macOS 13
-        Mac (if one is at hand; the bundle claims 13.0, Electron's own floor) the app shows the floor sentence ("Tax Document Console needs a Mac with Apple silicon
-        running macOS 14 or later; this Mac has …") and quits, and ~/Library/Application Support/
-        Tax Document Tracker Pilot is not created. An Intel Mac gets macOS's own message. With no
-        such Mac at hand, NOT VERIFIED, with the reason.
+        Mac (if one is at hand; the bundle claims 13.0, Electron's own floor) the app shows the floor
+        sentence ("Tax Document Console needs a Mac with Apple silicon running macOS 14 or later; this
+        Mac has …") and quits, and nothing is written: on a Mac that never had the Console, none of
+        the data folder (~/Library/Application Support/tax-document-tracker-pilot), the settings
+        folder (~/Library/Application Support/Tax Document Console) or the window's own folder
+        (~/Library/Application Support/Tax Document Tracker Pilot) exists afterwards; check each.
+        An Intel Mac gets macOS's own message. With no such Mac at hand, NOT VERIFIED, with the
+        reason.
      5. Opened from the wrong place. Done after step 14, so the first launches of the walk are the
         right ones. Mount the disk image again and open the app straight from it, and once from
         ~/Downloads (copy it there first with ditto, quarantined as in step 1; delete the copy after).
@@ -141,10 +147,12 @@ SAFETY - never break these:
         may be needed again for these copies; quit each with Command-Q.)
      6. The terms. The app opens on "Before you start: this is a Pilot". Tick "I have read this and
         will keep my own backups", type a name (a made-up one), and click Sign and Accept.
-     7. The clients folder. "Choose Your Clients Folder" appears. First choose a folder in iCloud
-        Drive, then one in Dropbox or OneDrive if this Mac has any (otherwise NOT VERIFIED for that
-        one): each must be refused with the app's sentence ("... is in iCloud Drive ..." or "... is
-        kept by <service> ..."). Then click Choose Folder…, pick the test folder (~/PilotTest/Clients
+     7. The clients folder. "Choose Your Clients Folder" appears. First the refusals, without
+        browsing anyone's real folders: with Jason's yes, make an empty folder named PilotTest-Empty
+        in iCloud Drive and one in Dropbox or OneDrive (if this Mac has any; otherwise NOT VERIFIED
+        for that one), choose each by typing its path in Choose Folder (Command-Shift-G) and never by
+        clicking through the sidebar, and remove each afterwards. Each must be refused with the app's
+        sentence ("... is in iCloud Drive ..." or "... is kept by <service> ..."). Then click Choose Folder…, pick the test folder (~/PilotTest/Clients
         for a plain folder; for the Drive part, Jason's Drive test folder under Google Drive in
         Finder's sidebar, after the made-up samples have been copied into it with Jason's yes:
         ditto ~/PilotTest/Clients "<the Drive test folder>"), then click Start. macOS may ask to let
@@ -213,11 +221,17 @@ SAFETY - never break these:
    next pass must name that line as written on the PC; otherwise NOT VERIFIED.
 
    H5. The Allow in the Background switch (R27). Chosen because R27 assumed macOS reports the
-   switch through launchctl print-disabled and nobody has checked. During step 13, before and after
-   switching it off and on, run  launchctl print-disabled gui/$(id -u) | grep taxdocumentconsole
-   and record the exact output each time (true or false for the label, or nothing). If the output
-   does not change when the switch does, say so: then the app cannot tell, the last-pass line's
-   amber is the only signal, and R27's sentence will not be shown.
+   switch through launchctl print-disabled, and the tests assume macOS unloads a switched-off agent;
+   nobody has checked either. During step 13, before switching it off, after switching it off and
+   after switching it on again, run both
+     launchctl print-disabled gui/$(id -u) | grep taxdocumentconsole
+     launchctl print gui/$(id -u)/com.jparkassociates.taxdocumentconsole.schedule ; echo "exit $?"
+   and record the exact output of the first, and the second's exit code and its "state =" line, each
+   time (print-disabled: true or false for the label, or nothing; print: loaded, with its state, or
+   "Could not find service"). If print-disabled does not change when the switch does, say so: then
+   the app cannot tell, the last-pass line's amber is the only signal, and R27's sentence will not
+   be shown. If the agent stays loaded when switched off (print still answers 0), say so: the app
+   must then notice the switch through print-disabled alone.
 
    H6. iCloud's Desktop & Documents signal (R5). Chosen because R5 detects the setting by a folder
    existing, and nothing has shown that is reliable. Ask Jason whether iCloud Drive's "Desktop &
