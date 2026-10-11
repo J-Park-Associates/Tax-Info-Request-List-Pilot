@@ -63,7 +63,8 @@ def windows(monkeypatch):
     monkeypatch.setattr(platform, "node", lambda: HERE.upper())
     # Not a Mac, whatever this machine is: the Windows words and the Windows
     # scheduler are what these tests read (a Mac's are tested with ``a_mac``).
-    monkeypatch.setattr(settings, "host_system", lambda: "posix")
+    # A Windows runner stays Windows, so it still reaches the ``nt`` paths.
+    monkeypatch.setattr(settings, "host_system", lambda: "nt" if os.name == "nt" else "posix")
     monkeypatch.setattr(scheduling, "scheduler_here", lambda: True)
     monkeypatch.setattr(scheduling, "_schtasks", answer)
     calls_state["calls"] = calls
@@ -1117,6 +1118,31 @@ def test_a_schtasks_that_cannot_start_runs_the_step_and_says_so(root, windows, m
     assert "after_install: asking whether the scheduled task exists" in caplog.text
 
 
+def test_the_refused_query_is_said_in_windows_words_on_windows_and_launchctls_on_a_mac(mac, monkeypatch):
+    """Section 6: a Windows person reads the error log, so its sentence is the one it always was;
+    a Mac reads its own."""
+    assert after_install.QUERY_REFUSED == (
+        "schtasks /query refused with exit code {code}; the step runs to register the task again")
+    assert after_install.QUERY_REFUSED_MAC == (
+        "launchctl print refused with exit code {code}; the step runs to register the agent again")
+    assert after_install.query_refused() == after_install.QUERY_REFUSED_MAC
+    monkeypatch.setattr(settings, "host_system", lambda: "posix")
+    assert after_install.query_refused() == after_install.QUERY_REFUSED
+
+
+def test_a_mac_whose_print_is_refused_keeps_the_launchctl_words_on_the_error_log(root, mac, caplog):
+    import logging
+
+    from tracker import errors
+
+    assert after_install.run(reason=after_install.REASON_SETUP).exit_code == 0
+    mac.launchd.refuse["print"] = (5, "Operation not permitted")
+    with caplog.at_level(logging.WARNING, logger=errors.DEBUG_LOGGER):
+        assert after_install.launch() is not None
+    assert after_install.QUERY_REFUSED_MAC.format(code=5) in caplog.text
+    assert "schtasks" not in caplog.text
+
+
 def test_a_schtasks_that_hangs_is_said_as_unreachable(root, windows, monkeypatch, caplog):
     """The engine review's SHOULD-2: a ``schtasks`` past its limit raises
     ``TimeoutError`` (``scheduling._schtasks``), and the launch says it as
@@ -1553,7 +1579,7 @@ def test_the_launch_door_asks_a_mac_only_whether_its_agent_is_loaded(root, mac):
     assert after_install.run(reason=after_install.REASON_SETUP).exit_code == 0
     mac.launchd.calls.clear()
     assert after_install.launch() is None
-    assert mac.launchd.verbs() == ["print"], "one question, and nothing registered"
+    assert mac.launchd.verbs() == ["print", "print-disabled"], "two questions (R27), and nothing registered"
 
     mac.launchd.loaded = False                    # the agent is gone; the record still names this Mac
     ran = after_install.launch()
@@ -1585,6 +1611,26 @@ def test_a_mac_whose_schedule_was_switched_off_is_told_and_not_re_registered(roo
     back = after_install.launch()
     assert back is not None and back.installed and back.failed == () and mac.launchd.loaded
     assert after_install.notice() is None
+
+
+def test_an_agent_macos_leaves_loaded_but_the_person_switched_off_is_told_and_not_re_registered(root, mac):
+    """R27 asks ``print-disabled`` as part of deciding whether the schedule is missing, at every
+    start: macOS may well leave a switched-off agent loaded, with the program, the designation and
+    the choice all as recorded. The sentence shows and nothing is registered."""
+    assert after_install.run(reason=after_install.REASON_SETUP).exit_code == 0
+    mac.launchd.switched_off = True
+    assert mac.launchd.loaded
+    mac.launchd.calls.clear()
+
+    ran = after_install.launch()
+
+    said = after_install.SCHEDULE_SWITCHED_OFF.format(product=settings.product_name())
+    assert ran is not None and ran.schedule == after_install.SWITCHED_OFF_KEY and ran.failed == (said,)
+    assert said in after_install.notice()["failed"]
+    assert not {"bootstrap", "bootout", "enable", "kickstart"} & set(mac.launchd.verbs())
+    mac.launchd.switched_off = False
+    back = after_install.launch()
+    assert back is not None and back.installed and back.failed == ()
 
 
 def test_a_schedule_the_person_turned_off_in_the_app_is_not_called_switched_off(root, mac):
@@ -1623,7 +1669,7 @@ def test_a_new_program_on_a_mac_starts_its_first_pass_once(root, mac, monkeypatc
     a restart) does not; the next program does."""
     first = after_install.run(reason=after_install.REASON_SETUP)
     assert first.exit_code == 0
-    service = f"gui/{os.getuid()}/{scheduling.LAUNCH_AGENT_LABEL}"
+    service = scheduling._service()
     assert mac.launchd.calls[-1] == ["launchctl", "kickstart", service], "after bootstrap and enable"
     assert mac.launchd.verbs() == ["bootout", "bootstrap", "enable", "kickstart"]
     assert after_install.read_record()["kicked"] == after_install.read_record()["program"] != ""
@@ -1641,7 +1687,7 @@ def test_a_new_program_on_a_mac_starts_its_first_pass_once(root, mac, monkeypatc
     assert mac.launchd.verbs().count("kickstart") == 1
     assert after_install.read_record()["kicked"] == "the-next-build"
     mac.launchd.calls.clear()
-    assert after_install.launch() is None and mac.launchd.verbs() == ["print"]
+    assert after_install.launch() is None and mac.launchd.verbs() == ["print", "print-disabled"]
 
 
 def test_a_first_pass_that_cannot_start_fails_the_step_and_is_tried_again(root, mac):

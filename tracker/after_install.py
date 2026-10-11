@@ -1106,14 +1106,27 @@ def _task_missing(record: dict) -> bool:
         errors.keep(ASKING_FOR_THE_TASK, exc)
         return True
     if code:
-        errors.keep(ASKING_FOR_THE_TASK, QUERY_REFUSED.format(code=code))
-    return code != 0
+        errors.keep(ASKING_FOR_THE_TASK, query_refused().format(code=code))
+    # On a Mac the agent a person switched off under Login Items counts as
+    # missing too, whether or not macOS left it loaded (SPEC-mac R27): the
+    # launch then says so and registers nothing (:func:`_switched_off`).
+    return code != 0 or _switched_off(record)
 
 
 #: Where the launch's question to Task Scheduler is said on the error log.
 ASKING_FOR_THE_TASK = "after_install: asking whether the scheduled task exists"
-#: A refused query, by its exit code only: the scheduler's own words are not kept.
-QUERY_REFUSED = "the scheduler's query refused with exit code {code}; the step runs to register the task again"
+#: A refused query, by its exit code only: ``schtasks``'s own words are not kept.
+QUERY_REFUSED = "schtasks /query refused with exit code {code}; the step runs to register the task again"
+#: The same on a Mac, where the question is ``launchctl print`` (SPEC-mac R27).
+QUERY_REFUSED_MAC = "launchctl print refused with exit code {code}; the step runs to register the agent again"
+
+
+def query_refused() -> str:
+    """:data:`QUERY_REFUSED`'s words for the computer this runs on: Windows' own,
+    word for word, or on a Mac :data:`QUERY_REFUSED_MAC`; through
+    ``settings.host_system``, as :func:`schedule_unreachable` is."""
+    return QUERY_REFUSED_MAC if settings.host_system() == "darwin" else QUERY_REFUSED
+
 
 
 def record_failure(sentence: str) -> None:
