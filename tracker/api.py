@@ -1317,6 +1317,9 @@ MENU: dict[str, str] = {
     "refresh": "Refresh",
     # Forgets the list column widths this PC keeps (pilot SPEC-lists 4, P139).
     "reset_columns": "Reset Column Widths",
+    # A checked item: every list's rows 32px instead of 40px, kept on this PC
+    # (pilot SPEC-ui-menu-layout, P271).
+    "compact_rows": "&Compact Rows",
     # A checked item: shows or hides the side panel's Under Construction
     # items, kept on this PC (pilot SPEC-hide-under-construction, P197).
     "show_under_construction": "Show &Under Construction",
@@ -1544,9 +1547,18 @@ SCREEN: dict = {
     "held": "Held",
     "inactive": "Inactive",
     "rolled": "Rolled Forward",
-    "contact": "Contact {name}",
     "shared": "Shared",
     "not_shared": "Not Shared",
+    # The household page's card (pilot SPEC-ui-menu-layout, P275): the
+    # household's contact, who it is shared with and whether its inbox link
+    # is saved. The link itself is never drawn.
+    "household_card": {
+        "contact": "Contact",
+        "shared_with": "Shared With",
+        "inbox_link": "Inbox Link",
+        "link_saved": "Saved",
+        "no_link": "Not Saved",
+    },
     "icons": {
         "dismiss": "Dismiss",
         "open": "Open",

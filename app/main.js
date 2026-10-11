@@ -697,6 +697,7 @@ const DEFAULT_MENU_WORDS = {
   find: "Find",
   refresh: "Refresh",
   reset_columns: "Reset Column Widths",
+  compact_rows: "&Compact Rows",
   show_under_construction: "Show &Under Construction",
   tools: "&Tools",
   sort_now: "Sort Now",
@@ -741,7 +742,8 @@ const BAR = [
     ["edit_list", "CmdOrCtrl+E"], ["draft_reminder"], SEPARATOR,
     ["open_client_folder"], ["open_inbox"], ["open_working"]]],
   ["view", [["overview", "CmdOrCtrl+1"], ["needs_review", "CmdOrCtrl+2"], ["reminders", "CmdOrCtrl+3"],
-    ["clients", "CmdOrCtrl+4"], SEPARATOR, ["find", "CmdOrCtrl+F"], ["refresh", "F5"], SEPARATOR, ["reset_columns"], ["show_under_construction"]]],
+    ["clients", "CmdOrCtrl+4"], SEPARATOR, ["find", "CmdOrCtrl+F"], ["refresh", "F5"], SEPARATOR, ["reset_columns"], ["compact_rows"],
+    ["show_under_construction"]]],
   ["tools", [["sort_now", "F9"], ["stop_sorting"], SEPARATOR, ["schedule"], ["repair_schedule"], ["remove_schedule_here"],
     ["firm_report"], SEPARATOR, ["clear_lock"]]],
   ["help", [["tour"], ["safeguards"], ["terms"], ["error_log"], SEPARATOR, ["about"]]],
@@ -759,18 +761,20 @@ const POPUPS = new Map([
 // What needs nothing of the page: enabled from the first frame. Removing a
 // Mac's schedule needs no clients folder: it is for the app's last act.
 const ALWAYS = new Set(["change_root", "exit", "refresh", "tour", "safeguards", "terms", "error_log", "about",
-  "show_under_construction", "remove_schedule_here"]);
+  "compact_rows", "show_under_construction", "remove_schedule_here"]);
 // The items a Mac alone has (SPEC-mac R29): dragging an app to the Bin leaves
 // its launchd agent behind, so a Mac can take the schedule away first.
 const MAC_ONLY = new Set(["remove_schedule_here"]);
 const BAR_IDS = new Set(BAR.flatMap(([, items]) => (items || []).filter((i) => i !== SEPARATOR).map((i) => i[0])));
 // The bar's checked items: Windows draws the tick. The page owns what each
 // one says and sends the ticked ids as `checked` (P197).
-const CHECKABLE = new Set(["show_under_construction"]);
+const CHECKABLE = new Set(["compact_rows", "show_under_construction"]);
+// Ticked before the page speaks: the Under Construction items show on a new install, rows start Comfortable (P197, P271).
+const DEFAULT_TICKED = new Set(["show_under_construction"]);
 // What the page last said applies (5.3); until it speaks only ALWAYS does.
 let menuEnabled = new Set();
-// Ticked until the page speaks: a new install shows the Under Construction items (P197, Q2).
-let menuChecked = new Set(CHECKABLE);
+// Ticked until the page speaks: DEFAULT_TICKED.
+let menuChecked = new Set(DEFAULT_TICKED);
 let menuBuilt = false;
 let mainWindow = null;
 

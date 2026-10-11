@@ -177,7 +177,7 @@ Verdict words: **Kept** (on screen, reworded to five words), **Tooltip**
 | # | Today (id) | Verdict | New home | On screen |
 |---|---|---|---|---|
 | E23 | `#after-install` banner and its list | Notice, only on failure; the list to the error log | `#notices` | "Setup needs attention" |
-| E24 | `#notices` failure notices | Kept | `#notices` at the top of the page area | e.g. "Sort failed" |
+| E24 | `#notices` failure notices | Kept | `#notices`: the right-hand panel at 1388px and wider, the top of the page area below it | e.g. "Sort failed" |
 | E25 | Notice buttons Retry / Look again / Dismiss | Look again merged into Retry; Dismiss becomes the close icon | notice | "Retry", close icon |
 | E26 | `#banner` result banner | Removed (P63 rule 6); toast only when the effect is off screen | `#toast` | "Copied", "Saved" |
 | E27 | "Clients folder set to…" | Removed | - | - |
@@ -206,8 +206,8 @@ Verdict words: **Kept** (on screen, reworded to five words), **Tooltip**
 |---|---|---|---|---|
 | E41 | `#household-heading` label | Removed (the path says it) | - | - |
 | E42 | `#household-name` | Kept | Household page H1 | (name) |
-| E43 | Members / contact / link, each with help | Edit household dialog; one caption on the page | household page caption | "Contact John Smith" |
-| E44 | `#household-shared` + Mark as shared | Caption; action to Client menu | caption; Client › Mark as shared | "Shared" / "Not shared" |
+| E43 | Members / contact / link, each with help | Edit household dialog; one caption on the page | the household card (P275) | the card's Contact fact, "John Smith" |
+| E44 | `#household-shared` + Mark as shared | Caption; action to Client menu | the household card (P275); Client › Mark as shared | "Shared" / "Not shared" |
 | E45 | `#household-checklist` with paths | Removed (the Tester Guide carries it) | - | - |
 | E46 | `#household-two-years` | Notice | `#notices` | "Two years open" |
 | E47 | `#household-paused` + Accept | Notice with one action | `#notices` | "Folder renamed" · "Accept" |
@@ -296,7 +296,7 @@ body
 │  │  └─ div#side-foot
 │  │     ├─ p#last-sort              role=status, aria-live=polite
 │  │     └─ (pilot.js puts #pilot-badge here)
-│  └─ div#main                       grid rows: [bar 48px][notices auto][page 1fr]
+│  └─ div#main                       grid rows: [bar 48px][notices auto][page 1fr]; at 1388px and wider, columns [page 1fr][notices auto] under the bar (P273)
 │     ├─ header#bar
 │     │  ├─ nav#crumbs               aria-label = screen.path_label; ol of segments
 │     │  ├─ div#find-wrap            input#find (role=combobox) + ul#find-list (role=listbox)
@@ -367,7 +367,12 @@ Numbers are right-aligned in their column, with tabular figures.
 
 ### 3.5 Notice area (`#notices`)
 
-Between the path row and the page, full width, `padding: var(--sp-2)
+**At 1388px and wider (P273)** the notice area is a 288px panel at the right of the page, under the path row, `--bg-nav` with
+a hairline at its left, shown only while it holds a notice; each notice is
+its sentence on the first line and its controls (Details, the action, the
+dismiss) on the second, and opened Details takes the second line with the
+buttons under it. **Narrower**, between the path row and the page, full
+width, `padding: var(--sp-2)
 var(--sp-8)`. Each notice is one 40px line, `--radius-control`: its fill
 and ink say the kind (err, warn, info tokens) and its words say what
 happened, so the kind is never colour alone. At most one action button
@@ -377,7 +382,7 @@ the right end of the same line, before the action and the dismiss, so the
 notice stays 40px; opened (P264), the disclosure drops under the line at the
 notice's width.
 Failures and warnings stay until dismissed or fixed (decision 193
-unchanged). Notices never push the path row away: the page area scrolls,
+unchanged). Notices never push the path row away and in the panel they never push the page down: the page area scrolls,
 the bar and notices do not.
 
 **The failed-sort notice (rulings 20, 28).** While the record of the last
@@ -397,7 +402,9 @@ Needs Review heading, household and file levels: `pilot/SPEC-lists.md`
 (Pilot 0.3, P135-P139).
 
 A **row** is 40px tall (`min-height: 40px`, `align-items: center`), a 1px
-`--border` hairline under it (not under the last row of a group). Columns,
+`--border` hairline under it (not under the last row of a group); under
+View › Compact Rows it is 32px (`--size-row-compact`, P271), the Tax Year
+cell is caption, and nothing else changes. Columns,
 left to right:
 
 | Column | Width | Type | Content |
@@ -546,7 +553,7 @@ The last route is not remembered across launches.
 | Ctrl+N | New household… |
 | Ctrl+E | Edit request list… (a return open) |
 | Alt | the menu bar (Windows). The bar stays **hidden until Alt** (`autoHideMenuBar: true`; ruling 3) |
-| F6 | cycle focus: side panel › path row › page › side panel |
+| F6 | cycle focus: side panel › path row › notices (while any shows) › page › side panel |
 | Esc | close the sheet, the search list, a tooltip, in that order |
 | Enter, Shift+F10 | a row's step, a row's right-click menu |
 
@@ -602,6 +609,7 @@ and the menu is rebuilt only if a word differs.
 | | — | | |
 | | Find (`find`) | Ctrl+F | same |
 | | Refresh (`refresh`) | F5 | always |
+| | Compact Rows (`compact_rows`), a checked item | | always (P271) |
 | | Show Under Construction (`show_under_construction`), a checked item | | always (P197) |
 | **Tools** | Sort Now (`sort_now`) | F9 | a household, year or return is open, no sort runs, not locked |
 | | Stop Sorting (`stop_sorting`) | | a sort runs |
@@ -842,7 +850,8 @@ Common states, used by every page below:
 
 - One group per return with files waiting: H2 is the return's name, a
   link reading "{Return Name} ({Year})" (3.9), its caption the household
-  (a link) and the count. Groups ordered by their oldest file.
+  (a link) and the count (P272: no card; the More Actions button after the
+  count opens the return's menu). Groups ordered by their oldest file.
 - Rows: name = the file's own name (a link to its review copy in File
   Explorer, 3.9); detail = the request it most likely is
   (the first suggestion's name), else empty; status = the reason's short
@@ -881,12 +890,16 @@ Common states, used by every page below:
 
 ### 6.5 Household
 
-- H1: the household's name. Under it one caption line of what applies,
-  joined by " · ": "Contact {name}", "Shared" or "Not shared".
+- H1: the household's name. Under it (P275) the returns list and,
+  beside it at 1056px of page and wider, else above it, the household card:
+  Contact, Shared With (the members and Shared or Not Shared), Inbox Link
+  (Saved or Not Saved; the link is never drawn or opened), and More Actions,
+  which opens the household menu.
 - One group per tax year, newest first: H2 is the year. Rows: one per
   return. Name: the return, a link reading "{Return Name} ({Year})" (3.9).
   Detail: "Inactive" or "Rolled forward" when the
-  list says so, else empty. Status: as on Clients. Step **Open**.
+  list says so, else empty. Status: as on Clients. The status is the column right after the name; the
+  detail follows it. Step **Open**.
   Right-click: `return`.
 - Household notices while any of its pages is open: two years open,
   folder renamed (with **Accept**), feeds that do not resolve.
@@ -1083,14 +1096,15 @@ page waits, and the closing of the last one draws it (P262).
 
 ### 8.4 Notices
 
-One line each, the kind by fill and ink (err, warn, info tokens), at most
+One line each in the stacked form, the sentence and then its controls in the panel (3.5, P273); the kind by fill and ink (err, warn, info tokens), at most
 one action. A notice may carry a **Details** disclosure holding the
 engine's sentence (pilot P257); the line stays one line, and E28/E30's "no
 path" is read as "no path on the line" - opened by the person, the detail
 may name the program's, the data or the clients folder, never a client's
 file (P63). Closed, the disclosure sits at the right end of the notice's
 line, before the action and the dismiss (P264); opened, the sentence
-unfolds under the line at the notice's width. A Details disclosure drawn while the setup page is shown is
+unfolds under the line at the notice's width. In the panel, closed, it is the first of the controls on the second line; opened,
+it takes that line and the action and dismiss move under it. A Details disclosure drawn while the setup page is shown is
 open, and elsewhere closed until clicked (P259): it is drawn once and a
 notice stays as the person left it. The machine and setup findings, the
 reader's warning, the household's pause and its prior-year feed all carry
@@ -1150,7 +1164,7 @@ PLAN-ui section 5, with P63 and P65, and rulings 2, 5 and 7:
 ### 8.6 Motion
 
 150ms `--ease` for hover, press, the sheet and a notice's fade; menus are
-Windows'. No motion when a page changes. `prefers-reduced-motion: reduce`
+Windows'. No motion when a page changes. The notices panel comes and goes without motion. `prefers-reduced-motion: reduce`
 sets every duration to 0.
 
 ### 8.7 Browser surfaces
@@ -1435,8 +1449,8 @@ brand colour, not a text pair).
   `--sp-3` (12) and `--sp-5` (20) are deleted; every use moves to the
   nearer step that keeps the component's size on the grid (a 32px button
   keeps `padding: 0 var(--sp-4)`; a 24px one `0 var(--sp-2)`).
-- **Sizes** are multiples of 4: row 40, control 32 and 24, path row and sheet
-  header 48, sheet footer 64, side panel 240, sheet 400, search 240, icon 16,
+- **Sizes** are multiples of 4: row 40 (32 compact, P271), control 32 and 24, path row and sheet
+  header 48, sheet footer 64, side panel 240, sheet 400, notices panel 288, household card 288, search 240, icon 16,
   selection pill 3 × 16 (the one 3px value, Fluent's), hairline 1.
 - **Corners:** `--radius-control` 4 (controls, section rows, notices),
   `--radius` 8 (dialogs, toast, tooltip), `--radius-pill` goes with the
@@ -1562,6 +1576,7 @@ Verdicts: **reword** 67, **cut** 113 (not shown in the app any more),
 | `keep_here` | Keep Here | | `unfile` | Unfile |
 | `edit_request` | Edit Request… | | `mark_missing` | Mark Missing |
 | `show_in_explorer` | Show in File Explorer | | `show_under_construction` | Show &Under Construction (P197, a checked item) |
+| `compact_rows` | &Compact Rows (P271, a checked item) | | |
 
 ### 11.4 New words: the screen (`vocab.screen`)
 
@@ -1597,8 +1612,8 @@ Where an existing key does the same job, the existing key is reworded
 | `moved` | Moved by Hand | row status |
 | `held` | Held | Reminders row status |
 | `inactive` / `rolled` | Inactive / Rolled Forward | household row detail |
-| `contact` | Contact {name} | household caption |
-| `shared` / `not_shared` | Shared / Not Shared | household caption, done icon |
+| `household_card.contact` / `shared_with` / `inbox_link` / `link_saved` / `no_link` | Contact / Shared With / Inbox Link / Saved / Not Saved | the household card (P275; `contact` {name} is gone) |
+| `shared` / `not_shared` | Shared / Not Shared | the household card, done icon |
 | `icons.dismiss` / `open` / `next` / `more` | Dismiss / Open / Next / More | icon tooltips |
 | `sheet.reminder` | Reminder | sheet title |
 | `sheet.drafted` | Drafted {date}, Stage {n} | sheet caption |

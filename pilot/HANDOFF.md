@@ -50,7 +50,14 @@ Opus review:
    go on the next Windows check, with the SPEC's section 2 list.
 2. `SPEC-ui-menu-layout.md`: P271 (Compact Rows), P272 (Needs Review as one
    flat list), P273 (notices in a right-hand panel), P275 (the household
-   page's header card).
+   page's header card). **Built on `claude/ui-menu-layout`** after four Opus
+   reviews (the first found Compact Rows not reaching the editor's fields,
+   a CSS specificity miss; the fourth had no findings). The editor's
+   Comfortable fields now draw at the 28px and 8px padding P52 wrote, where
+   the general control rule had kept them at 32px and 16px. The five open
+   questions (J1-J5) were built as the defaults. Not run here: the floor
+   interpreter; interact.mjs under real Playwright (through the shim: no
+   new failure).
 3. `SPEC-ui-menu-speed.md`: P277 (the app watches the last-pass file), P279
    (virtualized rows), P276 (one long-lived engine process; decision 193
    re-read; passes keep their own process), P278 (the engine pages the firm

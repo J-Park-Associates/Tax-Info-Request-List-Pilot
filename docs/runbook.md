@@ -144,8 +144,8 @@ an upgrade can take a minute or two to check every record. It judges every line 
 every return's record by today's rule, so a line an earlier version
 accepted that the rule now refuses - a Date Pattern that could run away, a
 step outside its return's folders, a value of the wrong kind - is named on
-the day of the upgrade: at the end of Setup, and in a notice at the top of
-the app's first screen headed *Setup Needs Attention*. The notice is one
+the day of the upgrade: at the end of Setup, and in a notice
+headed *Setup Needs Attention* - in the panel at the right of the app's first screen, or at its top in a window narrower than 1388px. The notice is one
 line; under its **Details** (closed until a person opens it) is the
 engine's sentence - what is wrong and what to do - and the same text is
 in the error log. A *Machine Needs Attention* notice works the same way:
@@ -1379,7 +1379,7 @@ box sorts the open household (it is on a household's, year's or return's page; t
 firm pages have none); the overnight sort is the schedule. A *Sort Failed* notice with no
 button shows on every page while the last **scheduled** sort failed, and
 clears when the next scheduled sort succeeds - the app's own Sort names one
-household and cannot clear it. **Unfile** asks for an optional reason first.
+household and cannot clear it. Notices (a failure, a warning) sit in a panel at the right of the page while there is one, or above the page in a narrow window; each stays until you dismiss it. **Unfile** asks for an optional reason first.
 
 1. **Read what the last pass did.** The status page every pass writes into
    the clients root (`tracker.runner.STATUS_PAGE_FILENAME`) is the one-screen

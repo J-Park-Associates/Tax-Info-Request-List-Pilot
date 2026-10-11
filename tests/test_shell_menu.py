@@ -485,7 +485,7 @@ def test_only_the_items_that_need_nothing_are_enabled_until_the_page_speaks(tmp_
     enabled = {label for label, item in _flat(menu).items() if item.get("enabled")}
     # Exit is a role: Electron enables it itself.
     assert enabled == {_word(k) for k in ("change_root", "refresh", "tour", "safeguards", "terms",
-                                          "error_log", "about", "show_under_construction")}
+                                          "error_log", "about", "show_under_construction", "compact_rows")}
 
 
 def test_the_page_enables_the_items_whose_rule_holds_and_the_menu_follows(tmp_path):
@@ -582,30 +582,34 @@ def test_show_under_construction_is_the_view_menus_last_item_a_ticked_check_item
     reaches it; no accelerator; ticked (shown) until the page speaks."""
     [menu] = _run(tmp_path, [])["menus"]
     view = [i.get("label") or "-" for i in menu[3]["submenu"]]
-    assert view[-3:] == ["-", _word("reset_columns"), _word("show_under_construction")]
+    assert view[-4:] == ["-", _word("reset_columns"), _word("compact_rows"), _word("show_under_construction")]
     item = _flat(menu)[_word("show_under_construction")]
     assert item["type"] == "checkbox" and item["checked"] is True and item["enabled"]
     assert not item.get("accelerator")
     assert _word("show_under_construction") == "Show &Under Construction"
     others = [label for label in view if label not in ("-", _word("show_under_construction"))]
     assert not [label for label in others if "&U" in label or label.lower().startswith("u")], "the access key U is the item's own"
-    assert all(i.get("type") != "checkbox" for label, i in _flat(menu).items() if label != _word("show_under_construction"))
+    checks = {_word("show_under_construction"), _word("compact_rows")}
+    assert all(i.get("type") != "checkbox" for label, i in _flat(menu).items() if label not in checks)
 
 
-def test_the_tick_follows_the_page_and_a_stray_checked_id_is_dropped(tmp_path):
-    """P197 ruling 6: the page sends {enable, checked}; main keeps only the
-    checkable ids, rebuilds only on a change, and a message without
-    `checked` leaves the tick as it was."""
-    word = _word("show_under_construction")
+@pytest.mark.parametrize("key, off, ticks", [("show_under_construction", [], [True, False, True]),
+                                             ("compact_rows", ["show_under_construction"], [False, False, True])])
+def test_the_tick_follows_the_page_and_a_stray_checked_id_is_dropped(tmp_path, key, off, ticks):
+    """P197 ruling 6 (run for both check items since P271): the page sends
+    {enable, checked}; main keeps only the checkable ids, rebuilds only on a
+    change, and a message without `checked` leaves the tick as it was. The
+    two items start differently: Show Under Construction ticked, Compact Rows
+    not."""
+    word = _word(key)
     ran = _run(tmp_path, [
-        {"menu": {"enable": ["overview"], "checked": []}},                          # hidden: unticked
-        {"menu": {"enable": ["overview"], "checked": []}},                          # the same: no rebuild
+        {"menu": {"enable": ["overview"], "checked": off}},                         # this one off
+        {"menu": {"enable": ["overview"], "checked": off}},                         # the same: no rebuild
         {"menu": {"enable": ["overview"]}},                                         # no `checked`: kept
-        {"menu": {"enable": ["overview"], "checked": ["overview", "show_under_construction", 7]}},
-        {"menu": {"enable": ["overview"], "checked": "show_under_construction"}},   # not a list: kept
+        {"menu": {"enable": ["overview"], "checked": ["overview", key, 7]}},        # on, with strays
+        {"menu": {"enable": ["overview"], "checked": key}},                         # not a list: kept
     ])
-    ticks = [_flat(menu)[word]["checked"] for menu in ran["menus"]]
-    assert ticks == [True, False, True]
+    assert [_flat(menu)[word]["checked"] for menu in ran["menus"]] == ticks
     assert not any(i.get("checked") for label, i in _flat(ran["menus"][-1]).items() if label != word)
 
 
@@ -614,13 +618,16 @@ def test_choosing_show_under_construction_is_sent_to_the_page(tmp_path):
     assert ran["sends"] == [{"channel": "menu", "message": {"id": "show_under_construction", "token": ""}}]
 
 
-def test_a_chosen_check_item_keeps_the_pages_tick_until_the_page_answers(tmp_path):
-    """P197, review NIT 1: Windows flips a check item's tick when it is
-    chosen; main.js rebuilds it from what the page last said, so a page whose
-    answer fails never leaves it flipped. The page's reply then moves it."""
-    word = _word("show_under_construction")
-    ran = _run(tmp_path, [{"clickBar": word}, {"menu": {"enable": [], "checked": []}}])
-    assert [_flat(menu)[word]["checked"] for menu in ran["menus"]] == [True, True, False]
+@pytest.mark.parametrize("key, first, after", [("show_under_construction", True, False), ("compact_rows", False, True)])
+def test_a_chosen_check_item_keeps_the_pages_tick_until_the_page_answers(tmp_path, key, first, after):
+    """P197, review NIT 1 (both check items since P271): Windows flips a check
+    item's tick when it is chosen; main.js rebuilds it from what the page last
+    said, so a page whose answer fails never leaves it flipped. The page's
+    reply then moves it."""
+    word = _word(key)
+    answer = {"enable": [], "checked": [] if key == "show_under_construction" else ["compact_rows"]}
+    ran = _run(tmp_path, [{"clickBar": word}, {"menu": answer}])
+    assert [_flat(menu)[word]["checked"] for menu in ran["menus"]] == [first, first, after]
     plain = _run(tmp_path, [{"menu": {"enable": ["find"]}}, {"clickBar": _word("find")}])
     assert len(plain["menus"]) == 2, "an ordinary item rebuilds nothing"
 
@@ -894,3 +901,27 @@ def test_the_preload_passes_the_optional_second_argument_on_the_same_open_and_ad
 
 def test_the_menus_default_words_carry_the_capital_the_section_is_written_with():
     assert _menu_words_in_main()["needs_review"] == "Needs Review"
+
+
+# ── P271-P273, P275 (SPEC-ui-menu-layout) ───────────────────────────────────
+
+def test_compact_rows_sits_between_reset_column_widths_and_show_under_construction_unticked_from_the_first_frame(tmp_path):
+    """P271: a native check item, between Reset Column Widths and Show Under
+    Construction, enabled from the first frame, unticked (Comfortable) until
+    the page speaks; Show Under Construction stays ticked; no accelerator;
+    Alt, V, C reaches it."""
+    [menu] = _run(tmp_path, [])["menus"]
+    view = [i.get("label") or "-" for i in menu[3]["submenu"]]
+    assert view[-4:] == ["-", _word("reset_columns"), _word("compact_rows"), _word("show_under_construction")]
+    item = _flat(menu)[_word("compact_rows")]
+    assert item["type"] == "checkbox" and item["checked"] is False and item["enabled"]
+    assert not item.get("accelerator")
+    assert _word("compact_rows") == "&Compact Rows"
+    assert _flat(menu)[_word("show_under_construction")]["checked"] is True
+    others = [label for label in view if label not in ("-", _word("compact_rows"))]
+    assert not [label for label in others if "&C" in label or label.lower().startswith("c")], "the access key C is the item's own"
+
+
+def test_choosing_compact_rows_is_sent_to_the_page(tmp_path):
+    ran = _run(tmp_path, [{"clickBar": _word("compact_rows")}])
+    assert ran["sends"] == [{"channel": "menu", "message": {"id": "compact_rows", "token": ""}}]

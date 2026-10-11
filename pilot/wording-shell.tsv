@@ -269,6 +269,7 @@ api.SCREEN	columns.returns		new	Returns	1	Column header, Clients	Pilot 0.3, SPEC
 api.SCREEN	columns.sort_by		new	Sort by {column}	3	Tooltip of every column header	Pilot 0.3, SPEC-lists 2 (P138); Jason chose "Sort by" (Q1 C, P180)	Sort by {column}	new
 api.SCREEN	columns.width		new	{column} Width {n}	3	Said to a screen reader after a keyboard resize	Pilot 0.3, SPEC-lists 2 (P138): "Order", never "Sort"; open for Jason, Q1	{column} Width {n}	new
 api.MENU	reset_columns		new	Reset Column Widths	3	View menu	Pilot 0.3, SPEC-lists 4 (P139); open for Jason, Q4	Reset Column Widths	new
+api.MENU	compact_rows		new	&Compact Rows	2	View menu, a checked item	Pilot 0.3, SPEC-ui-menu-layout (P271); open for Jason	&Compact Rows	new
 api.MENU	show_under_construction		new	Show &Under Construction	3	View menu, a checked item	Pilot 0.3, SPEC-hide-under-construction (P197); open for Jason, Q3	Show &Under Construction	new
 api.SCREEN	find_placeholder		new	Households and Returns	3	Search box placeholder, every page	Pilot 0.3 lane 4b, SPEC-lists 13 (P173); P196, SPEC-taxpayer-words R2, R8: the old words did not fit: was Search Clients and Returns	Households and Returns	new
 api.SCREEN	find_placeholder_files		new	Files, Households and Returns	4	Search box placeholder, Needs Review	Pilot 0.3 lane 4b, SPEC-lists 13 (P173); open for Jason, Q12; P196, SPEC-taxpayer-words R2, R8: the old words did not fit: was Search Files, Clients and Returns	Files, Households and Returns	new
@@ -320,6 +321,11 @@ api.SCREEN	navigate_client	Navigate to Client	reword	Navigate to Household	3	A h
 api.SCREEN	find	Find a Client	reword	Find a Household	3	Search box tooltip	P196, SPEC-taxpayer-words R2, Q3	Find a Household	word (P196)
 api.SCREEN	sort.firm	Open a Client to Sort	cut		0	Nowhere; firm pages have no sort control	P274		-
 api.SCREEN	sort.tip		new	Sort This Household's Inbox	4	Sort Now button tooltip	Pilot 0.3, SPEC-ui-menu-small M7 (P274)	Sort This Household's Inbox	new
+api.SCREEN	household_card.contact		new	Contact	1	Household card, the contact's label	Pilot 0.3, SPEC-ui-menu-layout (P275); open for Jason (J4)	Contact	new
+api.SCREEN	household_card.shared_with		new	Shared With	2	Household card, who the household is shared with	Pilot 0.3, SPEC-ui-menu-layout (P275); open for Jason (J4)	Shared With	new
+api.SCREEN	household_card.inbox_link		new	Inbox Link	2	Household card, whether the inbox link is saved	Pilot 0.3, SPEC-ui-menu-layout (P275); open for Jason (J4)	Inbox Link	new
+api.SCREEN	household_card.link_saved		new	Saved	1	Household card, the inbox link is saved	Pilot 0.3, SPEC-ui-menu-layout (P275); open for Jason (J4)	Saved	new
+api.SCREEN	household_card.no_link		new	Not Saved	2	Household card, the inbox link is not saved	Pilot 0.3, SPEC-ui-menu-layout (P275); open for Jason (J4)	Not Saved	new
 api.SCREEN	since		new	Since {date}	2	Overview date cell of a return that needs a person	Pilot 0.3, SPEC-ui-menu-small M5 (P269, option c)	Since {date}	new
 api.SCREEN	figures.waiting	Waiting on Clients	reword	Waiting on Taxpayers	3	Overview figure	P196, SPEC-taxpayer-words R1	Waiting on Taxpayers	word (P196)
 api.SCREEN	empty.clients	No Clients Yet	reword	No Households Yet	3	Households page empty state	P196, SPEC-taxpayer-words the page Jason named	No Households Yet	word (P196)

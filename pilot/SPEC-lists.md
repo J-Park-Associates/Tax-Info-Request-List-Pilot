@@ -555,14 +555,12 @@ to no Client Type (15.3).
   word, its icon and its count, each a **filter** (`aria-pressed`); an
   "All" card clears. Choosing one narrows the whole list, then order and
   pages apply; forgotten when the page is left.
-- **Each return is a card group** (`--bg-raised`, 1px `--border`,
-  `--radius`, 16px apart): a folder icon; the return's name (the H2 link,
-  unchanged); the household as the small grey secondary link with the
-  P141 icon when linked; the count "1 Document" / "{n} Documents"; and a
-  visible **More Actions** icon button (`i-more`, tooltip "More Actions")
-  that opens **the same native right-click menu** as the heading (the
-  `return` template, acting on that return; no new action). The heading
-  is right-clickable too.
+- **Each return is a group** (P272): the return's name (the H2 link),
+  the household as the small grey secondary link with the P141 icon when
+  linked, then ' · {n} Documents', and a visible **More Actions** icon
+  button that opens the same native menu as a right-click on the heading.
+  No card, no border, no pill, no folder icon; the rows sit at the page's
+  keyline (SPEC-shell 3.2, 3.6).
 - **File rows** under the heading: a file icon, the file link (regular
   weight), the request it most likely is as a **muted chip** (its short
   title, the full title as its tooltip), the **reason as a pill**, and
@@ -635,7 +633,7 @@ code names below are unchanged. See `SPEC-taxpayer-words.md`.
   toast and opens nothing, calls no engine command. **View › Show Under
   Construction** (P197, a checked item, ticked by default) hides all five
   and the Workspace heading, kept on this PC; see
-  `SPEC-hide-under-construction.md`.
+  `SPEC-hide-under-construction.md`. View › Compact Rows (P271) is kept the same way, under `tracker.rows`.
 - **Client Types** (section heading): Individuals (1040), Businesses
   (1120, 1120S, 1065), Trusts & Estates (1041), Nonprofits (990); the
   forms are each item's tooltip. Each opens Clients filtered to the
@@ -685,7 +683,7 @@ Every new pair, computed from the tokens (WCAG 2.2; text 4.5:1, non-text
 | `--st-linked` on `--bg-hover` | 3 | 6.25 | 6.62 |
 | `--st-linked` on `--bg-selected` | 3 | 5.66 | 6.11 |
 | `--st-linked` on `--bg-band` | 3 | 6.55 | 7.23 |
-| `--st-linked` on `--bg-raised` (Needs Review card) | 3 | 6.85 | 6.87 |
+| `--st-linked` on `--bg-raised` (was the Needs Review card; no surface draws it since P272) | 3 | 6.85 | 6.87 |
 | `--st-linked` on `--bg-pressed` (the icon's own hover) | 3 | 5.56 | 5.84 |
 | `--st-attention` on `--warn-bg` (Need You pill, reason pill, amber badge) | 4.5 | 7.52 | 8.05 |
 | `--st-waiting` on `--info-bg` (Waiting pill) | 4.5 | 9.52 | 7.85 |
@@ -697,7 +695,7 @@ Every new pair, computed from the tokens (WCAG 2.2; text 4.5:1, non-text
 | `--text-secondary` on `--bg-band` (detail, chips) | 4.5 | 7.91 | 8.84 |
 | `--text-caption` on `--bg-band` (date) | 4.5 | 5.68 | 6.37 |
 | `--link` on `--bg-band` | 4.5 | 12.11 | 8.85 |
-| `--link` on `--bg-raised` (Needs Review card links) | 4.5 | 12.67 | 8.41 |
+| `--link` on `--bg-raised` (was the Needs Review card's links; no surface draws it since P272) | 4.5 | 12.67 | 8.41 |
 | `--focus` on `--bg-band` (focus ring) | 3 | 4.94 | 7.17 |
 | `--text-secondary` on `--bg-nav` (Under Construction, section words) | 4.5 | 7.58 | 10.05 |
 | `--text-secondary` on `--bg-nav-hover` | 4.5 | 6.97 | 8.84 |
@@ -720,7 +718,8 @@ every reason shows whole at 1100px and Q9 no longer arises. **P179:** the
 name column's usual least width is 224px (was 240px): Windows' classic
 scrollbar takes 17px of the 860px main area, and at 240px the lists
 (856px) scrolled sideways; at 224px the header row needs 840px and a
-Needs Review card 842px, inside 843px. Checked in the harness at 1100 x
+Needs Review card 842px, inside 843px (the card itself went with P272; its
+rows now sit at the keyline under the column headers). Checked in the harness at 1100 x
 700, light and dark: no sideways scroll. "Two Years
 Open; Sorting Paused" (176px at 12px) wraps in its row, as ruling 21
 already allows. The rendered

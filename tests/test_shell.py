@@ -905,7 +905,7 @@ def test_every_menu_id_the_page_answers_is_in_the_template_and_the_rest_are_the_
     log (main.js's alone, 5.5); the row menus' ids go to pages.js first."""
     template = {"new_household", "change_root", "open_root", "exit", "edit_household", "add_return", "roll_forward", "mark_shared",
                 "edit_list", "draft_reminder", "open_client_folder", "open_inbox", "open_working", "overview", "needs_review",
-                "reminders", "clients", "find", "refresh", "reset_columns", "show_under_construction", "sort_now", "stop_sorting", "schedule", "repair_schedule", "remove_schedule_here", "firm_report",
+                "reminders", "clients", "find", "refresh", "reset_columns", "compact_rows", "show_under_construction", "sort_now", "stop_sorting", "schedule", "repair_schedule", "remove_schedule_here", "firm_report",
                 "clear_lock", "tour", "safeguards", "terms", "error_log", "about"}
     rows = {"check", "not_requested", "another_return", "put_back", "keep_here", "edit_request", "unfile", "mark_missing", "show_in_explorer"}
     text = read("shell.js")
@@ -954,6 +954,7 @@ class Element extends Node {
   }
   setAttribute(key, value) { this.attrs[key] = String(value); }
   getAttribute(key) { return this.attrs[key]; }
+  getBoundingClientRect() { return { left: 10, bottom: 20, top: 0, right: 30 }; }
   append(...nodes) { for (const one of nodes) this.kids.push(one instanceof Node ? one : new Text(String(one))); }
   replaceChildren(...nodes) { this.kids = []; this.append(...nodes); }
   addEventListener(type, fn) { (this.handlers[type] = this.handlers[type] || []).push(fn); }
@@ -979,7 +980,8 @@ const setTip = (node, words) => tips.push([node.className, words]);
 const opened = []; const went = [];
 const openPath = (path, how) => opened.push([path, how]);
 const shellGo = (route) => went.push(route);
-const shellPopup = (name, token, x, y, enable) => {};
+const popups = [];
+const shellPopup = (name, token, x, y, enable) => popups.push([name, token, x, y, enable]);
 const unanswered = (id) => failures.push(`unanswered ${id}`);
 let shellReturn = (path) => ({ return_name: "1040 - John & Jane Smith", household: "h1", year: 2025 });
 const PAGES_LINK_WORDS = { file: "show_in_explorer", household: "navigate_client", return: "navigate_return" };
@@ -1020,6 +1022,8 @@ const vocab = {
     paging: { showing: "Showing {from}-{to} of {total} {noun}", previous: "Previous", next: "Next",
               nouns: { overview: "Returns", needs_review: "Files", reminders: "Drafts", clients: "Households" } },
     icons: { more_actions: "More Actions", remove_filter: "Remove Filter" }, filters: { work: "Work Waiting", all: "All" }, work: "Work Waiting",
+    shared: "Shared", not_shared: "Not Shared",
+    household_card: { contact: "Contact", shared_with: "Shared With", inbox_link: "Inbox Link", link_saved: "Saved", no_link: "Not Saved" },
     client_types: { individuals: "Individuals", businesses: "Businesses", trusts: "Trusts & Estates", nonprofits: "Nonprofits" },
   },
 };
@@ -1508,7 +1512,7 @@ def test_the_year_page_leaves_a_gap_under_its_h1_before_its_rows(tmp_path):
       const nodes = pagesYear({ level: "year", household: "h1", year: 2025 });
       return nodes.map((one) => `${one.tag}.${one.className.split(" ")[0]}`);
     """, tmp_path, setup="const shellFirm = () => ({ data: null });")
-    assert ran == ["h1.page-title", "div.page-gap", "div.rows"]
+    assert ran == ["h1.page-title", "div.page-gap", "div.returns-list"]
     css = read("shell.css")
     assert "height: var(--sp-6)" in next(body for _m, selector, body in blocks(css) if selector.strip() == ".page-gap")
 
@@ -1641,7 +1645,8 @@ def test_no_page_draws_a_path_as_text_or_as_a_tooltip(tmp_path):
       Object.assign(vocab.screen, {
         figures: { need: "Need a person", waiting: "Waiting on clients", complete: "Complete" }, work: "Work waiting",
         sections: { reminders: "Reminders", clients: "Clients" }, filters: { work: "Work waiting", all: "All" }, held: "Held",
-        inactive: "Inactive", rolled: "Rolled forward", contact: "Contact {name}", shared: "Shared", not_shared: "Not shared",
+        inactive: "Inactive", rolled: "Rolled forward", shared: "Shared", not_shared: "Not shared",
+        household_card: { contact: "Contact", shared_with: "Shared with", inbox_link: "Inbox link", link_saved: "Saved", no_link: "Not saved" },
         empty: { overview: "Nothing is waiting", next_sort: "Next sort {time}", needs_review: "Nothing needs review", reminders: "No drafts ready",
                  clients: "No clients yet", work: "No work waiting", returns: "No returns yet", received: "Nothing received yet" },
       });
@@ -1970,8 +1975,7 @@ def test_the_firm_pages_rows_link_by_the_firms_keys_and_carry_the_year(tmp_path)
       const overview = pagesWorkRows(firmData.returns)[0] || { broken: pagesBroken.map((b) => String(b.err)) };
       const reminder = pagesReminderSpecs(firmData)[0];
       const link = (n) => n.byClass("row-link").map((l) => [l.textContent, l.dataset.link]);
-      const docs = nodes.flatMap((n) => (n.byClass ? n.byClass("group-docs") : [])).map((n) => n.textContent);
-      return { head: link(head), headParts: head.kids.map((k) => [k.className, k.textContent]), caption: link(caption), captionText: caption.textContent, docs,
+      return { head: link(head), headParts: head.kids.map((k) => [k.className, k.textContent]), caption: link(caption), captionText: caption.textContent,
                rows: rows.map((r) => [r.byClass("row-name")[0].textContent, link(r.byClass("row-name")[0])]),
                overview: [overview.name, overview.nameLink, overview.household, overview.year, overview.form, overview.detailLink || null],
                reminder: [reminder.name, reminder.nameLink.kind, reminder.household, reminder.year, reminder.form], statusTips };
@@ -1981,9 +1985,9 @@ def test_the_firm_pages_rows_link_by_the_firms_keys_and_carry_the_year(tmp_path)
                               "pagesNextSort", "pagesWorkRows", "pagesCounts", "pagesRoute", "pagesDue", "pagesSince", "pagesReminderSpecs", "pagesStage", "screenWords", "h", "icon",
                               "pagesActivate", "pagesRunRow", "pagesRunRowLink", "pagesRunLink", "pagesRunStep", "pagesPathOf", "pagesPopup", "pagesEnableFor", "pagesRowRoute",
                               *COLUMN_FUNCTIONS])
-    assert ran["head"] == [["Smith", "return"]] and ran["caption"] == [["Smith Family", "household"]] and ran["captionText"] == "Smith Family"
+    assert ran["head"] == [["Smith", "return"]] and ran["caption"] == [["Smith Family", "household"]]
+    assert ran["captionText"] == "Smith Family \u00b7 2 Documents", "the household, then the count in the same caption (P272)"
     assert ran["headParts"] == [["head-year", "2025"], ["row-link", "Smith"], ["form-tag", "1040"]], "the heading says the year, the taxpayer and the form once each (P195)"
-    assert ran["docs"] == ["2 Documents"], "the group's count sits at its heading's end (P149)"
     assert ran["rows"] == [["one.pdf", [["one.pdf", "file"]]], ["two.exe", []]], "text for the file with no copy"
     assert ran["overview"] == ["Smith", {"kind": "return", "path": "/c/Smith/2025/1040 - Smith", "tip": "Navigate to Return (Smith Family)"}, "Smith Family", 2025, "1040", None]
     assert ran["reminder"] == ["Smith", "return", "Smith Family", 2025, "1040"]
@@ -2912,7 +2916,8 @@ SORT_NOTICES = r"""
   let shellRoute = { level: "return", ret: "r25" };
   const returns = { r25: { household: "h1" }, r24: { household: "h1" } };
   function shellReturn(path) { return returns[path] || null; }
-  const el = () => ({ removed: false, remove() { this.removed = true; } });
+  const el = () => ({ removed: false, remove() { this.removed = true; }, contains: () => false });
+  const document = { activeElement: null };
   const $ = () => ({ append() {} });
   function drawNotice() {}
   function outlineRefused() {}
@@ -2920,7 +2925,7 @@ SORT_NOTICES = r"""
   const shown = () => notices.map((one) => one.sentence);
   const press = (entry) => { dismissNotice(entry); forgetSortLine(entry.key); };   // the notice's cross or Retry
 """
-SORT_NOTICE_FUNCTIONS = ["notice", "keyedNotice", "clearNotice", "syncNotices", "dismissNotice"] + SORT_ANSWER_FUNCTIONS
+SORT_NOTICE_FUNCTIONS = ["notice", "keyedNotice", "clearNotice", "syncNotices", "noticeFocusAfter", "dismissNotice"] + SORT_ANSWER_FUNCTIONS
 
 
 def test_a_sort_that_fails_the_same_way_again_is_said_again(tmp_path):
@@ -3539,7 +3544,8 @@ def test_needs_review_pages_by_whole_return_groups_and_counts_files(tmp_path):
                                                     received: `2026-03-0${ret.length % 9 + 1}`, suggestion: "", open_key: "" });
       }
       shellFirmData.files = files;
-      const counts = (page) => [page.byClass("page-count")[0].textContent, page.byClass("return-card").length, page.byClass("row").length];
+      const counts = (page) => [page.byClass("page-count")[0].textContent,
+        page.byClass("group-head").filter((n) => !n.className.includes("page-head")).length, page.byClass("row").length];
       const one = counts(draw("needs-review"));
       pagesPageAt.needs_review = 1; const two = counts(draw("needs-review"));
       pagesPageAt.needs_review = 2; const three = counts(draw("needs-review"));
@@ -3819,20 +3825,19 @@ def test_the_link_panel_and_the_pickers_are_named_and_show_their_focus():
     assert '"aria-haspopup": "menu"' in pages and '"aria-haspopup": "dialog"' in pages
 
 
-def test_the_four_lists_and_a_needs_review_card_fit_1100px_beside_a_windows_scrollbar():
+def test_the_four_lists_fit_1100px_beside_a_windows_scrollbar():
     """The review's N5 (P179): at 1100px the main area is 860px less Windows'
     classic 17px scrollbar, 843px; the columns' usual widths with their gaps
-    and the list's padding, and a Needs Review card with its margins, border
-    and padding, must fit it, or the page scrolls sideways again."""
+    and the list's padding must fit it, or the page scrolls sideways again.
+    (P272: Needs Review's cards are gone, so its rows are the firm list's.)"""
     light, _dark = root_blocks()
 
     def px(name: str) -> int:
         return int(light[name].strip().removesuffix("px"))
 
-    sp = {step: px(f"--sp-{step}") for step in (2, 4, 6, 8)}
+    sp = {step: px(f"--sp-{step}") for step in (4, 8)}
     columns = sum(px(f"--size-col-{cell}") for cell in ("name", "detail", "status", "end")) + 3 * sp[4]
     assert columns + 2 * sp[8] <= 1100 - px("--size-side") - 17
-    assert columns + 2 * sp[6] + 2 + 2 * sp[2] <= 1100 - px("--size-side") - 17
     # P194, P195: Overview's and Reminders' five columns, four gaps and the list's padding.
     returns = sum(px(f"--size-col-{cell}") for cell in ("year", "taxpayer", "form", "status", "end")) + 4 * sp[4]
     assert returns + 2 * sp[8] == 832 <= 1100 - px("--size-side") - 17
@@ -3953,9 +3958,11 @@ def test_needs_review_household_and_year_pages_say_each_field_once(tmp_path):
       shellHousehold = () => hh;
       shellRoute = { level: "household", household: "c/Alpha" };
       const page = pagesHousehold(shellRoute);
-      const rows = page.flatMap((n) => (n && n.byClass ? n.byClass("row") : [])).map((r) => r.byClass("row-name")[0].kids.map((k) => [k.className, k.textContent]));
+      const lists = (n) => (n && n.className && n.className.split(" ").includes("returns-list") ? [n] : n && n.byClass ? n.byClass("returns-list") : []);
+      const inList = (nodes) => nodes.flatMap(lists).flatMap((list) => list.byClass("row"));
+      const rows = inList(page).map((r) => r.byClass("row-name")[0].kids.map((k) => [k.className, k.textContent]));
       const year = pagesYear({ level: "year", household: "c/Alpha", year: 2025 });
-      const yearRows = year.flatMap((n) => (n && n.byClass ? n.byClass("row") : [])).map((r) => r.byClass("row-name")[0].textContent);
+      const yearRows = inList(year).map((r) => r.byClass("row-name")[0].textContent);
       return { heads, rows, yearRows, title: year[0].textContent };
     """, tmp_path)
     assert ran["heads"] == [[["head-year", "2025"], ["row-link", "Bravo"], ["form-tag", "1065"]],
@@ -4027,7 +4034,9 @@ const store = { data: {}, broken: false,
   removeItem(k) { if (this.broken) throw new Error("locked"); delete this.data[k]; } };
 const window = { localStorage: store };
 const SOON_KEY = "tracker.underConstruction";
+const ROWS_KEY = "tracker.rows";
 let shellSoonHidden = null;
+let shellCompact = null;
 const said = { focus: [], tips: 0, sent: [] };
 function focusRegion(name) { said.focus.push(name); }
 function hideTip() { said.tips += 1; }
@@ -4038,7 +4047,7 @@ const hiddenNow = () => root.all().filter((n) => n.cls.has("hidden")).map((n) =>
 const soonButton = (key) => root.querySelectorAll(".side-section[data-soon]").find((n) => n.attrs["data-soon"] === key);
 """
 
-SOON_FUNCTIONS = ["shellReadSoon", "shellChecked", "drawSoon", "shellToggleSoon"]
+SOON_FUNCTIONS = ["shellReadSoon", "shellReadCompact", "shellChecked", "drawSoon", "shellToggleSoon"]
 
 
 def test_hiding_takes_the_five_under_construction_items_and_the_workspace_heading_out_of_the_panel(tmp_path):
@@ -4104,7 +4113,7 @@ def test_the_setting_is_this_pcs_and_the_side_panel_draws_it_on_every_draw():
     assert re.search(r"^drawSoon\(\);$", text, flags=re.M), "a stored hidden applies at load, before the words (review S1)"
     assert "show_under_construction: () => shellToggleSoon()," in text
     first = [line for line in js_function("shellEnabled").splitlines() if "const ids = [" in line]
-    assert len(first) == 1 and '"show_under_construction"' in first[0]
+    assert len(first) == 1 and '"show_under_construction"' in first[0] and '"compact_rows"' in first[0]
     assert "under_construction" not in (REPO / "tracker" / "settings.py").read_text(encoding="utf-8")
 
 
@@ -5973,7 +5982,7 @@ def test_the_notices_of_a_first_start_are_drawn_after_the_setup_page_takes_the_s
     folder has gone missing. With a clients folder the route is a working page
     and the same notices are closed. Driven through the real
     ``loadEngagements``, ``shellNeedsRoot``, ``notice`` and ``drawNotice``."""
-    ran = run_shell(["el", "detailOf", "retryOf", "drawNotice", "notice", "keyedNotice", "clearNotice", "dismissNotice", "syncNotices",
+    ran = run_shell(["el", "detailOf", "retryOf", "drawNotice", "notice", "keyedNotice", "clearNotice", "noticeFocusAfter", "dismissNotice", "syncNotices",
                      "renderMachineNotices", "renderAfterInstall", "shortNotice", "shellNeedsRoot", "loadEngagements"],
                     NOTICE_DETAIL_FAKES + r"""
 const notices = []; const keyedNotices = new Map(); const logged = [];
@@ -7173,3 +7182,714 @@ def test_a_mac_is_known_from_the_browsers_own_platform_and_every_other_system_ke
     statement = 'document.documentElement.classList.toggle("on-mac", appOnMac(navigator));'
     assert f"\n{statement}\n" in app, "top level, not inside a function"
     assert app.index(statement) < app.index("function applyVocabulary")
+
+
+# ── P271-P273, P275 (SPEC-ui-menu-layout) ───────────────────────────────────
+# ── L1: View > Compact Rows (P271) ──────────────────────────────────────────
+
+#: A document root with a class list, one active row and the shell's three
+#: seams (hideTip, shellEnable, the storage), for the Compact Rows functions.
+COMPACT_PANEL = r"""
+const store = { data: {}, broken: false,
+  getItem(k) { if (this.broken) throw new Error("locked"); return k in this.data ? this.data[k] : null; },
+  setItem(k, v) { if (this.broken) throw new Error("locked"); this.data[k] = String(v); },
+  removeItem(k) { if (this.broken) throw new Error("locked"); delete this.data[k]; } };
+const window = { localStorage: store };
+const ROWS_KEY = "tracker.rows";
+const SOON_KEY = "tracker.underConstruction";
+let shellCompact = null;
+let shellSoonHidden = null;
+const said = { tips: 0, sent: [], focus: [], scrolled: [], asked: [] };
+let activeRow = { scrollIntoView: (o) => said.scrolled.push(o) };
+const classes = new Set();
+const document = {
+  activeElement: null,
+  documentElement: { classList: { toggle: (c, on) => (on ? classes.add(c) : classes.delete(c)), contains: (c) => classes.has(c) } },
+  querySelector: (sel) => { said.asked.push(sel); return activeRow; },
+};
+function focusRegion(name) { said.focus.push(name); }
+function hideTip() { said.tips += 1; }
+function shellEnable() { said.sent.push(shellChecked()); }
+"""
+
+COMPACT_FUNCTIONS = ["shellReadSoon", "shellReadCompact", "shellChecked", "drawCompact", "shellToggleCompact"]
+
+
+def test_compact_rows_are_off_until_chosen_and_the_menu_flips_keeps_and_says_the_tick(tmp_path):
+    """P271: a new install is Comfortable (no class, no tick); the menu's
+    answer adds the class, keeps "compact" under tracker.rows and sends the
+    tick; again removes the class, forgets the key and sends no tick."""
+    ran = run_shell(COMPACT_FUNCTIONS, COMPACT_PANEL + store_functions(), """
+      drawCompact();
+      const first = { cls: classes.has("rows-compact"), checked: shellChecked() };
+      shellToggleCompact();
+      const on = { cls: classes.has("rows-compact"), stored: store.data[ROWS_KEY], checked: shellChecked() };
+      shellToggleCompact();
+      const off = { cls: classes.has("rows-compact"), stored: ROWS_KEY in store.data, checked: shellChecked() };
+      return { first, on, off, sent: said.sent, focus: said.focus };
+    """, tmp_path)
+    assert ran["first"] == {"cls": False, "checked": ["show_under_construction"]}
+    assert ran["on"] == {"cls": True, "stored": "compact", "checked": ["show_under_construction", "compact_rows"]}
+    assert ran["off"] == {"cls": False, "stored": False, "checked": ["show_under_construction"]}
+    assert ran["sent"] == [["show_under_construction", "compact_rows"], ["show_under_construction"]]
+    assert ran["focus"] == [], "a check item moves no focus"
+
+
+def test_storage_that_cannot_be_read_keeps_comfortable_rows_and_a_choice_holds_while_the_app_is_open(tmp_path):
+    """P271: unreadable storage is Comfortable, and a choice it refuses to keep
+    still holds until the app closes."""
+    ran = run_shell(COMPACT_FUNCTIONS, COMPACT_PANEL + store_functions(), """
+      store.broken = true;
+      drawCompact();
+      const first = classes.has("rows-compact");
+      shellToggleCompact();
+      return { first, after: classes.has("rows-compact"), checked: shellChecked() };
+    """, tmp_path)
+    assert ran == {"first": False, "after": True, "checked": ["show_under_construction", "compact_rows"]}
+
+
+def test_a_damaged_stored_density_reads_as_comfortable(tmp_path):
+    """P271: only the exact word "compact" is compact (as P197's "hidden")."""
+    ran = run_shell(COMPACT_FUNCTIONS, COMPACT_PANEL + store_functions(), """
+      const seen = [];
+      for (const value of ["COMPACT", "1", "true", ""]) {
+        store.data[ROWS_KEY] = value; shellCompact = null; drawCompact();
+        seen.push([classes.has("rows-compact"), shellChecked()]);
+      }
+      store.data[ROWS_KEY] = "compact"; shellCompact = null; drawCompact();
+      seen.push([classes.has("rows-compact"), shellChecked()]);
+      return seen;
+    """, tmp_path)
+    assert ran == [[False, ["show_under_construction"]]] * 4 + [[True, ["show_under_construction", "compact_rows"]]]
+
+
+def test_a_stored_density_applies_at_load_before_the_words():
+    """P271 (as P197's review S1 pinned for drawSoon): a top-level
+    drawCompact(); in shell.js, so the first paint's outline rows are the
+    chosen height; the key is its own, on this PC; the menu's id is answered
+    and enabled from the first frame."""
+    text = stripped_js("shell.js")
+    assert 'const ROWS_KEY = "tracker.rows";' in text
+    assert re.search(r"^drawCompact\(\);$", text, flags=re.M), "a stored compact applies at load, before the words"
+    assert "compact_rows: () => shellToggleCompact()," in text
+    first = [line for line in js_function("shellEnabled").splitlines() if "const ids = [" in line]
+    assert len(first) == 1 and '"compact_rows"' in first[0]
+    assert "tracker.rows" not in (REPO / "tracker" / "settings.py").read_text(encoding="utf-8")
+
+
+def _specificity(selector: str) -> tuple[int, int, int]:
+    """(ids, classes/attributes/pseudo-classes, types) of one compound or
+    descendant selector; :is() and :not() take their most specific argument,
+    as CSS does. Enough for the selectors of the two stylesheets."""
+    ids = classes = types = 0
+    i = 0
+    while i < len(selector):
+        c = selector[i]
+        if c == "#":
+            ids += 1
+            i += 1
+        elif c == "." or c == "[":
+            classes += 1
+            i += 1
+        elif c == ":":
+            end = i + 1
+            while end < len(selector) and (selector[end].isalnum() or selector[end] == "-"):
+                end += 1
+            if end < len(selector) and selector[end] == "(":
+                depth, close = 1, end + 1
+                while depth:
+                    depth += {"(": 1, ")": -1}.get(selector[close], 0)
+                    close += 1
+                if selector[i + 1:end] in ("is", "not"):
+                    inner = max(_specificity(part.strip()) for part in re.split(r",(?![^(]*\))", selector[end + 1:close - 1]))
+                    ids, classes, types = ids + inner[0], classes + inner[1], types + inner[2]
+                else:
+                    classes += 1
+                i = close
+            else:
+                classes += 1
+                i = end
+        elif c.isalpha():
+            if i == 0 or selector[i - 1] in " >+~":
+                types += 1
+            while i < len(selector) and (selector[i].isalnum() or selector[i] == "-"):
+                i += 1
+        else:
+            i += 1
+    return ids, classes, types
+
+
+def test_a_compact_row_is_32px_on_every_list_page_and_in_the_editor():
+    """P271: --size-row-compact is 32px and --size-row is still 40px; the
+    compact block covers the rows, their outline and the editor's fields.
+    Review 1, finding 1: the compact field rule and the Comfortable 28px rule
+    carry the scope of pilot-ui.css's general field rule (whose #page counts
+    as an id), so each outranks it - by specificity, not by source order."""
+    light, _dark = root_blocks()
+    assert light["--size-row-compact"] == "32px" and light["--size-row"] == "40px"
+    assert light["--size-control-sm"] == "24px"
+    seen = {}
+    for _media, selector, body in blocks(read("shell.css")):
+        if ".rows-compact" in selector:
+            seen[" ".join(selector.split())] = dict(declarations(body))
+    rules = list(seen.items())
+    row = [s for s, _ in rules if re.search(r"\.row\b(?!-)", s) and ".row-skeleton" in s]
+    field = [s for s, _ in rules if ".editor-table" in s]
+    assert row and field, sorted(seen)
+    assert ".row," in row[0], "the rows and their outline share one rule"
+    assert seen[row[0]]["min-height"] == "var(--size-row-compact)"
+    assert seen[field[0]]["min-height"] == "var(--size-control-sm)"
+    assert seen[".rows-compact .row-year"] == {"font-size": "var(--fs-caption)", "line-height": "var(--lh-caption)"}
+    assert "input" in field[0] and "select" in field[0]
+    scope = ":is(#page, #sheet, .modal-overlay)"
+    assert field[0].startswith(f".rows-compact {scope} .editor-table "), field[0]
+    general = comfortable = None
+    for _media, selector, body in blocks(read("pilot-ui.css")):
+        selector = " ".join(selector.split())
+        if selector.startswith(scope) and selector.endswith("textarea)") and "min-height" in dict(declarations(body)):
+            general = selector
+        if selector.endswith(".editor-table :is(input:not([type=\"checkbox\"]):not([type=\"radio\"]), select)") and dict(declarations(body)).get("min-height") == "28px":
+            comfortable = selector
+    assert general and comfortable, "the general field rule and the Comfortable 28px rule are in pilot-ui.css"
+    assert comfortable.startswith(f"{scope} .editor-table ")
+    assert _specificity(comfortable) > _specificity(general), "Comfortable's 28px must beat the general 32px field rule"
+    assert _specificity(field[0]) > _specificity(comfortable), "Compact's 24px must beat Comfortable's 28px"
+
+
+def test_compact_rows_change_heights_and_the_years_size_never_a_column():
+    """P271: every rule that names .rows-compact declares only min-height,
+    font-size and line-height - no width, no column, no padding - so a kept
+    column width means the same in both densities and the 1100px arithmetic
+    of SPEC-shell 3.6 stands."""
+    found = 0
+    for _media, selector, body in blocks(read("shell.css")):
+        if ".rows-compact" in selector:
+            found += 1
+            assert {prop for prop, _ in declarations(body)} <= {"min-height", "font-size", "line-height"}, selector.strip()
+    assert found >= 3
+
+
+def test_switching_density_keeps_the_active_row_in_view_and_hides_a_showing_tip(tmp_path):
+    """P271: every row moved, so a showing tip goes and the active row of the
+    last-used list is scrolled into view (nearest); with no list on the page
+    nothing is scrolled; focus is not moved."""
+    ran = run_shell(COMPACT_FUNCTIONS, COMPACT_PANEL + store_functions(), """
+      shellToggleCompact();
+      const withRow = { scrolled: [...said.scrolled], tips: said.tips, asked: [...said.asked] };
+      activeRow = null;
+      shellToggleCompact();
+      return { withRow, tips: said.tips, scrolled: said.scrolled.length, focus: said.focus };
+    """, tmp_path)
+    assert ran["withRow"] == {"scrolled": [{"block": "nearest"}], "tips": 1, "asked": [".rows .row.is-active"]}
+    assert ran["tips"] == 2 and ran["scrolled"] == 1 and ran["focus"] == []
+
+
+def test_switching_density_scrolls_the_focused_lists_active_row_not_the_first_lists(tmp_path):
+    """P271 (review 1, finding 2): every list a person has visited keeps its
+    own active row, so with two lists on the page and the second holding
+    focus, the second's row is the one scrolled into view; with no list
+    focused the first active row on the page is."""
+    ran = run_shell(COMPACT_FUNCTIONS, COMPACT_PANEL + store_functions(), """
+      const seen = [];
+      const list = (name) => ({ querySelector: (sel) => ({ scrollIntoView: (o) => seen.push([name, sel, o.block]) }) });
+      const second = list("second");
+      document.activeElement = { closest: (sel) => (sel === ".rows" ? second : null) };
+      shellToggleCompact();
+      document.activeElement = { closest: () => null };
+      activeRow = { scrollIntoView: (o) => seen.push(["page", "any", o.block]) };
+      shellToggleCompact();
+      return { seen };
+    """, tmp_path)
+    assert ran["seen"] == [["second", ".row.is-active", "nearest"], ["page", "any", "nearest"]]
+
+
+# ── L2: Needs Review, one flat list (P272) ──────────────────────────────────
+
+def test_needs_review_is_one_flat_list_with_no_card_pill_or_folder_icon(tmp_path):
+    """P272: each return with files waiting is an ordinary group, as on a
+    return's own page: a heading followed by its rows. No card, no raised
+    box, no folder icon, no "2 Documents" pill."""
+    ran = run_lists("""
+      const page = draw("needs-review");
+      const classes = new Set(page.find(() => true).flatMap((n) => n.className.split(" ")));
+      const has = (n, c) => n.className.split(" ").includes(c);
+      const heads = page.kids.filter((n) => has(n, "group-head") && !has(n, "page-head"));
+      const next = heads.map((head) => has(page.kids[page.kids.indexOf(head) + 1], "rows"));
+      return { banned: ["return-card", "group-docs", "group-icon"].filter((c) => classes.has(c)), heads: heads.length, next };
+    """, tmp_path)
+    assert ran == {"banned": [], "heads": 2, "next": [True, True]}
+
+
+def test_a_needs_review_heading_says_the_return_then_the_household_and_its_count(tmp_path):
+    """P272: the heading's caption is the household (a link, with its link
+    mark when linked), then " · " and the count; "1 Document" for one; the
+    count alone with no household known. The words are the vocabulary's."""
+    ran = run_lists("""
+      shellFirmData.returns[1].household = "";
+      const page = draw("needs-review");
+      const link = (n) => n.byClass("row-link").map((l) => [l.textContent, l.dataset.link]);
+      return page.byClass("group-head").filter((n) => !n.className.includes("page-head"))
+        .map((head) => { const c = head.byClass("group-count")[0]; return [c.textContent, link(c)]; });
+    """, tmp_path)
+    assert ran == [["1 Document", []], ["Alpha · 2 Documents", [["Alpha", "household"]]]], "the groups follow their first file; Bravo's came first"
+    with_household = run_lists("""
+      const page = draw("needs-review");
+      return page.byClass("group-head").filter((n) => !n.className.includes("page-head")).map((head) => head.byClass("group-count")[0].textContent);
+    """, tmp_path)
+    assert with_household == ["Bravo · 1 Document", "Alpha · 2 Documents"]
+
+
+def test_more_actions_follows_the_count_and_opens_the_returns_own_menu(tmp_path):
+    """P272: the More Actions button is the heading's last part, after the
+    count; a click opens the return's native menu at the button's bottom-left
+    with the page's enable list for the group's token; a right-click on the
+    heading does the same at the pointer."""
+    ran = run_lists("""
+      const enabled = []; shellEnabled = (route) => { enabled.push(route.level); return ["open_inbox"]; };
+      const page = draw("needs-review");
+      const head = page.byClass("group-head").filter((n) => !n.className.includes("page-head"))[0];
+      const button = head.byClass("group-more")[0];
+      const order = head.kids.map((k) => k.className.split(" ")[0]);
+      const attrs = { label: button.attrs["aria-label"], popup: button.attrs["aria-haspopup"], tip: tips.filter(([cls]) => cls.includes("group-more")).map(([, words]) => words) };
+      button.handlers.click[0]({});
+      head.handlers.contextmenu[0]({ preventDefault() {}, clientX: 70, clientY: 80 });
+      return { order, attrs, popups, enabled };
+    """, tmp_path)
+    assert ran["order"][-2:] == ["group-count", "icon-button"], "the button sits right after the count"
+    assert ran["attrs"]["label"] == "More Actions" and ran["attrs"]["popup"] == "menu"
+    assert set(ran["attrs"]["tip"]) == {"More Actions"}
+    assert [p[0] for p in ran["popups"]] == ["return", "return"] and ran["popups"][0][1] == ran["popups"][1][1]
+    assert ran["popups"][0][1].startswith("row-") and ran["popups"][0][4] == ["open_inbox"]
+    assert ran["popups"][0][2:4] == [10, 20] and ran["popups"][1][2:4] == [70, 80]
+    assert ran["enabled"] == ["return", "return"]
+
+
+def test_the_first_needs_review_heading_is_the_pages_first_group(tmp_path):
+    """P272: the first heading drawn sits 24px under the column headers
+    (is-first); the next ones do not. When the first group cannot be built
+    and is named in a notice, the next one is the page's first."""
+    ran = run_lists("""
+      const firsts = (page) => page.byClass("group-head").filter((n) => !n.className.includes("page-head")).map((n) => n.className.split(" ").includes("is-first"));
+      const whole = firsts(draw("needs-review"));
+      const real = pagesReviewGroup;
+      let called = 0;
+      pagesReviewGroup = (group, specs, first) => { called += 1; if (called === 1) throw new Error("not built"); return real(group, specs, first); };
+      const after = firsts(draw("needs-review"));
+      return { whole, after, broken: pagesBroken.length };
+    """, tmp_path)
+    assert ran == {"whole": [True, False], "after": [True], "broken": 1}, "the group drawn first failed, so the survivor is the page's first"
+
+
+def test_no_card_rule_remains_and_a_needs_review_row_starts_at_the_keyline():
+    """P272: no selector in shell.css names .return-card or .group-docs, and
+    no rule overrides a row's padding for Needs Review, so its rows start at
+    the page's keyline under their column headers. A return's heading centres
+    its chip and its 24px button (:has(.group-more)); the page's title row
+    keeps its baseline."""
+    css = stripped(read("shell.css"))
+    assert ".return-card" not in css and ".group-docs" not in css
+    first = {}
+    for _media, selector, body in blocks(read("shell.css")):
+        for part in selector.split(","):
+            first.setdefault(" ".join(part.split()), dict(declarations(body)))
+    for selector, body in first.items():
+        if "needs_review" in selector or "return-card" in selector:
+            assert "padding" not in body and "padding-left" not in body, selector
+    assert first[".group-head:has(.group-more):not(.hidden)"] == {"align-items": "center"}
+    assert first[".page-head.group-head:not(.hidden)"]["align-items"] == "baseline"
+    more = first[".group-more.icon-button:not(.hidden)"]
+    assert more["width"] == more["height"] == "var(--size-control-sm)"
+    assert more["margin-left"] == "var(--sp-1)" and more["color"] == "var(--text-secondary)"
+
+
+# ── L3: the notices panel (P273) ────────────────────────────────────────────
+
+PANEL_MEDIA = ("@media (min-width: 1388px)",)
+
+
+def _panel_rules() -> dict[str, dict[str, str]]:
+    """The rules of shell.css's one 1388px block, by selector."""
+    return {" ".join(selector.split()): dict(declarations(body))
+            for media, selector, body in blocks(read("shell.css")) if media == PANEL_MEDIA}
+
+
+def test_the_notices_panel_is_a_column_beside_the_page_at_1388px_and_wider():
+    """P273: at 1388px and wider #page is column 1 and #notices column 2 under
+    the path row, which spans both; the panel is --size-notices (288px) wide,
+    --bg-nav with a hairline at its left, and scrolls inside itself."""
+    rules = _panel_rules()
+    assert rules["#main:not(.hidden)"] == {"grid-template-columns": "minmax(0, 1fr) auto", "grid-template-rows": "var(--size-bar) minmax(0, 1fr)"}
+    assert rules["#bar:not(.hidden)"] == {"grid-column": "1 / -1"}
+    assert rules["#page"] == {"grid-column": "1", "grid-row": "2"}
+    assert rules["#notices"] == {"grid-column": "2", "grid-row": "2"}
+    panel = rules["#notices:not(:empty)"]
+    assert panel["width"] == "var(--size-notices)" and panel["background"] == "var(--bg-nav)"
+    assert panel["border-left"] == "1px solid var(--border)" and panel["overflow-y"] == "auto" and panel["min-height"] == "0"
+    light, _dark = root_blocks()
+    assert light["--size-notices"] == "288px"
+    assert "border-left-color: CanvasText" in " ".join(read("shell.css").split()), "the forced-colours block keeps the panel's edge"
+    index = read("index.html")
+    assert index.index('id="bar"') < index.index('id="notices"') < index.index('id="page"'), "markup order: path row, notices, page (Tab and F6 agree)"
+
+
+def test_the_panel_leaves_every_page_the_860px_it_is_designed_for():
+    """P273: 1388 = 240 (side panel) + 860 + 288 - the page is never narrower
+    than the 860px of a 1100px window the lists are designed for (SPEC-shell
+    3.6); the breakpoint is read from the media query, the rest from tokens."""
+    light, _dark = root_blocks()
+
+    def px(name: str) -> int:
+        return int(light[name].strip().removesuffix("px"))
+
+    queries = {media for media, _selector, _body in blocks(read("shell.css")) if media and "min-width: 13" in media[0]}
+    assert queries == {PANEL_MEDIA}
+    breakpoint_px = int(re.search(r"min-width: (\d+)px", PANEL_MEDIA[0]).group(1))
+    assert breakpoint_px - px("--size-side") - px("--size-notices") == 860 == 1100 - px("--size-side")
+
+
+def test_a_notices_panel_with_no_notice_takes_no_width():
+    """P273: with no notice #notices is display: none (style.css), so the
+    column the panel is placed in is `auto` and 0 wide; no rule of the block
+    gives #notices a width while it may be empty."""
+    assert re.search(r"#notices:empty\s*\{\s*display:\s*none;\s*\}", read("style.css"))
+    rules = _panel_rules()
+    assert rules["#main:not(.hidden)"]["grid-template-columns"].endswith(" auto")
+    for selector, body in rules.items():
+        if re.fullmatch(r"#notices(:[^ ]+)*", selector) and ("width" in body or "padding" in body or "border-left" in body):
+            assert ":not(:empty)" in selector, selector
+
+
+def test_a_notice_in_the_panel_keeps_its_sentence_details_action_and_dismiss_in_markup_order(tmp_path):
+    """P273: no markup changes - drawNotice's children are the sentence, the
+    Details disclosure, the action or Retry, then the dismiss; the panel's
+    rules give the sentence the first line, keep an opened summary at the
+    start of the second and send the buttons to its end."""
+    ran = run_shell(["el", "detailOf", "retryOf", "drawNotice"], NOTICE_DETAIL_FAKES, """
+      const kinds = (node) => node.kids.map((one) => one.tag === "details" ? "details" : one.className || one.tag);
+      const failing = draw({ sentence: "Sort Failed", kind: "failed", count: 1, detail: "a\\nb", retry: () => {} });
+      const plain = draw({ sentence: "Sort Failed", kind: "failed", count: 1, detail: "", retry: () => {} });
+      return { withDetail: kinds(failing), plain: kinds(plain) };
+    """, tmp_path, "app.js")
+    assert ran["withDetail"] == ["notice-text", "details", "button", "button"]
+    assert ran["plain"] == ["notice-text", "button", "button"]
+    rules = _panel_rules()
+    assert rules["#notices .notice-text"] == {"flex": "0 0 100%"}
+    assert rules["#notices .notice-detail"] == {"flex": "1 1 auto"}
+    assert rules["#notices .notice-detail[open]"] == {"order": "0", "flex": "0 0 100%"}
+    assert rules["#notices .notice-detail[open] > summary"] == {"margin-inline-start": "0"}
+    assert rules["#notices .notice-text ~ .notice-act:first-of-type"] == {"margin-inline-start": "auto"}
+    notice = rules["#notices .notice:not(.hidden)"]
+    assert notice["flex-wrap"] == "wrap" and notice["min-height"] == "0" and notice["row-gap"] == "var(--sp-1)"
+    assert notice["padding"] == "var(--sp-2) var(--sp-2) var(--sp-2) var(--sp-4)"
+
+
+def test_below_1388px_the_notices_are_n12s_one_line():
+    """P273: under the breakpoint nothing of the panel applies - N12's rules
+    (a 40px line, the sentence taking the slack, the Details disclosure at the
+    line's end, opened under it) are outside every min-width block."""
+    outside = {}
+    for media, selector, body in blocks(read("shell.css")):
+        if not media:
+            outside.setdefault(" ".join(selector.split()), dict(declarations(body)))
+    notice = outside["#notices .notice:not(.hidden)"]
+    assert notice["min-height"] == "var(--size-row)" and notice["display"] == "flex" and "flex-wrap" not in notice
+    assert outside["#notices .notice-text"]["flex"] == "1"
+    assert outside["#notices:not(:empty)"]["display"] == "grid" and "width" not in outside["#notices:not(:empty)"]
+    ui = {}
+    for media, selector, body in blocks(read("pilot-ui.css")):
+        assert not [one for one in media if "min-width" in one], selector
+        ui.setdefault(" ".join(selector.split()), dict(declarations(body)))
+    assert ui["#notices .notice-detail[open]"]["order"] == "1" and ui["#notices .notice:has(.notice-detail)"]["flex-wrap"] == "wrap"
+    main = outside["#main:not(.hidden)"]
+    assert main["grid-template-rows"] == "var(--size-bar) auto minmax(0, 1fr)" and "grid-template-columns" not in main
+
+
+NOTICE_FOCUS = r"""
+  const notices = [];
+  const log = [];
+  const button = (name) => ({ focus: () => log.push(name) });
+  const make = (name) => ({ node: { name, inside: false, contains() { return this.inside; },
+    querySelector: (sel) => (sel === '[data-act="dismiss"]' ? button(`${name} dismiss`) : null), remove() { log.push(`${name} removed`); } } });
+  const document = { activeElement: null };
+  const $ = (id) => ({ focus: () => log.push(`${id}.focus`), append() {} });
+  function outlineRefused() {}
+"""
+
+
+def test_dismissing_a_focused_notice_moves_focus_to_the_next_then_the_previous_then_the_page(tmp_path):
+    """P273: a notice holding focus, when dismissed, hands it to the next
+    notice's dismiss, else the previous one's, else #page - so the panel
+    collapsing never drops focus to the window; a notice not holding focus
+    moves nothing."""
+    ran = run_shell(["noticeFocusAfter", "dismissNotice"], NOTICE_FOCUS, """
+      const out = {};
+      const [a, b, c] = [make("a"), make("b"), make("c")];
+      notices.push(a, b, c);
+      b.node.inside = true; document.activeElement = {}; dismissNotice(b);
+      out.middle = [...log]; log.length = 0;
+      c.node.inside = true; dismissNotice(c);
+      out.last = [...log]; log.length = 0;
+      a.node.inside = true; dismissNotice(a);
+      out.only = [...log]; log.length = 0;
+      const [d, e] = [make("d"), make("e")];
+      notices.push(d, e); dismissNotice(d);
+      out.elsewhere = [...log];
+      return out;
+    """, tmp_path, "app.js")
+    assert ran == {"middle": ["c dismiss", "b removed"], "last": ["a dismiss", "c removed"], "only": ["page.focus", "a removed"],
+                   "elsewhere": ["d removed"]}
+
+
+F6_FAKES = r"""
+  const log = [];
+  let shown = true;
+  const item = (name, region) => ({ name, closest(sel) { return sel === `#${region}` ? this : null; }, focus() { log.push(name); document.activeElement = this; } });
+  const things = { side: item("side item", "side"), bar: item("path", "bar"), notice: item("notice control", "notices"), page: item("page", "page") };
+  const $ = (id) => (id === "notices" ? { childElementCount: shown ? 1 : 0, querySelector: () => (shown ? { querySelector: () => things.notice } : null) }
+    : id === "find" ? { disabled: false, focus: () => log.push("find") } : id === "side" ? things.side : things.page);
+  const document = { activeElement: null, querySelector: (sel) => (sel.startsWith("#crumb-list") ? things.bar : sel.includes("aria-current") ? things.side : null) };
+  const tipKey = () => {};
+  const press = (shift) => { shellKey({ key: "F6", shiftKey: shift, preventDefault() {}, target: document.activeElement }); };
+"""
+
+
+def test_f6_visits_the_notices_between_the_path_row_and_the_page_only_while_one_shows(tmp_path):
+    """P273: F6 cycles side panel, path row, notices, page - the notices only
+    while #notices holds one - and Shift+F6 the other way; focusRegion puts
+    focus on the first notice's first control; the order is the markup's."""
+    ran = run_shell(["regionOf", "f6Regions", "focusRegion", "shellKey"], lift_line("const F6_REGIONS = ", "shell.js") + F6_FAKES, """
+      const out = {};
+      const cycle = (shift) => { log.length = 0; document.activeElement = things.side; for (let i = 0; i < 4; i += 1) press(shift); return [...log]; };
+      out.forward = cycle(false);
+      out.backward = cycle(true);
+      shown = false;
+      out.noneForward = cycle(false);
+      out.noneBackward = cycle(true);
+      return out;
+    """, tmp_path)
+    assert ran["forward"] == ["path", "notice control", "page", "side item"]
+    assert ran["backward"] == ["page", "notice control", "path", "side item"]
+    assert ran["noneForward"] == ["path", "page", "side item", "path"]
+    assert ran["noneBackward"] == ["page", "path", "side item", "page"]
+    assert 'const F6_REGIONS = ["side", "bar", "notices", "page"];' in stripped_js("shell.js")
+    assert '"summary, .notice-act:not(:disabled)"' in js_function("focusRegion"), "the Details summary, else the action, else the dismiss"
+
+
+def test_a_toast_sits_left_of_the_notices_panel_while_it_shows():
+    """P273: while the panel shows (at 1388px and wider) a toast is 24px left
+    of it, at the bottom right of the page, and never covers a notice; with no
+    panel, and stacked, it is where it was (bottom right of the window)."""
+    rules = _panel_rules()
+    assert rules["body:has(#notices:not(:empty)) #toast"] == {"inset-inline-end": "calc(var(--size-notices) + var(--sp-6))"}
+    toast = {prop: value for media, selector, body in blocks(read("style.css")) if selector.strip() == ".toast" for prop, value in declarations(body)}
+    assert toast["right"] == "22px" and toast["bottom"] == "22px" and toast["position"] == "fixed"
+
+
+def test_escape_never_dismisses_a_notice():
+    """P273: failures and warnings stay until a person dismisses them
+    (decision 193); Esc keeps SPEC-shell 4.3's order (sheet, search list,
+    tooltip) and names no notice function."""
+    text = js_function("shellKey")
+    escape = text[text.index('e.key === "Escape"'):]
+    escape = escape[:escape.index("\n  }\n") + 5]
+    assert "otice" not in escape and "dismiss" not in escape.lower()
+    assert "otice" not in text
+
+
+# ── L4: the household page, a card beside the returns (P275) ────────────────
+
+#: A made-up household for the card's probes: a contact, two members, a saved
+#: link (a made-up token, never a URL) and returns in two years.
+CARD_HOUSEHOLD = r"""
+  const LINK = "LINKTOKEN-share-me";
+  const hh = { name: "Alpha", path: "c/Alpha", contact: "A Person", members: ["A Person", "Another"], link: LINK,
+               returns: [{ path: "r/1040 - Alpha", year: 2025, return_name: "1040 - Alpha", form: "1040", active: true },
+                         { path: "r/old", year: 2024, return_name: "1040 - Alpha", form: "1040", active: true }] };
+  shellHousehold = () => hh;
+  shellRoute = { level: "household", household: "c/Alpha" };
+  lastState = { household: { path: "c/Alpha", shared_on: "2026-02-01" } };
+  const cls = (n) => n.className.split(" ")[0];
+  const facts = (page) => page.byClass("card-fact").map((f) => [f.kids[0].textContent, f.kids.slice(1).map((k) => k.textContent)]);
+"""
+
+
+def test_the_household_page_is_its_h1_then_the_card_and_the_returns_list(tmp_path):
+    """P275: pagesHousehold is [H1, .household-body]; the body holds the card
+    first (read first, in both forms) and then .returns-list with one group
+    per year, newest first."""
+    ran = run_lists(CARD_HOUSEHOLD + """
+      const page = pagesHousehold(shellRoute);
+      const layout = page[1].kids[0];
+      return { top: page.map(cls), body: page[1].kids.map(cls), layout: layout.kids.map(cls),
+               years: layout.kids[1].byClass("group-title").map((t) => t.textContent), h1: page[0].tag };
+    """, tmp_path)
+    assert ran == {"top": ["page-title", "household-body"], "body": ["household-layout"], "layout": ["household-card", "returns-list"],
+                   "years": ["2025", "2024"], "h1": "h1"}
+
+
+def test_the_card_says_contact_shared_with_and_whether_the_inbox_link_is_saved(tmp_path):
+    """P275: Contact (when there is one), Shared With (the members, then Shared
+    or Not Shared when the household's state is on screen) and Inbox Link
+    (Saved, or Not Saved), each left out when there is nothing to say - the
+    Inbox Link never."""
+    ran = run_lists(CARD_HOUSEHOLD + """
+      const draw = () => pagesHousehold(shellRoute)[1];
+      const full = facts(draw());
+      lastState = { household: { path: "c/Alpha", shared_on: "" } };
+      const notShared = facts(draw());
+      lastState = null; hh.contact = ""; hh.link = "";
+      const quiet = facts(draw());
+      hh.members = [];
+      const bare = facts(draw());
+      lastState = { household: { path: "c/Alpha", shared_on: "2026-02-01" } };
+      const stateOnly = facts(draw());
+      lastState = { household: { path: "elsewhere", shared_on: "2026-02-01" } };
+      const otherHousehold = facts(draw());
+      return { full, notShared, quiet, bare, stateOnly, otherHousehold };
+    """, tmp_path)
+    assert ran["full"] == [["Contact", ["A Person"]], ["Shared With", ["A Person, Another", "Shared"]], ["Inbox Link", ["Saved"]]]
+    assert ran["notShared"][1] == ["Shared With", ["A Person, Another", "Not Shared"]]
+    assert ran["quiet"] == [["Shared With", ["A Person, Another"]], ["Inbox Link", ["Not Saved"]]], "no contact, no state: those lines are left out"
+    assert ran["bare"] == [["Inbox Link", ["Not Saved"]]], "the Inbox Link is always there"
+    assert ran["stateOnly"] == [["Shared With", ["Shared"]], ["Inbox Link", ["Not Saved"]]], "the state line alone when there are no members"
+    assert ran["otherHousehold"] == [["Inbox Link", ["Not Saved"]]], "another household's state is never this one's"
+
+
+def test_the_card_never_draws_the_inbox_link_itself(tmp_path):
+    """P275 (J3): the link is the client's share link, which the letter
+    carries; an app that opened it would reach the network. The card says
+    only whether it is saved: the link's text is in no text, attribute,
+    dataset or tooltip of the page."""
+    ran = run_lists(CARD_HOUSEHOLD + """
+      const page = pagesHousehold(shellRoute);
+      const all = [page[0], ...page[1].find(() => true)];
+      const seen = JSON.stringify([page.map((n) => n.textContent), all.map((n) => [n.attrs, n.dataset, n.className]), tips, opened, went]);
+      return { leaked: seen.includes(LINK), saved: facts(page[1]).pop() };
+    """, tmp_path)
+    assert ran == {"leaked": False, "saved": ["Inbox Link", ["Saved"]]}
+    text = stripped_js("pages.js")
+    body = text[text.index("function pagesHouseholdCard("):text.index("\n}\n", text.index("function pagesHouseholdCard(")) + 3]
+    assert "hh.link ?" in body and "openPath" not in body and "href" not in body
+
+
+def test_more_actions_on_the_card_opens_the_household_menu_with_the_h1s_token(tmp_path):
+    """P275: the card's More Actions button opens the household's native menu
+    at its bottom-left through the token the H1's own right-click uses
+    (crumb-household), so it acts on the page's household with the page's
+    enable rules; a right-click anywhere on the card does the same at the
+    pointer. Name, tooltip and menu-ness are the vocabulary's."""
+    ran = run_lists(CARD_HOUSEHOLD + """
+      const card = pagesHousehold(shellRoute)[1].byClass("household-card")[0];
+      const button = card.byClass("card-more")[0];
+      button.handlers.click[0]({});
+      card.handlers.contextmenu[0]({ preventDefault() {}, clientX: 70, clientY: 80 });
+      const h1 = pagesHousehold(shellRoute)[0];
+      h1.handlers.contextmenu[0]({ preventDefault() {}, clientX: 5, clientY: 6 });
+      return { popups, label: button.attrs["aria-label"], popup: button.attrs["aria-haspopup"], tip: [...new Set(tips.filter(([c]) => c.includes("card-more")).map(([, w]) => w))],
+               inCard: card.kids.indexOf(button) !== -1 };
+    """, tmp_path)
+    assert ran["popups"] == [["household", "crumb-household", 10, 20, None], ["household", "crumb-household", 70, 80, None],
+                             ["household", "crumb-household", 5, 6, None]], "the card's two ways and the H1's own use one token"
+    assert ran["label"] == "More Actions" and ran["popup"] == "menu" and ran["tip"] == ["More Actions"] and ran["inCard"]
+
+
+def test_a_household_and_a_year_row_put_the_status_right_after_the_name(tmp_path):
+    """P275: the household's and the year's rows are name, status, detail, end
+    in the markup (so the accessible name reads in the order the eye does);
+    statusNext comes only from pagesReturnSpecs, so the firm lists' rows
+    (name, detail, status, end; year, name, form, status, end) are unchanged."""
+    ran = run_lists(CARD_HOUSEHOLD + """
+      const lists = (n) => (n.className && n.className.split(" ").includes("returns-list") ? [n] : n.byClass ? n.byClass("returns-list") : []);
+      const order = (nodes) => nodes.flatMap(lists).flatMap((l) => l.byClass("row")).map((r) => r.kids.map(cls));
+      const household = order(pagesHousehold(shellRoute));
+      const year = order(pagesYear({ level: "year", household: "c/Alpha", year: 2025 }));
+      const specs = pagesReturnSpecs(hh.returns).map((s) => s.statusNext);
+      const overview = draw("overview").byClass("row")[0].kids.map(cls);
+      const review = draw("needs-review").byClass("row")[0].kids.map(cls);
+      return { household, year, specs, overview, review, firm: pagesWorkRows(shellFirmData.returns).map((s) => s.statusNext) };
+    """, tmp_path)
+    cells = ["row-name", "row-status", "row-detail", "row-end"]
+    assert ran["household"] == [cells, cells] and ran["year"] == [cells] and ran["specs"] == [True, True]
+    assert ran["overview"] == ["row-year", "row-name", "row-form", "row-status", "row-end"]
+    assert ran["review"] == ["row-name", "row-detail", "row-status", "row-end"]
+    assert not any(ran["firm"]), "the firm lists' rows keep their order"
+
+
+def test_the_card_sits_beside_the_returns_at_1056px_of_page_and_above_them_below():
+    """P275: the page's own width decides, through a container query on
+    .household-body: 1056 is the list's least width (32 + 224 + 160 + 96 + 144,
+    three 16px gaps, 32 of the row's own right padding: 736) plus the card
+    (288) plus the card's right margin (32). A 1100px window's page is 860 and
+    a 1400px window's is 1160 - 872 while the notices panel shows - so only
+    the second, without a panel, has it beside."""
+    light, _dark = root_blocks()
+
+    def px(name: str) -> int:
+        return int(light[name].strip().removesuffix("px"))
+
+    least = px("--sp-8") + sum(px(f"--size-col-{cell}") for cell in ("name", "status", "form", "end")) + 3 * px("--sp-4") + px("--sp-8")
+    assert least == 736 and px("--size-card") == 288
+    assert least + px("--size-card") + px("--sp-8") == 1056
+    page = lambda window, panel: window - px("--size-side") - (px("--size-notices") if panel else 0)  # noqa: E731
+    assert [page(1100, False), page(1400, False), page(1400, True)] == [860, 1160, 872]
+    assert [width >= 1056 for width in (page(1100, False), page(1400, False), page(1400, True))] == [False, True, False]
+    rules = {}
+    for media, selector, body in blocks(read("shell.css")):
+        rules[(media, " ".join(selector.split()))] = dict(declarations(body))
+    inside = ("@container (min-width: 1056px)",)
+    assert rules[(inside, ".household-layout:not(.hidden)")] == {"grid-template-columns": "minmax(0, 1fr) calc(var(--size-card) + var(--sp-8))", "align-items": "start"}
+    assert rules[(inside, ".returns-list")] == {"grid-column": "1", "grid-row": "1"}
+    assert rules[(inside, ".household-card:not(.hidden)")] == {"grid-column": "2", "grid-row": "1", "margin": "var(--sp-6) var(--sp-8) 0 0"}
+    assert rules[(inside, ".card-facts:not(.hidden)")] == {"grid-template-columns": "minmax(0, 1fr)"}
+    assert rules[((), ".household-body")] == {"container-type": "inline-size"}
+    assert rules[((), ".household-layout:not(.hidden)")] == {"display": "grid", "grid-template-columns": "minmax(0, 1fr)"}
+    stacked = rules[((), ".card-facts:not(.hidden)")]
+    assert stacked["grid-template-columns"] == "repeat(3, minmax(0, 1fr))" and stacked["padding-inline-end"] == "var(--sp-6)"
+    row = rules[((), ".returns-list .row:not(.hidden)")]["grid-template-columns"]
+    assert row == "var(--size-col-name) var(--size-col-status) minmax(var(--size-col-form), 1fr) var(--size-col-end)"
+    assert "var(--size-col-detail)" not in rules[((), ".returns-list .rows")]["min-width"]
+    card = rules[((), ".household-card:not(.hidden)")]
+    assert card["background"] == "var(--bg-raised)" and card["border"] == "1px solid var(--border)" and card["margin"] == "var(--sp-6) var(--sp-8) 0"
+    assert ".household-card" in read("shell.css")[read("shell.css").index("@media (forced-colors: active)"):]
+
+
+def test_a_household_with_no_returns_keeps_add_a_return_beside_the_card(tmp_path):
+    """P275: with no returns the returns list holds the empty line and the
+    Add a Return button (as before) and the card is still beside or above it."""
+    ran = run_lists(CARD_HOUSEHOLD + """
+      hh.returns = [];
+      const added = []; openAddReturn = (one) => added.push(one.name);
+      vocab.menu = { add_return: "Add a Return" };
+      const page = pagesHousehold(shellRoute);
+      const layout = page[1].kids[0];
+      const button = layout.byClass("btn")[0];
+      button.handlers.click[0]({});
+      return { layout: layout.kids.map(cls), line: layout.byClass("page-empty-line")[0].textContent, button: button.textContent, added };
+    """, tmp_path, extra="let openAddReturn = () => {};")
+    assert ran == {"layout": ["household-card", "returns-list"], "line": "No Returns Yet", "button": "Add a Return", "added": ["Alpha"]}
+
+
+def test_the_card_words_are_the_vocabularys(tmp_path):
+    """P275: every word the card shows is the vocabulary's - household_card's
+    five, screen.shared and not_shared, and icons.more_actions - and a block
+    the vocabulary lacks is a loud failure: the card is named in a notice and
+    the returns are still drawn."""
+    ran = run_lists(CARD_HOUSEHOLD + """
+      Object.assign(vocab.screen, { shared: "SHARED-W", not_shared: "NOTSHARED-W", icons: { more_actions: "MORE-W", remove_filter: "x" },
+        household_card: { contact: "CONTACT-W", shared_with: "WITH-W", inbox_link: "LINK-W", link_saved: "SAVED-W", no_link: "NOLINK-W" } });
+      const words = (page) => page.flatMap((n) => [n, ...n.find(() => true)]).map((n) => n.attrs && n.attrs["aria-label"]).filter(Boolean);
+      const page = pagesHousehold(shellRoute);
+      const card = page[1].byClass("household-card")[0];
+      const said = card.find(() => true).filter((n) => !n.kids.some((k) => k.tag)).map((n) => n.textContent).filter(Boolean);
+      const label = words([card]);
+      delete vocab.screen.household_card; pagesBroken = [];
+      const without = pagesHousehold(shellRoute);
+      return { said, label, layout: without[1].kids[0].kids.map(cls), years: without[1].byClass("group-title").map((t) => t.textContent), broken: pagesBroken.map((b) => [b.name, String(b.err.message)]) };
+    """, tmp_path)
+    assert ran["said"] == ["CONTACT-W", "A Person", "WITH-W", "A Person, Another", "SHARED-W", "LINK-W", "SAVED-W"]
+    assert ran["label"] == ["MORE-W"]
+    assert ran["layout"] == ["returns-list"] and ran["years"] == ["2025", "2024"]
+    assert ran["broken"] == [["Alpha", "vocab.screen.household_card"]]
+    text = stripped_js("pages.js")
+    for word in ("Shared With", "Inbox Link", "Not Saved", "Contact"):
+        assert f'"{word}"' not in text, word
