@@ -416,10 +416,15 @@ class AfterInstall:
         return self.schedule_sentence in self.failed
 
     def reply(self) -> dict:
-        """The run as the API hands it to the app."""
+        """The run as the API hands it to the app. ``wait`` is the same key
+        :func:`notice` gives the ``list`` reply: :data:`FINDINGS_WAIT` when the
+        run found something, else "" - so the first-screen notice's Details
+        read the same whichever reply drew it, and a keyed notice does not
+        redraw or log twice for one run (pilot P257, review 1 finding 3)."""
         said = asdict(self)
         said.update(lines=list(self.lines), findings=list(self.findings), failed=list(self.failed),
-                    command=list(self.command), installed=self.installed, exit=self.exit_code)
+                    command=list(self.command), installed=self.installed, exit=self.exit_code,
+                    wait=FINDINGS_WAIT if self.findings else "")
         return said
 
 

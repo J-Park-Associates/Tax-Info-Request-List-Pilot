@@ -225,7 +225,7 @@ function takeReply(result, args, payload, { ofAnother = false } = {}) {
 // redraw until it is dismissed. The buttons come from index.html's template,
 // so a notice works before any vocabulary has arrived (a failed first start).
 
-const notices = [];   // [{sentence, kind, identifier, count, retry, action, node}]
+const notices = [];   // [{sentence, kind, identifier, detail, count, retry, action, node}]
 
 function noticeButton(act) {
   return $("notice-buttons").content.querySelector(`[data-act="${act}"]`).cloneNode(true);
@@ -263,7 +263,23 @@ function drawNotice(entry) {
     dismiss.setAttribute("aria-label", vocab.screen.icons.dismiss);
     setTip(dismiss, vocab.screen.icons.dismiss);
   }
-  entry.node.replaceChildren(el("span", { className: "notice-text" }, text), ...buttons, dismiss);
+  entry.node.replaceChildren(el("span", { className: "notice-text" }, text), ...detailOf(entry), ...buttons, dismiss);
+}
+
+// The engine's own sentence behind a notice's one line (pilot P257): a
+// closed Details disclosure, one block per line, drawn only when the notice
+// carries a detail. The line above it stays one line and path-free; opened
+// by the person, the detail may name the program's, the data or the clients
+// folder - never a client's file (P63). Its word is the API's, and a
+// vocabulary without it is a failure said loudly, never a blank summary.
+function detailOf(entry) {
+  if (!entry.detail) return [];
+  const word = vocab && vocab.screen && vocab.screen.notices ? vocab.screen.notices.details : "";
+  if (!word) throw new Error("vocab.screen.notices.details");
+  const lines = String(entry.detail).split("\n").filter(Boolean);
+  return [el("details", { className: "notice-detail" },
+    el("summary", {}, word),
+    el("div", { className: "notice-detail-text" }, lines.map((line) => el("div", {}, line))))];
 }
 
 function notice(failure, { retry, action } = {}) {
@@ -275,8 +291,9 @@ function notice(failure, { retry, action } = {}) {
     entry.count += 1;
     entry.retry = retry || entry.retry;
     entry.action = action || entry.action;
+    entry.detail = failure.detail || entry.detail;
   } else {
-    entry = { sentence: failure.sentence, kind, identifier: failure.identifier || null, key: failure.key || null, count: 1, retry, action };
+    entry = { sentence: failure.sentence, kind, identifier: failure.identifier || null, key: failure.key || null, detail: failure.detail || "", count: 1, retry, action };
     entry.node = el("div", { className: `notice notice-${kind}` });
     notices.push(entry);
     $("notices").append(entry.node);
@@ -292,14 +309,17 @@ function notice(failure, { retry, action } = {}) {
 // said once for a sentence: dismissed, it does not come back on the next
 // draw; it goes when the state does (clearNotice) and returns if the state
 // does (a different sentence, or the same one after it cleared).
-const keyedNotices = new Map();   // key -> {sentence, kind, entry}
+const keyedNotices = new Map();   // key -> {sentence, kind, detail, entry}
 
+// A changed detail is a changed notice (pilot P257): a second machine warning
+// joining the first is seen, redrawn with both under Details.
 function keyedNotice(key, failure, opts) {
   const kind = failure.kind || "failed";
+  const detail = failure.detail || "";
   const had = keyedNotices.get(key);
-  if (had && had.sentence === failure.sentence && had.kind === kind) return false;
+  if (had && had.sentence === failure.sentence && had.kind === kind && had.detail === detail) return false;
   if (had && notices.indexOf(had.entry) !== -1) dismissNotice(had.entry);
-  keyedNotices.set(key, { sentence: failure.sentence, kind, entry: notice({ ...failure, key }, opts) });
+  keyedNotices.set(key, { sentence: failure.sentence, kind, detail, entry: notice({ ...failure, key }, opts) });
   return true;
 }
 
@@ -310,7 +330,11 @@ function clearNotice(key) {
 }
 
 // A set of keyed notices under one prefix: those wanted are shown, the rest
-// are cleared. `wanted` is [{key, failure, opts}].
+// are cleared. `wanted` is [{key, failure, detail, shown, opts}]: a `detail`
+// goes to the error log when the notice first shows, and is also the notice's
+// Details on screen only for an entry marked `shown` (pilot P257). Only the
+// machine warnings are: a broken row's error and stack, and the household
+// pause and feed sentences, stay in the error log (SPEC 11.1, 2.2 E30).
 function syncNotices(prefix, wanted) {
   const keep = new Set(wanted.map((one) => `${prefix}:${one.key}`));
   for (const key of [...keyedNotices.keys()]) {
@@ -318,8 +342,10 @@ function syncNotices(prefix, wanted) {
   }
   for (const one of wanted) {
     // Its detail (the long sentence, the error's own message) goes to the
-    // error log when the notice first shows, never on screen (SPEC 11.1).
-    if (keyedNotice(`${prefix}:${one.key}`, one.failure, one.opts) && one.detail) window.tracker.logError(one.detail);
+    // error log when the notice first shows; only an entry marked `shown`
+    // also puts it on screen as the notice's closed Details (pilot P257).
+    const shown = one.shown && one.detail ? { ...one.failure, detail: one.detail } : one.failure;
+    if (keyedNotice(`${prefix}:${one.key}`, shown, one.opts) && one.detail) window.tracker.logError(one.detail);
   }
 }
 
@@ -1915,15 +1941,16 @@ async function loadEngagements(preferPath, asked) {
 // reader, decision 169, until it is moved), and the machine's own problems,
 // each said until it is fixed (decision 186). The last pass is not a
 // notice: the last-sort line says "Sort failed" (SPEC 8.3). Each is shown as
-// its short line; the API's sentence (which can name a folder) goes to the
-// error log when the notice first shows (SPEC 2.2 E28, E30; 11.1).
+// its short line, path-free (SPEC 2.2 E28, E30); the API's sentence (which can
+// name a folder) is under the notice's Details and in the error log when the
+// notice first shows (pilot P257).
 function renderMachineNotices(listed) {
   if (listed.reader_warning) {
     if (keyedNotice("reader", { sentence: shortNotice("reader"), kind: "warning" })) window.tracker.logError(listed.reader_warning);
   } else clearNotice("reader");
   const machine = listed.machine_warnings || [];
   syncNotices("machine", machine.length
-    ? [{ key: machine.join("\n"), failure: { sentence: shortNotice("machine"), kind: "warning" }, detail: machine.join("\n") }] : []);
+    ? [{ key: machine.join("\n"), failure: { sentence: shortNotice("machine"), kind: "warning" }, detail: machine.join("\n"), shown: true }] : []);
 }
 
 // The list half of a `list` reply, without the vocabulary (decision 194):
@@ -1997,6 +2024,9 @@ async function saveRoot() {
     // error log; a return short of room is one notice (decision 131).
     renderAfterInstall(noticeOf(result.after_install));
     if (result.after_install.failed.length) window.tracker.logError(`${result.after_install.schedule_sentence}\n${result.after_install.failed.join("\n")}`);
+    // Good news - the schedule registered on this computer - is a toast in the
+    // engine's words (pilot P257), before the page starts again.
+    if (result.after_install.installed) outcome(result.after_install.schedule_sentence, "ok", { toasted: true });
     renderShortOfRoom(result.short_of_room || []);
     await bootstrap();
   } catch (err) {
@@ -2026,16 +2056,18 @@ function renderAfterInstall(left) {
     return;
   }
   const lines = [...left.failed, ...left.findings];
-  if (keyedNotice("after-install", { sentence: vocab.after_install.heading, kind: "failed" })) {
-    window.tracker.logError([left.wait, ...lines].filter(Boolean).join("\n"));
+  const said = [left.wait, ...lines].filter(Boolean).join("\n");
+  if (keyedNotice("after-install", { sentence: vocab.after_install.heading, kind: "failed", detail: said })) {
+    window.tracker.logError(said);
   }
 }
 
-// What one run of the step left, as the notice shows it, or nothing.
+// What one run of the step left, as the notice shows it, or nothing. The
+// run's reply carries the engine's own `wait` (empty without findings), the
+// same key the `list` reply's notice has, so the notice's Details are the
+// same whichever reply drew it (pilot P257, review 1 finding 3).
 function noticeOf(done) {
-  return done && (done.findings.length || done.failed.length)
-    ? { ...done, wait: done.findings.length ? vocab.after_install.wait : "" }
-    : null;
+  return done && (done.findings.length || done.failed.length) ? done : null;
 }
 
 // The deliberate re-run of the after-install step (decision 209): the
@@ -2185,9 +2217,13 @@ async function saveSchedule() {
 // The shell's launch step ran in the background and finished (decision
 // 209, the review's S7): ask again for what it left, and show only that -
 // the rest of the page, and anything a person is editing, is left alone.
+// What the shell passes is {installed, schedule_sentence} (pilot P257): when
+// the step registered the schedule here, the sentence is a toast - the first
+// open after an upgrade says this computer runs it.
 // (The screenshot tool's stub sets onAfterInstallDone to null on purpose.)
 if (window.tracker.onAfterInstallDone) {
-  window.tracker.onAfterInstallDone(async () => {
+  window.tracker.onAfterInstallDone(async (done) => {
+    if (done && done.installed) outcome(done.schedule_sentence, "ok", { toasted: true });
     try {
       renderAfterInstall((await call(["list"])).after_install);
     } catch (err) {

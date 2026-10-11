@@ -182,7 +182,7 @@ Verdict words: **Kept** (on screen, reworded to five words), **Tooltip**
 | E27 | "Clients folder set to…" | Removed | - | - |
 | E28 | `#reader-warning` | Notice, no path | `#notices` | "Install folder name too long" |
 | E29 | `#last-pass` banner | Kept, moved | `#last-sort` | "Sorted 6:00 AM" / "Sort failed" |
-| E30 | `#machine-warnings` | Notice, one line each; details to the error log | `#notices` | e.g. "Drive not signed in" |
+| E30 | `#machine-warnings` | Notice, one line each; details under Details and in the error log | `#notices` | e.g. "Drive not signed in" |
 | E31 | `#lock-notice` with time, host, file | Notice, one line | `#notices` | "In use on {host}" |
 | E32 | `#btn-unlock` Clear lock | Menu bar | Tools › Clear stuck lock (enabled only when stale) | - |
 | E33 | Toasts (long) | Kept, shortened | `#toast` | e.g. "Pick a request first" |
@@ -1051,14 +1051,19 @@ closes, a click outside closes. No match: one disabled option "No match".
 | Never | "Not sorted yet" | `--text-caption` | none |
 | Sorting | "Sorting {n} of {total}" | `--text-caption` | a 4px bar under the words, `--accent` on `--border`, `role="progressbar"` with its values |
 | Stopping | "Stopping" | `--text-caption` | the bar, still |
+| Scheduled sort running | "Sorting" | `--text-caption` | the bar, no values |
 
 The file being read is never named (P63).
 
 ### 8.4 Notices
 
 One line each, the kind by fill and ink (err, warn, info tokens), at most
-one action. The list, with words from section 11: sort failed (no button,
-3.5; ruling 28),
+one action. A notice may carry a closed **Details** disclosure holding the
+engine's sentence (pilot P257); the line stays one line, and E28/E30's "no
+path" is read as "no path on the line" - opened by the person, the detail
+may name the program's, the data or the clients folder, never a client's
+file (P63). The list, with words from section 11: sort failed (no button,
+3.5; ruling 28; left as it is while a scheduled pass runs, 8.3, P256),
 counts not available (Retry), in use on {host}, stuck lock from {host},
 setup needs attention, install folder name too long, drive not signed in
 and the other machine warnings, {n} folders skipped (Show), names

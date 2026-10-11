@@ -323,8 +323,8 @@
   const lastWhen = new Date();
   lastWhen.setHours(6, 0, 0, 0);
   const lastPass = scenario === "failed"
-    ? { text: "The last sort failed.", level: "err", ok: false, when: lastWhen.toISOString() }
-    : scenario === "setup" ? null : { text: "Sorted.", level: "ok", ok: true, when: lastWhen.toISOString() };
+    ? { text: "The last sort failed.", level: "err", ok: false, running: false, when: lastWhen.toISOString() }
+    : scenario === "setup" ? null : { text: "Sorted.", level: "ok", ok: true, running: false, when: lastWhen.toISOString() };
 
   let rootSet = scenario !== "setup";
   const wait = (ms, value) => new Promise((resolve) => setTimeout(() => resolve(value), ms));
@@ -393,6 +393,11 @@
         if (rootSet) base.paths = { clients_root: ROOT, status: `${ROOT}/status.html` };
         return wait(20, base);
       }
+      // P256: the shell asks the last pass on a timer and when the window is
+      // clicked into. The made-up pass is never running, and this is the very
+      // object `list` carries, so a tick sees nothing new and puts no notice
+      // on a screenshot (the API's `last-pass` envelope: the pass and warnings).
+      if (command === "last-pass") return wait(10, { last_pass: lastPass, warnings: [] });
       if (command === "firm") {
         if (scenario === "firm-fails" || scenario === "last-counts-fail") {
           return wait(scenario === "last-counts-fail" ? 1500 : 20, { error: "The counts could not be read.", failure: { sentence: "The counts could not be read.", kind: "failed" } });
@@ -422,7 +427,7 @@
       if (command === "pilot-record") return wait(10, { terms: "1", terms_signed_by: "", terms_accepted_at: "", tour_seen: true });
       if (command === "set-root") {
         rootSet = true;
-        return wait(50, { root: ROOT, settings_path: "", after_install: { schedule_sentence: "", failed: [], findings: [] }, short_of_room: [] });
+        return wait(50, { root: ROOT, settings_path: "", after_install: { installed: false, schedule_sentence: "", failed: [], findings: [], wait: "" }, short_of_room: [] });
       }
       return wait(10, { error: "The harness does not answer this.", failure: { sentence: "The harness does not answer this.", kind: "failed" } });
     },

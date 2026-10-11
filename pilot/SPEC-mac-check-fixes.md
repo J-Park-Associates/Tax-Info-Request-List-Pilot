@@ -146,8 +146,8 @@ app's own Sort.
 - `test_the_shell_asks_list_again_once_a_scheduled_pass_has_ended` (new):
   `lastPassStep` over the table in 1.2 - every row named by the claim it
   makes - and `shellWatchLastPass`'s tick lifted with fakes for `call`,
-  `loadEngagements`, `shellChanged`, `failed` and the timer: a tick that
-  sees the pass end calls `loadEngagements` once; a tick during `scanning`
+  `adoptList`, `shellChanged`, `failed` and the timer: a tick that
+  sees the pass end asks `list` once and adopts it; a tick during `scanning`
   calls nothing; a throwing `call` is handed to `failed` once and stops
   the timer; a throwing reread is handled the same way; a tick before the
   first list lands, or after a stop, does nothing; a reply landing after

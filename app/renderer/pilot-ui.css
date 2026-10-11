@@ -557,6 +557,28 @@ input[type="checkbox"], input[type="radio"],
   }
 }
 
+/* ── A notice's Details (pilot P257, SPEC-mac-check-fixes 2.1) ───────────
+   The notice stays one line; its Details disclosure, closed, sits under it
+   at the notice's width. The engine's sentence may name a folder, so it
+   wraps anywhere and never widens the notice. */
+
+#notices .notice:has(.notice-detail) { flex-wrap: wrap; align-content: center; }
+#notices .notice-detail {
+  order: 1;
+  flex: 0 0 100%;
+  padding-block: var(--sp-2);
+  min-width: 0;
+  font-size: var(--fs-caption);
+  line-height: var(--lh-caption);
+}
+#notices .notice-detail > summary { cursor: pointer; color: inherit; width: max-content; }
+#notices .notice-detail-text {
+  margin-top: var(--sp-1);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-weight: var(--fw-regular);
+}
+
 /* ── Windows contrast themes (last, so it wins) ──────────────────────────
    System colours only. The new parts have their own block at the end of
    shell.css; this one covers the buttons and the dialogs. */

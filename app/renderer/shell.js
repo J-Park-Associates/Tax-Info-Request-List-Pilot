@@ -53,7 +53,10 @@ let shellRoute = { level: "overview" };
 let shellBack = null;          // the route Cancel goes back to, from Change clients folder
 let shellRootSet = false;      // a clients folder is set (the menu's "a clients folder is set")
 let shellPaths = {};           // the list's `paths`: clients_root, status
-let shellLastPass = null;      // the list's last_pass: {text, level, ok, when}
+let shellLastPass = null;      // the list's last_pass: {text, level, ok, running, when}
+let shellLastPassTimer = null;     // the one last-pass watch timer (P256); null when none is armed
+let shellLastPassAsking = false;   // a `last-pass` ask is on its way: a tick never overlaps itself
+let shellLastPassStopped = false;  // an ask failed and was said once; the next list adopt starts it again
 let shellProgressNow = null;   // the running pass's last line: {n, total}
 let shellFirmNow = { status: "idle", data: null };   // idle, loading, ok, failed
 let shellFirmAsked = false;    // a second ask arrived while one ran
@@ -193,6 +196,86 @@ function shellAdopt(listed) {
   if (shellRootSet) shellLoadFirm();
   shellShowLast();   // the launch's last counts, if they landed before the words did (P229)
   shellChanged();
+  shellLastPassStopped = false;
+  shellArmLastPass();   // a list landed: the last pass is known again, so the watch is (re)timed (P256)
+}
+
+// ── the scheduled pass, watched (SPEC-mac-check-fixes 1.2, P256) ────────
+// The shell learned the last pass only from a `list`, so a pass started by
+// launchd or Task Scheduler told it nothing and the page kept a stale word
+// until Refresh. It now asks the engine's `last-pass` - one read of one
+// file, no root walk - every `last_pass_watch.running` seconds while a pass
+// runs and every `idle` seconds otherwise, and once at once when the window
+// is clicked into. It asks `list` again only when a pass has ended, as
+// decision 203 does for the app's own Sort: the counts, Needs Review and the
+// last-sort line then all follow, as after F5 - the same `list` adopted the
+// same way, never the start-up path (`loadEngagements` re-applies the
+// vocabulary, rebuilds the Schedule dialog's interval list under an open
+// dialog and redraws the page under the person).
+
+// What a fresh last-pass says to a shell holding `held`: "reread" when a pass
+// has ended since the shell last looked (it held a running one and the file
+// no longer says running; or the file's start differs and no pass runs - a
+// whole pass came and went between two asks; or the shell held none and the
+// file now has an ended one), "adopt" when something new is running and no
+// pass has ended, "same" otherwise. Pure, so a test drives every row.
+function lastPassStep(held, fresh) {
+  const freshWhen = fresh && fresh.when ? fresh.when : null;
+  const heldWhen = held && held.when ? held.when : null;
+  const heldRunning = Boolean(held && held.running);
+  if (fresh && fresh.running) return !heldRunning || freshWhen !== heldWhen ? "adopt" : "same";
+  if (heldRunning) return "reread";
+  return freshWhen && freshWhen !== heldWhen ? "reread" : "same";
+}
+
+// (Re)time the watch: one timer at a time, its delay the vocabulary's - a
+// number the page never types. A vocabulary without it throws, which the
+// list's adopt says as a notice (loud, never a guess).
+function shellArmLastPass() {
+  clearTimeout(shellLastPassTimer);
+  shellLastPassTimer = null;
+  if (shellLastPassStopped) return;
+  const watch = vocab && vocab.last_pass_watch;
+  if (!watch || !Number.isFinite(watch.running) || !Number.isFinite(watch.idle)) throw new Error("vocab.last_pass_watch");
+  const seconds = shellLastPass && shellLastPass.running ? watch.running : watch.idle;
+  shellLastPassTimer = setTimeout(shellWatchLastPass, seconds * 1000);
+}
+
+// One tick, from the timer and from the window's focus. During the app's own
+// pass nothing is asked (its end asks `list` already), and a reply that lands
+// after the app's own pass began is dropped, not acted on: the pass's end
+// asks `list` itself. A `last-pass` or a `list` that throws stops the watch
+// and is said once by the one rule (decision 193); no notice per tick, and
+// the next list adopt starts it again.
+async function shellWatchLastPass() {
+  // Before the first list has landed there is no vocabulary and the shell has
+  // not learned which commands it may send: the list's adopt starts the watch.
+  if (shellLastPassAsking || shellLastPassStopped || !vocab) return;
+  if (scanning) {
+    shellArmLastPass();
+    return;
+  }
+  shellLastPassAsking = true;
+  try {
+    const fresh = (await call(["last-pass"])).last_pass;
+    const step = scanning ? "same" : lastPassStep(shellLastPass, fresh);
+    if (step === "adopt") {
+      shellLastPass = fresh;
+      shellChanged();
+    } else if (step === "reread") {
+      const listed = await call(["list"]);
+      if (!scanning) adoptList(listed);
+    }
+  } catch (err) {
+    shellLastPassStopped = true;
+    clearTimeout(shellLastPassTimer);
+    shellLastPassTimer = null;
+    failed(err);
+    return;
+  } finally {
+    shellLastPassAsking = false;
+  }
+  shellArmLastPass();
 }
 
 // The Overview asked now, before the list that would start it has landed:
@@ -676,6 +759,12 @@ function drawLastSort() {
     return;
   }
   const last = shellLastPass;
+  // A pass the schedule is running is its own state, not a failure (P256):
+  // the one word and the bar with no values, as Stopping is drawn.
+  if (last && last.running) {
+    box.replaceChildren(line(words.scheduled), h("div", { className: "last-sort-bar", role: "progressbar", "aria-valuemin": "0" }, h("span")));
+    return;
+  }
   if (!last || !last.when) {
     box.replaceChildren(line(words.never));
     return;
@@ -808,10 +897,12 @@ function shellChanged() {
 // so nothing on a page could clear it and nothing here may send a sort
 // without a return chosen. It is the record's word, not an event's: it stays
 // while the last scheduled sort failed, is left as it is while one runs, and
-// goes when the next scheduled sort works.
+// goes when the next scheduled sort works. A scheduled pass that is running
+// (P256) is not a failure either: the notice is left as it is, as the app's
+// own running sort leaves it.
 function syncSortNotice() {
-  if (scanning) return;
   const last = shellLastPass;
+  if (scanning || (last && last.running)) return;
   if (last && last.when && last.ok === false) {
     keyedNotice("last-sort", { sentence: screenWords().last_sort.failed, kind: "failed" });
   } else {
@@ -1356,6 +1447,9 @@ for (const node of document.querySelectorAll(".side-section[data-soon]")) {
 // Settings: the settings the app already has, through the menu's own answer (P175).
 $("side-settings").addEventListener("click", () => shellAnswer("change_root"));
 $("sort").addEventListener("click", sortClicked);
+// A click into the window asks the last pass at once (P256), so the page
+// catches up sooner than the idle timer would.
+window.addEventListener("focus", () => shellWatchLastPass());
 $("find").addEventListener("input", drawFound);
 $("find").addEventListener("focus", () => {
   if ($("find").value.trim()) drawFound();

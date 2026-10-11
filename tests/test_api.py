@@ -2056,7 +2056,7 @@ def test_the_app_state_reports_the_last_pass(capsys, tmp_path, monkeypatch):
     code, payload = run(capsys, "list")
     assert code == 0 and payload["needs_root"] is True
     assert payload["last_pass"] == {"text": runner.LAST_PASS_NEVER, "level": runner.LEVEL_WARN,
-                                    "ok": False, "when": None}
+                                    "ok": False, "running": False, "when": None}
 
     now = dt.datetime.now()
     runner.write_last_pass(runner.last_pass_path(), started=now, ended=now, root="",
@@ -2070,11 +2070,23 @@ def test_the_app_state_reports_the_last_pass(capsys, tmp_path, monkeypatch):
     assert runner.PASS_REASONS[runner.PASS_ROOT_REFUSED] in payload["last_pass"]["text"]
     # The last-sort line needs no parsing of the runner's words: a failed
     # pass is not ok and says when it started (SPEC-shell 9.3).
-    assert payload["last_pass"]["ok"] is False
+    assert payload["last_pass"]["ok"] is False and payload["last_pass"]["running"] is False
     assert payload["last_pass"]["when"] == now.isoformat(timespec="seconds")
     runner.write_last_pass(runner.last_pass_path(), started=now, ended=now, root="",
                            result=runner.PASS_SUCCEEDED)
-    assert run(capsys, "list")[1]["last_pass"]["ok"] is True
+    succeeded = run(capsys, "list")[1]["last_pass"]
+    assert succeeded["ok"] is True and succeeded["running"] is False
+    # A pass still running is neither well nor failed (pilot P256): the file
+    # records three results, and ``running`` is what tells a pass in progress
+    # from a failed one, both ``ok: false``.
+    runner.write_last_pass(runner.last_pass_path(), started=now, ended=None, root="",
+                           result=runner.PASS_RUNNING)
+    running = run(capsys, "list")[1]["last_pass"]
+    assert running["running"] is True and running["ok"] is False
+    assert running["when"] == now.isoformat(timespec="seconds")
+    runner.last_pass_path().write_bytes(b"not json")
+    unreadable = run(capsys, "list")[1]["last_pass"]
+    assert unreadable["running"] is False and unreadable["ok"] is False and unreadable["when"] is None
 
 
 def test_the_last_pass_reply_and_its_line_agree_on_an_oversized_file(tmp_path, monkeypatch):
@@ -2098,7 +2110,65 @@ def test_the_last_pass_reply_and_its_line_agree_on_an_oversized_file(tmp_path, m
     runner.last_pass_path().write_text(padded, encoding="utf-8")
     reply = api._last_pass()
     assert reply["level"] == runner.LEVEL_ERR
-    assert reply["ok"] is False and reply["when"] is None
+    assert reply["ok"] is False and reply["running"] is False and reply["when"] is None
+
+
+def test_last_pass_is_answered_without_a_root_or_a_store(capsys, tmp_path, monkeypatch):
+    """Pilot P256: the shell asks ``last-pass`` on a timer, so it reads the
+    settings and the last-pass file and nothing else - no clients root chosen,
+    no store opened - and answers the dict ``list`` carries. It is not a
+    writing command, and the two numbers of its watch are the vocabulary's."""
+    from tracker import runner
+    from tracker.settings import ENV_SETTINGS_DIR
+
+    monkeypatch.setenv(ENV_SETTINGS_DIR, str(tmp_path / "app"))
+    assert "last-pass" in api.COMMANDS and "last-pass" not in api.WRITING_COMMANDS
+    # Asked first, in a fresh data home, with the store made unopenable: an
+    # answer at all proves the store was never opened (SPEC-mac-check-fixes
+    # 1.3), and no store file is left behind.
+    def refuse(*_args, **_kwargs):
+        raise AssertionError("the store was opened")
+
+    with monkeypatch.context() as unopenable:
+        unopenable.setattr(store, "open", refuse)
+        code, asked = run(capsys, "last-pass")
+    assert code == 0 and set(asked) == {"last_pass", "warnings"}
+    assert not store.store_path().exists(), "the store was never created"
+    code, listed = run(capsys, "list")
+    assert code == 0 and listed["needs_root"] is True
+    assert asked["last_pass"] == listed["last_pass"]
+    now = dt.datetime.now()
+    runner.write_last_pass(runner.last_pass_path(), started=now, ended=None, root="",
+                           result=runner.PASS_RUNNING)
+    code, asked = run(capsys, "last-pass")
+    assert code == 0 and asked["last_pass"]["running"] is True
+    assert asked["last_pass"] == run(capsys, "list")[1]["last_pass"]
+    assert listed["vocab"]["last_pass_watch"] == {"running": 5, "idle": 60}
+    assert api.LAST_PASS_WATCH_RUNNING_SECONDS == 5 and api.LAST_PASS_WATCH_IDLE_SECONDS == 60
+
+
+def test_the_scheduled_sorting_word_is_in_the_screen_vocabulary():
+    """Pilot P256: a pass the schedule is running is drawn as ``Sorting``, a
+    word the page does not type; its row is in the wording table."""
+    screen = api._vocab()["screen"]
+    assert screen["last_sort"]["scheduled"] == "Sorting"
+    rows = [line.split("\t") for line in
+            (Path(__file__).resolve().parents[1] / "pilot" / "wording-shell.tsv").read_text(
+                encoding="utf-8").splitlines()]
+    proposed = {row[1]: row[4] for row in rows if len(row) > 4}
+    assert proposed["screen.last_sort.scheduled"] == screen["last_sort"]["scheduled"]
+
+
+def test_the_details_word_is_in_the_screen_vocabulary():
+    """Pilot P257: the closed disclosure under a notice's one line is headed
+    by the API's word; the page types none."""
+    screen = api._vocab()["screen"]
+    assert screen["notices"]["details"] == "Details"
+    rows = [line.split("\t") for line in
+            (Path(__file__).resolve().parents[1] / "pilot" / "wording-shell.tsv").read_text(
+                encoding="utf-8").splitlines()]
+    proposed = {row[1]: row[4] for row in rows if len(row) > 4}
+    assert proposed["screen.notices.details"] == screen["notices"]["details"]
 
 
 def test_the_short_path_warning_comes_with_the_returns_too(capsys, demo_root, monkeypatch):
@@ -2620,6 +2690,36 @@ def test_the_first_screen_says_every_machine_warning_in_a_notice_of_its_own():
     body = body[:body.index("\n}\n")]
     assert 'syncNotices("machine"' in body and 'shortNotice("machine")' in body and "detail: machine.join" in body
     assert "renderMachineNotices(listed);" in js
+
+
+def test_every_reply_that_runs_the_after_install_step_carries_the_engines_wait(capsys, demo_root, monkeypatch):
+    """Pilot P257 (review 1, finding 3): the first-screen notice's Details
+    start with the engine's ``FINDINGS_WAIT`` whichever reply drew them, so
+    ``set-root``, ``install-schedule``, ``move-schedule-here`` and
+    ``set-schedule`` carry ``wait`` in their ``after_install`` as the ``list``
+    reply's notice does: the engine's sentence when the run found something
+    for a person, "" otherwise."""
+    import dataclasses
+
+    from tracker import after_install
+    from tracker.layout import designation_file
+
+    _on_the_office_computer(monkeypatch)
+    designation_file(demo_root).parent.mkdir(exist_ok=True)
+    designation_file(demo_root).write_text("front-desk\n", encoding="utf-8")
+    real = after_install.run
+    found: list[tuple[str, ...]] = []
+    monkeypatch.setattr(after_install, "run", lambda **kwargs: dataclasses.replace(real(**kwargs), findings=tuple(found)))
+    commands = [("set-root", {"root": str(demo_root)}), ("install-schedule", {}),
+                ("move-schedule-here", {}), ("set-schedule", {"enabled": True, "start": "06:30", "every": 60})]
+    for finding, wait in (((), ""), (("Some Household: line 2 of the record is malformed",), after_install.FINDINGS_WAIT)):
+        found[:] = finding
+        for command, stdin in commands:
+            designation_file(demo_root).write_text("front-desk\n", encoding="utf-8")
+            code, payload = run(capsys, command, stdin=stdin)
+            assert code == 0, (command, payload)
+            assert payload["after_install"]["wait"] == wait, command
+            assert payload["after_install"]["findings"] == list(finding), command
 
 
 def test_move_schedule_here_moves_the_schedule_from_the_packaged_app(capsys, demo_root, monkeypatch):

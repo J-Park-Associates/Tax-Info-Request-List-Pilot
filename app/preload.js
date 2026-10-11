@@ -10,8 +10,9 @@ contextBridge.exposeInMainWorld("tracker", {
   logError: (text) => ipcRenderer.invoke("log-error", text),
   onProgress: (cb) => ipcRenderer.on("tracker-progress", (_e, m) => cb(m)),
   // The shell's launch step finished having run (decision 209): the page
-  // asks again, so what it left is shown. Nothing is passed across.
-  onAfterInstallDone: (listener) => ipcRenderer.on("after-install-done", () => listener()),
+  // asks again, so what it left is shown. What crosses is the two facts the
+  // page says aloud (pilot P257): {installed, schedule_sentence}.
+  onAfterInstallDone: (listener) => ipcRenderer.on("after-install-done", (_e, done) => listener(done)),
   // The one menu channel (SPEC-shell 5.4). Nothing here reaches the tracker.
   menu: {
     // A menu item was chosen: {id, token}. token is the page's own, echoed.

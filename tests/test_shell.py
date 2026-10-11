@@ -2496,10 +2496,12 @@ def test_a_failed_last_sort_is_a_keyed_notice_without_retry_that_clears_when_the
         never: at({ text: "Never", level: "warn", ok: false, when: null }, null),
         unreadable: at({ text: "Could Not Be Read", level: "err", ok: false, when: null }, null),
         none: at(null, null),
+        scheduled: at({ ...line, ok: false, running: true, when: "2026-09-30T06:00:00" }, null),
       };
     """, tmp_path)
     assert ran["failed"] == ["show|last-sort|Sort Failed|failed|0"], "no retry, no action"
     assert ran["running"] == [], "left as it is while a sort runs"
+    assert ran["scheduled"] == [], "left as it is while a scheduled pass runs (pilot P256)"
     assert ran["worked"] == ["clear|last-sort"] and ran["none"] == ["clear|last-sort"]
     assert ran["never"] == ["clear|last-sort"] and ran["unreadable"] == ["clear|last-sort"]
     assert "syncSortNotice();" in js_function("shellChanged", "shell.js")
@@ -4592,6 +4594,7 @@ let shellFirmNow = { status: "idle", data: null }; let shellFirmAsked = false; l
 let shellFirmLast = null; let shellFirmAsOf = "";
 let shellFirmSentAt = 0; let shellWroteAt = 0; const shellFirmHeld = new Map(); let shellFirmCount = null; let shellFirmSlow = false;
 let shellFirmTimer = null; const SHELL_FIRM_SLOW_MS = 2000;
+let shellLastPassStopped = false; const shellArmLastPass = () => {};   // the last-pass watch (P256) is not this probe's
 const FIRM_LEVELS = ["overview", "needs-review", "reminders", "clients"];
 const asked = []; const notices = []; const drawn = [];
 // As call() does: a reply with an error throws its envelope.
@@ -5585,4 +5588,469 @@ def test_no_action_reads_the_counts_it_was_drawn_from():
     check = js_function("openCheck", "sheet.js")
     assert "FIRM_LEVELS.indexOf(shellRoute.level) === -1" in check and "showReturn(ret)" in check
     assert "forgetReminderCard();" in js_function("openReminder", "sheet.js")
+
+
+# ── a scheduled pass in progress is not a failure (pilot P256) ─────────────
+
+#: A fake last-sort box over the FAKE_DOM elements: classList with remove, and
+#: the words the API's ``screen.last_sort`` and ``screen.sort`` carry.
+LAST_SORT_FAKES = FAKE_DOM + lift_line("const EL_ATTRIBUTES = new Set([", "app.js") + r"""
+class Box extends Element {
+  get classList() {
+    const self = this;
+    return { add(one) { if (!self.className.split(" ").includes(one)) self.className = `${self.className} ${one}`.trim(); },
+             remove(one) { self.className = self.className.split(" ").filter((c) => c && c !== one).join(" "); },
+             contains(one) { return self.className.split(" ").includes(one); } };
+  }
+}
+const box = new Box("div");
+let scanning = null; let shellLastPass = null; let shellProgressNow = null;
+const fill = (p, v) => p.replace(/\{(\w+)\}/g, (_, k) => v[k] ?? "");
+const $ = () => box;
+const screenWords = () => ({
+  last_sort: { today: "Sorted {time}", other_day: "Sorted {date}", failed: "Sort Failed", never: "Not Sorted Yet",
+               running: "Sorting {n} of {total}", done: "Sorted", scheduled: "Scheduled Sorting WORD" },
+  sort: { stopping: "Stopping" } });
+const sameDay = () => true; const icon = () => new Element("svg"); const setTip = () => {};
+const drawn = (pass, running) => {
+  shellLastPass = pass; scanning = running;
+  drawLastSort();
+  const bars = box.byClass("last-sort-bar");
+  return { text: box.byClass("last-sort-text").map((one) => one.textContent), failed: box.classList.contains("is-failed"),
+           bars: bars.length, role: bars.length ? bars[0].attrs.role : null, values: bars.length ? Object.keys(bars[0].attrs).filter((k) => k.startsWith("aria-value") && k !== "aria-valuemin") : null,
+           fillWidth: bars.length ? bars[0].kids[0].style.props.width || null : null };
+};
+"""
+
+
+def test_a_scheduled_pass_still_running_is_drawn_as_sorting_not_as_a_failure(tmp_path):
+    """P256: the engine's last-pass file records started, succeeded and
+    failed. A pass the schedule is running answers ``ok: false, running:
+    true``, and the last-sort line draws the API's ``scheduled`` word with the
+    bar and no values - never the failed word, never ``is-failed``. A pass that
+    failed (``running: false``) is drawn as before, and the app's own running
+    sort still draws its count."""
+    ran = run_shell(["el", "h", "drawLastSort"], LAST_SORT_FAKES, """
+      const when = "2026-09-30T06:00:00";
+      shellProgressNow = { n: 2, total: 5 };
+      return {
+        scheduled: drawn({ text: "Started", level: "ok", ok: false, running: true, when }, null),
+        failed: drawn({ text: "Failed", level: "err", ok: false, running: false, when }, null),
+        own: drawn({ text: "Started", level: "ok", ok: false, running: true, when }, { pass: "p" }),
+        stopping: drawn(null, { pass: "p", stopping: true }),
+      };
+    """, tmp_path, "app.js")
+    assert ran["scheduled"] == {"text": ["Scheduled Sorting WORD"], "failed": False, "bars": 1,
+                                "role": "progressbar", "values": [], "fillWidth": None}
+    assert ran["failed"]["text"] == ["Sort Failed"] and ran["failed"]["failed"] is True and ran["failed"]["bars"] == 0
+    assert ran["own"]["text"] == ["Sorting 2 of 5"] and ran["own"]["failed"] is False
+    assert ran["own"]["values"] == ["aria-valuemax", "aria-valuenow"] and ran["own"]["fillWidth"] == "40%"
+    assert ran["stopping"]["text"] == ["Stopping"]
+    body = js_function("drawLastSort", "shell.js")
+    assert body.index("if (scanning) {") < body.index("last.running") < body.index("words.never"), \
+        "after the app's own sort, before the never check"
+    assert "scheduled" not in re.sub(r"words\.scheduled", "", stripped_js("shell.js")), "the page types no word of it"
+
+
+#: What lastPassStep's table says, one claim per row: held, fresh, the answer.
+LAST_PASS_STEPS = [
+    ("a pass that was running and has ended is read again", {"running": True, "when": "A"}, {"running": False, "when": "A", "ok": True}, "reread"),
+    ("a failed ending is read again too", {"running": True, "when": "A"}, {"running": False, "when": "A", "ok": False}, "reread"),
+    ("a whole pass that came and went between two asks is read again", {"running": False, "when": "A"}, {"running": False, "when": "B"}, "reread"),
+    ("a first ended pass, when none was held, is read again", None, {"running": False, "when": "A"}, "reread"),
+    ("a first ended pass, when the held one had no date, is read again", {"running": False, "when": None}, {"running": False, "when": "A"}, "reread"),
+    ("a pass that has started since is adopted, not read again", {"running": False, "when": "A"}, {"running": True, "when": "B"}, "adopt"),
+    ("a running pass, when none was held, is adopted", None, {"running": True, "when": "A"}, "adopt"),
+    ("a second running pass with another start is adopted", {"running": True, "when": "A"}, {"running": True, "when": "B"}, "adopt"),
+    ("the same running pass is the same", {"running": True, "when": "A"}, {"running": True, "when": "A"}, "same"),
+    ("the same ended pass is the same", {"running": False, "when": "A"}, {"running": False, "when": "A"}, "same"),
+    ("no pass held and none to be had is the same", None, {"running": False, "when": None}, "same"),
+    ("a file that has gone unreadable ended nothing", {"running": False, "when": "A"}, {"running": False, "when": None}, "same"),
+    ("a reply without a last pass is the same", {"running": False, "when": "A"}, None, "same"),
+]
+
+LAST_PASS_WATCH_FAKES = r"""
+let vocab = { last_pass_watch: { running: 5, idle: 60 } };
+let scanning = null; let shellLastPass = null;
+let shellLastPassTimer = null; let shellLastPassAsking = false; let shellLastPassStopped = false;
+const seen = []; let timerId = 0; const timers = new Map(); let reply = null; let asked = 0;
+let listReply = { listed: true }; let during = null;
+const setTimeout = (fn, ms) => { timerId += 1; timers.set(timerId, [fn, ms]); return timerId; };
+const clearTimeout = (id) => { timers.delete(id); };
+const shellChanged = () => seen.push("changed");
+const adoptList = (listed) => seen.push(listed === listReply ? "adopt-list" : "adopt-other");
+const failed = (err) => seen.push("failed:" + err.message);
+const call = async (args) => {
+  asked += 1; seen.push("call:" + args.join(" "));
+  if (during) during(args[0]);
+  const out = args[0] === "list" ? listReply : reply;
+  if (out instanceof Error) throw out;
+  return args[0] === "list" ? out : { last_pass: out };
+};
+const armed = () => [...timers.values()].map((one) => one[1] / 1000);
+const tick = async (held, fresh, running = null) => {
+  seen.length = 0; shellLastPass = held; reply = fresh; scanning = running; shellLastPassStopped = false;
+  clearTimeout(shellLastPassTimer); timers.clear();
+  await shellWatchLastPass();
+  return { seen: seen.slice(), armed: armed(), held: shellLastPass };
+};
+"""
+
+
+def test_the_shell_asks_list_again_once_a_scheduled_pass_has_ended(tmp_path):
+    """P256: ``lastPassStep`` says what a fresh last-pass means to the shell
+    (every row of its table by the claim it makes), and a tick of the watch
+    acts on it: a pass that ended asks ``list`` once and adopts it, as F5 and
+    ``passEnded`` do (never the start-up path, ``loadEngagements``: it would
+    rebuild an open Schedule dialog's interval list and redraw the page); a
+    pass that started is adopted and drawn; nothing changed does nothing; the
+    app's own pass is not interrupted; a failing ask is said once and stops
+    the watch, which the next list adopt starts again."""
+    ran = run_shell(["lastPassStep", "shellArmLastPass", "shellWatchLastPass"], LAST_PASS_WATCH_FAKES, f"""
+      const steps = {json.dumps(LAST_PASS_STEPS)}.map(([claim, held, fresh]) => lastPassStep(held, fresh));
+      return (async () => {{
+        const ended = await tick({{ running: true, when: "A" }}, {{ running: false, when: "A", ok: true }});
+        const started = await tick({{ running: false, when: "A" }}, {{ running: true, when: "B" }});
+        const same = await tick({{ running: true, when: "A" }}, {{ running: true, when: "A" }});
+        const idle = await tick({{ running: false, when: "A" }}, {{ running: false, when: "A" }});
+        const own = await tick({{ running: false, when: "A" }}, {{ running: false, when: "B" }}, {{ pass: "p" }});
+        const broken = await tick({{ running: true, when: "A" }}, new Error("boom"));
+        const stopped = shellLastPassStopped;
+        seen.length = 0; await shellWatchLastPass(); const stoppedTicks = seen.slice();
+        shellLastPassStopped = false; vocab = {{ last_pass_watch: null }};
+        let missing = ""; try {{ shellArmLastPass(); }} catch (err) {{ missing = err.message; }}
+        return {{ steps, ended, started, same, idle, own, broken, stoppedTicks, stopped, missing }};
+      }})();
+    """, tmp_path)
+    assert ran["steps"] == [row[3] for row in LAST_PASS_STEPS], [row[0] for row in LAST_PASS_STEPS]
+    assert ran["ended"]["seen"] == ["call:last-pass", "call:list", "adopt-list"], "a tick that sees the pass end asks list once and adopts it"
+    assert ran["started"]["seen"] == ["call:last-pass", "changed"]
+    assert ran["started"]["held"] == {"running": True, "when": "B"}, "and the page draws the new state"
+    assert ran["same"]["seen"] == ["call:last-pass"] and ran["idle"]["seen"] == ["call:last-pass"]
+    assert ran["same"]["armed"] == [5], "five seconds while a pass runs"
+    assert ran["idle"]["armed"] == [60], "sixty otherwise"
+    assert ran["own"]["seen"] == [] and ran["own"]["armed"] == [60], "a tick during the app's own pass calls nothing"
+    assert ran["broken"]["seen"] == ["call:last-pass", "failed:boom"] and ran["broken"]["armed"] == [], \
+        "a throwing call is handed to failed once and stops the timer"
+    assert ran["stoppedTicks"] == [] and ran["stopped"] is True, "no notice per tick once stopped"
+    assert ran["missing"] == "vocab.last_pass_watch", "a vocabulary without the numbers is a loud failure"
+    assert "loadEngagements" not in re.sub(r"//.*", "", js_function("shellWatchLastPass", "shell.js")), \
+        "the reread is the list adopted, never the start-up path"
+
+
+def test_a_throwing_reread_is_said_once_and_stops_the_watch(tmp_path):
+    """P256 (the builder's deviation 2, SPEC 1.2): the ``list`` a tick asks
+    when a pass has ended can throw too. It is said once by ``failed`` and
+    the watch stops - no five-second loop on a failing ``list`` - until the
+    next list adopt starts it again."""
+    ran = run_shell(["lastPassStep", "shellArmLastPass", "shellWatchLastPass"], LAST_PASS_WATCH_FAKES, """
+      listReply = new Error("boom list");
+      return (async () => {
+        const broken = await tick({ running: true, when: "A" }, { running: false, when: "A", ok: true });
+        const stopped = shellLastPassStopped;
+        seen.length = 0; const before = asked; await shellWatchLastPass();
+        return { broken, stopped, quiet: seen.slice(), askedAgain: asked - before };
+      })();
+    """, tmp_path)
+    assert ran["broken"]["seen"] == ["call:last-pass", "call:list", "failed:boom list"], "said once, and not adopted"
+    assert ran["broken"]["armed"] == [] and ran["stopped"] is True, "the watch is stopped"
+    assert ran["quiet"] == [] and ran["askedAgain"] == 0, "and a later tick says and asks nothing"
+
+
+def test_a_tick_before_the_first_list_or_after_a_stop_does_nothing(tmp_path):
+    """P256 (the builder's deviation 3): a focus tick before the first list
+    has landed (no vocabulary, so the shell has not learned which commands it
+    may send) and one after a stop are \"not started\" and \"stopped\", not
+    silent errors: nothing is asked, drawn, said or timed."""
+    ran = run_shell(["lastPassStep", "shellArmLastPass", "shellWatchLastPass"], LAST_PASS_WATCH_FAKES, """
+      return (async () => {
+        vocab = null; shellLastPass = null; reply = { running: false, when: "A" };
+        await shellWatchLastPass();
+        const early = { seen: seen.slice(), asked, armed: armed() };
+        vocab = { last_pass_watch: { running: 5, idle: 60 } }; shellLastPassStopped = true;
+        await shellWatchLastPass();
+        return { early, late: { seen: seen.slice(), asked, armed: armed() } };
+      })();
+    """, tmp_path)
+    assert ran["early"] == {"seen": [], "asked": 0, "armed": []}, "before the first list"
+    assert ran["late"] == {"seen": [], "asked": 0, "armed": []}, "after a stop"
+    assert re.search(r"if \(shellLastPassAsking \|\| shellLastPassStopped \|\| !vocab\) return;", js_function("shellWatchLastPass", "shell.js"))
+
+
+def test_a_reply_landing_after_the_apps_own_sort_began_does_nothing(tmp_path):
+    """P256 (review 1, finding 4): ``scanning`` is checked again when the
+    reply lands, not only before the call. A ``last-pass`` reply, or the
+    ``list`` a reread asked, that arrives after the app's own Sort started
+    adopts, draws and reads nothing - the pass's end asks ``list`` itself."""
+    ran = run_shell(["lastPassStep", "shellArmLastPass", "shellWatchLastPass"], LAST_PASS_WATCH_FAKES, """
+      const landed = async (which, held, fresh) => {
+        during = (name) => { if (name === which) scanning = { pass: "p" }; };
+        const out = await tick(held, fresh);
+        during = null;
+        return { ...out, scanning: scanning !== null };
+      };
+      return (async () => {
+        const reread = await landed("last-pass", { running: true, when: "A" }, { running: false, when: "A", ok: true });
+        const adopt = await landed("last-pass", { running: false, when: "A" }, { running: true, when: "B" });
+        const list = await landed("list", { running: true, when: "A" }, { running: false, when: "A", ok: true });
+        return { reread, adopt, list };
+      })();
+    """, tmp_path)
+    assert ran["reread"]["seen"] == ["call:last-pass"] and ran["reread"]["held"] == {"running": True, "when": "A"}, "no list asked"
+    assert ran["adopt"]["seen"] == ["call:last-pass"] and ran["adopt"]["held"] == {"running": False, "when": "A"}, "nothing adopted or drawn"
+    assert ran["list"]["seen"] == ["call:last-pass", "call:list"], "a list landing late is not adopted"
+    assert [ran[name]["armed"] for name in ("reread", "adopt", "list")] == [[5], [60], [5]], "the watch is still timed, by what is held"
+    assert all(ran[name]["scanning"] for name in ran), "the app's own pass was running when each reply landed"
+
+
+def test_the_harness_stub_answers_last_pass_with_the_pass_its_list_carries(tmp_path):
+    """P256 (review 1, finding 5): a window focus or a run past the idle
+    cadence asks ``last-pass``; the screenshot tool's stub answers it with a
+    not-running pass that is the very object its ``list`` carries (nothing
+    new, so no failed notice lands on a screenshot) and the API's
+    ``warnings``; ``setup`` has none, as its list has none."""
+    if NODE is None:
+        pytest.skip("node is not on PATH (CI installs it)")
+    harness = (REPO / "pilot" / "harness" / "stub.js").read_text(encoding="utf-8")
+    script = tmp_path / "stub_probe.js"
+    script.write_text(f"""
+const vm = require("vm");
+const stubSource = {json.dumps(harness)};
+const mirror = JSON.parse({json.dumps(json.dumps(api._vocab()))});
+(async () => {{
+  const out = {{}};
+  for (const scenario of ["normal", "failed", "setup"]) {{
+    const window = {{ __VOCAB__: mirror }};
+    vm.runInContext(stubSource, vm.createContext({{ window, location: {{ search: `?scenario=${{scenario}}` }}, URLSearchParams, setTimeout, console, Date, Intl }}));
+    const list = await window.tracker.call(["list"]);
+    out[scenario] = {{ list: list.last_pass, asked: await window.tracker.call(["last-pass"]) }};
+  }}
+  process.stdout.write(JSON.stringify(out));
+}})();
+""", encoding="utf-8", newline="\n")
+    done = subprocess.run([NODE, str(script)], capture_output=True, text=True, encoding="utf-8", timeout=60, check=False)
+    assert done.returncode == 0, done.stderr
+    ran = json.loads(done.stdout)
+    for scenario, one in ran.items():
+        assert one["asked"] == {"last_pass": one["list"], "warnings": []}, scenario
+        assert not (one["list"] or {}).get("running"), scenario
+    assert ran["normal"]["list"]["running"] is False and ran["failed"]["list"]["ok"] is False and ran["setup"]["list"] is None
+
+
+def test_the_watch_never_overlaps_itself_and_the_adopt_and_the_focus_start_it(tmp_path):
+    """P256: one ask at a time (an ``asking`` flag, as the lock watch has);
+    ``shellAdopt`` times the watch whenever a list lands (and clears a stop);
+    the window's ``focus`` ticks it once at once; and the page types neither
+    number."""
+    ran = run_shell(["lastPassStep", "shellArmLastPass", "shellWatchLastPass"], LAST_PASS_WATCH_FAKES, """
+      shellLastPass = { running: false, when: "A" }; reply = { running: false, when: "A" }; scanning = null;
+      return (async () => {
+        const first = shellWatchLastPass();
+        const second = shellWatchLastPass();
+        await Promise.all([first, second]);
+        return { asked };
+      })();
+    """, tmp_path)
+    assert ran["asked"] == 1, "a tick that arrives while one is asking is dropped"
+    shell = stripped_js("shell.js")
+    adopt = js_function("shellAdopt", "shell.js")
+    assert adopt.index("shellLastPassStopped = false;") < adopt.index("shellArmLastPass();"), "a list landing clears a stop, then times the watch"
+    assert 'window.addEventListener("focus", () => shellWatchLastPass());' in shell
+    assert "vocab.last_pass_watch" in js_function("shellArmLastPass", "shell.js")
+    assert not re.search(r"\b(?:60|5)\s*\*\s*1000|\b(?:5000|60000)\b", shell), "the page types neither number"
+
+
+# ── a notice's Details (pilot P257) ───────────────────────────────────────
+
+NOTICE_DETAIL_FAKES = FAKE_DOM + lift_line("const EL_ATTRIBUTES = new Set([", "app.js") + r"""
+const fill = (p, v) => p.replace(/\{(\w+)\}/g, (_, k) => v[k] ?? "");
+let vocab = { screen: { notices: { details: "Details" }, icons: { dismiss: "Dismiss" } }, notices: { repeated: "(x{n})" } };
+let locked = false;
+const noticeButton = (act) => { const one = new Element("button"); one.dataset.act = act; return one; };
+const setTip = () => {};
+const draw = (entry) => { entry.node = new Element("div"); drawNotice(entry); return entry.node; };
+const shape = (node) => node.kids.map((one) => (one.tag === "details"
+  ? ["details", one.className, one.open, one.kids.map((kid) => [kid.tag, kid.className, kid.textContent, kid.kids.filter((line) => line.tag).map((line) => line.textContent)])]
+  : [one.tag, one.className, one.textContent]));
+"""
+
+
+def test_a_notice_with_a_detail_keeps_one_line_and_a_closed_details_block(tmp_path):
+    """P257: ``detail`` is drawn after the line and before the buttons as a
+    closed ``details`` whose summary is the API's word, one block per line;
+    the dismiss ends the notice; no detail, no element; a vocabulary without
+    the word is a loud failure, never a blank summary."""
+    ran = run_shell(["el", "detailOf", "retryOf", "drawNotice"], NOTICE_DETAIL_FAKES, """
+      const base = { sentence: "Machine Needs Attention", kind: "warning", count: 1 };
+      const withDetail = shape(draw({ ...base, detail: "The app is running from /Volumes/X.\\nDrag it into Applications." }));
+      const without = shape(draw({ ...base, detail: "" }));
+      const failing = shape(draw({ ...base, kind: "failed", detail: "a\\nb", retry: () => {} }));
+      vocab = { screen: { notices: {}, icons: { dismiss: "Dismiss" } } };
+      let missing = ""; try { draw({ ...base, detail: "x" }); } catch (err) { missing = err.message; }
+      return { withDetail, without, failing, missing };
+    """, tmp_path, "app.js")
+    assert ran["withDetail"] == [
+        ["span", "notice-text", "Machine Needs Attention"],
+        ["details", "notice-detail", False, [["summary", "", "Details", []],
+                                              ["div", "notice-detail-text", "The app is running from /Volumes/X.Drag it into Applications.",
+                                               ["The app is running from /Volumes/X.", "Drag it into Applications."]]]],
+        ["button", "", ""]], "the line, the closed Details, then the dismiss"
+    assert [one[0] for one in ran["without"]] == ["span", "button"], "no detail, no element"
+    assert [one[0] for one in ran["failing"]] == ["span", "details", "button", "button"], "before Retry and the dismiss"
+    assert ran["missing"] == "vocab.screen.notices.details"
+    app = stripped_js("app.js")
+    assert "entry.detail = failure.detail || entry.detail;" in app and "had.detail === detail" in app
+
+
+def test_machine_warnings_and_setup_findings_reach_the_screen_as_details(tmp_path):
+    """P257: the machine warnings and the after-install findings keep their
+    one short line and now carry the engine's sentences as the notice's
+    detail, lines joined by a newline, and the error log still gets the same
+    text."""
+    ran = run_shell(["renderMachineNotices", "syncNotices", "renderAfterInstall", "shortNotice"], r"""
+      let vocab = { screen: { notices: { machine: "Machine Needs Attention", reader: "Reader" } },
+                    after_install: { heading: "Setup Needs Attention", wait: "A household waits." } };
+      const keyedNotices = new Map(); const seen = []; const logged = [];
+      const window = { tracker: { logError: (text) => logged.push(text) } };
+      const keyedNotice = (key, failure) => { seen.push([key.split(":")[0], failure.sentence, failure.kind, failure.detail || ""]); keyedNotices.set(key, 1); return true; };
+      const clearNotice = (key) => keyedNotices.delete(key);
+    """, """
+      renderMachineNotices({ machine_warnings: ["The app is running from /Volumes/X. Drag it into Applications.", "Second warning."] });
+      const machine = { seen: seen.slice(), logged: logged.slice() };
+      seen.length = 0; logged.length = 0;
+      renderAfterInstall({ wait: "A household waits.", findings: ["Finding one"], failed: ["It could not run"] });
+      return { machine, setup: { seen, logged } };
+    """, tmp_path, "app.js")
+    machine = "The app is running from /Volumes/X. Drag it into Applications.\nSecond warning."
+    assert ran["machine"]["seen"] == [["machine", "Machine Needs Attention", "warning", machine]]
+    assert ran["machine"]["logged"] == [machine], "and the error log has the same text"
+    setup = "A household waits.\nIt could not run\nFinding one"
+    assert ran["setup"]["seen"] == [["after-install", "Setup Needs Attention", "failed", setup]]
+    assert ran["setup"]["logged"] == [setup]
+
+
+def test_only_the_machine_warnings_and_setup_findings_put_a_detail_on_the_screen(tmp_path):
+    """P257 (review 1, finding 2): a broken row's error and stack, and the
+    household pause and feed sentences, stay in the error log - never under
+    Details (SPEC-shell E30, 11.1, principle 7). Only an entry marked
+    ``shown`` (the machine warnings') passes its detail to the notice."""
+    ran = run_pages(["pagesReportBroken", "pagesHouseholdNotices", "shortNotice"], js_function("syncNotices", "app.js") + "\n"
+                    + js_function("renderMachineNotices", "app.js") + r"""
+      const fill = (p, v) => p.replace(/\{(\w+)\}/g, (_, k) => v[k] ?? "");
+      let vocab = { shell: { page_error: "{kind} while drawing" }, notices: { about: "{label}: {sentence}" },
+        household: { two_open_years: "Two years open", accept_folder_name: "Accept" },
+        screen: { notices: { machine: "Machine Needs Attention", renamed: "Folder Renamed", feed: "Feed Not Resolved", reader: "Reader" } } };
+      const keyedNotices = new Map(); const seen = []; const logged = [];
+      const window = { tracker: { logError: (text) => logged.push(text) } };
+      const keyedNotice = (key, failure) => { seen.push([key.split(":")[0], failure.sentence, failure.detail || ""]); keyedNotices.set(key, 1); return true; };
+      const clearNotice = (key) => keyedNotices.delete(key);
+      const acceptFolderName = () => {};
+      let pagesBroken = [{ name: "Row A", err: Object.assign(new Error("MESSAGE"), { stack: "STACK at /Users/x/app.js:1" }) }];
+      let lastState = null;
+    """, """
+      pagesReportBroken();
+      lastState = { household: { path: "h1", open_years: [2025], pause: { sentence: "PAUSED LONG", scope: "household" }, feeds: [{ warning: "FEED LONG" }] } };
+      pagesHouseholdNotices({ level: "household", household: "h1" });
+      renderMachineNotices({ machine_warnings: ["MACHINE LONG"] });
+      return { seen, logged };
+    """, tmp_path)
+    assert [one[2] for one in ran["seen"][:-1]] == [""] * (len(ran["seen"]) - 1), "no row, pause or feed detail is passed to the notice"
+    assert ran["seen"][-1] == ["machine", "Machine Needs Attention", "MACHINE LONG"], "the machine warnings' is"
+    assert len(ran["seen"]) == 4, "the row, the renamed folder, the feed, the machine"
+    logged = "\n".join(ran["logged"])
+    assert "STACK at /Users/x/app.js:1" in logged and "PAUSED LONG" in logged and "FEED LONG" in logged and "MACHINE LONG" in logged, \
+        "and every one is still in the error log"
+
+
+def test_the_setup_notice_reads_the_same_whichever_reply_drew_it(tmp_path, monkeypatch):
+    """P257 (review 1, finding 3): Start, Repair the Schedule and Save
+    Schedule key the first-screen notice on the engine's ``wait`` and lines,
+    as the ``list`` reply's notice does, so one run is drawn and logged once
+    and a notice a person dismissed does not come back for the same sentence
+    and detail; a different detail is a different notice."""
+    from tracker import after_install
+
+    finding = "Some Household: line 2 of the record is malformed"
+    failure = "The daily job could not be registered."
+    monkeypatch.setattr(after_install, "read_record", lambda: {"findings": [finding], "failed": [failure], "ran_at": "2026-09-26T08:00:00"})
+    from_list = after_install.notice()
+    ran_step = after_install.AfterInstall(reason="setup", ran_at="2026-09-26T08:00:00", schedule="no_root", schedule_sentence="S",
+                                          check="found", check_sentence="C", findings=(finding,), failed=(failure,))
+    from_reply = ran_step.reply()
+    assert from_reply["wait"] == from_list["wait"] == after_install.FINDINGS_WAIT
+    assert after_install.AfterInstall(reason="setup", ran_at="", schedule="no_root", schedule_sentence="S", check="ok",
+                                      check_sentence="C").reply()["wait"] == "", "no findings, no wait"
+    ran = run_shell(["renderAfterInstall", "noticeOf", "keyedNotice", "clearNotice"], r"""
+      const vocab = { after_install: { heading: "Setup Needs Attention", wait: "Setup Needs Attention" } };
+      const notices = []; const keyedNotices = new Map(); const logged = []; let drawn = 0;
+      const window = { tracker: { logError: (text) => logged.push(text) } };
+      const notice = (failure) => { drawn += 1; const entry = { ...failure }; notices.push(entry); return entry; };
+      const dismissNotice = (entry) => { notices.splice(notices.indexOf(entry), 1); };
+    """, f"""
+      const reply = {json.dumps(from_reply)}; const listed = {json.dumps(from_list)};
+      renderAfterInstall(noticeOf(reply));      // Start
+      renderAfterInstall(listed);               // the list that follows it
+      const once = {{ drawn, logged: logged.length, detail: notices[0].detail }};
+      dismissNotice(notices[0]);                // a person dismisses it
+      renderAfterInstall(noticeOf(reply)); renderAfterInstall(listed);
+      const dismissed = {{ drawn, logged: logged.length, shown: notices.length }};
+      renderAfterInstall({{ ...listed, findings: [...listed.findings, "Another finding"] }});
+      return {{ once, dismissed, changed: {{ drawn, logged: logged.length, shown: notices.length }} }};
+    """, tmp_path, "app.js")
+    said = "\n".join([after_install.FINDINGS_WAIT, failure, finding])
+    assert ran["once"] == {"drawn": 1, "logged": 1, "detail": said}, "drawn and logged once for one run, the engine's sentence first"
+    assert ran["dismissed"] == {"drawn": 1, "logged": 1, "shown": 0}, "a dismissed notice does not come back"
+    assert ran["changed"] == {"drawn": 2, "logged": 2, "shown": 1}, "a changed detail is a new notice"
+    assert "vocab.after_install.wait" not in re.sub(r"//.*", "", js_function("noticeOf", "app.js")), "the reply's own wait, never the heading word"
+
+
+def test_the_schedule_sentence_is_toasted_when_the_step_registered_it(tmp_path):
+    """P257: Start (``saveRoot``) and the launch door's listener toast the
+    engine's ``schedule_sentence`` - in a toast, before the page starts again
+    - only when the step ``installed`` the schedule here. The shell forwards
+    exactly those two facts, and the preload passes them to the listener."""
+    ran = run_shell(["saveRoot"], r"""
+      let setupDraft = { root: " /clients ", firm: " Firm ", phone: "" };
+      const seen = []; let answer = null;
+      const call = async () => answer;
+      const noticeOf = (done) => done; const renderAfterInstall = () => seen.push("setup notice");
+      const renderShortOfRoom = () => {}; const bootstrap = async () => seen.push("bootstrap");
+      const outcome = (text, cls, opts) => seen.push(["outcome", text, cls, opts.toasted]);
+      const failed = (err) => seen.push("failed:" + err.message);
+      const window = { tracker: { logError: (text) => seen.push(["log", text]) } };
+    """, """
+      return (async () => {
+        const reply = (installed) => ({ after_install: { installed, schedule_sentence: "This computer (OFFICE) now runs the schedule.", failed: [], findings: [] } });
+        answer = reply(true); await saveRoot(); const registered = seen.splice(0);
+        answer = reply(false); await saveRoot(); const elsewhere = seen.splice(0);
+        return { registered, elsewhere };
+      })();
+    """, tmp_path, "app.js")
+    assert ran["registered"] == ["setup notice", ["outcome", "This computer (OFFICE) now runs the schedule.", "ok", True], "bootstrap"]
+    assert ran["elsewhere"] == ["setup notice", "bootstrap"]
+    app = read("app.js")
+    block = app[app.index("if (window.tracker.onAfterInstallDone) {"):]
+    block = block[:block.index("\n}\n") + 3]
+    heard = run_shell([], f"""
+      const seen = []; let listener = null;
+      const outcome = (text, cls, opts) => seen.push(["outcome", text, cls, opts.toasted]);
+      const call = async () => ({{ after_install: null }}); const renderAfterInstall = () => seen.push("setup notice");
+      const failed = (err) => seen.push("failed:" + err.message);
+      const window = {{ tracker: {{ onAfterInstallDone: (fn) => {{ listener = fn; }} }} }};
+      {block}
+    """, """
+      return (async () => {
+        await listener({ installed: true, schedule_sentence: "S" }); const a = seen.splice(0);
+        await listener({ installed: false, schedule_sentence: "S" }); const b = seen.splice(0);
+        await listener(); const c = seen.splice(0);
+        return { a, b, c };
+      })();
+    """, tmp_path)
+    assert heard["a"] == [["outcome", "S", "ok", True], "setup notice"], "toasted, then the notice asked as before"
+    assert heard["b"] == ["setup notice"] and heard["c"] == ["setup notice"]
+    main_js = (REPO / "app" / "main.js").read_text(encoding="utf-8")
+    preload = (REPO / "app" / "preload.js").read_text(encoding="utf-8")
+    assert "win.webContents.send(LAUNCH_DONE_CHANNEL, {" in main_js
+    assert "installed: result.installed === true," in main_js and "schedule_sentence: typeof result.schedule_sentence" in main_js
+    assert 'ipcRenderer.on("after-install-done", (_e, done) => listener(done))' in preload
 
