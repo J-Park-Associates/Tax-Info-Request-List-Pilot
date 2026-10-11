@@ -1042,6 +1042,15 @@ def _close_job(job) -> None:
 _SAID: set[str] = set()
 
 
+def forget_said() -> None:
+    """Forget the memory-limit warnings this process has said (P276), so the
+    next ``_say_once`` says them again. The app's engine answers many commands
+    in one process; a process per command said each of the reader's warnings
+    once per command, and the engine calls this before each command to keep
+    its error log reading the same."""
+    _SAID.clear()
+
+
 def _say_once(words: str) -> None:
     """Put ``words`` on the error log the first time this process has them."""
     if words not in _SAID:

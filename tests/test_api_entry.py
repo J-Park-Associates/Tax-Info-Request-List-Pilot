@@ -139,23 +139,27 @@ def test_the_setup_mode_runs_the_after_install_step_with_what_its_command_line_n
     capsys.readouterr()
 
 
-def test_the_entry_given_the_spare_flag_waits_for_its_command():
-    """Pilot P220: the packaged executable started as a spare imports the
-    API, then runs the one command the shell hands it on stdin - the reply a
-    fresh ``templates`` gives - and, handed nothing, exits quietly."""
+def test_the_entry_given_the_resident_flag_serves_until_the_end_of_input():
+    """Pilot P276: the packaged executable started as the engine imports the
+    API, then answers the commands the shell hands it on stdin - the reply a
+    fresh ``templates`` gives, then an end line - and, handed nothing, exits
+    quietly with code 0 when its input ends."""
     import json
 
-    from tracker.api import SPARE_FLAG
+    from tracker.resident import END_KEY, RESIDENT_FLAG
 
     def entry(args, stdin: bytes):
         return subprocess.run([sys.executable, "api_entry.py", *args], cwd=REPO, env=child_env(),
                               input=stdin, capture_output=True, timeout=120)
 
+    head = json.dumps({"id": 1, "argv": ["templates"], "bytes": 0}).encode() + b"\n"
     fresh = entry(["templates"], b"")
-    warm = entry([SPARE_FLAG], json.dumps({"argv": ["templates"]}).encode() + b"\n")
+    warm = entry([RESIDENT_FLAG], head + head.replace(b'"id": 1', b'"id": 2'))
     assert fresh.returncode == warm.returncode == 0, warm.stderr
-    assert warm.stdout == fresh.stdout and warm.stdout.strip().startswith(b"{")
-    idle = entry([SPARE_FLAG], b"")
+    end = "\n" + json.dumps({END_KEY: 1, "code": 0, "retiring": False}) + "\n"
+    last = "\n" + json.dumps({END_KEY: 2, "code": 0, "retiring": False}) + "\n"
+    assert warm.stdout == fresh.stdout + end.encode() + fresh.stdout + last.encode()
+    idle = entry([RESIDENT_FLAG], b"")
     assert idle.returncode == 0 and idle.stdout == b""
 
 
@@ -177,12 +181,12 @@ def _run_the_entry(monkeypatch, args: list[str]) -> tuple[object, list[str]]:
     made, in order."""
     import runpy
 
-    from tracker import api, runner
+    from tracker import api, resident, runner
 
     calls: list[str] = []
     monkeypatch.setattr(runner, "main", lambda argv: calls.append("runner") or 0)
     monkeypatch.setattr(api, "main", lambda argv: calls.append("api") or 0)
-    monkeypatch.setattr(api, "spare", lambda: calls.append("spare") or 0)
+    monkeypatch.setattr(resident, "serve", lambda: calls.append("resident") or 0)
     monkeypatch.setattr(sys, "argv", ["api_entry.py", *args])
     try:
         runpy.run_path(str(REPO / "api_entry.py"), run_name="__main__")
@@ -203,7 +207,7 @@ def test_a_mac_below_the_floor_is_refused_before_anything_runs(monkeypatch, caps
                                    ("x86_64", "14.5", "an Intel processor running macOS 14.5"),
                                    ("arm64", "", "Apple silicon running a macOS it cannot name")):
         _on_a_mac(monkeypatch, machine=machine, version=version)
-        for args in (["templates"], [RUNNER_MODE_FLAG, str(tmp_path)], [SETUP_MODE_FLAG], ["--spare"]):
+        for args in (["templates"], [RUNNER_MODE_FLAG, str(tmp_path)], [SETUP_MODE_FLAG], ["--resident"]):
             assert _run_the_entry(monkeypatch, args) == (1, [])        # exit 1, nothing started
             assert capsys.readouterr().err == settings.MAC_FLOOR.format(
                 product=settings.product_name(), what=what) + "\n"
@@ -226,3 +230,11 @@ def test_a_mac_at_the_floor_or_another_system_runs_the_entry_as_before(monkeypat
     monkeypatch.setattr("tracker.settings.host_system", lambda: "nt")
     assert _run_the_entry(monkeypatch, ["templates"]) == (0, ["api"])
     assert capsys.readouterr().err == ""
+
+
+def test_the_entry_routes_the_resident_flag_alone_to_the_engine_and_any_other_to_the_api(monkeypatch):
+    """P276: ``--resident`` alone is the engine; the flag with anything beside it
+    is an unknown command for the API to refuse, not an engine."""
+    assert _run_the_entry(monkeypatch, ["--resident"]) == (0, ["resident"])
+    assert _run_the_entry(monkeypatch, ["--resident", "templates"]) == (0, ["api"])
+    assert _run_the_entry(monkeypatch, ["templates"]) == (0, ["api"])

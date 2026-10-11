@@ -753,6 +753,12 @@ every existing check in place.
 - **The last-pass watch (P277):** `fs.watch` on the folder of the file `list`
   names as `vocab.shell.last_pass_file`, a stat watch only where that cannot
   be set; the file is never read here.
+- **The engine (P276):** one process per session, started before the window,
+  answering each command handed to it while it is free over its standard input
+  (a line and the payload's bytes; its reply, then an end line); a Sort and
+  the after-install step always have a process of their own; a busy engine's
+  command starts its own process; a stuck command is killed with the engine,
+  and a new engine starts.
 - **Exit:** role `quit`.
 
 ### 5.6 Light and dark at first paint (P59, P73)

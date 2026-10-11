@@ -94,11 +94,14 @@ rescans, which takes it again (``tracker.filer._rescan``); the scheduled
 pass locks a fed return beside the household that fed it, and again when
 it reaches that return's own household; and a release that ran out of
 tries, and could not even mark the file released, leaves this process's
-own lock behind for its next take. Each app
-command is its own short process (the desktop app starts one
-``python -m tracker.api`` per command), so a leftover from an *earlier*
+own lock behind for its next take. Each command that is not answered by
+the session's engine runs in a process of its own (P276: the desktop app
+starts one ``python -m tracker.api`` for it), so a leftover from an *earlier*
 command names a process that has ended and the dead-owner rule clears it;
 it is the second take inside one process that would find its own live pid.
+The app's engine (P276) runs many commands in one process; it ends itself
+after any command that left a lock unreleased or held
+(``tracker.resident``), so the dead-owner rule still clears what it left.
 So the module keeps the exact lock line - the token - of every lock this
 process holds right now, added when a lock is taken and removed, token by
 token, when it is let go. A lock file naming this process on this host
@@ -269,6 +272,10 @@ _CHANGING_HANDS_DELAY = 0.2
 #: one.
 _held: dict[str, Path] = {}
 _held_guard = threading.Lock()
+#: The lock files a release in this process could neither delete nor mark
+#: released (:func:`_delete_own`'s last branch), in order. Read-only to every
+#: caller but that branch: see :func:`left_unreleased`.
+_unreleased: list[Path] = []
 #: How long Task Scheduler lets one pass run before killing it. It lives
 #: here, not in tracker.scheduling, because the stale threshold below is
 #: derived from it and this module imports nothing from the package.
@@ -1098,6 +1105,8 @@ def _delete_own(lock: EngagementLock) -> None:
         # At call time: locking imports nothing of the package at load.
         from tracker import errors
 
+        with _held_guard:
+            _unreleased.append(lock.path)     # the app's engine ends itself (P276)
         errors.keep("locking", exc, name=lock.path.name)
         log.warning("%s could not be removed or marked on release (%s; %s)",
                     lock.path, why, errors.error_class(exc))
@@ -1185,6 +1194,26 @@ def holds(engagement_dir: Path | str, name: str = LOCK_FILENAME) -> bool:
             return os.path.samefile(written_to, lock)
         except (OSError, ValueError):
             return False
+
+
+def held_now() -> int:
+    """How many locks this process holds right now (P276): the tokens it
+    recorded when it took them and has not let go. Read-only, under
+    ``_held_guard``. The app's engine (``tracker.resident``) notes it before
+    a command and retires after one that left it higher."""
+    with _held_guard:
+        return len(_held)
+
+
+def left_unreleased() -> tuple[Path, ...]:
+    """The lock files a release in this process could neither delete nor mark
+    released (P276): the last ``except OSError`` branch of :func:`_delete_own`,
+    where the file stays naming this process. A process that ends clears it by
+    the dead-owner rule; one that lives on - the app's engine - would have it
+    read as held by every other process, so the engine retires after any
+    command that leaves one. Read-only, in the order they happened."""
+    with _held_guard:
+        return tuple(_unreleased)
 
 
 def lock_is_held(engagement_dir: Path | str) -> bool:

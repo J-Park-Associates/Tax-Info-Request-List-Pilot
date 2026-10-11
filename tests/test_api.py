@@ -10101,70 +10101,67 @@ def test_importing_the_api_loads_no_pdf_reader():
     assert done.stdout.strip() == "[]"
 
 
-# ------------------------------------------------------ the warm spare (P220) ----
+# ----------------------------- P276 (SPEC-ui-menu-speed §3): the engine's commands ----
 
 
-def _tracker_api(args, stdin: bytes, env=None):
-    """``python -m tracker.api`` as the shell starts it, from the checkout."""
-    import subprocess
-    import sys
+def _commands_that_reach(*targets: tuple[str, str]) -> set[str]:
+    """Every command whose handler in ``tracker/api.py`` reaches one of the
+    ``(module, function)`` calls named, through the API's own functions by name,
+    to a fixed point - as :func:`_writers_in_the_package` derives the writers."""
+    import ast
+    from pathlib import Path
 
-    from tests.conftest import REPO, child_env
-
-    return subprocess.run([sys.executable, "-m", "tracker.api", *args], cwd=REPO,
-                          env=env or child_env(), input=stdin, capture_output=True, timeout=180)
-
-
-def _handed(argv, payload: bytes = b"") -> bytes:
-    """What the shell writes a spare: the one line, then the payload."""
-    return json.dumps({"argv": argv}).encode("utf-8") + b"\n" + payload
-
-
-def test_a_spare_runs_the_one_command_it_is_handed_and_replies_as_a_fresh_process_does(capsys, demo_root):
-    """P220: the same command in a process that started earlier - stdout
-    and exit code byte for byte a fresh process's, a ``state`` and an
-    ``edit`` that carries a payload alike."""
-    spec = {"household": HOUSEHOLD, "return_name": "Smith", "items": [
-        {"identifier": "A01", "document": "W-2", "required_keywords": "W-2"}]}
-    assert run(capsys, "create", stdin=spec)[0] == 0
-    engagement = where(demo_root, "Smith")
-    rules = payload_of_state(capsys, engagement)["rules"]
-    store.close()
-
-    state = ["state", api.ENGAGEMENT_FLAG, str(engagement)]
-    fresh = _tracker_api(state, b"")
-    warm = _tracker_api([api.SPARE_FLAG], _handed(state))
-    assert fresh.returncode == warm.returncode == 0, warm.stderr
-    assert warm.stdout == fresh.stdout
-
-    edit = ["edit", api.ENGAGEMENT_FLAG, str(engagement)]
-    body = json.dumps({"items": rules, "engagement": {}, "head": _head_now(edit)}).encode("utf-8")
-    fresh = _tracker_api(edit, body)
-    warm = _tracker_api([api.SPARE_FLAG], _handed(edit, body))
-    assert fresh.returncode == warm.returncode == 0, warm.stderr
-    assert warm.stdout == fresh.stdout
-    assert json.loads(warm.stdout)["saved"]["recorded"] is False
+    tree = ast.parse((Path(__file__).resolve().parents[1] / "tracker" / "api.py").read_text(encoding="utf-8"))
+    calls: dict[str, set[str]] = {}
+    reaches: set[str] = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.FunctionDef):
+            continue
+        named = calls.setdefault(node.name, set())
+        for call in (one for one in ast.walk(node) if isinstance(one, ast.Call)):
+            func = call.func
+            if isinstance(func, ast.Attribute):
+                named.add(func.attr)
+                if isinstance(func.value, ast.Name) and (func.value.id, func.attr) in targets:
+                    reaches.add(node.name)
+            elif isinstance(func, ast.Name):
+                named.add(func.id)
+    grew = True
+    while grew:
+        grew = False
+        for name, called in calls.items():
+            if name not in reaches and called & reaches:
+                reaches.add(name)
+                grew = True
+    return {command for command, handler in api.COMMANDS.items() if handler.__name__ in reaches}
 
 
-def test_a_spare_handed_nothing_exits_quietly():
-    """The app closed, or killed the spare it no longer needs: the end of
-    input before a newline runs nothing and says nothing."""
-    for stdin in (b"", b'{"argv": ["sta'):
-        done = _tracker_api([api.SPARE_FLAG], stdin)
-        assert done.returncode == 0 and done.stdout == b"", done.stderr
+def test_own_process_commands_are_every_command_that_runs_a_pass_or_the_after_install_step():
+    """P276: a pass, and the after-install step (which can take minutes on a
+    streamed Drive folder), get a process of their own. Derived from the
+    handlers - those that reach ``runner.main`` or the step's ``run`` or
+    ``launch`` - never listed by hand, so a command a later decision gives the
+    step is caught here. ``set-schedule`` and ``set-root`` save a choice and
+    then run the step, so they are among them."""
+    derived = _commands_that_reach(("runner", "main"), ("after_install", "run"), ("after_install", "launch"))
+    assert {api.PASS_COMMAND, "after-install", "install-schedule", "move-schedule-here"} <= derived
+    assert derived == set(api.OWN_PROCESS_COMMANDS)
+    assert api.OWN_PROCESS_COMMANDS <= set(api.COMMANDS)
+    assert not api.OWN_PROCESS_COMMANDS & api.HELD_READING_COMMANDS
 
 
-def test_a_spare_handed_a_malformed_line_says_the_usage_and_runs_nothing():
-    """A line not of the agreed shape - or too long - is answered as every
-    unknown command is: ``main([])``'s usage envelope, no words of its own."""
-    usage = _tracker_api([], b"")
-    assert usage.returncode == 1 and json.loads(usage.stdout)["error"].startswith("usage")
-    too_long = json.dumps({"argv": ["state", "x" * (api.SPARE_LINE_MAX + 10)]}).encode() + b"\n"
-    for line in (b"not json\n", b'{"argv": []}\n', b'{"argv": ["state", 3]}\n', b'["state"]\n',
-                 b"\xff\xfe\n", too_long):
-        done = _tracker_api([api.SPARE_FLAG], line)
-        assert done.returncode == 1, line[:40]
-        assert done.stdout == usage.stdout, line[:40]
+def test_the_vocabulary_names_the_own_process_commands(capsys, demo_root):
+    code, listed = run(capsys, "list")
+    assert code == 0
+    assert listed["vocab"]["own_process_commands"] == sorted(api.OWN_PROCESS_COMMANDS)
+    assert listed["vocab"]["pass_command"] in listed["vocab"]["own_process_commands"]
+
+
+def test_the_spare_is_gone_and_the_failure_sayer_is_public():
+    """P276 retired P220's ``--spare`` (the engine, ``tracker.resident``, is its
+    successor) and made ``_say_failure`` public for it."""
+    assert not hasattr(api, "SPARE_FLAG") and not hasattr(api, "spare") and not hasattr(api, "SPARE_LINE_MAX")
+    assert callable(api.say_failure) and not hasattr(api, "_say_failure")
 
 
 #: What ``import tracker.api`` may open or list (P220): the interpreter's
@@ -10187,7 +10184,7 @@ print(json.dumps({"seen": seen, "roots": sorted(roots), "path": sys.path}))
 
 
 def test_importing_the_api_opens_no_file_but_the_programs_own():
-    """P220: a spare is the API imported before the click, so importing it
+    """P220, P276: the engine is the API imported before the click, so importing it
     must read nothing a command would read differently later - no settings
     file, no data folder, no clients root: every file opened and every
     folder listed is the interpreter's, its packages', the checkout's
@@ -10274,8 +10271,8 @@ def _fixed_at_import() -> set[tuple[str, str]]:
 
 
 def test_only_the_task_name_and_the_programs_own_place_are_fixed_at_import():
-    """P220: a spare imports the API before its command, so what a module
-    works out at import must be the same for a fresh command and a spare.
+    """P220, P276: the engine imports the API before its commands, so what a module
+    works out at import must be the same for a fresh command and the engine.
     The true list (an AST scan of every module's top level): the product's
     name - the scheduled task's, and the side panel's word in ``SCREEN`` -
     from the environment the shell gives both alike, and the program's own

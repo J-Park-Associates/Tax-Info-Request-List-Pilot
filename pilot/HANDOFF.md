@@ -63,8 +63,14 @@ Opus review:
    no findings; write-to-message 263 ms on this Mac), P279
    (long lists draw only the rows in view; **built on
    `claude/ui-menu-speed-2`**, two Opus reviews, the second with no
-   findings; return page at 1,050 rows 46 -> 18 ms, 10,178 -> 782 nodes), P276 (one long-lived engine process; decision 193
-   re-read; passes keep their own process), P278 (the engine pages the firm
+   findings; return page at 1,050 rows 46 -> 18 ms, 10,178 -> 782 nodes), P276 (one engine process for the session; **built on
+   `claude/ui-menu-speed-3`**, three Opus reviews, the third with no
+   findings; a Sonnet rebuild then an Opus fix; passes, the after-install
+   step, the schedule commands and set-root keep their own process; state
+   296 -> 7 ms on this Mac; the office PC and the packaged build go on the
+   Windows check, with: after an edit that re-reads, the error log has no
+   "engine retired" and Task Manager shows the same tracker-api pid; one
+   engine normally, a second only during a Sort or an overlapping click), P278 (the engine pages the firm
    lists, last because its page turns become engine requests).
 
 Left from review 1 of section 1, outside its build: after a failed return

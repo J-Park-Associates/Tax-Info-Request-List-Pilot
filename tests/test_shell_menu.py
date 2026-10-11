@@ -236,6 +236,31 @@ const fakeSpawn = (cmd, args) => {
   proc.stdout = new EventEmitter();
   proc.stdout.setEncoding = () => {};
   proc.stderr = new EventEmitter();
+  if (args.includes("--resident")) {
+    // The engine (P276) stays up and answers the frame it is handed: a line {id, argv, bytes},
+    // then its reply and an end line. Never closed here, or the shell would log an engine's end.
+    let framed = Buffer.alloc(0);
+    proc.pid = 1;
+    proc.kill = () => {};
+    proc.stdin = { on() {}, end() {},
+      write(chunk) {
+        framed = Buffer.concat([framed, Buffer.from(chunk)]);
+        for (;;) {
+          const at = framed.indexOf(10);
+          if (at < 0) return true;
+          const head = JSON.parse(framed.slice(0, at).toString("utf8"));
+          if (framed.length - at - 1 < head.bytes) return true;       // the payload's bytes are part of the frame
+          framed = framed.slice(at + 1 + head.bytes);
+          pending += 1;
+          setImmediate(() => {
+            if (head.argv.includes("list")) proc.stdout.emit("data", JSON.stringify(listReply()) + "\n");
+            proc.stdout.emit("data", "\n" + JSON.stringify({ engine_end: head.id, code: 0, retiring: false }) + "\n");
+            pending -= 1;
+          });
+        }
+      } };
+    return proc;
+  }
   proc.stdin = { write() {}, end() {}, on() {} };
   proc.pid = 1;
   proc.kill = () => {};

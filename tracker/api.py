@@ -605,7 +605,7 @@ def _left_behind_to_move(exc: store.CheckpointNotMade | checkpoint.CheckpointLef
     return LEFT_BEHIND_TO_MOVE.format(paths=exc.old, home=exc.home)
 
 
-def _say_failure(command: str, exc: BaseException) -> int:
+def say_failure(command: str, exc: BaseException) -> int:
     """Print the one error envelope for ``exc`` and return the exit code 1.
 
     The failure is worked out once, since ``_failure_of`` may read a lock
@@ -1965,6 +1965,9 @@ def _vocab() -> dict:
         # Sort & Scan's command (decision 203): the shell watches it as a
         # pass, and the renderer sends it; neither types it.
         "pass_command": PASS_COMMAND,
+        # The commands the shell never hands to its engine (P276): a pass and
+        # the after-install step each get a process of their own.
+        "own_process_commands": sorted(OWN_PROCESS_COMMANDS),
         # What each path the API reports is (decision 188, E-14): the shell
         # opens one only while it is still that kind of thing and no link.
         "path_kinds": PATH_KINDS,
@@ -3412,7 +3415,7 @@ def _cmd_run_now(argv: list[str]) -> int:
                     raise EngagementLockedError(
                         LOCKED.format(seconds=int(status.age_seconds)), one / LOCK_FILENAME)
         except Exception as exc:  # said as the one envelope, never a traceback
-            return _say_failure(PASS_COMMAND, exc)
+            return say_failure(PASS_COMMAND, exc)
         finally:
             store.close()
     return runner.main(runner.run_now_arguments(settings_dir(), household))
@@ -6527,6 +6530,21 @@ WRITING_COMMANDS = frozenset({
 })
 
 
+#: The commands that run a pass or the after-install step (P276, pilot/
+#: SPEC-ui-menu-speed.md 3.2). Each can take minutes - a pass holds household
+#: locks for up to ``locking.RUN_TIME_LIMIT_SECONDS``, and the step walks a
+#: streamed Drive folder - and is stopped or killed on its own terms, which
+#: cannot be done to one command inside a process that answers every click.
+#: The shell gives each a process of its own (``vocab.own_process_commands``)
+#: and the app's engine (``tracker.resident``) refuses them. ``tests/test_api.py``
+#: derives the list from the functions that reach ``runner.main`` or the
+#: after-install step, as :data:`WRITING_COMMANDS` is derived from the writers.
+#: ``set-schedule`` and ``set-root`` are among them: each saves a choice and
+#: then runs the step (the SPEC named four; the derivation found these two).
+OWN_PROCESS_COMMANDS = frozenset({PASS_COMMAND, "after-install", "install-schedule",
+                                  "move-schedule-here", "set-schedule", "set-root"})
+
+
 def _prove_the_root() -> None:
     """:func:`tracker.store.prove_the_root` for the root the settings name,
     said as the API says every refusal. The root is the door's first
@@ -6601,7 +6619,7 @@ def main(argv: list[str]) -> int:
         return _cmd_run_now(argv[1:])
     with error_log("tracker"):
         if not argv or argv[0] not in COMMANDS:
-            return _say_failure("", ManifestError(USAGE.format(commands="|".join(COMMANDS))))
+            return say_failure("", ManifestError(USAGE.format(commands="|".join(COMMANDS))))
         try:
             if argv[0] in WRITING_COMMANDS:
                 _prove_the_root()
@@ -6614,7 +6632,7 @@ def main(argv: list[str]) -> int:
                 held.enter_context(ocr.reading_session(in_a_child=content_check.READ_IN_A_CHILD))
                 payload = COMMANDS[argv[0]](argv[1:])
         except Exception as exc:  # said as JSON, never a traceback on screen
-            return _say_failure(argv[0], exc)
+            return say_failure(argv[0], exc)
         finally:
             # The store is opened on first use by whatever command needed it;
             # closing it here checkpoints the write-ahead log and takes its two
@@ -6625,51 +6643,5 @@ def main(argv: list[str]) -> int:
         return 0
 
 
-#: How the app starts a warm spare (pilot P220): this flag, alone. The
-#: shell's ``main.js`` names the same word (``test_single_source``).
-SPARE_FLAG = "--spare"
-#: The longest command line a spare reads, in bytes, before its newline.
-SPARE_LINE_MAX = 64 * 1024
-
-
-def spare(stream=None) -> int:
-    """A warm spare: the API imported before the click, then **exactly one
-    command**, handed on stdin, run as a fresh process runs it (pilot P220,
-    findings-3 #4).
-
-    The shell keeps one spare started and hands it the next command that is
-    not a pass. stdin is one line - UTF-8 JSON ``{"argv": [str, ...]}`` with
-    at least one string, at most :data:`SPARE_LINE_MAX` bytes - then the
-    command's payload exactly as a fresh process reads it (:func:`main`'s
-    ``_read_spec`` reads the rest of stdin), then the end of input. stdout
-    and the exit code are exactly :func:`main`'s.
-
-    **Still one command a process.** The spare runs one command and exits:
-    decision 171's dead-owner lock rule (one process per command), one
-    store per process closed after the command, P118's holds per reply and
-    the shell's kill per command are all unchanged. What is fixed at import
-    is the product's task name and the program's own place (``tests``
-    pins the list), and the spare is started with the environment a fresh
-    command gets and replaced when the program changes.
-
-    **The end of input before a newline** - the app closed, or killed the
-    spare it no longer needs - runs nothing, prints nothing and exits 0. A
-    line that is not that shape, or too long, is answered as every unknown
-    command is: the usage envelope, ``main([])`` - no words of its own.
-    """
-    stream = stream if stream is not None else sys.stdin.buffer
-    line = stream.readline(SPARE_LINE_MAX + 1)
-    if not line.endswith(b"\n"):
-        return main([]) if len(line) > SPARE_LINE_MAX else 0
-    try:
-        handed = json.loads(line.decode("utf-8"))
-    except ValueError:
-        return main([])
-    argv = handed.get("argv") if isinstance(handed, dict) else None
-    if not (isinstance(argv, list) and argv and all(isinstance(one, str) for one in argv)):
-        return main([])
-    return main(argv)
-
-
 if __name__ == "__main__":
-    raise SystemExit(spare() if sys.argv[1:] == [SPARE_FLAG] else main(sys.argv[1:]))
+    raise SystemExit(main(sys.argv[1:]))
