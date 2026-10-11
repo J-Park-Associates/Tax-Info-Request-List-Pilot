@@ -7,8 +7,8 @@ this repository; [`SPEC.md`](SPEC.md) says what it builds.
 
 ## Where the record is
 
-- **`main` is `213d876`** (pull request #32, the Sort & Scan speed round,
-  P216-P230); this branch is cut from it.
+- **`main` is `6f88e3e`** (pull request #33, the cleanup, P231-P237); this
+  branch, `claude/trusting-tesla-or0wm2`, is cut from it and carries P256-P259.
 
 - **Decisions live in [`DECISIONS.md`](DECISIONS.md), rows P1 to P237.** Code
   and tests cite those numbers, so a row is never renumbered or removed. Why
@@ -20,25 +20,32 @@ this repository; [`SPEC.md`](SPEC.md) says what it builds.
 
 ## Current work
 
-[`SPEC-cleanup.md`](SPEC-cleanup.md): dead code, folds, bloat and repository
-residue, in seven jobs.
+[`SPEC-mac-check-fixes.md`](SPEC-mac-check-fixes.md): the fixes from Jason's
+Mac check of 2026-10-10, built and landed on `claude/trusting-tesla-or0wm2`
+(P256-P258), each job its own commit after a clean Opus review:
 
-1. Delete the repository residue (the old handoff, rewritten as this note,
-   the old `handoffs/`, `reviews/` and `review/` folders, the design skill packs, the unused brand
-   exports; P231, P232).
-2. The Electron side: folds, dead and overridden CSS, unreachable guards.
-3. Storage: the SQLite-helper fold, dead names, the schema changelog.
-4. The app face: the row-action handlers, the `api.py` refrains, the three
-   upgrade carry-overs retired (P235), the after-install job (P234).
-5. The sorting engine: the `find_*` fold, the OCR exception tail, the
-   decision-107 tidy-up leaving the pass (P234).
-6. The runner and the rest: three unused command lines dropped (P233), two
-   unreachable `client_ask` branches deleted (P236).
-7. Test runtime: `pytest-xdist` in the lockfile and a `corpus` marker (P237).
+1. A running scheduled pass is drawn as "Sorting", never as Sort Failed,
+   and the shell follows the last pass by itself (P256).
+2. Notices carry a closed Details disclosure for the machine warnings and
+   the setup findings; the schedule's registration is toasted at Start and
+   at an upgrade's first open (P257).
+3. The Mac check kit reads the run log's summary line, the sample pile gains
+   a macro workbook, an email and a zip, and the prompt says what the app
+   shows and what to record when a session's rules deny a folder (P258).
+4. Jason's rulings on the SPEC's questions: Details open on the setup page;
+   the household pause, the prior-year feed and the reader warning show
+   their sentences under Details (P259).
 
-Behaviour does not change in any job. Each is built on Sonnet and reviewed on
-Opus in a session that did not build it, and all of them land in one draft
-pull request in that order (decision 211).
+What has not run: the next Mac check. Its list is the SPEC's "Not in this
+SPEC" paragraph - the two Gatekeeper steps, the overnight run, a real Google
+Drive folder, step 10 with the three new files, step 13, and H4-H10 named in
+the prompt - plus the two cosmetic CSS points the review left (a notice with
+Details has a shorter first line than its neighbours; Tab reaches Details
+before Dismiss). Jason decided the SPEC's Q1-Q4 on 2026-10-11 (P259): Q1 stays
+as built; Q2-Q4 landed as job 3, Details open on the setup page and the
+pause, feed and reader sentences under Details.
+
+`SPEC-cleanup.md` (P231-P237) landed before this in pull request #33.
 
 ## How a session hands over
 

@@ -15,9 +15,9 @@
     "a person sends the draft"
   ],
   "counts": {
-    "nodes": 268,
-    "edges": 1247,
-    "reused": 216
+    "nodes": 270,
+    "edges": 1253,
+    "reused": 217
   },
   "node_types": [
     "artifact",
@@ -135,8 +135,8 @@
       "id": "tracker/after_install.py",
       "type": "module",
       "layer": "core",
-      "sha256": "a35d259c3bcaa2c7",
-      "lines": 1327,
+      "sha256": "9e7ffe9b316a2292",
+      "lines": 1332,
       "cli": "python -m tracker.after_install",
       "exports": [
         "ASKING_FOR_THE_TASK",
@@ -287,8 +287,8 @@
       "id": "tracker/api.py",
       "type": "module",
       "layer": "core",
-      "sha256": "a26ced8ba3ee6ef8",
-      "lines": 6607,
+      "sha256": "875ead3fe0020983",
+      "lines": 6650,
       "cli": "python -m tracker.api",
       "exports": [
         "ACCEPT_FOLDER_NAME_HELP",
@@ -395,6 +395,8 @@
         "KEEP_LABEL",
         "KEYWORD_HELP",
         "KEYWORD_LABEL",
+        "LAST_PASS_WATCH_IDLE_SECONDS",
+        "LAST_PASS_WATCH_RUNNING_SECONDS",
         "LEARNED_NOTE",
         "LINK_FED_BY",
         "LINK_FEEDS",
@@ -586,6 +588,8 @@
         "REMINDER_LINE_UNREADABLE": "'Reminder Could Not Be Read'",
         "NOTHING_TO_STOP": "'There is no pass this app started running to stop; nothing was changed.'",
         "LOCK_WATCH_SECONDS": "5",
+        "LAST_PASS_WATCH_RUNNING_SECONDS": "5",
+        "LAST_PASS_WATCH_IDLE_SECONDS": "60",
         "LOCK_RUNNING": "'In Use on {host}'",
         "LOCK_RUNNING_OTHER": "'{label} in Use on {host}'",
         "LOCK_ON": "'It Is on {household}: {name}.'",
@@ -3106,7 +3110,7 @@
       "id": "tracker/runner.py",
       "type": "module",
       "layer": "core",
-      "sha256": "b34a9972cb63840e",
+      "sha256": "e576d48ef881ef80",
       "lines": 3643,
       "cli": "python -m tracker.runner",
       "exports": [
@@ -4247,8 +4251,8 @@
       "id": "app/main.js",
       "type": "module",
       "layer": "desktop-app",
-      "sha256": "5b0eed427121399c",
-      "lines": 1036,
+      "sha256": "8efaeedc4a34817e",
+      "lines": 1045,
       "role": "Electron main process. Spawns the Python API (`-m tracker.api` under the checkout's .venv interpreter, by its full path, or the frozen executable package.json's config.apiName names in the portable build) and relays its JSON to the renderer over IPC. Since decision 193 it passes each progress line a pass prints (tracker.progress's format) to the window on the tracker-progress channel, keeps the last non-progress line as the reply, follows the kill to the limit_seconds the pass reports and says where it was, answers every failure of its own in the API's envelope, and puts no stderr on screen - a failed command's goes to the error log the API names, else to the shell's fallback error.log in %LOCALAPPDATA%\\<productName> (local, non-roaming; Electron's userData off Windows).",
       "notes": "This is the cross-language boundary: everything the UI can do is a tracker.api command. The renderer is untrusted here: a command must be in vocab.commands (before the vocabulary arrives, only BOOTSTRAP_COMMAND, pinned to tracker.api.COMMANDS by a guard) with the one argument shape the renderer uses; open-path opens only a path the API reported in state.paths, and the error log vocab.shell.error_log names, as a file (an optional second argument \"reveal\" on the same channel shows a reported file selected in File Explorer through shell.showItemInFolder after the same lstat check; a folder still goes to shell.openPath); the tracker's exit code is read, not discarded, and a plain command that outlives TRACKER_TIMEOUT_MS is killed and reported, and a pass at the limit its own first line states (decision 203). The window is sandboxed, cannot navigate and cannot open windows. Decision 160: the shell takes app.requestSingleInstanceLock(); a second launch quits before any window is made, and the running one restores and focuses its window on second-instance - two windows were two editors, and the earlier one's save took the later one's back. Decision 176: devTools is off when packaged, and runTracker() serialises the payload before the tracker starts and writes it as UTF-8, which is how tracker.api._read_spec() reads it. Decision 191: from source it runs .venv/Scripts/python.exe (or .venv/bin/python), never a bare python, and answers with the lock tool's NOT_SET_UP sentence when that is missing; buildMenu() runs before the window is made in both builds, and the app's own menu (SPEC-shell 5.1) has no reload, zoom or developer-tools item or accelerator (E-7). Decision 188 (E-14): learn() keeps each reported path with its kind from vocab.path_kinds, and openPath lstat()s it and opens it only when it is no symbolic link (Node reports a junction as one) and still a directory for 'folder' or a regular file for 'file'; otherwise vocab.shell.not_opened. No path.relative( and no startsWith( (tests/test_layers.py). Decision 186's rebase review (MF2): keepInLog() appends (appendToLog, fail-safe: a failed write is dropped, never thrown) to the error log the API named and builds no such path - no ERROR_LOG_FILENAME in the shell. Jason's ruling of 2026-09-29: with none named (no data folder yet) it appends to a fallback error.log in %LOCALAPPDATA%\\<productName> (process.env.LOCALAPPDATA, else the profile's AppData\\Local; off Windows app.getPath('userData'); FALLBACK_LOG_NAME; not the data home, which the P19 deny list and the package check keep out of a package, and not the roaming %APPDATA%; capped at FALLBACK_CAP 256 KB, one .1 copy, never written through a link or a folder, a folder at error.log.1 drops the old log instead of stopping writes), a failed command's reply adds just vocab.shell.no_log (api.SHELL_NO_LOG, 'Tracker failed'; SPEC-shell 11.2), the stderr is never on screen, and a renderer error is kept there too. The menu bar stays hidden until Alt (autoHideMenuBar, Jason 2026-09-29). Decision 203: the command named by vocab.pass_command (learned, never typed) is a pass: runTracker resolves the click at its 'started' progress line, streams its later lines on tracker-progress and sends {reply, code} - its final line, or the shell's own failure when it gave none or was killed - on the same channel when it closes; a pass is killed only at the limit its own first line states (limit_seconds, locking.RUN_TIME_LIMIT_SECONDS), while every other command keeps TRACKER_TIMEOUT_MS; each running pass is kept in 'passes' and will-quit destroys its stdout, which the runner takes as Stop. Decision 209: at whenReady the shell runs the API's after-install command itself (LAUNCH_COMMAND, through spawnTracker, outside the renderer's allowlist) in the background: no tracker-cmd waits for it (the review's S7), and when its reply says ran the shell sends LAUNCH_DONE_CHANNEL ('after-install-done', one of three main-to-renderer channels, with tracker-progress and MENU_CHANNEL) so the page asks list again for the notice. SPEC-shell 5: the menu bar is built from BAR with the API's words (DEFAULT_MENU_WORDS, word for word tracker.api.MENU, replaced by vocab.menu when a word differs), items are enabled from the page's {enable} list (ALWAYS need nothing), and a chosen item goes to the page on MENU_CHANNEL as {id, token}; onMenuMessage() treats the one 'menu' channel as untrusted (unknown ids, popups and long tokens are dropped) and pops the six native right-click menus of POPUPS; Open error log is the shell's alone (openErrorLog: the named log, else the fallback if it exists, through openChecked's lstat test, the one openPath uses). pageBackground() reads --window-light / --window-dark from pilot-ui.css for the system theme (none under a contrast theme) and nativeTheme 'updated' repaints the window. Pilot P46: flushes the page's storage to disk as the window closes, since Electron lets go of the single-instance lock before it closes that storage. The rename (P155, pilot/SPEC-rename.md R4): productName is now the new name, so the window title, the fallback log's folder and the scheduled task follow it, but Electron's userData folder (the page's column widths and cached terms and tour answers) keeps the earlier name: main.js calls app.setPath('userData', appData + package.json's config.userDataName) at the top, before anything asks for a path and before requestSingleInstanceLock, which Electron keys on that folder. config.userDataName is held equal to settings.EARLIER_PRODUCT_NAME by tests/test_pilot_installer.py and tests/test_single_source.py. The screen defaults say 'App', not 'Tracker' (P155 Q3). P197: the View menu's Show Under Construction is a native check item (CHECKABLE), enabled from the first frame (ALWAYS) and ticked until the page speaks; the page's {enable, checked} message sets the tick, a `checked` id that is not checkable is dropped and a message without `checked` leaves it, and the menu is rebuilt only when the enable list or the tick changed. Speed round (pilot/SPEC-speed-round.md): P220 - one spare (SPARE_FLAG, held equal to api.SPARE_FLAG by tests/test_single_source.py): startTracker(args) is the one spawn every command and spare uses (same env, cwd, windowsHide); learn() starts the first spare once the allowlist is set; spawnTracker hands it any command that is not a pass - JSON {argv} and a newline, then the payload, then the end of input, the kill timer armed at the hand-over - and starts another (also after any command when none waits); programStamp() (the packaged API's size and mtime, or the newest tracker/*.py from source) marks a spare stale, which is killed and the command spawned fresh; will-quit kills it. The stdout reader searches each new piece for a newline and joins a line's pieces once. HELD_READING_COMMANDS (held equal to api.HELD_READING_COMMANDS by tests/test_single_source.py): a read-only command handed to a spare that closes having printed nothing (one that died while it waited) is run once more in a fresh process (spawnTracker's fresh option); a write is never run twice. P221 - EARLY_COMMANDS (BOOTSTRAP_COMMAND and 'firm') may run before the allowlist: decision 176's early allowance widened by one read-only command, each in api.HELD_READING_COMMANDS and none in api.WRITING_COMMANDS. P229 - 'firm-last' (api.FIRM_LAST_COMMAND) joins EARLY_COMMANDS and HELD_READING_COMMANDS, pinned to the API's constant by tests/test_single_source.py; its top-level paths are learned like firm's. SPEC-mac job 1: SETTINGS_DIR on a packaged Mac is path.join(app.getPath('appData'), PRODUCT_NAME), the folder tracker.settings.mac_settings_dir builds (R2). R6: macFloorRefusal() refuses a Mac that is not arm64 or whose os.release() Darwin major is below 23 (macOS 14) with MAC_FLOOR (word for word tracker.settings.MAC_FLOOR, a test holds them equal) in dialog.showMessageBoxSync after app.whenReady(), before the one-instance lock and any window, and quits, writing nothing. R8 (P240): learn() collects state.carries_code into carriesCode; openPath (the IPC door), after a successful non-reveal open on darwin of such a path, answers { says: shellSays.protected_view_mac } (learned from vocab.shell, default word for word tracker.api.PROTECTED_VIEW_MAC) instead of an empty string, and renderer/shell.js openPath says it in the page notice where Open's own result appears, each time - never a dialog or a sheet. SPEC-mac R14, R11 (job 2): FROZEN_API drops the .exe suffix off win32 (Contents/Resources/<apiName>/<apiName> in the bundle); on darwin buildTemplate() puts {role: 'appMenu'} first (About, Hide, Hide Others, Quit with Cmd+Q - the one way to quit) and File loses its Exit and the separator before it; setAppUserModelId runs on win32 only (the same string is the bundle id build-mac.sh gives the packager); every label goes through shown(), which takes the Windows & mnemonic out on darwin; the unpackaged shell's refusal is NOT_SET_UP_MAC (word for word tools/lockfiles.NOT_SET_UP_MAC, the Windows NOT_SET_UP unchanged) where process.platform is darwin; BrowserWindow's icon stays the .ico (macOS ignores it; the bundle's icon is the .icns given to electron-packager). DEFAULT_MENU_WORDS stays the Windows words word for word and a Mac learns Show in Finder from vocab.menu. The app has no Back (P75: no history), so there is no Cmd+[ to add beside Alt+Left. The one-instance lock, the devtools refusal and spawn are portable. SPEC-mac R29 (job 6): the Tools menu gains Remove the Schedule From This Mac... (remove_schedule_here, MAC_ONLY: left out of every other system's bar, always enabled), which the page answers through the API's remove-schedule-here."
     },
@@ -4270,16 +4274,16 @@
       "id": "app/preload.js",
       "type": "module",
       "layer": "desktop-app",
-      "sha256": "988bf819f444e152",
-      "lines": 23,
+      "sha256": "7c8ce8027c0615c7",
+      "lines": 24,
       "role": "Context bridge exposing only the calls tests/test_single_source.py checks against main.js.call(args, payload), tracker.open(path, how) (how = \"reveal\" or absent), tracker.pickFolder(), tracker.logError(text) on 'log-error' (kept only in an error log: the API's, else the shell's fallback) and tracker.onProgress(listener), which hears 'tracker-progress', and tracker.onAfterInstallDone(listener), which hears the shell's 'after-install-done' and passes nothing across, and tracker.menu (onCommand hears {id, token} on 'menu'; send posts the page's {enable, checked} or {popup, enable, token, x, y} on it). Nothing else crosses."
     },
     {
       "id": "app/renderer/app.js",
       "type": "module",
       "layer": "desktop-app",
-      "sha256": "9484ca3ca0273141",
-      "lines": 3906,
+      "sha256": "49d34c2667bdc152",
+      "lines": 3958,
       "role": "The desktop UI's data and writes: the New household dialog (form type, then request list), the request-list editor - the only place a rule is entered - every write, the notices, the lock and the pass. It draws no page: the shell (shell.js) and the pages (pages.js) do. Talks only to window.tracker from the preload bridge.",
       "notes": "Every node is built with el() and placed with replaceChildren; there is no innerHTML and no escaper, so a client's file name, a keyword somebody typed into the request list or a folder name is text whatever characters it carries (a guard checks the sinks are absent). Every word it shows or compares comes from the API's vocabulary (applyVocabulary); it owns no label. Decision 76: the Needs Review card asks one question of a parked and a set-aside document alike - which request does this belong to - so reviewRow() builds both, and only an open question carries the note box and the button that sets one aside; what a person has set aside is folded under its own count, never removed from the page, because the list is the only way back. Decision 77: the way back for what is already filed is the right-click menu of a Received row (Unfile, Mark missing: unfileDocument() and withdrawAnswer(), each taking the row's handle and record version) - there for the one row that is wrong, so nobody corrects a filing in Explorer, which the index never learns of. Decision 84: the side sheet shows the shortlist. sheet.js maps state.review by handle and hands the parked file its triage; reviewRow() puts the shortlist at the head of the picker under the 'suggested' heading, every other request under 'other_requests', and lists the sentence behind each suggestion beneath the row - an <option> carries no second line, and the reason is what is read before anything is picked. The picker starts on the best suggestion, falling back to the router's own first candidate. A parked file the evidence says nothing about shows the vocabulary's nothing_suggested rather than a guess, and a set-aside row is not triaged at all, so it gets no shortlist. Every word of it - the two headings and the File it label as well - comes from vocab; the renderer still types none. Decision 89: a chip beside the engagement's name says whether its own page still describes it. The word and the label are the API's (vocab.view), the chip's class is derived from the word the same way a status chip's is, and the button opens state.paths.view through the same whitelisted opener the Open Status button uses. Decision 91: that button's label is the API's too - applyVocabulary() fills #view-label from vocab.view.open, exactly as it fills the scan button - so the page carries no word for it, and the path it opens is now an .html file the shell hands to the default browser. Decision 104: requestRows() is the one row component - a table of inputs built from vocab.columns (each column's key, header and help; the two numbers as number inputs whose minimum comes from vocab.editor.minimums, the override a pick of vocab.overrides), used by the custom-request section of Add a return / New household (three columns, identifiers assigned as rows are added) and by the editor (all ten). openEditor() opens on state.rules - the person's rows as stored, a derived date pattern shown blank, the file types shown as '*' when any - with the engagement's details laid out from vocab.editor.engagement_fields (a text box, a date or a yes/no box for the editable ones, plain text for the rest) and the keywords filings taught shown beside each row as taught (vocab.editor.learned_note), never as typed. pasteRows() appends rows pasted from a spreadsheet by position - tab-separated if any line holds a tab, otherwise CSV through a small RFC 4180 reader, a first line that repeats the headings skipped - and records nothing. saveEditor() is one edit call: a refusal is shown inside the editor with its row and column and the modal stays open; a save renders the state the API returns, closes, and says what changed or that nothing did, with the warnings under vocab.editor.warnings_heading. Every heading, label, hint and button of the editor is vocab.editor's or vocab.columns'; the Check Manifest button and the button that opened the workbook are gone with the workbook. Decision 112: both row builders put the row's sequence number on the <li> (dataset.seq, from state.index[].seq and state.review[].seq) and assignParked(), dismissParked() and unfileDocument() send it back as seq; assignParked's banner shows the API's overrode_shortlist sentence as a warn note beside left_in_review. A refusal goes through refused(): the API's sentence is toasted, the button re-enabled and showReturn(active) re-reads the state (one `state` since decision 194), so the card shows the row as the record now holds it. The renderer types no sentence of its own here either. Decision 113: the learned cell is a list rather than a line - learnedCell() draws the API's learned_note and then one span.ed-learned-word per taught keyword, each with its own button.ed-unlearn carrying the identifier and the word - and a click calls the unlearn command, then re-draws only the learned column from the state that comes back (renderLearnedCells), because unlearning is its own event and lands at once while the rows may hold edits the person has not saved. The note area says the API's unlearned_note, and its scan_note under it when the re-scan could not run; the renderer types no word of it. Decision 110: movedRow() builds the sheet's row for a moved working copy of state.moved, with restoreMoved (the restore command) and assignParked (assign, with the request the picker was left on and the keyword typed) behind two buttons, delegated on #sheet; sending it to review is gone (SPEC-shell E65) and its home and where it is now are paths, so neither is drawn. The picker and the keyword box are shown only where the API said which request the copy's name belongs to (in_request, decision 168), and the picker starts on it; every word is vocab.review_labels', including the word for a copy that is nowhere. Decision 114 (the deck, Cards/List) is gone with the shell (SPEC-shell 13): the side sheet places one row built by reviewRow() at a time, and its Next moves on without writing. fileRow() is the one place the assign call is made - assignParked() reaches it, for a parked file and for a moved copy kept where it is, and a guard in tests/test_single_source.py keeps it the only one, so the review rows and a moved copy cannot drift apart. Every write of one row (restore, file, add issuer, hand over, mark missing, dismiss, unfile, mark shared, clear lock) goes through writeRow() - the view generation, the busy key, the button, the redraw and the failure in one place - and says its outcome through sayNotes(). Decision 118: renderReminder()/loadReminder()/drawReminder() are the reminder in the side sheet - the record's last word on the draft as one caption, the four stages as a toggle coloured from the API's palette, the letter drawn from its own shape with el() (never from the clipboard's markup, which would be an HTML string), Copy for Outlook putting text/html and text/plain on the clipboard with the same words, Approve sending back the fingerprint of the text on screen, and no Open the draft file (SPEC-shell 7.2); the letter's parts sit in the side sheet from the start with the ids drawReminder() looks up. The stage a person picked is the only thing the page holds of its own and is dropped when the engagement changes. It types no colour: every hex it draws with is looked up in vocab.reminder.palette by the key a stage carries, and a guard reads the file for one. Decision 129 added the household card's two feed lines, the editor's feed list with its picker and its warning, and File under another return on both renderings of the queue - every word of it from the API's vocabulary, as always. Decision 160: the editor sends state's list_head with every save, and a Rename fold (renameChoices(), renameRequest()) calls the rename command, renames the row in place, adopts the version the rename returns and keeps what the person typed and not saved. Decision 157: movedRow() draws a gone row (its copy and its original both gone) with the one answer left, Mark <identifier> missing (vocab.review_labels.mark_missing on the .r-withdraw button), and the sheet's delegate sends it to withdrawAnswer(). Decision 189: runScan() shows the reply's pass_warnings and each other return's error, skip and warnings under its own label, in the same banner and the same way as the asked return's warnings, on the skipped and failed paths too. Decision 188: the household card shows the API's pause sentence and, where there is something to accept, the one 'Accept the folder's name' button, which sends accept-folder-name with the seq and scope the card was drawn from; misfits are drawn from the API's 'where' (the path below the root), never worked out here. Decision 194: one process per click. A switch is showReturn -> one `state` (193's generation drops a late reply). The Reminder card is drawn from state.reminder_card (drawReminderReply draws either source); `reminder` is called only for the stage toggle, a refused approve, or to keep a toggled rung after a write. The list and vocab arrive once from `list` (bootstrap: start and set-root) and are replaced by the `list` a list-changing write carries (adoptList). The editor opens on lastState (D13); its save is judged by list_head. The review's fixes: call(args, payload, { ofAnother }) says the warnings of another return's state (the hand-over picker's) under its label (vocab.notices.about, labelOfState); unlearnKeyword redraws through renderFor, so D13's lastState is never behind an unlearn. Decision 196: there is no wizard and no household choice outside the household on screen. openRoll() opens the roll dialog (#roll-modal; renderRollFold fills it) only when state.household.roll_year is set, and Add a return; rollFromCard() gathers the ticks and form picks (rollChoice, kept for the household on screen across a redraw) and rollHouseholdCall(hh, choice) - a pure function a test runs under node - builds the one roll-household call from the household on screen. openReturnDialog(hh), which openAddReturn(hh) and openNewHousehold() call, sets addingTo to the household's path (Add a return) or clears it (New household): the only household a create sends by path. A refused create stays in #ne-note. On decision 194's model the create and the roll adopt the list their reply carries (adoptList) and draw its state through renderFor; the roll fold's people button is reviewPeople() - showReturn, which says whether its read drew the page, then openEditor only when it did and the clicked return is still active, so a failed read is one notice and a switch during the read opens no editor; bootstrap loads the catalog once for the roll fold's form pick; openEditor reads state only when lastState is another return's and says vocab.editor.not_this_return when a switch landed during that read. Decision 200: a row's status is vocab.labels[item.status_key].label in pages.js (pagesItemStatus), one word in its colour with no sentence (SPEC-shell 2.5 E58); setAsideGroups() builds the one Set aside fold (not asked first, then each Not Applicable year) that renderEditorRows() draws, each group headed by setAsideHeading(). Not Applicable rows leave the working table; no 'override:' is typed. Decision 201: every dialog is in DIALOGS and goes through openDialog (remembers the opener, focuses a control, Tab trapped by trapTab) and requestClose (Cancel, Escape and an overlay click alike) to closeDialog (focus back to the opener); a dialog with a model is compared with its snapshot and, when dirty, raises its unsaved bar - Keep editing focused, Discard the only way out, Escape keeping; rename and a form picked move the snapshot. keywordBox() and noteBox() build the labelled review boxes. requestRows takes a fold option: the editor's plain part (vocab.editor.plain_columns, and a custom row's Document per state.items[].catalog_row) and a per-row Routing rules fold (routing_columns), hidden never dropped; a refused save opens every fold. addIssuerAndFile() is the one call site of add-issuer-and-file. DECISION 190: the Reminder card's status and each return's household line say vocab.reminder.approved_then_edited when the state's `lapsed` is set, after approved and before last drafted. tests/test_layers.py scans this file, main.js and preload.js for any network call. The review list groups parked rows by the API's bucket under review_labels.buckets (decision 190); a not-a-document row and card offer no Open and no File it and say the true type; Open is offered only where the API named row.open_key (never a container or a refused reading - decision 190 following 184) and opens state.paths[row.open_key], never a path of its own. Since the review of 190 every row is keyed on the API's handle, never pbc_location: data-original, the triaged map, the triaged map, so two programs from one zip (no location) are two rows. Decision 203: runScan() sends withEng(vocab.pass_command) and is answered once the pass has begun; onPassMessage() takes that pass's progress lines (drawProgress) and its ending (passEnded): the final line's pass_warnings become notices, the asked return's run and the household's other runs draw the banner through scanSummary(run, others, summary) - a notice under its label when that return is no longer shown - and the page is redrawn from one `state` and one `list` sent at once (P228), the state behind renderFor. P131: that answer is not a window-wide notice: keepSortAnswer() keeps it under the asked return (sortAnswers), showSortAnswers() shows it as keyed 'sort' notices only while a page of that return's household is on screen (appRouteChanged calls it), the next pass replaces the answers of every return it ran, a dismissed line is forgotten with its keyed-notice key, and every returned pass clears its returns' keys first, so the same failure met again is said again (forgetSortLine, review M1); the pass failure is kept whole, lock and identifier included (review S1) and F5 forgets all (forgetSortAnswers, from shell.js's shellRefresh). P132: createEngagement goes to the new return's page (shellGo(pagesRoute(...))). P134: scanSummary says 'Nothing Done: {why}.' with vocab.scan.skipped's word for an inactive, rolled-forward or roomless return (P199: a pass in which no return of the household filed, sent to review, failed a file or was stopped says vocab.scan.nothing_to_sort - a Sort that filed into another return did something, the screen review's M1 - or 'Nothing Done: {n} Still Syncing.' when a file is still arriving; another return's line keeps its bullet and names the return by year, taxpayer and form, sortReturnSaid; the schedule dialog's next run is written in the app's clock style, scheduleClock), and drawReminder lists card.unsorted_files under the inbox hold line. The household's returns are greyed by the lock the pass holds, which state reports (193); scanDone() gives the button back through applyLock()'s mark (the review's M2), and a final line that does not name the asked return is vocab.scan.not_in_pass (S2). Decision 209: Install Schedule is gone; Tools > Repair schedule (repairSchedule) runs install-schedule after confirm(vocab.schedule.repair_confirm) and says the reply's sentence (outcome). When the repair's reply names another computer (host), it asks confirm(vocab.schedule.move_confirm with {host} filled in) and on yes calls move-schedule-here. saveRoot's banner is warn when after_install.failed is non-empty. window.tracker.onAfterInstallDone re-asks list and redraws only the notice. renderAfterInstall() shows list's after_install notice at the top of the first screen, headed vocab.after_install.heading, until a run finds nothing. Pilot P21: the Schedule dialog (openSchedule/saveSchedule, registered in DIALOGS as schedule-modal) reads settings, saves through set-schedule, shows a refusal inside the dialog and types none of its words. Pilot 0.2 (SPEC-shell, S3): the shell around the page is shell.js's. app.js calls it at six one-line seams - shellVocabulary at the end of applyVocabulary, shellAdopt in adoptList, shellNeedsRoot in loadEngagements, shellChanged where the sort, the lock or the pass changes, shellProgress in drawProgress, and shellKey first in the document's one keydown listener -. S5 (the side sheet and the dialogs) added the sheet.js seams: render() draws the reminder and hands the state to shellStateArrived (which lets sheet.js move on), DIALOGS holds the sheet (attr: true, it hides by its attribute) and the roll, safeguards, about and folders-skipped dialogs (openRoll, openSafeguards, openAbout, openMisfits), one delegate on #sheet answers the file on it, and the dialogs' help lines are cut (SPEC-shell 2.7). A file name is a link (pages.js) whose path is looked up by the API's key and never drawn; the household sharing checklist is not drawn either. Speed round (pilot/SPEC-speed-round.md): P213 - reminderCardFor, forgetReminderCard() (no card, #reminder-actions hidden, #sheet aria-busy, the outline in #reminder-wait), reminderWaitOver() from drawReminder and drawReminderLine, and reminderCardReady() guarding copyReminder and approveReminder: Copy and Approve act only on a card drawn for the return on the sheet once it is read. P218 - call() says shellWriteLanded() for a reply to a command in vocab.writing_commands, before the state is drawn, and passEnded says it first. P221 - bootstrap calls shellAskFirmNow() before it awaits the list (the first call([...]) is still list). P222 - onPassMessage hands a message whose args[0] is 'firm' (runner.FIRM_COMMAND) to shellFirmProgress before its pass check, so a count line is never taken for a pass's. Sort & Scan speed (pilot/SPEC-sort-speed.md): P228 - passEnded says shellWriteLanded(), then shellAskFirmNow(), then sends the shown return's state and the list at once (the state first) and awaits only the state, which keepSortAnswer still waits for; the list is adopted whenever it lands (adoptList) - still asked after every Sort (194's Q5, decision 203; Jason held skipping it, 2026-10-08) - and a list that fails calls shellLoadFirm() so the Overview asked at the Sort's end is still adopted. P229 - bootstrap calls shellAskFirmNow() then shellAskFirmLast() before it awaits the list."
     },
@@ -4303,8 +4307,8 @@
       "id": "app/renderer/pages.js",
       "type": "module",
       "layer": "desktop-app",
-      "sha256": "faaccbb323eda709",
-      "lines": 1958,
+      "sha256": "410f0d4d8fe98bf0",
+      "lines": 1959,
       "role": "The pages (pilot SPEC-shell 3.6 and 6): Overview, Needs review, Reminders, Clients, household, year and return, drawn into #page from the `list`, `firm` and `state` replies, with the one row and group every page is made of and the keys on a row list.",
       "notes": "A classic script loaded after app.js and tooltip.js and before shell.js. It types no word: every word is vocab.screen, vocab.menu or a word the vocabulary already holds (a request's label, a stage's short name, a reason's short label, and for a label shortened into a tag the words it stands for, vocab.reason_tips, which are that status's tooltip every time: P116), and a word the vocabulary lacks is a loud failure that pagesDraw says as a notice. A return's groups are the API's `group` on each state item and on each index file (a moved file a person marked missing is Set aside): nothing is guessed from a decision, so an item or file without a known group is left out of every group and named in its own notice, while every other row is drawn (pagesSafe / pagesEach: one bad row never blanks a page, a page that cannot be built whole keeps what it held or draws its H1); pagesTally counts the same way, and never throws, so shell.js can tell when the firm's counts moved. A long API sentence (a pause, a feed) is shown as its short vocabulary word (shortNotice, shell.js) and goes to the error log. The four firm pages draw no H1. A household's notices (two years open, folder renamed with Accept, feeds) are syncNotices('household', ...) while any of its pages is open. Three kinds of name are live links (SPEC 3.9): a file name asks the shell to reveal the copy the API's key names in the map its row came with (state.paths, or firm.paths for the Needs Review page; the path is never drawn), a household name and a return name navigate with no engine call, and a return reads as its taxpayer (pagesTaxpayer: the list's name less the recorded form it begins with, whole when the record has no form or the name begins otherwise - never a guess). A row's right-click (or Shift+F10) asks for the native menu of its template with the ids that apply (pagesEnableFor); pagesMenu answers a row's items - the file items open the sheet and press its own button - and takes a household or return row to that page first. It offers the sheet pagesFiles() (the parked and moved files in the order drawn), pagesDrafts(), pagesWhere and pagesFocusAt, and calls openCheck and openReminder (sheet.js). It types no word: every word is vocab.screen, vocab.menu or a word the vocabulary already holds (a request's label, a stage's short name, a reason's short label), and a word the vocabulary lacks is a loud failure that pagesDraw says as a notice. The four firm lists (Overview, Needs Review, Reminders, Clients) carry a header row of column buttons (pilot SPEC-lists, P135-P139): a press orders the list by that column - names as shown, status by urgency, dates by the ISO date, blanks last - then reverses it, then restores the usual order, kept on this PC per list in localStorage (tracker.order, pagesStoredOrder / pagesSaveOrder; P199, replacing P139's while the app is open; a damaged value leaves the usual order); every column of a firm list is exactly its width and the slack is blank after the last column, so the Date sits after the Status and a widened column grows to the right (P199); the header's tooltip is Sort by {Column} (Jason, P180) and no column word says Sort. Column widths are dragged, fitted by a double-click or stepped by Ctrl+Shift+Arrow (pagesColumnKey, handed over by shellKey) and kept in this PC's localStorage (tracker.columns), never the record; View > Reset Column Widths is pagesResetWidths. A file's own name is a regular-weight row (row-file). Lane 4b (pilot SPEC-lists 9-17, P141-P155, P170-P178): the firm lists are raised - Overview's summary cards and All / Need You / Waiting tabs, status pills with a dot, a form chip from the return's recorded form, row banding (#page data-list), Needs Review's reason cards (filters) and return cards with More Actions (the return's own native menu), Clients' Client Type chip - and every firm list is paged 50 at a time after its order and filters (pagesPaged; Needs Review by whole return groups), the page forgotten when left. A linked household carries the --st-linked link mark (pagesLinkMark; not a Tab stop inside a list, where Space on the active row opens it) and its panel (pagesShowPanel, closed by Escape in shellKey or a click outside). A return's three sections carry their status colour, icon, badge and row edge (PAGES_SECTIONS). A row made active by the keyboard shows its status tooltip at once (tooltip.js showTipNow). One field per column (pilot SPEC-firm-columns, P194, P195): Overview and Reminders are five columns, Tax Year, Taxpayer, Form Type, then the list's status and date (row-return, pagesReturnCells and pagesReturnKeys; Form Type orders in the Taxpayer Types' form order, pagesFormKey); the household has no column and is the Taxpayer link's tooltip and the row's description; a list's stored widths are read for its own columns only, so an old Return or Client width never reaches the new layout; a Needs Review return heading is year, taxpayer and form chip (pagesReturnHeading), and the household and year pages draw a return as its chip and taxpayer under the year. P222 (pilot/SPEC-speed-round.md): pagesReturnSpecs marks a row waiting while counts load with none held, and pagesStatusCell draws an aria-hidden outline bar for it, never a blank; drawPage's busy path sets page.dataset.list from pagesListOf(route) so a skeleton stands in its own page's grid. P229 (Jason, 2026-10-08: 'Time on Overview page') - pagesAsOf() says SCREEN updating_as_of with shellFirm().asOf in the app's time words (pagesTime) while the launch's last counts stand; pagesOverview puts it in its Work line after the count (pagesGroup's note, span.page-as-of: one line of caption type, cut, never wrapped, so no row moves) and, with no work, under its empty line."
     },
@@ -4326,8 +4330,8 @@
       "id": "app/renderer/pilot-ui.css",
       "type": "ui",
       "layer": "desktop-app",
-      "sha256": "e1e1fe87b718393c",
-      "lines": 581,
+      "sha256": "46f50ae9dae0cee7",
+      "lines": 603,
       "role": "The pilot's tokens and structure pass: the light and dark colour tokens (SPEC-shell 10), the type roles, the 4px grid, and one button shape in four importances and two sizes, loaded after style.css and before shell.css and pilot-style.css.",
       "notes": "The two :root blocks (light, then prefers-color-scheme: dark with the same names) are the only place a colour, size or step is written; outside them tests fail on a hex, a literal size, weight or line height, or a padding, margin or gap off the grid (steps 4/8/16/24/32/48). --bg-page is --window-light or --window-dark: main.js reads those two literals for the first paint. The old token names are aliases of the purpose names, so every rule already written picks up both themes. style.css holds no literal colour (a test says so): what it once wrote, this file restated through tokens, and the declarations it overrode whole are gone from style.css. It never names .rem-preview: the reminder letter mirrors the emailed letter. It ends with a forced-colors block of system colours only."
     },
@@ -4360,8 +4364,8 @@
       "id": "app/renderer/shell.js",
       "type": "module",
       "layer": "desktop-app",
-      "sha256": "c6cb4474f7fde8c1",
-      "lines": 1369,
+      "sha256": "f993b8b46bd2e25d",
+      "lines": 1463,
       "role": "The app shell (pilot SPEC-shell, P58-P77): the side panel, the path row, the search, the sort icon, the one route, the setup page and the page's side of the `menu` channel. A classic script that shares app.js's globals and draws nothing of a return itself; it hands the page to pages.js.",
       "notes": "It types no word of its own: every name, tooltip and line is vocab.screen, and a key the vocabulary lacks throws, which app.js's bootstrap says as a notice - a loud failure, never a guess. It builds with app.js's el() under the short name h(), which sets only the attributes it names (decision 137). app.js calls it at seams of one line each: shellVocabulary, shellAdopt, shellNeedsRoot, shellChanged, shellProgress, shellKey and shellStateArrived (and shell.js calls appRouteChanged); app.js's one document keydown listener hands every key to shellKey first, so the new files add no listener of their own (a test holds it). The route is {level, household, year, ret} of paths the API reported; a return's page waits for showReturn's state, and Sort now sorts the active return's household, so a household or year page first reads the state of one of its own returns when the state on screen is not (its notices come with it). P134 (review M2): of those, the one a person chose, else the first the list's household says is working (active, not rolled forward), so a household Sort reports on a return it sorted. The menu's enable list (shellEnabled) follows SPEC 5.1 rule for rule and is sent on every change; a menu id the page cannot answer is a notice and an error-log line, never silence. The firm command's counts (shellLoadFirm) are asked after every list; while they load the firm pages show outline rows, and a failure is one notice with Retry. S5: shellGo returns the read of the return a page needs and guards the lock and the menu channel, so a channel that throws is a notice and never stops navigation; openPath(path, how) is the one open (how 'reveal' shows a file in File Explorer) and says Not Opened in the API's words when the shell refuses; shellEnabled(at) reads the rules for the route a row's menu stands for; shellAnswer runs a menu id as if chosen on the page. Lane 4b: the side panel's brand words, Taxpayer Types (the screen's word since P196; set pagesClientType, then open Households), Under Construction items (a toast and nothing else) and Settings (the change_root answer) come from vocab.screen.side and client_types (shellSideWords); the search box's placeholder is per page (drawFindWords) and on Needs Review findOptions also finds the waiting files, opening Check. P197: View > Show Under Construction (shellToggleSoon, the menu's answer) hides the five Under Construction items and the Workspace heading with the .hidden class (display: none: out of the Tab order and the accessibility tree), drawn by drawSoon on every drawSide; the choice is this PC's localStorage (tracker.underConstruction, 'hidden'), never settings.json; unreadable storage shows them; focus on a hidden item moves to the side panel's current page; shellEnable sends the tick as `checked` (shellChecked). Speed round (pilot/SPEC-speed-round.md): P218 - shellClock orders sends and writes by a counter (shellFirmSentAt, shellWroteAt via shellWriteLanded); shellStateArrived remembers, per return, a differing state while a load sent after the last write runs, and shellLoadFirm asks once more only if the new counts still differ (shellCountsDiffer), so a Sort is followed by one Overview, not two. P221 - shellAskFirmNow() (P228's name for P221's early ask, no longer only early) sends firm beside list; shellLoadFirm adopts the pending reply (shellAdoptEarly) and shellAdopt drops it for a needs_root list (shellDropEarlyFirm). P222 - W1: a page that follows the counts (shellFollowsCounts: the firm pages, a household's, a year's) drawn from held counts while they load is marked Updating (shellMarkUpdating, shellUpdating in place) and side counts is-held; the word is set in index.html's #page-updating in the path row, only when it changes, so no row moves and a redraw is not announced again; shellStartFailed() clears the first paint's outline and its aria-busy when the first list fails (no vocab yet), app.js's bootstrap catch calling it; W2: shellFirmSent starts SHELL_FIRM_SLOW_MS (2,000 ms), shellFirmProgress keeps a checked {done, total}, shellReading/shellReadingNodes/shellSetReading/shellDrawReading draw 'Reading {n} of {total} Households' and a determinate role=progressbar built on the last-sort bar, shellFirmDone clears both; shellFollowsCounts redraws household and year pages when counts land; shellLoading draws each page's own outline shapes; forced-colors rules keep outline bars, the count's bar and the last-sort bar's fill visible. Sort & Scan speed (pilot/SPEC-sort-speed.md): P228 - shellAskFirmNow() is also asked at a Sort's end (passEnded), keeping P218's rule: a load already running sends nothing and the list's adopt queues one more. P229 (Jason, 2026-10-08: build it now; 'Updating, as of {time}' approved; 'Time on Overview page') - shellAskFirmLast() sends api.FIRM_LAST_COMMAND once at bootstrap; shellLastOf() accepts only the API's shape (the firm reply's own fields with last: true and as_of 'HH:MM'; a refusal {last: null, warnings}, an error or any other shape shows nothing); shellShowLast() draws it once the words and a clients folder are here and only while the fresh firm is on its way with nothing drawn and has not landed (shellFirmEarlyLanded: an early reply the list's load has not adopted yet still drops it), as P222's held counts (shellFirmNow {status: loading, data}), with shellFirmAsOf holding the time; shellFirm() hands pages.js asOf; the fresh reply replaces it in place, a failed one takes it down, shellDropEarlyFirm drops it for a needs_root list. The path row's #page-updating slot stays 8 ch and says Updating alone; the time is the Overview's own line (pages.js pagesAsOf). SPEC-mac R8 (P240): openPath says a { says } reply from the shell (a Mac opened a file Windows would have opened in Protected View) as a warning notice in the API's words, each time; an error reply is unchanged."
     },
@@ -4466,8 +4470,8 @@
       "id": "docs/runbook.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "ba1a22cc09e52c75",
-      "lines": 2849,
+      "sha256": "ad241677a1ea5ffd",
+      "lines": 2868,
       "role": "The operator's page for one tax season: the designated machine and today's rule that only one may run a clients root, what a person does each morning and on the draft day, what every index reason and validation note means, and the thirty-minute move to another machine - on a Windows PC or on a Mac.",
       "notes": "Written for a person, not an agent. Roles are docs/workflow.md and the reasons behind the rules are docs/ROADMAP.md; it links to both rather than repeating them. The Mac is written as parallel paragraphs, not edits to the Windows text (SPEC-mac R34): section 1's `### On a Mac` (the heading the pass's own root-not-permitted reason points at) and two paragraphs in section 6 (moving to or from a Mac, taking the app off one). The one-machine rule is still stated once. tests/test_single_source.py quotes the app's sentences against it and holds the data folder's name to settings.DATA_HOME_NAME on both systems (the Windows lines once named a folder the app does not make)."
     },
@@ -4523,22 +4527,22 @@
       "id": "pilot/DECISIONS.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "e2d94b93fc258f27",
-      "lines": 250
+      "sha256": "a1b2b0112b039cc1",
+      "lines": 254
     },
     {
       "id": "pilot/HANDOFF.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "07a096b78e562e11",
-      "lines": 79
+      "sha256": "702457a701f3c8bf",
+      "lines": 86
     },
     {
       "id": "pilot/README.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "58dbf4cde5f3b5c7",
-      "lines": 56
+      "sha256": "5a0da46060ea9276",
+      "lines": 57
     },
     {
       "id": "pilot/RELEASE.md",
@@ -4632,11 +4636,18 @@
       "lines": 756
     },
     {
+      "id": "pilot/SPEC-mac-check-fixes.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "aa2d83510e490ebb",
+      "lines": 451
+    },
+    {
       "id": "pilot/SPEC-mac.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "0bb77bdaa9f6bb0f",
-      "lines": 960
+      "sha256": "9b89cbe642b0045a",
+      "lines": 963
     },
     {
       "id": "pilot/SPEC-rename.md",
@@ -4656,8 +4667,8 @@
       "id": "pilot/SPEC-shell.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "084e03702e56b1af",
-      "lines": 1987
+      "sha256": "7652ccda57f6d595",
+      "lines": 1996
     },
     {
       "id": "pilot/SPEC-sort-speed.md",
@@ -4725,11 +4736,18 @@
       "lines": 27
     },
     {
+      "id": "pilot/mactest/PROMPT-RERUN-1.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "d775bce67e69ecad",
+      "lines": 188
+    },
+    {
       "id": "pilot/mactest/PROMPT.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "e31669fb7ec0152c",
-      "lines": 378,
+      "sha256": "46e88ce6255a3e0c",
+      "lines": 392,
       "role": "The prompt for Claude Code on the test Mac (SPEC-mac R33): the safety rules, the run of pilot/mactest/run_checks.sh with the exact test files, and the hands-on steps H1-H14 with the buyer's walk as H2 and why each was chosen.",
       "notes": "Carries the proof items the Mac jobs' reviews left for a Mac under the step that matches them: job 1 in H2 steps 4-7 and 10 and H6, job 2 in H1, H2 steps 2-3 and H11, job 5 in H4, H7 and H8, job 6 in H3, H5, H9, H13 and H14, job 7 in H1 and H10. Its season builder (for H10's timing) is lifted and run by tests/test_pilot.py. The 60-minute figure H10 passes at is the kit's reading of P247's 'well inside' the two-hour slot, for Jason to change."
     },
@@ -4737,8 +4755,8 @@
       "id": "pilot/mactest/RESULTS-TEMPLATE.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "49e6bd20148cc167",
-      "lines": 114,
+      "sha256": "087c48197a83ede5",
+      "lines": 117,
       "role": "The result file the Mac check fills in: the machine, the automated checks (one row per check the script records and per test file), the walk's fourteen steps and H1-H14. tests/test_pilot.py holds its rows to the script's and the prompt's."
     },
     {
@@ -4773,8 +4791,8 @@
       "id": "pilot/wintest/SAMPLE-DOCUMENTS.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "df568354d562ae8c",
-      "lines": 26
+      "sha256": "59554bb3fdc532e9",
+      "lines": 31
     },
     {
       "id": "requirements-build.txt",
@@ -5224,15 +5242,15 @@
       "id": "pilot/harness/stub.js",
       "type": "module",
       "layer": "root",
-      "sha256": "184d5e89c3925a1a",
-      "lines": 448
+      "sha256": "1a85fb601e30ff6a",
+      "lines": 455
     },
     {
       "id": "pilot/mactest/run_checks.sh",
       "type": "script",
       "layer": "root",
-      "sha256": "e38108c9886ed9ca",
-      "lines": 485,
+      "sha256": "c1f5d23029bcecc3",
+      "lines": 488,
       "role": "The Mac check kit's script (SPEC-mac R33, P254), the counterpart of pilot/wintest/run_checks.ps1: checks the tools and the Mac against the floor, installs the locked packages into a throwaway environment, runs the named test files side by side, builds the disk image with build-mac.sh, checks what is inside the bundle, runs the frozen smoke on made-up documents, and writes checks.json for pilot/mactest/PROMPT.md's hands-on part.",
       "notes": "bash 3.2, the shared PATH block, no sudo, no password, nothing installed on the Mac itself. It reads no folder but the checkout and ~/PilotTest, so it prints and stores no client's name. An empty --tests list stops with a sentence rather than running the whole suite."
     },
@@ -5240,14 +5258,29 @@
       "id": "pilot/wintest/make_samples.py",
       "type": "module",
       "layer": "root",
-      "sha256": "e5e1530cc4354e48",
-      "lines": 73,
+      "sha256": "78a10e2859e4cc4b",
+      "lines": 152,
       "cli": "python -m pilot.wintest.make_samples",
       "exports": [
+        "EMAIL_SAMPLE",
+        "MACRO_MAIN_TYPE",
+        "MACRO_WORKBOOK",
+        "PLAIN_MAIN_TYPE",
         "REPO",
         "SANDBOX_PARENT",
+        "ZIP_SAMPLE",
+        "ZIP_STAMP",
+        "add_container_samples",
         "main"
       ],
+      "constants": {
+        "MACRO_WORKBOOK": "'Donation Receipts {year} with macros.xlsm'",
+        "EMAIL_SAMPLE": "'Email from John Smith.msg'",
+        "ZIP_SAMPLE": "'Scanned forms.zip'",
+        "ZIP_STAMP": "(2025, 1, 1, 0, 0, 0)",
+        "MACRO_MAIN_TYPE": "'application/vnd.ms-excel.sheet.macroEnabled.main+xml'",
+        "PLAIN_MAIN_TYPE": "'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml'"
+      },
       "role": "Builds the sandbox clients folder of the Windows check and of the Mac check (P28): the suite's own made-up documents (tests/samples.py) under the PilotTest folder, refused anywhere else.",
       "notes": "Used by path from both kits - pilot/wintest/run_checks.ps1 and pilot/mactest/run_checks.sh - never copied (SPEC-mac R33). The Mac kit (P254) mirrors the Windows one: run_checks.sh, in bash 3.2 with PATH cut to absolute folders as build-mac.sh does, stops on anything but an Apple silicon Mac on macOS 14 or later, reports a missing tool with where to get it and installs none, resolves every --tests name before anything else, runs each named test file as its own process side by side, builds the disk image only after every one has ended (the end-of-run guard of decision 185), then checks the bundle (ad-hoc seal, arm64, BUILD-INFO.txt, minimum macOS, folder strings, icon) and makes the frozen smoke in throwaway folders: the package answers JSON, reads the pile as the source does and starts a reading child under spawn. checks.json is written in pure bash. PROMPT.md is the safety block of the Windows prompt plus the Mac's own (no password typed by the assistant, no sudo, Gatekeeper and the quarantine mark untouched) and the hands-on steps H1-H14 with SPEC-mac section 3's buyer's walk as H2; RESULTS-TEMPLATE.md has a row for each. tests/test_pilot.py holds the Windows kit's tests and the Mac kit's: the script's helpers lifted and run in bash, the script itself run against stand-in uname, sw_vers and sysctl so every stop is proved on Linux, and the prompt, template and script held to one another."
     },
@@ -5764,8 +5797,8 @@
       "id": "tests/test_api.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "cca7ff950821b8b7",
-      "lines": 10613,
+      "sha256": "debface3b74aa564",
+      "lines": 10713,
       "exports": [
         "COUNTS",
         "DEEPER_ROOT_LENGTH",
@@ -5981,6 +6014,7 @@
         "test_every_outstanding_row_in_the_state_carries_its_side_and_sentence",
         "test_every_parked_row_ships_a_unique_handle_and_a_program_from_a_zip_is_answered_by_it",
         "test_every_reply_carries_a_warnings_list_and_every_error_a_failure_whose_sentence_is_the_error",
+        "test_every_reply_that_runs_the_after_install_step_carries_the_engines_wait",
         "test_every_return_row_the_pages_link_carries_its_year_beside_its_label",
         "test_every_short_word_the_engine_adds_is_five_words_or_fewer",
         "test_every_status_the_vocabulary_names_has_the_label_a_row_says",
@@ -6006,6 +6040,7 @@
         "test_item_from_spec_normalizes_extensions",
         "test_item_group_follows_its_table",
         "test_keep_it_here_is_offered_by_the_copys_name",
+        "test_last_pass_is_answered_without_a_root_or_a_store",
         "test_list_carries_each_misfits_code_and_the_vocabulary_words_it",
         "test_list_reports_the_clients_root_and_the_firm_report_as_openable",
         "test_list_state_and_firm_agree_on_a_returns_year",
@@ -6083,6 +6118,7 @@
         "test_the_apps_request_table_folds_not_asked_rows_with_no_document_into_a_closed_group",
         "test_the_card_shows_the_inbox_hold_in_the_apis_words_and_offers_no_approve",
         "test_the_commands_held_to_one_reading_write_nothing_and_a_write_there_is_refused",
+        "test_the_details_word_is_in_the_screen_vocabulary",
         "test_the_editor_clears_a_detail_it_sends_blank_and_keeps_one_it_leaves_out",
         "test_the_editor_refuses_a_list_nobody_is_asked_for_in_creations_words",
         "test_the_editor_round_trips_asked_and_named",
@@ -6138,6 +6174,7 @@
         "test_the_scan_command_runs_the_household_pass_and_answers_for_the_return_it_was_asked_about",
         "test_the_schedule_dialog_uses_only_the_apis_words",
         "test_the_schedule_is_repaired_from_the_tools_menu_in_the_apis_words",
+        "test_the_scheduled_sorting_word_is_in_the_screen_vocabulary",
         "test_the_scheduled_tasks_working_folder_is_the_apps_own_not_the_settings_folder",
         "test_the_settings_carry_the_firm_phone_and_the_vocabulary_names_its_box",
         "test_the_sharing_words_are_the_apis_and_the_renderer_types_none",
@@ -7893,8 +7930,8 @@
       "id": "tests/test_pilot.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "246b31e6fbf95c38",
-      "lines": 877,
+      "sha256": "d742214f099ed4ba",
+      "lines": 986,
       "exports": [
         "KIT_PROMPT",
         "KIT_RESULTS",
@@ -7930,6 +7967,7 @@
         "test_the_check_script_takes_only_py_files_says_where_it_looked_and_runs_a_file_named_twice_once",
         "test_the_contact_is_the_firms_admin_address",
         "test_the_edition_version_is_a_plain_version_number",
+        "test_the_kit_reads_the_whole_run_log_for_the_reader_because_the_first_line_is_pass_started",
         "test_the_kit_stops_on_a_mac_the_app_would_refuse_and_says_why",
         "test_the_kit_writes_every_result_as_json_in_the_order_it_ran",
         "test_the_mac_kit_builds_only_after_every_named_test_file_has_ended",
@@ -7948,6 +7986,8 @@
         "test_the_pilot_files_build_the_page_only_with_text",
         "test_the_pilot_never_types_the_product_name",
         "test_the_pilot_style_targets_only_its_own_names",
+        "test_the_prompt_the_template_and_the_walk_say_what_the_app_shows_and_name_the_pile_s_files",
+        "test_the_sample_pile_holds_a_macro_workbook_an_email_and_a_zip",
         "test_the_season_builder_in_the_prompt_makes_scans_no_two_of_which_share_their_bytes",
         "test_the_shell_writes_the_pages_storage_as_the_window_closes",
         "test_the_signed_name_is_sent_with_the_acceptance",
@@ -9277,8 +9317,8 @@
       "id": "tests/test_shell.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "388e32437014a52f",
-      "lines": 5588,
+      "sha256": "7b4bfcd760ff228f",
+      "lines": 6192,
       "exports": [
         "COLUMN_FUNCTIONS",
         "CONTRAST",
@@ -9294,8 +9334,12 @@
         "FLOATING_UI_SHA256",
         "JOIN_POPUPS",
         "LAST_COUNTS",
+        "LAST_PASS_STEPS",
+        "LAST_PASS_WATCH_FAKES",
+        "LAST_SORT_FAKES",
         "LINKED",
         "NODE",
+        "NOTICE_DETAIL_FAKES",
         "NOTICE_FUNCTIONS",
         "OK_DARK",
         "OK_LIGHT",
@@ -9386,10 +9430,12 @@
         "test_a_notice_falls_back_to_the_setup_line_for_a_word_the_vocabulary_lacks",
         "test_a_notice_shows_the_vocabularys_short_word_when_it_has_one",
         "test_a_notice_whose_short_word_the_vocabulary_lacks_falls_back_to_the_setup_line_and_logs_the_sentence",
+        "test_a_notice_with_a_detail_keeps_one_line_and_a_closed_details_block",
         "test_a_page_change_hides_a_showing_tip",
         "test_a_page_that_cannot_be_built_whole_keeps_what_it_held_or_draws_its_frame",
         "test_a_redraw_keeps_the_link_panel_open_on_the_same_household_or_moves_focus_to_the_list",
         "test_a_refused_or_failed_last_count_ask_shows_nothing",
+        "test_a_reply_landing_after_the_apps_own_sort_began_does_nothing",
         "test_a_request_answered_by_several_files_draws_a_row_for_each_and_counts_only_requests",
         "test_a_return_chosen_during_the_sort_is_the_one_drawn",
         "test_a_return_or_household_row_wraps_so_its_year_and_its_paused_words_are_never_cut",
@@ -9402,6 +9448,7 @@
         "test_a_row_menu_offers_only_what_applies_and_the_page_answers_only_its_own_tokens",
         "test_a_row_that_cannot_be_built_is_left_out_and_named_on_every_page",
         "test_a_saved_width_of_the_old_return_column_never_reaches_the_new_layout",
+        "test_a_scheduled_pass_still_running_is_drawn_as_sorting_not_as_a_failure",
         "test_a_second_unfile_or_mark_missing_before_the_reply_is_not_sent_and_the_menu_greys_it",
         "test_a_skeleton_stands_in_the_grid_of_its_own_page",
         "test_a_sort_asked_for_an_inactive_return_says_why_nothing_was_done",
@@ -9413,6 +9460,8 @@
         "test_a_sorts_list_that_fails_still_lets_its_overview_land",
         "test_a_sorts_list_that_lands_last_changes_nothing_the_state_drew",
         "test_a_status_that_is_a_tag_always_carries_the_words_it_stands_for_as_its_tooltip",
+        "test_a_throwing_reread_is_said_once_and_stops_the_watch",
+        "test_a_tick_before_the_first_list_or_after_a_stop_does_nothing",
         "test_a_tip_goes_when_its_element_is_scrolled_out_of_view",
         "test_a_tip_waiting_on_its_delay_is_never_shown_for_an_element_that_left",
         "test_a_tip_whose_element_leaves_the_page_is_hidden_at_the_next_mouse_move",
@@ -9426,6 +9475,7 @@
         "test_copy_refuses_a_card_drawn_for_another_return",
         "test_create_return_goes_to_the_new_returns_page",
         "test_dates_order_by_the_iso_date_and_blanks_go_last_both_ways",
+        "test_details_are_open_on_the_setup_page_and_closed_elsewhere",
         "test_escape_closes_the_link_panel_and_returns_focus_to_its_icon",
         "test_escape_hides_a_showing_tip_first_and_leaves_the_key_to_the_page",
         "test_every_attribute_the_shell_builds_a_node_with_is_on_its_list",
@@ -9450,6 +9500,7 @@
         "test_last_counts_that_land_after_an_unadopted_fresh_reply_are_dropped",
         "test_last_counts_that_land_after_the_fresh_are_dropped",
         "test_long_names_are_cut_and_carry_their_full_name_as_the_tooltip",
+        "test_machine_warnings_and_setup_findings_reach_the_screen_as_details",
         "test_needs_review_household_and_year_pages_say_each_field_once",
         "test_needs_review_moves_width_from_suggestion_to_reason_and_still_fits_1100px",
         "test_needs_review_orders_files_in_each_group_and_groups_follow_their_first_file",
@@ -9468,6 +9519,7 @@
         "test_one_keydown_listener_owns_the_keyboard",
         "test_only_the_header_tooltip_says_sort_and_always_by_its_column",
         "test_only_the_household_year_and_return_pages_draw_an_h1",
+        "test_only_the_machine_warnings_the_pause_the_feeds_and_the_setup_findings_put_a_detail_on_the_screen",
         "test_opening_a_path_says_not_opened_in_the_apis_words_and_logs_the_systems",
         "test_overview_and_reminders_say_tax_year_taxpayer_and_form_type_once_each_in_their_own_columns",
         "test_overviews_tabs_narrow_the_whole_list_and_carry_their_counts",
@@ -9495,6 +9547,7 @@
         "test_the_four_lists_and_a_needs_review_card_fit_1100px_beside_a_windows_scrollbar",
         "test_the_fresh_counts_replace_the_last_in_place",
         "test_the_harness_is_never_loaded_by_the_app",
+        "test_the_harness_stub_answers_last_pass_with_the_pass_its_list_carries",
         "test_the_harness_stub_replies_have_the_shape_of_the_engines",
         "test_the_harness_stub_speaks_the_apis_vocabulary",
         "test_the_header_row_and_grips_keep_the_rules_of_the_stylesheet",
@@ -9516,6 +9569,7 @@
         "test_the_new_renderer_files_type_no_words_of_their_own",
         "test_the_new_tokens_and_every_new_pair_meet_their_contrast_in_both_themes",
         "test_the_next_arrows_order_is_the_files_a_person_must_look_at_in_the_order_drawn",
+        "test_the_notices_of_a_first_start_are_drawn_after_the_setup_page_takes_the_screen",
         "test_the_order_chosen_by_a_header_is_kept_on_this_pc_across_a_restart",
         "test_the_overview_is_asked_beside_the_list_and_drawn_once_the_words_arrive",
         "test_the_overview_puts_each_return_in_one_bucket",
@@ -9523,20 +9577,25 @@
         "test_the_pages_groups_and_the_firms_tally_of_them_cannot_disagree",
         "test_the_path_beside_updating_keeps_its_width_when_the_word_comes",
         "test_the_path_names_every_level_and_the_year_always_shows",
+        "test_the_pause_and_feed_sentences_reach_the_screen_as_details",
+        "test_the_reader_warning_reaches_the_screen_as_details",
         "test_the_reminder_sheet_offers_nothing_to_copy_until_its_own_return_is_read",
         "test_the_renderer_defines_none_of_the_names_section_13_removes",
         "test_the_renderer_has_no_title_attribute",
         "test_the_row_menus_offer_exactly_the_ids_the_join_must_put_in_the_popup_templates",
         "test_the_rows_stay_put_while_held_counts_are_asked_again",
         "test_the_schedule_dialog_says_its_next_run_in_the_apps_clock_style",
+        "test_the_schedule_sentence_is_toasted_when_the_step_registered_it",
         "test_the_search_box_alone_shows_no_tooltip_on_keyboard_focus",
         "test_the_search_finds_waiting_files_on_needs_review_and_its_placeholder_says_so",
         "test_the_search_list_shows_at_most_eight_options",
         "test_the_set_aside_fold_is_shut_each_time_the_page_opens",
         "test_the_setting_is_this_pcs_and_the_side_panel_draws_it_on_every_draw",
+        "test_the_setup_notice_reads_the_same_whichever_reply_drew_it",
         "test_the_sheet_finds_a_file_where_it_can_be_checked_and_nowhere_else",
         "test_the_sheet_moves_on_only_when_the_file_it_shows_has_been_answered",
         "test_the_sheets_following_files_are_those_after_it_in_the_order_the_page_was_drawn",
+        "test_the_shell_asks_list_again_once_a_scheduled_pass_has_ended",
         "test_the_shell_sends_only_the_menu_channels_messages_and_no_path",
         "test_the_shells_stylesheet_ends_with_its_own_forced_colors_block",
         "test_the_shells_stylesheet_follows_the_structure_passes_rules",
@@ -9552,6 +9611,7 @@
         "test_the_title_case_rule_says_what_ruling_10_says",
         "test_the_tooltip_reaches_floating_ui_only_through_its_one_global",
         "test_the_vendored_floating_ui_is_the_pinned_bytes_and_nothing_else",
+        "test_the_watch_never_overlaps_itself_and_the_adopt_and_the_focus_start_it",
         "test_the_window_and_its_taskbar_button_carry_the_console_icon",
         "test_the_window_colours_are_the_pages",
         "test_the_wizard_keeps_the_first_steps_cancel_only_and_esc_and_the_scrim_still_close_it",
@@ -9584,11 +9644,12 @@
         "SPEED_DOM": "'\\nclass Node {}\\nclass Text extends Node { constructor(data) { super(); this.data = data; this.parent = null; } get textContent() { return this.data; } }\\nclass El extends Node {\\n  constructor(tag, id) { super(); this.tag = tag; this.id = id || \"\"; this.className = \"\"; this.dataset = {}; this.attrs = {}; this.kids = [];\\n    this.hidden = false; this.disabled = false; this.parent = null; this.handlers = {};\\n    this.style = { props: {}, setProperty(key, value) { this.props[key] = value; }, removeProperty(key) { delete this.props[key]; } }; }\\n  get classList() {\\n    const self = this;\\n    const now = () => self.className.split(\" \").filter(Boolean);\\n    return { add(...names) { self.className = [...new Set([...now(), ...names])].join(\" \"); },\\n             remove(...names) { self.className = now().filter((one) => !names.includes(one)).join(\" \"); },\\n             toggle(name, on) { const want = on === undefined ? !now().includes(name) : Boolean(on); if (want) this.add(name); else this.remove(name); return want; },\\n             contains(name) { return now().includes(name); } };\\n  }\\n  setAttribute(key, value) { this.attrs[key] = String(value); }\\n  getAttribute(key) { return key in this.attrs ? this.attrs[key] : null; }\\n  removeAttribute(key) { delete this.attrs[key]; }\\n  adopt(one) { const node = one instanceof Node ? one : new Text(String(one)); if (node.parent) node.remove(); node.parent = this; return node; }\\n  append(...nodes) { for (const one of nodes) this.kids.push(this.adopt(one)); }\\n  prepend(...nodes) { this.kids.unshift(...nodes.map((one) => this.adopt(one))); }\\n  replaceChildren(...nodes) { for (const one of this.kids) one.parent = null; this.kids = []; this.append(...nodes); }\\n  remove() { if (this.parent) { this.parent.kids = this.parent.kids.filter((one) => one !== this); this.parent = null; } }\\n  get childNodes() { return this.kids; }\\n  get children() { return this.kids.filter((one) => one instanceof El); }\\n  focus() {}\\n  addEventListener(type, fn) { (this.handlers[type] = this.handlers[type] || []).push(fn); }\\n  get textContent() { return this.kids.map((one) => one.textContent).join(\"\"); }\\n  set textContent(value) { this.replaceChildren(String(value)); }\\n  find(test, out = []) { for (const one of this.kids) if (one instanceof El) { if (test(one)) out.push(one); one.find(test, out); } return out; }\\n  byClass(name) { return this.find((one) => one.classList.contains(name)); }\\n  querySelector(selector) { return this.querySelectorAll(selector)[0] || null; }\\n  querySelectorAll(selector) {\\n    const own = selector.replace(/^:scope > /, \"\");\\n    const pool = own === selector ? this.find(() => true) : this.children;\\n    if (own.startsWith(\".\")) return pool.filter((one) => one.classList.contains(own.slice(1)));\\n    if (own.startsWith(\"#\")) return pool.filter((one) => one.id === own.slice(1));\\n    return pool.filter((one) => one.tag === own);\\n  }\\n}\\nconst ELS = {};\\nconst $ = (id) => ELS[id] || (ELS[id] = new El(\"div\", id));\\nconst document = { createElement: (tag) => new El(tag), createElementNS: (_ns, tag) => new El(tag), contains: () => true };\\nconst window = { tracker: { logError() {} } };\\n'",
         "REMINDER_SHEET": "'\\nlet vocab = {\\n  screen: { loading: \"Loading\", sheet: { reminder: \"Draft Reminder\" } },\\n  reminder: { stages: [], palette: { ink: \"#000\" }, hold_colour: \"ink\", stage_group: \"Stage\", edited_by_hand: \"Edited\", subject_prefix: \"Subject: \",\\n              heading: \"Letter\", letter_ink: { body: \"ink\", muted: \"ink\", paper: \"ink\" }, never_drafted_line: \"Never drafted\", copied: \"Copied\", approve: \"Approve\" },\\n};\\nconst card = (ret) => ({ held: [], unsorted: 0, stage: 1, editable: true, file: { edited: false }, subject: `For ${ret}`, letter: { greeting: `Dear ${ret}` },\\n                         html: `<p>${ret}</p>`, text: `Letter for ${ret}`, last: null, approved: null, lapsed: false, fingerprint: `fp-${ret}` });\\nlet active = \"A\"; let lastState = { paths: { engagement: \"A\" }, reminder_card: { reminder: card(\"A\") } };\\nlet shellRoute = { level: \"reminders\" };\\nconst FIRM_LEVELS = [\"overview\", \"needs-review\", \"reminders\", \"clients\"];\\nconst reads = [];\\nconst showReturn = (path) => new Promise((resolve) => reads.push({ path, land() {\\n  active = path; lastState = { paths: { engagement: path }, reminder_card: { reminder: card(path) } };\\n  drawReminderReply(lastState.reminder_card); resolve(true); } }));\\nlet drafts = [{ ret: \"B\" }, { ret: \"C\" }];\\nconst pagesDrafts = () => drafts; const pagesWhere = () => null; const pagesDay = (d) => d;\\nconst openDialog = () => {}; const setTipIfCut = () => {}; const applyLock = () => {}; const closeSheet = () => {};\\nconst failed = (err) => { throw err; }; const outcome = () => {};\\nconst clipboard = []; const sent = [];\\nconst navigator = { clipboard: { write: async (items) => { clipboard.push(items[0].parts[\"text/plain\"].text); } } };\\nclass ClipboardItem { constructor(parts) { this.parts = parts; } }\\nclass Blob { constructor([text]) { this.text = text; } }\\nconst call = async (args, payload) => { sent.push([args[0], payload]); return { reminder: card(active) }; };\\nconst withEng = (name) => [name, \"--engagement\", active];\\nconst loadReminder = async () => {};\\nlet sheetNow = null; let sheetGeneration = 0;\\nconst tick = () => new Promise((resolve) => setImmediate(resolve));\\nconst actions = () => ({ card: reminderCard ? reminderCard.text : null, shown: !$(\"reminder-actions\").hidden, busy: $(\"sheet\").getAttribute(\"aria-busy\"),\\n                         outline: $(\"reminder-wait\").byClass(\"row-skeleton\").length, word: $(\"reminder-wait\").textContent });\\n'",
         "REMINDER_FUNCTIONS": "('el', 'h', 'show', 'fill', 'screenWords', 'shellSkeleton', 'shellWaiting', 'stageOf', 'stageInk', 'marked', 'holdLine', 'reminderStatus', 'lines', 'letterNodes', 'drawReminderReply', 'drawReminderLine', 'drawReminder', 'forgetReminderCard', 'reminderWaitOver', 'reminderCardReady', 'copyReminder', 'approveReminder', 'sheetSet', 'sheetMore', 'sheetFrame', 'openReminder', 'sheetDraftsAfter', 'sheetNextDraft', 'sheetShow', 'sheetDrawCheck', 'sheetAfter')",
-        "FIRM_LOAD": "'\\nlet vocab = { commands: [\"list\", \"firm\"], screen: { loading: \"Loading\", updating: \"Updating\", reading_households: \"Reading {n} of {total} Households\",\\n                                                    updating_as_of: \"Updating, as of {time}\", notices: { firm_failed: \"Counts Not Available\" } } };\\nconst fill = (p, v) => p.replace(/\\\\{(\\\\w+)\\\\}/g, (_, k) => v[k] ?? \"\");\\nlet shellRoute = { level: \"return\" }; let shellPageBusy = false; let shellRootSet = false; let shellPaths = {}; let shellLastPass = null;\\nlet shellFirmNow = { status: \"idle\", data: null }; let shellFirmAsked = false; let shellFirmEarly = null; let shellClock = 0;\\nlet shellFirmLast = null; let shellFirmAsOf = \"\";\\nlet shellFirmSentAt = 0; let shellWroteAt = 0; const shellFirmHeld = new Map(); let shellFirmCount = null; let shellFirmSlow = false;\\nlet shellFirmTimer = null; const SHELL_FIRM_SLOW_MS = 2000;\\nconst FIRM_LEVELS = [\"overview\", \"needs-review\", \"reminders\", \"clients\"];\\nconst asked = []; const notices = []; const drawn = [];\\n// As call() does: a reply with an error throws its envelope.\\nconst call = (args) => new Promise((resolve, reject) => asked.push({ args, resolve: (reply) => (reply.error ? reject(new TrackerError(reply)) : resolve(reply)) }));\\nconst firmOf = (n) => ({ returns: [{ path: \"r1\", counts: { needs_you: n } }], totals: {} });\\nconst stateOf = (n) => ({ paths: { engagement: \"r1\" }, counts: { needs_you: n } });\\nconst pagesTally = (state) => state.counts; const sheetStateArrived = () => {};\\nlet shellChanged = () => {};\\nconst notice = (failure) => notices.push(failure.sentence); const failureSentence = () => \"\"; const failed = (err) => { throw err; };\\nconst warningNotices = (list) => notices.push(...list);\\nclass TrackerError extends Error { constructor(result) { super(result.error); this.result = result; } }\\nconst tick = async () => { for (let i = 0; i < 5; i += 1) await new Promise((resolve) => setImmediate(resolve)); };\\nconst firms = () => asked.filter((one) => one.args[0] === \"firm\").length;\\nconst land = async (i, reply) => { asked[i].resolve(reply); await tick(); };\\n'",
+        "FIRM_LOAD": "'\\nlet vocab = { commands: [\"list\", \"firm\"], screen: { loading: \"Loading\", updating: \"Updating\", reading_households: \"Reading {n} of {total} Households\",\\n                                                    updating_as_of: \"Updating, as of {time}\", notices: { firm_failed: \"Counts Not Available\" } } };\\nconst fill = (p, v) => p.replace(/\\\\{(\\\\w+)\\\\}/g, (_, k) => v[k] ?? \"\");\\nlet shellRoute = { level: \"return\" }; let shellPageBusy = false; let shellRootSet = false; let shellPaths = {}; let shellLastPass = null;\\nlet shellFirmNow = { status: \"idle\", data: null }; let shellFirmAsked = false; let shellFirmEarly = null; let shellClock = 0;\\nlet shellFirmLast = null; let shellFirmAsOf = \"\";\\nlet shellFirmSentAt = 0; let shellWroteAt = 0; const shellFirmHeld = new Map(); let shellFirmCount = null; let shellFirmSlow = false;\\nlet shellFirmTimer = null; const SHELL_FIRM_SLOW_MS = 2000;\\nlet shellLastPassStopped = false; const shellArmLastPass = () => {};   // the last-pass watch (P256) is not this probe\\'s\\nconst FIRM_LEVELS = [\"overview\", \"needs-review\", \"reminders\", \"clients\"];\\nconst asked = []; const notices = []; const drawn = [];\\n// As call() does: a reply with an error throws its envelope.\\nconst call = (args) => new Promise((resolve, reject) => asked.push({ args, resolve: (reply) => (reply.error ? reject(new TrackerError(reply)) : resolve(reply)) }));\\nconst firmOf = (n) => ({ returns: [{ path: \"r1\", counts: { needs_you: n } }], totals: {} });\\nconst stateOf = (n) => ({ paths: { engagement: \"r1\" }, counts: { needs_you: n } });\\nconst pagesTally = (state) => state.counts; const sheetStateArrived = () => {};\\nlet shellChanged = () => {};\\nconst notice = (failure) => notices.push(failure.sentence); const failureSentence = () => \"\"; const failed = (err) => { throw err; };\\nconst warningNotices = (list) => notices.push(...list);\\nclass TrackerError extends Error { constructor(result) { super(result.error); this.result = result; } }\\nconst tick = async () => { for (let i = 0; i < 5; i += 1) await new Promise((resolve) => setImmediate(resolve)); };\\nconst firms = () => asked.filter((one) => one.args[0] === \"firm\").length;\\nconst land = async (i, reply) => { asked[i].resolve(reply); await tick(); };\\n'",
         "FIRM_LOAD_FUNCTIONS": "('el', 'h', 'screenWords', 'shellAdopt', 'shellAskFirmNow', 'shellDropEarlyFirm', 'shellAskFirmLast', 'shellLastOf', 'shellShowLast', 'takeReply', 'shellAdoptEarly', 'shellAskFirm', 'shellFirmSent', 'shellFirmDone', 'shellFirmTookLong', 'shellWriteLanded', 'shellFirmProgress', 'shellReading', 'shellReadingNodes', 'shellSetReading', 'shellDrawReading', 'shellLoadFirm', 'shellFollowsCounts', 'shellFirmUpdating', 'shellUpdating', 'shellMarkUpdating', 'shellStateArrived', 'shellCountsDiffer')",
         "FIRM_PAGE": "'\\nconst timers = [];\\nconst setTimeout = (fn, ms) => { timers.push({ fn, ms }); return timers.length; };\\nconst clearTimeout = (id) => { if (id && timers[id - 1]) timers[id - 1].fn = null; };\\nconst waiting = () => timers.filter((one) => one.fn).map((one) => one.ms);\\nconst passTime = () => { for (const one of timers) if (one.fn) { const fn = one.fn; one.fn = null; fn(); } };\\nconst pagesDraw = (route, page) => {\\n  const figure = new El(\"b\"); figure.className = \"figure-number\"; figure.append(\"3\");\\n  const row = new El(\"div\"); row.className = \"row\"; row.append(\"a row\");\\n  page.replaceChildren(figure, row);\\n  page.dataset.list = pagesListOf(route);\\n};\\nconst routeTitle = () => \"\";\\nlet shellPageFailed = false;\\nconst shellDraw = () => { drawn.push(shellRoute.level); drawCounts(); drawPage(); };\\nshellChanged = () => drawCounts();\\nconst sides = [0, 1].map(() => { const side = new El(\"button\"); side.dataset.section = \"overview\"; const count = new El(\"span\"); count.className = \"side-count\"; side.append(count); return side; });\\ndocument.querySelectorAll = (selector) => (selector === \".side-section[data-section]\" ? sides : []);\\nconst shellCounts = () => ({ overview: 3 });\\n// index.html\\'s one status for \"Updating\": every time its words are set is\\n// counted, since a status set again is read out again.\\nlet saidSet = 0;\\nObject.defineProperty($(\"page-updating\"), \"textContent\", {\\n  get() { return this.kids.map((one) => one.textContent).join(\"\"); },\\n  set(value) { saidSet += 1; this.replaceChildren(String(value)); },\\n});\\nconst looks = () => {\\n  const page = $(\"page\");\\n  return { busy: page.getAttribute(\"aria-busy\"), updating: page.classList.contains(\"is-updating\"),\\n           said: $(\"page-updating\").textContent, saidSet,\\n           rows: page.children.map((one) => one.className),\\n           inPage: page.byClass(\"page-updating\").length,\\n           held: sides.map((one) => one.byClass(\"side-count\")[0].classList.contains(\"is-held\")),\\n           reading: page.byClass(\"firm-reading-words\").map((one) => one.textContent),\\n           bars: page.find((one) => one.getAttribute(\"role\") === \"progressbar\").map((one) =>\\n             [one.getAttribute(\"aria-valuenow\"), one.getAttribute(\"aria-valuemax\"), one.getAttribute(\"aria-labelledby\")]),\\n           hidden: page.byClass(\"visually-hidden\").map((one) => one.textContent) };\\n};\\n'",
         "FIRM_PAGE_FUNCTIONS": "('drawPage', 'shellLoading', 'shellSkeleton', 'drawTitleOnly', 'drawCounts', 'pagesListOf')",
-        "EARLY_FIRM": "'\\nconst sentEarly = [];\\nwindow.tracker.call = (args) => new Promise((resolve) => sentEarly.push({ args, resolve }));\\n'"
+        "EARLY_FIRM": "'\\nconst sentEarly = [];\\nwindow.tracker.call = (args) => new Promise((resolve) => sentEarly.push({ args, resolve }));\\n'",
+        "LAST_PASS_WATCH_FAKES": "'\\nlet vocab = { last_pass_watch: { running: 5, idle: 60 } };\\nlet scanning = null; let shellLastPass = null;\\nlet shellLastPassTimer = null; let shellLastPassAsking = false; let shellLastPassStopped = false;\\nconst seen = []; let timerId = 0; const timers = new Map(); let reply = null; let asked = 0;\\nlet listReply = { listed: true }; let during = null;\\nconst setTimeout = (fn, ms) => { timerId += 1; timers.set(timerId, [fn, ms]); return timerId; };\\nconst clearTimeout = (id) => { timers.delete(id); };\\nconst shellChanged = () => seen.push(\"changed\");\\nconst adoptList = (listed) => seen.push(listed === listReply ? \"adopt-list\" : \"adopt-other\");\\nconst failed = (err) => seen.push(\"failed:\" + err.message);\\nconst call = async (args) => {\\n  asked += 1; seen.push(\"call:\" + args.join(\" \"));\\n  if (during) during(args[0]);\\n  const out = args[0] === \"list\" ? listReply : reply;\\n  if (out instanceof Error) throw out;\\n  return args[0] === \"list\" ? out : { last_pass: out };\\n};\\nconst armed = () => [...timers.values()].map((one) => one[1] / 1000);\\nconst tick = async (held, fresh, running = null) => {\\n  seen.length = 0; shellLastPass = held; reply = fresh; scanning = running; shellLastPassStopped = false;\\n  clearTimeout(shellLastPassTimer); timers.clear();\\n  await shellWatchLastPass();\\n  return { seen: seen.slice(), armed: armed(), held: shellLastPass };\\n};\\n'"
       },
       "role": "The shell's renderer half: the tokens and their contrast in both themes, the shell stylesheet's discipline, the guards every renderer file keeps, the words the new files may not type, and the route, search, sort icon and menu enable list run in node against shell.js's own functions.",
       "notes": "SHELL_FILES and TITLE_FREE name the files a claim covers; S2 adds the menu half, S4 the pages' node tests and S5 the sheet's. The contrast table and the token values are the SPEC's section 10, copied as data."
@@ -9661,7 +9722,7 @@
       "id": "tests/test_single_source.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "805e29a6d984e6de",
+      "sha256": "476eb57fd529cbab",
       "lines": 4959,
       "exports": [
         "AFTER_WHAT",
@@ -13488,13 +13549,43 @@
     },
     {
       "from": "tests/test_pilot.py",
+      "to": "tracker/__init__.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_pilot.py",
       "to": "tracker/api.py",
       "type": "exercises",
       "source": "derived"
     },
     {
       "from": "tests/test_pilot.py",
+      "to": "tracker/containers.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_pilot.py",
+      "to": "tracker/runner.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_pilot.py",
+      "to": "tracker/validators.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_pilot.py",
       "to": "tests/conftest.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_pilot.py",
+      "to": "tests/samples.py",
       "type": "imports",
       "source": "derived"
     },
@@ -14869,6 +14960,12 @@
     {
       "from": "tests/test_shell.py",
       "to": "tracker/__init__.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_shell.py",
+      "to": "tracker/after_install.py",
       "type": "exercises",
       "source": "derived"
     },

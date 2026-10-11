@@ -64,6 +64,9 @@ Commands:
             in one return's record; they stop being named (decision 159)
   watch     whether a pass still holds this return, and where it is (a read
             of the lock and the pass's progress file; no store)
+  last-pass the scheduled pass's last-pass file as the last-sort line needs it
+            (running, ok, when, sentence): a read of that one file and the
+            settings, so the shell may ask it on a timer (pilot P256)
   cancel-pass  ask a running Sort & Scan this app started to stop at its
             next file (JSON on stdin: {"pass": id})
   pilot-record  the pilot's terms acceptance and "tour seen" for this Windows
@@ -427,6 +430,14 @@ REMINDER_LINE_UNREADABLE_WARNING = REMINDER_LINE_UNREADABLE + ": {label}"
 NOTHING_TO_STOP = "There is no pass this app started running to stop; nothing was changed."
 #: How often the app asks whether a lock it shows has gone (ruling 10).
 LOCK_WATCH_SECONDS = 5
+#: How often the shell asks for the scheduled pass's last-pass file while a
+#: pass is running (pilot P256): the lock watch's cadence, so a pass that
+#: ends is noticed as fast as a lock that goes.
+LAST_PASS_WATCH_RUNNING_SECONDS = 5
+#: ... and when none is: one spawn of the engine a minute is the most an idle
+#: window may cost on a Mac on battery (SPEC-mac-check-fixes Q1). The window's
+#: focus asks at once besides, so a click catches the page up sooner.
+LAST_PASS_WATCH_IDLE_SECONDS = 60
 #: The lock notice's words (D4): nothing waits, and nothing needs clearing.
 LOCK_RUNNING = "In Use on {host}"
 #: The same, about a lock that is not the shown return's - a sibling, a fed
@@ -1387,6 +1398,9 @@ SCREEN: dict = {
         "never": "Not Sorted Yet",
         "running": "Sorting {n} of {total}",
         "done": "Sorted",
+        # A pass the schedule is running (pilot P256): not a failure, and
+        # the page has no count of it to show, so one word and the bar.
+        "scheduled": "Sorting",
     },
     "figures": {
         "need": "Need a Person",
@@ -1577,6 +1591,9 @@ SCREEN: dict = {
         "renamed": "Folder Renamed",
         "paused": "Two Years Open; Sorting Paused",
         "feed": "Prior Year Data Not Found",
+        # The word on the closed disclosure under a notice's one line, which
+        # holds the engine's sentence for it (pilot P257).
+        "details": "Details",
         # The two short warnings beside a disabled Save in the request-list
         # editor (S5 rebuild 1). Approved by Jason, ruling 23.
         "pick_request": "Pick a Request First",
@@ -1959,6 +1976,10 @@ def _vocab() -> dict:
         "lock": {"running": LOCK_RUNNING, "running_other": LOCK_RUNNING_OTHER, "on": LOCK_ON, "greyed": LOCK_GREYED,
                  "left_behind": LOCK_LEFT_BEHIND, "cleared": LOCK_CLEARED,
                  "buttons_back": LOCK_BUTTONS_BACK, "watch_seconds": LOCK_WATCH_SECONDS},
+        # How often the shell asks `last-pass` (pilot P256): two numbers the
+        # page never types, in seconds.
+        "last_pass_watch": {"running": LAST_PASS_WATCH_RUNNING_SECONDS,
+                            "idle": LAST_PASS_WATCH_IDLE_SECONDS},
         # What a Sort & Scan reply is said as (decision 193's review, S4).
         "scan": {"scanning": SCAN_SCANNING, "nothing_done": SCAN_NOTHING_DONE,
                  "nothing_done_bare": SCAN_NOTHING_DONE_BARE,
@@ -3393,6 +3414,21 @@ def _cmd_watch(argv: list[str]) -> dict:
     return {"lock": _lock_payload(folder)}
 
 
+def _cmd_last_pass(argv: list[str]) -> dict:
+    """The scheduled pass's last-pass file as the last-sort line needs it
+    (pilot P256, SPEC-mac-check-fixes 1.1): ``{"last_pass": {...}}``, the
+    very dict ``list`` carries. The shell learned it only from a ``list``,
+    so a pass started by launchd or Task Scheduler told it nothing and the
+    page kept a stale word until Refresh; it now asks this on a timer, and
+    asks ``list`` again only when a pass has ended.
+
+    A read of the settings file and the last-pass file and nothing else - no
+    root walk, no store, no journal, no lock - so it answers with no clients
+    root chosen and costs one spawn of the engine, the shape of ``watch``
+    (decision 193). Not a writing command."""
+    return {"last_pass": _last_pass()}
+
+
 def _cmd_cancel_pass(argv: list[str]) -> dict:
     """Ask a running pass this app started to stop at its next file
     (decision 193). JSON on stdin: ``{"pass": <id>}``, the id its progress
@@ -3891,13 +3927,18 @@ def _list_paths(root: Path | None) -> dict:
 
 
 def _last_pass() -> dict:
-    """:func:`runner.last_pass_line` with the two facts the last-sort line
+    """:func:`runner.last_pass_line` with the three facts the last-sort line
     needs beside its sentence, so the page never parses the runner's words:
-    ``ok`` (the last pass ended well) and ``when`` (its start, ISO), or
-    ``False`` and ``None`` when there is none or the file cannot be read.
-    Never raises: it is part of the app's first call."""
+    ``ok`` (the last pass ended well), ``running`` (it started and has not
+    ended: the file's result is :data:`runner.PASS_RUNNING`) and ``when``
+    (its start, ISO). The file records three results, and flattening them to
+    ``ok`` alone drew a pass still running as a failure (pilot P256): ``ok``
+    is false while one runs, and ``running`` is what tells that from a pass
+    that failed. All three are ``False``, ``False`` and ``None`` when there
+    is none or the file cannot be read. Never raises: it is part of the
+    app's first call."""
     line = last_pass_line()
-    ok, when = False, None
+    ok, running, when = False, False, None
     try:
         with runner.last_pass_path().open("rb") as handle:
             raw = handle.read(runner.LAST_PASS_MAX_BYTES + 1)
@@ -3905,9 +3946,10 @@ def _last_pass() -> dict:
             data = json.loads(raw.decode("utf-8"))
             when = dt.datetime.fromisoformat(data["started"]).isoformat(timespec="seconds")
             ok = data["result"] == runner.PASS_SUCCEEDED
+            running = data["result"] == runner.PASS_RUNNING
     except Exception:            # the line above already says what could not be read
-        ok, when = False, None
-    return {**line, "ok": ok, "when": when}
+        ok, running, when = False, False, None
+    return {**line, "ok": ok, "running": running, "when": when}
 
 
 #: The commands whose reply carries the list, because they change it
@@ -6506,6 +6548,7 @@ COMMANDS = {
     "mark-missing": _cmd_mark_missing,
     "unlock": _cmd_unlock,
     "watch": _cmd_watch,
+    "last-pass": _cmd_last_pass,
     "cancel-pass": _cmd_cancel_pass,
     "settings": _cmd_settings,
     "set-root": _cmd_set_root,

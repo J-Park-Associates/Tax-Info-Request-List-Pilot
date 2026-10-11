@@ -133,7 +133,11 @@ const HELD_READING_COMMANDS = new Set(["firm", "firm-last", "list", "state"]);
 // Drive folder can take minutes. So it runs in the background and no call
 // from the page waits for it (the review's S7): the first screen is drawn
 // at once, and when the step did run the page is told on
-// LAUNCH_DONE_CHANNEL and asks again, so its notice appears.
+// LAUNCH_DONE_CHANNEL and asks again, so its notice appears. The message
+// carries the two facts of the reply the page says aloud (pilot P257): whether
+// this run registered the schedule on this computer, and the engine's
+// sentence for it, so the first open after an upgrade says in a toast that
+// this computer now runs the schedule. Nothing else of the reply crosses.
 const LAUNCH_COMMAND = "after-install";
 const LAUNCH_DONE_CHANNEL = "after-install-done";
 let allowedCommands = null;   // vocab.commands, once seen
@@ -997,7 +1001,12 @@ if (floorRefusal) {
     // start is tried again at the next launch.
     spawnTracker([LAUNCH_COMMAND], { reason: "launch" })
       .then((result) => {
-        if (result && result.ran && !win.isDestroyed()) win.webContents.send(LAUNCH_DONE_CHANNEL);
+        if (result && result.ran && !win.isDestroyed()) {
+          win.webContents.send(LAUNCH_DONE_CHANNEL, {
+            installed: result.installed === true,
+            schedule_sentence: typeof result.schedule_sentence === "string" ? result.schedule_sentence : "",
+          });
+        }
       })
       .catch(() => null);
   });

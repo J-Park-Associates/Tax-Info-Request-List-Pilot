@@ -1061,8 +1061,8 @@ class RunReport:
     #: reader that could not start on this machine (decision 150), the
     #: graphics card failing mid-pass (decision 169).
     warnings: list[str] = field(default_factory=list)
-    #: Which device the reader used this pass (decision 169): the run
-    #: log's first line says it, ``reader=processor`` or
+    #: Which device the reader used this pass (decision 169): the pass's
+    #: summary line in the run log says it, ``reader=processor`` or
     #: ``reader=graphics card``.
     reader: str = ocr.DEVICE_PROCESSOR
     #: The one run-log line when the graphics card pack is there and could

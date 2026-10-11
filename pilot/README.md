@@ -53,4 +53,5 @@ original. The original's improvements come in only when Jason asks for a merge.
 - [`RELEASE.md`](RELEASE.md) - the Windows steps to build, check, tag and send.
 - [`Tester Guide.md`](<Tester Guide.md>) - what a tester is given.
 - `wintest/` - the Windows test kit (P28).
-- [`SPEC-cleanup.md`](SPEC-cleanup.md) - the current work: dead code, folds and repository residue.
+- [`SPEC-mac-check-fixes.md`](SPEC-mac-check-fixes.md) - the current work: the fixes from the Mac check of 2026-10-10.
+- [`SPEC-cleanup.md`](SPEC-cleanup.md) - dead code, folds and repository residue (landed, pull request #33).

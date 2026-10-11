@@ -1622,17 +1622,18 @@ function pagesHouseholdNotices(route) {
       wanted.push({ key: "two-years", failure: { sentence: fill(words.two_open_years, { years: hh.open_years.join(", ") }), kind: "warning" } });
     }
     // The pause and the feeds are the API's long sentences: each is shown as
-    // its short line and the sentence goes to the error log (SPEC 11.1). A
+    // its short line, and the sentence is under Details and in the error log
+    // (SPEC 11.1; P259 Q3, SPEC-mac-check-fixes 4.2: `shown`). A
     // pause a person can accept (it names a scope) is the renamed folder, with
     // Accept; a year's pause has no Accept.
     const pause = hh.pause || {};
     if (pause.sentence) {
       wanted.push({ key: "renamed", failure: { sentence: shortNotice(pause.scope ? "renamed" : "paused"), kind: "warning" },
-                    detail: pause.sentence,
+                    detail: pause.sentence, shown: true,
                     opts: pause.scope ? { action: { label: words.accept_folder_name, run: acceptFolderName, write: true } } : {} });
     }
     const feeds = (hh.feeds || []).map((one) => one.warning).filter(Boolean);
-    if (feeds.length) wanted.push({ key: `feeds:${feeds.join("\n")}`, failure: { sentence: shortNotice("feed"), kind: "warning" }, detail: feeds.join("\n") });
+    if (feeds.length) wanted.push({ key: `feeds:${feeds.join("\n")}`, failure: { sentence: shortNotice("feed"), kind: "warning" }, detail: feeds.join("\n"), shown: true });
   }
   syncNotices("household", wanted);
 }

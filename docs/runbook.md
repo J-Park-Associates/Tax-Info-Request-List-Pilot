@@ -145,8 +145,12 @@ every return's record by today's rule, so a line an earlier version
 accepted that the rule now refuses - a Date Pattern that could run away, a
 step outside its return's folders, a value of the wrong kind - is named on
 the day of the upgrade: at the end of Setup, and in a notice at the top of
-the app's first screen headed *Setup Needs Attention*. The
-notice stays until a later run finds nothing; it cannot be dismissed,
+the app's first screen headed *Setup Needs Attention*. The notice is one
+line; under its **Details** (closed until a person opens it) is the
+engine's sentence - what is wrong and what to do - and the same text is
+in the error log. A *Machine Needs Attention* notice works the same way:
+the heading on the line, the sentence under Details and in the error log.
+The notice stays until a later run finds nothing; it cannot be dismissed,
 because the finding is true until the record is repaired. A return it
 names as "malformed", or as "changed behind the app's back", is shown
 to Jason before that household is sorted, and repaired the way any such
@@ -483,7 +487,11 @@ folder back the name its record holds."* **Roll Forward…** and **Add a
 Return…** (the Household menu) are greyed for it, and the app and the command
 line refuse both with the same sentence. The household is marked on Households
 and on Overview with *Two Years Open; Sorting Paused* when the cause is two
-open years.
+open years. On the household's own page the pause is a notice - *Folder
+Renamed* (with **Accept**) or *Two Years Open; Sorting Paused* - and so is a
+prior-year drop folder that cannot be found (*Prior Year Data Not Found*):
+the line stays one line, the sentence is under **Details** on the notice,
+and the same text is in the error log.
 
 - **When the move was meant** - a return dragged into a household of its
   own when a family separates - open the household in the app and press
@@ -837,7 +845,10 @@ files what arrived, scans it, and on the draft day writes the chase emails.
 Nobody registers it by hand (decision 209). `Setup.bat` runs the
 after-install step last, the app runs it at its first start after an
 upgrade, and saving the clients root in the app runs it - and it registers
-the task only on the computer the designation file names (above). The
+the task only on the computer the designation file names (above). When the
+step has registered the task on this computer, the app toasts the engine's
+registration sentence for a few seconds - at Start, and at the first open
+after an upgrade. The
 first Windows computer to run it with a root set writes its own name into
 that file; any other computer registers none, and removes a task of its
 own if it had one. The job names the app's settings folder, never the
@@ -1480,7 +1491,13 @@ household and cannot clear it. **Unfile** asks for an optional reason first.
    succeeded.* It comes from `last-pass.json`, which the scheduled job
    writes beside `tracker.db` when it starts and when it ends; a pass given
    a folder by hand, or a preview, does not touch it (a run naming only the
-   app's settings folder is the scheduled job's shape, and does).
+   app's settings folder is the scheduled job's shape, and does). The
+   line follows the file by itself (pilot P256): while a scheduled pass is
+   running the side panel says *Sorting* with a quiet bar, never *Sort
+   Failed*; the app looks again every few seconds while a pass runs and about
+   once a minute otherwise, and at once when the window is clicked into, and
+   when it sees a pass has ended it reads the counts and Needs Review again
+   - no **Refresh** is needed.
    - **Plain:** the schedule is running. Nothing to do.
    - **Amber**, *Nothing newer for over N hours*: no scheduled pass has
      started for two missed runs of the saved interval - four hours at the
@@ -2310,9 +2327,11 @@ exactly as it came.
      person with "the reader could not run on this machine". The app says
      so loudly: from a folder too deep (any of its libraries past 240
      characters, counted on the real folder, so a shortcut or junction does
-     not help) it shows a red banner that stays, "Move the app to a shorter
-     folder, for example C:\JPA App; scans can't be read from here",
-     and the scheduled pass puts the same sentence in its warnings once.
+     not help) it shows a notice that stays, headed *Install Folder Name Too
+     Long*; under its **Details** is the sentence, "Move the app to a shorter
+     folder, for example C:\JPA App; scans can't be read from here", and the
+     same sentence is in the error log. The scheduled pass puts it in its
+     warnings once.
 6. Run one pass — the **Sort** icon on a single return — and read the run
    log before trusting the schedule.
 

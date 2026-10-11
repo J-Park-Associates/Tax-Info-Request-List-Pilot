@@ -7,11 +7,13 @@ they run in a sandboxed window, so what can be pinned is what they may and
 may not contain.
 """
 
+import hashlib
 import json
 import re
 import shutil
 import subprocess
 import sys
+import zipfile
 from pathlib import Path
 
 import pytest
@@ -861,8 +863,6 @@ def test_the_season_builder_in_the_prompt_makes_scans_no_two_of_which_share_thei
     verdict by content, so scans alike would be read once and the timing would
     mean nothing; the builder's program, lifted from the prompt and run, makes
     each household's own, and writes only under the folder it is given."""
-    import hashlib
-
     from tests.conftest import child_env
 
     program = _prompt().split("THE SEASON BUILDER (")[1].split("\n\n", 1)[1].rstrip("`\n ")
@@ -875,3 +875,112 @@ def test_the_season_builder_in_the_prompt_makes_scans_no_two_of_which_share_thei
     assert len(scans) == 4
     assert len({hashlib.sha256(scan.read_bytes()).hexdigest() for scan in scans}) == 4
     assert {path.name for path in tmp_path.iterdir()} <= {"app", "data", "season"}   # "app" is every test's own
+
+
+# ------------------------------- Mac check fixes: notes 3 and 4 (SPEC-mac-check-fixes 3, P258) ----
+
+def test_the_kit_reads_the_whole_run_log_for_the_reader_because_the_first_line_is_pass_started(tmp_path):
+    """Since decision 189 the run log's first line is ``pass started`` and the
+    reader is named by the pass's closing summary, so a check of the first
+    line fails on every Mac whether or not the reader ran. The check's own
+    line, lifted from the script and run over a log the engine wrote, finds
+    ``reader=processor``; over a log with no summary it says the log names no
+    processor."""
+    import datetime as dt
+
+    from tracker import runner
+
+    log = tmp_path / "runs.log"
+    log.write_text(runner.PASS_STARTED_LINE.format(stamp="2026-10-11T04:00:00") + "\n", encoding="utf-8")
+    bare = tmp_path / "bare.log"
+    bare.write_bytes(log.read_bytes())
+    runner.append_log(log, runner.RunReport(today=dt.date(2026, 10, 11), dry_run=True))
+    lines = log.read_text(encoding="utf-8").splitlines()
+    assert lines[0].endswith("pass started") and "reader=" not in lines[0]
+    assert "reader=processor" in lines[1]
+
+    script = _kit_text()
+    check = [line for line in script.splitlines() if '"reader=processor"' in line and "note_smoke" in line]
+    assert len(check) == 1, check
+    assert "head -1" not in check[0] and '"$SMOKE/runs.log"' in check[0]
+    assert "the run log names no processor" in check[0]
+    for name, source, expected in (("full", log, ""), ("bare", bare, "the run log names no processor")):
+        smoke = tmp_path / name
+        smoke.mkdir()
+        shutil.copyfile(source, smoke / "runs.log")
+        done = _in_bash(f'note_smoke() {{ printf "%s" "$1"; }}\n{check[0]}\n', tmp_path, SMOKE=str(smoke))
+        assert done.returncode == 0, done.stderr
+        assert done.stdout == expected, (name, done.stdout)
+
+
+def test_the_sample_pile_holds_a_macro_workbook_an_email_and_a_zip(tmp_path):
+    """Note 4: step 10 of the walk needs a macro workbook, and the email and zip
+    paths need an email and a zip. The script, run under a throwaway home (it
+    refuses any folder but ``~/PilotTest``), adds the three to the inbox after
+    the suite's own pile, which is otherwise untouched; the email opens with
+    the engine's own reader to one attachment and the zip to one member."""
+    from tests.conftest import child_env
+    from tests.samples import SCRATCH_SCAN, YEAR, build_samples
+    from tracker import containers
+    from tracker.validators import bears_macros
+
+    home = tmp_path / "home"
+    home.mkdir()
+    done = subprocess.run([sys.executable, str(REPO / "pilot" / "wintest" / "make_samples.py")], capture_output=True,
+                          text=True, cwd=REPO, check=False,
+                          env=child_env(HOME=str(home), USERPROFILE=str(home), TRACKER_DATA_HOME=str(tmp_path / "data")))
+    assert done.returncode == 0, done.stdout + done.stderr
+    inboxes = [p for p in (home / "PilotTest").rglob("Drop files here") if p.is_dir()]
+    assert len(inboxes) == 1
+    inbox = inboxes[0]
+    suite = tmp_path / "suite"
+    build_samples(suite)
+    new = {f"Donation Receipts {YEAR} with macros.xlsm", "Email from John Smith.msg", "Scanned forms.zip"}
+    names = {p.name for p in inbox.iterdir()}
+    assert names == {p.name for p in suite.iterdir()} | {SCRATCH_SCAN} | new
+    assert f"Fake documents waiting in 'Drop files here': {len(names)}" in done.stdout
+
+    workbook = inbox / f"Donation Receipts {YEAR} with macros.xlsm"
+    assert bears_macros(workbook) and workbook.read_bytes()[:2] == b"PK"
+    with zipfile.ZipFile(workbook) as parts:
+        assert "application/vnd.ms-excel.sheet.macroEnabled.main+xml" in parts.read("[Content_Types].xml").decode("utf-8")
+        assert not [n for n in parts.namelist() if "vba" in n.lower()]
+    email = containers.open_container((inbox / "Email from John Smith.msg").read_bytes(), ".msg")
+    assert [a.name for a in email.attachments] == ["1099-INT Riverside Savings Bank.pdf"]
+    assert email.attachments[0].data.startswith(b"%PDF") and not email.skipped
+    pile = {hashlib.sha256(p.read_bytes()).hexdigest() for p in suite.iterdir()}
+    assert hashlib.sha256(email.attachments[0].data).hexdigest() not in pile   # new to the pile, not a duplicate
+    archive = containers.open_container((inbox / "Scanned forms.zip").read_bytes(), ".zip")
+    assert [a.name for a in archive.attachments] == ["scan 0002.pdf"]
+    assert archive.attachments[0].data.startswith(b"%PDF") and not archive.skipped
+
+
+def test_the_prompt_the_template_and_the_walk_say_what_the_app_shows_and_name_the_pile_s_files():
+    """P258: steps 5, 8, 9 and 12 name the heading and its Details, the toast,
+    Sorting and the toast again, in the prompt, the template and SPEC-mac
+    section 3 alike; step 10 names the three files exactly as the script makes
+    them; and the safety rules carry the paragraph about a denied folder."""
+    import importlib.util
+
+    from tests.samples import YEAR
+
+    spec = importlib.util.spec_from_file_location("make_samples", REPO / "pilot" / "wintest" / "make_samples.py")
+    assert spec is not None and spec.loader is not None
+    made = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(made)
+
+    prompt = " ".join(_prompt().split())
+    template = " ".join(KIT_RESULTS.read_text(encoding="utf-8").split())
+    spec_mac = (REPO / "pilot" / "SPEC-mac.md").read_text(encoding="utf-8")
+    walk = " ".join(spec_mac.split("## 3. What a buyer experiences", 1)[1].split("## 4. Requirements", 1)[0].split())
+    for text in (prompt, template, walk):
+        for word in ("Machine Needs Attention", "Details", "toast", "Sorting", "Refresh"):
+            assert word in text, word
+        assert "the notice repeats" not in text
+    assert "Setup Needs Attention" in prompt
+    for name in (made.MACRO_WORKBOOK.format(year=YEAR), made.EMAIL_SAMPLE, made.ZIP_SAMPLE):
+        assert name in prompt, name
+    assert "six seconds" in prompt and "six seconds" in template and "six seconds" in walk
+    assert "NOT VERIFIED naming the rule" in prompt and "Electron's debugging port" in prompt
+    assert "never work around a rule" in prompt
+    assert "How the app was driven" in template

@@ -89,7 +89,7 @@ def test_the_shell_and_the_preload_agree_on_every_ipc_channel():
     # With the pass's progress channel (decision 193), those are all it hears.
     sent |= set(re.findall(r'event\.sender\.send\("([a-z-]+)"', read("app/main.js")))
     assert sent == heard == {"after-install-done", "tracker-progress", "menu"}
-    assert "webContents.send(LAUNCH_DONE_CHANNEL)" in read("app/main.js")
+    assert "webContents.send(LAUNCH_DONE_CHANNEL, {" in read("app/main.js")
     assert "webContents.send(MENU_CHANNEL, message)" in read("app/main.js")
     # The menu channel goes both ways, once: the shell listens on it with
     # ipcMain.on (a one-way message, not a call that has a reply), and the
