@@ -51,6 +51,7 @@ const SOON_KEY = "tracker.underConstruction";   // this PC's own storage, never 
 
 let shellRoute = { level: "overview" };
 let shellBack = null;          // the route Cancel goes back to, from Change clients folder
+let shellReturnStale = false;  // a pass ended while a dialog was open: its return page is redrawn when the last one closes (P262)
 let shellRootSet = false;      // a clients folder is set (the menu's "a clients folder is set")
 let shellPaths = {};           // the list's `paths`: clients_root, status
 let shellLastPass = null;      // the list's last_pass: {text, level, ok, running, when}
@@ -264,7 +265,15 @@ async function shellWatchLastPass() {
       shellChanged();
     } else if (step === "reread") {
       const listed = await call(["list"]);
-      if (!scanning) adoptList(listed);
+      if (!scanning) {
+        adoptList(listed);
+        // An open return page follows the pass (what F5 does); while a sheet
+        // or dialog is open its rows wait, and closeDialog redraws them (P262).
+        if (shellRoute.level === "return") {
+          if (dialogStack.length === 0) await showReturn(shellRoute.ret);
+          else shellReturnStale = true;
+        }
+      }
     }
   } catch (err) {
     shellLastPassStopped = true;
@@ -572,6 +581,7 @@ function shellHasClient() {
 function shellGo(next) {
   if (LEVELS.indexOf(next.level) === -1) throw new Error(next.level);
   if (shellRoute.level === "setup" && next.level !== "setup" && !shellRootSet) return Promise.resolve();   // the folder comes first
+  shellReturnStale = false;   // the page being left is not drawn again by the sheet closing under this navigation (P262)
   closeSheet();
   hideFound();
   hideTip();   // tooltip.js: a tip goes with its page, even under a resting mouse (P202 R2)
@@ -1153,7 +1163,10 @@ function setupPage() {
   const actions = [start];
   if (shellRootSet) {
     const cancel = h("button", { id: "setup-cancel", type: "button", className: "btn btn-subtle" }, vocab.editor.cancel);
-    cancel.addEventListener("click", () => shellGo(shellBack || { level: "overview" }));
+    cancel.addEventListener("click", () => {
+      clearNotice("set-root");   // a refused folder's sentence goes with the page (P262)
+      shellGo(shellBack || { level: "overview" });
+    });
     actions.push(cancel);
   }
   return [

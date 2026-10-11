@@ -953,7 +953,12 @@ that show their working copy in File Explorer, 3.9.)
   hidden input keeps the path for `saveRoot()`.
 - "Firm name" and "Firm phone": labels above 32px inputs, 320px wide.
 - **Start** (primary), enabled once a folder is chosen. A problem is one
-  notice: "Folder not found".
+  notice: "Folder not found". A folder the tracker refuses is that one
+  notice in the tracker's own sentence, with a Retry; a second refusal
+  replaces it, and it goes when a folder is set or the page is left by
+  Cancel (P262).
+- Start, when it succeeds, goes to the Overview of the folder just set,
+  however the page was reached (P262).
 - From the File menu the page also has **Cancel** (subtle) back to the last
   route, and the side panel stays enabled.
 
@@ -1054,6 +1059,10 @@ closes, a click outside closes. No match: one disabled option "No match".
 | Scheduled sort running | "Sorting" | `--text-caption` | the bar, no values |
 
 The file being read is never named (P63).
+
+When a scheduled pass ends, the open return page follows the reread: its
+rows are drawn again, as F5 draws them. While a sheet or a dialog is open the
+page waits, and the closing of the last one draws it (P262).
 
 ### 8.4 Notices
 
