@@ -162,6 +162,40 @@ office-shaped copy (`test_b_store`'s data-home canary and the
 `test_api_entry`/`test_settings` items it runs), whose nested session
 inherits the same conftest.
 
+### 2.4 What the whole suite found on this Mac (added 2026-10-11)
+
+The first whole-suite run on this Mac (`-n auto`, after jobs 1-3 landed)
+left ten items, split by a run of the same files at `main`:
+
+- **Pre-existing on a Mac, found now.** (a) Four room failures
+  (`test_filer`, `test_content_check`, `test_runner`, `test_shell`'s
+  lock-held sort): `layout.on_a_mac` is already pinned off for every test,
+  so room is the absolute length, and this Mac's pytest folders are about
+  145 characters long where the floor's are about 40. The suite's temporary
+  root on a Mac is made short: in `tests/conftest.py`'s `pytest_configure`,
+  on the controller only (never in an xdist worker, which has
+  `workerinput`) and only when `basetemp` was not given, set
+  `config.option.basetemp` to a folder of the suite's own under `/tmp`
+  (`/private/tmp/<name>`, its real path), so a test's path is as long as
+  the floor's. (b) `tests/test_view.py` imports `engagement_dirs` from
+  `tracker.registry`, which the cleanup (9b3e9f8) moved to
+  `tests/test_registry.py`: import it from there. (c) The tripwire's
+  office-shaped tests under `-n auto`: make them pass on this Mac in a
+  parallel run as they do alone.
+- **New on the branch.** (d) `test_store`'s admission digest reads the
+  source of `settings.host_system`, which the pin replaces: the pin is
+  wrapped with `functools.wraps(original)` as `_on_a_mac`'s is, so
+  `inspect` unwraps to the real source. (e) `office_shaped_copy`, a
+  session-scoped fixture, errors at setup under `-n auto` on the branch
+  (`StoreError`: the journal holds fewer lines than the store applied):
+  find the cause - a session fixture is set up before the function-scoped
+  autouse fixtures that give a test its store and its pins - and fix the
+  fixture, never the store.
+
+Acceptance: `python -m pytest -q -n auto` on this Mac ends with no failure
+and no error; each change is test-only; `test_no_test_opens_the_real_data_home`
+and the office-shaped canaries still prove the wire on a Mac.
+
 ### 2.3 Acceptance
 
 - The four files pass on this Mac under the office interpreter (3.14; the
