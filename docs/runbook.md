@@ -487,7 +487,11 @@ folder back the name its record holds."* **Roll Forward…** and **Add a
 Return…** (the Household menu) are greyed for it, and the app and the command
 line refuse both with the same sentence. The household is marked on Households
 and on Overview with *Two Years Open; Sorting Paused* when the cause is two
-open years.
+open years. On the household's own page the pause is a notice - *Folder
+Renamed* (with **Accept**) or *Two Years Open; Sorting Paused* - and so is a
+prior-year drop folder that cannot be found (*Prior Year Data Not Found*):
+the line stays one line, the sentence is under **Details** on the notice,
+and the same text is in the error log.
 
 - **When the move was meant** - a return dragged into a household of its
   own when a family separates - open the household in the app and press
@@ -2323,9 +2327,11 @@ exactly as it came.
      person with "the reader could not run on this machine". The app says
      so loudly: from a folder too deep (any of its libraries past 240
      characters, counted on the real folder, so a shortcut or junction does
-     not help) it shows a red banner that stays, "Move the app to a shorter
-     folder, for example C:\JPA App; scans can't be read from here",
-     and the scheduled pass puts the same sentence in its warnings once.
+     not help) it shows a notice that stays, headed *Install Folder Name Too
+     Long*; under its **Details** is the sentence, "Move the app to a shorter
+     folder, for example C:\JPA App; scans can't be read from here", and the
+     same sentence is in the error log. The scheduled pass puts it in its
+     warnings once.
 6. Run one pass — the **Sort** icon on a single return — and read the run
    log before trusting the schedule.
 

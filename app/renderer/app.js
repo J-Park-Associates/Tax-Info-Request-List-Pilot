@@ -43,7 +43,7 @@ const EL_ATTRIBUTES = new Set([
   "aria-label", "aria-current", "aria-selected", "aria-expanded", "aria-busy", "aria-hidden",
   "aria-labelledby", "aria-valuemin", "aria-valuemax", "aria-valuenow", "aria-live",
   "aria-controls", "aria-description", "aria-keyshortcuts", "aria-disabled", "aria-pressed",
-  "aria-sort", "aria-haspopup",
+  "aria-sort", "aria-haspopup", "open",
 ]);
 
 function el(tag, attrs = {}, ...children) {
@@ -272,12 +272,18 @@ function drawNotice(entry) {
 // by the person, the detail may name the program's, the data or the clients
 // folder - never a client's file (P63). Its word is the API's, and a
 // vocabulary without it is a failure said loudly, never a blank summary.
+// It is drawn open while the setup page is shown and closed everywhere else
+// (P259 Q2, SPEC-mac-check-fixes 4.1): the setup page is where a person has
+// come to read what to do, so the sentence is not a click away there. The
+// choice is made once, at the moment of drawing: a notice stays as the person
+// left it, leaving the setup page does not close it, and a notice first drawn
+// on a working page is closed.
 function detailOf(entry) {
   if (!entry.detail) return [];
   const word = vocab && vocab.screen && vocab.screen.notices ? vocab.screen.notices.details : "";
   if (!word) throw new Error("vocab.screen.notices.details");
   const lines = String(entry.detail).split("\n").filter(Boolean);
-  return [el("details", { className: "notice-detail" },
+  return [el("details", { className: "notice-detail", open: shellRoute.level === "setup" },
     el("summary", {}, word),
     el("div", { className: "notice-detail-text" }, lines.map((line) => el("div", {}, line))))];
 }
@@ -332,9 +338,10 @@ function clearNotice(key) {
 // A set of keyed notices under one prefix: those wanted are shown, the rest
 // are cleared. `wanted` is [{key, failure, detail, shown, opts}]: a `detail`
 // goes to the error log when the notice first shows, and is also the notice's
-// Details on screen only for an entry marked `shown` (pilot P257). Only the
-// machine warnings are: a broken row's error and stack, and the household
-// pause and feed sentences, stay in the error log (SPEC 11.1, 2.2 E30).
+// Details on screen only for an entry marked `shown` (pilot P257, P259). The
+// machine warnings are, and the household pause and feed sentences (SPEC-mac-
+// check-fixes 4.2); a broken row's error and stack stay in the error log
+// alone (SPEC 11.1, 2.2 E30).
 function syncNotices(prefix, wanted) {
   const keep = new Set(wanted.map((one) => `${prefix}:${one.key}`));
   for (const key of [...keyedNotices.keys()]) {
@@ -1919,13 +1926,20 @@ async function loadEngagements(preferPath, asked) {
   vocab = listed.vocab;
   applyVocabulary();
   adoptList(listed);
-  renderMachineNotices(listed);
-  renderAfterInstall(listed.after_install);
+  // With no clients folder the setup page takes the screen first, so the
+  // machine's and the step's notices are drawn while the route is already
+  // setup and their Details open (P259 Q2, SPEC-mac-check-fixes 4.1): the
+  // Mac check's disk-image warning and a first run's findings are the cases
+  // that ruling was for. Nothing the page change draws depends on those
+  // notices being there; only their order on screen changes ("Folder not
+  // found" first).
   if (listed.needs_root) {
     setupDraft = { root: clientsRoot, firm: vocab.firm || "", phone: vocab.settings.phone || "" };
     shellNeedsRoot(true, listed);   // shell.js: the setup page, and its "Folder not found" notice
-    return false;
   }
+  renderMachineNotices(listed);
+  renderAfterInstall(listed.after_install);
+  if (listed.needs_root) return false;
   shellNeedsRoot(false, listed);
   if (!engagements.length) return false;
   const chosen =
@@ -1943,10 +1957,12 @@ async function loadEngagements(preferPath, asked) {
 // notice: the last-sort line says "Sort failed" (SPEC 8.3). Each is shown as
 // its short line, path-free (SPEC 2.2 E28, E30); the API's sentence (which can
 // name a folder) is under the notice's Details and in the error log when the
-// notice first shows (pilot P257).
+// notice first shows (pilot P257). The reader's warning is too (P259 Q4,
+// SPEC-mac-check-fixes 4.3): the install folder it names is the program's own,
+// never a client's file, and no notice sends a person to the error log alone.
 function renderMachineNotices(listed) {
   if (listed.reader_warning) {
-    if (keyedNotice("reader", { sentence: shortNotice("reader"), kind: "warning" })) window.tracker.logError(listed.reader_warning);
+    if (keyedNotice("reader", { sentence: shortNotice("reader"), kind: "warning", detail: listed.reader_warning })) window.tracker.logError(listed.reader_warning);
   } else clearNotice("reader");
   const machine = listed.machine_warnings || [];
   syncNotices("machine", machine.length

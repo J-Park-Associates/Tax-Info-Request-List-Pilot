@@ -331,7 +331,9 @@
   const calls = [];
 
   // The loud failures the old screen kept in banners, now notices (SPEC 2.2).
-  const loud = scenario === "notices" ? {
+  // The setup scenario carries the machine warnings alone, so its screenshot
+  // shows the notice's Details open on the setup page (P259 Q2).
+  const loud = scenario === "setup" ? { machine_warnings: LONG.machine } : scenario === "notices" ? {
     reader_warning: LONG.reader,
     machine_warnings: LONG.machine,
     after_install: { failed: ["The daily job could not be registered."], findings: ["A household is malformed."], wait: LONG.findingsWait },

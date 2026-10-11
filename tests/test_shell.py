@@ -5866,6 +5866,7 @@ NOTICE_DETAIL_FAKES = FAKE_DOM + lift_line("const EL_ATTRIBUTES = new Set([", "a
 const fill = (p, v) => p.replace(/\{(\w+)\}/g, (_, k) => v[k] ?? "");
 let vocab = { screen: { notices: { details: "Details" }, icons: { dismiss: "Dismiss" } }, notices: { repeated: "(x{n})" } };
 let locked = false;
+let shellRoute = { level: "overview" };
 const noticeButton = (act) => { const one = new Element("button"); one.dataset.act = act; return one; };
 const setTip = () => {};
 const draw = (entry) => { entry.node = new Element("div"); drawNotice(entry); return entry.node; };
@@ -5929,11 +5930,12 @@ def test_machine_warnings_and_setup_findings_reach_the_screen_as_details(tmp_pat
     assert ran["setup"]["logged"] == [setup]
 
 
-def test_only_the_machine_warnings_and_setup_findings_put_a_detail_on_the_screen(tmp_path):
-    """P257 (review 1, finding 2): a broken row's error and stack, and the
-    household pause and feed sentences, stay in the error log - never under
-    Details (SPEC-shell E30, 11.1, principle 7). Only an entry marked
-    ``shown`` (the machine warnings') passes its detail to the notice."""
+def test_only_the_machine_warnings_the_pause_the_feeds_and_the_setup_findings_put_a_detail_on_the_screen(tmp_path):
+    """P257 (review 1, finding 2) and P259 (Q3): a broken row's error and
+    stack stay in the error log - never under Details (SPEC-shell E30, 11.1,
+    principle 7). Only an entry marked ``shown`` passes its detail to the
+    notice: the machine warnings', the household pause's and the prior-year
+    feed's."""
     ran = run_pages(["pagesReportBroken", "pagesHouseholdNotices", "shortNotice"], js_function("syncNotices", "app.js") + "\n"
                     + js_function("renderMachineNotices", "app.js") + r"""
       const fill = (p, v) => p.replace(/\{(\w+)\}/g, (_, k) => v[k] ?? "");
@@ -5954,12 +5956,146 @@ def test_only_the_machine_warnings_and_setup_findings_put_a_detail_on_the_screen
       renderMachineNotices({ machine_warnings: ["MACHINE LONG"] });
       return { seen, logged };
     """, tmp_path)
-    assert [one[2] for one in ran["seen"][:-1]] == [""] * (len(ran["seen"]) - 1), "no row, pause or feed detail is passed to the notice"
-    assert ran["seen"][-1] == ["machine", "Machine Needs Attention", "MACHINE LONG"], "the machine warnings' is"
     assert len(ran["seen"]) == 4, "the row, the renamed folder, the feed, the machine"
+    assert ran["seen"][0][2] == "", "a broken row's error and stack are not passed to the notice"
+    assert ran["seen"][1:] == [["household", "Folder Renamed", "PAUSED LONG"], ["household", "Feed Not Resolved", "FEED LONG"],
+                               ["machine", "Machine Needs Attention", "MACHINE LONG"]], "the pause, the feed and the machine warnings' are"
     logged = "\n".join(ran["logged"])
     assert "STACK at /Users/x/app.js:1" in logged and "PAUSED LONG" in logged and "FEED LONG" in logged and "MACHINE LONG" in logged, \
         "and every one is still in the error log"
+
+
+def test_details_are_open_on_the_setup_page_and_closed_elsewhere(tmp_path):
+    """P259 (Q2, SPEC-mac-check-fixes 4.1): the setup page is where a person
+    has come to read what to do, so a Details drawn there is open; drawn on
+    any other page it is closed until clicked. The choice is made once, at
+    the moment of drawing: a notice stays as the person left it."""
+    ran = run_shell(["el", "detailOf", "retryOf", "drawNotice"], NOTICE_DETAIL_FAKES, """
+      const base = { sentence: "Machine Needs Attention", kind: "warning", count: 1, detail: "The app is running from /Volumes/X." };
+      const opened = (node) => node.kids.find((one) => one.tag === "details").open;
+      const out = {};
+      shellRoute = { level: "setup" };
+      const onSetup = draw({ ...base });
+      out.setup = opened(onSetup);
+      shellRoute = { level: "overview" };
+      out.overview = opened(draw({ ...base }));
+      out.setupAfterLeaving = opened(onSetup);
+      const onOverview = draw({ ...base });
+      shellRoute = { level: "setup" };
+      out.overviewAfterArriving = opened(onOverview);
+      return out;
+    """, tmp_path, "app.js")
+    assert ran == {"setup": True, "overview": False, "setupAfterLeaving": True, "overviewAfterArriving": False}
+    app = stripped_js("app.js")
+    assert 'open: shellRoute.level === "setup"' in app and '"aria-sort", "aria-haspopup", "open",' in app
+
+
+def test_the_notices_of_a_first_start_are_drawn_after_the_setup_page_takes_the_screen(tmp_path):
+    """P259 (Q2, SPEC-mac-check-fixes 4.1, review 1 finding 1): with no clients
+    folder chosen, ``loadEngagements`` changes the route to setup before it
+    draws the machine's and the step's notices, so their Details are open at
+    a first start, at the Mac check's disk-image warning and when the clients
+    folder has gone missing. With a clients folder the route is a working page
+    and the same notices are closed. Driven through the real
+    ``loadEngagements``, ``shellNeedsRoot``, ``notice`` and ``drawNotice``."""
+    ran = run_shell(["el", "detailOf", "retryOf", "drawNotice", "notice", "keyedNotice", "clearNotice", "dismissNotice", "syncNotices",
+                     "renderMachineNotices", "renderAfterInstall", "shortNotice", "shellNeedsRoot", "loadEngagements"],
+                    NOTICE_DETAIL_FAKES + r"""
+const notices = []; const keyedNotices = new Map(); const logged = [];
+const window = { tracker: { logError: (text) => logged.push(text) } };
+const host = new Element("div");
+const $ = () => host;
+Element.prototype.remove = function () { host.kids = host.kids.filter((one) => one !== this); };
+const outlineRefused = () => {}; const showLock = () => {};
+const hideTip = () => {}; const shellDraw = () => {}; let shellBack = null; let shellRootSet = false;
+const screenWords = () => ({ setup: { missing: "Folder Not Found" } });
+const applyVocabulary = () => {}; const adoptList = () => {}; const viewGeneration = 0;
+let clientsRoot = ""; let setupDraft = null; let engagements = []; let active = ""; const select = () => {};
+let call = null;
+const shellGo = () => {};
+""", """
+      return (async () => {
+      const listed = (extra) => ({ vocab: { firm: "", settings: { phone: "" }, screen: { notices: { machine: "Machine Needs Attention", reader: "Reader", details: "Details" }, icons: { dismiss: "Dismiss" } },
+                                            after_install: { heading: "Setup Needs Attention" }, notices: { repeated: "(x{n})" } },
+                                   engagements: [], machine_warnings: ["The app is running from /Volumes/X."], reader_warning: "", after_install: null, ...extra });
+      const opened = () => host.kids.filter((one) => one.kids.some((kid) => kid.tag === "details")).map((one) => one.kids.find((kid) => kid.tag === "details").open);
+      const out = {};
+      call = async () => listed({ needs_root: true, root: "", root_problem: "" });
+      shellRoute = { level: "overview" };
+      await loadEngagements();
+      out.noFolder = { route: shellRoute.level, details: opened() };
+      host.kids = []; notices.length = 0; keyedNotices.clear();
+      call = async () => listed({ needs_root: false, root: "/Clients" });
+      shellRoute = { level: "overview" };
+      await loadEngagements();
+      out.withFolder = { route: shellRoute.level, details: opened() };
+      return out;
+      })();
+    """, tmp_path, "app.js")
+    assert ran["noFolder"] == {"route": "setup", "details": [True]}, "the setup page is the route when the notice is drawn, so its Details are open"
+    assert ran["withFolder"]["details"] == [False], "on a working page the same notice is closed"
+    load = js_function("loadEngagements", "app.js")
+    assert load.index("shellNeedsRoot(true, listed);") < load.index("renderMachineNotices(listed);") < load.index("renderAfterInstall(listed.after_install);")
+
+
+def test_the_pause_and_feed_sentences_reach_the_screen_as_details(tmp_path):
+    """P259 (Q3, SPEC-mac-check-fixes 4.2): the household pause (``renamed``
+    with Accept, or a year's ``paused``) and the prior-year feed are entries
+    marked ``shown`` whose detail is the API's sentence; the two-open-years
+    entry stays without a detail and is not marked."""
+    ran = run_pages_dom("""
+      const seen = [];
+      syncNotices = (prefix, wanted) => seen.push(wanted.map((one) => [one.key.split(":")[0], one.failure.sentence, one.detail || "", one.shown === true]));
+      const home = { path: "h1", open_years: [2025, 2024], pause: { sentence: "PAUSED LONG", scope: "household" }, feeds: [{ warning: "FEED ONE" }, { warning: "FEED TWO" }, {}] };
+      lastState = { household: home };
+      pagesHouseholdNotices({ level: "household", household: "h1" });
+      lastState = { household: { ...home, pause: { sentence: "PAUSED YEAR LONG" }, open_years: [2025], feeds: [] } };
+      pagesHouseholdNotices({ level: "return", household: "h1" });
+      return seen;
+    """, tmp_path, setup="""
+      vocab.household = { two_open_years: "Two years open; sorting paused", accept_folder_name: "Accept the folder's name" };
+      vocab.after_install = { wait: "Setup needs attention" };
+      vocab.screen.notices = { renamed: "Folder renamed", paused: "Year folder mismatch", feed: "Feed not resolved" };
+      const acceptFolderName = () => {};
+    """, functions=["pagesHouseholdNotices", "shortNotice"])
+    assert ran[0] == [["two-years", "Two years open; sorting paused", "", False],
+                      ["renamed", "Folder renamed", "PAUSED LONG", True],
+                      ["feeds", "Feed not resolved", "FEED ONE\nFEED TWO", True]]
+    assert ran[1] == [["renamed", "Year folder mismatch", "PAUSED YEAR LONG", True]]
+    assert js_function("pagesHouseholdNotices", "pages.js").count("shown: true") == 2, "the pause's entry and the feeds' entry"
+
+
+def test_the_reader_warning_reaches_the_screen_as_details(tmp_path):
+    """P259 (Q4, SPEC-mac-check-fixes 4.3): the reader's ``Install Folder Name
+    Too Long`` notice carries the API's sentence as its detail and logs it once
+    when it first shows (a second draw of the same sentence is the same
+    notice); without a warning the notice is cleared."""
+    ran = run_shell(["renderMachineNotices", "syncNotices", "shortNotice"], r"""
+      let vocab = { screen: { notices: { machine: "Machine Needs Attention", reader: "Install Folder Name Too Long" } },
+                    after_install: { wait: "Setup Needs Attention" } };
+      const keyedNotices = new Map(); const seen = []; const logged = []; const cleared = [];
+      const window = { tracker: { logError: (text) => logged.push(text) } };
+      const keyedNotice = (key, failure) => {
+        const same = keyedNotices.get(key) === `${failure.sentence}|${failure.detail || ""}`;
+        keyedNotices.set(key, `${failure.sentence}|${failure.detail || ""}`);
+        if (!same) seen.push([key, failure.sentence, failure.kind, failure.detail || ""]);
+        return !same;
+      };
+      const clearNotice = (key) => { cleared.push(key); keyedNotices.delete(key); };
+    """, """
+      const sentence = "Move the app to a shorter folder, for example /Applications/JPA; scans can't be read from here";
+      renderMachineNotices({ reader_warning: sentence, machine_warnings: [] });
+      renderMachineNotices({ reader_warning: sentence, machine_warnings: [] });
+      const shown = { seen: seen.slice(), logged: logged.slice(), cleared: cleared.slice() };
+      seen.length = 0; logged.length = 0; cleared.length = 0;
+      renderMachineNotices({ reader_warning: "", machine_warnings: [] });
+      return { shown, gone: { seen, logged, cleared } };
+    """, tmp_path, "app.js")
+    sentence = "Move the app to a shorter folder, for example /Applications/JPA; scans can't be read from here"
+    assert ran["shown"]["seen"] == [["reader", "Install Folder Name Too Long", "warning", sentence]]
+    assert ran["shown"]["logged"] == [sentence], "logged once, when the notice first shows"
+    assert ran["gone"]["seen"] == [] and ran["gone"]["logged"] == []
+    assert ran["gone"]["cleared"] == ["reader"], "without a warning the notice is cleared"
 
 
 def test_the_setup_notice_reads_the_same_whichever_reply_drew_it(tmp_path, monkeypatch):
