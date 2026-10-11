@@ -953,10 +953,20 @@ class Element extends Node {
              contains(one) { return self.className.split(" ").includes(one); } };
   }
   setAttribute(key, value) { this.attrs[key] = String(value); }
+  removeAttribute(key) { delete this.attrs[key]; }
   getAttribute(key) { return this.attrs[key]; }
+  get id() { return this.attrs.id; }
   getBoundingClientRect() { return { left: 10, bottom: 20, top: 0, right: 30 }; }
   append(...nodes) { for (const one of nodes) this.kids.push(one instanceof Node ? one : new Text(String(one))); }
   replaceChildren(...nodes) { this.kids = []; this.append(...nodes); }
+  insertBefore(node, before) { const at = before ? this.kids.indexOf(before) : -1; if (at === -1) this.kids.push(node); else this.kids.splice(at, 0, node); return node; }
+  removeChild(node) { this.kids.splice(this.kids.indexOf(node), 1); return node; }
+  focus() {}
+  querySelectorAll(selector) {
+    if (selector.startsWith("[role=")) return this.find((one) => `[role="${one.attrs.role}"]` === selector);
+    const names = selector.split(".").filter(Boolean);
+    return this.find((one) => names.every((name) => one.className.split(" ").includes(name)));
+  }
   addEventListener(type, fn) { (this.handlers[type] = this.handlers[type] || []).push(fn); }
   get childNodes() { return this.kids; }
   find(test, out = []) { for (const one of this.kids) if (one instanceof Element) { if (test(one)) out.push(one); one.find(test, out); } return out; }
@@ -1036,6 +1046,8 @@ PAGES_CONSTS = ("const PAGES_COLUMNS = {", "const PAGES_CELLS = ", "const PAGES_
                 # The raised lists (pilot SPEC-lists 10-17): pages, tabs, reason cards, types, the panel.
                 "const PAGES_PER_PAGE = ", "const PAGES_REASON_ICONS = {", "const PAGES_SECTIONS = ", "let pagesPageAt = ",
                 "let pagesTab = ", "let pagesReasonPick = ", "let pagesClientType = ", "let pagesPanel = ", "let pagesYearless = ",
+                # Long lists draw only the rows in view (P279).
+                "const PAGES_VIRTUAL_FROM = ", "const PAGES_VIRTUAL_OVER_LEAST = ", "let pagesVirtualWired = ",
                 # The one collator every name sort compares through (P264 N1).
                 "const PAGES_COLLATOR = ")
 
@@ -1053,6 +1065,13 @@ COLUMN_FUNCTIONS = ("pagesListOf", "pagesUrgent", "pagesIsBlank", "pagesCompareK
                     "pagesFileCount", "pagesReasonCards", "pagesReviewGroup", "pagesSwitch", "pagesTypeFilter", "pagesReopenPanel",
                     # One field per column (pilot SPEC-firm-columns; P194, P195).
                     "pagesTaxpayer", "pagesFormKey", "pagesFormCell", "pagesReturnHeading", "pagesReturnCells", "pagesReturnKeys")
+
+
+#: A row made apart from its registration, and the long list's own functions (P279): a list of more than
+#: PAGES_VIRTUAL_FROM rows registers every row and makes only the nodes in view.
+LONG_LIST_FUNCTIONS = ("pagesRegister", "pagesRowNode", "pagesIsChild", "pagesWindow", "pagesOver", "pagesListTop", "pagesVirtualList", "pagesVirtualMake",
+                       "pagesVirtualNode", "pagesVirtualPlace", "pagesVirtualSize", "pagesVirtualMeasure", "pagesVirtualPlaceAll", "pagesVirtualWire",
+                       "pagesVirtualReveal", "pagesActivateAt", "pagesKeyLong", "pagesVirtualNodeSaid", "pagesVirtualMeasureSaid")
 
 
 def pages_consts() -> str:
@@ -1088,7 +1107,7 @@ def run_pages_dom(probe: str, tmp_path: Path, setup: str = "", functions=None):
         "pagesReminders", "pagesClients", "pagesHousehold", "folderName", "pagesLinkWords", "pagesHouseholdPath",
         "pagesPathOf", "pagesFileLink", "pagesRunLink", "pagesLinkNode", "pagesCell", "pagesHeadLink", "pagesRunRowLink", "pagesWhere",
         "pagesPaused", "pagesNameCell", "pagesPausedRows", "pagesSteps", "pagesDrafts", "pagesRunRow", "pagesRunStep", "pagesPopup", "pagesEnableFor", "pagesRowRoute", "pagesKey", "pagesTitle",
-        *COLUMN_FUNCTIONS,
+        *COLUMN_FUNCTIONS, *LONG_LIST_FUNCTIONS,
     ]
     shell = read("shell.js")
     consts = lift_line("const EL_ATTRIBUTES = new Set([", "app.js") + js_function("el", "app.js") + "\n" + shell[shell.index("const SVG_NS = "):shell.index("\n", shell.index("const SVG_NS = "))]
@@ -1980,7 +1999,7 @@ def test_the_firm_pages_rows_link_by_the_firms_keys_and_carry_the_year(tmp_path)
                overview: [overview.name, overview.nameLink, overview.household, overview.year, overview.form, overview.detailLink || null],
                reminder: [reminder.name, reminder.nameLink.kind, reminder.household, reminder.year, reminder.form], statusTips };
     """, tmp_path, functions=["pagesNeedsReview", "pagesNameCell", "pagesReviewGroups", "pagesFirm", "pagesFirmReturn", "pagesReturnName", "pagesHouseholdPath",
-                              "pagesFileLink", "pagesRow", "pagesCell", "pagesLinkNode", "pagesLinkWords", "pagesHeadLink", "pagesGroup", "pagesGroupStep", "pagesList",
+                              "pagesFileLink", "pagesRow", "pagesRowNode", "pagesRegister", "pagesIsChild", "pagesCell", "pagesLinkNode", "pagesLinkWords", "pagesHeadLink", "pagesGroup", "pagesGroupStep", "pagesList",
                               "pagesReason", "pagesDay", "pagesSafe", "pagesEach", "pagesLabel", "pagesSafeName", "pagesStepWords", "pagesByName", "pagesEmpty",
                               "pagesNextSort", "pagesWorkRows", "pagesCounts", "pagesRoute", "pagesDue", "pagesSince", "pagesReminderSpecs", "pagesStage", "screenWords", "h", "icon",
                               "pagesActivate", "pagesRunRow", "pagesRunRowLink", "pagesRunLink", "pagesRunStep", "pagesPathOf", "pagesPopup", "pagesEnableFor", "pagesRowRoute",
@@ -2451,7 +2470,7 @@ def test_a_request_answered_by_several_files_draws_a_row_for_each_and_counts_onl
     pages = stripped_js("pages.js")
     assert 'if (item.group === "received" && filed.length > 1) {' in pages
     assert "child: true" in pages and 'spec.child ? " row-child" : ""' in pages
-    assert 'row.classList.contains("row-child")' in js_function("pagesGroup", "pages.js")
+    assert 'row.classList.contains("row-child")' in js_function("pagesIsChild", "pages.js") and "pagesIsChild(row)" in js_function("pagesGroup", "pages.js")
     assert 'if (spec.detailLink || spec.nameLink) ids.push("show_in_explorer");' in pages
 
 
@@ -3150,7 +3169,7 @@ def test_a_return_or_household_row_wraps_so_its_year_and_its_paused_words_are_ne
     assert wrapped[".row.row-wrap:not(.hidden)"]["padding-block"] == "var(--sp-1)"
     assert wrapped[".row-name"]["text-overflow"] == "ellipsis", "a file's name still ends in an ellipsis"
     pages = read("pages.js")
-    assert 'const wraps = Boolean(spec.mark || (spec.nameLink && spec.nameLink.kind !== "file"));' in pages
+    assert 'const wraps = !place && Boolean(spec.mark || (spec.nameLink && spec.nameLink.kind !== "file"));' in pages   # a row of a long list is one line (P279)
     assert '" row-wrap"' in pages
 
 
@@ -7274,7 +7293,16 @@ const document = {
 function focusRegion(name) { said.focus.push(name); }
 function hideTip() { said.tips += 1; }
 function shellEnable() { said.sent.push(shellChecked()); }
-"""
+const page = { id: "page", querySelectorAll: () => [] };
+const $ = (id) => page;
+function pagesVirtualMeasure(root) {
+  said.measured = (said.measured || 0) + (root === page ? 1 : 0);
+  if (said.boom) throw new Error("row_height");
+}
+function editorDensityChanged() { said.density = (said.density || 0) + 1; }
+said.failed = [];
+function failed(err) { said.failed.push(err.message); }
+""" + js_function("pagesVirtualMeasureSaid", "pages.js")
 
 COMPACT_FUNCTIONS = ["shellReadSoon", "shellReadCompact", "shellChecked", "drawCompact", "shellToggleCompact"]
 
@@ -7957,3 +7985,407 @@ def test_the_card_words_are_the_vocabularys(tmp_path):
     text = stripped_js("pages.js")
     for word in ("Shared With", "Inbox Link", "Not Saved", "Contact"):
         assert f'"{word}"' not in text, word
+
+
+
+# ── P279 (SPEC-ui-menu-speed §2): long lists draw only the rows in view ───
+
+#: The page's scroller and a row's measured height, as a probe's fakes: `H` is what a drawn row measures (the
+#: density's own, 40 or 32), `pageBox` is #page (800px of view), and `draw` puts a return of `items` in it, the way
+#: pagesDraw does - the lists made, the page replaced, every long list measured and its rows placed. The list sits
+#: 100px down the page's content, and its rect moves with the scroll as a real one does.
+LONG_SETUP = r"""
+const hideTip = () => {}; const showTipNow = () => {};
+let H = 40;
+Object.defineProperty(Element.prototype, "offsetHeight", { get() { return H; }, configurable: true });
+const pageBox = new Element("div");
+pageBox.scrollTop = 0; pageBox.clientHeight = 800; pageBox.getBoundingClientRect = () => ({ top: 0 });
+const $ = (id) => (id === "page" ? pageBox : null);
+const parkedFiles = (n, extra = () => ({})) => Array.from({ length: n }, (_, i) => parked(`f${String(i + 1).padStart(4, "0")}`, extra(i)));
+const draw = (index, items = []) => {
+  lastState = stateOf(items, index);
+  pagesUid = 0; pagesTokens.clear(); pagesBroken = [];
+  pageBox.replaceChildren(...pagesReturn({ level: "return", ret: "r1", year: 2025 }));
+  pageBox.scrollTop = 0;
+  for (const list of pageBox.querySelectorAll(".rows.is-virtual")) list.getBoundingClientRect = () => ({ top: 100 - pageBox.scrollTop });
+  pagesVirtualMeasure(pageBox);
+  return pageBox.querySelectorAll(".rows.is-virtual")[0];
+};
+const scrollTo = (top) => { pageBox.scrollTop = top; pagesVirtualPlaceAll(pageBox); };
+"""
+
+
+def run_long(probe: str, tmp_path: Path, setup: str = ""):
+    return run_pages_dom(probe, tmp_path, setup=LONG_SETUP + setup)
+
+
+def test_the_window_holds_the_rows_in_view_and_one_screen_either_side(tmp_path):
+    """P279: pagesWindow answers the items the view meets and `over` either
+    side, clamped to the list; a list with no rows, or far from the view,
+    answers an empty window. The distance either side is a viewport's rows,
+    at least fifteen."""
+    ran = run_pages(["pagesWindow", "pagesOver"], lift_line("const PAGES_VIRTUAL_OVER_LEAST = ", "pages.js"), """
+      const w = (count, listTop, viewTop) => pagesWindow(count, 40, listTop, viewTop, 800, 20);
+      return { top: w(1000, 100, 0), middle: w(1000, 100, 20000), end: w(1000, 100, 39300), empty: w(0, 100, 0),
+               half_above: w(1000, -400, 0), far_below: w(1000, 5000, 0), just_below: w(1000, 1000, 0), no_height: pagesWindow(1000, 0, 100, 0, 800, 20),
+               over: [pagesOver(800, 40), pagesOver(300, 40), pagesOver(800, 0)] };
+    """, tmp_path)
+    assert ran["top"] == {"first": 0, "last": 37}
+    assert ran["middle"] == {"first": 477, "last": 537}
+    assert ran["end"] == {"first": 960, "last": 999}, "clamped to the last row"
+    assert ran["empty"] == {"first": 0, "last": -1} and ran["no_height"] == {"first": 0, "last": -1}
+    assert ran["half_above"] == {"first": 0, "last": 49}, "a list half above the view draws from its first row"
+    assert ran["far_below"] == {"first": 0, "last": -1}, "a list a long way below draws nothing"
+    assert ran["just_below"] == {"first": 0, "last": 14}, "one just below the view draws the rows a screen away"
+    assert ran["over"] == [20, 15, 15]
+
+
+def test_a_list_of_one_hundred_rows_is_drawn_whole_and_may_wrap(tmp_path):
+    """P279, Jason's question A: only a list of more than 100 rows is
+    virtual. At 100 every row is in the document at once and a return's
+    name may wrap (rulings 21, 27); at 101 the list is virtual and its
+    rows are registered, not drawn, until the page measures them."""
+    ran = run_pages_dom("""
+      const year = (n) => {
+        const hh = { name: "Smith Family", returns: Array.from({ length: n }, (_, i) => ({ path: `r${i}`, year: 2025, return_name: `1040 - Person ${i}`, active: true })) };
+        shellHousehold = () => hh;
+        pagesUid = 0; pagesTokens.clear();
+        const list = pagesYear({ level: "year", household: "h1", year: 2025 })[2].kids[0];
+        return { virtual: list.className.includes("is-virtual"), drawn: list.byClass("row").length, wrapped: list.byClass("row-wrap").length, registered: pagesTokens.size };
+      };
+      globalThis.shellRoute = { household: "h1" };
+      return { hundred: year(100), more: year(101) };
+    """, tmp_path, setup="const shellFirm = () => ({ data: null });")
+    assert ran["hundred"] == {"virtual": False, "drawn": 100, "wrapped": 100, "registered": 100}
+    assert ran["more"] == {"virtual": True, "drawn": 0, "wrapped": 0, "registered": 101}
+
+
+def test_a_long_list_draws_only_its_window_and_registers_every_row(tmp_path):
+    """P279: a return group of 1,000 files registers every row (the menus,
+    Shift+F10 and the sheet's next arrow read pagesTokens), makes only the
+    nodes of the window, and the next arrow still walks every Check step in
+    the order drawn."""
+    ran = run_long("""
+      const list = draw(parkedFiles(1000));
+      const steps = pagesFiles();
+      return { registered: pagesTokens.size, drawn: list.kids.length, items: list.pagesModel.items.length, height: list.style.props.height,
+               first: list.kids[0].style.props.top, last: list.kids.at(-1).style.props.top, names: steps.map((s) => s.name),
+               tokens: [...pagesTokens.keys()].slice(0, 2), ids: list.pagesModel.ids.slice(0, 2) };
+    """, tmp_path)
+    assert ran["registered"] == 1000 and ran["items"] == 1000
+    assert ran["drawn"] == 38, "the rows in view and one screen either side (over = 20)"
+    assert ran["height"] == "40000px" and ran["first"] == "0px" and ran["last"] == "1480px"
+    assert ran["names"] == [f"f{i:04d}.pdf" for i in range(1, 1001)], "the next arrow walks every file, drawn or not, in order"
+    assert ran["tokens"] == ran["ids"], "a row's id is assigned when the page is drawn"
+
+
+def test_the_active_row_stays_in_the_document_when_scrolled_out_of_the_window(tmp_path):
+    """P279: the active row is pinned, so aria-activedescendant always names
+    a node in the document; the rows around it are not."""
+    ran = run_long("""
+      const list = draw(parkedFiles(1000));
+      const model = list.pagesModel;
+      pagesActivateAt(list, 5);
+      scrollTo(30000);
+      const ids = list.kids.map((k) => k.attrs.id);
+      const pinned = list.kids.find((k) => k.attrs.id === model.ids[5]);
+      return { drawn: list.kids.length, pinned: Boolean(pinned), selected: pinned && pinned.attrs["aria-selected"], active: pinned && pinned.className.includes("is-active"),
+               named: list.attrs["aria-activedescendant"] === model.ids[5], neighbours: [4, 6].map((i) => ids.includes(model.ids[i])), top: ids.includes(model.ids[0]),
+               at: model.nodes.has(model.slot[750]) };
+    """, tmp_path)
+    assert ran["pinned"] and ran["selected"] == "true" and ran["active"] and ran["named"]
+    assert ran["drawn"] == 62 and ran["neighbours"] == [False, False] and not ran["top"] and ran["at"], "the window (61 rows) and the active row, no more"
+
+
+def test_every_drawn_row_says_its_place_and_the_lists_size(tmp_path):
+    """P279: each drawn row carries aria-posinset (from 1) and aria-setsize,
+    and a row under a sub-heading says that sub-heading's words first, so it
+    holds when the sub-heading is not drawn; a sub-heading is a presentation
+    slot of its own."""
+    ran = run_long("""
+      const list = draw([...parkedFiles(150), ...Array.from({ length: 5 }, (_, i) => parked(`z${i}`, { bucket: "container", code: "opened-not-across" }))]);
+      const rows = (box) => box.kids.filter((k) => k.className.split(" ").includes("row"));
+      const top = rows(list).map((r) => [r.attrs["aria-posinset"], r.attrs["aria-setsize"]]);
+      scrollTo(5540);   // the end: the list is 156 slots of 40px, 100px down, in an 800px view
+      const heads = list.kids.filter((k) => k.className.includes("group-sub"));
+      const under = rows(list).filter((r) => r.attrs["aria-description"].startsWith("Emails and zips"));
+      return { top: top.slice(0, 3), topSize: [...new Set(top.map((p) => p[1]))], pos: rows(list).map((r) => Number(r.attrs["aria-posinset"])),
+               heads: heads.map((h) => [h.textContent, h.attrs.role, h.style.props.height]), under: under.length, last: rows(list).at(-1).attrs["aria-posinset"] };
+    """, tmp_path)
+    assert ran["top"] == [["1", "155"], ["2", "155"], ["3", "155"]] and ran["topSize"] == ["155"]
+    assert ran["pos"] == sorted(ran["pos"]) and ran["last"] == "155"
+    assert ran["heads"] == [["Emails and zips", "presentation", "40px"]]
+    assert ran["under"] == 5
+
+
+def test_the_keys_move_through_rows_not_yet_drawn_and_draw_them(tmp_path):
+    """P279: End on 1,000 rows makes the last active and draws it, with the
+    page scrolled just far enough that it is whole in view; Home, the arrows
+    and PageDown (a screen less one row, from H) move the active index, and
+    PageUp does not go past the first."""
+    ran = run_long("""
+      const list = draw(parkedFiles(1000));
+      const model = list.pagesModel;
+      const press = (key) => { const e = { key, target: { closest: () => list }, preventDefault() {} }; return pagesKey(e); };
+      const where = () => ({ active: model.active, drawn: list.kids.some((k) => k.attrs.id === model.ids[model.active]), scroll: pageBox.scrollTop });
+      const out = {};
+      pagesActivateAt(list, 0);
+      out.end = (press("End"), where());
+      out.home = (press("Home"), where());
+      out.down = (press("ArrowDown"), where());
+      out.pagedown = (press("PageDown"), where());
+      out.pageup = (press("PageUp"), press("PageUp"), press("PageUp"), where());
+      out.handled = press("x");
+      return out;
+    """, tmp_path)
+    assert ran["end"] == {"active": 999, "drawn": True, "scroll": 39300}
+    assert ran["home"]["active"] == 0 and ran["home"]["drawn"] and ran["home"]["scroll"] == 100, "the first row's top just inside the view"
+    assert ran["down"]["active"] == 1 and ran["pagedown"]["active"] == 20, "a screen of 20 rows less one is 19"
+    assert ran["pageup"]["active"] == 0 and ran["pageup"]["drawn"]
+    assert ran["handled"] is False
+
+
+def test_the_row_height_is_a_drawn_rows_own_and_a_list_not_laid_out_is_loud(tmp_path):
+    """P279: the height H is read from a drawn row (40, then 32 when the
+    density changes and the page measures again); every row sits at i x H
+    and the list is as tall as the whole of it; a row that measures nothing
+    is a list that was not laid out, a failure, never a guessed height."""
+    ran = run_long("""
+      const list = draw(parkedFiles(150));
+      const model = list.pagesModel;
+      const at40 = { H: model.H, height: list.style.props.height, tops: list.kids.slice(0, 3).map((k) => k.style.props.top) };
+      H = 32; pagesVirtualMeasure(pageBox);
+      const at32 = { H: model.H, height: list.style.props.height, tops: list.kids.slice(0, 3).map((k) => k.style.props.top) };
+      H = 0; let said = "";
+      try { pagesVirtualMeasure(pageBox); } catch (err) { said = err.message; }
+      return { at40, at32, said };
+    """, tmp_path)
+    assert ran["at40"] == {"H": 40, "height": "6000px", "tops": ["0px", "40px", "80px"]}
+    assert ran["at32"] == {"H": 32, "height": "4800px", "tops": ["0px", "32px", "64px"]}
+    assert ran["said"] == "row_height"
+    assert not re.search(r"\b(?:40|32)\b", re.sub(r"//[^\n]*", "", js_function("pagesVirtualSize", "pages.js"))), "no density is typed in the virtualizer"
+
+
+def test_a_redraw_restores_the_active_row_by_its_place_in_the_list(tmp_path):
+    """P279: pagesWhere names the active row by its index in the model, and
+    after the page is drawn again pagesRestore makes that row active, draws
+    it and brings it into view - not the row at that place among the drawn
+    nodes."""
+    ran = run_long("""
+      let list = draw(parkedFiles(1000));
+      pagesActivateAt(list, 500);
+      list.closest = (sel) => (sel === '[role="listbox"]' ? list : null);
+      pageBox.contains = () => true;
+      document.activeElement = list;
+      const where = pagesWhere(pageBox);
+      const first = { scroll: pageBox.scrollTop, row: where.row };
+      list = draw(parkedFiles(1000));
+      const before = { active: list.pagesModel.active, scroll: pageBox.scrollTop };
+      pagesFocus = where;
+      pagesRestore(pageBox);
+      const model = list.pagesModel;
+      const node = list.kids.find((k) => k.attrs.id === model.ids[500]);
+      return { first, before, active: model.active, drawn: Boolean(node), is: node && node.className.includes("is-active"), scroll: pageBox.scrollTop, cleared: pagesFocus };
+    """, tmp_path)
+    assert ran["first"] == {"scroll": 19340, "row": 500}
+    assert ran["before"] == {"active": -1, "scroll": 0}
+    assert ran["active"] == 500 and ran["drawn"] and ran["is"] and ran["scroll"] == 19340 and ran["cleared"] is None
+
+
+def test_a_row_that_cannot_be_made_on_scroll_is_said_not_skipped(tmp_path):
+    """P279: a row whose spec was built but whose node cannot be (here the
+    vocabulary lacks the words a status stands for) draws an empty row of
+    the same height and is named by the page's notice once - drawing it
+    again when it scrolls back adds no second notice."""
+    ran = run_long("""
+      vocab.reason_tips = null;
+      const list = draw(parkedFiles(1000));
+      const empty = () => list.kids.filter((k) => k.kids.length === 0).length;
+      const said = () => notices.at(-1)[1].length;
+      const first = { drawn: list.kids.length, empty: empty(), said: said(), named: notices.at(-1)[1][0][1] };
+      scrollTo(20000);
+      const away = said();
+      scrollTo(0);
+      return { first, away, back: said(), failures: failures.length };
+    """, tmp_path)
+    assert ran["first"]["drawn"] == 38 and ran["first"]["empty"] == 38, "an empty row in each place, never a gap"
+    assert ran["first"]["said"] == 38 and "f0001.pdf" in ran["first"]["named"]
+    assert ran["away"] == 99 and ran["back"] == 99, "the 38 rows, then the 61 of the other window; the 38 again add none"
+    assert ran["failures"] == 0
+
+
+def test_the_editor_keeps_the_focused_row_and_widens_its_window_at_either_edge(tmp_path):
+    """P279: the editor's window is the rows the view meets and a viewport
+    either side, widened to the row holding focus and to the pins a focus at
+    the first or last drawn row sets (`over` rows that way), so Tab and
+    Shift+Tab walk every row's inputs in order."""
+    ran = run_shell(["editorSpan", "editorPins"], "", """
+      const tops = Array.from({ length: 300 }, (_, i) => i * 40);
+      const span = (rel, held = -1, first = Infinity, last = -1) => editorSpan(tops, rel, 800, first, last, held);
+      const none = { first: Infinity, last: -1 };
+      return { top: span(0), middle: span(4000), held_above: span(4000, 5), held_below: span(4000, 299), pinned: span(4000, -1, 60, 200),
+               past_the_end: span(20000), empty: editorSpan([], 0, 800, Infinity, -1, -1),
+               at_first: editorPins(80, 80, 139, 15, 300, none), at_last: editorPins(139, 80, 139, 15, 300, none), between: editorPins(100, 80, 139, 15, 300, none),
+               at_the_very_first: editorPins(0, 0, 40, 15, 300, none), at_the_end: editorPins(299, 260, 299, 15, 300, { first: 5, last: -1 }),
+               near: editorPins(10, 0, 39, 15, 300, { first: 0, last: 20 }), far: editorPins(100, 0, 139, 15, 300, { first: 0, last: 154 }),
+               just_far: editorPins(16, 0, 39, 15, 300, { first: 0, last: -1 }), reveal_kept: editorPins(100, 60, 139, 15, 300, { first: 85, last: 115 }),
+               walked_on: editorPins(139, 80, 139, 15, 300, { first: 65, last: -1 }) };
+    """, tmp_path, "app.js")
+    assert ran["top"] == {"first": 0, "last": 39}
+    assert ran["middle"] == {"first": 80, "last": 139}
+    assert ran["held_above"] == {"first": 5, "last": 139} and ran["held_below"] == {"first": 80, "last": 299}, "the row holding focus is never left out"
+    assert ran["pinned"] == {"first": 60, "last": 200}
+    assert ran["past_the_end"] == {"first": 299, "last": 299} and ran["empty"] == {"first": 0, "last": -1}
+    assert ran["at_first"] == {"first": 65, "last": -1} and ran["at_last"] == {"first": None, "last": 154}, "Infinity does not survive JSON"
+    assert ran["between"] == {"first": None, "last": -1}, "a focus inside the window widens nothing"
+    assert ran["at_the_very_first"] == {"first": 0, "last": -1}
+    assert ran["at_the_end"] == {"first": None, "last": 299}, "the pin left far behind at row 5 is dropped"
+    assert ran["near"] == {"first": 0, "last": 20}, "within `over` rows of the focus a pin is kept"
+    assert ran["far"] == {"first": None, "last": -1}, "a pin more than `over` rows from the focused row is dropped (a Tab walk keeps no pin behind it)"
+    assert ran["just_far"] == {"first": None, "last": -1}, "16 rows from the pin at 0 with over = 15 drops it"
+    assert ran["reveal_kept"] == {"first": 85, "last": 115}, "reveal's pins hold while the focus stays within `over` rows of them"
+    assert ran["walked_on"] == {"first": None, "last": 154}, "the first pin left behind is dropped; the edge just reached is widened"
+
+
+def test_a_value_typed_in_a_row_scrolled_out_of_the_editor_is_in_the_saved_list(tmp_path):
+    """P279: every input of a row writes to its row object as it is typed (a
+    pick the moment it is made), so a row taken out of the document holds
+    nothing that is not in editorRows, which is what a save reads."""
+    ran = run_shell(["cellInput"], r"""
+      const el = (tag, attrs = {}, ...kids) => ({ tag, attrs, kids, handlers: {}, value: attrs.value, classList: { toggle() {} },
+        addEventListener(type, fn) { (this.handlers[type] = this.handlers[type] || []).push(fn); } });
+      const vocab = { editor: { minimums: { expected_count: 1 }, maximums: {}, yes_no_fields: ["named"], yes: "yes", no: "no" },
+                      overrides: { not_applicable: "Not Applicable" }, override_reasons: ["One"], override_reason_other: "Other" };
+      let changes = 0;
+    """, """
+      const row = { document: "a", expected_count: 1, named: "yes", manual_override: "" };
+      const text = cellInput(row, { key: "document", label: "Document" }, () => { changes += 1; });
+      text.value = "typed words"; text.handlers.input[0]();
+      const number = cellInput(row, { key: "expected_count", label: "Expected" }, () => { changes += 1; });
+      number.value = "7"; number.handlers.input[0]();
+      const pick = cellInput(row, { key: "named", label: "Named" }, () => { changes += 1; });
+      pick.value = "no"; pick.handlers.change[0]();
+      return { row, changes, saved: JSON.stringify([row]) };
+    """, tmp_path, "app.js")
+    assert ran["row"] == {"document": "typed words", "expected_count": "7", "named": "no", "manual_override": ""}
+    assert ran["changes"] == 3 and "typed words" in ran["saved"]
+    window = js_function("editorWindow", "app.js")
+    assert "tbody.removeChild(tr)" in window and "cellInput(" not in window, "the window takes rows out of the document and draws them with the one row component"
+    assert "editorRows" not in window, "and keeps nothing of the rows in a node: the save reads editorRows"
+
+
+def test_focus_editor_row_reaches_a_row_not_drawn(tmp_path):
+    """P279: focusEditorRow finds the row in the table's own rows, not among
+    the nodes, and has the window draw, scroll to and focus it; a row in a
+    shut fold is left alone, as it always was."""
+    ran = run_shell(["focusEditorRow"], r"""
+      const vocab = { triage: { identifier_separator: " - " } };
+      const focused = []; const revealed = [];
+      const box = (ids, fold) => ({ closest: () => fold, editorWindow: { rows: ids.map((identifier) => ({ identifier })),
+        reveal: (i) => { revealed.push(i); return { querySelector: () => ({ focus: () => focused.push(ids[i]) }) }; } } });
+      const boxes = [box(["R1", "R2", "R3"], null), box(["R9"], { open: false })];
+      const holder = { querySelectorAll: (sel) => (sel === ".editor-rows" ? boxes : []) };
+      const $ = () => holder;
+    """, """
+      focusEditorRow("R3");
+      const drawn = { revealed: [...revealed], focused: [...focused] };
+      focusEditorRow("R9");
+      return { drawn, afterShut: { revealed, focused } };
+    """, tmp_path, "app.js")
+    assert ran["drawn"] == {"revealed": [2], "focused": ["R3"]}
+    assert ran["afterShut"] == {"revealed": [2], "focused": ["R3"]}, "a row in a shut fold is not revealed"
+
+
+def test_switching_density_measures_the_long_lists_again(tmp_path):
+    """P279: the density moves every row's height, so the Compact Rows
+    answer has the page measure its long lists again (P271 does not draw
+    the page again), before the active row is brought into view."""
+    ran = run_shell(COMPACT_FUNCTIONS, COMPACT_PANEL + store_functions(), """
+      shellToggleCompact();
+      shellToggleCompact();
+      return { measured: said.measured };
+    """, tmp_path)
+    assert ran["measured"] == 2
+    text = js_function("shellToggleCompact")
+    assert text.index("pagesVirtualMeasureSaid($(\"page\"));") < text.index("row.scrollIntoView")
+
+
+def test_a_density_switch_whose_measure_throws_still_ticks_the_menu_and_says_the_failure(tmp_path):
+    """P279 (review 2-1, finding 2): the Compact Rows answer measures the long
+    lists outside pagesDraw, so a measure that throws is the page's failure
+    notice (decision 193) and the rest of the answer still runs - the active
+    row is brought into view and the menu is told its tick."""
+    ran = run_shell(COMPACT_FUNCTIONS, COMPACT_PANEL + store_functions(), """
+      said.boom = true;
+      shellToggleCompact();
+      return { sent: said.sent, failed: said.failed, scrolled: said.scrolled.length, density: said.density, cls: classes.has("rows-compact") };
+    """, tmp_path)
+    assert ran["failed"] == ["row_height"], "the failure notice says it"
+    assert ran["sent"] == [["show_under_construction", "compact_rows"]] and ran["scrolled"] == 1, "the menu's tick is sent and the active row is scrolled to"
+    assert ran["cls"] is True and ran["density"] == 1
+
+
+def test_a_measure_that_throws_outside_the_draw_leaves_no_list_naming_a_removed_row(tmp_path):
+    """P279 (review 2-1, finding 2): a failed size has taken a list's rows out
+    of the document, so the list names none of them (aria-activedescendant),
+    and the failure is said - by the fold that opens and by the density."""
+    ran = run_long("""
+      const list = draw(parkedFiles(1000));
+      pagesActivateAt(list, 5);
+      const named = list.attrs["aria-activedescendant"];
+      H = 0;
+      pagesVirtualMeasureSaid(pageBox);
+      return { named: Boolean(named), after: list.attrs["aria-activedescendant"] || null, drawn: list.kids.length, failures };
+    """, tmp_path)
+    assert ran["named"] and ran["after"] is None and ran["drawn"] == 0
+    assert ran["failures"] == ["row_height"]
+    assert "pagesVirtualMeasureSaid(fold)" in js_function("pagesGroup", "pages.js")
+
+
+def test_a_row_reached_by_a_key_or_a_restore_that_cannot_be_made_is_named_once(tmp_path):
+    """P279 (review 2-1, finding 1): End onto a single bad row raises one
+    notice naming it, as a row reached by scrolling does, and a second End
+    raises none; a restore onto the row says it once too."""
+    ran = run_long("""
+      const make = pagesRowNode;
+      pagesRowNode = (spec, id, place) => { if (place && place.pos === 1000) throw new Error("bad_row"); return make(spec, id, place); };
+      const press = (list, key) => pagesKey({ key, target: { closest: () => list }, preventDefault() {} });
+      let list = draw(parkedFiles(1000));
+      pagesActivateAt(list, 0);
+      const base = notices.length;
+      press(list, "End");
+      const first = { added: notices.length - base, named: notices.at(-1)[1].map((n) => n[1]), active: list.pagesModel.active };
+      press(list, "End");
+      press(list, "Home");
+      press(list, "End");
+      const again = notices.length - base;
+      list = draw(parkedFiles(1000));
+      const mark = notices.length;
+      pagesFocus = { at: 0, row: 999 };
+      pagesRestore(pageBox);
+      return { first, again, restored: { added: notices.length - mark, named: notices.at(-1)[1].map((n) => n[1]), active: list.pagesModel.active }, failures };
+    """, tmp_path)
+    assert ran["first"]["added"] == 1 and len(ran["first"]["named"]) == 1 and "f1000.pdf" in ran["first"]["named"][0]
+    assert ran["first"]["active"] == 999
+    assert ran["again"] == 1, "the same row reached again raises no second notice"
+    assert ran["restored"]["added"] == 1 and "f1000.pdf" in ran["restored"]["named"][0] and ran["restored"]["active"] == 999
+    assert ran["failures"] == []
+
+
+def test_a_long_lists_return_and_household_names_keep_their_link_tooltip(tmp_path):
+    """P279 (review 2-1, finding 5; P117's ruling O2, SPEC-shell 3.6): in a
+    long list a return or household name that is a link ends in an ellipsis
+    and keeps its "Navigate to ..." tooltip, cut or not; it takes no tooltip
+    of the full name in its place."""
+    ran = run_pages_dom("""
+      const long = "1040 - Alexandria Montgomery-Whitfield & Christopher Delacroix Family Trust".padEnd(80, "y").slice(0, 80);
+      const out = [];
+      for (const kind of ["return", "household"]) {
+        tips.length = 0;
+        pagesRowNode({ name: long, detail: "", status: "", tone: "plain", date: "", menu: "return", nameLink: { kind, key: "k" } }, `x-${kind}`, { pos: 1, size: 120, sub: "" });
+        out.push(tips.map(([cls, words]) => [cls, words]));
+      }
+      return out;
+    """, tmp_path)
+    assert ["row-link", "Navigate to Return"] in ran[0] and ["row-link", "Navigate to Household"] in ran[1]
+    assert not [one for one in ran[0] + ran[1] if one[0] == "row-name"], "the link's tooltip stays; the name box takes none of its own"

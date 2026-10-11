@@ -67,6 +67,16 @@ const SCENARIOS = [
   // The request list editor on the return (L1): Comfortable and Compact.
   { name: "editor", query: "", run: `${go(ret)}; ${later(500, "openEditor()")}; ${later(900, addRows)}`, wait: 1800 },
   { name: "editor-compact", query: "", run: `shellToggleCompact(); ${go(ret)}; ${later(500, "openEditor()")}; ${later(900, addRows)}`, wait: 1800 },
+  // Long lists (P279, SPEC-ui-menu-speed 2.7): a return of 500 requests and 500 files, and the editor on 300 requests, at the top,
+  // the middle and the end, in both densities (the density first, so the page measures its rows at that height).
+  ...["", "-compact"].flatMap((density) => ["top", "middle", "end"].flatMap((at) => {
+    const toggle = density ? "shellToggleCompact(); " : "";
+    const at_ = { top: "0", middle: "(p.scrollHeight - p.clientHeight) / 2", end: "p.scrollHeight" }[at];
+    return [
+      { name: `long-return-${at}${density}`, query: "?scenario=long-return", run: `${toggle}${go(ret)}; ${later(700, `const p = document.getElementById('page'); p.scrollTop = ${at_}`)}`, wait: 1600 },
+      { name: `long-editor-${at}${density}`, query: "?scenario=long-editor", run: `${toggle}${go(ret)}; ${later(500, "openEditor()")}; ${later(1000, `const p = document.querySelector('#editor .modal'); p.scrollTop = ${at_}`)}`, wait: 2000 },
+    ];
+  })),
   { name: "return-set-aside-open", query: "", run: `${go(ret)}; setTimeout(() => { document.querySelector(".group-fold").open = true; }, 150)` },
   { name: "return-active-row", query: "", run: `${go(ret)}; setTimeout(() => { const list = document.querySelector(".rows"); list.focus(); }, 150)` },
   { name: "return-empty", query: "", run: go({ level: "return", household: "/clients/J Park & Associates/Novak Household", year: 2025, ret: "/clients/J Park & Associates/Novak Household/2025/1040 - Petra Novak" }) },

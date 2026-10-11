@@ -54,6 +54,7 @@ const EL_ATTRIBUTES = new Set([
   "aria-labelledby", "aria-valuemin", "aria-valuemax", "aria-valuenow", "aria-live",
   "aria-controls", "aria-description", "aria-keyshortcuts", "aria-disabled", "aria-pressed",
   "aria-sort", "aria-haspopup", "open",
+  "aria-posinset", "aria-setsize",
 ]);
 
 function el(tag, attrs = {}, ...children) {
@@ -3023,15 +3024,20 @@ function learnedCell(identifier, learned) {
 // drops them: every box writes into the same row object through
 // cellInput, so a save carries every column whether a fold was opened or
 // not. Which column goes where is the API's answer, never the page's.
+//
+// The editor's table (the one with a `fold`) of more than PAGES_VIRTUAL_FROM rows keeps every row in `rows` but
+// puts only the rows in view, a screen either side and the row holding focus in the document (editorWindow below,
+// P279); `learned` is then a function, read when a row is drawn, since an unlearn lands while rows are out.
 function requestRows(container, rows, { columns, onChange, onRemove, onTakeBack, learned = {}, keyed = true, fold = null }) {
-  const taught = Object.keys(learned).length > 0;
+  const learnedNow = () => (typeof learned === "function" ? learned() : learned);
+  const taught = Object.keys(learnedNow()).length > 0;
   const learnedBox = (tag, row) => el(tag, { className: "ed-learned", dataset: { identifier: row.identifier || "" } },
-    learnedCell(row.identifier, learned));
+    learnedCell(row.identifier, learnedNow()));
   const removeCell = (row, index) => el("td", { className: "ed-remove" },
     el("button", { className: "btn btn-small", dataset: { index: String(index) }, "aria-label": `${vocab.editor.remove_row} ${row.identifier || ""}` },
       vocab.editor.remove_row));
   let head;
-  let body;
+  let make;   // one row's table rows
   if (fold) {
     const byKey = new Map(columns.map((c) => [c.key, c]));
     const plain = fold.plain.map((key) => byKey.get(key)).filter(Boolean);
@@ -3043,7 +3049,7 @@ function requestRows(container, rows, { columns, onChange, onRemove, onTakeBack,
       el("th", {}, documentColumn.label),
       plain.map((c) => el("th", {}, c.label)),
       el("th", {}, ""));
-    body = rows.flatMap((row, index) => {
+    make = (row, index) => {
       const custom = fold.custom(row);
       const name = el("span", { className: "req-id" }, nameOf(row, custom));
       const changed = () => { name.textContent = nameOf(row, custom); onChange(rows); };
@@ -3062,21 +3068,23 @@ function requestRows(container, rows, { columns, onChange, onRemove, onTakeBack,
         plain.map((c) => el("td", { className: `ed-${c.key}` }, cellInput(row, c, changed))),
         removeCell(row, index));
       return [plainRow, routingRow];
-    });
+    };
   } else {
     head = el("tr", {},
       keyed ? el("th", { className: "ed-id" }, columnsByKey(["identifier"])[0].label) : null,
       columns.map((c) => el("th", {}, c.label)),
       taught ? el("th", {}, "") : null,
       el("th", {}, ""));
-    body = rows.map((row, index) => el("tr", { dataset: { index: String(index) } },
+    make = (row, index) => [el("tr", { dataset: { index: String(index) } },
       keyed ? el("td", { className: "ed-id" }, el("span", { className: "req-id" }, row.identifier)) : null,
       columns.map((c) => el("td", { className: `ed-${c.key}` }, cellInput(row, c, () => onChange(rows)))),
       taught ? learnedBox("td", row) : null,
       removeCell(row, index),
-    ));
+    )];
   }
-  const table = el("table", { className: "editor-table" }, el("thead", {}, head), el("tbody", {}, body));
+  const long = Boolean(fold) && rows.length > PAGES_VIRTUAL_FROM;
+  const tbody = el("tbody", {}, long ? [] : rows.flatMap(make));
+  const table = el("table", { className: "editor-table" }, el("thead", {}, head), tbody);
   table.addEventListener("click", (e) => {
     // Taking a keyword back is its own event and lands at once; removing a
     // row is part of the save, like every other edit.
@@ -3097,6 +3105,230 @@ function requestRows(container, rows, { columns, onChange, onRemove, onTakeBack,
     }
   });
   container.replaceChildren(table);
+  container.editorWindow = long ? editorWindow(container, table, tbody, rows, make, fold.isOpen, head.children.length) : null;
+}
+
+// ── a long request list draws only the rows in view (P279, SPEC-ui-menu-speed 2.4) ──
+// The editor's rows are not one height - an open routing fold, a custom row's fields - and they hold inputs, so
+// its window is drawn with a spacer row above and below (tr.ed-spacer, its height the rows left out) instead of
+// absolute rows, and the row holding focus is never taken out of the document: a mouse scroll cannot remove an
+// input being typed in, and an input method's composition is never interrupted. A focus in the first or last
+// drawn row widens the window by a screen's rows that way before Tab moves on, so Tab and Shift+Tab walk every
+// row's inputs in order. Nothing lives only in a node: cellInput writes every input into its row object as it is
+// typed, and the save reads editorRows. A row's height is measured when it is drawn and kept (a WeakMap keyed by
+// the row object); a row not yet drawn counts as the plain row's measured height, plus the median of the measured
+// open folds when its fold is open. The window is placed by the running sum of those heights, and the row at the
+// top of the view keeps its place on the screen while the rows above it are measured.
+function editorWindow(container, table, tbody, rows, make, isOpen, columnCount) {
+  let heights = new WeakMap();        // a row object -> {plain, fold}
+  let samples = { plain: [], open: [] };
+  const drawn = new Map();            // a row's index -> its table rows
+  const spacer = () => {
+    const cell = el("td");
+    cell.colSpan = columnCount;
+    return el("tr", { className: "ed-spacer", "aria-hidden": "true" }, cell);
+  };
+  const above = spacer();
+  const below = spacer();
+  tbody.append(above, below);
+  let pinFirst = Infinity;            // a focus at the first or last drawn row widens the window to here
+  let pinLast = -1;
+  const median = (list) => (list.length ? list.slice().sort((a, b) => a - b)[Math.floor(list.length / 2)] : 0);
+  const typical = { plain: 0, open: 0 };   // the medians of what has been measured
+  const folded = new WeakMap();            // a row object -> whether its fold was open when first asked
+  const opened = (row) => {
+    if (!folded.has(row)) folded.set(row, Boolean(isOpen(row)));
+    return folded.get(row);
+  };
+  const estimate = (row) => {
+    const known = heights.get(row);
+    if (known) return known.plain + known.fold;
+    return typical.plain + (typical.open && opened(row) ? typical.open : 0);
+  };
+  const measure = (index) => {
+    const trs = drawn.get(index);
+    const known = { plain: trs[0].offsetHeight, fold: trs[1] ? trs[1].offsetHeight : 0 };
+    const first = !heights.has(rows[index]);
+    heights.set(rows[index], known);
+    if (!first) return;
+    if (known.plain > 0 && samples.plain.length < 60) samples.plain.push(known.plain);
+    if (known.fold > 0 && samples.open.length < 60) samples.open.push(known.fold);
+    typical.plain = median(samples.plain);
+    typical.open = median(samples.open);
+  };
+  const draw = (index) => {
+    const trs = make(rows[index], index);
+    let next = below;
+    for (let at = index + 1; at < rows.length; at += 1) {
+      if (drawn.has(at)) { next = drawn.get(at)[0]; break; }
+    }
+    for (const tr of trs) tbody.insertBefore(tr, next);
+    drawn.set(index, trs);
+  };
+  const drop = (index) => {
+    for (const tr of drawn.get(index)) tbody.removeChild(tr);
+    drawn.delete(index);
+  };
+  const laidOut = () => table.getClientRects().length > 0;
+  // The spacers say the rows left out, by the heights known now.
+  const space = () => {
+    let first = rows.length;
+    let last = -1;
+    for (const index of drawn.keys()) { first = Math.min(first, index); last = Math.max(last, index); }
+    let top = 0;
+    let bottom = 0;
+    for (let i = 0; i < rows.length; i += 1) {
+      if (i < first) top += estimate(rows[i]);
+      else if (i > last) bottom += estimate(rows[i]);
+    }
+    above.firstChild.style.setProperty("height", `${top}px`);
+    below.firstChild.style.setProperty("height", `${bottom}px`);
+  };
+  // The first row is drawn and measured, so every other row has a height to count as.
+  const size = () => {
+    if (!laidOut() || drawn.size) return;
+    draw(0);
+    measure(0);
+    space();
+  };
+  const focused = () => {
+    const here = document.activeElement;
+    const tr = here && here.closest && table.contains(here) ? here.closest("tr[data-index]") : null;
+    return tr ? Number(tr.dataset.index) : -1;
+  };
+  const update = () => {
+    const scroller = container.closest(".modal");
+    if (!scroller || !laidOut()) return;
+    size();
+    const viewTop = scroller.scrollTop;
+    const viewHeight = scroller.clientHeight;
+    const bodyTop = tbody.getBoundingClientRect().top - scroller.getBoundingClientRect().top + scroller.scrollTop;
+    for (const index of drawn.keys()) measure(index);
+    // The tops of every row by the heights known now.
+    const tops = [];
+    let sum = 0;
+    for (const row of rows) { tops.push(sum); sum += estimate(row); }
+    const rel = viewTop - bodyTop;
+    // The row at the view's top is the anchor: it keeps its place on the screen while rows above it are measured.
+    let anchor = 0;
+    while (anchor + 1 < rows.length && tops[anchor + 1] <= rel) anchor += 1;
+    const offset = bodyTop + tops[anchor] - viewTop;
+    const { first, last } = editorSpan(tops, rel, viewHeight, pinFirst, pinLast, focused());
+    for (const index of [...drawn.keys()]) if (index < first || index > last) drop(index);
+    const made = [];
+    for (let i = first; i <= last; i += 1) if (!drawn.has(i)) { draw(i); made.push(i); }
+    for (const index of made) measure(index);
+    space();
+    // Where the anchor is now, by the heights just measured; the scroll follows so it does not move on the screen.
+    let again = 0;
+    for (let i = 0; i < anchor; i += 1) again += estimate(rows[i]);
+    const wanted = bodyTop + again - offset;
+    if (Math.abs(wanted - scroller.scrollTop) >= 1) scroller.scrollTop = wanted;
+  };
+  // A screen's rows, by the plain row's height measured so far.
+  const over = () => Math.max(PAGES_VIRTUAL_OVER_LEAST, Math.ceil(container.closest(".modal").clientHeight / Math.max(1, typical.plain)));
+  // Row `index` drawn and scrolled to the middle of the view: the view goes to where the heights known say it is,
+  // so the rows between are never drawn on the way; the first table row of the row is answered.
+  const reveal = (index) => {
+    const scroller = container.closest(".modal");
+    if (!scroller || !laidOut()) return null;
+    size();
+    let top = 0;
+    for (let i = 0; i < index; i += 1) top += estimate(rows[i]);
+    scroller.scrollTop = tbody.getBoundingClientRect().top - scroller.getBoundingClientRect().top + scroller.scrollTop + top - scroller.clientHeight / 2;
+    pinFirst = Math.max(0, index - over());
+    pinLast = Math.min(rows.length - 1, index + over());
+    update();
+    drawn.get(index)[0].scrollIntoView({ block: "center" });
+    update();
+    return drawn.get(index)[0];
+  };
+  table.addEventListener("focusin", (e) => {
+    const tr = e.target.closest("tr[data-index]");
+    if (!tr || !drawn.size || !container.closest(".modal")) return;
+    const indexes = [...drawn.keys()];
+    ({ first: pinFirst, last: pinLast } = editorPins(Number(tr.dataset.index), Math.min(...indexes), Math.max(...indexes), over(), rows.length, { first: pinFirst, last: pinLast }));
+    update();
+  });
+  table.addEventListener("focusout", (e) => {
+    if (!table.contains(e.relatedTarget)) { pinFirst = Infinity; pinLast = -1; }
+  });
+  // The density moved every row's height: what was measured is dropped, so the rows never drawn count as the new
+  // density's own and the drawn rows are measured again.
+  const density = () => {
+    heights = new WeakMap();
+    samples = { plain: [], open: [] };
+    update();
+  };
+  return { size, update, reveal, density, rows };
+}
+
+// The rows [first, last] a window draws: those the view meets (`rel` is the view's top within the rows, `tops` where
+// each row starts) and a viewport either side, widened to the pins a focus at an edge set and to the row holding
+// focus (-1: none), so a focused input is never taken out of the document. Pure.
+function editorSpan(tops, rel, viewHeight, pinFirst, pinLast, held) {
+  const count = tops.length;
+  let anchor = 0;
+  while (anchor + 1 < count && tops[anchor + 1] <= rel) anchor += 1;
+  let first = anchor;
+  let last = anchor;
+  while (first > 0 && tops[first] > rel - viewHeight) first -= 1;
+  while (last + 1 < count && tops[last + 1] < rel + 2 * viewHeight) last += 1;
+  first = Math.min(first, pinFirst);
+  last = Math.max(last, pinLast);
+  if (held !== -1) {
+    first = Math.min(first, held);
+    last = Math.max(last, held);
+  }
+  return { first: Math.max(0, first), last: Math.min(count - 1, last) };
+}
+
+// A focus in row `at`, when rows `drawnFirst` to `drawnLast` are drawn: at the first drawn row the window widens
+// `over` rows upward and at the last `over` rows downward, so Tab and Shift+Tab walk every row's inputs in order.
+// A pin is kept only for the edge just widened and only near the focus: a pin more than `over` rows from the
+// focused row is dropped, so a Tab walk never ends with the whole table drawn. Pure.
+function editorPins(at, drawnFirst, drawnLast, over, count, pins) {
+  const first = at <= drawnFirst ? Math.max(0, at - over) : pins.first;
+  const last = at >= drawnLast ? Math.min(count - 1, at + over) : pins.last;
+  return {
+    first: first < at - over ? Infinity : first,
+    last: last > at + over ? -1 : last,
+  };
+}
+
+// Every long table of the editor, after a scroll, a resize, a fold opened or the dialog shown: `keep` is the
+// dialog's scroll position to put back when the rows were just drawn again.
+function updateEditorWindows(keep) {
+  const boxes = [...$("ed-rows").querySelectorAll(".editor-rows")].filter((box) => box.editorWindow);
+  if (!boxes.length) return;
+  watchEditorScroll();
+  for (const box of boxes) box.editorWindow.size();
+  const scroller = $("ed-rows").closest(".modal");
+  if (keep && scroller) scroller.scrollTop = keep;
+  for (const box of boxes) box.editorWindow.update();
+}
+
+// Compact Rows was switched: every long table measures its rows again.
+function editorDensityChanged() {
+  for (const box of $("ed-rows").querySelectorAll(".editor-rows")) if (box.editorWindow) box.editorWindow.density();
+}
+
+let editorWatched = null;
+function watchEditorScroll() {
+  const scroller = $("ed-rows").closest(".modal");
+  if (!scroller || editorWatched === scroller) return;
+  editorWatched = scroller;
+  let queued = false;
+  const again = () => {
+    if (queued) return;
+    queued = true;
+    requestAnimationFrame(() => {
+      queued = false;
+      updateEditorWindows();
+    });
+  };
+  scroller.addEventListener("scroll", again, { passive: true });
+  if (typeof ResizeObserver === "function") new ResizeObserver(again).observe(scroller);
 }
 
 // ── Add a return / New household: custom requests ───────────────────────
@@ -3286,6 +3518,8 @@ function editorGroupKey(row) {
 function renderEditorRows() {
   const grouping = () => editorRows.map(editorGroupKey).join("\u0000");
   const drawn = grouping();
+  const scroller = $("ed-rows").closest(".modal");
+  const keep = scroller ? scroller.scrollTop : 0;   // a long table asks for its place back (P279)
   const options = (rows) => ({
     columns: vocab.columns,
     keyed: false,
@@ -3295,7 +3529,7 @@ function renderEditorRows() {
       custom: editorRowIsCustom,
       isOpen: editorRowFoldOpen,
     },
-    learned: (editorState && editorState.learned) || {},
+    learned: () => (editorState && editorState.learned) || {},
     onChange: () => { if (grouping() !== drawn) renderEditorRows(); },
     onRemove: (index) => {
       editorRows.splice(editorRows.indexOf(rows[index]), 1);
@@ -3320,6 +3554,8 @@ function renderEditorRows() {
     ? el("details", { className: "ed-set-aside" },
       el("summary", {}, fill(vocab.set_aside.heading, { n: aside.length })), ...groups.flat())
     : null;
+  // A long table inside the fold is drawn when the fold opens, not before (it has no layout while shut).
+  if (folded) folded.addEventListener("toggle", () => { if (folded.open) updateEditorWindows(); });
   // The one Advanced switch above the rows (SPEC 2.7, E91): on, every row's
   // routing rules and taught keywords, and the paste and rename blocks, are
   // shown; off, the plain table alone. A word the vocabulary lacks is said.
@@ -3329,6 +3565,7 @@ function renderEditorRows() {
   const above = el("div", { className: "editor-actions" }, advanced);
   $("ed-advanced-body").classList.toggle("hidden", !editorAdvanced);
   $("ed-rows").replaceChildren(...[above, activeBox, folded].filter(Boolean));
+  updateEditorWindows(keep);
 }
 
 // The plain view's folds (decision 201) are open or shut together, by the one
@@ -3394,6 +3631,14 @@ async function unlearnKeyword(identifier, keyword) {
 function addEditorRow() {
   editorRows.push(blankEditorRow());
   renderEditorRows();
+  // A long table draws the new last row (it holds focus from here) before the box is looked in.
+  const long = $("ed-rows").querySelector(".editor-rows");
+  if (long && long.editorWindow) {
+    const tr = long.editorWindow.reveal(long.editorWindow.rows.length - 1);
+    const field = tr ? tr.querySelector("input") : null;
+    if (field) field.focus();
+    return;
+  }
   const inputs = $("ed-rows").querySelectorAll("tbody tr:last-child input");
   if (inputs.length) inputs[0].focus();
 }
@@ -3486,6 +3731,7 @@ async function openEditor(focus) {
   $("ed-paste").value = "";
   editorNote("", "ok");
   openDialog("editor");
+  updateEditorWindows();
   if (typeof focus === "string") focusEditorRow(focus);
 }
 
@@ -3493,6 +3739,17 @@ async function openEditor(focus) {
 // and the row is scrolled into view. A row the editor does not list (or one
 // inside a closed fold) leaves focus where the dialog put it.
 function focusEditorRow(identifier) {
+  // A row of a long table that is not drawn is drawn, scrolled to and focused (P279): the table's own rows say
+  // which it is, never the nodes.
+  for (const box of $("ed-rows").querySelectorAll(".editor-rows")) {
+    const long = box.editorWindow;
+    const at = long ? long.rows.findIndex((row) => row.identifier === identifier) : -1;
+    if (at === -1 || (box.closest("details") && !box.closest("details").open)) continue;
+    const tr = long.reveal(at);
+    const cell = tr ? tr.querySelector("input, select") : null;
+    if (cell) cell.focus();
+    return;
+  }
   for (const row of $("ed-rows").querySelectorAll("tr[data-index]")) {
     const named = row.querySelector(".req-id");
     if (!named || named.textContent.split(vocab.triage.identifier_separator)[0] !== identifier) continue;

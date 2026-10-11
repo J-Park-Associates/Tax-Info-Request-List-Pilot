@@ -41,6 +41,9 @@
 //   pagesFiles()        the Check steps on the page, in the order drawn
 //   pagesDrafts()       the Draft reminder steps, in the order drawn
 //   pagesWhere/pagesFocusAt  where focus sat in a row list, and back to it
+//   pagesVirtualMeasure(root) / pagesVirtualPlaceAll(root)  a long list's row height,
+//                       and the rows in view (P279: only the drawn rows are
+//                       in the document; every row stays registered)
 //   pagesMenu(id, token)     a right-click item on a row (the crumbs' and the
 //                            menu bar's ids are shell.js's)
 //   data-menu, data-token on every row and on the H1 of a household or
@@ -100,6 +103,11 @@ let pagesOrder = null;         // list -> {cell, dir}: read once from this PC's 
 let pagesWidths = null;        // list -> {cell: px}: read once from this PC's storage (P139)
 // Rows per page of a firm list (pilot SPEC-lists 14, P152, P174; owner question Q11).
 const PAGES_PER_PAGE = 50;
+// A list of more than this many rows draws only the rows in view (P279, SPEC-ui-menu-speed 2.1);
+// one of this many or fewer is drawn whole, as it always was (Jason's question A). The editor reads it too.
+const PAGES_VIRTUAL_FROM = 100;
+const PAGES_VIRTUAL_OVER_LEAST = 15;   // rows kept either side of the view: a viewport's worth, at least this many
+let pagesVirtualWired = false;         // the page's one scroll listener and resize observer are in place
 // A reason's small icon on Needs Review (SPEC-lists 12, P149): every reason
 // pill is the Need You amber, told apart by this icon and its words. A code
 // not listed takes the plain alert.
@@ -493,12 +501,25 @@ function pagesPaused(firm) {
 }
 
 // ── the row and the group (SPEC 3.6) ──────────────────────────────────
-// A spec: {name, detail, status, tone, date, step, menu}. `step` is data
-// ({kind, ...}), run by pagesRunStep; `menu` names the right-click template.
-function pagesRow(spec) {
+// A row's id, assigned at draw time and registered with what it is about, so the right-click menus, the
+// sheet's next arrow and Shift+F10 see every row of a list whether its node is made yet or not (P279).
+function pagesRegister(spec) {
   pagesUid += 1;
   const id = `row-${pagesUid}`;
   pagesTokens.set(id, spec);
+  return id;
+}
+
+// A spec: {name, detail, status, tone, date, step, menu}. `step` is data
+// ({kind, ...}), run by pagesRunStep; `menu` names the right-click template.
+function pagesRow(spec) {
+  return pagesRowNode(spec, pagesRegister(spec), null);
+}
+
+// The row's node. `place`: a row of a long list ({pos, size, sub}) made when it comes into view - its id was
+// registered at draw time, it is one line (a long name ends in an ellipsis, with its tooltip), and it says its place
+// in the list and the sub-heading it sits under.
+function pagesRowNode(spec, id, place) {
   // The request list is a write: while a live lock holds the return its Edit
   // step is not offered (the menu's Edit request list is grey for the same reason).
   const stepOf = spec.step && !(spec.step.kind === "edit" && locked) ? spec.step : null;
@@ -510,7 +531,7 @@ function pagesRow(spec) {
   // wrap to two lines or more (rulings 21 and 27): the year after a return's
   // name and the words of a paused household are never cut away. A file's
   // name still ends in an ellipsis.
-  const wraps = Boolean(spec.mark || (spec.nameLink && spec.nameLink.kind !== "file"));
+  const wraps = !place && Boolean(spec.mark || (spec.nameLink && spec.nameLink.kind !== "file"));
   // A file's own name is an item, not a heading: ordinary weight (P136).
   const file = Boolean(spec.fileKind || (spec.nameLink && spec.nameLink.kind === "file"));
   // A row with linked households says so to a screen reader: its icon is
@@ -521,7 +542,7 @@ function pagesRow(spec) {
   // a return row names its household there too, as its tooltip does (P195).
   // A list that holds one year leaves out its Tax Year column, and the year is said here (P268).
   const yearSaid = spec.returnRow && pagesYearless && spec.year ? String(spec.year) : "";
-  const described = [words, pagesReasonTip(spec), spec.household, linked, yearSaid].filter(Boolean).join(", ");
+  const described = [place ? place.sub : "", words, pagesReasonTip(spec), spec.household, linked, yearSaid].filter(Boolean).join(", ");
   // A row of a list of returns (Overview, Reminders) is five cells, one field
   // each: Tax Year, Taxpayer, Form Type, then status and date (P194, P195) -
   // four when the list holds only one year (P268).
@@ -534,6 +555,7 @@ function pagesRow(spec) {
   const node = h("div", {
     className: `row${spec.returnRow ? " row-return" : ""}${step ? " has-step" : ""}${spec.child ? " row-child" : ""}${wraps ? " row-wrap" : ""}${file ? " row-file" : ""}`,
     role: "option", id, "aria-selected": "false",
+    "aria-posinset": place ? String(place.pos) : undefined, "aria-setsize": place ? String(place.size) : undefined,
     "aria-description": described || undefined, dataset: { menu: spec.menu || "", token: id },
   },
   ...cells,
@@ -599,7 +621,13 @@ function pagesActivate(list, row, byKey) {
   row.classList.add("is-active");
   row.setAttribute("aria-selected", "true");
   list.setAttribute("aria-activedescendant", row.id);
-  if (row.scrollIntoView) row.scrollIntoView({ block: "nearest" });
+  const model = list.pagesModel;
+  if (model) {
+    // A long list: the active row is pinned in the document, and brought into view by the page's own scroll.
+    model.active = model.index.get(row.id);
+    pagesVirtualReveal(list, model.slot[model.active]);
+    pagesVirtualPlace(list);
+  } else if (row.scrollIntoView) row.scrollIntoView({ block: "nearest" });
   hideTip();
   const status = byKey ? row.querySelector(".row-status [data-tip], .row-status[data-tip]") : null;
   if (status) showTipNow(status);
@@ -636,8 +664,12 @@ function pagesList(name, kids, edge) {
   else attrs["aria-label"] = name.label;
   const list = h("div", attrs, ...kids);
   list.addEventListener("focus", () => {
-    const first = list.querySelector('[role="option"]');
     const byKey = typeof list.matches === "function" && list.matches(":focus-visible");
+    if (list.pagesModel) {
+      if (list.pagesModel.active < 0) pagesActivateAt(list, 0, byKey);
+      return;
+    }
+    const first = list.querySelector('[role="option"]');
     if (first && !list.querySelector(".is-active")) pagesActivate(list, first, byKey);
   });
   list.addEventListener("click", (e) => {
@@ -673,7 +705,7 @@ function pagesGroup(spec) {
   pagesUid += 1;
   const headId = `group-${pagesUid}`;
   // A file's own row under its request (ruling 17) is not another request: not counted.
-  const total = spec.blocks.reduce((n, block) => n + block.rows.filter((row) => !row.classList.contains("row-child")).length, 0);
+  const total = spec.blocks.reduce((n, block) => n + block.rows.filter((row) => !pagesIsChild(row)).length, 0);
   // A return section's tone (P176): its icon before the heading, a bar at
   // its edge and a tinted count badge, in the section's status colour.
   const section = spec.key ? PAGES_SECTIONS[spec.key] : null;
@@ -685,7 +717,9 @@ function pagesGroup(spec) {
   const lead = section ? h("span", { className: `group-icon ${tone}` }, icon(section[1])) : null;
   const headClass = `group-head${spec.first ? " is-first" : ""}${section ? ` is-section section-${section[0]}` : ""}`;
   let body = null;
-  if (total) {
+  if (total && spec.blocks.lazy) {
+    body = pagesVirtualList({ labelledby: headId }, spec.blocks, section ? section[0] : "");
+  } else if (total) {
     const kids = [];
     for (const block of spec.blocks) {
       if (!block.sub) {
@@ -705,6 +739,8 @@ function pagesGroup(spec) {
     const fold = h("details", { className: "group-fold" }, h("summary", { className: headClass }, lead, title, meta), body);
     fold.open = Boolean(spec.open);
     if (spec.onToggle) fold.addEventListener("toggle", () => spec.onToggle(fold.open));
+    // A long list inside the fold draws nothing until it is opened (P279).
+    if (spec.blocks.lazy) fold.addEventListener("toggle", () => { if (fold.open) pagesVirtualMeasureSaid(fold); });
     return [fold];
   }
   // `heads`: a list's column headers, between its heading and its rows;
@@ -1520,7 +1556,7 @@ function pagesHousehold(route) {
     const years = [...new Set(hh.returns.map((one) => one.year))].sort((a, b) => b - a);
     list = h("div", { className: "returns-list" }, ...years.flatMap((year, i) => pagesSafe(String(year), () => pagesGroup({
       heading: String(year), first: i === 0,
-      blocks: [{ rows: pagesEach(pagesReturnSpecs(hh.returns.filter((one) => one.year === year)), (spec) => spec.name, pagesRow) }],
+      blocks: pagesBlocks(pagesReturnSpecs(hh.returns.filter((one) => one.year === year))),
     })) || []));
   }
   return [pagesTitleFor(route), h("div", { className: "household-body" }, h("div", { className: "household-layout" }, card, list))];
@@ -1531,7 +1567,9 @@ function pagesYear(route) {
   if (!hh) return [];
   const title = pagesTitleFor(route);
   const specs = pagesReturnSpecs(hh.returns.filter((one) => one.year === route.year));
-  return [title, h("div", { className: "page-gap" }), h("div", { className: "returns-list" }, pagesList({ labelledby: title.id }, pagesEach(specs, (spec) => spec.name, pagesRow)))];
+  const blocks = pagesBlocks(specs);
+  const list = blocks.lazy ? pagesVirtualList({ labelledby: title.id }, blocks, "") : pagesList({ labelledby: title.id }, blocks.flatMap((block) => block.rows));
+  return [title, h("div", { className: "page-gap" }), h("div", { className: "returns-list" }, list)];
 }
 
 // ── Return (SPEC 6.7) ─────────────────────────────────────────────────
@@ -1685,16 +1723,25 @@ function pagesReturnGroups(state, year) {
 }
 
 // A group's blocks: consecutive rows with the same sub-heading run together.
+//
+// A list of more than PAGES_VIRTUAL_FROM rows is registered whole but its nodes are made as they come into view
+// (P279): its rows are {id, spec} here, not nodes, and `blocks.lazy` says so.
 function pagesBlocks(specs) {
   const blocks = [];
+  blocks.lazy = specs.length > PAGES_VIRTUAL_FROM;
   for (const spec of specs) {
-    const row = pagesSafe(spec.name, () => pagesRow(spec));
+    const row = blocks.lazy ? { id: pagesRegister(spec), spec } : pagesSafe(spec.name, () => pagesRow(spec));
     if (row === null) continue;
     const last = blocks[blocks.length - 1];
     if (last && (last.sub || "") === (spec.sub || "")) last.rows.push(row);
     else blocks.push({ sub: spec.sub || "", rows: [row] });
   }
   return blocks;
+}
+
+// A row of a group, drawn or only registered: one of several files under a request (ruling 17)?
+function pagesIsChild(row) {
+  return row.spec ? Boolean(row.spec.child) : row.classList.contains("row-child");
 }
 
 // Which groups a return's page draws, in order (SPEC 6.7): Needs you, Waiting
@@ -1800,7 +1847,9 @@ function pagesWhere(page) {
   const list = here && here.closest ? here.closest('[role="listbox"]') : null;
   if (!list || !page.contains(list)) return null;
   const row = list.querySelector(".is-active");
-  return { at: [...page.querySelectorAll('[role="listbox"]')].indexOf(list), row: row ? [...list.querySelectorAll('[role="option"]')].indexOf(row) : 0 };
+  // A long list names the active row by its place in the whole list, not among the drawn nodes (P279).
+  const place = list.pagesModel ? Math.max(0, list.pagesModel.active) : row ? [...list.querySelectorAll('[role="option"]')].indexOf(row) : 0;
+  return { at: [...page.querySelectorAll('[role="listbox"]')].indexOf(list), row: place };
 }
 
 function pagesRemember(page) {
@@ -1817,6 +1866,15 @@ function pagesFocusAt(where) {
 function pagesRestore(page) {
   if (!pagesFocus) return;
   const list = page.querySelectorAll('[role="listbox"]')[pagesFocus.at];
+  if (list && list.pagesModel) {
+    const count = list.pagesModel.ids.length;
+    if (count) {
+      pagesActivateAt(list, Math.min(Math.max(pagesFocus.row, 0), count - 1));
+      list.focus({ preventScroll: true });
+    }
+    pagesFocus = null;
+    return;
+  }
   const rows = list ? list.querySelectorAll('[role="option"]') : [];
   if (rows.length) {
     pagesActivate(list, rows[Math.min(Math.max(pagesFocus.row, 0), rows.length - 1)]);
@@ -1868,6 +1926,7 @@ function pagesDraw(route, page) {
   if (pagesDrawn !== key) pagesSetAsideOpen = false;   // Set aside is shut each time the page opens
   pagesRemember(page);
   const before = new Map(pagesTokens);
+  const keepTop = pagesDrawn === key ? page.scrollTop : 0;   // a redraw of the same page keeps its place (P279)
   pagesUid = 0;
   pagesTokens.clear();
   pagesBroken = [];
@@ -1904,6 +1963,11 @@ function pagesDraw(route, page) {
   page.classList.toggle("is-yearless", pagesYearless);   // one year: no Tax Year column (P268)
   pagesApplyWidths(page, pagesListOf(route));
   pagesDrawn = key;
+  try {
+    pagesVirtualMeasure(page, keepTop);
+  } catch (err) {
+    failed(err);
+  }
   pagesRestore(page);
   if (panel) pagesReopenPanel(page, panel.owner);
 }
@@ -1919,6 +1983,267 @@ function pagesReopenPanel(page, owner) {
   (page.querySelector('[role="listbox"]') || page).focus();
 }
 
+// ── long lists draw only the rows in view (P279, SPEC-ui-menu-speed 2) ──
+// A list of more than PAGES_VIRTUAL_FROM rows registers every row at draw time (pagesTokens, so the menus, the
+// sheet's next arrow and Shift+F10 see every row) but makes a node only for the rows in view, one screen either
+// side of it, and the active row. The listbox is as tall as the whole list and each drawn row sits at its place in
+// it; the listbox itself is never removed, so focus stays put however far the page scrolls. The row height is
+// never typed here: it is a drawn row's own, which the stylesheet gives by the density (--size-row, or
+// --size-row-compact under Compact Rows), so it is measured, and a list that is not laid out is loud.
+
+// The items - rows and the sub-headings between them (a slot of the same height each) - the view meets, and `over`
+// either side: {first, last}, an empty list or a list far from the view {first: 0, last: -1}. Pure.
+function pagesWindow(count, H, listTop, viewTop, viewHeight, over) {
+  if (!(count > 0) || !(H > 0)) return { first: 0, last: -1 };
+  const first = Math.max(0, Math.floor((viewTop - listTop) / H) - over);
+  const last = Math.min(count - 1, Math.ceil((viewTop + viewHeight - listTop) / H) - 1 + over);
+  return first > last ? { first: 0, last: -1 } : { first, last };
+}
+
+// How many rows either side of the view: a viewport's worth, at least PAGES_VIRTUAL_OVER_LEAST.
+function pagesOver(viewHeight, H) {
+  return Math.max(PAGES_VIRTUAL_OVER_LEAST, H > 0 ? Math.ceil(viewHeight / H) : 0);
+}
+
+// The list as the page's scroller sees it: where its top is in the scrolled content.
+function pagesListTop(list, page) {
+  return list.getBoundingClientRect().top - page.getBoundingClientRect().top + page.scrollTop;
+}
+
+// A long list's listbox. `blocks`: the rows ({id, spec}, registered) and the sub-headings they sit under, in order.
+function pagesVirtualList(name, blocks, edge) {
+  const list = pagesList(name, [], edge);
+  list.classList.add("is-virtual");
+  const items = [];
+  const ids = [];
+  const specs = [];
+  const slot = [];
+  for (const block of blocks) {
+    if (block.sub) items.push({ head: block.sub });
+    for (const row of block.rows) {
+      slot.push(items.length);
+      items.push({ row: ids.length, sub: block.sub || "" });
+      ids.push(row.id);
+      specs.push(row.spec);
+    }
+  }
+  list.pagesModel = { items, ids, specs, slot, index: new Map(ids.map((id, i) => [id, i])), H: 0, active: -1, nodes: new Map(), broken: new Set() };
+  return list;
+}
+
+// The node of item `i`, made now: a sub-heading's slot, or a row that says its place (aria-posinset, aria-setsize)
+// and, for a row under a sub-heading, that sub-heading's words at the front of its description. A row that cannot
+// be made is an empty row of the same height and is said once, by the page's notice - never a silent gap.
+function pagesVirtualMake(list, i) {
+  const model = list.pagesModel;
+  const item = model.items[i];
+  let node = null;
+  if (item.head !== undefined) {
+    node = h("div", { className: "group-sub", role: "presentation" }, item.head);
+    node.style.setProperty("height", `${model.H}px`);
+  } else {
+    const spec = model.specs[item.row];
+    const id = model.ids[item.row];
+    if (!model.broken.has(i)) node = pagesSafe(spec.name, () => pagesRowNode(spec, id, { pos: item.row + 1, size: model.ids.length, sub: item.sub }));
+    if (node === null) {
+      model.broken.add(i);
+      node = h("div", { className: "row", role: "option", id, "aria-selected": "false", "aria-posinset": String(item.row + 1), "aria-setsize": String(model.ids.length), dataset: { menu: "", token: id } });
+    }
+    if (item.row === model.active) {
+      node.classList.add("is-active");
+      node.setAttribute("aria-selected", "true");
+    }
+    // The list's last row has no hairline under it, as the last row of a list drawn whole has none.
+    if (item.row === model.ids.length - 1) node.classList.add("is-last");
+  }
+  node.style.setProperty("top", `${i * model.H}px`);
+  return node;
+}
+
+// Item `i` in the document (made if it is not), in its place among the drawn ones.
+function pagesVirtualNode(list, i) {
+  const model = list.pagesModel;
+  if (model.nodes.has(i)) return model.nodes.get(i);
+  const node = pagesVirtualMake(list, i);
+  let next = null;
+  let nextAt = Infinity;
+  for (const [at, other] of model.nodes) {
+    if (at > i && at < nextAt) {
+      next = other;
+      nextAt = at;
+    }
+  }
+  list.insertBefore(node, next);
+  model.nodes.set(i, node);
+  return node;
+}
+
+// The rows the view meets, a screen either side of it, and the active row are in the document; the others are not.
+// A row already drawn is kept as it is, never rebuilt.
+function pagesVirtualPlace(list) {
+  const model = list.pagesModel;
+  const page = $("page");
+  if (!model.H || !page) return;
+  const over = pagesOver(page.clientHeight, model.H);
+  const win = pagesWindow(model.items.length, model.H, pagesListTop(list, page), page.scrollTop, page.clientHeight, over);
+  const active = model.active >= 0 ? model.slot[model.active] : -1;
+  for (const [i, node] of [...model.nodes]) {
+    if ((i >= win.first && i <= win.last) || i === active) continue;
+    list.removeChild(node);
+    model.nodes.delete(i);
+  }
+  const broken = pagesBroken.length;
+  for (let i = win.first; i <= win.last; i += 1) pagesVirtualNode(list, i);
+  if (active >= 0) pagesVirtualNode(list, active);
+  if (pagesBroken.length !== broken) {
+    try {
+      pagesReportBroken();
+    } catch (err) {
+      failed(err);
+    }
+  }
+}
+
+// The row's own height, measured from a drawn row, and the listbox sized to the whole list. The first row is made,
+// laid out, and read; anything else than a positive number is a list that was not laid out, and a failure the
+// page says (decision 193) - never a guessed height. A list inside a fold that is shut is not laid out and is
+// left until the fold opens.
+function pagesVirtualSize(list) {
+  const model = list.pagesModel;
+  const fold = list.closest ? list.closest("details") : null;
+  if (fold && !fold.open) return;
+  for (const node of model.nodes.values()) list.removeChild(node);
+  model.nodes.clear();
+  model.H = 0;
+  const first = model.items.findIndex((item) => item.head === undefined);
+  if (first === -1) return;
+  const probe = pagesVirtualMake(list, first);
+  list.append(probe);
+  const height = probe.offsetHeight;
+  list.removeChild(probe);
+  if (!(height > 0)) throw new Error("row_height");
+  model.H = height;
+  list.style.setProperty("height", `${model.items.length * height}px`);
+}
+
+// Every long list under `root` (the page, or a fold just opened): measured and drawn. A redraw of the same page
+// asks for its scroll position back (`keepTop`), which the browser lost while the lists had no height.
+function pagesVirtualMeasure(root, keepTop) {
+  const lists = [...root.querySelectorAll(".rows.is-virtual")];
+  if (!lists.length) return;
+  pagesVirtualWire();
+  const broken = pagesBroken.length;
+  for (const list of lists) pagesVirtualSize(list);
+  const page = $("page");
+  if (keepTop) page.scrollTop = keepTop;
+  for (const list of lists) pagesVirtualPlace(list);
+  if (pagesBroken.length !== broken) pagesReportBroken();   // a row that could not be made, said once
+}
+
+// pagesVirtualMeasure for a caller outside pagesDraw (a fold opened, the density switched): a throw is the
+// page's failure notice, as it is when the draw measures (decision 193), never a console line only.
+function pagesVirtualMeasureSaid(root) {
+  try {
+    pagesVirtualMeasure(root);
+  } catch (err) {
+    // The failed size took the lists' rows out of the document: no list names a row that is gone.
+    for (const list of root.querySelectorAll(".rows.is-virtual")) {
+      if (list.pagesModel && !list.pagesModel.nodes.size) list.removeAttribute("aria-activedescendant");
+    }
+    failed(err);
+  }
+}
+
+// Every long list on the page, after a scroll or a resize.
+function pagesVirtualPlaceAll(root) {
+  for (const list of root.querySelectorAll(".rows.is-virtual")) pagesVirtualPlace(list);
+}
+
+// One passive scroll listener on the page and one resize observer, each coalesced to one animation frame.
+function pagesVirtualWire() {
+  if (pagesVirtualWired) return;
+  pagesVirtualWired = true;
+  const page = $("page");
+  let queued = false;
+  const again = () => {
+    if (queued) return;
+    queued = true;
+    requestAnimationFrame(() => {
+      queued = false;
+      pagesVirtualPlaceAll(page);
+    });
+  };
+  page.addEventListener("scroll", again, { passive: true });
+  if (typeof ResizeObserver === "function") new ResizeObserver(again).observe(page);
+}
+
+// The page scrolled just far enough that item `i` is whole in view (`block: "nearest"`'s rule), by the page's own
+// scroll position: the row may not be in the document yet.
+function pagesVirtualReveal(list, i) {
+  const model = list.pagesModel;
+  const page = $("page");
+  if (!model.H) return;
+  const top = pagesListTop(list, page) + i * model.H;
+  const bottom = top + model.H;
+  if (top < page.scrollTop) page.scrollTop = top;
+  else if (bottom > page.scrollTop + page.clientHeight) page.scrollTop = bottom - page.clientHeight;
+}
+
+// Row `at` of a long list made active: drawn if it is not, then brought into view.
+function pagesActivateAt(list, at, byKey) {
+  const model = list.pagesModel;
+  if (!model.H) return;
+  pagesActivate(list, pagesVirtualNodeSaid(list, model.slot[at]), byKey);
+}
+
+// Item `i` in the document, as pagesVirtualNode makes it, and a row that cannot be made, reached by a key or by a
+// restore, named once (pagesReportBroken) as a row reached by scrolling is: the baseline is taken before the node.
+function pagesVirtualNodeSaid(list, i) {
+  const broken = pagesBroken.length;
+  const node = pagesVirtualNode(list, i);
+  if (pagesBroken.length !== broken) {
+    try {
+      pagesReportBroken();
+    } catch (err) {
+      failed(err);
+    }
+  }
+  return node;
+}
+
+// The keys of a long list: the model's rows, drawn or not (the arrow keys, Home, End, PageUp and PageDown move the
+// active index over every row), Space, Enter and Shift+F10 on the active one.
+function pagesKeyLong(e, list) {
+  const model = list.pagesModel;
+  const count = model.ids.length;
+  if (!count || !model.H) return false;
+  const at = Math.max(0, model.active);
+  if (e.key === "ContextMenu" || (e.key === "F10" && e.shiftKey)) {
+    e.preventDefault();
+    const node = pagesVirtualNodeSaid(list, model.slot[at]);
+    const box = node.getBoundingClientRect();
+    pagesPopup(node, box.left + box.width / 2, box.bottom);
+    return true;
+  }
+  const page = Math.max(1, Math.floor(($("page").clientHeight || model.H) / model.H) - 1);
+  const moves = { ArrowDown: at + 1, ArrowUp: at - 1, Home: 0, End: count - 1, PageDown: at + page, PageUp: at - page };
+  if (e.key in moves) {
+    e.preventDefault();
+    pagesActivateAt(list, Math.min(Math.max(moves[e.key], 0), count - 1), true);
+    return true;
+  }
+  if (e.key === " " && pagesOpenRowLinks(list, pagesVirtualNodeSaid(list, model.slot[at]))) {
+    e.preventDefault();
+    return true;
+  }
+  if (e.key === "Enter") {
+    e.preventDefault();
+    pagesRunRow(pagesVirtualNodeSaid(list, model.slot[at]));
+    return true;
+  }
+  return false;
+}
+
 // ── keys on a row list (SPEC 3.6, 4.3) ────────────────────────────────
 // shell.js hands a key from inside a `role="listbox"` here; true = handled.
 // The right-click key (Shift+F10, the menu key) is the right-click menu's,
@@ -1926,6 +2251,7 @@ function pagesReopenPanel(page, owner) {
 function pagesKey(e) {
   const list = e.target.closest('[role="listbox"]');
   if (!list) return false;
+  if (list.pagesModel) return pagesKeyLong(e, list);
   const rows = [...list.querySelectorAll('[role="option"]')];
   if (!rows.length) return false;
   const at = Math.max(0, rows.findIndex((one) => one.classList.contains("is-active")));

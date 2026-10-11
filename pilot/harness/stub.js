@@ -94,6 +94,33 @@
     return body;
   }
 
+  // The scenarios "long-return" and "long-editor" (P279, SPEC-ui-menu-speed 2.7): the Smith Family's 2025 return with
+  // `n` made-up requests (default 500) and, for the first, `n` parked and filed files besides, so the lists are long
+  // enough to be drawn a window at a time. Every name is made up; a few are long enough to be cut, and a few files
+  // are emails, so a sub-heading sits among the rows.
+  function longBody(n, withFiles) {
+    const body = { needs: [], waiting: [], received: [], setAside: [], due: "Due Apr 15", draft: null };
+    const why = [REASON("unmatched"), REASON("ambiguous"), REASON("no-text-layer"), REASON("name-other"), REASON("wrong-period")];
+    const pad = (i) => String(i + 1).padStart(4, "0");
+    for (let i = 0; i < n; i += 1) {
+      const name = i % 17 === 16 ? `Consolidated annual statement with supplemental schedules and notes, made-up request ${pad(i)}` : `Made-up request ${pad(i)}`;
+      const kind = i % 5;
+      if (kind === 0) body.needs.push(request(name, "", LB("Failed Validation"), `Mar ${2 + (i % 20)}`));
+      else if (kind < 3) body.waiting.push(request(name, "", kind === 2 ? LB("Partial") : LB("Missing")));
+      else body.received.push(request(name, `made-up-${pad(i)}.pdf`, LB("Received"), `Feb ${10 + (i % 15)}`));
+      if (kind === 4 && i % 10 === 9) body.setAside.push(request(`Made-up unused request ${pad(i)}`, "", LB("Not asked")));
+    }
+    if (withFiles) {
+      for (let i = 0; i < n; i += 1) {
+        const container = i % 9 === 8;
+        body.needs.push(file(`scan-${pad(i)}.${container ? "eml" : "pdf"}`, "", container ? REASON("opened-not-across") : why[i % 5], `Mar ${2 + (i % 20)}`,
+          container ? { bucket: "container", copy: false } : { suggest: ["Made-up request 0001"] }));
+      }
+    }
+    return body;
+  }
+  const longN = Math.max(1, Number(params.get("n")) || (scenario === "long-editor" ? 300 : 500));
+
   const ROOT = "/clients/J Park & Associates";
   const bodies = {};       // return path -> body
   const households = [];
@@ -119,7 +146,7 @@
     household("Okafor Family", "Ada Okafor", [["1040 - Chidi & Ada Okafor", 2025, generic(0, 0, 12, "")]]);
     household("Patel Family", "Nina Patel", [["1040 - Nina Patel", 2025, generic(0, 0, 9, "")]]);
   } else if (scenario !== "empty-clients") {
-    household("Smith Family", "John Smith", [["1040 - John & Jane Smith", 2025, smith()],
+    household("Smith Family", "John Smith", [["1040 - John & Jane Smith", 2025, scenario === "long-return" || scenario === "long-editor" ? longBody(longN, scenario === "long-return") : smith()],
       // The scenario "two-years" (P268): last season's return is still waiting, with a reminder ready, so the firm lists hold two years.
       ["1040 - John & Jane Smith", 2024, scenario === "two-years" ? Object.assign(generic(0, 2, 9, "Due Apr 15"), { draft: { ready: true, stage: 1, held: 0, drafted: "2026-03-03" } }) : generic(0, 0, 11, "")]],
       // Two members and a made-up, non-URL link token, so the household card says Saved (P275); the others keep no link.
@@ -242,9 +269,17 @@
     const lock = scenario === "locked" ? { started: "2026-03-03T06:00:00", host: "OFFICE-PC", age_minutes: 3, stale: false, engagement: path, label: "",
       pass: { household: "Smith Family", name: "1040 - John & Jane Smith" } }
       : scenario === "stale-lock" ? { started: "2026-03-02T06:00:00", host: "OFFICE-PC", age_minutes: 900, stale: true, engagement: path, label: "" } : null;
+    // The long scenarios: the request list the editor opens on, one rule per request (every tenth set aside as not applicable).
+    const longList = scenario === "long-editor" || scenario === "long-return";
+    const rules = longList ? items.map((it, i) => ({
+      identifier: it.identifier, document: it.document, period: "", expected_count: 1, allowed_extensions: [], min_size_kb: 0, required_keywords: [],
+      any_keywords: [it.document.toLowerCase()], date_pattern: "", date_pattern_derived: true, manual_override: scenario === "long-editor" && i % 10 === 9 ? "Not Applicable" : "",
+      override_reason: "", named: true, asked: true, short_title: "",
+    })) : undefined;
+    if (longList) items.forEach((it, i) => { it.catalog_row = true; if (scenario === "long-editor" && i % 10 === 9) it.manual_override = "Not Applicable"; });
     return {
       paths: Object.assign({ engagement: path, inbox: owner ? owner.inbox : "", client_folder: owner ? owner.client_folder : "", status: `${ROOT}/status.html` }, keys),
-      items, index, review, moved: movedList, lock, engagement: { due: dueOf(body.due) || "", form: "", people: [] },
+      rules, items, index, review, moved: movedList, lock, engagement: { due: dueOf(body.due) || "", form: "", people: [] },
       reminder_card: reminderReply(body, path, null),
       household: {
         path: owner ? owner.path : "", name: hh, members: owner ? owner.members : [], contact: owner ? owner.contact : "", link: "",

@@ -285,3 +285,27 @@ def test_the_face_is_chosen_once_per_platform_in_the_token_block_and_no_rule_nam
             for prop, value in declarations(body):
                 if prop == "font-family":
                     assert value in ("var(--font-ui)", "var(--font-display)", "inherit"), f"{name}: {selector.strip()}: {value}"
+
+
+# ── P279 (SPEC-ui-menu-speed §2): long lists draw only the rows in view ───
+
+def test_a_long_lists_rows_are_absolute_one_line_and_set_no_height_of_their_own():
+    """P279: `.rows.is-virtual > .row` places each drawn row (absolute, left
+    and right 0) on one line (nowrap, its name and status cut with an
+    ellipsis) and declares no height, so the row's own min-height - the
+    density's (--size-row, or P271's compact one) - is what the script
+    measures; no selector of the block names .rows-compact, so P271's rule
+    that a .rows-compact rule sets only min-height, font-size and line-height
+    still holds; the editor's spacer rows carry no padding or border."""
+    shell = [(" ".join(sel.split()), dict(declarations(body))) for _m, sel, body in blocks(read("shell.css")) if "is-virtual" in sel]
+    assert shell, "the long-list rules are in shell.css"
+    for selector, rule in shell:
+        assert ".rows-compact" not in selector, selector
+        assert not {prop for prop in rule if "height" in prop}, f"{selector}: the density's height is the row's own"
+    row = next(rule for selector, rule in shell if selector.startswith(".rows.is-virtual > .row:not(.hidden),"))
+    assert row["position"] == "absolute" and row["left"] == "0" and row["right"] == "0" and row["white-space"] == "nowrap"
+    cut = next(rule for selector, rule in shell if ".row-name" in selector and ".row-status" in selector)
+    assert cut["overflow"] == "hidden" and cut["text-overflow"] == "ellipsis" and cut["white-space"] == "nowrap"
+    assert not any("row-wrap" in selector for selector, _ in shell), "a long list's rows never wrap"
+    spacer = {" ".join(sel.split()): dict(declarations(body)) for _m, sel, body in blocks(read("style.css"))}[".editor-table .ed-spacer td"]
+    assert spacer["padding"] == "0" and spacer["border"] == "0"

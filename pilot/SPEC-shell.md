@@ -429,6 +429,15 @@ and three 68px (a 20px line and 4px above and below, on the 4px grid, plus
 the 1px rule). A file's name keeps its "…" and tooltip. The link's tooltip
 stays "Navigate to Return" or "Navigate to Client".
 
+**A long list draws only what is in view (P279).** A list on a household,
+year or return page of more than 100 rows, and an editor table of more than
+100 requests, keeps every row's place but puts in the document only the rows
+in view, one screen either side and the active row. Each such row is one line
+at its density's least height (`--size-row` 40px; `--size-row-compact` 32px
+under Compact Rows, P271), so in these lists a long name ends in "…" with
+its tooltip instead of wrapping; rulings 21 and 27 hold in every list drawn
+whole. Every drawn row says its place (`aria-posinset`, `aria-setsize`).
+
 Hover `--bg-hover`; pressed `--bg-pressed`; the focused row gets the focus
 ring inset (`outline-offset: -2px`). An empty column keeps its width, so the
 columns line up down a page.
@@ -443,7 +452,9 @@ says.
 **Keyboard and screen readers:** each group's rows are one
 `role="listbox"`, named by its heading (`aria-labelledby`), holding
 `role="option"` rows; the listbox is one Tab stop and moves focus with
-`aria-activedescendant`. Up/Down, Home/End, PageUp/PageDown move;
+`aria-activedescendant`. Up/Down, Home/End, PageUp/PageDown move through
+every row of the list, drawn or not; the row moved to is drawn and brought
+into view;
 **Enter** runs the row's next step; **Shift+F10** or the menu key opens its
 right-click menu. The visible step text is `aria-hidden` (the option's
 accessible name is its columns read in order, and the step is announced
@@ -901,7 +912,8 @@ Common states, used by every page below:
   Contact, Shared With (the members and Shared or Not Shared), Inbox Link
   (Saved or Not Saved; the link is never drawn or opened), and More Actions,
   which opens the household menu.
-- One group per tax year, newest first: H2 is the year. Rows: one per
+- One group per tax year, newest first: H2 is the year. A year of more than
+  100 rows draws only the rows in view (3.6, P279). Rows: one per
   return. Name: the return, a link reading "{Return Name} ({Year})" (3.9).
   Detail: "Inactive" or "Rolled forward" when the
   list says so, else empty. Status: as on Clients. The status is the column right after the name; the
@@ -916,7 +928,8 @@ Common states, used by every page below:
 ### 6.6 Year
 
 - H1: the year. Rows: that year's returns, as on the household page. A year
-  exists only when it holds a return, so there is no empty state.
+  exists only when it holds a return, so there is no empty state. More than
+  100 rows draw only the rows in view (3.6, P279).
 
 ### 6.7 Return
 
@@ -977,6 +990,8 @@ that show their working copy in File Explorer, 3.9.)
 - A group with no rows is left out, except **Received**, which shows
   "Nothing received yet" (a return with nothing received yet is a state
   the brief asks for).
+- A group of more than 100 rows draws only the rows in view, and the request
+  list editor's table the same (3.6, P279).
 - Right-click on the H1 or its path segment: `return`.
 
 ### 6.8 Setup (first run, and File › Change clients folder…)

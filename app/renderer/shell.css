@@ -1265,6 +1265,31 @@ input, textarea, select { caret-color: var(--text); accent-color: var(--accent);
    Compact changed nothing in the editor (review 1, finding 1). */
 .rows-compact :is(#page, #sheet, .modal-overlay) .editor-table :is(input:not([type="checkbox"]):not([type="radio"]), select) { min-height: var(--size-control-sm); }
 
+/* ── Long lists (P279) ───────────────────────────────────────────────────
+   A list of more than 100 rows is as tall as the whole list (the script sets
+   its height) and each row the script draws sits at its place in it: absolute,
+   one line, so its height is its density's least and the script can measure it
+   from a drawn row. A long name ends in an ellipsis (its tooltip is the whole
+   name). The rule names no .rows-compact and sets no height of its own: the
+   density is the rows' own min-height (P271), never a number here. A sub-heading
+   is a slot of the same height. The last drawn row is not the list's last, so
+   every row keeps its hairline but the list's own last. */
+.rows.is-virtual { position: relative; overflow-anchor: none; }
+.rows.is-virtual > .row:not(.hidden), .rows.is-virtual > .group-sub:not(.hidden) {
+  position: absolute;
+  left: 0;
+  right: 0;
+  white-space: nowrap;
+}
+.rows.is-virtual > .row:not(.hidden) { border-bottom: 1px solid var(--border); }
+.rows.is-virtual > .row.is-last:not(.hidden) { border-bottom: 0; }
+.rows.is-virtual > .group-sub:not(.hidden) { box-sizing: border-box; overflow: hidden; text-overflow: ellipsis; }
+.rows.is-virtual > .row .row-name, .rows.is-virtual > .row .row-status {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* ── The notices panel (P273) ────────────────────────────────────────────
    At 1388px and wider the notices stack in a 288px panel at the right of the
    page, under the path row, instead of pushing the page down; the panel is
