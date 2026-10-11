@@ -132,7 +132,8 @@ def test_the_program_stamp_follows_the_packaged_executable(tmp_path, monkeypatch
 def _entry(fingerprint="f" * 32):
     return {"fingerprint": fingerprint, "kind": "household", "name": "Lee Family", "feeds": [], "related": [],
             "returns": [{"path": "p", "household": "h", "problem": "", "active": True, "tax_year": 2025,
-                         "rolled_from": "", "shown": {"row": {"a": 1}, "files": [], "paths": {}}}]}
+                         "rolled_from": "", "return_name": "1040 - Lee", "form": "1040",
+                         "shown": {"row": {"a": 1}, "files": [], "paths": {}}}]}
 
 
 def test_what_is_saved_is_what_is_loaded_under_the_same_head(tmp_path):

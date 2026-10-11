@@ -77,6 +77,9 @@ const shellFirmHeld = new Map();   // return path -> a state whose counts differ
 let shellFirmCount = null;     // the running `firm`'s last count line: {done, total} (P222)
 let shellFirmSlow = false;     // the running `firm` has taken longer than SHELL_FIRM_SLOW_MS
 let shellFirmTimer = null;
+let shellTurns = 0;            // firm pages asked of the engine and not yet landed (P278): the page keeps its rows, marked Updating, until they have
+let shellTurnGen = 0;          // orders one ask of the engine against the next: a reply for a page no longer wanted is dropped (decision 193's way)
+let shellTurnThen = null;      // what to do once the page wanted is drawn: focus back on the control pressed, the page's top
 const SHELL_FIRM_SLOW_MS = 2000;   // past this a firm page's wait says how many households are read (P222)
 let shellPageBusy = false;     // a return's state is on its way
 let shellPageFailed = false;   // it could not be had (the notice says why, with Retry)
@@ -343,7 +346,7 @@ function shellAskFirmNow() {
   shellFirmNow = { status: "loading", data: shellFirmNow.data };
   shellFirmSent();
   shellFirmEarlyLanded = false;
-  shellFirmEarly = new Promise((resolve) => resolve(window.tracker.call(["firm"])))
+  shellFirmEarly = new Promise((resolve) => resolve(window.tracker.call(["firm"], shellFirmAsk("overview"))))
     .then((reply) => ({ reply }), (err) => ({ err }))
     .then((got) => { shellFirmEarlyLanded = true; return got; });
   shellUpdating();
@@ -352,6 +355,7 @@ function shellAskFirmNow() {
 // A list that asks for a clients folder has no Overview to show: the early
 // reply is never drawn, and neither are the last counts (P229), asked or shown.
 function shellDropEarlyFirm() {
+  shellTurnGen += 1;   // a page asked meanwhile is for a firm that is no longer shown
   shellFirmLast = null;
   const shown = shellFirmAsOf !== "";
   shellFirmAsOf = "";
@@ -384,7 +388,7 @@ function shellAskFirmLast() {
   if (shellFirmLast || shellFirmNow.data) return;   // asked already, or counts are drawn
   const mine = { reply: null };
   shellFirmLast = mine;
-  new Promise((resolve) => resolve(window.tracker.call(["firm-last"])))
+  new Promise((resolve) => resolve(window.tracker.call(["firm-last"], shellFirmAsk("overview"))))
     .then((reply) => {
       if (shellFirmLast !== mine) return;   // dropped: the fresh counts, or a list that asks for a folder
       mine.reply = reply;
@@ -395,17 +399,25 @@ function shellAskFirmLast() {
 }
 
 // The reply's counts and their time, or null. `firm-last` answers the
-// `firm` reply's own fields with `last: true` and `as_of` ("HH:MM", as
-// next_sort says a time) beside them, or refuses with {last: null,
-// warnings}. A refusal, an error, or any other shape shows nothing.
+// `firm` reply's own fields (the Overview's page, the totals and each return's
+// counts, P278) with `last: true` and `as_of` ("HH:MM", as next_sort says a
+// time) beside them, or refuses with {last: null, warnings}. A refusal, an
+// error, or any other shape shows nothing.
 function shellLastOf(reply) {
   if (!reply || typeof reply !== "object" || reply.error || reply.last !== true) return null;
   if (typeof reply.as_of !== "string" || !/^\d{2}:\d{2}$/.test(reply.as_of)) return null;
-  if (!Array.isArray(reply.returns) || !reply.totals || typeof reply.totals !== "object") return null;
-  const data = { ...reply };
-  delete data.last;
-  delete data.as_of;
-  return { data, asOf: reply.as_of };
+  if (!shellFirmShaped(reply)) return null;
+  const kept = { ...reply };
+  delete kept.last;
+  delete kept.as_of;
+  return { data: shellFirmMerge(null, kept), asOf: reply.as_of };
+}
+
+// A reply with the paged shape of `firm` (SPEC-ui-menu-speed 4.3): a page of a
+// list, the totals and each return's counts. Anything else is not drawn.
+function shellFirmShaped(reply) {
+  return Array.isArray(reply.return_counts) && Boolean(reply.totals) && typeof reply.totals === "object"
+    && Boolean(reply.page) && typeof reply.page === "object" && typeof reply.page.list === "string";
 }
 
 // Draw the last counts once they, the words and the clients folder are all
@@ -437,9 +449,125 @@ async function shellAdoptEarly(early) {
   return takeReply(got.reply, ["firm"]);
 }
 
-async function shellAskFirm() {
+async function shellAskFirm(list) {
   if (!Array.isArray(vocab.commands) || vocab.commands.indexOf("firm") === -1) throw new Error("firm");
-  return call(["firm"]);
+  return call(["firm"], shellFirmAsk(list));
+}
+
+// ── the firm lists, a page at a time (P278, SPEC-ui-menu-speed 4) ──────
+// The engine filters, orders and cuts each firm list into pages of 50 and
+// answers one page, the firm's totals and each return's counts. The window
+// holds the last reply of each list (`data.replies`) with the totals, the next
+// sort and the counts of the newest reply of any list, and asks for the page it
+// wants: from what it holds - the page, the order, the tab, the card, the
+// switch and the Client Type, which pages.js keeps - and never more.
+
+// The ask for one page of a list, as the engine takes it (tracker/firm_pages.py).
+function shellFirmAsk(list) {
+  const order = pagesStoredOrder()[list];
+  const filter = {
+    overview: { tab: pagesTab }, needs_review: { reason: pagesReasonPick }, reminders: {},
+    clients: { all: pagesClientsAll, type: pagesClientType },
+  }[list];
+  return { page: { list, at: pagesPageAt[list] || 0, order: order ? { cell: order.cell, dir: order.dir } : null, filter } };
+}
+
+// The firm list a fresh load asks: the firm page on screen, else the Overview.
+function shellFirmList() {
+  return pagesListOf(shellRoute) || "overview";
+}
+
+// What a reply makes of the answer held. The pages of one view (one token) are
+// from one moment and are kept together; a reply of any other view - a fresh
+// one, or one the engine did not save - replaces the pages held, so no page is
+// drawn from rows of two different views.
+function shellFirmMerge(held, reply) {
+  if (!shellFirmShaped(reply)) throw new Error("firm");   // an answer of another shape is never drawn as half a page
+  const same = Boolean(held && reply.view && held.view === reply.view);
+  return {
+    view: reply.view || "", totals: reply.totals, next_sort: reply.next_sort, return_counts: reply.return_counts,
+    replies: { ...(same ? held.replies : {}), [reply.page.list]: reply },
+  };
+}
+
+// Whether the answer held has a reply for the list.
+function shellFirmHolds(list) {
+  const data = shellFirmNow.data;
+  return Boolean(data && data.replies && data.replies[list]);
+}
+
+// Whether the reply held for the list is the page now wanted of it.
+function shellFirmBrought(list) {
+  if (!shellFirmHolds(list)) return false;
+  const want = shellFirmAsk(list).page;
+  const got = shellFirmNow.data.replies[list].page;
+  return got.at === want.at && JSON.stringify(got.order) === JSON.stringify(want.order) && JSON.stringify(got.filter) === JSON.stringify(want.filter);
+}
+
+// Ask the engine for the page wanted of the firm page on screen, unless the
+// answer held already is it (then what was waiting for it is done now). Nothing
+// is asked while a fresh load is on its way: it brings the view, and asks again
+// from it if it brought another page.
+function shellFirmFollow() {
+  const list = pagesListOf(shellRoute);
+  if (!list || !shellFirmNow.data || shellFirmNow.status === "loading") return;
+  if (shellFirmBrought(list)) shellTurnDone();
+  else shellTurnFirm(list);
+}
+
+function shellTurnDone() {
+  const then = shellTurnThen;
+  shellTurnThen = null;
+  if (then) then();
+}
+
+// A page turn, a column header, a tab, a card, the Clients switch or a Client
+// Type, or moving to another firm list: the page wanted is asked of the engine
+// with the held view's token, which reads the saved copy of the same answer (no
+// walk), and the page keeps the rows it holds, marked Updating, until it lands.
+// With no page held for the list, its loading state shows. A turn while a fresh
+// load is on its way waits for it; a turn while another is on its way
+// supersedes it. `then` runs once the page wanted is drawn.
+function shellTurnFirm(list, then) {
+  if (then) shellTurnThen = then;
+  if (shellFirmNow.status === "loading") return;
+  const held = shellFirmNow.data;
+  if (!held) {
+    if (shellFirmNow.status !== "failed") shellLoadFirm();
+    return;
+  }
+  const ask = shellFirmAsk(list);
+  const gen = ++shellTurnGen;
+  shellTurns += 1;
+  shellUpdating();
+  call(["firm"], held.view ? { ...ask, view: held.view } : ask).then((reply) => {
+    shellTurns -= 1;
+    if (gen !== shellTurnGen) return;
+    shellFirmNow = { status: "ok", data: shellFirmMerge(shellFirmNow.data, reply) };
+    pagesAdopt(reply);
+    shellDraw();
+    shellTurnDone();
+  }, (err) => {
+    shellTurns -= 1;
+    if (gen !== shellTurnGen) return;
+    shellTurnThen = null;
+    const again = () => shellTurnFirm(list);
+    const failure = err && err.failure;
+    if (failure && failure.key === "firm_page_refused") {
+      // The page refusal, marked by the engine (P278): the same ask would only be refused again, so no Retry, and the
+      // page wished for falls back to the page drawn (none drawn: the first); the next fresh load replaces the view.
+      if (shellFirmHolds(list)) pagesPageAt[list] = shellFirmNow.data.replies[list].page.at;
+      else delete pagesPageAt[list];
+      failed(err);
+    } else if (failure && failure.kind === "refused") {
+      // Any other refusal (a clients folder that cannot be walked just now) offers Retry, as a fresh load's notice does;
+      // a notice of kind refused draws none, so it is said in the engine's words as a failure.
+      notice({ ...failure, kind: "failed" }, { retry: again });
+    } else {
+      failed(err, again);   // the wish stays, so Retry asks the same page
+    }
+    shellDraw();
+  });
 }
 
 // A `firm` has been sent: when, for the writes that land meanwhile (P218),
@@ -532,11 +660,13 @@ async function shellLoadFirm() {
   }
   shellFirmNow = { status: "loading", data: shellFirmNow.data };
   if (!early) shellFirmSent();
+  shellTurnGen += 1;   // a page asked before this load began is the old view's: its reply is dropped
   shellChanged();
   shellUpdating();
   try {
-    const fresh = early ? await shellAdoptEarly(early) : await shellAskFirm();
-    shellFirmNow = { status: "ok", data: fresh };
+    const fresh = early ? await shellAdoptEarly(early) : await shellAskFirm(shellFirmList());
+    shellFirmNow = { status: "ok", data: shellFirmMerge(null, fresh) };
+    pagesAdopt(fresh);
   } catch (err) {
     failureSentence(err);
     // The launch's last counts are never kept past a failed refresh (P229).
@@ -559,6 +689,7 @@ async function shellLoadFirm() {
   }
   shellChanged();
   if (shellFollowsCounts()) shellDraw();
+  shellFirmFollow();   // the page wanted, if the view just brought another
 }
 
 // The pages drawn from the firm's counts: the firm pages, and a household's
@@ -567,9 +698,9 @@ function shellFollowsCounts() {
   return FIRM_LEVELS.indexOf(shellRoute.level) !== -1 || shellRoute.level === "household" || shellRoute.level === "year";
 }
 
-// Counts are held and asked again.
+// Counts are held and asked again, or a page of them is.
 function shellFirmUpdating() {
-  return shellFirmNow.status === "loading" && Boolean(shellFirmNow.data);
+  return Boolean(shellFirmNow.data) && (shellFirmNow.status === "loading" || shellTurns > 0);
 }
 
 // "Updating" on a page drawn from the counts as a load starts, without
@@ -645,6 +776,13 @@ function shellGo(next) {
   hideTip();   // tooltip.js: a tip goes with its page, even under a resting mouse (P202 R2)
   if (next.level === "setup") shellBack = shellRoute.level === "setup" ? shellBack : shellRoute;
   shellRoute = next;
+  // A firm list's first page is asked of the engine as the list is entered,
+  // after what the list left behind is forgotten (P278); the page meanwhile
+  // draws the rows held for it, marked Updating, or its loading state.
+  if (FIRM_LEVELS.indexOf(next.level) !== -1) {
+    pagesEnter(next);
+    shellFirmFollow();
+  }
   // Nothing the window's other side does may stop the page from going where
   // the person asked: a lock or a menu channel that throws is a notice.
   try {
@@ -740,7 +878,7 @@ function shellStateArrived(state) {
 // The state's own tally differs from the firm's counts for its return.
 function shellCountsDiffer(state) {
   const firm = shellFirmNow.data;
-  const mine = firm && state.paths ? firm.returns.find((one) => one.path === state.paths.engagement) : null;
+  const mine = firm && state.paths ? firm.return_counts.find((one) => one.path === state.paths.engagement) : null;
   if (!mine) return false;
   const tally = pagesTally(state);
   return Object.keys(tally).some((key) => tally[key] !== mine.counts[key]);
@@ -1155,8 +1293,8 @@ function drawFound() {
   const list = $("find-list");
   const box = $("find");
   const query = box.value;
-  const firm = shellFirmNow.data;
-  shellFound = findOptions(query, shellRoute.level === "needs-review" && firm ? firm.files : []);
+  const reply = shellRoute.level === "needs-review" && shellFirmHolds("needs_review") ? shellFirmNow.data.replies.needs_review : null;
+  shellFound = findOptions(query, reply ? reply.files_found : []);   // every waiting file, not only the page's (P278)
   if (!query.trim()) {
     hideFound();
     return;
@@ -1288,18 +1426,21 @@ function drawPage() {
   // its rows stay usable. The marker is set once per draw, never cleared and
   // set again, so its status is not read out on every redraw.
   const firmPage = FIRM_LEVELS.indexOf(route.level) !== -1;
-  const waiting = firmPage && !shellFirmNow.data && shellFirmNow.status !== "failed";
+  const holds = firmPage && shellFirmHolds(pagesListOf(route));
+  const waiting = firmPage && !holds && shellFirmNow.status !== "failed";
   const busy = shellPageBusy || waiting;
   const updating = shellFollowsCounts() && !busy && shellFirmUpdating();
   page.setAttribute("aria-busy", busy || updating ? "true" : "false");
   shellMarkUpdating(page, updating);
   if (busy) {
+    // A firm page waiting for its list (P278) is not a household's page: the notices of the page left go now, as a draw would take them.
+    if (firmPage) pagesLeave();
     // The outline in its own page's grid: a return page borrows no list's (P222).
     page.dataset.list = pagesListOf(route);
     page.replaceChildren(...shellLoading(routeTitle(), route.level));
     return;
   }
-  if ((firmPage && !shellFirmNow.data) || shellPageFailed) {
+  if ((firmPage && !holds) || shellPageFailed) {
     drawTitleOnly(page);
     return;
   }

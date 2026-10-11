@@ -40,6 +40,8 @@ async function open(query = "", { firm = true, forcedColors } = {}) {
   await page.waitForFunction((needsFirm) => window.HARNESS && window.HARNESS.calls.includes(needsFirm ? "firm" : "list") && !document.querySelector("#page[aria-busy=true]") && document.querySelector("#page > *, #notices > *"), firm, { timeout: 8000 });
   return { context, page };
 }
+// A firm page is asked of the engine a page at a time (P278): the page has landed when it is no longer busy and holds its rows (or says it is empty).
+const landed = (page) => page.waitForFunction(() => !document.querySelector("#page[aria-busy=true]") && document.querySelector("#page .row, #page .page-empty"), null, { timeout: 5000 });
 const current = (page) => page.evaluate(() => document.querySelector('.side-section[aria-current="page"] .side-name')?.textContent ?? null);
 const crumbs = (page) => page.evaluate(() => [...document.querySelectorAll("#crumb-list li")].map((li) => li.textContent));
 
@@ -201,9 +203,12 @@ const crumbs = (page) => page.evaluate(() => [...document.querySelectorAll("#cru
 { // Clients: the switch, and no H1 on a firm page
   const { context, page } = await open();
   await page.click('.side-section[data-section="clients"]');
-  const work = await page.evaluate(() => document.querySelectorAll("#page .row").length);
+  await landed(page);
+  const total = () => page.evaluate(() => Number(/of (\d+)/.exec(document.querySelector("#page .page-count")?.textContent || "")?.[1] || 0));
+  const work = await total();
   await page.click(".switch-option:nth-child(2)");
-  const all = await page.evaluate(() => document.querySelectorAll("#page .row").length);
+  await page.waitForFunction((was) => /of (\d+)/.exec(document.querySelector("#page .page-count")?.textContent || "")?.[1] > was, work, { timeout: 5000 });
+  const all = await total();
   check("All lists more households than Work waiting", all > work && all >= 500, [work, all]);
   check("a firm page draws no H1", await page.evaluate(() => document.querySelectorAll("#page h1").length) === 0, null);
   await context.close();

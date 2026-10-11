@@ -10810,3 +10810,267 @@ def test_the_household_card_words_are_in_the_screen_vocabulary_and_the_wording_t
     for key, said in card.items():
         assert rows[f"household_card.{key}"][4] == said, key
         assert len(said.split()) <= 5
+
+
+# ── P278 (SPEC-ui-menu-speed §4): the engine pages the firm lists ───────────
+
+def _a_page(list_="overview", at=0, order=None, view=None, **filter) -> dict:
+    """The stdin of one page of one firm list (SPEC 4.2)."""
+    ask = {"page": {"list": list_, "at": at, "order": order, "filter": filter}}
+    return {**ask, "view": view} if view else ask
+
+
+def _firm_page(capsys, list_="overview", **kwargs) -> dict:
+    code, reply = run(capsys, "firm", stdin=_a_page(list_, **kwargs))
+    assert code == 0, reply
+    return reply
+
+
+def _forbid_the_walk(monkeypatch) -> None:
+    """Every way ``firm`` reads the firm: the walk, the fingerprints and the record readers."""
+    from tracker import firm_cache
+
+    def refuses(*args, **kwargs):
+        raise AssertionError("the view was to be read, not the firm")
+
+    for name in ("discover_engagements", "household_positions", "households_named", "_firm_row", "load_manifest", "read_index",
+                 "load_engagement_info", "_firm_fresh", "_firm_cached"):
+        monkeypatch.setattr(api, name, refuses)
+    monkeypatch.setattr(firm_cache, "fingerprint", refuses)
+    monkeypatch.setattr(firm_cache, "fingerprints", refuses)
+
+
+def test_firm_without_a_page_answers_the_whole_reply_as_before(capsys, demo_root):
+    from tracker import firm_pages
+
+    _a_practice_for_the_firm_view(capsys, demo_root)
+    code, plain = run(capsys, "firm")
+    assert code == 0 and set(plain) == {"returns", "files", "totals", "paths", "next_sort", "warnings"}
+    code, empty = run(capsys, "firm", stdin={})
+    assert code == 0 and empty == plain
+    assert not firm_pages.pages_path().exists(), "a whole reply saves no view"
+
+
+def test_firm_with_a_page_answers_one_page_the_totals_and_every_returns_counts(capsys, demo_root):
+    mixed, _quiet, _retired = _a_practice_for_the_firm_view(capsys, demo_root)
+    whole = run(capsys, "firm")[1]
+    reply = _firm_page(capsys)
+    assert set(reply) == {"view", "totals", "next_sort", "return_counts", "page", "paths", "warnings"}
+    assert isinstance(reply["view"], str) and len(reply["view"]) == 16
+    assert reply["totals"] == whole["totals"] and reply["next_sort"] == whole["next_sort"]
+    assert reply["return_counts"] == [{key: one[key] for key in ("path", "household", "year", "form", "counts", "files", "problem", "paused")}
+                                      for one in whole["returns"]]
+    assert reply["page"]["list"] == "overview" and reply["page"]["rows"] and reply["page"]["total"] == len(reply["page"]["rows"])
+    assert {row["path"] for row in reply["page"]["rows"]} <= {one["path"] for one in whole["returns"]}
+    review = _firm_page(capsys, "needs_review")
+    assert [group["path"] for group in review["page"]["rows"]] == [str(mixed)]
+    assert [one["name"] for one in review["files_found"]] == ["setup.exe"] and review["page"]["rows"][0]["files"][0]["name"] == "setup.exe"
+
+
+def test_the_paged_reply_carries_no_returns_or_files_list_and_paths_only_for_its_rows(capsys, demo_root, tmp_path):
+    _firm_of_a_scanned_pile(capsys, demo_root, tmp_path)
+    whole = run(capsys, "firm")[1]
+    assert whole["files"] and whole["paths"]
+    for list_ in ("overview", "needs_review", "reminders", "clients"):
+        reply = _firm_page(capsys, list_)
+        assert "returns" not in reply and "files" not in reply, list_
+    reply = _firm_page(capsys, "needs_review")
+    named = {one["open_key"] for group in reply["page"]["rows"] for one in group["files"] if one["open_key"]}
+    assert named and reply["paths"] == {key: whole["paths"][key] for key in named}
+    assert _firm_page(capsys, "overview")["paths"] == {}, "no row of the Overview names a file"
+    assert len(reply["files_found"]) == len(whole["files"]), "the search finds every waiting file"
+
+
+def test_a_turn_with_the_view_reads_no_record_and_takes_no_fingerprint(capsys, demo_root, monkeypatch):
+    whole = _a_practice_kept_whole(capsys, demo_root, monkeypatch)
+    fresh = _firm_page(capsys, "overview")
+    for list_, order, filter in (("overview", {"cell": "end", "dir": -1}, {"tab": "need"}), ("needs_review", {"cell": "end", "dir": -1}, {"reason": ""}),
+                                 ("reminders", None, {}), ("clients", None, {"all": True, "type": ""})):
+        with monkeypatch.context() as patch:
+            _forbid_the_walk(patch)
+            turn = _firm_page(capsys, list_, view=fresh["view"], order=order, **filter)
+        assert turn["view"] == fresh["view"], "the token stays: it is the same view"
+        assert turn["totals"] == whole["totals"] and len(turn["return_counts"]) == len(whole["returns"])
+    assert turn["page"]["list"] == "clients" and turn["page"]["total"] > 0
+    with monkeypatch.context() as patch:
+        _forbid_the_walk(patch)
+        assert _firm_page(capsys, "overview", view=fresh["view"])["page"]["rows"] == fresh["page"]["rows"]
+
+
+def test_a_turn_with_a_stale_view_answers_fresh_with_a_new_view(capsys, demo_root, monkeypatch):
+    from tracker import firm_cache, firm_pages
+
+    _a_practice_for_the_firm_view(capsys, demo_root)
+    first = _firm_page(capsys)
+    second = _firm_page(capsys)
+    assert first["view"] != second["view"], "every fresh ask saves a view of its own"
+    turned = _firm_page(capsys, view=first["view"])
+    assert turned["view"] not in (first["view"], second["view"]), "another fresh firm replaced the first view: this is a new one"
+    assert turned["page"]["rows"] == second["page"]["rows"]
+    assert _firm_page(capsys, view=turned["view"])["view"] == turned["view"], "and it is the one saved now"
+    # The program changed under the window: its token is not honoured.
+    with monkeypatch.context() as patch:
+        patch.setattr(firm_cache, "program_stamp", lambda: "a program that came after")
+        after = _firm_page(capsys, view=turned["view"])
+    assert after["view"] != turned["view"]
+    # The file gone, or damaged.
+    firm_pages.pages_path().unlink()
+    gone = _firm_page(capsys, view=after["view"])
+    assert gone["view"] not in (after["view"], None) and firm_pages.pages_path().is_file()
+    firm_pages.pages_path().write_text("{ damaged", encoding="utf-8")
+    ruined = _firm_page(capsys, view=gone["view"])
+    assert ruined["view"] != gone["view"] and ruined["page"]["rows"] == second["page"]["rows"]
+    # A new token for no view at all is a fresh read, as the launch's is.
+    assert _firm_page(capsys)["view"] != ruined["view"]
+
+
+def test_the_pages_of_one_view_together_are_the_whole_ordered_list(capsys, demo_root, monkeypatch):
+    from tracker import firm_pages
+
+    _a_practice_kept_whole(capsys, demo_root, monkeypatch)
+    everything = {"overview": {"tab": "all"}, "clients": {"all": True, "type": ""}, "reminders": {}, "needs_review": {"reason": ""}}
+    for list_, filter in everything.items():
+        for order in (None, {"cell": {"overview": "taxpayer", "clients": "name", "reminders": "taxpayer", "needs_review": "name"}[list_], "dir": -1}):
+            whole_page = _firm_page(capsys, list_, order=order, **filter)["page"]
+            monkeypatch.setattr(firm_pages, "PAGE_SIZE", 2)
+            seen, view, at = [], None, 0
+            while True:
+                reply = _firm_page(capsys, list_, at=at, order=order, view=view, **filter)
+                view = view or reply["view"]
+                assert reply["view"] == view, "every page of the list is from the one view"
+                seen += reply["page"]["rows"]
+                at += 1
+                if at >= reply["page"]["pages"]:
+                    break
+            monkeypatch.setattr(firm_pages, "PAGE_SIZE", 50)
+            assert seen == whole_page["rows"], (list_, order)
+            assert reply["page"]["total"] == whole_page["total"]
+
+
+def test_firm_last_pages_its_reply_and_names_no_view(capsys, demo_root, monkeypatch):
+    from tracker import firm_pages
+
+    whole = _a_practice_kept_whole(capsys, demo_root, monkeypatch)
+    firm_pages.pages_path().unlink(missing_ok=True)
+    code, last = run(capsys, "firm-last", stdin=_a_page("overview"))
+    assert code == 0 and last["last"] is True and re.fullmatch(r"\d{2}:\d{2}", last["as_of"])
+    assert last["view"] is None and "returns" not in last and "files" not in last
+    fresh = _firm_page(capsys, "overview")
+    assert last["page"] == fresh["page"] and last["totals"] == whole["totals"] and last["return_counts"] == fresh["return_counts"]
+    firm_pages.pages_path().unlink()
+    assert run(capsys, "firm-last", stdin=_a_page("overview"))[1]["last"] is True
+    assert not firm_pages.pages_path().exists(), "firm-last saves nothing (P229)"
+    assert run(capsys, "firm-last")[1]["returns"] == whole["returns"], "asked for no page it answers the whole reply"
+
+
+def test_the_firm_page_size_is_fifty():
+    from tracker import firm_pages
+
+    assert firm_pages.PAGE_SIZE == 50
+
+
+def test_an_ask_the_engine_does_not_have_is_refused_by_the_one_sentence_and_nothing_is_read(capsys, demo_root, monkeypatch):
+    _a_practice_for_the_firm_view(capsys, demo_root)
+    assert api.FIRM_PAGE_REFUSED == "The app asked for a list the engine does not have; nothing was read."
+    _forbid_the_walk(monkeypatch)
+    for spec in ({"page": {"list": "payroll"}}, {"page": {"list": "overview", "order": {"cell": "bogus", "dir": 1}}},
+                 {"page": {"list": "overview", "at": -1}}, {"page": {"list": "clients", "filter": {"type": "dentists"}}}, {"unknown": True}):
+        for command in ("firm", "firm-last"):
+            code, reply = run(capsys, command, stdin=spec)
+            assert code == 1 and reply["error"] == api.FIRM_PAGE_REFUSED and reply["failure"]["kind"] == "refused", (command, spec)
+
+
+def test_the_page_refusal_alone_carries_the_mark_firm_page_refused(capsys, demo_root, monkeypatch):
+    """P278: the window drops Retry on the page refusal only, so the engine marks that
+    envelope itself (``key``), beside the fields every envelope keeps; a page ask refused
+    for another reason - a clients folder that cannot be walked just now - is unmarked."""
+    from tracker.registry import RegistryError
+
+    _a_practice_for_the_firm_view(capsys, demo_root)
+    assert api.FIRM_PAGE_REFUSED_KEY == "firm_page_refused"
+    for command in ("firm", "firm-last"):
+        code, reply = run(capsys, command, stdin={"page": {"list": "payroll"}})
+        assert code == 1 and reply["failure"] == {"sentence": api.FIRM_PAGE_REFUSED, "kind": "refused", "seq": None,
+                                                  "identifier": None, "key": "firm_page_refused"}, command
+
+    def cannot_walk(root):
+        raise RegistryError("made up")
+
+    monkeypatch.setattr(api, "_firm_cached", lambda root, today: None)
+    monkeypatch.setattr(api, "discover_engagements", cannot_walk)
+    code, reply = run(capsys, "firm", stdin=_a_page("overview"))
+    assert code == 1 and reply["failure"]["kind"] == "refused" and reply["error"] == api.PRACTICE_NOT_WALKED
+    assert "key" not in reply["failure"], "only the page refusal is marked: this one keeps Retry"
+
+
+def test_a_view_that_cannot_be_saved_answers_the_page_without_a_token_and_the_next_turn_reads_fresh(capsys, demo_root, monkeypatch):
+    from tracker import firm_pages
+
+    _a_practice_for_the_firm_view(capsys, demo_root)
+    with monkeypatch.context() as patch:
+        def refuses(path, text):
+            raise PermissionError("made up")
+
+        patch.setattr(firm_pages, "write_text_atomically", refuses)
+        unsaved = _firm_page(capsys)
+    assert unsaved["view"] is None and unsaved["page"]["rows"]
+    next_turn = _firm_page(capsys, view=None)
+    assert next_turn["view"] and next_turn["page"] == unsaved["page"]
+
+
+def test_the_firm_words_are_the_vocabulary_the_window_reads():
+    """The keys' words are handed in from the same sources ``_vocab()`` serves, never typed twice."""
+    vocab = api._vocab()
+    words = api._firm_words()
+    counts = vocab["screen"]["counts"]
+    assert (words["need"], words["waiting"], words["complete"]) == (counts["need"], counts["waiting"], counts["complete"])
+    assert words["paused"] == vocab["screen"]["notices"]["paused"] and words["held"] == vocab["screen"]["held"]
+    assert words["stages"] == {one["number"]: one["short"] for one in vocab["reminder"]["stages"]}
+    assert words["reasons"] == vocab["reasons"] and words["client_types"] == vocab["client_type_forms"]
+
+
+def test_the_walk_the_pages_are_cut_from_is_the_same_from_the_cache_and_from_the_whole_walk(capsys, demo_root, monkeypatch):
+    """The names a page orders by (each return's name, each household's links and
+    forms) come from the kept facts when the cache answers: they equal the whole
+    walk's, and the facts kept hold the return's name and its recorded form."""
+    from tracker import firm_cache
+
+    _a_practice_kept_whole(capsys, demo_root, monkeypatch)
+    root, today = api._saved_root(), dt.date.today()
+    cached = api._firm_from_cache(root, today)
+    fresh = api._firm_fresh(root, today)
+    assert cached[1]["returns"] == fresh[1]["returns"] and cached[1]["returns"]
+    ordered = lambda walk: sorted(walk["households"], key=lambda one: one["path"])      # noqa: E731
+    assert ordered(cached[1]) == ordered(fresh[1])
+    assert all(one["name"] and one["path"] and isinstance(one["forms"], list) for one in cached[1]["households"])
+    kept = firm_cache.load(firm_cache.cache_path(), firm_cache.head(str(root), today))
+    facts = [fact for entry in kept.values() for fact in entry["returns"]]
+    assert facts and all(isinstance(fact["return_name"], str) and fact["return_name"] and "form" in fact for fact in facts)
+
+
+@pytest.mark.parametrize("list_,filter,damage", [
+    ("overview", {"tab": "all"}, "returns"), ("needs_review", {"reason": ""}, "returns"), ("needs_review", {"reason": ""}, "files"),
+    ("reminders", {}, "returns"), ("clients", {"all": True, "type": ""}, "returns")])
+def test_a_view_damaged_into_other_valid_json_is_said_by_its_class_and_the_ask_is_answered_fresh(
+        capsys, demo_root, caplog, list_, filter, damage):
+    """SPEC 4.7: a view that cannot be read is answered fresh (slower, never wrong). A view whose
+    file is still whole JSON but whose entries are damaged cannot be paged: it is no view - said on
+    the error log by its class, as a damaged cache is (P120) - and the ask is answered by a new walk
+    under a new token, never a failed turn that Retry would repeat."""
+    import logging
+
+    from tracker import firm_pages
+
+    _a_practice_for_the_firm_view(capsys, demo_root)
+    fresh = _firm_page(capsys, list_, **filter)
+    kept = json.loads(firm_pages.pages_path().read_text(encoding="utf-8"))
+    kept["reply"][damage] = kept["reply"][damage][:1] + [7]
+    firm_pages.pages_path().write_text(json.dumps(kept), encoding="utf-8")
+    with caplog.at_level(logging.WARNING):
+        turned = _firm_page(capsys, list_, view=fresh["view"], **filter)
+    assert turned["view"] not in (None, fresh["view"]), "a new walk, a new token"
+    assert turned["page"]["rows"] == fresh["page"]["rows"] and turned["totals"] == fresh["totals"]
+    said = [record.getMessage() for record in caplog.records if "could not be paged" in record.getMessage()]
+    assert said and "TypeError" in said[0], "said by its class"
+    assert not any(name in said[0] for name in ("Mixed", "Quiet", "Retired", "setup.exe")), "never a client's words"
+    assert _firm_page(capsys, list_, view=turned["view"], **filter)["view"] == turned["view"], "and the new view is the one saved"

@@ -131,8 +131,12 @@ LAYERS: dict[int, frozenset[str]] = {
     # ``page_rows`` joins L0 with P227: the practice page's kept rows - the
     # standard library, ``settings``, ``fsio``, ``errors`` and ``firm_cache``'s
     # head; the runner reads the records and asks the store for the tokens.
+    # ``firm_pages`` joins L0 with P278: a firm reply cut into one page, and
+    # the view file - the standard library, ``settings``, ``fsio``, ``errors``,
+    # ``layout`` (the return naming pattern) and ``firm_cache``'s head and file
+    # readers; the API hands it the words.
     0: frozenset({"__init__", "reasons", "locking", "checkpoint", "page", "fsio", "settings",
-                  "layout", "door", "errors", "progress", "firm_cache", "page_rows"}),
+                  "layout", "door", "errors", "progress", "firm_cache", "page_rows", "firm_pages"}),
     1: frozenset({"households", "ledger", "manifest", "records", "scaffold", "store",
                   "templates", "validators"}),
     2: frozenset({"containers", "content_check", "names", "ocr", "router"}),
@@ -760,6 +764,8 @@ ALLOWED_SPELLINGS: dict[tuple[str, str], str] = {
                                       "in either tree"),
     ("tracker/validators.py", "bears_macros"): ("a member's name inside an Office package's zip "
                                                 "(decision 190), never a folder of the layout"),
+    ("tracker/firm_pages.py", "<module>"): ("the order a person reads displayed names in, as the window's collator "
+                                            "gave it (P278) - never a folder's identity or its key"),
     ("tools/repo_map.py", "*"): "the repository's paths, never a client's",
     ("tools/vocab_report.py", "*"): "the repository's paths, never a client's",
     ("tools/backtest.py", "*"): "the repository's paths, never a client's",
@@ -993,3 +999,16 @@ def test_the_engine_imports_the_api_the_lock_the_reader_and_the_settings_and_not
     assert call["resident"] == set(), call["resident"]
     assert [m for m in load if "resident" in load[m] | call[m]] == []
     assert LAYER_OF["resident"] == LAYER_OF["api"] == 5
+
+
+# ── P278 (SPEC-ui-menu-speed §4) ───────────────────────────────────────────
+
+def test_firm_pages_joins_layer_0_and_reaches_only_the_standard_library_and_the_low_modules():
+    """P278: the firm lists cut into pages and the view file are layer 0 -
+    the API builds the whole reply and hands the words; this module decides
+    no count and reads no record. Nothing but the API reaches it."""
+    load, call = import_edges()
+    assert LAYER_OF["firm_pages"] == 0
+    assert load["firm_pages"] == {"errors", "firm_cache", "fsio", "layout", "settings"}, load["firm_pages"]
+    assert call["firm_pages"] == set(), call["firm_pages"]
+    assert [m for m in load if "firm_pages" in load[m] | call[m]] == ["api"]

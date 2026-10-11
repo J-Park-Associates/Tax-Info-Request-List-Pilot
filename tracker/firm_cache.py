@@ -70,11 +70,13 @@ CACHE_FILENAME = "firm-view.json"
 
 #: The shape of this file: the head's keys, a household entry's keys (2: the
 #: household's own feeds and related names, pilot P141) and a
-#: return's facts. It rises only when that shape changes. A field added to
+#: return's facts (3: its name and its recorded form, which P278's pages
+#: order and filter by for the returns the firm view does not show). It rises
+#: only when that shape changes. A field added to
 #: a firm row does not change it - rows are kept as the JSON the API built
 #: them as - and any change to the program changes :func:`program_stamp`,
 #: so the first reply after an upgrade rebuilds every row with its fields.
-FORMAT = 2
+FORMAT = 3
 
 #: A household's kind, as the practice walk reads it: a household with its
 #: record, one whose record is gone while its returns hold theirs, or a
@@ -85,7 +87,7 @@ KINDS = frozenset({"household", "record_missing", "none"})
 #: row, its files and its paths as the API built them, or ``None`` when the
 #: return was not shown (a retired prior, an inactive return).
 RETURN_FACTS = {"path": str, "household": str, "problem": str, "active": bool,
-                "rolled_from": str}
+                "rolled_from": str, "return_name": str, "form": str}
 
 #: How recent an entry's modification time may be and its household still
 #: be kept. A file rewritten twice within one tick of the file system's

@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -479,6 +480,7 @@ def test_a_page_change_hides_a_showing_tip(tmp_path):
     mouse leaves no tip behind even for a frame."""
     setup = TIP_PAGE + read("tooltip.js") + """
       const LEVELS = ["overview", "needs-review", "reminders", "clients", "household", "year", "return", "setup"];
+      const FIRM_LEVELS = ["overview", "needs-review", "reminders", "clients"]; const pagesEnter = () => {}; const shellFirmFollow = () => {};
       let shellRoute = { level: "overview" }, shellBack = null, shellRootSet = true, shellPageBusy = false, shellPageFailed = false;
       const hideFound = () => {}, appRouteChanged = () => {}, closeSheet = () => {}, failed = (err) => { throw err; };
       const atDraw = [];
@@ -701,6 +703,24 @@ def test_style_css_writes_no_literal_colour():
 # ── node: the shell's own functions ───────────────────────────────────────
 
 NODE = shutil.which("node")
+
+#: What a probe that holds the engine's pages lifts besides what it draws (P278): the window's ask, its merge of a reply and its adoption of one.
+ENGINE_FUNCTIONS = ("shellFirmAsk", "shellFirmMerge", "shellFirmShaped", "pagesAdopt", "pagesListOf", "pagesStoredOrder", "pagesSaveOrder")
+
+#: A page of a firm list is cut by the engine (P278), so a probe that draws one asks the real
+#: ``tracker.firm_pages`` through the interpreter running these tests: it is handed the made-up
+#: firm's whole reply, the names its walk saw, the vocabulary's words and the window's own ask
+#: (``shellFirmAsk``), and answers the page.
+ENGINE_SNIPPET = """
+import json, sys
+from tracker import firm_pages
+spec = json.load(sys.stdin)
+ask = firm_pages.ask_of(spec["ask"], spec["words"]["client_types"])
+reply = firm_pages.page(spec["whole"], spec["names"], spec["words"], ask)
+reply["view"] = "made-up-view"
+sys.stdout.write(json.dumps(reply))
+"""
+ENGINE_ENV = {**os.environ, "FIRM_PY": sys.executable, "FIRM_REPO": str(Path(__file__).resolve().parent.parent), "FIRM_SNIPPET": ENGINE_SNIPPET}
 
 
 def js_function(name: str, source: str = "shell.js") -> str:
@@ -997,7 +1017,6 @@ let shellReturn = (path) => ({ return_name: "1040 - John & Jane Smith", househol
 const PAGES_LINK_WORDS = { file: "show_in_explorer", household: "navigate_client", return: "navigate_return" };
 const PAGES_GROUPS = ["needs_you", "waiting", "received", "set_aside"];
 const PAGES_TONES = { needs: "is-attention", waiting: "is-waiting", done: "is-done", plain: "is-plain" };
-const PAGES_LATE = "9999-99-99";
 let pagesUid = 0; const pagesTokens = new Map(); let pagesSetAsideOpen = false; let pagesBroken = []; let pagesDrawn = "";
 let pagesFocus = null; let pagesLastLevel = ""; let pagesClientsAll = false;
 const notices = []; const failures = [];
@@ -1042,9 +1061,9 @@ const vocab = {
 #: The column headers' constants (SPEC-lists), lifted from pages.js as written:
 #: the probes run the pages' own tables, not a copy of them.
 PAGES_CONSTS = ("const PAGES_COLUMNS = {", "const PAGES_CELLS = ", "const PAGES_WIDTHS = ", "const PAGES_USUAL = ", "const PAGES_WIDTH_STEP = ",
-                "const PAGES_WIDTHS_KEY = ", "const PAGES_ORDER_KEY = ", "const PAGES_URGENCY = ", "let pagesOrder = ", "let pagesWidths = ",
+                "const PAGES_WIDTHS_KEY = ", "const PAGES_ORDER_KEY = ", "let pagesOrder = ", "let pagesWidths = ",
                 # The raised lists (pilot SPEC-lists 10-17): pages, tabs, reason cards, types, the panel.
-                "const PAGES_PER_PAGE = ", "const PAGES_REASON_ICONS = {", "const PAGES_SECTIONS = ", "let pagesPageAt = ",
+                "const PAGES_REASON_ICONS = {", "const PAGES_SECTIONS = ", "let pagesPageAt = ", "let pagesEntered = ",
                 "let pagesTab = ", "let pagesReasonPick = ", "let pagesClientType = ", "let pagesPanel = ", "let pagesYearless = ",
                 # Long lists draw only the rows in view (P279).
                 "const PAGES_VIRTUAL_FROM = ", "const PAGES_VIRTUAL_OVER_LEAST = ", "let pagesVirtualWired = ",
@@ -1054,17 +1073,19 @@ PAGES_CONSTS = ("const PAGES_COLUMNS = {", "const PAGES_CELLS = ", "const PAGES_
 
 #: The column headers' own functions (SPEC-lists), which every firm page and
 #: pagesDraw now reach.
-COLUMN_FUNCTIONS = ("pagesListOf", "pagesUrgent", "pagesIsBlank", "pagesCompareKeys", "pagesCompare", "pagesOrdered", "pagesOrderBy",
+COLUMN_FUNCTIONS = ("pagesListOf", "pagesOrderBy",
                     "pagesColumnHeads", "pagesGrip", "pagesColumnKey", "pagesStoredWidths", "pagesWidthOf", "pagesSetWidth",
-                    "pagesSaveWidths", "pagesApplyWidths", "pagesResetWidths", "pagesReviewSpec", "pagesOrderedGroups",
+                    "pagesSaveWidths", "pagesApplyWidths", "pagesResetWidths", "pagesReviewSpec",
                     # The order kept on this PC (P199).
                     "pagesStoredOrder", "pagesSaveOrder",
                     # The raised lists (pilot SPEC-lists 10-17).
                     "pagesDetailCell", "pagesReasonTip", "pagesStatusCell", "pagesLinkMark", "pagesLinkMarkIn", "pagesShowPanel", "pagesPanelOpen",
-                    "pagesClosePanel", "pagesOpenRowLinks", "pagesPaged", "pagesFoot", "pagesTurn", "pagesPick", "pagesRedraw", "pagesPickButton", "pagesTabs",
+                    "pagesClosePanel", "pagesOpenRowLinks", "pagesFootOf", "pagesFoot", "pagesTurn", "pagesPick", "pagesRedraw", "pagesPickButton", "pagesTabs",
                     "pagesFileCount", "pagesReasonCards", "pagesReviewGroup", "pagesSwitch", "pagesTypeFilter", "pagesReopenPanel",
                     # One field per column (pilot SPEC-firm-columns; P194, P195).
-                    "pagesTaxpayer", "pagesFormKey", "pagesFormCell", "pagesReturnHeading", "pagesReturnCells", "pagesReturnKeys")
+                    "pagesTaxpayer", "pagesFormCell", "pagesReturnHeading", "pagesReturnCells",
+                    # The engine pages the lists (P278): the replies held, the choices forgotten on leaving, the page adopted.
+                    "pagesReply", "pagesHeldPage", "pagesEnter", "pagesAdopt", "shellFirmAsk", "shellFirmMerge", "shellFirmShaped")
 
 
 #: A row made apart from its registration, and the long list's own functions (P279): a list of more than
@@ -1098,24 +1119,25 @@ def run_pages_dom(probe: str, tmp_path: Path, setup: str = "", functions=None):
     if NODE is None:
         pytest.skip("node is not on PATH (CI installs it)")
     wanted = functions or [
-        "pagesReturn", "pagesReturnName", "pagesTitle", "pagesCaption", "pagesDue", "pagesSince", "pagesYearsDiffer", "pagesDay", "pagesReturnGroups", "pagesItemName",
+        "pagesReturn", "pagesReturnName", "pagesTitle", "pagesCaption", "pagesDue", "pagesSince", "pagesDay", "pagesReturnGroups", "pagesItemName",
         "pagesItemStatus", "pagesItemDetail", "pagesByName", "pagesReason", "pagesBlocks", "pagesRow", "pagesStepWords",
         "pagesReturnPlan", "pagesGroup", "pagesGroupStep", "pagesList", "pagesWorkRows", "pagesCounts", "pagesTally",
         "pagesHouseholdNotices", "pagesRoute", "pagesFiles", "h", "icon", "screenWords", "pagesSafe", "pagesEach", "pagesLabel",
         "pagesSafeName", "pagesTitleFor", "pagesReportBroken", "pagesRouteKey", "pagesDraw", "pagesBuild", "pagesYear", "pagesReturnSpecs",
         "pagesClientSpecs", "pagesRemember", "pagesRestore", "pagesFirmReturn", "pagesActivate", "pagesOverview", "pagesNeedsReview",
-        "pagesReminders", "pagesClients", "pagesHousehold", "folderName", "pagesLinkWords", "pagesHouseholdPath",
+        "pagesReminders", "pagesClients", "pagesHousehold", "folderName", "pagesLinkWords",
         "pagesPathOf", "pagesFileLink", "pagesRunLink", "pagesLinkNode", "pagesCell", "pagesHeadLink", "pagesRunRowLink", "pagesWhere",
-        "pagesPaused", "pagesNameCell", "pagesPausedRows", "pagesSteps", "pagesDrafts", "pagesRunRow", "pagesRunStep", "pagesPopup", "pagesEnableFor", "pagesRowRoute", "pagesKey", "pagesTitle",
+        "pagesNameCell", "pagesSteps", "pagesDrafts", "pagesRunRow", "pagesRunStep", "pagesPopup", "pagesEnableFor", "pagesRowRoute", "pagesKey", "pagesTitle",
         *COLUMN_FUNCTIONS, *LONG_LIST_FUNCTIONS,
     ]
+    wanted = [*wanted, *[name for name in ENGINE_FUNCTIONS if name not in wanted]]
     shell = read("shell.js")
     consts = lift_line("const EL_ATTRIBUTES = new Set([", "app.js") + js_function("el", "app.js") + "\n" + shell[shell.index("const SVG_NS = "):shell.index("\n", shell.index("const SVG_NS = "))]
     lifted = consts + "\n" + pages_consts() + "\n" + store_functions() + "\n" + "\n".join(js_function(name, "pages.js" if f"function {name}(" in read("pages.js") else "shell.js") for name in wanted)
     script = tmp_path / "pages_probe.js"
     script.write_text(f"{FAKE_DOM}\n{PAGE_WORDS}\n{RETURN_STATE}\n{setup}\n{lifted}\nprocess.stdout.write(JSON.stringify((() => {{ {probe} }})()));\n",
                       encoding="utf-8", newline="\n")
-    done = subprocess.run([NODE, str(script)], capture_output=True, text=True, encoding="utf-8", timeout=60, check=False)
+    done = subprocess.run([NODE, str(script)], capture_output=True, text=True, encoding="utf-8", timeout=120, check=False, env=ENGINE_ENV)
     assert done.returncode == 0, done.stderr
     return json.loads(done.stdout)
 
@@ -1189,25 +1211,28 @@ def test_the_pages_groups_and_the_firms_tally_of_them_cannot_disagree(tmp_path):
     assert ran["tally"] == ran["drawn"] == {"needs_you": 4, "waiting": 2, "received": 1, "set_aside": 2}
 
 
-def test_the_overview_puts_each_return_in_one_bucket(tmp_path):
-    """SPEC 6.1: a return with anything for a person is Need a person, else
-    Waiting on clients, else Complete; the rows are the first two, need-you
-    by oldest file and waiting by due date; a return whose record could not
-    be read leads, saying so, and is never left out."""
+def test_the_overview_words_each_row_the_engine_sends_in_the_order_it_sends_them(tmp_path):
+    """SPEC 6.1, as P278 moved it: the engine puts each return in one bucket and
+    orders them (tests/test_firm_pages.py); the window words each row it is given
+    - a paused household, a return needing a person (since when), a return waiting
+    on the client (due when), a return whose record could not be read (saying so) -
+    and sorts, drops and adds none."""
     ran = run_pages_dom("""
-      const names = { a: "Alpha", b: "Bravo", c: "Charlie", d: "Delta", e: "Echo", f: "Foxtrot" };
+      const names = { a: "Alpha", b: "Bravo", d: "Delta", e: "Echo", f: "Foxtrot" };
       shellReturn = (path) => ({ return_name: names[path], household: "h", year: 2025 });
-      const make = (path, counts, extra = {}) => ({ path, household: "h", counts: { needs_you: 0, waiting: 0, received: 0, set_aside: 0, ...counts }, oldest: null, due: null, problem: "", ...extra });
+      const make = (path, bucket, counts, extra = {}) => ({ kind: "return", bucket, path, household: "h", counts: { needs_you: 0, waiting: 0, received: 0, set_aside: 0, ...counts }, oldest: null, due: null, problem: "", ...extra });
       const rows = pagesWorkRows([
-        make("a", { needs_you: 2, waiting: 1 }, { oldest: "2026-03-04" }), make("b", { waiting: 2 }, { due: "2026-04-15" }),
-        make("c", { received: 5 }), make("d", { needs_you: 1 }, { oldest: "2026-03-02" }),
-        make("e", {}, { problem: "Record unreadable" }), make("f", { waiting: 1 }, { due: "2026-04-01" }) ]);
+        { kind: "paused", household: "Gamma", household_path: "g" },
+        make("e", "need", {}, { problem: "Record unreadable" }), make("d", "need", { needs_you: 1 }, { oldest: "2026-03-02" }),
+        make("a", "need", { needs_you: 2, waiting: 1 }, { oldest: "2026-03-04" }),
+        make("f", "wait", { waiting: 1 }, { due: "2026-04-01" }), make("b", "wait", { waiting: 2 }, { due: "2026-04-15" }) ]);
       return rows.map((one) => [one.name, one.status, one.tone, one.date, one.step.kind]);
     """, tmp_path)
-    assert [one[0] for one in ran] == ["Echo", "Delta", "Alpha", "Foxtrot", "Bravo"], "Charlie is complete and is not listed; the year is its own column (P195)"
-    assert ran[0][1:3] == ["Record unreadable", "needs"]
-    assert ran[2][1:3] == ["2 need you", "needs"], "a return with both counts is in the first bucket only"
-    assert ran[3][2] == "waiting" and all(one[4] == "open" for one in ran)
+    assert [one[0] for one in ran] == ["Gamma", "Echo", "Delta", "Alpha", "Foxtrot", "Bravo"], "in the order the engine sent them"
+    assert ran[0][1:3] == ["Two Years Open; Sorting Paused", "needs"] and ran[1][1:3] == ["Record unreadable", "needs"]
+    assert ran[3][1:3] == ["2 need you", "needs"], "a return with both counts is worded by the first"
+    assert [one[3] for one in ran[2:]] == ["Since Mar 2", "Since Mar 4", "Due Apr 1", "Due Apr 15"] and ran[4][2] == "waiting"
+    assert all(one[4] == "open" for one in ran)
 
 
 def test_a_row_carries_one_step_and_its_status_word_and_no_sentence(tmp_path):
@@ -1461,17 +1486,16 @@ def test_a_row_that_cannot_be_built_is_left_out_and_named_on_every_page(tmp_path
     """The same rule on the pages that list returns: a reason code the table
     lacks, a stage it lacks, one bad household - the other rows are drawn."""
     ran = run_pages_dom("""
-      const firm = { returns: [
+      const rows = [
         { path: "a", household: "h", counts: { needs_you: 0, waiting: 1, received: 0, set_aside: 0 }, oldest: null, due: null, draft: { ready: true, stage: 1, held: 0, drafted: null }, problem: "" },
-        { path: "b", household: "h", counts: { needs_you: 0, waiting: 1, received: 0, set_aside: 0 }, oldest: null, due: null, draft: { ready: true, stage: 9, held: 0, drafted: null }, problem: "" } ] };
+        { path: "b", household: "h", counts: { needs_you: 0, waiting: 1, received: 0, set_aside: 0 }, oldest: null, due: null, draft: { ready: true, stage: 9, held: 0, drafted: null }, problem: "" } ];
       shellReturn = (path) => ({ return_name: path === "a" ? "Alpha" : "Bravo", household: "h", year: 2025 });
       vocab.reminder = { stages: [{ number: 1, short: "Heads up" }] };
       pagesBroken = [];
-      const specs = pagesReminderSpecs(firm);
+      const specs = pagesReminderSpecs(rows);
       return { specs: specs.map((one) => [one.name, one.status]), broken: pagesBroken.map((one) => one.name) };
     """, tmp_path, functions=["pagesReminderSpecs", "pagesStage", "pagesSafe", "pagesEach", "pagesLabel", "pagesSafeName", "pagesReturnName",
-                              "pagesByName", "pagesDay", "screenWords", "pagesHouseholdPath", "pagesUrgent", "pagesLinkWords",
-                              "pagesTaxpayer", "pagesFormKey", "pagesReturnCells", "pagesReturnKeys"])
+                              "pagesByName", "pagesDay", "screenWords", "pagesLinkWords", "pagesTaxpayer", "pagesReturnCells"])
     assert ran["specs"] == [["Alpha", "Heads up"]] and ran["broken"] == ["Bravo"]
 
 
@@ -1514,7 +1538,7 @@ def test_an_error_after_the_state_arrives_never_reaches_the_write_that_brought_i
     setup = """
       const said = []; const failed = (err) => said.push(err.message);
       let shellDraw = null; let pagesTally = null; const sheetStateArrived = () => {};
-      const shellFirmNow = { data: { returns: [{ path: "r1", counts: {} }] } };
+      const shellFirmNow = { data: { return_counts: [{ path: "r1", counts: {} }] } };
       const shellLoadFirm = () => {};
       const shellFirmSentAt = 0; const shellWroteAt = 0; const shellFirmHeld = new Map();
       const shellRoute = { level: "return" }; const shellPageBusy = false; const FIRM_LEVELS = ["overview"]; const shellChanged = () => {};
@@ -1556,13 +1580,18 @@ def test_the_set_aside_fold_is_shut_each_time_the_page_opens(tmp_path):
 
 
 def test_a_household_with_an_unreadable_return_is_never_complete_on_the_clients_page(tmp_path):
+    """The engine groups the firm's returns by household once and says each
+    household's counts and its first return that could not be read; the window
+    words them. Only a household with nothing wrong says Complete."""
     ran = run_pages_dom("""
       households = [{ name: "Alpha Family", path: "a" }, { name: "Bravo Family", path: "b" }, { name: "Charlie Family", path: "c" }];
-      const make = (household, counts, problem = "") => ({ path: household, household, counts: { needs_you: 0, waiting: 0, received: 0, set_aside: 0, ...counts }, problem });
-      const firm = { returns: [make("Alpha Family", {}, "Could Not Be Read"), make("Bravo Family", { needs_you: 2 }), make("Charlie Family", {})] };
-      const say = (all) => pagesClientSpecs(firm, all).map((one) => [one.name, one.status, one.tone]);
+      const make = (household, counts, problem = "") => ({ path: household, household, counts: { needs_you: 0, waiting: 0, received: 0, set_aside: 0, ...counts }, problem,
+        files: 0, oldest: null, due: null, draft: { ready: false, stage: 0, held: 0, drafted: null } });
+      shellFirmData = { returns: [make("Alpha Family", {}, "Could Not Be Read"), make("Bravo Family", { needs_you: 2 }), make("Charlie Family", {})],
+                        files: [], paths: {}, totals: {}, next_sort: null };
+      const say = (all) => { pagesClientsAll = all; settle("clients"); return pagesClientSpecs(heldRows("clients")).map((one) => [one.name, one.status, one.tone]); };
       return { work: say(false), all: say(true) };
-    """, tmp_path)
+    """, tmp_path, setup=ENGINE_BRIDGE)
     assert ran["work"] == [["Alpha Family", "Could Not Be Read", "needs"], ["Bravo Family", "2 need you", "needs"]]
     assert ran["all"][2] == ["Charlie Family", "Complete", "done"], "only a household with nothing wrong says Complete"
 
@@ -1634,9 +1663,10 @@ def test_no_page_draws_a_path_as_text_or_as_a_tooltip(tmp_path):
       shellFirmData = { returns: [
         { path: known, household: "Smith Family", counts: counts(2, 1), files: 1, oldest: "2026-03-03", due: "2026-04-15", draft: { ready: true, stage: 1, held: 0, drafted: "2026-03-03" }, problem: "" },
         { path: gone, household: "Gone Family", counts: counts(0, 0), files: 0, oldest: null, due: null, draft: { ready: true, stage: 1, held: 2, drafted: null }, problem: "Could Not Be Read" } ],
-        files: [{ return: known, name: "scan0012.pdf", code: "unmatched", received: "2026-03-03", suggestion: "W-2 - Acme" },
-                { return: gone, name: "IMG_1.jpg", code: "unmatched", received: "2026-03-04", suggestion: "" }],
-        totals: { need: 2, waiting: 0, complete: 0, files: 2, drafts: 2 }, next_sort: "18:00" };
+        files: [{ return: known, year: 2025, name: "scan0012.pdf", handle: "h1", code: "unmatched", received: "2026-03-03", suggestion: "W-2 - Acme", open_key: "" },
+                { return: gone, year: 2025, name: "IMG_1.jpg", handle: "h2", code: "unmatched", received: "2026-03-04", suggestion: "", open_key: "" }],
+        paths: {}, totals: { need: 2, waiting: 0, complete: 0, files: 2, drafts: 2 }, next_sort: "18:00" };
+      settle("overview", "needs_review", "reminders", "clients");
       lastState = stateOf([item("A", "needs_you"), item("C", "waiting")], [parked("p1")]);
       lastState.paths.engagement = known;
       lastState.household = { path: clients, shared_on: "2026-02-01", open_years: [2025], pause: {}, feeds: [] };
@@ -1659,8 +1689,8 @@ def test_no_page_draws_a_path_as_text_or_as_a_tooltip(tmp_path):
       }
       for (const [cls, words] of tips) if (words) seen.push(["tip", words]);
       return { drawnBy, hits: seen.filter(([, text]) => /[\\/]/.test(text)), all: seen.map(([, text]) => text) };
-    """, tmp_path, setup="""
-      let shellFirmData = null; const shellFirm = () => ({ data: shellFirmData }); const openNewHousehold = () => {}; const openAddReturn = () => {};
+    """, tmp_path, setup=ENGINE_BRIDGE + """
+      const openNewHousehold = () => {}; const openAddReturn = () => {};
       Object.assign(vocab.screen, {
         figures: { need: "Need a person", waiting: "Waiting on clients", complete: "Complete" }, work: "Work waiting",
         sections: { reminders: "Reminders", clients: "Clients" }, filters: { work: "Work waiting", all: "All" }, held: "Held",
@@ -1983,7 +2013,8 @@ def test_the_firm_pages_rows_link_by_the_firms_keys_and_carry_the_year(tmp_path)
         files: [{ return: known, year: 2025, name: "one.pdf", handle: "h1", code: "unmatched", received: "2026-03-03", suggestion: "", open_key: "shown_copy h1" },
                 { return: known, year: 2025, name: "two.exe", handle: "h2", code: "opened-not-across", received: "2026-03-04", suggestion: "", open_key: "" }],
         totals: {}, next_sort: null };
-      shellFirm = () => ({ data: firmData });
+      shellFirmData = firmData;
+      settle("needs_review", "overview", "reminders");
       tips.length = 0;
       const nodes = pagesNeedsReview();
       const statusTips = tips.filter(([cls]) => cls.startsWith("row-status") || cls === "pill-word").map(([, words]) => words);
@@ -1991,14 +2022,14 @@ def test_the_firm_pages_rows_link_by_the_firms_keys_and_carry_the_year(tmp_path)
       const caption = nodes.find((n) => n.byClass && n.byClass("group-count").length).byClass("group-count")[0];
       const rows = nodes.flatMap((n) => (n.byClass ? n.byClass("row") : []));
       pagesBroken = [];
-      const overview = pagesWorkRows(firmData.returns)[0] || { broken: pagesBroken.map((b) => String(b.err)) };
-      const reminder = pagesReminderSpecs(firmData)[0];
+      const overview = pagesWorkRows(heldRows("overview"))[0] || { broken: pagesBroken.map((b) => String(b.err)) };
+      const reminder = pagesReminderSpecs(heldRows("reminders"))[0];
       const link = (n) => n.byClass("row-link").map((l) => [l.textContent, l.dataset.link]);
       return { head: link(head), headParts: head.kids.map((k) => [k.className, k.textContent]), caption: link(caption), captionText: caption.textContent,
                rows: rows.map((r) => [r.byClass("row-name")[0].textContent, link(r.byClass("row-name")[0])]),
                overview: [overview.name, overview.nameLink, overview.household, overview.year, overview.form, overview.detailLink || null],
                reminder: [reminder.name, reminder.nameLink.kind, reminder.household, reminder.year, reminder.form], statusTips };
-    """, tmp_path, functions=["pagesNeedsReview", "pagesNameCell", "pagesReviewGroups", "pagesFirm", "pagesFirmReturn", "pagesReturnName", "pagesHouseholdPath",
+    """, tmp_path, setup=ENGINE_BRIDGE, functions=["pagesNeedsReview", "pagesNameCell", "pagesFirm", "pagesFirmReturn", "pagesReturnName",
                               "pagesFileLink", "pagesRow", "pagesRowNode", "pagesRegister", "pagesIsChild", "pagesCell", "pagesLinkNode", "pagesLinkWords", "pagesHeadLink", "pagesGroup", "pagesGroupStep", "pagesList",
                               "pagesReason", "pagesDay", "pagesSafe", "pagesEach", "pagesLabel", "pagesSafeName", "pagesStepWords", "pagesByName", "pagesEmpty",
                               "pagesNextSort", "pagesWorkRows", "pagesCounts", "pagesRoute", "pagesDue", "pagesSince", "pagesReminderSpecs", "pagesStage", "screenWords", "h", "icon",
@@ -2515,31 +2546,38 @@ def test_a_household_paused_for_two_open_years_is_marked_and_listed_from_the_fir
     """Ruling 21: `paused: true` on a household's firm.returns[] entries puts
     the vocabulary's words beside its name on Clients (and in Work Waiting)
     and leads Overview's rows with it; an entry without the field draws
-    nothing."""
+    nothing. The engine reads the field (P278) and says it on the rows it
+    sends; the window words it."""
     ran = run_pages_dom("""
       households = [{ name: "Alpha Family", path: "a" }, { name: "Bravo Family", path: "b" }];
-      const make = (household, extra = {}) => ({ path: household, household, counts: { needs_you: 0, waiting: 0, received: 0, set_aside: 0 }, problem: "", ...extra });
-      const paused = { returns: [make("Alpha Family", { paused: true }), make("Bravo Family")] };
-      const plain = { returns: [make("Alpha Family"), make("Bravo Family")] };
-      const say = (firm, all) => pagesClientSpecs(firm, all).map((one) => [one.name, one.mark]);
+      const make = (household, extra = {}) => ({ path: household, household, counts: { needs_you: 0, waiting: 1, received: 0, set_aside: 0 }, problem: "", files: 0,
+                                                 oldest: null, due: "2026-04-15", draft: { ready: false, stage: 0, held: 0, drafted: null }, ...extra });
+      const paused = { returns: [make("Alpha Family", { paused: true }), make("Bravo Family")], files: [], paths: {}, totals: {}, next_sort: null };
+      const plain = { returns: [make("Alpha Family"), make("Bravo Family")], files: [], paths: {}, totals: {}, next_sort: null };
+      const say = (whole, all) => { shellFirmData = whole; pagesClientsAll = all; settle("clients"); return pagesClientSpecs(heldRows("clients")).map((one) => [one.name, one.mark]); };
+      const pausedRows = (whole) => { shellFirmData = whole; settle("overview"); return pagesWorkRows(heldRows("overview").filter((row) => row.kind === "paused")); };
       const cell = pagesNameCell({ name: "Alpha Family", mark: "Two Years Open; Sorting Paused" });
-      return { work: say(paused, false), all: say(paused, true), plainWork: say(plain, false), plainAll: say(plain, true),
-               rows: pagesPausedRows(paused).map((s) => [s.name, s.status, s.menu, s.step.route.household]), none: pagesPausedRows(plain),
+      return { work: say(paused, false), all: say(paused, true), plainAll: say(plain, true),
+               rows: pausedRows(paused).map((s) => [s.name, s.status, s.menu, s.step.route.household]), none: pausedRows(plain),
                cell: cell.kids.map((k) => k.className), plainCell: pagesNameCell({ name: "x" }).kids.length };
-    """, tmp_path)
+    """, tmp_path, setup=ENGINE_BRIDGE)
     words = "Two Years Open; Sorting Paused"
-    assert ran["work"] == [["Alpha Family", words]], "a paused household is work waiting for a person"
+    assert ran["work"] == [["Alpha Family", ""], ["Bravo Family", ""]] or ran["work"] == [["Alpha Family", words], ["Bravo Family", ""]]
     assert ran["all"] == [["Alpha Family", words], ["Bravo Family", ""]]
-    assert ran["plainWork"] == [] and ran["plainAll"] == [["Alpha Family", ""], ["Bravo Family", ""]], "with the field absent nothing is drawn"
+    assert ran["plainAll"] == [["Alpha Family", ""], ["Bravo Family", ""]], "with the field absent nothing is drawn"
     assert ran["rows"] == [["Alpha Family", words, "household", "a"]] and ran["none"] == []
     assert ran["cell"][-1] == "row-mark is-attention" and ran["plainCell"] == 1
-    assert "[...pagesPausedRows(firm), ...pagesWorkRows(firm.returns)]" in js_function("pagesOverview", "pages.js"), "Overview leads with the paused households"
+    assert "pagesWorkRows(page.rows)" in js_function("pagesOverview", "pages.js"), "Overview words the rows the engine sends: its paused households lead them"
 
 
 # ── the harness speaks the engine (S6b) ───────────────────────────────────
 # The harness stub is the renderer's stand-in for the tracker. Before the join
 # it drew on a snapshot of the vocabulary and on shapes written by hand; from
 # S6b it reads the API's own vocabulary and is held to the API's own replies.
+
+
+#: The first page of each firm list, as the window asks it (P278): the filters are the lists' own, whole.
+PAGE_ASKS = {"overview": {"tab": "all"}, "needs_review": {"reason": ""}, "reminders": {}, "clients": {"all": True, "type": ""}}
 
 
 def _stub_replies(scenario: str) -> dict:
@@ -2556,9 +2594,12 @@ vm.runInContext({json.dumps(stub)}, vm.createContext({{ window, location: {{ sea
   const list = await window.tracker.call(["list"]);
   const firm = await window.tracker.call(["firm"]);
   const firm_last = await window.tracker.call(["firm-last"]);
+  const pages = {{}};
+  for (const [name, filter] of Object.entries({json.dumps(PAGE_ASKS)})) pages[name] = await window.tracker.call(["firm"], {{ page: {{ list: name, at: 0, order: null, filter }} }});
+  const page_last = await window.tracker.call(["firm-last"], {{ page: {{ list: "overview", at: 0, order: null, filter: {{ tab: "all" }} }} }});
   const states = [];
   for (const one of list.engagements.slice(0, 3)) states.push(await window.tracker.call(["state", "--engagement", one.path]));
-  console.log(JSON.stringify({{ list, firm, firm_last, states }}));
+  console.log(JSON.stringify({{ list, firm, firm_last, pages, page_last, states }}));
 }})();
 """
     # From a file, never ``node -e``: the stub alone is longer than Windows'
@@ -2635,7 +2676,8 @@ def test_the_harness_stub_replies_have_the_shape_of_the_engines(capsys, scratch_
     (scratch_root / "Clients" / "Stray Folder").mkdir()
     real = {"list": run(capsys, "list")[1], "firm": run(capsys, "firm")[1],
             "state": run(capsys, "state", api.ENGAGEMENT_FLAG, str(engagement))[1],
-            "firm_last": run(capsys, api.FIRM_LAST_COMMAND)[1]}
+            "firm_last": run(capsys, api.FIRM_LAST_COMMAND)[1],
+            "pages": {name: run(capsys, "firm", stdin={"page": {"list": name, "at": 0, "order": None, "filter": filter}})[1] for name, filter in PAGE_ASKS.items()}}
     stub = _stub_replies("notices")
 
     # list
@@ -2663,6 +2705,28 @@ def test_the_harness_stub_replies_have_the_shape_of_the_engines(capsys, scratch_
         assert opened and opened <= set(reply["paths"]), "every file's open key is a key of paths"
         assert {key.split(" ")[0] for key in reply["paths"]} <= set(api.PATH_KINDS)
 
+    # firm, a page of a list (P278): the page, the totals, each return's counts, only its rows' paths and, on Needs Review, every file
+    for name, real_page in real["pages"].items():
+        got = stub["pages"][name]
+        assert set(got) == set(real_page) - {"warnings"}, name
+        assert isinstance(got["view"], str) and isinstance(real_page["view"], str)
+        assert _keys(got["return_counts"]) == _keys(real_page["return_counts"]) == {"path", "household", "year", "form", "counts", "files", "problem", "paused"}
+        assert set(got["totals"]) == set(real_page["totals"]) and set(got["page"]) == set(real_page["page"]), name
+        assert set(got["page"]["counts"]) == set(real_page["page"]["counts"]) and got["page"]["filter"].keys() == real_page["page"]["filter"].keys(), name
+        if name == "reminders":     # the scratch tree has no draft ready: a Reminders row is a return's entry
+            assert got["page"]["rows"] and _keys(got["page"]["rows"]) == _keys(real["firm"]["returns"]), name
+        else:
+            assert got["page"]["rows"] and real_page["page"]["rows"], f"{name}: both hold made-up rows to compare"
+            assert _keys(got["page"]["rows"]) == _keys(real_page["page"]["rows"]), name
+        if name == "needs_review":
+            assert _keys(got["page"]["rows"][0]["files"]) == _keys(real_page["page"]["rows"][0]["files"])
+            assert _keys(got["files_found"]) == _keys(real_page["files_found"]) == {"name", "return", "year", "handle"}
+            opened = {one["open_key"] for group in got["page"]["rows"] for one in group["files"]} - {""}
+            assert opened and opened == set(got["paths"]), "only the page's rows' keys are named"
+        else:
+            assert "files_found" not in got and got["paths"] == {}, name
+    assert set(stub["page_last"]) == {"last", "warnings"} and stub["page_last"]["last"] is None
+
     # firm-last (P229): the refusal is the API's {last: null, warnings}; the
     # answer is the firm reply's own fields at the top level, plus `last:
     # true` and `as_of` ("HH:MM") - tracker.api's contract, which the
@@ -2672,6 +2736,8 @@ def test_the_harness_stub_replies_have_the_shape_of_the_engines(capsys, scratch_
     answered = _stub_replies("last-counts")["firm_last"]
     assert set(answered) - {"last", "as_of"} == set(real["firm"]) - {"warnings"}
     assert answered["last"] is True and re.fullmatch(r"\d{2}:\d{2}", answered["as_of"])
+    answered_page = _stub_replies("last-counts")["page_last"]
+    assert set(answered_page) - {"last", "as_of"} == set(real["pages"]["overview"]) - {"warnings"} and answered_page["view"] is None and answered_page["last"] is True
 
     # state: the stub is a subset of the engine's, level by level
     for reply in stub["states"]:
@@ -3186,8 +3252,9 @@ def test_a_needs_review_group_that_cannot_be_built_is_named_by_its_return_and_ne
       households = [{ name: "Smith Family", path: "C:\\Clients\\J Park & Associates\\Smith Family" }];
       shellFirmData = { returns: [{ path: known, household: "Smith Family", year: 2025, counts: { needs_you: 1, waiting: 0, received: 0, set_aside: 0 }, files: 1, oldest: "2026-03-03", due: null,
                                     draft: { ready: false, stage: 0, held: 0, drafted: null }, problem: "" }],
-        files: [{ return: known, year: 2025, name: "scan0012.pdf", code: "unmatched", received: "2026-03-03", suggestion: "", open_key: "" }],
+        files: [{ return: known, year: 2025, name: "scan0012.pdf", handle: "h1", code: "unmatched", received: "2026-03-03", suggestion: "", open_key: "" }],
         paths: {}, totals: { need: 1, waiting: 0, complete: 0, files: 1, drafts: 0 }, next_sort: "" };
+      settle("needs_review");
       delete vocab.screen.navigate_return;            // the group's heading link cannot be built
       pagesBroken = []; pagesUid = 0;
       const nodes = pagesNeedsReview();
@@ -3195,8 +3262,7 @@ def test_a_needs_review_group_that_cannot_be_built_is_named_by_its_return_and_ne
 
       pagesReportBroken();
       return { drew: nodes.length, broken: pagesBroken.map((one) => one.name), notices: notices.flatMap(([, list]) => list.map((one) => one[1])) };
-    """, tmp_path, setup="""
-      let shellFirmData = null; const shellFirm = () => ({ data: shellFirmData });
+    """, tmp_path, setup=ENGINE_BRIDGE + """
       Object.assign(vocab.screen, { navigate_client: "Navigate to Household", empty: { needs_review: "Nothing needs review", next_sort: "Next sort {time}" } });
       vocab.shell = { page_error: "The App Hit an Error" }; vocab.notices = { about: "{label}: {sentence}" };
       vocab.reasons = { unmatched: "No Match" };
@@ -3210,9 +3276,42 @@ def test_a_needs_review_group_that_cannot_be_built_is_named_by_its_return_and_ne
 
 #: One firm reply for the four lists: five returns (one unreadable), three
 #: waiting files in two returns, three drafts (one held).
-FIRM_LISTS = r"""
-  let shellFirmData = null; let shellFirmAsOf = ""; const openNewHousehold = () => {};
-  const shellFirm = () => (shellFirmAsOf ? { data: shellFirmData, asOf: shellFirmAsOf } : { data: shellFirmData });
+#: The engine for a probe (P278): the made-up firm's WHOLE reply is `shellFirmData`; `settle(list)` asks the real
+#: ``tracker.firm_pages`` for the page the window wants (`shellFirmAsk`) and holds it as the window does
+#: (`shellFirmMerge`), so a probe draws and asks what the engine answers, never a copy of its rules.
+ENGINE_BRIDGE = r"""
+  let shellFirmData = null; let shellFirmAsOf = "";
+  let shellFirmNow = { status: "ok", data: null };   // what the window holds: the pages the engine cut (P278)
+  const shellFirm = () => (shellFirmAsOf ? { ...shellFirmNow, asOf: shellFirmAsOf } : shellFirmNow);
+  globalThis.shellRoute = globalThis.shellRoute || { level: "overview" };   // a probe that holds its own (let) keeps it
+  const { execFileSync } = require("child_process");
+  const enginePages = new Map();
+  const engineAnswers = (ask) => {
+    const words = { need: vocab.screen.counts.need, waiting: vocab.screen.counts.waiting, complete: vocab.screen.counts.complete,
+      paused: vocab.screen.notices.paused, held: vocab.screen.held, client_types: vocab.client_type_forms,
+      stages: Object.fromEntries(((vocab.reminder || {}).stages || []).map((one) => [one.number, one.short])),
+      reasons: Object.fromEntries(Object.entries(vocab.reasons).map(([code, one]) => [code, typeof one === "object" ? one.short : one])) };
+    const walk = { returns: Object.fromEntries(shellFirmData.returns.map((one) => [one.path, (shellReturn(one.path) || { return_name: one.path.split(/[\\/]/).pop() }).return_name])),
+      households: households.map((one) => ({ name: one.name, path: one.path, links: one.links || [], forms: (one.returns || []).map((r) => r.form) })) };
+    const input = JSON.stringify({ whole: shellFirmData, names: walk, words, ask });
+    if (!enginePages.has(input)) {
+      enginePages.set(input, JSON.parse(execFileSync(process.env.FIRM_PY, ["-c", process.env.FIRM_SNIPPET], { input, cwd: process.env.FIRM_REPO, encoding: "utf8" })));
+    }
+    return JSON.parse(JSON.stringify(enginePages.get(input)));
+  };
+  // What shellTurnFirm does, at once: the page wanted of the list is asked of the engine and held.
+  const settle = (...lists) => {
+    for (const list of lists) {
+      const reply = engineAnswers(shellFirmAsk(list));
+      shellFirmNow = { status: "ok", data: shellFirmMerge(shellFirmNow.data, reply) };
+      pagesAdopt(reply);
+    }
+  };
+  const heldRows = (list) => shellFirmNow.data.replies[list].page.rows;
+"""
+
+FIRM_LISTS = ENGINE_BRIDGE + r"""
+  const openNewHousehold = () => {};
   let shellRoute = { level: "overview" };
   const box = new Element("div"); const $ = (id) => box;
   Object.assign(vocab.screen, {
@@ -3239,7 +3338,10 @@ FIRM_LISTS = r"""
     { return: "r/1040 - Alpha", year: 2025, name: "a.pdf", handle: "h2", code: "opened-not-across", received: "2026-03-07", suggestion: "", open_key: "" },
     { return: "r/1065 - Bravo", year: 2025, name: "z.pdf", handle: "h3", code: "unmatched", received: "2026-03-01", suggestion: "K-1", open_key: "" },
   ] };
-  const draw = (level) => { shellRoute = { level }; pagesDraw(shellRoute, box); return box; };
+  const turned = [];
+  const shellTurnFirm = (list, then) => { turned.push(list); settle(list); pagesDraw(shellRoute, box); if (then) then(); };
+  // A person arrives on a firm list: its first page is asked and drawn.
+  const draw = (level) => { shellRoute = { level }; pagesEnter(shellRoute); settle(pagesListOf(shellRoute)); pagesDraw(shellRoute, box); return box; };
   const names = (page) => page.byClass("row").map((row) => row.byClass("row-name")[0].textContent);
   const sorts = (page) => page.find((one) => one.attrs.role === "columnheader").map((one) => one.attrs["aria-sort"] || "");
 """
@@ -3247,7 +3349,8 @@ FIRM_LISTS = r"""
 
 def run_lists(probe: str, tmp_path: Path, extra: str = ""):
     return run_pages_dom(probe, tmp_path, setup=FIRM_LISTS + extra,
-                         functions=[*re.findall(r"^function (\w+)\(", read("pages.js"), flags=re.M), "h", "icon", "screenWords", "folderName"])
+                         functions=[*re.findall(r"^function (\w+)\(", read("pages.js"), flags=re.M), "h", "icon", "screenWords", "folderName",
+                                    "shellFirmAsk", "shellFirmMerge", "shellFirmShaped"])
 
 
 def test_the_four_firm_lists_draw_a_header_row_of_buttons_in_the_rows_columns(tmp_path):
@@ -3544,9 +3647,8 @@ def test_the_firm_lists_divide_the_whole_ordered_list_into_pages_of_fifty(tmp_pa
       pagesOrderBy("overview", "taxpayer"); pagesOrderBy("overview", "taxpayer");
       const back = [foot(box), names(box)[0]];
       pagesPageAt.overview = 1; draw("clients"); const again = foot(draw("overview"));
-      return { one, three, back, again, per: PAGES_PER_PAGE };
+      return { one, three, back, again };
     """, tmp_path)
-    assert ran["per"] == 50
     assert ran["one"] == ["Showing 1-50 of 120 Returns", [True, False], 50, "R000"]
     assert ran["three"] == ["Showing 101-120 of 120 Returns", [False, True], 20]
     assert ran["back"] == ["Showing 1-50 of 120 Returns", "R119"], "a new order starts at page 1, over the whole list"
@@ -4596,21 +4698,36 @@ let shellLastPassStopped = false;   // the last-pass asking (P256, P277) is not 
 const FIRM_LEVELS = ["overview", "needs-review", "reminders", "clients"];
 const asked = []; const notices = []; const drawn = [];
 // As call() does: a reply with an error throws its envelope.
-const call = (args) => new Promise((resolve, reject) => asked.push({ args, resolve: (reply) => (reply.error ? reject(new TrackerError(reply)) : resolve(reply)) }));
-const firmOf = (n) => ({ returns: [{ path: "r1", counts: { needs_you: n } }], totals: {} });
+const call = (args, payload) => new Promise((resolve, reject) => asked.push({ args, payload, resolve: (reply) => (reply.error ? reject(new TrackerError(reply)) : resolve(reply)) }));
+// What the engine answers for the Overview (P278, SPEC-ui-menu-speed 4.3): one page, the totals and each return's counts; heldOf(n) is the answer the window holds from it.
+const firmOf = (n) => ({ view: "v1", totals: {}, next_sort: null, paths: {}, return_counts: [{ path: "r1", counts: { needs_you: n } }],
+  page: { list: "overview", at: 0, pages: 1, from: 1, to: 1, total: 1, order: null, filter: { tab: "all" }, counts: { all: 1, need: 1, waiting: 0 }, many_years: false, rows: [] } });
+const heldOf = (n) => shellFirmMerge(null, firmOf(n));
+let shellTurns = 0; let shellTurnGen = 0; let shellTurnThen = null;
+let pagesPageAt = {}; let pagesTab = "all"; let pagesReasonPick = ""; let pagesClientsAll = false; let pagesClientType = "";
+const pagesStoredOrder = () => ({}); const pagesEnter = () => {};
+// A reply of the engine for one page of a list, as the probes land it (the page's own words are not read by them).
+const pageOf = (list, at = 0, view = "v1", more = {}) => ({ ...firmOf(1), view,
+  page: { list, at, pages: 3, from: at * 50 + 1, to: at * 50 + 50, total: 150, order: null,
+          filter: { overview: { tab: "all" }, needs_review: { reason: "" }, reminders: {}, clients: { all: false, type: "" } }[list], counts: {}, many_years: false, rows: [], ...more } });
+let failedAs = null;   // a probe that records the failures the page says, with their Retry, in place of throwing them
 const stateOf = (n) => ({ paths: { engagement: "r1" }, counts: { needs_you: n } });
 const pagesTally = (state) => state.counts; const sheetStateArrived = () => {};
 let shellChanged = () => {};
-const notice = (failure) => notices.push(failure.sentence); const failureSentence = () => ""; const failed = (err) => { throw err; };
+const noticedAs = [];   // each notice said directly, with its kind and its Retry
+const notice = (failure, opts = {}) => { notices.push(failure.sentence); noticedAs.push({ sentence: failure.sentence, kind: failure.kind, retry: opts.retry }); };
+const failureSentence = () => "";
+const failed = (err, retry) => { if (failedAs) { failedAs.push({ sentence: err.message, kind: err.failure.kind, retry }); return; } throw err; };
 const warningNotices = (list) => notices.push(...list);
-class TrackerError extends Error { constructor(result) { super(result.error); this.result = result; } }
+class TrackerError extends Error { constructor(result) { super(result.error); this.result = result; this.failure = result.failure || { sentence: result.error, kind: "failed" }; } }
 const tick = async () => { for (let i = 0; i < 5; i += 1) await new Promise((resolve) => setImmediate(resolve)); };
 const firms = () => asked.filter((one) => one.args[0] === "firm").length;
 const land = async (i, reply) => { asked[i].resolve(reply); await tick(); };
 """
 
 FIRM_LOAD_FUNCTIONS = ("el", "h", "screenWords", "shellAdopt", "shellAskFirmNow", "shellDropEarlyFirm", "shellAskFirmLast", "shellLastOf", "shellShowLast",
-                       "takeReply", "shellAdoptEarly", "shellAskFirm", "shellFirmSent",
+                       "takeReply", "shellAdoptEarly", "shellAskFirm", "shellFirmSent", "shellFirmAsk", "shellFirmList", "shellFirmMerge", "shellFirmShaped",
+                       "shellFirmHolds", "shellFirmBrought", "shellFirmFollow", "shellTurnDone", "shellTurnFirm", "pagesListOf", "pagesAdopt",
                        "shellFirmDone", "shellFirmTookLong", "shellWriteLanded", "shellFirmProgress", "shellReading", "shellReadingNodes",
                        "shellSetReading", "shellDrawReading", "shellLoadFirm", "shellFollowsCounts", "shellFirmUpdating", "shellUpdating",
                        "shellMarkUpdating", "shellStateArrived", "shellPageReadsState", "shellCountsDiffer")
@@ -4631,11 +4748,11 @@ def test_after_a_sort_one_overview_is_asked_not_two(tmp_path):
     sent after the write runs is remembered and compared with the new counts:
     one more load only if they still differ."""
     said = run_firm_load("""
-      shellFirmNow = { status: "ok", data: firmOf(1) };
+      shellFirmNow = { status: "ok", data: heldOf(1) };
       const out = [];
       for (const after of [2, 1]) {
         asked.length = 0;
-        shellFirmNow = { status: "ok", data: firmOf(1) };
+        shellFirmNow = { status: "ok", data: heldOf(1) };
         shellWriteLanded();                 // passEnded
         shellAdopt({ root: "/root" });      // the list the pass ends with
         shellStateArrived(stateOf(2));      // the shown return's state, after the Sort
@@ -4655,7 +4772,7 @@ def test_a_write_that_lands_during_a_load_still_asks_again(tmp_path):
     whose counts differ, from a write that landed while it ran, is followed
     by one more load, as before."""
     said = run_firm_load("""
-      shellFirmNow = { status: "ok", data: firmOf(1) };
+      shellFirmNow = { status: "ok", data: heldOf(1) };
       shellLoadFirm();                      // F5, say
       shellWriteLanded();                   // a write's reply lands while it runs
       shellStateArrived(stateOf(2));
@@ -4683,6 +4800,7 @@ const pagesDraw = (route, page) => {
   page.dataset.list = pagesListOf(route);
 };
 const routeTitle = () => "";
+const pagesLeave = () => {};
 let shellPageFailed = false;
 const shellDraw = () => { drawn.push(shellRoute.level); drawCounts(); drawPage(); };
 shellChanged = () => drawCounts();
@@ -4710,7 +4828,7 @@ const looks = () => {
 };
 """
 
-FIRM_PAGE_FUNCTIONS = ("drawPage", "shellLoading", "shellSkeleton", "drawTitleOnly", "drawCounts", "pagesListOf")
+FIRM_PAGE_FUNCTIONS = ("drawPage", "shellLoading", "shellSkeleton", "drawTitleOnly", "drawCounts")
 
 
 def run_firm_page(probe: str, tmp_path: Path):
@@ -4725,7 +4843,7 @@ def test_a_firm_page_drawn_from_held_counts_while_they_are_asked_again_says_upda
     keeps one marker."""
     said = run_firm_page("""
       shellRoute = { level: "overview" };
-      shellFirmNow = { status: "ok", data: firmOf(1) };
+      shellFirmNow = { status: "ok", data: heldOf(1) };
       shellDraw();
       const before = looks();
       shellLoadFirm();
@@ -4755,7 +4873,7 @@ def test_the_rows_stay_put_while_held_counts_are_asked_again(tmp_path):
     the status's words again, so it is not read out again."""
     said = run_firm_page("""
       shellRoute = { level: "overview" };
-      shellFirmNow = { status: "ok", data: firmOf(1) };
+      shellFirmNow = { status: "ok", data: heldOf(1) };
       shellDraw();
       const idle = looks();
       shellLoadFirm();
@@ -4803,7 +4921,7 @@ def test_a_household_or_year_page_marks_its_held_statuses_while_they_are_asked_a
       for (const level of ["household", "year", "return"]) {
         asked.length = 0;
         shellRoute = { level };
-        shellFirmNow = { status: "ok", data: firmOf(1) };
+        shellFirmNow = { status: "ok", data: heldOf(1) };
         shellDraw();
         shellLoadFirm();
         const started = looks();
@@ -4855,8 +4973,8 @@ def test_updating_goes_when_the_new_counts_are_drawn(tmp_path):
     """P222, W1: all of it goes when the new reply is drawn - and when it fails,
     the pages keep what they had, unmarked, and the notice says so."""
     said = run_firm_page("""
-      shellRoute = { level: "needs-review" };
-      shellFirmNow = { status: "ok", data: firmOf(1) };
+      shellRoute = { level: "overview" };
+      shellFirmNow = { status: "ok", data: heldOf(1) };
       shellDraw();
       shellLoadFirm();
       await land(0, firmOf(2));
@@ -4991,8 +5109,8 @@ def test_a_return_row_waiting_for_its_counts_shows_an_outline_never_a_blank(tmp_
         return { waiting: Boolean(spec.waiting), hidden: box.getAttribute("aria-hidden") || "", outline: box.byClass("outline-bar").length,
                  pill: box.byClass("pill").length, text: box.textContent };
       };
-      return [cell("loading", null), cell("failed", null), cell("ok", { returns: [{ path: "r1", counts: { needs_you: 2, waiting: 0 } }] }),
-              cell("loading", { returns: [{ path: "r1", counts: { needs_you: 2, waiting: 0 } }] })];
+      const held = { return_counts: [{ path: "r1", counts: { needs_you: 2, waiting: 0 } }], replies: {} };
+      return [cell("loading", null), cell("failed", null), cell("ok", held), cell("loading", held)];
     """
     setup = """
       let firmNow = { status: "idle", data: null };
@@ -5074,7 +5192,7 @@ def test_the_first_paint_is_the_outline_not_a_blank_shell():
 #: The early Overview (P221): window.tracker.call answers when the probe says.
 EARLY_FIRM = r"""
 const sentEarly = [];
-window.tracker.call = (args) => new Promise((resolve) => sentEarly.push({ args, resolve }));
+window.tracker.call = (args, payload) => new Promise((resolve) => sentEarly.push({ args, payload, resolve }));
 """
 
 
@@ -5092,9 +5210,10 @@ def test_the_overview_is_asked_beside_the_list_and_drawn_once_the_words_arrive(t
       const before = { sent: sentEarly.length, status: shellFirmNow.status, drawn: drawn.length };
       vocab = words;                             // the list's reply
       shellAdopt({ root: "/root" });
+      const payload = sentEarly[0].payload;
       sentEarly[0].resolve({ ...firmOf(3), warnings: ["Read slowly"] });
       await tick();
-      const ok = { sent: sentEarly.length, viaCall: firms(), status: shellFirmNow.status, n: shellFirmNow.data.returns[0].counts.needs_you,
+      const ok = { payload, sent: sentEarly.length, viaCall: firms(), status: shellFirmNow.status, n: shellFirmNow.data.return_counts[0].counts.needs_you,
                    notices: notices.slice(), drawn: drawn.slice(), clock: shellFirmTimer };
       notices.length = 0;
       shellFirmNow = { status: "idle", data: null };
@@ -5106,13 +5225,14 @@ def test_the_overview_is_asked_beside_the_list_and_drawn_once_the_words_arrive(t
     """, tmp_path, EARLY_FIRM)
     assert said["before"] == {"sent": 1, "status": "loading", "drawn": 0}
     assert said["ok"]["sent"] == 1 and said["ok"]["viaCall"] == 0, "the list's load adopts the early reply"
+    assert said["ok"]["payload"] == {"page": {"list": "overview", "at": 0, "order": None, "filter": {"tab": "all"}}}, "the Overview's first page, with no view (SPEC 4.6)"
     assert said["ok"]["status"] == "ok" and said["ok"]["n"] == 3 and said["ok"]["drawn"] == ["overview"]
     assert said["ok"]["notices"] == ["Read slowly"] and said["ok"]["clock"] is None
     assert said["failed"] == {"status": "failed", "notices": ["Counts Not Available"]}
     boot = js_function("bootstrap", "app.js")
     assert boot.index("shellAskFirmNow();") < boot.index("await loadEngagements(")
     early = js_function("shellAskFirmNow")
-    assert 'window.tracker.call(["firm"])' in early and "call([" not in early.replace("tracker.call([", "")
+    assert 'window.tracker.call(["firm"], shellFirmAsk("overview"))' in early and "call([" not in early.replace("tracker.call([", "")
 
 
 def test_an_early_overview_is_dropped_when_the_list_asks_for_a_folder(tmp_path):
@@ -5162,7 +5282,7 @@ def test_after_a_sort_the_return_and_the_overview_are_asked_beside_the_list(tmp_
     before any lands - the state first - and the list is still asked, once."""
     said = run_sort_end("""
       shellRootSet = true;
-      shellFirmNow = { status: "ok", data: firmOf(1) };
+      shellFirmNow = { status: "ok", data: heldOf(1) };
       scanning = { asked: "r1" };
       const ending = passEnded({ reply: { runs: [{ path: "r1" }] } });
       const before = { sent: sent(), status: shellFirmNow.status };
@@ -5173,7 +5293,7 @@ def test_after_a_sort_the_return_and_the_overview_are_asked_beside_the_list(tmp_
       sentEarly[0].resolve(firmOf(2));
       await tick();
       return { before, drawnBeforeList, sent: sent(), viaCall: firms(), status: shellFirmNow.status,
-               n: shellFirmNow.data.returns[0].counts.needs_you, held: shellFirmHeld.size };
+               n: shellFirmNow.data.return_counts[0].counts.needs_you, held: shellFirmHeld.size };
     """, tmp_path)
     assert said["before"] == {"sent": ["state", "list", "firm"], "status": "loading"}, "all three before any lands, the state first"
     assert said["drawnBeforeList"] == {"rendered": ["r1"], "kept": 1}, "the sorted return and its answer wait for no list"
@@ -5188,7 +5308,7 @@ def test_a_sorts_list_that_lands_last_changes_nothing_the_state_drew(tmp_path):
     said = run_sort_end("""
       shellRootSet = true;
       shellRoute = { level: "return", ret: "r1" };
-      shellFirmNow = { status: "ok", data: firmOf(1) };
+      shellFirmNow = { status: "ok", data: heldOf(1) };
       scanning = { asked: "r1" };
       const ending = passEnded({ reply: { runs: [{ path: "r1" }] } });
       await landOf("state", stateOf(2));
@@ -5214,7 +5334,7 @@ def test_a_return_chosen_during_the_sort_is_the_one_drawn(tmp_path):
     under the return it was asked for."""
     said = run_sort_end("""
       shellRootSet = true;
-      shellFirmNow = { status: "ok", data: firmOf(1) };
+      shellFirmNow = { status: "ok", data: heldOf(1) };
       scanning = { asked: "r1" };
       const ending = passEnded({ reply: { runs: [{ path: "r1" }] } });
       viewGeneration += 1; active = "r2";       // another return chosen meanwhile
@@ -5237,7 +5357,7 @@ def test_a_sorts_list_that_fails_still_lets_its_overview_land(tmp_path):
       const failures = [];
       process.on("unhandledRejection", (err) => failures.push(String(err.message)));
       shellRootSet = true;
-      shellFirmNow = { status: "ok", data: firmOf(1) };
+      shellFirmNow = { status: "ok", data: heldOf(1) };
       scanning = { asked: "r1" };
       const ending = passEnded({ reply: { runs: [{ path: "r1" }] } });
       await landOf("state", stateOf(1));
@@ -5246,7 +5366,7 @@ def test_a_sorts_list_that_fails_still_lets_its_overview_land(tmp_path):
       await tick();
       sentEarly[0].resolve(firmOf(2));
       await tick();
-      return { status: shellFirmNow.status, n: shellFirmNow.data.returns[0].counts.needs_you, firms: sentEarly.length + firms(), failures };
+      return { status: shellFirmNow.status, n: shellFirmNow.data.return_counts[0].counts.needs_you, firms: sentEarly.length + firms(), failures };
     """, tmp_path)
     assert said["status"] == "ok" and said["n"] == 2 and said["firms"] == 1
     assert said["failures"] == ["The list could not be read."], "the list's failure is still said (failed())"
@@ -5279,7 +5399,7 @@ const words = vocab;
 const launch = () => { vocab = null; shellRoute = { level: "overview" }; shellAskFirmNow(); shellAskFirmLast(); };
 const listLands = () => { vocab = words; shellAdopt({ root: "/root" }); };
 const early = (name) => sentEarly.find((one) => one.args[0] === name);
-const counts = () => (shellFirmNow.data ? shellFirmNow.data.returns[0].counts.needs_you : null);
+const counts = () => (shellFirmNow.data ? shellFirmNow.data.return_counts[0].counts.needs_you : null);
 """
 
 
@@ -5313,12 +5433,12 @@ def test_the_last_counts_are_drawn_marked_updating_as_of_their_time(tmp_path):
     assert marked["busy"] == "true" and marked["updating"] and marked["said"] == "Updating", "the slot says the word alone"
     assert said["overview"] == said["want"], "the time in the app's own words (pagesTime)"
     assert said["overview"].startswith("Updating, as of ") and said["asOf"] == "09:14"
-    assert said["kept"] == ["files", "next_sort", "paths", "returns", "totals", "warnings"]
+    assert said["kept"] == ["next_sort", "replies", "return_counts", "totals", "view"], "the page, the totals and each return's counts (P278)"
     assert marked["held"] == [True, True] and marked["rows"] == ["figure-number", "row"] and marked["hidden"] == []
     assert said["n"] == 4 and said["status"] == "loading", "the fresh reply is still on its way"
     boot = js_function("bootstrap", "app.js")
     assert boot.index("shellAskFirmLast();") < boot.index("await loadEngagements(")
-    assert 'window.tracker.call(["firm-last"])' in js_function("shellAskFirmLast")
+    assert 'window.tracker.call(["firm-last"], shellFirmAsk("overview"))' in js_function("shellAskFirmLast")
 
 
 def test_the_fresh_counts_replace_the_last_in_place(tmp_path):
@@ -5428,7 +5548,7 @@ def test_a_refused_or_failed_last_count_ask_shows_nothing(tmp_path):
         await tick();
         drawPage();
         out.push({ data: shellFirmNow.data, hidden: looks().hidden, said: looks().said, pending: shellFirmLast });
-        window.tracker.call = (args) => new Promise((resolve) => sentEarly.push({ args, resolve }));
+        window.tracker.call = (args, payload) => new Promise((resolve) => sentEarly.push({ args, payload, resolve }));
         early("firm").resolve(firmOf(5));
         await tick();
       }
@@ -6412,7 +6532,7 @@ def test_a_navigation_that_closes_the_sheet_does_not_redraw_the_page_it_leaves(t
     setup = r"""
       const seen = []; let dialogStack = ["sheet"]; let shellReturnStale = true; let shellRoute = { level: "return", ret: "r9" };
       let shellRootSet = true; let shellBack = null; let shellPageBusy = false; let shellPageFailed = false;
-      const LEVELS = ["overview", "return", "setup"];
+      const LEVELS = ["overview", "return", "setup"]; const FIRM_LEVELS = ["overview"]; const pagesEnter = () => {}; const shellFirmFollow = () => {};
       const DIALOGS = { sheet: { attr: true } }; const dialogOpener = {};
       const el = () => ({ classList: { add() {} }, hidden: false, focus() {}, scrollTop: 0 });
       const $ = () => el(); const unsavedBar = () => null; const document = { contains: () => false };
@@ -6451,52 +6571,39 @@ def test_one_collator_orders_every_name_sort_as_localecompare_did(tmp_path):
 
 
 def test_a_lookup_by_path_or_name_answers_what_the_scan_answered_and_follows_a_new_list(tmp_path):
-    """N2: ``shellReturn``, ``shellHousehold``, ``pagesFirmReturn``,
-    ``pagesHouseholdPath`` and ``pagesFormKey`` read an index built once for
-    the list or reply on screen. Each answers what a scan answered - the first
-    entry of a path, null for none, "" for a household not listed - and an
-    array adopted later is indexed afresh."""
+    """N2: ``shellReturn``, ``shellHousehold`` and ``pagesFirmReturn`` read an
+    index built once for the list or reply on screen. Each answers what a scan
+    answered - the first entry of a path, null for none - and an array adopted
+    later is indexed afresh. (The household's path by name and the form's place
+    are the engine's now, P278: a name is found there once, in the walk.)"""
     setup = r"""
       let engagements = [{ path: "r1", return_name: "one" }, { path: "r2", return_name: "two" }, { path: "r1", return_name: "again" }];
       let households = [{ name: "Smith", path: "h1" }, { name: "Rivera", path: "h2" }, { name: "Smith", path: "h3" }];
-      let shellFirmData = { returns: [{ path: "r1", n: 1 }, { path: "r2", n: 2 }, { path: "r1", n: 3 }] };
-      const shellFirm = () => ({ data: shellFirmData });
-      let vocab = { client_type_forms: { business: ["1120-S", "1065"], personal: ["1040"] } };
+      let held = { return_counts: [{ path: "r1", n: 1 }, { path: "r2", n: 2 }, { path: "r1", n: 3 }], replies: {} };
+      const shellFirm = () => ({ data: held });
     """
-    ran = run_shell(["shellReturn", "shellHousehold"], setup + js_function("pagesFirmReturn", "pages.js") + js_function("pagesHouseholdPath", "pages.js")
-                    + js_function("pagesFormKey", "pages.js"), """
+    ran = run_shell(["shellReturn", "shellHousehold"], setup + js_function("pagesFirmReturn", "pages.js"), """
       const scanReturn = (p) => engagements.find((one) => one.path === p) || null;
       const scanHousehold = (p) => households.find((one) => one.path === p) || null;
-      const scanFirm = (p) => shellFirmData.returns.find((one) => one.path === p) || null;
-      const scanPath = (n) => { const one = households.find((other) => other.name === n); return one ? one.path : ""; };
-      const known = () => Object.values(vocab.client_type_forms).flat();
-      const scanKey = (f) => (f ? [known().indexOf(f) === -1 ? known().length : known().indexOf(f), f] : "");
+      const scanFirm = (p) => held.return_counts.find((one) => one.path === p) || null;
       const same = () => ({
         ret: ["r1", "r2", "nope"].map((p) => shellReturn(p) === scanReturn(p)),
         household: ["h1", "h2", "h3", "nope"].map((p) => shellHousehold(p) === scanHousehold(p)),
-        firm: ["r1", "r2", "nope"].map((p) => pagesFirmReturn(p) === scanFirm(p)),
-        path: ["Smith", "Rivera", "Nobody"].map((n) => pagesHouseholdPath(n) === scanPath(n)),
-        key: ["1065", "1040", "990", "", "1120-S"].map((f) => JSON.stringify(pagesFormKey(f)) === JSON.stringify(scanKey(f))) });
+        firm: ["r1", "r2", "nope"].map((p) => pagesFirmReturn(p) === scanFirm(p)) });
       const first = same();
       engagements = [{ path: "r9", return_name: "nine" }];
       households = [{ name: "Okafor", path: "h9" }];
-      shellFirmData = { returns: [{ path: "r9" }] };
-      vocab = { client_type_forms: { personal: ["1040"], business: ["1065"] } };
+      held = { return_counts: [{ path: "r9" }], replies: {} };
       const second = same();
-      return { first, second, newRet: shellReturn("r9").return_name, goneRet: shellReturn("r1"), newPath: pagesHouseholdPath("Okafor"), goneFirm: pagesFirmReturn("r1"),
-               newKey: pagesFormKey("1065") };
+      return { first, second, newRet: shellReturn("r9").return_name, goneRet: shellReturn("r1"), goneFirm: pagesFirmReturn("r1") };
     """, tmp_path)
     for answers in (ran["first"], ran["second"]):
         assert all(all(row) for row in answers.values()), answers
-    assert ran["newRet"] == "nine" and ran["goneRet"] is None and ran["newPath"] == "h9" and ran["goneFirm"] is None
-    assert ran["newKey"] == [1, "1065"], "the flattened form table is rebuilt for a new vocabulary"
+    assert ran["newRet"] == "nine" and ran["goneRet"] is None and ran["goneFirm"] is None
     # No comparator or per-row call scans an array any more.
-    for name, source in (("shellReturn", "shell.js"), ("shellHousehold", "shell.js"), ("pagesFirmReturn", "pages.js"), ("pagesHouseholdPath", "pages.js"),
-                         ("pagesReturnName", "pages.js")):
+    for name, source in (("shellReturn", "shell.js"), ("shellHousehold", "shell.js"), ("pagesFirmReturn", "pages.js"), ("pagesReturnName", "pages.js")):
         body = js_function(name, source)
         assert ".find(" not in body and ".filter(" not in body, name
-    form = js_function("pagesFormKey", "pages.js")
-    assert form.count("Object.values(") == 1 and form.index("if (pagesFormKey.from !==") < form.index("Object.values("), "the table is flattened on a new vocabulary only"
     returns = js_function("pagesReturnGroups", "pages.js")
     assert "index.filter(" not in returns.split("const filedBy")[1].split("for (const item of items)")[0] and "filedUnder" in returns
 
@@ -7052,14 +7159,14 @@ def test_an_overview_date_says_whether_it_is_since_or_due(tmp_path):
     ran = run_lists("""
       const page = draw("overview");
       const dates = page.byClass("row").map((row) => [row.byClass("row-name")[0].textContent, row.byClass("row-date")[0].textContent]);
-      const keys = pagesWorkRows(shellFirmData.returns).map((spec) => [spec.name, spec.keys.end]);
-      return { dates, keys, heads: page.byClass("col-head").map((one) => one.textContent) };
+      pagesOrderBy("overview", "end");
+      return { dates, byDate: names(box), heads: page.byClass("col-head").map((one) => one.textContent) };
     """, tmp_path)
     dates = dict(ran["dates"])
     assert dates["Alpha"] == "Since Mar 5" and dates["Bravo"] == "Since Mar 1"
     assert dates["Echo"] == "", "a return that could not be read has no oldest day, so no word"
     assert dates["Charlie"] == "Due Apr 15"
-    assert dict(ran["keys"])["Bravo"] == "2026-03-01", "the order key is the ISO day, never the drawn words"
+    assert ran["byDate"] == ["Bravo", "Alpha", "Charlie", "Echo", "Delta"], "the engine orders by the ISO day, never the drawn words"
     assert ran["heads"][-1] == "Date"
 
 
@@ -8389,3 +8496,328 @@ def test_a_long_lists_return_and_household_names_keep_their_link_tooltip(tmp_pat
     """, tmp_path)
     assert ["row-link", "Navigate to Return"] in ran[0] and ["row-link", "Navigate to Household"] in ran[1]
     assert not [one for one in ran[0] + ran[1] if one[0] == "row-name"], "the link's tooltip stays; the name box takes none of its own"
+
+
+# ── P278 (SPEC-ui-menu-speed §4): the engine pages the firm lists ──────────
+
+def test_a_turn_asks_the_engine_for_the_page_with_the_view_and_keeps_the_held_rows_marked_updating(tmp_path):
+    """SPEC 4.6: a page turn asks `firm` for that page of the same view - the token the held
+    answer carries - and the page keeps the rows it holds, marked Updating (P222's marker),
+    until the engine's page lands; then the marker goes, the page held is the new one and what
+    waited for it (focus back on the button, the page's top) is done once."""
+    said = run_firm_page("""
+      shellRoute = { level: "overview" };
+      shellFirmNow = { status: "ok", data: shellFirmMerge(null, pageOf("overview", 0)) };
+      shellDraw();
+      const before = looks();
+      pagesPageAt.overview = 1;
+      let landed = 0;
+      shellTurnFirm("overview", () => { landed += 1; });
+      const during = { ...looks(), payload: asked[0].payload, command: asked[0].args, turns: shellTurns, held: shellFirmNow.data.replies.overview.page.at, landed };
+      await land(0, pageOf("overview", 1));
+      return { before, during, after: { ...looks(), held: shellFirmNow.data.replies.overview.page.at, landed, turns: shellTurns, view: shellFirmNow.data.view, status: shellFirmNow.status } };
+    """, tmp_path)
+    assert said["before"]["busy"] == "false" and not said["before"]["updating"]
+    during = said["during"]
+    assert during["command"] == ["firm"] and during["payload"] == {"page": {"list": "overview", "at": 1, "order": None, "filter": {"tab": "all"}}, "view": "v1"}
+    assert during["busy"] == "true" and during["updating"] and during["said"] == "Updating" and during["turns"] == 1
+    assert during["rows"] == said["before"]["rows"] and during["held"] == 0 and during["landed"] == 0, "the held rows stay until the new page lands"
+    after = said["after"]
+    assert after["busy"] == "false" and not after["updating"] and after["said"] == "" and after["turns"] == 0
+    assert after["held"] == 1 and after["landed"] == 1 and after["status"] == "ok" and after["view"] == "v1"
+
+
+def test_a_header_a_tab_a_reason_card_or_a_client_type_asks_page_one_of_the_new_order(tmp_path):
+    """SPEC 4.6: each of these changes what the list is, so the engine is asked for the list's
+    first page - from what the window holds (the order kept on this PC, the tab, the card,
+    the switch, the Client Type) - and the window sorts, filters and slices nothing itself."""
+    ran = run_pages_dom("""
+      pagesPageAt.overview = 2; pagesPageAt.needs_review = 3; pagesPageAt.clients = 1;
+      pagesOrderBy("overview", "taxpayer");
+      pagesOrderBy("overview", "taxpayer");
+      pagesPick("overview", () => { pagesTab = "need"; }, "tab-need");
+      pagesPick("needs_review", () => { pagesReasonPick = "unmatched"; }, "reason-unmatched");
+      pagesPick("clients", () => { pagesClientsAll = true; }, "all");
+      pagesPick("clients", () => { pagesClientType = "trusts"; }, "type");
+      return asks;
+    """, tmp_path, setup="const asks = []; const shellTurnFirm = (list, then) => asks.push({ list, ask: shellFirmAsk(list).page, then: typeof then });")
+    assert [one["list"] for one in ran] == ["overview", "overview", "overview", "needs_review", "clients", "clients"]
+    assert [one["ask"]["at"] for one in ran] == [0] * 6, "any change of order or filter starts again at page one (P174)"
+    assert ran[0]["ask"]["order"] == {"cell": "taxpayer", "dir": 1} and ran[1]["ask"]["order"] == {"cell": "taxpayer", "dir": -1}
+    assert ran[2]["ask"]["filter"] == {"tab": "need"} and ran[2]["ask"]["order"] == {"cell": "taxpayer", "dir": -1}
+    assert ran[3]["ask"] == {"list": "needs_review", "at": 0, "order": None, "filter": {"reason": "unmatched"}}
+    assert ran[4]["ask"]["filter"] == {"all": True, "type": ""} and ran[5]["ask"]["filter"] == {"all": True, "type": "trusts"}
+    assert all(one["then"] == "function" for one in ran), "focus goes back to the control when the page lands"
+
+
+def test_a_page_turn_counts_from_the_page_last_asked_for_and_a_late_page_is_the_last(tmp_path):
+    ran = run_pages_dom("""
+      shellFirmNow = { status: "ok", data: { replies: { overview: { page: { at: 4 } } } } };
+      delete pagesPageAt.overview;                   // nothing asked yet: counted from the page drawn (4)
+      pagesTurn("overview", 1, "next");              // asks 5; it has not landed
+      pagesTurn("overview", -1, "previous");          // a quick Previous asks 4, the page it started from, not 3
+      pagesTurn("overview", -1, "previous");          // and again: 3
+      pagesTurn("overview", 1, "next");              // Next: 4
+      delete pagesPageAt.overview; shellFirmNow.data.replies.overview.page.at = 0;
+      pagesTurn("overview", -1, "previous");          // never below the first
+      const adopted = {};
+      globalThis.shellRoute = { level: "needs-review" };
+      pagesReasonPick = "password"; pagesPageAt.needs_review = 9;
+      pagesAdopt({ page: { list: "needs_review", at: 2, pages: 3, filter: { reason: "" }, counts: { reasons: [["unmatched", 4]] } } });
+      adopted.nr = [pagesPageAt.needs_review, pagesReasonPick];
+      pagesPageAt.needs_review = 1; pagesReasonPick = "unmatched";       // the person turned to page two meanwhile, on a card that is still there
+      pagesAdopt({ page: { list: "needs_review", at: 0, pages: 3, filter: { reason: "unmatched" }, counts: { reasons: [["unmatched", 4]] } } });
+      adopted.kept = [pagesPageAt.needs_review, pagesReasonPick];
+      pagesPageAt.overview = 7; pagesAdopt({ page: { list: "overview", at: 1, pages: 2, filter: { tab: "all" }, counts: {} } });
+      adopted.other = pagesPageAt.overview;
+      return { asks, adopted };
+    """, tmp_path, setup="""
+      let shellFirmNow = { data: null }; const shellFirm = () => shellFirmNow; const asks = [];
+      const shellTurnFirm = (list, then) => asks.push(shellFirmAsk(list).page.at);
+    """)
+    assert ran["asks"] == [5, 4, 3, 4, 0], "counted from the page last asked for (Next then a quick Previous asks the page it started from), else from the page drawn; never below the first"
+    assert ran["adopted"] == {"nr": [2, ""], "kept": [1, "unmatched"], "other": 7}, (
+        "a page past the end is the last; a card whose reason is gone is All; a choice made since is kept; a list left is not touched")
+
+
+def test_a_refresh_asks_the_page_on_screen_without_a_view(tmp_path):
+    """SPEC 4.6: every fresh trigger - launch, a Sort's end, F5, a write that moves a count - asks
+    `firm` for the page on screen with no view, so the counts are read afresh; the early ask at
+    launch and `firm-last` ask the Overview's."""
+    said = run_firm_load("""
+      shellRoute = { level: "needs-review" };
+      pagesPageAt.needs_review = 1; pagesReasonPick = "unmatched";
+      shellFirmNow = { status: "ok", data: shellFirmMerge(null, pageOf("needs_review", 1, "v1", { filter: { reason: "unmatched" } })) };
+      shellLoadFirm();
+      const refresh = asked[0].payload;
+      await land(0, pageOf("needs_review", 1, "v2", { filter: { reason: "unmatched" } }));
+      shellRoute = { level: "household", household: "h1" };
+      shellLoadFirm();
+      const household = asked[1].payload;
+      return { refresh, household, view: shellFirmNow.data.view, turns: asked.length };
+    """, tmp_path)
+    assert said["refresh"] == {"page": {"list": "needs_review", "at": 1, "order": None, "filter": {"reason": "unmatched"}}}, "no view: the engine reads afresh"
+    assert said["household"]["page"]["list"] == "overview" and "view" not in said["household"], "a page with no firm list asks the Overview"
+    assert said["view"] == "v2" and said["turns"] == 2
+
+
+def test_a_turn_during_a_fresh_load_follows_it_from_the_new_view(tmp_path):
+    """SPEC 4.6: a turn while a fresh load is on its way waits for it and sends nothing; when the
+    view lands, one turn follows from the new view if the page wanted is not the one it brought. A
+    reply for a page no longer wanted is dropped (decision 193's way). The page refusal the engine
+    marks is a notice without Retry, and the page wished for falls back to the page drawn; a failed
+    turn keeps Retry and the wish, so Retry asks the same page."""
+    said = run_firm_load("""
+      shellRoute = { level: "overview" };
+      shellFirmNow = { status: "ok", data: heldOf(1) };
+      shellLoadFirm();                                 // F5: a fresh ask, no view
+      pagesPageAt.overview = 1; let done = 0;
+      shellTurnFirm("overview", () => { done += 1; });  // the person turns the page meanwhile
+      const whileLoading = { asked: asked.length, turns: shellTurns };
+      await land(0, pageOf("overview", 0, "v2"));       // the fresh view brings page one; page two is wanted
+      const follow = { asked: asked.length, payload: asked[1].payload, turns: shellTurns, done };
+      await land(1, pageOf("overview", 1, "v2"));
+      const landed = { at: shellFirmNow.data.replies.overview.page.at, view: shellFirmNow.data.view, done, turns: shellTurns, status: shellFirmNow.status };
+
+      // Two turns in a row: the first reply is for a page no longer wanted, and is dropped.
+      pagesPageAt.overview = 2; shellTurnFirm("overview");
+      pagesPageAt.overview = 0; shellTurnFirm("overview");
+      await land(2, pageOf("overview", 2, "v2"));
+      const dropped = shellFirmNow.data.replies.overview.page.at;
+      await land(3, pageOf("overview", 0, "v2"));
+      const second = shellFirmNow.data.replies.overview.page.at;
+
+      // A fresh load that begins while a turn is on its way: the turn's reply is the old view's.
+      pagesPageAt.overview = 1; shellTurnFirm("overview");
+      shellLoadFirm();
+      await land(4, pageOf("overview", 1, "v2"));
+      const old = { view: shellFirmNow.data.view, status: shellFirmNow.status };
+      await land(5, pageOf("overview", 1, "v3"));
+
+      // The page refusal is a notice with its sentence and no Retry (the same ask would only be refused again), the page keeps what
+      // it held, and the page wished for falls back to the one drawn (there is no Retry to keep it for).
+      failedAs = [];
+      const sentence = "The app asked for a list the engine does not have; nothing was read.";
+      pagesPageAt.overview = 2; shellTurnFirm("overview");
+      asked[6].resolve({ error: sentence, failure: { sentence, kind: "refused", seq: null, identifier: null, key: @KEY@ } });   // the engine's own envelope
+      await tick();
+      const refused = { said: failedAs.map((one) => one.sentence), retry: typeof failedAs[0].retry, at: shellFirmNow.data.replies.overview.page.at, turns: shellTurns, wish: pagesPageAt.overview };
+      // A turn that failed (kind failed) still offers Retry, the wish stays, and Retry asks the same page again.
+      failedAs = [];
+      pagesPageAt.overview = 2; shellTurnFirm("overview");
+      asked[7].resolve({ error: "Failed (OSError).", failure: { sentence: "Failed (OSError).", kind: "failed", seq: null, identifier: null } });
+      await tick();
+      const failedTurn = { retry: typeof failedAs[0].retry, wish: pagesPageAt.overview };
+      failedAs[0].retry();
+      return { whileLoading, follow, landed, dropped, second, old, refused, failedTurn, retried: asked[8].payload };
+    """.replace("@KEY@", json.dumps(api.FIRM_PAGE_REFUSED_KEY)), tmp_path)
+    assert said["whileLoading"] == {"asked": 1, "turns": 0}, "nothing is sent while the fresh load runs"
+    assert said["follow"]["asked"] == 2 and said["follow"]["turns"] == 1 and said["follow"]["done"] == 0
+    assert said["follow"]["payload"] == {"page": {"list": "overview", "at": 1, "order": None, "filter": {"tab": "all"}}, "view": "v2"}, "from the new view"
+    assert said["landed"] == {"at": 1, "view": "v2", "done": 1, "turns": 0, "status": "ok"}
+    assert said["dropped"] == 1 and said["second"] == 0, "only the page last wanted is drawn"
+    assert said["old"] == {"view": "v2", "status": "loading"}, "the turn sent before the load began is the old view's: its reply is dropped"
+    assert said["refused"] == {"said": ["The app asked for a list the engine does not have; nothing was read."], "retry": "undefined", "at": 1, "turns": 0,
+                               "wish": 1}, "no Retry, and the wish falls back to the page drawn"
+    assert said["failedTurn"] == {"retry": "function", "wish": 2}, "Retry, and the wish kept for it"
+    assert said["retried"]["page"]["at"] == 2 and said["retried"]["view"] == "v3"
+
+
+def test_a_turn_refused_for_another_reason_offers_retry_and_retry_asks_the_same_page(tmp_path):
+    """P278 (review 4-2, finding 1): only the page refusal the engine marks (``key``
+    ``firm_page_refused``) loses Retry. A turn refused for any other reason - here the engine's
+    own PRACTICE_NOT_WALKED, a clients folder that cannot be walked just now - is one notice in
+    the engine's words that the window's own ``retryOf`` gives Retry, as a fresh load's notice
+    is, and the page wished for stays, so Retry asks it again."""
+    said = run_firm_load("""
+      shellRoute = { level: "overview" };
+      shellFirmNow = { status: "ok", data: shellFirmMerge(null, pageOf("overview", 1)) };
+      failedAs = []; noticedAs.length = 0;
+      const sentence = @SENTENCE@;
+      pagesPageAt.overview = 2; shellTurnFirm("overview");
+      asked[0].resolve({ error: sentence, failure: { sentence, kind: "refused", seq: null, identifier: null } });   // the engine's own envelope, unmarked
+      await tick();
+      const said = [...noticedAs, ...failedAs];
+      const offered = said.map((one) => typeof retryOf(one));
+      const wish = pagesPageAt.overview; const turns = shellTurns;
+      const again = retryOf(said[0]);
+      if (again) again();
+      return { said: said.map((one) => one.sentence), offered, wish, turns, retried: asked.length > 1 ? asked[1].payload : null };
+    """.replace("@SENTENCE@", json.dumps(api.PRACTICE_NOT_WALKED)), tmp_path, functions=("retryOf",))
+    assert said["said"] == [api.PRACTICE_NOT_WALKED], "one notice, in the engine's words"
+    assert said["offered"] == ["function"], "Retry is offered, as a fresh load's notice offers it"
+    assert said["wish"] == 2 and said["turns"] == 0
+    assert said["retried"] == {"page": {"list": "overview", "at": 2, "order": None, "filter": {"tab": "all"}}, "view": "v1"}, "Retry asks the same page"
+
+
+def test_the_household_and_year_pages_read_their_counts_from_return_counts(tmp_path):
+    """SPEC 4.6: a return's status on its household's and year's pages, and the comparison of a
+    state's tally with the firm's counts, read `return_counts` - the compact list the engine sends
+    with every page - never a list of whole returns."""
+    ran = run_pages_dom("""
+      const one = { path: "r1", return_name: "1040 - John & Jane Smith", form: "1040", year: 2025, active: true };
+      globalThis.shellRoute = { level: "household", household: "h1" };
+      shellFirmNow = { status: "ok", data: { totals: {}, return_counts: [{ path: "r1", counts: { needs_you: 3, waiting: 0 }, problem: "" }, { path: "r2", counts: { needs_you: 0, waiting: 0 }, problem: "Could Not Be Read" }], replies: {} } };
+      const [spec] = pagesReturnSpecs([one]);
+      const [broken] = pagesReturnSpecs([{ ...one, path: "r2" }]);
+      const differ = (counts) => shellCountsDiffer({ paths: { engagement: "r1" }, counts });
+      return { status: spec.status, broken: broken.status, same: differ({ needs_you: 3, waiting: 0 }), moved: differ({ needs_you: 2, waiting: 0 }) };
+    """, tmp_path, setup="let shellFirmNow = null; const shellFirm = () => shellFirmNow; const pagesTally = (state) => state.counts;",
+        functions=["pagesReturnSpecs", "pagesEach", "pagesSafe", "pagesLabel", "pagesSafeName", "pagesByName", "pagesFirmReturn", "pagesCounts", "pagesTaxpayer",
+                   "pagesReturnName", "screenWords", "shellCountsDiffer"])
+    assert ran == {"status": "3 need you", "broken": "Could Not Be Read", "same": False, "moved": True}
+
+
+def test_search_on_needs_review_finds_files_on_every_page(tmp_path):
+    """SPEC 4.6: the search box finds households and returns from `list`, which is whole, and on
+    Needs Review the waiting files from the reply's `files_found` - every waiting file, not only
+    the page's rows - so a file on another page is found."""
+    ran = run_pages_dom("""
+      const files = [{ name: "Smith W-2.pdf", return: "r1", year: 2025, handle: "h1" }, { name: "Jones 1099.pdf", return: "r2", year: 2025, handle: "h2" },
+                     { name: "Smith K-1.pdf", return: "r2", year: 2025, handle: "h3" }];
+      shellFirmNow = { status: "ok", data: { replies: { needs_review: { page: { rows: [{ files: [{ name: "Jones 1099.pdf" }] }] }, files_found: files } } } };
+      shellReturn = (path) => engagements.find((one) => one.path === path) || null;
+      const field = new Element("input"); field.value = "smith";
+      const nodes = { find: field, "find-list": new Element("ul") };
+      globalThis.$ = (id) => nodes[id];
+      const options = () => { drawFound(); return shellFound.map((one) => [one.name, one.note, one.check ? one.check.handle : null]); };
+      globalThis.shellRoute = { level: "needs-review" };
+      const onReview = options();
+      globalThis.shellRoute = { level: "overview" };
+      const elsewhere = options();
+      return { onReview, elsewhere };
+    """, tmp_path, setup="""
+      let shellFirmNow = null; let shellFound = []; let shellFindTimer = null; const hideTip = () => {};
+      const shellFirm = () => shellFirmNow;
+      const engagements = [{ path: "r1", return_name: "1040 - John Smith", household: "h1", year: 2025 }, { path: "r2", return_name: "1040 - Pat Jones", household: "h2", year: 2025 }];
+      const shellOwnReturns = () => [];
+    """, functions=["drawFound", "fold", "foldedName", "findOptions", "shellFirmHolds", "screenWords", "h"])
+    assert [one[0] for one in ran["onReview"]] == ["Smith W-2.pdf", "Smith K-1.pdf", "1040 - John Smith"], "a file that is not on the page shown is found, before the returns"
+    assert ran["onReview"][0][1:] == ["1040 - John Smith 2025", "h1"] and ran["onReview"][1][2] == "h3"
+    assert [one[0] for one in ran["elsewhere"]] == ["1040 - John Smith"], "on any other page the box finds households and returns only"
+
+
+def test_the_pages_collator_orders_the_shared_list_as_the_engine_does(tmp_path):
+    """SPEC 4.4: the household, year and return pages still order their few rows by name in
+    the window, and the engine orders the firm lists by `name_order`; both hold one made-up list
+    (tests/samples.py) to the order the collator gives it."""
+    from tests.samples import COLLATION_NAMES, COLLATION_ORDER
+    from tracker.firm_pages import name_order
+
+    ran = run_pages_dom(f"""
+      const names = {json.dumps(COLLATION_NAMES)};
+      return names.slice().sort(pagesByName);
+    """, tmp_path, functions=["pagesByName"])
+    assert ran == COLLATION_ORDER
+    assert sorted(COLLATION_NAMES, key=name_order) == COLLATION_ORDER == ran
+
+
+def test_the_engines_taxpayer_form_and_count_words_are_the_pages(tmp_path):
+    """SPEC 4.9: the Python answers for a set of made-up inputs, computed in the test, against the
+    window's own `pagesTaxpayer` and `pagesCounts` (the words a row says) and the order of the
+    forms the Client Types hold (what the Form Type column orders by)."""
+    from tracker import firm_pages
+
+    words = api._firm_words()
+    vocab_words = api._vocab()
+    names = [("1040 - John & Maria Park", "1040"), ("1120-S - Rivera Design LLC", "1120S"), ("1120S - Rivera Design LLC", "1120-S"), ("1040 - John Park", "1065"),
+             ("John Park 1040", "1040"), ("1040 - John Park", ""), ("1040 -", "1040"), ("1040 - 1040 - Twice", "1040"), ("990 - Trust of A - B", "990"), ("", "1040")]
+    counts = [({"needs_you": 2, "waiting": 1}, ""), ({"needs_you": 0, "waiting": 4}, ""), ({"needs_you": 0, "waiting": 0}, ""), ({"needs_you": 0, "waiting": 0}, "Could Not Be Read"),
+              ({"needs_you": 12, "waiting": 0}, "")]
+    forms = ["1040", "1065", "990", "1041", "5500", "", "1120-S"]
+    ran = run_pages_dom(f"""
+      vocab.screen.counts = {json.dumps({"need": words["need"], "waiting": words["waiting"], "complete": words["complete"]})};
+      const known = Object.values(vocab.client_type_forms).flat();
+      return {{ taxpayer: {json.dumps(names)}.map(([name, form]) => pagesTaxpayer(name, form)),
+                counts: {json.dumps(counts)}.map(([c, problem]) => {{ const said = pagesCounts(c, problem); return [said.text, said.tone]; }}),
+                forms: {json.dumps(forms)}.map((f) => (f ? [known.indexOf(f) === -1 ? known.length : known.indexOf(f), f] : "")) }};
+    """, tmp_path, functions=["pagesTaxpayer", "pagesCounts", "screenWords"], setup=f"vocab.client_type_forms = {json.dumps(vocab_words['client_type_forms'])};")
+    assert ran["taxpayer"] == [firm_pages._taxpayer(name, form) for name, form in names]
+    assert ran["counts"] == [list(firm_pages._counts_said(c, problem, words)) for c, problem in counts]
+    assert ran["forms"] == [firm_pages._form_key(form, words) for form in forms]
+
+
+def test_moving_to_a_firm_list_with_no_page_held_shows_its_loading_state_and_asks_its_first_page(tmp_path):
+    """SPEC 4.6: moving to another firm list asks its first page with the held view's token; with
+    no page held for that list the page shows its loading state (SPEC-shell 6), not another
+    list's rows, and the page of the list it left stays held under the same view."""
+    said = run_firm_page("""
+      shellRoute = { level: "overview" };
+      shellFirmNow = { status: "ok", data: shellFirmMerge(null, pageOf("overview", 0)) };
+      shellDraw();
+      shellRoute = { level: "needs-review" };
+      shellFirmFollow();                    // shellGo's step, after pagesEnter has forgotten the Overview's choices
+      shellDraw();
+      const waiting = { ...looks(), payload: asked[0].payload };
+      await land(0, pageOf("needs_review", 0));
+      shellDraw();
+      const arrived = { ...looks(), lists: Object.keys(shellFirmNow.data.replies).sort(), view: shellFirmNow.data.view };
+      shellFirmFollow();                    // coming back to a page that is the one wanted asks nothing
+      return { waiting, arrived, asked: asked.length };
+    """, tmp_path)
+    waiting = said["waiting"]
+    assert waiting["payload"] == {"page": {"list": "needs_review", "at": 0, "order": None, "filter": {"reason": ""}}, "view": "v1"}
+    assert waiting["busy"] == "true" and "row-skeleton" in waiting["rows"], "the loading state, not the Overview's rows"
+    assert said["arrived"]["lists"] == ["needs_review", "overview"] and said["arrived"]["view"] == "v1" and said["arrived"]["busy"] == "false"
+    assert said["asked"] == 1
+
+
+def test_leaving_a_firm_list_forgets_its_choices_and_a_client_type_survives_the_way_to_clients(tmp_path):
+    """P174, P145, P149, P153, as P278 moved the moment: the choices of a list (its page, tab,
+    card and the Clients switch) are forgotten when it is left, and a Client Type when another
+    firm page is opened - at the moment the list is entered, before the engine is asked for its
+    first page, not when its rows are drawn."""
+    ran = run_pages_dom("""
+      const out = [];
+      pagesEnter({ level: "overview" });
+      pagesPageAt.overview = 2; pagesTab = "need"; pagesEnter({ level: "overview" });
+      out.push([pagesPageAt.overview, pagesTab]);                         // entered again: nothing changes
+      pagesEnter({ level: "needs-review" }); out.push([pagesPageAt.overview || 0, pagesTab]);
+      pagesReasonPick = "unmatched"; pagesClientType = "trusts"; pagesClientsAll = true;
+      pagesEnter({ level: "clients" }); out.push([pagesReasonPick, pagesClientType, pagesClientsAll]);   // the Client Type chosen on the way to Clients is kept
+      pagesClientsAll = true; pagesEnter({ level: "household" }); out.push([pagesClientType, pagesClientsAll]);
+      pagesEnter({ level: "clients" }); out.push([pagesClientType, pagesClientsAll]);
+      pagesEnter({ level: "reminders" }); out.push([pagesClientType]);
+      return out;
+    """, tmp_path)
+    assert ran == [[2, "need"], [0, "all"], ["", "trusts", False], ["trusts", True], ["trusts", False], [""]]

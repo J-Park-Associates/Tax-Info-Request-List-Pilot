@@ -977,7 +977,9 @@ words"). No CLI. It decides nothing about counts: it takes the whole reply
 - Refusals: an unknown list, cell, filter or a malformed `at` raises
   `PageAskError` with `FIRM_PAGE_REFUSED` - "The app asked for a list the
   engine does not have; nothing was read." (one new sentence in
-  `api.py`; the window says it as a notice with Retry) - never a guessed page.
+  `api.py`, whose envelope the engine marks `"key": "firm_page_refused"`; the
+  window says it as a notice without Retry: the same ask would only be refused
+  again, and the next fresh load replaces the view) - never a guessed page.
 
 ### 4.5 `tracker/api.py`
 
@@ -1042,7 +1044,9 @@ words"). No CLI. It decides nothing about counts: it takes the whole reply
 
 ### 4.7 Failure behaviour
 
-A refused ask is the notice with Retry; a failed fresh `firm` is today's
+The page refusal, which the engine marks `"key": "firm_page_refused"`, is a
+notice without Retry: the same ask would only be refused again, and the next
+fresh load replaces the view; a failed fresh `firm` is today's
 "counts not available" notice, and the pages keep what they last drew; a
 view that cannot be read is answered fresh (slower, never wrong); a view
 that cannot be saved means each turn reads fresh, said on the error log.
@@ -1143,6 +1147,14 @@ bytes for each firm page, before (whole) and after (one page); the fresh
 through a process of its own); and in the harness (500 households, Electron)
 each firm page's draw time and a page turn's, median of five.
 
+**Left for Jason.** A turn on the same view could leave out `return_counts`, `totals` and
+`next_sort`, which the window already holds from that view, taking a turn's reply from
+about 860 KB to about 30 KB at 2,000 returns (Needs Review about 240 KB with `files_found`).
+Not built; offered as a follow-up if the office PC's turn times warrant it. Trimming
+`return_counts` itself to `path`, `counts` and `problem` (all the window reads of it) was
+measured by the reviewer at 22% smaller (about 30% with a Drive path), which is not worth a
+change to the fields 4.3 lists.
+
 ---
 
 ## 5. Measurements, all in one table (filled by the builders' handoffs)
@@ -1155,8 +1167,8 @@ each firm page's draw time and a page turn's, median of five.
 | `import tracker.api` (paid per command before the engine) | 0.21 s (this SPEC, median of 5, Python 3.14) | paid once a session (the fresh rows below are about 0.29 s, of which this is most) | this Mac (3.8) |
 | `templates`, `last-pass`, `watch`, `state` (one return), `list`, `firm` (warm), ms | fresh 291, 290, 292, 296, 304, 306; spare (P220) 39, 36, 39, 43, 50, 47 | engine 1, 1, 2, 7, 14, 13 | this Mac, from source, Python 3.14.8, scratch settings and data home, a made-up firm of 30 households and 40 returns (not the 50-household sample firm), **median of 5, not 20**, the engine started 1.5 s before its first request; the packaged `tracker-api` and the office PC not measured here (3.8) |
 | The same, `state`, `last-pass`, `watch` | about 0.85 s | under 0.25 s (acceptance) | office PC, Windows check |
-| Firm reply bytes at 2,000 returns | about 3.9 MB (speed round) | | sandbox (4.10) |
-| A firm page turn | | | harness and sandbox (4.10) |
+| Firm reply bytes at 2,000 returns | about 3.9 MB (speed round); 1,406,100 B on the made-up firm below | a page 831,944-1,045,465 B (Overview 863,275; Needs Review 1,045,465 with `files_found`; Reminders 831,944, no drafts; Clients 848,880): a 39% fall, not a tenth, because `return_counts` is about 832 KB of it (about 410 B a return, the ~215-character scratch path half of that) | this Mac, from source, Python 3.14.8, scratch settings and data home, a made-up firm of 1,000 households / 2,000 returns / 568 waiting files (not SPEC-scale-1000 section 8's pile in every inbox), **median of 5** (4.10) |
+| A firm page turn; the fresh `firm` | the window's: 3.3 ms (Overview) and 1.7 ms (Clients) in the harness; fresh `firm` 498 ms in the engine, 788 ms in a process | in the engine 9-24 ms (Overview 23.7, Needs Review 14.0, Reminders 9.3, Clients 14.8), in a process of its own 309 ms; fresh `firm` 523 ms in the engine (the view's 2.08 MB save added), 817 ms in a process; harness, 508 households, stub engine of 30 ms: a turn 38 ms, a held page's draw 0.5-3.8 ms (unchanged) | this Mac as above; the office PC, the packaged `tracker-api` and a live Electron window not measured (4.10) |
 
 ---
 
@@ -1308,7 +1320,11 @@ commits.
   spare**, and says so in the error log only - no notice, since every click
   is still answered. Default: no notice. The alternative is one notice
   "Running slower: the engine kept stopping".
-- **E (P278). Names written in letters outside the Latin alphabet may
-  order slightly differently from today** (the engine has no copy of the
-  window's collation tables); every page of one list agrees with every other.
+- **E (P278). A few names may order slightly differently from today**
+  (the engine has no copy of the window's collation tables); the order
+  agrees with the window's collator for every common name, Armenian among
+  them. It differs for the Turkish dotless ı and the ĳ ligature (Latin
+  letters outside the common set), for compatibility forms (ﬁ, Ⅳ, ², Ⓐ), for
+  the Persian letters پ چ ژ گ, for the Ukrainian Ґ Ї І, and for hiragana
+  against katakana. Every page of one list agrees with every other.
   Default: accept.

@@ -2,9 +2,10 @@
 //
 // Defines window.tracker with made-up data only - the Smith Family, Rivera
 // Design LLC, Ana Lopez and 500 generated households with made-up names - and
-// answers in the shapes the joined engine sends: `list`, `firm` (with the
-// returns' `year` and `label`, the files' `handle`, `year` and `open_key`, and
-// the top-level `paths` of those keys), `state` (with `shown_key`, `open_key`,
+// answers in the shapes the joined engine sends: `list`, `firm` (one page of a
+// firm list, the totals and each return's counts when asked for a page, P278; the
+// whole reply, with the returns' `year` and `label`, the files' `handle`, `year`
+// and `open_key`, and the top-level `paths` of those keys, when not), `state` (with `shown_key`, `open_key`,
 // `open_keys` and `paths`, and the reminder card), and the writes the side sheet
 // makes (assign, dismiss, restore, reminder, approve), which change the made-up
 // return so the sheet moves on. The words are the joined engine's (see below).
@@ -359,6 +360,174 @@
     return { returns, files, totals, paths, next_sort: "18:00" };
   }
 
+  // ── the engine's pages (P278, SPEC-ui-menu-speed 4) ─────────────────────
+  // The stand-in cuts the made-up firm into a page as tracker/firm_pages.py cuts
+  // the real one (the filter, then the order, then 50 to a page; Needs Review by
+  // whole returns), with the collator of the browser it runs in. It is a double:
+  // tests/test_firm_pages.py holds the engine to its claims, and tests/test_shell.py
+  // holds this double's replies to the engine's shapes.
+  const PAGE_SIZE = 50;
+  const STAGES = vocab.reminder.stages;
+  const LATE = "9999-99-99";
+  const URGENCY = { problem: 0, needs: 1, waiting: 2, done: 3, plain: 4 };
+  const collator = new Intl.Collator(undefined, { numeric: true });
+  const fillIn = (pattern, values) => pattern.replace(/\{(\w+)\}/g, (_, key) => (values[key] === undefined ? "" : values[key]));
+  const returnNameOf = (path) => { const one = engagements.find((e) => e.path === path); return one ? one.return_name : path.split("/").pop(); };
+  const taxpayerOf = (name, form) => {
+    const pattern = vocab.layout.return_name_pattern;
+    const at = pattern.indexOf("{client}");
+    if (!form || pattern.indexOf("{form}") !== 0 || at === -1 || at + "{client}".length !== pattern.length) return name;
+    const sep = pattern.slice("{form}".length, at);
+    const cut = sep ? name.indexOf(sep) : -1;
+    const same = (text) => text.replace(/-/g, "").toLowerCase();
+    return (cut > 0 && same(name.slice(0, cut)) === same(form) ? name.slice(cut + sep.length).trim() : "") || name;
+  };
+  const formKey = (form) => {
+    if (!form) return "";
+    const known = Object.values(vocab.client_type_forms).flat();
+    const at = known.indexOf(form);
+    return [at === -1 ? known.length : at, form];
+  };
+  const counted = (counts, problem) => {
+    const words = vocab.screen.counts;
+    if (problem) return [problem, "needs"];
+    if (counts.needs_you) return [fillIn(words.need, { n: counts.needs_you }), "needs"];
+    if (counts.waiting) return [fillIn(words.waiting, { n: counts.waiting }), "waiting"];
+    return [words.complete, "done"];
+  };
+  const urgent = (rank, count, text) => (text ? [rank, -(count || 0), text] : "");
+  const blank = (value) => value === "" || value === null || value === undefined;
+  const compareKeys = (x, y) => {
+    if (Array.isArray(x)) {
+      for (let i = 0; i < x.length; i += 1) { const by = compareKeys(x[i], y[i]); if (by) return by; }
+      return 0;
+    }
+    return typeof x === "number" && typeof y === "number" ? x - y : collator.compare(String(x), String(y));
+  };
+  const ordered = (entries, order) => {
+    if (!order) return entries;
+    const cell = order.cell;
+    return entries.map((entry, at) => ({ entry, at })).sort((a, b) => {
+      const x = a.entry.keys[cell];
+      const y = b.entry.keys[cell];
+      if (blank(x) || blank(y)) return blank(x) && blank(y) ? a.at - b.at : (blank(x) ? 1 : -1);
+      return order.dir * compareKeys(x, y) || a.at - b.at;
+    }).map((one) => one.entry);
+  };
+  const paged = (entries, sizeOf, want) => {
+    const parts = [];
+    let part = [];
+    let held = 0;
+    for (const entry of entries) {
+      const n = sizeOf(entry);
+      if (part.length && held + n > PAGE_SIZE) { parts.push(part); part = []; held = 0; }
+      part.push(entry);
+      held += n;
+    }
+    if (part.length) parts.push(part);
+    const at = Math.min(want, Math.max(0, parts.length - 1));
+    const before = parts.slice(0, at).reduce((n, group) => n + group.reduce((m, entry) => m + sizeOf(entry), 0), 0);
+    const total = entries.reduce((n, entry) => n + sizeOf(entry), 0);
+    const shown = parts[at] || [];
+    return { shown, at, pages: parts.length, from: total ? before + 1 : 0, to: before + shown.reduce((n, entry) => n + sizeOf(entry), 0), total };
+  };
+  const cell = (one) => ({ year: one.year || "", taxpayer: taxpayerOf(returnNameOf(one.path), one.form || ""), form: formKey(one.form || "") });
+
+  function pageOf(whole, ask) {
+    const { list, at, order } = ask.page;
+    const filter = { ...ask.page.filter };
+    const words = vocab.screen;
+    let entries = [];
+    let counts = {};
+    let many = false;
+    let found;
+    if (list === "overview") {
+      const paused = [...new Set(whole.returns.filter((one) => one.paused === true).map((one) => one.household))].sort(collator.compare);
+      for (const name of paused) entries.push({ row: { kind: "paused", household: name, household_path: (households.find((h) => h.name === name) || {}).path || "" }, tone: "needs",
+        keys: { year: "", taxpayer: name, form: "", status: urgent(URGENCY.problem, 0, words.notices.paused), end: "" } });
+      const soonest = (one) => (one.problem ? "" : one.oldest || LATE);
+      const need = whole.returns.filter((one) => one.counts.needs_you > 0 || one.problem).sort((a, b) => soonest(a).localeCompare(soonest(b)) || collator.compare(returnNameOf(a.path), returnNameOf(b.path)));
+      const wait = whole.returns.filter((one) => !one.problem && !one.counts.needs_you && one.counts.waiting > 0).sort((a, b) => (a.due || LATE).localeCompare(b.due || LATE) || collator.compare(returnNameOf(a.path), returnNameOf(b.path)));
+      for (const [bucket, ones, date] of [["need", need, "oldest"], ["wait", wait, "due"]]) {
+        for (const one of ones) {
+          const [text, tone] = counted(one.counts, one.problem);
+          entries.push({ row: { kind: "return", bucket, ...one }, tone, keys: { ...cell(one), status: urgent(one.problem ? URGENCY.problem : URGENCY[tone], one.counts.needs_you || one.counts.waiting, text), end: one[date] || "" } });
+        }
+      }
+      many = new Set(entries.map((e) => (e.keys.year ? String(e.keys.year) : "")).filter(Boolean)).size > 1;
+      counts = { all: entries.length, need: entries.filter((e) => e.tone === "needs").length, waiting: entries.filter((e) => e.tone === "waiting").length };
+      if (filter.tab !== "all") entries = entries.filter((e) => e.tone === (filter.tab === "need" ? "needs" : "waiting"));
+    } else if (list === "reminders") {
+      const ready = whole.returns.filter((one) => one.draft && one.draft.ready).sort((a, b) => collator.compare(returnNameOf(a.path), returnNameOf(b.path)));
+      entries = ready.map((one) => {
+        const held = one.draft.held > 0;
+        const status = held ? words.held : (STAGES.find((stage) => stage.number === one.draft.stage) || {}).short || "";
+        return { row: one, keys: { ...cell(one), status: urgent(held ? URGENCY.needs : URGENCY.waiting, held ? 0 : one.draft.stage, status), end: one.draft.drafted || "" } };
+      });
+      many = new Set(entries.map((e) => (e.keys.year ? String(e.keys.year) : "")).filter(Boolean)).size > 1;
+    } else if (list === "clients") {
+      const kinds = filter.type ? vocab.client_type_forms[filter.type] : null;
+      const kept = households.filter((h) => !kinds || h.returns.some((r) => kinds.indexOf(r.form) !== -1)).sort((a, b) => collator.compare(a.name, b.name));
+      const pausedNames = new Set(whole.returns.filter((one) => one.paused === true).map((one) => one.household));
+      entries = kept.map((household) => {
+        const own = whole.returns.filter((one) => one.household === household.name);
+        const need = own.reduce((n, r) => n + r.counts.needs_you, 0);
+        const wait = own.reduce((n, r) => n + r.counts.waiting, 0);
+        const problem = (own.find((r) => r.problem) || {}).problem || "";
+        const text = need ? fillIn(words.counts.need, { n: need }) : problem || (wait ? fillIn(words.counts.waiting, { n: wait }) : own.length ? words.counts.complete : "");
+        const tone = need || problem ? "needs" : wait ? "waiting" : own.length ? "done" : "plain";
+        const isPaused = pausedNames.has(household.name);
+        return { row: { name: household.name, path: household.path, links: household.links || [], returns: own.length, need, wait, problem, paused: isPaused, work: need + wait > 0 || Boolean(problem) || isPaused },
+          keys: { name: household.name, detail: own.length || "", status: urgent(!need && problem ? URGENCY.problem : URGENCY[tone], need || wait, text) } };
+      });
+      counts = { work: entries.filter((e) => e.row.work).length };
+      if (!filter.all) entries = entries.filter((e) => e.row.work);
+    } else {
+      const byReturn = new Map();
+      for (const f of whole.files) { if (!byReturn.has(f.return)) byReturn.set(f.return, []); byReturn.get(f.return).push(f); }
+      const keys = (f) => ({ name: f.name, detail: f.suggestion || "", status: urgent(URGENCY.needs, 0, SHORT[f.code] || f.code), end: f.received || "" });
+      let groups = [...byReturn.entries()].map(([path, files]) => ({ path, files: files.slice().sort((a, b) => a.received.localeCompare(b.received) || collator.compare(a.name, b.name)) }))
+        .sort((a, b) => a.files[0].received.localeCompare(b.files[0].received) || collator.compare(returnNameOf(a.path), returnNameOf(b.path)));
+      const reasonCounts = new Map();
+      for (const g of groups) for (const f of g.files) reasonCounts.set(f.code, (reasonCounts.get(f.code) || 0) + 1);
+      const pick = reasonCounts.has(filter.reason) ? filter.reason : "";
+      filter.reason = pick;
+      counts = { all: whole.files.length, reasons: [...reasonCounts.entries()].sort((a, b) => b[1] - a[1] || collator.compare(SHORT[a[0]] || a[0], SHORT[b[0]] || b[0])) };
+      if (pick) groups = groups.map((g) => ({ ...g, files: g.files.filter((f) => f.code === pick) })).filter((g) => g.files.length);
+      entries = ordered(groups.map((g, i) => {
+        const files = ordered(g.files.map((f) => ({ row: f, keys: keys(f) })), order).map((e) => e.row);
+        return { row: { path: g.path, files }, keys: keys(files[0]) };
+      }), order);
+      found = whole.files.map((f) => ({ name: f.name, return: f.return, year: f.year, handle: f.handle }));
+    }
+    const usable = order && order.cell === "year" && !many ? null : order;
+    const sizeOf = list === "needs_review" ? (e) => e.row.files.length : () => 1;
+    const cut = paged(list === "needs_review" ? entries : ordered(entries, usable), sizeOf, at);
+    const rows = cut.shown.map((e) => {
+      if (list !== "needs_review") return e.row;
+      const owner = whole.returns.find((one) => one.path === e.row.path) || {};
+      return { path: e.row.path, household: owner.household || "", household_path: (households.find((h) => h.name === owner.household) || {}).path || "", year: owner.year || 0, form: owner.form || "", links: owner.links || [], files: e.row.files };
+    });
+    const paths = {};
+    if (list === "needs_review") for (const g of rows) for (const f of g.files) if (f.open_key) paths[f.open_key] = whole.paths[f.open_key];
+    const reply = {
+      view: null, totals: whole.totals, next_sort: whole.next_sort,
+      return_counts: whole.returns.map(({ path, household, year, form, counts: c, files, problem, paused }) => ({ path, household, year, form, counts: c, files, problem, paused })),
+      page: { list, at: cut.at, pages: cut.pages, from: cut.from, to: cut.to, total: cut.total, order, filter, counts, many_years: many, rows }, paths,
+    };
+    if (found) reply.files_found = found;
+    return reply;
+  }
+  let viewCount = 0;
+  let lastView = "";
+  // A fresh ask saves a new view; an ask that names the latest one is a page of it.
+  const pagedFirm = (ask) => {
+    const reply = pageOf(firm(), ask);
+    if (!(ask.view && ask.view === lastView)) lastView = `made-up-view-${++viewCount}`;
+    reply.view = lastView;
+    return reply;
+  };
+
   const lastWhen = new Date();
   lastWhen.setHours(6, 0, 0, 0);
   const lastPass = scenario === "failed"
@@ -443,14 +612,15 @@
         if (scenario === "firm-fails" || scenario === "last-counts-fail") {
           return wait(scenario === "last-counts-fail" ? 1500 : 20, { error: "The counts could not be read.", failure: { sentence: "The counts could not be read.", kind: "failed" } });
         }
-        return wait(scenario === "slow" || scenario === "last-counts" ? 1500 : 30, firm());
+        return wait(scenario === "slow" || scenario === "last-counts" ? 1500 : 30, payload && payload.page ? pagedFirm(payload) : firm());
       }
       // P229: the counts the Overview last had today - the firm reply's own
       // fields, with last: true and the cache's "HH:MM" - as tracker.api's
       // firm-last answers; every other scenario is the API's refusal.
       if (command === "firm-last") {
         if (scenario !== "last-counts" && scenario !== "last-counts-fail") return wait(10, { last: null, warnings: [] });
-        return wait(10, { ...firm(), last: true, as_of: "09:14" });
+        const counts = payload && payload.page ? pageOf(firm(), payload) : firm();
+        return wait(10, { ...counts, last: true, as_of: "09:14" });
       }
       if (command === "state") {
         if (scenario === "state-fails" && calls.filter((c) => c === "state").length > 0) return wait(20, { error: "The return could not be read.", failure: { sentence: "The return could not be read.", kind: "failed" } });
