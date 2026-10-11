@@ -47,7 +47,8 @@ own; moving is one deliberate command on the new machine
 the question was answered by a function named for "the scheduling host"
 whose body asked only "is this Windows": every Windows desk that pressed
 the button got a second unattended pass. It is renamed
-:func:`task_scheduler_here` so the name says only what it answers.
+:func:`scheduler_here` (``task_scheduler_here`` until a Mac had a scheduler of
+its own) so the name says only what it answers.
 
 The file is **checked when it is written, read and acted on**: one
 machine name as ``locking.this_host`` normalises it, or
@@ -65,6 +66,21 @@ question, left to its own decision.
 (:func:`_schtasks`, the one seam the tests replace); nothing here reaches
 the network.
 
+**On a Mac the job is a launchd agent** (SPEC-mac R23-R25, P238). The same
+:func:`register_here`, :func:`task_query` and :func:`remove_task` do the same
+three things through ``launchctl`` (:func:`_launchctl`, the second and last
+seam, which the suite fakes as it fakes ``schtasks``): the plist is written
+atomically to ``~/Library/LaunchAgents`` - the one place launchd reads it,
+never the data home - then ``bootout``, ``bootstrap`` and ``enable``. It runs
+the same times as the Windows task, round the clock from the start
+(:func:`agent_times`). The designation is unchanged: the first Mac to
+register claims the schedule, by ``locking.this_host``. launchd has no
+execution time limit, which the lock's stale rule assumes; ``runner`` stops
+its own scheduled pass off Windows (R26). A person can switch the agent off
+under Login Items, and :func:`agent_switched_off` is how the launch door
+knows to leave it so (R27). Which of the two schedulers a computer has is
+asked through ``settings.host_system`` and nowhere else.
+
 Importing this module loads no network library (decision 194):
 ``tests/test_layers.py::test_importing_the_api_loads_no_network_module``
 holds it there.
@@ -75,13 +91,15 @@ from __future__ import annotations
 import datetime as dt
 import html
 import os
+import plistlib
 import re
 import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath, PureWindowsPath
 
-from tracker.fsio import full_sync, write_text_atomically
+from tracker import settings as settings_module
+from tracker.fsio import full_sync, write_bytes_atomically, write_text_atomically
 from tracker.layout import designation_file
 from tracker.locking import RUN_TIME_LIMIT_SECONDS, is_this_host, this_host
 from tracker.runner import DRAFT_DAY_NAME, LOG_FLAG, PRODUCT_FLAG, RUNNER_MODE_FLAG, SETTINGS_FLAG
@@ -151,21 +169,47 @@ OUT_FLAG = "--out"
 START_FLAG = "--start"
 
 
-def task_scheduler_here() -> bool:
-    """Whether this computer has Task Scheduler at all - that is, whether it
-    is Windows. Nothing more: whether this is the computer that *runs* the
-    schedule is :func:`schedule_decision`'s question (decision 209)."""
-    import platform
+def scheduler_here() -> bool:
+    """Whether this computer has a scheduler at all: Task Scheduler on
+    Windows, launchd on a Mac (SPEC-mac R24). Nothing more: whether this is
+    the computer that *runs* the schedule is :func:`schedule_decision`'s
+    question (decision 209). Asked through ``settings.host_system``, the one
+    seam every platform branch goes through, so a test stands in for either
+    machine by patching that and never the platform."""
+    return settings_module.host_system() in ("nt", "darwin")
 
-    return platform.system() == "Windows"
+
+def _launchd_here() -> bool:
+    """Whether this computer's scheduler is launchd: it is a Mac."""
+    return settings_module.host_system() == "darwin"
 
 
-def runner_arguments(settings_dir: str | Path, *, frozen: bool = False) -> str:
-    """The one command line the scheduled job runs, whoever schedules it.
+def _task_scheduler_here() -> bool:
+    """Whether this computer's scheduler is Windows' Task Scheduler: it has
+    one that is not launchd. (A test that fakes the first answer and leaves
+    the machine a Linux one stands in for Windows, as it always has.)"""
+    return scheduler_here() and not _launchd_here()
+
+
+def _runner_parts(settings_dir: str | Path, *, frozen: bool) -> list[tuple[str, bool]]:
+    """The scheduled job's command line after the program, token by token,
+    each with whether it is a value (quoted for Windows) or a flag. The one
+    spelling behind both :func:`runner_argv` and :func:`runner_arguments`."""
+    program = ([(RUNNER_MODE_FLAG, False), (PRODUCT_FLAG, False), (product_name(), True)] if frozen
+               else [("-m", False), ("tracker.runner", False)])
+    return [*program, (SETTINGS_FLAG, False), (str(settings_dir), True), (LOG_FLAG, False)]
+
+
+def runner_argv(settings_dir: str | Path, *, frozen: bool = False) -> list[str]:
+    """The one command line the scheduled job runs, whoever schedules it, as
+    the argument list launchd wants (SPEC-mac R23): everything after the
+    program. :func:`runner_arguments` is the same tokens as Windows' one
+    quoted string.
 
     After the program that runs it: ``-m tracker.runner`` for a Python
     checkout, ``RUNNER_MODE_FLAG`` for the packaged app's own executable
-    (``api_entry.py`` in runner mode). The runner's arguments are the same
+    (``api_entry.py`` in runner mode; on a Mac that is the API in
+    ``Contents/Resources/tracker-api/``). The runner's arguments are the same
     either way; only the way in differs.
 
     It names the app's settings folder and **no clients root** (decision
@@ -176,13 +220,19 @@ def runner_arguments(settings_dir: str | Path, *, frozen: bool = False) -> str:
     ``pilot/SPEC-firm-cache-fill.md`` R6), before the settings folder so
     the line still ends as above: the pass asks the firm summary at its end
     in a child that imports the API, which reads the product's name at
-    import, and Task Scheduler gives the job none of the shell's
+    import, and the scheduler gives the job none of the shell's
     environment. A checkout reads it from ``app/package.json``, so the
     source line is unchanged.
     """
-    program = (f"{RUNNER_MODE_FLAG} {PRODUCT_FLAG} {quote_argument(product_name())}" if frozen
-               else "-m tracker.runner")
-    return f'{program} {SETTINGS_FLAG} {quote_argument(settings_dir)} {LOG_FLAG}'
+    return [text for text, _ in _runner_parts(settings_dir, frozen=frozen)]
+
+
+def runner_arguments(settings_dir: str | Path, *, frozen: bool = False) -> str:
+    """:func:`runner_argv` as the one string Task Scheduler's ``<Arguments>``
+    holds: the flags bare and each value quoted for the Windows argument
+    parser (:func:`quote_argument`)."""
+    return " ".join(quote_argument(text) if value else text
+                    for text, value in _runner_parts(settings_dir, frozen=frozen))
 
 
 def quote_argument(value: str | Path) -> str:
@@ -340,7 +390,7 @@ def install_task(xml_path: Path | str, task_name: str = TASK_NAME) -> list[str]:
     else the command is returned unrun so it can be shown.
     """
     command = ["schtasks", "/create", "/xml", str(xml_path), "/tn", task_name, "/f"]
-    if not task_scheduler_here():
+    if not _task_scheduler_here():
         return command
     _schtasks_or_raise(command, "schtasks failed")
     return command
@@ -358,35 +408,46 @@ SCHTASKS_TIME_LIMIT_SECONDS = 60
 SCHTASKS_TOO_LONG = "schtasks did not answer within {seconds} seconds"
 
 
-def _schtasks(command: list[str]) -> subprocess.CompletedProcess:
-    """Run one ``schtasks`` command line and hand back what it said. The one
-    place this module starts a process: the tests replace it, so no test
-    ever reaches a real Task Scheduler. One that does not answer within
-    :data:`SCHTASKS_TIME_LIMIT_SECONDS` is stopped and raises
-    ``TimeoutError``."""
+def _run_within_the_limit(command: list[str], too_long: str) -> subprocess.CompletedProcess:
+    """One scheduler command, with :data:`SCHTASKS_TIME_LIMIT_SECONDS` to
+    answer; ``TimeoutError`` (an ``OSError``) saying ``too_long`` past it. The
+    one place this module starts a process, for Task Scheduler and launchd
+    alike."""
     try:
         return subprocess.run(command, capture_output=True, text=True,
                               timeout=SCHTASKS_TIME_LIMIT_SECONDS)
     except subprocess.TimeoutExpired:
-        raise TimeoutError(SCHTASKS_TOO_LONG.format(seconds=SCHTASKS_TIME_LIMIT_SECONDS)) from None
+        raise TimeoutError(too_long.format(seconds=SCHTASKS_TIME_LIMIT_SECONDS)) from None
+
+
+def _schtasks(command: list[str]) -> subprocess.CompletedProcess:
+    """Run one ``schtasks`` command line and hand back what it said. The seam
+    for Task Scheduler: the tests replace it, so no test ever reaches a real
+    one. One that does not answer within :data:`SCHTASKS_TIME_LIMIT_SECONDS`
+    is stopped and raises ``TimeoutError``."""
+    return _run_within_the_limit(command, SCHTASKS_TOO_LONG)
 
 
 def register_here(settings_folder: str | Path, *, start: str = DEFAULT_START,
                   every: int = DEFAULT_REPEAT_MINUTES) -> list[str]:
     """Write the job for this app's settings folder and register it with
-    Task Scheduler; the command run (or, off Windows, the one that would
-    be). **The one registration** (decision 209): the app's repair path
-    and the after-install step both come here, so the job is spelled once.
+    this computer's scheduler; the command run (or, off Windows and Mac,
+    the one that would be). **The one registration** (decision 209): the
+    app's repair path and the after-install step both come here, so the job
+    is spelled once.
 
     The job names the settings folder, never the root (decision 131). From
     a source checkout it is the Python this process runs under; in the
     packaged app it is this same executable in runner mode, which needs
     none of the environment the shell gives the API. A ``schtasks`` that
-    refuses raises ``RuntimeError`` with what it said.
+    refuses raises ``RuntimeError`` with what it said. On a Mac the job is a
+    launchd agent (:func:`_register_agent`, SPEC-mac R24).
     """
     start = check_start(start)
     every = check_every(every)
     frozen = bool(getattr(sys, "frozen", False))
+    if _launchd_here():
+        return _register_agent(settings_folder, start=start, every=every, frozen=frozen)
     # The task's file goes into the data home (decision 186), never beside
     # the program; its folder is made as the installer makes it.
     xml_path = schedule_xml_path()
@@ -401,20 +462,24 @@ def register_here(settings_folder: str | Path, *, start: str = DEFAULT_START,
     return install_task(xml_path)
 
 
-def _schtasks_or_raise(command: list[str], failure: str) -> None:
-    """Run one ``schtasks`` command that must succeed: a non-zero exit raises
-    ``RuntimeError`` naming ``failure``, the code, and what ``schtasks`` said
-    (its stderr, else its stdout)."""
-    completed = _schtasks(command)
+def _raise_unless_done(completed: subprocess.CompletedProcess, failure: str) -> None:
+    """A non-zero exit raises ``RuntimeError`` naming ``failure``, the code,
+    and what the command said (its stderr, else its stdout)."""
     if completed.returncode != 0:
         raise RuntimeError(
             f"{failure} ({completed.returncode}): {(completed.stderr or completed.stdout).strip()}"
         )
 
 
+def _schtasks_or_raise(command: list[str], failure: str) -> None:
+    """Run one ``schtasks`` command that must succeed, as :func:`_raise_unless_done`."""
+    _raise_unless_done(_schtasks(command), failure)
+
+
 def task_exists(task_name: str = TASK_NAME) -> bool:
-    """Whether Task Scheduler holds a task of this name: ``schtasks /query
-    /tn`` exits 0 for one that exists. Off Windows there is none.
+    """Whether the scheduler holds a task of this name: ``schtasks /query
+    /tn`` exits 0 for one that exists (on a Mac, ``launchctl print`` of the
+    agent). Where there is no scheduler there is none.
 
     Any other answer - not found, access denied, Task Scheduler stopped - is
     ``False``, "not confirmed", never "it is there" (P198, F6): the callers
@@ -427,29 +492,194 @@ def task_exists(task_name: str = TASK_NAME) -> bool:
 
 
 def task_query(task_name: str = TASK_NAME) -> int | None:
-    """``schtasks /query /tn``'s exit code for this task - 0 when it exists,
-    any other a refusal (not found, access denied, Task Scheduler stopped) -
-    or ``None`` off Windows, where nothing is asked. The launch keeps a
-    refusal's code on the error log (the engine review's NIT-2); its words
-    are not kept. Raises ``OSError`` as :func:`task_exists` does."""
-    if not task_scheduler_here():
+    """The scheduler's exit code for this computer's task - 0 when it exists,
+    any other a refusal (not found, access denied, scheduler stopped) - or
+    ``None`` where there is no scheduler, where nothing is asked. On Windows
+    that is ``schtasks /query /tn``'s; on a Mac, ``launchctl print`` of the
+    agent's service (``task_name`` is Windows' name; a Mac has the one
+    :data:`LAUNCH_AGENT_LABEL`). The launch keeps a refusal's code on the
+    error log (the engine review's NIT-2); its words are not kept. Raises
+    ``OSError`` as :func:`task_exists` does."""
+    if not scheduler_here():
         return None
+    if _launchd_here():
+        return _launchctl(["launchctl", "print", _service()]).returncode
     return _schtasks(["schtasks", "/query", "/tn", task_name]).returncode
 
 
 def remove_task(task_name: str = TASK_NAME) -> bool:
     """Delete this computer's own task, if it has one; whether one was removed.
 
-    :func:`task_exists` first, then ``/delete /f``. Off Windows there is
-    nothing to remove. A delete that fails raises ``RuntimeError``: a task
+    :func:`task_exists` first, then ``/delete /f``. Off Windows and Mac there
+    is nothing to remove. A delete that fails raises ``RuntimeError``: a task
     left running on a computer that no longer runs the schedule is a second
-    pass, and that is said, not swallowed.
-    """
+    pass, and that is said, not swallowed. On a Mac it is the agent's
+    ``bootout`` (when it is loaded) and its file (SPEC-mac R24)."""
+    if _launchd_here():
+        return _remove_agent()
     if not task_exists(task_name):
         return False
     _schtasks_or_raise(["schtasks", "/delete", "/tn", task_name, "/f"],
                        "schtasks could not delete the task")
     return True
+
+
+# ------------------------------------------------------ the Mac: launchd ----
+
+#: The app's bundle identifier, the one the shell sets as the Windows
+#: taskbar id and ``build-mac.sh`` gives the bundle (a test holds the three
+#: equal). The agent names it so that System Settings > General > Login
+#: Items > Allow in the Background lists the schedule under the app.
+APP_BUNDLE_ID = "com.jparkassociates.taxdocumentconsole"
+#: The agent's label, a constant (SPEC-mac R23): the name of its plist, of
+#: its launchd service and of the one thing a person can switch off.
+LAUNCH_AGENT_LABEL = f"{APP_BUNDLE_ID}.schedule"
+#: What a ``launchctl`` that ran past the limit raises, by its class only
+#: (``TimeoutError``, an ``OSError``), as :data:`SCHTASKS_TOO_LONG` does.
+LAUNCHCTL_TOO_LONG = "launchctl did not answer within {seconds} seconds"
+_MINUTES_A_DAY = 24 * 60
+#: ``launchctl print-disabled`` lists a service the person switched off as
+#: ``"label" => disabled`` (macOS 13 on), or ``=> true`` in its older words.
+_DISABLED_LINE = re.compile(rf'"{re.escape(LAUNCH_AGENT_LABEL)}"\s*=>\s*(?:disabled|true)\b')
+
+
+def _launchctl(command: list[str]) -> subprocess.CompletedProcess:
+    """Run one ``launchctl`` command line and hand back what it said. **The
+    one seam for launchd** (SPEC-mac R24), as :func:`_schtasks` is for Task
+    Scheduler: the suite's autouse guard (``tests/conftest.py``) fails a test
+    that reaches the real one. One that does not answer within the same
+    limit is stopped and raises ``TimeoutError``."""
+    return _run_within_the_limit(command, LAUNCHCTL_TOO_LONG)
+
+
+def _launchctl_or_raise(command: list[str], failure: str) -> None:
+    """Run one ``launchctl`` command that must succeed, as :func:`_raise_unless_done`."""
+    _raise_unless_done(_launchctl(command), failure)
+
+
+def _domain() -> str:
+    """The launchd domain of the signed-in person: ``gui/<uid>``. The agent
+    lives in it, so it runs only while that person is signed in - what Task
+    Scheduler's ``InteractiveToken`` said."""
+    return f"gui/{os.getuid()}"
+
+
+def _service() -> str:
+    """The agent's service target, ``gui/<uid>/<label>``."""
+    return f"{_domain()}/{LAUNCH_AGENT_LABEL}"
+
+
+def launch_agent_path() -> Path:
+    """Where the agent's plist lives: ``~/Library/LaunchAgents/<label>.plist``,
+    the one place launchd reads it from - never the data home (SPEC-mac R23).
+    Only a path."""
+    return Path.home() / "Library" / "LaunchAgents" / f"{LAUNCH_AGENT_LABEL}.plist"
+
+
+def schedule_file() -> Path:
+    """The file the registered schedule is, on this computer: the agent's
+    plist on a Mac, else the task's XML in the data home."""
+    return launch_agent_path() if _launchd_here() else schedule_xml_path()
+
+
+def agent_times(start: str, every: int) -> list[tuple[int, int]]:
+    """Every time of day the agent runs, as ``(hour, minute)``, soonest first:
+    the start plus a whole number of intervals, round the clock.
+
+    Task Scheduler's ``Repetition`` with ``Duration P1D`` repeats around the
+    clock from the start, not until midnight, so launchd, which has only
+    calendar entries, is given the same set: 1440 / ``every`` of them, and
+    one when it runs once a day (``every`` 0)."""
+    hour, minute = (int(part) for part in check_start(start).split(":"))
+    begin = hour * 60 + minute
+    step = check_every(every)
+    minutes = {begin} if not step else {(begin + k * step) % _MINUTES_A_DAY
+                                         for k in range(-(-_MINUTES_A_DAY // step))}
+    return [divmod(at, 60) for at in sorted(minutes)]
+
+
+def launch_agent_plist(*, program: str | Path, settings: str | Path, working_dir: str | Path,
+                       start: str = DEFAULT_START, every: int = DEFAULT_REPEAT_MINUTES,
+                       frozen: bool = False) -> bytes:
+    """The agent's property list, rendered with ``plistlib`` (SPEC-mac R23).
+
+    It runs ``program`` with :func:`runner_argv` and names the app's settings
+    folder and **no clients root** (decision 131). ``StartCalendarInterval``
+    is :func:`agent_times`. ``ProcessType`` is ``Standard`` and there is no
+    ``RunAtLoad``: the first pass is the after-install step's own
+    ``kickstart``, once, never a pass every time the agent loads.
+    ``AssociatedBundleIdentifiers`` is the app's id, so Allow in the
+    Background names the app.
+
+    Three of Task Scheduler's settings need no entry, because launchd does
+    them itself: ``IgnoreNew`` (one label is one process at a time),
+    ``InteractiveToken`` (the ``gui/<uid>`` domain runs only while the person
+    is signed in) and ``StartWhenAvailable`` (a time missed while asleep runs
+    on wake; one missed while the Mac was off is not made up, and the
+    draft-day logic already covers that). launchd has **no execution time
+    limit**: the runner enforces the lock's own (``runner``, SPEC-mac R26)."""
+    return plistlib.dumps({
+        "Label": LAUNCH_AGENT_LABEL,
+        "ProgramArguments": [str(program), *runner_argv(settings, frozen=frozen)],
+        "WorkingDirectory": str(working_dir),
+        "StartCalendarInterval": [{"Hour": hour, "Minute": minute}
+                                  for hour, minute in agent_times(start, every)],
+        "ProcessType": "Standard",
+        "AssociatedBundleIdentifiers": [APP_BUNDLE_ID],
+    }, fmt=plistlib.FMT_XML, sort_keys=False)
+
+
+def _register_agent(settings_folder: str | Path, *, start: str, every: int, frozen: bool) -> list[str]:
+    """Write the agent's file and load it (SPEC-mac R24): the plist, atomically,
+    into ``~/Library/LaunchAgents``; ``bootout`` of the service (where none is
+    loaded launchctl says so, and that answer is ignored); then ``bootstrap``
+    and ``enable``, each of which must succeed. Returns the ``bootstrap``
+    command. A ``launchctl`` that cannot be started raises ``OSError`` for the
+    caller to say; one that refuses raises ``RuntimeError`` with what it said."""
+    path = launch_agent_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    write_bytes_atomically(path, launch_agent_plist(
+        program=sys.executable, settings=settings_folder, working_dir=app_dir(),
+        start=start, every=every, frozen=frozen))
+    _launchctl(["launchctl", "bootout", _service()])
+    bootstrap = ["launchctl", "bootstrap", _domain(), str(path)]
+    _launchctl_or_raise(bootstrap, "launchctl could not load the agent")
+    _launchctl_or_raise(["launchctl", "enable", _service()], "launchctl could not enable the agent")
+    return bootstrap
+
+
+def _remove_agent() -> bool:
+    """Unload the agent if it is loaded and delete its file; whether either
+    was there. A ``bootout`` that fails raises ``RuntimeError``, as a failed
+    ``/delete`` does."""
+    loaded = task_exists()
+    if loaded:
+        _launchctl_or_raise(["launchctl", "bootout", _service()], "launchctl could not unload the agent")
+    path = launch_agent_path()
+    there = path.exists()
+    path.unlink(missing_ok=True)
+    return loaded or there
+
+
+def agent_switched_off() -> bool:
+    """Whether the person switched the agent off in System Settings > General >
+    Login Items > Allow in the Background, as ``launchctl print-disabled``
+    reports it (SPEC-mac R27). A switch is theirs: the after-install step
+    does not load the agent again over it. ``launchctl`` refusing the
+    question raises ``RuntimeError``; one that cannot be started, ``OSError``."""
+    completed = _launchctl(["launchctl", "print-disabled", _domain()])
+    _raise_unless_done(completed, "launchctl could not list the switched-off items")
+    return bool(_DISABLED_LINE.search(completed.stdout or ""))
+
+
+def start_agent_now() -> list[str]:
+    """Run the agent's job once, now (``launchctl kickstart``), and return the
+    command: the first pass of a program it has not run before, while a person
+    is at the Mac, so any permission macOS asks of the schedule's own program
+    is asked then (SPEC-mac R27, R30). Refused: ``RuntimeError``."""
+    command = ["launchctl", "kickstart", _service()]
+    _launchctl_or_raise(command, "launchctl could not start the first pass")
+    return command
 
 
 NEXT_RUN_TODAY = "Next run: today at {time}"
@@ -691,7 +921,7 @@ def schedule_decision(root: str | Path | None) -> ScheduleDecision:
         return ScheduleDecision(REFUSED_DRIVE, sentence=refusal)
     if root is None:
         return ScheduleDecision(NO_ROOT)
-    if not task_scheduler_here():
+    if not scheduler_here():
         return ScheduleDecision(NO_TASK_SCHEDULER)
     if not host_is_nameable():
         return ScheduleDecision(UNNAMED_HOST)
@@ -780,7 +1010,7 @@ if __name__ == "__main__":
                 command = install_task(ns.out, ns.name)
             except RuntimeError as exc:
                 raise SystemExit(f"Not installed: {exc}") from None
-            if task_scheduler_here():
+            if _task_scheduler_here():
                 print(f'Installed as "{ns.name}" - it runs daily from {ns.start}.')
             else:
                 print("Not Windows; run this on the scheduling machine:  " + " ".join(command))
