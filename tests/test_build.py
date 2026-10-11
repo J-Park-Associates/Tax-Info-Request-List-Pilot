@@ -1072,13 +1072,16 @@ def test_every_mac_script_opens_in_its_own_folder_and_finds_tools_by_command_v()
 
 
 def test_the_path_block_drops_an_empty_or_relative_folder_and_keeps_the_rest():
-    import os
     import subprocess
+
+    from tests.conftest import child_env
 
     bash = _bash()
     block = _path_block(MAC_SETUP)
+    # The suite's one way to build a child's environment (decision 185), though
+    # this child is bash: the guard allows no other shape.
     run = subprocess.run([bash, "-c", block + '\nprintf %s "$PATH"'], capture_output=True, text=True, check=True,
-                         env={**os.environ, "PATH": ":.:rel/bin:/usr/bin:/bin:"})
+                         env=child_env(PATH=":.:rel/bin:/usr/bin:/bin:"))
     assert run.stdout == "/usr/bin:/bin"
 
 
