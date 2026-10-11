@@ -1991,6 +1991,7 @@ function adoptList(listed) {
 // reply that lands after another return was chosen is dropped (D6). True
 // only when this read drew the page.
 async function showReturn(path) {
+  shellReturnStale = false;   // shell.js: this read is the redraw a closing dialog owed (P262)
   const view = select(path);
   try {
     renderFor(view, await call(["state", vocab.engagement_flag, path]));
@@ -2035,6 +2036,8 @@ async function saveRoot() {
       firm: setupDraft.firm.trim(),
       phone: setupDraft.phone.trim(),
     });
+    clearNotice("set-root");   // a folder is set: an earlier refusal's sentence goes (P262)
+    shellBack = null;          // Start goes to the Overview however the page was reached (shellNeedsRoot, P262)
     // What the after-install step did with the schedule (decision 209): a
     // step that could not run is the setup notice, with its lines in the
     // error log; a return short of room is one notice (decision 131).
@@ -2046,7 +2049,12 @@ async function saveRoot() {
     renderShortOfRoom(result.short_of_room || []);
     await bootstrap();
   } catch (err) {
-    failed(err, saveRoot);
+    // One notice for the refusal, in the API's own sentence and kind. A new
+    // refusal replaces the last (cleared first, so a dismissed one that is
+    // refused the same way shows again); it goes when a folder is set or the
+    // page is left by Cancel (P262).
+    clearNotice("set-root");
+    keyedNotice("set-root", err && err.failure ? err.failure : { sentence: failureSentence(err), kind: "failed" }, { retry: saveRoot });
   }
 }
 
@@ -3685,6 +3693,9 @@ function closeDialog(id) {
   const back = dialogOpener[id];
   delete dialogOpener[id];
   if (back && document.contains(back) && typeof back.focus === "function") back.focus();
+  // A scheduled pass ended while this was open: the return page behind it
+  // catches up now that the last dialog is shut (P262).
+  if (dialogStack.length === 0 && shellReturnStale && shellRoute.level === "return") showReturn(shellRoute.ret);
 }
 
 // Cancel, Escape and a click behind the dialog all come here. While the

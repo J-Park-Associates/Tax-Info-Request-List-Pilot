@@ -19,6 +19,7 @@ the standing cost rule.
 import json
 import ntpath
 import os
+import platform
 import re
 import subprocess
 import sys
@@ -29,6 +30,7 @@ import pytest
 
 from tests.conftest import (
     ENV_OFFICE_SHAPED_FULL,
+    REAL_HOST_SYSTEM,
     REPO,
     TRIPWIRE_DIR,
     TRIPWIRE_HEADING,
@@ -36,13 +38,15 @@ from tests.conftest import (
     UNREADABLE_LOG_LINE,
     checkout_folders,
     child_env,
+    floors_data_home,
     read_tripwire_log,
     real_places,
     run_in_copy,
+    stand_on_the_floor,
     tripwire_log_said,
 )
 from tests.tripwire import sitecustomize as tripwire
-from tracker import settings, store
+from tracker import fsio, locking, settings, store
 from tracker.checkpoint import CHECKPOINT_FILENAME, CHECKPOINT_SHM_FILENAME, CHECKPOINT_WAL_FILENAME
 from tracker.layout import CLIENTS_TREE, PRIVATE_TREE
 from tracker.progress import PASSES_DIRNAME
@@ -100,20 +104,67 @@ def test_the_tripwire_guards_every_place_a_real_settings_file_store_or_scratch_r
     assert beside in guarded                      # the checkout's own stays guarded
 
 
-def test_no_test_opens_the_real_data_home(tmp_path):
+def test_no_test_opens_the_real_data_home(tmp_path, monkeypatch):
     """Decision 186 (SPEC-186 section 9): the account's real data home - the
     store, the run log, a reading's scratch - is a guarded place, armed for
     the session, and no test's own data home is it or lies inside it; each
     is a sibling of the test's folder, never a clients root's child."""
+    # The home the session armed is the real computer's, worked out before
+    # the suite pinned a Mac to the floor's answer (conftest), so it is asked
+    # the same way here.
+    monkeypatch.setattr(settings, "host_system", REAL_HOST_SYSTEM)
     try:
         real = settings.default_data_home()
     except settings.SettingsError:
         pytest.skip("this machine has no data home to guard")
     armed = json.loads(os.environ[tripwire.ENV_TRIPWIRE])["places"]
     assert ["data home", str(real)] in armed
+    if REAL_HOST_SYSTEM() == "darwin":
+        # The suite's pin makes a bare test on a Mac resolve the floor's home
+        # (conftest.stand_on_the_floor): that one is armed as well.
+        try:
+            floor = floors_data_home()
+        except settings.SettingsError:
+            floor = None
+        assert floor is None or ["data home", str(floor)] in armed
     mine = settings.data_home()
     assert not mine.is_relative_to(real) and not real.is_relative_to(mine)
     assert not mine.is_relative_to(tmp_path)                 # a root at tmp_path never holds it
+
+
+def test_the_suite_stands_on_the_floor_unless_a_test_says_a_mac(request):
+    """P261: a Mac runs the suite as the Linux floor does. With the seam
+    really answering "darwin" (and the lock layer's own, which reads the
+    platform), the guard's pin makes a bare test see "posix" and no Mac;
+    ``a_mac`` then says "darwin" on top of it, and the pin comes off with the
+    test. On any other computer the guard changes nothing."""
+    with pytest.MonkeyPatch.context() as faked:
+        faked.setattr(settings, "host_system", lambda: "darwin")
+        faked.setattr(locking, "_on_a_mac", lambda: True)
+        faked.setattr(fsio, "_on_a_mac", lambda: True)
+        with pytest.MonkeyPatch.context() as pin:
+            stand_on_the_floor(pin)
+            assert settings.host_system() == "posix"
+            assert not locking._on_a_mac() and not fsio._on_a_mac()
+            # A test's faked name for the computer is the name the lock carries.
+            pin.setattr(platform, "node", lambda: "Office-PC")
+            assert locking.this_host() == "office-pc"
+            pin.undo()
+        assert settings.host_system() == "darwin" and locking._on_a_mac() and fsio._on_a_mac()
+
+        # On any other computer the guard changes nothing.
+        for system in ("posix", "nt"):
+            faked.setattr(settings, "host_system", lambda system=system: system)
+            before = locking.platform           # on a Mac the real guard's stand-in, else the module
+            with pytest.MonkeyPatch.context() as pin:
+                stand_on_the_floor(pin)
+                assert locking.platform is before and settings.host_system() == system
+                assert locking._on_a_mac() and fsio._on_a_mac()
+
+    # This test itself, on whatever computer runs it, is bare: never "darwin".
+    assert settings.host_system() == ("nt" if os.name == "nt" else "posix")
+    request.getfixturevalue("a_mac")
+    assert settings.host_system() == "darwin"
 
 
 def test_the_tripwire_arms_a_macs_real_data_home_too(tmp_path, monkeypatch):
@@ -326,7 +377,7 @@ CANARY = textwrap.dedent('''
 
     import pytest
 
-    from tests.conftest import REPO, child_env
+    from tests.conftest import REAL_HOST_SYSTEM, REPO, child_env
     from tracker import settings, store
     from tracker.layout import CLIENTS_TREE
 
@@ -342,6 +393,7 @@ CANARY = textwrap.dedent('''
         monkeypatch.delenv(settings.ENV_SETTINGS_DIR)
         monkeypatch.delenv(store.ENV_STORE)
         monkeypatch.delenv(settings.ENV_DATA_HOME)
+        monkeypatch.setattr(settings, "host_system", REAL_HOST_SYSTEM)   # the suite pins a Mac to the floor's
         store.close()
         store.connect()
 
@@ -453,8 +505,10 @@ def test_the_suite_in_an_office_shaped_copy_stops_every_way_to_a_real_place(offi
     account = copy.parent / "account"
     account.mkdir(exist_ok=True)
     try:
+        # On a Mac the account's data home is under its home folder, which is
+        # the nested session's own here too (HOME is what the Mac reads).
         done = run_in_copy(copy, "-p", "no:cacheprovider", "tests/test_canary_185.py",
-                           LOCALAPPDATA=str(account), XDG_STATE_HOME=str(account))
+                           LOCALAPPDATA=str(account), XDG_STATE_HOME=str(account), HOME=str(account))
     finally:
         canary.unlink()
     output = done.stdout + done.stderr

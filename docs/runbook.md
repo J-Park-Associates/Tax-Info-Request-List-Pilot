@@ -288,7 +288,9 @@ some number of files and the rest wait for the next pass).
 **If the Allow in the Background switch is turned off,** the app does not register
 over a person's switch: at each start it says *macOS has switched the schedule off
 for this app (System Settings > General > Login Items, Allow in the Background).
-Switch Tax Document Console back on there; the app cannot do it for you.* Until it
+Switch Tax Document Console back on there; the app cannot do it for you.* The app
+learns of the switch from the Mac no longer holding the schedule, and it keeps
+saying so, and registers nothing, at every start until the switch is back on. Until it
 is switched back on the last-pass line goes amber (§2).
 
 **An unsigned build and the Drive permission (P239).** Until the app is signed, each
@@ -2281,7 +2283,8 @@ exactly as it came.
 5. **Reading needs nothing installed** (decision 169). The reader -
    RapidOCR and its three models - ships inside the app and reads scans and
    photos (a JPEG, a PNG, an iPhone's HEIC, a scanner's TIFF) on the
-   processor on any machine. Nothing is downloaded while it reads, ever.
+   processor on any machine. Nothing is downloaded while it reads, ever, and its
+   library is told at start to send no telemetry.
    **On a machine with an NVIDIA graphics card**, copy the **graphics card
    pack** once: the folder `gpu-runtime` (about 1.6 GB, made by
    `Build GPU Pack.bat`) goes beside `tracker-api.exe`, in the app's

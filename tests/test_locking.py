@@ -364,13 +364,11 @@ def test_a_lock_naming_no_process_falls_back_to_its_age(tmp_path):
 def test_a_lock_from_another_machine_is_judged_by_its_age_alone(tmp_path):
     # A synced clients root: the other machine's pid is never alive here,
     # and that must not read as "gone". Only the age rule may replace it.
-    from tracker.locking import lock_status
+    from tracker.locking import lock_status, this_host
 
     lock = tmp_path / LOCK_FILENAME
-    import platform
-
     theirs = lock_line(424242, dt.datetime.now()).replace(
-        f"host={platform.node().lower()}", "host=other-pc")
+        f"host={this_host()}", "host=other-pc")
     assert "host=other-pc" in theirs
     lock.write_text(theirs, encoding="utf-8")
     assert lock_status(tmp_path).owner_gone is False and lock_status(tmp_path).stale is False

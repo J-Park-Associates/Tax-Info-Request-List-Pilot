@@ -242,10 +242,16 @@ SAFETY - never break these:
      launchctl print gui/$(id -u)/com.jparkassociates.taxdocumentconsole.schedule ; echo "exit $?"
    and record the exact output of the first, and the second's exit code and its "state =" line, each
    time (print-disabled: true or false for the label, or nothing; print: loaded, with its state, or
-   "Could not find service"). If print-disabled does not change when the switch does, say so: then
-   the app cannot tell, the last-pass line's amber is the only signal, and R27's sentence will not
-   be shown. If the agent stays loaded when switched off (print still answers 0), say so: the app
-   must then notice the switch through print-disabled alone.
+   "Could not find service"). If print-disabled does not change when the switch does AND the agent
+   stays loaded when switched off (print still answers 0), say so: then the app cannot tell, the
+   last-pass line's amber is the only signal, and R27's sentence will not be shown.
+   Re-run 1 found that on macOS 26 print-disabled stays "enabled" while the switch is off, and the
+   agent is unloaded (print answers 113) with its file still in ~/Library/LaunchAgents; the app
+   reads that as the switch (P260). So also record, after switching it off and quitting and
+   starting the app: that Setup Needs Attention shows, with the sentence "macOS has switched the
+   schedule off for this app..." under Details; that the switch stays off in Login Items (the app
+   registered nothing); and, after switching it on again and starting the app once more, that the
+   sentence is gone.
 
    H6. iCloud's Desktop & Documents signal (R5). Chosen because R5 detects the setting by a folder
    existing, and nothing has shown that is reliable. Ask Jason whether iCloud Drive's "Desktop &

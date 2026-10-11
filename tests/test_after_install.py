@@ -1136,10 +1136,12 @@ def test_a_mac_whose_print_is_refused_keeps_the_launchctl_words_on_the_error_log
     from tracker import errors
 
     assert after_install.run(reason=after_install.REASON_SETUP).exit_code == 0
+    scheduling.launch_agent_path().unlink()        # no file: not the switch, the step registers again
     mac.launchd.refuse["print"] = (5, "Operation not permitted")
     with caplog.at_level(logging.WARNING, logger=errors.DEBUG_LOGGER):
         assert after_install.launch() is not None
     assert after_install.QUERY_REFUSED_MAC.format(code=5) in caplog.text
+    assert after_install.QUERY_REFUSED_SWITCHED.format(code=5) not in caplog.text
     assert "schtasks" not in caplog.text
 
 
@@ -1581,7 +1583,8 @@ def test_the_launch_door_asks_a_mac_only_whether_its_agent_is_loaded(root, mac):
     assert after_install.launch() is None
     assert mac.launchd.verbs() == ["print", "print-disabled"], "two questions (R27), and nothing registered"
 
-    mac.launchd.loaded = False                    # the agent is gone; the record still names this Mac
+    mac.launchd.loaded = False                    # the agent is gone, file and all (an uninstall
+    scheduling.launch_agent_path().unlink()       # leaves none); the record still names this Mac
     ran = after_install.launch()
     assert ran is not None and ran.installed and mac.launchd.loaded
 
@@ -1607,7 +1610,7 @@ def test_a_mac_whose_schedule_was_switched_off_is_told_and_not_re_registered(roo
         assert not {"bootstrap", "bootout", "enable", "kickstart"} & set(mac.launchd.verbs())
         assert ran.check != after_install.CHECK_FAILED_KEY and ran.check_sentence, "the record check still ran"
 
-    mac.launchd.switched_off = False                                    # the person switched it back on
+    mac.launchd.switched_off, mac.launchd.loaded = False, True          # the person switched it back on
     back = after_install.launch()
     assert back is not None and back.installed and back.failed == () and mac.launchd.loaded
     assert after_install.notice() is None
@@ -1631,6 +1634,51 @@ def test_an_agent_macos_leaves_loaded_but_the_person_switched_off_is_told_and_no
     mac.launchd.switched_off = False
     back = after_install.launch()
     assert back is not None and back.installed and back.failed == ()
+
+
+def test_an_agent_macos_unloaded_but_whose_file_remains_is_the_persons_switch(root, mac, caplog):
+    """P260, re-run 1 (H5): on macOS 26 the Login Items switch unloads the agent and leaves its
+    file, while ``print-disabled`` keeps answering enabled. An unloaded agent whose file is still
+    where the step put it is the person's switch: the sentence shows at every start, nothing is
+    registered, and the next start after the person switched it back on (macOS loads it) registers."""
+    import logging
+
+    from tracker import errors
+
+    assert after_install.run(reason=after_install.REASON_SETUP).exit_code == 0
+    mac.launchd.loaded = False                    # unloaded; switched_off stays False; the file remains
+    assert not mac.launchd.switched_off and scheduling.launch_agent_path().is_file()
+    mac.launchd.calls.clear()
+
+    said = after_install.SCHEDULE_SWITCHED_OFF.format(product=settings.product_name())
+    for start in (1, 2):
+        caplog.clear()
+        with caplog.at_level(logging.WARNING, logger=errors.DEBUG_LOGGER):
+            ran = after_install.launch()
+        assert ran is not None and ran.schedule == after_install.SWITCHED_OFF_KEY
+        assert said in ran.failed and said in after_install.notice()["failed"]
+        assert not {"bootstrap", "bootout", "enable", "kickstart"} & set(mac.launchd.verbs())
+        # The error log must not say the step registers it again: it registers nothing. The
+        # query is asked at the first start only (the failed step leaves no program in the
+        # record, so the second start runs the step without asking it).
+        assert (after_install.QUERY_REFUSED_SWITCHED.format(code=113) in caplog.text) == (start == 1)
+        assert "register the agent again" not in caplog.text
+
+    mac.launchd.loaded = True                     # the person switched it on; macOS loaded it
+    back = after_install.launch()
+    assert back is not None and back.installed and back.failed == ()
+    assert after_install.notice() is None
+
+
+def test_an_agent_whose_file_is_gone_is_missing_not_switched_off(root, mac):
+    assert after_install.run(reason=after_install.REASON_SETUP).exit_code == 0
+    mac.launchd.loaded = False
+    scheduling.launch_agent_path().unlink()
+
+    ran = after_install.launch()
+
+    assert ran is not None and ran.installed and ran.schedule != after_install.SWITCHED_OFF_KEY
+    assert mac.launchd.loaded and scheduling.launch_agent_path().is_file()
 
 
 def test_a_schedule_the_person_turned_off_in_the_app_is_not_called_switched_off(root, mac):
@@ -1676,7 +1724,8 @@ def test_a_new_program_on_a_mac_starts_its_first_pass_once(root, mac, monkeypatc
 
     mac.launchd.calls.clear()
     assert after_install.run(reason=after_install.REASON_REPAIR).exit_code == 0
-    mac.launchd.loaded = False
+    mac.launchd.loaded = False                    # the agent is gone, file and all
+    scheduling.launch_agent_path().unlink()
     assert after_install.launch() is not None
     assert "kickstart" not in mac.launchd.verbs()
 

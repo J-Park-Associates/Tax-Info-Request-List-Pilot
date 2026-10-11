@@ -7,8 +7,8 @@ this repository; [`SPEC.md`](SPEC.md) says what it builds.
 
 ## Where the record is
 
-- **`main` is `6f88e3e`** (pull request #33, the cleanup, P231-P237); this
-  branch, `claude/trusting-tesla-or0wm2`, is cut from it and carries P256-P259.
+- **`main` is `287732c`** (pull request #35, the Mac check fixes, P256-P259);
+  this branch, `claude/mac-rerun1-fixes`, is cut from it and carries P260-P263.
 
 - **Decisions live in [`DECISIONS.md`](DECISIONS.md), rows P1 to P237.** Code
   and tests cite those numbers, so a row is never renumbered or removed. Why
@@ -20,7 +20,25 @@ this repository; [`SPEC.md`](SPEC.md) says what it builds.
 
 ## Current work
 
-[`SPEC-mac-check-fixes.md`](SPEC-mac-check-fixes.md): the fixes from Jason's
+[`SPEC-mac-rerun1-fixes.md`](SPEC-mac-rerun1-fixes.md): the fixes from the Mac
+check's re-run 1 of 2026-10-10 (P260-P263), built on `claude/mac-rerun1-fixes`,
+each job its own commit after a clean Opus review:
+
+1. On a Mac, an agent launchd no longer holds while its file remains is the
+   person's Login Items switch: the launch door says so and registers nothing
+   (P260). The reader tells its library to send no telemetry (P263).
+2. The suite stands on the Linux floor's computer on a Mac unless a test says
+   `a_mac`, and the four affected files pass on a Mac (P261).
+3. An open return page follows a scheduled pass, Start on the change-folder
+   path goes to the Overview, and a refused folder's sentence is a keyed
+   notice (P262).
+
+What has not run: the next Mac check on this branch (step 13 with the switch,
+step 9 on a return page, step 7's refusal, step 14 then 5); the overnight run;
+Google Drive; H10. The floor interpreter (3.11) is not installed on the test
+Mac, so the gate here ran on 3.14 only.
+
+Landed before this: [`SPEC-mac-check-fixes.md`](SPEC-mac-check-fixes.md): the fixes from Jason's
 Mac check of 2026-10-10, built and landed on `claude/trusting-tesla-or0wm2`
 (P256-P258), each job its own commit after a clean Opus review:
 

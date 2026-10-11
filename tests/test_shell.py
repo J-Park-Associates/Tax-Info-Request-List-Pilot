@@ -40,6 +40,7 @@ from tests.test_pilot_ui import (
     stripped,
     top_level,
 )
+from tracker import settings as settings_module
 
 REPO = Path(__file__).resolve().parent.parent
 
@@ -2584,7 +2585,16 @@ def test_the_harness_stub_speaks_the_apis_vocabulary(tmp_path):
     assert not (REPO / "pilot" / "harness" / "vocab-mirror.json").exists()
     live = json.loads(json.dumps(api._vocab()))
     dumped = tmp_path / "vocab.json"
-    done = subprocess.run([sys.executable, str(REPO / "pilot" / "harness" / "make_vocab.py"), str(dumped)],
+    # The child answers the question of the same computer as this process
+    # does: the suite's pin of ``settings.host_system`` (tests/conftest.py)
+    # is in-process, so on a Mac the child would say "Another Mac Sorting"
+    # against this process's "Another PC Sorting". The seam is handed on,
+    # never the comparison loosened.
+    pinned = (f"import runpy, sys; from tracker import settings; "
+              f"settings.host_system = lambda: {settings_module.host_system()!r}; "
+              f"sys.argv = sys.argv[1:]; runpy.run_path(sys.argv[0], run_name='__main__')")
+    done = subprocess.run([sys.executable, "-c", pinned, str(REPO / "pilot" / "harness" / "make_vocab.py"),
+                           str(dumped)],
                           capture_output=True, text=True, encoding="utf-8", timeout=60, check=False, cwd=REPO)
     assert done.returncode == 0, done.stderr
     assert json.loads(dumped.read_text(encoding="utf-8")) == live
@@ -5675,6 +5685,8 @@ let scanning = null; let shellLastPass = null;
 let shellLastPassTimer = null; let shellLastPassAsking = false; let shellLastPassStopped = false;
 const seen = []; let timerId = 0; const timers = new Map(); let reply = null; let asked = 0;
 let listReply = { listed: true }; let during = null;
+let shellRoute = { level: "overview" }; let dialogStack = []; let shellReturnStale = false; let throwing = false;
+const showReturn = async (path) => { seen.push("showReturn:" + path); if (throwing) throw new Error("boom return"); };
 const setTimeout = (fn, ms) => { timerId += 1; timers.set(timerId, [fn, ms]); return timerId; };
 const clearTimeout = (id) => { timers.delete(id); };
 const shellChanged = () => seen.push("changed");
@@ -6153,6 +6165,7 @@ def test_the_schedule_sentence_is_toasted_when_the_step_registered_it(tmp_path):
       const renderShortOfRoom = () => {}; const bootstrap = async () => seen.push("bootstrap");
       const outcome = (text, cls, opts) => seen.push(["outcome", text, cls, opts.toasted]);
       const failed = (err) => seen.push("failed:" + err.message);
+      const clearNotice = () => {}; let shellBack = null;
       const window = { tracker: { logError: (text) => seen.push(["log", text]) } };
     """, """
       return (async () => {
@@ -6190,3 +6203,173 @@ def test_the_schedule_sentence_is_toasted_when_the_step_registered_it(tmp_path):
     assert "installed: result.installed === true," in main_js and "schedule_sentence: typeof result.schedule_sentence" in main_js
     assert 'ipcRenderer.on("after-install-done", (_e, done) => listener(done))' in preload
 
+
+
+# ── P262: the return page follows a pass; Start goes to the Overview; a refusal is one notice ──
+
+#: The fakes the reread step needs beside LAST_PASS_WATCH_FAKES (SPEC-mac-rerun1-fixes 3.1).
+RETURN_FOLLOWS_FAKES = LAST_PASS_WATCH_FAKES + r"""
+const ended = async (route, dialogs, running = null) => {
+  shellRoute = route; dialogStack = dialogs; shellReturnStale = false; throwing = false;
+  const out = await tick({ running: true, when: "A" }, { running: false, when: "A", ok: true }, running);
+  return { seen: out.seen, stale: shellReturnStale };
+};
+"""
+
+
+def test_a_scheduled_pass_that_ended_redraws_an_open_return_page(tmp_path):
+    """P262 (SPEC-mac-rerun1-fixes 3.1): the reread a watch tick asks when a
+    pass has ended adopts the list and then draws the open return page again,
+    as F5 does - unless a dialog or the side sheet is open, when the page
+    waits (``shellReturnStale``) and the last dialog's closing draws it.
+    Other pages are not redrawn, nothing is read during the app's own pass,
+    and a draw that throws is said once by ``failed``. (The real
+    ``showReturn`` says its own read's failure itself and the watch goes on;
+    the reread's catch takes only a throw.)"""
+    ran = run_shell(["lastPassStep", "shellArmLastPass", "shellWatchLastPass"], RETURN_FOLLOWS_FAKES, """
+      return (async () => {
+        const open = await ended({ level: "return", ret: "r1" }, []);
+        const dialog = await ended({ level: "return", ret: "r1" }, ["sheet"]);
+        const overview = await ended({ level: "overview" }, []);
+        const own = await ended({ level: "return", ret: "r1" }, [], { pass: "p" });
+        shellRoute = { level: "return", ret: "r1" }; dialogStack = []; throwing = true;
+        const broken = await tick({ running: true, when: "A" }, { running: false, when: "A", ok: true });
+        return { open, dialog, overview, own, broken: broken.seen };
+      })();
+    """, tmp_path)
+    assert ran["open"]["seen"] == ["call:last-pass", "call:list", "adopt-list", "showReturn:r1"], "once, with the route's own return"
+    assert ran["open"]["stale"] is False
+    assert ran["dialog"]["seen"] == ["call:last-pass", "call:list", "adopt-list"] and ran["dialog"]["stale"] is True, \
+        "an open dialog defers the redraw"
+    assert ran["overview"]["seen"] == ["call:last-pass", "call:list", "adopt-list"] and ran["overview"]["stale"] is False
+    assert ran["own"]["seen"] == [] and ran["own"]["stale"] is False, "during the app's own pass nothing is called"
+    assert ran["broken"] == ["call:last-pass", "call:list", "adopt-list", "showReturn:r1", "failed:boom return"], "said once"
+
+
+def test_closing_the_last_dialog_redraws_a_stale_return_page(tmp_path):
+    """P262 (3.1): ``closeDialog``, once it has popped the last dialog, draws
+    the return page a pass left behind; with another dialog still open it
+    waits; when the route has moved off a return page it draws nothing and the
+    flag is left for the next ``showReturn`` to clear."""
+    setup = r"""
+      const seen = []; let dialogStack = []; let shellReturnStale = false; let shellRoute = { level: "return", ret: "r9" };
+      const DIALOGS = { one: {}, two: {} }; const dialogOpener = {};
+      const el = () => ({ classList: { add() {} }, hidden: false });
+      const $ = () => el(); const unsavedBar = () => null; const document = { contains: () => false };
+      const showReturn = async (path) => { seen.push("showReturn:" + path); shellReturnStale = false; };
+      const run = (stack, stale, route, id) => {
+        seen.length = 0; dialogStack = stack.slice(); shellReturnStale = stale; shellRoute = route;
+        closeDialog(id);
+        return { seen: seen.slice(), stale: shellReturnStale, left: dialogStack.slice() };
+      };
+    """
+    ran = run_shell(["closeDialog"], setup, """
+      return {
+        last: run(["one"], true, { level: "return", ret: "r9" }, "one"),
+        two: run(["one", "two"], true, { level: "return", ret: "r9" }, "two"),
+        clean: run(["one"], false, { level: "return", ret: "r9" }, "one"),
+        moved: run(["one"], true, { level: "overview" }, "one"),
+      };
+    """, tmp_path, "app.js")
+    assert ran["last"] == {"seen": ["showReturn:r9"], "stale": False, "left": []}, "the last dialog's closing draws it once"
+    assert ran["two"] == {"seen": [], "stale": True, "left": ["one"]}, "one still open: it waits"
+    assert ran["clean"]["seen"] == [], "nothing owed, nothing drawn"
+    assert ran["moved"] == {"seen": [], "stale": True, "left": []}, "off a return page nothing is drawn; showReturn clears the flag"
+    app = read("app.js")
+    assert re.search(r"async function showReturn\(path\) \{\n  shellReturnStale = false;", app), "a navigation's own draw clears the flag"
+
+
+def test_start_goes_to_the_overview_however_the_setup_page_was_reached(tmp_path):
+    """P262 (3.2): a setup page with nothing to go back to goes to the
+    Overview once the folder is set, and ``saveRoot`` forgets the route Cancel
+    goes back to before the start-up path asks ``shellNeedsRoot`` - so it does
+    on the Change clients folder path as on a first run."""
+    ran = run_shell(["shellNeedsRoot"], r"""
+      const gone = []; let shellRootSet = false; let shellBack = null; let shellRoute = { level: "setup" };
+      const shellGo = (route) => gone.push(route.level);
+      const screenWords = () => ({ setup: {} }); const notice = () => {}; const hideTip = () => {}; const shellDraw = () => {};
+      const reset = (back) => { gone.length = 0; shellRoute = { level: "setup" }; shellBack = back; };
+    """, """
+      reset(null); shellNeedsRoot(false, { root: "/c" }); const fresh = gone.slice();
+      reset({ level: "clients" }); shellNeedsRoot(false, { root: "/c" }); const kept = gone.slice();
+      return { fresh, kept };
+    """, tmp_path)
+    assert ran == {"fresh": ["overview"], "kept": []}
+    seen = run_shell(["saveRoot"], r"""
+      let setupDraft = { root: "/new", firm: "F", phone: "" }; let shellBack = { level: "clients" };
+      const seen = [];
+      const call = async () => ({ after_install: { installed: false, schedule_sentence: "S", failed: [], findings: [] } });
+      const noticeOf = (done) => done; const renderAfterInstall = () => {}; const renderShortOfRoom = () => {};
+      const outcome = () => {}; const clearNotice = () => {};
+      const bootstrap = async () => seen.push(["bootstrap", shellBack]);
+      const window = { tracker: { logError: () => {} } };
+    """, "return saveRoot().then(() => seen);", tmp_path, "app.js")
+    assert seen == [["bootstrap", None]], "Cancel's route is forgotten before the start-up path runs"
+
+
+def test_a_refused_folder_is_one_keyed_notice_that_goes_when_a_folder_is_set(tmp_path):
+    """P262 (3.3): a folder the API refuses is the keyed notice ``set-root``
+    in the API's own sentence and kind, with a Retry; a second refusal in
+    other words replaces it; a folder that is set clears it, and so does
+    Cancel on the setup page."""
+    ran = run_shell(["saveRoot"], r"""
+      let setupDraft = { root: "/new", firm: "F", phone: "" }; let shellBack = null;
+      const keyed = new Map(); const seen = []; let answer = null;
+      const call = async () => { if (answer instanceof Error) throw answer; return answer; };
+      const failureSentence = (err) => "page:" + err.message;
+      const keyedNotice = (key, failure, opts) => { keyed.set(key, [failure.sentence, failure.kind, opts.retry === saveRoot]); seen.push("notice:" + failure.sentence); };
+      const clearNotice = (key) => { keyed.delete(key); seen.push("clear:" + key); };
+      const noticeOf = (done) => done; const renderAfterInstall = () => {}; const renderShortOfRoom = () => {};
+      const outcome = () => {}; const bootstrap = async () => seen.push("bootstrap");
+      const window = { tracker: { logError: () => {} } };
+      const refused = (sentence) => Object.assign(new Error("x"), { failure: { sentence, kind: "refused" } });
+    """, """
+      return (async () => {
+        answer = refused("Not that folder."); await saveRoot(); const first = [...keyed];
+        answer = refused("A different folder, please."); await saveRoot(); const second = [...keyed];
+        answer = new Error("odd"); await saveRoot(); const own = [...keyed];
+        seen.length = 0;
+        answer = { after_install: { installed: false, schedule_sentence: "S", failed: [], findings: [] } }; await saveRoot();
+        return { first, second, own, set: [...keyed], sawClear: seen.includes("clear:set-root") };
+      })();
+    """, tmp_path, "app.js")
+    assert ran["first"] == [["set-root", ["Not that folder.", "refused", True]]], "the API's sentence and kind, with a Retry"
+    assert ran["second"] == [["set-root", ["A different folder, please.", "refused", True]]], "replaced, not added"
+    assert ran["own"] == [["set-root", ["page:odd", "failed", True]]], "an error of the page's own is said in its class sentence"
+    assert ran["set"] == [] and ran["sawClear"] is True, "a folder that is set clears it"
+    cancel = js_function("setupPage", "shell.js")
+    assert re.search(r'id: "setup-cancel".*?addEventListener\("click", \(\) => \{\s*clearNotice\("set-root"\);[^\n]*\n\s*shellGo\(shellBack \|\| \{ level: "overview" \}\);', cancel, re.S), \
+        "Cancel clears the sentence, then goes back"
+
+
+def test_the_return_page_is_redrawn_only_on_a_return_route(tmp_path):
+    """P262: ``shellRefresh`` (F5) and the watch's reread reach ``showReturn``
+    only when the route is a return page."""
+    refresh = re.sub(r"//.*", "", js_function("shellRefresh", "shell.js"))
+    assert 'if (shellRoute.level === "return") await showReturn(shellRoute.ret);' in refresh
+    reread = js_function("shellWatchLastPass", "shell.js")
+    assert re.search(r'if \(shellRoute\.level === "return"\) \{\s*if \(dialogStack\.length === 0\) await showReturn\(shellRoute\.ret\);\s*else shellReturnStale = true;', reread)
+    assert reread.count("showReturn(") == 1
+
+
+def test_a_navigation_that_closes_the_sheet_does_not_redraw_the_page_it_leaves(tmp_path):
+    """P262 (review finding 1): with a pass ended while the side sheet was
+    open on a return page, ``shellGo`` drops the owed redraw before it closes
+    the sheet, so the sheet's closing (which runs ``closeDialog`` while the
+    route is still the old return) draws nothing for the page being left."""
+    setup = r"""
+      const seen = []; let dialogStack = ["sheet"]; let shellReturnStale = true; let shellRoute = { level: "return", ret: "r9" };
+      let shellRootSet = true; let shellBack = null; let shellPageBusy = false; let shellPageFailed = false;
+      const LEVELS = ["overview", "return", "setup"];
+      const DIALOGS = { sheet: { attr: true } }; const dialogOpener = {};
+      const el = () => ({ classList: { add() {} }, hidden: false, focus() {}, scrollTop: 0 });
+      const $ = () => el(); const unsavedBar = () => null; const document = { contains: () => false };
+      const showReturn = async (path) => { seen.push("showReturn:" + path); shellReturnStale = false; };
+      const closeSheet = () => closeDialog("sheet");
+      const hideFound = () => {}; const hideTip = () => {}; const shellDraw = () => {}; const failed = () => {};
+      const appRouteChanged = () => {}; const shellOpenState = () => Promise.resolve();
+    """
+    ran = run_shell(["shellGo", "closeDialog"], setup, """
+      return shellGo({ level: "overview" }).then(() => ({ seen, stale: shellReturnStale, level: shellRoute.level }));
+    """, tmp_path, "app.js")
+    assert ran == {"seen": [], "stale": False, "level": "overview"}
