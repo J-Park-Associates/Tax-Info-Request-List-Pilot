@@ -15,9 +15,9 @@
     "a person sends the draft"
   ],
   "counts": {
-    "nodes": 259,
-    "edges": 1245,
-    "reused": 208
+    "nodes": 262,
+    "edges": 1247,
+    "reused": 204
   },
   "node_types": [
     "artifact",
@@ -4425,16 +4425,17 @@
       "id": "PRODUCT.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "bee7697cbdebb6ab",
-      "lines": 74
+      "sha256": "c2fdc95faaf0981c",
+      "lines": 77
     },
     {
       "id": "README.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "2c16ac370baf83a8",
-      "lines": 587,
-      "role": "What the system is, how to run each stage, and how to set it up. Who does what is docs/workflow.md."
+      "sha256": "920986dc530b7ae1",
+      "lines": 598,
+      "role": "What the system is, how to run each stage, and how to set it up on a PC or a Mac. Who does what is docs/workflow.md.",
+      "notes": "Names the product in its title only (a test holds that), so the Mac floor is said as 'the app needs a Mac with Apple silicon running macOS 14 or later'; tests/test_single_source.py pins those words to settings.MAC_FLOOR (SPEC-mac R35). PRODUCT.md says it too, with the program's name."
     },
     {
       "id": "docs/ROADMAP.md",
@@ -4458,8 +4459,8 @@
       "id": "docs/repo-map.curated.json",
       "type": "file",
       "layer": "docs",
-      "sha256": "5d950b54e39ef861",
-      "lines": 1208,
+      "sha256": "4152df6b8e4f2eeb",
+      "lines": 1239,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
     },
@@ -4467,10 +4468,10 @@
       "id": "docs/runbook.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "26249a1e4330931d",
-      "lines": 2712,
-      "role": "The operator's page for one tax season: the designated machine and today's rule that only one may run a clients root, what a person does each morning and on the draft day, what every index reason and validation note means, and the thirty-minute move to another machine.",
-      "notes": "Written for a person, not an agent. Roles are docs/workflow.md and the reasons behind the rules are docs/ROADMAP.md; it links to both rather than repeating them."
+      "sha256": "ba1a22cc09e52c75",
+      "lines": 2849,
+      "role": "The operator's page for one tax season: the designated machine and today's rule that only one may run a clients root, what a person does each morning and on the draft day, what every index reason and validation note means, and the thirty-minute move to another machine - on a Windows PC or on a Mac.",
+      "notes": "Written for a person, not an agent. Roles are docs/workflow.md and the reasons behind the rules are docs/ROADMAP.md; it links to both rather than repeating them. The Mac is written as parallel paragraphs, not edits to the Windows text (SPEC-mac R34): section 1's `### On a Mac` (the heading the pass's own root-not-permitted reason points at) and two paragraphs in section 6 (moving to or from a Mac, taking the app off one). The one-machine rule is still stated once. tests/test_single_source.py quotes the app's sentences against it and holds the data folder's name to settings.DATA_HOME_NAME on both systems (the Windows lines once named a folder the app does not make)."
     },
     {
       "id": "docs/storage.md",
@@ -4517,8 +4518,8 @@
       "id": "pilot/DECISIONS.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "e61102d38420c679",
-      "lines": 248
+      "sha256": "bd2bf29144929ada",
+      "lines": 249
     },
     {
       "id": "pilot/HANDOFF.md",
@@ -4717,6 +4718,23 @@
       "layer": "docs",
       "sha256": "869f0afb869914dc",
       "lines": 27
+    },
+    {
+      "id": "pilot/mactest/PROMPT.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "e31669fb7ec0152c",
+      "lines": 378,
+      "role": "The prompt for Claude Code on the test Mac (SPEC-mac R33): the safety rules, the run of pilot/mactest/run_checks.sh with the exact test files, and the hands-on steps H1-H14 with the buyer's walk as H2 and why each was chosen.",
+      "notes": "Carries the proof items the Mac jobs' reviews left for a Mac under the step that matches them: job 1 in H2 steps 4-7 and 10 and H6, job 2 in H1, H2 steps 2-3 and H11, job 5 in H4, H7 and H8, job 6 in H3, H5, H9, H13 and H14, job 7 in H1 and H10. Its season builder (for H10's timing) is lifted and run by tests/test_pilot.py. The 60-minute figure H10 passes at is the kit's reading of P247's 'well inside' the two-hour slot, for Jason to change."
+    },
+    {
+      "id": "pilot/mactest/RESULTS-TEMPLATE.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "49e6bd20148cc167",
+      "lines": 114,
+      "role": "The result file the Mac check fills in: the machine, the automated checks (one row per check the script records and per test file), the walk's fourteen steps and H1-H14. tests/test_pilot.py holds its rows to the script's and the prompt's."
     },
     {
       "id": "pilot/wintest/PROMPT-0.3.md",
@@ -5213,7 +5231,9 @@
         "REPO",
         "SANDBOX_PARENT",
         "main"
-      ]
+      ],
+      "role": "Builds the sandbox clients folder of the Windows check and of the Mac check (P28): the suite's own made-up documents (tests/samples.py) under the PilotTest folder, refused anywhere else.",
+      "notes": "Used by path from both kits - pilot/wintest/run_checks.ps1 and pilot/mactest/run_checks.sh - never copied (SPEC-mac R33). Neither kit script is a node here: tools/repo_map.py maps no .ps1, .sh or .command suffix, so the kits are described in the notes of the files around them. The Mac kit (P254) mirrors the Windows one: run_checks.sh, in bash 3.2 with PATH cut to absolute folders as build-mac.sh does, stops on anything but an Apple silicon Mac on macOS 14 or later, reports a missing tool with where to get it and installs none, resolves every --tests name before anything else, runs each named test file as its own process side by side, builds the disk image only after every one has ended (the end-of-run guard of decision 185), then checks the bundle (ad-hoc seal, arm64, BUILD-INFO.txt, minimum macOS, folder strings, icon) and makes the frozen smoke in throwaway folders: the package answers JSON, reads the pile as the source does and starts a reading child under spawn. checks.json is written in pure bash. PROMPT.md is the safety block of the Windows prompt plus the Mac's own (no password typed by the assistant, no sudo, Gatekeeper and the quarantine mark untouched) and the hands-on steps H1-H14 with SPEC-mac section 3's buyer's walk as H2; RESULTS-TEMPLATE.md has a row for each. tests/test_pilot.py holds the Windows kit's tests and the Mac kit's: the script's helpers lifted and run in bash, the script itself run against stand-in uname, sw_vers and sysctl so every stop is proved on Linux, and the prompt, template and script held to one another."
     },
     {
       "id": "artifact:.venv/tracker-lock.json",
@@ -5352,6 +5372,13 @@
       "type": "artifact",
       "layer": "runtime",
       "role": "The Task Scheduler definition scheduling.register_here (the after-install step and the repair path, decision 209) and the scheduling CLI write into the data home (scheduling.schedule_xml_path(), decision 186) and hands to schtasks; holds the program's path and the settings folder, nothing about a client.",
+      "write_only": true
+    },
+    {
+      "id": "artifact:the check kits' sandbox",
+      "type": "artifact",
+      "layer": "runtime",
+      "role": "The folder the Windows and Mac check kits work in: %USERPROFILE%\\PilotTest or ~/PilotTest. Clients (the made-up sample documents), results (checks.json, run_checks.log, each test file's output, the screenshots and RESULT.md), and on a Mac smoke (the frozen smoke's scratch root, settings and data home) and, for the timed season pass, Clients-season, season-settings and season-data. Nothing in it is a client's, and the kits read no other folder, so no client's name is ever printed or stored by them (SPEC-mac R33).",
       "write_only": true
     },
     {
@@ -6455,13 +6482,14 @@
       "id": "tests/test_content_check.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "f10f54d08437f0dd",
-      "lines": 2790,
+      "sha256": "99b7d7047d56c042",
+      "lines": 2884,
       "exports": [
         "A_PASS_READING",
         "BOMB_REFUSED",
         "CRASHED",
         "MARKER",
+        "PROC",
         "STOPPED",
         "STOP_IN_TESTS",
         "TWO_PAGE_W2",
@@ -6477,6 +6505,7 @@
         "no_child_left",
         "page_tree_bomb",
         "photo",
+        "process_state",
         "replace_seconds",
         "running",
         "saved",
@@ -6503,6 +6532,7 @@
         "test_a_keyword_may_name_alternatives_and_the_words_one_of_them_wants_together",
         "test_a_keywords_words_are_on_one_line_or_wrap_as_a_heading",
         "test_a_long_text_file_is_read_to_the_cap_and_says_so",
+        "test_a_mac_asks_ps_and_reads_its_state_letters_not_proc",
         "test_a_menu_line_names_neither_the_form_nor_its_title",
         "test_a_one_line_workbook_parks_within_the_stop_and_never_stalls_the_pass",
         "test_a_page_is_handed_to_the_reader_as_it_comes_and_never_turned",
@@ -6534,6 +6564,7 @@
         "test_a_verdict_row_at_another_cache_version_is_ignored_and_dropped_on_save",
         "test_a_workbook_packed_with_bzip2_is_never_unpacked",
         "test_a_workbook_reads_to_the_budget_and_says_it_was_cut",
+        "test_a_zombie_has_ended_and_a_live_process_has_not_whichever_way_the_system_is_asked",
         "test_an_ocr_reading_is_cut_to_the_budget_and_says_so",
         "test_an_open_test_that_never_returns_is_stopped",
         "test_any_keywords",
@@ -6582,7 +6613,9 @@
         "BOMB_REFUSED": "'(LimitReachedError)'",
         "A_PASS_READING": "'\\nimport sys\\nfrom pathlib import Path\\nsys.path[:0] = [sys.argv[3]]\\nfrom tests import child_readers\\nfrom tracker import content_check, ocr\\ncontent_check._CHILD_READER = child_readers.a_reader_that_starts_a_reader_of_its_own\\nif sys.argv[2] == \"lifeline\":\\n    ocr._kill_on_close_job = lambda pid, **_limits: None\\ncontent_check.judge_bounded(Path(sys.argv[1]), content_check.Questions())\\n'",
         "MARKER": "'Quendrilvax'"
-      }
+      },
+      "role": "Tests for the content check: the rules, the verdict cache, the reading child's stops and what it leaves behind.",
+      "notes": "Its process helper `running(pid)` asks whether a process has ended without reading anything Linux-only (SPEC-mac R36): a zombie has ended, and where there is no /proc - a Mac - the state comes from `ps -o stat=` through the seam `PROC`, which a test points at a place that is not there to stand in for a Mac. Before this a Mac took every zombie for a live process and each wait-for-the-child test waited out its fifteen seconds."
     },
     {
       "id": "tests/test_door.py",
@@ -7806,9 +7839,15 @@
       "id": "tests/test_pilot.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "5a21b9aebbd543b7",
-      "lines": 474,
+      "sha256": "246b31e6fbf95c38",
+      "lines": 877,
       "exports": [
+        "KIT_PROMPT",
+        "KIT_RESULTS",
+        "KIT_SCRIPT",
+        "KIT_TESTS",
+        "KIT_TESTS_ADDED",
+        "MACTEST",
         "PILOT_JS",
         "POWERSHELL",
         "RENDERER",
@@ -7816,6 +7855,9 @@
         "content",
         "read",
         "test_a_blank_or_spaces_only_name_does_not_enable_accept",
+        "test_a_file_named_two_ways_is_one_test_run_and_the_kit_then_asks_for_a_mac",
+        "test_a_missing_tool_is_reported_with_where_to_get_it_and_the_kit_installs_nothing",
+        "test_a_typo_in_the_test_list_stops_the_kit_at_once_naming_where_it_looked",
         "test_acceptance_is_asked_of_the_durable_record_before_the_terms_stay",
         "test_an_earlier_acceptance_without_a_name_is_not_asked_again",
         "test_every_line_of_copy_is_short",
@@ -7834,11 +7876,25 @@
         "test_the_check_script_takes_only_py_files_says_where_it_looked_and_runs_a_file_named_twice_once",
         "test_the_contact_is_the_firms_admin_address",
         "test_the_edition_version_is_a_plain_version_number",
+        "test_the_kit_stops_on_a_mac_the_app_would_refuse_and_says_why",
+        "test_the_kit_writes_every_result_as_json_in_the_order_it_ran",
+        "test_the_mac_kit_builds_only_after_every_named_test_file_has_ended",
+        "test_the_mac_kit_has_its_three_files_and_takes_the_samples_from_the_windows_kit_by_path",
+        "test_the_mac_kit_installs_no_tool_sends_nothing_forces_nothing_and_tags_nothing",
+        "test_the_mac_kit_names_the_same_safety_rules_as_the_windows_kit",
+        "test_the_mac_kit_opens_in_the_checkout_and_cuts_path_with_the_block_the_mac_scripts_share",
+        "test_the_mac_kit_reads_no_folder_but_the_checkout_and_pilottest",
+        "test_the_mac_kit_script_runs_under_the_bash_macos_ships_and_parses",
+        "test_the_mac_kit_takes_a_test_file_by_bare_name_by_file_name_or_by_path",
+        "test_the_mac_prompt_lists_the_ports_test_files_and_every_one_exists",
+        "test_the_mac_prompt_walks_every_step_of_the_buyers_walk_and_every_hands_on_step",
+        "test_the_mac_results_template_has_a_row_for_every_check_and_every_step",
         "test_the_page_loads_the_pilot_after_the_app",
         "test_the_pilot_content_is_json_between_its_markers",
         "test_the_pilot_files_build_the_page_only_with_text",
         "test_the_pilot_never_types_the_product_name",
         "test_the_pilot_style_targets_only_its_own_names",
+        "test_the_season_builder_in_the_prompt_makes_scans_no_two_of_which_share_their_bytes",
         "test_the_shell_writes_the_pages_storage_as_the_window_closes",
         "test_the_signed_name_is_sent_with_the_acceptance",
         "test_the_terms_cannot_be_escaped",
@@ -7848,8 +7904,12 @@
         "tour_lines"
       ],
       "constants": {
-        "PILOT_JS": "('pilot-content.js', 'pilot.js', 'tour.js')"
-      }
+        "PILOT_JS": "('pilot-content.js', 'pilot.js', 'tour.js')",
+        "KIT_TESTS": "('test_settings', 'test_after_install', 'test_scheduling', 'test_runner', 'test_locking', 'test_fsio', 'test_checkpoint', 'test_store', 'test_ledger', 'test_layout', 'test_filer', 'test_validators', 'test_ocr', 'test_api', 'test_api_entry', 'test_build', 'test_shell', 'test_shell_menu', 'test_single_source', 'test_layers', 'test_repo_map', 'test_tripwire')",
+        "KIT_TESTS_ADDED": "('test_content_check', 'test_pilot', 'test_errors', 'test_lockfiles')"
+      },
+      "role": "The pilot edition's badge, terms and wording, and both check kits: the Windows script's helpers run in PowerShell 5.1 where there is one, and the Mac kit's script, prompt and template (SPEC-mac R33).",
+      "notes": "Mac kit tests run on Linux: the script's helpers are lifted by their BEGIN/END markers and run in real bash, and the whole script is run with a PATH of stand-in uname, sw_vers, sysctl and xcode-select so every stop (Intel, Rosetta, macOS 13, a missing tool, a typo in --tests) is proved without a Mac. A test that runs the script to its end on a real Mac would build, so each one stops it early by design."
     },
     {
       "id": "tests/test_pilot_installer.py",
@@ -9546,8 +9606,8 @@
       "id": "tests/test_single_source.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "94b402b8bd0bb378",
-      "lines": 4894,
+      "sha256": "513614f6455a3e7b",
+      "lines": 4945,
       "exports": [
         "AFTER_WHAT",
         "CONSOLE_EXEMPT",
@@ -9657,6 +9717,7 @@
         "test_the_command_center_is_gone_from_everything_but_the_decision_log",
         "test_the_deny_list_never_refuses_a_persons_own_folder_that_shares_a_client_folders_name",
         "test_the_documents_list_the_forms_the_catalog_has",
+        "test_the_documents_state_the_mac_floor_in_the_words_of_the_sentence_the_app_shows",
         "test_the_editor_opens_on_the_state_on_screen",
         "test_the_editor_opens_on_the_state_on_screen_with_every_fold_closed",
         "test_the_editor_set_aside_fold_draws_each_group_as_elements",
@@ -9719,6 +9780,7 @@
         "test_the_runbook_sends_no_one_to_open_a_file_themselves",
         "test_the_runbook_status_table_is_the_label_table",
         "test_the_runbooks_189_sentence_is_rewritten",
+        "test_the_runbooks_mac_paragraphs_quote_the_sentences_the_app_shows_and_name_the_places_the_code_owns",
         "test_the_safeguards_are_the_standing_rules_in_one_short_line_each",
         "test_the_scan_buttons_label_is_typed_nowhere_in_the_renderer",
         "test_the_setup_card_names_no_retired_word",
@@ -9758,7 +9820,7 @@
         "CONSOLE_GUARDED": "('rollover', 'filer', 'scanner', 'registry', 'review', 'scaffold', 'store', 'reminder', 'runner', 'router', 'content_check', 'view', 'ledger', 'validators', 'containers', 'ocr', 'door', 'checkpoint', 'locking', 'after_install')",
         "NUMBER_WORDS": "('ten', 'eleven', 'twelve', 'thirteen', 'fourteen', 'fifteen', 'sixteen', 'seventeen', 'eighteen', 'nineteen', 'twenty')",
         "STRUCK": "('open it yourself', 'open it on this machine', 'on this machine, and drop', \"drop any document you find into the client's folder\", \"drop the documents in the client's folder\", \"drop the documents you find in the client's folder\", \"drop a copy in the client's folder\", \"drop it in the client's folder\", 'the record itself is the truth', 'nothing is lost either way', 'and run `rebuild` \u2014 nothing is lost')",
-        "ONE_TIME_STEP_DOCUMENTS": "('README.md', 'docs/runbook.md', 'Setup.bat', 'Start App.bat', 'setup.command', 'start.command')"
+        "ONE_TIME_STEP_DOCUMENTS": "('README.md', 'docs/runbook.md', 'Setup.bat', 'Start App.bat', 'setup.command', 'start.command', 'pilot/mactest/PROMPT.md', 'pilot/mactest/run_checks.sh')"
       }
     },
     {
@@ -10986,6 +11048,12 @@
       "to": "tracker/store.py",
       "type": "imports_at_call",
       "source": "derived"
+    },
+    {
+      "from": "pilot/wintest/make_samples.py",
+      "to": "artifact:the check kits' sandbox",
+      "type": "writes",
+      "source": "curated"
     },
     {
       "from": "tests/child_readers.py",
@@ -13367,6 +13435,12 @@
       "from": "tests/test_pilot.py",
       "to": "tracker/api.py",
       "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_pilot.py",
+      "to": "tests/conftest.py",
+      "type": "imports",
       "source": "derived"
     },
     {

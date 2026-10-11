@@ -1,6 +1,7 @@
 """Tests for tracker/content_check.py — tier-3 rules, all local files."""
 
 import datetime as dt
+from pathlib import Path
 
 import pytest
 from openpyxl import Workbook
@@ -1349,11 +1350,53 @@ def no_child_left():
     return multiprocessing.active_children() == []
 
 
+#: Where Linux keeps what it knows of a process. A Mac has no such folder, and
+#: a test stands in for one by pointing this at a place that is not there (the
+#: suite stands in for a platform by a seam, never by changing ``sys.platform``).
+PROC = Path("/proc")
+
+
+def _ps_state(pid: int) -> str | None:
+    """The state letters ``ps`` gives process ``pid`` (a zombie's start with
+    "Z"), "" for a process that is not there, None when ``ps`` cannot say.
+    A Mac's way to ask, and Linux's when there is no ``/proc``; ``ps -o stat=``
+    is the form both understand."""
+    import subprocess
+
+    try:
+        done = subprocess.run(["ps", "-o", "stat=", "-p", str(pid)], capture_output=True, text=True, check=False)
+    except OSError:
+        return None
+    return done.stdout.strip() if done.returncode in (0, 1) else None
+
+
+def process_state(pid: int) -> str | None:
+    """What the system says of process ``pid``: its state letters (a zombie's
+    start with "Z"), "" for a process that is not there, None when it cannot
+    be asked. Linux is asked in ``/proc``; anywhere that has none (a Mac), in
+    ``ps``. Before this, a Mac fell back to "alive" for a zombie and every test
+    waiting for a stopped reader's child to end waited out its whole fifteen
+    seconds."""
+    if not PROC.is_dir():
+        return _ps_state(pid)
+    try:
+        return (PROC / str(pid) / "stat").read_text().rsplit(")", 1)[1].split()[0]
+    except FileNotFoundError:
+        return ""
+    except (OSError, IndexError):
+        return None
+
+
 def running(pid: int) -> bool:
-    """Whether the process ``pid`` is still running, asked of the system."""
+    """Whether the process ``pid`` is still running, asked of the system.
+
+    Every caller asks about a process this test did not start - a reader's
+    helper, the pass's child - so the system is asked, and a zombie has ended
+    though its number is still taken. (A child the test started itself could
+    be asked exactly by ``os.waitpid(pid, os.WNOHANG)``; none is asked today,
+    and a parameter nothing uses was not kept for the one that will.)"""
     import os
     import sys
-    from pathlib import Path
 
     if sys.platform == "win32":
         import ctypes
@@ -1376,11 +1419,8 @@ def running(pid: int) -> bool:
         return False
     except PermissionError:
         return True
-    stat = Path(f"/proc/{pid}/stat")
-    try:
-        return stat.read_text().rsplit(")", 1)[1].split()[0] != "Z"   # a zombie has ended
-    except (OSError, IndexError):
-        return True
+    state = process_state(pid)
+    return state is None or (state != "" and not state.startswith("Z"))   # a zombie has ended
 
 
 def eventually(check, within: float = 15.0) -> bool:
@@ -1392,6 +1432,60 @@ def eventually(check, within: float = 15.0) -> bool:
             return True
         time.sleep(0.1)
     return check()
+
+
+def _a_child_that_has_ended_unreaped():
+    """A child of this test that has ended and not been waited for: a zombie,
+    whose number the system still holds."""
+    import subprocess
+
+    child = subprocess.Popen(["true"])
+    assert eventually(lambda: process_state(child.pid) not in (None, "") and process_state(child.pid).startswith("Z"))
+    return child
+
+
+def test_a_zombie_has_ended_and_a_live_process_has_not_whichever_way_the_system_is_asked(monkeypatch):
+    """R36: the helper asked ``/proc`` alone, so a Mac - which has none - took
+    every zombie for a live process and waited out its fifteen seconds. Where
+    there is no ``/proc`` (the seam stood on a place that is not there) the
+    answer comes from ``ps -o stat=``, and it agrees with Linux's for a process
+    that is running and for one that has ended."""
+    import shutil
+    import subprocess
+    import sys
+
+    if sys.platform == "win32" or shutil.which("ps") is None:
+        pytest.skip("this is the POSIX way to ask, and it needs ps")
+    live = subprocess.Popen(["sleep", "60"])
+    zombie = _a_child_that_has_ended_unreaped()
+    try:
+        for proc in (Path("/proc"), Path("/not/a/proc")):
+            monkeypatch.setattr(sys.modules[__name__], "PROC", proc)
+            assert running(live.pid), proc
+            assert not running(zombie.pid), proc
+    finally:
+        live.kill()
+        live.wait()
+        zombie.wait()
+    assert not running(zombie.pid)
+
+
+def test_a_mac_asks_ps_and_reads_its_state_letters_not_proc(monkeypatch):
+    """R36: with no ``/proc`` the answer is ``ps``'s, and a Mac's state letters
+    carry flags ("Z+", "Ss", "R+"): only a leading Z is an ended process, an
+    empty answer is a process that is not there, and a ``ps`` that cannot say is
+    taken as running, as the helper always did for what it could not ask."""
+    import os
+    import sys
+
+    here = sys.modules[__name__]
+    monkeypatch.setattr(here, "PROC", Path("/not/a/proc"))
+    monkeypatch.setattr(os, "kill", lambda pid, signal: None)       # the number is taken
+    asked = []
+    for said, alive in (("Z", False), ("Z+", False), ("S", True), ("Ss", True), ("R+", True), ("", False), (None, True)):
+        monkeypatch.setattr(here, "_ps_state", lambda pid, said=said: asked.append(pid) or said)
+        assert running(4242) is alive, said
+    assert asked == [4242] * 7
 
 
 def test_a_text_layer_that_never_finishes_is_stopped_and_abandoned(tmp_path, a_short_stop):

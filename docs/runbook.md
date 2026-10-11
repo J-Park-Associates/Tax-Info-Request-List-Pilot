@@ -20,7 +20,7 @@ working copies, the drafts and the return's own ledger,
 which holds the request list too; the originals sit in the client's own
 folder for the year, one tree over. There is no portal and no second copy of any of
 it. There *is* one database — `tracker.db`, in the app's data folder on
-the designated machine (`%LOCALAPPDATA%\tax-document-tracker`, decision 186) —
+the designated machine (`%LOCALAPPDATA%\tax-document-tracker-pilot`, decision 186) —
 built from the ledgers in the folders, never synced
 and never opened by a person. Beside it sits a second, small file,
 `record-heads.db` (decision 159): this machine's note of how far every
@@ -71,7 +71,7 @@ always safe (the next page reads every return once).
 
 **The app's data folder is private to one Windows account.** `tracker.db`
 holds every client's index rows, and it lives in
-`%LOCALAPPDATA%\tax-document-tracker` (decision 186): the account's own local
+`%LOCALAPPDATA%\tax-document-tracker-pilot` (decision 186): the account's own local
 application-data folder, which Windows lets only that account, the machine's
 administrators and the system read, and which is never synced and never
 roams. The scheduled task's file (`tax-tracker.xml`) sits there too. The
@@ -210,6 +210,119 @@ a client owns what they upload: they could delete a document the app has
 already filed, and the rule that originals are never altered cannot hold on
 a folder somebody outside the firm can empty. On a Shared Drive the firm owns
 every file in it, whoever uploaded it.
+
+### On a Mac
+
+A Mac can be the practice's one machine, in exactly the way the office PC is: it
+holds the schedule, the data folder and the clients folder, and the rule above
+- one machine per clients root - is the same rule. It is never a second desk
+beside the PC (P238), and nothing is carried over from a PC by itself: a Mac
+starts as a fresh install with its own clients folder, and §6 is the one way to
+move between machines. What differs is where things are and what macOS asks.
+
+**What it needs.** A Mac with Apple silicon running macOS 14 or later (P243).
+Any other is refused at the app's first start, before anything is written, with
+the sentence *Tax Document Console needs a Mac with Apple silicon running macOS
+14 or later; this Mac has ..., so the app stops here and changes nothing.* An
+Intel Mac gets macOS's own message, because the program is not built for it
+(P246). The app comes as one `.dmg` disk image: opened, then the app dragged onto
+Applications (or `~/Applications`), and the disk image ejected. The program is the
+copy in Applications and no other: the schedule runs only that copy, and the first
+screen says so, with the folder it found, when the app is started from the disk
+image, from Downloads or from anywhere else.
+
+**Where things are.**
+
+- The program: `Tax Document Console` in Applications.
+- The data folder (decision 186): `~/Library/Application Support/tax-document-tracker-pilot`.
+  It holds what `%LOCALAPPDATA%\tax-document-tracker-pilot` holds on a PC
+  and is private to the signed-in person in the same way. It is never in iCloud
+  Drive, Google Drive, Dropbox or another folder a sync service copies off the
+  Mac: the app refuses to use one that is, and says which service.
+- The settings folder: `~/Library/Application Support/Tax Document Console`. It
+  holds `settings.json`, which names the clients folder, the firm's name and its
+  telephone number and nothing about a client. It sits outside the app on purpose,
+  so installing a newer copy over the old one (**Replace**) keeps the clients
+  folder chosen.
+- The window's own folder: `~/Library/Application Support/Tax Document Tracker
+  Pilot`, the pilot's earlier name, kept so the window's own storage survives the
+  rename. The earlier name's folder also holds the fallback error log,
+  `~/Library/Application Support/Tax Document Tracker Pilot/error.log`, which can
+  contain client names: delete the folder by hand when the app is removed for good
+  or the Mac is retired.
+- The schedule's file: `~/Library/LaunchAgents/com.jparkassociates.taxdocumentconsole.schedule.plist`.
+  It names the program, the settings folder and the times, and no clients folder.
+
+**The clients folder on a Mac** is a folder in Google Drive for desktop (under
+`~/Library/CloudStorage/GoogleDrive-...`, on a shared drive) or a plain folder on
+the Mac's own disk; another drive's folder under `/Volumes` is fine, as another
+drive letter is on a PC. A folder in iCloud Drive - or in Desktop or Documents
+while iCloud keeps them - is refused, because iCloud can take a file's contents off
+the Mac to save space; so is a folder kept by Dropbox, OneDrive or Box. A file
+that Drive's Stream mode has not downloaded yet waits as *Pending Sync* and is
+never read, so the pass does not download it. A Mac measures room as if the clients
+folder sat under a Windows root (48 characters, against the 259 a default Windows
+allows), so a return a Mac files opens on any Windows desk and a name is shortened,
+or a return parked, by the same rule on both.
+
+**The schedule is a launchd agent, not a Task Scheduler task.** The same
+after-install step that registers the task on a PC registers the agent on the
+designated Mac (decision 209): the app does it at its first start and when the
+clients folder is saved, and **Repair the Schedule** does it again. No button is
+pressed and no setup is run. It runs for the signed-in person: a locked or asleep
+Mac is fine, a time missed while it slept runs when it wakes, and a time missed
+while it was switched off or signed out is not made up (the draft-day rule in §2
+already covers that). It repeats round the clock from its start time, so every two
+hours from 7:00 is twelve passes a day. The first time macOS sees it, it shows
+*Background Items Added* and lists it under System Settings, General, Login Items,
+*Allow in the Background*. The first registration of a program starts one pass at
+once, while someone is at the Mac, so that macOS asks its Google Drive question
+then and not at 7:00. launchd has no time limit of its own, so a scheduled pass on a
+Mac ends itself at the run limit (its reason says it stopped at the run limit after
+some number of files and the rest wait for the next pass).
+
+**If the Allow in the Background switch is turned off,** the app does not register
+over a person's switch: at each start it says *macOS has switched the schedule off
+for this app (System Settings > General > Login Items, Allow in the Background).
+Switch Tax Document Console back on there; the app cannot do it for you.* Until it
+is switched back on the last-pass line goes amber (§2).
+
+**An unsigned build and the Drive permission (P239).** Until the app is signed, each
+install - the first, and each upgrade - is blocked by macOS once: System Settings,
+Privacy & Security, *Open Anyway*, and the Mac's password. macOS also asks, the
+first time, whether the app may use files in Google Drive, and asks again after an
+upgrade because it tracks an unsigned build exactly; click *Allow* when the app is
+open. A pass that was refused says *macOS did not let the schedule read the clients
+folder; open the app, and allow it when macOS asks*, and the pass after the
+permission is given succeeds.
+
+**Protected View.** A Mac has no Protected View, so the firm's review copy of a
+workbook that can carry macros, an email or a zip opens normally. Each time the app
+opens one it says so in a notice: *Protected View does not exist on a Mac, so this
+file opened normally. Keep macros off in Excel, Word and PowerPoint: Settings >
+Security > Macro Security > Disable all macros without notification.* The setting is
+Office's, set once on the Mac in each of the three programs; the app cannot set it
+and does not ask. Nothing else about opening changes: a document is opened with
+**Open** on its card and only there (decision 190).
+
+**Time Machine (P242).** The data folder and the window's own folder hold client
+names, so the after-install step leaves both out of Time Machine backups, on its
+own, at the start that registers the schedule and again at **Repair the Schedule**.
+The app says *Left the app's data folder out of Time Machine backups.* once, when it
+newly does, and nothing after. To see it: `tmutil isexcluded` on each folder says
+`[Excluded]`. If macOS refuses, the app says which folder and tries again at its
+next start.
+
+**Which computer runs the schedule.** The file in §1 that names it is claimed by
+the first computer to set the root, a Mac as much as a PC, and the app registers the
+schedule there only; on a Mac the morning check of the last-pass line that sends a
+PC to Task Scheduler is System Settings, General, Login Items, Allow in the
+Background, or **Repair the Schedule**.
+
+**The Mac's name.** The schedule and the engagement locks know the Mac by its local
+host name (System Settings, General, Sharing), which does not change with the
+network. Renaming the Mac makes it a different computer to the schedule, and **Repair the
+Schedule** then offers to move the schedule to it (§6).
 
 ### The layout: a household, a year, a return
 
@@ -613,7 +726,7 @@ changes nothing:
   beside the app if it is there: the old reader kept the page it was reading
   in it, the new one writes nothing, and nothing empties that folder any more.
 - **Once, when decision 186 lands** (the data folder). The database moves to
-  `%LOCALAPPDATA%\tax-document-tracker` and nothing is carried over: the
+  `%LOCALAPPDATA%\tax-document-tracker-pilot` and nothing is carried over: the
   first pass builds it again from the ledgers and reads every document once
   to refill the verdict cache — slow once, as above, so let it run outside
   office hours. Its version does not change. Until you delete them, the
@@ -627,7 +740,7 @@ changes nothing:
   the old copies and the records in `recovered` are evidence. **Nothing moves them for
   you** (P235): an install older than this decision is set up fresh (above, under *The
   record check after every install and upgrade runs itself*), and one upgraded anyway is moved
-  by hand into `%LOCALAPPDATA%\tax-document-tracker`, under their own names.
+  by hand into `%LOCALAPPDATA%\tax-document-tracker-pilot`, under their own names.
   The checkpoint, its journal, its write-ahead log and shared memory, and a
   `.damaged` copy move as one; never put a journal or write-ahead log beside a
   checkpoint that is not its own, because it would be replayed into it, and never
@@ -831,7 +944,7 @@ answer is two steps, on the designated machine:
    `record-heads.db` sits since decision 186) and the new root:
 
    ```
-   python -m tracker.checkpoint "%LOCALAPPDATA%\tax-document-tracker" move-root "<the new clients root>"
+   python -m tracker.checkpoint "%LOCALAPPDATA%\tax-document-tracker-pilot" move-root "<the new clients root>"
    ```
 
    Nothing else changes: the checkpoint, like the record, names every
@@ -1262,7 +1375,7 @@ household and cannot clear it. **Unfile** asks for an optional reason first.
    did not run is shown as its record stood when the pass began. The app's
    **Open Status** button opens it. The run log
    (`tracker.runner.LOG_FILENAME`), in the app's data folder on the
-   machine that runs the schedule (`%LOCALAPPDATA%\tax-document-tracker\logs`,
+   machine that runs the schedule (`%LOCALAPPDATA%\tax-document-tracker-pilot\logs`,
    decision 186), says of every pass — the app's button's included — when it
    ran and how many returns it filed, parked, failed, skipped or held, with a
    short code for each kind of trouble. It names no client and no file, and
@@ -1972,7 +2085,7 @@ already.
 
 **What was only on that machine:** the settings file beside the app
 (`tracker.settings.SETTINGS_FILENAME`), the app's data folder
-(`%LOCALAPPDATA%\tax-document-tracker`, decision 186: the database
+(`%LOCALAPPDATA%\tax-document-tracker-pilot`, decision 186: the database
 `tracker.store.STORE_FILENAME`, the record checkpoint beside it
 (`record-heads.db`, `tracker.checkpoint.CHECKPOINT_FILENAME`, and, while a
 command runs, its `-wal` and `-shm` beside it), the folder
@@ -1985,6 +2098,30 @@ that machine had one (step 5). The last-pass file, the pass-order hint, the
 error log and the `passes` folder are not carried over: the new machine
 starts them afresh.
 
+**Moving to or from a Mac.** The move in this section is the same between any two
+machines, a PC and a Mac either way, and what differs is only where things are. The
+data folder on a Mac is `~/Library/Application Support/tax-document-tracker-pilot`,
+and `tracker.db` and `record-heads.db` are copied between the two data folders over
+the office network, with the app closed and the old machine's schedule off, as above.
+The settings file is the Mac's settings folder's `settings.json`, the scheduled task
+is the launchd agent, and the program is the app in Applications. A Mac reads on the
+processor, so there is no graphics card pack to copy (step 5 is a PC's). Nothing is
+carried over by an importer (P238): the first pass on the new machine reads every
+document once, as it does after any move.
+
+**Taking the app off a Mac.** Choose Tools, then **Remove the Schedule From This
+Mac...**, and the app says *The schedule is removed from this Mac. To remove the app,
+quit it now and drag it from Applications to the Bin; opening it again sets the
+schedule up again.* That unloads the agent and deletes its file and forgets the
+program in the after-install record; the designation, the data folder, the settings
+and the clients folder stay (P12), as an uninstall leaves them on a PC. Do it before
+the app goes to the Bin: an app dragged to the Bin first leaves the agent's file behind,
+and launchd then tries a program that is not there - harmless, since nothing runs, but
+a Background item stays in Login Items. If that has happened, reinstall the app and
+remove the schedule from it, or run `launchctl bootout gui/$(id -u)/com.jparkassociates.taxdocumentconsole.schedule`
+and delete the file in `~/Library/LaunchAgents`. The data folder and the window's
+own folder hold client names: delete them by hand when the Mac is retired.
+
 **Carry `tracker.db` and `record-heads.db` over** (decision 159). The
 database can be built again from the ledgers, but the checkpoint cannot:
 it is this machine's own note of how far every record went, and it is the
@@ -1992,7 +2129,7 @@ only thing that can tell a record that a sync client quietly put back to
 an older copy from one that is simply as it was. **Both files are client
 data.** Copy them **over the office network**, straight from the old
 machine's data folder into the new machine's data folder (the same
-`%LOCALAPPDATA%\tax-document-tracker`, under the Windows account that runs
+`%LOCALAPPDATA%\tax-document-tracker-pilot`, under the Windows account that runs
 the app and the schedule there), with the app
 closed and the old machine's schedule off. With the app closed and the
 schedule off the checkpoint is one file; if a `record-heads.db-wal` is
