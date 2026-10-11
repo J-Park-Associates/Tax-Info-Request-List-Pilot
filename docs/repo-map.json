@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 270,
     "edges": 1253,
-    "reused": 218
+    "reused": 217
   },
   "node_types": [
     "artifact",
@@ -4534,7 +4534,7 @@
       "id": "pilot/HANDOFF.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "517ef19031a5cd4d",
+      "sha256": "702457a701f3c8bf",
       "lines": 86
     },
     {
@@ -4739,7 +4739,7 @@
       "id": "pilot/mactest/PROMPT-RERUN-1.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "445ddb05c31129e1",
+      "sha256": "d775bce67e69ecad",
       "lines": 188
     },
     {

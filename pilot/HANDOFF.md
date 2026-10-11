@@ -7,8 +7,8 @@ this repository; [`SPEC.md`](SPEC.md) says what it builds.
 
 ## Where the record is
 
-- **`main` is `213d876`** (pull request #32, the Sort & Scan speed round,
-  P216-P230); this branch is cut from it.
+- **`main` is `6f88e3e`** (pull request #33, the cleanup, P231-P237); this
+  branch, `claude/trusting-tesla-or0wm2`, is cut from it and carries P256-P259.
 
 - **Decisions live in [`DECISIONS.md`](DECISIONS.md), rows P1 to P237.** Code
   and tests cite those numbers, so a row is never renumbered or removed. Why
