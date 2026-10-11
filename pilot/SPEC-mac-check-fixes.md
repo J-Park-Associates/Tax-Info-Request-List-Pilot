@@ -106,9 +106,14 @@ app's own Sort.
   - `"same"` otherwise.
 
   On `"adopt"`: `shellLastPass = fresh; shellChanged();`. On `"reread"`:
-  `loadEngagements()` (app.js), which asks `list` once and adopts it - the
-  counts, Needs Review and the last-sort line all follow, as after F5.
-  On `"same"`: nothing. A `last-pass` call that throws stops the watcher
+  `adoptList(await call(["list"]))` (app.js), exactly what F5 and
+  `passEnded` do - the counts, Needs Review and the last-sort line all
+  follow. Never `loadEngagements()`: that is the start-up path, which
+  re-applies the vocabulary, rebuilds the Schedule dialog's interval list
+  (losing an open dialog's choice) and redraws the whole page (review 1,
+  finding 1). `scanning` is checked again when the reply lands, not only
+  before the call: a tick whose reply arrives after the app's own Sort
+  began does nothing (review 1, finding 4). On `"same"`: nothing. A `last-pass` call that throws stops the watcher
   and is said once by `failed(err)` (decision 193's one rule); the next
   list adopt starts it again. No silent swallow, no notice per tick.
 - Nothing else in the shell reads `ok`.
@@ -122,7 +127,9 @@ app's own Sort.
   file answers `running: false, ok: false, when: None`.
 - `test_last_pass_is_answered_without_a_root_or_a_store` (new): the
   `last-pass` command answers the same dict as `list`'s `last_pass` with no
-  clients root chosen, and `vocab.last_pass_watch` is `{running: 5, idle: 60}`.
+  clients root chosen **and with the store made unopenable** (its path
+  pointed at a folder, or `store.open` patched to raise), proving it was
+  never opened; and `vocab.last_pass_watch` is `{running: 5, idle: 60}`.
 - `test_the_scheduled_sorting_word_is_in_the_screen_vocabulary` (new, the
   shape of `test_the_speed_round_words_are_in_the_screen_vocabulary`).
 
@@ -142,7 +149,10 @@ app's own Sort.
   `loadEngagements`, `shellChanged`, `failed` and the timer: a tick that
   sees the pass end calls `loadEngagements` once; a tick during `scanning`
   calls nothing; a throwing `call` is handed to `failed` once and stops
-  the timer.
+  the timer; a throwing reread is handled the same way; a tick before the
+  first list lands, or after a stop, does nothing; a reply landing after
+  `scanning` was set does nothing (the builder's deviations 2 and 3 and
+  finding 4, each a named test).
 - A text pin that `shellAdopt` starts the watcher and that the window's
   `focus` listener ticks it.
 
@@ -187,10 +197,23 @@ the schedule registered - is a toast, as `outcome` already treats it.
   = "Details" (new; `wording-shell.tsv` row). No detail, no element.
 - `keyedNotice` treats a changed `detail` as a changed notice (redraw), so
   a second machine warning joining the first is seen.
-- `syncNotices` passes each `one.detail` into the failure it shows (it
-  already logs it); `renderMachineNotices` needs no change beyond that.
+- Only two callers put a detail on the screen: the machine warnings and
+  the after-install findings. `syncNotices` shows a detail only when the
+  entry marks it for the screen (`shown: true`, or the caller puts
+  `detail` on the failure itself); every other caller's detail - a broken
+  row's error and stack (`pages.js`), the household pause and feed
+  sentences - stays in the error log only, as E30 and principle 7 say
+  (review 1, finding 2; whether the pause and feed sentences may show is
+  Q3 below). `renderMachineNotices` marks its entry for the screen.
   `renderAfterInstall` passes `[left.wait, ...lines].filter(Boolean).join("\n")`
-  as the detail and still logs it.
+  as the detail and still logs it; `wait` is the engine's sentence
+  (`after_install.FINDINGS_WAIT`) on every path - the `list` reply's
+  `notice()` already carries it, and the replies of `set-root`,
+  `install-schedule`, `move-schedule-here` and `set-schedule` gain the same
+  `wait` in their `after_install` (empty without findings), so `noticeOf`
+  reads the reply's `wait` and never the vocabulary's heading word (review
+  1, finding 3: the two paths differed, so the keyed notice redrew and
+  logged twice at every Start and a dismissed one came back).
 - `pilot-ui.css`: `.notice-detail` under the text, full width, `summary`
   in the notice's ink at caption size, the text at caption size with
   `white-space: pre-wrap` and `overflow-wrap: anywhere` (a path must wrap,
@@ -209,6 +232,10 @@ the schedule registered - is a toast, as `outcome` already treats it.
   `installed` is true, then asks `list` again for the notice as now. The
   screenshot tool's stub (listener null) still works.
 - `set-schedule` and `install-schedule` already toast; unchanged.
+- The screenshot harness (`pilot/harness/stub.js`, `pilot/harness/app-stub.js`)
+  answers `last-pass` with a not-running shape and carries whatever the
+  reread path needs, so a focus event or a run past the idle cadence puts
+  no failed notice on a screenshot (review 1, finding 5).
 
 ### 2.3 Acceptance
 
@@ -235,7 +262,10 @@ the schedule registered - is a toast, as `outcome` already treats it.
 carry a closed Details disclosure holding the engine's sentence; the line
 stays one line." E28/E30's "no path" is read as "no path on the line".
 `docs/runbook.md`: where it says the sentence is in the error log, it says
-"under Details on the notice, and in the error log".
+"under Details on the notice, and in the error log", and its schedule
+paragraph says the app toasts the registration sentence at Start and at
+the first open after an upgrade. SPEC-shell's E30 row says "details under
+Details and in the error log" (review 1, finding 7).
 
 ---
 
@@ -321,6 +351,10 @@ that holds the prompt, the template and the script to one another).
 - **Q2.** Whether the sentence should be visible without a click (an open
   Details by default) on the setup page only, where a buyer first meets
   it. Built closed everywhere.
+- **Q3.** Whether the household pause ("Two Years Open") and the prior-year
+  feed sentences may also show under Details. Built log-only, as before.
+- **Q4.** The reader warning ("Install Folder Name Too Long") has no
+  Details either; its sentence names the install folder. Built as before.
 
 ---
 
@@ -328,7 +362,7 @@ that holds the prompt, the template and the script to one another).
 
 | Job | Scope | Files | Builder | Tests it runs (both interpreters: 3.11, the floor, and the office's) |
 |---|---|---|---|---|
-| **1** | Sections 1 and 2 | `tracker/api.py`, `app/renderer/shell.js`, `app/renderer/app.js`, `app/main.js`, `app/preload.js`, `app/renderer/pilot-ui.css`, `pilot/SPEC-shell.md`, `pilot/wording-shell.tsv`, `docs/runbook.md`, `tests/test_api.py`, `tests/test_shell.py` | sonnet | `tests/test_shell.py`, `tests/test_shell_menu.py`, `tests/test_api.py`, `tests/test_single_source.py`, `tests/test_tripwire.py`, `tests/test_errors.py`, `tests/test_layers.py` |
+| **1** | Sections 1 and 2 | `tracker/api.py`, `tracker/after_install.py` (the reply's `wait` only), `app/renderer/shell.js`, `app/renderer/app.js`, `app/main.js`, `app/preload.js`, `app/renderer/pilot-ui.css`, `pilot/harness/stub.js`, `pilot/harness/app-stub.js`, `pilot/SPEC-shell.md`, `pilot/wording-shell.tsv`, `docs/runbook.md`, `tests/test_api.py`, `tests/test_shell.py`, `tests/test_single_source.py` (one pin) | sonnet | `tests/test_shell.py`, `tests/test_shell_menu.py`, `tests/test_api.py`, `tests/test_single_source.py`, `tests/test_tripwire.py`, `tests/test_errors.py`, `tests/test_layers.py` |
 | **2** | Section 3 | `pilot/mactest/run_checks.sh`, `pilot/mactest/PROMPT.md`, `pilot/mactest/RESULTS-TEMPLATE.md`, `pilot/wintest/make_samples.py`, `pilot/wintest/SAMPLE-DOCUMENTS.md`, `pilot/SPEC-mac.md` (section 3 only), `tracker/runner.py` (one comment), `tests/test_pilot.py` | sonnet | `tests/test_pilot.py`, `tests/test_pilot_installer.py`, `tests/test_single_source.py`, `tests/test_runner.py` (the comment is in a dataclass; prove nothing moved) |
 
 The two jobs share no file and run side by side. Neither runs
