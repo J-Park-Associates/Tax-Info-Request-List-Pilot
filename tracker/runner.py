@@ -870,6 +870,9 @@ WHY_HELD_LOCK = "held lock"
 WHY_NO_ROOM = "no room"
 WHY_FAILED = "failed"
 WHY_CANCELLED = "stopped by a person"
+#: A scheduled pass off Windows that ended itself at the run limit (SPEC-mac
+#: R26): no person stopped it, so it is not :data:`WHY_CANCELLED`.
+WHY_RUN_LIMIT = "reached the run limit"
 #: The run log's line before a logged pass does anything, and what the
 #: next pass says when the last such line has no pass summary after it
 #: (decision 189, SPEC-161 ruling 3): killed, or the machine went off.
@@ -986,6 +989,10 @@ class EngagementRun:
     #: A person stopped the pass before this household's work was done
     #: (decision 193): what was done is recorded, the rest waits.
     cancelled: bool = False
+    #: The pass ended itself at the run limit before this household's work was
+    #: done (SPEC-mac R26): a stop like a person's, but nobody's, so it is not
+    #: ``cancelled`` and the run log does not count it as one.
+    run_limit: bool = False
     #: The return whose lock a take met, when ``locked_out`` (decision
     #: 193): the app's notice says who holds it and since when.
     locked_at: Path | None = None
@@ -1454,7 +1461,8 @@ def run_household(
         # return says which, whichever step it ended in, and the rest waits.
         for run in working:
             if stopped:
-                run.cancelled = True
+                run.cancelled = why != RUN_LIMIT
+                run.run_limit = why == RUN_LIMIT
                 run.out_of_time = False
                 said, no_draft = ((PASS_APP_CLOSED, APP_CLOSED_NO_DRAFT) if why == APP_CLOSED
                                   else (PASS_RUN_LIMIT, RUN_LIMIT_NO_DRAFT) if why == RUN_LIMIT
@@ -2199,6 +2207,8 @@ def _why_not_served(runs: list[EngagementRun]) -> str:
     working = _working(runs)
     if any(run.cancelled for run in working):
         return WHY_CANCELLED
+    if any(run.run_limit for run in working):
+        return WHY_RUN_LIMIT
     if any(run.out_of_time for run in working):
         return WHY_OUT_OF_TIME
     if any(run.locked_out for run in working):
@@ -3423,7 +3433,7 @@ def _pass(ns, parser, reached: dict) -> int:
             run_registry(loaded, today=when, dry_run=ns.dry_run, reminders=ns.reminders,
                          weekday=day, only=ns.only, report=result, watch=watch,
                          household=household)
-            outcome = ("stopped" if any(run.cancelled for run in result.runs)
+            outcome = ("stopped" if any(run.cancelled or run.run_limit for run in result.runs)
                        else "out_of_time" if any(run.out_of_time for run in result.runs)
                        else "finished")
     except Exception as exc:

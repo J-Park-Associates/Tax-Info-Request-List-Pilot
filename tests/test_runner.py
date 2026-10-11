@@ -5676,6 +5676,7 @@ def test_a_scheduled_pass_off_windows_stops_itself_before_the_run_limit(tmp_path
     """R26: at the run limit less one household's budget, on the wall clock, the pass
     stops as Stop does - after the file it is on, recording the stop and letting go of
     its locks - and the next pass files the rest."""
+    from tracker import settings
     from tracker.locking import RUN_TIME_LIMIT_SECONDS, lock_status
     from tracker.runner import (
         CODE_PASS_RUN_LIMIT,
@@ -5687,6 +5688,7 @@ def test_a_scheduled_pass_off_windows_stops_itself_before_the_run_limit(tmp_path
     )
 
     assert SELF_STOP_AFTER_SECONDS == RUN_TIME_LIMIT_SECONDS - HOUSEHOLD_BUDGET_SECONDS
+    monkeypatch.setattr(settings, "host_system", lambda: "posix")       # off Windows, on any runner
     root = tmp_path / "root"
     engagement = build_engagement(root, samples, drops=THREE_DROPS)
     clock = [1_700_000_000.0]
@@ -5709,6 +5711,7 @@ def test_a_scheduled_pass_off_windows_stops_itself_before_the_run_limit(tmp_path
     assert code == 0 and len(sorted_) == 2, "the first was taken; it stopped at the second"
     said = PASS_RUN_LIMIT.format(n=1)
     assert said in _page(root) and f"{CODE_PASS_RUN_LIMIT}=1" in log_path().read_text(encoding="utf-8")
+    assert "stopped by a person" not in _page(root), "no person stopped it"
     assert said not in log_path().read_text(encoding="utf-8"), "the log keeps the code, never a sentence"
     assert len([p for p in inbox_of(engagement.path).iterdir() if p.name in THREE_DROPS]) == 2, "two wait"
     assert lock_status(engagement.path) is None, "its locks are let go"
@@ -5720,7 +5723,22 @@ def test_a_scheduled_pass_off_windows_stops_itself_before_the_run_limit(tmp_path
     assert not [p for p in inbox_of(engagement.path).iterdir() if p.name in THREE_DROPS], "the next pass took them"
 
 
+def test_a_household_the_run_limit_cut_off_is_not_said_to_be_stopped_by_a_person():
+    """A pass nobody stopped is not "stopped by a person": the run has its own reason word."""
+    from tracker.runner import WHY_CANCELLED, WHY_RUN_LIMIT, EngagementRun, _why_not_served
+
+    assert WHY_RUN_LIMIT == "reached the run limit" != WHY_CANCELLED
+    run = EngagementRun(engagement=Engagement(path=Path("x")))
+    run.run_limit = True
+    assert _why_not_served([run]) == WHY_RUN_LIMIT and not run.cancelled
+    run.cancelled = True
+    assert _why_not_served([run]) == WHY_CANCELLED
+
+
 def test_a_pass_before_the_run_limit_is_not_stopped_early(tmp_path, samples, monkeypatch):
+    from tracker import settings
+
+    monkeypatch.setattr(settings, "host_system", lambda: "posix")
     root = tmp_path / "root"
     engagement = build_engagement(root, samples, drops=THREE_DROPS)
     monkeypatch.setattr(runner_module, "wall_clock", lambda: 1_700_000_000.0)
