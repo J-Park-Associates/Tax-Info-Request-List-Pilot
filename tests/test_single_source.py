@@ -2493,7 +2493,8 @@ def test_the_shell_lstats_before_it_opens_and_refuses_a_link_or_a_changed_kind()
 #: Where a person is told what to do: the two documents and the two batch
 #: files a person double-clicks (decision 209, R5).
 ONE_TIME_STEP_DOCUMENTS = ("README.md", "docs/runbook.md", "Setup.bat", "Start App.bat",
-                           "setup.command", "start.command")
+                           "setup.command", "start.command", "pilot/mactest/PROMPT.md",
+                           "pilot/mactest/run_checks.sh")
 #: The first word of a clause that is an instruction to a person.
 INSTRUCTIONS = frozenset({"press", "run", "click", "double-click", "type", "open"})
 #: What "after installing" may be said with, within three words of "after".

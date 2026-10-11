@@ -541,6 +541,27 @@
       "layer": "runtime",
       "role": "The sticky Time Machine exclusion (tmutil addexclusion, which needs no administrator and travels with the folder) that after_install._time_machine puts on the Mac's data home and on Electron's own folder (SPEC-mac R7, P242), because both are derived from clients (decision 186) and a backup is a copy of them.",
       "write_only": true
+    },
+    "artifact:the check kits' sandbox": {
+      "type": "artifact",
+      "layer": "runtime",
+      "role": "The folder the Windows and Mac check kits work in: %USERPROFILE%\\PilotTest or ~/PilotTest. Clients (the made-up sample documents), results (checks.json, run_checks.log, each test file's output, the screenshots and RESULT.md), and on a Mac smoke (the frozen smoke's scratch root, settings and data home) and, for the timed season pass, Clients-season, season-settings and season-data. Nothing in it is a client's, and the kits read no other folder, so no client's name is ever printed or stored by them (SPEC-mac R33).",
+      "write_only": true
+    },
+    "pilot/wintest/make_samples.py": {
+      "role": "Builds the sandbox clients folder of the Windows check and of the Mac check (P28): the suite's own made-up documents (tests/samples.py) under the PilotTest folder, refused anywhere else.",
+      "notes": "Used by path from both kits - pilot/wintest/run_checks.ps1 and pilot/mactest/run_checks.sh - never copied (SPEC-mac R33). Neither kit script is a node here: tools/repo_map.py maps no .ps1, .sh or .command suffix, so the kits are described in the notes of the files around them. The Mac kit (P254) mirrors the Windows one: run_checks.sh, in bash 3.2 with PATH cut to absolute folders as build-mac.sh does, stops on anything but an Apple silicon Mac on macOS 14 or later, reports a missing tool with where to get it and installs none, resolves every --tests name before anything else, runs each named test file as its own process side by side, builds the disk image only after every one has ended (the end-of-run guard of decision 185), then checks the bundle (ad-hoc seal, arm64, BUILD-INFO.txt, minimum macOS, folder strings, icon) and makes the frozen smoke in throwaway folders: the package answers JSON, reads the pile as the source does and starts a reading child under spawn. checks.json is written in pure bash. PROMPT.md is the safety block of the Windows prompt plus the Mac's own (no password typed by the assistant, no sudo, Gatekeeper and the quarantine mark untouched) and the hands-on steps H1-H14 with SPEC-mac section 3's buyer's walk as H2; RESULTS-TEMPLATE.md has a row for each. tests/test_pilot.py holds the Windows kit's tests and the Mac kit's: the script's helpers lifted and run in bash, the script itself run against stand-in uname, sw_vers and sysctl so every stop is proved on Linux, and the prompt, template and script held to one another."
+    },
+    "pilot/mactest/PROMPT.md": {
+      "role": "The prompt for Claude Code on the test Mac (SPEC-mac R33): the safety rules, the run of pilot/mactest/run_checks.sh with the exact test files, and the hands-on steps H1-H14 with the buyer's walk as H2 and why each was chosen.",
+      "notes": "Carries the proof items the Mac jobs' reviews left for a Mac under the step that matches them: job 1 in H2 steps 4-7 and 10 and H6, job 2 in H1, H2 steps 2-3 and H11, job 5 in H4, H7 and H8, job 6 in H3, H5, H9, H13 and H14, job 7 in H1 and H10. Its season builder (for H10's timing) is lifted and run by tests/test_pilot.py. The 60-minute figure H10 passes at is the kit's reading of P247's 'well inside' the two-hour slot, for Jason to change."
+    },
+    "pilot/mactest/RESULTS-TEMPLATE.md": {
+      "role": "The result file the Mac check fills in: the machine, the automated checks (one row per check the script records and per test file), the walk's fourteen steps and H1-H14. tests/test_pilot.py holds its rows to the script's and the prompt's."
+    },
+    "tests/test_pilot.py": {
+      "role": "The pilot edition's badge, terms and wording, and both check kits: the Windows script's helpers run in PowerShell 5.1 where there is one, and the Mac kit's script, prompt and template (SPEC-mac R33).",
+      "notes": "Mac kit tests run on Linux: the script's helpers are lifted by their BEGIN/END markers and run in real bash, and the whole script is run with a PATH of stand-in uname, sw_vers, sysctl and xcode-select so every stop (Intel, Rosetta, macOS 13, a missing tool, a typo in --tests) is proved without a Mac. A test that runs the script to its end on a real Mac would build, so each one stops it early by design."
     }
   },
   "edges": [
@@ -1202,6 +1223,11 @@
     {
       "from": "tracker/after_install.py",
       "to": "artifact:Time Machine exclusion",
+      "type": "writes"
+    },
+    {
+      "from": "pilot/wintest/make_samples.py",
+      "to": "artifact:the check kits' sandbox",
       "type": "writes"
     }
   ]
