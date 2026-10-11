@@ -415,7 +415,22 @@ function failed(err, retry) {
   return sentence;
 }
 
+// Dismissing a notice that holds focus keeps focus in place (P273): it goes to
+// the next notice's dismiss, else the previous one's, else the page (where F6
+// puts it), so dismissing the last notice - which collapses the notices panel
+// - never drops focus to the window. A notice that does not hold focus moves
+// nothing. It reads only the focused element and the notice nodes.
+function noticeFocusAfter(entry) {
+  if (!entry.node.contains(document.activeElement)) return;
+  const at = notices.indexOf(entry);
+  const near = notices[at + 1] || notices[at - 1];
+  const button = near ? near.node.querySelector('[data-act="dismiss"]') : null;
+  if (button) button.focus();
+  else $("page").focus();
+}
+
 function dismissNotice(entry) {
+  noticeFocusAfter(entry);
   const at = notices.indexOf(entry);
   if (at >= 0) notices.splice(at, 1);
   entry.node.remove();

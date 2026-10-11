@@ -96,9 +96,12 @@ same widths, the same words.
 - `shellToggleCompact()`: flips `shellCompact`, writes `"compact"` or forgets
   the key (`storeWrite(ROWS_KEY, on ? "compact" : null)`), calls
   `drawCompact()`, hides a showing tooltip (`hideTip()`: every row moved),
-  scrolls the active row of the focused or last-used listbox into view
-  (`row.scrollIntoView({ block: "nearest" })` on
-  `document.querySelector(".rows .row.is-active")` when there is one), and
+  scrolls the active row of the focused listbox into view
+  (`row.scrollIntoView({ block: "nearest" })` on the `.row.is-active` of
+  `document.activeElement.closest(".rows")` when focus is in a list, else on
+  the first `document.querySelector(".rows .row.is-active")`; every list a
+  person has visited keeps its own `is-active`, so the focused one is taken
+  first - review 1, finding 2), and
   calls `shellEnable()` so the menu's tick follows. A write the storage
   refuses holds the choice until the app closes.
 - `shellChecked()` returns every ticked id: `show_under_construction` when
@@ -132,8 +135,23 @@ the forced-colours block; `pilot-ui.css` gains the token):
 | The editor's fields (`.editor-table` inputs and selects) | 28px, 4px above and below: a 36px line | `--size-control-sm` 24px, 4px above and below: a 32px line |
 | Everything else in a row (name, detail, status pill, form chip, link mark, the step and its chevron) | as today | as today: each is 24px or less, so each fits a 32px row centred |
 
-Selectors: `.rows-compact .row`, `.rows-compact .row-skeleton`,
-`.rows-compact .row-year`, `.rows-compact .editor-table :is(input:not([type="checkbox"]):not([type="radio"]), select)`.
+(Review 1, finding 1: the 28px rule was losing to the general control rule;
+both now win by scope. `pilot-ui.css`'s general field rule is
+`:is(#page, #sheet, .modal-overlay) :is(input…, select, textarea)`, which
+counts `#page` as an id, so a bare `.editor-table :is(input…, select)` rule
+lost to it and the fields were 32px in both densities. The Comfortable rule is
+now `:is(#page, #sheet, .modal-overlay) .editor-table :is(input…, select)`
+and the Compact rule `.rows-compact :is(#page, #sheet, .modal-overlay)
+.editor-table :is(input…, select)`, each more specific than the one it
+overrides. Measured on the harness with four lines added: fields 28px and the
+table row 36.5px Comfortable, 24px and 32.5px Compact. The same Comfortable
+rule carries `padding: 0 var(--sp-2)`, which had been losing too: the editor's
+fields now have 8px side padding where they had the general rule's 16px; a
+visible tightening of the default editor, accepted in review 2.)
+
+Selectors: `.rows-compact #page .row`, `.rows-compact #page .row-skeleton`
+(scoped to the page, so the side sheet's and the dialogs' rows stay 40px as
+1.2's "Not:" says; deviation 1, accepted), `.rows-compact .row-year`, `.rows-compact :is(#page, #sheet, .modal-overlay) .editor-table :is(input:not([type="checkbox"]):not([type="radio"]), select)`.
 The block may set only `min-height`, `font-size` and `line-height`: no
 width, no column and no padding changes, so a stored column width (P139,
 P199) means the same thing in both densities and the 1100px arithmetic of
@@ -289,7 +307,8 @@ file's Check, the sheet's next arrow and the menu act on a return.
   `return` template - Edit Request List…, Draft Reminder…, Open Working
   Folder, Open Client Folder, Open Inbox - with `pagesEnableFor` of the
   group's token) at the button's bottom-left. It now sits right after the
-  count, 4px from it, not at the far right of a full-width card.
+  count, 12px from it (the heading's 8px gap plus the button's own 4px
+  `margin-left`), not at the far right of a full-width card.
 - A right-click anywhere on the heading line opens the same menu (kept).
 - `first: true` for the first group drawn on the page, so it sits 24px under
   the column headers (`.group-head.is-first`); each next heading is 32px
@@ -468,8 +487,12 @@ block; `pilot-ui.css` gains `--size-notices`):
     dismiss move to the line after it, at the end
     (`.notice-detail[open] ~ .notice-act:first-of-type { margin-inline-start:
     auto }` or the equivalent).
-  - Sizes: a notice in the panel is 72px closed (8 + 20 + 4 + 32 + 8), 92px
+  - Sizes: a notice in the panel is 74px closed (8 + 20 + 4 + 32 + 8, plus its 1px border above and below; review 1, deviation 3), 94px
     when its sentence wraps once; every part stays on the 4px grid.
+  - A notice whose controls are wider than the panel's line (Folder Renamed
+    with Accept the Folder's Name: Details, the action and the dismiss do not
+    fit 229px together) wraps them onto a third line; they stay in markup
+    order and usable as before (review 1, N2).
 - **The toast** while the panel shows: `body:has(#notices:not(:empty))
   #toast { inset-inline-end: calc(var(--size-notices) + var(--sp-6)); }`, so a
   toast ("Copied", "Saved") sits at the bottom right of the page, 24px left

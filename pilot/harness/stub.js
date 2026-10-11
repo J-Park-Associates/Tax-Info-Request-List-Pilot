@@ -121,7 +121,9 @@
   } else if (scenario !== "empty-clients") {
     household("Smith Family", "John Smith", [["1040 - John & Jane Smith", 2025, smith()],
       // The scenario "two-years" (P268): last season's return is still waiting, with a reminder ready, so the firm lists hold two years.
-      ["1040 - John & Jane Smith", 2024, scenario === "two-years" ? Object.assign(generic(0, 2, 9, "Due Apr 15"), { draft: { ready: true, stage: 1, held: 0, drafted: "2026-03-03" } }) : generic(0, 0, 11, "")]]);
+      ["1040 - John & Jane Smith", 2024, scenario === "two-years" ? Object.assign(generic(0, 2, 9, "Due Apr 15"), { draft: { ready: true, stage: 1, held: 0, drafted: "2026-03-03" } }) : generic(0, 0, 11, "")]],
+      // Two members and a made-up, non-URL link token, so the household card says Saved (P275); the others keep no link.
+      { members: ["John Smith", "Jane Smith"], link: "made-up-link-token" });
     household("Rivera Design", "Marco Rivera", [["1120-S - Rivera Design LLC", 2025, generic(1, 3, 6, "Due Mar 16")], ["1040 - Marco Rivera", 2025, Object.assign(generic(0, 2, 7, "Due Apr 15"), { draft: { ready: true, stage: 2, held: 0, drafted: "2026-03-03" } })]]);
     household("Lopez Household", "Ana Lopez", [["1040 - Ana Lopez", 2025, Object.assign(generic(0, 2, 5, "Due Apr 15"), { draft: { ready: true, stage: 3, held: 0, drafted: "2026-03-03" } })]]);
     household("Chen Family", "Wei Chen", [["1040 - Wei & Lin Chen", 2025, generic(2, 1, 8, "Due Apr 15")]], { rollYear: 2026 });

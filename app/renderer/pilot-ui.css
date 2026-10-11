@@ -43,9 +43,9 @@
   --sp-1: 4px; --sp-2: 8px; --sp-4: 16px; --sp-6: 24px; --sp-8: 32px; --sp-12: 48px;
 
   /* size: multiples of 4, but the selection pill's 3 and the hairline's 1 */
-  --size-row: 40px; --size-control: 32px; --size-control-sm: 24px;
+  --size-row: 40px; --size-row-compact: 32px; --size-control: 32px; --size-control-sm: 24px;
   --size-bar: 48px; --size-sheet-foot: 64px;
-  --size-side: 240px; --size-sheet: 400px; --size-find: 240px; --size-icon: 16px;
+  --size-side: 240px; --size-sheet: 400px; --size-find: 240px; --size-icon: 16px; --size-notices: 288px; --size-card: 288px;
   --size-pill: 3px; --size-hair: 1px;
   --size-col-name: 224px; --size-col-detail: 200px; --size-col-status: 160px; --size-col-end: 144px;
   --size-col-year: 80px; --size-col-taxpayer: 224px; --size-col-form: 96px;
@@ -456,7 +456,7 @@ th, legend, strong,
   min-height: 0;
   padding: var(--sp-2) var(--sp-2);
 }
-.editor-table :is(input:not([type="checkbox"]):not([type="radio"]), select) {
+:is(#page, #sheet, .modal-overlay) .editor-table :is(input:not([type="checkbox"]):not([type="radio"]), select) {
   min-height: 28px;
   padding: 0 var(--sp-2);
 }

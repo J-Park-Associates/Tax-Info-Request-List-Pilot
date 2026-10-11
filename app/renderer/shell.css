@@ -18,7 +18,7 @@
 ::selection { background: var(--bg-selected); color: var(--text); }
 input, textarea, select { caret-color: var(--text); accent-color: var(--accent); }
 #page, #sheet-body, .modal { scrollbar-color: var(--scroll-thumb) transparent; }
-.side-count, .group-count, .list-count, .row-date, .row-year, .head-year, .figure-number, .last-sort-text, .page-count, .reason-card-number, .switch-count, .group-docs, #sc-next {
+.side-count, .group-count, .list-count, .row-date, .row-year, .head-year, .figure-number, .last-sort-text, .page-count, .reason-card-number, .switch-count, #sc-next {
   font-variant-numeric: tabular-nums;
 }
 :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
@@ -1096,7 +1096,7 @@ input, textarea, select { caret-color: var(--text); accent-color: var(--accent);
 .rows.edge-waiting .row::before { background: var(--st-waiting); }
 .rows.edge-done .row::before { background: var(--st-done); }
 
-/* Needs Review (P149): the reason cards, and each return as a card group. */
+/* Needs Review (P149): the reason cards, and one flat list, a heading per return (P272). */
 /* A grid, not a wrapping row: six cards were 4 and 2, ragged. Three columns up
    to 1240px of window, six above it, so six cards are 2 x 3 or 1 x 6. */
 .reason-cards:not(.hidden) {
@@ -1128,32 +1128,18 @@ input, textarea, select { caret-color: var(--text); accent-color: var(--accent);
 .reason-card-word { font-size: var(--fs-caption); line-height: var(--lh-caption); font-weight: var(--fw-strong); color: var(--text-secondary); }
 .reason-card-number { font-family: var(--font-display); font-size: var(--fs-h1); line-height: var(--lh-h1); font-weight: var(--fw-strong); }
 .reason-card-icon:not(.hidden) { display: inline-grid; place-items: center; }
-.return-card:not(.hidden) {
-  display: block;
-  margin: var(--sp-4) var(--sp-6) 0;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--bg-raised);
-  overflow: hidden;
-}
-.return-card .group-head:not(.hidden) { align-items: center; margin: 0; padding: var(--sp-2); }
-.return-card .row:not(.hidden) { padding: 0 var(--sp-2); }
-.return-card .row-name { padding-left: var(--sp-4); }
-/* Inside a card the rows' own padding is 8px, so the least width is the columns and 16px. */
-.return-card .rows {
-  min-width: calc(var(--size-col-name) + var(--size-col-detail) + var(--size-col-status) + var(--size-col-end) + 3 * var(--sp-4) + 2 * var(--sp-2));
+/* A return's heading on Needs Review (P272) is an ordinary group head: no card
+   around it. It holds a 16px chip and the 24px More Actions button, so it
+   centres them; the page's own title row keeps its baseline. The button is
+   quiet and shown at rest, so a person can find it. */
+.group-head:has(.group-more):not(.hidden) { align-items: center; }
+.group-more.icon-button:not(.hidden) {
+  width: var(--size-control-sm);
+  height: var(--size-control-sm);
+  margin-left: var(--sp-1);
+  color: var(--text-secondary);
 }
 .row-icon:not(.hidden) { display: inline-grid; place-items: center; margin-right: var(--sp-2); color: var(--text-secondary); vertical-align: middle; }
-.group-docs {
-  margin-left: auto;
-  padding: 0 var(--sp-2);
-  border-radius: var(--radius);
-  background: var(--bg-pressed);
-  color: var(--text-secondary);
-  font-size: var(--fs-caption);
-  line-height: var(--lh-caption);
-  white-space: nowrap;
-}
 .page-head.group-head:not(.hidden) { align-items: baseline; }
 
 /* The page buttons (P152, P174). */
@@ -1198,6 +1184,137 @@ input, textarea, select { caret-color: var(--text); accent-color: var(--accent);
   pointer-events: none;
 }
 
+/* ── The household page (P275) ───────────────────────────────────────────
+   A card beside the returns' list: the household's contact, who it is shared
+   with and whether its inbox link is saved, with More Actions at its top right.
+   The returns keep the page's keyline, the card is read first (it is first in
+   the markup), and each return's status is the column right after its name,
+   then the detail (Inactive, Rolled Forward) and the end. A long taxpayer name
+   wraps (ruling 21), it is never cut. The card sits beside the list when the
+   page is 1056px wide or more - the list's least width (the keyline 32, name
+   224, 16, status 160, 16, detail 96, 16, end 144 and the row's own 32), the
+   card 288 and the card's right margin 32 - else above it, its three facts side
+   by side. The page's own width, not the window's, is what counts: the notices
+   panel (P273) takes 288 of it while it shows. */
+.returns-list .row:not(.hidden) {
+  grid-template-columns: var(--size-col-name) var(--size-col-status) minmax(var(--size-col-form), 1fr) var(--size-col-end);
+}
+.returns-list .rows {
+  min-width: calc(var(--size-col-name) + var(--size-col-status) + var(--size-col-form) + var(--size-col-end) + 3 * var(--sp-4) + 2 * var(--sp-8));
+}
+.household-body { container-type: inline-size; }
+.household-layout:not(.hidden) { display: grid; grid-template-columns: minmax(0, 1fr); }
+.household-card:not(.hidden) {
+  position: relative;
+  margin: var(--sp-6) var(--sp-8) 0;
+  padding: var(--sp-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-raised);
+}
+.card-facts:not(.hidden) {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--sp-4);
+  padding-inline-end: var(--sp-6);
+}
+.card-facts dt {
+  font-size: var(--fs-caption);
+  line-height: var(--lh-caption);
+  color: var(--text-caption);
+}
+.card-facts dd {
+  margin: 0;
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+.card-facts dd.card-shared { font-weight: var(--fw-strong); }
+.card-more.icon-button:not(.hidden) {
+  position: absolute;
+  inset-block-start: var(--sp-2);
+  inset-inline-end: var(--sp-2);
+  width: var(--size-control-sm);
+  height: var(--size-control-sm);
+  color: var(--text-secondary);
+}
+@container (min-width: 1056px) {
+  .household-layout:not(.hidden) { grid-template-columns: minmax(0, 1fr) calc(var(--size-card) + var(--sp-8)); align-items: start; }
+  .returns-list { grid-column: 1; grid-row: 1; }
+  .household-card:not(.hidden) { grid-column: 2; grid-row: 1; margin: var(--sp-6) var(--sp-8) 0 0; }
+  .card-facts:not(.hidden) { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* ── Compact Rows (P271) ─────────────────────────────────────────────────
+   View > Compact Rows puts .rows-compact on the document: every list page's
+   rows and the request list editor's lines are 32px instead of 40px. Only a
+   height, a size and a line may change here - never a width, a column or a
+   padding - so a kept column width means the same in both densities and the
+   1100px arithmetic of SPEC-shell 3.6 stands. A wrapped row's second and
+   third lines are the same 20px lines (32 / 48 / 68px); the date is already
+   caption; the Tax Year cell becomes caption so the year reads with the
+   dates. The page's rows only: the side sheet's outline and the dialogs'
+   lists are not lists of work. */
+.rows-compact #page .row,
+.rows-compact #page .row-skeleton { min-height: var(--size-row-compact); }
+.rows-compact .row-year { font-size: var(--fs-caption); line-height: var(--lh-caption); }
+/* The fields carry the same scope as pilot-ui.css's own editor-field rule
+   (:is(#page, #sheet, .modal-overlay), whose #page counts as an id), so this
+   one outranks it: without the scope the general 32px field rule won and
+   Compact changed nothing in the editor (review 1, finding 1). */
+.rows-compact :is(#page, #sheet, .modal-overlay) .editor-table :is(input:not([type="checkbox"]):not([type="radio"]), select) { min-height: var(--size-control-sm); }
+
+/* ── The notices panel (P273) ────────────────────────────────────────────
+   At 1388px and wider the notices stack in a 288px panel at the right of the
+   page, under the path row, instead of pushing the page down; the panel is
+   there only while there is a notice (#notices:empty is display: none in
+   style.css, so the auto column is 0 wide). 1388 is 240 (side panel) + 860 +
+   288: the page keeps the 860px every list is designed for (SPEC-shell 3.6),
+   never narrower. Narrower than that nothing here applies: the notices are
+   one 40px line each above the page, as above. The markup does not change;
+   only this places it. A notice is its sentence on the first line and its
+   controls (Details, the action, the dismiss) on the second; opened, Details
+   takes the second line and the buttons go under it. No motion. */
+@media (min-width: 1388px) {
+  #main:not(.hidden) {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-rows: var(--size-bar) minmax(0, 1fr);
+  }
+  #bar:not(.hidden) { grid-column: 1 / -1; }
+  #page { grid-column: 1; grid-row: 2; }
+  #notices { grid-column: 2; grid-row: 2; }
+  #notices:not(:empty) {
+    display: grid;
+    align-content: start;
+    gap: var(--sp-2);
+    width: var(--size-notices);
+    min-height: 0;
+    overflow-y: auto;
+    padding: var(--sp-4);
+    background: var(--bg-nav);
+    border-left: 1px solid var(--border);
+  }
+  #notices .notice:not(.hidden) {
+    flex-wrap: wrap;
+    align-items: center;
+    column-gap: var(--sp-2);
+    row-gap: var(--sp-1);
+    min-height: 0;
+    padding: var(--sp-2) var(--sp-2) var(--sp-2) var(--sp-4);
+  }
+  #notices .notice-text { flex: 0 0 100%; }
+  #notices .notice-detail { flex: 1 1 auto; }
+  #notices .notice-detail[open] { order: 0; flex: 0 0 100%; }
+  #notices .notice-detail[open] > summary { margin-inline-start: 0; }
+  /* The buttons sit at the end of their line: the first one after the sentence
+     takes the slack (with Details closed it shares the line with them, opened
+     it is the line after). */
+  #notices .notice-text ~ .notice-act:first-of-type { margin-inline-start: auto; }
+  /* A toast sits at the bottom right of the page, 24px left of the panel. */
+  body:has(#notices:not(:empty)) #toast { inset-inline-end: calc(var(--size-notices) + var(--sp-6)); }
+}
+
 /* ── Windows contrast themes (last, so it wins) ──────────────────────────
    System colours only (SPEC 10.4). The brand band gives way to Canvas with
    an edge; the selected section and the focused row use Highlight; the
@@ -1239,11 +1356,12 @@ input, textarea, select { caret-color: var(--text); accent-color: var(--accent);
   .rows:focus-visible .row.is-active .row-status, .rows:focus-visible .row.is-active .row-date,
   .rows:focus-visible .row.is-active .row-step, .rows:focus-visible .row.is-active .row-link { color: HighlightText; }
   #notices .notice { border: 1px solid CanvasText; background: Canvas; color: CanvasText; }
+  #notices:not(:empty) { border-left-color: CanvasText; }
   /* The raised lists (SPEC-lists 16): pills, chips, cards and badges keep an
      edge; shadings go; the link mark is a button with an edge; a section's
      icon and words carry it. */
-  .pill, .form-tag, .request-tag, .group-count.is-badge, .group-docs, .side-count:not(:empty), .side-soon:not(:empty), .switch-count, .type-filter,
-  .figure, .reason-card, .return-card, #link-panel { border: 1px solid CanvasText; background: Canvas; color: CanvasText; }
+  .pill, .form-tag, .request-tag, .group-count.is-badge, .side-count:not(:empty), .side-soon:not(:empty), .switch-count, .type-filter,
+  .figure, .reason-card, .household-card, #link-panel { border: 1px solid CanvasText; background: Canvas; color: CanvasText; }
   .reason-card[aria-pressed="true"] { background: Highlight; color: HighlightText; forced-color-adjust: none; }
   .link-mark { color: ButtonText; border-color: CanvasText; }
   .link-to { color: LinkText; }

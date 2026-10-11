@@ -49,6 +49,7 @@ const LEVELS = ["overview", "needs-review", "reminders", "clients", "household",
 const FIRM_LEVELS = ["overview", "needs-review", "reminders", "clients"];
 const SCREEN_KEYS = { "needs-review": "needs_review" };
 const SOON_KEY = "tracker.underConstruction";   // this PC's own storage, never the record (P197)
+const ROWS_KEY = "tracker.rows";   // the same, for View › Compact Rows (P271)
 
 let shellRoute = { level: "overview" };
 let shellBack = null;          // the route Cancel goes back to, from Change clients folder
@@ -80,6 +81,7 @@ let shellPageBusy = false;     // a return's state is on its way
 let shellPageFailed = false;   // it could not be had (the notice says why, with Retry)
 let shellFound = [];           // the search list's options
 let shellSoonHidden = null;    // View › Show Under Construction is off: read once from this PC (P197)
+let shellCompact = null;       // View › Compact Rows is on: read once from this PC (P271)
 
 // The vocabulary blocks this file reads. A block that is missing is the
 // failure it looks like: the page is told and the error log has it.
@@ -777,7 +779,10 @@ function shellReadSoon() {
 
 // The bar's ticked items, sent with the enable list: main.js draws the tick.
 function shellChecked() {
-  return shellReadSoon() ? [] : ["show_under_construction"];
+  const ticked = [];
+  if (!shellReadSoon()) ticked.push("show_under_construction");
+  if (shellReadCompact()) ticked.push("compact_rows");
+  return ticked;
 }
 
 // Hidden is gone, not faded: the .hidden class is display: none, so a hidden
@@ -808,6 +813,40 @@ function shellToggleSoon() {
   drawSoon();
   if (hide) hideTip();
   if (lost) focusRegion("side");
+  shellEnable();
+}
+
+// ── View › Compact Rows (pilot SPEC-ui-menu-layout L1, P271) ──
+// Kept on this PC as Show Under Construction is: only the exact word
+// "compact" is compact; anything else, and storage that cannot be read, is
+// Comfortable (a new install's default), and a write the storage refuses
+// holds the choice until the app closes.
+function shellReadCompact() {
+  if (shellCompact !== null) return shellCompact;
+  shellCompact = storeRead(ROWS_KEY) === "compact";
+  return shellCompact;
+}
+
+// The density is a class on the document, so the rows' heights follow it at
+// once and a stored choice applies before the first list is drawn.
+function drawCompact() {
+  document.documentElement.classList.toggle("rows-compact", shellReadCompact());
+}
+
+// The menu's answer: flip, keep, redraw, keep the active row in view (every
+// row moved), hide a showing tip, and tell the menu its tick. Focus is not
+// moved: a check item moves none.
+function shellToggleCompact() {
+  const on = !shellReadCompact();
+  shellCompact = on;
+  storeWrite(ROWS_KEY, on ? "compact" : null);
+  drawCompact();
+  hideTip();
+  // The focused list's active row first (every list a person has visited keeps
+  // its own), else the first active row on the page.
+  const focused = document.activeElement && document.activeElement.closest ? document.activeElement.closest(".rows") : null;
+  const row = focused ? focused.querySelector(".row.is-active") : document.querySelector(".rows .row.is-active");
+  if (row) row.scrollIntoView({ block: "nearest" });
   shellEnable();
 }
 
@@ -1344,7 +1383,7 @@ function shellEnabled(at) {
   const own = lastState && lastState.household && lastState.household.path === route.household ? lastState.household : null;
   const shared = Boolean(own && own.shared_on);
   const paused = Boolean(own && own.pause && own.pause.sentence);   // while paused the pause is the work
-  const ids = ["change_root", "refresh", "tour", "safeguards", "terms", "error_log", "about", "show_under_construction"];
+  const ids = ["change_root", "refresh", "tour", "safeguards", "terms", "error_log", "about", "show_under_construction", "compact_rows"];
   if (shellRootSet) {
     ids.push("new_household", "open_root", "overview", "needs_review", "reminders", "clients", "find", "schedule", "repair_schedule");
     ids.push("reset_columns");
@@ -1454,6 +1493,7 @@ const MENU_ANSWERS = {
   find: () => $("find").focus(),
   refresh: () => shellRefresh(),
   reset_columns: () => pagesResetWidths(),
+  compact_rows: () => shellToggleCompact(),
   show_under_construction: () => shellToggleSoon(),
   sort_now: () => sortClicked(),
   stop_sorting: () => stopPass(),
@@ -1487,13 +1527,19 @@ function shellMenu(message) {
 }
 
 // ── keyboard (SPEC 4.3): app.js's one keydown listener hands keys here ──
-const F6_REGIONS = ["side", "bar", "page"];
+const F6_REGIONS = ["side", "bar", "notices", "page"];
 
 function regionOf(node) {
   if (!node || !node.closest) return "page";
   if (node.closest("#side")) return "side";
   if (node.closest("#bar")) return "bar";
+  if (node.closest("#notices")) return "notices";
   return "page";
+}
+
+// The regions F6 visits now: the notices only while one shows (P273).
+function f6Regions() {
+  return F6_REGIONS.filter((name) => name !== "notices" || $("notices").childElementCount > 0);
 }
 
 function focusRegion(name) {
@@ -1504,6 +1550,11 @@ function focusRegion(name) {
   } else if (name === "bar") {
     const first = document.querySelector("#crumb-list button");
     (first && !$("find").disabled ? first : $("find")).focus();
+  } else if (name === "notices") {
+    // The first notice's first control: its Details summary, else its action, else its dismiss.
+    const first = $("notices").querySelector(".notice");
+    const control = first ? first.querySelector("summary, .notice-act:not(:disabled)") : null;
+    (control || $("page")).focus();
   } else {
     $("page").focus();
   }
@@ -1513,8 +1564,9 @@ function shellKey(e) {
   tipKey(e);   // tooltip.js: Escape hides a showing tip first, and the key goes on (P130)
   if (e.key === "F6") {
     e.preventDefault();
-    const at = F6_REGIONS.indexOf(regionOf(document.activeElement));
-    focusRegion(F6_REGIONS[(at + (e.shiftKey ? F6_REGIONS.length - 1 : 1)) % F6_REGIONS.length]);
+    const regions = f6Regions();
+    const at = regions.indexOf(regionOf(document.activeElement));
+    focusRegion(regions[(at + (e.shiftKey ? regions.length - 1 : 1)) % regions.length]);
     return true;
   }
   if (e.target === $("find")) return findKey(e);
@@ -1578,8 +1630,10 @@ for (const node of document.querySelectorAll(".side-section[data-type]")) {
     shellGo({ level: "clients" });
   });
 }
-// A stored "hidden" applies before the first paint, not when the words arrive (P197, review S1).
+// A stored "hidden" applies before the first paint, not when the words arrive (P197, review S1);
+// a stored "compact" the same, so the first paint's outline rows are the chosen height (P271).
 drawSoon();
+drawCompact();
 // A page not built yet says so and does nothing else: no page, no command (P154).
 for (const node of document.querySelectorAll(".side-section[data-soon]")) {
   node.addEventListener("click", () => toastWord("under_construction"));

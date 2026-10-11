@@ -33,6 +33,7 @@ const THEMES = ["light", "dark"];
 const go = (route) => `shellGo(${JSON.stringify(route)})`;
 const later = (ms, code) => `setTimeout(() => { ${code} }, ${ms})`;
 const check = (k) => `const s = pagesFiles()[${k}]; openCheck(s.ret, s.name, s.handle);`;
+const addRows = "for (let i = 0; i < 4; i += 1) document.getElementById('ed-add').click()";   // the editor's lines, for the density shots
 const smith = "/clients/J Park & Associates/Smith Family";
 const smithReturn = `${smith}/2025/1040 - John & Jane Smith`;
 const ret = { level: "return", household: smith, year: 2025, ret: smithReturn };
@@ -40,10 +41,14 @@ const chen = "/clients/J Park & Associates/Chen Family";
 const SCENARIOS = [
   { name: "overview", query: "" },
   { name: "overview-two-years", query: "?scenario=two-years" },
+  // Compact Rows (P271, SPEC-ui-menu-layout L1): each page after the menu's answer.
+  { name: "overview-compact", query: "", run: "shellToggleCompact()" },
   { name: "row-hover", query: "", hover: "#page .rows .row:nth-child(2) .row-link" },
   { name: "overview-empty", query: "?scenario=quiet" },
   { name: "overview-no-clients", query: "?scenario=empty-clients" },
   { name: "needs-review", query: "", run: go({ level: "needs-review" }) },
+  { name: "needs-review-compact", query: "", run: `${go({ level: "needs-review" })}; shellToggleCompact()` },
+  { name: "needs-review-filtered", query: "", run: `${go({ level: "needs-review" })}; ${later(300, "document.querySelector('.reason-card:nth-child(2)').click()")}`, wait: 900 },
   { name: "needs-review-empty", query: "?scenario=quiet", run: go({ level: "needs-review" }) },
   { name: "reminders", query: "", run: go({ level: "reminders" }) },
   { name: "reminders-empty", query: "?scenario=quiet", run: go({ level: "reminders" }) },
@@ -52,10 +57,16 @@ const SCENARIOS = [
   { name: "clients-none-waiting", query: "?scenario=quiet", run: go({ level: "clients" }) },
   { name: "clients-empty", query: "?scenario=empty-clients", run: go({ level: "clients" }) },
   { name: "household", query: "", run: go({ level: "household", household: smith }) },
+  // The household card (P275): beside the returns at 1400, above them at 1100; with the notices panel up it stacks at 1400 too.
+  { name: "household-compact", query: "", run: `${go({ level: "household", household: smith })}; shellToggleCompact()` },
   { name: "household-notices", query: "?mode=real&scenario=household-notices", run: go({ level: "household", household: smith }) },
   { name: "household-no-returns", query: "", run: go({ level: "household", household: "/clients/J Park & Associates/Patel Family" }) },
   { name: "year", query: "", run: go({ level: "year", household: smith, year: 2025 }) },
   { name: "return", query: "", run: go(ret) },
+  { name: "return-compact", query: "", run: `${go(ret)}; shellToggleCompact()` },
+  // The request list editor on the return (L1): Comfortable and Compact.
+  { name: "editor", query: "", run: `${go(ret)}; ${later(500, "openEditor()")}; ${later(900, addRows)}`, wait: 1800 },
+  { name: "editor-compact", query: "", run: `shellToggleCompact(); ${go(ret)}; ${later(500, "openEditor()")}; ${later(900, addRows)}`, wait: 1800 },
   { name: "return-set-aside-open", query: "", run: `${go(ret)}; setTimeout(() => { document.querySelector(".group-fold").open = true; }, 150)` },
   { name: "return-active-row", query: "", run: `${go(ret)}; setTimeout(() => { const list = document.querySelector(".rows"); list.focus(); }, 150)` },
   { name: "return-empty", query: "", run: go({ level: "return", household: "/clients/J Park & Associates/Novak Household", year: 2025, ret: "/clients/J Park & Associates/Novak Household/2025/1040 - Petra Novak" }) },
@@ -79,6 +90,10 @@ const SCENARIOS = [
   { name: "link-file-tooltip", query: "", run: go(ret), hover: "#page .row-link" },
   { name: "link-taxpayer-tooltip", query: "", hover: "#page .row-return:nth-child(1) .row-name .row-link" },
   { name: "notices", query: "?mode=real&scenario=notices" },
+  // The notices panel (P273, L3): the first Details opened; a toast while the panel shows; the breakpoint pair.
+  { name: "notices-details-open", query: "?mode=real&scenario=notices", run: "document.querySelector('#notices .notice-detail > summary').click()" },
+  { name: "notices-toast", query: "?mode=real&scenario=notices", run: "toastWord('under_construction')" },
+  { name: "notices-breakpoint", query: "?mode=real&scenario=notices", sizes: [[1387, 900], [1388, 900]] },
   { name: "setup", query: "?scenario=setup" },
   { name: "loading", query: "?scenario=slow" },
   { name: "sort-running", query: "", run: `${go({ level: "household", household: smith })}; scanning = { pass: "p1", stopping: false }; shellProgress({ n: 3, of: 12, household: "Smith Family" }); shellChanged()` },
@@ -96,7 +111,7 @@ let shots = 0;
 for (const scenario of SCENARIOS) {
   if (only.length && !only.includes(scenario.name)) continue;
   for (const theme of THEMES) {
-    for (const [width, height] of SIZES) {
+    for (const [width, height] of scenario.sizes || SIZES) {
       const context = await browser.newContext({ viewport: { width, height }, colorScheme: theme, reducedMotion: "reduce" });
       await context.addInitScript(() => { localStorage.setItem("pilot.terms.accepted", "1"); localStorage.setItem("pilot.tour.seen", "1"); });
       const page = await context.newPage();
@@ -116,19 +131,28 @@ for (const scenario of SCENARIOS) {
   }
 }
 
-// Contrast theme, emulated once at the minimum size.
+// Contrast theme, emulated at the minimum size and at 1400 (where the notices
+// panel and the household card sit beside the page): the return, the notices
+// and the household.
 if (!only.length || only.includes("forced-colors")) {
-  for (const width of [1100]) {
-    const context = await browser.newContext({ viewport: { width, height: 700 }, forcedColors: "active" });
-    await context.addInitScript(() => { localStorage.setItem("pilot.terms.accepted", "1"); localStorage.setItem("pilot.tour.seen", "1"); });
-    const page = await context.newPage();
-    await page.goto(`${base}`);
-    await page.waitForTimeout(600);
-    await page.evaluate(go({ level: "return", household: smith, year: 2025, ret: smithReturn }));
-    await page.waitForTimeout(400);
-    await page.screenshot({ path: path.join(out, `forced-colors-${width}x700.png`) });
-    shots += 1;
-    await context.close();
+  const PAGES = [
+    { name: "return", query: "", run: go({ level: "return", household: smith, year: 2025, ret: smithReturn }) },
+    { name: "notices", query: "?mode=real&scenario=notices", run: "" },
+    { name: "household", query: "", run: go({ level: "household", household: smith }) },
+  ];
+  for (const [width, height] of SIZES) {
+    for (const shot of PAGES) {
+      const context = await browser.newContext({ viewport: { width, height }, forcedColors: "active" });
+      await context.addInitScript(() => { localStorage.setItem("pilot.terms.accepted", "1"); localStorage.setItem("pilot.tour.seen", "1"); });
+      const page = await context.newPage();
+      await page.goto(`${base}${shot.query}`);
+      await page.waitForTimeout(600);
+      if (shot.run) await page.evaluate(shot.run);
+      await page.waitForTimeout(400);
+      await page.screenshot({ path: path.join(out, `forced-colors-${shot.name}-${width}x${height}.png`) });
+      shots += 1;
+      await context.close();
+    }
   }
 }
 

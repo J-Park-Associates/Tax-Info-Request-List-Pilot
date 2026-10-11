@@ -528,13 +528,15 @@ function pagesRow(spec) {
   const lead = spec.returnRow
     ? [...(pagesYearless ? [] : [h("span", { className: "row-year" }, spec.year ? String(spec.year) : "")]), pagesNameCell(spec), pagesFormCell(spec)]
     : [pagesNameCell(spec), pagesDetailCell(spec)];
+  // The household and year pages put the status right after the name (P275): name, status, detail, end.
+  const status = pagesStatusCell(spec);
+  const cells = spec.statusNext ? [lead[0], status, ...lead.slice(1)] : [...lead, status];
   const node = h("div", {
     className: `row${spec.returnRow ? " row-return" : ""}${step ? " has-step" : ""}${spec.child ? " row-child" : ""}${wraps ? " row-wrap" : ""}${file ? " row-file" : ""}`,
     role: "option", id, "aria-selected": "false",
     "aria-description": described || undefined, dataset: { menu: spec.menu || "", token: id },
   },
-  ...lead,
-  pagesStatusCell(spec),
+  ...cells,
   h("span", { className: "row-end" }, h("span", { className: "row-date" }, spec.date || ""), step));
   return node;
 }
@@ -680,7 +682,7 @@ function pagesGroup(spec) {
   // `heading`: words, or the nodes of a return's heading (pagesReturnHeading).
   const title = h("h2", { className: "group-title", id: headId }, spec.heading);
   const start = spec.step ? pagesGroupStep(spec.step) : null;
-  const lead = section ? h("span", { className: `group-icon ${tone}` }, icon(section[1])) : spec.lead || null;
+  const lead = section ? h("span", { className: `group-icon ${tone}` }, icon(section[1])) : null;
   const headClass = `group-head${spec.first ? " is-first" : ""}${section ? ` is-section section-${section[0]}` : ""}`;
   let body = null;
   if (total) {
@@ -708,8 +710,8 @@ function pagesGroup(spec) {
   // `heads`: a list's column headers, between its heading and its rows;
   // `note`: words after the count on the heading's own line (the
   // Overview's "Updating, as of {time}", P229); `tools`: what sits at the
-  // heading's end (Overview's tabs, a Needs Review group's count and More
-  // Actions).
+  // heading's end (Overview's tabs, a Needs Review group's More Actions; its
+  // count is in the caption).
   return [h("div", { className: headClass }, lead, title, meta, spec.note || null, spec.tools || null, start), body ? spec.heads : null, body].filter(Boolean);
 }
 
@@ -1258,11 +1260,13 @@ function pagesReasonCards(counts, total) {
     card("", words.filters.all, total, ""), ...reasons.map(([code, label, n]) => card(code, label, n, PAGES_REASON_ICONS[code] || "alert")));
 }
 
-// A return group's heading on Needs Review (P149): its folder icon, the
-// return's name, the household as the small secondary link with its link
-// mark, the count of its documents, and More Actions, which opens the same
-// native menu as a right-click on the heading (the return's; no new action).
-function pagesReviewGroup(group, specs) {
+// A return group's heading on Needs Review (P149, P272): an ordinary group,
+// as on a return's own page - no card, no pill, no folder icon. The return's
+// name, the household as the small secondary link with its link mark, then
+// the count of its documents in the same caption, and More Actions after the
+// count, which opens the same native menu as a right-click on the heading
+// (the return's; no new action). `first` is the page's first group.
+function pagesReviewGroup(group, specs, first) {
   const words = screenWords();
   const owner = pagesFirmReturn(group.path);
   const rows = pagesEach(specs, (spec) => spec.name, pagesRow);
@@ -1270,6 +1274,8 @@ function pagesReviewGroup(group, specs) {
   const house = pagesHouseholdPath(household);
   const caption = household ? [house ? pagesHeadLink({ kind: "household", path: house }, household) : household] : [];
   if (owner && owner.links && owner.links.length) caption.push(pagesLinkMark(owner.links, false, household));
+  const count = rows.length === 1 ? words.documents.one : fill(words.documents.many, { n: rows.length });
+  caption.push(household ? ` \u00b7 ${count}` : count);
   pagesUid += 1;
   const token = `row-${pagesUid}`;
   const route = pagesRoute(group.path);
@@ -1281,14 +1287,13 @@ function pagesReviewGroup(group, specs) {
     const box = more.getBoundingClientRect();
     popup(box.left, box.bottom);
   });
-  const count = h("span", { className: "group-docs" }, rows.length === 1 ? words.documents.one : fill(words.documents.many, { n: rows.length }));
   const nodes = pagesGroup({ heading: pagesReturnHeading(group.path, owner ? owner.year : 0, owner ? owner.form : ""),
-                             caption, lead: h("span", { className: "group-icon" }, icon("folder")), tools: [count, more], blocks: [{ rows }] });
+                             caption, first, tools: [more], blocks: [{ rows }] });
   nodes[0].addEventListener("contextmenu", (e) => {
     e.preventDefault();
     popup(e.clientX, e.clientY);
   });
-  return [h("div", { className: "return-card" }, ...nodes)];
+  return nodes;
 }
 
 function pagesNeedsReview() {
@@ -1312,8 +1317,15 @@ function pagesNeedsReview() {
   const head = h("div", { className: "group-head is-first page-head" }, h("h2", { className: "list-title" }, words.sections.needs_review),
     h("span", { className: "list-count" }, pagesFileCount(total)));
   const allFiles = all.reduce((n, group) => n + group.files.length, 0);
-  return [head, pagesReasonCards(counts, allFiles), pagesColumnHeads("needs_review"),
-    ...part.flatMap(({ group, specs }) => pagesSafe(pagesReturnName(group.path), () => pagesReviewGroup(group, specs)) || []), foot];
+  // The first heading drawn sits 24px under the column headers; a group that
+  // cannot be built is named in a notice and the next one is the first.
+  let first = true;
+  const groupNodes = part.flatMap(({ group, specs }) => {
+    const nodes = pagesSafe(pagesReturnName(group.path), () => pagesReviewGroup(group, specs, first));
+    if (nodes) first = false;
+    return nodes || [];
+  });
+  return [head, pagesReasonCards(counts, allFiles), pagesColumnHeads("needs_review"), ...groupNodes, foot];
 }
 
 // ── Reminders (SPEC 6.3) ──────────────────────────────────────────────
@@ -1432,14 +1444,42 @@ function pagesClients() {
 }
 
 // ── Household and year (SPEC 6.5, 6.6) ────────────────────────────────
-function pagesHouseholdCaption(route) {
-  const hh = shellHousehold(route.household);
-  const state = lastState && lastState.household && lastState.household.path === route.household ? lastState.household : null;
+// The household card (P275): who to talk to, who the household is shared with
+// and whether its inbox link is saved, in a card beside the returns (above them
+// in a narrow page). A fact with nothing to say is left out; the Inbox Link is
+// always there. The link itself is the client's share link: it is never drawn
+// and never opened (an app that opened it would reach the network) - "Saved"
+// tells a person whether Mark as Shared will be accepted. Opening the inbox
+// folder stays a menu item, and More Actions opens the household's menu: the
+// token is the H1's own, so it acts on the page's household with the page's
+// enable rules.
+function pagesHouseholdCard(route, hh) {
   const words = screenWords();
-  const parts = [];
-  if (hh && hh.contact) parts.push(fill(words.contact, { name: hh.contact }));
-  if (state) parts.push(state.shared_on ? words.shared : words.not_shared);
-  return parts.join(" · ");
+  if (!words.household_card) throw new Error("vocab.screen.household_card");
+  const card = words.household_card;
+  const state = lastState && lastState.household && lastState.household.path === route.household ? lastState.household : null;
+  const members = (hh.members || []).filter(Boolean);
+  const fact = (term, ...values) => h("div", { className: "card-fact" }, h("dt", {}, term), ...values);
+  const facts = [];
+  if (hh.contact) facts.push(fact(card.contact, h("dd", {}, hh.contact)));
+  if (members.length || state) {
+    facts.push(fact(card.shared_with, members.length ? h("dd", {}, members.join(", ")) : null,
+      state ? h("dd", { className: "card-shared" }, state.shared_on ? words.shared : words.not_shared) : null));
+  }
+  facts.push(fact(card.inbox_link, h("dd", {}, hh.link ? card.link_saved : card.no_link)));
+  const more = h("button", { type: "button", className: "icon-button card-more", "aria-label": words.icons.more_actions, "aria-haspopup": "menu" }, icon("more"));
+  setTip(more, words.icons.more_actions);
+  const popup = (x, y) => shellPopup("household", "crumb-household", x, y);
+  more.addEventListener("click", () => {
+    const box = more.getBoundingClientRect();
+    popup(box.left, box.bottom);
+  });
+  const node = h("div", { className: "household-card" }, h("dl", { className: "card-facts" }, ...facts), more);
+  node.addEventListener("contextmenu", (e) => {
+    e.preventDefault();
+    popup(e.clientX, e.clientY);
+  });
+  return node;
 }
 
 function pagesReturnSpecs(returns) {
@@ -1456,6 +1496,7 @@ function pagesReturnSpecs(returns) {
     // The form tag and the taxpayer, each once; the year is the heading
     // above the rows or the page's title (P195).
     return { name: pagesTaxpayer(one.return_name || pagesReturnName(one.path), one.form || ""), form: one.form || "", detail, status: said.text, tone: said.tone, date: "", menu: "return",
+             statusNext: true,
              waiting: waiting && !firm,
              nameLink: { kind: "return", path: one.path },
              step: { kind: "open", route: { level: "return", household: shellRoute.household, year: one.year, ret: one.path } } };
@@ -1466,17 +1507,23 @@ function pagesHousehold(route) {
   const words = screenWords();
   const hh = shellHousehold(route.household);
   if (!hh) return [];
-  const head = [pagesTitleFor(route), pagesCaption(pagesHouseholdCaption(route))];
+  // The H1, then the body: the card first (read first, in both forms), then the
+  // returns' list. The card and each year are built on their own, so one that
+  // cannot be built is named in a notice and the rest is drawn (P275).
+  const card = pagesSafe(hh.name, () => pagesHouseholdCard(route, hh));
+  let list;
   if (!hh.returns.length) {
     const add = h("button", { type: "button", className: "btn" }, vocab.menu.add_return);
     add.addEventListener("click", () => openAddReturn(hh));
-    return [...head, pagesEmpty(words.empty.returns, "", add)];
+    list = h("div", { className: "returns-list" }, pagesEmpty(words.empty.returns, "", add));
+  } else {
+    const years = [...new Set(hh.returns.map((one) => one.year))].sort((a, b) => b - a);
+    list = h("div", { className: "returns-list" }, ...years.flatMap((year, i) => pagesSafe(String(year), () => pagesGroup({
+      heading: String(year), first: i === 0,
+      blocks: [{ rows: pagesEach(pagesReturnSpecs(hh.returns.filter((one) => one.year === year)), (spec) => spec.name, pagesRow) }],
+    })) || []));
   }
-  const years = [...new Set(hh.returns.map((one) => one.year))].sort((a, b) => b - a);
-  return [...head, ...years.flatMap((year, i) => pagesSafe(String(year), () => pagesGroup({
-    heading: String(year), first: i === 0,
-    blocks: [{ rows: pagesEach(pagesReturnSpecs(hh.returns.filter((one) => one.year === year)), (spec) => spec.name, pagesRow) }],
-  })) || [])];
+  return [pagesTitleFor(route), h("div", { className: "household-body" }, h("div", { className: "household-layout" }, card, list))];
 }
 
 function pagesYear(route) {
@@ -1484,7 +1531,7 @@ function pagesYear(route) {
   if (!hh) return [];
   const title = pagesTitleFor(route);
   const specs = pagesReturnSpecs(hh.returns.filter((one) => one.year === route.year));
-  return [title, h("div", { className: "page-gap" }), pagesList({ labelledby: title.id }, pagesEach(specs, (spec) => spec.name, pagesRow))];
+  return [title, h("div", { className: "page-gap" }), h("div", { className: "returns-list" }, pagesList({ labelledby: title.id }, pagesEach(specs, (spec) => spec.name, pagesRow)))];
 }
 
 // ── Return (SPEC 6.7) ─────────────────────────────────────────────────

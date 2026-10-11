@@ -10752,3 +10752,28 @@ def test_the_sort_buttons_words_are_the_apis_and_its_tooltip_says_what_it_sorts(
     rows = _wording_rows()
     assert rows["sort.tip"][4] == sort["tip"]
     assert rows["sort.firm"][3] == "cut" and rows["sort.firm"][4] == ""
+
+
+# ── P271-P273, P275 (SPEC-ui-menu-layout) ────────────────────────────────
+
+def test_the_compact_rows_word_is_in_the_menu_and_the_wording_table():
+    """P271: View > Compact Rows is a check item with an access key; its word
+    is the API's and has a row in the wording table."""
+    assert api.MENU["compact_rows"] == "&Compact Rows"
+    assert _wording_rows()["compact_rows"][4] == api.MENU["compact_rows"]
+
+
+def test_the_household_card_words_are_in_the_screen_vocabulary_and_the_wording_table():
+    """P275: the household page's card is drawn from the API's five words (and
+    the existing Shared and Not Shared); the page types none. Each has a row in
+    the wording table, and Contact {name}, which nothing reads once the caption
+    is the card, is gone."""
+    screen = api._vocab()["screen"]
+    card = screen["household_card"]
+    assert card == {"contact": "Contact", "shared_with": "Shared With", "inbox_link": "Inbox Link", "link_saved": "Saved", "no_link": "Not Saved"}
+    assert screen["shared"] == "Shared" and screen["not_shared"] == "Not Shared"
+    assert "contact" not in screen, "screen.contact had no reader once the caption went (P275)"
+    rows = _wording_rows()
+    for key, said in card.items():
+        assert rows[f"household_card.{key}"][4] == said, key
+        assert len(said.split()) <= 5
