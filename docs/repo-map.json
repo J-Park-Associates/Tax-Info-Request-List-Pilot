@@ -15,9 +15,9 @@
     "a person sends the draft"
   ],
   "counts": {
-    "nodes": 270,
+    "nodes": 271,
     "edges": 1253,
-    "reused": 217
+    "reused": 209
   },
   "node_types": [
     "artifact",
@@ -135,8 +135,8 @@
       "id": "tracker/after_install.py",
       "type": "module",
       "layer": "core",
-      "sha256": "9e7ffe9b316a2292",
-      "lines": 1332,
+      "sha256": "97f0b89ef8adaec2",
+      "lines": 1358,
       "cli": "python -m tracker.after_install",
       "exports": [
         "ASKING_FOR_THE_TASK",
@@ -175,6 +175,7 @@
         "PREFERENCE_UNUSABLE",
         "QUERY_REFUSED",
         "QUERY_REFUSED_MAC",
+        "QUERY_REFUSED_SWITCHED",
         "REASONS",
         "REASON_LAUNCH",
         "REASON_REPAIR",
@@ -278,6 +279,7 @@
         "ASKING_FOR_THE_TASK": "'after_install: asking whether the scheduled task exists'",
         "QUERY_REFUSED": "'schtasks /query refused with exit code {code}; the step runs to register the task again'",
         "QUERY_REFUSED_MAC": "'launchctl print refused with exit code {code}; the step runs to register the agent again'",
+        "QUERY_REFUSED_SWITCHED": "'launchctl print found no agent (exit code {code}) while its file remains; read as the Login Items switch, and nothing is registered'",
         "INSTALLER_CODES_FLAG": "'--installer-codes'"
       },
       "role": "Every one-time step after installing or upgrading, in one function (decision 209, Jason's standing preference): run(reason) registers the schedule on the computer the designation file names (scheduling.schedule_decision) and runs decision 187's record check (store.check per record folder, store.gone_journals), then records what it did in after-install.json beside the store.",
@@ -2127,8 +2129,8 @@
       "id": "tracker/ocr.py",
       "type": "module",
       "layer": "core",
-      "sha256": "1053c85c1ca94d44",
-      "lines": 1356,
+      "sha256": "9e38bd3ae03241bd",
+      "lines": 1374,
       "cli": "python -m tracker.ocr",
       "exports": [
         "CHILD_EXIT_SECONDS",
@@ -3565,8 +3567,8 @@
       "id": "tracker/scheduling.py",
       "type": "module",
       "layer": "core",
-      "sha256": "ff32ddbdfb5c3977",
-      "lines": 1028,
+      "sha256": "e7f30874dfd0e551",
+      "lines": 1045,
       "cli": "python -m tracker.scheduling",
       "exports": [
         "APP_BUNDLE_ID",
@@ -4470,8 +4472,8 @@
       "id": "docs/runbook.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "ad241677a1ea5ffd",
-      "lines": 2868,
+      "sha256": "852d1f8019f2be1c",
+      "lines": 2871,
       "role": "The operator's page for one tax season: the designated machine and today's rule that only one may run a clients root, what a person does each morning and on the draft day, what every index reason and validation note means, and the thirty-minute move to another machine - on a Windows PC or on a Mac.",
       "notes": "Written for a person, not an agent. Roles are docs/workflow.md and the reasons behind the rules are docs/ROADMAP.md; it links to both rather than repeating them. The Mac is written as parallel paragraphs, not edits to the Windows text (SPEC-mac R34): section 1's `### On a Mac` (the heading the pass's own root-not-permitted reason points at) and two paragraphs in section 6 (moving to or from a Mac, taking the app off one). The one-machine rule is still stated once. tests/test_single_source.py quotes the app's sentences against it and holds the data folder's name to settings.DATA_HOME_NAME on both systems (the Windows lines once named a folder the app does not make)."
     },
@@ -4527,8 +4529,8 @@
       "id": "pilot/DECISIONS.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "a1b2b0112b039cc1",
-      "lines": 254
+      "sha256": "f3e8b28558fd7cd4",
+      "lines": 258
     },
     {
       "id": "pilot/HANDOFF.md",
@@ -4643,11 +4645,18 @@
       "lines": 451
     },
     {
+      "id": "pilot/SPEC-mac-rerun1-fixes.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "776fcebcc260b7f0",
+      "lines": 302
+    },
+    {
       "id": "pilot/SPEC-mac.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "9b89cbe642b0045a",
-      "lines": 963
+      "sha256": "e643e101f653fcab",
+      "lines": 966
     },
     {
       "id": "pilot/SPEC-rename.md",
@@ -4746,8 +4755,8 @@
       "id": "pilot/mactest/PROMPT.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "46e88ce6255a3e0c",
-      "lines": 392,
+      "sha256": "0886e78afc155dc8",
+      "lines": 398,
       "role": "The prompt for Claude Code on the test Mac (SPEC-mac R33): the safety rules, the run of pilot/mactest/run_checks.sh with the exact test files, and the hands-on steps H1-H14 with the buyer's walk as H2 and why each was chosen.",
       "notes": "Carries the proof items the Mac jobs' reviews left for a Mac under the step that matches them: job 1 in H2 steps 4-7 and 10 and H6, job 2 in H1, H2 steps 2-3 and H11, job 5 in H4, H7 and H8, job 6 in H3, H5, H9, H13 and H14, job 7 in H1 and H10. Its season builder (for H10's timing) is lifted and run by tests/test_pilot.py. The 60-minute figure H10 passes at is the kit's reading of P247's 'well inside' the two-hour slot, for Jason to change."
     },
@@ -5671,8 +5680,8 @@
       "id": "tests/test_after_install.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "5c78c2df0a97884e",
-      "lines": 1782,
+      "sha256": "50f4e708eaf4f277",
+      "lines": 1831,
       "exports": [
         "ELSEWHERE",
         "HERE",
@@ -5741,6 +5750,8 @@
         "test_a_tmutil_that_cannot_start_is_said_by_its_class",
         "test_a_tmutil_that_hangs_is_stopped_at_its_limit_as_an_os_error",
         "test_an_agent_macos_leaves_loaded_but_the_person_switched_off_is_told_and_not_re_registered",
+        "test_an_agent_macos_unloaded_but_whose_file_remains_is_the_persons_switch",
+        "test_an_agent_whose_file_is_gone_is_missing_not_switched_off",
         "test_an_os_error_in_the_record_check_is_said_by_class_and_kept_whole",
         "test_an_unreadable_choice_is_a_recorded_failure_and_no_task_is_registered",
         "test_an_unreadable_designation_changes_no_schedule",
@@ -7821,8 +7832,8 @@
       "id": "tests/test_ocr.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "a0493f80f0d8a07e",
-      "lines": 1023,
+      "sha256": "a0ac79802e4d9fe7",
+      "lines": 1067,
       "exports": [
         "A_PASS_BETWEEN_DOCUMENTS",
         "FakeEngine",
@@ -7848,6 +7859,7 @@
         "test_a_full_read_opens_no_socket_writes_no_temporary_file_and_fetches_nothing",
         "test_a_gpu_fault_switches_the_rest_of_the_pass_to_the_cpu",
         "test_a_library_past_the_limit_means_the_app_must_move",
+        "test_a_library_without_the_telemetry_switch_is_said_as_unavailable",
         "test_a_linux_childs_memory_is_its_resident_pages",
         "test_a_long_lived_reader_is_replaced_after_a_crash",
         "test_a_long_lived_reader_is_replaced_after_a_stop",
@@ -7871,8 +7883,10 @@
         "test_one_child_reads_every_document_of_a_pass_and_ends_with_it",
         "test_run_from_source_the_app_is_never_too_deep",
         "test_the_document_stop_ends_a_page_the_reader_never_finishes",
+        "test_the_graphics_cards_way_in_switches_telemetry_off_before_it_loads_anything",
         "test_the_lines_are_built_from_the_boxes_in_reading_order",
         "test_the_posix_watch_caps_a_child_the_way_the_job_object_does",
+        "test_the_reader_switches_its_librarys_telemetry_off_before_any_session",
         "test_the_reading_childs_job_caps_its_memory",
         "test_the_readings_own_stop_reads_the_awake_clock",
         "test_the_watch_does_not_stretch_a_readings_stop",
@@ -9150,8 +9164,8 @@
       "id": "tests/test_scheduling.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "c1b24bcbb18a1a63",
-      "lines": 879,
+      "sha256": "fb4b2bcc2b1183e3",
+      "lines": 906,
       "exports": [
         "ARGS",
         "NOW",
@@ -9212,6 +9226,7 @@
         "test_the_next_run_is_worked_out_from_the_start_the_interval_and_the_time",
         "test_the_packaged_job_is_the_same_command_line_behind_the_api_executable",
         "test_the_packaged_job_names_the_product_for_the_fill_and_the_source_job_does_not",
+        "test_the_probe_reads_both_signals",
         "test_the_scheduled_job_names_the_settings_folder_and_no_clients_root",
         "test_the_start_time_can_be_moved",
         "test_the_switch_in_login_items_is_read_from_print_disabled",

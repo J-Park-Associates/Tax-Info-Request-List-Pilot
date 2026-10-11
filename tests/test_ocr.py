@@ -161,6 +161,50 @@ def test_a_missing_model_means_the_reader_cannot_run_and_the_scan_waits(tmp_path
     assert "OCR is not installed" not in reading.reason
 
 
+def test_the_reader_switches_its_librarys_telemetry_off_before_any_session(monkeypatch):
+    """P263: ONNX Runtime's macOS wheel carries a telemetry client with an HTTP path, and nothing
+    in the reader's path talks to the network. Building the engine tells the library to send
+    none, once, before the logger is set and before any session is made. The models are real
+    and the build is real; only the library's two functions are recorders around the real ones."""
+    import onnxruntime
+
+    seen = []
+    real_severity = onnxruntime.set_default_logger_severity
+    monkeypatch.setattr(onnxruntime, "disable_telemetry_events", lambda: seen.append("telemetry off"))
+    monkeypatch.setattr(onnxruntime, "set_default_logger_severity",
+                        lambda level: seen.append("logger") or real_severity(level))
+
+    ocr._build_engine(cuda=False)
+
+    assert seen[:2] == ["telemetry off", "logger"] and seen.count("telemetry off") == 1
+
+
+def test_a_library_without_the_telemetry_switch_is_said_as_unavailable(monkeypatch):
+    """P263: a wheel that cannot be told to send nothing is not run; the reader says so, loudly,
+    like a missing import, and no engine is built."""
+    import onnxruntime
+
+    monkeypatch.delattr(onnxruntime, "disable_telemetry_events")
+
+    with pytest.raises(ocr.ReaderUnavailable, match="disable_telemetry_events"):
+        ocr._build_engine(cuda=False)
+
+
+def test_the_graphics_cards_way_in_switches_telemetry_off_before_it_loads_anything(monkeypatch, tmp_path):
+    """P263: the card's engine imports the library on its own path (``_on_the_card``), and the
+    switch is thrown there too, before the pack's libraries are loaded."""
+    import onnxruntime
+
+    loaded = []
+    monkeypatch.setattr(onnxruntime, "preload_dlls", lambda **kwargs: loaded.append(kwargs))
+    monkeypatch.delattr(onnxruntime, "disable_telemetry_events")
+
+    with pytest.raises(ocr.ReaderUnavailable, match="disable_telemetry_events"):
+        ocr._on_the_card(tmp_path)
+
+    assert loaded == []
+
+
 def test_the_lines_are_built_from_the_boxes_in_reading_order():
     """The seam of ruling 6 builds lines only: boxes on one line (centres
     within half a typical height) join left to right, lines run top to

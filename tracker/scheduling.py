@@ -668,15 +668,32 @@ def _remove_agent() -> bool:
     return loaded or there
 
 
-def agent_switched_off() -> bool:
+def agent_switched_off(unloaded: bool | None = None) -> bool:
     """Whether the person switched the agent off in System Settings > General >
-    Login Items > Allow in the Background, as ``launchctl print-disabled``
-    reports it (SPEC-mac R27). A switch is theirs: the after-install step
-    does not load the agent again over it. ``launchctl`` refusing the
+    Login Items > Allow in the Background (SPEC-mac R27). A switch is theirs:
+    the after-install step does not load the agent again over it.
+
+    Two signals, either of which is the switch. ``launchctl print-disabled``
+    lists the label as disabled: the rule R27 first asked, kept for a macOS
+    that says so. Or launchd no longer has the agent while its plist is still
+    where :func:`register_here` put it: on macOS 26 the switch unloads the
+    agent and leaves the file, while ``print-disabled`` keeps answering
+    ``enabled`` (re-run 1, kit step H5), so the first signal alone read the
+    switch as a missing agent and registered over it. An agent whose file is
+    gone is missing, not switched off - :func:`remove_task` unlinks the file,
+    so a schedule removed in the app is never read as the switch.
+
+    ``unloaded`` is what the caller already knows from :func:`task_query`
+    (its exit code was not 0); ``None`` asks ``task_query`` here, only when
+    ``print-disabled`` did not already answer. ``launchctl`` refusing a
     question raises ``RuntimeError``; one that cannot be started, ``OSError``."""
     completed = _launchctl(["launchctl", "print-disabled", _domain()])
     _raise_unless_done(completed, "launchctl could not list the switched-off items")
-    return bool(_DISABLED_LINE.search(completed.stdout or ""))
+    if _DISABLED_LINE.search(completed.stdout or ""):
+        return True
+    if unloaded is None:
+        unloaded = task_query() != 0
+    return unloaded and launch_agent_path().exists()
 
 
 def start_agent_now() -> list[str]:

@@ -630,7 +630,10 @@ schedule off for this app (System Settings > General > Login Items, Allow in
 the Background). Switch Tax Document Console back on there; the app cannot
 do it for you." Kit step H5 records whether `print-disabled` reflects that
 switch. If it does not, the last-pass line's existing amber (runner
-`LAST_PASS_OLD`) is the signal, and this R names that instead.
+`LAST_PASS_OLD`) is the signal, and this R names that instead. On macOS 26
+the switch unloads the agent and leaves its file while `print-disabled`
+still says enabled (re-run 1, H5), so an unloaded agent whose file remains
+is read as the switch.
 
 After registering on a program it has not run before, the step runs
 `launchctl kickstart gui/<uid>/<Label>` once. The first pass then runs while

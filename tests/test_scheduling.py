@@ -844,6 +844,33 @@ def test_the_switch_is_read_from_the_fake_launchd_too(a_mac):
         scheduling.agent_switched_off()
 
 
+def test_the_probe_reads_both_signals(a_mac, tmp_path):
+    """P260: the switch is either ``print-disabled`` listing the label, or an agent launchd no
+    longer has whose plist is still where the step put it (what macOS 26 leaves)."""
+    scheduling.register_here(tmp_path)
+    assert scheduling.launch_agent_path().is_file()
+    assert scheduling.agent_switched_off(unloaded=True) is True       # unloaded, file present
+    assert scheduling.agent_switched_off(unloaded=False) is False     # loaded: nothing switched
+    a_mac.launchd.switched_off = True                                 # print-disabled, file present
+    assert scheduling.agent_switched_off(unloaded=True) is True
+    assert scheduling.agent_switched_off(unloaded=False) is True
+    a_mac.launchd.switched_off = False
+    scheduling.launch_agent_path().unlink()
+    assert scheduling.agent_switched_off(unloaded=True) is False      # no file: missing, not the switch
+    a_mac.launchd.switched_off = True                                 # print-disabled, whatever the file
+    assert scheduling.agent_switched_off(unloaded=True) is True
+    assert scheduling.agent_switched_off(unloaded=False) is True
+
+    a_mac.launchd.switched_off = False
+    scheduling.register_here(tmp_path)
+    a_mac.launchd.loaded = False
+    a_mac.launchd.calls.clear()
+    assert scheduling.agent_switched_off() is True                    # no argument: it asks ``print`` itself
+    assert a_mac.launchd.verbs() == ["print-disabled", "print"]
+    a_mac.launchd.loaded = True
+    assert scheduling.agent_switched_off() is False
+
+
 def test_the_first_pass_is_started_with_launchctl_kickstart(a_mac, tmp_path):
     with pytest.raises(RuntimeError, match="could not start the first pass"):
         scheduling.start_agent_now()                  # nothing loaded: kickstart says so

@@ -7,9 +7,10 @@ models in ONNX form, run by ONNX Runtime - with the three models shipped
 inside the app (``rapidocr``'s own package folder, collected as data by
 ``api_entry.spec``). Nothing is downloaded, ever: every model is named by
 path, and rapidocr's own downloader is replaced by a refusal before any
-engine is built (:func:`_refuse_downloads`), so a missing or broken model is
-"the reader could not run on this machine" (``reasons.NO_TEXT_LAYER``,
-transient) and never a request to the network. Tesseract, which read
+engine is built (:func:`_refuse_downloads`), and the ONNX Runtime library is
+told to send no telemetry of its own (:func:`_telemetry_off`, P263), so a
+missing or broken model is "the reader could not run on this machine"
+(``reasons.NO_TEXT_LAYER``, transient) and never a request to the network. Tesseract, which read
 before this decision, is gone from the product.
 
 **Which device.** The app ships ``onnxruntime-gpu`` and not the NVIDIA
@@ -230,6 +231,21 @@ def _refuse_downloads() -> None:
     download_file.DownloadFile.run = classmethod(refused)
 
 
+def _telemetry_off(onnxruntime) -> None:
+    """Tell ONNX Runtime never to send its own telemetry (P263), the first
+    thing done with the module after it is imported and before any session
+    is made. The macOS wheel carries a telemetry client with an HTTP path
+    (re-run 1 of the Mac check saw it abort a child at exit), and nothing in
+    the reader's path talks to the network. A library without the switch is
+    a :class:`ReaderUnavailable`, said loudly like a missing import: none we
+    lock lacks it, and a silent skip would leave the client free to send."""
+    switch = getattr(onnxruntime, "disable_telemetry_events", None)
+    if switch is None:
+        raise ReaderUnavailable("onnxruntime has no disable_telemetry_events; "
+                                "the reader will not run with its telemetry on")
+    switch()
+
+
 def _build_engine(*, cuda: bool):
     """A RapidOCR engine on the models shipped with the app: SPEC-127.2X
     section 13 O1's defaults, and on the card the benchmark harness's
@@ -240,6 +256,7 @@ def _build_engine(*, cuda: bool):
         from rapidocr import RapidOCR
     except ImportError as exc:
         raise ReaderUnavailable(f"{errors.error_class(exc)}: {exc}") from exc
+    _telemetry_off(onnxruntime)
     _refuse_downloads()
     onnxruntime.set_default_logger_severity(3)
     folder = models_folder()
@@ -300,6 +317,7 @@ def _on_the_card(pack: Path):
     session on CUDA, and the self-test read. Raises with the reason."""
     import onnxruntime
 
+    _telemetry_off(onnxruntime)
     # preload_dlls prints what it could not load; the reason goes in the
     # run log, not on a console nobody reads.
     printed = io.StringIO()

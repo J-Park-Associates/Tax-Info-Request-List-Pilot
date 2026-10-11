@@ -1037,21 +1037,26 @@ def launch() -> AfterInstall | None:
         return _busy(REASON_LAUNCH, str(busy))
 
 
-def _switched_off(record: dict | None) -> bool:
+def _switched_off(record: dict | None, unloaded: bool | None = None) -> bool:
     """Whether the launch should leave a Mac's schedule alone because the
     person switched it off (SPEC-mac R27). On a Mac only; on the computer the
     designation names and whose saved choice is on; one whose last run
-    registered the schedule (or found it switched off); and ``launchctl
-    print-disabled`` lists the agent as disabled. Registering over a switch
-    would be refused by macOS, and a person's switch is theirs - so the step
+    registered the schedule (or found it switched off); and the agent is
+    switched off by either signal of
+    :func:`tracker.scheduling.agent_switched_off`: ``launchctl print-disabled``
+    lists it as disabled, or launchd no longer has it while its file is still
+    where the step put it (what macOS 26 does for the Login Items switch,
+    kit step H5). Registering over a switch would be refused by macOS or
+    would turn it back on, and a person's switch is theirs - so the step
     runs without the schedule job and says :data:`SCHEDULE_SWITCHED_OFF`, at
-    every start, until the switch is turned back on.
+    every start, until the switch is turned back on (macOS then loads the
+    agent) or Repair, the deliberate re-run, registers over it.
 
-    A ``launchctl`` that cannot answer the question is kept on the error log
-    and is not "switched off": the step runs, and its own ``launchctl`` says
-    what is wrong. **Kit step H5 records whether ``print-disabled`` reflects
-    the Login Items switch;** if it does not, the last-pass line's amber
-    (``runner.LAST_PASS_OLD``) is the signal (R27)."""
+    ``unloaded`` is what the caller already asked launchd (:func:`_task_missing`
+    has the exit code of its ``launchctl print``); ``None`` lets the probe
+    ask. A ``launchctl`` that cannot answer the question is kept on the error
+    log and is not "switched off": the step runs, and its own ``launchctl``
+    says what is wrong."""
     if settings.host_system() != "darwin" or record is None:
         return False
     if record.get("schedule") not in scheduling.REGISTERING | {SWITCHED_OFF_KEY}:
@@ -1063,7 +1068,7 @@ def _switched_off(record: dict | None) -> bool:
             and preference.enabled):
         return False
     try:
-        return scheduling.agent_switched_off()
+        return scheduling.agent_switched_off(unloaded)
     except (RuntimeError, OSError) as exc:
         errors.keep(ASKING_FOR_THE_TASK, exc)
         return False
@@ -1102,7 +1107,18 @@ def _task_missing(record: dict) -> bool:
     ``schtasks`` then says it as :func:`schedule_unreachable`. A query that
     is refused keeps its exit code on the error log, once per start (the
     engine review's NIT-2), so a task registered again at every start has
-    its reason written down."""
+    its reason written down.
+
+    On a Mac "missing" is not always registered again (SPEC-mac R27, P260).
+    An unloaded agent (``launchctl print`` not 0) runs the step, and the
+    launch then reads it as the person's Login Items switch when its file is
+    still where the step put it (:func:`_switched_off`), registering nothing
+    and saying :data:`SCHEDULE_SWITCHED_OFF`; only an agent whose file is
+    gone is registered again. The error log says which
+    (:data:`QUERY_REFUSED_SWITCHED`, else :data:`QUERY_REFUSED_MAC`). An
+    agent still loaded is passed on as ``unloaded=False``, so only
+    ``print-disabled`` is asked of it, and a start that changed nothing is
+    exactly two questions."""
     if record.get("schedule") not in scheduling.REGISTERING:
         return False
     try:
@@ -1111,11 +1127,16 @@ def _task_missing(record: dict) -> bool:
         errors.keep(ASKING_FOR_THE_TASK, exc)
         return True
     if code:
-        errors.keep(ASKING_FOR_THE_TASK, query_refused().format(code=code))
+        read_as_the_switch = settings.host_system() == "darwin" and scheduling.launch_agent_path().exists()
+        errors.keep(ASKING_FOR_THE_TASK,
+                    (QUERY_REFUSED_SWITCHED if read_as_the_switch else query_refused()).format(code=code))
     # On a Mac the agent a person switched off under Login Items counts as
     # missing too, whether or not macOS left it loaded (SPEC-mac R27): the
-    # launch then says so and registers nothing (:func:`_switched_off`).
-    return code != 0 or _switched_off(record)
+    # launch then says so and registers nothing (:func:`_switched_off`, which
+    # is told what this ``print`` already answered: an unloaded one has
+    # already answered True here, so only a loaded agent is passed on, and
+    # the launch asks again).
+    return code != 0 or _switched_off(record, unloaded=False)
 
 
 #: Where the launch's question to Task Scheduler is said on the error log.
@@ -1124,6 +1145,11 @@ ASKING_FOR_THE_TASK = "after_install: asking whether the scheduled task exists"
 QUERY_REFUSED = "schtasks /query refused with exit code {code}; the step runs to register the task again"
 #: The same on a Mac, where the question is ``launchctl print`` (SPEC-mac R27).
 QUERY_REFUSED_MAC = "launchctl print refused with exit code {code}; the step runs to register the agent again"
+#: The same on a Mac when the agent's file remains: the launch reads an unloaded agent
+#: whose file is still there as the person's Login Items switch (SPEC-mac R27, P260),
+#: so it does not say the step registers it again.
+QUERY_REFUSED_SWITCHED = ("launchctl print found no agent (exit code {code}) while its file remains; "
+                          "read as the Login Items switch, and nothing is registered")
 
 
 def query_refused() -> str:
