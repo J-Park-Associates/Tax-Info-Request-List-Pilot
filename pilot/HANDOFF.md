@@ -32,13 +32,18 @@ Mac check of 2026-10-10, built and landed on `claude/trusting-tesla-or0wm2`
 3. The Mac check kit reads the run log's summary line, the sample pile gains
    a macro workbook, an email and a zip, and the prompt says what the app
    shows and what to record when a session's rules deny a folder (P258).
+4. Jason's rulings on the SPEC's questions: Details open on the setup page;
+   the household pause, the prior-year feed and the reader warning show
+   their sentences under Details (P259).
 
 What has not run: the next Mac check. Its list is the SPEC's "Not in this
 SPEC" paragraph - the two Gatekeeper steps, the overnight run, a real Google
 Drive folder, step 10 with the three new files, step 13, and H4-H10 named in
 the prompt - plus the two cosmetic CSS points the review left (a notice with
 Details has a shorter first line than its neighbours; Tab reaches Details
-before Dismiss). The SPEC's Q1-Q4 are built as recommended and wait on Jason.
+before Dismiss). Jason decided the SPEC's Q1-Q4 on 2026-10-11 (P259): Q1 stays
+as built; Q2-Q4 landed as job 3, Details open on the setup page and the
+pause, feed and reader sentences under Details.
 
 `SPEC-cleanup.md` (P231-P237) landed before this in pull request #33.
 

@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 269,
     "edges": 1253,
-    "reused": 210
+    "reused": 216
   },
   "node_types": [
     "artifact",
@@ -4534,8 +4534,8 @@
       "id": "pilot/HANDOFF.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "c86fd6b858a1d0eb",
-      "lines": 81
+      "sha256": "517ef19031a5cd4d",
+      "lines": 86
     },
     {
       "id": "pilot/README.md",
@@ -4639,8 +4639,8 @@
       "id": "pilot/SPEC-mac-check-fixes.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "0cc803785dd3dd4e",
-      "lines": 450
+      "sha256": "aa2d83510e490ebb",
+      "lines": 451
     },
     {
       "id": "pilot/SPEC-mac.md",
