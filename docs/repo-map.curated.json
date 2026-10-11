@@ -216,11 +216,12 @@
       "role": "How the day-to-day workflow runs."
     },
     "docs/runbook.md": {
-      "role": "The operator's page for one tax season: the designated machine and today's rule that only one may run a clients root, what a person does each morning and on the draft day, what every index reason and validation note means, and the thirty-minute move to another machine.",
-      "notes": "Written for a person, not an agent. Roles are docs/workflow.md and the reasons behind the rules are docs/ROADMAP.md; it links to both rather than repeating them."
+      "role": "The operator's page for one tax season: the designated machine and today's rule that only one may run a clients root, what a person does each morning and on the draft day, what every index reason and validation note means, and the thirty-minute move to another machine - on a Windows PC or on a Mac.",
+      "notes": "Written for a person, not an agent. Roles are docs/workflow.md and the reasons behind the rules are docs/ROADMAP.md; it links to both rather than repeating them. The Mac is written as parallel paragraphs, not edits to the Windows text (SPEC-mac R34): section 1's `### On a Mac` (the heading the pass's own root-not-permitted reason points at) and two paragraphs in section 6 (moving to or from a Mac, taking the app off one). The one-machine rule is still stated once. tests/test_single_source.py quotes the app's sentences against it and holds the data folder's name to settings.DATA_HOME_NAME on both systems (the Windows lines once named a folder the app does not make)."
     },
     "README.md": {
-      "role": "What the system is, how to run each stage, and how to set it up. Who does what is docs/workflow.md."
+      "role": "What the system is, how to run each stage, and how to set it up on a PC or a Mac. Who does what is docs/workflow.md.",
+      "notes": "Names the product in its title only (a test holds that), so the Mac floor is said as 'the app needs a Mac with Apple silicon running macOS 14 or later'; tests/test_single_source.py pins those words to settings.MAC_FLOOR (SPEC-mac R35). PRODUCT.md says it too, with the program's name."
     },
     "requirements.txt": {
       "role": "Runtime and dev dependencies, pinned exactly (a guard refuses a range), including the reader's runtime closure (decision 169) - rapidocr itself is in requirements-nodeps.txt. The human-edited list of direct pins: nothing installs it directly; every install reads requirements.lock, the whole tree by version and by SHA-256 (decision 191).",

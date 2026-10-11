@@ -6,9 +6,11 @@
 
 web
 
-A Windows desktop app: an Electron window around plain HTML, CSS and
-JavaScript, with a Python engine behind it. The design language is web, tuned
-to Windows (Segoe UI, Windows contrast themes, a real menu bar).
+A desktop app for Windows and for the Mac: an Electron window around plain
+HTML, CSS and JavaScript, with a Python engine behind it. The design language
+is web, tuned to Windows (Segoe UI, Windows contrast themes, a real menu bar).
+Tax Document Console needs a Mac with Apple silicon running macOS 14 or later,
+and the Mac gets it as a `.dmg` disk image to drag onto Applications.
 
 ## Users
 
@@ -34,8 +36,9 @@ a client document, and nothing is ever sent.
 
 ## Operating Context
 
-Windows PCs in the office, one of which runs the schedule. Client folders live
-on a Google Drive Shared Drive synced to the PC. Households hold tax years;
+Windows PCs or Macs in the office, one of which runs the schedule (one machine
+per clients root). Client folders live on a Google Drive Shared Drive synced to
+that machine. Households hold tax years;
 years hold returns (1040, 1120, 1120-S, 1065, 1041, 990). Remote Desktop use is
 common, so the screen must stay fast without a graphics card.
 

@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 262,
     "edges": 1247,
-    "reused": 209
+    "reused": 205
   },
   "node_types": [
     "artifact",
@@ -4425,16 +4425,17 @@
       "id": "PRODUCT.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "bee7697cbdebb6ab",
-      "lines": 74
+      "sha256": "c2fdc95faaf0981c",
+      "lines": 77
     },
     {
       "id": "README.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "2c16ac370baf83a8",
-      "lines": 587,
-      "role": "What the system is, how to run each stage, and how to set it up. Who does what is docs/workflow.md."
+      "sha256": "920986dc530b7ae1",
+      "lines": 598,
+      "role": "What the system is, how to run each stage, and how to set it up on a PC or a Mac. Who does what is docs/workflow.md.",
+      "notes": "Names the product in its title only (a test holds that), so the Mac floor is said as 'the app needs a Mac with Apple silicon running macOS 14 or later'; tests/test_single_source.py pins those words to settings.MAC_FLOOR (SPEC-mac R35). PRODUCT.md says it too, with the program's name."
     },
     {
       "id": "docs/ROADMAP.md",
@@ -4458,8 +4459,8 @@
       "id": "docs/repo-map.curated.json",
       "type": "file",
       "layer": "docs",
-      "sha256": "3a421b617ac227a1",
-      "lines": 1238,
+      "sha256": "98225ef316c1c419",
+      "lines": 1239,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
     },
@@ -4467,10 +4468,10 @@
       "id": "docs/runbook.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "26249a1e4330931d",
-      "lines": 2712,
-      "role": "The operator's page for one tax season: the designated machine and today's rule that only one may run a clients root, what a person does each morning and on the draft day, what every index reason and validation note means, and the thirty-minute move to another machine.",
-      "notes": "Written for a person, not an agent. Roles are docs/workflow.md and the reasons behind the rules are docs/ROADMAP.md; it links to both rather than repeating them."
+      "sha256": "69596b85cb620e94",
+      "lines": 2844,
+      "role": "The operator's page for one tax season: the designated machine and today's rule that only one may run a clients root, what a person does each morning and on the draft day, what every index reason and validation note means, and the thirty-minute move to another machine - on a Windows PC or on a Mac.",
+      "notes": "Written for a person, not an agent. Roles are docs/workflow.md and the reasons behind the rules are docs/ROADMAP.md; it links to both rather than repeating them. The Mac is written as parallel paragraphs, not edits to the Windows text (SPEC-mac R34): section 1's `### On a Mac` (the heading the pass's own root-not-permitted reason points at) and two paragraphs in section 6 (moving to or from a Mac, taking the app off one). The one-machine rule is still stated once. tests/test_single_source.py quotes the app's sentences against it and holds the data folder's name to settings.DATA_HOME_NAME on both systems (the Windows lines once named a folder the app does not make)."
     },
     {
       "id": "docs/storage.md",
@@ -4517,8 +4518,8 @@
       "id": "pilot/DECISIONS.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "e61102d38420c679",
-      "lines": 248
+      "sha256": "e4c98e053b04623d",
+      "lines": 249
     },
     {
       "id": "pilot/HANDOFF.md",
@@ -9606,8 +9607,8 @@
       "id": "tests/test_single_source.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "cbfbc791a914b58f",
-      "lines": 4895,
+      "sha256": "513614f6455a3e7b",
+      "lines": 4945,
       "exports": [
         "AFTER_WHAT",
         "CONSOLE_EXEMPT",
@@ -9717,6 +9718,7 @@
         "test_the_command_center_is_gone_from_everything_but_the_decision_log",
         "test_the_deny_list_never_refuses_a_persons_own_folder_that_shares_a_client_folders_name",
         "test_the_documents_list_the_forms_the_catalog_has",
+        "test_the_documents_state_the_mac_floor_in_the_words_of_the_sentence_the_app_shows",
         "test_the_editor_opens_on_the_state_on_screen",
         "test_the_editor_opens_on_the_state_on_screen_with_every_fold_closed",
         "test_the_editor_set_aside_fold_draws_each_group_as_elements",
@@ -9779,6 +9781,7 @@
         "test_the_runbook_sends_no_one_to_open_a_file_themselves",
         "test_the_runbook_status_table_is_the_label_table",
         "test_the_runbooks_189_sentence_is_rewritten",
+        "test_the_runbooks_mac_paragraphs_quote_the_sentences_the_app_shows_and_name_the_places_the_code_owns",
         "test_the_safeguards_are_the_standing_rules_in_one_short_line_each",
         "test_the_scan_buttons_label_is_typed_nowhere_in_the_renderer",
         "test_the_setup_card_names_no_retired_word",

@@ -4893,3 +4893,53 @@ def test_the_last_counts_are_an_early_read_only_command_the_api_answers():
     last_of = shell_js[shell_js.index("function shellLastOf(reply) {"):]
     last_of = last_of[:last_of.index("\n}\n")]
     assert "reply.last !== true" in last_of and "reply.as_of" in last_of
+
+
+# ------------------------------ SPEC-mac R34, R35: the documents say a Mac's words ----
+
+def _prose(rel: str) -> str:
+    """A document's text on one line, so a sentence wrapped over lines is found."""
+    return " ".join(read(rel).split())
+
+
+def test_the_documents_state_the_mac_floor_in_the_words_of_the_sentence_the_app_shows():
+    """R35 (P243): the product page and the README state the floor in one
+    sentence and name the ``.dmg``; the words after the program's name are
+    ``settings.MAC_FLOOR``'s own, so the day the floor moves the documents
+    fail until they follow. The runbook quotes the whole refusal."""
+    from tracker.settings import MAC_FLOOR, product_name
+
+    floor = MAC_FLOOR.split("{product}", 1)[1].split(";", 1)[0]
+    assert floor == " needs a Mac with Apple silicon running macOS 14 or later"
+    for rel in ("PRODUCT.md", "README.md"):
+        text = _prose(rel)
+        assert text.count(floor) == 1, rel
+        assert "`.dmg`" in text, rel
+    assert MAC_FLOOR.format(product=product_name(), what="...") in _prose("docs/runbook.md")
+
+
+def test_the_runbooks_mac_paragraphs_quote_the_sentences_the_app_shows_and_name_the_places_the_code_owns():
+    """R34: the Mac paragraphs of the runbook, under the heading the pass's own
+    reason points at (``runbook, 'On a Mac'``), quote the app's sentences word for
+    word and name the folders the code names - the data folder by
+    ``DATA_HOME_NAME`` on both systems (the Windows lines said
+    ``tax-document-tracker``; the folder is the pilot's), the settings folder by
+    the product name, the agent by its label."""
+    from tracker import after_install, api, runner, scheduling, settings
+
+    runbook = read("docs/runbook.md")
+    assert runbook.count("### On a Mac\n") == 1 and "'On a Mac'" in runner.PASS_REASONS[runner.PASS_ROOT_NOT_PERMITTED]
+    mac = _prose("docs/runbook.md")
+    for sentence in (api.PROTECTED_VIEW_MAC, after_install.TIME_MACHINE_EXCLUDED, after_install.SCHEDULE_REMOVED_FROM_MAC,
+                     after_install.SCHEDULE_SWITCHED_OFF.format(product=settings.product_name()),
+                     runner.PASS_REASONS[runner.PASS_ROOT_NOT_PERMITTED].split(" (runbook")[0]):
+        assert sentence in mac, sentence
+    for place in (f"~/Library/Application Support/{settings.DATA_HOME_NAME}",
+                  f"~/Library/Application Support/{settings.product_name()}",
+                  f"~/Library/LaunchAgents/{scheduling.LAUNCH_AGENT_LABEL}.plist",
+                  f"launchctl bootout gui/$(id -u)/{scheduling.LAUNCH_AGENT_LABEL}"):
+        assert place in mac, place
+    assert f"~/Library/Application Support/{settings.EARLIER_PRODUCT_NAME}/error.log" in mac
+    # Section 8, item 13 of the SPEC: the Windows lines named a folder the app does not make.
+    assert re.findall(r"%LOCALAPPDATA%\\tax-document-tracker(?!-pilot)", runbook) == []
+    assert f"%LOCALAPPDATA%\\{settings.DATA_HOME_NAME}" in runbook

@@ -624,8 +624,9 @@ tracker.api / create → tracker.scaffold → client drops into the household in
 - **`CLAUDE.md`** — Agent entry point. Says to read the map instead of re-scanning, how to keep it current, and the standing rules that hold across every module.
   - documents: `tools/backtest.py`, `tools/learned_keywords.py`, `tools/repo_map.py`, `tools/vocab_report.py`
   - note: Points at docs/repo-map.md as the first thing to read in a session.
-- **`README.md`** — What the system is, how to run each stage, and how to set it up. Who does what is docs/workflow.md.
+- **`README.md`** — What the system is, how to run each stage, and how to set it up on a PC or a Mac. Who does what is docs/workflow.md.
   - documents: `tracker/runner.py`
+  - note: Names the product in its title only (a test holds that), so the Mac floor is said as 'the app needs a Mac with Apple silicon running macOS 14 or later'; tests/test_single_source.py pins those words to settings.MAC_FLOOR (SPEC-mac R35). PRODUCT.md says it too, with the program's name.
 - **`docs/ROADMAP.md`** — The build plan, the hard constraints and the decision log. Every component, all built and tested.
   - documents: `tracker/__init__.py`
   - note: The decision log is the record of WHY: read it before changing behaviour that looks arbitrary.
@@ -635,8 +636,8 @@ tracker.api / create → tracker.scaffold → client drops into the household in
 - **`docs/repo-map.curated.json`** — The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.
   - read by: `tools/repo_map.py`
   - note: Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand.
-- **`docs/runbook.md`** — The operator's page for one tax season: the designated machine and today's rule that only one may run a clients root, what a person does each morning and on the draft day, what every index reason and validation note means, and the thirty-minute move to another machine.
-  - note: Written for a person, not an agent. Roles are docs/workflow.md and the reasons behind the rules are docs/ROADMAP.md; it links to both rather than repeating them.
+- **`docs/runbook.md`** — The operator's page for one tax season: the designated machine and today's rule that only one may run a clients root, what a person does each morning and on the draft day, what every index reason and validation note means, and the thirty-minute move to another machine - on a Windows PC or on a Mac.
+  - note: Written for a person, not an agent. Roles are docs/workflow.md and the reasons behind the rules are docs/ROADMAP.md; it links to both rather than repeating them. The Mac is written as parallel paragraphs, not edits to the Windows text (SPEC-mac R34): section 1's `### On a Mac` (the heading the pass's own root-not-permitted reason points at) and two paragraphs in section 6 (moving to or from a Mac, taking the app off one). The one-machine rule is still stated once. tests/test_single_source.py quotes the app's sentences against it and holds the data folder's name to settings.DATA_HOME_NAME on both systems (the Windows lines once named a folder the app does not make).
 - **`docs/storage.md`** — The storage plan in prose: the three words (the record, the ledger, the store) and what each means, why the journal syncs with the engagement folder and the database does not, the journal-then-apply order, the schema table, the edit as the event the rules travel in, rebuild as recovery, the check as the gate, what the store is now and the later rules that hold (the working copy proved each pass, un-learning, the override reason, the applied chain), and (decision 107) why the verdict cache is in the store and not in the record.
   - documents: `tracker/ledger.py`, `tracker/store.py`
   - note: Written with decision 101 and finished with 104. It is the page to read before touching storage. The stage-by-stage history of decisions 101 to 104 is not here: the page says what the store is now and points at the decision log for how it got there.

@@ -323,7 +323,7 @@ and in the packaged app with its own executable, which runs the job when
 given `--run` first (there is no Python on that machine). It registers the
 job only on the computer that runs the schedule: the one named in
 `J Park & Associates\_Scheduling computer.txt` under the clients root,
-which the first Windows computer to set the root claims; any other
+which the first computer to set the root claims; any other
 computer registers none and removes its own. The app's
 **Repair the Schedule** runs the step again, for a job that was deleted or broken; when
 another computer runs the schedule it offers to move it to this one, which
@@ -373,8 +373,8 @@ How a season is actually run on the firm's one machine — the morning pass,
 the draft day, what the index's reasons mean, and what to do if that machine
 dies — is [docs/runbook.md](docs/runbook.md).
 
-The schedule is a Windows Task Scheduler entry on the designated machine,
-and it is a default, not a cage:
+The schedule is a Windows Task Scheduler entry on the designated machine
+(on a Mac, a launchd agent that the same step registers), and it is a default, not a cage:
 
 | | |
 |---|---|
@@ -525,6 +525,17 @@ copy.
 
 ## Setup
 
+**The app needs a Mac with Apple silicon running macOS 14 or later**,
+or a Windows PC. A Mac is the practice's one machine, as the PC is (docs/runbook.md
+§1, "On a Mac"): it comes as one `.dmg` disk image
+(`Tax-Document-Console-<version>-mac-arm64.dmg`, built by `build-mac.sh` with its
+SHA-256 beside it) that is opened and dragged onto Applications. The test build is
+not yet signed by Apple, so macOS asks once to be told **Open Anyway** (System
+Settings, Privacy & Security); signing removes that step (SPEC-mac, P239). From
+source on a Mac, `setup.command` does what `Setup.bat` does, and `start.command`
+what `Start App.bat` does. `pilot/mactest/` is the check a Mac passes before it is
+trusted with a season.
+
 On the office's Windows machine, double-click `Setup.bat` once (it needs
 the internet): it makes the app's own private Python in `.venv` beside it,
 installs the locked packages into it, installs Electron with `npm ci`, and
@@ -564,8 +575,8 @@ test starts, reaches one of them (decision 185).
 `Start App.bat` runs the desktop app from source (Python (the floor is `requires-python` in `pyproject.toml`) and Node
 installed, and `Setup.bat` run once); it installs nothing and starts
 offline, and says in one sentence when `Setup.bat` must run again because
-the lock files changed. `Build App.bat` packages it as `<productName>.exe` (the name in `app/package.json`) for a
-machine with neither. Both are reproducible from the commit: the Python
+the lock files changed (on a Mac, `start.command` and `setup.command`). `Build App.bat` packages it as `<productName>.exe` (the name in `app/package.json`) for a
+machine with neither (on a Mac, `build-mac.sh` makes the `.dmg`). Both are reproducible from the commit: the Python
 packages are locked by hash in `requirements.lock` and
 `requirements-build.lock`, the
 Electron packages in `app/package-lock.json` (installed with `npm ci`), and
