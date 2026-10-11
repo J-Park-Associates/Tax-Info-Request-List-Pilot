@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 262,
     "edges": 1247,
-    "reused": 210
+    "reused": 209
   },
   "node_types": [
     "artifact",
@@ -4458,8 +4458,8 @@
       "id": "docs/repo-map.curated.json",
       "type": "file",
       "layer": "docs",
-      "sha256": "b3b9c757d85851f0",
-      "lines": 1234,
+      "sha256": "3a421b617ac227a1",
+      "lines": 1238,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
     },
@@ -6481,13 +6481,14 @@
       "id": "tests/test_content_check.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "f10f54d08437f0dd",
-      "lines": 2790,
+      "sha256": "a79130ee4f3f76ee",
+      "lines": 2909,
       "exports": [
         "A_PASS_READING",
         "BOMB_REFUSED",
         "CRASHED",
         "MARKER",
+        "PROC",
         "STOPPED",
         "STOP_IN_TESTS",
         "TWO_PAGE_W2",
@@ -6503,6 +6504,7 @@
         "no_child_left",
         "page_tree_bomb",
         "photo",
+        "process_state",
         "replace_seconds",
         "running",
         "saved",
@@ -6511,6 +6513,7 @@
         "test_a_cache_with_no_engagement_never_touches_the_store",
         "test_a_cached_verdict_starts_no_child",
         "test_a_catastrophic_date_pattern_costs_one_stop_and_the_next_pass_takes_the_kept_verdict",
+        "test_a_child_this_test_started_is_asked_by_waitpid_and_reaped_when_it_has_ended",
         "test_a_date_pattern_runs_line_by_line_and_skips_lines_over_the_limit",
         "test_a_deep_any_keyword_says_it_was_deep_and_which_page",
         "test_a_document_does_not_ask_for_itself",
@@ -6529,6 +6532,7 @@
         "test_a_keyword_may_name_alternatives_and_the_words_one_of_them_wants_together",
         "test_a_keywords_words_are_on_one_line_or_wrap_as_a_heading",
         "test_a_long_text_file_is_read_to_the_cap_and_says_so",
+        "test_a_mac_asks_ps_and_reads_its_state_letters_not_proc",
         "test_a_menu_line_names_neither_the_form_nor_its_title",
         "test_a_one_line_workbook_parks_within_the_stop_and_never_stalls_the_pass",
         "test_a_page_is_handed_to_the_reader_as_it_comes_and_never_turned",
@@ -6560,6 +6564,7 @@
         "test_a_verdict_row_at_another_cache_version_is_ignored_and_dropped_on_save",
         "test_a_workbook_packed_with_bzip2_is_never_unpacked",
         "test_a_workbook_reads_to_the_budget_and_says_it_was_cut",
+        "test_a_zombie_has_ended_and_a_live_process_has_not_whichever_way_the_system_is_asked",
         "test_an_ocr_reading_is_cut_to_the_budget_and_says_so",
         "test_an_open_test_that_never_returns_is_stopped",
         "test_any_keywords",
@@ -6608,7 +6613,9 @@
         "BOMB_REFUSED": "'(LimitReachedError)'",
         "A_PASS_READING": "'\\nimport sys\\nfrom pathlib import Path\\nsys.path[:0] = [sys.argv[3]]\\nfrom tests import child_readers\\nfrom tracker import content_check, ocr\\ncontent_check._CHILD_READER = child_readers.a_reader_that_starts_a_reader_of_its_own\\nif sys.argv[2] == \"lifeline\":\\n    ocr._kill_on_close_job = lambda pid, **_limits: None\\ncontent_check.judge_bounded(Path(sys.argv[1]), content_check.Questions())\\n'",
         "MARKER": "'Quendrilvax'"
-      }
+      },
+      "role": "Tests for the content check: the rules, the verdict cache, the reading child's stops and what it leaves behind.",
+      "notes": "Its process helper `running(pid)` asks whether a process has ended without reading anything Linux-only (SPEC-mac R36): a zombie has ended, and where there is no /proc - a Mac - the state comes from `ps -o stat=` through the seam `PROC`, which a test points at a place that is not there to stand in for a Mac; a child the test started itself is asked by `os.waitpid(pid, WNOHANG)` (`own_child=True`). Before this a Mac took every zombie for a live process and each wait-for-the-child test waited out its fifteen seconds."
     },
     {
       "id": "tests/test_door.py",

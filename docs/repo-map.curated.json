@@ -562,6 +562,10 @@
     "tests/test_pilot.py": {
       "role": "The pilot edition's badge, terms and wording, and both check kits: the Windows script's helpers run in PowerShell 5.1 where there is one, and the Mac kit's script, prompt and template (SPEC-mac R33).",
       "notes": "Mac kit tests run on Linux: the script's helpers are lifted by their BEGIN/END markers and run in real bash, and the whole script is run with a PATH of stand-in uname, sw_vers, sysctl and xcode-select so every stop (Intel, Rosetta, macOS 13, a missing tool, a typo in --tests) is proved without a Mac. A test that runs the script to its end on a real Mac would build, so each one stops it early by design."
+    },
+    "tests/test_content_check.py": {
+      "role": "Tests for the content check: the rules, the verdict cache, the reading child's stops and what it leaves behind.",
+      "notes": "Its process helper `running(pid)` asks whether a process has ended without reading anything Linux-only (SPEC-mac R36): a zombie has ended, and where there is no /proc - a Mac - the state comes from `ps -o stat=` through the seam `PROC`, which a test points at a place that is not there to stand in for a Mac; a child the test started itself is asked by `os.waitpid(pid, WNOHANG)` (`own_child=True`). Before this a Mac took every zombie for a live process and each wait-for-the-child test waited out its fifteen seconds."
     }
   },
   "edges": [
