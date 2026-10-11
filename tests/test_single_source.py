@@ -547,17 +547,18 @@ def test_the_side_panel_names_the_product_from_its_one_home():
     assert product_name() not in read("tracker/api.py")
 
 
-def test_the_version_is_0_3_in_the_badge_and_the_release_steps():
-    """P140: the version moves to 0.3 once - the badge, and with it Help >
-    About and the installer's name - and the release steps are 0.3's, with
-    the tag pilot-0.3 and no 0.2 tag."""
+def test_the_version_is_0_4_in_the_badge_and_the_release_steps():
+    """P140, P281: the version is written once - the badge, and with it Help >
+    About and the installer's name - and the release steps are the same
+    version's, with its tag and no 0.2 tag. 0.3 became 0.4 for the UI review's
+    work (P281)."""
     content = read("app/renderer/pilot-content.js")
     pilot = json.loads(content.split("// PILOT-CONTENT-BEGIN", 1)[1].split("// PILOT-CONTENT-END", 1)[0])
-    assert pilot["edition"]["version"] == "0.3"
+    assert pilot["edition"]["version"] == "0.4"
     release = read("pilot/RELEASE.md")
-    assert release.splitlines()[0] == "# Pilot 0.3 - release steps"
-    assert "git tag pilot-0.3 && git push origin pilot-0.3" in release
-    assert "Tax-Document-Console-Setup-0.3.exe" in release
+    assert release.splitlines()[0] == "# Pilot 0.4 - release steps"
+    assert "git tag pilot-0.4 && git push origin pilot-0.4" in release
+    assert "Tax-Document-Console-Setup-0.4.exe" in release
     assert "There is no 0.2 tag" in " ".join(release.split())
     assert "pilot-0.2" not in release
 

@@ -2431,7 +2431,7 @@ def test_the_four_dialogs_draw_the_apis_words_and_never_a_path(tmp_path):
       const opened = []; const openDialog = (id) => opened.push(id); const logged = [];
       const window = { tracker: { logError: (t) => logged.push(t) } };
       const fill = (p, v) => p.replace(/\{(\w+)\}/g, (_, k) => v[k] ?? "");
-      const PILOT = { edition: { version: "0.3" } };
+      const PILOT = { edition: { version: "0.4" } };
       let misfits = [{ path: "/abs/Clients/Old Files", where: "Clients/Old Files", sentence: "This folder is not a household and is left alone by the app.", code: "not_a_tree" },
                      { path: "C:\\\\abs\\\\Scans", where: "", sentence: "Also left alone.", code: "not_a_year" }];
       const vocab = { product: "Tax Document Console", rules: [{ headline: "h", detail: "d", short: "No AI Reads Documents" }, { headline: "h2", detail: "d2", short: "Nothing Is Guessed" }],
@@ -2448,7 +2448,7 @@ def test_the_four_dialogs_draw_the_apis_words_and_never_a_path(tmp_path):
       return { ...said, loud };
     """, tmp_path, source="app.js")
     assert ran["rules"] == ["No AI Reads Documents", "Nothing Is Guessed"] and ran["title"] == "Safeguards"
-    assert ran["product"] == "Tax Document Console" and ran["edition"] == "Pilot 0.3"
+    assert ran["product"] == "Tax Document Console" and ran["edition"] == "Pilot 0.4"
     assert ran["folders"] == ["Old FilesUnknown Folder", "Scans"], (
         "a folder is its own name (the last part of where it is) and the vocabulary's word for its code; "
         "a code with no word (not_a_year) draws the name alone")
