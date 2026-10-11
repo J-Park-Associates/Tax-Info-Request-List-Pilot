@@ -13,7 +13,8 @@
 //
 // One row, one group, on every page (SPEC 3.6):
 //   - a row is name, detail, status, and an end column that holds the date
-//     and, on hover or focus, the row's one step;
+//     and, when the row has a step, a chevron at rest, the step's words
+//     appearing before it on hover or focus (P270);
 //   - a group is an H2 with its count and a listbox of rows; the listbox is
 //     one Tab stop and moves focus with aria-activedescendant; Up/Down,
 //     Home/End, PageUp/PageDown move; Enter runs the row's step; a click
@@ -62,6 +63,7 @@ let pagesClientsAll = false;   // the Clients switch: false is Work waiting
 let pagesSetAsideOpen = false;
 let pagesBroken = [];          // the rows of the page being drawn that could not be built: {name, err}
 let pagesDrawn = "";           // which route the page holds, so a failed draw keeps only its own
+let pagesYearless = false;     // the list being drawn leaves out its Tax Year column: one year only (P268)
 
 // The column headers of the four firm lists (pilot SPEC-lists; P135-P139):
 // each list's columns by the vocabulary's word (vocab.screen.columns); a
@@ -136,6 +138,18 @@ function pagesTime(clock) {
 
 function pagesDue(iso) {
   return iso ? fill(screenWords().due, { date: pagesDay(iso) }) : "";
+}
+
+// A return that needs a person says since when: the day its oldest waiting
+// file arrived (P269, option c); the column's header stays "Date".
+function pagesSince(iso) {
+  return iso ? fill(screenWords().since, { date: pagesDay(iso) }) : "";
+}
+
+// Whether a list's rows hold more than one year (P268): a blank year (a paused
+// household, a return whose record has none) is not a year.
+function pagesYearsDiffer(specs) {
+  return new Set(specs.map((spec) => (spec.year ? String(spec.year) : "")).filter(Boolean)).size > 1;
 }
 
 // The firm reply the page is drawn from (shell.js keeps it; a page that
@@ -489,7 +503,9 @@ function pagesRow(spec) {
   // step is not offered (the menu's Edit request list is grey for the same reason).
   const stepOf = spec.step && !(spec.step.kind === "edit" && locked) ? spec.step : null;
   const words = stepOf ? pagesStepWords(stepOf) : "";
-  const step = stepOf ? h("span", { className: "row-step", "aria-hidden": "true" }, words, icon("chev", true)) : null;
+  // At rest the step is a quiet chevron; its words come before it on hover or on the
+  // keyboard's active row (P270). Both are aria-hidden: the words are in `described`.
+  const step = stepOf ? h("span", { className: "row-step", "aria-hidden": "true" }, h("span", { className: "row-step-words" }, words), icon("chev", true)) : null;
   // A return's or a household's row, and any row that carries a marker, may
   // wrap to two lines or more (rulings 21 and 27): the year after a return's
   // name and the words of a paused household are never cut away. A file's
@@ -503,11 +519,14 @@ function pagesRow(spec) {
   // A status that is a tag for longer words (P116) carries them for the
   // keyboard and a screen reader, since focus rests on the list (lane 2);
   // a return row names its household there too, as its tooltip does (P195).
-  const described = [words, pagesReasonTip(spec), spec.household, linked].filter(Boolean).join(", ");
+  // A list that holds one year leaves out its Tax Year column, and the year is said here (P268).
+  const yearSaid = spec.returnRow && pagesYearless && spec.year ? String(spec.year) : "";
+  const described = [words, pagesReasonTip(spec), spec.household, linked, yearSaid].filter(Boolean).join(", ");
   // A row of a list of returns (Overview, Reminders) is five cells, one field
-  // each: Tax Year, Taxpayer, Form Type, then status and date (P194, P195).
+  // each: Tax Year, Taxpayer, Form Type, then status and date (P194, P195) -
+  // four when the list holds only one year (P268).
   const lead = spec.returnRow
-    ? [h("span", { className: "row-year" }, spec.year ? String(spec.year) : ""), pagesNameCell(spec), pagesFormCell(spec)]
+    ? [...(pagesYearless ? [] : [h("span", { className: "row-year" }, spec.year ? String(spec.year) : "")]), pagesNameCell(spec), pagesFormCell(spec)]
     : [pagesNameCell(spec), pagesDetailCell(spec)];
   const node = h("div", {
     className: `row${spec.returnRow ? " row-return" : ""}${step ? " has-step" : ""}${spec.child ? " row-child" : ""}${wraps ? " row-wrap" : ""}${file ? " row-file" : ""}`,
@@ -797,7 +816,8 @@ function pagesCompare(cell, dir) {
 // A list's specs in the order its header asks for, or as they came.
 function pagesOrdered(list, specs) {
   const order = pagesStoredOrder()[list];
-  if (!order) return specs;
+  // An order by Tax Year waits, kept, while the column is not drawn (P268).
+  if (!order || (pagesYearless && order.cell === "year")) return specs;
   const by = pagesCompare(order.cell, order.dir);
   return specs.map((spec, at) => ({ spec, at })).sort(by).map((entry) => entry.spec);
 }
@@ -822,7 +842,7 @@ function pagesColumnHeads(list) {
   const words = screenWords();
   const said = words.columns;
   const order = pagesStoredOrder()[list];
-  const cells = Object.keys(PAGES_COLUMNS[list]).map((cell) => {
+  const cells = Object.keys(PAGES_COLUMNS[list]).filter((cell) => !(pagesYearless && cell === "year")).map((cell) => {
     const key = PAGES_COLUMNS[list][cell];
     if (!key) return h("div", { className: "col-cell", role: "columnheader", dataset: { cell } }, pagesGrip(list, cell));
     const word = said[key];
@@ -1131,7 +1151,7 @@ function pagesWorkRows(returns) {
              step: { ...steps, route: pagesRoute(one.path) },
              keys: { ...pagesReturnKeys(cells), status: pagesUrgent(rank, one.counts.needs_you || one.counts.waiting, said.text), end: iso || "" } };
   };
-  return [...pagesEach(need, name, (one) => specOf(one, pagesDay(one.oldest), one.oldest)), ...pagesEach(wait, name, (one) => specOf(one, pagesDue(one.due), one.due))];
+  return [...pagesEach(need, name, (one) => specOf(one, pagesSince(one.oldest), one.oldest)), ...pagesEach(wait, name, (one) => specOf(one, pagesDue(one.due), one.due))];
 }
 
 // A household paused for two open years is work waiting for a person: one row
@@ -1161,6 +1181,7 @@ function pagesOverview() {
       h("span", { className: "figure-top" }, h("span", { className: "figure-label" }, label), h("span", { className: `figure-icon ${PAGES_TONES[tone]}` }, icon(name))),
       h("b", { className: "figure-number" }, String(n)))));
   const all = [...pagesPausedRows(firm), ...pagesWorkRows(firm.returns)];
+  pagesYearless = !pagesYearsDiffer(all);   // counted over the whole list, before its tab and its pages (P268)
   const asOf = pagesAsOf();
   // An Overview with no work says the time under its empty line: no row is below it.
   if (!all.length) return [figures, pagesEmpty(words.empty.overview, pagesNextSort(firm), asOf ? h("p", { className: "page-empty-note page-as-of" }, asOf) : null)];
@@ -1316,7 +1337,9 @@ function pagesReminderSpecs(firm) {
 
 function pagesReminders() {
   const words = screenWords();
-  const specs = pagesOrdered("reminders", pagesReminderSpecs(pagesFirm()));
+  const drafts = pagesReminderSpecs(pagesFirm());
+  pagesYearless = !pagesYearsDiffer(drafts);   // over every ready draft (P268)
+  const specs = pagesOrdered("reminders", drafts);
   if (!specs.length) return [pagesEmpty(words.empty.reminders)];
   const { part, foot } = pagesPaged("reminders", specs);
   return [h("div", { className: "page-gap" }), pagesColumnHeads("reminders"),
@@ -1802,6 +1825,7 @@ function pagesDraw(route, page) {
   pagesTokens.clear();
   pagesBroken = [];
   let nodes = null;
+  pagesYearless = false;
   try {
     pagesHouseholdNotices(route);
   } catch (err) {
@@ -1830,6 +1854,7 @@ function pagesDraw(route, page) {
   }
   page.replaceChildren(...nodes.filter(Boolean));
   page.dataset.list = pagesListOf(route);   // a firm list's rows are shaded in turn (P145)
+  page.classList.toggle("is-yearless", pagesYearless);   // one year: no Tax Year column (P268)
   pagesApplyWidths(page, pagesListOf(route));
   pagesDrawn = key;
   pagesRestore(page);

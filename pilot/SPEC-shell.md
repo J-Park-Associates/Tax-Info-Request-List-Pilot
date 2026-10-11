@@ -79,8 +79,9 @@ work:
   Its foot says when the last sort ran.
 - The top of the page is a **path**, like File Explorer's address bar:
   Clients › Smith Family › 2025 › 1040 - John & Jane Smith. Every part is
-  clickable. At its right end sit a **search box** and the **sort icon**,
-  the only button always on screen.
+  clickable. At its right end sit a **search box** (always on screen) and the **Sort Now button** (P274: on a
+  household's, year's or return's page, and on any page while a sort the app
+  started runs, as Stop Sorting).
 - Each level has **one page**. A return's page is one list in four groups:
   Needs you, Waiting on client, Received, and Set aside (folded shut).
 - A row's one next step (**Check**, **Draft reminder**, **Open**, **Edit**)
@@ -107,7 +108,7 @@ names, and for no others.
 | `app/preload.js` | One channel, `menu`, both directions (section 5.4). Nothing else crosses. |
 | `app/renderer/index.html` | New skeleton (section 3.1). Removed: the top bar, the return picker, every card, every banner, the assurances footer. Kept: the dialogs, with their help lines cut. Added: the side sheet, the tooltip, three small dialogs (Roll forward, Safeguards, About) and the folders-skipped dialog. |
 | `app/renderer/app.js` | Keeps the API call, vocabulary, notices, dialogs, editor, wizard, schedule and every action. Loses the card renderers, the review deck and the return picker (section 13, the function table). |
-| `app/renderer/shell.js` **new** | Side panel, path, search, sort icon, routing, keyboard map, the menu channel, right-click requests. |
+| `app/renderer/shell.js` **new** | Side panel, path, search, the Sort Now button, routing, keyboard map, the menu channel, right-click requests. |
 | `app/renderer/pages.js` **new** | The pages (section 6), the row and group components, their states. |
 | `app/renderer/sheet.js` **new** | The side sheet: Check a file, Draft reminder. |
 | `app/renderer/tooltip.js` **new** | The custom tooltip (PLAN-ui section 5, words capped by P63): its timing, focus, Esc and `role=tooltip` logic; placement by Floating UI (8.5). |
@@ -289,7 +290,7 @@ Verdict words: **Kept** (on screen, reworded to five words), **Tooltip**
 body
 ├─ div#shell                         grid: [side 240px][main 1fr]
 │  ├─ nav#side                       aria-label = screen.side_label
-│  │  ├─ div#side-brand              navy band, 48px, logo 32px tall
+│  │  ├─ div#side-brand              navy band, 48px: the mark 32px and the product's name (P266)
 │  │  ├─ ul#side-sections            four li > button[data-section]
 │  │  │                              each: span.side-name, span.side-count
 │  │  └─ div#side-foot
@@ -299,14 +300,14 @@ body
 │     ├─ header#bar
 │     │  ├─ nav#crumbs               aria-label = screen.path_label; ol of segments
 │     │  ├─ div#find-wrap            input#find (role=combobox) + ul#find-list (role=listbox)
-│     │  └─ button#sort              icon only; aria-label + data-tip from the API
+│     │  └─ button#sort              Sort Now, labelled; a household's pages, and any page while a sort runs (P274)
 │     ├─ div#notices                 role=alert, aria-live=polite (kept id)
 │     └─ main#page                   tabindex=-1; pages.js draws here; scrolls
 ├─ aside#sheet                       role=dialog, aria-modal, hidden; see 7
 ├─ div#sheet-scrim
 ├─ div#tip                           role=tooltip, one element reused
 ├─ div#toast                         kept
-├─ svg (display none) with <symbol> icons: search, sort, stop, dismiss,
+├─ svg (display none) with <symbol> icons: search, dismiss,
 │  chevron, next, done, more        (section 3.8)
 └─ the dialogs (kept ids) and #roll-modal, #safeguards-modal,
    #about-modal, #misfits-modal
@@ -325,8 +326,10 @@ Numbers are right-aligned in their column, with tabular figures.
 ### 3.3 Side panel
 
 - 240px wide, `--bg-nav`, a 1px `--border` hairline on its right edge.
-- `#side-brand`: 48px tall, `--brand` (navy in both themes), the logo 32px
-  tall, `padding-inline: var(--sp-4)`. It is the one navy surface.
+- `#side-brand`: 48px tall, `--brand` (navy in both themes), the JP mark 32px
+  and beside it "Tax Document Console" (body, 600, `--window-light`),
+  `padding-inline: var(--sp-4)`; the firm's name is the window's title (P266).
+  It is the one navy surface.
 - Sections: 40px rows, 16px from the panel's edges (`margin-inline:
   var(--sp-2)`, `padding-inline: var(--sp-2)`), `--radius-control`. The name
   in body; the count right-aligned in caption, tabular, and shown only when
@@ -340,7 +343,7 @@ Numbers are right-aligned in their column, with tabular figures.
   sides, 16px from the badge. States in section 8.3.
 - Pilot 0.3 raises the panel (icons, badges, Client Types, Under
   Construction items, Settings, the brand band's words):
-  `pilot/SPEC-lists.md` section 15 (P153, P154, P179).
+  `pilot/SPEC-lists.md` section 15 (P153, P154, P179, P265, P266).
 
 ### 3.4 Path row (`#bar`)
 
@@ -358,8 +361,9 @@ Numbers are right-aligned in their column, with tabular figures.
   edge with `--border-input` bottom edge, the search icon inside at the
   left (16px), no placeholder text; its name is `aria-label` and its
   tooltip "Find a client". Section 8.2 is its behaviour.
-- `#sort`: a 32 × 32 subtle icon button, 8px after `#find`, 32px from the
-  window's right edge (the keyline mirrored). Section 8.1.
+- `#sort`: the Sort Now button, 32px tall, secondary, 8px after `#find`,
+  32px from the window's right edge; not drawn on the firm pages or the
+  setup page (P274). Section 8.1.
 
 ### 3.5 Notice area (`#notices`)
 
@@ -401,13 +405,13 @@ left to right:
 | name | flex, min 240px | H3: body 14/20, weight 600, `--text` | the document, file, return or household name; "…" and tooltip when cut |
 | detail | 200px | body, `--text-secondary` | period, "1 of 2", the household, or the file's own name |
 | status | 160px | body, weight 600, its status token | one status word or count, e.g. "Could not use", "3 need you" |
-| end | 144px, right-aligned | the date in caption, `--text-caption`, tabular; the step in body, `--link`, weight 600, no wrap | at rest the date ("Mar 3", "Due Apr 15"); on hover or focus the row's next step and a chevron in the same place |
+| end | 144px, right-aligned | the date in caption, `--text-caption`, tabular; the step in body, `--link`, weight 600, no wrap | at rest the date and, when the row has a step, a quiet chevron (`--text-caption`) at the column's right edge; on hover or focus the step's words appear before the chevron, in `--link`, in place of the date (P270) |
 
 The date and the step share the end column so the row fits the narrowest
 window: at 1100px the main area is 860 wide, and name (240) + 200 + 160 +
 144 + three 16px gaps + the 32px keylines on both sides is 856. The date
 stays in the row's accessible name while the step shows. A row with no
-step keeps its date on hover.
+step has no chevron and keeps its date on hover.
 
 **A row may wrap (rulings 21, 27).** A return's row, a household's row and
 any row with a marker let the name and status wrap instead of ending
@@ -437,7 +441,7 @@ says.
 right-click menu. The visible step text is `aria-hidden` (the option's
 accessible name is its columns read in order, and the step is announced
 by `aria-description` = the step's words). Clicking anywhere on a row
-selects it; clicking its step runs the step; double-click runs the step.
+selects it; clicking its step - the chevron at rest - runs the step; double-click runs the step.
 
 ### 3.7 Type roles (five, P62)
 
@@ -450,6 +454,12 @@ selects it; clicking its step runs the step; double-click runs the step.
 | caption | 12 / 16 | 400 | text | counts, dates, the last-sort line, badge |
 | figure | 28 / 36 | 600 | display | the Overview's three numbers only |
 
+The face is one choice per platform (P280): Segoe UI Variable (its Text and
+Display cuts) on Windows, the system face on a Mac (`-apple-system`), set only
+in `pilot-ui.css`'s token block by the `on-mac` class `app.js` puts on `<html>`
+from the browser's own platform. P53's Mac half is superseded; its Windows
+half stands.
+
 Line heights are written unitless as `calc(20 / 14)` etc., so each lands
 exactly on the 4px grid (P72). Build E's 16/22 subtitle becomes 16/24.
 Dialog titles, which Build E set at 20/28, become H2 (16/24): one step under
@@ -457,10 +467,10 @@ the page's H1, so a dialog never out-shouts the page behind it.
 
 ### 3.8 Icons
 
-Seven drawn icons (the audit's count), inline SVG `<symbol>`s in
-`index.html`, 16px on a 16 viewBox, 1.5px stroke, round caps,
-`currentColor`: **search, sort, stop, dismiss, open (chevron), next, done,
-more**. The chevron also serves as the path separator and the row step's
+The drawn icons are inline SVG `<symbol>`s in `index.html`, 16px on a 16
+viewBox, 1.5px stroke, round caps, `currentColor`; the controls among them
+are **search, dismiss, open (chevron), next, done, more** (the sort and
+stop icons went with P274's labelled Sort Now button). The chevron also serves as the path separator and the row step's
 trailing mark (decorative there, `aria-hidden`). No emoji or text glyph
 stands in for an icon ("›" in the audit's words is drawn, not typed).
 Every icon that is a control has an `aria-label` and a tooltip of five
@@ -469,7 +479,9 @@ words or fewer (P65); none has a visible label beside it.
 ### 3.9 Links (rulings 8, 9, 11, 12, 13)
 
 Three kinds of name are live links, drawn in `--link` wherever a page
-shows them. A link shows the **name only, never a path** (P63).
+shows them. A name link is underlined on hover and on the keyboard's active
+row, and always in a contrast theme (P267). A link shows the **name only,
+never a path** (P63).
 
 | Name | Does | Tooltip (`vocab.screen`) |
 |---|---|---|
@@ -818,7 +830,7 @@ Common states, used by every page below:
   buckets. Name: the return, a link reading "{Return Name} ({Year})"
   (3.9). Detail: its household, a link. Status: "{n} need you"
   (`--st-attention`) or "{n} waiting" (`--st-waiting`). Date: the oldest file
-  waiting ("Mar 3") for the first bucket, the due date ("Due Apr 15") for
+  waiting ("Since Mar 3", P269) for the first bucket, the due date ("Due Apr 15") for
   the second, or empty. Step: **Open**. Order: need-you returns by their
   oldest waiting file, oldest first; then waiting returns by due date,
   soonest first, then by name.
@@ -1027,18 +1039,19 @@ sheet unchanged, so `loadReminder()`, `copyReminder()` and
 
 ## 8. Controls and their states
 
-### 8.1 The sort icon (`#sort`, P60, P70)
+### 8.1 The Sort Now button (`#sort`, P274; the icon of P60 and P70 is gone)
 
-| State | Icon | Colour | Tooltip and name | Does |
-|---|---|---|---|---|
-| Ready (a household, year or return open) | sort | `--link` | "Sort now" | runs the pass for the open household (`runScan()`) |
-| Firm page | sort, disabled | `--text-disabled` | "Open a client to sort" | nothing (P80) |
-| Return locked elsewhere | sort, disabled | `--text-disabled` | "In use elsewhere" | nothing |
-| Sorting | stop | `--danger` | "Stop sorting" | `stopPass()` |
-| Stopping | stop, disabled | `--text-disabled` | "Stopping" | nothing |
+| State | When | Shown | Words | Tooltip | Does |
+|---|---|---|---|---|---|
+| now | a household's, year's or return's page; no sort of the app's running; the return not locked | yes, enabled, `aria-keyshortcuts="F9"` | Sort Now (`sort.now`) | Sort This Household's Inbox (`sort.tip`) | `runScan()` for the open household, as today |
+| locked | the same pages, the shown return locked elsewhere | yes, disabled | Sort Now | In Use Elsewhere (`sort.locked`) | nothing |
+| stop | a sort the app started is running, **on any page** | yes, enabled, danger colours | Stop Sorting (`sort.stop`) | none | `stopPass()` |
+| stopping | after Stop, until the pass ends, on any page | yes, disabled | Stopping (`sort.stopping`) | none | nothing |
+| none | a firm page (Overview, Needs Review, Reminders, Households), or the setup page | **no** (the `hidden` class) | - | - | nothing |
 
-`aria-keyshortcuts="F9"` while ready. The one Stop is this icon: the side
-panel's foot shows progress only (P70, the audit over the brief's section 3).
+The button sits in the path row, which outlives every page draw, so it is never rebuilt mid-press. Its three words share one grid cell, so it is as wide as the longest in every state. A focused button that goes away hands focus to the search box (to the page when the search box is disabled). A scheduled pass running (P256) does not change it.
+
+`aria-keyshortcuts="F9"` while it says Sort Now. The one Stop is this button, on whatever page is shown while a sort the app started runs; the side panel's foot shows progress only (P70's half that stands).
 
 ### 8.2 Search (`#find`)
 
@@ -1480,7 +1493,7 @@ words) is Title Case:
   and its subject; the error log's contents; prose in the docs.
 
 Examples: "Needs Review", "Could Not Sort", "Fits Two Requests", "Moved by
-Hand", "Open a Client to Sort", "Sort Stopped: Ran Too Long". Sections
+Hand", "Sort This Household's Inbox", "Sort Stopped: Ran Too Long". Sections
 11.3-11.6 and the `title_case` column of
 [`wording-shell.tsv`](wording-shell.tsv) give every exact spelling. Words
 quoted elsewhere in this SPEC in sentence case (sections 0-8, written
@@ -1562,7 +1575,7 @@ Where an existing key does the same job, the existing key is reworded
 | `path_label` | Path | the path's name for screen readers |
 | `find` | Find a Client | search name and tooltip |
 | `find_none` | No Match | search list |
-| `sort.now` / `sort.stop` / `sort.firm` / `sort.locked` / `sort.stopping` | Sort Now / Stop Sorting / Open a Client to Sort / In Use Elsewhere / Stopping | sort icon tooltip and name |
+| `sort.now` / `sort.stop` / `sort.locked` / `sort.stopping` / `sort.tip` | Sort Now / Stop Sorting / In Use Elsewhere / Stopping / Sort This Household's Inbox | the Sort Now button's words and its tooltip (P274) |
 | `last_sort.today` / `other_day` / `failed` / `never` / `running` | Sorted {time} / Sorted {date} / Sort Failed / Not Sorted Yet / Sorting {n} of {total} | side panel foot |
 | `last_sort.done` | Sorted | done icon tooltip |
 | `figures.need` / `waiting` / `complete` | Need a Person / Waiting on Clients / Complete | Overview |
@@ -1710,7 +1723,7 @@ in `pilot-content.js`.
 
 | Kept as is | Kept, changed | Moved or removed |
 |---|---|---|
-| `el`, `fill`, `call`, `withEng`, `isSetAside`, `overrideLabel`, `toast`, the notice machinery (`notice`, `drawNotice`, `failed`, `failureSentence`, `warningNotices`, `dismissNotice`), the dialog stack (`DIALOGS`, `openDialog`, `closeDialog`, `requestClose`, `keepEditing`, `trapTab`, snapshots), every write (`fileRow`, `assignParked`, `addIssuerAndFile`, `fileWhereItWaits`, `handOver`, `dismissParked`, `unfileDocument`, `withdrawAnswer`, `restoreMoved`, `keepMoved`, `markShared`, `acceptFolderName`, `clearLock`, `copyReminder`, `approveReminder`, `saveHousehold`, `saveSchedule`, `repairSchedule`, `createEngagement`, `saveEditor`), the pass (`runScan`, `stopPass`, `onPassMessage`, `passEnded`, `scanDone`) | `applyVocabulary` (only ids that still exist; the menu's words are `main.js`'s); `reviewRow`, `movedRow` (build one row for the sheet, with More folding Keyword, Spelling, Reason); `drawReminder` (short stage names, no hint, no Open the draft file); `drawProgress` (to `#last-sort`); `showLock`, `applyLock` (a notice; the menu's enable list instead of `LOCKED_BUTTONS`); `openEditor` (takes a row to focus; help lines cut); `openNewHousehold` and the wizard steps, `openHouseholdEditor`, `openSchedule` (help lines cut); `bootstrap`, `loadEngagements`, `adoptList`, `showReturn` (hand data to `shell.js` and `pages.js` instead of drawing cards); `saveRoot` (the setup page; the hidden input); `renderAfterInstall`, `renderShortOfRoom`, `renderMisfits` (notices; misfits into `#misfits-modal`); `rollFromCard` and `renderRollFold` (into `#roll-modal`) | removed: `chip`, `sideLine`, `setAsideHeading`, `requestTableRow`, `ruleTooltip`, `render`, `renderEngagements`, `renderHousehold`'s card drawing, `returnReminderLine`, `renderSharing`'s checklist, `banner`, the deck (`REVIEW_MODE_*`, `storedReviewMode`, `setReviewMode`, `applyReviewMode`, `deckOrder`, `renderDeck`, `deckCard`, `acceptCard`, `openCardInList`, `skipCard`, `cameFrom`), `renderUnfileList`'s card, `SCAN_LABEL` (the sort icon's words are the API's); moved to `pages.js`: the grouping of `state` into rows (by `group`); to `sheet.js`: placing one row in the sheet and the next order |
+| `el`, `fill`, `call`, `withEng`, `isSetAside`, `overrideLabel`, `toast`, the notice machinery (`notice`, `drawNotice`, `failed`, `failureSentence`, `warningNotices`, `dismissNotice`), the dialog stack (`DIALOGS`, `openDialog`, `closeDialog`, `requestClose`, `keepEditing`, `trapTab`, snapshots), every write (`fileRow`, `assignParked`, `addIssuerAndFile`, `fileWhereItWaits`, `handOver`, `dismissParked`, `unfileDocument`, `withdrawAnswer`, `restoreMoved`, `keepMoved`, `markShared`, `acceptFolderName`, `clearLock`, `copyReminder`, `approveReminder`, `saveHousehold`, `saveSchedule`, `repairSchedule`, `createEngagement`, `saveEditor`), the pass (`runScan`, `stopPass`, `onPassMessage`, `passEnded`, `scanDone`) | `applyVocabulary` (only ids that still exist; the menu's words are `main.js`'s); `reviewRow`, `movedRow` (build one row for the sheet, with More folding Keyword, Spelling, Reason); `drawReminder` (short stage names, no hint, no Open the draft file); `drawProgress` (to `#last-sort`); `showLock`, `applyLock` (a notice; the menu's enable list instead of `LOCKED_BUTTONS`); `openEditor` (takes a row to focus; help lines cut); `openNewHousehold` and the wizard steps, `openHouseholdEditor`, `openSchedule` (help lines cut); `bootstrap`, `loadEngagements`, `adoptList`, `showReturn` (hand data to `shell.js` and `pages.js` instead of drawing cards); `saveRoot` (the setup page; the hidden input); `renderAfterInstall`, `renderShortOfRoom`, `renderMisfits` (notices; misfits into `#misfits-modal`); `rollFromCard` and `renderRollFold` (into `#roll-modal`) | removed: `chip`, `sideLine`, `setAsideHeading`, `requestTableRow`, `ruleTooltip`, `render`, `renderEngagements`, `renderHousehold`'s card drawing, `returnReminderLine`, `renderSharing`'s checklist, `banner`, the deck (`REVIEW_MODE_*`, `storedReviewMode`, `setReviewMode`, `applyReviewMode`, `deckOrder`, `renderDeck`, `deckCard`, `acceptCard`, `openCardInList`, `skipCard`, `cameFrom`), `renderUnfileList`'s card, `SCAN_LABEL` (the Sort Now button's words are the API's); moved to `pages.js`: the grouping of `state` into rows (by `group`); to `sheet.js`: placing one row in the sheet and the next order |
 
 Every `title=` and `.title =` in the renderer becomes `setTip()`. The guards
 that hold for `app.js` today (no `innerHTML`, no `insertAdjacentHTML`, no

@@ -3032,7 +3032,7 @@ def test_the_runbooks_189_sentence_is_rewritten():
     for text in (runbook, read("README.md")):
         assert "inside the app's thirty-minute limit" not in text
         assert "thirty-minute" not in text
-    assert runbook.count("The app's **Sort** icon (Run now) is\nthe scheduled pass") == 1
+    assert runbook.count("The app's **Sort Now** button (Run now) is\nthe scheduled pass") == 1
 
 
 #: The renderer's lock and pass-ending functions, lifted from app.js and run

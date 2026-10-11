@@ -18,25 +18,28 @@
        The side panel, the path row, the notice area and the page. Every word
        is the API's: shell.js fills each name and tooltip from the
        vocabulary, and this file types none. The page is drawn by shell.js
-       (the setup page) and pages.js (the rest). -->
+       (the setup page) and pages.js (the rest). The Sort Now button (#sort,
+       P274) sits at the path row's right end and is shown by shell.js only
+       where a sort can run or stop. -->
   <div id="shell">
-    <!-- The side panel (pilot SPEC-lists 15; P153, P154): the brand band, the
-         four pages (Ctrl+1..4), two pages not built yet, the Taxpayer Types
-         that open Households filtered, the Workspace items not built yet, and
-         Settings. An "Under Construction" item is aria-disabled, says so
-         and opens nothing; View > Show Under Construction hides them all,
-         and the Workspace heading with them (P197). The list scrolls rather
-         than cut an item. -->
+    <!-- The side panel (pilot SPEC-lists 15; P153, P154): the brand band (the
+         mark and the product's name, P266), the four pages (Ctrl+1..4), two
+         pages not built yet, the Taxpayer Types that open Households
+         filtered, the Workspace items not built yet, and Settings. An "Under
+         Construction" item is aria-disabled, says so and opens nothing, on
+         one line with a "Soon" tag (P265); View > Show Under Construction
+         hides them all, and the Workspace heading with them (P197). The list
+         scrolls rather than cut an item. -->
     <nav id="side">
-      <div id="side-brand"><img src="logo.svg" alt="" /><span id="side-brand-words"><span id="side-brand-name" class="visually-hidden"></span><span id="side-brand-product"></span></span></div>
+      <div id="side-brand"><img src="mark.svg" alt="" /><span id="side-brand-product"></span></div>
       <div id="side-scroll">
       <ul id="side-sections">
         <li><button type="button" class="side-section" data-section="overview"><svg class="icon side-icon" aria-hidden="true"><use href="#i-grid" /></svg><span class="side-name"></span><span class="side-count"></span></button></li>
         <li><button type="button" class="side-section" data-section="needs-review"><svg class="icon side-icon" aria-hidden="true"><use href="#i-alert" /></svg><span class="side-name"></span><span class="side-count"></span></button></li>
         <li><button type="button" class="side-section" data-section="reminders"><svg class="icon side-icon" aria-hidden="true"><use href="#i-bell" /></svg><span class="side-name"></span><span class="side-count"></span></button></li>
         <li><button type="button" class="side-section" data-section="clients"><svg class="icon side-icon" aria-hidden="true"><use href="#i-people" /></svg><span class="side-name"></span><span class="side-count"></span></button></li>
-        <li><button type="button" class="side-section is-soon" data-soon="ready_to_sign" aria-disabled="true"><svg class="icon side-icon" aria-hidden="true"><use href="#i-pen" /></svg><span class="side-name"></span></button></li>
-        <li><button type="button" class="side-section is-soon" data-soon="family_entities" aria-disabled="true"><svg class="icon side-icon" aria-hidden="true"><use href="#i-folder" /></svg><span class="side-name"></span></button></li>
+        <li><button type="button" class="side-section is-soon" data-soon="ready_to_sign" aria-disabled="true"><svg class="icon side-icon" aria-hidden="true"><use href="#i-pen" /></svg><span class="side-name"></span><span class="side-soon" aria-hidden="true"></span></button></li>
+        <li><button type="button" class="side-section is-soon" data-soon="family_entities" aria-disabled="true"><svg class="icon side-icon" aria-hidden="true"><use href="#i-folder" /></svg><span class="side-name"></span><span class="side-soon" aria-hidden="true"></span></button></li>
       </ul>
       <h2 class="side-heading" id="side-types-heading"></h2>
       <ul class="side-list" aria-labelledby="side-types-heading">
@@ -47,9 +50,9 @@
       </ul>
       <h2 class="side-heading" id="side-workspace-heading"></h2>
       <ul class="side-list" aria-labelledby="side-workspace-heading">
-        <li><button type="button" class="side-section is-soon" data-soon="personal_trusts" aria-disabled="true"><svg class="icon side-icon" aria-hidden="true"><use href="#i-shield" /></svg><span class="side-name"></span></button></li>
-        <li><button type="button" class="side-section is-soon" data-soon="corporate_entities" aria-disabled="true"><svg class="icon side-icon" aria-hidden="true"><use href="#i-briefcase" /></svg><span class="side-name"></span></button></li>
-        <li><button type="button" class="side-section is-soon" data-soon="portal_settings" aria-disabled="true"><svg class="icon side-icon" aria-hidden="true"><use href="#i-gear" /></svg><span class="side-name"></span></button></li>
+        <li><button type="button" class="side-section is-soon" data-soon="personal_trusts" aria-disabled="true"><svg class="icon side-icon" aria-hidden="true"><use href="#i-shield" /></svg><span class="side-name"></span><span class="side-soon" aria-hidden="true"></span></button></li>
+        <li><button type="button" class="side-section is-soon" data-soon="corporate_entities" aria-disabled="true"><svg class="icon side-icon" aria-hidden="true"><use href="#i-briefcase" /></svg><span class="side-name"></span><span class="side-soon" aria-hidden="true"></span></button></li>
+        <li><button type="button" class="side-section is-soon" data-soon="portal_settings" aria-disabled="true"><svg class="icon side-icon" aria-hidden="true"><use href="#i-gear" /></svg><span class="side-name"></span><span class="side-soon" aria-hidden="true"></span></button></li>
       </ul>
       </div>
       <div id="side-foot">
@@ -70,9 +73,7 @@
                  autocomplete="off" spellcheck="false" />
           <ul id="find-list" role="listbox" hidden></ul>
         </div>
-        <button id="sort" class="icon-button" type="button" data-tip-key="screen.sort.now">
-          <svg class="icon" aria-hidden="true"><use href="#i-sort" /></svg>
-        </button>
+        <button id="sort" class="btn hidden" type="button"></button>
       </header>
       <!-- Failures and warnings stay until a person dismisses them (decision 193). -->
       <div id="notices" role="alert" aria-live="polite"></div>
@@ -159,8 +160,6 @@
        round caps, currentColor. -->
   <svg width="0" height="0" class="visually-hidden" aria-hidden="true" focusable="false">
     <symbol id="i-search" viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.5" /><path d="M10.5 10.5L14 14" /></symbol>
-    <symbol id="i-sort" viewBox="0 0 16 16"><path d="M13.2 6.2A5.5 5.5 0 0 0 3.4 4.4" /><path d="M3 2v3h3" /><path d="M2.8 9.8a5.5 5.5 0 0 0 9.8 1.8" /><path d="M13 14v-3h-3" /></symbol>
-    <symbol id="i-stop" viewBox="0 0 16 16"><rect x="4" y="4" width="8" height="8" rx="1.5" /></symbol>
     <symbol id="i-dismiss" viewBox="0 0 16 16"><path d="M4 4l8 8M12 4l-8 8" /></symbol>
     <symbol id="i-chev" viewBox="0 0 16 16"><path d="M6 3.5L10.5 8 6 12.5" /></symbol>
     <symbol id="i-next" viewBox="0 0 16 16"><path d="M3 8h10M9 4l4 4-4 4" /></symbol>

@@ -11,7 +11,7 @@
 // step count below are UI labels, not copy.
 //
 // Each step names the ids it can point at, in order. The shell's parts (the
-// side panel, the path, the sort icon, the page) are always on the screen,
+// side panel, the path, the page; the Sort Now button on a household's pages) are on the screen,
 // so a step nearly always points; one that finds nothing is shown centred.
 // The anchor is re-checked every half second, because a scheduled pass can
 // change the page while the tester is reading.

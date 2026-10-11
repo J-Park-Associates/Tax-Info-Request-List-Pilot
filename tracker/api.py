@@ -1387,9 +1387,10 @@ SCREEN: dict = {
     "sort": {
         "now": "Sort Now",
         "stop": "Stop Sorting",
-        "firm": "Open a Household to Sort",
         "locked": "In Use Elsewhere",
         "stopping": "Stopping",
+        # The Sort Now button's tooltip (P274): what it sorts.
+        "tip": "Sort This Household's Inbox",
     },
     "last_sort": {
         "today": "Sorted {time}",
@@ -1441,24 +1442,26 @@ SCREEN: dict = {
             "clients": "Households",
         },
     },
-    # The side panel (pilot SPEC-lists 15, P153, P154): the brand band, the
-    # section headings, Settings, and the pages that are not built yet,
-    # each marked and doing nothing but say so. The product is named from
-    # its one home, app/package.json's productName (P155, SPEC-rename R1).
+    # The side panel (pilot SPEC-lists 15, P153, P154): the brand band's
+    # product name (the firm's name is the window's title, P266), the section
+    # headings, Settings, and the pages that are not built yet, each a short
+    # name with a "Soon" tag, doing nothing but say so (P265). The product is
+    # named from its one home, app/package.json's productName (P155,
+    # SPEC-rename R1).
     "side": {
-        "brand": "J Park & Associates",
         "product": product_name(),
         "types": "Taxpayer Types",
         "workspace": "Workspace",
         "settings": "Settings",
         "under_construction": "Under Construction",
         "soon": {
-            "ready_to_sign": "Ready to Sign (Under Construction)",
-            "family_entities": "Family Entities (Under Construction)",
-            "personal_trusts": "Personal Trusts (Under Construction)",
-            "corporate_entities": "Corporate Entities (Under Construction)",
-            "portal_settings": "Portal Settings (Under Construction)",
+            "ready_to_sign": "Ready to Sign",
+            "family_entities": "Family Entities",
+            "personal_trusts": "Personal Trusts",
+            "corporate_entities": "Corporate Entities",
+            "portal_settings": "Portal Settings",
         },
+        "soon_tag": "Soon",
     },
     # The Taxpayer Types of the side panel (pilot SPEC-lists 15.3; the
     # heading's word is P196's): each opens Households filtered to the
@@ -1521,6 +1524,9 @@ SCREEN: dict = {
         "one_file": "1 File",
     },
     "due": "Due {date}",
+    # A return that needs a person says since when (P269, option c): the day
+    # its oldest waiting file arrived. The header stays "Date".
+    "since": "Since {date}",
     "partly": "{n} of {total}",
     "groups": {
         "needs_you": "Needs You",

@@ -29,7 +29,10 @@ and year pages), it says the year, the taxpayer and the form once each.
    Reason: one field per column, nothing said twice.
 2. **Tax Year** is the return's tax year from the row the engine already
    sends (`firm.returns[].year`, the record's year). Blank when the engine
-   sends none; never typed or guessed by the renderer.
+   sends none; never typed or guessed by the renderer. **Drawn only when the list
+   holds more than one year** (P268): with one year the header and the year cells
+   are left out, the year is in the row's screen-reader description, and a kept
+   order by Tax Year waits until the column is back.
 3. **Taxpayer** is the return's name without the form it begins with: the
    return's name (`return_name`) less the leading `"{form} - "` that the
    naming pattern (`vocab.layout.return_name_pattern`, `"{form} - {client}"`)
@@ -59,7 +62,8 @@ and year pages), it says the year, the taxpayer and the form once each.
    paused words, as today.
 8. **Reminders** takes the same five columns (P195 Q2, "yes, apply to all
    windows"): Tax Year, Taxpayer, Form Type, then its own Stage and Drafted.
-   The household goes to the tooltip and description as on Overview.
+   The household goes to the tooltip and description as on Overview. It inherits
+   ruling 2's one-year rule (P268).
 9. **Needs Review is a table of files, not of returns.** Its columns stay
    File, Suggestion, Reason, Received: adding Tax Year, Taxpayer and Form Type
    to each file would repeat one return's fields on every file under it. Its

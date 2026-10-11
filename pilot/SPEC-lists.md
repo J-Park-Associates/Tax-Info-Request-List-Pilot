@@ -46,7 +46,9 @@ files. Nothing a client sees changes. No engine behaviour changes.
 Since P194/P195, Overview's and Reminders' columns are Tax Year, Taxpayer,
 Form Type, then Status/Stage and Date/Drafted, and the household has no
 column: `pilot/SPEC-firm-columns.md`. The rows below for those two lists, and
-section 2's `columns.return` and `columns.client`, are history.
+section 2's `columns.return` and `columns.client`, are history. Since P268 the Tax Year
+column of both lists is drawn only when the list, before its tab and its
+pages, holds more than one year (`SPEC-ui-menu-small.md` M4).
 
 | List | Page | Headers (name, detail, status, end) | Orderable |
 |---|---|---|---|
@@ -75,7 +77,7 @@ words (ruling 10, P63):
 | `columns.return` | Return | Overview, Reminders |
 | `columns.client` | Client | Overview, Reminders, Clients |
 | `columns.status` | Status | Overview, Clients |
-| `columns.date` | Date | Overview (the oldest waiting file's date, or the due date) |
+| `columns.date` | Date | Overview ("Since Mar 3", the oldest waiting file's date, or "Due Apr 15", the due date; P269) |
 | `columns.file` | File | Needs Review |
 | `columns.suggestion` | Suggestion | Needs Review (the request it most likely is) |
 | `columns.reason` | Reason | Needs Review |
@@ -226,13 +228,13 @@ weight 600, link blue, underlined), the household beside it ("Okafor Family",
 14px, weight 600, link blue, underlined) are all bold-ish blue underlined
 links, so groups and rows blur.
 
-After (three levels; links stay links - underlined, SPEC-shell 3.9):
+After (three levels; links stay links - underlined on hover, P267, SPEC-shell 3.9):
 
 | Level | Size / line | Weight | Colour | Other |
 |---|---|---|---|---|
 | Return heading (H2 link) | 16 / 24 | 600 | `--link` | unchanged; 32px above each group (24px the first) |
-| Household beside it | 12 / 16 | 400 | `--text-secondary`, underlined; `--link` on hover | then " · {count}" in `--text-caption` |
-| File row name | 14 / 20 | **400** | `--link`, underlined | ordinary weight: a file is an item, not a heading |
+| Household beside it | 12 / 16 | 400 | `--text-secondary`, `--link` and underlined on hover | then " · {count}" in `--text-caption` |
+| File row name | 14 / 20 | **400** | `--link` | ordinary weight: a file is an item, not a heading |
 
 - The same file-row weight applies wherever a file's own name is a row's name
   (Needs Review, and the return page's parked, moved, set-aside and extra
@@ -254,7 +256,8 @@ After (three levels; links stay links - underlined, SPEC-shell 3.9):
 
   The household's grey and the link blue are 1.53 (light) and 1.00 (dark)
   apart: colour is not the only cue; size (12 vs 16) and weight (400 vs 600)
-  are, and the underline says "link" (WCAG 1.4.1).
+  are, and, on hover, the underline (P267: at rest a name is told from text by its
+  place, size and weight; a contrast theme keeps the underline).
 - **Windows High Contrast (forced colours):** colours become the system's
   (`LinkText` for all three links); the levels still differ by size and
   weight (16/600, 12/400, 14/400). Header words are `CanvasText`, the grip
@@ -610,24 +613,22 @@ code names below are unchanged. See `SPEC-taxpayer-words.md`.
 
 ### 15.1 The panel
 
-- **Brand band** (`--brand`, both themes; P179): the JP logo, whose
-  wordmark already reads "J Park & Associates", and under it **"Tax
-  Document Console"** (caption, 600) in `--window-light`; the words **"J
-  Park & Associates"** are in the band for a screen reader
-  (`visually-hidden`), because beside the 133px-wide wordmark they were cut
-  to "J Park &..." (owner question Q14). The band grows to its content
-  (about 64px, SPEC-shell 3.3 said 48px). New words name the app "Tax
-  Document Console" (P155); nothing existing is renamed and no version
-  number changes (P140).
+- **Brand band** (`--brand`, both themes; P266, superseding P179): the JP mark alone, 32px,
+  and beside it **"Tax Document Console"** (body, 600) in `--window-light`;
+  48px tall. The firm's name is the window's title ("Tax Document Console —
+  {firm}" once the setup page has it) and is not in the band. New words name
+  the app "Tax Document Console" (P155); nothing existing is renamed and no
+  version number changes (P140).
 - **Pages:** Overview, Needs Review, Reminders, Clients, each with an
   icon, its count badge (Needs Review files waiting, **amber**:
   `--st-attention` on `--warn-bg`; Reminders drafts ready, neutral:
   `--text-secondary` on `--bg-pressed`), the current page highlighted as
   today (`aria-current="page"`, the pill), Ctrl+1..4 kept.
-- **Under Construction** (P154): "Ready to Sign (Under Construction)" and
-  "Family Entities (Under Construction)" among the pages; section
-  **"Workspace"**: "Personal Trusts (Under Construction)", "Corporate
-  Entities (Under Construction)", "Portal Settings (Under Construction)".
+- **Under Construction** (P154): **Ready to Sign** and **Family Entities**
+  among the pages; section **Workspace**: **Personal Trusts**, **Corporate
+  Entities**, **Portal Settings** - each one line, its short name and a small
+  **Soon** tag at the right (P265; the tag is `aria-hidden`, the button's
+  `aria-description` is "Under Construction").
   Each muted but readable (`--text-secondary`, 7.58:1 on `--bg-nav`),
   keyboard-reachable, `aria-disabled="true"`, tooltip "Under
   Construction". Choosing one shows a short **"Under Construction"**
@@ -652,7 +653,8 @@ Headers **Client Name / Returns / Status** (Title Case; ordering and
 resizing as lane 4 built), row dividers and banding, the Work Waiting tab
 with its count beside "All", status pills in Overview's style, the page
 footer (14), the P141 icon beside a linked name, and the search
-placeholder of 13. Names stay underlined links. The name column's header
+placeholder of 13. Names are links in their colour, underlined on hover and on the
+keyboard's active row, and always in a contrast theme (P267). The name column's header
 word is "Client Name" on Clients only (`columns.client_name`).
 
 ### 15.3 Client Types filter

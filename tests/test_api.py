@@ -9231,7 +9231,7 @@ def test_the_vocabulary_carries_the_menu_the_screen_and_the_short_words(capsys):
     words = api._vocab()
     assert words["menu"] == api.MENU and words["screen"] == api.SCREEN
     # The key shape of SPEC-shell 11.4, flat: the harness and the renderer read these.
-    assert set(words["screen"]["sort"]) == {"now", "stop", "firm", "locked", "stopping"}
+    assert set(words["screen"]["sort"]) == {"now", "stop", "locked", "stopping", "tip"}
     assert words["screen"]["sort"]["stop"] == "Stop Sorting"
     assert words["screen"]["filters"] == {"work": "Work Waiting", "all": "All"}
     assert words["reasons"] == reasons.SHORT_REASONS
@@ -10714,3 +10714,41 @@ def test_the_apis_mac_words_replace_only_what_names_windows():
                            (api.MAC_SCAN_REASONS, api.SCAN_REASONS)):
         for key, word in table.items():
             assert WINDOWS_WORDS.search(windows[key]) and not WINDOWS_WORDS.search(word), key
+
+
+# ── P265-P280 (SPEC-ui-menu-small) ───────────────────────────────────────
+
+def _wording_rows() -> dict[str, list[str]]:
+    rows = [line.split("\t") for line in
+            (Path(__file__).resolve().parents[1] / "pilot" / "wording-shell.tsv").read_text(encoding="utf-8").splitlines()]
+    return {row[1]: row for row in rows if len(row) > 4}
+
+
+def test_the_side_panels_unbuilt_items_have_short_names_and_one_soon_word():
+    """P265: each unbuilt page is a short name with a "Soon" tag; the longer
+    "Under Construction" is its tooltip and description, said once."""
+    side = api.SCREEN["side"]
+    assert side["soon"] == {"ready_to_sign": "Ready to Sign", "family_entities": "Family Entities", "personal_trusts": "Personal Trusts",
+                            "corporate_entities": "Corporate Entities", "portal_settings": "Portal Settings"}
+    assert not any("Under Construction" in said for said in side["soon"].values())
+    assert side["soon_tag"] == "Soon" and side["under_construction"] == "Under Construction"
+    assert "brand" not in side, "P266: nothing draws the firm's name in the panel"
+    rows = _wording_rows()
+    for key, said in side["soon"].items():
+        assert rows[f"side.soon.{key}"][4] == said, key
+    assert rows["side.soon_tag"][4] == "Soon"
+    assert rows["side.brand"][3] == "cut" and rows["side.brand"][4] == ""
+
+
+def test_the_sort_buttons_words_are_the_apis_and_its_tooltip_says_what_it_sorts():
+    """P274: the Sort Now button's five words are the API's; the new tooltip
+    says what the button sorts, and the firm pages' "Open a Household to
+    Sort" is cut (those pages have no sort control). Only the new and the cut
+    words have rows in the wording table: the unchanged ones never did."""
+    sort = api.SCREEN["sort"]
+    assert set(sort) == {"now", "stop", "locked", "stopping", "tip"}
+    assert sort["tip"] == "Sort This Household's Inbox"
+    assert sort["now"] == "Sort Now" and sort["stop"] == "Stop Sorting"
+    rows = _wording_rows()
+    assert rows["sort.tip"][4] == sort["tip"]
+    assert rows["sort.firm"][3] == "cut" and rows["sort.firm"][4] == ""

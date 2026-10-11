@@ -39,8 +39,15 @@ Opus review:
 
 1. `SPEC-ui-menu-small.md`: P265 (Soon tag), P266 (brand band), P267
    (underline on hover), P268 (Tax Year column only when years differ), P269
-   ("Since Mar 3" / "Due Apr 15" cells), P270 (chevron at rest), P274 ("Sort now" button), P280
-   (the type stack by platform).
+   ("Since Mar 3" / "Due Apr 15" cells), P270 (chevron at rest), P274 ("Sort Now" button), P280
+   (the type stack by platform). **Built on `claude/ui-menu-small`** after
+   three Opus reviews (the third with no findings); each named test file
+   passed on this Mac under 3.14. Not run here: the floor interpreter (3.11),
+   and `pilot/harness/interact.mjs` under real Playwright (through a
+   puppeteer shim it passes every new check; nine older checks fail there
+   and failed before this change: search typing, All lists 50/50, pause and
+   feed, two ruling-21 checks, Show in Finder, the right-click menu). Both
+   go on the next Windows check, with the SPEC's section 2 list.
 2. `SPEC-ui-menu-layout.md`: P271 (Compact Rows), P272 (Needs Review as one
    flat list), P273 (notices in a right-hand panel), P275 (the household
    page's header card).

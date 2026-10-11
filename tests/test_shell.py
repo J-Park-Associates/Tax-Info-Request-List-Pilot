@@ -4,7 +4,7 @@ What can be pinned without a browser: the tokens and their contrast in both
 themes, the shell stylesheet's discipline (tokens only, the 4px grid), the
 guards every renderer file keeps, the words the new files may not type, and -
 run in node against the files' own functions, as the repository's other
-renderer tests do - the route, the search, the sort icon and the menu's
+renderer tests do - the route, the search, the Sort Now button and the menu's
 enable list. The rendered claims (a screenshot of every scenario, light and
 dark, at both sizes) come from ``pilot/harness/shoot.mjs``.
 
@@ -567,7 +567,7 @@ def test_the_skeleton_is_the_specs_and_no_hidden_box_is_used_as_a_variable():
         assert sheet in html, sheet
     for dialog in ("roll-modal", "safeguards-modal", "about-modal", "misfits-modal"):
         assert f'id="{dialog}" class="modal-overlay hidden"' in html, dialog
-    for symbol in ("search", "sort", "stop", "dismiss", "chev", "next", "done", "more", "open"):
+    for symbol in ("search", "dismiss", "chev", "next", "done", "more", "open"):
         assert f'<symbol id="i-{symbol}"' in html, symbol
     assert 'role="alert" aria-live="polite"' in html[html.index('id="notices"'):html.index('id="notices"') + 120]
 
@@ -596,8 +596,8 @@ def test_every_icon_has_a_name_and_a_tooltip():
     vocabulary key; shell.js sets both its accessible name and its tooltip from it."""
     html = read("index.html")
     shell = stripped_js("shell.js")
-    keys = re.findall(r'<button[^>]*\bid="(sort|sheet-close)"[^>]*data-tip-key="([\w.]+)"', html)
-    assert {name for name, _key in keys} == {"sort", "sheet-close"}
+    keys = re.findall(r'<button[^>]*\bid="(sheet-close)"[^>]*data-tip-key="([\w.]+)"', html)
+    assert {name for name, _key in keys} == {"sheet-close"}, "P274: the sort button says its own word, so it is not an icon-only button"
     assert re.search(r'<input[^>]*\bid="find"[^>]*data-tip-key="screen\.find"', html)
     for _name, key in keys:
         assert key.startswith("screen.")
@@ -743,7 +743,7 @@ PEOPLE = r"""
 const fill = (p, v) => p.replace(/\{(\w+)\}/g, (_, k) => v[k] ?? "");
 const vocab = { screen: { counts: { one_return: "1 return", returns: "{n} returns" },
   sections: { overview: "Overview", needs_review: "Needs review", reminders: "Reminders", clients: "Clients" },
-  sort: { now: "Sort now", stop: "Stop sorting", firm: "Open a client to sort", locked: "In use elsewhere", stopping: "Stopping" } } };
+  sort: { now: "Sort now", stop: "Stop sorting", locked: "In use elsewhere", stopping: "Stopping", tip: "Sort this household's inbox" } } };
 const households = [
   { name: "Smith Family", path: "h1", returns: [{ rollable: true }] }, { name: "Rivera Design", path: "h2", returns: [] },
   { name: "Ren\u00e9e Okafor", path: "h3", returns: [] }, { name: "Lopez Household", path: "h4", returns: [] },
@@ -802,35 +802,6 @@ def test_the_path_names_every_level_and_the_year_always_shows(tmp_path):
     assert ran["year"] == [["Clients", True], ["Smith Family", True], ["2025", False]]
     assert ran["ret"] == [["Clients", True], ["Smith Family", True], ["2025", True], ["1040 - John & Jane Smith", False]], \
         "the year always shows (P61); the last segment is the current level, not a button"
-
-
-def test_the_sort_icon_is_stop_while_a_sort_runs_and_grey_on_a_firm_page(tmp_path):
-    setup = PEOPLE + """
-      let shellRoute = null; let scanning = null; let locked = false;
-    """
-    probe = """
-      const at = (route, run, lock) => { shellRoute = route; scanning = run; locked = lock; const s = sortState(); return [s.key, s.icon, s.off, s.words]; };
-      return {
-        ready: at({ level: "household", household: "h1" }, null, false),
-        year: at({ level: "year", household: "h1", year: 2025 }, null, false),
-        ret: at({ level: "return", household: "h1", ret: "r1" }, null, false),
-        firm: at({ level: "overview" }, null, false),
-        setup: at({ level: "setup" }, null, false),
-        locked: at({ level: "return", household: "h1", ret: "r1" }, null, true),
-        sorting: at({ level: "household", household: "h1" }, { stopping: false }, false),
-        stopping: at({ level: "household", household: "h1" }, { stopping: true }, false),
-        sortingOnAFirmPage: at({ level: "clients" }, { stopping: false }, false),
-      };
-    """
-    ran = run_shell(["screenWords", "shellHasClient", "sortState"], setup, probe, tmp_path)
-    assert ran["ready"] == ["now", "sort", False, "Sort now"]
-    assert ran["year"][0] == ran["ret"][0] == "now"
-    assert ran["firm"] == ["firm", "sort", True, "Open a client to sort"], "P80: grey on a firm page"
-    assert ran["setup"][0] == "firm" and ran["setup"][2] is True
-    assert ran["locked"] == ["locked", "sort", True, "In use elsewhere"]
-    assert ran["sorting"] == ["stop", "stop", False, "Stop sorting"], "the one Stop is this icon (P70)"
-    assert ran["stopping"] == ["stopping", "stop", True, "Stopping"]
-    assert ran["sortingOnAFirmPage"][0] == "stop", "a sort that runs can always be stopped"
 
 
 def test_the_menus_enable_list_follows_the_rules_of_the_template(tmp_path):
@@ -977,6 +948,8 @@ class Element extends Node {
   get classList() {
     const self = this;
     return { add(one) { if (!self.className.split(" ").includes(one)) self.className = `${self.className} ${one}`.trim(); },
+             remove(one) { self.className = self.className.split(" ").filter((name) => name !== one).join(" "); },
+             toggle(one, on) { if (on) this.add(one); else this.remove(one); return Boolean(on); },
              contains(one) { return self.className.split(" ").includes(one); } };
   }
   setAttribute(key, value) { this.attrs[key] = String(value); }
@@ -1034,7 +1007,7 @@ const vocab = {
     groups: { needs_you: "Needs you", waiting: "Waiting on client", received: "Received", set_aside: "Set aside" },
     steps: { check: "Check", open: "Open", draft: "Draft reminder", edit: "Edit" },
     notices: { paused: "Two Years Open; Sorting Paused" },
-    empty: { received: "Nothing received yet" }, moved: "Moved by hand", due: "Due {date}", partly: "{n} of {total}",
+    empty: { received: "Nothing received yet" }, moved: "Moved by hand", due: "Due {date}", since: "Since {date}", partly: "{n} of {total}",
     show_in_explorer: "Show in File Explorer", navigate_client: "Navigate to Household", navigate_return: "Navigate to Return",
     counts: { need: "{n} need you", waiting: "{n} waiting", complete: "Complete", files: "{n} files", one_file: "1 file", one_return: "1 return", returns: "{n} returns" },
     sections: { overview: "Overview", needs_review: "Needs Review", reminders: "Reminders", clients: "Households" },
@@ -1058,7 +1031,7 @@ PAGES_CONSTS = ("const PAGES_COLUMNS = {", "const PAGES_CELLS = ", "const PAGES_
                 "const PAGES_WIDTHS_KEY = ", "const PAGES_ORDER_KEY = ", "const PAGES_URGENCY = ", "let pagesOrder = ", "let pagesWidths = ",
                 # The raised lists (pilot SPEC-lists 10-17): pages, tabs, reason cards, types, the panel.
                 "const PAGES_PER_PAGE = ", "const PAGES_REASON_ICONS = {", "const PAGES_SECTIONS = ", "let pagesPageAt = ",
-                "let pagesTab = ", "let pagesReasonPick = ", "let pagesClientType = ", "let pagesPanel = ",
+                "let pagesTab = ", "let pagesReasonPick = ", "let pagesClientType = ", "let pagesPanel = ", "let pagesYearless = ",
                 # The one collator every name sort compares through (P264 N1).
                 "const PAGES_COLLATOR = ")
 
@@ -1102,7 +1075,7 @@ def run_pages_dom(probe: str, tmp_path: Path, setup: str = "", functions=None):
     if NODE is None:
         pytest.skip("node is not on PATH (CI installs it)")
     wanted = functions or [
-        "pagesReturn", "pagesReturnName", "pagesTitle", "pagesCaption", "pagesDue", "pagesDay", "pagesReturnGroups", "pagesItemName",
+        "pagesReturn", "pagesReturnName", "pagesTitle", "pagesCaption", "pagesDue", "pagesSince", "pagesYearsDiffer", "pagesDay", "pagesReturnGroups", "pagesItemName",
         "pagesItemStatus", "pagesItemDetail", "pagesByName", "pagesReason", "pagesBlocks", "pagesRow", "pagesStepWords",
         "pagesReturnPlan", "pagesGroup", "pagesGroupStep", "pagesList", "pagesWorkRows", "pagesCounts", "pagesTally",
         "pagesHouseholdNotices", "pagesRoute", "pagesFiles", "h", "icon", "screenWords", "pagesSafe", "pagesEach", "pagesLabel",
@@ -2005,7 +1978,7 @@ def test_the_firm_pages_rows_link_by_the_firms_keys_and_carry_the_year(tmp_path)
     """, tmp_path, functions=["pagesNeedsReview", "pagesNameCell", "pagesReviewGroups", "pagesFirm", "pagesFirmReturn", "pagesReturnName", "pagesHouseholdPath",
                               "pagesFileLink", "pagesRow", "pagesCell", "pagesLinkNode", "pagesLinkWords", "pagesHeadLink", "pagesGroup", "pagesGroupStep", "pagesList",
                               "pagesReason", "pagesDay", "pagesSafe", "pagesEach", "pagesLabel", "pagesSafeName", "pagesStepWords", "pagesByName", "pagesEmpty",
-                              "pagesNextSort", "pagesWorkRows", "pagesCounts", "pagesRoute", "pagesDue", "pagesReminderSpecs", "pagesStage", "screenWords", "h", "icon",
+                              "pagesNextSort", "pagesWorkRows", "pagesCounts", "pagesRoute", "pagesDue", "pagesSince", "pagesReminderSpecs", "pagesStage", "screenWords", "h", "icon",
                               "pagesActivate", "pagesRunRow", "pagesRunRowLink", "pagesRunLink", "pagesRunStep", "pagesPathOf", "pagesPopup", "pagesEnableFor", "pagesRowRoute",
                               *COLUMN_FUNCTIONS])
     assert ran["head"] == [["Smith", "return"]] and ran["caption"] == [["Smith Family", "household"]] and ran["captionText"] == "Smith Family"
@@ -3209,25 +3182,6 @@ def test_a_needs_review_group_that_cannot_be_built_is_named_by_its_return_and_ne
     assert not [text for text in ran["notices"] if re.search(r"[\\/]", text)], "a notice named a folder path"
 
 
-def test_a_link_differs_from_plain_text_by_more_than_its_colour():
-    """Final review B, finding 6 (WCAG 1.4.1): the link colour is 1.4 to 1.5
-    against the text in both themes, so a link is always underlined, and the
-    status words on a row ("3 Waiting") - close to the link colour - are not,
-    and do not look pressable. The contrast themes keep the underline and use
-    the system's link colour. The rendered claim is interact.mjs's."""
-    first = {}
-    for _media, selector, body in blocks(read("shell.css")):
-        for part in selector.split(","):
-            first.setdefault(" ".join(part.split()), dict(declarations(body)))
-    link = first[".row-link"]
-    assert link["text-decoration"] == "underline" and link["cursor"] == "pointer"
-    for status in (".is-waiting", ".is-attention", ".is-done", ".is-plain", ".row-status"):
-        assert "text-decoration" not in first[status] and "cursor" not in first[status], status
-    for theme in ("light", "dark"):
-        assert ratio("--link", "--text", theme) < 3, "the colour alone would not do: the underline is the cue"
-    assert ".row-link { color: LinkText; }" in read("shell.css")
-
-
 # ── the lists: column headers, order and width (pilot SPEC-lists) ────────
 
 #: One firm reply for the four lists: five returns (one unreadable), three
@@ -3253,7 +3207,7 @@ FIRM_LISTS = r"""
   shellFirmData = { paths: {}, totals: { need: 3, waiting: 2, complete: 0 }, next_sort: null, returns: [
     line("1040 - Alpha", "Alpha", { counts: { ...zero, needs_you: 3 }, oldest: "2026-03-05", draft: { ready: true, stage: 1, held: 0, drafted: "2026-03-01" } }),
     line("1065 - Bravo", "Bravo", { counts: { ...zero, needs_you: 12 }, oldest: "2026-03-01", draft: { ready: true, stage: 2, held: 1, drafted: "2026-03-02" } }),
-    line("1040 - Charlie", "Charlie", { counts: { ...zero, waiting: 2 }, due: "2026-04-15", draft: { ready: true, stage: 3, held: 0, drafted: "2026-02-20" } }),
+    line("1040 - Charlie", "Charlie", { year: 2024, counts: { ...zero, waiting: 2 }, due: "2026-04-15", draft: { ready: true, stage: 3, held: 0, drafted: "2026-02-20" } }),
     line("1040 - Delta", "Delta", { counts: { ...zero, waiting: 5 } }),
     line("1041 - Echo", "Echo", { problem: "Could Not Be Read" }),
   ], files: [
@@ -3714,22 +3668,23 @@ def test_the_search_finds_waiting_files_on_needs_review_and_its_placeholder_says
     assert 'setAttribute("placeholder", shellRoute.level === "needs-review" ? words.find_placeholder_files : words.find_placeholder)' in shell
 
 
-def test_the_side_panel_is_the_mocks_with_the_firms_brand_and_nothing_behind_the_unbuilt_items(tmp_path):
-    """P153, P154, P155: the brand band names the firm and Tax Document
-    Console; the four pages keep Ctrl+1..4; five Under Construction items are
+def test_the_side_panel_is_the_mocks_with_the_products_brand_and_nothing_behind_the_unbuilt_items(tmp_path):
+    """P153, P154, P155, P265, P266: the brand band names Tax Document
+    Console (the firm's name is the window's title); the four pages keep Ctrl+1..4; five Under Construction items are
     aria-disabled buttons whose click says so and calls nothing else; four
     Client Types open Clients filtered; Settings is the settings the app has."""
     html = read("index.html")
     side = html[html.index('<nav id="side">'):html.index("</nav>", html.index('<nav id="side">'))]
     assert side.count('data-section="') == 4 and side.count('data-type="') == 4
     assert side.count('aria-disabled="true"') == 5 and side.count('class="side-section is-soon"') == 5
-    for ident in ("side-brand-name", "side-brand-product", "side-scroll", "side-types-heading", "side-workspace-heading", "side-settings", "last-sort"):
+    for ident in ("side-brand-product", "side-scroll", "side-types-heading", "side-workspace-heading", "side-settings", "last-sort"):
         assert f'id="{ident}"' in side, ident
     assert side.index('data-soon="family_entities"') < side.index('id="side-types-heading"') < side.index('data-soon="personal_trusts"')
     words = api.SCREEN["side"]
-    assert words["brand"] == "J Park & Associates" and words["product"] == "Tax Document Console"
+    assert "brand" not in words and words["product"] == "Tax Document Console"
     assert words["under_construction"] == "Under Construction" == api.SCREEN["notices"]["under_construction"]
-    assert all(said.endswith("(Under Construction)") for said in words["soon"].values()) and len(words["soon"]) == 5
+    assert words["soon"] == {"ready_to_sign": "Ready to Sign", "family_entities": "Family Entities", "personal_trusts": "Personal Trusts",
+                             "corporate_entities": "Corporate Entities", "portal_settings": "Portal Settings"}
     assert set(api.SCREEN["client_types"]) == set(api.CLIENT_TYPE_FORMS) and '"client_type_forms": CLIENT_TYPE_FORMS,' in (REPO / "tracker" / "api.py").read_text(encoding="utf-8")
     assert api.CLIENT_TYPE_FORMS == {
         "individuals": ["1040"], "businesses": ["1120", "1120S", "1065"], "trusts": ["1041"], "nonprofits": ["990"]}
@@ -3908,7 +3863,7 @@ def test_overview_and_reminders_say_tax_year_taxpayer_and_form_type_once_each_in
     for level, rows in ran.items():
         for cells, year, name, form, detail in rows:
             assert cells == ["row-year", "row-name", "row-form", "row-status", "row-end"], level
-            assert year == "2025" and "2025" not in name and not name.startswith(form) and detail == 0, (level, name)
+            assert year == ("2024" if name == "Charlie" else "2025") and "2025" not in name and not name.startswith(form) and detail == 0, (level, name)
     assert [row[2] for row in ran["reminders"]] == ["Alpha", "Charlie", "Bravo"], "the usual order is unchanged (by the return's name)"
     first = {}
     for _media, selector, body in blocks(read("shell.css")):
@@ -6777,3 +6732,444 @@ def test_a_notices_closed_details_sits_on_its_line_and_an_open_one_drops_under_i
     assert "margin-inline-start: auto;" in rules["#notices .notice-detail[open] > summary"]
     assert "flex-wrap: wrap" in rules["#notices .notice:has(.notice-detail)"]
     assert 'el("span", { className: "notice-text" }, text), ...detailOf(entry), ...buttons, dismiss)' in js_function("drawNotice", "app.js")
+
+
+# ── P265-P280 (SPEC-ui-menu-small) ───────────────────────────────────────
+
+def _shell_rules() -> tuple[dict[str, dict[str, str]], list[tuple[list[str], dict[str, str]]]]:
+    """shell.css outside every at-rule: each selector's declarations merged
+    (a later rule's declaration wins, as dict.update does), and every rule with its
+    selectors, for the claims about two selectors sharing one rule."""
+    merged: dict[str, dict[str, str]] = {}
+    each: list[tuple[list[str], dict[str, str]]] = []
+    for media, selector, body in blocks(read("shell.css")):
+        if media:
+            continue
+        parts = [" ".join(part.split()) for part in selector.split(",")]
+        each.append((parts, dict(declarations(body))))
+        for part in parts:
+            merged.setdefault(part, {}).update(dict(declarations(body)))
+    return merged, each
+
+
+def test_an_unbuilt_item_is_one_line_its_short_name_and_a_soon_tag_a_screen_reader_does_not_read(tmp_path):
+    """P265: each of the five Under Construction items is one 40px row - its
+    icon, its short name and a small "Soon" tag at the right. The tag is
+    drawn from the vocabulary and is aria-hidden, so a screen reader hears
+    the name, "unavailable" and the description "Under Construction", never
+    "Ready to Sign Soon"; a missing tag word throws, as every word here does."""
+    html = read("index.html")
+    soon = re.findall(r'<button[^>]*class="side-section is-soon"[^>]*>.*?</button>', html, flags=re.S)
+    assert len(soon) == 5
+    for one in soon:
+        assert one.count('<span class="side-soon" aria-hidden="true"></span>') == 1, "the tag is empty here: its word is the vocabulary's"
+        assert one.index('class="side-name"') < one.index('class="side-soon"')
+    setup = """
+      const nodes = ["a", "b"].map((key) => { const name = { textContent: "" }; const tag = { textContent: "" };
+        return { dataset: { soon: key }, name, tag, attrs: {}, tip: null, querySelector(sel) { return sel === ".side-name" ? name : tag; },
+                 setAttribute(k, v) { this.attrs[k] = v; } }; });
+      const document = { querySelectorAll: (sel) => (sel === ".side-section[data-soon]" ? nodes : []) };
+      const setTip = (node, words) => { node.tip = words; };
+      const $ = () => ({ textContent: "", querySelector: () => ({ textContent: "" }) });
+      const side = (extra = {}) => ({ product: "P", types: "T", workspace: "W", settings: "S", under_construction: "Under Construction",
+                                      soon: { a: "Ready to Sign", b: "Family Entities" }, soon_tag: "Soon", ...extra });
+    """
+    ran = run_shell(["shellSideWords"], setup, """
+      shellSideWords({ side: side() });
+      const filled = nodes.map((n) => [n.name.textContent, n.tag.textContent, n.tip, n.attrs["aria-description"]]);
+      let missing = "";
+      try { shellSideWords({ side: side({ soon_tag: undefined }) }); } catch (err) { missing = err.message; }
+      return { filled, missing };
+    """, tmp_path)
+    assert ran["filled"] == [["Ready to Sign", "Soon", "Under Construction", "Under Construction"],
+                             ["Family Entities", "Soon", "Under Construction", "Under Construction"]]
+    assert ran["missing"] == "side.soon_tag"
+    merged, _each = _shell_rules()
+    assert merged[".side-section.is-soon:not(.hidden)"] == {"color": "var(--text-secondary)"}, "no height: auto and no extra padding: the row is the usual 40px"
+    assert ".side-section.is-soon .side-name" not in merged, "no wrapping: the name is cut with an ellipsis like every other item"
+    tag = merged[".side-soon"]
+    assert all(word in ("0", "none") or word.startswith("var(--") for value in tag.values() for word in value.split()), tag
+    assert tag["background"] == "var(--bg-pressed)" and tag["color"] == "var(--text-secondary)"
+    assert merged[".side-soon:empty"] == {"display": "none"}, "no empty pill at the first paint"
+    assert ".side-soon:not(:empty)" in _forced_colours(), "a contrast theme keeps the tag's edge"
+
+
+def test_the_brand_band_is_the_mark_and_the_products_name_and_never_the_firms_name():
+    """P266: the band is 48px, the JP mark 32px and "Tax Document Console"
+    beside it on one line. The firm's name is not in the band - not even
+    hidden for a screen reader - and nothing loads the old lockup."""
+    html = read("index.html")
+    band = html[html.index('<div id="side-brand">'):html.index("</div>", html.index('<div id="side-brand">'))]
+    assert '<img src="mark.svg" alt="" />' in band and 'id="side-brand-product"' in band
+    assert "side-brand-name" not in html and "side-brand-words" not in html
+    mark = (RENDERER / "mark.svg").read_text(encoding="utf-8")
+    assert 'viewBox="0 0 480 480"' in mark and "<circle" in mark and "<path" in mark
+    for banned in ("<text", "<script", "<style"):
+        assert banned not in mark, banned
+    assert not (RENDERER / "logo.svg").exists()
+    for one in RENDERER.rglob("*"):
+        if one.is_file() and one.suffix in (".js", ".css", ".html", ".svg", ".json"):
+            assert "logo.svg" not in one.read_text(encoding="utf-8"), one.name
+    assert "brand" not in api.SCREEN["side"]
+    assert "side.brand" not in stripped_js("shell.js")
+    merged, _each = _shell_rules()
+    assert merged["#side-brand:not(.hidden)"]["height"] == "var(--size-bar)" and merged["#side-brand:not(.hidden)"]["background"] == "var(--brand)"
+    assert merged["#side-brand img"]["width"] == merged["#side-brand img"]["height"] == "var(--size-control)"
+    assert "#side-brand-words:not(.hidden)" not in merged and "#side-brand-words" not in read("shell.css")
+    assert _forced_colours()["#side-brand-product"] == {"color": "CanvasText"}
+
+
+def test_the_firms_name_is_the_window_titles_alone():
+    """P266: the title line is unchanged (the product, then the firm once the
+    setup page has it), and "J Park" is in no renderer file but the pilot's
+    own terms (P63's exception) and in no word of the screen vocabulary."""
+    assert "document.querySelector(\"title\").textContent = vocab.firm ? `${vocab.product} — ${vocab.firm}` : vocab.product;" in read("app.js")
+    for one in RENDERER.rglob("*"):
+        if one.is_file() and one.suffix in (".js", ".css", ".html", ".svg") and "vendor" not in one.parts and one.name != "pilot-content.js":
+            assert "J Park" not in one.read_text(encoding="utf-8"), one.name
+    assert "J Park" not in json.dumps(api.SCREEN)
+
+
+def test_a_name_link_is_underlined_on_hover_on_the_keyboards_active_row_and_always_in_a_contrast_theme():
+    """P267 (final review B, finding 6, as P267 changed it): the link colour
+    is 1.4 to 1.5 against the text in both themes, so at rest a name is told
+    from text by its column, its weight and (for a file) its icon; the
+    underline comes back under the pointer and on the keyboard's active row,
+    and always in a contrast theme. The status words on a row ("3 Waiting")
+    are never underlined and never look pressable."""
+    merged, each = _shell_rules()
+    link = merged[".row-link"]
+    assert link["text-decoration"] == "none" and link["cursor"] == "pointer"
+    assert link["text-decoration-thickness"] == "1px" and link["text-underline-offset"] == "var(--sp-1)", "the underline is 1px at 4px, so the hover rules set only the line (the shorthand would reset the thickness to auto)"
+    assert any(parts == [".row-link:hover", ".rows:focus-visible .row.is-active .row-link"] and body.get("text-decoration-line") == "underline" for parts, body in each)
+    for status in (".is-waiting", ".is-attention", ".is-done", ".is-plain", ".row-status"):
+        assert "text-decoration" not in merged[status] and "cursor" not in merged[status], status
+    for theme in ("light", "dark"):
+        assert ratio("--link", "--text", theme) < 3, "the colour alone would not do: at rest the column, the weight and the icon are the cue"
+    assert _forced_colours()[".row-link"] == {"color": "LinkText", "text-decoration-line": "underline"}
+
+
+def test_the_tax_year_column_shows_only_when_its_list_holds_more_than_one_year(tmp_path):
+    """P268: Overview and Reminders draw their Tax Year column - the header
+    and each row's year cell - only when the list's rows hold more than one
+    year. A blank year (a paused household's row) is not a year."""
+    ran = run_lists("""
+      const state = () => {
+        const out = {};
+        for (const level of ["overview", "reminders"]) {
+          const page = draw(level);
+          out[level] = { heads: page.byClass("col-head").map((one) => one.textContent), rows: page.byClass("row").length,
+                         years: page.byClass("row-year").length, yearless: page.classList.contains("is-yearless") };
+        }
+        return out;
+      };
+      const two = state();
+      shellFirmData.returns.forEach((one) => { one.year = 2025; });
+      const one = state();
+      shellFirmData.returns[0].paused = true;
+      const paused = state();
+      return { two, one, paused };
+    """, tmp_path)
+    for level, words in (("overview", ["Taxpayer", "Form Type", "Status", "Date"]), ("reminders", ["Taxpayer", "Form Type", "Stage", "Drafted"])):
+        assert ran["two"][level]["heads"] == ["Tax Year", *words] and ran["two"][level]["years"] == ran["two"][level]["rows"] and not ran["two"][level]["yearless"]
+        assert ran["one"][level]["heads"] == words and ran["one"][level]["years"] == 0 and ran["one"][level]["yearless"]
+    assert ran["paused"]["overview"]["rows"] == ran["one"]["overview"]["rows"] + 1, "the paused household has its row"
+    assert ran["paused"]["overview"]["yearless"] and ran["paused"]["overview"]["years"] == 0, "its blank year is not a year"
+
+
+def test_a_tab_or_a_page_turn_never_shows_or_hides_the_tax_year_column(tmp_path):
+    """P268: the years are counted over the whole list, before its tab and its
+    pages, so switching the Overview's tab or turning a page never makes the
+    column come or go."""
+    ran = run_lists("""
+      shellFirmData.returns.push(...Array.from({ length: 60 }, (_, n) => line(`1040 - Zed ${String(n).padStart(2, "0")}`, "Alpha",
+        { counts: { ...zero, needs_you: 1 }, oldest: "2026-03-09" })));
+      const shape = () => { const page = draw("overview"); return { rows: page.byClass("row").length, years: page.byClass("row-year").length,
+                                                                  heads: page.byClass("col-head").length, yearless: page.classList.contains("is-yearless") }; };
+      const all = shape();
+      pagesTab = "need";
+      const need = shape();
+      pagesTab = "all"; pagesPageAt.overview = 0;
+      const first = shape();
+      return { all, need, first };
+    """, tmp_path)
+    for shape in ran.values():
+        assert shape["heads"] == 5 and shape["years"] == shape["rows"] > 0 and not shape["yearless"], shape
+    assert ran["first"]["rows"] == 50, "page one is all 2025: the 2024 return is further down the list"
+
+
+def test_an_order_by_tax_year_waits_while_the_column_is_hidden_and_is_kept(tmp_path):
+    """P268: a kept order by Tax Year is not applied while the column is not
+    drawn (the usual order, so a paused household still leads), shows no
+    arrow on any header, and is kept: it applies again when the column returns."""
+    ran = run_lists("""
+      shellFirmData.returns[0].paused = true;
+      const twoUsual = names(draw("overview"));
+      pagesOrderBy("overview", "year");
+      const twoOrdered = names(box);
+      shellFirmData.returns.forEach((one) => { one.year = 2025; });
+      const oneDrawn = names(draw("overview"));
+      const oneSorts = sorts(box);
+      const kept = JSON.stringify(pagesStoredOrder().overview);
+      shellFirmData.returns[2].year = 2024;
+      const back = names(draw("overview"));
+      return { twoUsual, twoOrdered, oneDrawn, oneSorts, kept, back };
+    """, tmp_path)
+    assert ran["twoOrdered"][0] == "Charlie", "with two years the order by Tax Year applies (2024 first)"
+    assert ran["oneDrawn"] == ["Alpha", "Echo", "Bravo", "Alpha", "Charlie", "Delta"], "the paused household leads, then the usual order"
+    assert set(ran["oneSorts"]) <= {"none", ""}, "no header shows an arrow for the waiting order"
+    assert json.loads(ran["kept"]) == {"cell": "year", "dir": 1}, "the stored order is left as it was"
+    assert ran["back"] == ran["twoOrdered"], "it applies again when the column is back"
+
+
+def test_a_hidden_tax_year_is_still_said_to_a_screen_reader(tmp_path):
+    """P268: with the column left out each return row's description ends with
+    its year; with the column shown the year is not repeated there."""
+    ran = run_lists("""
+      const said = (page) => page.byClass("row-return").map((row) => row.attrs["aria-description"]);
+      const two = said(draw("overview"));
+      shellFirmData.returns.forEach((one) => { one.year = 2025; });
+      const one = said(draw("overview"));
+      return { two, one };
+    """, tmp_path)
+    assert ran["one"] and all(text.endswith(", 2025") for text in ran["one"]), ran["one"]
+    assert ran["two"] and not any("2025" in text or "2024" in text for text in ran["two"]), ran["two"]
+
+
+def test_a_list_without_its_tax_year_draws_four_columns_in_its_rows_and_its_heads():
+    """P268: the rows and both header rows share one four-column grid and the
+    matching least width, drawn from the same tokens as the five-column grid."""
+    _merged, each = _shell_rules()
+    four = "var(--size-col-taxpayer) var(--size-col-form) var(--size-col-status) var(--size-col-end)"
+    grids = [parts for parts, body in each if body.get("grid-template-columns") == four]
+    assert grids == [["#page.is-yearless .row-return:not(.hidden)", '#page.is-yearless .col-table[data-list="overview"] .col-heads:not(.hidden)',
+                      '#page.is-yearless .col-table[data-list="reminders"] .col-heads:not(.hidden)']]
+    least = [body["min-width"] for parts, body in each if '#page.is-yearless .col-table[data-list="overview"]' in parts]
+    assert len(least) == 1
+    assert "var(--size-col-year)" not in least[0] and "3 * var(--sp-4)" in least[0] and "2 * var(--sp-8)" in least[0]
+    for token in ("taxpayer", "form", "status", "end"):
+        assert f"var(--size-col-{token})" in least[0]
+
+
+def test_an_overview_date_says_whether_it_is_since_or_due(tmp_path):
+    """P269 (option c, Jason 2026-10-11: "Say what each cell is instead of
+    just saying date"): a return that needs a person says "Since Mar 3" (the
+    day its oldest waiting file arrived), a return waiting on the taxpayer
+    "Due Apr 15"; the header stays "Date" and the order key stays the ISO day."""
+    assert api.SCREEN["since"] == "Since {date}" and api.SCREEN["due"] == "Due {date}" and api.SCREEN["columns"]["date"] == "Date"
+    ran = run_lists("""
+      const page = draw("overview");
+      const dates = page.byClass("row").map((row) => [row.byClass("row-name")[0].textContent, row.byClass("row-date")[0].textContent]);
+      const keys = pagesWorkRows(shellFirmData.returns).map((spec) => [spec.name, spec.keys.end]);
+      return { dates, keys, heads: page.byClass("col-head").map((one) => one.textContent) };
+    """, tmp_path)
+    dates = dict(ran["dates"])
+    assert dates["Alpha"] == "Since Mar 5" and dates["Bravo"] == "Since Mar 1"
+    assert dates["Echo"] == "", "a return that could not be read has no oldest day, so no word"
+    assert dates["Charlie"] == "Due Apr 15"
+    assert dict(ran["keys"])["Bravo"] == "2026-03-01", "the order key is the ISO day, never the drawn words"
+    assert ran["heads"][-1] == "Date"
+
+
+def test_a_row_with_a_step_shows_a_quiet_chevron_at_rest_and_its_words_on_hover_or_the_keyboards_active_row(tmp_path):
+    """P270: a row with a next step shows a chevron at the right edge of its
+    end column at rest, in --text-caption; on hover, or on the keyboard's
+    active row, the step's words appear before it and both turn --link, in
+    place of the date. A row with no step has no chevron."""
+    ran = run_pages_dom("""
+      const step = { kind: "check", ret: "r1", name: "a.pdf", handle: "h1" };
+      const row = pagesRow({ name: "a.pdf", status: "Could Not Tell", tone: "needs", pill: true, menu: "file", step, date: "Mar 3" });
+      const end = row.byClass("row-end")[0];
+      const mark = end.byClass("row-step")[0];
+      const bare = pagesRow({ name: "b.pdf", status: "Could Not Tell", tone: "needs", pill: true, menu: "file", date: "Mar 3" });
+      locked = true;
+      const edit = pagesRow({ name: "c", status: "x", tone: "needs", menu: "return", date: "", step: { kind: "edit", route: {} } });
+      return { ends: end.kids.map((one) => one.className.split(" ")[0]), hidden: mark.attrs["aria-hidden"],
+               parts: mark.kids.map((one) => [one.tag, one.className.split(" ")[0]]), words: mark.byClass("row-step-words")[0].textContent,
+               described: row.attrs["aria-description"], hasStep: row.className.includes("has-step"),
+               bare: bare.byClass("row-end")[0].kids.map((one) => one.className.split(" ")[0]), lockedEdit: edit.byClass("row-end")[0].kids.map((one) => one.className.split(" ")[0]) };
+    """, tmp_path)
+    assert ran["ends"] == ["row-date", "row-step"] and ran["hidden"] == "true" and ran["hasStep"]
+    assert ran["parts"] == [["span", "row-step-words"], ["svg", "icon"]] and ran["words"] == "Check"
+    assert ran["described"].startswith("Check"), "the words are in the description, so the hidden step is never read twice"
+    assert ran["bare"] == ["row-date"] and ran["lockedEdit"] == ["row-date"], "no step, no chevron (a live lock takes Edit away)"
+    merged, each = _shell_rules()
+    rest = merged[".row-step:not(.hidden)"]
+    assert "visibility" not in rest and rest["color"] == "var(--text-caption)" and rest["justify-self"] == "end"
+    assert merged[".row-step-words"] == {"display": "none"}
+    assert any(parts == [".row:hover .row-step-words:not(.hidden)", ".rows:focus-visible .row.is-active .row-step-words:not(.hidden)"]
+               and body == {"display": "inline"} for parts, body in each)
+    assert any(parts == [".row:hover .row-step", ".rows:focus-visible .row.is-active .row-step"] and body == {"color": "var(--link)"} for parts, body in each)
+    assert merged[".row.has-step .row-date"]["margin-inline-end"] == "var(--sp-6)"
+    assert merged[".row.has-step:hover .row-date"]["visibility"] == "hidden", "the date still gives way to the step's words"
+
+
+def test_sort_now_is_a_labelled_button_on_a_households_pages_and_absent_from_the_firm_pages(tmp_path):
+    """P274, SPEC-shell 8.1 (replaces the sort icon's test): Sort Now is shown
+    and enabled on a household's, a year's and a return's page with the tooltip
+    that says what it sorts; shown but disabled, still saying Sort Now, when
+    the return is locked elsewhere; and on the four firm pages and the setup
+    page it is not drawn at all."""
+    setup = PEOPLE + """
+      let shellRoute = null; let scanning = null; let locked = false;
+    """
+    probe = """
+      const at = (route, run, lock) => { shellRoute = route; scanning = run; locked = lock; const s = sortState();
+                                         return [s.key, Boolean(s.hidden), s.off, s.words || null, s.tip]; };
+      return {
+        household: at({ level: "household", household: "h1" }, null, false),
+        year: at({ level: "year", household: "h1", year: 2025 }, null, false),
+        ret: at({ level: "return", household: "h1", ret: "r1" }, null, false),
+        firm: ["overview", "needs-review", "reminders", "clients", "setup"].map((level) => at({ level }, null, false)),
+        locked: at({ level: "return", household: "h1", ret: "r1" }, null, true),
+      };
+    """
+    ran = run_shell(["screenWords", "shellHasClient", "sortState"], setup, probe, tmp_path)
+    ready = ["now", False, False, "Sort now", "Sort this household's inbox"]
+    assert ran["household"] == ran["year"] == ran["ret"] == ready
+    assert ran["firm"] == [["none", True, True, None, ""]] * 5, "a firm page has no sort control (P274)"
+    assert ran["locked"] == ["locked", False, True, "Sort now", "In use elsewhere"]
+
+
+def test_stop_sorting_shows_on_every_page_while_this_apps_sort_runs(tmp_path):
+    """P274: while a sort the app started runs, Stop Sorting shows and is
+    enabled on every page, firm pages and the setup page included, so a
+    running sort can always be stopped; after Stop it says Stopping,
+    disabled. A scheduled pass running (P256) alone changes nothing."""
+    setup = PEOPLE + """
+      let shellRoute = null; let scanning = null; let locked = false; let shellLastPass = null;
+    """
+    probe = """
+      const levels = ["overview", "needs-review", "reminders", "clients", "household", "year", "return", "setup"];
+      const at = (level, run) => { shellRoute = { level, household: "h1", ret: "r1", year: 2025 }; scanning = run; const s = sortState();
+                                   return [s.key, Boolean(s.hidden), s.off, s.words]; };
+      const sorting = levels.map((level) => at(level, { stopping: false }));
+      const stopping = levels.map((level) => at(level, { stopping: true }));
+      const quiet = [at("overview", null), at("household", null)];
+      shellLastPass = { running: true };
+      const scheduled = [at("overview", null), at("household", null)];
+      return { sorting, stopping, quiet, scheduled };
+    """
+    ran = run_shell(["screenWords", "shellHasClient", "sortState"], setup, probe, tmp_path)
+    assert ran["sorting"] == [["stop", False, False, "Stop sorting"]] * 8
+    assert ran["stopping"] == [["stopping", False, True, "Stopping"]] * 8
+    assert ran["scheduled"] == ran["quiet"], "a scheduled pass changes nothing about the button"
+
+
+#: A fake page for drawSort: the element classes the speed round's DOM lacks.
+_SORT_BUTTON = """
+  Object.defineProperty(Element.prototype, "textContent", {
+    get() { return this.kids.map((one) => (one instanceof Text ? one.data : one.textContent)).join(""); },
+    set(value) { this.kids = []; this.append(String(value)); } });
+  Element.prototype.querySelectorAll = function (sel) { return this.byClass(sel.slice(1)); };
+  Element.prototype.removeAttribute = function (key) { delete this.attrs[key]; };
+  Element.prototype.focus = function () { document.activeElement = this; };
+  const els = {}; const $ = (id) => els[id] || (els[id] = new Element("div"));
+  vocab.screen.sort = { now: "Sort now", stop: "Stop sorting", locked: "In use elsewhere", stopping: "Stopping", tip: "Sort this household's inbox" };
+  let shellRoute = null; let scanning = null;
+"""
+
+
+def test_the_sort_button_keeps_one_width_whatever_it_says(tmp_path):
+    """P274: the button is built once with three words (Sort Now, Stop Sorting,
+    Stopping) that share one grid cell, so it is as wide as the longest in
+    every state and the search box never moves; in each state exactly one is
+    not aria-hidden, and the CSS hides the others with visibility."""
+    ran = run_pages_dom("""
+      const button = $("sort");
+      const at = (route, run, lock) => { shellRoute = route; scanning = run; locked = lock; drawSort();
+        const words = button.byClass("sort-word");
+        return { words: words.map((one) => one.textContent), shown: words.filter((one) => one.attrs["aria-hidden"] === undefined).map((one) => one.dataset.word),
+                 hidden: button.classList.contains("hidden"), disabled: button.disabled, stop: button.classList.contains("is-stop"),
+                 state: button.dataset.sortState, tip: tips.at(-1)[1], keys: button.attrs["aria-keyshortcuts"] ?? null }; };
+      const now = at({ level: "household", household: "h1" }, null, false);
+      const spans = button.byClass("sort-word");
+      const stop = at({ level: "overview" }, { stopping: false }, false);
+      const same = button.byClass("sort-word").length === 3 && button.byClass("sort-word").every((one, i) => one === spans[i]);
+      return { now, same, locked: at({ level: "household", household: "h1" }, null, true), stop,
+               stopping: at({ level: "overview" }, { stopping: true }, false), none: at({ level: "overview" }, null, false) };
+    """, tmp_path, setup=_SORT_BUTTON, functions=["drawSort", "sortState", "screenWords", "shellHasClient", "focusRegion", "h"])
+    assert ran["now"]["words"] == ["Sort now", "Stop sorting", "Stopping"] and ran["same"], "three words, made once"
+    assert ran["now"]["shown"] == ["now"] and ran["now"]["keys"] == "F9" and ran["now"]["tip"] == "Sort this household's inbox"
+    assert ran["locked"]["shown"] == ["now"] and ran["locked"]["disabled"] and ran["locked"]["tip"] == "In use elsewhere" and ran["locked"]["keys"] is None
+    assert ran["stop"]["shown"] == ["stop"] and ran["stop"]["stop"] and not ran["stop"]["disabled"] and not ran["stop"]["hidden"] and ran["stop"]["tip"] == ""
+    assert ran["stopping"]["shown"] == ["stopping"] and ran["stopping"]["disabled"]
+    assert ran["none"]["hidden"] and ran["none"]["state"] == "none"
+    merged, _each = _shell_rules()
+    assert merged["#sort:not(.hidden)"]["display"] == "inline-grid"
+    assert merged["#sort > .sort-word"]["grid-area"] == "1 / 1"
+    assert merged['#sort > .sort-word[aria-hidden="true"]'] == {"visibility": "hidden"}
+    assert merged["#sort.is-stop"]["--b-fg"] == "var(--danger)"
+    html = read("index.html")
+    assert '<button id="sort" class="btn hidden" type="button"></button>' in html and 'id="sort" class="icon-button"' not in html
+    assert "i-sort" not in html and "i-stop" not in html
+
+
+def test_a_focused_sort_button_that_goes_away_hands_focus_to_the_search_box(tmp_path):
+    """P274: when the shown route moves to a page with no Sort Now while the
+    button holds focus, focus goes to the search box (to the page when the
+    search box is disabled, on the setup page), never to the window."""
+    ran = run_pages_dom("""
+      const button = $("sort"); const find = $("find"); const page = $("page");
+      button.matches = (sel) => sel === ":focus-visible";   // a keyboard user: the ring shows
+      const focused = () => (document.activeElement === button ? "sort" : document.activeElement === find ? "find" : document.activeElement === page ? "page" : "none");
+      shellRoute = { level: "household", household: "h1" }; scanning = null; locked = false; drawSort();
+      button.focus();
+      const before = focused();
+      shellRoute = { level: "overview" }; drawSort();
+      const toFind = focused();
+      shellRoute = { level: "household", household: "h1" }; drawSort(); button.focus();
+      shellRoute = { level: "setup" }; drawSort();
+      const toPage = focused();
+      return { before, toFind, toPage, hidden: button.classList.contains("hidden") };
+    """, tmp_path, setup=_SORT_BUTTON, functions=["drawSort", "sortState", "screenWords", "shellHasClient", "focusRegion", "h"])
+    assert ran == {"before": "sort", "toFind": "find", "toPage": "page", "hidden": True}
+
+
+def test_a_focused_sort_button_hands_focus_on_before_it_is_disabled(tmp_path):
+    """P274 (review 1, finding 5): Chromium drops the focus of a button to the
+    window the moment it is disabled, so Stop Sorting -> Stopping (and Sort
+    Now -> In Use Elsewhere) would lose a keyboard user's place before the
+    button is ever hidden. drawSort hands focus to the search box first, as it
+    does for a button about to be hidden, and leaves it alone when the button
+    stays enabled. A mouse click's focus (no :focus-visible ring) goes to the
+    page instead, so no caret jumps into the box (review 2, note 4). The fake
+    button drops focus on disabling, as Chromium does."""
+    ran = run_pages_dom("""
+      const button = $("sort"); const find = $("find"); const window = new Element("div");
+      let off = false; let byKey = true;
+      button.matches = (sel) => sel === ":focus-visible" && byKey;
+      Object.defineProperty(button, "disabled", { get() { return off; },
+        set(value) { off = Boolean(value); if (off && document.activeElement === button) document.activeElement = window; } });
+      const focused = () => (document.activeElement === button ? "sort" : document.activeElement === find ? "find" : document.activeElement === window ? "window" : document.activeElement === $("page") ? "page" : "none");
+      shellRoute = { level: "household", household: "h1" }; scanning = null; locked = false; drawSort();
+      button.focus(); scanning = { stopping: false }; drawSort();
+      const stop = { focus: focused(), disabled: off };
+      scanning = { stopping: true }; drawSort();
+      const stopping = { focus: focused(), disabled: off };
+      scanning = null; drawSort(); button.focus(); locked = true; drawSort();
+      const lockedNow = { focus: focused(), disabled: off };
+      locked = false; drawSort(); byKey = false; button.focus(); scanning = { stopping: false }; drawSort(); scanning = { stopping: true }; drawSort();
+      const byMouse = { focus: focused(), disabled: off };
+      return { stop, stopping, lockedNow, byMouse };
+    """, tmp_path, setup=_SORT_BUTTON, functions=["drawSort", "sortState", "screenWords", "shellHasClient", "focusRegion", "h"])
+    assert ran["stop"] == {"focus": "sort", "disabled": False}, "an enabled button keeps the focus it has"
+    assert ran["stopping"] == {"focus": "find", "disabled": True}, "disabled, it hands focus on first"
+    assert ran["lockedNow"] == {"focus": "find", "disabled": True}
+    assert ran["byMouse"] == {"focus": "page", "disabled": True}, "a mouse click's focus (no ring) goes to the page, not the search box"
+
+
+def test_a_mac_is_known_from_the_browsers_own_platform_and_every_other_system_keeps_segoe(tmp_path):
+    """P280: app.js tells a Mac from the browser's own platform (no new channel
+    from main.js) and puts on-mac on <html> before anything draws; Windows,
+    Linux and an empty navigator are not a Mac."""
+    ran = run_shell(["appOnMac"], "", """
+      return { mac: appOnMac({ platform: "MacIntel" }), macUA: appOnMac({ userAgentData: { platform: "macOS" } }),
+               win: appOnMac({ platform: "Win32" }), winUA: appOnMac({ userAgentData: { platform: "Windows" }, platform: "Win32" }),
+               linux: appOnMac({ platform: "Linux x86_64" }), none: appOnMac({}) };
+    """, tmp_path, source="app.js")
+    assert ran == {"mac": True, "macUA": True, "win": False, "winUA": False, "linux": False, "none": False}
+    app = read("app.js")
+    statement = 'document.documentElement.classList.toggle("on-mac", appOnMac(navigator));'
+    assert f"\n{statement}\n" in app, "top level, not inside a function"
+    assert app.index(statement) < app.index("function applyVocabulary")
