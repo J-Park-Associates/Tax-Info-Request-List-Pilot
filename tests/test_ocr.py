@@ -599,8 +599,6 @@ def test_the_engine_is_handed_the_prepared_page(monkeypatch, own_settings):
     page, marker, asked, seen = object(), object(), [], []
     monkeypatch.setattr(ocr, "prepared", lambda image, settings: asked.append((image, settings)) or marker)
     monkeypatch.setattr(ocr, "_pixels", lambda image: seen.append(image) or "pixels")
-    monkeypatch.setattr(ocr, "_ENGINE", FakeEngine(ocr.DEVICE_PROCESSOR, ["a line"]))
-    monkeypatch.setattr(ocr, "_DEVICE", ocr.DEVICE_PROCESSOR)
     ocr.use_settings(ocr.SHIPPED)
     monkeypatch.setattr(ocr, "_ENGINE", FakeEngine(ocr.DEVICE_PROCESSOR, ["a line"]))
     monkeypatch.setattr(ocr, "_DEVICE", ocr.DEVICE_PROCESSOR)
@@ -725,10 +723,14 @@ def test_a_lone_speck_is_removed_and_an_is_dot_and_a_hairline_are_kept():
     assert numpy.array_equal(after, expected)
 
 
-def test_a_page_longer_than_the_long_side_is_held_to_it_before_it_is_prepared():
+def test_a_page_longer_than_the_long_side_is_held_to_it_before_it_is_prepared(tmp_path):
     """A legal page at 300 dpi (2550 by 4200) is held to a long side of 3300
     under the shipped settings; a letter page keeps its size; under the raw
-    settings no page is ever resized."""
+    settings no page is ever resized. A letter PDF page as the reader renders
+    it (pypdfium2 rounds a side up, so 2550 by 3301 at the shipped 300 dpi)
+    is one pixel over the long side, and comes back 2549 by 3300: the hold
+    is to the number, and the long side stays 3300 (SPEC 9.5)."""
+    import pypdfium2 as pdfium
     from PIL import Image
 
     legal = Image.new("RGB", (2550, 4200), "white")
@@ -738,6 +740,17 @@ def test_a_page_longer_than_the_long_side_is_held_to_it_before_it_is_prepared():
     assert max(held.size) == 3300 and held.size == (2004, 3300)
     assert ocr.prepared(letter, ocr.SHIPPED).size == letter.size
     assert ocr.prepared(legal, ocr.RAW) is legal
+
+    pdf = text_pdf(tmp_path / "letter.pdf", "a line")
+    doc = pdfium.PdfDocument(pdf)
+    try:
+        page_of = doc[0]
+        rendered = page_of.render(
+            scale=content_check.render_scale(*page_of.get_size())).to_pil().convert("RGB")
+    finally:
+        doc.close()
+    assert ocr.SETTINGS is ocr.SHIPPED and rendered.size == (2550, 3301)
+    assert ocr.prepared(rendered, ocr.SHIPPED).size == (2549, 3300)
 
 
 def test_the_stage_never_touches_the_page_it_is_given_and_is_the_same_every_time():
