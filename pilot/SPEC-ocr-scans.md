@@ -976,9 +976,15 @@ asks for back is a count or a time. Sections:
 1. **Before anything, refuse if not the office PC** (the clients root is
    set and the schedule is registered here), and check out
    `claude/ocr-scans` at Part B's head in the office checkout; `Setup.bat`'s
-   hash-checked installs.
-2. **Today's numbers, before Part A is installed** (the app still at
-   `main`'s build):
+   hash-checked installs. A second, detached worktree `..\bench-before` at
+   the commit Part A stacks on (a hash Jason supplies beside Part B's head;
+   today `dcb02c3`), after a `git fetch`, never at `main`: by the time the
+   office runs this, `main` already holds Part A (4.3), so a "before"
+   measured there could not show it (Part B's review, finding 3).
+2. **Today's numbers, before Part A is installed** (the app still at the
+   build from before Part A; the backtest and `record` run in
+   `..\bench-before`, and so does the later `check`, since `check` reads
+   the baseline file of the checkout it runs in):
    - `python -m tracker.api firm | python tools/reader_bench.py review-codes
      --out <outside>\review-before.json` - Needs Review by code;
    - `python tools/backtest.py run <firm corpus> --ocr --out
@@ -1003,8 +1009,11 @@ asks for back is a count or a time. Sections:
    `PP-OCRv6_rec_medium.onnx`. Outside the repository and outside the
    clients root.
 4. **The bench**, on each corpus: `python tools/reader_bench.py run
-   <corpus> --out <outside>\bench-<corpus>.json --models
-   <outside>\medium-models`; the full grid. The prompt gives the arithmetic
+   <corpus> --out <outside>\bench-firm.json --models
+   <outside>\medium-models` (the photo corpus to `bench-photos.json`; the
+   labels are fixed so no folder's name or path reaches a file name or the
+   transcript); the full grid. The report is rewritten after every variant,
+   so a run that dies keeps what it measured. The prompt gives the arithmetic
    for the time it will take (documents x pages x 36 variants at the
    shipped variant's per-page median, medium about 2.6 times small) and,
    when that is more than one night, runs the small tier first
