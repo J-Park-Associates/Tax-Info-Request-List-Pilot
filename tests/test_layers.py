@@ -234,10 +234,13 @@ ALLOWED_STDLIB: frozenset[str] = frozenset({
 #: models are deterministic models of letter shapes - the same page gives
 #: the same text - and they generate nothing (decision 169), which is why
 #: they are named here as OCR and not left to be mistaken for generative AI.
+#: OpenCV (``cv2``) is there for page clean-up arithmetic on pixels (P283,
+#: ``ocr.delined``): deterministic, generating nothing - the same library
+#: RapidOCR itself imports.
 ALLOWED_THIRD_PARTY: dict[str, frozenset[str]] = {
     "readers": frozenset({"pypdf", "pdfplumber", "pypdfium2", "openpyxl", "olefile", "PIL",
                           "pillow_heif"}),
-    "optical character recognition": frozenset({"rapidocr", "onnxruntime", "numpy"}),
+    "optical character recognition": frozenset({"rapidocr", "onnxruntime", "numpy", "cv2"}),
 }
 
 #: Generative-AI packages, by import name and by distribution name, that no
@@ -546,7 +549,8 @@ def _requirement_files() -> list[Path]:
 
 #: The distribution each allowed third-party import comes from, where the
 #: two names differ (the rest are the same name, as pip normalises it).
-DISTRIBUTION_OF: dict[str, str] = {"PIL": "pillow", "pillow_heif": "pillow-heif"}
+DISTRIBUTION_OF: dict[str, str] = {"PIL": "pillow", "pillow_heif": "pillow-heif",
+                                   "cv2": "opencv-python-headless"}
 
 
 def test_every_allowed_third_party_import_is_a_locked_package():

@@ -24,8 +24,9 @@ Extractors by extension:
 **One way of reading a document.** :func:`extract` is what both the router
 (deciding where a drop goes) and the scanner (deciding a row's status) call,
 so the two can never disagree about what a file says. The router asks for
-the text layer first and OCR only when the file's name tells it nothing
-(:mod:`tracker.router` explains why); the scanner always finishes the job.
+the text layer and, for a scan or a photo, the reader; OCR's words are read
+under decision 50 as P282 revised it (:mod:`tracker.router` says how); the
+scanner always finishes the job.
 
 **One place the words are judged** (decision 189). The pass never holds a
 document's words: :func:`judge` reads the file and asks it every rule, form
@@ -182,8 +183,6 @@ TEXT_EXTENSIONS = ("csv", "tsv", "txt")
 #: far past what the reader needs - so an ordinary page is read exactly as
 #: before, and a giant one is read smaller rather than refused.
 PIXEL_BUDGET = 40_000_000
-#: The scale an ordinary PDF page is rendered at for OCR (144 dpi).
-RENDER_SCALE = 2.0
 #: The reader's safety stop (decision 137, B1.2; the owner's Q-1 of
 #: 2026-09-24): ten times the ceiling he approved for decision 127 (6 s a
 #: photo, 60 s a ten-page scan). A page - a photo is one page - gets a
@@ -1747,12 +1746,14 @@ _STOP: _SafetyStop | None = None
 
 def render_scale(width: float, height: float) -> float:
     """The scale a PDF page of ``width`` x ``height`` points is rendered at
-    for OCR: :data:`RENDER_SCALE`, or less, so the page never passes
-    :data:`PIXEL_BUDGET` (decision 137, B1). At scale 1 a point is a pixel,
-    so the budget over the page's own area is the square of the most it
-    may be scaled by."""
+    for OCR: the settings' dpi over 72 (``ocr.SETTINGS.render_dpi``, 144 as
+    shipped, so 2.0), or less, so the page never passes :data:`PIXEL_BUDGET`
+    (decision 137, B1), which stays the hard ceiling. At scale 1 a point is a
+    pixel, so the budget over the page's own area is the square of the most
+    it may be scaled by. Read at call time: the reader bench changes the
+    settings between its variants (P283)."""
     area = max(float(width), 1.0) * max(float(height), 1.0)
-    return min(RENDER_SCALE, (PIXEL_BUDGET / area) ** 0.5)
+    return min(ocr.SETTINGS.render_dpi / 72, (PIXEL_BUDGET / area) ** 0.5)
 
 
 def _within_budget(image):
@@ -1773,7 +1774,7 @@ def _ocr_pdf(path: Path) -> str | None:
 
     Each page is rendered at :func:`render_scale` of its own size (decision
     137), so no page is ever drawn past :data:`PIXEL_BUDGET`: an ordinary
-    page at the scale it always had, a giant one smaller. It is read as it
+    page at the settings' dpi (144 as shipped), a giant one smaller. It is read as it
     comes (decision 169, ruling 6): the reader keeps the words of a page
     scanned sideways, and nothing turns it. The pages are joined with a
     line break, not :data:`PAGE_BREAK`, as they always were (SPEC-127.2X

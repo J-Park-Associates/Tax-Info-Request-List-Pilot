@@ -278,6 +278,186 @@ def test_a_reading_without_confidence_scores_fails_loudly():
         ocr._upright_lines(result)
 
 
+# ------------------------------------------------ the reader's settings (P283) ----
+
+
+@pytest.fixture
+def own_settings():
+    """The reader's settings as the test found them, put back after it (the
+    engine is let go with them): a test that tries other settings leaves
+    nothing for the next."""
+    previous = ocr.SETTINGS
+    try:
+        yield
+    finally:
+        ocr.use_settings(previous)
+
+
+class RecordedEngine:
+    """Stands in for ``rapidocr.RapidOCR``: records the params it is built with."""
+
+    built: list[dict] = []
+
+    def __init__(self, params=None):
+        type(self).built.append(dict(params or {}))
+
+
+@pytest.fixture
+def recorded_engines(monkeypatch):
+    """``rapidocr.RapidOCR`` replaced by a recorder, and the list it fills."""
+    import rapidocr
+
+    RecordedEngine.built = []
+    monkeypatch.setattr(rapidocr, "RapidOCR", RecordedEngine)
+    return RecordedEngine.built
+
+
+def test_the_shipped_settings_are_todays_reading():
+    """P283 changes no reading: the shipped settings are the 144 dpi, 0.5
+    floor, 2000 long side, no de-lining and small models the reader had
+    before they had a name, and this process reads with them."""
+    assert ocr.SHIPPED == ocr.ReaderSettings(144, 0.5, 2000, False, "small", "")
+    assert ocr.SETTINGS is ocr.SHIPPED
+    assert ocr.SHIPPED.confident_score == ocr.CONFIDENT_SCORE
+
+
+def test_the_engine_is_built_with_the_settings_floor_and_long_side(recorded_engines, own_settings):
+    """With the shipped settings the params carry rapidocr's own defaults
+    (floor 0.5, long side 2000) and the three shipped model paths; with
+    other settings, theirs."""
+    folder = ocr.models_folder()
+    ocr._build_engine(cuda=False)
+    shipped = recorded_engines[-1]
+    assert shipped["Global.text_score"] == 0.5 and shipped["Global.max_side_len"] == 2000
+    assert shipped["Det.model_type"].value == "small" and shipped["Rec.model_type"].value == "small"
+    assert shipped["Det.model_path"] == str(folder / ocr.DETECTION_MODEL)
+    assert shipped["Rec.model_path"] == str(folder / ocr.RECOGNITION_MODEL)
+    assert shipped["Cls.model_path"] == str(folder / ocr.DIRECTION_MODEL)
+
+    ocr.use_settings(ocr.ReaderSettings(render_dpi=300, confident_score=0.7, max_side_len=3300))
+    ocr._build_engine(cuda=False)
+    other = recorded_engines[-1]
+    assert other["Global.text_score"] == 0.7 and other["Global.max_side_len"] == 3300
+    assert other["Det.model_path"] == shipped["Det.model_path"]       # the same small models
+
+
+def test_the_medium_tier_reads_its_models_from_the_folder_it_is_given(tmp_path, recorded_engines, own_settings):
+    """The medium models are never shipped: the tier's detection and
+    recognition files come from the folder the bench was given, and the
+    direction model is still the app's own."""
+    medium_det, medium_rec = ocr.MODEL_TIERS["medium"]
+    for name in (medium_det, medium_rec):
+        (tmp_path / name).write_bytes(b"")
+    ocr.use_settings(ocr.ReaderSettings(model_tier="medium", model_folder=str(tmp_path)))
+
+    ocr._build_engine(cuda=False)
+
+    params = recorded_engines[-1]
+    assert params["Det.model_path"] == str(tmp_path / medium_det)
+    assert params["Rec.model_path"] == str(tmp_path / medium_rec)
+    assert params["Cls.model_path"] == str(ocr.models_folder() / ocr.DIRECTION_MODEL)
+    assert params["Det.model_type"].value == "medium" and params["Rec.model_type"].value == "medium"
+
+
+def test_the_medium_tier_without_its_models_is_unavailable_and_fetches_nothing(
+        tmp_path, recorded_engines, own_settings):
+    """No folder, or a folder missing one file: the reader says which model
+    is missing, builds nothing, and rapidocr's downloader - replaced by a
+    refusal before any engine is built - is never reached, so the sentence
+    is a missing model and never a request to fetch one."""
+    medium_det, medium_rec = ocr.MODEL_TIERS["medium"]
+    ocr.use_settings(ocr.ReaderSettings(model_tier="medium"))
+    with pytest.raises(ocr.ReaderUnavailable, match=f"the model {medium_det} is missing") as raised:
+        ocr._build_engine(cuda=False)
+    assert "download" not in str(raised.value)
+
+    (tmp_path / medium_det).write_bytes(b"")
+    ocr.use_settings(ocr.ReaderSettings(model_tier="medium", model_folder=str(tmp_path)))
+    with pytest.raises(ocr.ReaderUnavailable, match=f"the model {medium_rec} is missing") as raised:
+        ocr._build_engine(cuda=False)
+    assert "download" not in str(raised.value)
+    assert recorded_engines == []
+
+
+def test_using_other_settings_drops_the_built_engine_and_says_what_it_replaced(monkeypatch, own_settings):
+    other = ocr.ReaderSettings(render_dpi=200)
+    monkeypatch.setattr(ocr, "_ENGINE", object())
+    monkeypatch.setattr(ocr, "_DEVICE", ocr.DEVICE_PROCESSOR)
+
+    assert ocr.use_settings(other) is ocr.SHIPPED
+    assert ocr.SETTINGS is other
+    assert ocr._ENGINE is None and ocr._DEVICE == ""
+    assert ocr.use_settings(ocr.SHIPPED) is other
+
+
+def test_unknown_settings_are_refused(own_settings):
+    """An unknown tier, a dpi under 72 and a floor outside 0-1 are refused
+    before anything changes."""
+    for settings in (ocr.ReaderSettings(model_tier="large"), ocr.ReaderSettings(render_dpi=71),
+                     ocr.ReaderSettings(confident_score=-0.01), ocr.ReaderSettings(confident_score=1.01)):
+        with pytest.raises(ValueError):
+            ocr.use_settings(settings)
+        assert ocr.SETTINGS is ocr.SHIPPED
+    ocr.use_settings(ocr.ReaderSettings(render_dpi=72, confident_score=1.0))     # the edges are allowed
+
+
+def test_the_floor_follows_the_settings(own_settings):
+    """A box scored 0.6 is read at the shipped 0.5 floor and dropped when
+    the settings ask for 0.7."""
+    result = SimpleNamespace(boxes=[_box(10, 10, 100, 30), _box(10, 60, 100, 80)],
+                             txts=("Form 1099-INT", "Box one"), scores=(0.99, 0.6))
+    assert ocr._upright_lines(result) == ["Form 1099-INT", "Box one"]
+    ocr.use_settings(ocr.ReaderSettings(confident_score=0.7))
+    assert ocr._upright_lines(result) == ["Form 1099-INT"]
+
+
+def test_delining_removes_long_rules_and_keeps_the_words():
+    """A letter page at 200 dpi drawn in memory: a full-width rule, a
+    full-height rule and a line of text crossing neither. After ``delined``
+    the rules' rows and columns are white away from the text, the text's ink
+    is still there, the size is unchanged and the page it was given is not."""
+    import numpy
+    from PIL import Image, ImageDraw, ImageFont
+
+    page = Image.new("RGB", (1700, 2200), "white")
+    draw = ImageDraw.Draw(page)
+    draw.rectangle((0, 1100, 1699, 1102), fill="black")             # a rule across the page
+    draw.rectangle((900, 0, 902, 2199), fill="black")               # a rule down the page
+    draw.text((100, 200), "Wage and Tax Statement 2025", font=ImageFont.load_default(size=30), fill="black")
+    before = numpy.asarray(page).copy()
+    ink_before = int((before[150:300, 80:700, 0] < 128).sum())
+    assert ink_before > 0
+
+    cleaned = ocr.delined(page)
+
+    after = numpy.asarray(cleaned)
+    assert cleaned.size == page.size and cleaned.mode == "RGB"
+    assert (after[1101, :, :] >= 250).all()                         # the rule's row, every column
+    assert (after[:, 901, :] >= 250).all()                          # the rule's column, every row
+    assert int((after[150:300, 80:700, 0] < 128).sum()) >= 0.9 * ink_before
+    assert (numpy.asarray(page) == before).all()                    # the page given is untouched
+
+
+def test_delining_is_off_in_the_product_and_on_hands_the_engine_the_delined_page(monkeypatch, own_settings):
+    """Shipped settings hand the engine the page as it stands; with
+    ``delining`` on, it is handed ``delined(page)``."""
+    page, cleaned, seen = object(), object(), []
+    monkeypatch.setattr(ocr, "_pixels", lambda image: seen.append(image) or "pixels")
+    monkeypatch.setattr(ocr, "delined", lambda image: cleaned)
+    engine = FakeEngine(ocr.DEVICE_PROCESSOR, ["a line"])
+
+    monkeypatch.setattr(ocr, "_ENGINE", engine)
+    monkeypatch.setattr(ocr, "_DEVICE", ocr.DEVICE_PROCESSOR)
+    assert ocr.read_page(page) == "a line"
+    assert seen == [page]
+
+    ocr.use_settings(ocr.ReaderSettings(delining=True))
+    monkeypatch.setattr(ocr, "_ENGINE", engine)
+    monkeypatch.setattr(ocr, "_DEVICE", ocr.DEVICE_PROCESSOR)
+    assert ocr.read_page(page) == "a line"
+    assert seen == [page, cleaned]
+
+
 # ----------------------------------------------------- the graphics card ----
 
 

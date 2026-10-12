@@ -42,10 +42,24 @@ tries the card again. A reading is never failed by a fault alone.
 flips upside-down crops itself, and reads nearly every word of a rotated
 page; what a rotated page loses is the order of its lines. The one seam,
 :func:`_upright_lines`, builds lines in reading order from the boxes as they
-come, and drops every box the reader scored under :data:`CONFIDENT_SCORE`
-(P282's guard 2: rapidocr's own floor, held here so the product owns the
-number). It never turns a page and never costs a second reading; the turning
-rule arrives later as the amendment "169, upright", in the seam only.
+come, and drops every box the reader scored under the settings' floor
+(:data:`CONFIDENT_SCORE` as shipped; P282's guard 2: rapidocr's own floor,
+held here so the product owns the number). It never turns a page and never
+costs a second reading; the turning rule arrives later as the amendment
+"169, upright", in the seam only.
+
+**The reader's settings are one place** (P283). How a page is drawn and
+read - the dots per inch a PDF page is rendered at, the confidence floor,
+the long side rapidocr shrinks an image to, whether a form's box rules are
+removed first (:func:`delined`), and which tier of models reads - are the
+fields of :class:`ReaderSettings`, and the ones this process reads with are
+:data:`SETTINGS`. The product reads with :data:`SHIPPED` and never changes
+them; the shipped values are exactly what the reader did before the seam
+existed (144 dpi, floor 0.5, long side 2000, no de-lining, the small
+models), which is why no verdict was invalidated. :func:`use_settings` is
+for the reader bench (``tools/reader_bench.py``) and the suite, which try
+other settings in their own process; it must never run in a reading child,
+which imports this module afresh and so always reads at :data:`SHIPPED`.
 
 **The reading's child** (decision 150, decision 169 R-4). The pass reads in
 a child process it can stop - the safety stop bounds the whole reading,
@@ -156,6 +170,15 @@ MODEL_DIR_NAME = "models"
 DETECTION_MODEL = "PP-OCRv6_det_small.onnx"
 RECOGNITION_MODEL = "PP-OCRv6_rec_small.onnx"
 DIRECTION_MODEL = "ch_ppocr_mobile_v2.0_cls_mobile.onnx"
+#: The detection and recognition files of each tier of models. The medium
+#: names are the files rapidocr's ``download_models`` writes (the last part
+#: of the ``model_dir`` URLs in its ``default_models.yaml``); they are never
+#: shipped and never fetched here - a person puts them in a folder the
+#: bench is given. The direction model is always the shipped one.
+MODEL_TIERS: dict[str, tuple[str, str]] = {
+    "small": (DETECTION_MODEL, RECOGNITION_MODEL),
+    "medium": ("PP-OCRv6_det_medium.onnx", "PP-OCRv6_rec_medium.onnx"),
+}
 #: The engine's sessions, by rapidocr's own attribute names: detection,
 #: direction ("cls") and recognition. Each must be on CUDA for the card.
 SESSIONS = ("text_det", "text_cls", "text_rec")
@@ -170,6 +193,39 @@ SELF_TEST_WORDS = ("wage", "statement")
 #: held here so the product owns the number and a test can see it applied;
 #: Part C may raise it from the office measurement.
 CONFIDENT_SCORE = 0.5
+#: The lowest dots per inch a page may be drawn at (a PDF point is 1/72 inch).
+MINIMUM_DPI = 72
+
+
+@dataclass(frozen=True, slots=True)
+class ReaderSettings:
+    """Every setting of how a page is drawn and read, in one place (P283).
+
+    ``render_dpi``: a PDF page is drawn at ``render_dpi / 72``
+    (:func:`tracker.content_check.render_scale`, which also holds it inside
+    the pixel budget). ``confident_score``: the floor under which a box is
+    not read, given to rapidocr as ``Global.text_score`` and held again in
+    :func:`_upright_lines`. ``max_side_len``: rapidocr's ``Global.max_side_len``,
+    the long side an image is shrunk to before detection. ``delining``:
+    remove a form's long box rules before reading (:func:`delined`).
+    ``model_tier``: a key of :data:`MODEL_TIERS`. ``model_folder``: where the
+    tier's detection and recognition models are; ``""`` is the app's own
+    :func:`models_folder`.
+
+    The defaults are the reading as it was before this class existed."""
+
+    render_dpi: int = 144
+    confident_score: float = CONFIDENT_SCORE
+    max_side_len: int = 2000
+    delining: bool = False
+    model_tier: str = "small"
+    model_folder: str = ""
+
+
+#: What the product reads with, and what this process reads with. The
+#: product never changes them (see the module's text on the settings).
+SHIPPED = ReaderSettings()
+SETTINGS: ReaderSettings = SHIPPED
 
 
 class ReaderUnavailable(Exception):
@@ -255,28 +311,39 @@ def _telemetry_off(onnxruntime) -> None:
 
 
 def _build_engine(*, cuda: bool):
-    """A RapidOCR engine on the models shipped with the app: SPEC-127.2X
-    section 13 O1's defaults, and on the card the benchmark harness's
-    settings (a heuristic cuDNN search, since page shapes change every
-    page, and batches of 32)."""
+    """A RapidOCR engine on the models of :data:`SETTINGS` (the shipped ones
+    unless the bench asked for another tier): SPEC-127.2X section 13 O1's
+    defaults, the settings' floor and long side, and on the card the
+    benchmark harness's settings (a heuristic cuDNN search, since page
+    shapes change every page, and batches of 32). A model file that is not
+    there is :class:`ReaderUnavailable`; nothing is fetched."""
     try:
         import onnxruntime
         from rapidocr import RapidOCR
+        from rapidocr.utils.typings import ModelType
     except ImportError as exc:
         raise ReaderUnavailable(f"{errors.error_class(exc)}: {exc}") from exc
     _telemetry_off(onnxruntime)
     _refuse_downloads()
     onnxruntime.set_default_logger_severity(3)
-    folder = models_folder()
-    paths = {name: folder / name for name in (DETECTION_MODEL, RECOGNITION_MODEL, DIRECTION_MODEL)}
+    own = models_folder()
+    tier_folder = Path(SETTINGS.model_folder) if SETTINGS.model_folder else own
+    detection, recognition = MODEL_TIERS[SETTINGS.model_tier]
+    paths = {detection: tier_folder / detection, recognition: tier_folder / recognition,
+             DIRECTION_MODEL: own / DIRECTION_MODEL}
     for name, path in paths.items():
         if not path.is_file():
             raise ReaderUnavailable(f"the model {name} is missing")
     params = {
         "Global.log_level": "critical",
-        "Global.model_root_dir": str(folder),
-        "Det.model_path": str(paths[DETECTION_MODEL]),
-        "Rec.model_path": str(paths[RECOGNITION_MODEL]),
+        "Global.model_root_dir": str(tier_folder),
+        "Global.text_score": SETTINGS.confident_score,
+        "Global.max_side_len": SETTINGS.max_side_len,
+        # rapidocr takes a model type as its own enum, never as text.
+        "Det.model_type": ModelType(SETTINGS.model_tier),
+        "Rec.model_type": ModelType(SETTINGS.model_tier),
+        "Det.model_path": str(paths[detection]),
+        "Rec.model_path": str(paths[recognition]),
         "Cls.model_path": str(paths[DIRECTION_MODEL]),
         "EngineConfig.onnxruntime.use_cuda": cuda,
     }
@@ -379,6 +446,33 @@ def _engine():
     return _ENGINE
 
 
+def use_settings(settings: ReaderSettings) -> ReaderSettings:
+    """Make ``settings`` this process's, drop the built engine so the next
+    reading builds one with them, and return the settings it replaced.
+
+    Refuses (``ValueError``) a ``model_tier`` that is not in
+    :data:`MODEL_TIERS`, a ``render_dpi`` under :data:`MINIMUM_DPI` and a
+    ``confident_score`` outside 0-1.
+
+    **For the reader bench and the suite only.** The product reads with
+    :data:`SHIPPED`. This must never run in a reading child: the module's
+    rule is that a reading leaves no module state behind for the next
+    document, and a child imports this module afresh, as :data:`SHIPPED`, so
+    a setting changed in the pass's process would never reach it anyway."""
+    global SETTINGS, _ENGINE, _DEVICE
+    if settings.model_tier not in MODEL_TIERS:
+        raise ValueError(f"no such model tier {settings.model_tier!r}; the tiers are "
+                         f"{', '.join(MODEL_TIERS)}")
+    if settings.render_dpi < MINIMUM_DPI:
+        raise ValueError(f"a page cannot be drawn at {settings.render_dpi} dpi; "
+                         f"the least is {MINIMUM_DPI}")
+    if not 0 <= settings.confident_score <= 1:
+        raise ValueError(f"the confidence floor {settings.confident_score} is not between 0 and 1")
+    previous, SETTINGS = SETTINGS, settings
+    _ENGINE, _DEVICE = None, ""
+    return previous
+
+
 def device() -> str:
     """The device this process's engine runs on ("" before it is built)."""
     return _DEVICE
@@ -421,6 +515,53 @@ def warm_up() -> tuple[str, str]:
     return _DEVICE, unusable[-1] if unusable else ""
 
 
+#: A stroke longer than a fortieth of the page's side is a rule; shorter is
+#: a letter (P283, :func:`delined`).
+DELINE_FRACTION = 40
+#: The square a found rule is grown by once, so its anti-aliased edge goes
+#: with it.
+DELINE_GROW = 3
+#: The closing kernels (a column and a row) that rejoin a letter's stroke a
+#: rule's width cut.
+DELINE_REPAIR = ((1, 3), (3, 1))
+
+
+def delined(image):
+    """A copy of ``image`` with a form's long box rules whitened (P283).
+
+    Jason's step 5, built as a switch the bench turns on and the product
+    leaves off until the numbers say otherwise. Pure and in memory: the page
+    it is given is never touched and nothing is written.
+
+    Ink is found as white on black (Otsu); a horizontal and a vertical
+    opening whose length is a fortieth of the page's side keep only strokes
+    longer than a letter; the two masks are joined, grown once, and whitened
+    in a greyscale copy. A letter a rule crossed lost a sliver, so a closing
+    on the ink that remains, a column then a row, rejoins a stroke cut by
+    one rule's width and lays it back as black. Returns an ``RGB`` image the
+    size of the input."""
+    import cv2
+    import numpy
+    from PIL import Image
+
+    grey = numpy.asarray(image.convert("L")).copy()
+    height, width = grey.shape
+    _level, ink = cv2.threshold(grey, 0, 255, cv2.THRESH_BINARY_INV | cv2.THRESH_OTSU)
+    across = cv2.morphologyEx(ink, cv2.MORPH_OPEN,
+                              cv2.getStructuringElement(cv2.MORPH_RECT,
+                                                        (max(1, width // DELINE_FRACTION), 1)))
+    down = cv2.morphologyEx(ink, cv2.MORPH_OPEN,
+                            cv2.getStructuringElement(cv2.MORPH_RECT,
+                                                      (1, max(1, height // DELINE_FRACTION))))
+    rules = cv2.dilate(cv2.bitwise_or(across, down), numpy.ones((DELINE_GROW, DELINE_GROW), numpy.uint8))
+    grey[rules > 0] = 255
+    _level, left = cv2.threshold(grey, 0, 255, cv2.THRESH_BINARY_INV | cv2.THRESH_OTSU)
+    for size in DELINE_REPAIR:
+        left = cv2.morphologyEx(left, cv2.MORPH_CLOSE, numpy.ones(size[::-1], numpy.uint8))
+    grey[left > 0] = 0
+    return Image.fromarray(grey, "L").convert("RGB")
+
+
 def _pixels(image):
     """A PIL image as the engine takes it: BGR, the way OpenCV reads a file."""
     import numpy
@@ -438,7 +579,7 @@ def read_page(image, *, name: str = "") -> str:
     and whatever the processor's engine raised when it fails on the page."""
     global _ENGINE, _DEVICE
     engine = _engine()
-    pixels = _pixels(image)
+    pixels = _pixels(delined(image) if SETTINGS.delining else image)
     try:
         return _text_of(engine(pixels))
     except Exception as exc:
@@ -471,7 +612,8 @@ def _upright_lines(page_result) -> list[str]:
     own, lines run top to bottom and a line's boxes left to right (the
     benchmark harness's ``lines_from_boxes``, which Part 1 measured). It
     drops the boxes the reader was not confident of (a recognition score
-    under :data:`CONFIDENT_SCORE`, P282's guard 2) and blank ones; it never
+    under the settings' ``confident_score``, :data:`CONFIDENT_SCORE` as shipped,
+    P282's guard 2) and blank ones; it never
     turns a page. The turning rule lands here, and only here, with
     the amendment "169, upright".
 
@@ -487,7 +629,7 @@ def _upright_lines(page_result) -> list[str]:
         raise ValueError("the reader gave no confidence scores")
     items = []
     for quad, text, score in zip(boxes, texts, scores, strict=False):
-        if float(score) < CONFIDENT_SCORE:
+        if float(score) < SETTINGS.confident_score:
             continue
         if not text or not str(text).strip():
             continue
