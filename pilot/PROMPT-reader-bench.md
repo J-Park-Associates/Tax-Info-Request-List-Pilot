@@ -10,7 +10,12 @@ settings the numbers favour; it waits for what this brings back.
 ## For Jason, before the session starts
 
 1. The office checkout is on `claude/ocr-scans` at Part B's head, and a
-   second checkout of `main` sits beside it (step 1 makes it).
+   second checkout of the commit Part A stacks on sits beside it (step 1
+   makes it). Give the session two hashes: Part B's head, and that "before"
+   commit (today's value is `dcb02c3`, what `git merge-base main
+   claude/ocr-scans` gives while Part A is unmerged). Both parts land on `main`
+   first (SPEC section 4.3), so by the time the office runs this `main` already
+   holds Part A and is not the "before".
 2. Have two folders ready and tell the session where they are: the firm's
    sorted documents (the folder `backtest.py` runs on) and the photo corpus
    (the folder `TRACKER_REAL_CORPUS` names, if its expectations file is
@@ -49,25 +54,29 @@ SAFETY - never break these:
    Both must print True: the clients root is set and the schedule is registered on this computer.
    Anything else, stop and tell Jason this is not the office PC. Do not print the clients root.
    Then: git status must be clean on claude/ocr-scans, and `git log -1 --format=%h` is Part B's head
-   (Jason gives you the hash). Install from the locks the way Setup.bat does, hash-checked:
+   (Jason gives you the hash, and a second hash beside it: the commit Part A stacks on, today's
+   value `dcb02c3`; call it <before>). Install from the locks the way Setup.bat does, hash-checked:
      .venv\Scripts\python -m pip install --require-hashes -r requirements.lock
      .venv\Scripts\python -m pip install --require-hashes --no-deps -r requirements-nodeps.lock
    Make the second checkout, for the numbers before P282 and for the baseline:
-     git worktree add ..\bench-main main
-     (in ..\bench-main) python -m venv .venv, then the same two pip installs there.
-   Why: P282's rule lives in the claude/ocr-scans checkout, so "before" has to run on main's code.
+     git fetch
+     git worktree add --detach ..\bench-before <before>
+     (in ..\bench-before) python -m venv .venv, then the same two pip installs there.
+   Why: P282's rule lives in the claude/ocr-scans checkout, and `main` may already hold Part A, so
+   "before" has to run on the exact commit Part A stacks on, not on main.
 
-2. TODAY'S NUMBERS, BEFORE PART A IS INSTALLED (the installed app is still main's build).
+2. TODAY'S NUMBERS, BEFORE PART A IS INSTALLED (the installed app is still the build from before Part A).
    a. Needs Review by code, today - why: it is the count Part A is meant to lower, and it needs the
       firm's recorded rows, which Part A's code does not change:
         .venv\Scripts\python -m tracker.api firm | .venv\Scripts\python tools\reader_bench.py review-codes --out <outside>\review-before.json
-   b. The backtest baseline, with the reader on, on main's code (in ..\bench-main) - why: decision 92
+   b. The backtest baseline, with the reader on, on the before commit's code (in ..\bench-before) - why: decision 92
       parks every scan without the reader, so a baseline without --ocr says nothing about Part A, and
       every later routing change is held to this number:
         .venv\Scripts\python tools\backtest.py run "<firm corpus>" --ocr --out <outside>\backtest-before.json
         .venv\Scripts\python tools\backtest.py record --report <outside>\backtest-before.json
       `record` rewrites docs\backtest-baseline.json. Commit that one file on a new branch cut from
-      main (git switch -c baseline-before-p282), push the branch and open a DRAFT pull request. That is
+      main (git switch -c baseline-before-p282 origin/main - the recorded file carries over), push the
+      branch and open a DRAFT pull request. That is
       the only commit and the only pull request of this session.
    c. The photo corpus: if it has no filled-in expectations file, write the skeleton and STOP:
         .venv\Scripts\python tools\backtest.py collect "<photo corpus>" --catalog 1040 --year 2025 --out <outside>\photo-expectations.csv
@@ -89,23 +98,29 @@ SAFETY - never break these:
 
 4. THE BENCH, in the claude/ocr-scans checkout, on each corpus that has an expectations file:
      .venv\Scripts\python tools\reader_bench.py variants          (the 36 names; check the first is dpi144-floor0.50-off-small)
-     .venv\Scripts\python tools\reader_bench.py run "<corpus>" --out <outside>\bench-<corpus>.json --models <outside>\medium-models
+     .venv\Scripts\python tools\reader_bench.py run "<corpus>" --out <outside>\bench-<firm|photos>.json --models <outside>\medium-models
+   The report names are fixed labels (bench-firm*.json, bench-photos*.json, with -small or -medium
+   added below), never the corpus folder's name or path, which would be repeated in the transcript.
    The full grid: 36 variants, each reading every scan and photo of the corpus once. Why each corpus on
    its own: the firm's sorted documents are mostly scans, the photo corpus is the phone photos, and the
    ceiling (6 seconds a page) is judged on both.
-   Time, worked out before starting: read the shipped variant's per-page median from the first line of
-   the table the run prints (it is printed as each variant finishes). Seconds for the grid are about
+   Time, worked out before starting: read the shipped variant's per-page median from the first row
+   under the table's header, which the run prints as each variant finishes. Seconds for the grid are about
    pages x that median x 65 (18 small variants, plus 18 medium variants at about 2.6 times small),
    and the 300 dpi variants cost more than that: allow up to twice as much. `corpus.pages` in the
    report is the page count; the run prints nothing else about the corpus. If the estimate passes one
    night (ten hours), run the small tier first:
-     ... run "<corpus>" --out <outside>\bench-<corpus>-small.json --tier small
+     ... run "<corpus>" --out <outside>\bench-<firm|photos>-small.json --tier small
    read the table, pick the dpi, floor and de-lining with the most `right` and the fewest `wrong`
    within the ceiling, and run the medium tier second at those alone:
-     ... run "<corpus>" --out <outside>\bench-<corpus>-medium.json --models <outside>\medium-models --tier medium --dpi <d> --floor <f> --delining <off|on>
+     ... run "<corpus>" --out <outside>\bench-<firm|photos>-medium.json --models <outside>\medium-models --tier medium --dpi <d> --floor <f> --delining <off|on>
    (the shipped variant is always measured too, so the two reports share a baseline row). A variant
    that says "not measured" is a result, not a failure. The run reads on the processor, in this
-   process, with no safety stop: if it seems stuck, wait; a page takes seconds, not minutes.
+   process. The safety stop is still armed: no page starts after the one before it overran 60 seconds
+   or after the document's 600, but a page already under way is unbounded, so if it seems stuck, wait;
+   a page takes seconds, not minutes. A slow variant can park a multi-page scan through the stop, and
+   that counts as a park in the numbers. The report is rewritten after every variant; a variant that
+   failed is in it as "not measured" with the name of its error.
 
 5. PART A INSTALLED, then the same numbers after it.
    Jason (or the usual route) installs the Part A build on this PC; wait until he says it is in, and
@@ -113,7 +128,7 @@ SAFETY - never break these:
      .venv\Scripts\python -m tracker.api firm | .venv\Scripts\python tools\reader_bench.py review-codes --out <outside>\review-after.json
    and, in the claude/ocr-scans checkout:
      .venv\Scripts\python tools\backtest.py run "<firm corpus>" --ocr --out <outside>\backtest-after.json
-   and, in ..\bench-main (the checkout that holds the recorded baseline):
+   and, in ..\bench-before (the checkout that holds the recorded baseline):
      .venv\Scripts\python tools\backtest.py check --report <outside>\backtest-after.json
    Exit 1 is a finding to report, not to fix: say the two agreements it printed and stop there.
 

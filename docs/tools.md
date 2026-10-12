@@ -143,14 +143,19 @@ changes it.
 imports the reader afresh at the shipped settings, so settings changed in the
 bench's process would never reach one. The bench turns the child switch off and
 reads in this process, putting the settings and the switch back however the run
-ends. There is no safety stop for a reading here, and it reads on the processor
-only: the conservative number for the ceiling. (`tools/backtest.py` with `--ocr`
+ends. The safety stop is still armed (no page starts after the one before it overran 60
+seconds or after the document's 600), but a page already under way is unbounded, so
+a slow variant can park a multi-page scan through the stop, and that counts as a
+park. It reads on the processor only: the conservative number for the ceiling. (`tools/backtest.py` with `--ocr`
 also reads in its own process, but opens no session, so each document pays the
 engine's load; it is left as it is.)
 
 **The report holds counts and seconds only** - no document name, folder, row
 number, word or path, and not the models folder - and is refused inside the
-repository, like the backtest's.
+repository, like the backtest's. It is rewritten after every variant, so a crash or
+a Ctrl-C costs only the variant under way; a variant whose reading raised is reported
+as not measured, with the exception's class and never its message, and the run goes
+on. A Ctrl-C writes the report so far and exits 130.
 
 ```
 python tools/reader_bench.py variants                       # the grid's names, one a line

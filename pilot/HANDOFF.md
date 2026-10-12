@@ -221,8 +221,9 @@ Where the SPEC and the code differed (none stopped the build):
   in none of the three kinds, and nothing is read for it. The SPEC's schema has
   no field for it.
 - `variants` also takes the four restriction flags (the prompt's time
-  arithmetic uses them), and `run` requires `--out`. The report is written once,
-  at the end; each variant's row is printed the moment it is measured.
+  arithmetic uses them), and `run` requires `--out`. Each variant's row is printed
+  the moment it is measured, and (after the review, below) the report is
+  rewritten at the same moment.
 - `tests/test_single_source.py` lists `tools/reader_bench.py` in `DOOR_EXEMPT`,
   as `tools/backtest.py` is: its folder is the firm's sorted documents, never the
   clients root. The SPEC did not name that file.
@@ -232,7 +233,8 @@ Where the SPEC and the code differed (none stopped the build):
   with a no-op so its own failing guard on rapidocr's downloader is not
   overwritten by the real refusal; the shipped variant then builds the real
   engine from the app's models.
-- The office prompt's "before" numbers run on a checkout of `main`, and its
+- The office prompt's "before" numbers run on a checkout of the commit Part A
+  stacks on (first written as `main`; see the review, below), and its
   `check` runs there too: the SPEC has one checkout on `claude/ocr-scans`, but
   Part A's rule is in that code, so a baseline measured there would already
   hold Part A and could not show it, and `check` reads the baseline file of the
@@ -243,6 +245,51 @@ Where the SPEC and the code differed (none stopped the build):
   failed` after the summary (exit code 0); five reruns did not repeat it. It is
   ONNX Runtime's teardown on macOS at interpreter exit, the in-process engine
   the older real-reader tests already build; worth knowing if it shows up.
+
+**Part B's review, round 1, and the rebuild** (Opus reviewed `253a09a..cc8e4a5`
+against SPEC section 2; the gate had passed; product behaviour unchanged).
+Ten findings: seven fixed here, three notes left as they were (8-10).
+
+1. De-lining never rejoined a letter a rule crossed (the cut is the rule's
+   thickness plus the growth's margin, wider than the repair bridged, and the
+   repair re-binarised the whole page). Now the repair span is worked out per
+   page, only the bridging pixels inside the removed rule go back to black, and
+   nothing else on the page changes (SPEC 2.2 step 5, as amended). One new
+   test, run for a 1, 2 and 3 px rule.
+2. A bad catalog name could reach the screen through a file name that shifts a
+   column. The bench and the backtest now say the row number and never the
+   value; one new test each.
+3. The office prompt's "before" checkout is the commit Part A stacks on, which
+   Jason supplies as a hash beside Part B's head (today's value `dcb02c3`),
+   because `main` will already hold Part A.
+4. The bench rewrites its report after every variant; a variant that fails is
+   recorded as not measured, with the exception's class only; a Ctrl-C writes the
+   report and exits 130 with one sentence. Two new tests; one old test now
+   makes the survey (not a variant's reading) fail, because a failing reading
+   no longer stops the run.
+5. The curated map's note on the render scale says one thing, and the
+   bench's note and the repair's description follow the code.
+6. The prompt's report names are fixed labels (firm, photos), never a corpus
+   folder's name, and the shipped variant is the first row under the header.
+7. The bench's reading does keep the safety stop (no page starts after a page
+   overran 60 s or the document's 600 s); only a page under way is unbounded,
+   so a slow variant can park a multi-page scan, which counts as a park. Said so
+   in the bench's text, `docs/tools.md` and the prompt.
+
+Tests added: ocr `test_delining_rejoins_a_letter_a_rule_crossed` (three
+parameters); reader bench
+`test_a_variant_whose_reading_raises_is_unmeasured_and_the_run_goes_on`,
+`test_a_ctrl_c_writes_the_report_so_far_and_exits_130_with_one_sentence`,
+`test_a_bad_catalog_is_named_by_its_row_number_and_never_by_its_value`;
+backtest `test_a_catalog_no_row_may_name_is_reported_by_its_row_number_and_never_by_its_value`.
+Gate after the fixes, each file its own process, both interpreters, every file
+the same under both (`test_ocr` 56 passed, 4 skipped; `test_reader_bench` 18;
+`test_backtest` 22; `test_content_check` 115 passed, 1 skipped; `test_layers`
+31; `test_single_source` 217; `test_repo_map` 82; `test_tripwire` 23;
+`test_errors` 83); `ruff check .` clean; `repo_map.py update` then `check` exit
+0; `vocab_report.py build` left no diff. `SHIPPED` and `CACHE_VERSION` did not
+move. Not changed: SPEC section 4's office-prompt sketch still names
+`bench-<corpus>.json`; the prompt itself is the source.
 
 Tests added: ocr `test_the_shipped_settings_are_todays_reading`,
 `test_the_engine_is_built_with_the_settings_floor_and_long_side`,
