@@ -26,7 +26,8 @@ this repository; [`SPEC.md`](SPEC.md) says what it builds.
 [`SPEC-ocr-scans.md`](SPEC-ocr-scans.md) Part A (P282), **built on
 `claude/ocr-scans`** in commit `ff938b7`, not yet reviewed (the review is
 Opus's, in a session that did not build it) and not pushed. Part B (P283) is
-a separate build, stacked on this one, and is not started.
+a separate build, stacked on this one, and is built (below), not yet reviewed
+and not pushed.
 
 What Part A built, in the software's words: a scan or a photo that a request
 accepts on its looser keywords now files under that request when the top of
@@ -140,6 +141,120 @@ their request's rules. So every row parked as Read From Scan Only before the
 install stays parked until a person files it; only scans that arrive after it
 file by the new rule. The before-and-after count on the office PC therefore
 moves only on documents dropped after Part A is installed.
+
+**Part B (P283), built on `claude/ocr-scans`** in commits `2d3ceff` (the seam)
+and `ebd2f78` (the bench, its prompt, the docs and the map), stacked on Part
+A's head `253a09a`; not yet reviewed (Opus's, in a session that did not build
+it) and not pushed. It changes nothing the product reads.
+
+What Part B built, in the software's words: every setting of how a page is
+drawn and read - the dots per inch a PDF page is drawn at, the confidence
+floor, the long side the reader shrinks an image to, whether a form's box
+lines are removed first, and which size of models reads - now lives in one
+place, and the shipped values are exactly what the reader did before (144
+dpi, floor 0.5, long side 2000, no box-line removal, the small models; the
+cache version did not move). Removing a form's box lines is built as a switch
+that is off. A measuring tool, `tools/reader_bench.py`, reads a folder of
+already-sorted documents once per combination of settings (36 in all) and
+writes down, in counts and seconds only, how many landed where a person put
+them and how long each took; its `review-codes` command counts Needs Review by
+code from the `firm` command's reply. `pilot/PROMPT-reader-bench.md` is the
+office session's prompt. Not the runbook and not the README: nothing a person
+sees at the firm changes.
+
+Gate, each file its own process, `.venv` (3.14) and `.venv311` (3.11), no
+`-m "not corpus"`, every file passed under both. The real reader ran (nothing
+in the real-reader tests skipped; the skips are the platform ones already
+there). The 3.11 column ran on the final tree; the 3.14 column ran before the
+last two edits below (the `DOOR_EXEMPT` line and the curated prose), and
+`test_single_source` and `test_repo_map` were run again on the final tree
+under 3.14 (217 and 82 passed).
+
+| file | 3.14 | 3.11 |
+|---|---|---|
+| `test_ocr` | 53 passed, 4 skipped | 53 passed, 4 skipped |
+| `test_content_check` | 115 passed, 1 skipped | 115 passed, 1 skipped |
+| `test_reader_bench` | 15 passed | 15 passed |
+| `test_layers` | 31 passed | 31 passed |
+| `test_router` | 92 passed | 92 passed |
+| `test_filer` | 405 passed, 6 skipped | 405 passed, 6 skipped |
+| `test_scanner` | 42 passed | 42 passed |
+| `test_containers` | 62 passed | 62 passed |
+| `test_names` | 6 passed | 6 passed |
+| `test_after_install` | 105 passed, 1 skipped | 105 passed, 1 skipped |
+| `test_api` | 505 passed | 505 passed |
+| `test_runner` | 229 passed, 1 warning | 229 passed, 1 warning |
+| `test_resident` | 39 passed | 39 passed |
+| `test_backtest` | 21 passed | 21 passed |
+| `test_vocab_report` | 28 passed | 28 passed |
+| `test_learned_keywords` | 17 passed | 17 passed |
+| `test_single_source` | 217 passed | 217 passed |
+| `test_repo_map` | 82 passed | 82 passed |
+| `test_tripwire` | 23 passed | 23 passed |
+| `test_errors` | 83 passed | 83 passed |
+
+Also: `ruff check .` clean; `repo_map.py update` then `check` exit 0 (the map is
+in the commit); `vocab_report.py build` left one line of diff, the recorded
+input hash of `tracker/content_check.py` (the report pins its inputs, and that
+file changed) and no keyword, row or count.
+
+The shipped variant's time on this Mac (Apple silicon, processor, small
+models), from a run of the real tool on two made-up image-only 1099-INT pages
+- `test_a_real_scan_is_read_under_each_dpi_it_is_asked_for` asserts but does
+not print its seconds: the engine loads in 0.19 s, and a page reads at 0.33 s
+at 144 dpi (the shipped one), 0.45 s at 200 and 0.77 to 0.92 s at 300, all far
+inside the 6-seconds-a-page ceiling; box-line removal added nothing at 144 and
+200 and about 0.05 s at 300. Those are two clean drawn pages, not the firm's
+paper: the office numbers are the measurement.
+
+Where the SPEC and the code differed (none stopped the build):
+
+- **rapidocr takes `Det.model_type` and `Rec.model_type` as its own `ModelType`
+  enum, never as text** (`rapidocr/utils/parse_parameters.py` raises "must be
+  Enum Type"). The SPEC said the tier name; `_build_engine` passes
+  `ModelType(tier)` (`from rapidocr.utils.typings import ModelType`). Found by
+  the real reader refusing to build.
+- `Global.model_root_dir` is the tier's folder (the SPEC left it alone); with
+  the shipped settings that is the same folder as before.
+- The corpus counts: a document that is neither a text layer, a scan nor a
+  photo (one no extractor reads, or whose reading failed) is in `documents` and
+  in none of the three kinds, and nothing is read for it. The SPEC's schema has
+  no field for it.
+- `variants` also takes the four restriction flags (the prompt's time
+  arithmetic uses them), and `run` requires `--out`. The report is written once,
+  at the end; each variant's row is printed the moment it is measured.
+- `tests/test_single_source.py` lists `tools/reader_bench.py` in `DOOR_EXEMPT`,
+  as `tools/backtest.py` is: its folder is the firm's sorted documents, never the
+  clients root. The SPEC did not name that file.
+- `tests/test_repo_map.py` refuses the curated prose quoting a constant's value,
+  so the notes say the cache version "did not move" instead of "stays 13".
+- `test_the_bench_never_downloads_a_model` replaces `ocr._refuse_downloads`
+  with a no-op so its own failing guard on rapidocr's downloader is not
+  overwritten by the real refusal; the shipped variant then builds the real
+  engine from the app's models.
+- The office prompt's "before" numbers run on a checkout of `main`, and its
+  `check` runs there too: the SPEC has one checkout on `claude/ocr-scans`, but
+  Part A's rule is in that code, so a baseline measured there would already
+  hold Part A and could not show it, and `check` reads the baseline file of the
+  checkout it runs in. The prompt lists the bench reports beside the four
+  before-and-after files in what comes back.
+- Once, a combined `pytest` run of `test_reader_bench` and `test_ocr` printed
+  `libc++abi: terminating due to uncaught exception ... recursive_mutex lock
+  failed` after the summary (exit code 0); five reruns did not repeat it. It is
+  ONNX Runtime's teardown on macOS at interpreter exit, the in-process engine
+  the older real-reader tests already build; worth knowing if it shows up.
+
+Tests added: ocr `test_the_shipped_settings_are_todays_reading`,
+`test_the_engine_is_built_with_the_settings_floor_and_long_side`,
+`test_the_medium_tier_reads_its_models_from_the_folder_it_is_given`,
+`test_the_medium_tier_without_its_models_is_unavailable_and_fetches_nothing`,
+`test_using_other_settings_drops_the_built_engine_and_says_what_it_replaced`,
+`test_unknown_settings_are_refused`, `test_the_floor_follows_the_settings`,
+`test_delining_removes_long_rules_and_keeps_the_words`,
+`test_delining_is_off_in_the_product_and_on_hands_the_engine_the_delined_page`;
+content_check `test_a_page_is_rendered_at_the_settings_dpi_within_the_pixel_budget`;
+reader_bench, all of section 2.5's names plus
+`test_review_codes_names_what_is_wrong_with_a_reply_and_exits_2`.
 
 [`SPEC-ui-polish.md`](SPEC-ui-polish.md): the UI and UX review of 2026-10-11.
 Section 1, the no-brainers (P264), is built on `claude/ui-polish` in one
