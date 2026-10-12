@@ -7,11 +7,13 @@ this repository; [`SPEC.md`](SPEC.md) says what it builds.
 
 ## Where the record is
 
-- **`main` is `d39b92e7`** (pull request #50, P285, the preparation of every
-  scan and photo before the reader reads it; on `41723e0d`, pull request
-  #49, P286, the bench's Needs Review count asks the firm summary itself).
-  No lane is open. The Mac console in `/Applications` and in
-  `~/Desktop/Apps/Published` is this build.
+- **`main` is pull request #52** (the security review's prompt corrections)
+  on `597ed0f6` (pull request #51, this handoff) on `d39b92e7` (pull request
+  #50, P285, the preparation of every scan and photo before the reader reads
+  it) on `41723e0d` (pull request #49, P286, the bench's Needs Review count
+  asks the firm summary itself). No lane is open. The Mac console in
+  `/Applications` and in `~/Desktop/Apps/Published` is the `d39b92e7` build,
+  which is the same program: everything since changed prompts and records only.
 
 - **Decisions live in [`DECISIONS.md`](DECISIONS.md), rows P1 to P286.** The
   badge reads **Pilot 0.4** (P281, 2026-10-11): 0.3 plus the UI review's work. Code
@@ -49,6 +51,14 @@ Nothing is in flight. What landed on 2026-10-12, in the software's words:
   instead of reading it from a pipe, so the count never waits on a terminal
   and never mistakes a progress line for the reply; a failure is said by kind
   and exit code only. Three Opus reviews.
+- **The security review (2026-10-12, by the orchestrating session on Fable,
+  at Jason's instruction).** Everything landed since `dcb02c3` was read
+  against the standing rules and the deny list: nothing in code; the office
+  bench prompt wrote the photo corpus's file list under a name the deny rule
+  does not cover and then did not name it to the bench, and did not say the
+  session runs under the schedule's account with the deny list in place; the
+  Mac prompt called 144 dpi "today's". All three corrected in pull request
+  #52.
 
 **Next for the reader lane.** The office PC runs
 [`PROMPT-reader-bench.md`](PROMPT-reader-bench.md) on the firm's own sorted
@@ -67,6 +77,13 @@ first.
 
 ## Open for Jason
 
+- **The office bench session's account.** `PROMPT-reader-bench.md` has the
+  session run under the account that runs the schedule (its step 1 requires
+  the clients root, which `review-codes` and the backtest need), while the
+  working notes say the firm's AI tooling runs under a separate account that
+  cannot see the client drive. The prompt now says the deny list must be in
+  place in that account; whether the session may run there at all is your
+  call.
 - **The processor child's memory limit, 4 GB (P285).** Decision 169 set 2 GB
   for a reader at 144 dpi; a 300 dpi page needs about 2.3 GB on a Mac, and
   Windows counts committed memory, so 4 GB is the orchestrating session's
