@@ -590,6 +590,16 @@ DELINE_RULE_FLOOR = 3
 #: (a 250th: about 4 px at 144 dpi, 10 px at 300) before the repair leaves
 #: its cut alone as a border, not a rule.
 DELINE_RULE_DIVISOR = 250
+#: A rule is also at least this many pixels long, however small the page: a
+#: fifth of an inch at 300 dpi, shorter than the shortest cell edge a tax
+#: form draws and longer than any stroke of 40 px type. It only bites on a
+#: canvas under 2400 px, where a fortieth falls below it.
+DELINE_RULE_LEAST = 60
+#: A rule is thin: a run of ink thicker than the larger of this many pixels
+#: and a five-hundredth of the page's longer side (plus one) is type. A printed
+#: rule is 2 to 6 px at 300 dpi, the stem of 28 pt bold type about 16.
+DELINE_THICK_FLOOR = 3
+DELINE_THICK_DIVISOR = 500
 
 #: The long side the lean is measured on (:func:`_skew_degrees`): the page is
 #: reduced to this, so the 34 trial turns cost milliseconds.
@@ -635,11 +645,21 @@ def _delined_grey(grey):
     _level, ink = cv2.threshold(grey, 0, 255, cv2.THRESH_BINARY_INV | cv2.THRESH_OTSU)
     across = cv2.morphologyEx(ink, cv2.MORPH_OPEN,
                               cv2.getStructuringElement(cv2.MORPH_RECT,
-                                                        (max(1, width // DELINE_FRACTION), 1)))
+                                                        (max(DELINE_RULE_LEAST, width // DELINE_FRACTION), 1)))
     down = cv2.morphologyEx(ink, cv2.MORPH_OPEN,
                             cv2.getStructuringElement(cv2.MORPH_RECT,
-                                                      (1, max(1, height // DELINE_FRACTION))))
-    rules = cv2.dilate(cv2.bitwise_or(across, down), numpy.ones((DELINE_GROW, DELINE_GROW), numpy.uint8))
+                                                      (1, max(DELINE_RULE_LEAST, height // DELINE_FRACTION))))
+    # Thin: whatever lies inside a t x t square of ink is thicker than a
+    # printed rule, so it is type, however long its stem.
+    thick = max(DELINE_THICK_FLOOR, max(width, height) // DELINE_THICK_DIVISOR) + 1
+    heavy = cv2.morphologyEx(ink, cv2.MORPH_OPEN,
+                             cv2.getStructuringElement(cv2.MORPH_RECT, (thick, thick)))
+    rules = cv2.dilate(cv2.bitwise_and(cv2.bitwise_or(across, down), cv2.bitwise_not(heavy)),
+                       numpy.ones((DELINE_GROW, DELINE_GROW), numpy.uint8))
+    # The even opening kernel of a tall page drifts a pixel past the end of
+    # a stroke, and the growth would carry that into the stem's last row: type
+    # is never whitened, whatever lies beside it.
+    rules[heavy > 0] = 0
     grey[rules > 0] = 255
     span = DELINE_GROW + max(DELINE_RULE_FLOOR, min(width, height) // DELINE_RULE_DIVISOR) + 1
     _level, left = cv2.threshold(grey, 0, 255, cv2.THRESH_BINARY_INV | cv2.THRESH_OTSU)
@@ -662,11 +682,17 @@ def delined(image):
     touched and nothing is written.
 
     Ink is found as white on black (Otsu); a horizontal and a vertical
-    opening whose length is a fortieth of the page's side keep only strokes
-    longer than a letter; the two masks are joined, grown once, and whitened
-    in a greyscale copy. A letter a rule crossed lost a sliver as thick as
-    the rule plus the growth's margin, so a closing on the ink that remains,
-    a column then a row, as long as that sliver can be, rejoins the stroke;
+    opening whose length is a fortieth of the page's side (never under
+    :data:`DELINE_RULE_LEAST` pixels) keep only strokes longer than a letter.
+    A rule is long *and thin*: an opening with a square a little thicker than
+    a printed rule finds the ink that is thicker, the stems of large type,
+    and those are taken out of the mask, so a bold title is not mistaken for
+    a rule (the first build took a 28 pt title's stems for rules and the
+    reader lost the form number). The two masks are joined, grown once, and
+    whitened in a greyscale copy. A letter a rule crossed lost a sliver as
+    thick as the rule plus the growth's margin, so a closing on the ink that
+    remains, a column then a row, as long as that sliver can be, rejoins the
+    stroke;
     only the bridging pixels inside the whitened rule are laid back as black,
     so nothing outside the rule changes and two letters that merely sit close
     are never joined. On a black-and-white page its two Otsu steps split

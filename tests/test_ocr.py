@@ -53,13 +53,10 @@ def w2_scan(path: Path) -> Path:
 
 
 def w2_photo(path: Path, *, turn: int = 0) -> Path:
-    """A photo of a W-2's head, turned ``turn`` degrees in its pixels. The
-    lines sit at the top of a page-sized canvas: P285's box-line step takes a
-    stroke longer than a fortieth of the page's side for a rule, so type this
-    large needs a page at least forty letters tall and wide to stay type."""
+    """A photo of a W-2's head, turned ``turn`` degrees in its pixels."""
     from PIL import Image, ImageDraw, ImageFont
 
-    image = Image.new("RGB", (2200, 1700), "white")
+    image = Image.new("RGB", (1100, 260), "white")
     draw = ImageDraw.Draw(image)
     for i, line in enumerate(W2_WORDS):
         draw.text((30, 30 + 70 * i), line, font=ImageFont.load_default(size=40), fill="black")
@@ -540,6 +537,34 @@ def only_the_grey(page):
     return Image.fromarray(grey_of(page), "L").convert("RGB")
 
 
+def test_a_thick_stroke_is_type_and_a_thin_one_a_rule_whatever_their_length(tmp_path):
+    """A rule is long and thin (P285, SPEC 9.2): on a letter page at 300 dpi a
+    3 px wide stroke 600 px tall and a 600 px wide one 3 px tall are whitened,
+    while the stems of large type, a 16 px wide bar 160 px tall and a 160 x 16
+    one (a 28 pt bold stem), come back unchanged pixel for pixel; and the
+    1100 x 260 canvas of a photo of a W-2's head, whose type is 40 px, comes
+    back with exactly the ink it had."""
+    import numpy
+    from PIL import Image, ImageDraw
+
+    page = Image.new("L", LETTER_300, 255)
+    draw = ImageDraw.Draw(page)
+    draw.rectangle((300, 400, 302, 999), fill=0)                  # a thin rule down, 600 long
+    draw.rectangle((800, 400, 1399, 402), fill=0)                 # a thin rule across, 600 long
+    draw.rectangle((300, 1600, 315, 1759), fill=0)                # a stem, 16 x 160
+    draw.rectangle((800, 1600, 959, 1615), fill=0)                # a bar, 160 x 16
+    before = numpy.asarray(page).copy()
+
+    after = ocr._delined_grey(before)
+
+    assert (after[400:1000, 300:303] == 255).all() and (after[400:403, 800:1400] == 255).all()
+    assert (after[1600:1760, 300:316] == 0).all() and (after[1600:1616, 800:960] == 0).all()
+    assert numpy.array_equal(after[1500:], before[1500:])           # nothing else on the page moved
+
+    photo = grey_of(Image.open(w2_photo(tmp_path / "w-2.png")))
+    assert numpy.array_equal(ocr._delined_grey(photo), photo)
+
+
 def test_every_step_off_hands_the_engine_the_page_as_it_stands(monkeypatch, own_settings):
     """"Raw" in the bench is P283's reading: with every step off ``prepared``
     returns the very image it was given, and the engine is handed its pixels
@@ -764,6 +789,37 @@ def test_a_prepared_real_scan_of_a_1099_int_files_under_p282_level_and_skewed_tw
         routing = route_file(scan, [interest, mortgage])
         assert routing.identifier == "A02", (name, routing.reason)
         assert routing.reason == MATCHED_FROM_SCAN, name
+
+
+def test_a_large_title_keeps_its_form_number_when_prepared(own_settings):
+    """The real reader under the shipped settings, on a letter page at 300 dpi:
+    "Form 1099-INT Interest Income" in 150 px type over a made-up body in 46 px
+    type with a 3 px box around it. The box-line step once took the stems of
+    large type for rules and the reader lost the form number the title guard
+    (P282) depends on (``orm 099 1 n:crcs: ncomc``): the first line read from
+    the prepared page still holds "1099-INT", as the unprepared page's does."""
+    import dataclasses
+
+    from PIL import Image, ImageDraw, ImageFont
+
+    from tests.samples import lines_1099_int
+
+    page = Image.new("RGB", LETTER_300, "white")
+    draw = ImageDraw.Draw(page)
+    draw.text((100, 100), "Form 1099-INT Interest Income", font=ImageFont.load_default(size=150), fill="black")
+    body = ImageFont.load_default(size=46)
+    for i, line in enumerate(lines_1099_int("Harbor Test Bank", "John A. Smith", 2025)[1:]):
+        draw.text((200, 500 + 80 * i), line, font=body, fill="black")
+    draw.rectangle((150, 450, 2400, 1250), outline="black", width=3)
+
+    unprepared = dataclasses.replace(ocr.SHIPPED, deskew=False, binarize="off", denoise=False, delining=False)
+    first = {}
+    for name, settings in (("raw", unprepared), ("prepared", ocr.SHIPPED)):
+        ocr.use_settings(settings)
+        first[name] = ocr.read_page(page).splitlines()[0]
+    assert "1099-INT" in first["raw"], first
+    assert "1099-INT" in first["prepared"], first
+    print("first line, raw:", first["raw"], "| prepared:", first["prepared"])
 
 
 def a_five_page_scan(path: Path, lines: list[str]) -> Path:
