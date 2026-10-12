@@ -303,6 +303,77 @@ def test_a_scan_that_passes_the_title_guard_beside_a_loose_match_parks(tmp_path)
     assert routing.reason == f"{OCR_ONLY} (B01, B02); a person should confirm"
 
 
+def test_two_requests_whose_looser_keyword_is_the_same_form_number_park_with_both(tmp_path):
+    """Guard 3 on its own: two rows that each accept the scan on the very
+    same form number in the title. Both pass guard 1, the page names no other
+    form, so nothing but "exactly one request" stands between this scan and
+    a filing under whichever row is listed first. It parks with both, in the
+    manifest's order."""
+    first = _scan_row("B01", "1099-int")
+    second = _scan_row("B02", "1099-int")
+    text = NL.join(["Form 1099-INT Interest Income - 2025", "Payer: Harbor Test Bank",
+                    "Recipient: John A. Smith"])
+    routing = _read_by_ocr(tmp_path, "scan0013.pdf", text, [first, second])
+
+    assert routing.identifier is None
+    assert routing.reason == f"{OCR_ONLY} (B01, B02); a person should confirm"
+    assert routing.candidates == ("B01", "B02") and routing.code == reasons.OCR_ONLY_CODE
+
+
+#: A page whose form number is the first page's dominant form but is not
+#: said in the title: decision 140 would shortlist its row, P282 must not file it.
+_DOMINANT_NOT_TITLED = NL.join([
+    "Year-end summary 2025 Harbor Test Bank",
+    *["Box 1a Total ordinary dividends   1,200.00   Box 1b Qualified   900.00"] * 7,
+    "Dividends and Distributions Form 1099-DIV",
+    "Form 1099-DIV Copy B",
+    "Box 5 Section 199A dividends 40.00",
+    "Box 7 Foreign tax paid 3.00",
+    "Account 0042  Page 1 of 1",
+])
+
+
+def test_a_form_number_shown_only_as_the_first_pages_dominant_form_parks_as_ocr_only(tmp_path):
+    """Guard 1 is the title only, stricter than decision 140's near miss. Here
+    "1099-DIV" is the page's dominant form and A02's verdict records it on the
+    first page, so decision 140's reading says the row shows its form number;
+    the title says only "dividend", so the scan is a lead and is not filed."""
+    from tracker.content_check import (
+        TITLE_CHARS,
+        WHERE_FIRST_PAGE,
+        WHERE_TITLE,
+        dominant_forms,
+        self_named_forms,
+    )
+    from tracker.router import _shows_its_form_number
+
+    assert _DOMINANT_NOT_TITLED.index("Form 1099-DIV") > TITLE_CHARS
+    assert dominant_forms(_DOMINANT_NOT_TITLED) == {"1099div"}
+    assert self_named_forms(_DOMINANT_NOT_TITLED) == ()
+    routing = _read_by_ocr(tmp_path, "scan0014.pdf", _DOMINANT_NOT_TITLED, ITEMS)
+
+    seen = {(e.term, e.where) for e in routing.evidence_record["A02"] if e.rule == "any"}
+    assert ("1099-div", WHERE_FIRST_PAGE) in seen and ("dividend", WHERE_TITLE) in seen
+    assert _shows_its_form_number(routing.evidence_record["A02"])
+    assert routing.identifier is None
+    assert routing.reason == f"{OCR_ONLY} (A02); a person should confirm"
+    assert routing.candidates == ("A02",) and routing.code == reasons.OCR_ONLY_CODE
+
+
+def test_a_row_whose_only_looser_keyword_is_a_form_number_the_page_shows_below_its_title_parks(
+    tmp_path,
+):
+    """The same page against a row whose only looser keyword is the form
+    number: it is shown on the first page and not in the title, so the scan
+    parks as a lead and never files."""
+    routing = _read_by_ocr(tmp_path, "scan0015.pdf", _DOMINANT_NOT_TITLED,
+                           [_scan_row("B01", "1099-div")])
+
+    assert routing.identifier is None
+    assert routing.reason == f"{OCR_ONLY} (B01); a person should confirm"
+    assert routing.candidates == ("B01",) and routing.code == reasons.OCR_ONLY_CODE
+
+
 def test_a_sideways_reading_whose_title_lines_came_late_parks(tmp_path):
     """Guard 1 on a page turned a quarter: the reader keeps the words but
     scrambles the lines, so the form's name falls past the first TITLE_CHARS
@@ -392,16 +463,21 @@ def test_a_scanned_1099_c_read_as_1099_g_beside_a_second_form_name_parks(tmp_pat
 
 
 def test_a_scan_whose_page_shows_another_requests_form_number_parks(tmp_path):
-    """Guard 6, second half: the page is titled "Form 1099-INT" and prints
-    "Form 1099-OID" often enough to be its dominant form. The OID row's
-    verdict fails on its year, but its evidence records its own form number
-    on the page - another request's form number - so the INT row's scan
-    parks as a lead instead of filing."""
+    """Guard 6, second half: the page is titled "Form 1099-INT" and then
+    mentions "Form 1099-OID" three times in a reading short enough that
+    every mention sits in the title, which makes 1099-OID the page's
+    dominant form (the precondition asserted below). The OID row's verdict
+    fails on its year, but its evidence records its own form number on the
+    page - another request's form number - so the INT row's scan parks as a
+    lead instead of filing."""
+    from tracker.content_check import dominant_forms
+
     int_row = _scan_row("B01", "1099-int")
     oid_row = _scan_row("B02", "1099-oid", date_pattern=r"(?i)\b2024\b")
     text = NL.join(["Form 1099-INT Interest Income - 2025", "Payer: Harbor Test Bank",
                     "Box 1  Interest income   $12.00",
                     "See Form 1099-OID", "Form 1099-OID", "Form 1099-OID"])
+    assert dominant_forms(text) == {"1099oid"}
     routing = _read_by_ocr(tmp_path, "scan0010.pdf", text, [int_row, oid_row])
 
     assert routing.identifier is None

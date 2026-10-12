@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 281,
     "edges": 1298,
-    "reused": 228
+    "reused": 225
   },
   "node_types": [
     "artifact",
@@ -4622,8 +4622,8 @@
       "id": "pilot/HANDOFF.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "b7891d029c4f4899",
-      "lines": 260
+      "sha256": "41364f1b77619c6f",
+      "lines": 279
     },
     {
       "id": "pilot/README.md",
@@ -5765,8 +5765,8 @@
       "id": "tests/samples.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "f36f69310d2248f5",
-      "lines": 563,
+      "sha256": "5991101d02da88d8",
+      "lines": 566,
       "exports": [
         "COLLATION_NAMES",
         "COLLATION_ORDER",
@@ -8032,8 +8032,8 @@
       "id": "tests/test_ocr.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "2bab4f7c21bb1d41",
-      "lines": 1133,
+      "sha256": "81195ed2a12b014b",
+      "lines": 1126,
       "exports": [
         "A_PASS_BETWEEN_DOCUMENTS",
         "FakeEngine",
@@ -8893,8 +8893,8 @@
       "id": "tests/test_router.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "85b9402c6307ab68",
-      "lines": 1422,
+      "sha256": "e99f4da63b7a0dce",
+      "lines": 1498,
       "exports": [
         "DONATIONS",
         "GARBLED",
@@ -8928,6 +8928,7 @@
         "test_a_file_nothing_could_be_read_out_of_records_its_name_for_the_person",
         "test_a_file_type_nobody_accepts_is_named_as_such",
         "test_a_form_number_said_only_deep_is_not_shown",
+        "test_a_form_number_shown_only_as_the_first_pages_dominant_form_parks_as_ocr_only",
         "test_a_garbled_w2_named_w2_gets_its_file_name_as_the_hint",
         "test_a_k1_mentioning_w2_wages_suggests_nothing_and_holds_nothing",
         "test_a_k_1_files_on_the_row_naming_its_issuer",
@@ -8947,6 +8948,7 @@
         "test_a_photo_files_on_required_keywords_and_parks_as_ocr_only_on_looser_ones",
         "test_a_routed_file_records_which_keyword_matched_and_where",
         "test_a_row_nobody_asked_for_is_never_answered",
+        "test_a_row_whose_only_looser_keyword_is_a_form_number_the_page_shows_below_its_title_parks",
         "test_a_run_together_form_number_is_still_its_own_variant",
         "test_a_scan_accepted_by_a_row_issuer_rows_narrow_parks_as_issuer_not_named",
         "test_a_scan_filed_on_its_form_number_carries_no_answers_and_no_split",
@@ -8987,6 +8989,7 @@
         "test_the_record_names_only_the_rows_the_decision_names",
         "test_the_router_and_the_scanner_reach_one_verdict_for_one_document",
         "test_the_shipped_1040_catalog_files_real_forms_where_they_belong",
+        "test_two_requests_whose_looser_keyword_is_the_same_form_number_park_with_both",
         "test_two_rows_explained_by_1099b_still_park",
         "test_wrong_extension_is_not_routed",
         "test_wrong_year_is_not_routed"

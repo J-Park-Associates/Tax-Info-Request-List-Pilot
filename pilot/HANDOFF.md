@@ -46,7 +46,7 @@ Gate, each file its own process, `.venv` (3.14) and `.venv311` (3.11), no
 
 | file | 3.14 | 3.11 |
 |---|---|---|
-| `test_router` | 89 passed | 89 passed |
+| `test_router` | 92 passed | 92 passed |
 | `test_filer` | 405 passed, 6 skipped | 405 passed, 6 skipped |
 | `test_ocr` (the real reader ran, not skipped) | 44 passed, 4 skipped | 44 passed, 4 skipped |
 | `test_backtest` | 21 passed | 21 passed |
@@ -65,9 +65,16 @@ Also: `ruff check .` clean; `repo_map.py update` then `check` exit 0 (the map
 is in the same commit); `vocab_report.py build` (run with the `.venv`
 interpreter, which has pytest) left no diff. The skips are the platform ones
 already there (the Windows job object, `/proc`, a directory junction, and
-the like). Not run here: the `pilot/mactest/run_checks.sh` sample-pile flow
-(SPEC section 4's check that `Scanned forms.zip`'s scan files under its
-1099-INT request with "name confirmed" in its reason) and a Windows check.
+the like). The sample-pile flow (SPEC section 4) was run on this Mac after the build,
+by the orchestrator: the pile from `tests/samples.build_scratch_root` plus
+`make_samples.add_container_samples`, a real pass with a throwaway data home
+and settings folder, then `tracker.api state`. The zip's `scan 0002.pdf` filed
+under A02 with code `matched`, reason "content matched this request's
+keywords, read from a scan that shows its form number; name confirmed (Jane R.
+Smith)", and evidence `1099-int` at the title, `TY2025` at the title and the
+name on the first page. The five review rows left are the macro workbook, the
+gsheet stub, the .docx, the .bmp and the prior-year W-2 - no scan among them.
+Pass summary: filed 10, review 5, syncing 1. Not run here: a Windows check.
 
 Where the SPEC and the code differed, none that stopped the build. Notes for
 the reviewer:
@@ -75,13 +82,19 @@ the reviewer:
 - The SPEC's claim that `.gitignore` gains `.venv311/` in Part A's first
   commit was already done (`8a77916`); nothing to add.
 - `test_a_scan_whose_form_number_is_only_below_the_title_parks_as_ocr_only`
-  is built as the SPEC words it, but a verdict records only the best-placed
-  of a row's matching looser keywords, so here it records `dividend` in the
-  title and never `1099-div`. The test holds the park byte for byte, and it
-  passes with guard 1 removed; guard 1's bite is shown by
-  `test_a_sideways_reading_whose_title_lines_came_late_parks`, which fails
-  when the title test is dropped. Each other guard was mutated once (guard 6
-  both halves, the exactly-one test, the issuer exit) and its test failed.
+  is built as the SPEC words it. Its page puts `dividend` in the title and
+  "Form 1099-DIV" far below, where the form number is neither in the title
+  nor the page's dominant form, so A02's verdict does not record it and the
+  scan is a plain looser match. It fails with guard 1 removed outright; it
+  still passes when the title restriction is merely loosened to the first
+  page, which is why the review added two tests built on a page whose form
+  number is the first page's dominant form
+  (`test_a_form_number_shown_only_as_the_first_pages_dominant_form_parks_as_ocr_only`
+  and its one-row twin). `evaluate_rules` records every matching looser
+  keyword, not only the best-placed one. Each guard was mutated: guard 6
+  (both halves), exactly-one (two rows on the same form number, and the
+  broker's page), the issuer exit, and the title-only restriction (swapping in
+  `_shows_its_form_number`, or accepting the first page) each fail a test.
 - The two new filer tests each make two returns in separate roots: two
   image-only PDFs with no text are byte-identical, so a second scan dropped in
   the same return would be a Duplicate of the first, not a second reading.
@@ -107,6 +120,12 @@ the reviewer:
   `test_a_box_at_the_confidence_floor_is_read`,
   `test_a_reading_without_confidence_scores_fails_loudly`,
   `test_a_real_scan_whose_title_shows_1099_int_files_on_the_rows_looser_keywords`.
+  Added by the review's fixes: router
+  `test_two_requests_whose_looser_keyword_is_the_same_form_number_park_with_both`,
+  `test_a_form_number_shown_only_as_the_first_pages_dominant_form_parks_as_ocr_only`,
+  `test_a_row_whose_only_looser_keyword_is_a_form_number_the_page_shows_below_its_title_parks`;
+  and `tests/samples.scanned_pdf` gained `rotate=0` (default bytes unchanged),
+  which the real-reader test's quarter-turned page now uses.
 
 **What the pass does with a row already parked as Read From Scan Only after
 the install** (read from the code, for the office prompt's before-and-after

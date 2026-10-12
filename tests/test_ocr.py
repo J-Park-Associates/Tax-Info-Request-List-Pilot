@@ -93,8 +93,6 @@ def test_a_real_scan_whose_title_shows_1099_int_files_on_the_rows_looser_keyword
     files the 1099-INT row or parks with it on the shortlist - whether the
     reader scrambles a particular page's title is the reader's, not the
     rule's."""
-    from PIL import Image, ImageDraw, ImageFont
-
     from tests.samples import lines_1099_int
     from tracker.router import MATCHED_FROM_SCAN, route_file
 
@@ -109,12 +107,7 @@ def test_a_real_scan_whose_title_shows_1099_int_files_on_the_rows_looser_keyword
     assert routing.identifier == "A02", routing.reason
     assert routing.reason == MATCHED_FROM_SCAN and routing.code == reasons.MATCHED_CODE
 
-    page = Image.new("RGB", (1275, 1650), "white")
-    draw = ImageDraw.Draw(page)
-    for i, line in enumerate(lines):
-        draw.text((80, 90 + 52 * i), line, font=ImageFont.load_default(size=30), fill="black")
-    sideways = tmp_path / "scan 0002.pdf"
-    page.rotate(90, expand=True, fillcolor="white").save(sideways, "PDF", resolution=150)
+    sideways = scanned_pdf(tmp_path / "scan 0002.pdf", lines, rotate=90)
     routed = route_file(sideways, [interest, mortgage])
     assert routed.identifier in (None, "A02"), routed.reason
     assert "C01" not in routed.candidates and routed.identifier != "C01"
