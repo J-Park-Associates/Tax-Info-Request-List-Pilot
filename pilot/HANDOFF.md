@@ -30,8 +30,9 @@ both prompts, the docs and the map; the first handoff), then rebuilt to the
 SPEC's section 9 amendment in four more (the detector's long side; the box-line
 step; the Mac prompt's counts; a leftover print) and a handoff, then rebuilt
 again to section 9.4 (the processor child's cap; Sauvola on box filters; the
-runbook, the record and this handoff). Not yet reviewed (Opus's, in a session
-that did not build it) and **not pushed**. Jason ruled every section 8
+runbook, the record and this handoff), then a third time, findings only, to
+section 9.5 (below). Reviewed once (Opus's, in a session that did not build
+it; no MUST finding, nine lesser ones) and **not pushed**. Jason ruled every section 8
 question to its stated default. **The processor child's cap, 4 GB from P285,
 is an assumption of the orchestrating session held for Jason's word (decision
 169 is his); one constant reverses it.**
@@ -43,11 +44,32 @@ cannot be measured plainly), made black and white by a threshold that follows
 the paper's own shading, cleared of lone specks and of a form's box lines.
 The file is never touched and nothing is written. The verdict cache moved, so
 the first pass after the install reads every document again (slow once; a row
-already in Needs Review stays there). The reader bench grew from 36 to 21
+already in Needs Review stays there). The reader bench shrank from 36 to 21
 variants: prepared against raw at 300 and 144 dpi, and the shipped settings
 with each step turned off one at a time, so the office numbers say which steps
 earn their place. README, runbook, tools page, the office prompt and the map
 say so; nothing tells a person to do anything.
+
+**Third rebuild (SPEC 9.5), findings only.** The Opus review of the whole
+branch found no MUST finding and nine lesser ones; this rebuild applies the
+SPEC's rulings on them and nothing more. The Mac prompt's PASS line now says
+4 GB, following the constant. The one-pixel hold is accepted and now pinned:
+a letter page from a PDF, rendered the way the reader renders it at the
+shipped 300 dpi, is 2550 x 3301 (the PDF library rounds a side up) and comes
+back 2549 x 3300 from the stage; the long side stays 3300. The detector's own
+setting (`Det.limit_type` `"max"`, 9.1) is the engine's and not a settings
+field, and is documented in the bench's docstring and the curated map: the
+detector no longer enlarges a page whose shorter side is under 736 px, which
+P283's default did; measured on drawn pages the same words are read. This
+handoff corrects itself (the quarter-turned W-2's best angle and gain, the
+per-step seconds, "shrank" for 36 to 21 variants). Three nits: the dead
+engine pair in `test_the_engine_is_handed_the_prepared_page` is gone,
+`DELINE_THICK_DIVISOR`, `DESKEW_FINE_STEP` and `SAUVOLA_WINDOW_FLOOR` each have
+their own comment, and Sauvola compares with `uint8` scalars so no 64-bit
+page is built (same pixels; it now takes 0.030 s on a 2550 x 3300 page, median
+of five, the table below). The curated note's "4 GB from P285" stays in
+present tense, as 9.4 asked. No test was added, one test gained assertions;
+counts are in the gate table at the end of this section.
 
 **Memory finding (SPEC 9.1, 9.4): resolved on this Mac, with the cap raised on
 an assumption.** Found by the first build: rapidocr's detector, left at its
@@ -125,12 +147,12 @@ only, median of five, warm engine:
 | step, a 2550 x 3300 page / a 4032 x 3024 photo (held to 3300 x 2475) | page | photo |
 |---|---|---|
 | grey copy and held to the long side | 0.002 s | 0.006 s |
-| lean measured (34 turns of a 1000 px sample, plus the level score) | 0.019 s | 0.018 s |
+| lean measured (34 turns of a 1000 px sample, plus the level score) | 0.018 s | 0.018 s |
 | turned level | 0.001 s | 0.001 s |
-| Sauvola | 0.050 s | 0.045 s |
+| Sauvola | 0.030 s | 0.028 s |
 | specks | 0.010 s | 0.011 s |
-| box lines | 0.029 s | 0.029 s |
-| **the whole stage** | **0.11 s** | **0.11 s** |
+| box lines | 0.031 s | 0.031 s |
+| **the whole stage** (measured once, whole) | **0.09 s** | **0.095 s** |
 
 | whole reading (render or decode, stage, engine) | shipped (prepared, 300 dpi) | raw (144 dpi) |
 |---|---|---|
@@ -145,8 +167,8 @@ this process took 5.8 s.
 What `_skew_degrees` saw (best angle, then the score over the level score,
 against `DESKEW_GAIN` 1.10): a level page 0.0, 1.000; two degrees +2.0, 1.676;
 twelve degrees +6.0 (past the limit, at the search's edge), 1.250; the
-quarter-turned W-2 photo -0.9, 1.050. The quarter-turned page is refused by
-the gain rule with a margin of 0.05 only; a different drawn quarter-turn could
+quarter-turned W-2 photo (`w2_photo(turn=90)`) -1.0, 1.067. The quarter-turned page is refused by
+the gain rule with a margin of 0.033 only; a different drawn quarter-turn could
 sit nearer the line, and the real engine reads such a page anyway. Sauvola on
 the faded page (grey 150 on 230, a 15 px window): every pixel of the text drawn
 without anti-aliasing is black and no pixel beyond one window of it is not
@@ -177,6 +199,25 @@ and `test_ocr` after the test's rewrite.
 build` changed nothing. `test_reader_bench` was not rerun (the bench is
 untouched by 9.4). The backtest baseline is still unrecorded (the office
 prompt records it).
+
+Gate of the third rebuild (SPEC 9.5), the same way (each file its own
+process, `.venv` and `.venv311`, no `-m "not corpus"`, the real reader ran):
+
+| file | 3.14 | 3.11 |
+|---|---|---|
+| `test_ocr` | 70 passed, 4 skipped | 70 passed, 4 skipped |
+| `test_content_check` | 115 passed, 1 skipped | 115 passed, 1 skipped |
+| `test_reader_bench` | 23 passed | 23 passed |
+| `test_layers` | 31 passed | 31 passed |
+| `test_single_source` | 217 passed | 217 passed |
+| `test_repo_map` | 82 passed | 82 passed |
+| `test_tripwire` | 23 passed | 23 passed |
+| `test_errors` | 83 passed | 83 passed |
+
+`test_repo_map` and `test_single_source` were run again after the map and this
+handoff were refreshed. `ruff check .` clean; `repo_map.py update` then
+`check` exit 0; `vocab_report.py build` changed nothing beyond hashes. The
+backtest baseline is still unrecorded.
 
 Tests: renamed `test_the_shipped_settings_are_the_prepared_reading_at_300_dpi`
 and `test_the_grid_is_every_dpi_floor_preparation_and_tier_and_the_ablation`;
