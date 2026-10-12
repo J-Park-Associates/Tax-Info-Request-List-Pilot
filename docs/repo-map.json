@@ -15,9 +15,9 @@
     "a person sends the draft"
   ],
   "counts": {
-    "nodes": 288,
+    "nodes": 291,
     "edges": 1329,
-    "reused": 234
+    "reused": 233
   },
   "node_types": [
     "artifact",
@@ -4558,6 +4558,23 @@
       "notes": "Points at docs/repo-map.md as the first thing to read in a session."
     },
     {
+      "id": "CODE_OF_CONDUCT.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "ffb724ba3589ba12",
+      "lines": 142,
+      "role": "The Contributor Covenant, version 2.1, with one rule of this repository's own: no client's name, document, link or path is ever posted anywhere."
+    },
+    {
+      "id": "CONTRIBUTING.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "b3d71c6c6902050a",
+      "lines": 247,
+      "role": "How work lands here, for a person: the rules client data and the CI budget impose, the from-source setup by hand, the SPEC-first loop, the gate (dead code first, the affected tests as separate processes under both interpreters, ruff, the map and vocabulary checks), branches, commit subjects, draft pull requests marked ready once and landed by merge commit.",
+      "notes": "Repeats nothing the suite pins in the README; the floor is 'the floor pyproject.toml declares' here too, so nobody types the number."
+    },
+    {
       "id": "PRODUCT.md",
       "type": "doc",
       "layer": "docs",
@@ -4568,8 +4585,8 @@
       "id": "README.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "f7ed76ce2c0d2d7d",
-      "lines": 607,
+      "sha256": "8bbb6b0b8ec68c31",
+      "lines": 689,
       "role": "What the system is, how to run each stage, and how to set it up on a PC or a Mac. Who does what is docs/workflow.md.",
       "notes": "Names the product in its title only (a test holds that), so the Mac floor is said as 'the app needs a Mac with Apple silicon running macOS 14 or later'; tests/test_single_source.py pins those words to settings.MAC_FLOOR (SPEC-mac R35). PRODUCT.md says it too, with the program's name."
     },
@@ -4581,6 +4598,15 @@
       "lines": 442,
       "role": "The build plan, the hard constraints and the decision log. Every component, all built and tested.",
       "notes": "The decision log is the record of WHY: read it before changing behaviour that looks arbitrary."
+    },
+    {
+      "id": "docs/architecture.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "4e62a30e518baa19",
+      "lines": 258,
+      "role": "The overview between the README and the map: the three programs (the shell, the engine, the scheduled pass) and the reading child; the package layer by layer with each module's one sentence; the tools; the tests and their guards; the three places the app writes; the decisions that shape it (deterministic, offline, standard library first, hash-checked installs, one-time steps built in); and how each package is built.",
+      "notes": "Written for a person who did not watch the code grow. It names no numbers a test pins and no file the code does not own; tests/test_layers.py's table is the source of its layers."
     },
     {
       "id": "docs/backtest-baseline.json",
@@ -4595,8 +4621,8 @@
       "id": "docs/repo-map.curated.json",
       "type": "file",
       "layer": "docs",
-      "sha256": "191e12e7a0193291",
-      "lines": 1311,
+      "sha256": "9f67e7e987bffb69",
+      "lines": 1322,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
     },
