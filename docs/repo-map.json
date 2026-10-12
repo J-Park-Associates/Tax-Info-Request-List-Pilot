@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 281,
     "edges": 1298,
-    "reused": 221
+    "reused": 228
   },
   "node_types": [
     "artifact",
@@ -4622,8 +4622,8 @@
       "id": "pilot/HANDOFF.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "02d588b15844d63f",
-      "lines": 161
+      "sha256": "b7891d029c4f4899",
+      "lines": 260
     },
     {
       "id": "pilot/README.md",
