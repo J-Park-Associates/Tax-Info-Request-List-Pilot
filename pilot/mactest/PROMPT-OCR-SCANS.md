@@ -124,16 +124,16 @@ Python here is .venv/bin/python (3.14, the office's) and .venv311/bin/python (3.
      TRACKER_PRODUCT_NAME="Tax Document Console" TRACKER_DATA_HOME=~/PilotTest/ocr-data "/Applications/Tax Document Console.app/Contents/Resources/tracker-api/tracker-api" --run --settings ~/PilotTest/ocr-settings --reminders never --log ~/PilotTest/results/ocr-runs.log
    Record the seconds it took and the last lines of ocr-runs.log (they hold made-up names only).
    Then read what the engine decided - counts first, then the rows:
-     TRACKER_SETTINGS_DIR=~/PilotTest/ocr-settings TRACKER_DATA_HOME=~/PilotTest/ocr-data .venv/bin/python -m tracker.api firm | .venv/bin/python tools/reader_bench.py review-codes --out ~/PilotTest/results/ocr-review-codes.json
+     TRACKER_SETTINGS_DIR=~/PilotTest/ocr-settings TRACKER_DATA_HOME=~/PilotTest/ocr-data .venv/bin/python tools/reader_bench.py review-codes --out ~/PilotTest/results/ocr-review-codes.json
      TRACKER_SETTINGS_DIR=~/PilotTest/ocr-settings TRACKER_DATA_HOME=~/PilotTest/ocr-data .venv/bin/python -m tracker.api state --engagement "<the return's folder>"
    From the state: for each of the five scans a to e, which request it filed under and its reason
    sentence, or which Needs Review reason parked it. Compare with step 3's expectations; a
    difference is a finding, recorded, never fixed. Count how many rows Needs Review holds in all and
    how many of them are Read From Scan Only (review-codes prints that count by code): with P282 that
    count is 0, or 1 if c parked that way; the suite's own scanned sample in the pile files as it did
-   before. If the pipe prints "the reply is not JSON", or hangs for more than a minute, stop it,
-   record that word for word with the time, and run it once more; the first Mac run saw both, once
-   each, and the retry answered at once.
+   before. review-codes runs the firm command itself and answers in seconds, the first time and every
+   time. It needs no retry. If it prints a "reader bench:" sentence instead of the counts, or runs for
+   more than a minute, record that word for word with the time: it is a finding.
    Byte for byte: every file that moved out of the inbox must be found under the client's folder
    for the year with the same fingerprint:
      (cd ~/PilotTest/Clients-ocr && find Clients -type f -not -path "*/Drop files here/*" -exec shasum -a 256 {} + | awk '{print $1}' | sort) > ~/PilotTest/results/ocr-after.hashes

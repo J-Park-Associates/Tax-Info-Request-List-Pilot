@@ -160,9 +160,11 @@ on. A Ctrl-C writes the report so far and exits 130.
 ```
 python tools/reader_bench.py variants                       # the grid's names, one a line
 python tools/reader_bench.py run <folder> --out <report> [--expectations <file>] [--models <folder>] [--dpi 144,300] [--floor 0.5,0.7] [--delining off,on] [--tier small,medium]
-python -m tracker.api firm | python tools/reader_bench.py review-codes [--out <file>]   # Needs Review, counted by code
+python tools/reader_bench.py review-codes [--out <file>]   # Needs Review, counted by code
 ```
 
-`review-codes` reads the `firm` command's reply and prints the count of each
-code over the rows waiting for a person, and nothing else.
+`review-codes` runs the `firm` command itself, with nothing on its input,
+skips the count lines it prints first, and prints the count of each code over
+the rows waiting for a person, and nothing else. A refusal is said by its
+kind, never by its sentence.
 

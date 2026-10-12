@@ -68,7 +68,7 @@ SAFETY - never break these:
 2. TODAY'S NUMBERS, BEFORE PART A IS INSTALLED (the installed app is still the build from before Part A).
    a. Needs Review by code, today - why: it is the count Part A is meant to lower, and it needs the
       firm's recorded rows, which Part A's code does not change:
-        .venv\Scripts\python -m tracker.api firm | .venv\Scripts\python tools\reader_bench.py review-codes --out <outside>\review-before.json
+        .venv\Scripts\python tools\reader_bench.py review-codes --out <outside>\review-before.json
    b. The backtest baseline, with the reader on, on the before commit's code (in ..\bench-before) - why: decision 92
       parks every scan without the reader, so a baseline without --ocr says nothing about Part A, and
       every later routing change is held to this number:
@@ -125,7 +125,7 @@ SAFETY - never break these:
 5. PART A INSTALLED, then the same numbers after it.
    Jason (or the usual route) installs the Part A build on this PC; wait until he says it is in, and
    until the first scheduled pass after it has run. Then:
-     .venv\Scripts\python -m tracker.api firm | .venv\Scripts\python tools\reader_bench.py review-codes --out <outside>\review-after.json
+     .venv\Scripts\python tools\reader_bench.py review-codes --out <outside>\review-after.json
    and, in the claude/ocr-scans checkout:
      .venv\Scripts\python tools\backtest.py run "<firm corpus>" --ocr --out <outside>\backtest-after.json
    and, in ..\bench-before (the checkout that holds the recorded baseline):

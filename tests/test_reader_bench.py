@@ -427,8 +427,9 @@ def test_the_seconds_are_counted_per_page_and_against_the_ceiling(tmp_path, monk
 
 
 def test_review_codes_counts_codes_and_prints_nothing_else(tmp_path, monkeypatch, capsys):
-    """A made-up ``firm`` reply whose rows carry made-up names and reasons:
-    the output is the code counts and nothing else."""
+    """A made-up ``firm`` reply, behind two count lines, whose rows carry
+    made-up names and reasons: the output is the code counts and nothing
+    else."""
     reply = {
         "returns": [{"path": "/clients/Aardvark Holdings LLC/2025/1040 - Zebediah Quill", "name": "Zebediah Quill"}],
         "files": [
@@ -440,7 +441,9 @@ def test_review_codes_counts_codes_and_prints_nothing_else(tmp_path, monkeypatch
             {"name": "Zebediah none.pdf"},
         ],
     }
-    monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps(reply)))
+    from tracker import progress
+    stdout = (progress.count_line(0, 50) + progress.count_line(25, 50) + json.dumps(reply) + "\n").encode()
+    monkeypatch.setattr(reader_bench, "_run_firm", lambda: a_firm_run(stdout))
     out = tmp_path / "codes.json"
 
     assert main(["review-codes", OUT_FLAG, str(out)]) == 0
@@ -454,7 +457,7 @@ def test_review_codes_counts_codes_and_prints_nothing_else(tmp_path, monkeypatch
 
 def test_review_codes_names_what_is_wrong_with_a_reply_and_exits_2(monkeypatch, capsys):
     for text in ("not json at all", json.dumps({"returns": []}), json.dumps([1, 2])):
-        monkeypatch.setattr(sys, "stdin", io.StringIO(text))
+        monkeypatch.setattr(reader_bench, "_run_firm", lambda text=text: a_firm_run(text.encode() + b"\n"))
         assert main(["review-codes"]) == 2
         assert capsys.readouterr().err.startswith("reader bench: ")
     with pytest.raises(BacktestError):
@@ -481,3 +484,191 @@ def test_a_real_scan_is_read_under_each_dpi_it_is_asked_for(tmp_path, capsys):
         assert variant["outcomes"] == {"right": 1, "parked_shortlist": 0, "parked_no_lead": 0, "wrong": 0}, variant
         assert variant["seconds"]["per_page_median"] > 0
     assert report["corpus"] == {"documents": 1, "text_layer": 0, "scans": 1, "photos": 0, "pages": 1}
+
+
+# ------------------------------------------- review-codes asks firm itself ----
+# (P286, pilot/SPEC-review-codes-pipe.md). No test starts a real firm: a child
+# of the suite's environment without child_env() is an unarmed child to the
+# tripwire. The reply bytes are made with progress.count_line, the format's
+# only encoder.
+
+
+def a_firm_run(stdout: bytes = b"", stderr: bytes = b"", code: int = 0):
+    """What `_run_firm` returns: a finished process with made-up output."""
+    import subprocess
+    return subprocess.CompletedProcess(args=[], returncode=code, stdout=stdout, stderr=stderr)
+
+
+def a_reply(files=None) -> bytes:
+    """A made-up firm reply as one stdout line, rows carrying made-up names."""
+    rows = [{"name": "Zebediah memo.pdf", "code": "unmatched", "reason": "Quillfeather matched nothing"}]
+    return (json.dumps({"files": rows if files is None else files}) + "\n").encode()
+
+
+def counts_of(monkeypatch, capsys, run_result, *args):
+    """Run `review-codes` with `_run_firm` returning (or raising) `run_result`."""
+    def fake():
+        if isinstance(run_result, BaseException):
+            raise run_result
+        return run_result
+    monkeypatch.setattr(reader_bench, "_run_firm", fake)
+    code = main(["review-codes", *args])
+    seen = capsys.readouterr()
+    return code, seen.out, seen.err
+
+
+def test_the_reply_is_the_last_stdout_line_without_the_progress_key(monkeypatch, capsys):
+    from tracker import progress
+    stdout = (progress.count_line(0, 9) + json.dumps({"note": "an earlier line"}) + "\n"
+              + a_reply().decode() + progress.count_line(9, 9)).encode()
+
+    code, out, err = counts_of(monkeypatch, capsys, a_firm_run(stdout))
+
+    assert code == 0 and json.loads(out) == {"unmatched": 1} and err == ""
+
+
+def test_count_lines_before_the_reply_are_ignored_however_many(monkeypatch, capsys):
+    from tracker import progress
+    for how_many in (0, 2, 5):
+        for ending in ("\n", "\r\n"):
+            counts = "".join(progress.count_line(done, 100).rstrip("\n") + ending for done in range(how_many))
+            stdout = (counts + a_reply().decode().rstrip("\n") + ending + ending).encode()
+            code, out, _ = counts_of(monkeypatch, capsys, a_firm_run(stdout))
+            assert code == 0 and json.loads(out) == {"unmatched": 1}, (how_many, ending)
+
+
+def test_no_reply_or_a_reply_that_is_not_json_is_named_without_echoing_the_line(monkeypatch, capsys):
+    from tracker import progress
+    cases = [
+        (b"", reader_bench.FIRM_NO_REPLY.format(code=0)),
+        (progress.count_line(0, 3).encode(), reader_bench.FIRM_NO_REPLY.format(code=0)),
+        (b"Zebediah Quillfeather says hello\n", reader_bench.FIRM_NOT_AN_OBJECT.format(code=0)),
+        (b"[1, 2, \"Zebediah\"]\n", reader_bench.FIRM_NOT_AN_OBJECT.format(code=0)),
+        (b"\xff\xfe Zebediah\n", reader_bench.FIRM_NOT_AN_OBJECT.format(code=0)),
+    ]
+    for stdout, sentence in cases:
+        code, out, err = counts_of(monkeypatch, capsys, a_firm_run(stdout))
+        assert code == 2 and out == "" and err == f"reader bench: {sentence}\n", stdout
+        assert "Zebediah" not in err and "Quillfeather" not in err
+
+
+def test_a_refused_reply_is_said_by_its_kind_and_never_by_its_sentence(monkeypatch, capsys):
+    from tracker import progress
+    sentence = "Cannot walk /clients/Aardvark Holdings LLC for Zebediah Quill: held by Quillfeather"
+    cases = [(json.dumps(progress.failure_reply(sentence, kind)), 1, kind) for kind in progress.FAILURE_KINDS]
+    cases += [
+        (json.dumps({"error": sentence, "failure": {"sentence": sentence, "kind": "made-up"}}), 1, "unknown"),
+        (json.dumps({"error": sentence}), 0, "unknown"),
+        (json.dumps({"files": []}), 1, "unknown"),     # exit 1 with no failure at all
+    ]
+    for text, exit_code, kind in cases:
+        code, out, err = counts_of(monkeypatch, capsys, a_firm_run(text.encode() + b"\n", code=exit_code))
+        assert code == 2 and out == "", text
+        assert err == "reader bench: " + reader_bench.FIRM_REFUSED.format(kind=kind, code=exit_code) + "\n", text
+        for secret in (*SECRET_WORDS, "Quill", "clients"):
+            assert secret not in err, secret
+
+
+def test_firm_is_started_with_stdin_closed_and_the_current_environment(monkeypatch, capsys):
+    import subprocess
+
+    from tracker import runner
+    seen = {}
+
+    def recorded(command, **kwargs):
+        seen["command"], seen["kwargs"] = command, kwargs
+        return a_firm_run(a_reply())
+
+    monkeypatch.setattr(subprocess, "run", recorded)
+
+    assert main(["review-codes"]) == 0 and json.loads(capsys.readouterr().out) == {"unmatched": 1}
+    assert seen["command"] == [sys.executable, "-m", "tracker.api", runner.FIRM_COMMAND]
+    kwargs = seen["kwargs"]
+    assert kwargs["stdin"] == subprocess.DEVNULL
+    assert kwargs["capture_output"] is True and "stdout" not in kwargs and "stderr" not in kwargs, \
+        "stdout and stderr are both kept (capture_output is subprocess's own spelling of PIPE for both)"
+    assert "env" not in kwargs, "the current environment, not a copy"
+    assert kwargs["cwd"] == reader_bench.ROOT and (reader_bench.ROOT / "tracker").is_dir()
+    assert kwargs["timeout"] == runner.FILL_TIME_LIMIT_SECONDS
+    assert kwargs["creationflags"] == getattr(subprocess, "CREATE_NO_WINDOW", 0)
+
+
+def test_a_firm_that_runs_too_long_or_cannot_start_is_said_by_kind(monkeypatch, capsys):
+    import subprocess
+
+    from tracker import errors, runner
+
+    def raising(error):
+        def run(*_args, **_kwargs):
+            raise error
+        return run
+
+    monkeypatch.setattr(subprocess, "run", raising(subprocess.TimeoutExpired("Zebediah", 300)))
+    assert main(["review-codes"]) == 2
+    minutes = runner.FILL_TIME_LIMIT_SECONDS // 60
+    assert capsys.readouterr().err == "reader bench: " + reader_bench.FIRM_TOO_LONG.format(minutes=minutes) + "\n"
+
+    failure = PermissionError(13, "Zebediah's folder")
+    monkeypatch.setattr(subprocess, "run", raising(failure))
+    assert main(["review-codes"]) == 2
+    err = capsys.readouterr().err
+    assert err == "reader bench: " + reader_bench.FIRM_NOT_STARTED.format(kind=errors.error_class(failure)) + "\n"
+    assert "PermissionError" in err and "Zebediah" not in err
+
+
+def test_what_firm_wrote_on_stderr_is_counted_and_never_shown(monkeypatch, capsys):
+    noise = b"Traceback: Zebediah Quillfeather\n  File /clients/Aardvark Holdings LLC\n\n"
+    refused = a_firm_run(b"Zebediah\n", noise, code=1)
+
+    code, out, err = counts_of(monkeypatch, capsys, refused)
+
+    assert code == 2 and out == ""
+    assert err == ("reader bench: " + reader_bench.FIRM_NOT_AN_OBJECT.format(code=1)
+                   + reader_bench.FIRM_STDERR_ON_FAILURE.format(n=2) + "\n")
+    assert err.endswith("(it also wrote 2 lines on stderr, not shown)\n")
+
+    code, out, err = counts_of(monkeypatch, capsys, a_firm_run(a_reply(), noise))
+
+    assert code == 0 and json.loads(out) == {"unmatched": 1}
+    assert err == "reader bench: the firm command also wrote 2 lines on stderr, not shown\n"
+    for secret in (*SECRET_WORDS, "Quill", "clients", "Traceback"):
+        assert secret not in out and secret not in err, secret
+
+
+def test_review_codes_never_reads_its_own_stdin(monkeypatch, capsys):
+    class Unreadable:
+        def read(self, *_args):
+            raise AssertionError("review-codes read its own stdin")
+
+        readline = readlines = __iter__ = read
+
+    monkeypatch.setattr(sys, "stdin", Unreadable())
+
+    code, out, _ = counts_of(monkeypatch, capsys, a_firm_run(a_reply()))
+
+    assert code == 0 and json.loads(out) == {"unmatched": 1}
+
+
+def test_review_codes_refuses_an_out_inside_the_repository_before_firm_starts(monkeypatch, capsys):
+    def never():
+        raise AssertionError("firm was started")
+
+    monkeypatch.setattr(reader_bench, "_run_firm", never)
+
+    assert main(["review-codes", OUT_FLAG, str(REPO / "codes.json")]) == 2
+    assert capsys.readouterr().err.startswith("reader bench: ")
+
+
+def test_the_usage_names_no_pipe(capsys):
+    where = [(reader_bench.__doc__ or "", "the bench's docstring"),
+             *((( REPO / name).read_text(encoding="utf-8"), name)
+               for name in ("docs/tools.md", "pilot/PROMPT-reader-bench.md", "pilot/mactest/PROMPT-OCR-SCANS.md"))]
+    for text, name in where:
+        named = [line for line in text.splitlines() if "review-codes" in line]
+        assert named, name
+        for line in named:
+            assert "|" not in line, (name, line)
+    with pytest.raises(SystemExit):
+        main(["--help"])
+    helped = capsys.readouterr().out
+    assert "review-codes" in helped and "stdin" not in helped
