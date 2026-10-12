@@ -5250,9 +5250,10 @@ def test_a_confirmed_name_is_evidence_of_its_own_rule_and_says_where(tmp_path):
 
 def test_ocr_text_still_files_on_required_keywords_only_with_the_name_confirmed(
         tmp_path, monkeypatch):
-    """Decision 50 through decision 128: OCR's reading routes on required
-    keywords alone, and the name check reads the same words - so a scan
-    OCR rescued files where its name confirms and nowhere else."""
+    """Decision 50 (as P282 revised it) through decision 128: OCR's reading
+    routes on required keywords alone, and the name check reads the same
+    words - so a scan OCR rescued files where its name confirms and nowhere
+    else."""
     import tracker.content_check as content_check
 
     engagement = make_engagement(tmp_path, ITEMS, people=(JOHN,))
@@ -5264,6 +5265,81 @@ def test_ocr_text_still_files_on_required_keywords_only_with_the_name_confirmed(
 
     assert filed.identifier == "A01"
     assert filed.reason.endswith("; name confirmed (John Park)")
+
+
+#: A made-up 1099-INT request that accepts on its looser keywords only, as
+#: the 1040 catalog's does: a scan files under it on its form number (P282).
+INT_ROW = RequestItem(
+    identifier="A02", document="1099-INT Interest Income", period="TY2025",
+    allowed_extensions=("pdf",), min_size_kb=0, any_keywords=("1099-int",),
+)
+
+
+def test_a_scan_filed_on_its_form_number_still_needs_the_name_confirmed(tmp_path, monkeypatch):
+    """P282 files a scan on its looser keywords when the title shows the
+    request's own form number; guard 4 is decision 128's, untouched. A named
+    request files only where the page names one of the return's people: John
+    Park's 1099-INT files and says so, a made-up name that is not on the
+    return parks with the name tier's own reason."""
+    import tracker.content_check as content_check
+    from tracker.router import MATCHED_FROM_SCAN
+
+    reading = {"text": ""}
+    monkeypatch.setattr(content_check, "_ocr_pdf", lambda path: reading["text"])
+
+    def passed(recipient, root):
+        engagement = make_engagement(root, [*ITEMS, INT_ROW], people=(JOHN,))
+        reading["text"] = "\n".join([
+            "Form 1099-INT Interest Income - 2025", "Payer: Harbor Test Bank",
+            f"Recipient: {recipient}", "Box 1  Interest income  $1,842.17"])
+        text_pdf(inbox_of(engagement) / "scan0001.pdf", "")         # no text layer
+        return sort(engagement, today=DAY1)
+
+    [filed] = passed("John Park", tmp_path / "confirmed").filed
+    assert filed.identifier == "A02" and filed.decision == FILED
+    assert filed.reason == f"{MATCHED_FROM_SCAN}; name confirmed (John Park)"
+
+    [parked] = passed("Sofia Ruiz", tmp_path / "someone-else").review
+    assert parked.decision == NEEDS_REVIEW
+    assert parked.code == reasons.NAME_NOT_ON_PAGE.code
+
+
+def test_a_scan_filed_on_its_form_number_into_an_unnamed_request_needs_no_name(tmp_path, monkeypatch):
+    """Jason's ruling on Q1 (2026-10-11): decision 128 is unchanged for a
+    scan filed on its form number. A request that is not named (a depreciation
+    schedule, whose form prints no person) files by its keywords alone when
+    the page names nobody, and no "name confirmed" note is made up; the same
+    reading naming a person on another return of the household parks as
+    that return's."""
+    import tracker.content_check as content_check
+    from tracker.router import MATCHED_FROM_SCAN
+
+    depreciation = RequestItem(
+        identifier="D04", document="Depreciation Schedule", period="TY2025",
+        allowed_extensions=("pdf",), min_size_kb=0,
+        any_keywords=("form 4562", "depreciation schedule"), named=False,
+    )
+    reading = {"text": ""}
+    monkeypatch.setattr(content_check, "_ocr_pdf", lambda path: reading["text"])
+    lines = ["Form 4562 Depreciation and Amortization 2025",
+             "Part I Election to expense certain property under section 179",
+             "Part III MACRS depreciation, placed in service 2025"]
+
+    def passed(extra, root):
+        business = make_engagement(root, [depreciation], household="Park Family",
+                                   return_name="1120S - Park Landscaping", people=(LANDSCAPING,))
+        john = make_engagement(root, ITEMS, household="Park Family",
+                               return_name="1040 - John Park", people=(JOHN,))
+        reading["text"] = "\n".join([*lines, *extra])
+        text_pdf(inbox_of(business) / "scan0001.pdf", "")           # no text layer
+        return sort_all([business, john], today=DAY1)[business]
+
+    [filed] = passed([], tmp_path / "nobody").filed
+    assert filed.identifier == "D04" and filed.decision == FILED
+    assert filed.reason == MATCHED_FROM_SCAN and "name confirmed" not in filed.reason
+
+    [parked] = passed(["Taxpayer: John Park"], tmp_path / "other-return").review
+    assert parked.code == reasons.NAMES_ANOTHER_RETURN.code
 
 
 def test_a_decision_94_split_is_named_if_any_of_its_forms_request_is_named(tmp_path):

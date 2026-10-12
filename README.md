@@ -454,11 +454,15 @@ Form 1098", "Forms W-2", "such as Form 1099-NEC". A request whose Period
 names a month (`Dec 2025`) also checks that the document prints that
 month.
 
-A scan with no text layer is read by OCR (if OCR is installed), the same
-reading the scanner makes later — and OCR text routes a file only on a
-request's *required* keywords; a looser match on OCR text goes to review
-with the lead noted, because a misread word is how a document lands under
-the wrong request.
+A scan with no text layer, or a photo, is read by OCR - the same reading
+the scanner makes later. OCR text files a document on a request's *required*
+keywords, as a text layer does; on a request's looser keywords it files only
+when the top of the page shows that request's own form number ("Form
+1099-INT") and no other request accepts it and no other form is named on the
+page, and the name on the page still has to confirm a named request. Any
+other looser match on OCR text goes to review as *Read From Scan Only*, with
+the lead noted, because a misread word is how a document lands under the
+wrong request.
 
 **A file name never files anything.** The client chose that name; the form
 did not. So a document nobody here can read — a scan with no text layer

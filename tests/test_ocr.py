@@ -84,6 +84,42 @@ def test_a_scan_is_read_by_rapidocr(tmp_path):
     assert check_content(scan, rules).ok
 
 
+def test_a_real_scan_whose_title_shows_1099_int_files_on_the_rows_looser_keywords(tmp_path):
+    """P282 end to end with the real reader: an image-only PDF drawn with a
+    made-up 1099-INT is read by RapidOCR, its title shows the form number a
+    request accepts on its looser keywords, and it files under that request
+    with the scan sentence instead of parking as Read From Scan Only. The
+    same page turned a quarter must never misfile under the 1098 request: it
+    files the 1099-INT row or parks with it on the shortlist - whether the
+    reader scrambles a particular page's title is the reader's, not the
+    rule's."""
+    from PIL import Image, ImageDraw, ImageFont
+
+    from tests.samples import lines_1099_int
+    from tracker.router import MATCHED_FROM_SCAN, route_file
+
+    interest = RequestItem(identifier="A02", document="1099-INT", period="TY2025",
+                           allowed_extensions=("pdf",), min_size_kb=0, any_keywords=("1099-int",))
+    mortgage = RequestItem(identifier="C01", document="1098", period="TY2025",
+                           allowed_extensions=("pdf",), min_size_kb=0, any_keywords=("1098",))
+    lines = lines_1099_int("Harbor Test Bank", "John A. Smith", 2025)
+
+    upright = scanned_pdf(tmp_path / "scan 0001.pdf", lines)
+    routing = route_file(upright, [interest, mortgage])
+    assert routing.identifier == "A02", routing.reason
+    assert routing.reason == MATCHED_FROM_SCAN and routing.code == reasons.MATCHED_CODE
+
+    page = Image.new("RGB", (1275, 1650), "white")
+    draw = ImageDraw.Draw(page)
+    for i, line in enumerate(lines):
+        draw.text((80, 90 + 52 * i), line, font=ImageFont.load_default(size=30), fill="black")
+    sideways = tmp_path / "scan 0002.pdf"
+    page.rotate(90, expand=True, fillcolor="white").save(sideways, "PDF", resolution=150)
+    routed = route_file(sideways, [interest, mortgage])
+    assert routed.identifier in (None, "A02"), routed.reason
+    assert "C01" not in routed.candidates and routed.identifier != "C01"
+
+
 def test_a_photo_is_read_by_rapidocr(tmp_path):
     """A photo takes the scan's path: read by the same reader, from_ocr."""
     for name in ("w-2.png", "w-2.jpg"):
@@ -205,19 +241,48 @@ def test_the_graphics_cards_way_in_switches_telemetry_off_before_it_loads_anythi
     assert loaded == []
 
 
+def _box(left, top, right, bottom):
+    return [(left, top), (right, top), (right, bottom), (left, bottom)]
+
+
 def test_the_lines_are_built_from_the_boxes_in_reading_order():
     """The seam of ruling 6 builds lines only: boxes on one line (centres
     within half a typical height) join left to right, lines run top to
-    bottom, and nothing is turned or dropped but blank text."""
-    def box(left, top, right, bottom):
-        return [(left, top), (right, top), (right, bottom), (left, bottom)]
-
+    bottom, and nothing is turned. What is dropped is the boxes under the
+    confidence floor (the next claims) and blank text."""
     result = SimpleNamespace(
-        boxes=[box(300, 100, 400, 120), box(10, 10, 100, 30), box(110, 12, 200, 32),
-               box(10, 102, 90, 121), box(10, 200, 50, 220)],
-        txts=("second-right", "first-left", "first-right", "second-left", "  "))
+        boxes=[_box(300, 100, 400, 120), _box(10, 10, 100, 30), _box(110, 12, 200, 32),
+               _box(10, 102, 90, 121), _box(10, 200, 50, 220)],
+        txts=("second-right", "first-left", "first-right", "second-left", "  "),
+        scores=(0.99, 0.99, 0.99, 0.99, 0.99))
     assert ocr._upright_lines(result) == ["first-left first-right", "second-left second-right"]
     assert ocr._upright_lines(SimpleNamespace(boxes=None, txts=None)) == []
+
+
+def test_a_box_under_the_confidence_floor_is_not_read():
+    """P282's guard 2, made the product's own number: a box the reader
+    scored under ``CONFIDENT_SCORE`` is dropped before the lines are built,
+    so a doubtful word can never be what files a document."""
+    result = SimpleNamespace(
+        boxes=[_box(10, 10, 100, 30), _box(10, 60, 100, 80)],
+        txts=("Form 1099-INT", "Form 1098"),
+        scores=(0.99, ocr.CONFIDENT_SCORE - 0.01))
+    assert ocr._upright_lines(result) == ["Form 1099-INT"]
+
+
+def test_a_box_at_the_confidence_floor_is_read():
+    """The floor is inclusive: a score of exactly ``CONFIDENT_SCORE`` is read."""
+    result = SimpleNamespace(
+        boxes=[_box(10, 10, 100, 30)], txts=("Form 1099-INT",), scores=(ocr.CONFIDENT_SCORE,))
+    assert ocr._upright_lines(result) == ["Form 1099-INT"]
+
+
+def test_a_reading_without_confidence_scores_fails_loudly():
+    """rapidocr always gives one score per box; a reading that silently
+    skipped the floor would file on words the floor exists to drop."""
+    result = SimpleNamespace(boxes=[_box(10, 10, 100, 30)], txts=("Form 1099-INT",), scores=None)
+    with pytest.raises(ValueError, match="no confidence scores"):
+        ocr._upright_lines(result)
 
 
 # ----------------------------------------------------- the graphics card ----
@@ -243,7 +308,8 @@ class FakeEngine:
             raise RuntimeError("[ONNXRuntimeError] : 1 : FAIL : CUDA failure 999: unknown error ; GPU=0")
         boxes = [[(0, 40 * i), (500, 40 * i), (500, 40 * i + 30), (0, 40 * i + 30)]
                  for i in range(len(self.lines))]
-        return SimpleNamespace(boxes=boxes, txts=tuple(self.lines))
+        return SimpleNamespace(boxes=boxes, txts=tuple(self.lines),
+                               scores=tuple(0.99 for _ in self.lines))
 
 
 PAGE_WORDS = named_page("Form W-2 Wage and Tax Statement 2025").splitlines()

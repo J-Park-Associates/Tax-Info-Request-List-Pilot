@@ -35,11 +35,16 @@ reading the scanner would make of it later
 what the file says. Its name no longer excuses that reading: OCR is now
 the only thing that can still file a scan, and the scan whose name says
 "W-2" is exactly the one whose content has to be read. But OCR text is
-read *more strictly* than a text layer: it routes a file only on a
-request's **required** keywords. OCR misreads words, and the looser
-any-keyword tier is exactly where a misread "1099" would file a document
-under the wrong request; those matches go to a person instead
-(``OCR_ONLY``).
+read *more strictly* than a text layer: it files a document on a request's
+**required** keywords as before, **or** on its looser keywords when the
+page's title shows that row's own form number, no other row accepted it,
+and the page names no other form as itself and shows no other request's
+form number (P282, revising decision 50). Decision 50's reason stands: OCR
+misreads words, and a misread word in the looser tier is how a document
+lands under the wrong request - which is why the form number must be in the
+title and the match must be alone. Everything else is ``OCR_ONLY``, a lead
+for a person. The name tier (decision 128) and the issuer rule (decision
+93) apply to such a filing; the broker rule (decision 146) never does.
 
 Two things deliberately do *not* route a file:
 
@@ -219,6 +224,11 @@ UNMATCHED = reasons.UNMATCHED
 AMBIGUOUS = reasons.AMBIGUOUS
 #: OCR text matched a request's looser keywords only; not enough to file on.
 OCR_ONLY = reasons.OCR_ONLY
+#: A scan or a photo filed on a request's looser keywords because the top of
+#: the page shows that request's own form number (P282, revising decision
+#: 50); the filer adds "; name confirmed (...)" on a named request.
+MATCHED_FROM_SCAN = ("content matched this request's keywords, "
+                     "read from a scan that shows its form number")
 PENDING = reasons.PENDING_SYNC.format()
 #: No word of the document could be read, so nothing but its name is left
 #: and a name files nothing. Worded once, in :mod:`tracker.reasons`.
@@ -303,6 +313,66 @@ def _recorded_for(
     return {identifier: record[identifier] for identifier in identifiers if record.get(identifier)}
 
 
+def _title_form_keys(evidence: tuple[Evidence, ...]) -> frozenset[str]:
+    """The forms a row's verdict recorded as its own number in the title.
+
+    P282's guard 1, and the row's *title forms* that guard 6 reads: the
+    ``form_key`` of every keyword the verdict found - required or looser -
+    that is a form's number and was said at ``WHERE_TITLE``. Title only,
+    stricter than decision 140's near miss (which also takes a first-page
+    dominant form): an OCR reading has no page breaks, and a sideways page
+    whose line order the reader scrambled puts its title past the first
+    ``TITLE_CHARS``, so it fails this guard and parks rather than filing
+    elsewhere. Reads only what the verdict already recorded; nothing is
+    read off the page again.
+    """
+    return frozenset(
+        key for found in evidence
+        if found.rule in (RULE_REQUIRED, RULE_ANY) and found.where == WHERE_TITLE
+        and (key := form_key(found.term)) is not None
+    )
+
+
+def _names_only_its_own(
+    title_forms: frozenset[str],
+    self_named: tuple[str, ...],
+    record: dict[str, tuple[Evidence, ...]],
+    only: str,
+) -> bool:
+    """P282's guard 6 (Jason's ruling on Q2, 2026-10-11): the row's title
+    forms are the only forms the page names as itself, and the page shows
+    no other request's own form number.
+
+    Read off what the decision already holds and nothing else. False when
+    any form in ``self_named`` (the judgment's reading, decision 94's:
+    :func:`tracker.content_check.self_named_forms`, computed once in the
+    reader child) is not one of ``title_forms``, or when any row of
+    ``record`` other than ``only`` carries a form-number keyword (required
+    or looser) whose form is not one of ``title_forms``; True otherwise. No
+    new reading and no new question to the judgment.
+
+    It exists for the same-family case: a page that names two forms of
+    *different* families as itself never gets here, because decision 94's
+    split reads it earlier and files a copy under each or parks it. A second
+    form of the same family (a 1099-C read as ``1099-G`` beside a printed
+    ``Form 1099-S``), or another request's form number shown on the page,
+    fails here and the scan parks as ``OCR_ONLY``.
+
+    What it does not catch: a 1099-C whose "C" was read as "G" on a page
+    that names no second form still shows "1099-G" alone, and files under
+    the row that asks for it. The bench's ``wrong`` count is how often that
+    happens.
+    """
+    if any(key not in title_forms for key in self_named):
+        return False
+    return not any(
+        found.rule in (RULE_REQUIRED, RULE_ANY)
+        and (key := form_key(found.term)) is not None and key not in title_forms
+        for identifier, evidence in record.items() if identifier != only
+        for found in evidence
+    )
+
+
 def _shows_its_form_number(evidence: tuple[Evidence, ...]) -> bool:
     """Whether a row's evidence says the page shows that row's own form number.
 
@@ -321,12 +391,12 @@ def _shows_its_form_number(evidence: tuple[Evidence, ...]) -> bool:
     about filing: it is the question of whether a person should be handed
     this row to read the document against.
     """
+    if _title_form_keys(evidence):
+        return True
     keywords = [found for found in evidence if found.rule in (RULE_REQUIRED, RULE_ANY)]
     for found in keywords:
         if form_key(found.term) is None:
             continue
-        if found.where == WHERE_TITLE:
-            return True
         if found.where == WHERE_FIRST_PAGE and any(other.term != found.term for other in keywords):
             return True
     return False
@@ -627,8 +697,8 @@ def route_file(
     here, in this process, against ``items`` (:func:`judgment_of`). With
     neither, the file is read and judged here, once, in the child. A
     reading is the whole :class:`Extraction` and not the text alone,
-    because ``from_ocr`` is part of what the words are worth: decision 50
-    reads OCR's words more strictly than a text layer's, and a caller
+    because ``from_ocr`` is part of what the words are worth: decision 50,
+    as P282 revised it, reads OCR's words more strictly than a text layer's, and a caller
     handing over a bare string would quietly promote an OCR reading to a
     text layer's standing. With a ``cache`` (and the file's
     ``digest``, if the caller has it), the per-request verdicts are kept
@@ -784,6 +854,7 @@ def _decide(
     strong: list[str] = []      # required keywords matched and every rule passed
     medium: list[str] = []      # passed on any_keywords / date alone
     ocr_only: list[str] = []    # passed on any_keywords, but the text is OCR's word for it
+    scan_strong: list[str] = []  # OCR's looser match, and the row's own form number in the title (P282)
     #: Looks like this request but fails a rule: (identifier, why, code).
     near: list[tuple[str, str, str]] = []
     #: A signed return of the wrong year: a return row's required keywords
@@ -847,6 +918,8 @@ def _decide(
                     strong.append(item.identifier)
                 elif reading.from_ocr:
                     ocr_only.append(item.identifier)
+                    if _title_form_keys(verdict.evidence):
+                        scan_strong.append(item.identifier)
                 else:
                     medium.append(item.identifier)
             elif judgment.row(item).required_matched:
@@ -935,9 +1008,10 @@ def _decide(
     # the evidence and never on an identifier, so it holds on every
     # catalog and on a preparer's own rows). Two such rows, or none, and it
     # parks exactly as before: nothing is guessed. Never on OCR's word
-    # (``medium`` is text-layer only; decision 50), never over a row
-    # matched on its required keywords, and after the issuer rule, so a
-    # page that rule parks stays parked.
+    # (``medium`` is text-layer only; decision 50; a scan's own filing,
+    # ``scan_strong`` below, P282, is a separate list this rule never
+    # reads), never over a row matched on its required keywords, and after
+    # the issuer rule, so a page that rule parks stays parked.
     if len(medium) > 1 and not strong and judgment.carries_1099b:
         broker = [ident for ident in medium
                   if _explained_by(record.get(ident, ()), {BROKER_FORM})]
@@ -969,9 +1043,56 @@ def _decide(
                 code=reasons.AMBIGUOUS_CODE,
             )
 
+    # A scan whose title shows the request's own form number, accepted by
+    # that request alone (P282, revising decision 50). Six guards, in the
+    # software's words: the request's own form number is in the title
+    # (_title_form_keys; a scrambled sideways page puts its title late and
+    # parks); only confident words were read (the floor is the reader's,
+    # ocr.CONFIDENT_SCORE); exactly one request accepts it - no other looser
+    # match, no second form number in a title - which is the test below;
+    # the name on the page confirms a named request (the household pass's,
+    # after this decision, as for any filing); the issuer rule still
+    # applies, asked here for the one row that passed, while the broker rule
+    # (decision 146) is never asked of a scan because it reads text-layer
+    # rows only; and the page names no other form as itself and shows no
+    # other request's form number (_names_only_its_own, reading the
+    # judgment's self_named - the decision-94 reading - not one of its own).
+    # Nothing before this point has changed: for an OCR reading ``medium`` is
+    # always empty, and a non-empty ``strong`` has already filed or parked
+    # in the loop above.
+    if len(scan_strong) == 1 and ocr_only == scan_strong and _names_only_its_own(
+            _title_form_keys(record[scan_strong[0]]), judgment.self_named, record,
+            scan_strong[0]):
+        [only] = scan_strong
+        issuer_rows = tuple(dict.fromkeys(
+            narrowing_rows(i for i in items if _considers(i)).get(only, ())))
+        if issuer_rows:
+            shortlist = (only, *issuer_rows)
+            return Routing(
+                path=path,
+                identifier=None,
+                reason=ISSUER_NOT_NAMED.format(listed=", ".join(issuer_rows)),
+                candidates=shortlist,
+                evidence=EVIDENCE_CONTENT,
+                evidence_record=_recorded_for(record, shortlist),
+                code=ISSUER_NOT_NAMED.code,
+            )
+        return Routing(
+            path=path,
+            identifier=only,
+            reason=MATCHED_FROM_SCAN,
+            candidates=(only,),
+            evidence=EVIDENCE_CONTENT,
+            evidence_record=_recorded_for(record, scan_strong),
+            code=reasons.MATCHED_CODE,
+        )
+
     # OCR's reading of the looser keywords is a lead for a person, not a
     # filing decision: a misread word is how a document lands under the
-    # wrong request.
+    # wrong request. What reaches here is a looser OCR match that did not
+    # show its form number in the title, that another request also
+    # accepted, or whose page names another form as itself or shows another
+    # request's form number (P282).
     if ocr_only:
         return Routing(
             path=path,

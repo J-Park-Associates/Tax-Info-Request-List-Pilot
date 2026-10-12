@@ -42,7 +42,9 @@ tries the card again. A reading is never failed by a fault alone.
 flips upside-down crops itself, and reads nearly every word of a rotated
 page; what a rotated page loses is the order of its lines. The one seam,
 :func:`_upright_lines`, builds lines in reading order from the boxes as they
-come. It never turns a page and never costs a second reading; the turning
+come, and drops every box the reader scored under :data:`CONFIDENT_SCORE`
+(P282's guard 2: rapidocr's own floor, held here so the product owns the
+number). It never turns a page and never costs a second reading; the turning
 rule arrives later as the amendment "169, upright", in the seam only.
 
 **The reading's child** (decision 150, decision 169 R-4). The pass reads in
@@ -162,6 +164,12 @@ CUDA_PROVIDER = "CUDAExecutionProvider"
 #: The self-test page: a line of a form's own words, drawn here.
 SELF_TEST_TEXT = "Wage and Tax Statement 2025"
 SELF_TEST_WORDS = ("wage", "statement")
+
+#: The lowest recognition score a box may have and still be read (P282's
+#: guard 2). It is rapidocr's own default floor (``Global.text_score``),
+#: held here so the product owns the number and a test can see it applied;
+#: Part C may raise it from the office measurement.
+CONFIDENT_SCORE = 0.5
 
 
 class ReaderUnavailable(Exception):
@@ -458,18 +466,29 @@ def _text_of(result) -> str:
 def _upright_lines(page_result) -> list[str]:
     """The page's lines in reading order, built from the engine's boxes.
 
-    The seam of ruling 6: today it only orders what it is given - a box
+    The seam of ruling 6: today it orders what it is given - a box
     joins the line whose centre is within half a typical box height of its
     own, lines run top to bottom and a line's boxes left to right (the
     benchmark harness's ``lines_from_boxes``, which Part 1 measured). It
-    never turns a page. The turning rule lands here, and only here, with
-    the amendment "169, upright"."""
+    drops the boxes the reader was not confident of (a recognition score
+    under :data:`CONFIDENT_SCORE`, P282's guard 2) and blank ones; it never
+    turns a page. The turning rule lands here, and only here, with
+    the amendment "169, upright".
+
+    Fails loudly when boxes and words come with no scores: rapidocr always
+    gives one score per box, and a reading that silently skipped the floor
+    would file on words the floor exists to drop."""
     boxes = getattr(page_result, "boxes", None)
     texts = getattr(page_result, "txts", None)
+    scores = getattr(page_result, "scores", None)
     if boxes is None or texts is None:
         return []
+    if scores is None:
+        raise ValueError("the reader gave no confidence scores")
     items = []
-    for quad, text in zip(boxes, texts, strict=False):
+    for quad, text, score in zip(boxes, texts, scores, strict=False):
+        if float(score) < CONFIDENT_SCORE:
+            continue
         if not text or not str(text).strip():
             continue
         xs = [float(point[0]) for point in quad]
