@@ -23,9 +23,15 @@ among prepared settings; it waits for what this brings back.
    sorted documents (the folder `backtest.py` runs on) and the photo corpus
    (the folder `TRACKER_REAL_CORPUS` names, if its expectations file is
    filled in). The session never opens, lists or reads either one.
-3. The medium models are downloaded by one command in step 3. The session
+3. The session runs under the account that runs the schedule: step 1 checks
+   that the clients root is set there, which `review-codes` needs to read the
+   record and the backtest needs to reach the firm's folder. So the deny list
+   in that account's `~/.claude/settings.json` must be in place before the
+   session opens (it keeps the data folder, the record and every file named
+   `expectations.csv` out of the session's own reach), and is never loosened.
+4. The medium models are downloaded by one command in step 3. The session
    will ask you in the chat before it runs it: say yes or no there.
-4. A full run can take a night. Step 4 gives the arithmetic and the cheaper
+5. A full run can take a night. Step 4 gives the arithmetic and the cheaper
    order.
 
 ## The prompt
@@ -40,6 +46,10 @@ SAFETY - never break these:
   clients root. The tools below open the documents; you only run the commands and paste the counts
   and seconds they write. If a command prints anything else - a name, a path below a corpus folder, a
   word of a document - do not repeat it; tell Jason what kind of thing it was and stop.
+- An expectations file is a list of a corpus's file names, so it is never opened either, wherever it
+  is: the firm corpus's is expectations.csv in its own folder, and the photo corpus's is written in
+  step 2c as <outside>\photos\expectations.csv - that name and no other, so the deny rule on
+  expectations.csv covers it. You hand its path to the commands below and never read it.
 - Nothing is sent: no email, no upload. The only file you ever commit is docs/backtest-baseline.json
   in step 2, on its own branch, as a DRAFT pull request. Do not push anything else, do not mark a pull
   request ready, do not run CI, and never trigger @claude in GitHub.
@@ -82,9 +92,9 @@ SAFETY - never break these:
       branch and open a DRAFT pull request. That is
       the only commit and the only pull request of this session.
    c. The photo corpus: if it has no filled-in expectations file, write the skeleton and STOP:
-        .venv\Scripts\python tools\backtest.py collect "<photo corpus>" --catalog 1040 --year 2025 --out <outside>\photo-expectations.csv
-      Tell Jason the skeleton is ready for a person to fill in; you do not fill it in. Carry on with
-      the firm corpus alone until it is.
+        .venv\Scripts\python tools\backtest.py collect "<photo corpus>" --catalog 1040 --year 2025 --out <outside>\photos\expectations.csv
+      Tell Jason the skeleton is ready for a person to fill in; you do not fill it in and you do not
+      open it. Carry on with the firm corpus alone until it is.
 
 3. THE MEDIUM MODELS - a person approves the download.
    They are not shipped and the bench never fetches them. Ask Jason in the chat first, saying: the
@@ -102,6 +112,8 @@ SAFETY - never break these:
 4. THE BENCH, in the office checkout (the head Jason names), on each corpus that has an expectations file:
      .venv\Scripts\python tools\reader_bench.py variants          (the 21 names; check the first is dpi300-floor0.50-prep-small)
      .venv\Scripts\python tools\reader_bench.py run "<corpus>" --out <outside>\bench-<firm|photos>.json --models <outside>\medium-models
+   For the photo corpus add --expectations <outside>\photos\expectations.csv to every run below (the
+   firm corpus's file is in its own folder, and the bench finds it by itself).
    The report names are fixed labels (bench-firm*.json, bench-photos*.json, with -small or -medium
    added below), never the corpus folder's name or path, which would be repeated in the transcript.
    The full grid: 21 variants, each reading every scan and photo of the corpus once - the 16 of the
@@ -175,6 +187,10 @@ SAFETY - never break these:
   exactly the reading before P285, so the comparison of prepared against raw
   needs no second checkout; the checkout of step 1 is for P282 and for the
   baseline.
+- **The photo corpus's expectations file is named `expectations.csv`**, in a
+  folder of its own under `<outside>` - the deny rule covers that name and
+  no other, and the corpus folder itself is never written into. The firm
+  corpus's file sits in its folder, where the backtest has always kept it.
 - **Nothing downloaded by the bench** - `ocr._refuse_downloads` stands under
   it; the medium models come from a person's approved command.
 - **Counts and seconds only** - the standing rule that client data never

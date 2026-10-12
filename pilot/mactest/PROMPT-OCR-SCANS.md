@@ -108,8 +108,8 @@ Python here is .venv/bin/python (3.14, the office's) and .venv311/bin/python (3.
         Expected: FILED under the W-2 request, as before P282 (a W-2 files on its required
         keywords, and P282 changes nothing for it), or PARKED as a near miss, "matched no request,
         but it shows the form number of A01; a person should confirm". The first Mac run saw the
-        near miss: at today's 144 dpi the reader missed the third required phrase on this drawn
-        page. That is a reading-quality data point for P284, recorded as such, not a failure of
+        near miss: at 144 dpi, the reading before P285, the reader missed the third required phrase
+        on this drawn page. That is a reading-quality data point for P284, recorded as such, not a failure of
         P282; landing under any other request would be. Record which happened and, if it parked,
         the reason word for word.
    Before the pass, record a fingerprint of every file in the inbox, so step 4 can show the

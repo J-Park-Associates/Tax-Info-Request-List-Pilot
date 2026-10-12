@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 288,
     "edges": 1329,
-    "reused": 234
+    "reused": 233
   },
   "node_types": [
     "artifact",
@@ -4675,8 +4675,8 @@
       "id": "pilot/PROMPT-reader-bench.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "ea4b1f536befebc4",
-      "lines": 182,
+      "sha256": "a012b74afd3f10fd",
+      "lines": 198,
       "role": "The prompt for Claude Code on the office PC (the designated machine only): refuse off the office PC, today's Needs Review by code and the backtest baseline before P282 on the commit Part A stacks on, the medium models fetched by an approved command, the reader bench on each corpus with the time arithmetic, the same numbers after Part A is installed, and what comes back - counts and seconds only, never a document, name or path."
     },
     {
@@ -4937,7 +4937,7 @@
       "id": "pilot/mactest/PROMPT-OCR-SCANS.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "859e01131aa869c9",
+      "sha256": "08bc495218acc008",
       "lines": 246
     },
     {
