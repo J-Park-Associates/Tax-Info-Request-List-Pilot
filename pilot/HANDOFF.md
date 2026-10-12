@@ -23,6 +23,105 @@ this repository; [`SPEC.md`](SPEC.md) says what it builds.
 
 ## Current work
 
+[`SPEC-ocr-scans.md`](SPEC-ocr-scans.md) Part A (P282), **built on
+`claude/ocr-scans`** in commit `ff938b7`, not yet reviewed (the review is
+Opus's, in a session that did not build it) and not pushed. Part B (P283) is
+a separate build, stacked on this one, and is not started.
+
+What Part A built, in the software's words: a scan or a photo that a request
+accepts on its looser keywords now files under that request when the top of
+the page shows the request's own form number, no other request accepted it,
+the household's issuer rule passes, and the page names no other form as itself
+and shows no other request's form number. The name on the page still has to
+confirm a named request, and an unnamed one files by its keywords alone when
+the page names nobody (Jason's ruling on Q1). Anything less parks as Read From
+Scan Only, byte for byte as before. The reader's confidence floor is now the
+product's own number (0.5, the same floor the reader already applied), and a
+reading that comes back with no scores fails loudly. No keyword, catalog row,
+store, event or cache version changed (`CACHE_VERSION` stays 13; the vocabulary
+report rebuilt with no diff).
+
+Gate, each file its own process, `.venv` (3.14) and `.venv311` (3.11), no
+`-m "not corpus"`; every file passed under both:
+
+| file | 3.14 | 3.11 |
+|---|---|---|
+| `test_router` | 89 passed | 89 passed |
+| `test_filer` | 405 passed, 6 skipped | 405 passed, 6 skipped |
+| `test_ocr` (the real reader ran, not skipped) | 44 passed, 4 skipped | 44 passed, 4 skipped |
+| `test_backtest` | 21 passed | 21 passed |
+| `test_content_check` | 114 passed, 1 skipped | 114 passed, 1 skipped |
+| `test_api` | 505 passed | 505 passed |
+| `test_runner` | 229 passed, 1 warning | 229 passed, 1 warning |
+| `test_resident` | 39 passed | 39 passed |
+| `test_reasons` | 58 passed | 58 passed |
+| `test_layers` | 31 passed | 31 passed |
+| `test_single_source` | 217 passed | 217 passed |
+| `test_repo_map` | 82 passed | 82 passed |
+| `test_tripwire` | 23 passed | 23 passed |
+| `test_errors` | 83 passed | 83 passed |
+
+Also: `ruff check .` clean; `repo_map.py update` then `check` exit 0 (the map
+is in the same commit); `vocab_report.py build` (run with the `.venv`
+interpreter, which has pytest) left no diff. The skips are the platform ones
+already there (the Windows job object, `/proc`, a directory junction, and
+the like). Not run here: the `pilot/mactest/run_checks.sh` sample-pile flow
+(SPEC section 4's check that `Scanned forms.zip`'s scan files under its
+1099-INT request with "name confirmed" in its reason) and a Windows check.
+
+Where the SPEC and the code differed, none that stopped the build. Notes for
+the reviewer:
+
+- The SPEC's claim that `.gitignore` gains `.venv311/` in Part A's first
+  commit was already done (`8a77916`); nothing to add.
+- `test_a_scan_whose_form_number_is_only_below_the_title_parks_as_ocr_only`
+  is built as the SPEC words it, but a verdict records only the best-placed
+  of a row's matching looser keywords, so here it records `dividend` in the
+  title and never `1099-div`. The test holds the park byte for byte, and it
+  passes with guard 1 removed; guard 1's bite is shown by
+  `test_a_sideways_reading_whose_title_lines_came_late_parks`, which fails
+  when the title test is dropped. Each other guard was mutated once (guard 6
+  both halves, the exactly-one test, the issuer exit) and its test failed.
+- The two new filer tests each make two returns in separate roots: two
+  image-only PDFs with no text are byte-identical, so a second scan dropped in
+  the same return would be a Duplicate of the first, not a second reading.
+- The real-reader test's quarter-turned page reads as "matched no request"
+  here (the reader keeps the words but not the order); the test accepts
+  parking or filing under the 1099-INT row and forbids the 1098 row, as the
+  SPEC says.
+- Tests added: router `test_a_scan_whose_title_shows_1099_int_files_on_the_rows_looser_keywords`,
+  `test_a_scan_whose_form_number_is_only_below_the_title_parks_as_ocr_only`,
+  `test_a_scan_two_requests_accept_on_their_titles_parks_with_both`,
+  `test_a_scan_that_passes_the_title_guard_beside_a_loose_match_parks`,
+  `test_a_sideways_reading_whose_title_lines_came_late_parks`,
+  `test_a_scan_accepted_by_a_row_issuer_rows_narrow_parks_as_issuer_not_named`,
+  `test_a_scan_of_last_years_1099_int_parks_and_never_files`,
+  `test_a_scan_filed_on_its_form_number_carries_no_answers_and_no_split`,
+  `test_a_scanned_1099_c_read_as_1099_g_beside_a_second_form_name_parks`,
+  `test_a_scan_whose_page_shows_another_requests_form_number_parks`,
+  `test_a_page_naming_only_its_own_form_files`,
+  `test_a_page_naming_two_families_as_itself_is_decision_94s_and_never_reaches_the_scan_rule`
+  (and the one rename); filer `test_a_scan_filed_on_its_form_number_still_needs_the_name_confirmed`,
+  `test_a_scan_filed_on_its_form_number_into_an_unnamed_request_needs_no_name`;
+  ocr `test_a_box_under_the_confidence_floor_is_not_read`,
+  `test_a_box_at_the_confidence_floor_is_read`,
+  `test_a_reading_without_confidence_scores_fails_loudly`,
+  `test_a_real_scan_whose_title_shows_1099_int_files_on_the_rows_looser_keywords`.
+
+**What the pass does with a row already parked as Read From Scan Only after
+the install** (read from the code, for the office prompt's before-and-after
+count): nothing. A pass decides only what is new - a drop in the inbox, or a
+stray in the year's folder with no row - and the only road that routes a
+document it already has on record again is a re-send whose earlier row was
+set aside, filed with its copy gone, or marked missing
+(`filer._sort_one`). A parked row's original has already left the inbox; the
+same bytes sent again are a Duplicate of the parked row (`DUPLICATE_OF_PARKED`),
+not a second reading, and the scanner only re-checks filed documents against
+their request's rules. So every row parked as Read From Scan Only before the
+install stays parked until a person files it; only scans that arrive after it
+file by the new rule. The before-and-after count on the office PC therefore
+moves only on documents dropped after Part A is installed.
+
 [`SPEC-ui-polish.md`](SPEC-ui-polish.md): the UI and UX review of 2026-10-11.
 Section 1, the no-brainers (P264), is built on `claude/ui-polish` in one
 commit after a clean Opus review: one collator, keyed lookups, one draw per
