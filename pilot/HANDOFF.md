@@ -28,11 +28,14 @@ this repository; [`SPEC.md`](SPEC.md) says what it builds.
 in three commits on top of the SPEC's (the stage with its tests; the bench,
 both prompts, the docs and the map; the first handoff), then rebuilt to the
 SPEC's section 9 amendment in four more (the detector's long side; the box-line
-step; the Mac prompt's counts; a leftover print) and this handoff. Not yet
-reviewed (Opus's, in a session that did not build it) and **not pushed**.
-Jason ruled every section 8 question to its stated default. **One finding
-below is still open (a five-page scan is still ended by the reading child's
-memory limit on this Mac); read it first.**
+step; the Mac prompt's counts; a leftover print) and a handoff, then rebuilt
+again to section 9.4 (the processor child's cap; Sauvola on box filters; the
+runbook, the record and this handoff). Not yet reviewed (Opus's, in a session
+that did not build it) and **not pushed**. Jason ruled every section 8
+question to its stated default. **The processor child's cap, 4 GB from P285,
+is an assumption of the orchestrating session held for Jason's word (decision
+169 is his); one constant reverses it. One test still fails for a reason that
+is not memory: see "Failed, not fixed" below.**
 
 What was built, in the software's words: every scanned page and photo is now
 prepared in memory before the reader sees it - drawn at 300 dots per inch,
@@ -47,11 +50,10 @@ with each step turned off one at a time, so the office numbers say which steps
 earn their place. README, runbook, tools page, the office prompt and the map
 say so; nothing tells a person to do anything.
 
-**Memory finding (SPEC 9.1): the detector, not the stage, broke the reading
-child's cap. 9.1 took most of it away; a five-page scan is still ended on this
-Mac.** Found by the first build: rapidocr's detector, left at its default
-(`Det.limit_type` `min`, 736), never shrinks a page whose shorter side is
-already past 736, so with the long side at 3300 it read the whole 3300 x 2550
+**Memory finding (SPEC 9.1, 9.4): resolved on this Mac, with the cap raised on
+an assumption.** Found by the first build: rapidocr's detector, left at its
+default (`Det.limit_type` `min`, 736), never shrinks a page whose shorter side
+is already past 736, so with the long side at 3300 it read the whole 3300 x 2550
 page and the process reached 2.85 GB on a drawn letter page (the stage is not
 the problem: a 4032 x 3024 photo grows the process by about 530 MB through the
 whole stage). In the real product path - a drawn five-page scan judged through
@@ -63,7 +65,7 @@ What 9.1 did: `_build_engine` sets `Det.limit_type` to `"max"` (and not
 `Det.limit_side_len`). Detection runs on a copy the engine holds to its own
 2000-pixel long side, as under P283; recognition crops its words from the
 3300 page. The same lines are read. Numbers on this Mac (drawn pages, counts
-only, in GB of 10^9 bytes; the child's cap is 2 x 1024^3 bytes, 2.15 here):
+only, in GB of 10^9 bytes; the child's cap was 2 x 1024^3 bytes, 2.15 here):
 
 | reading | without 9.1 | with 9.1 |
 |---|---|---|
@@ -72,27 +74,36 @@ only, in GB of 10^9 bytes; the child's cap is 2 x 1024^3 bytes, 2.15 here):
 | the whole process, peak after one shipped reading of a drawn 2550 x 3300 page (stage and engine; median of three: 1.604, 1.605, 1.612) | 2.85 (first build's footprint) | 1.61 |
 | the same process's footprint after that reading (median of three) | - | 1.55 |
 
-**Still open.** The process does not hand memory back between readings, and
-the second reading of any page adds about 0.54 GB that the first did not. In
-one process, reading the same drawn page six times, the footprint was 1.54,
-2.08, 2.11, 2.14, 2.18, 2.26 GB; with a garbage collection after each page it
-was 1.55 then 2.06 and flat. A drawn five-page scan read in one process
-(`content_check.open_and_read`) peaks at 2.40 GB under the shipped settings,
-1.31 GB under `RAW`, and a one-page scan 1.61 GB; the stage alone leaves about
-0.65 GB held after its first page. **The five-page scan through the reading
-child is still ended**: `reading-crashed`, "it had reached its memory limit
-(2 GB)", exit code -9, after about 2.1 s, in every run of
-`test_the_shipped_reading_of_a_scan_fits_the_reading_child` on this Mac (the
-test the SPEC asks for in 4.1; it fails here, and is committed as written so
-the reviewer sees it). The cap is decision 169's (`PROCESSOR_CHILD_MEMORY`)
-and the long side and dpi are Jason's ruling, so nothing here changed either;
-the SPEC's own two options stand (raise the processor child's cap, or hold the
-long side lower; 9.1 did not make either needless for a multi-page scan), and
-the page-to-page growth above is a third thing to look at. The Windows job
-object caps committed memory at the same 2 GB and was not measured. The
-reviewer should not pass the build as a product that reads multi-page scans on
-this Mac until one is chosen; the stage, the bench and the rest of the tests
-are independent of the choice.
+What 9.1 left (found by the first rebuild): a multi-page scan still crossed 2
+GB. The engine's working memory settles about 0.6 GB higher after its second
+page (the shapes of the pages it has seen, flat after a garbage collection, so
+not a leak), and the stage's allocator held about 0.6 GB after its first page.
+
+What 9.4 did: `PROCESSOR_CHILD_MEMORY` is `4 * 1024**3` (the card's 6 GB
+stays), and Sauvola takes its mean and mean of squares from single-precision
+`cv2.boxFilter` calls instead of double-precision integral images. Decision
+169's 2 GB was a reader at 144 dpi and a 2000-pixel long side; a 300 dpi page
+needs about 2.3 GB on a Mac and more where Windows counts committed memory
+(the job object was not measured), and 4 GB is the first power of two with
+room. **This is the orchestrating session's assumption, held for Jason's
+word**; the runbook's memory bullet, the module's comments, the curated map
+and the P285 row say 4 GB, and the other option (a lower long side) undoes
+his 300 dpi. Measured again on this Mac after 9.4 (drawn 2550 x 3300 pages
+through `ocr.read_page`, each in a fresh `.venv/bin/python` process,
+`resource.getrusage(...).ru_maxrss`, GB of 10^9 bytes; the 4 GB cap is 4.29):
+
+| reading | peak |
+|---|---|
+| one page, `SHIPPED`, box filters (median of three: 1.327, 1.329, 1.326) | 1.33 |
+| five pages, `SHIPPED` | 2.28 |
+| five pages, `RAW` | 2.03 |
+
+Sauvola on a 2550 x 3300 page takes 0.032 s now (median of five; 0.050 before).
+The five-page scan through the reading child is no longer ended: the child
+test's reading comes back with no `reading-crashed`, not transient, read by
+the reader, in about 3 s (it was killed at 2.1 s before). The test still fails,
+for another reason (below). The Windows job object, which counts committed
+memory, was not measured and is the office bench's to confirm.
 
 **Second finding (not P285's, but it bit the build): the arm64 macOS wheel of
 OpenCV (`opencv-python-headless==5.0.0.93`, KleidiCV) segfaults inside
@@ -143,31 +154,41 @@ white by design, which is why the SPEC's "95% of the text's pixels" claim is
 tested on hard-pixel text. On the smooth shadow Sauvola blackens 0 pixels,
 Otsu 50%.
 
-Gate of the rebuild (SPEC 9), each file its own process, `.venv` (3.14) and
-`.venv311` (3.11), no `-m "not corpus"`, the real reader ran (the skips are the
-platform ones already there), on the final tree:
+Gate of the second rebuild (SPEC 9.4), each file its own process, `.venv`
+(3.14) and `.venv311` (3.11), no `-m "not corpus"`, the real reader ran (the
+skips are the platform ones already there), on the tree before this handoff:
 
 | file | 3.14 | 3.11 |
 |---|---|---|
 | `test_ocr` | 69 passed, 1 failed, 4 skipped | 69 passed, 1 failed, 4 skipped |
 | `test_content_check` | 115 passed, 1 skipped | 115 passed, 1 skipped |
-| `test_reader_bench` | 23 passed | 23 passed |
+| `test_errors` | 83 passed | 83 passed |
+| `test_runner` | 229 passed | 229 passed |
 | `test_layers` | 31 passed | 31 passed |
 | `test_single_source` | 217 passed | 217 passed |
 | `test_repo_map` | 82 passed | 82 passed |
 | `test_tripwire` | 23 passed | 23 passed |
-| `test_errors` | 83 passed | 83 passed |
 
-The one failure, under both interpreters, is
-`test_the_shipped_reading_of_a_scan_fits_the_reading_child` (the memory finding
-above). The first build's wider gate (router, filer, scanner, containers,
-names, after_install, api, runner, resident, backtest, vocab_report,
-learned_keywords) ran on its tree and was not rerun: the rebuild changes the
-engine's parameters, the box-line step, the fixtures and the prompt's counts,
-and no module those tests import beyond `ocr` itself. `ruff check .` clean;
-`repo_map.py update` then `check` exit 0 (the map is only current on the
-branch's head); `vocab_report.py build` changed nothing. The backtest baseline
-is still unrecorded (the office prompt records it).
+`test_single_source` and `test_repo_map` were run again after this handoff.
+`ruff check .` clean; `repo_map.py update` then `check` exit 0; `vocab_report.py
+build` changed nothing. `test_reader_bench` was not rerun (the bench is
+untouched by 9.4). The backtest baseline is still unrecorded (the office
+prompt records it).
+
+**Failed, not fixed.**
+`test_the_shipped_reading_of_a_scan_fits_the_reading_child` still fails under
+both interpreters, no longer on memory. Its last assertion is
+`reading.from_ocr and reading.text`, but `judge_bounded` in a child hands back a
+`Judgment` whose `extraction.text` is `""` where there were words ("the words
+stay here; the Judgment is all that crosses the pipe"), so `text` is empty by
+design: the reading is `from_ocr=True`, `has_words=True`, `reason ''`, not
+transient. The next assertion (`contains_keyword(reading.text, "1099-INT")`)
+cannot hold through the child either. The SPEC's wording (4.1: "the judgment's
+words include the form number") needs the test to ask a question of the
+judgment (for example a `Questions` carrying a row whose keyword is the form
+number, or `Judgment.own`, which is `None` when no question is asked), not to
+read `text`. The build was told not to change the test further and did not;
+the fix is the test's, not the cap's or the stage's.
 
 Tests: renamed `test_the_shipped_settings_are_the_prepared_reading_at_300_dpi`
 and `test_the_grid_is_every_dpi_floor_preparation_and_tier_and_the_ablation`;
@@ -191,8 +212,10 @@ child claim.
 
 Where the SPEC and the code differ, and what the build did:
 
-- **The memory finding above** is the SPEC's gap, not a departure: 9.1 is
-  built exactly, and the SPEC's test for it fails.
+- **The memory finding above** was the SPEC's gap, not a departure: 9.1 and
+  9.4 are built exactly. 9.4's gate departs in one place: the child test,
+  which the SPEC says must pass, passes its memory claim and fails its text
+  claim ("Failed, not fixed" above).
 - **The box-line step is long and thin (SPEC 9.2), and the `w2_photo` fixture
   is back to its P283 form** (1100 x 260, the P283 docstring): the first
   build's page-sized canvas and its note are gone. One departure from the
