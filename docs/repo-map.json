@@ -15,7 +15,7 @@
     "a person sends the draft"
   ],
   "counts": {
-    "nodes": 286,
+    "nodes": 287,
     "edges": 1322,
     "reused": 232
   },
@@ -4627,8 +4627,8 @@
       "id": "pilot/DECISIONS.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "7a2b4ad4e547995f",
-      "lines": 278
+      "sha256": "d6398708974078ee",
+      "lines": 279
     },
     {
       "id": "pilot/HANDOFF.md",
@@ -4763,6 +4763,13 @@
       "layer": "docs",
       "sha256": "e643e101f653fcab",
       "lines": 966
+    },
+    {
+      "id": "pilot/SPEC-ocr-prepare.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "59fc8d95a1c74f82",
+      "lines": 698
     },
     {
       "id": "pilot/SPEC-ocr-scans.md",
