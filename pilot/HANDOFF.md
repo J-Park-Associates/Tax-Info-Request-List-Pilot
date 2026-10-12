@@ -34,8 +34,7 @@ runbook, the record and this handoff). Not yet reviewed (Opus's, in a session
 that did not build it) and **not pushed**. Jason ruled every section 8
 question to its stated default. **The processor child's cap, 4 GB from P285,
 is an assumption of the orchestrating session held for Jason's word (decision
-169 is his); one constant reverses it. One test still fails for a reason that
-is not memory: see "Failed, not fixed" below.**
+169 is his); one constant reverses it.**
 
 What was built, in the software's words: every scanned page and photo is now
 prepared in memory before the reader sees it - drawn at 300 dots per inch,
@@ -100,9 +99,12 @@ through `ocr.read_page`, each in a fresh `.venv/bin/python` process,
 
 Sauvola on a 2550 x 3300 page takes 0.032 s now (median of five; 0.050 before).
 The five-page scan through the reading child is no longer ended: the child
-test's reading comes back with no `reading-crashed`, not transient, read by
-the reader, in about 3 s (it was killed at 2.1 s before). The test still fails,
-for another reason (below). The Windows job object, which counts committed
+test passes on this Mac under both interpreters (3.23 s on 3.14): no
+`reading-crashed`, not transient, read by the reader (it was killed at 2.1 s
+before). Its last claim first read the judgment's text, which is empty by
+design (decision 189), so it now asks a question: a row keyed on the form
+number, `1099-INT`, whose `required_matched` shows the child read the words.
+The Windows job object, which counts committed
 memory, was not measured and is the office bench's to confirm.
 
 **Second finding (not P285's, but it bit the build): the arm64 macOS wheel of
@@ -156,11 +158,11 @@ Otsu 50%.
 
 Gate of the second rebuild (SPEC 9.4), each file its own process, `.venv`
 (3.14) and `.venv311` (3.11), no `-m "not corpus"`, the real reader ran (the
-skips are the platform ones already there), on the tree before this handoff:
+skips are the platform ones already there), on the final tree:
 
 | file | 3.14 | 3.11 |
 |---|---|---|
-| `test_ocr` | 69 passed, 1 failed, 4 skipped | 69 passed, 1 failed, 4 skipped |
+| `test_ocr` | 70 passed, 4 skipped | 70 passed, 4 skipped |
 | `test_content_check` | 115 passed, 1 skipped | 115 passed, 1 skipped |
 | `test_errors` | 83 passed | 83 passed |
 | `test_runner` | 229 passed | 229 passed |
@@ -169,26 +171,12 @@ skips are the platform ones already there), on the tree before this handoff:
 | `test_repo_map` | 82 passed | 82 passed |
 | `test_tripwire` | 23 passed | 23 passed |
 
-`test_single_source` and `test_repo_map` were run again after this handoff.
+`test_single_source` and `test_repo_map` were run again after this handoff,
+and `test_ocr` after the test's rewrite.
 `ruff check .` clean; `repo_map.py update` then `check` exit 0; `vocab_report.py
 build` changed nothing. `test_reader_bench` was not rerun (the bench is
 untouched by 9.4). The backtest baseline is still unrecorded (the office
 prompt records it).
-
-**Failed, not fixed.**
-`test_the_shipped_reading_of_a_scan_fits_the_reading_child` still fails under
-both interpreters, no longer on memory. Its last assertion is
-`reading.from_ocr and reading.text`, but `judge_bounded` in a child hands back a
-`Judgment` whose `extraction.text` is `""` where there were words ("the words
-stay here; the Judgment is all that crosses the pipe"), so `text` is empty by
-design: the reading is `from_ocr=True`, `has_words=True`, `reason ''`, not
-transient. The next assertion (`contains_keyword(reading.text, "1099-INT")`)
-cannot hold through the child either. The SPEC's wording (4.1: "the judgment's
-words include the form number") needs the test to ask a question of the
-judgment (for example a `Questions` carrying a row whose keyword is the form
-number, or `Judgment.own`, which is `None` when no question is asked), not to
-read `text`. The build was told not to change the test further and did not;
-the fix is the test's, not the cap's or the stage's.
 
 Tests: renamed `test_the_shipped_settings_are_the_prepared_reading_at_300_dpi`
 and `test_the_grid_is_every_dpi_floor_preparation_and_tier_and_the_ablation`;
@@ -213,9 +201,9 @@ child claim.
 Where the SPEC and the code differ, and what the build did:
 
 - **The memory finding above** was the SPEC's gap, not a departure: 9.1 and
-  9.4 are built exactly. 9.4's gate departs in one place: the child test,
-  which the SPEC says must pass, passes its memory claim and fails its text
-  claim ("Failed, not fixed" above).
+  9.4 are built exactly. One departure from the SPEC's words in 4.1: the
+  child test asks a question (a row keyed on `1099-INT`) and reads its
+  answer, since the judgment's text is empty by design (Jason's ruling).
 - **The box-line step is long and thin (SPEC 9.2), and the `w2_photo` fixture
   is back to its P283 form** (1100 x 260, the P283 docstring): the first
   build's page-sized canvas and its note are gone. One departure from the
