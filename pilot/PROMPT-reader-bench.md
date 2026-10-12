@@ -71,7 +71,7 @@ SAFETY - never break these:
 2. TODAY'S NUMBERS, BEFORE P282 AND P285 ARE INSTALLED (the installed app is still the build from before them).
    a. Needs Review by code, today - why: it is the count P282 is meant to lower, and it needs the
       firm's recorded rows, which neither decision's code changes:
-        .venv\Scripts\python -m tracker.api firm | .venv\Scripts\python tools\reader_bench.py review-codes --out <outside>\review-before.json
+        .venv\Scripts\python tools\reader_bench.py review-codes --out <outside>\review-before.json
    b. The backtest baseline, with the reader on, on the before commit's code (in ..\bench-before) - why: decision 92
       parks every scan without the reader, so a baseline without --ocr says nothing about P282 or P285, and
       every later routing change is held to this number:
@@ -142,7 +142,7 @@ SAFETY - never break these:
    slow, once), so it takes longer than a usual pass: wait for it to finish before `review-codes`.
    A row already in Needs Review stays there until a person files it, so the count moves only on
    documents that arrive after the install. Then:
-     .venv\Scripts\python -m tracker.api firm | .venv\Scripts\python tools\reader_bench.py review-codes --out <outside>\review-after.json
+     .venv\Scripts\python tools\reader_bench.py review-codes --out <outside>\review-after.json
    and, in the office checkout:
      .venv\Scripts\python tools\backtest.py run "<firm corpus>" --ocr --out <outside>\backtest-after.json
    and, in ..\bench-before (the checkout that holds the recorded baseline):
