@@ -248,11 +248,18 @@ cv2.THRESH_OTSU)` - one threshold for the page, from its histogram.
   framed on its page (3300 × 2475 once held) gives 24, so 25. At 144 dpi
   (1224 px) a hundredth is 12; the floor keeps 15 pixels, enough
   neighbourhood for a standard deviation to mean something.
-- integral images: the page padded by `w // 2` on every side
-  (`cv2.copyMakeBorder`, `BORDER_REFLECT_101`), `cv2.integral2(padded,
-  sdepth=cv2.CV_64F)` for the sums and the squared sums; each pixel's window
-  sum and squared sum from four corners; mean `m`, standard deviation `s =
-  sqrt(max(0, sq / w² − m²))`. Constant time per pixel whatever the window.
+- box filters in single precision (amended, 9.4; integral images in
+  double precision were the first build's): `g = grey.astype(float32)`;
+  `m = cv2.boxFilter(g, -1, (w, w), normalize=True,
+  borderType=cv2.BORDER_REFLECT_101)` and the same of `g * g` for the mean
+  of the squares `sq`; standard deviation `s = sqrt(max(0, sq − m²))`.
+  OpenCV's box filter is a running sum, constant time per pixel whatever
+  the window, and the whole step holds four page-sized float32 arrays
+  instead of two double-precision integral images of the padded page plus
+  the four-corner differences. Measured on a 2550 x 3300 page: 29 ms
+  against 49, 265 MB left held by the allocator afterwards against 404,
+  and 0 pixels differ on a faded page and on a smooth shadow, 1 pixel in
+  8.4 million on a noisy one.
 - `T = m × (1 + SAUVOLA_K × (s / SAUVOLA_R − 1))`; a pixel `<= T` is ink (0),
   any other paper (255). `SAUVOLA_K = 0.2`, `SAUVOLA_R = 128`.
 
@@ -300,7 +307,11 @@ rule is a run of ink that is both long and thin.**
   (`DELINE_THICK_FLOOR = 3`, `DELINE_THICK_DIVISOR = 500`; 7 px on a letter
   page at 300 dpi, 4 at 144): every pixel that lies inside a `t x t` square
   of ink belongs to something thicker than a rule. The rule mask is `(across
-  | down) & ~heavy`, then dilated by `DELINE_GROW` as before. Why: a printed
+  | down) & ~heavy`, dilated by `DELINE_GROW` as before, and then cleared
+  again where `heavy` is (`rules[heavy > 0] = 0`): the vertical opening
+  kernel has an even length on a letter page (82), so a run's end drifts a
+  pixel past a stem's end, and the growth would carry that into the stem's
+  last row. Why: a printed
   rule is half a point to a point and a half - 2 to 6 px at 300 dpi - while
   the stem of 28 pt bold type is about 16 px and of 14 pt bold about 8. The
   first build's step took the title of a 1099-INT at 28 pt for rules and the
@@ -564,9 +575,10 @@ unless a claim says otherwise, with `tests/samples.py`'s made-up lines.
   in the pass's reading child on the processor, under `SHIPPED`: a drawn
   five-page image-only PDF (the 1099-INT's lines on each page, drawn in the
   test the way `samples.scanned_pdf` draws one page) gets a reading, not
-  `reading-crashed`; the judgment's words include the form number. Skipped
-  where the real-reader tests skip. The first build saw this child killed at
-  2814 MB.
+  `reading-crashed`; the judgment's words include the form number. Never
+  skipped: the file's real-reader tests carry no skip, since the models
+  ship with the code. The first build saw this child killed at 2814 MB, and
+  the first rebuild still did, at the 2 GB cap (9.4).
 - **`w2_photo`** keeps its P283 canvas (1100 x 260) and docstring; the first
   build's page-sized canvas and its note about the box-line step go (9.2).
 - **Changed**: `test_the_engine_is_built_with_the_settings_floor_and_long_side`
@@ -821,6 +833,55 @@ office bench's `no-binarize` row measures.
 **9.3 The Mac check prompt's counts** (3.5): the sentence the SPEC named
 also counted "18 medium" and "18 small" variants; it now says 8 and 13.
 
+**9.4 The reading child's cap, and a lighter threshold (after the first
+rebuild, 2026-10-12).** With the detector held (9.1) a one-page reading peaks
+at about 1.6 GB on this Mac, but a multi-page document still crossed the 2
+GB line: the engine's own working memory grows from the first page to the
+second and settles about 0.6 GB higher (1.05 GB after one page, 1.54 after
+two, 1.68 after five, measured on the engine alone with the detector held;
+flat after a `gc.collect()`, so not a leak - the shapes of the pages it has
+seen), and the stage's allocator keeps about 0.6 GB after its first page,
+0.4 GB of it Sauvola's. Five pages read in one process under `SHIPPED`
+peaked at 2.24 GB (`RAW`: 1.31 GB), and the five-page child test of 4.1
+ended as `reading-crashed` in every run. Two things follow:
+
+- *The cap.* `PROCESSOR_CHILD_MEMORY` becomes `4 * 1024**3` (4 GB); the
+  card's 6 GB stays. Decision 169 set 2 GB for a reader at 144 dpi and a
+  2000-pixel long side; Jason's 300 dpi ruling (section 7) is a page read at
+  2.7 times the pixels, and the honest need is about 2.3 GB on this Mac,
+  with Windows counting committed memory, which runs higher than a physical
+  footprint. 4 GB is the first power of two with room above that; one child
+  runs per pass, and this Mac has 24 GB. **This is the orchestrating
+  session's assumption, pending Jason's ruling**: decision 169 (and 248,
+  the watch off Windows) are his; the SPEC's own options were this or a
+  lower long side, and a lower long side undoes his 300 dpi. One constant
+  reverses it. Every sentence that states the number follows the constant:
+  the error wording already does (`ReadingChild._memory_words`); the module
+  docstring, the `_build_engine` comment, `docs/runbook.md` §(the helper
+  process, "may use at most 2 GB on the processor") and the curated map's
+  `tracker/ocr.py` note say 4 GB; the tests of `tests/test_ocr.py` that pin
+  the figure (`test_the_child_memory_caps_are_decision_169s` or however the
+  file names the `(2 * 1024**3, 6 * 1024**3)` claim, the `"(2 GB)"` error
+  wording claim, and any docstring that says 2 GB) move to 4 GB in their
+  claims and docstrings. `pilot/DECISIONS.md`'s P285 row gains one
+  sentence: the processor child's cap is 4 GB from P285 (decision 169
+  amended), assumed by the orchestrating session on the numbers above and
+  held for Jason's word. README names no figure.
+- *The threshold.* Sauvola moves to single-precision box filters (1.3.3 as
+  amended): the same pixels to one in eight million, faster, and 140 MB
+  less held by the allocator after the first page. Its docstring says box
+  filters, not integral images; `test_the_sauvola_window_is_about_one_character_and_always_odd`
+  and the faded-page claim are unchanged and must pass as they stand.
+
+After both, the five-page child test must pass on this Mac, and the
+handoff records the five-page in-process peak under `SHIPPED` and `RAW`
+again, and the one-page peak with the box filters.
+
+The rebuild that built 9.1-9.3 departed from the SPEC in one place that is
+now the SPEC: the `rules[heavy > 0] = 0` line of 1.3.5. Its report that
+`test_reader_bench` never checks the Mac prompt's sentence stands; no test
+is added for it.
+
 **Not P285's, recorded for its own row:** the arm64 macOS wheel of OpenCV
 (`opencv-python-headless` 5.0.0.93, KleidiCV) segfaults in `cv2.resize` for
 some sizes (for example 2598 x 3300 and 2596 x 3300; 2597 and 2600 pass),
@@ -829,7 +890,12 @@ detection resize; in the child it parks the document as a crash. The office
 PC's Windows wheel does not show it. The Mac is a viewer and build machine,
 not the one that runs a clients root; the row waits for Jason.
 
-**The rebuild:** sonnet, on `claude/ocr-prepare`, exactly 9.1-9.3 and the
+**The rebuilds:** sonnet, on `claude/ocr-prepare`; the first built exactly
+9.1-9.3 (commits `708af6c8` to `fc62897c`), the second builds exactly 9.4
+and the tests and docs it names, then the gate of section 6 on `test_ocr`,
+`test_content_check`, `test_errors`, `test_layers`, `test_single_source`,
+`test_repo_map`, `test_tripwire` and, since the runbook changes,
+`test_single_source` again is enough. The first rebuild's scope was exactly 9.1-9.3 and the
 tests and docs they name (the `_build_engine` comment, the `DELINE_*`
 constants and docstring, the curated map's `tracker/ocr.py` note gains one
 sentence on each, `pilot/HANDOFF.md` "Current work" gains the new

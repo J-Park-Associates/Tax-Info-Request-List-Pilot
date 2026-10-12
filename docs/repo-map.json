@@ -4802,8 +4802,8 @@
       "id": "pilot/SPEC-ocr-prepare.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "048420c838d90640",
-      "lines": 840
+      "sha256": "24de73877d8b8ba2",
+      "lines": 906
     },
     {
       "id": "pilot/SPEC-ocr-scans.md",
