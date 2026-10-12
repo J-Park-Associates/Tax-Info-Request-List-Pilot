@@ -695,15 +695,26 @@ on; off in the product until Part C. Pure, in memory, never writes:
    a letter, longer is a rule; the two masks joined (`cv2.bitwise_or`) and
    dilated once with a 3x3 kernel so a rule's anti-aliased edge goes too.
 4. The rules whitened in the greyscale copy (`grey[mask > 0] = 255`).
-5. Repair: letters a rule crossed lost a sliver; a closing on the ink of
-   the result with a `(1, 3)` and then a `(3, 1)` kernel rejoins a stroke
-   cut by one rule's width, and the closed ink is laid back as black on
-   the whitened copy.
+5. Repair, confined to where a rule was (corrected after Part B's review,
+   finding 1; the first wording could never rejoin a letter). A letter a
+   rule crossed lost a sliver as thick as the rule plus the dilation's
+   margin, so the gap to bridge is the rule's thickness plus
+   `DELINE_GROW - 1`, never the rule's thickness alone. The repair span,
+   worked out per page, is `DELINE_GROW + max(DELINE_RULE_FLOOR,
+   min(width, height) // DELINE_RULE_DIVISOR) + 1` pixels (`DELINE_RULE_FLOOR
+   = 3`, `DELINE_RULE_DIVISOR = 250`): it bridges a rule up to a 250th of the page's shorter side
+   (about 4 px at 144 dpi, 10 px at 300) and leaves a thicker border's cut
+   alone. A closing of the ink that remains with a `(1, span)` kernel and
+   then a `(span, 1)` kernel finds the bridges; only the bridging pixels
+   that lie inside the whitened rule mask (step 3's dilated mask) are laid
+   back as black (`grey[(closed > 0) & (rules > 0)] = 0`). Nothing outside
+   the mask changes, so the rest of the page keeps its grey and two letters
+   that merely sit close are never joined.
 6. Returned as an `"RGB"` PIL image the same size as the input.
 
-The constants (`DELINE_FRACTION = 40`, the 3x3 dilation, the repair
-kernels) are named at module level with a comment each; the bench measures
-the switch, not the constants.
+The constants (`DELINE_FRACTION = 40`, `DELINE_GROW = 3`, `DELINE_RULE_FLOOR`,
+`DELINE_RULE_DIVISOR`) are named at module level with a comment each; the bench
+measures the switch, not the constants.
 
 **OpenCV is a reader's import now.** `tests/test_layers.py`:
 `ALLOWED_THIRD_PARTY["optical character recognition"]` gains `"cv2"`, and
@@ -896,6 +907,14 @@ tool's own sentence, exit 2, never a traceback with a path in it.
   text crossing neither: after `delined`, the rules' rows and columns are
   white away from the text, the text's ink is still there, and the size is
   unchanged.
+- `test_delining_rejoins_a_letter_a_rule_crossed` (added after Part B's
+  review, finding 1) - a white page at letter size and 144 dpi with a
+  2 px full-width horizontal rule and a 4 px wide, 25 px tall vertical
+  stroke crossing it, plus a mid-grey block touching neither: after
+  `delined`, every pixel of the stroke's columns is black from its top to
+  its bottom, the rule's row is white away from the stroke, the grey block
+  still reads mid-grey (the repair touched nothing outside the rule), and
+  the same holds for a 1 px and a 3 px rule.
 - `test_delining_is_off_in_the_product_and_on_hands_the_engine_the_delined_page`
   - with a `FakeEngine` and `_pixels` recorded: shipped settings hand the
   page as it stands; `delining=True` hands `delined(page)`.
