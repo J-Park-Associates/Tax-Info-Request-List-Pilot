@@ -162,13 +162,14 @@ Python here is .venv/bin/python (3.14, the office's) and .venv311/bin/python (3.
    to ~/PilotTest/bench-corpus: two upright 1099-INTs, a W-2 and a 1098 (no sideways page: its
    outcome is not fixed, and a bench row needs one right answer).
    Write the expectations skeleton outside the repository and fill it in (these are made-up pages,
-   so you may):
-     .venv/bin/python tools/backtest.py collect ~/PilotTest/bench-corpus --catalog 1040 --year <the year the builder printed> --out ~/PilotTest/bench-out/expectations.csv
+   so you may). Its name is not expectations.csv: that name is the firm's own file, and a deny rule
+   of this session keeps every file so named out of reach, made-up or not; never loosen the rule:
+     .venv/bin/python tools/backtest.py collect ~/PilotTest/bench-corpus --catalog 1040 --year <the year the builder printed> --out ~/PilotTest/bench-out/made-up-expectations.csv
    In the "expected" column put the request's identifier: A02 for the two 1099-INT files, A01 for
    the W-2, C01 for the 1098 (the 1040 catalog's interest-income, W-2 and mortgage-interest
    requests; `.venv/bin/python -m tracker.api templates` lists them, check there). Then:
      .venv/bin/python tools/reader_bench.py variants
-     .venv/bin/python tools/reader_bench.py run ~/PilotTest/bench-corpus --expectations ~/PilotTest/bench-out/expectations.csv --out ~/PilotTest/bench-out/bench-mac.json
+     .venv/bin/python tools/reader_bench.py run ~/PilotTest/bench-corpus --expectations ~/PilotTest/bench-out/made-up-expectations.csv --out ~/PilotTest/bench-out/bench-mac.json
    Expected: `variants` prints 36 names and the first is dpi144-floor0.50-off-small; `run` prints a
    table row as each variant finishes; the 18 medium variants read "not measured" (no models folder
    was given, and none was fetched); the 18 small variants each count 3 or 4 right on these clean
@@ -179,7 +180,7 @@ Python here is .venv/bin/python (3.14, the office's) and .venv311/bin/python (3.
    (median, worst, first load) and the whole run's minutes. Open bench-mac.json and confirm it
    holds counts, seconds, settings and codes only - no file name, folder, path or word of a page -
    and say so. Also, for the baseline tool on the same pages (never `record`):
-     .venv/bin/python tools/backtest.py run ~/PilotTest/bench-corpus --ocr --expectations ~/PilotTest/bench-out/expectations.csv --out ~/PilotTest/bench-out/backtest-mac.json
+     .venv/bin/python tools/backtest.py run ~/PilotTest/bench-corpus --ocr --expectations ~/PilotTest/bench-out/made-up-expectations.csv --out ~/PilotTest/bench-out/backtest-mac.json
    Record its agreement line (the first Mac run: 4 routed, 75% agreement, the W-2 parked).
 
 7. REPORT. Write ~/PilotTest/results/RESULT-ocr-scans.md: the two hashes and the macOS version; the
