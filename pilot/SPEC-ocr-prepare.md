@@ -575,7 +575,11 @@ unless a claim says otherwise, with `tests/samples.py`'s made-up lines.
   in the pass's reading child on the processor, under `SHIPPED`: a drawn
   five-page image-only PDF (the 1099-INT's lines on each page, drawn in the
   test the way `samples.scanned_pdf` draws one page) gets a reading, not
-  `reading-crashed`; the judgment's words include the form number. Never
+  `reading-crashed` and not transient, OCR's (`from_ocr`), with words
+  (`has_words`), and - since a judgment from the child carries no raw text
+  by design - the test asks it a question: a `Questions` of one made-up
+  `RowQuestion(required_keywords=("1099-INT",))`, whose answer's
+  `required_matched` is true (9.4, as ruled after the second rebuild). Never
   skipped: the file's real-reader tests carry no skip, since the models
   ship with the code. The first build saw this child killed at 2814 MB, and
   the first rebuild still did, at the 2 GB cap (9.4).
@@ -842,8 +846,11 @@ two, 1.68 after five, measured on the engine alone with the detector held;
 flat after a `gc.collect()`, so not a leak - the shapes of the pages it has
 seen), and the stage's allocator keeps about 0.6 GB after its first page,
 0.4 GB of it Sauvola's. Five pages read in one process under `SHIPPED`
-peaked at 2.24 GB (`RAW`: 1.31 GB), and the five-page child test of 4.1
-ended as `reading-crashed` in every run. Two things follow:
+peaked at 2.24 GB (`RAW` through the same path, measured by the second
+rebuild: 2.03 GB; the first rebuild's 1.31 GB for `RAW` came through
+`open_and_read` and was not reproduced), and the five-page child test of
+4.1 ended as `reading-crashed` in every run. After 9.4: one page 1.33 GB,
+five pages 2.28 GB, and the child test passes under both interpreters. Two things follow:
 
 - *The cap.* `PROCESSOR_CHILD_MEMORY` becomes `4 * 1024**3` (4 GB); the
   card's 6 GB stays. Decision 169 set 2 GB for a reader at 144 dpi and a
