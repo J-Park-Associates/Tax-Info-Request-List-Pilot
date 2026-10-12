@@ -599,6 +599,7 @@ DELINE_RULE_LEAST = 60
 #: and a five-hundredth of the page's longer side (plus one) is type. A printed
 #: rule is 2 to 6 px at 300 dpi, the stem of 28 pt bold type about 16.
 DELINE_THICK_FLOOR = 3
+#: The divisor of that thickness: the page's longer side over this, plus one.
 DELINE_THICK_DIVISOR = 500
 
 #: The long side the lean is measured on (:func:`_skew_degrees`): the page is
@@ -609,6 +610,7 @@ DESKEW_SAMPLE_SIDE = 1000
 DESKEW_SEARCH_DEGREES = 5.5
 #: The steps of the coarse search and then of the fine one around its best.
 DESKEW_COARSE_STEP = 0.5
+#: The fine search's step, in degrees, around the coarse search's best.
 DESKEW_FINE_STEP = 0.1
 #: A page leaning more than this is left as it is: a wrong turn is worse
 #: than none.
@@ -623,6 +625,7 @@ DESKEW_LEAST_DEGREES = 0.25
 #: character, on a 300 dpi letter page), never under the floor, which keeps
 #: enough neighbourhood for a standard deviation to mean something.
 SAUVOLA_WINDOW_DIVISOR = 100
+#: The least window, in pixels, however small the page.
 SAUVOLA_WINDOW_FLOOR = 15
 #: Sauvola's k: 0.2 keeps a faded stroke black (0.5, the paper's value,
 #: lowers the threshold and drops the faint parts of a stroke).
@@ -852,7 +855,7 @@ def _sauvola(grey):
                             borderType=cv2.BORDER_REFLECT_101)
     deviation = numpy.sqrt(numpy.maximum(0.0, squares - mean * mean))
     threshold = mean * (1.0 + SAUVOLA_K * (deviation / SAUVOLA_R - 1.0))
-    return numpy.where(grey <= threshold, 0, 255).astype(numpy.uint8)
+    return numpy.where(grey <= threshold, numpy.uint8(0), numpy.uint8(255))
 
 
 def _despeckled(grey):

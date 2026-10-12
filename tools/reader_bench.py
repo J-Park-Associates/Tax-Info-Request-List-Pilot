@@ -71,7 +71,11 @@ A name is ``dpi<d>-floor<f>-<prep>-<tier>``, ``<prep>`` being ``prep``,
 ``raw`` or ``prep-<ablation>``; the shipped one, ``dpi300-floor0.50-prep-small``,
 is always measured first. A ``prep`` variant is built from
 :data:`tracker.ocr.SHIPPED`, a ``raw`` one from :data:`tracker.ocr.RAW`, so
-``dpi144-floor0.50-raw-small`` is exactly the reading before P285. A variant's
+``dpi144-floor0.50-raw-small`` is exactly the reading before P285 in its
+settings and pixels, but not in the detector's own setting (``Det.limit_type``
+``"max"``, 9.1), which is the engine's and not a field: the detector no longer
+enlarges a page whose shorter side is under 736 px, which P283's default did;
+measured on drawn pages the same words are read. A variant's
 long side is ``max(2000, ceil(11 * dpi))``, a letter page's long side at that
 dpi, so 300 dpi is not silently shrunk back to 182 by the reader. The medium
 models are never shipped and never fetched: a person puts them in a folder
