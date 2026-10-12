@@ -876,6 +876,8 @@ python tools/reader_bench.py run <folder> --out <report> [--expectations <file>]
 python -m tracker.api firm | python tools/reader_bench.py review-codes  # Needs Review, counted by code
 ```
 
+*Changed by P286 (`SPEC-review-codes-pipe.md`): `review-codes` runs the firm command itself; the pipe is gone.*
+
 `review-codes` reads the `firm` command's JSON reply on its standard input
 and prints `{"<code>": n, ...}` over its `files` list - the rows waiting
 for a person - and nothing else; `--out` writes the same counts to a file
@@ -991,6 +993,7 @@ asks for back is a count or a time. Sections:
    the baseline file of the checkout it runs in):
    - `python -m tracker.api firm | python tools/reader_bench.py review-codes
      --out <outside>\review-before.json` - Needs Review by code;
+     *Changed by P286 (`SPEC-review-codes-pipe.md`): `review-codes` runs the firm command itself; the pipe is gone.*
    - `python tools/backtest.py run <firm corpus> --ocr --out
      <outside>\backtest-before.json` and `python tools/backtest.py record
      --report <outside>\backtest-before.json` - the baseline every later

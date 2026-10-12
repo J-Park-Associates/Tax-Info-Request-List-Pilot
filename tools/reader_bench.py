@@ -83,14 +83,15 @@ per page, against the ceiling of :data:`CEILING_SECONDS_PER_PAGE`.
 hold counts and seconds, the variants' settings (never the models folder)
 and the routing codes parked documents carry; no document name, folder
 below the corpus, row number, word of a document or path. ``review-codes``
-holds to the same rule for the ``firm`` command's reply.
+holds to the same rule for what the ``firm`` command prints, reply and stderr
+alike, and says a refusal by its kind alone.
 
 ::
 
     python tools/reader_bench.py variants
     python tools/reader_bench.py run <folder> --out <report> [--expectations <file>]
            [--models <folder>] [--dpi 144,300] [--floor 0.5,0.7] [--delining off,on] [--tier small,medium]
-    python -m tracker.api firm | python tools/reader_bench.py review-codes [--out <file>]
+    python tools/reader_bench.py review-codes [--out <file>]
 """
 
 from __future__ import annotations
@@ -457,6 +458,83 @@ def _one_variant(variant: Variant, documents: list[Document], models: str) -> di
 # ---------------------------------------------------------- review-codes ----
 
 
+#: What ``review-codes`` says when the firm command gives it nothing to count.
+#: Every sentence is by kind and exit code only (P286): ``firm`` names folders in
+#: its own sentences, so none of its words is ever quoted.
+FIRM_NOT_STARTED = "the firm command could not start ({kind}); nothing was counted"
+FIRM_TOO_LONG = "the firm command gave no reply within {minutes} minutes and was stopped; nothing was counted"
+FIRM_NO_REPLY = "the firm command printed no reply (exit {code}); nothing was counted"
+FIRM_NOT_AN_OBJECT = "the firm command's reply is not a JSON object (exit {code}); nothing was counted"
+FIRM_REFUSED = ("the tracker refused the firm summary ({kind}, exit {code}); the app's Overview says why, "
+                "and an unexpected failure is in the tracker's error log")
+FIRM_STDERR_ON_FAILURE = " (it also wrote {lines} on stderr, not shown)"
+FIRM_STDERR_ON_SUCCESS = "the firm command also wrote {lines} on stderr, not shown"
+#: The kind of a refusal whose envelope carries none of ``progress.FAILURE_KINDS``.
+UNKNOWN_KIND = "unknown"
+
+
+def _lines(n: int) -> str:
+    """``1 line`` or ``n lines``: what the stderr suffixes count."""
+    return "1 line" if n == 1 else f"{n} lines"
+
+
+def _run_firm():
+    """Start ``python -m tracker.api firm`` as the cache fill does
+    (``runner.fill_firm_cache``): input closed, so the page spec it reads to
+    the end of its input is empty and the reply is the whole one (P278); the
+    current environment, so the person's settings and data folders reach it;
+    the repository as its folder; under the fill's time limit. Unlike the
+    fill, stdout and stderr are kept, and only the bench reads them. Returns
+    the finished process, or raises :class:`BacktestError` by kind."""
+    import subprocess
+
+    from tracker import runner
+    try:
+        return subprocess.run([sys.executable, "-m", "tracker.api", runner.FIRM_COMMAND],
+                              stdin=subprocess.DEVNULL, capture_output=True, cwd=ROOT,
+                              timeout=runner.FILL_TIME_LIMIT_SECONDS,
+                              creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    except subprocess.TimeoutExpired:
+        raise BacktestError(FIRM_TOO_LONG.format(minutes=runner.FILL_TIME_LIMIT_SECONDS // 60)) from None
+    except OSError as exc:
+        raise BacktestError(FIRM_NOT_STARTED.format(kind=errors.error_class(exc))) from None
+
+
+def _json_object_of(line: bytes) -> dict | None:
+    """The line as a JSON object, or None when it is not one."""
+    try:
+        value = json.loads(line.decode("utf-8"))
+    except ValueError:      # UnicodeDecodeError and JSONDecodeError are both ValueErrors
+        return None
+    return value if isinstance(value, dict) else None
+
+
+def firm_reply_of(stdout: bytes, returncode: int) -> dict:
+    """The ``firm`` command's reply out of its stdout, by the progress
+    contract (``tracker/progress.py``): a line that is a JSON object under
+    :data:`progress.PROGRESS_KEY` is a count line (none on a warm cache, two
+    or more on a cold one) and is ignored; the reply is the last line left.
+    Blank lines are ignored, and a Windows ``\\r\\n`` is no part of a line.
+    Raises :class:`BacktestError`, saying what happened by kind and exit code
+    and never by a word of the output, when there is no reply, it is not a
+    JSON object, or it is a refusal (a ``failure`` or ``error``, or a
+    nonzero exit)."""
+    from tracker import progress
+    lines = [line for line in stdout.splitlines() if line.strip()]
+    rest = [line for line in lines if not ((obj := _json_object_of(line)) and progress.PROGRESS_KEY in obj)]
+    if not rest:
+        raise BacktestError(FIRM_NO_REPLY.format(code=returncode))
+    reply = _json_object_of(rest[-1])
+    if reply is None:
+        raise BacktestError(FIRM_NOT_AN_OBJECT.format(code=returncode))
+    if "failure" in reply or "error" in reply or returncode != 0:
+        failure = reply.get("failure")
+        kind = failure.get("kind") if isinstance(failure, dict) else None
+        raise BacktestError(FIRM_REFUSED.format(kind=kind if kind in progress.FAILURE_KINDS else UNKNOWN_KIND,
+                                                code=returncode))
+    return reply
+
+
 def review_codes(reply: object) -> dict[str, int]:
     """Needs Review, counted by code, from the ``firm`` command's reply:
     the codes of its ``files`` list - the rows waiting for a person - and
@@ -465,8 +543,7 @@ def review_codes(reply: object) -> dict[str, int]:
     can be carried into the counts."""
     files = reply.get("files") if isinstance(reply, dict) else None
     if not isinstance(files, list):
-        raise BacktestError("the reply holds no list of files; pipe the output of "
-                            "`python -m tracker.api firm` into this command")
+        raise BacktestError("the firm command's reply holds no list of files")
     counted: Counter = Counter()
     for one in files:
         code = one.get("code") if isinstance(one, dict) else None
@@ -528,15 +605,18 @@ def _cmd_run(ns: argparse.Namespace) -> int:
 
 
 def _cmd_review_codes(ns: argparse.Namespace) -> int:
+    out = _outside_the_repository(Path(ns.out)) if ns.out else None   # before firm's wait, as `run` does
+    done = _run_firm()
+    wrote = len([line for line in done.stderr.splitlines() if line.strip()])
     try:
-        reply = json.loads(sys.stdin.read())
-    except json.JSONDecodeError:
-        raise BacktestError("the reply is not JSON; pipe the output of `python -m tracker.api firm` "
-                            "into this command") from None
-    counts = review_codes(reply)
+        counts = review_codes(firm_reply_of(done.stdout, done.returncode))
+    except BacktestError as exc:
+        raise BacktestError(str(exc) + (FIRM_STDERR_ON_FAILURE.format(lines=_lines(wrote)) if wrote else "")) from None
     print(json.dumps(counts, indent=1, sort_keys=True))
-    if ns.out:
-        write_json(_outside_the_repository(Path(ns.out)), counts)
+    if wrote:
+        print(f"reader bench: {FIRM_STDERR_ON_SUCCESS.format(lines=_lines(wrote))}", file=sys.stderr)
+    if out:
+        write_json(out, counts)
     return 0
 
 
@@ -562,7 +642,7 @@ def main(argv: list[str] | None = None) -> int:
     run.add_argument(MODELS_FLAG, default="", help="a folder holding the medium models")
     _restrictions(run)
 
-    codes = sub.add_parser("review-codes", help="count Needs Review by code, from the firm command's reply on stdin")
+    codes = sub.add_parser("review-codes", help="count Needs Review by code; runs the firm command itself")
     codes.add_argument(OUT_FLAG, default="", help="also write the counts here, outside the repository")
 
     ns = parser.parse_args(argv)
