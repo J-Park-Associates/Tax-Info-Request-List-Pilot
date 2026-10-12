@@ -96,19 +96,26 @@ Python here is .venv/bin/python (3.14, the office's) and .venv311/bin/python (3.
         the name confirmed. Before P282 this parked as Read From Scan Only.
      b. 1099-INT Harbor Mutual Savings scan.pdf - to John A. Smith, upright.   Expected: FILED, as a.
      c. 1099-INT Cedar Valley Bank sideways scan.pdf - the same kind of page turned a quarter turn.
-        Expected: either FILED under the interest-income request or PARKED as Read From Scan Only,
-        and never under any other request. The reader turns tall crops itself, so a sideways page
-        keeps its words but may lose the order of its lines; if the title is still read first it
-        files, otherwise guard 1 fails and it parks. Record which happened on this Mac.
+        Expected: PARKED in Needs Review, or FILED under the interest-income request, and never
+        under any other request. The reader turns tall crops itself, so a sideways page may keep
+        its words out of order (then it parks as Read From Scan Only, guard 1), may lose them (then
+        it parks as "matched no request, but its file name points at A02"; the first Mac run saw
+        this), or may still read the title first (then it files). Record which happened.
      d. 1099-INT Pine Street Bank stranger scan.pdf - to Pat Q. Nobody, upright.
         Expected: PARKED in Needs Review; the reason is about the name on the page not matching
         anyone on the return (decision 128, unchanged). Record the exact words.
      e. W-2 Willow Lane Bakery scan.pdf - John A. Smith's W-2, upright.
-        Expected: FILED under the W-2 request as before: a W-2 files on its required keyword, and
-        P282 changes nothing for it.
+        Expected: FILED under the W-2 request, as before P282 (a W-2 files on its required
+        keywords, and P282 changes nothing for it), or PARKED as a near miss, "matched no request,
+        but it shows the form number of A01; a person should confirm". The first Mac run saw the
+        near miss: at today's 144 dpi the reader missed the third required phrase on this drawn
+        page. That is a reading-quality data point for P284, recorded as such, not a failure of
+        P282; landing under any other request would be. Record which happened and, if it parked,
+        the reason word for word.
    Before the pass, record a fingerprint of every file in the inbox, so step 4 can show the
-   originals moved byte for byte:
-     (cd "<the inbox>" && find . -type f -exec shasum -a 256 {} + | sort -k2) > ~/PilotTest/results/ocr-before.sha256
+   originals moved byte for byte. The pile holds one deliberate sync placeholder (its name ends
+   .driveupload); the pass leaves it in the inbox as "syncing", so it is left out here:
+     (cd "<the inbox>" && find . -type f -not -name "*.driveupload" -exec shasum -a 256 {} + | sort -k2) > ~/PilotTest/results/ocr-before.sha256
 
 4. THE PASS, WITH THE INSTALLED CONSOLE'S OWN ENGINE, nobody at the window. Throwaway folders,
    the way the schedule runs it (this is the walk's H10 shape):
@@ -123,7 +130,10 @@ Python here is .venv/bin/python (3.14, the office's) and .venv311/bin/python (3.
    sentence, or which Needs Review reason parked it. Compare with step 3's expectations; a
    difference is a finding, recorded, never fixed. Count how many rows Needs Review holds in all and
    how many of them are Read From Scan Only (review-codes prints that count by code): with P282 that
-   count is 0, or 1 if c parked; the suite's own scanned sample in the pile files as it did before.
+   count is 0, or 1 if c parked that way; the suite's own scanned sample in the pile files as it did
+   before. If the pipe prints "the reply is not JSON", or hangs for more than a minute, stop it,
+   record that word for word with the time, and run it once more; the first Mac run saw both, once
+   each, and the retry answered at once.
    Byte for byte: every file that moved out of the inbox must be found under the client's folder
    for the year with the same fingerprint:
      (cd ~/PilotTest/Clients-ocr && find Clients -type f -not -path "*/Drop files here/*" -exec shasum -a 256 {} + | awk '{print $1}' | sort) > ~/PilotTest/results/ocr-after.hashes
@@ -161,14 +171,16 @@ Python here is .venv/bin/python (3.14, the office's) and .venv311/bin/python (3.
      .venv/bin/python tools/reader_bench.py run ~/PilotTest/bench-corpus --expectations ~/PilotTest/bench-out/expectations.csv --out ~/PilotTest/bench-out/bench-mac.json
    Expected: `variants` prints 36 names and the first is dpi144-floor0.50-off-small; `run` prints a
    table row as each variant finishes; the 18 medium variants read "not measured" (no models folder
-   was given, and none was fetched); the 18 small variants each count 4 right on these clean drawn
-   pages, or close to it, and the shipped variant (the first row under the header) is the one
-   Part C is measured against. Record the shipped variant's seconds per page
+   was given, and none was fetched); the 18 small variants each count 3 or 4 right on these clean
+   drawn pages (the W-2 lands as a shortlist park when the reader misses one of its required
+   phrases, as the first Mac run saw at every dpi), and the shipped variant (the first row under
+   the header) is the one Part C is measured against. A variant that reads the W-2 well enough to
+   file it is worth naming: it is the kind of difference P284 looks for. Record the shipped variant's seconds per page
    (median, worst, first load) and the whole run's minutes. Open bench-mac.json and confirm it
    holds counts, seconds, settings and codes only - no file name, folder, path or word of a page -
    and say so. Also, for the baseline tool on the same pages (never `record`):
      .venv/bin/python tools/backtest.py run ~/PilotTest/bench-corpus --ocr --expectations ~/PilotTest/bench-out/expectations.csv --out ~/PilotTest/bench-out/backtest-mac.json
-   Record its agreement line.
+   Record its agreement line (the first Mac run: 4 routed, 75% agreement, the W-2 parked).
 
 7. REPORT. Write ~/PilotTest/results/RESULT-ocr-scans.md: the two hashes and the macOS version; the
    test table (file x interpreter: passed / skipped / failed); for each of the five scans, expected

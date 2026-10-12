@@ -4889,8 +4889,8 @@
       "id": "pilot/mactest/PROMPT-OCR-SCANS.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "ea85d70be2f58584",
-      "lines": 233
+      "sha256": "0e031dd0e16121dc",
+      "lines": 245
     },
     {
       "id": "pilot/mactest/PROMPT-RERUN-1.md",
