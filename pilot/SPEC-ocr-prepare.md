@@ -128,9 +128,9 @@ rewritten (4.1).
   not the settings' (9.5): it holds for `RAW` too, where its one effect is
   that the detector no longer enlarges a page whose shorter side is under
   736 px, as P283's default (`min`) did. Without it the engine's
-  memory on a letter page is 2.4-2.8 GB on this Mac, past the reading
-  child's 2 GB (`PROCESSOR_CHILD_MEMORY`, decision 169, unchanged), and the
-  pass ends the child as `reading-crashed`.
+  memory on a letter page is 2.4-2.8 GB on this Mac, past the 2 GB the
+  reading child had then (`PROCESSOR_CHILD_MEMORY`, decision 169; 4 GB since
+  9.4), and the pass ends the child as `reading-crashed`.
 - The class docstring describes the new fields; its defaults are `RAW`.
   **`use_settings`** also refuses (`ValueError`) a `binarize` not in
   `BINARIZERS`, naming the three; nothing else in it changes.
