@@ -135,3 +135,6 @@ reminder-draft.set-aside-*.txt
 # the firm's own documents (decision 186).
 *.tmp
 expectations.csv
+
+# A second environment on the floor interpreter (3.11), for the two-interpreter gate (CLAUDE.md).
+.venv311/

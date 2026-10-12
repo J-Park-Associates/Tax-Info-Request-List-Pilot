@@ -153,10 +153,14 @@ def test_an_image_only_scan_routes_on_its_required_keywords_after_ocr(tmp_path, 
     assert calls == [f]
 
 
-def test_ocr_text_alone_never_routes_on_any_keywords(tmp_path, monkeypatch):
-    # OCR misreads words; the looser any-keyword tier is exactly where a
-    # misread "1099" files a document under the wrong request. A person
-    # gets it, with the lead.
+def test_ocr_text_does_not_file_on_a_looser_keyword_that_is_not_its_form_number_in_the_title(
+    tmp_path, monkeypatch,
+):
+    # Decision 50, as P282 revised it: OCR misreads words, and the looser
+    # any-keyword tier is exactly where a misread "1099" files a document
+    # under the wrong request. Only the row's own form number in the title
+    # lifts a match out of that tier; "dividend" is a word, and a bare
+    # "1099" is not one of A02's keywords. A person gets it, with the lead.
     monkeypatch.setattr(
         "tracker.content_check._ocr_pdf", lambda p: "Consolidated 1099 dividend summary 2025"
     )
@@ -169,7 +173,8 @@ def test_ocr_text_alone_never_routes_on_any_keywords(tmp_path, monkeypatch):
 def test_a_photo_files_on_required_keywords_and_parks_as_ocr_only_on_looser_ones(
     tmp_path, monkeypatch,
 ):
-    """Decision 50's rule, reached through a photo (decision 127).
+    """Decision 50's rule (as P282 revised it), reached through a photo
+    (decision 127).
 
     An image is a scan: its words are a reader's words, so they file on a
     row's required keywords and go no further than a lead on a row's
@@ -219,6 +224,301 @@ def test_a_scan_whose_name_lies_is_read_by_ocr_and_the_content_decides(tmp_path,
     routing = route_file(f, ITEMS)
     assert routing.identifier == "C01" and routing.evidence == EVIDENCE_CONTENT
     assert calls == [f], "the name no longer excuses the reading"
+
+
+# ----------------------------------------- P282: a scan files on its form number ----
+
+
+def _scan_row(identifier, *any_keywords, **more):
+    """A made-up request that accepts a scan on its looser keywords only."""
+    return RequestItem(identifier=identifier, document=f"Request {identifier}", period="TY2025",
+                       allowed_extensions=("pdf",), min_size_kb=0, any_keywords=any_keywords, **more)
+
+
+def test_a_scan_whose_title_shows_1099_int_files_on_the_rows_looser_keywords(tmp_path):
+    """P282, revising decision 50: A02 has no required keywords, and the
+    page's title shows its own form number, so the scan files under it
+    instead of parking as Read From Scan Only. The evidence is the row's
+    own: '1099-int' in the title."""
+    from tests.samples import lines_1099_int
+    from tracker.content_check import WHERE_TITLE
+    from tracker.router import MATCHED_FROM_SCAN
+
+    text = NL.join(lines_1099_int("Harbor Test Bank", "John A. Smith", 2025))
+    routing = _read_by_ocr(tmp_path, "scan0001.pdf", text, _catalog_1040())
+
+    assert routing.identifier == "A02"
+    assert routing.reason == MATCHED_FROM_SCAN
+    assert routing.code == reasons.MATCHED_CODE == "matched"
+    assert routing.candidates == ("A02",) and routing.evidence == EVIDENCE_CONTENT
+    assert list(routing.evidence_record) == ["A02"]
+    assert [(e.term, e.where) for e in routing.evidence_record["A02"] if e.rule == "any"] == [
+        ("1099-int", WHERE_TITLE)]
+
+
+def test_a_scan_whose_form_number_is_only_below_the_title_parks_as_ocr_only(tmp_path):
+    """Guard 1: the form number must be said in the title, the first
+    TITLE_CHARS of the reading. A heading that only says "dividend" and a
+    "Form 1099-DIV" far below it is the looser match decision 50 parks,
+    byte for byte as before P282."""
+    from tracker.content_check import TITLE_CHARS
+
+    boxes = ["Box 1a Total ordinary dividends   1,200.00   Box 1b Qualified   900.00"] * 8
+    text = NL.join(["Year-end dividend summary 2025", *boxes, "Form 1099-DIV"])
+    assert text.index("Form 1099-DIV") > TITLE_CHARS
+    routing = _read_by_ocr(tmp_path, "scan0002.pdf", text, ITEMS)
+
+    assert routing.identifier is None
+    assert routing.reason == f"{OCR_ONLY} (A02); a person should confirm"
+    assert routing.candidates == ("A02",) and routing.code == reasons.OCR_ONLY_CODE
+
+
+def test_a_scan_two_requests_accept_on_their_titles_parks_with_both(tmp_path):
+    """Guard 3: a broker's consolidated 1099 names 1099-INT, 1099-DIV,
+    1099-MISC and 1099-B in its title, so three rows of the 1040 pass guard
+    1. Two requests passing means nothing is filed: it parks with all of
+    them, in the manifest's order, and the broker rule (decision 146) never
+    reads a scan."""
+    routing = _read_by_ocr(tmp_path, "scan0003.pdf", SCHWAB_D146, _catalog_1040())
+
+    assert routing.identifier is None
+    assert routing.reason.startswith(OCR_ONLY)
+    assert routing.candidates == ("A02", "A04", "E01")
+    assert routing.code == reasons.OCR_ONLY_CODE
+
+
+def test_a_scan_that_passes_the_title_guard_beside_a_loose_match_parks(tmp_path):
+    """Guard 3: one row shows its form number in the title; another accepts
+    the same scan on a phrase the page says. Two requests accepted it, so it
+    parks with both - the first listed only because the manifest lists it
+    first."""
+    int_row = _scan_row("B01", "1099-int")
+    phrase_row = _scan_row("B02", "interest earned")
+    text = NL.join(["Form 1099-INT Interest Income - 2025", "Payer: Harbor Test Bank",
+                    "Box 1  Interest earned on savings   $12.00"])
+    routing = _read_by_ocr(tmp_path, "scan0004.pdf", text, [int_row, phrase_row])
+
+    assert routing.identifier is None
+    assert routing.candidates == ("B01", "B02") and routing.code == reasons.OCR_ONLY_CODE
+    assert routing.reason == f"{OCR_ONLY} (B01, B02); a person should confirm"
+
+
+def test_two_requests_whose_looser_keyword_is_the_same_form_number_park_with_both(tmp_path):
+    """Guard 3 on its own: two rows that each accept the scan on the very
+    same form number in the title. Both pass guard 1, the page names no other
+    form, so nothing but "exactly one request" stands between this scan and
+    a filing under whichever row is listed first. It parks with both, in the
+    manifest's order."""
+    first = _scan_row("B01", "1099-int")
+    second = _scan_row("B02", "1099-int")
+    text = NL.join(["Form 1099-INT Interest Income - 2025", "Payer: Harbor Test Bank",
+                    "Recipient: John A. Smith"])
+    routing = _read_by_ocr(tmp_path, "scan0013.pdf", text, [first, second])
+
+    assert routing.identifier is None
+    assert routing.reason == f"{OCR_ONLY} (B01, B02); a person should confirm"
+    assert routing.candidates == ("B01", "B02") and routing.code == reasons.OCR_ONLY_CODE
+
+
+#: A page whose form number is the first page's dominant form but is not
+#: said in the title: decision 140 would shortlist its row, P282 must not file it.
+_DOMINANT_NOT_TITLED = NL.join([
+    "Year-end summary 2025 Harbor Test Bank",
+    *["Box 1a Total ordinary dividends   1,200.00   Box 1b Qualified   900.00"] * 7,
+    "Dividends and Distributions Form 1099-DIV",
+    "Form 1099-DIV Copy B",
+    "Box 5 Section 199A dividends 40.00",
+    "Box 7 Foreign tax paid 3.00",
+    "Account 0042  Page 1 of 1",
+])
+
+
+def test_a_form_number_shown_only_as_the_first_pages_dominant_form_parks_as_ocr_only(tmp_path):
+    """Guard 1 is the title only, stricter than decision 140's near miss. Here
+    "1099-DIV" is the page's dominant form and A02's verdict records it on the
+    first page, so decision 140's reading says the row shows its form number;
+    the title says only "dividend", so the scan is a lead and is not filed."""
+    from tracker.content_check import (
+        TITLE_CHARS,
+        WHERE_FIRST_PAGE,
+        WHERE_TITLE,
+        dominant_forms,
+        self_named_forms,
+    )
+    from tracker.router import _shows_its_form_number
+
+    assert _DOMINANT_NOT_TITLED.index("Form 1099-DIV") > TITLE_CHARS
+    assert dominant_forms(_DOMINANT_NOT_TITLED) == {"1099div"}
+    assert self_named_forms(_DOMINANT_NOT_TITLED) == ()
+    routing = _read_by_ocr(tmp_path, "scan0014.pdf", _DOMINANT_NOT_TITLED, ITEMS)
+
+    seen = {(e.term, e.where) for e in routing.evidence_record["A02"] if e.rule == "any"}
+    assert ("1099-div", WHERE_FIRST_PAGE) in seen and ("dividend", WHERE_TITLE) in seen
+    assert _shows_its_form_number(routing.evidence_record["A02"])
+    assert routing.identifier is None
+    assert routing.reason == f"{OCR_ONLY} (A02); a person should confirm"
+    assert routing.candidates == ("A02",) and routing.code == reasons.OCR_ONLY_CODE
+
+
+def test_a_row_whose_only_looser_keyword_is_a_form_number_the_page_shows_below_its_title_parks(
+    tmp_path,
+):
+    """The same page against a row whose only looser keyword is the form
+    number: it is shown on the first page and not in the title, so the scan
+    parks as a lead and never files."""
+    routing = _read_by_ocr(tmp_path, "scan0015.pdf", _DOMINANT_NOT_TITLED,
+                           [_scan_row("B01", "1099-div")])
+
+    assert routing.identifier is None
+    assert routing.reason == f"{OCR_ONLY} (B01); a person should confirm"
+    assert routing.candidates == ("B01",) and routing.code == reasons.OCR_ONLY_CODE
+
+
+def test_a_sideways_reading_whose_title_lines_came_late_parks(tmp_path):
+    """Guard 1 on a page turned a quarter: the reader keeps the words but
+    scrambles the lines, so the form's name falls past the first TITLE_CHARS
+    and a phrase of the row is what the title says. It parks as a lead; it
+    is never filed under the 1098 row either."""
+    from tracker.content_check import TITLE_CHARS
+
+    int_row = _scan_row("B01", "1099-int", "interest income")
+    text = NL.join([
+        "Interest income Recipient name John A. Smith",
+        *["Payer TIN 12-3456789  Recipient TIN XXX-XX-1234  Account number 0042"] * 8,
+        "Form 1099-INT 2025",
+    ])
+    assert text.index("Form 1099-INT") > TITLE_CHARS
+    routing = _read_by_ocr(tmp_path, "scan0005.pdf", text, [int_row, MORTGAGE])
+
+    assert routing.identifier is None
+    assert routing.candidates == ("B01",) and routing.code == reasons.OCR_ONLY_CODE
+
+
+def test_a_scan_accepted_by_a_row_issuer_rows_narrow_parks_as_issuer_not_named(tmp_path):
+    """Guard 5: decision 93's issuer rule still applies to a scan filed on
+    its form number. The broad row accepts the 1099-MISC on its form number
+    in the title; an issuer row for a trust this payer is not narrows it. It
+    parks ISSUER_NOT_NAMED with the broad row first and the issuer row
+    named, exactly as a text layer does."""
+    broad = _scan_row("F01", "1099-misc", "royalties")
+    issuer = _scan_row("F02", "royalties", required_keywords=("Northwind Royalty Trust",))
+    text = NL.join(["Form 1099-MISC Miscellaneous Information 2025",
+                    "Payer: Contoso Mineral Partners", "Box 2  Royalties   $3,100.00"])
+    routing = _read_by_ocr(tmp_path, "scan0006.pdf", text, [broad, issuer])
+
+    assert routing.identifier is None
+    assert routing.code == reasons.ISSUER_NOT_NAMED.code
+    assert routing.candidates == ("F01", "F02")
+    assert "F02" in routing.reason
+
+
+def test_a_scan_of_last_years_1099_int_parks_and_never_files(tmp_path):
+    """The year is checked before any of this: last year's 1099-INT fails
+    A02's date rule, so its verdict does not pass, guard 1 is never reached,
+    and it parks as the wrong-period lead decision 73 gives it."""
+    from tests.samples import lines_1099_int
+    from tracker.router import MATCHED_FROM_SCAN
+
+    text = NL.join(lines_1099_int("Harbor Test Bank", "John A. Smith", 2024))
+    routing = _read_by_ocr(tmp_path, "scan0007.pdf", text, _catalog_1040())
+
+    assert routing.identifier is None and routing.reason != MATCHED_FROM_SCAN
+    assert routing.code == reasons.WRONG_PERIOD.code
+    assert routing.reason.startswith("looks like A02")
+
+
+def test_a_scan_filed_on_its_form_number_carries_no_answers_and_no_split(tmp_path):
+    """The broker rule (decision 146) and the split (decision 94) are not
+    involved in this filing: it answers one request and files one copy."""
+    from tests.samples import lines_1099_int
+
+    text = NL.join(lines_1099_int("Harbor Test Bank", "John A. Smith", 2025))
+    routing = _read_by_ocr(tmp_path, "scan0008.pdf", text, _catalog_1040())
+
+    assert routing.identifier == "A02"
+    assert routing.answers == () and routing.also == ()
+
+
+def test_a_scanned_1099_c_read_as_1099_g_beside_a_second_form_name_parks(tmp_path):
+    """Guard 6, the case Jason ruled on (Q2): a 1099-C whose "C" was read as
+    "G" and which also prints a second form's name. Both are 1099s, so
+    decision 94's split does not read it; A06 alone passes guards 1 and 3,
+    and no 1040 row asks for the 1099-S. The second self-named form is not
+    one of A06's title forms, so the scan parks as a lead, byte for byte
+    what it parks as today."""
+    from tracker.content_check import self_named_forms
+
+    text = NL.join([
+        "Form 1099-G 2025 Cancellation of Debt Copy B For Debtor",
+        "Form 1099-S 2025 Proceeds From Real Estate Transactions",
+        "Date of identifiable event 03/04/2025",
+        "Box 2 Amount of debt discharged  $4,000.00",
+    ])
+    assert self_named_forms(text) == ("1099g", "1099s")
+    routing = _read_by_ocr(tmp_path, "scan0009.pdf", text, _catalog_1040())
+
+    assert routing.identifier is None
+    assert routing.reason == f"{OCR_ONLY} (A06); a person should confirm"
+    assert routing.candidates == ("A06",) and routing.code == reasons.OCR_ONLY_CODE
+
+
+def test_a_scan_whose_page_shows_another_requests_form_number_parks(tmp_path):
+    """Guard 6, second half: the page is titled "Form 1099-INT" and then
+    mentions "Form 1099-OID" three times in a reading short enough that
+    every mention sits in the title, which makes 1099-OID the page's
+    dominant form (the precondition asserted below). The OID row's verdict
+    fails on its year, but its evidence records its own form number on the
+    page - another request's form number - so the INT row's scan parks as a
+    lead instead of filing."""
+    from tracker.content_check import dominant_forms
+
+    int_row = _scan_row("B01", "1099-int")
+    oid_row = _scan_row("B02", "1099-oid", date_pattern=r"(?i)\b2024\b")
+    text = NL.join(["Form 1099-INT Interest Income - 2025", "Payer: Harbor Test Bank",
+                    "Box 1  Interest income   $12.00",
+                    "See Form 1099-OID", "Form 1099-OID", "Form 1099-OID"])
+    assert dominant_forms(text) == {"1099oid"}
+    routing = _read_by_ocr(tmp_path, "scan0010.pdf", text, [int_row, oid_row])
+
+    assert routing.identifier is None
+    assert routing.reason == f"{OCR_ONLY} (B01); a person should confirm"
+    assert routing.candidates == ("B01",) and routing.code == reasons.OCR_ONLY_CODE
+
+
+def test_a_page_naming_only_its_own_form_files(tmp_path):
+    """Guard 6 passes when the page names one form as itself and it is the
+    row's: a 1099-R printed in decision 85's shape (its number, then its
+    year) files under E02. The ordinary 1099-INT reading names no form in
+    that shape at all (first claim above) and passes the same way."""
+    from tracker.content_check import self_named_forms
+    from tracker.router import MATCHED_FROM_SCAN
+
+    text = NL.join(["Form 1099-R 2025", "Distributions From Pensions, Annuities, Retirement",
+                    "Payer: Harbor Test Pension Fund", "Recipient: John A. Smith",
+                    "Box 1  Gross distribution   $5,000.00"])
+    assert self_named_forms(text) == ("1099r",)
+    routing = _read_by_ocr(tmp_path, "scan0011.pdf", text, _catalog_1040())
+
+    assert routing.identifier == "E02" and routing.reason == MATCHED_FROM_SCAN
+    assert routing.code == reasons.MATCHED_CODE
+
+
+def test_a_page_naming_two_families_as_itself_is_decision_94s_and_never_reaches_the_scan_rule(tmp_path):
+    """Decision 94 reads a page that prints a 1099-INT's and a W-2's own
+    names before any scan rule: it files a copy under each or parks
+    SEVERAL_FORMS_UNSORTED, exactly as _multi_form decides today, and is
+    never filed with the scan sentence."""
+    from tests.samples import scanned_1099_int_lines, scanned_w2_lines
+    from tracker.content_check import own_forms, self_named_forms
+    from tracker.router import MATCHED_FROM_SCAN
+
+    text = NL.join(scanned_w2_lines(2025) + scanned_1099_int_lines(2025))
+    assert own_forms(self_named_forms(text)) is not None
+    routing = _read_by_ocr(tmp_path, "scan0012.pdf", text, _catalog_1040())
+
+    assert routing.reason != MATCHED_FROM_SCAN
+    assert routing.code in (reasons.SEVERAL_FORMS_CODE, reasons.SEVERAL_FORMS_UNSORTED_CODE)
+    assert routing.reason.startswith("names 2 forms as itself")
 
 
 def test_the_router_and_the_scanner_reach_one_verdict_for_one_document(tmp_path, monkeypatch):
@@ -1176,8 +1476,10 @@ def test_the_1041_files_it_to_b01_and_the_realized_gain_tie_resolves_there(tmp_p
 
 
 def test_a_consolidated_1099_read_by_ocr_is_never_filed_on_its_looser_words(tmp_path):
-    """d146. Decision 50 stands: OCR's reading of the any-keywords is a lead
-    for a person, and the tie-break is never read over it."""
+    """d146. Decision 50 stands, as P282 revised it: OCR's reading of the
+    any-keywords is a lead for a person unless one row alone shows its form
+    number in the title - here three rows' numbers are in it - and the
+    tie-break is never read over it."""
     routing = _read_by_ocr(tmp_path, "scan0007.pdf", SCHWAB_D146, _catalog("1040"))
     assert routing.identifier is None and routing.reason.startswith(OCR_ONLY)
     assert routing.answers == ()

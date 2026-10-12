@@ -1088,6 +1088,51 @@ def test_a_giant_pdf_page_is_rendered_within_the_pixel_budget(tmp_path, monkeypa
     assert (letter_w, letter_h) == (612 * 2.0, 792 * 2.0)              # an ordinary page as before
 
 
+def test_a_page_is_rendered_at_the_settings_dpi_within_the_pixel_budget(tmp_path, monkeypatch):
+    """P283: the render scale is the settings' dpi over 72, read when the
+    page is rendered. At 300 dpi a letter page is asked at 612 * 300 / 72 by
+    792 * 300 / 72 (a letter page at 300 dpi is 7.6 million pixels, far
+    inside the budget), and the giant page is still held to the budget -
+    the budget stays the hard ceiling whatever dpi is asked. The settings
+    are put back after. The test at 1054 runs unchanged: an ordinary page
+    at the shipped 144 dpi is scale 2."""
+    import tracker.content_check as content_check
+    from tracker import ocr
+
+    pypdfium2 = pytest.importorskip("pypdfium2")
+
+    def pdf(path, width, height):
+        writer = PdfWriter()
+        writer.add_blank_page(width=width, height=height)
+        with path.open("wb") as handle:
+            writer.write(handle)
+        return path
+
+    asked: list[tuple[float, float]] = []
+
+    class Stop(Exception):
+        pass
+
+    def render(page, *, scale=1.0, **_kwargs):
+        width, height = page.get_size()
+        asked.append((width * scale, height * scale))
+        raise Stop("rendering stops here: the scale is what is under test")
+
+    monkeypatch.setattr(pypdfium2.PdfPage, "render", render)
+    previous = ocr.use_settings(ocr.ReaderSettings(render_dpi=300))
+    try:
+        for path in (pdf(tmp_path / "giant.pdf", 14400, 14400), pdf(tmp_path / "letter.pdf", 612, 792)):
+            with pytest.raises(Stop):
+                content_check._ocr_pdf(path)
+    finally:
+        ocr.use_settings(previous)
+    (giant_w, giant_h), (letter_w, letter_h) = asked
+    assert giant_w * giant_h <= content_check.PIXEL_BUDGET * 1.0001       # the budget still holds
+    assert giant_w * giant_h > content_check.PIXEL_BUDGET * 0.99
+    assert letter_w == pytest.approx(612 * 300 / 72) and letter_h == pytest.approx(792 * 300 / 72)
+    assert content_check.render_scale(612, 792) == 2.0                  # put back: 144 dpi again
+
+
 def test_a_photo_past_the_pixel_budget_is_read_smaller(tmp_path, monkeypatch):
     """Decision 137 (B1): a photo is checked against the same budget before
     it is decoded, and read reduced to it rather than refused."""

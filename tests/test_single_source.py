@@ -2448,6 +2448,7 @@ def test_the_repository_carries_no_task_for_the_office_computer():
 DOOR_EXEMPT = {
     "tracker/settings.py": "it records the root, and holds the rule the door asks",
     "tools/backtest.py": "its folder is the firm's sorted documents, never the clients root",
+    "tools/reader_bench.py": "its folder is the firm's sorted documents, never the clients root",
     # Decision 159's race: any folder a person races a test lock in (its own
     # _race.lock, never a return's lock); it reads nothing there and walks
     # nothing - a check of the lock on a drive, not a pass over clients.

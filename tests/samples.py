@@ -114,10 +114,11 @@ def text_pdf(path: Path, lines: list[str]) -> Path:
     return path
 
 
-def scanned_pdf(path: Path, lines: list[str]) -> Path:
+def scanned_pdf(path: Path, lines: list[str], rotate: int = 0) -> Path:
     """A scan: ``lines`` drawn on a letter page at 150 dpi and saved as a
     PDF with no text layer, so only the reader can say what it is. Every
-    pixel is drawn here."""
+    pixel is drawn here. ``rotate`` turns the drawn page that many degrees
+    (90 is a page scanned a quarter turn); 0 leaves it exactly as drawn."""
     from PIL import Image, ImageDraw, ImageFont
 
     page = Image.new("RGB", (1275, 1650), "white")
@@ -125,6 +126,8 @@ def scanned_pdf(path: Path, lines: list[str]) -> Path:
     font = ImageFont.load_default(size=30)
     for i, line in enumerate(lines[:28]):
         draw.text((80, 90 + 52 * i), line, font=font, fill="black")
+    if rotate:
+        page = page.rotate(rotate, expand=True, fillcolor="white")
     page.save(path, "PDF", resolution=150)
     return path
 

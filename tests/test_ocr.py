@@ -84,6 +84,35 @@ def test_a_scan_is_read_by_rapidocr(tmp_path):
     assert check_content(scan, rules).ok
 
 
+def test_a_real_scan_whose_title_shows_1099_int_files_on_the_rows_looser_keywords(tmp_path):
+    """P282 end to end with the real reader: an image-only PDF drawn with a
+    made-up 1099-INT is read by RapidOCR, its title shows the form number a
+    request accepts on its looser keywords, and it files under that request
+    with the scan sentence instead of parking as Read From Scan Only. The
+    same page turned a quarter must never misfile under the 1098 request: it
+    files the 1099-INT row or parks with it on the shortlist - whether the
+    reader scrambles a particular page's title is the reader's, not the
+    rule's."""
+    from tests.samples import lines_1099_int
+    from tracker.router import MATCHED_FROM_SCAN, route_file
+
+    interest = RequestItem(identifier="A02", document="1099-INT", period="TY2025",
+                           allowed_extensions=("pdf",), min_size_kb=0, any_keywords=("1099-int",))
+    mortgage = RequestItem(identifier="C01", document="1098", period="TY2025",
+                           allowed_extensions=("pdf",), min_size_kb=0, any_keywords=("1098",))
+    lines = lines_1099_int("Harbor Test Bank", "John A. Smith", 2025)
+
+    upright = scanned_pdf(tmp_path / "scan 0001.pdf", lines)
+    routing = route_file(upright, [interest, mortgage])
+    assert routing.identifier == "A02", routing.reason
+    assert routing.reason == MATCHED_FROM_SCAN and routing.code == reasons.MATCHED_CODE
+
+    sideways = scanned_pdf(tmp_path / "scan 0002.pdf", lines, rotate=90)
+    routed = route_file(sideways, [interest, mortgage])
+    assert routed.identifier in (None, "A02"), routed.reason
+    assert "C01" not in routed.candidates and routed.identifier != "C01"
+
+
 def test_a_photo_is_read_by_rapidocr(tmp_path):
     """A photo takes the scan's path: read by the same reader, from_ocr."""
     for name in ("w-2.png", "w-2.jpg"):
@@ -205,19 +234,254 @@ def test_the_graphics_cards_way_in_switches_telemetry_off_before_it_loads_anythi
     assert loaded == []
 
 
+def _box(left, top, right, bottom):
+    return [(left, top), (right, top), (right, bottom), (left, bottom)]
+
+
 def test_the_lines_are_built_from_the_boxes_in_reading_order():
     """The seam of ruling 6 builds lines only: boxes on one line (centres
     within half a typical height) join left to right, lines run top to
-    bottom, and nothing is turned or dropped but blank text."""
-    def box(left, top, right, bottom):
-        return [(left, top), (right, top), (right, bottom), (left, bottom)]
-
+    bottom, and nothing is turned. What is dropped is the boxes under the
+    confidence floor (the next claims) and blank text."""
     result = SimpleNamespace(
-        boxes=[box(300, 100, 400, 120), box(10, 10, 100, 30), box(110, 12, 200, 32),
-               box(10, 102, 90, 121), box(10, 200, 50, 220)],
-        txts=("second-right", "first-left", "first-right", "second-left", "  "))
+        boxes=[_box(300, 100, 400, 120), _box(10, 10, 100, 30), _box(110, 12, 200, 32),
+               _box(10, 102, 90, 121), _box(10, 200, 50, 220)],
+        txts=("second-right", "first-left", "first-right", "second-left", "  "),
+        scores=(0.99, 0.99, 0.99, 0.99, 0.99))
     assert ocr._upright_lines(result) == ["first-left first-right", "second-left second-right"]
     assert ocr._upright_lines(SimpleNamespace(boxes=None, txts=None)) == []
+
+
+def test_a_box_under_the_confidence_floor_is_not_read():
+    """P282's guard 2, made the product's own number: a box the reader
+    scored under ``CONFIDENT_SCORE`` is dropped before the lines are built,
+    so a doubtful word can never be what files a document."""
+    result = SimpleNamespace(
+        boxes=[_box(10, 10, 100, 30), _box(10, 60, 100, 80)],
+        txts=("Form 1099-INT", "Form 1098"),
+        scores=(0.99, ocr.CONFIDENT_SCORE - 0.01))
+    assert ocr._upright_lines(result) == ["Form 1099-INT"]
+
+
+def test_a_box_at_the_confidence_floor_is_read():
+    """The floor is inclusive: a score of exactly ``CONFIDENT_SCORE`` is read."""
+    result = SimpleNamespace(
+        boxes=[_box(10, 10, 100, 30)], txts=("Form 1099-INT",), scores=(ocr.CONFIDENT_SCORE,))
+    assert ocr._upright_lines(result) == ["Form 1099-INT"]
+
+
+def test_a_reading_without_confidence_scores_fails_loudly():
+    """rapidocr always gives one score per box; a reading that silently
+    skipped the floor would file on words the floor exists to drop."""
+    result = SimpleNamespace(boxes=[_box(10, 10, 100, 30)], txts=("Form 1099-INT",), scores=None)
+    with pytest.raises(ValueError, match="no confidence scores"):
+        ocr._upright_lines(result)
+
+
+# ------------------------------------------------ the reader's settings (P283) ----
+
+
+@pytest.fixture
+def own_settings():
+    """The reader's settings as the test found them, put back after it (the
+    engine is let go with them): a test that tries other settings leaves
+    nothing for the next."""
+    previous = ocr.SETTINGS
+    try:
+        yield
+    finally:
+        ocr.use_settings(previous)
+
+
+class RecordedEngine:
+    """Stands in for ``rapidocr.RapidOCR``: records the params it is built with."""
+
+    built: list[dict] = []
+
+    def __init__(self, params=None):
+        type(self).built.append(dict(params or {}))
+
+
+@pytest.fixture
+def recorded_engines(monkeypatch):
+    """``rapidocr.RapidOCR`` replaced by a recorder, and the list it fills."""
+    import rapidocr
+
+    RecordedEngine.built = []
+    monkeypatch.setattr(rapidocr, "RapidOCR", RecordedEngine)
+    return RecordedEngine.built
+
+
+def test_the_shipped_settings_are_todays_reading():
+    """P283 changes no reading: the shipped settings are the 144 dpi, 0.5
+    floor, 2000 long side, no de-lining and small models the reader had
+    before they had a name, and this process reads with them."""
+    assert ocr.SHIPPED == ocr.ReaderSettings(144, 0.5, 2000, False, "small", "")
+    assert ocr.SETTINGS is ocr.SHIPPED
+    assert ocr.SHIPPED.confident_score == ocr.CONFIDENT_SCORE
+
+
+def test_the_engine_is_built_with_the_settings_floor_and_long_side(recorded_engines, own_settings):
+    """With the shipped settings the params carry rapidocr's own defaults
+    (floor 0.5, long side 2000) and the three shipped model paths; with
+    other settings, theirs."""
+    folder = ocr.models_folder()
+    ocr._build_engine(cuda=False)
+    shipped = recorded_engines[-1]
+    assert shipped["Global.text_score"] == 0.5 and shipped["Global.max_side_len"] == 2000
+    assert shipped["Det.model_type"].value == "small" and shipped["Rec.model_type"].value == "small"
+    assert shipped["Det.model_path"] == str(folder / ocr.DETECTION_MODEL)
+    assert shipped["Rec.model_path"] == str(folder / ocr.RECOGNITION_MODEL)
+    assert shipped["Cls.model_path"] == str(folder / ocr.DIRECTION_MODEL)
+
+    ocr.use_settings(ocr.ReaderSettings(render_dpi=300, confident_score=0.7, max_side_len=3300))
+    ocr._build_engine(cuda=False)
+    other = recorded_engines[-1]
+    assert other["Global.text_score"] == 0.7 and other["Global.max_side_len"] == 3300
+    assert other["Det.model_path"] == shipped["Det.model_path"]       # the same small models
+
+
+def test_the_medium_tier_reads_its_models_from_the_folder_it_is_given(tmp_path, recorded_engines, own_settings):
+    """The medium models are never shipped: the tier's detection and
+    recognition files come from the folder the bench was given, and the
+    direction model is still the app's own."""
+    medium_det, medium_rec = ocr.MODEL_TIERS["medium"]
+    for name in (medium_det, medium_rec):
+        (tmp_path / name).write_bytes(b"")
+    ocr.use_settings(ocr.ReaderSettings(model_tier="medium", model_folder=str(tmp_path)))
+
+    ocr._build_engine(cuda=False)
+
+    params = recorded_engines[-1]
+    assert params["Det.model_path"] == str(tmp_path / medium_det)
+    assert params["Rec.model_path"] == str(tmp_path / medium_rec)
+    assert params["Cls.model_path"] == str(ocr.models_folder() / ocr.DIRECTION_MODEL)
+    assert params["Det.model_type"].value == "medium" and params["Rec.model_type"].value == "medium"
+
+
+def test_the_medium_tier_without_its_models_is_unavailable_and_fetches_nothing(
+        tmp_path, recorded_engines, own_settings):
+    """No folder, or a folder missing one file: the reader says which model
+    is missing, builds nothing, and rapidocr's downloader - replaced by a
+    refusal before any engine is built - is never reached, so the sentence
+    is a missing model and never a request to fetch one."""
+    medium_det, medium_rec = ocr.MODEL_TIERS["medium"]
+    ocr.use_settings(ocr.ReaderSettings(model_tier="medium"))
+    with pytest.raises(ocr.ReaderUnavailable, match=f"the model {medium_det} is missing") as raised:
+        ocr._build_engine(cuda=False)
+    assert "download" not in str(raised.value)
+
+    (tmp_path / medium_det).write_bytes(b"")
+    ocr.use_settings(ocr.ReaderSettings(model_tier="medium", model_folder=str(tmp_path)))
+    with pytest.raises(ocr.ReaderUnavailable, match=f"the model {medium_rec} is missing") as raised:
+        ocr._build_engine(cuda=False)
+    assert "download" not in str(raised.value)
+    assert recorded_engines == []
+
+
+def test_using_other_settings_drops_the_built_engine_and_says_what_it_replaced(monkeypatch, own_settings):
+    other = ocr.ReaderSettings(render_dpi=200)
+    monkeypatch.setattr(ocr, "_ENGINE", object())
+    monkeypatch.setattr(ocr, "_DEVICE", ocr.DEVICE_PROCESSOR)
+
+    assert ocr.use_settings(other) is ocr.SHIPPED
+    assert ocr.SETTINGS is other
+    assert ocr._ENGINE is None and ocr._DEVICE == ""
+    assert ocr.use_settings(ocr.SHIPPED) is other
+
+
+def test_unknown_settings_are_refused(own_settings):
+    """An unknown tier, a dpi under 72 and a floor outside 0-1 are refused
+    before anything changes."""
+    for settings in (ocr.ReaderSettings(model_tier="large"), ocr.ReaderSettings(render_dpi=71),
+                     ocr.ReaderSettings(confident_score=-0.01), ocr.ReaderSettings(confident_score=1.01)):
+        with pytest.raises(ValueError):
+            ocr.use_settings(settings)
+        assert ocr.SETTINGS is ocr.SHIPPED
+    ocr.use_settings(ocr.ReaderSettings(render_dpi=72, confident_score=1.0))     # the edges are allowed
+
+
+def test_the_floor_follows_the_settings(own_settings):
+    """A box scored 0.6 is read at the shipped 0.5 floor and dropped when
+    the settings ask for 0.7."""
+    result = SimpleNamespace(boxes=[_box(10, 10, 100, 30), _box(10, 60, 100, 80)],
+                             txts=("Form 1099-INT", "Box one"), scores=(0.99, 0.6))
+    assert ocr._upright_lines(result) == ["Form 1099-INT", "Box one"]
+    ocr.use_settings(ocr.ReaderSettings(confident_score=0.7))
+    assert ocr._upright_lines(result) == ["Form 1099-INT"]
+
+
+def test_delining_removes_long_rules_and_keeps_the_words():
+    """A letter page at 200 dpi drawn in memory: a full-width rule, a
+    full-height rule and a line of text crossing neither. After ``delined``
+    the rules' rows and columns are white away from the text, the text's ink
+    is still there, the size is unchanged and the page it was given is not."""
+    import numpy
+    from PIL import Image, ImageDraw, ImageFont
+
+    page = Image.new("RGB", (1700, 2200), "white")
+    draw = ImageDraw.Draw(page)
+    draw.rectangle((0, 1100, 1699, 1102), fill="black")             # a rule across the page
+    draw.rectangle((900, 0, 902, 2199), fill="black")               # a rule down the page
+    draw.text((100, 200), "Wage and Tax Statement 2025", font=ImageFont.load_default(size=30), fill="black")
+    before = numpy.asarray(page).copy()
+    ink_before = int((before[150:300, 80:700, 0] < 128).sum())
+    assert ink_before > 0
+
+    cleaned = ocr.delined(page)
+
+    after = numpy.asarray(cleaned)
+    assert cleaned.size == page.size and cleaned.mode == "RGB"
+    assert (after[1101, :, :] >= 250).all()                         # the rule's row, every column
+    assert (after[:, 901, :] >= 250).all()                          # the rule's column, every row
+    assert int((after[150:300, 80:700, 0] < 128).sum()) >= 0.9 * ink_before
+    assert (numpy.asarray(page) == before).all()                    # the page given is untouched
+
+
+@pytest.mark.parametrize("thickness", [1, 2, 3])
+def test_delining_rejoins_a_letter_a_rule_crossed(thickness):
+    """A letter page at 144 dpi drawn in memory: a full-width rule of 1, 2 or
+    3 px, a 4 px wide, 25 px tall stroke crossing it, and a mid-grey block
+    touching neither. After ``delined`` every pixel of the stroke's columns
+    is black from top to bottom (the cut a rule and the growth's margin made
+    is bridged), the rule's row is white away from the stroke, and the grey
+    block still reads mid-grey: the repair touched nothing outside the rule."""
+    import numpy
+    from PIL import Image, ImageDraw
+
+    page = Image.new("RGB", (1224, 1584), "white")
+    draw = ImageDraw.Draw(page)
+    rule_top = 800
+    draw.rectangle((0, rule_top, 1223, rule_top + thickness - 1), fill="black")
+    stroke_top = rule_top + thickness // 2 - 12
+    draw.rectangle((300, stroke_top, 303, stroke_top + 24), fill="black")
+    draw.rectangle((600, 300, 619, 319), fill=(128, 128, 128))        # glyph-sized, so not a rule
+
+    after = numpy.asarray(ocr.delined(page))
+
+    assert (after[stroke_top:stroke_top + 25, 300:304, 0] < 64).all()
+    assert (after[rule_top:rule_top + thickness, 400:1223, :] >= 250).all()
+    assert (abs(after[300:320, 600:620, 0].astype(int) - 128) <= 8).all()
+
+
+def test_delining_is_off_in_the_product_and_on_hands_the_engine_the_delined_page(monkeypatch, own_settings):
+    """Shipped settings hand the engine the page as it stands; with
+    ``delining`` on, it is handed ``delined(page)``."""
+    page, cleaned, seen = object(), object(), []
+    monkeypatch.setattr(ocr, "_pixels", lambda image: seen.append(image) or "pixels")
+    monkeypatch.setattr(ocr, "delined", lambda image: cleaned)
+    engine = FakeEngine(ocr.DEVICE_PROCESSOR, ["a line"])
+
+    monkeypatch.setattr(ocr, "_ENGINE", engine)
+    monkeypatch.setattr(ocr, "_DEVICE", ocr.DEVICE_PROCESSOR)
+    assert ocr.read_page(page) == "a line"
+    assert seen == [page]
+
+    ocr.use_settings(ocr.ReaderSettings(delining=True))
+    monkeypatch.setattr(ocr, "_ENGINE", engine)
+    monkeypatch.setattr(ocr, "_DEVICE", ocr.DEVICE_PROCESSOR)
+    assert ocr.read_page(page) == "a line"
+    assert seen == [page, cleaned]
 
 
 # ----------------------------------------------------- the graphics card ----
@@ -243,7 +507,8 @@ class FakeEngine:
             raise RuntimeError("[ONNXRuntimeError] : 1 : FAIL : CUDA failure 999: unknown error ; GPU=0")
         boxes = [[(0, 40 * i), (500, 40 * i), (500, 40 * i + 30), (0, 40 * i + 30)]
                  for i in range(len(self.lines))]
-        return SimpleNamespace(boxes=boxes, txts=tuple(self.lines))
+        return SimpleNamespace(boxes=boxes, txts=tuple(self.lines),
+                               scores=tuple(0.99 for _ in self.lines))
 
 
 PAGE_WORDS = named_page("Form W-2 Wage and Tax Statement 2025").splitlines()

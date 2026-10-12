@@ -23,6 +23,286 @@ this repository; [`SPEC.md`](SPEC.md) says what it builds.
 
 ## Current work
 
+[`SPEC-ocr-scans.md`](SPEC-ocr-scans.md) Part A (P282), **built on
+`claude/ocr-scans`** in commit `ff938b7`, not yet reviewed (the review is
+Opus's, in a session that did not build it) and not pushed. Part B (P283) is
+a separate build, stacked on this one, and is built (below), not yet reviewed
+and not pushed.
+
+What Part A built, in the software's words: a scan or a photo that a request
+accepts on its looser keywords now files under that request when the top of
+the page shows the request's own form number, no other request accepted it,
+the household's issuer rule passes, and the page names no other form as itself
+and shows no other request's form number. The name on the page still has to
+confirm a named request, and an unnamed one files by its keywords alone when
+the page names nobody (Jason's ruling on Q1). Anything less parks as Read From
+Scan Only, byte for byte as before. The reader's confidence floor is now the
+product's own number (0.5, the same floor the reader already applied), and a
+reading that comes back with no scores fails loudly. No keyword, catalog row,
+store, event or cache version changed (`CACHE_VERSION` stays 13; the vocabulary
+report rebuilt with no diff).
+
+Gate, each file its own process, `.venv` (3.14) and `.venv311` (3.11), no
+`-m "not corpus"`; every file passed under both:
+
+| file | 3.14 | 3.11 |
+|---|---|---|
+| `test_router` | 92 passed | 92 passed |
+| `test_filer` | 405 passed, 6 skipped | 405 passed, 6 skipped |
+| `test_ocr` (the real reader ran, not skipped) | 44 passed, 4 skipped | 44 passed, 4 skipped |
+| `test_backtest` | 21 passed | 21 passed |
+| `test_content_check` | 114 passed, 1 skipped | 114 passed, 1 skipped |
+| `test_api` | 505 passed | 505 passed |
+| `test_runner` | 229 passed, 1 warning | 229 passed, 1 warning |
+| `test_resident` | 39 passed | 39 passed |
+| `test_reasons` | 58 passed | 58 passed |
+| `test_layers` | 31 passed | 31 passed |
+| `test_single_source` | 217 passed | 217 passed |
+| `test_repo_map` | 82 passed | 82 passed |
+| `test_tripwire` | 23 passed | 23 passed |
+| `test_errors` | 83 passed | 83 passed |
+
+Also: `ruff check .` clean; `repo_map.py update` then `check` exit 0 (the map
+is in the same commit); `vocab_report.py build` (run with the `.venv`
+interpreter, which has pytest) left no diff. The skips are the platform ones
+already there (the Windows job object, `/proc`, a directory junction, and
+the like). The sample-pile flow (SPEC section 4) was run on this Mac after the build,
+by the orchestrator: the pile from `tests/samples.build_scratch_root` plus
+`make_samples.add_container_samples`, a real pass with a throwaway data home
+and settings folder, then `tracker.api state`. The zip's `scan 0002.pdf` filed
+under A02 with code `matched`, reason "content matched this request's
+keywords, read from a scan that shows its form number; name confirmed (Jane R.
+Smith)", and evidence `1099-int` at the title, `TY2025` at the title and the
+name on the first page. The five review rows left are the macro workbook, the
+gsheet stub, the .docx, the .bmp and the prior-year W-2 - no scan among them.
+Pass summary: filed 10, review 5, syncing 1. Not run here: a Windows check.
+
+Where the SPEC and the code differed, none that stopped the build. Notes for
+the reviewer:
+
+- The SPEC's claim that `.gitignore` gains `.venv311/` in Part A's first
+  commit was already done (`8a77916`); nothing to add.
+- `test_a_scan_whose_form_number_is_only_below_the_title_parks_as_ocr_only`
+  is built as the SPEC words it. Its page puts `dividend` in the title and
+  "Form 1099-DIV" far below, where the form number is neither in the title
+  nor the page's dominant form, so A02's verdict does not record it and the
+  scan is a plain looser match. It fails with guard 1 removed outright; it
+  still passes when the title restriction is merely loosened to the first
+  page, which is why the review added two tests built on a page whose form
+  number is the first page's dominant form
+  (`test_a_form_number_shown_only_as_the_first_pages_dominant_form_parks_as_ocr_only`
+  and its one-row twin). `evaluate_rules` records every matching looser
+  keyword, not only the best-placed one. Each guard was mutated: guard 6
+  (both halves), exactly-one (two rows on the same form number, and the
+  broker's page), the issuer exit, and the title-only restriction (swapping in
+  `_shows_its_form_number`, or accepting the first page) each fail a test.
+- The two new filer tests each make two returns in separate roots: two
+  image-only PDFs with no text are byte-identical, so a second scan dropped in
+  the same return would be a Duplicate of the first, not a second reading.
+- The real-reader test's quarter-turned page reads as "matched no request"
+  here (the reader keeps the words but not the order); the test accepts
+  parking or filing under the 1099-INT row and forbids the 1098 row, as the
+  SPEC says.
+- Tests added: router `test_a_scan_whose_title_shows_1099_int_files_on_the_rows_looser_keywords`,
+  `test_a_scan_whose_form_number_is_only_below_the_title_parks_as_ocr_only`,
+  `test_a_scan_two_requests_accept_on_their_titles_parks_with_both`,
+  `test_a_scan_that_passes_the_title_guard_beside_a_loose_match_parks`,
+  `test_a_sideways_reading_whose_title_lines_came_late_parks`,
+  `test_a_scan_accepted_by_a_row_issuer_rows_narrow_parks_as_issuer_not_named`,
+  `test_a_scan_of_last_years_1099_int_parks_and_never_files`,
+  `test_a_scan_filed_on_its_form_number_carries_no_answers_and_no_split`,
+  `test_a_scanned_1099_c_read_as_1099_g_beside_a_second_form_name_parks`,
+  `test_a_scan_whose_page_shows_another_requests_form_number_parks`,
+  `test_a_page_naming_only_its_own_form_files`,
+  `test_a_page_naming_two_families_as_itself_is_decision_94s_and_never_reaches_the_scan_rule`
+  (and the one rename); filer `test_a_scan_filed_on_its_form_number_still_needs_the_name_confirmed`,
+  `test_a_scan_filed_on_its_form_number_into_an_unnamed_request_needs_no_name`;
+  ocr `test_a_box_under_the_confidence_floor_is_not_read`,
+  `test_a_box_at_the_confidence_floor_is_read`,
+  `test_a_reading_without_confidence_scores_fails_loudly`,
+  `test_a_real_scan_whose_title_shows_1099_int_files_on_the_rows_looser_keywords`.
+  Added by the review's fixes: router
+  `test_two_requests_whose_looser_keyword_is_the_same_form_number_park_with_both`,
+  `test_a_form_number_shown_only_as_the_first_pages_dominant_form_parks_as_ocr_only`,
+  `test_a_row_whose_only_looser_keyword_is_a_form_number_the_page_shows_below_its_title_parks`;
+  and `tests/samples.scanned_pdf` gained `rotate=0` (default bytes unchanged),
+  which the real-reader test's quarter-turned page now uses.
+
+**What the pass does with a row already parked as Read From Scan Only after
+the install** (read from the code, for the office prompt's before-and-after
+count): nothing. A pass decides only what is new - a drop in the inbox, or a
+stray in the year's folder with no row - and the only road that routes a
+document it already has on record again is a re-send whose earlier row was
+set aside, filed with its copy gone, or marked missing
+(`filer._sort_one`). A parked row's original has already left the inbox; the
+same bytes sent again are a Duplicate of the parked row (`DUPLICATE_OF_PARKED`),
+not a second reading, and the scanner only re-checks filed documents against
+their request's rules. So every row parked as Read From Scan Only before the
+install stays parked until a person files it; only scans that arrive after it
+file by the new rule. The before-and-after count on the office PC therefore
+moves only on documents dropped after Part A is installed.
+
+**Part B (P283), built on `claude/ocr-scans`** in commits `2d3ceff` (the seam)
+and `ebd2f78` (the bench, its prompt, the docs and the map), stacked on Part
+A's head `253a09a`; not yet reviewed (Opus's, in a session that did not build
+it) and not pushed. It changes nothing the product reads.
+
+What Part B built, in the software's words: every setting of how a page is
+drawn and read - the dots per inch a PDF page is drawn at, the confidence
+floor, the long side the reader shrinks an image to, whether a form's box
+lines are removed first, and which size of models reads - now lives in one
+place, and the shipped values are exactly what the reader did before (144
+dpi, floor 0.5, long side 2000, no box-line removal, the small models; the
+cache version did not move). Removing a form's box lines is built as a switch
+that is off. A measuring tool, `tools/reader_bench.py`, reads a folder of
+already-sorted documents once per combination of settings (36 in all) and
+writes down, in counts and seconds only, how many landed where a person put
+them and how long each took; its `review-codes` command counts Needs Review by
+code from the `firm` command's reply. `pilot/PROMPT-reader-bench.md` is the
+office session's prompt. Not the runbook and not the README: nothing a person
+sees at the firm changes.
+
+Gate, each file its own process, `.venv` (3.14) and `.venv311` (3.11), no
+`-m "not corpus"`, every file passed under both. The real reader ran (nothing
+in the real-reader tests skipped; the skips are the platform ones already
+there). The 3.11 column ran on the final tree; the 3.14 column ran before the
+last two edits below (the `DOOR_EXEMPT` line and the curated prose), and
+`test_single_source` and `test_repo_map` were run again on the final tree
+under 3.14 (217 and 82 passed).
+
+| file | 3.14 | 3.11 |
+|---|---|---|
+| `test_ocr` | 53 passed, 4 skipped | 53 passed, 4 skipped |
+| `test_content_check` | 115 passed, 1 skipped | 115 passed, 1 skipped |
+| `test_reader_bench` | 15 passed | 15 passed |
+| `test_layers` | 31 passed | 31 passed |
+| `test_router` | 92 passed | 92 passed |
+| `test_filer` | 405 passed, 6 skipped | 405 passed, 6 skipped |
+| `test_scanner` | 42 passed | 42 passed |
+| `test_containers` | 62 passed | 62 passed |
+| `test_names` | 6 passed | 6 passed |
+| `test_after_install` | 105 passed, 1 skipped | 105 passed, 1 skipped |
+| `test_api` | 505 passed | 505 passed |
+| `test_runner` | 229 passed, 1 warning | 229 passed, 1 warning |
+| `test_resident` | 39 passed | 39 passed |
+| `test_backtest` | 21 passed | 21 passed |
+| `test_vocab_report` | 28 passed | 28 passed |
+| `test_learned_keywords` | 17 passed | 17 passed |
+| `test_single_source` | 217 passed | 217 passed |
+| `test_repo_map` | 82 passed | 82 passed |
+| `test_tripwire` | 23 passed | 23 passed |
+| `test_errors` | 83 passed | 83 passed |
+
+Also: `ruff check .` clean; `repo_map.py update` then `check` exit 0 (the map is
+in the commit); `vocab_report.py build` left one line of diff, the recorded
+input hash of `tracker/content_check.py` (the report pins its inputs, and that
+file changed) and no keyword, row or count.
+
+The shipped variant's time on this Mac (Apple silicon, processor, small
+models), from a run of the real tool on two made-up image-only 1099-INT pages
+- `test_a_real_scan_is_read_under_each_dpi_it_is_asked_for` asserts but does
+not print its seconds: the engine loads in 0.19 s, and a page reads at 0.33 s
+at 144 dpi (the shipped one), 0.45 s at 200 and 0.77 to 0.92 s at 300, all far
+inside the 6-seconds-a-page ceiling; box-line removal added nothing at 144 and
+200 and about 0.05 s at 300. Those are two clean drawn pages, not the firm's
+paper: the office numbers are the measurement.
+
+Where the SPEC and the code differed (none stopped the build):
+
+- **rapidocr takes `Det.model_type` and `Rec.model_type` as its own `ModelType`
+  enum, never as text** (`rapidocr/utils/parse_parameters.py` raises "must be
+  Enum Type"). The SPEC said the tier name; `_build_engine` passes
+  `ModelType(tier)` (`from rapidocr.utils.typings import ModelType`). Found by
+  the real reader refusing to build.
+- `Global.model_root_dir` is the tier's folder (the SPEC left it alone); with
+  the shipped settings that is the same folder as before.
+- The corpus counts: a document that is neither a text layer, a scan nor a
+  photo (one no extractor reads, or whose reading failed) is in `documents` and
+  in none of the three kinds, and nothing is read for it. The SPEC's schema has
+  no field for it.
+- `variants` also takes the four restriction flags (the prompt's time
+  arithmetic uses them), and `run` requires `--out`. Each variant's row is printed
+  the moment it is measured, and (after the review, below) the report is
+  rewritten at the same moment.
+- `tests/test_single_source.py` lists `tools/reader_bench.py` in `DOOR_EXEMPT`,
+  as `tools/backtest.py` is: its folder is the firm's sorted documents, never the
+  clients root. The SPEC did not name that file.
+- `tests/test_repo_map.py` refuses the curated prose quoting a constant's value,
+  so the notes say the cache version "did not move" instead of "stays 13".
+- `test_the_bench_never_downloads_a_model` replaces `ocr._refuse_downloads`
+  with a no-op so its own failing guard on rapidocr's downloader is not
+  overwritten by the real refusal; the shipped variant then builds the real
+  engine from the app's models.
+- The office prompt's "before" numbers run on a checkout of the commit Part A
+  stacks on (first written as `main`; see the review, below), and its
+  `check` runs there too: the SPEC has one checkout on `claude/ocr-scans`, but
+  Part A's rule is in that code, so a baseline measured there would already
+  hold Part A and could not show it, and `check` reads the baseline file of the
+  checkout it runs in. The prompt lists the bench reports beside the four
+  before-and-after files in what comes back.
+- Once, a combined `pytest` run of `test_reader_bench` and `test_ocr` printed
+  `libc++abi: terminating due to uncaught exception ... recursive_mutex lock
+  failed` after the summary (exit code 0); five reruns did not repeat it. It is
+  ONNX Runtime's teardown on macOS at interpreter exit, the in-process engine
+  the older real-reader tests already build; worth knowing if it shows up.
+
+**Part B's review, round 1, and the rebuild** (Opus reviewed `253a09a..cc8e4a5`
+against SPEC section 2; the gate had passed; product behaviour unchanged).
+Ten findings: seven fixed here, three notes left as they were (8-10).
+
+1. De-lining never rejoined a letter a rule crossed (the cut is the rule's
+   thickness plus the growth's margin, wider than the repair bridged, and the
+   repair re-binarised the whole page). Now the repair span is worked out per
+   page, only the bridging pixels inside the removed rule go back to black, and
+   nothing else on the page changes (SPEC 2.2 step 5, as amended). One new
+   test, run for a 1, 2 and 3 px rule.
+2. A bad catalog name could reach the screen through a file name that shifts a
+   column. The bench and the backtest now say the row number and never the
+   value; one new test each.
+3. The office prompt's "before" checkout is the commit Part A stacks on, which
+   Jason supplies as a hash beside Part B's head (today's value `dcb02c3`),
+   because `main` will already hold Part A.
+4. The bench rewrites its report after every variant; a variant that fails is
+   recorded as not measured, with the exception's class only; a Ctrl-C writes the
+   report and exits 130 with one sentence. Two new tests; one old test now
+   makes the survey (not a variant's reading) fail, because a failing reading
+   no longer stops the run.
+5. The curated map's note on the render scale says one thing, and the
+   bench's note and the repair's description follow the code.
+6. The prompt's report names are fixed labels (firm, photos), never a corpus
+   folder's name, and the shipped variant is the first row under the header.
+7. The bench's reading does keep the safety stop (no page starts after a page
+   overran 60 s or the document's 600 s); only a page under way is unbounded,
+   so a slow variant can park a multi-page scan, which counts as a park. Said so
+   in the bench's text, `docs/tools.md` and the prompt.
+
+Tests added: ocr `test_delining_rejoins_a_letter_a_rule_crossed` (three
+parameters); reader bench
+`test_a_variant_whose_reading_raises_is_unmeasured_and_the_run_goes_on`,
+`test_a_ctrl_c_writes_the_report_so_far_and_exits_130_with_one_sentence`,
+`test_a_bad_catalog_is_named_by_its_row_number_and_never_by_its_value`;
+backtest `test_a_catalog_no_row_may_name_is_reported_by_its_row_number_and_never_by_its_value`.
+Gate after the fixes, each file its own process, both interpreters, every file
+the same under both (`test_ocr` 56 passed, 4 skipped; `test_reader_bench` 18;
+`test_backtest` 22; `test_content_check` 115 passed, 1 skipped; `test_layers`
+31; `test_single_source` 217; `test_repo_map` 82; `test_tripwire` 23;
+`test_errors` 83); `ruff check .` clean; `repo_map.py update` then `check` exit
+0; `vocab_report.py build` left no diff. `SHIPPED` and `CACHE_VERSION` did not
+move. SPEC section 4's office-prompt sketch was then aligned with the prompt
+(the before-checkout and the fixed report labels); the prompt is the source.
+
+Tests added: ocr `test_the_shipped_settings_are_todays_reading`,
+`test_the_engine_is_built_with_the_settings_floor_and_long_side`,
+`test_the_medium_tier_reads_its_models_from_the_folder_it_is_given`,
+`test_the_medium_tier_without_its_models_is_unavailable_and_fetches_nothing`,
+`test_using_other_settings_drops_the_built_engine_and_says_what_it_replaced`,
+`test_unknown_settings_are_refused`, `test_the_floor_follows_the_settings`,
+`test_delining_removes_long_rules_and_keeps_the_words`,
+`test_delining_is_off_in_the_product_and_on_hands_the_engine_the_delined_page`;
+content_check `test_a_page_is_rendered_at_the_settings_dpi_within_the_pixel_budget`;
+reader_bench, all of section 2.5's names plus
+`test_review_codes_names_what_is_wrong_with_a_reply_and_exits_2`.
+
 [`SPEC-ui-polish.md`](SPEC-ui-polish.md): the UI and UX review of 2026-10-11.
 Section 1, the no-brainers (P264), is built on `claude/ui-polish` in one
 commit after a clean Opus review: one collator, keyed lookups, one draw per
