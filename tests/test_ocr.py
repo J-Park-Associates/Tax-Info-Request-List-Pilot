@@ -848,18 +848,23 @@ def test_the_shipped_reading_of_a_scan_fits_the_reading_child(tmp_path, in_a_chi
     dpi page whole, reached 2.8 GB, and was ended as ``reading-crashed`` at
     the 2 GB cap, and with the detector held the five pages still crossed 2
     GB. The detector now reads its own 2000-pixel copy (``Det.limit_type``
-    ``max``) and the cap is 4 GB, so the child stays inside it."""
+    ``max``) and the cap is 4 GB, so the child stays inside it. The
+    judgment carries no word of the document (decision 189), so the claim
+    asks a question - a row keyed on the form number - and reads the answer."""
     from tests.samples import lines_1099_int
 
     assert ocr.SETTINGS is ocr.SHIPPED
     scan = a_five_page_scan(tmp_path / "five pages.pdf",
                             lines_1099_int("Harbor Test Bank", "John A. Smith", 2025))
 
-    reading = content_check.judge_bounded(scan, content_check.Questions()).extraction
+    form_number = content_check.RowQuestion(required_keywords=("1099-INT",))
 
+    judgment = content_check.judge_bounded(scan, content_check.Questions(rows=(form_number,)))
+
+    reading = judgment.extraction
     assert reading.reason != CRASHED and not reading.transient, reading.reason
-    assert reading.from_ocr and reading.text, reading.reason
-    assert contains_keyword(reading.text, "1099-INT"), reading.text[:200]
+    assert reading.from_ocr and judgment.has_words, reading.reason
+    assert judgment.rows[form_number].required_matched
     assert no_child_left()
 
 

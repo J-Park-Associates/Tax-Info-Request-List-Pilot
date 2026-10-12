@@ -8107,8 +8107,8 @@
       "id": "tests/test_ocr.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "5b036e481eac7575",
-      "lines": 1711,
+      "sha256": "3e8f7dfba53ed842",
+      "lines": 1716,
       "exports": [
         "A_PASS_BETWEEN_DOCUMENTS",
         "FakeEngine",
