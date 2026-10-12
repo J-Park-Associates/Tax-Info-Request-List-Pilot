@@ -26,8 +26,9 @@ held and measured (Part B).
    because the reader's words could file a document only on a request's
    strictest keywords, and most requests have none. After this change, a
    scan files when the top of the page names the form the request asks for
-   ("Form 1099-INT"), exactly one request accepts it, and - for a request
-   that needs a name - the name on the page is one of the return's people.
+   ("Form 1099-INT"), the page names no other form as itself, exactly one
+   request accepts it, and - for a request that needs a name - the name on
+   the page is one of the return's people.
    Anything less parks exactly as it does today.
 2. **The reader's settings live in one place, and a measuring tool tries
    other settings on the firm's own scans** (P283). Nothing the product
@@ -71,7 +72,8 @@ misreads words, and the looser any-keyword tier is where a misread "1099"
 would file a document under the wrong request. What P282 adds is the
 evidence that answers that reasoning for one well-defined case - the
 request's own form number printed where a form prints its own name, the
-title - and the guards keep every other OCR match a lead for a person.
+title, with no other form named on the page - and the six guards keep
+every other OCR match a lead for a person.
 Decisions 92 (a name files nothing), 128 (the name on the page), 140 (the
 near-miss shortlist and its hold) and 146 (the broker rule never on OCR's
 word) are untouched. Decision 50's other halves - one reading, the verdict
@@ -146,7 +148,7 @@ A document read by the reader (a scan with no text layer, or a photo:
 `Extraction.from_ocr`) that a request accepts on its looser keywords - the
 row's verdict passes (`verdict.ok`: every rule of the row, its year
 included) and its required keywords did not match (the row has none) - is
-**filed under that request when all five hold**, and parks otherwise:
+**filed under that request when all six hold**, and parks otherwise:
 
 1. **Its own form number is in the title.** The row's verdict recorded, as
    its evidence, one of the row's own keywords that is a form number
@@ -164,7 +166,8 @@ included) and its required keywords did not match (the row has none) - is
    400 characters, fails this guard and parks - it never files elsewhere
    for it. A bare family number the row lists (K01's `5498`) counts, as it
    does for decision 140; `form_key` already keeps `5498` and `5498-SA`
-   apart.
+   apart. The form keys this guard found are **the row's title forms**,
+   which guard 6 reads.
 2. **Only confident words were read.** The reader drops every box whose
    recognition score is below `ocr.CONFIDENT_SCORE` (0.5) before the lines
    are built (1.3). This is today's floor, made the product's own number;
@@ -176,15 +179,18 @@ included) and its required keywords did not match (the row has none) - is
    without its form number, parks. A row matched on its required keywords
    files first, exactly as today (the existing strong tier is unchanged and
    is read before this one).
-4. **The name on the page confirms** (decision 128). Nothing new: the
-   household pass's name tier (`filer._by_the_name`) runs on this filing as
-   on any other. A named request (every 1099, 1098, 1095-A and 5498 row of
-   the 1040 is named) files only where the page names one of the return's
-   people; someone else's name, or none, parks it with the name tier's own
-   reason (`NAME_NOT_ON_PAGE`, `NAMES_ANOTHER_RETURN`, `NO_PEOPLE_ON_FILE`),
-   as a scan filed on required keywords parks today. An unnamed request
-   files by its keywords alone when the page names nobody, as decision 128's
-   table says - see Open question Q1.
+4. **The name on the page confirms a named request** (decision 128,
+   untouched). Nothing new: the household pass's name tier
+   (`filer._by_the_name`) runs on this filing as on any other. A named
+   request (every 1099, 1098, 1095-A and 5498 row of the 1040 is named)
+   files only where the page names one of the return's people; someone
+   else's name, or none, parks it with the name tier's own reason
+   (`NAME_NOT_ON_PAGE`, `NAMES_ANOTHER_RETURN`, `NO_PEOPLE_ON_FILE`), as a
+   scan filed on required keywords parks today. An unnamed request (the
+   `form 4562` rows of the business templates, the 990's 990-T row) files
+   by its keywords alone when the page names nobody, exactly as decision
+   128's table says; another return's name still vetoes it (Jason's ruling
+   on Q1, section 5). Guards 1, 2, 3, 5 and 6 apply to it in full.
 5. **The issuer rule still applies; the broker rule does not** (decisions
    93 and 146). Where the one row that passed is narrowed by issuer rows
    (`manifest.narrowing_rows`) the scan parks `ISSUER_NOT_NAMED`, the
@@ -192,16 +198,49 @@ included) and its required keywords did not match (the row has none) - is
    text-layer document does. The broker rule (`_filed_whole`, decision 146)
    reads `medium` only, which is text-layer only, so it never sees a scan:
    an OCR'd consolidated 1099 still parks with its shortlist.
+6. **Its title form is the only form the page names as itself** (Jason's
+   ruling on Q2, section 5). Two readings the judgment already holds
+   decide it, and no new one is made:
+   - every form the page prints its own name on - `Judgment.self_named`,
+     which is `content_check.self_named_forms` over the reading (decision
+     85's predicate asked of every mention, the reading decision 94's split
+     uses; computed once in the reader child, `content_check.judge`) - is
+     one of the row's title forms; and
+   - no other considered row's recorded evidence (the router's `record`,
+     which already holds every row's verdict evidence) carries a
+     form-number keyword (`RULE_REQUIRED` or `RULE_ANY`, `form_key` not
+     None) whose form is not one of the row's title forms - that is, the
+     page does not also show another request's own form number.
 
-**What parks, and how.** A scan that fails guard 1 or guard 3 parks as
+   A page that names two forms **of different families** as itself never
+   reaches this guard: decision 94's split reads it first
+   (`own_forms(self_named)` is not None, `_multi_form`), and it files a
+   copy under each or parks `SEVERAL_FORMS_UNSORTED`, exactly as today. A
+   page naming a second form **of the same family** (a 1099-C read as
+   "1099-G" printed beside a "Form 1099-S" line), or showing another
+   request's form number, fails this guard and parks as `OCR_ONLY`. A page
+   that names no form as itself in decision 85's shape - the commonest
+   scan, whose title runs "Form 1099-INT Interest Income - 2025" -
+   passes the first half (`self_named` is empty), so guard 6 costs nothing
+   on an ordinary single form.
+
+   **What guard 6 does not catch, said plainly.** A 1099-C whose "C" the
+   reader took for a "G" and which names no second form still shows
+   "1099-G" alone in its title, A06 accepts it on that, and A08 records no
+   form number (its "1099-c" was never read). Such a scan files under A06.
+   The bench's `wrong` count at the office (section 2) is how often that
+   happens; P284 or a later decision answers it if the number says so.
+
+**What parks, and how.** A scan that fails guard 1, 3 or 6 parks as
 `router.OCR_ONLY` exactly as today: the same sentence
 (`"matched only by OCR text (<rows>); a person should confirm"`), the same
 code `ocr-only`, the same short label "Read From Scan Only", the same
 candidates in the manifest's order, the same evidence record, the same
-reminder hold. Guard 4's parks are the name tier's (above); guard 5's is
-`ISSUER_NOT_NAMED`. Nothing is fuzzy: no tolerance on a keyword, a form
-number or a name, no one-character slack (decision 128's question 3b stays
-strict).
+reminder hold - except where decision 94's split already parked it
+`SEVERAL_FORMS_UNSORTED` before any of this is read. Guard 4's parks are
+the name tier's (above); guard 5's is `ISSUER_NOT_NAMED`. Nothing is fuzzy:
+no tolerance on a keyword, a form number or a name, no one-character slack
+(decision 128's question 3b stays strict).
 
 **What a filed scan says.** Its Reason is the new sentence
 `router.MATCHED_FROM_SCAN` = `"content matched this request's keywords,
@@ -230,21 +269,37 @@ prompt's before-and-after count is read correctly.
   a router sentence like the two filing sentences in the loop at line 947,
   which also live here; it is exported (no leading underscore), so the
   repo map lists it.
-- **New helper** `_form_number_in_title(evidence: tuple[Evidence, ...]) ->
-  bool`, placed just above `_shows_its_form_number` (line 306): True when
-  any `found` in `evidence` has `found.rule in (RULE_REQUIRED, RULE_ANY)`,
-  `form_key(found.term) is not None` and `found.where == WHERE_TITLE`.
-  `_shows_its_form_number` calls it for its title branch, so the two read
-  "a form number in the title" one way; its first-page branch is unchanged
-  and its result is unchanged for every input (decision 140's tests hold).
-  Docstring: guard 1, title only and why (a sideways page), reads only what
-  the verdict recorded.
+- **New helper** `_title_form_keys(evidence: tuple[Evidence, ...]) ->
+  frozenset[str]`, placed just above `_shows_its_form_number` (line 306):
+  the `form_key(found.term)` of every `found` in `evidence` with
+  `found.rule in (RULE_REQUIRED, RULE_ANY)`, `form_key(found.term) is not
+  None` and `found.where == WHERE_TITLE` - the row's title forms (guard 1
+  holds when it is not empty). `_shows_its_form_number` calls it for its
+  title branch (`if _title_form_keys(evidence): return True` before its
+  loop), so the two read "a form number in the title" one way; its
+  first-page branch is unchanged and its result is unchanged for every
+  input (decision 140's tests hold). Docstring: guard 1, title only and why
+  (a sideways page), reads only what the verdict recorded.
+- **New helper** `_names_only_its_own(title_forms: frozenset[str],
+  self_named: tuple[str, ...], record: dict[str, tuple[Evidence, ...]],
+  only: str) -> bool`, beside it - guard 6, read off what the decision
+  already holds and nothing else: False when any key in `self_named` (the
+  judgment's `self_named`, `content_check.self_named_forms` as the reader
+  child computed it for decision 94) is not in `title_forms`, or when any
+  identifier in `record` other than `only` carries a `found` with
+  `found.rule in (RULE_REQUIRED, RULE_ANY)` whose `form_key(found.term)` is
+  not None and not in `title_forms`; True otherwise. No new reading, no new
+  question to the judgment, nothing read off the page again. Its docstring
+  says Jason's ruling (Q2, 2026-10-11), why the same-family case is the
+  one it exists for (a different-family second form is decision 94's,
+  read earlier), and what it does not catch (1.1, guard 6).
 - **`_decide`** (line 722):
   - Beside `ocr_only` (line 786) add `scan_strong: list[str] = []  # OCR's
     looser match, and the row's own form number in the title (P282)`.
   - At line 848-849, where a passing row with no required match on an OCR
     reading is appended to `ocr_only`, keep that append unchanged and also
-    append to `scan_strong` when `_form_number_in_title(verdict.evidence)`.
+    append to `scan_strong` when `_title_form_keys(verdict.evidence)` is
+    not empty.
     `ocr_only` therefore still holds every looser OCR acceptance, in the
     manifest's order, so the park in the last clause below is byte for byte
     today's. `scan_strong` is never added to `medium`.
@@ -254,7 +309,8 @@ prompt's before-and-after count is read correctly.
     ```python
     # A scan whose title shows the request's own form number, accepted by
     # that request alone (P282, revising decision 50): ...
-    if len(scan_strong) == 1 and ocr_only == scan_strong:
+    if len(scan_strong) == 1 and ocr_only == scan_strong and _names_only_its_own(
+            _title_form_keys(record[scan_strong[0]]), judgment.self_named, record, scan_strong[0]):
         [only] = scan_strong
         issuer_rows = tuple(dict.fromkeys(
             narrowing_rows(i for i in items if _considers(i)).get(only, ())))
@@ -271,16 +327,22 @@ prompt's before-and-after count is read correctly.
                        code=reasons.MATCHED_CODE)
     ```
 
-    The comment block above it says the five guards in the software's
-    words, and why the issuer rule is asked here and the broker rule is
-    not. By construction nothing before this point has changed: `signed`,
+    The comment block above it says the six guards in the software's
+    words (2, the floor, is the reader's; 4, the name, is the household
+    pass's after this decision; 1, 3, 5 and 6 are here), why the issuer
+    rule is asked here and the broker rule is not, and that guard 6 reads
+    the judgment's `self_named` - the decision-94 reading - rather than a
+    reading of its own. `judgment.self_named` is read directly: the local
+    `self_named` above (line ~901) exists only inside the decision-94
+    block. By construction nothing before this point has changed: `signed`,
     `near`, the decision-94 split, the text-layer issuer rule, the broker
     rule and the strong/medium loop read exactly what they read today
     (for an OCR reading `medium` is always empty, and a non-empty `strong`
     has already filed or parked in the loop).
   - The `if ocr_only:` exit is untouched; its comment gains one sentence:
     what reaches it is a looser OCR match that did not show its form number
-    in the title, or that another request also accepted (P282).
+    in the title, that another request also accepted, or whose page names
+    another form as itself or shows another request's form number (P282).
 - **Comment at line 938** ("Never on OCR's word (``medium`` is text-layer
   only; decision 50)"): say that a scan's own filing (`scan_strong`, P282)
   is a separate list the broker rule never reads.
@@ -289,8 +351,9 @@ prompt's before-and-after count is read correctly.
 - **Module docstring**, lines 31-42 (the paragraph ending "those matches go
   to a person instead (``OCR_ONLY``)"): rewrite to say OCR text files on a
   row's required keywords as before, **or** on its looser keywords when the
-  page's title shows that row's own form number and no other row accepted
-  it (P282, revising decision 50, with decision 50's reason kept: a misread
+  page's title shows that row's own form number, no other row accepted
+  it, and the page names no other form as itself and shows no other
+  request's form number (P282, revising decision 50, with decision 50's reason kept: a misread
   word in the looser tier is how a document lands under the wrong request,
   which is why the form number must be in the title and the match must be
   alone); everything else is `OCR_ONLY`, a lead for a person. One more
@@ -362,6 +425,32 @@ where the made-up rows are:
 - `test_a_scan_filed_on_its_form_number_carries_no_answers_and_no_split` -
   `routing.answers == ()` and `routing.also == ()` for the filed 1099-INT
   (the broker rule and the split are not involved).
+- `test_a_scanned_1099_c_read_as_1099_g_beside_a_second_form_name_parks`
+  - guard 6, the case Jason ruled on: the 1040 catalog and a reading whose
+  title is "Form 1099-G 2025 Cancellation of Debt Copy B For Debtor" with a
+  second line "Form 1099-S 2025 Proceeds From Real Estate Transactions",
+  then the debt lines (`self_named_forms` gives `("1099g", "1099s")`, one
+  family, so decision 94's split does not read it; A06 alone passes guards
+  1 and 3; no 1040 row asks for the 1099-S): parks `OCR_ONLY`, candidates
+  `("A06",)`, byte for byte what it parks as today.
+- `test_a_scan_whose_page_shows_another_requests_form_number_parks` - guard
+  6's second half: two made-up rows, one with any-keyword `1099-int` (in
+  the title) and one with any-keyword `1099-oid` and a typed Date Pattern
+  for another year, the reading titled "Form 1099-INT Interest Income -
+  2025" and printing "Form 1099-OID" on its last lines often enough to be
+  the dominant form (`dominant_forms` gives `{"1099oid"}`), so the second
+  row's verdict fails on its year but its evidence records `1099-oid`:
+  parks `OCR_ONLY` with the first row (checked against the code on
+  `dcb02c3`).
+- `test_a_page_naming_only_its_own_form_files` - the 1040 catalog and a
+  reading whose title names "Form 1099-R 2025" in decision 85's shape
+  (`self_named_forms` gives `("1099r",)`) and no other form: files E02 with
+  `MATCHED_FROM_SCAN`. With the ordinary 1099-INT reading of the first
+  claim above (`self_named` empty) guard 6 passes too; that claim stands.
+- `test_a_page_naming_two_families_as_itself_is_decision_94s_and_never_reaches_the_scan_rule`
+  - a reading that prints a 1099-INT's and a W-2's own names: it splits or
+  parks `SEVERAL_FORMS_UNSORTED` exactly as `_multi_form` decides today,
+  and is never filed with `MATCHED_FROM_SCAN`.
 - **Renamed, claim restated:** `test_ocr_text_alone_never_routes_on_any_keywords`
   (line 156) becomes
   `test_ocr_text_does_not_file_on_a_looser_keyword_that_is_not_its_form_number_in_the_title`;
@@ -385,6 +474,14 @@ row added to the engagement's items:
   with `Recipient: John Park` the scan files under the 1099-INT row and its
   reason ends `"; name confirmed (John Park)"`; with a made-up name not on
   the return it parks `reasons.NAME_NOT_ON_PAGE`.
+- `test_a_scan_filed_on_its_form_number_into_an_unnamed_request_needs_no_name`
+  - Jason's ruling on Q1: a made-up unnamed row (`named=False`) with
+  any-keywords `form 4562, depreciation schedule`, and a reading "Form 4562
+  Depreciation and Amortization 2025" with the depreciation lines and no
+  person's name: files under that row with `MATCHED_FROM_SCAN` and no
+  "name confirmed" note (decision 128's table: unnamed, absent, stays); the
+  same reading naming a person on another return of the household parks
+  `NAMES_ANOTHER_RETURN`.
 - The existing test at 5251 keeps its name and claim; its docstring says
   "Decision 50 (as P282 revised it) through decision 128".
 
@@ -426,8 +523,8 @@ and no verdict changed.
   text files a document on a request's *required* keywords, as a text
   layer does; on a request's looser keywords it files only when the top of
   the page shows that request's own form number ("Form 1099-INT") and no
-  other request accepts it, and the name on the page still has to confirm
-  a named request. Any other looser match on OCR text goes to review as
+  other request accepts it and no other form is named on the page, and
+  the name on the page still has to confirm a named request. Any other looser match on OCR text goes to review as
   *Read From Scan Only*, with the lead noted, because a misread word is how
   a document lands under the wrong request." (No clause tells a person to
   run anything; `tests/test_single_source.py`'s one-time-step matcher
@@ -435,12 +532,13 @@ and no verdict changed.
 - `docs/runbook.md` section 4, the table "The index says":
   - the `router.OCR_ONLY` row (line 1898): "A scan or a photo with no text
     layer. OCR read it and a request accepted it on its looser words, but
-    the top of the page did not show that request's own form number, or
-    more than one request accepted it (P282)." What you do: unchanged.
+    the top of the page did not show that request's own form number, more
+    than one request accepted it, or the page also names another form
+    (P282)." What you do: unchanged.
   - a new row after `filer.FILED`: `router.MATCHED_FROM_SCAN` - "Filed from
     a scan or a photo: OCR read it, the top of the page shows the request's
-    own form number, no other request accepted it, and a named request's
-    name was confirmed (P282)." What you do: "Nothing. If it is wrong, send
+    own form number and names no other form, no other request accepted it,
+    and a named request's name was confirmed (P282)." What you do: "Nothing. If it is wrong, send
     it back to Needs Review from its row and file it by hand." (Use the
     app's own words for that action - the builder takes them from the
     runbook's existing `filer.UNFILED_BY_PERSON` wording.)
@@ -453,8 +551,9 @@ and no verdict changed.
   - `tracker/router.py` `notes`: the sentence "OCR text routes only on
     required keywords - an any-keyword match on OCR text is OCR_ONLY, a
     lead for a person, because a misread word is how a document lands under
-    the wrong request" gains P282's five guards in one sentence, and
-    `_form_number_in_title` / `MATCHED_FROM_SCAN` by name.
+    the wrong request" gains P282's six guards in one sentence, and
+    `_title_form_keys` / `_names_only_its_own` / `MATCHED_FROM_SCAN` by
+    name.
   - `tracker/ocr.py` `notes`: one sentence on `CONFIDENT_SCORE` and the
     floor in `_upright_lines`.
 - `pilot/DECISIONS.md` row P282 (written with this SPEC).
@@ -994,34 +1093,30 @@ survives one rebuild is Opus's to fix.
 
 ---
 
-## 5. Open questions for Jason
+## 5. Jason's rulings on the two questions (decided, 2026-10-11)
 
-**Q1 - a scan on an unnamed request.** Guard 4 is decision 128's table as
-it stands: a named request needs the name on the page, but an unnamed one
-files by its keywords when the page names nobody. The rows Part A newly
-reaches that are unnamed are the depreciation rows (`form 4562` on the
-1120, 1120-S and 1065) and the 990's 990-T row. Should a scan filed on its
-form number need a confirmed name even there?
-(a) No - decision 128's table as it is (the build does this unless you say
-otherwise).
-(b) Yes - a scan filed this way always needs the name on the page (a small
-change in the household pass; the one filing path that asks more of an
-unnamed row).
-Recommendation: (b), because a scan is the reading most likely to have
-come from another client's stack, and the business's own name is on a
-4562 and a 990-T.
+Both were put to Jason in this session and are decided; no question is
+open.
 
-**Q2 - a misread suffix.** The title guard answers decision 50's worry for
-a misread *word*, not for a misread *suffix letter*: a 1099-C whose "C" the
-reader takes for a "G" (the designer's G4 case in `tests/test_irs_forms.py`,
-the other way round) shows "1099-G" in its title, and A06 accepts it on
-that alone - A08 wants the 1099-C's own words as well as its number, so it
-does not compete. Under P282 that scan files under A06, the wrong request.
-(a) Accept it, and let the bench's `wrong` count at the office say how
-often it happens (the build does this unless you say otherwise).
-(b) Add a sixth guard: no other request recorded any of its keywords on the
-page (A08 records "cancellation of debt" here even though it fails), so a
-page that carries another request's words parks.
-Recommendation: (b); it is one more check on evidence already recorded,
-and it would also park the 1099-G read as 1099-C if A08's words were ever
-loosened.
+**Q1 - a scan on an unnamed request.** Decided: **no change to decision
+128.** A scan filing on its form number into an unnamed request (the
+`form 4562` rows, the 990's 990-T row) files by its keywords alone when no
+name is on the page, as decision 128's table says; another return's name
+still vetoes it, and the title guard, the confidence floor, exactly-one and
+guard 6 still apply (1.1, guard 4). The build changes nothing in the
+household pass. Test: `test_a_scan_filed_on_its_form_number_into_an_unnamed_request_needs_no_name`.
+
+**Q2 - a misread suffix.** Decided: **add the sixth guard.** Jason: "Yes,
+add the guard". A scan files on the new rule only when the form number in
+its title is the only form the page names as itself - read from the
+judgment's `self_named` (`content_check.self_named_forms`, decision 94's
+reading, not a new one) - and the page shows no other request's own form
+number; a page that does parks exactly as today, `SEVERAL_FORMS_UNSORTED`
+where decision 94's split fires and `OCR_ONLY` otherwise (1.1, guard 6;
+1.2, `_names_only_its_own`). What the guard does not catch - a misread
+suffix on a page that names no second form - is said in 1.1 and measured
+by the bench's `wrong` count. Tests:
+`test_a_scanned_1099_c_read_as_1099_g_beside_a_second_form_name_parks`,
+`test_a_scan_whose_page_shows_another_requests_form_number_parks`,
+`test_a_page_naming_only_its_own_form_files`,
+`test_a_page_naming_two_families_as_itself_is_decision_94s_and_never_reaches_the_scan_rule`.

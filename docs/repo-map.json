@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 281,
     "edges": 1297,
-    "reused": 228
+    "reused": 227
   },
   "node_types": [
     "artifact",
@@ -4609,7 +4609,7 @@
       "id": "pilot/DECISIONS.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "873f23b08ebbe383",
+      "sha256": "7a2b4ad4e547995f",
       "lines": 278
     },
     {
@@ -4742,8 +4742,8 @@
       "id": "pilot/SPEC-ocr-scans.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "2f28c07038c30fe3",
-      "lines": 1027
+      "sha256": "850e0c87028a4687",
+      "lines": 1122
     },
     {
       "id": "pilot/SPEC-rename.md",
