@@ -53,10 +53,13 @@ def w2_scan(path: Path) -> Path:
 
 
 def w2_photo(path: Path, *, turn: int = 0) -> Path:
-    """A photo of a W-2's head, turned ``turn`` degrees in its pixels."""
+    """A photo of a W-2's head, turned ``turn`` degrees in its pixels. The
+    lines sit at the top of a page-sized canvas: P285's box-line step takes a
+    stroke longer than a fortieth of the page's side for a rule, so type this
+    large needs a page at least forty letters tall and wide to stay type."""
     from PIL import Image, ImageDraw, ImageFont
 
-    image = Image.new("RGB", (1100, 260), "white")
+    image = Image.new("RGB", (2200, 1700), "white")
     draw = ImageDraw.Draw(image)
     for i, line in enumerate(W2_WORDS):
         draw.text((30, 30 + 70 * i), line, font=ImageFont.load_default(size=40), fill="black")
@@ -278,7 +281,7 @@ def test_a_reading_without_confidence_scores_fails_loudly():
         ocr._upright_lines(result)
 
 
-# ------------------------------------------------ the reader's settings (P283) ----
+# ------------------------------------------- the reader's settings (P283, P285) ----
 
 
 @pytest.fixture
@@ -312,32 +315,40 @@ def recorded_engines(monkeypatch):
     return RecordedEngine.built
 
 
-def test_the_shipped_settings_are_todays_reading():
-    """P283 changes no reading: the shipped settings are the 144 dpi, 0.5
-    floor, 2000 long side, no de-lining and small models the reader had
-    before they had a name, and this process reads with them."""
-    assert ocr.SHIPPED == ocr.ReaderSettings(144, 0.5, 2000, False, "small", "")
+def test_the_shipped_settings_are_the_prepared_reading_at_300_dpi():
+    """P285: the product reads a page drawn at 300 dpi and prepared (turned
+    level, black and white by Sauvola, cleared of specks and of box rules),
+    with the 0.5 floor and the small models; this process reads with them.
+    ``RAW`` is the reading P283 shipped: 144 dpi, floor 0.5, long side 2000,
+    every step off."""
+    assert ocr.SHIPPED == ocr.ReaderSettings(
+        render_dpi=300, confident_score=0.5, max_side_len=3300, deskew=True, binarize="sauvola",
+        denoise=True, delining=True, model_tier="small", model_folder="")
     assert ocr.SETTINGS is ocr.SHIPPED
     assert ocr.SHIPPED.confident_score == ocr.CONFIDENT_SCORE
+    assert ocr.RAW == ocr.ReaderSettings()
+    assert (ocr.RAW.render_dpi, ocr.RAW.confident_score, ocr.RAW.max_side_len) == (144, 0.5, 2000)
+    assert not (ocr.RAW.deskew or ocr.RAW.denoise or ocr.RAW.delining) and ocr.RAW.binarize == "off"
+    assert ocr.BINARIZERS == ("off", "otsu", "sauvola")
 
 
 def test_the_engine_is_built_with_the_settings_floor_and_long_side(recorded_engines, own_settings):
-    """With the shipped settings the params carry rapidocr's own defaults
-    (floor 0.5, long side 2000) and the three shipped model paths; with
-    other settings, theirs."""
+    """With the shipped settings the params carry the floor 0.5, the long side
+    of a letter page at 300 dpi (3300, P285) and the three shipped model
+    paths; with other settings, theirs."""
     folder = ocr.models_folder()
     ocr._build_engine(cuda=False)
     shipped = recorded_engines[-1]
-    assert shipped["Global.text_score"] == 0.5 and shipped["Global.max_side_len"] == 2000
+    assert shipped["Global.text_score"] == 0.5 and shipped["Global.max_side_len"] == 3300
     assert shipped["Det.model_type"].value == "small" and shipped["Rec.model_type"].value == "small"
     assert shipped["Det.model_path"] == str(folder / ocr.DETECTION_MODEL)
     assert shipped["Rec.model_path"] == str(folder / ocr.RECOGNITION_MODEL)
     assert shipped["Cls.model_path"] == str(folder / ocr.DIRECTION_MODEL)
 
-    ocr.use_settings(ocr.ReaderSettings(render_dpi=300, confident_score=0.7, max_side_len=3300))
+    ocr.use_settings(ocr.ReaderSettings(render_dpi=144, confident_score=0.7, max_side_len=2000))
     ocr._build_engine(cuda=False)
     other = recorded_engines[-1]
-    assert other["Global.text_score"] == 0.7 and other["Global.max_side_len"] == 3300
+    assert other["Global.text_score"] == 0.7 and other["Global.max_side_len"] == 2000
     assert other["Det.model_path"] == shipped["Det.model_path"]       # the same small models
 
 
@@ -391,9 +402,10 @@ def test_using_other_settings_drops_the_built_engine_and_says_what_it_replaced(m
 
 
 def test_unknown_settings_are_refused(own_settings):
-    """An unknown tier, a dpi under 72 and a floor outside 0-1 are refused
-    before anything changes."""
-    for settings in (ocr.ReaderSettings(model_tier="large"), ocr.ReaderSettings(render_dpi=71),
+    """An unknown tier, an unknown way to make a page black and white, a dpi
+    under 72 and a floor outside 0-1 are refused before anything changes."""
+    for settings in (ocr.ReaderSettings(model_tier="large"), ocr.ReaderSettings(binarize="adaptive"),
+                     ocr.ReaderSettings(render_dpi=71),
                      ocr.ReaderSettings(confident_score=-0.01), ocr.ReaderSettings(confident_score=1.01)):
         with pytest.raises(ValueError):
             ocr.use_settings(settings)
@@ -464,24 +476,291 @@ def test_delining_rejoins_a_letter_a_rule_crossed(thickness):
     assert (abs(after[300:320, 600:620, 0].astype(int) - 128) <= 8).all()
 
 
-def test_delining_is_off_in_the_product_and_on_hands_the_engine_the_delined_page(monkeypatch, own_settings):
-    """Shipped settings hand the engine the page as it stands; with
-    ``delining`` on, it is handed ``delined(page)``."""
-    page, cleaned, seen = object(), object(), []
+# ------------------------------------------------- the stage (P285) ----
+
+LETTER_300 = (2550, 3300)         # a letter page at 300 dpi, width by height
+
+
+def a_page_of(lines, size=LETTER_300, *, font_size=60, spacing=104):
+    """A white page with ``lines`` drawn in black, in memory."""
+    from PIL import Image, ImageDraw, ImageFont
+
+    page = Image.new("RGB", size, "white")
+    draw = ImageDraw.Draw(page)
+    font = ImageFont.load_default(size=font_size)
+    for i, line in enumerate(lines):
+        draw.text((160, 180 + spacing * i), line, font=font, fill="black")
+    return page
+
+
+def an_interest_page(*, squares: bool = False):
+    """A made-up 1099-INT at 300 dpi, and with ``squares`` two 30 px black
+    squares 2000 px apart on an otherwise empty row, whose centroids give a
+    measure of the lean independent of the estimator."""
+    from PIL import ImageDraw
+
+    from tests.samples import lines_1099_int
+
+    page = a_page_of(lines_1099_int("Harbor Test Bank", "John A. Smith", 2025))
+    if squares:
+        draw = ImageDraw.Draw(page)
+        draw.rectangle((200, 2000, 229, 2029), fill="black")
+        draw.rectangle((2200, 2000, 2229, 2029), fill="black")
+    return page
+
+
+def grey_of(page):
+    import numpy
+
+    return numpy.asarray(page.convert("L")).copy()
+
+
+def lean_of_squares(page) -> float:
+    """The angle in degrees of the line through the centroids of the two
+    squares in the band they sit in (the only ink there)."""
+    import math
+
+    import cv2
+    import numpy
+
+    ink = (grey_of(page)[1800:2300] < 128).astype(numpy.uint8)
+    count, _labels, _stats, centres = cv2.connectedComponentsWithStats(ink, connectivity=8)
+    assert count == 3, count                                     # the paper and the two squares
+    (x1, y1), (x2, y2) = sorted(map(tuple, centres[1:]))
+    return math.degrees(math.atan2(y2 - y1, x2 - x1))
+
+
+def only_the_grey(page):
+    """``page`` as a stage with a step on but nothing to do returns it: grey, as RGB."""
+    from PIL import Image
+
+    return Image.fromarray(grey_of(page), "L").convert("RGB")
+
+
+def test_every_step_off_hands_the_engine_the_page_as_it_stands(monkeypatch, own_settings):
+    """"Raw" in the bench is P283's reading: with every step off ``prepared``
+    returns the very image it was given, and the engine is handed its pixels
+    byte for byte (dtype, shape, values)."""
+    import dataclasses
+
+    import numpy
+
+    page = a_page_of(["Form 1099-INT"], (600, 300), font_size=40)
+    kept = []
+
+    class KeepsThePixels(FakeEngine):
+        def __call__(self, pixels):
+            kept.append(pixels)
+            return super().__call__(pixels)
+
+    off = dataclasses.replace(ocr.SHIPPED, deskew=False, binarize="off", denoise=False, delining=False)
+    for settings in (ocr.RAW, off):
+        assert ocr.prepared(page, settings) is page
+        ocr.use_settings(settings)
+        monkeypatch.setattr(ocr, "_ENGINE", KeepsThePixels(ocr.DEVICE_PROCESSOR, ["a line"]))
+        monkeypatch.setattr(ocr, "_DEVICE", ocr.DEVICE_PROCESSOR)
+        assert ocr.read_page(page) == "a line"
+        expected = ocr._pixels(page)
+        assert kept[-1].dtype == expected.dtype and kept[-1].shape == expected.shape
+        assert numpy.array_equal(kept[-1], expected)
+
+
+def test_the_engine_is_handed_the_prepared_page(monkeypatch, own_settings):
+    """``read_page`` prepares the page under the settings in force and hands
+    the engine the pixels of what came back."""
+    page, marker, asked, seen = object(), object(), [], []
+    monkeypatch.setattr(ocr, "prepared", lambda image, settings: asked.append((image, settings)) or marker)
     monkeypatch.setattr(ocr, "_pixels", lambda image: seen.append(image) or "pixels")
-    monkeypatch.setattr(ocr, "delined", lambda image: cleaned)
-    engine = FakeEngine(ocr.DEVICE_PROCESSOR, ["a line"])
-
-    monkeypatch.setattr(ocr, "_ENGINE", engine)
+    monkeypatch.setattr(ocr, "_ENGINE", FakeEngine(ocr.DEVICE_PROCESSOR, ["a line"]))
     monkeypatch.setattr(ocr, "_DEVICE", ocr.DEVICE_PROCESSOR)
-    assert ocr.read_page(page) == "a line"
-    assert seen == [page]
-
-    ocr.use_settings(ocr.ReaderSettings(delining=True))
-    monkeypatch.setattr(ocr, "_ENGINE", engine)
+    ocr.use_settings(ocr.SHIPPED)
+    monkeypatch.setattr(ocr, "_ENGINE", FakeEngine(ocr.DEVICE_PROCESSOR, ["a line"]))
     monkeypatch.setattr(ocr, "_DEVICE", ocr.DEVICE_PROCESSOR)
+
     assert ocr.read_page(page) == "a line"
-    assert seen == [page, cleaned]
+
+    assert asked == [(page, ocr.SHIPPED)] and seen == [marker]
+
+
+def test_a_page_skewed_two_degrees_is_read_level_within_a_third_of_a_degree():
+    """A made-up 1099-INT turned two degrees: the stage measures the lean as
+    two degrees, and after it the line through the two squares on the page is
+    level to within 0.3 degrees (a measure independent of the estimator)."""
+    import dataclasses
+
+    leaning = an_interest_page(squares=True).rotate(2, fillcolor="white")
+    assert abs(lean_of_squares(leaning)) > 1.5
+    assert abs(ocr._skew_degrees(grey_of(leaning)) - 2.0) <= 0.3
+
+    level = ocr.prepared(leaning, dataclasses.replace(ocr.RAW, deskew=True, max_side_len=3300))
+
+    assert abs(lean_of_squares(level)) <= 0.3
+
+
+def test_a_level_page_is_left_untouched_by_deskewing():
+    import dataclasses
+
+    page = an_interest_page()
+    assert ocr._skew_degrees(grey_of(page)) == 0.0
+
+    after = ocr.prepared(page, dataclasses.replace(ocr.RAW, deskew=True, max_side_len=3300))
+
+    assert after.tobytes() == only_the_grey(page).tobytes()
+
+
+def test_a_page_skewed_twelve_degrees_is_left_alone():
+    """A lean past five degrees is not guessed at: the search reaches half a
+    degree past the limit, so this page shows its best at the edge and the
+    stage changes nothing but the grey."""
+    import dataclasses
+
+    leaning = an_interest_page().rotate(12, fillcolor="white")
+    assert ocr._skew_degrees(grey_of(leaning)) == 0.0
+
+    after = ocr.prepared(leaning, dataclasses.replace(ocr.RAW, deskew=True, max_side_len=3300))
+
+    assert after.tobytes() == only_the_grey(leaning).tobytes()
+
+
+def test_a_quarter_turned_page_is_not_turned_by_deskewing(tmp_path):
+    """A page turned a quarter has no plain winner among the small angles,
+    and is left for the engine, which already reads it (decision 169, ruling 6)."""
+    from PIL import Image
+
+    photo = Image.open(w2_photo(tmp_path / "quarter.png", turn=90))
+
+    assert photo.height > photo.width
+    assert ocr._skew_degrees(grey_of(photo)) == 0.0
+
+
+def test_sauvola_blackens_faded_text_and_leaves_a_shadow_white_where_otsu_blackens_it():
+    """Faded text (grey 150 on grey 230 paper) is black after Sauvola's
+    threshold and the paper far from it stays white; a smooth shadow (230
+    falling to 100 across the page) and no text at all stays white where
+    Otsu's one threshold blackens a third of the page."""
+    import cv2
+    import numpy
+    from PIL import Image, ImageDraw, ImageFont
+
+    from tests.samples import lines_1099_int
+
+    size = (1600, 1000)
+    faded, marks = Image.new("L", size, 230), Image.new("L", size, 0)
+    for layer, fill in ((faded, 150), (marks, 255)):
+        draw = ImageDraw.Draw(layer)
+        draw.fontmode = "1"                                  # hard pixels: each one is text or paper
+        for i, line in enumerate(lines_1099_int("Harbor Test Bank", "John A. Smith", 2025)):
+            draw.text((60, 60 + 100 * i), line, font=ImageFont.load_default(size=40), fill=fill)
+    text = numpy.asarray(marks) > 0
+    out = ocr._sauvola(numpy.asarray(faded).copy())
+
+    assert text.sum() > 10_000
+    assert (out[text] == 0).mean() >= 0.95
+    window = ocr._sauvola_window(size[1], size[0])
+    near = cv2.dilate(text.astype(numpy.uint8), numpy.ones((2 * window + 1, 2 * window + 1), numpy.uint8)) > 0
+    assert (out[~near] == 255).all()
+
+    shadow = numpy.tile(numpy.linspace(230, 100, size[0]), (size[1], 1)).astype(numpy.uint8)
+    assert (ocr._sauvola(shadow) == 255).all()
+    assert (ocr._otsu(shadow) == 0).mean() > 0.30
+
+
+def test_the_sauvola_window_is_about_one_character_and_always_odd():
+    """A hundredth of the shorter side: 25 px on a letter page at 300 dpi,
+    15 (the floor) at 144 dpi, 25 on a phone photo held to 3300 by 2475."""
+    assert ocr._sauvola_window(3300, 2550) == 25
+    assert ocr._sauvola_window(1584, 1224) == 15
+    assert ocr._sauvola_window(2475, 3300) == 25
+    assert all(ocr._sauvola_window(n, n + 37) % 2 == 1 and ocr._sauvola_window(n + 37, n) % 2 == 1
+               for n in range(100, 5001))
+
+
+def test_a_lone_speck_is_removed_and_an_is_dot_and_a_hairline_are_kept():
+    """A one-pixel and a two-pixel speck go; a three-pixel L, a 3 x 3 dot (an
+    i's) and a one-pixel-wide, forty-long stroke stay, and every other pixel
+    of the page is unchanged."""
+    import numpy
+
+    page = numpy.full((200, 200), 255, numpy.uint8)
+    page[10, 10] = 0                                         # a 1-pixel speck
+    page[10, 50:52] = 0                                      # a 2-pixel speck
+    page[60, 10:12] = 0                                      # a 3-pixel L
+    page[61, 10] = 0
+    page[60:63, 60:63] = 0                                   # a 3 x 3 dot
+    page[120:160, 100] = 0                                   # a hairline, 40 long
+    expected = page.copy()
+    expected[10, 10] = 255
+    expected[10, 50:52] = 255
+
+    after = ocr._despeckled(page)
+
+    assert numpy.array_equal(after, expected)
+
+
+def test_a_page_longer_than_the_long_side_is_held_to_it_before_it_is_prepared():
+    """A legal page at 300 dpi (2550 by 4200) is held to a long side of 3300
+    under the shipped settings; a letter page keeps its size; under the raw
+    settings no page is ever resized."""
+    from PIL import Image
+
+    legal = Image.new("RGB", (2550, 4200), "white")
+    letter = Image.new("RGB", LETTER_300, "white")
+
+    held = ocr.prepared(legal, ocr.SHIPPED)
+    assert max(held.size) == 3300 and held.size == (2004, 3300)
+    assert ocr.prepared(letter, ocr.SHIPPED).size == letter.size
+    assert ocr.prepared(legal, ocr.RAW) is legal
+
+
+def test_the_stage_never_touches_the_page_it_is_given_and_is_the_same_every_time():
+    """The page's bytes are the same after the stage as before, and preparing
+    it twice gives the same pixels."""
+    page = an_interest_page(squares=True).rotate(2, fillcolor="white")
+    before = page.tobytes()
+
+    first, second = ocr.prepared(page, ocr.SHIPPED), ocr.prepared(page, ocr.SHIPPED)
+
+    assert page.tobytes() == before
+    assert first.tobytes() == second.tobytes() and first.mode == "RGB" and first.size == page.size
+
+
+def a_crooked_scan(path: Path, lines, degrees: float) -> Path:
+    """``tests.samples.scanned_pdf``'s page (150 dpi, no text layer) turned
+    ``degrees`` on the same canvas, as a flatbed scan of a page laid down a
+    little crooked. The canvas is kept: ``scanned_pdf(rotate=...)`` grows it,
+    and at that size the arm64 wheel of OpenCV 5.0.0.93 segfaults inside
+    rapidocr's own ``cv2.resize`` (found by the P285 build; the SPEC's
+    handoff names it)."""
+    from PIL import Image, ImageDraw, ImageFont
+
+    page = Image.new("RGB", (1275, 1650), "white")
+    draw = ImageDraw.Draw(page)
+    for i, line in enumerate(lines):
+        draw.text((80, 90 + 52 * i), line, font=ImageFont.load_default(size=30), fill="black")
+    page.rotate(degrees, fillcolor="white").save(path, "PDF", resolution=150)
+    return path
+
+
+def test_a_prepared_real_scan_of_a_1099_int_files_under_p282_level_and_skewed_two_degrees(tmp_path):
+    """The real reader under the shipped settings, end to end: an image-only
+    PDF of a made-up 1099-INT, and the same lines scanned two degrees
+    crooked, each file under the request that accepts it on its looser
+    keyword when the title shows the form number - read from a scan."""
+    from tests.samples import lines_1099_int
+    from tracker.router import MATCHED_FROM_SCAN, route_file
+
+    interest = RequestItem(identifier="A02", document="1099-INT", period="TY2025",
+                           allowed_extensions=("pdf",), min_size_kb=0, any_keywords=("1099-int",))
+    mortgage = RequestItem(identifier="C01", document="1098", period="TY2025",
+                           allowed_extensions=("pdf",), min_size_kb=0, any_keywords=("1098",))
+    lines = lines_1099_int("Harbor Test Bank", "John A. Smith", 2025)
+
+    scans = {"level": scanned_pdf(tmp_path / "scan level.pdf", lines),
+             "crooked": a_crooked_scan(tmp_path / "scan crooked.pdf", lines, 2)}
+    for name, scan in scans.items():
+        routing = route_file(scan, [interest, mortgage])
+        assert routing.identifier == "A02", (name, routing.reason)
+        assert routing.reason == MATCHED_FROM_SCAN, name
 
 
 # ----------------------------------------------------- the graphics card ----

@@ -282,8 +282,9 @@ def test_the_cache_version_moved_so_a_verdict_read_sideways_is_read_again(tmp_pa
     decision re-reads those scans once. (Decision 141 moved it again, for
     the notice's first-page phrases, decision 169 once more: a new reader
     means new verdicts on every scan and photo, and decision 190 again: a
-    verdict carries its cause's code.)"""
-    assert CACHE_VERSION == 13
+    verdict carries its cause's code, and P285 again: version 13 was read
+    before the page was prepared and drawn at 300 dpi.)"""
+    assert CACHE_VERSION == 14
 
     rule = item(required_keywords=("Chase",))
     engagement = an_engagement(tmp_path, rule)
@@ -424,8 +425,9 @@ def test_a_verdict_row_at_another_cache_version_is_ignored_and_dropped_on_save(t
     # version is carried per row now (decision 107), and it still means
     # all that. Version 10 was read before decision 141 kept a notice's
     # header phrases to its first page, version 11 by the reader before
-    # decision 169's, and version 12 carried no cause's code (decision 190).
-    assert CACHE_VERSION == 13
+    # decision 169's, version 12 carried no cause's code (decision 190), and
+    # version 13 was read before P285 prepared the page.
+    assert CACHE_VERSION == 14
     rule = item(required_keywords=("Chase",))
     engagement = an_engagement(tmp_path, rule)
     pdf = text_pdf(tmp_path / "s.pdf", "Chase Bank Statement December 2025")
@@ -1053,9 +1055,10 @@ def test_a_long_text_file_is_read_to_the_cap_and_says_so(tmp_path, monkeypatch):
 
 def test_a_giant_pdf_page_is_rendered_within_the_pixel_budget(tmp_path, monkeypatch):
     """Decision 137 (B1, the ruling's first half): each page is rendered at
-    ``min(2, sqrt(budget / page area))``. A maximum-size PDF page (14,400
-    points square) at the old fixed scale of 2 is some 830 million pixels,
-    handed to Pillow past its own guard. An ordinary page keeps scale 2."""
+    ``min(dpi / 72, sqrt(budget / page area))``. A maximum-size PDF page
+    (14,400 points square) at the old fixed scale of 2 is some 830 million
+    pixels, handed to Pillow past its own guard. An ordinary page keeps the
+    settings' scale: 300 / 72 as shipped (P285)."""
     import tracker.content_check as content_check
 
     pypdfium2 = pytest.importorskip("pypdfium2")
@@ -1085,17 +1088,16 @@ def test_a_giant_pdf_page_is_rendered_within_the_pixel_budget(tmp_path, monkeypa
     (giant_w, giant_h), (letter_w, letter_h) = asked
     assert giant_w * giant_h <= content_check.PIXEL_BUDGET * 1.0001
     assert giant_w * giant_h > content_check.PIXEL_BUDGET * 0.99       # read smaller, not refused
-    assert (letter_w, letter_h) == (612 * 2.0, 792 * 2.0)              # an ordinary page as before
+    assert letter_w == pytest.approx(612 * 300 / 72) and letter_h == pytest.approx(792 * 300 / 72)   # the shipped dpi
 
 
 def test_a_page_is_rendered_at_the_settings_dpi_within_the_pixel_budget(tmp_path, monkeypatch):
     """P283: the render scale is the settings' dpi over 72, read when the
-    page is rendered. At 300 dpi a letter page is asked at 612 * 300 / 72 by
-    792 * 300 / 72 (a letter page at 300 dpi is 7.6 million pixels, far
-    inside the budget), and the giant page is still held to the budget -
-    the budget stays the hard ceiling whatever dpi is asked. The settings
-    are put back after. The test at 1054 runs unchanged: an ordinary page
-    at the shipped 144 dpi is scale 2."""
+    page is rendered. Under the raw settings (144 dpi, the reading before
+    P285) a letter page is asked at 612 * 2 by 792 * 2, and the giant page is
+    still held to the budget - the budget stays the hard ceiling whatever dpi
+    is asked. The settings are put back after: a letter page is 300 / 72
+    again, as shipped."""
     import tracker.content_check as content_check
     from tracker import ocr
 
@@ -1119,7 +1121,7 @@ def test_a_page_is_rendered_at_the_settings_dpi_within_the_pixel_budget(tmp_path
         raise Stop("rendering stops here: the scale is what is under test")
 
     monkeypatch.setattr(pypdfium2.PdfPage, "render", render)
-    previous = ocr.use_settings(ocr.ReaderSettings(render_dpi=300))
+    previous = ocr.use_settings(ocr.RAW)
     try:
         for path in (pdf(tmp_path / "giant.pdf", 14400, 14400), pdf(tmp_path / "letter.pdf", 612, 792)):
             with pytest.raises(Stop):
@@ -1129,8 +1131,8 @@ def test_a_page_is_rendered_at_the_settings_dpi_within_the_pixel_budget(tmp_path
     (giant_w, giant_h), (letter_w, letter_h) = asked
     assert giant_w * giant_h <= content_check.PIXEL_BUDGET * 1.0001       # the budget still holds
     assert giant_w * giant_h > content_check.PIXEL_BUDGET * 0.99
-    assert letter_w == pytest.approx(612 * 300 / 72) and letter_h == pytest.approx(792 * 300 / 72)
-    assert content_check.render_scale(612, 792) == 2.0                  # put back: 144 dpi again
+    assert letter_w == pytest.approx(612 * 2) and letter_h == pytest.approx(792 * 2)
+    assert content_check.render_scale(612, 792) == 300 / 72             # put back: the shipped dpi again
 
 
 def test_a_photo_past_the_pixel_budget_is_read_smaller(tmp_path, monkeypatch):
