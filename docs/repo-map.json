@@ -15,9 +15,9 @@
     "a person sends the draft"
   ],
   "counts": {
-    "nodes": 291,
+    "nodes": 292,
     "edges": 1329,
-    "reused": 237
+    "reused": 238
   },
   "node_types": [
     "artifact",
@@ -4682,6 +4682,13 @@
       "layer": "docs",
       "sha256": "97b799fcb2e01095",
       "lines": 68
+    },
+    {
+      "id": "pilot/AUDIT-2026-10-12-path-traversal.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "2eac3250898ad0d4",
+      "lines": 52
     },
     {
       "id": "pilot/DECISIONS.md",
