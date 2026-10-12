@@ -100,7 +100,8 @@ closed.
 3. **`pilot/handoffs/` did not exist**; there was no earlier file to copy the
    shape from. This note follows the shape of the Part B section of
    `pilot/HANDOFF.md`, and the folder is new.
-4. The work is one commit, and the map is current at it.
+4. The work is the branch's commits above `main` at `62512fd6`: the build,
+   then one commit of fixes per review. The map is current at the tip.
 
 ## Open
 
@@ -108,8 +109,11 @@ closed.
   the old pipe's left-hand side (R7); stopping spec-reading commands from
   reading a terminal is a possible follow-up with its own SPEC (R8).
 - The office's bench session and the Mac check prompts now carry the new
-  command; neither has been run again. P285's merge touches the same files and
-  should be clean if it keeps off the review-codes section.
+  command; neither has been run again. A trial merge with P285's branch
+  (`claude/ocr-prepare`, review 2) conflicts in eight files: the bench's usage
+  lines, `docs/tools.md`, both prompts, `DECISIONS.md` and the three map files.
+  The lane that lands second resolves them; the review-codes code itself does
+  not conflict.
 
 ## Review 1
 
@@ -129,3 +133,19 @@ Finding 5 (the commit trailer names Claude Fable 5.1) is left as it is: the
 trailer states the model of the session that made the commit, and the session
 sets it, not the project rule on which model builds. Jason is told in the
 hand-back.
+
+## Review 2
+
+Verdict: nothing blocking; four NITs, all wording or placement, fixed in the
+next commit: the "1 line / N lines" helper moved under the stderr constants
+(R9's region); the SPEC's section 4 row quotes the Mac prompt's sentence as it
+reads; this note's commit paragraph no longer counts commits; and the trial
+merge with P285's branch is recorded above, eight files, none of them the
+review-codes code.
+
+## Review 3
+
+Verdict: nothing blocking; one NIT, this note's commit count, which the
+sentence above now avoids. The reviewer confirmed review 2's four fixes, the
+helper's place and its two uses, the SPEC row's match with the prompt, and the
+trial merge's eight files.

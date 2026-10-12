@@ -473,6 +473,11 @@ FIRM_STDERR_ON_SUCCESS = "the firm command also wrote {lines} on stderr, not sho
 UNKNOWN_KIND = "unknown"
 
 
+def _lines(n: int) -> str:
+    """``1 line`` or ``n lines``: what the stderr suffixes count."""
+    return "1 line" if n == 1 else f"{n} lines"
+
+
 def _run_firm():
     """Start ``python -m tracker.api firm`` as the cache fill does
     (``runner.fill_firm_cache``): input closed, so the page spec it reads to
@@ -597,11 +602,6 @@ def _cmd_run(ns: argparse.Namespace) -> int:
     run_bench(folder, expectations, _variants_of(ns), models=_models_of(ns), report_to=out)
     print(f"\nWrote {out}")
     return 0
-
-
-def _lines(n: int) -> str:
-    """``1 line`` or ``n lines``: what the stderr suffixes count."""
-    return "1 line" if n == 1 else f"{n} lines"
 
 
 def _cmd_review_codes(ns: argparse.Namespace) -> int:
