@@ -118,6 +118,13 @@ rewritten (4.1).
   (`ceil(11 × 300)`, the bench's `long_side(300)`), so a 300 dpi page is not
   shrunk back to 2000 (182 dpi) by rapidocr; a legal page (14 in, 4200 px) is
   still held to 3300, about 236 dpi. `SETTINGS: ReaderSettings = SHIPPED`.
+- **The detector never reads the 3300 page** (amendment 9.1). `_build_engine`
+  sets rapidocr's `Det.limit_type` to `"max"` (1.4): detection runs on a copy
+  the engine holds to its own 2000-pixel long side, as it did under P283, and
+  recognition crops its words from the 3300 one. Without it the engine's
+  memory on a letter page is 2.4-2.8 GB on this Mac, past the reading
+  child's 2 GB (`PROCESSOR_CHILD_MEMORY`, decision 169, unchanged), and the
+  pass ends the child as `reading-crashed`.
 - The class docstring describes the new fields; its defaults are `RAW`.
   **`use_settings`** also refuses (`ValueError`) a `binarize` not in
   `BINARIZERS`, naming the three; nothing else in it changes.
@@ -274,14 +281,47 @@ opening was rejected: both erase a one-pixel-wide stroke and round every
 letter's corners, which is exactly the fragile faded text the notes protect.
 
 **1.3.5 Box lines** - `_delined_grey(grey) -> numpy array`: today's
-`delined` arithmetic moved, unchanged, onto a greyscale array (steps 1-5 of
-SPEC-ocr-scans 2.2, the repair as amended). `delined(image)` stays, as
-`Image.fromarray(_delined_grey(<image as grey>), "L").convert("RGB")`, giving
-the same pixels as today (its two tests run unchanged). On a black-and-white
-page its two Otsu steps split exactly black from white - redundant there,
-harmless (one histogram pass each), and needed when the ablation de-lines a
-grey page; they stay. Its docstring drops "off in the product" and says it
-runs last in the stage.
+`delined` arithmetic moved onto a greyscale array (steps 1-5 of
+SPEC-ocr-scans 2.2, the repair as amended), **with step 3 amended (9.2): a
+rule is a run of ink that is both long and thin.**
+
+- *Long*: the opening kernels are `(max(DELINE_RULE_LEAST, width //
+  DELINE_FRACTION), 1)` and `(1, max(DELINE_RULE_LEAST, height //
+  DELINE_FRACTION))`, `DELINE_RULE_LEAST = 60`. A fortieth of the page is a
+  letter page's rule as before (63 and 82 px at 300 dpi); the least length is
+  a fifth of an inch at 300 dpi - shorter than the shortest cell edge a tax
+  form draws (about four tenths of an inch), longer than any stroke of 40 px
+  type - and it only bites on a canvas under 2400 px, where a fortieth falls
+  below it: on the 1100 x 260 `w2_photo` fixture a fortieth of the height was
+  6 px and every stem of its type was taken for a rule.
+- *Thin*: `heavy = cv2.morphologyEx(ink, cv2.MORPH_OPEN,
+  cv2.getStructuringElement(cv2.MORPH_RECT, (t, t)))`, `t =
+  max(DELINE_THICK_FLOOR, max(width, height) // DELINE_THICK_DIVISOR) + 1`
+  (`DELINE_THICK_FLOOR = 3`, `DELINE_THICK_DIVISOR = 500`; 7 px on a letter
+  page at 300 dpi, 4 at 144): every pixel that lies inside a `t x t` square
+  of ink belongs to something thicker than a rule. The rule mask is `(across
+  | down) & ~heavy`, then dilated by `DELINE_GROW` as before. Why: a printed
+  rule is half a point to a point and a half - 2 to 6 px at 300 dpi - while
+  the stem of 28 pt bold type is about 16 px and of 14 pt bold about 8. The
+  first build's step took the title of a 1099-INT at 28 pt for rules and the
+  reader lost its form number (`=orm 099- nterest ncome`); with the thin
+  test the title reads whole at 28 and 36 pt and at 100, 117 and 150 px of
+  PIL's default face, and a 3 px box rule still goes (no ink left in its
+  rows). The constants are named at module level with a `#:` comment each,
+  after the other `DELINE_*` ones; none is a setting.
+- The known limit, not fixed here: at 48 pt bold and above the
+  black-and-white step itself garbles the type (under Otsu too; the raw grey
+  page reads it), and the reader is poor at 72 pt even raw. Form titles are
+  8 to 20 pt; the bench's `no-binarize` row measures the rest on the
+  office's paper.
+
+`delined(image)` stays, as `Image.fromarray(_delined_grey(<image as grey>),
+"L").convert("RGB")`; its two tests run unchanged (their rules are 1 to 3 px
+on canvases where `t` is 4 or 5). On a black-and-white page its two Otsu
+steps split exactly black from white - redundant there, harmless (one
+histogram pass each), and needed when the ablation de-lines a grey page;
+they stay. Its docstring drops "off in the product" and says it runs last
+in the stage.
 
 ### 1.4 `read_page` and the self-test
 
@@ -293,6 +333,16 @@ runs last in the stage.
   The docstring says the page is prepared first.
 - `_self_test` reads its drawn line **unprepared**, as today: it tests that
   the card reads, not the paper.
+- `_build_engine` adds `"Det.limit_type": "max"` to its params (9.1), with a
+  comment: under rapidocr's default (`min`, 736) a page whose shorter side is
+  already past 736 is never shrunk for detection, so the detector ran on the
+  whole 3300 x 2550 page - about 2.8 GB on this Mac; under `max` its own
+  `get_preprocess` holds any page over 1500 px to a 2000-pixel copy
+  (`Det.limit_side_len` is ignored there and is not set), maps the boxes back
+  and `detect_and_crop` cuts the recognition crops from the 3300 page. So
+  detection is at P283's resolution and recognition at 300 dpi. Measured on
+  a drawn letter page: peak 1.03 GB and 0.41 s against 2.43 GB and 0.86 s,
+  the same lines read. Decision 169's cap is not touched.
 - The module docstring's settings paragraph is rewritten: the stage and its
   order, `RAW`, `SHIPPED`, P285, and why the verdict cache moved.
 
@@ -420,9 +470,15 @@ The reader bench section: the grid of 21, the names, `--prep` and
 
 ### 3.5 `pilot/mactest/PROMPT-OCR-SCANS.md`
 
-Line 172's expectation ("36 names and the first is
-dpi144-floor0.50-off-small") becomes "21 names and the first is
-dpi300-floor0.50-prep-small"; nothing else in it is touched.
+In the one sentence at lines 172-175 (the bench step's expectation):
+"36 names and the first is dpi144-floor0.50-off-small" becomes "21 names and
+the first is dpi300-floor0.50-prep-small"; "the 18 medium variants" becomes
+"the 8 medium variants"; "the 18 small variants" becomes "the 13 small
+variants" (9.3). Nothing else in the file is touched. (`main` has since
+changed the neighbouring `--expectations` path in that step to
+`made-up-expectations.csv`, PR #48; if GitHub's rebase reports a conflict
+there at this lane's turn, the lane rebases locally keeping both changes,
+as CLAUDE.md allows.)
 
 ---
 
@@ -490,8 +546,32 @@ unless a claim says otherwise, with `tests/samples.py`'s made-up lines.
   and the same lines with `rotate=2`; each routed with `route_file` against a
   made-up any-keyword 1099-INT row and a made-up 1098 row files the 1099-INT
   row with `router.MATCHED_FROM_SCAN`.
+- `test_a_thick_stroke_is_type_and_a_thin_one_a_rule_whatever_their_length`
+  (9.2) - on a 2550 x 3300 white canvas: a 3 px wide, 600 px tall line and a
+  600 px wide, 3 px tall one are white where they were after `_delined_grey`;
+  a 16 px wide, 160 px tall bar (a 28 pt bold stem) and a 160 x 16 one are
+  unchanged pixel for pixel; and the 1100 x 260 `w2_photo` canvas of the
+  P283 fixture, drawn as `w2_photo` draws it, comes back with exactly the
+  ink it had.
+- `test_a_large_title_keeps_its_form_number_when_prepared` (9.2) - the real
+  reader under `SHIPPED`, a 2550 x 3300 page: "Form 1099-INT Interest Income"
+  in `ImageFont.load_default(size=150)` over the 1099-INT's lines at
+  `size=46` and a 3 px box around the body; the first line read from the
+  prepared page contains "1099-INT", as the raw page's does (the first build
+  read `orm 099 1 n:crcs: ncomc` at this size).
+- `test_the_shipped_reading_of_a_scan_fits_the_reading_child` (9.1) - the
+  real reader through the product's own path, `content_check.judge_bounded`
+  in the pass's reading child on the processor, under `SHIPPED`: a drawn
+  five-page image-only PDF (the 1099-INT's lines on each page, drawn in the
+  test the way `samples.scanned_pdf` draws one page) gets a reading, not
+  `reading-crashed`; the judgment's words include the form number. Skipped
+  where the real-reader tests skip. The first build saw this child killed at
+  2814 MB.
+- **`w2_photo`** keeps its P283 canvas (1100 x 260) and docstring; the first
+  build's page-sized canvas and its note about the box-line step go (9.2).
 - **Changed**: `test_the_engine_is_built_with_the_settings_floor_and_long_side`
-  expects `Global.max_side_len` 3300 under `SHIPPED`;
+  expects `Global.max_side_len` 3300 and `Det.limit_type` `"max"` under
+  `SHIPPED`;
   `test_unknown_settings_are_refused` adds `binarize="adaptive"`.
 - **Unchanged, must pass prepared**: every other claim in the file, the
   real-reader ones included; `test_a_sideways_page_keeps_its_words` holds its
@@ -558,7 +638,9 @@ Renamed: `test_the_shipped_settings_are_todays_reading`,
 `test_the_grid_is_every_dpi_floor_delining_and_tier`. Replaced:
 `test_delining_is_off_in_the_product_and_on_hands_the_engine_the_delined_page`.
 Changed: the two `CACHE_VERSION == 13`, 4.2's two render claims, the
-engine's long side, the bench's flags, names, schema and long side.
+engine's long side and detector limit, the bench's flags, names, schema and
+long side. Added by the amendment (section 9): the three claims of 9.1 and 9.2
+in 4.1.
 
 ---
 
@@ -609,7 +691,10 @@ and a 4032 × 3024 photo (median of five); a whole reading at `SHIPPED` and at
 `RAW`, page and photo; the stage's peak memory on the photo (`ocr._footprint`
 before and after), against the child's 2 GB; and the gains `_skew_degrees`
 saw on the level, 2°, 12° and quarter-turned test pages, against
-`DESKEW_GAIN`.
+`DESKEW_GAIN`; and (9.1) the whole process's peak footprint after
+one shipped reading of a 2550 x 3300 page with the detector held, against
+the child's 2 GB, and the outcome of the five-page scan through the reading
+child.
 
 Jason's ceiling is 6 s a page (decision 127, D-2). If the shipped reading
 passes 3 s a page on this Mac, the build stops and says so before review: the
@@ -696,3 +781,60 @@ fixes them (k 0.2, R 128) and the bench measures Sauvola against Otsu and
 against no threshold, not k against k: each k would add a row per dpi and
 floor to a night that is already full. *Default: fixed now; if the Sauvola
 rows disappoint, P284 adds a k row or two.*
+
+---
+
+## 9. Amendment after the first build (2026-10-12)
+
+The first build (commits `3ff65bbe`, `3ed9567a`, `e52e514e` on
+`claude/ocr-prepare`) built sections 1-6 as written and reported two things
+the SPEC had not seen. Both were measured again by the orchestrating session
+before this amendment; the numbers are in the sections it changes. Jason's
+rulings (section 7) and the section 8 defaults are untouched: 300 dpi, the
+long side 3300, every step on, the child's cap as decision 169 set it.
+
+**9.1 The engine, not the stage, broke the memory cap.** The SPEC bounded the
+stage's memory (1.3.1) and never asked what the detector does with a 3300
+page: rapidocr's `Det.limit_type: min` leaves it whole, and the detector
+needs about 2.8 GB on this Mac, so the pass's reading child was killed
+(`reading-crashed`, "reached its memory limit (2 GB)") on a five-page drawn
+scan. The remedy is one engine parameter, `Det.limit_type: "max"` (1.1,
+1.4): detection on a 2000-pixel copy as under P283, recognition on the 300
+dpi page. 1.03 GB against 2.43 on a drawn letter page, the same lines read,
+and faster. Tests in 4.1; the handoff records the footprint (5.1). Raising
+`PROCESSOR_CHILD_MEMORY` or lowering the long side were the build's two
+options; neither is taken, since neither was needed.
+
+**9.2 The box-line step ate large type.** The first build enlarged the
+`w2_photo` fixture to a page-sized canvas because the step took every stem of
+its 40 px type for a rule, and said so. Measured on a letter page at 300 dpi,
+the same step took the stems of a 28 pt bold title for rules and the reader
+lost the form number the title guard (P282) depends on - a scan that should
+file would park. A rule is now long *and* thin (1.3.5): a least rule length
+of 60 px, and a thickness test that keeps any run thicker than a printed
+rule. 28 and 36 pt titles, and PIL's default face at 100 to 150 px, read
+whole; a 3 px box rule still goes; the P283 fixture comes back pixel for
+pixel and is restored. What stays open is written down in 1.3.5: at 48 pt
+bold and above the black-and-white step itself garbles type, which the
+office bench's `no-binarize` row measures.
+
+**9.3 The Mac check prompt's counts** (3.5): the sentence the SPEC named
+also counted "18 medium" and "18 small" variants; it now says 8 and 13.
+
+**Not P285's, recorded for its own row:** the arm64 macOS wheel of OpenCV
+(`opencv-python-headless` 5.0.0.93, KleidiCV) segfaults in `cv2.resize` for
+some sizes (for example 2598 x 3300 and 2596 x 3300; 2597 and 2600 pass),
+about one page size in twenty, with or without P285, inside rapidocr's own
+detection resize; in the child it parks the document as a crash. The office
+PC's Windows wheel does not show it. The Mac is a viewer and build machine,
+not the one that runs a clients root; the row waits for Jason.
+
+**The rebuild:** sonnet, on `claude/ocr-prepare`, exactly 9.1-9.3 and the
+tests and docs they name (the `_build_engine` comment, the `DELINE_*`
+constants and docstring, the curated map's `tracker/ocr.py` note gains one
+sentence on each, `pilot/HANDOFF.md` "Current work" gains the new
+measurements and drops the blocking finding), the gate of section 6 on the
+files the fixes touch (`test_ocr`, `test_content_check`, `test_layers`,
+`test_single_source`, `test_repo_map`, `test_tripwire`, `test_errors`; ruff;
+the map; the vocabulary report), then the Opus review of the whole branch
+against this SPEC as amended.
