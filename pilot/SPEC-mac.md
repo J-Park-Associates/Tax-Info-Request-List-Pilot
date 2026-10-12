@@ -688,8 +688,9 @@ slice it reads the child's memory:
   through `ctypes` (what Activity Monitor calls Memory);
 - on Linux, `/proc/<pid>/statm` resident pages.
 
-Past `self.memory_limit` (`PROCESSOR_CHILD_MEMORY`, 2 GB), the child is ended
-as a crash with today's words ("…; it had reached its memory limit (2 GB)").
+Past `self.memory_limit` (`PROCESSOR_CHILD_MEMORY`, 2 GB when this was built;
+4 GB since P285), the child is ended as a crash with today's words ("…; it had
+reached its memory limit (4 GB)", the number following the constant).
 The next document gets a fresh child, as the Windows job object does.
 `setrlimit(RLIMIT_AS)` is rejected because it is not a reliable cap on macOS.
 A footprint that cannot be read is no cap, and that is said once on the error

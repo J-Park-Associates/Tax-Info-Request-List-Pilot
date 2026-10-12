@@ -151,8 +151,10 @@ RETIRED_CACHE_FILENAME = "_content_cache.json"
 #: any other version is ignored on load and deleted on save (the cache is
 #: disposable), so a matcher change invalidates without a store version.
 #: Bump it whenever what a verdict means changes; docs/ROADMAP.md holds
-#: what each bump (3 to 13) was for.
-CACHE_VERSION = 13
+#: what each bump (3 to 13) was for; 14 is the pilot's P285
+#: (``pilot/DECISIONS.md``): the page is prepared and drawn at 300 dpi, so
+#: every verdict on a scan or a photo was reached on other pixels.
+CACHE_VERSION = 14
 
 #: A "text" PDF with fewer stripped characters than this *per page read*
 #: is a scan: what little it has is a scanner's stamp ("Scanned by
@@ -1746,8 +1748,8 @@ _STOP: _SafetyStop | None = None
 
 def render_scale(width: float, height: float) -> float:
     """The scale a PDF page of ``width`` x ``height`` points is rendered at
-    for OCR: the settings' dpi over 72 (``ocr.SETTINGS.render_dpi``, 144 as
-    shipped, so 2.0), or less, so the page never passes :data:`PIXEL_BUDGET`
+    for OCR: the settings' dpi over 72 (``ocr.SETTINGS.render_dpi``, 300 as
+    shipped, so 300/72), or less, so the page never passes :data:`PIXEL_BUDGET`
     (decision 137, B1), which stays the hard ceiling. At scale 1 a point is a
     pixel, so the budget over the page's own area is the square of the most
     it may be scaled by. Read at call time: the reader bench changes the
@@ -1774,7 +1776,7 @@ def _ocr_pdf(path: Path) -> str | None:
 
     Each page is rendered at :func:`render_scale` of its own size (decision
     137), so no page is ever drawn past :data:`PIXEL_BUDGET`: an ordinary
-    page at the settings' dpi (144 as shipped), a giant one smaller. It is read as it
+    page at the settings' dpi (300 as shipped), a giant one smaller. It is read as it
     comes (decision 169, ruling 6): the reader keeps the words of a page
     scanned sideways, and nothing turns it. The pages are joined with a
     line break, not :data:`PAGE_BREAK`, as they always were (SPEC-127.2X
@@ -1809,7 +1811,10 @@ def _ocr_image(path: Path) -> str | None:
     the commonest case there is, and EXIF alone settles it - and the photo
     is read as it then stands (decision 169, ruling 6).
 
-    Nothing is written: the photo on disk is the client's original.
+    Nothing is written: the photo on disk is the client's original. The reader
+    prepares the photo (:func:`tracker.ocr.prepared`, P285) in memory, as it
+    does a scanned page; the dpi does not apply to a photo, whose pixels are
+    what the phone took, and the preparation never enlarges it.
 
     Its size is checked against :data:`PIXEL_BUDGET` **before** it is
     decoded (decision 137): a JPEG past it is decoded smaller by its own

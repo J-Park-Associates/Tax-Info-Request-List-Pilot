@@ -49,17 +49,42 @@ costs a second reading; the turning rule arrives later as the amendment
 "169, upright", in the seam only.
 
 **The reader's settings are one place** (P283). How a page is drawn and
-read - the dots per inch a PDF page is rendered at, the confidence floor,
-the long side rapidocr shrinks an image to, whether a form's box rules are
-removed first (:func:`delined`), and which tier of models reads - are the
-fields of :class:`ReaderSettings`, and the ones this process reads with are
-:data:`SETTINGS`. The product reads with :data:`SHIPPED` and never changes
-them; the shipped values are exactly what the reader did before the seam
-existed (144 dpi, floor 0.5, long side 2000, no de-lining, the small
-models), which is why no verdict was invalidated. :func:`use_settings` is
-for the reader bench (``tools/reader_bench.py``) and the suite, which try
-other settings in their own process; it must never run in a reading child,
-which imports this module afresh and so always reads at :data:`SHIPPED`.
+read - the dots per inch a PDF page is drawn at, the confidence floor, the
+long side rapidocr shrinks an image to, the steps of preparation below, and
+which tier of models reads - are the fields of :class:`ReaderSettings`, and
+the ones this process reads with are :data:`SETTINGS`. The product reads with
+:data:`SHIPPED` and never changes them. :func:`use_settings` is for the
+reader bench (``tools/reader_bench.py``) and the suite, which try other
+settings in their own process; it must never run in a reading child, which
+imports this module afresh and so always reads at :data:`SHIPPED`.
+
+**A page is prepared before the reader reads it** (P285, Jason's ruling:
+"ocr dcouments should be preppred before feeing the machine,"). :func:`prepared`
+is the stage every page and photo goes through in :func:`read_page`, in
+memory and on a copy - the file is never touched and nothing is written. In
+the order each step needs its input in: the page is made grey and held to
+the settings' long side (:func:`_held`, so the threshold is taken at the
+resolution the engine reads); turned level if it leans a little
+(:func:`_skew_degrees`, :func:`_levelled`: a projection profile, which
+refuses to guess - no plain winner, or a lean past five degrees, leaves the
+page as it is); made black and white by a threshold that follows the
+paper's own shading (:func:`_sauvola`, or :func:`_otsu` for the bench's
+comparison); cleared of lone specks (:func:`_despeckled`: a count of
+connected pixels, not a median, which would erase a faded one-pixel stroke);
+and cleared of a form's long box rules (:func:`delined`, last, because a
+rule is a long run of ink and crisp on the thresholded page). Each step is a
+switch of :class:`ReaderSettings`; none of the constants is. :data:`RAW` is
+the reading P283 shipped (144 dpi, no step of preparation); :data:`SHIPPED`
+is the prepared one at 300 dpi. The verdict cache moved with it
+(``content_check.CACHE_VERSION``), because every verdict on a scan or a photo
+was reached on other pixels. The trade-off, said plainly: PP-OCR's models
+were trained on grey and colour crops, so pure black and white can lower
+recognition on a clean sharp scan while it helps a faded or shadowed one, a
+wrong turn is worse than none, and removing a rule can clip a letter it ran
+through - which is why each step is a switch and the bench measures each one.
+No model is added and no generative AI reads a page: every step is fixed
+pixel arithmetic in OpenCV and numpy, the same page prepared twice is the
+same pixels.
 
 **The reading's child** (decision 150, decision 169 R-4). The pass reads in
 a child process it can stop - the safety stop bounds the whole reading,
@@ -197,34 +222,56 @@ CONFIDENT_SCORE = 0.5
 MINIMUM_DPI = 72
 
 
+#: The ways a page is made black and white (:class:`ReaderSettings`'s
+#: ``binarize``): not at all, one threshold for the page (Otsu), or one per
+#: pixel from its neighbourhood (Sauvola, the shipped one).
+BINARIZERS = ("off", "otsu", "sauvola")
+
+
 @dataclass(frozen=True, slots=True)
 class ReaderSettings:
-    """Every setting of how a page is drawn and read, in one place (P283).
+    """Every setting of how a page is drawn, prepared and read, in one place
+    (P283, extended by P285), in the order a page is processed in.
 
     ``render_dpi``: a PDF page is drawn at ``render_dpi / 72``
     (:func:`tracker.content_check.render_scale`, which also holds it inside
-    the pixel budget). ``confident_score``: the floor under which a box is
-    not read, given to rapidocr as ``Global.text_score`` and held again in
-    :func:`_upright_lines`. ``max_side_len``: rapidocr's ``Global.max_side_len``,
-    the long side an image is shrunk to before detection. ``delining``:
-    remove a form's long box rules before reading (:func:`delined`).
+    the pixel budget); a photo has no dpi. ``confident_score``: the floor
+    under which a box is not read, given to rapidocr as ``Global.text_score``
+    and held again in :func:`_upright_lines`. ``max_side_len``: rapidocr's
+    ``Global.max_side_len``, and the long side :func:`prepared` holds a page
+    to. ``deskew``: turn a page leaning up to five degrees level.
+    ``binarize``: one of :data:`BINARIZERS`. ``denoise``: whiten lone specks.
+    ``delining``: whiten a form's long box rules (:func:`delined`).
     ``model_tier``: a key of :data:`MODEL_TIERS`. ``model_folder``: where the
     tier's detection and recognition models are; ``""`` is the app's own
     :func:`models_folder`.
 
-    The defaults are the reading as it was before this class existed."""
+    The defaults are :data:`RAW`, the reading as it was before the page was
+    prepared."""
 
     render_dpi: int = 144
     confident_score: float = CONFIDENT_SCORE
     max_side_len: int = 2000
+    deskew: bool = False
+    binarize: str = "off"
+    denoise: bool = False
     delining: bool = False
     model_tier: str = "small"
     model_folder: str = ""
 
 
-#: What the product reads with, and what this process reads with. The
-#: product never changes them (see the module's text on the settings).
-SHIPPED = ReaderSettings()
+#: The reading P283 shipped: 144 dpi, floor 0.5, long side 2000, no step of
+#: preparation, the small models. The bench's raw rows are built from it.
+RAW = ReaderSettings()
+#: What the product reads with (P285, Jason's ruling): the page drawn at 300
+#: dpi and prepared. 3300 is a letter page's long side at 300 dpi
+#: (``ceil(11 * 300)``, the bench's ``long_side(300)``), so a 300 dpi page is
+#: not shrunk back to 2000 (182 dpi) by rapidocr; a legal page (14 in, 4200
+#: px) is still held to 3300, about 236 dpi.
+SHIPPED = ReaderSettings(render_dpi=300, confident_score=0.5, max_side_len=3300, deskew=True,
+                         binarize="sauvola", denoise=True, delining=True, model_tier="small",
+                         model_folder="")
+#: What this process reads with. The product never changes it.
 SETTINGS: ReaderSettings = SHIPPED
 
 
@@ -339,6 +386,17 @@ def _build_engine(*, cuda: bool):
         "Global.model_root_dir": str(tier_folder),
         "Global.text_score": SETTINGS.confident_score,
         "Global.max_side_len": SETTINGS.max_side_len,
+        # P285: the detector reads a copy held to rapidocr's own 2000-pixel
+        # long side, as under P283; recognition still crops its words from
+        # the page at SETTINGS.max_side_len. Under rapidocr's default ("min",
+        # 736) a page whose shorter side is already past 736 is never shrunk
+        # for detection, so the detector ran on the whole 3300 x 2550 page and
+        # the process reached 2.4 GB, past the 2 GB the child then had; under
+        # "max" its own get_preprocess holds any page over 1500 px to a 2000
+        # px copy (Det.limit_side_len is ignored there and is not set), maps
+        # the boxes back, and the crops come from the 3300 page. Measured on a
+        # drawn letter page: peak 1.03 GB against 2.43 GB, the same lines read.
+        "Det.limit_type": "max",
         # rapidocr takes a model type as its own enum, never as text.
         "Det.model_type": ModelType(SETTINGS.model_tier),
         "Rec.model_type": ModelType(SETTINGS.model_tier),
@@ -451,8 +509,9 @@ def use_settings(settings: ReaderSettings) -> ReaderSettings:
     reading builds one with them, and return the settings it replaced.
 
     Refuses (``ValueError``) a ``model_tier`` that is not in
-    :data:`MODEL_TIERS`, a ``render_dpi`` under :data:`MINIMUM_DPI` and a
-    ``confident_score`` outside 0-1.
+    :data:`MODEL_TIERS`, a ``binarize`` that is not in :data:`BINARIZERS`, a
+    ``render_dpi`` under :data:`MINIMUM_DPI` and a ``confident_score``
+    outside 0-1.
 
     **For the reader bench and the suite only.** The product reads with
     :data:`SHIPPED`. This must never run in a reading child: the module's
@@ -463,6 +522,9 @@ def use_settings(settings: ReaderSettings) -> ReaderSettings:
     if settings.model_tier not in MODEL_TIERS:
         raise ValueError(f"no such model tier {settings.model_tier!r}; the tiers are "
                          f"{', '.join(MODEL_TIERS)}")
+    if settings.binarize not in BINARIZERS:
+        raise ValueError(f"no such way to make a page black and white {settings.binarize!r}; "
+                         f"the ways are {', '.join(BINARIZERS)}")
     if settings.render_dpi < MINIMUM_DPI:
         raise ValueError(f"a page cannot be drawn at {settings.render_dpi} dpi; "
                          f"the least is {MINIMUM_DPI}")
@@ -528,38 +590,79 @@ DELINE_RULE_FLOOR = 3
 #: (a 250th: about 4 px at 144 dpi, 10 px at 300) before the repair leaves
 #: its cut alone as a border, not a rule.
 DELINE_RULE_DIVISOR = 250
+#: A rule is also at least this many pixels long, however small the page: a
+#: fifth of an inch at 300 dpi, shorter than the shortest cell edge a tax
+#: form draws and longer than any stroke of 40 px type. It only bites on a
+#: canvas under 2400 px, where a fortieth falls below it.
+DELINE_RULE_LEAST = 60
+#: A rule is thin: a run of ink thicker than the larger of this many pixels
+#: and a five-hundredth of the page's longer side (plus one) is type. A printed
+#: rule is 2 to 6 px at 300 dpi, the stem of 28 pt bold type about 16.
+DELINE_THICK_FLOOR = 3
+#: The divisor of that thickness: the page's longer side over this, plus one.
+DELINE_THICK_DIVISOR = 500
+
+#: The long side the lean is measured on (:func:`_skew_degrees`): the page is
+#: reduced to this, so the 34 trial turns cost milliseconds.
+DESKEW_SAMPLE_SIDE = 1000
+#: The search reaches this far either side of level, half a degree past the
+#: limit, so a page leaning more shows its best at the search's edge.
+DESKEW_SEARCH_DEGREES = 5.5
+#: The steps of the coarse search and then of the fine one around its best.
+DESKEW_COARSE_STEP = 0.5
+#: The fine search's step, in degrees, around the coarse search's best.
+DESKEW_FINE_STEP = 0.1
+#: A page leaning more than this is left as it is: a wrong turn is worse
+#: than none.
+DESKEW_LIMIT_DEGREES = 5.0
+#: The best angle's score must beat the level score by this factor; a page
+#: with no plain winner (turned a quarter) is left alone.
+DESKEW_GAIN = 1.10
+#: A lean under this is not worth a resampling of the page.
+DESKEW_LEAST_DEGREES = 0.25
+
+#: Sauvola's window is a hundredth of the page's shorter side (25 px, one
+#: character, on a 300 dpi letter page), never under the floor, which keeps
+#: enough neighbourhood for a standard deviation to mean something.
+SAUVOLA_WINDOW_DIVISOR = 100
+#: The least window, in pixels, however small the page.
+SAUVOLA_WINDOW_FLOOR = 15
+#: Sauvola's k: 0.2 keeps a faded stroke black (0.5, the paper's value,
+#: lowers the threshold and drops the faint parts of a stroke).
+SAUVOLA_K = 0.2
+#: Sauvola's R: the largest standard deviation an 8-bit grey can show.
+SAUVOLA_R = 128
+
+#: A component of ink this many pixels or fewer is a speck (a dust mark the
+#: threshold left); an i's dot is three or four pixels across at 300 dpi.
+DENOISE_SPECK_AREA = 2
 
 
-def delined(image):
-    """A copy of ``image`` with a form's long box rules whitened (P283).
-
-    Jason's step 5, built as a switch the bench turns on and the product
-    leaves off until the numbers say otherwise. Pure and in memory: the page
-    it is given is never touched and nothing is written.
-
-    Ink is found as white on black (Otsu); a horizontal and a vertical
-    opening whose length is a fortieth of the page's side keep only strokes
-    longer than a letter; the two masks are joined, grown once, and whitened
-    in a greyscale copy. A letter a rule crossed lost a sliver as thick as
-    the rule plus the growth's margin, so a closing on the ink that remains,
-    a column then a row, as long as that sliver can be, rejoins the stroke;
-    only the bridging pixels inside the whitened rule are laid back as black,
-    so nothing outside the rule changes and two letters that merely sit close
-    are never joined. Returns an ``RGB`` image the size of the input."""
+def _delined_grey(grey):
+    """:func:`delined` on a greyscale array: a new array, the same size."""
     import cv2
     import numpy
-    from PIL import Image
 
-    grey = numpy.asarray(image.convert("L")).copy()
+    grey = grey.copy()
     height, width = grey.shape
     _level, ink = cv2.threshold(grey, 0, 255, cv2.THRESH_BINARY_INV | cv2.THRESH_OTSU)
     across = cv2.morphologyEx(ink, cv2.MORPH_OPEN,
                               cv2.getStructuringElement(cv2.MORPH_RECT,
-                                                        (max(1, width // DELINE_FRACTION), 1)))
+                                                        (max(DELINE_RULE_LEAST, width // DELINE_FRACTION), 1)))
     down = cv2.morphologyEx(ink, cv2.MORPH_OPEN,
                             cv2.getStructuringElement(cv2.MORPH_RECT,
-                                                      (1, max(1, height // DELINE_FRACTION))))
-    rules = cv2.dilate(cv2.bitwise_or(across, down), numpy.ones((DELINE_GROW, DELINE_GROW), numpy.uint8))
+                                                      (1, max(DELINE_RULE_LEAST, height // DELINE_FRACTION))))
+    # Thin: whatever lies inside a t x t square of ink is thicker than a
+    # printed rule, so it is type, however long its stem.
+    thick = max(DELINE_THICK_FLOOR, max(width, height) // DELINE_THICK_DIVISOR) + 1
+    heavy = cv2.morphologyEx(ink, cv2.MORPH_OPEN,
+                             cv2.getStructuringElement(cv2.MORPH_RECT, (thick, thick)))
+    rules = cv2.dilate(cv2.bitwise_and(cv2.bitwise_or(across, down), cv2.bitwise_not(heavy)),
+                       numpy.ones((DELINE_GROW, DELINE_GROW), numpy.uint8))
+    # The even opening kernel of a tall page drifts a pixel past the end of
+    # a stroke, and the growth would carry that into the stem's last row: type
+    # is never whitened, whatever lies beside it.
+    rules[heavy > 0] = 0
     grey[rules > 0] = 255
     span = DELINE_GROW + max(DELINE_RULE_FLOOR, min(width, height) // DELINE_RULE_DIVISOR) + 1
     _level, left = cv2.threshold(grey, 0, 255, cv2.THRESH_BINARY_INV | cv2.THRESH_OTSU)
@@ -571,6 +674,241 @@ def delined(image):
             ((0, span // 2), (0, span - 1 - span // 2))
         left = cv2.erode(cv2.dilate(left, kernel, anchor=grown[::-1]), kernel, anchor=eroded[::-1])
     grey[(left > 0) & (rules > 0)] = 0
+    return grey
+
+
+def delined(image):
+    """A copy of ``image`` with a form's long box rules whitened (P283), the
+    last step of :func:`prepared`.
+
+    Jason's step 5. Pure and in memory: the page it is given is never
+    touched and nothing is written.
+
+    Ink is found as white on black (Otsu); a horizontal and a vertical
+    opening whose length is a fortieth of the page's side (never under
+    :data:`DELINE_RULE_LEAST` pixels) keep only strokes longer than a letter.
+    A rule is long *and thin*: an opening with a square a little thicker than
+    a printed rule finds the ink that is thicker, the stems of large type,
+    and those are taken out of the mask, so a bold title is not mistaken for
+    a rule (the first build took a 28 pt title's stems for rules and the
+    reader lost the form number). The two masks are joined, grown once, and
+    whitened in a greyscale copy. A letter a rule crossed lost a sliver as
+    thick as the rule plus the growth's margin, so a closing on the ink that
+    remains, a column then a row, as long as that sliver can be, rejoins the
+    stroke;
+    only the bridging pixels inside the whitened rule are laid back as black,
+    so nothing outside the rule changes and two letters that merely sit close
+    are never joined. On a black-and-white page its two Otsu steps split
+    exactly black from white - redundant there, harmless, and needed when the
+    bench de-lines a grey page. Returns an ``RGB`` image the size of the
+    input."""
+    import numpy
+    from PIL import Image
+
+    grey = _delined_grey(numpy.asarray(image.convert("L")))
+    return Image.fromarray(grey, "L").convert("RGB")
+
+
+def _held(grey, long_side: int):
+    """``grey``, resized to ``long_side`` on its longer side if it is longer
+    (``INTER_AREA``), else as it is. Never enlarged: upscaling recovers
+    nothing. Why here: rapidocr shrinks any image past ``Global.max_side_len``
+    anyway, so doing it first takes the threshold at the resolution the
+    engine reads (a black-and-white page resampled afterwards turns grey at
+    every edge again), and it bounds the stage's memory - a photo may be 40
+    million pixels, and Sauvola's float arrays at that size would near the
+    reading child's cap."""
+    import cv2
+
+    height, width = grey.shape
+    longest = max(height, width)
+    if longest <= long_side:
+        return grey
+    ratio = long_side / longest
+    return cv2.resize(grey, (max(1, round(width * ratio)), max(1, round(height * ratio))),
+                      interpolation=cv2.INTER_AREA)
+
+
+def _skew_scores(ink, angles) -> list[float]:
+    """The variance of the row sums of ``ink`` turned by each of ``angles``
+    about its centre: lines of print stacked level make tall, separate peaks,
+    and a lean smears them."""
+    import cv2
+    import numpy
+
+    height, width = ink.shape
+    centre = (width / 2, height / 2)
+    scores = []
+    for angle in angles:
+        turned = cv2.warpAffine(ink, cv2.getRotationMatrix2D(centre, float(angle), 1.0), (width, height),
+                                flags=cv2.INTER_NEAREST, borderMode=cv2.BORDER_CONSTANT, borderValue=0)
+        scores.append(float(numpy.var(turned.sum(axis=1, dtype=numpy.float64))))
+    return scores
+
+
+def _skew_gain(grey) -> tuple[float, float]:
+    """(the best angle, the best score over the level score) - the numbers
+    :func:`_skew_degrees` judges. The angle is the one the page leans by,
+    counter-clockwise positive as ``PIL.Image.rotate`` turns; ``(0.0, 0.0)``
+    when the sample has no ink."""
+    import cv2
+    import numpy
+
+    height, width = grey.shape
+    ratio = DESKEW_SAMPLE_SIDE / max(height, width)
+    if ratio < 1:
+        grey = cv2.resize(grey, (max(1, round(width * ratio)), max(1, round(height * ratio))),
+                          interpolation=cv2.INTER_AREA)
+    _level, ink = cv2.threshold(grey, 0, 255, cv2.THRESH_BINARY_INV | cv2.THRESH_OTSU)
+    if not ink.any():
+        return 0.0, 0.0
+    coarse = numpy.arange(-DESKEW_SEARCH_DEGREES, DESKEW_SEARCH_DEGREES + DESKEW_COARSE_STEP / 2,
+                          DESKEW_COARSE_STEP)
+    scores = _skew_scores(ink, coarse)
+    best = float(coarse[int(numpy.argmax(scores))])
+    fine = numpy.arange(best - DESKEW_COARSE_STEP, best + DESKEW_COARSE_STEP + DESKEW_FINE_STEP / 2,
+                        DESKEW_FINE_STEP)
+    fine_scores = _skew_scores(ink, fine)
+    top = int(numpy.argmax(fine_scores))
+    level = _skew_scores(ink, [0.0])[0]
+    # The trial turn that levels the page is the opposite of the way it leans.
+    return -round(float(fine[top]), 1), (fine_scores[top] / level if level > 0 else 0.0)
+
+
+def _skew_degrees(grey) -> float:
+    """The angle ``grey`` leans by, counter-clockwise positive as
+    ``PIL.Image.rotate`` turns (a level page turned by ``rotate(2)`` gives
+    about 2.0), or **0.0 - leave it alone** when the sample has no ink, the
+    best angle is past :data:`DESKEW_LIMIT_DEGREES`, its score does not beat
+    the level score by :data:`DESKEW_GAIN` (no plain winner: a page turned a
+    quarter has none, and is left for the engine, which already reads it), or
+    the angle is under :data:`DESKEW_LEAST_DEGREES`.
+
+    A projection profile, not ``minAreaRect`` (the outline of everything
+    inked - a logo or a stamp sways it - and OpenCV changed its angle
+    convention in 4.5) and not a Hough transform (it needs long straight
+    edges, which a letter or a receipt may not have). The profile asks the
+    question directly: at which angle do the lines of print stack most
+    sharply. The search reaches half a degree past the limit so a page
+    leaning more shows its best at the search's edge, not inside it. It
+    matters for P282: ``_upright_lines`` groups boxes into lines by their
+    centres, and a 2 degree lean drifts two lines' height over a page's width."""
+    angle, gain = _skew_gain(grey)
+    if (gain < DESKEW_GAIN or abs(angle) > DESKEW_LIMIT_DEGREES
+            or abs(angle) < DESKEW_LEAST_DEGREES):
+        return 0.0
+    return angle
+
+
+def _levelled(grey, degrees: float):
+    """``grey`` turned back by ``degrees`` (what :func:`_skew_degrees` said it
+    leans by), on the same canvas, the new corners paper white. The same size,
+    not expanded: nothing printed is cut that the scanner had not already cut,
+    and the boxes keep the page's frame."""
+    import cv2
+
+    height, width = grey.shape
+    matrix = cv2.getRotationMatrix2D((width / 2, height / 2), -degrees, 1.0)
+    return cv2.warpAffine(grey, matrix, (width, height), flags=cv2.INTER_LINEAR,
+                          borderMode=cv2.BORDER_CONSTANT, borderValue=255)
+
+
+def _otsu(grey):
+    """One threshold for the whole page, from its histogram: black and white."""
+    import cv2
+
+    _level, bright = cv2.threshold(grey, 0, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)
+    return bright
+
+
+def _sauvola_window(height: int, width: int) -> int:
+    """Sauvola's window: a hundredth of the shorter side, never under the
+    floor, always odd so a pixel sits at its window's centre."""
+    return max(SAUVOLA_WINDOW_FLOOR, min(height, width) // SAUVOLA_WINDOW_DIVISOR) | 1
+
+
+def _sauvola(grey):
+    """A threshold per pixel from its window (Sauvola): ``T = m (1 + k (s / R
+    - 1))``, ``m`` and ``s`` the window's mean and standard deviation, from
+    two box filters in single precision (the mean, and the mean of the
+    squares), so constant time per pixel whatever the window. Box filters,
+    not integral images: the integral images of the padded page in double
+    precision, with their four-corner differences, held more at once and the
+    allocator kept 404 MB of it afterwards against 265 MB, and were slower
+    (49 ms against 29 on a 2550 x 3300 page), for the same pixels to one in
+    eight million. A pixel at or under its threshold is ink (0), any other
+    paper (255); ``<=`` so a solid black fill stays black.
+
+    R is the largest standard deviation an 8-bit grey can show, so ``T`` stays
+    between ``0.8 m`` and ``m``: a flat region - clean paper, or a smooth
+    shadow - is never darker than its own threshold and stays white, while a
+    stroke beside paper raises ``s`` and falls under it. A dark fill wider
+    than the window keeps only its edges; tax forms print few."""
+    import cv2
+    import numpy
+
+    window = _sauvola_window(*grey.shape)
+    single = grey.astype(numpy.float32)
+    mean = cv2.boxFilter(single, -1, (window, window), normalize=True,
+                         borderType=cv2.BORDER_REFLECT_101)
+    squares = cv2.boxFilter(single * single, -1, (window, window), normalize=True,
+                            borderType=cv2.BORDER_REFLECT_101)
+    deviation = numpy.sqrt(numpy.maximum(0.0, squares - mean * mean))
+    threshold = mean * (1.0 + SAUVOLA_K * (deviation / SAUVOLA_R - 1.0))
+    return numpy.where(grey <= threshold, numpy.uint8(0), numpy.uint8(255))
+
+
+def _despeckled(grey):
+    """``grey`` with every lone speck whitened: the ink (Otsu's, which on a
+    black-and-white page is exactly black from white) is labelled by connected
+    pixels, and a component of :data:`DENOISE_SPECK_AREA` pixels or fewer is
+    whitened. Nothing else changes, pixel for pixel. A median or an opening
+    was rejected: both erase a one-pixel-wide stroke and round every letter's
+    corners, which is exactly the fragile faded text to protect."""
+    import cv2
+
+    _level, ink = cv2.threshold(grey, 0, 255, cv2.THRESH_BINARY_INV | cv2.THRESH_OTSU)
+    _count, labels, stats, _centres = cv2.connectedComponentsWithStats(ink, connectivity=8)
+    speck = stats[:, cv2.CC_STAT_AREA] <= DENOISE_SPECK_AREA
+    speck[0] = False                        # label 0 is the paper
+    cleaned = grey.copy()
+    cleaned[speck[labels]] = 255
+    return cleaned
+
+
+def prepared(image, settings: ReaderSettings):
+    """``image`` prepared for the reader (P285): a grey copy, held to the
+    settings' long side, then - each only when its switch is on, in this
+    order - levelled, made black and white, cleared of specks and cleared of
+    box lines; returned as an ``RGB`` image. The order is the order each step
+    needs its input in: level before black and white (a black-and-white page
+    turned by a fraction of a degree gets jagged, grey-edged strokes), black
+    and white before specks (a speck is only a speck once paper and ink are
+    told apart), box lines last (a rule is a long run of ink, crisp on the
+    thresholded page).
+
+    With every step off it returns ``image`` itself, untouched: that is what
+    makes the bench's raw rows exactly the reading before P285. With any step
+    on the page is grey - deskew alone included - replicated to RGB for the
+    engine. Pure, in memory: ``image`` is never touched and nothing is
+    written; the same page prepared twice is the same pixels."""
+    import numpy
+    from PIL import Image
+
+    if (not settings.deskew and settings.binarize == "off" and not settings.denoise
+            and not settings.delining):
+        return image
+    grey = _held(numpy.asarray(image.convert("L")).copy(), settings.max_side_len)
+    if settings.deskew and (lean := _skew_degrees(grey)):
+        grey = _levelled(grey, lean)
+    if settings.binarize == "otsu":
+        grey = _otsu(grey)
+    elif settings.binarize == "sauvola":
+        grey = _sauvola(grey)
+    if settings.denoise:
+        grey = _despeckled(grey)
+    if settings.delining:
+        grey = _delined_grey(grey)
     return Image.fromarray(grey, "L").convert("RGB")
 
 
@@ -585,13 +923,14 @@ def read_page(image, *, name: str = "") -> str:
     """One page or photo's words, a line per line of print, in reading order.
 
     ``image`` is a PIL image the right way up as far as the file says (a
-    photo's EXIF turn already undone); ``name`` is the document's, for the
-    one warning a fault on the card gives. Raises
+    photo's EXIF turn already undone); the page is prepared first
+    (:func:`prepared`, in memory, the image itself untouched). ``name`` is the
+    document's, for the one warning a fault on the card gives. Raises
     :class:`ReaderUnavailable` when no engine can be built on this machine,
     and whatever the processor's engine raised when it fails on the page."""
     global _ENGINE, _DEVICE
     engine = _engine()
-    pixels = _pixels(delined(image) if SETTINGS.delining else image)
+    pixels = _pixels(prepared(image, SETTINGS))
     try:
         return _text_of(engine(pixels))
     except Exception as exc:
@@ -673,8 +1012,11 @@ DOCUMENTS_PER_CHILD = 100
 #: The most memory a reading child may commit (SPEC-169 section 9), set on
 #: its job object on Windows and watched by the pass elsewhere: a processor
 #: child, and a child on the graphics card. Past it the child ends and is
-#: replaced.
-PROCESSOR_CHILD_MEMORY = 2 * 1024**3
+#: replaced. Decision 169's 2 GB was a reader at 144 dpi and a 2000 px long
+#: side; P285's 300 dpi page needs about 2.3 GB on a Mac and more where
+#: Windows counts committed memory, and 4 GB is the first power of two with
+#: room above that. Assumed (P285, 9.4), pending Jason's ruling.
+PROCESSOR_CHILD_MEMORY = 4 * 1024**3
 GRAPHICS_CARD_CHILD_MEMORY = 6 * 1024**3
 #: Off Windows no job object caps a child, so the pass reads the child's
 #: memory itself, between the slices it waits for an answer in (R31). Half a

@@ -1,18 +1,21 @@
-"""The reader bench: which reading settings help on the firm's own paper (P283).
+"""The reader bench: which reading settings help on the firm's own paper (P283, P285).
 
-Nobody has measured which settings of the reader help on the firm's scans
-and photos. The reader draws a scanned page at 144 dots per inch, below the
-200-300 every reader wants; the firm's own pre-processing notes ask for
-removing a form's box lines and end with the open item "how to measure which
-steps actually help". This tool is that measurement. It reads a folder of
-already-sorted documents once per combination of settings - the dots per
-inch a page is drawn at, the confidence floor, box-line removal on or off,
-the small or the medium models - and writes down, in counts and seconds
-only, how many landed where a person had put them and how long each took.
-Nothing the product reads changes: the settings live in
-:class:`tracker.ocr.ReaderSettings`, the product reads with the shipped
-ones, and :func:`tracker.ocr.use_settings` is for this tool and the suite.
-P284 ships whatever the office numbers favour, in a SPEC of its own.
+The firm's own pre-processing notes end with the open item "how to measure
+which steps actually help". This tool is that measurement. It reads a folder
+of already-sorted documents once per combination of settings - the dots per
+inch a page is drawn at, the confidence floor, the page prepared or raw, the
+small or the medium models - and writes down, in counts and seconds only, how
+many landed where a person had put them and how long each took. The product
+reads prepared (P285): a page is drawn at 300 dots per inch, turned level,
+made black and white, cleared of specks and of a form's box lines, in memory
+(:func:`tracker.ocr.prepared`). **Raw** is the reading before P285 - 144
+dots per inch, no step (:data:`tracker.ocr.RAW`) - and the 300 dpi raw rows
+are P283's reading at the sharper render, so P285 needs no second checkout:
+its "before" is on the same code. The settings live in
+:class:`tracker.ocr.ReaderSettings`, the product reads with the shipped ones,
+and :func:`tracker.ocr.use_settings` is for this tool and the suite. P284
+ships whatever the office numbers favour, in a SPEC of its own, now choosing
+among prepared settings.
 
 **It reads in its own process, and that is the whole reason it cannot use
 the backtest's reading.** A reading child imports :mod:`tracker.ocr` afresh,
@@ -60,15 +63,26 @@ failed - is in the document count and in none of the three kinds: no setting
 changes what becomes of it and nothing is read for it.
 
 **The variants** are a fixed grid (:func:`grid`): every combination of
-:data:`DPIS`, :data:`FLOORS`, :data:`DELININGS` and :data:`TIERS`, named
-``dpi<d>-floor<f>-<off|on>-<tier>``. The shipped one is always measured
-first. A variant's long side is ``max(2000, ceil(11 * dpi))``, a letter
-page's long side at that dpi, so 300 dpi is not silently shrunk back to 182
-by the reader. The medium models are never shipped and never fetched: a
-person puts them in a folder (``--models``), and a variant for them without
-the folder, or with a file missing, is in the report as not measured with
-:data:`MEDIUM_NOT_MEASURED`. ``ocr._refuse_downloads`` stands under the
-bench, and it calls nothing of rapidocr's downloader.
+:data:`DPIS`, :data:`FLOORS`, :data:`PREPS` and :data:`TIERS` (2 x 2 x 2 x 2 =
+16), then the **ablation**: the shipped settings at 300 dpi, floor 0.5, small
+models, with one step turned off, or Otsu's threshold in Sauvola's place
+(:data:`ABLATIONS`, 5 rows) - 21 in all, which say which step earns its place.
+A name is ``dpi<d>-floor<f>-<prep>-<tier>``, ``<prep>`` being ``prep``,
+``raw`` or ``prep-<ablation>``; the shipped one, ``dpi300-floor0.50-prep-small``,
+is always measured first. A ``prep`` variant is built from
+:data:`tracker.ocr.SHIPPED`, a ``raw`` one from :data:`tracker.ocr.RAW`, so
+``dpi144-floor0.50-raw-small`` is exactly the reading before P285 in its
+settings and pixels, but not in the detector's own setting (``Det.limit_type``
+``"max"``, 9.1), which is the engine's and not a field: the detector no longer
+enlarges a page whose shorter side is under 736 px, which P283's default did;
+measured on drawn pages the same words are read. A variant's
+long side is ``max(2000, ceil(11 * dpi))``, a letter page's long side at that
+dpi, so 300 dpi is not silently shrunk back to 182 by the reader. The medium
+models are never shipped and never fetched: a person puts them in a folder
+(``--models``), and a variant for them without the folder, or with a file
+missing, is in the report as not measured with :data:`MEDIUM_NOT_MEASURED`.
+``ocr._refuse_downloads`` stands under the bench, and it calls nothing of
+rapidocr's downloader.
 
 **Each routing is scored** against what a person did, in four outcomes
 (:func:`outcome_of`): ``right`` (it filed under the expected row, or the
@@ -90,13 +104,15 @@ alike, and says a refusal by its kind alone.
 
     python tools/reader_bench.py variants
     python tools/reader_bench.py run <folder> --out <report> [--expectations <file>]
-           [--models <folder>] [--dpi 144,300] [--floor 0.5,0.7] [--delining off,on] [--tier small,medium]
+           [--models <folder>] [--dpi 300,144] [--floor 0.5,0.7] [--prep prep,raw]
+           [--ablation on|off] [--tier small,medium]
     python tools/reader_bench.py review-codes [--out <file>]
 """
 
 from __future__ import annotations
 
 import argparse
+import dataclasses
 import itertools
 import json
 import math
@@ -132,16 +148,22 @@ from tracker import content_check, errors, ocr, reasons  # noqa: E402
 from tracker.router import route_file  # noqa: E402
 from tracker.settings import process_scratch  # noqa: E402
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 #: The grid: every combination of these four. The first of each is the
 #: shipped value (``ocr.SHIPPED``), which is how the shipped variant is found.
-DPIS = (144, 200, 300)
-FLOORS = (0.5, 0.7, 0.85)
-DELININGS = (False, True)
+#: 300 is the notes' target and the shipped dpi; 144 is P283's, so its raw
+#: rows are the reading before P285.
+DPIS = (300, 144)
+FLOORS = (0.5, 0.7)
+#: ``prep`` is ``ocr.SHIPPED``'s steps, ``raw`` is every step off.
+PREPS = ("prep", "raw")
 TIERS = ("small", "medium")
+#: The ablation rows, each the shipped settings at 300 dpi, floor 0.5, small,
+#: with one step off (or, for ``otsu``, Otsu in Sauvola's place).
+ABLATIONS = ("no-deskew", "no-binarize", "otsu", "no-denoise", "no-delining")
 #: A page of letter paper is 11 inches long: its long side at ``dpi``.
 LETTER_LONG_SIDE_INCHES = 11
-#: The long side no variant goes under (the shipped ``Global.max_side_len``).
+#: The long side no variant goes under (the raw reading's ``Global.max_side_len``).
 MINIMUM_LONG_SIDE = 2000
 #: Jason's ceiling (decision 127 D-2): 6 seconds a photo, 60 for a ten-page scan.
 CEILING_SECONDS_PER_PAGE = 6.0
@@ -169,7 +191,8 @@ OTHER_CODE = "other"
 
 DPI_FLAG = "--dpi"
 FLOOR_FLAG = "--floor"
-DELINING_FLAG = "--delining"
+PREP_FLAG = "--prep"
+ABLATION_FLAG = "--ablation"
 TIER_FLAG = "--tier"
 MODELS_FLAG = "--models"
 EXPECTATIONS_FLAG = "--expectations"
@@ -189,33 +212,55 @@ class Variant:
 
 def long_side(dpi: int) -> int:
     """The ``max_side_len`` a variant reads at: a letter page's long side at
-    ``dpi``, never under the shipped 2000, so a sharper render is not shrunk
-    back by the reader before detection."""
+    ``dpi``, never under the raw reading's 2000, so a sharper render is not
+    shrunk back by the reader before detection."""
     return max(MINIMUM_LONG_SIDE, math.ceil(LETTER_LONG_SIDE_INCHES * dpi))
 
 
-def name_of(dpi: int, floor: float, delining: bool, tier: str) -> str:
-    """``dpi144-floor0.50-off-small``."""
-    return f"dpi{dpi}-floor{floor:.2f}-{'on' if delining else 'off'}-{tier}"
+def name_of(dpi: int, floor: float, prep: str, tier: str) -> str:
+    """``dpi300-floor0.50-prep-small``; ``prep`` is ``prep``, ``raw`` or
+    ``prep-<ablation>``."""
+    return f"dpi{dpi}-floor{floor:.2f}-{prep}-{tier}"
 
 
-def _variant(dpi: int, floor: float, delining: bool, tier: str, models: str = "") -> Variant:
-    return Variant(name_of(dpi, floor, delining, tier), ocr.ReaderSettings(
-        render_dpi=dpi, confident_score=floor, max_side_len=long_side(dpi), delining=delining,
-        model_tier=tier, model_folder=models if tier != "small" else ""))
+def _variant(dpi: int, floor: float, prep: str, tier: str, models: str = "") -> Variant:
+    """A ``prep`` variant is the shipped settings, a ``raw`` one the reading
+    before P285, each with the dpi, floor, long side and tier of its own."""
+    settings = dataclasses.replace(
+        ocr.RAW if prep == "raw" else ocr.SHIPPED, render_dpi=dpi, confident_score=floor,
+        max_side_len=long_side(dpi), model_tier=tier, model_folder=models if tier != "small" else "")
+    return Variant(name_of(dpi, floor, prep, tier), settings)
 
 
-def grid(dpis=DPIS, floors=FLOORS, delinings=DELININGS, tiers=TIERS, *, models: str = "") -> list[Variant]:
+#: What each ablation changes in the shipped settings.
+_ABLATION_CHANGES = {
+    "no-deskew": {"deskew": False}, "no-binarize": {"binarize": "off"}, "otsu": {"binarize": "otsu"},
+    "no-denoise": {"denoise": False}, "no-delining": {"delining": False}}
+
+
+def _ablation(ablation: str) -> Variant:
+    """The shipped variant with one step off (or Otsu for Sauvola)."""
+    shipped = _variant(DPIS[0], FLOORS[0], PREPS[0], TIERS[0])
+    return Variant(name_of(DPIS[0], FLOORS[0], f"{PREPS[0]}-{ablation}", TIERS[0]),
+                   dataclasses.replace(shipped.settings, **_ABLATION_CHANGES[ablation]))
+
+
+def grid(dpis=DPIS, floors=FLOORS, preps=PREPS, tiers=TIERS, *, ablation: bool = True,
+         models: str = "") -> list[Variant]:
     """The variants of the chosen values, the shipped one always first.
 
     The shipped variant is in the list whatever the choice leaves out; the
-    rest follow in the order dpi, floor, de-lining, tier. ``models`` is the
-    folder a medium variant reads its models from."""
-    shipped = _variant(DPIS[0], FLOORS[0], DELININGS[0], TIERS[0])
+    rest of the main grid follows in the order dpi, floor, prep, tier (the
+    constants' order, whatever order the choice was given in), then the
+    ablation rows in :data:`ABLATIONS`' order unless ``ablation`` is off.
+    ``models`` is the folder a medium variant reads its models from."""
+    shipped = _variant(DPIS[0], FLOORS[0], PREPS[0], TIERS[0])
     assert shipped.settings == ocr.SHIPPED, "the grid's first values must be the shipped settings"
-    rest = [_variant(dpi, floor, delining, tier, models)
-            for dpi, floor, delining, tier in itertools.product(dpis, floors, delinings, tiers)]
-    return [shipped, *(variant for variant in rest if variant.name != shipped.name)]
+    rest = [_variant(dpi, floor, prep, tier, models)
+            for dpi, floor, prep, tier in itertools.product(DPIS, FLOORS, PREPS, TIERS)
+            if dpi in dpis and floor in floors and prep in preps and tier in tiers]
+    rows = [_ablation(name) for name in ABLATIONS] if ablation else []
+    return [shipped, *(variant for variant in rest if variant.name != shipped.name), *rows]
 
 
 def medium_models_in(folder: str) -> bool:
@@ -313,8 +358,9 @@ def _settings_of(variant: Variant) -> dict:
     """The settings the report states: never the models folder."""
     settings = variant.settings
     return {"render_dpi": settings.render_dpi, "confident_score": settings.confident_score,
-            "max_side_len": settings.max_side_len, "delining": settings.delining,
-            "model_tier": settings.model_tier}
+            "max_side_len": settings.max_side_len, "deskew": settings.deskew,
+            "binarize": settings.binarize, "denoise": settings.denoise,
+            "delining": settings.delining, "model_tier": settings.model_tier}
 
 
 def _unmeasured(variant: Variant, note: str) -> dict:
@@ -359,20 +405,20 @@ def measure(variant: Variant, documents: list[Document], first_load: float) -> d
 
 # ------------------------------------------------------------ the table ----
 
-_TABLE_HEAD = (f"{'variant':<30}{'right':>7}{'shortlist':>11}{'no lead':>9}{'wrong':>7}"
+_TABLE_HEAD = (f"{'variant':<42}{'right':>7}{'shortlist':>11}{'no lead':>9}{'wrong':>7}"
                f"{'ocr only':>10}{'s/page med':>12}{'s/page worst':>14}{'over ceiling':>14}")
 
 
 def table_row(entry: dict) -> str:
     """One variant as a line of the printed table: numbers and its name only."""
     if not entry["measured"]:
-        return f"{entry['name']:<30}  not measured"
+        return f"{entry['name']:<42}  not measured"
     outcome, seconds = entry["outcomes"], entry["seconds"]
 
     def said(value):
         return "-" if value is None else f"{value:.2f}"
 
-    return (f"{entry['name']:<30}{outcome[RIGHT]:>7}{outcome[PARKED_SHORTLIST]:>11}"
+    return (f"{entry['name']:<42}{outcome[RIGHT]:>7}{outcome[PARKED_SHORTLIST]:>11}"
             f"{outcome[PARKED_NO_LEAD]:>9}{outcome[WRONG]:>7}{entry['ocr_only']:>10}"
             f"{said(seconds['per_page_median']):>12}{said(seconds['per_page_worst']):>14}"
             f"{seconds['over_ceiling']:>14}")
@@ -570,7 +616,7 @@ def _chosen(text: str, allowed: tuple, convert, flag: str) -> tuple:
 
 def _on_or_off(text: str) -> bool:
     if text not in ("on", "off"):
-        raise ValueError(text)
+        raise BacktestError(f"{ABLATION_FLAG}: {text!r} is not one of on, off")
     return text == "on"
 
 
@@ -583,8 +629,8 @@ def _models_of(ns: argparse.Namespace) -> str:
 def _variants_of(ns: argparse.Namespace) -> list[Variant]:
     return grid(
         _chosen(ns.dpi, DPIS, int, DPI_FLAG), _chosen(ns.floor, FLOORS, float, FLOOR_FLAG),
-        _chosen(ns.delining, DELININGS, _on_or_off, DELINING_FLAG), _chosen(ns.tier, TIERS, str, TIER_FLAG),
-        models=_models_of(ns))
+        _chosen(ns.prep, PREPS, str, PREP_FLAG), _chosen(ns.tier, TIERS, str, TIER_FLAG),
+        ablation=_on_or_off(ns.ablation), models=_models_of(ns))
 
 
 def _cmd_variants(ns: argparse.Namespace) -> int:
@@ -623,7 +669,10 @@ def _cmd_review_codes(ns: argparse.Namespace) -> int:
 def _restrictions(command: argparse.ArgumentParser) -> None:
     command.add_argument(DPI_FLAG, default=",".join(map(str, DPIS)), help="dots per inch, comma list")
     command.add_argument(FLOOR_FLAG, default=",".join(map(str, FLOORS)), help="confidence floors, comma list")
-    command.add_argument(DELINING_FLAG, default="off,on", help="box-line removal: off, on, or off,on")
+    command.add_argument(PREP_FLAG, default=",".join(PREPS),
+                         help="prep (the shipped steps), raw (every step off), or prep,raw")
+    command.add_argument(ABLATION_FLAG, default="on",
+                         help="on: also measure the shipped settings with one step off, five rows; off: leave them out")
     command.add_argument(TIER_FLAG, default=",".join(TIERS), help="model tiers: small, medium")
 
 

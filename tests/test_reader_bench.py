@@ -1,5 +1,6 @@
 """Tests for tools/reader_bench.py - the bench that measures the reader's
-settings on the firm's own paper (P283).
+settings on the firm's own paper (P283, extended by P285 to the preparation
+of a page).
 
 Three things have to hold or its numbers are worse than none. The settings
 must really reach the reader (the bench reads in its own process, because a
@@ -20,6 +21,7 @@ document is in the repository, and none ever will be.
 
 from __future__ import annotations
 
+import dataclasses
 import io
 import json
 import math
@@ -37,13 +39,14 @@ from tracker.settings import EXPECTATIONS_COLUMNS, EXPECTATIONS_FILENAME, proces
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "tools"))
 import reader_bench  # noqa: E402
 from reader_bench import (  # noqa: E402
+    ABLATIONS,
     BENCH_NOTE,
     CEILING_SECONDS_PER_PAGE,
-    DELININGS,
     DPIS,
     FLOORS,
     MEDIUM_NOT_MEASURED,
     OUT_FLAG,
+    PREPS,
     TIERS,
     BacktestError,
     grid,
@@ -59,7 +62,7 @@ YEAR = 2025
 CLIENT_FOLDER = "Aardvark Holdings LLC"
 SECRET_WORDS = ("Aardvark", "Zebediah", "Quillfeather", ".pdf", ".jpg", "document.pdf")
 #: The settings that restrict the grid to the shipped variant alone.
-SHIPPED_ONLY = ["--dpi", "144", "--floor", "0.5", "--delining", "off", "--tier", "small"]
+SHIPPED_ONLY = ["--dpi", "300", "--floor", "0.5", "--prep", "prep", "--tier", "small", "--ablation", "off"]
 
 GOOD_1099 = "\n".join(lines_1099_int("Harbor Test Bank", "John A. Smith", YEAR))
 #: A broker's consolidated page names three 1099 forms, so three requests
@@ -147,39 +150,87 @@ def run(tmp_path: Path, folder: Path, *flags: str) -> tuple[int, dict]:
 # --------------------------------------------------------------- the grid ----
 
 
-def test_the_grid_is_every_dpi_floor_delining_and_tier(capsys):
+def test_the_grid_is_every_dpi_floor_preparation_and_tier_and_the_ablation(capsys):
     variants = grid()
-    assert len(variants) == len(DPIS) * len(FLOORS) * len(DELININGS) * len(TIERS) == 36
+    assert len(variants) == len(DPIS) * len(FLOORS) * len(PREPS) * len(TIERS) + len(ABLATIONS) == 21
     names = [variant.name for variant in variants]
-    assert len(set(names)) == 36
-    assert {(v.settings.render_dpi, v.settings.confident_score, v.settings.delining, v.settings.model_tier)
-            for v in variants} == {(d, f, x, t) for d in DPIS for f in FLOORS for x in DELININGS for t in TIERS}
-    assert "dpi144-floor0.50-off-small" in names and "dpi300-floor0.85-on-medium" in names
+    assert len(set(names)) == 21
+    main_grid = {(v.settings.render_dpi, v.settings.confident_score, v.settings.deskew, v.settings.model_tier)
+                 for v in variants[:-5]}
+    assert main_grid == {(d, f, p == "prep", t) for d in DPIS for f in FLOORS for p in PREPS for t in TIERS}
+    assert names[0] == "dpi300-floor0.50-prep-small"
+    assert "dpi144-floor0.70-raw-medium" in names and "dpi300-floor0.50-prep-otsu-small" in names
+    assert names[-5:] == [f"dpi300-floor0.50-prep-{ablation}-small" for ablation in ABLATIONS]
     assert main(["variants"]) == 0
     assert capsys.readouterr().out.splitlines() == names                 # one a line
-    assert main(["variants", "--dpi", "300", "--tier", "small"]) == 0
+    assert main(["variants", "--dpi", "144", "--tier", "small", "--ablation", "off"]) == 0
     assert capsys.readouterr().out.splitlines() == [
-        "dpi144-floor0.50-off-small", *[n for n in names if n.startswith("dpi300") and n.endswith("small")]]
+        "dpi300-floor0.50-prep-small", *[n for n in names[:-5] if n.startswith("dpi144") and n.endswith("small")]]
 
 
 def test_the_shipped_variant_is_always_measured_first(tmp_path, stand_in):
-    assert grid()[0].settings == ocr.SHIPPED and grid()[0].name == "dpi144-floor0.50-off-small"
-    left_out = grid((300,), (0.85,), (True,), ("small",))
-    assert [v.name for v in left_out] == ["dpi144-floor0.50-off-small", "dpi300-floor0.85-on-small"]
+    assert grid()[0].settings == ocr.SHIPPED and grid()[0].name == "dpi300-floor0.50-prep-small"
+    left_out = grid((144,), (0.7,), ("raw",), ("small",), ablation=False)
+    assert [v.name for v in left_out] == ["dpi300-floor0.50-prep-small", "dpi144-floor0.70-raw-small"]
 
     stand_in.pages = {1: GOOD_1099}
     folder = a_corpus(tmp_path, [("scan", "one.pdf", "A02")])
-    code, report = run(tmp_path, folder, "--dpi", "300", "--floor", "0.85", "--delining", "on", "--tier", "small")
+    code, report = run(tmp_path, folder, "--dpi", "144", "--floor", "0.7", "--prep", "raw", "--tier", "small",
+                       "--ablation", "off")
     assert code == 0
-    assert [v["name"] for v in report["variants"]] == ["dpi144-floor0.50-off-small", "dpi300-floor0.85-on-small"]
+    assert [v["name"] for v in report["variants"]] == ["dpi300-floor0.50-prep-small", "dpi144-floor0.70-raw-small"]
 
 
 def test_each_variants_long_side_holds_a_letter_page_at_its_dpi():
-    assert [long_side(dpi) for dpi in DPIS] == [2000, 2200, 3300]
+    assert [long_side(dpi) for dpi in DPIS] == [3300, 2000]
     for variant in grid():
         dpi = variant.settings.render_dpi
         assert variant.settings.max_side_len == max(2000, math.ceil(11 * dpi)) >= 11 * dpi
-    assert grid()[0].settings.max_side_len == ocr.SHIPPED.max_side_len == 2000
+    assert grid()[0].settings.max_side_len == ocr.SHIPPED.max_side_len == 3300
+
+
+def test_the_raw_variant_at_144_dpi_is_the_reading_before_p285():
+    by_name = {variant.name: variant for variant in grid()}
+    assert by_name["dpi144-floor0.50-raw-small"].settings == ocr.RAW
+    assert by_name["dpi300-floor0.50-raw-small"].settings == dataclasses.replace(
+        ocr.RAW, render_dpi=300, max_side_len=3300)           # P283's dpi300-floor0.50-off-small
+    assert by_name["dpi144-floor0.50-prep-small"].settings == dataclasses.replace(
+        ocr.SHIPPED, render_dpi=144, max_side_len=2000)
+
+
+def test_each_ablation_row_turns_off_one_step_of_the_shipped_settings():
+    by_name = {variant.name: variant.settings for variant in grid()}
+    expected = {"no-deskew": {"deskew": False}, "no-binarize": {"binarize": "off"},
+                "otsu": {"binarize": "otsu"}, "no-denoise": {"denoise": False},
+                "no-delining": {"delining": False}}
+    assert list(expected) == list(ABLATIONS)
+    for ablation, change in expected.items():
+        settings = by_name[f"dpi300-floor0.50-prep-{ablation}-small"]
+        differs = {field.name for field in dataclasses.fields(ocr.ReaderSettings)
+                   if getattr(settings, field.name) != getattr(ocr.SHIPPED, field.name)}
+        assert differs == set(change), ablation
+        assert settings == dataclasses.replace(ocr.SHIPPED, **change)
+
+
+def test_ablation_off_leaves_the_ablation_rows_out():
+    names = [variant.name for variant in grid(ablation=False)]
+    assert len(names) == 16
+    assert not any(f"prep-{ablation}-" in name for name in names for ablation in ABLATIONS)
+    assert len(grid(DPIS, FLOORS, PREPS, ("small",), ablation=False)) == 8
+
+
+def test_the_office_prompt_names_the_grid_its_first_variant_and_its_flags():
+    """The prompt the office session follows says how many variants the grid
+    has and which one is first, so a session whose ``variants`` prints
+    anything else stops; it uses the flags the bench has and never the one
+    P285 took away."""
+    prompt = (REPO / "pilot" / "PROMPT-reader-bench.md").read_text(encoding="utf-8")
+    variants = grid()
+
+    assert f"the {len(variants)} names" in prompt
+    assert f"check the first is {variants[0].name}" in prompt
+    assert "--prep" in prompt and "--ablation" in prompt
+    assert "--delining" not in prompt
 
 
 # ------------------------------------------------------- what it counts ----
@@ -199,16 +250,18 @@ def test_a_document_with_a_text_layer_is_counted_and_never_read_by_the_reader(tm
 def test_the_four_outcomes_are_counted_as_the_spec_defines_them(tmp_path, stand_in):
     """One of each: filed right, meant to park and parked, parked with the
     expected row on its shortlist, parked with no lead, filed elsewhere. A
-    setting reaches the reader: at 300 dpi row 4 is read well and files."""
+    setting reaches the reader: at 300 dpi row 4 is read well and files, at
+    144 it does not."""
     the_five_readings(stand_in)
     stand_in.pages[4] = lambda settings: GOOD_1099 if settings.render_dpi == 300 else NOTHING
     code, report = run(tmp_path, the_five_outcomes(tmp_path),
-                       "--dpi", "144,300", "--floor", "0.5", "--delining", "off", "--tier", "small")
+                       "--dpi", "144,300", "--floor", "0.5", "--prep", "prep", "--tier", "small",
+                       "--ablation", "off")
     assert code == 0
-    shipped, sharper = report["variants"]
-    assert shipped["outcomes"] == {"right": 2, "parked_shortlist": 1, "parked_no_lead": 1, "wrong": 1}
-    assert sharper["name"] == "dpi300-floor0.50-off-small"
-    assert sharper["outcomes"] == {"right": 3, "parked_shortlist": 1, "parked_no_lead": 0, "wrong": 1}
+    shipped, coarser = report["variants"]
+    assert shipped["outcomes"] == {"right": 3, "parked_shortlist": 1, "parked_no_lead": 0, "wrong": 1}
+    assert coarser["name"] == "dpi144-floor0.50-prep-small"
+    assert coarser["outcomes"] == {"right": 2, "parked_shortlist": 1, "parked_no_lead": 1, "wrong": 1}
 
 
 def test_parked_documents_are_counted_by_code_and_ocr_only_has_its_share(tmp_path, stand_in):
@@ -234,18 +287,34 @@ def test_the_report_holds_counts_and_seconds_and_no_name_path_or_word(tmp_path, 
         1: GOOD_1099.replace("John A. Smith", "Zebediah Quill").replace("Harbor Test Bank", "Aardvark Holdings"),
         2: "Quillfeather Zebediah Quill notes"}
 
-    code, report = run(tmp_path, folder, "--models", str(models), "--dpi", "144", "--floor", "0.5",
-                       "--delining", "off")
+    code, report = run(tmp_path, folder, "--models", str(models), "--dpi", "300", "--floor", "0.5",
+                       "--prep", "prep", "--ablation", "off")
     assert code == 0
     printed = capsys.readouterr()
     written = json.dumps(report) + (tmp_path / "report.json").read_text(encoding="utf-8")
     assert [v["measured"] for v in report["variants"]] == [True, True]       # small and medium both read
-    assert report["note"] == BENCH_NOTE and report["schema"] == 1
+    assert report["note"] == BENCH_NOTE and report["schema"] == 2
     for secret in (*SECRET_WORDS, str(folder), str(models), "model_folder"):
         assert secret not in written, secret
         assert secret not in printed.out and secret not in printed.err, secret
-    assert report["variants"][0]["settings"] == {"render_dpi": 144, "confident_score": 0.5, "max_side_len": 2000,
-                                                 "delining": False, "model_tier": "small"}
+
+
+def test_the_report_states_every_step_and_is_schema_2(tmp_path, stand_in):
+    """A variant's settings are the fields that decide the reading - the dpi,
+    the floor, the long side, each step of the preparation and the tier - and
+    never the models folder."""
+    stand_in.pages = {1: GOOD_1099}
+    folder = a_corpus(tmp_path, [("scan", "one.pdf", "A02")])
+
+    code, report = run(tmp_path, folder, *SHIPPED_ONLY)
+
+    assert code == 0 and report["schema"] == 2
+    assert report["variants"][0]["settings"] == {
+        "render_dpi": 300, "confident_score": 0.5, "max_side_len": 3300, "deskew": True,
+        "binarize": "sauvola", "denoise": True, "delining": True, "model_tier": "small"}
+    assert set(report["variants"][0]["settings"]) == {
+        "render_dpi", "confident_score", "max_side_len", "deskew", "binarize", "denoise", "delining",
+        "model_tier"}                                                  # never the models folder
 
 
 def test_the_report_is_refused_inside_the_repository(tmp_path, stand_in, capsys):
@@ -260,8 +329,8 @@ def test_the_report_is_refused_inside_the_repository(tmp_path, stand_in, capsys)
 def test_the_medium_tier_is_not_measured_without_its_models_and_says_so(tmp_path, stand_in):
     stand_in.pages = {1: GOOD_1099}
     folder = a_corpus(tmp_path, [("scan", "one.pdf", "A02")])
-    medium_name = "dpi144-floor0.50-off-medium"
-    flags = ["--dpi", "144", "--floor", "0.5", "--delining", "off"]
+    medium_name = "dpi300-floor0.50-prep-medium"
+    flags = ["--dpi", "300", "--floor", "0.5", "--prep", "prep", "--ablation", "off"]
 
     _code, report = run(tmp_path, folder, *flags)
     shipped, medium = report["variants"]
@@ -299,7 +368,8 @@ def test_the_bench_never_downloads_a_model(tmp_path, stand_in, monkeypatch):
     stand_in.pages = {1: GOOD_1099}
     folder = a_corpus(tmp_path, [("scan", "one.pdf", "A02")])
 
-    code, report = run(tmp_path, folder, "--tier", "medium", "--dpi", "144", "--floor", "0.5", "--delining", "off")
+    code, report = run(tmp_path, folder, "--tier", "medium", "--dpi", "300", "--floor", "0.5", "--prep", "prep",
+                       "--ablation", "off")
 
     assert code == 0
     assert [v["measured"] for v in report["variants"]] == [True, False]
@@ -315,13 +385,13 @@ def test_the_settings_and_the_reading_switch_are_put_back_after_the_run(tmp_path
     folder = a_corpus(tmp_path, [("scan", "one.pdf", "A02")])
     expectations = folder / EXPECTATIONS_FILENAME
     before = ocr.SETTINGS
-    variants = grid((144, 300), (0.5,), (False,), ("small",))
+    variants = grid((144,), (0.5,), ("prep",), ("small",), ablation=False)
 
     run_bench(folder, expectations, variants, out=io.StringIO())
 
     assert ocr.SETTINGS is before and content_check.READ_IN_A_CHILD is True
     assert [switch for _row, _settings, switch in stand_in.calls] == [False, False]
-    assert [s.render_dpi for _row, s, _switch in stand_in.calls] == [144, 300]
+    assert [s.render_dpi for _row, s, _switch in stand_in.calls] == [300, 144]
     assert not process_scratch().exists()
 
     def boom(*_args, **_kwargs):
@@ -334,12 +404,13 @@ def test_the_settings_and_the_reading_switch_are_put_back_after_the_run(tmp_path
     assert not process_scratch().exists()
 
 
-def _route_failing_at(monkeypatch, dpi, failure):
-    """``route_file`` as it is, except that under ``dpi`` it raises ``failure``."""
+def _route_failing_at(monkeypatch, failure, when):
+    """``route_file`` as it is, except that under settings ``when`` accepts it
+    raises ``failure``."""
     real = reader_bench.route_file
 
     def route(link, items, **kwargs):
-        if ocr.SETTINGS.render_dpi == dpi:
+        if when(ocr.SETTINGS):
             raise failure
         return real(link, items, **kwargs)
 
@@ -353,15 +424,16 @@ def test_a_variant_whose_reading_raises_is_unmeasured_and_the_run_goes_on(tmp_pa
     either side of it are measured."""
     stand_in.pages = {1: GOOD_1099}
     folder = a_corpus(tmp_path, [("scan", "one.pdf", "A02")])
-    _route_failing_at(monkeypatch, 200, MemoryError(str(tmp_path / "Zebediah")))
+    _route_failing_at(monkeypatch, MemoryError(str(tmp_path / "Zebediah")),
+                      lambda settings: settings.render_dpi == 300 and not settings.deskew)
 
-    code, report = run(tmp_path, folder, "--dpi", "144,200,300", "--floor", "0.5", "--delining", "off",
-                       "--tier", "small")
+    code, report = run(tmp_path, folder, "--dpi", "300,144", "--floor", "0.5", "--prep", "prep,raw",
+                       "--tier", "small", "--ablation", "off")
 
     assert code == 0
     assert [(v["name"], v["measured"]) for v in report["variants"]] == [
-        ("dpi144-floor0.50-off-small", True), ("dpi200-floor0.50-off-small", False),
-        ("dpi300-floor0.50-off-small", True)]
+        ("dpi300-floor0.50-prep-small", True), ("dpi300-floor0.50-raw-small", False),
+        ("dpi144-floor0.50-prep-small", True), ("dpi144-floor0.50-raw-small", True)]
     failed = next(v for v in report["variants"] if not v["measured"])
     assert "MemoryError" in failed["note"] and "Zebediah" not in failed["note"]
     printed = capsys.readouterr()
@@ -371,13 +443,14 @@ def test_a_variant_whose_reading_raises_is_unmeasured_and_the_run_goes_on(tmp_pa
 def test_a_ctrl_c_writes_the_report_so_far_and_exits_130_with_one_sentence(tmp_path, stand_in, monkeypatch, capsys):
     stand_in.pages = {1: GOOD_1099}
     folder = a_corpus(tmp_path, [("scan", "one.pdf", "A02")])
-    _route_failing_at(monkeypatch, 300, KeyboardInterrupt())
+    _route_failing_at(monkeypatch, KeyboardInterrupt(), lambda settings: settings.render_dpi == 144)
     monkeypatch.setattr(content_check, "READ_IN_A_CHILD", True)
 
-    code, report = run(tmp_path, folder, "--dpi", "144,300", "--floor", "0.5", "--delining", "off", "--tier", "small")
+    code, report = run(tmp_path, folder, "--dpi", "144,300", "--floor", "0.5", "--prep", "prep", "--tier", "small",
+                       "--ablation", "off")
 
     assert code == 130
-    assert [(v["name"], v["measured"]) for v in report["variants"]] == [("dpi144-floor0.50-off-small", True)]
+    assert [(v["name"], v["measured"]) for v in report["variants"]] == [("dpi300-floor0.50-prep-small", True)]
     err = capsys.readouterr().err
     assert err.count("\n") == 1 and err.startswith("reader bench: interrupted")
     assert ocr.SETTINGS is ocr.SHIPPED and not process_scratch().exists()
@@ -468,17 +541,20 @@ def test_review_codes_names_what_is_wrong_with_a_reply_and_exits_2(monkeypatch, 
 
 
 def test_a_real_scan_is_read_under_each_dpi_it_is_asked_for(tmp_path, capsys):
-    """The real reader, one drawn image-only 1099-INT page, two variants:
-    the shipped 144 dpi and 300. Each is measured and files the scan under
-    its request, so the bench's in-process reading, the settings seam and the
-    router's rule work together end to end."""
+    """The real reader, one drawn image-only 1099-INT page, three variants:
+    the shipped one (prepared, 300 dpi), then the raw reading at 300 and at
+    144. Each is measured and files the scan under its request, so the bench's
+    in-process reading, the settings seam and the router's rule work together
+    end to end."""
     folder = a_corpus(tmp_path, [("scan", "one.pdf", "A02")])
     scanned_pdf(folder / CLIENT_FOLDER / "one.pdf", lines_1099_int("Harbor Test Bank", "John A. Smith", YEAR))
 
-    code, report = run(tmp_path, folder, "--dpi", "144,300", "--floor", "0.5", "--delining", "off", "--tier", "small")
+    code, report = run(tmp_path, folder, "--dpi", "144,300", "--floor", "0.5", "--prep", "raw", "--tier", "small",
+                       "--ablation", "off")
 
     assert code == 0, capsys.readouterr().err
-    assert [v["name"] for v in report["variants"]] == ["dpi144-floor0.50-off-small", "dpi300-floor0.50-off-small"]
+    assert [v["name"] for v in report["variants"]] == [
+        "dpi300-floor0.50-prep-small", "dpi300-floor0.50-raw-small", "dpi144-floor0.50-raw-small"]
     for variant in report["variants"]:
         assert variant["measured"], variant
         assert variant["outcomes"] == {"right": 1, "parked_shortlist": 0, "parked_no_lead": 0, "wrong": 0}, variant

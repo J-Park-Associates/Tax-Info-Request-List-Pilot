@@ -23,6 +23,276 @@ this repository; [`SPEC.md`](SPEC.md) says what it builds.
 
 ## Current work
 
+**P285 - a scan or a photo is prepared before the reader reads it
+([`SPEC-ocr-prepare.md`](SPEC-ocr-prepare.md)), built on `claude/ocr-prepare`**
+in three commits on top of the SPEC's (the stage with its tests; the bench,
+both prompts, the docs and the map; the first handoff), then rebuilt to the
+SPEC's section 9 amendment in four more (the detector's long side; the box-line
+step; the Mac prompt's counts; a leftover print) and a handoff, then rebuilt
+again to section 9.4 (the processor child's cap; Sauvola on box filters; the
+runbook, the record and this handoff), then a third time, findings only, to
+section 9.5 (below). Reviewed once (Opus's, in a session that did not build
+it; no MUST finding, nine lesser ones) and **not pushed**. Jason ruled every section 8
+question to its stated default. **The processor child's cap, 4 GB from P285,
+is an assumption of the orchestrating session held for Jason's word (decision
+169 is his); one constant reverses it.**
+
+What was built, in the software's words: every scanned page and photo is now
+prepared in memory before the reader sees it - drawn at 300 dots per inch,
+turned level if it leans up to five degrees (and left alone when the lean
+cannot be measured plainly), made black and white by a threshold that follows
+the paper's own shading, cleared of lone specks and of a form's box lines.
+The file is never touched and nothing is written. The verdict cache moved, so
+the first pass after the install reads every document again (slow once; a row
+already in Needs Review stays there). The reader bench shrank from 36 to 21
+variants: prepared against raw at 300 and 144 dpi, and the shipped settings
+with each step turned off one at a time, so the office numbers say which steps
+earn their place. README, runbook, tools page, the office prompt and the map
+say so; nothing tells a person to do anything.
+
+**Third rebuild (SPEC 9.5), findings only.** The Opus review of the whole
+branch found no MUST finding and nine lesser ones; this rebuild applies the
+SPEC's rulings on them and nothing more. The Mac prompt's PASS line now says
+4 GB, following the constant. The one-pixel hold is accepted and now pinned:
+a letter page from a PDF, rendered the way the reader renders it at the
+shipped 300 dpi, is 2550 x 3301 (the PDF library rounds a side up) and comes
+back 2549 x 3300 from the stage; the long side stays 3300. The detector's own
+setting (`Det.limit_type` `"max"`, 9.1) is the engine's and not a settings
+field, and is documented in the bench's docstring and the curated map: the
+detector no longer enlarges a page whose shorter side is under 736 px, which
+P283's default did; measured on drawn pages the same words are read. This
+handoff corrects itself (the quarter-turned W-2's best angle and gain, the
+per-step seconds, "shrank" for 36 to 21 variants). Three nits: the dead
+engine pair in `test_the_engine_is_handed_the_prepared_page` is gone,
+`DELINE_THICK_DIVISOR`, `DESKEW_FINE_STEP` and `SAUVOLA_WINDOW_FLOOR` each have
+their own comment, and Sauvola compares with `uint8` scalars so no 64-bit
+page is built (same pixels; it now takes 0.030 s on a 2550 x 3300 page, median
+of five, the table below). The curated note's "4 GB from P285" stays in
+present tense, as 9.4 asked. No test was added, one test gained assertions;
+counts are in the gate table at the end of this section.
+
+**Memory finding (SPEC 9.1, 9.4): resolved on this Mac, with the cap raised on
+an assumption.** Found by the first build: rapidocr's detector, left at its
+default (`Det.limit_type` `min`, 736), never shrinks a page whose shorter side
+is already past 736, so with the long side at 3300 it read the whole 3300 x 2550
+page and the process reached 2.85 GB on a drawn letter page (the stage is not
+the problem: a 4032 x 3024 photo grows the process by about 530 MB through the
+whole stage). In the real product path - a drawn five-page scan judged through
+`content_check.judge_bounded` in the pass's reading child, on the processor -
+the memory watch ended the child at 2814 MB (`reading-crashed`, "it had
+reached its memory limit (2 GB)").
+
+What 9.1 did: `_build_engine` sets `Det.limit_type` to `"max"` (and not
+`Det.limit_side_len`). Detection runs on a copy the engine holds to its own
+2000-pixel long side, as under P283; recognition crops its words from the
+3300 page. The same lines are read. Numbers on this Mac (drawn pages, counts
+only, in GB of 10^9 bytes; the child's cap was 2 x 1024^3 bytes, 2.15 here):
+
+| reading | without 9.1 | with 9.1 |
+|---|---|---|
+| the engine alone, a drawn unprepared 2550 x 3300 page, peak after the first call | 2.61 | 1.12 |
+| the same, after the second call | 3.86 | 1.66 |
+| the whole process, peak after one shipped reading of a drawn 2550 x 3300 page (stage and engine; median of three: 1.604, 1.605, 1.612) | 2.85 (first build's footprint) | 1.61 |
+| the same process's footprint after that reading (median of three) | - | 1.55 |
+
+What 9.1 left (found by the first rebuild): a multi-page scan still crossed 2
+GB. The engine's working memory settles about 0.6 GB higher after its second
+page (the shapes of the pages it has seen, flat after a garbage collection, so
+not a leak), and the stage's allocator held about 0.6 GB after its first page.
+
+What 9.4 did: `PROCESSOR_CHILD_MEMORY` is `4 * 1024**3` (the card's 6 GB
+stays), and Sauvola takes its mean and mean of squares from single-precision
+`cv2.boxFilter` calls instead of double-precision integral images. Decision
+169's 2 GB was a reader at 144 dpi and a 2000-pixel long side; a 300 dpi page
+needs about 2.3 GB on a Mac and more where Windows counts committed memory
+(the job object was not measured), and 4 GB is the first power of two with
+room. **This is the orchestrating session's assumption, held for Jason's
+word**; the runbook's memory bullet, the module's comments, the curated map
+and the P285 row say 4 GB, and the other option (a lower long side) undoes
+his 300 dpi. Measured again on this Mac after 9.4 (drawn 2550 x 3300 pages
+through `ocr.read_page`, each in a fresh `.venv/bin/python` process,
+`resource.getrusage(...).ru_maxrss`, GB of 10^9 bytes; the 4 GB cap is 4.29):
+
+| reading | peak |
+|---|---|
+| one page, `SHIPPED`, box filters (median of three: 1.327, 1.329, 1.326) | 1.33 |
+| five pages, `SHIPPED` | 2.28 |
+| five pages, `RAW` | 2.03 |
+
+Sauvola on a 2550 x 3300 page takes 0.032 s now (median of five; 0.050 before).
+The five-page scan through the reading child is no longer ended: the child
+test passes on this Mac under both interpreters (3.23 s on 3.14): no
+`reading-crashed`, not transient, read by the reader (it was killed at 2.1 s
+before). Its last claim first read the judgment's text, which is empty by
+design (decision 189), so it now asks a question: a row keyed on the form
+number, `1099-INT`, whose `required_matched` shows the child read the words.
+The Windows job object, which counts committed
+memory, was not measured and is the office bench's to confirm.
+
+**Second finding (not P285's, but it bit the build): the arm64 macOS wheel of
+OpenCV (`opencv-python-headless==5.0.0.93`, KleidiCV) segfaults inside
+`cv2.resize` for some sizes.** rapidocr's own detection resize crashes the
+reading process outright - for example a 3-channel 2598 x 3300 image (resized
+to 2592 x 3296), or 2596 x 3300, while 2597 x 3300 and 2600 x 3300 pass; it
+reproduces with a bare `cv2.resize` and with one thread. About 5% of random
+page sizes crashed at either long side (2 of 40 at 2000, 3 of 40 at 3300), so
+it exists without P285, and in the child it parks a document as a crash. Not
+seen on the office's Windows wheel. The build did not touch it; the real-scan
+test draws its crooked page on the same canvas (below) so it does not hit it.
+Worth its own row if the Mac is ever to read for real.
+
+Seconds on this Mac (Apple silicon, processor, small models), drawn pages
+only, median of five, warm engine:
+
+| step, a 2550 x 3300 page / a 4032 x 3024 photo (held to 3300 x 2475) | page | photo |
+|---|---|---|
+| grey copy and held to the long side | 0.002 s | 0.006 s |
+| lean measured (34 turns of a 1000 px sample, plus the level score) | 0.018 s | 0.018 s |
+| turned level | 0.001 s | 0.001 s |
+| Sauvola | 0.030 s | 0.028 s |
+| specks | 0.010 s | 0.011 s |
+| box lines | 0.031 s | 0.031 s |
+| **the whole stage** (measured once, whole) | **0.09 s** | **0.095 s** |
+
+| whole reading (render or decode, stage, engine) | shipped (prepared, 300 dpi) | raw (144 dpi) |
+|---|---|---|
+| a drawn scanned page (PDF, 150 dpi source) | 1.05 s | 0.45 s |
+| a drawn 4032 x 3024 photo | 0.94 s | 0.50 s |
+
+The shipped reading is about 1.05 s a page, under the 3 s the SPEC set as the
+stop and far under Jason's 6 s; the stage is about a tenth of it, the rest is
+the engine reading a page 2.7 times larger. A drawn five-page scan read in
+this process took 5.8 s.
+
+What `_skew_degrees` saw (best angle, then the score over the level score,
+against `DESKEW_GAIN` 1.10): a level page 0.0, 1.000; two degrees +2.0, 1.676;
+twelve degrees +6.0 (past the limit, at the search's edge), 1.250; the
+quarter-turned W-2 photo (`w2_photo(turn=90)`) -1.0, 1.067. The quarter-turned page is refused by
+the gain rule with a margin of 0.033 only; a different drawn quarter-turn could
+sit nearer the line, and the real engine reads such a page anyway. Sauvola on
+the faded page (grey 150 on 230, a 15 px window): every pixel of the text drawn
+without anti-aliasing is black and no pixel beyond one window of it is not
+white; drawn *with* anti-aliasing, 94% of the pixels that are at least half
+text and 85% of those a quarter text are black - the faint edge pixels stay
+white by design, which is why the SPEC's "95% of the text's pixels" claim is
+tested on hard-pixel text. On the smooth shadow Sauvola blackens 0 pixels,
+Otsu 50%.
+
+Gate of the second rebuild (SPEC 9.4), each file its own process, `.venv`
+(3.14) and `.venv311` (3.11), no `-m "not corpus"`, the real reader ran (the
+skips are the platform ones already there), on the final tree:
+
+| file | 3.14 | 3.11 |
+|---|---|---|
+| `test_ocr` | 70 passed, 4 skipped | 70 passed, 4 skipped |
+| `test_content_check` | 115 passed, 1 skipped | 115 passed, 1 skipped |
+| `test_errors` | 83 passed | 83 passed |
+| `test_runner` | 229 passed | 229 passed |
+| `test_layers` | 31 passed | 31 passed |
+| `test_single_source` | 217 passed | 217 passed |
+| `test_repo_map` | 82 passed | 82 passed |
+| `test_tripwire` | 23 passed | 23 passed |
+
+`test_single_source` and `test_repo_map` were run again after this handoff,
+and `test_ocr` after the test's rewrite.
+`ruff check .` clean; `repo_map.py update` then `check` exit 0; `vocab_report.py
+build` changed nothing. `test_reader_bench` was not rerun (the bench is
+untouched by 9.4). The backtest baseline is still unrecorded (the office
+prompt records it).
+
+Gate of the third rebuild (SPEC 9.5), the same way (each file its own
+process, `.venv` and `.venv311`, no `-m "not corpus"`, the real reader ran):
+
+| file | 3.14 | 3.11 |
+|---|---|---|
+| `test_ocr` | 70 passed, 4 skipped | 70 passed, 4 skipped |
+| `test_content_check` | 115 passed, 1 skipped | 115 passed, 1 skipped |
+| `test_reader_bench` | 23 passed | 23 passed |
+| `test_layers` | 31 passed | 31 passed |
+| `test_single_source` | 217 passed | 217 passed |
+| `test_repo_map` | 82 passed | 82 passed |
+| `test_tripwire` | 23 passed | 23 passed |
+| `test_errors` | 83 passed | 83 passed |
+
+`test_repo_map` and `test_single_source` were run again after the map and this
+handoff were refreshed. `ruff check .` clean; `repo_map.py update` then
+`check` exit 0; `vocab_report.py build` changed nothing beyond hashes. The
+backtest baseline is still unrecorded.
+
+Tests: renamed `test_the_shipped_settings_are_the_prepared_reading_at_300_dpi`
+and `test_the_grid_is_every_dpi_floor_preparation_and_tier_and_the_ablation`;
+replaced the delining-off-in-the-product test with
+`test_the_engine_is_handed_the_prepared_page`; added in `test_ocr`
+`test_every_step_off_hands_the_engine_the_page_as_it_stands`, the skew, level,
+twelve-degree and quarter-turn claims, the Sauvola, window, speck, long-side
+and untouched-and-repeatable claims and the real-scan one; in
+`test_reader_bench` the raw-variant, ablation, ablation-off, schema 2 and
+office-prompt claims, all named as the SPEC's section 4 names them; the four
+`test_content_check` claims changed as 4.2 says. The rebuild adds
+`test_a_thick_stroke_is_type_and_a_thin_one_a_rule_whatever_their_length`,
+`test_a_large_title_keeps_its_form_number_when_prepared` (a real-reader claim)
+and `test_the_shipped_reading_of_a_scan_fits_the_reading_child` (a real
+reading child, five drawn pages on the 1275 x 1650 canvas of `scanned_pdf` so
+the OpenCV fault below is not hit), and changes
+`test_the_engine_is_built_with_the_settings_floor_and_long_side` to expect
+`Det.limit_type` `max`. None of the real-reader tests in this file carries a
+skip of its own (they run wherever the models are), so neither does the new
+child claim.
+
+Where the SPEC and the code differ, and what the build did:
+
+- **The memory finding above** was the SPEC's gap, not a departure: 9.1 and
+  9.4 are built exactly. One departure from the SPEC's words in 4.1: the
+  child test asks a question (a row keyed on `1099-INT`) and reads its
+  answer, since the judgment's text is empty by design (Jason's ruling).
+- **The box-line step is long and thin (SPEC 9.2), and the `w2_photo` fixture
+  is back to its P283 form** (1100 x 260, the P283 docstring): the first
+  build's page-sized canvas and its note are gone. One departure from the
+  SPEC's words in `_delined_grey`: after the rule mask is dilated by
+  `DELINE_GROW`, any pixel of `heavy` is taken out of it again (`rules[heavy >
+  0] = 0`). Without it the SPEC's own claim - a 16 x 160 bar comes back
+  unchanged pixel for pixel - fails by one row: the vertical opening's even
+  kernel (`height // 40`, 82 on a letter page) drifts a pixel past the stem's
+  end, outside `heavy`, and the growth carries that into the stem's last row.
+  Thick ink is never whitened; thin rules and the two existing de-lining tests
+  behave as before. Measured: "Form 1099-INT Interest Income" in PIL's default
+  face at 150 px, over a made-up body at 46 px with a 3 px box, reads
+  `Form 1099-INT Interest Income` as its first line both unprepared and
+  prepared.
+- **The real-scan test's crooked page** is drawn by a helper in the test file,
+  `scanned_pdf`'s page turned two degrees on the *same canvas*, not
+  `scanned_pdf(rotate=2)`, which grows the canvas to a size at which the OpenCV
+  segfault above hits (2598 x 3300 once held). `tests/samples.py` is not
+  changed.
+- **Sauvola's faded-page claim** is tested on hard-pixel text (see above).
+- **`_levelled`'s sign:** the angle that levels a page is the opposite of the
+  way it leans, so `_skew_degrees` returns the lean (counter-clockwise
+  positive, as `PIL.Image.rotate`) and the search's best trial is negated; the
+  angle is rounded to a tenth (the fine step) so a page leaning exactly five
+  degrees is not refused by float noise.
+- **A letter page drawn at 300 dpi is 2550 x 3301**, not 3300: pdfium rounds
+  the height up. `_held` therefore resizes it by one pixel (INTER_AREA, before
+  the threshold, which is harmless and is what rapidocr would do itself); a
+  2549 x 3300 page results. No SPEC change needed, but the "keeps its size"
+  claim is tested on a drawn 2550 x 3300, not a rendered page.
+- **The mactest prompt**: line 172's names changed as the SPEC says, and
+  (SPEC 9.3) the same sentence now says "the 8 medium variants" and "the 13
+  small variants", the grid's real counts (21 in all). Nothing else in the
+  file moved. Done.
+- **`tests/test_layers.py`** needed no change (the stage imports cv2, numpy and
+  PIL inside functions; cv2 was already a reader's import).
+- **Bench order**: `--dpi 144,300` runs in the grid's order, 300 first, whatever
+  order the flag lists them in (the SPEC's "the raw ones at 300 and 144").
+
+For the reviewer: the SPEC's own mutations to try are the deskew sign (a wrong
+sign gives about 4 degrees of error and fails the two-degree test), the gain
+rule (a quarter-turned page), `_held` (a 2550 x 4200 page), the speck area (a
+3 x 3 dot), and Sauvola's `<=` (a solid black fill).
+
+---
+
+The earlier handoffs follow, unchanged.
+
 [`SPEC-ocr-scans.md`](SPEC-ocr-scans.md) Part A (P282), **built on
 `claude/ocr-scans`** in commit `ff938b7`, not yet reviewed (the review is
 Opus's, in a session that did not build it) and not pushed. Part B (P283) is

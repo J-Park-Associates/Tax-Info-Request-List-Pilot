@@ -1,21 +1,24 @@
 # Reader bench - prompt for Claude Code on the office PC
 
-This is the measurement of P283 (`pilot/SPEC-ocr-scans.md` section 2): which
-reading settings help on the firm's own scans and photos, and what Needs
-Review looks like before and after P282. It runs on the **office PC only**
-(JPPC, the designated machine), never on a Mac or any other viewer, in a
-Claude Code session opened in the office checkout. Part C (P284) ships the
-settings the numbers favour; it waits for what this brings back.
+This is the measurement of P282 and P285 (P283's tool, P285's grid:
+`pilot/SPEC-ocr-scans.md` section 2 and `pilot/SPEC-ocr-prepare.md`): which
+reading settings help on the firm's own scans and photos - the page drawn at
+300 or 144 dots per inch, prepared or raw, and each step of the preparation
+turned off one at a time - and what Needs Review looks like before and after
+P282 and P285. It runs on the **office PC only** (JPPC, the designated
+machine), never on a Mac or any other viewer, in a Claude Code session opened
+in the office checkout. P284 ships the settings the numbers favour, choosing
+among prepared settings; it waits for what this brings back.
 
 ## For Jason, before the session starts
 
-1. The office checkout is on `claude/ocr-scans` at Part B's head, and a
-   second checkout of the commit Part A stacks on sits beside it (step 1
-   makes it). Give the session two hashes: Part B's head, and that "before"
-   commit (today's value is `dcb02c3`, what `git merge-base main
-   claude/ocr-scans` gives while Part A is unmerged). Both parts land on `main`
-   first (SPEC section 4.3), so by the time the office runs this `main` already
-   holds Part A and is not the "before".
+1. The office checkout is on **the branch and head you name**: P285's head
+   on `claude/ocr-prepare`, or `main` once it has landed - never
+   `claude/ocr-scans`, which is gone (it landed as pull request #45). A
+   second checkout of the commit P282 stacks on sits beside it (step 1 makes
+   it). Give the session two hashes: the head, and that "before" commit
+   (today's value is `dcb02c3`, which holds neither P282 nor P285). `main`
+   holds P282 already and may hold P285, so it is not the "before".
 2. Have two folders ready and tell the session where they are: the firm's
    sorted documents (the folder `backtest.py` runs on) and the photo corpus
    (the folder `TRACKER_REAL_CORPUS` names, if its expectations file is
@@ -49,28 +52,28 @@ SAFETY - never break these:
   administrator rights.
 
 1. REFUSE IF THIS IS NOT THE OFFICE PC.
-   Run, in the claude/ocr-scans checkout:
+   Run, in the office checkout (the head Jason names):
      .venv\Scripts\python -c "from tracker import scheduling, settings; print(bool(settings.clients_root()), scheduling.task_exists())"
    Both must print True: the clients root is set and the schedule is registered on this computer.
    Anything else, stop and tell Jason this is not the office PC. Do not print the clients root.
-   Then: git status must be clean on claude/ocr-scans, and `git log -1 --format=%h` is Part B's head
-   (Jason gives you the hash, and a second hash beside it: the commit Part A stacks on, today's
-   value `dcb02c3`; call it <before>). Install from the locks the way Setup.bat does, hash-checked:
+   Then: git status must be clean, and `git log -1 --format=%h` is the head Jason gives
+   (he gives you the hash and the branch, and a second hash beside it: the commit P282 stacks on,
+   today's value `dcb02c3`; call it <before>). Install from the locks the way Setup.bat does, hash-checked:
      .venv\Scripts\python -m pip install --require-hashes -r requirements.lock
      .venv\Scripts\python -m pip install --require-hashes --no-deps -r requirements-nodeps.lock
-   Make the second checkout, for the numbers before P282 and for the baseline:
+   Make the second checkout, for the numbers before P282 and P285 and for the baseline:
      git fetch
      git worktree add --detach ..\bench-before <before>
      (in ..\bench-before) python -m venv .venv, then the same two pip installs there.
-   Why: P282's rule lives in the claude/ocr-scans checkout, and `main` may already hold Part A, so
-   "before" has to run on the exact commit Part A stacks on, not on main.
+   Why: P282's rule and P285's preparation live in the head's checkout, and `main` may already hold
+   both, so "before" has to run on the exact commit P282 stacks on, not on main.
 
-2. TODAY'S NUMBERS, BEFORE PART A IS INSTALLED (the installed app is still the build from before Part A).
-   a. Needs Review by code, today - why: it is the count Part A is meant to lower, and it needs the
-      firm's recorded rows, which Part A's code does not change:
+2. TODAY'S NUMBERS, BEFORE P282 AND P285 ARE INSTALLED (the installed app is still the build from before them).
+   a. Needs Review by code, today - why: it is the count P282 is meant to lower, and it needs the
+      firm's recorded rows, which neither decision's code changes:
         .venv\Scripts\python tools\reader_bench.py review-codes --out <outside>\review-before.json
    b. The backtest baseline, with the reader on, on the before commit's code (in ..\bench-before) - why: decision 92
-      parks every scan without the reader, so a baseline without --ocr says nothing about Part A, and
+      parks every scan without the reader, so a baseline without --ocr says nothing about P282 or P285, and
       every later routing change is held to this number:
         .venv\Scripts\python tools\backtest.py run "<firm corpus>" --ocr --out <outside>\backtest-before.json
         .venv\Scripts\python tools\backtest.py record --report <outside>\backtest-before.json
@@ -96,41 +99,57 @@ SAFETY - never break these:
    does not, record that and run the bench without --models: every medium variant is then reported as
    not measured, which is a fine answer.
 
-4. THE BENCH, in the claude/ocr-scans checkout, on each corpus that has an expectations file:
-     .venv\Scripts\python tools\reader_bench.py variants          (the 36 names; check the first is dpi144-floor0.50-off-small)
+4. THE BENCH, in the office checkout (the head Jason names), on each corpus that has an expectations file:
+     .venv\Scripts\python tools\reader_bench.py variants          (the 21 names; check the first is dpi300-floor0.50-prep-small)
      .venv\Scripts\python tools\reader_bench.py run "<corpus>" --out <outside>\bench-<firm|photos>.json --models <outside>\medium-models
    The report names are fixed labels (bench-firm*.json, bench-photos*.json, with -small or -medium
    added below), never the corpus folder's name or path, which would be repeated in the transcript.
-   The full grid: 36 variants, each reading every scan and photo of the corpus once. Why each corpus on
-   its own: the firm's sorted documents are mostly scans, the photo corpus is the phone photos, and the
-   ceiling (6 seconds a page) is judged on both.
+   The full grid: 21 variants, each reading every scan and photo of the corpus once - the 16 of the
+   main grid (300 and 144 dpi, floor 0.5 and 0.7, prepared and raw, small and medium models) and
+   the 5 ablation rows (the shipped settings with one step off, or Otsu's threshold in place of
+   Sauvola's). The raw rows are the reading before P285 (the 144 dpi one exactly), so P285 needs no
+   second checkout: its "before" is on the same code. Why each corpus on its own: the firm's sorted
+   documents are mostly scans, the photo corpus is the phone photos, and the ceiling (6 seconds a
+   page) is judged on both.
    Time, worked out before starting: read the shipped variant's per-page median from the first row
-   under the table's header, which the run prints as each variant finishes. Seconds for the grid are about
-   pages x that median x 65 (18 small variants, plus 18 medium variants at about 2.6 times small),
-   and the 300 dpi variants cost more than that: allow up to twice as much. `corpus.pages` in the
-   report is the page count; the run prints nothing else about the corpus. If the estimate passes one
-   night (ten hours), run the small tier first:
+   under the table's header (call it m), which the run prints as each variant finishes. A 300 dpi
+   small variant costs about m a page, a 144 dpi one about half, a medium one about 2.6 times its
+   small one. So the 13 small variants (8 of the main grid, 5 ablation rows) cost about 11 m a page,
+   the 8 medium ones about 16 m, and all 21 about 27 m a page: seconds for the grid are about
+   pages x m x 27 (500 pages at m = 2 seconds is 7.5 hours). `corpus.pages` in the report is the
+   page count; the run prints nothing else about the corpus. If pages x m x 27 passes one night
+   (ten hours), run the small tier first (13 variants):
      ... run "<corpus>" --out <outside>\bench-<firm|photos>-small.json --tier small
-   read the table, pick the dpi, floor and de-lining with the most `right` and the fewest `wrong`
-   within the ceiling, and run the medium tier second at those alone:
-     ... run "<corpus>" --out <outside>\bench-<firm|photos>-medium.json --models <outside>\medium-models --tier medium --dpi <d> --floor <f> --delining <off|on>
+   read the table, pick the dpi, floor and preparation (prep or raw) with the most `right` and the
+   fewest `wrong` within the ceiling, and read the ablation rows for which step earns its place
+   (a step whose removal does not lower `right`, or raises it, is one P284 may turn off). Then run
+   the medium tier second at those alone:
+     ... run "<corpus>" --out <outside>\bench-<firm|photos>-medium.json --models <outside>\medium-models --tier medium --dpi <d> --floor <f> --prep <prep|raw> --ablation off
    (the shipped variant is always measured too, so the two reports share a baseline row). A variant
    that says "not measured" is a result, not a failure. The run reads on the processor, in this
    process. The safety stop is still armed: no page starts after the one before it overran 60 seconds
    or after the document's 600, but a page already under way is unbounded, so if it seems stuck, wait;
    a page takes seconds, not minutes. A slow variant can park a multi-page scan through the stop, and
    that counts as a park in the numbers. The report is rewritten after every variant; a variant that
-   failed is in it as "not measured" with the name of its error.
+   failed is in it as "not measured" with the name of its error. The photos' seconds are their own
+   (`photo_median`, `photo_worst`): P285 reads a photo at a long side of 3300, about 2.7 times the
+   pixels it was read at, and P284 can split the photos' long side from the scans' if they run long.
 
-5. PART A INSTALLED, then the same numbers after it.
-   Jason (or the usual route) installs the Part A build on this PC; wait until he says it is in, and
-   until the first scheduled pass after it has run. Then:
+5. THE BUILD CARRYING P282 AND P285 INSTALLED, then the same numbers after it.
+   Jason (or the usual route) installs that build on this PC; wait until he says it is in, and
+   until the first scheduled pass after it has run. That pass reads every document's verdict again,
+   because the verdict cache moved with P285 (text-layer documents are quick; scans and photos are
+   slow, once), so it takes longer than a usual pass: wait for it to finish before `review-codes`.
+   A row already in Needs Review stays there until a person files it, so the count moves only on
+   documents that arrive after the install. Then:
      .venv\Scripts\python tools\reader_bench.py review-codes --out <outside>\review-after.json
-   and, in the claude/ocr-scans checkout:
+   and, in the office checkout:
      .venv\Scripts\python tools\backtest.py run "<firm corpus>" --ocr --out <outside>\backtest-after.json
    and, in ..\bench-before (the checkout that holds the recorded baseline):
      .venv\Scripts\python tools\backtest.py check --report <outside>\backtest-after.json
    Exit 1 is a finding to report, not to fix: say the two agreements it printed and stop there.
+   These "after" numbers carry P282 and P285 together; the bench's raw and prepared rows are what
+   tell the two apart.
 
 6. WHAT COMES BACK.
    Paste into your reply for Jason's CODE UPDATE, and nothing else: the contents of review-before.json,
@@ -146,10 +165,16 @@ SAFETY - never break these:
 - **Refuse off the office PC** - the schedule runs on one computer only (the
   runbook's "which machine runs the schedule"), and the corpus is only
   reachable from it.
-- **The commit Part A stacks on for "before"** - `backtest.py` and `check`
-  read the checkout they run in; P282's rule is in `claude/ocr-scans`, and
-  by the time this runs `main` holds it too. A baseline measured on either
-  would already hold Part A's change and could not show it.
+- **The commit P282 stacks on for "before"** - `backtest.py` and `check`
+  read the checkout they run in; P282's rule and P285's preparation are in
+  the head Jason names, and by the time this runs `main` may hold them too. A
+  baseline measured on either would already hold their change and could not
+  show it.
+- **The bench's raw rows are P285's "before"** - on the same code. `raw` is
+  every step of the preparation off, and `dpi144-floor0.50-raw-small` is
+  exactly the reading before P285, so the comparison of prepared against raw
+  needs no second checkout; the checkout of step 1 is for P282 and for the
+  baseline.
 - **Nothing downloaded by the bench** - `ocr._refuse_downloads` stands under
   it; the medium models come from a person's approved command.
 - **Counts and seconds only** - the standing rule that client data never

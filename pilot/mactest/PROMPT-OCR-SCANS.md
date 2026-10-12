@@ -170,9 +170,9 @@ Python here is .venv/bin/python (3.14, the office's) and .venv311/bin/python (3.
    requests; `.venv/bin/python -m tracker.api templates` lists them, check there). Then:
      .venv/bin/python tools/reader_bench.py variants
      .venv/bin/python tools/reader_bench.py run ~/PilotTest/bench-corpus --expectations ~/PilotTest/bench-out/made-up-expectations.csv --out ~/PilotTest/bench-out/bench-mac.json
-   Expected: `variants` prints 36 names and the first is dpi144-floor0.50-off-small; `run` prints a
-   table row as each variant finishes; the 18 medium variants read "not measured" (no models folder
-   was given, and none was fetched); the 18 small variants each count 3 or 4 right on these clean
+   Expected: `variants` prints 21 names and the first is dpi300-floor0.50-prep-small; `run` prints a
+   table row as each variant finishes; the 8 medium variants read "not measured" (no models folder
+   was given, and none was fetched); the 13 small variants each count 3 or 4 right on these clean
    drawn pages (the W-2 lands as a shortlist park when the reader misses one of its required
    phrases, as the first Mac run saw at every dpi), and the shipped variant (the first row under
    the header) is the one Part C is measured against. A variant that reads the W-2 well enough to

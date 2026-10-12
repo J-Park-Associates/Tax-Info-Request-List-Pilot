@@ -107,27 +107,36 @@ no routing change may lower that number.
 
 ## The reader bench: which reading settings help on the firm's paper
 
-Nobody had measured which reading settings help on the firm's own scans and
-photos. The reader draws a scanned page at 144 dots per inch, below the 200-300
-every reader wants, and the firm's own pre-processing notes end with the open
-item "how to measure which steps actually help". P283 is that measurement, and
-changes nothing the product reads: every setting of how a page is drawn and read
-is a field of `ocr.ReaderSettings` (`SHIPPED` is what the product reads with;
-`ocr.use_settings` is for the bench and the suite), box-line removal
-(`ocr.delined`) is a switch that is off, and `tools/reader_bench.py` reads a
-folder of already-sorted documents once per combination of settings and counts
-how many landed where a person put them, and how long each took. The office PC
-runs it, from `pilot/PROMPT-reader-bench.md`; P284 ships whatever the numbers
-favour.
+The firm's own pre-processing notes end with the open item "how to measure
+which steps actually help". P283 built the measurement and P285 gave it the
+steps: the product now reads a page **prepared** (`ocr.prepared`: drawn at 300
+dots per inch, turned level if it leans a little, made black and white by
+Sauvola's local threshold, cleared of specks and of a form's box lines, all in
+memory), and `tools/reader_bench.py` reads a folder of already-sorted documents
+once per combination of settings and counts how many landed where a person put
+them, and how long each took. Every setting of how a page is drawn, prepared and
+read is a field of `ocr.ReaderSettings` (`SHIPPED` is what the product reads
+with, `RAW` the reading before P285 - 144 dpi, no step; `ocr.use_settings` is for
+the bench and the suite). The office PC runs the bench, from
+`pilot/PROMPT-reader-bench.md`; P284 ships whatever the numbers favour, choosing
+among prepared settings.
 
-**The grid** is 36 variants, every combination of 144, 200 and 300 dpi; a
-confidence floor of 0.5, 0.7 and 0.85; box-line removal off and on; and the
-small and the medium models. Each is named `dpi144-floor0.50-off-small` (that one
-is the shipped settings, always measured first), and its long side is
+**The grid** is 21 variants: every combination of 300 and 144 dpi; a confidence
+floor of 0.5 and 0.7; prepared (`prep`) and raw; and the small and the medium
+models (16), then five **ablation** rows - the shipped settings at 300 dpi, floor
+0.5, small models, with one step off (`no-deskew`, `no-binarize`, `no-denoise`,
+`no-delining`) or Otsu's threshold in Sauvola's place (`otsu`) - which say which
+step earns its place. Each is named `dpi300-floor0.50-prep-small` (that one is the
+shipped settings, always measured first); `raw` is every step off, so
+`dpi144-floor0.50-raw-small` is exactly the reading before P285, and an ablation
+row is `dpi300-floor0.50-prep-otsu-small`. A variant's long side is
 `max(2000, ceil(11 * dpi))` so 300 dpi is not shrunk back by the reader. The
 medium models are never shipped and never fetched: a person puts them in a folder
 (`--models`), and without them the medium variants are reported as not measured.
-`--dpi`, `--floor`, `--delining` and `--tier` (comma lists) restrict the grid.
+`--dpi`, `--floor`, `--prep` and `--tier` (comma lists) restrict the main grid and
+`--ablation off` leaves the five rows out. The report is schema 2: a variant's
+settings state the dpi, floor, long side, each step of the preparation and the
+tier.
 
 **The four outcomes**, per variant and against the expectations file: `right`
 (filed under the expected row, or meant to park and parked), `parked_shortlist`
@@ -159,7 +168,7 @@ on. A Ctrl-C writes the report so far and exits 130.
 
 ```
 python tools/reader_bench.py variants                       # the grid's names, one a line
-python tools/reader_bench.py run <folder> --out <report> [--expectations <file>] [--models <folder>] [--dpi 144,300] [--floor 0.5,0.7] [--delining off,on] [--tier small,medium]
+python tools/reader_bench.py run <folder> --out <report> [--expectations <file>] [--models <folder>] [--dpi 300,144] [--floor 0.5,0.7] [--prep prep,raw] [--ablation on|off] [--tier small,medium]
 python tools/reader_bench.py review-codes [--out <file>]   # Needs Review, counted by code
 ```
 

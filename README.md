@@ -454,6 +454,11 @@ Form 1098", "Forms W-2", "such as Form 1099-NEC". A request whose Period
 names a month (`Dec 2025`) also checks that the document prints that
 month.
 
+Before it is read, a scanned page is drawn at 300 dots per inch and prepared
+in memory - turned level if it leans a little, made black and white, cleared
+of specks and of a form's box lines; a photo is prepared the same way. The
+file itself is never changed.
+
 A scan with no text layer, or a photo, is read by OCR - the same reading
 the scanner makes later. OCR text files a document on a request's *required*
 keywords, as a text layer does; on a request's looser keywords it files only
