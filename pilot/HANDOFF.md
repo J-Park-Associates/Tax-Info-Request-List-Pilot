@@ -26,10 +26,13 @@ this repository; [`SPEC.md`](SPEC.md) says what it builds.
 **P285 - a scan or a photo is prepared before the reader reads it
 ([`SPEC-ocr-prepare.md`](SPEC-ocr-prepare.md)), built on `claude/ocr-prepare`**
 in three commits on top of the SPEC's (the stage with its tests; the bench,
-both prompts, the docs and the map; this handoff). Not yet reviewed (Opus's,
-in a session that did not build it) and **not pushed**. Jason ruled every
-section 8 question to its stated default. **One finding below blocks it
-(memory); read it first.**
+both prompts, the docs and the map; the first handoff), then rebuilt to the
+SPEC's section 9 amendment in four more (the detector's long side; the box-line
+step; the Mac prompt's counts; a leftover print) and this handoff. Not yet
+reviewed (Opus's, in a session that did not build it) and **not pushed**.
+Jason ruled every section 8 question to its stated default. **One finding
+below is still open (a five-page scan is still ended by the reading child's
+memory limit on this Mac); read it first.**
 
 What was built, in the software's words: every scanned page and photo is now
 prepared in memory before the reader sees it - drawn at 300 dots per inch,
@@ -44,38 +47,52 @@ with each step turned off one at a time, so the office numbers say which steps
 earn their place. README, runbook, tools page, the office prompt and the map
 say so; nothing tells a person to do anything.
 
-**Blocking finding - the shipped reading is killed at the reading child's
-memory limit on this Mac.** The SPEC (section 1.3.1, section 5.1) bounded the
-*stage's* memory and measured it against the child's 2 GB; the stage is not
-the problem (a 4032 x 3024 photo grows the process by about 530 MB through the
-whole stage, a 40-million-pixel one by about 660 MB). The engine is: rapidocr
-given a long side of 3300 (the SPEC's ruling, so that 300 dpi is not shrunk
-back) needs about 2.8 GB on this Mac, against 1.1-1.2 GB at the old 2000.
-Measured on drawn pages, the process's physical footprint after one reading:
+**Memory finding (SPEC 9.1): the detector, not the stage, broke the reading
+child's cap. 9.1 took most of it away; a five-page scan is still ended on this
+Mac.** Found by the first build: rapidocr's detector, left at its default
+(`Det.limit_type` `min`, 736), never shrinks a page whose shorter side is
+already past 736, so with the long side at 3300 it read the whole 3300 x 2550
+page and the process reached 2.85 GB on a drawn letter page (the stage is not
+the problem: a 4032 x 3024 photo grows the process by about 530 MB through the
+whole stage). In the real product path - a drawn five-page scan judged through
+`content_check.judge_bounded` in the pass's reading child, on the processor -
+the memory watch ended the child at 2814 MB (`reading-crashed`, "it had
+reached its memory limit (2 GB)").
 
-| reading | footprint |
-|---|---|
-| raw, 1224 x 1584 (144 dpi page) | 1.14 GB |
-| shipped, 2550 x 3300 page | 2.85 GB |
-| shipped, 4032 x 3024 photo | 2.44 GB |
-| the engine alone on an unprepared page at long side 3300 | 2.77 GB (so not the stage) |
-| long side 2400 / 2600 / 2800 / 3000 on the same page | 1.76 / 1.64 / 2.37 / 2.49 GB |
+What 9.1 did: `_build_engine` sets `Det.limit_type` to `"max"` (and not
+`Det.limit_side_len`). Detection runs on a copy the engine holds to its own
+2000-pixel long side, as under P283; recognition crops its words from the
+3300 page. The same lines are read. Numbers on this Mac (drawn pages, counts
+only, in GB of 10^9 bytes; the child's cap is 2 x 1024^3 bytes, 2.15 here):
 
-And in the real product path - a drawn five-page scan judged through
-`content_check.judge_bounded` in the pass's reading child, on the processor, as
-the pass reads - the memory watch read the child at 871 MB and then 2814 MB
-and ended it: `reading-crashed`, "it had reached its memory limit (2 GB)",
-after 1.3 s. No test in the suite catches this (the child tests use stand-in
-readers; the real-reader tests read in the test's own process). On Windows the
-job object caps committed memory at the same 2 GB; it was not measured there
-and is likely the same. What I did: nothing - `PROCESSOR_CHILD_MEMORY` is
-decision 169's (SPEC-169 section 9) and the long side and dpi are Jason's
-ruling, so changing either is his choice. The options: raise the child's
-processor cap (4 GB would clear 2.85 GB with room; on the office PC it is
-unmeasured), or hold the long side under about 2600 on this Mac (about 236 dpi
-of a letter page; the 300 dpi ruling would then not hold), or both. The
-reviewer should not pass the build as a product that reads scans until one is
-chosen; the stage, the bench and the tests are independent of the choice.
+| reading | without 9.1 | with 9.1 |
+|---|---|---|
+| the engine alone, a drawn unprepared 2550 x 3300 page, peak after the first call | 2.61 | 1.12 |
+| the same, after the second call | 3.86 | 1.66 |
+| the whole process, peak after one shipped reading of a drawn 2550 x 3300 page (stage and engine; median of three: 1.604, 1.605, 1.612) | 2.85 (first build's footprint) | 1.61 |
+| the same process's footprint after that reading (median of three) | - | 1.55 |
+
+**Still open.** The process does not hand memory back between readings, and
+the second reading of any page adds about 0.54 GB that the first did not. In
+one process, reading the same drawn page six times, the footprint was 1.54,
+2.08, 2.11, 2.14, 2.18, 2.26 GB; with a garbage collection after each page it
+was 1.55 then 2.06 and flat. A drawn five-page scan read in one process
+(`content_check.open_and_read`) peaks at 2.40 GB under the shipped settings,
+1.31 GB under `RAW`, and a one-page scan 1.61 GB; the stage alone leaves about
+0.65 GB held after its first page. **The five-page scan through the reading
+child is still ended**: `reading-crashed`, "it had reached its memory limit
+(2 GB)", exit code -9, after about 2.1 s, in every run of
+`test_the_shipped_reading_of_a_scan_fits_the_reading_child` on this Mac (the
+test the SPEC asks for in 4.1; it fails here, and is committed as written so
+the reviewer sees it). The cap is decision 169's (`PROCESSOR_CHILD_MEMORY`)
+and the long side and dpi are Jason's ruling, so nothing here changed either;
+the SPEC's own two options stand (raise the processor child's cap, or hold the
+long side lower; 9.1 did not make either needless for a multi-page scan), and
+the page-to-page growth above is a third thing to look at. The Windows job
+object caps committed memory at the same 2 GB and was not measured. The
+reviewer should not pass the build as a product that reads multi-page scans on
+this Mac until one is chosen; the stage, the bench and the rest of the tests
+are independent of the choice.
 
 **Second finding (not P285's, but it bit the build): the arm64 macOS wheel of
 OpenCV (`opencv-python-headless==5.0.0.93`, KleidiCV) segfaults inside
@@ -126,40 +143,31 @@ white by design, which is why the SPEC's "95% of the text's pixels" claim is
 tested on hard-pixel text. On the smooth shadow Sauvola blackens 0 pixels,
 Otsu 50%.
 
-Gate, each file its own process, `.venv` (3.14) and `.venv311` (3.11), no `-m
-"not corpus"`, the real reader ran (the skips are the platform ones already
-there). Run on the final tree except that `test_repo_map` first failed on both
-(the vocabulary report's hash had moved after the map was refreshed; the map
-was refreshed again) and passed on both after:
+Gate of the rebuild (SPEC 9), each file its own process, `.venv` (3.14) and
+`.venv311` (3.11), no `-m "not corpus"`, the real reader ran (the skips are the
+platform ones already there), on the final tree:
 
 | file | 3.14 | 3.11 |
 |---|---|---|
-| `test_ocr` | 67 passed, 4 skipped | 67 passed, 4 skipped |
+| `test_ocr` | 69 passed, 1 failed, 4 skipped | 69 passed, 1 failed, 4 skipped |
 | `test_content_check` | 115 passed, 1 skipped | 115 passed, 1 skipped |
 | `test_reader_bench` | 23 passed | 23 passed |
-| `test_router` | 92 passed | 92 passed |
-| `test_filer` | 405 passed, 6 skipped | 405 passed, 6 skipped |
-| `test_scanner` | 42 passed | 42 passed |
-| `test_containers` | 62 passed | 62 passed |
-| `test_names` | 6 passed | 6 passed |
-| `test_after_install` | 105 passed, 1 skipped | 105 passed, 1 skipped |
-| `test_api` | 505 passed | 505 passed |
-| `test_runner` | 229 passed, 1 warning | 229 passed, 1 warning |
-| `test_resident` | 39 passed | 39 passed |
-| `test_backtest` | 22 passed | 22 passed |
-| `test_vocab_report` | 28 passed | 28 passed |
-| `test_learned_keywords` | 17 passed | 17 passed |
 | `test_layers` | 31 passed | 31 passed |
 | `test_single_source` | 217 passed | 217 passed |
 | `test_repo_map` | 82 passed | 82 passed |
 | `test_tripwire` | 23 passed | 23 passed |
 | `test_errors` | 83 passed | 83 passed |
 
-`ruff check .` clean; `repo_map.py update` then `check` exit 0 (the map is in
-the second commit with the bench, the other changed code's hashes; it is only
-current on the branch's head); `vocab_report.py build` changed one line, the
-recorded input hash of `tracker/content_check.py`, and nothing else. The
-backtest baseline is still unrecorded (the office prompt records it).
+The one failure, under both interpreters, is
+`test_the_shipped_reading_of_a_scan_fits_the_reading_child` (the memory finding
+above). The first build's wider gate (router, filer, scanner, containers,
+names, after_install, api, runner, resident, backtest, vocab_report,
+learned_keywords) ran on its tree and was not rerun: the rebuild changes the
+engine's parameters, the box-line step, the fixtures and the prompt's counts,
+and no module those tests import beyond `ocr` itself. `ruff check .` clean;
+`repo_map.py update` then `check` exit 0 (the map is only current on the
+branch's head); `vocab_report.py build` changed nothing. The backtest baseline
+is still unrecorded (the office prompt records it).
 
 Tests: renamed `test_the_shipped_settings_are_the_prepared_reading_at_300_dpi`
 and `test_the_grid_is_every_dpi_floor_preparation_and_tier_and_the_ablation`;
@@ -170,23 +178,35 @@ twelve-degree and quarter-turn claims, the Sauvola, window, speck, long-side
 and untouched-and-repeatable claims and the real-scan one; in
 `test_reader_bench` the raw-variant, ablation, ablation-off, schema 2 and
 office-prompt claims, all named as the SPEC's section 4 names them; the four
-`test_content_check` claims changed as 4.2 says.
+`test_content_check` claims changed as 4.2 says. The rebuild adds
+`test_a_thick_stroke_is_type_and_a_thin_one_a_rule_whatever_their_length`,
+`test_a_large_title_keeps_its_form_number_when_prepared` (a real-reader claim)
+and `test_the_shipped_reading_of_a_scan_fits_the_reading_child` (a real
+reading child, five drawn pages on the 1275 x 1650 canvas of `scanned_pdf` so
+the OpenCV fault below is not hit), and changes
+`test_the_engine_is_built_with_the_settings_floor_and_long_side` to expect
+`Det.limit_type` `max`. None of the real-reader tests in this file carries a
+skip of its own (they run wherever the models are), so neither does the new
+child claim.
 
 Where the SPEC and the code differ, and what the build did:
 
-- **The memory finding above** is the SPEC's gap, not a departure: the build
-  is exactly the SPEC.
-- **`w2_photo` (a test fixture) changed.** The SPEC says
-  `test_a_photo_is_read_by_rapidocr` and `test_a_sideways_page_keeps_its_words`
-  must pass unchanged, but their photo is 1100 x 260 with 40 px type, and the
-  box-line step (a stroke longer than a fortieth of the page's side is a rule)
-  takes every letter's stem on such a page for a rule and wipes the text
-  (read: garbage). The photo is now the same lines at the top of a 2200 x 1700
-  canvas; the assertions are untouched. It is a real property of the step: a
-  page too small for its type loses the type. At 300 dpi on a letter page a
-  stem has to be under about 0.27 in (82 px) tall and a bar under 0.21 in
-  (63 px) wide; a 36-point headline is near it. The bench's `no-delining` row
-  measures it.
+- **The memory finding above** is the SPEC's gap, not a departure: 9.1 is
+  built exactly, and the SPEC's test for it fails.
+- **The box-line step is long and thin (SPEC 9.2), and the `w2_photo` fixture
+  is back to its P283 form** (1100 x 260, the P283 docstring): the first
+  build's page-sized canvas and its note are gone. One departure from the
+  SPEC's words in `_delined_grey`: after the rule mask is dilated by
+  `DELINE_GROW`, any pixel of `heavy` is taken out of it again (`rules[heavy >
+  0] = 0`). Without it the SPEC's own claim - a 16 x 160 bar comes back
+  unchanged pixel for pixel - fails by one row: the vertical opening's even
+  kernel (`height // 40`, 82 on a letter page) drifts a pixel past the stem's
+  end, outside `heavy`, and the growth carries that into the stem's last row.
+  Thick ink is never whitened; thin rules and the two existing de-lining tests
+  behave as before. Measured: "Form 1099-INT Interest Income" in PIL's default
+  face at 150 px, over a made-up body at 46 px with a 3 px box, reads
+  `Form 1099-INT Interest Income` as its first line both unprepared and
+  prepared.
 - **The real-scan test's crooked page** is drawn by a helper in the test file,
   `scanned_pdf`'s page turned two degrees on the *same canvas*, not
   `scanned_pdf(rotate=2)`, which grows the canvas to a size at which the OpenCV
@@ -203,10 +223,10 @@ Where the SPEC and the code differ, and what the build did:
   the threshold, which is harmless and is what rapidocr would do itself); a
   2549 x 3300 page results. No SPEC change needed, but the "keeps its size"
   claim is tested on a drawn 2550 x 3300, not a rendered page.
-- **The mactest prompt**: only line 172's names changed, as the SPEC says. The
-  same sentence still says "the 18 medium variants" and "the 18 small variants"
-  (now 8 and 13) and that the small ones "each count 3 or 4 right"; the SPEC
-  said to touch nothing else, so they are stale and need a one-line follow-up.
+- **The mactest prompt**: line 172's names changed as the SPEC says, and
+  (SPEC 9.3) the same sentence now says "the 8 medium variants" and "the 13
+  small variants", the grid's real counts (21 in all). Nothing else in the
+  file moved. Done.
 - **`tests/test_layers.py`** needed no change (the stage imports cv2, numpy and
   PIL inside functions; cv2 was already a reader's import).
 - **Bench order**: `--dpi 144,300` runs in the grid's order, 300 first, whatever
