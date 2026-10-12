@@ -742,6 +742,13 @@ changes nothing:
   beside the app once (§6, step 5). And delete the folder `ocr-scratch`
   beside the app if it is there: the old reader kept the page it was reading
   in it, the new one writes nothing, and nothing empties that folder any more.
+- **Once, when P285 lands** (the prepared reading). Nothing to delete and no
+  step to take. Every scan and photo is now drawn at 300 dots per inch and
+  prepared before it is read, so the verdict cache moved and the **first pass
+  after the install reads every document again** - text is quick, scans and
+  photos are slow, once, as above. A row already in Needs Review stays there
+  until a person files it; only documents that arrive after the install are
+  sorted by the new reading.
 - **Once, when decision 186 lands** (the data folder). The database moves to
   `%LOCALAPPDATA%\tax-document-tracker-pilot` and nothing is carried over: the
   first pass builds it again from the ledgers and reads every document once
