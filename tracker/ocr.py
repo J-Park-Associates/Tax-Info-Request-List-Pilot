@@ -391,7 +391,7 @@ def _build_engine(*, cuda: bool):
         # the page at SETTINGS.max_side_len. Under rapidocr's default ("min",
         # 736) a page whose shorter side is already past 736 is never shrunk
         # for detection, so the detector ran on the whole 3300 x 2550 page and
-        # the process reached 2.4 GB, past the reading child's 2 GB; under
+        # the process reached 2.4 GB, past the 2 GB the child then had; under
         # "max" its own get_preprocess holds any page over 1500 px to a 2000
         # px copy (Det.limit_side_len is ignored there and is not set), maps
         # the boxes back, and the crops come from the 3300 page. Measured on a
@@ -827,9 +827,14 @@ def _sauvola_window(height: int, width: int) -> int:
 def _sauvola(grey):
     """A threshold per pixel from its window (Sauvola): ``T = m (1 + k (s / R
     - 1))``, ``m`` and ``s`` the window's mean and standard deviation, from
-    integral images, so constant time per pixel whatever the window. A pixel
-    at or under its threshold is ink (0), any other paper (255); ``<=`` so a
-    solid black fill stays black.
+    two box filters in single precision (the mean, and the mean of the
+    squares), so constant time per pixel whatever the window. Box filters,
+    not integral images: the integral images of the padded page in double
+    precision, with their four-corner differences, held more at once and the
+    allocator kept 404 MB of it afterwards against 265 MB, and were slower
+    (49 ms against 29 on a 2550 x 3300 page), for the same pixels to one in
+    eight million. A pixel at or under its threshold is ink (0), any other
+    paper (255); ``<=`` so a solid black fill stays black.
 
     R is the largest standard deviation an 8-bit grey can show, so ``T`` stays
     between ``0.8 m`` and ``m``: a flat region - clean paper, or a smooth
@@ -839,21 +844,13 @@ def _sauvola(grey):
     import cv2
     import numpy
 
-    height, width = grey.shape
-    window = _sauvola_window(height, width)
-    margin = window // 2
-    padded = cv2.copyMakeBorder(grey, margin, margin, margin, margin, cv2.BORDER_REFLECT_101)
-    total, squares = cv2.integral2(padded, sdepth=cv2.CV_64F)
-
-    def window_sums(integral):
-        return (integral[window:window + height, window:window + width]
-                - integral[:height, window:window + width]
-                - integral[window:window + height, :width]
-                + integral[:height, :width])
-
-    count = float(window * window)
-    mean = window_sums(total) / count
-    deviation = numpy.sqrt(numpy.maximum(0.0, window_sums(squares) / count - mean * mean))
+    window = _sauvola_window(*grey.shape)
+    single = grey.astype(numpy.float32)
+    mean = cv2.boxFilter(single, -1, (window, window), normalize=True,
+                         borderType=cv2.BORDER_REFLECT_101)
+    squares = cv2.boxFilter(single * single, -1, (window, window), normalize=True,
+                            borderType=cv2.BORDER_REFLECT_101)
+    deviation = numpy.sqrt(numpy.maximum(0.0, squares - mean * mean))
     threshold = mean * (1.0 + SAUVOLA_K * (deviation / SAUVOLA_R - 1.0))
     return numpy.where(grey <= threshold, 0, 255).astype(numpy.uint8)
 
@@ -1012,8 +1009,11 @@ DOCUMENTS_PER_CHILD = 100
 #: The most memory a reading child may commit (SPEC-169 section 9), set on
 #: its job object on Windows and watched by the pass elsewhere: a processor
 #: child, and a child on the graphics card. Past it the child ends and is
-#: replaced.
-PROCESSOR_CHILD_MEMORY = 2 * 1024**3
+#: replaced. Decision 169's 2 GB was a reader at 144 dpi and a 2000 px long
+#: side; P285's 300 dpi page needs about 2.3 GB on a Mac and more where
+#: Windows counts committed memory, and 4 GB is the first power of two with
+#: room above that. Assumed (P285, 9.4), pending Jason's ruling.
+PROCESSOR_CHILD_MEMORY = 4 * 1024**3
 GRAPHICS_CARD_CHILD_MEMORY = 6 * 1024**3
 #: Off Windows no job object caps a child, so the pass reads the child's
 #: memory itself, between the slices it waits for an answer in (R31). Half a

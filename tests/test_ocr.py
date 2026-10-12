@@ -333,7 +333,7 @@ def test_the_engine_is_built_with_the_settings_floor_and_long_side(recorded_engi
     """With the shipped settings the params carry the floor 0.5, the long side
     of a letter page at 300 dpi (3300, P285), the detector held to its own
     2000-pixel copy (``Det.limit_type`` ``max``, so a 3300 page is not
-    detected whole and the process stays under the reading child's 2 GB),
+    detected whole and the process stays under the reading child's 4 GB),
     and the three shipped model paths; with other settings, theirs."""
     folder = ocr.models_folder()
     ocr._build_engine(cuda=False)
@@ -843,10 +843,12 @@ def test_the_shipped_reading_of_a_scan_fits_the_reading_child(tmp_path, in_a_chi
     """The shipped reading of a five-page scan, through the product's own
     path (the judgment in the pass's reading child, on the processor, under
     the shipped settings), gets a reading and not a crash. The child ends a
-    reading that passes its 2 GB (decision 169); the first build's detector
-    read each 300 dpi page whole, reached 2.8 GB, and was ended as
-    ``reading-crashed``. The detector now reads its own 2000-pixel copy
-    (``Det.limit_type`` ``max``), so the child stays inside its cap."""
+    reading that passes its cap, which is 4 GB from P285 (decision 169's
+    2 GB was a reader at 144 dpi); the first build's detector read each 300
+    dpi page whole, reached 2.8 GB, and was ended as ``reading-crashed`` at
+    the 2 GB cap, and with the detector held the five pages still crossed 2
+    GB. The detector now reads its own 2000-pixel copy (``Det.limit_type``
+    ``max``) and the cap is 4 GB, so the child stays inside it."""
     from tests.samples import lines_1099_int
 
     assert ocr.SETTINGS is ocr.SHIPPED
@@ -1285,7 +1287,7 @@ def test_a_death_in_a_used_child_is_retried_once_on_a_fresh_one(tmp_path):
 
 @pytest.mark.skipif(sys.platform != "win32", reason="the memory cap is the Windows job object's")
 def test_the_reading_childs_job_caps_its_memory(a_pack_here):
-    """SPEC-169 section 9: 2 GB for a processor child, 6 GB for a child on
+    """SPEC-169 section 9, amended by P285: 4 GB for a processor child, 6 GB for a child on
     the graphics card, set on the job object that already ends it."""
     for processor_only, cap in ((True, ocr.PROCESSOR_CHILD_MEMORY),
                                 (False, ocr.GRAPHICS_CARD_CHILD_MEMORY)):
@@ -1294,12 +1296,12 @@ def test_the_reading_childs_job_caps_its_memory(a_pack_here):
             assert ocr._job_memory(child._job_object)[0] == cap
         finally:
             child.finish()
-    assert (ocr.PROCESSOR_CHILD_MEMORY, ocr.GRAPHICS_CARD_CHILD_MEMORY) == (2 * 1024**3, 6 * 1024**3)
+    assert (ocr.PROCESSOR_CHILD_MEMORY, ocr.GRAPHICS_CARD_CHILD_MEMORY) == (4 * 1024**3, 6 * 1024**3)
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="the memory cap is the Windows job object's")
 def test_a_child_over_its_memory_limit_is_replaced_and_the_next_document_reads(tmp_path):
-    """SPEC-169 section 9: a document that wants more than the child's 2 GB
+    """SPEC-169 section 9: a document that wants more than the child's 4 GB
     fails in that child, which says so and ends; the document gets the
     crash's "could not be read", kept for a person, and the next document
     is read by a fresh child."""
@@ -1338,7 +1340,7 @@ def a_footprint_that_is_over_for(pid_mark: Path, over: int):
 
 @OFF_WINDOWS
 def test_the_posix_watch_caps_a_child_the_way_the_job_object_does(a_pack_here):
-    """R31: the same 2 GB for a processor child and 6 GB for a child on the
+    """R31: the same 4 GB for a processor child and 6 GB for a child on the
     graphics card, held by the pass's watch where Windows holds it in a job
     object - and no job object here to hold it."""
     for processor_only, cap in ((True, ocr.PROCESSOR_CHILD_MEMORY),
@@ -1408,7 +1410,7 @@ def test_a_reading_past_its_memory_on_posix_ends_as_a_crash_and_is_replaced(tmp_
     with ocr.reading_session() as session:
         outcome = session.run(child_readers.a_text_layer_that_never_finishes, (big,), {}, 60)
         assert outcome.kind == "died" and outcome.seconds < 30
-        assert outcome.error.endswith("; it had reached its memory limit (2 GB)"), outcome.error
+        assert outcome.error.endswith("; it had reached its memory limit (4 GB)"), outcome.error
         assert session.child is None                      # let go, not asked again
         in_a_child.setattr(ocr, "_footprint", a_footprint_that_is_over_for(
             child_readers.reached(again, "text-layer"), over))
