@@ -1,4 +1,4 @@
-# The routing tools: vocabulary report, learned keywords, backtest
+# The routing tools: vocabulary report, learned keywords, backtest, reader bench
 
 Moved here from `CLAUDE.md` on 2026-09-25 so that every agent session does
 not load it; `CLAUDE.md` points here. Read this before changing a catalog
@@ -104,4 +104,60 @@ root, never a word of a document. The baseline ships unrecorded and `check`
 says so plainly rather than passing quietly: an unknown baseline is not a
 met one. Once the owner has run the backtest at the office and recorded it,
 no routing change may lower that number.
+
+## The reader bench: which reading settings help on the firm's paper
+
+Nobody had measured which reading settings help on the firm's own scans and
+photos. The reader draws a scanned page at 144 dots per inch, below the 200-300
+every reader wants, and the firm's own pre-processing notes end with the open
+item "how to measure which steps actually help". P283 is that measurement, and
+changes nothing the product reads: every setting of how a page is drawn and read
+is a field of `ocr.ReaderSettings` (`SHIPPED` is what the product reads with;
+`ocr.use_settings` is for the bench and the suite), box-line removal
+(`ocr.delined`) is a switch that is off, and `tools/reader_bench.py` reads a
+folder of already-sorted documents once per combination of settings and counts
+how many landed where a person put them, and how long each took. The office PC
+runs it, from `pilot/PROMPT-reader-bench.md`; P284 ships whatever the numbers
+favour.
+
+**The grid** is 36 variants, every combination of 144, 200 and 300 dpi; a
+confidence floor of 0.5, 0.7 and 0.85; box-line removal off and on; and the
+small and the medium models. Each is named `dpi144-floor0.50-off-small` (that one
+is the shipped settings, always measured first), and its long side is
+`max(2000, ceil(11 * dpi))` so 300 dpi is not shrunk back by the reader. The
+medium models are never shipped and never fetched: a person puts them in a folder
+(`--models`), and without them the medium variants are reported as not measured.
+`--dpi`, `--floor`, `--delining` and `--tier` (comma lists) restrict the grid.
+
+**The four outcomes**, per variant and against the expectations file: `right`
+(filed under the expected row, or meant to park and parked), `parked_shortlist`
+(parked, with the expected row among the leads a review card offers),
+`parked_no_lead` (parked, no lead) and `wrong` (filed, and not under the expected
+row). With them: how many documents parked as read-from-scan-only (`ocr_only`),
+the parked ones counted by code, and the seconds - per document and per page,
+and how many documents ran over the ceiling of 6 seconds a page (decision 127).
+A document with a usable text layer is counted and never read again: no setting
+changes it.
+
+**It reads in its own process, and that costs something.** A reading child
+imports the reader afresh at the shipped settings, so settings changed in the
+bench's process would never reach one. The bench turns the child switch off and
+reads in this process, putting the settings and the switch back however the run
+ends. There is no safety stop for a reading here, and it reads on the processor
+only: the conservative number for the ceiling. (`tools/backtest.py` with `--ocr`
+also reads in its own process, but opens no session, so each document pays the
+engine's load; it is left as it is.)
+
+**The report holds counts and seconds only** - no document name, folder, row
+number, word or path, and not the models folder - and is refused inside the
+repository, like the backtest's.
+
+```
+python tools/reader_bench.py variants                       # the grid's names, one a line
+python tools/reader_bench.py run <folder> --out <report> [--expectations <file>] [--models <folder>] [--dpi 144,300] [--floor 0.5,0.7] [--delining off,on] [--tier small,medium]
+python -m tracker.api firm | python tools/reader_bench.py review-codes [--out <file>]   # Needs Review, counted by code
+```
+
+`review-codes` reads the `firm` command's reply and prints the count of each
+code over the rows waiting for a person, and nothing else.
 

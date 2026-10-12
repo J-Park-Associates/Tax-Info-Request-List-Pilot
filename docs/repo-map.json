@@ -3,7 +3,7 @@
   "generated": "2026-10-11",
   "generator": "tools/repo_map.py",
   "generator_sha256": "a394d7104da5155d",
-  "module_table_sha256": "40400719bda06c51",
+  "module_table_sha256": "2499d0551746f34b",
   "pipeline": [
     "tracker.api / create",
     "tracker.scaffold",
@@ -15,9 +15,9 @@
     "a person sends the draft"
   ],
   "counts": {
-    "nodes": 281,
-    "edges": 1298,
-    "reused": 225
+    "nodes": 285,
+    "edges": 1322,
+    "reused": 229
   },
   "node_types": [
     "artifact",
@@ -974,8 +974,8 @@
       "id": "tracker/content_check.py",
       "type": "module",
       "layer": "core",
-      "sha256": "6d0bc9c77470aedb",
-      "lines": 2499,
+      "sha256": "6ba25c5632cd4d60",
+      "lines": 2500,
       "cli": "python -m tracker.content_check",
       "exports": [
         "BROKER_FORM",
@@ -999,7 +999,6 @@
         "READING_STOP_DOCUMENT_SECONDS",
         "READING_STOP_PAGE_SECONDS",
         "READ_IN_A_CHILD",
-        "RENDER_SCALE",
         "RETIRED_CACHE_FILENAME",
         "ReadingStopped",
         "RowJudgment",
@@ -1054,7 +1053,6 @@
         "XLSX_EXTENSIONS": "('xlsx', 'xlsm')",
         "TEXT_EXTENSIONS": "('csv', 'tsv', 'txt')",
         "PIXEL_BUDGET": "40000000",
-        "RENDER_SCALE": "2.0",
         "READING_STOP_PAGE_SECONDS": "60.0",
         "READING_STOP_DOCUMENT_SECONDS": "600.0",
         "UNKNOWN_PACKING": "\"a part of it is packed in a way only a person's zip program opens\"",
@@ -1066,7 +1064,7 @@
         "OPEN_TEST_FINGERPRINT": "'open-test'"
       },
       "role": "Tier 3: extract text (pdfplumber / openpyxl / plain text, OCR for a scan or a photo) and test it against the row's keyword and date rules. extract() is the one reading of a document, used by the router and the scanner alike; ContentCache keeps the verdicts - in the store, per engagement, since decision 107.",
-      "notes": "The cache stores verdicts only - pass/fail, the reason, and the Evidence behind them, all of it the firm's own words. Extracted client text is never persisted. Only the first MAX_PAGES pages of a PDF are read, text or OCR - the identifying words are up front and a long ledger used to stall a run. Verdicts are keyed by the file's content digest and the row's rules fingerprint (CACHE_VERSION, carried on every row; a row at another version is ignored and dropped), with a per-path memo of size/mtime/digest so an unchanged file is not re-hashed: the same bytes are read twice in this system, once as a drop the router routes and once as the working copy the scanner checks, and a verdict the router reached is the verdict the scanner finds. extract(ocr=False) hands a scan back with needs_ocr set so the router can try the file's name first; extract_by_ocr() finishes the reading. The CLI (python -m tracker.content_check <engagement> <file>) prints what the document says and which rows accept it, writing no cache. DECISION 107 - THE CACHE LEFT THE SYNCED FOLDER: ContentCache(engagement_dir) loads the engagement's memos and verdicts from the store's two tables (store.cached_verdicts()) once, works in memory as it always did, and save() writes what it learned and forgot through store.remember_verdicts() - one immediate transaction of the store's own, under the engagement lock, never store.record(), because a verdict is a derivation of the bytes and the rules and not an event; a pass killed mid-save leaves the previous rows. ContentCache() with no engagement is memory only (the CLI's, a test's) and its save() touches nothing. The engagement must already be in the store or the constructor refuses by name. The JSON cache file that used to sit in the engagement folder is never read; RETIRED_CACHE_FILENAME survives only for after_install's retired-cache job (P234), which removes it. THE STEP-0 RE-RUN'S FINDING: decision 105 had kept a two-form split's second verdict in the cache alone, so a rebuilt store read the second copy the ordinary way and failed it - the cache was carrying a decision, not a derivation. own_forms(named) is now the one reading of which forms a page counts as its own, from the page's self_named_forms (the set of self-named forms when MULTI_FORM_FAMILIES or more families print their own name, else None; the constant lives here, where the scanner's miss path reads it too); _check_uncached() reads through it, so the scan's miss verdict is the router's kept verdict for every page, split included, and a delete-and-rebuild leaves every status byte-identical. _evidence_from_json() takes a tuple as well as a list, so a verdict read back in the pass that kept it carries its evidence. Decision 55: contains_keyword() treats a hyphen-joined form variant as part of the form's name (1098 never matches 1098-T); a verdict that is the machine's (no OCR, OCR failed) is transient and never cached. Decision 57: FORM_VARIANTS is the one list of each form's real variants; _JOINER is what may sit between a number and its variant or a keyword's words; the text-layer floor is per page; CACHE_VERSION 3. Decision 60: _seams() lets a keyword typed w2 find W-2; no letters or digits means no keyword. Decision 62: says() is contains_keyword() as content evidence - a form number counts only within TITLE_CHARS; _seams() reads plurals, keeps numbers out of amounts, takes any apostrophe. Decision 63: dominant_forms() - a form number counts in the text when it is in the title or is the number the document mentions most; form <anything> is a form number. Decision 64: dominant_forms() weighs a mention by its shape - a form names itself with its year or revision and another form in a sentence. Decision 66: the title is weighed the same way (_title_forms(); _REFERENCE_BEFORE marks a form quoted after attach/forms/see/of/on/and/or), a number outside FORM_VARIANTS is a mention only after Form, a keyword's words sit on one line or wrap as a heading from a line's start (_WRAPPING_JOINER, _LINE_START), a sheet's cells are tab-separated within a row; CACHE_VERSION 5. Decision 67: what comes before a form is read before what follows it (attach Form 1098 (2025) is a reference); a title naming _LIST_OF_FORMS or more forms names none; the title window is measured on the lower-cased text; _LINE_START admits a bullet, a pipe or a rule. Decision 68: _LIST_OF_FORMS counts families (_FAMILY), so a consolidated 1099 is one family's document; _REFERENCE_BEFORE stays on one line. Decision 69: a form number set off by a dash is a reference (_REFERENCE_AFTER), a dash before the year is still dated (_SELF_AFTER), and _REFERENCE_BEFORE reads across a line break again. Decision 73: says() weighs where a plain keyword is said, not only that it is there - an occurrence that is a menu line's title (_menu_tails: a form number and the title a dash or a comma sets off from it are one reference) or what an ask-word asked for (_asked_for: attach, provide, send, see and their kin, governing the rest of their own sentence and the line a request wraps on to) is the page talking about a document rather than being one, and one occurrence that is neither is enough. A dash-set-off form that heads its line with a year beside it, where the title window holds no second such line and no ask precedes it, names itself (_titles_its_own_line), so a payer's substitute form is not read as a checklist. A form number after a comma continues a list (_LIST_CONTINUES), and enclosed/enclosure/enclosures/re: join _REFERENCE_BEFORE, which now reads a colon between the word and the form. any_keyword_matched() answers the router's question 'did this row's keywords match, apart from the year?'. CACHE_VERSION 6. Decision 82: a verdict keeps the evidence behind it. Evidence(rule, term, where, page) is the one shape - EVIDENCE_RULES (required, any, date, filename, refused) and EVIDENCE_PLACES (title, first_page, footer, deep) are the named values, imported by the router, the index and the app's vocabulary and retyped nowhere. The Evidence record, those two lists and the cell format that format_evidence() writes and parse_evidence() reads now live in tracker/records.py (decision 100) and are re-exported here for one release; what stays here is the reading of a document that produces them. says() became a thin wrapper over _says_where(), which reaches the same verdict by the same reading and also says where the word was found (_where_said(): the title window first, then a page's last _FOOTER_LINES non-blank lines, then the rest of page 1, then deep), so no placement moved. evaluate_rules() puts an Evidence per matched rule on ContentResult.evidence, on a failing verdict too, and the reason sentence is untouched; the date rule records the row's Period, not the regex it derives and not a word of the document. format_evidence()/parse_evidence() are the one owner of the index cell's compact form (term@where:page rule, candidates joined by '; '), and the page is left off when it is 0. CACHE_VERSION 7, because a version-6 verdict read back would claim a verdict with no reason behind it. Decision 85: a form heading its own line with its printed title after its number and its year after the title names itself, at the weight a bare number-then-year mention carries - _names_itself() is the one predicate, and it holds both shapes a printed title wears (a dash between number and title, decision 69/73's; or nothing between them, _SELF_TITLED). The IRS's 2024 and 2025 W-2 revisions print one copy to the page, so Copy B's only \"W-2\" is the foot's \"W-2 Wage and Tax Statement 2025 Department of the Treasury\" and the form said nothing about itself before this. The year must be a year and not a date's tail (\"Form 941 04/30/2025\" on a CP 575 is a filing deadline), and a page heading two such lines is a menu, as it is for the dashed shape - _lists_forms() counts both. CACHE_VERSION 8, because a cached verdict from before it would say a one-copy W-2 is nobody's form. Decision 90: a keyword may name alternatives and join the phrases one of them wants together, read through manifest.keyword_alternatives() - says() takes the first alternative whose every phrase is said and places the evidence at its leading phrase, contains_keyword() reads a file name the same way, and a keyword holding neither character is one phrase exactly as before. CACHE_VERSION 9, because a verdict cached before it read the '|' and the '+' as words to look for. Decision 109: ContentCache.digest_of() is now the one memo for every hash of a file under Prepared/ - the filer's sweep and its proof of each copy it makes, a person's filing as the scan reads it, and the scan's own de-duplication - so a second and a third pass over an unchanged tree cost stats rather than reads. Nothing under the tree a client is shared is ever memo'd: decision 68 reads every preserved original each pass by design, and that is the one reading the measure allows. The scan's prune() now keeps every file under Prepared/, so a parked copy's memo and a stray's survive the pass that learned them. DECISION 127 - PHOTOS, AND THE PAGE UPRIGHT: extract_text() returns None for an IMAGE_EXTENSIONS file on purpose (an image never has a text layer) and extract() reads that as 'this is a scan' rather than 'no extractor', so a photo takes the scanned-PDF path exactly - needs_ocr with ocr=False, extract_by_ocr() otherwise, which dispatches _ocr_pdf for a PDF and _ocr_image for a photo. _ocr_image() undoes the phone's EXIF rotation first (ImageOps.exif_transpose), then reads. (Decision 127 turned every page upright with Tesseract's OSD and a four-way score; decision 169 removed both with Tesseract - see below.) The file on disk is never touched, because a photo is an original. CACHE_VERSION 10, because a verdict reached at 9 may have been reached on a page nobody turned. Extraction.seconds carries how long each reading took (extract() times _extract() and stamps it), which decides nothing - no reading is capped, timed out or abandoned; the router carries it into the pass. reasons.NO_TEXT_LAYER now says 'PDF or photo'. Decision 137: extract() never opens a file past validators.MAX_READ_MB (reasons.TOO_LARGE, a kept verdict); a .csv/.tsv/.txt is read to validators.TEXT_READ_CAP_MB and Extraction.cut says so, and a failing verdict on a cut text ends with reasons.TEXT_CUT. OCR renders each PDF page at render_scale() - min(RENDER_SCALE, sqrt(PIXEL_BUDGET / page area)) - so no page passes 40 Mpx, and a photo is held to the same budget before decoding (JPEG draft, else reduced on decode; Pillow's guard stays on). A Date Pattern is compiled and run line by line (date_pattern_at), lines over DATE_LINE_MAX skipped, bounding a backtracking typo. A picture past Pillow's own decompression-bomb limit raises TooLargeToRead and is a kept reasons.TOO_LARGE verdict, not a retry. Decision 137 Part B (B1.2): the safety stop - READING_STOP_PAGE_SECONDS (60) and READING_STOP_DOCUMENT_SECONDS (600), a photo one page - is a _SafetyStop set for each extract_by_ocr() reading; since decision 169 (ruling 5) no page starts past it (_SafetyStop.page() checks before each page), a PDF page's render counts against it, and ReadingStopped becomes a kept reasons.READING_STOPPED verdict, not retried until the file changes. _clock is named so the suite moves it. Review fix (F7): a Period-derived date pattern runs over the whole text as before; only a staff pattern runs line by line. Part B review fixes: the stop's sentence says '1 minute'; extract()'s docstring states what the stop covers in-process (between pages) and what only the child's end covers (a page being read, the text layer, one render). DECISION 150 - A READING RUNS WHERE IT CAN BE STOPPED: the pass reads through judge_bounded() since decision 189 (router.read_once and _check_uncached); the child runs open_and_read() - validators.open_test() (tier 2's open test) then extract() - in a spawned child (_read_in_a_child, the child itself in tracker/ocr.py since decision 169, over multiprocessing's Pipe: a named pipe on Windows, never a socket) and waits at most reading_stop_seconds() - READING_STOP_DOCUMENT_SECONDS for a file, READING_STOP_PAGE_SECONDS for a photo. On time the child's Extraction is returned as is; over time _end() ends the child's whole tree (taskkill /T on Windows, the child's own process group elsewhere) and the reading is abandoned() - the same kept READING_STOPPED verdict B1.2 gives; a child that ends without answering, or whose reader raised, is reading_failed() - reasons.READING_CRASHED, firm-side, kept. B1.2 stays inside the child. The child writes nothing; since decision 169 neither does the reader (no temporary file), so ocr_scratch is gone. READ_IN_A_CHILD is True in the tracker and turned off for the suite by tests/conftest.py (its fakes live in the test's process); _CHILD_READER is what the child runs, open_and_read() by default, so tests/child_readers.py can hand the child a reader that blocks or dies. A cached verdict never starts a child; the benchmark and the CLI call extract() directly. The child never outlives its pass (the designer's ruling on the build): its lifeline and its job object moved with it to tracker/ocr.py in decision 169, which says how. The review's ruling: the open test's verdict rides back as Extraction.opened; the router hands it to every row's check_file(open_test=...) and keeps it under OPEN_TEST_FINGERPRINT by digest; the scanner's check_files asks open_verdict(), which answers from that kept verdict or reads the file in a child and holds the reading in memory (ContentCache.hold_reading, never saved) for the content check that follows; HEIC_NOT_SUPPORTED is the machine's and not kept. The child says 'started' before it touches the file: no word before the stop, an end before it, or a Process that cannot start is could_not_start() - reasons.READER_UNAVAILABLE, transient, nothing kept - and readers_that_could_not_start() is what the runner's pass (and the app's Run now) turns into one warning. Decision 141: FIRST_PAGE_PHRASES (a notice's header phrases - notice date, tax year, tax period, irs, internal revenue service) count only when first said on page 1, so a bill whose back page talks about a notice is not one; only the catalog's notices row uses them. CACHE_VERSION 11. Decision 154: in_a_child(path, job, stop=..., **kwargs) is the one child mechanism, and _read_in_a_child() is the reading's use of it; it gives (answer, None) on time or (None, the Extraction that says why - abandoned(), reading_failed() or could_not_start()), so the opening of an email or a zip (containers.open_bounded) runs in the same child, under the same stop, lifeline and job object. Since decision 169 it hands the job to tracker.ocr.run_in_child() - the pass's one long-lived child - and words the ocr.Outcome it gets back; it no longer makes a process of its own. Decision 155 added ContentCache.remember_digest(): a digest proved on a working copy's temp is remembered for the copy's name after the rename (same size, same modification time), so the proof is still one read. DECISION 169 - RAPIDOCR IS THE READER: _ocr_pdf() renders each page at render_scale() and hands it, in RGB, to ocr.read_page(); _ocr_image() hands the EXIF-upright photo the same way. Nothing turns a page (ruling 6 as re-ruled: RapidOCR keeps a sideways page's words; the turning rule arrives in ocr._upright_lines() as the amendment '169, upright'). ocr.ReaderUnavailable - a model missing or broken - is None from the reader, so reasons.NO_TEXT_LAYER, transient, now worded 'the reader could not run on this machine'. The pages are still joined with a line break, never PAGE_BREAK (SPEC-127.2X D9.2). pytesseract, _tesseract, _upright, _four_way, _score_of, _for_scoring and their constants are gone, and ocr_scratch with them (the reader writes no temporary file - SPEC-169 section 6). CACHE_VERSION 12: every verdict on a scan or a photo was the old reader's. Decision 178: a reading is bounded in what it hands back, whatever it reads. READING_CHAR_BUDGET (TEXT_READ_CAP_MB counted in characters) bounds every reading - the workbook and PDF readers stop at it, _extract cuts past it and marks the reading cut. PACKINGS (stored, deflated) is the only zip packing a reading unpacks: a workbook packed otherwise fails with UnknownPacking (a ValueError of its own, raised with UNKNOWN_PACKING, decision 190), and containers refuses such a zip. _line_of finds a line's ends by the nearest break of any kind - forward by one search, back over a window that doubles until it meets a break, and a mention on the line last found reuses it - linear where it was quadratic. Decision 190: EXTRACTION_FAILED and OCR_FAILED hold the class only (extract_by_ocr() catches a reader's failure once, for both readers, and keeps its class), Extraction.error is the class or the firm's sentence for a child that ended, and in_a_child() hands a failed child's message and trace to errors.keep(), never to a log line. Decision 189 (SPEC-161 A-F9): _clock, the child's _SafetyStop clock, is ocr.awake_clock, so time the machine slept is never counted against a reading. Decision 189 (the judgment worker): the reader child judges as well as reads. judge(path, questions) makes the open test and the reading, then answers every question the pass asks: each row's verdict (evaluate_rules with own_forms, which is also decision 94's split), both router leads (required_matched, any_keyword_matched), self_named_forms, own_forms, carries_a_1099b_section, and the name check (names.check_name, reached at call time). It hands back a Judgment that carries no word of the document. The pass calls judge_bounded (in the child, or in-process when READ_IN_A_CHILD is off). judgment_of is the pure judgment for callers that already hold an Extraction (the backtest, via route_file(reading=...)). The answers are the pre-189 values call for call, so CACHE_VERSION did not move (claim 3.g). Rows are keyed by RowQuestion (the five rule fields), not the rules fingerprint, which omits period and date_pattern_derived; the cache still keys by fingerprint. dominant_forms and self_named_forms run once per judgment. OCR text is cut to READING_CHAR_BUDGET. ContentCache holds Judgments, not texts. Judgment.extraction.transient is the SPEC-156 seam. The pass judges through judge_bounded(), whose Judgment carries the extraction (judge_bounded(path, Questions()).extraction is the bounded reading without its words). Decision 189 (ruling 2.2, the integration): ContentCache.deadline carries the household's deadline while the sort or the scan takes files, and before_a_judgment() raises OutOfTime at the cache-miss point, just before a judgment job would start (open_verdict, _check_uncached, and the filer's two read_once calls) - never at a hit, so a household past its time still takes every kept verdict. Runtime: no new artifact. Decision 187's review (M2): a Date Pattern runs over the whole text only when it equals manifest.derived_date_pattern(item.period), recomputed; the record's date_pattern_derived flag is a claim, and anything else runs line by line through date_pattern_at. Decision 190: ContentResult and Extraction carry code, set where each Reason is said; open_verdict returns a Said and keeps the code in the cache; CACHE_VERSION 13. P216 (pilot/SPEC-speed-round.md): ContentCache._key is str(settings.resolved(file.parent) / file.name).lower() - the held answer for the folder and the file's own name, the same string a whole resolve gives - and the whole resolve for a link. The reader is untouched."
+      "notes": "The cache stores verdicts only - pass/fail, the reason, and the Evidence behind them, all of it the firm's own words. Extracted client text is never persisted. Only the first MAX_PAGES pages of a PDF are read, text or OCR - the identifying words are up front and a long ledger used to stall a run. Verdicts are keyed by the file's content digest and the row's rules fingerprint (CACHE_VERSION, carried on every row; a row at another version is ignored and dropped), with a per-path memo of size/mtime/digest so an unchanged file is not re-hashed: the same bytes are read twice in this system, once as a drop the router routes and once as the working copy the scanner checks, and a verdict the router reached is the verdict the scanner finds. extract(ocr=False) hands a scan back with needs_ocr set so the router can try the file's name first; extract_by_ocr() finishes the reading. The CLI (python -m tracker.content_check <engagement> <file>) prints what the document says and which rows accept it, writing no cache. DECISION 107 - THE CACHE LEFT THE SYNCED FOLDER: ContentCache(engagement_dir) loads the engagement's memos and verdicts from the store's two tables (store.cached_verdicts()) once, works in memory as it always did, and save() writes what it learned and forgot through store.remember_verdicts() - one immediate transaction of the store's own, under the engagement lock, never store.record(), because a verdict is a derivation of the bytes and the rules and not an event; a pass killed mid-save leaves the previous rows. ContentCache() with no engagement is memory only (the CLI's, a test's) and its save() touches nothing. The engagement must already be in the store or the constructor refuses by name. The JSON cache file that used to sit in the engagement folder is never read; RETIRED_CACHE_FILENAME survives only for after_install's retired-cache job (P234), which removes it. THE STEP-0 RE-RUN'S FINDING: decision 105 had kept a two-form split's second verdict in the cache alone, so a rebuilt store read the second copy the ordinary way and failed it - the cache was carrying a decision, not a derivation. own_forms(named) is now the one reading of which forms a page counts as its own, from the page's self_named_forms (the set of self-named forms when MULTI_FORM_FAMILIES or more families print their own name, else None; the constant lives here, where the scanner's miss path reads it too); _check_uncached() reads through it, so the scan's miss verdict is the router's kept verdict for every page, split included, and a delete-and-rebuild leaves every status byte-identical. _evidence_from_json() takes a tuple as well as a list, so a verdict read back in the pass that kept it carries its evidence. Decision 55: contains_keyword() treats a hyphen-joined form variant as part of the form's name (1098 never matches 1098-T); a verdict that is the machine's (no OCR, OCR failed) is transient and never cached. Decision 57: FORM_VARIANTS is the one list of each form's real variants; _JOINER is what may sit between a number and its variant or a keyword's words; the text-layer floor is per page; CACHE_VERSION 3. Decision 60: _seams() lets a keyword typed w2 find W-2; no letters or digits means no keyword. Decision 62: says() is contains_keyword() as content evidence - a form number counts only within TITLE_CHARS; _seams() reads plurals, keeps numbers out of amounts, takes any apostrophe. Decision 63: dominant_forms() - a form number counts in the text when it is in the title or is the number the document mentions most; form <anything> is a form number. Decision 64: dominant_forms() weighs a mention by its shape - a form names itself with its year or revision and another form in a sentence. Decision 66: the title is weighed the same way (_title_forms(); _REFERENCE_BEFORE marks a form quoted after attach/forms/see/of/on/and/or), a number outside FORM_VARIANTS is a mention only after Form, a keyword's words sit on one line or wrap as a heading from a line's start (_WRAPPING_JOINER, _LINE_START), a sheet's cells are tab-separated within a row; CACHE_VERSION 5. Decision 67: what comes before a form is read before what follows it (attach Form 1098 (2025) is a reference); a title naming _LIST_OF_FORMS or more forms names none; the title window is measured on the lower-cased text; _LINE_START admits a bullet, a pipe or a rule. Decision 68: _LIST_OF_FORMS counts families (_FAMILY), so a consolidated 1099 is one family's document; _REFERENCE_BEFORE stays on one line. Decision 69: a form number set off by a dash is a reference (_REFERENCE_AFTER), a dash before the year is still dated (_SELF_AFTER), and _REFERENCE_BEFORE reads across a line break again. Decision 73: says() weighs where a plain keyword is said, not only that it is there - an occurrence that is a menu line's title (_menu_tails: a form number and the title a dash or a comma sets off from it are one reference) or what an ask-word asked for (_asked_for: attach, provide, send, see and their kin, governing the rest of their own sentence and the line a request wraps on to) is the page talking about a document rather than being one, and one occurrence that is neither is enough. A dash-set-off form that heads its line with a year beside it, where the title window holds no second such line and no ask precedes it, names itself (_titles_its_own_line), so a payer's substitute form is not read as a checklist. A form number after a comma continues a list (_LIST_CONTINUES), and enclosed/enclosure/enclosures/re: join _REFERENCE_BEFORE, which now reads a colon between the word and the form. any_keyword_matched() answers the router's question 'did this row's keywords match, apart from the year?'. CACHE_VERSION 6. Decision 82: a verdict keeps the evidence behind it. Evidence(rule, term, where, page) is the one shape - EVIDENCE_RULES (required, any, date, filename, refused) and EVIDENCE_PLACES (title, first_page, footer, deep) are the named values, imported by the router, the index and the app's vocabulary and retyped nowhere. The Evidence record, those two lists and the cell format that format_evidence() writes and parse_evidence() reads now live in tracker/records.py (decision 100) and are re-exported here for one release; what stays here is the reading of a document that produces them. says() became a thin wrapper over _says_where(), which reaches the same verdict by the same reading and also says where the word was found (_where_said(): the title window first, then a page's last _FOOTER_LINES non-blank lines, then the rest of page 1, then deep), so no placement moved. evaluate_rules() puts an Evidence per matched rule on ContentResult.evidence, on a failing verdict too, and the reason sentence is untouched; the date rule records the row's Period, not the regex it derives and not a word of the document. format_evidence()/parse_evidence() are the one owner of the index cell's compact form (term@where:page rule, candidates joined by '; '), and the page is left off when it is 0. CACHE_VERSION 7, because a version-6 verdict read back would claim a verdict with no reason behind it. Decision 85: a form heading its own line with its printed title after its number and its year after the title names itself, at the weight a bare number-then-year mention carries - _names_itself() is the one predicate, and it holds both shapes a printed title wears (a dash between number and title, decision 69/73's; or nothing between them, _SELF_TITLED). The IRS's 2024 and 2025 W-2 revisions print one copy to the page, so Copy B's only \"W-2\" is the foot's \"W-2 Wage and Tax Statement 2025 Department of the Treasury\" and the form said nothing about itself before this. The year must be a year and not a date's tail (\"Form 941 04/30/2025\" on a CP 575 is a filing deadline), and a page heading two such lines is a menu, as it is for the dashed shape - _lists_forms() counts both. CACHE_VERSION 8, because a cached verdict from before it would say a one-copy W-2 is nobody's form. Decision 90: a keyword may name alternatives and join the phrases one of them wants together, read through manifest.keyword_alternatives() - says() takes the first alternative whose every phrase is said and places the evidence at its leading phrase, contains_keyword() reads a file name the same way, and a keyword holding neither character is one phrase exactly as before. CACHE_VERSION 9, because a verdict cached before it read the '|' and the '+' as words to look for. Decision 109: ContentCache.digest_of() is now the one memo for every hash of a file under Prepared/ - the filer's sweep and its proof of each copy it makes, a person's filing as the scan reads it, and the scan's own de-duplication - so a second and a third pass over an unchanged tree cost stats rather than reads. Nothing under the tree a client is shared is ever memo'd: decision 68 reads every preserved original each pass by design, and that is the one reading the measure allows. The scan's prune() now keeps every file under Prepared/, so a parked copy's memo and a stray's survive the pass that learned them. DECISION 127 - PHOTOS, AND THE PAGE UPRIGHT: extract_text() returns None for an IMAGE_EXTENSIONS file on purpose (an image never has a text layer) and extract() reads that as 'this is a scan' rather than 'no extractor', so a photo takes the scanned-PDF path exactly - needs_ocr with ocr=False, extract_by_ocr() otherwise, which dispatches _ocr_pdf for a PDF and _ocr_image for a photo. _ocr_image() undoes the phone's EXIF rotation first (ImageOps.exif_transpose), then reads. (Decision 127 turned every page upright with Tesseract's OSD and a four-way score; decision 169 removed both with Tesseract - see below.) The file on disk is never touched, because a photo is an original. CACHE_VERSION 10, because a verdict reached at 9 may have been reached on a page nobody turned. Extraction.seconds carries how long each reading took (extract() times _extract() and stamps it), which decides nothing - no reading is capped, timed out or abandoned; the router carries it into the pass. reasons.NO_TEXT_LAYER now says 'PDF or photo'. Decision 137: extract() never opens a file past validators.MAX_READ_MB (reasons.TOO_LARGE, a kept verdict); a .csv/.tsv/.txt is read to validators.TEXT_READ_CAP_MB and Extraction.cut says so, and a failing verdict on a cut text ends with reasons.TEXT_CUT. OCR renders each PDF page at render_scale() - min(RENDER_SCALE, sqrt(PIXEL_BUDGET / page area)) - so no page passes 40 Mpx, and a photo is held to the same budget before decoding (JPEG draft, else reduced on decode; Pillow's guard stays on). A Date Pattern is compiled and run line by line (date_pattern_at), lines over DATE_LINE_MAX skipped, bounding a backtracking typo. A picture past Pillow's own decompression-bomb limit raises TooLargeToRead and is a kept reasons.TOO_LARGE verdict, not a retry. Decision 137 Part B (B1.2): the safety stop - READING_STOP_PAGE_SECONDS (60) and READING_STOP_DOCUMENT_SECONDS (600), a photo one page - is a _SafetyStop set for each extract_by_ocr() reading; since decision 169 (ruling 5) no page starts past it (_SafetyStop.page() checks before each page), a PDF page's render counts against it, and ReadingStopped becomes a kept reasons.READING_STOPPED verdict, not retried until the file changes. _clock is named so the suite moves it. Review fix (F7): a Period-derived date pattern runs over the whole text as before; only a staff pattern runs line by line. Part B review fixes: the stop's sentence says '1 minute'; extract()'s docstring states what the stop covers in-process (between pages) and what only the child's end covers (a page being read, the text layer, one render). DECISION 150 - A READING RUNS WHERE IT CAN BE STOPPED: the pass reads through judge_bounded() since decision 189 (router.read_once and _check_uncached); the child runs open_and_read() - validators.open_test() (tier 2's open test) then extract() - in a spawned child (_read_in_a_child, the child itself in tracker/ocr.py since decision 169, over multiprocessing's Pipe: a named pipe on Windows, never a socket) and waits at most reading_stop_seconds() - READING_STOP_DOCUMENT_SECONDS for a file, READING_STOP_PAGE_SECONDS for a photo. On time the child's Extraction is returned as is; over time _end() ends the child's whole tree (taskkill /T on Windows, the child's own process group elsewhere) and the reading is abandoned() - the same kept READING_STOPPED verdict B1.2 gives; a child that ends without answering, or whose reader raised, is reading_failed() - reasons.READING_CRASHED, firm-side, kept. B1.2 stays inside the child. The child writes nothing; since decision 169 neither does the reader (no temporary file), so ocr_scratch is gone. READ_IN_A_CHILD is True in the tracker and turned off for the suite by tests/conftest.py (its fakes live in the test's process); _CHILD_READER is what the child runs, open_and_read() by default, so tests/child_readers.py can hand the child a reader that blocks or dies. A cached verdict never starts a child; the benchmark and the CLI call extract() directly. The child never outlives its pass (the designer's ruling on the build): its lifeline and its job object moved with it to tracker/ocr.py in decision 169, which says how. The review's ruling: the open test's verdict rides back as Extraction.opened; the router hands it to every row's check_file(open_test=...) and keeps it under OPEN_TEST_FINGERPRINT by digest; the scanner's check_files asks open_verdict(), which answers from that kept verdict or reads the file in a child and holds the reading in memory (ContentCache.hold_reading, never saved) for the content check that follows; HEIC_NOT_SUPPORTED is the machine's and not kept. The child says 'started' before it touches the file: no word before the stop, an end before it, or a Process that cannot start is could_not_start() - reasons.READER_UNAVAILABLE, transient, nothing kept - and readers_that_could_not_start() is what the runner's pass (and the app's Run now) turns into one warning. Decision 141: FIRST_PAGE_PHRASES (a notice's header phrases - notice date, tax year, tax period, irs, internal revenue service) count only when first said on page 1, so a bill whose back page talks about a notice is not one; only the catalog's notices row uses them. CACHE_VERSION 11. Decision 154: in_a_child(path, job, stop=..., **kwargs) is the one child mechanism, and _read_in_a_child() is the reading's use of it; it gives (answer, None) on time or (None, the Extraction that says why - abandoned(), reading_failed() or could_not_start()), so the opening of an email or a zip (containers.open_bounded) runs in the same child, under the same stop, lifeline and job object. Since decision 169 it hands the job to tracker.ocr.run_in_child() - the pass's one long-lived child - and words the ocr.Outcome it gets back; it no longer makes a process of its own. Decision 155 added ContentCache.remember_digest(): a digest proved on a working copy's temp is remembered for the copy's name after the rename (same size, same modification time), so the proof is still one read. DECISION 169 - RAPIDOCR IS THE READER: _ocr_pdf() renders each page at render_scale() and hands it, in RGB, to ocr.read_page(); _ocr_image() hands the EXIF-upright photo the same way. Nothing turns a page (ruling 6 as re-ruled: RapidOCR keeps a sideways page's words; the turning rule arrives in ocr._upright_lines() as the amendment '169, upright'). ocr.ReaderUnavailable - a model missing or broken - is None from the reader, so reasons.NO_TEXT_LAYER, transient, now worded 'the reader could not run on this machine'. The pages are still joined with a line break, never PAGE_BREAK (SPEC-127.2X D9.2). pytesseract, _tesseract, _upright, _four_way, _score_of, _for_scoring and their constants are gone, and ocr_scratch with them (the reader writes no temporary file - SPEC-169 section 6). CACHE_VERSION 12: every verdict on a scan or a photo was the old reader's. Decision 178: a reading is bounded in what it hands back, whatever it reads. READING_CHAR_BUDGET (TEXT_READ_CAP_MB counted in characters) bounds every reading - the workbook and PDF readers stop at it, _extract cuts past it and marks the reading cut. PACKINGS (stored, deflated) is the only zip packing a reading unpacks: a workbook packed otherwise fails with UnknownPacking (a ValueError of its own, raised with UNKNOWN_PACKING, decision 190), and containers refuses such a zip. _line_of finds a line's ends by the nearest break of any kind - forward by one search, back over a window that doubles until it meets a break, and a mention on the line last found reuses it - linear where it was quadratic. Decision 190: EXTRACTION_FAILED and OCR_FAILED hold the class only (extract_by_ocr() catches a reader's failure once, for both readers, and keeps its class), Extraction.error is the class or the firm's sentence for a child that ended, and in_a_child() hands a failed child's message and trace to errors.keep(), never to a log line. Decision 189 (SPEC-161 A-F9): _clock, the child's _SafetyStop clock, is ocr.awake_clock, so time the machine slept is never counted against a reading. Decision 189 (the judgment worker): the reader child judges as well as reads. judge(path, questions) makes the open test and the reading, then answers every question the pass asks: each row's verdict (evaluate_rules with own_forms, which is also decision 94's split), both router leads (required_matched, any_keyword_matched), self_named_forms, own_forms, carries_a_1099b_section, and the name check (names.check_name, reached at call time). It hands back a Judgment that carries no word of the document. The pass calls judge_bounded (in the child, or in-process when READ_IN_A_CHILD is off). judgment_of is the pure judgment for callers that already hold an Extraction (the backtest, via route_file(reading=...)). The answers are the pre-189 values call for call, so CACHE_VERSION did not move (claim 3.g). Rows are keyed by RowQuestion (the five rule fields), not the rules fingerprint, which omits period and date_pattern_derived; the cache still keys by fingerprint. dominant_forms and self_named_forms run once per judgment. OCR text is cut to READING_CHAR_BUDGET. ContentCache holds Judgments, not texts. Judgment.extraction.transient is the SPEC-156 seam. The pass judges through judge_bounded(), whose Judgment carries the extraction (judge_bounded(path, Questions()).extraction is the bounded reading without its words). Decision 189 (ruling 2.2, the integration): ContentCache.deadline carries the household's deadline while the sort or the scan takes files, and before_a_judgment() raises OutOfTime at the cache-miss point, just before a judgment job would start (open_verdict, _check_uncached, and the filer's two read_once calls) - never at a hit, so a household past its time still takes every kept verdict. Runtime: no new artifact. Decision 187's review (M2): a Date Pattern runs over the whole text only when it equals manifest.derived_date_pattern(item.period), recomputed; the record's date_pattern_derived flag is a claim, and anything else runs line by line through date_pattern_at. Decision 190: ContentResult and Extraction carry code, set where each Reason is said; open_verdict returns a Said and keeps the code in the cache; CACHE_VERSION 13. P216 (pilot/SPEC-speed-round.md): ContentCache._key is str(settings.resolved(file.parent) / file.name).lower() - the held answer for the folder and the file's own name, the same string a whole resolve gives - and the whole resolve for a link. The reader is untouched. P283: RENDER_SCALE is gone; render_scale() returns min(ocr.SETTINGS.render_dpi / 72, (PIXEL_BUDGET / area) ** 0.5), read at call time, so the shipped 144 dpi is still scale 2.0 and PIXEL_BUDGET stays the hard ceiling (decision 137); CACHE_VERSION did not move."
     },
     {
       "id": "tracker/door.py",
@@ -2165,13 +2163,16 @@
       "id": "tracker/ocr.py",
       "type": "module",
       "layer": "core",
-      "sha256": "518508d601a8045b",
-      "lines": 1402,
+      "sha256": "4a1e3e4b24b4171b",
+      "lines": 1544,
       "cli": "python -m tracker.ocr",
       "exports": [
         "CHILD_EXIT_SECONDS",
         "CONFIDENT_SCORE",
         "CUDA_PROVIDER",
+        "DELINE_FRACTION",
+        "DELINE_GROW",
+        "DELINE_REPAIR",
         "DETECTION_MODEL",
         "DEVICE_GRAPHICS_CARD",
         "DEVICE_PROCESSOR",
@@ -2182,6 +2183,7 @@
         "GRAPHICS_CARD_CHILD_MEMORY",
         "MEMORY_UNREADABLE",
         "MEMORY_WATCH_SECONDS",
+        "MINIMUM_DPI",
         "MODEL_DIR_NAME",
         "ORPHANED_EXIT_CODE",
         "OUT_OF_MEMORY_EXIT_CODE",
@@ -2192,16 +2194,19 @@
         "READER_PATH_LIMIT",
         "READER_PATH_WARNING",
         "RECOGNITION_MODEL",
+        "ReaderSettings",
         "ReaderUnavailable",
         "ReadingChild",
         "SCRATCH_ENV",
         "SELF_TEST_TEXT",
         "SELF_TEST_WORDS",
         "SESSIONS",
+        "SHIPPED",
         "Session",
         "UNREADABLE_JOB_EXIT_CODE",
         "WARM_UP_STOP_SECONDS",
         "awake_clock",
+        "delined",
         "device",
         "forget_said",
         "gpu_pack",
@@ -2214,6 +2219,7 @@
         "run_in_child",
         "sweep_scratch",
         "take_notes",
+        "use_settings",
         "warm_up"
       ],
       "constants": {
@@ -2232,8 +2238,11 @@
         "SELF_TEST_TEXT": "'Wage and Tax Statement 2025'",
         "SELF_TEST_WORDS": "('wage', 'statement')",
         "CONFIDENT_SCORE": "0.5",
+        "MINIMUM_DPI": "72",
         "READER_PATH_LIMIT": "240",
         "READER_PATH_WARNING": "\"Move the app to a shorter folder, for example C:\\\\JPA App; scans can't be read from here\"",
+        "DELINE_FRACTION": "40",
+        "DELINE_GROW": "3",
         "DOCUMENTS_PER_CHILD": "100",
         "MEMORY_WATCH_SECONDS": "0.5",
         "MEMORY_UNREADABLE": "\"the reading's memory could not be read ({reason}); its memory limit is not enforced\"",
@@ -2245,7 +2254,7 @@
         "SCRATCH_ENV": "('TMP', 'TEMP', 'TMPDIR')"
       },
       "role": "The reader (decision 169): RapidOCR on ONNX Runtime with its three models shipped in the app, on the graphics card when the pack beside the app works and on the processor otherwise - and the pass's one long-lived reading child that every parse of a client's file runs in.",
-      "notes": "Rulings 1-3 and 6, R-2 and R-4 of SPEC-169. Engine: _build_engine() names every model by path (models_folder(), inside the rapidocr package, collected as data by api_entry.spec) and _refuse_downloads() replaces rapidocr's DownloadFile.run with a refusal, so nothing is ever fetched; rapidocr imports requests at load time for that downloader, which tests/test_layers.py allows and tests/test_ocr.py pins to open no socket in a full read. Device: gpu_pack() is the gpu-runtime folder beside the frozen exe (never from source); none means the processor with no CUDA request at all (onnxruntime-gpu 'offers' CUDA everywhere, so offered is never the test). With a pack, _on_the_card() calls onnxruntime.preload_dlls() on it, builds asking for CUDA, requires each of SESSIONS (text_det, text_cls, text_rec) to have CUDAExecutionProvider first, and runs _self_test() on a line drawn in memory; any failure is the processor plus PACK_UNUSABLE (a run-log line, not a warning). read_page(): any exception from the card's engine is a fault (the card poisons the process - 'CUDA failure 999'): the engine is dropped, the processor's built, the same page read again, processor_only() for the rest of the pass, and a ('gpu-fault', file) note becomes GPU_FAULT_WARNING once in the pass; reset() lets the next pass try the card. _upright_lines() is ruling 6's seam: lines in reading order from the boxes (the harness's lines_from_boxes), never a turn. The child: ReadingChild is one spawned process serving jobs one at a time over three pipes (jobs, answers, lifeline), saying 'started' before each job touches a file, answering with take_notes(); a job it cannot unpickle exits UNREADABLE_JOB_EXIT_CODE (the machine's, before 'started'). _watch_the_pass/_orphaned (the lifeline) and _kill_on_close_job/_close_job (the Windows job object) and _end() (the whole tree) moved here from content_check. Session (reading_session(), run_in_child()) owns the child for a pass - runner.run_registry with settle=True, which with a pack starts the child at once for warm_up() so the run log's first line is settled - or for one app command (api.main); a reading with none open gets a session of its own. It replaces the child after a stop, a crash, a child that never started, a fault on the card and every DOCUMENTS_PER_CHILD (100) documents. content_check.in_a_child() words each Outcome. The CLI (python -m tracker.ocr [photo]) says which reader this machine uses and times one reading. Decision 189 (SPEC-161 A-F9): awake_clock() - QueryUnbiasedInterruptTime on Windows, time.monotonic elsewhere - is the one clock of every part of a reading's stop: ReadingChild.run() and Session._run_once() in the pass, content_check._clock in the child; ReadingChild.run() re-measures what is left after every message and every wake, so a poll the machine slept through is not a stop. Unchanged by decision 189's judgment worker in code: its one reader child now runs content_check.judge (read plus judgment) as the job for every document the pass decides, so the document's stop and the child's memory cap bound the rules and the name check as well as the reading, and the answer crossing the pipe is a small Judgment with no text. Containers (decision 154) still open through the same run_in_child. Decision 190: a job that raises in the reading child is sent back as three parts - errors.error_class(), the message and the trace (Outcome.error, Outcome.message, Outcome.trace) - and the child never opens a log; the pass shows the class and keeps the rest. The warm-up's words are the self-test's and are still said in PACK_UNUSABLE / READER_CANNOT_RUN. Decision 186: nor may anything a reading writes outlive it - each ReadingChild asks settings.scratch_root() before any process starts (no data home: not_started, the machine's), and the child's first act (_take_scratch()) is to sweep folders of dead processes (sweep_scratch(), by locking.pid_alive(), never a live or unknowable one - D-14) and point TMP, TEMP, TMPDIR and tempfile.tempdir at scratch/<its pid>; end() removes that folder once the child is gone, and a killed child's is swept by the next. Not covered: reading_session(in_a_child=False), the suite's in-process reading and the tools that call extract() directly. Memory cap off Windows (R31 of SPEC-mac, P248): with no job object, ReadingChild.run waits in slices of MEMORY_WATCH_SECONDS (0.5 s, never longer than what is left of the stop) and reads the child's memory between them through _footprint(pid, system) - ri_phys_footprint from libproc's proc_pid_rusage(RUSAGE_INFO_V2) over ctypes on darwin (the Activity Monitor figure), the resident pages of /proc/<pid>/statm on Linux; past memory_limit the child is ended whole and the reading is a crash with the same 'reached its memory limit' words, replaced like a Windows one. setrlimit(RLIMIT_AS) was rejected (not reliable on macOS). A footprint that cannot be read is no cap and is said once on the error log (tracker-errors.log; MEMORY_UNREADABLE), never guessed. The Linux cap is a behaviour change named in SPEC-mac section 6. Windows is unchanged: the job object still enforces, the watch is off. P282: CONFIDENT_SCORE (0.5, rapidocr's own text_score floor held here so the product owns the number) is the lowest recognition score a box may have; _upright_lines drops every box under it before building lines, and raises ValueError when boxes and words come with no scores, so a reading never silently skips the floor."
+      "notes": "Rulings 1-3 and 6, R-2 and R-4 of SPEC-169. Engine: _build_engine() names every model by path (models_folder(), inside the rapidocr package, collected as data by api_entry.spec) and _refuse_downloads() replaces rapidocr's DownloadFile.run with a refusal, so nothing is ever fetched; rapidocr imports requests at load time for that downloader, which tests/test_layers.py allows and tests/test_ocr.py pins to open no socket in a full read. Device: gpu_pack() is the gpu-runtime folder beside the frozen exe (never from source); none means the processor with no CUDA request at all (onnxruntime-gpu 'offers' CUDA everywhere, so offered is never the test). With a pack, _on_the_card() calls onnxruntime.preload_dlls() on it, builds asking for CUDA, requires each of SESSIONS (text_det, text_cls, text_rec) to have CUDAExecutionProvider first, and runs _self_test() on a line drawn in memory; any failure is the processor plus PACK_UNUSABLE (a run-log line, not a warning). read_page(): any exception from the card's engine is a fault (the card poisons the process - 'CUDA failure 999'): the engine is dropped, the processor's built, the same page read again, processor_only() for the rest of the pass, and a ('gpu-fault', file) note becomes GPU_FAULT_WARNING once in the pass; reset() lets the next pass try the card. _upright_lines() is ruling 6's seam: lines in reading order from the boxes (the harness's lines_from_boxes), never a turn. The child: ReadingChild is one spawned process serving jobs one at a time over three pipes (jobs, answers, lifeline), saying 'started' before each job touches a file, answering with take_notes(); a job it cannot unpickle exits UNREADABLE_JOB_EXIT_CODE (the machine's, before 'started'). _watch_the_pass/_orphaned (the lifeline) and _kill_on_close_job/_close_job (the Windows job object) and _end() (the whole tree) moved here from content_check. Session (reading_session(), run_in_child()) owns the child for a pass - runner.run_registry with settle=True, which with a pack starts the child at once for warm_up() so the run log's first line is settled - or for one app command (api.main); a reading with none open gets a session of its own. It replaces the child after a stop, a crash, a child that never started, a fault on the card and every DOCUMENTS_PER_CHILD (100) documents. content_check.in_a_child() words each Outcome. The CLI (python -m tracker.ocr [photo]) says which reader this machine uses and times one reading. Decision 189 (SPEC-161 A-F9): awake_clock() - QueryUnbiasedInterruptTime on Windows, time.monotonic elsewhere - is the one clock of every part of a reading's stop: ReadingChild.run() and Session._run_once() in the pass, content_check._clock in the child; ReadingChild.run() re-measures what is left after every message and every wake, so a poll the machine slept through is not a stop. Unchanged by decision 189's judgment worker in code: its one reader child now runs content_check.judge (read plus judgment) as the job for every document the pass decides, so the document's stop and the child's memory cap bound the rules and the name check as well as the reading, and the answer crossing the pipe is a small Judgment with no text. Containers (decision 154) still open through the same run_in_child. Decision 190: a job that raises in the reading child is sent back as three parts - errors.error_class(), the message and the trace (Outcome.error, Outcome.message, Outcome.trace) - and the child never opens a log; the pass shows the class and keeps the rest. The warm-up's words are the self-test's and are still said in PACK_UNUSABLE / READER_CANNOT_RUN. Decision 186: nor may anything a reading writes outlive it - each ReadingChild asks settings.scratch_root() before any process starts (no data home: not_started, the machine's), and the child's first act (_take_scratch()) is to sweep folders of dead processes (sweep_scratch(), by locking.pid_alive(), never a live or unknowable one - D-14) and point TMP, TEMP, TMPDIR and tempfile.tempdir at scratch/<its pid>; end() removes that folder once the child is gone, and a killed child's is swept by the next. Not covered: reading_session(in_a_child=False), the suite's in-process reading and the tools that call extract() directly. Memory cap off Windows (R31 of SPEC-mac, P248): with no job object, ReadingChild.run waits in slices of MEMORY_WATCH_SECONDS (0.5 s, never longer than what is left of the stop) and reads the child's memory between them through _footprint(pid, system) - ri_phys_footprint from libproc's proc_pid_rusage(RUSAGE_INFO_V2) over ctypes on darwin (the Activity Monitor figure), the resident pages of /proc/<pid>/statm on Linux; past memory_limit the child is ended whole and the reading is a crash with the same 'reached its memory limit' words, replaced like a Windows one. setrlimit(RLIMIT_AS) was rejected (not reliable on macOS). A footprint that cannot be read is no cap and is said once on the error log (tracker-errors.log; MEMORY_UNREADABLE), never guessed. The Linux cap is a behaviour change named in SPEC-mac section 6. Windows is unchanged: the job object still enforces, the watch is off. P282: CONFIDENT_SCORE (0.5, rapidocr's own text_score floor held here so the product owns the number) is the lowest recognition score a box may have; _upright_lines drops every box under it before building lines, and raises ValueError when boxes and words come with no scores, so a reading never silently skips the floor. P283: ReaderSettings (render_dpi, confident_score, max_side_len, delining, model_tier, model_folder) holds every setting of how a page is drawn and read in one place; SHIPPED = ReaderSettings() is what the product reads with and SETTINGS (SHIPPED unless the bench changed it) is what this process reads with, and the shipped values equal the reading before P283 (144 dpi, floor 0.5, long side 2000, no de-lining, the small models), so nothing read changed and CACHE_VERSION did not move. use_settings() swaps them for the reader bench and the suite only, drops the built engine and must never run in a reading child (a child imports SETTINGS afresh, as SHIPPED). _build_engine() takes the detection and recognition files from MODEL_TIERS[SETTINGS.model_tier] in SETTINGS.model_folder (the app's own folder when empty; the medium models are never shipped or fetched, and a missing file is ReaderUnavailable) and passes Global.text_score, Global.max_side_len and, as rapidocr's own ModelType enum, Det.model_type and Rec.model_type. delined() whitens a form's long box rules in a copy of a page in memory (an Otsu ink mask, a horizontal and a vertical opening a fortieth of the page long, a repair closing); read_page() applies it only when SETTINGS.delining, which is off in the product. cv2 is a reader's import now (tests/test_layers.py)."
     },
     {
       "id": "tracker/page.py",
@@ -4549,8 +4558,8 @@
       "id": "docs/repo-map.curated.json",
       "type": "file",
       "layer": "docs",
-      "sha256": "b7173ea6021d83aa",
-      "lines": 1291,
+      "sha256": "8c8511df708d85b5",
+      "lines": 1311,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
     },
@@ -4576,14 +4585,14 @@
       "id": "docs/tools.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "5e3c3391d449852c",
-      "lines": 107
+      "sha256": "8ae65437c95353c4",
+      "lines": 163
     },
     {
       "id": "docs/vocab-coverage.json",
       "type": "file",
       "layer": "docs",
-      "sha256": "22f248eb03d1d6b9",
+      "sha256": "625932c4c08c94e0",
       "lines": 9415,
       "role": "The coverage report as data, with the SHA-256 of every input it was built from; `check` and the suite compare against these. Generated; never edited by hand."
     },
@@ -4624,6 +4633,14 @@
       "layer": "docs",
       "sha256": "41364f1b77619c6f",
       "lines": 279
+    },
+    {
+      "id": "pilot/PROMPT-reader-bench.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "6ef29999de5cf642",
+      "lines": 141,
+      "role": "The prompt for Claude Code on the office PC (the designated machine only): refuse off the office PC, today's Needs Review by code and the backtest baseline before P282 on main's code, the medium models fetched by an approved command, the reader bench on each corpus with the time arithmetic, the same numbers after Part A is installed, and what comes back - counts and seconds only, never a document, name or path."
     },
     {
       "id": "pilot/README.md",
@@ -4962,6 +4979,11 @@
     },
     {
       "id": "pkg:PIL",
+      "type": "package",
+      "layer": "external"
+    },
+    {
+      "id": "pkg:cv2",
       "type": "package",
       "layer": "external"
     },
@@ -6737,8 +6759,8 @@
       "id": "tests/test_content_check.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "99b7d7047d56c042",
-      "lines": 2884,
+      "sha256": "a1b9f6f4ed726600",
+      "lines": 2929,
       "exports": [
         "A_PASS_READING",
         "BOMB_REFUSED",
@@ -6791,6 +6813,7 @@
         "test_a_menu_line_names_neither_the_form_nor_its_title",
         "test_a_one_line_workbook_parks_within_the_stop_and_never_stalls_the_pass",
         "test_a_page_is_handed_to_the_reader_as_it_comes_and_never_turned",
+        "test_a_page_is_rendered_at_the_settings_dpi_within_the_pixel_budget",
         "test_a_page_tree_bomb_cannot_stall_the_pass",
         "test_a_parser_error_crosses_the_pipe_as_its_class_only",
         "test_a_pattern_the_record_calls_derived_runs_line_by_line_unless_it_is",
@@ -7585,8 +7608,8 @@
       "id": "tests/test_layers.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "e0b6d3a5c485f363",
-      "lines": 1014,
+      "sha256": "732a1180ee3ada5d",
+      "lines": 1018,
       "exports": [
         "PACKAGE",
         "REPO",
@@ -8032,13 +8055,14 @@
       "id": "tests/test_ocr.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "81195ed2a12b014b",
-      "lines": 1126,
+      "sha256": "72e3bce62d74c943",
+      "lines": 1306,
       "exports": [
         "A_PASS_BETWEEN_DOCUMENTS",
         "FakeEngine",
         "OFF_WINDOWS",
         "PAGE_WORDS",
+        "RecordedEngine",
         "W2_WORDS",
         "a_card",
         "a_footprint_that_is_over_for",
@@ -8046,7 +8070,9 @@
         "a_pass",
         "a_short_stop",
         "in_a_child",
+        "own_settings",
         "pid_of_the_reader",
+        "recorded_engines",
         "scans_in_the_inbox",
         "test_a_box_at_the_confidence_floor_is_read",
         "test_a_box_under_the_confidence_floor_is_not_read",
@@ -8081,20 +8107,29 @@
         "test_a_short_junction_to_a_deep_folder_is_still_too_deep",
         "test_a_sideways_page_keeps_its_words",
         "test_a_sweep_never_empties_the_folder_of_a_process_that_is_alive",
+        "test_delining_is_off_in_the_product_and_on_hands_the_engine_the_delined_page",
+        "test_delining_removes_long_rules_and_keeps_the_words",
         "test_no_gpu_pack_means_the_cpu_without_a_word",
         "test_no_reading_child_outlives_the_pass",
         "test_no_reading_child_starts_without_a_data_home",
         "test_one_child_reads_every_document_of_a_pass_and_ends_with_it",
         "test_run_from_source_the_app_is_never_too_deep",
         "test_the_document_stop_ends_a_page_the_reader_never_finishes",
+        "test_the_engine_is_built_with_the_settings_floor_and_long_side",
+        "test_the_floor_follows_the_settings",
         "test_the_graphics_cards_way_in_switches_telemetry_off_before_it_loads_anything",
         "test_the_lines_are_built_from_the_boxes_in_reading_order",
+        "test_the_medium_tier_reads_its_models_from_the_folder_it_is_given",
+        "test_the_medium_tier_without_its_models_is_unavailable_and_fetches_nothing",
         "test_the_posix_watch_caps_a_child_the_way_the_job_object_does",
         "test_the_reader_switches_its_librarys_telemetry_off_before_any_session",
         "test_the_reading_childs_job_caps_its_memory",
         "test_the_readings_own_stop_reads_the_awake_clock",
+        "test_the_shipped_settings_are_todays_reading",
         "test_the_watch_does_not_stretch_a_readings_stop",
         "test_time_asleep_does_not_count_toward_the_reading_stop",
+        "test_unknown_settings_are_refused",
+        "test_using_other_settings_drops_the_built_engine_and_says_what_it_replaced",
         "w2_photo",
         "w2_rows",
         "w2_scan",
@@ -8331,6 +8366,52 @@
         "test_reading_a_progress_file_is_bounded_and_never_raises",
         "test_the_progress_file_holds_the_latest_line_and_is_gone_when_the_pass_ends"
       ]
+    },
+    {
+      "id": "tests/test_reader_bench.py",
+      "type": "test",
+      "layer": "tests",
+      "sha256": "05f6578d8c1448eb",
+      "lines": 416,
+      "exports": [
+        "A_BROKER_PAGE",
+        "A_W2",
+        "CLIENT_FOLDER",
+        "GOOD_1099",
+        "NOTHING",
+        "REAL_WARM_UP",
+        "REPO",
+        "SECRET_WORDS",
+        "SHIPPED_ONLY",
+        "YEAR",
+        "a_corpus",
+        "run",
+        "stand_in",
+        "test_a_document_with_a_text_layer_is_counted_and_never_read_by_the_reader",
+        "test_a_real_scan_is_read_under_each_dpi_it_is_asked_for",
+        "test_each_variants_long_side_holds_a_letter_page_at_its_dpi",
+        "test_parked_documents_are_counted_by_code_and_ocr_only_has_its_share",
+        "test_review_codes_counts_codes_and_prints_nothing_else",
+        "test_review_codes_names_what_is_wrong_with_a_reply_and_exits_2",
+        "test_the_bench_never_downloads_a_model",
+        "test_the_four_outcomes_are_counted_as_the_spec_defines_them",
+        "test_the_grid_is_every_dpi_floor_delining_and_tier",
+        "test_the_medium_tier_is_not_measured_without_its_models_and_says_so",
+        "test_the_report_holds_counts_and_seconds_and_no_name_path_or_word",
+        "test_the_report_is_refused_inside_the_repository",
+        "test_the_seconds_are_counted_per_page_and_against_the_ceiling",
+        "test_the_settings_and_the_reading_switch_are_put_back_after_the_run",
+        "test_the_shipped_variant_is_always_measured_first",
+        "the_five_outcomes",
+        "the_five_readings"
+      ],
+      "constants": {
+        "YEAR": "2025",
+        "CLIENT_FOLDER": "'Aardvark Holdings LLC'",
+        "SECRET_WORDS": "('Aardvark', 'Zebediah', 'Quillfeather', '.pdf', '.jpg', 'document.pdf')",
+        "NOTHING": "'Quarterly newsletter of the Harbor Test Club'"
+      },
+      "role": "Guards the reader bench: the 36-variant grid with the shipped one first, each variant's long side, the four outcomes as the SPEC defines them, text-layer documents counted and never read, the seconds per page against the ceiling, a report and table with no name, path or word, the report refused inside the repository, the medium tier not measured without its models and never downloaded, the settings and reading switch put back (also after a failure), review-codes printing code counts alone, and one real scan read under two dpi."
     },
     {
       "id": "tests/test_real_corpus.py",
@@ -10124,8 +10205,8 @@
       "id": "tests/test_single_source.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "428e7d7427174888",
-      "lines": 5337,
+      "sha256": "be480507db7a8cfd",
+      "lines": 5338,
       "exports": [
         "AFTER_WHAT",
         "CONSOLE_EXEMPT",
@@ -11086,6 +11167,82 @@
       "notes": "hash and audit reach the network; they are a maintainer's and the weekly workflow's commands, never on the app's or the scheduled pass's path, and nothing under tracker/ imports this module (the fourth standing rule; tests/test_lockfiles.py checks). The network is one injectable fetch(url, body), so the tests run on fabricated answers. Rejected: pip-tools and uv pip compile (each re-resolves and would move pins), pip-audit (one more package to lock and trust). verify returns NOT_SET_UP when there is no stamp and CHANGED when a lock or app/package-lock.json differs from it; the CLI prints the sentence and exits 1, which is what Start App.bat shows. SPEC-mac R11: on a Mac (on_a_mac(), the one seam, sys.platform read when called; this tool imports nothing of tracker) verify returns NOT_SET_UP_MAC and CHANGED_MAC, the same two sentences naming setup.command for Setup.bat, and start.command prints the first word for word."
     },
     {
+      "id": "tools/reader_bench.py",
+      "type": "tool",
+      "layer": "tooling",
+      "sha256": "f5c5544e016c36ed",
+      "lines": 551,
+      "cli": "python -m tools.reader_bench",
+      "exports": [
+        "BENCH_NOTE",
+        "CEILING_SECONDS_PER_PAGE",
+        "CODE_SHAPE",
+        "DELININGS",
+        "DELINING_FLAG",
+        "DPIS",
+        "DPI_FLAG",
+        "Document",
+        "EXPECTATIONS_FLAG",
+        "FLOORS",
+        "FLOOR_FLAG",
+        "LETTER_LONG_SIDE_INCHES",
+        "MEDIUM_NOT_MEASURED",
+        "MINIMUM_LONG_SIDE",
+        "MODELS_FLAG",
+        "NO_CODE",
+        "OTHER_CODE",
+        "OUTCOMES",
+        "OUT_FLAG",
+        "PARKED_NO_LEAD",
+        "PARKED_SHORTLIST",
+        "RIGHT",
+        "ROOT",
+        "SCHEMA_VERSION",
+        "TIERS",
+        "TIER_FLAG",
+        "Variant",
+        "WRONG",
+        "grid",
+        "long_side",
+        "main",
+        "measure",
+        "medium_models_in",
+        "name_of",
+        "outcome_of",
+        "review_codes",
+        "run_bench",
+        "survey",
+        "table_row"
+      ],
+      "constants": {
+        "SCHEMA_VERSION": "1",
+        "DPIS": "(144, 200, 300)",
+        "FLOORS": "(0.5, 0.7, 0.85)",
+        "DELININGS": "(False, True)",
+        "TIERS": "('small', 'medium')",
+        "LETTER_LONG_SIDE_INCHES": "11",
+        "MINIMUM_LONG_SIDE": "2000",
+        "CEILING_SECONDS_PER_PAGE": "6.0",
+        "RIGHT": "'right'",
+        "PARKED_SHORTLIST": "'parked_shortlist'",
+        "PARKED_NO_LEAD": "'parked_no_lead'",
+        "WRONG": "'wrong'",
+        "BENCH_NOTE": "\"How the reader's settings fared on the firm's own documents: counts and seconds only. No document name, no folder, no row number, no word of any document and no path is recorded here.\"",
+        "MEDIUM_NOT_MEASURED": "'the medium models are not in a folder the bench was given; a person fetches them with rapidocr download_models'",
+        "NO_CODE": "'none'",
+        "OTHER_CODE": "'other'",
+        "DPI_FLAG": "'--dpi'",
+        "FLOOR_FLAG": "'--floor'",
+        "DELINING_FLAG": "'--delining'",
+        "TIER_FLAG": "'--tier'",
+        "MODELS_FLAG": "'--models'",
+        "EXPECTATIONS_FLAG": "'--expectations'",
+        "OUT_FLAG": "'--out'"
+      },
+      "role": "Measures which reading settings help on the firm's own scans and photos: reads a folder of already-sorted documents once per variant of a fixed grid (dpi 144/200/300, confidence floor 0.5/0.7/0.85, box-line removal off/on, small/medium models) and writes, in counts and seconds only, how many landed where a person put them (right, parked with a lead, parked with none, wrong), how many parked as read-from-scan-only, and how long each took against the 6-seconds-a-page ceiling; also counts Needs Review by code from the firm command's reply.",
+      "notes": "P283. Reads in its own process on purpose: a reading child imports tracker.ocr afresh at SHIPPED, so settings changed here would never reach it - the bench turns content_check.READ_IN_A_CHILD off, opens ocr.reading_session(in_a_child=False) around each variant and puts both, and the settings, back in a finally; the cost is no safety stop and the processor only. Reuses tools/backtest.py's private helpers by name (_harness, _corpus, _document_path, _linked_under_a_neutral_name, _temp_pointed_at, _outside_the_repository, write_json) so there is one owner of the expectations format, the neutral-name link and the out-path refusal. Each scan and photo is routed with router.route_file and no reading handed in, so the router reads and applies its own rule (P282's included), with no verdict cache. Never downloads: ocr._refuse_downloads stands, and the medium models are read from a folder a person fetched them to (--models), else the medium variants are reported as not measured. The report and the table hold counts, seconds, variant settings and routing codes - no document name, folder, row number, word, path or models folder; review-codes prints only code counts and counts any code that does not look like the tracker's as other. Run at the office from pilot/PROMPT-reader-bench.md; P284 ships the settings its numbers favour."
+    },
+    {
       "id": "tools/repo_map.py",
       "type": "tool",
       "layer": "tooling",
@@ -11430,6 +11587,12 @@
     {
       "from": "docs/storage.md",
       "to": "tracker/store.py",
+      "type": "documents",
+      "source": "curated"
+    },
+    {
+      "from": "pilot/PROMPT-reader-bench.md",
+      "to": "tools/reader_bench.py",
       "type": "documents",
       "source": "curated"
     },
@@ -13835,6 +13998,12 @@
     },
     {
       "from": "tests/test_ocr.py",
+      "to": "pkg:numpy",
+      "type": "depends_on",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_ocr.py",
       "to": "pkg:onnxruntime",
       "type": "depends_on",
       "source": "derived"
@@ -14136,6 +14305,72 @@
     {
       "from": "tests/test_progress.py",
       "to": "tracker/progress.py",
+      "type": "tests",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_reader_bench.py",
+      "to": "pkg:PIL",
+      "type": "depends_on",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_reader_bench.py",
+      "to": "pkg:pytest",
+      "type": "depends_on",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_reader_bench.py",
+      "to": "pkg:rapidocr",
+      "type": "depends_on",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_reader_bench.py",
+      "to": "tracker/__init__.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_reader_bench.py",
+      "to": "tracker/content_check.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_reader_bench.py",
+      "to": "tracker/ocr.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_reader_bench.py",
+      "to": "tracker/reasons.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_reader_bench.py",
+      "to": "tracker/records.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_reader_bench.py",
+      "to": "tracker/settings.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_reader_bench.py",
+      "to": "tests/samples.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_reader_bench.py",
+      "to": "tools/reader_bench.py",
       "type": "tests",
       "source": "derived"
     },
@@ -16432,6 +16667,66 @@
       "source": "curated"
     },
     {
+      "from": "tools/reader_bench.py",
+      "to": "pkg:pypdfium2",
+      "type": "depends_on",
+      "source": "derived"
+    },
+    {
+      "from": "tools/reader_bench.py",
+      "to": "tools/backtest.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tools/reader_bench.py",
+      "to": "tracker/__init__.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tools/reader_bench.py",
+      "to": "tracker/content_check.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tools/reader_bench.py",
+      "to": "tracker/errors.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tools/reader_bench.py",
+      "to": "tracker/ocr.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tools/reader_bench.py",
+      "to": "tracker/reasons.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tools/reader_bench.py",
+      "to": "tracker/router.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tools/reader_bench.py",
+      "to": "tracker/settings.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tools/reader_bench.py",
+      "to": "artifact:reading scratch",
+      "type": "writes",
+      "source": "curated"
+    },
+    {
       "from": "tools/repo_map.py",
       "to": "docs/repo-map.curated.json",
       "type": "reads",
@@ -17532,6 +17827,12 @@
     {
       "from": "tracker/ocr.py",
       "to": "pkg:PIL",
+      "type": "depends_on",
+      "source": "derived"
+    },
+    {
+      "from": "tracker/ocr.py",
+      "to": "pkg:cv2",
       "type": "depends_on",
       "source": "derived"
     },
