@@ -819,7 +819,6 @@ def test_a_large_title_keeps_its_form_number_when_prepared(own_settings):
         first[name] = ocr.read_page(page).splitlines()[0]
     assert "1099-INT" in first["raw"], first
     assert "1099-INT" in first["prepared"], first
-    print("first line, raw:", first["raw"], "| prepared:", first["prepared"])
 
 
 def a_five_page_scan(path: Path, lines: list[str]) -> Path:
