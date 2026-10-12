@@ -2325,7 +2325,7 @@ exactly as it came.
      is read once more in a fresh one, and only a second crash parks it
      for a person ("The reader could not read this file (it stopped
      unexpectedly)").
-   - **Memory is capped:** the helper process may use at most 2 GB on the
+   - **Memory is capped:** the helper process may use at most 4 GB on the
      processor, 6 GB on the graphics card. A document that needs more is
      parked for a person like a crash, and the pass carries on with a
      fresh helper, rather than the machine running short of memory.

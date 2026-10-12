@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 287,
     "edges": 1323,
-    "reused": 231
+    "reused": 232
   },
   "node_types": [
     "artifact",
@@ -4604,7 +4604,7 @@
       "id": "docs/runbook.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "c7552bfb117013a3",
+      "sha256": "376df9459586d71c",
       "lines": 2886,
       "role": "The operator's page for one tax season: the designated machine and today's rule that only one may run a clients root, what a person does each morning and on the draft day, what every index reason and validation note means, and the thirty-minute move to another machine - on a Windows PC or on a Mac.",
       "notes": "Written for a person, not an agent. Roles are docs/workflow.md and the reasons behind the rules are docs/ROADMAP.md; it links to both rather than repeating them. The Mac is written as parallel paragraphs, not edits to the Windows text (SPEC-mac R34): section 1's `### On a Mac` (the heading the pass's own root-not-permitted reason points at) and two paragraphs in section 6 (moving to or from a Mac, taking the app off one). The one-machine rule is still stated once. tests/test_single_source.py quotes the app's sentences against it and holds the data folder's name to settings.DATA_HOME_NAME on both systems (the Windows lines once named a folder the app does not make)."
@@ -4661,7 +4661,7 @@
       "id": "pilot/DECISIONS.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "d6398708974078ee",
+      "sha256": "3b20461f4fdb49f5",
       "lines": 279
     },
     {
