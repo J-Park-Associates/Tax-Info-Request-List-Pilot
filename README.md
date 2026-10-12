@@ -48,6 +48,88 @@ asking the client for an exported PDF/Excel copy.
 
 **Full design & build status: [docs/ROADMAP.md](docs/ROADMAP.md)**
 
+## What is in the box
+
+- **A sorting engine that never guesses.** Every drop is judged by
+  deterministic rules in `tracker/`: the request list's own keywords and
+  periods, three validation tiers, and the review folder for anything
+  unclear. The standing rules above are what it upholds, and
+  `tests/test_layers.py` pins that nothing under `tracker/` imports a mail
+  or network module.
+- **A local reading pipeline for scans and photos.** A page with no text
+  layer is drawn at 300 dots per inch, prepared in memory (levelled, made
+  black and white, cleared of specks and box lines) and read by RapidOCR on
+  ONNX Runtime, with its three models shipped inside the app. Nothing is
+  downloaded while it reads, and the reader's download path is refused
+  outright. On Windows an NVIDIA card is used when the graphics card pack
+  sits beside the app, and the processor otherwise. *How files get matched*,
+  below, says what a reading may and may not file.
+- **A document processing stack of ordinary libraries.** pdfplumber and
+  pypdf for a PDF with a text layer, pypdfium2 to draw a page, Pillow (with
+  HEIF) for a photo, OpenCV and NumPy for the preparation, openpyxl for a
+  workbook, and olefile with the standard library's own email and zip
+  readers for a forwarded message or a zip. Every one is pinned by version
+  and by hash in `requirements.lock`.
+- **A desktop app on Windows and on a Mac.** An Electron window around plain
+  HTML, CSS and JavaScript (`app/`), talking JSON to a Python engine. From
+  source it runs under the app's own private Python; packaged, the engine is
+  frozen with PyInstaller (`api_entry.spec`) and travels inside the app, so
+  the office machine needs neither Python nor Node. `Build App.bat` makes
+  the Windows folder, `pilot/Build Pilot Installer.bat` the Windows
+  installer, and `build-mac.sh` the Mac disk image, each from a clean commit.
+- **A record that is the truth.** Each return's own record holds the
+  request list, every original and every status, append-only, in the
+  engagement folder; the store in the app's data folder is an index rebuilt
+  from it ([docs/storage.md](docs/storage.md)). Nothing a client sent is ever
+  in a checkout, a build or this repository.
+
+## Prerequisites
+
+- **To run from source:** Git; Python at the floor `requires-python` in
+  `pyproject.toml` declares; Node.js LTS, for Electron; and the internet
+  for the setup run only. The app starts offline.
+- **The machine:** a Windows PC, or the Mac the *Setup* section below names.
+  The storage is Google Drive for desktop syncing a Shared Drive, as above.
+- **To run the gate:** a second environment on the floor interpreter beside
+  the office's (`[tool.office]` in `pyproject.toml`), both installed from the
+  locks; [CONTRIBUTING.md](CONTRIBUTING.md) has the steps.
+- **To build a package:** what a source run needs, plus the freezer the
+  build script installs itself from `requirements-build.lock` into a fresh
+  environment; on Windows, Inno Setup for the pilot installer. The Mac disk
+  image is built only on an Apple silicon Mac, in a Terminal that is not
+  running under Rosetta.
+- **Optional:** an NVIDIA card in the Windows machine, with the pack
+  `Build GPU Pack.bat` makes placed beside the packaged engine.
+
+## Quick start
+
+| You want to | Windows | Mac |
+|---|---|---|
+| set this machine up from source: the hash-checked install, Electron, the schedule | double-click `Setup.bat` | double-click `setup.command` |
+| start the app from source (installs nothing, starts offline) | `Start App.bat` | `start.command` |
+| build the package | `Build App.bat`, then `pilot/Build Pilot Installer.bat` | `./build-mac.sh` |
+| build the graphics card pack | `Build GPU Pack.bat` | none: the Mac reads on the processor |
+| run one pass by hand over a clients root | `python -m tracker.runner <clients root>` | the same, with `.venv/bin/python` |
+| check a machine before a season | `pilot/wintest/run_checks.ps1` | `pilot/mactest/run_checks.sh` |
+
+On first launch the app asks where your clients live and writes that beside
+itself; everything else follows from that one folder. *Setup*, below, has the
+hash-checked install by hand, and *Running the app* what each script does and
+why nothing is installed at launch. The command lines in *How it works* run
+each stage on its own.
+
+## The repository
+
+| | |
+|---|---|
+| `tracker/` | the engine: the record, the catalog, the reader, the router, the filer, the scanner, the reminder, the runner and the API the app talks to |
+| `app/` | the Electron shell: the window, the pages, the editor and the sheets |
+| `tools/` | the routing tools, the supply-chain lock and the repository map |
+| `tests/` | the suite, one file per module, run in parallel with pytest-xdist, with a tripwire that keeps every test away from real data |
+| `docs/` | [architecture.md](docs/architecture.md) (how the pieces fit), [runbook.md](docs/runbook.md) (the operator's page), [workflow.md](docs/workflow.md), [storage.md](docs/storage.md), [tools.md](docs/tools.md) and [ROADMAP.md](docs/ROADMAP.md) (the decision log) |
+| `pilot/` | the pilot edition's own decisions, SPECs, release notes and the hands-on checks a machine passes before a season |
+| [CONTRIBUTING.md](CONTRIBUTING.md), [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md), [LICENSE](LICENSE) | how work lands here, how people treat each other, and whose the code is |
+
 ## How it works
 
 ```

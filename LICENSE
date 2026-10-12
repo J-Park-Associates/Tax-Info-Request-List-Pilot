@@ -1,0 +1,45 @@
+Copyright (c) 2026 J Park & Associates, CPA. All rights reserved.
+
+This repository is the public pilot edition of a tax-document tracking app
+built and owned by J Park & Associates. Its source is published so that the
+firms testing it, and anyone reviewing it, can read exactly what the program
+does to their clients' files. Publication is not a licence.
+
+What this notice says
+
+1. No licence is granted by the availability of this repository. Nothing here
+   may be copied, modified, redistributed, sold, or used to run the app for
+   any firm's clients except as the pilot terms below allow or as J Park &
+   Associates agrees in writing.
+
+2. Pilot firms use the app under the pilot terms shown inside the app at its
+   first launch, which each tester reads, signs and accepts before the program
+   opens (pilot/Tester Guide.md). Those terms govern the pilot; this notice
+   does not replace them.
+
+3. The app is provided as is, without warranty of any kind, for the pilot.
+   The terms for firms that pay for the app are a separate document, prepared
+   for the firm's attorney (pilot/DECISIONS.md, rows P163 to P166), and are
+   not in this repository.
+
+4. Reading the source, filing an issue, or proposing a change under
+   CONTRIBUTING.md is welcome. A contribution that is accepted is accepted
+   under these same terms: J Park & Associates may use and relicense it with
+   the rest of the app, and the contributor keeps the copyright in their own
+   work.
+
+Third-party components keep their own licences
+
+- The Python packages the app installs are named, pinned and hash-checked in
+  requirements.lock, requirements-nodeps.lock, requirements-build.lock and
+  requirements-gpu.lock; each is used under its own licence.
+- The reader's models (RapidOCR's PP-OCR models on ONNX Runtime) ship inside
+  the app under their own licences, which the packages that carry them state.
+- The Electron shell's packages are named in app/package.json and
+  app/package-lock.json, and Floating UI is vendored unedited under
+  app/renderer/vendor/floating-ui/ with its MIT licence files beside it.
+- NVIDIA's CUDA and cuDNN libraries, when the optional graphics card pack is
+  built, are used under NVIDIA's licences and are never in this repository.
+
+This file is a notice of ownership and of where the terms are, not the terms
+themselves.

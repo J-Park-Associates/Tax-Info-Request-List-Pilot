@@ -230,6 +230,17 @@
       "role": "The operator's page for one tax season: the designated machine and today's rule that only one may run a clients root, what a person does each morning and on the draft day, what every index reason and validation note means, and the thirty-minute move to another machine - on a Windows PC or on a Mac.",
       "notes": "Written for a person, not an agent. Roles are docs/workflow.md and the reasons behind the rules are docs/ROADMAP.md; it links to both rather than repeating them. The Mac is written as parallel paragraphs, not edits to the Windows text (SPEC-mac R34): section 1's `### On a Mac` (the heading the pass's own root-not-permitted reason points at) and two paragraphs in section 6 (moving to or from a Mac, taking the app off one). The one-machine rule is still stated once. tests/test_single_source.py quotes the app's sentences against it and holds the data folder's name to settings.DATA_HOME_NAME on both systems (the Windows lines once named a folder the app does not make)."
     },
+    "CONTRIBUTING.md": {
+      "role": "How work lands here, for a person: the rules client data and the CI budget impose, the from-source setup by hand, the SPEC-first loop, the gate (dead code first, the affected tests as separate processes under both interpreters, ruff, the map and vocabulary checks), branches, commit subjects, draft pull requests marked ready once and landed by merge commit.",
+      "notes": "Repeats nothing the suite pins in the README; the floor is 'the floor pyproject.toml declares' here too, so nobody types the number."
+    },
+    "CODE_OF_CONDUCT.md": {
+      "role": "The Contributor Covenant, version 2.1, with one rule of this repository's own: no client's name, document, link or path is ever posted anywhere."
+    },
+    "docs/architecture.md": {
+      "role": "The overview between the README and the map: the three programs (the shell, the engine, the scheduled pass) and the reading child; the package layer by layer with each module's one sentence; the tools; the tests and their guards; the three places the app writes; the decisions that shape it (deterministic, offline, standard library first, hash-checked installs, one-time steps built in); and how each package is built.",
+      "notes": "Written for a person who did not watch the code grow. It names no numbers a test pins and no file the code does not own; tests/test_layers.py's table is the source of its layers."
+    },
     "README.md": {
       "role": "What the system is, how to run each stage, and how to set it up on a PC or a Mac. Who does what is docs/workflow.md.",
       "notes": "Names the product in its title only (a test holds that), so the Mac floor is said as 'the app needs a Mac with Apple silicon running macOS 14 or later'; tests/test_single_source.py pins those words to settings.MAC_FLOOR (SPEC-mac R35). PRODUCT.md says it too, with the program's name."
