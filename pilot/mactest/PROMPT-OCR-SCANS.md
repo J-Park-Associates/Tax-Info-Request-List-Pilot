@@ -132,7 +132,7 @@ Python here is .venv/bin/python (3.14, the office's) and .venv311/bin/python (3.
    how many of them are Read From Scan Only (review-codes prints that count by code): with P282 that
    count is 0, or 1 if c parked that way; the suite's own scanned sample in the pile files as it did
    before. review-codes runs the firm command itself and answers in seconds, the first time and every
-   time. It needs no retry. If it prints a "reader bench:" sentence instead of the counts, or runs for
+   time. It needs no retry. If it prints a "reader bench:" sentence instead of the counts or after them, or runs for
    more than a minute, record that word for word with the time: it is a finding.
    Byte for byte: every file that moved out of the inbox must be found under the client's folder
    for the year with the same fingerprint:

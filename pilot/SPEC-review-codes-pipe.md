@@ -136,9 +136,9 @@ review-codes section:
 The `{kind}` of a refusal is `reply["failure"]["kind"]` when it is one of
 `progress.FAILURE_KINDS` (stale, locked, refused, failed; decision 193's
 envelope), and `unknown` otherwise. Each failure sentence ends with *(it also
-wrote {n} lines on stderr, not shown)* when stderr was not empty. On success
+wrote {lines} on stderr, not shown)* (`{lines}` reads "1 line" or "N lines") when stderr was not empty. On success
 with a non-empty stderr, the counts print as usual, one line `reader bench:
-the firm command also wrote {n} lines on stderr, not shown` goes to the
+the firm command also wrote {lines} on stderr, not shown` goes to the
 bench's stderr, and the exit is 0. **The rule:** the bench never quotes a line
 of `firm`'s output or the reply's `error` sentence. Those sentences name
 folders (a clients root that cannot be walked, a held return's lock), so

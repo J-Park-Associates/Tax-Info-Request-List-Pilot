@@ -467,8 +467,8 @@ FIRM_NO_REPLY = "the firm command printed no reply (exit {code}); nothing was co
 FIRM_NOT_AN_OBJECT = "the firm command's reply is not a JSON object (exit {code}); nothing was counted"
 FIRM_REFUSED = ("the tracker refused the firm summary ({kind}, exit {code}); the app's Overview says why, "
                 "and an unexpected failure is in the tracker's error log")
-FIRM_STDERR_ON_FAILURE = " (it also wrote {n} lines on stderr, not shown)"
-FIRM_STDERR_ON_SUCCESS = "the firm command also wrote {n} lines on stderr, not shown"
+FIRM_STDERR_ON_FAILURE = " (it also wrote {lines} on stderr, not shown)"
+FIRM_STDERR_ON_SUCCESS = "the firm command also wrote {lines} on stderr, not shown"
 #: The kind of a refusal whose envelope carries none of ``progress.FAILURE_KINDS``.
 UNKNOWN_KIND = "unknown"
 
@@ -599,18 +599,22 @@ def _cmd_run(ns: argparse.Namespace) -> int:
     return 0
 
 
+def _lines(n: int) -> str:
+    """``1 line`` or ``n lines``: what the stderr suffixes count."""
+    return "1 line" if n == 1 else f"{n} lines"
+
+
 def _cmd_review_codes(ns: argparse.Namespace) -> int:
     out = _outside_the_repository(Path(ns.out)) if ns.out else None   # before firm's wait, as `run` does
     done = _run_firm()
     wrote = len([line for line in done.stderr.splitlines() if line.strip()])
     try:
-        reply = firm_reply_of(done.stdout, done.returncode)
+        counts = review_codes(firm_reply_of(done.stdout, done.returncode))
     except BacktestError as exc:
-        raise BacktestError(str(exc) + (FIRM_STDERR_ON_FAILURE.format(n=wrote) if wrote else "")) from None
-    counts = review_codes(reply)
+        raise BacktestError(str(exc) + (FIRM_STDERR_ON_FAILURE.format(lines=_lines(wrote)) if wrote else "")) from None
     print(json.dumps(counts, indent=1, sort_keys=True))
     if wrote:
-        print(f"reader bench: {FIRM_STDERR_ON_SUCCESS.format(n=wrote)}", file=sys.stderr)
+        print(f"reader bench: {FIRM_STDERR_ON_SUCCESS.format(lines=_lines(wrote))}", file=sys.stderr)
     if out:
         write_json(out, counts)
     return 0

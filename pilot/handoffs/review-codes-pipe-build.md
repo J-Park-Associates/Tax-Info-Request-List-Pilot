@@ -20,7 +20,7 @@ hand check ran on made-up pilot data and only code counts were looked at.
   `CREATE_NO_WINDOW` where it exists. `subprocess` and `runner` are imported
   inside the helper, so the module's import block is untouched (R9).
 - **R3 / R6.** stderr is captured, counted by non-blank lines, never shown. A
-  failure sentence ends with "(it also wrote {n} lines on stderr, not shown)";
+  failure sentence ends with "(it also wrote {lines} on stderr, not shown)";
   a success with stderr prints the counts as before and one line on the bench's
   stderr, exit 0. The six sentences are module constants in the review-codes
   section (`FIRM_NOT_STARTED`, `FIRM_TOO_LONG`, `FIRM_NO_REPLY`,
@@ -45,8 +45,8 @@ hand check ran on made-up pilot data and only code counts were looked at.
   the end of `pilot/DECISIONS.md`, and the two curated sentences in
   `docs/repo-map.curated.json` followed by `repo_map.py update`.
 - **Tests** (`tests/test_reader_bench.py`): the two existing review-codes tests
-  now feed `_run_firm` (the first behind two real count lines). The SPEC's ten
-  new tests are at the end of the file, plus one extra (below), with three small
+  now feed `_run_firm` (the first behind two real count lines). The SPEC's nine
+  new tests are at the end of the file, plus one extra (below), ten in all, with three small
   helpers (`a_firm_run`, `a_reply`, `counts_of`) there too. The new tests import
   `progress`, `runner`, `errors` and `subprocess` inside themselves, so the
   test file's import block is untouched.
@@ -100,9 +100,7 @@ closed.
 3. **`pilot/handoffs/` did not exist**; there was no earlier file to copy the
    shape from. This note follows the shape of the Part B section of
    `pilot/HANDOFF.md`, and the folder is new.
-4. The commits are two: the SPEC alone, then everything else with the map
-   refreshed. The map is therefore stale at the SPEC-only commit (the SPEC was
-   untracked and unmapped); it is current at the tip.
+4. The work is one commit, and the map is current at it.
 
 ## Open
 
@@ -112,3 +110,22 @@ closed.
 - The office's bench session and the Mac check prompts now carry the new
   command; neither has been run again. P285's merge touches the same files and
   should be clean if it keeps off the review-codes section.
+
+## Review 1
+
+Verdict: nothing blocking; one SHOULD and four NITs. This rebuild fixed
+findings 1 to 4:
+
+1. The stderr count now survives a reply without a `files` list: the bench reads
+   the reply's counts inside the same step that adds the count to a failure
+   sentence. A test covers it (firm exits 0, no `files`, one line on stderr).
+2. The Mac prompt now asks for a record when a "reader bench:" sentence appears
+   "instead of the counts or after them".
+3. The count reads "1 line" or "N lines" everywhere it is spelled (the bench,
+   the SPEC's R6 and this note).
+4. This note's test count and commit paragraph are corrected.
+
+Finding 5 (the commit trailer names Claude Fable 5.1) is left as it is: the
+trailer states the model of the session that made the commit, and the session
+sets it, not the project rule on which model builds. Jason is told in the
+hand-back.

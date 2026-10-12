@@ -624,7 +624,7 @@ def test_what_firm_wrote_on_stderr_is_counted_and_never_shown(monkeypatch, capsy
 
     assert code == 2 and out == ""
     assert err == ("reader bench: " + reader_bench.FIRM_NOT_AN_OBJECT.format(code=1)
-                   + reader_bench.FIRM_STDERR_ON_FAILURE.format(n=2) + "\n")
+                   + reader_bench.FIRM_STDERR_ON_FAILURE.format(lines="2 lines") + "\n")
     assert err.endswith("(it also wrote 2 lines on stderr, not shown)\n")
 
     code, out, err = counts_of(monkeypatch, capsys, a_firm_run(a_reply(), noise))
@@ -633,6 +633,20 @@ def test_what_firm_wrote_on_stderr_is_counted_and_never_shown(monkeypatch, capsy
     assert err == "reader bench: the firm command also wrote 2 lines on stderr, not shown\n"
     for secret in (*SECRET_WORDS, "Quill", "clients", "Traceback"):
         assert secret not in out and secret not in err, secret
+
+    one = b"Traceback: Hieronymus Wigglesworth\n\n"
+    no_files = a_firm_run(b'{"returns": []}\n', one)
+
+    code, out, err = counts_of(monkeypatch, capsys, no_files)
+
+    assert code == 2 and out == ""
+    assert err == "reader bench: the firm command's reply holds no list of files (it also wrote 1 line on stderr, not shown)\n"
+    for secret in ("Hieronymus", "Wigglesworth", "Traceback"):
+        assert secret not in out and secret not in err, secret
+
+    code, out, err = counts_of(monkeypatch, capsys, a_firm_run(a_reply(), one))
+
+    assert code == 0 and err == "reader bench: the firm command also wrote 1 line on stderr, not shown\n"
 
 
 def test_review_codes_never_reads_its_own_stdin(monkeypatch, capsys):

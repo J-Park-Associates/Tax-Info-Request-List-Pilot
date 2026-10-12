@@ -1,6 +1,6 @@
 {
   "schema": 2,
-  "generated": "2026-10-11",
+  "generated": "2026-10-12",
   "generator": "tools/repo_map.py",
   "generator_sha256": "a394d7104da5155d",
   "module_table_sha256": "2499d0551746f34b",
@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 288,
     "edges": 1327,
-    "reused": 234
+    "reused": 230
   },
   "node_types": [
     "artifact",
@@ -4782,7 +4782,7 @@
       "id": "pilot/SPEC-review-codes-pipe.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "6a862e4062752813",
+      "sha256": "64498c92a10ccd6d",
       "lines": 283
     },
     {
@@ -4889,8 +4889,8 @@
       "id": "pilot/handoffs/review-codes-pipe-build.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "14a546e1f045d85b",
-      "lines": 114
+      "sha256": "a8f7f73660c2ca7f",
+      "lines": 131
     },
     {
       "id": "pilot/harness/README.md",
@@ -4903,7 +4903,7 @@
       "id": "pilot/mactest/PROMPT-OCR-SCANS.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "3bc3ad9c161b85d2",
+      "sha256": "89dd631b58978d0d",
       "lines": 246
     },
     {
@@ -8397,8 +8397,8 @@
       "id": "tests/test_reader_bench.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "4c9ae287fa94c33f",
-      "lines": 674,
+      "sha256": "bf2a7fad6d59e75e",
+      "lines": 688,
       "exports": [
         "A_BROKER_PAGE",
         "A_W2",
@@ -11212,8 +11212,8 @@
       "id": "tools/reader_bench.py",
       "type": "tool",
       "layer": "tooling",
-      "sha256": "ea0c47de26009645",
-      "lines": 657,
+      "sha256": "97fb44a39853f582",
+      "lines": 661,
       "cli": "python -m tools.reader_bench",
       "exports": [
         "BENCH_NOTE",
@@ -11294,8 +11294,8 @@
         "FIRM_NO_REPLY": "'the firm command printed no reply (exit {code}); nothing was counted'",
         "FIRM_NOT_AN_OBJECT": "\"the firm command's reply is not a JSON object (exit {code}); nothing was counted\"",
         "FIRM_REFUSED": "\"the tracker refused the firm summary ({kind}, exit {code}); the app's Overview says why, and an unexpected failure is in the tracker's error log\"",
-        "FIRM_STDERR_ON_FAILURE": "' (it also wrote {n} lines on stderr, not shown)'",
-        "FIRM_STDERR_ON_SUCCESS": "'the firm command also wrote {n} lines on stderr, not shown'",
+        "FIRM_STDERR_ON_FAILURE": "' (it also wrote {lines} on stderr, not shown)'",
+        "FIRM_STDERR_ON_SUCCESS": "'the firm command also wrote {lines} on stderr, not shown'",
         "UNKNOWN_KIND": "'unknown'"
       },
       "role": "Measures which reading settings help on the firm's own scans and photos: reads a folder of already-sorted documents once per variant of a fixed grid (dpi 144/200/300, confidence floor 0.5/0.7/0.85, box-line removal off/on, small/medium models) and writes, in counts and seconds only, how many landed where a person put them (right, parked with a lead, parked with none, wrong), how many parked as read-from-scan-only, and how long each took against the 6-seconds-a-page ceiling; also counts Needs Review by code from the firm command's reply.",
