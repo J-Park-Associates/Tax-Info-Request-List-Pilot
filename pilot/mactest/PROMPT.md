@@ -303,7 +303,7 @@ SAFETY - never break these:
    Record the elapsed minutes, the peak memory footprint /usr/bin/time prints, how many files were
    read (the run log), and whether the log says "memory limit" for any reading. PASS when the pass
    ends within 60 minutes (half the slot, the kit's reading of "well inside"; Jason may change the
-   number) and no reading hit its 2 GB limit; otherwise FAIL, and CoreML becomes its own measured
+   number) and no reading hit its 4 GB limit; otherwise FAIL, and CoreML becomes its own measured
    job. If 400 households cannot be built or read in a working day, say how many were, and the
    per-household time.
 
