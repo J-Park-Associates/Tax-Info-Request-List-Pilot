@@ -334,12 +334,15 @@ def test_the_shipped_settings_are_the_prepared_reading_at_300_dpi():
 
 def test_the_engine_is_built_with_the_settings_floor_and_long_side(recorded_engines, own_settings):
     """With the shipped settings the params carry the floor 0.5, the long side
-    of a letter page at 300 dpi (3300, P285) and the three shipped model
-    paths; with other settings, theirs."""
+    of a letter page at 300 dpi (3300, P285), the detector held to its own
+    2000-pixel copy (``Det.limit_type`` ``max``, so a 3300 page is not
+    detected whole and the process stays under the reading child's 2 GB),
+    and the three shipped model paths; with other settings, theirs."""
     folder = ocr.models_folder()
     ocr._build_engine(cuda=False)
     shipped = recorded_engines[-1]
     assert shipped["Global.text_score"] == 0.5 and shipped["Global.max_side_len"] == 3300
+    assert shipped["Det.limit_type"] == "max" and "Det.limit_side_len" not in shipped
     assert shipped["Det.model_type"].value == "small" and shipped["Rec.model_type"].value == "small"
     assert shipped["Det.model_path"] == str(folder / ocr.DETECTION_MODEL)
     assert shipped["Rec.model_path"] == str(folder / ocr.RECOGNITION_MODEL)
@@ -761,6 +764,46 @@ def test_a_prepared_real_scan_of_a_1099_int_files_under_p282_level_and_skewed_tw
         routing = route_file(scan, [interest, mortgage])
         assert routing.identifier == "A02", (name, routing.reason)
         assert routing.reason == MATCHED_FROM_SCAN, name
+
+
+def a_five_page_scan(path: Path, lines: list[str]) -> Path:
+    """Five image-only pages, each drawn the way ``samples.scanned_pdf`` draws
+    one (the same 1275 x 1650 canvas, 150 dpi, the same font and spacing), in
+    one PDF with no text layer."""
+    from PIL import Image, ImageDraw, ImageFont
+
+    font = ImageFont.load_default(size=30)
+    pages = []
+    for _page in range(5):
+        page = Image.new("RGB", (1275, 1650), "white")
+        draw = ImageDraw.Draw(page)
+        for i, line in enumerate(lines[:28]):
+            draw.text((80, 90 + 52 * i), line, font=font, fill="black")
+        pages.append(page)
+    pages[0].save(path, "PDF", resolution=150, save_all=True, append_images=pages[1:])
+    return path
+
+
+def test_the_shipped_reading_of_a_scan_fits_the_reading_child(tmp_path, in_a_child):
+    """The shipped reading of a five-page scan, through the product's own
+    path (the judgment in the pass's reading child, on the processor, under
+    the shipped settings), gets a reading and not a crash. The child ends a
+    reading that passes its 2 GB (decision 169); the first build's detector
+    read each 300 dpi page whole, reached 2.8 GB, and was ended as
+    ``reading-crashed``. The detector now reads its own 2000-pixel copy
+    (``Det.limit_type`` ``max``), so the child stays inside its cap."""
+    from tests.samples import lines_1099_int
+
+    assert ocr.SETTINGS is ocr.SHIPPED
+    scan = a_five_page_scan(tmp_path / "five pages.pdf",
+                            lines_1099_int("Harbor Test Bank", "John A. Smith", 2025))
+
+    reading = content_check.judge_bounded(scan, content_check.Questions()).extraction
+
+    assert reading.reason != CRASHED and not reading.transient, reading.reason
+    assert reading.from_ocr and reading.text, reading.reason
+    assert contains_keyword(reading.text, "1099-INT"), reading.text[:200]
+    assert no_child_left()
 
 
 # ----------------------------------------------------- the graphics card ----

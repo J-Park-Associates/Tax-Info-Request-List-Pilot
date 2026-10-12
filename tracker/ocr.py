@@ -386,6 +386,17 @@ def _build_engine(*, cuda: bool):
         "Global.model_root_dir": str(tier_folder),
         "Global.text_score": SETTINGS.confident_score,
         "Global.max_side_len": SETTINGS.max_side_len,
+        # P285: the detector reads a copy held to rapidocr's own 2000-pixel
+        # long side, as under P283; recognition still crops its words from
+        # the page at SETTINGS.max_side_len. Under rapidocr's default ("min",
+        # 736) a page whose shorter side is already past 736 is never shrunk
+        # for detection, so the detector ran on the whole 3300 x 2550 page and
+        # the process reached 2.4 GB, past the reading child's 2 GB; under
+        # "max" its own get_preprocess holds any page over 1500 px to a 2000
+        # px copy (Det.limit_side_len is ignored there and is not set), maps
+        # the boxes back, and the crops come from the 3300 page. Measured on a
+        # drawn letter page: peak 1.03 GB against 2.43 GB, the same lines read.
+        "Det.limit_type": "max",
         # rapidocr takes a model type as its own enum, never as text.
         "Det.model_type": ModelType(SETTINGS.model_tier),
         "Rec.model_type": ModelType(SETTINGS.model_tier),
