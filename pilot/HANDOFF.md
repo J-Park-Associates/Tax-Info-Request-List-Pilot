@@ -288,8 +288,8 @@ the same under both (`test_ocr` 56 passed, 4 skipped; `test_reader_bench` 18;
 31; `test_single_source` 217; `test_repo_map` 82; `test_tripwire` 23;
 `test_errors` 83); `ruff check .` clean; `repo_map.py update` then `check` exit
 0; `vocab_report.py build` left no diff. `SHIPPED` and `CACHE_VERSION` did not
-move. Not changed: SPEC section 4's office-prompt sketch still names
-`bench-<corpus>.json`; the prompt itself is the source.
+move. SPEC section 4's office-prompt sketch was then aligned with the prompt
+(the before-checkout and the fixed report labels); the prompt is the source.
 
 Tests added: ocr `test_the_shipped_settings_are_todays_reading`,
 `test_the_engine_is_built_with_the_settings_floor_and_long_side`,

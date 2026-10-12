@@ -372,6 +372,7 @@ def test_a_ctrl_c_writes_the_report_so_far_and_exits_130_with_one_sentence(tmp_p
     stand_in.pages = {1: GOOD_1099}
     folder = a_corpus(tmp_path, [("scan", "one.pdf", "A02")])
     _route_failing_at(monkeypatch, 300, KeyboardInterrupt())
+    monkeypatch.setattr(content_check, "READ_IN_A_CHILD", True)
 
     code, report = run(tmp_path, folder, "--dpi", "144,300", "--floor", "0.5", "--delining", "off", "--tier", "small")
 
@@ -380,6 +381,7 @@ def test_a_ctrl_c_writes_the_report_so_far_and_exits_130_with_one_sentence(tmp_p
     err = capsys.readouterr().err
     assert err.count("\n") == 1 and err.startswith("reader bench: interrupted")
     assert ocr.SETTINGS is ocr.SHIPPED and not process_scratch().exists()
+    assert content_check.READ_IN_A_CHILD is True
 
 
 def test_a_bad_catalog_is_named_by_its_row_number_and_never_by_its_value(tmp_path, stand_in, capsys):

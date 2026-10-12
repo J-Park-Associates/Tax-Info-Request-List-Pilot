@@ -146,9 +146,10 @@ SAFETY - never break these:
 - **Refuse off the office PC** - the schedule runs on one computer only (the
   runbook's "which machine runs the schedule"), and the corpus is only
   reachable from it.
-- **Main's code for "before"** - `backtest.py` and `check` read the checkout
-  they run in; P282's rule is in `claude/ocr-scans`. A baseline measured on
-  that branch would already hold Part A's change and could not show it.
+- **The commit Part A stacks on for "before"** - `backtest.py` and `check`
+  read the checkout they run in; P282's rule is in `claude/ocr-scans`, and
+  by the time this runs `main` holds it too. A baseline measured on either
+  would already hold Part A's change and could not show it.
 - **Nothing downloaded by the bench** - `ocr._refuse_downloads` stands under
   it; the medium models come from a person's approved command.
 - **Counts and seconds only** - the standing rule that client data never

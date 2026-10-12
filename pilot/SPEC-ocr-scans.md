@@ -775,9 +775,13 @@ never reach it. For the whole run the bench sets
 `content_check.READ_IN_A_CHILD = False` (the switch the suite's
 `tests/conftest.py` throws) and opens `ocr.reading_session(in_a_child=False)`
 around each variant, and puts both back - and `ocr.use_settings(previous)`
-- in a `finally`. The cost, said in the docstring: there is no safety stop
-for a reading in the bench (a person is watching a measurement, not a
-pass), and the bench reads on the processor only (`gpu_pack()` is None run
+- in a `finally`. The cost, said in the docstring: the reading's safety
+stop is still armed per document (`content_check.extract_by_ocr`), so no
+page starts after the previous one overran its minute or after the
+document's ten, but a page already under way is unbounded (a person is
+watching a measurement, not a pass; a slow variant can park a multi-page
+scan through the stop, and that counts as a park), and the bench reads on
+the processor only (`gpu_pack()` is None run
 from source), which is the conservative number for Jason's ceiling.
 
 **The corpus.** A folder and its expectations file in the backtest's format
