@@ -293,6 +293,18 @@ def _temp_pointed_at(folder: Path):
         tempfile.tempdir = saved_tempdir
 
 
+def _unknown_catalog(rows: list) -> str:
+    """The sentence for a row that names a catalog there is not, or "" when
+    every row names one. It says the row's number and never the value: an
+    unquoted comma in a file name shifts the columns, so the value may be a
+    piece of a client's file name, and no name is ever printed."""
+    bad = [number for number, (_, catalog, _, _) in enumerate(rows, start=1) if catalog not in CATALOGS]
+    if not bad:
+        return ""
+    more = f" (and {len(bad) - 1} more)" if len(bad) > 1 else ""
+    return f"no such catalog in row {bad[0]}{more}; the catalogs are {', '.join(CATALOGS)}"
+
+
 def route_corpus(folder: Path, expectations: Path, *, ocr: bool = False) -> tuple[list[Outcome], float]:
     """Route every row of ``expectations``, and say how long the whole pass took.
 
@@ -312,9 +324,8 @@ def route_corpus(folder: Path, expectations: Path, *, ocr: bool = False) -> tupl
     """
     catalog_rows, read_expectations = _harness()
     rows = read_expectations(expectations)
-    unknown = sorted({catalog for _, catalog, _, _ in rows} - set(CATALOGS))
-    if unknown:
-        raise BacktestError(f"no such catalog: {', '.join(unknown)}; the catalogs are {', '.join(CATALOGS)}")
+    if (unknown := _unknown_catalog(rows)):
+        raise BacktestError(unknown)
 
     outcomes: list[Outcome] = []
     started = time.perf_counter()

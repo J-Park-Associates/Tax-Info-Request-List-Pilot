@@ -21,8 +21,11 @@ reach it. For the whole run the bench therefore turns
 ``content_check.READ_IN_A_CHILD`` off (the switch the suite throws) and opens
 ``ocr.reading_session(in_a_child=False)`` around each variant, and puts both
 back, and the settings, in a ``finally``. What that costs, said plainly:
-there is no safety stop for a reading here (a person is watching a
-measurement, not a pass), and the bench reads on the processor only
+the safety stop is still armed (no page starts after the one before it
+overran 60 seconds or after the document's 600), but a page already under
+way is unbounded, so a slow variant can park a multi-page scan through the
+stop, and that counts as a park (a person is watching a measurement, not a
+pass). The bench reads on the processor only
 (``ocr.gpu_pack()`` is None run from source), which is the conservative
 number for the firm's ceiling of 6 seconds a page.
 
@@ -34,8 +37,15 @@ through a hard link named ``document.<ext>``, so no client's file name
 reaches the router or the report), ``_temp_pointed_at`` (what a library
 writes through the temp folder lands in this process's scratch and goes
 with the run), ``_outside_the_repository``, ``_corpus``, ``write_json``,
-``CATALOGS``, ``BacktestError`` and the ``READING_*`` kinds. A rename there
+``_unknown_catalog`` (the sentence for a bad catalog column: a row number,
+never the value), ``BacktestError`` and the ``READING_*`` kinds. A rename there
 is a change to both files.
+
+**The report is rewritten after every variant**, so a crash, an out-of-memory
+or a Ctrl-C costs the variant under way and no earlier one. A variant whose
+reading raised is in the report as not measured, with the exception's class
+and never its message; the run goes on to the next. A Ctrl-C writes the
+report so far and exits 130 with one sentence.
 
 **The corpus** is a folder and its expectations file in the backtest's
 format. Before any variant each document is linked once and read once with
@@ -104,7 +114,6 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))   # run as a script: the package and the suite must import
 
 from tools.backtest import (  # noqa: E402
-    CATALOGS,
     EXPECTATIONS_FILENAME,
     READING_IMAGE,
     READING_OCR,
@@ -115,6 +124,7 @@ from tools.backtest import (  # noqa: E402
     _linked_under_a_neutral_name,
     _outside_the_repository,
     _temp_pointed_at,
+    _unknown_catalog,
     write_json,
 )
 from tracker import content_check, errors, ocr, reasons  # noqa: E402
@@ -371,13 +381,16 @@ def table_row(entry: dict) -> str:
 
 
 def run_bench(folder: Path, expectations: Path, variants: list[Variant], *, models: str = "",
-              out=None) -> dict:
+              out=None, report_to: Path | None = None) -> dict:
     """Measure every variant on the corpus and return the report.
 
     The reading is in this process (see the module's text): the switch, the
     session and the settings are put back however the run ends. Each
     variant's row is printed to ``out`` (standard output by default) the
-    moment it is measured, so a long run shows its progress."""
+    moment it is measured, so a long run shows its progress, and the report
+    is rewritten to ``report_to`` at the same moment: an abort, an
+    out-of-memory or a Ctrl-C costs the variant under way and no earlier one.
+    A Ctrl-C writes the report so far and is raised again."""
     stream = out or sys.stdout
     write = stream.write
     _catalog_rows, read_expectations = _harness()
@@ -385,11 +398,11 @@ def run_bench(folder: Path, expectations: Path, variants: list[Variant], *, mode
         rows = read_expectations(expectations)
     except ValueError as exc:
         raise BacktestError(str(exc)) from None     # the reader's sentences name a row, never a file
-    unknown = sorted({catalog for _, catalog, _, _ in rows} - set(CATALOGS))
-    if unknown:
-        raise BacktestError(f"no such catalog: {', '.join(unknown)}; the catalogs are {', '.join(CATALOGS)}")
+    if (unknown := _unknown_catalog(rows)):
+        raise BacktestError(unknown)
 
     entries: list[dict] = []
+    report: dict = {}
     previous_switch = content_check.READ_IN_A_CHILD
     previous_settings = ocr.SETTINGS
     own = process_scratch()
@@ -398,22 +411,32 @@ def run_bench(folder: Path, expectations: Path, variants: list[Variant], *, mode
         content_check.READ_IN_A_CHILD = False
         with _temp_pointed_at(own), tempfile.TemporaryDirectory(prefix="bench-", dir=own) as scratch_name:
             documents, corpus = survey(folder, rows, Path(scratch_name))
+            report = {"schema": SCHEMA_VERSION, "note": BENCH_NOTE, "corpus": corpus, "variants": entries}
             write(_TABLE_HEAD + "\n")
-            for variant in variants:
-                entry = _one_variant(variant, documents, models)
-                entries.append(entry)
-                write(table_row(entry) + "\n")
-                stream.flush()
+            try:
+                for variant in variants:
+                    entry = _one_variant(variant, documents, models)
+                    entries.append(entry)
+                    write(table_row(entry) + "\n")
+                    stream.flush()
+                    if report_to is not None:
+                        write_json(report_to, report)
+            except KeyboardInterrupt:
+                if report_to is not None:
+                    write_json(report_to, report)
+                raise
     finally:
         content_check.READ_IN_A_CHILD = previous_switch
         ocr.use_settings(previous_settings)
         shutil.rmtree(own, ignore_errors=True)    # a folder still held is swept later by its dead pid
-    return {"schema": SCHEMA_VERSION, "note": BENCH_NOTE, "corpus": corpus, "variants": entries}
+    return report
 
 
 def _one_variant(variant: Variant, documents: list[Document], models: str) -> dict:
     """:func:`measure` for one variant, or why it was not measured: a medium
-    variant with no models, or a reader that could not be built."""
+    variant with no models, a reader that could not be built, or a reading
+    that raised - said by the exception's class and never its message, which
+    could carry a path - so the run goes on to the next variant."""
     if variant.settings.model_tier == "medium" and not medium_models_in(models):
         return _unmeasured(variant, MEDIUM_NOT_MEASURED)
     ocr.use_settings(variant.settings)
@@ -423,7 +446,12 @@ def _one_variant(variant: Variant, documents: list[Document], models: str) -> di
             ocr.warm_up()
         except ocr.ReaderUnavailable as exc:
             return _unmeasured(variant, errors.error_class(exc, with_code=False))
-        return measure(variant, documents, time.perf_counter() - started)
+        except Exception as exc:
+            return _unmeasured(variant, f"the reader stopped with {errors.error_class(exc, with_code=False)}")
+        try:
+            return measure(variant, documents, time.perf_counter() - started)
+        except Exception as exc:
+            return _unmeasured(variant, f"the reading stopped with {errors.error_class(exc, with_code=False)}")
 
 
 # ---------------------------------------------------------- review-codes ----
@@ -494,8 +522,7 @@ def _cmd_run(ns: argparse.Namespace) -> int:
     expectations = Path(ns.expectations).expanduser() if ns.expectations else folder / EXPECTATIONS_FILENAME
     if not expectations.is_file():
         raise BacktestError(f"no expectations file at {expectations}; write one with the backtest's collect command")
-    report = run_bench(folder, expectations, _variants_of(ns), models=_models_of(ns))
-    write_json(out, report)
+    run_bench(folder, expectations, _variants_of(ns), models=_models_of(ns), report_to=out)
     print(f"\nWrote {out}")
     return 0
 
@@ -545,6 +572,9 @@ def main(argv: list[str] | None = None) -> int:
     except BacktestError as exc:
         print(f"reader bench: {exc}", file=sys.stderr)
         return 2
+    except KeyboardInterrupt:
+        print("reader bench: interrupted; the variants measured so far are in the report", file=sys.stderr)
+        return 130
 
 
 if __name__ == "__main__":

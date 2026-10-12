@@ -324,14 +324,79 @@ def test_the_settings_and_the_reading_switch_are_put_back_after_the_run(tmp_path
     assert [s.render_dpi for _row, s, _switch in stand_in.calls] == [144, 300]
     assert not process_scratch().exists()
 
-    def boom(link, items, **_kwargs):
-        raise RuntimeError("the reader fell over")
+    def boom(*_args, **_kwargs):
+        raise RuntimeError("the survey fell over")
 
-    monkeypatch.setattr(reader_bench, "route_file", boom)
+    monkeypatch.setattr(reader_bench, "survey", boom)
     with pytest.raises(RuntimeError):
         run_bench(folder, expectations, variants, out=io.StringIO())
     assert ocr.SETTINGS is before and content_check.READ_IN_A_CHILD is True
     assert not process_scratch().exists()
+
+
+def _route_failing_at(monkeypatch, dpi, failure):
+    """``route_file`` as it is, except that under ``dpi`` it raises ``failure``."""
+    real = reader_bench.route_file
+
+    def route(link, items, **kwargs):
+        if ocr.SETTINGS.render_dpi == dpi:
+            raise failure
+        return real(link, items, **kwargs)
+
+    monkeypatch.setattr(reader_bench, "route_file", route)
+
+
+def test_a_variant_whose_reading_raises_is_unmeasured_and_the_run_goes_on(tmp_path, stand_in, monkeypatch, capsys):
+    """The report is on disk after every variant, so the night survives one
+    that fails. The raising one is recorded unmeasured with its exception's
+    class and nothing of its message (which could carry a path); the ones
+    either side of it are measured."""
+    stand_in.pages = {1: GOOD_1099}
+    folder = a_corpus(tmp_path, [("scan", "one.pdf", "A02")])
+    _route_failing_at(monkeypatch, 200, MemoryError(str(tmp_path / "Zebediah")))
+
+    code, report = run(tmp_path, folder, "--dpi", "144,200,300", "--floor", "0.5", "--delining", "off",
+                       "--tier", "small")
+
+    assert code == 0
+    assert [(v["name"], v["measured"]) for v in report["variants"]] == [
+        ("dpi144-floor0.50-off-small", True), ("dpi200-floor0.50-off-small", False),
+        ("dpi300-floor0.50-off-small", True)]
+    failed = next(v for v in report["variants"] if not v["measured"])
+    assert "MemoryError" in failed["note"] and "Zebediah" not in failed["note"]
+    printed = capsys.readouterr()
+    assert "Zebediah" not in printed.out + printed.err
+
+
+def test_a_ctrl_c_writes_the_report_so_far_and_exits_130_with_one_sentence(tmp_path, stand_in, monkeypatch, capsys):
+    stand_in.pages = {1: GOOD_1099}
+    folder = a_corpus(tmp_path, [("scan", "one.pdf", "A02")])
+    _route_failing_at(monkeypatch, 300, KeyboardInterrupt())
+
+    code, report = run(tmp_path, folder, "--dpi", "144,300", "--floor", "0.5", "--delining", "off", "--tier", "small")
+
+    assert code == 130
+    assert [(v["name"], v["measured"]) for v in report["variants"]] == [("dpi144-floor0.50-off-small", True)]
+    err = capsys.readouterr().err
+    assert err.count("\n") == 1 and err.startswith("reader bench: interrupted")
+    assert ocr.SETTINGS is ocr.SHIPPED and not process_scratch().exists()
+
+
+def test_a_bad_catalog_is_named_by_its_row_number_and_never_by_its_value(tmp_path, stand_in, capsys):
+    """An unquoted comma in a file name shifts the columns, so the catalog
+    column can hold a piece of a client's file name: the sentence says the
+    row, and the value is not in it."""
+    folder = a_corpus(tmp_path, [("scan", "one.pdf", "A02"), ("scan", "two.pdf", "A02")])
+    path = folder / EXPECTATIONS_FILENAME
+    lines = path.read_text(encoding="utf-8").splitlines()
+    lines[2] = lines[2].replace(",1040,", ",Zebediah W-2.pdf,")
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+    assert main(["run", str(folder), OUT_FLAG, str(tmp_path / "report.json"), *SHIPPED_ONLY]) == 2
+
+    err = capsys.readouterr().err
+    assert "row 2" in err and "Zebediah" not in err and ".pdf" not in err
+    assert stand_in.calls == []
 
 
 def test_the_seconds_are_counted_per_page_and_against_the_ceiling(tmp_path, monkeypatch):

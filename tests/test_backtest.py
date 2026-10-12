@@ -349,6 +349,18 @@ def test_a_row_naming_a_document_that_is_not_there_is_reported_by_its_number(tmp
     assert "row 1" in str(raised.value) and W2_FILE not in str(raised.value)
 
 
+def test_a_catalog_no_row_may_name_is_reported_by_its_row_number_and_never_by_its_value(tmp_path):
+    """An unquoted comma in a file name shifts the columns, so the catalog
+    column can hold a piece of a client's file name."""
+    folder = two_documents(tmp_path)
+    expectations_for(folder, [f"{CLIENT_FOLDER}/{W2_FILE},1040,{YEAR},A01",
+                              f"{CLIENT_FOLDER}/{PARKING_FILE},{EMPLOYEE},{YEAR},"])
+    with pytest.raises(BacktestError) as raised:
+        run(folder)
+    said = str(raised.value)
+    assert "row 2" in said and EMPLOYEE not in said and "Zebediah" not in said
+
+
 def test_a_copy_of_a_document_is_made_in_the_data_home_never_the_machines_temp_folder(tmp_path, monkeypatch):
     """Decision 186 (F-7): where a link cannot be made the backtest copies
     the firm's document, so its scratch is this process's own folder in the

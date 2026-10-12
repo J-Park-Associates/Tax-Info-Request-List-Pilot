@@ -521,9 +521,13 @@ DELINE_FRACTION = 40
 #: The square a found rule is grown by once, so its anti-aliased edge goes
 #: with it.
 DELINE_GROW = 3
-#: The closing kernels (a column and a row) that rejoin a letter's stroke a
-#: rule's width cut.
-DELINE_REPAIR = ((1, 3), (3, 1))
+#: The rule thickness, in pixels, the repair always allows for, however small
+#: the page: a rule up to this thick is bridged where it crossed a letter.
+DELINE_RULE_FLOOR = 3
+#: A rule is allowed to be this fraction of the page's shorter side thick
+#: (a 250th: about 4 px at 144 dpi, 10 px at 300) before the repair leaves
+#: its cut alone as a border, not a rule.
+DELINE_RULE_DIVISOR = 250
 
 
 def delined(image):
@@ -536,10 +540,12 @@ def delined(image):
     Ink is found as white on black (Otsu); a horizontal and a vertical
     opening whose length is a fortieth of the page's side keep only strokes
     longer than a letter; the two masks are joined, grown once, and whitened
-    in a greyscale copy. A letter a rule crossed lost a sliver, so a closing
-    on the ink that remains, a column then a row, rejoins a stroke cut by
-    one rule's width and lays it back as black. Returns an ``RGB`` image the
-    size of the input."""
+    in a greyscale copy. A letter a rule crossed lost a sliver as thick as
+    the rule plus the growth's margin, so a closing on the ink that remains,
+    a column then a row, as long as that sliver can be, rejoins the stroke;
+    only the bridging pixels inside the whitened rule are laid back as black,
+    so nothing outside the rule changes and two letters that merely sit close
+    are never joined. Returns an ``RGB`` image the size of the input."""
     import cv2
     import numpy
     from PIL import Image
@@ -555,10 +561,16 @@ def delined(image):
                                                       (1, max(1, height // DELINE_FRACTION))))
     rules = cv2.dilate(cv2.bitwise_or(across, down), numpy.ones((DELINE_GROW, DELINE_GROW), numpy.uint8))
     grey[rules > 0] = 255
+    span = DELINE_GROW + max(DELINE_RULE_FLOOR, min(width, height) // DELINE_RULE_DIVISOR) + 1
     _level, left = cv2.threshold(grey, 0, 255, cv2.THRESH_BINARY_INV | cv2.THRESH_OTSU)
-    for size in DELINE_REPAIR:
-        left = cv2.morphologyEx(left, cv2.MORPH_CLOSE, numpy.ones(size[::-1], numpy.uint8))
-    grey[left > 0] = 0
+    for column in (True, False):
+        # An even kernel's closing drifts a pixel unless the erosion's anchor
+        # mirrors the dilation's, so the two are anchored by hand.
+        kernel = numpy.ones((span, 1) if column else (1, span), numpy.uint8)
+        grown, eroded = ((span // 2, 0), (span - 1 - span // 2, 0)) if column else \
+            ((0, span // 2), (0, span - 1 - span // 2))
+        left = cv2.erode(cv2.dilate(left, kernel, anchor=grown[::-1]), kernel, anchor=eroded[::-1])
+    grey[(left > 0) & (rules > 0)] = 0
     return Image.fromarray(grey, "L").convert("RGB")
 
 

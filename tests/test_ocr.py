@@ -438,6 +438,32 @@ def test_delining_removes_long_rules_and_keeps_the_words():
     assert (numpy.asarray(page) == before).all()                    # the page given is untouched
 
 
+@pytest.mark.parametrize("thickness", [1, 2, 3])
+def test_delining_rejoins_a_letter_a_rule_crossed(thickness):
+    """A letter page at 144 dpi drawn in memory: a full-width rule of 1, 2 or
+    3 px, a 4 px wide, 25 px tall stroke crossing it, and a mid-grey block
+    touching neither. After ``delined`` every pixel of the stroke's columns
+    is black from top to bottom (the cut a rule and the growth's margin made
+    is bridged), the rule's row is white away from the stroke, and the grey
+    block still reads mid-grey: the repair touched nothing outside the rule."""
+    import numpy
+    from PIL import Image, ImageDraw
+
+    page = Image.new("RGB", (1224, 1584), "white")
+    draw = ImageDraw.Draw(page)
+    rule_top = 800
+    draw.rectangle((0, rule_top, 1223, rule_top + thickness - 1), fill="black")
+    stroke_top = rule_top + thickness // 2 - 12
+    draw.rectangle((300, stroke_top, 303, stroke_top + 24), fill="black")
+    draw.rectangle((600, 300, 619, 319), fill=(128, 128, 128))        # glyph-sized, so not a rule
+
+    after = numpy.asarray(ocr.delined(page))
+
+    assert (after[stroke_top:stroke_top + 25, 300:304, 0] < 64).all()
+    assert (after[rule_top:rule_top + thickness, 400:1223, :] >= 250).all()
+    assert (abs(after[300:320, 600:620, 0].astype(int) - 128) <= 8).all()
+
+
 def test_delining_is_off_in_the_product_and_on_hands_the_engine_the_delined_page(monkeypatch, own_settings):
     """Shipped settings hand the engine the page as it stands; with
     ``delining`` on, it is handed ``delined(page)``."""
