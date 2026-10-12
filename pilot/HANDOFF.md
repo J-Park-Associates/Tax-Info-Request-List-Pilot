@@ -7,7 +7,10 @@ this repository; [`SPEC.md`](SPEC.md) says what it builds.
 
 ## Where the record is
 
-- **`main` is pull request #52** (the security review's prompt corrections)
+- **`main` is pull request #53** (the documentation set: CONTRIBUTING, the
+  code of conduct, LICENSE as a notice of ownership pointing at the pilot
+  terms, docs/architecture.md, four README sections; no code) on `4ea51dcd`
+  (pull request #52, the security review's prompt corrections)
   on `597ed0f6` (pull request #51, this handoff) on `d39b92e7` (pull request
   #50, P285, the preparation of every scan and photo before the reader reads
   it) on `41723e0d` (pull request #49, P286, the bench's Needs Review count
@@ -59,6 +62,15 @@ Nothing is in flight. What landed on 2026-10-12, in the software's words:
   session runs under the schedule's account with the deny list in place; the
   Mac prompt called 144 dpi "today's". All three corrected in pull request
   #52.
+
+- **The documentation set (2026-10-12, at Jason's request, pull request #53).**
+  `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `LICENSE` and `docs/architecture.md`
+  are new; the README gained what is in the box, prerequisites, a quick start
+  naming every entry point, and a repository guide, with every pinned sentence
+  unchanged. The licence is a notice, not an MIT grant: P163 to P166 say other
+  firms pay and the terms are the attorney's, so the file points at the pilot
+  terms signed in the app and lists the third-party components' own licences.
+  The map carries the three documents' curated nodes.
 
 **Next for the reader lane.** The office PC runs
 [`PROMPT-reader-bench.md`](PROMPT-reader-bench.md) on the firm's own sorted
