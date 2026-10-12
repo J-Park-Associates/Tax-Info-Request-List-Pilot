@@ -117,11 +117,17 @@ rewritten (4.1).
   Jason's ruling; 3300 is a letter page's long side at 300 dpi
   (`ceil(11 × 300)`, the bench's `long_side(300)`), so a 300 dpi page is not
   shrunk back to 2000 (182 dpi) by rapidocr; a legal page (14 in, 4200 px) is
-  still held to 3300, about 236 dpi. `SETTINGS: ReaderSettings = SHIPPED`.
+  still held to 3300, about 236 dpi. pypdfium2 rounds a rendered page's
+  sides up, so a letter page rendered at 300 dpi is 2550 × 3301 and the
+  stage holds it to 2549 × 3300: one pixel, accepted (9.5), never 751.
+  `SETTINGS: ReaderSettings = SHIPPED`.
 - **The detector never reads the 3300 page** (amendment 9.1). `_build_engine`
   sets rapidocr's `Det.limit_type` to `"max"` (1.4): detection runs on a copy
   the engine holds to its own 2000-pixel long side, as it did under P283, and
-  recognition crops its words from the 3300 one. Without it the engine's
+  recognition crops its words from the 3300 one. The setting is the engine's,
+  not the settings' (9.5): it holds for `RAW` too, where its one effect is
+  that the detector no longer enlarges a page whose shorter side is under
+  736 px, as P283's default (`min`) did. Without it the engine's
   memory on a letter page is 2.4-2.8 GB on this Mac, past the reading
   child's 2 GB (`PROCESSOR_CHILD_MEMORY`, decision 169, unchanged), and the
   pass ends the child as `reading-crashed`.
@@ -419,7 +425,9 @@ at 300 dpi, floor 0.5, small. Every variant's `max_side_len` is
 `replace(ocr.RAW, render_dpi=..., confident_score=..., max_side_len=...,
 model_tier=..., model_folder=...)`, a prep variant the same from
 `ocr.SHIPPED`; so `dpi144-floor0.50-raw-small` equals `ocr.RAW` exactly and
-`dpi300-floor0.50-raw-small` is P283's `dpi300-floor0.50-off-small`.
+`dpi300-floor0.50-raw-small` is P283's `dpi300-floor0.50-off-small`. The
+settings and the pixels are P283's; the detector's own setting is not (1.1,
+9.5), which a raw row's docstring says in one sentence.
 
 **Names**: `dpi<d>-floor<f>-<prep>-<tier>`, `<prep>` being `prep`, `raw` or
 `prep-<ablation>` - `dpi300-floor0.50-prep-small` (the shipped one, always
@@ -547,8 +555,10 @@ unless a claim says otherwise, with `tests/samples.py`'s made-up lines.
   white and everything else is unchanged pixel for pixel.
 - `test_a_page_longer_than_the_long_side_is_held_to_it_before_it_is_prepared`
   - a 2550 × 4200 page (legal at 300 dpi) under `SHIPPED` comes back with a
-  long side of 3300; a 2550 × 3300 page keeps its size; under `RAW` a page of
-  any size is never resized.
+  long side of 3300; a 2550 × 3300 page keeps its size; a page rendered by
+  the reading itself from a letter-size PDF at 300 dpi (`samples.text_pdf`
+  through `content_check.render_scale()`) is 2550 × 3301 and comes back
+  2549 × 3300 (9.5); under `RAW` a page of any size is never resized.
 - `test_the_stage_never_touches_the_page_it_is_given_and_is_the_same_every_time`
   - the input's bytes are unchanged and two calls give equal pixels.
 - `test_a_prepared_real_scan_of_a_1099_int_files_under_p282_level_and_skewed_two_degrees`
@@ -897,12 +907,47 @@ detection resize; in the child it parks the document as a crash. The office
 PC's Windows wheel does not show it. The Mac is a viewer and build machine,
 not the one that runs a clients root; the row waits for Jason.
 
+### 9.5 The review of the whole branch (head `2c38b346`)
+
+The independent Opus review found no MUST finding and nine lesser ones;
+the orchestrating session rules on them here and the third rebuild applies
+them, findings only.
+
+- **The one-pixel hold is accepted.** pypdfium2 rounds a rendered side up,
+  so a letter page at 300 dpi is 2550 × 3301 and `_held` resamples it to
+  2549 × 3300 with `INTER_AREA`. The long side stays 3300: raising it to
+  3301 would put a number no one can explain into the settings, the runbook
+  and the bench for a change no reading can see. 1.1 and the 4.1 test say
+  what is true.
+- **The detector's setting is the engine's, not the settings'.** Under
+  `max` the detector never enlarges a small image (shorter side under
+  736 px), which P283's `min` did; measured on drawn pages, the same words
+  are read. Documented (1.1, 3.1, the curated note, the handoff), not made
+  a field: the bench's raw rows are P283's settings and pixels, and a raw
+  row's docstring says the one sentence.
+- **Every sentence that states the cap follows the constant**, the Mac
+  prompt `pilot/mactest/PROMPT.md` included: its PASS line says 4 GB.
+- **The handoff corrects itself:** the quarter-turned W-2's best angle and
+  gain (-1.0, 1.067, a margin of 0.033 against `DESKEW_GAIN`), the per-step
+  seconds table (Sauvola 0.033 s and the stage's total after 9.4), and
+  "grew" to "shrank" for 36 to 21 variants.
+- **Three nits are applied:** the overwritten `_ENGINE`/`_DEVICE` pair in
+  `test_the_engine_is_handed_the_prepared_page` goes (dead code);
+  `DELINE_THICK_DIVISOR`, `DESKEW_FINE_STEP` and `SAUVOLA_WINDOW_FLOOR` get
+  a `#:` comment each (1.3); `_sauvola` compares with `numpy.uint8` scalars so
+  `numpy.where` builds the page in uint8, not int64 (9.4's purpose).
+- **Recorded, not changed:** the curated note's "is 4 GB from P285" states a
+  value in present tense, as 9.4 asked it to.
+
 **The rebuilds:** sonnet, on `claude/ocr-prepare`; the first built exactly
 9.1-9.3 (commits `708af6c8` to `fc62897c`), the second builds exactly 9.4
 and the tests and docs it names, then the gate of section 6 on `test_ocr`,
 `test_content_check`, `test_errors`, `test_layers`, `test_single_source`,
 `test_repo_map`, `test_tripwire` and, since the runbook changes,
-`test_single_source` again is enough. The first rebuild's scope was exactly 9.1-9.3 and the
+`test_single_source` again is enough. The third builds exactly 9.5 (commits
+after `2c38b346`), then the same gate on `test_ocr`, `test_content_check`,
+`test_reader_bench`, `test_layers`, `test_single_source`, `test_repo_map`,
+`test_tripwire`, `test_errors`, ruff, the map and the vocabulary report. The first rebuild's scope was exactly 9.1-9.3 and the
 tests and docs they name (the `_build_engine` comment, the `DELINE_*`
 constants and docstring, the curated map's `tracker/ocr.py` note gains one
 sentence on each, `pilot/HANDOFF.md` "Current work" gains the new
