@@ -1,8 +1,8 @@
 """Whole passes over a household, as the runner's tests stage them.
 
 ``test_runner`` made the pile's households, and ``test_page_rows`` and
-``test_shell`` borrowed its way of doing it (``from tests.test_runner import
-build_engagement``). They live here so that borrowing names a module that is
+``test_shell`` borrowed its way of doing it (they imported ``build_engagement``
+from ``test_runner``). They live here so that borrowing names a module that is
 not a test file (SPEC-architecture E-4, R2.1): a household with the sample pile
 waiting in its one inbox, an edit of its rows as a person makes it in the app,
 and the scheduled job and the app's Run now called as they call ``main``.

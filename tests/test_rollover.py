@@ -889,7 +889,7 @@ def test_the_rollover_carries_rules_engagement_details_and_learned_keywords_into
     link and due date left for this year, Rolled From set - and no
     spreadsheet anywhere under the root."""
     import tracker.api as api
-    from tests.test_api import run
+    from tests.api_driver import run
     from tracker import store
     from tracker.layout import return_dir_for
     from tracker.locking import engagement_lock
@@ -953,7 +953,7 @@ def test_rollover_rolls_a_return_into_the_next_years_folder_of_the_same_househol
     from pathlib import Path
 
     import tracker.api as api
-    from tests.test_api import run
+    from tests.api_driver import run
     from tracker.layout import household_of, originals_of, return_dir_for
     from tracker.manifest import load_engagement_info
     from tracker.settings import ENV_SETTINGS_DIR, set_clients_root
@@ -1001,7 +1001,7 @@ def test_rollover_refills_the_greeting_and_the_link_from_the_household_where_bla
     """
     from dataclasses import replace
 
-    from tests.test_api import run
+    from tests.api_driver import run
     from tracker.layout import return_dir_for
     from tracker.manifest import load_engagement_info, save_rules
     from tracker.settings import ENV_SETTINGS_DIR, set_clients_root

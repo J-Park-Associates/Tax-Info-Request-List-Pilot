@@ -26,6 +26,11 @@ stale one. Every case in `tests/test_catalog.py` carries the decision that
 introduced it, so `python -m pytest -k d67` runs decision 67's whole history
 before a rule it touched is trusted.
 
+The workbook cases' rows (`XLSX_CASES`), the blank forms' placements (`EXPECT`) and
+the lines of two printed forms sit in `tests/routing_cases.py`, which the suites that
+share them import; the report hashes that file as it hashes the suites, and the
+three suites still carry the names the tools import.
+
 The firm's own redacted documents are the third corpus, and they live
 outside the repository: the environment variable TRACKER_REAL_CORPUS names
 the folder holding them, with an expectations.csv beside them saying, per

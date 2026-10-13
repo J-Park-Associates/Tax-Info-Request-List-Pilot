@@ -15,13 +15,12 @@ from __future__ import annotations
 
 import json
 import re
-import shutil
-import subprocess
 from pathlib import Path
 
 import pytest
 
 import tracker.api as api
+from tests.node_harness import run_menu
 
 REPO = Path(__file__).resolve().parent.parent
 
@@ -141,208 +140,6 @@ def test_the_window_colours_main_reads_are_the_pages():
 
 # ------------------------------------------------ main.js run against a stand-in ----
 
-#: The real main.js under node with Electron stood in for: the menu it sets and
-#: the pop-ups it opens are recorded as plain data (a label, whether it is
-#: enabled, its accelerator, its role), items are "clicked" by label, and the
-#: tracker child process is a fake that answers ``list`` with a vocabulary. A
-#: scenario is a list of steps; the harness prints what happened.
-_HARNESS = r"""
-const Module = require("module");
-const EventEmitter = require("events");
-const realFs = require("fs");
-const [mainJs, scenarioJson] = process.argv.slice(2);
-const sc = JSON.parse(scenarioJson);
-// Off Windows the fallback is Electron's userData; "win32" is %LOCALAPPDATA%.
-Object.defineProperty(process, "platform", { value: sc.platform || "linux" });
-// A Mac is refused below Apple silicon and macOS 14 (SPEC-mac R6), so a scenario
-// that stands in for one says which chip and which Darwin release it has.
-if (sc.arch) Object.defineProperty(process, "arch", { value: sc.arch });
-if (sc.release) require("os").release = () => sc.release;
-if (sc.localAppData !== undefined) process.env.LOCALAPPDATA = sc.localAppData;
-process.resourcesPath = process.resourcesPath || "/resources";
-const log = { menus: [], popups: [], sends: [], opened: [], revealed: [], answers: [], backgrounds: [], windowOptions: null,
-              userModelIds: [], spawned: [] };
-let openHandler = null;
-let menuHandler = null;
-let trackerHandler = null;
-let updated = null;
-const theme = { shouldUseDarkColors: !!sc.dark, shouldUseHighContrastColors: !!sc.contrast,
-                themeSource: "", on(name, fn) { if (name === "updated") updated = fn; } };
-const snapshot = (items) => items.map((i) => ({
-  label: i.label, type: i.type, role: i.role, enabled: i.enabled, accelerator: i.accelerator, checked: i.checked,
-  submenu: i.submenu ? snapshot(i.submenu) : undefined }));
-let live = { bar: null, popup: null };
-// What main.js has started and not yet seen finish: Electron's ready, a fake
-// tracker child until it closes, a file check (fs.promises). The harness waits
-// for this to reach nought, never for a fixed time: a busy PC (12 test files at
-// once) once took longer than the 60 ms it used to wait for a file check (P200).
-let pending = 0;
-const track = (promise) => {
-  pending += 1;
-  const done = () => { pending -= 1; };
-  promise.then(done, done);
-  return promise;
-};
-// Every continuation of a settled promise runs before the next turn of the
-// event loop, so a turn with nothing pending means main.js has done answering.
-const settle = async () => {
-  do { await new Promise((resolve) => setImmediate(resolve)); } while (pending > 0);
-};
-const win = {
-  isDestroyed: () => false,
-  getContentBounds: () => ({ width: 1400, height: 900 }),
-  setBackgroundColor: (c) => log.backgrounds.push(c),
-  loadFile() {}, on() {}, isMinimized: () => false, focus() {},
-  webContents: { setWindowOpenHandler() {}, on() {}, session: { flushStorageData() {} },
-                 send: (channel, message) => log.sends.push({ channel, message }) },
-};
-class BrowserWindow {
-  constructor(options) { log.windowOptions = options; return win; }
-  static getAllWindows() { return [win]; }
-}
-const electron = {
-  app: { isPackaged: !!sc.packaged, requestSingleInstanceLock: () => true, quit() {}, on() {},
-         setPath() {}, setAppUserModelId(id) { log.userModelIds.push(id); },
-         getPath: (name) => { if (name === "appData") return "appdata";
-                              if (!sc.userData) throw new Error("no such path"); return sc.userData; },
-         whenReady: () => track(Promise.resolve()) },
-  BrowserWindow,
-  Menu: {
-    buildFromTemplate: (template) => ({ template, popup(options) {
-      live.popup = template;
-      log.popups.push({ items: snapshot(template), options });
-    } }),
-    setApplicationMenu(menu) {
-      live.bar = menu.template;
-      log.menus.push(snapshot(menu.template));
-    },
-  },
-  ipcMain: { handle(name, fn) {
-               if (name === "tracker-cmd") trackerHandler = fn;
-               if (name === "open-path") openHandler = fn;
-             },
-             on(name, fn) { if (name === "menu") menuHandler = fn; } },
-  nativeTheme: theme,
-  shell: { openPath: async (p) => { log.opened.push(p); return ""; },
-           showItemInFolder: (p) => { log.revealed.push(p); } },
-  dialog: {},
-};
-const listReply = () => ({ vocab: { commands: ["list", "after-install"], menu: sc.vocabMenu,
-                                    path_kinds: sc.pathKinds,
-                                    shell: { error_log: sc.errorLog } }, paths: sc.paths });
-const fakeSpawn = (cmd, args) => {
-  const proc = new EventEmitter();
-  log.spawned.push(cmd);
-  proc.stdout = new EventEmitter();
-  proc.stdout.setEncoding = () => {};
-  proc.stderr = new EventEmitter();
-  if (args.includes("--resident")) {
-    // The engine (P276) stays up and answers the frame it is handed: a line {id, argv, bytes},
-    // then its reply and an end line. Never closed here, or the shell would log an engine's end.
-    let framed = Buffer.alloc(0);
-    proc.pid = 1;
-    proc.kill = () => {};
-    proc.stdin = { on() {}, end() {},
-      write(chunk) {
-        framed = Buffer.concat([framed, Buffer.from(chunk)]);
-        for (;;) {
-          const at = framed.indexOf(10);
-          if (at < 0) return true;
-          const head = JSON.parse(framed.slice(0, at).toString("utf8"));
-          if (framed.length - at - 1 < head.bytes) return true;       // the payload's bytes are part of the frame
-          framed = framed.slice(at + 1 + head.bytes);
-          pending += 1;
-          setImmediate(() => {
-            if (head.argv.includes("list")) proc.stdout.emit("data", JSON.stringify(listReply()) + "\n");
-            proc.stdout.emit("data", "\n" + JSON.stringify({ engine_end: head.id, code: 0, retiring: false }) + "\n");
-            pending -= 1;
-          });
-        }
-      } };
-    return proc;
-  }
-  proc.stdin = { write() {}, end() {}, on() {} };
-  proc.pid = 1;
-  proc.kill = () => {};
-  pending += 1;
-  setImmediate(() => {
-    if (args.includes("list")) proc.stdout.emit("data", JSON.stringify(listReply()) + "\n");
-    proc.emit("close", 0);
-    pending -= 1;
-  });
-  return proc;
-};
-const load = Module._load;
-Module._load = function (request, ...rest) {
-  if (request === "electron") return electron;
-  if (request === "child_process") return { spawn: fakeSpawn };
-  if (request === "fs") {
-    const promises = Object.fromEntries(Object.entries(realFs.promises).map(([name, fn]) =>
-      [name, typeof fn === "function" ? (...args) => track(fn.apply(realFs.promises, args)) : fn]));
-    return { ...realFs, promises, existsSync: () => true,
-      readFileSync(p, ...more) {
-        const base = String(p).split(/[\\/]/).pop();
-        if (base in (sc.css || {})) {
-          if (sc.css[base] === null) throw Object.assign(new Error("no such file"), { code: "ENOENT" });
-          return sc.css[base];
-        }
-        return realFs.readFileSync(p, ...more);
-      } };
-  }
-  return load.call(this, request, ...rest);
-};
-const items = (list, label) => {
-  for (const item of list) {
-    if (item.label === label) return item;
-    const inner = item.submenu && items(item.submenu, label);
-    if (inner) return inner;
-  }
-  return null;
-};
-(async () => {
-  require(mainJs);
-  await settle();
-  for (const step of sc.steps) {
-    if (step.menu !== undefined) {
-      menuHandler({ sender: step.stranger ? {} : win.webContents }, step.menu);
-    } else if (step.tracker) {
-      await trackerHandler({ sender: { isDestroyed: () => false, send() {} } }, step.tracker, undefined);
-    } else if (step.open) {
-      log.answers.push(await openHandler({}, ...step.open));
-    } else if (step.clickBar) {
-      const item = items(live.bar, step.clickBar);
-      if (item && item.click) item.click();
-    } else if (step.clickPopup) {
-      const item = items(live.popup, step.clickPopup);
-      if (item && item.click) item.click();
-    } else if (step.theme) {
-      Object.assign(theme, step.theme);
-      updated();
-    }
-    await settle();
-  }
-  process.stdout.write(JSON.stringify(log));
-})();
-"""
-
-
-def _node():
-    node = shutil.which("node")
-    if node is None:
-        pytest.skip("node is not on PATH (CI installs it)")
-    return node
-
-
-def _run(tmp_path, steps, **scenario) -> dict:
-    harness = tmp_path / "menu_harness.js"
-    harness.write_text(_HARNESS, encoding="utf-8", newline="\n")
-    done = subprocess.run(
-        [_node(), str(harness), str(REPO / "app" / "main.js"),
-         json.dumps({"steps": steps, **scenario})],
-        capture_output=True, text=True, encoding="utf-8", timeout=60, check=False)
-    assert done.returncode == 0, done.stderr
-    return json.loads(done.stdout)
-
 
 def _word(key: str) -> str:
     return api.MENU[key]
@@ -359,7 +156,7 @@ def _flat(menu: list[dict]) -> dict[str, dict]:
 
 def test_the_menu_is_set_before_the_first_frame_from_the_apis_words_in_both_builds(tmp_path):
     for packaged in (False, True):
-        ran = _run(tmp_path, [], packaged=packaged)
+        ran = run_menu(tmp_path, [], packaged=packaged)
         [menu] = ran["menus"]
         assert [top["label"] for top in menu] == [
             _word(k) for k in ("file", "edit", "client", "view", "tools", "help")]
@@ -391,8 +188,8 @@ def test_a_mac_gets_the_application_menu_first_and_file_has_no_exit(tmp_path):
     role: About, Hide, Hide Others and Quit with Cmd+Q are Electron's), File
     loses its Exit and the separator before it, and every other menu is the
     same. Quit lives in the app menu, so there is exactly one way to it."""
-    [mac] = _run(tmp_path, [], **MAC)["menus"]
-    [other] = _run(tmp_path, [], platform="linux")["menus"]
+    [mac] = run_menu(tmp_path, [], **MAC)["menus"]
+    [other] = run_menu(tmp_path, [], platform="linux")["menus"]
     assert mac[0] == {"role": "appMenu"}
     file_items = [i.get("label") or "-" for i in mac[1]["submenu"]]
     assert file_items == [_word("new_household"), _word("change_root"), _word("open_root")]
@@ -409,7 +206,7 @@ def test_a_mac_gets_the_application_menu_first_and_file_has_no_exit(tmp_path):
     assert mac[1]["submenu"] == _without_mnemonics(other[0]["submenu"])[:3]
     # No other platform has it, and Windows and Linux keep Exit exactly as before.
     for platform in ("win32", "linux"):
-        [menu] = _run(tmp_path, [], platform=platform)["menus"]
+        [menu] = run_menu(tmp_path, [], platform=platform)["menus"]
         assert menu[0]["label"] == _word("file") and menu[0].get("role") is None
         assert [i.get("label") or "-" for i in menu[0]["submenu"]][-2:] == ["-", _word("exit")]
 
@@ -424,8 +221,8 @@ def test_a_mac_shows_no_windows_mnemonic_and_every_other_platform_keeps_it(tmp_p
             found += [item.get("label") or "" for item in top.get("submenu") or []]
         return found
 
-    [mac] = _run(tmp_path, [], **MAC)["menus"]
-    [win] = _run(tmp_path, [], platform="win32")["menus"]
+    [mac] = run_menu(tmp_path, [], **MAC)["menus"]
+    [win] = run_menu(tmp_path, [], platform="win32")["menus"]
     assert not any("&" in label for label in labels(mac))
     assert {"&Tools", "&View", "&Help", "Show &Under Construction"} <= set(labels(win))
     assert {"Tools", "View", "Help", "Show Under Construction"} <= set(labels(mac))
@@ -438,20 +235,20 @@ def test_only_a_mac_has_remove_the_schedule_from_this_mac_and_it_needs_no_client
     system's menu has it."""
     assert _menu_words_in_main()["remove_schedule_here"] == "Remove the Schedule From This Mac…"
     assert _word("remove_schedule_here") == "Remove the Schedule From This Mac…" == api.MENU["remove_schedule_here"]
-    [mac] = _run(tmp_path, [], **MAC)["menus"]
+    [mac] = run_menu(tmp_path, [], **MAC)["menus"]
     tools = [top for top in mac if top.get("label") == "Tools"][0]
     labels = [i.get("label") for i in tools["submenu"]]
     assert labels[labels.index(_word("repair_schedule")) + 1] == _word("remove_schedule_here")
     assert next(i for i in tools["submenu"] if i.get("label") == _word("remove_schedule_here"))["enabled"]
     for platform in ("win32", "linux"):
-        [menu] = _run(tmp_path, [], platform=platform)["menus"]
+        [menu] = run_menu(tmp_path, [], platform=platform)["menus"]
         assert _word("remove_schedule_here") not in _flat(menu), platform
-    clicked = _run(tmp_path, [{"clickBar": _word("remove_schedule_here")}], **MAC)
+    clicked = run_menu(tmp_path, [{"clickBar": _word("remove_schedule_here")}], **MAC)
     assert clicked["sends"] == [{"channel": "menu", "message": {"id": "remove_schedule_here", "token": ""}}]
 
 
 def test_a_right_click_menu_has_no_windows_mnemonic_on_a_mac_either(tmp_path):
-    ran = _run(tmp_path, [{"menu": {"popup": "household", "enable": []}}], **MAC)
+    ran = run_menu(tmp_path, [{"menu": {"popup": "household", "enable": []}}], **MAC)
     assert not any("&" in (item.get("label") or "") for item in ran["popups"][0]["items"])
 
 
@@ -460,7 +257,7 @@ def test_the_app_user_model_id_is_set_on_windows_only(tmp_path):
     is the bundle's identifier on a Mac, given to the packager."""
     for where, expected in (({"platform": "win32"}, ["com.jparkassociates.taxdocumentconsole"]), (MAC, []),
                             ({"platform": "linux"}, [])):
-        assert _run(tmp_path, [], **where)["userModelIds"] == expected, where
+        assert run_menu(tmp_path, [], **where)["userModelIds"] == expected, where
 
 
 def test_the_frozen_api_has_an_exe_suffix_on_windows_alone(tmp_path):
@@ -468,7 +265,7 @@ def test_the_frozen_api_has_an_exe_suffix_on_windows_alone(tmp_path):
     Windows and the same name without the suffix on a Mac (and Linux)."""
     api_name = json.loads(read("app/package.json"))["config"]["apiName"]
     for where, suffix in (({"platform": "win32"}, ".exe"), (MAC, ""), ({"platform": "linux"}, "")):
-        ran = _run(tmp_path, [{"tracker": ["list"]}], packaged=True, **where)
+        ran = run_menu(tmp_path, [{"tracker": ["list"]}], packaged=True, **where)
         assert ran["spawned"], where
         for command in ran["spawned"]:
             assert re.fullmatch(rf".*[\\/]{api_name}[\\/]{api_name}{re.escape(suffix)}", command), (where, command)
@@ -480,9 +277,9 @@ def test_a_mac_learns_finder_where_windows_says_file_explorer(tmp_path):
     Windows program; the right-click menus then say it."""
     assert _menu_words_in_main()["show_in_explorer"] == "Show in File Explorer"
     steps = [{"tracker": ["list"]}, {"menu": {"popup": "file", "enable": ["show_in_explorer"]}}]
-    ran = _run(tmp_path, steps, vocabMenu={**api.MENU, **api.MAC_MENU}, **MAC)
+    ran = run_menu(tmp_path, steps, vocabMenu={**api.MENU, **api.MAC_MENU}, **MAC)
     assert [i["label"] for i in ran["popups"][0]["items"]][-1] == "Show in Finder"
-    ran = _run(tmp_path, steps, vocabMenu=dict(api.MENU), platform="linux")
+    ran = run_menu(tmp_path, steps, vocabMenu=dict(api.MENU), platform="linux")
     assert [i["label"] for i in ran["popups"][0]["items"]][-1] == "Show in File Explorer"
 
 
@@ -490,12 +287,12 @@ def test_the_window_icon_stays_the_ico_on_every_platform(tmp_path):
     """macOS ignores a window icon, so the .ico stays; the bundle's icon is the .icns
     the packager is given (SPEC-mac R14, R15)."""
     for where in ({"platform": "win32"}, MAC):
-        icon = _run(tmp_path, [], **where)["windowOptions"]["icon"]
+        icon = run_menu(tmp_path, [], **where)["windowOptions"]["icon"]
         assert icon.endswith("icon.ico"), where
 
 
 def test_the_template_carries_the_accelerators_of_the_spec_and_no_others(tmp_path):
-    [menu] = _run(tmp_path, [])["menus"]
+    [menu] = run_menu(tmp_path, [])["menus"]
     found = {label: item["accelerator"] for label, item in _flat(menu).items()
              if item.get("accelerator")}
     assert found == {
@@ -506,7 +303,7 @@ def test_the_template_carries_the_accelerators_of_the_spec_and_no_others(tmp_pat
 
 
 def test_only_the_items_that_need_nothing_are_enabled_until_the_page_speaks(tmp_path):
-    [menu] = _run(tmp_path, [])["menus"]
+    [menu] = run_menu(tmp_path, [])["menus"]
     enabled = {label for label, item in _flat(menu).items() if item.get("enabled")}
     # Exit is a role: Electron enables it itself.
     assert enabled == {_word(k) for k in ("change_root", "refresh", "tour", "safeguards", "terms",
@@ -514,13 +311,13 @@ def test_only_the_items_that_need_nothing_are_enabled_until_the_page_speaks(tmp_
 
 
 def test_the_page_enables_the_items_whose_rule_holds_and_the_menu_follows(tmp_path):
-    ran = _run(tmp_path, [{"menu": {"enable": ["new_household", "overview", "sort_now", "no_such_id"]}}])
+    ran = run_menu(tmp_path, [{"menu": {"enable": ["new_household", "overview", "sort_now", "no_such_id"]}}])
     now = _flat(ran["menus"][-1])
     assert now[_word("new_household")]["enabled"] and now[_word("overview")]["enabled"]
     assert now[_word("sort_now")]["enabled"]
     assert not now[_word("edit_list")]["enabled"] and not now[_word("stop_sorting")]["enabled"]
     # The same list again rebuilds nothing.
-    again = _run(tmp_path, [{"menu": {"enable": ["overview"]}}, {"menu": {"enable": ["overview"]}}])
+    again = run_menu(tmp_path, [{"menu": {"enable": ["overview"]}}, {"menu": {"enable": ["overview"]}}])
     assert len(again["menus"]) == 2
 
 
@@ -537,7 +334,7 @@ def test_the_menu_channel_drops_what_it_does_not_know(tmp_path):
         {"menu": {"popup": "household", "enable": [], "token": 5}},
         {"menu": {"popup": "household", "enable": ["overview"]}, "stranger": True},   # not our window
     ]
-    ran = _run(tmp_path, steps)
+    ran = run_menu(tmp_path, steps)
     assert ran["popups"] == [] and ran["sends"] == []
     # Only the one known bar id was taken, from the first message; the unknown ids were dropped,
     # or the second message, naming the same one id, would have rebuilt the menu.
@@ -556,7 +353,7 @@ def test_a_right_click_menu_is_native_holds_only_its_templates_items_and_echoes_
         {"menu": {"popup": "received", "enable": ["unfile"], "x": 5000, "y": 5}},
         {"menu": {"popup": "return", "enable": [], "token": "r" * 64}},
     ]
-    ran = _run(tmp_path, steps)
+    ran = run_menu(tmp_path, steps)
     household, received, ret = ran["popups"]
     assert [i.get("label") or "-" for i in household["items"]] == [
         _word("edit_household"), _word("add_return"), _word("roll_forward"), _word("mark_shared"), "-",
@@ -587,14 +384,14 @@ def test_the_six_right_click_menus_hold_the_items_of_the_spec(tmp_path):
         "request": ["edit_request"],
         "received": ["unfile", "mark_missing", "show_in_explorer"],
     }
-    ran = _run(tmp_path, [{"menu": {"popup": name, "enable": [], "token": name}} for name in names])
+    ran = run_menu(tmp_path, [{"menu": {"popup": name, "enable": [], "token": name}} for name in names])
     for popup, (name, ids) in zip(ran["popups"], names.items(), strict=True):
         assert [i.get("label") or "-" for i in popup["items"]] == [
             "-" if i == "-" else _word(i) for i in ids], name
 
 
 def test_a_chosen_bar_item_is_sent_to_the_page_except_exit_and_the_error_log(tmp_path):
-    ran = _run(tmp_path, [{"menu": {"enable": ["find"]}}, {"clickBar": _word("find")},
+    ran = run_menu(tmp_path, [{"menu": {"enable": ["find"]}}, {"clickBar": _word("find")},
                           {"clickBar": _word("tour")}, {"clickBar": _word("exit")}])
     assert ran["sends"] == [{"channel": "menu", "message": {"id": "find", "token": ""}},
                             {"channel": "menu", "message": {"id": "tour", "token": ""}}]
@@ -605,7 +402,7 @@ def test_show_under_construction_is_the_view_menus_last_item_a_ticked_check_item
     """P197 (SPEC-hide-under-construction 2.4, 2.7, Q2): a native check item,
     so Windows draws its tick, focus and High Contrast colours; Alt, V, U
     reaches it; no accelerator; ticked (shown) until the page speaks."""
-    [menu] = _run(tmp_path, [])["menus"]
+    [menu] = run_menu(tmp_path, [])["menus"]
     view = [i.get("label") or "-" for i in menu[3]["submenu"]]
     assert view[-4:] == ["-", _word("reset_columns"), _word("compact_rows"), _word("show_under_construction")]
     item = _flat(menu)[_word("show_under_construction")]
@@ -627,7 +424,7 @@ def test_the_tick_follows_the_page_and_a_stray_checked_id_is_dropped(tmp_path, k
     two items start differently: Show Under Construction ticked, Compact Rows
     not."""
     word = _word(key)
-    ran = _run(tmp_path, [
+    ran = run_menu(tmp_path, [
         {"menu": {"enable": ["overview"], "checked": off}},                         # this one off
         {"menu": {"enable": ["overview"], "checked": off}},                         # the same: no rebuild
         {"menu": {"enable": ["overview"]}},                                         # no `checked`: kept
@@ -639,7 +436,7 @@ def test_the_tick_follows_the_page_and_a_stray_checked_id_is_dropped(tmp_path, k
 
 
 def test_choosing_show_under_construction_is_sent_to_the_page(tmp_path):
-    ran = _run(tmp_path, [{"clickBar": _word("show_under_construction")}])
+    ran = run_menu(tmp_path, [{"clickBar": _word("show_under_construction")}])
     assert ran["sends"] == [{"channel": "menu", "message": {"id": "show_under_construction", "token": ""}}]
 
 
@@ -651,9 +448,9 @@ def test_a_chosen_check_item_keeps_the_pages_tick_until_the_page_answers(tmp_pat
     reply then moves it."""
     word = _word(key)
     answer = {"enable": [], "checked": [] if key == "show_under_construction" else ["compact_rows"]}
-    ran = _run(tmp_path, [{"clickBar": word}, {"menu": answer}])
+    ran = run_menu(tmp_path, [{"clickBar": word}, {"menu": answer}])
     assert [_flat(menu)[word]["checked"] for menu in ran["menus"]] == [first, first, after]
-    plain = _run(tmp_path, [{"menu": {"enable": ["find"]}}, {"clickBar": _word("find")}])
+    plain = run_menu(tmp_path, [{"menu": {"enable": ["find"]}}, {"clickBar": _word("find")}])
     assert len(plain["menus"]) == 2, "an ordinary item rebuilds nothing"
 
 def _learn(errorlog, **scenario):
@@ -664,20 +461,20 @@ def test_open_error_log_opens_the_named_file_and_says_so_when_there_is_none(tmp_
     log = tmp_path / "tracker-errors.log"
     log.write_text("kept\n", encoding="utf-8")
     steps, scenario = _learn(log)
-    ran = _run(tmp_path, steps, **scenario)
+    ran = run_menu(tmp_path, steps, **scenario)
     assert ran["opened"] == [str(log)] and ran["sends"] == []
     # Not yet named by the API: nothing is opened, the page is told.
-    ran = _run(tmp_path, [{"clickBar": _word("error_log")}])
+    ran = run_menu(tmp_path, [{"clickBar": _word("error_log")}])
     assert ran["opened"] == []
     assert ran["sends"] == [{"channel": "menu", "message": {"id": "error_log", "missing": True}}]
     # Named, but not there.
     steps, scenario = _learn(tmp_path / "gone.log")
-    ran = _run(tmp_path, steps, **scenario)
+    ran = run_menu(tmp_path, steps, **scenario)
     assert ran["opened"] == []
     assert ran["sends"] == [{"channel": "menu", "message": {"id": "error_log", "missing": True}}]
     # Named, and a folder is not a file.
     steps, scenario = _learn(tmp_path)
-    ran = _run(tmp_path, steps, **scenario)
+    ran = run_menu(tmp_path, steps, **scenario)
     assert ran["opened"] == [] and ran["sends"][0]["message"]["missing"] is True
 
 
@@ -690,17 +487,17 @@ def test_open_error_log_falls_back_to_the_shells_own_log_when_the_api_named_none
     fallback = userdata / "error.log"
     steps = [{"clickBar": _word("error_log")}]
     # Nothing named, nothing saved yet: the page is told.
-    ran = _run(tmp_path, steps, userData=str(userdata))
+    ran = run_menu(tmp_path, steps, userData=str(userdata))
     assert ran["opened"] == [] and ran["sends"][0]["message"] == {"id": "error_log", "missing": True}
     # Saved: it opens.
     fallback.write_text("kept\n", encoding="utf-8")
-    ran = _run(tmp_path, steps, userData=str(userdata))
+    ran = run_menu(tmp_path, steps, userData=str(userdata))
     assert ran["opened"] == [str(fallback)] and ran["sends"] == []
     # A named log is the one opened, never the fallback.
     named = tmp_path / "tracker-errors.log"
     named.write_text("named\n", encoding="utf-8")
     learn_steps, scenario = _learn(named, userData=str(userdata))
-    ran = _run(tmp_path, learn_steps, **scenario)
+    ran = run_menu(tmp_path, learn_steps, **scenario)
     assert ran["opened"] == [str(named)]
 
 
@@ -716,7 +513,7 @@ def test_open_error_log_opens_the_local_non_roaming_fallback_on_windows(tmp_path
     roaming.mkdir()
     (roaming / "error.log").write_text("wrong place\n", encoding="utf-8")
     steps = [{"clickBar": _word("error_log")}]
-    ran = _run(tmp_path, steps, platform="win32", localAppData=str(local), userData=str(roaming))
+    ran = run_menu(tmp_path, steps, platform="win32", localAppData=str(local), userData=str(roaming))
     assert ran["opened"] == [str(fallback)] and ran["sends"] == []
 
 
@@ -724,7 +521,7 @@ def test_open_error_log_refuses_a_fallback_that_is_a_link_or_a_folder(tmp_path):
     userdata = tmp_path / "userdata"
     (userdata / "error.log").mkdir(parents=True)          # a folder is not a file
     steps = [{"clickBar": _word("error_log")}]
-    ran = _run(tmp_path, steps, userData=str(userdata))
+    ran = run_menu(tmp_path, steps, userData=str(userdata))
     assert ran["opened"] == [] and ran["sends"][0]["message"]["missing"] is True
     # A link is not a file either: the fallback is never opened through one.
     linked = tmp_path / "linked"
@@ -735,7 +532,7 @@ def test_open_error_log_refuses_a_fallback_that_is_a_link_or_a_folder(tmp_path):
         (linked / "error.log").symlink_to(real)
     except (OSError, NotImplementedError):
         pytest.skip("this machine cannot make a symbolic link")
-    ran = _run(tmp_path, steps, userData=str(linked))
+    ran = run_menu(tmp_path, steps, userData=str(linked))
     assert ran["opened"] == [] and ran["sends"][0]["message"]["missing"] is True
 
 
@@ -748,16 +545,16 @@ def test_open_error_log_refuses_a_symbolic_link(tmp_path):
     except (OSError, NotImplementedError):
         pytest.skip("this machine cannot make a symbolic link")
     steps, scenario = _learn(link)
-    ran = _run(tmp_path, steps, **scenario)
+    ran = run_menu(tmp_path, steps, **scenario)
     assert ran["opened"] == []
     assert ran["sends"] == [{"channel": "menu", "message": {"id": "error_log", "missing": True}}]
 
 
 def test_a_word_from_the_api_rebuilds_the_menu_only_when_it_differs(tmp_path):
-    same = _run(tmp_path, [{"tracker": ["list"]}], vocabMenu=dict(api.MENU))
+    same = run_menu(tmp_path, [{"tracker": ["list"]}], vocabMenu=dict(api.MENU))
     assert len(same["menus"]) == 1
     changed = {**api.MENU, "sort_now": "Sort here", "file": "&Files", "not_a_key": "x", "find": 5}
-    ran = _run(tmp_path, [{"tracker": ["list"]}], vocabMenu=changed)
+    ran = run_menu(tmp_path, [{"tracker": ["list"]}], vocabMenu=changed)
     assert len(ran["menus"]) == 2
     menu = ran["menus"][-1]
     assert menu[0]["label"] == "&Files"
@@ -768,18 +565,18 @@ def test_a_word_from_the_api_rebuilds_the_menu_only_when_it_differs(tmp_path):
 
 def test_the_window_paints_the_pages_colour_for_the_systems_theme(tmp_path):
     css = {"pilot-ui.css": ":root { --window-light: #ffffff; }\n:root { --window-dark: #1b1e24; }\n"}
-    assert _run(tmp_path, [], css=css)["windowOptions"].get("backgroundColor") == "#ffffff"
-    assert _run(tmp_path, [], css=css, dark=True)["windowOptions"].get("backgroundColor") == "#1b1e24"
+    assert run_menu(tmp_path, [], css=css)["windowOptions"].get("backgroundColor") == "#ffffff"
+    assert run_menu(tmp_path, [], css=css, dark=True)["windowOptions"].get("backgroundColor") == "#1b1e24"
     # A contrast theme paints its own.
-    assert _run(tmp_path, [], css=css, contrast=True)["windowOptions"].get("backgroundColor") is None
+    assert run_menu(tmp_path, [], css=css, contrast=True)["windowOptions"].get("backgroundColor") is None
 
 
 def test_the_window_colour_is_read_defensively(tmp_path):
     # Without the names (the stylesheet before they exist) or without the file: never a thrown error.
     older = {"pilot-ui.css": ":root { --other: #123456; }"}
-    assert _run(tmp_path, [], css=older)["windowOptions"].get("backgroundColor") is None
+    assert run_menu(tmp_path, [], css=older)["windowOptions"].get("backgroundColor") is None
     none = {"pilot-ui.css": None}
-    ran = _run(tmp_path, [], css=none)
+    ran = run_menu(tmp_path, [], css=none)
     assert ran["windowOptions"].get("backgroundColor") is None and len(ran["menus"]) == 1
 
 
@@ -787,7 +584,7 @@ def test_the_windows_minimum_and_default_sizes_are_its_pages(tmp_path):
     """P203: without ``useContentSize`` Windows counts its frame in
     ``minWidth``, so the minimum window's page was 1084 wide, not the 1100
     every list's column budget assumes."""
-    options = _run(tmp_path, [])["windowOptions"]
+    options = run_menu(tmp_path, [])["windowOptions"]
     assert options.get("useContentSize") is True
     assert (options.get("width"), options.get("height")) == (1400, 900)
     assert (options.get("minWidth"), options.get("minHeight")) == (1100, 700)
@@ -795,7 +592,7 @@ def test_the_windows_minimum_and_default_sizes_are_its_pages(tmp_path):
 
 def test_a_switch_between_light_and_dark_sets_the_window_colour_again(tmp_path):
     css = {"pilot-ui.css": ":root { --window-light: #ffffff; --window-dark: #1b1e24; }"}
-    ran = _run(tmp_path, [{"theme": {"shouldUseDarkColors": True}},
+    ran = run_menu(tmp_path, [{"theme": {"shouldUseDarkColors": True}},
                           {"theme": {"shouldUseDarkColors": False}},
                           {"theme": {"shouldUseHighContrastColors": True}}], css=css)
     assert ran["backgrounds"] == ["#1b1e24", "#ffffff"]      # a contrast theme paints its own
@@ -829,10 +626,10 @@ def test_a_moved_workbook_is_shown_with_reveal_and_refused_without_it(tmp_path):
     macro = tmp_path / "Prepared" / "budget.xlsm"
     macro.write_bytes(b"PK\x03\x04")
     scenario["paths"]["moved_copy K3"] = str(macro)
-    plain = _run(tmp_path, [{"tracker": ["list"]}, {"open": [str(macro)]}], **scenario)
+    plain = run_menu(tmp_path, [{"tracker": ["list"]}, {"open": [str(macro)]}], **scenario)
     assert plain["opened"] == [] and plain["revealed"] == []
     assert plain["answers"] == [NOT_OPENED]
-    shown = _run(tmp_path, [{"tracker": ["list"]}, {"open": [str(macro), "reveal"]}], **scenario)
+    shown = run_menu(tmp_path, [{"tracker": ["list"]}, {"open": [str(macro), "reveal"]}], **scenario)
     assert shown["revealed"] == [str(macro)] and shown["opened"] == [] and shown["answers"] == [""]
 
 
@@ -844,7 +641,7 @@ def test_a_filed_copy_and_a_shown_copy_are_reveal_only_and_a_review_copy_still_o
     review.write_bytes(b"%PDF-1.4\n")
     scenario["paths"]["shown_copy K4"] = str(parked)
     scenario["paths"]["review_copy K5"] = str(review)
-    ran = _run(tmp_path, [{"tracker": ["list"]}, {"open": [str(copy)]}, {"open": [str(parked)]},
+    ran = run_menu(tmp_path, [{"tracker": ["list"]}, {"open": [str(copy)]}, {"open": [str(parked)]},
                           {"open": [str(parked), "reveal"]}, {"open": [str(review)]}], **scenario)
     assert ran["opened"] == [str(review)], "only a marked review copy opens (decision 190)"
     assert ran["revealed"] == [str(parked)]
@@ -853,7 +650,7 @@ def test_a_filed_copy_and_a_shown_copy_are_reveal_only_and_a_review_copy_still_o
 
 def test_reveal_shows_a_reported_file_in_file_explorer_and_a_plain_open_still_opens_it(tmp_path):
     copy, moved, scenario = _reveal_scenario(tmp_path)
-    ran = _run(tmp_path, [{"tracker": ["list"]}, {"open": [str(copy), "reveal"]},
+    ran = run_menu(tmp_path, [{"tracker": ["list"]}, {"open": [str(copy), "reveal"]},
                           {"open": [str(moved), "reveal"]}, {"open": [str(copy)]}], **scenario)
     assert ran["revealed"] == [str(copy), str(moved)], "the row's kind came from the word before the space"
     assert ran["opened"] == [], "a filed copy is reveal-only: the plain open is refused"
@@ -866,12 +663,12 @@ def test_reveal_of_a_path_the_api_did_not_report_is_refused(tmp_path):
     stranger.write_bytes(b"x")
     steps = [{"tracker": ["list"]}]
     steps += [{"open": [p, "reveal"]} for p in (str(stranger), str(tmp_path / ".." / "x"), "", None, 7)]
-    ran = _run(tmp_path, steps, **scenario)
+    ran = run_menu(tmp_path, steps, **scenario)
     assert ran["revealed"] == [] and ran["opened"] == []
     # The exact sentence: it is the allow-list's own (the kind check says something else).
     assert ran["answers"] == [NOT_REPORTED] * 5
     # Before the API has reported anything, even the file that would be reported is refused.
-    early = _run(tmp_path, [{"open": [str(copy), "reveal"]}], **scenario)
+    early = run_menu(tmp_path, [{"open": [str(copy), "reveal"]}], **scenario)
     assert early["revealed"] == [] and early["answers"] == [NOT_REPORTED]
 
 
@@ -883,7 +680,7 @@ def test_a_reported_key_whose_word_has_no_kind_is_refused_by_the_kind_check_alon
     odd = tmp_path / "Prepared" / "odd.pdf"
     odd.write_bytes(b"x")
     scenario["paths"]["mystery K9"] = str(odd)
-    ran = _run(tmp_path, [{"tracker": ["list"]}, {"open": [str(odd), "reveal"]}, {"open": [str(odd)]}],
+    ran = run_menu(tmp_path, [{"tracker": ["list"]}, {"open": [str(odd), "reveal"]}, {"open": [str(odd)]}],
                **scenario)
     assert ran["opened"] == [] and ran["revealed"] == []
     assert ran["answers"] == [NOT_OPENED, NOT_OPENED] and NOT_OPENED != NOT_REPORTED
@@ -893,7 +690,7 @@ def test_reveal_is_refused_when_the_file_is_no_longer_a_file_or_is_a_link(tmp_pa
     copy, moved, scenario = _reveal_scenario(tmp_path)
     copy.unlink()
     copy.mkdir()                                   # a folder where the file was
-    ran = _run(tmp_path, [{"tracker": ["list"]}, {"open": [str(copy), "reveal"]}], **scenario)
+    ran = run_menu(tmp_path, [{"tracker": ["list"]}, {"open": [str(copy), "reveal"]}], **scenario)
     assert ran["revealed"] == [] and ran["opened"] == [] and all(ran["answers"])
     # The link half needs a machine that can make one (the Windows check's A4, P129).
     moved.unlink()
@@ -901,13 +698,13 @@ def test_reveal_is_refused_when_the_file_is_no_longer_a_file_or_is_a_link(tmp_pa
         moved.symlink_to(tmp_path / "Prepared" / "elsewhere.pdf")
     except (OSError, NotImplementedError):
         pytest.skip("this machine cannot make a symbolic link")
-    ran = _run(tmp_path, [{"tracker": ["list"]}, {"open": [str(moved), "reveal"]}], **scenario)
+    ran = run_menu(tmp_path, [{"tracker": ["list"]}, {"open": [str(moved), "reveal"]}], **scenario)
     assert ran["revealed"] == [] and ran["opened"] == [] and all(ran["answers"])
 
 
 def test_a_word_that_is_not_reveal_opens_the_default_way_and_a_folder_is_never_revealed(tmp_path):
     copy, _moved, scenario = _reveal_scenario(tmp_path)
-    ran = _run(tmp_path, [{"tracker": ["list"]}, {"open": [str(copy), "anything"]},
+    ran = run_menu(tmp_path, [{"tracker": ["list"]}, {"open": [str(copy), "anything"]},
                           {"open": [str(tmp_path), "reveal"]}], **scenario)
     assert ran["opened"] == [str(tmp_path)] and ran["revealed"] == []
     assert ran["answers"] == [NOT_OPENED, ""], "a reveal-only copy is not opened by any other word"
@@ -935,7 +732,7 @@ def test_compact_rows_sits_between_reset_column_widths_and_show_under_constructi
     Construction, enabled from the first frame, unticked (Comfortable) until
     the page speaks; Show Under Construction stays ticked; no accelerator;
     Alt, V, C reaches it."""
-    [menu] = _run(tmp_path, [])["menus"]
+    [menu] = run_menu(tmp_path, [])["menus"]
     view = [i.get("label") or "-" for i in menu[3]["submenu"]]
     assert view[-4:] == ["-", _word("reset_columns"), _word("compact_rows"), _word("show_under_construction")]
     item = _flat(menu)[_word("compact_rows")]
@@ -948,5 +745,5 @@ def test_compact_rows_sits_between_reset_column_widths_and_show_under_constructi
 
 
 def test_choosing_compact_rows_is_sent_to_the_page(tmp_path):
-    ran = _run(tmp_path, [{"clickBar": _word("compact_rows")}])
+    ran = run_menu(tmp_path, [{"clickBar": _word("compact_rows")}])
     assert ran["sends"] == [{"channel": "menu", "message": {"id": "compact_rows", "token": ""}}]

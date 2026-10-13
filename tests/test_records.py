@@ -18,7 +18,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.test_layers import import_edges
+from tests.import_graph import import_edges
 from tracker import content_check, filer, ledger, manifest, records, router
 from tracker.records import (
     CANDIDATE_SEP,

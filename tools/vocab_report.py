@@ -110,6 +110,7 @@ INPUT_PATHS = (
     "tracker/manifest.py",        # the validation and its defaults
     "tests/test_catalog.py",      # the cases
     "tests/test_irs_forms.py",    # the corpus's expected placements
+    "tests/routing_cases.py",     # the workbook cases, the placements and two printed forms those suites share
     "tests/test_real_corpus.py",  # how the firm's own documents are read
     "tools/vocab_report.py",      # this generator
 )

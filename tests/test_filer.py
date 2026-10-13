@@ -7428,7 +7428,7 @@ def test_two_returns_in_one_household_that_both_accept_a_notice_park_it_unless_t
     entity's to the 1065. One naming both is contested between the returns
     and parks; one naming neither parks too, with the name's own reason -
     nothing is guessed either way."""
-    from tests.test_catalog import cp_notice_lines
+    from tests.routing_cases import cp_notice_lines
     from tracker.filer import CONTESTED_BETWEEN_RETURNS
     from tracker.templates import template_items
 

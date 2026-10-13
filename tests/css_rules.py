@@ -6,8 +6,7 @@ readers of that text: the rules at any depth (``blocks``), the top-level rules
 by balanced braces (``top_level``), a declaration's property and value
 (``declarations``), what in a value is a colour that is not a token
 (``colour_faults``) and the grid's steps. ``test_pilot_ui`` wrote them and
-``test_shell`` borrowed them (``from tests.test_pilot_ui import blocks``); they
-live here so the borrowing names a module that is not a test file
+``test_shell`` imported them from it; they live here so the borrowing names a module that is not a test file
 (SPEC-architecture E-4, R2.1). Moved with their words.
 """
 

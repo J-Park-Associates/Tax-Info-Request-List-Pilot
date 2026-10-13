@@ -17,7 +17,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.builders import DROPPED, failure, item, locked
+from tests.builders import DROPPED, failure, item, locked, sample_sentence
 from tests.conftest import child_env
 from tests.samples import text_pdf
 from tracker import ledger, reasons
@@ -1124,7 +1124,7 @@ def test_a_near_miss_holds_the_reminder_and_blames_no_file(tmp_path):
     """Decision 140, claim 4. A W-2 whose reading lost the SSN label parks
     with A01 on its shortlist; the draft holds A01 rather than asking for
     it, and neither the held line nor the draft says the file was wrong."""
-    from tests.test_router import LOST_ONE_PHRASE
+    from tests.samples import LOST_ONE_PHRASE
     from tracker.review import shortlist_for
 
     folder = engagement(tmp_path, NEAR_MISSED, name="Near Miss TY2025")
@@ -1199,12 +1199,11 @@ def test_every_existing_reason_holds_exactly_as_before(reason):
     # The reasons' own sample sentence, so a placeholder a later reason adds
     # is filled here the moment test_reasons.py learns it.
     from tests.builders import parked_row
-    from tests.test_reasons import _sample
     from tracker.records import RULE_REQUIRED, WHERE_TITLE, Evidence
     from tracker.reminder import _ask_for, _parked_holds
 
     row = parked_row("scan.pdf", {"A01": (Evidence(RULE_REQUIRED, "W-2", WHERE_TITLE, 1),)},
-                     reason="scan.pdf: " + _sample(reason), code=reason.code)
+                     reason="scan.pdf: " + sample_sentence(reason), code=reason.code)
     holds = {identifier: (flag.reason, flag.confirm)
              for identifier, flag in _parked_holds(DROPPED, [row]).items()}
     if reason in (reasons.SHOWS_ITS_FORM_NUMBER, reasons.NAME_POINTS_AT):

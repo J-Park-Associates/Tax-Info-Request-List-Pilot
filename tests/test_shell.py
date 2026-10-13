@@ -29,6 +29,7 @@ from pathlib import Path
 import pytest
 
 import tracker.api as api
+from tests.api_driver import run, sample_engagement, scan
 from tests.css_rules import GRID_PROPS, GRID_TOKEN, blocks, colour_faults, declarations, stripped, top_level
 from tests.node_harness import (
     COLUMN_FUNCTIONS,
@@ -54,7 +55,6 @@ from tests.node_harness import (
     run_speed,
     store_functions,
 )
-from tests.test_api import run, sample_engagement, scan
 from tracker import settings as settings_module
 
 REPO = Path(__file__).resolve().parent.parent
@@ -2492,7 +2492,7 @@ def test_every_word_index_html_types_is_in_title_case():
     tags, ``aria-label`` and ``placeholder``. The words that come from the
     API are its; these are the few the template types (Retry, Cancel, the
     wizard's field names) and they are cased like them."""
-    from tests.test_api import title_case
+    from tests.wording import title_case
 
     html = re.sub(r"<!--.*?-->", "", read("index.html"), flags=re.S)
     html = re.sub(r"<(script|style|svg)\b.*?</\1>", "", html, flags=re.S)
@@ -2544,7 +2544,7 @@ def test_a_failed_sort_says_a_short_approved_reason_and_never_a_path(tmp_path):
     reason chosen by the kind of failure the pass reported, from the API's
     vocabulary - at most five words in all, Title Case, no path. A kind the
     engine does not tell apart is "Unexpected Error"."""
-    from tests.test_api import title_case
+    from tests.wording import title_case
 
     words = api._vocab()["scan"]
     setup = ("const fill = (p, v) => p.replace(/\\{(\\w+)\\}/g, (_, k) => v[k] ?? '');\n"
@@ -2572,7 +2572,7 @@ def test_a_sort_asked_for_an_inactive_return_says_why_nothing_was_done(tmp_path,
     (P117). Every skip word is Title Case and five words at most in all."""
     from tests.passes import _run_now, build_engagement, edit_details
     from tests.samples import build_samples
-    from tests.test_api import title_case
+    from tests.wording import title_case
     from tracker.layout import household_of
 
     samples = tmp_path / "samples"
@@ -2856,7 +2856,7 @@ def test_a_failed_or_locked_household_sort_draws_no_engine_sentence_and_no_path(
 
     from tests.passes import _run_now, build_engagement
     from tests.samples import build_samples
-    from tests.test_api import title_case
+    from tests.wording import title_case
     from tracker.layout import client_household_dir, household_of
     from tracker.locking import LOCK_FILENAME
 
@@ -4058,7 +4058,7 @@ def test_a_sort_that_finds_nothing_to_do_says_nothing_to_sort(tmp_path):
     assert said[1] == {"text": "Nothing Done: 1 Still Syncing.", "cls": "warn"}
     assert said[2]["cls"] == "ok" and said[3] == "ok", "a Sort that did something still says nothing (P131)"
     assert said[4] == "But 1 Files Not Sorted." and said[5].startswith("Pass complete")
-    from tests.test_api import title_case
+    from tests.wording import title_case
     for text in (said[0]["text"], said[1]["text"]):
         assert title_case(text) == text and len(text.split()) <= 5
 

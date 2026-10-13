@@ -20,7 +20,7 @@ from tests.children import (
     running,
 )
 from tests.conftest import make_engagement
-from tests.samples import text_pdf
+from tests.samples import photo, text_pdf
 from tracker import reasons, store
 from tracker.content_check import (
     CACHE_VERSION,
@@ -149,18 +149,6 @@ def test_ocr_text_used_when_available(tmp_path, monkeypatch):
 # anywhere near the suite. The engine itself is not needed - what is
 # claimed is which pixels the reading is handed, so the reader is a fake
 # (the real one reads in tests/test_ocr.py).
-
-
-def photo(path, words: str = "Form W-2 Wage and Tax Statement", size=(900, 200)):
-    """A photo of a document, in a form's own words."""
-    from PIL import Image, ImageDraw, ImageFont
-
-    image = Image.new("RGB", size, "white")
-    ImageDraw.Draw(image).text(
-        (20, 60), words, font=ImageFont.load_default(size=40), fill="black",
-    )
-    image.save(path)
-    return path
 
 
 def catching_the_reading(monkeypatch, reading: str = ""):
@@ -524,7 +512,7 @@ def test_on_every_corpus_form_the_scans_miss_verdict_equals_the_routers_kept_ver
     row(s) it filed under. The kept verdict and the miss verdict are one
     verdict - ok, reason and evidence - so a rebuilt store reaches what
     the router filed on."""
-    from tests.test_irs_forms import EXPECT, IRS
+    from tests.routing_cases import EXPECT, IRS
     from tracker.manifest import validated
     from tracker.router import route_file
     from tracker.templates import template_items

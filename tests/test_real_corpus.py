@@ -38,6 +38,7 @@ from pathlib import Path
 
 import pytest
 
+from tests.routing_cases import filed_to
 from tests.samples import text_pdf
 from tracker.content_check import extract
 from tracker.manifest import RequestItem, validated
@@ -50,7 +51,6 @@ from tracker.settings import (
     ENV_REAL_CORPUS,
     EXPECTATIONS_COLUMNS,
     EXPECTATIONS_FILENAME,
-    EXPECTED_SEP,
     real_corpus_dir,
 )
 from tracker.templates import template_items
@@ -62,16 +62,6 @@ from tracker.templates import template_items
 #: can carry two forms, and a harness that could only say one identifier
 #: would have had to score the second filing as a miss.
 Expectation = tuple[str, str, int, str | None]
-
-
-def filed_to(routing) -> str | None:
-    """Where one routing filed the document, as the ``expected`` column
-    writes it: None for a park, one identifier for the ordinary filing,
-    and the identifiers ``EXPECTED_SEP``-joined where decision 94 filed a
-    copy under each. One reader for both sides of the comparison, and the
-    one ``tools/backtest.py`` scores the firm's real mail with."""
-    filed = routing.filed_to
-    return EXPECTED_SEP.join(filed) if filed else None
 
 
 def read_expectations(path: Path) -> list[Expectation]:

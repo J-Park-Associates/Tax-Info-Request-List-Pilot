@@ -114,7 +114,7 @@ def test_a_workbook_case_reads_the_same_to_the_report_as_to_the_suite(tmp_path):
 
 def test_the_workbook_cases_are_in_the_report_too():
     """Half of every catalog asks for a schedule a client keeps in Excel."""
-    from tests.test_catalog import XLSX_CASES
+    from tests.routing_cases import XLSX_CASES
 
     names = {doc.name for doc in vocab_report.case_documents()}
     assert {case[2] for case in XLSX_CASES} <= names

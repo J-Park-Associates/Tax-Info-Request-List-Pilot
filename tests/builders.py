@@ -1,7 +1,8 @@
 """What the suite builds, in one place: a return, a document dropped into its inbox, the rows a pass records.
 
-Test files used to borrow these from one another (``from tests.test_filer import
-drop``, ``from tests.test_review import parked_row``). The affected-tests gate
+Test files used to borrow these from one another (``test_runner`` imported
+``drop`` from ``test_filer``, ``test_reminder`` imported ``parked_row`` from
+``test_review``). The affected-tests gate
 cannot see that edge, and splitting the owner's file breaks every borrower
 (SPEC-architecture E-4, R2.1). Here they sit in a module that is not a test
 file, so every user names it and the map draws the edge as "exercised by".
@@ -30,6 +31,7 @@ from tracker.filer import _CANDIDATE_SEP, NEEDS_REVIEW, IndexEntry
 from tracker.layout import inbox_of, location_of, originals_of
 from tracker.manifest import RequestItem, Status
 from tracker.names import propose_spellings
+from tracker.reasons import Reason
 from tracker.records import Person
 from tracker.registry import _walk_root
 from tracker.router import AMBIGUOUS, UNMATCHED
@@ -192,11 +194,8 @@ def killed_at_the_record(monkeypatch):
 
 # ------------------------------------------------ the filer's scenes ----
 
-
 DAY1 = dt.date(2026, 7, 1)
-
 DAY2 = dt.date(2026, 7, 9)
-
 
 ITEMS = [
     RequestItem(
@@ -210,14 +209,12 @@ ITEMS = [
     ),
 ]
 
-
 BUSINESS = [
     RequestItem(
         identifier="B01", document="Trial Balance", period="TY2025",
         allowed_extensions=("pdf",), min_size_kb=0, required_keywords=("trial balance",),
     ),
 ]
-
 
 FATHER = (Person("taxpayer", "John Park", propose_spellings("John Park", "taxpayer")),)
 
@@ -249,14 +246,10 @@ ROOM_ITEMS = [
     ),
 ]
 
-
 #: Below the return folder: the canonical copy's path, and the folder it
 #: sits in - Prepared itself since decision 168.
 CANONICAL_BELOW = 48
-
-
 FOLDER_BELOW = 9
-
 
 #: A period long enough that ``A01 - <period>.pdf`` (44 characters) does not
 #: fit the 43 a return of :func:`no_room_return` characters leaves in
@@ -268,15 +261,11 @@ FOLDER_BELOW = 9
 #: return of 206 characters at most, whose Prepared leaves 43 (pilot
 #: decision P29) - and one period makes the claim under both settings.
 LONG_PERIOD = "January 01 2025 - December 31 2025"
-
-
 #: The period :func:`tight_return` asks for: long enough that the canonical
 #: copy is nine past the limit in a return whose review folder has room
 #: under either setting (pilot decision P29) - a TY2025 copy never is,
 #: with long paths off.
 TIGHT_PERIOD = "Jan 2025 to Dec 2025"
-
-
 #: How far past the limit :func:`tight_return`'s claims put the canonical
 #: copy, whose name then keeps ten characters of its document.
 OVER = 9
@@ -341,3 +330,11 @@ def _consolidated_return(tmp_path, *, int_div_expected=2):
     sort(engagement, today=DAY1)
     scan_engagement(engagement, today=DAY1)
     return engagement
+
+
+def sample_sentence(reason: Reason) -> str:
+    """A Reason's sentence with every placeholder filled by a made-up value."""
+    return reason.template.format(**{
+        name: "x" for name in ("error", "extension", "allowed", "listed", "pattern")
+    } | {"size_kb": 1.0, "minimum": 5, "size": "300 MB", "minutes": "10 minutes",
+         "kind": "an email", "spelling": "x", "label": "x"})

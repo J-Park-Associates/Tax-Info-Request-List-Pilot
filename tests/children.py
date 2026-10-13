@@ -3,8 +3,7 @@
 A reading runs in a child process (decision 137), and a claim about it has to
 ask the system whether the child is still there, wait for it to be gone, and
 know the stop it was given. ``test_content_check`` wrote those helpers and
-``test_containers`` and ``test_ocr`` borrowed them (``from
-tests.test_content_check import no_child_left``); they live here so the
+``test_containers`` and ``test_ocr`` imported them from it; they live here so the
 borrowing names a module that is not a test file (SPEC-architecture E-4,
 R2.1). The stand-in readers a child runs are in ``tests/child_readers.py``,
 because a patch made in the test never reaches the child.

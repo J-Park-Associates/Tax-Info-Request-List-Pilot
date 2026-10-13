@@ -2113,7 +2113,7 @@ def test_every_command_line_is_either_guarded_or_exempt_by_name():
     reason, before the suite is green - so none can slip past the console."""
     import ast
 
-    from tests.test_layers import _is_main_guard
+    from tests.import_graph import _is_main_guard
 
     with_a_command_line = set()
     for path in (REPO / "tracker").glob("*.py"):

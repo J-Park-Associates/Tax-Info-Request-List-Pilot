@@ -117,8 +117,10 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
+from tests.import_graph import PACKAGE, _modules, import_edges
+
 REPO = Path(__file__).resolve().parents[1]
-PACKAGE = REPO / "tracker"
+
 
 #: Layer -> the modules in it. Every file in tracker/ is in exactly one.
 LAYERS: dict[int, frozenset[str]] = {
@@ -282,66 +284,6 @@ APP_NETWORK_CALLS: dict[str, str] = {
     "window.open": r"\bwindow\s*\.\s*open\s*\(",
     "openExternal": r"\bopenExternal\b",
 }
-
-
-def _is_main_guard(node: ast.If) -> bool:
-    test = node.test
-    return (isinstance(test, ast.Compare) and isinstance(test.left, ast.Name)
-            and test.left.id == "__name__")
-
-
-def _modules() -> set[str]:
-    return {path.stem for path in PACKAGE.glob("*.py")}
-
-
-def _target(name: str, modules: set[str]) -> str:
-    """Which module a ``from tracker import name`` reaches: the submodule of
-    that name, or the package itself when the name is something it defines."""
-    return name if name in modules else "__init__"
-
-
-def _collect(body: list[ast.stmt], modules: set[str], load: set[str], call: set[str], *, in_call: bool) -> None:
-    for node in body:
-        into = call if in_call else load
-        if isinstance(node, ast.If) and _is_main_guard(node):
-            _collect(node.body, modules, load, call, in_call=True)
-            _collect(node.orelse, modules, load, call, in_call=in_call)
-            continue
-        if isinstance(node, ast.ImportFrom) and node.module and node.module.split(".")[0] == "tracker":
-            parts = node.module.split(".")
-            if len(parts) == 1:
-                into.update(_target(alias.name, modules) for alias in node.names)
-            else:
-                into.add(parts[1])
-        elif isinstance(node, ast.Import):
-            for alias in node.names:
-                if alias.name == "tracker":
-                    into.add("__init__")
-                elif alias.name.startswith("tracker."):
-                    into.add(alias.name.split(".")[1])
-        elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-            _collect(node.body, modules, load, call, in_call=True)
-        else:
-            for field in ("body", "orelse", "finalbody"):
-                child = getattr(node, field, None)
-                if isinstance(child, list):
-                    _collect(child, modules, load, call, in_call=in_call)
-            for handler in getattr(node, "handlers", None) or []:
-                _collect(handler.body, modules, load, call, in_call=in_call)
-
-
-def import_edges() -> tuple[dict[str, set[str]], dict[str, set[str]]]:
-    """(load-time edges, call-time edges) for every module in the package."""
-    modules = _modules()
-    load: dict[str, set[str]] = {}
-    call: dict[str, set[str]] = {}
-    for path in sorted(PACKAGE.glob("*.py")):
-        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
-        load[path.stem], call[path.stem] = set(), set()
-        _collect(tree.body, modules, load[path.stem], call[path.stem], in_call=False)
-        load[path.stem].discard(path.stem)
-        call[path.stem] -= load[path.stem] | {path.stem}
-    return load, call
 
 
 def test_every_module_is_in_exactly_one_layer():

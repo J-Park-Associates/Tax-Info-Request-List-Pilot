@@ -1857,7 +1857,7 @@ def test_in_a_household_a_slow_reading_is_said_once_on_the_first_own_returns_lin
     never cut short. Nothing about it reaches the record."""
     import time
 
-    from tests.test_content_check import photo
+    from tests.samples import photo
     from tracker.filer import FILED
     from tracker.records import entry_to_json
     from tracker.runner import SLOW_READING_NOTE

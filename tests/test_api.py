@@ -17,9 +17,11 @@ from pathlib import Path
 import pytest
 
 import tracker.api as api
+from tests.api_driver import HOUSEHOLD, PEOPLE, SAMPLE_PEOPLE, one_reply, run, sample_engagement, scan, where
 from tests.conftest import TEST_CLIENT, app_stdin, make_engagement
-from tests.node_harness import js_function
-from tests.samples import PRIOR_YEAR, SCRATCH_PEOPLE, text_pdf
+from tests.node_harness import js_function, read
+from tests.samples import PRIOR_YEAR, text_pdf
+from tests.wording import title_case
 from tracker import layout, ledger, manifest, reasons, reminder, store, view
 from tracker.filer import FILED, NEEDS_REVIEW, read_index
 from tracker.households import load_household_info
@@ -54,29 +56,6 @@ from tracker.templates import BASE_YEAR, default_tax_year
 #: What a count outside the record's bounds is refused with (decision 187).
 COUNTS = COUNT_BOUNDS.format(minimum=MIN_EXPECTED_COUNT, maximum=MAX_EXPECTED_COUNT)
 
-#: The one household every spec below names unless the claim is about
-#: households. A client folder is a household since decision 125, and a
-#: return lives under its year inside it.
-HOUSEHOLD = "Test Household"
-#: Who every spec below says the return is for, unless the claim is about
-#: the people list. A return is refused without one since decision 128.
-PEOPLE = [{"kind": "taxpayer", "name": TEST_CLIENT,
-           "spellings": list(propose_spellings(TEST_CLIENT, "taxpayer"))}]
-#: Who the sample pile's documents are addressed to, as a spec sends them.
-SAMPLE_PEOPLE = [{"kind": one.kind, "name": one.name, "spellings": list(one.spellings)}
-                 for one in SCRATCH_PEOPLE]
-
-
-def where(root, return_name, year=None, household=HOUSEHOLD):
-    """Where the return a spec named landed.
-
-    The layout's answer, never a name a test typed: the private tree, the
-    household, the year, the return (decision 125).
-    """
-    from tracker.templates import default_tax_year
-
-    return return_dir_for(root, household, year or default_tax_year(), return_name)
-
 
 @pytest.fixture
 def demo_root(short_root, tmp_path, monkeypatch):
@@ -97,112 +76,11 @@ def demo_root(short_root, tmp_path, monkeypatch):
     return root
 
 
-def _head_now(argv) -> str:
-    """The version of the list ``state`` would hand the editor now (decision
-    160), for an ``edit`` or a ``rename`` that does not name its own - blank
-    where the command names no engagement, which it then refuses anyway."""
-    from tracker.manifest import list_head
-
-    try:
-        return list_head(argv[list(argv).index(api.ENGAGEMENT_FLAG) + 1])
-    except (ValueError, IndexError, ManifestError):
-        return ""
-
-
-def run(capsys, *argv, stdin=None):
-    """Run one command the way main.js does: argv in, one JSON object out.
-
-    A ``create`` spec that names no household, or names the one these
-    claims use, is given that one - by its folder once it exists, as the wizard picks it in the list
-    (decision 188 refuses a household name typed again): since decision 125 every return belongs to a household, and most
-    of what is claimed here is about the API rather than about households.
-    The same for the people it is for: since decision 128 a return is
-    refused without one, and most of what is claimed here is not about the
-    name tier. And an ``edit`` or a ``rename`` carries the version of the
-    list it was made from, as the editor's does (decision 160): the current
-    one, unless the claim is about a stale one and names it.
-    """
-    if (stdin is not None and argv and argv[0] == "create"
-            and stdin.get("household", HOUSEHOLD) == HOUSEHOLD and "household_path" not in stdin):
-        stdin = {key: value for key, value in stdin.items() if key != "household"}
-        # Picked in the list once it exists, as the wizard does: since
-        # decision 188 a household name typed again is refused.
-        from tracker.layout import private_household_dir
-        from tracker.settings import clients_root
-
-        root = clients_root()
-        known = private_household_dir(root, HOUSEHOLD) if root else None
-        stdin = ({"household_path": str(known), **stdin}
-                 if known is not None and ledger.path_for(known).is_file()
-                 else {"household": HOUSEHOLD, **stdin})
-    if stdin is not None and argv and argv[0] == "create" and "people" not in stdin:
-        stdin = {"people": PEOPLE, **stdin}
-    if stdin is not None and argv and argv[0] in ("edit", "rename") and "head" not in stdin:
-        stdin = {**stdin, "head": _head_now(argv)}
-    if stdin is not None:
-        with pytest.MonkeyPatch.context() as mp:
-            mp.setattr("sys.stdin", app_stdin(stdin))
-            code = api.main(list(argv))
-    else:
-        code = api.main(list(argv))
-    return code, one_reply(capsys.readouterr().out)
-
-
 def said_by_class(payload: dict, kind: str) -> bool:
     """An unexpected error said on screen by its class alone (decision 193):
     never its message, which stays in the error log."""
     return payload["error"] == api.FAILED.format(kind=kind, log=api.ERROR_LOG_FILENAME) \
         and payload["failure"]["kind"] == "failed"
-
-
-def one_reply(out: str) -> dict:
-    """The one reply a command printed, the way main.js reads stdout
-    (decision 193): every line but the last is a progress line, and the
-    last - the only one without ``progress`` - is the reply."""
-    from tracker.progress import PROGRESS_KEY
-
-    lines = [json.loads(line) for line in out.strip().splitlines()]
-    assert lines, "expected a reply, got nothing"
-    assert all(PROGRESS_KEY in line for line in lines[:-1]), lines
-    assert PROGRESS_KEY not in lines[-1], lines[-1]
-    return lines[-1]
-
-
-def scan(capsys, engagement) -> tuple[int, dict]:
-    """Sort & Scan the way the app runs it since decision 203: ``run-now``,
-    which hands this return's household to the runner's own pass in this
-    process, then - when the pass ends - one ``list`` and one ``state``, as
-    the renderer redraws (the lane's ruling on 194's Q5).
-
-    Answers with the pass's exit code and the reply the claims below read:
-    ``run`` is the asked return's entry in the final line, ``household``
-    the household's other returns, ``pass_warnings`` and ``pass`` the final
-    line's own, ``lock`` the lock a locked-out return met, and ``state``,
-    ``list`` and ``warnings`` the redraw's. A refusal is its envelope."""
-    code = api.main([api.PASS_COMMAND, api.ENGAGEMENT_FLAG, str(engagement)])
-    final = one_reply(capsys.readouterr().out)
-    if "error" in final:
-        return code, final
-    # Matched as the renderer matches (decision 203's review, S2): the
-    # path's own spelling, the one the API gives the app, so a mismatch
-    # fails here rather than hiding the counts on screen.
-    asked = str(api._return_dir(engagement))
-    [run] = [one for one in final["runs"] if one["path"] == asked]
-    held = next((one["locked_at"] for one in final["runs"] if one["locked_at"]), None)
-    assert api.main(["list"]) == 0
-    listed = one_reply(capsys.readouterr().out)
-    state_code = api.main(["state", api.ENGAGEMENT_FLAG, str(engagement)])
-    state = one_reply(capsys.readouterr().out)
-    return code, {
-        "run": run,
-        "household": [one for one in final["runs"] if one is not run],
-        "pass_warnings": final["pass_warnings"],
-        "pass": final["pass"],
-        "lock": api._lock_payload(Path(held)) if held else None,
-        "state": state if state_code == 0 else None,
-        "list": {key: listed[key] for key in ("engagements", "households", "misfits", "root")},
-        "warnings": state.get("warnings", []),
-    }
 
 
 # ------------------------------------------------------------- the contract ----
@@ -446,25 +324,6 @@ def test_create_will_not_overwrite_an_existing_engagement(capsys, demo_root):
 
 
 # ----------------------------------------------------------- create + scan ----
-
-
-def sample_engagement(capsys, demo_root, tmp_path, *names):
-    """A 1040 engagement created through the API with sample documents dropped in."""
-    from tests.samples import build_samples
-
-    # The pile is addressed to the two people the samples name, so the
-    # return lists them (decision 128) exactly as the office's would.
-    spec = {"household": HOUSEHOLD, "return_name": "Smith Family 2025", "form": "1040", "client": "John Smith",
-            "people": SAMPLE_PEOPLE,
-            "items": [t for t in api.FORM_TEMPLATES["1040"] if t["core"]]}
-    assert run(capsys, "create", stdin=spec)[0] == 0
-    engagement = where(demo_root, "Smith Family 2025")
-    samples = tmp_path / "samples"
-    build_samples(samples)
-    for sample in samples.iterdir():
-        if not names or sample.name in names:
-            (inbox_of(engagement) / sample.name).write_bytes(sample.read_bytes())
-    return engagement
 
 
 def test_create_then_scan_plays_a_whole_engagement_end_to_end(capsys, demo_root, tmp_path):
@@ -4513,8 +4372,6 @@ def test_the_sharing_words_are_the_apis_and_the_renderer_types_none(capsys, demo
     """Every word of the checklist, the two lines about the firm's word and
     the sentence about a return left unticked is Python's; the page shows
     what it is handed and types none of it (decision 126)."""
-    from tests.test_single_source import read
-
     words = api._vocab()["household"]
     assert words["sharing_heading"] == api.SHARING_HEADING
     assert words["sharing_note"] == api.SHARING_NOTE
@@ -4523,8 +4380,8 @@ def test_the_sharing_words_are_the_apis_and_the_renderer_types_none(capsys, demo
     assert words["not_yet_shared_line"] == api.NOT_YET_SHARED_LINE
     assert words["rollover_unticked"] == api.ROLLOVER_UNTICKED_NOTE
 
-    js = read("app/renderer/app.js")
-    html = read("app/renderer/index.html")
+    js = read("app.js")
+    html = read("index.html")
     for literal in (*api.SHARING_CHECKLIST, api.SHARING_HEADING, api.SHARING_NOTE,
                     api.MARK_SHARED_LABEL, api.SHARED_ON_LINE, api.NOT_YET_SHARED_LINE,
                     api.SHARE_LINK_FIRST, api.ROLLOVER_UNTICKED_NOTE):
@@ -4628,7 +4485,6 @@ def test_propose_spellings_is_a_read_and_the_renderer_types_no_kind_label_or_not
     """The twenty-third command proposes and records nothing: what a return
     matches on is what somebody ticked. And every word the People block and
     the card show is the API's - the page types none of them."""
-    from tests.test_single_source import read
     from tracker import review
     from tracker.records import PERSON_KIND_LABELS, PERSON_KINDS
 
@@ -4644,8 +4500,8 @@ def test_propose_spellings_is_a_read_and_the_renderer_types_no_kind_label_or_not
     assert [k["value"] for k in words["kinds"]] == list(PERSON_KINDS)
     assert [k["label"] for k in words["kinds"]] == [PERSON_KIND_LABELS[k] for k in PERSON_KINDS]
 
-    js = read("app/renderer/app.js")
-    html = read("app/renderer/index.html")
+    js = read("app.js")
+    html = read("index.html")
     # Every phrase of the block and the card, from its owner. The one-word
     # labels are not pinned here - "Who" and "Name" are English as much as
     # they are labels, and a guard that fails on a comment teaches nobody;
@@ -8871,7 +8727,7 @@ def test_a_real_firm_replys_paths_reveal_a_firm_file_and_refuse_an_unreported_on
         capsys, demo_root, tmp_path):
     """Ruling 15 end to end: the firm reply's ``paths`` through the real
     ``app/main.js`` under node (which learns a reply's top-level ``paths``)."""
-    from tests.test_shell_menu import _run
+    from tests.node_harness import run_menu
 
     engagement, _state, firm = _firm_of_a_scanned_pile(capsys, demo_root, tmp_path)
     [one] = [f for f in firm["files"] if f["open_key"].startswith("shown_copy ")][:1]
@@ -8879,7 +8735,7 @@ def test_a_real_firm_replys_paths_reveal_a_firm_file_and_refuse_an_unreported_on
     stranger = str(engagement / "Prepared" / "never reported.pdf")
     steps = [{"tracker": ["list"]}, {"open": [path, "reveal"]}, {"open": [path]},
              {"open": [stranger, "reveal"]}]
-    ran = _run(tmp_path, steps, pathKinds=api.PATH_KINDS, paths=firm["paths"])
+    ran = run_menu(tmp_path, steps, pathKinds=api.PATH_KINDS, paths=firm["paths"])
     assert ran["revealed"] == [path] and ran["opened"] == []
     assert ran["answers"][0] == "" and ran["answers"][1] != "" and ran["answers"][2] != ""
 
@@ -9683,7 +9539,7 @@ def test_a_real_state_paths_still_opens_a_parked_pdfs_review_copy_through_the_sh
     """Review 2, F1 end to end: the real reply's ``paths`` (in its own order)
     and the API's kinds through the real ``app/main.js`` - the card's plain
     Open opens the review copy, and reveal still shows it."""
-    from tests.test_shell_menu import _run
+    from tests.node_harness import run_menu
 
     state, parked = _parked_read_pdf_state(capsys, demo_root, tmp_path)
     review = state["paths"][parked["open_key"]]
@@ -9692,7 +9548,7 @@ def test_a_real_state_paths_still_opens_a_parked_pdfs_review_copy_through_the_sh
     scenario = {"pathKinds": api.PATH_KINDS, "paths": state["paths"]}
     steps = [{"tracker": ["list"]}, {"open": [review]}, {"open": [review, "reveal"]},
              {"open": [shown]}, {"open": [shown, "reveal"]}]
-    ran = _run(tmp_path, steps, **scenario)
+    ran = run_menu(tmp_path, steps, **scenario)
     assert ran["opened"] == [review], "a plain open of the review copy opens it"
     assert ran["revealed"] == [review, shown]
     assert ran["answers"] == ["", "", "Not Opened; It Has Changed", ""]
@@ -9731,29 +9587,6 @@ def test_the_short_reason_and_the_section_words_are_capitalised_as_jason_asked()
 
 
 # ----------------------------------------- Title Case for every drawn word (Jason, 2026-09-29) ----
-
-_SMALL = frozenset("a an the and but or nor for of on in to by at as up vs".split())
-
-
-def title_case(text: str) -> str:
-    """The one rule, stdlib only: every word capital except a, an, the, and,
-    but, or, nor, for, of, on, in, to, by, at, as, up, vs when neither first
-    nor last; each part of a hyphenated word; the first word after a colon or
-    semicolon. Placeholders, numbers and ALL-CAPS tokens are left alone."""
-    words = text.split(" ")
-    out, after_stop = [], True
-    for i, word in enumerate(words):
-        core = re.sub(r"^\W+|\W+$", "", word)
-        forced = i == 0 or i == len(words) - 1 or after_stop
-        after_stop = word.endswith((":", ";"))
-        if not core or re.search(r"[{}0-9]", word) or (core.isupper() and len(core) > 1):
-            out.append(word)
-        elif not forced and core.lower() in _SMALL:
-            out.append(word[:1].lower() + word[1:])
-        else:
-            out.append("-".join(re.sub(r"[A-Za-z]", lambda m: m.group().upper(), part, count=1)
-                                for part in word.split("-")))
-    return " ".join(out)
 
 
 def test_the_title_case_rule_does_what_jason_wrote():
@@ -10040,14 +9873,14 @@ def test_every_file_a_firm_reply_opens_is_in_the_fingerprint_and_never_the_statu
     from tracker.layout import CLIENTS_TREE
 
     judged = api.FIRM_JUDGED
-    for where in opened:
-        assert where.name != VIEW_FILENAME
+    for place in opened:
+        assert place.name != VIEW_FILENAME
         # Its names below its household's folder, in the tree it is in: the
         # place must be in one of the household's two folders, and never one
         # the fingerprint leaves out.
-        tree, _household, *below = where.relative_to(demo_root.resolve()).parts
-        assert tree in (PRIVATE_TREE, CLIENTS_TREE) and below, where
-        assert not firm_cache._at(judged.private_left_out, tuple(below)), where
+        tree, _household, *below = place.relative_to(demo_root.resolve()).parts
+        assert tree in (PRIVATE_TREE, CLIENTS_TREE) and below, place
+        assert not firm_cache._at(judged.private_left_out, tuple(below)), place
 
 
 @pytest.mark.parametrize("dropped", ["a file", "a folder holding a file"])
@@ -10436,12 +10269,12 @@ def test_importing_the_api_opens_no_file_but_the_programs_own():
         os.path.realpath(REPO / "tracker"), os.path.realpath(TRIPWIRE_DIR)]
     on_the_path = {os.path.realpath(entry or REPO) for entry in said["path"]}
     strays = []
-    for event, where in said["seen"]:
-        real = os.path.realpath(os.path.join(REPO, where))
+    for event, place in said["seen"]:
+        real = os.path.realpath(os.path.join(REPO, place))
         if event != "open" and real in on_the_path:
             continue
         if not any(real == root or real.startswith(root + os.sep) for root in own):
-            strays.append((event, where))
+            strays.append((event, place))
     assert strays == []
 
 

@@ -5,8 +5,8 @@ what a page does is made by lifting the functions that do it out of the
 renderer's scripts, as written, and running them in node against fakes of what
 the page provides (a small DOM, the app's ``call``, the engine's replies).
 ``test_shell`` grew the runners (``run_shell``, ``run_pages``,
-``run_pages_dom`` and their kin) and its siblings borrowed them (``from
-tests.test_shell import run_pages``); they live here so the borrowing names a
+``run_pages_dom`` and their kin) and ``test_single_source`` imported one from it;
+they live here so the borrowing names a
 module that is not a test file (SPEC-architecture E-4, R2.1). Moved with their
 words from ``tests/test_shell.py``; each runner keeps the fakes and the
 function lists it always had.
@@ -771,3 +771,206 @@ def content() -> dict:
     begin, end = "// PILOT-CONTENT-BEGIN\n", "// PILOT-CONTENT-END"
     assert text.count(begin) == 1 and text.count(end) == 1
     return json.loads(text.split(begin)[1].split(end)[0])
+
+
+#: The real main.js under node with Electron stood in for: the menu it sets and
+#: the pop-ups it opens are recorded as plain data (a label, whether it is
+#: enabled, its accelerator, its role), items are "clicked" by label, and the
+#: tracker child process is a fake that answers ``list`` with a vocabulary. A
+#: scenario is a list of steps; the harness prints what happened.
+MENU_HARNESS = r"""
+const Module = require("module");
+const EventEmitter = require("events");
+const realFs = require("fs");
+const [mainJs, scenarioJson] = process.argv.slice(2);
+const sc = JSON.parse(scenarioJson);
+// Off Windows the fallback is Electron's userData; "win32" is %LOCALAPPDATA%.
+Object.defineProperty(process, "platform", { value: sc.platform || "linux" });
+// A Mac is refused below Apple silicon and macOS 14 (SPEC-mac R6), so a scenario
+// that stands in for one says which chip and which Darwin release it has.
+if (sc.arch) Object.defineProperty(process, "arch", { value: sc.arch });
+if (sc.release) require("os").release = () => sc.release;
+if (sc.localAppData !== undefined) process.env.LOCALAPPDATA = sc.localAppData;
+process.resourcesPath = process.resourcesPath || "/resources";
+const log = { menus: [], popups: [], sends: [], opened: [], revealed: [], answers: [], backgrounds: [], windowOptions: null,
+              userModelIds: [], spawned: [] };
+let openHandler = null;
+let menuHandler = null;
+let trackerHandler = null;
+let updated = null;
+const theme = { shouldUseDarkColors: !!sc.dark, shouldUseHighContrastColors: !!sc.contrast,
+                themeSource: "", on(name, fn) { if (name === "updated") updated = fn; } };
+const snapshot = (items) => items.map((i) => ({
+  label: i.label, type: i.type, role: i.role, enabled: i.enabled, accelerator: i.accelerator, checked: i.checked,
+  submenu: i.submenu ? snapshot(i.submenu) : undefined }));
+let live = { bar: null, popup: null };
+// What main.js has started and not yet seen finish: Electron's ready, a fake
+// tracker child until it closes, a file check (fs.promises). The harness waits
+// for this to reach nought, never for a fixed time: a busy PC (12 test files at
+// once) once took longer than the 60 ms it used to wait for a file check (P200).
+let pending = 0;
+const track = (promise) => {
+  pending += 1;
+  const done = () => { pending -= 1; };
+  promise.then(done, done);
+  return promise;
+};
+// Every continuation of a settled promise runs before the next turn of the
+// event loop, so a turn with nothing pending means main.js has done answering.
+const settle = async () => {
+  do { await new Promise((resolve) => setImmediate(resolve)); } while (pending > 0);
+};
+const win = {
+  isDestroyed: () => false,
+  getContentBounds: () => ({ width: 1400, height: 900 }),
+  setBackgroundColor: (c) => log.backgrounds.push(c),
+  loadFile() {}, on() {}, isMinimized: () => false, focus() {},
+  webContents: { setWindowOpenHandler() {}, on() {}, session: { flushStorageData() {} },
+                 send: (channel, message) => log.sends.push({ channel, message }) },
+};
+class BrowserWindow {
+  constructor(options) { log.windowOptions = options; return win; }
+  static getAllWindows() { return [win]; }
+}
+const electron = {
+  app: { isPackaged: !!sc.packaged, requestSingleInstanceLock: () => true, quit() {}, on() {},
+         setPath() {}, setAppUserModelId(id) { log.userModelIds.push(id); },
+         getPath: (name) => { if (name === "appData") return "appdata";
+                              if (!sc.userData) throw new Error("no such path"); return sc.userData; },
+         whenReady: () => track(Promise.resolve()) },
+  BrowserWindow,
+  Menu: {
+    buildFromTemplate: (template) => ({ template, popup(options) {
+      live.popup = template;
+      log.popups.push({ items: snapshot(template), options });
+    } }),
+    setApplicationMenu(menu) {
+      live.bar = menu.template;
+      log.menus.push(snapshot(menu.template));
+    },
+  },
+  ipcMain: { handle(name, fn) {
+               if (name === "tracker-cmd") trackerHandler = fn;
+               if (name === "open-path") openHandler = fn;
+             },
+             on(name, fn) { if (name === "menu") menuHandler = fn; } },
+  nativeTheme: theme,
+  shell: { openPath: async (p) => { log.opened.push(p); return ""; },
+           showItemInFolder: (p) => { log.revealed.push(p); } },
+  dialog: {},
+};
+const listReply = () => ({ vocab: { commands: ["list", "after-install"], menu: sc.vocabMenu,
+                                    path_kinds: sc.pathKinds,
+                                    shell: { error_log: sc.errorLog } }, paths: sc.paths });
+const fakeSpawn = (cmd, args) => {
+  const proc = new EventEmitter();
+  log.spawned.push(cmd);
+  proc.stdout = new EventEmitter();
+  proc.stdout.setEncoding = () => {};
+  proc.stderr = new EventEmitter();
+  if (args.includes("--resident")) {
+    // The engine (P276) stays up and answers the frame it is handed: a line {id, argv, bytes},
+    // then its reply and an end line. Never closed here, or the shell would log an engine's end.
+    let framed = Buffer.alloc(0);
+    proc.pid = 1;
+    proc.kill = () => {};
+    proc.stdin = { on() {}, end() {},
+      write(chunk) {
+        framed = Buffer.concat([framed, Buffer.from(chunk)]);
+        for (;;) {
+          const at = framed.indexOf(10);
+          if (at < 0) return true;
+          const head = JSON.parse(framed.slice(0, at).toString("utf8"));
+          if (framed.length - at - 1 < head.bytes) return true;       // the payload's bytes are part of the frame
+          framed = framed.slice(at + 1 + head.bytes);
+          pending += 1;
+          setImmediate(() => {
+            if (head.argv.includes("list")) proc.stdout.emit("data", JSON.stringify(listReply()) + "\n");
+            proc.stdout.emit("data", "\n" + JSON.stringify({ engine_end: head.id, code: 0, retiring: false }) + "\n");
+            pending -= 1;
+          });
+        }
+      } };
+    return proc;
+  }
+  proc.stdin = { write() {}, end() {}, on() {} };
+  proc.pid = 1;
+  proc.kill = () => {};
+  pending += 1;
+  setImmediate(() => {
+    if (args.includes("list")) proc.stdout.emit("data", JSON.stringify(listReply()) + "\n");
+    proc.emit("close", 0);
+    pending -= 1;
+  });
+  return proc;
+};
+const load = Module._load;
+Module._load = function (request, ...rest) {
+  if (request === "electron") return electron;
+  if (request === "child_process") return { spawn: fakeSpawn };
+  if (request === "fs") {
+    const promises = Object.fromEntries(Object.entries(realFs.promises).map(([name, fn]) =>
+      [name, typeof fn === "function" ? (...args) => track(fn.apply(realFs.promises, args)) : fn]));
+    return { ...realFs, promises, existsSync: () => true,
+      readFileSync(p, ...more) {
+        const base = String(p).split(/[\\/]/).pop();
+        if (base in (sc.css || {})) {
+          if (sc.css[base] === null) throw Object.assign(new Error("no such file"), { code: "ENOENT" });
+          return sc.css[base];
+        }
+        return realFs.readFileSync(p, ...more);
+      } };
+  }
+  return load.call(this, request, ...rest);
+};
+const items = (list, label) => {
+  for (const item of list) {
+    if (item.label === label) return item;
+    const inner = item.submenu && items(item.submenu, label);
+    if (inner) return inner;
+  }
+  return null;
+};
+(async () => {
+  require(mainJs);
+  await settle();
+  for (const step of sc.steps) {
+    if (step.menu !== undefined) {
+      menuHandler({ sender: step.stranger ? {} : win.webContents }, step.menu);
+    } else if (step.tracker) {
+      await trackerHandler({ sender: { isDestroyed: () => false, send() {} } }, step.tracker, undefined);
+    } else if (step.open) {
+      log.answers.push(await openHandler({}, ...step.open));
+    } else if (step.clickBar) {
+      const item = items(live.bar, step.clickBar);
+      if (item && item.click) item.click();
+    } else if (step.clickPopup) {
+      const item = items(live.popup, step.clickPopup);
+      if (item && item.click) item.click();
+    } else if (step.theme) {
+      Object.assign(theme, step.theme);
+      updated();
+    }
+    await settle();
+  }
+  process.stdout.write(JSON.stringify(log));
+})();
+"""
+
+
+def _node():
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node is not on PATH (CI installs it)")
+    return node
+
+
+def run_menu(tmp_path, steps, **scenario) -> dict:
+    harness = tmp_path / "menu_harness.js"
+    harness.write_text(MENU_HARNESS, encoding="utf-8", newline="\n")
+    done = subprocess.run(
+        [_node(), str(harness), str(REPO / "app" / "main.js"),
+         json.dumps({"steps": steps, **scenario})],
+        capture_output=True, text=True, encoding="utf-8", timeout=60, check=False)
+    assert done.returncode == 0, done.stderr
+    return json.loads(done.stdout)

@@ -643,3 +643,34 @@ def msg_bytes(attachments: list[dict]) -> bytes:
     tree = msg_storage(attachments)
     tree["__substg1.0_1000001F"] = "Please find attached.".encode("utf-16-le")
     return cfb_bytes(tree)
+
+
+def photo(path, words: str = "Form W-2 Wage and Tax Statement", size=(900, 200)):
+    """A photo of a document, in a form's own words."""
+    from PIL import Image, ImageDraw, ImageFont
+
+    image = Image.new("RGB", size, "white")
+    ImageDraw.Draw(image).text(
+        (20, 60), words, font=ImageFont.load_default(size=40), fill="black",
+    )
+    image.save(path)
+    return path
+
+
+NL = chr(10)
+
+#: What a skewed OCR copy puts in the title zone: nothing a form says.
+_SCAN_NOISE = NL.join(["iil ~~ .. | rn 1l :; 0O mmm ww ;; x"] * 14)
+#: The fact sheet's 24/2025: "W-2" dominating the first page and "wage and
+#: tax statement" beside it, the title zone noise, and the SSN label cut
+#: off at the box rule on every copy.
+LOST_ONE_PHRASE = NL.join([
+    _SCAN_NOISE,
+    "22222 Void a Employee's social security|",
+    "b Employer ID number (EIN) 1 Wages, tips, other compensation",
+    "c Employer's name, address, and ZIP code 3 Social security wages",
+    "W-2 Wage and Tax Statement 2025 Department of the Treasury-Internal Revenue Service",
+    "Copy B - To Be Filed With Employee's FEDERAL Tax Return",
+    "a Employee's social security|",
+    "W-2 Wage and Tax Statement 2025 Department of the Treasury-Internal Revenue Service",
+])

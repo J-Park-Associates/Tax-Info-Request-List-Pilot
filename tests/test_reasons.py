@@ -13,24 +13,18 @@ from pathlib import Path
 
 import pytest
 
+from tests.builders import sample_sentence
 from tracker import reasons
 from tracker.reasons import ALL, BY_CODE, FIRM_SIDE, GENERIC_ASK, HOLDS, PLAIN_CODES, Reason, Said
 
 REASONS_PY = Path(reasons.__file__)
 
 
-def _sample(reason: Reason) -> str:
-    return reason.template.format(**{
-        name: "x" for name in ("error", "extension", "allowed", "listed", "pattern")
-    } | {"size_kb": 1.0, "minimum": 5, "size": "300 MB", "minutes": "10 minutes",
-         "kind": "an email", "spelling": "x", "label": "x"})
-
-
 @pytest.mark.parametrize("reason", ALL, ids=lambda r: r.code)
 def test_every_marker_is_part_of_its_own_sentence(reason: Reason):
     """The marker is what the review card names a refusal by, so it is a
     literal part of the sentence the scanner writes."""
-    assert reason.marker.lower() in _sample(reason).lower()
+    assert reason.marker.lower() in sample_sentence(reason).lower()
 
 
 def test_codes_are_unique():

@@ -3,7 +3,7 @@
   "generated": "2026-10-13",
   "generator": "tools/repo_map.py",
   "generator_sha256": "a394d7104da5155d",
-  "module_table_sha256": "78533eeb8d3797a0",
+  "module_table_sha256": "37c31e7dafcbe719",
   "pipeline": [
     "tracker.api / create",
     "tracker.scaffold",
@@ -15,9 +15,9 @@
     "a person sends the draft"
   ],
   "counts": {
-    "nodes": 311,
-    "edges": 1369,
-    "reused": 253
+    "nodes": 316,
+    "edges": 1384,
+    "reused": 0
   },
   "node_types": [
     "artifact",
@@ -4645,8 +4645,8 @@
       "id": "docs/repo-map.curated.json",
       "type": "file",
       "layer": "docs",
-      "sha256": "7111209799fddc24",
-      "lines": 1345,
+      "sha256": "a95df58be4d92e54",
+      "lines": 1365,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
     },
@@ -4672,15 +4672,15 @@
       "id": "docs/tools.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "334499e014245308",
-      "lines": 179
+      "sha256": "6291a0081b494061",
+      "lines": 184
     },
     {
       "id": "docs/vocab-coverage.json",
       "type": "file",
       "layer": "docs",
-      "sha256": "42b70ac2a630ca6d",
-      "lines": 9415,
+      "sha256": "ca6c619895982f7a",
+      "lines": 9416,
       "role": "The coverage report as data, with the SHA-256 of every input it was built from; `check` and the suite compare against these. Generated; never edited by hand."
     },
     {
@@ -5862,11 +5862,33 @@
       "role": "The store (decision 101): one SQLite file per account, every row keyed by its clients root, in the tracker's data home (`settings.data_home()`, decision 186) on the designated machine's local disk, never beside the program or in a checkout, holding every engagement's requests, statuses, learned keywords, index rows, details and journal events under that root - all folded from each engagement's journal and from nothing else - and, since decision 107, the tier-3 verdict cache (the verdicts and the file memos), which is the one thing in it that is not a derivation of the journal: a rebuild leaves it empty and the next pass reads each document once. NEVER under the clients root and never in an engagement folder - those sync, and a synced database file is a corrupted database file. Written by tracker/store.py, and through it by the filer, the scanner and the manifest's two writes; read, through the store, by every reader of the index, the request list and the details. Disposable all the same - delete it and every fact it held is still in the journals - so it is never backed up, never synced and a person never opens it. One connection per process (connect(), close()), to the file in the data home unless TRACKER_STORE names another; the suite sets that per test. At the user_version `tracker/store.py` declares as `SCHEMA_VERSION`, raised by decisions 104 (the workbook's digest column went), 107 (the verdict cache's two tables), 116 (`override_reason`), 117 (the Filing Deadline column) 119 (the `intents` table) and later decisions, 143 the last (the documents' `container` column); a file at any other version is refused by name rather than opened, and an earlier one is deleted and rebuilt from the journals."
     },
     {
+      "id": "tests/api_driver.py",
+      "type": "test",
+      "layer": "tests",
+      "sha256": "9a515099aaf05b65",
+      "lines": 171,
+      "exports": [
+        "HOUSEHOLD",
+        "PEOPLE",
+        "SAMPLE_PEOPLE",
+        "one_reply",
+        "run",
+        "sample_engagement",
+        "scan",
+        "where"
+      ],
+      "constants": {
+        "HOUSEHOLD": "'Test Household'"
+      },
+      "role": "The command line as main.js drives it: run(capsys, *argv) calls api.main and reads the one JSON reply back (a create spec that names no household is given the suite's, an edit carries the list's version), scan() is Sort & Scan as the app runs it, sample_engagement() is a 1040 created through the API with the sample pile dropped in, and where() is the return a spec named, from the layout.",
+      "notes": "SPEC-architecture J2 (R2.1, E-4). Moved with their words from tests/test_api.py, which test_shell and test_rollover borrowed run, scan and sample_engagement from; the household, the people and where() they lean on went with them, and test_api imports them back by name."
+    },
+    {
       "id": "tests/builders.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "12ea8e5b2ed78702",
-      "lines": 343,
+      "sha256": "5538db233d8509d4",
+      "lines": 340,
       "exports": [
         "BUSINESS",
         "CANONICAL_BELOW",
@@ -5899,6 +5921,7 @@
         "no_room_return",
         "original_at",
         "parked_row",
+        "sample_sentence",
         "tight_return",
         "with_the_long_period"
       ],
@@ -5951,8 +5974,8 @@
       "id": "tests/children.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "ecc9e67ff1cfcc88",
-      "lines": 138,
+      "sha256": "499f487df9261639",
+      "lines": 137,
       "exports": [
         "CRASHED",
         "PROC",
@@ -6069,8 +6092,8 @@
       "id": "tests/css_rules.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "b8315dcd6e0cad42",
-      "lines": 131,
+      "sha256": "f6ad641ccbd4718d",
+      "lines": 130,
       "exports": [
         "COLOUR",
         "COLOUR_PROPS",
@@ -6092,11 +6115,24 @@
       "notes": "SPEC-architecture J2 (R2.1, E-4). Moved with their words from tests/test_pilot_ui.py, which test_shell borrowed them from. app/renderer/pilot-ui.css redefines the look by overriding style.css, so what can be pinned is what the file may and may not contain."
     },
     {
+      "id": "tests/import_graph.py",
+      "type": "test",
+      "layer": "tests",
+      "sha256": "181a4deddfe25a76",
+      "lines": 75,
+      "exports": [
+        "PACKAGE",
+        "import_edges"
+      ],
+      "role": "The package's imports as the layer table reads them: import_edges() says, for every module of tracker/, which modules it imports at load time and which only when a function or a __main__ block runs.",
+      "notes": "SPEC-architecture J2 (R2.1, E-4). Moved with their words from tests/test_layers.py, which test_records and test_single_source borrowed import_edges and _is_main_guard from; PACKAGE and the helpers they lean on went with them, and test_layers imports them back. They read tracker/*.py without descending into folders, as the layer guards did; SPEC-architecture J3 widens that."
+    },
+    {
       "id": "tests/node_harness.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "eb38c664cb1970b8",
-      "lines": 773,
+      "sha256": "d51985c5c5ac8119",
+      "lines": 976,
       "exports": [
         "COLUMN_FUNCTIONS",
         "EARLY_FIRM",
@@ -6113,6 +6149,7 @@
         "LAST_COUNTS",
         "LONG_LIST_FUNCTIONS",
         "LONG_SETUP",
+        "MENU_HARNESS",
         "NODE",
         "NOTICE_FUNCTIONS",
         "PAGES_CONSTS",
@@ -6137,6 +6174,7 @@
         "run_last_counts",
         "run_lists",
         "run_long",
+        "run_menu",
         "run_notices",
         "run_pages",
         "run_pages_dom",
@@ -6165,16 +6203,17 @@
         "FIRM_LOAD_FUNCTIONS": "('el', 'h', 'screenWords', 'shellAdopt', 'shellAskFirmNow', 'shellDropEarlyFirm', 'shellAskFirmLast', 'shellLastOf', 'shellShowLast', 'takeReply', 'shellAdoptEarly', 'shellAskFirm', 'shellFirmSent', 'shellFirmAsk', 'shellFirmList', 'shellFirmMerge', 'shellFirmShaped', 'shellFirmHolds', 'shellFirmBrought', 'shellFirmFollow', 'shellTurnDone', 'shellTurnFirm', 'pagesListOf', 'pagesAdopt', 'shellFirmDone', 'shellFirmTookLong', 'shellWriteLanded', 'shellFirmProgress', 'shellReading', 'shellReadingNodes', 'shellSetReading', 'shellDrawReading', 'shellLoadFirm', 'shellFollowsCounts', 'shellFirmUpdating', 'shellUpdating', 'shellMarkUpdating', 'shellStateArrived', 'shellPageReadsState', 'shellCountsDiffer')",
         "FIRM_PAGE": "'\\nconst timers = [];\\nconst setTimeout = (fn, ms) => { timers.push({ fn, ms }); return timers.length; };\\nconst clearTimeout = (id) => { if (id && timers[id - 1]) timers[id - 1].fn = null; };\\nconst waiting = () => timers.filter((one) => one.fn).map((one) => one.ms);\\nconst passTime = () => { for (const one of timers) if (one.fn) { const fn = one.fn; one.fn = null; fn(); } };\\nconst pagesDraw = (route, page) => {\\n  const figure = new El(\"b\"); figure.className = \"figure-number\"; figure.append(\"3\");\\n  const row = new El(\"div\"); row.className = \"row\"; row.append(\"a row\");\\n  page.replaceChildren(figure, row);\\n  page.dataset.list = pagesListOf(route);\\n};\\nconst routeTitle = () => \"\";\\nconst pagesLeave = () => {};\\nlet shellPageFailed = false;\\nconst shellDraw = () => { drawn.push(shellRoute.level); drawCounts(); drawPage(); };\\nshellChanged = () => drawCounts();\\nconst sides = [0, 1].map(() => { const side = new El(\"button\"); side.dataset.section = \"overview\"; const count = new El(\"span\"); count.className = \"side-count\"; side.append(count); return side; });\\ndocument.querySelectorAll = (selector) => (selector === \".side-section[data-section]\" ? sides : []);\\nconst shellCounts = () => ({ overview: 3 });\\n// index.html\\'s one status for \"Updating\": every time its words are set is\\n// counted, since a status set again is read out again.\\nlet saidSet = 0;\\nObject.defineProperty($(\"page-updating\"), \"textContent\", {\\n  get() { return this.kids.map((one) => one.textContent).join(\"\"); },\\n  set(value) { saidSet += 1; this.replaceChildren(String(value)); },\\n});\\nconst looks = () => {\\n  const page = $(\"page\");\\n  return { busy: page.getAttribute(\"aria-busy\"), updating: page.classList.contains(\"is-updating\"),\\n           said: $(\"page-updating\").textContent, saidSet,\\n           rows: page.children.map((one) => one.className),\\n           inPage: page.byClass(\"page-updating\").length,\\n           held: sides.map((one) => one.byClass(\"side-count\")[0].classList.contains(\"is-held\")),\\n           reading: page.byClass(\"firm-reading-words\").map((one) => one.textContent),\\n           bars: page.find((one) => one.getAttribute(\"role\") === \"progressbar\").map((one) =>\\n             [one.getAttribute(\"aria-valuenow\"), one.getAttribute(\"aria-valuemax\"), one.getAttribute(\"aria-labelledby\")]),\\n           hidden: page.byClass(\"visually-hidden\").map((one) => one.textContent) };\\n};\\n'",
         "FIRM_PAGE_FUNCTIONS": "('drawPage', 'shellLoading', 'shellSkeleton', 'drawTitleOnly', 'drawCounts')",
-        "LONG_SETUP": "'\\nconst hideTip = () => {}; const showTipNow = () => {};\\nlet H = 40;\\nObject.defineProperty(Element.prototype, \"offsetHeight\", { get() { return H; }, configurable: true });\\nconst pageBox = new Element(\"div\");\\npageBox.scrollTop = 0; pageBox.clientHeight = 800; pageBox.getBoundingClientRect = () => ({ top: 0 });\\nconst $ = (id) => (id === \"page\" ? pageBox : null);\\nconst parkedFiles = (n, extra = () => ({})) => Array.from({ length: n }, (_, i) => parked(`f${String(i + 1).padStart(4, \"0\")}`, extra(i)));\\nconst draw = (index, items = []) => {\\n  lastState = stateOf(items, index);\\n  pagesUid = 0; pagesTokens.clear(); pagesBroken = [];\\n  pageBox.replaceChildren(...pagesReturn({ level: \"return\", ret: \"r1\", year: 2025 }));\\n  pageBox.scrollTop = 0;\\n  for (const list of pageBox.querySelectorAll(\".rows.is-virtual\")) list.getBoundingClientRect = () => ({ top: 100 - pageBox.scrollTop });\\n  pagesVirtualMeasure(pageBox);\\n  return pageBox.querySelectorAll(\".rows.is-virtual\")[0];\\n};\\nconst scrollTo = (top) => { pageBox.scrollTop = top; pagesVirtualPlaceAll(pageBox); };\\n'"
+        "LONG_SETUP": "'\\nconst hideTip = () => {}; const showTipNow = () => {};\\nlet H = 40;\\nObject.defineProperty(Element.prototype, \"offsetHeight\", { get() { return H; }, configurable: true });\\nconst pageBox = new Element(\"div\");\\npageBox.scrollTop = 0; pageBox.clientHeight = 800; pageBox.getBoundingClientRect = () => ({ top: 0 });\\nconst $ = (id) => (id === \"page\" ? pageBox : null);\\nconst parkedFiles = (n, extra = () => ({})) => Array.from({ length: n }, (_, i) => parked(`f${String(i + 1).padStart(4, \"0\")}`, extra(i)));\\nconst draw = (index, items = []) => {\\n  lastState = stateOf(items, index);\\n  pagesUid = 0; pagesTokens.clear(); pagesBroken = [];\\n  pageBox.replaceChildren(...pagesReturn({ level: \"return\", ret: \"r1\", year: 2025 }));\\n  pageBox.scrollTop = 0;\\n  for (const list of pageBox.querySelectorAll(\".rows.is-virtual\")) list.getBoundingClientRect = () => ({ top: 100 - pageBox.scrollTop });\\n  pagesVirtualMeasure(pageBox);\\n  return pageBox.querySelectorAll(\".rows.is-virtual\")[0];\\n};\\nconst scrollTo = (top) => { pageBox.scrollTop = top; pagesVirtualPlaceAll(pageBox); };\\n'",
+        "MENU_HARNESS": "'\\nconst Module = require(\"module\");\\nconst EventEmitter = require(\"events\");\\nconst realFs = require(\"fs\");\\nconst [mainJs, scenarioJson] = process.argv.slice(2);\\nconst sc = JSON.parse(scenarioJson);\\n// Off Windows the fallback is Electron\\'s userData; \"win32\" is %LOCALAPPDATA%.\\nObject.defineProperty(process, \"platform\", { value: sc.platform || \"linux\" });\\n// A Mac is refused below Apple silicon and macOS 14 (SPEC-mac R6), so a scenario\\n// that stands in for one says which chip and which Darwin release it has.\\nif (sc.arch) Object.defineProperty(process, \"arch\", { value: sc.arch });\\nif (sc.release) require(\"os\").release = () => sc.release;\\nif (sc.localAppData !== undefined) process.env.LOCALAPPDATA = sc.localAppData;\\nprocess.resourcesPath = process.resourcesPath || \"/resources\";\\nconst log = { menus: [], popups: [], sends: [], opened: [], revealed: [], answers: [], backgrounds: [], windowOptions: null,\\n              userModelIds: [], spawned: [] };\\nlet openHandler = null;\\nlet menuHandler = null;\\nlet trackerHandler = null;\\nlet updated = null;\\nconst theme = { shouldUseDarkColors: !!sc.dark, shouldUseHighContrastColors: !!sc.contrast,\\n                themeSource: \"\", on(name, fn) { if (name === \"updated\") updated = fn; } };\\nconst snapshot = (items) => items.map((i) => ({\\n  label: i.label, type: i.type, role: i.role, enabled: i.enabled, accelerator: i.accelerator, checked: i.checked,\\n  submenu: i.submenu ? snapshot(i.submenu) : undefined }));\\nlet live = { bar: null, popup: null };\\n// What main.js has started and not yet seen finish: Electron\\'s ready, a fake\\n// tracker child until it closes, a file check (fs.promises). The harness waits\\n// for this to reach nought, never for a fixed time: a busy PC (12 test files at\\n// once) once took longer than the 60 ms it used to wait for a file check (P200).\\nlet pending = 0;\\nconst track = (promise) => {\\n  pending += 1;\\n  const done = () => { pending -= 1; };\\n  promise.then(done, done);\\n  return promise;\\n};\\n// Every continuation of a settled promise runs before the next turn of the\\n// event loop, so a turn with nothing pending means main.js has done answering.\\nconst settle = async () => {\\n  do { await new Promise((resolve) => setImmediate(resolve)); } while (pending > 0);\\n};\\nconst win = {\\n  isDestroyed: () => false,\\n  getContentBounds: () => ({ width: 1400, height: 900 }),\\n  setBackgroundColor: (c) => log.backgrounds.push(c),\\n  loadFile() {}, on() {}, isMinimized: () => false, focus() {},\\n  webContents: { setWindowOpenHandler() {}, on() {}, session: { flushStorageData() {} },\\n                 send: (channel, message) => log.sends.push({ channel, message }) },\\n};\\nclass BrowserWindow {\\n  constructor(options) { log.windowOptions = options; return win; }\\n  static getAllWindows() { return [win]; }\\n}\\nconst electron = {\\n  app: { isPackaged: !!sc.packaged, requestSingleInstanceLock: () => true, quit() {}, on() {},\\n         setPath() {}, setAppUserModelId(id) { log.userModelIds.push(id); },\\n         getPath: (name) => { if (name === \"appData\") return \"appdata\";\\n                              if (!sc.userData) throw new Error(\"no such path\"); return sc.userData; },\\n         whenReady: () => track(Promise.resolve()) },\\n  BrowserWindow,\\n  Menu: {\\n    buildFromTemplate: (template) => ({ template, popup(options) {\\n      live.popup = template;\\n      log.popups.push({ items: snapshot(template), options });\\n    } }),\\n    setApplicationMenu(menu) {\\n      live.bar = menu.template;\\n      log.menus.push(snapshot(menu.template));\\n    },\\n  },\\n  ipcMain: { handle(name, fn) {\\n               if (name === \"tracker-cmd\") trackerHandler = fn;\\n               if (name === \"open-path\") openHandler = fn;\\n             },\\n             on(name, fn) { if (name === \"menu\") menuHandler = fn; } },\\n  nativeTheme: theme,\\n  shell: { openPath: async (p) => { log.opened.push(p); return \"\"; },\\n           showItemInFolder: (p) => { log.revealed.push(p); } },\\n  dialog: {},\\n};\\nconst listReply = () => ({ vocab: { commands: [\"list\", \"after-install\"], menu: sc.vocabMenu,\\n                                    path_kinds: sc.pathKinds,\\n                                    shell: { error_log: sc.errorLog } }, paths: sc.paths });\\nconst fakeSpawn = (cmd, args) => {\\n  const proc = new EventEmitter();\\n  log.spawned.push(cmd);\\n  proc.stdout = new EventEmitter();\\n  proc.stdout.setEncoding = () => {};\\n  proc.stderr = new EventEmitter();\\n  if (args.includes(\"--resident\")) {\\n    // The engine (P276) stays up and answers the frame it is handed: a line {id, argv, bytes},\\n    // then its reply and an end line. Never closed here, or the shell would log an engine\\'s end.\\n    let framed = Buffer.alloc(0);\\n    proc.pid = 1;\\n    proc.kill = () => {};\\n    proc.stdin = { on() {}, end() {},\\n      write(chunk) {\\n        framed = Buffer.concat([framed, Buffer.from(chunk)]);\\n        for (;;) {\\n          const at = framed.indexOf(10);\\n          if (at < 0) return true;\\n          const head = JSON.parse(framed.slice(0, at).toString(\"utf8\"));\\n          if (framed.length - at - 1 < head.bytes) return true;       // the payload\\'s bytes are part of the frame\\n          framed = framed.slice(at + 1 + head.bytes);\\n          pending += 1;\\n          setImmediate(() => {\\n            if (head.argv.includes(\"list\")) proc.stdout.emit(\"data\", JSON.stringify(listReply()) + \"\\\\n\");\\n            proc.stdout.emit(\"data\", \"\\\\n\" + JSON.stringify({ engine_end: head.id, code: 0, retiring: false }) + \"\\\\n\");\\n            pending -= 1;\\n          });\\n        }\\n      } };\\n    return proc;\\n  }\\n  proc.stdin = { write() {}, end() {}, on() {} };\\n  proc.pid = 1;\\n  proc.kill = () => {};\\n  pending += 1;\\n  setImmediate(() => {\\n    if (args.includes(\"list\")) proc.stdout.emit(\"data\", JSON.stringify(listReply()) + \"\\\\n\");\\n    proc.emit(\"close\", 0);\\n    pending -= 1;\\n  });\\n  return proc;\\n};\\nconst load = Module._load;\\nModule._load = function (request, ...rest) {\\n  if (request === \"electron\") return electron;\\n  if (request === \"child_process\") return { spawn: fakeSpawn };\\n  if (request === \"fs\") {\\n    const promises = Object.fromEntries(Object.entries(realFs.promises).map(([name, fn]) =>\\n      [name, typeof fn === \"function\" ? (...args) => track(fn.apply(realFs.promises, args)) : fn]));\\n    return { ...realFs, promises, existsSync: () => true,\\n      readFileSync(p, ...more) {\\n        const base = String(p).split(/[\\\\\\\\/]/).pop();\\n        if (base in (sc.css || {})) {\\n          if (sc.css[base] === null) throw Object.assign(new Error(\"no such file\"), { code: \"ENOENT\" });\\n          return sc.css[base];\\n        }\\n        return realFs.readFileSync(p, ...more);\\n      } };\\n  }\\n  return load.call(this, request, ...rest);\\n};\\nconst items = (list, label) => {\\n  for (const item of list) {\\n    if (item.label === label) return item;\\n    const inner = item.submenu && items(item.submenu, label);\\n    if (inner) return inner;\\n  }\\n  return null;\\n};\\n(async () => {\\n  require(mainJs);\\n  await settle();\\n  for (const step of sc.steps) {\\n    if (step.menu !== undefined) {\\n      menuHandler({ sender: step.stranger ? {} : win.webContents }, step.menu);\\n    } else if (step.tracker) {\\n      await trackerHandler({ sender: { isDestroyed: () => false, send() {} } }, step.tracker, undefined);\\n    } else if (step.open) {\\n      log.answers.push(await openHandler({}, ...step.open));\\n    } else if (step.clickBar) {\\n      const item = items(live.bar, step.clickBar);\\n      if (item && item.click) item.click();\\n    } else if (step.clickPopup) {\\n      const item = items(live.popup, step.clickPopup);\\n      if (item && item.click) item.click();\\n    } else if (step.theme) {\\n      Object.assign(theme, step.theme);\\n      updated();\\n    }\\n    await settle();\\n  }\\n  process.stdout.write(JSON.stringify(log));\\n})();\\n'"
       },
       "role": "Runs the renderer's own JavaScript under node and reads its text: the runners (run_shell and run_pages lift named functions out of the scripts as written and run a probe against fakes; run_pages_dom adds a small DOM; run_notices, run_lists, run_speed, run_firm_load and the rest add the worlds their claims need), js_function and lift, which cut a function out of a script, and the renderer file reader read(name).",
-      "notes": "SPEC-architecture J2 (R2.1, E-4). tests/test_shell.py grew the runners and test_single_source.py borrowed one (from tests.test_shell import run_pages); they were moved here with their words and the fakes and function lists each always had, and the file reader every renderer test wrote for itself (test_pilot, test_pilot_ui) is read() here. The window is sandboxed and there is no browser in the gate, so a claim about what a page does is made by running its functions in node. Skipped where node is not on PATH (CI installs it). SPEC-architecture J2 (R2.3): js_function(name, file=None) is the one lifter. Seven had grown - test_shell's, two of test_single_source's (one cut to the matching brace, one to the body without its header), two of test_row_columns' (editorRow and a header-taking one) and two inline cuts in test_api - and each is now this: from function name( (or async function name() to the first line that is a closing brace on its own, header included. With file=None it searches RENDERER_SCRIPTS - every script index.html loads, never vendor/ - and asserts the name is defined exactly once, so a function two scripts define (show, fill and render are) has to say which; with a file it must be defined exactly once in that one. lift() keeps its meaning (the first script of SPEED_SOURCES that defines the name)."
+      "notes": "SPEC-architecture J2 (R2.1, E-4). tests/test_shell.py grew the runners and test_single_source.py borrowed one (from tests.test_shell import run_pages); they were moved here with their words and the fakes and function lists each always had, and the file reader every renderer test wrote for itself (test_pilot, test_pilot_ui) is read() here. The window is sandboxed and there is no browser in the gate, so a claim about what a page does is made by running its functions in node. Skipped where node is not on PATH (CI installs it)."
     },
     {
       "id": "tests/passes.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "3c3bc19522799dee",
+      "sha256": "390f04ab84593aca",
       "lines": 126,
       "exports": [
         "build_engagement",
@@ -6186,16 +6225,35 @@
       "notes": "SPEC-architecture J2 (R2.1, E-4). Moved with their words from tests/test_runner.py, which test_page_rows and test_shell borrowed them from. samples is a fixture: a test file that wants it names it once (samples = passes.samples) rather than importing it, because an imported fixture name that a test then takes as a parameter trips ruff's F811."
     },
     {
+      "id": "tests/routing_cases.py",
+      "type": "test",
+      "layer": "tests",
+      "sha256": "85186181bbdd0969",
+      "lines": 541,
+      "exports": [
+        "EXPECT",
+        "IRS",
+        "XLSX_CASES",
+        "cp_notice_lines",
+        "filed_to",
+        "ssa_1099_lines"
+      ],
+      "role": "What the suites that route documents share: the blank forms' placements (EXPECT, IRS), the workbook cases (XLSX_CASES and the sheets they are made of), the lines of two printed forms (the SSA-1099 and the IRS notice header) and filed_to(), which says where a routing filed a document in the expectations file's words.",
+      "notes": "SPEC-architecture J2 (R2.1, E-4, decision 70). tests/test_catalog.py, tests/test_irs_forms.py and tests/test_real_corpus.py stay the owners of their claims and still carry, by import, the names tools/vocab_report.py and tools/backtest.py import from them, so the tools are untouched; the pieces four other test files borrowed from them live here. tools/vocab_report.py hashes this file among its INPUT_PATHS, since a workbook case or a placement changes the report as a case in test_catalog.py does."
+    },
+    {
       "id": "tests/samples.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "46bf3aaa66faa621",
-      "lines": 645,
+      "sha256": "20630004c625fa76",
+      "lines": 676,
       "exports": [
         "BARE",
         "COLLATION_NAMES",
         "COLLATION_ORDER",
         "DEMO_ITEMS",
+        "LOST_ONE_PHRASE",
+        "NL",
         "PADDED",
         "PAGE",
         "PRIOR_YEAR",
@@ -6218,6 +6276,7 @@
         "listing_denied",
         "msg_bytes",
         "msg_storage",
+        "photo",
         "prior_return_lines",
         "scanned_1098_lines",
         "scanned_1099_int_lines",
@@ -6240,7 +6299,7 @@
         "BARE": "'bare'"
       },
       "role": "The pile of client documents the suite starts from, built from nothing: text_pdf() prints text or lines to a real PDF (one writer, three styles), sheet_xlsx() writes rows to a real workbook, and build_samples() assembles the drop folder a client would leave (a duplicate, last year's form, a Word file, a Google Sheets shortcut, a photo, a half-uploaded temp file).",
-      "notes": "No fixture files in the repository and no client data, so every test starts from the same pile. It was the marketing demo's sample builder in tracker/api.py; the demo went (decision 41) and the suite still needed the pile. listing_denied() makes a folder really unlistable for the running account, because rglob and os.walk reach the file system by different calls and a monkeypatch of one proves nothing about the other. Decision 73: sheet_xlsx() is how tests/test_catalog.py routes its workbook cases - half of every catalog asks for a schedule a client keeps in Excel, and a sheet is read as rows of tab-separated cells (a phrase across two cells is one phrase, a phrase down two rows is two labels), so typing one as prose would prove the wrong reading. Decision 78: build_scratch_root() assembles the same pile into a whole clients root - one scaffolded engagement with the documents already dropped - which is what .github/workflows/build.yml runs the frozen package over; the fixture lives beside the pile rather than in a tool of its own so there is one pile and not two that drift. It records the engagement through manifest.create_engagement() directly rather than through the suite's helper, because the build workflow imports this module without conftest (decision 104). openpyxl is imported here to WRITE a client's spreadsheet for the suite to read, which is the one use of it the tree keeps. The pile's 'file nobody accepts' is a .bmp since decision 127: it was a .jpg until a photo became a document, and the claim it carries is about a file type no row takes. Decision 143 added cfb_bytes(), a compound-file writer to the letter of [MS-CFB] (version 3, a mini stream, one FAT), and msg_bytes()/msg_storage() over it, so the suite's .msg fixtures are built from nothing - olefile only reads. Decision 169: scanned_pdf() draws lines on a page and saves a PDF with no text layer, and build_scratch_root() drops one (SCRATCH_SCAN, a W-2 whose box labels and figures are drawn as separate lines) so the frozen smoke check proves the package reads. SPEC-architecture J2 (R2.2): the suite's three hand-built PDF writers are this one text_pdf(path, text_or_lines, *, pages=1, style=...), and each style writes, byte for byte, what its writer wrote: 'page' (the default, from tests/test_scanner.py: a string split on its newlines or a list of lines, parentheses and backslashes escaped, any number of pages), 'padded' (the pile's own: a list of lines, the first 48, and an unreferenced 8 KB object so a file has a realistic size and a request with min_size_kb accepts it) and 'bare' (from tests/test_content_check.py: one ASCII string on one line, the smallest file with a text layer). Merging them into one 'better' file would have changed every size and count a test pins, which is why they stay styles; tests/test_samples.py pins each style's digest and size on three inputs taken from the old writers before they were deleted. write_pdf() (moved here from tests/test_validators.py) is the one writer that is not hand-built: pypdf's blank pages, locked when given a password."
+      "notes": "No fixture files in the repository and no client data, so every test starts from the same pile. It was the marketing demo's sample builder in tracker/api.py; the demo went (decision 41) and the suite still needed the pile. listing_denied() makes a folder really unlistable for the running account, because rglob and os.walk reach the file system by different calls and a monkeypatch of one proves nothing about the other. Decision 73: sheet_xlsx() is how tests/test_catalog.py routes its workbook cases - half of every catalog asks for a schedule a client keeps in Excel, and a sheet is read as rows of tab-separated cells (a phrase across two cells is one phrase, a phrase down two rows is two labels), so typing one as prose would prove the wrong reading. Decision 78: build_scratch_root() assembles the same pile into a whole clients root - one scaffolded engagement with the documents already dropped - which is what .github/workflows/build.yml runs the frozen package over; the fixture lives beside the pile rather than in a tool of its own so there is one pile and not two that drift. It records the engagement through manifest.create_engagement() directly rather than through the suite's helper, because the build workflow imports this module without conftest (decision 104). openpyxl is imported here to WRITE a client's spreadsheet for the suite to read, which is the one use of it the tree keeps. The pile's 'file nobody accepts' is a .bmp since decision 127: it was a .jpg until a photo became a document, and the claim it carries is about a file type no row takes. Decision 143 added cfb_bytes(), a compound-file writer to the letter of [MS-CFB] (version 3, a mini stream, one FAT), and msg_bytes()/msg_storage() over it, so the suite's .msg fixtures are built from nothing - olefile only reads. Decision 169: scanned_pdf() draws lines on a page and saves a PDF with no text layer, and build_scratch_root() drops one (SCRATCH_SCAN, a W-2 whose box labels and figures are drawn as separate lines) so the frozen smoke check proves the package reads. SPEC-architecture J2 (R2.2): the suite's three hand-built PDF writers are this one text_pdf(path, text_or_lines, *, pages=1, style=...), and each style writes, byte for byte, what its writer wrote: 'page' (the default, from tests/test_scanner.py: a string split on its newlines or a list of lines, parentheses and backslashes escaped, any number of pages), 'padded' (the pile's own: a list of lines, the first 48, and an unreferenced 8 KB object so a file has a realistic size and a request with min_size_kb accepts it) and 'bare' (from tests/test_content_check.py: one ASCII string on one line, the smallest file with a text layer). Merging them into one 'better' file would have changed every size and count a test pins, which is why they stay styles; tests/test_samples.py pins each style's digest and size on three inputs taken from the old writers before they were deleted. write_pdf() (moved here from tests/test_validators.py) is the one writer that is not hand-built: pypdf's blank pages, locked when given a password. SPEC-architecture J2 (R2.4) also brought here two documents more than one suite stages: photo(), a drawn photograph of a form's words (from tests/test_content_check.py, which tests/test_runner.py borrowed it from), and LOST_ONE_PHRASE with the OCR noise it begins with (from tests/test_router.py, which tests/test_reminder.py borrowed it from)."
     },
     {
       "id": "tests/test_after_install.py",
@@ -6374,18 +6433,15 @@
       "id": "tests/test_api.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "a3b21c443772c301",
-      "lines": 11729,
+      "sha256": "38b4eee9d4b8aec8",
+      "lines": 11562,
       "exports": [
         "COUNTS",
         "DEEPER_ROOT_LENGTH",
         "FITS_MARGIN",
-        "HOUSEHOLD",
         "LONG_ROW_OVER",
         "LONG_ROW_PERIOD",
         "NOT_A_RECORD_WRITE",
-        "PEOPLE",
-        "SAMPLE_PEOPLE",
         "TWIN_SAID",
         "WANDERED",
         "WINDOWS_WORDS",
@@ -6395,14 +6451,10 @@
         "chased_engagement",
         "client_readme",
         "demo_root",
-        "one_reply",
         "payload_of_label",
         "payload_of_state",
         "reminder_card",
-        "run",
         "said_by_class",
-        "sample_engagement",
-        "scan",
         "teach",
         "test_a_bad_due_date_is_a_sentence",
         "test_a_blank_issuer_name_is_refused_before_anything_is_read",
@@ -6842,14 +6894,11 @@
         "test_without_a_data_home_the_pages_error_never_points_at_an_error_log_that_is_not_there",
         "test_without_a_root_the_app_is_told_to_set_one",
         "three_households",
-        "title_case",
         "triage_engagement",
         "two_households",
-        "waiting_document",
-        "where"
+        "waiting_document"
       ],
       "constants": {
-        "HOUSEHOLD": "'Test Household'",
         "LONG_ROW_OVER": "10",
         "LONG_ROW_PERIOD": "'Jan 2025 to Dec 2025'",
         "DEEPER_ROOT_LENGTH": "108",
@@ -7067,19 +7116,16 @@
       "id": "tests/test_catalog.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "6a89ebf3327c9550",
-      "lines": 2096,
+      "sha256": "30bff1e8a8caffef",
+      "lines": 1735,
       "exports": [
         "CASES",
         "NL",
-        "XLSX_CASES",
-        "cp_notice_lines",
         "k1_received_lines",
         "payer_copy_1099_nec_lines",
         "return_1040_with_w2g_lines",
         "return_1065_lines",
         "shipped_rows",
-        "ssa_1099_lines",
         "test_a_1040_with_a_w2g_attached_parks_and_never_files_a09",
         "test_a_k1_the_business_received_files_its_k1_row_this_year_and_next",
         "test_a_payers_copy_of_a_1099_nec_parks_on_the_business_return",
@@ -7198,8 +7244,8 @@
       "id": "tests/test_content_check.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "bfd8cb11cf60355b",
-      "lines": 2766,
+      "sha256": "36751be34535215b",
+      "lines": 2754,
       "exports": [
         "A_PASS_READING",
         "BOMB_REFUSED",
@@ -7212,7 +7258,6 @@
         "in_a_child",
         "item",
         "page_tree_bomb",
-        "photo",
         "replace_seconds",
         "saved",
         "test_a_1099b_section_is_read_as_a_form_label_not_as_the_word_consolidated",
@@ -7421,7 +7466,7 @@
       "id": "tests/test_filer.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "8245539d32ed9f7b",
+      "sha256": "38706d4e17fbd3b9",
       "lines": 10068,
       "exports": [
         "A_CLIENT_PATH",
@@ -7997,11 +8042,9 @@
       "id": "tests/test_irs_forms.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "0433e5c9808c6a61",
-      "lines": 293,
+      "sha256": "1d07675c442a40fe",
+      "lines": 159,
       "exports": [
-        "EXPECT",
-        "IRS",
         "catalogs",
         "test_a_1040_es_parks_on_the_1041_and_a_1041_es_files_g01",
         "test_a_1099_g_read_as_1099_c_does_not_file_a08",
@@ -8016,14 +8059,12 @@
       "id": "tests/test_layers.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "192398d1fe305a67",
-      "lines": 1021,
+      "sha256": "0cf67c3d498e7744",
+      "lines": 963,
       "exports": [
-        "PACKAGE",
         "REPO",
         "SOCKET_SHAPED",
         "SPELLING_OWNERS",
-        "import_edges",
         "spellings",
         "test_every_allowed_spelling_is_still_needed",
         "test_every_allowed_third_party_import_is_a_locked_package",
@@ -8857,14 +8898,13 @@
       "id": "tests/test_real_corpus.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "28b11c3c038c3089",
-      "lines": 391,
+      "sha256": "ccc24f027f0eb109",
+      "lines": 381,
       "exports": [
         "ENGINE",
         "NO_ENGINE",
         "catalog_rows",
         "catalogs",
-        "filed_to",
         "ocr_engine_present",
         "read_expectations",
         "real_corpus",
@@ -8887,8 +8927,8 @@
       "id": "tests/test_reasons.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "e556687b37969e3e",
-      "lines": 239,
+      "sha256": "97500f84661fb234",
+      "lines": 233,
       "exports": [
         "REASONS_PY",
         "TAIL_READERS",
@@ -8913,7 +8953,7 @@
       "id": "tests/test_records.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "5f393806392cfeb7",
+      "sha256": "a8165147d2c1e7d8",
       "lines": 699,
       "exports": [
         "A_ROW",
@@ -9026,8 +9066,8 @@
       "id": "tests/test_reminder.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "0e5b57c484900fa1",
-      "lines": 2429,
+      "sha256": "8baa44c4a07075c5",
+      "lines": 2428,
       "exports": [
         "A_WRITE_KILLED_HALF_WAY",
         "CLIENT_SIDE_NOT_HELD",
@@ -9332,7 +9372,7 @@
       "id": "tests/test_rollover.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "f6fd9983e24210d5",
+      "sha256": "5b09aaaae02cd6cc",
       "lines": 2035,
       "exports": [
         "PAIR_SAID",
@@ -9429,8 +9469,8 @@
       "id": "tests/test_router.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "e1fb56fc4bee9b3a",
-      "lines": 1497,
+      "sha256": "afd502c6f0fea4c9",
+      "lines": 1483,
       "exports": [
         "DONATIONS",
         "GARBLED",
@@ -9440,7 +9480,6 @@
         "K1",
         "K1_MISREAD",
         "K1_WORDS",
-        "LOST_ONE_PHRASE",
         "MORTGAGE",
         "NL",
         "SCHWAB_D146",
@@ -9571,7 +9610,7 @@
       "id": "tests/test_runner.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "72869a7f6e4b7e6f",
+      "sha256": "976cd0c840ae1a12",
       "lines": 5823,
       "exports": [
         "A_CLIENT_PATH",
@@ -10145,7 +10184,7 @@
       "id": "tests/test_shell.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "e1d06dbfa3df55a4",
+      "sha256": "9eeac001ffbd1835",
       "lines": 8149,
       "exports": [
         "CARD_HOUSEHOLD",
@@ -10547,8 +10586,8 @@
       "id": "tests/test_shell_menu.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "7e0a976dac2ec4b3",
-      "lines": 952,
+      "sha256": "4383ce018269dcdf",
+      "lines": 749,
       "exports": [
         "MAC",
         "NOT_OPENED",
@@ -10613,7 +10652,7 @@
       "id": "tests/test_single_source.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "d32fc1b663b0e293",
+      "sha256": "a652796407649d45",
       "lines": 5329,
       "exports": [
         "AFTER_WHAT",
@@ -11100,6 +11139,28 @@
       }
     },
     {
+      "id": "tests/test_suite_shape.py",
+      "type": "test",
+      "layer": "tests",
+      "sha256": "bf99f86594b0216a",
+      "lines": 113,
+      "exports": [
+        "NOT_A_HELPER",
+        "TESTS",
+        "borrowed_test_modules",
+        "imported",
+        "test_every_helper_module_is_imported_by_a_test_file",
+        "test_no_helper_module_or_conftest_imports_a_test_file",
+        "test_no_test_file_imports_another_test_file",
+        "test_the_guard_does_not_take_a_helper_or_a_word_in_a_string_for_a_test_file",
+        "test_the_guard_sees_every_form_of_import_a_test_can_borrow_with",
+        "the_helper_modules",
+        "the_test_files"
+      ],
+      "role": "Holds the suite's own shape: no test file imports another test file, no helper module or conftest imports one either, and every helper module is imported by at least one test file, read from the import statements in every form an import takes.",
+      "notes": "SPEC-architecture J2 (R2.5, E-4). A test file that borrowed a helper from another (from tests.test_scanner import text_pdf) made an edge the affected-tests gate cannot see and a split of the owner's file breaks, which every phase of the refactor does. The tools' imports of the decision-70 suites (tests.test_catalog, test_irs_forms, test_real_corpus) are the tools', not the suite's, and are not judged."
+    },
+    {
       "id": "tests/test_templates.py",
       "type": "test",
       "layer": "tests",
@@ -11140,7 +11201,7 @@
       "id": "tests/test_tour.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "2c39fde3f0c91732",
+      "sha256": "1af87086a6d5b44a",
       "lines": 114,
       "exports": [
         "REPO",
@@ -11303,7 +11364,7 @@
       "id": "tests/test_vocab_report.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "0488b44c3da3a1f1",
+      "sha256": "a8a448c78cf494e5",
       "lines": 411,
       "exports": [
         "FABRICATED_NAME",
@@ -11379,6 +11440,18 @@
       },
       "role": "The suite's tripwire (decision 185): an audit hook that stops and records any open, listing, folder creation, move, removal, copy, link or SQLite connection at a guarded place, and in the pytest process records a Python child started around it through a watched route; imported by conftest in the pytest process and found as sitecustomize on PYTHONPATH by every Python child that inherits the suite's environment.",
       "notes": "In the pytest process (install(children=..., log=...)) it watches subprocess.Popen, os.posix_spawn, os.spawn, os.exec (also from a process it forked - fork then exec, POSIX os.spawn* - which writes the session log since its SEEN dies with it), _winapi.CreateProcess (multiprocessing on Windows) and, wrapped because it raises no audit event, multiprocessing.util.spawnv_passfds (multiprocessing on POSIX, the reading child): a Python child (this interpreter after realpath, or a program named python*) whose environment lacks the session's TRACKER_TEST_TRIPWIRE, whose PYTHONPATH does not begin with this session's tripwire folder, or whose flags carry -I, -E or -S is recorded as an unarmed Python child and fails the session - recorded, never raised. A nested session in the office-shaped copy is its own session and judges its children against the copy's folder. A verbatim Windows prefix (\\\\?\\, \\\\?\\UNC\\) is stripped before comparing. It does not see non-Python children, a Python child started by a Python child, a Python child started through a non-Python launcher (a shell, env, the py launcher, a bare PATH name not starting with python), a direct _posixsubprocess.fork_exec outside multiprocessing.util, a native library's own opens, os.stat/exists, an alias that does not carry the place's name (an 8.3 short name, \\\\localhost\\C$\\... or \\\\.\\C:\\...), the clients root a real settings file names (guarded only because that file cannot be read), or deliberate evasion (ctypes): a guard rail in the suite, not a wall. And a relative name given to os.open (how shutil.rmtree walks with dir_fd) is not judged, since the event does not carry the descriptor. Standard library only, imports nothing of the package, so a child is armed before its first import."
+    },
+    {
+      "id": "tests/wording.py",
+      "type": "test",
+      "layer": "tests",
+      "sha256": "f71ba23e42cb55c8",
+      "lines": 33,
+      "exports": [
+        "title_case"
+      ],
+      "role": "The one rule for Title Case that every drawn word is held to (title_case): every word capital except a short list, each part of a hyphenated word, the first word after a colon; placeholders, numbers and all-caps tokens left alone.",
+      "notes": "SPEC-architecture J2 (R2.1, E-4). Moved with its words from tests/test_api.py, which test_shell and test_tour borrowed it from."
     },
     {
       "id": "tools/backtest.py",
@@ -11763,8 +11836,8 @@
       "id": "tools/vocab_report.py",
       "type": "tool",
       "layer": "tooling",
-      "sha256": "5e9a82292db9467a",
-      "lines": 620,
+      "sha256": "513fcd5d42d4d281",
+      "lines": 621,
       "cli": "python -m tools.vocab_report",
       "exports": [
         "Document",
@@ -11796,10 +11869,10 @@
         "SCHEMA_VERSION": "1",
         "OUT_FLAG": "'--out'",
         "GENERATED_NOTE": "'GENERATED by tools/vocab_report.py \u2014 do not edit by hand.'",
-        "INPUT_PATHS": "('tracker/templates.py', 'tracker/content_check.py', 'tracker/manifest.py', 'tests/test_catalog.py', 'tests/test_irs_forms.py', 'tests/test_real_corpus.py', 'tools/vocab_report.py')"
+        "INPUT_PATHS": "('tracker/templates.py', 'tracker/content_check.py', 'tracker/manifest.py', 'tests/test_catalog.py', 'tests/test_irs_forms.py', 'tests/routing_cases.py', 'tests/test_real_corpus.py', 'tools/vocab_report.py')"
       },
       "role": "Generates the vocabulary coverage report: which keyword in each catalog is reached by which IRS form in tests/irs/ or case in tests/test_catalog.py, tested with content_check.says() the way the router reads, and which keywords nothing in the suite defends.",
-      "notes": "The map's counterpart for the routing rules (decision 70). `build` extracts the corpus and routes every keyword (about thirty seconds); `check` compares the SHA-256 of its inputs - the catalog, the matcher, the manifest's validation, the cases, the corpus, tests/test_real_corpus.py and this file - so it costs nothing and CI runs it. The committed report reads no client document: the corpus is the IRS's own blank forms and text the suite typed. Decision 71: when TRACKER_REAL_CORPUS names the firm's own redacted documents, `build` reads those too (kind `real`) and the counts name them; that report is a local reading, never the committed one, and `check` refuses a committed report that names them. Decision 73: the workbook cases are read too - as_a_sheet() renders a client spreadsheet's rows the way content_check._extract_xlsx does, so a keyword only a schedule reaches is not reported as unreached. Decision 104: shipped_catalogs() builds each catalog through manifest.validated() over template_items(), the same validation an engagement's create makes, with no temporary file and no store - which is why tracker/manifest.py is one of its inputs and the report was rebuilt with this decision at the same numbers. Decision 208: every document, the IRS forms and the firm's own, is read through content_check.extract(path, ocr=False), the router's text reading, never the bare extract_text(); a damaged firm document stops build once, with one ReportError naming each by its expectations entry and its error class - never its file name, the corpus folder or a parser's message (security principle 7) - and the missing-file and contradicting-expectation errors say the entry too; a malformed expectations file and a file the system refuses are said as their class. The report was rebuilt at the same numbers. Decision 185: build refuses while TRACKER_REAL_CORPUS names a corpus, and writes that reading only into an --out folder outside the repository; a real document is labelled by its row."
+      "notes": "The map's counterpart for the routing rules (decision 70). `build` extracts the corpus and routes every keyword (about thirty seconds); `check` compares the SHA-256 of its inputs - the catalog, the matcher, the manifest's validation, the cases, the corpus, tests/test_real_corpus.py and this file - so it costs nothing and CI runs it. The committed report reads no client document: the corpus is the IRS's own blank forms and text the suite typed. Decision 71: when TRACKER_REAL_CORPUS names the firm's own redacted documents, `build` reads those too (kind `real`) and the counts name them; that report is a local reading, never the committed one, and `check` refuses a committed report that names them. Decision 73: the workbook cases are read too - as_a_sheet() renders a client spreadsheet's rows the way content_check._extract_xlsx does, so a keyword only a schedule reaches is not reported as unreached. Decision 104: shipped_catalogs() builds each catalog through manifest.validated() over template_items(), the same validation an engagement's create makes, with no temporary file and no store - which is why tracker/manifest.py is one of its inputs and the report was rebuilt with this decision at the same numbers. Decision 208: every document, the IRS forms and the firm's own, is read through content_check.extract(path, ocr=False), the router's text reading, never the bare extract_text(); a damaged firm document stops build once, with one ReportError naming each by its expectations entry and its error class - never its file name, the corpus folder or a parser's message (security principle 7) - and the missing-file and contradicting-expectation errors say the entry too; a malformed expectations file and a file the system refuses are said as their class. The report was rebuilt at the same numbers. Decision 185: build refuses while TRACKER_REAL_CORPUS names a corpus, and writes that reading only into an --out folder outside the repository; a real document is labelled by its row. SPEC-architecture J2: tests/routing_cases.py (the workbook cases, the placements and two printed forms the three suites share) is one of INPUT_PATHS."
     }
   ],
   "edges": [
@@ -12206,6 +12279,78 @@
       "source": "curated"
     },
     {
+      "from": "tests/api_driver.py",
+      "to": "pkg:pytest",
+      "type": "depends_on",
+      "source": "derived"
+    },
+    {
+      "from": "tests/api_driver.py",
+      "to": "tracker/__init__.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/api_driver.py",
+      "to": "tracker/api.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/api_driver.py",
+      "to": "tracker/layout.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/api_driver.py",
+      "to": "tracker/ledger.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/api_driver.py",
+      "to": "tracker/manifest.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/api_driver.py",
+      "to": "tracker/names.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/api_driver.py",
+      "to": "tracker/progress.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/api_driver.py",
+      "to": "tracker/settings.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/api_driver.py",
+      "to": "tracker/templates.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/api_driver.py",
+      "to": "tests/conftest.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tests/api_driver.py",
+      "to": "tests/samples.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
       "from": "tests/builders.py",
       "to": "pkg:pytest",
       "type": "depends_on",
@@ -12587,6 +12732,12 @@
       "from": "tests/passes.py",
       "to": "tests/samples.py",
       "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tests/routing_cases.py",
+      "to": "tracker/settings.py",
+      "type": "exercises",
       "source": "derived"
     },
     {
@@ -12975,6 +13126,12 @@
     },
     {
       "from": "tests/test_api.py",
+      "to": "tests/api_driver.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_api.py",
       "to": "tests/builders.py",
       "type": "imports",
       "source": "derived"
@@ -12999,13 +13156,7 @@
     },
     {
       "from": "tests/test_api.py",
-      "to": "tests/test_shell_menu.py",
-      "type": "imports",
-      "source": "derived"
-    },
-    {
-      "from": "tests/test_api.py",
-      "to": "tests/test_single_source.py",
+      "to": "tests/wording.py",
       "type": "imports",
       "source": "derived"
     },
@@ -13275,13 +13426,13 @@
     },
     {
       "from": "tests/test_catalog.py",
-      "to": "tests/samples.py",
+      "to": "tests/routing_cases.py",
       "type": "imports",
       "source": "derived"
     },
     {
       "from": "tests/test_catalog.py",
-      "to": "tests/test_real_corpus.py",
+      "to": "tests/samples.py",
       "type": "imports",
       "source": "derived"
     },
@@ -13593,13 +13744,13 @@
     },
     {
       "from": "tests/test_content_check.py",
-      "to": "tests/samples.py",
+      "to": "tests/routing_cases.py",
       "type": "imports",
       "source": "derived"
     },
     {
       "from": "tests/test_content_check.py",
-      "to": "tests/test_irs_forms.py",
+      "to": "tests/samples.py",
       "type": "imports",
       "source": "derived"
     },
@@ -13971,13 +14122,13 @@
     },
     {
       "from": "tests/test_filer.py",
-      "to": "tests/samples.py",
+      "to": "tests/routing_cases.py",
       "type": "imports",
       "source": "derived"
     },
     {
       "from": "tests/test_filer.py",
-      "to": "tests/test_catalog.py",
+      "to": "tests/samples.py",
       "type": "imports",
       "source": "derived"
     },
@@ -14211,13 +14362,13 @@
     },
     {
       "from": "tests/test_irs_forms.py",
-      "to": "tests/samples.py",
+      "to": "tests/routing_cases.py",
       "type": "imports",
       "source": "derived"
     },
     {
       "from": "tests/test_irs_forms.py",
-      "to": "tests/test_catalog.py",
+      "to": "tests/samples.py",
       "type": "imports",
       "source": "derived"
     },
@@ -14231,6 +14382,12 @@
       "from": "tests/test_layers.py",
       "to": "tracker/layout.py",
       "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_layers.py",
+      "to": "tests/import_graph.py",
+      "type": "imports",
       "source": "derived"
     },
     {
@@ -15105,6 +15262,12 @@
     },
     {
       "from": "tests/test_real_corpus.py",
+      "to": "tests/routing_cases.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_real_corpus.py",
       "to": "tests/samples.py",
       "type": "imports",
       "source": "derived"
@@ -15119,6 +15282,12 @@
       "from": "tests/test_reasons.py",
       "to": "tracker/__init__.py",
       "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_reasons.py",
+      "to": "tests/builders.py",
+      "type": "imports",
       "source": "derived"
     },
     {
@@ -15183,7 +15352,7 @@
     },
     {
       "from": "tests/test_records.py",
-      "to": "tests/test_layers.py",
+      "to": "tests/import_graph.py",
       "type": "imports",
       "source": "derived"
     },
@@ -15400,18 +15569,6 @@
     {
       "from": "tests/test_reminder.py",
       "to": "tests/samples.py",
-      "type": "imports",
-      "source": "derived"
-    },
-    {
-      "from": "tests/test_reminder.py",
-      "to": "tests/test_reasons.py",
-      "type": "imports",
-      "source": "derived"
-    },
-    {
-      "from": "tests/test_reminder.py",
-      "to": "tests/test_router.py",
       "type": "imports",
       "source": "derived"
     },
@@ -15711,13 +15868,13 @@
     },
     {
       "from": "tests/test_rollover.py",
-      "to": "tests/conftest.py",
+      "to": "tests/api_driver.py",
       "type": "imports",
       "source": "derived"
     },
     {
       "from": "tests/test_rollover.py",
-      "to": "tests/test_api.py",
+      "to": "tests/conftest.py",
       "type": "imports",
       "source": "derived"
     },
@@ -16095,12 +16252,6 @@
     },
     {
       "from": "tests/test_runner.py",
-      "to": "tests/test_content_check.py",
-      "type": "imports",
-      "source": "derived"
-    },
-    {
-      "from": "tests/test_runner.py",
       "to": "tracker/runner.py",
       "type": "tests",
       "source": "derived"
@@ -16515,6 +16666,12 @@
     },
     {
       "from": "tests/test_shell.py",
+      "to": "tests/api_driver.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_shell.py",
       "to": "tests/css_rules.py",
       "type": "imports",
       "source": "derived"
@@ -16539,7 +16696,7 @@
     },
     {
       "from": "tests/test_shell.py",
-      "to": "tests/test_api.py",
+      "to": "tests/wording.py",
       "type": "imports",
       "source": "derived"
     },
@@ -16571,6 +16728,12 @@
       "from": "tests/test_shell_menu.py",
       "to": "tracker/settings.py",
       "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_shell_menu.py",
+      "to": "tests/node_harness.py",
+      "type": "imports",
       "source": "derived"
     },
     {
@@ -16779,13 +16942,13 @@
     },
     {
       "from": "tests/test_single_source.py",
-      "to": "tests/node_harness.py",
+      "to": "tests/import_graph.py",
       "type": "imports",
       "source": "derived"
     },
     {
       "from": "tests/test_single_source.py",
-      "to": "tests/test_layers.py",
+      "to": "tests/node_harness.py",
       "type": "imports",
       "source": "derived"
     },
@@ -16947,7 +17110,7 @@
     },
     {
       "from": "tests/test_tour.py",
-      "to": "tests/test_api.py",
+      "to": "tests/wording.py",
       "type": "imports",
       "source": "derived"
     },
@@ -17235,13 +17398,13 @@
     },
     {
       "from": "tests/test_vocab_report.py",
-      "to": "tests/samples.py",
+      "to": "tests/routing_cases.py",
       "type": "imports",
       "source": "derived"
     },
     {
       "from": "tests/test_vocab_report.py",
-      "to": "tests/test_catalog.py",
+      "to": "tests/samples.py",
       "type": "imports",
       "source": "derived"
     },

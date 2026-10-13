@@ -9,7 +9,7 @@ sitting in Needs Review.
 
 import pytest
 
-from tests.samples import text_pdf
+from tests.samples import _SCAN_NOISE, LOST_ONE_PHRASE, text_pdf
 from tracker import reasons
 from tracker.manifest import Override, RequestItem
 from tracker.router import (
@@ -1174,21 +1174,7 @@ def test_a_not_applicable_issuer_row_does_not_park_anybody_elses_k_1(tmp_path):
 # every looser rule filed the W-3 family and the W-2c as W-2s - so each of
 # these still parks, and the card now says why a person should look at A01.
 
-#: What a skewed OCR copy puts in the title zone: nothing a form says.
-_SCAN_NOISE = NL.join(["iil ~~ .. | rn 1l :; 0O mmm ww ;; x"] * 14)
-#: The fact sheet's 24/2025: "W-2" dominating the first page and "wage and
-#: tax statement" beside it, the title zone noise, and the SSN label cut
-#: off at the box rule on every copy.
-LOST_ONE_PHRASE = NL.join([
-    _SCAN_NOISE,
-    "22222 Void a Employee's social security|",
-    "b Employer ID number (EIN) 1 Wages, tips, other compensation",
-    "c Employer's name, address, and ZIP code 3 Social security wages",
-    "W-2 Wage and Tax Statement 2025 Department of the Treasury-Internal Revenue Service",
-    "Copy B - To Be Filed With Employee's FEDERAL Tax Return",
-    "a Employee's social security|",
-    "W-2 Wage and Tax Statement 2025 Department of the Treasury-Internal Revenue Service",
-])
+
 #: The fact sheet's 10/2024: "W-2" in the title and nowhere else in its own
 #: right, the title wrapping across two lines, the SSN label abbreviated.
 IN_THE_TITLE_ONLY = NL.join([
