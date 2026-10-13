@@ -9403,6 +9403,26 @@ def _logged_outside_the_debug_log(caplog) -> str:
     return "\n".join(record.getMessage() for record in caplog.records if record.name != DEBUG_LOGGER)
 
 
+def test_details_that_cannot_be_read_are_none_and_the_failure_is_kept_on_the_log(
+        engagement, monkeypatch, caplog):
+    """The audit's E4 (P297): the sort still runs with no people when the
+    return's details cannot be loaded at that moment (nothing is guessed),
+    but a race with the runner's own read now shows in the error log."""
+    import logging
+
+    import tracker.filer as filer
+    from tracker import errors
+
+    def torn(_folder):
+        raise filer.FilingError("the record changed under this read")
+
+    monkeypatch.setattr(filer, "load_engagement_info", torn)
+    with caplog.at_level(logging.WARNING, logger=errors.DEBUG_LOGGER):
+        assert filer._details_of(engagement) is None
+    assert f"filer: the return's details ({engagement.name})" in caplog.text
+    assert "the record changed under this read" in caplog.text
+
+
 def test_a_readme_refresh_that_fails_logs_the_class_never_the_path(engagement, monkeypatch, caplog):
     """The README refresh's warning names the error by its class and errno,
     never its message, which here is a client's folder (decision 190, the

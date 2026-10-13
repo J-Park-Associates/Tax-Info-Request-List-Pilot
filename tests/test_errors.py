@@ -91,6 +91,28 @@ def test_a_store_or_record_the_disk_refused_is_said_with_its_code():
     assert errors.error_class(store.StoreUnavailable("SQLITE_BUSY")) == "StoreUnavailable (SQLITE_BUSY)"
 
 
+def test_an_errors_code_alone_is_what_a_sentence_of_its_own_names():
+    """E5 (P298): ``error_code`` is the code ``error_class`` says beside the
+    class - for a class marked as saying its code, and for an ``OSError``
+    that has an errno name - and the class name when there is none."""
+    from tracker import ledger, store
+
+    assert errors.error_code(store.StoreUnavailable("SQLITE_BUSY")) == "SQLITE_BUSY"
+    assert errors.error_code(ledger.RecordNotWritten("ENOSPC")) == "ENOSPC"
+    assert errors.error_code(PermissionError(errno.EACCES, "denied", f"/{NAME}")) == "EACCES"
+    assert errors.error_code(OSError(QUOTED)) == "OSError"
+    assert errors.error_code(OSError(987654, "odd")) == "OSError"
+    assert errors.error_code(ValueError(QUOTED)) == "ValueError"
+
+
+def test_a_code_alone_never_carries_a_message_or_a_third_partys_code():
+    class ParserError(Exception):
+        code = QUOTED
+
+    assert errors.error_code(ParserError(QUOTED)) == "ParserError"
+    assert QUOTED not in errors.error_code(PermissionError(errno.EACCES, QUOTED, f"/{NAME}"))
+
+
 def test_a_code_an_error_did_not_mark_as_said_is_never_said():
     """A third party's error with a ``code`` of its own - an HTTP status,
     an exit code, a parser's token - is its class alone: only a class that
@@ -574,6 +596,7 @@ THE_ONE_DEFINITION = ("errors.py", "error_class")
 #: error, each with why.
 ERRNO_NAMED_ON_PURPOSE = {
     ("ledger.py", "_not_written"): "RecordNotWritten's code, which error_class then says",
+    ("errors.py", "_code_of"): "the one place a code is read, for error_class and error_code",
 }
 
 def _is_an_exception(annotation: ast.AST | None) -> bool:

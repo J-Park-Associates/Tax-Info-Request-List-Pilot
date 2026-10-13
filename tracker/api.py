@@ -200,8 +200,6 @@ from tracker.manifest import (
     COL_ISSUER,
     COLUMN_HELP,
     COLUMNS,
-    DEFAULT_EXTENSIONS,
-    EXPECTED_PATTERN,
     ISO_DATE_HINT,
     MIN_EXPECTED_COUNT,
     MIN_SIZE_KB_FLOOR,
@@ -211,7 +209,6 @@ from tracker.manifest import (
     OVERRIDE_REASON_OTHER,
     OVERRIDE_REASONS,
     STATUS_LABELS,
-    UNSCANNED_LABEL,
     YEAR_MAX,
     YEAR_MIN,
     ListMoved,
@@ -239,7 +236,6 @@ from tracker.manifest import (
 from tracker.names import NO_PEOPLE, ONE_WORD_SPELLING, propose_spellings
 from tracker.page import PALETTE, slug
 from tracker.records import (
-    CANDIDATE_SEP,
     DATE_FIELDS,
     ENGAGEMENT_EDITABLE,
     ENGAGEMENT_FIELDS,
@@ -289,8 +285,6 @@ from tracker.registry import (
 from tracker.rollover import (
     ORIGIN_NEW,
     ORIGIN_NOT_APPLICABLE,
-    ORIGIN_PRIOR,
-    UNKNOWN_YEAR_LABEL,
     ReturnPlan,
     RolledNotAllRetired,
     carried_link,
@@ -332,7 +326,6 @@ from tracker.settings import (
     DEFAULT_SCHEDULE_EVERY,
     DEFAULT_SCHEDULE_START,
     ERROR_LOG_FILENAME,
-    EXAMPLE_ROOT,
     REDIRECTED_COPY,
     SET_ROOT_HINT,
     DataHomeRedirected,
@@ -356,13 +349,9 @@ from tracker.settings import (
     settings_path,
 )
 from tracker.templates import (  # the catalog; re-exported for the dialog
-    EXTENSION_DEFAULT_NOTE,
     FORM_TEMPLATES,
     FORM_TYPES,
     K1_IDENTIFIER,
-    KEYWORD_DEFAULT_NOTE,
-    PERIOD_PATTERN,
-    YEAR_NOTE,
     base_year,
     default_tax_year,
     issuer_item,
@@ -410,6 +399,15 @@ USAGE = "usage: tracker.api {commands}"
 #: never its message, and where its detail went.
 FAILED = ("The app hit an error it did not expect ({kind}). What it finished is on the record; "
           "the details are in {log} beside the app's database.")
+#: A database the engine refused and a record the disk refused (decision 189's
+#: two expected classes, P298): said as themselves with their code, never as
+#: "an error it did not expect". The kind stays ``failed``, so the window
+#: keeps Retry.
+STORE_UNAVAILABLE = ("The app's database could not be used just now ({code}); nothing was changed. "
+                     "Try again in a moment; if it keeps happening, the details are in {log}")
+RECORD_NOT_WRITTEN = ("The record could not be written ({code}); nothing was changed. "
+                      "Free the disk or close whatever holds the record open, then try again; "
+                      "the details are in {log}")
 #: The notices' three buttons (decision 193, ruling 12). Static in
 #: ``index.html``'s template, pinned to these word for word, because a
 #: notice must work when the very first ``list`` fails, before any
@@ -588,8 +586,9 @@ def _failure_of(exc: BaseException) -> dict:
         # the first screen says it - what to move and where - not as an error.
         kind, sentence = "refused", _left_behind_to_move(exc)
     elif isinstance(exc, (store.StoreUnavailable, ledger.RecordNotWritten)):
-        kind, sentence = "failed", FAILED.format(kind=errors.error_class(exc),
-                                                 log=ERROR_LOG_FILENAME)
+        kind = "failed"
+        sentence = (STORE_UNAVAILABLE if isinstance(exc, store.StoreUnavailable)
+                    else RECORD_NOT_WRITTEN).format(code=errors.error_code(exc), log=ERROR_LOG_FILENAME)
     elif isinstance(exc, _PageRefused):
         # The one refusal the window says without Retry (P278): marked here, so
         # no other refusal - a folder that cannot be walked just now - loses it.
@@ -999,6 +998,10 @@ ASK_THE_CLIENT = "Ask the Taxpayer"
 #: the roll fold's label over the template pick (decision 142).
 NOT_ASKED_TABLE_LABEL = "Requests Not Asked For"
 ROLL_TEMPLATE_LABEL = "Form Template"
+#: The dialog's help sentence under the catalog's ticks, cut from the screen
+#: (the audit's E84-E91) and no longer sent in the vocabulary (P300): kept
+#: as the sentence ``tests/test_single_source`` and ``test_api`` guard the
+#: renderer against typing again.
 ASK_THE_CLIENT_NOTE = ("Every row is on the return. A ticked row is asked for and reminded; "
                        "an unticked one is never asked for, but a document that arrives for "
                        "it is filed there.")
@@ -1725,15 +1728,11 @@ def _vocab() -> dict:
         # the editor's, of every row nobody waits on, and each group's
         # heading inside it (decision 200).
         "set_aside": {"heading": SET_ASIDE_SECTION, "group": SET_ASIDE_GROUP},
-        "unscanned_label": UNSCANNED_LABEL,
-        "unscanned_key": _slug(UNSCANNED_LABEL),
         # What a row nobody asked for is called while nothing has arrived
-        # for it (decision 142), and the chip class it is drawn with.
+        # for it (decision 142).
         "not_asked_label": NOT_ASKED_LABEL,
-        "not_asked_key": _slug(NOT_ASKED_LABEL),
-        # The dialog's heading over the catalog's ticks, and its sentence.
+        # The dialog's heading over the catalog's ticks.
         "ask_the_client": ASK_THE_CLIENT,
-        "ask_the_client_note": ASK_THE_CLIENT_NOTE,
         "not_asked_table_label": NOT_ASKED_TABLE_LABEL,
         # The one refusal of a list nobody is asked for (R6), which the
         # dialog also says before it calls.
@@ -1862,17 +1861,9 @@ def _vocab() -> dict:
             "teach": TEACH_SPELLING_LABEL,
             "teach_hint": TEACH_SPELLING_HINT,
         },
-        "default_extensions": ", ".join(DEFAULT_EXTENSIONS),
-        "expected_pattern": EXPECTED_PATTERN,
-        "period_pattern": PERIOD_PATTERN,
-        "origin_prior": ORIGIN_PRIOR,
-        "unknown_year_label": UNKNOWN_YEAR_LABEL,
-        "candidate_separator": CANDIDATE_SEP,
         # Every word an evidence line can carry, from the module that owns
         # it: the app labels a rule and a place, and types neither.
         "evidence": {"rules": list(EVIDENCE_RULES), "places": list(EVIDENCE_PLACES)},
-        "year_note": YEAR_NOTE,
-        "extension_default_note": EXTENSION_DEFAULT_NOTE,
         # The shape of the clients root, from the module that owns it
         # (decision 125): the two trees, the one inbox, and the two
         # patterns the dialog's previews fill.
@@ -1960,7 +1951,6 @@ def _vocab() -> dict:
         },
         "year_min": YEAR_MIN,
         "year_max": YEAR_MAX,
-        "example_root": EXAMPLE_ROOT,
         "engagement_flag": ENGAGEMENT_FLAG,
         "commands": sorted(COMMANDS),
         # The commands that change something, so the shell can say a killed
@@ -2069,7 +2059,6 @@ def _vocab() -> dict:
         # (the lead's L-1) - and the heading the root dialog lists them
         # under.
         "room": {"short": ROOM_SHORT_WORDS, "parks": ROOM_PARKS_WORDS, "heading": ROOM_HEADING},
-        "keyword_default_note": KEYWORD_DEFAULT_NOTE,
         # Every word and colour the Reminder card shows (decisions 115 and
         # 118), from the module that owns the draft: the four stages with
         # the palette key each carries and where
@@ -4329,8 +4318,8 @@ def _undo_create(engagement: Path) -> None:
     shutil.rmtree(engagement, ignore_errors=True)
     try:
         store.forget(store.connect(), engagement)
-    except Exception:
-        pass
+    except Exception as exc:
+        errors.keep("api: forgetting a failed return", exc, name=engagement.name)
 
 
 def _feeds_from_spec(sent: object, household_dir: Path) -> tuple[Feed, ...]:
@@ -4624,8 +4613,8 @@ def _cmd_rollover(argv: list[str]) -> dict:
         # call's own mkdir made is undone (decision 137), and the year only
         # when it is empty.
         made += make_new_folders(engagement)
-        report.warnings = list(create_engagement(engagement, report.items, info,
-                                                 carried=report.from_last_year))
+        report.carry_warnings(create_engagement(engagement, report.items, info,
+                                                carried=report.from_last_year))
         scaffold_engagement(engagement)
     except Exception:
         _undo_made(made, {engagement})

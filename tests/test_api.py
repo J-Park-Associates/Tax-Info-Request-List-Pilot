@@ -1287,9 +1287,7 @@ def test_the_editor_saves_a_reason_and_the_vocabulary_carries_the_list_and_the_l
     from tracker.rollover import ORIGIN_NEW
 
     assert vocab["not_asked_label"] == NOT_ASKED_LABEL
-    assert vocab["not_asked_key"] == api._slug(NOT_ASKED_LABEL)
     assert vocab["ask_the_client"] == api.ASK_THE_CLIENT
-    assert vocab["ask_the_client_note"] == api.ASK_THE_CLIENT_NOTE
     assert vocab["not_asked_table_label"] == api.NOT_ASKED_TABLE_LABEL
     assert vocab["roll_template_label"] == api.ROLL_TEMPLATE_LABEL
     assert vocab["nothing_asked"] == api.NOTHING_ASKED
@@ -2903,7 +2901,7 @@ def test_the_schedule_is_repaired_from_the_tools_menu_in_the_apis_words():
 def test_the_renderer_gets_its_vocabulary_from_the_api(capsys, demo_root):
     from tracker import STANDING_RULES
     from tracker.filer import DUPLICATE, FILE_MOVED, FILED, NEEDS_REVIEW, NOT_REQUESTED
-    from tracker.manifest import COLUMN_HELP, COLUMNS, DEFAULT_EXTENSIONS, Override, Status
+    from tracker.manifest import COLUMN_HELP, COLUMNS, Override, Status
     from tracker.records import DATE_FIELDS, ENGAGEMENT_EDITABLE, ENGAGEMENT_FIELDS
     from tracker.runner import DRAFT_WEEKDAY, WEEKDAY_NAMES
     from tracker.scheduling import DEFAULT_REPEAT_MINUTES, DEFAULT_START
@@ -2946,7 +2944,6 @@ def test_the_renderer_gets_its_vocabulary_from_the_api(capsys, demo_root):
         "issuer_label": api.ISSUER_LABEL, "issuer_help": api.ISSUER_HELP,
         "issuer_add": api.ISSUER_ADD_LABEL, "issuer_not_rescanned": api.ISSUER_NOT_RESCANNED,
     }
-    assert vocab["default_extensions"] == ", ".join(DEFAULT_EXTENSIONS)
     assert "carried_sheet" not in vocab
     # The editor's every word, and the request list's schema.
     assert vocab["columns"] == [{"key": f, "label": h, "help": COLUMN_HELP[f]} for h, f in COLUMNS]
@@ -2971,7 +2968,6 @@ def test_the_renderer_gets_its_vocabulary_from_the_api(capsys, demo_root):
     assert editor["maximums"] == {"expected_count": MAX_EXPECTED_COUNT, "min_size_kb": MAX_SIZE_KB}
     assert editor["any_extension"] == "*" and editor["no_date_check"] == "*"
     assert "set_aside_heading" not in editor
-    assert vocab["unscanned_key"] == api._slug(vocab["unscanned_label"])
     assert vocab["commands"] == sorted(api.COMMANDS)
     assert [r["headline"] for r in vocab["rules"]] == [h for h, _ in STANDING_RULES]
     assert vocab["schedule"] == {"start": DEFAULT_START, "every": DEFAULT_REPEAT_MINUTES,
@@ -7263,14 +7259,76 @@ def test_a_broken_journal_is_said_in_the_firms_sentence_with_its_line_and_run_re
     assert code == 1 and payload["error"] == sentence, payload
     assert payload["failure"]["kind"] == "refused" and ledger.RUN_RECOVER in payload["error"]
 
-    for raised, kind in ((ledger.RecordNotWritten("ENOSPC"), "RecordNotWritten (ENOSPC)"),
-                         (store.StoreUnavailable("SQLITE_BUSY"), "StoreUnavailable (SQLITE_BUSY)")):
+    for raised, sentence in ((ledger.RecordNotWritten("ENOSPC"), api.RECORD_NOT_WRITTEN),
+                             (store.StoreUnavailable("SQLITE_BUSY"), api.STORE_UNAVAILABLE)):
         def fails(argv, raised=raised):
             raise raised
 
         monkeypatch.setitem(api.COMMANDS, "templates", fails)
         code, payload = run(capsys, "templates")
-        assert code == 1 and said_by_class(payload, kind), payload
+        assert code == 1 and payload["error"] == sentence.format(
+            code=raised.code, log=api.ERROR_LOG_FILENAME), payload
+        assert payload["failure"]["kind"] == "failed"
+
+
+@pytest.mark.parametrize("raised, sentence, code", [
+    (store.StoreUnavailable("SQLITE_BUSY"), "STORE_UNAVAILABLE", "SQLITE_BUSY"),
+    (ledger.RecordNotWritten("ENOSPC"), "RECORD_NOT_WRITTEN", "ENOSPC"),
+])
+def test_a_database_that_cannot_be_used_is_said_as_itself_with_its_code_and_keeps_retry(
+        raised, sentence, code):
+    """The audit's E5 (P298): decision 189 made both expected classes, and
+    they were said as "an error it did not expect". Each has a sentence of
+    its own with its code; the kind stays ``failed``, so the window keeps
+    Retry."""
+    failure = api._failure_of(raised)
+    assert failure["kind"] == "failed"
+    assert failure["sentence"] == getattr(api, sentence).format(code=code, log=api.ERROR_LOG_FILENAME)
+    assert code in failure["sentence"] and "did not expect" not in failure["sentence"]
+    assert api.ERROR_LOG_FILENAME in failure["sentence"]
+
+
+def test_a_failed_create_that_cannot_forget_its_store_row_still_cleans_up_and_logs_it(
+        tmp_path, monkeypatch, caplog):
+    """E3 (P297): the cleanup finishes and raises nothing in place of the
+    refusal; the row it could not drop is kept on the error log."""
+    import logging
+
+    from tracker import errors
+
+    folder = tmp_path / "half-made"
+    folder.mkdir()
+
+    def locked(*_args, **_kwargs):
+        raise store.StoreUnavailable("SQLITE_BUSY")
+
+    monkeypatch.setattr(store, "forget", locked)
+    with caplog.at_level(logging.WARNING, logger=errors.DEBUG_LOGGER):
+        api._undo_create(folder)
+    assert not folder.exists()
+    assert "api: forgetting a failed return (half-made)" in caplog.text
+    assert "StoreUnavailable" in caplog.text
+
+
+def test_a_rollover_that_could_not_read_last_years_index_says_so_in_its_reply(
+        capsys, demo_root, monkeypatch):
+    """E2 (P297): the reply's ``warnings`` - which the page already draws -
+    carry the sentence, as the last line, after the one ``create_engagement``
+    assigns."""
+    from tracker import filer
+    from tracker.rollover import UNFILED_LAST_YEAR_UNREAD
+
+    engagement, _ = _issuer_return(capsys, demo_root)
+
+    def torn(*_args, **_kwargs):
+        raise filer.FilingError("the index is torn")
+
+    monkeypatch.setattr(filer, "read_index", torn)
+    code, payload = run(capsys, "rollover", stdin={"prior": str(engagement), "year": BASE_YEAR + 1})
+    assert code == 0, payload
+    assert payload["rollover"]["warnings"][-1] == UNFILED_LAST_YEAR_UNREAD.format(
+        problem="the index is torn")
+    assert payload["rollover"]["unfiled_last_year"] == []
 
 
 def test_the_error_log_rotates_and_never_syncs_to_disk(capsys, demo_root, monkeypatch):
@@ -9566,16 +9624,16 @@ def test_the_title_case_rule_does_what_jason_wrote():
 #: values, keys, commands, folder names, the record's own words and the
 #: fragments a sentence is built from are not on the screen as headings.
 _TITLE_EXEMPT_BRANCHES = (
-    "commands", "path_kinds", "statuses", "evidence", "layout", "example_root",
+    "commands", "path_kinds", "statuses", "evidence", "layout",
     "engagement_flag", "pass_command", "view.states", "schedule.draft_day", "reminder.letter_ink",
     "editor.date_fields", "editor.plain_columns", "editor.routing_columns",
-    "editor.yes", "editor.no", "people.kinds", "people.outcomes", "default_extensions",
-    "review_labels.bucket_order", "review_labels.not_a_document", "household.editable", "unscanned_key",
-    "not_asked_key", "shell.error_log",
+    "editor.yes", "editor.no", "people.kinds", "people.outcomes",
+    "review_labels.bucket_order", "review_labels.not_a_document", "household.editable",
+    "shell.error_log",
     # the standing rules' headlines are quoted exactly in the docs (STANDING_RULES)
     "rules",
     # sentences over the limit, and the fragments a sentence splices in
-    "origin_", "unknown_year_label", "expected_pattern",
+    "origin_",
     "labels.Not asked", "not_asked_label", "override_reasons",
 )
 

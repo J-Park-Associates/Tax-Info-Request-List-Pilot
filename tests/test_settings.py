@@ -419,6 +419,33 @@ def test_a_data_home_override_must_be_a_whole_path(tmp_path):
         tmp_path / ".local" / "state" / data_rules.DATA_HOME_NAME)   # blank is unset
 
 
+def test_a_data_home_override_naming_a_file_or_lying_under_one_is_refused_by_name(tmp_path):
+    """The audit's E6 (P299): the override named a file, or a path under one,
+    and the first write failed with no error log - the log lives in the data
+    home. Refused here instead, naming the file in the way."""
+    a_file = tmp_path / "not-a-folder"
+    a_file.write_text("", encoding="utf-8")
+    _refused(data_rules.DATA_HOME_NOT_A_FOLDER.format(home=a_file, blocker=a_file),
+             environ={data_rules.ENV_DATA_HOME: str(a_file)})
+    under = a_file / "x"
+    _refused(data_rules.DATA_HOME_NOT_A_FOLDER.format(home=under, blocker=a_file),
+             environ={data_rules.ENV_DATA_HOME: str(under)})
+    deeper = a_file / "x" / "y" / "z"
+    _refused(data_rules.DATA_HOME_NOT_A_FOLDER.format(home=deeper, blocker=a_file),
+             environ={data_rules.ENV_DATA_HOME: str(deeper)})
+
+
+def test_a_data_home_that_can_still_be_made_is_answered(tmp_path):
+    """An existing folder, and a path that does not exist yet under one, are
+    what every writer makes on its first write: still answered, nothing made."""
+    folder = tmp_path / "already"
+    folder.mkdir()
+    assert _resolve({data_rules.ENV_DATA_HOME: str(folder)}) == folder
+    new = tmp_path / "not" / "yet" / "made"
+    assert _resolve({data_rules.ENV_DATA_HOME: str(new)}) == new
+    assert not (tmp_path / "not").exists()
+
+
 def test_beside_the_program_is_the_settings_folder_and_a_frozen_executables_own(tmp_path, monkeypatch):
     """The one answer to "beside the program" (the rebase review of 186,
     MF1): where what an earlier version left is looked for, and a fresh

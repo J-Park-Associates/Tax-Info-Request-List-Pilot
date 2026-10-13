@@ -4057,7 +4057,10 @@ def _details_of(engagement_dir: Path) -> EngagementInfo | None:
     people list are both drawn from it."""
     try:
         return load_engagement_info(engagement_dir)
-    except Exception:
+    except Exception as exc:
+        # The sort goes on with no people - nothing is guessed - but a race
+        # with the runner's own read of the record shows in the log (P297).
+        errors.keep("filer: the return's details", exc, name=engagement_dir.name)
         return None
 
 

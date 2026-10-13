@@ -334,6 +334,94 @@ def test_two_unfiled_documents_of_one_name_are_two_and_no_subfolder_is_quoted(pr
     assert not any("not allowed" in line or "subfolder" in line for line in lines)
 
 
+def _a_torn_index(monkeypatch):
+    """Last year's index cannot be read: ``filer.read_index`` refuses in the
+    firm's own words."""
+    from tracker import filer
+
+    def torn(*_args, **_kwargs):
+        raise filer.FilingError("the index is torn")
+
+    monkeypatch.setattr(filer, "read_index", torn)
+
+
+def test_a_rollover_that_could_not_read_last_years_index_still_rolls_and_says_so(
+        prior, monkeypatch, caplog):
+    """The audit's E2 (P297): an unreadable prior-year index never blocked a
+    rollover, but it also said nothing, so the new list looked as if last
+    year had nothing unfiled. The report carries one sentence with the
+    index's own words, and the exception is kept on the error log."""
+    import logging
+
+    from tracker import errors
+    from tracker.rollover import UNFILED_LAST_YEAR_UNREAD
+
+    _a_torn_index(monkeypatch)
+    with caplog.at_level(logging.WARNING, logger=errors.DEBUG_LOGGER):
+        report = roll_forward(prior)
+    assert report.unfiled_last_year == []
+    assert report.unfiled_last_year_unread == UNFILED_LAST_YEAR_UNREAD.format(problem="the index is torn")
+    assert "the index is torn" in report.unfiled_last_year_unread
+    assert [r.item.identifier for r in report.rolled] == ["A01", "B01", "C01", "D01"]
+    assert f"rollover: last year's unfiled documents ({prior.name})" in caplog.text
+    assert "FilingError: the index is torn" in caplog.text
+
+
+def test_a_prior_year_whose_index_reads_adds_no_note(prior):
+    report = roll_forward(prior)
+    assert report.unfiled_last_year_unread == ""
+
+
+def test_the_note_about_an_unread_index_is_the_last_warning_of_each_rolled_return(
+        park, monkeypatch):
+    """The trap the SPEC names: ``report.warnings`` is assigned when the
+    return is created, after the note was found, so the note is added after
+    that assignment - and it is in the report the rollover returns."""
+    from tracker.rollover import UNFILED_LAST_YEAR_UNREAD, ReturnPlan, roll_household
+
+    root, john, sofia, llc = park
+    _a_torn_index(monkeypatch)
+    done = roll_household(_household(root), target_year=2027,
+                          plans=[ReturnPlan(prior=one) for one in (john, sofia, llc)])
+    assert len(done.rolled) == 3
+    for _was, _created, report in done.rolled:
+        assert report.warnings[-1] == UNFILED_LAST_YEAR_UNREAD.format(problem="the index is torn")
+        assert report.unfiled_last_year == []
+
+
+def test_a_household_rollover_that_reads_every_index_carries_no_such_note(park):
+    from tracker.rollover import UNFILED_LAST_YEAR_UNREAD, ReturnPlan, roll_household
+
+    root, john, sofia, llc = park
+    done = roll_household(_household(root), target_year=2027,
+                          plans=[ReturnPlan(prior=one) for one in (john, sofia, llc)])
+    for _was, _created, report in done.rolled:
+        assert not any(UNFILED_LAST_YEAR_UNREAD.split("{")[0] in line for line in report.warnings)
+
+
+def test_a_failed_rollover_that_cannot_forget_its_store_row_keeps_why_on_the_log(
+        prior, tmp_path, monkeypatch, caplog):
+    """E3 (P297): the cleanup after a failed rollover still finishes - the
+    folder is gone and nothing is raised in place of the refusal - and the
+    row it could not drop is on the error log, where it was swallowed."""
+    import logging
+
+    from tracker import errors, rollover, store
+
+    target = tmp_path / "half-made"
+    target.mkdir()
+
+    def locked(*_args, **_kwargs):
+        raise store.StoreUnavailable("SQLITE_BUSY")
+
+    monkeypatch.setattr(store, "forget", locked)
+    with caplog.at_level(logging.WARNING, logger=errors.DEBUG_LOGGER):
+        rollover._unmake(target, [target])
+    assert not target.exists()
+    assert "rollover: forgetting a failed return (half-made)" in caplog.text
+    assert "StoreUnavailable" in caplog.text
+
+
 def test_rollover_without_a_template_still_works(prior):
     report = roll_forward(prior)
     assert [r.item.identifier for r in report.rolled] == ["A01", "B01", "C01", "D01"]

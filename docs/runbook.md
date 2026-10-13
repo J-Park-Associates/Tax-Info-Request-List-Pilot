@@ -1492,7 +1492,11 @@ household and cannot clear it. Notices (a failure, a warning) sit in a panel at 
    a household that stopped on something unexpected, name the same fault
    by its kind and code alone - *StoreUnavailable (SQLITE_BUSY)*,
    *RecordNotWritten (ENOSPC)*, *PermissionError (EACCES)* - never the
-   system's own words, which can name a client's folder. *the practice
+   system's own words, which can name a client's folder. The app's window
+   says those two in words of their own, with the code - *the app's
+   database could not be used just now (SQLITE_BUSY)*, *the record could
+   not be written (ENOSPC)* - and keeps Retry; the details are in the
+   error log. *the practice
    page could not be written (…)* is said in `runs.log` instead (as the code
    `page-not-written`), and the
    Last Run Result is `0x1`: the page you are looking at is an old one. The run log gives the pass's warnings

@@ -141,6 +141,13 @@ PREVIOUS_NOT_APPLICABLE_HEADING = "Previous Year Not Applicable - decide afresh:
 UNKNOWN_YEAR_LABEL = "next year"
 #: Heads the CLI's list of last year's unmatched documents.
 UNFILED_HEADING = "Sent last year but never filed — check these are covered:"
+#: Said in the rollover's warnings when last year's index could not be read
+#: (the audit's E2, P297): the rollover goes on - it must never be blocked
+#: by a read it only wanted for a note - but an empty list of unfiled
+#: documents must not look like a clean year.
+UNFILED_LAST_YEAR_UNREAD = (
+    "Last year's unfiled documents could not be listed ({problem}), so the new list "
+    "carries none of them; check last year's `00 - Needs Review` by hand")
 
 #: Why a household cannot be rolled: the inbox cannot say which year a
 #: document is for, and neither can a rollover say which year it is
@@ -194,6 +201,11 @@ class RolloverReport:
     target_year: int | None = None
     rolled: list[RolledItem] = field(default_factory=list)
     unfiled_last_year: list[str] = field(default_factory=list)
+    #: :data:`UNFILED_LAST_YEAR_UNREAD` when last year's index could not be
+    #: read, else ``""``. Kept on the report rather than appended to
+    #: ``warnings`` where it is found, because creating the new year
+    #: *assigns* ``warnings`` afterwards (:meth:`carry_warnings`).
+    unfiled_last_year_unread: str = ""
     #: :data:`LINK_NOT_CARRIED` when the prior's link was left behind
     #: because it is not a web address (decision 137, L5), else ``""``.
     link_dropped: str = ""
@@ -201,6 +213,13 @@ class RolloverReport:
     #: a same-name issuer pair last year's list already held, carried as it
     #: was, in :data:`tracker.manifest.ISSUER_NAMED_TWICE`'s words.
     warnings: list[str] = field(default_factory=list)
+
+    def carry_warnings(self, said: Sequence[str]) -> None:
+        """Set ``warnings`` to what creating the new year said, and then the
+        note that last year's index could not be read, when it could not:
+        the one place both are put together, so the creation's assignment
+        cannot overwrite the note (the SPEC's trap, P297)."""
+        self.warnings = [*said, *([self.unfiled_last_year_unread] if self.unfiled_last_year_unread else [])]
 
     @property
     def items(self) -> list[RequestItem]:
@@ -509,12 +528,19 @@ def roll_forward(
             note=NEW_NOT_ASKED_NOTE,
         ))
 
-    report.unfiled_last_year = _unfiled_last_year(prior_dir)
+    report.unfiled_last_year, report.unfiled_last_year_unread = _unfiled_last_year(prior_dir)
     return report
 
 
-def _unfiled_last_year(prior_dir: Path) -> list[str]:
-    """Documents the client sent last year that were never filed.
+def _unfiled_last_year(prior_dir: Path) -> tuple[list[str], str]:
+    """Documents the client sent last year that were never filed, and
+    ``""`` - or, when the prior year's index could not be read,
+    :data:`UNFILED_LAST_YEAR_UNREAD` with the reason and no documents.
+
+    An unreadable index never blocks a rollover, but it is said (P297): the
+    exception is kept on the error log and the sentence rides in the
+    report's warnings, so a year with nothing listed is not mistaken for a
+    year with nothing unfiled.
 
     Reported, never acted on: a request row needs a name and rules a person
     chooses. But a document that arrived and fitted nowhere is exactly the
@@ -528,7 +554,8 @@ def _unfiled_last_year(prior_dir: Path) -> list[str]:
     subfolder - that is its own column, and the client's folder name is not
     a reason anything was not filed.
     """
-    from tracker.filer import NEEDS_REVIEW, ensure, read_index
+    from tracker import ledger, store
+    from tracker.filer import NEEDS_REVIEW, FilingError, ensure, read_index
 
     try:
         # A rollover only reads the prior year, and it reads it without
@@ -536,14 +563,16 @@ def _unfiled_last_year(prior_dir: Path) -> list[str]:
         # nothing is written in the folder.
         ensure(prior_dir)
         rows = read_index(prior_dir)
-    except Exception:  # an unreadable index must never block a rollover
-        return []
+    except Exception as exc:  # an unreadable index must never block a rollover
+        errors.keep("rollover: last year's unfiled documents", exc, name=prior_dir.name)
+        return [], UNFILED_LAST_YEAR_UNREAD.format(problem=errors.said(
+            exc, (FilingError, ManifestError, ledger.LedgerError, store.StoreError)))
     seen: dict[str, tuple[str, str]] = {}
     for row in rows:
         key = row.pbc_location or row.digest or row.original_name
         if row.decision == NEEDS_REVIEW and key not in seen:
             seen[key] = (row.original_name, row.reason)
-    return [f"{name} — {reason}" for name, reason in seen.values()]
+    return [f"{name} — {reason}" for name, reason in seen.values()], ""
 
 
 # ------------------------------------------------------- the household roll ----
@@ -902,8 +931,8 @@ def _make_one(roll: _PlannedRoll) -> list[Path]:
     # call's own mkdir made is removed again (decision 137).
     made = make_new_folders(roll.target)
     try:
-        roll.report.warnings = list(create_engagement(roll.target, roll.report.items, roll.info,
-                                                      carried=roll.report.from_last_year))
+        roll.report.carry_warnings(create_engagement(roll.target, roll.report.items, roll.info,
+                                                     carried=roll.report.from_last_year))
         scaffold_engagement(roll.target)
     except Exception:
         _unmake(roll.target, made)
@@ -930,8 +959,8 @@ def _unmake(target: Path, made: list[Path]) -> None:
             pass
     try:
         store.forget(store.connect(), target)
-    except Exception:
-        pass
+    except Exception as exc:
+        errors.keep("rollover: forgetting a failed return", exc, name=target.name)
 
 
 # --------------------------------------------------------------------- CLI ----
@@ -1104,7 +1133,7 @@ if __name__ == "__main__":
     # command line defaults them exactly as the app's rollover does, so an
     # engagement is on the reminder's ladder however it was made
     # (decision 123).
-    result.warnings = list(create_engagement(
+    result.carry_warnings(create_engagement(
         target, result.items,
         with_default_dates(carried, carried.form or ns.form, result.target_year),
         carried=result.from_last_year))
