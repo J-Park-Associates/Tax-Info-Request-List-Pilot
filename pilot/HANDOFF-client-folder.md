@@ -1953,3 +1953,167 @@ tests changed.
 **Which tree.** This table reports the working tree, which differs from the
 last commit by exactly these edits; nothing was staged or committed by the
 builder.
+
+## Review 11 (Opus, 2026-10-13)
+
+Reviews af2c1a0 (SPEC-client-folder-unreadable section 20: three older
+legacy-folder sentences) against section 20, Review 10 and Rebuild 11.
+Run on a `git archive af2c1a0` copy in the scratchpad (git-initialised),
+venv Python 3.13.16, `-p no:cacheprovider -q`, one process per file, in
+parallel. The probe was Review 10's script, extended with a pass, run as a
+throwaway test file on the copy and deleted after (`git status` clean).
+
+**Verdict.** Built to section 20. The three replacements match the SPEC
+word for word, in the places it names, and nothing else in those files
+changed. The new sentences are true of what the code does: the probe
+shows the record case is an engagement the pass fails with the sentence
+and Roll Forward refuses, and the no-record case is the `legacy_folder`
+misfit. No other sentence in tracker/, docs/, app/ or the README still
+says the record case is a misfit or not an engagement.
+
+**Findings.** No findings.
+
+**Observations (not findings).**
+
+- An *inactive* return of the record case is skipped by the pass, not
+  failed: `_worth_a_pass` asks `why_skipped` (rolled forward, inactive)
+  before `engagement.problem` (`tracker/runner.py:1756-1767`). Probe, Old
+  Park's details set to Active: no: `code='inactive' skipped="inactive
+  (the engagement's details say Active: no)"`, `errors: []`. Roll Forward
+  still refuses it with `ROLLOVER_LEGACY_FOLDER`. The runbook's "a return
+  the pass fails with that sentence" is unqualified, as is every other
+  such line in the runbook (a skipped return is never failed for anything);
+  the words are section 20's and the general skip rule is stated elsewhere.
+  Not worth a change.
+- The pass's error line is the sentence inside `RECORD_UNREADABLE`
+  ("the record could not be read: holds its request list ..."), code
+  `record-unreadable`. "Fails with that sentence" is true: the sentence is
+  carried whole. The prefix reads oddly for a record that *was* read; it
+  is older than this lane and not in section 20.
+- `docs/runbook.md` lines 447 and 624 are wrapped raggedly (447 runs to
+  about 90 characters; 624 ends after "With no"). Markdown renders them the
+  same; section 20 prescribes no wrap.
+- The commit trailer reads `Co-Authored-By: Claude Fable 5.1`; the handoff
+  says the build is Sonnet's. As in Review 10, the orchestrator made the
+  commit and the attribution is the orchestrator's to correct, if wrong.
+
+**Verified (questions 1-4).**
+
+1. *Wording.* Compared after normalising whitespace (a script over the
+   copy): the five-line comment above `LEGACY_MANIFEST_FILENAME`
+   (`tracker/registry.py:84-88`) equals section 20's fenced block; the
+   runbook list item reads "a folder from before September 2026 holding a
+   `_manifest.xlsx` and no record" between "a year folder with no return in
+   it," and "a folder Windows will not let it list"; the paragraph reads
+   "**A folder from before September 2026** may still hold a
+   `_manifest.xlsx`. The app no longer reads it. With no record beside it,
+   the folder is left alone and listed with its own sentence; with a record
+   that holds no request list, it is a return the pass fails with that
+   sentence and Roll Forward refuses. Either way the return is set up again
+   in the app (Household, **Add a Return…** ..." with the parenthesis and
+   "The workbook may be deleted once that is done." unchanged; the
+   registry node's `notes` carries the new clause verbatim, followed by
+   ". Nothing imports such a folder, by the owner's word", and "is listed
+   the same way as one with no record" is gone. `git show af2c1a0 --
+   tracker/registry.py docs/runbook.md docs/repo-map.curated.json` is
+   exactly these three hunks: the comment (4 lines out, 5 in), the two
+   runbook hunks, and the one `notes` line (`role` untouched).
+2. *True of the code.* The probe's root holds one 2026 household:
+   `1040 - John Park` (ordinary), `1040 - Old Park` (record, no list,
+   `_manifest.xlsx` beside it), `1040 - Bare Park` (`_manifest.xlsx`
+   only). Discovery and Roll Forward give Review 10's output unchanged:
+   ```
+   PROBE engagements: [('1040 - John Park', '', True), ('1040 - Old Park', 'holds its request list in a workbook the app no longer reads (_manifest.xlsx) and none in its record; set the engagement up again in the app', True)]
+   PROBE misfits: [('1040 - Bare Park', 'legacy_folder', True)]
+   PROBE roll_forward(1040 - Old Park): ManifestError: 1040 - Old Park holds its request list in a workbook the app no longer reads (_manifest.xlsx); set it up again in the app first (runbook section 1), then roll it forward
+   PROBE   == ROLLOVER_LEGACY_FOLDER: True
+   PROBE   trees unchanged: True; 2027 anywhere: False
+   ```
+   The pass, `run_registry(discover_engagements(root), ...)`:
+   ```
+   PASS   1040 - John Park: error='' code='' skipped=''
+   PASS   1040 - Old Park: error='the record could not be read: holds its request list in a workbook the app no longer reads (_manifest.xlsx) and none in its record; set the engagement up again in the app' code='record-unreadable' skipped='' error==RECORD_UNREADABLE(sentence): True
+   PASS   errors: ['1040 - Old Park']
+   ```
+   The code: `registry._walk_year` sends a folder with a record to
+   `found.returns` and one with only the workbook to the `legacy_folder`
+   misfit (`tracker/registry.py:530-531`); `engagement_from` gives the
+   record case `problem=LEGACY_FOLDER...` (`:600-602`); the runner's
+   `_worth_a_pass` turns any `engagement.problem` into
+   `run.error = RECORD_UNREADABLE.format(problem=engagement.problem)` and
+   returns False (`tracker/runner.py:1764-1767`), so the run is in
+   `report.errors`; the status page does the same (`:2898-2900`); Roll
+   Forward compares with the one constant (`tracker/rollover.py:508`,
+   `:810`).
+3. *No sentence left.* `git grep -n -i -e _manifest.xlsx -e legacy -e
+   "workbook the" -e "no longer reads" -- tracker docs app README*`
+   (generated map excluded), each hit read: the registry docstring and
+   comment, `engagement_from`'s docstring ("A record that carries no rules
+   with the old workbook beside it is a legacy folder: an engagement made
+   before decision 103"), the rollover comments (each "its record reads and
+   holds no rules"), `manifest.the_record` ("a folder ... that holds only a
+   workbook the tracker no longer reads" - a folder with no journal, true),
+   `docs/storage.md:452-454` ("A folder that holds only an old workbook and
+   no record is listed ... as a legacy folder, not an engagement" - true),
+   ROADMAP row 10 ("a folder holding only the workbook ... is listed as a
+   legacy folder" - true, and the log is history), the curated `role` and
+   `notes` of registry and the runner's `notes` ("so does a legacy folder
+   the registry listed"), runbook 447, 623-630 and 1385-1386, and the
+   api's "Old Workbook" misfit label. Each is true. app/ (27 files) has no
+   hit; the README's workbook lines are about clients' spreadsheets.
+4. *Hygiene.* The commit touches `tracker/registry.py` (comment only),
+   `docs/runbook.md`, `docs/repo-map.curated.json`, the generated
+   `docs/repo-map.json` / `docs/repo-map.md` (the registry `notes` and the
+   hashes of registry, curated, runbook, this handoff and the SPEC) and
+   this handoff: all named by section 20. No code change, no test change
+   (`test_single_source` and `test_tripwire` pass on the new words, so no
+   quoted text needed bringing up). `repo_map.py check` on the copy: current.
+
+**Gate** (the af2c1a0 archive, the **commit**, not a working tree; one
+process per file, in parallel):
+
+| Check | Result |
+|---|---|
+| test_registry | 44 passed, 2 skipped (1 warning, the runpy one as before) |
+| test_single_source | 218 passed |
+| test_tripwire | 23 passed |
+| test_layers | 31 passed |
+| test_repo_map | 82 passed |
+| `ruff check .` | All checks passed |
+| `repo_map.py check` | Map is current (302 nodes) |
+
+Not run: the 3.11 floor (no pytest there).
+
+Findings: 0 must fix, 0 should fix, 0 nits.
+
+## Closed again (2026-10-13, sections 14-20)
+
+The second loop closed at commit `af2c1a0` (Review 11: no findings). What
+landed since the first Closed section, all on `claude/admiring-goodall-vhomni`:
+
+- Section 14: a return whose record will not read is said as
+  `ROLLOVER_RECORD_UNREADABLE` by the household roll's name lookup.
+- Section 15: the legacy folder is excluded from that sentence by the
+  registry's one constant; `--only` once per name; runbook K4; test K5.
+- Section 16 (P302, Jason): `roll_household` refuses a legacy return of the
+  open year with `ROLLOVER_LEGACY_FOLDER`, before any lock; the command
+  line says it under `NOT ROLLED`, exit 1.
+- Section 17 (P303, Jason): `LEGACY_FOLDER` says "and none in its record".
+- Section 18 (Review 8's S1): `roll_forward` refuses the same return, so the
+  one-return command line and the app's Roll Forward refuse it too; the
+  one-return command line says every `ManifestError` under `NOT ROLLED`.
+- Sections 19 and 20: every description of a legacy folder tells the misfit
+  (workbook, no record) from the return (record with no list, listed as an
+  engagement carrying the sentence, failed by the pass, refused by Roll
+  Forward).
+
+Decision rows P302 and P303 are in `pilot/DECISIONS.md` (commit `21b9d38`).
+Reviews 6 to 11 and Rebuilds 6 to 11 are above. Gates ran on the Python
+3.13 venv only; the 3.11 floor was not run in this container (no pytest for
+it), so the office gate before the merge covers it. The landing session
+runs the combined gate on the final tree.
+
+**Observations left as they are (Review 11):** an inactive return of the
+record case is skipped as inactive rather than failed (the skip rule runs
+first; Roll Forward still refuses it); the pass's error line prefixes the
+sentence with "the record could not be read: ", older than this lane.
