@@ -647,13 +647,21 @@ def _unreadable_return_said(household_dir: Path, wanted: str, key) -> str:
     from) is asked of the registry first. ``key`` maps a folder to what
     ``wanted`` is compared with: the resolved folder for a plan, the
     layout's name key for a name typed on the command line.
-    """
-    from tracker.registry import engagement_from
 
+    The registry gives a legacy folder (a record that reads and holds no
+    rules, the old workbook beside it) a ``problem`` too, but its record
+    *was* read and section 6 has nothing to repair in it; it is not in the
+    open year, so :data:`ROLLOVER_NOT_THIS_HOUSEHOLD` is true of it and is
+    left to say so. The legacy sentence is told by comparison with the
+    registry's one constant, never by a substring.
+    """
+    from tracker.registry import LEGACY_FOLDER, LEGACY_MANIFEST_FILENAME, engagement_from
+
+    legacy = LEGACY_FOLDER.format(name=LEGACY_MANIFEST_FILENAME)
     for folder in household_returns(household_dir):
         if key(folder) == wanted:
             problem = engagement_from(folder).problem
-            if problem:
+            if problem and problem != legacy:
                 return ROLLOVER_RECORD_UNREADABLE.format(prior=folder.name, problem=problem)
     return ""
 
@@ -1079,9 +1087,9 @@ if __name__ == "__main__":
             by_name = {name_key(one.path.name): one for one in open_now}
             chosen = []
             for name in ns.only:
-                one = by_name.get(name_key(normalised_name(name)))
+                wanted = name_key(normalised_name(name))
+                one = by_name.get(wanted)
                 if one is None:
-                    wanted = name_key(normalised_name(name))
                     parser.error(
                         _unreadable_return_said(given, wanted, lambda f: name_key(f.name))
                         or ROLLOVER_NOT_THIS_HOUSEHOLD.format(prior=name, household=given.name))

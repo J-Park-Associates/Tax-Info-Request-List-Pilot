@@ -1378,6 +1378,8 @@ Roll Forward also refuses, before anything is written and with the pass's
 own sentence, a household that is **stopped** - its `_ledger.jsonl` gone, or
 two folders claiming it - and one whose client folder is gone when it had
 one (decision 188).
+A return whose record cannot be read is refused too, with the record's own
+problem, and sent to section 6.
 
 On the command line the same two forms live in one command, told apart by
 what you point it at:

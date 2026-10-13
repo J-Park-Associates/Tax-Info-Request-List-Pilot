@@ -1088,3 +1088,45 @@ passed; test_repo_map 82 passed. `python -m ruff check .`: all checks passed.
 for it in this container).
 
 Findings: 0 must fix, 1 should fix, 4 nits.
+
+## Rebuild 6 (Sonnet, 2026-10-13)
+
+Built SPEC-client-folder-unreadable section 15 (K1-K5), nothing more.
+
+**K1.** `tracker/rollover.py` `_unreadable_return_said` imports `LEGACY_FOLDER`
+and `LEGACY_MANIFEST_FILENAME` from `tracker.registry` at call time and says
+`ROLLOVER_RECORD_UNREADABLE` only when `problem` is set and `problem !=
+LEGACY_FOLDER.format(name=LEGACY_MANIFEST_FILENAME)` (compared to the one
+constant, no substring); a legacy folder falls through to
+`ROLLOVER_NOT_THIS_HOUSEHOLD`. The docstring says why. New test
+`test_a_legacy_folder_that_is_not_open_is_not_this_household_not_a_record_that_cannot_be_read`:
+a 2025 return of the Park household (inactive, `make_engagement(root, [], ...)`
+so the record reads and holds no rules, `_manifest.xlsx` beside it), rolled by
+plan and by `--only` (exit 2). It first asserts the registry gives it the
+legacy `problem` and a read `tax_year` of 2025. Before the change it failed on
+the function call with "1040 - Old Park's record could not be read (holds a
+request list in a workbook the app no longer reads ...); repair it first
+(runbook section 6), then roll it forward"; after, it passes.
+
+**K2.** The rebuild-5 test now restores the journal bytes in a `try/finally`.
+
+**K3.** `main`'s `--only` loop computes `wanted = name_key(normalised_name(name))`
+once, before the lookup, and uses it for `by_name.get` and the helper.
+
+**K4.** `docs/runbook.md`, "Rolling a household into the next year", after the
+paused/stopped/client-folder-gone refusals, one insertion: "A return whose
+record cannot be read is refused too, with the record's own problem, and sent
+to section 6."
+
+**K5.** New test `test_only_naming_a_readable_return_of_a_closed_year_is_not_this_household`:
+`--only "1040 - old park"` for an inactive, readable 2025 return gets
+`ROLLOVER_NOT_THIS_HOUSEHOLD` (name as typed) through `parser.error`, exit 2,
+no "could not be read", nothing written. It passed before the K1 change too:
+it pins the existing `or ROLLOVER_NOT_THIS_HOUSEHOLD` branch, not new behaviour.
+
+**Gate** (one process per file): test_rollover 67 passed, test_registry 44
+passed 2 skipped, test_api 522, test_errors 85, test_single_source 218,
+test_layers 31, test_repo_map 82; ruff clean; repo-map `update` then `check`
+current (302 nodes). No retry was needed. test_single_source stays green with
+the runbook insertion. Not run: Python 3.11 floor (not installed here).
+Observations 1-2 of Review 6 are recorded for Jason, not built.

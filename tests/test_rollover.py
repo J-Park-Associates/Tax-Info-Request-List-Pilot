@@ -1721,33 +1721,103 @@ def test_rolling_a_return_whose_record_cannot_be_read_says_so_rather_than_not_th
     household = private_household_dir(root, PARK)
     journal = ledger.path_for(john)
     original = journal.read_bytes()
-    written_elsewhere(john, ledger.new(
-        ledger.RULES_CHANGED, info={"household": f"../../{CLIENTS_TREE}/{PARK}/Drop files here"}))
-    clients, private = _hashes(root / CLIENTS_TREE), sorted((root / PRIVATE_TREE).rglob("*"))
-    record = journal.read_bytes()
+    # The suite's teardown walks every journal with the store's reader, so
+    # the forged line must not outlive the test, passed or failed (K2).
+    try:
+        written_elsewhere(john, ledger.new(
+            ledger.RULES_CHANGED,
+            info={"household": f"../../{CLIENTS_TREE}/{PARK}/Drop files here"}))
+        clients, private = _hashes(root / CLIENTS_TREE), sorted((root / PRIVATE_TREE).rglob("*"))
+        record = journal.read_bytes()
 
+        with pytest.raises(ManifestError) as said:
+            roll_household(household, target_year=2027, plans=[ReturnPlan(prior=john)])
+        problem = engagement_from(john).problem
+        assert "not one folder name" in problem
+        sentence = ROLLOVER_RECORD_UNREADABLE.format(prior=john.name, problem=problem)
+        assert str(said.value) == sentence
+        assert sentence.startswith("1040 - John Park's record could not be read (")
+        assert sentence.endswith("); repair it first (runbook section 6), then roll it forward")
+        assert ROLLOVER_NOT_THIS_HOUSEHOLD.format(prior=john.name, household=PARK) not in sentence
+
+        console = io.StringIO()
+        monkeypatch.setattr("sys.stderr", console)
+        assert run_the_command_line(monkeypatch, [str(household), "--year", "2027",
+                                                  "--only", john.name], io.StringIO()) == 2
+        assert sentence in console.getvalue()
+        assert "not an open-year return" not in console.getvalue()
+
+        assert _hashes(root / CLIENTS_TREE) == clients
+        assert sorted((root / PRIVATE_TREE).rglob("*")) == private
+        assert journal.read_bytes() == record
+    finally:
+        journal.write_bytes(original)
+
+
+def test_a_legacy_folder_that_is_not_open_is_not_this_household_not_a_record_that_cannot_be_read(
+        park, monkeypatch):
+    """Section 15 (K1): a closed year's return whose record reads but holds no
+    rules, with the old workbook beside it, carries the registry's legacy
+    sentence as its ``problem`` - and its record was read, so "record could not
+    be read ... repair it first (runbook section 6)" is false of it and sends
+    nobody anywhere useful. It is not in the open year, which is what
+    ROLLOVER_NOT_THIS_HOUSEHOLD says truly, from the function and from --only."""
+    import io
+
+    from tracker.manifest import EngagementInfo
+    from tracker.registry import LEGACY_FOLDER, LEGACY_MANIFEST_FILENAME, engagement_from
+    from tracker.rollover import ROLLOVER_NOT_THIS_HOUSEHOLD, ReturnPlan, roll_household
+
+    root, john, sofia, llc = park
+    household = _household(root)
+    legacy = make_engagement(root, [], EngagementInfo(active=False), household=PARK, year=2025,
+                             return_name="1040 - Old Park", scaffold=False)
+    (legacy / LEGACY_MANIFEST_FILENAME).write_bytes(b"PK any bytes at all")
+    assert engagement_from(legacy).problem == LEGACY_FOLDER.format(name=LEGACY_MANIFEST_FILENAME)
+    assert engagement_from(legacy).info.tax_year == 2025
+
+    refused = ROLLOVER_NOT_THIS_HOUSEHOLD.format(prior=legacy.name, household=PARK)
     with pytest.raises(ManifestError) as said:
-        roll_household(household, target_year=2027, plans=[ReturnPlan(prior=john)])
-    problem = engagement_from(john).problem
-    assert "not one folder name" in problem
-    sentence = ROLLOVER_RECORD_UNREADABLE.format(prior=john.name, problem=problem)
-    assert str(said.value) == sentence
-    assert sentence.startswith("1040 - John Park's record could not be read (")
-    assert sentence.endswith("); repair it first (runbook section 6), then roll it forward")
-    assert ROLLOVER_NOT_THIS_HOUSEHOLD.format(prior=john.name, household=PARK) not in sentence
+        roll_household(household, target_year=2027, plans=[ReturnPlan(prior=legacy)])
+    assert str(said.value) == refused
+    assert "could not be read" not in str(said.value)
 
     console = io.StringIO()
     monkeypatch.setattr("sys.stderr", console)
     assert run_the_command_line(monkeypatch, [str(household), "--year", "2027",
-                                              "--only", john.name], io.StringIO()) == 2
-    assert sentence in console.getvalue()
-    assert "not an open-year return" not in console.getvalue()
+                                              "--only", legacy.name], io.StringIO()) == 2
+    assert refused in console.getvalue()
+    assert "repair it first" not in console.getvalue()
+    assert "could not be read" not in console.getvalue()
 
+
+def test_only_naming_a_readable_return_of_a_closed_year_is_not_this_household(park, monkeypatch):
+    """Section 15 (K5): the command line's --only for a return of this
+    household whose record reads but is not in the open year (an older year,
+    set inactive) is refused with ROLLOVER_NOT_THIS_HOUSEHOLD, through
+    parser.error (exit 2), the name as it was typed - not the unreadable-record
+    sentence, and nothing is written."""
+    import io
+
+    from tracker.layout import CLIENTS_TREE, PRIVATE_TREE
+    from tracker.manifest import EngagementInfo
+    from tracker.rollover import ROLLOVER_NOT_THIS_HOUSEHOLD
+
+    root, john, sofia, llc = park
+    household = _household(root)
+    make_engagement(root, W2, EngagementInfo(active=False), household=PARK, year=2025,
+                    return_name="1040 - Old Park", scaffold=False)
+    clients, private = _hashes(root / CLIENTS_TREE), sorted((root / PRIVATE_TREE).rglob("*"))
+
+    console = io.StringIO()
+    monkeypatch.setattr("sys.stderr", console)
+    assert run_the_command_line(monkeypatch, [str(household), "--year", "2027",
+                                              "--only", "1040 - old park"], io.StringIO()) == 2
+    assert ROLLOVER_NOT_THIS_HOUSEHOLD.format(prior="1040 - old park", household=PARK) \
+        in console.getvalue()
+    assert "could not be read" not in console.getvalue()
     assert _hashes(root / CLIENTS_TREE) == clients
     assert sorted((root / PRIVATE_TREE).rglob("*")) == private
-    assert journal.read_bytes() == record
-    # The suite's teardown walks every journal; the forged line is not left in it.
-    journal.write_bytes(original)
 
 
 def test_a_renamed_private_folder_pauses_roll_forward_and_the_old_client_folder_appears_as_a_misfit(

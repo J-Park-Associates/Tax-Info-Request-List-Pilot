@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 302,
     "edges": 1336,
-    "reused": 246
+    "reused": 247
   },
   "node_types": [
     "artifact",
@@ -4737,15 +4737,15 @@
       "id": "pilot/HANDOFF-client-folder.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "86cf282a40efead1",
-      "lines": 1090
+      "sha256": "97c8475a84e0b934",
+      "lines": 1132
     },
     {
       "id": "pilot/HANDOFF-document-gate.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "ae0688fa82619725",
-      "lines": 654
+      "sha256": "39e4acc836d81e7e",
+      "lines": 757
     },
     {
       "id": "pilot/HANDOFF-error-handling-small.md",
@@ -4829,8 +4829,8 @@
       "id": "pilot/SPEC-document-gate.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "0bb481457ffa0dca",
-      "lines": 209
+      "sha256": "93a9f1d43aad24b0",
+      "lines": 222
     },
     {
       "id": "pilot/SPEC-email-zip-tag.md",
@@ -9167,8 +9167,8 @@
       "id": "tests/test_rollover.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "c43419ec6f7ae470",
-      "lines": 1876,
+      "sha256": "0196ab2806194688",
+      "lines": 1871,
       "exports": [
         "PAIR_SAID",
         "PARK",
