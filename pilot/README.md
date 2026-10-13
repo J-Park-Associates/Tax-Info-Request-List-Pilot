@@ -11,7 +11,7 @@ is still limited.
 
 It is a separate repository (P17), copied with full history from
 `J-Park-Associates/Tax-Info-Request-List`. Nothing here ever flows back to the
-original. The original's improvements come in only when Jason asks for a merge.
+original. A fix the original gets is copied across by hand, as this repository's own change (P309).
 
 ## Rules for this repository
 

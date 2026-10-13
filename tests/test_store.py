@@ -2813,7 +2813,7 @@ def test_a_new_engagement_is_admitted_by_construction(conn, root, by_hand):
 #: Version 5 (P301) moved two parts from version 4's: ``records.rule_row_fault``,
 #: which now reads the Document, and the new ``records.document_problem``.
 #: Version 5 was pinned again, not raised, when the walker stopped following
-#: a name the function binds itself (SPEC-architecture J1, P309): 30 parts the
+#: a name the function binds itself (SPEC-architecture J1, finding B-2): 30 parts the
 #: admission never runs - 19 of settings', the store's ``kind`` and ``statuses``
 #: and what only they reach - left it, and none joined. No rule changed.
 ADMISSION_PIN: dict[int, dict[str, str]] = {2: {
