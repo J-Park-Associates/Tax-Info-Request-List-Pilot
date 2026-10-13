@@ -125,3 +125,48 @@ now covers admission 5 as well as 4.
 ## 9. Decision row (added by the landing session)
 
 | P301 | 2026-10-13 | The store's gate reads the Document: a request's Document title holding a spoofing character is refused where it is typed (named by row and field) and is a refused line where it is stored (`records.document_problem`); the admission rises to 5. Amends P290, whose gate did not read the Document, so a held Document named working copies with such a character (SPEC-document-gate). | Jason, 2026-10-13, on the question SPEC-form-inputs' third review left open. |
+
+---
+
+## 10. Amendments after the first review (Opus, 2026-10-13)
+
+Findings F1-F5 are in `pilot/HANDOFF-document-gate.md` under "Review". None
+survived a rebuild, so the rebuild is Sonnet's. F1, F2, F4 and F5 are built;
+F3 is the landing session's.
+
+**R2, amended (F1).** The Document refusal in `manifest.item_from_fields` is
+labelled as `_short_title`'s derived-name refusal is: `COL_DOCUMENT` for a
+document row and `COL_ISSUER` with the issuer's entity for an issuer row
+(`_issuer_entity(document)` non-empty), so the add-issuer card's refusal
+names the one box the person sees -
+`f"{where}: {COL_ISSUER} '{quoted(entity)}' {problem}"`. Test
+(`tests/test_manifest.py`, and through `issuer_item` if that is how the card
+reaches it): a K-1 issuer name holding U+202E is refused naming `Issuer Name`
+and the entity, never the whole Document. SPEC-form-inputs section 18's
+"sections 14 to 17 otherwise stand" is then true again.
+
+**Docs (F2).** The handoff's reminder and the API test's docstring say a
+household stopped by a spoofed stored Document is repaired as any refused
+line is - the runbook's malformed-line repair (section 6), as for a spoofed
+identifier since P290 - not by retyping the Document in the editor, whose
+`state` call the same refused line refuses. The handoff section
+"Reminder for Jason" is corrected in place.
+
+**Dead code (F4).** The held-row arm of `_short_title`'s derived-name check
+cannot fire now that the Document is judged first; remove it, keep the typed
+arm, and say in the docstring why the held case is covered by the Document's
+own check.
+
+**Docstring (F5).** `layout.spoofing_problem`'s docstring says the narrow
+rule spares a byte-order mark; the code refuses U+FEFF and always has. The
+docstring says what the code does. No behaviour change; `layout.py` is
+touched for that line only.
+
+**Landing (F3).** The map is refreshed on the combined tree by whichever
+commit lands second; the landing session runs `update` and `check` again
+before the final push.
+
+Gate after the rebuild: `test_manifest`, `test_api`, `test_layout`,
+`test_templates`, `test_layers`, `test_single_source`, `test_repo_map`,
+ruff, the map check. The builder appends
+`## Rebuild 1 (Sonnet, 2026-10-13)` to the handoff.
