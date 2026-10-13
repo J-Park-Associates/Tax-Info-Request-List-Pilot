@@ -18,6 +18,7 @@ import pytest
 
 import tracker.api as api
 from tests.conftest import TEST_CLIENT, app_stdin, make_engagement
+from tests.node_harness import js_function
 from tests.samples import PRIOR_YEAR, SCRATCH_PEOPLE, text_pdf
 from tracker import layout, ledger, manifest, reasons, reminder, store, view
 from tracker.filer import FILED, NEEDS_REVIEW, read_index
@@ -5777,7 +5778,7 @@ def test_the_renderer_sets_only_the_attributes_its_allowlist_names():
     allowed = set(re.findall(r'"([^"]+)"', listed))
     assert not {name for name in allowed if name.lower().startswith("on")}
     assert not allowed & {"href", "src", "style", "srcdoc", "action", "formaction", "innerHTML"}
-    body = js.split("function el(", 1)[1].split("\n}\n", 1)[0]
+    body = js_function("el", "app.js")
     assert "if (!EL_ATTRIBUTES.has(key)) throw" in body
 
     used: set[str] = set()
@@ -6143,15 +6144,7 @@ def _editor_rows_by_the_app(rules, vocab, tmp_path):
     import shutil
     import subprocess
 
-    js = (Path(__file__).resolve().parent.parent / "app" / "renderer" / "app.js").read_text(encoding="utf-8")
-    start = js.index("function editorRow(rule) {")
-    depth, end = 0, None
-    for at in range(js.index("{", start), len(js)):
-        depth += {"{": 1, "}": -1}.get(js[at], 0)
-        if depth == 0:
-            end = at + 1
-            break
-    source = js[start:end]
+    source = js_function("editorRow", "app.js")
     assert re.search(r'^\s+short_title: rule\.short_title \|\| "",$', source, flags=re.MULTILINE)
     node = shutil.which("node")
     if node is None:

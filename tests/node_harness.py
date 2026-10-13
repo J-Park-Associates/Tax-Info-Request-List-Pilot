@@ -35,6 +35,11 @@ def read(name: str) -> str:
     return (RENDERER / name).read_text(encoding="utf-8")
 
 
+#: Every script ``index.html`` loads, by file name, the vendored libraries left out:
+#: the renderer's own code, in the order the page loads it.
+RENDERER_SCRIPTS = tuple(src for src in re.findall(r'<script src="([^"]+)"', read("index.html"))
+                         if not src.startswith("vendor/"))
+
 NODE = shutil.which("node")
 
 
@@ -60,11 +65,32 @@ sys.stdout.write(json.dumps(reply))
 ENGINE_ENV = {**os.environ, "FIRM_PY": sys.executable, "FIRM_REPO": str(Path(__file__).resolve().parent.parent), "FIRM_SNIPPET": ENGINE_SNIPPET}
 
 
-def js_function(name: str, source: str = "shell.js") -> str:
-    text = read(source)
-    start = text.index(f"function {name}(")
-    if text[max(0, start - 6):start] == "async ":
-        start -= 6
+def js_function(name: str, file: str | None = None) -> str:
+    """One function of the renderer's own scripts exactly as written: from
+    ``function name(`` (or ``async function name(``) to the first ``"\\n}\\n"``,
+    that line included.
+
+    With ``file`` (``"app.js"``) the function is cut from that script. Without
+    one, every script ``index.html`` loads is searched (:data:`RENDERER_SCRIPTS`,
+    never ``vendor/``). Either way it must be defined exactly once: a name two
+    scripts define (``show``, ``fill`` and ``render`` are) needs the script said,
+    so a test never claims about the one it did not mean.
+
+    This is the one lifter. It replaced seven (``test_shell``'s, two of
+    ``test_single_source``'s, two of ``test_row_columns``', and inline cuts in
+    ``test_api``); the claims about a function's text are the same, only the
+    way of cutting it is one (SPEC-architecture R2.3). The callers that used to
+    ask for a body without its header, or for the text to the matching brace,
+    read this text, which holds the header and ends at the line of the closing
+    brace.
+    """
+    found = []
+    for script in (file,) if file else RENDERER_SCRIPTS:
+        text = read(script)
+        for match in re.finditer(rf"(?m)^[ \t]*((?:async )?function {re.escape(name)}\()", text):
+            found.append((text, match.start(1)))
+    assert len(found) == 1, f"{name} is defined {len(found)} times in {file or 'the renderer scripts'}"
+    text, start = found[0]
     return text[start:text.index("\n}\n", start) + 3]
 
 

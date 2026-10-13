@@ -16,8 +16,8 @@
   ],
   "counts": {
     "nodes": 311,
-    "edges": 1367,
-    "reused": 0
+    "edges": 1369,
+    "reused": 253
   },
   "node_types": [
     "artifact",
@@ -4645,7 +4645,7 @@
       "id": "docs/repo-map.curated.json",
       "type": "file",
       "layer": "docs",
-      "sha256": "3176cfdf4c06a4e7",
+      "sha256": "7111209799fddc24",
       "lines": 1345,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
@@ -6095,8 +6095,8 @@
       "id": "tests/node_harness.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "8815c3e312b4bcea",
-      "lines": 747,
+      "sha256": "eb38c664cb1970b8",
+      "lines": 773,
       "exports": [
         "COLUMN_FUNCTIONS",
         "EARLY_FIRM",
@@ -6120,6 +6120,7 @@
         "REMINDER_FUNCTIONS",
         "REMINDER_SHEET",
         "RENDERER",
+        "RENDERER_SCRIPTS",
         "REPO",
         "RETURN_STATE",
         "SORT_END",
@@ -6167,7 +6168,7 @@
         "LONG_SETUP": "'\\nconst hideTip = () => {}; const showTipNow = () => {};\\nlet H = 40;\\nObject.defineProperty(Element.prototype, \"offsetHeight\", { get() { return H; }, configurable: true });\\nconst pageBox = new Element(\"div\");\\npageBox.scrollTop = 0; pageBox.clientHeight = 800; pageBox.getBoundingClientRect = () => ({ top: 0 });\\nconst $ = (id) => (id === \"page\" ? pageBox : null);\\nconst parkedFiles = (n, extra = () => ({})) => Array.from({ length: n }, (_, i) => parked(`f${String(i + 1).padStart(4, \"0\")}`, extra(i)));\\nconst draw = (index, items = []) => {\\n  lastState = stateOf(items, index);\\n  pagesUid = 0; pagesTokens.clear(); pagesBroken = [];\\n  pageBox.replaceChildren(...pagesReturn({ level: \"return\", ret: \"r1\", year: 2025 }));\\n  pageBox.scrollTop = 0;\\n  for (const list of pageBox.querySelectorAll(\".rows.is-virtual\")) list.getBoundingClientRect = () => ({ top: 100 - pageBox.scrollTop });\\n  pagesVirtualMeasure(pageBox);\\n  return pageBox.querySelectorAll(\".rows.is-virtual\")[0];\\n};\\nconst scrollTo = (top) => { pageBox.scrollTop = top; pagesVirtualPlaceAll(pageBox); };\\n'"
       },
       "role": "Runs the renderer's own JavaScript under node and reads its text: the runners (run_shell and run_pages lift named functions out of the scripts as written and run a probe against fakes; run_pages_dom adds a small DOM; run_notices, run_lists, run_speed, run_firm_load and the rest add the worlds their claims need), js_function and lift, which cut a function out of a script, and the renderer file reader read(name).",
-      "notes": "SPEC-architecture J2 (R2.1, E-4). tests/test_shell.py grew the runners and test_single_source.py borrowed one (from tests.test_shell import run_pages); they were moved here with their words and the fakes and function lists each always had, and the file reader every renderer test wrote for itself (test_pilot, test_pilot_ui) is read() here. The window is sandboxed and there is no browser in the gate, so a claim about what a page does is made by running its functions in node. Skipped where node is not on PATH (CI installs it)."
+      "notes": "SPEC-architecture J2 (R2.1, E-4). tests/test_shell.py grew the runners and test_single_source.py borrowed one (from tests.test_shell import run_pages); they were moved here with their words and the fakes and function lists each always had, and the file reader every renderer test wrote for itself (test_pilot, test_pilot_ui) is read() here. The window is sandboxed and there is no browser in the gate, so a claim about what a page does is made by running its functions in node. Skipped where node is not on PATH (CI installs it). SPEC-architecture J2 (R2.3): js_function(name, file=None) is the one lifter. Seven had grown - test_shell's, two of test_single_source's (one cut to the matching brace, one to the body without its header), two of test_row_columns' (editorRow and a header-taking one) and two inline cuts in test_api - and each is now this: from function name( (or async function name() to the first line that is a closing brace on its own, header included. With file=None it searches RENDERER_SCRIPTS - every script index.html loads, never vendor/ - and asserts the name is defined exactly once, so a function two scripts define (show, fill and render are) has to say which; with a file it must be defined exactly once in that one. lift() keeps its meaning (the first script of SPEED_SOURCES that defines the name)."
     },
     {
       "id": "tests/passes.py",
@@ -6373,8 +6374,8 @@
       "id": "tests/test_api.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "1a40bbf9c5ed89ae",
-      "lines": 11736,
+      "sha256": "a3b21c443772c301",
+      "lines": 11729,
       "exports": [
         "COUNTS",
         "DEEPER_ROOT_LENGTH",
@@ -9537,10 +9538,9 @@
       "id": "tests/test_row_columns.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "eb1dce70fc0c6b23",
-      "lines": 769,
+      "sha256": "a23864bc2aa1c912",
+      "lines": 745,
       "exports": [
-        "APP_JS",
         "BASE",
         "COMPANION",
         "ISSUER",
@@ -10613,8 +10613,8 @@
       "id": "tests/test_single_source.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "d1080b47f26c9777",
-      "lines": 5348,
+      "sha256": "d32fc1b663b0e293",
+      "lines": 5329,
       "exports": [
         "AFTER_WHAT",
         "CONSOLE_EXEMPT",
@@ -12982,6 +12982,12 @@
     {
       "from": "tests/test_api.py",
       "to": "tests/conftest.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_api.py",
+      "to": "tests/node_harness.py",
       "type": "imports",
       "source": "derived"
     },
@@ -15868,6 +15874,12 @@
     {
       "from": "tests/test_row_columns.py",
       "to": "tests/conftest.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_row_columns.py",
+      "to": "tests/node_harness.py",
       "type": "imports",
       "source": "derived"
     },

@@ -58,6 +58,7 @@ import pytest
 
 import tracker.api as api
 from tests.conftest import app_stdin, make_engagement
+from tests.node_harness import js_function
 from tracker import ledger, records, store, templates, view
 from tracker.manifest import (
     ANY_EXTENSION,
@@ -78,8 +79,6 @@ from tracker.manifest import (
     shift_years,
 )
 from tracker.rollover import _carry
-
-APP_JS = Path(__file__).resolve().parents[1] / "app" / "renderer" / "app.js"
 
 
 class _Missing:
@@ -385,21 +384,9 @@ def _through_the_api(values, status, ctx):
     return _from_json(back)
 
 
-def _editor_row_source() -> str:
-    """``editorRow`` exactly as ``app.js`` spells it, braces matched."""
-    text = APP_JS.read_text(encoding="utf-8")
-    start = text.index("function editorRow(rule) {")
-    depth = 0
-    for at in range(text.index("{", start), len(text)):
-        depth += {"{": 1, "}": -1}.get(text[at], 0)
-        if depth == 0:
-            return text[start:at + 1]
-    raise AssertionError("editorRow in app.js has no closing brace")
-
-
 def _editor_keys() -> set[str]:
     """The keys ``editorRow``'s object literal names (its top level)."""
-    return set(re.findall(r"^ {4}(\w+):", _editor_row_source(), flags=re.MULTILINE))
+    return set(re.findall(r"^ {4}(\w+):", js_function("editorRow", "app.js"), flags=re.MULTILINE))
 
 
 def _editor_names(values, status, ctx):
@@ -418,7 +405,7 @@ def _run_editor_rows(rules: list[dict], ctx) -> list[dict]:
     script.write_text(
         "const input = JSON.parse(require('fs').readFileSync(0, 'utf8'));\n"
         "const vocab = input.vocab;\n"
-        f"{_editor_row_source()}\n"
+        f"{js_function('editorRow', 'app.js')}\n"
         "process.stdout.write(JSON.stringify(input.rules.map(editorRow)));\n",
         encoding="utf-8", newline="\n")
     done = subprocess.run([node, str(script)], input=json.dumps({"vocab": api._vocab(), "rules": rules}),
@@ -740,30 +727,19 @@ def test_the_editor_sends_every_column_whether_folded_or_not():
     one cellInput that writes into the row, and the save sends the rows
     whole. The rows themselves are held above: ``editorRow`` carries every
     column (run by node), and the API reads them back whole."""
-    js = APP_JS.read_text(encoding="utf-8")
-    render = _function_source(js, "function renderEditorRows() {")
+    render = js_function("renderEditorRows", "app.js")
     assert "columns: vocab.columns," in render
     assert "plain: vocab.editor.plain_columns," in render and "routing: vocab.editor.routing_columns," in render
-    start = js.index("function requestRows(container, rows, {")
-    rows = js[start:js.index("\n}\n", start) + 2]
+    rows = js_function("requestRows", "app.js")
     folded = rows.split("if (fold) {", 1)[1].split("} else {", 1)[0]
     assert "plain.map((c) => el(\"td\", { className: `ed-${c.key}` }, cellInput(row, c, changed)))" in folded
     assert "inFold.map((c) => el(\"label\"" in folded and "cellInput(row, c, changed)" in folded
     assert "routing.filter((c) => !(custom && c.key === \"document\"))" in folded
     assert "custom ? cellInput(row, documentColumn, changed) : null" in folded
-    save = _function_source(js, "async function saveEditor() {")
+    save = js_function("saveEditor", "app.js")
     assert "items: editorRows," in save
     # Nothing between the boxes and the save drops a column: the rows go
     # as the boxes left them, never filtered or rebuilt on the way.
     assert "editorRows.filter" not in save and "editorRows.map" not in save
 
 
-def _function_source(js: str, header: str) -> str:
-    """One function of ``app.js`` exactly as it is spelled, braces matched."""
-    start = js.index(header)
-    depth = 0
-    for at in range(js.index("{", start + len(header) - 1), len(js)):
-        depth += {"{": 1, "}": -1}.get(js[at], 0)
-        if depth == 0:
-            return js[start:at + 1]
-    raise AssertionError(f"{header} in app.js has no closing brace")
