@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 302,
     "edges": 1336,
-    "reused": 246
+    "reused": 248
   },
   "node_types": [
     "artifact",
@@ -4753,15 +4753,15 @@
       "id": "pilot/HANDOFF-error-handling-small.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "3445e327be31d969",
-      "lines": 779
+      "sha256": "b2a87ad2a6a2d818",
+      "lines": 813
     },
     {
       "id": "pilot/HANDOFF-form-inputs.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "3ba893807d1cf267",
-      "lines": 1109
+      "sha256": "fcf6642578992eed",
+      "lines": 1157
     },
     {
       "id": "pilot/HANDOFF.md",
@@ -4873,8 +4873,8 @@
       "id": "pilot/SPEC-form-inputs.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "485e184430f82231",
-      "lines": 661
+      "sha256": "1896017d1a1abf3a",
+      "lines": 677
     },
     {
       "id": "pilot/SPEC-hide-under-construction.md",

@@ -659,3 +659,19 @@ new row past the limit → refused as today.
 Gate: `test_api`, `test_single_source`, `test_layers`, `test_repo_map`,
 ruff, the map check. The builder appends `## Rebuild 6 (Sonnet, 2026-10-13)`
 to `pilot/HANDOFF-form-inputs.md`.
+
+---
+
+## 21. Section 20 as built (2026-10-13)
+
+Section 20 said "everything else in the check is unchanged", which could
+not hold: `_PATH_FIELDS` named the identifier among the fields a matched
+row is compared on, so a row matched by key and then compared on its exact
+identifier still read a change of case as a change. The builder dropped
+`"identifier"` from `_PATH_FIELDS`, leaving document, period and file
+types, and said why in the comment on the constant. That is the SPEC's
+intent: rows are matched by the identifier's key (`records.identifier_key`,
+which strips and lowers and so cannot change a path's length), and the
+fields compared are the ones a case change does not reach. A respelling
+that changes the key is a row the list does not hold and is measured, as
+before. The review of section 20 judges the build against this section.

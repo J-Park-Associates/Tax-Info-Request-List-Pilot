@@ -1107,3 +1107,51 @@ bytes are unchanged.
 clean. The first `check` failed only on another lane's handoff file
 (`pilot/HANDOFF-error-handling-small.md`, appended mid-gate); `update` was run
 again and `check` then reported the map current (302 nodes).
+
+## Rebuild 6 (Sonnet, 2026-10-13)
+
+Section 20 (I2, decision P305): the editor's path-room check matches a sent
+row to the stored one by the identifier's key. Built together with
+SPEC-error-handling-small section 13 (both edit `tests/test_api.py`).
+
+**Built.** In `api._refuse_a_changed_row_past_the_limit`, `stored` is keyed by
+`identifier_key(item.identifier)` and each sent item is looked up by the same
+key; a row is `changed` when the lookup finds nothing, when its document,
+period or file types differ, or when it is newly Asked. `_PATH_FIELDS` loses
+`"identifier"` (three fields now, comment says why): the identifier is what the
+rows are matched by, so its spelling cannot also be the difference measured
+(left in, a case-only respelling would still read as changed). The docstring
+says a change of case is the same row (decision 160). Section 19's
+`_people_from_spec` check (f55605a) is untouched.
+
+**Tests** (`tests/test_api.py`, after the decision-131 save test, over a shared
+helper `_a_held_row_past_the_limit` built on `_a_long_row_return`; each run
+before the code change and after, under both `path_setting` parametrizations):
+
+| test | before | after |
+|---|---|---|
+| `test_a_change_of_case_alone_on_a_held_row_past_the_limit_is_the_same_row_and_is_not_measured` (B01 sent as `b01`) | fails, both settings (`PATH_TOO_LONG`) | passes |
+| `test_a_respelt_held_row_past_the_limit_with_its_document_lengthened_is_still_refused` | passes | passes |
+| `test_a_new_row_past_the_limit_is_still_refused_beside_a_held_one` | passes | passes |
+
+The two refusals assert creation's sentence and that the ledger bytes are
+unchanged. The existing decision-131 save test still passes.
+
+**Gate** (Python 3.13 venv only; each file its own process, in parallel,
+`-p no:cacheprovider`):
+
+| Step | Result |
+|---|---|
+| test_api | 533 passed |
+| test_single_source | 218 passed |
+| test_layers | 31 passed |
+| test_repo_map | 82 passed (an earlier run in the same gate failed `test_the_committed_map_is_current` while the tree held the other lane's uncommitted files; after they were committed and the map was current, it passed) |
+| `ruff check .` | all checks passed |
+| `repo_map.py update` / `check` | "already current" / current (302 nodes), exit 0 |
+
+**Could not do.** The Python 3.11 floor was not run (one interpreter in the
+venv). Process note: one insertion in `tests/test_api.py` (the guard-test
+constant, section 13) was made with a read-modify-write script rather than the
+Edit tool; the other builder's test was not yet in the file and the diff shows
+only my hunks, but the orchestrator should confirm that the other lane's test
+is present.

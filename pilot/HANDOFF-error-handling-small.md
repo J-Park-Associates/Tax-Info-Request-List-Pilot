@@ -777,3 +777,37 @@ stale (exit 1), on the three files named in H1. The Python 3.11 floor was not
 run.
 
 Findings: 0 must fix, 3 should fix, 3 nits.
+
+## Rebuild 3 (Sonnet, 2026-10-13)
+
+Section 13 (P196's one exception: the override reasons show as stored). Test
+only; no code change. Built together with SPEC-form-inputs section 20.
+
+**Built.** In `tests/test_api.py`,
+`test_no_word_the_window_draws_says_client_but_a_folders_own_name` now has
+`("override_reasons", vocab["override_reasons"])` in its `drawn` list, and
+exempts exactly `(where, text) == ("override_reasons",
+_STORED_REASON_WITH_CLIENT)`, a module constant beside `_FOLDER_WORDS` set to
+`manifest.OVERRIDE_REASONS[0]` ("Client confirmed this is the final version")
+with a comment saying why (P196's one exception; stored values shown as
+stored). The exemption is keyed to the override-reasons branch, so the same
+text anywhere else on the screen still fails.
+
+**Checks.**
+
+| variant | result |
+|---|---|
+| as built | passes |
+| exemption removed (scratch copy, deleted afterwards) | fails: `[('override_reasons[0]', 'Client confirmed this is the final version')]`, so the test does read the override reasons |
+| exemption pointed at `OVERRIDE_REASONS[1]` (scratch copy) | fails on reason [0], so a "Client" that is not the named one is caught |
+
+**Gate** (Python 3.13 venv only; each file its own process, in parallel,
+`-p no:cacheprovider`): test_api 533 passed, test_single_source 218,
+test_layers 31, test_repo_map 82 (the one earlier failure was the map being
+stale against the other lane's uncommitted files; passed after the map was
+current); `ruff check .` clean; `repo_map.py update` found the map already
+current and `check` exited 0 (302 nodes).
+
+**Could not do.** The Python 3.11 floor was not run. This section's gate is
+section 20's, so the numbers are shared with Rebuild 6 of
+`pilot/HANDOFF-form-inputs.md`.

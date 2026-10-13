@@ -5487,6 +5487,66 @@ def test_saving_a_list_refuses_a_changed_row_whose_path_would_pass_the_limit_and
     assert payload["saved"]["changed"] == ["A01"]
 
 
+def _a_held_row_past_the_limit(capsys, demo_root):
+    """``_a_long_row_return`` under a deep root, and its editor rows by
+    identifier: B01's canonical copy is past the limit, A01's is not."""
+    engagement = _a_long_row_return(_a_deeper_root(demo_root))
+    rows = payload_of_state(capsys, engagement)["rules"]
+    return engagement, {row["identifier"]: row for row in rows}
+
+
+def test_a_change_of_case_alone_on_a_held_row_past_the_limit_is_the_same_row_and_is_not_measured(
+    capsys, demo_root, path_setting,
+):
+    """P305: the path-room check matches a sent row to the stored one by the
+    identifier's key (decision 160: a change of case is the same request),
+    so respelling a held row past the limit by case alone is not refused -
+    a case change cannot alter a path's length."""
+    engagement, by_id = _a_held_row_past_the_limit(capsys, demo_root)
+    respelt = [by_id["A01"], {**by_id["B01"], "identifier": "b01"}]
+
+    code, payload = run(capsys, "edit", api.ENGAGEMENT_FLAG, str(engagement),
+                        stdin={"items": respelt, "engagement": {}})
+
+    assert code == 0, payload
+
+
+def test_a_respelt_held_row_past_the_limit_with_its_document_lengthened_is_still_refused(
+    capsys, demo_root, path_setting,
+):
+    """P305: matching by the key does not excuse a row whose path fields
+    differ; the respelt row is the same row and a changed one, so it is
+    measured and refused with creation's sentence, nothing recorded."""
+    from tracker.layout import PATH_TOO_LONG
+
+    engagement, by_id = _a_held_row_past_the_limit(capsys, demo_root)
+    before = ledger.path_for(engagement).read_bytes()
+    lengthened = [by_id["A01"], {**by_id["B01"], "identifier": "b01", "document": "y" * 101}]
+
+    code, payload = run(capsys, "edit", api.ENGAGEMENT_FLAG, str(engagement),
+                        stdin={"items": lengthened, "engagement": {}})
+
+    assert code == 1 and payload["error"].startswith(PATH_TOO_LONG.split("{")[0]), payload
+    assert ledger.path_for(engagement).read_bytes() == before
+
+
+def test_a_new_row_past_the_limit_is_still_refused_beside_a_held_one(
+    capsys, demo_root, path_setting,
+):
+    """P305: a row the list does not hold is measured as ever."""
+    from tracker.layout import PATH_TOO_LONG
+
+    engagement, by_id = _a_held_row_past_the_limit(capsys, demo_root)
+    before = ledger.path_for(engagement).read_bytes()
+    new_row = {**by_id["B01"], "identifier": "C01", "document": "z" * 100}
+
+    code, payload = run(capsys, "edit", api.ENGAGEMENT_FLAG, str(engagement),
+                        stdin={"items": [by_id["A01"], by_id["B01"], new_row], "engagement": {}})
+
+    assert code == 1 and payload["error"].startswith(PATH_TOO_LONG.split("{")[0]), payload
+    assert ledger.path_for(engagement).read_bytes() == before
+
+
 def test_a_persons_filing_and_the_hand_over_are_named_to_fit_and_refuse_only_below_the_floor(
     capsys, tmp_path, monkeypatch, path_setting,
 ):
@@ -9722,6 +9782,13 @@ def test_every_drawn_word_the_vocabulary_carries_is_in_title_case(capsys, demo_r
 #: R3): each names a folder on disk, whose own name is ``Clients``.
 _FOLDER_WORDS = {"Change Clients Folder…", "Open Clients Folder", "Open Client Folder",
                  "Choose Your Clients Folder", "Clients Folder"}
+#: P196's one exception: the override menu shows the reasons as stored, and
+#: the first of them is a stored value that says "Client" (SPEC-error-handling-small
+#: section 13). The editor draws a stored value as it is stored, so the word
+#: is the record's, not a screen's. Exempted by its exact text, named from the
+#: manifest so a reworded reason is a failure here, not a silent pass; a
+#: second "Client" in that menu still fails the guard.
+_STORED_REASON_WITH_CLIENT = manifest.OVERRIDE_REASONS[0]
 
 
 def test_no_word_the_window_draws_says_client_but_a_folders_own_name(capsys, demo_root):
@@ -9735,9 +9802,11 @@ def test_no_word_the_window_draws_says_client_but_a_folders_own_name(capsys, dem
              ("engagement_help", [f["help"] for f in vocab["editor"]["engagement_fields"]
                                   if f["editable"] and f["key"] in ("reminders", "active")]),
              ("settings.root_label", vocab["settings"]["root_label"]),
-             ("open_client_folder", api.OPEN_CLIENT_FOLDER_LABEL)]
+             ("open_client_folder", api.OPEN_CLIENT_FOLDER_LABEL),
+             ("override_reasons", vocab["override_reasons"])]
     said = [(where + path, text) for where, branch in drawn for path, text in _drawn_words(branch)
-            if "client" in text.lower() and text not in _FOLDER_WORDS]
+            if "client" in text.lower() and text not in _FOLDER_WORDS
+            and (where, text) != ("override_reasons", _STORED_REASON_WITH_CLIENT)]
     assert not said, said
     assert vocab["screen"]["sections"]["clients"] == vocab["menu"]["clients"] == "Households"
     assert vocab["screen"]["side"]["types"] == "Taxpayer Types"

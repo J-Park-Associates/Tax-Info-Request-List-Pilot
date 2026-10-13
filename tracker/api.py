@@ -3657,16 +3657,20 @@ def _refuse_taking_away_documents(engagement: Path, recorded: list[dict], items:
             raise ManifestError(HOLDS_DOCUMENTS.format(identifier=rule["identifier"], n=held[key]))
 
 
-#: What a row is compared on to say the editor changed it (decision 131):
-#: the four things a working copy's path is made of.
-_PATH_FIELDS = ("identifier", "document", "period", "allowed_extensions")
+#: What a matched row is compared on to say the editor changed it (decision
+#: 131): the things a working copy's path is made of, bar the identifier,
+#: which rows are matched by (its key) and whose case is not a change (P305).
+_PATH_FIELDS = ("document", "period", "allowed_extensions")
 
 
 def _refuse_a_changed_row_past_the_limit(engagement: Path, items: list) -> None:
     """The editor's save keeps creation's standard for the rows it changes
     (decision 131).
 
-    A row whose identifier, document, period or file types differ from the
+    A row is matched to the stored one by the identifier's key, so a change
+    of case alone is the same row (decision 160, P305): a case change cannot
+    alter a path's length, and a held row already past the limit is never
+    refused one. A row whose document, period or file types differ from the
     stored list, and every new row, is measured as creation measures a
     list (``filer.room_for``); one whose canonical working copy would pass
     what Windows opens refuses the save with creation's own sentence, and
@@ -3678,12 +3682,14 @@ def _refuse_a_changed_row_past_the_limit(engagement: Path, items: list) -> None:
     (decision 142); a row a person has just set Asked is measured, because
     it is now a request creation would have measured.
     """
-    stored = {item.identifier: item for item in load_manifest(engagement)}
-    changed = [item for item in items
-               if item.identifier not in stored
-               or any(getattr(item, name) != getattr(stored[item.identifier], name)
-                      for name in _PATH_FIELDS)
-               or (item.asked and not stored[item.identifier].asked)]
+    stored = {identifier_key(item.identifier): item for item in load_manifest(engagement)}
+    changed = []
+    for item in items:
+        held = stored.get(identifier_key(item.identifier))
+        if (held is None
+                or any(getattr(item, name) != getattr(held, name) for name in _PATH_FIELDS)
+                or (item.asked and not held.asked)):
+            changed.append(item)
     room = room_for(engagement, changed)
     if room.need > room.limit:
         raise ManifestError(PATH_TOO_LONG.format(folder=engagement, length=room.need,
