@@ -207,3 +207,16 @@ Gate after the rebuild, one process per file: `test_store`, `test_records`,
 `test_repo_map`, ruff, the map check. Section 10's gate reads from here as
 including `test_store` and `test_records`. The builder appends
 `## Rebuild 2 (Sonnet, 2026-10-13)` to the handoff.
+
+---
+
+## 12. After the third review (Opus, 2026-10-13)
+
+Review 3 found one nit, H1: the last sentence of `layout.spoofing_problem`'s
+docstring ("A person typing a new value is held to the full rule instead")
+now reads as covering the Document, which only ever gets the narrow rule. The
+sentence says "an identifier or short name a person types is held to the
+full rule instead; a Document gets this rule alone". Any docstring change
+moves the version-5 admission digest, so the re-pin rides with it. Built in
+the last rebuild of this branch's work, together with whatever the other
+lanes' last reviews leave, so the digest moves once.

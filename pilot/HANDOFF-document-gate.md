@@ -652,3 +652,106 @@ Gate (one process per file, in parallel, venv Python, `-p no:cacheprovider`):
 `python -m ruff check .`: all checks passed. `python tools/repo_map.py update`
 then `check`: "Map is current (302 nodes)". The map was refreshed again after
 this section was appended.
+
+## Review 3 (Opus, 2026-10-13)
+
+Reviewer: Claude Opus 5.5. I did not build this. I reviewed rebuild 2, commit
+`0716411`, against SPEC-document-gate section 11. The scoped diff
+(`git diff 931327f 0716411 -- tracker/ tests/ pilot/SPEC-form-inputs.md`) is
+three files: the `layout.spoofing_problem` docstring, one pin in
+`tests/test_store.py`, and one phrase in SPEC-form-inputs section 18.
+(`931327f..0716411` also carries `bf22b65`, the error-handling review, which
+touches none of these.) Everything ran on a `git archive 0716411` copy in the
+scratchpad, git-initialised and committed once, with the venv Python. The
+mutations ran on a second copy. The checkout was not touched except to append
+this section.
+
+### Resolved
+
+- **G1, the pin.** `test_store::test_admission_version_changes_with_the_admission`
+  passes.
+  - `admission_digests()` on the archive gives `7f65f4db38cc7444` for
+    `tracker.layout.spoofing_problem`, and `ADMISSION_PIN[5] == admission_digests()`
+    with no differing key.
+  - The only test_store change is line 3674, inside the `5: {` block (3607).
+    The version-4 entry (line 3403) is still `7a767da08a51fff8`.
+    `tracker/store.py` is unchanged and `ADMISSION_VERSION` is still 5.
+  - Mutation, both ways, on a copy: the pin off by one hex digit fails the
+    test, and so does one word changed in the docstring with the pin left
+    alone. Each failure names `tracker.layout.spoofing_problem` alone. The pin
+    discriminates.
+- **G3, the docstring.** It now says the store's gate asks `spoofing_problem`
+  of "a stored identifier, short name and Document (P290, P301)".
+  - That matches the gate: `records.rule_row_fault` asks `identifier_problem`
+    (records.py 2009), `document_problem` (2016) and `short_title_problem`
+    (2036), and each of them calls `spoofing_problem`.
+  - U+FEFF is in `_SPOOFING_CODES`, and the docstring no longer says
+    otherwise. The spared characters it names (no-break space, soft hyphen)
+    are not in that set.
+  - `test_layout` passes (58). No code changed.
+  - See H1 for the paragraph's last sentence.
+- **G2, section 18.** "naming the row and the Document, or the Issuer Name for
+  an issuer row" matches `manifest.item_from_fields`. It raises
+  `{where}: {label} '{quoted(source)}' ...`, with `label` `COL_ISSUER` and the
+  entity when `_issuer_entity(document)` is non-empty, else `COL_DOCUMENT` and
+  the Document. Probe: a new `Schedule K-1 - Ash<U+202E>ford LP` gives
+  `A09: Issuer Name 'Ash<U+202E>ford LP' ...`, and `W-2<U+200B>Wages` gives
+  `A09: Document 'W-2<U+200B>Wages' ...`. The rewrap leaves one 99-column
+  line (594). The file already has longer ones (313, 314), so this is not a
+  finding.
+- **G4.** No change, as section 11 says.
+- **Nothing else in the scoped diff.** The handoff change is append-only.
+  `layout.py`'s and `test_store.py`'s map nodes moved only their `sha256`.
+
+### Findings
+
+**H1 - nit. `tracker/layout.py`, the `spoofing_problem` docstring, its last
+sentence: "A person typing a new value is held to the full rule instead."**
+- G3 added the Document to the list of values the paragraph covers. The
+  closing sentence is true of a typed identifier (`typed_identifier_problem`)
+  and a typed short name (`typed_short_title_problem`). It is not true of a
+  typed Document, which is asked only the narrow rule, typed or held.
+  `item_from_fields`'s own docstring says so: "The Document is the exception
+  to 'typed or held'".
+- Probe on the archive: new rows `W-2<NBSP>Wages` and `W-2<SHY>Wages`, each
+  with the short name `W-2`, both save. The full rule reaches a typed Document
+  only through its derived short name: with a blank short name,
+  `W-2<SHY>Wages` is refused `... (it is also the short name)`.
+- Behaviour is correct and as P301 specifies. Only the sentence's scope is
+  wrong. A possible wording: "A person typing a new identifier or short name
+  is held to the full rule instead; a Document is asked this narrow rule
+  alone, typed or held."
+- Cost: any change to this docstring moves the same admission digest again
+  (one more re-pin under version 5, nothing else). It should ride the next
+  re-pin that is happening anyway, or be done by the landing session together
+  with that re-pin. It does not block landing.
+
+### The map (the landing session's, as in Review 2)
+
+On the pure commit, `python tools/repo_map.py check` is stale on exactly four
+files: `tracker/api.py`, `tracker/templates.py`, `tests/test_errors.py` and
+`tests/test_single_source.py`. `test_repo_map::test_the_committed_map_is_current`
+fails on the same four. The committed `docs/repo-map.json` and `repo-map.md`
+carry the other builder's working-tree hashes and constants for those files,
+because `update` ran on the combined checkout. Rebuild 2's "82 passed" and
+"Map is current" were measured there, not on the commit. No file of this
+build is named, so the map is current for this build. The landing session
+runs `update` and `check` on the combined tree. This is F3 again, not a
+finding against rebuild 2.
+
+### Gate (archive copy of `0716411`, venv Python, one process per file, in parallel, `-p no:cacheprovider`)
+
+| file | result |
+|---|---|
+| test_store | 197 passed, 1 skipped |
+| test_records | 55 passed |
+| test_layout | 58 passed |
+| test_manifest | 113 passed |
+| test_layers | 31 passed |
+| test_single_source | 218 passed |
+| test_repo_map | 81 passed, 1 failed (`test_the_committed_map_is_current`, the four files above) |
+
+`python -m ruff check .`: all checks passed. `python tools/repo_map.py check`:
+stale on the four files above only.
+
+Findings: 0 must fix, 0 should fix, 1 nit.
