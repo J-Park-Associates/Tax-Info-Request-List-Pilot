@@ -13,6 +13,7 @@ clients root, because that folder syncs.
 
 from __future__ import annotations
 
+import ast
 import csv
 import datetime as dt
 import hashlib
@@ -2811,6 +2812,10 @@ def test_a_new_engagement_is_admitted_by_construction(conn, root, by_hand):
 #: that moved and says which of two things to do.
 #: Version 5 (P301) moved two parts from version 4's: ``records.rule_row_fault``,
 #: which now reads the Document, and the new ``records.document_problem``.
+#: Version 5 was pinned again, not raised, when the walker stopped following
+#: a name the function binds itself (SPEC-architecture J1, P309): 30 parts the
+#: admission never runs - 19 of settings', the store's ``kind`` and ``statuses``
+#: and what only they reach - left it, and none joined. No rule changed.
 ADMISSION_PIN: dict[int, dict[str, str]] = {2: {
     "tracker.layout.CLIENTS": "3b8264d65abeec66",
     "tracker.layout.CLIENTS_TREE": "488530d6164e0dd6",
@@ -3669,7 +3674,6 @@ ADMISSION_PIN: dict[int, dict[str, str]] = {2: {
     "tracker.layout.place_problem": "2e94883c849c9d08",
     "tracker.layout.recorded_name": "84bfdf3a851f4652",
     "tracker.layout.recorded_subfolder_part": "50620c73d7ae6dab",
-    "tracker.layout.root_of": "a6c7013a757965b4",
     "tracker.layout.segment_problem": "c85f6ed345abe1fd",
     "tracker.layout.spoofing_problem": "2dea825aad86d0a7",
     "tracker.ledger.ACCEPTED_KEY": "f4764fc7a8ddd588",
@@ -3833,53 +3837,63 @@ ADMISSION_PIN: dict[int, dict[str, str]] = {2: {
     "tracker.records.short_title_problem": "563274b3cd6e71cf",
     "tracker.records.split_codes": "ac4f6152bb7ad6ee",
     "tracker.records.stamp_problem": "2d66f0bfa7df3a4f",
-    "tracker.records.status_from_json": "18fe07346092ffad",
     "tracker.records.status_problem": "0a4507873e497b78",
     "tracker.records.text_list_problem": "5c6a2aa819ebb0cf",
     "tracker.records.text_problem": "3af72e89b781e54e",
     "tracker.records.waits_for_problem": "463d041ef7fa9219",
     "tracker.records.word_list_problem": "64d72805fbba0527",
-    "tracker.settings.ENV_PRODUCT_NAME": "ea9430f722280e29",
-    "tracker.settings.ENV_SETTINGS_DIR": "b654987367e5160b",
-    "tracker.settings.HOLD_READING": "635bd5450bece8e4",
-    "tracker.settings.KEY_CLIENTS_ROOT": "3b8f548e07b39dbf",
-    "tracker.settings.MAC_SUPPORT": "2c8244c3f17e7646",
-    "tracker.settings.NO_HOME_FOR_SETTINGS": "c5be5f9efc600e1b",
-    "tracker.settings.SETTINGS_FILENAME": "ddf9dfc4d857c464",
-    "tracker.settings._HOLDING": "6f49cdbd80e1b95d",
-    "tracker.settings._SETTINGS_HELD": "6c71e2207cf64f31",
-    "tracker.settings._home": "ba531a10d183af14",
-    "tracker.settings._read": "9a09d08e256be9de",
-    "tracker.settings.clients_root": "8fbaef8c43dcb573",
-    "tracker.settings.held": "19183d0915cfb77e",
-    "tracker.settings.host_system": "d4aa9d6d8f91c8f7",
-    "tracker.settings.mac_settings_dir": "b9a76a8027ce8ebf",
-    "tracker.settings.product_name": "f19bc48fabdb134a",
-    "tracker.settings.resolved": "dc9902a73c0115e2",
-    "tracker.settings.settings_dir": "ab85b6edd1fe0779",
-    "tracker.settings.settings_path": "8a79e7ca2ca7f66a",
     "tracker.store.ALSO_IN": "f91e15416cd81c44",
     "tracker.store.KIND_HOUSEHOLD": "8de5259835758e72",
     "tracker.store.KIND_RETURN": "08633b69eed18c1b",
     "tracker.store.MALFORMED_LINE": "7af462b999c9799b",
     "tracker.store.REFUSED_CHANGE": "ab4d86d9b8b2fffa",
     "tracker.store.RULE_LIST_FIELDS": "8b3d25ca8662bd02",
-    "tracker.store.STATUS_COLUMNS": "072efbf3b12ac0bd",
     "tracker.store.UNKNOWN_EVENT": "099e89ceccd1e5e9",
-    "tracker.store._engagement_key": "cf50c480b543e726",
-    "tracker.store._engagement_row": "a9108dc0e45b8442",
     "tracker.store._line_keys_problem": "0d6016b3dab0c236",
-    "tracker.store._positional_root": "f2fce089ca54ef5a",
-    "tracker.store._recorded_root_over": "6447409cff0d940e",
     "tracker.store._refuse_a_malformed_line": "28600c2dd20afaa5",
-    "tracker.store.engagement_path": "354415605ca56669",
-    "tracker.store.key_root": "13d66deeca51405a",
-    "tracker.store.kind": "c5781c37870424f8",
-    "tracker.store.statuses": "d99730d725daf407",
 }}
 
 
-def admission_closure() -> dict[str, str]:
+def names_bound_in(tree: ast.Module) -> set[str]:
+    """Every name the function in ``tree`` binds inside itself: its
+    parameters (a nested function's and a lambda's too), the targets of an
+    assignment, an augmented or annotated assignment, a ``:=``, a ``for``, a
+    ``with``, a comprehension, a ``del`` and an ``except ... as``, a match
+    pattern's captures, the names of a nested ``def`` or ``class``, and what
+    an ``import`` inside it binds. Not the function's own name, which belongs
+    to the scope around it, and not a name it declares ``global``, which is
+    the module's. A name in this set is not the module-level name that
+    happens to be spelled the same, so :func:`admission_closure` never reads
+    it as a callee or a constant: the store's ``kind`` parameter is not the
+    function ``store.kind``, and following it hashed 30 parts the
+    admission never runs (the architecture audit's B-2). Whole-tree on
+    purpose: a name bound only in a nested scope also hides the outer
+    function's read of a module name spelled the same, which would leave a
+    part out of the pin; no function in the closure does that today."""
+    root = tree.body[0]
+    bound: set[str] = set()
+    declared_global: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Name) and isinstance(node.ctx, (ast.Store, ast.Del)):
+            bound.add(node.id)
+        elif isinstance(node, ast.arg):
+            bound.add(node.arg)
+        elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)) and node is not root:
+            bound.add(node.name)
+        elif isinstance(node, ast.ExceptHandler) and node.name:
+            bound.add(node.name)
+        elif isinstance(node, (ast.Import, ast.ImportFrom)):
+            bound.update((alias.asname or alias.name.split(".")[0]) for alias in node.names)
+        elif isinstance(node, (ast.MatchAs, ast.MatchStar)) and node.name:
+            bound.add(node.name)
+        elif isinstance(node, ast.MatchMapping) and node.rest:
+            bound.add(node.rest)
+        elif isinstance(node, ast.Global):
+            declared_global.update(node.names)
+    return bound - declared_global
+
+
+def admission_closure(roots=None) -> dict[str, str]:
     """Every part of the store's admission, by its qualified name: the
     source of every package function reachable from
     ``store._refuse_a_malformed_line`` - through the store, ``records``,
@@ -3888,8 +3902,10 @@ def admission_closure() -> dict[str, str]:
     constant those functions read (a bound, a limit, a pattern). Found by
     walking each function's syntax tree, so a new callee joins by itself
     (the re-review's SF1: the rule R3b was built for lives in ``records``,
-    not in the two functions a narrower pin hashed)."""
-    import ast
+    not in the two functions a narrower pin hashed). A name the function
+    binds itself (:func:`names_bound_in`) is not looked up among the module's
+    names. ``roots`` are the functions to start from, the store's two
+    admission functions when none are given; a test names a made-up one."""
     import importlib
     import inspect
     import re as _re
@@ -3897,7 +3913,7 @@ def admission_closure() -> dict[str, str]:
     import types
 
     parts: dict[str, str] = {}
-    todo = [store._refuse_a_malformed_line, store._line_keys_problem]
+    todo = list(roots) if roots is not None else [store._refuse_a_malformed_line, store._line_keys_problem]
     seen: set[str] = set()
     while todo:
         function = todo.pop()
@@ -3908,7 +3924,8 @@ def admission_closure() -> dict[str, str]:
         source = textwrap.dedent(inspect.getsource(function))
         parts[name] = source
         tree = ast.parse(source)
-        names = dict(function.__globals__)
+        local = names_bound_in(tree)
+        names = {key: value for key, value in function.__globals__.items() if key not in local}
         for node in ast.walk(tree):
             if isinstance(node, ast.ImportFrom) and (node.module or "").startswith("tracker"):
                 module = importlib.import_module(node.module)
@@ -3973,6 +3990,132 @@ def test_the_admission_pin_reaches_the_rules_it_calls():
                  "tracker.layout.place_problem", "tracker.layout.segment_problem",
                  "tracker.ledger.op_ends", "tracker.records.MAX_EXPECTED_COUNT"):
         assert name in parts, name
+
+
+#: A made-up module for the walker (SPEC-architecture J1, R1.2). Every function
+#: reads the name ``helper``. ``unshadowed`` and ``by_global_declaration`` read
+#: the module's function of that name; each of the others binds the name itself,
+#: in one of the ways Python binds a name, so none of them calls the module's.
+#: The module is never run - the walker reads source.
+SHADOWING_MODULE = """
+def helper(row):
+    return row
+
+
+def unshadowed(row):
+    return helper(row)
+
+
+def by_parameter(row, helper):
+    return helper(row)
+
+
+def by_assignment(row):
+    helper = len
+    return helper(row)
+
+
+def by_augmented_assignment(row):
+    helper += 1
+    return helper
+
+
+def by_annotated_assignment(row):
+    helper: int = 1
+    return helper
+
+
+def by_walrus(row):
+    return (helper := len) and helper(row)
+
+
+def by_for_target(rows):
+    for helper in rows:
+        helper(rows)
+
+
+def by_with_target(path):
+    with open(path) as helper:
+        return helper(path)
+
+
+def by_comprehension(rows):
+    return [helper(row) for helper in rows]
+
+
+def by_except_clause(row):
+    try:
+        return row
+    except ValueError as helper:
+        return helper(row)
+
+
+def by_nested_def(row):
+    def helper(item):
+        return item
+    return helper(row)
+
+
+def by_nested_class(row):
+    class helper:
+        pass
+    return helper(row)
+
+
+def by_import_inside(row):
+    from os.path import join as helper
+    return helper(row)
+
+
+def by_global_declaration(row):
+    global helper
+    taken = helper
+    helper = None
+    return taken(row)
+"""
+SHADOWED_BY = ["by_assignment", "by_augmented_assignment", "by_annotated_assignment", "by_walrus",
+               "by_for_target", "by_with_target", "by_comprehension", "by_except_clause",
+               "by_nested_def", "by_nested_class", "by_import_inside"]
+
+
+@pytest.fixture(scope="module")
+def shadowing(tmp_path_factory):
+    import importlib.util
+
+    path = tmp_path_factory.mktemp("shadowing") / "tracker_shadowing.py"
+    path.write_text(SHADOWING_MODULE, encoding="utf-8")
+    spec = importlib.util.spec_from_file_location("tracker_shadowing", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_a_parameter_that_shadows_a_function_does_not_pull_it_into_the_closure(shadowing):
+    """The architecture audit's B-2: ``_refuse_a_malformed_line`` has a
+    parameter ``kind``, and the walker followed it into the store's function
+    ``kind`` and on into settings, so the pin held 30 parts the admission
+    never runs. A parameter is the caller's value, not the module's
+    function of the same spelling; the same function without the parameter
+    does call it, so the walker still follows a real callee."""
+    assert set(admission_closure([shadowing.unshadowed])) == {
+        "tracker_shadowing.unshadowed", "tracker_shadowing.helper"}
+    assert set(admission_closure([shadowing.by_parameter])) == {"tracker_shadowing.by_parameter"}
+
+
+@pytest.mark.parametrize("function", SHADOWED_BY)
+def test_a_name_the_function_binds_itself_is_not_followed_as_a_callee(shadowing, function):
+    """Every way a function binds a name hides the module's name from the
+    walker: the module-level ``helper`` is not a callee of a function that
+    assigns, loops, opens, catches, defines or imports its own ``helper``."""
+    assert set(admission_closure([getattr(shadowing, function)])) == {f"tracker_shadowing.{function}"}
+
+
+def test_a_name_declared_global_is_still_the_modules(shadowing):
+    """``global helper`` says the name is the module's, so a read of it is a
+    read of the module's function though the body also assigns the name, and
+    the walker follows it."""
+    assert set(admission_closure([shadowing.by_global_declaration])) == {
+        "tracker_shadowing.by_global_declaration", "tracker_shadowing.helper"}
 
 
 def test_holds_says_whether_the_store_has_met_a_folder(conn, root, by_hand):

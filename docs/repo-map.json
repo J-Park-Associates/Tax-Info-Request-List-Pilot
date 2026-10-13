@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 305,
     "edges": 1336,
-    "reused": 248
+    "reused": 251
   },
   "node_types": [
     "artifact",
@@ -10772,8 +10772,8 @@
       "id": "tests/test_store.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "12532f19b69d1e6f",
-      "lines": 5692,
+      "sha256": "49da059e2aea8739",
+      "lines": 5835,
       "exports": [
         "AS_AT_16",
         "AS_AT_17",
@@ -10790,6 +10790,8 @@
         "KEY",
         "REFUSED_EARLIER",
         "REPO",
+        "SHADOWED_BY",
+        "SHADOWING_MODULE",
         "THREE_SCANS",
         "a_pass",
         "a_row",
@@ -10813,6 +10815,7 @@
         "key_of",
         "learned",
         "locate_original",
+        "names_bound_in",
         "one_value",
         "original_at",
         "recorded",
@@ -10822,6 +10825,7 @@
         "rows",
         "said",
         "scanned",
+        "shadowing",
         "test_188s_accepted_word_and_204s_waiting_row_are_lines_like_any_other",
         "test_a_caller_root_still_wins_over_the_position",
         "test_a_catch_up_says_the_checkpoint_left_behind_as_that_returns_problem",
@@ -10853,9 +10857,12 @@
         "test_a_malformed_row_or_rule_line_is_refused_as_line_n_of_the_record",
         "test_a_malformed_unlearn_line_is_refused_by_name",
         "test_a_moving_line_in_a_households_record_is_refused",
+        "test_a_name_declared_global_is_still_the_modules",
+        "test_a_name_the_function_binds_itself_is_not_followed_as_a_callee",
         "test_a_new_batch_keeps_an_earlier_batchs_unvouched_lines_its_own",
         "test_a_new_engagement_is_admitted_by_construction",
         "test_a_newer_store_is_still_refused",
+        "test_a_parameter_that_shadows_a_function_does_not_pull_it_into_the_closure",
         "test_a_pass_and_the_command_line_key_one_engagement_the_same_way",
         "test_a_pass_heals_a_store_whose_head_names_a_line_it_never_applied",
         "test_a_pass_keys_one_return_the_same_way_whichever_root_is_named",
@@ -11014,6 +11021,7 @@
         "AS_AT_19": "('ALTER TABLE engagements DROP COLUMN \"household_related\"',)",
         "FIELDS_OF_190": "('code', 'subfolder', 'note_codes')",
         "FIELDS_OF_204": "('waits_for',)",
+        "SHADOWING_MODULE": "'\\ndef helper(row):\\n    return row\\n\\n\\ndef unshadowed(row):\\n    return helper(row)\\n\\n\\ndef by_parameter(row, helper):\\n    return helper(row)\\n\\n\\ndef by_assignment(row):\\n    helper = len\\n    return helper(row)\\n\\n\\ndef by_augmented_assignment(row):\\n    helper += 1\\n    return helper\\n\\n\\ndef by_annotated_assignment(row):\\n    helper: int = 1\\n    return helper\\n\\n\\ndef by_walrus(row):\\n    return (helper := len) and helper(row)\\n\\n\\ndef by_for_target(rows):\\n    for helper in rows:\\n        helper(rows)\\n\\n\\ndef by_with_target(path):\\n    with open(path) as helper:\\n        return helper(path)\\n\\n\\ndef by_comprehension(rows):\\n    return [helper(row) for helper in rows]\\n\\n\\ndef by_except_clause(row):\\n    try:\\n        return row\\n    except ValueError as helper:\\n        return helper(row)\\n\\n\\ndef by_nested_def(row):\\n    def helper(item):\\n        return item\\n    return helper(row)\\n\\n\\ndef by_nested_class(row):\\n    class helper:\\n        pass\\n    return helper(row)\\n\\n\\ndef by_import_inside(row):\\n    from os.path import join as helper\\n    return helper(row)\\n\\n\\ndef by_global_declaration(row):\\n    global helper\\n    taken = helper\\n    helper = None\\n    return taken(row)\\n'",
         "FABRICATED_NAME": "'Confidential W-2 for Maria Fabricated.pdf'"
       }
     },
