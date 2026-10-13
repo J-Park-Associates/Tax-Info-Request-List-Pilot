@@ -253,3 +253,27 @@ taken: the one-definition rule guards every other module, and `errors.py` is
 the definition. G4 (commit trailers) is the session's attribution line, not a
 record of which model built what; the handoffs are. The lane is closed at
 `48a1f8b`.
+
+---
+
+## 12. R5 follow-on: `override_labels` dropped (Jason, 2026-10-13)
+
+Jason ruled on the one key R5 kept on doubt: drop it. P77 (2026-09-29) said
+the editor would show a short label for each override reason while storing
+the long words; the label half was never wired, the page draws the stored
+words (`vocab.override_reasons`), and the two lists could drift silently.
+The rebuild is Sonnet's.
+
+- `tracker/api.py`: remove `OVERRIDE_LABELS` and the `override_labels`
+  vocabulary entry (and `OVERRIDE_REASONS` import only if nothing else in
+  `api.py` uses it; ruff says).
+- `tests/test_api.py`: remove the length pin
+  (`len(words["override_labels"]) == len(words["override_reasons"])`) and
+  the `override_labels` entry in the list near line 9702 (whatever that list
+  is for; the test it belongs to keeps its other entries).
+- `pilot/DECISIONS.md` row P77: the landing session appends "The short labels
+  were never drawn and were dropped on 2026-10-13 (SPEC-error-handling-small
+  section 12); the editor shows the stored words." Not the builder.
+- Gate: `test_api`, `test_single_source`, `test_shell`, `test_layers`,
+  `test_repo_map`, ruff, the map check. The builder appends
+  `## Rebuild 2 (Sonnet, 2026-10-13)` to the handoff.
