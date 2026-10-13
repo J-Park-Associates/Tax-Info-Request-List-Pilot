@@ -860,7 +860,7 @@ def test_mark_missing_takes_one_request_off_a_consolidated_statement(capsys, dem
     """d146. The app's button: the filed statement's row names the requests
     it answers, and marking one missing again leaves the statement filed,
     re-scans, and hands back the state with that request outstanding."""
-    from tests.test_filer import _consolidated_return
+    from tests.builders import _consolidated_return
 
     engagement = _consolidated_return(demo_root)
     code, payload = scan(capsys, engagement)
@@ -1556,7 +1556,7 @@ def test_rollover_clears_the_filing_deadline_and_redefaults_it_for_the_new_year(
 
 
 def test_an_invalid_row_is_refused_by_the_api_with_the_row_and_column_named_and_nothing_is_recorded(capsys, demo_root):
-    from tests.test_manifest import k1_rows
+    from tests.builders import k1_rows
     from tracker.records import rule_to_json
 
     spec = {"household": HOUSEHOLD, "return_name": "Smith", "items": [
@@ -5634,8 +5634,8 @@ def test_a_persons_filing_and_the_hand_over_are_named_to_fit_and_refuse_only_bel
     and nothing has moved. Since decision 168 Prepared is the only folder
     a copy is in, and it is shallower than the review folder, so a request
     is left no room only by a period as long as test_filer's LONG_PERIOD."""
+    from tests.builders import LONG_PERIOD, no_room_prepared, no_room_return
     from tests.conftest import named_page, root_for_a_return_of, sort
-    from tests.test_filer import LONG_PERIOD, no_room_prepared, no_room_return
     from tracker.filer import PATH_NO_ROOM
     from tracker.layout import path_limit
     from tracker.manifest import RequestItem
@@ -6558,7 +6558,7 @@ def test_a_rename_carries_what_a_consolidated_statement_answers(capsys, demo_roo
     from dataclasses import replace
 
     import tracker.filer as filer
-    from tests.test_filer import _consolidated_return
+    from tests.builders import _consolidated_return
     from tracker.reasons import IN_CONSOLIDATED, IN_CONSOLIDATED_CLIENT
     from tracker.reminder import draft_reminder
 
@@ -6645,7 +6645,7 @@ def test_a_request_answered_only_by_a_statement_cannot_be_deleted_by_a_save(caps
     takes A04 off the list is refused with decision 160's sentence, and
     nothing is recorded; once a person marks A04 missing again, the same
     save goes through."""
-    from tests.test_filer import _consolidated_return
+    from tests.builders import _consolidated_return
 
     engagement = _consolidated_return(demo_root)
     code, payload = scan(capsys, engagement)
@@ -7940,7 +7940,7 @@ def test_the_writes_that_cannot_change_the_list_do_not_walk(capsys, demo_root, t
     marking missing, the firm's word, approving, the card's own command
     and an edit that leaves ``active`` alone never walk the root and carry
     no list."""
-    from tests.test_filer import _consolidated_return
+    from tests.builders import _consolidated_return
 
     engagement = sample_engagement(capsys, demo_root, tmp_path,
                                    "Mortgage Notes.docx", "Form 1098 Mortgage Interest.pdf")

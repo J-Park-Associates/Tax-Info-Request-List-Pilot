@@ -7,6 +7,18 @@ import pytest
 from openpyxl import Workbook
 from pypdf import PdfWriter
 
+from tests import children
+from tests.builders import cache_rows, counting_extractor
+from tests.children import (
+    CRASHED,
+    STOP_IN_TESTS,
+    STOPPED,
+    _a_reader_only_the_pass_has,
+    eventually,
+    no_child_left,
+    process_state,
+    running,
+)
 from tests.conftest import make_engagement
 from tests.samples import text_pdf
 from tracker import reasons, store
@@ -313,27 +325,10 @@ def an_engagement_run(**kwargs):
 # ------------------------------------------------------------------- cache ----
 
 
-def counting_extractor(monkeypatch):
-    calls = {"n": 0}
-    real = extract_text
-
-    def wrapped(path):
-        calls["n"] += 1
-        return real(path)
-
-    monkeypatch.setattr("tracker.content_check.extract_text", wrapped)
-    return calls
-
-
 def an_engagement(tmp_path, *rules):
     """An engagement the store holds, whose request list is ``rules``."""
     return make_engagement(tmp_path / "Clients", list(rules), household="Smith Family",
                            scaffold=False)
-
-
-def cache_rows(engagement):
-    """The engagement's cache as the store holds it at CACHE_VERSION: (memos, verdicts)."""
-    return store.cached_verdicts(store.connect(), engagement, version=CACHE_VERSION)
 
 
 def saved(cache, engagement):
@@ -1327,13 +1322,7 @@ def test_a_pattern_the_record_calls_derived_runs_line_by_line_unless_it_is():
 # seconds - never minutes - and the child is handed a stand-in reader from
 # tests/child_readers.py, because a patch made here never reaches it.
 
-#: The stop these claims patch in, in seconds. A child starts in about half
-#: a second on the office machine; this leaves a slow build runner room to
-#: reach the stage it is claimed to be stopped in.
-STOP_IN_TESTS = 5.0
-#: What a reading stopped at a stop under a minute says.
-STOPPED = "The reader stopped after 1 minute on this file. A person reads it."
-CRASHED = "The reader could not read this file (it stopped unexpectedly). A person reads it."
+
 #: What pypdf (decision 153, 6.19.0) raises on 150's page-tree bomb, refusing it itself:
 #: its class, which is all of it a reason says since decision 190.
 BOMB_REFUSED = "(LimitReachedError)"
@@ -1359,97 +1348,6 @@ def a_short_stop(in_a_child):
     in_a_child.setattr(content_check, "READING_STOP_DOCUMENT_SECONDS", STOP_IN_TESTS)
     in_a_child.setattr(content_check, "READING_STOP_PAGE_SECONDS", STOP_IN_TESTS)
     return in_a_child
-
-
-def no_child_left():
-    """No reading's child of this process is still running."""
-    import multiprocessing
-
-    return multiprocessing.active_children() == []
-
-
-#: Where Linux keeps what it knows of a process. A Mac has no such folder, and
-#: a test stands in for one by pointing this at a place that is not there (the
-#: suite stands in for a platform by a seam, never by changing ``sys.platform``).
-PROC = Path("/proc")
-
-
-def _ps_state(pid: int) -> str | None:
-    """The state letters ``ps`` gives process ``pid`` (a zombie's start with
-    "Z"), "" for a process that is not there, None when ``ps`` cannot say.
-    A Mac's way to ask, and Linux's when there is no ``/proc``; ``ps -o stat=``
-    is the form both understand."""
-    import subprocess
-
-    try:
-        done = subprocess.run(["ps", "-o", "stat=", "-p", str(pid)], capture_output=True, text=True, check=False)
-    except OSError:
-        return None
-    return done.stdout.strip() if done.returncode in (0, 1) else None
-
-
-def process_state(pid: int) -> str | None:
-    """What the system says of process ``pid``: its state letters (a zombie's
-    start with "Z"), "" for a process that is not there, None when it cannot
-    be asked. Linux is asked in ``/proc``; anywhere that has none (a Mac), in
-    ``ps``. Before this, a Mac fell back to "alive" for a zombie and every test
-    waiting for a stopped reader's child to end waited out its whole fifteen
-    seconds."""
-    if not PROC.is_dir():
-        return _ps_state(pid)
-    try:
-        return (PROC / str(pid) / "stat").read_text().rsplit(")", 1)[1].split()[0]
-    except FileNotFoundError:
-        return ""
-    except (OSError, IndexError):
-        return None
-
-
-def running(pid: int) -> bool:
-    """Whether the process ``pid`` is still running, asked of the system.
-
-    Every caller asks about a process this test did not start - a reader's
-    helper, the pass's child - so the system is asked, and a zombie has ended
-    though its number is still taken. (A child the test started itself could
-    be asked exactly by ``os.waitpid(pid, os.WNOHANG)``; none is asked today,
-    and a parameter nothing uses was not kept for the one that will.)"""
-    import os
-    import sys
-
-    if sys.platform == "win32":
-        import ctypes
-        from ctypes import wintypes
-
-        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
-        kernel32.OpenProcess.restype = wintypes.HANDLE
-        handle = kernel32.OpenProcess(0x1000, False, pid)     # PROCESS_QUERY_LIMITED_INFORMATION
-        if not handle:
-            return False
-        try:
-            code = wintypes.DWORD()
-            kernel32.GetExitCodeProcess(handle, ctypes.byref(code))
-            return code.value == 259                          # STILL_ACTIVE
-        finally:
-            kernel32.CloseHandle(handle)
-    try:
-        os.kill(pid, 0)
-    except ProcessLookupError:
-        return False
-    except PermissionError:
-        return True
-    state = process_state(pid)
-    return state is None or (state != "" and not state.startswith("Z"))   # a zombie has ended
-
-
-def eventually(check, within: float = 15.0) -> bool:
-    import time
-
-    deadline = time.monotonic() + within
-    while time.monotonic() < deadline:
-        if check():
-            return True
-        time.sleep(0.1)
-    return check()
 
 
 def _a_child_that_has_ended_unreaped():
@@ -1478,7 +1376,7 @@ def test_a_zombie_has_ended_and_a_live_process_has_not_whichever_way_the_system_
     zombie = _a_child_that_has_ended_unreaped()
     try:
         for proc in (Path("/proc"), Path("/not/a/proc")):
-            monkeypatch.setattr(sys.modules[__name__], "PROC", proc)
+            monkeypatch.setattr(children, "PROC", proc)
             assert running(live.pid), proc
             assert not running(zombie.pid), proc
     finally:
@@ -1494,9 +1392,8 @@ def test_a_mac_asks_ps_and_reads_its_state_letters_not_proc(monkeypatch):
     empty answer is a process that is not there, and a ``ps`` that cannot say is
     taken as running, as the helper always did for what it could not ask."""
     import os
-    import sys
 
-    here = sys.modules[__name__]
+    here = children       # where ``running`` reads ``PROC`` and asks ``_ps_state``
     monkeypatch.setattr(here, "PROC", Path("/not/a/proc"))
     monkeypatch.setattr(os, "kill", lambda pid, signal: None)       # the number is taken
     asked = []
@@ -1900,26 +1797,6 @@ def test_an_open_test_that_never_returns_is_stopped(tmp_path, a_short_stop):
     refused = check_file(pdf, rules, open_test=lambda path: content_check.open_verdict(Path(path), cache))
     assert not refused.ok and refused.reason == STOPPED
     assert no_child_left()
-
-
-def _a_reader_only_the_pass_has(monkeypatch):
-    """A reader the child can never import: its module is in the pass's
-    process only, so the child ends while it is still being set up - the
-    shape of a frozen build missing a module, or a machine that cannot
-    start the reader - before it has said "started"."""
-    import sys
-    import types
-
-    module = types.ModuleType("only_in_the_pass_150")
-
-    def reader(path, *, ocr=True):          # never runs: the child cannot find it
-        raise AssertionError("unreachable")
-
-    reader.__module__ = module.__name__
-    reader.__qualname__ = "reader"
-    module.reader = reader
-    monkeypatch.setitem(sys.modules, module.__name__, module)
-    return reader
 
 
 def test_a_reader_that_cannot_start_keeps_no_verdict(tmp_path, in_a_child):

@@ -17,7 +17,7 @@ from pathlib import Path
 import pytest
 
 import tracker.runner as runner_module
-from tests.test_runner import (  # noqa: F401 - ``samples`` is a fixture
+from tests.passes import (  # noqa: F401 - ``samples`` is a fixture
     _a_parked_file,
     _run_now,
     _the_scheduled_job,

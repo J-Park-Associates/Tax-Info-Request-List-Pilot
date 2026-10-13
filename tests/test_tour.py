@@ -8,7 +8,7 @@ script only points - it never presses, dispatches or calls the tracker.
 import re
 from pathlib import Path
 
-from tests.test_pilot import content, read
+from tests.node_harness import content, read
 
 REPO = Path(__file__).resolve().parent.parent
 

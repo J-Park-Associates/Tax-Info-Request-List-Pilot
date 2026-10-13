@@ -21,8 +21,8 @@ from pathlib import Path
 
 import pytest
 
-from tests.conftest import make_engagement, named_page, sort
-from tests.samples import text_pdf
+from tests.builders import drop, engagement_fixture
+from tests.conftest import make_engagement, sort
 from tracker import ledger, records, store
 from tracker.filer import (
     ASSIGNED_BY_PERSON,
@@ -31,7 +31,6 @@ from tracker.filer import (
     ledger_key,
     read_index,
 )
-from tracker.layout import inbox_of
 from tracker.locking import engagement_lock
 from tracker.manifest import (
     RequestItem,
@@ -60,9 +59,7 @@ ITEMS = [
 ]
 
 
-@pytest.fixture
-def engagement(tmp_path):
-    return make_engagement(tmp_path, ITEMS, household="Smith Family")
+engagement = engagement_fixture(ITEMS, household="Smith Family")
 
 
 @pytest.fixture
@@ -71,12 +68,6 @@ def bare(tmp_path):
     folder = tmp_path / "Bare 2025"
     folder.mkdir()
     return folder
-
-
-def drop(engagement, name, text):
-    """One document into the household's inbox, with the return's person on
-    the page - a named request files only where a name confirms (128)."""
-    return text_pdf(inbox_of(engagement) / name, named_page(text))
 
 
 def lines(engagement):
@@ -703,7 +694,7 @@ def test_a_moving_event_folds_to_an_open_intent_and_the_row_event_that_names_its
     journal alone finds exactly the moves a recovery has to finish, ``check``
     compares the two, and the row event that names the key closes it.
     """
-    from tests.test_filer import killed_at_the_record
+    from tests.builders import killed_at_the_record
 
     drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
     killed_at_the_record(monkeypatch)

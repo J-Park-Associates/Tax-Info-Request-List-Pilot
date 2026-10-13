@@ -15,6 +15,7 @@ import sys
 
 import pytest
 
+from tests.builders import link_to
 from tracker import door, layout
 from tracker.layout import CLIENTS_TREE, INBOX_DIR_NAME, PRIVATE_TREE
 
@@ -36,16 +37,6 @@ def root(tmp_path, monkeypatch):
     return folder.resolve()
 
 
-def _link_to(target, link):
-    """A junction on Windows, a symlink elsewhere: a folder that is a link."""
-    if sys.platform == "win32":
-        import _winapi
-
-        _winapi.CreateJunction(str(target), str(link))
-    else:
-        link.symlink_to(target, target_is_directory=True)
-
-
 def test_a_client_write_through_a_link_is_refused(root, tmp_path):
     """T20: a folder in the household's inbox swapped for a link to anywhere
     is never written behind, even though the place it names is the
@@ -53,7 +44,7 @@ def test_a_client_write_through_a_link_is_refused(root, tmp_path):
     outside = tmp_path / "outside"
     outside.mkdir()
     inbox = layout.inbox_dir_for(root, HOUSEHOLD)
-    _link_to(outside, inbox / "swapped")
+    link_to(outside, inbox / "swapped")
 
     with pytest.raises(door.DoorError, match="is not a place the app writes"):
         door.client_write(root, HOUSEHOLD, inbox / "swapped" / "w2.pdf")

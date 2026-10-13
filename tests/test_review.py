@@ -7,7 +7,6 @@ the engagement exactly as it was — no lock, no write, not one changed byte.
 """
 
 import datetime as dt
-import hashlib
 import subprocess
 import sys
 from dataclasses import replace
@@ -15,6 +14,7 @@ from pathlib import Path
 
 import pytest
 
+from tests.builders import engagement_fixture, parked_row
 from tests.conftest import child_env, make_engagement, seed_index, sort
 from tests.samples import text_pdf
 from tracker import reasons
@@ -29,13 +29,9 @@ from tracker.content_check import (
     WHERE_FIRST_PAGE,
     WHERE_TITLE,
     Evidence,
-    format_evidence,
 )
 from tracker.filer import (
-    _CANDIDATE_SEP,
-    NEEDS_REVIEW,
     NOT_REQUESTED,
-    IndexEntry,
     read_index,
 )
 from tracker.layout import inbox_of
@@ -84,30 +80,7 @@ ITEMS = [
 ]
 
 
-@pytest.fixture
-def engagement(tmp_path):
-    return make_engagement(tmp_path, ITEMS, household="Smith Family")
-
-
-def parked_row(name, record, *, reason=UNMATCHED, decision=NEEDS_REVIEW, candidates=(),
-               code=None):
-    """One index row as the filer writes it, evidence through its own formatter.
-
-    Its code (decision 190) is the one ``reason`` was said with, as the
-    filer takes it, unless the test gives one; the router's two bare
-    sentences carry theirs as the router gives them."""
-    if code is None:
-        code = reasons.code_of(reason) or {
-            UNMATCHED: reasons.UNMATCHED_CODE, AMBIGUOUS: reasons.AMBIGUOUS_CODE}.get(reason, "")
-    return IndexEntry(
-        received="2026-01-01", original_name=name, size_kb=9.4, digest=hashlib.sha256(name.encode()).hexdigest(),
-        identifier="", prepared_location="",
-        pbc_location=f"../../../../Clients/Smith Family/2025/{name}",
-        decision=decision, reason=reason,
-        candidates=_CANDIDATE_SEP.join(candidates),
-        evidence=format_evidence(record),
-        code=code,
-    )
+engagement = engagement_fixture(ITEMS, household="Smith Family")
 
 
 def park(engagement, *entries):

@@ -524,7 +524,7 @@ def test_a_page_naming_two_families_as_itself_is_decision_94s_and_never_reaches_
 def test_the_router_and_the_scanner_reach_one_verdict_for_one_document(tmp_path, monkeypatch):
     # The verdicts the router reaches on a drop are the scanner's verdicts on
     # the working copy: same bytes, same reading, read once.
-    from tests.test_content_check import counting_extractor
+    from tests.builders import counting_extractor
     from tracker.content_check import ContentCache, check_content
 
     calls = counting_extractor(monkeypatch)
@@ -1225,7 +1225,7 @@ def _read_by_ocr(tmp_path, name, text, items):
 
 
 def _shortlist(routing, items, name="scan.pdf"):
-    from tests.test_review import parked_row
+    from tests.builders import parked_row
     from tracker.review import shortlist_for
 
     return shortlist_for(parked_row(name, routing.evidence_record, reason=routing.reason), items)
@@ -1324,7 +1324,7 @@ def test_a_k1_mentioning_w2_wages_suggests_nothing_and_holds_nothing(tmp_path):
     makes W-2 its dominant form and says none of A01's other phrases, so
     it parks as plain "matched no request" - no suggestion on the card,
     and no hold on A01's letter."""
-    from tests.test_review import parked_row
+    from tests.builders import parked_row
     from tracker.content_check import _says_where
     from tracker.reminder import _parked_holds
 

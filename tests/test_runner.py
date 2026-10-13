@@ -19,8 +19,20 @@ from pathlib import Path
 import pytest
 
 import tracker.runner as runner_module
+from tests import passes
 from tests.conftest import make_engagement, seed_index, written_elsewhere
-from tests.samples import DEMO_ITEMS, PRIOR_YEAR, SCRATCH_PEOPLE, YEAR, build_samples, text_pdf
+from tests.passes import (
+    _a_parked_file,
+    _lines,
+    _run_now,
+    _settings_for,
+    _the_scheduled_job,
+    _three_households,
+    build_engagement,
+    edit_details,
+    edit_rows,
+)
+from tests.samples import DEMO_ITEMS, PRIOR_YEAR, SCRATCH_PEOPLE, YEAR, text_pdf
 from tracker import ledger, store
 from tracker.filer import NEEDS_REVIEW, IndexEntry, read_index
 from tracker.layout import household_of, inbox_of, originals_of, root_of
@@ -94,12 +106,9 @@ SATURDAY = _WEEK_START + dt.timedelta(days=DRAFT_WEEKDAY)  # the draft day
 FRIDAY = SATURDAY - dt.timedelta(days=1)                # the day before
 SUNDAY = SATURDAY + dt.timedelta(days=1)                # the day after
 
-
-@pytest.fixture(scope="session")
-def samples(tmp_path_factory):
-    folder = tmp_path_factory.mktemp("samples")
-    build_samples(folder)
-    return folder
+#: The sample pile, built once per session: a fixture of ``tests/passes.py``, named here
+#: so every claim below can ask for it.
+samples = passes.samples
 
 
 @pytest.fixture
@@ -190,45 +199,6 @@ def test_the_runners_console_guard_is_the_pages(tmp_path, samples, monkeypatch):
     shown = console.buffer.getvalue().decode("cp1252")
     assert code == 0
     assert "Smith TY2025 \\u2192 \\u2713" in shown
-
-
-def build_engagement(tmp_path, samples, drops=(f"W-2 John Smith {YEAR}.pdf",),
-                     name="Smith TY2025", household="Test Household", **kwargs):
-    """A scaffolded return with files waiting in its household's inbox."""
-    # The return's details in the record are where the draft learns who the
-    # client is; the Engagement dataclass only echoes it. It is read back
-    # out of the record rather than typed here, because since decision 125
-    # the pass reads the household, the year and the return name off it.
-    from dataclasses import replace
-
-    # The pile is addressed to the two people the samples name, so the
-    # return lists them (decision 128) as the office's would.
-    folder = make_engagement(tmp_path, DEMO_ITEMS,
-                             EngagementInfo(client="John Smith", firm="J Park"),
-                             household=household, return_name=name,
-                             people=SCRATCH_PEOPLE, scaffold=False)
-    result = scaffold_engagement(folder)
-    for drop in drops:
-        (result.inbox / drop).write_bytes((samples / drop).read_bytes())
-    found = engagement_from(folder)
-    return replace(found, info=replace(found.info, **kwargs)) if kwargs else found
-
-
-def edit_rows(engagement_dir, **fields_by_identifier):
-    """A person's edit of one or more rows in the app, saved as one event."""
-    from dataclasses import replace
-
-    rows = [RequestItem(**rule_from_json(row)) for row in store.rules(store.connect(), engagement_dir)]
-    edited = [replace(row, **fields_by_identifier.get(row.identifier, {})) for row in rows]
-    return save_rules(engagement_dir, edited, load_engagement_info(engagement_dir))
-
-
-def edit_details(engagement_dir, **fields):
-    """A person's edit of the engagement's details in the app."""
-    from dataclasses import replace
-
-    rows = [RequestItem(**rule_from_json(row)) for row in store.rules(store.connect(), engagement_dir)]
-    return save_rules(engagement_dir, rows, replace(load_engagement_info(engagement_dir), **fields))
 
 
 # ------------------------------------------------------------ the Saturday ----
@@ -2029,7 +1999,7 @@ def test_a_return_short_of_room_files_everything_and_is_not_warned(tmp_path, pat
     131): nothing in the run's warnings. With a reader's 218 for
     spreadsheets every 1040 at the firm's root would warn every pass, and a
     warning that is always on is a warning nobody reads."""
-    from tests.test_filer import OVER, TIGHT_PERIOD, drop, tight_return
+    from tests.builders import OVER, TIGHT_PERIOD, drop, tight_return
 
     engagement = tight_return(tmp_path, OVER)
     drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
@@ -2045,8 +2015,8 @@ def test_a_return_short_of_room_files_everything_and_is_not_warned(tmp_path, pat
 def test_a_return_with_requests_that_cannot_receive_says_how_many(tmp_path, path_setting):
     """A request that Prepared leaves no room for even its shortest name is
     counted and said: a document for it parks until the root is shorter."""
+    from tests.builders import ROOM_ITEMS, no_room_return, with_the_long_period
     from tests.conftest import root_for_a_return_of
-    from tests.test_filer import ROOM_ITEMS, no_room_return, with_the_long_period
     from tracker.filer import ROOM_PARKS, room_for
     from tracker.manifest import load_manifest
 
@@ -2068,8 +2038,8 @@ def test_a_household_with_no_room_for_a_review_copy_is_skipped_whole_before_anyt
     stops its household: every working return carries HOUSEHOLD_NO_ROOM,
     the inbox is untouched, no lock is taken, and nothing is scaffolded,
     scanned, drafted or drawn - the held-lock shape."""
+    from tests.builders import ROOM_ITEMS, drop
     from tests.conftest import floor_return, root_for_a_return_of
-    from tests.test_filer import ROOM_ITEMS, drop
     from tracker.filer import HOUSEHOLD_NO_ROOM
     from tracker.layout import README_NAME, path_limit
     from tracker.locking import LOCK_FILENAME
@@ -2200,7 +2170,7 @@ def test_the_old_scheduled_job_naming_another_root_is_refused_and_says_install_s
 def test_the_room_is_measured_from_the_list_the_pass_already_loaded(tmp_path, monkeypatch):
     """One read of each return's list for the pass's own checks: the room is
     measured from the list ``check_rules`` was handed, not a second read."""
-    from tests.test_filer import ROOM_ITEMS
+    from tests.builders import ROOM_ITEMS
 
     root = tmp_path / "Clients"
     make_engagement(root, ROOM_ITEMS, return_name="1040 - One")
@@ -2283,48 +2253,7 @@ def _page(root) -> str:
     return html.unescape((root / STATUS_PAGE_FILENAME).read_text(encoding="utf-8"))
 
 
-def _the_scheduled_job(root, monkeypatch, *args) -> int:
-    """``main`` as the scheduled job calls it: the settings folder beside
-    ``root``, whose file names ``root`` as the clients root, and the flags."""
-    from tracker.settings import ENV_SETTINGS_DIR, set_clients_root
-
-    settings = root.parent / "settings"
-    settings.mkdir(exist_ok=True)
-    monkeypatch.setenv(ENV_SETTINGS_DIR, str(settings))
-    set_clients_root(root)
-    return main([SETTINGS_FLAG, str(settings), *args])
-
-
 # --------------------------------------------------- Run now (decision 203) ----
-
-
-def _settings_for(root, monkeypatch) -> Path:
-    """The settings folder beside ``root``, whose file names it, as the
-    app's and the job's own; the store sits beside it."""
-    from tracker.settings import ENV_SETTINGS_DIR, set_clients_root
-
-    settings = root.parent / "settings"
-    settings.mkdir(exist_ok=True)
-    monkeypatch.setenv(ENV_SETTINGS_DIR, str(settings))
-    set_clients_root(root)
-    return settings
-
-
-def _lines(out: str) -> list[dict]:
-    import json
-
-    return [json.loads(line) for line in out.strip().splitlines()]
-
-
-def _run_now(root, household, monkeypatch, capsys) -> tuple[int, list[dict]]:
-    """``main`` as the app's Run now calls it (``run_now_arguments``): its
-    exit code and every stdout line, progress lines then the final one."""
-    from tracker.runner import run_now_arguments
-
-    settings = _settings_for(root, monkeypatch)
-    capsys.readouterr()
-    code = main(run_now_arguments(settings, household))
-    return code, _lines(capsys.readouterr().out)
 
 
 def test_the_household_flag_passes_through_the_door(tmp_path, samples, monkeypatch, capsys):
@@ -2932,11 +2861,6 @@ def test_a_pass_killed_mid_sort_keeps_every_reading_it_finished(tmp_path, monkey
 
 
 # ---------------------------------------------- the bounded household (189) ----
-
-
-def _three_households(tmp_path, samples):
-    return [build_engagement(tmp_path, samples, household=f"{name} Household", name=f"{name} TY2025")
-            for name in ("Alder", "Birch", "Cedar")]
 
 
 @pytest.fixture
@@ -4335,15 +4259,6 @@ def _count_journal_reads(monkeypatch) -> list[Path]:
 
     monkeypatch.setattr(Path, "read_bytes", counting)
     return read
-
-
-def _a_parked_file(engagement_dir) -> str:
-    """One file parked for a person in this return's record."""
-    seed_index(engagement_dir, [IndexEntry(
-        received="2026-02-02", original_name="unclear scan.pdf", size_kb=5.0, digest="cd" * 32,
-        identifier="", prepared_location="", pbc_location="unclear scan.pdf",
-        decision=NEEDS_REVIEW, reason="no request matched")])
-    return "unclear scan.pdf"
 
 
 def test_the_practice_page_reads_no_journal_the_walk_has_followed(tmp_path, samples, monkeypatch):

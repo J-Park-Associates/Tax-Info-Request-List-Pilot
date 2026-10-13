@@ -6,10 +6,11 @@ from dataclasses import replace
 
 import pytest
 
+from tests.builders import cache_rows, engagement_fixture
 from tests.conftest import make_engagement, named_page, sort
 from tests.samples import text_pdf
 from tracker import ledger, reasons, store
-from tracker.content_check import CACHE_VERSION, RETIRED_CACHE_FILENAME
+from tracker.content_check import RETIRED_CACHE_FILENAME
 from tracker.layout import inbox_of
 from tracker.locking import LOCK_FILENAME, STALE_LOCK_SECONDS
 from tracker.manifest import (
@@ -54,9 +55,7 @@ ITEMS = [
 ]
 
 
-@pytest.fixture
-def engagement(tmp_path):
-    return make_engagement(tmp_path, ITEMS)
+engagement = engagement_fixture(ITEMS)
 
 
 def edit_row(engagement, identifier, **fields):
@@ -86,11 +85,6 @@ def folder(engagement, prefix):
 
 def statuses(engagement):
     return {i.identifier: i for i in load_manifest(engagement)}
-
-
-def cache_rows(engagement):
-    """The engagement's verdict cache as the store holds it: (memos, verdicts)."""
-    return store.cached_verdicts(store.connect(), engagement, version=CACHE_VERSION)
 
 
 # ------------------------------------------------------------ resolution ----

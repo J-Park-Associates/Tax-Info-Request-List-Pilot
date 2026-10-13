@@ -27,18 +27,9 @@ from pathlib import Path
 
 import pytest
 
+from tests.builders import BUSINESS, DAY1, DAY2, FATHER, ITEMS, LLC_PEOPLE, engagement_fixture, feeding, original_at
 from tests.conftest import TEST_CLIENT, make_engagement, named_page, sort, sort_all
 from tests.samples import msg_bytes, text_pdf
-from tests.test_filer import (
-    BUSINESS,
-    DAY1,
-    DAY2,
-    FATHER,
-    ITEMS,
-    LLC_PEOPLE,
-    feeding,
-    original_at,
-)
 from tracker import containers, filer, ledger, reasons, store
 from tracker.containers import (
     LIMIT_COUNT,
@@ -83,9 +74,7 @@ W2 = "Form W-2 Wage and Tax Statement 2025"
 FORM_1098 = "Form 1098 Mortgage Interest Statement 2025"
 
 
-@pytest.fixture
-def engagement(tmp_path):
-    return make_engagement(tmp_path, ITEMS)
+engagement = engagement_fixture(ITEMS)
 
 
 # ------------------------------------------------------------- the fixtures ----
@@ -847,7 +836,7 @@ def test_a_container_parser_that_never_finishes_is_stopped_and_the_container_par
 
     import tracker.content_check as content_check
     from tests import child_readers
-    from tests.test_content_check import STOP_IN_TESTS, STOPPED, eventually, no_child_left, running
+    from tests.children import STOP_IN_TESTS, STOPPED, eventually, no_child_left, running
 
     opened_in_a_child.setattr(content_check, "READING_STOP_DOCUMENT_SECONDS", STOP_IN_TESTS)
     opened_in_a_child.setattr(containers, "_CHILD_OPENER",
@@ -882,7 +871,7 @@ def test_a_container_parser_that_crashes_parks_the_container_not_the_pass(
     the container parks with the failed reading's sentence, and the pass
     goes on to the loose W-2 dropped beside it."""
     from tests import child_readers
-    from tests.test_content_check import CRASHED, no_child_left
+    from tests.children import CRASHED, no_child_left
 
     opened_in_a_child.setattr(containers, "_CHILD_OPENER", child_readers.a_container_parser_that_crashes)
     drop_bytes(engagement, "a mail.eml", eml([("1098.pdf", pdf(FORM_1098))]))
@@ -908,7 +897,7 @@ def test_a_container_the_reader_could_not_start_on_is_reopened_next_pass(
     never be opened - and nothing is written. It rests in the year's
     folder as a stray, the pass says it once, and the next pass, on a
     working machine, opens it and files what it holds."""
-    from tests.test_content_check import _a_reader_only_the_pass_has, no_child_left
+    from tests.children import _a_reader_only_the_pass_has, no_child_left
     from tracker import content_check
     from tracker.registry import discover_engagements
     from tracker.runner import REMINDERS_NEVER, run_registry
@@ -948,7 +937,7 @@ def test_an_opened_container_gives_the_same_parts_as_in_process(tmp_path, opened
     """On time, the child hands back exactly what the pass's own process
     opens: every attachment's name and bytes, in order, each part left
     inside and why - or, for one that will not open, the same sentence."""
-    from tests.test_content_check import no_child_left
+    from tests.children import no_child_left
     from tracker import content_check
 
     two = [("w2.pdf", pdf(W2)), ("1098.pdf", pdf(FORM_1098))]

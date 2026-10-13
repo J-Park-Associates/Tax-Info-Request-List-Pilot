@@ -15,6 +15,7 @@ from pathlib import Path
 
 import pytest
 
+from tests.builders import engagement_dirs
 from tests.conftest import TEST_HOUSEHOLD, make_engagement
 from tracker import ledger
 from tracker.layout import CLIENTS_TREE, PRIVATE_TREE, client_household_dir, private_household_dir
@@ -30,17 +31,9 @@ from tracker.registry import (
     UNLISTED,
     Engagement,
     RegistryError,
-    _walk_root,
     discover_engagements,
 )
 from tracker.scaffold import PREPARED_DIR_NAME
-
-
-def engagement_dirs(root):
-    """Every return folder under ``root`` in the walk's order: the fourth
-    level below the root and nothing else, as the registry's own walk
-    reads it (``registry._walk_root``)."""
-    return _walk_root(Path(root)).returns
 
 ITEMS = [RequestItem(identifier="A01", document="W-2")]
 

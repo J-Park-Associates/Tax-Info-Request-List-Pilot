@@ -27,12 +27,11 @@ from pathlib import Path
 
 import pytest
 
-from tests.conftest import make_engagement, named_page, sort
-from tests.samples import text_pdf
-from tests.test_registry import engagement_dirs
+from tests.builders import drop, engagement_dirs, engagement_fixture
+from tests.conftest import make_engagement, sort
 from tracker import ledger, review, view
 from tracker.filer import NEEDS_REVIEW, read_index
-from tracker.layout import household_of, inbox_of, root_of
+from tracker.layout import household_of, root_of
 from tracker.manifest import (
     COL_ANY_KEYWORDS,
     COL_STATUS,
@@ -70,15 +69,7 @@ ITEMS = [
 ]
 
 
-@pytest.fixture
-def engagement(tmp_path):
-    return make_engagement(tmp_path, ITEMS, household="Smith Family")
-
-
-def drop(engagement, name, text):
-    """One document into the household's inbox, with the return's person on
-    the page - a named request files only where a name confirms (128)."""
-    return text_pdf(inbox_of(engagement) / name, named_page(text))
+engagement = engagement_fixture(ITEMS, household="Smith Family")
 
 
 def a_pass(engagement, today=DAY1):

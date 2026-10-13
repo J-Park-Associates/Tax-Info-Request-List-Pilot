@@ -4128,7 +4128,7 @@ def test_the_side_sentence_is_shown_nowhere_on_a_return_page(tmp_path):
     """Decision 200, on SPEC 2.5 E58 and P63: whose move a row is, and the
     row's own sentence, are not shown on the row - not as text and not as a
     tooltip. The group says whose move it is; the row keeps one status word."""
-    from tests.test_shell import run_pages
+    from tests.node_harness import run_pages
     from tracker import reminder
 
     items = [{"identifier": f"R{i}", "document": f"Request {i}", "short_name": f"Request {i}", "group": "waiting",
@@ -4156,7 +4156,7 @@ def test_an_accepted_rows_status_word_is_the_label_tables_not_the_records(tmp_pa
     """An Accepted row sits in Received and says the label table's word for
     it. Relabelled in the table, the row follows the table, not the word the
     record keeps."""
-    from tests.test_shell import run_pages
+    from tests.node_harness import run_pages
 
     item = {"identifier": "A01", "document": "W-2 - Acme", "short_name": "W-2 - Acme", "group": "received", "status_key": "Accepted",
             "manual_override": "Accepted", "period": "", "year": 2025, "file_count": 1, "expected_count": 1, "received_date": "2026-03-01"}

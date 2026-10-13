@@ -3,7 +3,7 @@
   "generated": "2026-10-13",
   "generator": "tools/repo_map.py",
   "generator_sha256": "a394d7104da5155d",
-  "module_table_sha256": "afb2b606ccc87fc7",
+  "module_table_sha256": "78533eeb8d3797a0",
   "pipeline": [
     "tracker.api / create",
     "tracker.scaffold",
@@ -15,9 +15,9 @@
     "a person sends the draft"
   ],
   "counts": {
-    "nodes": 306,
-    "edges": 1331,
-    "reused": 252
+    "nodes": 311,
+    "edges": 1367,
+    "reused": 0
   },
   "node_types": [
     "artifact",
@@ -4645,8 +4645,8 @@
       "id": "docs/repo-map.curated.json",
       "type": "file",
       "layer": "docs",
-      "sha256": "fac10563616db680",
-      "lines": 1325,
+      "sha256": "3176cfdf4c06a4e7",
+      "lines": 1345,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
     },
@@ -5862,6 +5862,58 @@
       "role": "The store (decision 101): one SQLite file per account, every row keyed by its clients root, in the tracker's data home (`settings.data_home()`, decision 186) on the designated machine's local disk, never beside the program or in a checkout, holding every engagement's requests, statuses, learned keywords, index rows, details and journal events under that root - all folded from each engagement's journal and from nothing else - and, since decision 107, the tier-3 verdict cache (the verdicts and the file memos), which is the one thing in it that is not a derivation of the journal: a rebuild leaves it empty and the next pass reads each document once. NEVER under the clients root and never in an engagement folder - those sync, and a synced database file is a corrupted database file. Written by tracker/store.py, and through it by the filer, the scanner and the manifest's two writes; read, through the store, by every reader of the index, the request list and the details. Disposable all the same - delete it and every fact it held is still in the journals - so it is never backed up, never synced and a person never opens it. One connection per process (connect(), close()), to the file in the data home unless TRACKER_STORE names another; the suite sets that per test. At the user_version `tracker/store.py` declares as `SCHEMA_VERSION`, raised by decisions 104 (the workbook's digest column went), 107 (the verdict cache's two tables), 116 (`override_reason`), 117 (the Filing Deadline column) 119 (the `intents` table) and later decisions, 143 the last (the documents' `container` column); a file at any other version is refused by name rather than opened, and an earlier one is deleted and rebuilt from the journals."
     },
     {
+      "id": "tests/builders.py",
+      "type": "test",
+      "layer": "tests",
+      "sha256": "12ea8e5b2ed78702",
+      "lines": 343,
+      "exports": [
+        "BUSINESS",
+        "CANONICAL_BELOW",
+        "DAY1",
+        "DAY2",
+        "DROPPED",
+        "FATHER",
+        "FOLDER_BELOW",
+        "ITEMS",
+        "K1_WORDS",
+        "LLC_PEOPLE",
+        "LONG_PERIOD",
+        "OVER",
+        "ROOM_ITEMS",
+        "SCHWAB_146",
+        "TIGHT_PERIOD",
+        "cache_rows",
+        "counting_extractor",
+        "drop",
+        "engagement_dirs",
+        "engagement_fixture",
+        "failure",
+        "feeding",
+        "item",
+        "k1_rows",
+        "killed_at_the_record",
+        "link_to",
+        "locked",
+        "no_room_prepared",
+        "no_room_return",
+        "original_at",
+        "parked_row",
+        "tight_return",
+        "with_the_long_period"
+      ],
+      "constants": {
+        "K1_WORDS": "(\"partner's share of income\", \"member's share of income\")",
+        "CANONICAL_BELOW": "48",
+        "FOLDER_BELOW": "9",
+        "LONG_PERIOD": "'January 01 2025 - December 31 2025'",
+        "TIGHT_PERIOD": "'Jan 2025 to Dec 2025'",
+        "OVER": "9"
+      },
+      "role": "What the suite builds, once: a return (make_engagement, and the engagement fixture a file asks for with its own request list), a document dropped into its inbox, the cache and the originals read back, a link, the rows a pass parks, and the filer's made-up scenes (a household with a business, a return with no room for a name, a consolidated brokerage statement).",
+      "notes": "SPEC-architecture J2 (R2.1, E-4). Test files used to borrow these from one another - from tests.test_filer import drop, from tests.test_review import parked_row - an edge the affected-tests gate cannot see and a split of the owner's file breaks. Here they sit in a module that is not a test file, so every user names it and the map draws 'exercised by'. Each helper is the one a test file already had, moved with its words; where several files wrote one out they now share it: drop (test_filer's, which takes who=; test_ledger, test_store and test_view had it without), cache_rows (four copies), original_at (two), link_to (test_filer's and test_door's _link_to, renamed because it is now public) and the engagement fixture, which engagement_fixture(items, household=None, *, root='tmp_path') makes for the files whose fixture was one make_engagement call. make_engagement itself stays in conftest, which also keeps sort, seed_* and named_page; builders imports what it needs from there. The filer's scenes (ITEMS, DAY1, DAY2, BUSINESS, FATHER, LLC_PEOPLE, feeding, ROOM_ITEMS and the long-period room helpers, SCHWAB_146 with _consolidated_return, killed_at_the_record) are the ones test_containers, test_runner and test_api staged from test_filer's."
+    },
+    {
       "id": "tests/child_readers.py",
       "type": "test",
       "layer": "tests",
@@ -5894,6 +5946,30 @@
         "QUOTED_BY_THE_PARSER": "\"bad object near 'SSN 123-45-6789 Jane Fabricated'\"",
         "MARKS_VARIABLE": "'TRACKER_TEST_MARKS'"
       }
+    },
+    {
+      "id": "tests/children.py",
+      "type": "test",
+      "layer": "tests",
+      "sha256": "ecc9e67ff1cfcc88",
+      "lines": 138,
+      "exports": [
+        "CRASHED",
+        "PROC",
+        "STOPPED",
+        "STOP_IN_TESTS",
+        "eventually",
+        "no_child_left",
+        "process_state",
+        "running"
+      ],
+      "constants": {
+        "STOP_IN_TESTS": "5.0",
+        "STOPPED": "'The reader stopped after 1 minute on this file. A person reads it.'",
+        "CRASHED": "'The reader could not read this file (it stopped unexpectedly). A person reads it.'"
+      },
+      "role": "Waiting for, and counting, the reading children a test starts: whether a process is still running (running, process_state, and the PROC and ps seams a test points at a place that is not there to stand in for a Mac), waiting for a condition (eventually), no_child_left, and the stops and sentences a stopped or crashed reading is claimed to say (STOP_IN_TESTS, STOPPED, CRASHED).",
+      "notes": "SPEC-architecture J2 (R2.1, E-4). Moved with their words from tests/test_content_check.py, which test_containers and test_ocr borrowed them from. running(pid) asks whether a process has ended without reading anything Linux-only (SPEC-mac R36): a zombie has ended, and where there is no /proc - a Mac - the state comes from ps -o stat= through the seam PROC, which a test points at a place that is not there to stand in for a Mac; the tests that do so patch this module's PROC and _ps_state, since that is where running reads them. The stand-in readers a child runs are in tests/child_readers.py, because a patch made in a test never reaches the child."
     },
     {
       "id": "tests/conftest.py",
@@ -5988,6 +6064,125 @@
       },
       "role": "What every test pays for once: an app folder of its own (settings and store, via own_folders()), the tripwire's arming and its session verdict (decision 185), the store and view agreement checks, and the one way to make an engagement, sort an inbox and start a Python child (child_env()).",
       "notes": "Decision 185: own_folders() is the one place a process is told where beside-the-app is - the session calls it in pytest_configure before collection, every test through an_app_folder_of_its_own (its own MonkeyPatch, so a test's undo cannot take it); real_places() is the one list of places a real settings file, store, scratch or client tree resolves to, from the constants that name them, and 186 adds the data home to both. pytest_configure installs the hook with the session's TRACKER_TEST_TRIPWIRE value and the session log, so this process also judges the Python children it starts by the routes the tripwire's docstring lists (and what escapes is listed there too); a process it forks writes its records to the log. Under pytest-xdist the controller alone arms the session: a worker reads the places and log from the inherited TRACKER_TEST_TRIPWIRE (_configure_worker), hands its hits back in workeroutput, and pytest_testnodedown collects them, because xdist ignores a worker's exit status. pytest_sessionfinish fails the session on any tripwire record, the pytest process's or a child's (the session log, read_tripwire_log(): a line it cannot read, or a log it cannot read at all (any OSError), is itself said as a violation, never an internal error), and on any folder the session left in the checkout (checkout_folders(), which never lists a guarded place). office_shaped_copy is the checkout copied with fabricated real-looking files beside it, for the nested proofs. Decision 186: own_folders() also sets TRACKER_DATA_HOME to data_home_for(folder), a sibling of the folder holding the app folder (<tmp_path>-data for a test, <session>-data for the session, removed at unconfigure), so no clients root a test makes of tmp_path holds it (ROOT_HOLDS_DATA); real_places() guards the account's real data home (settings.default_data_home(), none on a machine without one) and one the shell names, and names the store by where.with_name(STORE_FILENAME) since store.path_for() is gone; run_in_copy() drops the suite's data home, as a fresh shell has none. SPEC-mac R9: the autouse room_is_the_absolute_length fixture pins layout.on_a_mac off for every test, so the suite's root-length tests mean the same on every machine; the on_a_mac fixture lifts it for a test about a Mac. SPEC-mac job 6: the autouse guard that fails a test reaching schtasks also fails one reaching scheduling._launchctl or after_install._tmutil; a_mac is the fixture that stands a test in for a Mac (settings.host_system 'darwin', a home of its own, every disk fixed, FakeLaunchd and FakeTmutil that keep every command and answer as the real ones do); real_places() also guards the real launch agent file."
+    },
+    {
+      "id": "tests/css_rules.py",
+      "type": "test",
+      "layer": "tests",
+      "sha256": "b8315dcd6e0cad42",
+      "lines": 131,
+      "exports": [
+        "COLOUR",
+        "COLOUR_PROPS",
+        "GRID_PROPS",
+        "GRID_TOKEN",
+        "NOT_A_COLOUR",
+        "SP_STEPS",
+        "SYSTEM_COLOURS",
+        "blocks",
+        "colour_faults",
+        "declarations",
+        "stripped",
+        "top_level"
+      ],
+      "constants": {
+        "SP_STEPS": "('1', '2', '4', '6', '8', '12')"
+      },
+      "role": "The renderer's stylesheets read as text: the rules at any depth (blocks), the top-level rules by balanced braces (top_level), a declaration's property and value (declarations), what in a value is a colour that is not a token or a system colour (colour_faults), and the grid's steps.",
+      "notes": "SPEC-architecture J2 (R2.1, E-4). Moved with their words from tests/test_pilot_ui.py, which test_shell borrowed them from. app/renderer/pilot-ui.css redefines the look by overriding style.css, so what can be pinned is what the file may and may not contain."
+    },
+    {
+      "id": "tests/node_harness.py",
+      "type": "test",
+      "layer": "tests",
+      "sha256": "8815c3e312b4bcea",
+      "lines": 747,
+      "exports": [
+        "COLUMN_FUNCTIONS",
+        "EARLY_FIRM",
+        "ENGINE_BRIDGE",
+        "ENGINE_ENV",
+        "ENGINE_FUNCTIONS",
+        "ENGINE_SNIPPET",
+        "FAKE_DOM",
+        "FIRM_LISTS",
+        "FIRM_LOAD",
+        "FIRM_LOAD_FUNCTIONS",
+        "FIRM_PAGE",
+        "FIRM_PAGE_FUNCTIONS",
+        "LAST_COUNTS",
+        "LONG_LIST_FUNCTIONS",
+        "LONG_SETUP",
+        "NODE",
+        "NOTICE_FUNCTIONS",
+        "PAGES_CONSTS",
+        "PAGE_WORDS",
+        "REMINDER_FUNCTIONS",
+        "REMINDER_SHEET",
+        "RENDERER",
+        "REPO",
+        "RETURN_STATE",
+        "SORT_END",
+        "SPEED_DOM",
+        "SPEED_SOURCES",
+        "content",
+        "js_function",
+        "lift",
+        "lift_line",
+        "pages_consts",
+        "read",
+        "run_firm_load",
+        "run_firm_page",
+        "run_last_counts",
+        "run_lists",
+        "run_long",
+        "run_notices",
+        "run_pages",
+        "run_pages_dom",
+        "run_reminder_sheet",
+        "run_shell",
+        "run_sort_end",
+        "run_speed",
+        "store_functions"
+      ],
+      "constants": {
+        "ENGINE_FUNCTIONS": "('shellFirmAsk', 'shellFirmMerge', 'shellFirmShaped', 'pagesAdopt', 'pagesListOf', 'pagesStoredOrder', 'pagesSaveOrder')",
+        "ENGINE_SNIPPET": "'\\nimport json, sys\\nfrom tracker import firm_pages\\nspec = json.load(sys.stdin)\\nask = firm_pages.ask_of(spec[\"ask\"], spec[\"words\"][\"client_types\"])\\nreply = firm_pages.page(spec[\"whole\"], spec[\"names\"], spec[\"words\"], ask)\\nreply[\"view\"] = \"made-up-view\"\\nsys.stdout.write(json.dumps(reply))\\n'",
+        "FAKE_DOM": "'\\nclass Node {}\\nclass Text extends Node { constructor(data) { super(); this.data = data; } }\\nclass Element extends Node {\\n  constructor(tag) { super(); this.tag = tag; this.className = \"\"; this.dataset = {}; this.attrs = {}; this.kids = []; this.open = false; this.handlers = {};\\n    this.style = { props: {}, setProperty(key, value) { this.props[key] = value; }, removeProperty(key) { delete this.props[key]; } }; }\\n  get classList() {\\n    const self = this;\\n    return { add(one) { if (!self.className.split(\" \").includes(one)) self.className = `${self.className} ${one}`.trim(); },\\n             remove(one) { self.className = self.className.split(\" \").filter((name) => name !== one).join(\" \"); },\\n             toggle(one, on) { if (on) this.add(one); else this.remove(one); return Boolean(on); },\\n             contains(one) { return self.className.split(\" \").includes(one); } };\\n  }\\n  setAttribute(key, value) { this.attrs[key] = String(value); }\\n  removeAttribute(key) { delete this.attrs[key]; }\\n  getAttribute(key) { return this.attrs[key]; }\\n  get id() { return this.attrs.id; }\\n  getBoundingClientRect() { return { left: 10, bottom: 20, top: 0, right: 30 }; }\\n  append(...nodes) { for (const one of nodes) this.kids.push(one instanceof Node ? one : new Text(String(one))); }\\n  replaceChildren(...nodes) { this.kids = []; this.append(...nodes); }\\n  insertBefore(node, before) { const at = before ? this.kids.indexOf(before) : -1; if (at === -1) this.kids.push(node); else this.kids.splice(at, 0, node); return node; }\\n  removeChild(node) { this.kids.splice(this.kids.indexOf(node), 1); return node; }\\n  focus() {}\\n  querySelectorAll(selector) {\\n    if (selector.startsWith(\"[role=\")) return this.find((one) => `[role=\"${one.attrs.role}\"]` === selector);\\n    const names = selector.split(\".\").filter(Boolean);\\n    return this.find((one) => names.every((name) => one.className.split(\" \").includes(name)));\\n  }\\n  addEventListener(type, fn) { (this.handlers[type] = this.handlers[type] || []).push(fn); }\\n  get childNodes() { return this.kids; }\\n  find(test, out = []) { for (const one of this.kids) if (one instanceof Element) { if (test(one)) out.push(one); one.find(test, out); } return out; }\\n  querySelector(selector) { return this.byClass(selector.slice(1))[0] || null; }\\n  byClass(name) { return this.find((one) => one.className.split(\" \").includes(name)); }\\n  get textContent() { return this.kids.map((one) => (one instanceof Text ? one.data : one.textContent)).join(\"\"); }\\n}\\nconst document = { activeElement: null, createDocumentFragment: () => new Element(\"fragment\"), createElement: (tag) => new Element(tag), createElementNS: (_ns, tag) => new Element(tag) };\\nconst page = (nodes) => { const box = new Element(\"div\"); box.append(...nodes.filter(Boolean)); return box; };\\n'",
+        "PAGE_WORDS": "'\\nconst fill = (p, v) => p.replace(/\\\\{(\\\\w+)\\\\}/g, (_, k) => v[k] ?? \"\");\\nconst isSetAside = (o) => o === \"Not Applicable\";\\nconst overrideLabel = (o, year) => `Not applicable ${year}`;\\nlet locked = false;\\nlet lastState = null;\\nconst tips = []; const cutTips = [];\\nconst setTipIfCut = (node, words) => { tips.push([node.className, words]); cutTips.push(node.className); };\\nconst setTip = (node, words) => tips.push([node.className, words]);\\nconst opened = []; const went = [];\\nconst openPath = (path, how) => opened.push([path, how]);\\nconst shellGo = (route) => went.push(route);\\nconst popups = [];\\nconst shellPopup = (name, token, x, y, enable) => popups.push([name, token, x, y, enable]);\\nconst unanswered = (id) => failures.push(`unanswered ${id}`);\\nlet shellReturn = (path) => ({ return_name: \"1040 - John & Jane Smith\", household: \"h1\", year: 2025 });\\nconst PAGES_LINK_WORDS = { file: \"show_in_explorer\", household: \"navigate_client\", return: \"navigate_return\" };\\nconst PAGES_GROUPS = [\"needs_you\", \"waiting\", \"received\", \"set_aside\"];\\nconst PAGES_TONES = { needs: \"is-attention\", waiting: \"is-waiting\", done: \"is-done\", plain: \"is-plain\" };\\nlet pagesUid = 0; const pagesTokens = new Map(); let pagesSetAsideOpen = false; let pagesBroken = []; let pagesDrawn = \"\";\\nlet pagesFocus = null; let pagesLastLevel = \"\"; let pagesClientsAll = false;\\nconst notices = []; const failures = [];\\nlet syncNotices = (prefix, wanted) => notices.push([prefix, wanted.map((one) => [one.key, one.failure.sentence, one.detail || \"\"])]);\\nconst failed = (err) => failures.push(String(err.message));\\nlet shellHousehold = () => null; let households = [];\\nconst vocab = {\\n  shell: { page_error: \"The app hit an error\" }, notices: { about: \"{label}: {sentence}\" },\\n  client_type_forms: { individuals: [\"1040\"], businesses: [\"1120\", \"1120S\", \"1065\"], trusts: [\"1041\"], nonprofits: [\"990\"] },\\n  layout: { return_name_pattern: \"{form} - {client}\" },\\n  decisions: { needs_review: \"Needs Review\", dismissed: \"Not Requested\", filed: \"Filed\", file_moved: \"File Moved\" },\\n  labels: { Missing: { label: \"Outstanding\" }, Received: { label: \"Received\" }, Partial: { label: \"Partly in\" }, Rejected: { label: \"Could not use\" }, NotAsked: { label: \"Not asked\" } },\\n  overrides: { not_applicable: \"Not Applicable\" },\\n  review_labels: { bucket_order: [\"document\", \"container\", \"not_a_document\"], dismiss: \"Not requested\",\\n                   buckets: { document: \"Documents\", container: \"Emails and zips\", not_a_document: \"Not documents\" } },\\n  reasons: { unmatched: { short: \"Could not tell\" }, \"opened-not-across\": { short: \"Email or zip\" } },\\n  reason_tips: { \"opened-not-across\": \"Came in email or zip\" },\\n  screen: {\\n    groups: { needs_you: \"Needs you\", waiting: \"Waiting on client\", received: \"Received\", set_aside: \"Set aside\" },\\n    steps: { check: \"Check\", open: \"Open\", draft: \"Draft reminder\", edit: \"Edit\" },\\n    notices: { paused: \"Two Years Open; Sorting Paused\" },\\n    empty: { received: \"Nothing received yet\" }, moved: \"Moved by hand\", due: \"Due {date}\", since: \"Since {date}\", partly: \"{n} of {total}\",\\n    show_in_explorer: \"Show in File Explorer\", navigate_client: \"Navigate to Household\", navigate_return: \"Navigate to Return\",\\n    counts: { need: \"{n} need you\", waiting: \"{n} waiting\", complete: \"Complete\", files: \"{n} files\", one_file: \"1 file\", one_return: \"1 return\", returns: \"{n} returns\" },\\n    sections: { overview: \"Overview\", needs_review: \"Needs Review\", reminders: \"Reminders\", clients: \"Households\" },\\n    columns: { tax_year: \"Tax Year\", taxpayer: \"Taxpayer\", form_type: \"Form Type\", taxpayer_tip: \"{action} ({household})\",\\n               status: \"Status\", date: \"Date\", file: \"File\", suggestion: \"Suggestion\", reason: \"Reason\",\\n               received: \"Received\", stage: \"Stage\", drafted: \"Drafted\", returns: \"Returns\", client_name: \"Household Name\", sort_by: \"Sort by {column}\",\\n               width: \"{column} Width {n}\" },\\n    linked: { tip: \"Linked Households\", feeds: \"Also Feeds\", fed_by: \"Fed By\", related: \"Related\" },\\n    tabs: { need: \"Need You ({n})\", waiting: \"Waiting ({n})\" }, documents: { one: \"1 Document\", many: \"{n} Documents\" },\\n    paging: { showing: \"Showing {from}-{to} of {total} {noun}\", previous: \"Previous\", next: \"Next\",\\n              nouns: { overview: \"Returns\", needs_review: \"Files\", reminders: \"Drafts\", clients: \"Households\" } },\\n    icons: { more_actions: \"More Actions\", remove_filter: \"Remove Filter\" }, filters: { work: \"Work Waiting\", all: \"All\" }, work: \"Work Waiting\",\\n    shared: \"Shared\", not_shared: \"Not Shared\",\\n    household_card: { contact: \"Contact\", shared_with: \"Shared With\", inbox_link: \"Inbox Link\", link_saved: \"Saved\", no_link: \"Not Saved\" },\\n    client_types: { individuals: \"Individuals\", businesses: \"Businesses\", trusts: \"Trusts & Estates\", nonprofits: \"Nonprofits\" },\\n  },\\n};\\n'",
+        "PAGES_CONSTS": "('const PAGES_COLUMNS = {', 'const PAGES_CELLS = ', 'const PAGES_WIDTHS = ', 'const PAGES_USUAL = ', 'const PAGES_WIDTH_STEP = ', 'const PAGES_WIDTHS_KEY = ', 'const PAGES_ORDER_KEY = ', 'let pagesOrder = ', 'let pagesWidths = ', 'const PAGES_REASON_ICONS = {', 'const PAGES_SECTIONS = ', 'let pagesPageAt = ', 'let pagesEntered = ', 'let pagesTab = ', 'let pagesReasonPick = ', 'let pagesClientType = ', 'let pagesPanel = ', 'let pagesYearless = ', 'const PAGES_VIRTUAL_FROM = ', 'const PAGES_VIRTUAL_OVER_LEAST = ', 'let pagesVirtualWired = ', 'const PAGES_COLLATOR = ')",
+        "COLUMN_FUNCTIONS": "('pagesListOf', 'pagesOrderBy', 'pagesColumnHeads', 'pagesGrip', 'pagesColumnKey', 'pagesStoredWidths', 'pagesWidthOf', 'pagesSetWidth', 'pagesSaveWidths', 'pagesApplyWidths', 'pagesResetWidths', 'pagesReviewSpec', 'pagesStoredOrder', 'pagesSaveOrder', 'pagesDetailCell', 'pagesReasonTip', 'pagesStatusCell', 'pagesLinkMark', 'pagesLinkMarkIn', 'pagesShowPanel', 'pagesPanelOpen', 'pagesClosePanel', 'pagesOpenRowLinks', 'pagesFootOf', 'pagesFoot', 'pagesTurn', 'pagesPick', 'pagesRedraw', 'pagesPickButton', 'pagesTabs', 'pagesFileCount', 'pagesReasonCards', 'pagesReviewGroup', 'pagesSwitch', 'pagesTypeFilter', 'pagesReopenPanel', 'pagesTaxpayer', 'pagesFormCell', 'pagesReturnHeading', 'pagesReturnCells', 'pagesReply', 'pagesHeldPage', 'pagesEnter', 'pagesAdopt', 'shellFirmAsk', 'shellFirmMerge', 'shellFirmShaped')",
+        "LONG_LIST_FUNCTIONS": "('pagesRegister', 'pagesRowNode', 'pagesIsChild', 'pagesWindow', 'pagesOver', 'pagesListTop', 'pagesVirtualList', 'pagesVirtualMake', 'pagesVirtualNode', 'pagesVirtualPlace', 'pagesVirtualSize', 'pagesVirtualMeasure', 'pagesVirtualPlaceAll', 'pagesVirtualWire', 'pagesVirtualReveal', 'pagesActivateAt', 'pagesKeyLong', 'pagesVirtualNodeSaid', 'pagesVirtualMeasureSaid')",
+        "RETURN_STATE": "'\\nconst item = (id, group, extra = {}) => ({ identifier: id, document: `Doc ${id}`, short_name: `Doc ${id}`, group, status_key: \"Missing\", manual_override: \"\",\\n  period: \"\", year: 2025, file_count: 0, expected_count: 1, received_date: null, ...extra });\\nconst parked = (handle, extra = {}) => ({ handle, original_name: `${handle}.pdf`, decision: \"Needs Review\", group: \"needs_you\", code: \"unmatched\", received: \"2026-03-03\", bucket: \"document\", ...extra });\\nconst movedRow = (handle, extra = {}) => ({ handle, original_name: `${handle}.pdf`, decision: \"File Moved\", group: \"needs_you\", code: \"file-moved\", received: \"2026-03-02\", ...extra });\\nconst setAsideRow = (handle, extra = {}) => ({ handle, original_name: `${handle}.pdf`, decision: \"Not Requested\", group: \"set_aside\", code: \"not-requested\", received: \"2026-03-01\", ...extra });\\nconst stateOf = (items, index = [], moved = []) => ({ paths: { engagement: \"r1\" }, engagement: { due: \"2026-04-15\" }, items, index, review: [], moved });\\n'",
+        "ENGINE_BRIDGE": "'\\n  let shellFirmData = null; let shellFirmAsOf = \"\";\\n  let shellFirmNow = { status: \"ok\", data: null };   // what the window holds: the pages the engine cut (P278)\\n  const shellFirm = () => (shellFirmAsOf ? { ...shellFirmNow, asOf: shellFirmAsOf } : shellFirmNow);\\n  globalThis.shellRoute = globalThis.shellRoute || { level: \"overview\" };   // a probe that holds its own (let) keeps it\\n  const { execFileSync } = require(\"child_process\");\\n  const enginePages = new Map();\\n  const engineAnswers = (ask) => {\\n    const words = { need: vocab.screen.counts.need, waiting: vocab.screen.counts.waiting, complete: vocab.screen.counts.complete,\\n      paused: vocab.screen.notices.paused, held: vocab.screen.held, client_types: vocab.client_type_forms,\\n      stages: Object.fromEntries(((vocab.reminder || {}).stages || []).map((one) => [one.number, one.short])),\\n      reasons: Object.fromEntries(Object.entries(vocab.reasons).map(([code, one]) => [code, typeof one === \"object\" ? one.short : one])) };\\n    const walk = { returns: Object.fromEntries(shellFirmData.returns.map((one) => [one.path, (shellReturn(one.path) || { return_name: one.path.split(/[\\\\\\\\/]/).pop() }).return_name])),\\n      households: households.map((one) => ({ name: one.name, path: one.path, links: one.links || [], forms: (one.returns || []).map((r) => r.form) })) };\\n    const input = JSON.stringify({ whole: shellFirmData, names: walk, words, ask });\\n    if (!enginePages.has(input)) {\\n      enginePages.set(input, JSON.parse(execFileSync(process.env.FIRM_PY, [\"-c\", process.env.FIRM_SNIPPET], { input, cwd: process.env.FIRM_REPO, encoding: \"utf8\" })));\\n    }\\n    return JSON.parse(JSON.stringify(enginePages.get(input)));\\n  };\\n  // What shellTurnFirm does, at once: the page wanted of the list is asked of the engine and held.\\n  const settle = (...lists) => {\\n    for (const list of lists) {\\n      const reply = engineAnswers(shellFirmAsk(list));\\n      shellFirmNow = { status: \"ok\", data: shellFirmMerge(shellFirmNow.data, reply) };\\n      pagesAdopt(reply);\\n    }\\n  };\\n  const heldRows = (list) => shellFirmNow.data.replies[list].page.rows;\\n'",
+        "SPEED_SOURCES": "('app.js', 'sheet.js', 'shell.js', 'pages.js')",
+        "SPEED_DOM": "'\\nclass Node {}\\nclass Text extends Node { constructor(data) { super(); this.data = data; this.parent = null; } get textContent() { return this.data; } }\\nclass El extends Node {\\n  constructor(tag, id) { super(); this.tag = tag; this.id = id || \"\"; this.className = \"\"; this.dataset = {}; this.attrs = {}; this.kids = [];\\n    this.hidden = false; this.disabled = false; this.parent = null; this.handlers = {};\\n    this.style = { props: {}, setProperty(key, value) { this.props[key] = value; }, removeProperty(key) { delete this.props[key]; } }; }\\n  get classList() {\\n    const self = this;\\n    const now = () => self.className.split(\" \").filter(Boolean);\\n    return { add(...names) { self.className = [...new Set([...now(), ...names])].join(\" \"); },\\n             remove(...names) { self.className = now().filter((one) => !names.includes(one)).join(\" \"); },\\n             toggle(name, on) { const want = on === undefined ? !now().includes(name) : Boolean(on); if (want) this.add(name); else this.remove(name); return want; },\\n             contains(name) { return now().includes(name); } };\\n  }\\n  setAttribute(key, value) { this.attrs[key] = String(value); }\\n  getAttribute(key) { return key in this.attrs ? this.attrs[key] : null; }\\n  removeAttribute(key) { delete this.attrs[key]; }\\n  adopt(one) { const node = one instanceof Node ? one : new Text(String(one)); if (node.parent) node.remove(); node.parent = this; return node; }\\n  append(...nodes) { for (const one of nodes) this.kids.push(this.adopt(one)); }\\n  prepend(...nodes) { this.kids.unshift(...nodes.map((one) => this.adopt(one))); }\\n  replaceChildren(...nodes) { for (const one of this.kids) one.parent = null; this.kids = []; this.append(...nodes); }\\n  remove() { if (this.parent) { this.parent.kids = this.parent.kids.filter((one) => one !== this); this.parent = null; } }\\n  get childNodes() { return this.kids; }\\n  get children() { return this.kids.filter((one) => one instanceof El); }\\n  focus() {}\\n  addEventListener(type, fn) { (this.handlers[type] = this.handlers[type] || []).push(fn); }\\n  get textContent() { return this.kids.map((one) => one.textContent).join(\"\"); }\\n  set textContent(value) { this.replaceChildren(String(value)); }\\n  find(test, out = []) { for (const one of this.kids) if (one instanceof El) { if (test(one)) out.push(one); one.find(test, out); } return out; }\\n  byClass(name) { return this.find((one) => one.classList.contains(name)); }\\n  querySelector(selector) { return this.querySelectorAll(selector)[0] || null; }\\n  querySelectorAll(selector) {\\n    const own = selector.replace(/^:scope > /, \"\");\\n    const pool = own === selector ? this.find(() => true) : this.children;\\n    if (own.startsWith(\".\")) return pool.filter((one) => one.classList.contains(own.slice(1)));\\n    if (own.startsWith(\"#\")) return pool.filter((one) => one.id === own.slice(1));\\n    return pool.filter((one) => one.tag === own);\\n  }\\n}\\nconst ELS = {};\\nconst $ = (id) => ELS[id] || (ELS[id] = new El(\"div\", id));\\nconst document = { createElement: (tag) => new El(tag), createElementNS: (_ns, tag) => new El(tag), contains: () => true };\\nconst window = { tracker: { logError() {} } };\\n'",
+        "REMINDER_SHEET": "'\\nlet vocab = {\\n  screen: { loading: \"Loading\", sheet: { reminder: \"Draft Reminder\" } },\\n  reminder: { stages: [], palette: { ink: \"#000\" }, hold_colour: \"ink\", stage_group: \"Stage\", edited_by_hand: \"Edited\", subject_prefix: \"Subject: \",\\n              heading: \"Letter\", letter_ink: { body: \"ink\", muted: \"ink\", paper: \"ink\" }, never_drafted_line: \"Never drafted\", copied: \"Copied\", approve: \"Approve\" },\\n};\\nconst card = (ret) => ({ held: [], unsorted: 0, stage: 1, editable: true, file: { edited: false }, subject: `For ${ret}`, letter: { greeting: `Dear ${ret}` },\\n                         html: `<p>${ret}</p>`, text: `Letter for ${ret}`, last: null, approved: null, lapsed: false, fingerprint: `fp-${ret}` });\\nlet active = \"A\"; let lastState = { paths: { engagement: \"A\" }, reminder_card: { reminder: card(\"A\") } };\\nlet shellRoute = { level: \"reminders\" };\\nconst FIRM_LEVELS = [\"overview\", \"needs-review\", \"reminders\", \"clients\"];\\nconst reads = [];\\nconst showReturn = (path) => new Promise((resolve) => reads.push({ path, land() {\\n  active = path; lastState = { paths: { engagement: path }, reminder_card: { reminder: card(path) } };\\n  drawReminderReply(lastState.reminder_card); resolve(true); } }));\\nlet drafts = [{ ret: \"B\" }, { ret: \"C\" }];\\nconst pagesDrafts = () => drafts; const pagesWhere = () => null; const pagesDay = (d) => d;\\nconst openDialog = () => {}; const setTipIfCut = () => {}; const applyLock = () => {}; const closeSheet = () => {};\\nconst failed = (err) => { throw err; }; const outcome = () => {};\\nconst clipboard = []; const sent = [];\\nconst navigator = { clipboard: { write: async (items) => { clipboard.push(items[0].parts[\"text/plain\"].text); } } };\\nclass ClipboardItem { constructor(parts) { this.parts = parts; } }\\nclass Blob { constructor([text]) { this.text = text; } }\\nconst call = async (args, payload) => { sent.push([args[0], payload]); return { reminder: card(active) }; };\\nconst withEng = (name) => [name, \"--engagement\", active];\\nconst loadReminder = async () => {};\\nlet sheetNow = null; let sheetGeneration = 0;\\nconst tick = () => new Promise((resolve) => setImmediate(resolve));\\nconst actions = () => ({ card: reminderCard ? reminderCard.text : null, shown: !$(\"reminder-actions\").hidden, busy: $(\"sheet\").getAttribute(\"aria-busy\"),\\n                         outline: $(\"reminder-wait\").byClass(\"row-skeleton\").length, word: $(\"reminder-wait\").textContent });\\n'",
+        "REMINDER_FUNCTIONS": "('el', 'h', 'show', 'fill', 'screenWords', 'shellSkeleton', 'shellWaiting', 'stageOf', 'stageInk', 'marked', 'holdLine', 'reminderStatus', 'lines', 'letterNodes', 'drawReminderReply', 'drawReminderLine', 'drawReminder', 'forgetReminderCard', 'reminderWaitOver', 'reminderCardReady', 'copyReminder', 'approveReminder', 'sheetSet', 'sheetMore', 'sheetFrame', 'openReminder', 'sheetDraftsAfter', 'sheetNextDraft', 'sheetShow', 'sheetDrawCheck', 'sheetAfter')",
+        "EARLY_FIRM": "'\\nconst sentEarly = [];\\nwindow.tracker.call = (args, payload) => new Promise((resolve) => sentEarly.push({ args, payload, resolve }));\\n'",
+        "FIRM_LOAD": "'\\nlet vocab = { commands: [\"list\", \"firm\"], screen: { loading: \"Loading\", updating: \"Updating\", reading_households: \"Reading {n} of {total} Households\",\\n                                                    updating_as_of: \"Updating, as of {time}\", notices: { firm_failed: \"Counts Not Available\" } } };\\nconst fill = (p, v) => p.replace(/\\\\{(\\\\w+)\\\\}/g, (_, k) => v[k] ?? \"\");\\nlet shellRoute = { level: \"return\" }; let shellPageBusy = false; let shellRootSet = false; let shellPaths = {}; let shellLastPass = null;\\nlet shellFirmNow = { status: \"idle\", data: null }; let shellFirmAsked = false; let shellFirmEarly = null; let shellClock = 0;\\nlet shellFirmLast = null; let shellFirmAsOf = \"\";\\nlet shellFirmSentAt = 0; let shellWroteAt = 0; const shellFirmHeld = new Map(); let shellFirmCount = null; let shellFirmSlow = false;\\nlet shellFirmTimer = null; const SHELL_FIRM_SLOW_MS = 2000;\\nlet shellLastPassStopped = false;   // the last-pass asking (P256, P277) is not this probe\\'s\\nconst FIRM_LEVELS = [\"overview\", \"needs-review\", \"reminders\", \"clients\"];\\nconst asked = []; const notices = []; const drawn = [];\\n// As call() does: a reply with an error throws its envelope.\\nconst call = (args, payload) => new Promise((resolve, reject) => asked.push({ args, payload, resolve: (reply) => (reply.error ? reject(new TrackerError(reply)) : resolve(reply)) }));\\n// What the engine answers for the Overview (P278, SPEC-ui-menu-speed 4.3): one page, the totals and each return\\'s counts; heldOf(n) is the answer the window holds from it.\\nconst firmOf = (n) => ({ view: \"v1\", totals: {}, next_sort: null, paths: {}, return_counts: [{ path: \"r1\", counts: { needs_you: n } }],\\n  page: { list: \"overview\", at: 0, pages: 1, from: 1, to: 1, total: 1, order: null, filter: { tab: \"all\" }, counts: { all: 1, need: 1, waiting: 0 }, many_years: false, rows: [] } });\\nconst heldOf = (n) => shellFirmMerge(null, firmOf(n));\\nlet shellTurns = 0; let shellTurnGen = 0; let shellTurnThen = null;\\nlet pagesPageAt = {}; let pagesTab = \"all\"; let pagesReasonPick = \"\"; let pagesClientsAll = false; let pagesClientType = \"\";\\nconst pagesStoredOrder = () => ({}); const pagesEnter = () => {};\\n// A reply of the engine for one page of a list, as the probes land it (the page\\'s own words are not read by them).\\nconst pageOf = (list, at = 0, view = \"v1\", more = {}) => ({ ...firmOf(1), view,\\n  page: { list, at, pages: 3, from: at * 50 + 1, to: at * 50 + 50, total: 150, order: null,\\n          filter: { overview: { tab: \"all\" }, needs_review: { reason: \"\" }, reminders: {}, clients: { all: false, type: \"\" } }[list], counts: {}, many_years: false, rows: [], ...more } });\\nlet failedAs = null;   // a probe that records the failures the page says, with their Retry, in place of throwing them\\nconst stateOf = (n) => ({ paths: { engagement: \"r1\" }, counts: { needs_you: n } });\\nconst pagesTally = (state) => state.counts; const sheetStateArrived = () => {};\\nlet shellChanged = () => {};\\nconst noticedAs = [];   // each notice said directly, with its kind and its Retry\\nconst notice = (failure, opts = {}) => { notices.push(failure.sentence); noticedAs.push({ sentence: failure.sentence, kind: failure.kind, retry: opts.retry }); };\\nconst failureSentence = () => \"\";\\nconst failed = (err, retry) => { if (failedAs) { failedAs.push({ sentence: err.message, kind: err.failure.kind, retry }); return; } throw err; };\\nconst warningNotices = (list) => notices.push(...list);\\nclass TrackerError extends Error { constructor(result) { super(result.error); this.result = result; this.failure = result.failure || { sentence: result.error, kind: \"failed\" }; } }\\nconst tick = async () => { for (let i = 0; i < 5; i += 1) await new Promise((resolve) => setImmediate(resolve)); };\\nconst firms = () => asked.filter((one) => one.args[0] === \"firm\").length;\\nconst land = async (i, reply) => { asked[i].resolve(reply); await tick(); };\\n'",
+        "FIRM_LOAD_FUNCTIONS": "('el', 'h', 'screenWords', 'shellAdopt', 'shellAskFirmNow', 'shellDropEarlyFirm', 'shellAskFirmLast', 'shellLastOf', 'shellShowLast', 'takeReply', 'shellAdoptEarly', 'shellAskFirm', 'shellFirmSent', 'shellFirmAsk', 'shellFirmList', 'shellFirmMerge', 'shellFirmShaped', 'shellFirmHolds', 'shellFirmBrought', 'shellFirmFollow', 'shellTurnDone', 'shellTurnFirm', 'pagesListOf', 'pagesAdopt', 'shellFirmDone', 'shellFirmTookLong', 'shellWriteLanded', 'shellFirmProgress', 'shellReading', 'shellReadingNodes', 'shellSetReading', 'shellDrawReading', 'shellLoadFirm', 'shellFollowsCounts', 'shellFirmUpdating', 'shellUpdating', 'shellMarkUpdating', 'shellStateArrived', 'shellPageReadsState', 'shellCountsDiffer')",
+        "FIRM_PAGE": "'\\nconst timers = [];\\nconst setTimeout = (fn, ms) => { timers.push({ fn, ms }); return timers.length; };\\nconst clearTimeout = (id) => { if (id && timers[id - 1]) timers[id - 1].fn = null; };\\nconst waiting = () => timers.filter((one) => one.fn).map((one) => one.ms);\\nconst passTime = () => { for (const one of timers) if (one.fn) { const fn = one.fn; one.fn = null; fn(); } };\\nconst pagesDraw = (route, page) => {\\n  const figure = new El(\"b\"); figure.className = \"figure-number\"; figure.append(\"3\");\\n  const row = new El(\"div\"); row.className = \"row\"; row.append(\"a row\");\\n  page.replaceChildren(figure, row);\\n  page.dataset.list = pagesListOf(route);\\n};\\nconst routeTitle = () => \"\";\\nconst pagesLeave = () => {};\\nlet shellPageFailed = false;\\nconst shellDraw = () => { drawn.push(shellRoute.level); drawCounts(); drawPage(); };\\nshellChanged = () => drawCounts();\\nconst sides = [0, 1].map(() => { const side = new El(\"button\"); side.dataset.section = \"overview\"; const count = new El(\"span\"); count.className = \"side-count\"; side.append(count); return side; });\\ndocument.querySelectorAll = (selector) => (selector === \".side-section[data-section]\" ? sides : []);\\nconst shellCounts = () => ({ overview: 3 });\\n// index.html\\'s one status for \"Updating\": every time its words are set is\\n// counted, since a status set again is read out again.\\nlet saidSet = 0;\\nObject.defineProperty($(\"page-updating\"), \"textContent\", {\\n  get() { return this.kids.map((one) => one.textContent).join(\"\"); },\\n  set(value) { saidSet += 1; this.replaceChildren(String(value)); },\\n});\\nconst looks = () => {\\n  const page = $(\"page\");\\n  return { busy: page.getAttribute(\"aria-busy\"), updating: page.classList.contains(\"is-updating\"),\\n           said: $(\"page-updating\").textContent, saidSet,\\n           rows: page.children.map((one) => one.className),\\n           inPage: page.byClass(\"page-updating\").length,\\n           held: sides.map((one) => one.byClass(\"side-count\")[0].classList.contains(\"is-held\")),\\n           reading: page.byClass(\"firm-reading-words\").map((one) => one.textContent),\\n           bars: page.find((one) => one.getAttribute(\"role\") === \"progressbar\").map((one) =>\\n             [one.getAttribute(\"aria-valuenow\"), one.getAttribute(\"aria-valuemax\"), one.getAttribute(\"aria-labelledby\")]),\\n           hidden: page.byClass(\"visually-hidden\").map((one) => one.textContent) };\\n};\\n'",
+        "FIRM_PAGE_FUNCTIONS": "('drawPage', 'shellLoading', 'shellSkeleton', 'drawTitleOnly', 'drawCounts')",
+        "LONG_SETUP": "'\\nconst hideTip = () => {}; const showTipNow = () => {};\\nlet H = 40;\\nObject.defineProperty(Element.prototype, \"offsetHeight\", { get() { return H; }, configurable: true });\\nconst pageBox = new Element(\"div\");\\npageBox.scrollTop = 0; pageBox.clientHeight = 800; pageBox.getBoundingClientRect = () => ({ top: 0 });\\nconst $ = (id) => (id === \"page\" ? pageBox : null);\\nconst parkedFiles = (n, extra = () => ({})) => Array.from({ length: n }, (_, i) => parked(`f${String(i + 1).padStart(4, \"0\")}`, extra(i)));\\nconst draw = (index, items = []) => {\\n  lastState = stateOf(items, index);\\n  pagesUid = 0; pagesTokens.clear(); pagesBroken = [];\\n  pageBox.replaceChildren(...pagesReturn({ level: \"return\", ret: \"r1\", year: 2025 }));\\n  pageBox.scrollTop = 0;\\n  for (const list of pageBox.querySelectorAll(\".rows.is-virtual\")) list.getBoundingClientRect = () => ({ top: 100 - pageBox.scrollTop });\\n  pagesVirtualMeasure(pageBox);\\n  return pageBox.querySelectorAll(\".rows.is-virtual\")[0];\\n};\\nconst scrollTo = (top) => { pageBox.scrollTop = top; pagesVirtualPlaceAll(pageBox); };\\n'"
+      },
+      "role": "Runs the renderer's own JavaScript under node and reads its text: the runners (run_shell and run_pages lift named functions out of the scripts as written and run a probe against fakes; run_pages_dom adds a small DOM; run_notices, run_lists, run_speed, run_firm_load and the rest add the worlds their claims need), js_function and lift, which cut a function out of a script, and the renderer file reader read(name).",
+      "notes": "SPEC-architecture J2 (R2.1, E-4). tests/test_shell.py grew the runners and test_single_source.py borrowed one (from tests.test_shell import run_pages); they were moved here with their words and the fakes and function lists each always had, and the file reader every renderer test wrote for itself (test_pilot, test_pilot_ui) is read() here. The window is sandboxed and there is no browser in the gate, so a claim about what a page does is made by running its functions in node. Skipped where node is not on PATH (CI installs it)."
+    },
+    {
+      "id": "tests/passes.py",
+      "type": "test",
+      "layer": "tests",
+      "sha256": "3c3bc19522799dee",
+      "lines": 126,
+      "exports": [
+        "build_engagement",
+        "edit_details",
+        "edit_rows",
+        "samples"
+      ],
+      "role": "Whole passes over a household as the runner's tests stage them: the sample pile as a session fixture (samples), a household with that pile waiting in its one inbox (build_engagement, _three_households), a person's edit of its rows or details as the app saves it (edit_rows, edit_details), and the scheduled job's main and the app's Run now called as they call it (_the_scheduled_job, _run_now).",
+      "notes": "SPEC-architecture J2 (R2.1, E-4). Moved with their words from tests/test_runner.py, which test_page_rows and test_shell borrowed them from. samples is a fixture: a test file that wants it names it once (samples = passes.samples) rather than importing it, because an imported fixture name that a test then takes as a parameter trips ruff's F811."
     },
     {
       "id": "tests/samples.py",
@@ -6178,7 +6373,7 @@
       "id": "tests/test_api.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "639ff35dac358b52",
+      "sha256": "1a40bbf9c5ed89ae",
       "lines": 11736,
       "exports": [
         "COUNTS",
@@ -6933,8 +7128,8 @@
       "id": "tests/test_containers.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "781e1ed001d0af33",
-      "lines": 1063,
+      "sha256": "fae63c454b6b6452",
+      "lines": 1052,
       "exports": [
         "FORM_1098",
         "Killed",
@@ -6943,7 +7138,6 @@
         "container_of",
         "drop_bytes",
         "eml",
-        "engagement",
         "fed",
         "files_under",
         "locked_zip",
@@ -7003,32 +7197,22 @@
       "id": "tests/test_content_check.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "e7084641e9b0969d",
-      "lines": 2889,
+      "sha256": "bfd8cb11cf60355b",
+      "lines": 2766,
       "exports": [
         "A_PASS_READING",
         "BOMB_REFUSED",
-        "CRASHED",
         "MARKER",
-        "PROC",
-        "STOPPED",
-        "STOP_IN_TESTS",
         "TWO_PAGE_W2",
         "a_short_stop",
         "an_engagement",
         "an_engagement_run",
-        "cache_rows",
         "catching_the_reading",
-        "counting_extractor",
-        "eventually",
         "in_a_child",
         "item",
-        "no_child_left",
         "page_tree_bomb",
         "photo",
-        "process_state",
         "replace_seconds",
-        "running",
         "saved",
         "test_a_1099b_section_is_read_as_a_form_label_not_as_the_word_consolidated",
         "test_a_cache_for_an_engagement_the_store_does_not_hold_is_refused_by_name",
@@ -7128,22 +7312,19 @@
         "test_xlsx_extraction_with_dates"
       ],
       "constants": {
-        "STOP_IN_TESTS": "5.0",
-        "STOPPED": "'The reader stopped after 1 minute on this file. A person reads it.'",
-        "CRASHED": "'The reader could not read this file (it stopped unexpectedly). A person reads it.'",
         "BOMB_REFUSED": "'(LimitReachedError)'",
         "A_PASS_READING": "'\\nimport sys\\nfrom pathlib import Path\\nsys.path[:0] = [sys.argv[3]]\\nfrom tests import child_readers\\nfrom tracker import content_check, ocr\\ncontent_check._CHILD_READER = child_readers.a_reader_that_starts_a_reader_of_its_own\\nif sys.argv[2] == \"lifeline\":\\n    ocr._kill_on_close_job = lambda pid, **_limits: None\\ncontent_check.judge_bounded(Path(sys.argv[1]), content_check.Questions())\\n'",
         "MARKER": "'Quendrilvax'"
       },
       "role": "Tests for the content check: the rules, the verdict cache, the reading child's stops and what it leaves behind.",
-      "notes": "Its process helper `running(pid)` asks whether a process has ended without reading anything Linux-only (SPEC-mac R36): a zombie has ended, and where there is no /proc - a Mac - the state comes from `ps -o stat=` through the seam `PROC`, which a test points at a place that is not there to stand in for a Mac. Before this a Mac took every zombie for a live process and each wait-for-the-child test waited out its fifteen seconds."
+      "notes": "The process helper `running(pid)` (now in tests/children.py) asks whether a process has ended without reading anything Linux-only (SPEC-mac R36): a zombie has ended, and where there is no /proc - a Mac - the state comes from `ps -o stat=` through the seam `PROC`, which a test points at a place that is not there to stand in for a Mac. Before this a Mac took every zombie for a live process and each wait-for-the-child test waited out its fifteen seconds."
     },
     {
       "id": "tests/test_door.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "4373cbae2f42e882",
-      "lines": 176,
+      "sha256": "d4887a2c4845c48a",
+      "lines": 167,
       "exports": [
         "HOUSEHOLD",
         "RETURN",
@@ -7239,46 +7420,32 @@
       "id": "tests/test_filer.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "626f6499e9223b15",
-      "lines": 10226,
+      "sha256": "8245539d32ed9f7b",
+      "lines": 10068,
       "exports": [
         "A_CLIENT_PATH",
         "A_PASS_KILLED_MID_COPY",
-        "BUSINESS",
-        "CANONICAL_BELOW",
         "CRASH_POINTS",
         "DANA",
-        "DAY1",
-        "DAY2",
         "DAY3",
-        "FATHER",
-        "FOLDER_BELOW",
         "FORGED",
         "HAND_OVER_KILL_POINTS",
         "INTAKE_RETURNS",
         "INT_ROW",
-        "ITEMS",
         "JOHN",
         "LANDSCAPING",
         "LLC_LABEL",
-        "LLC_PEOPLE",
-        "LONG_PERIOD",
         "MARIA",
         "MORTGAGE",
         "NAMED_BUSINESS",
         "NEXT_PASSES",
         "NOT_ASKED_ITEMS",
-        "OVER",
         "REAL_ROOT",
-        "ROOM_ITEMS",
         "RequestFiles",
-        "SCHWAB_146",
-        "TIGHT_PERIOD",
         "UNNAMED_BUSINESS",
         "a_household_pass",
         "a_moved_filed_row",
         "a_moved_split_row",
-        "cache_rows",
         "came_from",
         "click",
         "conserved",
@@ -7287,14 +7454,11 @@
         "daughter",
         "digests_under",
         "drag",
-        "drop",
         "edit_the_list",
         "edits",
-        "engagement",
         "events_named",
         "every_byte",
         "fed",
-        "feeding",
         "filed_across",
         "files_under",
         "honoured_by_the_scan",
@@ -7303,14 +7467,10 @@
         "killed_after_the_move",
         "killed_after_the_nth_write",
         "killed_at_the_intent",
-        "killed_at_the_record",
         "killed_between_the_two_intents",
         "moved_again",
         "moves_made",
-        "no_room_prepared",
-        "no_room_return",
         "open_intents",
-        "original_at",
         "originals",
         "parked_notice",
         "prepared",
@@ -7660,10 +7820,8 @@
         "test_unfiling_the_statement_takes_its_answers_with_it",
         "test_unroutable_file_is_preserved_and_parked",
         "test_what_lies_behind_a_junction_is_not_a_drop",
-        "tight_return",
         "two_1040s",
-        "two_returns",
-        "with_the_long_period"
+        "two_returns"
       ],
       "constants": {
         "A_PASS_KILLED_MID_COPY": "'\\nimport datetime as dt\\nimport os\\nimport shutil\\nimport sys\\nfrom pathlib import Path\\nsys.path[:0] = [sys.argv[2]]\\nfrom tracker import content_check\\ncontent_check.READ_IN_A_CHILD = False\\n\\ndef killed(source, target, *args, **kwargs):\\n    data = Path(source).read_bytes()\\n    with open(target, \"wb\") as handle:\\n        handle.write(data[: len(data) // 2])\\n        handle.flush()\\n        os.fsync(handle.fileno())\\n    os._exit(9)\\n\\nshutil.copy2 = killed\\nfrom tests.conftest import sort\\nsort(Path(sys.argv[1]), today=dt.date(2026, 7, 1))\\n'",
@@ -7671,11 +7829,6 @@
         "LLC_LABEL": "'Park & Lee LLC 2025 1120S - Park & Lee LLC'",
         "HAND_OVER_KILL_POINTS": "('after the release intent', 'after the filing intent', 'after the move', 'after the copy', \"after the taking return's row\", 'after the parked copy went')",
         "NEXT_PASSES": "('home with the feed', 'home without the feed', \"the taking return's\")",
-        "CANONICAL_BELOW": "48",
-        "FOLDER_BELOW": "9",
-        "LONG_PERIOD": "'January 01 2025 - December 31 2025'",
-        "TIGHT_PERIOD": "'Jan 2025 to Dec 2025'",
-        "OVER": "9",
         "REAL_ROOT": "'G:\\\\Shared drives\\\\Income Tax Clients'",
         "MORTGAGE": "'Form 1098 Mortgage Interest Statement 2025'",
         "A_CLIENT_PATH": "'/Clients/Test Household/Drop files here/W2.pdf'"
@@ -8009,8 +8162,8 @@
       "id": "tests/test_ledger.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "ddc88e702652e287",
-      "lines": 1020,
+      "sha256": "af6cf0c65b86815e",
+      "lines": 1011,
       "exports": [
         "A_ROW_ORIGINAL",
         "DAY1",
@@ -8019,8 +8172,6 @@
         "REPO",
         "a_keyword",
         "bare",
-        "drop",
-        "engagement",
         "lines",
         "row",
         "taken_back",
@@ -8198,15 +8349,13 @@
       "id": "tests/test_manifest.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "8516e852edb679db",
-      "lines": 1564,
+      "sha256": "5e9f0505234e790c",
+      "lines": 1552,
       "exports": [
         "GATE_REFUSES",
-        "K1_WORDS",
         "SAMPLE_ITEMS",
         "any_keywords",
         "engagement",
-        "k1_rows",
         "placed",
         "rules_events",
         "taught",
@@ -8296,10 +8445,7 @@
         "test_unlearning_a_keyword_takes_it_out_of_the_overlay_and_refuses_a_pair_nobody_taught",
         "test_validated_numbers_the_rows_by_their_position_and_strips_what_was_typed",
         "test_warnings_skip_not_asked_rows"
-      ],
-      "constants": {
-        "K1_WORDS": "(\"partner's share of income\", \"member's share of income\")"
-      }
+      ]
     },
     {
       "id": "tests/test_names.py",
@@ -8321,8 +8467,8 @@
       "id": "tests/test_ocr.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "a0606d4e8070ee42",
-      "lines": 1728,
+      "sha256": "2f904cf5e7669ab7",
+      "lines": 1721,
       "exports": [
         "A_PASS_BETWEEN_DOCUMENTS",
         "FakeEngine",
@@ -8449,7 +8595,7 @@
       "id": "tests/test_page_rows.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "7cb762d924f9fb2b",
+      "sha256": "e359f91821a27ab4",
       "lines": 362,
       "exports": [
         "NOW",
@@ -8473,8 +8619,8 @@
       "id": "tests/test_pilot.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "d742214f099ed4ba",
-      "lines": 986,
+      "sha256": "9985a5708da54350",
+      "lines": 978,
       "exports": [
         "KIT_PROMPT",
         "KIT_RESULTS",
@@ -8484,10 +8630,7 @@
         "MACTEST",
         "PILOT_JS",
         "POWERSHELL",
-        "RENDERER",
         "REPO",
-        "content",
-        "read",
         "test_a_blank_or_spaces_only_name_does_not_enable_accept",
         "test_a_file_named_two_ways_is_one_test_run_and_the_kit_then_asks_for_a_mac",
         "test_a_missing_tool_is_reported_with_where_to_get_it_and_the_kit_installs_nothing",
@@ -8596,25 +8739,12 @@
       "id": "tests/test_pilot_ui.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "fa836d0e15619f78",
-      "lines": 311,
+      "sha256": "b4a9bc235f62cb83",
+      "lines": 221,
       "exports": [
-        "COLOUR",
-        "COLOUR_PROPS",
         "CSS_NAME",
-        "GRID_PROPS",
-        "GRID_TOKEN",
-        "NOT_A_COLOUR",
-        "RENDERER",
         "REPO",
-        "SP_STEPS",
-        "SYSTEM_COLOURS",
-        "blocks",
-        "colour_faults",
-        "declarations",
         "outside_root",
-        "read",
-        "stripped",
         "test_a_long_lists_rows_are_absolute_one_line_and_set_no_height_of_their_own",
         "test_cards_never_shrink_inside_the_scrolling_column",
         "test_the_face_is_chosen_once_per_platform_in_the_token_block_and_no_rule_names_a_face",
@@ -8627,12 +8757,10 @@
         "test_the_structure_pass_uses_only_the_spacing_grid",
         "test_the_structure_pass_uses_only_the_type_ramp",
         "test_the_structure_pass_writes_no_literal_colour_outside_its_tokens",
-        "test_the_tour_leads_with_next",
-        "top_level"
+        "test_the_tour_leads_with_next"
       ],
       "constants": {
-        "CSS_NAME": "'pilot-ui.css'",
-        "SP_STEPS": "('1', '2', '4', '6', '8', '12')"
+        "CSS_NAME": "'pilot-ui.css'"
       }
     },
     {
@@ -8837,11 +8965,10 @@
       "id": "tests/test_registry.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "0775d019b78d095b",
-      "lines": 1278,
+      "sha256": "5ef5f29294cd5a9d",
+      "lines": 1271,
       "exports": [
         "ITEMS",
-        "engagement_dirs",
         "make",
         "misfits",
         "replace_rolled",
@@ -8898,13 +9025,12 @@
       "id": "tests/test_reminder.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "427a609687c793ed",
-      "lines": 2465,
+      "sha256": "0e5b57c484900fa1",
+      "lines": 2429,
       "exports": [
         "A_WRITE_KILLED_HALF_WAY",
         "CLIENT_SIDE_NOT_HELD",
         "DEADLINE",
-        "DROPPED",
         "DUE",
         "HELD_BEFORE_140",
         "HELD_SINCE_143",
@@ -8919,10 +9045,7 @@
         "approve",
         "day",
         "engagement",
-        "failure",
         "gone_both",
-        "item",
-        "locked",
         "parked_rows",
         "said",
         "sorted_drop",
@@ -9170,16 +9293,14 @@
       "id": "tests/test_review.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "bac316b2133376d3",
-      "lines": 557,
+      "sha256": "635a46e3599007a6",
+      "lines": 530,
       "exports": [
         "DAY1",
         "ITEMS",
         "REPO",
-        "engagement",
         "identifiers",
         "park",
-        "parked_row",
         "test_a_candidate_no_longer_on_the_manifest_is_not_offered",
         "test_a_confirmed_name_ranks_a_suggestion_first_and_the_card_says_whose_page_it_is",
         "test_a_contested_file_names_the_row_it_looks_like_with_the_rule_that_failed",
@@ -9307,7 +9428,7 @@
       "id": "tests/test_router.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "2c83feba073dc5c9",
+      "sha256": "e1fb56fc4bee9b3a",
       "lines": 1497,
       "exports": [
         "DONATIONS",
@@ -9450,8 +9571,8 @@
       "id": "tests/test_runner.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "f750dee1cea14974",
-      "lines": 5908,
+      "sha256": "72869a7f6e4b7e6f",
+      "lines": 5823,
       "exports": [
         "A_CLIENT_PATH",
         "DRAFT_DAY",
@@ -9470,16 +9591,12 @@
         "approve_the_standing_draft",
         "as_engagement",
         "build_chased_engagement",
-        "build_engagement",
         "by_label",
         "drafted_events",
-        "edit_details",
-        "edit_rows",
         "households_in_order",
         "make_ambiguous",
         "pass_on",
         "resolve_by_fixing_the_rule",
-        "samples",
         "slow_for",
         "stamped_on",
         "test_159s_set_asides_and_the_checkpoints_journal_left_behind_are_named_in_their_groups",
@@ -9799,17 +9916,15 @@
       "id": "tests/test_scanner.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "d88279f1496966d2",
-      "lines": 937,
+      "sha256": "e0dce61a367a2875",
+      "lines": 931,
       "exports": [
         "DAY1",
         "DAY2",
         "ITEMS",
         "a_filed_pdf",
-        "cache_rows",
         "copy_moved_events",
         "edit_row",
-        "engagement",
         "folder",
         "statuses",
         "test_a_copy_that_disagrees_with_its_original_is_not_counted",
@@ -10030,55 +10145,33 @@
       "id": "tests/test_shell.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "a79157a1088c1f45",
-      "lines": 8823,
+      "sha256": "e1d06dbfa3df55a4",
+      "lines": 8149,
       "exports": [
         "CARD_HOUSEHOLD",
-        "COLUMN_FUNCTIONS",
         "COMPACT_FUNCTIONS",
         "COMPACT_PANEL",
         "CONTRAST",
-        "EARLY_FIRM",
-        "ENGINE_BRIDGE",
-        "ENGINE_ENV",
-        "ENGINE_FUNCTIONS",
-        "ENGINE_SNIPPET",
         "F6_FAKES",
-        "FAKE_DOM",
-        "FIRM_LISTS",
-        "FIRM_LOAD",
-        "FIRM_LOAD_FUNCTIONS",
-        "FIRM_PAGE",
-        "FIRM_PAGE_FUNCTIONS",
         "FLOATING_UI",
         "FLOATING_UI_SCRIPTS",
         "FLOATING_UI_SHA256",
         "JOIN_POPUPS",
-        "LAST_COUNTS",
         "LAST_PASS_STEPS",
         "LAST_PASS_WATCH_FAKES",
         "LAST_SORT_FAKES",
         "LINKED",
-        "LONG_LIST_FUNCTIONS",
-        "LONG_SETUP",
-        "NODE",
         "NOTICE_DETAIL_FAKES",
         "NOTICE_FOCUS",
-        "NOTICE_FUNCTIONS",
         "OK_DARK",
         "OK_LIGHT",
-        "PAGES_CONSTS",
         "PAGE_ASKS",
-        "PAGE_WORDS",
         "PANEL_DOM",
         "PANEL_MEDIA",
         "PEOPLE",
         "PROBE_EVERY_NOTICE",
-        "REMINDER_FUNCTIONS",
-        "REMINDER_SHEET",
         "REPO",
         "RETURN_FOLLOWS_FAKES",
-        "RETURN_STATE",
         "SHEET_SETUP",
         "SHELL_FILES",
         "SHELL_ROUTE_FAKES",
@@ -10086,37 +10179,17 @@
         "SOON_PANEL",
         "SORT_ANSWERS",
         "SORT_ANSWER_FUNCTIONS",
-        "SORT_END",
         "SORT_NOTICES",
         "SORT_NOTICE_FUNCTIONS",
         "SORT_SAID",
-        "SPEED_DOM",
-        "SPEED_SOURCES",
         "TIP_PAGE",
         "TITLE_FREE",
         "TOKENS",
-        "js_function",
-        "lift",
-        "lift_line",
         "luminance",
-        "pages_consts",
         "ratio",
         "resolve",
         "root_blocks",
-        "run_firm_load",
-        "run_firm_page",
-        "run_last_counts",
-        "run_lists",
-        "run_long",
-        "run_notices",
-        "run_pages",
-        "run_pages_dom",
-        "run_reminder_sheet",
-        "run_shell",
-        "run_sort_end",
-        "run_speed",
         "scratch_root",
-        "store_functions",
         "stripped_js",
         "test_a_change_during_an_ask_asks_once_more_when_it_lands",
         "test_a_change_of_the_last_pass_file_asks_last_pass_once",
@@ -10451,43 +10524,24 @@
         "TITLE_FREE": "('shell.js', 'tooltip.js', 'pages.js', 'sheet.js', 'shell.css', 'pilot.js', 'tour.js', 'app.js', 'index.html')",
         "FLOATING_UI_SCRIPTS": "('vendor/floating-ui/floating-ui.core.umd.min.js', 'vendor/floating-ui/floating-ui.dom.umd.min.js')",
         "TIP_PAGE": "'\\nclass Element {\\n  constructor(words) { this.dataset = words ? { tip: words } : {}; this.isConnected = true; this.attrs = {};\\n    this.scrollWidth = 10; this.clientWidth = 10; }\\n  closest() { return this.dataset.tip !== undefined ? this : null; }\\n  contains(other) { return other === this; }\\n  matches() { return false; }\\n  setAttribute(k, v) { this.attrs[k] = v; }\\n  removeAttribute(k) { delete this.attrs[k]; }\\n}\\nconst tipBox = { hidden: true, textContent: \"\", style: { setProperty() {} } };\\nconst handlers = {};\\nconst document = { getElementById: (id) => (id === \"tip\" ? tipBox : null),\\n  addEventListener: (type, fn) => { handlers[type] = fn; } };\\nconst window = { addEventListener() {} };\\nconst FloatingUIDOM = { computePosition: () => ({ then() {} }), offset() {}, flip() {}, shift() {}, hide() {} };\\nconst timers = new Map(); let lastTimer = 0;\\nconst setTimeout = (fn) => { lastTimer += 1; timers.set(lastTimer, fn); return lastTimer; };\\nconst clearTimeout = (id) => { timers.delete(id); };\\nconst tick = () => { const due = [...timers.values()]; timers.clear(); due.forEach((fn) => fn()); };\\nconst over = (target) => handlers.mouseover({ target });\\nconst seen = (node) => [tipBox.hidden, tipBox.textContent, node.attrs[\"aria-describedby\"] || null];\\n'",
-        "ENGINE_FUNCTIONS": "('shellFirmAsk', 'shellFirmMerge', 'shellFirmShaped', 'pagesAdopt', 'pagesListOf', 'pagesStoredOrder', 'pagesSaveOrder')",
-        "ENGINE_SNIPPET": "'\\nimport json, sys\\nfrom tracker import firm_pages\\nspec = json.load(sys.stdin)\\nask = firm_pages.ask_of(spec[\"ask\"], spec[\"words\"][\"client_types\"])\\nreply = firm_pages.page(spec[\"whole\"], spec[\"names\"], spec[\"words\"], ask)\\nreply[\"view\"] = \"made-up-view\"\\nsys.stdout.write(json.dumps(reply))\\n'",
         "PEOPLE": "'\\nconst fill = (p, v) => p.replace(/\\\\{(\\\\w+)\\\\}/g, (_, k) => v[k] ?? \"\");\\nconst vocab = { screen: { counts: { one_return: \"1 return\", returns: \"{n} returns\" },\\n  sections: { overview: \"Overview\", needs_review: \"Needs review\", reminders: \"Reminders\", clients: \"Clients\" },\\n  sort: { now: \"Sort now\", stop: \"Stop sorting\", locked: \"In use elsewhere\", stopping: \"Stopping\", tip: \"Sort this household\\'s inbox\" } } };\\nconst households = [\\n  { name: \"Smith Family\", path: \"h1\", returns: [{ rollable: true }] }, { name: \"Rivera Design\", path: \"h2\", returns: [] },\\n  { name: \"Ren\\\\u00e9e Okafor\", path: \"h3\", returns: [] }, { name: \"Lopez Household\", path: \"h4\", returns: [] },\\n];\\nconst engagements = [\\n  { name: \"a\", path: \"r1\", household: \"h1\", year: 2025, return_name: \"1040 - John & Jane Smith\" },\\n  { name: \"b\", path: \"r2\", household: \"h1\", year: 2024, return_name: \"1040 - John & Jane Smith\" },\\n  { name: \"c\", path: \"r3\", household: \"h2\", year: 2025, return_name: \"1120-S - Rivera Design LLC\" },\\n];\\nlet calls = 0; const call = () => { calls += 1; };\\n'",
-        "FAKE_DOM": "'\\nclass Node {}\\nclass Text extends Node { constructor(data) { super(); this.data = data; } }\\nclass Element extends Node {\\n  constructor(tag) { super(); this.tag = tag; this.className = \"\"; this.dataset = {}; this.attrs = {}; this.kids = []; this.open = false; this.handlers = {};\\n    this.style = { props: {}, setProperty(key, value) { this.props[key] = value; }, removeProperty(key) { delete this.props[key]; } }; }\\n  get classList() {\\n    const self = this;\\n    return { add(one) { if (!self.className.split(\" \").includes(one)) self.className = `${self.className} ${one}`.trim(); },\\n             remove(one) { self.className = self.className.split(\" \").filter((name) => name !== one).join(\" \"); },\\n             toggle(one, on) { if (on) this.add(one); else this.remove(one); return Boolean(on); },\\n             contains(one) { return self.className.split(\" \").includes(one); } };\\n  }\\n  setAttribute(key, value) { this.attrs[key] = String(value); }\\n  removeAttribute(key) { delete this.attrs[key]; }\\n  getAttribute(key) { return this.attrs[key]; }\\n  get id() { return this.attrs.id; }\\n  getBoundingClientRect() { return { left: 10, bottom: 20, top: 0, right: 30 }; }\\n  append(...nodes) { for (const one of nodes) this.kids.push(one instanceof Node ? one : new Text(String(one))); }\\n  replaceChildren(...nodes) { this.kids = []; this.append(...nodes); }\\n  insertBefore(node, before) { const at = before ? this.kids.indexOf(before) : -1; if (at === -1) this.kids.push(node); else this.kids.splice(at, 0, node); return node; }\\n  removeChild(node) { this.kids.splice(this.kids.indexOf(node), 1); return node; }\\n  focus() {}\\n  querySelectorAll(selector) {\\n    if (selector.startsWith(\"[role=\")) return this.find((one) => `[role=\"${one.attrs.role}\"]` === selector);\\n    const names = selector.split(\".\").filter(Boolean);\\n    return this.find((one) => names.every((name) => one.className.split(\" \").includes(name)));\\n  }\\n  addEventListener(type, fn) { (this.handlers[type] = this.handlers[type] || []).push(fn); }\\n  get childNodes() { return this.kids; }\\n  find(test, out = []) { for (const one of this.kids) if (one instanceof Element) { if (test(one)) out.push(one); one.find(test, out); } return out; }\\n  querySelector(selector) { return this.byClass(selector.slice(1))[0] || null; }\\n  byClass(name) { return this.find((one) => one.className.split(\" \").includes(name)); }\\n  get textContent() { return this.kids.map((one) => (one instanceof Text ? one.data : one.textContent)).join(\"\"); }\\n}\\nconst document = { activeElement: null, createDocumentFragment: () => new Element(\"fragment\"), createElement: (tag) => new Element(tag), createElementNS: (_ns, tag) => new Element(tag) };\\nconst page = (nodes) => { const box = new Element(\"div\"); box.append(...nodes.filter(Boolean)); return box; };\\n'",
-        "PAGE_WORDS": "'\\nconst fill = (p, v) => p.replace(/\\\\{(\\\\w+)\\\\}/g, (_, k) => v[k] ?? \"\");\\nconst isSetAside = (o) => o === \"Not Applicable\";\\nconst overrideLabel = (o, year) => `Not applicable ${year}`;\\nlet locked = false;\\nlet lastState = null;\\nconst tips = []; const cutTips = [];\\nconst setTipIfCut = (node, words) => { tips.push([node.className, words]); cutTips.push(node.className); };\\nconst setTip = (node, words) => tips.push([node.className, words]);\\nconst opened = []; const went = [];\\nconst openPath = (path, how) => opened.push([path, how]);\\nconst shellGo = (route) => went.push(route);\\nconst popups = [];\\nconst shellPopup = (name, token, x, y, enable) => popups.push([name, token, x, y, enable]);\\nconst unanswered = (id) => failures.push(`unanswered ${id}`);\\nlet shellReturn = (path) => ({ return_name: \"1040 - John & Jane Smith\", household: \"h1\", year: 2025 });\\nconst PAGES_LINK_WORDS = { file: \"show_in_explorer\", household: \"navigate_client\", return: \"navigate_return\" };\\nconst PAGES_GROUPS = [\"needs_you\", \"waiting\", \"received\", \"set_aside\"];\\nconst PAGES_TONES = { needs: \"is-attention\", waiting: \"is-waiting\", done: \"is-done\", plain: \"is-plain\" };\\nlet pagesUid = 0; const pagesTokens = new Map(); let pagesSetAsideOpen = false; let pagesBroken = []; let pagesDrawn = \"\";\\nlet pagesFocus = null; let pagesLastLevel = \"\"; let pagesClientsAll = false;\\nconst notices = []; const failures = [];\\nlet syncNotices = (prefix, wanted) => notices.push([prefix, wanted.map((one) => [one.key, one.failure.sentence, one.detail || \"\"])]);\\nconst failed = (err) => failures.push(String(err.message));\\nlet shellHousehold = () => null; let households = [];\\nconst vocab = {\\n  shell: { page_error: \"The app hit an error\" }, notices: { about: \"{label}: {sentence}\" },\\n  client_type_forms: { individuals: [\"1040\"], businesses: [\"1120\", \"1120S\", \"1065\"], trusts: [\"1041\"], nonprofits: [\"990\"] },\\n  layout: { return_name_pattern: \"{form} - {client}\" },\\n  decisions: { needs_review: \"Needs Review\", dismissed: \"Not Requested\", filed: \"Filed\", file_moved: \"File Moved\" },\\n  labels: { Missing: { label: \"Outstanding\" }, Received: { label: \"Received\" }, Partial: { label: \"Partly in\" }, Rejected: { label: \"Could not use\" }, NotAsked: { label: \"Not asked\" } },\\n  overrides: { not_applicable: \"Not Applicable\" },\\n  review_labels: { bucket_order: [\"document\", \"container\", \"not_a_document\"], dismiss: \"Not requested\",\\n                   buckets: { document: \"Documents\", container: \"Emails and zips\", not_a_document: \"Not documents\" } },\\n  reasons: { unmatched: { short: \"Could not tell\" }, \"opened-not-across\": { short: \"Email or zip\" } },\\n  reason_tips: { \"opened-not-across\": \"Came in email or zip\" },\\n  screen: {\\n    groups: { needs_you: \"Needs you\", waiting: \"Waiting on client\", received: \"Received\", set_aside: \"Set aside\" },\\n    steps: { check: \"Check\", open: \"Open\", draft: \"Draft reminder\", edit: \"Edit\" },\\n    notices: { paused: \"Two Years Open; Sorting Paused\" },\\n    empty: { received: \"Nothing received yet\" }, moved: \"Moved by hand\", due: \"Due {date}\", since: \"Since {date}\", partly: \"{n} of {total}\",\\n    show_in_explorer: \"Show in File Explorer\", navigate_client: \"Navigate to Household\", navigate_return: \"Navigate to Return\",\\n    counts: { need: \"{n} need you\", waiting: \"{n} waiting\", complete: \"Complete\", files: \"{n} files\", one_file: \"1 file\", one_return: \"1 return\", returns: \"{n} returns\" },\\n    sections: { overview: \"Overview\", needs_review: \"Needs Review\", reminders: \"Reminders\", clients: \"Households\" },\\n    columns: { tax_year: \"Tax Year\", taxpayer: \"Taxpayer\", form_type: \"Form Type\", taxpayer_tip: \"{action} ({household})\",\\n               status: \"Status\", date: \"Date\", file: \"File\", suggestion: \"Suggestion\", reason: \"Reason\",\\n               received: \"Received\", stage: \"Stage\", drafted: \"Drafted\", returns: \"Returns\", client_name: \"Household Name\", sort_by: \"Sort by {column}\",\\n               width: \"{column} Width {n}\" },\\n    linked: { tip: \"Linked Households\", feeds: \"Also Feeds\", fed_by: \"Fed By\", related: \"Related\" },\\n    tabs: { need: \"Need You ({n})\", waiting: \"Waiting ({n})\" }, documents: { one: \"1 Document\", many: \"{n} Documents\" },\\n    paging: { showing: \"Showing {from}-{to} of {total} {noun}\", previous: \"Previous\", next: \"Next\",\\n              nouns: { overview: \"Returns\", needs_review: \"Files\", reminders: \"Drafts\", clients: \"Households\" } },\\n    icons: { more_actions: \"More Actions\", remove_filter: \"Remove Filter\" }, filters: { work: \"Work Waiting\", all: \"All\" }, work: \"Work Waiting\",\\n    shared: \"Shared\", not_shared: \"Not Shared\",\\n    household_card: { contact: \"Contact\", shared_with: \"Shared With\", inbox_link: \"Inbox Link\", link_saved: \"Saved\", no_link: \"Not Saved\" },\\n    client_types: { individuals: \"Individuals\", businesses: \"Businesses\", trusts: \"Trusts & Estates\", nonprofits: \"Nonprofits\" },\\n  },\\n};\\n'",
-        "PAGES_CONSTS": "('const PAGES_COLUMNS = {', 'const PAGES_CELLS = ', 'const PAGES_WIDTHS = ', 'const PAGES_USUAL = ', 'const PAGES_WIDTH_STEP = ', 'const PAGES_WIDTHS_KEY = ', 'const PAGES_ORDER_KEY = ', 'let pagesOrder = ', 'let pagesWidths = ', 'const PAGES_REASON_ICONS = {', 'const PAGES_SECTIONS = ', 'let pagesPageAt = ', 'let pagesEntered = ', 'let pagesTab = ', 'let pagesReasonPick = ', 'let pagesClientType = ', 'let pagesPanel = ', 'let pagesYearless = ', 'const PAGES_VIRTUAL_FROM = ', 'const PAGES_VIRTUAL_OVER_LEAST = ', 'let pagesVirtualWired = ', 'const PAGES_COLLATOR = ')",
-        "COLUMN_FUNCTIONS": "('pagesListOf', 'pagesOrderBy', 'pagesColumnHeads', 'pagesGrip', 'pagesColumnKey', 'pagesStoredWidths', 'pagesWidthOf', 'pagesSetWidth', 'pagesSaveWidths', 'pagesApplyWidths', 'pagesResetWidths', 'pagesReviewSpec', 'pagesStoredOrder', 'pagesSaveOrder', 'pagesDetailCell', 'pagesReasonTip', 'pagesStatusCell', 'pagesLinkMark', 'pagesLinkMarkIn', 'pagesShowPanel', 'pagesPanelOpen', 'pagesClosePanel', 'pagesOpenRowLinks', 'pagesFootOf', 'pagesFoot', 'pagesTurn', 'pagesPick', 'pagesRedraw', 'pagesPickButton', 'pagesTabs', 'pagesFileCount', 'pagesReasonCards', 'pagesReviewGroup', 'pagesSwitch', 'pagesTypeFilter', 'pagesReopenPanel', 'pagesTaxpayer', 'pagesFormCell', 'pagesReturnHeading', 'pagesReturnCells', 'pagesReply', 'pagesHeldPage', 'pagesEnter', 'pagesAdopt', 'shellFirmAsk', 'shellFirmMerge', 'shellFirmShaped')",
-        "LONG_LIST_FUNCTIONS": "('pagesRegister', 'pagesRowNode', 'pagesIsChild', 'pagesWindow', 'pagesOver', 'pagesListTop', 'pagesVirtualList', 'pagesVirtualMake', 'pagesVirtualNode', 'pagesVirtualPlace', 'pagesVirtualSize', 'pagesVirtualMeasure', 'pagesVirtualPlaceAll', 'pagesVirtualWire', 'pagesVirtualReveal', 'pagesActivateAt', 'pagesKeyLong', 'pagesVirtualNodeSaid', 'pagesVirtualMeasureSaid')",
-        "RETURN_STATE": "'\\nconst item = (id, group, extra = {}) => ({ identifier: id, document: `Doc ${id}`, short_name: `Doc ${id}`, group, status_key: \"Missing\", manual_override: \"\",\\n  period: \"\", year: 2025, file_count: 0, expected_count: 1, received_date: null, ...extra });\\nconst parked = (handle, extra = {}) => ({ handle, original_name: `${handle}.pdf`, decision: \"Needs Review\", group: \"needs_you\", code: \"unmatched\", received: \"2026-03-03\", bucket: \"document\", ...extra });\\nconst movedRow = (handle, extra = {}) => ({ handle, original_name: `${handle}.pdf`, decision: \"File Moved\", group: \"needs_you\", code: \"file-moved\", received: \"2026-03-02\", ...extra });\\nconst setAsideRow = (handle, extra = {}) => ({ handle, original_name: `${handle}.pdf`, decision: \"Not Requested\", group: \"set_aside\", code: \"not-requested\", received: \"2026-03-01\", ...extra });\\nconst stateOf = (items, index = [], moved = []) => ({ paths: { engagement: \"r1\" }, engagement: { due: \"2026-04-15\" }, items, index, review: [], moved });\\n'",
         "PROBE_EVERY_NOTICE": "'\\n      const seen = [];\\n      for (const scenario of [\"notices\", \"household-notices\", \"locked\", \"stale-lock\"]) {\\n        const { list, state } = await replies(scenario);\\n        vocab = list.vocab;\\n        vocab.screen.notices = Object.assign({}, vocab.screen.notices, %s);\\n        drawn.length = 0; logged.length = 0;\\n        renderMachineNotices(list);\\n        renderAfterInstall(noticeOf(list.after_install));\\n        renderShortOfRoom([{ engagement: \"r1\", sentences: [\"A LONG ROOM SENTENCE\"] }]);\\n        active = state.paths.engagement;\\n        showLock(state.lock);\\n        lastState = state;\\n        pagesHouseholdNotices({ level: \"household\", household: state.household.path });\\n        seen.push({ scenario, drawn: drawn.slice(), logged: logged.slice(), reader: list.reader_warning, machine: list.machine_warnings,\\n                    pause: state.household.pause.sentence || \"\", lock: state.lock });\\n      }\\n      return seen;\\n'",
         "SHEET_SETUP": "'\\nconst vocab = { decisions: { needs_review: \"Needs Review\", dismissed: \"Not Requested\", file_moved: \"File Moved\", filed: \"Filed\" } };\\nlet sheetNow = null; let sheetGeneration = 0; const advanced = []; const closed = [];\\nconst sheetAdvance = () => advanced.push(sheetNow.handle);\\n'",
         "SORT_ANSWERS": "'\\n  let shellRoute = { level: \"overview\" }, synced = [];\\n  const returns = { \"r25\": { household: \"h1\" }, \"r24\": { household: \"h1\" }, \"o25\": { household: \"h2\" } };\\n  function shellReturn(path) { return returns[path] || null; }\\n  function syncNotices(prefix, wanted) { synced.push([prefix, wanted.map((one) => one.failure.sentence)]); }\\n  const sortAnswers = new Map(), keyedNotices = new Map();\\n  function clearNotice(key) { keyedNotices.delete(key); }\\n  const shownAt = (route) => { shellRoute = route; showSortAnswers(); return synced[synced.length - 1][1]; };\\n'",
         "SORT_NOTICES": "'\\n  const notices = [], keyedNotices = new Map(), sortAnswers = new Map(), locks = [];\\n  let shellRoute = { level: \"return\", ret: \"r25\" };\\n  const returns = { r25: { household: \"h1\" }, r24: { household: \"h1\" } };\\n  function shellReturn(path) { return returns[path] || null; }\\n  const el = () => ({ removed: false, remove() { this.removed = true; }, contains: () => false });\\n  const document = { activeElement: null };\\n  const $ = () => ({ append() {} });\\n  function drawNotice() {}\\n  function outlineRefused() {}\\n  function showLock(lock) { locks.push(lock); }\\n  const shown = () => notices.map((one) => one.sentence);\\n  const press = (entry) => { dismissNotice(entry); forgetSortLine(entry.key); };   // the notice\\'s cross or Retry\\n'",
-        "ENGINE_BRIDGE": "'\\n  let shellFirmData = null; let shellFirmAsOf = \"\";\\n  let shellFirmNow = { status: \"ok\", data: null };   // what the window holds: the pages the engine cut (P278)\\n  const shellFirm = () => (shellFirmAsOf ? { ...shellFirmNow, asOf: shellFirmAsOf } : shellFirmNow);\\n  globalThis.shellRoute = globalThis.shellRoute || { level: \"overview\" };   // a probe that holds its own (let) keeps it\\n  const { execFileSync } = require(\"child_process\");\\n  const enginePages = new Map();\\n  const engineAnswers = (ask) => {\\n    const words = { need: vocab.screen.counts.need, waiting: vocab.screen.counts.waiting, complete: vocab.screen.counts.complete,\\n      paused: vocab.screen.notices.paused, held: vocab.screen.held, client_types: vocab.client_type_forms,\\n      stages: Object.fromEntries(((vocab.reminder || {}).stages || []).map((one) => [one.number, one.short])),\\n      reasons: Object.fromEntries(Object.entries(vocab.reasons).map(([code, one]) => [code, typeof one === \"object\" ? one.short : one])) };\\n    const walk = { returns: Object.fromEntries(shellFirmData.returns.map((one) => [one.path, (shellReturn(one.path) || { return_name: one.path.split(/[\\\\\\\\/]/).pop() }).return_name])),\\n      households: households.map((one) => ({ name: one.name, path: one.path, links: one.links || [], forms: (one.returns || []).map((r) => r.form) })) };\\n    const input = JSON.stringify({ whole: shellFirmData, names: walk, words, ask });\\n    if (!enginePages.has(input)) {\\n      enginePages.set(input, JSON.parse(execFileSync(process.env.FIRM_PY, [\"-c\", process.env.FIRM_SNIPPET], { input, cwd: process.env.FIRM_REPO, encoding: \"utf8\" })));\\n    }\\n    return JSON.parse(JSON.stringify(enginePages.get(input)));\\n  };\\n  // What shellTurnFirm does, at once: the page wanted of the list is asked of the engine and held.\\n  const settle = (...lists) => {\\n    for (const list of lists) {\\n      const reply = engineAnswers(shellFirmAsk(list));\\n      shellFirmNow = { status: \"ok\", data: shellFirmMerge(shellFirmNow.data, reply) };\\n      pagesAdopt(reply);\\n    }\\n  };\\n  const heldRows = (list) => shellFirmNow.data.replies[list].page.rows;\\n'",
         "LINKED": "'\\n  households = [\\n    { name: \"Alpha\", path: \"c/Alpha\", links: [{ name: \"Bravo\", path: \"c/Bravo\", kind: \"related\" }], returns: [{ form: \"1040\" }] },\\n    { name: \"Bravo\", path: \"c/Bravo\", links: [{ name: \"Alpha\", path: \"c/Alpha\", kind: \"related\" }, { name: \"Gone\", path: \"\", kind: \"fed_by\" }],\\n      returns: [{ form: \"1065\" }] },\\n    { name: \"Charlie\", path: \"c/Charlie\", links: [], returns: [{ form: \"\" }] },\\n    { name: \"Delta\", path: \"c/Delta\", links: [], returns: [{ form: \"1040\" }] },\\n    { name: \"Echo\", path: \"c/Echo\", links: [], returns: [{ form: \"1041\" }] },\\n  ];\\n  for (const one of shellFirmData.returns) one.links = (households.find((h) => h.name === one.household) || {}).links || [];\\n  shellFirmData.returns[0].form = \"1040\";\\n'",
         "PANEL_DOM": "'\\n  const focused = [];\\n  Element.prototype.focus = function () { focused.push(this.attrs.role === \"listbox\" ? \"listbox\" : this.className || this.attrs.id || this.tag); };\\n  Element.prototype.remove = function () { this.removed = true; };\\n  Element.prototype.contains = function () { return false; };\\n  Element.prototype.closest = function () { return null; };\\n  Element.prototype.querySelectorAll = function (sel) { return sel === \".link-mark\" ? this.byClass(\"link-mark\") : this.byClass(sel.slice(1)); };\\n  const oldQuery = Element.prototype.querySelector;\\n  Element.prototype.querySelector = function (sel) {\\n    return sel === \\'[role=\"listbox\"]\\' ? this.find((one) => one.attrs.role === \"listbox\")[0] || null : oldQuery.call(this, sel);\\n  };\\n  document.body = new Element(\"body\");\\n  globalThis.FloatingUIDOM = { computePosition: () => Promise.resolve({ x: 0, y: 0 }), offset: () => 0, flip: () => 0, shift: () => 0 };\\n  globalThis.TIP_GAP = 4; globalThis.TIP_MARGIN = 8;\\n'",
         "SOON_PANEL": "'\\nclass El {\\n  constructor(tag, attrs, kids) {\\n    this.tag = tag; this.attrs = attrs || {}; this.kids = kids || []; this.parent = null; this.cls = new Set();\\n    for (const k of this.kids) k.parent = this;\\n    this.classList = { toggle: (c, on) => (on ? this.cls.add(c) : this.cls.delete(c)), contains: (c) => this.cls.has(c) };\\n    if (this.attrs.class) for (const c of this.attrs.class.split(\" \")) this.cls.add(c);\\n  }\\n  getAttribute(name) { return name in this.attrs ? this.attrs[name] : null; }\\n  matches(sel) {\\n    if (sel === \"li\") return this.tag === \"li\";\\n    if (sel === \".side-list\") return this.cls.has(\"side-list\");\\n    if (sel === \".side-section\") return this.cls.has(\"side-section\");\\n    if (sel === \".side-section[data-soon]\") return this.cls.has(\"side-section\") && \"data-soon\" in this.attrs;\\n    throw new Error(`selector ${sel}`);\\n  }\\n  all() { return this.kids.flatMap((k) => [k, ...k.all()]); }\\n  querySelectorAll(sel) { return this.all().filter((n) => n.matches(sel)); }\\n  closest(sel) { let n = this; while (n && !n.matches(sel)) n = n.parent; return n || null; }\\n}\\nconst button = (attrs) => new El(\"li\", {}, [new El(\"button\", { class: \"side-section\", ...attrs })]);\\nconst soon = (key) => button({ \"data-soon\": key });\\nconst typesHeading = new El(\"h2\", { id: \"side-types-heading\", class: \"side-heading\" });\\nconst workHeading = new El(\"h2\", { id: \"side-workspace-heading\", class: \"side-heading\" });\\nconst root = new El(\"nav\", {}, [\\n  new El(\"ul\", { id: \"side-sections\" }, [\\n    button({ \"data-section\": \"overview\" }), button({ \"data-section\": \"needs-review\" }),\\n    button({ \"data-section\": \"reminders\" }), button({ \"data-section\": \"clients\" }),\\n    soon(\"ready_to_sign\"), soon(\"family_entities\")]),\\n  typesHeading,\\n  new El(\"ul\", { class: \"side-list\", \"aria-labelledby\": \"side-types-heading\" }, [\\n    button({ \"data-type\": \"individuals\" }), button({ \"data-type\": \"businesses\" }),\\n    button({ \"data-type\": \"trusts\" }), button({ \"data-type\": \"nonprofits\" })]),\\n  workHeading,\\n  new El(\"ul\", { class: \"side-list\", \"aria-labelledby\": \"side-workspace-heading\" }, [\\n    soon(\"personal_trusts\"), soon(\"corporate_entities\"), soon(\"portal_settings\")]),\\n]);\\nconst byId = { \"side-types-heading\": typesHeading, \"side-workspace-heading\": workHeading };\\nconst $ = (id) => byId[id] || null;\\nconst document = { activeElement: null, querySelectorAll: (sel) => root.querySelectorAll(sel) };\\nconst store = { data: {}, broken: false,\\n  getItem(k) { if (this.broken) throw new Error(\"locked\"); return k in this.data ? this.data[k] : null; },\\n  setItem(k, v) { if (this.broken) throw new Error(\"locked\"); this.data[k] = String(v); },\\n  removeItem(k) { if (this.broken) throw new Error(\"locked\"); delete this.data[k]; } };\\nconst window = { localStorage: store };\\nconst SOON_KEY = \"tracker.underConstruction\";\\nconst ROWS_KEY = \"tracker.rows\";\\nlet shellSoonHidden = null;\\nlet shellCompact = null;\\nconst said = { focus: [], tips: 0, sent: [] };\\nfunction focusRegion(name) { said.focus.push(name); }\\nfunction hideTip() { said.tips += 1; }\\nfunction shellEnable() { said.sent.push(shellChecked()); }\\nconst hiddenNow = () => root.all().filter((n) => n.cls.has(\"hidden\")).map((n) =>\\n  n.tag === \"li\" ? n.kids[0].attrs[\"data-soon\"] || n.kids[0].attrs[\"data-section\"] || n.kids[0].attrs[\"data-type\"]\\n    : n.attrs.id || `list:${n.attrs[\"aria-labelledby\"]}`);\\nconst soonButton = (key) => root.querySelectorAll(\".side-section[data-soon]\").find((n) => n.attrs[\"data-soon\"] === key);\\n'",
         "SORT_SAID": "'\\nconst fill = (p, v) => p.replace(/\\\\{(\\\\w+)\\\\}/g, (_, k) => v[k] ?? \\'\\');\\nconst known = { r24: { year: 2024, form: \"1040\", return_name: \"1040 - John A. Smith\" },\\n                r25: { year: 2025, form: \"1040\", return_name: \"1040 - John A. Smith\" },\\n                b24: { year: 2024, form: \"\", return_name: \"Smith Bakery Books\" } };\\nfunction shellReturn(path) { return known[path] || null; }\\nconst run = (over) => ({ path: \"r25\", label: \"Smith Family 2025 1040 - John A. Smith\", ok: true, error: \"\", code: \"\", skipped: \"\", filed: 0,\\n  review: 0, waiting: 0, file_errors: [], warnings: [], cancelled: false, ...over });\\n'",
-        "SPEED_SOURCES": "('app.js', 'sheet.js', 'shell.js', 'pages.js')",
-        "SPEED_DOM": "'\\nclass Node {}\\nclass Text extends Node { constructor(data) { super(); this.data = data; this.parent = null; } get textContent() { return this.data; } }\\nclass El extends Node {\\n  constructor(tag, id) { super(); this.tag = tag; this.id = id || \"\"; this.className = \"\"; this.dataset = {}; this.attrs = {}; this.kids = [];\\n    this.hidden = false; this.disabled = false; this.parent = null; this.handlers = {};\\n    this.style = { props: {}, setProperty(key, value) { this.props[key] = value; }, removeProperty(key) { delete this.props[key]; } }; }\\n  get classList() {\\n    const self = this;\\n    const now = () => self.className.split(\" \").filter(Boolean);\\n    return { add(...names) { self.className = [...new Set([...now(), ...names])].join(\" \"); },\\n             remove(...names) { self.className = now().filter((one) => !names.includes(one)).join(\" \"); },\\n             toggle(name, on) { const want = on === undefined ? !now().includes(name) : Boolean(on); if (want) this.add(name); else this.remove(name); return want; },\\n             contains(name) { return now().includes(name); } };\\n  }\\n  setAttribute(key, value) { this.attrs[key] = String(value); }\\n  getAttribute(key) { return key in this.attrs ? this.attrs[key] : null; }\\n  removeAttribute(key) { delete this.attrs[key]; }\\n  adopt(one) { const node = one instanceof Node ? one : new Text(String(one)); if (node.parent) node.remove(); node.parent = this; return node; }\\n  append(...nodes) { for (const one of nodes) this.kids.push(this.adopt(one)); }\\n  prepend(...nodes) { this.kids.unshift(...nodes.map((one) => this.adopt(one))); }\\n  replaceChildren(...nodes) { for (const one of this.kids) one.parent = null; this.kids = []; this.append(...nodes); }\\n  remove() { if (this.parent) { this.parent.kids = this.parent.kids.filter((one) => one !== this); this.parent = null; } }\\n  get childNodes() { return this.kids; }\\n  get children() { return this.kids.filter((one) => one instanceof El); }\\n  focus() {}\\n  addEventListener(type, fn) { (this.handlers[type] = this.handlers[type] || []).push(fn); }\\n  get textContent() { return this.kids.map((one) => one.textContent).join(\"\"); }\\n  set textContent(value) { this.replaceChildren(String(value)); }\\n  find(test, out = []) { for (const one of this.kids) if (one instanceof El) { if (test(one)) out.push(one); one.find(test, out); } return out; }\\n  byClass(name) { return this.find((one) => one.classList.contains(name)); }\\n  querySelector(selector) { return this.querySelectorAll(selector)[0] || null; }\\n  querySelectorAll(selector) {\\n    const own = selector.replace(/^:scope > /, \"\");\\n    const pool = own === selector ? this.find(() => true) : this.children;\\n    if (own.startsWith(\".\")) return pool.filter((one) => one.classList.contains(own.slice(1)));\\n    if (own.startsWith(\"#\")) return pool.filter((one) => one.id === own.slice(1));\\n    return pool.filter((one) => one.tag === own);\\n  }\\n}\\nconst ELS = {};\\nconst $ = (id) => ELS[id] || (ELS[id] = new El(\"div\", id));\\nconst document = { createElement: (tag) => new El(tag), createElementNS: (_ns, tag) => new El(tag), contains: () => true };\\nconst window = { tracker: { logError() {} } };\\n'",
-        "REMINDER_SHEET": "'\\nlet vocab = {\\n  screen: { loading: \"Loading\", sheet: { reminder: \"Draft Reminder\" } },\\n  reminder: { stages: [], palette: { ink: \"#000\" }, hold_colour: \"ink\", stage_group: \"Stage\", edited_by_hand: \"Edited\", subject_prefix: \"Subject: \",\\n              heading: \"Letter\", letter_ink: { body: \"ink\", muted: \"ink\", paper: \"ink\" }, never_drafted_line: \"Never drafted\", copied: \"Copied\", approve: \"Approve\" },\\n};\\nconst card = (ret) => ({ held: [], unsorted: 0, stage: 1, editable: true, file: { edited: false }, subject: `For ${ret}`, letter: { greeting: `Dear ${ret}` },\\n                         html: `<p>${ret}</p>`, text: `Letter for ${ret}`, last: null, approved: null, lapsed: false, fingerprint: `fp-${ret}` });\\nlet active = \"A\"; let lastState = { paths: { engagement: \"A\" }, reminder_card: { reminder: card(\"A\") } };\\nlet shellRoute = { level: \"reminders\" };\\nconst FIRM_LEVELS = [\"overview\", \"needs-review\", \"reminders\", \"clients\"];\\nconst reads = [];\\nconst showReturn = (path) => new Promise((resolve) => reads.push({ path, land() {\\n  active = path; lastState = { paths: { engagement: path }, reminder_card: { reminder: card(path) } };\\n  drawReminderReply(lastState.reminder_card); resolve(true); } }));\\nlet drafts = [{ ret: \"B\" }, { ret: \"C\" }];\\nconst pagesDrafts = () => drafts; const pagesWhere = () => null; const pagesDay = (d) => d;\\nconst openDialog = () => {}; const setTipIfCut = () => {}; const applyLock = () => {}; const closeSheet = () => {};\\nconst failed = (err) => { throw err; }; const outcome = () => {};\\nconst clipboard = []; const sent = [];\\nconst navigator = { clipboard: { write: async (items) => { clipboard.push(items[0].parts[\"text/plain\"].text); } } };\\nclass ClipboardItem { constructor(parts) { this.parts = parts; } }\\nclass Blob { constructor([text]) { this.text = text; } }\\nconst call = async (args, payload) => { sent.push([args[0], payload]); return { reminder: card(active) }; };\\nconst withEng = (name) => [name, \"--engagement\", active];\\nconst loadReminder = async () => {};\\nlet sheetNow = null; let sheetGeneration = 0;\\nconst tick = () => new Promise((resolve) => setImmediate(resolve));\\nconst actions = () => ({ card: reminderCard ? reminderCard.text : null, shown: !$(\"reminder-actions\").hidden, busy: $(\"sheet\").getAttribute(\"aria-busy\"),\\n                         outline: $(\"reminder-wait\").byClass(\"row-skeleton\").length, word: $(\"reminder-wait\").textContent });\\n'",
-        "REMINDER_FUNCTIONS": "('el', 'h', 'show', 'fill', 'screenWords', 'shellSkeleton', 'shellWaiting', 'stageOf', 'stageInk', 'marked', 'holdLine', 'reminderStatus', 'lines', 'letterNodes', 'drawReminderReply', 'drawReminderLine', 'drawReminder', 'forgetReminderCard', 'reminderWaitOver', 'reminderCardReady', 'copyReminder', 'approveReminder', 'sheetSet', 'sheetMore', 'sheetFrame', 'openReminder', 'sheetDraftsAfter', 'sheetNextDraft', 'sheetShow', 'sheetDrawCheck', 'sheetAfter')",
-        "FIRM_LOAD": "'\\nlet vocab = { commands: [\"list\", \"firm\"], screen: { loading: \"Loading\", updating: \"Updating\", reading_households: \"Reading {n} of {total} Households\",\\n                                                    updating_as_of: \"Updating, as of {time}\", notices: { firm_failed: \"Counts Not Available\" } } };\\nconst fill = (p, v) => p.replace(/\\\\{(\\\\w+)\\\\}/g, (_, k) => v[k] ?? \"\");\\nlet shellRoute = { level: \"return\" }; let shellPageBusy = false; let shellRootSet = false; let shellPaths = {}; let shellLastPass = null;\\nlet shellFirmNow = { status: \"idle\", data: null }; let shellFirmAsked = false; let shellFirmEarly = null; let shellClock = 0;\\nlet shellFirmLast = null; let shellFirmAsOf = \"\";\\nlet shellFirmSentAt = 0; let shellWroteAt = 0; const shellFirmHeld = new Map(); let shellFirmCount = null; let shellFirmSlow = false;\\nlet shellFirmTimer = null; const SHELL_FIRM_SLOW_MS = 2000;\\nlet shellLastPassStopped = false;   // the last-pass asking (P256, P277) is not this probe\\'s\\nconst FIRM_LEVELS = [\"overview\", \"needs-review\", \"reminders\", \"clients\"];\\nconst asked = []; const notices = []; const drawn = [];\\n// As call() does: a reply with an error throws its envelope.\\nconst call = (args, payload) => new Promise((resolve, reject) => asked.push({ args, payload, resolve: (reply) => (reply.error ? reject(new TrackerError(reply)) : resolve(reply)) }));\\n// What the engine answers for the Overview (P278, SPEC-ui-menu-speed 4.3): one page, the totals and each return\\'s counts; heldOf(n) is the answer the window holds from it.\\nconst firmOf = (n) => ({ view: \"v1\", totals: {}, next_sort: null, paths: {}, return_counts: [{ path: \"r1\", counts: { needs_you: n } }],\\n  page: { list: \"overview\", at: 0, pages: 1, from: 1, to: 1, total: 1, order: null, filter: { tab: \"all\" }, counts: { all: 1, need: 1, waiting: 0 }, many_years: false, rows: [] } });\\nconst heldOf = (n) => shellFirmMerge(null, firmOf(n));\\nlet shellTurns = 0; let shellTurnGen = 0; let shellTurnThen = null;\\nlet pagesPageAt = {}; let pagesTab = \"all\"; let pagesReasonPick = \"\"; let pagesClientsAll = false; let pagesClientType = \"\";\\nconst pagesStoredOrder = () => ({}); const pagesEnter = () => {};\\n// A reply of the engine for one page of a list, as the probes land it (the page\\'s own words are not read by them).\\nconst pageOf = (list, at = 0, view = \"v1\", more = {}) => ({ ...firmOf(1), view,\\n  page: { list, at, pages: 3, from: at * 50 + 1, to: at * 50 + 50, total: 150, order: null,\\n          filter: { overview: { tab: \"all\" }, needs_review: { reason: \"\" }, reminders: {}, clients: { all: false, type: \"\" } }[list], counts: {}, many_years: false, rows: [], ...more } });\\nlet failedAs = null;   // a probe that records the failures the page says, with their Retry, in place of throwing them\\nconst stateOf = (n) => ({ paths: { engagement: \"r1\" }, counts: { needs_you: n } });\\nconst pagesTally = (state) => state.counts; const sheetStateArrived = () => {};\\nlet shellChanged = () => {};\\nconst noticedAs = [];   // each notice said directly, with its kind and its Retry\\nconst notice = (failure, opts = {}) => { notices.push(failure.sentence); noticedAs.push({ sentence: failure.sentence, kind: failure.kind, retry: opts.retry }); };\\nconst failureSentence = () => \"\";\\nconst failed = (err, retry) => { if (failedAs) { failedAs.push({ sentence: err.message, kind: err.failure.kind, retry }); return; } throw err; };\\nconst warningNotices = (list) => notices.push(...list);\\nclass TrackerError extends Error { constructor(result) { super(result.error); this.result = result; this.failure = result.failure || { sentence: result.error, kind: \"failed\" }; } }\\nconst tick = async () => { for (let i = 0; i < 5; i += 1) await new Promise((resolve) => setImmediate(resolve)); };\\nconst firms = () => asked.filter((one) => one.args[0] === \"firm\").length;\\nconst land = async (i, reply) => { asked[i].resolve(reply); await tick(); };\\n'",
-        "FIRM_LOAD_FUNCTIONS": "('el', 'h', 'screenWords', 'shellAdopt', 'shellAskFirmNow', 'shellDropEarlyFirm', 'shellAskFirmLast', 'shellLastOf', 'shellShowLast', 'takeReply', 'shellAdoptEarly', 'shellAskFirm', 'shellFirmSent', 'shellFirmAsk', 'shellFirmList', 'shellFirmMerge', 'shellFirmShaped', 'shellFirmHolds', 'shellFirmBrought', 'shellFirmFollow', 'shellTurnDone', 'shellTurnFirm', 'pagesListOf', 'pagesAdopt', 'shellFirmDone', 'shellFirmTookLong', 'shellWriteLanded', 'shellFirmProgress', 'shellReading', 'shellReadingNodes', 'shellSetReading', 'shellDrawReading', 'shellLoadFirm', 'shellFollowsCounts', 'shellFirmUpdating', 'shellUpdating', 'shellMarkUpdating', 'shellStateArrived', 'shellPageReadsState', 'shellCountsDiffer')",
-        "FIRM_PAGE": "'\\nconst timers = [];\\nconst setTimeout = (fn, ms) => { timers.push({ fn, ms }); return timers.length; };\\nconst clearTimeout = (id) => { if (id && timers[id - 1]) timers[id - 1].fn = null; };\\nconst waiting = () => timers.filter((one) => one.fn).map((one) => one.ms);\\nconst passTime = () => { for (const one of timers) if (one.fn) { const fn = one.fn; one.fn = null; fn(); } };\\nconst pagesDraw = (route, page) => {\\n  const figure = new El(\"b\"); figure.className = \"figure-number\"; figure.append(\"3\");\\n  const row = new El(\"div\"); row.className = \"row\"; row.append(\"a row\");\\n  page.replaceChildren(figure, row);\\n  page.dataset.list = pagesListOf(route);\\n};\\nconst routeTitle = () => \"\";\\nconst pagesLeave = () => {};\\nlet shellPageFailed = false;\\nconst shellDraw = () => { drawn.push(shellRoute.level); drawCounts(); drawPage(); };\\nshellChanged = () => drawCounts();\\nconst sides = [0, 1].map(() => { const side = new El(\"button\"); side.dataset.section = \"overview\"; const count = new El(\"span\"); count.className = \"side-count\"; side.append(count); return side; });\\ndocument.querySelectorAll = (selector) => (selector === \".side-section[data-section]\" ? sides : []);\\nconst shellCounts = () => ({ overview: 3 });\\n// index.html\\'s one status for \"Updating\": every time its words are set is\\n// counted, since a status set again is read out again.\\nlet saidSet = 0;\\nObject.defineProperty($(\"page-updating\"), \"textContent\", {\\n  get() { return this.kids.map((one) => one.textContent).join(\"\"); },\\n  set(value) { saidSet += 1; this.replaceChildren(String(value)); },\\n});\\nconst looks = () => {\\n  const page = $(\"page\");\\n  return { busy: page.getAttribute(\"aria-busy\"), updating: page.classList.contains(\"is-updating\"),\\n           said: $(\"page-updating\").textContent, saidSet,\\n           rows: page.children.map((one) => one.className),\\n           inPage: page.byClass(\"page-updating\").length,\\n           held: sides.map((one) => one.byClass(\"side-count\")[0].classList.contains(\"is-held\")),\\n           reading: page.byClass(\"firm-reading-words\").map((one) => one.textContent),\\n           bars: page.find((one) => one.getAttribute(\"role\") === \"progressbar\").map((one) =>\\n             [one.getAttribute(\"aria-valuenow\"), one.getAttribute(\"aria-valuemax\"), one.getAttribute(\"aria-labelledby\")]),\\n           hidden: page.byClass(\"visually-hidden\").map((one) => one.textContent) };\\n};\\n'",
-        "FIRM_PAGE_FUNCTIONS": "('drawPage', 'shellLoading', 'shellSkeleton', 'drawTitleOnly', 'drawCounts')",
-        "EARLY_FIRM": "'\\nconst sentEarly = [];\\nwindow.tracker.call = (args, payload) => new Promise((resolve) => sentEarly.push({ args, payload, resolve }));\\n'",
         "LAST_PASS_WATCH_FAKES": "'\\nlet vocab = {};\\nlet scanning = null; let shellLastPass = null;\\nlet shellLastPassAsking = false; let shellLastPassStopped = false; let shellLastPassAt = 0;\\nlet shellLastPassOwed = false; let shellLastPassAgain = false;\\nconst SHELL_FOCUS_QUIET_MS = 5000; const document = { hidden: false };\\nconst seen = []; let reply = null; let asked = 0;\\nlet listReply = { listed: true }; let during = null;\\nlet shellRoute = { level: \"overview\" }; let dialogStack = []; let shellReturnStale = false; let throwing = false;\\nconst showReturn = async (path) => { seen.push(\"showReturn:\" + path); if (throwing) throw new Error(\"boom return\"); };\\nconst shellChanged = () => seen.push(\"changed\");\\nconst adoptList = (listed) => seen.push(listed === listReply ? \"adopt-list\" : \"adopt-other\");\\nconst failed = (err) => seen.push(\"failed:\" + err.message);\\nconst call = async (args) => {\\n  asked += 1; seen.push(\"call:\" + args.join(\" \"));\\n  if (during) during(args[0]);\\n  const out = args[0] === \"list\" ? listReply : reply;\\n  if (out instanceof Error) throw out;\\n  return args[0] === \"list\" ? out : { last_pass: out };\\n};\\nconst tick = async (held, fresh, running = null) => {\\n  seen.length = 0; shellLastPass = held; reply = fresh; scanning = running; shellLastPassStopped = false;\\n  await shellAskLastPass();\\n  return { seen: seen.slice(), held: shellLastPass };\\n};\\n'",
         "SHELL_ROUTE_FAKES": "'\\nconst LEVELS = [\"overview\", \"needs-review\", \"reminders\", \"clients\", \"household\", \"year\", \"return\", \"setup\"];\\nconst FIRM_LEVELS = [\"overview\", \"needs-review\", \"reminders\", \"clients\"];\\nlet shellRoute = { level: \"overview\" }; let shellBack = null; let shellReturnStale = false; let shellRootSet = true;\\nlet shellPageBusy = false; let shellPageFailed = false; let shellFirmNow = { status: \"ok\", data: null };\\nlet shellFirmSentAt = 0; let shellWroteAt = 0; const shellFirmHeld = new Map();\\nlet households = [{ name: \"Smith Family\", path: \"h1\", returns: [{ path: \"r1\", active: true }] }, { name: \"Rivera\", path: \"h2\", returns: [{ path: \"r3\", active: true }] }];\\nlet engagements = [{ path: \"r1\", household: \"h1\", year: 2025 }, { path: \"r2\", household: \"h1\", year: 2024 }, { path: \"r3\", household: \"h2\", year: 2025 }];\\nlet lastState = null; let active = \"r1\"; const drawn = []; const events = [];\\nconst closeSheet = () => {}; const hideFound = () => {}; const hideTip = () => {}; const appRouteChanged = () => {}; const failed = (err) => { throw err; };\\nconst $ = () => ({ focus() {}, scrollTop: 0 });\\nconst shellDraw = () => drawn.push(shellRoute.level); const shellChanged = () => events.push(\"changed\");\\nconst sheetStateArrived = () => events.push(\"sheet\"); const shellLoadFirm = () => {};\\nconst pagesTally = () => ({}); \\nconst stateFor = (path, household) => ({ paths: { engagement: path }, household: { path: household } });\\n// As app.js\\'s showReturn does: the state is read, becomes the one on screen, and the shell is told.\\nconst showReturn = async (path) => {\\n  const owner = engagements.find((one) => one.path === path).household;\\n  lastState = stateFor(path, owner); active = path;\\n  shellStateArrived(lastState);\\n  return true;\\n};\\n'",
         "PANEL_MEDIA": "('@media (min-width: 1388px)',)",
         "NOTICE_FOCUS": "'\\n  const notices = [];\\n  const log = [];\\n  const button = (name) => ({ focus: () => log.push(name) });\\n  const make = (name) => ({ node: { name, inside: false, contains() { return this.inside; },\\n    querySelector: (sel) => (sel === \\'[data-act=\"dismiss\"]\\' ? button(`${name} dismiss`) : null), remove() { log.push(`${name} removed`); } } });\\n  const document = { activeElement: null };\\n  const $ = (id) => ({ focus: () => log.push(`${id}.focus`), append() {} });\\n  function outlineRefused() {}\\n'",
         "F6_FAKES": "'\\n  const log = [];\\n  let shown = true;\\n  const item = (name, region) => ({ name, closest(sel) { return sel === `#${region}` ? this : null; }, focus() { log.push(name); document.activeElement = this; } });\\n  const things = { side: item(\"side item\", \"side\"), bar: item(\"path\", \"bar\"), notice: item(\"notice control\", \"notices\"), page: item(\"page\", \"page\") };\\n  const $ = (id) => (id === \"notices\" ? { childElementCount: shown ? 1 : 0, querySelector: () => (shown ? { querySelector: () => things.notice } : null) }\\n    : id === \"find\" ? { disabled: false, focus: () => log.push(\"find\") } : id === \"side\" ? things.side : things.page);\\n  const document = { activeElement: null, querySelector: (sel) => (sel.startsWith(\"#crumb-list\") ? things.bar : sel.includes(\"aria-current\") ? things.side : null) };\\n  const tipKey = () => {};\\n  const press = (shift) => { shellKey({ key: \"F6\", shiftKey: shift, preventDefault() {}, target: document.activeElement }); };\\n'",
-        "CARD_HOUSEHOLD": "'\\n  const LINK = \"LINKTOKEN-share-me\";\\n  const hh = { name: \"Alpha\", path: \"c/Alpha\", contact: \"A Person\", members: [\"A Person\", \"Another\"], link: LINK,\\n               returns: [{ path: \"r/1040 - Alpha\", year: 2025, return_name: \"1040 - Alpha\", form: \"1040\", active: true },\\n                         { path: \"r/old\", year: 2024, return_name: \"1040 - Alpha\", form: \"1040\", active: true }] };\\n  shellHousehold = () => hh;\\n  shellRoute = { level: \"household\", household: \"c/Alpha\" };\\n  lastState = { household: { path: \"c/Alpha\", shared_on: \"2026-02-01\" } };\\n  const cls = (n) => n.className.split(\" \")[0];\\n  const facts = (page) => page.byClass(\"card-fact\").map((f) => [f.kids[0].textContent, f.kids.slice(1).map((k) => k.textContent)]);\\n'",
-        "LONG_SETUP": "'\\nconst hideTip = () => {}; const showTipNow = () => {};\\nlet H = 40;\\nObject.defineProperty(Element.prototype, \"offsetHeight\", { get() { return H; }, configurable: true });\\nconst pageBox = new Element(\"div\");\\npageBox.scrollTop = 0; pageBox.clientHeight = 800; pageBox.getBoundingClientRect = () => ({ top: 0 });\\nconst $ = (id) => (id === \"page\" ? pageBox : null);\\nconst parkedFiles = (n, extra = () => ({})) => Array.from({ length: n }, (_, i) => parked(`f${String(i + 1).padStart(4, \"0\")}`, extra(i)));\\nconst draw = (index, items = []) => {\\n  lastState = stateOf(items, index);\\n  pagesUid = 0; pagesTokens.clear(); pagesBroken = [];\\n  pageBox.replaceChildren(...pagesReturn({ level: \"return\", ret: \"r1\", year: 2025 }));\\n  pageBox.scrollTop = 0;\\n  for (const list of pageBox.querySelectorAll(\".rows.is-virtual\")) list.getBoundingClientRect = () => ({ top: 100 - pageBox.scrollTop });\\n  pagesVirtualMeasure(pageBox);\\n  return pageBox.querySelectorAll(\".rows.is-virtual\")[0];\\n};\\nconst scrollTo = (top) => { pageBox.scrollTop = top; pagesVirtualPlaceAll(pageBox); };\\n'"
+        "CARD_HOUSEHOLD": "'\\n  const LINK = \"LINKTOKEN-share-me\";\\n  const hh = { name: \"Alpha\", path: \"c/Alpha\", contact: \"A Person\", members: [\"A Person\", \"Another\"], link: LINK,\\n               returns: [{ path: \"r/1040 - Alpha\", year: 2025, return_name: \"1040 - Alpha\", form: \"1040\", active: true },\\n                         { path: \"r/old\", year: 2024, return_name: \"1040 - Alpha\", form: \"1040\", active: true }] };\\n  shellHousehold = () => hh;\\n  shellRoute = { level: \"household\", household: \"c/Alpha\" };\\n  lastState = { household: { path: \"c/Alpha\", shared_on: \"2026-02-01\" } };\\n  const cls = (n) => n.className.split(\" \")[0];\\n  const facts = (page) => page.byClass(\"card-fact\").map((f) => [f.kids[0].textContent, f.kids.slice(1).map((k) => k.textContent)]);\\n'"
       },
       "role": "The shell's renderer half: the tokens and their contrast in both themes, the shell stylesheet's discipline, the guards every renderer file keeps, the words the new files may not type, and the route, search, Sort Now button and menu enable list run in node against shell.js's own functions.",
-      "notes": "SHELL_FILES and TITLE_FREE name the files a claim covers; S2 adds the menu half, S4 the pages' node tests and S5 the sheet's. The contrast table and the token values are the SPEC's section 10, copied as data."
+      "notes": "SHELL_FILES and TITLE_FREE name the files a claim covers; S2 adds the menu half, S4 the pages' node tests and S5 the sheet's. The contrast table and the token values are the SPEC's section 10, copied as data. Its node runners (run_shell, run_pages, run_pages_dom and the rest, with the fakes and function lists each uses) live in tests/node_harness.py since SPEC-architecture J2."
     },
     {
       "id": "tests/test_shell_menu.py",
@@ -10559,7 +10613,7 @@
       "id": "tests/test_single_source.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "189a519ab3aa71e1",
+      "sha256": "d1080b47f26c9777",
       "lines": 5348,
       "exports": [
         "AFTER_WHAT",
@@ -10796,8 +10850,8 @@
       "id": "tests/test_store.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "fafa92ac483db854",
-      "lines": 5832,
+      "sha256": "caae6469f1181fcb",
+      "lines": 5809,
       "exports": [
         "AS_AT_16",
         "AS_AT_17",
@@ -10826,12 +10880,9 @@
         "as_a_rebuild_leaves_it",
         "build",
         "by_hand",
-        "cache_rows",
         "cli",
         "conn",
-        "drop",
         "edit_rules",
-        "engagement",
         "fresh",
         "held_statuses",
         "id_of",
@@ -10841,7 +10892,6 @@
         "locate_original",
         "names_bound_in",
         "one_value",
-        "original_at",
         "recorded",
         "recorded_root",
         "relinked",
@@ -11090,7 +11140,7 @@
       "id": "tests/test_tour.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "382387ee196c8d78",
+      "sha256": "2c39fde3f0c91732",
       "lines": 114,
       "exports": [
         "REPO",
@@ -11192,15 +11242,13 @@
       "id": "tests/test_view.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "30bdd43b45cdff28",
-      "lines": 993,
+      "sha256": "e10501090763f9b8",
+      "lines": 984,
       "exports": [
         "DAY1",
         "ITEMS",
         "REPO",
         "a_pass",
-        "drop",
-        "engagement",
         "index_table",
         "not_applicable_tables",
         "page_of",
@@ -12158,6 +12206,114 @@
       "source": "curated"
     },
     {
+      "from": "tests/builders.py",
+      "to": "pkg:pytest",
+      "type": "depends_on",
+      "source": "derived"
+    },
+    {
+      "from": "tests/builders.py",
+      "to": "tracker/__init__.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/builders.py",
+      "to": "tracker/content_check.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/builders.py",
+      "to": "tracker/filer.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/builders.py",
+      "to": "tracker/households.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/builders.py",
+      "to": "tracker/layout.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/builders.py",
+      "to": "tracker/ledger.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/builders.py",
+      "to": "tracker/manifest.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/builders.py",
+      "to": "tracker/names.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/builders.py",
+      "to": "tracker/reasons.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/builders.py",
+      "to": "tracker/records.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/builders.py",
+      "to": "tracker/registry.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/builders.py",
+      "to": "tracker/router.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/builders.py",
+      "to": "tracker/scanner.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/builders.py",
+      "to": "tracker/store.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/builders.py",
+      "to": "tracker/templates.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/builders.py",
+      "to": "tests/conftest.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tests/builders.py",
+      "to": "tests/samples.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
       "from": "tests/child_readers.py",
       "to": "pkg:PIL",
       "type": "depends_on",
@@ -12346,6 +12502,90 @@
     {
       "from": "tests/conftest.py",
       "to": "tests/tripwire/sitecustomize.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tests/node_harness.py",
+      "to": "pkg:pytest",
+      "type": "depends_on",
+      "source": "derived"
+    },
+    {
+      "from": "tests/node_harness.py",
+      "to": "tracker/api.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/passes.py",
+      "to": "pkg:pytest",
+      "type": "depends_on",
+      "source": "derived"
+    },
+    {
+      "from": "tests/passes.py",
+      "to": "tracker/__init__.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/passes.py",
+      "to": "tracker/filer.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/passes.py",
+      "to": "tracker/manifest.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/passes.py",
+      "to": "tracker/records.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/passes.py",
+      "to": "tracker/registry.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/passes.py",
+      "to": "tracker/runner.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/passes.py",
+      "to": "tracker/scaffold.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/passes.py",
+      "to": "tracker/settings.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/passes.py",
+      "to": "tracker/store.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/passes.py",
+      "to": "tests/conftest.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tests/passes.py",
+      "to": "tests/samples.py",
       "type": "imports",
       "source": "derived"
     },
@@ -12735,6 +12975,12 @@
     },
     {
       "from": "tests/test_api.py",
+      "to": "tests/builders.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_api.py",
       "to": "tests/conftest.py",
       "type": "imports",
       "source": "derived"
@@ -12742,18 +12988,6 @@
     {
       "from": "tests/test_api.py",
       "to": "tests/samples.py",
-      "type": "imports",
-      "source": "derived"
-    },
-    {
-      "from": "tests/test_api.py",
-      "to": "tests/test_filer.py",
-      "type": "imports",
-      "source": "derived"
-    },
-    {
-      "from": "tests/test_api.py",
-      "to": "tests/test_manifest.py",
       "type": "imports",
       "source": "derived"
     },
@@ -13155,7 +13389,19 @@
     },
     {
       "from": "tests/test_containers.py",
+      "to": "tests/builders.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_containers.py",
       "to": "tests/child_readers.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_containers.py",
+      "to": "tests/children.py",
       "type": "imports",
       "source": "derived"
     },
@@ -13168,18 +13414,6 @@
     {
       "from": "tests/test_containers.py",
       "to": "tests/samples.py",
-      "type": "imports",
-      "source": "derived"
-    },
-    {
-      "from": "tests/test_containers.py",
-      "to": "tests/test_content_check.py",
-      "type": "imports",
-      "source": "derived"
-    },
-    {
-      "from": "tests/test_containers.py",
-      "to": "tests/test_filer.py",
       "type": "imports",
       "source": "derived"
     },
@@ -13329,7 +13563,19 @@
     },
     {
       "from": "tests/test_content_check.py",
+      "to": "tests/builders.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_content_check.py",
       "to": "tests/child_readers.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_content_check.py",
+      "to": "tests/children.py",
       "type": "imports",
       "source": "derived"
     },
@@ -13379,6 +13625,12 @@
       "from": "tests/test_door.py",
       "to": "tracker/settings.py",
       "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_door.py",
+      "to": "tests/builders.py",
+      "type": "imports",
       "source": "derived"
     },
     {
@@ -13581,12 +13833,6 @@
     },
     {
       "from": "tests/test_filer.py",
-      "to": "tracker/households.py",
-      "type": "exercises",
-      "source": "derived"
-    },
-    {
-      "from": "tests/test_filer.py",
       "to": "tracker/layout.py",
       "type": "exercises",
       "source": "derived"
@@ -13707,6 +13953,12 @@
     },
     {
       "from": "tests/test_filer.py",
+      "to": "tests/builders.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_filer.py",
       "to": "tests/conftest.py",
       "type": "imports",
       "source": "derived"
@@ -13720,18 +13972,6 @@
     {
       "from": "tests/test_filer.py",
       "to": "tests/test_catalog.py",
-      "type": "imports",
-      "source": "derived"
-    },
-    {
-      "from": "tests/test_filer.py",
-      "to": "tests/test_content_check.py",
-      "type": "imports",
-      "source": "derived"
-    },
-    {
-      "from": "tests/test_filer.py",
-      "to": "tests/test_reminder.py",
       "type": "imports",
       "source": "derived"
     },
@@ -14151,12 +14391,6 @@
     },
     {
       "from": "tests/test_ledger.py",
-      "to": "tracker/layout.py",
-      "type": "exercises",
-      "source": "derived"
-    },
-    {
-      "from": "tests/test_ledger.py",
       "to": "tracker/locking.py",
       "type": "exercises",
       "source": "derived"
@@ -14199,19 +14433,13 @@
     },
     {
       "from": "tests/test_ledger.py",
+      "to": "tests/builders.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_ledger.py",
       "to": "tests/conftest.py",
-      "type": "imports",
-      "source": "derived"
-    },
-    {
-      "from": "tests/test_ledger.py",
-      "to": "tests/samples.py",
-      "type": "imports",
-      "source": "derived"
-    },
-    {
-      "from": "tests/test_ledger.py",
-      "to": "tests/test_filer.py",
       "type": "imports",
       "source": "derived"
     },
@@ -14333,6 +14561,12 @@
       "from": "tests/test_manifest.py",
       "to": "tracker/templates.py",
       "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_manifest.py",
+      "to": "tests/builders.py",
+      "type": "imports",
       "source": "derived"
     },
     {
@@ -14481,6 +14715,12 @@
     },
     {
       "from": "tests/test_ocr.py",
+      "to": "tests/children.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_ocr.py",
       "to": "tests/conftest.py",
       "type": "imports",
       "source": "derived"
@@ -14488,12 +14728,6 @@
     {
       "from": "tests/test_ocr.py",
       "to": "tests/samples.py",
-      "type": "imports",
-      "source": "derived"
-    },
-    {
-      "from": "tests/test_ocr.py",
-      "to": "tests/test_content_check.py",
       "type": "imports",
       "source": "derived"
     },
@@ -14583,7 +14817,7 @@
     },
     {
       "from": "tests/test_page_rows.py",
-      "to": "tests/test_runner.py",
+      "to": "tests/passes.py",
       "type": "imports",
       "source": "derived"
     },
@@ -14637,6 +14871,12 @@
     },
     {
       "from": "tests/test_pilot.py",
+      "to": "tests/node_harness.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_pilot.py",
       "to": "tests/samples.py",
       "type": "imports",
       "source": "derived"
@@ -14675,6 +14915,18 @@
       "from": "tests/test_pilot_installer.py",
       "to": "tracker/settings.py",
       "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_pilot_ui.py",
+      "to": "tests/css_rules.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_pilot_ui.py",
+      "to": "tests/node_harness.py",
+      "type": "imports",
       "source": "derived"
     },
     {
@@ -15009,6 +15261,12 @@
     },
     {
       "from": "tests/test_registry.py",
+      "to": "tests/builders.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_registry.py",
       "to": "tests/conftest.py",
       "type": "imports",
       "source": "derived"
@@ -15123,6 +15381,12 @@
     },
     {
       "from": "tests/test_reminder.py",
+      "to": "tests/builders.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_reminder.py",
       "to": "tests/conftest.py",
       "type": "imports",
       "source": "derived"
@@ -15136,12 +15400,6 @@
     {
       "from": "tests/test_reminder.py",
       "to": "tests/test_reasons.py",
-      "type": "imports",
-      "source": "derived"
-    },
-    {
-      "from": "tests/test_reminder.py",
-      "to": "tests/test_review.py",
       "type": "imports",
       "source": "derived"
     },
@@ -15305,6 +15563,12 @@
       "from": "tests/test_review.py",
       "to": "tracker/router.py",
       "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_review.py",
+      "to": "tests/builders.py",
+      "type": "imports",
       "source": "derived"
     },
     {
@@ -15519,19 +15783,13 @@
     },
     {
       "from": "tests/test_router.py",
+      "to": "tests/builders.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_router.py",
       "to": "tests/samples.py",
-      "type": "imports",
-      "source": "derived"
-    },
-    {
-      "from": "tests/test_router.py",
-      "to": "tests/test_content_check.py",
-      "type": "imports",
-      "source": "derived"
-    },
-    {
-      "from": "tests/test_router.py",
-      "to": "tests/test_review.py",
       "type": "imports",
       "source": "derived"
     },
@@ -15616,6 +15874,12 @@
     {
       "from": "tests/test_runner.py",
       "to": "pkg:pytest",
+      "type": "depends_on",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_runner.py",
+      "to": "pkg:tests",
       "type": "depends_on",
       "source": "derived"
     },
@@ -15795,7 +16059,19 @@
     },
     {
       "from": "tests/test_runner.py",
+      "to": "tests/builders.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_runner.py",
       "to": "tests/conftest.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_runner.py",
+      "to": "tests/passes.py",
       "type": "imports",
       "source": "derived"
     },
@@ -15808,12 +16084,6 @@
     {
       "from": "tests/test_runner.py",
       "to": "tests/test_content_check.py",
-      "type": "imports",
-      "source": "derived"
-    },
-    {
-      "from": "tests/test_runner.py",
-      "to": "tests/test_filer.py",
       "type": "imports",
       "source": "derived"
     },
@@ -16053,6 +16323,12 @@
     },
     {
       "from": "tests/test_scanner.py",
+      "to": "tests/builders.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_scanner.py",
       "to": "tests/conftest.py",
       "type": "imports",
       "source": "derived"
@@ -16185,12 +16461,6 @@
     },
     {
       "from": "tests/test_shell.py",
-      "to": "pkg:tests",
-      "type": "depends_on",
-      "source": "derived"
-    },
-    {
-      "from": "tests/test_shell.py",
       "to": "tracker/__init__.py",
       "type": "exercises",
       "source": "derived"
@@ -16233,6 +16503,24 @@
     },
     {
       "from": "tests/test_shell.py",
+      "to": "tests/css_rules.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_shell.py",
+      "to": "tests/node_harness.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_shell.py",
+      "to": "tests/passes.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_shell.py",
       "to": "tests/samples.py",
       "type": "imports",
       "source": "derived"
@@ -16240,18 +16528,6 @@
     {
       "from": "tests/test_shell.py",
       "to": "tests/test_api.py",
-      "type": "imports",
-      "source": "derived"
-    },
-    {
-      "from": "tests/test_shell.py",
-      "to": "tests/test_pilot_ui.py",
-      "type": "imports",
-      "source": "derived"
-    },
-    {
-      "from": "tests/test_shell.py",
-      "to": "tests/test_runner.py",
       "type": "imports",
       "source": "derived"
     },
@@ -16491,13 +16767,13 @@
     },
     {
       "from": "tests/test_single_source.py",
-      "to": "tests/test_layers.py",
+      "to": "tests/node_harness.py",
       "type": "imports",
       "source": "derived"
     },
     {
       "from": "tests/test_single_source.py",
-      "to": "tests/test_shell.py",
+      "to": "tests/test_layers.py",
       "type": "imports",
       "source": "derived"
     },
@@ -16587,6 +16863,12 @@
     },
     {
       "from": "tests/test_store.py",
+      "to": "tests/builders.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_store.py",
       "to": "tests/conftest.py",
       "type": "imports",
       "source": "derived"
@@ -16594,18 +16876,6 @@
     {
       "from": "tests/test_store.py",
       "to": "tests/samples.py",
-      "type": "imports",
-      "source": "derived"
-    },
-    {
-      "from": "tests/test_store.py",
-      "to": "tests/test_content_check.py",
-      "type": "imports",
-      "source": "derived"
-    },
-    {
-      "from": "tests/test_store.py",
-      "to": "tests/test_filer.py",
       "type": "imports",
       "source": "derived"
     },
@@ -16659,13 +16929,13 @@
     },
     {
       "from": "tests/test_tour.py",
-      "to": "tests/test_api.py",
+      "to": "tests/node_harness.py",
       "type": "imports",
       "source": "derived"
     },
     {
       "from": "tests/test_tour.py",
-      "to": "tests/test_pilot.py",
+      "to": "tests/test_api.py",
       "type": "imports",
       "source": "derived"
     },
@@ -16911,19 +17181,13 @@
     },
     {
       "from": "tests/test_view.py",
+      "to": "tests/builders.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_view.py",
       "to": "tests/conftest.py",
-      "type": "imports",
-      "source": "derived"
-    },
-    {
-      "from": "tests/test_view.py",
-      "to": "tests/samples.py",
-      "type": "imports",
-      "source": "derived"
-    },
-    {
-      "from": "tests/test_view.py",
-      "to": "tests/test_registry.py",
       "type": "imports",
       "source": "derived"
     },

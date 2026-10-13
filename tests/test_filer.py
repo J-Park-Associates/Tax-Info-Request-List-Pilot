@@ -22,6 +22,32 @@ from pathlib import Path
 
 import pytest
 
+from tests.builders import (
+    BUSINESS,
+    DAY1,
+    DAY2,
+    FATHER,
+    FOLDER_BELOW,
+    ITEMS,
+    LLC_PEOPLE,
+    LONG_PERIOD,
+    OVER,
+    ROOM_ITEMS,
+    SCHWAB_146,
+    TIGHT_PERIOD,
+    _consolidated_return,
+    cache_rows,
+    drop,
+    engagement_fixture,
+    feeding,
+    killed_at_the_record,
+    link_to,
+    no_room_prepared,
+    no_room_return,
+    original_at,
+    tight_return,
+    with_the_long_period,
+)
 from tests.conftest import TEST_CLIENT, TEST_YEAR, make_engagement, named_page, sort, sort_all
 from tests.samples import text_pdf
 from tracker import checkpoint, ledger, reasons, store
@@ -60,58 +86,18 @@ from tracker.scaffold import (
     REVIEW_DIR_NAME,
 )
 
-DAY1 = dt.date(2026, 7, 1)
-DAY2 = dt.date(2026, 7, 9)
 #: The day a pass recovers what a run left half done (decision 119): the
 #: row it records is still dated the day the decision was made.
 DAY3 = dt.date(2026, 7, 15)
 
-ITEMS = [
-    RequestItem(
-        identifier="A01", document="W-2 Wage Statements", period="TY2025",
-        expected_count=2, allowed_extensions=("pdf",), min_size_kb=0,
-        required_keywords=("W-2",), date_pattern=r"(?i)\b2025\b",
-    ),
-    RequestItem(
-        identifier="C01", document="Mortgage Interest Statement", period="TY2025",
-        allowed_extensions=("pdf",), min_size_kb=0, required_keywords=("1098",),
-    ),
-]
 
-
-@pytest.fixture
-def engagement(tmp_path):
-    return make_engagement(tmp_path, ITEMS)
-
-
-def drop(engagement, name, text, who=TEST_CLIENT):
-    """Client drops one document into the household's one inbox.
-
-    The page carries the return's person on it (decision 128), the way a
-    real W-2 carries its employee's name: a named request files only where
-    one of the return's spellings is on the page. A test that means "a
-    page naming nobody here" passes ``who=""`` or writes the PDF itself.
-    """
-    return text_pdf(inbox_of(engagement) / name, named_page(text, who) if who else text)
+engagement = engagement_fixture(ITEMS)
 
 
 def originals(engagement):
     """The folder the client sees for this return's year: where an original
     rests once the pass has moved it out of the inbox (decision 125)."""
     return originals_of(engagement)
-
-
-def original_at(engagement, name):
-    """How a row names an original it holds: relative to the return folder,
-    POSIX, and across the two trees - so it begins with ``..``."""
-    return location_of(engagement, originals_of(engagement) / name)
-
-
-def cache_rows(engagement):
-    """The engagement's verdict cache as the store holds it: (memos, verdicts)."""
-    from tracker.content_check import CACHE_VERSION
-
-    return store.cached_verdicts(store.connect(), engagement, version=CACHE_VERSION)
 
 
 class RequestFiles:
@@ -329,7 +315,7 @@ def test_a_client_subfolder_named_like_a_marker_changes_nothing(tmp_path):
     The same locked file, dropped at the top and inside each of these
     folders, now gets the same code, the same card and the same letter; the
     folder is in its own column and nowhere in the Reason."""
-    from tests.test_reminder import DROPPED, locked
+    from tests.builders import DROPPED, locked
     from tracker.reminder import draft_reminder
     from tracker.review import shortlist_for
     from tracker.scanner import scan_engagement
@@ -363,7 +349,7 @@ def test_every_row_a_pass_parks_has_a_code(engagement):
     request takes, a zip that will not open and an upload that arrived
     empty each park with a code the reader can read, and none with ``""``,
     which means a row written before 190."""
-    from tests.test_reminder import locked
+    from tests.builders import locked
 
     inbox = inbox_of(engagement)
     locked("W-2 2025.pdf")(inbox)
@@ -572,7 +558,7 @@ def test_dry_run_moves_nothing(engagement):
 def test_filing_leaves_verdicts_the_scan_reuses(engagement, monkeypatch):
     # Route once, scan once, read the document once: the router's verdicts
     # are the scanner's, keyed by content so the working copy is a hit.
-    from tests.test_content_check import counting_extractor
+    from tests.builders import counting_extractor
     from tracker.scanner import scan_engagement
 
     calls = counting_extractor(monkeypatch)
@@ -594,7 +580,7 @@ def test_a_sort_that_raises_still_keeps_its_verdicts(engagement, monkeypatch):
     rows are recorded as always, and now the verdicts are kept too, so the
     next pass does not read the document again."""
     import tracker.filer as filer
-    from tests.test_content_check import counting_extractor
+    from tests.builders import counting_extractor
 
     calls = counting_extractor(monkeypatch)
     drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
@@ -659,7 +645,7 @@ def test_a_retired_cache_file_is_never_read_and_is_not_the_passs_to_remove(engag
     leaves it where it is."""
     import json
 
-    from tests.test_content_check import counting_extractor
+    from tests.builders import counting_extractor
     from tracker.content_check import CACHE_VERSION, RETIRED_CACHE_FILENAME, rules_fingerprint
     from tracker.scanner import scan_engagement
     from tracker.validators import sha256_of
@@ -2467,8 +2453,8 @@ def test_the_scan_after_a_two_form_split_accepts_the_copy_under_each_request(eng
     is not); the split's reading accepts it; the scan must find the second
     in the cache - and read nothing again - or the copy fails validation
     and the client is asked for a 1098 they already sent."""
+    from tests.builders import counting_extractor
     from tests.samples import scanned_1098_lines, scanned_w2_lines
-    from tests.test_content_check import counting_extractor
     from tracker.manifest import Status
     from tracker.scanner import scan_engagement
 
@@ -4080,22 +4066,6 @@ def killed_at_the_intent(monkeypatch, kind=None):
     return state
 
 
-def killed_at_the_record(monkeypatch):
-    """The machine dies as the rows of a decision are recorded: the files
-    have moved, the intent is open, the index says nothing yet."""
-    real = store.record
-    state = {"died": False}
-
-    def killing(conn, engagement_dir, *events):
-        if events[0][ledger.EVENT_KEY] != ledger.MOVING and not state["died"]:
-            state["died"] = True
-            raise KeyboardInterrupt
-        return real(conn, engagement_dir, *events)
-
-    monkeypatch.setattr(store, "record", killing)
-    return state
-
-
 def test_an_intent_is_written_before_the_first_file_operation_and_completed_by_the_row(engagement):
     """The shape of the whole decision: what a pass is about to do is on the
     record before it does it, and the row it then records completes it, so
@@ -4860,13 +4830,6 @@ def test_the_conservation_helper_holds_across_every_injected_crash_point(
 # that, and about what a person's actions and a killed run do once an
 # original lives in the other tree.
 
-BUSINESS = [
-    RequestItem(
-        identifier="B01", document="Trial Balance", period="TY2025",
-        allowed_extensions=("pdf",), min_size_kb=0, required_keywords=("trial balance",),
-    ),
-]
-
 
 @pytest.fixture
 def two_returns(tmp_path):
@@ -5470,22 +5433,6 @@ def test_a_re_send_after_a_set_aside_is_name_checked_before_it_files(
 # feeds its own returns unless a person extends it to named return lines in
 # other households - and a document filed to one of those rests under the
 # folder that return lives in, seen by exactly that folder's sharing.
-
-FATHER = (Person("taxpayer", "John Park", propose_spellings("John Park", "taxpayer")),)
-LLC_PEOPLE = (Person("entity", "Park & Lee LLC",
-                     propose_spellings("Park & Lee LLC", "entity")),)
-
-
-def feeding(tmp_path, feeds):
-    """Park Family's drop folder, extended to these return lines by a
-    person - one ``household_changed`` event, exactly as the editor
-    records it."""
-    from tracker.households import load_household_info, save_household
-    from tracker.layout import private_household_dir
-
-    folder = private_household_dir(tmp_path, "Park Family")
-    save_household(folder, replace(load_household_info(folder), feeds=tuple(feeds)))
-    return folder
 
 
 @pytest.fixture
@@ -6609,77 +6556,6 @@ def test_a_second_copy_whose_request_was_deleted_reads_other_document_never_anot
 # ------------------------------------ decision 131: the room a return has ----
 
 
-#: One request with no second file expected, as the room's claims want it:
-#: its canonical copy is ``Prepared/A01 - W-2 Wage Statements - TY2025.pdf``,
-#: 48 characters below the return folder (74 while it sat in a request
-#: folder of its own, before decision 168).
-ROOM_ITEMS = [
-    RequestItem(
-        identifier="A01", document="W-2 Wage Statements", period="TY2025",
-        allowed_extensions=("pdf",), min_size_kb=0,
-        required_keywords=("W-2",), date_pattern=r"(?i)\b2025\b",
-    ),
-]
-#: Below the return folder: the canonical copy's path, and the folder it
-#: sits in - Prepared itself since decision 168.
-CANONICAL_BELOW = 48
-FOLDER_BELOW = 9
-#: A period long enough that ``A01 - <period>.pdf`` (44 characters) does not
-#: fit the 43 a return of :func:`no_room_return` characters leaves in
-#: Prepared - while its review folder still has room (decision 131's
-#: floor). Since decision 168 that is the only way a request is left no
-#: room: Prepared is shallower than the review folder, so an ordinary TY2025
-#: name fits wherever a review copy does. This long, not ``Jan 2025 - Dec
-#: 2025``, because with long paths off a review folder has room only in a
-#: return of 206 characters at most, whose Prepared leaves 43 (pilot
-#: decision P29) - and one period makes the claim under both settings.
-LONG_PERIOD = "January 01 2025 - December 31 2025"
-#: The period :func:`tight_return` asks for: long enough that the canonical
-#: copy is nine past the limit in a return whose review folder has room
-#: under either setting (pilot decision P29) - a TY2025 copy never is,
-#: with long paths off.
-TIGHT_PERIOD = "Jan 2025 to Dec 2025"
-#: How far past the limit :func:`tight_return`'s claims put the canonical
-#: copy, whose name then keeps ten characters of its document.
-OVER = 9
-
-
-def no_room_return() -> int:
-    """A return whose Prepared leaves 43 characters for a name: 207 at 260,
-    206 with long paths off - where it is also the deepest whose review
-    folder has room (``tests.conftest.floor_return``)."""
-    from tracker.layout import path_limit
-
-    return path_limit() - FOLDER_BELOW - 1 - 43
-
-
-def no_room_prepared() -> int:
-    """How long Prepared is in a return of :func:`no_room_return`."""
-    return no_room_return() + FOLDER_BELOW
-
-
-def with_the_long_period(item):
-    """``item`` asking for :data:`LONG_PERIOD`, its year check stated - a
-    period this long would derive a month check a year-end form does not
-    pass, and the claims here are about room, not about the check."""
-    return replace(item, period=LONG_PERIOD, date_pattern=r"(?i)\b2025\b")
-
-
-def tight_return(base, over: int, items=ROOM_ITEMS, **kwargs):
-    """A return whose A01 canonical copy, asking for :data:`TIGHT_PERIOD`,
-    passes the limit by ``over`` characters: its folder is
-    ``path_limit() + over - 62`` characters long."""
-    from tests.conftest import root_for_a_return_of
-    from tracker.layout import path_limit
-
-    below = CANONICAL_BELOW - len("TY2025") + len(TIGHT_PERIOD)
-    items = [replace(item, period=TIGHT_PERIOD, date_pattern=r"(?i)\b2025\b") for item in items]
-    root = root_for_a_return_of(base, path_limit() + over - below)
-    engagement = make_engagement(root, items, **kwargs)
-    assert len(str(engagement)) + below == path_limit() + over
-    return engagement
-
-
 def test_the_room_is_measured_from_the_list_alone_and_creations_figure_is_unchanged(tmp_path, path_setting):
     """``room_for`` reads no disk: a return folder that does not exist is
     measured as readily as one that does. Its ``need`` is creation's figure
@@ -7351,16 +7227,6 @@ def test_a_drop_over_the_size_ceiling_goes_to_review_unread(engagement, monkeypa
     assert [row.original_name for row in read_index(engagement)] == ["huge.pdf"]
 
 
-def _link_to(target, link):
-    """A junction on Windows, a symlink elsewhere: a folder that is a link."""
-    if sys.platform == "win32":
-        import _winapi
-
-        _winapi.CreateJunction(str(target), str(link))
-    else:
-        link.symlink_to(target, target_is_directory=True)
-
-
 def test_a_move_whose_source_is_now_behind_a_link_moves_nothing(engagement, tmp_path, monkeypatch):
     """Decision 137 (L2): the link check is made again immediately before
     the rename. The walk refuses what lies behind a junction, but the move
@@ -7372,7 +7238,7 @@ def test_a_move_whose_source_is_now_behind_a_link_moves_nothing(engagement, tmp_
     outside.mkdir()
     (outside / "theirs.pdf").write_bytes(b"%PDF-1.4 somebody else's file")
     inbox = inbox_of(engagement)
-    _link_to(outside, inbox / "swapped")
+    link_to(outside, inbox / "swapped")
     behind = inbox / "swapped" / "theirs.pdf"
 
     # Directly: the move itself refuses, and says why.
@@ -7446,7 +7312,7 @@ def test_the_link_check_stops_at_the_clients_root(tmp_path):
 
     real = tmp_path / "real"
     real.mkdir()
-    _link_to(real, tmp_path / "linked")                  # a link ABOVE the clients root
+    link_to(real, tmp_path / "linked")                  # a link ABOVE the clients root
     root = tmp_path / "linked" / "Clients root"
     engagement = make_engagement(root, ITEMS)
     drop(engagement, "scan0012.pdf", "Form W-2 Wage and Tax Statement 2025")
@@ -7736,30 +7602,6 @@ def test_the_intake_returns_fit_under_the_real_root():
 # folder, nothing copied; the status, the letter, the client's received
 # list, a rebuilt store and ``store check`` all read the filed row's Also
 # Answers cell. Every case here is d146.
-
-SCHWAB_146 = "\n".join([
-    "Charles Schwab", "2025 Consolidated Form 1099", "Form 1099-DIV Dividends and Distributions",
-    "Form 1099-INT Interest Income", "Form 1099-B Proceeds From Broker and Barter Exchange Transactions",
-    "Form 1099-MISC Miscellaneous Information", "Realized Gain and Loss",
-])
-
-
-def _consolidated_return(tmp_path, *, int_div_expected=2):
-    """A 1040 on the shipped catalog, the Schwab statement dropped, sorted
-    and scanned. A02 expects two statements here: the consolidated one
-    carries two of them, its 1099-INT and its 1099-DIV."""
-    from tracker.manifest import validated
-    from tracker.scanner import scan_engagement
-    from tracker.templates import template_items
-
-    items = [replace(i, min_size_kb=0,
-                     expected_count=int_div_expected if i.identifier == "A02" else i.expected_count)
-             for i in validated(template_items("1040", year=2025))]
-    engagement = make_engagement(tmp_path, items)
-    drop(engagement, "Schwab 2025 1099.pdf", SCHWAB_146)
-    sort(engagement, today=DAY1)
-    scan_engagement(engagement, today=DAY1)
-    return engagement
 
 
 def _status(engagement, identifier):
@@ -9175,7 +9017,7 @@ def test_a_forged_step_is_carried_out_nowhere(engagement, tmp_path, which):
     original.parent.mkdir(parents=True, exist_ok=True)
     original.write_bytes(b"%PDF-1.4 the client's W-2")
     behind = _elsewhere(tmp_path)
-    _link_to(behind, engagement / PREPARED_DIR_NAME / "linked")
+    link_to(behind, engagement / PREPARED_DIR_NAME / "linked")
     other_inbox = root_of(engagement) / CLIENTS_TREE / "Other Household" / INBOX_DIR_NAME
     climbing = location_of(engagement, other_inbox / "w2.pdf")
     step, refusal = {
@@ -9259,7 +9101,7 @@ def test_a_copy_through_a_link_copies_nothing(engagement, tmp_path):
     from tracker.validators import sha256_of
 
     behind = _elsewhere(tmp_path)
-    _link_to(behind, engagement / PREPARED_DIR_NAME / "linked")
+    link_to(behind, engagement / PREPARED_DIR_NAME / "linked")
     original = originals(engagement) / "w2.pdf"
     original.parent.mkdir(parents=True, exist_ok=True)
     original.write_bytes(b"%PDF-1.4 the client's W-2")
@@ -9281,7 +9123,7 @@ def test_a_removal_through_a_link_removes_nothing(engagement, tmp_path):
     from tracker.validators import sha256_of
 
     behind = _elsewhere(tmp_path)
-    _link_to(behind, engagement / PREPARED_DIR_NAME / "linked")
+    link_to(behind, engagement / PREPARED_DIR_NAME / "linked")
     removal = {ledger.OP_KEY: ledger.OP_REMOVE, ledger.FROM_KEY: f"{PREPARED_DIR_NAME}/linked/x.pdf",
                ledger.DIGEST_KEY: sha256_of(behind / "x.pdf")}
 
@@ -9301,7 +9143,7 @@ def test_a_move_into_a_linked_folder_moves_nothing(engagement, tmp_path):
     original = drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
     behind = _elsewhere(tmp_path)
     originals(engagement).rmdir()                     # the year's folder, swapped for a junction
-    _link_to(behind, originals(engagement))
+    link_to(behind, originals(engagement))
     for target in (originals(engagement) / "w2.pdf", originals(engagement) / "new" / "w2.pdf"):
         move = {ledger.OP_KEY: ledger.OP_MOVE, ledger.FROM_KEY: location_of(engagement, original),
                 ledger.TO_KEY: location_of(engagement, target), ledger.DIGEST_KEY: sha256_of(original)}
@@ -9325,7 +9167,7 @@ def test_a_recovery_copies_no_original_behind_a_link(engagement, tmp_path):
 
     behind = _elsewhere(tmp_path)
     originals(engagement).rmdir()                     # the year's folder, swapped for a junction
-    _link_to(behind, originals(engagement))
+    link_to(behind, originals(engagement))
     row = IndexEntry(received="2026-07-01", original_name="x.pdf", size_kb=0.1,
                      digest=sha256_of(behind / "x.pdf"), identifier="A01",
                      prepared_location=f"{PREPARED_DIR_NAME}/A01 - W-2.pdf",
@@ -9502,7 +9344,7 @@ def test_a_recovery_removes_nothing_behind_a_link(engagement, tmp_path):
     from tracker.validators import sha256_of
 
     behind = _elsewhere(tmp_path)
-    _link_to(behind, engagement / PREPARED_DIR_NAME / "linked")
+    link_to(behind, engagement / PREPARED_DIR_NAME / "linked")
     removal = {ledger.OP_KEY: ledger.OP_REMOVE, ledger.FROM_KEY: f"{PREPARED_DIR_NAME}/linked/x.pdf",
                ledger.DIGEST_KEY: sha256_of(behind / "x.pdf")}
 

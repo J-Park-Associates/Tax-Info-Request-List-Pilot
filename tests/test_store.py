@@ -28,11 +28,12 @@ from pathlib import Path
 
 import pytest
 
-from tests.conftest import child_env, make_engagement, named_page, seed_statuses, sort, written_elsewhere
+from tests.builders import cache_rows, drop, engagement_fixture
+from tests.conftest import child_env, make_engagement, seed_statuses, sort, written_elsewhere
 from tests.samples import text_pdf
 from tracker import checkpoint, ledger, store
 from tracker.filer import ensure, read_index
-from tracker.layout import inbox_of, location_of, originals_of
+from tracker.layout import inbox_of
 from tracker.locking import engagement_lock
 from tracker.manifest import (
     RequestItem,
@@ -83,15 +84,7 @@ def root(tmp_path):
     return folder
 
 
-@pytest.fixture
-def engagement(root):
-    return make_engagement(root, ITEMS, household="Smith Family")
-
-
-def original_at(engagement, name):
-    """How a row names an original: relative to the return folder, POSIX,
-    and across the two trees since decision 125."""
-    return location_of(engagement, originals_of(engagement) / name)
+engagement = engagement_fixture(ITEMS, household="Smith Family", root="root")
 
 
 @pytest.fixture
@@ -114,12 +107,6 @@ def conn(tmp_path):
     connection = store.open(tmp_path / "app" / store.STORE_FILENAME)
     yield connection
     connection.close()
-
-
-def drop(engagement, name, text):
-    """One document into the household's inbox, with the return's person on
-    the page - a named request files only where a name confirms (128)."""
-    return text_pdf(inbox_of(engagement) / name, named_page(text))
 
 
 def build(conn, root, engagement):
@@ -664,13 +651,6 @@ def test_a_rebuild_from_the_journal_alone_equals_the_store(root, engagement):
 # ----------------------------------------------------------- the verdict cache ----
 
 
-def cache_rows(engagement):
-    """The engagement's verdict cache as the store holds it: (memos, verdicts)."""
-    from tracker.content_check import CACHE_VERSION
-
-    return store.cached_verdicts(store.connect(), engagement, version=CACHE_VERSION)
-
-
 def a_pass(engagement):
     from tracker.scanner import scan_engagement
 
@@ -684,7 +664,7 @@ def test_a_rebuild_forgets_the_engagements_verdicts_and_the_next_pass_reads_agai
     holds it, so a rebuild leaves the two tables empty, the check has
     nothing to say about them, and the next pass reads each document once
     and comes to the same statuses."""
-    from tests.test_content_check import counting_extractor
+    from tests.builders import counting_extractor
 
     drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
     before = a_pass(engagement).updates
@@ -1840,7 +1820,7 @@ def test_the_check_names_a_move_the_two_sides_do_not_agree_is_open(conn, root, e
     table that kept an intent the journal has closed would move a file the
     record has already recorded. The check compares the two folds and says
     which key they disagree about."""
-    from tests.test_filer import killed_at_the_record
+    from tests.builders import killed_at_the_record
 
     drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
     killed_at_the_record(monkeypatch)
@@ -4280,7 +4260,6 @@ def test_a_version_16_store_is_upgraded_in_place_and_keeps_its_cached_verdicts(t
     through decision 190's step and 209's to this version. Any other earlier
     version is set aside and rebuilt (decision 159, E3)."""
     from tests.conftest import sort
-    from tracker.layout import inbox_of
     from tracker.records import entry_from_json
 
     engagement = make_engagement(tmp_path / "root", [RequestItem(
@@ -4372,7 +4351,6 @@ def test_a_version_17_store_gains_the_cause_columns_in_place_and_every_old_row_r
     written before 190 gives, cell for cell - no such line carries a cause -
     and no row's cause is read out of its words."""
     from tests.conftest import sort
-    from tracker.layout import inbox_of
     from tracker.records import entry_from_json
 
     engagement = make_engagement(tmp_path / "root", [RequestItem(
@@ -4413,7 +4391,6 @@ def test_a_store_that_204s_old_step_upgraded_with_empty_cells_passes_check_after
     real value there, and NULL against ``''`` in any other column, are
     still named."""
     from tests.conftest import sort
-    from tracker.layout import inbox_of
 
     root = tmp_path / "root"
     engagement = make_engagement(root, [RequestItem(

@@ -17,6 +17,7 @@ from pathlib import Path
 
 import pytest
 
+from tests.builders import DROPPED, failure, item, locked
 from tests.conftest import child_env
 from tests.samples import text_pdf
 from tracker import ledger, reasons
@@ -26,7 +27,6 @@ from tracker.manifest import (
     EXPECTED_PATTERN,
     NOT_ASKED_LABEL,
     Override,
-    RequestItem,
     Status,
     StatusUpdate,
     status_label,
@@ -93,26 +93,6 @@ from tracker.reminder import (
 )
 from tracker.scaffold import PREPARED_DIR_NAME, README_FIRST_LINE, REVIEW_DIR_NAME
 from tracker.scanner import OVERRIDE_NOTE, PARTIAL_NOTE, SYNCING_NOTE
-
-
-def item(identifier, document, status, **kwargs):
-    """A request with the record's status on it. Notes said with a code -
-    :func:`failure`, or a Reason's own sentence - carry that code into
-    ``note_codes`` as the scan records it (decision 190); plain text carries
-    none, however it reads."""
-    notes = kwargs.get("validation_notes", "")
-    if "note_codes" not in kwargs and reasons.code_of(notes):
-        kwargs["note_codes"] = reasons.code_of(notes)
-    return RequestItem(
-        identifier=identifier, document=document, status=status, **kwargs
-    )
-
-
-def failure(name, said):
-    """One failure as the scanner notes it, ``name.pdf: sentence``, carrying
-    the sentence's code (decision 190)."""
-    return reasons.Said(f"{name}: {said}", reasons.code_of(said))
-
 
 SCANNED = [
     item("A01", "W-2 Wage Statements", Status.MISSING,
@@ -940,15 +920,6 @@ def test_the_gate_holds_at_every_stage(tmp_path):
 # the review queue's own shortlist - what the card shows a person - so a
 # locked PDF named for a request holds that request, as it should.
 
-#: The rows the drops below are routed against: the same two requests, with
-#: the keywords that let a file name point at one of them.
-DROPPED = [
-    item("A01", "W-2 Wage Statements", Status.MISSING, period="TY2025", expected_count=2,
-         required_keywords=("W-2",), min_size_kb=0),
-    item("A02", "Bank Statements", Status.PARTIAL, period="TY2025", expected_count=3,
-         file_count=2, any_keywords=("bank statement",), min_size_kb=0),
-]
-
 
 def sorted_drop(folder, write):
     """A file the client sent, sorted by the filer as a pass sorts it.
@@ -964,13 +935,6 @@ def sorted_drop(folder, write):
     scaffold_engagement(folder)
     write(inbox_of(folder))
     return sort(folder, today=dt.date(2026, 2, 1))
-
-
-def locked(name, *, password="secret123"):
-    """A password-protected PDF, the file the client is certain they sent."""
-    from tests.samples import write_pdf
-
-    return lambda shared: write_pdf(shared / name, password=password)
 
 
 def parked_rows(folder):
@@ -1234,8 +1198,8 @@ def test_every_existing_reason_holds_exactly_as_before(reason):
     sentence and evidence for A01."""
     # The reasons' own sample sentence, so a placeholder a later reason adds
     # is filled here the moment test_reasons.py learns it.
+    from tests.builders import parked_row
     from tests.test_reasons import _sample
-    from tests.test_review import parked_row
     from tracker.records import RULE_REQUIRED, WHERE_TITLE, Evidence
     from tracker.reminder import _ask_for, _parked_holds
 
@@ -2029,7 +1993,7 @@ def _what_the_letter_does(reason, text):
     """What one reason, its detail and its file named ``text``, makes the
     letter do: the hold of a parked row pointing at A01, and where a Failed
     row goes."""
-    from tests.test_review import parked_row
+    from tests.builders import parked_row
     from tracker.records import RULE_REQUIRED, WHERE_TITLE, Evidence
     from tracker.reminder import _parked_holds
 
@@ -2064,7 +2028,7 @@ def test_rows_written_before_190_read_as_cause_not_recorded():
     parked row holds where its shortlist names a request - the safe
     direction, since a person confirms it - and is asked with the generic
     sentence; a Failed request is held."""
-    from tests.test_review import parked_row
+    from tests.builders import parked_row
     from tracker.records import RULE_REQUIRED, WHERE_TITLE, Evidence
     from tracker.reminder import _parked_holds
 
@@ -2093,8 +2057,8 @@ def test_no_client_facing_text_carries_a_reason_sentence(tmp_path):
     label: only the fixed asks reach a client."""
     import string
 
+    from tests.builders import parked_row
     from tests.conftest import seed_index
-    from tests.test_review import parked_row
     from tracker.api import CAME_FROM_SUBFOLDER
     from tracker.filer import CONTESTED_BETWEEN_RETURNS, refresh_household_readme
     from tracker.layout import household_of
@@ -2129,7 +2093,7 @@ def test_an_executable_gets_no_review_copy_shows_its_true_type_and_does_not_hold
     """The letter's half of G-4 (decision 190): a program named like a W-2,
     whose name a shortlist would once have pointed at A01, holds nothing -
     it is not a document, and no request is asked about because of it."""
-    from tests.test_review import parked_row
+    from tests.builders import parked_row
     from tracker.records import RULE_REQUIRED, WHERE_TITLE, Evidence
     from tracker.reminder import _parked_holds
 
@@ -2327,7 +2291,7 @@ SIDED = [
 
 def _parked_w2():
     """A locked file in review whose shortlist names A01: the parked hold."""
-    from tests.test_review import parked_row
+    from tests.builders import parked_row
     from tracker.records import RULE_REQUIRED, WHERE_TITLE, Evidence
 
     return parked_row("scan.pdf", {"A01": (Evidence(RULE_REQUIRED, "W-2", WHERE_TITLE, 1),)},

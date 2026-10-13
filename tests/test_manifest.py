@@ -7,6 +7,7 @@ from dataclasses import replace
 
 import pytest
 
+from tests.builders import k1_rows
 from tests.conftest import (
     TEST_HOUSEHOLD,
     TEST_PEOPLE,
@@ -867,19 +868,6 @@ def test_a_derived_year_is_a_check_not_a_reason_to_route():
 
 
 # ------------------------------------------- a row per issuer (decision 93) ----
-
-K1_WORDS = ("partner's share of income", "member's share of income")
-
-
-def k1_rows(*issuers):
-    """The generic K-1 row and one row per (identifier, entity) after it."""
-    rows = [RequestItem(identifier="F01", document="Schedule K-1s Received",
-                        allowed_extensions=("pdf",), any_keywords=K1_WORDS)]
-    rows += [RequestItem(identifier=identifier, document=f"Schedule K-1 - {entity}",
-                         allowed_extensions=("pdf",), required_keywords=(entity,),
-                         any_keywords=K1_WORDS)
-             for identifier, entity in issuers]
-    return rows
 
 
 @pytest.mark.parametrize("typed, expected", [

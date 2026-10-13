@@ -18,20 +18,12 @@ from pathlib import Path
 
 import pytest
 
+from tests.node_harness import content, read
+
 REPO = Path(__file__).resolve().parent.parent
-RENDERER = REPO / "app" / "renderer"
+
+
 PILOT_JS = ("pilot-content.js", "pilot.js", "tour.js")
-
-
-def read(name: str) -> str:
-    return (RENDERER / name).read_text(encoding="utf-8")
-
-
-def content() -> dict:
-    text = read("pilot-content.js")
-    begin, end = "// PILOT-CONTENT-BEGIN\n", "// PILOT-CONTENT-END"
-    assert text.count(begin) == 1 and text.count(end) == 1
-    return json.loads(text.split(begin)[1].split(end)[0])
 
 
 def tour_lines(content_: dict):
