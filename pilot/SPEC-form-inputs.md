@@ -711,3 +711,87 @@ stays as written.
 Gate: `test_api`, `test_single_source`, `test_layers`, `test_repo_map`,
 ruff, the map check. The builder appends `## Rebuild 7 (Sonnet, 2026-10-13)`
 to the handoff (append only).
+
+---
+
+## 23. A people refusal names the person (Jason, 2026-10-13; decision P306)
+
+Jason's ruling on Review 7's first finding: option 1. The editor sends the
+people block on every save, and `api._people_from_spec` judges every name
+and every spelling it is sent, stored or typed (the store's gate judges
+neither, P288 and P304). A return whose record already holds a name or a
+spelling past the rule - over 1,000 characters, or carrying a control
+character, written before the rule - is refused on every save, a row-only
+edit included, with a sentence that names no person; a `\x07` cannot be
+seen in the box. The refusal stays (the value is wrong and the person
+fixes it in the editor); it says who. The build is Sonnet's, with sections
+22 and 24 and SPEC-error-handling-small section 14.
+
+**R6.** In `_people_from_spec`:
+- the name's refusal becomes `f"{PEOPLE_LABEL}: the {PERSON_KIND_LABELS[kind]}'s name {problem}"`
+  ("People: the Taxpayer's name must be one line of text of at most 1000
+  characters, with no control character");
+- the spelling's refusal becomes `f"{PEOPLE_LABEL}: a spelling of {name} {problem}"`
+  ("People: a spelling of John Park must be ..."); `name` has passed its
+  own rule by then, so the sentence is bounded;
+- the comment "a stored one is not re-judged" is replaced: the check runs
+  on every save, stored values included, so the refusal names the person
+  (P306). `ONE_WORD_SPELLING` is the names module's sentence and does not
+  change.
+
+**Tests** (`tests/test_api.py`): the existing P288 and P304 refusal tests
+assert the new sentences exactly (the constant `_SPELLING_REFUSED` and the
+name assertion near them); one new test stores a return whose record holds
+a spelling past the rule (write it through the store or the ledger as the
+P304 tests build their fixtures, bypassing the typed check) and saves a
+row-only edit the way the editor does, sending the people block back as
+stored → refused, and the sentence names that person. Nothing is written.
+
+**Decision row (added by the landing session):**
+
+| P306 | 2026-10-13 | A people refusal for a name or a spelling past the text rule names the person ("the Taxpayer's name ...", "a spelling of John Park ..."); the check runs on every save, stored values included, and had said only "a name" or "a spelling" (SPEC-form-inputs section 23). | Jason, 2026-10-13, on the seventh review's first finding: a stored value past the rule refused every save of the return with no way to see which. |
+
+---
+
+## 24. The path-room check measures the short title and a cleared Not Applicable (Jason, 2026-10-13; decision P307)
+
+Jason's ruling on Review 7's fifth finding: option 1, fix it. Since
+decision 144 a working copy's name is `label_for(identifier, short name,
+period)` (`filer._parts_of`: `RequestItem.short_name`, which is the typed
+short title or the one derived from the Document), but the editor's
+path-room check (decision 131) compares document, period and file types
+only, so lengthening a held row's short title is never measured (the
+reviewer's probe: 253 to 270 against 260, saved). And `filer.room_for`
+skips a row set Not Applicable, so a row set Not Applicable in one save and
+cleared in the next is measured by neither (the probe: 270 against 260,
+saved). Both existed before section 20. The build is Sonnet's, with
+sections 22 and 23.
+
+**R4, extended.** In `_refuse_a_changed_row_past_the_limit`:
+- `_PATH_FIELDS` becomes `("document", "short_title", "period", "allowed_extensions")`;
+  the comment says the short name a copy is named by is the short title or
+  the Document's derivation, so both are compared;
+- a matched row also counts as changed when the stored row is Not
+  Applicable and the sent one is not (`held.manual_override == Override.NOT_APPLICABLE
+  and item.manual_override != Override.NOT_APPLICABLE`), beside the newly
+  Asked condition and for the same reason: it is now a row creation would
+  have measured;
+- the docstring names both.
+
+**Tests** (`tests/test_api.py`, beside the decision-131 tests): a held row
+past the limit (as `_a_held_row_past_the_limit` builds one) whose short
+title is lengthened → refused `PATH_TOO_LONG`; the same row set Not
+Applicable saves (not measured, as today), then cleared in a second save →
+refused `PATH_TOO_LONG`; a held row past the limit whose short title is
+sent back unchanged → saves. Mutation: dropping `"short_title"` fails the
+first; dropping the Not Applicable clause fails the second.
+
+**Decision row (added by the landing session):**
+
+| P307 | 2026-10-13 | The editor's path-room check (decision 131) compares the short title too, since a working copy is named by it (decision 144), and measures a row whose Not Applicable is cleared, as it measures one newly Asked; a lengthened short title and a cleared Not Applicable had both saved unmeasured (SPEC-form-inputs section 24). | Jason, 2026-10-13, on the seventh review's fifth finding. |
+
+Gate for sections 22, 23 and 24 together: `test_api`, `test_single_source`,
+`test_layers`, `test_repo_map`, `test_tripwire`, `test_errors` (wording
+changes), ruff, the map check. The builder appends one
+`## Rebuild 7 (Sonnet, 2026-10-13)` to the handoff covering the three
+sections (append only).
