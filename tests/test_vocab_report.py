@@ -12,6 +12,7 @@ from pathlib import Path
 
 import pytest
 
+from tests.samples import text_pdf
 from tracker.manifest import RequestItem
 from tracker.settings import ENV_REAL_CORPUS, EXPECTATIONS_COLUMNS, EXPECTATIONS_FILENAME
 
@@ -145,7 +146,6 @@ FABRICATED_NAME = "Zephyrine Quillfeather W-2 2025.pdf"
 
 def one_pdf_corpus(folder: Path, rows: list[str]) -> Path:
     """A corpus folder with one text PDF and an expectations file of ``rows``."""
-    from tests.test_scanner import text_pdf
 
     folder.mkdir(parents=True, exist_ok=True)
     text_pdf(folder / FABRICATED_NAME, "Form W-2 Wage and Tax Statement 2025")

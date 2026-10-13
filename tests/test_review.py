@@ -16,7 +16,7 @@ from pathlib import Path
 import pytest
 
 from tests.conftest import child_env, make_engagement, seed_index, sort
-from tests.test_scanner import text_pdf
+from tests.samples import text_pdf
 from tracker import reasons
 from tracker.content_check import (
     EVIDENCE_PLACES,
@@ -333,7 +333,7 @@ def test_a_locked_file_the_rules_never_read_is_offered_by_its_name_with_the_refu
     the request it was probably meant for and says both things about it -
     at the weakest tier, beside a document the person has to open anyway.
     """
-    from tests.test_validators import write_pdf
+    from tests.samples import write_pdf
 
     write_pdf(inbox_of(engagement) / "W-2 Jane Smith 2025.pdf", password="secret123")
     report = sort(engagement, today=DAY1)

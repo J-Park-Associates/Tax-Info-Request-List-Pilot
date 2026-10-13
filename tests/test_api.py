@@ -18,7 +18,7 @@ import pytest
 
 import tracker.api as api
 from tests.conftest import TEST_CLIENT, app_stdin, make_engagement
-from tests.samples import PRIOR_YEAR, SCRATCH_PEOPLE
+from tests.samples import PRIOR_YEAR, SCRATCH_PEOPLE, text_pdf
 from tracker import layout, ledger, manifest, reasons, reminder, store, view
 from tracker.filer import FILED, NEEDS_REVIEW, read_index
 from tracker.households import load_household_info
@@ -945,7 +945,6 @@ def triage_engagement(capsys, demo_root, extra=()):
     ``extra`` adds rows the document says nothing about, for the claim that
     needs a request off the shortlist to file to.
     """
-    from tests.test_scanner import text_pdf
 
     spec = {"household": HOUSEHOLD, "return_name": "Reed Property 2025", "client": "Ada Reed", "items": [
         {"identifier": "A01", "document": "Mortgage Interest Statement", "period": "TY2025",
@@ -1015,7 +1014,6 @@ def test_the_review_card_has_three_buckets_and_opens_only_a_documents_copy(capsy
     copy is named under in ``paths`` - the only paths the shell opens - and
     a program's carries none, nor, since Open follows 184, a container's,
     nor a document the tracker never read (no request takes a .bmp)."""
-    from tests.test_scanner import text_pdf
 
     engagement = sample_engagement(capsys, demo_root, tmp_path, "vacation photo.bmp")
     text_pdf(inbox_of(engagement) / "a letter.pdf", "\n".join(
@@ -1750,7 +1748,6 @@ def test_a_failed_create_leaves_no_folder_and_no_store_row(capsys, demo_root, mo
 
 
 def test_the_editor_shows_the_persons_rows_and_never_a_taught_keyword_as_a_typed_one(capsys, demo_root, tmp_path):
-    from tests.test_scanner import text_pdf
 
     spec = {"household": HOUSEHOLD, "return_name": "Smith", "items": [
         {"identifier": "A01", "document": "W-2", "any_keywords": "w-2"},
@@ -3114,7 +3111,7 @@ def test_the_reminder_payload_holds_on_a_parked_client_side_file(capsys, demo_ro
     """Decision 117: a parked file the client could fix holds the request
     the review card offers it for, and the card and the draft day agree -
     both read the shortlist, from the index rows ``state`` already has."""
-    from tests.test_validators import write_pdf
+    from tests.samples import write_pdf
     from tracker import reasons
     from tracker.reminder import PARKED_HOLD
 
@@ -4190,7 +4187,6 @@ def test_the_scan_command_runs_the_household_pass_and_answers_for_the_return_it_
     return sorts all of it - which is the only honest thing it can do - and
     the reply is about the return that was asked for."""
     from tests.samples import build_samples
-    from tests.test_scanner import text_pdf
     from tracker.layout import private_household_dir
 
     assert run(capsys, "create", stdin={
@@ -4806,12 +4802,11 @@ def test_run_now_sorts_against_the_feed_list_like_the_scheduled_pass(capsys, dem
     feed list resolves to nothing, which would make the button and the
     schedule disagree about what the household's inbox is for.
     """
-    from tests.samples import text_pdf
     from tracker import reasons
 
     father, llc = two_households(capsys, demo_root)
     text_pdf(inbox_of(father) / "tb.pdf",
-             ["Trial balance as of December 31 2025", TEST_CLIENT])
+             ["Trial balance as of December 31 2025", TEST_CLIENT], style="padded")
 
     code, payload = scan(capsys, father)
 
@@ -4827,9 +4822,8 @@ def waiting_document(capsys, father):
     """A trial balance naming the LLC's person, dropped in the father's
     inbox and parked by *Run now* for one click (decision 204): its triage
     entry, as the card receives it."""
-    from tests.samples import text_pdf
 
-    text_pdf(inbox_of(father) / "tb.pdf", ["Trial balance as of December 31 2025", TEST_CLIENT])
+    text_pdf(inbox_of(father) / "tb.pdf", ["Trial balance as of December 31 2025", TEST_CLIENT], style="padded")
     code, payload = scan(capsys, father)
     assert code == 0, payload
     [waiting] = payload["state"]["review"]
@@ -4967,9 +4961,8 @@ def a_parked_document(capsys, engagement):
     """One document nothing asks for, dropped in the household's inbox and
     left waiting for a person by a pass - the row a hand-over acts on, with
     the record version the card would have carried out (decision 112)."""
-    from tests.samples import text_pdf
 
-    text_pdf(inbox_of(engagement) / "notice.pdf", ["an agency notice nothing asks for"])
+    text_pdf(inbox_of(engagement) / "notice.pdf", ["an agency notice nothing asks for"], style="padded")
     _code, payload = scan(capsys, engagement)
     [row] = [e for e in payload["state"]["index"]
              if e["decision"] == NEEDS_REVIEW]
@@ -5021,11 +5014,10 @@ def test_a_pass_cannot_be_run_without_the_practice(capsys, demo_root, monkeypatc
     envelope: the button and the schedule refuse the same root the same
     way."""
     import tracker.runner as runner
-    from tests.samples import text_pdf
     from tracker.registry import RegistryError
 
     father, _llc = two_households(capsys, demo_root)
-    text_pdf(inbox_of(father) / "tb.pdf", ["Trial balance as of December 31 2025", TEST_CLIENT])
+    text_pdf(inbox_of(father) / "tb.pdf", ["Trial balance as of December 31 2025", TEST_CLIENT], style="padded")
 
     def unwalkable(root):
         raise RegistryError(f"{root} cannot be walked")
@@ -5130,11 +5122,10 @@ def test_run_now_walks_the_practice_once(capsys, demo_root, monkeypatch):
     the state and a waiting row. One walk now serves the pass and the
     page, and the state walks nothing; the app's redraw after the pass
     asks ``list`` once (decision 203, the lane's ruling on 194's Q5)."""
-    from tests.samples import text_pdf
 
     father, llc = two_households(capsys, demo_root)
     third = _a_third_household(capsys, demo_root)
-    text_pdf(inbox_of(father) / "tb.pdf", ["Trial balance as of December 31 2025", TEST_CLIENT])
+    text_pdf(inbox_of(father) / "tb.pdf", ["Trial balance as of December 31 2025", TEST_CLIENT], style="padded")
     walked = _count_walks(monkeypatch)
 
     code, payload = scan(capsys, father)
@@ -5645,7 +5636,6 @@ def test_a_persons_filing_and_the_hand_over_are_named_to_fit_and_refuse_only_bel
     is left no room only by a period as long as test_filer's LONG_PERIOD."""
     from tests.conftest import named_page, root_for_a_return_of, sort
     from tests.test_filer import LONG_PERIOD, no_room_prepared, no_room_return
-    from tests.test_scanner import text_pdf
     from tracker.filer import PATH_NO_ROOM
     from tracker.layout import path_limit
     from tracker.manifest import RequestItem
@@ -5968,7 +5958,6 @@ def test_creation_measures_the_room_of_asked_rows_only(capsys, tmp_path, monkeyp
     room (pilot decision P29; 212 with TY2025 before it, 205 while each
     request had a folder)."""
     from tests.conftest import named_page, root_for_a_return_of, sort
-    from tests.test_scanner import text_pdf
     from tracker.layout import PATH_TOO_LONG, path_limit
     from tracker.scaffold import PREPARED_DIR_NAME
     from tracker.settings import ENV_SETTINGS_DIR, set_clients_root
@@ -8320,7 +8309,6 @@ def _issuer_return(capsys, demo_root, *, year=BASE_YEAR, items=None, name="Issue
     row and one issuer row, as the catalog builds them, for ``year`` - and a
     K-1 from an issuer it does not name, parked for a person by a pass.
     Returns the return and the parked row as the state shows it."""
-    from tests.samples import text_pdf
     from tracker import templates
 
     # Written for the catalog's year: the create shifts them to the return's.
@@ -8333,7 +8321,7 @@ def _issuer_return(capsys, demo_root, *, year=BASE_YEAR, items=None, name="Issue
     text_pdf(inbox_of(engagement) / "k-1 dunmore.pdf", [
         f"Schedule K-1 {year} (Form 1065) Partner's Share of Income, Deductions, Credits, etc.",
         "k-1 statement", "Part I Information About the Partnership", "Dunmore Capital Group",
-        "Part II Information About the Partner", TEST_CLIENT])
+        "Part II Information About the Partner", TEST_CLIENT], style="padded")
     code, payload = scan(capsys, engagement)
     assert code == 0, payload
     [row] = [e for e in payload["state"]["index"] if e["decision"] == NEEDS_REVIEW]
@@ -8376,11 +8364,10 @@ def test_a_card_parked_for_an_unnamed_issuer_offers_the_next_free_issuer_row(cap
 
 
 def test_a_card_parked_for_any_other_reason_offers_no_issuer_box(capsys, demo_root):
-    from tests.samples import text_pdf
 
     engagement, _ = _issuer_return(capsys, demo_root)
 
-    text_pdf(inbox_of(engagement) / "notice.pdf", ["an agency notice nothing asks for"])
+    text_pdf(inbox_of(engagement) / "notice.pdf", ["an agency notice nothing asks for"], style="padded")
     scan(capsys, engagement)
     cards = {card["original_name"]: card for card in api._state(engagement)["review"]}
     assert cards["notice.pdf"]["issuer"] is None
@@ -8502,11 +8489,10 @@ def test_a_list_changed_since_the_card_was_drawn_adds_no_row_and_files_nothing(c
 
 
 def test_a_card_no_longer_waiting_for_an_issuer_is_refused(capsys, demo_root):
-    from tests.samples import text_pdf
     from tracker.filer import NOT_AN_ISSUER_CARD
 
     engagement, _ = _issuer_return(capsys, demo_root)
-    text_pdf(inbox_of(engagement) / "notice.pdf", ["an agency notice nothing asks for"])
+    text_pdf(inbox_of(engagement) / "notice.pdf", ["an agency notice nothing asks for"], style="padded")
     scan(capsys, engagement)
     [notice] = [e for e in api._state(engagement)["index"] if e["original_name"] == "notice.pdf"]
     before = _as_it_stands(engagement)
@@ -9584,7 +9570,6 @@ def test_a_page_filed_under_two_requests_has_its_open_keys_in_filed_names_order(
         capsys, demo_root, tmp_path):
     """Decision 94: the n-th key shows the n-th name's copy."""
     from tests.samples import scanned_1098_lines, scanned_w2_lines
-    from tests.test_scanner import text_pdf
 
     engagement = sample_engagement(capsys, demo_root, tmp_path, "no such sample")   # an empty inbox
     text_pdf(inbox_of(engagement) / "scan0003.pdf",

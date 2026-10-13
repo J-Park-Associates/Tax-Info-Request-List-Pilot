@@ -98,7 +98,7 @@ def a_corpus(tmp_path: Path, entries: list[tuple[str, str, str]]) -> Path:
             sheets = [Image.new("RGB", (400, 500 + 10 * i), "white") for i in range(2)]
             sheets[0].save(path, "PDF", save_all=True, append_images=sheets[1:])
         elif kind == "text":
-            text_pdf(path, w2_lines("Jane Doe", "Harbor Test Co", YEAR))
+            text_pdf(path, w2_lines("Jane Doe", "Harbor Test Co", YEAR), style="padded")
         else:
             Image.new("RGB", (400, 200), "white").save(path)
         rows.append(f"{CLIENT_FOLDER}/{name},1040,{YEAR},{expected}")

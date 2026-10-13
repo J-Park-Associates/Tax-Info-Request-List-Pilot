@@ -421,7 +421,7 @@ def test_the_engine_reads_documents_only_in_a_child(tmp_path):
         "from tests.samples import text_pdf\n"
         "from tracker import api, content_check, ocr, resident\n"
         "assert content_check.READ_IN_A_CHILD is True\n"
-        "pdf = text_pdf(Path(sys.argv[1]) / 'doc.pdf', ['Form W-2 Wage and Tax Statement 2025'])\n"
+        "pdf = text_pdf(Path(sys.argv[1]) / 'doc.pdf', ['Form W-2 Wage and Tax Statement 2025'], style='padded')\n"
         "made, kinds = [], []\n"
         "making = ocr.ReadingChild.__init__\n"
         "def counted(self, *args, **kwargs):\n"

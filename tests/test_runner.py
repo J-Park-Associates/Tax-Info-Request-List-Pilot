@@ -20,7 +20,7 @@ import pytest
 
 import tracker.runner as runner_module
 from tests.conftest import make_engagement, seed_index, written_elsewhere
-from tests.samples import DEMO_ITEMS, PRIOR_YEAR, SCRATCH_PEOPLE, YEAR, build_samples
+from tests.samples import DEMO_ITEMS, PRIOR_YEAR, SCRATCH_PEOPLE, YEAR, build_samples, text_pdf
 from tracker import ledger, store
 from tracker.filer import NEEDS_REVIEW, IndexEntry, read_index
 from tracker.layout import household_of, inbox_of, originals_of, root_of
@@ -1761,7 +1761,7 @@ def test_the_dropping_households_pass_files_nothing_into_a_fed_return_and_the_do
 
     personal, [fed] = a_fed_household(tmp_path, samples)
     text_pdf(inbox_of(personal.path) / "trial balance.pdf",
-             [f"Trial balance as of December 31 {YEAR}", SCRATCH_CLIENT])
+             [f"Trial balance as of December 31 {YEAR}", SCRATCH_CLIENT], style="padded")
     household = household_of(personal.path)
 
     [run] = run_household(household, [personal], today=FRIDAY, reminders=REMINDERS_NEVER,
@@ -1856,9 +1856,9 @@ def test_a_cross_fed_document_is_on_no_list_of_the_dropping_households_readme_an
 
     personal, [fed] = a_fed_household(tmp_path, samples)
     text_pdf(inbox_of(personal.path) / "trial balance.pdf",
-             [f"Trial balance as of December 31 {YEAR}", SCRATCH_CLIENT])
+             [f"Trial balance as of December 31 {YEAR}", SCRATCH_CLIENT], style="padded")
     text_pdf(inbox_of(personal.path) / "unnamed w2.pdf",
-             [f"Form W-2 Wage and Tax Statement {YEAR}"])
+             [f"Form W-2 Wage and Tax Statement {YEAR}"], style="padded")
     household = household_of(personal.path)
 
     [run] = run_household(household, [personal], today=FRIDAY, reminders=REMINDERS_NEVER,
@@ -1979,9 +1979,9 @@ def test_a_document_dropped_here_and_filed_into_another_households_return_is_on_
 
     personal, [fed] = a_fed_household(tmp_path, samples)
     text_pdf(inbox_of(personal.path) / "trial balance.pdf",
-             [f"Trial balance as of December 31 {YEAR}", SCRATCH_CLIENT])
+             [f"Trial balance as of December 31 {YEAR}", SCRATCH_CLIENT], style="padded")
     text_pdf(inbox_of(personal.path) / "unnamed w2.pdf",
-             [f"Form W-2 Wage and Tax Statement {YEAR}"])
+             [f"Form W-2 Wage and Tax Statement {YEAR}"], style="padded")
     household = household_of(personal.path)
 
     [run] = run_household(household, [personal], today=FRIDAY, reminders=REMINDERS_NEVER,
@@ -2907,13 +2907,12 @@ def test_a_pass_killed_mid_sort_keeps_every_reading_it_finished(tmp_path, monkey
     import subprocess
     import sys
 
-    from tests.samples import text_pdf
     from tracker import content_check
 
     folder = make_engagement(tmp_path, [RequestItem(identifier="A01", document="W-2")],
                              household="Cedar Household", return_name="Cedar TY2025")
     for n in range(1, 6):
-        text_pdf(inbox_of(folder) / f"statement {n}.pdf", [f"Brokerage letter number {n}"])
+        text_pdf(inbox_of(folder) / f"statement {n}.pdf", [f"Brokerage letter number {n}"], style="padded")
     store.close()
 
     repo = Path(__file__).resolve().parents[1]

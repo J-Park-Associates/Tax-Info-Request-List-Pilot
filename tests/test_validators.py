@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 from pypdf import PdfWriter
 
+from tests.samples import write_pdf
 from tracker import reasons
 from tracker.manifest import RequestItem
 from tracker.validators import (
@@ -26,17 +27,6 @@ ANY_ITEM = RequestItem(identifier="A02", document="Anything", min_size_kb=0)
 SIZED_ITEM = RequestItem(
     identifier="B01", document="Payroll", allowed_extensions=("xlsx",), min_size_kb=10,
 )
-
-
-def write_pdf(path: Path, pages: int = 1, password: str | None = None) -> Path:
-    writer = PdfWriter()
-    for _ in range(pages):
-        writer.add_blank_page(width=612, height=792)
-    if password:
-        writer.encrypt(password, algorithm="RC4-128")
-    with path.open("wb") as fh:
-        writer.write(fh)
-    return path
 
 
 # ----------------------------------------------------------------- tier 1 ----

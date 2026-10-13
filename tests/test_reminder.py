@@ -18,6 +18,7 @@ from pathlib import Path
 import pytest
 
 from tests.conftest import child_env
+from tests.samples import text_pdf
 from tracker import ledger, reasons
 from tracker import reminder as reminder_module
 from tracker.layout import inbox_of
@@ -319,7 +320,6 @@ def test_a_resend_after_a_dismissal_counts_in_the_files_waiting_warning(tmp_path
     waiting rather than none.
     """
     from tests.conftest import make_engagement, seed_statuses, sort
-    from tests.test_scanner import text_pdf
     from tracker.filer import dismiss_review_file
     from tracker.reminder import REVIEW_WARNING
 
@@ -968,7 +968,7 @@ def sorted_drop(folder, write):
 
 def locked(name, *, password="secret123"):
     """A password-protected PDF, the file the client is certain they sent."""
-    from tests.test_validators import write_pdf
+    from tests.samples import write_pdf
 
     return lambda shared: write_pdf(shared / name, password=password)
 
@@ -1026,7 +1026,6 @@ def test_a_blocked_reading_still_holds(tmp_path):
     worked: a file the rules *could* read and then refused - an upload
     that arrived almost empty. Its own words point at the request, the
     client can fix it, and it holds in the row's own terms."""
-    from tests.test_scanner import text_pdf
 
     rows = [replace(DROPPED[0], min_size_kb=50), DROPPED[1]]
     folder = engagement(tmp_path, rows, name="Blocked TY2025")
@@ -1045,7 +1044,6 @@ def test_a_parked_file_with_a_firm_side_reason_holds_nothing(tmp_path, monkeypat
     """A scan nobody here could read is ours to fix, not the client's to
     resend: decision 115's rule, unchanged. Its name points at A01 exactly
     as the locked file's did, and it still holds nothing."""
-    from tests.test_scanner import text_pdf
     from tracker.review import shortlist_for
 
     monkeypatch.setattr("tracker.content_check._ocr_pdf", lambda p: None)   # no OCR here
@@ -1163,7 +1161,6 @@ def test_a_near_miss_holds_the_reminder_and_blames_no_file(tmp_path):
     with A01 on its shortlist; the draft holds A01 rather than asking for
     it, and neither the held line nor the draft says the file was wrong."""
     from tests.test_router import LOST_ONE_PHRASE
-    from tests.test_scanner import text_pdf
     from tracker.review import shortlist_for
 
     folder = engagement(tmp_path, NEAR_MISSED, name="Near Miss TY2025")

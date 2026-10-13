@@ -32,9 +32,9 @@ from tests.samples import (
     scanned_1099_int_lines,
     scanned_w2_lines,
     sheet_xlsx,
+    text_pdf,
 )
 from tests.test_real_corpus import filed_to
-from tests.test_scanner import text_pdf
 from tracker.content_check import FIRST_PAGE_PHRASES, Extraction
 from tracker.manifest import keyword_alternatives, validated
 from tracker.router import route_file

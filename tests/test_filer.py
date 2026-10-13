@@ -23,7 +23,7 @@ from pathlib import Path
 import pytest
 
 from tests.conftest import TEST_CLIENT, TEST_YEAR, make_engagement, named_page, sort, sort_all
-from tests.test_scanner import text_pdf
+from tests.samples import text_pdf
 from tracker import checkpoint, ledger, reasons, store
 from tracker.filer import (
     DUPLICATE,
@@ -9057,13 +9057,12 @@ def test_a_parked_attachment_is_handed_to_a_return_of_another_year_of_its_househ
     import io
     import zipfile
 
-    from tests.samples import text_pdf
     from tracker import store
     from tracker.filer import hand_over
 
     a = make_engagement(tmp_path, ITEMS, year=2025, return_name="1040 - A")
     b = make_engagement(tmp_path, ITEMS, year=2024, return_name="1040 - B")
-    page = text_pdf(tmp_path / "page.pdf", ["Form W-2 Wage and Tax Statement 2025", "nobody"])
+    page = text_pdf(tmp_path / "page.pdf", ["Form W-2 Wage and Tax Statement 2025", "nobody"], style="padded")
     packed = io.BytesIO()
     with zipfile.ZipFile(packed, "w", zipfile.ZIP_DEFLATED) as archive:
         archive.writestr("W-2.pdf", page.read_bytes())

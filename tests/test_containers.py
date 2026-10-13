@@ -28,7 +28,7 @@ from pathlib import Path
 import pytest
 
 from tests.conftest import TEST_CLIENT, make_engagement, named_page, sort, sort_all
-from tests.samples import msg_bytes
+from tests.samples import msg_bytes, text_pdf
 from tests.test_filer import (
     BUSINESS,
     DAY1,
@@ -39,7 +39,6 @@ from tests.test_filer import (
     feeding,
     original_at,
 )
-from tests.test_scanner import text_pdf
 from tracker import containers, filer, ledger, reasons, store
 from tracker.containers import (
     LIMIT_COUNT,

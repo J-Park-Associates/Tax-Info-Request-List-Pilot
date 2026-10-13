@@ -8,6 +8,7 @@ from openpyxl import Workbook
 from pypdf import PdfWriter
 
 from tests.conftest import make_engagement
+from tests.samples import text_pdf
 from tracker import reasons, store
 from tracker.content_check import (
     CACHE_VERSION,
@@ -20,36 +21,6 @@ from tracker.content_check import (
 )
 from tracker.locking import engagement_lock
 from tracker.manifest import RequestItem
-
-
-def text_pdf(path, text: str):
-    """Hand-build a minimal one-page PDF with a real text layer."""
-    content = f"BT /F1 12 Tf 72 720 Td ({text}) Tj ET".encode("ascii")
-    bodies = {
-        1: b"<< /Type /Catalog /Pages 2 0 R >>",
-        2: b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
-        3: (
-            b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] "
-            b"/Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>"
-        ),
-        4: b"<< /Length %d >>\nstream\n%s\nendstream" % (len(content), content),
-        5: b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
-    }
-    out = bytearray(b"%PDF-1.4\n")
-    offsets = {}
-    for n in sorted(bodies):
-        offsets[n] = len(out)
-        out += b"%d 0 obj\n" % n + bodies[n] + b"\nendobj\n"
-    xref_at = len(out)
-    out += b"xref\n0 %d\n0000000000 65535 f \n" % (len(bodies) + 1)
-    for n in sorted(bodies):
-        out += b"%010d 00000 n \n" % offsets[n]
-    out += b"trailer\n<< /Size %d /Root 1 0 R >>\nstartxref\n%d\n%%%%EOF" % (
-        len(bodies) + 1,
-        xref_at,
-    )
-    path.write_bytes(bytes(out))
-    return path
 
 
 def item(**kwargs) -> RequestItem:
@@ -72,7 +43,7 @@ def test_no_rules_short_circuits(tmp_path, monkeypatch):
 
 
 def test_required_keywords(tmp_path):
-    pdf = text_pdf(tmp_path / "s.pdf", "Chase Bank Statement December 2025")
+    pdf = text_pdf(tmp_path / "s.pdf", "Chase Bank Statement December 2025", style="bare")
     assert check_content(pdf, item(required_keywords=("Chase",))).ok
     result = check_content(pdf, item(required_keywords=("Chase", "Wells Fargo")))
     assert not result.ok
@@ -80,19 +51,19 @@ def test_required_keywords(tmp_path):
 
 
 def test_keywords_case_insensitive(tmp_path):
-    pdf = text_pdf(tmp_path / "s.pdf", "CHASE BANK statement for the account")
+    pdf = text_pdf(tmp_path / "s.pdf", "CHASE BANK statement for the account", style="bare")
     assert check_content(pdf, item(required_keywords=("chase", "Statement"))).ok
 
 
 def test_any_keywords(tmp_path):
-    pdf = text_pdf(tmp_path / "s.pdf", "Monthly account summary for December")
+    pdf = text_pdf(tmp_path / "s.pdf", "Monthly account summary for December", style="bare")
     assert check_content(pdf, item(any_keywords=("statement", "account summary"))).ok
     result = check_content(pdf, item(any_keywords=("invoice", "receipt")))
     assert not result.ok and "invoice, receipt" in result.reason
 
 
 def test_date_pattern(tmp_path):
-    pdf = text_pdf(tmp_path / "s.pdf", "Statement period: December 2025")
+    pdf = text_pdf(tmp_path / "s.pdf", "Statement period: December 2025", style="bare")
     assert check_content(pdf, item(date_pattern=r"(?i)december\s+2025")).ok
     result = check_content(pdf, item(date_pattern=r"(?i)january\s+2026"))
     assert not result.ok and result.code == reasons.WRONG_PERIOD.code
@@ -374,7 +345,7 @@ def test_a_verdict_is_served_from_the_store_and_the_document_read_once(tmp_path,
     calls = counting_extractor(monkeypatch)
     rule = item(required_keywords=("Chase",))
     engagement = an_engagement(tmp_path, rule)
-    pdf = text_pdf(tmp_path / "s.pdf", "Chase Bank Statement December 2025")
+    pdf = text_pdf(tmp_path / "s.pdf", "Chase Bank Statement December 2025", style="bare")
     cache = ContentCache(engagement)
 
     assert check_content(pdf, rule, cache).ok
@@ -386,7 +357,7 @@ def test_a_verdict_is_served_from_the_store_and_the_document_read_once(tmp_path,
     assert check_content(pdf, rule, reopened).ok
     assert calls["n"] == 1                       # survives a save and a fresh load
 
-    text_pdf(pdf, "Chase Bank Statement December 2025 v2")      # file changed -> re-extract
+    text_pdf(pdf, "Chase Bank Statement December 2025 v2", style="bare")      # file changed -> re-extract
     assert check_content(pdf, rule, reopened).ok
     assert calls["n"] == 2
 
@@ -400,7 +371,7 @@ def test_the_cache_is_keyed_on_content_not_path(tmp_path, monkeypatch):
     # A routed drop and its working copy are the same bytes under two
     # names; the second name must be a hit, not a second read.
     calls = counting_extractor(monkeypatch)
-    pdf = text_pdf(tmp_path / "s.pdf", "Chase Bank Statement December 2025")
+    pdf = text_pdf(tmp_path / "s.pdf", "Chase Bank Statement December 2025", style="bare")
     rule = item(required_keywords=("Chase",))
     cache = ContentCache()
     assert check_content(pdf, rule, cache).ok
@@ -430,7 +401,7 @@ def test_a_verdict_row_at_another_cache_version_is_ignored_and_dropped_on_save(t
     assert CACHE_VERSION == 14
     rule = item(required_keywords=("Chase",))
     engagement = an_engagement(tmp_path, rule)
-    pdf = text_pdf(tmp_path / "s.pdf", "Chase Bank Statement December 2025")
+    pdf = text_pdf(tmp_path / "s.pdf", "Chase Bank Statement December 2025", style="bare")
     fingerprint = rules_fingerprint(rule)
     conn = store.connect()
     engagement_id = store._engagement_row(conn, engagement)["id"]
@@ -455,7 +426,7 @@ def test_a_save_that_fails_leaves_the_previous_verdicts(tmp_path, monkeypatch):
 
     rule = item(required_keywords=("Chase",))
     engagement = an_engagement(tmp_path, rule)
-    pdf = text_pdf(tmp_path / "s.pdf", "Chase Bank Statement December 2025")
+    pdf = text_pdf(tmp_path / "s.pdf", "Chase Bank Statement December 2025", style="bare")
     cache = ContentCache(engagement)
     check_content(pdf, rule, cache)
     saved(cache, engagement)
@@ -476,7 +447,7 @@ def test_a_save_that_fails_leaves_the_previous_verdicts(tmp_path, monkeypatch):
             return getattr(real, name)
 
     monkeypatch.setattr(store, "connect", lambda path=None: FailsOnTheVerdict())
-    text_pdf(pdf, "Chase Bank Statement December 2025 v2")        # a memo and a verdict to write
+    text_pdf(pdf, "Chase Bank Statement December 2025 v2", style="bare")        # a memo and a verdict to write
     check_content(pdf, rule, cache)
     with pytest.raises(sqlite3.OperationalError, match="disk I/O error"):
         saved(cache, engagement)
@@ -491,7 +462,7 @@ def test_a_cache_with_no_engagement_never_touches_the_store(tmp_path, monkeypatc
         raise AssertionError("the store was asked for")
 
     monkeypatch.setattr(store, "connect", never)
-    pdf = text_pdf(tmp_path / "s.pdf", "Chase Bank Statement December 2025")
+    pdf = text_pdf(tmp_path / "s.pdf", "Chase Bank Statement December 2025", style="bare")
     rule = item(required_keywords=("Chase",))
     cache = ContentCache()
     assert check_content(pdf, rule, cache).ok
@@ -514,7 +485,7 @@ def test_a_transient_verdict_is_still_never_cached(tmp_path, monkeypatch):
         None, reason=reasons.NO_TEXT_LAYER.format(), extractable=False, transient=True))
     rule = item(required_keywords=("Chase",))
     engagement = an_engagement(tmp_path, rule)
-    pdf = text_pdf(tmp_path / "s.pdf", "a scan")
+    pdf = text_pdf(tmp_path / "s.pdf", "a scan", style="bare")
     cache = ContentCache(engagement)
 
     verdict = check_content(pdf, rule, cache)
@@ -528,7 +499,7 @@ def test_a_transient_verdict_is_still_never_cached(tmp_path, monkeypatch):
 def test_the_cache_save_refuses_outside_the_engagement_lock(tmp_path):
     rule = item(required_keywords=("Chase",))
     engagement = an_engagement(tmp_path, rule)
-    pdf = text_pdf(tmp_path / "s.pdf", "Chase Bank Statement December 2025")
+    pdf = text_pdf(tmp_path / "s.pdf", "Chase Bank Statement December 2025", style="bare")
     cache = ContentCache(engagement)
     check_content(pdf, rule, cache)
 
@@ -592,7 +563,7 @@ def test_on_every_corpus_form_the_scans_miss_verdict_equals_the_routers_kept_ver
 
 
 def test_cache_prune(tmp_path):
-    pdf = text_pdf(tmp_path / "s.pdf", "Chase Bank Statement page")
+    pdf = text_pdf(tmp_path / "s.pdf", "Chase Bank Statement page", style="bare")
     rule = item(required_keywords=("Chase",))
     cache = ContentCache()
     check_content(pdf, rule, cache)
@@ -1009,7 +980,7 @@ def test_a_verdict_read_back_from_the_store_brings_its_evidence(tmp_path):
 
     rule = item(required_keywords=("Chase",))
     engagement = an_engagement(tmp_path, rule)
-    pdf = text_pdf(tmp_path / "s.pdf", "Chase Bank Statement December 2025")
+    pdf = text_pdf(tmp_path / "s.pdf", "Chase Bank Statement December 2025", style="bare")
     cache = ContentCache(engagement)
     assert check_content(pdf, rule, cache).ok
     saved(cache, engagement)
@@ -1547,7 +1518,7 @@ def test_a_text_layer_that_never_finishes_is_stopped_and_abandoned(tmp_path, a_s
     from tests import child_readers
 
     a_short_stop.setattr(content_check, "_CHILD_READER", child_readers.a_text_layer_that_never_finishes)
-    pdf = text_pdf(tmp_path / "drawing.pdf", "Form W-2 Wage and Tax Statement 2025")
+    pdf = text_pdf(tmp_path / "drawing.pdf", "Form W-2 Wage and Tax Statement 2025", style="bare")
     rules = item(required_keywords=("W-2",))
     cache = ContentCache()
 
@@ -1606,15 +1577,14 @@ def test_a_reader_that_crashes_is_a_failed_reading_not_a_dead_pass(tmp_path, in_
     import tracker.content_check as content_check
     from tests import child_readers
     from tests.conftest import named_page, sort
-    from tests.test_scanner import text_pdf as page_pdf
     from tracker.layout import inbox_of
 
     in_a_child.setattr(content_check, "_CHILD_READER", child_readers.a_reader_that_dies_on_a_crash)
     w2 = RequestItem(identifier="A01", document="W-2", period="TY2025", allowed_extensions=("pdf",),
                      min_size_kb=0, required_keywords=("W-2",))
     engagement = make_engagement(tmp_path, [w2])
-    page_pdf(inbox_of(engagement) / "a crash.pdf", named_page("Form W-2 Wage and Tax Statement 2025"))
-    page_pdf(inbox_of(engagement) / "the next one.pdf",
+    text_pdf(inbox_of(engagement) / "a crash.pdf", named_page("Form W-2 Wage and Tax Statement 2025"))
+    text_pdf(inbox_of(engagement) / "the next one.pdf",
              named_page("Form W-2 Wage and Tax Statement 2025 Employer copy"))
 
     report = sort(engagement, today=dt.date(2026, 7, 1))
@@ -1669,7 +1639,6 @@ def test_a_cached_verdict_starts_no_child(tmp_path, in_a_child):
 
     import tracker.content_check as content_check
     from tests.conftest import named_page
-    from tests.test_scanner import text_pdf as page_pdf
     from tracker.layout import inbox_of
     from tracker.registry import discover_engagements
     from tracker.runner import REMINDERS_NEVER, run_registry
@@ -1685,7 +1654,7 @@ def test_a_cached_verdict_starts_no_child(tmp_path, in_a_child):
     w2 = RequestItem(identifier="A01", document="W-2", period="TY2025", allowed_extensions=("pdf",),
                      min_size_kb=0, required_keywords=("W-2",))
     engagement = make_engagement(tmp_path, [w2])
-    page_pdf(inbox_of(engagement) / "w2.pdf", named_page("Form W-2 Wage and Tax Statement 2025"))
+    text_pdf(inbox_of(engagement) / "w2.pdf", named_page("Form W-2 Wage and Tax Statement 2025"))
 
     first = run_registry(discover_engagements(tmp_path), today=dt.date(2026, 7, 1),
                          reminders=REMINDERS_NEVER)
@@ -1694,7 +1663,7 @@ def test_a_cached_verdict_starts_no_child(tmp_path, in_a_child):
     run_registry(discover_engagements(tmp_path), today=dt.date(2026, 7, 2), reminders=REMINDERS_NEVER)
     assert started == ["w2.pdf"]                       # a second pass starts nothing
 
-    loose = page_pdf(tmp_path / "loose.pdf", named_page("Form W-2 Wage and Tax Statement 2025"))
+    loose = text_pdf(tmp_path / "loose.pdf", named_page("Form W-2 Wage and Tax Statement 2025"))
     rules = item(required_keywords=("W-2",))
     cache = ContentCache()
     assert check_content(loose, rules, cache).ok
@@ -1713,7 +1682,7 @@ def test_no_child_is_left_running_after_a_stop(tmp_path, a_short_stop):
 
     a_short_stop.setattr(content_check, "_CHILD_READER",
                          child_readers.a_reader_that_starts_a_reader_of_its_own)
-    pdf = text_pdf(tmp_path / "page.pdf", "Form W-2 2025")
+    pdf = text_pdf(tmp_path / "page.pdf", "Form W-2 2025", style="bare")
 
     reading = content_check.judge_bounded(pdf, content_check.Questions()).extraction
 
@@ -1765,7 +1734,7 @@ def test_a_reading_child_dies_with_its_pass(tmp_path, protection):
     if protection == "job and lifeline" and sys.platform != "win32":
         pytest.skip("the job object is Windows'")
     repo = str(Path(__file__).resolve().parents[1])
-    pdf = text_pdf(tmp_path / "page.pdf", "Form W-2 2025")
+    pdf = text_pdf(tmp_path / "page.pdf", "Form W-2 2025", style="bare")
     the_pass = subprocess.Popen([sys.executable, "-c", A_PASS_READING, str(pdf),
                                  "lifeline" if protection == "lifeline" else "all", repo])
     waiting, helper = child_readers.reached(pdf, "waiting"), child_readers.reached(pdf, "helper")
@@ -1849,7 +1818,6 @@ def test_a_page_tree_bomb_cannot_stall_the_pass(tmp_path, a_short_stop):
 
     import tracker.content_check as content_check
     from tests.conftest import named_page
-    from tests.test_scanner import text_pdf as page_pdf
     from tracker.filer import read_index
     from tracker.layout import inbox_of
     from tracker.registry import discover_engagements
@@ -1859,7 +1827,7 @@ def test_a_page_tree_bomb_cannot_stall_the_pass(tmp_path, a_short_stop):
                      min_size_kb=0, required_keywords=("W-2",))
     engagement = make_engagement(tmp_path, [w2])
     page_tree_bomb(inbox_of(engagement) / "bomb.pdf")
-    page_pdf(inbox_of(engagement) / "w2.pdf", named_page("Form W-2 Wage and Tax Statement 2025"))
+    text_pdf(inbox_of(engagement) / "w2.pdf", named_page("Form W-2 Wage and Tax Statement 2025"))
 
     started = time.monotonic()
     report = run_registry(discover_engagements(tmp_path), today=dt.date(2026, 7, 1),
@@ -1908,12 +1876,11 @@ def test_an_open_test_that_never_returns_is_stopped(tmp_path, a_short_stop):
     import tracker.content_check as content_check
     from tests import child_readers
     from tests.conftest import named_page
-    from tests.test_scanner import text_pdf as page_pdf
     from tracker.router import route_file
     from tracker.validators import check_file
 
     a_short_stop.setattr(content_check, "_CHILD_READER", child_readers.a_pdf_open_that_never_finishes)
-    pdf = page_pdf(tmp_path / "w2.pdf", named_page("Form W-2 Wage and Tax Statement 2025"))
+    pdf = text_pdf(tmp_path / "w2.pdf", named_page("Form W-2 Wage and Tax Statement 2025"))
     rules = item(allowed_extensions=("pdf",), required_keywords=("W-2",), min_size_kb=0)
 
     started = time.monotonic()
@@ -1967,7 +1934,6 @@ def test_a_reader_that_cannot_start_keeps_no_verdict(tmp_path, in_a_child):
 
     import tracker.content_check as content_check
     from tests.conftest import named_page
-    from tests.test_scanner import text_pdf as page_pdf
     from tracker.filer import read_index
     from tracker.layout import inbox_of, originals_of
     from tracker.registry import discover_engagements
@@ -1978,7 +1944,7 @@ def test_a_reader_that_cannot_start_keeps_no_verdict(tmp_path, in_a_child):
                    "It is read again on the next pass.")
     in_a_child.setattr(content_check, "_CHILD_READER", _a_reader_only_the_pass_has(in_a_child))
     rules = item(required_keywords=("W-2",))
-    page = text_pdf(tmp_path / "page.pdf", "Form W-2 2025")
+    page = text_pdf(tmp_path / "page.pdf", "Form W-2 2025", style="bare")
 
     # Dies before "started": transient, and nothing is kept.
     reading = content_check.judge_bounded(page, content_check.Questions()).extraction
@@ -2005,7 +1971,7 @@ def test_a_reader_that_cannot_start_keeps_no_verdict(tmp_path, in_a_child):
                      min_size_kb=0, required_keywords=("W-2",))
     engagement = make_engagement(tmp_path / "root", [w2])
     for name in ("one.pdf", "two.pdf"):              # two documents, not one sent twice
-        page_pdf(inbox_of(engagement) / name, named_page(f"Form W-2 Wage and Tax Statement 2025 {name}"))
+        text_pdf(inbox_of(engagement) / name, named_page(f"Form W-2 Wage and Tax Statement 2025 {name}"))
     report = run_registry(discover_engagements(tmp_path / "root"), today=dt.date(2026, 7, 1),
                           reminders=REMINDERS_NEVER)
 
@@ -2034,7 +2000,6 @@ def test_a_drop_the_reader_could_not_start_on_is_routed_next_pass(tmp_path, in_a
     routed where it lies, and filed."""
     import tracker.content_check as content_check
     from tests.conftest import named_page
-    from tests.test_scanner import text_pdf as page_pdf
     from tracker.filer import read_index
     from tracker.layout import inbox_of, originals_of
     from tracker.registry import discover_engagements
@@ -2044,7 +2009,7 @@ def test_a_drop_the_reader_could_not_start_on_is_routed_next_pass(tmp_path, in_a
     w2 = RequestItem(identifier="A01", document="W-2", period="TY2025", allowed_extensions=("pdf",),
                      min_size_kb=0, required_keywords=("W-2",))
     engagement = make_engagement(root, [w2])
-    page_pdf(inbox_of(engagement) / "w2.pdf", named_page("Form W-2 Wage and Tax Statement 2025"))
+    text_pdf(inbox_of(engagement) / "w2.pdf", named_page("Form W-2 Wage and Tax Statement 2025"))
 
     with pytest.MonkeyPatch.context() as broken:           # the machine is broken
         broken.setattr(content_check, "_CHILD_READER", _a_reader_only_the_pass_has(broken))
@@ -2078,7 +2043,6 @@ def test_a_resent_file_the_reader_could_not_start_on_waits_for_the_next_pass(
     import tracker.content_check as content_check
     import tracker.filer as filer_module
     from tests.conftest import named_page
-    from tests.test_scanner import text_pdf as page_pdf
     from tracker.filer import read_index
     from tracker.layout import inbox_of, locate, originals_of
     from tracker.registry import discover_engagements
@@ -2089,7 +2053,7 @@ def test_a_resent_file_the_reader_could_not_start_on_waits_for_the_next_pass(
                      min_size_kb=0, required_keywords=("W-2",))
     engagement = make_engagement(root, [w2])
     page = named_page("Form W-2 Wage and Tax Statement 2025")
-    page_pdf(inbox_of(engagement) / "w2.pdf", page)
+    text_pdf(inbox_of(engagement) / "w2.pdf", page)
     run_registry(discover_engagements(root), today=dt.date(2026, 7, 1), reminders=REMINDERS_NEVER)
     [filed] = read_index(engagement)
     prepared = engagement / filed.prepared_location
@@ -2098,7 +2062,7 @@ def test_a_resent_file_the_reader_could_not_start_on_waits_for_the_next_pass(
     real = filer_module.is_cloud_placeholder
     monkeypatch.setattr(filer_module, "is_cloud_placeholder", lambda p: p == syncing or real(p))
 
-    page_pdf(inbox_of(engagement) / "w2 again.pdf", page)  # the same document, sent again
+    text_pdf(inbox_of(engagement) / "w2 again.pdf", page)  # the same document, sent again
     with pytest.MonkeyPatch.context() as broken:           # the machine is broken
         broken.setattr(content_check, "_CHILD_READER", _a_reader_only_the_pass_has(broken))
         first = run_registry(discover_engagements(root), today=dt.date(2026, 7, 2),
@@ -2346,10 +2310,9 @@ def test_the_cut_mark_is_exact_at_the_budget(tmp_path, monkeypatch):
 
 def test_a_pdf_reads_to_the_budget_and_says_it_was_cut(tmp_path, monkeypatch):
     import tracker.content_check as content_check
-    from tests.samples import text_pdf
 
     monkeypatch.setattr(content_check, "READING_CHAR_BUDGET", 300)
-    pdf = text_pdf(tmp_path / "long.pdf", [f"Line {n} of a long statement 2025" for n in range(40)])
+    pdf = text_pdf(tmp_path / "long.pdf", [f"Line {n} of a long statement 2025" for n in range(40)], style="padded")
     reading = content_check.extract(pdf, ocr=False)
     assert reading.cut and len(reading.text) == 300 and reading.text.startswith("Line 0")
 
@@ -2408,10 +2371,9 @@ def test_no_document_word_crosses_the_pipe(tmp_path, in_a_child):
 
     import tracker.content_check as content_check
     from tests.conftest import TEST_CLIENT
-    from tests.test_scanner import text_pdf as page_pdf
     from tracker.content_check import NameQuestion
 
-    page = page_pdf(tmp_path / "w2.pdf", "\n".join([
+    page = text_pdf(tmp_path / "w2.pdf", "\n".join([
         f"Form W-2 Wage and Tax Statement 2025 {MARKER}",
         f"Employee {TEST_CLIENT} {MARKER}",
         f"Employer {MARKER} Widgets 2025-12-31",
@@ -2484,7 +2446,6 @@ def test_no_client_text_is_matched_in_the_pass_own_process(tmp_path, in_a_child)
     import tracker.content_check as content_check
     import tracker.names as names_module
     from tests.conftest import named_page
-    from tests.test_scanner import text_pdf as page_pdf
     from tracker.layout import inbox_of
     from tracker.manifest import Status, load_manifest
     from tracker.registry import discover_engagements
@@ -2496,8 +2457,8 @@ def test_no_client_text_is_matched_in_the_pass_own_process(tmp_path, in_a_child)
                            allowed_extensions=("pdf",), min_size_kb=0,
                            any_keywords=("1099-INT", "interest income"))
     engagement = make_engagement(tmp_path, [w2, interest])
-    page_pdf(inbox_of(engagement) / "w2.pdf", named_page("Form W-2 Wage and Tax Statement 2025"))
-    page_pdf(inbox_of(engagement) / "interest.pdf", named_page("Form 1099-INT Interest Income 2025"))
+    text_pdf(inbox_of(engagement) / "w2.pdf", named_page("Form W-2 Wage and Tax Statement 2025"))
+    text_pdf(inbox_of(engagement) / "interest.pdf", named_page("Form 1099-INT Interest Income 2025"))
 
     def matched_in_the_pass(*_args, **_kwargs):
         raise AssertionError("a document's words were matched in the pass's own process")
@@ -2596,7 +2557,6 @@ def test_a_one_line_workbook_parks_within_the_stop_and_never_stalls_the_pass(tmp
 
     from tests.conftest import named_page, sort
     from tests.samples import sheet_xlsx
-    from tests.test_scanner import text_pdf as page_pdf
     from tracker.content_check import READING_CHAR_BUDGET
     from tracker.layout import inbox_of
 
@@ -2609,7 +2569,7 @@ def test_a_one_line_workbook_parks_within_the_stop_and_never_stalls_the_pass(tmp
     cell = "Form 1099-INT 2025 " * 1500
     cells = READING_CHAR_BUDGET // len(cell) - 1              # one row, just inside the budget
     sheet_xlsx(inbox_of(engagement) / "a ledger.xlsx", [[cell] * cells])
-    page_pdf(inbox_of(engagement) / "w2.pdf", named_page("Form W-2 Wage and Tax Statement 2025"))
+    text_pdf(inbox_of(engagement) / "w2.pdf", named_page("Form W-2 Wage and Tax Statement 2025"))
 
     began = time.monotonic()
     report = sort(engagement, today=dt.date(2026, 7, 1))
@@ -2631,7 +2591,6 @@ def test_a_transient_judgment_is_neither_kept_nor_recorded(tmp_path, in_a_child)
     and the scanner keeps neither its open test nor its row verdict."""
     import tracker.content_check as content_check
     from tests.conftest import named_page, sort
-    from tests.test_scanner import text_pdf as page_pdf
     from tracker.filer import read_index
     from tracker.layout import inbox_of
 
@@ -2639,7 +2598,7 @@ def test_a_transient_judgment_is_neither_kept_nor_recorded(tmp_path, in_a_child)
     row = RequestItem(identifier="A01", document="W-2", period="TY2025", allowed_extensions=("pdf",),
                       min_size_kb=0, required_keywords=("W-2",))
     engagement = make_engagement(tmp_path, [row])
-    drop = page_pdf(inbox_of(engagement) / "w2.pdf", named_page("Form W-2 Wage and Tax Statement 2025"))
+    drop = text_pdf(inbox_of(engagement) / "w2.pdf", named_page("Form W-2 Wage and Tax Statement 2025"))
     content = drop.read_bytes()
 
     judged = content_check.judge_bounded(drop, _questions_about(row))
@@ -2672,7 +2631,6 @@ def test_a_file_in_flight_when_the_child_is_retired_or_killed_is_read_again_next
     import tracker.content_check as content_check
     from tests import child_readers
     from tests.conftest import named_page, sort
-    from tests.test_scanner import text_pdf as page_pdf
     from tracker import ocr
     from tracker.filer import read_index
     from tracker.layout import inbox_of
@@ -2683,7 +2641,7 @@ def test_a_file_in_flight_when_the_child_is_retired_or_killed_is_read_again_next
     inbox = inbox_of(engagement)
 
     # Killed before "started": nothing is decided, and the next pass files it.
-    page_pdf(inbox / "first.pdf", named_page("Form W-2 Wage and Tax Statement 2025 first"))
+    text_pdf(inbox / "first.pdf", named_page("Form W-2 Wage and Tax Statement 2025 first"))
     with pytest.MonkeyPatch.context() as broken:
         broken.setattr(content_check, "_CHILD_READER", _a_reader_only_the_pass_has(broken))
         waiting = sort(engagement, today=dt.date(2026, 7, 1))
@@ -2694,7 +2652,7 @@ def test_a_file_in_flight_when_the_child_is_retired_or_killed_is_read_again_next
 
     # Killed after "started": parked with its sentence, and no verdict says it was read.
     in_a_child.setattr(content_check, "_CHILD_READER", child_readers.a_reader_that_dies_on_a_crash)
-    page_pdf(inbox / "a crash.pdf", named_page("Form W-2 Wage and Tax Statement 2025 crash"))
+    text_pdf(inbox / "a crash.pdf", named_page("Form W-2 Wage and Tax Statement 2025 crash"))
     crashed = sort(engagement, today=dt.date(2026, 7, 3))
     [parked] = crashed.review
     assert parked.original_name == "a crash.pdf" and parked.reason == CRASHED
@@ -2708,7 +2666,7 @@ def test_a_file_in_flight_when_the_child_is_retired_or_killed_is_read_again_next
     in_a_child.setattr(content_check, "_CHILD_READER", content_check.open_and_read)
     in_a_child.setattr(ocr, "DOCUMENTS_PER_CHILD", 1)
     for n in range(3):
-        page_pdf(inbox / f"w2 {n}.pdf", named_page(f"Form W-2 Wage and Tax Statement 2025 copy {n}"))
+        text_pdf(inbox / f"w2 {n}.pdf", named_page(f"Form W-2 Wage and Tax Statement 2025 copy {n}"))
     with ocr.reading_session():
         retired = sort(engagement, today=dt.date(2026, 7, 4))
     assert sorted(e.original_name for e in retired.filed) == ["w2 0.pdf", "w2 1.pdf", "w2 2.pdf"]

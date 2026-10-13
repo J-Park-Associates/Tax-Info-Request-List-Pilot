@@ -38,7 +38,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.test_scanner import text_pdf
+from tests.samples import text_pdf
 from tracker.content_check import extract
 from tracker.manifest import RequestItem, validated
 from tracker.router import route_file

@@ -7,6 +7,7 @@ from dataclasses import replace
 import pytest
 
 from tests.conftest import make_engagement, named_page, sort
+from tests.samples import text_pdf
 from tracker import ledger, reasons, store
 from tracker.content_check import CACHE_VERSION, RETIRED_CACHE_FILENAME
 from tracker.layout import inbox_of
@@ -51,42 +52,6 @@ ITEMS = [
         min_size_kb=10,
     ),
 ]
-
-
-def text_pdf(path, text: str, pages: int = 1):
-    """A valid PDF whose every page says ``text`` (nothing, for a scan)."""
-    def _pdf_string(line: str) -> str:
-        return "(" + line.replace(chr(92), chr(92) * 2).replace("(", chr(92) + "(").replace(")", chr(92) + ")") + ")"
-    lines = text.split(chr(10)) if text else [""]
-    body = " ".join(f"{_pdf_string(line)} Tj T*" for line in lines)
-    content = f"BT /F1 12 Tf 14 TL 72 720 Td {body} ET".encode("latin-1", "replace")
-    stream, font = 3 + pages, 4 + pages          # objects 3..2+pages are the pages
-    kids = b" ".join(b"%d 0 R" % (3 + i) for i in range(pages))
-    bodies = {
-        1: b"<< /Type /Catalog /Pages 2 0 R >>",
-        2: b"<< /Type /Pages /Kids [%s] /Count %d >>" % (kids, pages),
-        stream: b"<< /Length %d >>\nstream\n%s\nendstream" % (len(content), content),
-        font: b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
-    }
-    for i in range(pages):
-        bodies[3 + i] = (
-            b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] "
-            b"/Contents %d 0 R /Resources << /Font << /F1 %d 0 R >> >> >>" % (stream, font)
-        )
-    out = bytearray(b"%PDF-1.4\n")
-    offsets = {}
-    for n in sorted(bodies):
-        offsets[n] = len(out)
-        out += b"%d 0 obj\n" % n + bodies[n] + b"\nendobj\n"
-    xref_at = len(out)
-    out += b"xref\n0 %d\n0000000000 65535 f \n" % (len(bodies) + 1)
-    for n in sorted(bodies):
-        out += b"%010d 00000 n \n" % offsets[n]
-    out += b"trailer\n<< /Size %d /Root 1 0 R >>\nstartxref\n%d\n%%%%EOF" % (
-        len(bodies) + 1, xref_at,
-    )
-    path.write_bytes(bytes(out))
-    return path
 
 
 @pytest.fixture

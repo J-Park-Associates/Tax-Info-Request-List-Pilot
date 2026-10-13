@@ -99,7 +99,8 @@ def add_container_samples(inbox: Path) -> list[Path]:
     donations_xlsx(workbook)
     _declare_macro_workbook(workbook)
     with tempfile.TemporaryDirectory(prefix="pilot-containers-") as scratch:
-        text = text_pdf(Path(scratch) / "text.pdf", lines_1099_int("Riverside Savings Bank", "John A. Smith", YEAR))
+        text = text_pdf(Path(scratch) / "text.pdf", lines_1099_int("Riverside Savings Bank", "John A. Smith", YEAR),
+                        style="padded")
         scan = scanned_pdf(Path(scratch) / "scan.pdf", lines_1099_int("Lakeside Credit Union", "Jane R. Smith", YEAR))
         email = inbox / EMAIL_SAMPLE
         email.write_bytes(msg_bytes([{"name": "1099-INT Riverside Savings Bank.pdf", "data": text.read_bytes()}]))

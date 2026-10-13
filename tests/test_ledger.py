@@ -22,7 +22,7 @@ from pathlib import Path
 import pytest
 
 from tests.conftest import make_engagement, named_page, sort
-from tests.test_scanner import text_pdf
+from tests.samples import text_pdf
 from tracker import ledger, records, store
 from tracker.filer import (
     ASSIGNED_BY_PERSON,

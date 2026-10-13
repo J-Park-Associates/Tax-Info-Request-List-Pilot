@@ -78,25 +78,50 @@ COLLATION_ORDER = [
 ]
 
 
-def text_pdf(path: Path, lines: list[str]) -> Path:
-    """Minimal but valid PDF with a real text layer (no extra deps)."""
-    body = "\n".join(
-        f"BT /F1 11 Tf 60 {740 - 14 * i} Td ({line}) Tj ET"
-        for i, line in enumerate(lines[:48])
-    )
-    content = body.encode("ascii", "replace")
-    padding = b" " * 8192  # unreferenced object: realistic file size, renders clean
+#: The styles of :func:`text_pdf`. The suite had three hand-built writers (this
+#: module's, ``test_scanner``'s and ``test_content_check``'s) that differ in
+#: exactly what a claim about sizes, counts or extracted text leans on, so each
+#: lives on as a style that writes the very bytes its writer wrote - one writer
+#: with three styles, not one "better" common file (SPEC-architecture R2.2).
+#: ``tests/test_samples.py`` pins each style's bytes.
+#:
+#: ``PAGE``, the default: the general writer. The page says a string (split on
+#: its newlines) or a list of lines; a parenthesis or a backslash in a line is
+#: escaped, so the words survive the PDF's own syntax; ``pages`` pages each say
+#: the same. No padding: a few words are a small file.
+PAGE = "page"
+#: ``PADDED``: the pile's writer (``build_samples``). A list of lines, the
+#: first 48 printed down one page at 11 pt, and an unreferenced 8 KB object
+#: after them so a file has a realistic size - a request that wants
+#: ``min_size_kb`` accepts it, and the page still renders clean. One page.
+PADDED = "padded"
+#: ``BARE``: ``test_content_check``'s writer. One string on one line at 12 pt,
+#: written as it stands (no escaping) and ASCII only: the smallest file that
+#: has a text layer, for a claim about reading one. One page.
+BARE = "bare"
+STYLES = (PAGE, PADDED, BARE)
+
+
+def _pdf_of(content: bytes, *, pages: int = 1, padding: bytes = b"") -> bytes:
+    """The bytes of a PDF whose ``pages`` pages each draw ``content`` in
+    Helvetica, with ``padding`` as an unreferenced stream after the font.
+    Objects 3 to 2 + ``pages`` are the pages; the content stream and the
+    font follow them."""
+    stream, font = 3 + pages, 4 + pages
+    kids = b" ".join(b"%d 0 R" % (3 + i) for i in range(pages))
     bodies = {
         1: b"<< /Type /Catalog /Pages 2 0 R >>",
-        2: b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
-        3: (
-            b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] "
-            b"/Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>"
-        ),
-        4: b"<< /Length %d >>\nstream\n%s\nendstream" % (len(content), content),
-        5: b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
-        6: b"<< /Length %d >>\nstream\n%s\nendstream" % (len(padding), padding),
+        2: b"<< /Type /Pages /Kids [%s] /Count %d >>" % (kids, pages),
+        stream: b"<< /Length %d >>\nstream\n%s\nendstream" % (len(content), content),
+        font: b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
     }
+    for i in range(pages):
+        bodies[3 + i] = (
+            b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] "
+            b"/Contents %d 0 R /Resources << /Font << /F1 %d 0 R >> >> >>" % (stream, font)
+        )
+    if padding:
+        bodies[font + 1] = b"<< /Length %d >>\nstream\n%s\nendstream" % (len(padding), padding)
     out = bytearray(b"%PDF-1.4\n")
     offsets = {}
     for n in sorted(bodies):
@@ -110,7 +135,61 @@ def text_pdf(path: Path, lines: list[str]) -> Path:
         len(bodies) + 1,
         xref_at,
     )
-    path.write_bytes(bytes(out))
+    return bytes(out)
+
+
+def _pdf_string(line: str) -> str:
+    return "(" + line.replace(chr(92), chr(92) * 2).replace("(", chr(92) + "(").replace(")", chr(92) + ")") + ")"
+
+
+def text_pdf(path: Path, text_or_lines: str | list[str], *, pages: int = 1, style: str = PAGE) -> Path:
+    """Minimal but valid PDF with a real text layer (no extra deps), in one
+    of :data:`STYLES`. ``text_or_lines`` is what the page says: a string
+    (``PAGE`` splits it on newlines; ``BARE`` prints it as one line) or a
+    list of lines (``PAGE`` and ``PADDED``). ``pages`` above one is for
+    ``PAGE``."""
+    if style not in STYLES:
+        raise ValueError(f"text_pdf has no style {style!r}; it has {STYLES}")
+    if style != PAGE and pages != 1:
+        raise ValueError(f"the {style!r} style writes one page")
+    if style == PAGE:
+        if isinstance(text_or_lines, str):
+            lines = text_or_lines.split(chr(10)) if text_or_lines else [""]
+        else:
+            lines = list(text_or_lines)
+        body = " ".join(f"{_pdf_string(line)} Tj T*" for line in lines)
+        data = _pdf_of(f"BT /F1 12 Tf 14 TL 72 720 Td {body} ET".encode("latin-1", "replace"), pages=pages)
+    elif style == PADDED:
+        if isinstance(text_or_lines, str):
+            raise TypeError("the 'padded' style prints a list of lines, not a string")
+        body = "\n".join(
+            f"BT /F1 11 Tf 60 {740 - 14 * i} Td ({line}) Tj ET"
+            for i, line in enumerate(text_or_lines[:48])
+        )
+        # an unreferenced object: realistic file size, renders clean
+        data = _pdf_of(body.encode("ascii", "replace"), padding=b" " * 8192)
+    else:
+        if not isinstance(text_or_lines, str):
+            raise TypeError("the 'bare' style prints one string, not a list")
+        data = _pdf_of(f"BT /F1 12 Tf 72 720 Td ({text_or_lines}) Tj ET".encode("ascii"))
+    path.write_bytes(data)
+    return path
+
+
+def write_pdf(path: Path, pages: int = 1, password: str | None = None) -> Path:
+    """A PDF of ``pages`` blank pages, locked with ``password`` when one is
+    given: the file a client is certain they sent and nothing can read.
+    Written by pypdf, which is why it is the only writer here that is not
+    hand-built (and why its bytes are not pinned)."""
+    from pypdf import PdfWriter
+
+    writer = PdfWriter()
+    for _ in range(pages):
+        writer.add_blank_page(width=612, height=792)
+    if password:
+        writer.encrypt(password, algorithm="RC4-128")
+    with path.open("wb") as fh:
+        writer.write(fh)
     return path
 
 
@@ -292,24 +371,24 @@ def build_samples(samples: Path) -> None:
 
     good = text_pdf(
         samples / f"W-2 John Smith {YEAR}.pdf",
-        w2_lines("John A. Smith", "Acme Manufacturing Inc.", YEAR),
+        w2_lines("John A. Smith", "Acme Manufacturing Inc.", YEAR), style=PADDED,
     )
     # Byte-identical duplicate — demonstrates content-hash de-duplication.
     shutil.copyfile(good, samples / f"W-2 John Smith {YEAR} - Copy.pdf")
 
     text_pdf(
         samples / f"W-2 Jane Smith {YEAR}.pdf",
-        w2_lines("Jane R. Smith", "Lakeside Medical Group", YEAR),
+        w2_lines("Jane R. Smith", "Lakeside Medical Group", YEAR), style=PADDED,
     )
     # Wrong tax year — the content date check will flag it.
     text_pdf(
         samples / f"W-2 Jane Smith {PRIOR_YEAR} - old.pdf",
-        w2_lines("Jane R. Smith", "Lakeside Medical Group", PRIOR_YEAR),
+        w2_lines("Jane R. Smith", "Lakeside Medical Group", PRIOR_YEAR), style=PADDED,
     )
 
     text_pdf(
         samples / "1099-INT First National.pdf",
-        lines_1099_int("First National Bank", "John A. Smith", YEAR),
+        lines_1099_int("First National Bank", "John A. Smith", YEAR), style=PADDED,
     )
     # A broker's year-end summary carries the account holder's name at the
     # head of it, the way every real one does - which is why the catalog
@@ -323,12 +402,12 @@ def build_samples(samples: Path) -> None:
 
     text_pdf(
         samples / f"{PRIOR_YEAR} Form 1040 Tax Return.pdf",
-        prior_return_lines("John A. & Jane R. Smith", PRIOR_YEAR),
+        prior_return_lines("John A. & Jane R. Smith", PRIOR_YEAR), style=PADDED,
     )
 
     text_pdf(
         samples / "Form 1098 Mortgage Interest.pdf",
-        form_1098_lines("Home Lending Corp.", "John A. & Jane R. Smith", YEAR),
+        form_1098_lines("Home Lending Corp.", "John A. & Jane R. Smith", YEAR), style=PADDED,
     )
     (samples / "Mortgage Notes.docx").write_bytes(b"not a real docx " * 800)
 

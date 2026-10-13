@@ -3,7 +3,7 @@
   "generated": "2026-10-13",
   "generator": "tools/repo_map.py",
   "generator_sha256": "a394d7104da5155d",
-  "module_table_sha256": "2499d0551746f34b",
+  "module_table_sha256": "afb2b606ccc87fc7",
   "pipeline": [
     "tracker.api / create",
     "tracker.scaffold",
@@ -15,9 +15,9 @@
     "a person sends the draft"
   ],
   "counts": {
-    "nodes": 305,
-    "edges": 1336,
-    "reused": 250
+    "nodes": 306,
+    "edges": 1331,
+    "reused": 252
   },
   "node_types": [
     "artifact",
@@ -4645,8 +4645,8 @@
       "id": "docs/repo-map.curated.json",
       "type": "file",
       "layer": "docs",
-      "sha256": "a916bea439a3f0d8",
-      "lines": 1322,
+      "sha256": "fac10563616db680",
+      "lines": 1325,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
     },
@@ -4679,7 +4679,7 @@
       "id": "docs/vocab-coverage.json",
       "type": "file",
       "layer": "docs",
-      "sha256": "3aadd77e768d4b73",
+      "sha256": "42b70ac2a630ca6d",
       "lines": 9415,
       "role": "The coverage report as data, with the SHA-256 of every input it was built from; `check` and the suite compare against these. Generated; never edited by hand."
     },
@@ -5616,8 +5616,8 @@
       "id": "pilot/wintest/make_samples.py",
       "type": "module",
       "layer": "root",
-      "sha256": "78a10e2859e4cc4b",
-      "lines": 152,
+      "sha256": "27c05c3ed7d3e433",
+      "lines": 153,
       "cli": "python -m pilot.wintest.make_samples",
       "exports": [
         "EMAIL_SAMPLE",
@@ -5993,12 +5993,15 @@
       "id": "tests/samples.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "5991101d02da88d8",
-      "lines": 566,
+      "sha256": "46bf3aaa66faa621",
+      "lines": 645,
       "exports": [
+        "BARE",
         "COLLATION_NAMES",
         "COLLATION_ORDER",
         "DEMO_ITEMS",
+        "PADDED",
+        "PAGE",
         "PRIOR_YEAR",
         "SCRATCH_CLIENT",
         "SCRATCH_FIRM",
@@ -6007,6 +6010,7 @@
         "SCRATCH_RETURN",
         "SCRATCH_SCAN",
         "SCRATCH_SPOUSE",
+        "STYLES",
         "YEAR",
         "brokerage_cover_lines",
         "build_samples",
@@ -6025,7 +6029,8 @@
         "scanned_w2_lines",
         "sheet_xlsx",
         "text_pdf",
-        "w2_lines"
+        "w2_lines",
+        "write_pdf"
       ],
       "constants": {
         "SCRATCH_CLIENT": "'John A. Smith'",
@@ -6033,10 +6038,13 @@
         "SCRATCH_FIRM": "'Example CPA'",
         "SCRATCH_HOUSEHOLD": "'Smith Family'",
         "SCRATCH_RETURN": "'1040 - John A. Smith'",
-        "SCRATCH_SCAN": "'scan 0001.pdf'"
+        "SCRATCH_SCAN": "'scan 0001.pdf'",
+        "PAGE": "'page'",
+        "PADDED": "'padded'",
+        "BARE": "'bare'"
       },
-      "role": "The pile of client documents the suite starts from, built from nothing: text_pdf() prints lines to a real one-page PDF, sheet_xlsx() writes rows to a real workbook, and build_samples() assembles the drop folder a client would leave (a duplicate, last year's form, a Word file, a Google Sheets shortcut, a photo, a half-uploaded temp file).",
-      "notes": "No fixture files in the repository and no client data, so every test starts from the same pile. It was the marketing demo's sample builder in tracker/api.py; the demo went (decision 41) and the suite still needed the pile. listing_denied() makes a folder really unlistable for the running account, because rglob and os.walk reach the file system by different calls and a monkeypatch of one proves nothing about the other. Decision 73: sheet_xlsx() is how tests/test_catalog.py routes its workbook cases - half of every catalog asks for a schedule a client keeps in Excel, and a sheet is read as rows of tab-separated cells (a phrase across two cells is one phrase, a phrase down two rows is two labels), so typing one as prose would prove the wrong reading. Decision 78: build_scratch_root() assembles the same pile into a whole clients root - one scaffolded engagement with the documents already dropped - which is what .github/workflows/build.yml runs the frozen package over; the fixture lives beside the pile rather than in a tool of its own so there is one pile and not two that drift. It records the engagement through manifest.create_engagement() directly rather than through the suite's helper, because the build workflow imports this module without conftest (decision 104). openpyxl is imported here to WRITE a client's spreadsheet for the suite to read, which is the one use of it the tree keeps. The pile's 'file nobody accepts' is a .bmp since decision 127: it was a .jpg until a photo became a document, and the claim it carries is about a file type no row takes. Decision 143 added cfb_bytes(), a compound-file writer to the letter of [MS-CFB] (version 3, a mini stream, one FAT), and msg_bytes()/msg_storage() over it, so the suite's .msg fixtures are built from nothing - olefile only reads. Decision 169: scanned_pdf() draws lines on a page and saves a PDF with no text layer, and build_scratch_root() drops one (SCRATCH_SCAN, a W-2 whose box labels and figures are drawn as separate lines) so the frozen smoke check proves the package reads."
+      "role": "The pile of client documents the suite starts from, built from nothing: text_pdf() prints text or lines to a real PDF (one writer, three styles), sheet_xlsx() writes rows to a real workbook, and build_samples() assembles the drop folder a client would leave (a duplicate, last year's form, a Word file, a Google Sheets shortcut, a photo, a half-uploaded temp file).",
+      "notes": "No fixture files in the repository and no client data, so every test starts from the same pile. It was the marketing demo's sample builder in tracker/api.py; the demo went (decision 41) and the suite still needed the pile. listing_denied() makes a folder really unlistable for the running account, because rglob and os.walk reach the file system by different calls and a monkeypatch of one proves nothing about the other. Decision 73: sheet_xlsx() is how tests/test_catalog.py routes its workbook cases - half of every catalog asks for a schedule a client keeps in Excel, and a sheet is read as rows of tab-separated cells (a phrase across two cells is one phrase, a phrase down two rows is two labels), so typing one as prose would prove the wrong reading. Decision 78: build_scratch_root() assembles the same pile into a whole clients root - one scaffolded engagement with the documents already dropped - which is what .github/workflows/build.yml runs the frozen package over; the fixture lives beside the pile rather than in a tool of its own so there is one pile and not two that drift. It records the engagement through manifest.create_engagement() directly rather than through the suite's helper, because the build workflow imports this module without conftest (decision 104). openpyxl is imported here to WRITE a client's spreadsheet for the suite to read, which is the one use of it the tree keeps. The pile's 'file nobody accepts' is a .bmp since decision 127: it was a .jpg until a photo became a document, and the claim it carries is about a file type no row takes. Decision 143 added cfb_bytes(), a compound-file writer to the letter of [MS-CFB] (version 3, a mini stream, one FAT), and msg_bytes()/msg_storage() over it, so the suite's .msg fixtures are built from nothing - olefile only reads. Decision 169: scanned_pdf() draws lines on a page and saves a PDF with no text layer, and build_scratch_root() drops one (SCRATCH_SCAN, a W-2 whose box labels and figures are drawn as separate lines) so the frozen smoke check proves the package reads. SPEC-architecture J2 (R2.2): the suite's three hand-built PDF writers are this one text_pdf(path, text_or_lines, *, pages=1, style=...), and each style writes, byte for byte, what its writer wrote: 'page' (the default, from tests/test_scanner.py: a string split on its newlines or a list of lines, parentheses and backslashes escaped, any number of pages), 'padded' (the pile's own: a list of lines, the first 48, and an unreferenced 8 KB object so a file has a realistic size and a request with min_size_kb accepts it) and 'bare' (from tests/test_content_check.py: one ASCII string on one line, the smallest file with a text layer). Merging them into one 'better' file would have changed every size and count a test pins, which is why they stay styles; tests/test_samples.py pins each style's digest and size on three inputs taken from the old writers before they were deleted. write_pdf() (moved here from tests/test_validators.py) is the one writer that is not hand-built: pypdf's blank pages, locked when given a password."
     },
     {
       "id": "tests/test_after_install.py",
@@ -6170,8 +6178,8 @@
       "id": "tests/test_api.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "96d755b1e998c54a",
-      "lines": 11751,
+      "sha256": "639ff35dac358b52",
+      "lines": 11736,
       "exports": [
         "COUNTS",
         "DEEPER_ROOT_LENGTH",
@@ -6656,7 +6664,7 @@
       "id": "tests/test_api_entry.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "3e35daefa9f0466a",
+      "sha256": "6cd9337810a68603",
       "lines": 240,
       "exports": [
         "REPO",
@@ -6676,7 +6684,7 @@
       "id": "tests/test_backtest.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "7fa13045d9e49e3a",
+      "sha256": "923a18784e475c38",
       "lines": 446,
       "exports": [
         "CLIENT_FOLDER",
@@ -6863,7 +6871,7 @@
       "id": "tests/test_catalog.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "fdd14139a87ad291",
+      "sha256": "6a89ebf3327c9550",
       "lines": 2096,
       "exports": [
         "CASES",
@@ -6925,8 +6933,8 @@
       "id": "tests/test_containers.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "9bd34e865ddfb4e3",
-      "lines": 1064,
+      "sha256": "781e1ed001d0af33",
+      "lines": 1063,
       "exports": [
         "FORM_1098",
         "Killed",
@@ -6995,8 +7003,8 @@
       "id": "tests/test_content_check.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "49f335b07544ef13",
-      "lines": 2931,
+      "sha256": "e7084641e9b0969d",
+      "lines": 2889,
       "exports": [
         "A_PASS_READING",
         "BOMB_REFUSED",
@@ -7117,8 +7125,7 @@
         "test_the_line_a_mention_is_on_is_found_as_before_without_walking_the_text",
         "test_the_line_finder_is_quick_on_a_text_with_no_line_feed",
         "test_unsupported_extension",
-        "test_xlsx_extraction_with_dates",
-        "text_pdf"
+        "test_xlsx_extraction_with_dates"
       ],
       "constants": {
         "STOP_IN_TESTS": "5.0",
@@ -7232,8 +7239,8 @@
       "id": "tests/test_filer.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "dd17dbd72cae0a08",
-      "lines": 10227,
+      "sha256": "626f6499e9223b15",
+      "lines": 10226,
       "exports": [
         "A_CLIENT_PATH",
         "A_PASS_KILLED_MID_COPY",
@@ -7836,7 +7843,7 @@
       "id": "tests/test_irs_forms.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "bae23f848b3fc7fc",
+      "sha256": "0433e5c9808c6a61",
       "lines": 293,
       "exports": [
         "EXPECT",
@@ -8002,7 +8009,7 @@
       "id": "tests/test_ledger.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "038fe47f2e622f34",
+      "sha256": "ddc88e702652e287",
       "lines": 1020,
       "exports": [
         "A_ROW_ORIGINAL",
@@ -8314,8 +8321,8 @@
       "id": "tests/test_ocr.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "ccfcd1559e13da38",
-      "lines": 1729,
+      "sha256": "a0606d4e8070ee42",
+      "lines": 1728,
       "exports": [
         "A_PASS_BETWEEN_DOCUMENTS",
         "FakeEngine",
@@ -8654,7 +8661,7 @@
       "id": "tests/test_reader_bench.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "9b0a88ec1b4be3e8",
+      "sha256": "623441cdc458fa4d",
       "lines": 764,
       "exports": [
         "A_BROKER_PAGE",
@@ -8721,7 +8728,7 @@
       "id": "tests/test_real_corpus.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "0c9fafee2ee5caf0",
+      "sha256": "28b11c3c038c3089",
       "lines": 391,
       "exports": [
         "ENGINE",
@@ -8891,8 +8898,8 @@
       "id": "tests/test_reminder.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "578ee18e3b960994",
-      "lines": 2468,
+      "sha256": "427a609687c793ed",
+      "lines": 2465,
       "exports": [
         "A_WRITE_KILLED_HALF_WAY",
         "CLIENT_SIDE_NOT_HELD",
@@ -9121,7 +9128,7 @@
       "id": "tests/test_resident.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "c17ecddaf01e8337",
+      "sha256": "b48b2fed716066b8",
       "lines": 506,
       "exports": [
         "END_PREFIX",
@@ -9163,7 +9170,7 @@
       "id": "tests/test_review.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "cffa6f0913b58a44",
+      "sha256": "bac316b2133376d3",
       "lines": 557,
       "exports": [
         "DAY1",
@@ -9300,8 +9307,8 @@
       "id": "tests/test_router.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "e99f4da63b7a0dce",
-      "lines": 1498,
+      "sha256": "2c83feba073dc5c9",
+      "lines": 1497,
       "exports": [
         "DONATIONS",
         "GARBLED",
@@ -9443,8 +9450,8 @@
       "id": "tests/test_runner.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "3fe880829ec5495b",
-      "lines": 5909,
+      "sha256": "f750dee1cea14974",
+      "lines": 5908,
       "exports": [
         "A_CLIENT_PATH",
         "DRAFT_DAY",
@@ -9696,6 +9703,24 @@
       }
     },
     {
+      "id": "tests/test_samples.py",
+      "type": "test",
+      "layer": "tests",
+      "sha256": "02969f929f90c80b",
+      "lines": 88,
+      "exports": [
+        "OLD_BYTES",
+        "test_a_style_that_does_not_exist_is_refused_by_name",
+        "test_each_pdf_style_writes_the_bytes_its_old_writer_wrote",
+        "test_every_pdf_style_has_a_text_layer_that_reads_back",
+        "test_only_the_page_style_writes_more_than_one_page",
+        "test_the_padded_style_is_the_one_with_a_realistic_size_and_the_others_are_small",
+        "test_the_padded_style_takes_lines_and_the_bare_style_one_string",
+        "test_the_page_style_is_the_default_and_a_list_of_lines_reads_as_one_string_split_on_newlines"
+      ],
+      "role": "Pins the bytes of tests/samples.py's one PDF writer: each of text_pdf()'s three styles writes the very file its old writer wrote, on three inputs each, by digest and size, and the styles refuse what they were never given."
+    },
+    {
       "id": "tests/test_scaffold.py",
       "type": "test",
       "layer": "tests",
@@ -9774,8 +9799,8 @@
       "id": "tests/test_scanner.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "99adf399da16271a",
-      "lines": 972,
+      "sha256": "d88279f1496966d2",
+      "lines": 937,
       "exports": [
         "DAY1",
         "DAY2",
@@ -9828,8 +9853,7 @@
         "test_the_scan_leaves_its_verdicts_in_the_store_and_prunes_what_is_gone",
         "test_the_scan_report_carries_the_one_summary",
         "test_the_scanner_reads_the_request_list_only_under_the_lock",
-        "test_the_scans_memo_survives_for_parked_copies_and_strays",
-        "text_pdf"
+        "test_the_scans_memo_survives_for_parked_copies_and_strays"
       ]
     },
     {
@@ -10772,8 +10796,8 @@
       "id": "tests/test_store.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "5a09b0602f2b7285",
-      "lines": 5835,
+      "sha256": "fafa92ac483db854",
+      "lines": 5832,
       "exports": [
         "AS_AT_16",
         "AS_AT_17",
@@ -11125,8 +11149,8 @@
       "id": "tests/test_validators.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "14bee8e95d368284",
-      "lines": 509,
+      "sha256": "e58cca3f18d9b210",
+      "lines": 499,
       "exports": [
         "ANY_ITEM",
         "PDF_ITEM",
@@ -11161,7 +11185,6 @@
         "test_the_pdf_verdict_cache_is_bounded",
         "test_the_review_widened_the_program_and_macro_lists_and_left_web_pages_alone",
         "test_valid_pdf_passes",
-        "write_pdf",
         "write_photo"
       ]
     },
@@ -11169,7 +11192,7 @@
       "id": "tests/test_view.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "84c2993344a4cac2",
+      "sha256": "30bdd43b45cdff28",
       "lines": 993,
       "exports": [
         "DAY1",
@@ -11232,7 +11255,7 @@
       "id": "tests/test_vocab_report.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "b1e12fe7ad4e4ecb",
+      "sha256": "0488b44c3da3a1f1",
       "lines": 411,
       "exports": [
         "FABRICATED_NAME",
@@ -12340,6 +12363,12 @@
     },
     {
       "from": "tests/samples.py",
+      "to": "pkg:pypdf",
+      "type": "depends_on",
+      "source": "derived"
+    },
+    {
+      "from": "tests/samples.py",
       "to": "pkg:pytest",
       "type": "depends_on",
       "source": "derived"
@@ -12730,12 +12759,6 @@
     },
     {
       "from": "tests/test_api.py",
-      "to": "tests/test_scanner.py",
-      "type": "imports",
-      "source": "derived"
-    },
-    {
-      "from": "tests/test_api.py",
       "to": "tests/test_shell_menu.py",
       "type": "imports",
       "source": "derived"
@@ -12743,12 +12766,6 @@
     {
       "from": "tests/test_api.py",
       "to": "tests/test_single_source.py",
-      "type": "imports",
-      "source": "derived"
-    },
-    {
-      "from": "tests/test_api.py",
-      "to": "tests/test_validators.py",
       "type": "imports",
       "source": "derived"
     },
@@ -12814,7 +12831,7 @@
     },
     {
       "from": "tests/test_api_entry.py",
-      "to": "tests/test_scanner.py",
+      "to": "tests/samples.py",
       "type": "imports",
       "source": "derived"
     },
@@ -13029,12 +13046,6 @@
       "source": "derived"
     },
     {
-      "from": "tests/test_catalog.py",
-      "to": "tests/test_scanner.py",
-      "type": "imports",
-      "source": "derived"
-    },
-    {
       "from": "tests/test_checkpoint.py",
       "to": "pkg:pytest",
       "type": "depends_on",
@@ -13169,12 +13180,6 @@
     {
       "from": "tests/test_containers.py",
       "to": "tests/test_filer.py",
-      "type": "imports",
-      "source": "derived"
-    },
-    {
-      "from": "tests/test_containers.py",
-      "to": "tests/test_scanner.py",
       "type": "imports",
       "source": "derived"
     },
@@ -13343,12 +13348,6 @@
     {
       "from": "tests/test_content_check.py",
       "to": "tests/test_irs_forms.py",
-      "type": "imports",
-      "source": "derived"
-    },
-    {
-      "from": "tests/test_content_check.py",
-      "to": "tests/test_scanner.py",
       "type": "imports",
       "source": "derived"
     },
@@ -13738,12 +13737,6 @@
     },
     {
       "from": "tests/test_filer.py",
-      "to": "tests/test_scanner.py",
-      "type": "imports",
-      "source": "derived"
-    },
-    {
-      "from": "tests/test_filer.py",
       "to": "tracker/filer.py",
       "type": "tests",
       "source": "derived"
@@ -13972,13 +13965,13 @@
     },
     {
       "from": "tests/test_irs_forms.py",
-      "to": "tests/test_catalog.py",
+      "to": "tests/samples.py",
       "type": "imports",
       "source": "derived"
     },
     {
       "from": "tests/test_irs_forms.py",
-      "to": "tests/test_scanner.py",
+      "to": "tests/test_catalog.py",
       "type": "imports",
       "source": "derived"
     },
@@ -14212,13 +14205,13 @@
     },
     {
       "from": "tests/test_ledger.py",
-      "to": "tests/test_filer.py",
+      "to": "tests/samples.py",
       "type": "imports",
       "source": "derived"
     },
     {
       "from": "tests/test_ledger.py",
-      "to": "tests/test_scanner.py",
+      "to": "tests/test_filer.py",
       "type": "imports",
       "source": "derived"
     },
@@ -14854,7 +14847,7 @@
     },
     {
       "from": "tests/test_real_corpus.py",
-      "to": "tests/test_scanner.py",
+      "to": "tests/samples.py",
       "type": "imports",
       "source": "derived"
     },
@@ -15136,6 +15129,12 @@
     },
     {
       "from": "tests/test_reminder.py",
+      "to": "tests/samples.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_reminder.py",
       "to": "tests/test_reasons.py",
       "type": "imports",
       "source": "derived"
@@ -15149,18 +15148,6 @@
     {
       "from": "tests/test_reminder.py",
       "to": "tests/test_router.py",
-      "type": "imports",
-      "source": "derived"
-    },
-    {
-      "from": "tests/test_reminder.py",
-      "to": "tests/test_scanner.py",
-      "type": "imports",
-      "source": "derived"
-    },
-    {
-      "from": "tests/test_reminder.py",
-      "to": "tests/test_validators.py",
       "type": "imports",
       "source": "derived"
     },
@@ -15328,13 +15315,7 @@
     },
     {
       "from": "tests/test_review.py",
-      "to": "tests/test_scanner.py",
-      "type": "imports",
-      "source": "derived"
-    },
-    {
-      "from": "tests/test_review.py",
-      "to": "tests/test_validators.py",
+      "to": "tests/samples.py",
       "type": "imports",
       "source": "derived"
     },
@@ -15551,18 +15532,6 @@
     {
       "from": "tests/test_router.py",
       "to": "tests/test_review.py",
-      "type": "imports",
-      "source": "derived"
-    },
-    {
-      "from": "tests/test_router.py",
-      "to": "tests/test_scanner.py",
-      "type": "imports",
-      "source": "derived"
-    },
-    {
-      "from": "tests/test_router.py",
-      "to": "tests/test_validators.py",
       "type": "imports",
       "source": "derived"
     },
@@ -15855,6 +15824,24 @@
       "source": "derived"
     },
     {
+      "from": "tests/test_samples.py",
+      "to": "pkg:pytest",
+      "type": "depends_on",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_samples.py",
+      "to": "tracker/content_check.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_samples.py",
+      "to": "tests/samples.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
       "from": "tests/test_scaffold.py",
       "to": "pkg:pytest",
       "type": "depends_on",
@@ -16067,6 +16054,12 @@
     {
       "from": "tests/test_scanner.py",
       "to": "tests/conftest.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_scanner.py",
+      "to": "tests/samples.py",
       "type": "imports",
       "source": "derived"
     },
@@ -16600,6 +16593,12 @@
     },
     {
       "from": "tests/test_store.py",
+      "to": "tests/samples.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_store.py",
       "to": "tests/test_content_check.py",
       "type": "imports",
       "source": "derived"
@@ -16607,12 +16606,6 @@
     {
       "from": "tests/test_store.py",
       "to": "tests/test_filer.py",
-      "type": "imports",
-      "source": "derived"
-    },
-    {
-      "from": "tests/test_store.py",
-      "to": "tests/test_scanner.py",
       "type": "imports",
       "source": "derived"
     },
@@ -16816,6 +16809,12 @@
     },
     {
       "from": "tests/test_validators.py",
+      "to": "tests/samples.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_validators.py",
       "to": "tracker/validators.py",
       "type": "tests",
       "source": "derived"
@@ -16918,13 +16917,13 @@
     },
     {
       "from": "tests/test_view.py",
-      "to": "tests/test_registry.py",
+      "to": "tests/samples.py",
       "type": "imports",
       "source": "derived"
     },
     {
       "from": "tests/test_view.py",
-      "to": "tests/test_scanner.py",
+      "to": "tests/test_registry.py",
       "type": "imports",
       "source": "derived"
     },
@@ -16967,12 +16966,6 @@
     {
       "from": "tests/test_vocab_report.py",
       "to": "tests/test_catalog.py",
-      "type": "imports",
-      "source": "derived"
-    },
-    {
-      "from": "tests/test_vocab_report.py",
-      "to": "tests/test_scanner.py",
       "type": "imports",
       "source": "derived"
     },

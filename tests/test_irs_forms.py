@@ -28,8 +28,8 @@ from pathlib import Path
 
 import pytest
 
+from tests.samples import text_pdf
 from tests.test_catalog import cp_notice_lines, ssa_1099_lines
-from tests.test_scanner import text_pdf
 from tracker.manifest import validated
 from tracker.router import route_file
 from tracker.templates import template_items

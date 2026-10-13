@@ -29,7 +29,7 @@ from pathlib import Path
 import pytest
 
 from tests.conftest import child_env, make_engagement, named_page, seed_statuses, sort, written_elsewhere
-from tests.test_scanner import text_pdf
+from tests.samples import text_pdf
 from tracker import checkpoint, ledger, store
 from tracker.filer import ensure, read_index
 from tracker.layout import inbox_of, location_of, originals_of
@@ -4280,7 +4280,6 @@ def test_a_version_16_store_is_upgraded_in_place_and_keeps_its_cached_verdicts(t
     through decision 190's step and 209's to this version. Any other earlier
     version is set aside and rebuilt (decision 159, E3)."""
     from tests.conftest import sort
-    from tests.test_scanner import text_pdf
     from tracker.layout import inbox_of
     from tracker.records import entry_from_json
 
@@ -4373,7 +4372,6 @@ def test_a_version_17_store_gains_the_cause_columns_in_place_and_every_old_row_r
     written before 190 gives, cell for cell - no such line carries a cause -
     and no row's cause is read out of its words."""
     from tests.conftest import sort
-    from tests.test_scanner import text_pdf
     from tracker.layout import inbox_of
     from tracker.records import entry_from_json
 
@@ -4415,7 +4413,6 @@ def test_a_store_that_204s_old_step_upgraded_with_empty_cells_passes_check_after
     real value there, and NULL against ``''`` in any other column, are
     still named."""
     from tests.conftest import sort
-    from tests.test_scanner import text_pdf
     from tracker.layout import inbox_of
 
     root = tmp_path / "root"

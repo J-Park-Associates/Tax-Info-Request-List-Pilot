@@ -14,6 +14,7 @@ import textwrap
 from pathlib import Path
 
 from tests.conftest import child_env, make_engagement
+from tests.samples import text_pdf
 from tracker.manifest import RequestItem
 from tracker.runner import PRODUCT_FLAG, RUNNER_MODE_FLAG, SETTINGS_FLAG
 from tracker.settings import ENV_PRODUCT_NAME, ENV_SETTINGS_DIR
@@ -87,7 +88,6 @@ def test_runner_mode_reads_a_drop_in_a_child_and_files_it(tmp_path):
     child off in a process of its own - and the drop is filed on what the
     child read."""
     from tests.conftest import named_page
-    from tests.test_scanner import text_pdf
     from tracker.layout import inbox_of
 
     root = tmp_path / "Clients"

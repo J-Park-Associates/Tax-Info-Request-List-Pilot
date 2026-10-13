@@ -28,8 +28,8 @@ from pathlib import Path
 import pytest
 
 from tests.conftest import make_engagement, named_page, sort
+from tests.samples import text_pdf
 from tests.test_registry import engagement_dirs
-from tests.test_scanner import text_pdf
 from tracker import ledger, review, view
 from tracker.filer import NEEDS_REVIEW, read_index
 from tracker.layout import household_of, inbox_of, root_of

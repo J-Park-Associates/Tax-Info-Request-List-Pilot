@@ -75,9 +75,9 @@ def two_documents(tmp_path: Path) -> Path:
     folder = tmp_path / "corpus"
     inside = folder / CLIENT_FOLDER
     inside.mkdir(parents=True)
-    text_pdf(inside / W2_FILE, w2_lines(EMPLOYEE, EMPLOYER, YEAR))
+    text_pdf(inside / W2_FILE, w2_lines(EMPLOYEE, EMPLOYER, YEAR), style="padded")
     text_pdf(inside / PARKING_FILE,
-             [f"Form 4868 Application for Automatic Extension of Time To File {YEAR}"])
+             [f"Form 4868 Application for Automatic Extension of Time To File {YEAR}"], style="padded")
     expectations_for(folder, [
         f"{CLIENT_FOLDER}/{W2_FILE},1040,{YEAR},A01",
         f"{CLIENT_FOLDER}/{PARKING_FILE},1040,{YEAR},",
@@ -110,7 +110,7 @@ def test_a_document_is_routed_by_its_text_and_never_by_its_own_name(tmp_path):
     right for the wrong reason."""
     folder = tmp_path / "corpus"
     folder.mkdir()
-    text_pdf(folder / W2_FILE, lines_1099_int("First National Bank", EMPLOYEE, YEAR))
+    text_pdf(folder / W2_FILE, lines_1099_int("First National Bank", EMPLOYEE, YEAR), style="padded")
     expectations_for(folder, [f"{W2_FILE},1040,{YEAR},A02"])
     data = run(folder)
     assert data["agreement"] == 1.0                      # A02 is the interest row, not the W-2 row
@@ -122,7 +122,7 @@ def test_a_document_with_no_text_layer_is_counted_apart_and_is_not_parked(tmp_pa
     is neither routed nor held against the router: it is its own number."""
     folder = tmp_path / "corpus"
     folder.mkdir()
-    text_pdf(folder / W2_FILE, [""])                     # a valid PDF with nothing to read
+    text_pdf(folder / W2_FILE, [""], style="padded")                     # a valid PDF with nothing to read
     expectations_for(folder, [f"{W2_FILE},1040,{YEAR},A01"])
     data = run(folder)
     assert data["no_text"] == 1 and data["no_text_share"] == 1.0

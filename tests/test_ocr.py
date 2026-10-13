@@ -28,7 +28,7 @@ from types import SimpleNamespace
 import pytest
 
 from tests.conftest import make_engagement, named_page
-from tests.samples import scanned_pdf
+from tests.samples import scanned_pdf, text_pdf
 from tests.test_content_check import (
     CRASHED,
     STOP_IN_TESTS,
@@ -36,7 +36,6 @@ from tests.test_content_check import (
     eventually,
     no_child_left,
     running,
-    text_pdf,
 )
 from tracker import content_check, ocr, reasons
 from tracker.content_check import check_content, contains_keyword, extract
@@ -741,7 +740,7 @@ def test_a_page_longer_than_the_long_side_is_held_to_it_before_it_is_prepared(tm
     assert ocr.prepared(letter, ocr.SHIPPED).size == letter.size
     assert ocr.prepared(legal, ocr.RAW) is legal
 
-    pdf = text_pdf(tmp_path / "letter.pdf", "a line")
+    pdf = text_pdf(tmp_path / "letter.pdf", "a line", style="bare")
     doc = pdfium.PdfDocument(pdf)
     try:
         page_of = doc[0]
@@ -1090,7 +1089,7 @@ def test_one_child_reads_every_document_of_a_pass_and_ends_with_it(tmp_path, in_
     a child per document paid the engine's load every time - and none left
     when the pass ends. A reading made with no pass open has a child of its
     own, ended with it."""
-    pages = [text_pdf(tmp_path / f"page {n}.pdf", "Form W-2 2025") for n in range(3)]
+    pages = [text_pdf(tmp_path / f"page {n}.pdf", "Form W-2 2025", style="bare") for n in range(3)]
     with ocr.reading_session():
         pids = [pid_of_the_reader(page) for page in pages]
         assert len(set(pids)) == 1 and running(pids[0])
@@ -1105,7 +1104,7 @@ def test_a_long_lived_reader_is_replaced_every_hundred_documents(tmp_path, in_a_
     """R-4's hygiene: a child that has served its count is let go and the
     next document gets a fresh one. (The count is patched down from 100.)"""
     in_a_child.setattr(ocr, "DOCUMENTS_PER_CHILD", 2)
-    pages = [text_pdf(tmp_path / f"page {n}.pdf", "Form W-2 2025") for n in range(3)]
+    pages = [text_pdf(tmp_path / f"page {n}.pdf", "Form W-2 2025", style="bare") for n in range(3)]
     with ocr.reading_session():
         first, second, third = (pid_of_the_reader(page) for page in pages)
     assert first == second != third
@@ -1118,8 +1117,8 @@ def test_a_long_lived_reader_is_replaced_after_a_stop(tmp_path, a_short_stop):
     next document gets a fresh child that reads it."""
     from tests import child_readers
 
-    stuck = text_pdf(tmp_path / "stuck.pdf", "Form W-2 2025")
-    after = text_pdf(tmp_path / "after.pdf", "Form W-2 2025")
+    stuck = text_pdf(tmp_path / "stuck.pdf", "Form W-2 2025", style="bare")
+    after = text_pdf(tmp_path / "after.pdf", "Form W-2 2025", style="bare")
     with ocr.reading_session():
         before = pid_of_the_reader(after)
         answer, failed = content_check.in_a_child(stuck, child_readers.a_text_layer_that_never_finishes)
@@ -1135,8 +1134,8 @@ def test_a_long_lived_reader_is_replaced_after_a_crash(tmp_path, in_a_child):
     document being read, and the next document is read by a fresh child."""
     from tests import child_readers
 
-    crash = text_pdf(tmp_path / "a crash.pdf", "Form W-2 Wage and Tax Statement 2025")
-    after = text_pdf(tmp_path / "after.pdf", "Form W-2 Wage and Tax Statement 2025")
+    crash = text_pdf(tmp_path / "a crash.pdf", "Form W-2 Wage and Tax Statement 2025", style="bare")
+    after = text_pdf(tmp_path / "after.pdf", "Form W-2 Wage and Tax Statement 2025", style="bare")
     with ocr.reading_session():
         before = pid_of_the_reader(after)
         answer, failed = content_check.in_a_child(crash, child_readers.a_reader_that_dies_on_a_crash)
@@ -1189,7 +1188,7 @@ def test_no_reading_child_outlives_the_pass(tmp_path):
     import sys
 
     repo = str(Path(__file__).resolve().parents[1])
-    page = text_pdf(tmp_path / "page.pdf", "Form W-2 2025")
+    page = text_pdf(tmp_path / "page.pdf", "Form W-2 2025", style="bare")
     mark = Path(f"{page}.child")
     the_pass = subprocess.Popen([sys.executable, "-c", A_PASS_BETWEEN_DOCUMENTS, str(page), repo])
     try:
@@ -1274,8 +1273,8 @@ def test_a_card_child_that_dies_is_a_card_fault_and_the_document_is_read_on_the_
     child, the pass warns once, and every later document stays there."""
     from tests import child_readers
 
-    scan = text_pdf(tmp_path / "scan.pdf", "Form W-2 2025")
-    after = text_pdf(tmp_path / "after.pdf", "Form W-2 2025")
+    scan = text_pdf(tmp_path / "scan.pdf", "Form W-2 2025", style="bare")
+    after = text_pdf(tmp_path / "after.pdf", "Form W-2 2025", style="bare")
     with ocr.reading_session() as session:
         answer, failed = content_check.in_a_child(scan, child_readers.a_card_that_dies)
         assert failed is None, failed.reason
@@ -1325,8 +1324,8 @@ def test_a_child_over_its_memory_limit_is_replaced_and_the_next_document_reads(t
     is read by a fresh child."""
     from tests import child_readers
 
-    big = text_pdf(tmp_path / "big.pdf", "Form W-2 2025")
-    after = text_pdf(tmp_path / "after.pdf", "Form W-2 2025")
+    big = text_pdf(tmp_path / "big.pdf", "Form W-2 2025", style="bare")
+    after = text_pdf(tmp_path / "after.pdf", "Form W-2 2025", style="bare")
     with ocr.reading_session() as session:
         answer, failed = content_check.in_a_child(big, child_readers.a_reader_that_needs_too_much_memory)
         assert answer is None and failed.reason == CRASHED and not failed.transient
@@ -1419,9 +1418,9 @@ def test_a_reading_past_its_memory_on_posix_ends_as_a_crash_and_is_replaced(tmp_
     from tests import child_readers
 
     in_a_child.setattr(ocr, "MEMORY_WATCH_SECONDS", 0.1)
-    big = text_pdf(tmp_path / "big.pdf", "Form W-2 2025")
-    again = text_pdf(tmp_path / "again.pdf", "Form W-2 2025")
-    after = text_pdf(tmp_path / "after.pdf", "Form W-2 2025")
+    big = text_pdf(tmp_path / "big.pdf", "Form W-2 2025", style="bare")
+    again = text_pdf(tmp_path / "again.pdf", "Form W-2 2025", style="bare")
+    after = text_pdf(tmp_path / "after.pdf", "Form W-2 2025", style="bare")
     over = ocr.PROCESSOR_CHILD_MEMORY + 1
     in_a_child.setattr(ocr, "_footprint", a_footprint_that_is_over_for(
         child_readers.reached(big, "text-layer"), over))
@@ -1448,7 +1447,7 @@ def test_a_child_under_its_limit_is_left_to_read(tmp_path, in_a_child):
 
     in_a_child.setattr(ocr, "MEMORY_WATCH_SECONDS", 0.1)
     in_a_child.setattr(ocr, "_footprint", lambda pid, system=None: ocr.PROCESSOR_CHILD_MEMORY)
-    slow = text_pdf(tmp_path / "slow.pdf", "Form W-2 2025")
+    slow = text_pdf(tmp_path / "slow.pdf", "Form W-2 2025", style="bare")
     child = ocr.ReadingChild(processor_only=True)
     try:
         assert child.run(child_readers.the_childs_process_id, (slow,), {}, 60).kind == "read"
@@ -1466,7 +1465,7 @@ def test_the_watch_does_not_stretch_a_readings_stop(tmp_path, in_a_child):
 
     in_a_child.setattr(ocr, "MEMORY_WATCH_SECONDS", 30.0)
     in_a_child.setattr(ocr, "_footprint", lambda pid, system=None: 1)
-    slow = text_pdf(tmp_path / "slow.pdf", "Form W-2 2025")
+    slow = text_pdf(tmp_path / "slow.pdf", "Form W-2 2025", style="bare")
     child = ocr.ReadingChild(processor_only=True)
     try:
         assert child.run(child_readers.the_childs_process_id, (slow,), {}, 60).kind == "read"
@@ -1489,7 +1488,7 @@ def test_a_footprint_that_cannot_be_read_is_no_cap_and_is_said_once(tmp_path, in
     in_a_child.setattr(ocr, "MEMORY_WATCH_SECONDS", 0.1)
     in_a_child.setattr(ocr, "_footprint", unreadable)
     in_a_child.setattr(ocr, "_SAID", set())
-    slow = text_pdf(tmp_path / "slow.pdf", "Form W-2 2025")
+    slow = text_pdf(tmp_path / "slow.pdf", "Form W-2 2025", style="bare")
     for _ in range(2):
         child = ocr.ReadingChild(processor_only=True)
         try:

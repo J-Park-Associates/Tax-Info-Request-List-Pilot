@@ -9,7 +9,7 @@ sitting in Needs Review.
 
 import pytest
 
-from tests.test_scanner import text_pdf
+from tests.samples import text_pdf
 from tracker import reasons
 from tracker.manifest import Override, RequestItem
 from tracker.router import (
@@ -547,13 +547,12 @@ def test_a_page_naming_two_forms_never_files_on_a_third_and_the_miss_path_agrees
     times deep in its text is those two documents - it parks on a list that
     asks only for a 1099, and an empty cache reaches the same verdict."""
     from tests.samples import scanned_1098_lines, scanned_w2_lines
-    from tests.test_scanner import text_pdf as pdf_of_lines
     from tracker.content_check import ContentCache, check_content, rules_fingerprint
 
     third = RequestItem(identifier="A02", document="1099 Statements", period="TY2025",
                         allowed_extensions=("pdf",), min_size_kb=0, required_keywords=("1099",))
     lines = scanned_w2_lines(2025) + scanned_1098_lines(2025) + ["see 1099 for details"] * 8
-    page = pdf_of_lines(tmp_path / "scan0021.pdf", chr(10).join(lines))
+    page = text_pdf(tmp_path / "scan0021.pdf", chr(10).join(lines))
     kept = ContentCache()
 
     routing = route_file(page, [third], cache=kept)
@@ -970,7 +969,7 @@ def test_a_tier_two_refusal_nothing_could_be_read_out_of_carries_the_names_evide
     Nothing about the decision moves: no candidate, the reason is still
     the refusal's, and nothing is filed on a name - here or anywhere.
     """
-    from tests.test_validators import write_pdf
+    from tests.samples import write_pdf
     from tracker.content_check import RULE_FILENAME, RULE_REFUSED, WHERE_TITLE
 
     locked = write_pdf(tmp_path / "W-2 Jane Smith 2025.pdf", password="secret123")
