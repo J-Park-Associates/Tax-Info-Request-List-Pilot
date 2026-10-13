@@ -430,3 +430,58 @@ The gate after the rebuild: only the test files the fixes touch
 `test_repo_map`), ruff, the map check. The builder appends
 `## Rebuild 1 (Sonnet, 2026-10-13)` to the handoff: each finding, what
 changed, the gate's counts.
+
+---
+
+## 15. Amendments after the second review (Opus, 2026-10-13)
+
+Findings G1-G5 are in `pilot/HANDOFF-form-inputs.md` under "Review 2". G1 is
+F1 surviving a rebuild, so by Jason's rule the rebuild is Opus's. All five
+are built.
+
+**R4 and R5, amended again (G1).** The rule since section 14 - a value the
+list already holds is never re-judged by a typing rule - was applied to the
+cap alone. It applies to the whole typed rule:
+
+- `manifest.item_from_fields(fields, *, where, recorded=None)`: `recorded`
+  is a mapping from `identifier_key` to the `RequestItem` the list holds
+  (`api._cmd_edit` passes `{identifier_key(i.identifier): i for i in held}`;
+  `create` and `templates.item_from_spec` pass nothing). For a row whose key
+  is in it: an identifier spelt exactly as recorded is judged by the store's
+  rule alone (`records.identifier_problem`: no cap, spoofing characters
+  only); a short name equal to the recorded one likewise
+  (`records.short_title_problem`). A value that differs from the recorded
+  one is new, and gets the typed rule (`typed_identifier_problem` with the
+  cap, `typed_short_title_problem`). `records.typed_identifier_problem`
+  loses its `capped` option, since the exemption is now whole.
+- Test (`tests/test_api.py`): a record written with identifier
+  `"A 01"` and short name `"W­X"` can have its Document edited and
+  saved; changing that identifier's spelling to another with a no-break
+  space is refused with the typed sentence.
+
+**R4, amended (G2, G5).** The short name a row *derives* when none is typed
+(`derived_short_title`: the Document title, or an issuer row's name) becomes
+part of every working copy's name, so it is judged as a short name is:
+the typed rule when its source field is new or changed by the rules above,
+the store's rule when the row is held unchanged. The refusal names the field
+the person typed, never "Short name":
+`f"{where}: {label} '{quoted(text)}' {problem} (it is also the short name)"`,
+where `label` is the Document column's label for a document row and the
+issuer column's label for an issuer row (the builder takes both from the
+existing `COL_*` constants). Tests: a Document `"W-2‮fdp.exe"` with a
+blank short name is refused naming the Document; an issuer name with a soft
+hyphen is refused naming the issuer field; the same values on a held,
+unchanged row are not refused by the typed rule.
+
+**R8 (G3).** A test pins non-UTF-8 stdin:
+`test_stdin_that_is_not_utf8_is_refused_like_a_non_object_and_logs_nothing`.
+
+**Decision rows (G4).** P290 also says a stored short name holding a
+spoofing character is a refused line. P291 says the cap and the typed rules
+apply to a new or changed value only, never to one the list already holds,
+and that Rename is held to them.
+
+The gate after rebuild 2: `test_api`, `test_manifest`, `test_records`,
+`test_templates`, `test_filer`, `test_layers`, `test_single_source`,
+`test_repo_map`, ruff, the map check. The builder appends
+`## Rebuild 2 (Opus, 2026-10-13)` to the handoff.

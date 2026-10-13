@@ -333,3 +333,156 @@ The gate (floor interpreter, one process per file, `-p no:cacheprovider`):
 | test_repo_map | 82 passed |
 
 `python -m ruff check .`: all checks passed. `python tools/repo_map.py check`: map is current. The whole suite was not run.
+
+## Review 2 (Opus, 2026-10-13)
+
+A second, separate review of the final state (`bd139f2`) against `pilot/SPEC-form-inputs.md` as
+section 14 amends it. I read the SPEC, this handoff, `git diff 6f6410b HEAD` file by file and the
+rebuild alone (`git diff 5469d30 HEAD`). I did not read any agent transcript and did not edit any
+code or test. Every behaviour claim marked "verified" was run on the floor interpreter, either
+through the named test file or through a throwaway test kept in the scratchpad, never in the
+repository.
+
+### Resolved
+
+- **F1 - resolved for the cap, not in effect for the rule beside it (see G1).** `rename_request`
+  holds the new identifier to `typed_identifier_problem` before the lock, using the SPEC's
+  `Row`-less sentence. `item_from_fields(recorded=...)` skips the cap only, and `_cmd_edit` passes
+  the held keys. The api, filer and manifest tests pass, and a held 120-character identifier stays
+  editable.
+- **F2 - resolved as section 14 directs.** `spoofing_problem` and `_SPOOFING_CODES` are exactly
+  the listed code points. The gate (`identifier_problem`, `short_title_problem`) asks
+  `spoofing_problem`. The typed checks (`typed_identifier_problem`, the new
+  `typed_short_title_problem` through `manifest._short_title`) ask `invisible_problem`.
+  `ADMISSION_VERSION` stays 4. The store admits `A<NBSP>01` / `W<SHY>X` and refuses U+202E and
+  U+200D (tests pass). The store comment no longer claims an unchecked fact. The read-only run over
+  the real records is still Jason's to make.
+- **F3 - resolved.** `quoted` writes every `is_invisible` character (Cc included) as `<U+XXXX>`
+  and then cuts, and its docstring says why. Verified: `quoted("W-2‮fdp") == "W-2<U+202E>fdp"`,
+  and the editor's sentence carries no U+202E. Two existing api pins now expect
+  `layout.quoted(name)`. That is the intended change, not a weakened test.
+- **F4 - resolved.** `templates.item_from_spec` words `Identifier '{quoted(identifier)}'`. Its test
+  checks a sentence under 300 characters and `<U+202E>` with no raw character.
+- **F5 - resolved.** The `also` recursion passes `written=written`. The new store test checks both
+  wordings.
+- **F6 - resolved.** P288 and P290 each end "The store's admission rises to 4." P290 is reworded to
+  the two rules, and that wording matches the code (but see G4).
+- **F7 - not built, as section 14 directs** (left for Jason as a later row).
+- **F8 - resolved.** The whole sentence is asserted.
+- **F9 - resolved.** `‮` / `‍` escapes only. No literal bidi character is in the new
+  tests.
+- **F10 - resolved.** The dead `log is None or` is gone.
+- **F11 - resolved.** The test_layers docstring states the `quoted` re-export and why.
+  test_layers passes, and `manifest` still loads `records` alone.
+- **F12 - resolved.** `UnicodeDecodeError` is caught beside `JSONDecodeError`, with the decode
+  inside the `try`. Verified by hand: stdin `\xff\xfe{` to `set-schedule` exits 1 with
+  `NOT_A_SPEC`. No test pins it (G3).
+- **F13 - resolved, not a weakened test.** `shell.last_pass_file` is `str(runner.last_pass_path())`,
+  a machine path like `shell.error_log`. It is excluded only from the mac/windows equality
+  comparison and is still searched for Windows words. test_api is whole: 515 passed.
+
+### Findings
+
+**G1 - R4/R5 as amended (P290, P291), `tracker/manifest.py` `item_from_fields` with
+`tracker/records.py` `typed_identifier_problem(capped=False)` and `manifest._short_title` - must
+fix (Jason's call, because it needs a section 14 amendment).** Section 14 exempts a held
+identifier from the cap only: "the invisible rule still applies to every row". In effect, that
+recreates F1's trap for exactly the values F2 says an ordinary paste leaves in a real record.
+`_cmd_edit` re-parses every row it is sent, and `_as_recorded` refills the held short name even
+for a row that leaves it out. So a list that holds an identifier with a no-break space, or a short
+name with a soft hyphen, can no longer be saved at all. That includes an edit to another column
+and an older window's row that sends only `identifier` and `document`. The first review verified
+that HEAD saves both values as typed, and the store keeps admitting them by design. Verified here
+by writing each value straight into a record and then editing only the Document:
+`Row 1: Identifier 'A<U+00A0>01' may not contain an invisible character (U+00A0 NO-BREAK SPACE)`
+and `Row 1: Short name may not contain an invisible character (U+00AD SOFT HYPHEN)`, exit 1 both
+times. There is a way out (Rename for the identifier, retyping the cell for the short name), but
+the sentence names neither, and the person did not touch that row. Jason's pre-landing
+`python -m tracker.store check` cannot size this either, because it runs the narrow gate, which
+admits these values. **Fix:** a row the list already holds is asked only the gate's rule for what
+it sends back unchanged. For the identifier, `capped=False` (better named `held=True`) skips
+`invisible_problem` as well as the cap, so the typed check is `identifier_problem` alone. For the
+short name, when the row's short name equals the held rule's, ask `short_title_problem` rather than
+`typed_short_title_problem`. This needs the held short name, so pass the held rules (a key-to-rule
+mapping) instead of the bare key set. A new or changed value stays held to the full rule. Add an
+api test: a list holding `A 01` with short name `W­X`, written straight into the record,
+saves an edit to its Document, and a new row holding U+00A0 is refused. Reword P290/P291 to match.
+If Jason prefers the SPEC as written, record that decision in P290 and add a read-only scan of
+identifiers and short names for `is_invisible` to the pre-landing check, because `store check`
+will not show them.
+
+**G2 - R4 (P290), `tracker/manifest.py` `item_from_fields` / `derived_short_title`, a path the
+rule still misses - should fix (it predates the rebuild; the first review did not raise it).** R4
+refuses the spoof because "both values become part of every working copy's file name". A row
+whose short name is left blank, which is the usual case for a row typed in the editor, takes
+`derived_short_title(document)` at use. The Document is held only to `text_problem`, which does
+not refuse format characters. Verified: `item_from_fields({"identifier": "A01", "document":
+"W-2‮fdp.exe"})` passes `validated`, and `prepared_name_for` gives
+`'A01 - W-2‮fdp.exe.pdf'`, the exact spoof P290 names. **Fix:** in `item_from_fields`, when
+the short name is blank, hold `derived_short_title(document)` to `typed_short_title_problem`'s
+invisible half and refuse as `{where}: {COL_DOCUMENT} ...` (or hold the Document itself to
+`spoofing_problem` where typed). Whether the store's gate should judge the Document too is
+Jason's call, because it widens what admission 4 refuses. Add a manifest or api test, and mention
+the Document in P290.
+
+**G3 - R8 as amended (F12), `tests/test_api.py` - nit.** The `UnicodeDecodeError` branch is
+untested. A two-line sibling of
+`test_stdin_that_is_not_json_is_refused_like_a_non_object_and_logs_nothing` that feeds non-UTF-8
+bytes would pin it.
+
+**G4 - decisions, `pilot/DECISIONS.md` P290 / P291 - nit.** P290 says "A stored identifier holding
+a spoofing character is a refused line", but the gate refuses a stored short name holding one too
+(`short_title_problem`). P291 does not say that an identifier the list already holds is exempt
+from the cap, or that Rename is held to it (F1). Both rows should say what the code does.
+Re-settle them after G1.
+
+**G5 - R4 typed rule, `tracker/templates.py` `issuer_item` / `manifest.issuer_short_title` - nit.**
+A K-1 issuer name typed with a soft hyphen, which `entity_keyword` does not fold away, is now
+refused as `F02: Short name may not contain an invisible character (U+00AD SOFT HYPHEN)`. The
+person never typed a short name, because it is derived from the issuer. Verified with
+`issuer_item("F02", "Ashford­Holdings", 2025)`. Before this change it was accepted. Either
+fold or drop `is_invisible` characters in `entity_keyword`, or word the refusal on the issuer's
+name.
+
+### Verified
+
+- Test files run one process each, in parallel, on the floor interpreter: test_api 515 passed,
+  test_records 53, test_layout 58, test_manifest 108, test_templates 40, test_store 195 (+1
+  skipped), test_filer 406 (+6 skipped), test_door 7, test_layers 31, test_single_source 218,
+  test_errors 83, test_tripwire 23. `ruff check .` passes, `repo_map.py check` says current, and
+  the tree is clean.
+- **`capped=False`** has the right shape for what section 14 says (it skips the cap and only the
+  cap). It is used at exactly one call site, `item_from_fields`, for a key in `recorded`, which
+  only `_cmd_edit` passes. `create`, `templates.item_from_spec` and `rename_request` all use the
+  capped default. It is tested in test_records (`"A"*200` passes; with U+00A0 it is refused) and
+  in test_manifest (a held key passes, case-folded too; a new key, or no `recorded`, is refused).
+  Whether it should also skip the invisible rule is G1.
+- **The store gate, end to end.** `person_from_json` holds the name to `text_problem` (only
+  `api._people_from_spec` builds a `Person`, and it whitespace-folds, so only a name over 1,000
+  characters or one holding a non-space control character can trip it). `identifier_problem` and
+  `short_title_problem` ask `spoofing_problem`, and `store.check` re-judges every line through
+  `_refuse_a_malformed_line`. `rollover` uses `validated` (the gate rule), so Roll Forward is not
+  touched by the typed rule. An ordinary existing record is refused on read only if it holds a
+  person's name over 1,000 characters or a control character, or a bidi or zero-width character in
+  an identifier or short name. That is the narrow set section 14 accepted, pending Jason's run.
+- **The admission pin is honest.** Pin 3 is byte-identical to `6f6410b`. Pin 4 is a full
+  dictionary that differs from pin 3 in exactly `_SPOOFING_CODES`, `invisible_problem`,
+  `segment_problem`, `spoofing_problem`, `identifier_problem`, `person_from_json`,
+  `short_title_problem`, `REFUSED_CHANGE` and `_refuse_a_malformed_line`.
+  `test_admission_version_changes_with_the_admission` still compares every digest exactly against
+  the current version's pin, so any further change to the admission fails it again.
+- **Layers.** `filer` takes `COL_IDENTIFIER`, `quoted` and `typed_identifier_problem` from
+  `records`. `templates` takes `quoted` and `typed_identifier_problem` from `manifest`. `records`
+  imports `invisible_problem`, `spoofing_problem` and `quoted` from `layout`. The
+  `short_title_problem` re-export in `manifest` is still used (test_templates, the same-object
+  test). No new load-time edge; test_layers passes.
+- **SPEC-named tests.** Every one in sections 1-9 and section 14 is present and named as its
+  claim. The records R4 test is renamed to "spoofing character", which matches the amended claim.
+  The amended R5 api test uses a 120-character new row where section 14 said 81, and the
+  81-character boundary is pinned in test_manifest. Each test asserts its claim, including
+  nothing written on refusal where the SPEC asks for it.
+- **The rebuild's diff** touches only what F1-F6 and F8-F13 name: no stray behaviour change, no
+  debug output and no dead code (ruff is clean). The admission comment and the docstrings are in
+  the repo's voice.
+
+Findings: 1 must fix, 1 should fix, 3 nits.
