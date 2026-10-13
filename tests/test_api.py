@@ -19,7 +19,7 @@ import pytest
 import tracker.api as api
 from tests.conftest import TEST_CLIENT, app_stdin, make_engagement
 from tests.samples import PRIOR_YEAR, SCRATCH_PEOPLE
-from tracker import layout, ledger, reasons, reminder, store, view
+from tracker import layout, ledger, manifest, reasons, reminder, store, view
 from tracker.filer import FILED, NEEDS_REVIEW, read_index
 from tracker.households import load_household_info
 from tracker.layout import PRIVATE_TREE, inbox_of, return_dir_for
@@ -8457,6 +8457,7 @@ def test_the_vocabulary_carries_every_word_201_shows():
                                       "Taught to the request so the next one files itself; the editor "
                                       "shows it beside the row.")
     assert labels["issuer_label"] == "Issuer Name"
+    assert api.ISSUER_LABEL is manifest.COL_ISSUER
     assert labels["issuer_help"] == ("Adds {identifier}, a K-1 row for this issuer, to the request list "
                                      "and files this document under it. Type the distinctive words and "
                                      "leave off the suffix (L.P., LLC).")
@@ -11285,11 +11286,16 @@ def test_a_list_holding_what_an_older_paste_left_stays_editable_and_a_changed_sp
     rows = payload_of_state(capsys, engagement)["rules"]
     before = ledger.path_for(engagement).read_bytes()
     code, payload = run(capsys, "edit", api.ENGAGEMENT_FLAG, str(engagement), stdin={
-        "items": [{**rows[0], "identifier": "a\u00a001"}], "engagement": {}})
+        "items": [{**rows[0], "identifier": "B\u00a001"}], "engagement": {}})
     assert code == 1
-    assert payload["error"] == ("Row 1: Identifier 'a<U+00A0>01' may not contain an invisible "
+    assert payload["error"] == ("Row 1: Identifier 'B<U+00A0>01' may not contain an invisible "
                                 "character (U+00A0 NO-BREAK SPACE)")
     assert ledger.path_for(engagement).read_bytes() == before
+    # A change of case alone is the same request (decision 160), not a new one.
+    code, payload = run(capsys, "edit", api.ENGAGEMENT_FLAG, str(engagement), stdin={
+        "items": [{**rows[0], "identifier": "a\u00a001"}], "engagement": {}})
+    assert code == 0, payload
+    assert [rule["identifier"] for rule in payload["state"]["rules"]] == ["a\u00a001"]
 
 
 def test_a_long_identifier_is_refused_as_too_long_and_never_as_a_long_folder_name(

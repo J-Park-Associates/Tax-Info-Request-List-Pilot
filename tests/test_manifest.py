@@ -1413,22 +1413,26 @@ def test_a_typed_identifier_past_eighty_characters_is_refused_where_it_is_read()
 def test_a_held_identifier_past_eighty_characters_is_not_refused_but_a_new_one_is():
     """P291, the reviews' F1 and G1: the typed rule is for a new or changed
     identifier. One the list already holds, spelt as it holds it, is asked
-    the store's rule alone - no cap, no full invisible rule; a respelling,
-    by case alone too, is a change, and a different one is new."""
+    the store's rule alone - no cap, no full invisible rule - and a change of
+    case alone is the same request (decision 160), so it is held too; a
+    different identifier (a different key) is new."""
     def held(*identifiers):
         return {identifier_key(i): RequestItem(identifier=i, document="x") for i in identifiers}
 
     row = {"identifier": "L" * 120, "document": "x"}
     assert item_from_fields(row, where="Row 1", recorded=held("L" * 120)).identifier == "L" * 120
-    with pytest.raises(ManifestError, match="may have at most 80 characters, got 120"):
-        item_from_fields({**row, "identifier": "l" * 120}, where="Row 1", recorded=held("L" * 120))
+    assert item_from_fields({**row, "identifier": "l" * 120}, where="Row 1",
+                            recorded=held("L" * 120)).identifier == "l" * 120
     with pytest.raises(ManifestError, match="may have at most 80 characters, got 120"):
         item_from_fields({**row, "identifier": "M" * 120}, where="Row 2", recorded=held("L" * 120))
     hidden = "L" * 60 + "\u00a0" + "L" * 59
     assert item_from_fields({**row, "identifier": hidden}, where="Row 1",
                             recorded=held(hidden)).identifier == hidden
+    assert item_from_fields({**row, "identifier": hidden.lower()}, where="Row 1",
+                            recorded=held(hidden)).identifier == hidden.lower()
     with pytest.raises(ManifestError, match="U\\+00A0 NO-BREAK SPACE"):
-        item_from_fields({**row, "identifier": hidden.lower()}, where="Row 1", recorded=held(hidden))
+        item_from_fields({**row, "identifier": hidden.replace("L", "M")}, where="Row 1",
+                         recorded=held(hidden))
     with pytest.raises(ManifestError, match="may have at most 80"):
         item_from_fields(row, where="Row 1")
 

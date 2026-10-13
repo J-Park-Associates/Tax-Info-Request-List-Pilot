@@ -1101,13 +1101,14 @@ def item_from_fields(fields: Mapping[str, object], *, where: str,
     ``recorded`` maps each ``identifier_key`` the list already holds to
     its row (the editor passes it; a catalog and a new return pass
     nothing). The typed rules (P290, P291) are for a new or changed value,
-    never one the list already holds: an identifier spelt exactly as the
-    held row spells it is judged by the store's rule alone
+    never one the list already holds: an identifier spelt as the held row
+    spells it, a change of case aside, is judged by the store's rule alone
     (:func:`identifier_problem` - no length cap, the spoofing characters
     only), and so is a short name equal to the held one, so a list holding
     a long identifier or a no-break space an older paste left stays
-    editable. Any other spelling is new, and gets the typed rule
-    (:func:`typed_identifier_problem`, :func:`typed_short_title_problem`).
+    editable. Any other identifier (a key the list does not hold) is new,
+    and gets the typed rule (:func:`typed_identifier_problem`,
+    :func:`typed_short_title_problem`).
     """
     def text(key: str) -> str:
         value = fields.get(key)
@@ -1120,8 +1121,10 @@ def item_from_fields(fields: Mapping[str, object], *, where: str,
     held = (recorded or {}).get(identifier_key(identifier))
     # A typed identifier is told it is too long here, before the path-room
     # check names the household (P291); a blank one is `validated`'s to say.
-    rule = identifier_problem if held is not None and identifier == held.identifier \
-        else typed_identifier_problem
+    # A key the list holds is the held request whatever its case (decision
+    # 160), and neither typed rule can see a change of case, so it is the
+    # store's rule alone; only a key the list does not hold is new.
+    rule = identifier_problem if held is not None else typed_identifier_problem
     if identifier and (problem := rule(identifier)):
         raise ManifestError(f"{where}: {COL_IDENTIFIER} '{quoted(identifier)}' {problem}")
     return RequestItem(
@@ -1674,7 +1677,7 @@ def renamed_rules(engagement_dir: Path | str, old: str, new: str) -> list[dict]:
     items = [item_from_record(row) for row in store.rules(conn, folder) or []]
     position = next((n for n, item in enumerate(items) if item.identifier == old), None)
     if position is None:
-        raise ManifestError(RENAME_NOT_ON_THE_LIST.format(old=old))
+        raise ManifestError(RENAME_NOT_ON_THE_LIST.format(old=quoted(old)))
     items[position] = replace(items[position], identifier=new)
     # A rename changes an identifier and never a name, so a same-name
     # issuer pair already on the list is not the rename's to refuse

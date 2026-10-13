@@ -514,9 +514,12 @@ as the list holds it, a change of case aside".
 **R7 (H2).** `filer.RENAME_CASE_ONLY` and `manifest.RENAME_NOT_ON_THE_LIST`
 format `quoted(old)` / `quoted(new)`, so a rename refusal echoes at most 80
 characters as P293 says. Test: two 120-character identifiers differing only
-in case are refused in a sentence shorter than 240 characters that ends with
-the ellipsis `quoted` leaves; wherever the rename tests already pin the whole
-sentence, keep them passing.
+in case are refused in a sentence shorter than 260 characters (two 80-character
+echoes and the fixed words), each quoted name closed by the ellipsis `quoted`
+leaves and neither echoed whole; a 10,000-character `old` the same through
+`RENAME_NOT_ON_THE_LIST`; wherever the rename tests already pin the whole
+sentence, keep them passing. (The first draft of this paragraph said 240 and
+"ends with the ellipsis"; the builder's reading is the right one.)
 
 **G5's single source (H3).** `tests/test_api.py`, beside the pin of the
 page's `issuer_label` as "Issuer Name": `assert api.ISSUER_LABEL is

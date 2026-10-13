@@ -7668,7 +7668,7 @@ def rename_request(
     if not old or not new:
         raise FilingError(RENAME_NOTHING)
     if identifier_key(old) == identifier_key(new):
-        raise FilingError(RENAME_CASE_ONLY.format(old=old, new=new))
+        raise FilingError(RENAME_CASE_ONLY.format(old=quoted(old), new=quoted(new)))
     # The new identifier is one a person typed, so it is held to the typing
     # limit (P291) before anything moves; the old one, however long the list
     # already holds it, is only ever renamed away from.

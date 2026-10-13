@@ -8330,6 +8330,30 @@ def test_a_copy_cut_to_its_identifier_alone_still_reads_under_its_request():
     assert _request_of_copy("A01B - Loan.pdf", items) == ""
 
 
+def test_a_rename_refusal_quotes_at_most_eighty_characters_of_what_was_typed(engagement):
+    """P293, the third review's H2: the two rename sentences that echo an
+    identifier go through ``quoted``, so 120-character names (or a 10,000
+    character one) come back cut with ASCII dots, never whole."""
+    from tracker.filer import RENAME_CASE_ONLY, rename_request
+    from tracker.layout import QUOTE_MAX_CHARS, quoted
+    from tracker.manifest import RENAME_NOT_ON_THE_LIST, ManifestError, list_head, renamed_rules
+
+    before = files_under(engagement)
+    lines = len(ledger.read_events(engagement))
+    with pytest.raises(FilingError) as refused:
+        rename_request(engagement, "L" * 120, "l" * 120, head=list_head(engagement), today=DAY2)
+    said = str(refused.value)
+    assert said == RENAME_CASE_ONLY.format(old=quoted("L" * 120), new=quoted("l" * 120))
+    assert len(said) < 260 and said.count("...") == 2   # 2 x 80 of echo + the fixed words
+    assert "L" * (QUOTE_MAX_CHARS - 3) + "..." in said and "L" * QUOTE_MAX_CHARS not in said
+    with pytest.raises(ManifestError) as absent:
+        renamed_rules(engagement, "Z" * 10_000, "Y01")
+    assert str(absent.value) == RENAME_NOT_ON_THE_LIST.format(old=quoted("Z" * 10_000))
+    assert len(str(absent.value)) < 240
+    assert files_under(engagement) == before
+    assert len(ledger.read_events(engagement)) == lines
+
+
 def test_a_rename_refused_because_the_target_name_is_taken_moves_nothing(engagement):
     """The review of 168, N-5: every request's copies share Prepared, so a
     file nothing recorded may already hold the name a rename would give a
