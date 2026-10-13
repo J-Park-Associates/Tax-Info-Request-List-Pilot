@@ -460,3 +460,32 @@ test (closed year) keeps passing.
 Gate: `test_rollover`, `test_registry`, `test_api`, `test_single_source`,
 `test_layers`, `test_repo_map`, ruff, the map check. The builder appends
 `## Rebuild 7 (Sonnet, 2026-10-13)` to the handoff.
+
+---
+
+## 17. The legacy sentence covers an empty record too (Jason, 2026-10-13; decision P303)
+
+Jason's ruling on the sixth review's second observation: option 1, one
+sentence for both cases. `registry.LEGACY_FOLDER` says "and no record", but
+it also fires for a folder whose record exists and holds no request list
+(`store.has_rules` false) with the old workbook beside it. Reword the one
+constant:
+
+`LEGACY_FOLDER = ("holds its request list in a workbook the app no longer reads ({name}) and none in its "
+"record; set the engagement up again in the app")`
+
+The comment above it (registry.py, "a folder holding one and no record is: a
+legacy folder") says "and no request list in its record". Tests pin the
+sentence through the constant, so none changes; the docstring of the
+registry test that describes the case may say "and no list in its record".
+No behaviour changes. The build is Sonnet's; it may run beside section 16's.
+
+**Decision row (added by the landing session):**
+
+| P303 | 2026-10-13 | The legacy-folder sentence says the request list is in the old workbook "and none in its record", true whether the record is missing or merely holds no list; it had said "and no record" (SPEC-client-folder-unreadable section 17). | Jason, 2026-10-13, on the sixth review's observation. |
+
+Gate: `test_registry`, `test_rollover`, `test_single_source`, `test_layers`,
+`test_repo_map`, ruff, the map check. The builder appends
+`## Rebuild 8 (Sonnet, 2026-10-13)` to the handoff - after section 16's
+builder has appended its own, if both run at once (append only; never
+rewrite the file).
