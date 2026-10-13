@@ -793,3 +793,83 @@ run after `update`):
 "Map is current (302 nodes)". It needed no second `update`, and
 `pilot/HANDOFF-client-folder.md` did not fail it. The map is refreshed once
 more after this section was appended.
+
+## Review 4 (Opus, 2026-10-13)
+
+Reviewer: Claude Opus 5.5. I did not build this. I reviewed rebuild 3, commit
+`b837092`, against SPEC-document-gate section 12. `2becbc4..b837092` is that
+one commit. Its scoped diff (`git diff 2becbc4 b837092 -- tracker/ tests/`)
+is two files: the `layout.spoofing_problem` docstring and one pin in
+`tests/test_store.py`. Everything ran on a `git archive b837092` copy in the
+scratchpad, git-initialised and committed once, with the venv Python. The
+checkout was not touched except to append this section.
+
+### Resolved
+
+- **H1, the sentence.** The docstring's last sentence now reads "An identifier
+  or short name a person types is held to the full rule instead; a Document
+  gets this rule alone." That is section 12's sentence word for word.
+  - A whitespace-insensitive word diff of `tracker/layout.py` against
+    `2becbc4` shows only that sentence changed. The rest of the paragraph is
+    rewrapped (longest line 79). No line of code changed.
+  - It is true of the code. `manifest.item_from_fields` asks a new identifier
+    `typed_identifier_problem` (identifier_problem, then `invisible_problem`).
+    `_short_title` asks a new short name `typed_short_title_problem`. Every
+    Document, typed or held, is asked `document_problem`, which is
+    `spoofing_problem` and nothing more.
+  - Probe on the archive (`item_from_fields`, a new row): Document
+    `W-2<NBSP>Wages` and `W-2<SHY>Wages` save. `W-2<U+202E>Wages` is refused
+    as a Document. Identifier `A<NBSP>09` and short name `W<NBSP>2` are each
+    refused with the full rule's sentence.
+  - The full rule still reaches a typed Document's text through its
+    derived short name when the Short name is blank (Review 3's probe). That
+    is the short name's rule, which the sentence's first half covers, so it
+    is not a finding.
+- **The pin.** On the archive, `admission_digests()` gives `2dea825aad86d0a7`
+  for `tracker.layout.spoofing_problem`, and `ADMISSION_PIN[5] ==
+  admission_digests()` with no differing key.
+  - The whole `tests/test_store.py` diff is line 3674, inside the `5: {`
+    block (3607).
+  - The version-4 entry (line 3403) is still `7a767da08a51fff8`.
+    `tracker/store.py` is unchanged, and `ADMISSION_VERSION` is still 5.
+- **Nothing else in the diff.** Outside `tracker/` and `tests/`, the commit
+  touches only `docs/repo-map.json` (the derived hashes and line counts of
+  `layout.py`, `test_store.py` and this handoff, plus `reused` 247 to 248)
+  and this handoff. The handoff change adds lines and removes none.
+- **The map.** Unlike Review 3's commit, this one is current on its own:
+  `python tools/repo_map.py check` on the archive says "Map is current (302
+  nodes)", and `test_the_committed_map_is_current` passes. This appended
+  section moves the handoff's hash, as every review's append does. The
+  landing session's `update` takes it.
+
+### Findings
+
+None.
+
+### Gate (archive copy of `b837092`, venv Python, one process per file, in parallel, `-p no:cacheprovider`)
+
+| file | result |
+|---|---|
+| test_store | 197 passed, 1 skipped |
+| test_layout | 58 passed |
+| test_records | 55 passed |
+| test_layers | 31 passed |
+| test_single_source | 218 passed |
+| test_repo_map | 82 passed |
+
+`python -m ruff check .`: all checks passed. `python tools/repo_map.py check`:
+Map is current (302 nodes).
+
+No findings.
+
+## Closed (2026-10-13)
+
+Closed at `b837092` (Review 4: no findings). Decision row P301 is in
+`pilot/DECISIONS.md`, beside P297-P300, added at landing. The store's
+admission is 5: before landing on office records, Jason's read-only
+`python -m tracker.store check` now judges a request's Document as well as
+its identifier and short name; a record holding a right-to-left override
+or a zero-width character in any of the three shows as a malformed line and
+stops that household until the line is repaired (runbook section 9's
+malformed-line bullet; section 6's recover). A no-break space or a soft
+hyphen is not flagged. The Python 3.11 floor was not run in this container.
