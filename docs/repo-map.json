@@ -4732,7 +4732,7 @@
       "id": "pilot/DECISIONS.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "672d97835e87a84b",
+      "sha256": "f4c250280f029bfd",
       "lines": 295
     },
     {
@@ -4845,8 +4845,8 @@
       "id": "pilot/SPEC-error-handling-small.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "7094d5b12f9017fe",
-      "lines": 279
+      "sha256": "4839e6be5e9380b2",
+      "lines": 297
     },
     {
       "id": "pilot/SPEC-firm-cache-fill.md",

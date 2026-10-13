@@ -277,3 +277,21 @@ The rebuild is Sonnet's.
 - Gate: `test_api`, `test_single_source`, `test_shell`, `test_layers`,
   `test_repo_map`, ruff, the map check. The builder appends
   `## Rebuild 2 (Sonnet, 2026-10-13)` to the handoff.
+
+---
+
+## 13. P196's one exception: the override reasons show as stored (Jason, 2026-10-13)
+
+Review 3's H2. With the override labels gone (section 12), the editor's
+override dropdown shows the stored words, the first of which is "Client
+confirmed this is the final version", and P196 says staff screens say
+"Taxpayer". Jason ruled: record the exception, no code change. P196's row
+carries the clause (added by the landing session). The guard test
+`tests/test_api.py::test_no_word_the_window_draws_says_client_but_a_folders_own_name`
+adds `("override_reasons", vocab["override_reasons"])` to its `drawn` list
+and exempts exactly the one stored value by name (a module constant beside
+the test naming `manifest.OVERRIDE_REASONS[0]`'s text, with the reason in a
+comment), so a second "Client" in that menu fails the test. Built by
+Sonnet together with SPEC-form-inputs section 20 (both edit
+`tests/test_api.py`), after section 19's build hands back. The gate is
+section 20's.
