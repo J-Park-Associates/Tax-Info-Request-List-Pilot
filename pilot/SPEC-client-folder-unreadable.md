@@ -294,3 +294,39 @@ Gate after the rebuild, one process per file: `test_registry`,
 The form-inputs lane's fourth review runs in the same checkout and edits
 `pilot/HANDOFF-form-inputs.md` only. The builder appends
 `## Rebuild 3 (Sonnet, 2026-10-13)` to the handoff.
+
+---
+
+## 13. Amendments after the fourth review (Opus, 2026-10-13)
+
+Findings I1-I2 are in `pilot/HANDOFF-client-folder.md` under "Review 4";
+both are nits, neither survived a rebuild, so the rebuild is Sonnet's. Both
+are built.
+
+**Test (I1).** `tests/test_registry.py` gains
+`test_a_return_whose_store_refuses_it_is_said_as_cannot_tell_where_a_new_return_asks`:
+the same household as the ledger test (not marked shared, client folder
+gone), but the return's record is made unreadable through the store rather
+than the ledger - monkeypatch `tracker.manifest.load_engagement_info` (as
+`household_pause` imports it at call time) or the store read it uses to raise
+`StoreError("the database could not be used (SQLITE_NOTADB)")` for that
+return only - and `held_back` returns `CLIENT_SIDE_UNKNOWN` naming the return.
+It fails when `StoreError` alone is dropped from the widened catch (the
+review's mutation); the builder shows that once.
+
+**Record (I2).** The handoff's "Rebuild 3 / Done differently" note is
+corrected: section 12 was edited by the landing session in `ed109f1`, after
+the builder's handoff named the slip. The long SPEC line stays; this SPEC has
+no wrap rule.
+
+**Behaviour named, not changed.** With the client folder present, New return
+into a household one of whose returns has a record that will not read now
+proceeds (the pause claims nothing, and a folder that is there is never a
+reason to read the record), where before it refused with the ledger's bare
+words by accident of the escaping error. The pass still reports that return
+as `record-unreadable` on every run. This is R2 as amended in section 12 and
+is left for Jason to confirm or reverse.
+
+Gate after the rebuild: `test_registry`, `test_households`, `test_layers`,
+`test_single_source`, `test_repo_map`, ruff, the map check. The builder
+appends `## Rebuild 4 (Sonnet, 2026-10-13)` to the handoff.

@@ -627,3 +627,124 @@ test_repo_map 82 passed on the re-run after the final `update`. The second
 `update` also re-hashed `pilot/HANDOFF-form-inputs.md` (the form-inputs
 review's file, which changed while this rebuild ran); if that lane writes
 again before the commit, `update` needs one more run.
+
+## Review 4 (Opus, 2026-10-13)
+
+Fourth reviewer: a separate agent that built neither the build nor any
+rebuild. Read against SPEC section 12 (as corrected in `ed109f1`) and
+sections 2-3, 10 and 11 for what it amends, Review 3 and Rebuild 3; the
+rebuild is `git diff b558c94 ed109f1 -- tracker/ tests/ docs/runbook.md`.
+No repo code or test edited; every throwaway test and mutation ran on
+`git archive` copies of `ed109f1` and `b558c94` in the scratchpad.
+
+### Resolved
+
+- **H1 - resolved in effect.** `household_pause`'s return loop catches
+  `(ManifestError, LedgerError, StoreError, ValueError, OSError)`, the two
+  new classes imported inside the function beside `manifest`'s (no
+  load-time edge; `test_layers` 31 passed, untouched). Scratch checks on
+  `ed109f1`, `test_registry`'s `root` fixture, household not shared, one
+  return made with `scaffold=False`:
+  - *Ledger refusal* (one unlinked line in the return's journal, client
+    folder gone): `held_back` returns exactly `CLIENT_SIDE_UNKNOWN` with
+    "the record of its return `2025\1040 - Test Client`" and the ledger's
+    own reason; the log carries `households: the client-side history
+    (2025\1040 - Test Client)`; nothing escapes. Folder put back: `""`.
+  - *The store's own refusal* (`manifest.the_record` patched to raise
+    `StoreError` for that return only): the same sentence with the store's
+    words as the reason; folder present: `""`.
+  - *A store file that is not a database* (the data home's store replaced
+    with junk bytes): `held_back` returns the sentence naming *the
+    household* with "the database could not be used (SQLITE_NOTADB)" - the
+    household half reads first and the store is one file - rather than
+    escaping; folder present: `""`.
+  - On `b558c94` all three escape (`LedgerError`, `StoreError`,
+    `StoreUnavailable` from `sqlite3.DatabaseError`), which is H1.
+- **The new test is load-bearing for the ledger half.** Mutation M1 (catch
+  back to `(ManifestError, ValueError, OSError)`): exactly
+  `test_a_return_whose_record_will_not_read_is_said_as_cannot_tell_where_a_new_return_asks`
+  fails across test_registry, test_households, test_scaffold and
+  test_runner (1 failed, 347 passed). Mutation M3 (`LedgerError` dropped,
+  `StoreError` kept): the same one test fails. Mutation M2 (`StoreError`
+  dropped, `LedgerError` kept): the suite passes - see I1.
+- **End to end, the create path.** `api create` with `household_path` into a
+  household whose return `2025\1040 - John Park` has an unlinked line and
+  whose `Clients\Park Family` is gone: exit 1, `failure.kind` `refused`,
+  the sentence naming that return year first; no client folder made, and
+  the tree under the root is byte-for-byte the same listing as before the
+  call. On `b558c94` the same call refused with the ledger's bare words,
+  naming no record. `scaffold.scaffold_household(household)` (so
+  `may_make_household is None`) raises `ClientFolderMissing` with the same
+  sentence and makes no folder (true on both commits; the scaffold always
+  called `client_folder_missing` directly).
+- **Nothing swallowed that the pass needed.** `household_pause` has one
+  caller, `registry.held_back` (the pass reads `registry.stopped`/`paused`
+  and calls `client_folder_missing` itself, not `household_pause`). Scratch
+  pass (`test_runner`'s `build_engagement`, client folder present, the
+  return's journal broken): the run carries "the record could not be read:
+  _ledger.jsonl line 2 ..." under `record-unreadable`, filed 0 - identical
+  on `b558c94` and `ed109f1`. The one behaviour that moves is the SPEC's
+  ruled half: with the client folder present, `api create` into a household
+  one of whose returns will not read now succeeds (exit 0) where it used to
+  refuse with the ledger's words; section 12 rules `held_back` returns `""`
+  there, and the pass keeps saying that return's own problem every run.
+- **H2 - resolved.** `git diff --word-diff b558c94 ed109f1 -- docs/runbook.md`
+  shows no word added or removed; three lines became three lines, none past
+  ~76 columns.
+- **Dead code, weakened tests.** ruff clean; the two new imports are both
+  read by the `except`; every name in the new test is used. The diff only
+  adds to `tests/`; no assertion removed or loosened.
+- **Section 12 built as written,** with the one deviation the handoff
+  states (household *not* marked shared), which `ed109f1` also wrote into
+  section 12's test paragraph. Sections 1-11: the gate below covers every
+  test file they touched, and the household half through `held_back`, the
+  return half through the pass and the scaffold all still hold.
+
+### Findings
+
+**I1 - `tests/test_registry.py` (H1's test), against SPEC section 12's
+`except` tuple. The `StoreError` half of the widened catch has no test.**
+Mutation M2 (drop `StoreError`, keep `LedgerError`) passes test_registry,
+test_households, test_scaffold and test_runner, yet on that mutant a store
+file that is not a database makes `held_back` raise `StoreUnavailable` out
+of `household_pause`'s return loop again (scratch test above), so New
+return and Roll forward lose the sentence in that case and nothing would
+notice. Section 12 asked only for the ledger test, so this is beyond what
+was ordered. A second case in the same test - the return's
+`manifest.the_record` raising `StoreError`, or the store file replaced -
+would pin it. Severity: **nit** (SPEC owner's call).
+
+**I2 - `pilot/HANDOFF-client-folder.md` "Rebuild 3 / Done differently" and
+`pilot/SPEC-client-folder-unreadable.md` line 280.** The handoff says
+"SPEC section 12 itself was not edited", but `ed109f1` does edit it (the
+commit message says so: the correction was folded in at commit). And the
+corrected paragraph's line "removed, one unlinked line in one return's
+record → `held_back` returns `CLIENT_SIDE_UNKNOWN` filled with" runs 107
+columns against its neighbours' ~78. The SPEC has other lines past 100
+(107, 152, 167, 168) and no wrap convention; named only because it is the
+one line this commit lengthened. Severity: **nit**.
+
+### Verified, and how
+
+- Interpreter: the scratchpad venv's Python 3.13.16 only. The floor is 3.11
+  (`pyproject.toml`); `/usr/bin/python3.11` has no pytest and nothing was
+  installed, so the floor was not exercised, as in Reviews 2 and 3.
+- Worktree: the form-inputs lane has uncommitted edits to
+  `pilot/DECISIONS.md`, `pilot/HANDOFF-form-inputs.md`, `tests/test_api.py`
+  and `docs/repo-map.json`; the map check was nonetheless current, so no
+  stale-on-their-files caveat applied; that lane has since committed them
+  (`5aead97`). The scratch `api create` runs used `tests/test_api.py` from
+  the `ed109f1` archive, not the half-edited copy. After this review was
+  appended, `repo_map.py check` is stale on this handoff alone; the commit
+  of this review runs `update`.
+- Gate, in the checkout, one process per file in parallel,
+  `-p no:cacheprovider`: test_registry 43 passed, 2 skipped, 1 warning
+  (runpy's `tracker.registry` RuntimeWarning, pre-existing - 42 passed, 2
+  skipped, 1 warning on `b558c94`); test_households 20 passed; test_runner
+  230 passed, 1 warning (runpy, pre-existing); test_scaffold 55 passed;
+  test_errors 83 passed; test_tripwire 23 passed; test_single_source 218
+  passed; test_layers 31 passed; test_repo_map 82 passed.
+  `python -m ruff check .` all checks passed; `python tools/repo_map.py
+  check` "Map is current (298 nodes)".
+
+Findings: 0 must fix, 0 should fix, 2 nits.
