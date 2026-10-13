@@ -6,12 +6,15 @@ codebase up to production-grade standards". Nothing in this SPEC has been
 built. The evidence, with every `file:line`, is
 [`AUDIT-2026-10-13-architecture.md`](AUDIT-2026-10-13-architecture.md); this
 file cites it by finding (A-1, B-2, ...). Jason took three decisions in the
-session that wrote it (P309 to P311, section 2). **Tranche 1 (phases 0 and 1,
-jobs J1 to J6, section 8) is buildable now.** Phases 2 to 7 (section 9) are
-the plan for after it, and wait for Jason's word once tranche 1 has landed.
+session that wrote it (P309 to P311, section 2), then directed the whole plan
+built in an orchestrated loop (P312), with its open questions answered
+meanwhile as P313 says. **Tranche 1 (phases 0 and 1, jobs J1 to J6, section
+8) is buildable now.** Phases 2 to 7 (section 9) each get their own SPEC,
+written from the code as it then is, once the phase before has landed.
+Section 13 is the ledger of what has landed.
 
-Each job is its own session that reads this file, not the transcript of the
-session that wrote it.
+Each job is its own agent that reads this file, `pilot/PROMPT-refactor.md` and
+the loop's board, never the transcript of the session that wrote it.
 
 ## 1. The answer
 
@@ -95,8 +98,18 @@ the defects named in section 4.1.
    into a package. The gate fails if any file gains a type error; each phase
    lowers the count. Job J6.
 3. **P311. Tranches.** Tranche 1 is phases 0 and 1 (jobs J1 to J6). No
-   module is split until it has landed. Phases 2 to 7 wait for Jason's word,
-   with tranche 1's measurements in hand.
+   module is split until it has landed. (Its wait for Jason's word before
+   phase 2 is superseded by P312.)
+4. **P312. The whole plan, in a loop.** The refactor is built to the end in
+   an orchestrated loop: Sonnet builds, Opus builds the difficult jobs, Opus
+   reviews at high effort in an agent that did not build, and the loop stops
+   only where `pilot/PROMPT-refactor.md` section 1.2 says. The agents
+   coordinate through a board outside the repository. Opening and landing
+   the pull request stays a person's step.
+5. **P313. The questions, meanwhile.** Section 11's questions are built as
+   P313 says: the technical ones as recommended, and wherever an answer
+   would change what a person sees or what a pass does, today's behaviour is
+   kept and the question stays Jason's.
 
 ## 3. What was audited, and how
 
@@ -430,13 +443,13 @@ stops and asks.
   check`, `python tools/vocab_report.py check` when routing is touched, and
   after J6 `python tools/typecheck.py check`. Never the whole suite unless a
   job reaches the sorting engine and says so.
-- **Build on Sonnet; review on Opus at high effort in a session that did not
-  build** (Jason's routing; as P285 was built). Numbered findings against
-  this SPEC. A rebuild fixes the findings and nothing more and reruns only
-  the tests the fixes touch. A finding that survives one rebuild is fixed by
-  Opus itself; if that fails review, stop and tell Jason. (CLAUDE.md's "How
-  work flows here" says Opus builds; if Jason holds to that line, Opus builds
-  and nothing else here changes.)
+- **Sonnet builds; Opus builds the difficult jobs; Opus reviews at high
+  effort in an agent that did not build** (P312; the tier rule is
+  `pilot/PROMPT-refactor.md` section 1.3, and each job below names its tier).
+  Numbered findings against this SPEC. A rebuild fixes the findings and
+  nothing more and reruns only the tests the fixes touch. A finding that
+  survives one rebuild is fixed by Opus itself; if that fails review, the
+  loop stops and tells Jason.
 - **No client data, anywhere.** Recordings and fixtures come from
   `tests/samples.py`'s made-up pile only. No build session points at a real
   clients root; the tripwire (decision 185) fails the run if one does.
@@ -455,12 +468,12 @@ stops and asks.
 |---|---|---|---|
 | 0 | Safety nets: the tests tell a move from a change | J1-J4 | 1 |
 | 1 | Defects, the state register, the type checker | J5, J6 | 1 |
-| 2 | Types and shared low layers: the reply contract, the index, one home per field rule, event types | ~4 | later |
-| 3 | Services, the record: the store split | ~3 | later |
-| 4 | Services, the sorting engine: the filer split, content_check, the reader child | ~5 | later |
-| 5 | Services, the door and the pass: the api and runner splits, the firm view moved down | ~5 | later |
-| 6 | Components, the shell: app.js, main.js and shell.js split; the engine sends what the page re-derives | ~5 | later |
-| 7 | State: per-command context, owner objects, the store's process state | ~3 | later |
+| 2 | Types and shared low layers: the reply contract, the index, one home per field rule, event types | ~4 | 2 (P312) |
+| 3 | Services, the record: the store split | ~3 | 2 (P312) |
+| 4 | Services, the sorting engine: the filer split, content_check, the reader child | ~5 | 2 (P312) |
+| 5 | Services, the door and the pass: the api and runner splits, the firm view moved down | ~5 | 2 (P312) |
+| 6 | Components, the shell: app.js, main.js and shell.js split; the engine sends what the page re-derives | ~5 | 2 (P312) |
+| 7 | State: per-command context, owner objects, the store's process state | ~3 | 2 (P312) |
 
 The order is the brief's (types and utilities, then services, then
 components, then state), with the safety nets first. A test file is split in
@@ -469,17 +482,20 @@ ownership for the map.
 
 ## 8. Tranche 1: the jobs
 
-**Parallel lanes.** J1 and J6 touch files no other tranche-1 job touches
-(apart from one line of `gate.yml`, resolved at landing) and run as their own
-lane. J2 moves the test helpers J3 and J4 use, so J2 goes first; then J3 and
-J4 run side by side; J5 waits for J3 (it removes the exception J3 writes
-down).
+**Order.** The dependencies allow two lanes (J1 and J6 beside J2, then J3
+and J4 side by side, J5 after J3), but under P312 the jobs run one at a time
+on the one branch, in the order J1, J2, J3, J4, J5, J6: nearly every job edits
+the same guard files, and each review must see one job's diff alone
+(`pilot/PROMPT-refactor.md` section 1.4).
 
-```
- Lane 1:  J1 ──────────────── J6
- Lane 2:  J2 ── J3 ──┬── J5
-                └─ J4 ┘
-```
+| Job | Tier | Why (PROMPT-refactor 1.3) |
+|---|---|---|
+| J1 | Sonnet | a test walker fix and a README edit |
+| J2 | Sonnet | mechanical moves of test helpers, checked byte for byte |
+| J3 | Opus | (c) guards that parse Python and JavaScript |
+| J4 | Opus | (c) a tool that parses the suite; recordings of a whole pass |
+| J5 | Opus | (c) an AST-derived register; the resident engine and main.js |
+| J6 | Opus | (d) `Build App.bat` and the Windows kit, which cannot run here |
 
 ### J1. The admission fingerprint follows only what the gate runs; the pilot README says P309
 
@@ -756,8 +772,9 @@ pin), D-8. Depends on J2.*
 
 ## 9. Phases 2 to 7, in outline
 
-Not scheduled (P311). Each phase gets its own SPEC section, written from the
-code as it then is, before it builds: line numbers drift, and tranche 1's
+Scheduled by P312. Each phase gets its own SPEC, `pilot/SPEC-architecture-p<N>.md`,
+written and reviewed by Opus from the code as it then is, before it builds
+(`pilot/PROMPT-refactor.md` sections 3 and 4): line numbers drift, and tranche 1's
 recordings and type count will say where the risk sits. Every phase starts by
 burning down the type errors in the modules it will move, and ends with a job
 that removes its facades.
@@ -881,7 +898,8 @@ checks every step before it lands.
 
 ## 11. Questions for later phases
 
-Each has a recommendation; none blocks tranche 1.
+Each has a recommendation; none blocks tranche 1. P313 says how each is built
+meanwhile; Jason can reverse any of them.
 
 - **Q-A (phase 2).** Make the filer↔scanner cycle one-way: the scanner reads
   the index from `index.py` and never imports filer; filer still asks for the
@@ -911,16 +929,25 @@ Each has a recommendation; none blocks tranche 1.
 
 ## 12. Handoff
 
-- **Done in this session:** the audit (five slices, read only), this SPEC,
-  the appendix, decision rows P309 to P311, `pilot/HANDOFF.md` pointed here.
-  No code changed.
-- **Next:** J1 and J2 can start at once, in separate sessions (lanes 1 and 2,
-  section 8). Each reads this file, the findings it cites, and
-  `pilot/HANDOFF.md`.
-- **Files the next session needs:** this SPEC (sections 6 and its job),
-  `pilot/AUDIT-2026-10-13-architecture.md` (the findings its job cites),
-  `pilot/DECISIONS.md` (P309 to P311), and `pilot/HANDOFF.md` (the cloud
-  environment notes for installing just what the affected tests need).
-- **Left for Jason:** the word on phases 2 to 7 after tranche 1 (P311); Q-A to
-  Q-F as each phase comes up; whether CLAUDE.md's "Opus builds" line or his
-  routing (Sonnet builds, Opus reviews) governs these jobs (section 6).
+- **Done in the session that wrote this:** the audit (five slices, read only),
+  this SPEC, the appendix, decision rows P309 to P313, `pilot/PROMPT-refactor.md`
+  (the standing instructions for every agent in the loop), and
+  `pilot/HANDOFF.md` pointed here. No code changed before J1.
+- **The loop** runs the jobs in order (section 8, then each phase's own SPEC)
+  as `pilot/PROMPT-refactor.md` section 1 says, and records each landing in
+  section 13 below.
+- **Files a job's agent needs:** `pilot/PROMPT-refactor.md` (section 2 and its
+  role's section), its job's section here or in the phase SPEC, the appendix
+  findings the job cites, and the board's notices and its own thread.
+- **Left for Jason:** the questions P313 keeps open (Q-B and, if it comes to
+  that, Q-F); any `question` the loop escalates; the office PC steps section
+  13 lists as owed; opening and landing the pull request.
+
+## 13. Built (the ledger)
+
+One row per job, added by the orchestrator when the job's review passes and
+its commits are pushed. "Owed" lists the hands-on steps that only the office
+PC can run.
+
+| Job | Tier | Rounds | Commits | Outcome | Owed to the office PC |
+|---|---|---|---|---|---|

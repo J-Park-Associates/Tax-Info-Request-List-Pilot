@@ -18,7 +18,7 @@ this repository; [`SPEC.md`](SPEC.md) says what it builds.
   `/Applications` and in `~/Desktop/Apps/Published` is the `d39b92e7` build,
   which is the same program: everything since changed prompts and records only.
 
-- **Decisions live in [`DECISIONS.md`](DECISIONS.md), rows P1 to P311.** The
+- **Decisions live in [`DECISIONS.md`](DECISIONS.md), rows P1 to P313.** The
   badge reads **Pilot 0.4** (P281, 2026-10-11): 0.3 plus the UI review's work. Code
   and tests cite those numbers, so a row is never renumbered or removed. Why
   a thing is the way it is: search the row, do not guess.
@@ -35,10 +35,15 @@ of the whole repository (evidence in
 [`AUDIT-2026-10-13-architecture.md`](AUDIT-2026-10-13-architecture.md)), the
 target shape, phases 0 to 7, and the migration checklist. Jason took P309 (the
 pilot is the one codebase; nothing more is merged from the original), P310
-(mypy as a development-only tool) and P311 (tranche 1 first: phases 0 and 1,
-jobs J1 to J6; no module is split until it lands). Nothing is built yet. Next:
-J1 and J2 in separate sessions (SPEC-architecture section 8 has the lanes);
-each reads the SPEC's section 6, its own job, and the findings it cites.
+(mypy as a development-only tool), P311 (tranche 1 first: phases 0 and 1,
+jobs J1 to J6; no module is split until it lands), P312 (the whole plan built
+in an orchestrated loop: Sonnet builds, Opus builds the difficult jobs, Opus
+reviews) and P313 (the plan's questions, built meanwhile).
+[`PROMPT-refactor.md`](PROMPT-refactor.md) holds every agent's standing
+instructions and the loop's rules, including the coordination board the
+agents talk through. SPEC-architecture section 13 is the ledger of landed
+jobs; a session that picks the loop up reads it, `git log` on the branch and
+PROMPT-refactor section 1.5.
 
 What landed on 2026-10-12, in the software's words:
 
@@ -100,12 +105,11 @@ first.
 
 ## Open for Jason
 
-- **Who builds SPEC-architecture's jobs.** CLAUDE.md's "How work flows here"
-  says Opus designs, builds and reviews; P285 was built by Sonnet and
-  reviewed by Opus, which is Jason's routing. The SPEC follows the routing
-  and says so (section 6); one word settles it.
-- **Phases 2 to 7 of SPEC-architecture**, after tranche 1 lands (P311), and
-  its questions Q-A to Q-F as each phase comes up.
+- **SPEC-architecture's open questions (P313):** Q-B (whether the re-send
+  road's across-household park should carry a shortlist) is kept as today
+  until his word; Q-F goes to him if unifying the room check would change a
+  save's outcome. Any `question` the loop escalates, and the office PC steps
+  the ledger lists as owed.
 - **The office bench session's account.** `PROMPT-reader-bench.md` has the
   session run under the account that runs the schedule (its step 1 requires
   the clients root, which `review-codes` and the backtest need), while the
