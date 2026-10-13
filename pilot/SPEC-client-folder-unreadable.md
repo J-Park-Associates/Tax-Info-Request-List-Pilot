@@ -150,3 +150,44 @@ writes numbered findings under "## Review".
 ## 9. Decision row (added by the landing session)
 
 | P296 | 2026-10-13 | A household whose client folder is gone and whose record cannot be read is held back with one sentence saying both (`households.ClientSideUnknown`), never laid out again under the old name; the pass, New return, Roll forward and the household's card all say it, and a client folder that is there is never a reason to read the record (SPEC-client-folder-unreadable). | The error-handling audit of 2026-10-13 (E1): a swallowed read failure answered "never had one" and the pass remade `Clients\<name>` while warning the record could not be read. |
+
+---
+
+## 10. Amendments after the first review (Opus, 2026-10-13)
+
+Findings F1-F4 are in `pilot/HANDOFF-client-folder.md` under "Review". The
+deviation (a journal file that does not exist is skipped, not "cannot tell")
+is accepted: the old code skipped it too, a household with no record is
+stopped before this check on every path, and the SPEC's literal wording broke
+three runner tests. All four findings are built.
+
+**R1, amended (F1).** The sentence names whose record failed, so a person
+repairs the right one:
+
+`CLIENT_SIDE_UNKNOWN = ("`Clients\\{name}` is missing and the record of {whose} could not be read ({problem}), "
+"so the app cannot tell whether the household was renamed or moved. Nothing is made under the old name "
+"until that record reads again (runbook section 6).")`
+
+`whose` is `the household` when `shared_on` failed, and
+``its return `<folder name>` `` (the return folder's own name in backticks)
+when a return's `store.documents` failed. The error-log entry carries the
+same name (`errors.keep(..., name=<the folder whose journal failed>)`).
+The runbook paragraph says "the household's record, or one of its returns'",
+and that the sentence names which. Tests: the households test checks both
+spellings, one for each half.
+
+**F2 (nit): kept as built.** When one part of the record will not read, the
+answer is "cannot tell" even if another return proves the folder existed:
+both answers stop the household, and "cannot tell" sends a person to the
+broken record first. Say so in `client_side_expected`'s docstring.
+
+**F3 (nit).** A households-level test for the deviation:
+`test_a_journal_that_does_not_exist_is_skipped_and_only_one_that_will_not_read_is_cannot_tell`.
+
+**F4 (nit).** `registry.held_back`'s docstring names the "cannot tell" answer;
+the registry test's docstring says who reads `held_back` (New return and Roll
+forward), not the list and the card.
+
+Gate after the rebuild: `test_households`, `test_runner`, `test_scaffold`,
+`test_registry`, `test_single_source`, `test_repo_map`, ruff, the map check.
+The builder appends `## Rebuild 1 (Sonnet, 2026-10-13)` to the handoff.
