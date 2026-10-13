@@ -538,3 +538,42 @@ The gate after rebuild 3: `test_api`, `test_manifest`, `test_filer`,
 failure that belongs to the client-folder lane, named in its SPEC's section
 11; it is fixed there, in parallel). The builder appends
 `## Rebuild 3 (Sonnet, 2026-10-13)` to the handoff.
+
+---
+
+## 17. Amendments after the fourth review (Opus, 2026-10-13)
+
+Findings I1-I4 are in `pilot/HANDOFF-form-inputs.md` under "Review 4". None
+survived a rebuild, so the rebuild is Sonnet's. I1 and I3 are built; I2 and
+I4 are recorded here and not built.
+
+**Decision row (I1).** Section 16 worded P291 as "an identifier or short name
+sent back as the list holds it, a change of case aside", and that was this
+SPEC's slip, not the builder's: "case aside" is the identifier's rule only
+(its key folds case, decision 160); a short name has no key, so one changed
+by case alone is a new value and gets the typed rule. P291 is reworded so the
+"case aside" clause attaches to the identifier alone, with the short name
+"sent back as the list holds it". No code changes.
+
+**Test (I3).** `tests/test_api.py`
+`test_a_list_holding_a_long_identifier_stays_editable_and_renames_it_away`
+gains the two steps that pin section 16's way out of the dead end: Rename of
+the held 120-character identifier by case alone is refused with
+`RENAME_CASE_ONLY`, and then the editor's case-only respelling of the same
+identifier saves.
+
+**Not built (I2, nit).** `api._refuse_a_changed_row_past_the_limit` counts a
+case-only change as a changed row (decision 131), so a held row already past
+what Windows opens would be refused a change of case with the "shorten the
+folder" sentence. It predates this SPEC and needs a row of its own; left for
+Jason as a later item.
+
+**Record (I4).** Section 16's "240" was corrected to "260" by the landing
+session (this SPEC's author), not the builder, after the builder's handoff
+named it. The `Co-Authored-By` trailer on every commit of this branch is the
+session's required attribution line and does not name which model built a
+rebuild; the handoff does.
+
+The gate after rebuild 4: `test_api`, `test_single_source`, `test_repo_map`,
+ruff, the map check (a decision row and one test change touch nothing else).
+The builder appends `## Rebuild 4 (Sonnet, 2026-10-13)` to the handoff.

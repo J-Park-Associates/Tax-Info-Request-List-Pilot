@@ -754,3 +754,166 @@ interpreter's run is not done (one interpreter available in this session).
 
 `tracker/manifest.py` (`item_from_fields`, `renamed_rules`), `tracker/filer.py` (`RENAME_CASE_ONLY`
 use in `rename_request`), the three test files, P291 in `pilot/DECISIONS.md`.
+
+## Review 4 (Opus, 2026-10-13)
+
+A fourth review, by an agent that built none of the rebuilds. It covers rebuild 3 (`git diff 07e0fda
+8da6fe9 -- tracker/ tests/ pilot/DECISIONS.md`; the `households`/`registry`/`runner`/`scaffold`
+lines in that range are the client-folder lane's 7df8b93, not this SPEC's) against section 16 as
+corrected in 8da6fe9. It also checks that the whole change still meets sections 1-15, with 14-16
+overriding. I edited no code or test. Each behaviour claim was run on the floor interpreter
+(Python 3.13 venv; `requires-python >=3.11`), either through the named test file or through a
+throwaway test in the scratchpad (`r4/test_review4.py`). That test drives `edit` and `rename` end to
+end on records written straight into the store.
+
+### Resolved
+
+- **H1 - resolved in effect.** `item_from_fields` now asks `identifier_problem` whenever
+  `recorded.get(identifier_key(identifier))` is not `None`. These were traced end to end through
+  `edit`:
+  - A held `"L" * 120` respelt `"l" * 120` saves, and the list holds one row, `l*120`. An older
+    window's row sending only `{"identifier": "L"*120, "document": ...}` saves back to `L*120`.
+  - `rename` from `L*120` to `l*120` is still refused with `RENAME_CASE_ONLY`. Its instruction
+    ("change it in the list and save") now leads to a save that works, so the contradiction H1
+    named is gone.
+  - A held `A<NBSP>01` respelt `a<NBSP>01` saves.
+  - `B<NBSP>01` is refused with
+    `Row 1: Identifier 'B<U+00A0>01' may not contain an invisible character (U+00A0 NO-BREAK SPACE)`,
+    and the journal is byte-identical. The same holds as a new row 2 beside the held row
+    (`Row 2: ...`).
+  - A held identifier with U+202E is still refused by the store's rule. The store will not write
+    it: `StoreError: This change carries a rule whose 'identifier' may not contain an invisible
+    character (U+202E RIGHT-TO-LEFT OVERRIDE); nothing was written`. Through `item_from_fields`
+    with that key held, it is refused in either case as `Row 1: Identifier 'A0<U+202E>1' ...` /
+    `'a0<U+202E>1' ...`, and no raw U+202E is in the sentence.
+
+  **The key lookups stay consistent with the fold:**
+  - In `_cmd_edit`, `_as_recorded` uses `exact.get(...) or folded.get(key)`, `held_items` is keyed
+    by `identifier_key`, and `_short_title` receives the same `held`.
+  - `_refuse_taking_away_documents` compares `identifier_key`s.
+  - On `_filed_documents`' return, respelling `A01` as `a01` saves. The row count is unchanged,
+    `A01` is gone, there is no duplicate key, and `documents_by_request` gives `{'a01': 2, 'c01': 1}`.
+  - Sending both `L*120` and `l*120` in one save is refused by `validated` as
+    `Duplicate identifier 'lll...' (rows 1 and 2)`, with nothing written.
+
+  The one lookup that does not fold is I2's, and it is harmless here.
+- **H2 - resolved.** Both format sites now pass `quoted(...)`:
+  - `filer.rename_request`: `RENAME_CASE_ONLY.format(old=quoted(old), new=quoted(new))`.
+  - `manifest.renamed_rules`: `RENAME_NOT_ON_THE_LIST.format(old=quoted(old))`.
+
+  Through the API, the 120/120 case sentence is 252 characters, with two `...` cuts.
+
+  The new `test_a_rename_refusal_quotes_at_most_eighty_characters_of_what_was_typed` asserts what
+  corrected section 16 says:
+  - The whole sentence equals the `quoted` format, and it is `< 260`.
+  - It has exactly two `...` cuts, `L*77 + "..."` is present, and `L*80` is absent.
+  - A 10,000-character `old` through `RENAME_NOT_ON_THE_LIST` equals its `quoted` format and is
+    `< 240`.
+  - Nothing is written: neither files nor journal lines change.
+
+  Mutation checks were run on a scratch copy of the tree at 8da6fe9:
+  - With 07e0fda's `filer.py`/`manifest.py`, all three new or changed claims fail: this test, the
+    manifest H1 test and the api H1 test.
+  - With only the `RENAME_NOT_ON_THE_LIST` site reverted, this test still fails, so both sites are
+    load-bearing.
+
+  No existing rename test was edited, and every rename test in `test_filer` and `test_api` passes
+  unchanged.
+- **H3 - resolved.** `assert api.ISSUER_LABEL is manifest.COL_ISSUER` is the line directly after
+  `assert labels["issuer_label"] == "Issuer Name"` (`tests/test_api.py:8460`). It is a guard, and it
+  passes on the pre-fix code too, as the handoff says.
+- **The test changes follow the SPEC.**
+  - In `test_manifest`, the case-respelling claim is reversed back, as section 16 directs. The
+    lowered NBSP identifier now passes, and a different-key NBSP identifier (`hidden.replace("L",
+    "M")`) is refused, so the refusal claim survives on a new key.
+  - In `test_api`, the refused respelling is `B<NBSP>01`, as directed, and a passing `a<NBSP>01`
+    was added.
+  - No other claim was weakened.
+- **Sections 14-16 elsewhere: still built.**
+  - `layout.spoofing_problem` and `invisible_problem` exist.
+  - `records.typed_short_title_problem` exists, and `typed_identifier_problem` has no `capped`.
+  - `templates` quotes its identifier with `quoted`.
+  - `_read_spec` catches `UnicodeDecodeError`.
+  - `ADMISSION_VERSION = 4`.
+  - The derived short name is judged for invisible characters only, which is section 16's rewording.
+
+  The other rename sentences that format `old` raw (`RENAME_COPY_MOVED`, `_MISSING`, `_CHANGED`,
+  `RENAME_UNFINISHED`) echo the identifier the list holds, not what was typed. By then `new` has
+  passed the 80-character cap. So P293 ("what was typed") does not reach them, and R7 is not built
+  differently there.
+- **Dead code and layers.** No new import in `tracker/`: `filer` and `manifest` already imported
+  `quoted`. `tests/test_api.py` adds `manifest` to its `from tracker import` line, and it is used.
+  Ruff is clean, and `test_layers` passes.
+
+### Findings
+
+**I1 - `pilot/DECISIONS.md` P291 - should fix (wording only).** P291 now reads "an identifier or
+short name sent back as the list holds it, a change of case aside, is judged by the store's rule
+alone". Grammatically, "a change of case aside" covers the short name too. The code does not apply
+it to the short name, and neither does section 16 ("The short name's rule is unchanged (equal to the
+held one, or new)"). `_short_title` compares `text == held.short_title`, which is case-sensitive.
+Verified end to end: a held row `A<NBSP>01` / `W<SHY>X` whose short name is respelt `w<SHY>x` (with
+or without the identifier's case changed too) is refused with
+`Row 1: Short name may not contain an invisible character (U+00AD SOFT HYPHEN)`.
+
+**Fix:** reword P291 so that the case clause attaches to the identifier alone. For example: "an
+identifier sent back as the list holds it (a change of case aside), or a short name sent back
+exactly as held, is judged by the store's rule alone". No code change is needed.
+
+**I2 - `tracker/api.py` `_refuse_a_changed_row_past_the_limit` - nit (read from the code).**
+`stored` is keyed by the exact identifier, so a case-only respelling is measured as a changed row,
+while the same row sent back as held is not measured. This predates this SPEC (decision 131), and a
+clean `A01` to `a01` was always measured. H1 only lets a held long or NBSP identifier reach the check
+now. It is harmless while the row has room: the respelling is the same length, and the scratch
+`l*120` edit saved. A held row already past what Windows opens, though, would be refused a change of
+case with the "shorten the folder" sentence, which is V5's complaint.
+
+**Fix (if wanted):** key `stored` by `identifier_key`, so that a case-only change is measured only
+when another path field moved. Otherwise, leave it as it is and record that it is deliberate.
+
+**I3 - tests - nit.** No committed test pins H1's two sentences together. The H1 contradiction was
+"rename says go to the editor, the editor refuses". The manifest test covers `item_from_fields`
+alone, and the api test covers the NBSP identifier only.
+
+**Fix:** add two steps to `test_a_list_holding_a_long_identifier_stays_editable_and_renames_it_away`:
+- `rename` from `L*120` to `l*120` is refused with
+  `RENAME_CASE_ONLY.format(old=quoted(...), new=quoted(...))`.
+- `edit` with `l*120` saves, and the list holds `["l"*120]`.
+
+The scratch test does exactly this, and it passes.
+
+**I4 - the record - nit.** Rebuild 3's "Done differently" presents section 16's "240" and "ends with
+the ellipsis" as still open ("the reviewer may want it tightened"), and it says "I did not edit the
+SPEC". The same commit, 8da6fe9, carries section 16 already corrected to "260", with "the builder's
+reading is the right one". So the build's own commit amended the SPEC that judges it, and the handoff
+does not say so or say who did. Also, the `Co-Authored-By: Claude Fable 5.1` trailer that Review 3
+flagged is on 8da6fe9 (and 7df8b93), while this handoff says "Rebuild 3 (Sonnet ...)" and CLAUDE.md
+names Opus 5.5.
+
+### Gate (floor interpreter, one process per file, in parallel, `-p no:cacheprovider`, at 8da6fe9)
+
+| file | result |
+|---|---|
+| test_api | 517 passed |
+| test_manifest | 110 passed |
+| test_filer | 407 passed, 6 skipped |
+| test_records | 53 passed |
+| test_row_columns | 26 passed |
+| test_templates | 41 passed |
+| test_errors | 83 passed |
+| test_tripwire | 23 passed |
+| test_layers | 31 passed |
+| test_single_source | 218 passed |
+| test_repo_map | 82 passed |
+
+- `python -m ruff check .`: all checks passed.
+- `python tools/repo_map.py check`: **stale**, on exactly `pilot/HANDOFF-client-folder.md` and
+  `pilot/SPEC-client-folder-unreadable.md`. Both come from the client-folder lane's b558c94
+  ("Review 3 of SPEC-client-folder-unreadable"), which landed while this review ran. It touches
+  pilot files only, and `tracker/`, `tests/`, `docs/` and `tools/` are unchanged since 8da6fe9. That
+  is the other lane's to refresh, not this change's.
+- This append makes the map stale on `pilot/HANDOFF-form-inputs.md` too, until whoever commits it
+  runs `update`.
+- Only the office interpreter's run is not done (one interpreter in this container).
+
+Findings: 0 must fix, 1 should fix, 3 nits.
