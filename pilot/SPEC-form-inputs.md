@@ -675,3 +675,39 @@ which strips and lowers and so cannot change a path's length), and the
 fields compared are the ones a case change does not reach. A respelling
 that changes the key is a row the list does not hold and is measured, as
 before. The review of section 20 judges the build against this section.
+
+---
+
+## 22. Amendments after the seventh review (Opus, 2026-10-13)
+
+Review 7 found sections 19, 20 and 21 built as written on every case they
+name. Three small corrections follow; two larger observations (a stored
+spelling past the rule blocks every save of that return; the short title is
+not among the fields the path-room check compares) are Jason's calls and
+are not built here. The build is Sonnet's, together with
+SPEC-error-handling-small section 14 (both edit `tests/test_api.py`).
+
+**F3 - one respelling keeps the key and changes the length.** Section 21
+said a change of case cannot alter a path's length. One character can:
+`"İ".lower()` is two code points, so a held row `İ01` past the limit,
+respelt `i̇01`, kept its key and saved with a path one character longer
+than before (the reviewer's probe: 270 to 271 against 260; refused before
+section 20). In `_refuse_a_changed_row_past_the_limit`, a matched row also
+counts as changed when `len(item.identifier) != len(held.identifier)`, with
+a comment naming the one pair. Test: that exact respelling of a held row
+past the limit is refused with `PATH_TOO_LONG`; the case-only test keeps
+passing.
+
+**Nit 4.** The case-only test also asserts the respelt identifier is what
+the record now holds (read the list back and find `b01`), not only that
+the save answered 0.
+
+**Nit 2.** Section 19 and Rebuild 5 say the check reaches "edit-household's
+people"; edit-household takes `members` (bare names, no spellings). The
+check reaches `create`, the editor's `edit` and `rollover`, through
+`_info_from_spec`. This section corrects the record; the earlier text
+stays as written.
+
+Gate: `test_api`, `test_single_source`, `test_layers`, `test_repo_map`,
+ruff, the map check. The builder appends `## Rebuild 7 (Sonnet, 2026-10-13)`
+to the handoff (append only).

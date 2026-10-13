@@ -295,3 +295,21 @@ comment), so a second "Client" in that menu fails the test. Built by
 Sonnet together with SPEC-form-inputs section 20 (both edit
 `tests/test_api.py`), after section 19's build hands back. The gate is
 section 20's.
+
+---
+
+## 14. Amendment after the fourth review (Opus, 2026-10-13)
+
+Review 4 found section 13 built as written, with one slip: the exemption
+constant is `manifest.OVERRIDE_REASONS[0]`, the list's first position, so a
+reworded first reason - "Client confirmed this is the final version." with
+a full stop, say - still passes, while the comment beside it and P196's
+clause promise the value is exempt by name. Test only: the constant
+becomes the literal text `"Client confirmed this is the final version"`,
+and the test asserts `_STORED_REASON_WITH_CLIENT in manifest.OVERRIDE_REASONS`
+so a reworded or removed reason fails here as the comment says. The build
+is Sonnet's, together with SPEC-form-inputs section 22.
+
+Gate: `test_api`, `test_single_source`, `test_layers`, `test_repo_map`,
+ruff, the map check. The builder appends `## Rebuild 4 (Sonnet, 2026-10-13)`
+to the handoff (append only).
