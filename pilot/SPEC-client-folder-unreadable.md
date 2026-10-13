@@ -330,3 +330,42 @@ is left for Jason to confirm or reverse.
 Gate after the rebuild: `test_registry`, `test_households`, `test_layers`,
 `test_single_source`, `test_repo_map`, ruff, the map check. The builder
 appends `## Rebuild 4 (Sonnet, 2026-10-13)` to the handoff.
+
+---
+
+## 14. Amendment after the error-handling build's gate (2026-10-13)
+
+`tests/test_rollover.py::test_the_client_tree_is_byte_identical_after_a_roll_forward_whose_record_names_a_path`
+fails since `ed109f1` (section 12, H1), found by the SPEC-error-handling-small
+build's gate and bisected by the landing session: it passes at `b558c94` and
+fails at `ed109f1`. Not a finding that survived a rebuild; the rebuild is
+Sonnet's.
+
+**Why.** Roll forward asks `registry.held_back` first. Before section 12 the
+forged line in the prior return's record escaped `household_pause` as the
+store's own refusal ("... 'household' that is not one folder name ..."), which
+is what the test pins and what a person needs to read. Now `household_pause`
+skips that return as it should, `held_back` answers `""` (the client folder
+is there), and `open_year_returns` lists the return as not open (its
+`Engagement` carries `problem`, so it is not active), so `roll_household`
+refuses with `ROLLOVER_NOT_THIS_HOUSEHOLD` - "`1040 - John Park` is not an
+open-year return of Park Family" - which is false and sends nobody to the
+broken record.
+
+**R2, amended.** In `roll_household`, where a planned prior is not among
+the open returns, ask `registry.engagement_from(prior)` first when `prior` is
+a return folder of this household; if its `problem` is set, refuse with
+`ROLLOVER_RECORD_UNREADABLE = "{prior}'s record could not be read ({problem}); repair it first (runbook section 6), then roll it forward"`
+(`problem` is the Engagement's own `problem`, already a sentence the
+registry sanitised: the firm's own errors whole, anything else by class).
+Only then `ROLLOVER_NOT_THIS_HOUSEHOLD`. The CLI's `--only` lookup in
+`main` has the same shape (a name not among `open_now`); give it the same
+sentence by the same rule. The failing test passes unchanged, since the
+store's refusal is inside the new sentence; add
+`test_rolling_a_return_whose_record_cannot_be_read_says_so_rather_than_not_this_household`
+asserting the whole sentence and that nothing is written.
+
+Gate after the rebuild: `test_rollover`, `test_registry`, `test_households`,
+`test_api`, `test_errors`, `test_layers`, `test_single_source`,
+`test_repo_map`, ruff, the map check. The builder appends
+`## Rebuild 5 (Sonnet, 2026-10-13)` to `pilot/HANDOFF-client-folder.md`.
