@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 302,
     "edges": 1336,
-    "reused": 248
+    "reused": 247
   },
   "node_types": [
     "artifact",
@@ -4732,8 +4732,8 @@
       "id": "pilot/DECISIONS.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "f43ec5a371475b6d",
-      "lines": 301
+      "sha256": "4ea1fc1d1de29122",
+      "lines": 302
     },
     {
       "id": "pilot/HANDOFF-client-folder.md",
@@ -4873,8 +4873,8 @@
       "id": "pilot/SPEC-form-inputs.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "ec1aa296671fcd0c",
-      "lines": 827
+      "sha256": "ba37a4b8415b2876",
+      "lines": 845
     },
     {
       "id": "pilot/SPEC-hide-under-construction.md",

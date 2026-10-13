@@ -825,3 +825,21 @@ spelling refusal is the one a stored value can meet.
 mid-write, so `check` on that commit alone was stale; the tip is current.
 A builder gates the commit it will become, not a working tree holding
 another lane's edits.
+
+---
+
+## 26. A stored short title the editor would strip is a known limit (Jason, 2026-10-13; decision P308)
+
+Jason's ruling on Review 8's second finding: option 1, accept it and record
+it. The editor strips the whitespace round the short title it sends back,
+and the store accepts a short title with a leading space, so a record
+holding one on a row already past the path limit is refused on every save
+of that list: the stripped value differs from the stored one, the row
+counts as changed (section 24) and is measured. No path the app offers can
+write such a record; it takes a hand-edited journal. The refusal is loud
+and names the row, and the person shortens it. Document and period have
+had the same exposure since decision 131. No build.
+
+**Decision row (added by the landing session):**
+
+| P308 | 2026-10-13 | A record holding a short title with whitespace the editor strips, on a row already past the path limit, is refused on every save of that list (the stripped value reads as a change, P307); accepted as a known limit, since no path the app offers writes such a record and the refusal names the row (SPEC-form-inputs section 26). | Jason, 2026-10-13, on the eighth review's observation. |
