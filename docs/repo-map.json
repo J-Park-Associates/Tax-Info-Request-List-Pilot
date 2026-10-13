@@ -1,6 +1,6 @@
 {
   "schema": 2,
-  "generated": "2026-10-13",
+  "generated": "2026-10-12",
   "generator": "tools/repo_map.py",
   "generator_sha256": "a394d7104da5155d",
   "module_table_sha256": "2499d0551746f34b",
@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 302,
     "edges": 1336,
-    "reused": 247
+    "reused": 248
   },
   "node_types": [
     "artifact",
@@ -4679,7 +4679,7 @@
       "id": "docs/vocab-coverage.json",
       "type": "file",
       "layer": "docs",
-      "sha256": "7e824847e0f9648d",
+      "sha256": "3aadd77e768d4b73",
       "lines": 9415,
       "role": "The coverage report as data, with the SHA-256 of every input it was built from; `check` and the suite compare against these. Generated; never edited by hand."
     },
