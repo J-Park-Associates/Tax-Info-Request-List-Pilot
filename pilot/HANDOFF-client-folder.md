@@ -1271,3 +1271,65 @@ stale hashes for registry.py and test_registry.py, plus the other builders'
 files). `python -m ruff check .`: all checks passed. `python
 tools/repo_map.py update` then `check`: current (302 nodes). Not run: the 3.11
 floor (no interpreter for it in this container).
+
+## Rebuild 7 (Sonnet, 2026-10-13)
+
+Builds SPEC-client-folder-unreadable section 16 (decision P302): Roll Forward
+refuses a legacy folder of the open year.
+
+**Built.**
+- `tracker/rollover.py`: `ROLLOVER_LEGACY_FOLDER` (the SPEC's exact sentence).
+  In `roll_household`'s refusal pass (step 1, before `_plan_one` and before any
+  lock or write), a planned prior whose `Engagement.problem` equals
+  `LEGACY_FOLDER.format(name=LEGACY_MANIFEST_FILENAME)` (the registry's one
+  constant, compared whole, never by substring) raises
+  `ManifestError(ROLLOVER_LEGACY_FOLDER.format(prior=<folder name>, name=LEGACY_MANIFEST_FILENAME))`.
+  Raised bare, not through `_nothing_rolled`, so the sentence is the SPEC's
+  own. The raise is outside the pass's `try`, so nothing is written for any
+  planned return of that household. `roll_household`'s docstring names it.
+  Section 15's rule for a legacy return *not* in the open year is untouched
+  (that return is not among `open_returns`, so the new check never sees it).
+- `docs/runbook.md`: one sentence after "A return whose record cannot be read
+  is refused too ..." in the Roll Forward refusals paragraph.
+- `tests/test_rollover.py`: three tests and one helper
+  (`_a_legacy_return_in_the_open_year`: `make_engagement(root, [], EngagementInfo(active=True), year=2026, ..., scaffold=False)`
+  plus `_manifest.xlsx`; asserts it is the registry's legacy folder, active,
+  tax year 2026).
+
+**Command line - a deviation to read.** The SPEC says `--all`/`--only` get the
+sentence "through `parser.error`" and the test "exit 2". They do not, and
+cannot without new code: a legacy return in the open year *is* among
+`open_now`, so `main`'s `--only` name lookup finds it, `roll_household` is
+called, and every `ManifestError` from `roll_household` is printed under the
+`NOT ROLLED` heading with "was not rolled forward" and `SystemExit(1)`
+(the existing handler, same as every other whole-call refusal). `parser.error`
+(exit 2) is only the name lookup's and the held-back/year checks' voice. I
+built no second path (a pre-check in `main` would duplicate the refusal pass),
+so the two CLI tests assert exit 1, the `NOT ROLLED` heading and the sentence,
+plus "nothing written". If Jason wants exit 2, `main` needs a legacy pre-check
+before `roll_household`; say so and it is a small addition.
+
+**Tests, before the code change / after** (before = constant defined, refusal
+logic absent, so each fails on behaviour, not on an import):
+- `test_a_legacy_return_in_the_open_year_is_refused_by_roll_forward_with_nothing_written`
+  (by plan: exact sentence; client tree hashes, private tree listing, record
+  bytes unchanged): before FAILED (`DID NOT RAISE ManifestError`; the roll
+  succeeded with zero rows); after passed.
+- `test_only_naming_a_legacy_return_in_the_open_year_says_the_legacy_sentence_and_writes_nothing`
+  (`--only`): before FAILED (output "Rolled Park Family forward ... 0 carried"
+  and exit 0); after passed.
+- `test_all_refuses_the_whole_household_when_one_of_its_returns_is_a_legacy_folder`
+  (`--all`, one legacy and three ordinary open returns: refused whole, no 2027
+  folder for any, trees and every record's bytes unchanged): before FAILED
+  (all four rolled); after passed.
+- The section-15 test
+  `test_a_legacy_folder_that_is_not_open_is_not_this_household_not_a_record_that_cannot_be_read`
+  passes unchanged, before and after.
+
+**Gate** (venv Python 3.13, `-p no:cacheprovider`, one process per file, in
+parallel): test_rollover 70 passed; test_registry 44 passed, 2 skipped
+(1 warning, the known runpy one); test_api 522 passed; test_single_source 218
+passed; test_layers 31 passed; test_repo_map 82 passed (on a second `update` + retry: the first run drifted only on the other builder's `tests/test_api.py`, edited meanwhile).
+`python -m ruff check .`: all checks passed. Not run: the 3.11 floor (no
+interpreter for it in this container).
+`python tools/repo_map.py check`: current (302 nodes), after `update`.

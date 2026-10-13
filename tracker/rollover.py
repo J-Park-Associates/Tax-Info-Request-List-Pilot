@@ -170,6 +170,16 @@ ROLLOVER_RECORD_UNREADABLE = (
     "{prior}'s record could not be read ({problem}); repair it first "
     "(runbook section 6), then roll it forward"
 )
+#: What a plan or ``--only`` naming an open-year return says when that
+#: return still holds its request list in the old workbook (a legacy folder,
+#: ``tracker.registry.LEGACY_FOLDER``): its record reads and holds no rules,
+#: so it counts as active, and rolling it would make next year's return with
+#: zero rows that looks set up and asks for nothing. The runbook's section 1
+#: says such a return is set up again in the app.
+ROLLOVER_LEGACY_FOLDER = (
+    "{prior} holds its request list in a workbook the app no longer reads ({name}); "
+    "set it up again in the app first (runbook section 1), then roll it forward"
+)
 #: What a return left unticked by a household rollover is retired with.
 #: The retirement itself is an ordinary details edit (``active: no``) and
 #: the reason is not a detail field, so it is said where a person reads
@@ -729,7 +739,10 @@ def roll_household(
     when a plan names a return that is not one of that year's active ones
     (:data:`ROLLOVER_NOT_THIS_HOUSEHOLD`, or :data:`ROLLOVER_RECORD_UNREADABLE`
     when it is one of this household's returns whose record cannot be read -
-    it is not open because it cannot be told). **No permission is changed and
+    it is not open because it cannot be told) and when a planned return is a
+    legacy folder of the open year (:data:`ROLLOVER_LEGACY_FOLDER`: its list
+    is still in the old workbook, so rolling it would make an empty return
+    that looks set up). **No permission is changed and
     nothing under the client tree is touched but the new year's folder**,
     which the first scaffold makes and the rest find; the inbox's README
     is rewritten once at the end, so the client sees the new year's lists
@@ -746,11 +759,12 @@ def roll_household(
     # (its record gone, two folders claiming it) or whose client folder is
     # gone (decision 188 and its review's M3, S4): refused before anything
     # is read further or written, with the sentence the pass says.
-    from tracker.registry import held_back
+    from tracker.registry import LEGACY_FOLDER, LEGACY_MANIFEST_FILENAME, held_back
 
     if said := held_back(household_dir):
         raise ManifestError(said)
 
+    legacy = LEGACY_FOLDER.format(name=LEGACY_MANIFEST_FILENAME)
     _, open_returns = open_year_returns(household_dir)
     by_folder = {_same_folder(one.path): one for one in open_returns}
 
@@ -778,6 +792,12 @@ def roll_household(
     rolls: list[_PlannedRoll] = []
     targets: set[str] = set()
     for one, plan in planned:
+        # A legacy folder in the open year counts as active and would roll
+        # with zero rows (P302): refused whole, by the registry's one
+        # constant and never by a substring.
+        if one.problem == legacy:
+            raise ManifestError(ROLLOVER_LEGACY_FOLDER.format(
+                prior=one.path.name, name=LEGACY_MANIFEST_FILENAME))
         try:
             roll = _plan_one(one.path, one.info, plan, household_dir.name, household_info,
                              target_year=target_year)

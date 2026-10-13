@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 302,
     "edges": 1336,
-    "reused": 241
+    "reused": 248
   },
   "node_types": [
     "artifact",
@@ -289,8 +289,8 @@
       "id": "tracker/api.py",
       "type": "module",
       "layer": "core",
-      "sha256": "67f799a5703512e3",
-      "lines": 6782,
+      "sha256": "82b5e647e523331a",
+      "lines": 6786,
       "cli": "python -m tracker.api",
       "exports": [
         "ACCEPT_FOLDER_NAME_HELP",
@@ -4739,8 +4739,8 @@
       "id": "pilot/HANDOFF-client-folder.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "622a8a09f90bca21",
-      "lines": 1239
+      "sha256": "5f08e1630713e7a1",
+      "lines": 1335
     },
     {
       "id": "pilot/HANDOFF-document-gate.md",
@@ -4824,8 +4824,8 @@
       "id": "pilot/SPEC-client-folder-unreadable.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "d3581e9dd80b4dce",
-      "lines": 491
+      "sha256": "6ad2b3333579de28",
+      "lines": 494
     },
     {
       "id": "pilot/SPEC-document-gate.md",
@@ -4873,8 +4873,8 @@
       "id": "pilot/SPEC-form-inputs.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "63f628b3a3f265e1",
-      "lines": 594
+      "sha256": "485e184430f82231",
+      "lines": 661
     },
     {
       "id": "pilot/SPEC-hide-under-construction.md",
@@ -6149,8 +6149,8 @@
       "id": "tests/test_api.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "a30a443a5b4d7ca0",
-      "lines": 11474,
+      "sha256": "a52472d8f61cacc7",
+      "lines": 11528,
       "exports": [
         "COUNTS",
         "DEEPER_ROOT_LENGTH",
@@ -6243,6 +6243,7 @@
         "test_a_null_original_is_the_same_refusal_as_a_blank_one",
         "test_a_null_text_field_reads_as_missing_and_other_values_as_their_text",
         "test_a_one_sided_related_link_is_repaired_by_saving_either_side",
+        "test_a_one_word_spelling_is_refused_before_the_text_rule_is_asked",
         "test_a_packages_folder_windows_will_not_list_is_one_sentence_and_the_rest_still_shows",
         "test_a_page_filed_under_two_requests_has_its_open_keys_in_filed_names_order",
         "test_a_parked_file_the_evidence_says_nothing_about_is_offered_nothing",
@@ -6300,6 +6301,9 @@
         "test_a_store_refusal_is_said_in_its_own_sentence_and_kind_refused",
         "test_a_turn_with_a_stale_view_answers_fresh_with_a_new_view",
         "test_a_turn_with_the_view_reads_no_record_and_takes_no_fingerprint",
+        "test_a_typed_spelling_of_1001_characters_is_refused_by_name_and_nothing_is_written",
+        "test_a_typed_spelling_of_exactly_the_text_rule_saves",
+        "test_a_typed_spelling_with_a_control_character_is_refused_and_nothing_is_written",
         "test_a_view_damaged_into_other_valid_json_is_said_by_its_class_and_the_ask_is_answered_fresh",
         "test_a_view_that_cannot_be_saved_answers_the_page_without_a_token_and_the_next_turn_reads_fresh",
         "test_a_waiting_row_costs_the_state_one_household_payload",

@@ -1380,6 +1380,8 @@ two folders claiming it - and one whose client folder is gone when it had
 one (decision 188).
 A return whose record cannot be read is refused too, with the record's own
 problem, and sent to section 6.
+A return from before September 2026 that still holds its list in the old
+workbook is refused until it is set up again in the app (section 1).
 
 On the command line the same two forms live in one command, told apart by
 what you point it at:

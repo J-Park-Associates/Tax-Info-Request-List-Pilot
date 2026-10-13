@@ -1791,6 +1791,115 @@ def test_a_legacy_folder_that_is_not_open_is_not_this_household_not_a_record_tha
     assert "could not be read" not in console.getvalue()
 
 
+def _a_legacy_return_in_the_open_year(root):
+    """A return of the open year (2026) whose record reads and holds no rules,
+    with the old workbook beside it: the registry's legacy folder, and active."""
+    from tracker.manifest import EngagementInfo
+    from tracker.registry import LEGACY_FOLDER, LEGACY_MANIFEST_FILENAME, engagement_from
+
+    legacy = make_engagement(root, [], EngagementInfo(active=True), household=PARK, year=2026,
+                             return_name="1040 - Old Park", scaffold=False)
+    (legacy / LEGACY_MANIFEST_FILENAME).write_bytes(b"PK any bytes at all")
+    found = engagement_from(legacy)
+    assert found.problem == LEGACY_FOLDER.format(name=LEGACY_MANIFEST_FILENAME)
+    assert found.active and found.info.tax_year == 2026
+    return legacy
+
+
+def test_a_legacy_return_in_the_open_year_is_refused_by_roll_forward_with_nothing_written(park):
+    """Section 16 (P302): a legacy return in the open year counts as active, so
+    Roll Forward used to roll it into the next year with zero rows and say
+    nothing - a return that looks set up and asks for nothing. It is refused
+    now, with the sentence that sends the person to set it up again in the
+    app (runbook section 1), and nothing is written: not the client tree, not
+    the private tree, not the record."""
+    from tracker.layout import CLIENTS_TREE, PRIVATE_TREE
+    from tracker.registry import LEGACY_MANIFEST_FILENAME
+    from tracker.rollover import ROLLOVER_LEGACY_FOLDER, ReturnPlan, roll_household
+
+    root, john, sofia, llc = park
+    household = _household(root)
+    legacy = _a_legacy_return_in_the_open_year(root)
+    clients, private = _hashes(root / CLIENTS_TREE), sorted((root / PRIVATE_TREE).rglob("*"))
+    record = ledger.path_for(legacy).read_bytes()
+
+    with pytest.raises(ManifestError) as said:
+        roll_household(household, target_year=2027, plans=[ReturnPlan(prior=legacy)])
+    sentence = ROLLOVER_LEGACY_FOLDER.format(prior=legacy.name, name=LEGACY_MANIFEST_FILENAME)
+    assert str(said.value) == sentence
+    assert sentence == ("1040 - Old Park holds its request list in a workbook the app no longer "
+                        "reads (_manifest.xlsx); set it up again in the app first (runbook "
+                        "section 1), then roll it forward")
+
+    assert _hashes(root / CLIENTS_TREE) == clients
+    assert sorted((root / PRIVATE_TREE).rglob("*")) == private
+    assert ledger.path_for(legacy).read_bytes() == record
+
+
+def test_only_naming_a_legacy_return_in_the_open_year_says_the_legacy_sentence_and_writes_nothing(
+        park, monkeypatch):
+    """Section 16: the command line's --only reaches the same refusal. A
+    legacy return is in the open year, so the name lookup finds it and
+    roll_household refuses it as it refuses any plan - printed under the
+    NOT ROLLED heading, exit 1 - with the legacy sentence and not "is not an
+    open-year return" or "could not be read"."""
+    import io
+
+    from tracker.layout import CLIENTS_TREE, PRIVATE_TREE
+    from tracker.registry import LEGACY_MANIFEST_FILENAME
+    from tracker.rollover import NOT_ROLLED_HEADING, ROLLOVER_LEGACY_FOLDER
+
+    root, john, sofia, llc = park
+    legacy = _a_legacy_return_in_the_open_year(root)
+    clients, private = _hashes(root / CLIENTS_TREE), sorted((root / PRIVATE_TREE).rglob("*"))
+
+    console = io.TextIOWrapper(io.BytesIO(), encoding="utf-8")
+    code = run_the_command_line(monkeypatch, [str(_household(root)), "--year", "2027",
+                                              "--only", legacy.name], console)
+    console.flush()
+    shown = console.buffer.getvalue().decode("utf-8")
+
+    assert code == 1, shown
+    assert f"  {NOT_ROLLED_HEADING}\n" in shown
+    assert ROLLOVER_LEGACY_FOLDER.format(prior=legacy.name, name=LEGACY_MANIFEST_FILENAME) in shown
+    assert "is not an open-year return" not in shown
+    assert "could not be read" not in shown
+    assert _hashes(root / CLIENTS_TREE) == clients
+    assert sorted((root / PRIVATE_TREE).rglob("*")) == private
+
+
+def test_all_refuses_the_whole_household_when_one_of_its_returns_is_a_legacy_folder(
+        park, monkeypatch):
+    """Section 16: a household with one legacy return and ordinary open ones,
+    rolled with --all, is refused whole (decision 159, every ticked return or
+    none): the ordinary returns are not rolled either, and nothing is written
+    for any of them."""
+    import io
+
+    from tracker.layout import CLIENTS_TREE, PRIVATE_TREE, return_dir_for
+    from tracker.registry import LEGACY_MANIFEST_FILENAME
+    from tracker.rollover import ROLLOVER_LEGACY_FOLDER
+
+    root, john, sofia, llc = park
+    legacy = _a_legacy_return_in_the_open_year(root)
+    clients, private = _hashes(root / CLIENTS_TREE), sorted((root / PRIVATE_TREE).rglob("*"))
+    records = {one: ledger.path_for(one).read_bytes() for one in (john, sofia, llc, legacy)}
+
+    console = io.TextIOWrapper(io.BytesIO(), encoding="utf-8")
+    code = run_the_command_line(monkeypatch, [str(_household(root)), "--year", "2027", "--all"],
+                                console)
+    console.flush()
+    shown = console.buffer.getvalue().decode("utf-8")
+
+    assert code == 1, shown
+    assert ROLLOVER_LEGACY_FOLDER.format(prior=legacy.name, name=LEGACY_MANIFEST_FILENAME) in shown
+    for name in (john.name, sofia.name, llc.name, legacy.name):
+        assert not return_dir_for(root, PARK, 2027, name).exists()
+    assert _hashes(root / CLIENTS_TREE) == clients
+    assert sorted((root / PRIVATE_TREE).rglob("*")) == private
+    assert {one: ledger.path_for(one).read_bytes() for one in records} == records
+
+
 def test_only_naming_a_readable_return_of_a_closed_year_is_not_this_household(park, monkeypatch):
     """Section 15 (K5): the command line's --only for a return of this
     household whose record reads but is not in the open year (an older year,

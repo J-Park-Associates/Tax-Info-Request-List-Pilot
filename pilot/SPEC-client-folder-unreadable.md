@@ -438,7 +438,10 @@ refused with
 (`name=LEGACY_MANIFEST_FILENAME`), as a `ManifestError`, so nothing is
 written for any planned return of that household (the refusal pass is all
 or nothing, as today). The command line's `--all` and `--only` reach
-`roll_household` and get the same sentence through `parser.error`. Section
+`roll_household` and get the same sentence as every refusal from it: under
+the `NOT ROLLED` heading, exit 1 (the SPEC first said `parser.error`, exit 2;
+the builder's reading is right - only the name lookup and the held-back and
+year checks use `parser.error`). Section
 15's rule for a legacy return *not* in the open year is unchanged
 (`ROLLOVER_NOT_THIS_HOUSEHOLD`); the two sentences never both apply.
 
@@ -448,7 +451,7 @@ refused until it is set up again in the app (section 1).
 
 **Tests** (`tests/test_rollover.py`): a legacy return in the open year rolled
 by plan → `ROLLOVER_LEGACY_FOLDER`, nothing written (client tree, private
-tree listing, record bytes); the same by `--only` → exit 2 with the sentence;
+tree listing, record bytes); the same by `--only` → exit 1, `NOT ROLLED`, the sentence;
 a household with one legacy and one ordinary open return rolled with `--all`
 → refused whole, nothing written for either. The existing section-15 legacy
 test (closed year) keeps passing.
