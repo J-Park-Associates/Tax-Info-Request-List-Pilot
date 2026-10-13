@@ -11217,6 +11217,7 @@ def test_a_list_holding_a_long_identifier_stays_editable_and_renames_it_away(cap
     characters used to leave a list the editor would not save."""
     from dataclasses import replace
 
+    from tracker.filer import RENAME_CASE_ONLY
     from tracker.locking import engagement_lock
     from tracker.manifest import list_head, load_manifest
     from tracker.records import rule_to_json
@@ -11244,6 +11245,21 @@ def test_a_list_holding_a_long_identifier_stays_editable_and_renames_it_away(cap
     code, payload = run(capsys, "rename", api.ENGAGEMENT_FLAG, str(engagement), stdin={
         "from": long_one, "to": "M" * 120, "head": list_head(engagement)})
     assert code == 1 and "may have at most 80 characters, got 120" in payload["error"]
+    # Section 16's way out of the dead end: Rename refuses a change of case
+    # alone and sends the person to the editor, and the editor saves it.
+    before = ledger.path_for(engagement).read_bytes()
+    code, payload = run(capsys, "rename", api.ENGAGEMENT_FLAG, str(engagement), stdin={
+        "from": long_one, "to": long_one.lower(), "head": list_head(engagement)})
+    assert code == 1
+    assert payload["error"] == RENAME_CASE_ONLY.format(
+        old=layout.quoted(long_one), new=layout.quoted(long_one.lower()))
+    assert ledger.path_for(engagement).read_bytes() == before
+    rows = payload_of_state(capsys, engagement)["rules"]
+    code, payload = run(capsys, "edit", api.ENGAGEMENT_FLAG, str(engagement), stdin={
+        "items": [{**rows[0], "identifier": long_one.lower()}], "engagement": {}})
+    assert code == 0, payload
+    assert [rule["identifier"] for rule in payload["state"]["rules"]] == [long_one.lower()]
+    long_one = long_one.lower()
     # Renamed away to a short one, it is renamed; a held long one can be.
     code, payload = run(capsys, "rename", api.ENGAGEMENT_FLAG, str(engagement), stdin={
         "from": long_one, "to": "B01", "head": list_head(engagement)})

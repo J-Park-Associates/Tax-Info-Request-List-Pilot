@@ -917,3 +917,46 @@ names Opus 5.5.
 - Only the office interpreter's run is not done (one interpreter in this container).
 
 Findings: 0 must fix, 1 should fix, 3 nits.
+
+## Rebuild 4 (Sonnet, 2026-10-13)
+
+Built SPEC section 17: I1 (the P291 wording) and I3 (the test steps). I2 and I4
+are not built, as section 17 says. No code under `tracker/` changed.
+
+**I1 - `pilot/DECISIONS.md` P291.** One line, same columns, no other row touched.
+The clause that changed:
+
+- Before: "an identifier or short name sent back as the list holds it, a change of
+  case aside, is judged by the store's rule alone (the reviews' F1, G1, H1: a
+  change of case is the same request, decision 160)."
+- After: "an identifier sent back as the list holds it, a change of case aside, and
+  a short name sent back as the list holds it, are judged by the store's rule
+  alone (the reviews' F1, G1, H1, I1: a change of case is the same request for an
+  identifier, decision 160, which a short name has no key for)."
+
+**I3 - `tests/test_api.py`
+`test_a_list_holding_a_long_identifier_stays_editable_and_renames_it_away`.**
+Two steps, placed after the cap's rename refusal and before the rename to `B01`:
+
+1. `rename` of the held `"L" * 120` to `"l" * 120` is refused, and the error is
+   exactly `RENAME_CASE_ONLY.format(old=layout.quoted(...), new=layout.quoted(...))`
+   (imported inside the test from `tracker.filer`). The ledger file is
+   byte-identical before and after, so nothing was written.
+2. The editor's case-only respelling (`edit` with the row's identifier lowered)
+   saves with code 0, and the list reads back as `["l" * 120]`. The held name is
+   then the lowercase one, so the existing rename-away to `B01` that follows now
+   renames `l*120`.
+
+Before/after: the test passed before the edit (1 passed) and passes after it
+(1 passed). That is expected: the steps pin behaviour that already held (Review 4
+ran the same two steps in a scratch test). I did not mutate the code to see them
+fail.
+
+**Gate** (floor interpreter, each file its own process, in parallel,
+`-p no:cacheprovider`): `test_api` 517 passed; `test_single_source` 218 passed;
+`test_repo_map` 82 passed on the second run. The first run failed
+`test_the_committed_map_is_current` only because the map was stale against my two
+edits; after `tools/repo_map.py update` (changed: `pilot/DECISIONS.md`,
+`tests/test_api.py`; `docs/repo-map.json` regenerated) it passes. It did not fail
+on `HANDOFF-client-folder.md`. `python -m ruff check .` clean;
+`tools/repo_map.py check` reports the map current (298 nodes).
