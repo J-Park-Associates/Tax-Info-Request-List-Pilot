@@ -8358,6 +8358,25 @@ def test_a_rename_refused_because_the_target_name_is_taken_moves_nothing(engagem
     assert squatter.read_bytes() == b"a person's own file"
 
 
+def test_a_rename_to_an_identifier_past_the_typing_limit_is_refused_and_moves_nothing(engagement):
+    """P291, the review's F1: the new identifier is one a person typed, so it
+    is held to the typing limit and the editor's wording (without a row)
+    before anything is written."""
+    from tracker.filer import rename_request
+    from tracker.manifest import list_head
+
+    lines = len(ledger.read_events(engagement))
+    with pytest.raises(FilingError) as refused:
+        rename_request(engagement, "A01", "B" * 120, head=list_head(engagement), today=DAY2)
+    said = str(refused.value)
+    assert said.startswith("Identifier '" + "B" * 77 + "...' may have at most 80 characters, got 120")
+    assert len(said) < 200
+    with pytest.raises(FilingError, match="U\\+00A0 NO-BREAK SPACE"):
+        rename_request(engagement, "A01", "B\u00a001", head=list_head(engagement), today=DAY2)
+    assert len(ledger.read_events(engagement)) == lines
+    assert [i.identifier for i in load_manifest(engagement)] == ["A01", "C01"]
+
+
 # ------------- decision 157: a missing working copy is made again ----
 # A working copy is the firm's and disposable; the client's original in
 # their folder for the year is the record. So a copy that is simply gone -

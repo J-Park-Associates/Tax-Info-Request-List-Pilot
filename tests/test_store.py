@@ -3381,11 +3381,12 @@ ADMISSION_PIN: dict[int, dict[str, str]] = {2: {
     "tracker.layout._INVISIBLE_CATEGORIES": "bb62d3360fd14a4d",
     "tracker.layout._LAYOUT_WORD_KEYS": "a6d47e2209691833",
     "tracker.layout._ONE_SCRIPT": "17235d2097441c94",
+    "tracker.layout._SPOOFING_CODES": "136890ff2b21c3ef",
     "tracker.layout._character": "bd5a8cc4e82855fc",
     "tracker.layout._parts": "a2847013a67202c7",
     "tracker.layout._parts_below_of": "93c8e3b3dcb1a968",
     "tracker.layout._script": "f890f9bb62d24799",
-    "tracker.layout.invisible_problem": "24a7c80bee51532f",
+    "tracker.layout.invisible_problem": "a95be632ca4ceaf4",
     "tracker.layout.is_invisible": "0c3785b4672742ba",
     "tracker.layout.is_reserved_name": "3ee144cf8f5c095d",
     "tracker.layout.is_year_folder": "c89c110db3cb607d",
@@ -3397,6 +3398,7 @@ ADMISSION_PIN: dict[int, dict[str, str]] = {2: {
     "tracker.layout.recorded_subfolder_part": "50620c73d7ae6dab",
     "tracker.layout.root_of": "a6c7013a757965b4",
     "tracker.layout.segment_problem": "c85f6ed345abe1fd",
+    "tracker.layout.spoofing_problem": "7a767da08a51fff8",
     "tracker.ledger.ACCEPTED_KEY": "f4764fc7a8ddd588",
     "tracker.ledger.ALSO_KEY": "da42922852e5dfcd",
     "tracker.ledger.ASKED_KEY": "46da5b49eea2fbee",
@@ -3541,7 +3543,7 @@ ADMISSION_PIN: dict[int, dict[str, str]] = {2: {
     "tracker.records.format_waits_for": "a9f50749433f46ce",
     "tracker.records.host_problem": "7d98945bc57bd382",
     "tracker.records.household_problem": "d341e98e6700e560",
-    "tracker.records.identifier_problem": "02d0e314d8d71551",
+    "tracker.records.identifier_problem": "001b7620b5b822f6",
     "tracker.records.info_problem": "a14147da699ad792",
     "tracker.records.is_a_spelling": "9872f0754c1f928d",
     "tracker.records.name_parts": "2fb3aa450c490a16",
@@ -3554,7 +3556,7 @@ ADMISSION_PIN: dict[int, dict[str, str]] = {2: {
     "tracker.records.received_problem": "2fe803ce248363ca",
     "tracker.records.rule_row_fault": "e63ac46148a8c37f",
     "tracker.records.rule_row_problem": "bfbfa65df0936781",
-    "tracker.records.short_title_problem": "6ac1435fc12687fc",
+    "tracker.records.short_title_problem": "563274b3cd6e71cf",
     "tracker.records.split_codes": "ac4f6152bb7ad6ee",
     "tracker.records.stamp_problem": "2d66f0bfa7df3a4f",
     "tracker.records.status_from_json": "18fe07346092ffad",
@@ -3595,7 +3597,7 @@ ADMISSION_PIN: dict[int, dict[str, str]] = {2: {
     "tracker.store._line_keys_problem": "0d6016b3dab0c236",
     "tracker.store._positional_root": "f2fce089ca54ef5a",
     "tracker.store._recorded_root_over": "6447409cff0d940e",
-    "tracker.store._refuse_a_malformed_line": "ff8c7cad55e1ed8e",
+    "tracker.store._refuse_a_malformed_line": "28600c2dd20afaa5",
     "tracker.store.engagement_path": "354415605ca56669",
     "tracker.store.key_root": "13d66deeca51405a",
     "tracker.store.kind": "c5781c37870424f8",
@@ -5318,6 +5320,23 @@ def test_a_malformed_line_read_from_disk_keeps_its_line_number_sentence(conn, ro
     assert "line 2 of the record is malformed" in str(unwritten.value)
 
 
+def test_an_event_carried_in_also_is_refused_in_the_wording_of_the_line_that_carries_it():
+    """P292: the event an intent carries is admitted by the same rule, in
+    the same wording - a change about to be written is refused as a change,
+    "nothing was written", whatever it carries; a line read back is refused
+    as line N."""
+    carried = ledger.new(ledger.RULES_CHANGED, rules=[_a_rule(expected_count="x")])
+    intent = ledger.new(ledger.MOVING, **{ledger.KEY_KEY: "k", ledger.OPS_KEY: [],
+                                         ledger.ALSO_KEY: [carried]})
+    with pytest.raises(store.StoreError) as unwritten:
+        store._refuse_a_malformed_line(intent, 2, "where", written=False)
+    said = str(unwritten.value)
+    assert said.startswith("This change carries") and said.endswith("; nothing was written")
+    assert "line " not in said and "malformed" not in said
+    with pytest.raises(store.StoreError, match="line 2 of the record is malformed"):
+        store._refuse_a_malformed_line(intent, 2, "where")
+
+
 def test_a_person_with_an_overlong_name_is_a_line_the_store_refuses(conn, root, by_hand):
     """P288: a person's name is one line of at most 1,000 characters at the
     store's gate too, so a record another machine wrote cannot hand every
@@ -5335,11 +5354,26 @@ def test_a_person_with_an_overlong_name_is_a_line_the_store_refuses(conn, root, 
     store._refuse_a_malformed_line(people("J" * 1000), 2, "where")
 
 
-def test_an_identifier_hiding_a_right_to_left_override_is_a_line_the_store_refuses(conn, root, by_hand):
+def test_an_identifier_hiding_a_spoofing_character_is_a_line_the_store_refuses(conn, root, by_hand):
     """P290: the store's gate is ``records.identifier_problem``, so a stored
-    identifier that hides an invisible character is refused by name."""
+    identifier that hides a right-to-left override or a zero-width joiner is
+    refused by name."""
     build(conn, root, by_hand)
-    rule = _a_rule(identifier="W-2‮")
+    for hidden, named in (("\u202e", "U\\+202E RIGHT-TO-LEFT OVERRIDE"),
+                          ("\u200d", "U\\+200D ZERO WIDTH JOINER")):
+        rule = _a_rule(identifier=f"W-2{hidden}")
+        with engagement_lock(by_hand):
+            with pytest.raises(store.StoreError, match=named):
+                store.record(conn, by_hand, ledger.new(ledger.RULES_CHANGED, rules=[rule]))
+
+
+def test_the_store_admits_the_no_break_space_and_soft_hyphen_an_ordinary_paste_leaves(
+        conn, root, by_hand):
+    """P290: the store's gate is the narrow spoofing rule, so a record written
+    before the typed rule existed, holding the identifier ``A<NBSP>01`` and
+    the short name ``W<soft hyphen>X``, is still applied - its household does
+    not stop on every pass over a space nobody can see."""
+    build(conn, root, by_hand)
+    rule = _a_rule(identifier="A\u00a001", short_title="W\u00adX")
     with engagement_lock(by_hand):
-        with pytest.raises(store.StoreError, match="U\\+202E RIGHT-TO-LEFT OVERRIDE"):
-            store.record(conn, by_hand, ledger.new(ledger.RULES_CHANGED, rules=[rule]))
+        store.record(conn, by_hand, ledger.new(ledger.RULES_CHANGED, rules=[rule]))

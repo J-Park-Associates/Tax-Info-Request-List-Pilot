@@ -61,6 +61,19 @@ def test_a_request_with_no_rule_defaults_to_its_own_name():
     assert explicit.any_keywords == ("schedule e",)
 
 
+def test_a_refused_catalog_identifier_is_quoted_cut_and_never_carries_the_character():
+    """P293, the review's F4: the New return path echoes at most 80
+    characters of a typed identifier, and a character it refuses is named by
+    code point, not carried."""
+    with pytest.raises(ManifestError) as refused:
+        item_from_spec({"identifier": "A" * 10_000, "document": "x"})
+    assert len(str(refused.value)) < 300
+    assert "may have at most 80 characters, got 10000" in str(refused.value)
+    with pytest.raises(ManifestError) as hidden:
+        item_from_spec({"identifier": "W-2\u202efdp", "document": "x"})
+    assert "'W-2<U+202E>fdp'" in str(hidden.value) and "\u202e" not in str(hidden.value)
+
+
 def test_the_tax_year_comes_from_the_calendar():
     import datetime as dt
 

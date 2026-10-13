@@ -1197,13 +1197,14 @@ def _read_spec() -> dict:
     text it already is.
     """
     stream = sys.stdin
-    raw = stream.buffer.read().decode("utf-8") if hasattr(stream, "buffer") else stream.read()
     try:
+        raw = stream.buffer.read().decode("utf-8") if hasattr(stream, "buffer") else stream.read()
         spec = json.loads(raw or "{}")
-    except json.JSONDecodeError:
-        # Text that is not JSON at all is the same mistake as JSON that is
-        # not an object (a hand-run command; the shell always stringifies):
-        # one plain refusal, not an "unexpected error" in the error log.
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        # Text that is not JSON at all, or bytes that are not UTF-8, are the
+        # same mistake as JSON that is not an object (a hand-run command; the
+        # shell always stringifies): one plain refusal, not an "unexpected
+        # error" in the error log.
         raise ManifestError(NOT_A_SPEC) from None
     if not isinstance(spec, dict):
         raise ManifestError(NOT_A_SPEC)
@@ -3584,7 +3585,8 @@ def _cmd_edit(argv: list[str]) -> dict:
                 raise ManifestError(UNKNOWN_COLUMN.format(n=n, key=key))
         identifier = str(row.get("identifier") or "").strip()
         held = exact.get(identifier) or folded.get(identifier_key(identifier))
-        items.append(item_from_fields(_as_recorded(row, held), where=f"Row {n}"))
+        items.append(item_from_fields(_as_recorded(row, held), where=f"Row {n}",
+                                      recorded=frozenset(folded)))
     _refuse_a_list_nobody_is_asked_for(items)
     details = spec.get("engagement") or {}
     for key in details:

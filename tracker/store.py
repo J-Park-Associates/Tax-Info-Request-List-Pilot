@@ -321,9 +321,12 @@ _IN_PLACE: dict[int, tuple[str, ...]] = {
 #: list of text, or names something that is not one folder name.
 #: 4 adds the form-input audit's refusals (P288, P290): a person's name
 #: that is not one line of at most 1,000 characters, and a request
-#: identifier or short name that hides an invisible character (a
-#: right-to-left override is the classic file-name spoof). No real record
-#: holds either; the audit found the gap, not a victim.
+#: identifier or short name that hides a spoofing character (the
+#: bidirectional controls and the zero-width characters; a right-to-left
+#: override is the classic file-name spoof) - only that narrow set, since a
+#: no-break space or a soft hyphen an ordinary paste left in an older record
+#: is not a reason to stop its household. Not checked against the office's
+#: real records from here: that read-only run is to be made before landing.
 ADMISSION_VERSION = 4
 
 #: The ``(table, column)`` pairs an in-place step added, read off
@@ -1952,7 +1955,7 @@ def _refuse_a_malformed_line(event: dict, seq: int, where: str, *, kind: str = K
             # admitted as it stands - by this same rule, now.
             if not isinstance(one, dict) or one.get(ledger.EVENT_KEY) not in ledger.EVENTS:
                 refuse(f"carries {ledger.ALSO_KEY!r} holding something that is not an event")
-            _refuse_a_malformed_line(one, seq, where, kind=kind)
+            _refuse_a_malformed_line(one, seq, where, kind=kind, written=written)
         reason = event.get(ledger.REASON_KEY)
         if reason is not None and records.text_problem(reason, long=True):
             refuse(f"carries {ledger.REASON_KEY!r} that is not text")

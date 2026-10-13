@@ -47,6 +47,7 @@ from tracker.manifest import (
     check_rules,
     create_engagement,
     entity_keyword,
+    identifier_key,
     item_from_fields,
     load_engagement_info,
     load_manifest,
@@ -1406,3 +1407,22 @@ def test_a_typed_identifier_past_eighty_characters_is_refused_where_it_is_read()
     assert len(said) < 300
     assert item_from_fields({"identifier": "A" * 80, "document": "x"},
                             where="Row 1").identifier == "A" * 80
+
+
+def test_a_held_identifier_past_eighty_characters_is_not_refused_but_a_new_one_is():
+    """P291, the review's F1: the cap is for a new or changed identifier. One
+    the list already holds (its ``identifier_key`` is in ``recorded``) is let
+    through, case aside; a different one the same length is refused, and the
+    invisible-character rule still applies to every row."""
+    held = frozenset({identifier_key("L" * 120)})
+    row = {"identifier": "L" * 120, "document": "x"}
+    assert item_from_fields(row, where="Row 1", recorded=held).identifier == "L" * 120
+    assert item_from_fields({**row, "identifier": "l" * 120}, where="Row 1", recorded=held)
+    with pytest.raises(ManifestError, match="may have at most 80 characters, got 120"):
+        item_from_fields({**row, "identifier": "M" * 120}, where="Row 2", recorded=held)
+    with pytest.raises(ManifestError, match="U\\+00A0 NO-BREAK SPACE"):
+        hidden = "L" * 60 + "\u00a0" + "L" * 59
+        item_from_fields({**row, "identifier": hidden}, where="Row 1",
+                         recorded=frozenset({identifier_key(hidden)}))
+    with pytest.raises(ManifestError, match="may have at most 80"):
+        item_from_fields(row, where="Row 1")

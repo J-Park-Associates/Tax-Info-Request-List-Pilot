@@ -6596,8 +6596,10 @@ def test_one_name_rule_gives_one_sentence_wherever_a_name_is_typed(capsys, demo_
 
     bad = "Pa​rk"
     reason = layout.segment_problem(bad)
-    said_household = layout.NAME_REFUSED.format(typed=bad, what="household", reason=reason)
-    said_return = layout.NAME_REFUSED.format(typed=bad, what="return", reason=reason)
+    # The sentence quotes the name with its hidden character as a code point
+    # (P293), never carrying the character it refuses.
+    said_household = layout.NAME_REFUSED.format(typed=layout.quoted(bad), what="household", reason=reason)
+    said_return = layout.NAME_REFUSED.format(typed=layout.quoted(bad), what="return", reason=reason)
     items = [{"identifier": "A01", "document": "W-2"}]
 
     code, payload = run(capsys, "create", stdin={"household": bad, "return_name": "1040 - Park",
@@ -6761,7 +6763,7 @@ def test_look_alike_spellings_of_one_name_are_refused_as_one_name(capsys, demo_r
         code, payload = run(capsys, "create", stdin={"household": typed, "return_name": "1040 - Two",
                                                      "items": items})
         assert code == 1, typed
-        named = layout.normalised_name(typed)
+        named = layout.quoted(layout.normalised_name(typed))
         assert (payload["error"].startswith(f"'{named}' is not a household name: ")
                 or payload["error"].startswith("A household with that name is already in the list")
                 ), (typed, payload["error"])
@@ -10726,8 +10728,8 @@ def test_a_mac_is_never_shown_a_windows_word(monkeypatch):
     assert [path for path, text in mac.items() if WINDOWS_WORDS.search(text)] == []
     assert mac["menu.show_in_explorer"] == mac["screen.show_in_explorer"] == "Show in Finder"
     assert mac["scan.reasons.lock-held"] == "Another Mac Sorting"
-    # (``shell.error_log`` is a folder this machine names, not a word.)
-    other = changed | {"shell.error_log"}
+    # (``shell.error_log`` and ``shell.last_pass_file`` are paths this machine names, not words.)
+    other = changed | {"shell.error_log", "shell.last_pass_file"}
     assert {path: text for path, text in mac.items() if path not in other} == {
         path: text for path, text in windows.items() if path not in other}
     # The same house style as every other word: title case, five words or fewer.
@@ -11187,6 +11189,67 @@ def test_a_short_name_hiding_a_right_to_left_override_is_refused_in_the_editor(c
     assert ledger.path_for(engagement).read_bytes() == before
 
 
+def test_the_editor_refuses_every_invisible_character_in_an_identifier_or_a_short_name(
+        capsys, demo_root):
+    """P290 (amended): where a person types, the full rule - the spoofing
+    controls, and the no-break space and soft hyphen a paste leaves - and
+    the sentence names the character by code point without carrying it."""
+    engagement = _a_return_to_type_into(capsys, demo_root)
+    rows = payload_of_state(capsys, engagement)["rules"]
+    before = ledger.path_for(engagement).read_bytes()
+    for field, typed, named in (
+            ("identifier", "W-2\u202efdp", "U+202E RIGHT-TO-LEFT OVERRIDE"),
+            ("identifier", "A\u00a001", "U+00A0 NO-BREAK SPACE"),
+            ("short_title", "W\u200d2", "U+200D ZERO WIDTH JOINER"),
+            ("short_title", "W\u00adX", "U+00AD SOFT HYPHEN")):
+        code, payload = run(capsys, "edit", api.ENGAGEMENT_FLAG, str(engagement), stdin={
+            "items": [{**rows[0], field: typed}], "engagement": {}})
+        assert code == 1, (field, named)
+        assert named in payload["error"] and payload["error"].startswith("Row 1: ")
+        assert not any(character in payload["error"] for character in "\u202e\u00a0\u200d\u00ad")
+    assert ledger.path_for(engagement).read_bytes() == before
+
+
+def test_a_list_holding_a_long_identifier_stays_editable_and_renames_it_away(capsys, demo_root):
+    """P291 (amended): the 80-character cap is for a new or changed
+    identifier, never one the list already holds - a rename to 120
+    characters used to leave a list the editor would not save."""
+    from dataclasses import replace
+
+    from tracker.locking import engagement_lock
+    from tracker.manifest import list_head, load_manifest
+    from tracker.records import rule_to_json
+
+    engagement = _a_return_to_type_into(capsys, demo_root)
+    long_one = "L" * 120
+    [item] = load_manifest(engagement)
+    with engagement_lock(engagement):
+        store.record(store.connect(), engagement, ledger.new(ledger.RULES_CHANGED, **{
+            ledger.RULES_KEY: [rule_to_json(replace(item, identifier=long_one))],
+            ledger.REMOVED_KEY: ["A01"]}))
+    rows = payload_of_state(capsys, engagement)["rules"]
+    assert [row["identifier"] for row in rows] == [long_one]
+
+    # An edit that leaves the held identifier alone is saved.
+    code, payload = run(capsys, "edit", api.ENGAGEMENT_FLAG, str(engagement), stdin={
+        "items": [{**rows[0], "document": "W-2 Wage Statements"}], "engagement": {}})
+    assert code == 0, payload
+    # A new row of the same length is the cap's, and a rename to one is too.
+    rows = payload_of_state(capsys, engagement)["rules"]
+    code, payload = run(capsys, "edit", api.ENGAGEMENT_FLAG, str(engagement), stdin={
+        "items": [*rows, {**rows[0], "identifier": "M" * 120}], "engagement": {}})
+    assert code == 1 and "Row 2: Identifier" in payload["error"]
+    assert "may have at most 80 characters, got 120" in payload["error"]
+    code, payload = run(capsys, "rename", api.ENGAGEMENT_FLAG, str(engagement), stdin={
+        "from": long_one, "to": "M" * 120, "head": list_head(engagement)})
+    assert code == 1 and "may have at most 80 characters, got 120" in payload["error"]
+    # Renamed away to a short one, it is renamed; a held long one can be.
+    code, payload = run(capsys, "rename", api.ENGAGEMENT_FLAG, str(engagement), stdin={
+        "from": long_one, "to": "B01", "head": list_head(engagement)})
+    assert code == 0, payload
+    assert [rule["identifier"] for rule in payload["state"]["rules"]] == ["B01"]
+
+
 def test_a_long_identifier_is_refused_as_too_long_and_never_as_a_long_folder_name(
         capsys, demo_root):
     engagement = _a_return_to_type_into(capsys, demo_root)
@@ -11207,8 +11270,8 @@ def test_an_overlong_member_is_refused_as_a_change_not_a_corrupt_record(capsys, 
     code, payload = run(capsys, "edit-household", api.ENGAGEMENT_FLAG, str(engagement),
                         stdin={"members": ["M" * 10_000]})
     assert code == 1
-    assert payload["error"].startswith("This change carries details")
-    assert payload["error"].endswith("; nothing was written")
+    assert payload["error"] == ("This change carries details whose 'members' must be a list of text; "
+                                "nothing was written")
     assert "malformed" not in payload["error"] and "line " not in payload["error"]
 
 
@@ -11223,4 +11286,4 @@ def test_stdin_that_is_not_json_is_refused_like_a_non_object_and_logs_nothing(
     payload = one_reply(capsys.readouterr().out)
     assert code == 1 and payload["error"] == api.NOT_A_SPEC
     log = error_log_path()
-    assert log is None or not log.exists() or log.read_text(encoding="utf-8") == ""
+    assert not log.exists() or log.read_text(encoding="utf-8") == ""

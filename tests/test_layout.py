@@ -806,6 +806,24 @@ def test_invisible_problem_names_the_first_hidden_character_and_segment_problem_
         assert layout.segment_problem(name) == layout.invisible_problem(name)
 
 
+def test_spoofing_problem_refuses_only_the_characters_that_change_how_a_name_is_read():
+    """P290: the store's gate asks the narrow rule - the bidirectional
+    controls and the zero-width characters - in the same sentence as the full
+    one; what an ordinary paste leaves in (a no-break space, a soft hyphen)
+    is the full rule's, asked only where a person types."""
+    for code in (0x061C, 0x200E, 0x200F, 0x200B, 0x200C, 0x200D, 0x2060, 0xFEFF,
+                 *range(0x202A, 0x202F), *range(0x2066, 0x206A)):
+        hidden = chr(code)
+        assert layout.spoofing_problem(f"W-2{hidden}") == layout.invisible_problem(f"W-2{hidden}"), hex(code)
+        assert layout.spoofing_problem(f"W-2{hidden}") is not None
+    assert layout.spoofing_problem("W-2\u202e") == layout.NAME_INVISIBLE.format(
+        character="U+202E RIGHT-TO-LEFT OVERRIDE")
+    for pasted in ("A\u00a001", "W\u00adX", "A\u202f01", "A\u3000B"):
+        assert layout.spoofing_problem(pasted) is None, pasted.encode("unicode_escape")
+        assert layout.invisible_problem(pasted) is not None, pasted.encode("unicode_escape")
+    assert layout.spoofing_problem("W-2") is None and layout.spoofing_problem("") is None
+
+
 def test_quoted_cuts_a_long_value_to_eighty_characters_and_leaves_a_short_one():
     """P293: a refusal quotes at most 80 characters; a cut ends in three
     ASCII dots so the sentence never carries a character the rule refuses."""
@@ -816,6 +834,17 @@ def test_quoted_cuts_a_long_value_to_eighty_characters_and_leaves_a_short_one():
     assert cut == "x" * 77 + "..." and len(cut) == 80
     assert layout.quoted(7) == "7"
     assert layout.quoted(Path("a") / ("y" * 100)).isascii()
+
+
+def test_quoted_writes_an_invisible_or_control_character_as_its_code_point_before_it_cuts():
+    """F3: the sentence must never carry the character it refuses - a
+    right-to-left override quoted raw would reverse the notice itself."""
+    said = layout.quoted("W-2\u202efdp")
+    assert said == "W-2<U+202E>fdp" and "\u202e" not in said
+    assert layout.quoted("a\x00b\u00a0c") == "a<U+0000>b<U+00A0>c"
+    assert layout.quoted("Smith Family") == "Smith Family"
+    cut = layout.quoted("\u202e" * 100)
+    assert len(cut) == 80 and cut.endswith("...") and "\u202e" not in cut
 
 
 def test_a_refused_long_name_is_a_short_sentence_that_still_states_its_length():

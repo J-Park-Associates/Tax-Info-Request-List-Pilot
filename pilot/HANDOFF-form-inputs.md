@@ -299,3 +299,37 @@ logged. It is the same class of mistake as V8. Optional: catch it beside `JSONDe
 - No debug prints, no dead code in the changed modules; the docstrings are in the repo's voice.
 
 Findings: 3 must fix, 3 should fix, 6 nits.
+
+## Rebuild 1 (Sonnet, 2026-10-13)
+
+Each finding fixed as SPEC section 14 directs; F7 is not built (left for Jason as the review wrote it).
+
+- **F1** - `tracker/filer.py` `rename_request` holds the new identifier to `records.typed_identifier_problem` before anything moves (`Identifier '<quoted>' <problem>`, a `FilingError`, no row); `tracker/manifest.py` `item_from_fields(..., recorded=frozenset())` skips only the 80-character cap for an identifier whose `identifier_key` is held (`records.typed_identifier_problem(..., capped=False)`; the invisible rule still applies); `tracker/api.py` `_cmd_edit` passes `frozenset(folded)`. Tests: `test_a_held_identifier_past_eighty_characters_is_not_refused_but_a_new_one_is` (manifest), `test_a_rename_to_an_identifier_past_the_typing_limit_is_refused_and_moves_nothing` (filer), `test_a_list_holding_a_long_identifier_stays_editable_and_renames_it_away` (api).
+- **F2** - `tracker/layout.py` new `spoofing_problem` (and `_SPOOFING_CODES`: U+061C, U+200E/F, U+202A-E, U+2066-9, U+200B-D, U+2060, U+FEFF); `records.identifier_problem` and `short_title_problem` (the gate) ask it; `invisible_problem` stays the full rule, asked by `typed_identifier_problem` and the new `records.typed_short_title_problem`, which `manifest._short_title` (so `item_from_fields`, and `templates.item_from_spec` through it) calls. `ADMISSION_VERSION` stays 4: pin 4 regenerated, `store.py` comment now says what the narrow rule is and that the real records were not checked from here (Jason runs `python -m tracker.store check` read-only over them before landing). Tests: `test_spoofing_problem_refuses_only_...` (layout), `test_an_identifier_or_short_name_with_a_spoofing_character_...` and `test_what_a_person_types_is_held_to_the_full_invisible_character_rule` (records), `test_an_identifier_hiding_a_spoofing_character_is_a_line_the_store_refuses` (U+202E and U+200D) and `test_the_store_admits_the_no_break_space_and_soft_hyphen_an_ordinary_paste_leaves` (store), `test_the_editor_refuses_every_invisible_character_in_an_identifier_or_a_short_name` (api, four values).
+- **F3** - `tracker/layout.py` `quoted` writes each `is_invisible` (control included) character as `<U+XXXX>` before the cut, docstring says why. Tests: `test_quoted_writes_an_invisible_or_control_character_as_its_code_point_before_it_cuts` (layout) and the api editor test above (no U+202E in the sentence). Two existing api tests that pinned the raw echo of a folder name holding a zero-width space / soft hyphen (`test_one_name_rule_gives_one_sentence_...`, `test_look_alike_spellings_...`) now expect `layout.quoted(...)` of the name.
+- **F4** - `tracker/templates.py` `item_from_spec` words the refusal `Identifier '{quoted(identifier)}' {problem}` (imports `quoted` from `manifest`). Test: `test_a_refused_catalog_identifier_is_quoted_cut_and_never_carries_the_character` (templates).
+- **F5** - `tracker/store.py` `_refuse_a_malformed_line` passes `written=written` in the `also` loop. Test: `test_an_event_carried_in_also_is_refused_in_the_wording_of_the_line_that_carries_it` (store).
+- **F6** - `pilot/DECISIONS.md` P288 and P290 each end "The store's admission rises to 4." (P290's text otherwise left as the SPEC wrote it, though it still names `layout.invisible_problem` and "an invisible character" - Jason may want it reworded to the narrow rule).
+- **F8** - `tests/test_api.py` `test_an_overlong_member_is_refused_as_a_change_not_a_corrupt_record` asserts the whole sentence.
+- **F9** - `tests/test_store.py` the override identifier is written as the `‮` escape, no literal character.
+- **F10** - `tests/test_api.py` the dead `log is None or` is gone.
+- **F11** - `tests/test_layers.py` docstring says `records` imports `quoted` from `layout` only to re-export it to `manifest`.
+- **F12** - `tracker/api.py` `_read_spec` catches `UnicodeDecodeError` beside `json.JSONDecodeError` (the decode is now inside the `try`), same `NOT_A_SPEC` sentence.
+- **F13 (Jason, outside the SPEC)** - `tests/test_api.py::test_a_mac_is_never_shown_a_windows_word`: `other = changed | {"shell.error_log", "shell.last_pass_file"}`, comment says both are paths this machine names, not words; the test passes and test_api is whole.
+
+The gate (floor interpreter, one process per file, `-p no:cacheprovider`):
+
+| file | result |
+|---|---|
+| test_api | 515 passed |
+| test_records | 53 passed |
+| test_store | 195 passed, 1 skipped |
+| test_layout | 58 passed |
+| test_manifest | 108 passed |
+| test_templates | 40 passed |
+| test_filer | 406 passed, 6 skipped |
+| test_layers | 31 passed |
+| test_single_source | 218 passed |
+| test_repo_map | 82 passed |
+
+`python -m ruff check .`: all checks passed. `python tools/repo_map.py check`: map is current. The whole suite was not run.

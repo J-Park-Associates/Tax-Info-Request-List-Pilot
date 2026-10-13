@@ -362,13 +362,43 @@ def invisible_problem(text: str) -> str | None:
     """Why ``text`` hides a character a person could not read, or ``None``.
 
     The one wording of the invisible-character rule (P290): a folder name
-    asks it through :func:`segment_problem`, and a request's identifier and
-    short name ask it through the record, because both become part of every
-    working copy's file name and a right-to-left override in a file name is
-    the classic spoof (``W-2 fdp.exe`` shown as ``W-2 exe.pdf``). The
-    character is named by code point, never quoted.
+    asks it through :func:`segment_problem`, and what a person types as a
+    request's identifier or short name asks it through the record, because
+    both become part of every working copy's file name. The character is
+    named by code point, never quoted. This is the full rule - every
+    character :func:`is_invisible` names, the no-break space and the soft
+    hyphen included; what the store's gate asks of a *stored* value is the
+    narrower :func:`spoofing_problem`.
     """
     hidden = next((c for c in text if is_invisible(c)), None)
+    return None if hidden is None else NAME_INVISIBLE.format(character=_character(hidden))
+
+
+#: The characters that change how a name is *read*, not merely hide in it
+#: (P290): the bidirectional controls (the Arabic letter mark, the left- and
+#: right-to-left marks, the embeddings and overrides, the isolates) and the
+#: zero-width characters (space, non-joiner, joiner, word joiner, byte-order
+#: mark). A right-to-left override in a file name is the classic spoof
+#: (``W-2 fdp.exe`` shown as ``W-2 exe.pdf``).
+_SPOOFING_CODES = frozenset(
+    {0x061C, 0x200E, 0x200F, 0x200B, 0x200C, 0x200D, 0x2060, 0xFEFF}
+    | set(range(0x202A, 0x202F)) | set(range(0x2066, 0x206A))
+)
+
+
+def spoofing_problem(text: str) -> str | None:
+    """Why ``text`` carries a character that changes how a name is read, or
+    ``None``: the narrow half of :func:`invisible_problem`, in the same
+    :data:`NAME_INVISIBLE` sentence.
+
+    It is what the store's gate asks of a stored identifier or short name
+    (P290). The full rule would refuse a no-break space, a soft hyphen or a
+    byte-order mark that an ordinary paste leaves in a value typed before
+    that rule existed - values this version's admission judges again - and
+    the household would stop on every pass over a space nobody can see. A
+    person typing a new value is held to the full rule instead.
+    """
+    hidden = next((c for c in text if ord(c) in _SPOOFING_CODES), None)
     return None if hidden is None else NAME_INVISIBLE.format(character=_character(hidden))
 
 
@@ -380,11 +410,17 @@ QUOTE_MAX_CHARS = 80
 
 
 def quoted(text: object) -> str:
-    """``text`` as a refusal may quote it: whole when it is at most
-    :data:`QUOTE_MAX_CHARS` characters, else its first 77 and three ASCII
-    dots - ASCII, so the sentence never carries a character the rule it
-    reports refuses."""
-    typed = str(text)
+    """``text`` as a refusal may quote it: every invisible or control
+    character written as its code point (``<U+202E>``), then whole when at
+    most :data:`QUOTE_MAX_CHARS` characters, else its first 77 and three
+    ASCII dots.
+
+    The sentence must never carry the character it refuses: a right-to-left
+    override quoted raw would reverse the notice itself, and the manifest's
+    ``!r``, which this replaced, used to escape it. The dots are ASCII for
+    the same reason.
+    """
+    typed = "".join(f"<U+{ord(c):04X}>" if is_invisible(c) else c for c in str(text))
     return typed if len(typed) <= QUOTE_MAX_CHARS else typed[:QUOTE_MAX_CHARS - 3] + "..."
 
 

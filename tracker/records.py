@@ -83,6 +83,7 @@ from tracker.layout import (  # noqa: F401 - re-exported: the record's names sin
     invisible_problem,
     is_reserved_name,
     quoted,  # noqa: F401 - re-exported: the manifest quotes through the record (it loads nothing else)
+    spoofing_problem,
 )
 
 # ------------------------------------------------------------ derivations ----
@@ -1463,15 +1464,19 @@ def identifier_problem(identifier: str) -> str:
 
     Shared by ``manifest.validated``, the desktop app's create path and the
     store's gate, so a bad identifier is refused with the same sentence
-    wherever it is typed or read. An invisible character is refused by code
-    point (P290): the identifier begins every working copy's name, and a
-    right-to-left override there is the classic file-name spoof. The store
-    asks this too, so a stored identifier holding one is a refused line -
-    the record is untrusted input (decision 187).
+    wherever it is typed or read. A character that changes how a name is
+    read - a right-to-left override, a zero-width joiner - is refused by code
+    point (P290, :func:`tracker.layout.spoofing_problem`): the identifier
+    begins every working copy's name, and the override is the classic
+    file-name spoof. The store asks this too, so a stored identifier holding
+    one is a refused line - the record is untrusted input (decision 187).
+    Only that narrow set: a no-break space or a soft hyphen an ordinary paste
+    left in an older record is not a reason to stop its household, and is
+    refused only where a person types (:func:`typed_identifier_problem`).
     """
     if WINDOWS_ILLEGAL_CHARS.search(identifier):
         return f"may not contain any of {WINDOWS_ILLEGAL_CHARS_TEXT} (it begins a file name)"
-    if (hidden := invisible_problem(identifier)) is not None:
+    if (hidden := spoofing_problem(identifier)) is not None:
         return hidden
     if identifier != identifier.rstrip(". "):
         return "may not end with a dot or a space (Windows drops them from file names)"
@@ -1487,19 +1492,23 @@ def identifier_problem(identifier: str) -> str:
 IDENTIFIER_MAX_CHARS = 80
 
 
-def typed_identifier_problem(identifier: str) -> str:
+def typed_identifier_problem(identifier: str, *, capped: bool = True) -> str:
     """Why a *typed* identifier is refused: :func:`identifier_problem`, then
-    :data:`IDENTIFIER_MAX_CHARS`, or "" if it passes.
+    the full invisible-character rule (:func:`tracker.layout.invisible_problem`),
+    then :data:`IDENTIFIER_MAX_CHARS`, or "" if it passes.
 
     The length is a typing limit and not the store's gate, which keeps the
     unbounded :func:`identifier_problem`: a record's identifier is not
     re-judged by what a person may type. Said before the path-room check,
     so a long identifier is told it is long and never to shorten the
-    household.
+    household. ``capped=False`` leaves the length out, for an identifier the
+    list already holds and the editor sends back unchanged (P291).
     """
     if problem := identifier_problem(identifier):
         return problem
-    if len(identifier) > IDENTIFIER_MAX_CHARS:
+    if (hidden := invisible_problem(identifier)) is not None:
+        return hidden
+    if capped and len(identifier) > IDENTIFIER_MAX_CHARS:
         return (f"may have at most {IDENTIFIER_MAX_CHARS} characters, got {len(identifier)} "
                 f"(it begins a file name)")
     return ""
@@ -1516,12 +1525,14 @@ def short_title_problem(short_title: str) -> str:
 
     Refused rather than sanitised, as an identifier is: the name a person
     types is the name every working copy carries, or they are told why not.
+    Only the spoofing characters are refused here (P290), because this is
+    also the store's gate; the editor asks :func:`typed_short_title_problem`.
     """
     if len(short_title) > SHORT_TITLE_MAX:
         return f"may have at most {SHORT_TITLE_MAX} characters, got {len(short_title)}"
     if WINDOWS_ILLEGAL_CHARS.search(short_title):
         return f"may not contain any of {WINDOWS_ILLEGAL_CHARS_TEXT} (it is part of a file name)"
-    if (hidden := invisible_problem(short_title)) is not None:
+    if (hidden := spoofing_problem(short_title)) is not None:
         return hidden
     if short_title != short_title.rstrip(". "):
         return "may not end with a dot or a space (Windows drops them from file names)"
@@ -1529,6 +1540,14 @@ def short_title_problem(short_title: str) -> str:
         return (f"may not be a name Windows keeps for a device ({WINDOWS_RESERVED_NAMES_TEXT}); "
                 f"it is part of a file name")
     return ""
+
+
+def typed_short_title_problem(short_title: str) -> str:
+    """Why a *typed* short title is refused: :func:`short_title_problem`,
+    then the full invisible-character rule, or "" if it passes (P290)."""
+    if problem := short_title_problem(short_title):
+        return problem
+    return invisible_problem(short_title) or ""
 
 
 class Override:

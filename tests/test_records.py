@@ -630,9 +630,11 @@ def test_a_persons_name_is_held_to_the_one_line_text_rule():
     assert records.person_from_json({"kind": "taxpayer", "name": "John Park"}).name == "John Park"
 
 
-def test_an_identifier_or_short_name_with_an_invisible_character_is_refused_by_code_point():
+def test_an_identifier_or_short_name_with_a_spoofing_character_is_refused_by_code_point():
     """P290: both become part of a file name, and a right-to-left override
-    there is the classic spoof. The character is named, never quoted."""
+    there is the classic spoof. The character is named, never quoted. This
+    is the store's gate, so it asks the narrow rule (``layout.spoofing_problem``)
+    and a no-break space or a soft hyphen an older paste left is admitted."""
     override, joiner = "\u202e", "\u200d"
     for checker in (records.identifier_problem, records.short_title_problem):
         assert checker("W-2") == ""
@@ -640,6 +642,19 @@ def test_an_identifier_or_short_name_with_an_invisible_character_is_refused_by_c
             "may not contain an invisible character (U+202E RIGHT-TO-LEFT OVERRIDE)")
         assert "U+200D ZERO WIDTH JOINER" in checker(f"W{joiner}-2")
         assert override not in checker(f"W-2{override}")
+        assert checker("A\u00a001") == "" and checker("W\u00adX") == ""
+
+
+def test_what_a_person_types_is_held_to_the_full_invisible_character_rule():
+    """P290: the no-break space and the soft hyphen that the gate admits are
+    refused where a person types, by code point."""
+    for typed in (records.typed_identifier_problem, records.typed_short_title_problem):
+        assert typed("W-2") == ""
+        assert typed("W\u202e-2") == records.identifier_problem("W\u202e-2")
+        assert "U+00A0 NO-BREAK SPACE" in typed("A\u00a001")
+        assert "U+00AD SOFT HYPHEN" in typed("W\u00adX")
+    # The other rules come first, in the same words.
+    assert records.typed_short_title_problem("A" * 21) == records.short_title_problem("A" * 21)
 
 
 def test_a_typed_identifier_longer_than_eighty_characters_is_refused_as_too_long():
@@ -653,3 +668,6 @@ def test_a_typed_identifier_longer_than_eighty_characters_is_refused_as_too_long
     assert records.identifier_problem("A" * 200) == ""
     # The other rules come first, in the same words.
     assert records.typed_identifier_problem("A:" + "A" * 200) == records.identifier_problem("A:")
+    # A held identifier is not capped, but every other rule still applies.
+    assert records.typed_identifier_problem("A" * 200, capped=False) == ""
+    assert records.typed_identifier_problem("A\u00a0" + "A" * 200, capped=False) != ""

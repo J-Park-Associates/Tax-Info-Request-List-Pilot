@@ -64,6 +64,7 @@ from tracker.manifest import (
     identifier_key,
     issuer_short_title,
     item_from_fields,
+    quoted,
     shift_item,
     typed_identifier_problem,
 )
@@ -722,7 +723,7 @@ def item_from_spec(spec: dict) -> RequestItem:
         raise ManifestError("every request needs an identifier and a document name")
     problem = typed_identifier_problem(identifier)
     if problem:
-        raise ManifestError(f"Identifier {identifier!r} {problem}")
+        raise ManifestError(f"Identifier '{quoted(identifier)}' {problem}")
     item = item_from_fields(spec, where=identifier)
     if not (item.required_keywords or item.any_keywords or item.date_pattern):
         item = replace(item, required_keywords=(document,))

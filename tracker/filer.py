@@ -283,6 +283,7 @@ from tracker.progress import Watch
 # kept for one release; import from tracker.records.
 from tracker.records import (
     CANDIDATE_SEP,
+    COL_IDENTIFIER,
     RULE_NAME,
     EngagementInfo,
     Evidence,
@@ -305,7 +306,9 @@ from tracker.records import (
     parse_answers,
     parse_evidence,  # noqa: F401
     person_to_json,
+    quoted,
     rule_to_json,
+    typed_identifier_problem,
 )
 from tracker.router import questions_for, read_once, route_file
 from tracker.scaffold import (
@@ -7666,6 +7669,11 @@ def rename_request(
         raise FilingError(RENAME_NOTHING)
     if identifier_key(old) == identifier_key(new):
         raise FilingError(RENAME_CASE_ONLY.format(old=old, new=new))
+    # The new identifier is one a person typed, so it is held to the typing
+    # limit (P291) before anything moves; the old one, however long the list
+    # already holds it, is only ever renamed away from.
+    if problem := typed_identifier_problem(new):
+        raise FilingError(f"{COL_IDENTIFIER} '{quoted(new)}' {problem}")
     prepared = engagement_dir / PREPARED_DIR_NAME
 
     with engagement_lock(engagement_dir):

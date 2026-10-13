@@ -132,9 +132,10 @@ from tracker.records import (
     rule_from_json,
     rule_row_fault,
     rule_to_json,
-    short_title_problem,
+    short_title_problem,  # noqa: F401 - the editor's name for the record's check
     split_codes,
     typed_identifier_problem,
+    typed_short_title_problem,
 )
 
 # ---------------------------------------------------------------- schema ----
@@ -1025,14 +1026,17 @@ def _yes_no(value: object, column: str, where: str) -> bool:
 
 def _short_title(value: object, where: str) -> str:
     """A Short name as typed (decision 144): blank is derived, anything
-    else must be legal in a file name, within :data:`SHORT_TITLE_MAX`."""
+    else must be legal in a file name, within :data:`SHORT_TITLE_MAX`, and
+    holding no invisible character (P290: where a person types, the full
+    rule; the store's gate asks the narrower one)."""
     text = "" if value is None else str(value).strip()
-    if problem := short_title_problem(text):
+    if problem := typed_short_title_problem(text):
         raise ManifestError(f"{where}: {COL_SHORT_TITLE} {problem}")
     return text
 
 
-def item_from_fields(fields: Mapping[str, object], *, where: str) -> RequestItem:
+def item_from_fields(fields: Mapping[str, object], *, where: str,
+                     recorded: frozenset[str] = frozenset()) -> RequestItem:
     """One request row from plain values: the editor's JSON, a catalog spec,
     a test's dict.
 
@@ -1055,6 +1059,12 @@ def item_from_fields(fields: Mapping[str, object], *, where: str) -> RequestItem
     It defaults **no keyword**: a row with no rule is legal and is warned
     about (:func:`check_rules`), as the sheet allowed. The catalog's
     ``item_from_spec`` adds its own rule on top.
+
+    ``recorded`` is the set of ``identifier_key``s the list already holds
+    (the editor passes it): the typing limit on an identifier's length
+    (P291) is for a new or changed identifier, never one the list already
+    holds, so a held long one stays editable; the invisible-character rule
+    still applies to every row.
     """
     def text(key: str) -> str:
         value = fields.get(key)
@@ -1066,7 +1076,8 @@ def item_from_fields(fields: Mapping[str, object], *, where: str) -> RequestItem
     identifier = text("identifier")
     # A typed identifier is told it is too long here, before the path-room
     # check names the household (P291); a blank one is `validated`'s to say.
-    if identifier and (problem := typed_identifier_problem(identifier)):
+    if identifier and (problem := typed_identifier_problem(
+            identifier, capped=identifier_key(identifier) not in recorded)):
         raise ManifestError(f"{where}: {COL_IDENTIFIER} '{quoted(identifier)}' {problem}")
     return RequestItem(
         identifier=identifier,
