@@ -960,3 +960,84 @@ edits; after `tools/repo_map.py update` (changed: `pilot/DECISIONS.md`,
 `tests/test_api.py`; `docs/repo-map.json` regenerated) it passes. It did not fail
 on `HANDOFF-client-folder.md`. `python -m ruff check .` clean;
 `tools/repo_map.py check` reports the map current (298 nodes).
+
+## Review 5 (Opus, 2026-10-13)
+
+A fifth review, by an agent that built none of the rebuilds. It is narrow: rebuild 4 (5aead97,
+`git diff ed109f1 5aead97 -- pilot/DECISIONS.md tests/test_api.py`) against section 17. I edited no
+code or test. The P296 row in the same commit belongs to the client-folder lane. I checked only that
+it is one well-formed row: one line, six `|` fields like its neighbours.
+
+### Resolved
+
+- **I1 - resolved.** P291 now reads "an identifier sent back as the list holds it, a change of case
+  aside, and a short name sent back as the list holds it, are judged by the store's rule alone".
+  This is what `manifest.item_from_fields` does:
+  - The identifier's rule is chosen by `recorded.get(identifier_key(identifier))`. A held key gets
+    `identifier_problem`, whatever its case.
+  - `_short_title` takes the store's rule only when `text == held.short_title`, a case-sensitive
+    comparison.
+  - The row is still one line with the table's six fields, and no other row changed.
+  - No test pins decision-row text. `grep -rn P291 tests/` finds docstrings only, and no test reads
+    `pilot/DECISIONS.md` (the only mention of it is a docstring in `test_pilot_installer.py`).
+  - The `item_from_fields` and `_short_title` docstrings already say the same thing as the row.
+- **I3 - resolved.** The two steps sit between the cap's rename refusal and the rename to `B01`:
+  - Step 1: `rename` from `L*120` to `l*120` returns code 1. The error is exactly
+    `RENAME_CASE_ONLY.format(old=layout.quoted(...), new=layout.quoted(...))`, and the journal is
+    byte-identical.
+  - Step 2: `edit` with the row's identifier lowered returns code 0. The list reads back as
+    `["l"*120]`.
+  - The later rename-away now starts from `l*120`. That is the same claim (a held long identifier
+    can be renamed away), so it is not weakened.
+- **I2 and I4:** not built, as section 17 records. Nothing further to check.
+- **Scope:** 5aead97 touches only `pilot/DECISIONS.md`, `tests/test_api.py`,
+  `pilot/HANDOFF-form-inputs.md` and `docs/repo-map.json`. The map change is three hash and
+  line-count updates plus `reused`. Nothing under `tracker/` changed, and no existing assertion was
+  removed or loosened.
+
+### Verified, and how
+
+All runs used the floor interpreter (scratchpad venv) on `git archive` copies of 5aead97 in
+`scratchpad/r5/`.
+
+- **Throwaway test (`r5/base/tests/test_review5.py`, 2 passed).** It drives `edit` end to end on
+  records written straight into the store.
+  - Held `A<NBSP>01` / `W<SHY>X`, short name respelt `w<SHY>x`, with the identifier as held and with
+    it respelt `a<NBSP>01`: each is refused with exactly
+    `Row 1: Short name may not contain an invisible character (U+00AD SOFT HYPHEN)`, and the journal
+    is byte-identical.
+  - The same row with only the identifier respelt `a<NBSP>01` saves. The list holds
+    `(a<NBSP>01, W<SHY>X)`.
+  - Held `L*120` respelt `l*120` saves.
+- **Mutation, step 1 (`r5/m1`).** In `filer.rename_request`, the case-only test was changed from
+  `identifier_key(old) == identifier_key(new)` to `old == new`.
+  - The test fails at the step-1 sentence assertion: the 80-character cap refuses instead.
+  - `code == 1` alone would still have passed. The exact-sentence assertion is what makes the step
+    load-bearing.
+- **Mutation, step 2 (`r5/m2`).** In `item_from_fields`, the store's rule was given only when
+  `held.identifier == identifier`, so a held key is judged again by case. The test fails at step 2's
+  `assert code == 0`: `Row 1: Identifier 'lll...' may have at most 80 characters, got 120`.
+
+### Gate (floor interpreter, one process per file, in parallel, `-p no:cacheprovider`)
+
+The gate ran on a local clone checked out at 5aead97 (`scratchpad/r5/clone`). The shared checkout
+moved during the review: the client-folder lane committed 6a4ac16 and has uncommitted edits to
+`tracker/households.py` and `tests/test_registry.py`.
+
+| file | result |
+|---|---|
+| test_api | 517 passed |
+| test_single_source | 218 passed |
+| test_repo_map | 82 passed |
+
+- `python -m ruff check .`: all checks passed.
+- `python tools/repo_map.py check`: current (298 nodes).
+- In the shared checkout, the first run's `test_the_committed_map_is_current` failed on exactly
+  `pilot/HANDOFF-client-folder.md`, which that lane was appending to at the time.
+- Afterwards, `check` there is stale on `tests/test_registry.py`, from that lane's uncommitted
+  edits. Both belong to that lane, not this change. Nothing was fixed.
+- This append makes the map stale on `pilot/HANDOFF-form-inputs.md` until whoever commits it runs
+  `update`.
+- The office interpreter's run was not done (there is one interpreter in this container).
+
+No findings.
