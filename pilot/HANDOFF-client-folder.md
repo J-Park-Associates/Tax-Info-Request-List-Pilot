@@ -799,3 +799,86 @@ before `update`, on the stale test file's hash, as expected).
 then `check`: "Map is current (298 nodes)". The map check never failed on
 `pilot/HANDOFF-form-inputs.md`, so no second `update` for that lane was needed.
 Dead code in the changed lines: none (every name in the new test is used).
+
+## Review 5 (Opus, 2026-10-13)
+
+Fifth reviewer: a separate agent that built neither the build nor any
+rebuild. Read against SPEC section 13 only, with Review 4 (I1, I2), Rebuild
+4 and the corrected Rebuild 3 sentence; the rebuild is `git diff 6a4ac16
+2530021 -- tests/test_registry.py pilot/HANDOFF-client-folder.md`. No repo
+code or test edited; every mutation ran on `git archive 2530021` copies in
+the scratchpad.
+
+### Resolved
+
+- **I1 - resolved.** `test_a_return_whose_store_refuses_it_is_said_as_cannot_tell_where_a_new_return_asks`
+  is the household section 13 names (not shared, client folder gone, return
+  made with `scaffold=False`, the household's own record read clean first)
+  with that one return's record refused through the store.
+  - *As committed:* 1 passed.
+  - *Mutation M2* (`StoreError` alone dropped from `household_pause`'s
+    `except`, `LedgerError` kept): the test fails with
+    `tracker.store.StoreError: the database could not be used
+    (SQLITE_NOTADB)` raised at `registry.py:936 held_back` ->
+    `households.py:432 household_pause`. Across test_registry and
+    test_households on the mutant: 1 failed, 63 passed, 2 skipped - this
+    test only, matching Rebuild 4's count.
+  - *It patches what the code reads.* Both reads are call-time
+    `from tracker.manifest import ...` inside the functions, so
+    `monkeypatch.setattr(manifest, ...)` is what they see. The registry's
+    own load-time `load_engagement_info` binding is untouched, but it calls
+    `manifest.the_record` by module global, so `stopped_households` meets
+    the same refusal and reads that return as a problem engagement
+    (`registry.py` ~584), as a real store refusal would; nothing is
+    stopped, so the path to the sentence is the real one.
+  - *It cannot pass for a wrong reason.* With the `the_record` patch
+    removed, the test fails (`held_back` returns `""`: the return's rows
+    read and prove nothing), so the client-side history must hit the
+    refusal for the sentence to appear. If the path comparison never
+    matched, both patches would read through and the test would fail the
+    same way. With the `load_engagement_info` patch removed the test still
+    passes as committed and still fails under M2 (at `manifest.py:1391`,
+    `load_engagement_info` -> `the_record`): the second patch is redundant
+    belt and braces, not a gap - section 13 offers either. The assertion is
+    whole-string equality; `problem` is `str(refusal)`, so it also pins that
+    `errors.said` quotes a `StoreError` whole rather than by class.
+  - *The sentence is exact.* A literal copy of the expected text ("`Clients\Test
+    Household` is missing and the record of its return `2025\1040 - Test
+    Client` could not be read (the database could not be used
+    (SQLITE_NOTADB)), so the app cannot tell ... (runbook section 6).")
+    asserted beside the test's own passes, so the test's formula and the
+    literal agree.
+- **I2 - resolved.** The Rebuild 3 note is one sentence: "SPEC section 12
+  itself was not edited by this rebuild (the brief limits the files); the
+  landing session then edited it in `ed109f1`, after this handoff named the
+  slip." That is what section 13 says; `git show --stat ed109f1` confirms
+  it touches `pilot/SPEC-client-folder-unreadable.md`. The long SPEC line
+  stays, as section 13 rules.
+- **Nothing weakened, nothing else changed.** `git diff --stat 6a4ac16
+  2530021`: `tests/test_registry.py` (+39, nothing removed), this handoff
+  (the one Rebuild 3 sentence replaced, the rest appended), and the
+  generated `docs/repo-map.json`. No `tracker/` file changed. Every name in
+  the new test is used; ruff clean.
+
+### Findings
+
+None. (Observations only, not asked for by section 13: the store test has
+no folder-present half like the ledger test beside it, which already pins
+that a present folder reads nothing; and the `load_engagement_info` patch
+is redundant as said above.)
+
+### Verified, and how
+
+- Interpreter: the scratchpad venv's Python 3.13 only; the 3.11 floor was
+  not exercised, as in Reviews 2-4.
+- Gate, in the checkout at `2530021` (clean tree before this review), one
+  process per file in parallel, `-p no:cacheprovider`: test_registry 44
+  passed, 2 skipped, 1 warning (the pre-existing runpy warning);
+  test_households 20 passed; test_layers 31 passed; test_single_source 218
+  passed; test_repo_map 82 passed. `python -m ruff check .` all checks
+  passed; `python tools/repo_map.py check` "Map is current (298 nodes)"
+  before this review was appended. After it, `check` is stale on this
+  handoff alone; the commit of this review runs `update`.
+- No staleness from `pilot/HANDOFF-form-inputs.md` was seen.
+
+No findings.
