@@ -919,6 +919,45 @@ def test_a_return_whose_record_will_not_read_is_said_as_cannot_tell_where_a_new_
     assert held_back(household) == ""
 
 
+def test_a_return_whose_store_refuses_it_is_said_as_cannot_tell_where_a_new_return_asks(root, monkeypatch):
+    """The fourth review's I1: the same household as the ledger test (not
+    shared, client folder gone), but the return's record fails through the
+    store, not the ledger - a store file that is not a database. ``StoreError``
+    is the half of ``household_pause``'s widened catch the ledger test cannot
+    reach: dropped, the store's sentence escapes the pause naming no record
+    and the return-half sentence is never said. Both reads of that one
+    return fail (the pause's details and the client-side history's rows);
+    the sentence names the return."""
+    import shutil
+
+    from tracker import manifest
+    from tracker.households import CLIENT_SIDE_UNKNOWN
+    from tracker.registry import held_back
+    from tracker.store import StoreError
+
+    broken = make_engagement(root, ITEMS, scaffold=False)
+    household = private_household_dir(root, TEST_HOUSEHOLD)
+    ledger.read_events(household)                      # the household's own record reads clean
+    shutil.rmtree(client_household_dir(root, TEST_HOUSEHOLD), ignore_errors=True)
+
+    refusal = StoreError("the database could not be used (SQLITE_NOTADB)")
+    reads = {name: getattr(manifest, name) for name in ("load_engagement_info", "the_record")}
+
+    def refuse_only(name):
+        def read(folder, *args, **kwargs):
+            if Path(folder) == broken:
+                raise refusal
+            return reads[name](folder, *args, **kwargs)
+        return read
+
+    for name in reads:
+        monkeypatch.setattr(manifest, name, refuse_only(name))
+
+    assert held_back(household) == CLIENT_SIDE_UNKNOWN.format(
+        name=TEST_HOUSEHOLD, problem=str(refusal),
+        whose=f"its return `{broken.parent.name}\\{broken.name}`")
+
+
 # ---- S8b: every misfit carries a stable code (ruling 18) -----------------
 
 def _misfit_calls():

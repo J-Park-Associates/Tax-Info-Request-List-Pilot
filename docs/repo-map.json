@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 298,
     "edges": 1334,
-    "reused": 243
+    "reused": 244
   },
   "node_types": [
     "artifact",
@@ -4730,8 +4730,8 @@
       "id": "pilot/HANDOFF-client-folder.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "b9c74a648691f114",
-      "lines": 750
+      "sha256": "9bc99ad97352b143",
+      "lines": 801
     },
     {
       "id": "pilot/HANDOFF-form-inputs.md",
@@ -8746,8 +8746,8 @@
       "id": "tests/test_registry.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "80e93899fc404842",
-      "lines": 1239,
+      "sha256": "d65e96df8476b1ae",
+      "lines": 1278,
       "exports": [
         "ITEMS",
         "engagement_dirs",
@@ -8768,6 +8768,7 @@
         "test_a_misfit_cannot_be_built_without_a_code",
         "test_a_moved_root_compares_each_rolled_return_only_with_its_own_group",
         "test_a_return_whose_record_will_not_read_is_said_as_cannot_tell_where_a_new_return_asks",
+        "test_a_return_whose_store_refuses_it_is_said_as_cannot_tell_where_a_new_return_asks",
         "test_a_rolled_forward_prior_is_retired_across_two_households_with_the_same_return_name",
         "test_a_rolled_forward_prior_stays_retired_when_the_clients_root_moves",
         "test_a_rolled_from_that_matches_nothing_is_a_warning_not_a_silence",

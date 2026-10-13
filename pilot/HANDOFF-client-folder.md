@@ -598,8 +598,9 @@ curated map's text stays true: it never listed which errors the pause skips).
   not read"). So "cannot tell" for a return needs a household not yet shown
   shared, which is also how Review 3 reproduced H1 ("not shared"). The code is
   right and the SPEC's wording was loose; the test's docstring says so in one
-  parenthesis. SPEC section 12 itself was not edited (the brief limits the
-  files).
+  parenthesis. SPEC section 12 itself was not edited by this rebuild (the brief
+  limits the files); the landing session then edited it in `ed109f1`, after
+  this handoff named the slip.
 - The test seeds with `make_engagement(..., scaffold=False)`, so it creates
   the client folder itself for the "present" half rather than relying on the
   scaffold having made one.
@@ -748,3 +749,53 @@ one line this commit lengthened. Severity: **nit**.
   check` "Map is current (298 nodes)".
 
 Findings: 0 must fix, 0 should fix, 2 nits.
+
+## Rebuild 4 (Sonnet, 2026-10-13)
+
+Built SPEC section 13 against `6a4ac16`; nothing committed, per the brief.
+Files changed: `tests/test_registry.py`, this handoff, and the generated
+`docs/repo-map.json` / `docs/repo-map.md`. No `tracker/` code changed: the test
+pins what Rebuild 3 already put there.
+
+### I1 - the `StoreError` half of the widened catch is pinned
+
+- New test, `tests/test_registry.py`
+  `test_a_return_whose_store_refuses_it_is_said_as_cannot_tell_where_a_new_return_asks`:
+  the ledger test's household (not marked shared, client folder removed, the
+  return made with `scaffold=False`, the household's own record reading
+  clean), but the return's record fails through the store. It monkeypatches
+  `tracker.manifest.load_engagement_info` (what `household_pause` imports at
+  call time) and `tracker.manifest.the_record` (what `client_side_expected`
+  feeds `store.documents`) to raise
+  `StoreError("the database could not be used (SQLITE_NOTADB)")` when called
+  for that return's folder and to read through for any other. `held_back` is
+  asserted equal to `CLIENT_SIDE_UNKNOWN` filled with the household's name,
+  ``its return `2025\1040 - Test Client` `` and the StoreError's sentence.
+- **After (the code as it is):** the test passes (test_registry 44 passed, 2
+  skipped).
+- **Before (mutation, once):** in `tracker/households.py` `household_pause`,
+  `StoreError` alone removed from the `except` tuple (`(ManifestError,
+  LedgerError, ValueError, OSError)`), test_registry and test_households run
+  together: **1 failed, 63 passed, 2 skipped** - exactly this test, with the
+  `StoreError` escaping `household_pause` at the `load_engagement_info` call.
+  The file was then restored from a byte copy (`cmp` identical; `git diff --
+  tracker/` empty); no stash.
+
+### I2 - the record corrected
+
+Rebuild 3's "Done differently" note said SPEC section 12 was not edited; it now
+says it was not edited by that rebuild, and that the landing session edited it
+in `ed109f1` after this handoff named the slip. One sentence; nothing else in
+that section changed.
+
+### Gate
+
+One process per file, `-p no:cacheprovider`, Python 3.13 (the scratchpad venv;
+the 3.11 floor was not exercised, as in the earlier reviews): test_registry 44
+passed, 2 skipped; test_households 20 passed; test_layers 31 passed;
+test_single_source 218 passed; test_repo_map 82 passed (it failed 1 of 82
+before `update`, on the stale test file's hash, as expected).
+`python -m ruff check .` all checks passed; `python tools/repo_map.py update`
+then `check`: "Map is current (298 nodes)". The map check never failed on
+`pilot/HANDOFF-form-inputs.md`, so no second `update` for that lane was needed.
+Dead code in the changed lines: none (every name in the new test is used).
