@@ -415,3 +415,48 @@ Gate after the rebuild: `test_rollover`, `test_registry`, `test_api`,
 `test_errors`, `test_single_source`, `test_layers`, `test_repo_map`, ruff,
 the map check. The builder appends `## Rebuild 6 (Sonnet, 2026-10-13)` to the
 handoff.
+
+---
+
+## 16. Roll Forward refuses a legacy folder (Jason, 2026-10-13; decision P302)
+
+Jason's ruling on the sixth review's first observation: option 1. A legacy
+folder - a return whose record reads and holds no request list, with the old
+`_manifest.xlsx` beside it (`registry.LEGACY_FOLDER`) - in the open year
+counts as active (`Engagement.active` reads the return's own flag, not
+`problem`), so Roll Forward rolled it into the next year with zero rows and
+said nothing, leaving a return that looks set up and asks for nothing. The
+runbook's section 1 already says such a return is set up again in the app.
+The build is Sonnet's.
+
+**R2, extended.** In `roll_household`, before anything is written (the
+refusal pass that already runs `_plan_one`): a planned prior whose
+`Engagement.problem` is the legacy sentence (compared to
+`LEGACY_FOLDER.format(name=LEGACY_MANIFEST_FILENAME)`, the one constant) is
+refused with
+`ROLLOVER_LEGACY_FOLDER = "{prior} holds its request list in a workbook the app no longer reads ({name}); set it up again in the app first (runbook section 1), then roll it forward"`
+(`name=LEGACY_MANIFEST_FILENAME`), as a `ManifestError`, so nothing is
+written for any planned return of that household (the refusal pass is all
+or nothing, as today). The command line's `--all` and `--only` reach
+`roll_household` and get the same sentence through `parser.error`. Section
+15's rule for a legacy return *not* in the open year is unchanged
+(`ROLLOVER_NOT_THIS_HOUSEHOLD`); the two sentences never both apply.
+
+**Runbook.** The Roll Forward entry's refusals gain one sentence: a return
+from before September 2026 that still holds its list in the old workbook is
+refused until it is set up again in the app (section 1).
+
+**Tests** (`tests/test_rollover.py`): a legacy return in the open year rolled
+by plan → `ROLLOVER_LEGACY_FOLDER`, nothing written (client tree, private
+tree listing, record bytes); the same by `--only` → exit 2 with the sentence;
+a household with one legacy and one ordinary open return rolled with `--all`
+→ refused whole, nothing written for either. The existing section-15 legacy
+test (closed year) keeps passing.
+
+**Decision row (added by the landing session):**
+
+| P302 | 2026-10-13 | Roll Forward refuses a return from before September 2026 whose list is still in the old workbook (`rollover.ROLLOVER_LEGACY_FOLDER`), sending the person to set it up again in the app first; rolling it made an empty return that looked set up (SPEC-client-folder-unreadable section 16). | Jason, 2026-10-13, on the sixth review's observation. |
+
+Gate: `test_rollover`, `test_registry`, `test_api`, `test_single_source`,
+`test_layers`, `test_repo_map`, ruff, the map check. The builder appends
+`## Rebuild 7 (Sonnet, 2026-10-13)` to the handoff.
