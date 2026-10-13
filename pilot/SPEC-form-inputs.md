@@ -485,3 +485,53 @@ The gate after rebuild 2: `test_api`, `test_manifest`, `test_records`,
 `test_templates`, `test_filer`, `test_layers`, `test_single_source`,
 `test_repo_map`, ruff, the map check. The builder appends
 `## Rebuild 2 (Opus, 2026-10-13)` to the handoff.
+
+---
+
+## 16. Amendments after the third review (Opus, 2026-10-13)
+
+Findings H1-H3 are in `pilot/HANDOFF-form-inputs.md` under "Review 3". None
+is a finding that survived a rebuild, so the rebuild is Sonnet's. All three
+are built, with the wording amendment the review asked for.
+
+**R4 and R5, amended (H1): "spelt as recorded, case aside".** Decision 160
+makes a change of case the same request everywhere (`identifier_key` folds
+case; `rename` refuses a case-only rename and sends the person to the
+editor), and neither typed rule can see a case change. So in
+`manifest.item_from_fields`, an identifier whose *key* is held
+(`recorded.get(identifier_key(identifier))` is not `None`) is judged by the
+store's rule alone, whatever its case; only an identifier whose key the list
+does not hold is new and gets the typed rule. Section 15's "spelt exactly as
+recorded" reads as "spelt as recorded, case aside" from here. Tests: in
+`test_a_held_identifier_past_eighty_characters_is_not_refused_but_a_new_one_is`
+the case respelling of the held 120-character identifier saves again (the
+claim rebuild 1 made and rebuild 2 reversed); in
+`test_a_list_holding_what_an_older_paste_left_stays_editable_...` the refused
+respelling becomes a different key (`B<NBSP>01`, not `a<NBSP>01`). The short
+name's rule is unchanged (equal to the held one, or new). P291 says "sent back
+as the list holds it, a change of case aside".
+
+**R7 (H2).** `filer.RENAME_CASE_ONLY` and `manifest.RENAME_NOT_ON_THE_LIST`
+format `quoted(old)` / `quoted(new)`, so a rename refusal echoes at most 80
+characters as P293 says. Test: two 120-character identifiers differing only
+in case are refused in a sentence shorter than 240 characters that ends with
+the ellipsis `quoted` leaves; wherever the rename tests already pin the whole
+sentence, keep them passing.
+
+**G5's single source (H3).** `tests/test_api.py`, beside the pin of the
+page's `issuer_label` as "Issuer Name": `assert api.ISSUER_LABEL is
+manifest.COL_ISSUER`.
+
+**Section 15, reworded (the review's reading of the derived short name).**
+The derived short name is "judged for invisible characters as a short name
+is": the derivation already cuts the length and the trailing separators, and
+the filer turns an illegal character into a hyphen, so the rest of the
+short-name rule does not apply to it. The code as built already does this;
+no code changes for it.
+
+The gate after rebuild 3: `test_api`, `test_manifest`, `test_filer`,
+`test_records`, `test_row_columns`, `test_layers`, `test_single_source`,
+`test_repo_map`, `test_errors`, ruff, the map check (`test_errors` has one
+failure that belongs to the client-folder lane, named in its SPEC's section
+11; it is fixed there, in parallel). The builder appends
+`## Rebuild 3 (Sonnet, 2026-10-13)` to the handoff.

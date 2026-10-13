@@ -511,3 +511,177 @@ Each new test was run against the pre-fix code (HEAD's `manifest`/`records`/`api
 | test_repo_map | 82 passed (first run: 1 failed, `repo-map.md` out of step while the other lane committed `bfe9fea`; `update` then said current, and the retry passed) |
 
 `python -m ruff check .`: all checks passed. `python tools/repo_map.py check`: map is current (298 nodes). The other lane's commit `bfe9fea` carried a `docs/repo-map.json` already hashed from this rebuild's code; `update` after this handoff refreshed only this file's hash, and `docs/repo-map.json` is staged with it. The whole suite was not run.
+
+## Review 3 (Opus, 2026-10-13)
+
+A third review, by an agent that built neither rebuild. It covers the rebuild alone
+(`git diff e7c3c3e de34594`) and the build since the base where a trace needed it, against
+`pilot/SPEC-form-inputs.md` with sections 14 and 15 overriding. I read the SPEC, this handoff and
+the diffs, and no agent transcript. I edited no code or test. Each behaviour claim below was run on
+the floor interpreter, either through the named test file or through a throwaway test in the
+scratchpad that drives `edit` and `rename` end to end on records written straight into the store.
+
+### Resolved
+
+- **G1 - resolved in effect, for every value the list holds as it holds it.** `_cmd_edit` passes
+  `{identifier_key: item_from_record(rule)}`, and `item_from_fields` looks the row up by the typed
+  identifier's key. An identifier spelt exactly as held is asked `identifier_problem` only. A short
+  name equal to the held one is asked `short_title_problem` only. These were traced end to end:
+  - A held `A<NBSP>01` / `W<SHY>X` row saves an edit to its Document.
+  - An older window's row that sends only the identifier and the Document also saves, because
+    `_as_recorded` refills the held short name, which then equals it.
+  - The same list saves with a new clean row added beside the held one.
+  - A new row whose short name holds a soft hyphen is refused by the typed rule:
+    `Row 3: Short name may not contain an invisible character (U+00AD SOFT HYPHEN)`.
+
+  `capped` is gone from `typed_identifier_problem`, and no caller still passes it. A respelling by
+  case alone is treated as a change. That is the SPEC's letter, but see H1.
+- **G2 - resolved.** A blank short name, or one equal to the derived name, has
+  `derived_short_title(document)` judged for invisible characters: the typed half when the row is
+  new or changed, the store's half when it is held unchanged. The refusal names the Document.
+  `W-2<U+202E>fdp.exe` and `W-2<U+00AD>Wages` are refused naming the Document, and neither raw
+  character is in the sentence. A character past the twenty that the derived name keeps is not
+  refused, and that is correct: it reaches no file name.
+- **G3 - resolved.** `test_stdin_that_is_not_utf8_...` feeds `\xff\xfe{` and checks `NOT_A_SPEC`
+  and an empty error log.
+- **G4 - resolved.** P290 now names the stored short name, the derived name, and the store's gate
+  not reading the Document. P291 says the typed rules apply to a new or changed value only, and that
+  Rename is held to them. Both rows match the code.
+- **G5 - resolved.** An issuer row's derived name is refused on the issuer. Through `issuer_item`
+  the result is `F02: Issuer Name 'Ashford<U+00AD>Holdings' ... (it is also the short name)`.
+  Through the editor, a new row `Schedule K-1 - Ashford<SHY>Holdings` gets
+  `Row 3: Issuer Name 'Ashford<U+00AD>Holdings' ...`. `_issuer_entity` is the one reading shared by
+  `derived_short_title` and the label.
+
+### The held Document with a right-to-left override
+
+A held row whose Document is `W-2<U+202E>fdp.exe` with a blank short name passes the store: the
+gate does not read the Document, and `load_manifest` returns it. Every save of that list is then
+refused, including one that only adds an unrelated row:
+`Row 1: Document 'W-2<U+202E>fdp.exe' may not contain an invisible character (U+202E RIGHT-TO-LEFT OVERRIDE) (it is also the short name)`.
+
+This is the right outcome, and it is consistent with how F2 treated held identifiers. F2 exempted
+only the characters an ordinary paste leaves (no-break space, soft hyphen, byte-order mark). A
+spoofing character stays refused even when it is held, and a held identifier holding one is a
+refused line that stops the household on every pass. Refusing the save is milder than that. The
+sentence names the row, the field, the code point and why, and the way out is in the same save:
+retype that Document or give the row a short name. The pass still names the working copies with
+the override, because it never calls `item_from_fields`. That is G2's open question, whether the
+store's gate should read the Document, and P290 now records that it does not. It stays Jason's
+call. It is not a finding against this build.
+
+### The builder's reading on the derived short name - accepted; amend the SPEC
+
+Section 15 says the derived short name "is judged as a short name is". Read literally, that means
+the whole `short_title_problem`, and it would refuse ordinary Documents. Verified:
+`derived_short_title("Form 1099: Interest")` is `Form 1099: Interest`, and `short_title_problem`
+refuses it for the colon. The rest of the rule has no work to do on a derived name:
+- `_cut_short` already cuts the length and strips a trailing dot or space (`Misc.` derives `Misc`).
+- `filer._parts_of` turns an illegal character into a hyphen where the name is used.
+- A device name cannot occur, because the identifier always comes first (`A01 - CON.pdf`).
+
+The invisible character is the one part that would reach a file name unchanged. That is what G2
+asked for. **Section 15 should be amended rather than the code**, to say: "judged for invisible
+characters as a short name is (the derivation already cuts the length and the trailing
+separators, and the filer turns an illegal character into a hyphen, so the rest of the short-name
+rule does not apply to it)".
+
+### Findings
+
+**H1 - R4/R5 as amended in section 15 (P290, P291): `tracker/manifest.py` `item_from_fields` (the
+`identifier == held.identifier` test), with `tracker/filer.py` `rename_request` (`RENAME_CASE_ONLY`)
+- should fix (Jason's call, because it needs one word added to section 15).**
+
+Section 15 says an identifier "spelt exactly as recorded" is judged by the store's rule, and the
+builder counts a respelling by case alone as new. Elsewhere this repo treats a change of case as
+the same request:
+- `identifier_key` folds case.
+- Decision 160: "a change of case only reads the same everywhere".
+- `_refuse_taking_away_documents` keeps a request respelt by case.
+- `rename_request` refuses a case-only rename with "change it in the list and save - a change of
+  case needs no rename".
+
+Neither typed rule can see a case change. Invisible characters have no case, and the length is
+unchanged (barring a handful of exotic letters). So the typed rule on a case respelling re-judges
+only what the list already held. The two sentences then contradict each other. Verified end to
+end on a held 120-character identifier:
+- The editor's case respelling is refused with
+  `Row 1: Identifier 'lll...' may have at most 80 characters, got 120 (it begins a file name)`.
+- Rename's case respelling is refused with
+  `... differ only in case; change it in the list and save - a change of case needs no rename`.
+
+So the case cannot be changed anywhere. The same holds, with a way out the sentence does not name,
+for a held `A<NBSP>01` respelt `a<NBSP>01`. Rebuild 1 let a case respelling through, case-folded,
+and Review 2 verified that. Rebuild 2 reversed it, and the test claim was reversed with it.
+
+**Fix:** in `item_from_fields`, judge an identifier whose key is held by `identifier_problem`
+whenever `held is not None`, so "spelt as recorded, case aside". In
+`test_a_held_identifier_past_eighty_characters_is_not_refused_but_a_new_one_is`, put back the
+case-folded pass. In `test_a_list_holding_what_an_older_paste_left_stays_editable_...`, change the
+refused respelling from `a<NBSP>01` to a different key, such as `B<NBSP>01`. Amend section 15 and
+P291 with "case aside". If Jason prefers the letter as built, change `RENAME_CASE_ONLY`'s
+instruction instead, so that it does not send a person to a save that will refuse them.
+
+**H2 - R7 (P293): `tracker/filer.py` `RENAME_CASE_ONLY` and `tracker/manifest.py`
+`RENAME_NOT_ON_THE_LIST` - nit (it predates this SPEC, and R7 did not list these sites).**
+P293 says a refusal quotes at most 80 characters of what was typed. Both rename sentences format
+`{old}` / `{new}` whole. Verified: two 120-character identifiers that differ only in case come back
+as 240 characters of echo. The case check runs before the typed check, so a 10,000-character `to`
+is echoed whole too. **Fix:** `quoted(old)` / `quoted(new)` at the two format sites (`filer`
+already imports `quoted`).
+
+**H3 - G5's single source: `tracker/api.py` `ISSUER_LABEL = COL_ISSUER` - nit.** The wording is
+single-source by construction. `tests/test_api.py` still pins the page's word as the literal
+`"Issuer Name"` (`labels["issuer_label"]`), so the card is unchanged. No test ties the card's word
+to the refusal's, though. A later edit that gives `ISSUER_LABEL` its own literal would pass every
+test. **Fix:** one line, `assert api.ISSUER_LABEL is manifest.COL_ISSUER`, beside that pin.
+
+### Verified
+
+- Test files run one process each, in parallel, on the floor interpreter, `-p no:cacheprovider`:
+
+  | file | result |
+  |---|---|
+  | test_api | 517 passed |
+  | test_manifest | 110 passed |
+  | test_records | 53 passed |
+  | test_templates | 41 passed |
+  | test_row_columns | 26 passed |
+  | test_scaffold | 55 passed |
+  | test_filer | 406 passed, 6 skipped |
+  | test_layout | 58 passed |
+  | test_store | 195 passed, 1 skipped |
+  | test_layers | 31 passed |
+  | test_single_source | 218 passed |
+  | test_repo_map | 82 passed |
+  | test_tripwire | 23 passed |
+  | test_errors | 82 passed, 1 failed (see below) |
+
+  `test_row_columns` imports `item_from_fields` and was not in section 15's gate. It passes.
+- **`test_errors` fails outside this SPEC.** `test_the_error_class_list_is_spelled_once` names
+  `registry.py:940`, `runner.py:1368` and `scaffold.py:384`, all from `bfe9fea`
+  (SPEC-client-folder-unreadable). This rebuild touches none of them, but the other lane's gate
+  must fix it before landing.
+- **The map.** `ruff check .` passes. `repo_map.py check` was current at `de34594`, since
+  test_repo_map passed against it. While this review ran, the other lane committed `2680406`
+  (pilot files only), and `check` now says stale for `pilot/HANDOFF-client-folder.md` and
+  `pilot/SPEC-client-folder-unreadable.md`. That is that lane's to refresh.
+- **Catalogs.** All 107 `FORM_TEMPLATES` rows still pass `item_from_spec` under the new derived
+  check, and none holds an invisible character.
+- **Tests not weakened.** The `capped=False` lines left with the parameter. The manifest held-row
+  test is rewritten to the mapping, and its case-respelling claim is reversed, deliberately (H1).
+  Every new test asserts its whole sentence or its prefix, the absence of the raw character, and
+  "nothing written" where it matters. The builder reports each new test failing on the pre-fix
+  code.
+- **Layers and dead code.** `manifest` takes `invisible_problem` and `spoofing_problem` from
+  `records` only, and both are used. No new load-time edge, and test_layers passes. `COL_ISSUER`
+  lives in `manifest` because `manifest` cannot import `api`. Ruff finds nothing unused.
+- **SPEC sentences.** The refusal is
+  `{where}: {label} '{quoted(source)}' {problem} (it is also the short name)`, with
+  `label` = `COL_DOCUMENT` or `COL_ISSUER`, as section 15 words it. `source` is the typed field
+  (the Document, or the issuer's entity), which is what "the field the person typed" means.
+- **Record.** The commit `de34594` carries `Co-Authored-By: Claude Fable 5.1`, while this handoff
+  and CLAUDE.md say the rebuild is Opus's. It does not affect the code, but the history says
+  otherwise from here on.
+
+Findings: 0 must fix, 1 should fix, 2 nits.

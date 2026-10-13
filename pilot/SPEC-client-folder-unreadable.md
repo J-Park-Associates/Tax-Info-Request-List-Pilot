@@ -191,3 +191,61 @@ forward), not the list and the card.
 Gate after the rebuild: `test_households`, `test_runner`, `test_scaffold`,
 `test_registry`, `test_single_source`, `test_repo_map`, ruff, the map check.
 The builder appends `## Rebuild 1 (Sonnet, 2026-10-13)` to the handoff.
+
+---
+
+## 11. Amendments after the second review (Opus, 2026-10-13)
+
+Findings G1-G4 are in `pilot/HANDOFF-client-folder.md` under "Review 2", and
+a fifth item comes from the form-inputs lane's third review, which ran
+`tests/test_errors.py`. None survived a rebuild, so the rebuild is Sonnet's.
+All five are built.
+
+**R1, amended (G1): the return is named year first.** Roll forward keeps a
+return's name across seasons, so `1040 - X` alone cannot say which year's
+record failed. `whose` is ``its return `<year>\<folder name>` `` - the return
+folder's parent (the year folder) and its own name, joined by a backslash as
+the layout's sentences write paths (`f"its return `{one.parent.name}\\{one.name}`"`).
+The error-log entry carries the same (`name=f"{failed.parent.name}\\{failed.name}"`
+for a return; the household's folder name for the household). The runbook
+says ``its return `<year>\<folder name>` ``. Test: the existing
+`test_the_sentence_names_the_return_whose_record_cannot_be_read` checks the
+year is in the sentence.
+
+**Tests (G2).** The same test asserts the exact log entry,
+`"households: the client-side history (2025\\1040 - John)"` (the fixture's
+year and folder), not the folder name anywhere in `caplog.text`, which the
+store's own checkpoint warning already satisfies.
+
+**Docstring and runbook (G3).** `client_side_expected`'s "one part that will
+not read" paragraph says what the code does: the halves are read in order -
+the household's record, then each return - and the first definite answer
+wins, so a household whose own record says it was shared, or whose earlier
+return proves the folder existed, gets the folder-missing sentence even if a
+later return would not read; "cannot tell" is the answer only when the read
+fails before any half has answered. The runbook paragraph says the same in a
+sentence, and prints *the household* without backticks (only a return's name
+is in backticks, as the sentence prints it).
+
+**Test name (G4).** The F3 test either checks both halves (a journal that is
+there and will not read raises `ClientSideUnknown`, beside the missing one
+that is skipped) or is renamed to the claim it makes. Check both halves.
+
+**`tests/test_errors.py::test_the_error_class_list_is_spelled_once`.** The
+rule: no module turns a caught exception's words into a string except through
+`tracker.errors`. The three `except ClientSideUnknown as exc:` handlers
+(`registry.held_back`, `runner.run_household`, `scaffold.scaffold_household`)
+use `str(exc)`; each becomes `errors.said(exc, (ClientSideUnknown,))`, the
+form the runner already uses for `FEEDS_UNREAD`, which returns the sentence
+whole for the firm's own class. `errors` is imported where it is not already
+(a load-time import of `errors` breaks no layer; `tests/test_layers.py`
+confirms). No wording changes.
+
+Gate after the rebuild, one process per file: `test_households`,
+`test_runner`, `test_scaffold`, `test_registry`, `test_errors`,
+`test_single_source`, `test_layers`, `test_repo_map`, ruff, the map check.
+The form-inputs lane's rebuild 3 runs in the same checkout and touches
+`tracker/{manifest,filer,api}.py`, their tests and `pilot/DECISIONS.md`: this
+build touches none of those, and retries the map check once if it fails only
+on that lane's half-edited files. The builder appends
+`## Rebuild 2 (Sonnet, 2026-10-13)` to the handoff.

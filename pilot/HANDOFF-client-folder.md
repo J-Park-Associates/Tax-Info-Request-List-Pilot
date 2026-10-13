@@ -231,3 +231,139 @@ Findings: 0 must fix, 1 should fix, 3 nits.
 - **F3** added `test_a_journal_that_does_not_exist_is_skipped_and_only_one_that_will_not_read_is_cannot_tell` (fails with the two `is_file()` guards removed).
 - **F4** `registry.held_back`'s docstring names the "cannot tell" answer; the registry test's docstring says New return and Roll forward read `held_back` (the list and card show it through the pass's run error).
 - Gate (one process per file, parallel): test_households 20 passed, test_runner 230 passed, test_scaffold 55 passed, test_registry 42 passed 2 skipped, test_single_source 218 passed, test_repo_map 82 passed; ruff clean; repo map check current.
+
+## Review 2 (Opus, 2026-10-13)
+
+Second reviewer: a separate agent that built neither the build nor the
+rebuild. Read against the SPEC (section 10 over section 2), the first review
+and Rebuild 1; the rebuild is `git diff 2680406 98cfd87`, the whole change
+`git diff 6f6410b 98cfd87` on the nine files. Every other file ignored. No
+code or test edited; mutations were run on a `git archive` copy in the
+scratchpad, never in the checkout.
+
+### Resolved
+
+- **F1 - resolved.** `CLIENT_SIDE_UNKNOWN` is section 10's sentence word for
+  word. `client_side_expected` starts with `whose = "the household"`,
+  `failed = folder`, and each pass of the returns loop sets
+  ``whose, failed = f"its return `{one.name}`", one`` before anything of that
+  return is read, so the name always belongs to the part being read when it
+  fails. Traced in a scratch test (two returns, `1040 - A` 2024 and
+  `1040 - B` 2025, by `household_returns` order): an unlinked line in the
+  *second* return's journal gives "the record of its return `1040 - B`" and
+  the log entry `households: the client-side history (1040 - B)` - the
+  failing return, not the first; an unlinked line in the household's journal
+  (shared) gives "the record of the household" and
+  `households: the client-side history (Smith Family)`. The error-log name is
+  `failed.name`, the folder whose journal refused, as section 10 asks. Runbook
+  says "the household's record, or one of its returns'" and that the sentence
+  names which. Both spellings tested. But see G1 (the return's name alone is
+  not unique) and G2 (the log-name assertion is vacuous).
+- **F2 - resolved as ruled** (kept as built; docstring paragraph added). The
+  paragraph overstates slightly - see G3.
+- **F3 - resolved.** The test exists and fails with the two `is_file()`
+  guards removed (mutation run). Its name claims a second half it does not
+  assert - see G4.
+- **F4 - resolved.** `registry.held_back`'s docstring names the "cannot
+  tell" answer; the registry test's docstring says New return and Roll
+  Forward read `held_back`, and the list and the card show it through the
+  pass's run error.
+
+### Findings
+
+**G1 - `tracker/households.py` `client_side_expected` (and SPEC section 10).
+The return is named by its folder name alone, which is not unique within a
+household.** Roll Forward keeps a return's name by default
+(`rollover._plan_one`: `return_name = plan.return_name or prior.name`), so a
+household of two seasons holds `2024\1040 - John & Maria Park` and
+`2025\1040 - John & Maria Park`. "the record of its return `1040 - John &
+Maria Park`" names both; the problem text (`_ledger.jsonl line 2 ...`)
+carries no path, the log entry carries the same bare name, and every run of
+the household carries the same sentence, so neither the run rows nor the
+practice page's "records needing a person" tell the two apart. F1's point -
+a person repairs the right record - is half met: right return, possibly
+wrong year. `layout.label_for`'s own docstring is the rule this misses
+("so nobody reads ... two identical return names"). The build follows
+section 10's spelling exactly; the gap is the amendment's. Fix: name the
+return with its year, e.g. ``f"its return `{one.parent.name}\\{one.name}`"``
+(the `Clients\\{name}` backslash convention), log under the same, and say
+``its return `<year>\<folder name>` `` in the runbook and the test - a
+SPEC-owner ruling, since the spelling is pinned. Severity: **should fix**
+(SPEC amendment).
+
+**G2 - `tests/test_households.py`
+`test_the_sentence_names_the_return_whose_record_cannot_be_read`. "the error
+log carries that folder's name" is asserted by a check that cannot fail.**
+`"1040 - John" in caplog.text` is satisfied by the store's own WARNING
+`checkpoint seeded for J Park & Associates/Smith Family/2025/1040 - John at
+0 line(s)`, which caplog captures in the same test. Mutation: putting
+`name=folder.name` back in `errors.keep` (the household's name, the pre-F1
+behaviour) - the test still passes. Fix: assert the entry exactly as
+`errors.keep` writes it, `"households: the client-side history (1040 - John)"
+in caplog.text` (and, for symmetry, `"... (Smith Family)"` in the
+household-half test). Severity: **should fix** (a test claim that does not
+fail without its fix).
+
+**G3 - `tracker/households.py` `client_side_expected` docstring (F2's
+paragraph) and `docs/runbook.md` (the "same hold-back, when a record cannot
+be read" bullet).** The docstring says one unreadable part makes the answer
+"cannot tell" "even when another return would have proved the folder
+existed"; the code is order-dependent - a proof found *before* the failing
+part wins: a household whose own record reads and shows it shared answers
+`True` without reading any return, and an earlier return whose original
+rests under `Clients\<name>` answers `True` before a later broken return is
+reached. Both then get the definite `CLIENT_FOLDER_MISSING`. The runbook's
+"If the client folder is gone and the household's record, or one of its
+returns', will not read ... every run of the household says instead" has
+the same overstatement. Safe either way (both hold back, nothing is made).
+Also in the runbook bullet, `<whose>` is set in backticks, while the
+sentence prints "the record of the household" bare (only the return's name
+is backticked). Fix: docstring "a part that will not read before anything
+has proved the folder existed makes the answer 'cannot tell', even when a
+later return would have proved it"; runbook "... will not read before the
+record has shown it was shared ..." (or "may say instead"); write
+`the record of <whose>` without backticks. Severity: **nit**.
+
+**G4 - `tests/test_households.py`
+`test_a_journal_that_does_not_exist_is_skipped_and_only_one_that_will_not_read_is_cannot_tell`.
+The name's second claim is not asserted.** The test checks only that absent
+journals answer `""`; "only one that will not read is cannot tell" is left
+to other tests. Fix: in the same test, write one line the ledger refuses
+into a journal that is there (e.g. a second return's, as the F1 test does)
+and assert `ClientSideUnknown` - the contrast the name states. Severity:
+**nit**.
+
+### Verified
+
+- Sentence: `CLIENT_SIDE_UNKNOWN` matches section 10 character for
+  character; `whose` is `the household` for the `shared_on` half and
+  ``its return `<folder name>` `` for a return's `store.documents` half
+  (traced above, including the second of two returns). No stale copy of the
+  old wording anywhere outside `pilot/` (grep); the map's constants carry
+  the new one.
+- Callers unchanged by the rebuild and still right: runner holds every run
+  with `str(exc)` / `CODE_RECORD_UNREADABLE` and returns before
+  `_worth_a_pass`; scaffold raises `ClientFolderMissing(str(exc)) from None`;
+  registry returns `str(exc)` after the stop and pause checks.
+  `client_folder_missing` is disk first and passes a list, so `whose` cannot
+  be mis-set by a lazy iterable raising between returns.
+- Runbook paragraph against the code: the quoted sentence, "the household,
+  or its return `<folder name>`", "every run of the household", nothing made
+  by the pass, a new return or Roll Forward, section 6 *When a record needs
+  recovering* (exists, line 2378) - accurate apart from G3.
+- Tests as claims: mutations on a scratch copy - dropping `whose` for the
+  return fails the F1 return test; removing the `is_file()` guards fails the
+  F3 test; reverting the log name passes (G2). The household-half tests
+  compare against the constant itself, so the wording is pinned by the
+  return test's substring and by the constant.
+- Gate re-run here, one process per file in parallel: test_households 20
+  passed, test_runner 230 passed, test_scaffold 55 passed, test_registry 42
+  passed 2 skipped, test_layers 31 passed, test_single_source 218 passed,
+  test_repo_map 82 passed, test_door 7 passed; `ruff check` on the eight
+  changed code and test files clean; `repo_map.py check` current (298
+  nodes). Worktree clean before this section was appended.
+- Layers and dead code: no load-time import added by the rebuild (the
+  households imports stay call-time); no unused name, local or import; the
+  two new locals (`whose`, `failed`) are both read.
+
+Findings: 0 must fix, 2 should fix, 2 nits.
