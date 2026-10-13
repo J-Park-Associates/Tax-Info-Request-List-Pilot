@@ -795,3 +795,33 @@ Gate for sections 22, 23 and 24 together: `test_api`, `test_single_source`,
 changes), ruff, the map check. The builder appends one
 `## Rebuild 7 (Sonnet, 2026-10-13)` to the handoff covering the three
 sections (append only).
+
+---
+
+## 25. Amendments after the eighth review (Opus, 2026-10-13)
+
+Review 8 found sections 22, 23 and 24 built as written, with Review 7's
+probes all refusing now. One latent test pin is built here; one
+observation is Jason's call (section 26, when ruled); the rest is
+recorded.
+
+**Nit 4 - the fixture's second identifier is pinned to three characters.**
+`_a_long_row_return` in `tests/test_api.py` computes its path length from
+the literal `"B01"` while taking an optional `second`; a wider `second`
+would pass its own assert while sitting further past the limit than
+intended. It gains `assert len(second) == 3` with a one-line comment, and
+nothing else. The build is Sonnet's; gate `test_api`, `test_single_source`,
+`test_layers`, `test_repo_map`, ruff, the map check; the builder appends
+`## Rebuild 8 (Sonnet, 2026-10-13)` to the handoff (append only).
+
+**Recorded, no change.** Some name refusals read awkwardly ("the Entity
+(Legal Name)'s name"), and two dependents both read "the Dependent's
+name"; the sentence is the SPEC's own and stands. A stored name past the
+rule cannot be written (the store refuses people this version cannot
+read), so in practice only a typed name meets the name refusal; the
+spelling refusal is the one a stored value can meet.
+
+**Process.** The map committed with 333b2c9 hashed another lane's handoff
+mid-write, so `check` on that commit alone was stale; the tip is current.
+A builder gates the commit it will become, not a working tree holding
+another lane's edits.

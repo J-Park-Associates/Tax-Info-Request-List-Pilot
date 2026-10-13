@@ -904,3 +904,38 @@ test_single_source 218, test_layers 31, test_repo_map 82 (after `update`);
 nodes)", exit 0.
 
 **Could not do.** The Python 3.11 floor was not run.
+
+## Review 5 (Opus, 2026-10-13)
+
+Review of SPEC-error-handling-small section 14 (333b2c9, test only), read
+on a fresh `git archive 333b2c9` copy with the Python 3.13.16 venv. The
+reviewer did not build it.
+
+**Verdict.** Lands. No findings.
+
+**What was checked, with evidence.**
+
+- `_STORED_REASON_WITH_CLIENT = "Client confirmed this is the final
+  version"` is the literal text. It is byte-equal to
+  `manifest.OVERRIDE_REASONS[0]` (`tracker/manifest.py` line 332).
+- `test_no_word_the_window_draws_says_client_but_a_folders_own_name` begins
+  with `assert _STORED_REASON_WITH_CLIENT in manifest.OVERRIDE_REASONS`. The
+  comment beside the constant now says "written out here and asserted to be
+  one of the manifest's reasons", which is what the code does.
+- The diff touches only the constant, its comment and the new assertion.
+  There is no code change.
+- Mutations, each on its own fresh copy:
+
+  | variant | result |
+  |---|---|
+  | `OVERRIDE_REASONS[0]` reworded to "Client confirmed this is the final version." (whole `test_api.py`) | the guard fails on the new assertion (`assert 'Client confirmed this is the final version' in ('Client confirmed this is the final version.', ...)`). `test_the_vocabulary_carries_the_menu_the_screen_and_the_short_words`, which asserts the same literal, also fails: 2 failed, 540 passed |
+  | the same rewording with section 13's `manifest.OVERRIDE_REASONS[0]` constant put back (guard test only) | 1 passed, which is Review 4's slip, so the change is what closes it |
+
+**Gate.** Shared with Review 8 of `pilot/HANDOFF-form-inputs.md`, on the
+same copy, each file its own process: test_api 542, test_errors 85,
+test_tripwire 23, test_single_source 218 and test_layers 31 all passed.
+test_repo_map gave 81 passed and 1 failed, and `repo_map.py check` was
+stale. Both come from the commit's map recording another lane's
+uncommitted `pilot/HANDOFF-client-folder.md` (Review 8's finding 1), not
+from this section, and af2c1a0 checks current. `ruff check .` is clean. The
+Python 3.11 floor was not run.

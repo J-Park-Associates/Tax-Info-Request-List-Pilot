@@ -1388,3 +1388,216 @@ the tree also holds the reviewer's uncommitted append to
 
 **Could not do.** The Python 3.11 floor was not run (one interpreter in the
 venv).
+
+## Review 8 (Opus, 2026-10-13)
+
+Review of SPEC-form-inputs sections 22, 23 and 24 (333b2c9, P306, P307),
+read against sections 20 and 21 as the prior state. Read on a fresh
+`git archive 333b2c9` copy (git-initialised), Python 3.13.16 venv. The
+reviewer did not build the change. Every probe below was run by the
+reviewer on a throwaway copy, as a pytest file importing `tests/test_api.py`'s
+own fixtures, under both `path_setting` parametrizations.
+
+**Verdicts.** Section 22: lands; one latent test nit (4). Section 23 (P306): lands; one nit (3).
+Section 24 (P307): lands; one nit (2). The commit carries one should fix,
+which is a process slip and not a code defect: its committed map is stale
+(1). The code does what the SPEC says on every case the SPEC names. Review 7's
+probes now refuse.
+
+**What was checked, with evidence.**
+
+- *Section 22 code.* `_refuse_a_changed_row_past_the_limit` now counts a
+  matched row as changed when `len(item.identifier) != len(held.identifier)`.
+  The comment names the pair ("``.lower()`` lengthens the one letter "İ""),
+  and the docstring names `İ01` and `i̇01`.
+- *Review 7's İ01 → i̇01 probe, re-run.* Held `İ01` past the limit, sent as
+  `"i̇" + "01"`: need held 270/260, sent 271/260. The save gives
+  `code 1`, "... would be 271 characters, past the 260 Windows allows; ...",
+  and the ledger is not written. With long paths off it is 270 against 259,
+  and also refused.
+- *Case-only, with nit 4.* `B01` → `b01` saves (`changed ['b01']`), and the
+  record holds `['A01', 'b01']`. The test now asserts `[item.identifier for
+  item in load_manifest(engagement)] == ["A01", "b01"]`.
+- *Section 23 sentences, exact.* The name check is
+  `f"{PEOPLE_LABEL}: the {PERSON_KIND_LABELS[kind]}'s name {problem}"` and
+  the spelling check is `f"{PEOPLE_LABEL}: a spelling of {name} {problem}"`.
+  Both match the SPEC character for character. `ONE_WORD_SPELLING` is
+  untouched. `name` has passed `records.text_problem(name)` before the
+  spelling loop runs, so it is one line of at most 1,000 characters with no
+  control character by the time it enters the sentence. The comment "a
+  stored one is not re-judged" is gone. The spelling comment now reads "A
+  stored one is judged again on every save, as the name is, so the refusal
+  names the person (P306)", which is true.
+- *Review 7's stored-spelling probe, re-run.* A spouse "Jane Smith0" was
+  stored through `make_engagement` with a 2,001-character spelling. A
+  row-only edit (`{**rows[0], "document": "W2"}`) sent the people block back
+  as `{kind, name, spellings}`, the shape `app.js` `personSpec` sends. It
+  gives `code 1`, `'People: a spelling of Jane Smith0 must be one line of
+  text of at most 1000 characters, with no control character'`, and
+  `(list_head, ledger bytes)` are unchanged. The same holds for a stored
+  `"Jane\x07 Smith"` spelling. The new test does exactly this: it stores
+  through `make_engagement`, sends the people block back as stored, edits a
+  row, asserts the sentence names Jane Smith, and asserts nothing is
+  written.
+- *Old sentences.* `git grep -i` for "a name must", "a spelling must",
+  "People: a name" and "People: a spelling" over `app tracker docs tests
+  README.md` finds only `docs/repo-map*`'s "The two-word rule a spelling
+  must keep", which is unrelated (the names module's node). The runbook
+  quotes no people refusal, and no vocabulary carries one.
+- *Section 24 code.* `_PATH_FIELDS = ("document", "short_title", "period",
+  "allowed_extensions")`, with the comment the SPEC asks for. The changed
+  condition gains `held.manual_override == Override.NOT_APPLICABLE and
+  item.manual_override != Override.NOT_APPLICABLE`, and the docstring names
+  both. No import was added (`Override` was already imported).
+- *Review 7's two probes, re-run.*
+  - A01's short title lengthened to 20 characters: need held 253/260, sent
+    270/260. Refused, and the ledger is not written (252 to 269 against 259
+    with long paths off).
+  - A01 set Not Applicable with a 20-character short title saves
+    (`changed ['A01']`). Clearing it in a second save measures 270/260 and
+    is refused, with nothing written.
+- *Untouched row.* The unchanged-short-title test sends B01 back as held
+  (`short_title == ""`) and shortens A01's Document. It saves with `changed
+  == ["A01"]`, so comparing the new field does not trap B01. I also probed a
+  stored typed short title: B01 held with `"y" * 12` (written by
+  `save_rules` directly, so B01 is at 262/260) and sent back as `state` hands
+  it. It saves (`changed ['A01']`). The one case that does trap is nit 2.
+- *Every field the path is built from.* `room_for` reads `manual_override`
+  and `asked` (its two skips), `_extensions_of` (`allowed_extensions`, or
+  `DEFAULT_EXTENSIONS` when that is empty), and `prepared_name_for` /
+  `shortest_name_for` through `_parts_of`. `_parts_of` reads
+  `sanitize_component(identifier)`, `sanitize_component(short_name)` (that
+  is, `short_title or derived_short_title(document)`) and `period`. Each one
+  is now compared:
+  - identifier: by key plus length;
+  - short title, Document and period: `_PATH_FIELDS`;
+  - file types: `allowed_extensions`;
+  - the two skips: the Asked clause and the Not Applicable clause.
+
+  Nothing else reaches the path. The folder above the return is the
+  engagement's, and `edit` does not move it.
+- *Not asked ↔ Not Applicable* (B01 held past the limit, 270/260):
+
+  | step | result |
+  |---|---|
+  | B01 asked → not asked | saves |
+  | not asked → Not Applicable (record: `asked=False, override='Not Applicable'`) | saves |
+  | Not Applicable → not asked (record: `asked=False, override=''`) | saves: counted changed by the new clause, then skipped by `room_for` because it is not asked, which is correct |
+  | not asked → asked | refused at 270/260 by the Asked clause |
+  | not asked and Not Applicable in one save, then both undone | the first saves; the second is refused |
+
+  Neither direction is measured wrongly, and neither is skipped wrongly.
+- *Mutations* (each on its own fresh `git archive 333b2c9` copy, with the
+  whole of `tests/test_api.py` run once per mutation, in parallel):
+
+  | mutation | failed (of 542) |
+  |---|---|
+  | `"short_title"` dropped from `_PATH_FIELDS` | `test_lengthening_a_held_rows_short_title_is_measured_and_refused`, both settings |
+  | Not Applicable clause dropped | `test_a_row_set_not_applicable_saves_unmeasured_and_is_measured_when_cleared`, both settings |
+  | identifier-length clause dropped | `test_a_respelling_that_keeps_the_key_but_changes_the_length_is_measured_and_refused`, both settings |
+  | name sentence back to `"{PEOPLE_LABEL}: a name {problem}"` | `test_a_persons_name_longer_than_the_text_rule_is_refused_by_name` |
+  | spelling sentence back to `"{PEOPLE_LABEL}: a spelling {problem}"` | the 1,001-character, control-character and stored-spelling tests (3) |
+
+  Each mutation fails exactly its own tests and nothing else.
+- *Fixture change.* `_a_long_row_return(root, household=HOUSEHOLD,
+  second="B01")` and `_a_held_row_past_the_limit(capsys, demo_root,
+  second="B01")` default to the old literal. Every existing caller (lines
+  5396, 5425, 5464, 5501 and the later decision-131 tests) passes no
+  `second`, so each builds the same return as before. `below` still
+  measures with the literal `"B01"`. That is right for `İ01`, which is also
+  three code points and one UTF-16 unit each.
+
+**Findings.**
+
+1. **Should fix (process; healed by the next commit): the map committed in
+   333b2c9 is stale at 333b2c9.** On the clean copy, `tools/repo_map.py
+   check` gives "Map is STALE — 1 file(s) differ from it: changed
+   pilot/HANDOFF-client-folder.md", exit 1, and
+   `tests/test_repo_map.py::test_the_committed_map_is_current` fails
+   ("1 failed, 81 passed"). The map records that file as `224f85fd83cde092`
+   at 1,908 lines. The commit's own file is `aabb7f27080bfc71` at 1,764
+   lines. 30c69f8's file is `3affd334842eb0b9` at 1,912 lines. So the hash
+   is of the other lane's uncommitted append as it stood mid-write, a
+   version no commit holds. Rebuild 7 ran `update` on a tree holding that
+   append (it says so) and reported "Map is current". That was true of the
+   working tree and not of the commit. A clean copy of af2c1a0 checks "Map
+   is current (302 nodes)", exit 0.
+   - **Action on the tree: none.** The tip is already current.
+   - **Action for the next build:** while another lane has uncommitted
+     edits in the checkout, gate the commit, not the working tree. Run
+     `update` and `check` on a clean copy of the commit, or with that file
+     at its committed content.
+2. **Nit (Jason's call; near-nil incidence): the exact comparison can trap
+   an untouched row whose stored short title the editor's parse
+   normalises.** `item_from_fields` strips the sent short title
+   (`_short_title`: `str(value).strip()`). The store's rule admits a
+   leading space (`short_title_problem(" " + "y" * 19)` is `''`). I wrote
+   B01 with that short title through `save_rules` (269/260) and sent it
+   back exactly as `state` hands it, shortening only A01's Document. The
+   save is refused: "... would be 269 characters, past the 260 Windows
+   allows". With `"short_title"` dropped from `_PATH_FIELDS` (the mutation
+   copy) the same save succeeds and records B01 stripped (`changed ['A01',
+   'B01']`). So P307 adds this one trap. The editor's own typing cannot
+   make such a record, because every typed path strips. Document and period
+   have had the same shape since decision 131 (`text()` strips both). A
+   person who types a short title equal to the Document's derivation also
+   counts as a change, though the path does not move. Options:
+   (a) accept it as is;
+   (b) compare the held row as the editor's parse would read it back
+       (`item_from_fields(_rule_for_the_editor(...))`), so a value sent back
+       as held is never a change;
+   (c) count a matched row as changed only when its own measured need
+       differs from the held row's. This would replace the field list and
+       the length clause, at the price of one more `room_for` per row.
+3. **Nit (SPEC's wording; no change needed): the name sentence reads oddly
+   for the bracketed kinds, and the name comment describes a case the store
+   prevents.** Probing every kind gives, for example, "People: the Entity
+   (Legal Name)'s name must be ...", "the Owner (Accounts Held So)'s name"
+   and "the DBA or Abbreviation's name". Two dependents both read "the
+   Dependent's name". In practice the name refusal only meets a typed name.
+   A stored name past the rule cannot be written: `make_engagement` with a
+   1,003-character name gives `StoreError: This change carries people this
+   version cannot read; nothing was written`. Review 7 also noted that
+   `person_from_json` judges names on read. So the person is looking at the
+   box they just typed in. The comment's "stored values included ... so the
+   refusal says whose name" is true of the code path but not a case a
+   record can reach. The spelling sentence, which is the one that matters
+   for P306, names the person by name, and that is unambiguous.
+4. **Nit (latent, test fixture): `second` is assumed three characters
+   wide, and nothing checks it.** `_a_long_row_return` still computes
+   `below` from the literal `"/Prepared/B01 - "`, and its closing `assert`
+   checks the engagement path against that literal. So a future `second`
+   wider than three characters would pass the assert while the row sits
+   further past the limit than `LONG_ROW_OVER` says. The docstring's "three
+   characters wide whatever it is" is enforced nowhere. Every current caller
+   passes `"B01"` or the three-code-point `"İ01"`, so nothing is wrong
+   today. A one-line `assert len(second) == 3` (or building `below` from
+   `second`) would pin it.
+
+**Gate** (on the 333b2c9 copy; each file its own process, in parallel,
+`-p no:cacheprovider -q`; Python 3.13.16 venv):
+
+| Step | Result |
+|---|---|
+| tests/test_api.py | 542 passed |
+| tests/test_errors.py | 85 passed |
+| tests/test_tripwire.py | 23 passed |
+| tests/test_single_source.py | 218 passed |
+| tests/test_layers.py | 31 passed |
+| tests/test_repo_map.py | 81 passed, 1 failed (`test_the_committed_map_is_current`, finding 1) |
+| `ruff check .` | All checks passed |
+| `tools/repo_map.py check` | STALE (`pilot/HANDOFF-client-folder.md`), exit 1, finding 1; current at af2c1a0 (clean copy), exit 0 |
+| Python 3.11 floor | not run (no pytest for it here) |
+
+**Hygiene.**
+- `git show --stat 333b2c9` touches `tracker/api.py`, `tests/test_api.py`,
+  `docs/repo-map.json` and the two handoffs, which are the SPECs' named
+  files.
+- The added lines hold no `print`, no `breakpoint` and no `str(exc)`. The
+  `str(exc)` uses left in `tracker/` (ocr, after_install, rollover) predate
+  this commit, and `test_errors` passes.
+- No import was added and `test_layers` passes. ruff is clean, so there is
+  no dead code.
+- Nothing changes behaviour beyond the three sections. The api diff is the
+  two sentences, the two comments, `_PATH_FIELDS`, the two clauses and the
+  docstring.
