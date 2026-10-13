@@ -883,6 +883,42 @@ def test_a_household_whose_record_cannot_be_read_says_so_where_its_pause_is_said
         name=TEST_HOUSEHOLD, whose="the household", problem=str(refused.value))
 
 
+def test_a_return_whose_record_will_not_read_is_said_as_cannot_tell_where_a_new_return_asks(root):
+    """The third review's H1: ``held_back`` asks the household's pause before
+    the client folder, and a return whose record the ledger refuses used to
+    escape the pause with the ledger's own sentence, naming no record, so a
+    new return and Roll Forward never said which one to repair. A household
+    not yet shown shared, its client folder gone and one return's record
+    refused says the return-half sentence, naming the year and the folder
+    (a household its own record shows shared is answered before any return
+    is read, with the folder-missing sentence). The other half: the same
+    broken return with the client folder in its place is held back for
+    nothing - a folder that is there is never a reason to read the record."""
+    import json
+    import shutil
+
+    from tracker.households import CLIENT_SIDE_UNKNOWN
+    from tracker.registry import held_back
+
+    broken = make_engagement(root, ITEMS, scaffold=False)
+    household = private_household_dir(root, TEST_HOUSEHOLD)
+    ledger._write_raw(ledger.path_for(broken), json.dumps(
+        {ledger.EVENT_KEY: ledger.SHARING_CONFIRMED, ledger.AT_KEY: "2026-01-01T00:00:00Z"}
+    ).encode("utf-8"))
+    with pytest.raises(ledger.LedgerError) as refused:
+        ledger.read_events(broken)
+    ledger.read_events(household)                      # the household's own record reads clean
+    client_folder = client_household_dir(root, TEST_HOUSEHOLD)
+    shutil.rmtree(client_folder, ignore_errors=True)
+
+    assert held_back(household) == CLIENT_SIDE_UNKNOWN.format(
+        name=TEST_HOUSEHOLD, problem=str(refused.value),
+        whose=f"its return `{broken.parent.name}\\{broken.name}`")
+
+    client_folder.mkdir(parents=True)
+    assert held_back(household) == ""
+
+
 # ---- S8b: every misfit carries a stable code (ruling 18) -----------------
 
 def _misfit_calls():

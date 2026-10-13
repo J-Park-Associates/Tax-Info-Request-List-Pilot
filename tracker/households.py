@@ -417,7 +417,9 @@ def household_pause(household_dir: Path | str) -> str:
     """:func:`pause_of` read off the disk: the household's record and each
     of its returns' details. A record that cannot be read claims nothing
     here; the pass says its own problem."""
+    from tracker.ledger import LedgerError
     from tracker.manifest import ManifestError, load_engagement_info
+    from tracker.store import StoreError
 
     folder = Path(household_dir)
     try:
@@ -428,7 +430,7 @@ def household_pause(household_dir: Path | str) -> str:
     for one in household_returns(folder):
         try:
             returns.append((one, load_engagement_info(one)))
-        except (ManifestError, ValueError, OSError):
+        except (ManifestError, LedgerError, StoreError, ValueError, OSError):
             continue
     return pause_of(folder, info, returns)
 

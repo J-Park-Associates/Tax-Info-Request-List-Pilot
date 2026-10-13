@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 298,
     "edges": 1334,
-    "reused": 244
+    "reused": 243
   },
   "node_types": [
     "artifact",
@@ -1505,8 +1505,8 @@
       "id": "tracker/households.py",
       "type": "module",
       "layer": "core",
-      "sha256": "5eaefe7e756319a4",
-      "lines": 541,
+      "sha256": "724f4568fe6be095",
+      "lines": 543,
       "exports": [
         "CLIENT_FOLDER_MISSING",
         "CLIENT_SIDE_UNKNOWN",
@@ -4645,7 +4645,7 @@
       "id": "docs/runbook.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "5b4eaf4d8e16b702",
+      "sha256": "78c4dc0ec443919f",
       "lines": 2899,
       "role": "The operator's page for one tax season: the designated machine and today's rule that only one may run a clients root, what a person does each morning and on the draft day, what every index reason and validation note means, and the thirty-minute move to another machine - on a Windows PC or on a Mac.",
       "notes": "Written for a person, not an agent. Roles are docs/workflow.md and the reasons behind the rules are docs/ROADMAP.md; it links to both rather than repeating them. The Mac is written as parallel paragraphs, not edits to the Windows text (SPEC-mac R34): section 1's `### On a Mac` (the heading the pass's own root-not-permitted reason points at) and two paragraphs in section 6 (moving to or from a Mac, taking the app off one). The one-machine rule is still stated once. tests/test_single_source.py quotes the app's sentences against it and holds the data folder's name to settings.DATA_HOME_NAME on both systems (the Windows lines once named a folder the app does not make)."
@@ -4730,15 +4730,15 @@
       "id": "pilot/HANDOFF-client-folder.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "502f3584f260b3d7",
-      "lines": 419
+      "sha256": "4b2a7a4c90985d34",
+      "lines": 629
     },
     {
       "id": "pilot/HANDOFF-form-inputs.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "5c0ee53a3499a4a1",
-      "lines": 756
+      "sha256": "514cf3dcc04878ac",
+      "lines": 919
     },
     {
       "id": "pilot/HANDOFF.md",
@@ -4801,8 +4801,8 @@
       "id": "pilot/SPEC-client-folder-unreadable.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "1c7888d0bdc1f4f1",
-      "lines": 251
+      "sha256": "3495e1f53707a62b",
+      "lines": 296
     },
     {
       "id": "pilot/SPEC-email-zip-tag.md",
@@ -4836,8 +4836,8 @@
       "id": "pilot/SPEC-form-inputs.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "d74f55477ca87cc5",
-      "lines": 540
+      "sha256": "6b998926e34ab980",
+      "lines": 579
     },
     {
       "id": "pilot/SPEC-hide-under-construction.md",
@@ -8746,8 +8746,8 @@
       "id": "tests/test_registry.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "a2c7736b3e921944",
-      "lines": 1203,
+      "sha256": "80e93899fc404842",
+      "lines": 1239,
       "exports": [
         "ITEMS",
         "engagement_dirs",
@@ -8767,6 +8767,7 @@
         "test_a_legacy_folder_is_still_found_by_whether_it_has_rules",
         "test_a_misfit_cannot_be_built_without_a_code",
         "test_a_moved_root_compares_each_rolled_return_only_with_its_own_group",
+        "test_a_return_whose_record_will_not_read_is_said_as_cannot_tell_where_a_new_return_asks",
         "test_a_rolled_forward_prior_is_retired_across_two_households_with_the_same_return_name",
         "test_a_rolled_forward_prior_stays_retired_when_the_clients_root_moves",
         "test_a_rolled_from_that_matches_nothing_is_a_warning_not_a_silence",

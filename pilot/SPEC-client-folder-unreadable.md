@@ -274,8 +274,10 @@ edge; `tests/test_layers.py` stays as it is). No sentence changes.
 
 Test, `tests/test_registry.py`
 `test_a_return_whose_record_will_not_read_is_said_as_cannot_tell_where_a_new_return_asks`:
-a household marked shared, its client folder removed, one unlinked line in
-one return's record → `held_back` returns `CLIENT_SIDE_UNKNOWN` filled with
+a household *not* marked shared (a shared one is answered by its own record
+before any return is read, section 11's G3; the first draft of this paragraph
+said "marked shared" and the builder corrected it), its client folder
+removed, one unlinked line in one return's record → `held_back` returns `CLIENT_SIDE_UNKNOWN` filled with
 the household's name and ``its return `<year>\<folder>` `` (no exception
 escapes). And the other half: the same broken return with the client folder
 present → `held_back` returns `""` (the pause claims nothing, and a folder

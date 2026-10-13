@@ -531,9 +531,9 @@ and the same text is in the error log.
   moved. Nothing is made under the old name until that record reads again
   (runbook section 6)."* The sentence names which record: *the household*,
   or *its return `<year>\<folder name>`*. That record is the first thing to
-  repair (section 6, *When a record needs recovering*); until it reads, no `Clients\<name>` is made - not by the
-  pass, a new return or **Roll Forward…** - and once it does, the verdict
-  above applies as usual.
+  repair (section 6, *When a record needs recovering*); until it reads, no
+  `Clients\<name>` is made - not by the pass, a new return or **Roll
+  Forward…** - and once it does, the verdict above applies as usual.
 - **Never copy a household folder.** Two folders that claim one household -
   a copy, or two names that read as one - stop both: *"Two folders claim
   the household `<name>`: `<a>` and `<b>`. Keep one; a copy of a household

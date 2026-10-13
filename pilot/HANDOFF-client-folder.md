@@ -555,3 +555,75 @@ bullet's ~76. The file has no enforced width. Severity: **nit**.
   `python tools/repo_map.py check` current (298 nodes).
 
 Findings: 0 must fix, 1 should fix, 1 nit.
+
+## Rebuild 3 (Sonnet, 2026-10-13)
+
+Built SPEC section 12 against `b558c94`; nothing committed, per the brief.
+Files changed: `tracker/households.py`, `tests/test_registry.py`,
+`docs/runbook.md`, this handoff, and the generated `docs/repo-map.json` (the
+curated map's text stays true: it never listed which errors the pause skips).
+
+### H1 - `household_pause` lets the "cannot tell" check run
+
+- `tracker/households.py` `household_pause`: the return loop's `except` is now
+  `(ManifestError, LedgerError, StoreError, ValueError, OSError)`, with
+  `from tracker.ledger import LedgerError` and `from tracker.store import
+  StoreError` inside the function beside the existing call-time import (no
+  load-time edge, so `test_layers` is untouched). No sentence changed.
+- New test, `tests/test_registry.py`
+  `test_a_return_whose_record_will_not_read_is_said_as_cannot_tell_where_a_new_return_asks`:
+  one unlinked line in the return's record, the household's own record
+  reading clean, its client folder removed -> `held_back` returns
+  `CLIENT_SIDE_UNKNOWN` filled with the household's name, ``its return
+  `2025\1040 - Test Client` `` and the ledger's own reason; then the folder is
+  put back -> `held_back` returns `""`.
+- **Before the code change** the test failed with the ledger's error escaping:
+  `tracker.ledger.LedgerError: _ledger.jsonl line 2 was written without the
+  record's link ... Run recover (runbook §6).`, raised at `registry.py:936
+  held_back` -> `households.py:430 household_pause` -> `manifest.load_engagement_info`
+  -> `ledger._in_its_place`, at the test's first assertion. **After:** 1 passed.
+  (To show the "before" a second time after the final test text, the change was
+  reverted with `git apply -R` of its own diff and re-applied; no stash.)
+
+### Done differently, and why
+
+- **The test does not mark the household shared**, although SPEC section 12
+  says "a household marked shared". I built it that way first and it failed
+  after the fix too: `held_back` returned the plain folder-missing sentence
+  ("`Clients\Test Household` is missing. Was the household renamed or moved?
+  ..."). `client_side_expected` reads the household's own record first and,
+  when it says shared, answers `True` before any return is read - its
+  docstring (G3) says exactly this ("A household whose own record says it was
+  shared ... gets the folder-missing sentence even if a later return would
+  not read"). So "cannot tell" for a return needs a household not yet shown
+  shared, which is also how Review 3 reproduced H1 ("not shared"). The code is
+  right and the SPEC's wording was loose; the test's docstring says so in one
+  parenthesis. SPEC section 12 itself was not edited (the brief limits the
+  files).
+- The test seeds with `make_engagement(..., scaffold=False)`, so it creates
+  the client folder itself for the "present" half rather than relying on the
+  scaffold having made one.
+
+### H2 - runbook wrap
+
+`docs/runbook.md`, "The same hold-back, when a record cannot be read": the one
+~110-column line is rewrapped at about 80 columns like its neighbours; the
+words are identical (checked on the diff: three lines became three lines).
+
+### Gate
+
+One process per file, `-p no:cacheprovider`, Python 3.13 (the scratchpad
+venv; the 3.11 floor was not exercised here, as in Review 3):
+test_registry 43 passed, 2 skipped; test_households 20 passed;
+test_runner 230 passed; test_scaffold 55 passed; test_errors 83 passed;
+test_single_source 218 passed; test_layers 31 passed; test_repo_map 82 passed;
+`python -m ruff check .` all checks passed; `python tools/repo_map.py update`
+then `check` (see the gate result below). Dead code in the changed lines: none
+(ruff clean, no unused locals or imports; one unused `store`/`engagement_lock`
+import I first put in the new test was removed along with the sharing step).
+
+Gate result: `repo_map.py check` -> "Map is current (298 nodes)", and
+test_repo_map 82 passed on the re-run after the final `update`. The second
+`update` also re-hashed `pilot/HANDOFF-form-inputs.md` (the form-inputs
+review's file, which changed while this rebuild ran); if that lane writes
+again before the commit, `update` needs one more run.
