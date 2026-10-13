@@ -1076,3 +1076,34 @@ request as a draft at its turn and marks it ready once.
 
 **Decided by Jason, 2026-10-13:** the store's gate reads the Document. Built
 under `pilot/SPEC-document-gate.md` (P301), which amends P290.
+
+## Rebuild 5 (Sonnet, 2026-10-13)
+
+Built SPEC-form-inputs section 19 (F7; decision P304, whose row the landing
+session adds). Files: `tracker/api.py`, `tests/test_api.py`, this handoff.
+
+**Built.** In `api._people_from_spec`, after the `is_a_spelling` check and
+before the duplicate test, each whitespace-collapsed spelling is held to
+`records.text_problem`: `raise ManifestError(f"{PEOPLE_LABEL}: a spelling
+{problem}")`. One check serves `create` and `edit-household`'s people (and
+the editor's people block). The store's gate is unchanged.
+
+**Tests** (`tests/test_api.py`, beside the P288 name test), each run before
+the code change and after:
+
+| test | before | after |
+|---|---|---|
+| `test_a_typed_spelling_of_1001_characters_is_refused_by_name_and_nothing_is_written` | fails (value saves) | passes |
+| `test_a_typed_spelling_with_a_control_character_is_refused_and_nothing_is_written` (a bell, `\x07`: not whitespace, so `split()` leaves it) | fails (value saves) | passes |
+| `test_a_typed_spelling_of_exactly_the_text_rule_saves` (two words, 1,000 characters) | passes | passes |
+| `test_a_one_word_spelling_is_refused_before_the_text_rule_is_asked` (1,001 x's and `Smith\x07`: `ONE_WORD_SPELLING` first) | passes | passes |
+
+The refusals assert the exact sentence and that the list head and the ledger
+bytes are unchanged.
+
+**Gate** (Python 3.13 venv only; each file its own process, in parallel):
+`test_api` 526 passed, `test_single_source` 218, `test_layers` 31,
+`test_repo_map` 82 (re-run after the final `update`: see below); `ruff check .`
+clean. The first `check` failed only on another lane's handoff file
+(`pilot/HANDOFF-error-handling-small.md`, appended mid-gate); `update` was run
+again and `check` then reported the map current (302 nodes).

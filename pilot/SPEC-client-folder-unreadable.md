@@ -492,3 +492,75 @@ Gate: `test_registry`, `test_rollover`, `test_single_source`, `test_layers`,
 `## Rebuild 8 (Sonnet, 2026-10-13)` to the handoff - after section 16's
 builder has appended its own, if both run at once (append only; never
 rewrite the file).
+
+---
+
+## 18. Amendments after the eighth review (Opus, 2026-10-13)
+
+Review 8 found both builds to the SPEC and left one gap the SPEC had
+scoped out, plus two nits. Jason's ruling for section 16 was that Roll
+Forward refuses a legacy folder, without limits; the SPEC narrowed it to
+`roll_household` by oversight, so the one-return form - `roll_forward`, the
+command line's one-return branch, and `api._cmd_rollover` - still rolled a
+legacy return with zero rows (the reviewer ran it: exit 0, "Rolled 1040 -
+Old Park forward", a 2027 folder made). The build is Sonnet's.
+
+**S1 - the one-return form refuses too.** In `roll_forward`, after the
+year bound and before `load_manifest(prior_dir)` reads a row: a call-time
+import of `LEGACY_FOLDER`, `LEGACY_MANIFEST_FILENAME` and `engagement_from`
+from `tracker.registry` (the pattern `_unreadable_return_said` already
+uses), and
+
+```python
+if engagement_from(prior_dir).problem == LEGACY_FOLDER.format(name=LEGACY_MANIFEST_FILENAME):
+    raise ManifestError(ROLLOVER_LEGACY_FOLDER.format(
+        prior=prior_dir.name, name=LEGACY_MANIFEST_FILENAME))
+```
+
+Compared with the registry's one constant, never a substring, and never a
+second definition of "legacy" in this module: `engagement_from` is the one
+reader of the old workbook's name in the package and stays so. Any other
+`problem` it reports is left alone here - `load_manifest` raises that
+refusal itself, loudly, as today. `roll_household`'s own check (section 16)
+stays where it is, ahead of `_plan_one`, so the household form's refusal
+still comes before any lock; `roll_forward`'s check is the one the
+one-return form and the app's **Roll Forward** reach. `api._cmd_rollover`
+needs no change: the `ManifestError` rides back to the app as every
+refusal from it does.
+
+In the command line's one-return branch, the `roll_forward(...)` call is
+wrapped as the household branch's `roll_household` call is: `except
+ManifestError as exc` prints `f"{given.name} was not rolled forward\n\n  {NOT_ROLLED_HEADING}\n    {exc}\n"`
+and exits 1. The one other `ManifestError` `roll_forward` raises - the
+target year not later than the prior's - was a traceback in this form and
+is now said under the same heading; its sentence does not change.
+
+**N1 - the tests pin every record.** The by-plan test of section 16 pins
+only the legacy return's record bytes, and the `--only` test pins none;
+both list the private tree as paths, which a record rewritten in place
+would pass. Each pins `_hashes(root / PRIVATE_TREE)` instead, before and
+after, as the client tree already is.
+
+**N2 - two descriptions widened.** The registry's module docstring (the
+misfit list near `registry.py:32`: "a folder holding only the workbook the
+tracker no longer reads") and the registry node's `role` in
+`docs/repo-map.curated.json` ("and no record ... never as an engagement")
+describe the no-record case only. Each gains the record-without-a-list
+case in a few words - the constant's own: the list is in the workbook "and
+none in its record" - and the map is regenerated (`update`).
+
+**Tests** (`tests/test_rollover.py`): `roll_forward` on a legacy return of
+the open year → `ManifestError`, the exact `ROLLOVER_LEGACY_FOLDER`
+sentence, both trees' hashes and every record unchanged; the same return by
+the one-return command line (`python -m tracker.rollover <return> --year
+2027`, driven as the `--only` test drives the household form) → exit 1,
+`NOT ROLLED`, the sentence, no 2027 folder, both trees' hashes unchanged;
+and `api._cmd_rollover` through `tests/test_api.py` - the app's **Roll
+Forward** on a legacy return → the sentence, nothing written (one test,
+inserted beside the existing rollover tests; exact insertion, never a
+rewrite of the file). Mutation check: dropping the new `roll_forward`
+check must fail exactly the new tests and no section-16 test.
+
+Gate: `test_rollover`, `test_registry`, `test_api`, `test_single_source`,
+`test_layers`, `test_repo_map`, ruff, the map check. The builder appends
+`## Rebuild 9 (Sonnet, 2026-10-13)` to the handoff (append only).

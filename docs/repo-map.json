@@ -4760,8 +4760,8 @@
       "id": "pilot/HANDOFF-form-inputs.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "3679ee7aaa477cf6",
-      "lines": 1078
+      "sha256": "3ba893807d1cf267",
+      "lines": 1109
     },
     {
       "id": "pilot/HANDOFF.md",
@@ -4824,8 +4824,8 @@
       "id": "pilot/SPEC-client-folder-unreadable.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "6ad2b3333579de28",
-      "lines": 494
+      "sha256": "8e40f3110710fcc8",
+      "lines": 566
     },
     {
       "id": "pilot/SPEC-document-gate.md",

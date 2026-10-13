@@ -2313,6 +2313,10 @@ def _people_from_spec(sent: object) -> tuple[Person, ...]:
                 continue
             if not is_a_spelling(spelling):
                 raise ManifestError(ONE_WORD_SPELLING)
+            # Searched on every page as the name is, so held to the same
+            # rule where it is typed (P304); a stored one is not re-judged.
+            if problem := records.text_problem(spelling):
+                raise ManifestError(f"{PEOPLE_LABEL}: a spelling {problem}")
             if spelling not in spellings:
                 spellings.append(spelling)
         people.append(Person(kind=kind, name=name, spellings=tuple(spellings)))

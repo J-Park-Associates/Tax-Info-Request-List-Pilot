@@ -11209,6 +11209,60 @@ def test_a_persons_name_longer_than_the_text_rule_is_refused_by_name(capsys, dem
     assert (list_head(engagement), ledger.path_for(engagement).read_bytes()) == before
 
 
+_SPELLING_REFUSED = (f"{api.PEOPLE_LABEL}: a spelling must be one line of text of at most "
+                     "1000 characters, with no control character")
+
+
+def _a_spelling_typed_is_refused_and_nothing_is_written(capsys, demo_root, typed):
+    from tracker.manifest import list_head
+
+    engagement = _a_return_to_type_into(capsys, demo_root)
+    rows = payload_of_state(capsys, engagement)["rules"]
+    before = (list_head(engagement), ledger.path_for(engagement).read_bytes())
+    people = [{"kind": "taxpayer", "name": "Jane Smith", "spellings": [typed]}]
+    code, payload = run(capsys, "edit", api.ENGAGEMENT_FLAG, str(engagement),
+                        stdin={"items": rows, "engagement": {"people": people}})
+    assert code == 1
+    assert payload["error"] == _SPELLING_REFUSED
+    assert (list_head(engagement), ledger.path_for(engagement).read_bytes()) == before
+
+
+def test_a_typed_spelling_of_1001_characters_is_refused_by_name_and_nothing_is_written(
+        capsys, demo_root):
+    """P304: a spelling is searched on every page as the name is, so it is
+    held to the name's rule where it is typed - one line, at most 1,000
+    characters, no control character."""
+    _a_spelling_typed_is_refused_and_nothing_is_written(capsys, demo_root, "J " + "x" * 999)
+
+
+def test_a_typed_spelling_with_a_control_character_is_refused_and_nothing_is_written(
+        capsys, demo_root):
+    _a_spelling_typed_is_refused_and_nothing_is_written(capsys, demo_root, "Jane\x07 Smith")
+
+
+def test_a_typed_spelling_of_exactly_the_text_rule_saves(capsys, demo_root):
+    engagement = _a_return_to_type_into(capsys, demo_root)
+    rows = payload_of_state(capsys, engagement)["rules"]
+    longest = "J " + "x" * 998                                   # 1,000 characters, two words
+    assert len(longest) == 1000
+    people = [{"kind": "taxpayer", "name": "Jane Smith", "spellings": [longest]}]
+    code, payload = run(capsys, "edit", api.ENGAGEMENT_FLAG, str(engagement),
+                        stdin={"items": rows, "engagement": {"people": people}})
+    assert code == 0, payload
+    [saved] = load_engagement_info(engagement).people
+    assert saved.spellings == (longest,)
+
+
+def test_a_one_word_spelling_is_refused_before_the_text_rule_is_asked():
+    from tracker.names import ONE_WORD_SPELLING
+
+    for one_word in ("x" * 1001, "Smith\x07"):
+        people = [{"kind": "taxpayer", "name": "Jane Smith", "spellings": [one_word]}]
+        with pytest.raises(ManifestError) as raised:
+            api._people_from_spec(people)
+        assert str(raised.value) == ONE_WORD_SPELLING
+
+
 def test_the_firms_name_and_phone_are_held_to_the_one_line_text_rule(capsys, tmp_path, monkeypatch):
     from tracker.settings import ENV_SETTINGS_DIR, clients_root, firm, firm_phone, settings_path
 
