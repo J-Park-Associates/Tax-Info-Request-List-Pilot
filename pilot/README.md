@@ -15,27 +15,19 @@ original. The original's improvements come in only when Jason asks for a merge.
 
 ## Rules for this repository
 
-1. **Small, named differences from the original.** Pilot code lives in this
-   `pilot/` folder and in new renderer files (`app/renderer/tour.js`,
-   `pilot.js`, `pilot-content.js`, `pilot-style.css`, `pilot-ui.css`). Existing
-   files change only where `SPEC.md` or `SPEC-ui.md` names the lines: the five
-   added lines in `index.html` (four in `SPEC.md`, the `pilot-ui.css` link in
-   `SPEC-ui.md`), the pilot's own names on the PC (SPEC section 3a), and the
-   `forced-colors` block at the end of `style.css` (P50, Windows contrast
-   themes). Engine fixes are
-   made in the original repository and merged in here. Keeping the differences
-   small is what keeps each merge from the original clean.
+1. **This repository is the one codebase (P309).** Since 2026-10-13
+   nothing is merged from the original
+   `J-Park-Associates/Tax-Info-Request-List`. A fix the original gets is
+   copied across by hand, as a change of this repository's own with its
+   own decision row. Pilot code no longer has to be additive: P7 and P10,
+   which kept the pilot's differences small so merges from the original
+   stayed clean, are retired.
 2. **Pilot decisions are logged in [`DECISIONS.md`](DECISIONS.md)** as P1, P2,
    and so on, never in `docs/ROADMAP.md` (which stays the original's log, as
    merged in).
-3. **Taking the original's changes, by hand, when Jason asks:**
-   ```
-   git remote add upstream https://github.com/J-Park-Associates/Tax-Info-Request-List.git   # once
-   git fetch upstream main
-   git merge upstream/main          # a merge commit, never a rebase
-   python tools/repo_map.py update  # regenerate the map; never hand-resolve it
-   ```
-   Then run the gate (CLAUDE.md) and commit.
+3. **Nothing is taken from the original by merge** (P309, ending P17's
+   hand merge). The `upstream` remote and `git merge upstream/main` are no
+   longer part of the work.
 4. **No GitHub Actions minutes.** The workflow files came along with the copy.
    Actions is to be turned off for this repository (Settings -> Actions ->
    General -> Disable actions), so nothing here runs on GitHub. The gate runs
@@ -53,5 +45,5 @@ original. The original's improvements come in only when Jason asks for a merge.
 - [`RELEASE.md`](RELEASE.md) - the Windows steps to build, check, tag and send.
 - [`Tester Guide.md`](<Tester Guide.md>) - what a tester is given.
 - `wintest/` - the Windows test kit (P28).
-- [`SPEC-mac-check-fixes.md`](SPEC-mac-check-fixes.md) - the current work: the fixes from the Mac check of 2026-10-10.
+- [SPEC-architecture.md](SPEC-architecture.md) - the current work: the architecture audit and the refactor in phases.
 - [`SPEC-cleanup.md`](SPEC-cleanup.md) - dead code, folds and repository residue (landed, pull request #33).
