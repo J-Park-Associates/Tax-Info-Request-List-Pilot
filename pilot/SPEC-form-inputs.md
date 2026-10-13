@@ -623,3 +623,39 @@ for a one-word value.
 Gate: `test_api`, `test_single_source`, `test_layers`, `test_repo_map`,
 ruff, the map check. The builder appends `## Rebuild 5 (Sonnet, 2026-10-13)`
 to `pilot/HANDOFF-form-inputs.md`.
+
+---
+
+## 20. I2: the path-room check matches rows by the identifier's key (Jason, 2026-10-13; decision P305)
+
+Jason's ruling on I2 (Review 4): option 1. `api._refuse_a_changed_row_past_the_limit`
+(decision 131) builds `stored` keyed by the exact identifier, so a respelling
+by case alone reads as a new row and is measured; a held row already past
+what Windows opens would be refused a change of case with `PATH_TOO_LONG`,
+though a case change cannot alter a path's length. Decision 160 makes a
+change of case the same request everywhere; section 16 applied that to the
+editor's judgment, this applies it to the one check still using exact
+spelling. The build is Sonnet's, after section 19's build has handed back
+(both edit `tracker/api.py` and `tests/test_api.py`).
+
+**R4, extended.** In `_refuse_a_changed_row_past_the_limit`, `stored` is
+keyed by `identifier_key(item.identifier)` and each sent item is looked up
+by `identifier_key(item.identifier)`; everything else in the check is
+unchanged (a row whose path fields differ, a row newly Asked, and a row the
+list does not hold are measured; a row the person did not touch is not). The
+docstring says a change of case is the same row (decision 160).
+
+**Tests** (`tests/test_api.py`, beside the decision-131 tests): a list whose
+held row's working copy is already past the limit (make the room small the
+way the existing 131 tests do) has that row's identifier respelt by case
+alone → the save succeeds, nothing is measured for it; the same list with
+that row's Document lengthened → refused with `PATH_TOO_LONG` as today; a
+new row past the limit → refused as today.
+
+**Decision row (added by the landing session):**
+
+| P305 | 2026-10-13 | The editor's path-room check (decision 131) matches a sent row to the stored one by the identifier's key, so a change of case alone is the same row and is not measured; it had matched by exact spelling (SPEC-form-inputs section 20). | I2 of the fourth form-inputs review: a held row past the limit was refused a change of case with "shorten the folder". |
+
+Gate: `test_api`, `test_single_source`, `test_layers`, `test_repo_map`,
+ruff, the map check. The builder appends `## Rebuild 6 (Sonnet, 2026-10-13)`
+to `pilot/HANDOFF-form-inputs.md`.
