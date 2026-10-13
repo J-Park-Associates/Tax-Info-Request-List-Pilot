@@ -3671,7 +3671,7 @@ ADMISSION_PIN: dict[int, dict[str, str]] = {2: {
     "tracker.layout.recorded_subfolder_part": "50620c73d7ae6dab",
     "tracker.layout.root_of": "a6c7013a757965b4",
     "tracker.layout.segment_problem": "c85f6ed345abe1fd",
-    "tracker.layout.spoofing_problem": "7a767da08a51fff8",
+    "tracker.layout.spoofing_problem": "7f65f4db38cc7444",
     "tracker.ledger.ACCEPTED_KEY": "f4764fc7a8ddd588",
     "tracker.ledger.ALSO_KEY": "da42922852e5dfcd",
     "tracker.ledger.ASKED_KEY": "46da5b49eea2fbee",

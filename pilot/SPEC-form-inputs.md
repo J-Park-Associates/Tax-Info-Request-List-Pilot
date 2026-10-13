@@ -590,5 +590,5 @@ in a request's Document (`layout.spoofing_problem`, the same narrow set as an
 identifier or a short name), `rule_row_fault` names the field `document`, the
 store's admission rises from 4 to 5, and `manifest.item_from_fields` applies
 the rule to every row's Document, typed or held, naming the row and the
-Document before the derived-short-name check of section 15 can say it of the
-same character. Sections 14 to 17 otherwise stand as written.
+Document, or the Issuer Name for an issuer row, before the derived-short-name
+check of section 15 can say it of the same character. Sections 14 to 17 otherwise stand as written.

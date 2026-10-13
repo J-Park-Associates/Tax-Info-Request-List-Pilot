@@ -391,9 +391,9 @@ def spoofing_problem(text: str) -> str | None:
     ``None``: the narrow half of :func:`invisible_problem`, in the same
     :data:`NAME_INVISIBLE` sentence.
 
-    It is what the store's gate asks of a stored identifier or short name
-    (P290). The full rule would refuse a no-break space or a soft hyphen
-    that an ordinary paste leaves in a value typed before
+    It is what the store's gate asks of a stored identifier, short name and
+    Document (P290, P301). The full rule would refuse a no-break space or a
+    soft hyphen that an ordinary paste leaves in a value typed before
     that rule existed - values this version's admission judges again - and
     the household would stop on every pass over a space nobody can see. A
     person typing a new value is held to the full rule instead.
