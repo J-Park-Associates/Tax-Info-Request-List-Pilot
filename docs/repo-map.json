@@ -4751,8 +4751,8 @@
       "id": "pilot/HANDOFF-error-handling-small.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "42266e3bbf91fcea",
-      "lines": 472
+      "sha256": "b5234188f457ec8b",
+      "lines": 621
     },
     {
       "id": "pilot/HANDOFF-form-inputs.md",
@@ -4843,8 +4843,8 @@
       "id": "pilot/SPEC-error-handling-small.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "48d39865b0e105e0",
-      "lines": 240
+      "sha256": "9d6b882953567e58",
+      "lines": 255
     },
     {
       "id": "pilot/SPEC-firm-cache-fill.md",

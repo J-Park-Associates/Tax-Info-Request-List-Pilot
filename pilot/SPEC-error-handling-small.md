@@ -238,3 +238,18 @@ Gate after the rebuild, one process per file: `test_api`, `test_templates`,
 `test_errors`, `test_single_source`, `test_tripwire`, `test_layers`,
 `test_repo_map`, ruff, the map check. The builder appends
 `## Rebuild 1 (Sonnet, 2026-10-13)` to the handoff.
+
+---
+
+## 11. After the second review (Opus, 2026-10-13)
+
+Review 2 found nothing against the code. G1 (should fix) was the map
+committed in `48a1f8b` while the rollover rebuild was mid-edit in the same
+checkout; `57c3f83` made it current again and it lands in the same pull
+request, so nothing is left to do. G2: the Rebuild 1 handoff note that P298
+still needed rewording was wrong - `bf22b65` had reworded it. G3 (optional
+tightening of `test_errors`' scan of `errors.py`'s own functions) is not
+taken: the one-definition rule guards every other module, and `errors.py` is
+the definition. G4 (commit trailers) is the session's attribution line, not a
+record of which model built what; the handoffs are. The lane is closed at
+`48a1f8b`.

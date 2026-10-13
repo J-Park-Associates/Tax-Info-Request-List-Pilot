@@ -470,3 +470,152 @@ passed; test_layers 31 passed; test_repo_map 82 passed; `ruff check .` clean;
 another agent's file (`pilot/HANDOFF-client-folder.md`) and `update` was run
 a second time, as the brief allowed. Only the scratchpad venv interpreter was run (the
 office interpreter was not run here).
+
+## Review 2 (Opus, 2026-10-13)
+
+Independent second review of commit `48a1f8b` (call it C;
+`git diff 3489f5d 48a1f8b`) against SPEC section 10 and the P298/P299 rows.
+I read the commit with `git show` and ran it on a `git archive 48a1f8b` copy
+in the scratchpad (git-initialised, one commit), using the scratchpad venv
+(Python 3.13 only; the 3.11 floor interpreter is not installed here). I did
+not touch the checkout except to add this section. Throwaway probes ran in
+the copy and were not kept.
+
+C changes six files: `tracker/api.py`, `tracker/templates.py`,
+`tests/test_errors.py`, `tests/test_single_source.py`, `docs/repo-map.json`
+and this handoff. Nothing outside section 10's list changed.
+
+### Resolved
+
+- **F1.** `api.STORE_UNAVAILABLE` and `api.RECORD_NOT_WRITTEN` are
+  `==` to section 10's two literals, so they match word for word.
+  `_failure_of(StoreUnavailable("SQLITE_BUSY"))` and
+  `_failure_of(RecordNotWritten("ENOSPC"))` return those sentences, with
+  `{log}` filled as `tracker-errors.log`, and `kind == "failed"`, so Retry
+  stays. The runbook paragraph at C (`docs/runbook.md` ~1495-1499) quotes
+  only the opening words, "*the app's database could not be used just now
+  (SQLITE_BUSY)*" and "*the record could not be written (ENOSPC)*", and
+  says "keeps Retry; the details are in the error log". All of that is
+  still true. No other "nothing was changed" sentence in the tree belongs
+  to these two; the remaining ones are unrelated refusals. The P298 row
+  already reads "saying that what finished is on the record" (see G2).
+- **F2.** The three constants, their comment and the `DEFAULT_EXTENSIONS`
+  import are gone from `templates.py`. A whole-word grep for
+  `YEAR_NOTE|EXTENSION_DEFAULT_NOTE|KEYWORD_DEFAULT_NOTE` over `tracker/`,
+  `app/` (minus `node_modules`), `tests/`, `tools/`,
+  `docs/repo-map.curated.json` and `docs/*.md` finds nothing. Nothing
+  imports `DEFAULT_EXTENSIONS` through `templates`. test_templates passes
+  (41).
+- **F3.** `THE_ONE_DEFINITION` is the set
+  `{("errors.py","error_class"), ("errors.py","_code_of")}` and
+  `ERRNO_NAMED_ON_PURPOSE` keeps only `ledger.py:_not_written`. The file
+  check uses `THE_ONE_FILE`. I ran eight throwaway probes through
+  `_second_definitions`. Each of these is still caught:
+  (a) `def error_class` in `other.py`;
+  `def _code_of` in `ledger.py` reading `errno.errorcode`;
+  `def _code_of` in `api.py` returning `type(exc).__name__`;
+  (b) a function in `runner.py` returning `exc.__class__.__name__` for an
+  annotated exception;
+  (c) a function in `filer.py` reading `errno.errorcode`;
+  a third `errors.py` function that reads errno or names the class;
+  `error_code` in `errors.py` naming the class; and
+  `ledger._not_written` naming the class.
+  Same-named functions in another file are therefore a second definition,
+  as the new comment says. The one gap is the one the builder noted:
+  `_code_of` in `errors.py` naming the class is no longer caught (G3).
+  With the old table shape, the real `errors.py` gave no findings either.
+  `_code_of` reads `getattr(type(exc), SAYS_ITS_CODE)`, which the guard
+  never counted as naming a class. So the guard's result on today's code
+  is unchanged.
+- **F4.** No code change. The P299 row at C reads as section 10 asks.
+- **F5.** `test_the_renderer_types_no_vocabulary_of_its_own` now asserts
+  `literal not in js` without the no-op replace, which is a slightly
+  stronger check. `unscanned_key` has 0 hits under `app/`.
+  `test_picking_a_form_is_not_unsaved_work_but_typing_after_it_is` still
+  drives `chooseForm` and asserts clean-after-pick and dirty-after-typing.
+  Its stub keeps `ask_the_client` because app.js:2758 reads
+  `vocab.ask_the_client`. `ask_the_client_note` has 0 hits under `app/`.
+  Both tests pass.
+- **Dead code, layers.** No unused import or name and no commented-out code
+  in the changed files. Ruff is clean. test_layers passes.
+
+### Findings
+
+**G1 - should fix (landing session). `docs/repo-map.json` at C describes a
+tree that is not C, so `test_repo_map` and `repo_map.py check` fail on C by
+itself.** The builder ran `update` in the shared checkout while the
+rollover rebuild was mid-edit. As a result, C's map holds:
+- hashes for `tracker/rollover.py` and `docs/runbook.md` that match the
+  rollover builder's working copy, not C;
+- a `tests/test_rollover.py` hash that matches neither;
+- two test names
+  (`test_a_legacy_folder_that_is_not_open_is_not_this_household_not_a_record_that_cannot_be_read`,
+  `test_only_naming_a_readable_return_of_a_closed_year_is_not_this_household`)
+  and line counts from work that is not in C.
+
+On the archive, `check` exits 1 naming those three files, and
+`test_the_committed_map_is_current` fails. That gives test_repo_map 81
+passed, 1 failed, not the 82 the Rebuild 1 gate reports. That count was
+true of the shared checkout at the moment it ran, not of the commit. An
+`update` on the archive changes only those rollover facts. The four files
+this build touched are correct in the map. The next commit, `57c3f83`
+(Rebuild 6 of SPEC-client-folder-unreadable), heals it: on an archive of
+`57c3f83`, `check` says "Map is current (302 nodes)". So this is a should
+fix and not a must fix as long as C and `57c3f83` land together in that
+order. It becomes a must fix if `57c3f83` is dropped, reordered after C, or
+C is landed or cherry-picked alone. In that case, refresh the map from C's
+own tree. Going forward, a builder sharing a checkout should run `update`
+on an archive of its own commit, not on the shared working tree.
+
+**G2 - nit (this handoff, "Rebuild 1", F1 paragraph). It says "The P298 row
+in the SPEC's section 9 still carries the old clause; ... the landing
+session rewords it."** That is stale. The row was already reworded at
+`3489f5d`, and SPEC line 190 reads "saying that what finished is on the
+record" at both the base and C. The old wording survives only in section
+4's quoted constants (lines 92 and 94), which section 10 amends. The
+landing session has nothing to reword there.
+
+**G3 - nit (`tests/test_errors.py` `_second_definitions`). Both
+`errors.py` functions are now skipped whole, so a `_code_of` in
+`errors.py` that named its exception's class (`type(exc).__name__`) would
+no longer be caught.** Probe h confirmed this; the old shape caught it.
+This does not open a second definition. `_code_of` is private, sits in
+the one file that holds the rule, and is read only by `error_class` and
+`error_code`. That change would also visibly break `error_class`'s output
+(`Name (Name)`), which test_errors' `error_class` and `error_code` tests
+pin. If anyone wants the old strength back: keep the whole-function skip
+for `error_class` only, and exempt `_code_of` from the errno branch alone,
+for example by checking `where in THE_ONE_DEFINITION` only where
+`reads_errno` is tested. Optional.
+
+**G4 - nit (commit metadata; landing session's call). One build, three
+names.** C's trailer says `Co-Authored-By: Claude Fable 5.1`, this
+handoff's header says Sonnet, and CLAUDE.md says Opus 5.5 builds. A pushed
+commit cannot be amended from here.
+
+### Gate (archive copy of `48a1f8b`, one process per file in parallel, `-p no:cacheprovider`, Python 3.13)
+
+| File | Result |
+|---|---|
+| test_api | 522 passed |
+| test_templates | 41 passed |
+| test_errors | 85 passed |
+| test_single_source | 218 passed |
+| test_tripwire | 23 passed |
+| test_layers | 31 passed |
+| test_repo_map | 81 passed, 1 failed: `test_the_committed_map_is_current`, stale on `docs/runbook.md`, `tests/test_rollover.py` and `tracker/rollover.py` (G1; current at `57c3f83`) |
+
+`python -m ruff check .`: all checks passed. `python tools/repo_map.py
+check` on C: stale, the same three files (G1). On `57c3f83`: current.
+
+Findings: 0 must fix, 1 should fix, 3 nits.
+
+## Closed (2026-10-13)
+
+Closed at `48a1f8b` (Review 2: nothing against the code; its G1 was the
+map, current again at `57c3f83`). Correction to the Rebuild 1 note above:
+P298 was already reworded in `bf22b65`; the landing session has nothing to
+do there. Decision rows P297-P300 are added at landing (SPEC section 9, as
+reworded by section 10). Open for Jason: `override_labels` is kept on doubt
+(P77's labels, which the page does not draw) - wire it or drop it; the
+Python 3.11 floor was not run in this container.
