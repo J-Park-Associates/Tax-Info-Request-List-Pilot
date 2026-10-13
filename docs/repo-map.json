@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 302,
     "edges": 1336,
-    "reused": 248
+    "reused": 247
   },
   "node_types": [
     "artifact",
@@ -4730,7 +4730,7 @@
       "id": "pilot/DECISIONS.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "fbf330646b09c2f5",
+      "sha256": "672d97835e87a84b",
       "lines": 295
     },
     {
@@ -4843,8 +4843,8 @@
       "id": "pilot/SPEC-error-handling-small.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "9d6b882953567e58",
-      "lines": 255
+      "sha256": "7094d5b12f9017fe",
+      "lines": 279
     },
     {
       "id": "pilot/SPEC-firm-cache-fill.md",
