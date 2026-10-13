@@ -381,7 +381,7 @@ def scaffold_household(
             except ClientSideUnknown as exc:
                 # A record that cannot be read cannot say the household never
                 # had a client folder (P296): refuse with the one sentence.
-                raise ClientFolderMissing(str(exc)) from None
+                raise ClientFolderMissing(errors.said(exc, (ClientSideUnknown,))) from None
             if said:
                 raise ClientFolderMissing(said)
         elif not may_make_household:

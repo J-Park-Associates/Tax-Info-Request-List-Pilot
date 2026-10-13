@@ -523,14 +523,15 @@ and the same text is in the error log.
   sentence.
 - **The same hold-back, when a record cannot be read.** If the client
   folder is gone and the household's record, or one of its returns', will
-  not read - a sync conflict, a damaged line - every run of the household
-  says instead: *"`Clients\<name>` is missing and the record of `<whose>`
-  could not be read (`<the record's own reason>`), so the app cannot tell
-  whether the household was renamed or moved. Nothing is made under the old
-  name until that record reads again (runbook section 6)."* The sentence
-  names which record: *the household*, or *its return `<folder name>`*. That
-  record is the first thing to repair (section 6, *When a record needs
-  recovering*); until it reads, no `Clients\<name>` is made - not by the
+  not read - a sync conflict, a damaged line - before the record has shown
+  the household was shared (or an earlier return has shown the folder
+  existed), every run of the household says instead: *"`Clients\<name>` is
+  missing and the record of <whose> could not be read (`<the record's own
+  reason>`), so the app cannot tell whether the household was renamed or
+  moved. Nothing is made under the old name until that record reads again
+  (runbook section 6)."* The sentence names which record: *the household*,
+  or *its return `<year>\<folder name>`*. That record is the first thing to
+  repair (section 6, *When a record needs recovering*); until it reads, no `Clients\<name>` is made - not by the
   pass, a new return or **Roll Forward…** - and once it does, the verdict
   above applies as usual.
 - **Never copy a household folder.** Two folders that claim one household -

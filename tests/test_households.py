@@ -452,14 +452,16 @@ def test_a_household_whose_record_cannot_be_read_is_not_said_to_have_had_no_clie
 
     assert str(unknown.value) == CLIENT_SIDE_UNKNOWN.format(
         name="Smith Family", whose="the household", problem=str(refused.value))
-    assert "LedgerError" in caplog.text and "households: the client-side history" in caplog.text
+    assert "LedgerError" in caplog.text
+    assert "households: the client-side history (Smith Family)" in caplog.text
 
 
 def test_the_sentence_names_the_return_whose_record_cannot_be_read(household, tmp_path, caplog):
     """P296, the review's F1: the household's own record reads clean and one
     of its returns' will not. The sentence says ``its return`` with that
-    folder's name, and the error log carries that folder's name too - so a
-    person repairs the return's record and not the household's."""
+    return's year and folder name (G1: Roll Forward keeps the name across
+    seasons), and the error log carries the same - so a person repairs the
+    right year's record and not the household's."""
     import json
     import logging
 
@@ -480,9 +482,11 @@ def test_the_sentence_names_the_return_whose_record_cannot_be_read(household, tm
             client_folder_missing(household)
 
     assert str(unknown.value) == CLIENT_SIDE_UNKNOWN.format(
-        name="Smith Family", whose="its return `1040 - John`", problem=str(refused.value))
-    assert "its return `1040 - John`" in str(unknown.value)
-    assert "1040 - John" in caplog.text and "households: the client-side history" in caplog.text
+        name="Smith Family", whose="its return `2025\\1040 - John`", problem=str(refused.value))
+    assert "its return `2025\\1040 - John`" in str(unknown.value)
+    # the exact entry errors.keep writes (G2): the store's own checkpoint warning
+    # also carries the folder name, so the name alone would prove nothing
+    assert "households: the client-side history (2025\\1040 - John)" in caplog.text
 
 
 def test_a_journal_that_does_not_exist_is_skipped_and_only_one_that_will_not_read_is_cannot_tell(
@@ -493,7 +497,9 @@ def test_a_journal_that_does_not_exist_is_skipped_and_only_one_that_will_not_rea
     their client folder gone, answer "never had one" and raise nothing. (A
     household with no record is stopped by the registry before this is
     asked.) Only a journal that is there and will not read is "cannot tell"."""
-    from tracker.households import client_folder_missing
+    import json
+
+    from tracker.households import ClientSideUnknown, client_folder_missing
 
     absent = make_engagement(tmp_path, ITEMS, household="Smith Family", year=2025,
                              return_name="1040 - John", scaffold=False)
@@ -501,6 +507,16 @@ def test_a_journal_that_does_not_exist_is_skipped_and_only_one_that_will_not_rea
     ledger.path_for(household).unlink()
 
     assert client_folder_missing(household, [absent]) == ""
+
+    # the other half (G4): a journal that is there and will not read is "cannot tell"
+    unreadable = make_engagement(tmp_path, ITEMS, household="Smith Family", year=2025,
+                                 return_name="1040 - Maria", scaffold=False)
+    ledger._write_raw(ledger.path_for(unreadable), json.dumps(
+        {ledger.EVENT_KEY: ledger.SHARING_CONFIRMED, ledger.AT_KEY: "2026-01-01T00:00:00Z"}
+    ).encode("utf-8"))
+    with pytest.raises(ClientSideUnknown) as unknown:
+        client_folder_missing(household, [absent, unreadable])
+    assert "its return `2025\\1040 - Maria`" in str(unknown.value)
 
 
 def test_a_client_folder_that_is_there_is_never_a_reason_to_read_the_record(

@@ -468,14 +468,20 @@ def client_side_expected(household_dir: Path | str, returns: Iterable[Path]) -> 
     anything.
 
     **The sentence names whose record failed** - "the household", or "its
-    return" with the return folder's name in backticks - and the error log
-    carries that folder's name, so a person repairs the record that is
-    broken and not the one beside it that reads clean.
+    return" with the return's year and folder name in backticks
+    (``its return `2025\\1040 - John` ``; Roll Forward keeps a return's name
+    across seasons, so the folder name alone could be two records) - and the
+    error log carries the same (the household's folder name for the
+    household), so a person repairs the record that is broken and not the
+    one beside it that reads clean.
 
-    **One part that will not read makes the answer "cannot tell"**, even
-    when another return would have proved the folder existed: both answers
-    hold the household back and make nothing, and "cannot tell" sends a
-    person to the broken record first.
+    **The halves are read in order and the first definite answer wins**:
+    the household's record, then each return in turn. A household whose own
+    record says it was shared, or whose earlier return proves the folder
+    existed, gets the folder-missing sentence even if a later return would
+    not read. "Cannot tell" is the answer only when a read fails before any
+    half has answered; both answers hold the household back and make
+    nothing, and "cannot tell" sends a person to the broken record first.
 
     **A record that is not there is not a record that cannot be read.** A
     household or a return with no journal at all has said nothing: there is
@@ -496,7 +502,7 @@ def client_side_expected(household_dir: Path | str, returns: Iterable[Path]) -> 
         if ledger.path_for(folder).is_file() and shared_on(folder) is not None:
             return True
         for one in returns:
-            whose, failed = f"its return `{one.name}`", one
+            whose, failed = f"its return `{one.parent.name}\\{one.name}`", one
             if not ledger.path_for(one).is_file():
                 continue
             for row in store.documents(the_record(one), one):
@@ -506,7 +512,8 @@ def client_side_expected(household_dir: Path | str, returns: Iterable[Path]) -> 
                                                                                  folder.name):
                         return True
     except Exception as exc:
-        errors.keep("households: the client-side history", exc, name=failed.name)
+        errors.keep("households: the client-side history", exc,
+                    name=failed.name if failed is folder else f"{failed.parent.name}\\{failed.name}")
         raise ClientSideUnknown(CLIENT_SIDE_UNKNOWN.format(
             name=folder.name, whose=whose,
             problem=errors.said(exc, (ManifestError, LedgerError, StoreError)))) from exc

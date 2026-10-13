@@ -367,3 +367,53 @@ and assert `ClientSideUnknown` - the contrast the name states. Severity:
   two new locals (`whose`, `failed`) are both read.
 
 Findings: 0 must fix, 2 should fix, 2 nits.
+
+## Rebuild 2 (Sonnet, 2026-10-13)
+
+Built SPEC section 11, nothing more. No commit made; the other lane's files
+(`tracker/{manifest,filer,api}.py`, their tests, `pilot/DECISIONS.md`) were
+not touched.
+
+- **G1.** `tracker/households.py` `client_side_expected`: `whose` for a return
+  is now ``its return `<year>\<folder name>` `` (`one.parent.name` and
+  `one.name`, backslash-joined); the `errors.keep` `name=` carries the same for
+  a return (`failed.name` for the household, tested by `failed is folder`).
+  Docstring updated. `docs/runbook.md` ("The same hold-back, when a record
+  cannot be read") says ``its return `<year>\<folder name>` ``.
+- **G2.** `test_the_sentence_names_the_return_whose_record_cannot_be_read`
+  checks the year in the sentence (`whose="its return `2025\\1040 - John`"`)
+  and the exact entry `households: the client-side history (2025\\1040 - John)`
+  in `caplog.text`. The household-half test also asserts
+  `households: the client-side history (Smith Family)`.
+- **G3.** Docstring paragraph replaced by "the halves are read in order, the
+  first definite answer wins, 'cannot tell' only when a read fails before any
+  half has answered". Runbook bullet says the same in its opening clause
+  ("before the record has shown the household was shared (or an earlier return
+  has shown the folder existed)") and prints <whose> without backticks; only
+  the return's name is in backticks.
+- **G4.** `test_a_journal_that_does_not_exist_is_skipped_and_only_one_that_will_not_read_is_cannot_tell`
+  now also writes an unlinked line into a second return's journal
+  (`1040 - Maria`) and asserts `ClientSideUnknown` naming
+  ``its return `2025\1040 - Maria` ``, after the missing-journal half.
+- **test_errors.** Reproduced first: `test_the_error_class_list_is_spelled_once`
+  failed on `registry.py:941`, `runner.py:1368`, `scaffold.py:384`. Each
+  `str(exc)` is now `errors.said(exc, (ClientSideUnknown,))`. `errors` was
+  already imported in all three modules (registry and scaffold at load time,
+  runner in its package import), so no import was added and `test_layers`
+  is unaffected. Test passes after: 83 passed.
+
+**Gate** (one process per file, in parallel): test_households 20 passed;
+test_runner 230 passed, 1 warning; test_scaffold 55 passed; test_registry 42
+passed, 2 skipped; test_errors 83 passed; test_single_source 218 passed;
+test_layers 31 passed; test_repo_map 82 passed. `ruff check .` clean;
+`repo_map.py update` run, `check` current (298 nodes). No retry needed for the
+other lane's files. `docs/repo-map.curated.json` needed no edit.
+
+**Done differently:** nothing from the SPEC. The gate was run once over the
+final text. The runbook line was rewrapped by hand after the edit.
+
+**For the reviewer:** `tracker/households.py`, `tracker/registry.py`,
+`tracker/runner.py`, `tracker/scaffold.py`, `docs/runbook.md`,
+`tests/test_households.py`, `docs/repo-map.json` (regenerated).
+Note `tests/test_runner.py`, `tests/test_scaffold.py` and
+`tests/test_registry.py` needed no change.

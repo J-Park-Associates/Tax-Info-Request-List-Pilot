@@ -1365,7 +1365,7 @@ def run_household(
                 # says both, under the code the pass already uses for a
                 # record it cannot read - never laid out again under the
                 # old name on a guess.
-                held_back, held_code = str(exc), CODE_RECORD_UNREADABLE
+                held_back, held_code = errors.said(exc, (ClientSideUnknown,)), CODE_RECORD_UNREADABLE
         if held_back:
             for run in runs:
                 run.error, run.code = held_back, held_code

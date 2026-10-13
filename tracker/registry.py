@@ -938,7 +938,7 @@ def held_back(household_dir: Path | str) -> str:
     try:
         return client_folder_missing(folder)
     except ClientSideUnknown as exc:
-        return str(exc)
+        return errors.said(exc, (ClientSideUnknown,))
 
 
 def _two_claims(households: list[Household]) -> dict[Path, str]:

@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 298,
     "edges": 1334,
-    "reused": 236
+    "reused": 244
   },
   "node_types": [
     "artifact",
@@ -1126,7 +1126,7 @@
       "id": "tracker/filer.py",
       "type": "module",
       "layer": "core",
-      "sha256": "b29b75f93413414d",
+      "sha256": "f33eaf7a9f08f3f5",
       "lines": 7875,
       "cli": "python -m tracker.filer",
       "exports": [
@@ -1505,8 +1505,8 @@
       "id": "tracker/households.py",
       "type": "module",
       "layer": "core",
-      "sha256": "2493570a99efe379",
-      "lines": 534,
+      "sha256": "5eaefe7e756319a4",
+      "lines": 541,
       "exports": [
         "CLIENT_FOLDER_MISSING",
         "CLIENT_SIDE_UNKNOWN",
@@ -1985,8 +1985,8 @@
       "id": "tracker/manifest.py",
       "type": "module",
       "layer": "core",
-      "sha256": "b2ecd7ea6c027d64",
-      "lines": 2001,
+      "sha256": "228194d2ed964594",
+      "lines": 2004,
       "exports": [
         "ALSO_RECEIVED_LABEL",
         "ANY_EXTENSION",
@@ -2781,7 +2781,7 @@
       "id": "tracker/registry.py",
       "type": "module",
       "layer": "core",
-      "sha256": "156f494c053a182d",
+      "sha256": "c7d96a417b40dd8a",
       "lines": 1039,
       "cli": "python -m tracker.registry",
       "exports": [
@@ -3257,7 +3257,7 @@
       "id": "tracker/runner.py",
       "type": "module",
       "layer": "core",
-      "sha256": "6605d67a19326c8a",
+      "sha256": "7b770d942c23670a",
       "lines": 3652,
       "cli": "python -m tracker.runner",
       "exports": [
@@ -3608,7 +3608,7 @@
       "id": "tracker/scaffold.py",
       "type": "module",
       "layer": "core",
-      "sha256": "a2e514f52b9d9664",
+      "sha256": "2190a164a65df2c4",
       "lines": 802,
       "cli": "python -m tracker.scaffold",
       "exports": [
@@ -4645,8 +4645,8 @@
       "id": "docs/runbook.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "db72e48cdd603e3f",
-      "lines": 2898,
+      "sha256": "5b4eaf4d8e16b702",
+      "lines": 2899,
       "role": "The operator's page for one tax season: the designated machine and today's rule that only one may run a clients root, what a person does each morning and on the draft day, what every index reason and validation note means, and the thirty-minute move to another machine - on a Windows PC or on a Mac.",
       "notes": "Written for a person, not an agent. Roles are docs/workflow.md and the reasons behind the rules are docs/ROADMAP.md; it links to both rather than repeating them. The Mac is written as parallel paragraphs, not edits to the Windows text (SPEC-mac R34): section 1's `### On a Mac` (the heading the pass's own root-not-permitted reason points at) and two paragraphs in section 6 (moving to or from a Mac, taking the app off one). The one-machine rule is still stated once. tests/test_single_source.py quotes the app's sentences against it and holds the data folder's name to settings.DATA_HOME_NAME on both systems (the Windows lines once named a folder the app does not make)."
     },
@@ -4723,22 +4723,22 @@
       "id": "pilot/DECISIONS.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "3629193d7604a70b",
+      "sha256": "7961247c8fa4eddb",
       "lines": 289
     },
     {
       "id": "pilot/HANDOFF-client-folder.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "4f3a1b54409f7000",
-      "lines": 233
+      "sha256": "502f3584f260b3d7",
+      "lines": 419
     },
     {
       "id": "pilot/HANDOFF-form-inputs.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "8182666e448fc922",
-      "lines": 513
+      "sha256": "0464c45be0c4da09",
+      "lines": 687
     },
     {
       "id": "pilot/HANDOFF.md",
@@ -4801,8 +4801,8 @@
       "id": "pilot/SPEC-client-folder-unreadable.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "7421e589f6671d10",
-      "lines": 193
+      "sha256": "1c7888d0bdc1f4f1",
+      "lines": 251
     },
     {
       "id": "pilot/SPEC-email-zip-tag.md",
@@ -4836,8 +4836,8 @@
       "id": "pilot/SPEC-form-inputs.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "1e0040468ad27706",
-      "lines": 487
+      "sha256": "2176052c7bc0f324",
+      "lines": 537
     },
     {
       "id": "pilot/SPEC-hide-under-construction.md",
@@ -6112,8 +6112,8 @@
       "id": "tests/test_api.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "ecb3b8f812d395bb",
-      "lines": 11345,
+      "sha256": "411631cf22e9c18c",
+      "lines": 11351,
       "exports": [
         "COUNTS",
         "DEEPER_ROOT_LENGTH",
@@ -7154,8 +7154,8 @@
       "id": "tests/test_filer.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "3dd087b6937e73e3",
-      "lines": 10183,
+      "sha256": "a4d8f3ff72e9a556",
+      "lines": 10207,
       "exports": [
         "A_CLIENT_PATH",
         "A_PASS_KILLED_MID_COPY",
@@ -7369,6 +7369,7 @@
         "test_a_removal_never_acts_in_the_client_tree",
         "test_a_removal_through_a_link_removes_nothing",
         "test_a_rename_intent_written_before_168_is_finished_as_written",
+        "test_a_rename_refusal_quotes_at_most_eighty_characters_of_what_was_typed",
         "test_a_rename_refused_because_the_target_name_is_taken_moves_nothing",
         "test_a_rename_to_an_identifier_past_the_typing_limit_is_refused_and_moves_nothing",
         "test_a_request_with_no_room_for_its_shortest_name_parks_with_the_sentence",
@@ -7724,8 +7725,8 @@
       "id": "tests/test_households.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "7c64693b4fecd23d",
-      "lines": 522,
+      "sha256": "22eebd50475b8adf",
+      "lines": 538,
       "exports": [
         "ITEMS",
         "SMITHS",
@@ -8111,8 +8112,8 @@
       "id": "tests/test_manifest.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "3b7413fa5dc08007",
-      "lines": 1485,
+      "sha256": "c05843c9e09961de",
+      "lines": 1489,
       "exports": [
         "GATE_REFUSES",
         "K1_WORDS",
