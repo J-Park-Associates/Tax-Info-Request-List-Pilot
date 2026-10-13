@@ -29,11 +29,15 @@ to share. Anything else at that level is a misfit.
 alone** (the owner's rule). A stray tree, a record in the place the layout
 before decision 125 put one, a household with no record, a year folder not
 named as a year, a return folder with no record, a folder holding only the
-workbook the tracker no longer reads (``LEGACY_MANIFEST_FILENAME``) and
-none in its record (no record, or one that holds no list), a folder the
-walk cannot list: each is a :class:`Misfit` with its sentence, shown on the
-practice page, in the app and on the command line. Nothing in a misfit is
-ever read, moved or renamed; a person fixes it. There is no
+workbook the tracker no longer reads (``LEGACY_MANIFEST_FILENAME``), a
+folder the walk cannot list: each is a :class:`Misfit` with its sentence,
+shown on the practice page, in the app and on the command line. Nothing in
+a misfit is ever read, moved or renamed; a person fixes it. A return folder
+holding a record with no request list and that workbook beside it is not a
+misfit: it is listed as an engagement carrying the same sentence
+(``LEGACY_FOLDER``) as its problem, and Roll Forward refuses it (P302);
+either way the list is in the workbook and none in its record, and the
+return is set up again in the app. There is no
 migration and no importer - decision 104 refused one and decision 125
 refused it again.
 
