@@ -951,3 +951,4 @@ PC can run.
 
 | Job | Tier | Rounds | Commits | Outcome | Owed to the office PC |
 |---|---|---|---|---|---|
+| J1 | Sonnet | 2 | `e2e700a`, `afe53f6`, `8d8e431` | Review 2 clean. The admission walker no longer follows a name the function binds itself: `ADMISSION_PIN[5]` lost 30 entries (the SPEC expected 28; `layout.root_of` and `records.status_from_json` were reached only through shadowed names), gained none, and `ADMISSION_VERSION` stays 5. The pilot README's rules 1 and 3, its "Where things are" line and its opening paragraph say P309. | None |

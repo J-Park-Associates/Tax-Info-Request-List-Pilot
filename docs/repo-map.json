@@ -4789,8 +4789,8 @@
       "id": "pilot/PROMPT-refactor.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "76299cff9713efc2",
-      "lines": 353
+      "sha256": "1db208ec9f1db9ab",
+      "lines": 355
     },
     {
       "id": "pilot/README.md",
@@ -4817,8 +4817,8 @@
       "id": "pilot/SPEC-architecture.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "37b68bb83ac111cf",
-      "lines": 953
+      "sha256": "0fd8e1caefc40747",
+      "lines": 954
     },
     {
       "id": "pilot/SPEC-check-notes-0.3.md",

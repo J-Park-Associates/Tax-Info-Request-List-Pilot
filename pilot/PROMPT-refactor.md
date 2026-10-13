@@ -144,8 +144,10 @@ with a `report` message there (section 1.6).
   another branch; never commit files outside your job's scope.
 - Commit subject: `SPEC-architecture <JOB>: <what the commit does>`.
   The body says what changed and why, which requirements it meets (R-numbers)
-  and the gate commands run with their last line. It ends with exactly these
-  two lines:
+  and the gate commands run with their last line. It ends with the
+  attribution lines your own session's instructions give, so the
+  Co-Authored-By line names the model that wrote the commit. With none given,
+  it ends with these two lines:
 
   ```
   Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
