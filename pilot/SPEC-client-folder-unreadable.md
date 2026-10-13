@@ -564,3 +564,53 @@ check must fail exactly the new tests and no section-16 test.
 Gate: `test_rollover`, `test_registry`, `test_api`, `test_single_source`,
 `test_layers`, `test_repo_map`, ruff, the map check. The builder appends
 `## Rebuild 9 (Sonnet, 2026-10-13)` to the handoff (append only).
+
+---
+
+## 19. Amendments after the ninth review (Opus, 2026-10-13)
+
+Review 9 found S1 and N1 built to section 18 and sound under its probes.
+N2's widening is wrong: a return folder whose record holds no list, with
+the old workbook beside it, is not a misfit. `engagement_from` returns it
+as an engagement, active, carrying `LEGACY_FOLDER` as its `problem`; only a
+folder with the workbook and no record at all is the `legacy_folder`
+misfit. The two widened descriptions now say the record case is a misfit
+that is "never an engagement", which is false. N2 was a rebuild of Review
+8's finding and failed its check, so by the loop's rule this fix is
+Opus's, not Sonnet's.
+
+**N2, corrected.** Two exact replacements, then `update`.
+
+`tracker/registry.py`, module docstring, the misfit paragraph: the item
+reads again as it did before section 18 - "a folder holding only the
+workbook the tracker no longer reads (``LEGACY_MANIFEST_FILENAME``)" -
+and the paragraph gains, after "a person fixes it.", this sentence:
+"A return folder holding a record with no request list and that workbook
+beside it is not a misfit: it is listed as an engagement carrying the same
+sentence (``LEGACY_FOLDER``) as its problem, and Roll Forward refuses it
+(P302); either way the list is in the workbook and none in its record, and
+the return is set up again in the app." The rest of the paragraph
+("There is no migration and no importer ...") stays.
+
+`docs/repo-map.curated.json`, the `tracker/registry.py` node's `role`: the
+third sentence becomes "A folder holding only the workbook the tracker no
+longer reads (LEGACY_MANIFEST_FILENAME) and no record is the legacy-folder
+misfit (LEGACY_FOLDER), never an engagement; a return folder holding a
+record with no request list and that workbook beside it is an engagement
+carrying the same sentence as its problem, which Roll Forward refuses
+(P302)." The last sentence ("There is no registry file.") stays.
+
+**Nit 2.** The new test in `tests/test_api.py`
+(`test_rollover_refuses_a_legacy_return_with_the_legacy_sentence_and_writes_nothing`)
+defines its own `everything()`, which is the file's `_tree_hashes` (near
+line 6730). It calls `_tree_hashes(demo_root)` instead and drops the local
+helper and its `hashlib` import if nothing else in the test uses it.
+
+**Nit 3.** No build change: the handoff's gate table is to say which tree
+it reports (the working tree or the commit) when the two differ.
+
+Tests: none change in what they pin; the registry tests that read the
+docstring, if any, and `test_repo_map` keep the two descriptions honest.
+Gate: `test_registry`, `test_rollover`, `test_api`, `test_single_source`,
+`test_layers`, `test_repo_map`, ruff, the map check. The builder appends
+`## Rebuild 10 (Opus, 2026-10-13)` to the handoff (append only).

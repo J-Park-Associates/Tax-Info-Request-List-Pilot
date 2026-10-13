@@ -1514,3 +1514,158 @@ mutation).
 **Not done.** The 3.11 floor interpreter was not run (the venv Python only).
 test_errors was not run: no wording or `str(exc)` was added, and the spec's
 gate does not list it.
+
+## Review 9 (Opus, 2026-10-13)
+
+Reviews 4dca3fb (SPEC-client-folder-unreadable section 18: S1, N1, N2)
+against sections 16-18 and Review 8. Run on a `git archive 4dca3fb` copy in
+the scratchpad (git-initialised), venv Python 3.13.16, `-p no:cacheprovider`,
+one process per file. Probes were a throwaway test file on the copy, using
+`tests/test_rollover.py`'s `park` fixture and `_a_legacy_return_in_the_open_year`;
+before/after comparisons ran the same probes on a `git archive 4dca3fb^` copy.
+
+**Verdict.** S1 and N1 are built to the SPEC and hold under probe and
+mutation. N2 was widened as asked, but the widened sentences are now false
+of the case they were widened to cover (finding 1).
+
+**Findings.**
+
+1. **Should fix - N2's two descriptions now say something untrue of a
+   legacy folder that has a record.** A return folder with a record that
+   holds no list, the old workbook beside it, is walked as a return
+   (`registry._walk_year`: `if record: found.returns.append(child)`) and
+   comes back from `engagement_from` as an `Engagement` whose `problem` is
+   `LEGACY_FOLDER`. Only a folder with the workbook and *no* record is a
+   `Misfit` (code `legacy_folder`). Probe, `discover_engagements(root)` with
+   one of each:
+   `engagements: [..., ('1040 - Old Park', 'holds its request list in a workbook the app no longer reads', True), ...]`,
+   `misfits: [('1040 - Bare Park', 'legacy_folder')]`.
+   But the registry docstring now reads "a folder holding only the workbook
+   the tracker no longer reads (`LEGACY_MANIFEST_FILENAME`) and none in its
+   record (no record, or one that holds no list), a folder the walk cannot
+   list: each is a :class:`Misfit`". ("Only the workbook" also contradicts
+   "one that holds no list": that folder holds a record too.) And the
+   registry node's curated `role` now reads "... and no request list in its
+   record (no record, or a record that holds none) is terminal too and is
+   listed as a legacy folder (LEGACY_FOLDER), never as an engagement" - the
+   record case *is* listed as an engagement, active, carrying the sentence
+   as its problem (which is why P302 had to refuse it in Roll Forward at
+   all). Review 8 graded these true-but-narrow; widening them made them
+   false, and the curated map is what `repo_map.py show tracker/registry.py`
+   hands the next agent. Fix: keep the no-record case where it is (a
+   misfit, never an engagement) and say the record case separately - listed
+   as an engagement with `LEGACY_FOLDER` as its problem, refused by Roll
+   Forward (`ROLLOVER_LEGACY_FOLDER`) - then `update`. No behaviour changes.
+2. **Nit - the new test_api test re-implements a helper the file already
+   has.** `test_rollover_refuses_a_legacy_return_with_the_legacy_sentence_and_writes_nothing`
+   defines an inline `everything()` that is `_tree_hashes(folder)`
+   (tests/test_api.py:6670, used three times already) with `demo_root`
+   baked in. `_tree_hashes(demo_root)` before and after says the same.
+3. **Nit - Rebuild 9's gate table reports the working tree, not the
+   commit.** It says `test_repo_map` 82 passed and the map current. At
+   4dca3fb, `repo_map.py check` says "Map is STALE - 1 file(s) differ from
+   it: changed tests/test_api.py", and the committed map lists
+   `test_a_change_of_case_alone_on_a_row_past_the_limit_is_the_same_row_and_is_not_measured`
+   and 11594 lines for tests/test_api.py, where the commit's file has 0
+   occurrences and 11559 lines: the other builder's hunk (it landed in
+   ccdf943). This is the known staleness and is not counted against the
+   build; the handoff should have said the map was refreshed with another
+   builder's uncommitted edit in the tree.
+
+**Observations (not findings).**
+
+- **SPEC's count was short, the build's behaviour is right.** Section 18
+  says the year-not-later refusal is "the one other `ManifestError`
+  `roll_forward` raises"; `check_tax_year` is another. With the prescribed
+  `except ManifestError`, `--year 20265` on one return now prints
+  `1040 - John Park was not rolled forward` / `NOT ROLLED` /
+  `Tax year must be between 1900 and 2099, got 20265`, exit 1 (at 4dca3fb^:
+  a `ManifestError` traceback, same sentence). The CLI comment's "the year
+  bound's" covers both.
+- **A closed-year legacy return is now refused by the one-return form too.**
+  `roll_forward` on a 2025, inactive legacy return: at 4dca3fb^ "rolled 0"
+  rows; at 4dca3fb `ROLLOVER_LEGACY_FOLDER`. Section 18's prescribed check
+  has no year test, so this follows the SPEC and is strictly better; the
+  one-return form never says `ROLLOVER_NOT_THIS_HOUSEHOLD`, so section 16's
+  "the two sentences never both apply" still holds.
+- **The one-return command line on an unreadable record is still a
+  traceback, unchanged and outside section 18.** It raises `StoreError` from
+  `store.follow_the_journal` at the CLI's line 1097, before `roll_forward`
+  is reached (identical at 4dca3fb^). `roll_forward` itself falls through to
+  a `StoreError` (`load_manifest` -> `the_record`), not a `ManifestError`,
+  so the new wrapper would not catch it either.
+- **The household form's early check is now pinned by one exact assertion.**
+  With `roll_household`'s legacy check disabled (and `roll_forward`'s kept),
+  only the by-plan section-16 test fails: the refusal still reaches `--only`
+  and `--all` through `_plan_one` -> `roll_forward`, wrapped by
+  `_nothing_rolled` ("{prior}: {why}. Nothing was rolled."), and those two
+  tests match the sentence by substring. Fine as is.
+
+**Verified (questions 1-7).**
+
+1. `roll_forward`: the check sits after `check_tax_year` and immediately
+   before `load_manifest(prior_dir)`; nothing is written above it. Probe with
+   `rollover.load_manifest` replaced by a function that raises: the call
+   raises `ManifestError('1040 - Old Park holds its request list in a workbook the app no longer reads (_manifest.xlsx); set it up again in the app first (runbook section 1), then roll it forward')`
+   with one `engagement_from` call and `load_manifest` never reached; both
+   trees' hashes unchanged. Equality, not substring: with `engagement_from`
+   patched to report `LEGACY + " (and more)"` or `"x " + LEGACY` for John's
+   ordinary return, it rolls (1 row); with exactly `LEGACY` it refuses.
+   `LEGACY_FOLDER.format(name=LEGACY_MANIFEST_FILENAME)` is the registry's
+   one constant; no second definition in rollover.py. Other problems fall
+   through: John's record with a forged `household` line gives
+   `engagement_from(...).problem` = "... line 2 of the record is malformed
+   (rules_changed carries 'household' that is not one folder name ...);
+   the journal is not applied past it", and `roll_forward` raises
+   `StoreError` with those same words from `manifest.load_manifest`, not the
+   legacy sentence.
+2. One-return command line, as a real subprocess
+   (`python -m tracker.rollover "<...>/2026/1040 - Old Park" --year 2027`):
+   exit 1, stdout `1040 - Old Park was not rolled forward` / blank /
+   `  NOT ROLLED` / `    1040 - Old Park holds its request list ... then roll it forward`,
+   stderr empty, no 2027 return folder and no 2027 year folder, both trees
+   unchanged. At 4dca3fb^: exit 0, "Rolled 1040 - Old Park forward (next
+   year)", a 2027 folder made. Year-not-later (`1040 - John Park --year 2026`,
+   also 2025): exit 1, the same heading, `Roll forward to a year after 2026;
+   2026 is not later`; at 4dca3fb^ the same sentence as a traceback.
+3. `api._cmd_rollover`: the new test passes alone and in the file; it
+   asserts exit 1, `payload["error"] ==` the exact sentence, no 2027 folder,
+   and every file and folder under `demo_root` byte for byte. `api.py` is
+   unchanged by the commit.
+4. N1: both section-16 tests now take `_hashes(root / PRIVATE_TREE)` before
+   and after in place of `sorted(rglob)`; the records are inside that tree
+   (`ledger.path_for(legacy).is_relative_to(root / PRIVATE_TREE)` is True),
+   so a record rewritten in place now fails them.
+5. N2: covered, not true - finding 1.
+6. Mutation (the whole new block in `roll_forward` deleted, import
+   included): test_rollover 2 failed, 70 passed - exactly the two new tests;
+   test_api 1 failed, 526 passed - exactly the new test. No section-15 or
+   section-16 test fails.
+7. Hygiene: no `str(exc)` added in tracker/ (the CLI handler's `{exc}` is of
+   a `ManifestError`, the household branch's own pattern; test_errors 85
+   passed); the registry import is inside `roll_forward`, no load-time
+   import added (test_layers 31 passed); ruff clean, no dead code; the
+   commit touches tracker/rollover.py, tracker/registry.py,
+   tests/test_rollover.py, tests/test_api.py (one insertion),
+   docs/repo-map.curated.json, the generated map and the handoff (67
+   lines added, 0 removed) - all named by section 18. No behaviour change
+   beyond section 18 apart from the observations above, each of which
+   follows the SPEC's prescribed code.
+
+**Gate** (archive of 4dca3fb, one process per file, in parallel):
+
+| Check | Result |
+|---|---|
+| test_rollover | 72 passed |
+| test_registry | 44 passed, 2 skipped (1 runpy warning) |
+| test_api | 527 passed |
+| test_errors | 85 passed |
+| test_single_source | 218 passed |
+| test_layers | 31 passed |
+| test_repo_map | 81 passed, 1 failed - `test_the_committed_map_is_current`, `{'changed': ['tests/test_api.py']}` only: the known staleness (other builder's hunk), not this build |
+| `ruff check .` | All checks passed |
+| `repo_map.py check` | STALE, `changed tests/test_api.py` only - same known cause |
+
+Not run: the 3.11 floor (no pytest there).
+
+Findings: 0 must fix, 1 should fix, 2 nits.
