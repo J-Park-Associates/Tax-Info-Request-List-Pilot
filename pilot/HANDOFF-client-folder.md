@@ -1333,3 +1333,117 @@ passed; test_layers 31 passed; test_repo_map 82 passed (on a second `update` + r
 `python -m ruff check .`: all checks passed. Not run: the 3.11 floor (no
 interpreter for it in this container).
 `python tools/repo_map.py check`: current (302 nodes), after `update`.
+
+## Review 8 (Opus, 2026-10-13)
+
+Reviews 4a4bdfe (SPEC-client-folder-unreadable section 17, P303) and
+d391bfa (section 16, P302), against sections 15-17 (16 as corrected in
+d391bfa). Run on a `git archive d391bfa` copy in the scratchpad, venv
+Python 3.13, `-p no:cacheprovider`, one process per file.
+
+**Resolved.** Review 6's two observations are built. Section 16: a legacy
+return of the open year is refused by `roll_household` with
+`ROLLOVER_LEGACY_FOLDER` (the SPEC's sentence, word for word), compared to
+the registry's one constant, never by substring; the CLI's `--only` and
+`--all` say it under `NOT ROLLED`, exit 1. The builder's correction of the
+SPEC's "exit 2" is right: `parser.error` is only the name lookup's and the
+held-back/year checks' voice, and every `ManifestError` from
+`roll_household` already prints under `NOT ROLLED` with exit 1. Section 17:
+`LEGACY_FOLDER`, the comment above `LEGACY_MANIFEST_FILENAME` and the
+registry test's docstring match the SPEC word for word.
+
+**Findings.**
+
+- **S1 (should fix; needs Jason's call and a SPEC line) - the one-return
+  form still rolls a legacy return with zero rows, and the runbook sentence
+  reads as if it does not.** `tracker/rollover.py` `roll_forward` and the
+  `__main__` one-return branch (and `tracker/api.py` `_cmd_rollover`, which
+  the renderer does not call - `app.js` calls only `roll-household`) have no
+  legacy check. Probe on the archive (the test file's
+  `_a_legacy_return_in_the_open_year` helper, then
+  `python -m tracker.rollover "<…>\2026\1040 - Old Park" --year 2027`):
+  exit 0, `Rolled 1040 - Old Park forward (next year)`, and
+  `…\Park Family\2027\1040 - Old Park` made - the empty return that looks
+  set up, the thing P302 exists to prevent. The build matches the SPEC
+  (section 16 scopes R2 to `roll_household`), so this is not the builder's
+  error. But the new runbook sentence (docs/runbook.md, "A return from
+  before September 2026 … is refused until it is set up again") sits in the
+  "Roll Forward also refuses" paragraph directly above "On the command line
+  the same two forms live in one command", whose third example is the
+  one-return form; P302's row also says "Roll Forward refuses" unscoped.
+  Two ways out: (a) extend the refusal to `roll_forward` (one check there
+  covers the CLI's one-return form and `_cmd_rollover`; `_plan_one` may
+  reach the same primitive - check before placing it), with a test; or
+  (b) narrow the runbook sentence and P302's wording to the household roll.
+  (a) is what P302's intent reads as.
+- **N1 (nit) - two of the three new tests pin less than "nothing
+  written".** `test_a_legacy_return_in_the_open_year_is_refused_by_roll_forward_with_nothing_written`
+  pins only the legacy return's record bytes, and
+  `test_only_naming_a_legacy_return_in_the_open_year_says_the_legacy_sentence_and_writes_nothing`
+  pins no record bytes; both check the private tree as a path listing
+  (`sorted(rglob)`), which a record rewritten in place passes. The records
+  live in the return folders, in the private tree, so `_hashes(root /
+  PRIVATE_TREE)` (already in the file) would pin every record at once. The
+  `--all` test does pin every record. My probe with `_hashes` on the private
+  tree and every record (plan of John + legacy + LLC, and `--only` legacy)
+  passed, so the code is right; the tests are only narrower than their names.
+- **N2 (nit, optional) - two descriptions of the legacy folder still name
+  only the no-record case.** `tracker/registry.py:32` (module docstring,
+  "a folder holding only the workbook the tracker no longer reads") and
+  `docs/repo-map.curated.json:84` ("… and no record is terminal too and is
+  listed as a legacy folder"). Both are still true of what they describe,
+  just narrower than the constant now is; the SPEC named only the comment
+  above it. `docs/storage.md:453` is the same: true of the no-record case,
+  quotes no sentence - the builder's reading holds.
+
+**Observation for Jason (not a finding).** A household roll that leaves a
+legacy return unticked retires it (`active: no` written to its record):
+probe, `roll_household` with John, Sofia and the LLC planned →
+`retired ['1040 - Old Park']`. Defensible (decision 126: what nobody ticked
+is finished with), but it means the only way to roll such a household
+before the legacy return is set up again is to untick it, which retires it.
+
+**Verified.**
+- Plan: exact `ROLLOVER_LEGACY_FOLDER`; client tree hashes, private tree
+  listing and the record's bytes unchanged (the test), and in my probe every
+  record's bytes and the whole private tree's hashes unchanged, no 2027
+  folder for any planned return.
+- Before any lock or folder: the check is in step 1 of the refusal pass,
+  outside its `try`, before `_plan_one`, the retirement validation, the
+  `ExitStack` of locks and `_make_one`. Probe: `locking.engagement_lock`
+  spied - zero calls on the refusal; the same spy sees locks on an ordinary
+  roll (positive control).
+- `--only` (also typed as `1040 - OLD PARK`): exit 1, `NOT ROLLED`, the
+  sentence, not "is not an open-year return" or "could not be read".
+  `--all` with one legacy and three ordinary returns: exit 1, no 2027
+  folder for any, trees and every record unchanged.
+- Section 15's closed-year legacy test still asserts and gets
+  `ROLLOVER_NOT_THIS_HOUSEHOLD` (function and `--only`).
+- Mutation (`if False and one.problem == legacy`): exactly the three new
+  tests fail (plus my two probes); the other 67 pass, section 15's
+  included. Restored.
+- Runbook sentence: true of the app (household roll only) and of the
+  household command line; not of the one-return form (S1).
+  test_single_source passes.
+- Section 17: `LEGACY_FOLDER` is the SPEC's text; every test reads it
+  through the constant (test_registry 155, 349, 357, 1277; test_rollover);
+  `git grep "and no record"` outside pilot/ finds no test or runbook pin
+  (only unrelated prose and the two N2 lines); the app quotes neither
+  sentence.
+- No `str(exc)` added (the refusal is a bare raise; `main`'s existing
+  `str(exc)` lines are untouched); no layer change (the names join the
+  existing call-time `tracker.registry` import; test_layers passes); no
+  dead code (`legacy` is computed once and used); the code diff touches only
+  the five named files, plus the map, the handoff and the SPEC's correction.
+
+**Gate** (archive of d391bfa, one process per file, in parallel):
+test_rollover 70 passed; test_registry 44 passed, 2 skipped (1 runpy
+warning); test_api 522 passed; test_errors 85 passed; test_single_source
+218 passed; test_layers 31 passed; test_repo_map 81 passed, 1 failed -
+`test_the_committed_map_is_current`, stale hashes for `tracker/api.py` and
+`tests/test_api.py` only, the other builder's files (the committed map was
+refreshed against its uncommitted edits); `python tools/repo_map.py check`
+names the same two files and nothing of this build. `python -m ruff check .`:
+all checks passed. Not run: the 3.11 floor.
+
+Findings: 0 must fix, 1 should fix, 2 nits.
