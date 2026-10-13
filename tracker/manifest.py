@@ -136,7 +136,6 @@ from tracker.records import (
     rule_to_json,
     short_title_problem,  # noqa: F401 - the editor's name for the record's check
     split_codes,
-    spoofing_problem,
     typed_identifier_problem,
     typed_short_title_problem,
 )
@@ -1055,15 +1054,19 @@ def _short_title(value: object, document: str, where: str, held: RequestItem | N
     length is already cut and a character a folder cannot hold is turned
     into a hyphen where the name is used, so the one part of the rule left
     to ask is the invisible character: the typed rule when the Document or
-    the short name is new or changed, the store's when both are as held.
-    The refusal names the field the person typed - the Document, or the
-    issuer's name - never a Short name nobody typed.
+    the short name is new or changed. A row as held needs no check of its
+    own: a spoofing character, the one thing the store's rule would ask of
+    the derived name, lies in the Document or the issuer's entity inside
+    it, and :func:`item_from_fields` judges the Document by that same rule
+    before this runs (P301), so the held case is covered by the Document's
+    own check. The refusal names the field the person typed - the Document,
+    or the issuer's name - never a Short name nobody typed.
     """
     text = "" if value is None else str(value).strip()
     derived = derived_short_title(document)
     if not text or text == derived:
         unchanged = held is not None and document == held.document and text == held.short_title
-        if (hidden := (spoofing_problem if unchanged else invisible_problem)(derived)) is not None:
+        if not unchanged and (hidden := invisible_problem(derived)) is not None:
             entity = _issuer_entity(document)
             label, source = (COL_ISSUER, entity) if entity else (COL_DOCUMENT, document)
             raise ManifestError(f"{where}: {label} '{quoted(source)}' {hidden} (it is also the short name)")
@@ -1140,7 +1143,12 @@ def item_from_fields(fields: Mapping[str, object], *, where: str,
     # character, so the Document's own refusal is the one a person reads.
     document = text("document")
     if problem := document_problem(document):
-        raise ManifestError(f"{where}: {COL_DOCUMENT} '{quoted(document)}' {problem}")
+        # Named as `_short_title` names a derived name: the box the person
+        # typed into. An issuer row's Document is built from the one box on
+        # the add-issuer card, so that is the label and the entity is what
+        # is quoted; the card has no Document field to point at.
+        label, source = (COL_ISSUER, entity) if (entity := _issuer_entity(document)) else (COL_DOCUMENT, document)
+        raise ManifestError(f"{where}: {label} '{quoted(source)}' {problem}")
     return RequestItem(
         identifier=identifier,
         document=document,

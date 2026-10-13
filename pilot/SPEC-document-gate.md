@@ -147,7 +147,8 @@ and the entity, never the whole Document. SPEC-form-inputs section 18's
 
 **Docs (F2).** The handoff's reminder and the API test's docstring say a
 household stopped by a spoofed stored Document is repaired as any refused
-line is - the runbook's malformed-line repair (section 6), as for a spoofed
+line is - the runbook's malformed-line repair (its section 9; the SPEC first
+said 6), as for a spoofed
 identifier since P290 - not by retyping the Document in the editor, whose
 `state` call the same refused line refuses. The handoff section
 "Reminder for Jason" is corrected in place.

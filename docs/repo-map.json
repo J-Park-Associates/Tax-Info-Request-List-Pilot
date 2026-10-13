@@ -1549,7 +1549,7 @@
       "id": "tracker/layout.py",
       "type": "module",
       "layer": "core",
-      "sha256": "845da9e5075b7858",
+      "sha256": "73027dd875996a24",
       "lines": 1269,
       "exports": [
         "CLIENTS",
@@ -1990,8 +1990,8 @@
       "id": "tracker/manifest.py",
       "type": "module",
       "layer": "core",
-      "sha256": "7917db16ed637619",
-      "lines": 2018,
+      "sha256": "8eed787399f043ab",
+      "lines": 2026,
       "exports": [
         "ALSO_RECEIVED_LABEL",
         "ANY_EXTENSION",
@@ -3163,8 +3163,8 @@
       "id": "tracker/rollover.py",
       "type": "module",
       "layer": "core",
-      "sha256": "14249804f4423c9a",
-      "lines": 1181,
+      "sha256": "2b749499cd1bb4fa",
+      "lines": 1221,
       "cli": "python -m tracker.rollover",
       "exports": [
         "HouseholdRollover",
@@ -3185,6 +3185,7 @@
         "ROLLED_HEADING",
         "ROLLOVER_NOT_RETIRED",
         "ROLLOVER_NOT_THIS_HOUSEHOLD",
+        "ROLLOVER_RECORD_UNREADABLE",
         "ROLLOVER_TWO_OPEN_YEARS",
         "ReturnPlan",
         "RolledItem",
@@ -3215,6 +3216,7 @@
         "UNFILED_LAST_YEAR_UNREAD": "\"Last year's unfiled documents could not be listed ({problem}), so the new list carries none of them; check last year's `00 - Needs Review` by hand\"",
         "ROLLOVER_TWO_OPEN_YEARS": "'this household has two open years ({years}); retire one in the editor before rolling forward'",
         "ROLLOVER_NOT_THIS_HOUSEHOLD": "'{prior} is not an open-year return of {household}'",
+        "ROLLOVER_RECORD_UNREADABLE": "\"{prior}'s record could not be read ({problem}); repair it first (runbook section 6), then roll it forward\"",
         "RETIRED_BY_ROLLOVER": "\"retired by the household's rollover on {day}: it was not rolled into {year}\"",
         "ROLLED_HEADING": "'ROLLED'",
         "NOT_ROLLED_HEADING": "'NOT ROLLED'",
@@ -4747,8 +4749,8 @@
       "id": "pilot/HANDOFF-document-gate.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "31d03ff0c05042df",
-      "lines": 365
+      "sha256": "5fa6ff84332dca37",
+      "lines": 429
     },
     {
       "id": "pilot/HANDOFF-error-handling-small.md",
@@ -4825,15 +4827,15 @@
       "id": "pilot/SPEC-client-folder-unreadable.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "55126aaf03ad75aa",
-      "lines": 332
+      "sha256": "d52f40fafa3b94d1",
+      "lines": 371
     },
     {
       "id": "pilot/SPEC-document-gate.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "7c6b74be8ce604b1",
-      "lines": 172
+      "sha256": "608693a3c374a5ce",
+      "lines": 173
     },
     {
       "id": "pilot/SPEC-email-zip-tag.md",
@@ -6150,8 +6152,8 @@
       "id": "tests/test_api.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "5abe1d5a0f7025e0",
-      "lines": 11470,
+      "sha256": "553944b55378e485",
+      "lines": 11475,
       "exports": [
         "COUNTS",
         "DEEPER_ROOT_LENGTH",
@@ -8157,8 +8159,8 @@
       "id": "tests/test_manifest.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "28bc03fce0d41c2e",
-      "lines": 1530,
+      "sha256": "8516e852edb679db",
+      "lines": 1564,
       "exports": [
         "GATE_REFUSES",
         "K1_WORDS",
@@ -8197,6 +8199,7 @@
         "test_a_row_with_no_short_title_derives_one_at_a_whole_word",
         "test_a_save_of_a_folder_with_no_record_is_refused",
         "test_a_spec_that_gives_its_extensions_as_a_list_gets_those_extensions",
+        "test_a_spoofing_character_in_an_issuer_entity_is_refused_naming_the_issuer_name_box",
         "test_a_star_in_date_pattern_means_no_year_check",
         "test_a_stored_row_without_the_named_column_reads_as_named",
         "test_a_typed_identifier_past_eighty_characters_is_refused_where_it_is_read",
@@ -9168,8 +9171,8 @@
       "id": "tests/test_rollover.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "ef77b42bff6e780f",
-      "lines": 1749,
+      "sha256": "ea5ac642325a887d",
+      "lines": 1801,
       "exports": [
         "PAIR_SAID",
         "PARK",
@@ -9217,6 +9220,7 @@
         "test_prior_engagement_is_never_written_to",
         "test_prior_year_beats_the_template",
         "test_relative_periods_roll_too",
+        "test_rolling_a_return_whose_record_cannot_be_read_says_so_rather_than_not_this_household",
         "test_rollover_refills_the_greeting_and_the_link_from_the_household_where_blank",
         "test_rollover_rolls_a_return_into_the_next_years_folder_of_the_same_household_under_the_same_name",
         "test_rollover_without_a_template_still_works",

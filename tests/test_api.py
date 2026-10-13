@@ -11374,12 +11374,17 @@ def test_a_list_holding_what_an_older_paste_left_stays_editable_and_a_changed_sp
 
 def test_a_held_document_hiding_a_right_to_left_override_is_refused_by_row_and_nothing_is_written(
         capsys, demo_root, monkeypatch):
-    """P301: a record the store admitted before it read the Document (here
-    written past the gate, as a version-4 store left it) holds a Document
-    with a right-to-left override. An edit that sends it back, with a blank
-    short name, is refused in the editor's words - the row and the Document,
-    the character by code point - and not as an unnamed refused change; and
-    nothing is written, so retyping the Document is the way out."""
+    """P301, defence in depth: a record the store admitted (here written past
+    the gate, a row it holds at the current admission) holds a Document with
+    a right-to-left override. An edit that sends it back, with a blank short
+    name, is refused in the editor's words - the row and the Document, the
+    character by code point - and not as an unnamed refused change; and
+    nothing is written. This is not the upgrade path: a household whose
+    stored Document was spoofed under an older admission is stopped by the
+    store's malformed-line refusal, which the editor's ``state`` call
+    refuses too, so it is repaired as any refused line is, by the runbook's
+    malformed-line repair (its section 9: say which return and which line),
+    not by retyping in the editor."""
     from dataclasses import replace
 
     from tracker.locking import engagement_lock

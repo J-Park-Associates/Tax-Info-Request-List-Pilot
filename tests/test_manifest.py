@@ -1485,6 +1485,40 @@ def test_a_document_hiding_a_spoofing_character_is_refused_naming_the_row_and_th
                              where="Row 3", recorded={"a01": replace(held, short_title="W-2")})
 
 
+def test_a_spoofing_character_in_an_issuer_entity_is_refused_naming_the_issuer_name_box():
+    """P301, the first review's F1: an issuer row's Document is built from the
+    one box the person typed into, so the Document's refusal names that box -
+    Issuer Name and the entity (SPEC-form-inputs section 15, G5) - exactly as
+    the derived-short-name refusal does, and never the whole Document, which
+    the add-issuer card does not show. It is the Document's own refusal, so it
+    carries no "(it is also the short name)". The editor's typed K-1 row and the
+    add-issuer card's ``issuer_item`` are the same refusal."""
+    from tracker.templates import BASE_YEAR, issuer_item
+
+    for hidden, named in (("\u202e", "U+202E RIGHT-TO-LEFT OVERRIDE"),
+                          ("\u200b", "U+200B ZERO WIDTH SPACE")):
+        document = f"Schedule K-1 - Ashford{hidden}Holdings LP"
+        expected = (f"F02: {COL_ISSUER} 'Ashford<U+{ord(hidden):04X}>Holdings LP' "
+                    f"may not contain an invisible character ({named})")
+        held = RequestItem(identifier="F02", document=document)
+        for recorded in ({"f02": held}, None):
+            with pytest.raises(ManifestError) as refused:
+                item_from_fields({"identifier": "F02", "document": document}, where="F02",
+                                 recorded=recorded)
+            assert str(refused.value) == expected
+            assert hidden not in str(refused.value)
+        with pytest.raises(ManifestError) as refused:
+            item_from_fields({"identifier": "F02", "document": document, "short_title": "K-1"},
+                             where="F02")
+        assert str(refused.value) == expected
+        with pytest.raises(ManifestError) as refused:
+            issuer_item("F02", f"Ashford{hidden}Holdings LP", BASE_YEAR)
+        assert str(refused.value) == expected
+    # A Document that is not an issuer row's is still named as the Document.
+    with pytest.raises(ManifestError, match=f"^F02: {COL_DOCUMENT} 'W-2<U\\+202E>fdp.exe' "):
+        item_from_fields({"identifier": "F02", "document": "W-2\u202efdp.exe"}, where="F02")
+
+
 def test_a_document_holding_only_a_no_break_space_is_not_the_stores_gate_to_refuse():
     """P301: the gate refuses only the spoofing characters, so a Document an
     older paste left a no-break space in saves - held unchanged, new with a

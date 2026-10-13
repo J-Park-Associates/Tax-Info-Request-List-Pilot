@@ -132,8 +132,11 @@ The `test_api` count includes whatever the other lane had added when it ran.
 His read-only `python -m tracker.store check` on the office records now judges
 admission **5** as well as 4: any office request whose Document title holds a
 right-to-left override or a zero-width character (an unlikely paste, but the case
-this closes) will show as a malformed line and stop that household until the
-Document is retyped. A no-break space or a soft hyphen in a Document is not
+this closes) will show as a malformed line and stop that household until the line is
+repaired by the runbook's malformed-line repair (its section 9: say which return
+and which line), as a spoofed
+identifier does since P290; retyping the Document in the editor is not the
+way out, because the editor's `state` call refuses the same line. A no-break space or a soft hyphen in a Document is not
 flagged. Run it before landing, as P290 asked for admission 4.
 
 ## For the reviewer
@@ -363,3 +366,64 @@ repository". That was the environment, and the table is the rerun on a
 git-initialised copy.
 
 Findings: 0 must fix, 3 should fix, 2 nits.
+
+## Rebuild 1 (Sonnet, 2026-10-13)
+
+Built SPEC-document-gate section 10 (F1, F2, F4, F5); F3 is the landing
+session's. Edited: `tracker/manifest.py`, `tracker/layout.py` (the one
+docstring sentence), `tests/test_manifest.py`, `tests/test_api.py` (one
+docstring), this handoff, and the generated `docs/repo-map.json` and
+`docs/repo-map.md`.
+
+- **F1.** `item_from_fields` labels the Document refusal as `_short_title`
+  labels its derived-name one: `COL_ISSUER` with `quoted(entity)` when
+  `_issuer_entity(document)` is non-empty, `COL_DOCUMENT` with
+  `quoted(document)` otherwise. The add-issuer card reaches it through
+  `issuer_item` -> `item_from_spec` -> `item_from_fields`, so one change covers
+  both. New test
+  `test_a_spoofing_character_in_an_issuer_entity_is_refused_naming_the_issuer_name_box`
+  (`tests/test_manifest.py`): U+202E and U+200B in `Schedule K-1 - Ashford<c>Holdings LP`,
+  held and new, with and without a short name, and through `issuer_item`, each
+  asserting `F02: Issuer Name 'Ashford<U+202E>Holdings LP' may not contain an
+  invisible character (U+202E RIGHT-TO-LEFT OVERRIDE)` exactly (no "it is
+  also the short name", the character not echoed); a non-issuer Document is
+  still named as the Document. Before the change it failed with
+  `F02: Document 'Schedule K-1 - Ashford<U+202E>Holdings LP' may not contain ...`;
+  after, it passes.
+- **F2.** The "For Jason, before landing" paragraph and the
+  `test_a_held_document_hiding_a_right_to_left_override_...` docstring (in
+  `tests/test_api.py`) now say a household stopped by a spoofed stored
+  Document is repaired as any refused line is, by the runbook's malformed-line
+  repair, not by retyping in the editor, whose `state` call refuses the line.
+  The test docstring says it models a row the store already holds at the
+  current admission (defence in depth), not the upgrade path. **Section
+  number:** SPEC section 10 and the lead's note say "section 6"; the
+  malformed-line bullet ("say which return and which line") is in the runbook's
+  section 9 (`docs/runbook.md` about line 2742); section 6 is the dead-machine
+  and recover section. The text says section 9.
+- **F4.** `_short_title`'s derived-name check lost its held-row arm: it is
+  now `if not unchanged and (hidden := invisible_problem(derived))`; the typed
+  arm is kept, and the docstring says the held case is covered by the
+  Document's own check (P301). `spoofing_problem` was then unused in
+  `tracker/manifest.py` and its import is removed (ruff clean). Nothing
+  unpinned: the existing tests all pass, including the held-row pins in
+  `test_a_held_unchanged_row_is_judged_by_the_stores_rule_and_never_the_typed_one`
+  (its last assertion, a held spoofing Document, is now the Document's refusal).
+- **F5.** `layout.spoofing_problem`'s docstring no longer says the narrow
+  rule spares "a byte-order mark" (the code refuses U+FEFF); it names the
+  no-break space and the soft hyphen only. No behaviour change. The same
+  sentence in HANDOFF-form-inputs (about line 564) is a historical record and
+  was not touched.
+
+Gate (venv Python, one process per file, parallel, `-p no:cacheprovider`):
+`test_manifest` 113 passed (112 + the new test), `test_api` 522 passed,
+`test_layout` 58 passed, `test_templates` 41 passed, `test_layers` 31 passed,
+`test_single_source` 218 passed, `test_repo_map` 82 passed (it failed once,
+stale, before `update`; and once more directly after it, passed on the rerun
+with nothing changed); `ruff check .` all checks passed;
+`tools/repo_map.py update` then `check` exit 0.
+
+Not mine: the working tree also holds uncommitted edits to
+`tracker/rollover.py` and `tests/test_rollover.py`, which `update` hashed into
+the map; they appeared after this build started (the tree was clean at its
+start) and were not made or touched by it.
