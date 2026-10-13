@@ -444,7 +444,7 @@ the clients root, and the difference between them is the whole point:
 other. Anything else under the root — a stray folder beside the two trees, a
 household with no record, a folder where a year should be that is not four
 digits, a year folder with no return in it, a folder from before September
-2026 holding a `_manifest.xlsx`, a folder Windows will not let it list, a
+2026 holding a `_manifest.xlsx` and no record, a folder Windows will not let it list, a
 client folder no household owns, a folder named in a way the app does
 not accept for a household or a return — is
 **listed with one sentence saying why, and left alone**. Nothing is renamed,
@@ -621,8 +621,10 @@ double-click brings the open window forward rather than opening another
 editor beside it.
 
 **A folder from before September 2026** may still hold a `_manifest.xlsx`.
-The app no longer reads it: it is one of the folders left alone, listed
-with its own sentence rather than treated as an engagement, and the return is
+The app no longer reads it. With no
+record beside it, the folder is left alone and listed with its own sentence;
+with a record that holds no request list, it is a return the pass fails with
+that sentence and Roll Forward refuses. Either way the return is
 set up again in the app (Household, **Add a Return…** with the household open,
 or File, **New Household…** for a household the app has no record of;
 then type or paste the rows). The workbook may be deleted once that is done.

@@ -83,8 +83,9 @@ log = logging.getLogger(__name__)
 
 #: The workbook the request list lived in until decision 104. Its only
 #: reader in the package is the walk below, which uses it to say what a
-#: folder holding one and no request list in its record is: a legacy
-#: folder, not a return.
+#: folder holding one is: with no record, a legacy folder and not a return;
+#: with a record that holds no request list, a return carrying the same
+#: sentence as its problem, which Roll Forward refuses (P302).
 LEGACY_MANIFEST_FILENAME = "_manifest.xlsx"
 #: How such a folder is listed, and what the misfit list says of it.
 LEGACY_FOLDER = (

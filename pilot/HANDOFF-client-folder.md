@@ -1910,3 +1910,46 @@ Not run: the 3.11 floor (no pytest there).
 
 Findings: 0 must fix, 1 should fix (outside section 19's scope; a
 follow-up), 0 nits.
+
+## Rebuild 11 (Sonnet, 2026-10-13)
+
+Builds SPEC-client-folder-unreadable section 20: three older sentences that
+still said a return whose record holds no list, with the old workbook beside
+it, is a misfit. Exact Edit replacements only; no behaviour change, no
+tests changed.
+
+**What changed.**
+- `tracker/registry.py`: the comment above `LEGACY_MANIFEST_FILENAME`, the
+  four lines, now read as section 20 gives them (no record: a legacy folder
+  and not a return; a record with no request list: a return carrying the
+  same sentence as its problem, which Roll Forward refuses, P302).
+- `docs/runbook.md`: the folders-left-alone list now says "holding a
+  `_manifest.xlsx` and no record"; the "**A folder from before September
+  2026**" paragraph's second sentence now distinguishes the two cases (no
+  record: left alone and listed with its own sentence; a record with no
+  request list: a return the pass fails with that sentence and Roll Forward
+  refuses; either way set up again in the app). The parenthesis and the rest
+  of the paragraph are unchanged.
+- `docs/repo-map.curated.json`: the `tracker/registry.py` node's `notes`,
+  the one sentence, now says such a folder "is an engagement carrying the
+  same sentence as its problem, where one with no record is a misfit". Then
+  `repo_map.py update`.
+- `tests/test_single_source.py` and `tests/test_tripwire.py` did not quote
+  the old runbook words and passed unchanged; neither was edited.
+
+**Gate** (one process per file, in parallel, `-p no:cacheprovider -q`; the
+**working tree**, uncommitted, not a commit):
+
+| Check | Result |
+|---|---|
+| test_registry | 44 passed, 2 skipped (1 warning, the runpy one as before) |
+| test_single_source | 218 passed |
+| test_tripwire | 23 passed |
+| test_layers | 31 passed |
+| test_repo_map | 82 passed |
+| `ruff check .` | All checks passed |
+| `repo_map.py update` / `check` | Map is current (302 nodes) |
+
+**Which tree.** This table reports the working tree, which differs from the
+last commit by exactly these edits; nothing was staged or committed by the
+builder.
