@@ -616,3 +616,40 @@ def test_a_households_related_list_is_held_to_the_text_rule():
     assert records.household_problem({"related": ["Lee Family"]}) == ""
     assert records.household_problem({"related": "Lee Family"}).startswith("'related' ")
     assert records.household_problem({"related": ["Lee\nFamily"]}).startswith("'related' ")
+
+
+def test_a_persons_name_is_held_to_the_one_line_text_rule():
+    """P288: the one name with no bound is bound like every other. A name
+    over 1,000 characters, one with a line break and one that is not text
+    are each refused by name; 1,000 characters pass."""
+    for bad in ("J" * 1001, "John\nPark", "John\x00Park", 7, None):
+        with pytest.raises(ValueError, match="a person's name"):
+            records.person_from_json({"kind": "taxpayer", "name": bad, "spellings": []})
+    assert records.person_from_json(
+        {"kind": "taxpayer", "name": "J" * 1000, "spellings": []}).name == "J" * 1000
+    assert records.person_from_json({"kind": "taxpayer", "name": "John Park"}).name == "John Park"
+
+
+def test_an_identifier_or_short_name_with_an_invisible_character_is_refused_by_code_point():
+    """P290: both become part of a file name, and a right-to-left override
+    there is the classic spoof. The character is named, never quoted."""
+    override, joiner = "\u202e", "\u200d"
+    for checker in (records.identifier_problem, records.short_title_problem):
+        assert checker("W-2") == ""
+        assert checker(f"W-2{override}") == (
+            "may not contain an invisible character (U+202E RIGHT-TO-LEFT OVERRIDE)")
+        assert "U+200D ZERO WIDTH JOINER" in checker(f"W{joiner}-2")
+        assert override not in checker(f"W-2{override}")
+
+
+def test_a_typed_identifier_longer_than_eighty_characters_is_refused_as_too_long():
+    """P291: the typing limit is the typed check's, not the store's gate,
+    which keeps the unbounded rule - a record's identifier is not re-judged
+    by what a person may type."""
+    assert records.IDENTIFIER_MAX_CHARS == 80
+    assert records.typed_identifier_problem("A" * 80) == ""
+    assert records.typed_identifier_problem("A" * 81) == (
+        "may have at most 80 characters, got 81 (it begins a file name)")
+    assert records.identifier_problem("A" * 200) == ""
+    # The other rules come first, in the same words.
+    assert records.typed_identifier_problem("A:" + "A" * 200) == records.identifier_problem("A:")

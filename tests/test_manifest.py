@@ -1390,3 +1390,19 @@ def test_nothing_is_kept_once_the_hold_ends(engagement, monkeypatch):
     load_manifest(engagement)
     load_manifest(engagement)
     assert len(built) == 3
+
+
+def test_a_typed_identifier_past_eighty_characters_is_refused_where_it_is_read():
+    """P291: the editor reads a row's identifier through ``item_from_fields``,
+    which says it is too long (and quotes at most 80 characters of it)
+    before any path-room check can blame the household."""
+    with pytest.raises(ManifestError) as refused:
+        item_from_fields({"identifier": "A" * 81, "document": "x"}, where="Row 3")
+    said = str(refused.value)
+    assert said.startswith(f"Row 3: {COL_IDENTIFIER} '")
+    assert said.endswith("may have at most 80 characters, got 81 (it begins a file name)")
+    with pytest.raises(ManifestError, match="got 10000"):
+        item_from_fields({"identifier": "A" * 10_000, "document": "x"}, where="Row 1")
+    assert len(said) < 300
+    assert item_from_fields({"identifier": "A" * 80, "document": "x"},
+                            where="Row 1").identifier == "A" * 80

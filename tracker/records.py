@@ -80,7 +80,9 @@ from tracker.layout import (  # noqa: F401 - re-exported: the record's names sin
     WINDOWS_ILLEGAL_CHARS_TEXT,
     WINDOWS_RESERVED_NAMES,
     WINDOWS_RESERVED_NAMES_TEXT,
+    invisible_problem,
     is_reserved_name,
+    quoted,  # noqa: F401 - re-exported: the manifest quotes through the record (it loads nothing else)
 )
 
 # ------------------------------------------------------------ derivations ----
@@ -812,6 +814,12 @@ def person_from_json(raw: object) -> Person:
     kind = str(raw.get("kind", ""))
     if kind not in PERSON_KINDS:
         raise ValueError(f"{kind!r} is not one of {', '.join(PERSON_KINDS)}")
+    # The name every page of every document is searched for is held to the
+    # one text rule every other name is (P288): a name over 1,000
+    # characters is not a name, and an unbounded one costs every pass.
+    name = raw.get("name", "")
+    if problem := text_problem(name):
+        raise ValueError(f"a person's name {problem}")
     spellings = raw.get("spellings") or ()
     if isinstance(spellings, str):
         spellings = (spellings,)
@@ -819,7 +827,7 @@ def person_from_json(raw: object) -> Person:
     for spelling in listed:
         if not is_a_spelling(spelling):
             raise ValueError(f"{spelling!r} is one word; a spelling needs two or more")
-    return Person(kind=kind, name=str(raw.get("name", "")), spellings=listed)
+    return Person(kind=kind, name=name, spellings=listed)
 
 
 def _objects_from_json(raw: object, one, what: str) -> tuple:
@@ -1455,15 +1463,45 @@ def identifier_problem(identifier: str) -> str:
 
     Shared by ``manifest.validated``, the desktop app's create path and the
     store's gate, so a bad identifier is refused with the same sentence
-    wherever it is typed or read.
+    wherever it is typed or read. An invisible character is refused by code
+    point (P290): the identifier begins every working copy's name, and a
+    right-to-left override there is the classic file-name spoof. The store
+    asks this too, so a stored identifier holding one is a refused line -
+    the record is untrusted input (decision 187).
     """
     if WINDOWS_ILLEGAL_CHARS.search(identifier):
         return f"may not contain any of {WINDOWS_ILLEGAL_CHARS_TEXT} (it begins a file name)"
+    if (hidden := invisible_problem(identifier)) is not None:
+        return hidden
     if identifier != identifier.rstrip(". "):
         return "may not end with a dot or a space (Windows drops them from file names)"
     if is_reserved_name(identifier):
         return (f"may not be a name Windows keeps for a device ({WINDOWS_RESERVED_NAMES_TEXT}); "
                 f"it begins a file name")
+    return ""
+
+
+#: The most characters a typed identifier may have (P291): the width a
+#: household or return folder name has (``layout.NAME_MAX_CHARS``), for the
+#: same reason - it begins every file name.
+IDENTIFIER_MAX_CHARS = 80
+
+
+def typed_identifier_problem(identifier: str) -> str:
+    """Why a *typed* identifier is refused: :func:`identifier_problem`, then
+    :data:`IDENTIFIER_MAX_CHARS`, or "" if it passes.
+
+    The length is a typing limit and not the store's gate, which keeps the
+    unbounded :func:`identifier_problem`: a record's identifier is not
+    re-judged by what a person may type. Said before the path-room check,
+    so a long identifier is told it is long and never to shorten the
+    household.
+    """
+    if problem := identifier_problem(identifier):
+        return problem
+    if len(identifier) > IDENTIFIER_MAX_CHARS:
+        return (f"may have at most {IDENTIFIER_MAX_CHARS} characters, got {len(identifier)} "
+                f"(it begins a file name)")
     return ""
 
 
@@ -1483,6 +1521,8 @@ def short_title_problem(short_title: str) -> str:
         return f"may have at most {SHORT_TITLE_MAX} characters, got {len(short_title)}"
     if WINDOWS_ILLEGAL_CHARS.search(short_title):
         return f"may not contain any of {WINDOWS_ILLEGAL_CHARS_TEXT} (it is part of a file name)"
+    if (hidden := invisible_problem(short_title)) is not None:
+        return hidden
     if short_title != short_title.rstrip(". "):
         return "may not end with a dot or a space (Windows drops them from file names)"
     if short_title and is_reserved_name(short_title):

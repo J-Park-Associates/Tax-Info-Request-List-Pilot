@@ -128,11 +128,13 @@ from tracker.records import (
     info_to_json,
     is_reserved_name,  # noqa: F401
     link_problem,
+    quoted,
     rule_from_json,
     rule_row_fault,
     rule_to_json,
     short_title_problem,
     split_codes,
+    typed_identifier_problem,
 )
 
 # ---------------------------------------------------------------- schema ----
@@ -1061,8 +1063,13 @@ def item_from_fields(fields: Mapping[str, object], *, where: str) -> RequestItem
     extensions = fields.get("allowed_extensions")
     if extensions in (None, ""):
         extensions = fields.get("extensions")
+    identifier = text("identifier")
+    # A typed identifier is told it is too long here, before the path-room
+    # check names the household (P291); a blank one is `validated`'s to say.
+    if identifier and (problem := typed_identifier_problem(identifier)):
+        raise ManifestError(f"{where}: {COL_IDENTIFIER} '{quoted(identifier)}' {problem}")
     return RequestItem(
-        identifier=text("identifier"),
+        identifier=identifier,
         document=text("document"),
         period=text("period"),
         expected_count=_whole_number(fields.get("expected_count"), DEFAULT_EXPECTED_COUNT,
@@ -1145,10 +1152,10 @@ def validated(
             raise ManifestError(f"{where}: {COL_IDENTIFIER} is required")
         problem = identifier_problem(identifier)
         if problem:
-            raise ManifestError(f"{where}: {COL_IDENTIFIER} {identifier!r} {problem}")
+            raise ManifestError(f"{where}: {COL_IDENTIFIER} '{quoted(identifier)}' {problem}")
         key = identifier_key(identifier)
         if key in seen:
-            raise ManifestError(f"Duplicate identifier {identifier!r} (rows {seen[key]} and {n})")
+            raise ManifestError(f"Duplicate identifier '{quoted(identifier)}' (rows {seen[key]} and {n})")
         seen[key] = n
         document = item.document.strip()
         if not document:

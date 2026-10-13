@@ -62,10 +62,10 @@ from tracker.manifest import (
     detect_year,
     entity_keyword,
     identifier_key,
-    identifier_problem,
     issuer_short_title,
     item_from_fields,
     shift_item,
+    typed_identifier_problem,
 )
 
 # Tax form catalog — the wizard's first page. Selecting a form type tailors
@@ -720,7 +720,7 @@ def item_from_spec(spec: dict) -> RequestItem:
     document = str(spec.get("document", "") or "").strip()
     if not identifier or not document:
         raise ManifestError("every request needs an identifier and a document name")
-    problem = identifier_problem(identifier)
+    problem = typed_identifier_problem(identifier)
     if problem:
         raise ManifestError(f"Identifier {identifier!r} {problem}")
     item = item_from_fields(spec, where=identifier)

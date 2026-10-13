@@ -163,3 +163,14 @@ def test_the_door_command_line_says_the_place_and_whether_a_write_may_go_there(
         said = capsys.readouterr().out
         assert f"place: {kind}" in said and answer in said, said
     assert not (inbox / "w2.pdf").exists()
+
+
+def test_a_refused_path_is_quoted_cut(root):
+    """P293: a typed folder far outside the root is refused in a sentence
+    that quotes at most 80 characters of it, not a 10,000-character notice."""
+    typed = str(root.parent / ("x" * 10_000))
+    with pytest.raises(door.DoorError) as refused:
+        door.return_dir(typed, root=root)
+    assert door.NOT_UNDER_ROOT.split("{path}")[1].format(root=root) in str(refused.value)
+    assert len(str(refused.value)) < 300
+    assert layout.quoted(typed) in str(refused.value)

@@ -5336,3 +5336,14 @@ def test_the_runbooks_mac_paragraphs_quote_the_sentences_the_app_shows_and_name_
     # Section 8, item 13 of the SPEC: the Windows lines named a folder the app does not make.
     assert re.findall(r"%LOCALAPPDATA%\\tax-document-tracker(?!-pilot)", runbook) == []
     assert f"%LOCALAPPDATA%\\{settings.DATA_HOME_NAME}" in runbook
+
+
+def test_the_signature_boxs_page_side_limit_is_the_apis_constant():
+    """P295: the page holds one HTML limit of its own, the signature box's
+    ``maxlength``. The API refuses a longer name whatever the page sends
+    (``SIGNED_BY_LONGEST``); pinning the page's number to that constant is
+    what keeps the two from drifting apart unseen."""
+    from tracker import api
+
+    assert f'name.setAttribute("maxlength", "{api.SIGNED_BY_LONGEST}")' in read(
+        "app/renderer/pilot.js")

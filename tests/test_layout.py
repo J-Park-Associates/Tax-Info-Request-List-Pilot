@@ -788,3 +788,40 @@ def test_off_a_mac_room_is_the_absolute_length_of_a_path():
 def test_a_mac_finds_the_clients_root_positionally(on_a_mac):
     engagement = return_dir_for(MAC_ROOT, HOUSEHOLD, 2026, RETURN)
     assert layout.room_root(engagement) == MAC_ROOT
+
+
+# ------------------------------------- what a refusal says of a typed value ----
+
+
+def test_invisible_problem_names_the_first_hidden_character_and_segment_problem_asks_it():
+    """P290: one wording of the invisible-character rule. The first hidden
+    character is named by code point, never quoted; text with none is
+    ``None``; and a folder name's refusal is that same sentence."""
+    assert layout.invisible_problem("W-2") is None
+    assert layout.invisible_problem("") is None
+    assert layout.invisible_problem("W-2\u202e") == layout.NAME_INVISIBLE.format(
+        character="U+202E RIGHT-TO-LEFT OVERRIDE")
+    assert "ZERO WIDTH JOINER" in layout.invisible_problem("a\u200db\u202e")
+    for name in ("Smith\u202e", "Mu\u200dnoz"):
+        assert layout.segment_problem(name) == layout.invisible_problem(name)
+
+
+def test_quoted_cuts_a_long_value_to_eighty_characters_and_leaves_a_short_one():
+    """P293: a refusal quotes at most 80 characters; a cut ends in three
+    ASCII dots so the sentence never carries a character the rule refuses."""
+    assert layout.QUOTE_MAX_CHARS == 80
+    assert layout.quoted("Smith Family") == "Smith Family"
+    assert layout.quoted("x" * 80) == "x" * 80
+    cut = layout.quoted("x" * 81)
+    assert cut == "x" * 77 + "..." and len(cut) == 80
+    assert layout.quoted(7) == "7"
+    assert layout.quoted(Path("a") / ("y" * 100)).isascii()
+
+
+def test_a_refused_long_name_is_a_short_sentence_that_still_states_its_length():
+    for what in ("household", "return"):
+        with pytest.raises(layout.LayoutError) as refused:
+            layout.checked_name("x" * 10_000, what)
+        said = str(refused.value)
+        assert len(said) < 200
+        assert said.endswith(layout.NAME_TOO_LONG.format(limit=80, n=10_000))

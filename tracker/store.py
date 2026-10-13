@@ -319,7 +319,12 @@ _IN_PLACE: dict[int, tuple[str, ...]] = {
 #: to this number.
 #: 3 adds pilot P170's refusal: a household's related list that is not a
 #: list of text, or names something that is not one folder name.
-ADMISSION_VERSION = 3
+#: 4 adds the form-input audit's refusals (P288, P290): a person's name
+#: that is not one line of at most 1,000 characters, and a request
+#: identifier or short name that hides an invisible character (a
+#: right-to-left override is the classic file-name spoof). No real record
+#: holds either; the audit found the gap, not a victim.
+ADMISSION_VERSION = 4
 
 #: The ``(table, column)`` pairs an in-place step added, read off
 #: :data:`_IN_PLACE` so that a new step is covered without a second list.
@@ -1678,6 +1683,12 @@ def _household_cell(name: str, info: dict) -> object:
 #: and what is wrong with it.
 MALFORMED_LINE = ("{where}: line {seq} of the record is malformed ({event} {problem}); "
                   "the journal is not applied past it")
+#: What a *typed* change the store's admission refuses is told as (P292):
+#: a change, not a line. The admission is the same rule as the read path's,
+#: but a line that was never written is not a corrupt record, and a person
+#: who mistyped a member must not read that the journal is broken. The
+#: problem phrases already read as a clause of "This change ...".
+REFUSED_CHANGE = "This change {problem}; nothing was written"
 #: What :data:`MALFORMED_LINE` calls an event whose name this version does
 #: not know, rather than quoting it (decision 187).
 UNKNOWN_EVENT = "an event this version does not know"
@@ -1710,7 +1721,8 @@ def _line_keys_problem(event: dict) -> str:
     return ""
 
 
-def _refuse_a_malformed_line(event: dict, seq: int, where: str, *, kind: str = KIND_RETURN) -> None:
+def _refuse_a_malformed_line(event: dict, seq: int, where: str, *, kind: str = KIND_RETURN,
+                             written: bool = True) -> None:
     """A line that parses as JSON and names an event but carries the wrong
     shape, an impossible value or a place outside its return's is refused
     by name, before a value of it reaches a table.
@@ -1748,6 +1760,12 @@ def _refuse_a_malformed_line(event: dict, seq: int, where: str, *, kind: str = K
     :func:`check` would now report and nobody could act on. Both keyword
     events name a request and a word, both as text and neither blank, or
     the line is refused like any other.
+
+    ``written`` says whether the line is one on disk. A line read back is
+    refused as :data:`MALFORMED_LINE`, naming its place in the record; the
+    admission :func:`record` runs on a change that has not been appended
+    passes ``written=False`` and is refused as :data:`REFUSED_CHANGE`,
+    because nothing in the record is malformed (P292).
     """
     from tracker import layout, reasons
 
@@ -1758,6 +1776,8 @@ def _refuse_a_malformed_line(event: dict, seq: int, where: str, *, kind: str = K
     known = name if name in ledger.EVENTS | ledger.RETIRED_EVENTS else UNKNOWN_EVENT
 
     def refuse(problem: str) -> None:
+        if not written:
+            raise StoreError(REFUSED_CHANGE.format(problem=problem))
         raise StoreError(MALFORMED_LINE.format(where=where, seq=seq, event=known, problem=problem))
 
     def a_place(field: str, location: object, *, writes: bool, what: str = "a step",
@@ -2262,10 +2282,10 @@ def record(conn: sqlite3.Connection, engagement_dir: Path | str, *events: dict) 
     before = ledger.chain_at(chain, already)
     for number, event in enumerate(events, start=already + 1):
         line = ledger.line_of(event, before)
-        try:
-            _refuse_a_malformed_line(json.loads(line), number, row["path"], kind=row["kind"])
-        except StoreError as exc:
-            raise StoreError(f"{exc}; nothing was written") from None
+        # Not yet a line of the record: refused as a change, in a sentence
+        # that already ends "nothing was written" (P292).
+        _refuse_a_malformed_line(json.loads(line), number, row["path"], kind=row["kind"],
+                                 written=False)
         before = ledger.chain_link(before, line)
     # This machine vouches for the record as it is before a line is added
     # to it, and says how far it is about to take it (decision 159, the

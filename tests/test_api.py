@@ -11074,3 +11074,153 @@ def test_a_view_damaged_into_other_valid_json_is_said_by_its_class_and_the_ask_i
     assert said and "TypeError" in said[0], "said by its class"
     assert not any(name in said[0] for name in ("Mixed", "Quiet", "Retired", "setup.exe")), "never a client's words"
     assert _firm_page(capsys, list_, view=turned["view"], **filter)["view"] == turned["view"], "and the new view is the one saved"
+
+
+# ------------------------------------------------- the form inputs, 2026-10-12 ----
+# The audit of every form's payload against the real API (P287 to P294):
+# each rule lives in Python and the store, so each claim is made through the
+# commands the page calls.
+
+
+def _a_return_to_type_into(capsys, demo_root, name="Typed Into"):
+    """One small return, and the rows the editor would send back."""
+    assert run(capsys, "create", stdin={
+        "household": HOUSEHOLD, "return_name": name, "form": "1040",
+        "items": [{"identifier": "A01", "document": "W-2"}]})[0] == 0
+    return where(demo_root, name)
+
+
+def test_create_reads_a_members_string_as_lines_and_never_as_letters(capsys, demo_root):
+    spec = {"household": "Doe Family", "return_name": "1040 - Jane Doe", "form": "1040",
+            "items": [{"identifier": "A01", "document": "W-2"}]}
+    code, payload = run(capsys, "create", stdin={**spec, "members": "Jane Doe\nJohn  Doe\n\n"})
+    assert code == 0, payload
+    from tracker.layout import private_household_dir
+
+    held = load_household_info(private_household_dir(demo_root, "Doe Family"))
+    assert held.members == ("Jane Doe", "John Doe")
+
+    # Anything that is neither a list nor text is refused by name, and
+    # nothing is written: no household folder for the household it named.
+    code, payload = run(capsys, "create", stdin={**spec, "household": "Roe Family",
+                                                 "return_name": "1040 - Roe", "members": 7})
+    assert code == 1 and payload["error"] == f"{api.MEMBERS_LABEL} must be a list of names"
+    assert not private_household_dir(demo_root, "Roe Family").exists()
+
+
+def test_create_and_edit_household_parse_members_through_one_helper(capsys, demo_root):
+    from tracker.layout import private_household_dir
+
+    typed = "  Jane   Doe \nJohn Doe\n"
+    code, payload = run(capsys, "create", stdin={
+        "household": "Doe Family", "return_name": "1040 - Jane Doe", "form": "1040",
+        "members": typed, "items": [{"identifier": "A01", "document": "W-2"}]})
+    assert code == 0, payload
+    created = load_household_info(private_household_dir(demo_root, "Doe Family")).members
+
+    engagement = where(demo_root, "1040 - Jane Doe", household="Doe Family")
+    code, payload = run(capsys, "edit-household", api.ENGAGEMENT_FLAG, str(engagement),
+                        stdin={"members": ["Someone Else"]})
+    assert code == 0, payload
+    code, payload = run(capsys, "edit-household", api.ENGAGEMENT_FLAG, str(engagement),
+                        stdin={"members": typed})
+    assert code == 0, payload
+    edited = load_household_info(private_household_dir(demo_root, "Doe Family")).members
+    assert created == edited == ("Jane Doe", "John Doe")
+    assert api._members_from_spec(["Jane  Doe", " ", "John Doe"]) == ("Jane Doe", "John Doe")
+    assert api._members_from_spec(None) == api._members_from_spec("") == ()
+    for odd in (7, {"a": "b"}, True):
+        with pytest.raises(ManifestError, match="must be a list of names"):
+            api._members_from_spec(odd)
+
+
+def test_a_persons_name_longer_than_the_text_rule_is_refused_by_name(capsys, demo_root):
+    from tracker.manifest import list_head
+
+    engagement = _a_return_to_type_into(capsys, demo_root)
+    rows = payload_of_state(capsys, engagement)["rules"]
+    before = (list_head(engagement), ledger.path_for(engagement).read_bytes())
+    people = [{"kind": "taxpayer", "name": "J" * 10_000, "spellings": []}]
+    code, payload = run(capsys, "edit", api.ENGAGEMENT_FLAG, str(engagement),
+                        stdin={"items": rows, "engagement": {"people": people}})
+    assert code == 1
+    assert payload["error"] == (f"{api.PEOPLE_LABEL}: a name must be one line of text of at most "
+                                "1000 characters, with no control character")
+    assert (list_head(engagement), ledger.path_for(engagement).read_bytes()) == before
+
+
+def test_the_firms_name_and_phone_are_held_to_the_one_line_text_rule(capsys, tmp_path, monkeypatch):
+    from tracker.settings import ENV_SETTINGS_DIR, clients_root, firm, firm_phone, settings_path
+
+    monkeypatch.setenv(ENV_SETTINGS_DIR, str(tmp_path / "app"))
+    clients = tmp_path / "Clients"
+    clients.mkdir()
+    refused = [
+        ({"firm": "F" * 1001}, f"{api.FIRM_NAME_LABEL} must be one line"),
+        ({"phone": "555-0100\n555-0101"}, f"{api.FIRM_PHONE_LABEL} must be one line"),
+        ({"firm": "Park\x00 CPA"}, f"{api.FIRM_NAME_LABEL} must be one line"),
+    ]
+    for extra, start in refused:
+        code, payload = run(capsys, "set-root", stdin={"root": str(clients), **extra})
+        assert code == 1 and payload["error"].startswith(start), payload
+        # Refused before the root is written: nothing was saved at all.
+        assert clients_root() is None and not settings_path().exists()
+    code, payload = run(capsys, "set-root", stdin={
+        "root": str(clients), "firm": "F" * 1000, "phone": "555-0100 x12"})
+    assert code == 0, payload
+    assert firm() == "F" * 1000 and firm_phone() == "555-0100 x12"
+    # Blank stays allowed: it clears the value.
+    code, payload = run(capsys, "set-root", stdin={"root": str(clients), "firm": "", "phone": ""})
+    assert code == 0 and firm() == "" and firm_phone() == ""
+
+
+def test_a_short_name_hiding_a_right_to_left_override_is_refused_in_the_editor(capsys, demo_root):
+    engagement = _a_return_to_type_into(capsys, demo_root)
+    rows = payload_of_state(capsys, engagement)["rules"]
+    before = ledger.path_for(engagement).read_bytes()
+    for hidden in ("\u202e", "\u200d"):  # right-to-left override, zero-width joiner
+        code, payload = run(capsys, "edit", api.ENGAGEMENT_FLAG, str(engagement), stdin={
+            "items": [{**rows[0], "short_title": f"W-2{hidden}"}], "engagement": {}})
+        assert code == 1
+        assert payload["error"].startswith("Row 1: Short name may not contain an invisible character")
+        assert "U+" in payload["error"]
+    assert ledger.path_for(engagement).read_bytes() == before
+
+
+def test_a_long_identifier_is_refused_as_too_long_and_never_as_a_long_folder_name(
+        capsys, demo_root):
+    engagement = _a_return_to_type_into(capsys, demo_root)
+    rows = payload_of_state(capsys, engagement)["rules"]
+    before = ledger.path_for(engagement).read_bytes()
+    code, payload = run(capsys, "edit", api.ENGAGEMENT_FLAG, str(engagement), stdin={
+        "items": [{**rows[0], "identifier": "A" * 200}], "engagement": {}})
+    assert code == 1
+    assert payload["error"].startswith("Row 1: Identifier ")
+    assert "may have at most 80 characters, got 200" in payload["error"]
+    assert "shorten the household" not in payload["error"]
+    assert len(payload["error"]) < 300, "and the echo of what was typed is cut"
+    assert ledger.path_for(engagement).read_bytes() == before
+
+
+def test_an_overlong_member_is_refused_as_a_change_not_a_corrupt_record(capsys, demo_root):
+    engagement = _a_return_to_type_into(capsys, demo_root)
+    code, payload = run(capsys, "edit-household", api.ENGAGEMENT_FLAG, str(engagement),
+                        stdin={"members": ["M" * 10_000]})
+    assert code == 1
+    assert payload["error"].startswith("This change carries details")
+    assert payload["error"].endswith("; nothing was written")
+    assert "malformed" not in payload["error"] and "line " not in payload["error"]
+
+
+def test_stdin_that_is_not_json_is_refused_like_a_non_object_and_logs_nothing(
+        capsys, demo_root, monkeypatch):
+    import io
+
+    from tracker.settings import error_log_path
+
+    monkeypatch.setattr("sys.stdin", io.TextIOWrapper(io.BytesIO(b"not json"), encoding="utf-8"))
+    code = api.main(["set-schedule"])
+    payload = one_reply(capsys.readouterr().out)
+    assert code == 1 and payload["error"] == api.NOT_A_SPEC
+    log = error_log_path()
+    assert log is None or not log.exists() or log.read_text(encoding="utf-8") == ""

@@ -1198,7 +1198,13 @@ def _read_spec() -> dict:
     """
     stream = sys.stdin
     raw = stream.buffer.read().decode("utf-8") if hasattr(stream, "buffer") else stream.read()
-    spec = json.loads(raw or "{}")
+    try:
+        spec = json.loads(raw or "{}")
+    except json.JSONDecodeError:
+        # Text that is not JSON at all is the same mistake as JSON that is
+        # not an object (a hand-run command; the shell always stringifies):
+        # one plain refusal, not an "unexpected error" in the error log.
+        raise ManifestError(NOT_A_SPEC) from None
     if not isinstance(spec, dict):
         raise ManifestError(NOT_A_SPEC)
     # Kept for the failure envelope: the row a click was about (decision 193).
@@ -2273,6 +2279,27 @@ def _info_from_spec(spec: dict, *, carry: EngagementInfo | None = None,
     )
 
 
+def _members_from_spec(sent: object) -> tuple[str, ...]:
+    """The household's members as the dialog and the editor send them:
+    a list of names, or one text with a name per line (the editor's box).
+    Anything else is refused by name; each name is whitespace-folded and
+    a blank one is dropped.
+
+    One helper for New household and Edit household (P287): a string is
+    iterable, so reading it as a list made ``"Jane"`` the four members
+    ``J``, ``a``, ``n``, ``e`` in one form while the other split it into
+    lines. Nothing else parses members.
+    """
+    if sent is None or sent == "":
+        return ()
+    if isinstance(sent, str):
+        sent = sent.splitlines()
+    elif not isinstance(sent, (list, tuple)):
+        raise ManifestError(f"{MEMBERS_LABEL} must be a list of names")
+    folded = (" ".join(str(one).split()) for one in sent)
+    return tuple(one for one in folded if one)
+
+
 def _people_from_spec(sent: object) -> tuple[Person, ...]:
     """The return's people as the dialog and the editor's block send them:
     a list of ``{kind, name, spellings}`` (decision 128).
@@ -2295,6 +2322,11 @@ def _people_from_spec(sent: object) -> tuple[Person, ...]:
         name = " ".join(str(one.get("name", "") or "").split())
         if not name:
             raise ManifestError(f"Every person needs a name ({PERSON_KIND_LABELS[kind]})")
+        # The name every page of every document is searched for: held to
+        # the one text rule every other name is, so an unbounded one cannot
+        # cost every pass (P288).
+        if problem := records.text_problem(name):
+            raise ManifestError(f"{PEOPLE_LABEL}: a name {problem}")
         spellings: list[str] = []
         for spelling in one.get("spellings") or []:
             spelling = " ".join(str(spelling).split())
@@ -4157,8 +4189,7 @@ def _cmd_create(argv: list[str]) -> dict:
     else:
         household_info = HouseholdInfo(
             name=household,
-            members=tuple(" ".join(str(m).split()) for m in (spec.get("members") or [])
-                          if str(m).strip()),
+            members=_members_from_spec(spec.get("members")),
             contact=" ".join(str(spec.get("contact", "") or "").split()),
             link=" ".join(str(spec.get("link", "") or "").split()),
         )
@@ -4441,10 +4472,7 @@ def _cmd_edit_household(argv: list[str]) -> dict:
     held = load_household_info(household_dir)
     members = held.members
     if "members" in spec:
-        typed = spec["members"]
-        if isinstance(typed, str):
-            typed = typed.splitlines()
-        members = tuple(" ".join(str(one).split()) for one in (typed or []) if str(one).strip())
+        members = _members_from_spec(spec["members"])
     info = replace(
         held,
         name=held.name or household_dir.name,
@@ -5553,6 +5581,12 @@ def _cmd_set_root(argv: list[str]) -> dict:
     leaves what is recorded alone.
     """
     spec = _read_spec()
+    # The firm's name and phone go into every letter, so they are held to
+    # the one-line text rule here, before the root is written: a refused
+    # firm text writes nothing (P289). Blank stays allowed - it clears.
+    for key, label in (("firm", FIRM_NAME_LABEL), ("phone", FIRM_PHONE_LABEL)):
+        if spec.get(key) is not None and (problem := records.text_problem(str(spec[key]))):
+            raise ManifestError(f"{label} {problem}")
     root = set_clients_root(str(spec.get("root", "")))
     if spec.get("firm") is not None:
         set_firm(str(spec["firm"]))

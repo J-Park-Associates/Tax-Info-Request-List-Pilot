@@ -630,7 +630,12 @@ def _set_text(key: str, value: object) -> str:
 
 
 def set_firm(name: str) -> str:
-    """Record the firm's name beside the clients root."""
+    """Record the firm's name beside the clients root.
+
+    Stripped and otherwise as typed: the API holds the text to the one-line
+    rule (``records.text_problem``) before it arrives here, because
+    ``settings`` imports nothing above ``layout`` and ``fsio``.
+    """
     return _set_text(KEY_FIRM, name)
 
 
@@ -640,7 +645,8 @@ def set_firm_phone(number: str) -> str:
     Stripped and otherwise taken as typed: a firm writes its own number
     its own way - with an extension, a country code, two numbers - and a
     format this code invented would be a number read out to a client in
-    the firm's name that the firm never wrote.
+    the firm's name that the firm never wrote. The API holds the text to
+    the one-line rule before it arrives here.
     """
     return _set_text(KEY_FIRM_PHONE, number)
 

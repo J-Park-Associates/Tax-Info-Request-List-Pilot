@@ -358,6 +358,36 @@ def _character(char: str) -> str:
     return f"U+{ord(char):04X} {unicodedata.name(char, 'UNNAMED')}"
 
 
+def invisible_problem(text: str) -> str | None:
+    """Why ``text`` hides a character a person could not read, or ``None``.
+
+    The one wording of the invisible-character rule (P290): a folder name
+    asks it through :func:`segment_problem`, and a request's identifier and
+    short name ask it through the record, because both become part of every
+    working copy's file name and a right-to-left override in a file name is
+    the classic spoof (``W-2 fdp.exe`` shown as ``W-2 exe.pdf``). The
+    character is named by code point, never quoted.
+    """
+    hidden = next((c for c in text if is_invisible(c)), None)
+    return None if hidden is None else NAME_INVISIBLE.format(character=_character(hidden))
+
+
+#: The most characters of what a person typed that a refusal quotes back
+#: (P293). A refusal that echoes a 10,000-character value is a 10,000-
+#: character notice; the reason beside it already states the limit and the
+#: length, so nothing is lost by the cut.
+QUOTE_MAX_CHARS = 80
+
+
+def quoted(text: object) -> str:
+    """``text`` as a refusal may quote it: whole when it is at most
+    :data:`QUOTE_MAX_CHARS` characters, else its first 77 and three ASCII
+    dots - ASCII, so the sentence never carries a character the rule it
+    reports refuses."""
+    typed = str(text)
+    return typed if len(typed) <= QUOTE_MAX_CHARS else typed[:QUOTE_MAX_CHARS - 3] + "..."
+
+
 def _script(char: str) -> str:
     """The alphabet a letter belongs to: the first word of its Unicode name,
     with Chinese, Japanese and Korean counted as one."""
@@ -406,8 +436,8 @@ def segment_problem(name: str) -> str | None:
         return NAME_TOO_LONG.format(limit=NAME_MAX_CHARS, n=len(text))
     if WINDOWS_ILLEGAL_CHARS.search(text) or any(unicodedata.category(c) == "Cc" for c in text):
         return NAME_ILLEGAL
-    if (hidden := next((c for c in text if is_invisible(c)), None)) is not None:
-        return NAME_INVISIBLE.format(character=_character(hidden))
+    if (hidden := invisible_problem(text)) is not None:
+        return hidden
     if not text[0].isalnum():
         return NAME_FIRST_CHARACTER
     if text.endswith((".", " ")):
@@ -436,7 +466,7 @@ def checked_name(typed: object, what: str) -> str:
     gives one sentence wherever a name is typed."""
     name = normalised_name(typed)
     if (reason := segment_problem(name)) is not None:
-        raise LayoutError(NAME_REFUSED.format(typed=name, what=what, reason=reason))
+        raise LayoutError(NAME_REFUSED.format(typed=quoted(name), what=what, reason=reason))
     return name
 
 
@@ -517,7 +547,7 @@ def _named(name: str, what: str) -> str:
     """``name``, when the name rule accepts it as a folder a constructor
     may build - else the :class:`LayoutError` saying why."""
     if (reason := segment_problem(name)) is not None:
-        raise LayoutError(NAME_REFUSED.format(typed=name, what=what, reason=reason))
+        raise LayoutError(NAME_REFUSED.format(typed=quoted(name), what=what, reason=reason))
     return name
 
 
@@ -901,7 +931,7 @@ def return_at(root: Path | str, path: Path | str) -> tuple[str, int, str]:
     a prior - is never one, nor is anything above or below a return."""
     place = place_of(root, path)
     if place.kind != RETURN:
-        raise LayoutError(NOT_A_RETURN.format(name=Path(path).name or path, tree=PRIVATE_TREE))
+        raise LayoutError(NOT_A_RETURN.format(name=quoted(Path(path).name or path), tree=PRIVATE_TREE))
     assert place.year is not None
     return place.household, place.year, place.return_name
 
@@ -911,7 +941,7 @@ def household_at(root: Path | str, path: Path | str) -> str:
     :class:`LayoutError` (:data:`NOT_A_HOUSEHOLD`)."""
     place = place_of(root, path)
     if place.kind != HOUSEHOLD:
-        raise LayoutError(NOT_A_HOUSEHOLD.format(name=Path(path).name or path, tree=PRIVATE_TREE))
+        raise LayoutError(NOT_A_HOUSEHOLD.format(name=quoted(Path(path).name or path), tree=PRIVATE_TREE))
     return place.household
 
 
