@@ -906,3 +906,7 @@ pytest for it), so the office gate before the merge covers it.
   nineteen unread vocabulary keys (E7).
 
 **Landing:** with the form-inputs change, per CLAUDE.md's bulk-landing rule.
+
+**Decided by Jason, 2026-10-13:** confirmed - New return proceeds into a
+household whose other return's record will not read while the client folder
+is there; the pass keeps reporting that return. P296 stands as written.

@@ -15,7 +15,7 @@
     "a person sends the draft"
   ],
   "counts": {
-    "nodes": 298,
+    "nodes": 300,
     "edges": 1334,
     "reused": 243
   },
@@ -4730,15 +4730,15 @@
       "id": "pilot/HANDOFF-client-folder.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "a909a3df6e0f0b71",
-      "lines": 908
+      "sha256": "8b91eb6d7b680001",
+      "lines": 912
     },
     {
       "id": "pilot/HANDOFF-form-inputs.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "d5a3a202b15b6164",
-      "lines": 1075
+      "sha256": "3679ee7aaa477cf6",
+      "lines": 1078
     },
     {
       "id": "pilot/HANDOFF.md",
@@ -4805,11 +4805,25 @@
       "lines": 332
     },
     {
+      "id": "pilot/SPEC-document-gate.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "72535a27e8bd51d8",
+      "lines": 127
+    },
+    {
       "id": "pilot/SPEC-email-zip-tag.md",
       "type": "doc",
       "layer": "docs",
       "sha256": "c1b14fc4d6018cff",
       "lines": 99
+    },
+    {
+      "id": "pilot/SPEC-error-handling-small.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "19091fbceb3bdf7a",
+      "lines": 192
     },
     {
       "id": "pilot/SPEC-firm-cache-fill.md",

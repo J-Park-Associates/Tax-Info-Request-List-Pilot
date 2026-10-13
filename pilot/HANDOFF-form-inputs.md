@@ -1073,3 +1073,6 @@ merge covers it.
 
 **Landing:** CLAUDE.md's bulk-landing rule: the tracker lane opens the pull
 request as a draft at its turn and marks it ready once.
+
+**Decided by Jason, 2026-10-13:** the store's gate reads the Document. Built
+under `pilot/SPEC-document-gate.md` (P301), which amends P290.
