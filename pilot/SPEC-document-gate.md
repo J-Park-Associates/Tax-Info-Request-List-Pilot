@@ -171,3 +171,39 @@ Gate after the rebuild: `test_manifest`, `test_api`, `test_layout`,
 `test_templates`, `test_layers`, `test_single_source`, `test_repo_map`,
 ruff, the map check. The builder appends
 `## Rebuild 1 (Sonnet, 2026-10-13)` to the handoff.
+
+---
+
+## 11. Amendments after the second review (Opus, 2026-10-13)
+
+Findings G1-G4 are in `pilot/HANDOFF-document-gate.md` under "Review 2".
+None survived a rebuild, so the rebuild is Sonnet's. All four are built.
+
+**G1 (must fix) - the admission pin.** `tests/test_store.py::test_admission_version_changes_with_the_admission`
+hashes the whole source, docstring included, of every function the store's
+check reaches; section 10's F5 docstring edit to `layout.spoofing_problem`
+moved its hash, and section 10's gate left `test_store` out (CLAUDE.md's
+affected-tests rule would have included it for a change to `layout.py`;
+this SPEC's omission). Fix: re-pin that one entry under version 5 only;
+version 4's entry and `ADMISSION_VERSION = 5` stay, since nothing new is
+refused. **Do G3 first, then pin**, because any further docstring change
+moves the same hash.
+
+**G3 (nit) - the same docstring.** `spoofing_problem`'s docstring says the
+store's check covers only "identifier or short name"; it says the Document
+too (P301).
+
+**G2 (nit).** SPEC-form-inputs section 18 says the refusal names "the row and
+the Document"; it says "the row and the Document, or the Issuer Name for an
+issuer row".
+
+**G4 (record).** This section notes that `6d67fc1` also edited this SPEC
+(the landing session's section-number correction) and that the handoff
+paragraph section 10 called "Reminder for Jason" is titled "For Jason,
+before landing". No change.
+
+Gate after the rebuild, one process per file: `test_store`, `test_records`,
+`test_layout`, `test_manifest`, `test_layers`, `test_single_source`,
+`test_repo_map`, ruff, the map check. Section 10's gate reads from here as
+including `test_store` and `test_records`. The builder appends
+`## Rebuild 2 (Sonnet, 2026-10-13)` to the handoff.

@@ -427,3 +427,182 @@ Not mine: the working tree also holds uncommitted edits to
 `tracker/rollover.py` and `tests/test_rollover.py`, which `update` hashed into
 the map; they appeared after this build started (the tree was clean at its
 start) and were not made or touched by it.
+
+## Review 2 (Opus, 2026-10-13)
+
+Reviewer: Claude Opus 5.5. I did not build this. I reviewed rebuild 1, commit
+`6d67fc1`, against SPEC-document-gate section 10 and re-checked sections 1-9.
+The rebuild's own change is `git diff 2962ca3 6d67fc1`. `9b67afd..6d67fc1`
+also carries the error-handling and client-folder commits (`6f5945f`,
+`2962ca3`). `tracker/{manifest,layout,records,templates}.py` are identical at
+`9b67afd` and `2962ca3`, so `9b67afd` is a faithful "before" for this build.
+Everything ran on `git archive` copies of `9b67afd` and `6d67fc1` in the
+scratchpad. Each copy was git-initialised and committed once. I used the venv
+Python, throwaway probes and copies, and committed nothing. The checkout was
+not touched except to append this section.
+
+### Resolved
+
+- **F1.** Probed on both archives with `item_from_fields`, for U+202E and
+  U+200B in `Schedule K-1 - Ashford<c>Holdings LP`: held (`recorded` holding
+  the row), new, and new with a short name of its own. At `6d67fc1` every case
+  is exactly `F02: Issuer Name 'Ashford<U+202E>Holdings LP' may not contain an
+  invisible character (U+202E RIGHT-TO-LEFT OVERRIDE)` (likewise for
+  U+200B). At `9b67afd` each case was `F02: Document 'Schedule K-1 - ...'`.
+  `templates.issuer_item("F02", "Ashford<c>Holdings LP", BASE_YEAR)` is the
+  add-issuer card's path (`api` line ~5156: `issuer_row` then `issuer_item`).
+  It gives the same Issuer Name sentence, with no raw character and no
+  "(it is also the short name)". A non-issuer `W-2<U+202E>fdp.exe` is still
+  `F02: Document 'W-2<U+202E>fdp.exe' ...`.
+  - Edges:
+    - A character at the start or end of the entity is quoted as
+      `Issuer Name '<U+200B>Ashford'` or `'Ashford<U+200B>'`.
+    - A lower-case prefix (`schedule k-1 - Ash<U+202E>ford`) gives Issuer
+      Name, as `_issuer_entity` matches without case.
+    - A character inside or before the prefix (`Schedule K-1<U+200B> - X`,
+      `<U+202E>Schedule K-1 - X`) is not an issuer Document, so the refusal
+      names the Document.
+  - The entity always holds the offending character. When `_issuer_entity`
+    is non-empty the fixed prefix matched exactly, and no spoofing code is
+    whitespace (`\s`, `str.strip`), so neither normalisation can move or
+    remove one. Narrowing the label to "the character lies in the entity" is
+    therefore unnecessary.
+  - The label comes from the Document's shape, the same test `_short_title`
+    uses. That agrees with SPEC-form-inputs section 15 (G5): the issuer
+    column's label for an issuer row. It is single-sourced:
+    `assert api.ISSUER_LABEL is manifest.COL_ISSUER` (test_api ~8518) passes.
+  - Mutation: with `9b67afd`'s `manifest.py` under `6d67fc1`'s tests, the new
+    test fails on the `Document` label. The test discriminates.
+- **F4.** Nothing that was refused before is now unrefused.
+  - Why the held arm could not fire: `derived_short_title` builds the derived
+    name from characters of the Document, the fixed `K-1 `, hyphens from
+    `WINDOWS_ILLEGAL_CHARS.sub` and single spaces from `\s+`. No spoofing code
+    is whitespace or Windows-illegal, so the derivation cannot introduce one.
+    `item_from_fields` has already applied `spoofing_problem` to the whole
+    Document before `_short_title` (its only caller) runs. So the removed
+    `spoofing_problem(derived)` held arm could only fire when the Document
+    check already had.
+  - A sweep backs this up. Every code point from U+0020 to U+2FFF was
+    inserted at three positions into five sample Documents, issuer and plain.
+    There were zero cases where `spoofing_problem(derived)` fires while
+    `spoofing_problem(document)` is clean.
+  - The case you asked about: a held, unchanged row whose Document is clean
+    but whose derived name holds a no-break space or a soft hyphen.
+    `W-2<NBSP>Wages`, `W-2<SHY>Wages`, `Schedule K-1 - Ash<NBSP>ford LP` and
+    `Schedule K-1 - Ash<SHY>ford LP` were each tried with a blank short name
+    and with a short name equal to the derived one. Every one saves on both
+    `9b67afd` and `6d67fc1`. Before, the held arm asked `spoofing_problem`,
+    which spares both characters. Now nothing asks, and the result is the
+    same. (A no-break space never survives into the derived name anyway: the
+    `\s+` collapse turns it into a space.)
+  - The typed arm is unchanged. A new `W-2<SHY>Wages` with a blank short name
+    is refused `... (it is also the short name)` on both, and so is the
+    issuer form, as Issuer Name.
+  - The docstring's new paragraph states this argument correctly.
+- **F5.** `layout.spoofing_problem`'s docstring now names only the no-break
+  space and the soft hyphen as spared. The code refuses U+FEFF
+  (`_SPOOFING_CODES`, and the comment at `layout.py:380` lists the byte-order
+  mark among the refused). `test_layout` pins U+FEFF refused and NBSP, SHY,
+  U+202F and U+3000 spared. It passes (58). See G1 for what this one-line
+  change broke elsewhere.
+- **F2.** The handoff's "For Jason, before landing" and the test_api
+  docstring now say the household is repaired by the runbook's malformed-line
+  repair, "its section 9: say which return and which line", not by retyping
+  in the editor. At `6d67fc1`, `docs/runbook.md` section 9 is "Who to ask,
+  and where the record is" (line 2703). The "line N of the record is
+  malformed" bullet is at line 2742, and it ends "say which return and which
+  line, and the store check ... names every such line". Section 6 is the
+  dead-machine section. The builder's correction to 9 is right.
+- **Dead code, layers, tests.**
+  - Dead code: the removed `spoofing_problem` import had no `noqa` re-export
+    and no user through `manifest` (grep over `tracker/`, `tests/`, `app/`).
+    `short_title_problem` and `invisible_problem` are still used. Ruff is
+    clean.
+  - Layers: no import was added. `test_layers` passes (31).
+  - No test weakened: the rebuild touches no existing test assertion. The
+    only test edits are the new test_manifest test and the reworded test_api
+    docstring. (The held-row test's last assertion became the Document's
+    refusal in `f2c0631`, not here.)
+  - The new test's claim matches its body: it compares the exact sentence,
+    which also rules out "(it is also the short name)". It checks that the
+    raw character is not echoed for held and new rows, and it covers the
+    `issuer_item` path and the non-issuer Document.
+- **Sections 1-9 hold.**
+  - R1 and the store were unchanged by the rebuild. `test_records` passes
+    (55). In `test_store` everything passes except the pin (G1).
+  - R2 holds as amended by section 10.
+  - R3: `test_templates` passes (41).
+  - The admission is still 5. Nothing new is refused by the rebuild.
+
+### Findings
+
+**G1 - must fix. `tests/test_store.py::test_admission_version_changes_with_the_admission`
+fails at `6d67fc1`.**
+- Cause: the pin hashes the source text, docstring included, of every
+  function the store's admission reaches (`admission_closure`:
+  `inspect.getsource`). `layout.spoofing_problem` is one of those functions.
+  F5's docstring edit moved its digest from `7a767da08a51fff8` (the
+  `ADMISSION_PIN[5]` entry, test_store line 3674 in the `5: {` block that
+  opens at 3607) to `972a7059c057543a`. The test fails with "The store's
+  admission changed in: tracker.layout.spoofing_problem".
+- Verified both ways: with `9b67afd`'s `layout.py` under `6d67fc1`, the test
+  passes. On a copy of `6d67fc1` with only line 3674 re-pinned to
+  `972a7059c057543a`, the whole file passes (197 passed, 1 skipped).
+- Fix, in the test's own words for a rewording that refuses nothing new:
+  re-pin `admission_digests()` under version **5**. Change that one entry in
+  the version-5 block. Leave version 4's entry at line 3403 alone, and leave
+  `ADMISSION_VERSION` at 5.
+- Why it was missed: section 10's gate list (`test_manifest`, `test_api`,
+  `test_layout`, `test_templates`, ...) left out `test_store`, so the rebuild
+  never ran it. CLAUDE.md's affected-tests rule ("the own test file of every
+  module that imports a changed one") would have included it for a
+  `layout.py` change. Section 10's "No behaviour change" is true of
+  behaviour, but not of the admission pin, which hashes docstrings. The
+  landing session should add `test_store` (and `test_records`) to section
+  10's gate line.
+
+**G2 - nit. `pilot/SPEC-form-inputs.md` section 18 now misdescribes issuer
+rows.** It says `item_from_fields` applies the rule "naming the row and the
+Document". After F1 an issuer row names `Issuer Name` and its entity. Section
+10 says section 18's "sections 14 to 17 otherwise stand" is true again, and
+it is. Section 18's own sentence wants "(the Issuer Name and its entity for
+an issuer row)". This is a docs-only change, for the SPEC's author or the
+landing session.
+
+**G3 - nit. `layout.spoofing_problem`'s docstring still says it is "what the
+store's gate asks of a stored identifier or short name (P290)".** Since
+P301 it also asks it of the Document. Any change to this docstring moves the
+same pin, so if it is fixed it should ride G1's re-pin (one new digest, not
+two commits each re-pinning).
+
+**G4 - nit. Paperwork.**
+- Commit `6d67fc1` also edits `pilot/SPEC-document-gate.md` (section 10's
+  "section 6" to "its section 9; the SPEC first said 6"). The rebuild's
+  "Edited:" list does not name that file, and by SPEC-form-inputs section 17
+  (I4) a SPEC correction is the author's or the landing session's.
+- Section 10 calls the handoff section "Reminder for Jason". It is titled
+  "For Jason, before landing".
+
+### Gate (archive copy of `6d67fc1`, venv Python, one process per file, in parallel, `-p no:cacheprovider`)
+
+| file | result |
+|---|---|
+| test_manifest | 113 passed |
+| test_api | 522 passed (the first review's 518 plus the error-handling lane's 4, now committed in `6f5945f`) |
+| test_layout | 58 passed |
+| test_templates | 41 passed |
+| test_records | 55 passed |
+| test_store | 196 passed, 1 skipped, 1 failed (`test_admission_version_changes_with_the_admission`, G1) |
+| test_layers | 31 passed |
+| test_single_source | 218 passed |
+| test_repo_map | 81 passed, 1 failed (`test_the_committed_map_is_current`, see below) |
+
+- `python -m ruff check .`: all checks passed.
+- `python tools/repo_map.py check`: stale on exactly two files,
+  `tracker/rollover.py` and `tests/test_rollover.py`. These are the other
+  builder's working-tree edits that `update` hashed while this rebuild ran
+  (the rebuild's handoff says so). This is F3 again, and it is the landing
+  session's: run `update` and `check` on the combined tree. No file of this
+  build is named, so the rest of the map is current for this build.
+
+Findings: 1 must fix, 0 should fix, 3 nits.
