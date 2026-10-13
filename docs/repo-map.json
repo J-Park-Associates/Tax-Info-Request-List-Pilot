@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 302,
     "edges": 1336,
-    "reused": 247
+    "reused": 248
   },
   "node_types": [
     "artifact",
@@ -1549,8 +1549,8 @@
       "id": "tracker/layout.py",
       "type": "module",
       "layer": "core",
-      "sha256": "7bc44825a560f03f",
-      "lines": 1269,
+      "sha256": "fdf9ca834fd74d08",
+      "lines": 1270,
       "exports": [
         "CLIENTS",
         "CLIENTS_TREE",
@@ -4744,8 +4744,8 @@
       "id": "pilot/HANDOFF-document-gate.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "39e4acc836d81e7e",
-      "lines": 757
+      "sha256": "55dfeab09df85274",
+      "lines": 795
     },
     {
       "id": "pilot/HANDOFF-error-handling-small.md",
@@ -10731,7 +10731,7 @@
       "id": "tests/test_store.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "b54cd5b307d97fe0",
+      "sha256": "12532f19b69d1e6f",
       "lines": 5692,
       "exports": [
         "AS_AT_16",

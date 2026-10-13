@@ -393,10 +393,11 @@ def spoofing_problem(text: str) -> str | None:
 
     It is what the store's gate asks of a stored identifier, short name and
     Document (P290, P301). The full rule would refuse a no-break space or a
-    soft hyphen that an ordinary paste leaves in a value typed before
-    that rule existed - values this version's admission judges again - and
-    the household would stop on every pass over a space nobody can see. A
-    person typing a new value is held to the full rule instead.
+    soft hyphen that an ordinary paste leaves in a value typed before that rule
+    existed - values this version's admission judges again - and the household
+    would stop on every pass over a space nobody can see. An identifier or
+    short name a person types is held to the full rule instead; a Document gets
+    this rule alone.
     """
     hidden = next((c for c in text if ord(c) in _SPOOFING_CODES), None)
     return None if hidden is None else NAME_INVISIBLE.format(character=_character(hidden))
