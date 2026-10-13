@@ -1041,3 +1041,35 @@ moved during the review: the client-folder lane committed 6a4ac16 and has uncomm
 - The office interpreter's run was not done (there is one interpreter in this container).
 
 No findings.
+
+## Closed (2026-10-13)
+
+The loop closed at commit `567d5b2` (Review 5: no findings). Code for
+SPEC-form-inputs sections 1-17 is on `claude/admiring-goodall-vhomni`; decision
+rows P287-P295 are in `pilot/DECISIONS.md`. The converged gate ran on `5aead97`
+(the last code change of either lane): nineteen test files one process each,
+ruff, the map, all clean - on the Python 3.13 venv only; the 3.11 floor was
+not run in this container (no pytest for it), so the office gate before the
+merge covers it.
+
+**Jason's open calls, collected from the SPEC sections and reviews:**
+- Section 16's "case aside" ruling: an identifier the list already holds may
+  have its case changed in the editor without the typed rules (decision 160).
+  Reverse it if the stricter reading is wanted.
+- A held Document holding a right-to-left override (U+202E) with a blank
+  short name still passes the store's gate, which does not read the Document,
+  so the pass writes that character into working-copy names until a save of
+  that list is attempted (P290; Review 3). Decide whether the gate should read
+  the Document.
+- I2 (section 17): `api._refuse_a_changed_row_past_the_limit` counts a
+  case-only change as a changed row (decision 131), so a held row already
+  past what Windows opens is refused a change of case with the "shorten the
+  folder" sentence. Needs a row of its own.
+- F7 (Review 1): a person's alternative spellings are unbounded. Not built.
+- Before landing on office records: `python -m tracker.store check` (read
+  only) against the firm's records, since the store's admission rose to 4 and
+  now refuses spoofing characters in a stored identifier or short name; a
+  record holding one is a refused line that stops its household.
+
+**Landing:** CLAUDE.md's bulk-landing rule: the tracker lane opens the pull
+request as a draft at its turn and marks it ready once.

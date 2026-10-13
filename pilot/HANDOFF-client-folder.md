@@ -882,3 +882,27 @@ is redundant as said above.)
 - No staleness from `pilot/HANDOFF-form-inputs.md` was seen.
 
 No findings.
+
+## Closed (2026-10-13)
+
+The loop closed at commit `0002172` (Review 5: no findings). Code for
+SPEC-client-folder-unreadable sections 1-13 is on
+`claude/admiring-goodall-vhomni`; decision row P296 is in `pilot/DECISIONS.md`
+(commit `5aead97`). The converged gate ran on `5aead97` (the last code change of
+either lane): nineteen test files one process each, ruff, the map, all clean -
+on the Python 3.13 venv only; the 3.11 floor was not run in this container (no
+pytest for it), so the office gate before the merge covers it.
+
+**Jason's open calls:**
+- Section 13: with the client folder present, New return into a household one
+  of whose returns has a record that will not read now proceeds (the pause
+  claims nothing; the pass still reports that return as `record-unreadable`
+  every run). Before, it refused by accident of an escaping ledger error.
+  Confirm or reverse.
+- E2 to E7 of `pilot/AUDIT-2026-10-13-error-handling.md` are not built: the
+  rollover's silent empty unfiled list (E2), the unlogged `store.forget`
+  failures (E3), the filer's silent `people=()` (E4), the StoreUnavailable
+  wording (E5), the data-home override not checked as a folder (E6), the
+  nineteen unread vocabulary keys (E7).
+
+**Landing:** with the form-inputs change, per CLAUDE.md's bulk-landing rule.
