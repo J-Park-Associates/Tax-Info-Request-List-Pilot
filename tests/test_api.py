@@ -5354,6 +5354,8 @@ def _a_long_row_return(root, household=HOUSEHOLD, second="B01"):
     from tracker.layout import NAME_MAX_CHARS, path_limit
     from tracker.manifest import RequestItem
 
+    # The path length below is computed for a three-character identifier ("B01").
+    assert len(second) == 3
     below = len("/Prepared/B01 - " + "y" * 20 + f" - {LONG_ROW_PERIOD}.pdf")
     above = len(str(return_dir_for(Path(root), household, TEST_YEAR, "x"))) - len("x")
     pad = path_limit() + LONG_ROW_OVER - below - above - len("1040 - Long ")

@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 302,
     "edges": 1336,
-    "reused": 246
+    "reused": 248
   },
   "node_types": [
     "artifact",
@@ -4760,8 +4760,8 @@
       "id": "pilot/HANDOFF-form-inputs.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "c34326c40257f046",
-      "lines": 1603
+      "sha256": "688edc0e72aa69e8",
+      "lines": 1651
     },
     {
       "id": "pilot/HANDOFF.md",
@@ -6149,8 +6149,8 @@
       "id": "tests/test_api.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "fc6bf2135d2bf85b",
-      "lines": 11749,
+      "sha256": "96d755b1e998c54a",
+      "lines": 11751,
       "exports": [
         "COUNTS",
         "DEEPER_ROOT_LENGTH",
