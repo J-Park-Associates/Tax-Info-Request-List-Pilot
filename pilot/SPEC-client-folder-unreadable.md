@@ -249,3 +249,46 @@ The form-inputs lane's rebuild 3 runs in the same checkout and touches
 build touches none of those, and retries the map check once if it fails only
 on that lane's half-edited files. The builder appends
 `## Rebuild 2 (Sonnet, 2026-10-13)` to the handoff.
+
+---
+
+## 12. Amendments after the third review (Opus, 2026-10-13)
+
+Findings H1-H2 are in `pilot/HANDOFF-client-folder.md` under "Review 3".
+Neither survived a rebuild, so the rebuild is Sonnet's. Both are built.
+
+**R2, amended (H1): the pause check lets the "cannot tell" check run.**
+`registry.held_back` asks `households.household_pause` before
+`client_folder_missing`, and `household_pause` skips a return whose details
+raise `ManifestError`, `ValueError` or `OSError` only, so a return record the
+ledger refuses (`LedgerError`) or the store cannot use (`StoreError`) escapes
+with its own sentence before the client-folder check is reached: New return
+and Roll forward never say which record to repair, which is what R1 as
+amended is for. Its docstring already says "a record that cannot be read
+claims nothing here; the pass says its own problem", and
+`load_household_info` in the same function is caught whole. So the return
+loop's `except` becomes `(ManifestError, LedgerError, StoreError, ValueError,
+OSError)`, with `LedgerError` and `StoreError` imported at call time inside
+the function as `client_side_expected` already imports them (no load-time
+edge; `tests/test_layers.py` stays as it is). No sentence changes.
+
+Test, `tests/test_registry.py`
+`test_a_return_whose_record_will_not_read_is_said_as_cannot_tell_where_a_new_return_asks`:
+a household marked shared, its client folder removed, one unlinked line in
+one return's record → `held_back` returns `CLIENT_SIDE_UNKNOWN` filled with
+the household's name and ``its return `<year>\<folder>` `` (no exception
+escapes). And the other half: the same broken return with the client folder
+present → `held_back` returns `""` (the pause claims nothing, and a folder
+that is there is never a reason to read the record). Both fail on 7df8b93:
+the first with the ledger's own error escaping.
+
+**Runbook (H2, nit).** The one line of the "same hold-back, when a record
+cannot be read" paragraph that runs past about 80 columns is rewrapped; no
+words change.
+
+Gate after the rebuild, one process per file: `test_registry`,
+`test_households`, `test_runner`, `test_scaffold`, `test_errors`,
+`test_single_source`, `test_layers`, `test_repo_map`, ruff, the map check.
+The form-inputs lane's fourth review runs in the same checkout and edits
+`pilot/HANDOFF-form-inputs.md` only. The builder appends
+`## Rebuild 3 (Sonnet, 2026-10-13)` to the handoff.

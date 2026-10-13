@@ -417,3 +417,141 @@ final text. The runbook line was rewrapped by hand after the edit.
 `tests/test_households.py`, `docs/repo-map.json` (regenerated).
 Note `tests/test_runner.py`, `tests/test_scaffold.py` and
 `tests/test_registry.py` needed no change.
+
+## Review 3 (Opus, 2026-10-13)
+
+Third reviewer: a separate agent that built neither the build nor either
+rebuild. Read against SPEC section 11 (and sections 2-5 and 10 for what it
+amends), Review 2 and Rebuild 2; the rebuild is `git diff 07e0fda 7df8b93`.
+No repo code or test edited; every mutation and throwaway test ran on a
+`git archive` copy of each commit in the scratchpad, never in the checkout.
+
+### Resolved
+
+- **G1 - resolved in effect.** `whose` for a return is
+  ``f"its return `{one.parent.name}\\{one.name}`"``, set before anything of
+  that return is read; the `errors.keep` name is
+  `failed.name if failed is folder else f"{failed.parent.name}\\{failed.name}"`
+  - the household's bare folder name for the household half, `<year>\<folder>`
+  for a return. Scratch test of Review 2's case (two seasons of one name,
+  `2024\1040 - John` reading clean and `2025\1040 - John` holding an unlinked
+  line): the sentence says "the record of its return `2025\1040 - John`" with
+  no `2024` in it, and the one log entry is
+  `households: the client-side history (2025\1040 - John)`. Household half:
+  "the record of the household" and `... (Smith Family)`. End to end through
+  the pass (scratch, `test_runner`'s `build_engagement` with the return's
+  journal broken and `Clients\Test Household` removed): every run carries
+  `record-unreadable` and "the record of its return `2025\Smith TY2025`", and
+  no client folder is made. Runbook says *its return `<year>\<folder name>`*.
+- **G2 - resolved.** The test asserts the exact entry
+  `households: the client-side history (2025\\1040 - John)`. Mutation M1
+  (log name put back to `failed.name` alone): exactly that test fails - the
+  store's checkpoint warning no longer satisfies it. Mutation M3 (the
+  household half logged as `<parent>\<folder>` too): the household-half test
+  fails, so the bare household name is pinned, not merely allowed. Mutation
+  M2 (`whose` back to the folder name alone): the G2 test and the G4 test fail.
+- **G3 - resolved.** The docstring says what the code does: `shared_on` is
+  read and answers `True` before the returns loop; an earlier return's proof
+  returns before a later return is read; "cannot tell" only when a read
+  fails before any half answered. The runbook bullet opens with the same
+  limit ("before the record has shown the household was shared (or an
+  earlier return has shown the folder existed)") and prints `<whose>` bare,
+  only the return's name in backticks, as the sentence prints it.
+- **G4 - resolved.** The test now writes an unlinked line into a second
+  return's journal (`2025\1040 - Maria`) and asserts `ClientSideUnknown`
+  naming it, after the absent-journal half answers `""`. Mutation M4 (a
+  return journal that will not read is swallowed and skipped): this test and
+  the G2 test fail.
+- **`test_errors::test_the_error_class_list_is_spelled_once` - resolved.**
+  On a copy of `07e0fda` it fails at exactly `registry.py:941`,
+  `runner.py:1368`, `scaffold.py:384`, as the handoff says; at `7df8b93` it
+  passes (83 passed). `errors.said(exc, (ClientSideUnknown,))` is the right
+  form: `said` returns `str(exc)` for an instance of a listed class, and the
+  handler only catches `ClientSideUnknown`, so the sentence is returned whole
+  and no wording changed. The form is load-bearing, not cosmetic: mutating
+  each of the three to `errors.said(exc, ())` (class name instead of the
+  sentence) fails the runner, scaffold and registry P296 tests. `errors` was
+  already a load-time import in all three (`registry.py:70`,
+  `scaffold.py:76`, runner's `from tracker import (... errors ...)`), so no
+  import was added; `test_layers` 31 passed.
+- **Runbook quote.** Word for word against `CLIENT_SIDE_UNKNOWN`, placeholders
+  aside (`<name>`, `<whose>`, `<the record's own reason>` for `{name}`,
+  `{whose}`, `{problem}`); "runbook section 6" and section 6 *When a record
+  needs recovering* both present. `tests/test_single_source.py` pins nothing
+  about this paragraph or the sentence (no reference to `CLIENT_SIDE_UNKNOWN`
+  or any phrase of it); the SPEC (section 4) asked only that what it pins
+  keep passing, which it does. The constant is pinned by the households,
+  runner, scaffold and registry tests instead.
+- **Dead code, layers, weakened tests.** No unused name, local or import in
+  the changed lines (ruff clean; `whose`, `failed` both read). No layer
+  change. No assertion removed or loosened: the household-half test's
+  `"households: the client-side history" in caplog.text` became the stricter
+  `"... (Smith Family)"`, and the return test's vacuous `"1040 - John" in
+  caplog.text` became the exact entry.
+
+### Findings
+
+**H1 - `tracker/households.py` `household_pause` (reached through
+`tracker/registry.py` `held_back`), against SPEC "What staff will notice",
+section 3's registry bullet and section 10's F1. New return and Roll Forward
+never say the return-half sentence: they refuse with the ledger's own words,
+which name no record.** `held_back` asks `household_pause(folder)` before
+`client_folder_missing(folder)`. `household_pause`'s return loop catches only
+`(ManifestError, ValueError, OSError)` around `load_engagement_info(one)`;
+a return journal the ledger refuses raises `LedgerError` (a `RuntimeError`,
+not a `ManifestError`) out of `the_record` -> `store.follow_the_journal` ->
+`ledger._parse_lines`, so `held_back` raises before the client-side check is
+reached. Scratch test (`test_registry`'s `root`, `make_engagement`, one line
+appended to the return's journal, `Clients\Test Household` removed, not
+shared): `held_back(household)` raises `LedgerError: _ledger.jsonl line 2 does
+not follow the line before it ... Run recover (runbook §6).` instead of
+returning "the record of its return `2025\Smith TY2025` could not be read
+...". `api._cmd_create` (line 4176, and 4572) and `rollover` (lines 678, 995)
+call `held_back`, and `api._failure_of` says a `LedgerError` as a refusal,
+whole - so a person sees a sentence, not a traceback, and nothing is made
+(the client folder was still absent after the call), but the sentence names
+neither the household, the return nor the year: exactly what F1 and G1 were
+built to give. The pass and the scaffold are right (they call
+`client_folder_missing` directly; the pass end to end is traced above), and
+the household half through `held_back` is right (the registry test). The same
+`LedgerError` escapes `held_back` when the client folder is *there*, so a
+household with any return whose record will not read takes no new return
+with a nameless sentence. Pre-existing: `household_pause` is unchanged since
+before `bfe9fea`, so this is no regression of either rebuild; but the SPEC
+made the promise for this path, and no test exercises the return half
+through `held_back`, which is why three reviews passed it. Fix (a SPEC-owner
+ruling): either widen `household_pause`'s return-loop catch to the record's
+own errors (`LedgerError`, `StoreError`), as its docstring already says ("A
+record that cannot be read claims nothing here; the pass says its own
+problem"), so `held_back` reaches `client_folder_missing` and returns the
+sentence - with a ruling on what `held_back` should then say when the client
+folder is there and a return will not read - or amend section 3 to state the
+limit. Either way, a registry test for the return half through `held_back`.
+Severity: **should fix** (SPEC-owner ruling).
+
+**H2 - `docs/runbook.md`, the "same hold-back, when a record cannot be read"
+bullet.** The handoff says the paragraph was rewrapped by hand, but the line
+"repair (section 6, *When a record needs recovering*); until it reads, no
+`Clients\<name>` is made - not by the" runs about 110 columns against the
+bullet's ~76. The file has no enforced width. Severity: **nit**.
+
+### Verified, and how
+
+- Interpreter: the gate ran on the scratchpad venv's Python 3.13.16 only.
+  `pyproject.toml`'s floor is 3.11; `/usr/bin/python3.11` exists here but
+  has no pytest, and nothing was installed, so the floor itself was not
+  exercised in this review.
+- Worktree: only the form-inputs lane's files were modified
+  (`tracker/{manifest,filer}.py`, `tests/test_{api,manifest,filer}.py`,
+  `pilot/DECISIONS.md`, `pilot/HANDOFF-form-inputs.md`, `docs/repo-map.json`);
+  the map check was current, so no stale-on-their-files caveat applied.
+  That lane has since committed them (`8da6fe9`); this review is of `7df8b93`.
+- Gate, one process per file in parallel, `-p no:cacheprovider`, in the
+  checkout: test_households 20 passed; test_runner 230 passed, 1 warning
+  (runpy's `tracker.rollover` RuntimeWarning, pre-existing); test_scaffold 55
+  passed; test_registry 42 passed, 2 skipped; test_errors 83 passed;
+  test_single_source 218 passed; test_layers 31 passed; test_repo_map 82
+  passed. `python -m ruff check .` all checks passed;
+  `python tools/repo_map.py check` current (298 nodes).
+
+Findings: 0 must fix, 1 should fix, 1 nit.
