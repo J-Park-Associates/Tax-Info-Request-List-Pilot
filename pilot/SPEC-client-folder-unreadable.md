@@ -614,3 +614,59 @@ docstring, if any, and `test_repo_map` keep the two descriptions honest.
 Gate: `test_registry`, `test_rollover`, `test_api`, `test_single_source`,
 `test_layers`, `test_repo_map`, ruff, the map check. The builder appends
 `## Rebuild 10 (Opus, 2026-10-13)` to the handoff (append only).
+
+---
+
+## 20. Three older sentences corrected the same way (2026-10-13)
+
+Review 10 found section 19 built as written and three older sentences
+making the mistake it corrected: each says a return folder whose record
+holds no list, with the old workbook beside it, is left alone as a misfit.
+It is a return (`registry._walk_year` lists every folder with a record),
+listed as an engagement carrying `LEGACY_FOLDER` as its problem, failed by
+the pass and refused by Roll Forward (P302). No decision changes: P303
+gave the two cases one sentence, and these are descriptions of what the
+code does. Exact replacements, nothing else; the build is Sonnet's.
+
+**`tracker/registry.py`**, the comment above `LEGACY_MANIFEST_FILENAME`
+(section 17 wrote it): the four lines become
+
+```
+#: The workbook the request list lived in until decision 104. Its only
+#: reader in the package is the walk below, which uses it to say what a
+#: folder holding one is: with no record, a legacy folder and not a return;
+#: with a record that holds no request list, a return carrying the same
+#: sentence as its problem, which Roll Forward refuses (P302).
+```
+
+**`docs/runbook.md`**, two places:
+- in the list of folders left alone (near line 447), "a folder from before
+  September 2026 holding a `_manifest.xlsx`" becomes "a folder from before
+  September 2026 holding a `_manifest.xlsx` and no record";
+- the paragraph "**A folder from before September 2026** may still hold a
+  `_manifest.xlsx`." (near line 623): its second sentence "The app no longer
+  reads it: it is one of the folders left alone, listed with its own
+  sentence rather than treated as an engagement, and the return is set up
+  again in the app (...)" becomes "The app no longer reads it. With no
+  record beside it, the folder is left alone and listed with its own
+  sentence; with a record that holds no request list, it is a return the
+  pass fails with that sentence and Roll Forward refuses. Either way the
+  return is set up again in the app (...)" - the parenthesis and the rest
+  of the paragraph unchanged.
+
+**`docs/repo-map.curated.json`**, the registry node's `notes`: "a folder
+whose record carries no rules beside the legacy workbook is listed the
+same way as one with no record (an engagement created before decision 103
+whose rules never reached the journal)" becomes "a folder whose record
+carries no rules beside the legacy workbook (an engagement created before
+decision 103 whose rules never reached the journal) is an engagement
+carrying the same sentence as its problem, where one with no record is a
+misfit". The next sentence ("Nothing imports such a folder ...") stays.
+Then `update`.
+
+Tests: `tests/test_single_source.py` and `tests/test_tripwire.py` may pin
+runbook wording; if one fails on the old words, the builder brings its
+quoted text to the new words and says so in the handoff, never the other
+way round. Gate: `test_registry`, `test_single_source`, `test_tripwire`,
+`test_layers`, `test_repo_map`, ruff, the map check. The builder appends
+`## Rebuild 11 (Sonnet, 2026-10-13)` to the handoff (append only).
