@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 302,
     "edges": 1336,
-    "reused": 247
+    "reused": 246
   },
   "node_types": [
     "artifact",
@@ -289,8 +289,8 @@
       "id": "tracker/api.py",
       "type": "module",
       "layer": "core",
-      "sha256": "0a9bbe8ba5699ee8",
-      "lines": 6794,
+      "sha256": "67f799a5703512e3",
+      "lines": 6782,
       "cli": "python -m tracker.api",
       "exports": [
         "ACCEPT_FOLDER_NAME_HELP",
@@ -4822,8 +4822,8 @@
       "id": "pilot/SPEC-client-folder-unreadable.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "88d2348669c06377",
-      "lines": 417
+      "sha256": "921f8c93afb5f4ce",
+      "lines": 462
     },
     {
       "id": "pilot/SPEC-document-gate.md",
@@ -6147,8 +6147,8 @@
       "id": "tests/test_api.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "553944b55378e485",
-      "lines": 11475,
+      "sha256": "25abeba55acb3b33",
+      "lines": 11474,
       "exports": [
         "COUNTS",
         "DEEPER_ROOT_LENGTH",

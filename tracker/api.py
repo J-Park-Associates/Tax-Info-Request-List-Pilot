@@ -1277,15 +1277,6 @@ PATH_KINDS: dict[str, str] = {
     # Protected View mark (review 1, F1/F2). The shell refuses a plain open.
     "review_copy": "file", "filed_copy": "reveal", "moved_copy": "reveal", "shown_copy": "reveal",
 }
-#: What the request-list editor shows for each stored override reason
-#: (:data:`tracker.manifest.OVERRIDE_REASONS`), in its order (P77, P84): the
-#: record keeps the stored words as values, so only the label changes.
-OVERRIDE_LABELS: tuple[str, ...] = (
-    "Taxpayer Confirmed Final Version",
-    "Correct; Only Formatting Flagged",
-    "Received Outside the App",
-    "Prior-Year or Substitute Document Accepted",
-)
 #: The request-list editor's label for a return's detail where the screen's
 #: word differs from the record's (P196): the record and the files it writes
 #: keep "Client" for the greeting name (``records.ENGAGEMENT_LABELS``); the
@@ -1745,9 +1736,6 @@ def _vocab() -> dict:
         # the row's year, which travels per item as ``year`` in the state
         # so the renderer computes nothing from the Period's text.
         "override_reasons": list(OVERRIDE_REASONS),
-        # What the editor's list shows for each stored reason, in the same
-        # order (P77): the record keeps the stored words, the list shows these.
-        "override_labels": list(OVERRIDE_LABELS),
         "override_reason_other": OVERRIDE_REASON_OTHER,
         # The one line the roll's banner adds for last year's
         # set-aside rows, and the origin value it groups them on.

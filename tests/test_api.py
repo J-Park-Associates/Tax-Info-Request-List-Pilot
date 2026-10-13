@@ -9337,8 +9337,7 @@ def test_the_vocabulary_carries_the_menu_the_screen_and_the_short_words(capsys):
         "Heads Up", "Checking In", "Deadline Near", "Final Notice"]
     assert [rule["short"] for rule in words["rules"]] == list(api.SAFEGUARDS)
     assert [rule["headline"] for rule in words["rules"]] == [h for h, _ in api.STANDING_RULES]
-    assert len(words["override_labels"]) == len(words["override_reasons"])
-    # The stored words do not change (P77): only the label does.
+    # The stored words do not change (P77); the editor shows them as stored.
     assert "Client confirmed this is the final version" in words["override_reasons"]
     assert words["schedule"]["move_warning"] == "Only If {host} Is Retired"
     assert words["editor"]["engagement_fields"][8]["help"] == "No: Sorting Skips This Return"
@@ -9699,7 +9698,7 @@ def test_no_word_the_window_draws_says_client_but_a_folders_own_name(capsys, dem
     only a button naming a folder on disk keeps the folder's word."""
     vocab = api._vocab()
     drawn = [("menu", vocab["menu"]), ("screen", vocab["screen"]), ("reasons", vocab["reasons"]),
-             ("ask_the_client", vocab["ask_the_client"]), ("override_labels", vocab["override_labels"]),
+             ("ask_the_client", vocab["ask_the_client"]),
              ("engagement_fields", [f["label"] for f in vocab["editor"]["engagement_fields"]]),
              # the editor draws a help line only beside its yes/no boxes (app.js renderEngagementFields)
              ("engagement_help", [f["help"] for f in vocab["editor"]["engagement_fields"]

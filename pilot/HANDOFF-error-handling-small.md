@@ -619,3 +619,47 @@ do there. Decision rows P297-P300 are added at landing (SPEC section 9, as
 reworded by section 10). Open for Jason: `override_labels` is kept on doubt
 (P77's labels, which the page does not draw) - wire it or drop it; the
 Python 3.11 floor was not run in this container.
+
+## Rebuild 2 (Sonnet, 2026-10-13)
+
+Built SPEC section 12 and nothing more: the `override_labels` vocabulary key
+is dropped. Not committed or pushed.
+
+**Removed**
+- `tracker/api.py`: the `OVERRIDE_LABELS` tuple (with its comment) and the
+  `override_labels` entry (with its comment) in `_vocab`. `override_reasons`
+  stays (the page reads it), and so does the `OVERRIDE_REASONS` import, which
+  `_vocab` still uses; ruff reports nothing unused.
+- `tests/test_api.py`: the length-pin assertion in
+  `test_the_vocabulary_carries_the_menu_the_screen_and_the_short_words` and the
+  `("override_labels", ...)` entry in the `drawn` list of
+  `test_no_word_the_window_draws_says_client_but_a_folders_own_name`; both
+  tests keep everything else.
+- `pilot/DECISIONS.md` untouched (the landing session appends to P77).
+
+**Grep evidence (after the edit, `__pycache__` excluded)**
+- `grep -rnI "override_labels" app tracker`: 0 hits.
+- `grep -rnI "OVERRIDE_LABELS" app tracker`: 0 hits.
+
+**Gate (one process per file, in parallel, `-p no:cacheprovider`, venv Python 3.13)**
+
+| File | Result |
+|---|---|
+| test_api | 522 passed |
+| test_single_source | 218 passed |
+| test_shell | 326 passed |
+| test_layers | 31 passed |
+| test_repo_map | 81 passed, 1 failed: `test_the_committed_map_is_current` (see below) |
+
+`python -m ruff check .`: all checks passed. `python tools/repo_map.py update`
+then `check`: "Map is current (302 nodes)" right after my update.
+`docs/repo-map.json` changed (14 lines, generated).
+
+**Open item, not mine:** after my update, `tests/test_rollover.py` and
+`tracker/rollover.py` changed in this worktree (a new `ROLLOVER_LEGACY_FOLDER`
+message and 109 test lines), by another session working in parallel. I did not
+touch them and did not re-run `update` over them, so `check` and
+`test_repo_map` currently report those two files as stale. Whoever finishes
+that rollover work runs `python tools/repo_map.py update`.
+
+The Python 3.11 floor was not run in this container.
