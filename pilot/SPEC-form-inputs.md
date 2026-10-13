@@ -345,3 +345,88 @@ each R, the gate's output (file by file, counts), anything left, and the files
 the reviewer needs. The reviewer reads the SPEC, the diff and that handoff,
 never the builder's transcript, and writes numbered findings against the
 SPEC into the same handoff under "Review".
+
+---
+
+## 14. Amendments after the first review (Opus, 2026-10-13)
+
+The review's findings F1-F12 are in `pilot/HANDOFF-form-inputs.md` under
+"Review (Opus, 2026-10-13)". These amendments change what R4, R5 and R7
+say; the builder fixes every finding against the SPEC as amended here. F7 is
+not built (raised with Jason as a later row: a person's spellings are still
+unbounded). Everything else is.
+
+**R4, amended (F2).** The store's gate must not refuse what an ordinary paste
+produces. `layout.is_invisible` catches the no-break space, the soft hyphen
+and the byte-order mark, which a short name or an identifier typed before
+this rule may well hold (they were stripped, never folded), and the admission
+version 4 judges every old record again at its next sync - a household would
+stop on every pass over a space. So two rules:
+
+- `layout.spoofing_problem(text) -> str | None`: refuses only the characters
+  that change how a name is *read* - the bidirectional controls (U+061C,
+  U+200E, U+200F, U+202A-U+202E, U+2066-U+2069) and the zero-width characters
+  (U+200B, U+200C, U+200D, U+2060, U+FEFF) - with the `NAME_INVISIBLE`
+  sentence naming the code point. `records.identifier_problem` and
+  `records.short_title_problem` (the store's gate, and `validated`) ask this
+  one, not `invisible_problem`.
+- `layout.invisible_problem(text)` (the full rule, as section 4 wrote it) is
+  asked where a person types: `records.typed_identifier_problem` (R5) and a
+  new `records.typed_short_title_problem(short_title) -> str` =
+  `short_title_problem` then `invisible_problem`. `manifest.item_from_fields`
+  calls `typed_short_title_problem` where it calls `short_title_problem`
+  today, and `templates.item_from_spec` reaches it through `item_from_fields`.
+
+Tests change to match: the store refuses an identifier holding U+202E and one
+holding U+200D; the store **admits** an identifier `A 01` and a short
+name `W­X` (one test, named as that claim); the editor refuses all four.
+`ADMISSION_VERSION` stays 4 (the gate still refuses more than 3 did).
+Decision rows P288 and P290 each end with "The store's admission rises to 4."
+(F6). **For Jason:** before this lands at the office, run the new gate
+read-only over the real records (`python -m tracker.store check`, or the
+runbook's equivalent); if the narrow rule still trips on a real record, say
+so and it is widened back to the typed rule, not the other way round.
+
+**R5, amended (F1).** The 80-character cap is a rule for a *new or changed*
+identifier, never for one the list already holds:
+
+- `tracker/filer.py` `rename_request` (and `manifest.renamed_rules` if it
+  checks the new name): the new identifier is held to
+  `records.typed_identifier_problem`, refused with the same
+  `Row`-less sentence the editor's would carry
+  (`f"{COL_IDENTIFIER} '{quoted(new)}' {problem}"`).
+- `manifest.item_from_fields(fields, *, where, recorded=frozenset())`:
+  `recorded` is the set of `identifier_key`s the list already holds; the
+  typed cap (and only the cap - the invisible rule still applies to every
+  row) is skipped for an identifier whose key is in it. `api._cmd_edit`
+  passes `{identifier_key(i.identifier) for i in held}`; `create` and
+  `templates.item_from_spec` pass nothing. Test: a list holding a
+  120-character identifier (written straight into a record by the test) can
+  still be edited; a new 81-character row on the same list is refused.
+
+**R7, amended (F3, F4).** `layout.quoted` writes every character
+`is_invisible` or a control character names as `<U+XXXX>` (the code point,
+four or more upper-case hex digits), *then* cuts to 80. Its docstring says
+why: the sentence must never carry the character it refuses, and the
+manifest's `!r` used to escape these. `templates.item_from_spec` quotes its
+identifier with `quoted` too (F4). Test: the sentence for `W-2‮fdp`
+contains `<U+202E>` and no U+202E.
+
+**R6, amended (F5).** The nested `also` loop in `_refuse_a_malformed_line`
+passes `written` through, so a refused `also` reads as a change too and ends
+with "nothing was written".
+
+**R8, amended (F12).** `_read_spec` catches `UnicodeDecodeError` beside
+`json.JSONDecodeError`, same sentence.
+
+**Nits (F8-F11):** the `edit-household` test asserts the whole sentence; the
+store test writes `"‮"` as an escape, never the literal; the dead
+`log is None or` branch goes; the layers test's docstring says `records`
+imports `quoted` from `layout` to re-export it to `manifest`, and why.
+
+The gate after the rebuild: only the test files the fixes touch
+(`test_api`, `test_records`, `test_store`, `test_layout`, `test_manifest`,
+`test_templates`, `test_filer`, `test_layers`, `test_single_source`,
+`test_repo_map`), ruff, the map check. The builder appends
+`## Rebuild 1 (Sonnet, 2026-10-13)` to the handoff: each finding, what
+changed, the gate's counts.
