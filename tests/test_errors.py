@@ -91,6 +91,28 @@ def test_a_store_or_record_the_disk_refused_is_said_with_its_code():
     assert errors.error_class(store.StoreUnavailable("SQLITE_BUSY")) == "StoreUnavailable (SQLITE_BUSY)"
 
 
+def test_an_errors_code_alone_is_what_a_sentence_of_its_own_names():
+    """E5 (P298): ``error_code`` is the code ``error_class`` says beside the
+    class - for a class marked as saying its code, and for an ``OSError``
+    that has an errno name - and the class name when there is none."""
+    from tracker import ledger, store
+
+    assert errors.error_code(store.StoreUnavailable("SQLITE_BUSY")) == "SQLITE_BUSY"
+    assert errors.error_code(ledger.RecordNotWritten("ENOSPC")) == "ENOSPC"
+    assert errors.error_code(PermissionError(errno.EACCES, "denied", f"/{NAME}")) == "EACCES"
+    assert errors.error_code(OSError(QUOTED)) == "OSError"
+    assert errors.error_code(OSError(987654, "odd")) == "OSError"
+    assert errors.error_code(ValueError(QUOTED)) == "ValueError"
+
+
+def test_a_code_alone_never_carries_a_message_or_a_third_partys_code():
+    class ParserError(Exception):
+        code = QUOTED
+
+    assert errors.error_code(ParserError(QUOTED)) == "ParserError"
+    assert QUOTED not in errors.error_code(PermissionError(errno.EACCES, QUOTED, f"/{NAME}"))
+
+
 def test_a_code_an_error_did_not_mark_as_said_is_never_said():
     """A third party's error with a ``code`` of its own - an HTTP status,
     an exit code, a parser's token - is its class alone: only a class that
@@ -567,8 +589,17 @@ def test_the_error_class_list_is_spelled_once():
     assert found == [], "\n".join(found)
 
 
-#: The one place the class an error is said as is defined.
-THE_ONE_DEFINITION = ("errors.py", "error_class")
+#: The file that holds the one rule for naming an error.
+THE_ONE_FILE = "errors.py"
+
+#: The one place the class an error is said as is defined: ``error_class``,
+#: and ``_code_of``, the helper it and ``error_code`` both read a code
+#: through. ``_code_of`` is here and not in ``ERRNO_NAMED_ON_PURPOSE``
+#: because it exists to say an error (its code is what ``error_class`` and
+#: ``error_code`` say), so it is part of the one rule, not an errno read for
+#: something else. Both are keyed by file and function: the same names in
+#: another file are a second definition.
+THE_ONE_DEFINITION = {(THE_ONE_FILE, "error_class"), (THE_ONE_FILE, "_code_of")}
 
 #: The places that read an errno's name for something other than saying an
 #: error, each with why.
@@ -584,7 +615,8 @@ def _is_an_exception(annotation: ast.AST | None) -> bool:
 
 
 def _second_definitions(source: str, file: str) -> list[str]:
-    """A function, other than :func:`tracker.errors.error_class`, that says
+    """A function, other than :func:`tracker.errors.error_class` and its
+    helper ``_code_of`` (``THE_ONE_DEFINITION``), that says
     how an error is named: one called ``error_class`` or ``said_as_class``,
     one that names the class of an exception it was handed, or one that
     reads an errno's symbolic name."""
@@ -596,7 +628,7 @@ def _second_definitions(source: str, file: str) -> list[str]:
         if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
             continue
         where = (file, node.name)
-        if where == THE_ONE_DEFINITION:
+        if where in THE_ONE_DEFINITION:
             continue
         if node.name in {"error_class", "said_as_class"}:
             found.append(f"{file}:{node.lineno}: {node.name} defined again")
@@ -611,7 +643,7 @@ def _second_definitions(source: str, file: str) -> list[str]:
             found.append(f"{file}:{node.lineno} ({node.name}): names an exception's class itself")
         if reads_errno and where not in ERRNO_NAMED_ON_PURPOSE:
             found.append(f"{file}:{node.lineno} ({node.name}): reads an errno's name itself")
-    if file != THE_ONE_DEFINITION[0]:
+    if file != THE_ONE_FILE:
         found.extend(_inline_classes(tree, file))
     return found
 

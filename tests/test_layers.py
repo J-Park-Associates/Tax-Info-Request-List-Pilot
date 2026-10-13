@@ -71,7 +71,10 @@ a return's list and details, this owns the household's - and it reaches
 the manifest does. ``ledger`` does not import ``layout``: it holds no path
 arithmetic. ``records`` may, since decision 188: the Windows character and
 device rule moved down into the layout's one name rule, and the record
-imports that rule and nothing else of it (the layout reads no file).
+imports that rule and nothing else of it (the layout reads no file) -
+except ``quoted``, which it imports only to re-export to ``manifest``, so a
+refusal quotes at most 80 characters (P293) and ``manifest`` still loads
+``records`` and nothing else of the package.
 
 ``names`` joins L2 with decision 128, beside ``router``: it is the matcher
 for the name on a page - normalising, whole-phrase containment, the

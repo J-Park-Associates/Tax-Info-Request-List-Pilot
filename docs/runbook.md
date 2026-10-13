@@ -444,7 +444,7 @@ the clients root, and the difference between them is the whole point:
 other. Anything else under the root — a stray folder beside the two trees, a
 household with no record, a folder where a year should be that is not four
 digits, a year folder with no return in it, a folder from before September
-2026 holding a `_manifest.xlsx`, a folder Windows will not let it list, a
+2026 holding a `_manifest.xlsx` and no record, a folder Windows will not let it list, a
 client folder no household owns, a folder named in a way the app does
 not accept for a household or a return — is
 **listed with one sentence saying why, and left alone**. Nothing is renamed,
@@ -521,6 +521,19 @@ and the same text is in the error log.
   made again under the old name - not by the pass, not by a new return
   into the household, and not by **Roll Forward…**, which all refuse with that
   sentence.
+- **The same hold-back, when a record cannot be read.** If the client
+  folder is gone and the household's record, or one of its returns', will
+  not read - a sync conflict, a damaged line - before the record has shown
+  the household was shared (or an earlier return has shown the folder
+  existed), every run of the household says instead: *"`Clients\<name>` is
+  missing and the record of <whose> could not be read (`<the record's own
+  reason>`), so the app cannot tell whether the household was renamed or
+  moved. Nothing is made under the old name until that record reads again
+  (runbook section 6)."* The sentence names which record: *the household*,
+  or *its return `<year>\<folder name>`*. That record is the first thing to
+  repair (section 6, *When a record needs recovering*); until it reads, no
+  `Clients\<name>` is made - not by the pass, a new return or **Roll
+  Forward…** - and once it does, the verdict above applies as usual.
 - **Never copy a household folder.** Two folders that claim one household -
   a copy, or two names that read as one - stop both: *"Two folders claim
   the household `<name>`: `<a>` and `<b>`. Keep one; a copy of a household
@@ -608,8 +621,10 @@ double-click brings the open window forward rather than opening another
 editor beside it.
 
 **A folder from before September 2026** may still hold a `_manifest.xlsx`.
-The app no longer reads it: it is one of the folders left alone, listed
-with its own sentence rather than treated as an engagement, and the return is
+The app no longer reads it. With no
+record beside it, the folder is left alone and listed with its own sentence;
+with a record that holds no request list, it is a return the pass fails with
+that sentence and Roll Forward refuses. Either way the return is
 set up again in the app (Household, **Add a Return…** with the household open,
 or File, **New Household…** for a household the app has no record of;
 then type or paste the rows). The workbook may be deleted once that is done.
@@ -1365,6 +1380,10 @@ Roll Forward also refuses, before anything is written and with the pass's
 own sentence, a household that is **stopped** - its `_ledger.jsonl` gone, or
 two folders claiming it - and one whose client folder is gone when it had
 one (decision 188).
+A return whose record cannot be read is refused too, with the record's own
+problem, and sent to section 6.
+A return from before September 2026 that still holds its list in the old
+workbook is refused until it is set up again in the app (section 1).
 
 On the command line the same two forms live in one command, told apart by
 what you point it at:
@@ -1479,7 +1498,11 @@ household and cannot clear it. Notices (a failure, a warning) sit in a panel at 
    a household that stopped on something unexpected, name the same fault
    by its kind and code alone - *StoreUnavailable (SQLITE_BUSY)*,
    *RecordNotWritten (ENOSPC)*, *PermissionError (EACCES)* - never the
-   system's own words, which can name a client's folder. *the practice
+   system's own words, which can name a client's folder. The app's window
+   says those two in words of their own, with the code - *the app's
+   database could not be used just now (SQLITE_BUSY)*, *the record could
+   not be written (ENOSPC)* - and keeps Retry; the details are in the
+   error log. *the practice
    page could not be written (…)* is said in `runs.log` instead (as the code
    `page-not-written`), and the
    Last Run Result is `0x1`: the page you are looking at is an old one. The run log gives the pass's warnings

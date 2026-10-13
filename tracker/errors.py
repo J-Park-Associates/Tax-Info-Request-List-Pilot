@@ -26,7 +26,9 @@ the engine refused (``StoreUnavailable``, ``RecordNotWritten``, decision
 code - data, never prose - in ``code``. This module imports nothing of the
 package, so the classes mark themselves rather than being named here. The
 fixed sentence around it is the reason's own template, so there is no new
-vocabulary here.
+vocabulary here. :func:`error_code` is the code alone, for a sentence that
+names the fault in plain words with the code beside it (P298); it reads the
+code the same way, through one helper.
 
 **One rule, said once.** Decision 189 first wrote this rule as
 ``content_check.said_as_class``, for a run's and a reading's errors;
@@ -125,11 +127,30 @@ def error_class(exc: BaseException, *, with_code: bool = True) -> str:
     name = type(exc).__name__
     if not with_code:
         return name
+    code = _code_of(exc)
+    return f"{name} ({code})" if code else name
+
+
+def _code_of(exc: BaseException) -> str:
+    """The code ``exc`` carries, or ``""``: the code of a class marked
+    :data:`SAYS_ITS_CODE`, else the name of an ``OSError``'s errno. The one
+    place a code is read, so :func:`error_class` and :func:`error_code`
+    cannot disagree about it."""
     if getattr(type(exc), SAYS_ITS_CODE, False):
-        return f"{name} ({exc.code})"
+        return str(exc.code)
     if isinstance(exc, OSError) and exc.errno in _errno.errorcode:
-        return f"{name} ({_errno.errorcode[exc.errno]})"
-    return name
+        return _errno.errorcode[exc.errno]
+    return ""
+
+
+def error_code(exc: BaseException) -> str:
+    """The code alone, for a sentence of its own that names the fault in
+    plain words and the code beside it ("could not be used just now
+    (SQLITE_BUSY)", P298): the code of a class marked :data:`SAYS_ITS_CODE`,
+    the errno's name of an ``OSError`` that has one, else the class name -
+    the same rule as :func:`error_class`, without the class in front, and
+    never the message."""
+    return _code_of(exc) or error_class(exc, with_code=False)
 
 
 def said(exc: BaseException, firm_written: tuple[type[BaseException], ...]) -> str:

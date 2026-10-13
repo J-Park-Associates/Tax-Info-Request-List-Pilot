@@ -417,7 +417,9 @@ def household_pause(household_dir: Path | str) -> str:
     """:func:`pause_of` read off the disk: the household's record and each
     of its returns' details. A record that cannot be read claims nothing
     here; the pass says its own problem."""
+    from tracker.ledger import LedgerError
     from tracker.manifest import ManifestError, load_engagement_info
+    from tracker.store import StoreError
 
     folder = Path(household_dir)
     try:
@@ -428,9 +430,22 @@ def household_pause(household_dir: Path | str) -> str:
     for one in household_returns(folder):
         try:
             returns.append((one, load_engagement_info(one)))
-        except (ManifestError, ValueError, OSError):
+        except (ManifestError, LedgerError, StoreError, ValueError, OSError):
             continue
     return pause_of(folder, info, returns)
+
+
+class ClientSideUnknown(RuntimeError):
+    """The household's client-side history could not be read, so the app
+    cannot say whether it ever had a client folder. Its message is
+    :data:`CLIENT_SIDE_UNKNOWN` filled in, and it is the whole sentence a
+    pass, a dialog and a card say."""
+
+
+CLIENT_SIDE_UNKNOWN = (
+    "`Clients\\{name}` is missing and the record of {whose} could not be read ({problem}), "
+    "so the app cannot tell whether the household was renamed or moved. Nothing is made under the old name "
+    "until that record reads again (runbook section 6).")
 
 
 def client_side_expected(household_dir: Path | str, returns: Iterable[Path]) -> bool:
@@ -439,38 +454,90 @@ def client_side_expected(household_dir: Path | str, returns: Iterable[Path]) -> 
     household, or a recorded original of one of its returns rests under
     ``Clients\\<its folder name>``. Then a missing client folder is a
     household renamed or moved - :data:`CLIENT_FOLDER_MISSING`, and nothing
-    is made - and never a new household to lay out again."""
-    from tracker import layout, store
-    from tracker.manifest import the_record
+    is made - and never a new household to lay out again.
+
+    **"Cannot tell" is an answer of its own** (P296, the error-handling
+    audit's E1). A record the ledger refuses - an unlinked line, a
+    malformed one, a sync conflict - used to fall through to ``False``,
+    "never had one", and the pass then made ``Clients\\<name>`` again,
+    empty and unshared, while warning in the same breath that the record
+    could not be read. Guessing "no" is the one wrong answer here, exactly
+    as it is for a document: misfiling is worse than not filing. So a read
+    failure in either half is kept on the error log and raised as
+    :class:`ClientSideUnknown`, named with the same sanitiser the pass uses
+    for its own unreadable-record sentence (a sentence the firm wrote is
+    quoted whole, anything else is named by class). Nothing here swallows
+    anything.
+
+    **The sentence names whose record failed** - "the household", or "its
+    return" with the return's year and folder name in backticks
+    (``its return `2025\\1040 - John` ``; Roll Forward keeps a return's name
+    across seasons, so the folder name alone could be two records) - and the
+    error log carries the same (the household's folder name for the
+    household), so a person repairs the record that is broken and not the
+    one beside it that reads clean.
+
+    **The halves are read in order and the first definite answer wins**:
+    the household's record, then each return in turn. A household whose own
+    record says it was shared, or whose earlier return proves the folder
+    existed, gets the folder-missing sentence even if a later return would
+    not read. "Cannot tell" is the answer only when a read fails before any
+    half has answered; both answers hold the household back and make
+    nothing, and "cannot tell" sends a person to the broken record first.
+
+    **A record that is not there is not a record that cannot be read.** A
+    household or a return with no journal at all has said nothing: there is
+    nothing to refuse, so it answers nothing here (a household whose record
+    is gone while its returns hold theirs is *stopped* by the registry, with
+    its own sentence, before anything asks this). Only a journal that is
+    there and will not read is "cannot tell"."""
+    from tracker import errors, layout, ledger, store
+    from tracker.ledger import LedgerError
+    from tracker.manifest import ManifestError, the_record
+    from tracker.store import StoreError
 
     folder = Path(household_dir)
-    try:
-        if shared_on(folder) is not None:
-            return True
-    except Exception:                   # a household whose record cannot be read
-        pass
     root = folder.parent.parent
-    for one in returns:
-        try:
-            held = store.documents(the_record(one), one)
-        except Exception:
-            continue
-        for row in held:
-            if row.get("pbc_location"):
-                place = layout.place_of(root, layout.locate(one, row["pbc_location"]))
-                if place.kind in layout.CLIENT_KINDS and not claim_disagrees(place.household,
-                                                                             folder.name):
-                    return True
+    whose = "the household"
+    failed = folder
+    try:
+        if ledger.path_for(folder).is_file() and shared_on(folder) is not None:
+            return True
+        for one in returns:
+            whose, failed = f"its return `{one.parent.name}\\{one.name}`", one
+            if not ledger.path_for(one).is_file():
+                continue
+            for row in store.documents(the_record(one), one):
+                if row.get("pbc_location"):
+                    place = layout.place_of(root, layout.locate(one, row["pbc_location"]))
+                    if place.kind in layout.CLIENT_KINDS and not claim_disagrees(place.household,
+                                                                                 folder.name):
+                        return True
+    except Exception as exc:
+        errors.keep("households: the client-side history", exc,
+                    name=failed.name if failed is folder else f"{failed.parent.name}\\{failed.name}")
+        raise ClientSideUnknown(CLIENT_SIDE_UNKNOWN.format(
+            name=folder.name, whose=whose,
+            problem=errors.said(exc, (ManifestError, LedgerError, StoreError)))) from exc
     return False
 
 
 def client_folder_missing(household_dir: Path | str, returns: Iterable[Path] | None = None) -> str:
     """``door.client_folder_missing`` for this household, the record's half
     read here (:func:`client_side_expected`): the one verdict every writer
-    asks before it writes (the review's M3)."""
-    from tracker import door
+    asks before it writes (the review's M3).
+
+    **The disk first** (P296): a client folder that is there is nothing to
+    decide, so the record is not read at all - the pass asks this of every
+    household, and a record that cannot be read is no reason to stop one
+    whose folder is in its place. Only a missing folder asks the record, and
+    :class:`ClientSideUnknown` passes through to the caller, who says what
+    it does with it."""
+    from tracker import door, layout
 
     folder = Path(household_dir)
+    if layout.client_household_dir(folder.parent.parent, folder.name).is_dir():
+        return ""
     folders = list(returns) if returns is not None else household_returns(folder)
     return door.client_folder_missing(folder.parent.parent, folder.name,
                                       had_one=client_side_expected(folder, folders))

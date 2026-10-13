@@ -8330,6 +8330,30 @@ def test_a_copy_cut_to_its_identifier_alone_still_reads_under_its_request():
     assert _request_of_copy("A01B - Loan.pdf", items) == ""
 
 
+def test_a_rename_refusal_quotes_at_most_eighty_characters_of_what_was_typed(engagement):
+    """P293, the third review's H2: the two rename sentences that echo an
+    identifier go through ``quoted``, so 120-character names (or a 10,000
+    character one) come back cut with ASCII dots, never whole."""
+    from tracker.filer import RENAME_CASE_ONLY, rename_request
+    from tracker.layout import QUOTE_MAX_CHARS, quoted
+    from tracker.manifest import RENAME_NOT_ON_THE_LIST, ManifestError, list_head, renamed_rules
+
+    before = files_under(engagement)
+    lines = len(ledger.read_events(engagement))
+    with pytest.raises(FilingError) as refused:
+        rename_request(engagement, "L" * 120, "l" * 120, head=list_head(engagement), today=DAY2)
+    said = str(refused.value)
+    assert said == RENAME_CASE_ONLY.format(old=quoted("L" * 120), new=quoted("l" * 120))
+    assert len(said) < 260 and said.count("...") == 2   # 2 x 80 of echo + the fixed words
+    assert "L" * (QUOTE_MAX_CHARS - 3) + "..." in said and "L" * QUOTE_MAX_CHARS not in said
+    with pytest.raises(ManifestError) as absent:
+        renamed_rules(engagement, "Z" * 10_000, "Y01")
+    assert str(absent.value) == RENAME_NOT_ON_THE_LIST.format(old=quoted("Z" * 10_000))
+    assert len(str(absent.value)) < 240
+    assert files_under(engagement) == before
+    assert len(ledger.read_events(engagement)) == lines
+
+
 def test_a_rename_refused_because_the_target_name_is_taken_moves_nothing(engagement):
     """The review of 168, N-5: every request's copies share Prepared, so a
     file nothing recorded may already hold the name a rename would give a
@@ -8356,6 +8380,25 @@ def test_a_rename_refused_because_the_target_name_is_taken_moves_nothing(engagem
     assert [r.prepared_location for r in read_index(engagement)] == [filed.prepared_location]
     assert [i.identifier for i in load_manifest(engagement)] == ["A01", "C01"]
     assert squatter.read_bytes() == b"a person's own file"
+
+
+def test_a_rename_to_an_identifier_past_the_typing_limit_is_refused_and_moves_nothing(engagement):
+    """P291, the review's F1: the new identifier is one a person typed, so it
+    is held to the typing limit and the editor's wording (without a row)
+    before anything is written."""
+    from tracker.filer import rename_request
+    from tracker.manifest import list_head
+
+    lines = len(ledger.read_events(engagement))
+    with pytest.raises(FilingError) as refused:
+        rename_request(engagement, "A01", "B" * 120, head=list_head(engagement), today=DAY2)
+    said = str(refused.value)
+    assert said.startswith("Identifier '" + "B" * 77 + "...' may have at most 80 characters, got 120")
+    assert len(said) < 200
+    with pytest.raises(FilingError, match="U\\+00A0 NO-BREAK SPACE"):
+        rename_request(engagement, "A01", "B\u00a001", head=list_head(engagement), today=DAY2)
+    assert len(ledger.read_events(engagement)) == lines
+    assert [i.identifier for i in load_manifest(engagement)] == ["A01", "C01"]
 
 
 # ------------- decision 157: a missing working copy is made again ----
@@ -9358,6 +9401,26 @@ def _logged_outside_the_debug_log(caplog) -> str:
     from tracker.errors import DEBUG_LOGGER
 
     return "\n".join(record.getMessage() for record in caplog.records if record.name != DEBUG_LOGGER)
+
+
+def test_details_that_cannot_be_read_are_none_and_the_failure_is_kept_on_the_log(
+        engagement, monkeypatch, caplog):
+    """The audit's E4 (P297): the sort still runs with no people when the
+    return's details cannot be loaded at that moment (nothing is guessed),
+    but a race with the runner's own read now shows in the error log."""
+    import logging
+
+    import tracker.filer as filer
+    from tracker import errors
+
+    def torn(_folder):
+        raise filer.FilingError("the record changed under this read")
+
+    monkeypatch.setattr(filer, "load_engagement_info", torn)
+    with caplog.at_level(logging.WARNING, logger=errors.DEBUG_LOGGER):
+        assert filer._details_of(engagement) is None
+    assert f"filer: the return's details ({engagement.name})" in caplog.text
+    assert "the record changed under this read" in caplog.text
 
 
 def test_a_readme_refresh_that_fails_logs_the_class_never_the_path(engagement, monkeypatch, caplog):

@@ -86,7 +86,7 @@ def _placed(given: Path | str, root: Path) -> Path:
         folder = root / folder
     resolved = folder.resolve()
     if layout.place_of(root, resolved).kind == layout.OUTSIDE:
-        raise DoorError(NOT_UNDER_ROOT.format(path=folder, root=root))
+        raise DoorError(NOT_UNDER_ROOT.format(path=layout.quoted(folder), root=root))
     return resolved
 
 

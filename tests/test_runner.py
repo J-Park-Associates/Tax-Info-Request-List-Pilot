@@ -3406,6 +3406,44 @@ def test_a_household_renamed_in_the_client_tree_stops_with_one_sentence(tmp_path
     assert not (root / CLIENTS_TREE / "Test Household").exists()
 
 
+def test_a_shared_household_whose_record_cannot_be_read_is_held_back_and_its_client_folder_is_not_remade(
+        tmp_path, samples, capsys):
+    """P296 (the error-handling audit's E1): a household the firm marked
+    shared, whose client folder is gone and whose record has one unlinked
+    line. The pass used to read the failure as "never had one" and make
+    `Clients\\<name>` again, empty and unshared, while warning the record
+    could not be read. Now every run of the household carries the one
+    sentence that says both, under the record-unreadable code, nothing is
+    filed, and no client folder is made."""
+    import json
+    import shutil
+
+    from tracker.households import CLIENT_SIDE_UNKNOWN
+    from tracker.layout import CLIENTS_TREE, PRIVATE_TREE
+    from tracker.locking import engagement_lock
+    from tracker.runner import CODE_RECORD_UNREADABLE
+
+    root = tmp_path / "root"
+    engagement = build_engagement(root, samples)
+    private = root / PRIVATE_TREE / "Test Household"
+    with engagement_lock(private):
+        store.record(store.connect(), private, ledger.new(ledger.SHARING_CONFIRMED))
+    ledger._write_raw(ledger.path_for(private), json.dumps(
+        {ledger.EVENT_KEY: ledger.SHARING_CONFIRMED, ledger.AT_KEY: "2026-01-01T00:00:00Z"}
+    ).encode("utf-8"))
+    with pytest.raises(ledger.LedgerError) as refused:
+        ledger.read_events(private)
+    shutil.rmtree(root / CLIENTS_TREE / "Test Household")
+
+    run = a_pass(engagement, today=FRIDAY, reminders=REMINDERS_NEVER)
+
+    said = CLIENT_SIDE_UNKNOWN.format(name="Test Household", whose="the household",
+                                      problem=str(refused.value))
+    assert run.error == said and run.code == CODE_RECORD_UNREADABLE
+    assert run.filed == 0
+    assert not (root / CLIENTS_TREE / "Test Household").exists()
+
+
 def test_a_new_household_is_still_scaffolded(tmp_path, capsys):
     """T8 (SPEC-162 ruling 2): a household that never had a client folder -
     nothing shared, nothing received - is laid out as it always was."""

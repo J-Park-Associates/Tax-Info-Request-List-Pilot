@@ -150,6 +150,11 @@ LOCAL_APPDATA_NOT_A_FOLDER = "LOCALAPPDATA names {folder}, which is not a folder
 NO_HOME = ("this account has no home folder, so the app has nowhere private to keep its "
            "database; set " + ENV_DATA_HOME + " to a folder of its own")
 DATA_HOME_NOT_ABSOLUTE = ENV_DATA_HOME + " must name a whole path, got {value!r}"
+#: E6 (P299): the data home, or the nearest part of its path that exists, is a
+#: file. Every writer makes its path on its first write, which a file in the
+#: way refuses - and the error log lives in the data home, so that refusal
+#: arrived with no log. Said by name here instead, at every command.
+DATA_HOME_NOT_A_FOLDER = "the app's data folder {home} cannot be used: {blocker} is a file, not a folder"
 DATA_HOME_BESIDE_PROGRAM = ("the app's data folder {home} would be inside the program's own "
                             "folder {program}, or hold it; client data never sits beside the program")
 DATA_HOME_NOT_LOCAL = ("the app's data folder {home} is not on this computer's own disk; "
@@ -630,7 +635,12 @@ def _set_text(key: str, value: object) -> str:
 
 
 def set_firm(name: str) -> str:
-    """Record the firm's name beside the clients root."""
+    """Record the firm's name beside the clients root.
+
+    Stripped and otherwise as typed: the API holds the text to the one-line
+    rule (``records.text_problem``) before it arrives here, because
+    ``settings`` imports nothing above ``layout`` and ``fsio``.
+    """
     return _set_text(KEY_FIRM, name)
 
 
@@ -640,7 +650,8 @@ def set_firm_phone(number: str) -> str:
     Stripped and otherwise taken as typed: a firm writes its own number
     its own way - with an extension, a country code, two numbers - and a
     format this code invented would be a number read out to a client in
-    the firm's name that the firm never wrote.
+    the firm's name that the firm never wrote. The API holds the text to
+    the one-line rule before it arrives here.
     """
     return _set_text(KEY_FIRM_PHONE, number)
 
@@ -863,8 +874,11 @@ def resolve_data_home(environ, *, system: str, home: Path | None, program, drive
     ``$XDG_STATE_HOME`` (when absolute) or ``~/.local/state``. Then, whoever
     answered: never inside any of ``program`` nor holding one, on a Mac never
     inside a sync service's tree (R3: ``DATA_HOME_SYNCED``, an override
-    included), and only on a disk ``drive_type`` calls fixed. Only a path is
-    answered; nothing is made.
+    included), only on a disk ``drive_type`` calls fixed, and never through a
+    file: the path, or the nearest part of it that exists, must be a folder
+    (E6, P299 - checked before the rest, for every answer, so a command that
+    cannot have its error log says so by name). Only a path is answered;
+    nothing is made.
     """
     override = (environ.get(ENV_DATA_HOME) or "").strip()
     if override:
@@ -891,6 +905,8 @@ def resolve_data_home(environ, *, system: str, home: Path | None, program, drive
             raise SettingsError(NO_HOME)
         else:
             answer = Path(home) / ".local" / "state" / DATA_HOME_NAME
+    if (blocker := _file_in_the_way(answer)) is not None:
+        raise SettingsError(DATA_HOME_NOT_A_FOLDER.format(home=answer, blocker=blocker))
     for folder in program:
         if _inside(answer, Path(folder)) or _inside(Path(folder), answer):
             raise SettingsError(DATA_HOME_BESIDE_PROGRAM.format(home=answer, program=folder))
@@ -899,6 +915,20 @@ def resolve_data_home(environ, *, system: str, home: Path | None, program, drive
     if drive_type(answer) != DRIVE_FIXED:
         raise SettingsError(DATA_HOME_NOT_LOCAL.format(home=answer))
     return answer
+
+
+def _file_in_the_way(path: Path) -> Path | None:
+    """The nearest part of ``path`` that exists, when it is not a folder -
+    ``path`` itself, or a parent of it: a data home that exists as a file, or
+    would have to be made under one, can never be written. ``None`` when
+    that part is a folder (the common case: the folder is made on the first
+    write) or nothing of the path exists at all."""
+    probe = path
+    while not probe.exists():
+        if probe.parent == probe:
+            return None
+        probe = probe.parent
+    return None if probe.is_dir() else probe
 
 
 def _home() -> Path | None:

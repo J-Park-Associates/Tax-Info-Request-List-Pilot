@@ -1012,7 +1012,7 @@ def test_the_renderer_types_no_vocabulary_of_its_own():
                     ", ".join(DEFAULT_EXTENSIONS), "looks like", UNSCANNED_LABEL,
                     _slug(UNSCANNED_LABEL), EXPECTED_PATTERN.split("{")[1].split("}")[1].strip()):
         assert f'"{literal}"' not in js and f"'{literal}'" not in js, literal
-        assert literal not in js.replace("chip-${vocab.unscanned_key}", ""), literal
+        assert literal not in js, literal
     for literal in (*HEADERS, YES, NO, ANY_EXTENSION):
         assert f'"{literal}"' not in js and f"'{literal}'" not in js, literal
     # The dashboard's own table heads its columns in plain English, so the
@@ -3962,8 +3962,7 @@ def test_picking_a_form_is_not_unsaved_work_but_typing_after_it_is(tmp_path):
     a box typed in afterwards makes it dirty."""
     seen = _dialog_guard(tmp_path, "choose_form", (
         "function chooseForm(formId) {", "function wizardModel() {", "function fill(pattern, values) {"), """
-Object.assign(vocab, { household: { items_title: "{form} requests" }, ask_the_client: "Ask",
-                       ask_the_client_note: "Note" });
+Object.assign(vocab, { household: { items_title: "{form} requests" }, ask_the_client: "Ask" });
 const forms = [{ id: "1040", label: "1040", who: "Individuals" }];
 const templatesByForm = { "1040": [{ identifier: "A01" }] };
 let selectedForm = null, templates = [], customItems = [], nameIsAuto = false, wizardPeople = [];
@@ -5336,3 +5335,14 @@ def test_the_runbooks_mac_paragraphs_quote_the_sentences_the_app_shows_and_name_
     # Section 8, item 13 of the SPEC: the Windows lines named a folder the app does not make.
     assert re.findall(r"%LOCALAPPDATA%\\tax-document-tracker(?!-pilot)", runbook) == []
     assert f"%LOCALAPPDATA%\\{settings.DATA_HOME_NAME}" in runbook
+
+
+def test_the_signature_boxs_page_side_limit_is_the_apis_constant():
+    """P295: the page holds one HTML limit of its own, the signature box's
+    ``maxlength``. The API refuses a longer name whatever the page sends
+    (``SIGNED_BY_LONGEST``); pinning the page's number to that constant is
+    what keeps the two from drifting apart unseen."""
+    from tracker import api
+
+    assert f'name.setAttribute("maxlength", "{api.SIGNED_BY_LONGEST}")' in read(
+        "app/renderer/pilot.js")

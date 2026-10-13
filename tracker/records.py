@@ -80,7 +80,10 @@ from tracker.layout import (  # noqa: F401 - re-exported: the record's names sin
     WINDOWS_ILLEGAL_CHARS_TEXT,
     WINDOWS_RESERVED_NAMES,
     WINDOWS_RESERVED_NAMES_TEXT,
+    invisible_problem,
     is_reserved_name,
+    quoted,  # noqa: F401 - re-exported: the manifest quotes through the record (it loads nothing else)
+    spoofing_problem,
 )
 
 # ------------------------------------------------------------ derivations ----
@@ -812,6 +815,12 @@ def person_from_json(raw: object) -> Person:
     kind = str(raw.get("kind", ""))
     if kind not in PERSON_KINDS:
         raise ValueError(f"{kind!r} is not one of {', '.join(PERSON_KINDS)}")
+    # The name every page of every document is searched for is held to the
+    # one text rule every other name is (P288): a name over 1,000
+    # characters is not a name, and an unbounded one costs every pass.
+    name = raw.get("name", "")
+    if problem := text_problem(name):
+        raise ValueError(f"a person's name {problem}")
     spellings = raw.get("spellings") or ()
     if isinstance(spellings, str):
         spellings = (spellings,)
@@ -819,7 +828,7 @@ def person_from_json(raw: object) -> Person:
     for spelling in listed:
         if not is_a_spelling(spelling):
             raise ValueError(f"{spelling!r} is one word; a spelling needs two or more")
-    return Person(kind=kind, name=str(raw.get("name", "")), spellings=listed)
+    return Person(kind=kind, name=name, spellings=listed)
 
 
 def _objects_from_json(raw: object, one, what: str) -> tuple:
@@ -1455,15 +1464,75 @@ def identifier_problem(identifier: str) -> str:
 
     Shared by ``manifest.validated``, the desktop app's create path and the
     store's gate, so a bad identifier is refused with the same sentence
-    wherever it is typed or read.
+    wherever it is typed or read. A character that changes how a name is
+    read - a right-to-left override, a zero-width joiner - is refused by code
+    point (P290, :func:`tracker.layout.spoofing_problem`): the identifier
+    begins every working copy's name, and the override is the classic
+    file-name spoof. The store asks this too, so a stored identifier holding
+    one is a refused line - the record is untrusted input (decision 187).
+    Only that narrow set: a no-break space or a soft hyphen an ordinary paste
+    left in an older record is not a reason to stop its household, and is
+    refused only where a person types (:func:`typed_identifier_problem`).
     """
     if WINDOWS_ILLEGAL_CHARS.search(identifier):
         return f"may not contain any of {WINDOWS_ILLEGAL_CHARS_TEXT} (it begins a file name)"
+    if (hidden := spoofing_problem(identifier)) is not None:
+        return hidden
     if identifier != identifier.rstrip(". "):
         return "may not end with a dot or a space (Windows drops them from file names)"
     if is_reserved_name(identifier):
         return (f"may not be a name Windows keeps for a device ({WINDOWS_RESERVED_NAMES_TEXT}); "
                 f"it begins a file name")
+    return ""
+
+
+def document_problem(document: str) -> str:
+    """Why ``document`` may not be a request's Document title, or "" if it
+    may: a character that changes how a name is read - a right-to-left
+    override, a zero-width space - is refused by code point (P301,
+    :func:`tracker.layout.spoofing_problem`).
+
+    The Document names a working copy whenever the row has no short name of
+    its own (``manifest.derived_short_title``), and an issuer row by the
+    entity it names, so a spoofing character held there reaches every file
+    the pass names - the gate that reads the identifier and the short name
+    (P290) must read this too. The whole title is judged, not the derived
+    cut: the issuer's entity is a substring of it, and a spoofing character
+    anywhere in a title is never legitimate. Only that narrow set, as in
+    :func:`identifier_problem`: this is the store's gate, and a no-break
+    space or a soft hyphen an ordinary paste left in an older Document is
+    not a reason to stop its household. The editor asks it of every row's
+    Document, typed or held (``manifest.item_from_fields``).
+    """
+    return spoofing_problem(document) or ""
+
+
+#: The most characters a typed identifier may have (P291): the width a
+#: household or return folder name has (``layout.NAME_MAX_CHARS``), for the
+#: same reason - it begins every file name.
+IDENTIFIER_MAX_CHARS = 80
+
+
+def typed_identifier_problem(identifier: str) -> str:
+    """Why a *typed* identifier is refused: :func:`identifier_problem`, then
+    the full invisible-character rule (:func:`tracker.layout.invisible_problem`),
+    then :data:`IDENTIFIER_MAX_CHARS`, or "" if it passes.
+
+    The length is a typing limit and not the store's gate, which keeps the
+    unbounded :func:`identifier_problem`: a record's identifier is not
+    re-judged by what a person may type. Said before the path-room check,
+    so a long identifier is told it is long and never to shorten the
+    household. Asked of a new or changed identifier only: one the list
+    already holds, sent back as it is spelt, is asked
+    :func:`identifier_problem` alone (``manifest.item_from_fields``, P291).
+    """
+    if problem := identifier_problem(identifier):
+        return problem
+    if (hidden := invisible_problem(identifier)) is not None:
+        return hidden
+    if len(identifier) > IDENTIFIER_MAX_CHARS:
+        return (f"may have at most {IDENTIFIER_MAX_CHARS} characters, got {len(identifier)} "
+                f"(it begins a file name)")
     return ""
 
 
@@ -1478,17 +1547,29 @@ def short_title_problem(short_title: str) -> str:
 
     Refused rather than sanitised, as an identifier is: the name a person
     types is the name every working copy carries, or they are told why not.
+    Only the spoofing characters are refused here (P290), because this is
+    also the store's gate; the editor asks :func:`typed_short_title_problem`.
     """
     if len(short_title) > SHORT_TITLE_MAX:
         return f"may have at most {SHORT_TITLE_MAX} characters, got {len(short_title)}"
     if WINDOWS_ILLEGAL_CHARS.search(short_title):
         return f"may not contain any of {WINDOWS_ILLEGAL_CHARS_TEXT} (it is part of a file name)"
+    if (hidden := spoofing_problem(short_title)) is not None:
+        return hidden
     if short_title != short_title.rstrip(". "):
         return "may not end with a dot or a space (Windows drops them from file names)"
     if short_title and is_reserved_name(short_title):
         return (f"may not be a name Windows keeps for a device ({WINDOWS_RESERVED_NAMES_TEXT}); "
                 f"it is part of a file name")
     return ""
+
+
+def typed_short_title_problem(short_title: str) -> str:
+    """Why a *typed* short title is refused: :func:`short_title_problem`,
+    then the full invisible-character rule, or "" if it passes (P290)."""
+    if problem := short_title_problem(short_title):
+        return problem
+    return invisible_problem(short_title) or ""
 
 
 class Override:
@@ -1929,6 +2010,10 @@ def rule_row_fault(row: dict) -> tuple[str, str]:
     for name in _RULE_TEXT:
         if given(name):
             checks.append((name, text_problem(row[name], long=True)))
+    # A Document that is not text is the text rule's, above; the rest is
+    # P301's: the Document names a working copy, so it is read like a name.
+    if given("document") and isinstance(row["document"], str):
+        checks.append(("document", document_problem(row["document"])))
     if given("expected_count"):
         checks.append(("expected_count",
                        count_problem(row["expected_count"], MIN_EXPECTED_COUNT, MAX_EXPECTED_COUNT)))

@@ -415,3 +415,124 @@ def test_a_feed_resolves_by_the_comparison_key_and_never_builds_a_path(tmp_path,
     # And the destination's card names the household feeding it by the key.
     assert [one.path for one in fed_by(registry, llc.parent.parent)] == [household]
     assert [one.path for one in fed_by(registry, tmp_path / "x" / "PARK & LEE LLC")] == [household]
+
+
+def _unreadable_record_of_a_shared_household(household):
+    """The household marked shared, then one line a reader refuses (written
+    without the record's link, as an older app or a hand edit leaves it)."""
+    import json
+
+    with engagement_lock(household):
+        store.record(store.connect(), household, ledger.new(ledger.SHARING_CONFIRMED))
+    ledger._write_raw(ledger.path_for(household), json.dumps(
+        {ledger.EVENT_KEY: ledger.SHARING_CONFIRMED, ledger.AT_KEY: "2026-01-01T00:00:00Z"}
+    ).encode("utf-8"))
+
+
+def test_a_household_whose_record_cannot_be_read_is_not_said_to_have_had_no_client_folder(
+    household, caplog,
+):
+    """P296 (the error-handling audit's E1): the client folder is gone and
+    the record the ledger refuses cannot say it was ever shared. That is
+    "cannot tell", never "never had one": the verdict is
+    :class:`ClientSideUnknown`, worded with the household's name and the
+    ledger's own sentence, and the whole error is kept on the error log."""
+    import logging
+
+    from tracker import errors
+    from tracker.households import CLIENT_SIDE_UNKNOWN, ClientSideUnknown, client_folder_missing
+
+    _unreadable_record_of_a_shared_household(household)
+    with pytest.raises(ledger.LedgerError) as refused:
+        ledger.read_events(household)
+
+    with caplog.at_level(logging.WARNING, logger=errors.DEBUG_LOGGER):
+        with pytest.raises(ClientSideUnknown) as unknown:
+            client_folder_missing(household)
+
+    assert str(unknown.value) == CLIENT_SIDE_UNKNOWN.format(
+        name="Smith Family", whose="the household", problem=str(refused.value))
+    assert "LedgerError" in caplog.text
+    assert "households: the client-side history (Smith Family)" in caplog.text
+
+
+def test_the_sentence_names_the_return_whose_record_cannot_be_read(household, tmp_path, caplog):
+    """P296, the review's F1: the household's own record reads clean and one
+    of its returns' will not. The sentence says ``its return`` with that
+    return's year and folder name (G1: Roll Forward keeps the name across
+    seasons), and the error log carries the same - so a person repairs the
+    right year's record and not the household's."""
+    import json
+    import logging
+
+    from tracker import errors
+    from tracker.households import CLIENT_SIDE_UNKNOWN, ClientSideUnknown, client_folder_missing
+
+    broken = make_engagement(tmp_path, ITEMS, household="Smith Family", year=2025,
+                             return_name="1040 - John", scaffold=False)
+    ledger._write_raw(ledger.path_for(broken), json.dumps(
+        {ledger.EVENT_KEY: ledger.SHARING_CONFIRMED, ledger.AT_KEY: "2026-01-01T00:00:00Z"}
+    ).encode("utf-8"))
+    with pytest.raises(ledger.LedgerError) as refused:
+        ledger.read_events(broken)
+    ledger.read_events(household)                      # the household's own record reads clean
+
+    with caplog.at_level(logging.WARNING, logger=errors.DEBUG_LOGGER):
+        with pytest.raises(ClientSideUnknown) as unknown:
+            client_folder_missing(household)
+
+    assert str(unknown.value) == CLIENT_SIDE_UNKNOWN.format(
+        name="Smith Family", whose="its return `2025\\1040 - John`", problem=str(refused.value))
+    assert "its return `2025\\1040 - John`" in str(unknown.value)
+    # the exact entry errors.keep writes (G2): the store's own checkpoint warning
+    # also carries the folder name, so the name alone would prove nothing
+    assert "households: the client-side history (2025\\1040 - John)" in caplog.text
+
+
+def test_a_journal_that_does_not_exist_is_skipped_and_only_one_that_will_not_read_is_cannot_tell(
+    household, tmp_path,
+):
+    """P296, the review's F3: a record that is not there has said nothing -
+    there is nothing to refuse - so a household and a return with no journal,
+    their client folder gone, answer "never had one" and raise nothing. (A
+    household with no record is stopped by the registry before this is
+    asked.) Only a journal that is there and will not read is "cannot tell"."""
+    import json
+
+    from tracker.households import ClientSideUnknown, client_folder_missing
+
+    absent = make_engagement(tmp_path, ITEMS, household="Smith Family", year=2025,
+                             return_name="1040 - John", scaffold=False)
+    ledger.path_for(absent).unlink()
+    ledger.path_for(household).unlink()
+
+    assert client_folder_missing(household, [absent]) == ""
+
+    # the other half (G4): a journal that is there and will not read is "cannot tell"
+    unreadable = make_engagement(tmp_path, ITEMS, household="Smith Family", year=2025,
+                                 return_name="1040 - Maria", scaffold=False)
+    ledger._write_raw(ledger.path_for(unreadable), json.dumps(
+        {ledger.EVENT_KEY: ledger.SHARING_CONFIRMED, ledger.AT_KEY: "2026-01-01T00:00:00Z"}
+    ).encode("utf-8"))
+    with pytest.raises(ClientSideUnknown) as unknown:
+        client_folder_missing(household, [absent, unreadable])
+    assert "its return `2025\\1040 - Maria`" in str(unknown.value)
+
+
+def test_a_client_folder_that_is_there_is_never_a_reason_to_read_the_record(
+    household, tmp_path, monkeypatch,
+):
+    """P296: the pass asks this of every household, and a folder that is in
+    its place is nothing to decide - so a record that cannot be read does
+    not stop it, and the record is not read at all."""
+    from tracker import households
+    from tracker.layout import client_household_dir
+
+    client_household_dir(tmp_path, "Smith Family").mkdir(parents=True)
+
+    def refuses(_folder):
+        raise ledger.LedgerError("the record cannot be read")
+
+    monkeypatch.setattr(households, "shared_on", refuses)
+
+    assert households.client_folder_missing(household) == ""

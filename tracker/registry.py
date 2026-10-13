@@ -32,7 +32,12 @@ named as a year, a return folder with no record, a folder holding only the
 workbook the tracker no longer reads (``LEGACY_MANIFEST_FILENAME``), a
 folder the walk cannot list: each is a :class:`Misfit` with its sentence,
 shown on the practice page, in the app and on the command line. Nothing in
-a misfit is ever read, moved or renamed; a person fixes it. There is no
+a misfit is ever read, moved or renamed; a person fixes it. A return folder
+holding a record with no request list and that workbook beside it is not a
+misfit: it is listed as an engagement carrying the same sentence
+(``LEGACY_FOLDER``) as its problem, and Roll Forward refuses it (P302);
+either way the list is in the workbook and none in its record, and the
+return is set up again in the app. There is no
 migration and no importer - decision 104 refused one and decision 125
 refused it again.
 
@@ -78,11 +83,13 @@ log = logging.getLogger(__name__)
 
 #: The workbook the request list lived in until decision 104. Its only
 #: reader in the package is the walk below, which uses it to say what a
-#: folder holding one and no record is: a legacy folder, not a return.
+#: folder holding one is: with no record, a legacy folder and not a return;
+#: with a record that holds no request list, a return carrying the same
+#: sentence as its problem, which Roll Forward refuses (P302).
 LEGACY_MANIFEST_FILENAME = "_manifest.xlsx"
 #: How such a folder is listed, and what the misfit list says of it.
 LEGACY_FOLDER = (
-    "holds a request list in a workbook the app no longer reads ({name}) and no "
+    "holds its request list in a workbook the app no longer reads ({name}) and none in its "
     "record; set the engagement up again in the app"
 )
 
@@ -911,11 +918,17 @@ def held_back(household_dir: Path | str) -> str:
     """Why nothing may be written for this household now, or ``""``: it is
     stopped (its record gone while its returns hold theirs, or two folders
     claim it), paused (its folders and its record disagree), or its client
-    folder is gone when its record shows it had one (the review's M3 and
-    S4). The one question a new return into it and every form of Roll
+    folder is gone when its record shows it had one, or cannot say whether
+    it had one because a record will not read (the review's M3 and S4;
+    P296). The one question a new return into it and every form of Roll
     Forward ask before anything is written, with the sentence each stop
     has in the pass."""
-    from tracker.households import client_folder_missing, household_pause, household_returns
+    from tracker.households import (
+        ClientSideUnknown,
+        client_folder_missing,
+        household_pause,
+        household_returns,
+    )
 
     folder = Path(household_dir)
     if not ledger.path_for(folder).is_file():
@@ -927,7 +940,12 @@ def held_back(household_dir: Path | str) -> str:
         stopped = {}
     if said := stopped.get(folder):
         return said
-    return household_pause(folder) or client_folder_missing(folder)
+    if paused := household_pause(folder):
+        return paused
+    try:
+        return client_folder_missing(folder)
+    except ClientSideUnknown as exc:
+        return errors.said(exc, (ClientSideUnknown,))
 
 
 def _two_claims(households: list[Household]) -> dict[Path, str]:

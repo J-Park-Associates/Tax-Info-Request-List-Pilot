@@ -20,6 +20,7 @@ from tracker.manifest import (
     COL_DOCUMENT,
     COL_EXPECTED_COUNT,
     COL_IDENTIFIER,
+    COL_ISSUER,
     COL_MANUAL_OVERRIDE,
     COL_MIN_SIZE_KB,
     COL_NAMED,
@@ -47,6 +48,7 @@ from tracker.manifest import (
     check_rules,
     create_engagement,
     entity_keyword,
+    identifier_key,
     item_from_fields,
     load_engagement_info,
     load_manifest,
@@ -1390,3 +1392,173 @@ def test_nothing_is_kept_once_the_hold_ends(engagement, monkeypatch):
     load_manifest(engagement)
     load_manifest(engagement)
     assert len(built) == 3
+
+
+def test_a_typed_identifier_past_eighty_characters_is_refused_where_it_is_read():
+    """P291: the editor reads a row's identifier through ``item_from_fields``,
+    which says it is too long (and quotes at most 80 characters of it)
+    before any path-room check can blame the household."""
+    with pytest.raises(ManifestError) as refused:
+        item_from_fields({"identifier": "A" * 81, "document": "x"}, where="Row 3")
+    said = str(refused.value)
+    assert said.startswith(f"Row 3: {COL_IDENTIFIER} '")
+    assert said.endswith("may have at most 80 characters, got 81 (it begins a file name)")
+    with pytest.raises(ManifestError, match="got 10000"):
+        item_from_fields({"identifier": "A" * 10_000, "document": "x"}, where="Row 1")
+    assert len(said) < 300
+    assert item_from_fields({"identifier": "A" * 80, "document": "x"},
+                            where="Row 1").identifier == "A" * 80
+
+
+def test_a_held_identifier_past_eighty_characters_is_not_refused_but_a_new_one_is():
+    """P291, the reviews' F1 and G1: the typed rule is for a new or changed
+    identifier. One the list already holds, spelt as it holds it, is asked
+    the store's rule alone - no cap, no full invisible rule - and a change of
+    case alone is the same request (decision 160), so it is held too; a
+    different identifier (a different key) is new."""
+    def held(*identifiers):
+        return {identifier_key(i): RequestItem(identifier=i, document="x") for i in identifiers}
+
+    row = {"identifier": "L" * 120, "document": "x"}
+    assert item_from_fields(row, where="Row 1", recorded=held("L" * 120)).identifier == "L" * 120
+    assert item_from_fields({**row, "identifier": "l" * 120}, where="Row 1",
+                            recorded=held("L" * 120)).identifier == "l" * 120
+    with pytest.raises(ManifestError, match="may have at most 80 characters, got 120"):
+        item_from_fields({**row, "identifier": "M" * 120}, where="Row 2", recorded=held("L" * 120))
+    hidden = "L" * 60 + "\u00a0" + "L" * 59
+    assert item_from_fields({**row, "identifier": hidden}, where="Row 1",
+                            recorded=held(hidden)).identifier == hidden
+    assert item_from_fields({**row, "identifier": hidden.lower()}, where="Row 1",
+                            recorded=held(hidden)).identifier == hidden.lower()
+    with pytest.raises(ManifestError, match="U\\+00A0 NO-BREAK SPACE"):
+        item_from_fields({**row, "identifier": hidden.replace("L", "M")}, where="Row 1",
+                         recorded=held(hidden))
+    with pytest.raises(ManifestError, match="may have at most 80"):
+        item_from_fields(row, where="Row 1")
+
+
+def test_a_derived_short_name_hiding_an_invisible_character_is_refused_naming_the_document():
+    """P290, the second review's G2: a row with no short name of its own is
+    named by its Document's first words, so ``W-2<U+202E>fdp.exe`` would put
+    the right-to-left override in every working copy's name. The refusal
+    names the Document, the field the person typed, never a Short name.
+    (A spoofing character is the Document's own refusal first since P301, and
+    is pinned below; the soft hyphen the store's gate admits is this one's.)"""
+    for document, named in (("W-2\u00adWages", "U+00AD SOFT HYPHEN"),):
+        with pytest.raises(ManifestError) as refused:
+            item_from_fields({"identifier": "A01", "document": document}, where="Row 1")
+        said = str(refused.value)
+        assert said.startswith(f"Row 1: {COL_DOCUMENT} 'W-2<U+")
+        assert said.endswith(f"may not contain an invisible character ({named}) "
+                             f"(it is also the short name)")
+        assert "\u202e" not in said and "\u00ad" not in said
+    # Past the twenty characters the short name keeps, the character is in no
+    # file name, and a typed short name of its own is what the copies carry.
+    assert item_from_fields({"identifier": "A01", "document": "W-2 Wage Statements \u00adx"},
+                            where="Row 1")
+    assert item_from_fields({"identifier": "A01", "document": "W-2\u00adWages",
+                             "short_title": "W-2"}, where="Row 1").short_title == "W-2"
+
+
+def test_a_document_hiding_a_spoofing_character_is_refused_naming_the_row_and_the_document():
+    """P301: the editor applies the store's Document rule to every row, typed
+    and held alike - a held row whose Document holds a right-to-left override
+    and whose short name is blank, a new row the same - and names the row and
+    the Document, so the save is not left to the gate's unnamed refusal. Where
+    the derived-short-name check would fire on the same character too, the
+    Document's own refusal comes first (no "it is also the short name")."""
+    for hidden, named in (("\u202e", "U+202E RIGHT-TO-LEFT OVERRIDE"),
+                          ("\u200b", "U+200B ZERO WIDTH SPACE")):
+        document = f"W-2{hidden}fdp.exe"
+        held = RequestItem(identifier="A01", document=document)
+        for recorded in ({"a01": held}, None):
+            with pytest.raises(ManifestError) as refused:
+                item_from_fields({"identifier": "A01", "document": document}, where="Row 3",
+                                 recorded=recorded)
+            said = str(refused.value)
+            assert said == (f"Row 3: {COL_DOCUMENT} 'W-2<U+{ord(hidden):04X}>fdp.exe' "
+                            f"may not contain an invisible character ({named})")
+            assert hidden not in said
+        # A short name of its own does not excuse a Document the gate refuses.
+        with pytest.raises(ManifestError, match=f"^Row 3: {COL_DOCUMENT} .*{re.escape(named)}"):
+            item_from_fields({"identifier": "A01", "document": document, "short_title": "W-2"},
+                             where="Row 3", recorded={"a01": replace(held, short_title="W-2")})
+
+
+def test_a_spoofing_character_in_an_issuer_entity_is_refused_naming_the_issuer_name_box():
+    """P301, the first review's F1: an issuer row's Document is built from the
+    one box the person typed into, so the Document's refusal names that box -
+    Issuer Name and the entity (SPEC-form-inputs section 15, G5) - exactly as
+    the derived-short-name refusal does, and never the whole Document, which
+    the add-issuer card does not show. It is the Document's own refusal, so it
+    carries no "(it is also the short name)". The editor's typed K-1 row and the
+    add-issuer card's ``issuer_item`` are the same refusal."""
+    from tracker.templates import BASE_YEAR, issuer_item
+
+    for hidden, named in (("\u202e", "U+202E RIGHT-TO-LEFT OVERRIDE"),
+                          ("\u200b", "U+200B ZERO WIDTH SPACE")):
+        document = f"Schedule K-1 - Ashford{hidden}Holdings LP"
+        expected = (f"F02: {COL_ISSUER} 'Ashford<U+{ord(hidden):04X}>Holdings LP' "
+                    f"may not contain an invisible character ({named})")
+        held = RequestItem(identifier="F02", document=document)
+        for recorded in ({"f02": held}, None):
+            with pytest.raises(ManifestError) as refused:
+                item_from_fields({"identifier": "F02", "document": document}, where="F02",
+                                 recorded=recorded)
+            assert str(refused.value) == expected
+            assert hidden not in str(refused.value)
+        with pytest.raises(ManifestError) as refused:
+            item_from_fields({"identifier": "F02", "document": document, "short_title": "K-1"},
+                             where="F02")
+        assert str(refused.value) == expected
+        with pytest.raises(ManifestError) as refused:
+            issuer_item("F02", f"Ashford{hidden}Holdings LP", BASE_YEAR)
+        assert str(refused.value) == expected
+    # A Document that is not an issuer row's is still named as the Document.
+    with pytest.raises(ManifestError, match=f"^F02: {COL_DOCUMENT} 'W-2<U\\+202E>fdp.exe' "):
+        item_from_fields({"identifier": "F02", "document": "W-2\u202efdp.exe"}, where="F02")
+
+
+def test_a_document_holding_only_a_no_break_space_is_not_the_stores_gate_to_refuse():
+    """P301: the gate refuses only the spoofing characters, so a Document an
+    older paste left a no-break space in saves - held unchanged, new with a
+    short name of its own, and new with none (the derived name folds the
+    space, as any run of white space, to an ordinary one)."""
+    document = "W-2\u00a0Wage Statements"
+    held = RequestItem(identifier="A01", document=document)
+    assert item_from_fields({"identifier": "A01", "document": document}, where="Row 1",
+                            recorded={"a01": held}).document == document
+    assert item_from_fields({"identifier": "A01", "document": document, "short_title": "W-2"},
+                            where="Row 1").document == document
+    assert item_from_fields({"identifier": "A01", "document": document},
+                            where="Row 1").document == document
+
+
+def test_a_held_unchanged_row_is_judged_by_the_stores_rule_and_never_the_typed_one():
+    """P290 and P291 (the second review's G1, G2 and G5): what the list
+    already holds, sent back as it holds it, is asked the store's rule - the
+    spoofing characters only - for its short name, typed or derived; the same
+    values new or changed are the typed rule's."""
+    held = RequestItem(identifier="A01", document="W-2\u00adWages", short_title="W\u00adX")
+    issuer = RequestItem(identifier="F02", document="Schedule K-1 - Ashford\u00adHoldings")
+    recorded = {"a01": held, "f02": issuer}
+    kept = {"identifier": "A01", "document": held.document, "short_title": held.short_title}
+    assert item_from_fields(kept, where="Row 1", recorded=recorded).short_title == held.short_title
+    assert item_from_fields({**kept, "short_title": ""}, where="Row 1",
+                            recorded={"a01": replace(held, short_title="")})
+    assert item_from_fields({"identifier": "F02", "document": issuer.document}, where="Row 2",
+                            recorded=recorded).document == issuer.document
+    # Changed, each is the typed rule's.
+    with pytest.raises(ManifestError, match="^Row 1: Short name .*U\\+00AD"):
+        item_from_fields({**kept, "short_title": "W\u00adY"}, where="Row 1", recorded=recorded)
+    with pytest.raises(ManifestError, match=f"^Row 1: {COL_DOCUMENT} .*U\\+00AD"):
+        item_from_fields({**kept, "document": "W-2\u00adWage", "short_title": ""}, where="Row 1",
+                         recorded={"a01": replace(held, short_title="")})
+    with pytest.raises(ManifestError, match=f"^Row 2: {COL_ISSUER} 'Ashford<U\\+00AD>Holdings LP' "):
+        item_from_fields({"identifier": "F02", "document": issuer.document + " LP"}, where="Row 2",
+                         recorded=recorded)
+    # The store's rule still refuses a spoofing character a held row derives.
+    spoof = RequestItem(identifier="A01", document="W-2\u202efdp.exe")
+    with pytest.raises(ManifestError, match="U\\+202E"):
+        item_from_fields({"identifier": "A01", "document": spoof.document}, where="Row 1",
+                         recorded={"a01": spoof})

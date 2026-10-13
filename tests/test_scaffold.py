@@ -837,6 +837,37 @@ def test_scaffolding_a_return_writes_no_readme(engagement):
     assert result.readme == result.inbox / README_NAME
 
 
+def test_the_scaffold_refuses_to_lay_out_a_household_whose_record_cannot_be_read(tmp_path, engagement):
+    """P296 (the error-handling audit's E1): the household's client folder
+    is gone and its record cannot be read, so the scaffold cannot tell it
+    was ever shared. It refuses with the one sentence naming both, and makes
+    nothing - not `Clients\\<name>` again under the old name, which would be
+    an empty, unshared inbox."""
+    import json
+
+    from tracker import ledger, store
+    from tracker.households import CLIENT_SIDE_UNKNOWN
+    from tracker.layout import CLIENTS_TREE
+    from tracker.locking import engagement_lock
+    from tracker.scaffold import ClientFolderMissing, scaffold_household
+
+    household = household_of(engagement)
+    with engagement_lock(household):
+        store.record(store.connect(), household, ledger.new(ledger.SHARING_CONFIRMED))
+    ledger._write_raw(ledger.path_for(household), json.dumps(
+        {ledger.EVENT_KEY: ledger.SHARING_CONFIRMED, ledger.AT_KEY: "2026-01-01T00:00:00Z"}
+    ).encode("utf-8"))
+    with pytest.raises(ledger.LedgerError) as refused:
+        ledger.read_events(household)
+
+    with pytest.raises(ClientFolderMissing) as refusal:
+        scaffold_household(household)
+
+    assert str(refusal.value) == CLIENT_SIDE_UNKNOWN.format(
+        name=household.name, whose="the household", problem=str(refused.value))
+    assert not (tmp_path / CLIENTS_TREE / household.name).exists()
+
+
 def test_the_received_heading_is_written_only_over_a_line_under_it(tmp_path):
     """The review's F4 (decision 130): data that renders no line - a
     Received line for a return the README does not speak for, an Under

@@ -197,10 +197,9 @@ from tracker.locking import (
 )
 from tracker.manifest import (
     ANY_EXTENSION,
+    COL_ISSUER,
     COLUMN_HELP,
     COLUMNS,
-    DEFAULT_EXTENSIONS,
-    EXPECTED_PATTERN,
     ISO_DATE_HINT,
     MIN_EXPECTED_COUNT,
     MIN_SIZE_KB_FLOOR,
@@ -210,7 +209,6 @@ from tracker.manifest import (
     OVERRIDE_REASON_OTHER,
     OVERRIDE_REASONS,
     STATUS_LABELS,
-    UNSCANNED_LABEL,
     YEAR_MAX,
     YEAR_MIN,
     ListMoved,
@@ -238,7 +236,6 @@ from tracker.manifest import (
 from tracker.names import NO_PEOPLE, ONE_WORD_SPELLING, propose_spellings
 from tracker.page import PALETTE, slug
 from tracker.records import (
-    CANDIDATE_SEP,
     DATE_FIELDS,
     ENGAGEMENT_EDITABLE,
     ENGAGEMENT_FIELDS,
@@ -288,8 +285,6 @@ from tracker.registry import (
 from tracker.rollover import (
     ORIGIN_NEW,
     ORIGIN_NOT_APPLICABLE,
-    ORIGIN_PRIOR,
-    UNKNOWN_YEAR_LABEL,
     ReturnPlan,
     RolledNotAllRetired,
     carried_link,
@@ -331,7 +326,6 @@ from tracker.settings import (
     DEFAULT_SCHEDULE_EVERY,
     DEFAULT_SCHEDULE_START,
     ERROR_LOG_FILENAME,
-    EXAMPLE_ROOT,
     REDIRECTED_COPY,
     SET_ROOT_HINT,
     DataHomeRedirected,
@@ -355,13 +349,9 @@ from tracker.settings import (
     settings_path,
 )
 from tracker.templates import (  # the catalog; re-exported for the dialog
-    EXTENSION_DEFAULT_NOTE,
     FORM_TEMPLATES,
     FORM_TYPES,
     K1_IDENTIFIER,
-    KEYWORD_DEFAULT_NOTE,
-    PERIOD_PATTERN,
-    YEAR_NOTE,
     base_year,
     default_tax_year,
     issuer_item,
@@ -409,6 +399,15 @@ USAGE = "usage: tracker.api {commands}"
 #: never its message, and where its detail went.
 FAILED = ("The app hit an error it did not expect ({kind}). What it finished is on the record; "
           "the details are in {log} beside the app's database.")
+#: A database the engine refused and a record the disk refused (decision 189's
+#: two expected classes, P298): said as themselves with their code, never as
+#: "an error it did not expect". The kind stays ``failed``, so the window
+#: keeps Retry.
+STORE_UNAVAILABLE = ("The app's database could not be used just now ({code}). What it finished is on the record; "
+                     "try again in a moment, and if it keeps happening the details are in {log}")
+RECORD_NOT_WRITTEN = ("The record could not be written ({code}). What it finished is on the record; "
+                      "free the disk or close whatever holds the record open, then try again - "
+                      "the details are in {log}")
 #: The notices' three buttons (decision 193, ruling 12). Static in
 #: ``index.html``'s template, pinned to these word for word, because a
 #: notice must work when the very first ``list`` fails, before any
@@ -587,8 +586,9 @@ def _failure_of(exc: BaseException) -> dict:
         # the first screen says it - what to move and where - not as an error.
         kind, sentence = "refused", _left_behind_to_move(exc)
     elif isinstance(exc, (store.StoreUnavailable, ledger.RecordNotWritten)):
-        kind, sentence = "failed", FAILED.format(kind=errors.error_class(exc),
-                                                 log=ERROR_LOG_FILENAME)
+        kind = "failed"
+        sentence = (STORE_UNAVAILABLE if isinstance(exc, store.StoreUnavailable)
+                    else RECORD_NOT_WRITTEN).format(code=errors.error_code(exc), log=ERROR_LOG_FILENAME)
     elif isinstance(exc, _PageRefused):
         # The one refusal the window says without Retry (P278): marked here, so
         # no other refusal - a folder that cannot be walked just now - loses it.
@@ -998,6 +998,10 @@ ASK_THE_CLIENT = "Ask the Taxpayer"
 #: the roll fold's label over the template pick (decision 142).
 NOT_ASKED_TABLE_LABEL = "Requests Not Asked For"
 ROLL_TEMPLATE_LABEL = "Form Template"
+#: The dialog's help sentence under the catalog's ticks, cut from the screen
+#: (the audit's E84-E91) and no longer sent in the vocabulary (P300): kept
+#: as the sentence ``tests/test_single_source`` and ``test_api`` guard the
+#: renderer against typing again.
 ASK_THE_CLIENT_NOTE = ("Every row is on the return. A ticked row is asked for and reminded; "
                        "an unticked one is never asked for, but a document that arrives for "
                        "it is filed there.")
@@ -1045,7 +1049,7 @@ KEYWORD_HELP = ("A word this document contains that others like it will too. Tau
 #: The card of a K-1 parked for an unnamed issuer (decision 201): its one
 #: box, what it will add - the next free row, named before anything is
 #: pressed - and its one button; and what the banner says once it is done.
-ISSUER_LABEL = "Issuer Name"
+ISSUER_LABEL = COL_ISSUER
 ISSUER_HELP = ("Adds {identifier}, a K-1 row for this issuer, to the request list and files this "
                "document under it. Type the distinctive words and leave off the suffix (L.P., LLC).")
 ISSUER_ADD_LABEL = "Add Issuer"
@@ -1197,8 +1201,15 @@ def _read_spec() -> dict:
     text it already is.
     """
     stream = sys.stdin
-    raw = stream.buffer.read().decode("utf-8") if hasattr(stream, "buffer") else stream.read()
-    spec = json.loads(raw or "{}")
+    try:
+        raw = stream.buffer.read().decode("utf-8") if hasattr(stream, "buffer") else stream.read()
+        spec = json.loads(raw or "{}")
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        # Text that is not JSON at all, or bytes that are not UTF-8, are the
+        # same mistake as JSON that is not an object (a hand-run command; the
+        # shell always stringifies): one plain refusal, not an "unexpected
+        # error" in the error log.
+        raise ManifestError(NOT_A_SPEC) from None
     if not isinstance(spec, dict):
         raise ManifestError(NOT_A_SPEC)
     # Kept for the failure envelope: the row a click was about (decision 193).
@@ -1266,15 +1277,6 @@ PATH_KINDS: dict[str, str] = {
     # Protected View mark (review 1, F1/F2). The shell refuses a plain open.
     "review_copy": "file", "filed_copy": "reveal", "moved_copy": "reveal", "shown_copy": "reveal",
 }
-#: What the request-list editor shows for each stored override reason
-#: (:data:`tracker.manifest.OVERRIDE_REASONS`), in its order (P77, P84): the
-#: record keeps the stored words as values, so only the label changes.
-OVERRIDE_LABELS: tuple[str, ...] = (
-    "Taxpayer Confirmed Final Version",
-    "Correct; Only Formatting Flagged",
-    "Received Outside the App",
-    "Prior-Year or Substitute Document Accepted",
-)
 #: The request-list editor's label for a return's detail where the screen's
 #: word differs from the record's (P196): the record and the files it writes
 #: keep "Client" for the greeting name (``records.ENGAGEMENT_LABELS``); the
@@ -1717,15 +1719,11 @@ def _vocab() -> dict:
         # the editor's, of every row nobody waits on, and each group's
         # heading inside it (decision 200).
         "set_aside": {"heading": SET_ASIDE_SECTION, "group": SET_ASIDE_GROUP},
-        "unscanned_label": UNSCANNED_LABEL,
-        "unscanned_key": _slug(UNSCANNED_LABEL),
         # What a row nobody asked for is called while nothing has arrived
-        # for it (decision 142), and the chip class it is drawn with.
+        # for it (decision 142).
         "not_asked_label": NOT_ASKED_LABEL,
-        "not_asked_key": _slug(NOT_ASKED_LABEL),
-        # The dialog's heading over the catalog's ticks, and its sentence.
+        # The dialog's heading over the catalog's ticks.
         "ask_the_client": ASK_THE_CLIENT,
-        "ask_the_client_note": ASK_THE_CLIENT_NOTE,
         "not_asked_table_label": NOT_ASKED_TABLE_LABEL,
         # The one refusal of a list nobody is asked for (R6), which the
         # dialog also says before it calls.
@@ -1738,9 +1736,6 @@ def _vocab() -> dict:
         # the row's year, which travels per item as ``year`` in the state
         # so the renderer computes nothing from the Period's text.
         "override_reasons": list(OVERRIDE_REASONS),
-        # What the editor's list shows for each stored reason, in the same
-        # order (P77): the record keeps the stored words, the list shows these.
-        "override_labels": list(OVERRIDE_LABELS),
         "override_reason_other": OVERRIDE_REASON_OTHER,
         # The one line the roll's banner adds for last year's
         # set-aside rows, and the origin value it groups them on.
@@ -1854,17 +1849,9 @@ def _vocab() -> dict:
             "teach": TEACH_SPELLING_LABEL,
             "teach_hint": TEACH_SPELLING_HINT,
         },
-        "default_extensions": ", ".join(DEFAULT_EXTENSIONS),
-        "expected_pattern": EXPECTED_PATTERN,
-        "period_pattern": PERIOD_PATTERN,
-        "origin_prior": ORIGIN_PRIOR,
-        "unknown_year_label": UNKNOWN_YEAR_LABEL,
-        "candidate_separator": CANDIDATE_SEP,
         # Every word an evidence line can carry, from the module that owns
         # it: the app labels a rule and a place, and types neither.
         "evidence": {"rules": list(EVIDENCE_RULES), "places": list(EVIDENCE_PLACES)},
-        "year_note": YEAR_NOTE,
-        "extension_default_note": EXTENSION_DEFAULT_NOTE,
         # The shape of the clients root, from the module that owns it
         # (decision 125): the two trees, the one inbox, and the two
         # patterns the dialog's previews fill.
@@ -1952,7 +1939,6 @@ def _vocab() -> dict:
         },
         "year_min": YEAR_MIN,
         "year_max": YEAR_MAX,
-        "example_root": EXAMPLE_ROOT,
         "engagement_flag": ENGAGEMENT_FLAG,
         "commands": sorted(COMMANDS),
         # The commands that change something, so the shell can say a killed
@@ -2061,7 +2047,6 @@ def _vocab() -> dict:
         # (the lead's L-1) - and the heading the root dialog lists them
         # under.
         "room": {"short": ROOM_SHORT_WORDS, "parks": ROOM_PARKS_WORDS, "heading": ROOM_HEADING},
-        "keyword_default_note": KEYWORD_DEFAULT_NOTE,
         # Every word and colour the Reminder card shows (decisions 115 and
         # 118), from the module that owns the draft: the four stages with
         # the palette key each carries and where
@@ -2273,6 +2258,27 @@ def _info_from_spec(spec: dict, *, carry: EngagementInfo | None = None,
     )
 
 
+def _members_from_spec(sent: object) -> tuple[str, ...]:
+    """The household's members as the dialog and the editor send them:
+    a list of names, or one text with a name per line (the editor's box).
+    Anything else is refused by name; each name is whitespace-folded and
+    a blank one is dropped.
+
+    One helper for New household and Edit household (P287): a string is
+    iterable, so reading it as a list made ``"Jane"`` the four members
+    ``J``, ``a``, ``n``, ``e`` in one form while the other split it into
+    lines. Nothing else parses members.
+    """
+    if sent is None or sent == "":
+        return ()
+    if isinstance(sent, str):
+        sent = sent.splitlines()
+    elif not isinstance(sent, (list, tuple)):
+        raise ManifestError(f"{MEMBERS_LABEL} must be a list of names")
+    folded = (" ".join(str(one).split()) for one in sent)
+    return tuple(one for one in folded if one)
+
+
 def _people_from_spec(sent: object) -> tuple[Person, ...]:
     """The return's people as the dialog and the editor's block send them:
     a list of ``{kind, name, spellings}`` (decision 128).
@@ -2295,6 +2301,13 @@ def _people_from_spec(sent: object) -> tuple[Person, ...]:
         name = " ".join(str(one.get("name", "") or "").split())
         if not name:
             raise ManifestError(f"Every person needs a name ({PERSON_KIND_LABELS[kind]})")
+        # The name every page of every document is searched for: held to
+        # the one text rule every other name is, so an unbounded one cannot
+        # cost every pass (P288). The check runs on every save, stored
+        # values included - the editor sends the people block back whole -
+        # so the refusal says whose name (P306).
+        if problem := records.text_problem(name):
+            raise ManifestError(f"{PEOPLE_LABEL}: the {PERSON_KIND_LABELS[kind]}'s name {problem}")
         spellings: list[str] = []
         for spelling in one.get("spellings") or []:
             spelling = " ".join(str(spelling).split())
@@ -2302,6 +2315,13 @@ def _people_from_spec(sent: object) -> tuple[Person, ...]:
                 continue
             if not is_a_spelling(spelling):
                 raise ManifestError(ONE_WORD_SPELLING)
+            # Searched on every page as the name is, so held to the same
+            # rule where it is typed (P304). A stored one is judged again
+            # on every save, as the name is, so the refusal names the
+            # person (P306); ``name`` has passed its own rule by here, so
+            # the sentence is bounded.
+            if problem := records.text_problem(spelling):
+                raise ManifestError(f"{PEOPLE_LABEL}: a spelling of {name} {problem}")
             if spelling not in spellings:
                 spellings.append(spelling)
         people.append(Person(kind=kind, name=name, spellings=tuple(spellings)))
@@ -3544,6 +3564,9 @@ def _cmd_edit(argv: list[str]) -> dict:
     recorded = recorded_rules(engagement)
     exact = {str(rule["identifier"]): rule for rule in recorded}
     folded = {identifier_key(str(rule["identifier"])): rule for rule in recorded}
+    # What the list holds, as rows: a value sent back as it is held is judged
+    # by the store's rule, a new or changed one by the typed rule (P290, P291).
+    held_items = {key: item_from_record(rule) for key, rule in folded.items()}
     items = []
     for n, row in enumerate(rows, start=1):
         row = row if isinstance(row, dict) else {}
@@ -3552,7 +3575,8 @@ def _cmd_edit(argv: list[str]) -> dict:
                 raise ManifestError(UNKNOWN_COLUMN.format(n=n, key=key))
         identifier = str(row.get("identifier") or "").strip()
         held = exact.get(identifier) or folded.get(identifier_key(identifier))
-        items.append(item_from_fields(_as_recorded(row, held), where=f"Row {n}"))
+        items.append(item_from_fields(_as_recorded(row, held), where=f"Row {n}",
+                                      recorded=held_items))
     _refuse_a_list_nobody_is_asked_for(items)
     details = spec.get("engagement") or {}
     for key in details:
@@ -3638,16 +3662,26 @@ def _refuse_taking_away_documents(engagement: Path, recorded: list[dict], items:
             raise ManifestError(HOLDS_DOCUMENTS.format(identifier=rule["identifier"], n=held[key]))
 
 
-#: What a row is compared on to say the editor changed it (decision 131):
-#: the four things a working copy's path is made of.
-_PATH_FIELDS = ("identifier", "document", "period", "allowed_extensions")
+#: What a matched row is compared on to say the editor changed it (decision
+#: 131): the things a working copy's path is made of, bar the identifier,
+#: which rows are matched by (its key) and whose case is not a change (P305;
+#: its length is compared separately). The short name a copy is named by
+#: (decision 144) is the short title or the Document's derivation, so both
+#: are compared (P307).
+_PATH_FIELDS = ("document", "short_title", "period", "allowed_extensions")
 
 
 def _refuse_a_changed_row_past_the_limit(engagement: Path, items: list) -> None:
     """The editor's save keeps creation's standard for the rows it changes
     (decision 131).
 
-    A row whose identifier, document, period or file types differ from the
+    A row is matched to the stored one by the identifier's key, so a change
+    of case alone is the same row (decision 160, P305): a case change cannot
+    alter a path's length, and a held row already past the limit is never
+    refused one. The one exception is a respelling that keeps the key and
+    changes the length: ``"İ".lower()`` is two code points, so ``İ01`` and
+    ``i̇01`` are one key and two lengths, and that row counts as changed.
+    A row whose document, short title, period or file types differ from the
     stored list, and every new row, is measured as creation measures a
     list (``filer.room_for``); one whose canonical working copy would pass
     what Windows opens refuses the save with creation's own sentence, and
@@ -3656,15 +3690,24 @@ def _refuse_a_changed_row_past_the_limit(engagement: Path, items: list) -> None:
     room the page and the banner report, so shortening one label is never
     trapped by another. A row set Not Applicable is not measured, as
     creation does not measure it, and neither is a row nobody asked for
-    (decision 142); a row a person has just set Asked is measured, because
-    it is now a request creation would have measured.
+    (decision 142); a row a person has just set Asked, or taken off Not
+    Applicable, is measured, because it is now a request creation would
+    have measured (P307).
     """
-    stored = {item.identifier: item for item in load_manifest(engagement)}
-    changed = [item for item in items
-               if item.identifier not in stored
-               or any(getattr(item, name) != getattr(stored[item.identifier], name)
-                      for name in _PATH_FIELDS)
-               or (item.asked and not stored[item.identifier].asked)]
+    stored = {identifier_key(item.identifier): item for item in load_manifest(engagement)}
+    changed = []
+    for item in items:
+        held = stored.get(identifier_key(item.identifier))
+        # The identifier's length is compared beside the fields: ``.lower()``
+        # lengthens the one letter "İ", so a respelling that keeps the key
+        # can still grow the path (SPEC-form-inputs section 22).
+        if (held is None
+                or len(item.identifier) != len(held.identifier)
+                or any(getattr(item, name) != getattr(held, name) for name in _PATH_FIELDS)
+                or (item.asked and not held.asked)
+                or (held.manual_override == Override.NOT_APPLICABLE
+                    and item.manual_override != Override.NOT_APPLICABLE)):
+            changed.append(item)
     room = room_for(engagement, changed)
     if room.need > room.limit:
         raise ManifestError(PATH_TOO_LONG.format(folder=engagement, length=room.need,
@@ -4157,8 +4200,7 @@ def _cmd_create(argv: list[str]) -> dict:
     else:
         household_info = HouseholdInfo(
             name=household,
-            members=tuple(" ".join(str(m).split()) for m in (spec.get("members") or [])
-                          if str(m).strip()),
+            members=_members_from_spec(spec.get("members")),
             contact=" ".join(str(spec.get("contact", "") or "").split()),
             link=" ".join(str(spec.get("link", "") or "").split()),
         )
@@ -4292,8 +4334,8 @@ def _undo_create(engagement: Path) -> None:
     shutil.rmtree(engagement, ignore_errors=True)
     try:
         store.forget(store.connect(), engagement)
-    except Exception:
-        pass
+    except Exception as exc:
+        errors.keep("api: forgetting a failed return", exc, name=engagement.name)
 
 
 def _feeds_from_spec(sent: object, household_dir: Path) -> tuple[Feed, ...]:
@@ -4441,10 +4483,7 @@ def _cmd_edit_household(argv: list[str]) -> dict:
     held = load_household_info(household_dir)
     members = held.members
     if "members" in spec:
-        typed = spec["members"]
-        if isinstance(typed, str):
-            typed = typed.splitlines()
-        members = tuple(" ".join(str(one).split()) for one in (typed or []) if str(one).strip())
+        members = _members_from_spec(spec["members"])
     info = replace(
         held,
         name=held.name or household_dir.name,
@@ -4590,8 +4629,8 @@ def _cmd_rollover(argv: list[str]) -> dict:
         # call's own mkdir made is undone (decision 137), and the year only
         # when it is empty.
         made += make_new_folders(engagement)
-        report.warnings = list(create_engagement(engagement, report.items, info,
-                                                 carried=report.from_last_year))
+        report.carry_warnings(create_engagement(engagement, report.items, info,
+                                                carried=report.from_last_year))
         scaffold_engagement(engagement)
     except Exception:
         _undo_made(made, {engagement})
@@ -5553,6 +5592,12 @@ def _cmd_set_root(argv: list[str]) -> dict:
     leaves what is recorded alone.
     """
     spec = _read_spec()
+    # The firm's name and phone go into every letter, so they are held to
+    # the one-line text rule here, before the root is written: a refused
+    # firm text writes nothing (P289). Blank stays allowed - it clears.
+    for key, label in (("firm", FIRM_NAME_LABEL), ("phone", FIRM_PHONE_LABEL)):
+        if spec.get(key) is not None and (problem := records.text_problem(str(spec[key]))):
+            raise ManifestError(f"{label} {problem}")
     root = set_clients_root(str(spec.get("root", "")))
     if spec.get("firm") is not None:
         set_firm(str(spec["firm"]))

@@ -52,7 +52,6 @@ from collections.abc import Iterable
 from dataclasses import replace
 
 from tracker.manifest import (
-    DEFAULT_EXTENSIONS,
     ISSUER_DOCUMENT,
     JURAT,
     KEYWORD_ALL_OF,
@@ -62,10 +61,11 @@ from tracker.manifest import (
     detect_year,
     entity_keyword,
     identifier_key,
-    identifier_problem,
     issuer_short_title,
     item_from_fields,
+    quoted,
     shift_item,
+    typed_identifier_problem,
 )
 
 # Tax form catalog — the wizard's first page. Selecting a form type tailors
@@ -720,9 +720,9 @@ def item_from_spec(spec: dict) -> RequestItem:
     document = str(spec.get("document", "") or "").strip()
     if not identifier or not document:
         raise ManifestError("every request needs an identifier and a document name")
-    problem = identifier_problem(identifier)
+    problem = typed_identifier_problem(identifier)
     if problem:
-        raise ManifestError(f"Identifier {identifier!r} {problem}")
+        raise ManifestError(f"Identifier '{quoted(identifier)}' {problem}")
     item = item_from_fields(spec, where=identifier)
     if not (item.required_keywords or item.any_keywords or item.date_pattern):
         item = replace(item, required_keywords=(document,))
@@ -797,13 +797,6 @@ def ask_by_for(deadline: dt.date) -> dt.date:
     while target.weekday() in _WEEKEND:
         target -= dt.timedelta(days=1)
     return target
-
-
-#: What the wizard says about the year field and the two blank-able rules.
-YEAR_NOTE = "Defaults to the most recently ended year; the checklist's periods follow it"
-EXTENSION_DEFAULT_NOTE = ("blank means " + ", ".join(DEFAULT_EXTENSIONS)
-                          + "; a photo or an image counts as a PDF")
-KEYWORD_DEFAULT_NOTE = "Defaults to the Document Name"
 
 
 def require_form(form: str) -> None:

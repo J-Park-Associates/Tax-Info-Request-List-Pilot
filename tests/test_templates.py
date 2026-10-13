@@ -61,6 +61,19 @@ def test_a_request_with_no_rule_defaults_to_its_own_name():
     assert explicit.any_keywords == ("schedule e",)
 
 
+def test_a_refused_catalog_identifier_is_quoted_cut_and_never_carries_the_character():
+    """P293, the review's F4: the New return path echoes at most 80
+    characters of a typed identifier, and a character it refuses is named by
+    code point, not carried."""
+    with pytest.raises(ManifestError) as refused:
+        item_from_spec({"identifier": "A" * 10_000, "document": "x"})
+    assert len(str(refused.value)) < 300
+    assert "may have at most 80 characters, got 10000" in str(refused.value)
+    with pytest.raises(ManifestError) as hidden:
+        item_from_spec({"identifier": "W-2\u202efdp", "document": "x"})
+    assert "'W-2<U+202E>fdp'" in str(hidden.value) and "\u202e" not in str(hidden.value)
+
+
 def test_the_tax_year_comes_from_the_calendar():
     import datetime as dt
 
@@ -450,3 +463,18 @@ def test_an_issuer_item_is_shifted_to_the_returns_year():
     assert issuer_item("F03", "Dunmore Capital", None) == cut
     with pytest.raises(ManifestError):
         issuer_item("F03", " , . ", BASE_YEAR)
+
+
+def test_an_issuer_name_hiding_a_soft_hyphen_is_refused_naming_the_issuer_never_a_short_name():
+    """P290, the second review's G5: an issuer row's short name is derived
+    from the issuer's name, so a soft hyphen typed in that name is refused
+    on the name the person typed, never on a Short name nobody typed."""
+    from tracker.manifest import COL_ISSUER, COL_SHORT_TITLE
+    from tracker.templates import issuer_item
+
+    with pytest.raises(ManifestError) as refused:
+        issuer_item("F02", "Ashford\u00adHoldings", BASE_YEAR)
+    said = str(refused.value)
+    assert said == (f"F02: {COL_ISSUER} 'Ashford<U+00AD>Holdings' may not contain an invisible "
+                    f"character (U+00AD SOFT HYPHEN) (it is also the short name)")
+    assert COL_SHORT_TITLE not in said

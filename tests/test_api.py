@@ -19,7 +19,7 @@ import pytest
 import tracker.api as api
 from tests.conftest import TEST_CLIENT, app_stdin, make_engagement
 from tests.samples import PRIOR_YEAR, SCRATCH_PEOPLE
-from tracker import layout, ledger, reasons, reminder, store, view
+from tracker import layout, ledger, manifest, reasons, reminder, store, view
 from tracker.filer import FILED, NEEDS_REVIEW, read_index
 from tracker.households import load_household_info
 from tracker.layout import PRIVATE_TREE, inbox_of, return_dir_for
@@ -589,6 +589,30 @@ def test_rollover_refuses_a_missing_prior(capsys, demo_root):
     code, payload = run(capsys, "rollover", stdin={"prior": str(where(demo_root, "Nobody 2020"))})
     assert code == 1
     assert "No record found" in payload["error"]
+
+
+def test_rollover_refuses_a_legacy_return_with_the_legacy_sentence_and_writes_nothing(
+        capsys, demo_root):
+    """Section 18 (S1): the app's Roll Forward on a return whose record reads
+    and holds no request list, with the old workbook beside it, is refused
+    with the rollover's legacy sentence - it used to roll into the next year
+    with zero rows and say nothing - and nothing is written, in either tree."""
+    from tracker.manifest import EngagementInfo
+    from tracker.registry import LEGACY_MANIFEST_FILENAME
+    from tracker.rollover import ROLLOVER_LEGACY_FOLDER
+
+    legacy = make_engagement(demo_root, [], EngagementInfo(active=True), household=HOUSEHOLD,
+                             year=2026, return_name="1040 - Old Smith")
+    (legacy / LEGACY_MANIFEST_FILENAME).write_bytes(b"PK any bytes at all")
+
+    before = _tree_hashes(demo_root)
+    code, payload = run(capsys, "rollover", stdin={"prior": str(legacy), "year": 2027})
+
+    assert code == 1
+    assert payload["error"] == ROLLOVER_LEGACY_FOLDER.format(
+        prior=legacy.name, name=LEGACY_MANIFEST_FILENAME)
+    assert not where(demo_root, legacy.name, year=2027).exists()
+    assert _tree_hashes(demo_root) == before
 
 
 def test_a_client_of_only_illegal_characters_still_makes_one_folder_name(capsys, demo_root):
@@ -1287,9 +1311,7 @@ def test_the_editor_saves_a_reason_and_the_vocabulary_carries_the_list_and_the_l
     from tracker.rollover import ORIGIN_NEW
 
     assert vocab["not_asked_label"] == NOT_ASKED_LABEL
-    assert vocab["not_asked_key"] == api._slug(NOT_ASKED_LABEL)
     assert vocab["ask_the_client"] == api.ASK_THE_CLIENT
-    assert vocab["ask_the_client_note"] == api.ASK_THE_CLIENT_NOTE
     assert vocab["not_asked_table_label"] == api.NOT_ASKED_TABLE_LABEL
     assert vocab["roll_template_label"] == api.ROLL_TEMPLATE_LABEL
     assert vocab["nothing_asked"] == api.NOTHING_ASKED
@@ -2903,7 +2925,7 @@ def test_the_schedule_is_repaired_from_the_tools_menu_in_the_apis_words():
 def test_the_renderer_gets_its_vocabulary_from_the_api(capsys, demo_root):
     from tracker import STANDING_RULES
     from tracker.filer import DUPLICATE, FILE_MOVED, FILED, NEEDS_REVIEW, NOT_REQUESTED
-    from tracker.manifest import COLUMN_HELP, COLUMNS, DEFAULT_EXTENSIONS, Override, Status
+    from tracker.manifest import COLUMN_HELP, COLUMNS, Override, Status
     from tracker.records import DATE_FIELDS, ENGAGEMENT_EDITABLE, ENGAGEMENT_FIELDS
     from tracker.runner import DRAFT_WEEKDAY, WEEKDAY_NAMES
     from tracker.scheduling import DEFAULT_REPEAT_MINUTES, DEFAULT_START
@@ -2946,7 +2968,6 @@ def test_the_renderer_gets_its_vocabulary_from_the_api(capsys, demo_root):
         "issuer_label": api.ISSUER_LABEL, "issuer_help": api.ISSUER_HELP,
         "issuer_add": api.ISSUER_ADD_LABEL, "issuer_not_rescanned": api.ISSUER_NOT_RESCANNED,
     }
-    assert vocab["default_extensions"] == ", ".join(DEFAULT_EXTENSIONS)
     assert "carried_sheet" not in vocab
     # The editor's every word, and the request list's schema.
     assert vocab["columns"] == [{"key": f, "label": h, "help": COLUMN_HELP[f]} for h, f in COLUMNS]
@@ -2971,7 +2992,6 @@ def test_the_renderer_gets_its_vocabulary_from_the_api(capsys, demo_root):
     assert editor["maximums"] == {"expected_count": MAX_EXPECTED_COUNT, "min_size_kb": MAX_SIZE_KB}
     assert editor["any_extension"] == "*" and editor["no_date_check"] == "*"
     assert "set_aside_heading" not in editor
-    assert vocab["unscanned_key"] == api._slug(vocab["unscanned_label"])
     assert vocab["commands"] == sorted(api.COMMANDS)
     assert [r["headline"] for r in vocab["rules"]] == [h for h, _ in STANDING_RULES]
     assert vocab["schedule"] == {"start": DEFAULT_START, "every": DEFAULT_REPEAT_MINUTES,
@@ -5317,7 +5337,7 @@ def _a_deeper_root(demo_root):
     return deeper
 
 
-def _a_long_row_return(root, household=HOUSEHOLD):
+def _a_long_row_return(root, household=HOUSEHOLD, second="B01"):
     """A return made the way a test makes one - past creation's refusal - whose
     second row's canonical copy no longer fits under ``root``: the state a
     root that grew leaves behind.
@@ -5328,11 +5348,14 @@ def _a_long_row_return(root, household=HOUSEHOLD):
     most - so the depth is the folder's, as it is when a root grows, not a
     hundred-character label's. Since decision 168 the copy sits in
     Prepared itself, so the depth below the return is one name, not a
-    folder and a name. Both rows ask for :data:`LONG_ROW_PERIOD`."""
+    folder and a name. Both rows ask for :data:`LONG_ROW_PERIOD`. ``second``
+    is the long row's identifier, three characters wide whatever it is."""
     from tests.conftest import TEST_YEAR
     from tracker.layout import NAME_MAX_CHARS, path_limit
     from tracker.manifest import RequestItem
 
+    # The path length below is computed for a three-character identifier ("B01").
+    assert len(second) == 3
     below = len("/Prepared/B01 - " + "y" * 20 + f" - {LONG_ROW_PERIOD}.pdf")
     above = len(str(return_dir_for(Path(root), household, TEST_YEAR, "x"))) - len("x")
     pad = path_limit() + LONG_ROW_OVER - below - above - len("1040 - Long ")
@@ -5349,7 +5372,7 @@ def _a_long_row_return(root, household=HOUSEHOLD):
     engagement = make_engagement(root, [
         RequestItem(identifier="A01", document="W-2", period=LONG_ROW_PERIOD,
                     allowed_extensions=("pdf",)),
-        RequestItem(identifier="B01", document="y" * 100, period=LONG_ROW_PERIOD,
+        RequestItem(identifier=second, document="y" * 100, period=LONG_ROW_PERIOD,
                     allowed_extensions=("pdf",)),
     ], household=household, return_name=return_name)
     assert len(str(engagement)) + below == path_limit() + LONG_ROW_OVER
@@ -5458,6 +5481,158 @@ def test_saving_a_list_refuses_a_changed_row_whose_path_would_pass_the_limit_and
                         stdin={"items": shortened, "engagement": {}})
     assert code == 0, payload
     assert payload["saved"]["changed"] == ["A01"]
+
+
+def _a_held_row_past_the_limit(capsys, demo_root, second="B01"):
+    """``_a_long_row_return`` under a deep root, and its editor rows by
+    identifier: B01's canonical copy (``second``'s) is past the limit,
+    A01's is not."""
+    engagement = _a_long_row_return(_a_deeper_root(demo_root), second=second)
+    rows = payload_of_state(capsys, engagement)["rules"]
+    return engagement, {row["identifier"]: row for row in rows}
+
+
+def test_a_change_of_case_alone_on_a_held_row_past_the_limit_is_the_same_row_and_is_not_measured(
+    capsys, demo_root, path_setting,
+):
+    """P305: the path-room check matches a sent row to the stored one by the
+    identifier's key (decision 160: a change of case is the same request),
+    so respelling a held row past the limit by case alone is not refused -
+    a case change cannot alter a path's length (bar the one pair the next
+    test pins). The respelling took: the record holds ``b01``."""
+    engagement, by_id = _a_held_row_past_the_limit(capsys, demo_root)
+    respelt = [by_id["A01"], {**by_id["B01"], "identifier": "b01"}]
+
+    code, payload = run(capsys, "edit", api.ENGAGEMENT_FLAG, str(engagement),
+                        stdin={"items": respelt, "engagement": {}})
+
+    assert code == 0, payload
+    assert [item.identifier for item in load_manifest(engagement)] == ["A01", "b01"]
+
+
+def test_a_respelling_that_keeps_the_key_but_changes_the_length_is_measured_and_refused(
+    capsys, demo_root, path_setting,
+):
+    """SPEC-form-inputs section 22 (F3): ``"İ".lower()`` is two code points,
+    so ``İ01`` and ``i̇01`` are one key and two lengths - the one pair
+    where a change of case lengthens a path. A held row past the limit
+    respelt that way is a changed row, measured, and refused with creation's
+    sentence; nothing is recorded."""
+    from tracker.layout import PATH_TOO_LONG
+    from tracker.records import identifier_key
+
+    held, respelling = "İ01", "i̇" + "01"
+    assert identifier_key(held) == identifier_key(respelling)
+    assert len(respelling) == len(held) + 1
+    engagement, by_id = _a_held_row_past_the_limit(capsys, demo_root, second=held)
+    before = ledger.path_for(engagement).read_bytes()
+
+    code, payload = run(capsys, "edit", api.ENGAGEMENT_FLAG, str(engagement),
+                        stdin={"items": [by_id["A01"], {**by_id[held], "identifier": respelling}],
+                               "engagement": {}})
+
+    assert code == 1 and payload["error"].startswith(PATH_TOO_LONG.split("{")[0]), payload
+    assert ledger.path_for(engagement).read_bytes() == before
+
+
+def test_lengthening_a_held_rows_short_title_is_measured_and_refused(
+    capsys, demo_root, path_setting,
+):
+    """P307: a working copy is named by the short name (decision 144) - the
+    typed short title or the Document's derivation - so a short title that
+    differs from the stored one is a changed row, measured. A01's twenty-
+    character short title makes its copy as long as B01's, past the limit."""
+    from tracker.layout import PATH_TOO_LONG
+
+    engagement, by_id = _a_held_row_past_the_limit(capsys, demo_root)
+    before = ledger.path_for(engagement).read_bytes()
+
+    code, payload = run(capsys, "edit", api.ENGAGEMENT_FLAG, str(engagement),
+                        stdin={"items": [{**by_id["A01"], "short_title": "z" * 20}, by_id["B01"]],
+                               "engagement": {}})
+
+    assert code == 1 and payload["error"].startswith(PATH_TOO_LONG.split("{")[0]), payload
+    assert ledger.path_for(engagement).read_bytes() == before
+
+
+def test_a_row_set_not_applicable_saves_unmeasured_and_is_measured_when_cleared(
+    capsys, demo_root, path_setting,
+):
+    """P307: creation does not measure a Not Applicable row (``room_for``
+    skips it), so setting a held row past the limit Not Applicable saves;
+    clearing it makes it a request creation would have measured, as a row
+    newly Asked is (decision 142), so the second save is refused."""
+    from tracker.layout import PATH_TOO_LONG
+    from tracker.manifest import Override
+
+    engagement, by_id = _a_held_row_past_the_limit(capsys, demo_root)
+    set_aside = {**by_id["B01"], "manual_override": Override.NOT_APPLICABLE}
+    code, payload = run(capsys, "edit", api.ENGAGEMENT_FLAG, str(engagement),
+                        stdin={"items": [by_id["A01"], set_aside], "engagement": {}})
+    assert code == 0, payload
+    assert {item.identifier: item.manual_override for item in load_manifest(engagement)} == {
+        "A01": "", "B01": Override.NOT_APPLICABLE}
+    before = ledger.path_for(engagement).read_bytes()
+
+    code, payload = run(capsys, "edit", api.ENGAGEMENT_FLAG, str(engagement),
+                        stdin={"items": [by_id["A01"], {**set_aside, "manual_override": ""}],
+                               "engagement": {}})
+
+    assert code == 1 and payload["error"].startswith(PATH_TOO_LONG.split("{")[0]), payload
+    assert ledger.path_for(engagement).read_bytes() == before
+
+
+def test_a_held_row_past_the_limit_whose_short_title_is_sent_back_unchanged_saves(
+    capsys, demo_root, path_setting,
+):
+    """P307: comparing the short title does not trap a row the person did
+    not touch - it is already in the room the page reports - so a save that
+    sends every row back as held, and shortens only a label elsewhere, saves."""
+    engagement, by_id = _a_held_row_past_the_limit(capsys, demo_root)
+    assert by_id["B01"]["short_title"] == ""
+
+    code, payload = run(capsys, "edit", api.ENGAGEMENT_FLAG, str(engagement),
+                        stdin={"items": [{**by_id["A01"], "document": "W2"}, by_id["B01"]],
+                               "engagement": {}})
+
+    assert code == 0, payload
+    assert payload["saved"]["changed"] == ["A01"]
+
+
+def test_a_respelt_held_row_past_the_limit_with_its_document_lengthened_is_still_refused(
+    capsys, demo_root, path_setting,
+):
+    """P305: matching by the key does not excuse a row whose path fields
+    differ; the respelt row is the same row and a changed one, so it is
+    measured and refused with creation's sentence, nothing recorded."""
+    from tracker.layout import PATH_TOO_LONG
+
+    engagement, by_id = _a_held_row_past_the_limit(capsys, demo_root)
+    before = ledger.path_for(engagement).read_bytes()
+    lengthened = [by_id["A01"], {**by_id["B01"], "identifier": "b01", "document": "y" * 101}]
+
+    code, payload = run(capsys, "edit", api.ENGAGEMENT_FLAG, str(engagement),
+                        stdin={"items": lengthened, "engagement": {}})
+
+    assert code == 1 and payload["error"].startswith(PATH_TOO_LONG.split("{")[0]), payload
+    assert ledger.path_for(engagement).read_bytes() == before
+
+
+def test_a_new_row_past_the_limit_is_still_refused_beside_a_held_one(
+    capsys, demo_root, path_setting,
+):
+    """P305: a row the list does not hold is measured as ever."""
+    from tracker.layout import PATH_TOO_LONG
+
+    engagement, by_id = _a_held_row_past_the_limit(capsys, demo_root)
+    before = ledger.path_for(engagement).read_bytes()
+    new_row = {**by_id["B01"], "identifier": "C01", "document": "z" * 100}
+
+    code, payload = run(capsys, "edit", api.ENGAGEMENT_FLAG, str(engagement),
+                        stdin={"items": [by_id["A01"], by_id["B01"], new_row], "engagement": {}})
+
+    assert code == 1 and payload["error"].startswith(PATH_TOO_LONG.split("{")[0]), payload
+    assert ledger.path_for(engagement).read_bytes() == before
 
 
 def test_a_persons_filing_and_the_hand_over_are_named_to_fit_and_refuse_only_below_the_floor(
@@ -6596,8 +6771,10 @@ def test_one_name_rule_gives_one_sentence_wherever_a_name_is_typed(capsys, demo_
 
     bad = "Pa​rk"
     reason = layout.segment_problem(bad)
-    said_household = layout.NAME_REFUSED.format(typed=bad, what="household", reason=reason)
-    said_return = layout.NAME_REFUSED.format(typed=bad, what="return", reason=reason)
+    # The sentence quotes the name with its hidden character as a code point
+    # (P293), never carrying the character it refuses.
+    said_household = layout.NAME_REFUSED.format(typed=layout.quoted(bad), what="household", reason=reason)
+    said_return = layout.NAME_REFUSED.format(typed=layout.quoted(bad), what="return", reason=reason)
     items = [{"identifier": "A01", "document": "W-2"}]
 
     code, payload = run(capsys, "create", stdin={"household": bad, "return_name": "1040 - Park",
@@ -6761,7 +6938,7 @@ def test_look_alike_spellings_of_one_name_are_refused_as_one_name(capsys, demo_r
         code, payload = run(capsys, "create", stdin={"household": typed, "return_name": "1040 - Two",
                                                      "items": items})
         assert code == 1, typed
-        named = layout.normalised_name(typed)
+        named = layout.quoted(layout.normalised_name(typed))
         assert (payload["error"].startswith(f"'{named}' is not a household name: ")
                 or payload["error"].startswith("A household with that name is already in the list")
                 ), (typed, payload["error"])
@@ -7261,14 +7438,76 @@ def test_a_broken_journal_is_said_in_the_firms_sentence_with_its_line_and_run_re
     assert code == 1 and payload["error"] == sentence, payload
     assert payload["failure"]["kind"] == "refused" and ledger.RUN_RECOVER in payload["error"]
 
-    for raised, kind in ((ledger.RecordNotWritten("ENOSPC"), "RecordNotWritten (ENOSPC)"),
-                         (store.StoreUnavailable("SQLITE_BUSY"), "StoreUnavailable (SQLITE_BUSY)")):
+    for raised, sentence in ((ledger.RecordNotWritten("ENOSPC"), api.RECORD_NOT_WRITTEN),
+                             (store.StoreUnavailable("SQLITE_BUSY"), api.STORE_UNAVAILABLE)):
         def fails(argv, raised=raised):
             raise raised
 
         monkeypatch.setitem(api.COMMANDS, "templates", fails)
         code, payload = run(capsys, "templates")
-        assert code == 1 and said_by_class(payload, kind), payload
+        assert code == 1 and payload["error"] == sentence.format(
+            code=raised.code, log=api.ERROR_LOG_FILENAME), payload
+        assert payload["failure"]["kind"] == "failed"
+
+
+@pytest.mark.parametrize("raised, sentence, code", [
+    (store.StoreUnavailable("SQLITE_BUSY"), "STORE_UNAVAILABLE", "SQLITE_BUSY"),
+    (ledger.RecordNotWritten("ENOSPC"), "RECORD_NOT_WRITTEN", "ENOSPC"),
+])
+def test_a_database_that_cannot_be_used_is_said_as_itself_with_its_code_and_keeps_retry(
+        raised, sentence, code):
+    """The audit's E5 (P298): decision 189 made both expected classes, and
+    they were said as "an error it did not expect". Each has a sentence of
+    its own with its code; the kind stays ``failed``, so the window keeps
+    Retry."""
+    failure = api._failure_of(raised)
+    assert failure["kind"] == "failed"
+    assert failure["sentence"] == getattr(api, sentence).format(code=code, log=api.ERROR_LOG_FILENAME)
+    assert code in failure["sentence"] and "did not expect" not in failure["sentence"]
+    assert api.ERROR_LOG_FILENAME in failure["sentence"]
+
+
+def test_a_failed_create_that_cannot_forget_its_store_row_still_cleans_up_and_logs_it(
+        tmp_path, monkeypatch, caplog):
+    """E3 (P297): the cleanup finishes and raises nothing in place of the
+    refusal; the row it could not drop is kept on the error log."""
+    import logging
+
+    from tracker import errors
+
+    folder = tmp_path / "half-made"
+    folder.mkdir()
+
+    def locked(*_args, **_kwargs):
+        raise store.StoreUnavailable("SQLITE_BUSY")
+
+    monkeypatch.setattr(store, "forget", locked)
+    with caplog.at_level(logging.WARNING, logger=errors.DEBUG_LOGGER):
+        api._undo_create(folder)
+    assert not folder.exists()
+    assert "api: forgetting a failed return (half-made)" in caplog.text
+    assert "StoreUnavailable" in caplog.text
+
+
+def test_a_rollover_that_could_not_read_last_years_index_says_so_in_its_reply(
+        capsys, demo_root, monkeypatch):
+    """E2 (P297): the reply's ``warnings`` - which the page already draws -
+    carry the sentence, as the last line, after the one ``create_engagement``
+    assigns."""
+    from tracker import filer
+    from tracker.rollover import UNFILED_LAST_YEAR_UNREAD
+
+    engagement, _ = _issuer_return(capsys, demo_root)
+
+    def torn(*_args, **_kwargs):
+        raise filer.FilingError("the index is torn")
+
+    monkeypatch.setattr(filer, "read_index", torn)
+    code, payload = run(capsys, "rollover", stdin={"prior": str(engagement), "year": BASE_YEAR + 1})
+    assert code == 0, payload
+    assert payload["rollover"]["warnings"][-1] == UNFILED_LAST_YEAR_UNREAD.format(
+        problem="the index is torn")
+    assert payload["rollover"]["unfiled_last_year"] == []
 
 
 def test_the_error_log_rotates_and_never_syncs_to_disk(capsys, demo_root, monkeypatch):
@@ -8455,6 +8694,7 @@ def test_the_vocabulary_carries_every_word_201_shows():
                                       "Taught to the request so the next one files itself; the editor "
                                       "shows it beside the row.")
     assert labels["issuer_label"] == "Issuer Name"
+    assert api.ISSUER_LABEL is manifest.COL_ISSUER
     assert labels["issuer_help"] == ("Adds {identifier}, a K-1 row for this issuer, to the request list "
                                      "and files this document under it. Type the distinctive words and "
                                      "leave off the suffix (L.P., LLC).")
@@ -9276,8 +9516,7 @@ def test_the_vocabulary_carries_the_menu_the_screen_and_the_short_words(capsys):
         "Heads Up", "Checking In", "Deadline Near", "Final Notice"]
     assert [rule["short"] for rule in words["rules"]] == list(api.SAFEGUARDS)
     assert [rule["headline"] for rule in words["rules"]] == [h for h, _ in api.STANDING_RULES]
-    assert len(words["override_labels"]) == len(words["override_reasons"])
-    # The stored words do not change (P77): only the label does.
+    # The stored words do not change (P77); the editor shows them as stored.
     assert "Client confirmed this is the final version" in words["override_reasons"]
     assert words["schedule"]["move_warning"] == "Only If {host} Is Retired"
     assert words["editor"]["engagement_fields"][8]["help"] == "No: Sorting Skips This Return"
@@ -9563,16 +9802,16 @@ def test_the_title_case_rule_does_what_jason_wrote():
 #: values, keys, commands, folder names, the record's own words and the
 #: fragments a sentence is built from are not on the screen as headings.
 _TITLE_EXEMPT_BRANCHES = (
-    "commands", "path_kinds", "statuses", "evidence", "layout", "example_root",
+    "commands", "path_kinds", "statuses", "evidence", "layout",
     "engagement_flag", "pass_command", "view.states", "schedule.draft_day", "reminder.letter_ink",
     "editor.date_fields", "editor.plain_columns", "editor.routing_columns",
-    "editor.yes", "editor.no", "people.kinds", "people.outcomes", "default_extensions",
-    "review_labels.bucket_order", "review_labels.not_a_document", "household.editable", "unscanned_key",
-    "not_asked_key", "shell.error_log",
+    "editor.yes", "editor.no", "people.kinds", "people.outcomes",
+    "review_labels.bucket_order", "review_labels.not_a_document", "household.editable",
+    "shell.error_log",
     # the standing rules' headlines are quoted exactly in the docs (STANDING_RULES)
     "rules",
     # sentences over the limit, and the fragments a sentence splices in
-    "origin_", "unknown_year_label", "expected_pattern",
+    "origin_",
     "labels.Not asked", "not_asked_label", "override_reasons",
 )
 
@@ -9631,22 +9870,36 @@ def test_every_drawn_word_the_vocabulary_carries_is_in_title_case(capsys, demo_r
 #: R3): each names a folder on disk, whose own name is ``Clients``.
 _FOLDER_WORDS = {"Change Clients Folder…", "Open Clients Folder", "Open Client Folder",
                  "Choose Your Clients Folder", "Clients Folder"}
+#: P196's one exception: the override menu shows the reasons as stored, and
+#: the first of them is a stored value that says "Client" (SPEC-error-handling-small
+#: section 13). The editor draws a stored value as it is stored, so the word
+#: is the record's, not a screen's. Exempted by its exact text, written out
+#: here and asserted to be one of the manifest's reasons, so a reworded or
+#: removed reason is a failure, not a silent pass; a second "Client" in that
+#: menu still fails the guard.
+_STORED_REASON_WITH_CLIENT = "Client confirmed this is the final version"
 
 
 def test_no_word_the_window_draws_says_client_but_a_folders_own_name(capsys, demo_root):
     """P196: the person is the Taxpayer, the listed household a Household;
     only a button naming a folder on disk keeps the folder's word."""
+    # The exemption is the literal text, so a reworded or removed reason
+    # fails here instead of being exempted silently (SPEC-error-handling-small
+    # section 14).
+    assert _STORED_REASON_WITH_CLIENT in manifest.OVERRIDE_REASONS
     vocab = api._vocab()
     drawn = [("menu", vocab["menu"]), ("screen", vocab["screen"]), ("reasons", vocab["reasons"]),
-             ("ask_the_client", vocab["ask_the_client"]), ("override_labels", vocab["override_labels"]),
+             ("ask_the_client", vocab["ask_the_client"]),
              ("engagement_fields", [f["label"] for f in vocab["editor"]["engagement_fields"]]),
              # the editor draws a help line only beside its yes/no boxes (app.js renderEngagementFields)
              ("engagement_help", [f["help"] for f in vocab["editor"]["engagement_fields"]
                                   if f["editable"] and f["key"] in ("reminders", "active")]),
              ("settings.root_label", vocab["settings"]["root_label"]),
-             ("open_client_folder", api.OPEN_CLIENT_FOLDER_LABEL)]
+             ("open_client_folder", api.OPEN_CLIENT_FOLDER_LABEL),
+             ("override_reasons", vocab["override_reasons"])]
     said = [(where + path, text) for where, branch in drawn for path, text in _drawn_words(branch)
-            if "client" in text.lower() and text not in _FOLDER_WORDS]
+            if "client" in text.lower() and text not in _FOLDER_WORDS
+            and (where, text) != ("override_reasons", _STORED_REASON_WITH_CLIENT)]
     assert not said, said
     assert vocab["screen"]["sections"]["clients"] == vocab["menu"]["clients"] == "Households"
     assert vocab["screen"]["side"]["types"] == "Taxpayer Types"
@@ -10726,8 +10979,8 @@ def test_a_mac_is_never_shown_a_windows_word(monkeypatch):
     assert [path for path, text in mac.items() if WINDOWS_WORDS.search(text)] == []
     assert mac["menu.show_in_explorer"] == mac["screen.show_in_explorer"] == "Show in Finder"
     assert mac["scan.reasons.lock-held"] == "Another Mac Sorting"
-    # (``shell.error_log`` is a folder this machine names, not a word.)
-    other = changed | {"shell.error_log"}
+    # (``shell.error_log`` and ``shell.last_pass_file`` are paths this machine names, not words.)
+    other = changed | {"shell.error_log", "shell.last_pass_file"}
     assert {path: text for path, text in mac.items() if path not in other} == {
         path: text for path, text in windows.items() if path not in other}
     # The same house style as every other word: title case, five words or fewer.
@@ -11074,3 +11327,425 @@ def test_a_view_damaged_into_other_valid_json_is_said_by_its_class_and_the_ask_i
     assert said and "TypeError" in said[0], "said by its class"
     assert not any(name in said[0] for name in ("Mixed", "Quiet", "Retired", "setup.exe")), "never a client's words"
     assert _firm_page(capsys, list_, view=turned["view"], **filter)["view"] == turned["view"], "and the new view is the one saved"
+
+
+# ------------------------------------------------- the form inputs, 2026-10-12 ----
+# The audit of every form's payload against the real API (P287 to P294):
+# each rule lives in Python and the store, so each claim is made through the
+# commands the page calls.
+
+
+def _a_return_to_type_into(capsys, demo_root, name="Typed Into"):
+    """One small return, and the rows the editor would send back."""
+    assert run(capsys, "create", stdin={
+        "household": HOUSEHOLD, "return_name": name, "form": "1040",
+        "items": [{"identifier": "A01", "document": "W-2"}]})[0] == 0
+    return where(demo_root, name)
+
+
+def test_create_reads_a_members_string_as_lines_and_never_as_letters(capsys, demo_root):
+    spec = {"household": "Doe Family", "return_name": "1040 - Jane Doe", "form": "1040",
+            "items": [{"identifier": "A01", "document": "W-2"}]}
+    code, payload = run(capsys, "create", stdin={**spec, "members": "Jane Doe\nJohn  Doe\n\n"})
+    assert code == 0, payload
+    from tracker.layout import private_household_dir
+
+    held = load_household_info(private_household_dir(demo_root, "Doe Family"))
+    assert held.members == ("Jane Doe", "John Doe")
+
+    # Anything that is neither a list nor text is refused by name, and
+    # nothing is written: no household folder for the household it named.
+    code, payload = run(capsys, "create", stdin={**spec, "household": "Roe Family",
+                                                 "return_name": "1040 - Roe", "members": 7})
+    assert code == 1 and payload["error"] == f"{api.MEMBERS_LABEL} must be a list of names"
+    assert not private_household_dir(demo_root, "Roe Family").exists()
+
+
+def test_create_and_edit_household_parse_members_through_one_helper(capsys, demo_root):
+    from tracker.layout import private_household_dir
+
+    typed = "  Jane   Doe \nJohn Doe\n"
+    code, payload = run(capsys, "create", stdin={
+        "household": "Doe Family", "return_name": "1040 - Jane Doe", "form": "1040",
+        "members": typed, "items": [{"identifier": "A01", "document": "W-2"}]})
+    assert code == 0, payload
+    created = load_household_info(private_household_dir(demo_root, "Doe Family")).members
+
+    engagement = where(demo_root, "1040 - Jane Doe", household="Doe Family")
+    code, payload = run(capsys, "edit-household", api.ENGAGEMENT_FLAG, str(engagement),
+                        stdin={"members": ["Someone Else"]})
+    assert code == 0, payload
+    code, payload = run(capsys, "edit-household", api.ENGAGEMENT_FLAG, str(engagement),
+                        stdin={"members": typed})
+    assert code == 0, payload
+    edited = load_household_info(private_household_dir(demo_root, "Doe Family")).members
+    assert created == edited == ("Jane Doe", "John Doe")
+    assert api._members_from_spec(["Jane  Doe", " ", "John Doe"]) == ("Jane Doe", "John Doe")
+    assert api._members_from_spec(None) == api._members_from_spec("") == ()
+    for odd in (7, {"a": "b"}, True):
+        with pytest.raises(ManifestError, match="must be a list of names"):
+            api._members_from_spec(odd)
+
+
+def test_a_persons_name_longer_than_the_text_rule_is_refused_by_name(capsys, demo_root):
+    from tracker.manifest import list_head
+
+    engagement = _a_return_to_type_into(capsys, demo_root)
+    rows = payload_of_state(capsys, engagement)["rules"]
+    before = (list_head(engagement), ledger.path_for(engagement).read_bytes())
+    people = [{"kind": "taxpayer", "name": "J" * 10_000, "spellings": []}]
+    code, payload = run(capsys, "edit", api.ENGAGEMENT_FLAG, str(engagement),
+                        stdin={"items": rows, "engagement": {"people": people}})
+    assert code == 1
+    assert payload["error"] == (f"{api.PEOPLE_LABEL}: the Taxpayer's name must be one line of "
+                                "text of at most 1000 characters, with no control character")
+    assert (list_head(engagement), ledger.path_for(engagement).read_bytes()) == before
+
+
+_SPELLING_REFUSED = (f"{api.PEOPLE_LABEL}: a spelling of Jane Smith must be one line of text of "
+                     "at most 1000 characters, with no control character")
+
+
+def _a_spelling_typed_is_refused_and_nothing_is_written(capsys, demo_root, typed):
+    from tracker.manifest import list_head
+
+    engagement = _a_return_to_type_into(capsys, demo_root)
+    rows = payload_of_state(capsys, engagement)["rules"]
+    before = (list_head(engagement), ledger.path_for(engagement).read_bytes())
+    people = [{"kind": "taxpayer", "name": "Jane Smith", "spellings": [typed]}]
+    code, payload = run(capsys, "edit", api.ENGAGEMENT_FLAG, str(engagement),
+                        stdin={"items": rows, "engagement": {"people": people}})
+    assert code == 1
+    assert payload["error"] == _SPELLING_REFUSED
+    assert (list_head(engagement), ledger.path_for(engagement).read_bytes()) == before
+
+
+def test_a_typed_spelling_of_1001_characters_is_refused_by_name_and_nothing_is_written(
+        capsys, demo_root):
+    """P304: a spelling is searched on every page as the name is, so it is
+    held to the name's rule where it is typed - one line, at most 1,000
+    characters, no control character."""
+    _a_spelling_typed_is_refused_and_nothing_is_written(capsys, demo_root, "J " + "x" * 999)
+
+
+def test_a_typed_spelling_with_a_control_character_is_refused_and_nothing_is_written(
+        capsys, demo_root):
+    _a_spelling_typed_is_refused_and_nothing_is_written(capsys, demo_root, "Jane\x07 Smith")
+
+
+def test_a_typed_spelling_of_exactly_the_text_rule_saves(capsys, demo_root):
+    engagement = _a_return_to_type_into(capsys, demo_root)
+    rows = payload_of_state(capsys, engagement)["rules"]
+    longest = "J " + "x" * 998                                   # 1,000 characters, two words
+    assert len(longest) == 1000
+    people = [{"kind": "taxpayer", "name": "Jane Smith", "spellings": [longest]}]
+    code, payload = run(capsys, "edit", api.ENGAGEMENT_FLAG, str(engagement),
+                        stdin={"items": rows, "engagement": {"people": people}})
+    assert code == 0, payload
+    [saved] = load_engagement_info(engagement).people
+    assert saved.spellings == (longest,)
+
+
+def test_a_stored_spelling_past_the_rule_refuses_a_row_only_save_and_names_the_person(
+        capsys, demo_root):
+    """P306: the editor sends the people block back on every save and the
+    store's gate does not judge a spelling (P304), so a return written
+    before the rule keeps one and a row-only edit is refused. The refusal
+    says whose spelling, and nothing is written."""
+    from tests.conftest import TEST_YEAR
+    from tracker.manifest import RequestItem, list_head
+    from tracker.records import Person
+
+    held = "J " + "x" * 1999
+    make_engagement(demo_root, [RequestItem(identifier="A01", document="W-2")],
+                    household=HOUSEHOLD, return_name="Stored Past The Rule",
+                    people=(Person(kind="taxpayer", name="Jane Smith", spellings=(held,)),))
+    engagement = where(demo_root, "Stored Past The Rule", year=TEST_YEAR)
+    [stored] = load_engagement_info(engagement).people
+    assert stored.spellings == (held,)
+    rows = payload_of_state(capsys, engagement)["rules"]
+    before = (list_head(engagement), ledger.path_for(engagement).read_bytes())
+    people = [{"kind": stored.kind, "name": stored.name, "spellings": list(stored.spellings)}]
+
+    code, payload = run(capsys, "edit", api.ENGAGEMENT_FLAG, str(engagement),
+                        stdin={"items": [{**rows[0], "document": "W2"}],
+                               "engagement": {"people": people}})
+
+    assert code == 1
+    assert payload["error"] == _SPELLING_REFUSED
+    assert (list_head(engagement), ledger.path_for(engagement).read_bytes()) == before
+
+
+def test_a_one_word_spelling_is_refused_before_the_text_rule_is_asked():
+    from tracker.names import ONE_WORD_SPELLING
+
+    for one_word in ("x" * 1001, "Smith\x07"):
+        people = [{"kind": "taxpayer", "name": "Jane Smith", "spellings": [one_word]}]
+        with pytest.raises(ManifestError) as raised:
+            api._people_from_spec(people)
+        assert str(raised.value) == ONE_WORD_SPELLING
+
+
+def test_the_firms_name_and_phone_are_held_to_the_one_line_text_rule(capsys, tmp_path, monkeypatch):
+    from tracker.settings import ENV_SETTINGS_DIR, clients_root, firm, firm_phone, settings_path
+
+    monkeypatch.setenv(ENV_SETTINGS_DIR, str(tmp_path / "app"))
+    clients = tmp_path / "Clients"
+    clients.mkdir()
+    refused = [
+        ({"firm": "F" * 1001}, f"{api.FIRM_NAME_LABEL} must be one line"),
+        ({"phone": "555-0100\n555-0101"}, f"{api.FIRM_PHONE_LABEL} must be one line"),
+        ({"firm": "Park\x00 CPA"}, f"{api.FIRM_NAME_LABEL} must be one line"),
+    ]
+    for extra, start in refused:
+        code, payload = run(capsys, "set-root", stdin={"root": str(clients), **extra})
+        assert code == 1 and payload["error"].startswith(start), payload
+        # Refused before the root is written: nothing was saved at all.
+        assert clients_root() is None and not settings_path().exists()
+    code, payload = run(capsys, "set-root", stdin={
+        "root": str(clients), "firm": "F" * 1000, "phone": "555-0100 x12"})
+    assert code == 0, payload
+    assert firm() == "F" * 1000 and firm_phone() == "555-0100 x12"
+    # Blank stays allowed: it clears the value.
+    code, payload = run(capsys, "set-root", stdin={"root": str(clients), "firm": "", "phone": ""})
+    assert code == 0 and firm() == "" and firm_phone() == ""
+
+
+def test_a_short_name_hiding_a_right_to_left_override_is_refused_in_the_editor(capsys, demo_root):
+    engagement = _a_return_to_type_into(capsys, demo_root)
+    rows = payload_of_state(capsys, engagement)["rules"]
+    before = ledger.path_for(engagement).read_bytes()
+    for hidden in ("\u202e", "\u200d"):  # right-to-left override, zero-width joiner
+        code, payload = run(capsys, "edit", api.ENGAGEMENT_FLAG, str(engagement), stdin={
+            "items": [{**rows[0], "short_title": f"W-2{hidden}"}], "engagement": {}})
+        assert code == 1
+        assert payload["error"].startswith("Row 1: Short name may not contain an invisible character")
+        assert "U+" in payload["error"]
+    assert ledger.path_for(engagement).read_bytes() == before
+
+
+def test_the_editor_refuses_every_invisible_character_in_an_identifier_or_a_short_name(
+        capsys, demo_root):
+    """P290 (amended): where a person types, the full rule - the spoofing
+    controls, and the no-break space and soft hyphen a paste leaves - and
+    the sentence names the character by code point without carrying it."""
+    engagement = _a_return_to_type_into(capsys, demo_root)
+    rows = payload_of_state(capsys, engagement)["rules"]
+    before = ledger.path_for(engagement).read_bytes()
+    for field, typed, named in (
+            ("identifier", "W-2\u202efdp", "U+202E RIGHT-TO-LEFT OVERRIDE"),
+            ("identifier", "A\u00a001", "U+00A0 NO-BREAK SPACE"),
+            ("short_title", "W\u200d2", "U+200D ZERO WIDTH JOINER"),
+            ("short_title", "W\u00adX", "U+00AD SOFT HYPHEN")):
+        code, payload = run(capsys, "edit", api.ENGAGEMENT_FLAG, str(engagement), stdin={
+            "items": [{**rows[0], field: typed}], "engagement": {}})
+        assert code == 1, (field, named)
+        assert named in payload["error"] and payload["error"].startswith("Row 1: ")
+        assert not any(character in payload["error"] for character in "\u202e\u00a0\u200d\u00ad")
+    assert ledger.path_for(engagement).read_bytes() == before
+
+
+def test_a_list_holding_a_long_identifier_stays_editable_and_renames_it_away(capsys, demo_root):
+    """P291 (amended): the 80-character cap is for a new or changed
+    identifier, never one the list already holds - a rename to 120
+    characters used to leave a list the editor would not save."""
+    from dataclasses import replace
+
+    from tracker.filer import RENAME_CASE_ONLY
+    from tracker.locking import engagement_lock
+    from tracker.manifest import list_head, load_manifest
+    from tracker.records import rule_to_json
+
+    engagement = _a_return_to_type_into(capsys, demo_root)
+    long_one = "L" * 120
+    [item] = load_manifest(engagement)
+    with engagement_lock(engagement):
+        store.record(store.connect(), engagement, ledger.new(ledger.RULES_CHANGED, **{
+            ledger.RULES_KEY: [rule_to_json(replace(item, identifier=long_one))],
+            ledger.REMOVED_KEY: ["A01"]}))
+    rows = payload_of_state(capsys, engagement)["rules"]
+    assert [row["identifier"] for row in rows] == [long_one]
+
+    # An edit that leaves the held identifier alone is saved.
+    code, payload = run(capsys, "edit", api.ENGAGEMENT_FLAG, str(engagement), stdin={
+        "items": [{**rows[0], "document": "W-2 Wage Statements"}], "engagement": {}})
+    assert code == 0, payload
+    # A new row of the same length is the cap's, and a rename to one is too.
+    rows = payload_of_state(capsys, engagement)["rules"]
+    code, payload = run(capsys, "edit", api.ENGAGEMENT_FLAG, str(engagement), stdin={
+        "items": [*rows, {**rows[0], "identifier": "M" * 120}], "engagement": {}})
+    assert code == 1 and "Row 2: Identifier" in payload["error"]
+    assert "may have at most 80 characters, got 120" in payload["error"]
+    code, payload = run(capsys, "rename", api.ENGAGEMENT_FLAG, str(engagement), stdin={
+        "from": long_one, "to": "M" * 120, "head": list_head(engagement)})
+    assert code == 1 and "may have at most 80 characters, got 120" in payload["error"]
+    # Section 16's way out of the dead end: Rename refuses a change of case
+    # alone and sends the person to the editor, and the editor saves it.
+    before = ledger.path_for(engagement).read_bytes()
+    code, payload = run(capsys, "rename", api.ENGAGEMENT_FLAG, str(engagement), stdin={
+        "from": long_one, "to": long_one.lower(), "head": list_head(engagement)})
+    assert code == 1
+    assert payload["error"] == RENAME_CASE_ONLY.format(
+        old=layout.quoted(long_one), new=layout.quoted(long_one.lower()))
+    assert ledger.path_for(engagement).read_bytes() == before
+    rows = payload_of_state(capsys, engagement)["rules"]
+    code, payload = run(capsys, "edit", api.ENGAGEMENT_FLAG, str(engagement), stdin={
+        "items": [{**rows[0], "identifier": long_one.lower()}], "engagement": {}})
+    assert code == 0, payload
+    assert [rule["identifier"] for rule in payload["state"]["rules"]] == [long_one.lower()]
+    long_one = long_one.lower()
+    # Renamed away to a short one, it is renamed; a held long one can be.
+    code, payload = run(capsys, "rename", api.ENGAGEMENT_FLAG, str(engagement), stdin={
+        "from": long_one, "to": "B01", "head": list_head(engagement)})
+    assert code == 0, payload
+    assert [rule["identifier"] for rule in payload["state"]["rules"]] == ["B01"]
+
+
+def test_a_list_holding_what_an_older_paste_left_stays_editable_and_a_changed_spelling_is_typed(
+        capsys, demo_root):
+    """P290 and P291 (the second review's G1): a no-break space or a soft
+    hyphen the store admits, held in a record from before the typed rule,
+    never stops a save of the list - an edit to another column, or an older
+    window's row that sends only the identifier and the Document. A value
+    changed from what the list holds is new, and gets the typed rule."""
+    from dataclasses import replace
+
+    from tracker.locking import engagement_lock
+    from tracker.manifest import load_manifest
+    from tracker.records import rule_to_json
+
+    engagement = _a_return_to_type_into(capsys, demo_root)
+    pasted = "A\u00a001"
+    [item] = load_manifest(engagement)
+    with engagement_lock(engagement):
+        store.record(store.connect(), engagement, ledger.new(ledger.RULES_CHANGED, **{
+            ledger.RULES_KEY: [rule_to_json(replace(item, identifier=pasted, short_title="W\u00adX"))],
+            ledger.REMOVED_KEY: ["A01"]}))
+    rows = payload_of_state(capsys, engagement)["rules"]
+    assert [(row["identifier"], row["short_title"]) for row in rows] == [(pasted, "W\u00adX")]
+
+    code, payload = run(capsys, "edit", api.ENGAGEMENT_FLAG, str(engagement), stdin={
+        "items": [{**rows[0], "document": "W-2 Wage Statements"}], "engagement": {}})
+    assert code == 0, payload
+    code, payload = run(capsys, "edit", api.ENGAGEMENT_FLAG, str(engagement), stdin={
+        "items": [{"identifier": pasted, "document": "W-2 Forms"}], "engagement": {}})
+    assert code == 0, payload
+    assert [(rule["document"], rule["short_title"]) for rule in payload["state"]["rules"]] == [
+        ("W-2 Forms", "W\u00adX")]
+
+    rows = payload_of_state(capsys, engagement)["rules"]
+    before = ledger.path_for(engagement).read_bytes()
+    code, payload = run(capsys, "edit", api.ENGAGEMENT_FLAG, str(engagement), stdin={
+        "items": [{**rows[0], "identifier": "B\u00a001"}], "engagement": {}})
+    assert code == 1
+    assert payload["error"] == ("Row 1: Identifier 'B<U+00A0>01' may not contain an invisible "
+                                "character (U+00A0 NO-BREAK SPACE)")
+    assert ledger.path_for(engagement).read_bytes() == before
+    # A change of case alone is the same request (decision 160), not a new one.
+    code, payload = run(capsys, "edit", api.ENGAGEMENT_FLAG, str(engagement), stdin={
+        "items": [{**rows[0], "identifier": "a\u00a001"}], "engagement": {}})
+    assert code == 0, payload
+    assert [rule["identifier"] for rule in payload["state"]["rules"]] == ["a\u00a001"]
+
+
+def test_a_held_document_hiding_a_right_to_left_override_is_refused_by_row_and_nothing_is_written(
+        capsys, demo_root, monkeypatch):
+    """P301, defence in depth: a record the store admitted (here written past
+    the gate, a row it holds at the current admission) holds a Document with
+    a right-to-left override. An edit that sends it back, with a blank short
+    name, is refused in the editor's words - the row and the Document, the
+    character by code point - and not as an unnamed refused change; and
+    nothing is written. This is not the upgrade path: a household whose
+    stored Document was spoofed under an older admission is stopped by the
+    store's malformed-line refusal, which the editor's ``state`` call
+    refuses too, so it is repaired as any refused line is, by the runbook's
+    malformed-line repair (its section 9: say which return and which line),
+    not by retyping in the editor."""
+    from dataclasses import replace
+
+    from tracker.locking import engagement_lock
+    from tracker.manifest import load_manifest
+    from tracker.records import rule_to_json
+
+    engagement = _a_return_to_type_into(capsys, demo_root)
+    [item] = load_manifest(engagement)
+    spoofed = "W-2\u202efdp.exe"
+    monkeypatch.setattr(store, "_refuse_a_malformed_line", lambda *args, **kwargs: None)
+    with engagement_lock(engagement):
+        store.record(store.connect(), engagement, ledger.new(ledger.RULES_CHANGED, **{
+            ledger.RULES_KEY: [rule_to_json(replace(item, document=spoofed, short_title=""))]}))
+    monkeypatch.undo()
+    try:
+        rows = payload_of_state(capsys, engagement)["rules"]
+        assert [row["document"] for row in rows] == [spoofed]
+
+        before = ledger.path_for(engagement).read_bytes()
+        code, payload = run(capsys, "edit", api.ENGAGEMENT_FLAG, str(engagement), stdin={
+            "items": [{**rows[0], "short_title": ""}], "engagement": {}})
+        assert code == 1
+        assert payload["error"] == ("Row 1: Document 'W-2<U+202E>fdp.exe' may not contain an "
+                                    "invisible character (U+202E RIGHT-TO-LEFT OVERRIDE)")
+        assert ledger.path_for(engagement).read_bytes() == before
+        # Retyped, the row saves.
+        code, payload = run(capsys, "edit", api.ENGAGEMENT_FLAG, str(engagement), stdin={
+            "items": [{**rows[0], "document": "W-2 Wage Statements", "short_title": ""}],
+            "engagement": {}})
+        assert code == 0, payload
+    finally:
+        # The journal keeps the line written past the gate, which a rebuild of
+        # it (the suite's store fixture) refuses; the record is removed as the
+        # store tests' `by_hand` fixture removes theirs.
+        ledger.path_for(engagement).unlink(missing_ok=True)
+
+
+def test_a_long_identifier_is_refused_as_too_long_and_never_as_a_long_folder_name(
+        capsys, demo_root):
+    engagement = _a_return_to_type_into(capsys, demo_root)
+    rows = payload_of_state(capsys, engagement)["rules"]
+    before = ledger.path_for(engagement).read_bytes()
+    code, payload = run(capsys, "edit", api.ENGAGEMENT_FLAG, str(engagement), stdin={
+        "items": [{**rows[0], "identifier": "A" * 200}], "engagement": {}})
+    assert code == 1
+    assert payload["error"].startswith("Row 1: Identifier ")
+    assert "may have at most 80 characters, got 200" in payload["error"]
+    assert "shorten the household" not in payload["error"]
+    assert len(payload["error"]) < 300, "and the echo of what was typed is cut"
+    assert ledger.path_for(engagement).read_bytes() == before
+
+
+def test_an_overlong_member_is_refused_as_a_change_not_a_corrupt_record(capsys, demo_root):
+    engagement = _a_return_to_type_into(capsys, demo_root)
+    code, payload = run(capsys, "edit-household", api.ENGAGEMENT_FLAG, str(engagement),
+                        stdin={"members": ["M" * 10_000]})
+    assert code == 1
+    assert payload["error"] == ("This change carries details whose 'members' must be a list of text; "
+                                "nothing was written")
+    assert "malformed" not in payload["error"] and "line " not in payload["error"]
+
+
+def test_stdin_that_is_not_json_is_refused_like_a_non_object_and_logs_nothing(
+        capsys, demo_root, monkeypatch):
+    import io
+
+    from tracker.settings import error_log_path
+
+    monkeypatch.setattr("sys.stdin", io.TextIOWrapper(io.BytesIO(b"not json"), encoding="utf-8"))
+    code = api.main(["set-schedule"])
+    payload = one_reply(capsys.readouterr().out)
+    assert code == 1 and payload["error"] == api.NOT_A_SPEC
+    log = error_log_path()
+    assert not log.exists() or log.read_text(encoding="utf-8") == ""
+
+
+def test_stdin_that_is_not_utf8_is_refused_like_a_non_object_and_logs_nothing(
+        capsys, demo_root, monkeypatch):
+    import io
+
+    from tracker.settings import error_log_path
+
+    monkeypatch.setattr("sys.stdin", io.TextIOWrapper(io.BytesIO(b"\xff\xfe{"), encoding="utf-8"))
+    code = api.main(["set-schedule"])
+    payload = one_reply(capsys.readouterr().out)
+    assert code == 1 and payload["error"] == api.NOT_A_SPEC
+    log = error_log_path()
+    assert not log.exists() or log.read_text(encoding="utf-8") == ""

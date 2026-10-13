@@ -283,6 +283,7 @@ from tracker.progress import Watch
 # kept for one release; import from tracker.records.
 from tracker.records import (
     CANDIDATE_SEP,
+    COL_IDENTIFIER,
     RULE_NAME,
     EngagementInfo,
     Evidence,
@@ -305,7 +306,9 @@ from tracker.records import (
     parse_answers,
     parse_evidence,  # noqa: F401
     person_to_json,
+    quoted,
     rule_to_json,
+    typed_identifier_problem,
 )
 from tracker.router import questions_for, read_once, route_file
 from tracker.scaffold import (
@@ -4054,7 +4057,10 @@ def _details_of(engagement_dir: Path) -> EngagementInfo | None:
     people list are both drawn from it."""
     try:
         return load_engagement_info(engagement_dir)
-    except Exception:
+    except Exception as exc:
+        # The sort goes on with no people - nothing is guessed - but a race
+        # with the runner's own read of the record shows in the log (P297).
+        errors.keep("filer: the return's details", exc, name=engagement_dir.name)
         return None
 
 
@@ -7665,7 +7671,12 @@ def rename_request(
     if not old or not new:
         raise FilingError(RENAME_NOTHING)
     if identifier_key(old) == identifier_key(new):
-        raise FilingError(RENAME_CASE_ONLY.format(old=old, new=new))
+        raise FilingError(RENAME_CASE_ONLY.format(old=quoted(old), new=quoted(new)))
+    # The new identifier is one a person typed, so it is held to the typing
+    # limit (P291) before anything moves; the old one, however long the list
+    # already holds it, is only ever renamed away from.
+    if problem := typed_identifier_problem(new):
+        raise FilingError(f"{COL_IDENTIFIER} '{quoted(new)}' {problem}")
     prepared = engagement_dir / PREPARED_DIR_NAME
 
     with engagement_lock(engagement_dir):

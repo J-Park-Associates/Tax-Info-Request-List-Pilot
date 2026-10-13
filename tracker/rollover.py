@@ -141,6 +141,13 @@ PREVIOUS_NOT_APPLICABLE_HEADING = "Previous Year Not Applicable - decide afresh:
 UNKNOWN_YEAR_LABEL = "next year"
 #: Heads the CLI's list of last year's unmatched documents.
 UNFILED_HEADING = "Sent last year but never filed — check these are covered:"
+#: Said in the rollover's warnings when last year's index could not be read
+#: (the audit's E2, P297): the rollover goes on - it must never be blocked
+#: by a read it only wanted for a note - but an empty list of unfiled
+#: documents must not look like a clean year.
+UNFILED_LAST_YEAR_UNREAD = (
+    "Last year's unfiled documents could not be listed ({problem}), so the new list "
+    "carries none of them; check last year's `00 - Needs Review` by hand")
 
 #: Why a household cannot be rolled: the inbox cannot say which year a
 #: document is for, and neither can a rollover say which year it is
@@ -153,6 +160,26 @@ ROLLOVER_TWO_OPEN_YEARS = (
 #: Why one plan is not this household's business: a household rollover
 #: rolls the returns of its own open year and nothing else.
 ROLLOVER_NOT_THIS_HOUSEHOLD = "{prior} is not an open-year return of {household}"
+#: What a plan or ``--only`` naming one of this household's returns says
+#: when that return's record cannot be read: it is not among the open
+#: returns because it cannot be told, not because it is another household's,
+#: and "is not an open-year return" would send nobody to the broken record.
+#: ``problem`` is the registry's own sentence for the return (the firm's
+#: errors whole, anything else by class).
+ROLLOVER_RECORD_UNREADABLE = (
+    "{prior}'s record could not be read ({problem}); repair it first "
+    "(runbook section 6), then roll it forward"
+)
+#: What a plan or ``--only`` naming an open-year return says when that
+#: return still holds its request list in the old workbook (a legacy folder,
+#: ``tracker.registry.LEGACY_FOLDER``): its record reads and holds no rules,
+#: so it counts as active, and rolling it would make next year's return with
+#: zero rows that looks set up and asks for nothing. The runbook's section 1
+#: says such a return is set up again in the app.
+ROLLOVER_LEGACY_FOLDER = (
+    "{prior} holds its request list in a workbook the app no longer reads ({name}); "
+    "set it up again in the app first (runbook section 1), then roll it forward"
+)
 #: What a return left unticked by a household rollover is retired with.
 #: The retirement itself is an ordinary details edit (``active: no``) and
 #: the reason is not a detail field, so it is said where a person reads
@@ -194,6 +221,11 @@ class RolloverReport:
     target_year: int | None = None
     rolled: list[RolledItem] = field(default_factory=list)
     unfiled_last_year: list[str] = field(default_factory=list)
+    #: :data:`UNFILED_LAST_YEAR_UNREAD` when last year's index could not be
+    #: read, else ``""``. Kept on the report rather than appended to
+    #: ``warnings`` where it is found, because creating the new year
+    #: *assigns* ``warnings`` afterwards (:meth:`carry_warnings`).
+    unfiled_last_year_unread: str = ""
     #: :data:`LINK_NOT_CARRIED` when the prior's link was left behind
     #: because it is not a web address (decision 137, L5), else ``""``.
     link_dropped: str = ""
@@ -201,6 +233,13 @@ class RolloverReport:
     #: a same-name issuer pair last year's list already held, carried as it
     #: was, in :data:`tracker.manifest.ISSUER_NAMED_TWICE`'s words.
     warnings: list[str] = field(default_factory=list)
+
+    def carry_warnings(self, said: Sequence[str]) -> None:
+        """Set ``warnings`` to what creating the new year said, and then the
+        note that last year's index could not be read, when it could not:
+        the one place both are put together, so the creation's assignment
+        cannot overwrite the note (the SPEC's trap, P297)."""
+        self.warnings = [*said, *([self.unfiled_last_year_unread] if self.unfiled_last_year_unread else [])]
 
     @property
     def items(self) -> list[RequestItem]:
@@ -457,6 +496,18 @@ def roll_forward(
     # retires the live engagement behind them.
     if target_year is not None:
         check_tax_year(target_year)
+    # A legacy folder (P302, section 18): its record reads and holds no
+    # rules, the old workbook beside it, and it counts as active - so
+    # reading it here gives zero rows and a next year that looks set up and
+    # asks for nothing. Refused before a row is read, whichever door got
+    # here (the one-return command line, the app's Roll Forward), with the
+    # registry's one constant and never a substring. Any other problem the
+    # registry reports is left to load_manifest, which refuses it loudly.
+    from tracker.registry import LEGACY_FOLDER, LEGACY_MANIFEST_FILENAME, engagement_from
+
+    if engagement_from(prior_dir).problem == LEGACY_FOLDER.format(name=LEGACY_MANIFEST_FILENAME):
+        raise ManifestError(ROLLOVER_LEGACY_FOLDER.format(
+            prior=prior_dir.name, name=LEGACY_MANIFEST_FILENAME))
     # Last year, as its record has it: the statuses the last scan wrote,
     # the file counts it saw, and the keywords somebody's filings taught
     # the rows. The taught keywords matter here more than anywhere - they
@@ -509,12 +560,19 @@ def roll_forward(
             note=NEW_NOT_ASKED_NOTE,
         ))
 
-    report.unfiled_last_year = _unfiled_last_year(prior_dir)
+    report.unfiled_last_year, report.unfiled_last_year_unread = _unfiled_last_year(prior_dir)
     return report
 
 
-def _unfiled_last_year(prior_dir: Path) -> list[str]:
-    """Documents the client sent last year that were never filed.
+def _unfiled_last_year(prior_dir: Path) -> tuple[list[str], str]:
+    """Documents the client sent last year that were never filed, and
+    ``""`` - or, when the prior year's index could not be read,
+    :data:`UNFILED_LAST_YEAR_UNREAD` with the reason and no documents.
+
+    An unreadable index never blocks a rollover, but it is said (P297): the
+    exception is kept on the error log and the sentence rides in the
+    report's warnings, so a year with nothing listed is not mistaken for a
+    year with nothing unfiled.
 
     Reported, never acted on: a request row needs a name and rules a person
     chooses. But a document that arrived and fitted nowhere is exactly the
@@ -528,7 +586,8 @@ def _unfiled_last_year(prior_dir: Path) -> list[str]:
     subfolder - that is its own column, and the client's folder name is not
     a reason anything was not filed.
     """
-    from tracker.filer import NEEDS_REVIEW, ensure, read_index
+    from tracker import ledger, store
+    from tracker.filer import NEEDS_REVIEW, FilingError, ensure, read_index
 
     try:
         # A rollover only reads the prior year, and it reads it without
@@ -536,14 +595,16 @@ def _unfiled_last_year(prior_dir: Path) -> list[str]:
         # nothing is written in the folder.
         ensure(prior_dir)
         rows = read_index(prior_dir)
-    except Exception:  # an unreadable index must never block a rollover
-        return []
+    except Exception as exc:  # an unreadable index must never block a rollover
+        errors.keep("rollover: last year's unfiled documents", exc, name=prior_dir.name)
+        return [], UNFILED_LAST_YEAR_UNREAD.format(problem=errors.said(
+            exc, (FilingError, ManifestError, ledger.LedgerError, store.StoreError)))
     seen: dict[str, tuple[str, str]] = {}
     for row in rows:
         key = row.pbc_location or row.digest or row.original_name
         if row.decision == NEEDS_REVIEW and key not in seen:
             seen[key] = (row.original_name, row.reason)
-    return [f"{name} — {reason}" for name, reason in seen.values()]
+    return [f"{name} — {reason}" for name, reason in seen.values()], ""
 
 
 # ------------------------------------------------------- the household roll ----
@@ -593,6 +654,38 @@ def open_year_returns(household_dir: Path | str) -> tuple[list[int], list]:
             years=", ".join(str(year) for year in years)))
     return years, [one for one in returns
                    if one.active and years and one.tax_year == years[0]]
+
+
+def _unreadable_return_said(household_dir: Path, wanted: str, key) -> str:
+    """The sentence for a named return of this household whose record cannot
+    be read, or ``""`` when the name is not that.
+
+    A return the record cannot tell is listed by the registry with its
+    ``problem`` and no ``tax_year``, so it is missing from the open-year
+    returns for that reason - not because it belongs to another household.
+    Saying :data:`ROLLOVER_NOT_THIS_HOUSEHOLD` of it is false and names no
+    record to repair, so a name that is one of the household's own return
+    folders (discovery's positional list, the one the open returns come
+    from) is asked of the registry first. ``key`` maps a folder to what
+    ``wanted`` is compared with: the resolved folder for a plan, the
+    layout's name key for a name typed on the command line.
+
+    The registry gives a legacy folder (a record that reads and holds no
+    rules, the old workbook beside it) a ``problem`` too, but its record
+    *was* read and section 6 has nothing to repair in it; it is not in the
+    open year, so :data:`ROLLOVER_NOT_THIS_HOUSEHOLD` is true of it and is
+    left to say so. The legacy sentence is told by comparison with the
+    registry's one constant, never by a substring.
+    """
+    from tracker.registry import LEGACY_FOLDER, LEGACY_MANIFEST_FILENAME, engagement_from
+
+    legacy = LEGACY_FOLDER.format(name=LEGACY_MANIFEST_FILENAME)
+    for folder in household_returns(household_dir):
+        if key(folder) == wanted:
+            problem = engagement_from(folder).problem
+            if problem and problem != legacy:
+                return ROLLOVER_RECORD_UNREADABLE.format(prior=folder.name, problem=problem)
+    return ""
 
 
 def roll_household(
@@ -656,7 +749,12 @@ def roll_household(
     Refuses the whole call when the household has more than one open year
     (:data:`ROLLOVER_TWO_OPEN_YEARS` - there is no one year to roll) and
     when a plan names a return that is not one of that year's active ones
-    (:data:`ROLLOVER_NOT_THIS_HOUSEHOLD`). **No permission is changed and
+    (:data:`ROLLOVER_NOT_THIS_HOUSEHOLD`, or :data:`ROLLOVER_RECORD_UNREADABLE`
+    when it is one of this household's returns whose record cannot be read -
+    it is not open because it cannot be told) and when a planned return is a
+    legacy folder of the open year (:data:`ROLLOVER_LEGACY_FOLDER`: its list
+    is still in the old workbook, so rolling it would make an empty return
+    that looks set up). **No permission is changed and
     nothing under the client tree is touched but the new year's folder**,
     which the first scaffold makes and the rest find; the inbox's README
     is rewritten once at the end, so the client sees the new year's lists
@@ -673,11 +771,12 @@ def roll_household(
     # (its record gone, two folders claiming it) or whose client folder is
     # gone (decision 188 and its review's M3, S4): refused before anything
     # is read further or written, with the sentence the pass says.
-    from tracker.registry import held_back
+    from tracker.registry import LEGACY_FOLDER, LEGACY_MANIFEST_FILENAME, held_back
 
     if said := held_back(household_dir):
         raise ManifestError(said)
 
+    legacy = LEGACY_FOLDER.format(name=LEGACY_MANIFEST_FILENAME)
     _, open_returns = open_year_returns(household_dir)
     by_folder = {_same_folder(one.path): one for one in open_returns}
 
@@ -686,8 +785,10 @@ def roll_household(
         prior = Path(plan.prior)
         one = by_folder.get(_same_folder(prior))
         if one is None:
-            raise ManifestError(ROLLOVER_NOT_THIS_HOUSEHOLD.format(
-                prior=prior.name, household=household_dir.name))
+            raise ManifestError(
+                _unreadable_return_said(household_dir, _same_folder(prior), _same_folder)
+                or ROLLOVER_NOT_THIS_HOUSEHOLD.format(
+                    prior=prior.name, household=household_dir.name))
         planned.append((one, plan))
     # Folder-name order without case: the order the pass takes the locks
     # in and the order a person reads the household's returns in, so "the
@@ -703,6 +804,12 @@ def roll_household(
     rolls: list[_PlannedRoll] = []
     targets: set[str] = set()
     for one, plan in planned:
+        # A legacy folder in the open year counts as active and would roll
+        # with zero rows (P302): refused whole, by the registry's one
+        # constant and never by a substring.
+        if one.problem == legacy:
+            raise ManifestError(ROLLOVER_LEGACY_FOLDER.format(
+                prior=one.path.name, name=LEGACY_MANIFEST_FILENAME))
         try:
             roll = _plan_one(one.path, one.info, plan, household_dir.name, household_info,
                              target_year=target_year)
@@ -902,8 +1009,8 @@ def _make_one(roll: _PlannedRoll) -> list[Path]:
     # call's own mkdir made is removed again (decision 137).
     made = make_new_folders(roll.target)
     try:
-        roll.report.warnings = list(create_engagement(roll.target, roll.report.items, roll.info,
-                                                      carried=roll.report.from_last_year))
+        roll.report.carry_warnings(create_engagement(roll.target, roll.report.items, roll.info,
+                                                     carried=roll.report.from_last_year))
         scaffold_engagement(roll.target)
     except Exception:
         _unmake(roll.target, made)
@@ -930,8 +1037,8 @@ def _unmake(target: Path, made: list[Path]) -> None:
             pass
     try:
         store.forget(store.connect(), target)
-    except Exception:
-        pass
+    except Exception as exc:
+        errors.keep("rollover: forgetting a failed return", exc, name=target.name)
 
 
 # --------------------------------------------------------------------- CLI ----
@@ -1012,10 +1119,12 @@ if __name__ == "__main__":
             by_name = {name_key(one.path.name): one for one in open_now}
             chosen = []
             for name in ns.only:
-                one = by_name.get(name_key(normalised_name(name)))
+                wanted = name_key(normalised_name(name))
+                one = by_name.get(wanted)
                 if one is None:
-                    parser.error(ROLLOVER_NOT_THIS_HOUSEHOLD.format(prior=name,
-                                                                    household=given.name))
+                    parser.error(
+                        _unreadable_return_said(given, wanted, lambda f: name_key(f.name))
+                        or ROLLOVER_NOT_THIS_HOUSEHOLD.format(prior=name, household=given.name))
                 chosen.append(one)
         if len(forms) > 1 and len(forms) != len(chosen):
             parser.error("give --form once for every return, or one per --only in the same order")
@@ -1065,11 +1174,17 @@ if __name__ == "__main__":
     template = template_items(forms[0]) if forms else []
     ns.form = forms[0] if forms else ""
 
-    result = roll_forward(
-        given,
-        target_year=ns.year,
-        template=template,
-    )
+    try:
+        result = roll_forward(
+            given,
+            target_year=ns.year,
+            template=template,
+        )
+    except ManifestError as exc:
+        # The household form's refusal, said under the same heading
+        # (section 18): the legacy folder's sentence, and the year bound's.
+        print(f"{given.name} was not rolled forward\n\n  {NOT_ROLLED_HEADING}\n    {exc}\n")
+        raise SystemExit(1) from None
 
     from tracker.layout import household_name_of
 
@@ -1104,7 +1219,7 @@ if __name__ == "__main__":
     # command line defaults them exactly as the app's rollover does, so an
     # engagement is on the reminder's ladder however it was made
     # (decision 123).
-    result.warnings = list(create_engagement(
+    result.carry_warnings(create_engagement(
         target, result.items,
         with_default_dates(carried, carried.form or ns.form, result.target_year),
         carried=result.from_last_year))

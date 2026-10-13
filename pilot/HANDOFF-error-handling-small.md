@@ -1,0 +1,952 @@
+# HANDOFF - SPEC-error-handling-small (E2 to E7, R1 to R5)
+
+Built on `claude/admiring-goodall-vhomni` over `f2c0631` (the other lane's
+document-gate commit landed while this ran; nothing of its files was touched).
+Not committed, not pushed. `pilot/DECISIONS.md` untouched (P297-P300 rows are
+the landing session's).
+
+## 1. What was built
+
+**R1 - E2, a rollover says when it could not look** (`tracker/rollover.py`)
+- `_unfiled_last_year` returns `(lines, note)`. On any failure to read the
+  index it keeps the exception (`errors.keep("rollover: last year's unfiled
+  documents", exc, name=prior_dir.name)`) and returns `([], UNFILED_LAST_YEAR_UNREAD
+  .format(problem=errors.said(exc, (FilingError, ManifestError, LedgerError, StoreError))))`.
+- `RolloverReport.unfiled_last_year_unread: str = ""` holds the note.
+- The trap: `report.warnings` is *assigned* in three places, not two. The
+  SPEC names `_make_one` (rollover.py) and the CLI (`result.warnings = ...`);
+  `tracker/api.py` `_cmd_rollover` has a third (`report.warnings = list(create_engagement(...))`),
+  and that one feeds the `rollover` reply the page draws. All three now call
+  `RolloverReport.carry_warnings(create_engagement(...))`, which sets
+  `warnings` and then appends the note, so the note is last and cannot be
+  overwritten by the next assignment (see section 5, "done differently").
+- No page change: the reply already sends `warnings`, the page already draws them.
+
+**R2 - E3 and E4, nothing swallowed without a log line**
+- `api._undo_create`: `errors.keep("api: forgetting a failed return", exc, name=engagement.name)`.
+- `rollover._unmake`: `errors.keep("rollover: forgetting a failed return", exc, name=target.name)`.
+- `filer._details_of`: `errors.keep("filer: the return's details", exc, name=engagement_dir.name)`, still returns `None`.
+
+**R3 - E5, a database that cannot be used is said as itself**
+- `errors.error_code(exc)`: the code alone (`SAYS_ITS_CODE` class code, else the
+  errno name, else the class name). Both `error_class` and `error_code` read
+  the code through one private helper `errors._code_of` (so they cannot
+  disagree); `error_class`'s output is byte-identical to before.
+- `api.STORE_UNAVAILABLE` and `api.RECORD_NOT_WRITTEN` exactly as the SPEC words
+  them; `_failure_of` keeps `kind = "failed"` (Retry stays).
+- `docs/runbook.md`: see section 5 - an insertion, not the replacement the SPEC asked for.
+
+**R4 - E6, the data home must be a folder or makeable** (`tracker/settings.py`)
+- `DATA_HOME_NOT_A_FOLDER` and `_file_in_the_way(path)` (nearest existing part of the
+  path; returns it when it is not a folder). Called in `resolve_data_home` after
+  `answer` is chosen and before the program/synced/drive checks, for every branch.
+
+**R5 - E7, the vocabulary sends only what something reads** (`tracker/api.py` `_vocab`)
+- Dropped 14 keys (table in section 3), kept 5. Their now-unused imports in api.py
+  were removed (ruff). The vocabulary comments over `not_asked_label` and
+  `ask_the_client` were trimmed to match.
+
+## 2. Each new test, before and after
+
+"Before" is the new test run against the unchanged code (the test inserted
+first). "After" is the finished build.
+
+| Test | Before | After |
+|---|---|---|
+| test_rollover `test_a_rollover_that_could_not_read_last_years_index_still_rolls_and_says_so` | ImportError `UNFILED_LAST_YEAR_UNREAD` | pass |
+| test_rollover `test_a_prior_year_whose_index_reads_adds_no_note` | AttributeError `unfiled_last_year_unread` | pass |
+| test_rollover `test_the_note_about_an_unread_index_is_the_last_warning_of_each_rolled_return` (roll_household, 3 returns, the `_make_one` assignment) | ImportError | pass |
+| test_rollover `test_a_household_rollover_that_reads_every_index_carries_no_such_note` | ImportError | pass |
+| test_rollover `test_a_failed_rollover_that_cannot_forget_its_store_row_keeps_why_on_the_log` | AssertionError: log empty | pass |
+| test_api `test_a_rollover_that_could_not_read_last_years_index_says_so_in_its_reply` (the `rollover` command, the api assignment) | ImportError | pass |
+| test_api `test_a_failed_create_that_cannot_forget_its_store_row_still_cleans_up_and_logs_it` | AssertionError: log empty | pass |
+| test_api `test_a_database_that_cannot_be_used_is_said_as_itself_with_its_code_and_keeps_retry` x2 (StoreUnavailable, RecordNotWritten) | AttributeError `api.STORE_UNAVAILABLE` / `RECORD_NOT_WRITTEN` | pass |
+| test_api `test_a_broken_journal_is_said_in_the_firms_sentence_...` (its old-wording loop for the two classes now pins the new sentences) | AttributeError `api.RECORD_NOT_WRITTEN` | pass |
+| test_filer `test_details_that_cannot_be_read_are_none_and_the_failure_is_kept_on_the_log` | AssertionError: log empty | pass |
+| test_settings `test_a_data_home_override_naming_a_file_or_lying_under_one_is_refused_by_name` | AttributeError `DATA_HOME_NOT_A_FOLDER` | pass |
+| test_settings `test_a_data_home_that_can_still_be_made_is_answered` | passed (a guard that the change does not over-refuse) | pass |
+| test_errors `test_an_errors_code_alone_is_what_a_sentence_of_its_own_names` | AttributeError `errors.error_code` | pass |
+| test_errors `test_a_code_alone_never_carries_a_message_or_a_third_partys_code` | AttributeError | pass |
+
+Existing tests changed: `tests/test_errors.py` `ERRNO_NAMED_ON_PURPOSE` gains
+`("errors.py", "_code_of")` (the one-definition test scans errors.py for a
+function that reads an errno's name; the SPEC says errors.py is not scanned,
+it is, for that check - the words-into-a-sink scan is the one that skips it).
+`tests/test_api.py`: the 14 dropped keys' value pins were removed, and
+`_TITLE_EXEMPT_BRANCHES` lost `example_root`, `default_extensions`,
+`unscanned_key`, `not_asked_key`, `unknown_year_label`, `expected_pattern`.
+All test_api edits were exact insertions/replacements (the file was never rewritten).
+
+## 3. R5 evidence (one row per key)
+
+Greps: `grep -rIF "<key>" app --exclude-dir=node_modules` (every file under app/,
+any form: `vocab.<key>`, `words.<key>`, `["<key>"]`, destructuring, comments,
+camelCase not tried separately but `grep -i` for `overrideLabel`, `notAskedKey`,
+`unscannedKey`, `exampleRoot`, `periodPattern` etc. found only the unrelated
+`overrideLabel()` function); `grep -rIF --include='*.py' "<key>" tracker`
+minus `tracker/api.py`; same under `tests/` (counts are lines, taken after the
+build, so test lines I removed are not counted). Dynamic access to the vocabulary
+was also looked for: `vocab[`, `words[`, `Object.keys/entries/values(vocab)`, spread -
+the only hits are `Object.values(vocab.overrides)` (a nested map) and `words[key]`
+over nested sub-objects (`screenWords().paging`, `menuWords`); no top-level key
+is reached dynamically. `pilot/harness`, `pilot/wintest`, `app/main.js`,
+`app/preload.js` also hold none of the 19.
+
+| Key | app/ | tracker/ minus api | tests/ (after) | Decision |
+|---|---|---|---|---|
+| statuses | 3 (comments only: app.js:35 names it in a comment, shell.js:372 uses the plain word) | 84 (`Status`...) | 172 | KEPT: bare-name hits exist under app/. No `vocab.statuses` read found, so a later decision may drop it |
+| view | 368 (the word, `reply.view`, `held.view`) | 679 | 2209 | KEPT: hits; no `vocab.view` read found (the page draws `reply.view`, a different thing) |
+| progress | 36 (`m.progress`, `letter.progress`) | 64 | 124 | KEPT: hits; no `vocab.progress` read found (`m.progress` is a progress line's payload) |
+| evidence | 2 (comments, app.js:996, 1080) | 237 | 160 | KEPT: hits; no `vocab.evidence` read found |
+| period_pattern | 0 | 0 | 0 | DROPPED |
+| example_root | 0 | 0 | 2 (test_settings/test_single_source mention the *constant* `EXAMPLE_ROOT`, not the key) | DROPPED (`settings.EXAMPLE_ROOT` itself stays: tests and the README check use it) |
+| default_extensions | 0 | 0 | 0 | DROPPED (value pin removed from `test_api`) |
+| expected_pattern | 0 | 0 | 0 | DROPPED |
+| year_note | 0 | 0 | 1 (`test_shell` asserts the key is NOT in app.js: "the dialogs' help lines are cut") | DROPPED; `pilot/wording-shell.tsv` row already says "cut" |
+| keyword_default_note | 0 | 0 | 0 | DROPPED |
+| extension_default_note | 0 | 0 | 0 | DROPPED; wording-shell.tsv says "cut ... no renderer use" |
+| candidate_separator | 0 | 0 | 0 | DROPPED |
+| unknown_year_label | 0 | 0 | 0 | DROPPED |
+| origin_prior | 0 | 0 | 0 | DROPPED (`origin_new` and `origin_not_applicable` are read and stay) |
+| override_labels | 0 | 0 | 2 (test_api only: a length pin that I left, see below; `test_no_word_the_window_draws_says_client`) | **KEPT, by doubt**: zero hits, but the Title Case labels (P77, approved wording) were meant for the editor's reason list, and the page draws the stored words (`vocab.override_reasons`, app.js:2956) instead. Dropping it would silently discard approved wording that the page was never wired to show. A person should decide: wire it, or drop it |
+| not_asked_key | 0 | 0 | 0 | DROPPED (the chip class comes from `vocab.labels[...].key`) |
+| unscanned_key | 0 | 0 | 1 (`test_single_source` `.replace("chip-${vocab.unscanned_key}", "")`, a no-op: the string is not in app.js) | DROPPED; the test line is harmless and in a file this build does not own |
+| unscanned_label | 0 | 0 | 0 | DROPPED |
+| ask_the_client_note | 0 | 0 | 2 (`test_shell` asserts it is NOT in app.js; a `test_single_source` JS fixture assigns it to a stub `vocab`, which the code under test never reads) | DROPPED |
+
+The SPEC's note that `test_shell` ~1892 "lists `year_note` and
+`ask_the_client_note` among keys the page draws" is the reverse: that test
+asserts those keys are *absent* from app.js. Same for the
+`test_single_source` ~1015 exclusion, which is a no-op. Neither contradicts the drop.
+
+Dropped: **14** (`period_pattern`, `example_root`, `default_extensions`,
+`expected_pattern`, `year_note`, `keyword_default_note`,
+`extension_default_note`, `candidate_separator`, `unknown_year_label`,
+`origin_prior`, `not_asked_key`, `unscanned_key`, `unscanned_label`,
+`ask_the_client_note`). Kept: 5 (`statuses`, `view`, `progress`, `evidence` by
+the bare-name rule; `override_labels` by doubt).
+
+Left behind, outside this build's file list (reviewer/landing session to judge):
+- `tracker/templates.py` `YEAR_NOTE`, `EXTENSION_DEFAULT_NOTE`, `KEYWORD_DEFAULT_NOTE`
+  are now module-level names nothing uses (their only reader was `_vocab`). The
+  other lane owns templates.py, so they were not touched.
+- `api.ASK_THE_CLIENT_NOTE` stays because `tests/test_single_source.py` (not mine to
+  edit) and `test_api` use it to assert the renderer does not type the cut sentence;
+  a comment on it says so.
+- `tests/test_single_source.py` `.replace("chip-${vocab.unscanned_key}", "")` and the
+  `ask_the_client_note` JS fixture are stale but harmless.
+- `pilot/wording-shell.tsv` rows for the dropped keys already read "cut" or are
+  keyed by the constant; not edited.
+
+## 4. The gate
+
+Interpreter: the scratchpad venv, Python 3.13.16 (pytest 9.1.1, ruff). Only one
+interpreter with the test dependencies exists here, so the "two Python versions"
+were not both run; the changed files do compile under `python3.11 -m py_compile`
+(the floor is 3.11), which is a syntax check only.
+
+Dead code first (ruff F401 after the key drops: 11 unused imports in api.py and
+one in tests/test_api.py, removed; nothing commented out). Then each file its own process in parallel:
+
+| File | Result |
+|---|---|
+| test_rollover | 63 passed, **1 failed, 1 error**: `test_the_client_tree_is_byte_identical_after_a_roll_forward_whose_record_names_a_path` - **pre-existing, not from this build**: it fails identically on a clean `git archive` of `fce8c1e` (the base I started from), and it fails in the current tree (`f2c0631` + this build). It was not run on a clean `f2c0631`. The message it expects, "not one folder name", comes from the store's gate, which is what the other lane's commit touches, so the reviewer may want to run it on a clean `f2c0631` before attributing it. |
+| test_api | 522 passed |
+| test_filer | 408 passed, 6 skipped |
+| test_settings | 86 passed, 1 skipped |
+| test_shell | 326 passed |
+| test_errors | 85 passed |
+| test_tripwire | 23 passed |
+| test_layers | 31 passed |
+| test_single_source | 218 passed (after restoring `ASK_THE_CLIENT_NOTE`; a first run failed on `api_module.ASK_THE_CLIENT_NOTE` when I had deleted it) |
+| test_repo_map | 82 passed (after `update`) |
+
+`python -m ruff check .`: all checks passed. `python tools/repo_map.py update`
+then `check`: "Map is current (301 nodes)". The other lane's commit landed
+mid-build; `update` was run once, after it, and `check` passed first time, so
+no retry was needed.
+
+## 5. Done differently from the SPEC, and why
+
+1. **Three `warnings` assignments, not two, and one method.** `api.py`
+   `_cmd_rollover` assigns `report.warnings` too, and the `rollover` reply (the
+   page's single-return Roll Forward) reads it. Rather than three copies of
+   "append after the assignment", `RolloverReport.carry_warnings(said)` sets the
+   warnings and appends the note. Same behaviour the SPEC asks for.
+2. **`errors._code_of` helper.** `error_class` and `error_code` read the code once.
+   `tests/test_errors.py` `test_the_class_an_error_is_said_as_is_defined_once`
+   does scan errors.py for a function that reads an errno's name (the SPEC says
+   errors.py is not scanned; only the words-into-a-sink test skips it), so the
+   helper is named in `ERRNO_NAMED_ON_PURPOSE`. `error_code` falls back to
+   `error_class(exc, with_code=False)` so it does not spell a class inline.
+3. **Runbook: an insertion, not a replacement.** The clause the SPEC names
+   ("by its kind and code alone - *StoreUnavailable (SQLITE_BUSY)* ...") sits in
+   the paragraph on a *page line / a household that stopped*, which is the pass's
+   wording and is unchanged (it keeps the class-and-code form). The paragraph
+   never describes the dialog. Replacing it would make the runbook false, so
+   the clause is kept and one sentence is added after "...which can name a
+   client's folder.": the window says the two faults in words of their own with
+   the code, keeps Retry, and the details are in the error log.
+4. **`override_labels` kept** (section 3).
+5. **The test the SPEC says to "keep" (it is about `error_class`)** is the
+   `for raised, kind` loop inside `test_a_broken_journal_is_said_...`; it asserted
+   the old FAILED wording through `said_by_class`, which is the behaviour R3
+   changes, so its assertion now pins the new sentences. Nothing tests
+   `error_class` less; `tests/test_errors.py`'s own `error_class` tests are untouched.
+6. **Curated map text** (`docs/repo-map.curated.json`): three sentences added
+   (rollover's unread-index warning, settings' file-in-the-way refusal, errors'
+   `error_code`), because the role text for those nodes would otherwise be
+   incomplete; `update` then regenerated the map.
+
+## 6. What the reviewer needs
+
+- Commit boundary: `git show f2c0631` (the other lane's commit) contains none of
+  this build's hunks (checked: zero matches for `UNFILED_LAST_YEAR_UNREAD`,
+  `STORE_UNAVAILABLE`, `error_code`, `DATA_HOME_NOT_A_FOLDER`, `carry_warnings`,
+  `forgetting a failed return` in its diff of the six code/test files), so P297-P300's
+  code is all in the working tree, uncommitted.
+- One file is staged: `pilot/HANDOFF-error-handling-small.md` (`git add` of that
+  path only), because `repo_map.py check` and `test_repo_map` refuse an untracked source file.
+
+- SPEC `pilot/SPEC-error-handling-small.md`; this handoff; the diff of
+  `tracker/{rollover,api,filer,settings,errors}.py`, `docs/runbook.md`,
+  `docs/repo-map.curated.json`, and the five test files above.
+- Re-grep the page for each of the 14 dropped keys (table in section 3), and
+  decide on `override_labels` and on the four kept-by-rule keys.
+- Check the third `warnings` assignment (`api._cmd_rollover`) and the household
+  path (`roll_household` -> `_make_one`) both order the note last.
+- The pre-existing `test_rollover` failure noted in section 4 is for the other lane / the landing session.
+- Not verified: the Windows-only paths (no `windows` label needed; nothing here touches
+  the engagement lock, the atomic replace or path handling beyond `Path.exists/is_dir`).
+
+## Review (Opus, 2026-10-13)
+
+Independent review of commit `6f5945f` (`git diff 9b67afd 6f5945f`) against
+`pilot/SPEC-error-handling-small.md`. Everything was read with `git show` or
+run on a `git archive 6f5945f` copy in the scratchpad (git-initialised, one
+commit), with the scratchpad venv (Python 3.13). The checkout was not touched
+except this section. Throwaway probe tests were run in the copy and taken out
+before the gate.
+
+### Resolved
+
+- **R1 (E2).** Verified by running code. With `filer.read_index` raising
+  `FilingError("the index is torn")`: `roll_forward` completes,
+  `unfiled_last_year == []`, and the error log holds
+  `rollover: last year's unfiled documents (<prior>)` with the exception.
+  The three places `warnings` is assigned all go through
+  `RolloverReport.carry_warnings`: `_make_one` (household roll), the CLI
+  `__main__`, and `api._cmd_rollover`, which the SPEC missed. The SPEC listed
+  two; there are three, and grep finds no fourth. My probe of the
+  `roll-household` reply (the one the page draws, app.js:1549
+  `one.warnings`) found the sentence as the last item of `rolled[0].warnings`
+  and `unfiled_last_year == []`. The builder's test_api test does the same
+  for the `rollover` reply. `errors.said` with the four named classes:
+  `FilingError`, `ManifestError`, `LedgerError` and `StoreError` are said in
+  their own words. A `RuntimeError` whose message is a path is said as
+  `(RuntimeError)`, and the path does not reach the sentence. One small
+  correction to the handoff: it calls the `rollover` reply "the page's
+  single-return Roll Forward". The page never calls `rollover`, only
+  `roll-household`. Both paths are right, so this changes nothing.
+- **R2 (E3, E4).** All three handlers are `except Exception as exc:
+  errors.keep(<what>, exc, name=<folder>.name)`. Behaviour is unchanged:
+  `_undo_create` and `_unmake` still remove the folder and raise nothing,
+  and `_details_of` still returns `None`. Each has a test asserting the exact
+  log entry. The test_errors one-definition test passes.
+- **R3 (E5).** I ran `errors.error_code` directly:
+  `StoreUnavailable("SQLITE_BUSY")` gives `SQLITE_BUSY`,
+  `RecordNotWritten("ENOSPC")` gives `ENOSPC`, `PermissionError(EACCES, ...)`
+  gives `EACCES`, and `ValueError(<path>)` gives `ValueError`.
+  `error_class` output is unchanged. `_failure_of` gives `kind == "failed"`
+  and the new sentences for the two classes, and FAILED for
+  `PermissionError`, as before. `say_failure` still calls `errors.keep` for
+  kind `failed`, so "the details are in tracker-errors.log" is true. The page
+  keeps Retry for `failed` (app.js:249 `retryOf`).
+  **The runbook insertion was the right call.** The clause the SPEC asked to
+  replace sits in the "page is always this morning's" paragraph. It
+  describes page lines and a household that stopped, which is the pass's
+  class-and-code form, and that form is unchanged. Replacing it would have
+  made the runbook false. The added sentence matches `_failure_of` and the
+  page. It does not repeat "nothing was changed" (see F1).
+  The test_api loop the builder changed (`test_a_broken_journal_...`) is
+  stronger, not weaker: it now pins the exact sentence and kind where it
+  used to pin `said_by_class`. The SPEC's line reference pointed at it, and
+  it pinned the behaviour R3 changes.
+- **R4 (E6).** `resolve_data_home` refuses an override that names a file
+  (`blocker` is the file), and one under a file at one or three levels
+  (`blocker` is the file, not the missing child). A path that can still be
+  made under an existing folder is answered, and nothing is created. End to
+  end on the copy, with `TRACKER_DATA_HOME` set to a file and then to
+  `<file>/sub`: `python -m tracker.api set-root` exits 1, kind `refused`,
+  with the sentence naming the file. `python -m tracker.api list` exits 0
+  with the sentence in `machine_warnings` (see F4). The same happened with a
+  clients root saved and a return in it (pytest probe).
+- **R5 (E7).** I re-grepped all 19 keys myself:
+  `grep -rIF <key> app --exclude-dir=node_modules` for the bare name and for
+  its camelCase, a case-insensitive pattern allowing optional underscores
+  over `app/renderer`, `main.js` and `preload.js`, `tracker/` minus
+  `api.py`, `tests/`, `pilot/harness`, `pilot/wintest` and `tools`. I also
+  looked for dynamic access: `vocab[`, `words[`, `Object.*(vocab`, spread,
+  and template-built `_key`, `_note` or `_label` names. The only dynamic hits
+  are `Object.values(vocab.overrides)`, `words[key]` over
+  `screenWords().paging`, and main.js `learnMenu` over `DEFAULT_MENU_WORDS`.
+  None reaches a top-level key.
+  - The 14 dropped keys have **0 hits under `app/`** in any form, and 0 in
+    `tracker/` minus api. Their test hits are the ones the handoff names:
+    the `EXAMPLE_ROOT` constant, `test_shell`'s *absence* assertions for
+    `year_note` and `ask_the_client_note`, and the stale lines in
+    test_single_source (F5).
+  - The 5 kept are right under the SPEC's rule. `statuses` and `evidence`
+    are hit only in comments. `view` and `progress` are hit as other
+    objects' fields (`reply.view`, `m.progress`). None of the four has a
+    `vocab.<key>` read, so dropping them later needs a looser rule than this
+    SPEC's bare-name one. That is not a finding here. `override_labels` was
+    kept by doubt, which is reasonable: test_api:9340 pins its length
+    against `override_reasons`, and whether to wire it or drop it is
+    Jason's call.
+  - `_TITLE_EXEMPT_BRANCHES` lost exactly `example_root`,
+    `default_extensions`, `unscanned_key`, `not_asked_key`,
+    `unknown_year_label` and `expected_pattern`, all of them dropped keys.
+    `origin_` stays because `origin_new` and `origin_not_applicable` are
+    still sent. The removed value pins are only the dropped keys' pins
+    (`not_asked_key`, `ask_the_client_note`, `default_extensions`,
+    `unscanned_key`). Nothing else was cut. The 11 api.py imports removed
+    were each used only by a dropped entry, and the constants behind them
+    still have readers (`ORIGIN_PRIOR`, `UNKNOWN_YEAR_LABEL`, `CANDIDATE_SEP`,
+    `EXPECTED_PATTERN`, `DEFAULT_EXTENSIONS`, `UNSCANNED_LABEL`,
+    `PERIOD_PATTERN`, and `EXAMPLE_ROOT` in test_single_source's docs check),
+    except the three in F2.
+  - `ASK_THE_CLIENT_NOTE` was kept rightly for now. test_single_source:1045
+    and test_api:1301 use it as a **negative literal**: the renderer and
+    `index.html` must not type it. It is the guard behind the cut, not
+    vocabulary, and the comment the builder added says so.
+- **Layers, dead code.** The new imports in `rollover._unfiled_last_year`
+  are call-time imports, and `test_layers` passes. Ruff is clean. No
+  commented-out code. No dead name in the changed files apart from F2's,
+  which is in another file.
+- **New tests.** Each one asserts what its name claims. The handoff's
+  before/after table matches the tests.
+
+### Findings
+
+**F1 - should fix (the SPEC's wording; for Jason and the landing session,
+before P298 lands as written). `tracker/api.py` `STORE_UNAVAILABLE` and
+`RECORD_NOT_WRITTEN` say "nothing was changed", which is false in the common
+busy case.** `store.record` writes the journal first: it appends the
+fsync-ed line and only then opens the apply transaction (store.py docstring,
+and `record()` lines 2310-2320). A store held by another process bites at
+that transaction, after the line exists. My probe ran `edit-household` with
+`store._catch_up` raising `StoreUnavailable("SQLITE_BUSY")` after
+`ledger.append`. The reply said "...could not be used just now
+(SQLITE_BUSY); nothing was changed...", and the household's journal went
+from 1 line to 2. The record is correct, because `catch_up` replays it on
+the next read, but the sentence tells staff the opposite. The same is true
+of `RECORD_NOT_WRITTEN` when the second append of a batch fails after the
+first succeeded. The old FAILED text ("What it finished is on the record")
+was true here, so this is a regression in honesty. The builder copied the
+SPEC exactly. Fix: drop the clause, or replace it with FAILED's "what it
+finished is on the record", in both constants and in the P298 row. The
+tests pin the constants by reference and need no change, and the runbook
+sentence does not quote the clause.
+
+**F2 - should fix (landing session; `tracker/templates.py` was the other
+lane's file during this build). `YEAR_NOTE`, `EXTENSION_DEFAULT_NOTE` and
+`KEYWORD_DEFAULT_NOTE` (templates.py:803-807) are now dead.** Their only
+reader was `_vocab`. `grep -rnw` over every `.py`, `.js`, `.md`, `.tsv` and
+`.json` in the copy finds only the definitions. Ruff does not catch
+module-level constants. Delete the three and their comment. The
+`DEFAULT_EXTENSIONS` import at templates.py:55 then becomes unused (ruff will
+say so) and goes too. `PERIOD_PATTERN` stays, because `TY` and `TY_PRIOR`
+use it. Then run `python tools/repo_map.py update`.
+
+**F3 - nit. `tests/test_errors.py` `ERRNO_NAMED_ON_PURPOSE` is the wrong
+place for `("errors.py", "_code_of")`.** It does not open a hole: the entry
+is keyed by file and function, `_code_of` is private, `error_class`
+delegates to it, and there is still one rule. But the table is documented as
+errno reads "for something other than saying an error", and `_code_of`
+exists to say one. Make `THE_ONE_DEFINITION` a set holding
+`("errors.py", "error_class")` and `("errors.py", "_code_of")`, or at least
+reword the reason as "the rule's own helper".
+
+**F4 - nit (the SPEC and the P299 row). `list` does not refuse; it
+answers.** With the data home a file, `list` exits 0 with an empty list and
+the sentence in `machine_warnings`. That is `_cmd_list`'s existing handling
+of a `SettingsError`, so the first screen can still draw. `set-root` refuses
+with exit 1. The behaviour is right: the problem is said by name at the first
+command. But "refuses at list" (SPEC section 4) and "refused by name at every
+command" (P299) overstate it. Suggest P299 read "refused by name at
+Settings, and said in the first screen's warnings".
+
+**F5 - nit (outside the build's file list). Stale lines in
+`tests/test_single_source.py`.** Line 1015's
+`.replace("chip-${vocab.unscanned_key}", "")` does nothing, because the
+string is not in app.js. Line 3966's JS stub assigns `ask_the_client_note`,
+which the code under test does not read. Both are harmless. The landing
+session can drop them, and with them, if Jason agrees, `ASK_THE_CLIENT_NOTE`
+and its two negative-guard uses.
+
+### Gate (archive copy of `6f5945f`, one process per file in parallel, `-p no:cacheprovider`)
+
+| File | Result |
+|---|---|
+| test_rollover | 63 passed, 1 failed, 1 error. Both are `test_the_client_tree_is_byte_identical_after_a_roll_forward_whose_record_names_a_path`, which has failed since ed109f1; it is known, not this build's, and is being bisected separately |
+| test_api | 522 passed |
+| test_filer | 408 passed, 6 skipped |
+| test_settings | 86 passed, 1 skipped |
+| test_shell | 326 passed |
+| test_errors | 85 passed |
+| test_tripwire | 23 passed |
+| test_templates | 41 passed |
+| test_layers | 31 passed |
+| test_single_source | 218 passed |
+| test_repo_map | 82 passed |
+
+`python -m ruff check .`: all checks passed. `python tools/repo_map.py
+check`: "Map is current (302 nodes)". One interpreter only (3.13). The 3.11
+floor interpreter is not installed here, as the builder also found.
+
+Findings: 0 must fix, 2 should fix, 3 nits.
+
+## Rebuild 1 (Sonnet, 2026-10-13)
+
+Built from SPEC section 10 and the review's F1-F5. Nothing committed or pushed.
+
+**F1 - the two sentences (`tracker/api.py`).** The "nothing was changed"
+clause is gone, replaced by the true one the old FAILED text used.
+
+| | Before | After |
+|---|---|---|
+| `STORE_UNAVAILABLE` | The app's database could not be used just now ({code}); nothing was changed. Try again in a moment; if it keeps happening, the details are in {log} | The app's database could not be used just now ({code}). What it finished is on the record; try again in a moment, and if it keeps happening the details are in {log} |
+| `RECORD_NOT_WRITTEN` | The record could not be written ({code}); nothing was changed. Free the disk or close whatever holds the record open, then try again; the details are in {log} | The record could not be written ({code}). What it finished is on the record; free the disk or close whatever holds the record open, then try again - the details are in {log} |
+
+The two `tests/test_api.py` tests that pin them (the loop in the broken-journal
+test, near line 7262, and the parametrised
+`test_a_database_that_cannot_be_used_is_said_as_itself_with_its_code_and_keeps_retry`)
+read the constants by reference (`api.STORE_UNAVAILABLE.format(...)`), so
+they follow the new wording and needed no edit; both pass. `docs/runbook.md`
+(line 1497) quotes only the opening words, "the app's database could not be
+used just now (SQLITE_BUSY)" and "the record could not be written (ENOSPC)",
+not the dropped clause, so it still reads true and is unchanged. The P298 row
+in the SPEC's section 9 still carries the old clause; the SPEC is not in this
+rebuild's file list, so the landing session rewords it.
+
+**F2 - dead code (`tracker/templates.py`).** `YEAR_NOTE`,
+`EXTENSION_DEFAULT_NOTE`, `KEYWORD_DEFAULT_NOTE` and their comment are
+removed. Ruff then named `DEFAULT_EXTENSIONS` unused in the
+`tracker.manifest` import there, and it is removed. A whole-word grep over
+the tree (tests, tools, pilot, app) found no other reference apart from the
+handoff and SPEC prose; nothing imports `DEFAULT_EXTENSIONS` through
+`templates`.
+
+**F3 - one-definition table (`tests/test_errors.py`).** `THE_ONE_DEFINITION`
+is now the set `{("errors.py", "error_class"), ("errors.py", "_code_of")}`,
+built on a new `THE_ONE_FILE = "errors.py"` (the old code read
+`THE_ONE_DEFINITION[0]` for the file, which a set cannot give).
+`_second_definitions` compares `where in THE_ONE_DEFINITION`, and skips the
+inline-class scan for `THE_ONE_FILE`. `("errors.py", "_code_of")` leaves
+`ERRNO_NAMED_ON_PURPOSE`, which keeps only `ledger.py:_not_written`. The
+comment above the set and the `_second_definitions` docstring say why both
+are there: `_code_of` exists to say an error. The guard's probe tests
+(`test_the_guard_finds_a_second_definition`, including `error_class`,
+`said_as_class`, and an errno read in `probe.py`) still pass, so a second
+definition elsewhere is still caught. One consequence: the two `errors.py`
+functions are now skipped whole, where before `_code_of` was still scanned
+for naming an exception's class.
+
+**F4.** No code change, as the SPEC says.
+
+**F5 - stale lines (`tests/test_single_source.py`).** The no-op
+`.replace("chip-${vocab.unscanned_key}", "")` is removed, so the line reads
+`assert literal not in js, literal`; and the `ask_the_client_note: "Note"` stub
+is removed from the `Object.assign(vocab, ...)` in
+`test_picking_a_form_is_not_unsaved_work_but_typing_after_it_is`. Both tests
+still pass and still test what their names claim.
+
+**Gate** (scratchpad venv, Python 3.13, `-p no:cacheprovider`, one process per
+file in parallel): test_api 522 passed; test_templates 41 passed;
+test_errors 85 passed; test_single_source 218 passed; test_tripwire 23
+passed; test_layers 31 passed; test_repo_map 82 passed; `ruff check .` clean;
+`repo_map.py update` then `check`: current. The map went stale once from
+another agent's file (`pilot/HANDOFF-client-folder.md`) and `update` was run
+a second time, as the brief allowed. Only the scratchpad venv interpreter was run (the
+office interpreter was not run here).
+
+## Review 2 (Opus, 2026-10-13)
+
+Independent second review of commit `48a1f8b` (call it C;
+`git diff 3489f5d 48a1f8b`) against SPEC section 10 and the P298/P299 rows.
+I read the commit with `git show` and ran it on a `git archive 48a1f8b` copy
+in the scratchpad (git-initialised, one commit), using the scratchpad venv
+(Python 3.13 only; the 3.11 floor interpreter is not installed here). I did
+not touch the checkout except to add this section. Throwaway probes ran in
+the copy and were not kept.
+
+C changes six files: `tracker/api.py`, `tracker/templates.py`,
+`tests/test_errors.py`, `tests/test_single_source.py`, `docs/repo-map.json`
+and this handoff. Nothing outside section 10's list changed.
+
+### Resolved
+
+- **F1.** `api.STORE_UNAVAILABLE` and `api.RECORD_NOT_WRITTEN` are
+  `==` to section 10's two literals, so they match word for word.
+  `_failure_of(StoreUnavailable("SQLITE_BUSY"))` and
+  `_failure_of(RecordNotWritten("ENOSPC"))` return those sentences, with
+  `{log}` filled as `tracker-errors.log`, and `kind == "failed"`, so Retry
+  stays. The runbook paragraph at C (`docs/runbook.md` ~1495-1499) quotes
+  only the opening words, "*the app's database could not be used just now
+  (SQLITE_BUSY)*" and "*the record could not be written (ENOSPC)*", and
+  says "keeps Retry; the details are in the error log". All of that is
+  still true. No other "nothing was changed" sentence in the tree belongs
+  to these two; the remaining ones are unrelated refusals. The P298 row
+  already reads "saying that what finished is on the record" (see G2).
+- **F2.** The three constants, their comment and the `DEFAULT_EXTENSIONS`
+  import are gone from `templates.py`. A whole-word grep for
+  `YEAR_NOTE|EXTENSION_DEFAULT_NOTE|KEYWORD_DEFAULT_NOTE` over `tracker/`,
+  `app/` (minus `node_modules`), `tests/`, `tools/`,
+  `docs/repo-map.curated.json` and `docs/*.md` finds nothing. Nothing
+  imports `DEFAULT_EXTENSIONS` through `templates`. test_templates passes
+  (41).
+- **F3.** `THE_ONE_DEFINITION` is the set
+  `{("errors.py","error_class"), ("errors.py","_code_of")}` and
+  `ERRNO_NAMED_ON_PURPOSE` keeps only `ledger.py:_not_written`. The file
+  check uses `THE_ONE_FILE`. I ran eight throwaway probes through
+  `_second_definitions`. Each of these is still caught:
+  (a) `def error_class` in `other.py`;
+  `def _code_of` in `ledger.py` reading `errno.errorcode`;
+  `def _code_of` in `api.py` returning `type(exc).__name__`;
+  (b) a function in `runner.py` returning `exc.__class__.__name__` for an
+  annotated exception;
+  (c) a function in `filer.py` reading `errno.errorcode`;
+  a third `errors.py` function that reads errno or names the class;
+  `error_code` in `errors.py` naming the class; and
+  `ledger._not_written` naming the class.
+  Same-named functions in another file are therefore a second definition,
+  as the new comment says. The one gap is the one the builder noted:
+  `_code_of` in `errors.py` naming the class is no longer caught (G3).
+  With the old table shape, the real `errors.py` gave no findings either.
+  `_code_of` reads `getattr(type(exc), SAYS_ITS_CODE)`, which the guard
+  never counted as naming a class. So the guard's result on today's code
+  is unchanged.
+- **F4.** No code change. The P299 row at C reads as section 10 asks.
+- **F5.** `test_the_renderer_types_no_vocabulary_of_its_own` now asserts
+  `literal not in js` without the no-op replace, which is a slightly
+  stronger check. `unscanned_key` has 0 hits under `app/`.
+  `test_picking_a_form_is_not_unsaved_work_but_typing_after_it_is` still
+  drives `chooseForm` and asserts clean-after-pick and dirty-after-typing.
+  Its stub keeps `ask_the_client` because app.js:2758 reads
+  `vocab.ask_the_client`. `ask_the_client_note` has 0 hits under `app/`.
+  Both tests pass.
+- **Dead code, layers.** No unused import or name and no commented-out code
+  in the changed files. Ruff is clean. test_layers passes.
+
+### Findings
+
+**G1 - should fix (landing session). `docs/repo-map.json` at C describes a
+tree that is not C, so `test_repo_map` and `repo_map.py check` fail on C by
+itself.** The builder ran `update` in the shared checkout while the
+rollover rebuild was mid-edit. As a result, C's map holds:
+- hashes for `tracker/rollover.py` and `docs/runbook.md` that match the
+  rollover builder's working copy, not C;
+- a `tests/test_rollover.py` hash that matches neither;
+- two test names
+  (`test_a_legacy_folder_that_is_not_open_is_not_this_household_not_a_record_that_cannot_be_read`,
+  `test_only_naming_a_readable_return_of_a_closed_year_is_not_this_household`)
+  and line counts from work that is not in C.
+
+On the archive, `check` exits 1 naming those three files, and
+`test_the_committed_map_is_current` fails. That gives test_repo_map 81
+passed, 1 failed, not the 82 the Rebuild 1 gate reports. That count was
+true of the shared checkout at the moment it ran, not of the commit. An
+`update` on the archive changes only those rollover facts. The four files
+this build touched are correct in the map. The next commit, `57c3f83`
+(Rebuild 6 of SPEC-client-folder-unreadable), heals it: on an archive of
+`57c3f83`, `check` says "Map is current (302 nodes)". So this is a should
+fix and not a must fix as long as C and `57c3f83` land together in that
+order. It becomes a must fix if `57c3f83` is dropped, reordered after C, or
+C is landed or cherry-picked alone. In that case, refresh the map from C's
+own tree. Going forward, a builder sharing a checkout should run `update`
+on an archive of its own commit, not on the shared working tree.
+
+**G2 - nit (this handoff, "Rebuild 1", F1 paragraph). It says "The P298 row
+in the SPEC's section 9 still carries the old clause; ... the landing
+session rewords it."** That is stale. The row was already reworded at
+`3489f5d`, and SPEC line 190 reads "saying that what finished is on the
+record" at both the base and C. The old wording survives only in section
+4's quoted constants (lines 92 and 94), which section 10 amends. The
+landing session has nothing to reword there.
+
+**G3 - nit (`tests/test_errors.py` `_second_definitions`). Both
+`errors.py` functions are now skipped whole, so a `_code_of` in
+`errors.py` that named its exception's class (`type(exc).__name__`) would
+no longer be caught.** Probe h confirmed this; the old shape caught it.
+This does not open a second definition. `_code_of` is private, sits in
+the one file that holds the rule, and is read only by `error_class` and
+`error_code`. That change would also visibly break `error_class`'s output
+(`Name (Name)`), which test_errors' `error_class` and `error_code` tests
+pin. If anyone wants the old strength back: keep the whole-function skip
+for `error_class` only, and exempt `_code_of` from the errno branch alone,
+for example by checking `where in THE_ONE_DEFINITION` only where
+`reads_errno` is tested. Optional.
+
+**G4 - nit (commit metadata; landing session's call). One build, three
+names.** C's trailer says `Co-Authored-By: Claude Fable 5.1`, this
+handoff's header says Sonnet, and CLAUDE.md says Opus 5.5 builds. A pushed
+commit cannot be amended from here.
+
+### Gate (archive copy of `48a1f8b`, one process per file in parallel, `-p no:cacheprovider`, Python 3.13)
+
+| File | Result |
+|---|---|
+| test_api | 522 passed |
+| test_templates | 41 passed |
+| test_errors | 85 passed |
+| test_single_source | 218 passed |
+| test_tripwire | 23 passed |
+| test_layers | 31 passed |
+| test_repo_map | 81 passed, 1 failed: `test_the_committed_map_is_current`, stale on `docs/runbook.md`, `tests/test_rollover.py` and `tracker/rollover.py` (G1; current at `57c3f83`) |
+
+`python -m ruff check .`: all checks passed. `python tools/repo_map.py
+check` on C: stale, the same three files (G1). On `57c3f83`: current.
+
+Findings: 0 must fix, 1 should fix, 3 nits.
+
+## Closed (2026-10-13)
+
+Closed at `48a1f8b` (Review 2: nothing against the code; its G1 was the
+map, current again at `57c3f83`). Correction to the Rebuild 1 note above:
+P298 was already reworded in `bf22b65`; the landing session has nothing to
+do there. Decision rows P297-P300 are added at landing (SPEC section 9, as
+reworded by section 10). Open for Jason: `override_labels` is kept on doubt
+(P77's labels, which the page does not draw) - wire it or drop it; the
+Python 3.11 floor was not run in this container.
+
+## Rebuild 2 (Sonnet, 2026-10-13)
+
+Built SPEC section 12 and nothing more: the `override_labels` vocabulary key
+is dropped. Not committed or pushed.
+
+**Removed**
+- `tracker/api.py`: the `OVERRIDE_LABELS` tuple (with its comment) and the
+  `override_labels` entry (with its comment) in `_vocab`. `override_reasons`
+  stays (the page reads it), and so does the `OVERRIDE_REASONS` import, which
+  `_vocab` still uses; ruff reports nothing unused.
+- `tests/test_api.py`: the length-pin assertion in
+  `test_the_vocabulary_carries_the_menu_the_screen_and_the_short_words` and the
+  `("override_labels", ...)` entry in the `drawn` list of
+  `test_no_word_the_window_draws_says_client_but_a_folders_own_name`; both
+  tests keep everything else.
+- `pilot/DECISIONS.md` untouched (the landing session appends to P77).
+
+**Grep evidence (after the edit, `__pycache__` excluded)**
+- `grep -rnI "override_labels" app tracker`: 0 hits.
+- `grep -rnI "OVERRIDE_LABELS" app tracker`: 0 hits.
+
+**Gate (one process per file, in parallel, `-p no:cacheprovider`, venv Python 3.13)**
+
+| File | Result |
+|---|---|
+| test_api | 522 passed |
+| test_single_source | 218 passed |
+| test_shell | 326 passed |
+| test_layers | 31 passed |
+| test_repo_map | 81 passed, 1 failed: `test_the_committed_map_is_current` (see below) |
+
+`python -m ruff check .`: all checks passed. `python tools/repo_map.py update`
+then `check`: "Map is current (302 nodes)" right after my update.
+`docs/repo-map.json` changed (14 lines, generated).
+
+**Open item, not mine:** after my update, `tests/test_rollover.py` and
+`tracker/rollover.py` changed in this worktree (a new `ROLLOVER_LEGACY_FOLDER`
+message and 109 test lines), by another session working in parallel. I did not
+touch them and did not re-run `update` over them, so `check` and
+`test_repo_map` currently report those two files as stale. Whoever finishes
+that rollover work runs `python tools/repo_map.py update`.
+
+The Python 3.11 floor was not run in this container.
+
+## Review 3 (Opus, 2026-10-13)
+
+Reviewed commit `228094c` ("Drop override_labels ...", the only commit after
+`5de13cc`) against SPEC section 12 and the R5 rule in section 5, on a
+`git archive 228094c` copy in the scratchpad (git-initialised, one commit),
+venv Python 3.13.16. The shared checkout was not touched except for this
+append.
+
+**Resolved.** Section 12 is built as written. `tracker/api.py` loses the
+`OVERRIDE_LABELS` tuple and the `override_labels` entry in `_vocab`;
+`OVERRIDE_REASONS` stays imported because `_vocab` still sends it (ruff clean).
+`tests/test_api.py` loses the length pin and the `override_labels` entry in
+the `drawn` list of `test_no_word_the_window_draws_says_client_but_a_folders_own_name`;
+both tests keep everything else. The diff touches four files: `tracker/api.py`,
+`tests/test_api.py`, `docs/repo-map.json` (generated) and this handoff.
+Nothing else changed.
+
+**Verified**
+- `OVERRIDE_LABELS` / `override_labels` (also `overrideLabels`,
+  `override-labels`, case-insensitive) in every `.js`, `.html`, `.css`,
+  `.json` and `.py` under `app/`, `tracker/`, `tests/` and `tools/`: 0 hits.
+  The four label strings appear nowhere in `app/` or `tracker/`. The
+  `override_label` (singular) hits in `filer.py`, `review.py`, `rollover.py`
+  and `validators.py` are `manifest.override_label`, unrelated and untouched.
+- `override_reasons` and `override_reason_other` are still sent
+  (`tracker/api.py` 1738-1739). The page still reads both
+  (`app/renderer/app.js` 2952-2957), and `vocab.override_reasons` supplies
+  each option's visible text.
+- My own scan: every `vocab.<key>` read in `app/**/*.js|html` checked against
+  `api._vocab()` finds no top-level key the page reads that the API does not
+  send. SPEC section 5's "every key the page reads is sent" names no test
+  that exists by that name. The nearest guards,
+  `test_single_source::test_the_renderer_types_no_vocabulary_of_its_own` and
+  `test_shell::test_the_harness_stub_speaks_the_apis_vocabulary` (which checks
+  the stub, not `app.js`), both pass.
+- `test_the_vocabulary_carries_the_menu_the_screen_and_the_short_words` still
+  pins the menu, the screen, the reasons, the stage and rule shorts, the
+  stored override words, the move warning and the Active help line, so it
+  still tests what its name says. For the "client" test, see H2.
+- `_TITLE_EXEMPT_BRANCHES` never had an `override_labels` entry (the labels
+  were Title Case), so R5's exemption step had nothing to remove.
+- P77 in `pilot/DECISIONS.md` at `228094c` ends "The short labels were never
+  drawn and were dropped on 2026-10-13 (SPEC-error-handling-small section 12);
+  the editor shows the stored words." That wording landed in `9ff3889`.
+
+**Findings**
+
+- **H1 (should fix): the committed map is stale on files the commit itself
+  changed.** `docs/repo-map.json` at `228094c`. On the archive copy, where the
+  other builders' rollover/registry edits do not exist, `tools/repo_map.py
+  check` reports three stale files: `tests/test_api.py`,
+  `pilot/HANDOFF-error-handling-small.md` and
+  `pilot/SPEC-client-folder-unreadable.md`. As a result
+  `test_repo_map::test_the_committed_map_is_current` fails on the commit
+  itself. Cause: `update` ran too early.
+  - The committed hash for `tests/test_api.py` (`25abeba55acb3b33`) is
+    reproduced exactly by putting the old comment line ("(P77): only the label
+    does.") back into the committed file, so the comment was reworded after
+    `update`.
+  - The handoff was mapped at 621 lines, before Rebuild 2 was appended. It is
+    now 665.
+  - The SPEC was mapped at 462 lines. At this commit it is 491.
+
+  The commit message and Rebuild 2 blame the staleness on the rollover files,
+  but at `228094c` alone the cause is the builder's own edits after `update`.
+  Same shape as Review 2's G1. Fix: run `python tools/repo_map.py update` in
+  the commit that lands (CLAUDE.md's same-commit rule), and make sure `check`
+  is clean at the landing head.
+- **H2 (should fix, Jason's call; does not block this lane): the editor now
+  shows staff "Client", and the test meant to catch that does not look.**
+  `app/renderer/app.js` 2956-2957 draws each `vocab.override_reasons` value as
+  option text. The first stored reason is "Client confirmed this is the final
+  version" (`tracker/manifest.py` 332). P196 says every word the app shows
+  staff says Taxpayer. SPEC-taxpayer-words R7 and P78 ("only its label
+  changes") met P196 through the label section 12 has just dropped. Before
+  this commit, `test_no_word_the_window_draws_says_client_but_a_folders_own_name`
+  checked the labels, which were never drawn. After it, the test checks
+  nothing on the override menu, so its name claims more than it tests. This is
+  not a build defect, since section 12 asked for exactly this edit; it is a
+  conflict section 12 did not settle. Either reword the stored value (P77 says
+  stored words do not change), or record the exception in P196/P78 and add
+  `("override_reasons", vocab["override_reasons"])` to the drawn list with that
+  one stored value exempt by name (R7).
+- **H3 (should fix): the curated map still says the vocabulary sends
+  `override_labels`.** In `docs/repo-map.curated.json`, `tracker/api.py`'s
+  notes ("vocab gains ... override_labels (the stored override words are
+  unchanged)") are rendered into `docs/repo-map.md`. CLAUDE.md: changed
+  behaviour means editing the curated layer, then `update`. Fix: mark it
+  dropped (section 12) or delete the phrase, in the same landing commit as H1.
+- **N1 (nit):** the commit message says "its title-case entry are gone". No
+  title-case entry existed, and none was removed.
+- **N2 (nit):** Rebuild 2 says "Not committed or pushed", yet it is part of
+  `228094c`.
+- **N3 (nit):** `test_the_title_case_rule_does_what_jason_wrote` (test_api
+  9608-9611) still uses two of the dropped label strings as examples. This is
+  harmless, because they test the casing helper and not the key.
+
+**Gate** (archive copy, one process per file, in parallel,
+`-p no:cacheprovider`, Python 3.13.16)
+
+| File | Result |
+|---|---|
+| test_api | 522 passed |
+| test_single_source | 218 passed |
+| test_shell | 326 passed |
+| test_layers | 31 passed |
+| test_repo_map | 81 passed, 1 failed: `test_the_committed_map_is_current` (H1; the commit's own files, not the other builders') |
+
+`python -m ruff check .`: all checks passed. `python tools/repo_map.py check`:
+stale (exit 1), on the three files named in H1. The Python 3.11 floor was not
+run.
+
+Findings: 0 must fix, 3 should fix, 3 nits.
+
+## Rebuild 3 (Sonnet, 2026-10-13)
+
+Section 13 (P196's one exception: the override reasons show as stored). Test
+only; no code change. Built together with SPEC-form-inputs section 20.
+
+**Built.** In `tests/test_api.py`,
+`test_no_word_the_window_draws_says_client_but_a_folders_own_name` now has
+`("override_reasons", vocab["override_reasons"])` in its `drawn` list, and
+exempts exactly `(where, text) == ("override_reasons",
+_STORED_REASON_WITH_CLIENT)`, a module constant beside `_FOLDER_WORDS` set to
+`manifest.OVERRIDE_REASONS[0]` ("Client confirmed this is the final version")
+with a comment saying why (P196's one exception; stored values shown as
+stored). The exemption is keyed to the override-reasons branch, so the same
+text anywhere else on the screen still fails.
+
+**Checks.**
+
+| variant | result |
+|---|---|
+| as built | passes |
+| exemption removed (scratch copy, deleted afterwards) | fails: `[('override_reasons[0]', 'Client confirmed this is the final version')]`, so the test does read the override reasons |
+| exemption pointed at `OVERRIDE_REASONS[1]` (scratch copy) | fails on reason [0], so a "Client" that is not the named one is caught |
+
+**Gate** (Python 3.13 venv only; each file its own process, in parallel,
+`-p no:cacheprovider`): test_api 533 passed, test_single_source 218,
+test_layers 31, test_repo_map 82 (the one earlier failure was the map being
+stale against the other lane's uncommitted files; passed after the map was
+current); `ruff check .` clean; `repo_map.py update` found the map already
+current and `check` exited 0 (302 nodes).
+
+**Could not do.** The Python 3.11 floor was not run. This section's gate is
+section 20's, so the numbers are shared with Rebuild 6 of
+`pilot/HANDOFF-form-inputs.md`.
+
+## Review 4 (Opus, 2026-10-13)
+
+Review of SPEC-error-handling-small section 13 (ccdf943, test only), read on
+a fresh `git archive ccdf943` copy with the Python 3.13 venv. The reviewer
+did not build it.
+
+**Verdict.** Lands, with one should fix (1). The test reads the override
+reasons, the exemption applies only to the override-reasons branch, and
+there is no code change.
+
+**What was checked, with evidence.**
+
+- `drawn` now ends `("override_reasons", vocab["override_reasons"])`. The
+  filter adds `and (where, text) != ("override_reasons",
+  _STORED_REASON_WITH_CLIENT)`, and the constant sits beside `_FOLDER_WORDS`
+  with a comment citing P196 and section 13.
+- No code change. ccdf943's `tracker/api.py` hunks are section 20's alone,
+  and `git diff 4dca3fb ccdf943 -- tests/test_api.py` is 71 insertions and 2
+  deletions: the two replaced guard lines.
+- Mutations on throwaway copies, each run on this one test:
+
+  | variant | result |
+  |---|---|
+  | exemption removed | fails |
+  | exemption pointed at `OVERRIDE_REASONS[1]` | fails |
+  | the same text added to `drawn` under another name (`("elsewhere", _STORED_REASON_WITH_CLIENT)`) | fails, so the exemption covers the override reasons only |
+  | a second reason "Client sent it by hand" appended to `manifest.OVERRIDE_REASONS` | fails |
+  | `OVERRIDE_REASONS[0]` reworded to "Client confirmed this is the final version." | **passes** (finding 1) |
+
+**Findings.**
+
+1. **Should fix: the exemption is bound to the index, not the text, and its
+   comment claims the opposite.** The comment says "Exempted by its exact
+   text, named from the manifest so a reworded reason is a failure here, not
+   a silent pass". Because `_STORED_REASON_WITH_CLIENT =
+   manifest.OVERRIDE_REASONS[0]` moves with the manifest, a reworded first
+   reason is exempted silently (last mutation above). So is any reorder that
+   puts a different "Client" reason first. SPEC section 13 ("exempts exactly
+   the one stored value by name ... naming `manifest.OVERRIDE_REASONS[0]`'s
+   text") and P196's clause ("the guard test exempts that one value by
+   name") both mean the literal value. The test and those words disagree on
+   this point. Fix, test only: make the constant the literal `"Client
+   confirmed this is the final version"`, and add `assert
+   _STORED_REASON_WITH_CLIENT in manifest.OVERRIDE_REASONS`. A rewording
+   then fails the guard, and a renamed stored value fails the assert instead
+   of leaving a dead exemption. The comment then becomes true.
+
+**Hygiene.** No import, layer, print or `str(exc)` change. The other lane's
+`test_rollover_refuses_a_legacy_return_with_the_legacy_sentence_and_writes_nothing`
+is byte-identical at 4dca3fb and ccdf943, so the script rewrite of
+`tests/test_api.py` lost nothing.
+
+**Gate.** Shared with Review 7 of `pilot/HANDOFF-form-inputs.md`, on the
+ccdf943 copy, each file its own process: test_api 533, test_errors 85,
+test_single_source 218, test_layers 31, test_repo_map 82, test_tripwire 23,
+all passed; `ruff check .` clean; `repo_map.py check` current (302 nodes).
+The Python 3.11 floor was not run.
+
+## Rebuild 4 (Sonnet, 2026-10-13)
+
+Section 14 (Review 4's finding 1): the exemption in
+`test_no_word_the_window_draws_says_client_but_a_folders_own_name` is bound to
+the text, not the list's first position. Test only; no code change. Built
+together with SPEC-form-inputs sections 22 to 24 (all edit `tests/test_api.py`;
+the Edit tool throughout, no script rewrote a file).
+
+**Built** (`tests/test_api.py`). `_STORED_REASON_WITH_CLIENT` is the literal
+`"Client confirmed this is the final version"`; the test begins with
+`assert _STORED_REASON_WITH_CLIENT in manifest.OVERRIDE_REASONS`; the comment
+beside the constant now says the text is written out here and asserted to be
+one of the manifest's reasons, which is what it always claimed.
+
+**Before and after.**
+
+| variant | before (constant `OVERRIDE_REASONS[0]`) | after (literal plus assertion) |
+|---|---|---|
+| as built | passes | passes |
+| `OVERRIDE_REASONS[0]` reworded to "...final version." (throwaway copy) | passes (the slip) | fails on the new assertion: the literal is not in `OVERRIDE_REASONS` |
+| exemption removed, or pointed at another reason (Review 4's own mutations) | fail | fail (not re-run; the exemption's filter is unchanged) |
+
+The "before" for the reworded variant was confirmed by putting the old
+`OVERRIDE_REASONS[0]` constant back on the throwaway copy: 1 passed.
+
+**Gate.** Shared with Rebuild 7 of `pilot/HANDOFF-form-inputs.md` (same run,
+same tree: 19c6a92 plus this change and the reviewer's uncommitted append to
+`pilot/HANDOFF-client-folder.md`; Python 3.13 venv only, each file its own
+process, in parallel): test_api 542 passed, test_errors 85, test_tripwire 23,
+test_single_source 218, test_layers 31, test_repo_map 82 (after `update`);
+`ruff check .` clean; `repo_map.py update` then `check`: "Map is current (302
+nodes)", exit 0.
+
+**Could not do.** The Python 3.11 floor was not run.
+
+## Review 5 (Opus, 2026-10-13)
+
+Review of SPEC-error-handling-small section 14 (333b2c9, test only), read
+on a fresh `git archive 333b2c9` copy with the Python 3.13.16 venv. The
+reviewer did not build it.
+
+**Verdict.** Lands. No findings.
+
+**What was checked, with evidence.**
+
+- `_STORED_REASON_WITH_CLIENT = "Client confirmed this is the final
+  version"` is the literal text. It is byte-equal to
+  `manifest.OVERRIDE_REASONS[0]` (`tracker/manifest.py` line 332).
+- `test_no_word_the_window_draws_says_client_but_a_folders_own_name` begins
+  with `assert _STORED_REASON_WITH_CLIENT in manifest.OVERRIDE_REASONS`. The
+  comment beside the constant now says "written out here and asserted to be
+  one of the manifest's reasons", which is what the code does.
+- The diff touches only the constant, its comment and the new assertion.
+  There is no code change.
+- Mutations, each on its own fresh copy:
+
+  | variant | result |
+  |---|---|
+  | `OVERRIDE_REASONS[0]` reworded to "Client confirmed this is the final version." (whole `test_api.py`) | the guard fails on the new assertion (`assert 'Client confirmed this is the final version' in ('Client confirmed this is the final version.', ...)`). `test_the_vocabulary_carries_the_menu_the_screen_and_the_short_words`, which asserts the same literal, also fails: 2 failed, 540 passed |
+  | the same rewording with section 13's `manifest.OVERRIDE_REASONS[0]` constant put back (guard test only) | 1 passed, which is Review 4's slip, so the change is what closes it |
+
+**Gate.** Shared with Review 8 of `pilot/HANDOFF-form-inputs.md`, on the
+same copy, each file its own process: test_api 542, test_errors 85,
+test_tripwire 23, test_single_source 218 and test_layers 31 all passed.
+test_repo_map gave 81 passed and 1 failed, and `repo_map.py check` was
+stale. Both come from the commit's map recording another lane's
+uncommitted `pilot/HANDOFF-client-folder.md` (Review 8's finding 1), not
+from this section, and af2c1a0 checks current. `ruff check .` is clean. The
+Python 3.11 floor was not run.
+
+## Closed again (2026-10-13, sections 12-14)
+
+The second loop closed at commit `333b2c9` (Review 5: no findings). What
+landed since the first Closed section: section 12 dropped `override_labels`
+(Jason; the editor shows the stored override reasons, P77 amended); section
+13 recorded P196's one exception and made the Client guard test read the
+override reasons with that one value exempt by name; section 14 made the
+exemption the literal text, with a membership assertion, so a reworded
+reason fails the guard. Reviews 3 to 5 and Rebuilds 2 to 4 are above. The
+combined gate is recorded in HANDOFF-form-inputs.md's second Closed section.

@@ -334,6 +334,94 @@ def test_two_unfiled_documents_of_one_name_are_two_and_no_subfolder_is_quoted(pr
     assert not any("not allowed" in line or "subfolder" in line for line in lines)
 
 
+def _a_torn_index(monkeypatch):
+    """Last year's index cannot be read: ``filer.read_index`` refuses in the
+    firm's own words."""
+    from tracker import filer
+
+    def torn(*_args, **_kwargs):
+        raise filer.FilingError("the index is torn")
+
+    monkeypatch.setattr(filer, "read_index", torn)
+
+
+def test_a_rollover_that_could_not_read_last_years_index_still_rolls_and_says_so(
+        prior, monkeypatch, caplog):
+    """The audit's E2 (P297): an unreadable prior-year index never blocked a
+    rollover, but it also said nothing, so the new list looked as if last
+    year had nothing unfiled. The report carries one sentence with the
+    index's own words, and the exception is kept on the error log."""
+    import logging
+
+    from tracker import errors
+    from tracker.rollover import UNFILED_LAST_YEAR_UNREAD
+
+    _a_torn_index(monkeypatch)
+    with caplog.at_level(logging.WARNING, logger=errors.DEBUG_LOGGER):
+        report = roll_forward(prior)
+    assert report.unfiled_last_year == []
+    assert report.unfiled_last_year_unread == UNFILED_LAST_YEAR_UNREAD.format(problem="the index is torn")
+    assert "the index is torn" in report.unfiled_last_year_unread
+    assert [r.item.identifier for r in report.rolled] == ["A01", "B01", "C01", "D01"]
+    assert f"rollover: last year's unfiled documents ({prior.name})" in caplog.text
+    assert "FilingError: the index is torn" in caplog.text
+
+
+def test_a_prior_year_whose_index_reads_adds_no_note(prior):
+    report = roll_forward(prior)
+    assert report.unfiled_last_year_unread == ""
+
+
+def test_the_note_about_an_unread_index_is_the_last_warning_of_each_rolled_return(
+        park, monkeypatch):
+    """The trap the SPEC names: ``report.warnings`` is assigned when the
+    return is created, after the note was found, so the note is added after
+    that assignment - and it is in the report the rollover returns."""
+    from tracker.rollover import UNFILED_LAST_YEAR_UNREAD, ReturnPlan, roll_household
+
+    root, john, sofia, llc = park
+    _a_torn_index(monkeypatch)
+    done = roll_household(_household(root), target_year=2027,
+                          plans=[ReturnPlan(prior=one) for one in (john, sofia, llc)])
+    assert len(done.rolled) == 3
+    for _was, _created, report in done.rolled:
+        assert report.warnings[-1] == UNFILED_LAST_YEAR_UNREAD.format(problem="the index is torn")
+        assert report.unfiled_last_year == []
+
+
+def test_a_household_rollover_that_reads_every_index_carries_no_such_note(park):
+    from tracker.rollover import UNFILED_LAST_YEAR_UNREAD, ReturnPlan, roll_household
+
+    root, john, sofia, llc = park
+    done = roll_household(_household(root), target_year=2027,
+                          plans=[ReturnPlan(prior=one) for one in (john, sofia, llc)])
+    for _was, _created, report in done.rolled:
+        assert not any(UNFILED_LAST_YEAR_UNREAD.split("{")[0] in line for line in report.warnings)
+
+
+def test_a_failed_rollover_that_cannot_forget_its_store_row_keeps_why_on_the_log(
+        prior, tmp_path, monkeypatch, caplog):
+    """E3 (P297): the cleanup after a failed rollover still finishes - the
+    folder is gone and nothing is raised in place of the refusal - and the
+    row it could not drop is on the error log, where it was swallowed."""
+    import logging
+
+    from tracker import errors, rollover, store
+
+    target = tmp_path / "half-made"
+    target.mkdir()
+
+    def locked(*_args, **_kwargs):
+        raise store.StoreUnavailable("SQLITE_BUSY")
+
+    monkeypatch.setattr(store, "forget", locked)
+    with caplog.at_level(logging.WARNING, logger=errors.DEBUG_LOGGER):
+        rollover._unmake(target, [target])
+    assert not target.exists()
+    assert "rollover: forgetting a failed return (half-made)" in caplog.text
+    assert "StoreUnavailable" in caplog.text
+
+
 def test_rollover_without_a_template_still_works(prior):
     report = roll_forward(prior)
     assert [r.item.identifier for r in report.rolled] == ["A01", "B01", "C01", "D01"]
@@ -1608,6 +1696,292 @@ def test_the_client_tree_is_byte_identical_after_a_roll_forward_whose_record_nam
         assert refused in str(said.value), said.value
         assert _hashes(root / CLIENTS_TREE) == clients
         assert sorted((root / PRIVATE_TREE).rglob("*")) == private
+
+
+def test_rolling_a_return_whose_record_cannot_be_read_says_so_rather_than_not_this_household(
+        park, monkeypatch):
+    """Section 14: a prior whose record carries a forged line is not among
+    the open returns, but "is not an open-year return of Park Family" is
+    false of it and sends nobody to the broken record. Roll Forward (the
+    function and the command line's --only) says the return's record could
+    not be read, with the store's own words, and writes nothing: the client
+    tree and the record are byte for byte what they were."""
+    import io
+
+    from tracker.layout import CLIENTS_TREE, PRIVATE_TREE, private_household_dir
+    from tracker.registry import engagement_from
+    from tracker.rollover import (
+        ROLLOVER_NOT_THIS_HOUSEHOLD,
+        ROLLOVER_RECORD_UNREADABLE,
+        ReturnPlan,
+        roll_household,
+    )
+
+    root, john, sofia, llc = park
+    household = private_household_dir(root, PARK)
+    journal = ledger.path_for(john)
+    original = journal.read_bytes()
+    # The suite's teardown walks every journal with the store's reader, so
+    # the forged line must not outlive the test, passed or failed (K2).
+    try:
+        written_elsewhere(john, ledger.new(
+            ledger.RULES_CHANGED,
+            info={"household": f"../../{CLIENTS_TREE}/{PARK}/Drop files here"}))
+        clients, private = _hashes(root / CLIENTS_TREE), sorted((root / PRIVATE_TREE).rglob("*"))
+        record = journal.read_bytes()
+
+        with pytest.raises(ManifestError) as said:
+            roll_household(household, target_year=2027, plans=[ReturnPlan(prior=john)])
+        problem = engagement_from(john).problem
+        assert "not one folder name" in problem
+        sentence = ROLLOVER_RECORD_UNREADABLE.format(prior=john.name, problem=problem)
+        assert str(said.value) == sentence
+        assert sentence.startswith("1040 - John Park's record could not be read (")
+        assert sentence.endswith("); repair it first (runbook section 6), then roll it forward")
+        assert ROLLOVER_NOT_THIS_HOUSEHOLD.format(prior=john.name, household=PARK) not in sentence
+
+        console = io.StringIO()
+        monkeypatch.setattr("sys.stderr", console)
+        assert run_the_command_line(monkeypatch, [str(household), "--year", "2027",
+                                                  "--only", john.name], io.StringIO()) == 2
+        assert sentence in console.getvalue()
+        assert "not an open-year return" not in console.getvalue()
+
+        assert _hashes(root / CLIENTS_TREE) == clients
+        assert sorted((root / PRIVATE_TREE).rglob("*")) == private
+        assert journal.read_bytes() == record
+    finally:
+        journal.write_bytes(original)
+
+
+def test_a_legacy_folder_that_is_not_open_is_not_this_household_not_a_record_that_cannot_be_read(
+        park, monkeypatch):
+    """Section 15 (K1): a closed year's return whose record reads but holds no
+    rules, with the old workbook beside it, carries the registry's legacy
+    sentence as its ``problem`` - and its record was read, so "record could not
+    be read ... repair it first (runbook section 6)" is false of it and sends
+    nobody anywhere useful. It is not in the open year, which is what
+    ROLLOVER_NOT_THIS_HOUSEHOLD says truly, from the function and from --only."""
+    import io
+
+    from tracker.manifest import EngagementInfo
+    from tracker.registry import LEGACY_FOLDER, LEGACY_MANIFEST_FILENAME, engagement_from
+    from tracker.rollover import ROLLOVER_NOT_THIS_HOUSEHOLD, ReturnPlan, roll_household
+
+    root, john, sofia, llc = park
+    household = _household(root)
+    legacy = make_engagement(root, [], EngagementInfo(active=False), household=PARK, year=2025,
+                             return_name="1040 - Old Park", scaffold=False)
+    (legacy / LEGACY_MANIFEST_FILENAME).write_bytes(b"PK any bytes at all")
+    assert engagement_from(legacy).problem == LEGACY_FOLDER.format(name=LEGACY_MANIFEST_FILENAME)
+    assert engagement_from(legacy).info.tax_year == 2025
+
+    refused = ROLLOVER_NOT_THIS_HOUSEHOLD.format(prior=legacy.name, household=PARK)
+    with pytest.raises(ManifestError) as said:
+        roll_household(household, target_year=2027, plans=[ReturnPlan(prior=legacy)])
+    assert str(said.value) == refused
+    assert "could not be read" not in str(said.value)
+
+    console = io.StringIO()
+    monkeypatch.setattr("sys.stderr", console)
+    assert run_the_command_line(monkeypatch, [str(household), "--year", "2027",
+                                              "--only", legacy.name], io.StringIO()) == 2
+    assert refused in console.getvalue()
+    assert "repair it first" not in console.getvalue()
+    assert "could not be read" not in console.getvalue()
+
+
+def _a_legacy_return_in_the_open_year(root):
+    """A return of the open year (2026) whose record reads and holds no rules,
+    with the old workbook beside it: the registry's legacy folder, and active."""
+    from tracker.manifest import EngagementInfo
+    from tracker.registry import LEGACY_FOLDER, LEGACY_MANIFEST_FILENAME, engagement_from
+
+    legacy = make_engagement(root, [], EngagementInfo(active=True), household=PARK, year=2026,
+                             return_name="1040 - Old Park", scaffold=False)
+    (legacy / LEGACY_MANIFEST_FILENAME).write_bytes(b"PK any bytes at all")
+    found = engagement_from(legacy)
+    assert found.problem == LEGACY_FOLDER.format(name=LEGACY_MANIFEST_FILENAME)
+    assert found.active and found.info.tax_year == 2026
+    return legacy
+
+
+def test_a_legacy_return_in_the_open_year_is_refused_by_roll_forward_with_nothing_written(park):
+    """Section 16 (P302): a legacy return in the open year counts as active, so
+    Roll Forward used to roll it into the next year with zero rows and say
+    nothing - a return that looks set up and asks for nothing. It is refused
+    now, with the sentence that sends the person to set it up again in the
+    app (runbook section 1), and nothing is written: not the client tree, not
+    the private tree, not the record."""
+    from tracker.layout import CLIENTS_TREE, PRIVATE_TREE
+    from tracker.registry import LEGACY_MANIFEST_FILENAME
+    from tracker.rollover import ROLLOVER_LEGACY_FOLDER, ReturnPlan, roll_household
+
+    root, john, sofia, llc = park
+    household = _household(root)
+    legacy = _a_legacy_return_in_the_open_year(root)
+    clients, private = _hashes(root / CLIENTS_TREE), _hashes(root / PRIVATE_TREE)
+    record = ledger.path_for(legacy).read_bytes()
+
+    with pytest.raises(ManifestError) as said:
+        roll_household(household, target_year=2027, plans=[ReturnPlan(prior=legacy)])
+    sentence = ROLLOVER_LEGACY_FOLDER.format(prior=legacy.name, name=LEGACY_MANIFEST_FILENAME)
+    assert str(said.value) == sentence
+    assert sentence == ("1040 - Old Park holds its request list in a workbook the app no longer "
+                        "reads (_manifest.xlsx); set it up again in the app first (runbook "
+                        "section 1), then roll it forward")
+
+    assert _hashes(root / CLIENTS_TREE) == clients
+    assert _hashes(root / PRIVATE_TREE) == private
+    assert ledger.path_for(legacy).read_bytes() == record
+
+
+def test_only_naming_a_legacy_return_in_the_open_year_says_the_legacy_sentence_and_writes_nothing(
+        park, monkeypatch):
+    """Section 16: the command line's --only reaches the same refusal. A
+    legacy return is in the open year, so the name lookup finds it and
+    roll_household refuses it as it refuses any plan - printed under the
+    NOT ROLLED heading, exit 1 - with the legacy sentence and not "is not an
+    open-year return" or "could not be read"."""
+    import io
+
+    from tracker.layout import CLIENTS_TREE, PRIVATE_TREE
+    from tracker.registry import LEGACY_MANIFEST_FILENAME
+    from tracker.rollover import NOT_ROLLED_HEADING, ROLLOVER_LEGACY_FOLDER
+
+    root, john, sofia, llc = park
+    legacy = _a_legacy_return_in_the_open_year(root)
+    clients, private = _hashes(root / CLIENTS_TREE), _hashes(root / PRIVATE_TREE)
+
+    console = io.TextIOWrapper(io.BytesIO(), encoding="utf-8")
+    code = run_the_command_line(monkeypatch, [str(_household(root)), "--year", "2027",
+                                              "--only", legacy.name], console)
+    console.flush()
+    shown = console.buffer.getvalue().decode("utf-8")
+
+    assert code == 1, shown
+    assert f"  {NOT_ROLLED_HEADING}\n" in shown
+    assert ROLLOVER_LEGACY_FOLDER.format(prior=legacy.name, name=LEGACY_MANIFEST_FILENAME) in shown
+    assert "is not an open-year return" not in shown
+    assert "could not be read" not in shown
+    assert _hashes(root / CLIENTS_TREE) == clients
+    assert _hashes(root / PRIVATE_TREE) == private
+
+
+def test_all_refuses_the_whole_household_when_one_of_its_returns_is_a_legacy_folder(
+        park, monkeypatch):
+    """Section 16: a household with one legacy return and ordinary open ones,
+    rolled with --all, is refused whole (decision 159, every ticked return or
+    none): the ordinary returns are not rolled either, and nothing is written
+    for any of them."""
+    import io
+
+    from tracker.layout import CLIENTS_TREE, PRIVATE_TREE, return_dir_for
+    from tracker.registry import LEGACY_MANIFEST_FILENAME
+    from tracker.rollover import ROLLOVER_LEGACY_FOLDER
+
+    root, john, sofia, llc = park
+    legacy = _a_legacy_return_in_the_open_year(root)
+    clients, private = _hashes(root / CLIENTS_TREE), sorted((root / PRIVATE_TREE).rglob("*"))
+    records = {one: ledger.path_for(one).read_bytes() for one in (john, sofia, llc, legacy)}
+
+    console = io.TextIOWrapper(io.BytesIO(), encoding="utf-8")
+    code = run_the_command_line(monkeypatch, [str(_household(root)), "--year", "2027", "--all"],
+                                console)
+    console.flush()
+    shown = console.buffer.getvalue().decode("utf-8")
+
+    assert code == 1, shown
+    assert ROLLOVER_LEGACY_FOLDER.format(prior=legacy.name, name=LEGACY_MANIFEST_FILENAME) in shown
+    for name in (john.name, sofia.name, llc.name, legacy.name):
+        assert not return_dir_for(root, PARK, 2027, name).exists()
+    assert _hashes(root / CLIENTS_TREE) == clients
+    assert sorted((root / PRIVATE_TREE).rglob("*")) == private
+    assert {one: ledger.path_for(one).read_bytes() for one in records} == records
+
+
+def test_roll_forward_refuses_a_legacy_return_in_the_open_year_and_writes_nothing(park):
+    """Section 18 (S1): the one-return form had the gap section 16 left -
+    roll_forward read the legacy return as zero rows and made next year's
+    return with nothing in it. It refuses now with the same sentence, before
+    a row is read, and nothing is written: both trees byte for byte, every
+    record as it was."""
+    from tracker.layout import CLIENTS_TREE, PRIVATE_TREE, return_dir_for
+    from tracker.registry import LEGACY_MANIFEST_FILENAME
+    from tracker.rollover import ROLLOVER_LEGACY_FOLDER
+
+    root, john, sofia, llc = park
+    legacy = _a_legacy_return_in_the_open_year(root)
+    clients, private = _hashes(root / CLIENTS_TREE), _hashes(root / PRIVATE_TREE)
+    records = {one: ledger.path_for(one).read_bytes() for one in (john, sofia, llc, legacy)}
+
+    with pytest.raises(ManifestError) as said:
+        roll_forward(legacy, target_year=2027)
+
+    assert str(said.value) == ROLLOVER_LEGACY_FOLDER.format(
+        prior=legacy.name, name=LEGACY_MANIFEST_FILENAME)
+    assert not return_dir_for(root, PARK, 2027, legacy.name).exists()
+    assert _hashes(root / CLIENTS_TREE) == clients
+    assert _hashes(root / PRIVATE_TREE) == private
+    assert {one: ledger.path_for(one).read_bytes() for one in records} == records
+
+
+def test_the_one_return_command_line_refuses_a_legacy_return_under_not_rolled(park, monkeypatch):
+    """Section 18 (S1): ``python -m tracker.rollover <return> --year 2027``
+    on a legacy return of the open year says the legacy sentence under the
+    NOT ROLLED heading, exit 1, as the household form does - it had printed
+    "Rolled ... forward" and made a 2027 folder with no rows."""
+    import io
+
+    from tracker.layout import CLIENTS_TREE, PRIVATE_TREE, return_dir_for
+    from tracker.registry import LEGACY_MANIFEST_FILENAME
+    from tracker.rollover import NOT_ROLLED_HEADING, ROLLOVER_LEGACY_FOLDER
+
+    root, john, sofia, llc = park
+    legacy = _a_legacy_return_in_the_open_year(root)
+    clients, private = _hashes(root / CLIENTS_TREE), _hashes(root / PRIVATE_TREE)
+
+    console = io.TextIOWrapper(io.BytesIO(), encoding="utf-8")
+    code = run_the_command_line(monkeypatch, [str(legacy), "--year", "2027"], console)
+    console.flush()
+    shown = console.buffer.getvalue().decode("utf-8")
+
+    assert code == 1, shown
+    assert f"  {NOT_ROLLED_HEADING}\n" in shown
+    assert ROLLOVER_LEGACY_FOLDER.format(prior=legacy.name, name=LEGACY_MANIFEST_FILENAME) in shown
+    assert "Rolled " not in shown
+    assert not return_dir_for(root, PARK, 2027, legacy.name).exists()
+    assert _hashes(root / CLIENTS_TREE) == clients
+    assert _hashes(root / PRIVATE_TREE) == private
+
+
+def test_only_naming_a_readable_return_of_a_closed_year_is_not_this_household(park, monkeypatch):
+    """Section 15 (K5): the command line's --only for a return of this
+    household whose record reads but is not in the open year (an older year,
+    set inactive) is refused with ROLLOVER_NOT_THIS_HOUSEHOLD, through
+    parser.error (exit 2), the name as it was typed - not the unreadable-record
+    sentence, and nothing is written."""
+    import io
+
+    from tracker.layout import CLIENTS_TREE, PRIVATE_TREE
+    from tracker.manifest import EngagementInfo
+    from tracker.rollover import ROLLOVER_NOT_THIS_HOUSEHOLD
+
+    root, john, sofia, llc = park
+    household = _household(root)
+    make_engagement(root, W2, EngagementInfo(active=False), household=PARK, year=2025,
+                    return_name="1040 - Old Park", scaffold=False)
+    clients, private = _hashes(root / CLIENTS_TREE), sorted((root / PRIVATE_TREE).rglob("*"))
+
+    console = io.StringIO()
+    monkeypatch.setattr("sys.stderr", console)
+    assert run_the_command_line(monkeypatch, [str(household), "--year", "2027",
+                                              "--only", "1040 - old park"], io.StringIO()) == 2
+    assert ROLLOVER_NOT_THIS_HOUSEHOLD.format(prior="1040 - old park", household=PARK) \
+        in console.getvalue()
+    assert "could not be read" not in console.getvalue()
+    assert _hashes(root / CLIENTS_TREE) == clients
+    assert sorted((root / PRIVATE_TREE).rglob("*")) == private
 
 
 def test_a_renamed_private_folder_pauses_roll_forward_and_the_old_client_folder_appears_as_a_misfit(
