@@ -1,6 +1,6 @@
 {
   "schema": 2,
-  "generated": "2026-10-12",
+  "generated": "2026-10-13",
   "generator": "tools/repo_map.py",
   "generator_sha256": "a394d7104da5155d",
   "module_table_sha256": "2499d0551746f34b",
@@ -15,9 +15,9 @@
     "a person sends the draft"
   ],
   "counts": {
-    "nodes": 293,
+    "nodes": 294,
     "edges": 1329,
-    "reused": 239
+    "reused": 240
   },
   "node_types": [
     "artifact",
@@ -4788,6 +4788,13 @@
       "layer": "docs",
       "sha256": "da0b1d5736747b42",
       "lines": 217
+    },
+    {
+      "id": "pilot/SPEC-form-inputs.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "88801f702f01388e",
+      "lines": 347
     },
     {
       "id": "pilot/SPEC-hide-under-construction.md",
