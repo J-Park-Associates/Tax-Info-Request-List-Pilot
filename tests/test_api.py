@@ -11314,6 +11314,51 @@ def test_a_list_holding_what_an_older_paste_left_stays_editable_and_a_changed_sp
     assert [rule["identifier"] for rule in payload["state"]["rules"]] == ["a\u00a001"]
 
 
+def test_a_held_document_hiding_a_right_to_left_override_is_refused_by_row_and_nothing_is_written(
+        capsys, demo_root, monkeypatch):
+    """P301: a record the store admitted before it read the Document (here
+    written past the gate, as a version-4 store left it) holds a Document
+    with a right-to-left override. An edit that sends it back, with a blank
+    short name, is refused in the editor's words - the row and the Document,
+    the character by code point - and not as an unnamed refused change; and
+    nothing is written, so retyping the Document is the way out."""
+    from dataclasses import replace
+
+    from tracker.locking import engagement_lock
+    from tracker.manifest import load_manifest
+    from tracker.records import rule_to_json
+
+    engagement = _a_return_to_type_into(capsys, demo_root)
+    [item] = load_manifest(engagement)
+    spoofed = "W-2\u202efdp.exe"
+    monkeypatch.setattr(store, "_refuse_a_malformed_line", lambda *args, **kwargs: None)
+    with engagement_lock(engagement):
+        store.record(store.connect(), engagement, ledger.new(ledger.RULES_CHANGED, **{
+            ledger.RULES_KEY: [rule_to_json(replace(item, document=spoofed, short_title=""))]}))
+    monkeypatch.undo()
+    try:
+        rows = payload_of_state(capsys, engagement)["rules"]
+        assert [row["document"] for row in rows] == [spoofed]
+
+        before = ledger.path_for(engagement).read_bytes()
+        code, payload = run(capsys, "edit", api.ENGAGEMENT_FLAG, str(engagement), stdin={
+            "items": [{**rows[0], "short_title": ""}], "engagement": {}})
+        assert code == 1
+        assert payload["error"] == ("Row 1: Document 'W-2<U+202E>fdp.exe' may not contain an "
+                                    "invisible character (U+202E RIGHT-TO-LEFT OVERRIDE)")
+        assert ledger.path_for(engagement).read_bytes() == before
+        # Retyped, the row saves.
+        code, payload = run(capsys, "edit", api.ENGAGEMENT_FLAG, str(engagement), stdin={
+            "items": [{**rows[0], "document": "W-2 Wage Statements", "short_title": ""}],
+            "engagement": {}})
+        assert code == 0, payload
+    finally:
+        # The journal keeps the line written past the gate, which a rebuild of
+        # it (the suite's store fixture) refuses; the record is removed as the
+        # store tests' `by_hand` fixture removes theirs.
+        ledger.path_for(engagement).unlink(missing_ok=True)
+
+
 def test_a_long_identifier_is_refused_as_too_long_and_never_as_a_long_folder_name(
         capsys, demo_root):
     engagement = _a_return_to_type_into(capsys, demo_root)

@@ -1441,9 +1441,10 @@ def test_a_derived_short_name_hiding_an_invisible_character_is_refused_naming_th
     """P290, the second review's G2: a row with no short name of its own is
     named by its Document's first words, so ``W-2<U+202E>fdp.exe`` would put
     the right-to-left override in every working copy's name. The refusal
-    names the Document, the field the person typed, never a Short name."""
-    for document, named in (("W-2\u202efdp.exe", "U+202E RIGHT-TO-LEFT OVERRIDE"),
-                            ("W-2\u00adWages", "U+00AD SOFT HYPHEN")):
+    names the Document, the field the person typed, never a Short name.
+    (A spoofing character is the Document's own refusal first since P301, and
+    is pinned below; the soft hyphen the store's gate admits is this one's.)"""
+    for document, named in (("W-2\u00adWages", "U+00AD SOFT HYPHEN"),):
         with pytest.raises(ManifestError) as refused:
             item_from_fields({"identifier": "A01", "document": document}, where="Row 1")
         said = str(refused.value)
@@ -1457,6 +1458,46 @@ def test_a_derived_short_name_hiding_an_invisible_character_is_refused_naming_th
                             where="Row 1")
     assert item_from_fields({"identifier": "A01", "document": "W-2\u00adWages",
                              "short_title": "W-2"}, where="Row 1").short_title == "W-2"
+
+
+def test_a_document_hiding_a_spoofing_character_is_refused_naming_the_row_and_the_document():
+    """P301: the editor applies the store's Document rule to every row, typed
+    and held alike - a held row whose Document holds a right-to-left override
+    and whose short name is blank, a new row the same - and names the row and
+    the Document, so the save is not left to the gate's unnamed refusal. Where
+    the derived-short-name check would fire on the same character too, the
+    Document's own refusal comes first (no "it is also the short name")."""
+    for hidden, named in (("\u202e", "U+202E RIGHT-TO-LEFT OVERRIDE"),
+                          ("\u200b", "U+200B ZERO WIDTH SPACE")):
+        document = f"W-2{hidden}fdp.exe"
+        held = RequestItem(identifier="A01", document=document)
+        for recorded in ({"a01": held}, None):
+            with pytest.raises(ManifestError) as refused:
+                item_from_fields({"identifier": "A01", "document": document}, where="Row 3",
+                                 recorded=recorded)
+            said = str(refused.value)
+            assert said == (f"Row 3: {COL_DOCUMENT} 'W-2<U+{ord(hidden):04X}>fdp.exe' "
+                            f"may not contain an invisible character ({named})")
+            assert hidden not in said
+        # A short name of its own does not excuse a Document the gate refuses.
+        with pytest.raises(ManifestError, match=f"^Row 3: {COL_DOCUMENT} .*{re.escape(named)}"):
+            item_from_fields({"identifier": "A01", "document": document, "short_title": "W-2"},
+                             where="Row 3", recorded={"a01": replace(held, short_title="W-2")})
+
+
+def test_a_document_holding_only_a_no_break_space_is_not_the_stores_gate_to_refuse():
+    """P301: the gate refuses only the spoofing characters, so a Document an
+    older paste left a no-break space in saves - held unchanged, new with a
+    short name of its own, and new with none (the derived name folds the
+    space, as any run of white space, to an ordinary one)."""
+    document = "W-2\u00a0Wage Statements"
+    held = RequestItem(identifier="A01", document=document)
+    assert item_from_fields({"identifier": "A01", "document": document}, where="Row 1",
+                            recorded={"a01": held}).document == document
+    assert item_from_fields({"identifier": "A01", "document": document, "short_title": "W-2"},
+                            where="Row 1").document == document
+    assert item_from_fields({"identifier": "A01", "document": document},
+                            where="Row 1").document == document
 
 
 def test_a_held_unchanged_row_is_judged_by_the_stores_rule_and_never_the_typed_one():

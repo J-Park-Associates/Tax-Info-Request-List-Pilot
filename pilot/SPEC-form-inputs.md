@@ -577,3 +577,18 @@ rebuild; the handoff does.
 The gate after rebuild 4: `test_api`, `test_single_source`, `test_repo_map`,
 ruff, the map check (a decision row and one test change touch nothing else).
 The builder appends `## Rebuild 4 (Sonnet, 2026-10-13)` to the handoff.
+
+---
+
+## 18. The store's gate reads the Document (P301)
+
+Section 14 and decision P290 say the store's gate itself does not read the
+Document, and section 15 left it to Jason whether it should. He ruled that it
+does (2026-10-13): `pilot/SPEC-document-gate.md` and decision **P301**
+reverse that sentence. `records.document_problem` refuses a spoofing character
+in a request's Document (`layout.spoofing_problem`, the same narrow set as an
+identifier or a short name), `rule_row_fault` names the field `document`, the
+store's admission rises from 4 to 5, and `manifest.item_from_fields` applies
+the rule to every row's Document, typed or held, naming the row and the
+Document before the derived-short-name check of section 15 can say it of the
+same character. Sections 14 to 17 otherwise stand as written.

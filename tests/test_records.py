@@ -645,6 +645,35 @@ def test_an_identifier_or_short_name_with_a_spoofing_character_is_refused_by_cod
         assert checker("A\u00a001") == "" and checker("W\u00adX") == ""
 
 
+def test_a_document_with_a_spoofing_character_is_refused_by_code_point_and_a_paste_is_not():
+    """P301: the Document names a working copy whenever the row has no short
+    name of its own (and an issuer row by the entity it names), so the
+    store's gate reads it as it reads an identifier or a short name: only the
+    spoofing characters, by code point, never quoted. A no-break space or a
+    soft hyphen a paste left in an older Document is admitted."""
+    assert records.document_problem("W-2 Wage Statements") == ""
+    assert records.document_problem("") == ""
+    for hidden, named in (("\u202e", "U+202E RIGHT-TO-LEFT OVERRIDE"),
+                          ("\u200b", "U+200B ZERO WIDTH SPACE")):
+        said = records.document_problem(f"W-2 Wage Statements{hidden}fdp.exe")
+        assert said == f"may not contain an invisible character ({named})"
+        assert hidden not in said
+    assert records.document_problem("W-2\u00a0Wage\u00adStatements") == ""
+
+
+def test_a_stored_row_whose_document_hides_a_spoofing_character_is_a_fault_naming_the_document():
+    """P301: ``rule_row_fault`` is the store's gate and the editor's, so a
+    refused line is named by its field, as an identifier or a short name is;
+    a Document that is not text is still the text rule's, never a crash."""
+    spoof = "W-2\u202efdp.exe"
+    problem = records.document_problem(spoof)
+    assert records.rule_row_fault({"identifier": "A01", "document": spoof}) == ("document", problem)
+    assert records.rule_row_problem({"document": spoof}) == f"'document' {problem}"
+    assert records.rule_row_fault({"identifier": "A01", "document": "W-2\u00a0Wages"}) == ("", "")
+    assert records.rule_row_fault({"identifier": "A01"}) == ("", "")
+    assert records.rule_row_fault({"document": 7}) == ("document", records.LONG_TEXT_BOUNDS)
+
+
 def test_what_a_person_types_is_held_to_the_full_invisible_character_rule():
     """P290: the no-break space and the soft hyphen that the gate admits are
     refused where a person types, by code point."""

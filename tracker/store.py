@@ -327,7 +327,10 @@ _IN_PLACE: dict[int, tuple[str, ...]] = {
 #: no-break space or a soft hyphen an ordinary paste left in an older record
 #: is not a reason to stop its household. Not checked against the office's
 #: real records from here: that read-only run is to be made before landing.
-ADMISSION_VERSION = 4
+#: 5 adds P301's: a request's Document title that hides a spoofing character
+#: (the same narrow set), since the Document names a working copy whenever
+#: the row has no short name of its own.
+ADMISSION_VERSION = 5
 
 #: The ``(table, column)`` pairs an in-place step added, read off
 #: :data:`_IN_PLACE` so that a new step is covered without a second list.

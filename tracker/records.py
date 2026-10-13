@@ -1486,6 +1486,27 @@ def identifier_problem(identifier: str) -> str:
     return ""
 
 
+def document_problem(document: str) -> str:
+    """Why ``document`` may not be a request's Document title, or "" if it
+    may: a character that changes how a name is read - a right-to-left
+    override, a zero-width space - is refused by code point (P301,
+    :func:`tracker.layout.spoofing_problem`).
+
+    The Document names a working copy whenever the row has no short name of
+    its own (``manifest.derived_short_title``), and an issuer row by the
+    entity it names, so a spoofing character held there reaches every file
+    the pass names - the gate that reads the identifier and the short name
+    (P290) must read this too. The whole title is judged, not the derived
+    cut: the issuer's entity is a substring of it, and a spoofing character
+    anywhere in a title is never legitimate. Only that narrow set, as in
+    :func:`identifier_problem`: this is the store's gate, and a no-break
+    space or a soft hyphen an ordinary paste left in an older Document is
+    not a reason to stop its household. The editor asks it of every row's
+    Document, typed or held (``manifest.item_from_fields``).
+    """
+    return spoofing_problem(document) or ""
+
+
 #: The most characters a typed identifier may have (P291): the width a
 #: household or return folder name has (``layout.NAME_MAX_CHARS``), for the
 #: same reason - it begins every file name.
@@ -1989,6 +2010,10 @@ def rule_row_fault(row: dict) -> tuple[str, str]:
     for name in _RULE_TEXT:
         if given(name):
             checks.append((name, text_problem(row[name], long=True)))
+    # A Document that is not text is the text rule's, above; the rest is
+    # P301's: the Document names a working copy, so it is read like a name.
+    if given("document") and isinstance(row["document"], str):
+        checks.append(("document", document_problem(row["document"])))
     if given("expected_count"):
         checks.append(("expected_count",
                        count_problem(row["expected_count"], MIN_EXPECTED_COUNT, MAX_EXPECTED_COUNT)))

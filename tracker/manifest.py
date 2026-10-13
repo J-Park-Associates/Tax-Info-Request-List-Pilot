@@ -123,6 +123,7 @@ from tracker.records import (
     StatusUpdate,
     count_problem,
     date_pattern_problem,
+    document_problem,
     identifier_key,
     identifier_problem,
     info_to_json,
@@ -1109,6 +1110,11 @@ def item_from_fields(fields: Mapping[str, object], *, where: str,
     editable. Any other identifier (a key the list does not hold) is new,
     and gets the typed rule (:func:`typed_identifier_problem`,
     :func:`typed_short_title_problem`).
+
+    The Document is the exception to "typed or held": the store's gate reads
+    it (P301, :func:`document_problem` - the spoofing characters only), so
+    every row's Document is judged by that rule whether it is new or held,
+    named by row and field, and before the derived short name is.
     """
     def text(key: str) -> str:
         value = fields.get(key)
@@ -1127,9 +1133,17 @@ def item_from_fields(fields: Mapping[str, object], *, where: str,
     rule = identifier_problem if held is not None else typed_identifier_problem
     if identifier and (problem := rule(identifier)):
         raise ManifestError(f"{where}: {COL_IDENTIFIER} '{quoted(identifier)}' {problem}")
+    # The store's rule for the Document (P301), typed and held alike: it
+    # names a working copy when the row has no short name of its own, and
+    # the gate would otherwise refuse the save with no row named. Said before
+    # the derived-short-name check (`_short_title`) can say it of the same
+    # character, so the Document's own refusal is the one a person reads.
+    document = text("document")
+    if problem := document_problem(document):
+        raise ManifestError(f"{where}: {COL_DOCUMENT} '{quoted(document)}' {problem}")
     return RequestItem(
         identifier=identifier,
-        document=text("document"),
+        document=document,
         period=text("period"),
         expected_count=_whole_number(fields.get("expected_count"), DEFAULT_EXPECTED_COUNT,
                                      MIN_EXPECTED_COUNT, MAX_EXPECTED_COUNT, COL_EXPECTED_COUNT, where),
@@ -1143,7 +1157,7 @@ def item_from_fields(fields: Mapping[str, object], *, where: str,
         override_reason=text("override_reason"),
         named=_yes_no(fields.get("named"), COL_NAMED, where),
         asked=_yes_no(fields.get("asked"), COL_ASKED, where),
-        short_title=_short_title(fields.get("short_title"), text("document"), where, held),
+        short_title=_short_title(fields.get("short_title"), document, where, held),
     )
 
 
