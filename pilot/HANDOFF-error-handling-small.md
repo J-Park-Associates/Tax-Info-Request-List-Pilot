@@ -939,3 +939,14 @@ stale. Both come from the commit's map recording another lane's
 uncommitted `pilot/HANDOFF-client-folder.md` (Review 8's finding 1), not
 from this section, and af2c1a0 checks current. `ruff check .` is clean. The
 Python 3.11 floor was not run.
+
+## Closed again (2026-10-13, sections 12-14)
+
+The second loop closed at commit `333b2c9` (Review 5: no findings). What
+landed since the first Closed section: section 12 dropped `override_labels`
+(Jason; the editor shows the stored override reasons, P77 amended); section
+13 recorded P196's one exception and made the Client guard test read the
+override reasons with that one value exempt by name; section 14 made the
+exemption the literal text, with a membership assertion, so a reworded
+reason fails the guard. Reviews 3 to 5 and Rebuilds 2 to 4 are above. The
+combined gate is recorded in HANDOFF-form-inputs.md's second Closed section.
