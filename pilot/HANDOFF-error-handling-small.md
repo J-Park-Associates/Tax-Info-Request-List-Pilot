@@ -663,3 +663,117 @@ touch them and did not re-run `update` over them, so `check` and
 that rollover work runs `python tools/repo_map.py update`.
 
 The Python 3.11 floor was not run in this container.
+
+## Review 3 (Opus, 2026-10-13)
+
+Reviewed commit `228094c` ("Drop override_labels ...", the only commit after
+`5de13cc`) against SPEC section 12 and the R5 rule in section 5, on a
+`git archive 228094c` copy in the scratchpad (git-initialised, one commit),
+venv Python 3.13.16. The shared checkout was not touched except for this
+append.
+
+**Resolved.** Section 12 is built as written. `tracker/api.py` loses the
+`OVERRIDE_LABELS` tuple and the `override_labels` entry in `_vocab`;
+`OVERRIDE_REASONS` stays imported because `_vocab` still sends it (ruff clean).
+`tests/test_api.py` loses the length pin and the `override_labels` entry in
+the `drawn` list of `test_no_word_the_window_draws_says_client_but_a_folders_own_name`;
+both tests keep everything else. The diff touches four files: `tracker/api.py`,
+`tests/test_api.py`, `docs/repo-map.json` (generated) and this handoff.
+Nothing else changed.
+
+**Verified**
+- `OVERRIDE_LABELS` / `override_labels` (also `overrideLabels`,
+  `override-labels`, case-insensitive) in every `.js`, `.html`, `.css`,
+  `.json` and `.py` under `app/`, `tracker/`, `tests/` and `tools/`: 0 hits.
+  The four label strings appear nowhere in `app/` or `tracker/`. The
+  `override_label` (singular) hits in `filer.py`, `review.py`, `rollover.py`
+  and `validators.py` are `manifest.override_label`, unrelated and untouched.
+- `override_reasons` and `override_reason_other` are still sent
+  (`tracker/api.py` 1738-1739). The page still reads both
+  (`app/renderer/app.js` 2952-2957), and `vocab.override_reasons` supplies
+  each option's visible text.
+- My own scan: every `vocab.<key>` read in `app/**/*.js|html` checked against
+  `api._vocab()` finds no top-level key the page reads that the API does not
+  send. SPEC section 5's "every key the page reads is sent" names no test
+  that exists by that name. The nearest guards,
+  `test_single_source::test_the_renderer_types_no_vocabulary_of_its_own` and
+  `test_shell::test_the_harness_stub_speaks_the_apis_vocabulary` (which checks
+  the stub, not `app.js`), both pass.
+- `test_the_vocabulary_carries_the_menu_the_screen_and_the_short_words` still
+  pins the menu, the screen, the reasons, the stage and rule shorts, the
+  stored override words, the move warning and the Active help line, so it
+  still tests what its name says. For the "client" test, see H2.
+- `_TITLE_EXEMPT_BRANCHES` never had an `override_labels` entry (the labels
+  were Title Case), so R5's exemption step had nothing to remove.
+- P77 in `pilot/DECISIONS.md` at `228094c` ends "The short labels were never
+  drawn and were dropped on 2026-10-13 (SPEC-error-handling-small section 12);
+  the editor shows the stored words." That wording landed in `9ff3889`.
+
+**Findings**
+
+- **H1 (should fix): the committed map is stale on files the commit itself
+  changed.** `docs/repo-map.json` at `228094c`. On the archive copy, where the
+  other builders' rollover/registry edits do not exist, `tools/repo_map.py
+  check` reports three stale files: `tests/test_api.py`,
+  `pilot/HANDOFF-error-handling-small.md` and
+  `pilot/SPEC-client-folder-unreadable.md`. As a result
+  `test_repo_map::test_the_committed_map_is_current` fails on the commit
+  itself. Cause: `update` ran too early.
+  - The committed hash for `tests/test_api.py` (`25abeba55acb3b33`) is
+    reproduced exactly by putting the old comment line ("(P77): only the label
+    does.") back into the committed file, so the comment was reworded after
+    `update`.
+  - The handoff was mapped at 621 lines, before Rebuild 2 was appended. It is
+    now 665.
+  - The SPEC was mapped at 462 lines. At this commit it is 491.
+
+  The commit message and Rebuild 2 blame the staleness on the rollover files,
+  but at `228094c` alone the cause is the builder's own edits after `update`.
+  Same shape as Review 2's G1. Fix: run `python tools/repo_map.py update` in
+  the commit that lands (CLAUDE.md's same-commit rule), and make sure `check`
+  is clean at the landing head.
+- **H2 (should fix, Jason's call; does not block this lane): the editor now
+  shows staff "Client", and the test meant to catch that does not look.**
+  `app/renderer/app.js` 2956-2957 draws each `vocab.override_reasons` value as
+  option text. The first stored reason is "Client confirmed this is the final
+  version" (`tracker/manifest.py` 332). P196 says every word the app shows
+  staff says Taxpayer. SPEC-taxpayer-words R7 and P78 ("only its label
+  changes") met P196 through the label section 12 has just dropped. Before
+  this commit, `test_no_word_the_window_draws_says_client_but_a_folders_own_name`
+  checked the labels, which were never drawn. After it, the test checks
+  nothing on the override menu, so its name claims more than it tests. This is
+  not a build defect, since section 12 asked for exactly this edit; it is a
+  conflict section 12 did not settle. Either reword the stored value (P77 says
+  stored words do not change), or record the exception in P196/P78 and add
+  `("override_reasons", vocab["override_reasons"])` to the drawn list with that
+  one stored value exempt by name (R7).
+- **H3 (should fix): the curated map still says the vocabulary sends
+  `override_labels`.** In `docs/repo-map.curated.json`, `tracker/api.py`'s
+  notes ("vocab gains ... override_labels (the stored override words are
+  unchanged)") are rendered into `docs/repo-map.md`. CLAUDE.md: changed
+  behaviour means editing the curated layer, then `update`. Fix: mark it
+  dropped (section 12) or delete the phrase, in the same landing commit as H1.
+- **N1 (nit):** the commit message says "its title-case entry are gone". No
+  title-case entry existed, and none was removed.
+- **N2 (nit):** Rebuild 2 says "Not committed or pushed", yet it is part of
+  `228094c`.
+- **N3 (nit):** `test_the_title_case_rule_does_what_jason_wrote` (test_api
+  9608-9611) still uses two of the dropped label strings as examples. This is
+  harmless, because they test the casing helper and not the key.
+
+**Gate** (archive copy, one process per file, in parallel,
+`-p no:cacheprovider`, Python 3.13.16)
+
+| File | Result |
+|---|---|
+| test_api | 522 passed |
+| test_single_source | 218 passed |
+| test_shell | 326 passed |
+| test_layers | 31 passed |
+| test_repo_map | 81 passed, 1 failed: `test_the_committed_map_is_current` (H1; the commit's own files, not the other builders') |
+
+`python -m ruff check .`: all checks passed. `python tools/repo_map.py check`:
+stale (exit 1), on the three files named in H1. The Python 3.11 floor was not
+run.
+
+Findings: 0 must fix, 3 should fix, 3 nits.
