@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 316,
     "edges": 1384,
-    "reused": 0
+    "reused": 262
   },
   "node_types": [
     "artifact",
@@ -4627,8 +4627,8 @@
       "id": "docs/architecture.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "4e62a30e518baa19",
-      "lines": 258,
+      "sha256": "f479c2cfc2c47a97",
+      "lines": 271,
       "role": "The overview between the README and the map: the three programs (the shell, the engine, the scheduled pass) and the reading child; the package layer by layer with each module's one sentence; the tools; the tests and their guards; the three places the app writes; the decisions that shape it (deterministic, offline, standard library first, hash-checked installs, one-time steps built in); and how each package is built.",
       "notes": "Written for a person who did not watch the code grow. It names no numbers a test pins and no file the code does not own; tests/test_layers.py's table is the source of its layers."
     },

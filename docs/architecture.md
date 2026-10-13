@@ -177,6 +177,19 @@ across the package:
   real reader in a child, the way a pass does. No test holds a client's
   document; the corpus under `tests/irs/` is blank IRS forms, and the walk
   over it is the `corpus` marker.
+- No test file imports another. What two files need goes in a helper module,
+  and `test_suite_shape.py` fails when a test file, a helper module or
+  `conftest.py` imports a test file, or a helper module is imported by none:
+  `samples.py` (the made-up documents; `text_pdf` has a style for each of the
+  three writers it replaced), `builders.py` (a return, a document dropped
+  into it, the filer's scenes), `passes.py` (whole passes over a household),
+  `children.py` (waiting for the reading child), `node_harness.py` (the
+  renderer's JavaScript run under node, and `js_function`, the one way to cut
+  a function out of a script), `css_rules.py`, `api_driver.py` (the command
+  line as `main.js` drives it), `wording.py`, `import_graph.py` and
+  `routing_cases.py`. The tools import the cases, placements and corpus
+  readers from `test_catalog.py`, `test_irs_forms.py` and `test_real_corpus.py`
+  by name (decision 70), and those suites keep carrying the names.
 
 The suite runs in parallel with pytest-xdist (`python -m pytest -q -n auto`),
 and the gate runs each affected file as its own process under the floor
