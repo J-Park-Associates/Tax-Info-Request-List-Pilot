@@ -1,6 +1,6 @@
 {
   "schema": 2,
-  "generated": "2026-10-12",
+  "generated": "2026-10-13",
   "generator": "tools/repo_map.py",
   "generator_sha256": "a394d7104da5155d",
   "module_table_sha256": "2499d0551746f34b",
@@ -15,9 +15,9 @@
     "a person sends the draft"
   ],
   "counts": {
-    "nodes": 302,
+    "nodes": 304,
     "edges": 1336,
-    "reused": 248
+    "reused": 247
   },
   "node_types": [
     "artifact",
@@ -4722,6 +4722,13 @@
       "lines": 52
     },
     {
+      "id": "pilot/AUDIT-2026-10-13-architecture.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "d921a5d3403843c4",
+      "lines": 1749
+    },
+    {
       "id": "pilot/AUDIT-2026-10-13-error-handling.md",
       "type": "doc",
       "layer": "docs",
@@ -4732,8 +4739,8 @@
       "id": "pilot/DECISIONS.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "4ea1fc1d1de29122",
-      "lines": 302
+      "sha256": "8010d0421705c2db",
+      "lines": 305
     },
     {
       "id": "pilot/HANDOFF-client-folder.md",
@@ -4767,8 +4774,8 @@
       "id": "pilot/HANDOFF.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "0a67831ff4957b20",
-      "lines": 142
+      "sha256": "fe8974aed3cb28e0",
+      "lines": 159
     },
     {
       "id": "pilot/PROMPT-reader-bench.md",
@@ -4798,6 +4805,13 @@
       "layer": "docs",
       "sha256": "be1f3ac7540b9cd8",
       "lines": 134
+    },
+    {
+      "id": "pilot/SPEC-architecture.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "71927b94e1c8dc4a",
+      "lines": 926
     },
     {
       "id": "pilot/SPEC-check-notes-0.3.md",

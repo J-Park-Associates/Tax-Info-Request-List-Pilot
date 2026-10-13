@@ -18,7 +18,7 @@ this repository; [`SPEC.md`](SPEC.md) says what it builds.
   `/Applications` and in `~/Desktop/Apps/Published` is the `d39b92e7` build,
   which is the same program: everything since changed prompts and records only.
 
-- **Decisions live in [`DECISIONS.md`](DECISIONS.md), rows P1 to P286.** The
+- **Decisions live in [`DECISIONS.md`](DECISIONS.md), rows P1 to P311.** The
   badge reads **Pilot 0.4** (P281, 2026-10-11): 0.3 plus the UI review's work. Code
   and tests cite those numbers, so a row is never renumbered or removed. Why
   a thing is the way it is: search the row, do not guess.
@@ -29,7 +29,18 @@ this repository; [`SPEC.md`](SPEC.md) says what it builds.
 
 ## Current work
 
-Nothing is in flight. What landed on 2026-10-12, in the software's words:
+**The architecture refactor, tranche 1 (2026-10-13).**
+[`SPEC-architecture.md`](SPEC-architecture.md) is the plan: a read-only audit
+of the whole repository (evidence in
+[`AUDIT-2026-10-13-architecture.md`](AUDIT-2026-10-13-architecture.md)), the
+target shape, phases 0 to 7, and the migration checklist. Jason took P309 (the
+pilot is the one codebase; nothing more is merged from the original), P310
+(mypy as a development-only tool) and P311 (tranche 1 first: phases 0 and 1,
+jobs J1 to J6; no module is split until it lands). Nothing is built yet. Next:
+J1 and J2 in separate sessions (SPEC-architecture section 8 has the lanes);
+each reads the SPEC's section 6, its own job, and the findings it cites.
+
+What landed on 2026-10-12, in the software's words:
 
 - **P285 ([`SPEC-ocr-prepare.md`](SPEC-ocr-prepare.md), sections 1-9.5).**
   Every scanned page and photo is prepared in memory before the reader sees
@@ -89,6 +100,12 @@ first.
 
 ## Open for Jason
 
+- **Who builds SPEC-architecture's jobs.** CLAUDE.md's "How work flows here"
+  says Opus designs, builds and reviews; P285 was built by Sonnet and
+  reviewed by Opus, which is Jason's routing. The SPEC follows the routing
+  and says so (section 6); one word settles it.
+- **Phases 2 to 7 of SPEC-architecture**, after tranche 1 lands (P311), and
+  its questions Q-A to Q-F as each phase comes up.
 - **The office bench session's account.** `PROMPT-reader-bench.md` has the
   session run under the account that runs the schedule (its step 1 requires
   the clients root, which `review-codes` and the backtest need), while the
