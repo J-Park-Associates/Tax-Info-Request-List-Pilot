@@ -1155,3 +1155,158 @@ constant, section 13) was made with a read-modify-write script rather than the
 Edit tool; the other builder's test was not yet in the file and the diff shows
 only my hunks, but the orchestrator should confirm that the other lane's test
 is present.
+
+## Review 7 (Opus, 2026-10-13)
+
+Review of SPEC-form-inputs section 19 (f55605a, P304) and sections 20 and 21
+(ccdf943, P305), judged against section 21 where it differs from 20. Read on
+a fresh `git archive ccdf943` copy (git-initialised), Python 3.13 venv. The
+reviewer did not build either change.
+
+**Verdicts.** Section 19: lands; one should fix for Jason's ruling (1), one
+nit (2). Sections 20/21: land; one should fix (3), one nit (4). Both builds
+do what their SPECs named on every case the SPECs named; the findings are
+cases the SPECs did not name. Finding 5 is outside the sections, seen while
+tracing, and is not this build's defect.
+
+**What was checked, with evidence.**
+
+- *Section 19 placement and sentence.* `tracker/api.py` `_people_from_spec`:
+  `if not is_a_spelling(spelling): raise ManifestError(ONE_WORD_SPELLING)`,
+  then `if problem := records.text_problem(spelling): raise
+  ManifestError(f"{PEOPLE_LABEL}: a spelling {problem}")`, then `if spelling
+  not in spellings` - after the two-word check, before the duplicate test,
+  the SPEC's sentence exactly. Its one caller is `_info_from_spec`, reached by
+  `edit` (line 3580, the editor's people block), `create` (4213) and
+  `rollover` (4605). The store does not re-judge: `records.person_from_json`
+  checks the kind, `text_problem(name)` and `is_a_spelling` only, unchanged.
+- *Section 19 tests.* Each refusal asserts the exact sentence and
+  `(list_head(engagement), ledger.path_for(engagement).read_bytes()) ==
+  before`. The 1,001 value is `"J " + "x" * 999` (two words, 1,001); the
+  saving value `"J " + "x" * 998` with `assert len(longest) == 1000` and
+  `saved.spellings == (longest,)`; the ordering test drives
+  `api._people_from_spec` with `"x" * 1001` and `"Smith\x07"` and asserts
+  `ONE_WORD_SPELLING`. Mutations on throwaway copies: removing the check
+  fails exactly the 1,001 and control-character tests; moving the text rule
+  above the one-word check fails exactly the ordering test.
+- *`\x07` is the right choice.* `[ch.isspace() for ch in "\x1c\x1d\x1e\x1f"]`
+  is `[True, True, True, True]`, `"\x07".isspace()` is `False`, and
+  `"Jane\x07 Smith".split()` is `['Jane\x07', 'Smith']`: the builder is right
+  that `\x1c`-`\x1f` would be split away before the rule sees them.
+- *Section 20/21 code.* `stored = {identifier_key(item.identifier): item ...}`
+  and `held = stored.get(identifier_key(item.identifier))`; changed is `held
+  is None`, or any of `_PATH_FIELDS` differs, or `item.asked and not
+  held.asked` - the old three conditions, rewritten as a loop. `_PATH_FIELDS =
+  ("document", "period", "allowed_extensions")` with the comment "bar the
+  identifier, which rows are matched by (its key) and whose case is not a
+  change (P305)". No new import (`identifier_key` was already imported).
+- *A respelling that changes the key cannot escape.* A key the list does not
+  hold gives `held is None` and is measured. Matching a renamed row onto
+  another stored row's key compares that row's document, period and types,
+  and two sent rows of one key are refused by the manifest's duplicate rule.
+- *Section 20 tests and mutations.* The three tests pin the SPEC's three
+  cases under both `path_setting` parametrizations. Restoring exact keying
+  (`stored = {item.identifier: ...}`, `stored.get(item.identifier)`) fails
+  exactly
+  `test_a_change_of_case_alone_on_a_held_row_past_the_limit_is_the_same_row_and_is_not_measured`
+  in both parametrizations; the other two and the decision-131 save test
+  `test_saving_a_list_refuses_a_changed_row_whose_path_would_pass_the_limit_and...`
+  pass ("2 failed, 6 passed"). Putting `"identifier"` back into
+  `_PATH_FIELDS` with key matching kept fails the same two, so section 21's
+  change was needed.
+
+**Findings.**
+
+1. **Should fix (Jason's ruling): a spelling the record already holds is
+   judged again on every editor save.** The comment says "a stored one is
+   not re-judged", which is true of the store's gate only. The editor sends
+   the people block with every save (`app/renderer/app.js`
+   `engagementFromFields`: `details.people = editorPeople.filter((p) =>
+   p.name.trim()).map(personSpec);`), and `person_from_json` admits a
+   spelling of any length or with a control character. So a record written
+   before P304 keeps such a spelling, and on that return every save,
+   row-only edits included, is refused until a person finds and unticks it.
+   Probe: a 2,001-character spelling saved with the rule patched out (as the
+   old build saved it), then the rows and stored people sent back as the
+   editor sends them gave `1 People: a spelling must be one line of text of
+   at most 1000 characters, with no control character`. The sentence names
+   neither the person nor the spelling, and a `\x07` cannot be seen in the
+   box. P290/P291 solved the same case for identifiers: a value sent back as
+   it is held gets the store's rule, and only a new or changed one gets the
+   typed rule. Options: (a) skip `text_problem` for a spelling the stored
+   person already holds; (b) keep the refusal but name the person; (c) accept
+   it as is (incidence is near nil) and reword the comment. P288's name check
+   has the same shape but cannot meet this case, because the store does
+   re-judge names.
+2. **Nit: "edit-household's people" (SPEC section 19, Rebuild 5).**
+   `_cmd_edit_household` takes no people. Its `members` go through
+   `_members_from_spec`, which returns bare names with no spellings. The check
+   reaches `create`, the editor's `edit` and `rollover`, which are all the
+   paths that take spellings, so coverage is complete. Only the wording is
+   wrong.
+3. **Should fix (small): one key-preserving respelling changes the path's
+   length.** Section 21 and the docstring rest on "`records.identifier_key`,
+   which strips and lowers and so cannot change a path's length". The strip
+   changes nothing by this point (`text()` and `_cmd_edit` strip, and
+   `identifier_problem` refuses a trailing space). The lowering does, for
+   exactly one pair: `"İ".lower()` is `"i̇"`, one code point
+   becoming two. A scan of every code point grouped by `.lower()` finds that
+   pair and no other, counted in code points or UTF-16 units. Both `"İ01"`
+   and `"i̇01"` pass `identifier_problem` and `typed_identifier_problem`,
+   and `sanitize_component` keeps them at 3 and 4 characters. Probe: a held
+   row `İ01` past the limit, respelt `i̇01`, saves at ccdf943 with room need
+   going 270 to 271 (limit 260). At 21b9d38 the same save is refused ("would
+   be 271 characters, past the 260 Windows allows"). So P305 opened a
+   one-character, unmeasured growth for this one letter. It is contrived
+   (Turkish dotted capital I retyped with a combining dot), but it makes
+   section 21's sentence false. Fix: also count a row as changed when
+   `len(item.identifier) != len(held.identifier)`, so a respelling that keeps
+   both key and length is a pure case change. The deeper cause is older:
+   Python's `.lower()` is wider than the Windows case rule here, so
+   `identifier_key` treats two names as one that NTFS would treat as two.
+4. **Nit: the case-only test asserts only `code == 0`.** Both mutations make
+   it fail, so it does test the mechanism. It would read stronger if it also
+   checked that the respelling took (`b01` recorded) and that the ledger
+   otherwise holds what was sent.
+5. **Outside the sections, seen while tracing (should fix, separate SPEC;
+   pre-existing, not this build's defect).** The rewritten `_PATH_FIELDS`
+   comment says these are "the things a working copy's path is made of, bar
+   the identifier". That is not so. Since decision 144 the copy is named by
+   `item.short_name` (`short_title or derived_short_title(document)`,
+   `filer._parts_of`), and `short_title` is not compared. The old comment
+   ("the four things") had the same error. Two probes give the same result
+   at 21b9d38 and at ccdf943:
+   - Lengthening a held row's short title to 20 characters takes A01's need
+     from 253 to 270 (limit 260), and the save succeeds unmeasured.
+   - Setting A01 Not Applicable with a 20-character short title, then
+     clearing Not Applicable in a second save, succeeds; A01's need ends at
+     270 against 260. Decision 142's reason for measuring a newly Asked row
+     ("it is now a request creation would have measured") applies just as
+     much to a row taken off Not Applicable.
+
+**Gate** (on the ccdf943 copy; each file its own process, in parallel,
+`-p no:cacheprovider -q`; Python 3.13.16 venv):
+
+| Step | Result |
+|---|---|
+| tests/test_api.py | 533 passed |
+| tests/test_errors.py | 85 passed |
+| tests/test_single_source.py | 218 passed |
+| tests/test_layers.py | 31 passed |
+| tests/test_repo_map.py | 82 passed |
+| tests/test_tripwire.py | 23 passed |
+| `ruff check .` | All checks passed |
+| `tools/repo_map.py check` | Map is current (302 nodes), exit 0 |
+| Python 3.11 floor | not run (no pytest for it here) |
+
+**Hygiene.** No new import or layer change. No print, and no `str(exc)` in
+`tracker/`; the one new `str(raised.value)` is a test asserting the
+sentence, and `test_errors` passes. ruff is clean, so no dead code. Under
+`tracker/` the two commits touch `api.py` only. f55605a also carries
+`pilot/SPEC-client-folder-unreadable.md` section 18, which its commit
+message attributes to the landing session. ccdf943 carries this SPEC's
+section 21. The other lane's
+`test_rollover_refuses_a_legacy_return_with_the_legacy_sentence_and_writes_nothing`
+is byte-identical at 4dca3fb and ccdf943 (AST source segment compared), and
+`git diff 4dca3fb ccdf943 -- tests/test_api.py` shows 71 insertions and 2
+deletions: the two replaced lines of the guard test.

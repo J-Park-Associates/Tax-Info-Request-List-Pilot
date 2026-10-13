@@ -811,3 +811,61 @@ current and `check` exited 0 (302 nodes).
 **Could not do.** The Python 3.11 floor was not run. This section's gate is
 section 20's, so the numbers are shared with Rebuild 6 of
 `pilot/HANDOFF-form-inputs.md`.
+
+## Review 4 (Opus, 2026-10-13)
+
+Review of SPEC-error-handling-small section 13 (ccdf943, test only), read on
+a fresh `git archive ccdf943` copy with the Python 3.13 venv. The reviewer
+did not build it.
+
+**Verdict.** Lands, with one should fix (1). The test reads the override
+reasons, the exemption applies only to the override-reasons branch, and
+there is no code change.
+
+**What was checked, with evidence.**
+
+- `drawn` now ends `("override_reasons", vocab["override_reasons"])`. The
+  filter adds `and (where, text) != ("override_reasons",
+  _STORED_REASON_WITH_CLIENT)`, and the constant sits beside `_FOLDER_WORDS`
+  with a comment citing P196 and section 13.
+- No code change. ccdf943's `tracker/api.py` hunks are section 20's alone,
+  and `git diff 4dca3fb ccdf943 -- tests/test_api.py` is 71 insertions and 2
+  deletions: the two replaced guard lines.
+- Mutations on throwaway copies, each run on this one test:
+
+  | variant | result |
+  |---|---|
+  | exemption removed | fails |
+  | exemption pointed at `OVERRIDE_REASONS[1]` | fails |
+  | the same text added to `drawn` under another name (`("elsewhere", _STORED_REASON_WITH_CLIENT)`) | fails, so the exemption covers the override reasons only |
+  | a second reason "Client sent it by hand" appended to `manifest.OVERRIDE_REASONS` | fails |
+  | `OVERRIDE_REASONS[0]` reworded to "Client confirmed this is the final version." | **passes** (finding 1) |
+
+**Findings.**
+
+1. **Should fix: the exemption is bound to the index, not the text, and its
+   comment claims the opposite.** The comment says "Exempted by its exact
+   text, named from the manifest so a reworded reason is a failure here, not
+   a silent pass". Because `_STORED_REASON_WITH_CLIENT =
+   manifest.OVERRIDE_REASONS[0]` moves with the manifest, a reworded first
+   reason is exempted silently (last mutation above). So is any reorder that
+   puts a different "Client" reason first. SPEC section 13 ("exempts exactly
+   the one stored value by name ... naming `manifest.OVERRIDE_REASONS[0]`'s
+   text") and P196's clause ("the guard test exempts that one value by
+   name") both mean the literal value. The test and those words disagree on
+   this point. Fix, test only: make the constant the literal `"Client
+   confirmed this is the final version"`, and add `assert
+   _STORED_REASON_WITH_CLIENT in manifest.OVERRIDE_REASONS`. A rewording
+   then fails the guard, and a renamed stored value fails the assert instead
+   of leaving a dead exemption. The comment then becomes true.
+
+**Hygiene.** No import, layer, print or `str(exc)` change. The other lane's
+`test_rollover_refuses_a_legacy_return_with_the_legacy_sentence_and_writes_nothing`
+is byte-identical at 4dca3fb and ccdf943, so the script rewrite of
+`tests/test_api.py` lost nothing.
+
+**Gate.** Shared with Review 7 of `pilot/HANDOFF-form-inputs.md`, on the
+ccdf943 copy, each file its own process: test_api 533, test_errors 85,
+test_single_source 218, test_layers 31, test_repo_map 82, test_tripwire 23,
+all passed; `ruff check .` clean; `repo_map.py check` current (302 nodes).
+The Python 3.11 floor was not run.
