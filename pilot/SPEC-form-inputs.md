@@ -592,3 +592,34 @@ store's admission rises from 4 to 5, and `manifest.item_from_fields` applies
 the rule to every row's Document, typed or held, naming the row and the
 Document, or the Issuer Name for an issuer row, before the derived-short-name
 check of section 15 can say it of the same character. Sections 14 to 17 otherwise stand as written.
+
+---
+
+## 19. F7: a typed spelling is held to the name's rule (Jason, 2026-10-13; decision P304)
+
+Jason's ruling on F7 (Review 1): option 1 - where typed, not at the gate.
+A person's spellings are searched on every page as the name is, and
+`api._people_from_spec` held each only to `is_a_spelling` (two words or
+more): a 10,000-character spelling or one with a control character was
+saved and searched every pass. The build is Sonnet's.
+
+**R2, extended.** In `_people_from_spec`, after the two-word check, each
+spelling (whitespace-collapsed, as today) is held to `records.text_problem`
+with the name's sentence form: `raise ManifestError(f"{PEOPLE_LABEL}: a
+spelling {problem}")`. `_people_from_spec` serves both `create` and
+`edit-household`'s people, so one check covers both. The store's gate is
+unchanged (admission stays 5); a stored spelling is not re-judged.
+
+**Tests** (`tests/test_api.py`, beside the P288 name tests): a 1,001-character
+two-word spelling is refused with the sentence and nothing is written; a
+spelling with a control character likewise; a 1,000-character two-word
+spelling saves; the one-word refusal (`ONE_WORD_SPELLING`) still comes first
+for a one-word value.
+
+**Decision row (added by the landing session):**
+
+| P304 | 2026-10-13 | A person's typed spelling is held to the name's rule - one line of at most 1,000 characters, no control character - where it is typed (`api._people_from_spec`); the store's gate does not re-judge stored spellings (SPEC-form-inputs section 19). | F7 of the first form-inputs review: the spellings are searched on every page as the name is and were bounded only to two words. |
+
+Gate: `test_api`, `test_single_source`, `test_layers`, `test_repo_map`,
+ruff, the map check. The builder appends `## Rebuild 5 (Sonnet, 2026-10-13)`
+to `pilot/HANDOFF-form-inputs.md`.
