@@ -1698,6 +1698,58 @@ def test_the_client_tree_is_byte_identical_after_a_roll_forward_whose_record_nam
         assert sorted((root / PRIVATE_TREE).rglob("*")) == private
 
 
+def test_rolling_a_return_whose_record_cannot_be_read_says_so_rather_than_not_this_household(
+        park, monkeypatch):
+    """Section 14: a prior whose record carries a forged line is not among
+    the open returns, but "is not an open-year return of Park Family" is
+    false of it and sends nobody to the broken record. Roll Forward (the
+    function and the command line's --only) says the return's record could
+    not be read, with the store's own words, and writes nothing: the client
+    tree and the record are byte for byte what they were."""
+    import io
+
+    from tracker.layout import CLIENTS_TREE, PRIVATE_TREE, private_household_dir
+    from tracker.registry import engagement_from
+    from tracker.rollover import (
+        ROLLOVER_NOT_THIS_HOUSEHOLD,
+        ROLLOVER_RECORD_UNREADABLE,
+        ReturnPlan,
+        roll_household,
+    )
+
+    root, john, sofia, llc = park
+    household = private_household_dir(root, PARK)
+    journal = ledger.path_for(john)
+    original = journal.read_bytes()
+    written_elsewhere(john, ledger.new(
+        ledger.RULES_CHANGED, info={"household": f"../../{CLIENTS_TREE}/{PARK}/Drop files here"}))
+    clients, private = _hashes(root / CLIENTS_TREE), sorted((root / PRIVATE_TREE).rglob("*"))
+    record = journal.read_bytes()
+
+    with pytest.raises(ManifestError) as said:
+        roll_household(household, target_year=2027, plans=[ReturnPlan(prior=john)])
+    problem = engagement_from(john).problem
+    assert "not one folder name" in problem
+    sentence = ROLLOVER_RECORD_UNREADABLE.format(prior=john.name, problem=problem)
+    assert str(said.value) == sentence
+    assert sentence.startswith("1040 - John Park's record could not be read (")
+    assert sentence.endswith("); repair it first (runbook section 6), then roll it forward")
+    assert ROLLOVER_NOT_THIS_HOUSEHOLD.format(prior=john.name, household=PARK) not in sentence
+
+    console = io.StringIO()
+    monkeypatch.setattr("sys.stderr", console)
+    assert run_the_command_line(monkeypatch, [str(household), "--year", "2027",
+                                              "--only", john.name], io.StringIO()) == 2
+    assert sentence in console.getvalue()
+    assert "not an open-year return" not in console.getvalue()
+
+    assert _hashes(root / CLIENTS_TREE) == clients
+    assert sorted((root / PRIVATE_TREE).rglob("*")) == private
+    assert journal.read_bytes() == record
+    # The suite's teardown walks every journal; the forged line is not left in it.
+    journal.write_bytes(original)
+
+
 def test_a_renamed_private_folder_pauses_roll_forward_and_the_old_client_folder_appears_as_a_misfit(
         park, capsys, monkeypatch):
     """Decision 188 (T5): a household folder renamed in the firm's tree is

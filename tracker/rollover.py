@@ -160,6 +160,16 @@ ROLLOVER_TWO_OPEN_YEARS = (
 #: Why one plan is not this household's business: a household rollover
 #: rolls the returns of its own open year and nothing else.
 ROLLOVER_NOT_THIS_HOUSEHOLD = "{prior} is not an open-year return of {household}"
+#: What a plan or ``--only`` naming one of this household's returns says
+#: when that return's record cannot be read: it is not among the open
+#: returns because it cannot be told, not because it is another household's,
+#: and "is not an open-year return" would send nobody to the broken record.
+#: ``problem`` is the registry's own sentence for the return (the firm's
+#: errors whole, anything else by class).
+ROLLOVER_RECORD_UNREADABLE = (
+    "{prior}'s record could not be read ({problem}); repair it first "
+    "(runbook section 6), then roll it forward"
+)
 #: What a return left unticked by a household rollover is retired with.
 #: The retirement itself is an ordinary details edit (``active: no``) and
 #: the reason is not a detail field, so it is said where a person reads
@@ -624,6 +634,30 @@ def open_year_returns(household_dir: Path | str) -> tuple[list[int], list]:
                    if one.active and years and one.tax_year == years[0]]
 
 
+def _unreadable_return_said(household_dir: Path, wanted: str, key) -> str:
+    """The sentence for a named return of this household whose record cannot
+    be read, or ``""`` when the name is not that.
+
+    A return the record cannot tell is listed by the registry with its
+    ``problem`` and is not active, so it is missing from the open-year
+    returns for that reason - not because it belongs to another household.
+    Saying :data:`ROLLOVER_NOT_THIS_HOUSEHOLD` of it is false and names no
+    record to repair, so a name that is one of the household's own return
+    folders (discovery's positional list, the one the open returns come
+    from) is asked of the registry first. ``key`` maps a folder to what
+    ``wanted`` is compared with: the resolved folder for a plan, the
+    layout's name key for a name typed on the command line.
+    """
+    from tracker.registry import engagement_from
+
+    for folder in household_returns(household_dir):
+        if key(folder) == wanted:
+            problem = engagement_from(folder).problem
+            if problem:
+                return ROLLOVER_RECORD_UNREADABLE.format(prior=folder.name, problem=problem)
+    return ""
+
+
 def roll_household(
     household_dir: Path | str,
     *,
@@ -685,7 +719,9 @@ def roll_household(
     Refuses the whole call when the household has more than one open year
     (:data:`ROLLOVER_TWO_OPEN_YEARS` - there is no one year to roll) and
     when a plan names a return that is not one of that year's active ones
-    (:data:`ROLLOVER_NOT_THIS_HOUSEHOLD`). **No permission is changed and
+    (:data:`ROLLOVER_NOT_THIS_HOUSEHOLD`, or :data:`ROLLOVER_RECORD_UNREADABLE`
+    when it is one of this household's returns whose record cannot be read -
+    it is not open because it cannot be told). **No permission is changed and
     nothing under the client tree is touched but the new year's folder**,
     which the first scaffold makes and the rest find; the inbox's README
     is rewritten once at the end, so the client sees the new year's lists
@@ -715,8 +751,10 @@ def roll_household(
         prior = Path(plan.prior)
         one = by_folder.get(_same_folder(prior))
         if one is None:
-            raise ManifestError(ROLLOVER_NOT_THIS_HOUSEHOLD.format(
-                prior=prior.name, household=household_dir.name))
+            raise ManifestError(
+                _unreadable_return_said(household_dir, _same_folder(prior), _same_folder)
+                or ROLLOVER_NOT_THIS_HOUSEHOLD.format(
+                    prior=prior.name, household=household_dir.name))
         planned.append((one, plan))
     # Folder-name order without case: the order the pass takes the locks
     # in and the order a person reads the household's returns in, so "the
@@ -1043,8 +1081,10 @@ if __name__ == "__main__":
             for name in ns.only:
                 one = by_name.get(name_key(normalised_name(name)))
                 if one is None:
-                    parser.error(ROLLOVER_NOT_THIS_HOUSEHOLD.format(prior=name,
-                                                                    household=given.name))
+                    wanted = name_key(normalised_name(name))
+                    parser.error(
+                        _unreadable_return_said(given, wanted, lambda f: name_key(f.name))
+                        or ROLLOVER_NOT_THIS_HOUSEHOLD.format(prior=name, household=given.name))
                 chosen.append(one)
         if len(forms) > 1 and len(forms) != len(chosen):
             parser.error("give --form once for every return, or one per --only in the same order")

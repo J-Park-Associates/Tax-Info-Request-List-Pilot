@@ -910,3 +910,46 @@ pytest for it), so the office gate before the merge covers it.
 **Decided by Jason, 2026-10-13:** confirmed - New return proceeds into a
 household whose other return's record will not read while the client folder
 is there; the pass keeps reporting that return. P296 stands as written.
+
+## Rebuild 5 (Sonnet, 2026-10-13)
+
+Built SPEC-client-folder-unreadable section 14, nothing more.
+
+**Built.** `tracker/rollover.py`: `ROLLOVER_RECORD_UNREADABLE` (the SPEC's
+sentence, exact) and a private helper `_unreadable_return_said`. When a
+planned prior is not among the open returns, `roll_household` first asks the
+helper: it walks `households.household_returns` (discovery's positional list,
+the one the open returns come from), finds the folder (resolved-path
+comparison), asks `registry.engagement_from(folder).problem` and, if set,
+returns the new sentence; `ManifestError` carries it. Only when that is empty
+does `ROLLOVER_NOT_THIS_HOUSEHOLD` stand. The CLI's `--only` lookup in `main`
+uses the same helper (comparing by the layout's `name_key`) and says the same
+sentence through `parser.error`. `roll_household`'s docstring names the second
+refusal. The helper reads the `Engagement.problem` field; no `str(exc)` in a
+handler.
+
+**Tests.** `test_the_client_tree_is_byte_identical_after_a_roll_forward_whose_record_names_a_path`:
+before, failed with `'not one folder name' in '1040 - John Park is not an
+open-year return of Park Family'` (plus a teardown error from the forged
+journal it left); after, passes unchanged. New
+`test_rolling_a_return_whose_record_cannot_be_read_says_so_rather_than_not_this_household`:
+before the wiring (constant defined, helper absent) it failed with the "is not
+an open-year return of Park Family" sentence; after, passes. It asserts the
+whole sentence from the function and from the command line (`--only`, exit 2),
+that the old sentence is absent, and that the client tree, the private tree
+listing and the record bytes are unchanged; it restores the journal at the end
+because the suite's teardown walks every journal with the store's reader.
+
+**Gate** (one process per file): test_rollover 65 passed, test_registry 44
+passed 2 skipped, test_households 20, test_api 522, test_errors 85,
+test_layers 31, test_single_source 218, test_repo_map 82; ruff clean; repo-map
+`update` then `check` current (302 nodes). No retry was needed. The map update
+was swept into `6d67fc1` by the other lane's commit, so the working tree shows
+only `tracker/rollover.py` and `tests/test_rollover.py` as modified.
+
+**Not done / noted.** The CLI is covered by the one new test (it has no
+separate test for the `--only` path of a readable-but-not-open return, which
+still says the old sentence). A retired return, a legacy-folder return (its
+`problem` is set) and a return not in discovery's list are the cases the
+helper distinguishes: legacy is said as "record could not be read (...)" per
+the SPEC's "if its problem is set".
