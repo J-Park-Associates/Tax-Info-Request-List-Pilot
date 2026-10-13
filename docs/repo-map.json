@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 316,
     "edges": 1384,
-    "reused": 262
+    "reused": 261
   },
   "node_types": [
     "artifact",
@@ -8781,11 +8781,10 @@
       "id": "tests/test_pilot_ui.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "b4a9bc235f62cb83",
-      "lines": 221,
+      "sha256": "1866906f06e0553c",
+      "lines": 217,
       "exports": [
         "CSS_NAME",
-        "REPO",
         "outside_root",
         "test_a_long_lists_rows_are_absolute_one_line_and_set_no_height_of_their_own",
         "test_cards_never_shrink_inside_the_scrolling_column",
@@ -10586,8 +10585,8 @@
       "id": "tests/test_shell_menu.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "4383ce018269dcdf",
-      "lines": 749,
+      "sha256": "5065a6d6460ccb4d",
+      "lines": 745,
       "exports": [
         "MAC",
         "NOT_OPENED",

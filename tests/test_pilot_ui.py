@@ -12,7 +12,6 @@ size on the ramp, contrast) are checked in a browser and reported in
 """
 
 import re
-from pathlib import Path
 
 from tests.css_rules import (
     _SIDES,
@@ -27,9 +26,6 @@ from tests.css_rules import (
     top_level,
 )
 from tests.node_harness import read
-
-REPO = Path(__file__).resolve().parent.parent
-
 
 CSS_NAME = "pilot-ui.css"
 

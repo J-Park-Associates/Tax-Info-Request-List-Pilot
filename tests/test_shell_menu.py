@@ -172,10 +172,6 @@ def test_the_menu_is_set_before_the_first_frame_from_the_apis_words_in_both_buil
 MAC = {"platform": "darwin", "arch": "arm64", "release": "24.1.0"}
 
 
-def _top(menu: list[dict]) -> list[str]:
-    return [top.get("label") or top.get("role") for top in menu]
-
-
 def _without_mnemonics(items: list[dict]) -> list[dict]:
     """The same menu with the Windows ampersand taken out of every label."""
     return [{**item, **({"label": item["label"].replace("&", "")} if item.get("label") else {}),
