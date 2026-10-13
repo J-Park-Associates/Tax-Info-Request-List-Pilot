@@ -1447,3 +1447,70 @@ names the same two files and nothing of this build. `python -m ruff check .`:
 all checks passed. Not run: the 3.11 floor.
 
 Findings: 0 must fix, 1 should fix, 2 nits.
+
+## Rebuild 9 (Sonnet, 2026-10-13)
+
+Section 18 of `SPEC-client-folder-unreadable.md` (the eighth review's
+amendments), built as written: S1, N1, N2.
+
+**What changed.**
+- `tracker/rollover.py`, S1: `roll_forward` refuses a legacy return after
+  the year bound and before `load_manifest` reads a row. A call-time import
+  of `LEGACY_FOLDER`, `LEGACY_MANIFEST_FILENAME` and `engagement_from` from
+  `tracker.registry`; `engagement_from(prior_dir).problem` is compared with
+  `LEGACY_FOLDER.format(name=LEGACY_MANIFEST_FILENAME)` (the one constant,
+  no substring) and raises `ManifestError(ROLLOVER_LEGACY_FOLDER ...)`. Any
+  other `problem` is left to `load_manifest`. `roll_household`'s own check is
+  untouched. The command line's one-return branch wraps its `roll_forward`
+  call in `except ManifestError as exc`: prints
+  `<name> was not rolled forward`, the `NOT ROLLED` heading and the sentence,
+  exit 1 (the year-not-later refusal now says itself the same way instead of
+  a traceback; its sentence is unchanged). `api._cmd_rollover` unchanged.
+- N1: the by-plan and `--only` section-16 tests pin `_hashes(root /
+  PRIVATE_TREE)` before and after instead of a path listing.
+- N2: `tracker/registry.py` module docstring (misfit list) and the registry
+  node's `role` in `docs/repo-map.curated.json` now say the workbook with
+  "none in its record (no record, or one that holds no list)"; the map was
+  regenerated with `update`.
+- Tests added: `tests/test_rollover.py`
+  `test_roll_forward_refuses_a_legacy_return_in_the_open_year_and_writes_nothing`
+  and `test_the_one_return_command_line_refuses_a_legacy_return_under_not_rolled`;
+  `tests/test_api.py`
+  `test_rollover_refuses_a_legacy_return_with_the_legacy_sentence_and_writes_nothing`
+  (inserted after `test_rollover_refuses_a_missing_prior`, one exact insertion).
+
+**Per-test results (before = the pre-change code, shown by the mutation
+below; after = as built).**
+
+| Test | Before | After |
+|---|---|---|
+| roll_forward refuses a legacy return (new) | fails | passes |
+| one-return command line refuses under NOT ROLLED (new) | fails | passes |
+| api `rollover` refuses a legacy return (new) | fails | passes |
+| by-plan section-16 test (N1: private tree hashes) | passes | passes |
+| `--only` section-16 test (N1: private tree hashes) | passes | passes |
+| every other section-16 and section-15 test | passes | passes |
+
+**Mutation check** (on a copy of the tree, so the running gate was not
+disturbed): `if False and engagement_from(prior_dir).problem == ...` in
+`roll_forward`. `test_rollover`: exactly the two new tests fail, 70 pass,
+no section-16 or section-15 test among the failures. `test_api`: the new
+test fails. The check was restored (the working tree never held the
+mutation).
+
+**Gate** (one process per file, in parallel, venv Python, `-p no:cacheprovider -q`):
+
+| Check | Result |
+|---|---|
+| test_rollover | 72 passed |
+| test_registry | 44 passed, 2 skipped (1 runpy warning) |
+| test_api | 527 passed |
+| test_single_source | 218 passed |
+| test_layers | 31 passed |
+| test_repo_map | 82 passed |
+| `ruff check .` | all checks passed |
+| `repo_map.py update` / `check` | map current (302 nodes) |
+
+**Not done.** The 3.11 floor interpreter was not run (the venv Python only).
+test_errors was not run: no wording or `str(exc)` was added, and the spec's
+gate does not list it.

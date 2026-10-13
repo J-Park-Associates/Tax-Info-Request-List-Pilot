@@ -591,6 +591,37 @@ def test_rollover_refuses_a_missing_prior(capsys, demo_root):
     assert "No record found" in payload["error"]
 
 
+def test_rollover_refuses_a_legacy_return_with_the_legacy_sentence_and_writes_nothing(
+        capsys, demo_root):
+    """Section 18 (S1): the app's Roll Forward on a return whose record reads
+    and holds no request list, with the old workbook beside it, is refused
+    with the rollover's legacy sentence - it used to roll into the next year
+    with zero rows and say nothing - and nothing is written, in either tree."""
+    import hashlib
+
+    from tracker.manifest import EngagementInfo
+    from tracker.registry import LEGACY_MANIFEST_FILENAME
+    from tracker.rollover import ROLLOVER_LEGACY_FOLDER
+
+    legacy = make_engagement(demo_root, [], EngagementInfo(active=True), household=HOUSEHOLD,
+                             year=2026, return_name="1040 - Old Smith")
+    (legacy / LEGACY_MANIFEST_FILENAME).write_bytes(b"PK any bytes at all")
+
+    def everything():
+        return {str(p.relative_to(demo_root)): (hashlib.sha256(p.read_bytes()).hexdigest()
+                                                if p.is_file() else "folder")
+                for p in sorted(demo_root.rglob("*"))}
+
+    before = everything()
+    code, payload = run(capsys, "rollover", stdin={"prior": str(legacy), "year": 2027})
+
+    assert code == 1
+    assert payload["error"] == ROLLOVER_LEGACY_FOLDER.format(
+        prior=legacy.name, name=LEGACY_MANIFEST_FILENAME)
+    assert not where(demo_root, legacy.name, year=2027).exists()
+    assert everything() == before
+
+
 def test_a_client_of_only_illegal_characters_still_makes_one_folder_name(capsys, demo_root):
     """The return's folder name is the form and the client, sanitised: a
     client typed as nothing a folder may hold still makes one name, under

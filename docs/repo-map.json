@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 302,
     "edges": 1336,
-    "reused": 248
+    "reused": 247
   },
   "node_types": [
     "artifact",
@@ -2787,8 +2787,8 @@
       "id": "tracker/registry.py",
       "type": "module",
       "layer": "core",
-      "sha256": "38371eddcb7f4767",
-      "lines": 1040,
+      "sha256": "5fab4243931e2b5f",
+      "lines": 1041,
       "cli": "python -m tracker.registry",
       "exports": [
         "EmptyRoot",
@@ -2838,7 +2838,7 @@
         "MISFIT_CLIENT_LOOK_ALIKE": "\"is a look-alike of the client folder of the household {household} but is another folder; nothing in it is read, and it is never taken for that household's\"",
         "TWO_CLAIM": "'Two folders claim the household `{name}`: `{a}` and `{b}`. Keep one; a copy of a household folder is never a second household.'"
       },
-      "role": "Finds every engagement under the clients root: any folder holding the engagement's record (ledger.LEDGER_FILENAME), without descending into one. Reads each record's details for client, link, due, sender, firm, reminders and active. A folder holding only the workbook the tracker no longer reads (LEGACY_MANIFEST_FILENAME) and no record is terminal too and is listed as a legacy folder (LEGACY_FOLDER), never as an engagement. There is no registry file.",
+      "role": "Finds every engagement under the clients root: any folder holding the engagement's record (ledger.LEDGER_FILENAME), without descending into one. Reads each record's details for client, link, due, sender, firm, reminders and active. A folder holding the workbook the tracker no longer reads (LEGACY_MANIFEST_FILENAME) and no request list in its record (no record, or a record that holds none) is terminal too and is listed as a legacy folder (LEGACY_FOLDER), never as an engagement. There is no registry file.",
       "notes": "Replaced engagements.yaml (decision 27): a hand-kept list a typo could silently skip a client from. Hidden/underscore folders and Prepared/Shared are skipped, a return is the fourth level and nothing below one is walked, a record the readers refuse is listed with its problem rather than dropped, and a root with no engagement at all is an error - that is a typo in the scheduled task, not an empty practice. mark_superseded(): an engagement another one was rolled forward from is inactive with its successor named - the rollover never writes to the prior, so the successor's details are the record. Engagement wraps EngagementInfo and delegates its fields rather than copying them. Decision 66: _same_folder() matches Rolled From by the client and engagement folder names when the absolute path no longer resolves. Decision 67: _prior_of() never compares an engagement with itself and matches the engagement sharing the most trailing names only when it is the only one; the walk lists a folder it could not read as a problem row, never a silence (decision 125 turned it into the positional _walk_root()/_walk_private()/_walk_household()/_walk_year(), and a folder it cannot list is the UNLISTED misfit). Decision 68: a Rolled From that matches nothing is a warning the engagement carries (ROLLED_FROM_UNMATCHED); a problem row is never the prior. Decision 104: discovery is by the journal, not by a workbook; engagement_from() reads the details and the rules through the store, catching ManifestError, LedgerError and StoreError - and any other exception one synced record raises, said by errors.error_class alone with its message kept by errors.keep (an OS error's message is a client's folder; decision 190) - into the problem, so one folder cannot end the pass inside discovery; a folder whose record carries no rules beside the legacy workbook is listed the same way as one with no record (an engagement created before decision 103 whose rules never reached the journal). Nothing imports such a folder, by the owner's word: it is set up again in the app. This is the one reader of LEGACY_MANIFEST_FILENAME in the package. It imports store and ledger (L1) from L3, which the layers allow. Decision 131: _prior_of() reads layout.shared_tail and layout.ROLLED_FROM_TAIL (moved there from _shared_tail/_TAIL_NAMES so the scaffold reads the same rule); _same_folder stays here because it resolves, which layer 0 must not. Decision 177: the record wins for what a return is (its label, its year, its prior); where anything is written is positional, and a return rolls forward where it sits. Decision 188: _skip reads layout.MACHINE_PREFIXES (the one list; the name rule refuses every such name), and a household or return folder whose name the layout's rule refuses is MISFIT_BAD_NAME with the rule's reason - the constructors would refuse a path through it, so the pass never reaches it. Decision 188: _walk_root tells the two trees apart by layout.place_of (CLIENTS / PRIVATE), never by comparing a tree word; the CLI's root is door.checked_root. Decision 188 (part 3): the folder is the identity and the record's labels are a claim. NAME_DISAGREES and _disagreement are gone (overruled with decision 177's warning and 125's 'the record wins'): discover_engagements fills Registry.paused (household -> households.HOUSEHOLD_PAUSED or HOUSEHOLD_PAUSED_YEAR, from households.pause_of over the household's record and its readable returns) and Registry.stopped (TWO_CLAIM for every household whose folder or claimed name is another's by layout.name_key - a copy of a household folder - and HOUSEHOLD_RECORD_MISSING for a household position whose record is gone while its returns hold theirs; those returns are listed as engagements carrying the sentence, so the pass counts them as failed). _walk_root lists the client tree's first level by name with os.scandir (never deeper, never a stat of what is inside) and every Clients folder that is no discovered household's is MISFIT_CLIENT_NO_RECORD; MISFIT_NO_HOUSEHOLD_RECORD is corrected (the app will not set a household up over it). Review of 188: held_back(household_dir) is the one question a new return and every Roll Forward ask - stopped (record gone, TWO_CLAIM), paused, or its client folder gone - with the pass's own sentence (M3, S4); client folders are matched to households by layout.name_key (S5). Re-check of 188 (R1, correcting S5): a client folder is a household's when its name matches under os.path.normcase, as the file system compares; one that matches only by layout.name_key is MISFIT_CLIENT_LOOK_ALIKE - listed, never adopted or read. The key refuses; it never identifies. Decision 192: households_named(private, names) lists the private tree's first level by name and walks only the households whose names match by name_key, with the walk's own per-household code shared with discover_engagements, so the card resolves a feed without walking the practice; paused and stopped are not filled. Decision 193: a folder the walk cannot list is said by class and code (errors.error_class, decision 190) in its misfit sentence, the full text kept with errors.keep() only; an empty root is EmptyRoot, a RegistryError the app answers as a practice not set up yet, while any other is said (PRACTICE_NOT_WALKED). P119: mark_superseded resolves every return's folder once (_Priors) instead of once per pair (7 s at 150 rolled-forward returns, quadratic); the client-folder check and _two_claims look names up by key instead of comparing every pair - each pinned in tests/test_registry.py against the old rule. P120: household_positions(root) lists the private tree's households as _walk_root does, for the firm cache. Review fold: household_positions leaves out the folders _skip() passes over. P208 (pilot/SPEC-scale-1000.md): held_back asks stopped_households(root), which is discover_engagements(root).stopped from the same walk and the same two rules (_households_kept, _stopped_of, shared with _kept) without reading a return, inside settings.one_reading(). P219 (pilot/SPEC-speed-round.md): engagement_from asks store.has_rules for a legacy folder rather than building its list. Pilot P225: _Priors.by_tail() groups the readable returns by their last layout.ROLLED_FROM_TAIL names, once, and _prior_of's name fallback compares Rolled From only with its own group - every return outside it ends in fewer than three of its names, which the floor refuses, so the answer is the every-pair answer (tests/test_registry.py keeps that rule as a reference). It took 1,999,000 common_tail calls, about 0.9 s a discovery, at 1,000 rolled households after a root move."
     },
     {
@@ -3163,8 +3163,8 @@
       "id": "tracker/rollover.py",
       "type": "module",
       "layer": "core",
-      "sha256": "0a11c6bd6a412446",
-      "lines": 1249,
+      "sha256": "bb35943c882c2f06",
+      "lines": 1267,
       "cli": "python -m tracker.rollover",
       "exports": [
         "HouseholdRollover",
@@ -4645,7 +4645,7 @@
       "id": "docs/repo-map.curated.json",
       "type": "file",
       "layer": "docs",
-      "sha256": "d718dc95b920423e",
+      "sha256": "e6d285c7f8e08106",
       "lines": 1322,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
@@ -4739,8 +4739,8 @@
       "id": "pilot/HANDOFF-client-folder.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "cdffa81a726fdd01",
-      "lines": 1449
+      "sha256": "0d24d96e4642784c",
+      "lines": 1516
     },
     {
       "id": "pilot/HANDOFF-document-gate.md",
@@ -6149,8 +6149,8 @@
       "id": "tests/test_api.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "a52472d8f61cacc7",
-      "lines": 11528,
+      "sha256": "37cecdecc96ec195",
+      "lines": 11594,
       "exports": [
         "COUNTS",
         "DEEPER_ROOT_LENGTH",
@@ -6187,6 +6187,7 @@
         "test_a_card_parked_for_an_unnamed_issuer_offers_the_next_free_issuer_row",
         "test_a_card_parked_for_any_other_reason_offers_no_issuer_box",
         "test_a_case_only_change_reads_the_same_in_the_readme_and_the_letter",
+        "test_a_change_of_case_alone_on_a_row_past_the_limit_is_the_same_row_and_is_not_measured",
         "test_a_claim_is_offered_only_on_the_row_the_click_would_take",
         "test_a_click_on_a_held_lock_is_kind_locked_with_the_passes_start_host_and_current_file",
         "test_a_client_drop_named_like_the_status_page_is_seen_by_the_cache",
@@ -6445,6 +6446,7 @@
         "test_rollover_carries_the_catalog_the_prior_was_cut_from",
         "test_rollover_carries_the_client_but_not_last_years_link_or_due",
         "test_rollover_clears_the_filing_deadline_and_redefaults_it_for_the_new_year",
+        "test_rollover_refuses_a_legacy_return_with_the_legacy_sentence_and_writes_nothing",
         "test_rollover_refuses_a_missing_prior",
         "test_rollover_retires_the_prior_in_the_priors_list",
         "test_rule_two_names_the_inbox_and_the_years_folder_and_is_quoted_everywhere",
@@ -9173,8 +9175,8 @@
       "id": "tests/test_rollover.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "0a7698beeb69343e",
-      "lines": 1980,
+      "sha256": "f6fd9983e24210d5",
+      "lines": 2035,
       "exports": [
         "PAIR_SAID",
         "PARK",
@@ -9227,6 +9229,7 @@
         "test_prior_engagement_is_never_written_to",
         "test_prior_year_beats_the_template",
         "test_relative_periods_roll_too",
+        "test_roll_forward_refuses_a_legacy_return_in_the_open_year_and_writes_nothing",
         "test_rolling_a_return_whose_record_cannot_be_read_says_so_rather_than_not_this_household",
         "test_rollover_refills_the_greeting_and_the_link_from_the_household_where_blank",
         "test_rollover_rolls_a_return_into_the_next_years_folder_of_the_same_household_under_the_same_name",
@@ -9244,6 +9247,7 @@
         "test_the_household_rollover_makes_no_change_under_the_client_tree_but_the_new_year_folder",
         "test_the_household_rollover_rolls_every_ticked_return_into_one_new_year_under_its_own_lock",
         "test_the_note_about_an_unread_index_is_the_last_warning_of_each_rolled_return",
+        "test_the_one_return_command_line_refuses_a_legacy_return_under_not_rolled",
         "test_the_rollover_carries_a_row_per_issuer",
         "test_the_rollover_carries_asked_and_named_and_asks_what_arrived",
         "test_the_rollover_carries_rules_engagement_details_and_learned_keywords_into_next_years_record",

@@ -496,6 +496,18 @@ def roll_forward(
     # retires the live engagement behind them.
     if target_year is not None:
         check_tax_year(target_year)
+    # A legacy folder (P302, section 18): its record reads and holds no
+    # rules, the old workbook beside it, and it counts as active - so
+    # reading it here gives zero rows and a next year that looks set up and
+    # asks for nothing. Refused before a row is read, whichever door got
+    # here (the one-return command line, the app's Roll Forward), with the
+    # registry's one constant and never a substring. Any other problem the
+    # registry reports is left to load_manifest, which refuses it loudly.
+    from tracker.registry import LEGACY_FOLDER, LEGACY_MANIFEST_FILENAME, engagement_from
+
+    if engagement_from(prior_dir).problem == LEGACY_FOLDER.format(name=LEGACY_MANIFEST_FILENAME):
+        raise ManifestError(ROLLOVER_LEGACY_FOLDER.format(
+            prior=prior_dir.name, name=LEGACY_MANIFEST_FILENAME))
     # Last year, as its record has it: the statuses the last scan wrote,
     # the file counts it saw, and the keywords somebody's filings taught
     # the rows. The taught keywords matter here more than anywhere - they
@@ -1162,11 +1174,17 @@ if __name__ == "__main__":
     template = template_items(forms[0]) if forms else []
     ns.form = forms[0] if forms else ""
 
-    result = roll_forward(
-        given,
-        target_year=ns.year,
-        template=template,
-    )
+    try:
+        result = roll_forward(
+            given,
+            target_year=ns.year,
+            template=template,
+        )
+    except ManifestError as exc:
+        # The household form's refusal, said under the same heading
+        # (section 18): the legacy folder's sentence, and the year bound's.
+        print(f"{given.name} was not rolled forward\n\n  {NOT_ROLLED_HEADING}\n    {exc}\n")
+        raise SystemExit(1) from None
 
     from tracker.layout import household_name_of
 

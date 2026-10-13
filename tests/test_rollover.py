@@ -1820,7 +1820,7 @@ def test_a_legacy_return_in_the_open_year_is_refused_by_roll_forward_with_nothin
     root, john, sofia, llc = park
     household = _household(root)
     legacy = _a_legacy_return_in_the_open_year(root)
-    clients, private = _hashes(root / CLIENTS_TREE), sorted((root / PRIVATE_TREE).rglob("*"))
+    clients, private = _hashes(root / CLIENTS_TREE), _hashes(root / PRIVATE_TREE)
     record = ledger.path_for(legacy).read_bytes()
 
     with pytest.raises(ManifestError) as said:
@@ -1832,7 +1832,7 @@ def test_a_legacy_return_in_the_open_year_is_refused_by_roll_forward_with_nothin
                         "section 1), then roll it forward")
 
     assert _hashes(root / CLIENTS_TREE) == clients
-    assert sorted((root / PRIVATE_TREE).rglob("*")) == private
+    assert _hashes(root / PRIVATE_TREE) == private
     assert ledger.path_for(legacy).read_bytes() == record
 
 
@@ -1851,7 +1851,7 @@ def test_only_naming_a_legacy_return_in_the_open_year_says_the_legacy_sentence_a
 
     root, john, sofia, llc = park
     legacy = _a_legacy_return_in_the_open_year(root)
-    clients, private = _hashes(root / CLIENTS_TREE), sorted((root / PRIVATE_TREE).rglob("*"))
+    clients, private = _hashes(root / CLIENTS_TREE), _hashes(root / PRIVATE_TREE)
 
     console = io.TextIOWrapper(io.BytesIO(), encoding="utf-8")
     code = run_the_command_line(monkeypatch, [str(_household(root)), "--year", "2027",
@@ -1865,7 +1865,7 @@ def test_only_naming_a_legacy_return_in_the_open_year_says_the_legacy_sentence_a
     assert "is not an open-year return" not in shown
     assert "could not be read" not in shown
     assert _hashes(root / CLIENTS_TREE) == clients
-    assert sorted((root / PRIVATE_TREE).rglob("*")) == private
+    assert _hashes(root / PRIVATE_TREE) == private
 
 
 def test_all_refuses_the_whole_household_when_one_of_its_returns_is_a_legacy_folder(
@@ -1898,6 +1898,61 @@ def test_all_refuses_the_whole_household_when_one_of_its_returns_is_a_legacy_fol
     assert _hashes(root / CLIENTS_TREE) == clients
     assert sorted((root / PRIVATE_TREE).rglob("*")) == private
     assert {one: ledger.path_for(one).read_bytes() for one in records} == records
+
+
+def test_roll_forward_refuses_a_legacy_return_in_the_open_year_and_writes_nothing(park):
+    """Section 18 (S1): the one-return form had the gap section 16 left -
+    roll_forward read the legacy return as zero rows and made next year's
+    return with nothing in it. It refuses now with the same sentence, before
+    a row is read, and nothing is written: both trees byte for byte, every
+    record as it was."""
+    from tracker.layout import CLIENTS_TREE, PRIVATE_TREE, return_dir_for
+    from tracker.registry import LEGACY_MANIFEST_FILENAME
+    from tracker.rollover import ROLLOVER_LEGACY_FOLDER
+
+    root, john, sofia, llc = park
+    legacy = _a_legacy_return_in_the_open_year(root)
+    clients, private = _hashes(root / CLIENTS_TREE), _hashes(root / PRIVATE_TREE)
+    records = {one: ledger.path_for(one).read_bytes() for one in (john, sofia, llc, legacy)}
+
+    with pytest.raises(ManifestError) as said:
+        roll_forward(legacy, target_year=2027)
+
+    assert str(said.value) == ROLLOVER_LEGACY_FOLDER.format(
+        prior=legacy.name, name=LEGACY_MANIFEST_FILENAME)
+    assert not return_dir_for(root, PARK, 2027, legacy.name).exists()
+    assert _hashes(root / CLIENTS_TREE) == clients
+    assert _hashes(root / PRIVATE_TREE) == private
+    assert {one: ledger.path_for(one).read_bytes() for one in records} == records
+
+
+def test_the_one_return_command_line_refuses_a_legacy_return_under_not_rolled(park, monkeypatch):
+    """Section 18 (S1): ``python -m tracker.rollover <return> --year 2027``
+    on a legacy return of the open year says the legacy sentence under the
+    NOT ROLLED heading, exit 1, as the household form does - it had printed
+    "Rolled ... forward" and made a 2027 folder with no rows."""
+    import io
+
+    from tracker.layout import CLIENTS_TREE, PRIVATE_TREE, return_dir_for
+    from tracker.registry import LEGACY_MANIFEST_FILENAME
+    from tracker.rollover import NOT_ROLLED_HEADING, ROLLOVER_LEGACY_FOLDER
+
+    root, john, sofia, llc = park
+    legacy = _a_legacy_return_in_the_open_year(root)
+    clients, private = _hashes(root / CLIENTS_TREE), _hashes(root / PRIVATE_TREE)
+
+    console = io.TextIOWrapper(io.BytesIO(), encoding="utf-8")
+    code = run_the_command_line(monkeypatch, [str(legacy), "--year", "2027"], console)
+    console.flush()
+    shown = console.buffer.getvalue().decode("utf-8")
+
+    assert code == 1, shown
+    assert f"  {NOT_ROLLED_HEADING}\n" in shown
+    assert ROLLOVER_LEGACY_FOLDER.format(prior=legacy.name, name=LEGACY_MANIFEST_FILENAME) in shown
+    assert "Rolled " not in shown
+    assert not return_dir_for(root, PARK, 2027, legacy.name).exists()
+    assert _hashes(root / CLIENTS_TREE) == clients
+    assert _hashes(root / PRIVATE_TREE) == private
 
 
 def test_only_naming_a_readable_return_of_a_closed_year_is_not_this_household(park, monkeypatch):
