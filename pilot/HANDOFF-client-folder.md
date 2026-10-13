@@ -953,3 +953,138 @@ still says the old sentence). A retired return, a legacy-folder return (its
 `problem` is set) and a return not in discovery's list are the cases the
 helper distinguishes: legacy is said as "record could not be read (...)" per
 the SPEC's "if its problem is set".
+
+## Review 6 (Opus, 2026-10-13)
+
+Independent review of Rebuild 5, commit `2599175`
+(`git diff 6d67fc1 2599175 -- tracker/rollover.py tests/test_rollover.py`),
+against SPEC section 14. Everything ran on a `git archive 2599175` copy in the
+scratchpad (git-initialised, one commit); the checkout was not touched except
+for this section. The probe file `tests/test_probe_r6.py` and the mutations
+lived in that copy only.
+
+**Resolved.**
+- `test_the_client_tree_is_byte_identical_after_a_roll_forward_whose_record_names_a_path`
+  is unchanged by the diff (the diff only adds code) and passes.
+- The new test asserts the whole sentence from `roll_household` and from the
+  command line (`--only`, exit 2), that the old sentence is absent, and that
+  nothing is written: client-tree hashes, the private-tree listing, the record's
+  bytes. **It catches the helper being bypassed** (mutations on the copy):
+  M1, `_unreadable_return_said` always returns `""`: the new test and the
+  forged-line test both fail (`'not one folder name' in '1040 - John Park is
+  not an open-year return of Park Family'`). M2, only `roll_household`'s call
+  bypassed: the new test fails. M3, only `main`'s `--only` call bypassed: the
+  new test fails. So both call sites are pinned.
+- The helper matches by discovery's positional list (`household_returns`) and
+  by `_same_folder` (function) or `name_key` (command line). The case it must
+  leave alone still gets `ROLLOVER_NOT_THIS_HOUSEHOLD`, run once each in the probe file:
+  another household's folder (`Smith Family/2026/1040 - John Park`, same
+  return name) → "`1040 - John Park` is not an open-year return of Park Family";
+  a name that exists nowhere (`1040 - Nobody`), from the function and from
+  `--only` (exit 2) → the old sentence; a readable return of another year that
+  is not open (`2025/1040 - Old Park`, `active: no`), from the function and
+  from `--only "1040 - old park"` (exit 2, case folded) → the old sentence. That
+  last one is the `--only` readable-but-not-open path the handoff says has no
+  test (K5).
+- No `str(exc)` in a handler (the helper reads `Engagement.problem`, which the
+  registry already sanitised); `test_errors` passes. No layer change: the
+  helper imports `registry` at call time, as `open_year_returns` already does;
+  `test_layers` passes. No dead code; ruff clean.
+- "runbook section 6" is the right section and matches what is already there.
+  Section 6 holds *When a record needs recovering*, and the hold-back sentence
+  already in the runbook (section 1, *The same hold-back, when a record cannot be
+  read*, P296's `CLIENT_SIDE_UNKNOWN`) points to "(runbook section 6)" for the
+  same kind of record. Context for Jason, not a finding: what a malformed line
+  *means* is explained in section 9 (the "line N of the record is malformed"
+  bullet), and the advice there is "do not edit the record by hand; run the
+  store check", which section 6 covers as well.
+
+**Findings.**
+
+**K1 - should fix, needs a SPEC line.** `tracker/rollover.py`
+`_unreadable_return_said`: a legacy-folder return is described as a record
+that "could not be read". When a record reads, holds no rules and has
+`_manifest.xlsx` beside it, `registry.engagement_from` gives an Engagement *with
+its `info` read* and `problem = LEGACY_FOLDER`. The helper wraps that
+sentence as it is. Probe (`2025/1040 - Old Park`, `active: no`, record with an
+empty list, `_manifest.xlsx` beside it), from the function and from `--only` alike:
+
+> 1040 - Old Park's record could not be read (holds a request list in a
+> workbook the app no longer reads (_manifest.xlsx) and no record; set the
+> engagement up again in the app); repair it first (runbook section 6), then
+> roll it forward
+
+It is misleading in three ways:
+(a) the record was read (`load_engagement_info` returned it);
+(b) section 6's recover procedure has nothing to repair; the runbook's own
+instruction for this folder is section 1, *A folder from before September
+2026*: set it up again in the app;
+(c) "then roll it forward" is the wrong next step.
+Worse, **the helper only ever reaches a legacy return that is not open**
+(retired, superseded, or another year). One in the open year is `active` and
+is planned (see observation 1). For those returns the old sentence ("is not
+an open-year return of Park Family") was true, so the new rule replaces a true
+sentence with a false one. The builder followed section 14's "if its `problem`
+is set" literally, so the SPEC needs the line. Proposed rule: say
+`ROLLOVER_RECORD_UNREADABLE` only when `problem` is set **and is not**
+`registry.LEGACY_FOLDER.format(name=LEGACY_MANIFEST_FILENAME)`. The legacy folder
+gets either `ROLLOVER_NOT_THIS_HOUSEHOLD` (true there) or its own words, with
+no "could not be read" and no section-6 pointer, for instance
+"`<prior>` <the LEGACY_FOLDER sentence>". Comparing the sentence is the only
+hook today; a flag on `Engagement` would be cleaner, and the SPEC author picks.
+Add one test: a not-open legacy return of the household gets the chosen
+sentence and not "could not be read". Should fix rather than must: the Roll
+Forward dialog offers open returns only, so a person most likely meets this through a
+name typed on the command line or a plan passed to the function.
+
+**K2 - nit.** `tests/test_rollover.py`, the new test: the journal is restored
+on the last line, not in a `try/finally` or a finalizer. When any assert
+fails, the forged line stays and the suite's journal-walking teardown adds an
+ERROR on top of the real failure (seen under M1: "2 failed, 2 errors").
+Use `request.addfinalizer(lambda: journal.write_bytes(original))` or
+`try/finally`. The restore itself is sound: the forged line was refused at the
+store's gate and never applied, so putting the original bytes back leaves the
+journal and the store agreeing, which is why the passing run tears down
+clean.
+
+**K3 - nit.** `tracker/rollover.py` `main`, the `--only` loop:
+`name_key(normalised_name(name))` is computed once for `by_name.get` and again as
+`wanted`. Compute `wanted` once, before the lookup.
+
+**K4 - nit, needs a SPEC line.** `docs/runbook.md` section 1, *Rolling a
+household into the next year*, lists what Roll Forward refuses before writing
+(paused, stopped, client folder gone), and the new refusal is not there, even
+though its sentence sends the reader to the runbook. CLAUDE.md makes the
+runbook part of any change to behaviour. Section 14 asked for no runbook edit,
+so this needs one sentence in the SPEC and then in the runbook.
+
+**K5 - nit.** No test for the `--only` path of a readable return of this
+household that is not open (the handoff says so). The probe shows it still
+gives the old sentence correctly (above). A small test would pin the
+`or ROLLOVER_NOT_THIS_HOUSEHOLD...` branch of `main`.
+
+**Observations, not counted (outside section 14).**
+1. A legacy-folder return in the **open** year is in `open_year_returns`
+   and rolls forward with zero rows, and nothing is said. Probe: `2026/1040 - Leg Park`, a record
+   with an empty list and `_manifest.xlsx` beside it, rolled with the other three:
+   rolled rows `[1, 0, 1, 1]`. Why: `Engagement.active` is
+   `info.active and not superseded_by` and ignores `problem`. An unreadable
+   return drops out of the open set only because its default
+   `EngagementInfo()` has `tax_year = None`, not because it is inactive, so
+   section 14's "its `Engagement` carries `problem`, so it is not active" is
+   imprecise. This is the same kind of silence as audit E2 (the silent empty list). It was there before this change.
+2. `LEGACY_FOLDER` says "... and no record", but `engagement_from` gives it
+   when the journal exists and merely holds no rules. The wording was there before.
+3. `test_registry`'s one RuntimeWarning (runpy in
+   `test_the_registry_command_line_prints_households_returns_and_misfits`) was
+   there before this diff.
+
+**Gate** (archive copy, venv Python 3.13, `-p no:cacheprovider`, one process
+per file, in parallel): test_rollover 65 passed; test_registry 44 passed,
+2 skipped (1 warning, observation 3); test_households 20 passed; test_api 522
+passed; test_errors 85 passed; test_layers 31 passed; test_single_source 218
+passed; test_repo_map 82 passed. `python -m ruff check .`: all checks passed.
+`python tools/repo_map.py check`: current (302 nodes). The 3.11 floor was not run (no pytest
+for it in this container).
+
+Findings: 0 must fix, 1 should fix, 4 nits.

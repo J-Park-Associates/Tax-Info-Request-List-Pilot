@@ -369,3 +369,49 @@ Gate after the rebuild: `test_rollover`, `test_registry`, `test_households`,
 `test_api`, `test_errors`, `test_layers`, `test_single_source`,
 `test_repo_map`, ruff, the map check. The builder appends
 `## Rebuild 5 (Sonnet, 2026-10-13)` to `pilot/HANDOFF-client-folder.md`.
+
+---
+
+## 15. Amendments after the sixth review (Opus, 2026-10-13)
+
+Findings K1-K5 are in `pilot/HANDOFF-client-folder.md` under "Review 6".
+None survived a rebuild, so the rebuild is Sonnet's. All five are built.
+
+**R2, amended again (K1).** A legacy folder (a record that reads, holds no
+rules, with the old workbook beside it) also carries `Engagement.problem`
+(`registry.LEGACY_FOLDER`), so section 14's rule gave it "record could not
+be read", which is false. The rule: the new sentence only when `problem` is
+set **and is not** the legacy sentence (`problem != LEGACY_FOLDER.format(name=LEGACY_MANIFEST_FILENAME)`,
+compared to the one constant, never by substring); a legacy folder that is
+not among the open returns gets `ROLLOVER_NOT_THIS_HOUSEHOLD` as before,
+which is true of it. Test: a legacy return of a closed year, rolled by name
+→ the old sentence, not the new one. Section 14's "its `Engagement` carries
+`problem`, so it is not active" reads from here as "its `tax_year` is
+`None`, so it is not in the open year": `Engagement.active` does not read
+`problem`.
+
+**Test hygiene (K2).** The new test restores the journal bytes in a
+`try/finally` (or a `request.addfinalizer`), so a failing assert does not
+also raise a teardown error.
+
+**Dead work (K3).** In `main`'s `--only` loop, `name_key(normalised_name(name))`
+is computed once.
+
+**Runbook (K4).** The "Rolling a household into the next year" entry lists
+Roll Forward's refusals; add the new one in one sentence: a return whose
+record cannot be read is refused with the record's own problem and sent to
+section 6.
+
+**Test (K5).** `--only` naming a readable return that is not in the open
+year still gets `ROLLOVER_NOT_THIS_HOUSEHOLD`: one test.
+
+**Recorded for Jason, not built (the review's observations).** A legacy
+folder in the open year counts as active and Roll Forward rolls it with
+zero rows and says nothing - the same silence as the audit's E2, needing a
+row of its own. `LEGACY_FOLDER` says "and no record" though it also fires
+when a record exists and holds no rules.
+
+Gate after the rebuild: `test_rollover`, `test_registry`, `test_api`,
+`test_errors`, `test_single_source`, `test_layers`, `test_repo_map`, ruff,
+the map check. The builder appends `## Rebuild 6 (Sonnet, 2026-10-13)` to the
+handoff.
