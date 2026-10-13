@@ -911,8 +911,9 @@ def held_back(household_dir: Path | str) -> str:
     """Why nothing may be written for this household now, or ``""``: it is
     stopped (its record gone while its returns hold theirs, or two folders
     claim it), paused (its folders and its record disagree), or its client
-    folder is gone when its record shows it had one (the review's M3 and
-    S4). The one question a new return into it and every form of Roll
+    folder is gone when its record shows it had one, or cannot say whether
+    it had one because a record will not read (the review's M3 and S4;
+    P296). The one question a new return into it and every form of Roll
     Forward ask before anything is written, with the sentence each stop
     has in the pass."""
     from tracker.households import (

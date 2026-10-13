@@ -441,9 +441,9 @@ class ClientSideUnknown(RuntimeError):
 
 
 CLIENT_SIDE_UNKNOWN = (
-    "`Clients\\{name}` is missing and the household's record could not be read ({problem}), "
+    "`Clients\\{name}` is missing and the record of {whose} could not be read ({problem}), "
     "so the app cannot tell whether the household was renamed or moved. Nothing is made under the old name "
-    "until the record reads again (runbook section 6).")
+    "until that record reads again (runbook section 6).")
 
 
 def client_side_expected(household_dir: Path | str, returns: Iterable[Path]) -> bool:
@@ -467,6 +467,16 @@ def client_side_expected(household_dir: Path | str, returns: Iterable[Path]) -> 
     quoted whole, anything else is named by class). Nothing here swallows
     anything.
 
+    **The sentence names whose record failed** - "the household", or "its
+    return" with the return folder's name in backticks - and the error log
+    carries that folder's name, so a person repairs the record that is
+    broken and not the one beside it that reads clean.
+
+    **One part that will not read makes the answer "cannot tell"**, even
+    when another return would have proved the folder existed: both answers
+    hold the household back and make nothing, and "cannot tell" sends a
+    person to the broken record first.
+
     **A record that is not there is not a record that cannot be read.** A
     household or a return with no journal at all has said nothing: there is
     nothing to refuse, so it answers nothing here (a household whose record
@@ -480,10 +490,13 @@ def client_side_expected(household_dir: Path | str, returns: Iterable[Path]) -> 
 
     folder = Path(household_dir)
     root = folder.parent.parent
+    whose = "the household"
+    failed = folder
     try:
         if ledger.path_for(folder).is_file() and shared_on(folder) is not None:
             return True
         for one in returns:
+            whose, failed = f"its return `{one.name}`", one
             if not ledger.path_for(one).is_file():
                 continue
             for row in store.documents(the_record(one), one):
@@ -493,9 +506,9 @@ def client_side_expected(household_dir: Path | str, returns: Iterable[Path]) -> 
                                                                                  folder.name):
                         return True
     except Exception as exc:
-        errors.keep("households: the client-side history", exc, name=folder.name)
+        errors.keep("households: the client-side history", exc, name=failed.name)
         raise ClientSideUnknown(CLIENT_SIDE_UNKNOWN.format(
-            name=folder.name,
+            name=folder.name, whose=whose,
             problem=errors.said(exc, (ManifestError, LedgerError, StoreError)))) from exc
     return False
 

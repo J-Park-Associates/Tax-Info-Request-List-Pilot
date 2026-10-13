@@ -864,7 +864,7 @@ def test_the_scaffold_refuses_to_lay_out_a_household_whose_record_cannot_be_read
         scaffold_household(household)
 
     assert str(refusal.value) == CLIENT_SIDE_UNKNOWN.format(
-        name=household.name, problem=str(refused.value))
+        name=household.name, whose="the household", problem=str(refused.value))
     assert not (tmp_path / CLIENTS_TREE / household.name).exists()
 
 

@@ -3437,7 +3437,8 @@ def test_a_shared_household_whose_record_cannot_be_read_is_held_back_and_its_cli
 
     run = a_pass(engagement, today=FRIDAY, reminders=REMINDERS_NEVER)
 
-    said = CLIENT_SIDE_UNKNOWN.format(name="Test Household", problem=str(refused.value))
+    said = CLIENT_SIDE_UNKNOWN.format(name="Test Household", whose="the household",
+                                      problem=str(refused.value))
     assert run.error == said and run.code == CODE_RECORD_UNREADABLE
     assert run.filed == 0
     assert not (root / CLIENTS_TREE / "Test Household").exists()

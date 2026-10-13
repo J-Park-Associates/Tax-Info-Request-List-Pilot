@@ -223,3 +223,11 @@ preserves the audit's fix for every journal that exists and refuses. Traced:
   accurate except "the household's own record" (F1).
 
 Findings: 0 must fix, 1 should fix, 3 nits.
+
+## Rebuild 1 (Sonnet, 2026-10-13)
+
+- **F1** built: `CLIENT_SIDE_UNKNOWN` now reads "the record of {whose} could not be read ... until that record reads again"; `client_side_expected` fills `whose` with `the household` or ``its return `<folder name>` `` and keeps the error-log entry under the failed folder's name; runbook paragraph says "the household's record, or one of its returns'" and that the sentence names which; households test checks both spellings (`test_a_household_whose_record_cannot_be_read_...` the household, `test_the_sentence_names_the_return_whose_record_cannot_be_read` the return); the runner, scaffold and registry tests assert the sentence with `whose="the household"`.
+- **F2** kept as built; `client_side_expected`'s docstring now says one unreadable part makes the answer "cannot tell" even when another return would have proved the folder existed, and why.
+- **F3** added `test_a_journal_that_does_not_exist_is_skipped_and_only_one_that_will_not_read_is_cannot_tell` (fails with the two `is_file()` guards removed).
+- **F4** `registry.held_back`'s docstring names the "cannot tell" answer; the registry test's docstring says New return and Roll forward read `held_back` (the list and card show it through the pass's run error).
+- Gate (one process per file, parallel): test_households 20 passed, test_runner 230 passed, test_scaffold 55 passed, test_registry 42 passed 2 skipped, test_single_source 218 passed, test_repo_map 82 passed; ruff clean; repo map check current.

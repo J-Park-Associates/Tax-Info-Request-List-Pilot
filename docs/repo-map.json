@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 298,
     "edges": 1334,
-    "reused": 244
+    "reused": 236
   },
   "node_types": [
     "artifact",
@@ -1505,8 +1505,8 @@
       "id": "tracker/households.py",
       "type": "module",
       "layer": "core",
-      "sha256": "b1d73111a0204856",
-      "lines": 521,
+      "sha256": "2493570a99efe379",
+      "lines": 534,
       "exports": [
         "CLIENT_FOLDER_MISSING",
         "CLIENT_SIDE_UNKNOWN",
@@ -1535,7 +1535,7 @@
         "FEED_UNRESOLVED": "'this drop folder is set to feed {household} / {return_name}, which has no active return for {year}'",
         "HOUSEHOLD_PAUSED": "\"Paused: this folder's name and its record's name disagree. Nothing is sorted, laid out or drafted for the household until a person opens it in the app and accepts the folder's name, or gives the folder back the name its record holds.\"",
         "HOUSEHOLD_PAUSED_YEAR": "\"Paused: a return's folder sits under a year its record does not hold. Nothing is sorted, laid out or drafted for the household until the folder goes back under the year its record holds; a return in the wrong year is retired and made again.\"",
-        "CLIENT_SIDE_UNKNOWN": "\"`Clients\\\\{name}` is missing and the household's record could not be read ({problem}), so the app cannot tell whether the household was renamed or moved. Nothing is made under the old name until the record reads again (runbook section 6).\""
+        "CLIENT_SIDE_UNKNOWN": "'`Clients\\\\{name}` is missing and the record of {whose} could not be read ({problem}), so the app cannot tell whether the household was renamed or moved. Nothing is made under the old name until that record reads again (runbook section 6).'"
       },
       "role": "The household's own record (decision 125): create_household(), load_household_info(), save_household() (one household_changed event carrying only the fields that moved, or none), household_returns() (the returns under a household, positionally, by year then folder name without case - the order the pass takes the locks in) and open_years() (the years its active, unsuperseded returns are for; two of them is what the household pass refuses to sort on).",
       "notes": "Layer 1, beside the record's other readers: a household is a folder with a _ledger.jsonl like any other, folded by the same ledger and held in the same store table with kind = household - which is why decision 125 dropped the plan's idea of a differently named file. It holds no documents, no requests and no statuses, and no client text ever enters its events: the members are the firm's own note of who the folder is meant to be shared with. Decision 126 added shared_on(): the firm's dated word that it shared the household, read back out of the events as the newest sharing_confirmed's day. That event is folded by nothing (the draft_approved pattern) and carries nothing but its stamp, so it needed no column and the store's version did not move; a field would have claimed the folder IS shared, and the tracker cannot see Drive's sharing. Nothing in the pass reads it. Decision 129 added the feed list: resolve_feeds() turns each Feed(household, return_name) on the record into that household's open-year return of that name - a return LINE, so the rollover carries nothing and a line that answers to nothing is said (FEED_UNRESOLVED), and a fed household with two open years leaves its feed unresolved for the same reason its own inbox sorts nothing - and fed_by() answers the other direction, the households whose feeds name a return of this one, for the destination's card. Both are duck-typed on the registry, as open_years() is on its returns: this module sits below it and the facts they read are the record's own. Decision 187: resolve_feeds() resolves a feed by position - household_name_of(one.path) and the return folder's name compared casefolded with the feed's two labels, in the same private tree and year - and never builds a path from the labels (return_dir_for is no longer imported). Decision 188: resolve_feeds and fed_by compare by layout.name_key, never casefold and never a path; return_name_taken(year_dir, name) is the key-uniqueness check of a return within its household-year, asked by the wizard and the rollover. Decision 188 (part 3): HOUSEHOLD_PAUSED, HOUSEHOLD_PAUSED_YEAR and CLIENT_FOLDER_MISSING are worded here; claim_disagrees (by name_key, a blank claim claims nothing), return_disagrees ('name' | 'year' | ''), pause_of (pure: any disagreement pauses the whole household) and household_pause (read off the disk) are the one claim check the registry, the rollover and the API ask; client_side_expected(household_dir, returns) is SPEC-162 ruling 2's test, keyed on the folder name (shared, or a recorded original under Clients/<folder name>). save_household still never moves the name; the API's accept-folder-name is its one other writer."
@@ -2781,8 +2781,8 @@
       "id": "tracker/registry.py",
       "type": "module",
       "layer": "core",
-      "sha256": "a70a732c068c38fa",
-      "lines": 1038,
+      "sha256": "156f494c053a182d",
+      "lines": 1039,
       "cli": "python -m tracker.registry",
       "exports": [
         "EmptyRoot",
@@ -4645,8 +4645,8 @@
       "id": "docs/runbook.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "43947a33a9747228",
-      "lines": 2896,
+      "sha256": "db72e48cdd603e3f",
+      "lines": 2898,
       "role": "The operator's page for one tax season: the designated machine and today's rule that only one may run a clients root, what a person does each morning and on the draft day, what every index reason and validation note means, and the thirty-minute move to another machine - on a Windows PC or on a Mac.",
       "notes": "Written for a person, not an agent. Roles are docs/workflow.md and the reasons behind the rules are docs/ROADMAP.md; it links to both rather than repeating them. The Mac is written as parallel paragraphs, not edits to the Windows text (SPEC-mac R34): section 1's `### On a Mac` (the heading the pass's own root-not-permitted reason points at) and two paragraphs in section 6 (moving to or from a Mac, taking the app off one). The one-machine rule is still stated once. tests/test_single_source.py quotes the app's sentences against it and holds the data folder's name to settings.DATA_HOME_NAME on both systems (the Windows lines once named a folder the app does not make)."
     },
@@ -4730,8 +4730,8 @@
       "id": "pilot/HANDOFF-client-folder.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "b3d6f3bd411b443a",
-      "lines": 81
+      "sha256": "4f3a1b54409f7000",
+      "lines": 233
     },
     {
       "id": "pilot/HANDOFF-form-inputs.md",
@@ -4801,8 +4801,8 @@
       "id": "pilot/SPEC-client-folder-unreadable.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "f324688153e81bd2",
-      "lines": 152
+      "sha256": "7421e589f6671d10",
+      "lines": 193
     },
     {
       "id": "pilot/SPEC-email-zip-tag.md",
@@ -7724,8 +7724,8 @@
       "id": "tests/test_households.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "6ee4f31a229ae9bf",
-      "lines": 474,
+      "sha256": "7c64693b4fecd23d",
+      "lines": 522,
       "exports": [
         "ITEMS",
         "SMITHS",
@@ -7742,12 +7742,14 @@
         "test_a_household_record_is_one_event_and_reads_back",
         "test_a_household_that_already_has_a_record_is_never_written_over",
         "test_a_household_whose_record_cannot_be_read_is_not_said_to_have_had_no_client_folder",
+        "test_a_journal_that_does_not_exist_is_skipped_and_only_one_that_will_not_read_is_cannot_tell",
         "test_a_members_list_written_by_hand_as_one_name_is_read_as_one_member",
         "test_a_return_and_its_household_are_two_rows_of_one_table",
         "test_household_returns_are_the_returns_under_it_by_year_then_name",
         "test_open_years_are_the_active_returns_years",
         "test_saving_a_household_records_only_the_fields_that_moved_or_nothing",
-        "test_sharing_confirmed_is_an_event_folded_by_nothing_and_read_back_by_day"
+        "test_sharing_confirmed_is_an_event_folded_by_nothing_and_read_back_by_day",
+        "test_the_sentence_names_the_return_whose_record_cannot_be_read"
       ]
     },
     {
@@ -8743,8 +8745,8 @@
       "id": "tests/test_registry.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "32a9696184c05f2b",
-      "lines": 1202,
+      "sha256": "a2c7736b3e921944",
+      "lines": 1203,
       "exports": [
         "ITEMS",
         "engagement_dirs",
@@ -9341,8 +9343,8 @@
       "id": "tests/test_runner.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "cc4a0fed0cbbab6d",
-      "lines": 5908,
+      "sha256": "3fe880829ec5495b",
+      "lines": 5909,
       "exports": [
         "A_CLIENT_PATH",
         "DRAFT_DAY",
@@ -9597,7 +9599,7 @@
       "id": "tests/test_scaffold.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "443f53624c289cde",
+      "sha256": "22d779d78e0056ce",
       "lines": 1178,
       "exports": [
         "A01_LABEL",

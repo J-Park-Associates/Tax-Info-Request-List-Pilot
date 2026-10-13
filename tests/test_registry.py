@@ -855,7 +855,8 @@ def test_held_back_names_a_copied_household_without_the_whole_walk(root, monkeyp
 
 def test_a_household_whose_record_cannot_be_read_says_so_where_its_pause_is_said(root):
     """P296 (the error-handling audit's E1): ``held_back`` is the sentence
-    the list, the household's card, a new return and Roll Forward read. A
+    a new return and Roll Forward read (the list and the card show it
+    through the pass's run error). A
     household whose client folder is gone and whose record cannot be read
     says the one sentence that names both, in the place the folder-missing
     sentence is said - not an empty answer, and not a traceback."""
@@ -879,7 +880,7 @@ def test_a_household_whose_record_cannot_be_read_says_so_where_its_pause_is_said
     shutil.rmtree(client_household_dir(root, TEST_HOUSEHOLD))
 
     assert held_back(household) == CLIENT_SIDE_UNKNOWN.format(
-        name=TEST_HOUSEHOLD, problem=str(refused.value))
+        name=TEST_HOUSEHOLD, whose="the household", problem=str(refused.value))
 
 
 # ---- S8b: every misfit carries a stable code (ruling 18) -----------------
