@@ -218,3 +218,191 @@ no retry was needed.
 - The pre-existing `test_rollover` failure noted in section 4 is for the other lane / the landing session.
 - Not verified: the Windows-only paths (no `windows` label needed; nothing here touches
   the engagement lock, the atomic replace or path handling beyond `Path.exists/is_dir`).
+
+## Review (Opus, 2026-10-13)
+
+Independent review of commit `6f5945f` (`git diff 9b67afd 6f5945f`) against
+`pilot/SPEC-error-handling-small.md`. Everything was read with `git show` or
+run on a `git archive 6f5945f` copy in the scratchpad (git-initialised, one
+commit), with the scratchpad venv (Python 3.13). The checkout was not touched
+except this section. Throwaway probe tests were run in the copy and taken out
+before the gate.
+
+### Resolved
+
+- **R1 (E2).** Verified by running code. With `filer.read_index` raising
+  `FilingError("the index is torn")`: `roll_forward` completes,
+  `unfiled_last_year == []`, and the error log holds
+  `rollover: last year's unfiled documents (<prior>)` with the exception.
+  The three places `warnings` is assigned all go through
+  `RolloverReport.carry_warnings`: `_make_one` (household roll), the CLI
+  `__main__`, and `api._cmd_rollover`, which the SPEC missed. The SPEC listed
+  two; there are three, and grep finds no fourth. My probe of the
+  `roll-household` reply (the one the page draws, app.js:1549
+  `one.warnings`) found the sentence as the last item of `rolled[0].warnings`
+  and `unfiled_last_year == []`. The builder's test_api test does the same
+  for the `rollover` reply. `errors.said` with the four named classes:
+  `FilingError`, `ManifestError`, `LedgerError` and `StoreError` are said in
+  their own words. A `RuntimeError` whose message is a path is said as
+  `(RuntimeError)`, and the path does not reach the sentence. One small
+  correction to the handoff: it calls the `rollover` reply "the page's
+  single-return Roll Forward". The page never calls `rollover`, only
+  `roll-household`. Both paths are right, so this changes nothing.
+- **R2 (E3, E4).** All three handlers are `except Exception as exc:
+  errors.keep(<what>, exc, name=<folder>.name)`. Behaviour is unchanged:
+  `_undo_create` and `_unmake` still remove the folder and raise nothing,
+  and `_details_of` still returns `None`. Each has a test asserting the exact
+  log entry. The test_errors one-definition test passes.
+- **R3 (E5).** I ran `errors.error_code` directly:
+  `StoreUnavailable("SQLITE_BUSY")` gives `SQLITE_BUSY`,
+  `RecordNotWritten("ENOSPC")` gives `ENOSPC`, `PermissionError(EACCES, ...)`
+  gives `EACCES`, and `ValueError(<path>)` gives `ValueError`.
+  `error_class` output is unchanged. `_failure_of` gives `kind == "failed"`
+  and the new sentences for the two classes, and FAILED for
+  `PermissionError`, as before. `say_failure` still calls `errors.keep` for
+  kind `failed`, so "the details are in tracker-errors.log" is true. The page
+  keeps Retry for `failed` (app.js:249 `retryOf`).
+  **The runbook insertion was the right call.** The clause the SPEC asked to
+  replace sits in the "page is always this morning's" paragraph. It
+  describes page lines and a household that stopped, which is the pass's
+  class-and-code form, and that form is unchanged. Replacing it would have
+  made the runbook false. The added sentence matches `_failure_of` and the
+  page. It does not repeat "nothing was changed" (see F1).
+  The test_api loop the builder changed (`test_a_broken_journal_...`) is
+  stronger, not weaker: it now pins the exact sentence and kind where it
+  used to pin `said_by_class`. The SPEC's line reference pointed at it, and
+  it pinned the behaviour R3 changes.
+- **R4 (E6).** `resolve_data_home` refuses an override that names a file
+  (`blocker` is the file), and one under a file at one or three levels
+  (`blocker` is the file, not the missing child). A path that can still be
+  made under an existing folder is answered, and nothing is created. End to
+  end on the copy, with `TRACKER_DATA_HOME` set to a file and then to
+  `<file>/sub`: `python -m tracker.api set-root` exits 1, kind `refused`,
+  with the sentence naming the file. `python -m tracker.api list` exits 0
+  with the sentence in `machine_warnings` (see F4). The same happened with a
+  clients root saved and a return in it (pytest probe).
+- **R5 (E7).** I re-grepped all 19 keys myself:
+  `grep -rIF <key> app --exclude-dir=node_modules` for the bare name and for
+  its camelCase, a case-insensitive pattern allowing optional underscores
+  over `app/renderer`, `main.js` and `preload.js`, `tracker/` minus
+  `api.py`, `tests/`, `pilot/harness`, `pilot/wintest` and `tools`. I also
+  looked for dynamic access: `vocab[`, `words[`, `Object.*(vocab`, spread,
+  and template-built `_key`, `_note` or `_label` names. The only dynamic hits
+  are `Object.values(vocab.overrides)`, `words[key]` over
+  `screenWords().paging`, and main.js `learnMenu` over `DEFAULT_MENU_WORDS`.
+  None reaches a top-level key.
+  - The 14 dropped keys have **0 hits under `app/`** in any form, and 0 in
+    `tracker/` minus api. Their test hits are the ones the handoff names:
+    the `EXAMPLE_ROOT` constant, `test_shell`'s *absence* assertions for
+    `year_note` and `ask_the_client_note`, and the stale lines in
+    test_single_source (F5).
+  - The 5 kept are right under the SPEC's rule. `statuses` and `evidence`
+    are hit only in comments. `view` and `progress` are hit as other
+    objects' fields (`reply.view`, `m.progress`). None of the four has a
+    `vocab.<key>` read, so dropping them later needs a looser rule than this
+    SPEC's bare-name one. That is not a finding here. `override_labels` was
+    kept by doubt, which is reasonable: test_api:9340 pins its length
+    against `override_reasons`, and whether to wire it or drop it is
+    Jason's call.
+  - `_TITLE_EXEMPT_BRANCHES` lost exactly `example_root`,
+    `default_extensions`, `unscanned_key`, `not_asked_key`,
+    `unknown_year_label` and `expected_pattern`, all of them dropped keys.
+    `origin_` stays because `origin_new` and `origin_not_applicable` are
+    still sent. The removed value pins are only the dropped keys' pins
+    (`not_asked_key`, `ask_the_client_note`, `default_extensions`,
+    `unscanned_key`). Nothing else was cut. The 11 api.py imports removed
+    were each used only by a dropped entry, and the constants behind them
+    still have readers (`ORIGIN_PRIOR`, `UNKNOWN_YEAR_LABEL`, `CANDIDATE_SEP`,
+    `EXPECTED_PATTERN`, `DEFAULT_EXTENSIONS`, `UNSCANNED_LABEL`,
+    `PERIOD_PATTERN`, and `EXAMPLE_ROOT` in test_single_source's docs check),
+    except the three in F2.
+  - `ASK_THE_CLIENT_NOTE` was kept rightly for now. test_single_source:1045
+    and test_api:1301 use it as a **negative literal**: the renderer and
+    `index.html` must not type it. It is the guard behind the cut, not
+    vocabulary, and the comment the builder added says so.
+- **Layers, dead code.** The new imports in `rollover._unfiled_last_year`
+  are call-time imports, and `test_layers` passes. Ruff is clean. No
+  commented-out code. No dead name in the changed files apart from F2's,
+  which is in another file.
+- **New tests.** Each one asserts what its name claims. The handoff's
+  before/after table matches the tests.
+
+### Findings
+
+**F1 - should fix (the SPEC's wording; for Jason and the landing session,
+before P298 lands as written). `tracker/api.py` `STORE_UNAVAILABLE` and
+`RECORD_NOT_WRITTEN` say "nothing was changed", which is false in the common
+busy case.** `store.record` writes the journal first: it appends the
+fsync-ed line and only then opens the apply transaction (store.py docstring,
+and `record()` lines 2310-2320). A store held by another process bites at
+that transaction, after the line exists. My probe ran `edit-household` with
+`store._catch_up` raising `StoreUnavailable("SQLITE_BUSY")` after
+`ledger.append`. The reply said "...could not be used just now
+(SQLITE_BUSY); nothing was changed...", and the household's journal went
+from 1 line to 2. The record is correct, because `catch_up` replays it on
+the next read, but the sentence tells staff the opposite. The same is true
+of `RECORD_NOT_WRITTEN` when the second append of a batch fails after the
+first succeeded. The old FAILED text ("What it finished is on the record")
+was true here, so this is a regression in honesty. The builder copied the
+SPEC exactly. Fix: drop the clause, or replace it with FAILED's "what it
+finished is on the record", in both constants and in the P298 row. The
+tests pin the constants by reference and need no change, and the runbook
+sentence does not quote the clause.
+
+**F2 - should fix (landing session; `tracker/templates.py` was the other
+lane's file during this build). `YEAR_NOTE`, `EXTENSION_DEFAULT_NOTE` and
+`KEYWORD_DEFAULT_NOTE` (templates.py:803-807) are now dead.** Their only
+reader was `_vocab`. `grep -rnw` over every `.py`, `.js`, `.md`, `.tsv` and
+`.json` in the copy finds only the definitions. Ruff does not catch
+module-level constants. Delete the three and their comment. The
+`DEFAULT_EXTENSIONS` import at templates.py:55 then becomes unused (ruff will
+say so) and goes too. `PERIOD_PATTERN` stays, because `TY` and `TY_PRIOR`
+use it. Then run `python tools/repo_map.py update`.
+
+**F3 - nit. `tests/test_errors.py` `ERRNO_NAMED_ON_PURPOSE` is the wrong
+place for `("errors.py", "_code_of")`.** It does not open a hole: the entry
+is keyed by file and function, `_code_of` is private, `error_class`
+delegates to it, and there is still one rule. But the table is documented as
+errno reads "for something other than saying an error", and `_code_of`
+exists to say one. Make `THE_ONE_DEFINITION` a set holding
+`("errors.py", "error_class")` and `("errors.py", "_code_of")`, or at least
+reword the reason as "the rule's own helper".
+
+**F4 - nit (the SPEC and the P299 row). `list` does not refuse; it
+answers.** With the data home a file, `list` exits 0 with an empty list and
+the sentence in `machine_warnings`. That is `_cmd_list`'s existing handling
+of a `SettingsError`, so the first screen can still draw. `set-root` refuses
+with exit 1. The behaviour is right: the problem is said by name at the first
+command. But "refuses at list" (SPEC section 4) and "refused by name at every
+command" (P299) overstate it. Suggest P299 read "refused by name at
+Settings, and said in the first screen's warnings".
+
+**F5 - nit (outside the build's file list). Stale lines in
+`tests/test_single_source.py`.** Line 1015's
+`.replace("chip-${vocab.unscanned_key}", "")` does nothing, because the
+string is not in app.js. Line 3966's JS stub assigns `ask_the_client_note`,
+which the code under test does not read. Both are harmless. The landing
+session can drop them, and with them, if Jason agrees, `ASK_THE_CLIENT_NOTE`
+and its two negative-guard uses.
+
+### Gate (archive copy of `6f5945f`, one process per file in parallel, `-p no:cacheprovider`)
+
+| File | Result |
+|---|---|
+| test_rollover | 63 passed, 1 failed, 1 error. Both are `test_the_client_tree_is_byte_identical_after_a_roll_forward_whose_record_names_a_path`, which has failed since ed109f1; it is known, not this build's, and is being bisected separately |
+| test_api | 522 passed |
+| test_filer | 408 passed, 6 skipped |
+| test_settings | 86 passed, 1 skipped |
+| test_shell | 326 passed |
+| test_errors | 85 passed |
+| test_tripwire | 23 passed |
+| test_templates | 41 passed |
+| test_layers | 31 passed |
+| test_single_source | 218 passed |
+| test_repo_map | 82 passed |
+
+`python -m ruff check .`: all checks passed. `python tools/repo_map.py
+check`: "Map is current (302 nodes)". One interpreter only (3.13). The 3.11
+floor interpreter is not installed here, as the builder also found.
+
+Findings: 0 must fix, 2 should fix, 3 nits.

@@ -187,6 +187,54 @@ and writes numbered findings under "## Review".
 ## 9. Decision rows (added by the landing session)
 
 | P297 | 2026-10-13 | A rollover that cannot read last year's index still rolls, and says so in the dialog's warnings (`rollover.UNFILED_LAST_YEAR_UNREAD`); the failed `store.forget` after a failed create or rollover and the filer's unreadable return details are kept on the error log where they were swallowed (SPEC-error-handling-small R1, R2). | The error-handling audit of 2026-10-13 (E2-E4): three silent fallbacks. |
-| P298 | 2026-10-13 | A database the engine refuses and a record the disk refuses are said in the dialog as themselves with their code (`api.STORE_UNAVAILABLE`, `api.RECORD_NOT_WRITTEN`; `errors.error_code`), with Retry; the pass and the run log keep the class-and-code form (R3). | E5: decision 189's expected classes were worded as "an error it did not expect". |
-| P299 | 2026-10-13 | The data home must be a folder or makeable under one; `TRACKER_DATA_HOME` naming a file, or a path under one, is refused by name at every command (`settings.DATA_HOME_NOT_A_FOLDER`) (R4). | E6: the first write failed with no error log, because the log lives in the data home. |
+| P298 | 2026-10-13 | A database the engine refuses and a record the disk refuses are said in the dialog as themselves with their code (`api.STORE_UNAVAILABLE`, `api.RECORD_NOT_WRITTEN`; `errors.error_code`), saying that what finished is on the record, with Retry; the pass and the run log keep the class-and-code form (R3). | E5: decision 189's expected classes were worded as "an error it did not expect". |
+| P299 | 2026-10-13 | The data home must be a folder or makeable under one; `TRACKER_DATA_HOME` naming a file, or a path under one, is refused by name wherever the data home is resolved - `set-root` refuses outright, `list` answers an empty list with the sentence in its warnings, as for any settings error (`settings.DATA_HOME_NOT_A_FOLDER`) (R4, as the first review read it). | E6: the first write failed with no error log, because the log lives in the data home. |
 | P300 | 2026-10-13 | The API's vocabulary sends only keys something reads; a key is dropped only when its bare name has no hit under `app/` or in any tracker module but `api`, with the evidence recorded in the build's handoff (R5). | E7: nineteen keys were believed unread; some were. |
+
+---
+
+## 10. Amendments after the first review (Opus, 2026-10-13)
+
+Findings F1-F5 are in `pilot/HANDOFF-error-handling-small.md` under
+"Review". None survived a rebuild, so the rebuild is Sonnet's. All five are
+built; F1 and F4 were this SPEC's wording.
+
+**R3, amended (F1).** "nothing was changed" is false in the common busy case:
+`store.record` writes the journal line first and applies it to the database
+after, so a busy database fails with the line already on the record (the
+database replays the journal on the next read). Both sentences drop that
+clause for the old one, which is true:
+`STORE_UNAVAILABLE = ("The app's database could not be used just now ({code}). What it finished is on the record; "
+"try again in a moment, and if it keeps happening the details are in {log}")` and
+`RECORD_NOT_WRITTEN = ("The record could not be written ({code}). What it finished is on the record; "
+"free the disk or close whatever holds the record open, then try again - the details are in {log}")`.
+The P298 row in section 9 is reworded to match. The runbook sentence does
+not quote the clause; check it still reads true.
+
+**Dead code (F2).** `tracker/templates.py`: `YEAR_NOTE`, `EXTENSION_DEFAULT_NOTE`
+and `KEYWORD_DEFAULT_NOTE` are dead since R5 dropped their keys; remove them
+and the `DEFAULT_EXTENSIONS` import that then has no user (ruff names it
+once the constants go). `templates.py` was the other lane's during the
+build and is free now.
+
+**The one-definition table (F3).** `tests/test_errors.py`: `_code_of` is a
+second place an errno's name is read in order to say an error, so it belongs
+with `THE_ONE_DEFINITION` (made a set of the two `errors.py` functions), not
+in `ERRNO_NAMED_ON_PURPOSE`, whose docstring says "for something other than
+saying an error". Move it; the test's docstring says why both are there.
+
+**R4, reworded (F4).** `list` does not refuse: it answers an empty list with
+the sentence among its warnings, as it does for any settings error, and
+`set-root` refuses with exit 1. Section 4's "refuses at `set-root`, at `list`
+and at the first write alike" reads from here as "is said at `set-root`
+(refused), at `list` (an empty list with the sentence in its warnings) and
+at the first write". P299 in section 9 is reworded to match. No code change.
+
+**Stale lines (F5).** `tests/test_single_source.py`: the no-op
+`unscanned_key` replace near line 1015 and the `ask_the_client_note` stub
+near line 3966 are removed; both referred to dropped keys.
+
+Gate after the rebuild, one process per file: `test_api`, `test_templates`,
+`test_errors`, `test_single_source`, `test_tripwire`, `test_layers`,
+`test_repo_map`, ruff, the map check. The builder appends
+`## Rebuild 1 (Sonnet, 2026-10-13)` to the handoff.
