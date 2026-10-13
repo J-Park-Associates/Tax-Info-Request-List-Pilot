@@ -1762,3 +1762,151 @@ So at 7b50532 and c2b0dd6 the committed map is ahead of the committed
 source; it matches once this rebuild's three files are committed with the
 map as regenerated after this section. Not run: the 3.11 floor (no pytest
 there).
+
+## Review 10 (Opus, 2026-10-13)
+
+Reviews c21546d (SPEC-client-folder-unreadable section 19: N2 corrected,
+Nit 2; Nit 3 is the gate note) against sections 18 and 19, Review 9 and
+Rebuild 10. Run on a `git archive c21546d` copy in the scratchpad
+(git-initialised), venv Python 3.13.16, `-p no:cacheprovider -q`, one
+process per file, in parallel. The probes were a throwaway test file on
+the copy (deleted after; `git status` clean), using
+`tests.conftest.make_engagement` and the suite's own-folders fixture.
+
+**Verdict.** Built to section 19. Both descriptions are now true of what
+the code returns, and they match the SPEC word for word. Nit 2 is done and
+its test still pins the refusal. The one finding is three older sentences
+outside the SPEC's named text that still make Review 9's mistake. It is
+not counted against this build.
+
+**Findings.**
+
+1. **Should fix (outside section 19; a follow-up, not this build) - three
+   other sentences still say the record case is a misfit, or is not a
+   return.** Section 19 named two descriptions. Three more say the same
+   wrong thing of a return whose record holds no list, with the workbook
+   beside it. The probe below shows that folder is an `Engagement`, listed
+   in `engagements`, never in `misfits`:
+   - `tracker/registry.py:84-87`, the comment above
+     `LEGACY_MANIFEST_FILENAME`: "uses it to say what a folder holding one
+     and no request list in its record is: a legacy folder, not a return."
+     Section 17 prescribed this widening (4a4bdfe; it had read "and no
+     record", which was true), and it is false the same way N2 was. The
+     record case *is* a return (`_walk_year`: `if record:
+     found.returns.append(child)`). The wording is P303's, so the
+     correction needs a SPEC section and Jason's word, not a builder's
+     quiet rewrite.
+   - `docs/runbook.md:623-626` (unchanged since 6be6d7d): "**A folder from
+     before September 2026** may still hold a `_manifest.xlsx`. The app no
+     longer reads it: it is one of the folders left alone, listed with its
+     own sentence rather than treated as an engagement". The pre-103 return
+     with a record is exactly a folder from before September 2026. It is
+     an engagement: the pass fails it with the sentence (the runner node's
+     notes: "so does a legacy folder the registry listed"), and Roll Forward
+     refuses it, as the runbook's own line 1383 says. Line 447's
+     folders-left-alone list ("a folder from before September 2026 holding a
+     `_manifest.xlsx`") is broad in the same way. It is the operator's
+     page.
+   - `docs/repo-map.curated.json`, the `tracker/registry.py` node's
+     `notes` (from before section 18): "a folder whose record carries no
+     rules beside the legacy workbook is listed the same way as one with no
+     record". Since decision 125 they are not listed the same way: one is a
+     misfit and one is an engagement, and they share only the sentence. It
+     now contradicts the corrected `role` in the same node, which `show`
+     hands the next agent.
+   Fix: word each one as the corrected `role` does (no record means the
+   misfit; a record with no list means an engagement carrying the sentence,
+   refused by Roll Forward), then `update`. No behaviour changes.
+
+**Observations (not findings).**
+
+- `engagement_from` called directly on the no-record folder returns an
+  object of type `Engagement` whose problem is `'1040 - Bare Park: no record
+  here (_ledger.jsonl); it is not an engagement'`. Discovery never makes
+  that call, since the walk sends only record folders to `engagement_from`.
+  So "never an engagement" holds of what discovery lists, and that is what
+  both descriptions describe.
+- The commit's trailer reads `Co-Authored-By: Claude Fable 5.1`. Section 19
+  and the handoff say this build is Opus's. The orchestrator made the
+  commit; the attribution is the orchestrator's to correct, if it is wrong.
+- The commit's `docs/repo-map.json` hunk touches only this handoff and two
+  other lanes' SPEC hashes. The registry, test_api and curated hashes were
+  already in 7b50532, as Rebuild 10's "Which tree" said. At c21546d the
+  committed map and source agree (`check`: current).
+
+**Verified (questions 1-4).**
+
+1. *Descriptions against the code.* The scratch root holds one 2026
+   household: `1040 - John Park` (an ordinary return), `1040 - Old Park`
+   (record with no list, active, `_manifest.xlsx` beside it), and
+   `1040 - Bare Park` (`_manifest.xlsx` only, no record). Output, with the
+   middle of Old Park's problem shortened to `...` on its `engagement_from`
+   line (the `engagements` line carries it whole):
+   ```
+   PROBE (a) record: True | (b) record: False
+   PROBE engagements: [('1040 - John Park', '', True), ('1040 - Old Park', 'holds its request list in a workbook the app no longer reads (_manifest.xlsx) and none in its record; set the engagement up again in the app', True)]
+   PROBE misfits: [('1040 - Bare Park', 'legacy_folder', True)]
+   PROBE engagement_from(1040 - Old Park): Engagement problem='holds its request list ... and none in its record; set the engagement up again in the app' == LEGACY_FOLDER: True active=True
+   PROBE engagement_from(1040 - Bare Park): Engagement problem='1040 - Bare Park: no record here (_ledger.jsonl); it is not an engagement' == LEGACY_FOLDER: False active=True
+   PROBE roll_forward(1040 - Old Park): ManifestError: 1040 - Old Park holds its request list in a workbook the app no longer reads (_manifest.xlsx); set it up again in the app first (runbook section 1), then roll it forward
+   PROBE   == ROLLOVER_LEGACY_FOLDER: True
+   PROBE   trees unchanged: True; 2027 anywhere: False
+   PROBE roll_forward(1040 - Bare Park): ManifestError: 1040 - Bare Park: no record here (_ledger.jsonl); it is not an engagement
+   PROBE   trees unchanged: True; 2027 anywhere: False
+   ```
+   (the third `True` in the misfit tuple is `sentence == LEGACY_FOLDER`).
+   So (a) is an active engagement carrying `LEGACY_FOLDER`, and Roll
+   Forward refuses it with `ROLLOVER_LEGACY_FOLDER`. (b) is the
+   `legacy_folder` misfit with `LEGACY_FOLDER` as its sentence, and never
+   an engagement in discovery. Both descriptions say exactly this.
+   Wording, compared after normalising whitespace: the restored item "a
+   folder holding only the workbook the tracker no longer reads
+   (``LEGACY_MANIFEST_FILENAME``)", the new sentence, and the new third
+   sentence of `role` are each present verbatim in section 19 and in the
+   file. The sentence sits immediately after "a person fixes it." and
+   immediately before "There is no migration and no importer". `role` ends
+   with the third sentence followed by " There is no registry file."
+2. *The rest intact.* `git diff 4dca3fb^ c21546d -- tracker/registry.py`
+   is the one added sentence and nothing else: the paragraph is otherwise
+   byte for byte its pre-section-18 form. Section 18's phrasings ("none in
+   its record (no record", "or one that holds no list", "a record that
+   holds none", "never as an engagement") are gone from the docstring and
+   from `role`. The other sentences: finding 1.
+   `engagement_from`'s docstring ("is a legacy folder: an engagement made
+   before decision 103") and runbook line 1383 are true.
+3. *Nit 2.* The test now reads `before = _tree_hashes(demo_root)` ...
+   `assert _tree_hashes(demo_root) == before`. The local `everything()`
+   and its `import hashlib` are gone. `_tree_hashes` (tests/test_api.py:6723)
+   is the same comprehension: relative path to sha256, or "folder", over
+   `sorted(folder.rglob("*"))`. The exit-code, exact-sentence and no-2027
+   assertions are unchanged. Mutation (`roll_forward`'s legacy check
+   replaced by `if False:`): this test fails ("1 failed, 532 deselected"),
+   so it still pins the refusal.
+4. *Hygiene.* The commit touches `tracker/registry.py` (docstring only),
+   `docs/repo-map.curated.json` (the one `role` line), `tests/test_api.py`
+   (the one test), the generated map and the handoff, all named by section
+   19. No behaviour change, and no dead code: ruff is clean and no
+   `hashlib` is left in the test. `repo_map.py check` on the copy says
+   current, so the regenerated map matches the curated change. Since
+   `check` also renders the page and compares it, the committed
+   `docs/repo-map.md` carries the corrected `role` too (via 7b50532).
+   `test_repo_map` passes 82.
+
+**Gate** (the c21546d archive, the **commit**, not a working tree; one
+process per file, in parallel):
+
+| Check | Result |
+|---|---|
+| test_registry | 44 passed, 2 skipped (1 warning, the runpy one as before) |
+| test_rollover | 72 passed |
+| test_api | 533 passed |
+| test_single_source | 218 passed |
+| test_layers | 31 passed |
+| test_repo_map | 82 passed |
+| `ruff check .` | All checks passed |
+| `repo_map.py check` | Map is current (302 nodes) |
+
+Not run: the 3.11 floor (no pytest there).
+
+Findings: 0 must fix, 1 should fix (outside section 19's scope; a
+follow-up), 0 nits.
