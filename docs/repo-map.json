@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 302,
     "edges": 1336,
-    "reused": 245
+    "reused": 246
   },
   "node_types": [
     "artifact",
@@ -3163,8 +3163,8 @@
       "id": "tracker/rollover.py",
       "type": "module",
       "layer": "core",
-      "sha256": "2b749499cd1bb4fa",
-      "lines": 1221,
+      "sha256": "45a829589d578be8",
+      "lines": 1229,
       "cli": "python -m tracker.rollover",
       "exports": [
         "HouseholdRollover",
@@ -4652,8 +4652,8 @@
       "id": "docs/runbook.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "2f78c0129547999e",
-      "lines": 2903,
+      "sha256": "dc5afbdf5c97bc2f",
+      "lines": 2905,
       "role": "The operator's page for one tax season: the designated machine and today's rule that only one may run a clients root, what a person does each morning and on the draft day, what every index reason and validation note means, and the thirty-minute move to another machine - on a Windows PC or on a Mac.",
       "notes": "Written for a person, not an agent. Roles are docs/workflow.md and the reasons behind the rules are docs/ROADMAP.md; it links to both rather than repeating them. The Mac is written as parallel paragraphs, not edits to the Windows text (SPEC-mac R34): section 1's `### On a Mac` (the heading the pass's own root-not-permitted reason points at) and two paragraphs in section 6 (moving to or from a Mac, taking the app off one). The one-machine rule is still stated once. tests/test_single_source.py quotes the app's sentences against it and holds the data folder's name to settings.DATA_HOME_NAME on both systems (the Windows lines once named a folder the app does not make)."
     },
@@ -4737,8 +4737,8 @@
       "id": "pilot/HANDOFF-client-folder.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "53d6e91f1ed15f3b",
-      "lines": 955
+      "sha256": "86cf282a40efead1",
+      "lines": 1090
     },
     {
       "id": "pilot/HANDOFF-document-gate.md",
@@ -4751,8 +4751,8 @@
       "id": "pilot/HANDOFF-error-handling-small.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "78e141d770ea663b",
-      "lines": 408
+      "sha256": "42266e3bbf91fcea",
+      "lines": 472
     },
     {
       "id": "pilot/HANDOFF-form-inputs.md",
@@ -4822,8 +4822,8 @@
       "id": "pilot/SPEC-client-folder-unreadable.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "d52f40fafa3b94d1",
-      "lines": 371
+      "sha256": "88d2348669c06377",
+      "lines": 417
     },
     {
       "id": "pilot/SPEC-document-gate.md",
@@ -9167,8 +9167,8 @@
       "id": "tests/test_rollover.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "ea5ac642325a887d",
-      "lines": 1801,
+      "sha256": "c43419ec6f7ae470",
+      "lines": 1876,
       "exports": [
         "PAIR_SAID",
         "PARK",
@@ -9191,6 +9191,7 @@
         "test_a_household_rollover_that_reads_every_index_carries_no_such_note",
         "test_a_household_with_two_open_years_refuses_to_roll_until_one_is_retired",
         "test_a_keyword_the_prior_year_was_taught_is_carried_as_an_ordinary_one",
+        "test_a_legacy_folder_that_is_not_open_is_not_this_household_not_a_record_that_cannot_be_read",
         "test_a_name_the_layout_refuses_rolls_nothing_in_the_plans_voice",
         "test_a_prior_year_whose_index_reads_adds_no_note",
         "test_a_renamed_private_folder_pauses_roll_forward_and_the_old_client_folder_appears_as_a_misfit",
@@ -9213,6 +9214,7 @@
         "test_household_roll_forward_rolls_all_or_none",
         "test_household_roll_forward_takes_every_lock_before_writing",
         "test_not_applicable_rolls_forward_under_its_own_heading_with_the_fresh_decision_note_and_accepted_does_not",
+        "test_only_naming_a_readable_return_of_a_closed_year_is_not_this_household",
         "test_prior_engagement_is_never_written_to",
         "test_prior_year_beats_the_template",
         "test_relative_periods_roll_too",

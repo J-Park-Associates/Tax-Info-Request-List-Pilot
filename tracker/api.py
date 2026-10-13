@@ -403,10 +403,10 @@ FAILED = ("The app hit an error it did not expect ({kind}). What it finished is 
 #: two expected classes, P298): said as themselves with their code, never as
 #: "an error it did not expect". The kind stays ``failed``, so the window
 #: keeps Retry.
-STORE_UNAVAILABLE = ("The app's database could not be used just now ({code}); nothing was changed. "
-                     "Try again in a moment; if it keeps happening, the details are in {log}")
-RECORD_NOT_WRITTEN = ("The record could not be written ({code}); nothing was changed. "
-                      "Free the disk or close whatever holds the record open, then try again; "
+STORE_UNAVAILABLE = ("The app's database could not be used just now ({code}). What it finished is on the record; "
+                     "try again in a moment, and if it keeps happening the details are in {log}")
+RECORD_NOT_WRITTEN = ("The record could not be written ({code}). What it finished is on the record; "
+                      "free the disk or close whatever holds the record open, then try again - "
                       "the details are in {log}")
 #: The notices' three buttons (decision 193, ruling 12). Static in
 #: ``index.html``'s template, pinned to these word for word, because a

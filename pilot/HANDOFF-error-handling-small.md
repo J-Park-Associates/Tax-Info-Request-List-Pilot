@@ -406,3 +406,67 @@ check`: "Map is current (302 nodes)". One interpreter only (3.13). The 3.11
 floor interpreter is not installed here, as the builder also found.
 
 Findings: 0 must fix, 2 should fix, 3 nits.
+
+## Rebuild 1 (Sonnet, 2026-10-13)
+
+Built from SPEC section 10 and the review's F1-F5. Nothing committed or pushed.
+
+**F1 - the two sentences (`tracker/api.py`).** The "nothing was changed"
+clause is gone, replaced by the true one the old FAILED text used.
+
+| | Before | After |
+|---|---|---|
+| `STORE_UNAVAILABLE` | The app's database could not be used just now ({code}); nothing was changed. Try again in a moment; if it keeps happening, the details are in {log} | The app's database could not be used just now ({code}). What it finished is on the record; try again in a moment, and if it keeps happening the details are in {log} |
+| `RECORD_NOT_WRITTEN` | The record could not be written ({code}); nothing was changed. Free the disk or close whatever holds the record open, then try again; the details are in {log} | The record could not be written ({code}). What it finished is on the record; free the disk or close whatever holds the record open, then try again - the details are in {log} |
+
+The two `tests/test_api.py` tests that pin them (the loop in the broken-journal
+test, near line 7262, and the parametrised
+`test_a_database_that_cannot_be_used_is_said_as_itself_with_its_code_and_keeps_retry`)
+read the constants by reference (`api.STORE_UNAVAILABLE.format(...)`), so
+they follow the new wording and needed no edit; both pass. `docs/runbook.md`
+(line 1497) quotes only the opening words, "the app's database could not be
+used just now (SQLITE_BUSY)" and "the record could not be written (ENOSPC)",
+not the dropped clause, so it still reads true and is unchanged. The P298 row
+in the SPEC's section 9 still carries the old clause; the SPEC is not in this
+rebuild's file list, so the landing session rewords it.
+
+**F2 - dead code (`tracker/templates.py`).** `YEAR_NOTE`,
+`EXTENSION_DEFAULT_NOTE`, `KEYWORD_DEFAULT_NOTE` and their comment are
+removed. Ruff then named `DEFAULT_EXTENSIONS` unused in the
+`tracker.manifest` import there, and it is removed. A whole-word grep over
+the tree (tests, tools, pilot, app) found no other reference apart from the
+handoff and SPEC prose; nothing imports `DEFAULT_EXTENSIONS` through
+`templates`.
+
+**F3 - one-definition table (`tests/test_errors.py`).** `THE_ONE_DEFINITION`
+is now the set `{("errors.py", "error_class"), ("errors.py", "_code_of")}`,
+built on a new `THE_ONE_FILE = "errors.py"` (the old code read
+`THE_ONE_DEFINITION[0]` for the file, which a set cannot give).
+`_second_definitions` compares `where in THE_ONE_DEFINITION`, and skips the
+inline-class scan for `THE_ONE_FILE`. `("errors.py", "_code_of")` leaves
+`ERRNO_NAMED_ON_PURPOSE`, which keeps only `ledger.py:_not_written`. The
+comment above the set and the `_second_definitions` docstring say why both
+are there: `_code_of` exists to say an error. The guard's probe tests
+(`test_the_guard_finds_a_second_definition`, including `error_class`,
+`said_as_class`, and an errno read in `probe.py`) still pass, so a second
+definition elsewhere is still caught. One consequence: the two `errors.py`
+functions are now skipped whole, where before `_code_of` was still scanned
+for naming an exception's class.
+
+**F4.** No code change, as the SPEC says.
+
+**F5 - stale lines (`tests/test_single_source.py`).** The no-op
+`.replace("chip-${vocab.unscanned_key}", "")` is removed, so the line reads
+`assert literal not in js, literal`; and the `ask_the_client_note: "Note"` stub
+is removed from the `Object.assign(vocab, ...)` in
+`test_picking_a_form_is_not_unsaved_work_but_typing_after_it_is`. Both tests
+still pass and still test what their names claim.
+
+**Gate** (scratchpad venv, Python 3.13, `-p no:cacheprovider`, one process per
+file in parallel): test_api 522 passed; test_templates 41 passed;
+test_errors 85 passed; test_single_source 218 passed; test_tripwire 23
+passed; test_layers 31 passed; test_repo_map 82 passed; `ruff check .` clean;
+`repo_map.py update` then `check`: current. The map went stale once from
+another agent's file (`pilot/HANDOFF-client-folder.md`) and `update` was run
+a second time, as the brief allowed. Only the scratchpad venv interpreter was run (the
+office interpreter was not run here).

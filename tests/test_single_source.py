@@ -1012,7 +1012,7 @@ def test_the_renderer_types_no_vocabulary_of_its_own():
                     ", ".join(DEFAULT_EXTENSIONS), "looks like", UNSCANNED_LABEL,
                     _slug(UNSCANNED_LABEL), EXPECTED_PATTERN.split("{")[1].split("}")[1].strip()):
         assert f'"{literal}"' not in js and f"'{literal}'" not in js, literal
-        assert literal not in js.replace("chip-${vocab.unscanned_key}", ""), literal
+        assert literal not in js, literal
     for literal in (*HEADERS, YES, NO, ANY_EXTENSION):
         assert f'"{literal}"' not in js and f"'{literal}'" not in js, literal
     # The dashboard's own table heads its columns in plain English, so the
@@ -3962,8 +3962,7 @@ def test_picking_a_form_is_not_unsaved_work_but_typing_after_it_is(tmp_path):
     a box typed in afterwards makes it dirty."""
     seen = _dialog_guard(tmp_path, "choose_form", (
         "function chooseForm(formId) {", "function wizardModel() {", "function fill(pattern, values) {"), """
-Object.assign(vocab, { household: { items_title: "{form} requests" }, ask_the_client: "Ask",
-                       ask_the_client_note: "Note" });
+Object.assign(vocab, { household: { items_title: "{form} requests" }, ask_the_client: "Ask" });
 const forms = [{ id: "1040", label: "1040", who: "Individuals" }];
 const templatesByForm = { "1040": [{ identifier: "A01" }] };
 let selectedForm = null, templates = [], customItems = [], nameIsAuto = false, wizardPeople = [];

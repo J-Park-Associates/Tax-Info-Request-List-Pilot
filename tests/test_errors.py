@@ -589,14 +589,22 @@ def test_the_error_class_list_is_spelled_once():
     assert found == [], "\n".join(found)
 
 
-#: The one place the class an error is said as is defined.
-THE_ONE_DEFINITION = ("errors.py", "error_class")
+#: The file that holds the one rule for naming an error.
+THE_ONE_FILE = "errors.py"
+
+#: The one place the class an error is said as is defined: ``error_class``,
+#: and ``_code_of``, the helper it and ``error_code`` both read a code
+#: through. ``_code_of`` is here and not in ``ERRNO_NAMED_ON_PURPOSE``
+#: because it exists to say an error (its code is what ``error_class`` and
+#: ``error_code`` say), so it is part of the one rule, not an errno read for
+#: something else. Both are keyed by file and function: the same names in
+#: another file are a second definition.
+THE_ONE_DEFINITION = {(THE_ONE_FILE, "error_class"), (THE_ONE_FILE, "_code_of")}
 
 #: The places that read an errno's name for something other than saying an
 #: error, each with why.
 ERRNO_NAMED_ON_PURPOSE = {
     ("ledger.py", "_not_written"): "RecordNotWritten's code, which error_class then says",
-    ("errors.py", "_code_of"): "the one place a code is read, for error_class and error_code",
 }
 
 def _is_an_exception(annotation: ast.AST | None) -> bool:
@@ -607,7 +615,8 @@ def _is_an_exception(annotation: ast.AST | None) -> bool:
 
 
 def _second_definitions(source: str, file: str) -> list[str]:
-    """A function, other than :func:`tracker.errors.error_class`, that says
+    """A function, other than :func:`tracker.errors.error_class` and its
+    helper ``_code_of`` (``THE_ONE_DEFINITION``), that says
     how an error is named: one called ``error_class`` or ``said_as_class``,
     one that names the class of an exception it was handed, or one that
     reads an errno's symbolic name."""
@@ -619,7 +628,7 @@ def _second_definitions(source: str, file: str) -> list[str]:
         if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
             continue
         where = (file, node.name)
-        if where == THE_ONE_DEFINITION:
+        if where in THE_ONE_DEFINITION:
             continue
         if node.name in {"error_class", "said_as_class"}:
             found.append(f"{file}:{node.lineno}: {node.name} defined again")
@@ -634,7 +643,7 @@ def _second_definitions(source: str, file: str) -> list[str]:
             found.append(f"{file}:{node.lineno} ({node.name}): names an exception's class itself")
         if reads_errno and where not in ERRNO_NAMED_ON_PURPOSE:
             found.append(f"{file}:{node.lineno} ({node.name}): reads an errno's name itself")
-    if file != THE_ONE_DEFINITION[0]:
+    if file != THE_ONE_FILE:
         found.extend(_inline_classes(tree, file))
     return found
 

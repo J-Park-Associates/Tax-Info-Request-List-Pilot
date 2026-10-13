@@ -52,7 +52,6 @@ from collections.abc import Iterable
 from dataclasses import replace
 
 from tracker.manifest import (
-    DEFAULT_EXTENSIONS,
     ISSUER_DOCUMENT,
     JURAT,
     KEYWORD_ALL_OF,
@@ -798,13 +797,6 @@ def ask_by_for(deadline: dt.date) -> dt.date:
     while target.weekday() in _WEEKEND:
         target -= dt.timedelta(days=1)
     return target
-
-
-#: What the wizard says about the year field and the two blank-able rules.
-YEAR_NOTE = "Defaults to the most recently ended year; the checklist's periods follow it"
-EXTENSION_DEFAULT_NOTE = ("blank means " + ", ".join(DEFAULT_EXTENSIONS)
-                          + "; a photo or an image counts as a PDF")
-KEYWORD_DEFAULT_NOTE = "Defaults to the Document Name"
 
 
 def require_form(form: str) -> None:
