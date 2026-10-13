@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 302,
     "edges": 1336,
-    "reused": 247
+    "reused": 246
   },
   "node_types": [
     "artifact",
@@ -289,8 +289,8 @@
       "id": "tracker/api.py",
       "type": "module",
       "layer": "core",
-      "sha256": "82b5e647e523331a",
-      "lines": 6786,
+      "sha256": "3a432ccf37699496",
+      "lines": 6792,
       "cli": "python -m tracker.api",
       "exports": [
         "ACCEPT_FOLDER_NAME_HELP",
@@ -4732,8 +4732,8 @@
       "id": "pilot/DECISIONS.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "f4c250280f029bfd",
-      "lines": 295
+      "sha256": "0d4b74f7ed3d199e",
+      "lines": 299
     },
     {
       "id": "pilot/HANDOFF-client-folder.md",
@@ -6149,8 +6149,8 @@
       "id": "tests/test_api.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "37cecdecc96ec195",
-      "lines": 11594,
+      "sha256": "4c0395087b4a532a",
+      "lines": 11628,
       "exports": [
         "COUNTS",
         "DEEPER_ROOT_LENGTH",
@@ -6187,7 +6187,7 @@
         "test_a_card_parked_for_an_unnamed_issuer_offers_the_next_free_issuer_row",
         "test_a_card_parked_for_any_other_reason_offers_no_issuer_box",
         "test_a_case_only_change_reads_the_same_in_the_readme_and_the_letter",
-        "test_a_change_of_case_alone_on_a_row_past_the_limit_is_the_same_row_and_is_not_measured",
+        "test_a_change_of_case_alone_on_a_held_row_past_the_limit_is_the_same_row_and_is_not_measured",
         "test_a_claim_is_offered_only_on_the_row_the_click_would_take",
         "test_a_click_on_a_held_lock_is_kind_locked_with_the_passes_start_host_and_current_file",
         "test_a_client_drop_named_like_the_status_page_is_seen_by_the_cache",
@@ -6241,6 +6241,7 @@
         "test_a_name_whose_folder_was_deleted_by_hand_can_be_created_again",
         "test_a_new_client_engagement_is_named_from_client_year_and_form",
         "test_a_new_return_drops_a_households_old_link_with_the_reason_not_a_refusal",
+        "test_a_new_row_past_the_limit_is_still_refused_beside_a_held_one",
         "test_a_null_original_is_the_same_refusal_as_a_blank_one",
         "test_a_null_text_field_reads_as_missing_and_other_values_as_their_text",
         "test_a_one_sided_related_link_is_repaired_by_saving_either_side",
@@ -6279,6 +6280,7 @@
         "test_a_request_answered_only_by_a_statement_cannot_be_deleted_by_a_save",
         "test_a_request_list_problem_is_a_json_error_not_a_traceback",
         "test_a_resend_after_a_dismissal_is_triaged_and_its_row_carries_the_set_aside_sentence",
+        "test_a_respelt_held_row_past_the_limit_with_its_document_lengthened_is_still_refused",
         "test_a_return_named_through_dots_is_the_return_it_resolves_to",
         "test_a_return_that_feeds_another_household_reads_only_that_households_records",
         "test_a_returns_accept_writes_only_that_returns_line",
