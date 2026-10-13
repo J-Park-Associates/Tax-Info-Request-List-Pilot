@@ -334,7 +334,7 @@ def test_a_household_folder_the_walk_cannot_list_is_a_misfit_not_a_silence(root)
 
 def test_a_folder_with_only_a_legacy_workbook_is_a_misfit_and_is_never_imported(root):
     """Decision 104: a folder from before it, holding the workbook the
-    tracker no longer reads and no record, is listed with its sentence -
+    tracker no longer reads and no list in its record, is listed with its sentence -
     not descended into, not run, and never imported. A folder whose record
     carries no rules with that workbook beside it is still an engagement
     and carries the same sentence as its problem."""

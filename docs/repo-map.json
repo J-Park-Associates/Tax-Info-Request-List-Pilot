@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 302,
     "edges": 1336,
-    "reused": 246
+    "reused": 241
   },
   "node_types": [
     "artifact",
@@ -2787,8 +2787,8 @@
       "id": "tracker/registry.py",
       "type": "module",
       "layer": "core",
-      "sha256": "c7d96a417b40dd8a",
-      "lines": 1039,
+      "sha256": "38371eddcb7f4767",
+      "lines": 1040,
       "cli": "python -m tracker.registry",
       "exports": [
         "EmptyRoot",
@@ -2824,7 +2824,7 @@
       ],
       "constants": {
         "LEGACY_MANIFEST_FILENAME": "'_manifest.xlsx'",
-        "LEGACY_FOLDER": "'holds a request list in a workbook the app no longer reads ({name}) and no record; set the engagement up again in the app'",
+        "LEGACY_FOLDER": "'holds its request list in a workbook the app no longer reads ({name}) and none in its record; set the engagement up again in the app'",
         "SKIP_ROLLED_FORWARD": "'rolled forward into {successor}'",
         "ROLLED_FROM_UNMATCHED": "'Rolled From names {rolled_from!r}, which matches no engagement the run can read under this root; whichever engagement that was is not retired'",
         "MISFIT_NOT_A_TREE": "'is not one of the two trees the app reads ({clients} and {private}); left alone'",
@@ -3163,8 +3163,8 @@
       "id": "tracker/rollover.py",
       "type": "module",
       "layer": "core",
-      "sha256": "14ede1fe8241115f",
-      "lines": 1229,
+      "sha256": "0a11c6bd6a412446",
+      "lines": 1249,
       "cli": "python -m tracker.rollover",
       "exports": [
         "HouseholdRollover",
@@ -3183,6 +3183,7 @@
         "RETIRED_BY_ROLLOVER",
         "RETIRED_HEADING",
         "ROLLED_HEADING",
+        "ROLLOVER_LEGACY_FOLDER",
         "ROLLOVER_NOT_RETIRED",
         "ROLLOVER_NOT_THIS_HOUSEHOLD",
         "ROLLOVER_RECORD_UNREADABLE",
@@ -3217,6 +3218,7 @@
         "ROLLOVER_TWO_OPEN_YEARS": "'this household has two open years ({years}); retire one in the editor before rolling forward'",
         "ROLLOVER_NOT_THIS_HOUSEHOLD": "'{prior} is not an open-year return of {household}'",
         "ROLLOVER_RECORD_UNREADABLE": "\"{prior}'s record could not be read ({problem}); repair it first (runbook section 6), then roll it forward\"",
+        "ROLLOVER_LEGACY_FOLDER": "'{prior} holds its request list in a workbook the app no longer reads ({name}); set it up again in the app first (runbook section 1), then roll it forward'",
         "RETIRED_BY_ROLLOVER": "\"retired by the household's rollover on {day}: it was not rolled into {year}\"",
         "ROLLED_HEADING": "'ROLLED'",
         "NOT_ROLLED_HEADING": "'NOT ROLLED'",
@@ -4652,8 +4654,8 @@
       "id": "docs/runbook.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "dc5afbdf5c97bc2f",
-      "lines": 2905,
+      "sha256": "8c49419aaff05e46",
+      "lines": 2907,
       "role": "The operator's page for one tax season: the designated machine and today's rule that only one may run a clients root, what a person does each morning and on the draft day, what every index reason and validation note means, and the thirty-minute move to another machine - on a Windows PC or on a Mac.",
       "notes": "Written for a person, not an agent. Roles are docs/workflow.md and the reasons behind the rules are docs/ROADMAP.md; it links to both rather than repeating them. The Mac is written as parallel paragraphs, not edits to the Windows text (SPEC-mac R34): section 1's `### On a Mac` (the heading the pass's own root-not-permitted reason points at) and two paragraphs in section 6 (moving to or from a Mac, taking the app off one). The one-machine rule is still stated once. tests/test_single_source.py quotes the app's sentences against it and holds the data folder's name to settings.DATA_HOME_NAME on both systems (the Windows lines once named a folder the app does not make)."
     },
@@ -4751,8 +4753,8 @@
       "id": "pilot/HANDOFF-error-handling-small.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "b5234188f457ec8b",
-      "lines": 621
+      "sha256": "fc91522c647aba90",
+      "lines": 665
     },
     {
       "id": "pilot/HANDOFF-form-inputs.md",
@@ -4822,8 +4824,8 @@
       "id": "pilot/SPEC-client-folder-unreadable.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "921f8c93afb5f4ce",
-      "lines": 462
+      "sha256": "d3581e9dd80b4dce",
+      "lines": 491
     },
     {
       "id": "pilot/SPEC-document-gate.md",
@@ -6147,7 +6149,7 @@
       "id": "tests/test_api.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "25abeba55acb3b33",
+      "sha256": "a30a443a5b4d7ca0",
       "lines": 11474,
       "exports": [
         "COUNTS",
@@ -8794,7 +8796,7 @@
       "id": "tests/test_registry.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "d65e96df8476b1ae",
+      "sha256": "0775d019b78d095b",
       "lines": 1278,
       "exports": [
         "ITEMS",
@@ -9167,8 +9169,8 @@
       "id": "tests/test_rollover.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "0196ab2806194688",
-      "lines": 1871,
+      "sha256": "0a7698beeb69343e",
+      "lines": 1980,
       "exports": [
         "PAIR_SAID",
         "PARK",
@@ -9192,6 +9194,7 @@
         "test_a_household_with_two_open_years_refuses_to_roll_until_one_is_retired",
         "test_a_keyword_the_prior_year_was_taught_is_carried_as_an_ordinary_one",
         "test_a_legacy_folder_that_is_not_open_is_not_this_household_not_a_record_that_cannot_be_read",
+        "test_a_legacy_return_in_the_open_year_is_refused_by_roll_forward_with_nothing_written",
         "test_a_name_the_layout_refuses_rolls_nothing_in_the_plans_voice",
         "test_a_prior_year_whose_index_reads_adds_no_note",
         "test_a_renamed_private_folder_pauses_roll_forward_and_the_old_client_folder_appears_as_a_misfit",
@@ -9206,6 +9209,7 @@
         "test_a_ticked_return_past_the_path_limit_rolls_nothing",
         "test_a_ticked_return_whose_name_is_taken_by_the_key_rolls_nothing",
         "test_accepted_does_not_carry",
+        "test_all_refuses_the_whole_household_when_one_of_its_returns_is_a_legacy_folder",
         "test_counts_are_never_lowered",
         "test_counts_learn_from_what_arrived",
         "test_custom_rows_survive",
@@ -9214,6 +9218,7 @@
         "test_household_roll_forward_rolls_all_or_none",
         "test_household_roll_forward_takes_every_lock_before_writing",
         "test_not_applicable_rolls_forward_under_its_own_heading_with_the_fresh_decision_note_and_accepted_does_not",
+        "test_only_naming_a_legacy_return_in_the_open_year_says_the_legacy_sentence_and_writes_nothing",
         "test_only_naming_a_readable_return_of_a_closed_year_is_not_this_household",
         "test_prior_engagement_is_never_written_to",
         "test_prior_year_beats_the_template",

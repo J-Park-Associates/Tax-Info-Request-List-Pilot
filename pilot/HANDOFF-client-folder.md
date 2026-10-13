@@ -1237,3 +1237,37 @@ Findings: 0 must fix, 0 should fix, 1 nit.
 paragraph now says "with its ``problem`` and no ``tax_year``" instead of
 "and is not active". Wording only; no test or behaviour changes. Lane closed
 at this commit.
+
+## Rebuild 8 (Sonnet, 2026-10-13)
+
+SPEC section 17 (decision P303): the legacy-folder sentence covers an empty
+record too. Wording only; no behaviour, no assertion changed.
+
+**Before:** `holds a request list in a workbook the app no longer reads
+({name}) and no record; set the engagement up again in the app`
+**After:** `holds its request list in a workbook the app no longer reads
+({name}) and none in its record; set the engagement up again in the app`
+(`registry.LEGACY_FOLDER`, still two string pieces, same `{name}`.) The
+comment above `LEGACY_MANIFEST_FILENAME` now says "a folder holding one and no
+request list in its record is: a legacy folder"; the docstring of
+`test_a_folder_with_only_a_legacy_workbook_is_a_misfit_and_is_never_imported`
+says "and no list in its record".
+
+**Grep** (`and no record` over tests, tracker, app, README, runbook): no test
+and no doc pins the old sentence. Every test reads it through the constant
+(`LEGACY_FOLDER.format(...)` in test_registry and test_rollover;
+`rollover.py` formats it the same way). The only literal "and no record"
+hits are unrelated prose (`tracker/layout.py:78`, `app/renderer/shell.js:371`)
+plus history in this handoff and the SPEC. `docs/storage.md:453` ("holds only
+an old workbook and no record is listed ... as a legacy folder") describes the
+no-record case, which is still true, and does not quote the sentence; left.
+
+**Gate** (venv Python 3.13, `-p no:cacheprovider`, one process per file, in
+parallel): test_registry 44 passed, 2 skipped (1 runpy warning, as before);
+test_rollover 70 passed; test_single_source 218 passed; test_layers 31 passed;
+test_repo_map 82 passed after `update` (its first run, before the map was
+refreshed for this change, failed only `test_the_committed_map_is_current`:
+stale hashes for registry.py and test_registry.py, plus the other builders'
+files). `python -m ruff check .`: all checks passed. `python
+tools/repo_map.py update` then `check`: current (302 nodes). Not run: the 3.11
+floor (no interpreter for it in this container).
