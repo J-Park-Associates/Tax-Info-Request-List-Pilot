@@ -521,6 +521,16 @@ and the same text is in the error log.
   made again under the old name - not by the pass, not by a new return
   into the household, and not by **Roll Forward…**, which all refuse with that
   sentence.
+- **The same hold-back, when the household's record cannot be read.** If the
+  client folder is gone and the household's own record will not read - a
+  sync conflict, a damaged line - every run of the household says instead:
+  *"`Clients\<name>` is missing and the household's record could not be read
+  (`<the record's own reason>`), so the app cannot tell whether the household
+  was renamed or moved. Nothing is made under the old name until the record
+  reads again (runbook section 6)."* The record is the first thing to repair
+  (section 6, *When a record needs recovering*); until it reads, no
+  `Clients\<name>` is made - not by the pass, a new return or **Roll
+  Forward…** - and once it does, the verdict above applies as usual.
 - **Never copy a household folder.** Two folders that claim one household -
   a copy, or two names that read as one - stop both: *"Two folders claim
   the household `<name>`: `<a>` and `<b>`. Keep one; a copy of a household

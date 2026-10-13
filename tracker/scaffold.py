@@ -374,9 +374,15 @@ def scaffold_household(
     # household's place; a new root gets it once.
     if not client_dir.is_dir():
         if may_make_household is None:
-            from tracker.households import client_folder_missing
+            from tracker.households import ClientSideUnknown, client_folder_missing
 
-            if said := client_folder_missing(household_dir, returns):
+            try:
+                said = client_folder_missing(household_dir, returns)
+            except ClientSideUnknown as exc:
+                # A record that cannot be read cannot say the household never
+                # had a client folder (P296): refuse with the one sentence.
+                raise ClientFolderMissing(str(exc)) from None
+            if said:
                 raise ClientFolderMissing(said)
         elif not may_make_household:
             from tracker.layout import CLIENT_FOLDER_MISSING

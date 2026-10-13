@@ -853,6 +853,35 @@ def test_held_back_names_a_copied_household_without_the_whole_walk(root, monkeyp
     assert held_back(private_household_dir(root, "Kim Family")) == ""
 
 
+def test_a_household_whose_record_cannot_be_read_says_so_where_its_pause_is_said(root):
+    """P296 (the error-handling audit's E1): ``held_back`` is the sentence
+    the list, the household's card, a new return and Roll Forward read. A
+    household whose client folder is gone and whose record cannot be read
+    says the one sentence that names both, in the place the folder-missing
+    sentence is said - not an empty answer, and not a traceback."""
+    import json
+    import shutil
+
+    from tracker import store
+    from tracker.households import CLIENT_SIDE_UNKNOWN
+    from tracker.locking import engagement_lock
+    from tracker.registry import held_back
+
+    make_engagement(root, ITEMS)
+    household = private_household_dir(root, TEST_HOUSEHOLD)
+    with engagement_lock(household):
+        store.record(store.connect(), household, ledger.new(ledger.SHARING_CONFIRMED))
+    ledger._write_raw(ledger.path_for(household), json.dumps(
+        {ledger.EVENT_KEY: ledger.SHARING_CONFIRMED, ledger.AT_KEY: "2026-01-01T00:00:00Z"}
+    ).encode("utf-8"))
+    with pytest.raises(ledger.LedgerError) as refused:
+        ledger.read_events(household)
+    shutil.rmtree(client_household_dir(root, TEST_HOUSEHOLD))
+
+    assert held_back(household) == CLIENT_SIDE_UNKNOWN.format(
+        name=TEST_HOUSEHOLD, problem=str(refused.value))
+
+
 # ---- S8b: every misfit carries a stable code (ruling 18) -----------------
 
 def _misfit_calls():

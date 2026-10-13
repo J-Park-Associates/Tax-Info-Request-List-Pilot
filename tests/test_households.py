@@ -415,3 +415,60 @@ def test_a_feed_resolves_by_the_comparison_key_and_never_builds_a_path(tmp_path,
     # And the destination's card names the household feeding it by the key.
     assert [one.path for one in fed_by(registry, llc.parent.parent)] == [household]
     assert [one.path for one in fed_by(registry, tmp_path / "x" / "PARK & LEE LLC")] == [household]
+
+
+def _unreadable_record_of_a_shared_household(household):
+    """The household marked shared, then one line a reader refuses (written
+    without the record's link, as an older app or a hand edit leaves it)."""
+    import json
+
+    with engagement_lock(household):
+        store.record(store.connect(), household, ledger.new(ledger.SHARING_CONFIRMED))
+    ledger._write_raw(ledger.path_for(household), json.dumps(
+        {ledger.EVENT_KEY: ledger.SHARING_CONFIRMED, ledger.AT_KEY: "2026-01-01T00:00:00Z"}
+    ).encode("utf-8"))
+
+
+def test_a_household_whose_record_cannot_be_read_is_not_said_to_have_had_no_client_folder(
+    household, caplog,
+):
+    """P296 (the error-handling audit's E1): the client folder is gone and
+    the record the ledger refuses cannot say it was ever shared. That is
+    "cannot tell", never "never had one": the verdict is
+    :class:`ClientSideUnknown`, worded with the household's name and the
+    ledger's own sentence, and the whole error is kept on the error log."""
+    import logging
+
+    from tracker import errors
+    from tracker.households import CLIENT_SIDE_UNKNOWN, ClientSideUnknown, client_folder_missing
+
+    _unreadable_record_of_a_shared_household(household)
+    with pytest.raises(ledger.LedgerError) as refused:
+        ledger.read_events(household)
+
+    with caplog.at_level(logging.WARNING, logger=errors.DEBUG_LOGGER):
+        with pytest.raises(ClientSideUnknown) as unknown:
+            client_folder_missing(household)
+
+    assert str(unknown.value) == CLIENT_SIDE_UNKNOWN.format(
+        name="Smith Family", problem=str(refused.value))
+    assert "LedgerError" in caplog.text and "households: the client-side history" in caplog.text
+
+
+def test_a_client_folder_that_is_there_is_never_a_reason_to_read_the_record(
+    household, tmp_path, monkeypatch,
+):
+    """P296: the pass asks this of every household, and a folder that is in
+    its place is nothing to decide - so a record that cannot be read does
+    not stop it, and the record is not read at all."""
+    from tracker import households
+    from tracker.layout import client_household_dir
+
+    client_household_dir(tmp_path, "Smith Family").mkdir(parents=True)
+
+    def refuses(_folder):
+        raise ledger.LedgerError("the record cannot be read")
+
+    monkeypatch.setattr(households, "shared_on", refuses)
+
+    assert households.client_folder_missing(household) == ""

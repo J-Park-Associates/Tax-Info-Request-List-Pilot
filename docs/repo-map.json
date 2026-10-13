@@ -15,9 +15,9 @@
     "a person sends the draft"
   ],
   "counts": {
-    "nodes": 296,
-    "edges": 1329,
-    "reused": 242
+    "nodes": 298,
+    "edges": 1334,
+    "reused": 244
   },
   "node_types": [
     "artifact",
@@ -289,8 +289,8 @@
       "id": "tracker/api.py",
       "type": "module",
       "layer": "core",
-      "sha256": "b6dab69222225d08",
-      "lines": 6801,
+      "sha256": "fca036f2680ec17c",
+      "lines": 6805,
       "cli": "python -m tracker.api",
       "exports": [
         "ACCEPT_FOLDER_NAME_HELP",
@@ -768,7 +768,6 @@
         "EDITOR_NOT_THIS_RETURN": "'Request List Did Not Open'",
         "KEYWORD_LABEL": "'Keyword to Learn (Optional)'",
         "KEYWORD_HELP": "'A word this document contains that others like it will too. Taught to the request so the next one files itself; the editor shows it beside the row.'",
-        "ISSUER_LABEL": "'Issuer Name'",
         "ISSUER_HELP": "'Adds {identifier}, a K-1 row for this issuer, to the request list and files this document under it. Type the distinctive words and leave off the suffix (L.P., LLC).'",
         "ISSUER_ADD_LABEL": "'Add Issuer'",
         "ISSUER_ADDED_AND_FILED": "'{identifier} - {document} added to the request list, and {name} filed under it.'",
@@ -1506,10 +1505,12 @@
       "id": "tracker/households.py",
       "type": "module",
       "layer": "core",
-      "sha256": "1d6d70c5bdd0be1e",
-      "lines": 476,
+      "sha256": "b1d73111a0204856",
+      "lines": 521,
       "exports": [
         "CLIENT_FOLDER_MISSING",
+        "CLIENT_SIDE_UNKNOWN",
+        "ClientSideUnknown",
         "FEED_UNRESOLVED",
         "HOUSEHOLD_PAUSED",
         "HOUSEHOLD_PAUSED_YEAR",
@@ -1533,7 +1534,8 @@
       "constants": {
         "FEED_UNRESOLVED": "'this drop folder is set to feed {household} / {return_name}, which has no active return for {year}'",
         "HOUSEHOLD_PAUSED": "\"Paused: this folder's name and its record's name disagree. Nothing is sorted, laid out or drafted for the household until a person opens it in the app and accepts the folder's name, or gives the folder back the name its record holds.\"",
-        "HOUSEHOLD_PAUSED_YEAR": "\"Paused: a return's folder sits under a year its record does not hold. Nothing is sorted, laid out or drafted for the household until the folder goes back under the year its record holds; a return in the wrong year is retired and made again.\""
+        "HOUSEHOLD_PAUSED_YEAR": "\"Paused: a return's folder sits under a year its record does not hold. Nothing is sorted, laid out or drafted for the household until the folder goes back under the year its record holds; a return in the wrong year is retired and made again.\"",
+        "CLIENT_SIDE_UNKNOWN": "\"`Clients\\\\{name}` is missing and the household's record could not be read ({problem}), so the app cannot tell whether the household was renamed or moved. Nothing is made under the old name until the record reads again (runbook section 6).\""
       },
       "role": "The household's own record (decision 125): create_household(), load_household_info(), save_household() (one household_changed event carrying only the fields that moved, or none), household_returns() (the returns under a household, positionally, by year then folder name without case - the order the pass takes the locks in) and open_years() (the years its active, unsuperseded returns are for; two of them is what the household pass refuses to sort on).",
       "notes": "Layer 1, beside the record's other readers: a household is a folder with a _ledger.jsonl like any other, folded by the same ledger and held in the same store table with kind = household - which is why decision 125 dropped the plan's idea of a differently named file. It holds no documents, no requests and no statuses, and no client text ever enters its events: the members are the firm's own note of who the folder is meant to be shared with. Decision 126 added shared_on(): the firm's dated word that it shared the household, read back out of the events as the newest sharing_confirmed's day. That event is folded by nothing (the draft_approved pattern) and carries nothing but its stamp, so it needed no column and the store's version did not move; a field would have claimed the folder IS shared, and the tracker cannot see Drive's sharing. Nothing in the pass reads it. Decision 129 added the feed list: resolve_feeds() turns each Feed(household, return_name) on the record into that household's open-year return of that name - a return LINE, so the rollover carries nothing and a line that answers to nothing is said (FEED_UNRESOLVED), and a fed household with two open years leaves its feed unresolved for the same reason its own inbox sorts nothing - and fed_by() answers the other direction, the households whose feeds name a return of this one, for the destination's card. Both are duck-typed on the registry, as open_years() is on its returns: this module sits below it and the facts they read are the record's own. Decision 187: resolve_feeds() resolves a feed by position - household_name_of(one.path) and the return folder's name compared casefolded with the feed's two labels, in the same private tree and year - and never builds a path from the labels (return_dir_for is no longer imported). Decision 188: resolve_feeds and fed_by compare by layout.name_key, never casefold and never a path; return_name_taken(year_dir, name) is the key-uniqueness check of a return within its household-year, asked by the wizard and the rollover. Decision 188 (part 3): HOUSEHOLD_PAUSED, HOUSEHOLD_PAUSED_YEAR and CLIENT_FOLDER_MISSING are worded here; claim_disagrees (by name_key, a blank claim claims nothing), return_disagrees ('name' | 'year' | ''), pause_of (pure: any disagreement pauses the whole household) and household_pause (read off the disk) are the one claim check the registry, the rollover and the API ask; client_side_expected(household_dir, returns) is SPEC-162 ruling 2's test, keyed on the folder name (shared, or a recorded original under Clients/<folder name>). save_household still never moves the name; the API's accept-folder-name is its one other writer."
@@ -1983,8 +1985,8 @@
       "id": "tracker/manifest.py",
       "type": "module",
       "layer": "core",
-      "sha256": "c0a660b5222cda5e",
-      "lines": 1956,
+      "sha256": "b2ecd7ea6c027d64",
+      "lines": 2001,
       "exports": [
         "ALSO_RECEIVED_LABEL",
         "ANY_EXTENSION",
@@ -1997,6 +1999,7 @@
         "COL_DOCUMENT",
         "COL_EXPECTED_COUNT",
         "COL_FILE_COUNT",
+        "COL_ISSUER",
         "COL_MANUAL_OVERRIDE",
         "COL_MIN_SIZE_KB",
         "COL_NAMED",
@@ -2123,6 +2126,7 @@
         "LABEL_SEPARATOR": "' - '",
         "ISSUER_DOCUMENT": "'Schedule K-1 - {entity}'",
         "ISSUER_SHORT": "'K-1 {entity}'",
+        "COL_ISSUER": "'Issuer Name'",
         "EXPECTED_PATTERN": "'{n} files expected'",
         "KEYWORD_ANY_OF": "'|'",
         "KEYWORD_ALL_OF": "'+'",
@@ -2539,8 +2543,8 @@
       "id": "tracker/records.py",
       "type": "module",
       "layer": "core",
-      "sha256": "2b35536798429813",
-      "lines": 2148,
+      "sha256": "d53c4ef76a675176",
+      "lines": 2149,
       "exports": [
         "ANSWER_SEP",
         "BEHIND",
@@ -2777,8 +2781,8 @@
       "id": "tracker/registry.py",
       "type": "module",
       "layer": "core",
-      "sha256": "42f6beeba8d7ed42",
-      "lines": 1028,
+      "sha256": "a70a732c068c38fa",
+      "lines": 1038,
       "cli": "python -m tracker.registry",
       "exports": [
         "EmptyRoot",
@@ -3253,8 +3257,8 @@
       "id": "tracker/runner.py",
       "type": "module",
       "layer": "core",
-      "sha256": "e576d48ef881ef80",
-      "lines": 3643,
+      "sha256": "6605d67a19326c8a",
+      "lines": 3652,
       "cli": "python -m tracker.runner",
       "exports": [
         "ACKNOWLEDGE_COMMAND",
@@ -3604,8 +3608,8 @@
       "id": "tracker/scaffold.py",
       "type": "module",
       "layer": "core",
-      "sha256": "68462c9010e602a4",
-      "lines": 796,
+      "sha256": "a2e514f52b9d9664",
+      "lines": 802,
       "cli": "python -m tracker.scaffold",
       "exports": [
         "ClientFolderMissing",
@@ -4641,8 +4645,8 @@
       "id": "docs/runbook.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "376df9459586d71c",
-      "lines": 2886,
+      "sha256": "43947a33a9747228",
+      "lines": 2896,
       "role": "The operator's page for one tax season: the designated machine and today's rule that only one may run a clients root, what a person does each morning and on the draft day, what every index reason and validation note means, and the thirty-minute move to another machine - on a Windows PC or on a Mac.",
       "notes": "Written for a person, not an agent. Roles are docs/workflow.md and the reasons behind the rules are docs/ROADMAP.md; it links to both rather than repeating them. The Mac is written as parallel paragraphs, not edits to the Windows text (SPEC-mac R34): section 1's `### On a Mac` (the heading the pass's own root-not-permitted reason points at) and two paragraphs in section 6 (moving to or from a Mac, taking the app off one). The one-machine rule is still stated once. tests/test_single_source.py quotes the app's sentences against it and holds the data folder's name to settings.DATA_HOME_NAME on both systems (the Windows lines once named a folder the app does not make)."
     },
@@ -4719,15 +4723,22 @@
       "id": "pilot/DECISIONS.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "5dda40616190cf74",
+      "sha256": "3629193d7604a70b",
       "lines": 289
+    },
+    {
+      "id": "pilot/HANDOFF-client-folder.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "b3d6f3bd411b443a",
+      "lines": 81
     },
     {
       "id": "pilot/HANDOFF-form-inputs.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "6985fbeb18c7e74d",
-      "lines": 335
+      "sha256": "5228455870335e6c",
+      "lines": 488
     },
     {
       "id": "pilot/HANDOFF.md",
@@ -4787,6 +4798,13 @@
       "lines": 1411
     },
     {
+      "id": "pilot/SPEC-client-folder-unreadable.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "f324688153e81bd2",
+      "lines": 152
+    },
+    {
       "id": "pilot/SPEC-email-zip-tag.md",
       "type": "doc",
       "layer": "docs",
@@ -4818,8 +4836,8 @@
       "id": "pilot/SPEC-form-inputs.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "165b895c1d439f29",
-      "lines": 432
+      "sha256": "1e0040468ad27706",
+      "lines": 487
     },
     {
       "id": "pilot/SPEC-hide-under-construction.md",
@@ -6094,8 +6112,8 @@
       "id": "tests/test_api.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "034365461b43aede",
-      "lines": 11289,
+      "sha256": "ecb3b8f812d395bb",
+      "lines": 11345,
       "exports": [
         "COUNTS",
         "DEEPER_ROOT_LENGTH",
@@ -6165,6 +6183,7 @@
         "test_a_list_already_holding_one_issuer_name_twice_still_renames",
         "test_a_list_changed_since_the_card_was_drawn_adds_no_row_and_files_nothing",
         "test_a_list_holding_a_long_identifier_stays_editable_and_renames_it_away",
+        "test_a_list_holding_what_an_older_paste_left_stays_editable_and_a_changed_spelling_is_typed",
         "test_a_list_saved_from_an_old_version_is_kind_stale",
         "test_a_lock_on_the_household_is_watched_there_and_named_by_its_own_label",
         "test_a_locked_rescan_after_adding_the_issuer_is_said_by_its_class_never_its_text",
@@ -6413,6 +6432,7 @@
         "test_state_shows_the_lock_and_unlock_clears_only_a_stale_one",
         "test_state_shows_the_status_the_record_holds",
         "test_stdin_that_is_not_json_is_refused_like_a_non_object_and_logs_nothing",
+        "test_stdin_that_is_not_utf8_is_refused_like_a_non_object_and_logs_nothing",
         "test_teaching_a_spelling_from_a_filing_rides_the_filings_transaction_and_a_one_word_spelling_is_refused",
         "test_templates_carries_the_calendars_default_year",
         "test_templates_lists_every_form_with_its_checklist",
@@ -7704,12 +7724,13 @@
       "id": "tests/test_households.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "260874d818e35259",
-      "lines": 417,
+      "sha256": "6ee4f31a229ae9bf",
+      "lines": 474,
       "exports": [
         "ITEMS",
         "SMITHS",
         "household",
+        "test_a_client_folder_that_is_there_is_never_a_reason_to_read_the_record",
         "test_a_feed_is_a_return_line_and_resolves_to_the_open_years_return_or_is_said",
         "test_a_feed_is_resolved_by_position_never_built_from_its_labels",
         "test_a_feed_resolves_by_the_comparison_key_and_never_builds_a_path",
@@ -7720,6 +7741,7 @@
         "test_a_household_line_of_the_wrong_shape_is_one_folders_problem",
         "test_a_household_record_is_one_event_and_reads_back",
         "test_a_household_that_already_has_a_record_is_never_written_over",
+        "test_a_household_whose_record_cannot_be_read_is_not_said_to_have_had_no_client_folder",
         "test_a_members_list_written_by_hand_as_one_name_is_read_as_one_member",
         "test_a_return_and_its_household_are_two_rows_of_one_table",
         "test_household_returns_are_the_returns_under_it_by_year_then_name",
@@ -8087,8 +8109,8 @@
       "id": "tests/test_manifest.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "1c276d371f0671ef",
-      "lines": 1428,
+      "sha256": "3b7413fa5dc08007",
+      "lines": 1485,
       "exports": [
         "GATE_REFUSES",
         "K1_WORDS",
@@ -8100,12 +8122,14 @@
         "rules_events",
         "taught",
         "test_a_blank_allowed_extensions_means_the_safe_default_not_anything",
+        "test_a_derived_short_name_hiding_an_invisible_character_is_refused_naming_the_document",
         "test_a_derived_year_is_a_check_not_a_reason_to_route",
         "test_a_details_only_edit_is_recorded_as_one",
         "test_a_folder_with_no_record_is_not_an_engagement",
         "test_a_held_identifier_past_eighty_characters_is_not_refused_but_a_new_one_is",
         "test_a_held_list_is_built_again_once_the_journal_moves",
         "test_a_held_reading_builds_the_list_once_per_record_head",
+        "test_a_held_unchanged_row_is_judged_by_the_stores_rule_and_never_the_typed_one",
         "test_a_keyword_the_row_types_itself_is_not_unlearnable_because_it_was_never_taught",
         "test_a_line_another_process_appends_is_seen_by_the_next_read_in_the_hold",
         "test_a_line_break_in_a_description_is_saved_and_admitted",
@@ -8668,8 +8692,8 @@
       "id": "tests/test_records.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "5f29091d651d7fa3",
-      "lines": 673,
+      "sha256": "ad23803242279676",
+      "lines": 670,
       "exports": [
         "A_ROW",
         "COSTLY",
@@ -8719,8 +8743,8 @@
       "id": "tests/test_registry.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "ea2d1685ff52961f",
-      "lines": 1173,
+      "sha256": "32a9696184c05f2b",
+      "lines": 1202,
       "exports": [
         "ITEMS",
         "engagement_dirs",
@@ -8735,6 +8759,7 @@
         "test_a_folder_with_only_a_legacy_workbook_is_a_misfit_and_is_never_imported",
         "test_a_household_folder_the_walk_cannot_list_is_a_misfit_not_a_silence",
         "test_a_household_or_return_folder_the_name_rule_refuses_is_a_misfit_with_the_reason",
+        "test_a_household_whose_record_cannot_be_read_says_so_where_its_pause_is_said",
         "test_a_household_with_no_return_anywhere_is_said_and_is_still_a_household",
         "test_a_legacy_folder_is_still_found_by_whether_it_has_rules",
         "test_a_misfit_cannot_be_built_without_a_code",
@@ -9316,8 +9341,8 @@
       "id": "tests/test_runner.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "c10faf205af81f6b",
-      "lines": 5871,
+      "sha256": "cc4a0fed0cbbab6d",
+      "lines": 5908,
       "exports": [
         "A_CLIENT_PATH",
         "DRAFT_DAY",
@@ -9444,6 +9469,7 @@
         "test_a_scheduled_pass_off_windows_ends_at_the_run_limit_and_its_lock_is_cleared_as_dead",
         "test_a_scheduled_pass_off_windows_stops_itself_before_the_run_limit",
         "test_a_served_household_resets_its_count",
+        "test_a_shared_household_whose_record_cannot_be_read_is_held_back_and_its_client_folder_is_not_remade",
         "test_a_sort_leaves_the_overview_to_the_app",
         "test_a_statuses_entry_of_the_wrong_shape_is_one_folders_problem_and_the_pass_goes_on",
         "test_a_stop_between_files_ends_the_sort_at_the_next_file_and_the_next_pass_sorts_the_rest",
@@ -9571,8 +9597,8 @@
       "id": "tests/test_scaffold.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "876a35afaf9bb10d",
-      "lines": 1147,
+      "sha256": "443f53624c289cde",
+      "lines": 1178,
       "exports": [
         "A01_LABEL",
         "ACTIVE_IDS",
@@ -9633,6 +9659,7 @@
         "test_the_review_folder_is_never_assigned_to_an_identifier",
         "test_the_scaffold_makes_both_trees_and_the_readme_in_the_inbox_is_grouped_by_return",
         "test_the_scaffold_makes_no_request_folders",
+        "test_the_scaffold_refuses_to_lay_out_a_household_whose_record_cannot_be_read",
         "test_windows_reserved_device_names_are_never_folder_names",
         "test_working_copy_names_are_windows_safe_and_begin_with_their_identifier"
       ],
@@ -10888,8 +10915,8 @@
       "id": "tests/test_templates.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "49fc4bf8941fdfa3",
-      "lines": 465,
+      "sha256": "1601608c3b4bad37",
+      "lines": 480,
       "exports": [
         "OWNERS_ROWS_141",
         "SAME_TITLE_OWN_RULES",
@@ -10898,6 +10925,7 @@
         "test_a_refused_catalog_identifier_is_quoted_cut_and_never_carries_the_character",
         "test_a_request_with_no_rule_defaults_to_its_own_name",
         "test_an_issuer_item_is_shifted_to_the_returns_year",
+        "test_an_issuer_name_hiding_a_soft_hyphen_is_refused_naming_the_issuer_never_a_short_name",
         "test_an_issuer_row_is_named_because_the_k1_row_it_is_cut_from_is",
         "test_an_issuer_row_is_the_k_1_row_named_for_an_entity",
         "test_an_issuer_row_needs_an_entity",
@@ -13740,6 +13768,12 @@
     },
     {
       "from": "tests/test_households.py",
+      "to": "tracker/errors.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_households.py",
       "to": "tracker/layout.py",
       "type": "exercises",
       "source": "derived"
@@ -14826,6 +14860,12 @@
     },
     {
       "from": "tests/test_registry.py",
+      "to": "tracker/locking.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_registry.py",
       "to": "tracker/manifest.py",
       "type": "exercises",
       "source": "derived"
@@ -15726,7 +15766,19 @@
     },
     {
       "from": "tests/test_scaffold.py",
+      "to": "tracker/households.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_scaffold.py",
       "to": "tracker/layout.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_scaffold.py",
+      "to": "tracker/ledger.py",
       "type": "exercises",
       "source": "derived"
     },
@@ -17953,6 +18005,12 @@
     {
       "from": "tracker/households.py",
       "to": "tracker/door.py",
+      "type": "imports_at_call",
+      "source": "derived"
+    },
+    {
+      "from": "tracker/households.py",
+      "to": "tracker/errors.py",
       "type": "imports_at_call",
       "source": "derived"
     },

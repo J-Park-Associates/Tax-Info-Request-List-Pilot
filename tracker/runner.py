@@ -197,6 +197,7 @@ from tracker.filer import (
 )
 from tracker.fsio import append_rotating, full_sync, write_json_atomically, write_text_atomically
 from tracker.households import (
+    ClientSideUnknown,
     client_folder_missing,
     load_household_info,
     open_years,
@@ -1355,8 +1356,16 @@ def run_household(
         # the old name (SPEC-162 ruling 2, kept by decision 188).
         client_side_there = client_household_dir(household.parent.parent, household.name).is_dir()
         if not held_back and not client_side_there:
-            held_back = client_folder_missing(household, [run.engagement.path for run in runs])
             held_code = CODE_CLIENT_FOLDER_MISSING
+            try:
+                held_back = client_folder_missing(household, [run.engagement.path for run in runs])
+            except ClientSideUnknown as exc:
+                # The folder is gone and the record cannot say whether it was
+                # ever shared (P296): held back with the one sentence that
+                # says both, under the code the pass already uses for a
+                # record it cannot read - never laid out again under the
+                # old name on a guess.
+                held_back, held_code = str(exc), CODE_RECORD_UNREADABLE
         if held_back:
             for run in runs:
                 run.error, run.code = held_back, held_code

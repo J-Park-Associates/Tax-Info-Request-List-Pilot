@@ -915,7 +915,12 @@ def held_back(household_dir: Path | str) -> str:
     S4). The one question a new return into it and every form of Roll
     Forward ask before anything is written, with the sentence each stop
     has in the pass."""
-    from tracker.households import client_folder_missing, household_pause, household_returns
+    from tracker.households import (
+        ClientSideUnknown,
+        client_folder_missing,
+        household_pause,
+        household_returns,
+    )
 
     folder = Path(household_dir)
     if not ledger.path_for(folder).is_file():
@@ -927,7 +932,12 @@ def held_back(household_dir: Path | str) -> str:
         stopped = {}
     if said := stopped.get(folder):
         return said
-    return household_pause(folder) or client_folder_missing(folder)
+    if paused := household_pause(folder):
+        return paused
+    try:
+        return client_folder_missing(folder)
+    except ClientSideUnknown as exc:
+        return str(exc)
 
 
 def _two_claims(households: list[Household]) -> dict[Path, str]:
