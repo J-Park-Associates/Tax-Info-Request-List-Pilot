@@ -668,6 +668,3 @@ def test_a_typed_identifier_longer_than_eighty_characters_is_refused_as_too_long
     assert records.identifier_problem("A" * 200) == ""
     # The other rules come first, in the same words.
     assert records.typed_identifier_problem("A:" + "A" * 200) == records.identifier_problem("A:")
-    # A held identifier is not capped, but every other rule still applies.
-    assert records.typed_identifier_problem("A" * 200, capped=False) == ""
-    assert records.typed_identifier_problem("A\u00a0" + "A" * 200, capped=False) != ""

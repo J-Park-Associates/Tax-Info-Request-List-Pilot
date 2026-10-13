@@ -20,6 +20,7 @@ from tracker.manifest import (
     COL_DOCUMENT,
     COL_EXPECTED_COUNT,
     COL_IDENTIFIER,
+    COL_ISSUER,
     COL_MANUAL_OVERRIDE,
     COL_MIN_SIZE_KB,
     COL_NAMED,
@@ -1410,19 +1411,75 @@ def test_a_typed_identifier_past_eighty_characters_is_refused_where_it_is_read()
 
 
 def test_a_held_identifier_past_eighty_characters_is_not_refused_but_a_new_one_is():
-    """P291, the review's F1: the cap is for a new or changed identifier. One
-    the list already holds (its ``identifier_key`` is in ``recorded``) is let
-    through, case aside; a different one the same length is refused, and the
-    invisible-character rule still applies to every row."""
-    held = frozenset({identifier_key("L" * 120)})
+    """P291, the reviews' F1 and G1: the typed rule is for a new or changed
+    identifier. One the list already holds, spelt as it holds it, is asked
+    the store's rule alone - no cap, no full invisible rule; a respelling,
+    by case alone too, is a change, and a different one is new."""
+    def held(*identifiers):
+        return {identifier_key(i): RequestItem(identifier=i, document="x") for i in identifiers}
+
     row = {"identifier": "L" * 120, "document": "x"}
-    assert item_from_fields(row, where="Row 1", recorded=held).identifier == "L" * 120
-    assert item_from_fields({**row, "identifier": "l" * 120}, where="Row 1", recorded=held)
+    assert item_from_fields(row, where="Row 1", recorded=held("L" * 120)).identifier == "L" * 120
     with pytest.raises(ManifestError, match="may have at most 80 characters, got 120"):
-        item_from_fields({**row, "identifier": "M" * 120}, where="Row 2", recorded=held)
+        item_from_fields({**row, "identifier": "l" * 120}, where="Row 1", recorded=held("L" * 120))
+    with pytest.raises(ManifestError, match="may have at most 80 characters, got 120"):
+        item_from_fields({**row, "identifier": "M" * 120}, where="Row 2", recorded=held("L" * 120))
+    hidden = "L" * 60 + "\u00a0" + "L" * 59
+    assert item_from_fields({**row, "identifier": hidden}, where="Row 1",
+                            recorded=held(hidden)).identifier == hidden
     with pytest.raises(ManifestError, match="U\\+00A0 NO-BREAK SPACE"):
-        hidden = "L" * 60 + "\u00a0" + "L" * 59
-        item_from_fields({**row, "identifier": hidden}, where="Row 1",
-                         recorded=frozenset({identifier_key(hidden)}))
+        item_from_fields({**row, "identifier": hidden.lower()}, where="Row 1", recorded=held(hidden))
     with pytest.raises(ManifestError, match="may have at most 80"):
         item_from_fields(row, where="Row 1")
+
+
+def test_a_derived_short_name_hiding_an_invisible_character_is_refused_naming_the_document():
+    """P290, the second review's G2: a row with no short name of its own is
+    named by its Document's first words, so ``W-2<U+202E>fdp.exe`` would put
+    the right-to-left override in every working copy's name. The refusal
+    names the Document, the field the person typed, never a Short name."""
+    for document, named in (("W-2\u202efdp.exe", "U+202E RIGHT-TO-LEFT OVERRIDE"),
+                            ("W-2\u00adWages", "U+00AD SOFT HYPHEN")):
+        with pytest.raises(ManifestError) as refused:
+            item_from_fields({"identifier": "A01", "document": document}, where="Row 1")
+        said = str(refused.value)
+        assert said.startswith(f"Row 1: {COL_DOCUMENT} 'W-2<U+")
+        assert said.endswith(f"may not contain an invisible character ({named}) "
+                             f"(it is also the short name)")
+        assert "\u202e" not in said and "\u00ad" not in said
+    # Past the twenty characters the short name keeps, the character is in no
+    # file name, and a typed short name of its own is what the copies carry.
+    assert item_from_fields({"identifier": "A01", "document": "W-2 Wage Statements \u00adx"},
+                            where="Row 1")
+    assert item_from_fields({"identifier": "A01", "document": "W-2\u00adWages",
+                             "short_title": "W-2"}, where="Row 1").short_title == "W-2"
+
+
+def test_a_held_unchanged_row_is_judged_by_the_stores_rule_and_never_the_typed_one():
+    """P290 and P291 (the second review's G1, G2 and G5): what the list
+    already holds, sent back as it holds it, is asked the store's rule - the
+    spoofing characters only - for its short name, typed or derived; the same
+    values new or changed are the typed rule's."""
+    held = RequestItem(identifier="A01", document="W-2\u00adWages", short_title="W\u00adX")
+    issuer = RequestItem(identifier="F02", document="Schedule K-1 - Ashford\u00adHoldings")
+    recorded = {"a01": held, "f02": issuer}
+    kept = {"identifier": "A01", "document": held.document, "short_title": held.short_title}
+    assert item_from_fields(kept, where="Row 1", recorded=recorded).short_title == held.short_title
+    assert item_from_fields({**kept, "short_title": ""}, where="Row 1",
+                            recorded={"a01": replace(held, short_title="")})
+    assert item_from_fields({"identifier": "F02", "document": issuer.document}, where="Row 2",
+                            recorded=recorded).document == issuer.document
+    # Changed, each is the typed rule's.
+    with pytest.raises(ManifestError, match="^Row 1: Short name .*U\\+00AD"):
+        item_from_fields({**kept, "short_title": "W\u00adY"}, where="Row 1", recorded=recorded)
+    with pytest.raises(ManifestError, match=f"^Row 1: {COL_DOCUMENT} .*U\\+00AD"):
+        item_from_fields({**kept, "document": "W-2\u00adWage", "short_title": ""}, where="Row 1",
+                         recorded={"a01": replace(held, short_title="")})
+    with pytest.raises(ManifestError, match=f"^Row 2: {COL_ISSUER} 'Ashford<U\\+00AD>Holdings LP' "):
+        item_from_fields({"identifier": "F02", "document": issuer.document + " LP"}, where="Row 2",
+                         recorded=recorded)
+    # The store's rule still refuses a spoofing character a held row derives.
+    spoof = RequestItem(identifier="A01", document="W-2\u202efdp.exe")
+    with pytest.raises(ManifestError, match="U\\+202E"):
+        item_from_fields({"identifier": "A01", "document": spoof.document}, where="Row 1",
+                         recorded={"a01": spoof})

@@ -197,6 +197,7 @@ from tracker.locking import (
 )
 from tracker.manifest import (
     ANY_EXTENSION,
+    COL_ISSUER,
     COLUMN_HELP,
     COLUMNS,
     DEFAULT_EXTENSIONS,
@@ -1045,7 +1046,7 @@ KEYWORD_HELP = ("A word this document contains that others like it will too. Tau
 #: The card of a K-1 parked for an unnamed issuer (decision 201): its one
 #: box, what it will add - the next free row, named before anything is
 #: pressed - and its one button; and what the banner says once it is done.
-ISSUER_LABEL = "Issuer Name"
+ISSUER_LABEL = COL_ISSUER
 ISSUER_HELP = ("Adds {identifier}, a K-1 row for this issuer, to the request list and files this "
                "document under it. Type the distinctive words and leave off the suffix (L.P., LLC).")
 ISSUER_ADD_LABEL = "Add Issuer"
@@ -3577,6 +3578,9 @@ def _cmd_edit(argv: list[str]) -> dict:
     recorded = recorded_rules(engagement)
     exact = {str(rule["identifier"]): rule for rule in recorded}
     folded = {identifier_key(str(rule["identifier"])): rule for rule in recorded}
+    # What the list holds, as rows: a value sent back as it is held is judged
+    # by the store's rule, a new or changed one by the typed rule (P290, P291).
+    held_items = {key: item_from_record(rule) for key, rule in folded.items()}
     items = []
     for n, row in enumerate(rows, start=1):
         row = row if isinstance(row, dict) else {}
@@ -3586,7 +3590,7 @@ def _cmd_edit(argv: list[str]) -> dict:
         identifier = str(row.get("identifier") or "").strip()
         held = exact.get(identifier) or folded.get(identifier_key(identifier))
         items.append(item_from_fields(_as_recorded(row, held), where=f"Row {n}",
-                                      recorded=frozenset(folded)))
+                                      recorded=held_items))
     _refuse_a_list_nobody_is_asked_for(items)
     details = spec.get("engagement") or {}
     for key in details:

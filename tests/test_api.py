@@ -11250,6 +11250,48 @@ def test_a_list_holding_a_long_identifier_stays_editable_and_renames_it_away(cap
     assert [rule["identifier"] for rule in payload["state"]["rules"]] == ["B01"]
 
 
+def test_a_list_holding_what_an_older_paste_left_stays_editable_and_a_changed_spelling_is_typed(
+        capsys, demo_root):
+    """P290 and P291 (the second review's G1): a no-break space or a soft
+    hyphen the store admits, held in a record from before the typed rule,
+    never stops a save of the list - an edit to another column, or an older
+    window's row that sends only the identifier and the Document. A value
+    changed from what the list holds is new, and gets the typed rule."""
+    from dataclasses import replace
+
+    from tracker.locking import engagement_lock
+    from tracker.manifest import load_manifest
+    from tracker.records import rule_to_json
+
+    engagement = _a_return_to_type_into(capsys, demo_root)
+    pasted = "A\u00a001"
+    [item] = load_manifest(engagement)
+    with engagement_lock(engagement):
+        store.record(store.connect(), engagement, ledger.new(ledger.RULES_CHANGED, **{
+            ledger.RULES_KEY: [rule_to_json(replace(item, identifier=pasted, short_title="W\u00adX"))],
+            ledger.REMOVED_KEY: ["A01"]}))
+    rows = payload_of_state(capsys, engagement)["rules"]
+    assert [(row["identifier"], row["short_title"]) for row in rows] == [(pasted, "W\u00adX")]
+
+    code, payload = run(capsys, "edit", api.ENGAGEMENT_FLAG, str(engagement), stdin={
+        "items": [{**rows[0], "document": "W-2 Wage Statements"}], "engagement": {}})
+    assert code == 0, payload
+    code, payload = run(capsys, "edit", api.ENGAGEMENT_FLAG, str(engagement), stdin={
+        "items": [{"identifier": pasted, "document": "W-2 Forms"}], "engagement": {}})
+    assert code == 0, payload
+    assert [(rule["document"], rule["short_title"]) for rule in payload["state"]["rules"]] == [
+        ("W-2 Forms", "W\u00adX")]
+
+    rows = payload_of_state(capsys, engagement)["rules"]
+    before = ledger.path_for(engagement).read_bytes()
+    code, payload = run(capsys, "edit", api.ENGAGEMENT_FLAG, str(engagement), stdin={
+        "items": [{**rows[0], "identifier": "a\u00a001"}], "engagement": {}})
+    assert code == 1
+    assert payload["error"] == ("Row 1: Identifier 'a<U+00A0>01' may not contain an invisible "
+                                "character (U+00A0 NO-BREAK SPACE)")
+    assert ledger.path_for(engagement).read_bytes() == before
+
+
 def test_a_long_identifier_is_refused_as_too_long_and_never_as_a_long_folder_name(
         capsys, demo_root):
     engagement = _a_return_to_type_into(capsys, demo_root)
@@ -11282,6 +11324,20 @@ def test_stdin_that_is_not_json_is_refused_like_a_non_object_and_logs_nothing(
     from tracker.settings import error_log_path
 
     monkeypatch.setattr("sys.stdin", io.TextIOWrapper(io.BytesIO(b"not json"), encoding="utf-8"))
+    code = api.main(["set-schedule"])
+    payload = one_reply(capsys.readouterr().out)
+    assert code == 1 and payload["error"] == api.NOT_A_SPEC
+    log = error_log_path()
+    assert not log.exists() or log.read_text(encoding="utf-8") == ""
+
+
+def test_stdin_that_is_not_utf8_is_refused_like_a_non_object_and_logs_nothing(
+        capsys, demo_root, monkeypatch):
+    import io
+
+    from tracker.settings import error_log_path
+
+    monkeypatch.setattr("sys.stdin", io.TextIOWrapper(io.BytesIO(b"\xff\xfe{"), encoding="utf-8"))
     code = api.main(["set-schedule"])
     payload = one_reply(capsys.readouterr().out)
     assert code == 1 and payload["error"] == api.NOT_A_SPEC

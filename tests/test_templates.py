@@ -463,3 +463,18 @@ def test_an_issuer_item_is_shifted_to_the_returns_year():
     assert issuer_item("F03", "Dunmore Capital", None) == cut
     with pytest.raises(ManifestError):
         issuer_item("F03", " , . ", BASE_YEAR)
+
+
+def test_an_issuer_name_hiding_a_soft_hyphen_is_refused_naming_the_issuer_never_a_short_name():
+    """P290, the second review's G5: an issuer row's short name is derived
+    from the issuer's name, so a soft hyphen typed in that name is refused
+    on the name the person typed, never on a Short name nobody typed."""
+    from tracker.manifest import COL_ISSUER, COL_SHORT_TITLE
+    from tracker.templates import issuer_item
+
+    with pytest.raises(ManifestError) as refused:
+        issuer_item("F02", "Ashford\u00adHoldings", BASE_YEAR)
+    said = str(refused.value)
+    assert said == (f"F02: {COL_ISSUER} 'Ashford<U+00AD>Holdings' may not contain an invisible "
+                    f"character (U+00AD SOFT HYPHEN) (it is also the short name)")
+    assert COL_SHORT_TITLE not in said

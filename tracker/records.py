@@ -1492,7 +1492,7 @@ def identifier_problem(identifier: str) -> str:
 IDENTIFIER_MAX_CHARS = 80
 
 
-def typed_identifier_problem(identifier: str, *, capped: bool = True) -> str:
+def typed_identifier_problem(identifier: str) -> str:
     """Why a *typed* identifier is refused: :func:`identifier_problem`, then
     the full invisible-character rule (:func:`tracker.layout.invisible_problem`),
     then :data:`IDENTIFIER_MAX_CHARS`, or "" if it passes.
@@ -1501,14 +1501,15 @@ def typed_identifier_problem(identifier: str, *, capped: bool = True) -> str:
     unbounded :func:`identifier_problem`: a record's identifier is not
     re-judged by what a person may type. Said before the path-room check,
     so a long identifier is told it is long and never to shorten the
-    household. ``capped=False`` leaves the length out, for an identifier the
-    list already holds and the editor sends back unchanged (P291).
+    household. Asked of a new or changed identifier only: one the list
+    already holds, sent back as it is spelt, is asked
+    :func:`identifier_problem` alone (``manifest.item_from_fields``, P291).
     """
     if problem := identifier_problem(identifier):
         return problem
     if (hidden := invisible_problem(identifier)) is not None:
         return hidden
-    if capped and len(identifier) > IDENTIFIER_MAX_CHARS:
+    if len(identifier) > IDENTIFIER_MAX_CHARS:
         return (f"may have at most {IDENTIFIER_MAX_CHARS} characters, got {len(identifier)} "
                 f"(it begins a file name)")
     return ""

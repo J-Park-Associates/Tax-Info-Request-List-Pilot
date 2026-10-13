@@ -126,6 +126,7 @@ from tracker.records import (
     identifier_key,
     identifier_problem,
     info_to_json,
+    invisible_problem,
     is_reserved_name,  # noqa: F401
     link_problem,
     quoted,
@@ -134,6 +135,7 @@ from tracker.records import (
     rule_to_json,
     short_title_problem,  # noqa: F401 - the editor's name for the record's check
     split_codes,
+    spoofing_problem,
     typed_identifier_problem,
     typed_short_title_problem,
 )
@@ -589,6 +591,10 @@ ISSUER_DOCUMENT = "Schedule K-1 - {entity}"
 ISSUER_SHORT = "K-1 {entity}"
 #: What an issuer Document begins with, read off :data:`ISSUER_DOCUMENT`.
 _ISSUER_PREFIX = ISSUER_DOCUMENT.split("{entity}", 1)[0]
+#: The field a person types an issuer's name into (decision 201): the box
+#: on a parked K-1's card, and what a refusal of an issuer row's derived
+#: short name names (P290) - the issuer, never a Short name nobody typed.
+COL_ISSUER = "Issuer Name"
 
 
 def _cut_short(text: str) -> str:
@@ -631,12 +637,18 @@ def derived_short_title(document: str) -> str:
     ``K-1 Ashford Holdings``; ``Rental Property Income and Expenses`` is
     ``Rental Property``.
     """
+    if entity := _issuer_entity(document):
+        return issuer_short_title(entity)
+    return _cut_short(re.sub(r"\s+", " ", str(document or "")).strip())
+
+
+def _issuer_entity(document: str) -> str:
+    """The entity a Document written as :data:`ISSUER_DOCUMENT` names - the
+    prefix matched without case - or "" for any other Document."""
     text = re.sub(r"\s+", " ", str(document or "")).strip()
     if text.casefold().startswith(_ISSUER_PREFIX.casefold()):
-        entity = text[len(_ISSUER_PREFIX):].strip()
-        if entity:
-            return issuer_short_title(entity)
-    return _cut_short(text)
+        return text[len(_ISSUER_PREFIX):].strip()
+    return ""
 
 
 #: How a multi-file request says so, everywhere (the README, the reminder,
@@ -1024,19 +1036,45 @@ def _yes_no(value: object, column: str, where: str) -> bool:
     raise ManifestError(f"{where}: {column} must be {YES} or {NO} (or blank), got {value!r}")
 
 
-def _short_title(value: object, where: str) -> str:
+def _short_title(value: object, document: str, where: str, held: RequestItem | None) -> str:
     """A Short name as typed (decision 144): blank is derived, anything
-    else must be legal in a file name, within :data:`SHORT_TITLE_MAX`, and
-    holding no invisible character (P290: where a person types, the full
-    rule; the store's gate asks the narrower one)."""
+    else must be legal in a file name and within :data:`SHORT_TITLE_MAX`.
+
+    **Typed or held** (P290, P291). A new or changed short name is held to
+    the full rule a person types against (:func:`typed_short_title_problem`:
+    no invisible character at all); one equal to the short name ``held``
+    - the row the list already holds - is judged by the store's rule alone
+    (:func:`short_title_problem`: the spoofing characters only), so a soft
+    hyphen an older paste left in a record never stops the list's save.
+
+    **The derived name is judged too** (P290, the second review's G2 and
+    G5): a blank short name, or one equal to what the Document derives (an
+    issuer row's), is :func:`derived_short_title` of the Document, and that
+    becomes part of every working copy's name as a typed one does. Its
+    length is already cut and a character a folder cannot hold is turned
+    into a hyphen where the name is used, so the one part of the rule left
+    to ask is the invisible character: the typed rule when the Document or
+    the short name is new or changed, the store's when both are as held.
+    The refusal names the field the person typed - the Document, or the
+    issuer's name - never a Short name nobody typed.
+    """
     text = "" if value is None else str(value).strip()
-    if problem := typed_short_title_problem(text):
-        raise ManifestError(f"{where}: {COL_SHORT_TITLE} {problem}")
+    derived = derived_short_title(document)
+    if not text or text == derived:
+        unchanged = held is not None and document == held.document and text == held.short_title
+        if (hidden := (spoofing_problem if unchanged else invisible_problem)(derived)) is not None:
+            entity = _issuer_entity(document)
+            label, source = (COL_ISSUER, entity) if entity else (COL_DOCUMENT, document)
+            raise ManifestError(f"{where}: {label} '{quoted(source)}' {hidden} (it is also the short name)")
+    if text:
+        unchanged = held is not None and text == held.short_title
+        if problem := (short_title_problem if unchanged else typed_short_title_problem)(text):
+            raise ManifestError(f"{where}: {COL_SHORT_TITLE} {problem}")
     return text
 
 
 def item_from_fields(fields: Mapping[str, object], *, where: str,
-                     recorded: frozenset[str] = frozenset()) -> RequestItem:
+                     recorded: Mapping[str, RequestItem] | None = None) -> RequestItem:
     """One request row from plain values: the editor's JSON, a catalog spec,
     a test's dict.
 
@@ -1060,11 +1098,16 @@ def item_from_fields(fields: Mapping[str, object], *, where: str,
     about (:func:`check_rules`), as the sheet allowed. The catalog's
     ``item_from_spec`` adds its own rule on top.
 
-    ``recorded`` is the set of ``identifier_key``s the list already holds
-    (the editor passes it): the typing limit on an identifier's length
-    (P291) is for a new or changed identifier, never one the list already
-    holds, so a held long one stays editable; the invisible-character rule
-    still applies to every row.
+    ``recorded`` maps each ``identifier_key`` the list already holds to
+    its row (the editor passes it; a catalog and a new return pass
+    nothing). The typed rules (P290, P291) are for a new or changed value,
+    never one the list already holds: an identifier spelt exactly as the
+    held row spells it is judged by the store's rule alone
+    (:func:`identifier_problem` - no length cap, the spoofing characters
+    only), and so is a short name equal to the held one, so a list holding
+    a long identifier or a no-break space an older paste left stays
+    editable. Any other spelling is new, and gets the typed rule
+    (:func:`typed_identifier_problem`, :func:`typed_short_title_problem`).
     """
     def text(key: str) -> str:
         value = fields.get(key)
@@ -1074,10 +1117,12 @@ def item_from_fields(fields: Mapping[str, object], *, where: str,
     if extensions in (None, ""):
         extensions = fields.get("extensions")
     identifier = text("identifier")
+    held = (recorded or {}).get(identifier_key(identifier))
     # A typed identifier is told it is too long here, before the path-room
     # check names the household (P291); a blank one is `validated`'s to say.
-    if identifier and (problem := typed_identifier_problem(
-            identifier, capped=identifier_key(identifier) not in recorded)):
+    rule = identifier_problem if held is not None and identifier == held.identifier \
+        else typed_identifier_problem
+    if identifier and (problem := rule(identifier)):
         raise ManifestError(f"{where}: {COL_IDENTIFIER} '{quoted(identifier)}' {problem}")
     return RequestItem(
         identifier=identifier,
@@ -1095,7 +1140,7 @@ def item_from_fields(fields: Mapping[str, object], *, where: str,
         override_reason=text("override_reason"),
         named=_yes_no(fields.get("named"), COL_NAMED, where),
         asked=_yes_no(fields.get("asked"), COL_ASKED, where),
-        short_title=_short_title(fields.get("short_title"), where),
+        short_title=_short_title(fields.get("short_title"), text("document"), where, held),
     )
 
 

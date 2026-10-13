@@ -486,3 +486,28 @@ name.
   the repo's voice.
 
 Findings: 1 must fix, 1 should fix, 3 nits.
+
+## Rebuild 2 (Opus, 2026-10-13)
+
+Each finding fixed as SPEC section 15 directs; nothing else touched.
+
+- **G1** - `tracker/manifest.py` `item_from_fields(..., recorded=None)`: `recorded` is now a mapping of `identifier_key` to the held `RequestItem`. An identifier spelt exactly as held is asked `records.identifier_problem` alone; any other spelling (a case-only respelling included) gets `typed_identifier_problem`. `_short_title` asks `short_title_problem` of a short name equal to the held one and `typed_short_title_problem` otherwise. `tracker/api.py` `_cmd_edit` passes `{key: item_from_record(rule)}` for the held rows. `tracker/records.py` `typed_identifier_problem` loses `capped`; its docstring says who asks the gate's rule instead. Tests: `test_a_list_holding_what_an_older_paste_left_stays_editable_and_a_changed_spelling_is_typed` (api: a record holding `A<NBSP>01` / `W<SHY>X` saves a Document edit and an older window's two-key row; `a<NBSP>01` is refused with the typed sentence, nothing written). `test_a_held_identifier_past_eighty_characters_is_not_refused_but_a_new_one_is` (manifest) is rewritten to the mapping: a held NBSP identifier passes, and a case respelling is now a change. The `capped=False` lines in test_records are gone.
+- **G2** - `tracker/manifest.py` `_short_title(value, document, where, held)`: a blank short name, or one equal to `derived_short_title(document)`, has that derived name judged for invisible characters. That is `invisible_problem` when the Document or short name is new or changed, and `spoofing_problem` (the store's half) when both are as held. The refusal is `{where}: {label} '{quoted(source)}' {problem} (it is also the short name)`. Only the invisible half is asked of the derived name: the derivation already cuts the length and strips a trailing separator, and `filer._parts_of` sanitises an illegal character. The full short-name rule would have started refusing a Document such as `Form 1099: Interest`, which no finding asks for. Tests (manifest): `test_a_derived_short_name_hiding_an_invisible_character_is_refused_naming_the_document` and `test_a_held_unchanged_row_is_judged_by_the_stores_rule_and_never_the_typed_one`. The second test shows soft hyphens on held rows passing, the same values changed refused, and a held U+202E Document still refused by the store's half.
+- **G3** - `tests/test_api.py` `test_stdin_that_is_not_utf8_is_refused_like_a_non_object_and_logs_nothing` (stdin `\xff\xfe{`). No code change.
+- **G4** - `pilot/DECISIONS.md` P290 now says a stored identifier *or short name* holding a spoofing character is a refused line, and that the derived short name is judged when the list is saved, naming the Document or Issuer Name (the store's gate does not read the Document). P291 says the cap and the typed rules apply to a new or changed value only, never to one the list already holds, and that Rename is held to them.
+- **G5** - `tracker/manifest.py` adds `COL_ISSUER = "Issuer Name"`, and `api.ISSUER_LABEL` is now `COL_ISSUER`, so the wording lives in one place: no existing `COL_*` named the issuer, and `manifest` cannot import `api`. A new `_issuer_entity(document)` is shared by `derived_short_title` and the refusal's label. An issuer row's derived short name is refused on the issuer: `F02: Issuer Name 'Ashford<U+00AD>Holdings' ... (it is also the short name)`. Test (templates): `test_an_issuer_name_hiding_a_soft_hyphen_is_refused_naming_the_issuer_never_a_short_name`.
+
+Each new test was run against the pre-fix code (HEAD's `manifest`/`records`/`api`, with `_read_spec`'s `UnicodeDecodeError` catch removed for G3), and all six failed. The gate (floor interpreter, one process per file in parallel, `-p no:cacheprovider`):
+
+| file | result |
+|---|---|
+| test_api | 517 passed |
+| test_manifest | 110 passed |
+| test_records | 53 passed |
+| test_templates | 41 passed |
+| test_filer | 406 passed, 6 skipped |
+| test_layers | 31 passed |
+| test_single_source | 218 passed |
+| test_repo_map | 82 passed (first run: 1 failed, `repo-map.md` out of step while the other lane committed `bfe9fea`; `update` then said current, and the retry passed) |
+
+`python -m ruff check .`: all checks passed. `python tools/repo_map.py check`: map is current (298 nodes). The other lane's commit `bfe9fea` carried a `docs/repo-map.json` already hashed from this rebuild's code; `update` after this handoff refreshed only this file's hash, and `docs/repo-map.json` is staged with it. The whole suite was not run.
