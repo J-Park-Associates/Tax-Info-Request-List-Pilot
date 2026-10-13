@@ -639,7 +639,7 @@ def _unreadable_return_said(household_dir: Path, wanted: str, key) -> str:
     be read, or ``""`` when the name is not that.
 
     A return the record cannot tell is listed by the registry with its
-    ``problem`` and is not active, so it is missing from the open-year
+    ``problem`` and no ``tax_year``, so it is missing from the open-year
     returns for that reason - not because it belongs to another household.
     Saying :data:`ROLLOVER_NOT_THIS_HOUSEHOLD` of it is false and names no
     record to repair, so a name that is one of the household's own return

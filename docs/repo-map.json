@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 302,
     "edges": 1336,
-    "reused": 248
+    "reused": 247
   },
   "node_types": [
     "artifact",
@@ -3163,7 +3163,7 @@
       "id": "tracker/rollover.py",
       "type": "module",
       "layer": "core",
-      "sha256": "45a829589d578be8",
+      "sha256": "14ede1fe8241115f",
       "lines": 1229,
       "cli": "python -m tracker.rollover",
       "exports": [
@@ -4737,8 +4737,8 @@
       "id": "pilot/HANDOFF-client-folder.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "97c8475a84e0b934",
-      "lines": 1132
+      "sha256": "622a8a09f90bca21",
+      "lines": 1239
     },
     {
       "id": "pilot/HANDOFF-document-gate.md",

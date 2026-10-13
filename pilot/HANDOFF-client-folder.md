@@ -1130,3 +1130,110 @@ test_layers 31, test_repo_map 82; ruff clean; repo-map `update` then `check`
 current (302 nodes). No retry was needed. test_single_source stays green with
 the runbook insertion. Not run: Python 3.11 floor (not installed here).
 Observations 1-2 of Review 6 are recorded for Jason, not built.
+
+## Review 7 (Opus, 2026-10-13)
+
+Independent review of Rebuild 6, commit `57c3f83`
+(`git diff 57adab1 57c3f83 -- tracker/ tests/ docs/runbook.md`), against SPEC
+section 15. Everything ran on a `git archive 57c3f83` copy in the scratchpad
+(git-initialised, one commit); the mutations lived in that copy only and were
+reverted there. The checkout was not touched except for this section.
+
+**Resolved.**
+- **K1.** `_unreadable_return_said` compares `problem` for inequality with
+  `LEGACY_FOLDER.format(name=LEGACY_MANIFEST_FILENAME)`, computed once from the
+  registry's constants (imported at call time). That is the same expression
+  `registry.engagement_from` uses to set the legacy `problem` (registry.py
+  line 595), so the comparison is exact and uses no substring. The new test
+  builds a 2025 return of the Park household (inactive, a record that reads
+  with no rules, `_manifest.xlsx` beside it). It first asserts that the
+  registry gives the legacy `problem` and a read `tax_year` of 2025. It then
+  gets `ROLLOVER_NOT_THIS_HOUSEHOLD` from `roll_household` (the whole sentence)
+  and from `--only` (exit 2), with no "could not be read" and no "repair it
+  first". The rebuild-5 unreadable-record test still asserts the new sentence
+  whole, from both paths, and passes.
+- **K2.** The rebuild-5 test's body runs inside `try:`, and
+  `finally: journal.write_bytes(original)` puts the journal back. Its asserts
+  are unchanged (whole sentence, prefix and suffix, old sentence absent, the
+  `--only` exit 2 and console, both trees and the record bytes unchanged).
+  Under mutation M2 below, that test fails without a teardown error. The one
+  teardown ERROR left belongs to the older forged-line test (observation 1).
+- **K3.** `main`'s `--only` loop computes
+  `wanted = name_key(normalised_name(name))` once (line 1090) and uses it for
+  `by_name.get` and for the helper. It is the only occurrence in the file.
+  Behaviour is unchanged: it is the same expression, only lifted out.
+- **K4.** `docs/runbook.md` section 1, *Rolling a household into the next
+  year* (heading line 1328). The sentence is lines 1381-1382, appended to the
+  paragraph that lists the stopped and client-folder-gone refusals ("Roll
+  Forward also refuses, before anything is written ..."). It is true against
+  the code: `roll_household` raises `ROLLOVER_RECORD_UNREADABLE` before
+  anything is written, the sentence carries the Engagement's `problem`, and it
+  points to "runbook section 6". `test_single_source` passes.
+- **K5.** The new test types `--only "1040 - old park"` for an inactive,
+  readable 2025 return. It asserts the exit 2, then
+  `ROLLOVER_NOT_THIS_HOUSEHOLD.format(prior="1040 - old park", ...)` (the name
+  as typed, not the folder's case), that "could not be read" is absent, and
+  that nothing is written. Mutations M4 and M5 show that it pins that branch.
+
+**Mutations (archive copy, each reverted).** Targeted run: the K1, K5 and
+rebuild-5 tests, plus the older forged-line test.
+- M1: the legacy exclusion dropped (`if problem:`). The new K1 test fails
+  with exactly the false sentence ("1040 - Old Park's record could not be read
+  (holds a request list ...); repair it first (runbook section 6), then roll
+  it forward"). The other three tests pass.
+- M2: the helper always returns `""`. The rebuild-5 test and the older
+  forged-line test fail. There is one teardown ERROR, on the older test only.
+- M3: only `main`'s `--only` call loses the legacy exclusion (an inline copy
+  of the helper without it). The K1 test fails on its `--only` assert, so
+  both paths are pinned for the legacy case.
+- M4: the `--only` refusal formats `prior=name.upper()`. The K1 and K5 tests
+  fail.
+- M5: the `or ROLLOVER_NOT_THIS_HOUSEHOLD...` branch is replaced. The K1 and
+  K5 tests fail.
+
+**Also checked.** The diff adds no `str(exc)` to a handler. There is no layer
+change: the helper's registry import was already call-time, and
+`test_layers` passes. There is no dead code: the new imports are all used,
+and ruff is clean. The diff holds nothing beyond section 15: the five files
+are `tracker/rollover.py`, `tests/test_rollover.py`, `docs/runbook.md`,
+`docs/repo-map.json` (line counts, hashes and the reuse count only) and this
+handoff.
+
+**Findings.**
+
+**L1 - nit.** `tracker/rollover.py` `_unreadable_return_said`, docstring,
+first paragraph. It still says a return whose record cannot be read "is
+listed by the registry with its `problem` and is not active, so it is
+missing from the open-year returns for that reason". Section 15 corrected
+that reading: `Engagement.active` is `info.active and not superseded_by`, and
+an unreadable return's default `EngagementInfo()` has `active = True`
+(records.py line 904). So it *is* active, and it drops out because its
+`tax_year` is `None`. The second paragraph, added by this rebuild, gets it
+right ("it is not in the open year"), so the docstring now contradicts
+itself. Fix: "is listed by the registry with its `problem` and no `tax_year`,
+so it is missing from the open-year returns for that reason". This changes
+wording only, not behaviour.
+
+**Observations, not counted (outside section 15).**
+1. `test_the_client_tree_is_byte_identical_after_a_roll_forward_whose_record_names_a_path`
+   has the K2 shape. It restores the journal at the top of each loop pass and
+   at the end, with no `finally`, so when one of its asserts fails the forged
+   line stays. The journal-walking teardown then adds an ERROR (seen under
+   M2). This was there before this change.
+2. `test_registry`'s one RuntimeWarning (runpy) was there before, as Review 6
+   noted.
+
+**Gate** (archive copy, venv Python 3.13.16, `-p no:cacheprovider`, one
+process per file, in parallel): test_rollover 67 passed; test_registry 44
+passed, 2 skipped (1 warning, observation 2); test_api 522 passed;
+test_errors 85 passed; test_single_source 218 passed; test_layers 31 passed;
+test_repo_map 82 passed. `python -m ruff check .`: all checks passed.
+`python tools/repo_map.py check`: current (302 nodes). Not run: the 3.11
+floor (no interpreter for it in this container).
+
+Findings: 0 must fix, 0 should fix, 1 nit.
+
+**L1 (Review 7's nit), fixed by the landing session:** the helper's first
+paragraph now says "with its ``problem`` and no ``tax_year``" instead of
+"and is not active". Wording only; no test or behaviour changes. Lane closed
+at this commit.
