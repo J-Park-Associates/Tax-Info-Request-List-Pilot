@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 302,
     "edges": 1336,
-    "reused": 248
+    "reused": 246
   },
   "node_types": [
     "artifact",
@@ -289,8 +289,8 @@
       "id": "tracker/api.py",
       "type": "module",
       "layer": "core",
-      "sha256": "3a432ccf37699496",
-      "lines": 6792,
+      "sha256": "1be28add148d9b93",
+      "lines": 6810,
       "cli": "python -m tracker.api",
       "exports": [
         "ACCEPT_FOLDER_NAME_HELP",
@@ -4732,15 +4732,15 @@
       "id": "pilot/DECISIONS.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "0d4b74f7ed3d199e",
-      "lines": 299
+      "sha256": "f43ec5a371475b6d",
+      "lines": 301
     },
     {
       "id": "pilot/HANDOFF-client-folder.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "aabb7f27080bfc71",
-      "lines": 1764
+      "sha256": "224f85fd83cde092",
+      "lines": 1908
     },
     {
       "id": "pilot/HANDOFF-document-gate.md",
@@ -4753,15 +4753,15 @@
       "id": "pilot/HANDOFF-error-handling-small.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "af01cdb66e577b6b",
-      "lines": 871
+      "sha256": "8f88f1e2de2fc2a2",
+      "lines": 906
     },
     {
       "id": "pilot/HANDOFF-form-inputs.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "cc46de4ed302bc5b",
-      "lines": 1312
+      "sha256": "729e141a9a35d7f1",
+      "lines": 1390
     },
     {
       "id": "pilot/HANDOFF.md",
@@ -6149,8 +6149,8 @@
       "id": "tests/test_api.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "e1c386464c1bfa36",
-      "lines": 11621,
+      "sha256": "fc6bf2135d2bf85b",
+      "lines": 11749,
       "exports": [
         "COUNTS",
         "DEEPER_ROOT_LENGTH",
@@ -6212,6 +6212,7 @@
         "test_a_filing_racing_a_save_is_seen_under_the_lock",
         "test_a_held_document_hiding_a_right_to_left_override_is_refused_by_row_and_nothing_is_written",
         "test_a_held_reminder_shows_no_letter_and_offers_no_action",
+        "test_a_held_row_past_the_limit_whose_short_title_is_sent_back_unchanged_saves",
         "test_a_household_changed_within_seconds_is_read_fresh_and_not_kept",
         "test_a_household_folder_the_tracker_did_not_make_is_refused_and_left_whole",
         "test_a_household_path_must_be_a_household_of_the_private_tree",
@@ -6280,6 +6281,7 @@
         "test_a_request_answered_only_by_a_statement_cannot_be_deleted_by_a_save",
         "test_a_request_list_problem_is_a_json_error_not_a_traceback",
         "test_a_resend_after_a_dismissal_is_triaged_and_its_row_carries_the_set_aside_sentence",
+        "test_a_respelling_that_keeps_the_key_but_changes_the_length_is_measured_and_refused",
         "test_a_respelt_held_row_past_the_limit_with_its_document_lengthened_is_still_refused",
         "test_a_return_named_through_dots_is_the_return_it_resolves_to",
         "test_a_return_that_feeds_another_household_reads_only_that_households_records",
@@ -6293,6 +6295,7 @@
         "test_a_rollover_takes_its_prior_only_from_under_the_root",
         "test_a_rollover_that_could_not_read_last_years_index_says_so_in_its_reply",
         "test_a_root_that_cannot_be_walked_says_so_on_the_feeds_and_the_list",
+        "test_a_row_set_not_applicable_saves_unmeasured_and_is_measured_when_cleared",
         "test_a_save_from_a_stale_list_is_refused",
         "test_a_set_aside_file_and_a_parked_document_are_shown_but_a_zip_or_email_is_plain_text",
         "test_a_short_name_hiding_a_right_to_left_override_is_refused_in_the_editor",
@@ -6302,6 +6305,7 @@
         "test_a_stale_redirected_copy_is_named_on_the_first_screen",
         "test_a_stale_seq_is_refused",
         "test_a_store_refusal_is_said_in_its_own_sentence_and_kind_refused",
+        "test_a_stored_spelling_past_the_rule_refuses_a_row_only_save_and_names_the_person",
         "test_a_turn_with_a_stale_view_answers_fresh_with_a_new_view",
         "test_a_turn_with_the_view_reads_no_record_and_takes_no_fingerprint",
         "test_a_typed_spelling_of_1001_characters_is_refused_by_name_and_nothing_is_written",
@@ -6417,6 +6421,7 @@
         "test_item_group_follows_its_table",
         "test_keep_it_here_is_offered_by_the_copys_name",
         "test_last_pass_is_answered_without_a_root_or_a_store",
+        "test_lengthening_a_held_rows_short_title_is_measured_and_refused",
         "test_list_carries_each_misfits_code_and_the_vocabulary_words_it",
         "test_list_reports_the_clients_root_and_the_firm_report_as_openable",
         "test_list_state_and_firm_agree_on_a_returns_year",

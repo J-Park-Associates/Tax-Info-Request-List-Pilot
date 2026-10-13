@@ -869,3 +869,38 @@ ccdf943 copy, each file its own process: test_api 533, test_errors 85,
 test_single_source 218, test_layers 31, test_repo_map 82, test_tripwire 23,
 all passed; `ruff check .` clean; `repo_map.py check` current (302 nodes).
 The Python 3.11 floor was not run.
+
+## Rebuild 4 (Sonnet, 2026-10-13)
+
+Section 14 (Review 4's finding 1): the exemption in
+`test_no_word_the_window_draws_says_client_but_a_folders_own_name` is bound to
+the text, not the list's first position. Test only; no code change. Built
+together with SPEC-form-inputs sections 22 to 24 (all edit `tests/test_api.py`;
+the Edit tool throughout, no script rewrote a file).
+
+**Built** (`tests/test_api.py`). `_STORED_REASON_WITH_CLIENT` is the literal
+`"Client confirmed this is the final version"`; the test begins with
+`assert _STORED_REASON_WITH_CLIENT in manifest.OVERRIDE_REASONS`; the comment
+beside the constant now says the text is written out here and asserted to be
+one of the manifest's reasons, which is what it always claimed.
+
+**Before and after.**
+
+| variant | before (constant `OVERRIDE_REASONS[0]`) | after (literal plus assertion) |
+|---|---|---|
+| as built | passes | passes |
+| `OVERRIDE_REASONS[0]` reworded to "...final version." (throwaway copy) | passes (the slip) | fails on the new assertion: the literal is not in `OVERRIDE_REASONS` |
+| exemption removed, or pointed at another reason (Review 4's own mutations) | fail | fail (not re-run; the exemption's filter is unchanged) |
+
+The "before" for the reworded variant was confirmed by putting the old
+`OVERRIDE_REASONS[0]` constant back on the throwaway copy: 1 passed.
+
+**Gate.** Shared with Rebuild 7 of `pilot/HANDOFF-form-inputs.md` (same run,
+same tree: 19c6a92 plus this change and the reviewer's uncommitted append to
+`pilot/HANDOFF-client-folder.md`; Python 3.13 venv only, each file its own
+process, in parallel): test_api 542 passed, test_errors 85, test_tripwire 23,
+test_single_source 218, test_layers 31, test_repo_map 82 (after `update`);
+`ruff check .` clean; `repo_map.py update` then `check`: "Map is current (302
+nodes)", exit 0.
+
+**Could not do.** The Python 3.11 floor was not run.

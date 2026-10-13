@@ -5337,7 +5337,7 @@ def _a_deeper_root(demo_root):
     return deeper
 
 
-def _a_long_row_return(root, household=HOUSEHOLD):
+def _a_long_row_return(root, household=HOUSEHOLD, second="B01"):
     """A return made the way a test makes one - past creation's refusal - whose
     second row's canonical copy no longer fits under ``root``: the state a
     root that grew leaves behind.
@@ -5348,7 +5348,8 @@ def _a_long_row_return(root, household=HOUSEHOLD):
     most - so the depth is the folder's, as it is when a root grows, not a
     hundred-character label's. Since decision 168 the copy sits in
     Prepared itself, so the depth below the return is one name, not a
-    folder and a name. Both rows ask for :data:`LONG_ROW_PERIOD`."""
+    folder and a name. Both rows ask for :data:`LONG_ROW_PERIOD`. ``second``
+    is the long row's identifier, three characters wide whatever it is."""
     from tests.conftest import TEST_YEAR
     from tracker.layout import NAME_MAX_CHARS, path_limit
     from tracker.manifest import RequestItem
@@ -5369,7 +5370,7 @@ def _a_long_row_return(root, household=HOUSEHOLD):
     engagement = make_engagement(root, [
         RequestItem(identifier="A01", document="W-2", period=LONG_ROW_PERIOD,
                     allowed_extensions=("pdf",)),
-        RequestItem(identifier="B01", document="y" * 100, period=LONG_ROW_PERIOD,
+        RequestItem(identifier=second, document="y" * 100, period=LONG_ROW_PERIOD,
                     allowed_extensions=("pdf",)),
     ], household=household, return_name=return_name)
     assert len(str(engagement)) + below == path_limit() + LONG_ROW_OVER
@@ -5480,10 +5481,11 @@ def test_saving_a_list_refuses_a_changed_row_whose_path_would_pass_the_limit_and
     assert payload["saved"]["changed"] == ["A01"]
 
 
-def _a_held_row_past_the_limit(capsys, demo_root):
+def _a_held_row_past_the_limit(capsys, demo_root, second="B01"):
     """``_a_long_row_return`` under a deep root, and its editor rows by
-    identifier: B01's canonical copy is past the limit, A01's is not."""
-    engagement = _a_long_row_return(_a_deeper_root(demo_root))
+    identifier: B01's canonical copy (``second``'s) is past the limit,
+    A01's is not."""
+    engagement = _a_long_row_return(_a_deeper_root(demo_root), second=second)
     rows = payload_of_state(capsys, engagement)["rules"]
     return engagement, {row["identifier"]: row for row in rows}
 
@@ -5494,7 +5496,8 @@ def test_a_change_of_case_alone_on_a_held_row_past_the_limit_is_the_same_row_and
     """P305: the path-room check matches a sent row to the stored one by the
     identifier's key (decision 160: a change of case is the same request),
     so respelling a held row past the limit by case alone is not refused -
-    a case change cannot alter a path's length."""
+    a case change cannot alter a path's length (bar the one pair the next
+    test pins). The respelling took: the record holds ``b01``."""
     engagement, by_id = _a_held_row_past_the_limit(capsys, demo_root)
     respelt = [by_id["A01"], {**by_id["B01"], "identifier": "b01"}]
 
@@ -5502,6 +5505,96 @@ def test_a_change_of_case_alone_on_a_held_row_past_the_limit_is_the_same_row_and
                         stdin={"items": respelt, "engagement": {}})
 
     assert code == 0, payload
+    assert [item.identifier for item in load_manifest(engagement)] == ["A01", "b01"]
+
+
+def test_a_respelling_that_keeps_the_key_but_changes_the_length_is_measured_and_refused(
+    capsys, demo_root, path_setting,
+):
+    """SPEC-form-inputs section 22 (F3): ``"İ".lower()`` is two code points,
+    so ``İ01`` and ``i̇01`` are one key and two lengths - the one pair
+    where a change of case lengthens a path. A held row past the limit
+    respelt that way is a changed row, measured, and refused with creation's
+    sentence; nothing is recorded."""
+    from tracker.layout import PATH_TOO_LONG
+    from tracker.records import identifier_key
+
+    held, respelling = "İ01", "i̇" + "01"
+    assert identifier_key(held) == identifier_key(respelling)
+    assert len(respelling) == len(held) + 1
+    engagement, by_id = _a_held_row_past_the_limit(capsys, demo_root, second=held)
+    before = ledger.path_for(engagement).read_bytes()
+
+    code, payload = run(capsys, "edit", api.ENGAGEMENT_FLAG, str(engagement),
+                        stdin={"items": [by_id["A01"], {**by_id[held], "identifier": respelling}],
+                               "engagement": {}})
+
+    assert code == 1 and payload["error"].startswith(PATH_TOO_LONG.split("{")[0]), payload
+    assert ledger.path_for(engagement).read_bytes() == before
+
+
+def test_lengthening_a_held_rows_short_title_is_measured_and_refused(
+    capsys, demo_root, path_setting,
+):
+    """P307: a working copy is named by the short name (decision 144) - the
+    typed short title or the Document's derivation - so a short title that
+    differs from the stored one is a changed row, measured. A01's twenty-
+    character short title makes its copy as long as B01's, past the limit."""
+    from tracker.layout import PATH_TOO_LONG
+
+    engagement, by_id = _a_held_row_past_the_limit(capsys, demo_root)
+    before = ledger.path_for(engagement).read_bytes()
+
+    code, payload = run(capsys, "edit", api.ENGAGEMENT_FLAG, str(engagement),
+                        stdin={"items": [{**by_id["A01"], "short_title": "z" * 20}, by_id["B01"]],
+                               "engagement": {}})
+
+    assert code == 1 and payload["error"].startswith(PATH_TOO_LONG.split("{")[0]), payload
+    assert ledger.path_for(engagement).read_bytes() == before
+
+
+def test_a_row_set_not_applicable_saves_unmeasured_and_is_measured_when_cleared(
+    capsys, demo_root, path_setting,
+):
+    """P307: creation does not measure a Not Applicable row (``room_for``
+    skips it), so setting a held row past the limit Not Applicable saves;
+    clearing it makes it a request creation would have measured, as a row
+    newly Asked is (decision 142), so the second save is refused."""
+    from tracker.layout import PATH_TOO_LONG
+    from tracker.manifest import Override
+
+    engagement, by_id = _a_held_row_past_the_limit(capsys, demo_root)
+    set_aside = {**by_id["B01"], "manual_override": Override.NOT_APPLICABLE}
+    code, payload = run(capsys, "edit", api.ENGAGEMENT_FLAG, str(engagement),
+                        stdin={"items": [by_id["A01"], set_aside], "engagement": {}})
+    assert code == 0, payload
+    assert {item.identifier: item.manual_override for item in load_manifest(engagement)} == {
+        "A01": "", "B01": Override.NOT_APPLICABLE}
+    before = ledger.path_for(engagement).read_bytes()
+
+    code, payload = run(capsys, "edit", api.ENGAGEMENT_FLAG, str(engagement),
+                        stdin={"items": [by_id["A01"], {**set_aside, "manual_override": ""}],
+                               "engagement": {}})
+
+    assert code == 1 and payload["error"].startswith(PATH_TOO_LONG.split("{")[0]), payload
+    assert ledger.path_for(engagement).read_bytes() == before
+
+
+def test_a_held_row_past_the_limit_whose_short_title_is_sent_back_unchanged_saves(
+    capsys, demo_root, path_setting,
+):
+    """P307: comparing the short title does not trap a row the person did
+    not touch - it is already in the room the page reports - so a save that
+    sends every row back as held, and shortens only a label elsewhere, saves."""
+    engagement, by_id = _a_held_row_past_the_limit(capsys, demo_root)
+    assert by_id["B01"]["short_title"] == ""
+
+    code, payload = run(capsys, "edit", api.ENGAGEMENT_FLAG, str(engagement),
+                        stdin={"items": [{**by_id["A01"], "document": "W2"}, by_id["B01"]],
+                               "engagement": {}})
+
+    assert code == 0, payload
+    assert payload["saved"]["changed"] == ["A01"]
 
 
 def test_a_respelt_held_row_past_the_limit_with_its_document_lengthened_is_still_refused(
@@ -9778,15 +9871,20 @@ _FOLDER_WORDS = {"Change Clients Folder…", "Open Clients Folder", "Open Client
 #: P196's one exception: the override menu shows the reasons as stored, and
 #: the first of them is a stored value that says "Client" (SPEC-error-handling-small
 #: section 13). The editor draws a stored value as it is stored, so the word
-#: is the record's, not a screen's. Exempted by its exact text, named from the
-#: manifest so a reworded reason is a failure here, not a silent pass; a
-#: second "Client" in that menu still fails the guard.
-_STORED_REASON_WITH_CLIENT = manifest.OVERRIDE_REASONS[0]
+#: is the record's, not a screen's. Exempted by its exact text, written out
+#: here and asserted to be one of the manifest's reasons, so a reworded or
+#: removed reason is a failure, not a silent pass; a second "Client" in that
+#: menu still fails the guard.
+_STORED_REASON_WITH_CLIENT = "Client confirmed this is the final version"
 
 
 def test_no_word_the_window_draws_says_client_but_a_folders_own_name(capsys, demo_root):
     """P196: the person is the Taxpayer, the listed household a Household;
     only a button naming a folder on disk keeps the folder's word."""
+    # The exemption is the literal text, so a reworded or removed reason
+    # fails here instead of being exempted silently (SPEC-error-handling-small
+    # section 14).
+    assert _STORED_REASON_WITH_CLIENT in manifest.OVERRIDE_REASONS
     vocab = api._vocab()
     drawn = [("menu", vocab["menu"]), ("screen", vocab["screen"]), ("reasons", vocab["reasons"]),
              ("ask_the_client", vocab["ask_the_client"]),
@@ -11297,13 +11395,13 @@ def test_a_persons_name_longer_than_the_text_rule_is_refused_by_name(capsys, dem
     code, payload = run(capsys, "edit", api.ENGAGEMENT_FLAG, str(engagement),
                         stdin={"items": rows, "engagement": {"people": people}})
     assert code == 1
-    assert payload["error"] == (f"{api.PEOPLE_LABEL}: a name must be one line of text of at most "
-                                "1000 characters, with no control character")
+    assert payload["error"] == (f"{api.PEOPLE_LABEL}: the Taxpayer's name must be one line of "
+                                "text of at most 1000 characters, with no control character")
     assert (list_head(engagement), ledger.path_for(engagement).read_bytes()) == before
 
 
-_SPELLING_REFUSED = (f"{api.PEOPLE_LABEL}: a spelling must be one line of text of at most "
-                     "1000 characters, with no control character")
+_SPELLING_REFUSED = (f"{api.PEOPLE_LABEL}: a spelling of Jane Smith must be one line of text of "
+                     "at most 1000 characters, with no control character")
 
 
 def _a_spelling_typed_is_refused_and_nothing_is_written(capsys, demo_root, typed):
@@ -11344,6 +11442,36 @@ def test_a_typed_spelling_of_exactly_the_text_rule_saves(capsys, demo_root):
     assert code == 0, payload
     [saved] = load_engagement_info(engagement).people
     assert saved.spellings == (longest,)
+
+
+def test_a_stored_spelling_past_the_rule_refuses_a_row_only_save_and_names_the_person(
+        capsys, demo_root):
+    """P306: the editor sends the people block back on every save and the
+    store's gate does not judge a spelling (P304), so a return written
+    before the rule keeps one and a row-only edit is refused. The refusal
+    says whose spelling, and nothing is written."""
+    from tests.conftest import TEST_YEAR
+    from tracker.manifest import RequestItem, list_head
+    from tracker.records import Person
+
+    held = "J " + "x" * 1999
+    make_engagement(demo_root, [RequestItem(identifier="A01", document="W-2")],
+                    household=HOUSEHOLD, return_name="Stored Past The Rule",
+                    people=(Person(kind="taxpayer", name="Jane Smith", spellings=(held,)),))
+    engagement = where(demo_root, "Stored Past The Rule", year=TEST_YEAR)
+    [stored] = load_engagement_info(engagement).people
+    assert stored.spellings == (held,)
+    rows = payload_of_state(capsys, engagement)["rules"]
+    before = (list_head(engagement), ledger.path_for(engagement).read_bytes())
+    people = [{"kind": stored.kind, "name": stored.name, "spellings": list(stored.spellings)}]
+
+    code, payload = run(capsys, "edit", api.ENGAGEMENT_FLAG, str(engagement),
+                        stdin={"items": [{**rows[0], "document": "W2"}],
+                               "engagement": {"people": people}})
+
+    assert code == 1
+    assert payload["error"] == _SPELLING_REFUSED
+    assert (list_head(engagement), ledger.path_for(engagement).read_bytes()) == before
 
 
 def test_a_one_word_spelling_is_refused_before_the_text_rule_is_asked():

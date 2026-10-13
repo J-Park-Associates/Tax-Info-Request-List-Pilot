@@ -2303,9 +2303,11 @@ def _people_from_spec(sent: object) -> tuple[Person, ...]:
             raise ManifestError(f"Every person needs a name ({PERSON_KIND_LABELS[kind]})")
         # The name every page of every document is searched for: held to
         # the one text rule every other name is, so an unbounded one cannot
-        # cost every pass (P288).
+        # cost every pass (P288). The check runs on every save, stored
+        # values included - the editor sends the people block back whole -
+        # so the refusal says whose name (P306).
         if problem := records.text_problem(name):
-            raise ManifestError(f"{PEOPLE_LABEL}: a name {problem}")
+            raise ManifestError(f"{PEOPLE_LABEL}: the {PERSON_KIND_LABELS[kind]}'s name {problem}")
         spellings: list[str] = []
         for spelling in one.get("spellings") or []:
             spelling = " ".join(str(spelling).split())
@@ -2314,9 +2316,12 @@ def _people_from_spec(sent: object) -> tuple[Person, ...]:
             if not is_a_spelling(spelling):
                 raise ManifestError(ONE_WORD_SPELLING)
             # Searched on every page as the name is, so held to the same
-            # rule where it is typed (P304); a stored one is not re-judged.
+            # rule where it is typed (P304). A stored one is judged again
+            # on every save, as the name is, so the refusal names the
+            # person (P306); ``name`` has passed its own rule by here, so
+            # the sentence is bounded.
             if problem := records.text_problem(spelling):
-                raise ManifestError(f"{PEOPLE_LABEL}: a spelling {problem}")
+                raise ManifestError(f"{PEOPLE_LABEL}: a spelling of {name} {problem}")
             if spelling not in spellings:
                 spellings.append(spelling)
         people.append(Person(kind=kind, name=name, spellings=tuple(spellings)))
@@ -3659,8 +3664,11 @@ def _refuse_taking_away_documents(engagement: Path, recorded: list[dict], items:
 
 #: What a matched row is compared on to say the editor changed it (decision
 #: 131): the things a working copy's path is made of, bar the identifier,
-#: which rows are matched by (its key) and whose case is not a change (P305).
-_PATH_FIELDS = ("document", "period", "allowed_extensions")
+#: which rows are matched by (its key) and whose case is not a change (P305;
+#: its length is compared separately). The short name a copy is named by
+#: (decision 144) is the short title or the Document's derivation, so both
+#: are compared (P307).
+_PATH_FIELDS = ("document", "short_title", "period", "allowed_extensions")
 
 
 def _refuse_a_changed_row_past_the_limit(engagement: Path, items: list) -> None:
@@ -3670,7 +3678,10 @@ def _refuse_a_changed_row_past_the_limit(engagement: Path, items: list) -> None:
     A row is matched to the stored one by the identifier's key, so a change
     of case alone is the same row (decision 160, P305): a case change cannot
     alter a path's length, and a held row already past the limit is never
-    refused one. A row whose document, period or file types differ from the
+    refused one. The one exception is a respelling that keeps the key and
+    changes the length: ``"İ".lower()`` is two code points, so ``İ01`` and
+    ``i̇01`` are one key and two lengths, and that row counts as changed.
+    A row whose document, short title, period or file types differ from the
     stored list, and every new row, is measured as creation measures a
     list (``filer.room_for``); one whose canonical working copy would pass
     what Windows opens refuses the save with creation's own sentence, and
@@ -3679,16 +3690,23 @@ def _refuse_a_changed_row_past_the_limit(engagement: Path, items: list) -> None:
     room the page and the banner report, so shortening one label is never
     trapped by another. A row set Not Applicable is not measured, as
     creation does not measure it, and neither is a row nobody asked for
-    (decision 142); a row a person has just set Asked is measured, because
-    it is now a request creation would have measured.
+    (decision 142); a row a person has just set Asked, or taken off Not
+    Applicable, is measured, because it is now a request creation would
+    have measured (P307).
     """
     stored = {identifier_key(item.identifier): item for item in load_manifest(engagement)}
     changed = []
     for item in items:
         held = stored.get(identifier_key(item.identifier))
+        # The identifier's length is compared beside the fields: ``.lower()``
+        # lengthens the one letter "İ", so a respelling that keeps the key
+        # can still grow the path (SPEC-form-inputs section 22).
         if (held is None
+                or len(item.identifier) != len(held.identifier)
                 or any(getattr(item, name) != getattr(held, name) for name in _PATH_FIELDS)
-                or (item.asked and not held.asked)):
+                or (item.asked and not held.asked)
+                or (held.manual_override == Override.NOT_APPLICABLE
+                    and item.manual_override != Override.NOT_APPLICABLE)):
             changed.append(item)
     room = room_for(engagement, changed)
     if room.need > room.limit:

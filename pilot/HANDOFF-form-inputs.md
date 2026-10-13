@@ -1310,3 +1310,81 @@ section 21. The other lane's
 is byte-identical at 4dca3fb and ccdf943 (AST source segment compared), and
 `git diff 4dca3fb ccdf943 -- tests/test_api.py` shows 71 insertions and 2
 deletions: the two replaced lines of the guard test.
+
+## Rebuild 7 (Sonnet, 2026-10-13)
+
+Sections 22 (F3 and nits), 23 (P306) and 24 (P307), built on 19c6a92 together
+with SPEC-error-handling-small section 14 (all edit `tracker/api.py` and
+`tests/test_api.py`). Every edit was made with the Edit tool; no script
+rewrote a file. No import added: `Override` and `PERSON_KIND_LABELS` were
+already imported at load time.
+
+**Built** (`tracker/api.py`).
+- Section 22: in `_refuse_a_changed_row_past_the_limit` a matched row also
+  counts as changed when `len(item.identifier) != len(held.identifier)`, with
+  a comment naming the one pair (`"İ".lower()` is two code points); the
+  docstring says so.
+- Section 23: the name's refusal is `f"{PEOPLE_LABEL}: the
+  {PERSON_KIND_LABELS[kind]}'s name {problem}"` and the spelling's `f"{PEOPLE_LABEL}:
+  a spelling of {name} {problem}"`. The comment "a stored one is not
+  re-judged" is replaced: the check runs on every save, stored values
+  included, so the refusal names the person (P306). `ONE_WORD_SPELLING` is
+  untouched.
+- Section 24: `_PATH_FIELDS` is `("document", "short_title", "period",
+  "allowed_extensions")` (comment: the short name a copy is named by is the
+  short title or the Document's derivation); a matched row also counts as
+  changed when `held.manual_override == Override.NOT_APPLICABLE and
+  item.manual_override != Override.NOT_APPLICABLE`; the docstring names the
+  short title and the cleared Not Applicable.
+
+**Tests** (`tests/test_api.py`). Each was run before the code change and
+after. `_a_long_row_return` and `_a_held_row_past_the_limit` gained an
+optional `second` identifier (default `"B01"`, so every existing caller is
+unchanged) for the `İ01` fixture. Path tests run under both `path_setting`
+parametrizations.
+
+| test | before | after |
+|---|---|---|
+| `test_a_change_of_case_alone_on_a_held_row_past_the_limit_is_the_same_row_and_is_not_measured` (nit 4: also asserts the record holds `["A01", "b01"]`) | passes, both settings | passes |
+| `test_a_respelling_that_keeps_the_key_but_changes_the_length_is_measured_and_refused` (new; held `İ01` sent as `i` + U+0307 + `01`) | fails, both settings (saved: `removed İ01, changed i̇01`) | passes |
+| `test_lengthening_a_held_rows_short_title_is_measured_and_refused` (new; A01's short title to 20 characters, as long as B01's copy) | fails, both settings (saved) | passes |
+| `test_a_row_set_not_applicable_saves_unmeasured_and_is_measured_when_cleared` (new; B01 set Not Applicable saves and the record holds it, then cleared is refused with nothing written) | fails, both settings (the clearing save succeeded) | passes |
+| `test_a_held_row_past_the_limit_whose_short_title_is_sent_back_unchanged_saves` (new; B01 sent back as held, A01's Document shortened) | passes, both settings | passes |
+| `test_a_persons_name_longer_than_the_text_rule_is_refused_by_name` (asserts "People: the Taxpayer's name must be ...") | fails (old sentence) | passes |
+| `test_a_typed_spelling_of_1001_characters_...` and `test_a_typed_spelling_with_a_control_character_...` (via `_SPELLING_REFUSED`, now "People: a spelling of Jane Smith must be ...") | fail (old sentence) | pass |
+| `test_a_stored_spelling_past_the_rule_refuses_a_row_only_save_and_names_the_person` (new; a 2,001-character spelling stored through `make_engagement` / `create_engagement`, which does not judge it; a row-only edit sending the people block back as stored) | fails (sentence names no person) | passes; asserts the exact sentence and that `list_head` and the ledger bytes are unchanged |
+
+The unchanged-short-title test passes before the change by design: it pins
+that the new comparison does not trap an untouched row (the editor sends the
+stored `""` back).
+
+**Mutations** (each on a throwaway copy of the tree in the scratchpad, never
+the checkout; the listed tests are all that failed among the 22 selected
+path, people and guard tests):
+
+| mutation | failed |
+|---|---|
+| drop `"short_title"` from `_PATH_FIELDS` | the lengthened-short-title test, both settings |
+| drop the Not Applicable clause | the set-then-cleared Not Applicable test, both settings |
+| drop the identifier-length clause | the `İ01` respelling test, both settings |
+| name refusal back to "a name {problem}" | the name test |
+| spelling refusal back to "a spelling {problem}" | the 1,001-character, control-character and stored-spelling tests |
+
+**Gate** (Python 3.13 venv only; each file its own process, in parallel,
+`-p no:cacheprovider -q`, on the working tree at 19c6a92 plus this change;
+the tree also holds the reviewer's uncommitted append to
+`pilot/HANDOFF-client-folder.md`):
+
+| Step | Result |
+|---|---|
+| tests/test_api.py | 542 passed (533 + 9: four new tests twice under `path_setting`, one new people test) |
+| tests/test_errors.py | 85 passed |
+| tests/test_tripwire.py | 23 passed |
+| tests/test_single_source.py | 218 passed |
+| tests/test_layers.py | 31 passed |
+| tests/test_repo_map.py | 82 passed after `update` (81 passed and `test_the_committed_map_is_current` failed in the parallel run, which began before the map was refreshed, as the stale map predicted) |
+| `ruff check .` | All checks passed |
+| `repo_map.py update` / `check` | updated (`docs/repo-map.json` only; it also took up the already-committed `pilot/DECISIONS.md` rows) / "Map is current (302 nodes)", exit 0 |
+
+**Could not do.** The Python 3.11 floor was not run (one interpreter in the
+venv).
