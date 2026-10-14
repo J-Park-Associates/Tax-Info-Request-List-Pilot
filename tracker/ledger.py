@@ -139,6 +139,34 @@ and imports nothing else of the package: every writer serialises its own
 rows with the function in :mod:`tracker.records` that already owns that
 shape (an index row, a status, a rule row, the engagement's details). One
 owner per fact, and no cycle.
+
+**Plain at the boundary, typed past the gate** (decision 187; the
+architecture audit's B-8). A line is untrusted input until the store has
+admitted it, so what meets a line before the gate takes and returns a
+plain ``dict``: :func:`new`, :func:`append`, :func:`read_events`,
+:func:`replay` and :func:`apply`. :func:`replay` folds lines no gate has
+read - ``store.check`` folds the journal before it judges a line, and
+``python -m tracker.ledger`` prints a fold with no store at all - so a type
+there would claim a shape nothing had checked. The ``TypedDict`` types
+below, :class:`Event` and one per family, describe a line *after* the
+store's gate. ``store._apply`` casts to one only once
+``_refuse_a_malformed_line`` has returned, and only where it hands the line
+to the writer of that family, which takes the type: :class:`IntentEvent`
+and :class:`RulesChangedEvent` today. The others describe their families'
+shapes; nothing takes them by type yet. A key the admission lets a line omit is ``NotRequired``, a value
+it holds to a rule has that rule's type, and a key it passes over unread is
+``object``. The key constants a typed writer reads a line through are
+``Final`` (:data:`EVENT_KEY`, :data:`KEY_KEY`, :data:`RULES_KEY`,
+:data:`REMOVED_KEY`, :data:`INFO_KEY`), so the type checker reads
+``event.get(KEY_KEY)`` as that key's own type rather than ``object``; the
+rest stay plain until a typed reader needs one. The types are for the type
+checker. Under this module's ``from __future__ import annotations`` a
+class-form ``TypedDict`` cannot see ``NotRequired`` when the class is made,
+so its ``__required_keys__`` names every key at run time. Nothing asks it;
+a test that holds a line to one of these reads
+``typing.get_type_hints(..., include_extras=True)``. They add the standard
+library's ``typing`` and nothing else, so this module still imports nothing
+of the package but :mod:`tracker.locking`.
 """
 
 from __future__ import annotations
@@ -152,6 +180,7 @@ import os
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Final, NotRequired, TypedDict
 
 from tracker.locking import (
     BREAKER_CLEARED_INFIX,
@@ -169,13 +198,13 @@ log = logging.getLogger("tracker.ledger")
 LEDGER_FILENAME = "_ledger.jsonl"
 
 #: Keys every event carries.
-EVENT_KEY = "event"
+EVENT_KEY: Final = "event"
 AT_KEY = "at"
 #: Keys an index-shaped event carries: the identity the row is recorded under,
 #: the whole row as the index's own sidecar serialises it, and - when the
 #: client moved the original and the row followed it - the identity the row
 #: is leaving, so the fold does not keep the vacated one for ever.
-KEY_KEY = "key"
+KEY_KEY: Final = "key"
 ROW_KEY = "row"
 WAS_KEY = "was"
 #: What a ``SCANNED`` event carries: identifier -> the scanner columns applied.
@@ -232,9 +261,9 @@ BY_PERSON = "person"
 #: changed (``tracker.records.info_to_json``'s names). A retired
 #: ``RULES_IMPORTED`` line carries the same three and a workbook digest
 #: under a fourth key, which is simply not read.
-RULES_KEY = "rules"
-REMOVED_KEY = "removed"
-INFO_KEY = "info"
+RULES_KEY: Final = "rules"
+REMOVED_KEY: Final = "removed"
+INFO_KEY: Final = "info"
 
 #: A person's word that a household or a return is now called by its
 #: folder's name (decision 188): carried on the ``HOUSEHOLD_CHANGED`` and
@@ -531,6 +560,140 @@ NEWER_FORMAT = ("{name} line {line} was written by a newer version of the app (f
 NOT_AN_EVENT = "{name} line {line} does not read as an event ({why}). " + RUN_RECOVER
 LINE_KEY_GIVEN = ("{keys} are written by the record itself (decision 159); an event may not carry "
                   "them, and {event!r} was not written")
+
+
+# ------------------------------------------------- the shapes past the gate ----
+
+
+class Event(TypedDict):
+    """What every line the store's gate admitted carries: the event's name
+    and, since decision 159, the three keys :func:`append` writes
+    (:data:`LINE_KEYS`). The gate holds a stamp to :func:`stamp`'s form
+    where a line carries one and lets a line go without, so it is not
+    required."""
+
+    event: str
+    at: NotRequired[str]
+    prev: NotRequired[str]
+    host: NotRequired[str]
+    #: A whole number, which a line written by hand may spell ``1.0``
+    #: (``records.count_problem``).
+    fmt: NotRequired[int | float]
+
+
+class RowEvent(Event):
+    """A line of :data:`ROW_EVENTS`: the row's identity, the whole row, and
+    the identity it left when it followed an original the client moved. The
+    row is ``records``' shape (``records.entry_to_json``), held to
+    ``records.entry_problem`` and the layout's places, so it stays a
+    ``dict``. An :data:`OPENED` line also carries what it took out and what
+    it skipped, which the gate does not read."""
+
+    key: str
+    row: dict
+    was: NotRequired[str | None]
+    attachments: NotRequired[object]
+    skipped: NotRequired[object]
+
+
+class ScannedEvent(Event):
+    """A :data:`SCANNED` line: identifier -> the status one scan applied,
+    each held to ``records.status_problem``. Absent or null, it is no
+    change."""
+
+    statuses: NotRequired[dict[str, dict] | None]
+
+
+class RulesChangedEvent(Event):
+    """A :data:`RULES_CHANGED` line, and the retired :data:`RULES_IMPORTED`
+    an older journal carries: the rule rows added or changed, whole
+    (``records.rule_to_json``); the identifiers removed; the Engagement
+    fields that moved (``records.info_to_json``'s names). Each may be absent
+    or null. ``accepted`` is the person's word that a return is called by
+    its folder's name (:data:`FOLDER_NAME_ACCEPTED`, decision 188), and
+    ``digest`` the workbook digest a retired line carries, which nothing
+    reads."""
+
+    rules: NotRequired[list[dict] | None]
+    removed: NotRequired[list[str] | None]
+    info: NotRequired[dict | None]
+    accepted: NotRequired[str]
+    digest: NotRequired[object]
+
+
+#: One step of a :data:`MOVING` line (decision 119): a move, a copy or a
+#: removal, where from, where to unless it is a removal, and the digest the
+#: bytes should hold. The functional form, because one key is ``from``.
+IntentOp = TypedDict("IntentOp", {"op": str, "from": str, "to": NotRequired[str],
+                                  "digest": NotRequired[str]})
+
+
+class IntentEvent(Event):
+    """A :data:`MOVING` line, or the :data:`MOVE_ABANDONED` that closes one
+    (decision 119). An abandonment carries its key, and the gate reads
+    nothing else of it. Every other key here is a moving line's: the steps,
+    the row the decision will record and the identity it leaves, the events
+    that travel with it (each admitted by the same rule) and the person's
+    reason. A moving line may carry no key, or a null one. ``then`` and
+    ``by`` (:data:`EVENT_KEY_AFTER`, :data:`DECIDED_BY_KEY`) are kept whole
+    for a recovery, and the gate does not read them."""
+
+    key: NotRequired[str | None]
+    ops: NotRequired[list[IntentOp]]
+    row: NotRequired[dict | None]
+    was: NotRequired[str | None]
+    also: NotRequired[list[Event] | None]
+    reason: NotRequired[str | None]
+    then: NotRequired[object]
+    by: NotRequired[object]
+
+
+class ReleaseEvent(Event):
+    """A :data:`RELEASED` line (decision 132): the key of the row that left
+    the index and, in the person's words, which return took it. It carries
+    no row. Both folds also read a ``was``, which the gate does not. The
+    retired :data:`HANDED_OVER_BY_PERSON_EVENT` is of this family because it
+    folds as a release of its key, but the gate holds no key of it to this
+    shape."""
+
+    key: str
+    reason: NotRequired[str]
+    was: NotRequired[object]
+
+
+class KeywordEvent(Event):
+    """A :data:`KEYWORD_LEARNED` or :data:`KEYWORD_UNLEARNED` line (decision
+    113): the request and the word, each one line of text and neither
+    blank."""
+
+    identifier: str
+    keyword: str
+
+
+class HouseholdEvent(Event):
+    """A :data:`HOUSEHOLD_CHANGED` line (decision 125): the household fields
+    that moved (``records.household_to_json``'s names), held to
+    ``records.household_problem``; absent or null, it is no change.
+    ``accepted`` is as on :class:`RulesChangedEvent`."""
+
+    household: NotRequired[dict | None]
+    accepted: NotRequired[str]
+
+
+class DraftEvent(Event):
+    """A :data:`DRAFTED` or :data:`DRAFT_APPROVED` line (decisions 115, 118
+    and 190): the identifiers asked and held, the draft's file and the
+    fingerprint in its header, the fingerprint of the letter approved, and
+    the stage. Identifiers, hashes and a number, never a word of the letter.
+    Each may be absent."""
+
+    asked: NotRequired[list[str]]
+    held: NotRequired[list[str]]
+    file: NotRequired[str]
+    fingerprint: NotRequired[str]
+    text_fingerprint: NotRequired[str]
+    #: Null, or a whole number a line written by hand may spell ``1.0``.
+    stage: NotRequired[int | float | None]
 
 
 class LedgerError(RuntimeError):

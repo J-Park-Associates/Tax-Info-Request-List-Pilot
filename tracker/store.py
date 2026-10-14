@@ -201,7 +201,7 @@ from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass, fields
 from dataclasses import field as _default
 from pathlib import Path
-from typing import TypeVar
+from typing import TypeVar, cast
 
 from tracker import checkpoint, ledger, records
 from tracker.locking import full_sync, is_this_host, lock_is_held
@@ -1583,7 +1583,7 @@ def _write_rule(conn: sqlite3.Connection, engagement_id: int, row: dict) -> None
     )
 
 
-def _write_intent(conn: sqlite3.Connection, engagement_id: int, event: dict, seq: int) -> None:
+def _write_intent(conn: sqlite3.Connection, engagement_id: int, event: ledger.IntentEvent, seq: int) -> None:
     """One move begun, or one abandoned (decision 119).
 
     The whole line is kept, because what a recovery needs is the whole of
@@ -2140,7 +2140,11 @@ def _apply(conn: sqlite3.Connection, engagement_id: int, events: list[dict], *, 
                     seqs.pop(gone, None)
                     _close_intent(conn, engagement_id, gone)
         elif name in (ledger.MOVING, ledger.MOVE_ABANDONED):
-            _write_intent(conn, engagement_id, event, seq)
+            # The admission above held this line to its family's rule, so
+            # the family's writer takes the family's type (decision 187).
+            # The loop keeps the dict it was handed: it reads every line
+            # whatever its family, as ledger.apply below does.
+            _write_intent(conn, engagement_id, cast(ledger.IntentEvent, event), seq)
         elif name == ledger.SCANNED:
             for identifier in (event.get(ledger.STATUSES_KEY) or {}):
                 status_seqs[identifier_key(identifier)] = seq
@@ -2159,7 +2163,7 @@ def _apply(conn: sqlite3.Connection, engagement_id: int, events: list[dict], *, 
                  str(event.get(ledger.KEYWORD_KEY, ""))),
             )
         elif name in (ledger.RULES_CHANGED, ledger.RULES_IMPORTED):
-            _apply_rules_event(conn, engagement_id, event)
+            _apply_rules_event(conn, engagement_id, cast(ledger.RulesChangedEvent, event))
         elif name == ledger.HOUSEHOLD_CHANGED:
             _write_household_info(conn, engagement_id, dict(event.get(ledger.HOUSEHOLD_KEY) or {}))
         ledger.apply(state, event)
@@ -2171,7 +2175,8 @@ def _apply(conn: sqlite3.Connection, engagement_id: int, events: list[dict], *, 
     return seq
 
 
-def _apply_rules_event(conn: sqlite3.Connection, engagement_id: int, event: dict) -> None:
+def _apply_rules_event(conn: sqlite3.Connection, engagement_id: int,
+                       event: ledger.RulesChangedEvent) -> None:
     """One edit of the person's rules, written into the tables: the
     identifiers it names as removed are deleted first, then the rows the
     event carries are upserted, and the Engagement fields it carries are
