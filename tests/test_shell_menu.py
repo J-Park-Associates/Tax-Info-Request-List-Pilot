@@ -717,6 +717,47 @@ def test_the_preload_passes_the_optional_second_argument_on_the_same_open_and_ad
     assert main_js.count("shell.showItemInFolder(") == 1 and main_js.count("shell.openPath(") == 1
 
 
+# ------------------------- only the app's window is answered (SPEC-architecture R5.4) ----
+
+NOT_FROM_THE_WINDOW = "That message is not from the app's window; nothing was done."
+REFUSED_HEADING = "shell refused a message not from the app's window"
+
+
+def test_a_message_from_anything_but_the_apps_window_is_refused_on_every_channel_and_logged_by_its_channel(tmp_path):
+    """R5.4: every handler asks ``fromMainWindow`` first. A stranger's command
+    runs nothing and is answered with the refused envelope, its open opens
+    nothing, its pick opens no dialog and reads as a cancelled pick, its error
+    text is never kept; the error log holds one line per refusal naming the
+    channel and nothing the stranger sent. The window's own are answered as
+    before, and a run with the strangers starts and opens exactly what one
+    without them does."""
+    errors = tmp_path / "tracker-errors.log"
+    _copy, _moved, scenario = _reveal_scenario(tmp_path)
+    secret = "Smith W-2: 123-45-6789"
+    strangers = [{"ipc": "tracker-cmd", "args": [["list"]], "stranger": True},
+                 {"ipc": "open-path", "args": [str(tmp_path)], "stranger": True},
+                 {"ipc": "log-error", "args": [secret], "stranger": True},
+                 {"ipc": "pick-folder", "args": [secret], "stranger": True}]
+    assert re.findall(r'ipcMain\.handle\("([a-z-]+)"', read("app/main.js")) == [one["ipc"] for one in strangers]
+    own = [{"tracker": ["list"]}, {"ipc": "open-path", "args": [str(tmp_path)]},
+           {"ipc": "pick-folder", "args": ["Choose"]}, {"ipc": "log-error", "args": ["an error of the page's own"]}]
+    alone = run_menu(tmp_path, own, errorLog=str(errors), **scenario)
+    errors.unlink()
+    ran = run_menu(tmp_path, own[:1] + strangers + own[1:], errorLog=str(errors), **scenario)
+    refused = {"error": NOT_FROM_THE_WINDOW, "warnings": [],
+               "failure": {"sentence": NOT_FROM_THE_WINDOW, "kind": "refused", "seq": None, "identifier": None}}
+    assert ran["answers"] == [refused, NOT_FROM_THE_WINDOW, "<nothing>", None, "", "/picked", "<nothing>"]
+    assert alone["answers"] == ["", "/picked", "<nothing>"]
+    for what in ("frames", "spawned", "opened", "revealed", "dialogs", "sends"):
+        assert ran[what] == alone[what], what
+    assert ran["opened"] == [str(tmp_path)] and ran["dialogs"] == [{"title": "Choose", "properties": ["openDirectory"]}]
+    kept = re.findall(r"^\S+ (.+)\n(.*)$", errors.read_text(encoding="utf-8"), flags=re.M)
+    assert kept == [(REFUSED_HEADING, "tracker-cmd"), (REFUSED_HEADING, "open-path"),
+                    (REFUSED_HEADING, "log-error"), (REFUSED_HEADING, "pick-folder"),
+                    ("renderer error", "an error of the page's own")]
+    assert secret not in errors.read_text(encoding="utf-8")
+
+
 def test_the_menus_default_words_carry_the_capital_the_section_is_written_with():
     assert _menu_words_in_main()["needs_review"] == "Needs Review"
 

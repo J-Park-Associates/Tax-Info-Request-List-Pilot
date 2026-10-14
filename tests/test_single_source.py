@@ -477,22 +477,39 @@ def test_a_packaged_mac_keeps_its_settings_in_application_support_and_windows_be
 
 #: main.js run by node, its ``tracker-cmd`` reply teaching it a macro-capable
 #: review copy, then ``open-path`` called on it, to see what the shell says.
+#: Both calls come from the app's one window, the only sender the shell
+#: answers (SPEC-architecture R5.4), so Electron is ready and the window made;
+#: no engine starts (the program's stamp is not read), and anything the shell
+#: would keep in a log goes beside the made-up files.
 _PROTECTED_VIEW_HARNESS = r"""
 const Module = require("module");
+const path = require("path");
 const { EventEmitter } = require("events");
 const realFs = require("fs");
 const [mainJs, target, other, platform] = process.argv.slice(2);
 Object.defineProperty(process, "platform", { value: platform });
+// A Mac below the floor is refused before any window (SPEC-mac R6); this one is above it.
+if (platform === "darwin") {
+  Object.defineProperty(process, "arch", { value: "arm64" });
+  require("os").release = () => "23.0.0";
+}
+const home = path.join(path.dirname(target), "userdata");
+process.env.LOCALAPPDATA = home;
 const ipc = {};
+const win = {
+  isDestroyed: () => false, setBackgroundColor() {}, loadFile() {}, on() {},
+  webContents: { setWindowOpenHandler() {}, on() {}, session: { flushStorageData() {} },
+                 isDestroyed: () => false, send() {} },
+};
 const seen = { opened: [], revealed: [] };
 const reply = { vocab: { commands: ["list"], path_kinds: { review_copy: "file" },
                          shell: { protected_view_mac: "Said by the API." } },
                 state: { paths: { "review_copy K1": target, "review_copy K2": other }, carries_code: [target] },
                 warnings: [] };
 const electron = {
-  app: { isPackaged: false, getPath: () => "/fake", setPath() {}, requestSingleInstanceLock: () => true,
-         quit() {}, setAppUserModelId() {}, on() {}, whenReady: () => new Promise(() => {}) },
-  BrowserWindow: class {},
+  app: { isPackaged: false, getPath: () => home, setPath() {}, requestSingleInstanceLock: () => true,
+         quit() {}, setAppUserModelId() {}, on() {}, whenReady: () => Promise.resolve() },
+  BrowserWindow: class { constructor() { return win; } static getAllWindows() { return [win]; } },
   Menu: { buildFromTemplate: (template) => ({ template }), setApplicationMenu() {} },
   ipcMain: { handle(name, fn) { ipc[name] = fn; }, on() {} },
   nativeTheme: { shouldUseDarkColors: false, shouldUseHighContrastColors: false, themeSource: "", on() {} },
@@ -517,12 +534,19 @@ const load = Module._load;
 Module._load = function (request, ...rest) {
   if (request === "electron") return electron;
   if (request === "child_process") return childProcess;
-  if (request === "fs") return { ...realFs, existsSync: () => true };
+  if (request === "fs") {
+    return { ...realFs, existsSync: () => true,
+             readdirSync(folder, ...more) {
+               if (path.basename(String(folder)) === "tracker") throw new Error("no engine here");
+               return realFs.readdirSync(folder, ...more);
+             } };
+  }
   return load.call(this, request, ...rest);
 };
 require(mainJs);
 (async () => {
-  const event = { sender: { isDestroyed: () => false, send() {} } };
+  await new Promise((resolve) => setImmediate(resolve));     // Electron is ready: the window is made
+  const event = { sender: win.webContents };
   await ipc["tracker-cmd"](event, ["list"]);
   const results = [];
   for (const [path, how] of [[target], [target], [target, "reveal"], [other], [target]]) {
@@ -2882,8 +2906,13 @@ def test_the_program_list_is_spelled_once():
 #: handler is kept and called, with ``child_process.spawn`` pointed at a
 #: scripted fake tracker (``_FAKE_TRACKER``) - a real child process, so the
 #: shell's reading of stdout, its kill and its stderr are the real code.
+#: Every call comes from the app's one window, the only sender the shell
+#: answers (SPEC-architecture R5.4), so Electron is ready and the window made;
+#: no engine starts (the program's stamp is not read), so each command is a
+#: process of its own, as this harness watches.
 _SHELL_HARNESS = r"""
 const Module = require("module");
+const path = require("path");
 const realSpawn = require("child_process").spawn;
 const realFs = require("fs");
 const [mainJs, fake, calls] = process.argv.slice(2);
@@ -2893,12 +2922,18 @@ Object.defineProperty(process, "platform", { value: process.env.FAKE_PLATFORM ||
 let handler = null;
 const sent = [];
 const appHandlers = {};
+let began0 = 0;
+const win = {
+  isDestroyed: () => false, setBackgroundColor() {}, loadFile() {}, on() {}, isMinimized: () => false, focus() {},
+  webContents: { setWindowOpenHandler() {}, on() {}, session: { flushStorageData() {} }, isDestroyed: () => false,
+                 send: (channel, message) => sent.push({ channel, message, ms: Date.now() - began0 }) },
+};
 const electron = {
   app: { isPackaged: false, requestSingleInstanceLock: () => true, quit() {}, setPath() {}, setAppUserModelId() {},
          getPath: () => process.env.FAKE_USERDATA,
          on(name, fn) { appHandlers[name] = fn; },
-         whenReady: () => new Promise(() => {}) },
-  BrowserWindow: class {},
+         whenReady: () => Promise.resolve() },
+  BrowserWindow: class { constructor() { return win; } static getAllWindows() { return [win]; } },
   Menu: { buildFromTemplate: (template) => ({ template }), setApplicationMenu() {} },
   ipcMain: { handle(name, fn) { if (name === "tracker-cmd") handler = fn; }, on() {} },
   nativeTheme: { shouldUseDarkColors: false, shouldUseHighContrastColors: false, themeSource: "", on() {} },
@@ -2912,14 +2947,20 @@ Module._load = function (request, ...rest) {
       ? realSpawn("/no/such/tracker-for-this-test", [], opts)
       : realSpawn(process.execPath, [fake, ...args], { ...opts, cwd: undefined }) };
   }
-  if (request === "fs") return { ...realFs, existsSync: () => true };
+  if (request === "fs") {
+    return { ...realFs, existsSync: () => true,
+             readdirSync(folder, ...more) {
+               if (path.basename(String(folder)) === "tracker") throw new Error("no engine here");
+               return realFs.readdirSync(folder, ...more);
+             } };
+  }
   return load.call(this, request, ...rest);
 };
 require(mainJs);
-const began0 = Date.now();
-const event = { sender: { isDestroyed: () => false,
-                          send: (channel, message) => sent.push({ channel, message, ms: Date.now() - began0 }) } };
+const event = { sender: win.webContents };
 (async () => {
+  await new Promise((resolve) => setImmediate(resolve));     // Electron is ready: the window is made
+  began0 = Date.now();
   const out = [];
   for (const args of JSON.parse(calls)) {
     const began = Date.now();
@@ -4611,8 +4652,15 @@ const track = (promise) => { pending += 1; const done = () => { pending -= 1; };
 const settle = async () => { do { await new Promise((resolve) => setImmediate(resolve)); } while (pending > 0); };
 const win = { isDestroyed: () => false, getContentBounds: () => ({ width: 1400, height: 900 }), setBackgroundColor() {}, loadFile() {}, on() {},
               isMinimized: () => false, focus() {},
-              webContents: { setWindowOpenHandler() {}, on() {}, session: { flushStorageData() {} },
-                             send(channel, ...args) { log.sent.push({ channel, args }); } } };
+              // The window is the sender of every click (SPEC-architecture R5.4): what is
+              // sent back to it on the progress channel is a reply's, kept in log.sends;
+              // what the shell sends of its own accord (a pass's notice, the launch door's
+              // answer) is kept in log.sent.
+              webContents: { setWindowOpenHandler() {}, on() {}, session: { flushStorageData() {} }, isDestroyed: () => false,
+                             send(channel, ...args) {
+                               if (channel === "tracker-progress") log.sends.push({ channel, message: args[0] });
+                               else log.sent.push({ channel, args });
+                             } } };
 class BrowserWindow { constructor() { return win; } static getAllWindows() { return [win]; } }
 const electron = {
   app: { isPackaged: false, requestSingleInstanceLock: () => true, quit() {}, on(name, fn) { appHandlers[name] = fn; }, setPath() {},
@@ -4793,15 +4841,14 @@ Module._load = function (request, ...rest) {
   await settle();
   for (const step of sc.steps) {
     if (step.tracker) {
-      const sender = { isDestroyed: () => false, send: (channel, message) => log.sends.push({ channel, message }) };
-      const asked = trackerHandler({ sender }, step.tracker, step.payload);
+      const asked = trackerHandler({ sender: win.webContents }, step.tracker, step.payload);
       // The app closing while this command is still being answered.
       if (step.quitDuring) { await new Promise((resolve) => setImmediate(resolve)); appHandlers["will-quit"](); }
       log.replies.push(await asked);
     } else if (step.together) {
       // Several clicks at once: each is handed over, in order, before any is answered.
-      const sender = { isDestroyed: () => false, send: (channel, message) => log.sends.push({ channel, message }) };
-      log.replies.push(...await Promise.all(step.together.map((one) => trackerHandler({ sender }, one.tracker, one.payload))));
+      log.replies.push(...await Promise.all(step.together.map((one) => trackerHandler({ sender: win.webContents }, one.tracker,
+                                                                                       one.payload))));
     } else if (step.program) {
       stamp += 1;
     } else if (step.quit) {

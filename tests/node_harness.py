@@ -805,7 +805,10 @@ def content() -> dict:
 #: the pop-ups it opens are recorded as plain data (a label, whether it is
 #: enabled, its accelerator, its role), items are "clicked" by label, and the
 #: tracker child process is a fake that answers ``list`` with a vocabulary. A
-#: scenario is a list of steps; the harness prints what happened.
+#: step speaks from the app's window, as the page does, unless it says
+#: ``stranger`` (SPEC-architecture R5.4); an ``ipc`` step calls any of the
+#: four handlers by its channel. A scenario is a list of steps; the harness
+#: prints what happened.
 MENU_HARNESS = r"""
 const Module = require("module");
 const EventEmitter = require("events");
@@ -821,10 +824,10 @@ if (sc.release) require("os").release = () => sc.release;
 if (sc.localAppData !== undefined) process.env.LOCALAPPDATA = sc.localAppData;
 process.resourcesPath = process.resourcesPath || "/resources";
 const log = { menus: [], popups: [], sends: [], opened: [], revealed: [], answers: [], backgrounds: [], windowOptions: null,
-              userModelIds: [], spawned: [] };
-let openHandler = null;
+              userModelIds: [], spawned: [], frames: [], dialogs: [] };
+// Every ipcMain.handle main.js makes, by channel.
+const handlers = {};
 let menuHandler = null;
-let trackerHandler = null;
 let updated = null;
 const theme = { shouldUseDarkColors: !!sc.dark, shouldUseHighContrastColors: !!sc.contrast,
                 themeSource: "", on(name, fn) { if (name === "updated") updated = fn; } };
@@ -853,7 +856,7 @@ const win = {
   getContentBounds: () => ({ width: 1400, height: 900 }),
   setBackgroundColor: (c) => log.backgrounds.push(c),
   loadFile() {}, on() {}, isMinimized: () => false, focus() {},
-  webContents: { setWindowOpenHandler() {}, on() {}, session: { flushStorageData() {} },
+  webContents: { setWindowOpenHandler() {}, on() {}, session: { flushStorageData() {} }, isDestroyed: () => false,
                  send: (channel, message) => log.sends.push({ channel, message }) },
 };
 class BrowserWindow {
@@ -877,15 +880,15 @@ const electron = {
       log.menus.push(snapshot(menu.template));
     },
   },
-  ipcMain: { handle(name, fn) {
-               if (name === "tracker-cmd") trackerHandler = fn;
-               if (name === "open-path") openHandler = fn;
-             },
+  ipcMain: { handle(name, fn) { handlers[name] = fn; },
              on(name, fn) { if (name === "menu") menuHandler = fn; } },
   nativeTheme: theme,
   shell: { openPath: async (p) => { log.opened.push(p); return ""; },
            showItemInFolder: (p) => { log.revealed.push(p); } },
-  dialog: {},
+  dialog: { showOpenDialog: async (options) => {
+    log.dialogs.push(options);
+    return { canceled: false, filePaths: ["/picked"] };
+  } },
 };
 const listReply = () => ({ vocab: { commands: ["list", "after-install"], menu: sc.vocabMenu,
                                     path_kinds: sc.pathKinds,
@@ -911,6 +914,7 @@ const fakeSpawn = (cmd, args) => {
           const head = JSON.parse(framed.slice(0, at).toString("utf8"));
           if (framed.length - at - 1 < head.bytes) return true;       // the payload's bytes are part of the frame
           framed = framed.slice(at + 1 + head.bytes);
+          log.frames.push(head.argv);
           pending += 1;
           setImmediate(() => {
             if (head.argv.includes("list")) proc.stdout.emit("data", JSON.stringify(listReply()) + "\n");
@@ -963,12 +967,17 @@ const items = (list, label) => {
   require(mainJs);
   await settle();
   for (const step of sc.steps) {
+    // The app's window, or a frame that is not it (a sender of its own).
+    const event = { sender: step.stranger ? { isDestroyed: () => false, send() {} } : win.webContents };
     if (step.menu !== undefined) {
-      menuHandler({ sender: step.stranger ? {} : win.webContents }, step.menu);
+      menuHandler(event, step.menu);
     } else if (step.tracker) {
-      await trackerHandler({ sender: { isDestroyed: () => false, send() {} } }, step.tracker, undefined);
+      await handlers["tracker-cmd"](event, step.tracker, undefined);
     } else if (step.open) {
-      log.answers.push(await openHandler({}, ...step.open));
+      log.answers.push(await handlers["open-path"](event, ...step.open));
+    } else if (step.ipc) {
+      const answer = await handlers[step.ipc](event, ...(step.args || []));
+      log.answers.push(answer === undefined ? "<nothing>" : answer);
     } else if (step.clickBar) {
       const item = items(live.bar, step.clickBar);
       if (item && item.click) item.click();

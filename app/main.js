@@ -912,21 +912,53 @@ async function openChecked(p, kind, reveal) {
   return shell.openPath(p);
 }
 
+// Only the app's own window may ask the shell anything (SPEC-architecture
+// R5.4), as the menu channel has always required: a message from anything
+// else - another frame, a page the window was led to - is refused the way
+// each channel refuses, and the error log keeps its channel alone, never
+// what it carried.
+function fromMainWindow(event) {
+  return Boolean(mainWindow) && Boolean(event) && event.sender === mainWindow.webContents;
+}
+const NOT_FROM_THE_WINDOW = "That message is not from the app's window; nothing was done.";
+function refusedStranger(channel) {
+  keepInLog("shell refused a message not from the app's window", channel);
+}
+
 // A pass's progress lines go to the window that asked, on their own channel
 // (decision 193), and so does its ending once the click has been answered
 // (decision 203): {args, reply, code}. A window gone by then hears nothing.
 ipcMain.handle("tracker-cmd", (event, args, payload) => {
+  if (!fromMainWindow(event)) {
+    refusedStranger("tracker-cmd");
+    return shellFailure(NOT_FROM_THE_WINDOW, "refused");
+  }
   const send = (message) => {
     if (!event.sender.isDestroyed()) event.sender.send("tracker-progress", { args, ...message });
   };
   return runTracker(args, payload, (progress) => send({ progress }), (ended) => send(ended));
 });
-ipcMain.handle("open-path", (_event, p, how) => openPath(p, how));
+ipcMain.handle("open-path", (event, p, how) => {
+  if (!fromMainWindow(event)) {
+    refusedStranger("open-path");
+    return NOT_FROM_THE_WINDOW;
+  }
+  return openPath(p, how);
+});
 // An error of the page's own: its text goes to the error log, never on screen.
-ipcMain.handle("log-error", (_event, text) => {
+ipcMain.handle("log-error", (event, text) => {
+  if (!fromMainWindow(event)) {
+    refusedStranger("log-error");
+    return;
+  }
   keepInLog("renderer error", typeof text === "string" ? text : "");
 });
-ipcMain.handle("pick-folder", async (_event, title) => {
+// A stranger's ask is answered as a cancelled pick: no dialog opens.
+ipcMain.handle("pick-folder", async (event, title) => {
+  if (!fromMainWindow(event)) {
+    refusedStranger("pick-folder");
+    return null;
+  }
   const result = await dialog.showOpenDialog({
     title: typeof title === "string" ? title : undefined,
     properties: ["openDirectory"],
@@ -1137,7 +1169,7 @@ function popupMenu(win, name, enable, token, x, y) {
 // template are dropped, a popup must be one of the six, a token must be a
 // short string. Nothing the page says adds, removes or renames an item.
 function onMenuMessage(event, message) {
-  if (!mainWindow || event.sender !== mainWindow.webContents) return;
+  if (!fromMainWindow(event)) return;
   if (!message || typeof message !== "object" || Array.isArray(message)) return;
   const known = (list, allowed) => (Array.isArray(list)
     ? list.filter((id) => typeof id === "string" && allowed.has(id)) : null);
