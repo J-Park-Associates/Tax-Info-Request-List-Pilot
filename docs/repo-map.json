@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 332,
     "edges": 1429,
-    "reused": 0
+    "reused": 278
   },
   "node_types": [
     "artifact",
@@ -4645,7 +4645,7 @@
       "id": "docs/repo-map.curated.json",
       "type": "file",
       "layer": "docs",
-      "sha256": "6f656cab220ba4c2",
+      "sha256": "d08670d0ce0c2536",
       "lines": 1539,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
@@ -8824,8 +8824,8 @@
       "id": "tests/test_patch_sites.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "8fe488091a89251a",
-      "lines": 467,
+      "sha256": "f1450503df86a086",
+      "lines": 527,
       "exports": [
         "REPO",
         "SORTER",
@@ -8841,6 +8841,7 @@
         "test_a_tool_imported_by_its_bare_name_is_reported_by_its_dotted_one",
         "test_any_monkeypatch_counts_not_only_the_fixture_of_that_name",
         "test_every_stand_in_in_the_suite_lands_where_the_code_reads_it",
+        "test_no_way_of_writing_a_module_drops_a_stand_in_out_of_the_check",
         "test_stand_ins_on_things_outside_the_repository_or_on_no_module_are_not_listed",
         "test_the_command_line_check_exits_1_on_an_unread_stand_in",
         "test_the_command_line_check_passes_on_the_suite",
@@ -8852,7 +8853,7 @@
         "the_suite"
       ],
       "role": "Owns tools/patch_sites.py: its marks and the target forms it follows, each on a made-up repository of a few lines in a temporary folder, the command line's exit codes, and the check passing on the real suite with every filer site a plain search for setattr finds in the report.",
-      "notes": "SPEC-architecture J4 (R4.2). The made-up cases pin the readings that differ by interpreter (a read in a module-level comprehension, a nested function's parameter) so the marks are the same on 3.11 and 3.14, the joint rows of a loop or helper (two values bound together are one site, not four), and that a target the tool cannot work out fails the check rather than dropping out. The real-suite cases hold the tool to the suite as it stands: no unread site and none it cannot place, the conftest and tests/children.py seams among the sites, and the filer report a superset of a regex search, so the tool is never quieter than grep. When J4 was built no site in the suite was unread and none needed fixing."
+      "notes": "SPEC-architecture J4 (R4.2). The made-up cases pin the readings that differ by interpreter (a read in a module-level comprehension, a nested function's parameter) so the marks are the same on 3.11 and 3.14, the joint rows of a loop or helper (two values bound together are one site, not four), and that a target the tool cannot work out fails the check rather than dropping out: eight ways of writing one stand-in on an unread name are each a site or not placed, never taken for no module. The real-suite cases hold the tool to the suite as it stands: no unread site and none it cannot place, the conftest and tests/children.py seams among the sites, and the filer report a superset of a regex search, so the tool is never quieter than grep. When J4 was built no site in the suite was unread and none needed fixing."
     },
     {
       "id": "tests/test_pilot.py",
@@ -11894,8 +11895,8 @@
       "id": "tools/patch_sites.py",
       "type": "tool",
       "layer": "tooling",
-      "sha256": "550c33923b34a0b2",
-      "lines": 822,
+      "sha256": "4c3032f869890a4d",
+      "lines": 841,
       "cli": "python -m tools.patch_sites",
       "exports": [
         "DEFINED",
@@ -11928,7 +11929,7 @@
         "MOST_ROWS": "512"
       },
       "role": "Lists every monkeypatch.setattr under tests/ aimed at a module of the repository and marks each one where that module's own code would see it: defined (the module defines the name), imported (it imports the name, or it is a builtin, and reads it) or unread (it never reads the name outside its import or definition, so the stand-in replaces nothing anything calls). `report <module>` (a dotted name or a path) lists one module's sites; `check` exits 1 on an unread site or on one it cannot place.",
-      "notes": "SPEC-architecture J4 (R4.1; audit A-4, C-1). A stand-in reaches only code that looks the name up in that module's namespace, so a patch on filer.copy2 after copy2 moved to fsio passes for nothing; this is the list rule 6 of the SPEC's migration guide works from before code leaves a module. It parses, never imports: the module side is a scope walk of each module's syntax tree (annotations skipped, class-scope rules kept, a comprehension its own scope with its first iterator outside it, an augmented assignment and a lookup through the module's globals counted as reads), because symtable was the rejected alternative - from 3.12 it inlines a module-level comprehension (PEP 709) and loses its reads, and on 3.11 it calls a nested function's parameter global, so the marks differed between the two interpreters the gate runs. The test side works out what a setattr's first two arguments hold: the object form, a module alias, a local name holding a module, the dotted string form, sys.modules[...], importlib.import_module and pytest.importorskip, reload, a fixture that returns a module (this file or a conftest) and a fixture's params, a for over a literal (a tuple, list, set, dict's keys, a name bound to one, a sorted copy of one) with names unpacked together kept together, the loop the call sits in over the name's other bindings, and a same-file helper's parameters fixed by each of its calls. A tool imported by its bare name after a sys.path insert is reported by its dotted one. A target it cannot work out - an unknown call, an unbound name, a subscript, more than MOST_ROWS ways - is listed as not placed and fails the check rather than being skipped, so a site cannot silently drop out of the list. What it cannot see, and says so: a module that copied a defined name with from-import keeps its own copy, which a stand-in on the defining module does not replace. Importing the modules and comparing the patched object, or tracing a run, were rejected: both run the suite's code, and neither names a site that no test reaches. Standard library only, and it imports nothing of tests/."
+      "notes": "SPEC-architecture J4 (R4.1; audit A-4, C-1). A stand-in reaches only code that looks the name up in that module's namespace, so a patch on filer.copy2 after copy2 moved to fsio passes for nothing; this is the list rule 6 of the SPEC's migration guide works from before code leaves a module. It parses, never imports: the module side is a scope walk of each module's syntax tree (annotations skipped, class-scope rules kept, a comprehension its own scope with its first iterator outside it, an augmented assignment and a lookup through the module's globals counted as reads), because symtable was the rejected alternative - from 3.12 it inlines a module-level comprehension (PEP 709) and loses its reads, and on 3.11 it calls a nested function's parameter global, so the marks differed between the two interpreters the gate runs. The test side works out what a setattr's first two arguments hold: the object form, a module alias, a local name holding a module (assigned plainly or with an annotation), the dotted string form, sys.modules[...], importlib.import_module and pytest.importorskip, reload, a fixture that returns a module (this file or a conftest) and a fixture's params, a for over a literal (a tuple, list, set, dict's keys, a name bound to one, a sorted copy of one) with names unpacked together kept together, the loop the call sits in over the name's other bindings, and a same-file helper's parameters fixed by each of its calls. A tool imported by its bare name after a sys.path insert is reported by its dotted one. A target it cannot work out - an unknown call, a call to a function the test file defines or to getattr, vars or __import__, a module stored by an unpacking, a walrus or with/except-as, an unbound name, a subscript, more than MOST_ROWS ways - is listed as not placed and fails the check rather than being skipped, so a site cannot silently drop out of the list. What it cannot see, and says so: a module that copied a defined name with from-import keeps its own copy, which a stand-in on the defining module does not replace. Importing the modules and comparing the patched object, or tracing a run, were rejected: both run the suite's code, and neither names a site that no test reaches. Standard library only, and it imports nothing of tests/."
     },
     {
       "id": "tools/reader_bench.py",

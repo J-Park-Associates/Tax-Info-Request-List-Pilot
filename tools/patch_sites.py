@@ -33,16 +33,17 @@ runs both (SPEC-architecture section 10, steps 5 and 12), so the tool keeps its
 fixture that hands its monkeypatch on (``in_a_child``) and
 ``pytest.MonkeyPatch.context()`` count as well as ``monkeypatch``. A module is
 named three ways: as the test imported it (``setattr(filer, ...)``), under an
-alias (``filer_module``, or ``here = children``), or in a string
-(``setattr("tracker.filer.name", value)``). The stand-ins most worth checking
-come in loops: a test that forbids four reads sets four names in a ``for`` over
-a literal tuple, and a stand-in there that misses makes the test pass for
-nothing. So the tool also follows a module or a name that comes from a ``for``
-over literals (or over a literal assigned to a name), from a fixture's
-``params``, from a fixture that returns it, and from a helper's parameter at
-the helper's calls in the same file. Values bound together stay together: ``for
-module, name in ((a, "x"), (b, "y"))`` is two sites, not four, and inside a
-loop's body its name holds the loop's values, whatever else it is bound to.
+alias (``filer_module``, ``here = children`` or ``here: ModuleType =
+children``), or in a string (``setattr("tracker.filer.name", value)``). The
+stand-ins most worth checking come in loops: a test that forbids four reads
+sets four names in a ``for`` over a literal tuple, and a stand-in there that
+misses makes the test pass for nothing. So the tool also follows a module or a
+name that comes from a ``for`` over literals (or over a literal assigned to a
+name), from a fixture's ``params``, from a fixture that returns it, and from a
+helper's parameter at the helper's calls in the same file. Values bound
+together stay together: ``for module, name in ((a, "x"), (b, "y"))`` is two
+sites, not four, and inside a loop's body its name holds the loop's values,
+whatever else it is bound to.
 
 **What a read is.** A global read in the module's own code, by Python's own
 scope rules: not a parameter or a local of the same name, not a method reading
@@ -58,7 +59,12 @@ reported as defined, because some caller may read the name through the module
 and the tool cannot know which caller a test meant. The moves to come make the
 other mistake, an imported name the module stops reading, and that is the one
 ``check`` fails. A target the tool cannot work out fails ``check`` as not
-placed, rather than being skipped without a word.
+placed, rather than being skipped without a word: a module stored by an
+unpacking, a walrus, ``with ... as`` or ``except ... as``, or given by a call
+to a function the test file defines or to ``getattr``, ``vars`` or
+``__import__``. Only a value
+the tool takes for no module passes unlisted: a class or what calling one
+makes, and what another builtin or an outside library's function returns.
 
 Rejected: importing the modules to ask them (it runs code, and the tests'
 imports reach the sorting engine); tracing a run of the whole suite (it costs a
@@ -316,10 +322,12 @@ def module_names(source: str, filename: str = "<module>") -> ModuleNames:
 MODULE, TEXT, OUTSIDE, THING, UNKNOWN = "module", "text", "outside", "thing", "unknown"
 _A_THING = (THING, None)
 
-#: The calls whose one argument a loop walks as written, and the calls that
-#: import the module their one argument names.
+#: The calls whose one argument a loop walks as written, the calls that
+#: import the module their one argument names, and the builtins that can give
+#: a module the tool does not follow.
 _SEQUENCE_CALLS = ("sorted", "list", "tuple", "set", "reversed")
 _IMPORT_CALLS = ("import_module", "importorskip")
+_GIVE_A_MODULE = ("getattr", "vars", "__import__")
 
 _SCOPES = (ast.Module, *_FUNCTIONS, ast.Lambda)
 _BUILTINS = frozenset(dir(builtins))
@@ -481,14 +489,19 @@ class _TestFile:
     def _called(self, call: ast.Call, env, seen) -> list[tuple]:
         """What a call gives: the module an import call names, the module
         ``reload`` is given, and otherwise no module - where the tool knows
-        what is called. A call to something it cannot work out is not
-        followed."""
+        what is called. A function the test file defines with ``def``, and
+        ``getattr``, ``vars`` and ``__import__``, can give a module, so a call
+        to one is not followed, nor is a call to something the tool cannot
+        work out."""
         func = call.func
         called = func.attr if isinstance(func, ast.Attribute) else getattr(func, "id", "")
         if called in _IMPORT_CALLS and len(call.args) == 1:
             return [self._module_named(one) for one in self.values(call.args[0], env, seen)]
         if called == "reload" and len(call.args) == 1:
             return self.values(call.args[0], env, seen)
+        if isinstance(func, ast.Name) and (func.id in _GIVE_A_MODULE or any(
+                isinstance(node, _FUNCTIONS) for node in self.binders(func.id, call))):
+            return [(UNKNOWN, ast.unparse(call))]
         if any(kind == UNKNOWN for kind, _ in self.values(func, env, seen)):
             return [(UNKNOWN, ast.unparse(call))]
         return [_A_THING]
@@ -543,13 +556,19 @@ class _TestFile:
         return found
 
     def _stored(self, target: ast.Name, seen) -> list[tuple]:
-        """What a name holds where ``target`` stores it."""
+        """What a name holds where ``target`` stores it: the value of a plain
+        or annotated assignment, or a ``for``'s values. Any other store (an
+        unpacking, a walrus, ``with ... as``, an augmented assignment, an
+        annotation with no value) is not followed, so a module stored that
+        way fails the check rather than passing as no module."""
         holder = self.parent[target]
         if isinstance(holder, ast.Assign) and holder.targets == [target]:
             return self.values(holder.value, {}, seen)
+        if isinstance(holder, ast.AnnAssign) and holder.target is target and holder.value is not None:
+            return self.values(holder.value, {}, seen)
         loop = self.loop_of(target)
         if loop is None:
-            return [_A_THING]
+            return [(UNKNOWN, target.id)]
         rows = self.loop_rows(loop, seen)
         if rows is None:
             return [(UNKNOWN, ast.unparse(loop.iter))]

@@ -378,6 +378,66 @@ def test_a_target_the_tool_cannot_work_out_fails_the_check_as_not_placed(tmp_pat
                        "replaces is not written out. Name the module and the name as an import, an alias or a literal.")
 
 
+def test_no_way_of_writing_a_module_drops_a_stand_in_out_of_the_check(tmp_path):
+    """Each stand-in below lands on ``sorter.kept``, which ``sorter`` never
+    reads. The plain form and an annotated alias are sites, unread; a module
+    stored by an unpacking, a walrus, ``with ... as`` or ``except ... as``, or
+    given by a helper of the file or by ``getattr``, is not placed. None is
+    taken for no module, so ``check`` names all eight."""
+    root = _repository(tmp_path, {**SORTER, "tests/test_a.py": """
+        import contextlib
+        import types
+
+        import tracker
+        from tracker import sorter
+
+        def _the_sorter():
+            return sorter
+
+        def test_annotated(monkeypatch):
+            module: types.ModuleType = sorter
+            monkeypatch.setattr(module, "kept", None)
+
+        def test_unpacked(monkeypatch):
+            module, name = sorter, "kept"
+            monkeypatch.setattr(module, name, None)
+
+        def test_helper(monkeypatch):
+            monkeypatch.setattr(_the_sorter(), "kept", None)
+
+        def test_getattr(monkeypatch):
+            monkeypatch.setattr(getattr(tracker, "sorter"), "kept", None)
+
+        def test_walrus(monkeypatch):
+            if (module := sorter):
+                monkeypatch.setattr(module, "kept", None)
+
+        def test_with(monkeypatch):
+            with contextlib.nullcontext(sorter) as module:
+                monkeypatch.setattr(module, "kept", None)
+
+        def test_except(monkeypatch):
+            try:
+                raise LookupError
+            except LookupError as module:
+                monkeypatch.setattr(module, "kept", None)
+
+        def test_plain(monkeypatch):
+            monkeypatch.setattr(sorter, "kept", None)
+    """})
+    marked, unplaced = patch_sites.stand_ins(root)
+    assert [(site.line, site.module, site.name, site.written, mark) for site, mark in marked] == [
+        (12, "tracker.sorter", "kept", "module", patch_sites.UNREAD),
+        (39, "tracker.sorter", "kept", "sorter", patch_sites.UNREAD),
+    ]
+    assert [(one.line, one.written) for one in unplaced] == [
+        (16, "module"), (19, "_the_sorter()"), (22, "getattr(tracker, 'sorter')"),
+        (26, "module"), (30, "module"), (36, "module"),
+    ]
+    ok, said = patch_sites.check(root)
+    assert not ok and len(said) == 8
+
+
 # ---------------------------------------------------------------- the report ----
 
 
