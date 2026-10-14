@@ -44,11 +44,9 @@ import re._parser as _re_parser  # type: ignore[import-not-found]  # typeshed do
 from typing import TypeGuard
 
 from tracker.layout import (
-    WINDOWS_ILLEGAL_CHARS,
-    WINDOWS_ILLEGAL_CHARS_TEXT,
-    WINDOWS_RESERVED_NAMES_TEXT,
+    NAME_MAX_CHARS,
+    file_name_part_problem,
     invisible_problem,
-    is_reserved_name,
     spoofing_problem,
 )
 
@@ -83,8 +81,10 @@ STAMP_YEAR_MIN = 1970
 
 #: Characters Windows forbids in file and folder names, and the names it
 #: keeps for devices, are the layout's since decision 188 - the name rule
-#: for a household or a return is worded there - and are imported above
-#: and named here still, so every reader of them is unchanged.
+#: for a household or a return is worded there - and so, since P2.5, are
+#: the four checks a file-name part is held to
+#: (:func:`tracker.layout.file_name_part_problem`), which the identifier
+#: and the short title below each ask in their own place in a file name.
 
 
 def identifier_problem(identifier: str) -> str:
@@ -102,16 +102,7 @@ def identifier_problem(identifier: str) -> str:
     left in an older record is not a reason to stop its household, and is
     refused only where a person types (:func:`typed_identifier_problem`).
     """
-    if WINDOWS_ILLEGAL_CHARS.search(identifier):
-        return f"may not contain any of {WINDOWS_ILLEGAL_CHARS_TEXT} (it begins a file name)"
-    if (hidden := spoofing_problem(identifier)) is not None:
-        return hidden
-    if identifier != identifier.rstrip(". "):
-        return "may not end with a dot or a space (Windows drops them from file names)"
-    if is_reserved_name(identifier):
-        return (f"may not be a name Windows keeps for a device ({WINDOWS_RESERVED_NAMES_TEXT}); "
-                f"it begins a file name")
-    return ""
+    return file_name_part_problem(identifier, begins=True)
 
 
 def document_problem(document: str) -> str:
@@ -136,9 +127,10 @@ def document_problem(document: str) -> str:
 
 
 #: The most characters a typed identifier may have (P291): the width a
-#: household or return folder name has (``layout.NAME_MAX_CHARS``), for the
-#: same reason - it begins every file name.
-IDENTIFIER_MAX_CHARS = 80
+#: household or return folder name has, for the same reason - it begins
+#: every file name - and so that bound itself (``layout.NAME_MAX_CHARS``),
+#: never typed again (P2.5).
+IDENTIFIER_MAX_CHARS = NAME_MAX_CHARS
 
 
 def typed_identifier_problem(identifier: str) -> str:
@@ -180,16 +172,7 @@ def short_title_problem(short_title: str) -> str:
     """
     if len(short_title) > SHORT_TITLE_MAX:
         return f"may have at most {SHORT_TITLE_MAX} characters, got {len(short_title)}"
-    if WINDOWS_ILLEGAL_CHARS.search(short_title):
-        return f"may not contain any of {WINDOWS_ILLEGAL_CHARS_TEXT} (it is part of a file name)"
-    if (hidden := spoofing_problem(short_title)) is not None:
-        return hidden
-    if short_title != short_title.rstrip(". "):
-        return "may not end with a dot or a space (Windows drops them from file names)"
-    if short_title and is_reserved_name(short_title):
-        return (f"may not be a name Windows keeps for a device ({WINDOWS_RESERVED_NAMES_TEXT}); "
-                f"it is part of a file name")
-    return ""
+    return file_name_part_problem(short_title, begins=False)
 
 
 def typed_short_title_problem(short_title: str) -> str:

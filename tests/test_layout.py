@@ -854,3 +854,58 @@ def test_a_refused_long_name_is_a_short_sentence_that_still_states_its_length():
         said = str(refused.value)
         assert len(said) < 200
         assert said.endswith(layout.NAME_TOO_LONG.format(limit=80, n=10_000))
+
+
+#: What an identifier and a short title were refused with when each had a
+#: body of its own (the strings at 286b535, before P2.5 gave them one), one
+#: sample per check and per order between two checks: the text, then the
+#: identifier's sentence, then the short title's.
+_ILLEGAL = 'may not contain any of \\ / : * ? " < > | '
+_RTL = "may not contain an invisible character (U+202E RIGHT-TO-LEFT OVERRIDE)"
+_TRAILING = "may not end with a dot or a space (Windows drops them from file names)"
+_DEVICE = ("may not be a name Windows keeps for a device (CON, PRN, AUX, NUL, CONIN$, CONOUT$, "
+           "COM1-COM9, LPT1-LPT9 and their superscript-1, 2 and 3 forms); ")
+FILE_NAME_PART_SENTENCES = (
+    ("A:01", _ILLEGAL + "(it begins a file name)", _ILLEGAL + "(it is part of a file name)"),
+    ("W-2\x07", _ILLEGAL + "(it begins a file name)", _ILLEGAL + "(it is part of a file name)"),
+    ("A01‮", _RTL, _RTL),
+    ("A01.", _TRAILING, _TRAILING),
+    ("A01 ", _TRAILING, _TRAILING),
+    ("NUL", _DEVICE + "it begins a file name", _DEVICE + "it is part of a file name"),
+    ("com1.txt", _DEVICE + "it begins a file name", _DEVICE + "it is part of a file name"),
+    ("LPT¹", _DEVICE + "it begins a file name", _DEVICE + "it is part of a file name"),
+    ("NUL:", _ILLEGAL + "(it begins a file name)", _ILLEGAL + "(it is part of a file name)"),
+    ("A‮:", _ILLEGAL + "(it begins a file name)", _ILLEGAL + "(it is part of a file name)"),
+    ("W‮.", _RTL, _RTL),
+    ("NUL.", _TRAILING, _TRAILING),
+    ("A01", "", ""),
+    ("W-2 Wages", "", ""),
+    ("", "", ""),
+)
+
+
+def test_an_identifier_and_a_short_title_are_refused_in_the_words_they_had_before_one_body_held_them():
+    """SPEC-architecture-p2 P2.5 (R2.5.1): the four file-name checks are
+    written once, in the layout, and each caller says where its text sits.
+    Every sentence and the order between the checks are what the two bodies
+    gave, so no line the store's gate admitted is refused and none it
+    refused is admitted."""
+    from tracker import bounds
+
+    for text, as_identifier, as_short_title in FILE_NAME_PART_SENTENCES:
+        assert bounds.identifier_problem(text) == as_identifier, repr(text)
+        assert bounds.short_title_problem(text) == as_short_title, repr(text)
+        assert layout.file_name_part_problem(text, begins=True) == as_identifier, repr(text)
+        assert layout.file_name_part_problem(text, begins=False) == as_short_title, repr(text)
+    # The short title's own bound is still said first, before any of the four.
+    assert bounds.short_title_problem("x" * 20 + ":") == "may have at most 20 characters, got 21"
+
+
+def test_an_empty_name_is_not_a_device_name_so_a_blank_short_title_needs_no_guard():
+    """R2.5.1: the short title's reserved-name check used to be guarded by
+    ``short_title and``; the one body has no guard, which is safe because
+    the empty text is no device's name - its stem is empty, and no device is
+    named so. A blank short title is the row's default (decision 144), so a
+    change here would refuse every row that has none."""
+    assert layout.is_reserved_name("") is False
+    assert layout.file_name_part_problem("", begins=False) == ""

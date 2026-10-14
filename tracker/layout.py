@@ -496,6 +496,41 @@ def segment_problem(name: str) -> str | None:
     return None
 
 
+def file_name_part_problem(text: str, *, begins: bool) -> str:
+    """Why ``text`` cannot be part of a working copy's file name, or "" if
+    it can: a character Windows forbids, a character that changes how a name
+    is read (:func:`spoofing_problem`), a trailing dot or space, or a name
+    Windows keeps for a device - the first of the four, in that order.
+
+    **The one body of the file-name check** (SPEC-architecture-p2 P2.5; the
+    architecture audit's B-3). A request's identifier begins every working
+    copy's name and its short title is part of it, so the two are held to
+    the same four checks, and the checks were written twice in words that
+    differed only in where the text sits; ``begins`` is that difference
+    (``True`` for an identifier, ``False`` for a short title). It is the
+    store's gate as well as the editor's, so the invisible-character check
+    is the narrow one: the full rule is asked only where a person types
+    (``tracker.bounds.typed_identifier_problem``). Not :func:`segment_problem`,
+    which judges a whole folder name - its first character, its form, its
+    alphabets, the layout's own words - in phrases of its own: a file-name
+    part may begin with any character the four allow.
+
+    Empty text passes, because none of the four refuses it
+    (``is_reserved_name("")`` is false); whether a part may be blank is the
+    caller's to say.
+    """
+    where = "it begins a file name" if begins else "it is part of a file name"
+    if WINDOWS_ILLEGAL_CHARS.search(text):
+        return f"may not contain any of {WINDOWS_ILLEGAL_CHARS_TEXT} ({where})"
+    if (hidden := spoofing_problem(text)) is not None:
+        return hidden
+    if text != text.rstrip(". "):
+        return "may not end with a dot or a space (Windows drops them from file names)"
+    if is_reserved_name(text):
+        return f"may not be a name Windows keeps for a device ({WINDOWS_RESERVED_NAMES_TEXT}); {where}"
+    return ""
+
+
 def checked_name(typed: object, what: str) -> str:
     """The name a person typed, normalised - or a :class:`LayoutError`
     saying which name and why (``what`` is ``household`` or ``return``).
