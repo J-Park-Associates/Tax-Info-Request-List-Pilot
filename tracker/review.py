@@ -303,7 +303,7 @@ def _label_of(reason: str, spelling: str) -> str:
     The pattern is built from the very sentences the filer wrote - the
     Reason's own template and the one way a spelling and a return are said
     together - so rewording either moves this reader with it, exactly as
-    ``filer.moved_to`` reads a path back off a Reason (decisions 108 and
+    ``index.moved_to`` reads a path back off a Reason (decisions 108 and
     109). The row is the only place the other return's label is kept, and
     it is kept there because the name's *evidence* is the spelling and a
     label is not evidence of anything.

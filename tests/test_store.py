@@ -32,7 +32,7 @@ from tests.builders import cache_rows, drop, engagement_fixture
 from tests.conftest import child_env, make_engagement, seed_statuses, sort, written_elsewhere
 from tests.samples import text_pdf
 from tracker import checkpoint, ledger, store
-from tracker.filer import ensure, read_index
+from tracker.index import ensure, read_index
 from tracker.layout import inbox_of
 from tracker.locking import engagement_lock
 from tracker.manifest import (
@@ -1592,7 +1592,7 @@ def test_a_pass_keys_one_return_the_same_way_whichever_root_is_named(recorded_ro
 
 def _one_filed_row(period: str):
     """One index row a pass could have written, for a return of ``period``."""
-    from tracker.filer import FILED
+    from tracker.index import FILED
     from tracker.records import IndexEntry
 
     return IndexEntry(received="2026-09-23", original_name="x.pdf", size_kb=5.0,

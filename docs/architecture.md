@@ -85,8 +85,8 @@ the package but each other.
   view of every record; the record is the truth and the store is the index.
 - `index.py`: the index as the record holds it: the words its rows carry,
   their readers (`read_index`, `ensure`, the moved and interrupted sentences
-  read back) and the one proof of a row's bytes; `filer.py` imports them and
-  re-exports them.
+  read back) and the one proof of a row's bytes; `filer.py` imports what it
+  reads and offers none of them on, and every reader imports them from here.
 - `templates.py`: the per-form request catalog, the only source of the
   checklists.
 - `households.py`, `scaffold.py`: the household's own record, and the folders

@@ -82,8 +82,9 @@ removes it (:data:`RETIRED_CACHE_FILENAME`).
 
 :class:`Evidence` itself, the rule and place vocabularies and the cell format
 it is written into live in :mod:`tracker.records` since decision 100 - they
-are the shape of a verdict, not the reading of a document - and are
-re-exported here for one release.
+are the shape of a verdict, not the reading of a document. This module
+imports the ones it writes into a verdict, and a reader imports them from
+there (P322).
 """
 
 from __future__ import annotations
@@ -105,26 +106,19 @@ from tracker.manifest import RequestItem, derived_date_pattern, has_routing_rule
 
 # The Evidence record and the cell format it is written in live in
 # tracker/records.py (decision 100): they are the shape of a verdict, not the
-# reading of a document. The names this module does not use itself are
-# re-exported from here so that every `from tracker.content_check import ...`
-# still resolves to the same object; kept for one release; import from
-# tracker.records.
+# reading of a document. This module imports Evidence, the rules and places a
+# verdict says it rested on, and the page break it counts pages by; it offers
+# none of them on (P322).
 from tracker.records import (
-    EVIDENCE_PLACES,  # noqa: F401
-    EVIDENCE_RULES,  # noqa: F401
     PAGE_BREAK,
     RULE_ANY,
     RULE_DATE,
-    RULE_FILENAME,  # noqa: F401
-    RULE_REFUSED,  # noqa: F401
     RULE_REQUIRED,
     WHERE_DEEP,
     WHERE_FIRST_PAGE,
     WHERE_FOOTER,
     WHERE_TITLE,
     Evidence,
-    format_evidence,  # noqa: F401
-    parse_evidence,  # noqa: F401
 )
 from tracker.validators import (
     IMAGE_EXTENSIONS,

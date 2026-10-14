@@ -298,7 +298,8 @@ def test_rows_added_as_not_asked_are_on_the_list_and_never_asked_for(prior, tmp_
 def test_unfiled_documents_from_last_year_are_surfaced(prior, tmp_path):
     """What arrived and fitted nowhere is exactly next year's gap."""
     from tests.conftest import seed_index
-    from tracker.filer import NEEDS_REVIEW, IndexEntry
+    from tracker.index import NEEDS_REVIEW
+    from tracker.records import IndexEntry
 
     seed_index(prior, [
         IndexEntry(received="2026-03-01", original_name="K-1 Redwood LP.pdf",
@@ -318,7 +319,8 @@ def test_two_unfiled_documents_of_one_name_are_two_and_no_subfolder_is_quoted(pr
     row's own column, never a clause of the line next year's report quotes."""
     from tests.conftest import seed_index
     from tracker import reasons
-    from tracker.filer import NEEDS_REVIEW, IndexEntry
+    from tracker.index import NEEDS_REVIEW
+    from tracker.records import IndexEntry
 
     seed_index(prior, [
         IndexEntry(received="2026-03-01", original_name="scan.pdf", size_kb=12.0, digest=digest,

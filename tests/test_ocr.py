@@ -1021,7 +1021,7 @@ def test_a_gpu_fault_switches_the_rest_of_the_pass_to_the_cpu(tmp_path, a_card):
     the scan and the next scan are read on the processor from the start,
     the pass says so once, and no reading failed. The next pass tries the
     card again."""
-    from tracker.filer import read_index
+    from tracker.index import read_index
     from tracker.runner import append_log
 
     engagement = make_engagement(tmp_path / "root", w2_rows())

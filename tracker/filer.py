@@ -173,8 +173,9 @@ Guarantees:
 
 The index *row* itself - :class:`tracker.records.IndexEntry`, its column
 table and the shape it is stored in - lives in :mod:`tracker.records` since
-decision 100; what is here is every reading and writing of the record. The
-old names are re-exported below for one release.
+decision 100; what is here is every reading and writing of the record. A
+reader imports the row from there, and the index's words from
+:mod:`tracker.index`, never through this module (P322).
 """
 
 from __future__ import annotations
@@ -216,14 +217,12 @@ from tracker.households import household_returns
 # The index's words and their readers live in tracker/index.py (P319). The
 # filer imports what it reads itself - the three private readers of the moved
 # tail among them, the one place a private name crosses that boundary - and
-# re-exports the other public names until P2.14, so every
-# `from tracker.filer import ...` still resolves to the same object.
+# offers none of them on: every reader imports them from tracker.index (P322).
 from tracker.index import (
     BOTH_GONE_SENTENCE,
     DUPLICATE,
     FILE_MOVED,
     FILED,
-    INDEX_HEADING,  # noqa: F401 - re-exported until P2.14
     INTERRUPTED_MOVE_DETAIL,
     MARKED_MISSING,
     MOVED_GONE_SENTENCE,
@@ -236,7 +235,6 @@ from tracker.index import (
     both_gone,
     ensure,
     holds_the_row,
-    interrupted,  # noqa: F401 - re-exported until P2.14
     marked_missing,
     moved_to,
     prepared_location,
@@ -303,18 +301,20 @@ from tracker.manifest import (
 from tracker.names import (
     NAME_CONFIRMED,
     NAME_VETOED,
-    ONE_WORD_SPELLING,
     NameVerdict,
 )
 from tracker.progress import Watch
 
-# The records themselves live in tracker/records.py (decision 100). The two
-# names this module no longer uses are re-exported from here so that every
-# `from tracker.filer import ...` still resolves to the same object; they are
-# kept for one release; import from tracker.records.
+# The records themselves live in tracker/records.py (decision 100). The filer
+# imports the shapes it writes and reads back - the index row and the cells it
+# is written in, the evidence, the engagement's details, the README's received
+# lines, the people and their spellings, a request row's rule - because a row
+# is written in the record's shape, not the filer's. It offers none of them on
+# (P322).
 from tracker.records import (
     CANDIDATE_SEP,
     COL_IDENTIFIER,
+    ONE_WORD_SPELLING,
     RULE_NAME,
     EngagementInfo,
     Evidence,
@@ -334,7 +334,6 @@ from tracker.records import (
     ledger_key,
     name_words,
     parse_answers,
-    parse_evidence,  # noqa: F401
     person_to_json,
     quoted,
     rule_to_json,
@@ -446,11 +445,6 @@ RELEASED_TO = "released to {label} ({identifier}) by a person"
 #: leaves no row here at all (decision 132), so there is nothing of it
 #: left in this queue to act on.
 _PARKED = (NEEDS_REVIEW, NOT_REQUESTED)
-
-#: How candidate identifiers are joined in the Candidates cell. The record
-#: owns it now (``records.CANDIDATE_SEP``); this name is kept for one
-#: release.
-_CANDIDATE_SEP = CANDIDATE_SEP
 
 
 class FilingError(Exception):
@@ -5227,9 +5221,9 @@ def _file_it(
         pbc_location=location_of(run.engagement_dir, resting), decision=FILED,
         reason="; ".join(part for part in
                          (routing.reason, refiled, resent, confirmed) if part),
-        candidates=_CANDIDATE_SEP.join(routing.candidates),
+        candidates=CANDIDATE_SEP.join(routing.candidates),
         evidence=format_evidence(routing.evidence_record),
-        also_filed=_CANDIDATE_SEP.join(locations[1:]),
+        also_filed=CANDIDATE_SEP.join(locations[1:]),
         container=context.container,
         # Decision 146: the asked requests a consolidated statement answers
         # without a copy, as the routing named them - each still on this
@@ -5338,7 +5332,7 @@ def _park_it(
         # the reason for parking it; a copy past a reader's limit, last. The
         # subfolder it came from (decision 147) is its own column.
         reason=reason,
-        candidates=_CANDIDATE_SEP.join(candidates),
+        candidates=CANDIDATE_SEP.join(candidates),
         evidence=evidence,
         container=context.container,
         waits_for=waits_for,
@@ -6177,7 +6171,7 @@ def hand_over(
             # own (decisions 94 and 146), filtered to it as the pass
             # filters them; what the row waited for is done.
             candidates="", evidence="",
-            also_filed=_CANDIDATE_SEP.join(prepared_location(dest_folder, name) for name in names[1:]),
+            also_filed=CANDIDATE_SEP.join(prepared_location(dest_folder, name) for name in names[1:]),
             answers=format_answers([one for one in parse_answers(answers) if one[0] in items]),
             waits_for="",
         )
@@ -7471,8 +7465,8 @@ def rename_request(
                 entry,
                 identifier=new if names_it else entry.identifier,
                 prepared_location=now_locations[0] if now_locations else entry.prepared_location,
-                also_filed=_CANDIDATE_SEP.join(now_locations[1:]) if mapped else entry.also_filed,
-                candidates=_CANDIDATE_SEP.join(candidates) if candidates != entry.candidate_list
+                also_filed=CANDIDATE_SEP.join(now_locations[1:]) if mapped else entry.also_filed,
+                candidates=CANDIDATE_SEP.join(candidates) if candidates != entry.candidate_list
                 else entry.candidates,
                 evidence=evidence,
                 answers=answers,

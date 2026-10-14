@@ -103,7 +103,7 @@ silent there across the whole suite - which is what the agreement fixture
 in ``tests/conftest.py`` does after every test: rebuild, check, and fail
 on a sentence.
 
-**The index is here** (decision 102, stage 2). The filer's ``read_index()``
+**The index is here** (decision 102, stage 2). ``index.read_index()``
 answers from the ``documents`` table, and every writer calls
 :func:`record` - one call per decision, so one transaction.
 
@@ -984,7 +984,7 @@ def _engagement_key(folder: Path, root: Path | str | None = None) -> str:
     from tracker import hold
 
     return hold.held(("engagement key", str(folder), "" if root is None else str(root)),
-                         lambda: engagement_path(key_root(folder, root), folder), there=folder)
+                     lambda: engagement_path(key_root(folder, root), folder), there=folder)
 
 
 def record_key(folder: Path | str) -> str | None:
@@ -1082,7 +1082,7 @@ def held_read(conn: sqlite3.Connection, engagement_dir: Path | str, what: str,
 
     The record's reads - the list (``manifest.load_manifest``), its details
     (``manifest.load_engagement_info``) and the index
-    (``filer.read_index``) - each follow the journal first, every time, and
+    (``index.read_index``) - each follow the journal first, every time, and
     then ask this instead of rebuilding. The token is the row's id, path,
     head, applied seq and digest: every table those reads come from is
     written only by applying journal lines (which moves the seq, head and
@@ -1250,7 +1250,7 @@ def _stored_rows(conn: sqlite3.Connection, engagement_id: int) -> dict[str, dict
 def documents(conn: sqlite3.Connection, engagement_dir: Path | str) -> list[dict]:
     """One engagement's index rows, in the index's own order.
 
-    The read the filer's ``read_index()`` answers from. Each row is the
+    The read ``index.read_index()`` answers from. Each row is the
     dict an index-shaped event carries, which is what
     :func:`tracker.records.entry_from_json` reads back, so the row the
     writer recorded and the row a reader gets are one shape.
@@ -2362,7 +2362,7 @@ def catch_up(conn: sqlite3.Connection, root: Path | str, engagement_dir: Path | 
 def _look_then_catch_up(conn: sqlite3.Connection, root: Path | str, engagement_dir: Path | str) -> int:
     """:func:`_catch_up` behind a look that takes no lock.
 
-    ``filer.ensure()`` runs :func:`catch_up` after nearly every action in
+    ``index.ensure()`` runs :func:`catch_up` after nearly every action in
     the app, for every engagement in the Status Report and for every dry
     run, and the pass's ``record()`` waits on the same immediate lock. So
     the row and the journal are read first **outside** any transaction,
@@ -2534,8 +2534,8 @@ def follow_the_journal(conn: sqlite3.Connection, root: Path | str, engagement_di
 
     **The reader's top-up.** The store is a derivation of the journal, so
     a reader that finds it missing or behind can make it right from the
-    journal alone - no lock, nothing written in the engagement folder. The
-    filer's ``read_index()`` and the manifest's readers call this before
+    journal alone - no lock, nothing written in the engagement folder.
+    ``index.read_index()`` and the manifest's readers call this before
     every read, which is why no reader in the package has to know whether
     somebody ensured the engagement first. The journal is the whole of it:
     the rows, the statuses, the person's rules and the engagement's

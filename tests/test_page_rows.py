@@ -114,7 +114,8 @@ def test_a_return_written_since_its_row_was_kept_is_read_again(firm, reads):
     edit_rows(changed, **{identifier: {"manual_override": Override.NOT_APPLICABLE}})
     parked = "a second scan.pdf"
     from tests.conftest import seed_index
-    from tracker.filer import NEEDS_REVIEW, IndexEntry
+    from tracker.index import NEEDS_REVIEW
+    from tracker.records import IndexEntry
     seed_index(changed, [IndexEntry(
         received="2026-02-03", original_name=parked, size_kb=5.0, digest="ef" * 32, identifier="",
         prepared_location="", pbc_location=parked, decision=NEEDS_REVIEW, reason="no request matched")])

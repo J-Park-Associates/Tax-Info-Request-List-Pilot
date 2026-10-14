@@ -26,13 +26,13 @@ import pytest
 from tests.conftest import TEST_CLIENT, make_engagement, named_page, sort
 from tests.samples import text_pdf, write_pdf
 from tracker import ledger, reasons, store
-from tracker.content_check import extract_text, format_evidence
-from tracker.filer import _CANDIDATE_SEP, NEEDS_REVIEW, IndexEntry
+from tracker.content_check import extract_text
+from tracker.index import NEEDS_REVIEW
 from tracker.layout import inbox_of, location_of, originals_of
 from tracker.manifest import RequestItem, Status
 from tracker.names import propose_spellings
 from tracker.reasons import Reason
-from tracker.records import Person
+from tracker.records import CANDIDATE_SEP, IndexEntry, Person, format_evidence
 from tracker.registry import _walk_root
 from tracker.router import AMBIGUOUS, UNMATCHED
 
@@ -144,7 +144,7 @@ def parked_row(name, record, *, reason=UNMATCHED, decision=NEEDS_REVIEW, candida
         identifier="", prepared_location="",
         pbc_location=f"../../../../Clients/Smith Family/2025/{name}",
         decision=decision, reason=reason,
-        candidates=_CANDIDATE_SEP.join(candidates),
+        candidates=CANDIDATE_SEP.join(candidates),
         evidence=format_evidence(record),
         code=code,
     )

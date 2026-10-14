@@ -122,28 +122,18 @@ from tracker import (
 from tracker.containers import is_container
 from tracker.errlog import ERROR_LOG_FILENAME, error_log, error_log_path
 from tracker.filer import (
-    DUPLICATE,
-    FILE_MOVED,
-    FILED,
-    NEEDS_REVIEW,
-    NOT_REQUESTED,
     NOT_WAITING,
     FilingError,
     Spelling,
     StaleRowError,
     _may_carry_code,
     assign_review_file,
-    both_gone,
     dismiss_review_file,
     documents_by_request,
-    ensure,
     find_parked,
     hand_over,
     hand_over_copies,
     mark_missing_again,
-    marked_missing,
-    moved_to,
-    read_index,
     refresh_household_readme,
     refuse_a_path_past_the_limit,
     rename_request,
@@ -169,6 +159,18 @@ from tracker.households import (
     return_name_taken,
     save_household,
     shared_on,
+)
+from tracker.index import (
+    DUPLICATE,
+    FILE_MOVED,
+    FILED,
+    NEEDS_REVIEW,
+    NOT_REQUESTED,
+    both_gone,
+    ensure,
+    marked_missing,
+    moved_to,
+    read_index,
 )
 from tracker.layout import (
     CLIENTS_TREE,
@@ -2304,7 +2306,7 @@ def _evidence_payload(entry: IndexEntry) -> dict[str, list[dict]]:
     """One index row's Evidence cell as JSON: candidate -> what was found.
 
     Parsed here, by the one parser that owns the cell's shape
-    (:func:`tracker.content_check.parse_evidence`), so the renderer never
+    (:func:`tracker.records.parse_evidence`), so the renderer never
     splits a string of the tracker's on separators of its own.
     """
     return {identifier: [asdict(evidence) for evidence in found]
@@ -2574,11 +2576,11 @@ def _moved_payload(engagement: Path, entries: list[IndexEntry], items,
     request's identifier begins counts as nobody's.
 
     Decision 157: ``gone`` says the row's copy and its original are both
-    gone (``filer.both_gone``), and ``identifier`` is the row's own request -
+    gone (``index.both_gone``), and ``identifier`` is the row's own request -
     the card offers such a row **Mark missing** (the API's ``mark-missing``
     with the row's own identifier) instead of three answers that would each
     refuse: there is nothing to put back. A row a person has already marked
-    missing (``filer.marked_missing``) is answered, and is not listed.
+    missing (``index.marked_missing``) is answered, and is not listed.
     """
     owned = assign_files(engagement / PREPARED_DIR_NAME, [i.identifier for i in items])
     rows = []

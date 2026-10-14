@@ -35,7 +35,7 @@ from tests.passes import (
 from tests.samples import DEMO_ITEMS, PRIOR_YEAR, SCRATCH_PEOPLE, YEAR, text_pdf
 from tests.source_pins import PACKAGE, py_function
 from tracker import ledger, store
-from tracker.filer import NEEDS_REVIEW, IndexEntry, read_index
+from tracker.index import NEEDS_REVIEW, read_index
 from tracker.layout import household_of, inbox_of, originals_of, root_of
 from tracker.manifest import (
     EngagementInfo,
@@ -46,7 +46,7 @@ from tracker.manifest import (
     load_engagement_info,
     save_rules,
 )
-from tracker.records import YES, rule_from_json
+from tracker.records import YES, IndexEntry, rule_from_json
 from tracker.registry import (
     SKIP_ROLLED_FORWARD,
     Engagement,
@@ -1728,7 +1728,7 @@ def test_the_dropping_households_pass_files_nothing_into_a_fed_return_and_the_do
     truth about this inbox, and the document is counted here, under review."""
     from tests.samples import SCRATCH_CLIENT, text_pdf
     from tracker import reasons
-    from tracker.filer import NEEDS_REVIEW
+    from tracker.index import NEEDS_REVIEW
 
     personal, [fed] = a_fed_household(tmp_path, samples)
     text_pdf(inbox_of(personal.path) / "trial balance.pdf",
@@ -1749,7 +1749,8 @@ def test_the_dropping_households_pass_files_nothing_into_a_fed_return_and_the_do
 def _click(personal, fed, today=FRIDAY):
     """The one click (decision 204) as the app makes it: the waiting row
     handed over, the taking return re-scanned and both READMEs rewritten."""
-    from tracker.filer import NEEDS_REVIEW, hand_over, refresh_household_readme
+    from tracker.filer import hand_over, refresh_household_readme
+    from tracker.index import NEEDS_REVIEW
     from tracker.scanner import scan_engagement
 
     [row] = [one for one in read_index(personal.path)
@@ -1822,7 +1823,7 @@ def test_a_cross_fed_document_is_on_no_list_of_the_dropping_households_readme_an
     record, until a person decides. (Decision 130 extends this claim to the
     received list once there is one.)"""
     from tests.samples import SCRATCH_CLIENT, text_pdf
-    from tracker.filer import FILED, NEEDS_REVIEW
+    from tracker.index import FILED, NEEDS_REVIEW
     from tracker.scaffold import README_NAME
 
     personal, [fed] = a_fed_household(tmp_path, samples)
@@ -1859,7 +1860,7 @@ def test_in_a_household_a_slow_reading_is_said_once_on_the_first_own_returns_lin
     import time
 
     from tests.samples import photo
-    from tracker.filer import FILED
+    from tracker.index import FILED
     from tracker.records import entry_to_json
     from tracker.runner import SLOW_READING_NOTE
 
@@ -1909,7 +1910,7 @@ def test_in_a_household_a_slow_reading_is_said_once_on_the_first_own_returns_lin
 
 
 def test_a_document_sorted_this_pass_is_on_the_readme_when_the_pass_ends(tmp_path, samples):
-    from tracker.filer import FILED
+    from tracker.index import FILED
     from tracker.manifest import load_manifest
     from tracker.scaffold import README_NAME, RECEIVED_HEADING, day_text
 
@@ -1939,7 +1940,7 @@ def test_a_document_dropped_here_and_filed_into_another_households_return_is_on_
     it was dropped in, which never names the other household or its
     return."""
     from tests.samples import SCRATCH_CLIENT, text_pdf
-    from tracker.filer import FILED
+    from tracker.index import FILED
     from tracker.manifest import load_manifest
     from tracker.scaffold import (
         README_NAME,
@@ -2953,7 +2954,7 @@ def test_an_attachment_that_waits_for_time_makes_its_return_out_of_time(
     called a reader that could not start."""
     import zipfile
 
-    from tracker.filer import read_index
+    from tracker.index import read_index
     from tracker.runner import HOUSEHOLD_BUDGET_SECONDS, OUT_OF_TIME, OUT_OF_TIME_NO_DRAFT
 
     engagement = build_engagement(tmp_path, samples, drops=())

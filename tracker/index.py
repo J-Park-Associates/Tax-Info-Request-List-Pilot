@@ -32,16 +32,15 @@ nothing that sorts, moves or reads a document. ``PREPARED_DIR_NAME`` comes
 from :mod:`tracker.layout`, where it is defined, not through the
 scaffold's import of it as the filer takes it.
 
-**The filer-scanner cycle becomes one way** (the architecture SPEC's Q-A).
-The scanner's half of that cycle is reading the index, not sorting: once
-the scanner reads it from here (P2.10), the filer still asks for a rescan
-at call time and the scanner never imports the filer.
+**The filer-scanner cycle runs one way** (the architecture SPEC's Q-A).
+The scanner's half of that cycle was reading the index, not sorting: the
+scanner reads it from here (P2.10), the filer asks for a rescan at call
+time, and the scanner never imports the filer.
 
-**The filer still offers every name** until P2.14. It imports from here
-what it reads itself and re-exports :data:`INDEX_HEADING` and
-:func:`interrupted`, each the very object defined here, so
-``from tracker.filer import read_index`` is this function, and a stand-in
-on ``filer.read_index`` still reaches the filer's own callers.
+**Every reader asks this module** (P322). The filer imports from here what
+it reads itself and offers none of it on, and the API, the runner, the
+scanner and every other reader import each name from here, so a stand-in
+on ``filer.read_index`` reaches the filer's own callers and nobody else's.
 
 **Three private names cross the boundary,** and nowhere else does one.
 The filer writes the moved sentences, and when it takes one off a Reason,

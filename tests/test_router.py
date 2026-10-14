@@ -241,7 +241,7 @@ def test_a_scan_whose_title_shows_1099_int_files_on_the_rows_looser_keywords(tmp
     instead of parking as Read From Scan Only. The evidence is the row's
     own: '1099-int' in the title."""
     from tests.samples import lines_1099_int
-    from tracker.content_check import WHERE_TITLE
+    from tracker.records import WHERE_TITLE
     from tracker.router import MATCHED_FROM_SCAN
 
     text = NL.join(lines_1099_int("Harbor Test Bank", "John A. Smith", 2025))
@@ -340,11 +340,10 @@ def test_a_form_number_shown_only_as_the_first_pages_dominant_form_parks_as_ocr_
     the title says only "dividend", so the scan is a lead and is not filed."""
     from tracker.content_check import (
         TITLE_CHARS,
-        WHERE_FIRST_PAGE,
-        WHERE_TITLE,
         dominant_forms,
         self_named_forms,
     )
+    from tracker.records import WHERE_FIRST_PAGE, WHERE_TITLE
     from tracker.router import _shows_its_form_number
 
     assert _DOMINANT_NOT_TITLED.index("Form 1099-DIV") > TITLE_CHARS
@@ -918,7 +917,7 @@ def test_the_shipped_1040_catalog_files_real_forms_where_they_belong(tmp_path, n
 
 
 def test_a_routed_file_records_which_keyword_matched_and_where(tmp_path):
-    from tracker.content_check import RULE_REQUIRED, WHERE_TITLE
+    from tracker.records import RULE_REQUIRED, WHERE_TITLE
 
     f = text_pdf(tmp_path / "scan0012.pdf", "Form W-2 Wage and Tax Statement 2025")
     routing = route_file(f, ITEMS)
@@ -944,7 +943,7 @@ def test_a_file_nothing_could_be_read_out_of_records_its_name_for_the_person(tmp
     file name says 1098" at its weakest tier, and the filer writes it into
     the parked row's Evidence column exactly as it writes a filed row's.
     """
-    from tracker.content_check import RULE_FILENAME, WHERE_TITLE
+    from tracker.records import RULE_FILENAME, WHERE_TITLE
 
     no_ocr(monkeypatch)
     f = text_pdf(tmp_path / "smith_1098.pdf", "")     # a scan, no text layer
@@ -970,7 +969,7 @@ def test_a_tier_two_refusal_nothing_could_be_read_out_of_carries_the_names_evide
     the refusal's, and nothing is filed on a name - here or anywhere.
     """
     from tests.samples import write_pdf
-    from tracker.content_check import RULE_FILENAME, RULE_REFUSED, WHERE_TITLE
+    from tracker.records import RULE_FILENAME, RULE_REFUSED, WHERE_TITLE
 
     locked = write_pdf(tmp_path / "W-2 Jane Smith 2025.pdf", password="secret123")
     routing = route_file(locked, ITEMS)
@@ -985,7 +984,7 @@ def test_a_tier_two_refusal_nothing_could_be_read_out_of_carries_the_names_evide
 
 
 def test_a_tier_two_refusal_travels_as_the_reasons_own_code(tmp_path):
-    from tracker.content_check import RULE_REFUSED
+    from tracker.records import RULE_REFUSED
 
     strict = RequestItem(
         identifier="A01", document="W-2 Wage Statements", allowed_extensions=("pdf",),
@@ -1003,7 +1002,7 @@ def test_a_tier_two_refusal_travels_as_the_reasons_own_code(tmp_path):
 
 def test_a_blocked_file_keeps_the_request_it_looked_like_beside_the_refusal(tmp_path):
     """The refusal says which rule said no; only the keyword says which request."""
-    from tracker.content_check import RULE_REFUSED, RULE_REQUIRED, WHERE_TITLE
+    from tracker.records import RULE_REFUSED, RULE_REQUIRED, WHERE_TITLE
 
     strict = RequestItem(
         identifier="A01", document="W-2 Wage Statements", allowed_extensions=("pdf",),
@@ -1025,7 +1024,7 @@ def test_a_blocked_file_keeps_the_request_it_looked_like_beside_the_refusal(tmp_
 
 
 def test_a_contested_file_keeps_the_keywords_that_did_match(tmp_path):
-    from tracker.content_check import RULE_REQUIRED
+    from tracker.records import RULE_REQUIRED
 
     # Last year's W-2: the required keyword matched, the year did not.
     f = text_pdf(tmp_path / "w2.pdf", "Form W-2 Wage and Tax Statement 2024")
@@ -1330,7 +1329,8 @@ def test_a_form_number_said_only_deep_is_not_shown(tmp_path):
     """"Shows" means the title zone or the first page. A W-2 number that
     is the page's own only from page 2 on is no near miss: it is where a
     person opening the document would not see it first."""
-    from tracker.content_check import PAGE_BREAK, _says_where
+    from tracker.content_check import _says_where
+    from tracker.records import PAGE_BREAK
 
     items = _catalog_1040()
     page_two = NL.join(["W-2 Wage and Tax Statement 2025"] * 2 + [_SCAN_NOISE])

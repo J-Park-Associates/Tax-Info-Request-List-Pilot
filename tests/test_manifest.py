@@ -593,7 +593,7 @@ def test_an_engagement_that_never_recorded_a_form_reads_as_unknown(tmp_path):
 def taught(folder, identifier: str, keyword: str) -> None:
     """A person's filing teaching one request one word, which is the only
     way one is learned (decision 103)."""
-    from tracker.filer import ensure
+    from tracker.index import ensure
     from tracker.locking import engagement_lock
 
     with engagement_lock(folder):

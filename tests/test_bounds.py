@@ -5,7 +5,7 @@ package but the layout's name rule, at load time or at call time, and for
 no file. Records, which held them until P2.4, offered every public name,
 each the very object defined here - the same object, not a copy - so the
 editor, the store's gate and every reader that still asked the record held
-one rule until P2.13 pointed them here. And the value rule's tests came
+one rule; P2.13 pointed them here. And the value rule's tests came
 with it: each moved from ``tests/test_records.py`` unchanged but for its
 imports, except the three that read the Date Pattern analyser's privates,
 which read bounds from the start because records never re-exported them.

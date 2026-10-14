@@ -964,7 +964,7 @@ def test_the_app_names_an_unexpected_error_by_its_class_and_keeps_a_firm_errors_
 def _a_row(**fields):
     import dataclasses
 
-    from tracker.filer import IndexEntry
+    from tracker.records import IndexEntry
 
     required = {f.name: "" for f in dataclasses.fields(IndexEntry)
                 if f.default is dataclasses.MISSING and f.default_factory is dataclasses.MISSING}

@@ -309,7 +309,7 @@ def test_a_client_file_at_the_readmes_name_is_sorted_and_never_written_over(enga
     import datetime as dt
 
     from tests.conftest import sort
-    from tracker.filer import read_index
+    from tracker.index import read_index
 
     scaffold_engagement(engagement)
     readme = inbox_of(engagement) / README_NAME
@@ -377,7 +377,8 @@ def test_a_readme_that_cannot_be_read_just_now_waits_where_it_is(engagement, mon
     from pathlib import Path
 
     from tests.conftest import sort
-    from tracker.filer import README_UNREAD, read_index
+    from tracker.filer import README_UNREAD
+    from tracker.index import read_index
     from tracker.scaffold import README_FIRST_LINE
 
     scaffold_engagement(engagement)
@@ -494,7 +495,7 @@ def arrived(identifier: str, decision: str, *, original: str = "client scan.pdf"
             received: str = "2026-09-23", also: str = ""):
     """One index row as a pass would leave it. ``original`` is the client's
     own file name - the one thing the README may never say."""
-    from tracker.filer import NEEDS_REVIEW
+    from tracker.index import NEEDS_REVIEW
     from tracker.records import IndexEntry
 
     # A working copy sits in Prepared itself, named by its request
@@ -531,7 +532,7 @@ def test_the_received_section_is_absent_until_something_has_arrived(tmp_path):
 
 def test_a_filed_document_is_listed_as_received_under_its_return_by_its_request_label(tmp_path):
     from tests.conftest import seed_index
-    from tracker.filer import FILE_MOVED, FILED
+    from tracker.index import FILE_MOVED, FILED
     from tracker.scaffold import RECEIVED_HEADING
 
     engagement = make_engagement(tmp_path, ITEMS)
@@ -551,7 +552,8 @@ def test_a_filed_document_is_listed_as_received_under_its_return_by_its_request_
 
 def test_a_document_filed_to_two_requests_is_listed_once_per_request(tmp_path):
     from tests.conftest import seed_index
-    from tracker.filer import FILED, prepared_name_for
+    from tracker.filer import prepared_name_for
+    from tracker.index import FILED
     from tracker.scaffold import RECEIVED_HEADING
 
     engagement = make_engagement(tmp_path, ITEMS)
@@ -568,7 +570,7 @@ def test_a_document_filed_to_two_requests_is_listed_once_per_request(tmp_path):
 
 def test_a_parked_document_is_counted_under_review_by_day_and_never_named(tmp_path):
     from tests.conftest import seed_index
-    from tracker.filer import NEEDS_REVIEW
+    from tracker.index import NEEDS_REVIEW
     from tracker.scaffold import RECEIVED_HEADING, UNDER_REVIEW_HEADING
 
     engagement = make_engagement(tmp_path, ITEMS)
@@ -593,7 +595,7 @@ def test_a_parked_document_is_counted_under_review_by_day_and_never_named(tmp_pa
 
 def test_duplicates_and_not_requested_rows_are_not_listed(tmp_path):
     from tests.conftest import seed_index
-    from tracker.filer import DUPLICATE, NOT_REQUESTED
+    from tracker.index import DUPLICATE, NOT_REQUESTED
     from tracker.scaffold import RECEIVED_HEADING
 
     engagement = make_engagement(tmp_path, ITEMS)
@@ -609,7 +611,7 @@ def test_duplicates_and_not_requested_rows_are_not_listed(tmp_path):
 
 def test_the_client_file_name_never_reaches_the_readme(tmp_path):
     from tests.conftest import seed_index
-    from tracker.filer import FILED
+    from tracker.index import FILED
 
     engagement = make_engagement(tmp_path, ITEMS)
     seed_index(engagement, [arrived("A01", FILED, original="ZQX-private-name-4417.pdf")])
@@ -638,7 +640,7 @@ def test_the_first_list_is_headed_in_jasons_words():
 
 def test_a_request_with_a_received_document_leaves_the_not_yet_received_list(tmp_path):
     from tests.conftest import seed_index
-    from tracker.filer import FILED
+    from tracker.index import FILED
     from tracker.scaffold import RECEIVED_HEADING
 
     engagement = make_engagement(tmp_path, ITEMS)
@@ -656,7 +658,7 @@ def test_a_document_under_review_does_not_take_its_request_off_the_list(tmp_path
     import dataclasses
 
     from tests.conftest import seed_index
-    from tracker.filer import NEEDS_REVIEW
+    from tracker.index import NEEDS_REVIEW
 
     engagement = make_engagement(tmp_path, ITEMS)
     before = section_of(readme_of(engagement), README_HEADING)
@@ -671,7 +673,7 @@ def test_a_document_under_review_does_not_take_its_request_off_the_list(tmp_path
 
 def test_receiving_a_request_in_one_return_leaves_the_same_request_on_another(tmp_path):
     from tests.conftest import seed_index
-    from tracker.filer import FILED
+    from tracker.index import FILED
 
     alice = make_engagement(tmp_path, ITEMS, return_name="1040 - Alice")
     make_engagement(tmp_path, ITEMS, return_name="1040 - Bob")
@@ -685,7 +687,7 @@ def test_receiving_a_request_in_one_return_leaves_the_same_request_on_another(tm
 
 def test_an_also_filed_copy_takes_its_request_off_the_list(tmp_path):
     from tests.conftest import seed_index
-    from tracker.filer import FILED
+    from tracker.index import FILED
     from tracker.scaffold import RECEIVED_HEADING
 
     engagement = make_engagement(tmp_path, ITEMS)
@@ -699,7 +701,8 @@ def test_an_also_filed_copy_takes_its_request_off_the_list(tmp_path):
 
 def test_an_other_document_line_takes_nothing_off_the_list(tmp_path):
     from tests.conftest import seed_index
-    from tracker.filer import FILED, OTHER_DOCUMENT
+    from tracker.filer import OTHER_DOCUMENT
+    from tracker.index import FILED
     from tracker.scaffold import RECEIVED_HEADING
 
     engagement = make_engagement(tmp_path, ITEMS)
@@ -713,7 +716,7 @@ def test_an_other_document_line_takes_nothing_off_the_list(tmp_path):
 
 def _all_received(tmp_path):
     from tests.conftest import seed_index
-    from tracker.filer import FILED
+    from tracker.index import FILED
 
     engagement = make_engagement(tmp_path, ITEMS)
     seed_index(engagement, [arrived(i, FILED, original=f"{i}.pdf") for i in ACTIVE_IDS])
@@ -740,7 +743,7 @@ def test_every_request_is_on_exactly_one_list_or_under_review_never_lost(tmp_pat
     (decision 130's invariant, reworded by decision 142 - a row nobody
     asked for with nothing received is on neither, by the owner's rule)."""
     from tests.conftest import seed_index
-    from tracker.filer import FILED, NEEDS_REVIEW
+    from tracker.index import FILED, NEEDS_REVIEW
     from tracker.scaffold import RECEIVED_HEADING
 
     engagement = make_engagement(tmp_path, [*ITEMS, RequestItem(
@@ -761,7 +764,7 @@ def test_the_readme_is_not_rewritten_when_nothing_changed(tmp_path):
     import os
 
     from tests.conftest import seed_index
-    from tracker.filer import FILED
+    from tracker.index import FILED
 
     engagement = make_engagement(tmp_path, ITEMS)
     seed_index(engagement, [arrived("A01", FILED, original="bank.pdf")])
@@ -776,7 +779,7 @@ def test_the_readme_is_not_rewritten_when_nothing_changed(tmp_path):
 
 def test_a_household_with_two_open_years_is_left_alone(tmp_path):
     from tests.conftest import seed_index
-    from tracker.filer import FILED
+    from tracker.index import FILED
     from tracker.scaffold import write_readme
 
     engagement = make_engagement(tmp_path, ITEMS)
@@ -907,7 +910,7 @@ def test_a_readme_refresh_never_writes_older_text_over_newer(tmp_path, monkeypat
     import tracker.filer as filer_module
     from tests.conftest import seed_index
     from tracker import store
-    from tracker.filer import FILED
+    from tracker.index import FILED
     from tracker.locking import EngagementLockedError
 
     # Two threads share the process's one store connection here, never at
@@ -966,7 +969,8 @@ def test_a_refresh_that_finds_the_readme_busy_waits_briefly_then_skips_with_a_lo
 
     import tracker.filer as filer_module
     from tests.conftest import seed_index
-    from tracker.filer import FILED, README_LOCK_FILENAME
+    from tracker.filer import README_LOCK_FILENAME
+    from tracker.index import FILED
     from tracker.layout import client_household_dir, root_of
     from tracker.locking import acquire_lock, release_lock
 
@@ -1117,7 +1121,7 @@ def test_the_readme_asks_only_for_asked_rows_and_lists_what_arrived_under_any(tm
     nothing received it is on neither list; a document filed under it is a
     Received line under the row's own title, exactly as under an asked one."""
     from tests.conftest import seed_index
-    from tracker.filer import FILED
+    from tracker.index import FILED
     from tracker.scaffold import RECEIVED_HEADING
 
     unasked = RequestItem(identifier="D01", document="Social Security Benefit Statement",

@@ -270,7 +270,8 @@ def test_a_file_a_person_said_nothing_asks_for_is_not_counted_against_the_draft(
     a file dragged in by hand has no row and is nobody's decision yet.
     """
     from tests.conftest import seed_index
-    from tracker.filer import NEEDS_REVIEW, NOT_REQUESTED, IndexEntry
+    from tracker.index import NEEDS_REVIEW, NOT_REQUESTED
+    from tracker.records import IndexEntry
 
     folder = engagement(tmp_path)
     review = folder / PREPARED_DIR_NAME / REVIEW_DIR_NAME
@@ -938,7 +939,7 @@ def sorted_drop(folder, write):
 
 
 def parked_rows(folder):
-    from tracker.filer import NEEDS_REVIEW, read_index
+    from tracker.index import NEEDS_REVIEW, read_index
 
     return [entry for entry in read_index(folder) if entry.decision == NEEDS_REVIEW]
 
@@ -1027,7 +1028,8 @@ def test_a_parked_file_with_a_firm_side_reason_holds_nothing(tmp_path, monkeypat
 def test_a_set_aside_row_never_holds(tmp_path):
     """A row a person has already answered - "no request asks for this" -
     is their decision, not an open question about the client."""
-    from tracker.filer import NOT_REQUESTED, dismiss_review_file, read_index
+    from tracker.filer import dismiss_review_file
+    from tracker.index import NOT_REQUESTED, read_index
 
     folder = engagement(tmp_path, DROPPED, name="Dismissed TY2025")
     sorted_drop(folder, locked("W-2 Jane Smith 2025.pdf"))
@@ -1058,7 +1060,7 @@ def test_a_parked_file_whose_copy_and_original_are_both_gone_still_holds(tmp_pat
     file: the question it raised is still open, so A01 stays held until a
     person decides, and the client is not asked for it with nobody
     looking."""
-    from tracker.filer import FILE_MOVED, both_gone, read_index
+    from tracker.index import FILE_MOVED, both_gone, read_index
 
     folder = engagement(tmp_path, DROPPED, name="Gone TY2025")
     sorted_drop(folder, locked("W-2 Jane Smith 2025.pdf"))
@@ -1079,7 +1081,8 @@ def test_a_parked_file_whose_copy_and_original_are_both_gone_still_holds(tmp_pat
 def test_a_set_aside_row_whose_copy_and_original_are_both_gone_still_holds_nothing(tmp_path):
     """The other side of the same rule: a person's "no request asks for
     this" stays their answer when the file then goes."""
-    from tracker.filer import both_gone, dismiss_review_file, read_index
+    from tracker.filer import dismiss_review_file
+    from tracker.index import both_gone, read_index
 
     folder = engagement(tmp_path, DROPPED, name="Gone dismissed TY2025")
     sorted_drop(folder, locked("W-2 Jane Smith 2025.pdf"))
@@ -2109,7 +2112,8 @@ def test_a_file_that_is_not_a_document_is_asked_about_in_the_letter_and_holds_no
     in the unusable-file words, and the letter is still written. A program
     a person has set aside is their answer and is not asked again."""
     from tests.conftest import seed_index
-    from tracker.filer import NEEDS_REVIEW, NOT_REQUESTED, IndexEntry
+    from tracker.index import NEEDS_REVIEW, NOT_REQUESTED
+    from tracker.records import IndexEntry
 
     folder = engagement(tmp_path, SENDABLE)
 
@@ -2143,7 +2147,8 @@ def test_a_program_only_weeks_letter_says_one_file_could_not_be_used_and_never_t
     all still says it, and a week with a request outstanding and a program
     keeps its staged letter."""
     from tests.conftest import seed_index
-    from tracker.filer import NEEDS_REVIEW, IndexEntry
+    from tracker.index import NEEDS_REVIEW
+    from tracker.records import IndexEntry
     from tracker.reminder import NOTHING_OWED, UNUSABLE_ONLY_NOTE
 
     nothing_needed = "Nothing further is needed from you right now"
@@ -2177,7 +2182,8 @@ def test_a_program_only_week_with_two_files_says_some_files_could_not_be_used_ne
     failed heading, so the letter says "Some files you sent could not be
     used", once, above that list - never "One file"."""
     from tests.conftest import seed_index
-    from tracker.filer import NEEDS_REVIEW, IndexEntry
+    from tracker.index import NEEDS_REVIEW
+    from tracker.records import IndexEntry
     from tracker.reminder import UNUSABLE_ONLY_NOTE, UNUSABLE_SOME, UNUSABLE_SOME_NOTE
 
     def program(name: str) -> IndexEntry:
@@ -2208,7 +2214,8 @@ def test_a_program_alone_is_asked_about_but_never_climbs_the_ladder(tmp_path):
     deadline paragraph, and neither the subject nor the progress line
     counts it as a document still needed."""
     from tests.conftest import seed_index
-    from tracker.filer import NEEDS_REVIEW, IndexEntry
+    from tracker.index import NEEDS_REVIEW
+    from tracker.records import IndexEntry
     from tracker.reminder import STAGE_4_CONSEQUENCES, SUBJECT_COMPLETE, UNUSABLE_ONLY
 
     folder = engagement(tmp_path, [item("A04", "Mortgage Interest Statement", Status.RECEIVED,

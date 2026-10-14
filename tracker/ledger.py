@@ -8,7 +8,7 @@ in the order the writers wrote them. It is the record of *what was decided*.
 
 **It is the index** (decision 102). What a pass decides about a document is
 appended here and folded into :mod:`tracker.store`, and
-:func:`tracker.filer.read_index` answers from those folded rows. The
+:func:`tracker.index.read_index` answers from those folded rows. The
 journal and the store are the only two copies of the index, and the store
 is rebuilt from the journal. (A journal from before decision 104 may carry
 a :data:`MIGRATED` event, from the one-time migration of an index
@@ -1218,7 +1218,7 @@ class Folded:
     #: rather than moving it to the end. The order is the audit trail's own
     #: and there is no second copy of it to drift from - :mod:`tracker.store`
     #: lays its ``position`` column from this fold, and
-    #: :func:`tracker.filer.read_index` reads it back.
+    #: :func:`tracker.index.read_index` reads it back.
     rows: dict[str, dict] = field(default_factory=dict)
     #: The last status each identifier was scanned to, by identifier. A pass
     #: appends only what it changed, so the answer is built up across every

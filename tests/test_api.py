@@ -30,8 +30,8 @@ from tracker.bounds import (
     MAX_SIZE_KB,
     MIN_EXPECTED_COUNT,
 )
-from tracker.filer import FILED, NEEDS_REVIEW, read_index
 from tracker.households import load_household_info
+from tracker.index import FILED, NEEDS_REVIEW, read_index
 from tracker.layout import PRIVATE_TREE, inbox_of, return_dir_for
 from tracker.locking import STALE_LOCK_SECONDS, lock_line, this_host
 from tracker.manifest import (
@@ -558,7 +558,7 @@ def test_the_assign_sentences_are_the_apis_and_the_page_types_none_of_them():
 
 def teach(folder, identifier: str, keyword: str) -> None:
     """A keyword recorded against a request, as a person's filing records it."""
-    from tracker.filer import ensure
+    from tracker.index import ensure
     from tracker.locking import engagement_lock
 
     with engagement_lock(folder):
@@ -684,7 +684,8 @@ def test_dismiss_records_that_nothing_asks_for_a_parked_document(capsys, demo_ro
     # The app's other half of Needs Review: a file no request asks for stops
     # being a thing to do without anything being deleted, and the word for it
     # comes from the vocabulary the renderer reads, not from the renderer.
-    from tracker.filer import DISMISSED_BY_PERSON, NOT_REQUESTED
+    from tracker.filer import DISMISSED_BY_PERSON
+    from tracker.index import NOT_REQUESTED
 
     engagement = sample_engagement(capsys, demo_root, tmp_path, "Mortgage Notes.docx")
     code, payload = scan(capsys, engagement)
@@ -978,7 +979,7 @@ def test_every_parked_row_ships_a_unique_handle_and_a_program_from_a_zip_is_answ
     import io
     import zipfile
 
-    from tracker.filer import NOT_REQUESTED
+    from tracker.index import NOT_REQUESTED
 
     engagement = sample_engagement(capsys, demo_root, tmp_path, "vacation photo.bmp")
     packed = io.BytesIO()
@@ -1009,7 +1010,7 @@ def test_every_parked_row_ships_a_unique_handle_and_a_program_from_a_zip_is_answ
 
 
 def test_dismissing_a_file_takes_it_out_of_the_review_queue(capsys, demo_root, tmp_path):
-    from tracker.filer import NOT_REQUESTED
+    from tracker.index import NOT_REQUESTED
 
     engagement = sample_engagement(capsys, demo_root, tmp_path, "vacation photo.bmp")
     code, payload = scan(capsys, engagement)
@@ -1036,7 +1037,8 @@ def test_a_resend_after_a_dismissal_is_triaged_and_its_row_carries_the_set_aside
     out of ``state["index"]`` the way it reads every other reason: nothing
     in tracker/review.py or in the vocabulary knows this decision happened.
     """
-    from tracker.filer import NOT_REQUESTED, RESENT_AFTER_SET_ASIDE
+    from tracker.filer import RESENT_AFTER_SET_ASIDE
+    from tracker.index import NOT_REQUESTED
 
     engagement = sample_engagement(capsys, demo_root, tmp_path, "vacation photo.bmp")
     code, payload = scan(capsys, engagement)
@@ -2785,7 +2787,7 @@ def test_the_schedule_is_repaired_from_the_tools_menu_in_the_apis_words():
 
 def test_the_renderer_gets_its_vocabulary_from_the_api(capsys, demo_root):
     from tracker import STANDING_RULES
-    from tracker.filer import DUPLICATE, FILE_MOVED, FILED, NEEDS_REVIEW, NOT_REQUESTED
+    from tracker.index import DUPLICATE, FILE_MOVED, FILED, NEEDS_REVIEW, NOT_REQUESTED
     from tracker.manifest import COLUMN_HELP, COLUMNS, Override, Status
     from tracker.records import DATE_FIELDS, ENGAGEMENT_EDITABLE, ENGAGEMENT_FIELDS
     from tracker.runner import DRAFT_WEEKDAY, WEEKDAY_NAMES
@@ -3069,7 +3071,7 @@ def test_priors_carry_next_year_and_the_index_carries_candidates(capsys, demo_ro
 
 
 def test_the_state_carries_each_rows_evidence_as_data_not_as_a_string(capsys, demo_root, tmp_path):
-    from tracker.content_check import EVIDENCE_PLACES, EVIDENCE_RULES, RULE_REQUIRED, WHERE_TITLE
+    from tracker.records import EVIDENCE_PLACES, EVIDENCE_RULES, RULE_REQUIRED, WHERE_TITLE
 
     engagement = sample_engagement(capsys, demo_root, tmp_path, f"W-2 Jane Smith {PRIOR_YEAR} - old.pdf")
     code, payload = scan(capsys, engagement)
@@ -3118,7 +3120,8 @@ def test_a_review_command_with_no_seq_is_refused_and_a_stale_one_names_the_newer
     it is a caller with no view and is refused rather than acted on. And the
     card a person was called away from is refused with what the record now
     says, in the filer's own sentence."""
-    from tracker.filer import NOT_REQUESTED, STALE_ROW
+    from tracker.filer import STALE_ROW
+    from tracker.index import NOT_REQUESTED
 
     engagement = sample_engagement(capsys, demo_root, tmp_path, "Mortgage Notes.docx")
     code, payload = scan(capsys, engagement)
@@ -3188,7 +3191,7 @@ def test_the_state_carries_a_file_moved_row_in_the_index_and_in_no_list(capsys, 
     index, where every column of it is readable, and in none of the lists
     the app draws: it is not waiting for review and it is not filed where
     the record says, and what to do about it is decision 110's card."""
-    from tracker.filer import FILE_MOVED
+    from tracker.index import FILE_MOVED
 
     engagement = sample_engagement(capsys, demo_root, tmp_path, "Form 1098 Mortgage Interest.pdf")
     code, payload = scan(capsys, engagement)
@@ -3263,7 +3266,7 @@ def test_the_state_lists_moved_rows_with_home_now_seq_and_the_request_its_name_b
     now, and - only where the copy sits in Prepared itself under a name that
     belongs to a request (decision 168) - which request that is, because
     "keep it where it is" means nothing anywhere else."""
-    from tracker.filer import FILE_MOVED
+    from tracker.index import FILE_MOVED
 
     drag_to, in_a_request = WANDERED[where]
     engagement, filed, target, state = a_moved_row(capsys, demo_root, tmp_path, drag_to)
@@ -3342,7 +3345,8 @@ def test_restore_refuses_without_a_seq_and_with_a_stale_one(capsys, demo_root, t
     state and every row there carries its version, so a spec without one is a
     caller acting on no view, and an older one is a caller acting on a view
     the record has moved past."""
-    from tracker.filer import FILE_MOVED, STALE_ROW
+    from tracker.filer import STALE_ROW
+    from tracker.index import FILE_MOVED
 
     engagement, filed, target, state = a_moved_row(
         capsys, demo_root, tmp_path, WANDERED["the review folder"][0])
@@ -3550,8 +3554,8 @@ def test_a_letter_that_only_asks_about_a_program_is_offered_on_the_card(capsys, 
     rung."""
     from tests.conftest import seed_index, seed_statuses
     from tracker import reasons
-    from tracker.filer import IndexEntry
     from tracker.manifest import StatusUpdate
+    from tracker.records import IndexEntry
     from tracker.reminder import SECTION_FAILED, STAGE_4_CONSEQUENCES
 
     folder = chased_engagement(capsys, demo_root, name="Program")
@@ -6300,7 +6304,7 @@ def test_a_rename_carries_duplicates_and_parked_candidates_that_name_it(
     rename that runs through carries them the same way."""
     import tracker.filer as filer
     from tests.samples import PRIOR_YEAR, YEAR
-    from tracker.filer import DUPLICATE
+    from tracker.index import DUPLICATE
 
     engagement = sample_engagement(capsys, demo_root, tmp_path, f"W-2 John Smith {YEAR}.pdf",
                                    f"W-2 John Smith {YEAR} - Copy.pdf",
@@ -6811,7 +6815,7 @@ def _a_renamed_household(capsys, demo_root, *, received=False):
     """Park Family with one return, its private folder then renamed in
     Explorer to Park Household: the record still claims Park Family."""
     from tests.conftest import seed_index
-    from tracker.filer import FILED
+    from tracker.index import FILED
     from tracker.records import IndexEntry
 
     assert run(capsys, "create", stdin={"household": "Park Family", "return_name": "1040 - Park",
@@ -7158,7 +7162,7 @@ def test_every_reply_carries_a_warnings_list_and_every_error_a_failure_whose_sen
 
 def test_a_stale_click_is_kind_stale_and_names_the_row_and_the_records_seq_now(
         capsys, demo_root, tmp_path):
-    from tracker.filer import NOT_REQUESTED
+    from tracker.index import NOT_REQUESTED
 
     engagement = sample_engagement(capsys, demo_root, tmp_path, "Mortgage Notes.docx")
     code, payload = scan(capsys, engagement)
@@ -8111,7 +8115,7 @@ def _sided_engagement(capsys, demo_root):
 
 def test_every_outstanding_row_in_the_state_carries_its_side_and_sentence(capsys, demo_root):
     from tracker import reminder
-    from tracker.filer import read_index
+    from tracker.index import read_index
     from tracker.manifest import load_manifest
 
     folder = _sided_engagement(capsys, demo_root)
@@ -8568,8 +8572,8 @@ def _a_practice_for_the_firm_view(capsys, demo_root):
     plus a program parked for a person; one with everything in; one inactive.
     Made-up names only."""
     from tests.conftest import seed_index, seed_statuses
-    from tracker.filer import IndexEntry
     from tracker.manifest import StatusUpdate
+    from tracker.records import IndexEntry
 
     mixed = chased_engagement(capsys, demo_root, name="Mixed")
     seed_statuses(mixed, {"A01": StatusUpdate(status=Status.RECEIVED, file_count=1)})
@@ -8639,8 +8643,9 @@ def test_firm_counts_parked_moved_and_set_aside_files_as_the_return_page_does(ca
     """A return whose only work is files still needs a person and its counts
     are the tally of its own page (SPEC-shell 9.1: one source)."""
     from tests.conftest import seed_index, seed_statuses
-    from tracker.filer import FILE_MOVED, NOT_REQUESTED, IndexEntry
+    from tracker.index import FILE_MOVED, NOT_REQUESTED
     from tracker.manifest import StatusUpdate
+    from tracker.records import IndexEntry
 
     folder = chased_engagement(capsys, demo_root, name="Files only")
     seed_statuses(folder, {"A01": StatusUpdate(status=Status.RECEIVED, file_count=1),
@@ -8754,7 +8759,7 @@ def test_a_real_firm_replys_paths_reveal_a_firm_file_and_refuse_an_unreported_on
 
 def test_two_returns_spelling_one_key_for_different_paths_get_a_deterministic_suffix(capsys, demo_root):
     from tests.conftest import seed_index
-    from tracker.filer import IndexEntry
+    from tracker.records import IndexEntry
 
     homes = []
     for name in ("First", "Second"):
@@ -8794,8 +8799,9 @@ def test_firm_lists_every_file_it_counts_and_buckets_a_return_with_only_a_file(c
     the rows under the count agree with it; a return whose only work for a
     person is a parked file (every request received) needs a person."""
     from tests.conftest import seed_index, seed_statuses
-    from tracker.filer import FILE_MOVED, IndexEntry
+    from tracker.index import FILE_MOVED
     from tracker.manifest import StatusUpdate
+    from tracker.records import IndexEntry
 
     only_file = chased_engagement(capsys, demo_root, name="Only file")
     seed_statuses(only_file, {"A01": StatusUpdate(status=Status.RECEIVED, file_count=1),
@@ -9325,7 +9331,7 @@ def test_item_group_follows_its_table():
 
 
 def test_a_file_falls_in_the_group_its_decision_says():
-    from tracker.filer import FILE_MOVED, NOT_REQUESTED
+    from tracker.index import FILE_MOVED, NOT_REQUESTED
 
     def entry(decision, home="A01/a.pdf"):
         return IndexEntry(received="2026-02-01", original_name="a.pdf", size_kb=1.0, digest="1" * 64,

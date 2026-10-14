@@ -26,11 +26,9 @@ from tests.conftest import make_engagement, sort
 from tracker import bounds, ledger, store
 from tracker.filer import (
     ASSIGNED_BY_PERSON,
-    FILED,
     assign_review_file,
-    ledger_key,
-    read_index,
 )
+from tracker.index import FILED, read_index
 from tracker.locking import engagement_lock
 from tracker.manifest import (
     RequestItem,
@@ -39,7 +37,7 @@ from tracker.manifest import (
     load_manifest,
     save_rules,
 )
-from tracker.records import rule_from_json, rule_to_json
+from tracker.records import ledger_key, rule_from_json, rule_to_json
 from tracker.scanner import scan_engagement
 
 REPO = Path(__file__).resolve().parents[1]
@@ -166,7 +164,7 @@ def test_a_journal_that_carries_rules_imported_still_folds_and_is_never_written_
     one by sentence - and a save after it carries only the difference."""
     import json
 
-    from tracker.filer import ensure
+    from tracker.index import ensure
 
     folder = tmp_path / "Older 2025"
     folder.mkdir()
@@ -409,7 +407,7 @@ def test_a_word_taught_twice_folds_last_on_both_sides(tmp_path, engagement):
     a synced folder, and a fold that only held for the lines this version
     happens to write would be a disagreement the gate could not explain.
     """
-    from tracker.filer import ensure
+    from tracker.index import ensure
 
     with engagement_lock(engagement):
         ensure(engagement)
@@ -651,7 +649,8 @@ def test_a_copy_moved_event_folds_as_a_row_event_in_both_folds_and_check_agrees(
     so it needs no fold of its own: the generic one puts the row where the
     row it replaces was, a store built from the journal alone says the same,
     and the row's own sequence number is this line's."""
-    from tracker.filer import FILE_MOVED, PREPARED_DIR_NAME, moved_to
+    from tracker.filer import PREPARED_DIR_NAME
+    from tracker.index import FILE_MOVED, moved_to
     from tracker.scaffold import REVIEW_DIR_NAME
 
     drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")

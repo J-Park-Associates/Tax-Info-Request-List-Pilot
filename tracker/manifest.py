@@ -114,7 +114,7 @@ from tracker.bounds import (
     date_pattern_problem,
     document_problem,
     identifier_problem,
-    short_title_problem,  # noqa: F401 - the editor's name for the record's check
+    short_title_problem,  # noqa: F401 - the editor's name for the bounds' check
     typed_identifier_problem,
     typed_short_title_problem,
 )
@@ -1324,7 +1324,7 @@ def load_manifest(engagement_dir: Path | str, *, follow: bool = True) -> list[Re
     store is a derivation of the journal and
     :func:`tracker.store.follow_the_journal` makes it one again first, so
     no reader has to know whether a pass prepared this engagement -
-    exactly as ``tracker.filer.read_index`` does for the index.
+    exactly as ``tracker.index.read_index`` does for the index.
 
     Reading with ``follow`` false is the practice page's (decision 192):
     the walk has just followed every journal, so the page reads the store

@@ -4,9 +4,11 @@ The claims here are the whole of what this module owes anyone. The
 index's columns are its record's fields, in order. A row survives being
 written down and read back, field for field. The Evidence cell survives the
 same trip with several candidates and several places in it. And the move
-itself cost nobody anything: every name a module used to own resolves, from
-that module, to the very object this one defines - the same object, not a
-copy - and this module reaches for nothing in the package to do any of it.
+itself cost nobody anything: every name a module used to own and still reads
+resolves, from that module, to the very object this one defines - the same
+object, not a copy - and this module reaches for nothing in the package to do
+any of it. The names the filer and the content check stopped reading were
+offered for one release, and P322 retired that shim.
 """
 
 from __future__ import annotations
@@ -19,7 +21,7 @@ from pathlib import Path
 import pytest
 
 from tests.import_graph import import_edges
-from tracker import bounds, content_check, filer, manifest, records, router
+from tracker import bounds, manifest, records, router
 from tracker.records import (
     CANDIDATE_SEP,
     ENGAGEMENT_FIELDS,
@@ -169,14 +171,11 @@ def test_the_engagement_labels_name_exactly_the_engagement_records_fields():
 #: module -> the names it used to own, each of which must still resolve to
 #: this module's object. Written out rather than derived: the point of the
 #: re-exports is that these exact names go on working, and a list computed
-#: from the modules would pass whatever they happen to say today.
+#: from the modules would pass whatever they happen to say today. The
+#: filer's and the content check's rows went with decision 100's shim
+#: (P322): every reader imports a record name from here, and the router and
+#: the manifest read the names left below themselves.
 RE_EXPORTED = {
-    filer: ("IndexEntry", "ledger_key",
-            "Evidence", "format_evidence", "parse_evidence"),
-    content_check: ("Evidence", "EVIDENCE_RULES", "EVIDENCE_PLACES",
-                    "RULE_REQUIRED", "RULE_ANY", "RULE_DATE", "RULE_FILENAME", "RULE_REFUSED",
-                    "WHERE_TITLE", "WHERE_FIRST_PAGE", "WHERE_FOOTER", "WHERE_DEEP",
-                    "format_evidence", "parse_evidence"),
     router: ("Routing", "EVIDENCE_CONTENT"),
     # The manifest's copies of the details' field table and the yes/no
     # words went with decision 104: nothing read them from there.
@@ -185,19 +184,16 @@ RE_EXPORTED = {
 
 
 def test_every_name_a_module_re_exports_is_this_modules_own_object():
-    """`from tracker.filer import IndexEntry` still gives the class this
+    """`from tracker.router import Routing` still gives the class this
     module defines - the same object, so an isinstance check, a pickle and
-    a dataclass comparison cannot tell the two import paths apart."""
+    a dataclass comparison cannot tell the two import paths apart. Decision
+    100's "for one release" shim is retired (P322): the filer and the
+    content check no longer offer the names they stopped reading, so two
+    rows are left, each naming what its module reads itself."""
     for module, names in RE_EXPORTED.items():
         for name in names:
             assert hasattr(module, name), f"{module.__name__} no longer offers {name}"
             assert getattr(module, name) is getattr(records, name), f"{module.__name__}.{name}"
-
-
-def test_the_filers_old_private_separator_is_the_records_own():
-    """The one moved name that kept its underscore, because the app and the
-    tests still ask the filer for it."""
-    assert filer._CANDIDATE_SEP is CANDIDATE_SEP
 
 
 def test_the_records_import_nothing_of_the_package_but_the_layouts_name_rule_and_the_bounds():

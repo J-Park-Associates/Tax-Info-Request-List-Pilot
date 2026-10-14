@@ -152,9 +152,9 @@ def as_pattern(template: str, **groups: str) -> str:
     both derive their pattern from the very template that wrote the sentence,
     so rewording one moves its reader with it:
     :mod:`tracker.scanner` reads the regression sentence off the front of a
-    row's validation notes (decision 108), and :mod:`tracker.filer` reads the
+    row's validation notes (decision 108), and :mod:`tracker.index` reads the
     path a moved working copy is at now off the end of its Reason
-    (:func:`tracker.filer.moved_to`, decision 109).
+    (:func:`tracker.index.moved_to`, decision 109).
 
     It belongs here because how a sentence the machine wrote is read back is
     a fact about the shape a record is stored in, not about either reader.

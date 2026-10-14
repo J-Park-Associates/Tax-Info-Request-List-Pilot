@@ -52,15 +52,11 @@ from tests.conftest import TEST_CLIENT, TEST_YEAR, make_engagement, named_page, 
 from tests.samples import text_pdf
 from tracker import checkpoint, ledger, reasons, store
 from tracker.filer import (
-    DUPLICATE,
-    FILED,
-    NEEDS_REVIEW,
     FilingError,
-    ensure,
     prepared_name_for,
-    read_index,
 )
 from tracker.fsio import TEMP_SUFFIX
+from tracker.index import DUPLICATE, FILED, NEEDS_REVIEW, ensure, read_index
 from tracker.layout import household_of, inbox_of, locate, location_of, originals_of, root_of
 from tracker.manifest import (
     RequestItem,
@@ -733,7 +729,7 @@ def test_no_pass_leaves_a_workbook_behind(engagement):
 
 
 def test_the_routers_candidates_travel_as_data_in_the_index(engagement):
-    from tracker.filer import read_index
+    from tracker.index import read_index
 
     drop(engagement, "old.pdf", "Form W-2 Wage and Tax Statement 2024")   # contested: wrong year
     report = sort(engagement, today=DAY1)
@@ -743,8 +739,8 @@ def test_the_routers_candidates_travel_as_data_in_the_index(engagement):
 
 
 def test_a_filed_row_and_a_parked_row_both_say_what_the_rules_saw(engagement):
-    from tracker.content_check import RULE_REQUIRED, WHERE_TITLE
-    from tracker.filer import read_index
+    from tracker.index import read_index
+    from tracker.records import RULE_REQUIRED, WHERE_TITLE
 
     drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
     drop(engagement, "old.pdf", "Form W-2 Wage and Tax Statement 2024")   # contested: wrong year
@@ -1982,7 +1978,8 @@ def test_dismissing_a_parked_file_rewrites_its_row_and_moves_nothing(engagement)
     stays parked and the original stays in PBC. What the row says changes,
     and what it said before is kept after it.
     """
-    from tracker.filer import DISMISSED_BY_PERSON, NOT_REQUESTED, dismiss_review_file
+    from tracker.filer import DISMISSED_BY_PERSON, dismiss_review_file
+    from tracker.index import NOT_REQUESTED
 
     drop(engagement, "irs-notice.pdf", "nothing the rules recognise")
     parked = sort(engagement, today=DAY1).review[0]
@@ -2014,7 +2011,8 @@ def test_the_same_document_sent_again_after_a_dismissal_parks_again_and_names_th
     the date and the person's note, as they wrote them - so the person who
     set it aside decides again with both facts in front of them.
     """
-    from tracker.filer import NOT_REQUESTED, RESENT_AFTER_SET_ASIDE, dismiss_review_file
+    from tracker.filer import RESENT_AFTER_SET_ASIDE, dismiss_review_file
+    from tracker.index import NOT_REQUESTED
 
     drop(engagement, "notice.pdf", "nothing the rules recognise")
     parked = sort(engagement, today=DAY1).review[0]
@@ -2138,7 +2136,8 @@ def test_set_aside_bytes_sent_again_after_their_original_went_are_routed_afresh(
     again afresh. So the re-send files to the request the list now asks
     for, under a name of its own, the set-aside row stays as it was, and
     the letter no longer asks for a document the client sent twice."""
-    from tracker.filer import NOT_REQUESTED, RESENT_AFTER_SET_ASIDE, dismiss_review_file
+    from tracker.filer import RESENT_AFTER_SET_ASIDE, dismiss_review_file
+    from tracker.index import NOT_REQUESTED
     from tracker.manifest import Status
 
     drop(engagement, "notice.pdf", "an agency notice about your account, 2025")
@@ -2219,7 +2218,8 @@ def test_a_duplicates_reason_says_filed_only_of_a_filed_row(engagement):
 def test_a_resend_of_a_moved_rows_bytes_is_a_duplicate_naming_the_moved_copy(engagement):
     """A row whose copy is not where the record put it is a person's to
     resolve; a second copy of the same document would not help them do it."""
-    from tracker.filer import DUPLICATE_OF_MOVED, FILE_MOVED
+    from tracker.filer import DUPLICATE_OF_MOVED
+    from tracker.index import FILE_MOVED
 
     drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
     filed = sort(engagement, today=DAY1).filed[0]
@@ -2327,7 +2327,8 @@ def test_dismissing_something_that_is_not_parked_says_what_it_is(engagement):
 
 def test_dismissing_takes_the_engagement_lock(engagement):
     """A decision is written to the index, so it queues behind a run like every other."""
-    from tracker.filer import NOT_REQUESTED, dismiss_review_file
+    from tracker.filer import dismiss_review_file
+    from tracker.index import NOT_REQUESTED
     from tracker.locking import LOCK_FILENAME, EngagementLockedError
 
     drop(engagement, "scan0012.pdf", "nothing the rules recognise")
@@ -2535,10 +2536,10 @@ def test_deleting_the_store_and_rebuilding_leaves_every_status_and_note_byte_ide
 def test_unfiling_something_that_is_not_filed_says_what_it_is(engagement):
     """Each of the other decisions needs a different answer, so none of them is guessed."""
     from tracker.filer import (
-        NOT_REQUESTED,
         dismiss_review_file,
         unfile_document,
     )
+    from tracker.index import NOT_REQUESTED
 
     drop(engagement, "scan0012.pdf", "nothing the rules recognise")
     parked = sort(engagement, today=DAY1).review[0]
@@ -2748,11 +2749,11 @@ def test_an_assign_with_a_stale_seq_refuses_naming_what_the_record_now_says_and_
     aside. The row is still parked, so the by-name refusal says nothing
     about it; its sequence number has moved, and that is what catches it."""
     from tracker.filer import (
-        NOT_REQUESTED,
         StaleRowError,
         assign_review_file,
         dismiss_review_file,
     )
+    from tracker.index import NOT_REQUESTED
 
     drop(engagement, "scan0012.pdf", "nothing the rules recognise")
     parked = sort(engagement, today=DAY1).review[0]
@@ -3014,7 +3015,7 @@ def counting_hashes(monkeypatch) -> list[str]:
 
 
 def test_a_filed_copy_dragged_into_another_requests_folder_is_file_moved_and_nothing_moves(engagement):
-    from tracker.filer import FILE_MOVED, MOVED_SENTENCE, moved_to
+    from tracker.index import FILE_MOVED, MOVED_SENTENCE, moved_to
 
     drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
     filed = sort(engagement, today=DAY1).filed[0]
@@ -3040,7 +3041,7 @@ def test_a_filed_copy_dragged_into_another_requests_folder_is_file_moved_and_not
 
 
 def test_a_filed_copy_renamed_inside_its_folder_is_file_moved(engagement):
-    from tracker.filer import FILE_MOVED, moved_to
+    from tracker.index import FILE_MOVED, moved_to
 
     drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
     filed = sort(engagement, today=DAY1).filed[0]
@@ -3062,7 +3063,7 @@ def test_a_filed_copy_renamed_to_a_name_no_request_begins_is_file_moved(engageme
     then): the sweep finds it by its bytes, and the scan goes on warning
     about a file no request's name claims, because one warning per thing is
     the rule and those are two different things."""
-    from tracker.filer import FILE_MOVED, moved_to
+    from tracker.index import FILE_MOVED, moved_to
     from tracker.scanner import UNCLAIMED_FILE, scan_engagement
 
     drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
@@ -3092,7 +3093,8 @@ def test_a_second_copy_of_a_moved_rows_bytes_does_not_re_point_the_row(engagemen
     event nothing happened for and send the put-it-back after the wrong
     file. The second copy is what it is - a file nothing on the record put
     there - and is said as one."""
-    from tracker.filer import FILE_MOVED, UNRECORDED_COPY, moved_to
+    from tracker.filer import UNRECORDED_COPY
+    from tracker.index import FILE_MOVED, moved_to
 
     drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
     filed = sort(engagement, today=DAY1).filed[0]
@@ -3121,7 +3123,8 @@ def test_a_second_copy_of_a_moved_rows_bytes_does_not_re_point_the_row(engagemen
 
 
 def test_a_moved_copy_dragged_back_by_hand_is_filed_again_on_the_next_pass(engagement):
-    from tracker.filer import FILE_MOVED, MOVED_BACK_SENTENCE, moved_to
+    from tracker.filer import MOVED_BACK_SENTENCE
+    from tracker.index import FILE_MOVED, moved_to
 
     drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
     filed = sort(engagement, today=DAY1).filed[0]
@@ -3168,7 +3171,8 @@ def test_a_moved_copy_that_is_then_deleted_says_nowhere_once_and_is_made_again_t
     wanderer is said first, once; the pass after, the copy is made again
     at home from the original and the row is Filed once more - nowhere is
     not left standing while the original can make it."""
-    from tracker.filer import FILE_MOVED, MOVED_GONE_SENTENCE, REMADE_SENTENCE, moved_to
+    from tracker.filer import REMADE_SENTENCE
+    from tracker.index import FILE_MOVED, MOVED_GONE_SENTENCE, moved_to
 
     drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
     filed = sort(engagement, today=DAY1).filed[0]
@@ -3227,7 +3231,7 @@ def test_a_copy_deleted_outright_is_made_again_and_nothing_else_moves(engagement
 
 def test_a_parked_copy_dragged_into_a_request_folder_is_file_moved_and_comes_back_as_needs_review(
         engagement):
-    from tracker.filer import FILE_MOVED, moved_to
+    from tracker.index import FILE_MOVED, moved_to
 
     drop(engagement, "scan0012.pdf", "nothing the rules recognise")
     parked = sort(engagement, today=DAY1).review[0]
@@ -3353,7 +3357,7 @@ def test_the_sweep_on_a_read_only_prepared_folder_detects_and_touches_nothing(en
     firm's folder still says what it found. Windows marks a file read-only
     and POSIX takes the write bits off the mode; both refuse a write, which
     is the claim, and neither refuses the read the sweep makes."""
-    from tracker.filer import FILE_MOVED, moved_to
+    from tracker.index import FILE_MOVED, moved_to
 
     drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
     filed = sort(engagement, today=DAY1).filed[0]
@@ -3420,7 +3424,7 @@ def test_a_split_rows_second_copy_dragged_away_is_said_on_the_request_that_lost_
     about it and goes on counting it."""
     from tests.samples import scanned_1098_lines, scanned_w2_lines
     from tracker import reasons
-    from tracker.filer import FILE_MOVED, moved_to
+    from tracker.index import FILE_MOVED, moved_to
     from tracker.manifest import Status
     from tracker.scanner import scan_engagement
 
@@ -3465,7 +3469,8 @@ def test_put_it_back_moves_the_wanderer_home_and_the_row_is_filed_again(engageme
     """The first answer, and the one that needs nowhere else for the file to
     go: the bytes return to where the record put them, the row is Filed
     again, and the next pass has nothing left to say about it."""
-    from tracker.filer import FILED, PUT_BACK, restore_working_copy
+    from tracker.filer import PUT_BACK, restore_working_copy
+    from tracker.index import FILED
 
     filed, wanderer = a_moved_filed_row(engagement)
     home = engagement / filed.prepared_location
@@ -3524,7 +3529,8 @@ def test_put_it_back_copies_from_the_original_when_nothing_under_prepared_holds_
     """A working copy is a copy of the original and the original is safe in
     the client's own folder (rule 2), so a row whose bytes are nowhere under
     the firm's folder is still restorable."""
-    from tracker.filer import FILED, PUT_BACK_FROM_ORIGINAL, restore_working_copy
+    from tracker.filer import PUT_BACK_FROM_ORIGINAL, restore_working_copy
+    from tracker.index import FILED
 
     filed, wanderer = a_moved_filed_row(engagement)
     wanderer.unlink()                                   # and now it is nowhere
@@ -3549,7 +3555,8 @@ def test_put_it_back_with_the_same_bytes_already_home_restores_the_row_and_leave
     """The machine deletes nothing. Home holds these bytes, so there is
     nothing to move; the copy somebody left behind stays where it is and the
     sweep goes on naming it until a person removes it."""
-    from tracker.filer import FILED, PUT_BACK_ALREADY, UNRECORDED_COPY, restore_working_copy
+    from tracker.filer import PUT_BACK_ALREADY, UNRECORDED_COPY, restore_working_copy
+    from tracker.index import FILED
 
     filed, wanderer = a_moved_filed_row(engagement)
     home = engagement / filed.prepared_location
@@ -3638,7 +3645,8 @@ def moved_again(engagement, wanderer, day):
 def test_put_it_back_refuses_a_stale_seq_and_touches_nothing(engagement):
     """Still moved, so the by-name refusal says nothing about it; the row's
     own sequence number has moved, and that is what catches it."""
-    from tracker.filer import FILE_MOVED, StaleRowError, restore_working_copy
+    from tracker.filer import StaleRowError, restore_working_copy
+    from tracker.index import FILE_MOVED
 
     filed, wanderer = a_moved_filed_row(engagement)
     [row] = read_index(engagement)
@@ -3663,7 +3671,8 @@ def test_put_it_back_refuses_a_row_without_a_digest(engagement, monkeypatch):
     """Decision 65: a row recorded without its bytes is tied to nothing, so
     nothing can be proved to be its working copy and nothing here may move."""
     import tracker.filer as filer_module
-    from tracker.filer import FILE_MOVED, FilingError, restore_working_copy
+    from tracker.filer import FilingError, restore_working_copy
+    from tracker.index import FILE_MOVED
 
     filed, wanderer = a_moved_filed_row(engagement)
     [row] = read_index(engagement)
@@ -3700,7 +3709,8 @@ def test_a_refused_record_rolls_the_put_back_move_back(engagement, monkeypatch):
     """The record took the decision or it did not - one transaction, no third
     state - so the file goes back where the record says it is."""
     import tracker.store as store_module
-    from tracker.filer import FILE_MOVED, restore_working_copy
+    from tracker.filer import restore_working_copy
+    from tracker.index import FILE_MOVED
 
     filed, wanderer = a_moved_filed_row(engagement)
     files = every_byte(engagement)
@@ -3724,7 +3734,8 @@ def test_keep_it_here_files_the_wanderer_under_the_request_whose_folder_holds_it
         engagement):
     """The second answer: the copy is where somebody meant it to be, so it
     takes the canonical name there and the row is Filed by a person."""
-    from tracker.filer import ASSIGNED_BY_PERSON, FILED, assign_review_file
+    from tracker.filer import ASSIGNED_BY_PERSON, assign_review_file
+    from tracker.index import FILED
     from tracker.manifest import load_manifest
 
     filed, wanderer = a_moved_filed_row(engagement)
@@ -3747,7 +3758,8 @@ def test_keep_it_here_files_the_wanderer_under_the_request_whose_folder_holds_it
 def test_keep_it_here_may_pick_another_request_and_the_wanderer_moves_there(engagement):
     """The picker is the same picker: keeping the file and correcting the
     request it answers is one click."""
-    from tracker.filer import FILED, assign_review_file
+    from tracker.filer import assign_review_file
+    from tracker.index import FILED
 
     filed, wanderer = a_moved_filed_row(engagement)
 
@@ -3829,7 +3841,8 @@ def test_put_it_back_restores_every_copy_of_such_a_row(engagement):
     """One row, one original, one list of copies: put-it-back fills every one
     of them - the wanderer moved into the first, the rest remade from it -
     and the next pass has nothing left to say."""
-    from tracker.filer import FILED, restore_working_copy
+    from tracker.filer import restore_working_copy
+    from tracker.index import FILED
 
     split, wanderer = a_moved_split_row(engagement)
     bytes_wanted = wanderer.read_bytes()
@@ -3878,7 +3891,8 @@ def test_every_recovery_refusal_leaves_the_file_count_unchanged(engagement, refu
 def test_dismiss_still_refuses_a_moved_row_by_name(engagement):
     """Decision 76 unchanged: setting a request aside says nothing about a
     file nobody can find, so a moved row is not dismissable."""
-    from tracker.filer import FILE_MOVED, FilingError, dismiss_review_file
+    from tracker.filer import FilingError, dismiss_review_file
+    from tracker.index import FILE_MOVED
 
     filed, wanderer = a_moved_filed_row(engagement)
     files = every_byte(engagement)
@@ -4460,7 +4474,8 @@ def test_recovery_runs_before_the_sweep_so_an_interrupted_action_is_never_called
     """Decision 109's sweep would read a person's half-made filing as a copy
     somebody dragged, and 110 would ask them to put it back. The recovery
     runs first, so the sweep never sees it."""
-    from tracker.filer import FILE_MOVED, assign_review_file
+    from tracker.filer import assign_review_file
+    from tracker.index import FILE_MOVED
 
     drop(engagement, "scan0012.pdf", "nothing the rules recognise")
     parked = sort(engagement, today=DAY1).review[0]
@@ -4961,7 +4976,8 @@ def test_a_persons_filing_unfiling_and_restore_still_work_with_originals_across_
     """Decisions 110 and 112 through the API, one each, with the original
     in the tree the client can see."""
     import tracker.api as api_module
-    from tracker.filer import FILE_MOVED, assign_review_file, restore_working_copy, unfile_document
+    from tracker.filer import assign_review_file, restore_working_copy, unfile_document
+    from tracker.index import FILE_MOVED
 
     drop(engagement, "scan0012.pdf", "nothing the rules recognise")
     parked = sort(engagement, today=DAY1).review[0]
@@ -7414,7 +7430,8 @@ def test_a_re_sent_set_aside_document_files_under_its_not_asked_row_and_the_earl
     routed afresh as 111 says: once the catalog's row is on the return as
     not asked, the re-send files there, and its row quotes the earlier
     decision whole."""
-    from tracker.filer import NOT_REQUESTED, RESENT_AFTER_SET_ASIDE, dismiss_review_file
+    from tracker.filer import RESENT_AFTER_SET_ASIDE, dismiss_review_file
+    from tracker.index import NOT_REQUESTED
 
     engagement = make_engagement(tmp_path, [ITEMS[0]])
     drop(engagement, "1098.pdf", "Form 1098 Mortgage Interest Statement 2025")
@@ -7641,7 +7658,8 @@ def test_a_person_can_still_mark_that_row_missing(tmp_path):
     goes back to Missing with the regression note, the letter asks for it
     again, and A04 is still answered. Asking twice is refused by name, and
     a rebuilt store agrees with the person."""
-    from tracker.filer import MARKED_MISSING, mark_missing_again, received_for
+    from tracker.filer import mark_missing_again, received_for
+    from tracker.index import MARKED_MISSING
     from tracker.layout import root_of
     from tracker.manifest import Status
     from tracker.reminder import draft_reminder
@@ -8323,14 +8341,12 @@ def test_a_copy_and_original_both_gone_is_named_not_chased(engagement):
     assert "C01" not in draft.asked
     assert "C01" in {flag.item.identifier for flag in draft.needs_attention}
     from tracker.filer import (
-        BOTH_GONE_SENTENCE,
-        FILE_MOVED,
         NOTHING_TO_PUT_BACK,
         assign_review_file,
-        both_gone,
         restore_working_copy,
         unfile_document,
     )
+    from tracker.index import BOTH_GONE_SENTENCE, FILE_MOVED, both_gone
 
     sentence = BOTH_GONE_SENTENCE.format(home=filed.prepared_location, prepared=PREPARED_DIR_NAME,
                                          pbc=filed.pbc_location, date=DAY2.isoformat())
@@ -8498,12 +8514,11 @@ def test_marking_a_both_gone_row_missing_asks_the_client_and_the_readme_agrees(e
     flags it again. The client's answer - the same bytes - is filed as a
     new arrival under a place of its own."""
     from tracker.filer import (
-        MARKED_MISSING,
         REFILED_AFTER_GONE,
         mark_missing_again,
-        marked_missing,
         received_for,
     )
+    from tracker.index import MARKED_MISSING, marked_missing
     from tracker.manifest import Status
 
     filed = _filed_1098(engagement)
@@ -9596,7 +9611,8 @@ def test_two_programs_in_one_zip_each_answer_to_their_own_handle(engagement):
     import io
     import zipfile
 
-    from tracker.filer import NO_HANDLE, NOT_REQUESTED, dismiss_review_file, find_parked
+    from tracker.filer import NO_HANDLE, dismiss_review_file, find_parked
+    from tracker.index import NOT_REQUESTED
 
     packed = io.BytesIO()
     with zipfile.ZipFile(packed, "w") as archive:

@@ -44,16 +44,13 @@ from tracker.containers import (
     safe_name,
 )
 from tracker.filer import (
-    DUPLICATE,
     DUPLICATE_OF_OPENED,
-    FILED,
-    NEEDS_REVIEW,
     OPENED,
     FilingError,
-    read_index,
     received_for,
     refresh_household_readme,
 )
+from tracker.index import DUPLICATE, FILED, NEEDS_REVIEW, read_index
 from tracker.layout import (
     INBOX_DIR_NAME,
     MAX_PATH_LENGTH,
@@ -698,7 +695,7 @@ def test_a_folder_whose_container_row_is_gone_is_reported(engagement):
 
 
 def test_the_store_rebuilds_with_container_and_opened(engagement, tmp_path):
-    from tracker.filer import ensure
+    from tracker.index import ensure
     from tracker.locking import engagement_lock
     from tracker.records import IndexEntry, entry_to_json
 

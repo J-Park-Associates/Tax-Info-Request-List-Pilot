@@ -55,7 +55,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from tracker.records import (
-    ONE_WORD_SPELLING,  # noqa: F401 - re-exported until P2.14
     PAGE_BREAK,
     WHERE_DEEP,
     WHERE_FIRST_PAGE,

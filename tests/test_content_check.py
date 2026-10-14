@@ -879,7 +879,7 @@ TWO_PAGE_W2 = (
 
 
 def test_a_title_self_mention_is_evidence_from_the_title():
-    from tracker.content_check import RULE_REQUIRED, WHERE_TITLE
+    from tracker.records import RULE_REQUIRED, WHERE_TITLE
 
     result = evaluate_rules(TWO_PAGE_W2, item(required_keywords=("W-2", "wage and tax statement")))
     assert result.ok
@@ -890,7 +890,7 @@ def test_a_title_self_mention_is_evidence_from_the_title():
 
 
 def test_a_footer_hit_names_the_footer_and_the_page_it_was_on():
-    from tracker.content_check import WHERE_FOOTER
+    from tracker.records import WHERE_FOOTER
 
     result = evaluate_rules(TWO_PAGE_W2, item(required_keywords=("safe harbor election",)))
     assert result.ok
@@ -901,7 +901,7 @@ def test_a_footer_hit_names_the_footer_and_the_page_it_was_on():
 
 
 def test_a_deep_any_keyword_says_it_was_deep_and_which_page():
-    from tracker.content_check import RULE_ANY, WHERE_DEEP
+    from tracker.records import RULE_ANY, WHERE_DEEP
 
     result = evaluate_rules(TWO_PAGE_W2, item(any_keywords=("dependent care benefits", "tips")))
     assert result.ok
@@ -912,7 +912,7 @@ def test_a_deep_any_keyword_says_it_was_deep_and_which_page():
 
 
 def test_the_date_rule_records_the_period_it_checked_never_the_document():
-    from tracker.content_check import RULE_DATE
+    from tracker.records import RULE_DATE
 
     rule = item(period="TY2025", date_pattern=r"(?i)\b2025\b",
                 required_keywords=("wage and tax statement",))
@@ -935,13 +935,7 @@ def test_a_failing_verdict_keeps_what_did_match():
 
 
 def test_the_compact_evidence_parses_back_to_what_was_formatted():
-    from tracker.content_check import (
-        RULE_FILENAME,
-        WHERE_TITLE,
-        Evidence,
-        format_evidence,
-        parse_evidence,
-    )
+    from tracker.records import RULE_FILENAME, WHERE_TITLE, Evidence, format_evidence, parse_evidence
 
     record = {
         "C01": evaluate_rules(TWO_PAGE_W2, item(
@@ -959,7 +953,7 @@ def test_the_compact_evidence_parses_back_to_what_was_formatted():
 
 
 def test_a_verdict_read_back_from_the_store_brings_its_evidence(tmp_path):
-    from tracker.content_check import RULE_REQUIRED, WHERE_TITLE
+    from tracker.records import RULE_REQUIRED, WHERE_TITLE
 
     rule = item(required_keywords=("Chase",))
     engagement = an_engagement(tmp_path, rule)
@@ -1703,7 +1697,7 @@ def test_a_page_tree_bomb_cannot_stall_the_pass(tmp_path, a_short_stop):
 
     import tracker.content_check as content_check
     from tests.conftest import named_page
-    from tracker.filer import read_index
+    from tracker.index import read_index
     from tracker.layout import inbox_of
     from tracker.registry import discover_engagements
     from tracker.runner import REMINDERS_NEVER, run_registry
@@ -1799,7 +1793,7 @@ def test_a_reader_that_cannot_start_keeps_no_verdict(tmp_path, in_a_child):
 
     import tracker.content_check as content_check
     from tests.conftest import named_page
-    from tracker.filer import read_index
+    from tracker.index import read_index
     from tracker.layout import inbox_of, originals_of
     from tracker.registry import discover_engagements
     from tracker.runner import REMINDERS_NEVER, append_log, format_report, run_registry
@@ -1865,7 +1859,7 @@ def test_a_drop_the_reader_could_not_start_on_is_routed_next_pass(tmp_path, in_a
     routed where it lies, and filed."""
     import tracker.content_check as content_check
     from tests.conftest import named_page
-    from tracker.filer import read_index
+    from tracker.index import read_index
     from tracker.layout import inbox_of, originals_of
     from tracker.registry import discover_engagements
     from tracker.runner import REMINDERS_NEVER, run_registry
@@ -1908,7 +1902,7 @@ def test_a_resent_file_the_reader_could_not_start_on_waits_for_the_next_pass(
     import tracker.content_check as content_check
     import tracker.filer as filer_module
     from tests.conftest import named_page
-    from tracker.filer import read_index
+    from tracker.index import read_index
     from tracker.layout import inbox_of, locate, originals_of
     from tracker.registry import discover_engagements
     from tracker.runner import REMINDERS_NEVER, run_registry
@@ -2358,7 +2352,7 @@ def test_a_catastrophic_date_pattern_costs_one_stop_and_the_next_pass_takes_the_
 
     import tracker.content_check as content_check
     from tests.conftest import named_page, sort
-    from tracker.filer import read_index
+    from tracker.index import read_index
     from tracker.layout import inbox_of
 
     started = []
@@ -2456,7 +2450,7 @@ def test_a_transient_judgment_is_neither_kept_nor_recorded(tmp_path, in_a_child)
     and the scanner keeps neither its open test nor its row verdict."""
     import tracker.content_check as content_check
     from tests.conftest import named_page, sort
-    from tracker.filer import read_index
+    from tracker.index import read_index
     from tracker.layout import inbox_of
 
     in_a_child.setattr(content_check, "_CHILD_READER", _a_reader_only_the_pass_has(in_a_child))
@@ -2497,7 +2491,7 @@ def test_a_file_in_flight_when_the_child_is_retired_or_killed_is_read_again_next
     from tests import child_readers
     from tests.conftest import named_page, sort
     from tracker import ocr
-    from tracker.filer import read_index
+    from tracker.index import read_index
     from tracker.layout import inbox_of
 
     row = RequestItem(identifier="A01", document="W-2", period="TY2025", allowed_extensions=("pdf",),

@@ -246,10 +246,9 @@ def test_a_document_a_person_said_nothing_asks_for_is_not_a_warning_either(engag
     with the index about a file the scan cannot see the decision on.
     """
     from tracker.filer import (
-        NOT_REQUESTED,
         dismiss_review_file,
-            read_index,
     )
+    from tracker.index import NOT_REQUESTED, read_index
 
     text_pdf(inbox_of(engagement) / "irs-notice.pdf", "nothing the rules recognise")
     parked = sort(engagement, today=DAY1).review[0]
@@ -670,7 +669,7 @@ def test_a_moved_copys_request_reads_missing_with_the_firm_side_note_and_the_wan
     was dragged away is Missing, truthfully, and says whose fault that is;
     the request the copy was dragged into counts nothing it did not earn."""
     from tests.conftest import sort
-    from tracker.filer import FILE_MOVED, moved_to, read_index
+    from tracker.index import FILE_MOVED, moved_to, read_index
 
     filed = a_filed_pdf(engagement)
     home = engagement / filed.prepared_location
@@ -750,7 +749,8 @@ def test_a_copy_that_disagrees_with_its_original_is_not_counted(engagement):
     It is named in the warnings, firm-side, and the letter does not ask the
     client for a document the client sent correctly."""
     from tests.conftest import sort
-    from tracker.filer import assign_review_file, read_index
+    from tracker.filer import assign_review_file
+    from tracker.index import read_index
     from tracker.reminder import draft_reminder
 
     statement = inbox_of(engagement) / "chase.csv"

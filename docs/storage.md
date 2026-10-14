@@ -353,12 +353,12 @@ Three functions, and the one a caller wants depends on what it can afford:
 - **`store.follow_the_journal()`** is the reader's. It builds an engagement's
   rows from the journal where the database has none and replays the lines it
   has not applied where it is behind; it takes no lock and writes nothing in
-  the engagement folder. `filer.read_index()`, `manifest.load_manifest()`
+  the engagement folder. `index.read_index()`, `manifest.load_manifest()`
   and `manifest.load_engagement_info()` call it before every read, which
   costs one digest of the journal file when nothing has happened — so no
   reader in the package has to know whether anything prepared the
   engagement first.
-- **`filer.ensure()`** is the pass's and the app's: the same top-up by
+- **`index.ensure()`** is the pass's and the app's: the same top-up by
   count rather than by head (`store.catch_up()`, decision 135), and
   then the three words — current, behind or unknown — that say whether the
   store describes the engagement. It writes nothing in the engagement

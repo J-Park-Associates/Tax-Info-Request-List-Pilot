@@ -18,7 +18,11 @@ from tests.builders import engagement_fixture, parked_row
 from tests.conftest import child_env, make_engagement, seed_index, sort
 from tests.samples import text_pdf
 from tracker import reasons
-from tracker.content_check import (
+from tracker.index import NOT_REQUESTED, read_index
+from tracker.layout import inbox_of
+from tracker.locking import LOCK_FILENAME
+from tracker.manifest import Override, RequestItem, Status
+from tracker.records import (
     EVIDENCE_PLACES,
     EVIDENCE_RULES,
     RULE_ANY,
@@ -30,13 +34,6 @@ from tracker.content_check import (
     WHERE_TITLE,
     Evidence,
 )
-from tracker.filer import (
-    NOT_REQUESTED,
-    read_index,
-)
-from tracker.layout import inbox_of
-from tracker.locking import LOCK_FILENAME
-from tracker.manifest import Override, RequestItem, Status
 from tracker.review import (
     MAX_SUGGESTIONS,
     NOTHING_SUGGESTED,

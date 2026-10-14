@@ -12,7 +12,7 @@ Validation Notes are read.
 purpose: the machine-owned files keep theirs, and this is the one a person
 is meant to open. :func:`write_view` regenerates it at the end of every real
 pass from the readers - :func:`tracker.manifest.load_manifest` for the
-request rows as the readers now answer them, :func:`tracker.filer.read_index`
+request rows as the readers now answer them, :func:`tracker.index.read_index`
 for the index, and :func:`tracker.review.triage` for what each parked file
 might be. Four sections, in the order a person reads them:
 

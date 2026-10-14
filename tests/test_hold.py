@@ -4,7 +4,7 @@ The claims are the module's whole debt. The hold reaches for nothing in the
 package, at load time or at call time: it is layer 0's, so any module may
 keep an answer for one reply or one household. The settings module, which
 held it until P2.6, offered every public name as the very object defined
-here until P2.13 pointed their readers here; every reader now asks the hold
+here, and P2.13 pointed their readers here; every reader now asks the hold
 itself. It never offered ``_HELD`` or ``_HOLDING``: ``hold._holding``
 rebinds both, and a copy taken at import would read ``None`` for ever.
 

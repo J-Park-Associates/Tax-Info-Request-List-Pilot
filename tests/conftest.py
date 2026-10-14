@@ -124,8 +124,9 @@ from tracker import (
     store,
     view,
 )
-from tracker.filer import ensure, file_household_drops, refresh_household_readme
+from tracker.filer import file_household_drops, refresh_household_readme
 from tracker.households import create_household
+from tracker.index import ensure
 from tracker.layout import (
     CLIENTS_TREE,
     PRIVATE_TREE,

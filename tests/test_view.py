@@ -30,7 +30,7 @@ import pytest
 from tests.builders import drop, engagement_dirs, engagement_fixture
 from tests.conftest import make_engagement, sort
 from tracker import ledger, review, view
-from tracker.filer import NEEDS_REVIEW, read_index
+from tracker.index import NEEDS_REVIEW, read_index
 from tracker.layout import household_of, root_of
 from tracker.manifest import (
     COL_ANY_KEYWORDS,

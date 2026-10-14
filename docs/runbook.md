@@ -1290,7 +1290,7 @@ deleted `Prepared` comes back whole, the review folder included.
   off. The pass after makes the copy once the original is readable.
 - **The original is gone too**, or it holds a different file now: nothing
   can be made again and nothing is guessed. The row becomes File Moved
-  with `filer.BOTH_GONE_SENTENCE`, said once; the request's note says
+  with `index.BOTH_GONE_SENTENCE`, said once; the request's note says
   `reasons.COPY_AND_ORIGINAL_GONE`, and the letter holds off until you
   look. Look in the Shared Drive's trash (kept 30 days) and, after a Drive
   error notice on the designated machine, in Drive for desktop's
@@ -1667,7 +1667,7 @@ household and cannot clear it. Notices (a failure, a warning) sit in a panel at 
    the screen.** Every pass proves each working copy against the
    fingerprint its own index row carries (decision 109). A copy somebody
    dragged away from where the record put it, or renamed, makes that row
-   `tracker.filer.FILE_MOVED`, and it is said on the run and on the
+   `tracker.index.FILE_MOVED`, and it is said on the run and on the
    practice page the same morning: the request reads Missing until it is
    back, and the client is never asked for it. The app lists every such
    copy above the review queue with its home, where its bytes are now, and
@@ -1914,11 +1914,11 @@ row suggests, asked in the generic sentence, until you decide it.
 
 | The index says | In plain words | What you do |
 |---|---|---|
-| `filer.FILED` | Exactly one request accepted it. | Nothing. |
+| `index.FILED` | Exactly one request accepted it. | Nothing. |
 | `router.MATCHED_FROM_SCAN` | Filed from a scan or a photo: OCR read it, the top of the page shows the request's own form number and names no other form, no other request accepted it, and a named request's name was confirmed (P282). | Nothing. If it is wrong, send it back to Needs Review from its row with **Unfile** and file it by hand. |
-| `filer.DUPLICATE` | The same bytes are already in the record, and the reason says what the row holding them is: `filer.DUPLICATE_OF_FILED` says "already filed as" of a filed document, `filer.DUPLICATE_OF_PARKED` says "parked as" of one still waiting for you, `filer.DUPLICATE_OF_MOVED` names the copy of a row whose file is not where the record put it, and `filer.DUPLICATE_OF_UNCOPIED` says plainly that the row holding those bytes never got a working copy. No second copy is made. | Nothing. The original is kept, and the row holding the bytes is where the work is. |
+| `index.DUPLICATE` | The same bytes are already in the record, and the reason says what the row holding them is: `filer.DUPLICATE_OF_FILED` says "already filed as" of a filed document, `filer.DUPLICATE_OF_PARKED` says "parked as" of one still waiting for you, `filer.DUPLICATE_OF_MOVED` names the copy of a row whose file is not where the record put it, and `filer.DUPLICATE_OF_UNCOPIED` says plainly that the row holding those bytes never got a working copy. No second copy is made. | Nothing. The original is kept, and the row holding the bytes is where the work is. |
 | `filer.RESENT_AFTER_SET_ASIDE` | The client sent again a document somebody had closed with **Not requested**. It was routed afresh: filed if exactly one request accepts it now, otherwise parked again with a copy of its own. The reason quotes the earlier decision whole — the date and the note whoever closed it typed. | Read what was decided last time, then decide again: file it, or close it again. The copy set aside earlier stays where it is. |
-| `filer.NEEDS_REVIEW` | Parked for a person; the reason says which of the rows below. | Work it in the app. |
+| `index.NEEDS_REVIEW` | Parked for a person; the reason says which of the rows below. | Work it in the app. |
 | `filer.ASSIGNED_BY_PERSON` | Someone filed it with **File it**, on the date shown, and what the rules had said is kept after it. | Nothing. This is the audit trail. |
 | `api.CAME_FROM_SUBFOLDER` | Not in the Reason: the **Client's Subfolder** column, and the row's line under the reason, on any row - filed, parked, a duplicate, the opened email or zip's own row, or a row saying it could not be filed - whose file the client dropped inside a folder of their own in `Drop files here` (§1, *The layout*). It names that folder, below the inbox. A row written before decision 190 still ends its Reason with this sentence, and has an empty column. | Nothing. It is where the client had put it; use it when the row's name alone does not say enough. |
 | `router.UNMATCHED` | No request on this manifest accepted it. | File it to the right request, or add the request. |
@@ -1987,9 +1987,9 @@ copy that is not where the record put it:
 
 | The index says | In plain words | What you do |
 |---|---|---|
-| `filer.FILE_MOVED` | Every pass proves each working copy against the fingerprint its own row carries. This row's copy is not in the folder the record filed it into, and its bytes turned up somewhere else under `Prepared/` — somebody dragged it. The Reason names where it belongs and where it is now; the Prepared Location column still says where it *belongs*. Nothing was moved to find that out and nothing is moved because of it. | Open the app: put it back where it belongs, keep it where it is, or send it to review (decision 110's three buttons, coming). Until then, drag it back yourself and the next pass files it again. The request it left reads Missing meanwhile, and the client is never asked for it. |
+| `index.FILE_MOVED` | Every pass proves each working copy against the fingerprint its own row carries. This row's copy is not in the folder the record filed it into, and its bytes turned up somewhere else under `Prepared/` — somebody dragged it. The Reason names where it belongs and where it is now; the Prepared Location column still says where it *belongs*. Nothing was moved to find that out and nothing is moved because of it. | Open the app: put it back where it belongs, keep it where it is, or send it to review (decision 110's three buttons, coming). Until then, drag it back yourself and the next pass files it again. The request it left reads Missing meanwhile, and the client is never asked for it. |
 | `filer.REMADE_SENTENCE` | Said at the end of a row whose working copy was gone - deleted, trashed, lost from Drive's cache - with its bytes nowhere else under `Prepared/`, and was made again from the client's original, proved against the row's fingerprint (decision 157). By the pass, or by you with **Put It Back**. The request's status did not move. | Nothing. |
-| `filer.BOTH_GONE_SENTENCE` | The row is File Moved: its working copy is gone and so is the client's original, or the original holds a different file now (decision 157). Nothing could be made again; the request is held for you and the client is not asked. Said once. | Look for the original (the Shared Drive's trash, Drive's `lost_and_found`). Put it back in the client's folder for the year and the next pass makes the copy; if it is really gone, press **Mark … missing** on the row in the app, and the letter asks the client. Once marked, the row names no working copy and ends with `filer.MARKED_MISSING`. |
+| `index.BOTH_GONE_SENTENCE` | The row is File Moved: its working copy is gone and so is the client's original, or the original holds a different file now (decision 157). Nothing could be made again; the request is held for you and the client is not asked. Said once. | Look for the original (the Shared Drive's trash, Drive's `lost_and_found`). Put it back in the client's folder for the year and the next pass makes the copy; if it is really gone, press **Mark … missing** on the row in the app, and the letter asks the client. Once marked, the row names no working copy and ends with `index.MARKED_MISSING`. |
 | `filer.RETURNED_SENTENCE` | The row's own original came back into `Drop files here` - Drive undoing a move, or somebody dragging it back - and the pass moved it back to the place the row names, with no new row (decision 157). | Nothing. |
 
 ## 5. What the Validation Notes mean

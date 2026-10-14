@@ -1067,7 +1067,7 @@ def test_the_renderer_types_no_vocabulary_of_its_own():
     such as pages.js's menu id ``not_requested`` holds "requested" and puts
     no word on screen."""
     from tracker.api import _slug
-    from tracker.filer import DUPLICATE, FILE_MOVED, FILED, NEEDS_REVIEW, NOT_REQUESTED
+    from tracker.index import DUPLICATE, FILE_MOVED, FILED, NEEDS_REVIEW, NOT_REQUESTED
     from tracker.layout import INBOX_DIR_NAME
     from tracker.manifest import (
         ANY_EXTENSION,

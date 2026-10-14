@@ -17,9 +17,9 @@ import pytest
 from tests.conftest import make_engagement, seed_index
 from tests.samples import DEMO_ITEMS, SCRATCH_PEOPLE, YEAR, build_samples
 from tracker import store
-from tracker.filer import NEEDS_REVIEW, IndexEntry
+from tracker.index import NEEDS_REVIEW
 from tracker.manifest import EngagementInfo, RequestItem, load_engagement_info, save_rules
-from tracker.records import rule_from_json
+from tracker.records import IndexEntry, rule_from_json
 from tracker.registry import engagement_from
 from tracker.runner import SETTINGS_FLAG, main
 from tracker.scaffold import scaffold_engagement

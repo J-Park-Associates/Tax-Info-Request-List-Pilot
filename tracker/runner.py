@@ -187,11 +187,8 @@ from tracker import (
 from tracker.errlog import ERROR_LOG_BACKUPS, ERROR_LOG_FILENAME, error_log
 from tracker.filer import (
     HOUSEHOLD_NO_ROOM,
-    NEEDS_REVIEW,
     ROOM_PARKS,
-    ensure,
     file_household_drops,
-    read_index,
     refresh_household_readme,
     room_for,
     sweep_stranded_temps,
@@ -205,6 +202,7 @@ from tracker.households import (
     open_years,
     resolve_feeds,
 )
+from tracker.index import NEEDS_REVIEW, ensure, read_index
 from tracker.layout import (
     LayoutError,
     client_household_dir,
