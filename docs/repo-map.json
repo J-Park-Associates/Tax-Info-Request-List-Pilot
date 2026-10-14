@@ -16,8 +16,8 @@
   ],
   "counts": {
     "nodes": 344,
-    "edges": 1478,
-    "reused": 290
+    "edges": 1479,
+    "reused": 288
   },
   "node_types": [
     "artifact",
@@ -4707,7 +4707,7 @@
       "id": "docs/repo-map.curated.json",
       "type": "file",
       "layer": "docs",
-      "sha256": "0d34099d93a5d2c1",
+      "sha256": "13db7936efb8e28e",
       "lines": 1668,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
@@ -8303,15 +8303,21 @@
       "id": "tests/test_hold.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "47d3bf254febe043",
-      "lines": 69,
+      "sha256": "afd0142c2768b5cc",
+      "lines": 211,
       "exports": [
         "RE_EXPORTED",
+        "test_held_keeps_an_answer_for_the_hold_and_only_once_its_path_is_there",
+        "test_held_never_keeps_an_error",
+        "test_one_household_holds_a_path_only_once_it_is_there",
+        "test_one_household_lets_the_pass_write_its_records_and_the_store",
+        "test_one_household_never_holds_an_error",
+        "test_one_reading_holds_what_a_path_resolves_to_but_never_an_error",
         "test_the_hold_imports_nothing_of_the_package",
         "test_the_settings_re_export_is_the_holds_own"
       ],
       "role": "Holds tracker/hold.py to its layer and its facade: hold imports nothing of the package at load time or at call time, and settings imports it; every public name it defines but the type variable T is settings' same object, and settings offers no _HELD or _HOLDING. And the hold's own tests, which came with it.",
-      "notes": "SPEC-architecture-p2 R2.6.5. The identity test reads hold's own names off its source, so a name it only imports is not counted as its own, and it fails when the re-exported set and the names hold defines part ways."
+      "notes": "SPEC-architecture-p2 R2.6.5. The identity test reads hold's own names off its source, so a name it only imports is not counted as its own, and it fails when the re-exported set and the names hold defines part ways. The hold tests whose bodies name only moved names moved here from tests/test_settings.py, unchanged but for their reads, which are hold. where they were the settings module's (data_rules.), so P2.13 finds them reading the hold already: what a path resolves to in a reading and in a household, never an error held, a household letting the pass write, and held's own memo. The hold tests that also ask the settings module something of its own (data_home, app_dir, _read, set_firm) stay in tests/test_settings.py."
     },
     {
       "id": "tests/test_households.py",
@@ -10505,8 +10511,8 @@
       "id": "tests/test_settings.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "a3c1e775380b573c",
-      "lines": 1353,
+      "sha256": "0e112282a97b2b8e",
+      "lines": 1222,
       "exports": [
         "PACKAGE",
         "a_mac",
@@ -10550,17 +10556,11 @@
         "test_an_unredirected_data_folder_is_answered_as_before",
         "test_asking_where_the_data_home_is_creates_nothing",
         "test_beside_the_program_is_the_settings_folder_and_a_frozen_executables_own",
-        "test_held_keeps_an_answer_for_the_hold_and_only_once_its_path_is_there",
-        "test_held_never_keeps_an_error",
         "test_no_packages_folder_names_no_copy",
         "test_nothing_saved_means_the_schedule_defaults",
         "test_nothing_set_means_none_not_a_guess",
         "test_one_household_asks_the_data_folder_once_and_drops_it_after",
-        "test_one_household_holds_a_path_only_once_it_is_there",
-        "test_one_household_lets_the_pass_write_its_records_and_the_store",
-        "test_one_household_never_holds_an_error",
         "test_one_reading_asks_the_data_folder_once_and_outside_it_every_time",
-        "test_one_reading_holds_what_a_path_resolves_to_but_never_an_error",
         "test_one_reading_reads_the_settings_once_and_hands_each_caller_its_own_copy",
         "test_one_rule_says_what_lies_inside_the_app_folder",
         "test_only_a_fixed_disk_may_hold_the_program_the_schedule_runs",
@@ -15139,6 +15139,12 @@
       "from": "tests/test_gpu_pack.py",
       "to": "tools/gpu_pack.py",
       "type": "tests",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_hold.py",
+      "to": "pkg:pytest",
+      "type": "depends_on",
       "source": "derived"
     },
     {

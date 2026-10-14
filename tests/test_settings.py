@@ -901,29 +901,6 @@ def test_one_reading_reads_the_settings_once_and_hands_each_caller_its_own_copy(
     assert data_rules._read()["firm"] == "written meanwhile"
 
 
-def test_one_reading_holds_what_a_path_resolves_to_but_never_an_error(monkeypatch, tmp_path):
-    from pathlib import Path
-
-    calls, real = [], Path.resolve
-
-    def counted(self, strict=False):
-        calls.append(str(self))
-        if self.name == "refuses":
-            raise OSError("cannot be resolved")
-        return real(self, strict)
-
-    monkeypatch.setattr(Path, "resolve", counted)
-    with data_rules.one_reading():
-        for _ in range(3):
-            assert data_rules.resolved(tmp_path / "a") == real(tmp_path / "a")
-            with pytest.raises(OSError):
-                data_rules.resolved(tmp_path / "refuses")
-    assert calls.count(str(tmp_path / "a")) == 1
-    assert calls.count(str(tmp_path / "refuses")) == 3
-    data_rules.resolved(tmp_path / "a")
-    assert calls.count(str(tmp_path / "a")) == 2, "outside a reading nothing is held"
-
-
 def test_a_nested_reading_is_the_same_reading_and_ends_with_the_outer_one():
     with data_rules.one_reading():
         first = data_rules.app_dir()
@@ -968,14 +945,6 @@ def test_one_household_asks_the_data_folder_once_and_drops_it_after(monkeypatch,
         assert data_rules.data_home() == tmp_path / "elsewhere", "the next household asks again"
 
 
-def test_one_household_lets_the_pass_write_its_records_and_the_store():
-    """The pass writes the store and the records while it holds; the store
-    asks ``refuse_a_write_while_reading``, and only a read-only reply
-    refuses (P118's SHOULD-3 is the reading's)."""
-    with data_rules.one_household():
-        data_rules.refuse_a_write_while_reading("the store")
-
-
 def test_a_settings_write_inside_a_household_is_refused_and_never_undoes_a_save():
     """The review's SHOULD-3: every setter writes back what it read, which
     inside a household is the copy held since the household began, so a
@@ -988,52 +957,6 @@ def test_a_settings_write_inside_a_household_is_refused_and_never_undoes_a_save(
         with pytest.raises(RuntimeError, match="holds a household's answers"):
             data_rules.set_firm_phone("555-0100")
     assert json.loads(settings_path().read_text(encoding="utf-8")) == {"firm": "Saved by the app meanwhile"}
-
-
-def test_one_household_holds_a_path_only_once_it_is_there(monkeypatch, tmp_path):
-    """A folder the pass makes later is resolved again: a path resolves
-    differently once it exists (Windows gives the folder's own case, a link
-    is followed), and a store key from before it existed would be another
-    return's key."""
-    from pathlib import Path
-
-    calls, real = [], Path.resolve
-
-    def counted(self, strict=False):
-        calls.append(str(self))
-        return real(self, strict)
-
-    monkeypatch.setattr(Path, "resolve", counted)
-    later = tmp_path / "made later"
-    with data_rules.one_household():
-        for _ in range(3):
-            assert data_rules.resolved(tmp_path) == real(tmp_path)
-            assert data_rules.resolved(later) == real(later)
-        assert calls.count(str(tmp_path)) == 1, "a folder that is there is resolved once"
-        assert calls.count(str(later)) == 3, "a folder that is not there yet is never held"
-        later.mkdir()
-        data_rules.resolved(later)
-        data_rules.resolved(later)
-        assert calls.count(str(later)) == 4, "once it is there, it is held"
-
-
-def test_one_household_never_holds_an_error(monkeypatch, tmp_path):
-    from pathlib import Path
-
-    calls, real = [], Path.resolve
-
-    def refusing(self, strict=False):
-        calls.append(str(self))
-        if self.name == "refuses":
-            raise OSError("cannot be resolved")
-        return real(self, strict)
-
-    monkeypatch.setattr(Path, "resolve", refusing)
-    with data_rules.one_household():
-        for _ in range(3):
-            with pytest.raises(OSError):
-                data_rules.resolved(tmp_path / "refuses")
-    assert calls.count(str(tmp_path / "refuses")) == 3
 
 
 def test_a_household_inside_a_reading_is_the_reading_and_still_refuses_a_write():
@@ -1050,60 +973,6 @@ def test_a_household_inside_a_reading_is_the_reading_and_still_refuses_a_write()
             assert hold._HOLDING == data_rules.HOLD_HOUSEHOLD
         assert hold._HELD is not None
     assert hold._HELD is None and hold._HOLDING == ""
-
-
-# ----------------------------------------------- the one hold memo (P215) ----
-
-
-def test_held_keeps_an_answer_for_the_hold_and_only_once_its_path_is_there(tmp_path):
-    """P215: outside a hold every ask is answered afresh; inside a reading
-    the first answer stands; inside a household's hold an answer about a
-    folder is kept only once the folder is there, so a folder the pass makes
-    later is never answered from before it existed."""
-    asked = []
-
-    def answer():
-        asked.append(1)
-        return len(asked)
-
-    assert data_rules.held(("a question",), answer) == 1
-    assert data_rules.held(("a question",), answer) == 2            # nothing kept outside a hold
-    with data_rules.one_reading():
-        assert data_rules.held(("a question",), answer) == 3
-        assert data_rules.held(("a question",), answer) == 3
-    assert data_rules.held(("a question",), answer) == 4            # dropped with the hold
-
-    later = tmp_path / "made later"
-    asked.clear()
-    with data_rules.one_household():
-        assert data_rules.held(("about", str(later)), answer, there=later) == 1
-        assert data_rules.held(("about", str(later)), answer, there=later) == 2   # not there: asked again
-        later.mkdir()
-        assert data_rules.held(("about", str(later)), answer, there=later) == 3
-        assert data_rules.held(("about", str(later)), answer, there=later) == 3   # there: kept
-        assert data_rules.held(("no folder",), answer) == 4
-        assert data_rules.held(("no folder",), answer) == 4
-    with data_rules.one_reading():
-        gone = tmp_path / "never made"
-        assert data_rules.held(("about", str(gone)), answer, there=gone) == 5
-        assert data_rules.held(("about", str(gone)), answer, there=gone) == 5     # a reading keeps it
-
-
-def test_held_never_keeps_an_error():
-    calls = []
-
-    def failing():
-        calls.append(1)
-        if len(calls) == 1:
-            raise OSError("fabricated")
-        return "answered"
-
-    with data_rules.one_reading():
-        with pytest.raises(OSError):
-            data_rules.held(("flaky",), failing)
-        assert data_rules.held(("flaky",), failing) == "answered"
-        assert data_rules.held(("flaky",), failing) == "answered"
-    assert len(calls) == 2
 
 
 # ------------------------------------------------------ a Mac (SPEC-mac R1-R6) ----
