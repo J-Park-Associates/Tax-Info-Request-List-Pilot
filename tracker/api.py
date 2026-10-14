@@ -99,6 +99,7 @@ from tracker import (
     SAFEGUARDS,
     STANDING_RULES,
     after_install,
+    bounds,
     checkpoint,
     content_check,
     door,
@@ -2098,8 +2099,8 @@ def _vocab() -> dict:
             "minimums": {"expected_count": MIN_EXPECTED_COUNT, "min_size_kb": MIN_SIZE_KB_FLOOR},
             # And where they stop: the record's own bounds (decision 187),
             # so the page never offers a number the store's gate refuses.
-            "maximums": {"expected_count": records.MAX_EXPECTED_COUNT,
-                         "min_size_kb": records.MAX_SIZE_KB},
+            "maximums": {"expected_count": bounds.MAX_EXPECTED_COUNT,
+                         "min_size_kb": bounds.MAX_SIZE_KB},
             # The columns that are a yes/no pick rather than a box - so the
             # editor sends each back as the record holds it. The editor's
             # set-aside rows fold under ``set_aside`` (decision 200).
@@ -2198,7 +2199,7 @@ def _info_from_spec(spec: dict, *, carry: EngagementInfo | None = None,
         if typed:
             # The record's own date rule (decision 187): a real calendar date
             # in the years the store's gate admits, never one it refuses.
-            if records.date_problem(typed):
+            if bounds.date_problem(typed):
                 raise ManifestError(
                     f"{ENGAGEMENT_LABELS[key]} must be {ISO_DATE_HINT}, got {typed!r}"
                 )
@@ -5553,7 +5554,7 @@ def _cmd_set_root(argv: list[str]) -> dict:
     # the one-line text rule here, before the root is written: a refused
     # firm text writes nothing (P289). Blank stays allowed - it clears.
     for key, label in (("firm", FIRM_NAME_LABEL), ("phone", FIRM_PHONE_LABEL)):
-        if spec.get(key) is not None and (problem := records.text_problem(str(spec[key]))):
+        if spec.get(key) is not None and (problem := bounds.text_problem(str(spec[key]))):
             raise ManifestError(f"{label} {problem}")
     root = set_clients_root(str(spec.get("root", "")))
     if spec.get("firm") is not None:

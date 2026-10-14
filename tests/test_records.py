@@ -19,7 +19,7 @@ from pathlib import Path
 import pytest
 
 from tests.import_graph import import_edges
-from tracker import content_check, filer, manifest, records, router
+from tracker import bounds, content_check, filer, manifest, records, router
 from tracker.records import (
     CANDIDATE_SEP,
     ENGAGEMENT_FIELDS,
@@ -280,34 +280,36 @@ def test_the_also_answers_cell_reads_back_as_it_was_written():
 
 
 def test_a_count_past_its_bound_is_refused_by_one_phrase():
-    phrase = records.COUNT_BOUNDS.format(minimum=records.MIN_EXPECTED_COUNT,
-                                         maximum=records.MAX_EXPECTED_COUNT)
-    for refused in (10**20, "3", 0, records.MAX_EXPECTED_COUNT + 1, 2.5, True, float("inf"),
+    phrase = bounds.COUNT_BOUNDS.format(minimum=bounds.MIN_EXPECTED_COUNT,
+                                         maximum=bounds.MAX_EXPECTED_COUNT)
+    for refused in (10**20, "3", 0, bounds.MAX_EXPECTED_COUNT + 1, 2.5, True, float("inf"),
                     float("nan"), None):
-        assert records.count_problem(refused, records.MIN_EXPECTED_COUNT,
-                                     records.MAX_EXPECTED_COUNT) == phrase, refused
-    assert records.count_problem(3, records.MIN_EXPECTED_COUNT, records.MAX_EXPECTED_COUNT) == ""
-    assert records.count_problem(3.0, records.MIN_EXPECTED_COUNT, records.MAX_EXPECTED_COUNT) == ""
+        assert bounds.count_problem(refused, bounds.MIN_EXPECTED_COUNT,
+                                     bounds.MAX_EXPECTED_COUNT) == phrase, refused
+    assert bounds.count_problem(3, bounds.MIN_EXPECTED_COUNT, bounds.MAX_EXPECTED_COUNT) == ""
+    assert bounds.count_problem(3.0, bounds.MIN_EXPECTED_COUNT, bounds.MAX_EXPECTED_COUNT) == ""
     assert records.rule_row_problem({"expected_count": 10**20}) == f"'expected_count' {phrase}"
-    assert records.date_problem("2025-02-30") == records.DATE_BOUNDS
-    assert records.date_problem("13/45/2025") == records.DATE_BOUNDS
-    assert records.date_problem("2025-02-28") == ""
-    assert records.stamp_problem(12345) == records.STAMP_BOUNDS
-    assert records.stamp_problem("2025-02-28T10:00:00Z") == ""
-    assert records.digest_problem(5) == records.DIGEST_BOUNDS
-    assert records.digest_problem("a" * 64) == records.digest_problem("") == ""
-    assert records.text_problem("two\nlines") == records.TEXT_BOUNDS
-    assert records.text_problem("two\nlines", long=True) == ""
-    assert records.text_problem("nul\x00", long=True) == records.LONG_TEXT_BOUNDS
+    assert bounds.date_problem("2025-02-30") == bounds.DATE_BOUNDS
+    assert bounds.date_problem("13/45/2025") == bounds.DATE_BOUNDS
+    assert bounds.date_problem("2025-02-28") == ""
+    assert bounds.stamp_problem(12345) == bounds.STAMP_BOUNDS
+    assert bounds.stamp_problem("2025-02-28T10:00:00Z") == ""
+    assert bounds.digest_problem(5) == bounds.DIGEST_BOUNDS
+    assert bounds.digest_problem("a" * 64) == bounds.digest_problem("") == ""
+    assert bounds.text_problem("two\nlines") == bounds.TEXT_BOUNDS
+    assert bounds.text_problem("two\nlines", long=True) == ""
+    assert bounds.text_problem("nul\x00", long=True) == bounds.LONG_TEXT_BOUNDS
 
 
-def test_the_editors_checks_are_the_records_own_objects():
+def test_the_editors_checks_are_the_bounds_and_the_records_own_objects():
     """The editor re-exports each check it used to define: the same object,
-    not a copy, so the editor and the gate can never hold two rules."""
-    for name in ("YEAR_MIN", "YEAR_MAX", "YEAR_OUT_OF_RANGE", "WINDOWS_ILLEGAL_CHARS",
-                 "WINDOWS_ILLEGAL_CHARS_TEXT", "WINDOWS_RESERVED_NAMES", "WINDOWS_RESERVED_NAMES_TEXT",
-                 "is_reserved_name", "identifier_problem", "SHORT_TITLE_MAX", "short_title_problem",
-                 "Override", "MIN_EXPECTED_COUNT", "MIN_SIZE_KB_FLOOR"):
+    not a copy, so the editor and the gate can never hold two rules. The
+    bounds' are asked of bounds (P2.13), the Windows tables of records."""
+    for name in ("YEAR_MIN", "YEAR_MAX", "YEAR_OUT_OF_RANGE", "identifier_problem", "SHORT_TITLE_MAX",
+                 "short_title_problem", "Override", "MIN_EXPECTED_COUNT", "MIN_SIZE_KB_FLOOR"):
+        assert getattr(manifest, name) is getattr(bounds, name), name
+    for name in ("WINDOWS_ILLEGAL_CHARS", "WINDOWS_ILLEGAL_CHARS_TEXT", "WINDOWS_RESERVED_NAMES",
+                 "WINDOWS_RESERVED_NAMES_TEXT", "is_reserved_name"):
         assert getattr(manifest, name) is getattr(records, name), name
 
 
@@ -315,12 +317,12 @@ def test_a_files_own_name_is_refused_only_for_a_nul_or_its_length():
     """The review's M5: decision 104 files a POSIX name holding a control
     character, so a name, a key or a location a real file gave is held only
     to what no path can hold; a label a person types keeps the one-line rule."""
-    assert records.name_problem("w2\x01.pdf") == ""
-    assert records.name_problem("w2\x00.pdf") == records.NAME_BOUNDS
-    assert records.name_problem("x" * (records.TEXT_MAX + 1)) == records.NAME_BOUNDS
+    assert bounds.name_problem("w2\x01.pdf") == ""
+    assert bounds.name_problem("w2\x00.pdf") == bounds.NAME_BOUNDS
+    assert bounds.name_problem("x" * (bounds.TEXT_MAX + 1)) == bounds.NAME_BOUNDS
     assert records.entry_problem({"original_name": "w2\x01.pdf",
                                   "pbc_location": "../../../../Clients/H/2025/w2\x01.pdf"}) == ""
-    assert records.text_problem("w2\x01") == records.TEXT_BOUNDS
+    assert bounds.text_problem("w2\x01") == bounds.TEXT_BOUNDS
 
 
 def test_waits_for_round_trips_and_is_empty_on_every_other_row():
@@ -506,9 +508,9 @@ def test_a_stored_row_whose_document_hides_a_spoofing_character_is_a_fault_namin
     refused line is named by its field, as an identifier or a short name is;
     a Document that is not text is still the text rule's, never a crash."""
     spoof = "W-2\u202efdp.exe"
-    problem = records.document_problem(spoof)
+    problem = bounds.document_problem(spoof)
     assert records.rule_row_fault({"identifier": "A01", "document": spoof}) == ("document", problem)
     assert records.rule_row_problem({"document": spoof}) == f"'document' {problem}"
     assert records.rule_row_fault({"identifier": "A01", "document": "W-2\u00a0Wages"}) == ("", "")
     assert records.rule_row_fault({"identifier": "A01"}) == ("", "")
-    assert records.rule_row_fault({"document": 7}) == ("document", records.LONG_TEXT_BOUNDS)
+    assert records.rule_row_fault({"document": 7}) == ("document", bounds.LONG_TEXT_BOUNDS)

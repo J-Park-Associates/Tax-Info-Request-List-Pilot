@@ -105,8 +105,8 @@ decision 187). What this reader checks is what only the chain can say:
 the link, a line without one after a linked one, a newer format. What the
 three keys and a line's time *hold* - a link blank or a digest, a format
 this version writes, a writer that is a machine's name
-(``records.host_problem``), a time as :func:`stamp` writes it
-(``records.stamp_problem``) - is a value like every other value a line
+(``bounds.host_problem``), a time as :func:`stamp` writes it
+(``bounds.stamp_problem``) - is a value like every other value a line
 carries, and is held to its rule in one place: the store's admission
 (``store._refuse_a_malformed_line``), which :func:`tracker.store.record`
 runs on each line exactly as :func:`line_of` will write it, and every
@@ -577,7 +577,7 @@ class Event(TypedDict):
     prev: NotRequired[str]
     host: NotRequired[str]
     #: A whole number, which a line written by hand may spell ``1.0``
-    #: (``records.count_problem``).
+    #: (``bounds.count_problem``).
     fmt: NotRequired[int | float]
 
 

@@ -86,8 +86,8 @@ would say the new thing with confidence and lose the old. So:
   a line's time hold - a link blank or a digest, a format this version
   writes, a writer that is a machine's name, a time as the tracker writes
   it - is held to decision 187's value rule at the store's one admission,
-  like every other value a line carries (`records.host_problem`,
-  `records.stamp_problem`); `record()` admits each line exactly as it will
+  like every other value a line carries (`bounds.host_problem`,
+  `bounds.stamp_problem`); `record()` admits each line exactly as it will
   be written, writer included. Older lines without the three keys still
   read; the store's own version is unchanged.
 - **The checkpoint** (`record-heads.db`, `tracker/checkpoint.py`, its own

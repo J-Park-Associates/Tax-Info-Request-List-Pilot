@@ -192,6 +192,7 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path, PurePosixPath
 
 from tracker import containers, door, errors, ledger, ocr, reasons, store
+from tracker.bounds import typed_identifier_problem
 from tracker.content_check import (
     ContentCache,
     Judgment,
@@ -337,7 +338,6 @@ from tracker.records import (
     person_to_json,
     quoted,
     rule_to_json,
-    typed_identifier_problem,
 )
 from tracker.router import questions_for, read_once, route_file
 from tracker.scaffold import (

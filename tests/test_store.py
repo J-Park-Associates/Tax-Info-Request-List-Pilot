@@ -2800,6 +2800,10 @@ def test_a_new_engagement_is_admitted_by_construction(conn, root, by_hand):
 #: Pinned again under 5 when P2.4 moved the value rule's bounds to tracker.bounds:
 #: their keys follow the module, and a bound a function left in records also reads
 #: by name (TEXT_BOUNDS) is keyed by each. No digest changed.
+#: Pinned again under 5 when P2.13 pointed the store's reads at tracker.bounds:
+#: the keys follow the module (``records.MAX_STAGE`` is ``bounds.MAX_STAGE``, the
+#: same digest), and the two admission functions' digests moved only by
+#: ``records.`` becoming ``bounds.`` in their source. No rule changed.
 ADMISSION_PIN: dict[int, dict[str, str]] = {2: {
     "tracker.layout.CLIENTS": "3b8264d65abeec66",
     "tracker.layout.CLIENTS_TREE": "488530d6164e0dd6",
@@ -3623,6 +3627,7 @@ ADMISSION_PIN: dict[int, dict[str, str]] = {2: {
     "tracker.bounds.HOST_MAX": "a68b412c4282555f",
     "tracker.bounds.LONG_TEXT_BOUNDS": "3de4da1af0b30ef2",
     "tracker.bounds.LONG_TEXT_MAX": "876c9b16254e157d",
+    "tracker.bounds.MAX_STAGE": "19581e27de7ced00",
     "tracker.bounds.NAME_BOUNDS": "fab0c3e598d1038c",
     "tracker.bounds.NUMBER_BOUNDS": "d7d2f825d092e462",
     "tracker.bounds.SHORT_TITLE_MAX": "f5ca38f748a1d6ea",
@@ -3787,7 +3792,6 @@ ADMISSION_PIN: dict[int, dict[str, str]] = {2: {
     "tracker.records.MAX_ROW": "888df25ae3577242",
     "tracker.records.MAX_ROW_SIZE_KB": "02bfbb85ecfba2af",
     "tracker.records.MAX_SIZE_KB": "50b4b069390c1d79",
-    "tracker.records.MAX_STAGE": "19581e27de7ced00",
     "tracker.records.MIN_EXPECTED_COUNT": "6b86b273ff34fce1",
     "tracker.records.MIN_SIZE_KB_FLOOR": "5feceb66ffc86f38",
     "tracker.records.MIN_SPELLING_WORDS": "d4735e3a265e16ee",
@@ -3833,8 +3837,8 @@ ADMISSION_PIN: dict[int, dict[str, str]] = {2: {
     "tracker.store.REFUSED_CHANGE": "ab4d86d9b8b2fffa",
     "tracker.store.RULE_LIST_FIELDS": "8b3d25ca8662bd02",
     "tracker.store.UNKNOWN_EVENT": "099e89ceccd1e5e9",
-    "tracker.store._line_keys_problem": "0d6016b3dab0c236",
-    "tracker.store._refuse_a_malformed_line": "28600c2dd20afaa5",
+    "tracker.store._line_keys_problem": "5f41ce8742ce125e",
+    "tracker.store._refuse_a_malformed_line": "83e47f8c070bb97c",
 }}
 
 
@@ -5753,7 +5757,7 @@ def test_a_person_with_an_overlong_name_is_a_line_the_store_refuses(conn, root, 
 
 
 def test_an_identifier_hiding_a_spoofing_character_is_a_line_the_store_refuses(conn, root, by_hand):
-    """P290: the store's gate is ``records.identifier_problem``, so a stored
+    """P290: the store's gate is ``bounds.identifier_problem``, so a stored
     identifier that hides a right-to-left override or a zero-width joiner is
     refused by name."""
     build(conn, root, by_hand)

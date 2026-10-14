@@ -542,7 +542,7 @@ def set_firm(name: str) -> str:
     """Record the firm's name beside the clients root.
 
     Stripped and otherwise as typed: the API holds the text to the one-line
-    rule (``records.text_problem``) before it arrives here, because
+    rule (``bounds.text_problem``) before it arrives here, because
     ``settings`` imports nothing above ``layout`` and ``fsio``.
     """
     return _set_text(KEY_FIRM, name)

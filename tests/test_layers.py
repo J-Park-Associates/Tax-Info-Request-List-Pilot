@@ -42,11 +42,12 @@ makes, and the test below holds it to the pipe.
 **Rule 7, amended** (from the implementation plan's rules for every step):
 ``ledger`` and ``locking`` import nothing of the package but each other,
 and ``checkpoint`` (decision 159) imports nothing of the package at all;
-``manifest`` imports ``records`` and nothing else at load time, and
-reaches ``store``, ``ledger`` and ``locking`` at call time; ``runner``
-never imports ``scheduling`` or ``api``; the package's ``__init__`` imports
-nothing at load time (decision 99 removed thirteen re-exports no file
-consumed, and with them the one load-time cycle the map used to name).
+``manifest`` imports ``bounds`` and ``records`` and nothing else at load
+time, and reaches ``store``, ``ledger`` and ``locking`` at call time;
+``runner`` never imports ``scheduling`` or ``api``; the package's
+``__init__`` imports nothing at load time (decision 99 removed thirteen
+re-exports no file consumed, and with them the one load-time cycle the map
+used to name).
 
 The manifest's rule got *narrower* with decision 103 and kept that width
 with 104, which is worth saying: it used to import ``ledger`` and
@@ -87,8 +88,9 @@ about a folder: the check itself runs one layer up, in the filer's household
 pass, where the returns and their people lists are.
 
 ``store`` joins L1 with decision 101 and is deliberately narrower than its
-layer allows: it imports ``records``, ``ledger``, ``locking`` and (since
-decision 159) ``checkpoint``, and nothing else of the package, not even the in-layer ``manifest``.
+layer allows: it imports ``bounds`` (P321), ``records``, ``ledger``,
+``locking`` and (since decision 159) ``checkpoint``, and nothing else of
+the package, not even the in-layer ``manifest``.
 Everything it holds comes out of the journal, so the database that answers
 for the readers never depends on the modules that walk folders and move
 files; its command line imports the registry at call time, which is where
@@ -411,15 +413,16 @@ def test_the_checkpoint_imports_nothing_of_the_package():
     assert call.get("checkpoint", set()) <= {"page", "door"}, call["checkpoint"]
 
 
-def test_the_store_imports_only_the_record_the_journal_the_lock_and_the_checkpoint():
+def test_the_store_imports_only_the_bounds_the_record_the_journal_the_lock_and_the_checkpoint():
     """Decision 101: narrower than its layer, on purpose - the store must
     not depend on what opens a workbook, or it cannot replace it. Decision
-    159 adds the checkpoint, which is below it and imports nothing."""
+    159 adds the checkpoint, which is below it and imports nothing. P321
+    adds the bounds, which are L0 and read no file."""
     load, _ = import_edges()
-    assert load["store"] == {"checkpoint", "ledger", "locking", "records"}, load["store"]
+    assert load["store"] == {"bounds", "checkpoint", "ledger", "locking", "records"}, load["store"]
 
 
-def test_the_manifest_imports_the_record_and_nothing_else():
+def test_the_manifest_imports_the_bounds_and_the_record_and_nothing_else():
     """Narrower since decision 103, and kept so by 104.
 
     The manifest used to append to the journal and take the engagement
@@ -427,10 +430,10 @@ def test_the_manifest_imports_the_record_and_nothing_else():
     gave it the request list's writes, and they reach the store, the
     journal and the lock at call time - where an in-layer edge is allowed
     to close - so at load time it names the shapes it validates into and
-    nothing else.
+    the bounds it holds them to (P321), and nothing else.
     """
     load, call = import_edges()
-    assert load["manifest"] == {"records"}, load["manifest"]
+    assert load["manifest"] == {"bounds", "records"}, load["manifest"]
     assert {"store", "ledger", "locking"} <= call["manifest"], call["manifest"]
 
 

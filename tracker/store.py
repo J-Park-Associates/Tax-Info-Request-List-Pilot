@@ -163,13 +163,13 @@ under its own temporary folder so no test can leak rows into another, and
 a person on the command line asking a question of a copy. It is read on
 the first :func:`connect` and nowhere else.
 
-**What it imports, and why so little.** ``records``, ``ledger``,
-``locking`` and the standard library - nothing else of the package, at
-load time. Everything it holds comes out of the journal, so the store
-never depends on the modules that walk folders and move files;
-:func:`connect` reads :mod:`tracker.settings` at call time and the
-command line at the bottom imports the registry at call time to find the
-folders, which is where an edge is allowed to point the other way.
+**What it imports, and why so little.** ``bounds``, ``records``,
+``ledger``, ``locking``, ``checkpoint`` and the standard library - nothing
+else of the package, at load time. Everything it holds comes out of the
+journal, so the store never depends on the modules that walk folders and
+move files; :func:`connect` reads :mod:`tracker.settings` at call time and
+the command line at the bottom imports the registry at call time to find
+the folders, which is where an edge is allowed to point the other way.
 ``RequestItem`` is the manifest's own schema and deliberately stays there
 (:mod:`tracker.records` says why), so the rule columns are the one field
 list written out here - ``tests/test_store.py`` holds that list to the
@@ -203,7 +203,7 @@ from dataclasses import field as _default
 from pathlib import Path
 from typing import TypeVar, cast
 
-from tracker import checkpoint, ledger, records
+from tracker import bounds, checkpoint, ledger, records
 from tracker.locking import full_sync, is_this_host, lock_is_held
 from tracker.records import (
     BEHIND,
@@ -932,9 +932,9 @@ def _positional_root(folder: Path) -> Path | None:
     Either, asked as given, would fall back to the year folder - the very
     collision decision 134 removes. The review of decision 134 found both.
     :mod:`tracker.layout` is imported at call time because this module
-    imports ``records``, ``ledger`` and ``locking`` and nothing else at
-    load time (``tests/test_layers.py``); ``layout`` stays the one place
-    the shape is worded.
+    imports ``bounds``, ``records``, ``ledger``, ``locking`` and
+    ``checkpoint`` and nothing else at load time (``tests/test_layers.py``);
+    ``layout`` stays the one place the shape is worded.
     """
     from tracker import layout
     from tracker.settings import resolved
@@ -1710,19 +1710,19 @@ def _line_keys_problem(event: dict) -> str:
     problem, or ``""``: a link that is not blank or a digest, a format that
     is not one this version writes, and - on a line that carries a link or
     a writer - a writer that is not a machine's name
-    (``records.host_problem``). Part of the one admission
+    (``bounds.host_problem``). Part of the one admission
     (:func:`_refuse_a_malformed_line`), and asked by the checkpoint's
     judgment of a line before it trusts its writer (:func:`_judge`), so no
     line is judged this machine's or another's on a name the rule refuses.
     The link's *place* in the chain is the ledger reader's, which alone
     has the chain."""
-    if ledger.LINK_KEY in event and (problem := records.digest_problem(event[ledger.LINK_KEY])):
+    if ledger.LINK_KEY in event and (problem := bounds.digest_problem(event[ledger.LINK_KEY])):
         return f"carries {ledger.LINK_KEY!r} that {problem}"
     if ledger.FORMAT_KEY in event and (
-            problem := records.count_problem(event[ledger.FORMAT_KEY], 1, ledger.RECORD_FORMAT)):
+            problem := bounds.count_problem(event[ledger.FORMAT_KEY], 1, ledger.RECORD_FORMAT)):
         return f"carries {ledger.FORMAT_KEY!r} that {problem}"
     if (ledger.LINK_KEY in event or ledger.HOST_KEY in event) and (
-            problem := records.host_problem(event.get(ledger.HOST_KEY))):
+            problem := bounds.host_problem(event.get(ledger.HOST_KEY))):
         return f"carries {ledger.HOST_KEY!r} that {problem}"
     return ""
 
@@ -1788,7 +1788,7 @@ def _refuse_a_malformed_line(event: dict, seq: int, where: str, *, kind: str = K
 
     def a_place(field: str, location: object, *, writes: bool, what: str = "a step",
                 removes: bool = False) -> None:
-        if (problem := records.name_problem(location)):
+        if (problem := bounds.name_problem(location)):
             refuse(f"carries {what} whose {field!r} {problem}")
         if (code := layout.place_problem(where, str(location), writes=writes,
                                          removes=removes)) is not None:
@@ -1797,7 +1797,7 @@ def _refuse_a_malformed_line(event: dict, seq: int, where: str, *, kind: str = K
     def a_segment(field: str, label: object) -> None:
         if label in (None, ""):
             return
-        if (problem := records.text_problem(label)):
+        if (problem := bounds.text_problem(label)):
             refuse(f"carries {field!r} that {problem}")
         if (code := layout.segment_problem(str(label))) is not None:
             refuse(f"carries {field!r} that is not one folder name ({code})")
@@ -1832,7 +1832,7 @@ def _refuse_a_malformed_line(event: dict, seq: int, where: str, *, kind: str = K
             if part.strip():
                 a_place("also_filed", part.strip(), writes=False, what="a row")
 
-    if ledger.AT_KEY in event and (problem := records.stamp_problem(event[ledger.AT_KEY])):
+    if ledger.AT_KEY in event and (problem := bounds.stamp_problem(event[ledger.AT_KEY])):
         refuse(f"carries {ledger.AT_KEY!r} that {problem}")
     # A person's word that a folder's name is accepted (decision 188): on
     # the two events that name a household or a return, with the one value.
@@ -1860,7 +1860,7 @@ def _refuse_a_malformed_line(event: dict, seq: int, where: str, *, kind: str = K
         if removed is not None and not isinstance(removed, list):
             refuse(f"carries {ledger.REMOVED_KEY!r} that is not a list")
         for identifier in removed or []:
-            if records.text_problem(identifier):
+            if bounds.text_problem(identifier):
                 refuse("names a removed identifier that is not one line of text")
         info = event.get(ledger.INFO_KEY)
         if info is not None and not isinstance(info, dict):
@@ -1887,12 +1887,12 @@ def _refuse_a_malformed_line(event: dict, seq: int, where: str, *, kind: str = K
         key = event.get(ledger.KEY_KEY)
         if not isinstance(key, str) or not key:
             refuse(f"carries no {ledger.KEY_KEY!r}")
-        if problem := records.name_problem(key):
+        if problem := bounds.name_problem(key):
             refuse(f"carries {ledger.KEY_KEY!r} that {problem}")
         if not isinstance(event.get(ledger.ROW_KEY), dict):
             refuse(f"carries {ledger.ROW_KEY!r} that is not a row")
         leaving = event.get(ledger.WAS_KEY)
-        if leaving is not None and records.name_problem(leaving):
+        if leaving is not None and bounds.name_problem(leaving):
             refuse(f"carries {ledger.WAS_KEY!r} that is not a location")
         a_row(event[ledger.ROW_KEY])
     elif name == ledger.SCANNED:
@@ -1900,7 +1900,7 @@ def _refuse_a_malformed_line(event: dict, seq: int, where: str, *, kind: str = K
         if statuses is not None and not isinstance(statuses, dict):
             refuse(f"carries {ledger.STATUSES_KEY!r} that is not a mapping")
         for identifier, stored in (statuses or {}).items():
-            if records.text_problem(identifier):
+            if bounds.text_problem(identifier):
                 refuse("carries a status for an identifier that is not one line of text")
             if not isinstance(stored, dict):
                 refuse("carries a status that is not a mapping")
@@ -1920,7 +1920,7 @@ def _refuse_a_malformed_line(event: dict, seq: int, where: str, *, kind: str = K
         if kind == KIND_HOUSEHOLD:
             refuse("in a household's record, which has no steps")
         key = event.get(ledger.KEY_KEY)
-        if key is not None and records.name_problem(key):
+        if key is not None and bounds.name_problem(key):
             refuse(f"carries {ledger.KEY_KEY!r} that is not one line of text")
         ops = event.get(ledger.OPS_KEY)
         if not isinstance(ops, list):
@@ -1937,7 +1937,7 @@ def _refuse_a_malformed_line(event: dict, seq: int, where: str, *, kind: str = K
                 refuse(f"carries a {step} with no {ledger.TO_KEY!r}")
             if not isinstance(op.get(ledger.DIGEST_KEY, ""), str):
                 refuse(f"carries a {step} whose {ledger.DIGEST_KEY!r} is not text")
-            if problem := records.digest_problem(op.get(ledger.DIGEST_KEY, "")):
+            if problem := bounds.digest_problem(op.get(ledger.DIGEST_KEY, "")):
                 refuse(f"carries a {step} whose {ledger.DIGEST_KEY!r} {problem}")
             named = (ledger.FROM_KEY,) if step == ledger.OP_REMOVE else (ledger.FROM_KEY, ledger.TO_KEY)
             for field, (location, writes) in zip(named, ledger.op_ends(op), strict=True):
@@ -1948,7 +1948,7 @@ def _refuse_a_malformed_line(event: dict, seq: int, where: str, *, kind: str = K
         if isinstance(row, dict):
             a_row(row)
         leaving = event.get(ledger.WAS_KEY)
-        if leaving is not None and records.name_problem(leaving):
+        if leaving is not None and bounds.name_problem(leaving):
             refuse(f"carries {ledger.WAS_KEY!r} that is not a location")
         also = event.get(ledger.ALSO_KEY)
         if also is not None and not isinstance(also, list):
@@ -1960,7 +1960,7 @@ def _refuse_a_malformed_line(event: dict, seq: int, where: str, *, kind: str = K
                 refuse(f"carries {ledger.ALSO_KEY!r} holding something that is not an event")
             _refuse_a_malformed_line(one, seq, where, kind=kind, written=written)
         reason = event.get(ledger.REASON_KEY)
-        if reason is not None and records.text_problem(reason, long=True):
+        if reason is not None and bounds.text_problem(reason, long=True):
             refuse(f"carries {ledger.REASON_KEY!r} that is not text")
         # Decision 129's intent carried the events it would write into
         # another return's record. Decision 132 retired that: nothing ever
@@ -1972,7 +1972,7 @@ def _refuse_a_malformed_line(event: dict, seq: int, where: str, *, kind: str = K
                    f"version that began it")
     elif name == ledger.MOVE_ABANDONED:
         key = event.get(ledger.KEY_KEY)
-        if not isinstance(key, str) or not key or records.name_problem(key):
+        if not isinstance(key, str) or not key or bounds.name_problem(key):
             refuse(f"carries no {ledger.KEY_KEY!r}")
     elif name == ledger.RELEASED:
         # A release names the row it takes out and says where it went -
@@ -1981,7 +1981,7 @@ def _refuse_a_malformed_line(event: dict, seq: int, where: str, *, kind: str = K
             refuse(f"carries no {ledger.KEY_KEY!r}")
         if ledger.ROW_KEY in event:
             refuse(f"carries {ledger.ROW_KEY!r}; a release carries no row")
-        if records.text_problem(event.get(ledger.REASON_KEY, ""), long=True):
+        if bounds.text_problem(event.get(ledger.REASON_KEY, ""), long=True):
             refuse(f"carries {ledger.REASON_KEY!r} that is not text")
     elif name in (ledger.KEYWORD_LEARNED, ledger.KEYWORD_UNLEARNED):
         for key in (ledger.IDENTIFIER_KEY, ledger.KEYWORD_KEY):
@@ -1990,7 +1990,7 @@ def _refuse_a_malformed_line(event: dict, seq: int, where: str, *, kind: str = K
                 refuse(f"carries {key!r} that is not text")
             if not value:
                 refuse(f"carries a blank {key!r}")
-            if problem := records.text_problem(value):
+            if problem := bounds.text_problem(value):
                 refuse(f"carries {key!r} that {problem}")
     elif name in (ledger.DRAFTED, ledger.DRAFT_APPROVED):
         # A week's draft (decision 118): what was asked and held, the file,
@@ -1998,13 +1998,13 @@ def _refuse_a_malformed_line(event: dict, seq: int, where: str, *, kind: str = K
         # on an approval, the fingerprint of the letter approved (decision
         # 190), which the pass compares.
         for key in (ledger.ASKED_KEY, ledger.HELD_KEY):
-            if key in event and (problem := records.text_list_problem(event[key])):
+            if key in event and (problem := bounds.text_list_problem(event[key])):
                 refuse(f"carries {key!r} that {problem}")
         for key in (ledger.FILE_KEY, ledger.FINGERPRINT_KEY, ledger.TEXT_FINGERPRINT_KEY):
-            if key in event and (problem := records.text_problem(event[key])):
+            if key in event and (problem := bounds.text_problem(event[key])):
                 refuse(f"carries {key!r} that {problem}")
         if event.get(ledger.STAGE_KEY) is not None and (
-                problem := records.count_problem(event[ledger.STAGE_KEY], 0, records.MAX_STAGE)):
+                problem := bounds.count_problem(event[ledger.STAGE_KEY], 0, bounds.MAX_STAGE)):
             refuse(f"carries {ledger.STAGE_KEY!r} that {problem}")
     elif name == ledger.HOUSEHOLD_CHANGED:
         # The household's details travel exactly as a return's do, so the
@@ -2650,8 +2650,8 @@ def _drop_the_checkpoint() -> None:
     try:
         held.close()
     except checkpoint.CheckpointError as exc:
-        # At call time: the store imports only the record, the journal,
-        # the lock and the checkpoint at load.
+        # At call time: the store imports only the bounds, the record, the
+        # journal, the lock and the checkpoint at load.
         from tracker import errors
 
         log.warning("Could not close the record checkpoint (%s)", errors.error_class(exc))
@@ -3597,9 +3597,9 @@ def export(conn: sqlite3.Connection, out_dir: Path | str) -> list[Path]:
 def _write_csv(path: Path, header: list[str], rows) -> None:
     """One spreadsheet, whole or not written (decision 155): through the
     one atomic replacement, flushed before it takes the name. Reached at
-    call time - the store imports the record, the journal and the lock and
-    nothing else at load time (decision 101), and this is the one file it
-    writes that is not the database."""
+    call time - the store imports the bounds, the record, the journal, the
+    lock and the checkpoint and nothing else at load time (decision 101,
+    P321), and this is the one file it writes that is not the database."""
     from tracker.fsio import atomic_replacement
 
     with atomic_replacement(path) as temp:
@@ -3702,8 +3702,8 @@ def _described(payload: str | None) -> tuple[str, str, str]:
     # time fails its rule shows neither: the two are judged together.
     if host is None:
         return (name if name in ledger.EVENTS else "(unknown event)",
-                at if not records.stamp_problem(at) else "?", "")
-    written = not records.stamp_problem(at) and not records.host_problem(host)
+                at if not bounds.stamp_problem(at) else "?", "")
+    written = not bounds.stamp_problem(at) and not bounds.host_problem(host)
     return (name if name in ledger.EVENTS else "(unknown event)",
             at if written else "?", host if written else "?")
 

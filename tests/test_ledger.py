@@ -23,7 +23,7 @@ import pytest
 
 from tests.builders import drop, engagement_fixture
 from tests.conftest import make_engagement, sort
-from tracker import ledger, records, store
+from tracker import bounds, ledger, store
 from tracker.filer import (
     ASSIGNED_BY_PERSON,
     FILED,
@@ -969,7 +969,7 @@ def _a_linked_line(bare, **changed):
 @pytest.mark.parametrize("changed, field", [
     ({ledger.HOST_KEY: "PLANTED/Fabricated-Name.pdf"}, ledger.HOST_KEY),
     ({ledger.HOST_KEY: "office\u202epc"}, ledger.HOST_KEY),
-    ({ledger.HOST_KEY: "x" * (records.HOST_MAX + 1)}, ledger.HOST_KEY),
+    ({ledger.HOST_KEY: "x" * (bounds.HOST_MAX + 1)}, ledger.HOST_KEY),
     ({ledger.HOST_KEY: ""}, ledger.HOST_KEY),
     ({ledger.AT_KEY: "Fabricated Client, SSN 000-00-0000"}, ledger.AT_KEY),
     ({ledger.FORMAT_KEY: "1"}, ledger.FORMAT_KEY),
@@ -977,8 +977,8 @@ def _a_linked_line(bare, **changed):
         "a-format-that-is-not-a-number"])
 def test_a_linked_lines_writer_and_time_are_held_to_the_gates_rule(bare, tmp_path, changed, field):
     """The review's S5 and N4, carried onto decision 187: a writer and a
-    time are values, held to their one rule (``records.host_problem``,
-    ``records.stamp_problem``) at the store's one admission - by the field
+    time are values, held to their one rule (``bounds.host_problem``,
+    ``bounds.stamp_problem``) at the store's one admission - by the field
     and the class, never the value. The ledger's reader reads the line:
     only its place in the chain is the reader's to judge."""
     _a_linked_line(bare, **changed)

@@ -56,8 +56,8 @@ the schema and the validation is the one that must own the two writes,
 or the rows in the journal would be shaped by somebody else. It reaches
 ``store``, ``ledger`` and ``locking`` at call time - an in-layer edge,
 closed where an edge is allowed to close (``tests/test_layers.py``) - and
-imports :mod:`tracker.records` and nothing else of the package at load
-time.
+imports :mod:`tracker.bounds` and :mod:`tracker.records` and nothing else
+of the package at load time.
 
 ``row`` is the request's 1-based position in the list. It is part of the
 rule: a row inserted in the middle moves every row below it, and those
@@ -80,10 +80,11 @@ edits, not a record of what the machine decided.
 bounds and refusals a person's list is held to - the identifier and short
 title rules, the Windows character and device-name tables, the override
 values, the years, the two numbers' bounds and the Date Pattern's shape -
-live in :mod:`tracker.records` beside the new bounds the store's gate holds
-every record line to, so the editor never writes what the gate would
-refuse. This module re-exports each name it used to define; they are the
-records' own objects.
+live in :mod:`tracker.bounds` (:mod:`tracker.records` until P2.4; the
+Windows tables in :mod:`tracker.layout` since decision 188) beside the new
+bounds the store's gate holds every record line to, so the editor never
+writes what the gate would refuse. This module re-exports each name it
+used to define; each is the same object, not a copy.
 """
 
 from __future__ import annotations
@@ -96,36 +97,44 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, replace
 from pathlib import Path
 
+# The value rule's bounds (decision 187), tracker/bounds.py's since P2.4: the
+# editor holds a person's values to the ones the store's gate holds a line to.
+from tracker.bounds import (
+    COUNT_BOUNDS,
+    MAX_EXPECTED_COUNT,
+    MAX_SIZE_KB,
+    MIN_EXPECTED_COUNT,
+    MIN_SIZE_KB_FLOOR,
+    SHORT_TITLE_MAX,
+    YEAR_MAX,
+    YEAR_MIN,
+    YEAR_OUT_OF_RANGE,
+    Override,
+    count_problem,
+    date_pattern_problem,
+    document_problem,
+    identifier_problem,
+    short_title_problem,  # noqa: F401 - the editor's name for the record's check
+    typed_identifier_problem,
+    typed_short_title_problem,
+)
+
 # The records this module reads and writes live in tracker/records.py
 # (decision 100): they are the shapes, this is the list. An in-layer
 # import, and the only one that way round - nothing in records imports
 # the manifest.
 from tracker.records import (
     COL_IDENTIFIER,
-    COUNT_BOUNDS,
-    MAX_EXPECTED_COUNT,
-    MAX_SIZE_KB,
-    MIN_EXPECTED_COUNT,
-    MIN_SIZE_KB_FLOOR,
     NO,
     RULE_FIELDS,
-    SHORT_TITLE_MAX,
     WINDOWS_ILLEGAL_CHARS,
     WINDOWS_ILLEGAL_CHARS_TEXT,  # noqa: F401
     WINDOWS_RESERVED_NAMES,  # noqa: F401
     WINDOWS_RESERVED_NAMES_TEXT,  # noqa: F401
-    YEAR_MAX,
-    YEAR_MIN,
-    YEAR_OUT_OF_RANGE,
     YES,
     EngagementInfo,
-    Override,
     StatusUpdate,
-    count_problem,
-    date_pattern_problem,
-    document_problem,
     identifier_key,
-    identifier_problem,
     info_to_json,
     invisible_problem,
     is_reserved_name,  # noqa: F401
@@ -134,10 +143,7 @@ from tracker.records import (
     rule_from_json,
     rule_row_fault,
     rule_to_json,
-    short_title_problem,  # noqa: F401 - the editor's name for the record's check
     split_codes,
-    typed_identifier_problem,
-    typed_short_title_problem,
 )
 
 # ---------------------------------------------------------------- schema ----
@@ -954,7 +960,7 @@ def _whole_number(value: object, default: int, minimum: int, maximum: int, colum
                   where: str) -> int:
     """A count or a size from a typed value: blank is the default, anything
     else a whole number from ``minimum`` to ``maximum``, refused with the
-    row, the column and the record's own bounds (``records.COUNT_BOUNDS``,
+    row, the column and the record's own bounds (``bounds.COUNT_BOUNDS``,
     decision 187) - never with the value, which the person has in front of
     them."""
     text = "" if value is None else str(value).strip()
@@ -1209,7 +1215,7 @@ def validated(
     (:func:`identifier_problem`), no two the same without case (a Windows
     file name is not case-sensitive); a document on every row; the two
     numbers within the record's bounds; ``NO_DATE_CHECK`` made blank, a typed
-    pattern held to the record's shape rule (``records.date_pattern_problem``), and a blank one derived from the Period with
+    pattern held to the record's shape rule (``bounds.date_pattern_problem``), and a blank one derived from the Period with
     ``date_pattern_derived`` set; the override folded to its one spelling
     and its reason read against it (:func:`_override_reason`: required
     with ``Override.ACCEPTED``, never the word :data:`OVERRIDE_REASON_OTHER`,

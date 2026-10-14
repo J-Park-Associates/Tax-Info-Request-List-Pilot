@@ -90,6 +90,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from tracker import errors, ledger, review
+from tracker.bounds import host_problem, stamp_problem
 from tracker.filer import FilingError
 from tracker.fsio import write_text_atomically
 from tracker.index import (
@@ -154,8 +155,6 @@ from tracker.records import (
     UNKNOWN,
     YES,
     IndexEntry,
-    host_problem,
-    stamp_problem,
 )
 
 log = logging.getLogger("tracker.view")

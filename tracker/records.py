@@ -32,9 +32,9 @@ character and device rule and the value rule's bounds
 (``tests/test_layers.py`` pins that; decision 188 moved that rule down to
 :mod:`tracker.layout`, which reads no file, and P2.4 moved the bounds to
 :mod:`tracker.bounds`, which reads none either), so every layer above may
-name a record without reaching for the module that produces it. :mod:`tracker.manifest` imports it, which is an
-in-layer edge and allowed; nothing here imports the manifest, so the edge
-cannot become a cycle.
+name a record without reaching for the module that produces it.
+:mod:`tracker.manifest` imports it, which is an in-layer edge and allowed;
+nothing here imports the manifest, so the edge cannot become a cycle.
 
 **``RequestItem`` stays in the manifest.** It is not a record of what the
 machine decided - it is the *schema* of the list a person edits, made
@@ -76,56 +76,17 @@ from pathlib import Path
 
 from tracker.bounds import (
     BLANK_BOUNDS,
-    COUNT_BOUNDS,  # noqa: F401 - re-exported until P2.13
-    DATE_BOUNDS,  # noqa: F401 - re-exported until P2.13
-    DATE_PATTERN_ALTERNATES,  # noqa: F401 - re-exported until P2.13
-    DATE_PATTERN_BOUND_MAX,  # noqa: F401 - re-exported until P2.13
-    DATE_PATTERN_COST_MAX,  # noqa: F401 - re-exported until P2.13
-    DATE_PATTERN_MAX,  # noqa: F401 - re-exported until P2.13
-    DATE_PATTERN_NESTED,  # noqa: F401 - re-exported until P2.13
-    DATE_PATTERN_NOT_A_REGEX,  # noqa: F401 - re-exported until P2.13
-    DATE_PATTERN_OPEN_MAX,  # noqa: F401 - re-exported until P2.13
-    DATE_PATTERN_OPEN_WIDTH,  # noqa: F401 - re-exported until P2.13
-    DATE_PATTERN_REFERS_BACK,  # noqa: F401 - re-exported until P2.13
-    DATE_PATTERN_REPEATS_MAX,  # noqa: F401 - re-exported until P2.13
-    DATE_PATTERN_TOO_COSTLY,  # noqa: F401 - re-exported until P2.13
-    DATE_PATTERN_TOO_LONG,  # noqa: F401 - re-exported until P2.13
-    DATE_PATTERN_TOO_MANY,  # noqa: F401 - re-exported until P2.13
-    DATE_PATTERN_TOO_MANY_OPTIONAL,  # noqa: F401 - re-exported until P2.13
-    DATE_PATTERN_TOO_MANY_WAYS,  # noqa: F401 - re-exported until P2.13
-    DATE_PATTERN_TOO_OPEN,  # noqa: F401 - re-exported until P2.13
-    DATE_PATTERN_TOO_WIDE,  # noqa: F401 - re-exported until P2.13
-    DATE_PATTERN_VARIABLE_MAX,  # noqa: F401 - re-exported until P2.13
-    DATE_PATTERN_WAYS_MAX,  # noqa: F401 - re-exported until P2.13
-    DATE_YEAR_MAX,  # noqa: F401 - re-exported until P2.13
-    DATE_YEAR_MIN,  # noqa: F401 - re-exported until P2.13
-    DIGEST_BOUNDS,  # noqa: F401 - re-exported until P2.13
-    FLAG_BOUNDS,  # noqa: F401 - re-exported until P2.13
-    HOST_BOUNDS,  # noqa: F401 - re-exported until P2.13
-    HOST_MAX,  # noqa: F401 - re-exported until P2.13
-    IDENTIFIER_MAX_CHARS,  # noqa: F401 - re-exported until P2.13
-    LONG_TEXT_BOUNDS,  # noqa: F401 - re-exported until P2.13
-    LONG_TEXT_MAX,  # noqa: F401 - re-exported until P2.13
     MAX_EXPECTED_COUNT,
     MAX_FILE_COUNT,
     MAX_ROW,
     MAX_ROW_SIZE_KB,
     MAX_SIZE_KB,
-    MAX_STAGE,  # noqa: F401 - re-exported until P2.13
     MIN_EXPECTED_COUNT,
     MIN_SIZE_KB_FLOOR,
-    NAME_BOUNDS,  # noqa: F401 - re-exported until P2.13
-    NUMBER_BOUNDS,  # noqa: F401 - re-exported until P2.13
     OVERRIDE_BOUNDS,
-    SHORT_TITLE_MAX,  # noqa: F401 - re-exported until P2.13
-    STAMP_BOUNDS,  # noqa: F401 - re-exported until P2.13
-    STAMP_YEAR_MIN,  # noqa: F401 - re-exported until P2.13
     TEXT_BOUNDS,
-    TEXT_LIST_BOUNDS,  # noqa: F401 - re-exported until P2.13
-    TEXT_MAX,  # noqa: F401 - re-exported until P2.13
     YEAR_MAX,
     YEAR_MIN,
-    YEAR_OUT_OF_RANGE,  # noqa: F401 - re-exported until P2.13
     Override,
     _field,
     _first,
@@ -135,17 +96,13 @@ from tracker.bounds import (
     digest_problem,
     document_problem,
     flag_problem,
-    host_problem,  # noqa: F401 - re-exported until P2.13
     identifier_problem,
     name_problem,
     number_problem,
     received_problem,
     short_title_problem,
-    stamp_problem,  # noqa: F401 - re-exported until P2.13
     text_list_problem,
     text_problem,
-    typed_identifier_problem,  # noqa: F401 - re-exported until P2.13
-    typed_short_title_problem,  # noqa: F401 - re-exported until P2.13
 )
 from tracker.layout import (  # noqa: F401 - re-exported: the record's names since decision 137
     WINDOWS_ILLEGAL_CHARS,

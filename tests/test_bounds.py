@@ -2,41 +2,24 @@
 
 The claims are the module's whole debt. The bounds reach for nothing in the
 package but the layout's name rule, at load time or at call time, and for
-no file. Records, which held them until P2.4, still offers every public
-name, and each is the very object defined here - the same object, not a
-copy - so the editor, the store's gate and every reader that still asks the
-record are holding one rule until P2.13 points them here. And the value
-rule's tests came with it: each moved from ``tests/test_records.py``
-unchanged but for its imports, except the three that read the Date Pattern
-analyser's privates, which are read here now because records does not
-re-export them.
+no file. Records, which held them until P2.4, offered every public name,
+each the very object defined here - the same object, not a copy - so the
+editor, the store's gate and every reader that still asked the record held
+one rule until P2.13 pointed them here. And the value rule's tests came
+with it: each moved from ``tests/test_records.py`` unchanged but for its
+imports, except the three that read the Date Pattern analyser's privates,
+which read bounds from the start because records never re-exported them.
+Since P2.13 the others read ``bounds.`` where they read ``records.``.
 """
 
 from __future__ import annotations
 
-import ast
 from pathlib import Path
 
 import pytest
 
 from tests.import_graph import import_edges
-from tracker import bounds, ledger, manifest, records
-
-
-def _public_names() -> list[str]:
-    """The names bounds binds itself, at module level, without an underscore:
-    read off its source, so a name it only imports (the layout's) is not
-    counted as its own."""
-    tree = ast.parse(Path(bounds.__file__).read_text(encoding="utf-8"))
-    names: list[str] = []
-    for node in tree.body:
-        if isinstance(node, (ast.FunctionDef, ast.ClassDef)):
-            names.append(node.name)
-        elif isinstance(node, ast.Assign):
-            names += [one.id for target in node.targets for one in ast.walk(target) if isinstance(one, ast.Name)]
-        elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
-            names.append(node.target.id)
-    return [name for name in names if not name.startswith("_")]
+from tracker import bounds, ledger, manifest
 
 
 def test_the_bounds_import_nothing_of_the_package_but_the_layouts_name_rule():
@@ -49,18 +32,6 @@ def test_the_bounds_import_nothing_of_the_package_but_the_layouts_name_rule():
     assert load["bounds"] == {"layout"}, load["bounds"]
     assert call["bounds"] == set(), call["bounds"]
     assert "bounds" in load["records"], "the record's row checks read the bounds"
-
-
-def test_the_records_re_export_is_the_bounds_own():
-    """Every public name bounds defines resolves from records to this
-    module's object - the same object, so ``records.Override`` and
-    ``bounds.Override`` cannot be told apart, and a check asked through
-    either is the one rule. The facade goes in P2.13."""
-    public = _public_names()
-
-    assert {"Override", "YEAR_MIN", "date_pattern_problem", "text_problem"} <= set(public), public
-    for name in public:
-        assert getattr(records, name) is getattr(bounds, name), name
 
 
 def test_the_bounds_reach_no_file():
@@ -91,22 +62,22 @@ def test_a_nested_or_alternating_repetition_is_not_a_date_pattern():
     repetition, no alternation and no back-reference, at any depth; at most
     three of them, one open-ended, the rest at most twenty."""
     refused = {
-        r"(\d+)+x": records.DATE_PATTERN_NESTED,
-        r"(?:(?:\d{1,4}\s)*)x": records.DATE_PATTERN_NESTED,
-        r"(?:Dec|12)+": records.DATE_PATTERN_ALTERNATES,
-        r"(\d)(?:\1x)+": records.DATE_PATTERN_REFERS_BACK,
-        r"\d{1,2}\d{1,2}\d{1,2}\d{1,2}": records.DATE_PATTERN_TOO_MANY,
-        r"\d*-\d*": records.DATE_PATTERN_TOO_OPEN,
-        r"\d{0,21}": records.DATE_PATTERN_TOO_WIDE,
-        "x" * (records.DATE_PATTERN_MAX + 1): records.DATE_PATTERN_TOO_LONG,
-        "([unclosed": records.DATE_PATTERN_NOT_A_REGEX,
-        5: records.TEXT_BOUNDS,
+        r"(\d+)+x": bounds.DATE_PATTERN_NESTED,
+        r"(?:(?:\d{1,4}\s)*)x": bounds.DATE_PATTERN_NESTED,
+        r"(?:Dec|12)+": bounds.DATE_PATTERN_ALTERNATES,
+        r"(\d)(?:\1x)+": bounds.DATE_PATTERN_REFERS_BACK,
+        r"\d{1,2}\d{1,2}\d{1,2}\d{1,2}": bounds.DATE_PATTERN_TOO_MANY,
+        r"\d*-\d*": bounds.DATE_PATTERN_TOO_OPEN,
+        r"\d{0,21}": bounds.DATE_PATTERN_TOO_WIDE,
+        "x" * (bounds.DATE_PATTERN_MAX + 1): bounds.DATE_PATTERN_TOO_LONG,
+        "([unclosed": bounds.DATE_PATTERN_NOT_A_REGEX,
+        5: bounds.TEXT_BOUNDS,
     }
     for pattern, phrase in refused.items():
-        assert records.date_pattern_problem(pattern) == phrase, pattern
+        assert bounds.date_pattern_problem(pattern) == phrase, pattern
     for fine in [r"(?i)\b2025\b", r"\d+/\d{1,2}/2025", r"(?:Dec|12)\s?2025", r"0?1/[0-3]?[0-9]/2025",
                  r"(?:Dec|12)?\s?2025", r"\d{0,20}x\d{0,20}y"]:
-        assert records.date_pattern_problem(fine) == "", fine
+        assert bounds.date_pattern_problem(fine) == "", fine
 
 
 def test_every_derived_date_pattern_passes_the_shape_rule():
@@ -118,14 +89,14 @@ def test_every_derived_date_pattern_passes_the_shape_rule():
     for period in periods:
         pattern = manifest.derived_date_pattern(period)
         assert pattern, period
-        assert records.date_pattern_problem(pattern) == "", period
+        assert bounds.date_pattern_problem(pattern) == "", period
 
 
 def test_a_flag_is_true_false_zero_or_one_and_nothing_else():
     for fine in (True, False, 0, 1):
-        assert records.flag_problem(fine) == ""
+        assert bounds.flag_problem(fine) == ""
     for refused in ("no", "yes", "false", 2, 1.0, None, [], ""):
-        assert records.flag_problem(refused) == records.FLAG_BOUNDS, refused
+        assert bounds.flag_problem(refused) == bounds.FLAG_BOUNDS, refused
 
 
 def test_an_optional_chain_is_not_a_date_pattern():
@@ -134,22 +105,22 @@ def test_an_optional_chain_is_not_a_date_pattern():
     part repeats more than once, so every variable repetition counts -
     ``?`` included - for nesting and for the budget, and the ways one line
     may be tried are held to the measured 0.22 s case."""
-    assert records.date_pattern_problem(r"\d?" * 20 + "x") == records.DATE_PATTERN_TOO_MANY_OPTIONAL
-    assert records.date_pattern_problem(r"\d?" * 60 + "x") == records.DATE_PATTERN_TOO_MANY_OPTIONAL
-    assert records.date_pattern_problem(r"(?:\d?){20}x") == records.DATE_PATTERN_NESTED
-    assert records.date_pattern_problem(r"\d*\d{0,20}\d{0,20}\d?x") == records.DATE_PATTERN_TOO_MANY_WAYS
-    assert records.date_pattern_problem(r"\d?" * 8 + "x") == ""
-    assert records.date_pattern_problem(r"\d*\d{0,20}\d{0,20}x") == records.DATE_PATTERN_TOO_MANY_WAYS
-    assert records.DATE_PATTERN_VARIABLE_MAX == 8 and records.DATE_PATTERN_OPEN_MAX == 1
+    assert bounds.date_pattern_problem(r"\d?" * 20 + "x") == bounds.DATE_PATTERN_TOO_MANY_OPTIONAL
+    assert bounds.date_pattern_problem(r"\d?" * 60 + "x") == bounds.DATE_PATTERN_TOO_MANY_OPTIONAL
+    assert bounds.date_pattern_problem(r"(?:\d?){20}x") == bounds.DATE_PATTERN_NESTED
+    assert bounds.date_pattern_problem(r"\d*\d{0,20}\d{0,20}\d?x") == bounds.DATE_PATTERN_TOO_MANY_WAYS
+    assert bounds.date_pattern_problem(r"\d?" * 8 + "x") == ""
+    assert bounds.date_pattern_problem(r"\d*\d{0,20}\d{0,20}x") == bounds.DATE_PATTERN_TOO_MANY_WAYS
+    assert bounds.DATE_PATTERN_VARIABLE_MAX == 8 and bounds.DATE_PATTERN_OPEN_MAX == 1
 
 
 def test_a_stamp_is_the_one_form_the_ledger_writes_from_the_epoch():
     """The review's S1: ``ledger.stamp`` has only ever written one form, and
     Windows cannot give a time before 1970 its local day."""
-    assert records.stamp_problem(ledger.stamp()) == ""
+    assert bounds.stamp_problem(ledger.stamp()) == ""
     for refused in ("1900-01-01T00:00:00Z", "2025-W01-1", "20250101T000000", "2025-01-01T00:00:00",
                     "2025-01-01T00:00:00+00:00", 12345):
-        assert records.stamp_problem(refused) == records.STAMP_BOUNDS, refused
+        assert bounds.stamp_problem(refused) == bounds.STAMP_BOUNDS, refused
 
 
 #: The re-check's timing corpus (decision 187's review, M1a and M1b): each
@@ -171,8 +142,8 @@ def test_a_once_wrapped_alternation_is_counted(pattern):
     """Ways are counted through every repetition - a fixed ``{1}`` too - and
     an alternation's branches add, so no wrapping hides a chain, and the
     limit is the one measured on lines with no literal ending."""
-    assert records.date_pattern_problem(pattern) == records.DATE_PATTERN_TOO_MANY_WAYS
-    assert records.DATE_PATTERN_WAYS_MAX == 16_384
+    assert bounds.date_pattern_problem(pattern) == bounds.DATE_PATTERN_TOO_MANY_WAYS
+    assert bounds.DATE_PATTERN_WAYS_MAX == 16_384
 
 
 def test_an_optional_alternation_is_a_date_pattern():
@@ -183,8 +154,8 @@ def test_an_optional_alternation_is_a_date_pattern():
     for common in [r"(?:Dec|12)?", r"12/31/20\d\d", r"20(24|25)", r"Q[1-4]",
                    r"(0[1-9]|1[0-2])/\d{2}/\d{4}", r"Dec(ember)?\s+31", r"(?:Dec|12)?/31/2025",
                    r"(?:Q4|4th Quarter)?\s*2025", r"\d{1,2}/\d{1,2}/\d{2,4}"]:
-        assert records.date_pattern_problem(common) == "", common
-    assert records.date_pattern_problem(r"(?:Dec|12){0,2}") == records.DATE_PATTERN_ALTERNATES
+        assert bounds.date_pattern_problem(common) == "", common
+    assert bounds.date_pattern_problem(r"(?:Dec|12){0,2}") == bounds.DATE_PATTERN_ALTERNATES
 
 
 def test_every_period_form_derives_a_pattern_the_rule_admits():
@@ -225,8 +196,8 @@ def test_a_fixed_count_of_matching_is_counted_in_the_cost(pattern):
     """A pattern's cost is its ways times the widest match of its bounded
     parts - a fixed ``{n}`` and a lookaround included - and one over
     200,000 is refused."""
-    assert records.date_pattern_problem(pattern) == records.DATE_PATTERN_TOO_COSTLY
-    assert records.DATE_PATTERN_COST_MAX == 200_000
+    assert bounds.date_pattern_problem(pattern) == bounds.DATE_PATTERN_TOO_COSTLY
+    assert bounds.DATE_PATTERN_COST_MAX == 200_000
 
 
 def test_every_derived_and_common_pattern_is_within_the_cost():
@@ -264,7 +235,7 @@ def test_an_identifier_or_short_name_with_a_spoofing_character_is_refused_by_cod
     is the store's gate, so it asks the narrow rule (``layout.spoofing_problem``)
     and a no-break space or a soft hyphen an older paste left is admitted."""
     override, joiner = "\u202e", "\u200d"
-    for checker in (records.identifier_problem, records.short_title_problem):
+    for checker in (bounds.identifier_problem, bounds.short_title_problem):
         assert checker("W-2") == ""
         assert checker(f"W-2{override}") == (
             "may not contain an invisible character (U+202E RIGHT-TO-LEFT OVERRIDE)")
@@ -279,36 +250,36 @@ def test_a_document_with_a_spoofing_character_is_refused_by_code_point_and_a_pas
     store's gate reads it as it reads an identifier or a short name: only the
     spoofing characters, by code point, never quoted. A no-break space or a
     soft hyphen a paste left in an older Document is admitted."""
-    assert records.document_problem("W-2 Wage Statements") == ""
-    assert records.document_problem("") == ""
+    assert bounds.document_problem("W-2 Wage Statements") == ""
+    assert bounds.document_problem("") == ""
     for hidden, named in (("\u202e", "U+202E RIGHT-TO-LEFT OVERRIDE"),
                           ("\u200b", "U+200B ZERO WIDTH SPACE")):
-        said = records.document_problem(f"W-2 Wage Statements{hidden}fdp.exe")
+        said = bounds.document_problem(f"W-2 Wage Statements{hidden}fdp.exe")
         assert said == f"may not contain an invisible character ({named})"
         assert hidden not in said
-    assert records.document_problem("W-2\u00a0Wage\u00adStatements") == ""
+    assert bounds.document_problem("W-2\u00a0Wage\u00adStatements") == ""
 
 
 def test_what_a_person_types_is_held_to_the_full_invisible_character_rule():
     """P290: the no-break space and the soft hyphen that the gate admits are
     refused where a person types, by code point."""
-    for typed in (records.typed_identifier_problem, records.typed_short_title_problem):
+    for typed in (bounds.typed_identifier_problem, bounds.typed_short_title_problem):
         assert typed("W-2") == ""
-        assert typed("W\u202e-2") == records.identifier_problem("W\u202e-2")
+        assert typed("W\u202e-2") == bounds.identifier_problem("W\u202e-2")
         assert "U+00A0 NO-BREAK SPACE" in typed("A\u00a001")
         assert "U+00AD SOFT HYPHEN" in typed("W\u00adX")
     # The other rules come first, in the same words.
-    assert records.typed_short_title_problem("A" * 21) == records.short_title_problem("A" * 21)
+    assert bounds.typed_short_title_problem("A" * 21) == bounds.short_title_problem("A" * 21)
 
 
 def test_a_typed_identifier_longer_than_eighty_characters_is_refused_as_too_long():
     """P291: the typing limit is the typed check's, not the store's gate,
     which keeps the unbounded rule - a record's identifier is not re-judged
     by what a person may type."""
-    assert records.IDENTIFIER_MAX_CHARS == 80
-    assert records.typed_identifier_problem("A" * 80) == ""
-    assert records.typed_identifier_problem("A" * 81) == (
+    assert bounds.IDENTIFIER_MAX_CHARS == 80
+    assert bounds.typed_identifier_problem("A" * 80) == ""
+    assert bounds.typed_identifier_problem("A" * 81) == (
         "may have at most 80 characters, got 81 (it begins a file name)")
-    assert records.identifier_problem("A" * 200) == ""
+    assert bounds.identifier_problem("A" * 200) == ""
     # The other rules come first, in the same words.
-    assert records.typed_identifier_problem("A:" + "A" * 200) == records.identifier_problem("A:")
+    assert bounds.typed_identifier_problem("A:" + "A" * 200) == bounds.identifier_problem("A:")

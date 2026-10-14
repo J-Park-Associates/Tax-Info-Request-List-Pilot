@@ -24,6 +24,12 @@ from tests.samples import PRIOR_YEAR, text_pdf
 from tests.source_pins import py_function
 from tests.wording import title_case
 from tracker import layout, ledger, manifest, reasons, reminder, store, view
+from tracker.bounds import (
+    COUNT_BOUNDS,
+    MAX_EXPECTED_COUNT,
+    MAX_SIZE_KB,
+    MIN_EXPECTED_COUNT,
+)
 from tracker.filer import FILED, NEEDS_REVIEW, read_index
 from tracker.households import load_household_info
 from tracker.layout import PRIVATE_TREE, inbox_of, return_dir_for
@@ -39,15 +45,7 @@ from tracker.manifest import (
     load_manifest,
 )
 from tracker.names import propose_spellings
-from tracker.records import (
-    COUNT_BOUNDS,
-    ENGAGEMENT_LABELS,
-    MAX_EXPECTED_COUNT,
-    MAX_SIZE_KB,
-    MIN_EXPECTED_COUNT,
-    IndexEntry,
-    ledger_key,
-)
+from tracker.records import ENGAGEMENT_LABELS, IndexEntry, ledger_key
 from tracker.rollover import next_tax_year
 from tracker.runner import DRAFT_WEEKDAY, LOG_FILENAME, STATUS_PAGE_FILENAME, WEEKDAY_NAMES
 from tracker.scaffold import PREPARED_DIR_NAME, REVIEW_DIR_NAME
