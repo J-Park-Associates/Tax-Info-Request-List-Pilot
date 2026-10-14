@@ -201,7 +201,7 @@ from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass, fields
 from dataclasses import field as _default
 from pathlib import Path
-from typing import TypeVar, cast
+from typing import NoReturn, TypeVar, cast
 
 from tracker import bounds, checkpoint, ledger, records
 from tracker.locking import full_sync, is_this_host, lock_is_held
@@ -1782,7 +1782,7 @@ def _refuse_a_malformed_line(event: dict, seq: int, where: str, *, kind: str = K
     # unknown one is whatever the line said (security principle 7).
     known = name if name in ledger.EVENTS | ledger.RETIRED_EVENTS else UNKNOWN_EVENT
 
-    def refuse(problem: str) -> None:
+    def refuse(problem: str) -> NoReturn:
         if not written:
             raise StoreError(REFUSED_CHANGE.format(problem=problem))
         raise StoreError(MALFORMED_LINE.format(where=where, seq=seq, event=known, problem=problem))
@@ -2128,7 +2128,7 @@ def _apply(conn: sqlite3.Connection, engagement_id: int, events: list[dict], *, 
             was = event.get(ledger.WAS_KEY)
             if was:
                 seqs.pop(was, None)
-            seqs[event.get(ledger.KEY_KEY)] = seq
+            seqs[cast(str, event.get(ledger.KEY_KEY))] = seq
             # The decision this key was moving under is recorded now, so
             # there is nothing left to finish (decision 119).
             _close_intent(conn, engagement_id, event.get(ledger.KEY_KEY))
@@ -3873,7 +3873,8 @@ def verify(conn: sqlite3.Connection, held: sqlite3.Connection | None, root: Path
         vouched = checkpoint.vouched(held, key) if held is not None else None
         if vouched is not None:
             # The pass's own judgment, not a copy of it (the review's S3).
-            judged = _judge(vouched, checkpoint.intent(held, key), events, chain)
+            # held is not None: vouched came from it
+            judged = _judge(vouched, checkpoint.intent(cast(sqlite3.Connection, held), key), events, chain)
             if judged.kind == _SHORTER:
                 problems.append(f"{V_SHORTER}: {below(folder)} ({len(events)} of {judged.seq})")
             elif judged.kind == _REWRITTEN:
@@ -4083,8 +4084,9 @@ if __name__ == "__main__":
                 print(f"  kept the record as it is now in {done.record_copy}")
             if done.differences:
                 print(f"  {'seq':>6}  {'side':<15} {'event':<28} {'at':<22} host")
-                for one in done.differences:
-                    print(f"  {one.seq:>6}  {one.side:<15} {one.event:<28} {one.at:<22} {one.host}")
+                for difference in done.differences:
+                    print(f"  {difference.seq:>6}  {difference.side:<15} {difference.event:<28} "
+                          f"{difference.at:<22} {difference.host}")
             else:
                 print("  the store and the record hold the same lines")
             if done.accepted:

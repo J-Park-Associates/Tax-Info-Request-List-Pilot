@@ -1,7 +1,7 @@
 {
   "note": "Every type error each file had when this was written, by python tools/typecheck.py update. check fails when a file has more; update refuses to raise a count. Never edit it by hand.",
   "mypy": "2.3.1",
-  "total": 215,
+  "total": 206,
   "files": {
     "tools/learned_keywords.py": [
       "Cannot find implementation or library stub for module named \"vocab_report\"  [import-not-found]"
@@ -248,22 +248,13 @@
       "Argument 1 to \"_xml_escape\" has incompatible type \"str | Path\"; expected \"str\"  [arg-type]"
     ],
     "tracker/store.py": [
-      "\"Path\" has no attribute \"at\"  [attr-defined]",
-      "\"Path\" has no attribute \"event\"  [attr-defined]",
-      "\"Path\" has no attribute \"host\"  [attr-defined]",
-      "\"Path\" has no attribute \"seq\"  [attr-defined]",
-      "\"Path\" has no attribute \"side\"  [attr-defined]",
       "Argument 1 to \"_spelled\" has incompatible type \"Path | None\"; expected \"Path\"  [arg-type]",
-      "Argument 1 to \"intent\" has incompatible type \"Connection | None\"; expected \"Connection\"  [arg-type]",
       "Argument 2 to \"_apply\" has incompatible type \"int | None\"; expected \"int\"  [arg-type]",
       "Incompatible return value type (got \"_Connection | None\", expected \"_Connection\")  [return-value]",
       "Incompatible return value type (got \"list[Any] | T\", expected \"T\")  [return-value]",
       "Incompatible return value type (got \"tuple[Any | str, Any | str | None, Any | str]\", expected \"tuple[str, str, str]\")  [return-value]",
       "Incompatible return value type (got \"tuple[Any | str, Any | str | None, str]\", expected \"tuple[str, str, str]\")  [return-value]",
-      "Incompatible types in assignment (expression has type \"Connection\", variable has type \"_Connection | None\")  [assignment]",
-      "Incompatible types in assignment (expression has type \"Difference\", variable has type \"Path\")  [assignment]",
-      "Invalid index type \"Any | None\" for \"dict[str, int]\"; expected type \"str\"  [index]",
-      "Item \"None\" of \"Any | None\" has no attribute \"__iter__\" (not iterable)  [union-attr]"
+      "Incompatible types in assignment (expression has type \"Connection\", variable has type \"_Connection | None\")  [assignment]"
     ],
     "tracker/templates.py": [
       "Argument 4 to \"_row\" has incompatible type \"**dict[str, str]\"; expected \"int\"  [arg-type]"

@@ -2804,6 +2804,8 @@ def test_a_new_engagement_is_admitted_by_construction(conn, root, by_hand):
 #: the keys follow the module (``records.MAX_STAGE`` is ``bounds.MAX_STAGE``, the
 #: same digest), and the two admission functions' digests moved only by
 #: ``records.`` becoming ``bounds.`` in their source. No rule changed.
+#: Pinned again under 5 when P3.1 typed the admission's refusal NoReturn and
+#: split_codes' parameter str | None: two annotations, no rule changed.
 ADMISSION_PIN: dict[int, dict[str, str]] = {2: {
     "tracker.layout.CLIENTS": "3b8264d65abeec66",
     "tracker.layout.CLIENTS_TREE": "488530d6164e0dd6",
@@ -3826,7 +3828,7 @@ ADMISSION_PIN: dict[int, dict[str, str]] = {2: {
     "tracker.records.person_from_json": "d6e448c24d1dd1a5",
     "tracker.records.rule_row_fault": "40478ee286dbf2db",
     "tracker.records.rule_row_problem": "bfbfa65df0936781",
-    "tracker.records.split_codes": "ac4f6152bb7ad6ee",
+    "tracker.records.split_codes": "312e8af4bdb2dc38",
     "tracker.records.status_problem": "0a4507873e497b78",
     "tracker.records.waits_for_problem": "463d041ef7fa9219",
     "tracker.records.word_list_problem": "64d72805fbba0527",
@@ -3838,7 +3840,7 @@ ADMISSION_PIN: dict[int, dict[str, str]] = {2: {
     "tracker.store.RULE_LIST_FIELDS": "8b3d25ca8662bd02",
     "tracker.store.UNKNOWN_EVENT": "099e89ceccd1e5e9",
     "tracker.store._line_keys_problem": "5f41ce8742ce125e",
-    "tracker.store._refuse_a_malformed_line": "83e47f8c070bb97c",
+    "tracker.store._refuse_a_malformed_line": "e8a42feeadda2854",
 }}
 
 

@@ -321,7 +321,7 @@ def identifier_key(identifier: str) -> str:
 CANDIDATE_SEP = ", "
 
 
-def split_codes(joined: str) -> list[str]:
+def split_codes(joined: str | None) -> list[str]:
     """Codes joined with :data:`CANDIDATE_SEP` (decision 190's
     ``note_codes``) as the list they were joined from."""
     return [code for code in (part.strip() for part in (joined or "").split(CANDIDATE_SEP)) if code]
