@@ -29,8 +29,9 @@ temporary is ever written beside a client's file.
 `tracker/` is one Python package of forty-three modules in six layers.
 `tests/test_layers.py` pins the layer of every module and that no load-time
 import points upward; an import inside a function is a call-time import
-and may point anywhere. The one deliberate cycle, filer and scanner through
-a rescan, is stated on both nodes of the map.
+and may point anywhere. The scanner never imports the filer; the filer reaches
+it at call time through a rescan. The three call-time cycles that remain are
+named in `tests/test_layers.py`.
 
 **Layer 0: words, files and locks.** The standard library and nothing of
 the package but each other.

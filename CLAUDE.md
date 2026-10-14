@@ -11,7 +11,8 @@ is the repository knowledge graph: every module, what it is for, what it
 imports, what tests cover it, which runtime artifacts it reads and writes, and
 the rules that cut across the code. It carries judgment that grepping cannot
 recover — why the router refuses to guess, why the request list lives in the
-record and is edited only in the app, which import cycle is deliberate.
+record and is edited only in the app, which import cycles remain and why each
+closes only at call time.
 
 It is also very large, so do not read it whole by default. Look up the nodes
 for the files the task touches with `show` (below); read the whole page only
@@ -58,8 +59,12 @@ or a subprocess still counts as its coverage.
 it runs when called, not when the module loads, so a cycle that closes through
 one is a cycle only at call time. `from tracker import ledger` draws both the
 module (`tracker/ledger.py`) and the package it executes (`tracker/__init__.py`).
-The one deliberate cycle, filer ↔ scanner inside `_rescan()`, is a curated
-`deliberate_cycle` edge and is stated on both nodes. There is no load-time
+The scanner never imports the filer: it reads the index from `index.py`, and
+the filer reaches the scanner only at call time, inside `_rescan()` - a
+curated `calls` edge, stated on both nodes (P313's Q-A). Three two-module
+cycles remain, each closing at call time, and `tests/test_layers.py` names
+them in `CALL_TIME_CYCLES`: store ↔ index (`store.verify`), registry ↔ store,
+and scaffold ↔ validators (validators' `__main__` block). There is no load-time
 cycle: `tracker/__init__.py` imports nothing (decision 99), and
 `tests/test_layers.py` pins the layer of every module and that no load-time
 import points to a higher layer - a module that moves layers moves in that

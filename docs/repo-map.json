@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 348,
     "edges": 1525,
-    "reused": 294
+    "reused": 290
   },
   "node_types": [
     "artifact",
@@ -4665,8 +4665,8 @@
       "id": "CLAUDE.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "efa8815b15f2355f",
-      "lines": 333,
+      "sha256": "ac40b28363c4d5fd",
+      "lines": 338,
       "role": "Agent entry point. Says to read the map instead of re-scanning, how to keep it current, and the standing rules that hold across every module.",
       "notes": "Points at docs/repo-map.md as the first thing to read in a session."
     },
@@ -4716,8 +4716,8 @@
       "id": "docs/architecture.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "ffcb02e6aece4bf4",
-      "lines": 291,
+      "sha256": "801cd671178f3087",
+      "lines": 292,
       "role": "The overview between the README and the map: the three programs (the shell, the engine, the scheduled pass) and the reading child; the package layer by layer with each module's one sentence; the tools; the tests and their guards; the three places the app writes; the decisions that shape it (deterministic, offline, standard library first, hash-checked installs, one-time steps built in); and how each package is built.",
       "notes": "Written for a person who did not watch the code grow. It names no numbers a test pins and no file the code does not own; tests/test_layers.py's table is the source of its layers."
     },
@@ -4837,8 +4837,8 @@
       "id": "pilot/DECISIONS.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "ac47c07b07e6f2be",
-      "lines": 313
+      "sha256": "ef4e3969f5747df2",
+      "lines": 314
     },
     {
       "id": "pilot/HANDOFF-client-folder.md",
@@ -8426,8 +8426,8 @@
       "id": "tests/test_layers.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "0fc93577cb0c543f",
-      "lines": 1059,
+      "sha256": "923889a293c7a682",
+      "lines": 1083,
       "exports": [
         "REPO",
         "SOCKET_SHAPED",
@@ -8459,6 +8459,7 @@
         "test_the_layout_imports_nothing_of_the_package",
         "test_the_manifest_imports_the_record_and_nothing_else",
         "test_the_network_tripwire_catches_the_shapes_that_walked_around_it",
+        "test_the_only_two_module_cycles_are_the_named_call_time_ones",
         "test_the_package_init_imports_nothing_at_load_time",
         "test_the_readings_child_talks_over_a_named_pipe_never_a_socket",
         "test_the_reply_shapes_import_nothing_of_the_package",
@@ -9674,7 +9675,7 @@
       "id": "tests/test_repo_map.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "5f7cbc6662206d07",
+      "sha256": "f1e65ebf6e4236e7",
       "lines": 887,
       "exports": [
         "ENFORCERS",

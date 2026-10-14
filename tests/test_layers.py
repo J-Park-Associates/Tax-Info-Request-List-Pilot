@@ -11,8 +11,9 @@ here in the same commit, with a decision row saying why.
 module loads. An import inside a function, a class body or the module's
 ``if __name__ == "__main__":`` block is a call-time import: it runs when
 called, so it can point anywhere, and the map labels it separately. The
-one deliberate cycle in the package, ``filer`` <-> ``scanner`` inside
-``_rescan()``, is a call-time cycle and is asserted to stay one.
+scanner never imports the filer: the filer reaches it at call time, inside
+``_rescan()``. Three two-module cycles remain, each closing at call time,
+and :data:`CALL_TIME_CYCLES` names them.
 
 **The layers.** In-layer edges are allowed (``ledger`` and ``manifest``
 are both L1, so ``manifest`` reaching ``ledger`` is legal - and wanted,
@@ -501,6 +502,29 @@ def test_the_scanner_never_imports_the_filer_and_the_filer_reaches_it_only_at_ca
     load, call = import_edges()
     assert "filer" not in load["scanner"] and "filer" not in call["scanner"], (load["scanner"], call["scanner"])
     assert "scanner" not in load["filer"] and "scanner" in call["filer"], (load["filer"], call["filer"])
+
+
+#: Every pair of modules that import each other, and the only pairs allowed to.
+#: Each closes at call time: one of its two edges is an import inside a
+#: function or a ``__main__`` block, so neither module needs the other to exist
+#: before it loads. A new pair is a decision, not an accident: it is added here
+#: with the place it closes, or the import that closes it is removed.
+CALL_TIME_CYCLES: frozenset[frozenset[str]] = frozenset({
+    frozenset({"index", "store"}),          # ``store.verify`` asks the index at call time
+    frozenset({"registry", "store"}),       # the store asks the registry at call time
+    frozenset({"scaffold", "validators"}),  # validators' ``__main__`` block asks scaffold
+})
+
+
+def test_the_only_two_module_cycles_are_the_named_call_time_ones():
+    load, call = import_edges()
+    reaches = {module: load[module] | call[module] for module in load}
+    pairs = {frozenset({a, b}) for a in reaches for b in reaches[a]
+             if a != b and b in reaches and a in reaches[b]}
+    assert pairs == CALL_TIME_CYCLES, (sorted(map(sorted, pairs)), sorted(map(sorted, CALL_TIME_CYCLES)))
+    for pair in pairs:
+        a, b = sorted(pair)
+        assert not (b in load[a] and a in load[b]), f"{a} and {b} import each other at load time"
 
 
 def _imported_names(tree: ast.AST) -> list[str]:

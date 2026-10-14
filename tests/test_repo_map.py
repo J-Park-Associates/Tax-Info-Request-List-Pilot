@@ -877,7 +877,7 @@ def test_the_filer_calls_the_scanner_one_way_and_no_load_time_cycle_remains():
     graph = real_map()
     assert edges(graph, **{"from": "tracker/filer.py", "to": "tracker/scanner.py",
                            "type": "calls"})
-    assert not edges(graph, type="deliberate_cycle"), "no cycle is deliberate: the scanner never imports the filer"
+    assert not edges(graph, type="deliberate_cycle"), "the scanner never imports the filer, so no edge is left to state"
     assert "no load-time cycle" in node(graph, "tracker/__init__.py")["notes"]
     assert edges(graph, **{"from": "tracker/filer.py", "to": "tracker/scanner.py",
                            "type": "imports_at_call"}), "the filer reaches the scanner at call time, not load"
