@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 318,
     "edges": 1391,
-    "reused": 263
+    "reused": 260
   },
   "node_types": [
     "artifact",
@@ -4645,7 +4645,7 @@
       "id": "docs/repo-map.curated.json",
       "type": "file",
       "layer": "docs",
-      "sha256": "3f7386d866fae9ad",
+      "sha256": "d27179031fa73431",
       "lines": 1373,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
@@ -4817,8 +4817,8 @@
       "id": "pilot/SPEC-architecture.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "78b57bd4032e114e",
-      "lines": 963
+      "sha256": "4e64cea6d8a2fba4",
+      "lines": 966
     },
     {
       "id": "pilot/SPEC-check-notes-0.3.md",
@@ -5078,7 +5078,7 @@
       "id": "pilot/harness/README.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "07adafe8dce1ef39",
+      "sha256": "c34d6aef2336302b",
       "lines": 27
     },
     {
@@ -5574,8 +5574,8 @@
       "id": "pilot/harness/app-stub.js",
       "type": "module",
       "layer": "root",
-      "sha256": "ca7b1cf9e97ee2b6",
-      "lines": 330
+      "sha256": "83134da923549611",
+      "lines": 336
     },
     {
       "id": "pilot/harness/boot.js",
@@ -6125,7 +6125,7 @@
         "import_edges"
       ],
       "role": "The package's imports as the layer table reads them: import_edges() says, for every module of tracker/, which modules it imports at load time and which only when a function or a __main__ block runs.",
-      "notes": "SPEC-architecture J2 (R2.1, E-4). Moved with their words from tests/test_layers.py, which test_records and test_single_source borrowed import_edges and _is_main_guard from; PACKAGE and the helpers they lean on went with them, and test_layers imports them back. They read tracker/*.py without descending into folders, as the layer guards did; SPEC-architecture J3 widens that."
+      "notes": "SPEC-architecture J2 (R2.1, E-4). Moved with their words from tests/test_layers.py, which test_records and test_single_source borrowed import_edges and _is_main_guard from; PACKAGE and the helpers they lean on went with them, and test_layers imports them back. They read tracker/*.py without descending into folders, as the layer guards always have. The package stays flat (SPEC-architecture 5.1.3); the job that first adds a subfolder widens them first."
     },
     {
       "id": "tests/node_harness.py",
@@ -9226,8 +9226,8 @@
       "id": "tests/test_renderer_seams.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "2d687fd1b6e75be5",
-      "lines": 504,
+      "sha256": "13185c1be1544b09",
+      "lines": 513,
       "exports": [
         "DECLARATION",
         "HARNESS",
@@ -9235,7 +9235,6 @@
         "SEAMS",
         "WORD",
         "WRITES",
-        "beside_the_double",
         "code",
         "declared",
         "el_attributes",
@@ -9245,15 +9244,16 @@
         "seams",
         "test_every_named_part_of_the_renderer_is_inside_the_scripts_the_page_loads",
         "test_no_two_scripts_declare_the_same_top_level_name",
-        "test_the_double_of_app_js_defines_every_name_the_scripts_beside_it_use",
+        "test_the_double_defines_every_name_the_scripts_beside_it_use_of_app_js_and_of_the_scripts_it_drops",
         "test_the_names_each_script_takes_from_another_are_todays_table",
         "test_the_reader_keeps_code_and_blanks_what_is_not",
         "test_the_reader_reads_every_script_the_page_loads_and_the_double",
         "test_the_writes_across_scripts_are_todays_five",
+        "the_double_mode",
         "writes"
       ],
-      "role": "The JavaScript analogue of test_layers: which renderer script uses which other script's top-level names, pinned as today's table with a line saying why for each (SEAMS), the writes across scripts to another script's top-level let pinned apart (WRITES, D-2's five), the harness's double of app.js held to every app.js name the scripts loaded beside it use and to app.js's EL_ATTRIBUTES, and every named part of RENDERER_SCRIPTS held inside the scripts index.html loads.",
-      "notes": "SPEC-architecture J3 (R3.2, R3.7, R3.8; D-2, D-5, D-8). The eight scripts share one global scope, so a top-level function, let or const in one is a name every other can read and nothing says which do; that is the seam a split of app.js cuts through. A use is the name as a whole word in the other script's code, read through js_code(), which blanks comments, string and template text and regular expressions and keeps a template's ${...} code; a name the using script declares itself at any depth is its own (the pilot's el, fill and show, pages.js's local active), and a parameter or object key named like a global is counted and said so in the table (fold, paths). A new cross-script name or write fails until it is added on purpose, and one no longer used is taken off. The scripts beside the double are read from serve.mjs (everything but app.js and what it removes, sheet.js). A JavaScript parser (acorn) was the rejected alternative: the gate installs nothing for node."
+      "role": "The JavaScript analogue of test_layers: which renderer script uses which other script's top-level names, pinned as today's table with a line saying why for each (SEAMS), the writes across scripts to another script's top-level let pinned apart (WRITES, D-2's five), the harness's double of app.js held to every name the scripts loaded beside it use of app.js and of the scripts serve.mjs drops in double mode, and to app.js's EL_ATTRIBUTES, and every named part of RENDERER_SCRIPTS held inside the scripts index.html loads.",
+      "notes": "SPEC-architecture J3 (R3.2, R3.7, R3.8; D-2, D-5, D-8). The eight scripts share one global scope, so a top-level function, let or const in one is a name every other can read and nothing says which do; that is the seam a split of app.js cuts through. A use is the name as a whole word in the other script's code, read through js_code(), which blanks comments, string and template text and regular expressions and keeps a template's ${...} code; a name the using script declares itself at any depth is its own (the pilot's el, fill and show, pages.js's local active), and a parameter or object key named like a global is counted and said so in the table (fold, paths). A new cross-script name or write fails until it is added on purpose, and one no longer used is taken off. The scripts beside the double, and the ones it drops (sheet.js, whose sheetNow and sheetPress the double lacked until J3), are read from serve.mjs, every replace in its double branch accounted for. A JavaScript parser (acorn) was the rejected alternative: the gate installs nothing for node."
     },
     {
       "id": "tests/test_repo_map.py",
@@ -10637,8 +10637,8 @@
         "F6_FAKES": "'\\n  const log = [];\\n  let shown = true;\\n  const item = (name, region) => ({ name, closest(sel) { return sel === `#${region}` ? this : null; }, focus() { log.push(name); document.activeElement = this; } });\\n  const things = { side: item(\"side item\", \"side\"), bar: item(\"path\", \"bar\"), notice: item(\"notice control\", \"notices\"), page: item(\"page\", \"page\") };\\n  const $ = (id) => (id === \"notices\" ? { childElementCount: shown ? 1 : 0, querySelector: () => (shown ? { querySelector: () => things.notice } : null) }\\n    : id === \"find\" ? { disabled: false, focus: () => log.push(\"find\") } : id === \"side\" ? things.side : things.page);\\n  const document = { activeElement: null, querySelector: (sel) => (sel.startsWith(\"#crumb-list\") ? things.bar : sel.includes(\"aria-current\") ? things.side : null) };\\n  const tipKey = () => {};\\n  const press = (shift) => { shellKey({ key: \"F6\", shiftKey: shift, preventDefault() {}, target: document.activeElement }); };\\n'",
         "CARD_HOUSEHOLD": "'\\n  const LINK = \"LINKTOKEN-share-me\";\\n  const hh = { name: \"Alpha\", path: \"c/Alpha\", contact: \"A Person\", members: [\"A Person\", \"Another\"], link: LINK,\\n               returns: [{ path: \"r/1040 - Alpha\", year: 2025, return_name: \"1040 - Alpha\", form: \"1040\", active: true },\\n                         { path: \"r/old\", year: 2024, return_name: \"1040 - Alpha\", form: \"1040\", active: true }] };\\n  shellHousehold = () => hh;\\n  shellRoute = { level: \"household\", household: \"c/Alpha\" };\\n  lastState = { household: { path: \"c/Alpha\", shared_on: \"2026-02-01\" } };\\n  const cls = (n) => n.className.split(\" \")[0];\\n  const facts = (page) => page.byClass(\"card-fact\").map((f) => [f.kids[0].textContent, f.kids.slice(1).map((k) => k.textContent)]);\\n'"
       },
-      "role": "The shell's renderer half: the tokens and their contrast in both themes, the shell stylesheet's discipline, the guards every renderer file keeps, the words the new files may not type, and the route, search, Sort Now button and menu enable list run in node against shell.js's own functions.",
-      "notes": "The files a claim covers are node_harness's RENDERER_SCRIPTS or a named part of it, and TITLE_FREE, built from it (SPEC-architecture R3.2): a script added to index.html is read by the guards every renderer script keeps, the no-title rule and the one keydown listener without anyone adding it. S2 adds the menu half, S4 the pages' node tests and S5 the sheet's. The contrast table and the token values are the SPEC's section 10, copied as data. Its node runners (run_shell, run_pages, run_pages_dom and the rest, with the fakes and function lists each uses) live in tests/node_harness.py since SPEC-architecture J2."
+      "role": "The shell's renderer half: the tokens and their contrast in both themes, the shell stylesheet's discipline, the guards every renderer file keeps, the words the app's scripts may not type, and the route, search, Sort Now button and menu enable list run in node against shell.js's own functions.",
+      "notes": "The files a claim covers are node_harness's RENDERER_SCRIPTS or a named part of it, and TITLE_FREE, built from it (SPEC-architecture R3.2): a script added to index.html is read by the guards every renderer script keeps, the no-title rule and the one keydown listener without anyone adding it. The typed-words guard (P63) reads APP_SCRIPTS, every script but the pilot's, whose words test_pilot holds; it passes over a query's whole selector argument, an error's text and the first statement's \"use strict\", each found by where it sits and never by what it says, and holds the literals typed today exact: KNOWN_TYPED_SENTENCES, D-9's four, which J5 empties, and RULED_LABELS, \"Belongs To\u2026\" (ruling 10) (SPEC-architecture R3.4). S2 adds the menu half, S4 the pages' node tests and S5 the sheet's. The contrast table and the token values are the SPEC's section 10, copied as data. Its node runners (run_shell, run_pages, run_pages_dom and the rest, with the fakes and function lists each uses) live in tests/node_harness.py since SPEC-architecture J2."
     },
     {
       "id": "tests/test_shell_menu.py",

@@ -319,7 +319,13 @@ let setupDraft = { root: "", firm: "", phone: "" };
 
 // The side sheet is sheet.js's and the rest of these are app.js's; the double
 // has neither, so a Check or Draft reminder step, a dialog or a navigation that
-// would close the sheet says so in a notice or does nothing.
+// would close the sheet says so in a notice or does nothing. The sheet holds
+// nothing and has no button to press, so a row's menu item that opens a Check
+// to press the sheet's button stops at the Check's notice.
+let sheetNow = null;
+function sheetPress() {
+  return false;
+}
 function closeSheet() {}
 function sheetStateArrived() {}
 const openCheck = () => unanswered("check");

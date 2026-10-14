@@ -634,6 +634,9 @@ pin), D-8. Depends on J2.*
   table says another script uses (D-8 found eight missing), and its
   `EL_ATTRIBUTES` equals app.js's (it lacks `"open"`). A test in
   `test_renderer_seams.py` holds both.
+  It also defines every name another script uses from a script `serve.mjs`
+  drops in double mode (`sheet.js` today, whose `sheetNow` and `sheetPress`
+  it lacked), and the same test holds that.
 - **Tests:** `test_single_source`, `test_shell`, `test_shell_menu`,
   `test_api`, `test_layers`, `test_pilot`, `test_pilot_ui`, `test_row_columns`,
   `test_tour`, `test_runner`, `test_fsio`, `test_build`,

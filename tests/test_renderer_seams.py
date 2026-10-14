@@ -7,7 +7,8 @@ cuts through (SPEC-architecture D-2), so this file is the JavaScript analogue
 of ``test_layers``: it reads which script uses which other script's names and
 pins today's answer as data (R3.7), the writes across scripts apart (an
 assignment to another script's top-level ``let``, the riskier kind), and the
-harness's double of ``app.js`` to what the scripts loaded beside it use
+harness's double of ``app.js`` to what the scripts loaded beside it use, of
+``app.js`` and of every script the harness drops when the double stands in
 (R3.8, D-8).
 
 **How a use is found.** A script's top-level declarations are the lines that
@@ -473,15 +474,21 @@ def test_the_writes_across_scripts_are_todays_five():
     assert writes() == WRITES
 
 
-def beside_the_double() -> list[str]:
-    """The scripts the harness loads beside its double of app.js, read from
-    the server's own page: every script the page loads but app.js, which the
-    double replaces, and the ones it removes (sheet.js, today)."""
+def the_double_mode() -> tuple[list[str], list[str]]:
+    """The scripts the harness loads beside its double of app.js, and the
+    ones it drops, read from the server's own page: every script the page
+    loads but app.js, which the double replaces, unless a ``replace`` takes
+    it out (sheet.js, today). Every ``replace`` in the double's branch is
+    read - app.js's, the one that adds the harness's scripts before
+    ``</body>``, and the drops - so a drop written another way fails here
+    rather than going unseen."""
     serve = (HARNESS / "serve.mjs").read_text(encoding="utf-8")
     double = serve[serve.index('if (mode === "double") {'):serve.index("} else {")]
     assert "html.replace('<script src=\"app.js\"></script>'" in double and "/harness/app-stub.js" in double
-    removed = re.findall(r"""html\.replace\('\s*<script src="([^"]+)"></script>\\n', ""\)""", double)
-    return [name for name in RENDERER_SCRIPTS if name != "app.js" and name not in removed]
+    dropped = re.findall(r"""html\.replace\('\s*<script src="([^"]+)"></script>\\n', ""\)""", double)
+    assert double.count("html.replace(") == 2 + len(dropped), double
+    assert set(dropped) < set(RENDERER_SCRIPTS) and "app.js" not in dropped, dropped
+    return [name for name in RENDERER_SCRIPTS if name != "app.js" and name not in dropped], dropped
 
 
 def el_attributes(text: str) -> list[str]:
@@ -489,16 +496,18 @@ def el_attributes(text: str) -> list[str]:
     return re.findall(r'"([\w-]+)"', held[:held.index("]);")])
 
 
-def test_the_double_of_app_js_defines_every_name_the_scripts_beside_it_use():
+def test_the_double_defines_every_name_the_scripts_beside_it_use_of_app_js_and_of_the_scripts_it_drops():
     """R3.8, D-8: pilot/harness/app-stub.js is "the contract, written as
-    code". Every app.js name the seam table says a script loaded beside it
-    uses, the double defines, so no path in the harness throws for a name it
-    lacks; and it builds with app.js's own attribute list, so a node the page
-    may build is one the double builds too."""
+    code". It stands in for app.js and for every script the harness drops
+    beside it: each of their names the seam table says a script loaded with
+    the double uses, the double defines, so no path in the harness throws for
+    a name it lacks (pages.js's Check-then-press read sheet.js's sheetNow and
+    sheetPress, which it lacked). And it builds with app.js's own attribute
+    list, so a node the page may build is one the double builds too."""
     stub = (HARNESS / "app-stub.js").read_text(encoding="utf-8")
-    beside = beside_the_double()
-    assert "sheet.js" not in beside and set(beside) < set(RENDERER_SCRIPTS)
-    used = set().union(*(names for (user, owner), names in seams().items() if owner == "app.js" and user in beside))
+    beside, dropped = the_double_mode()
+    stood_in_for = {"app.js", *dropped}
+    used = set().union(*(names for (user, owner), names in seams().items() if owner in stood_in_for and user in beside))
     missing = sorted(used - set(declared(js_code(stub))))
     assert missing == [], missing
     assert el_attributes(stub) == el_attributes(read("app.js"))
