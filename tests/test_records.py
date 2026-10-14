@@ -460,6 +460,47 @@ def test_a_persons_name_is_held_to_the_one_line_text_rule():
     assert records.person_from_json({"kind": "taxpayer", "name": "John Park"}).name == "John Park"
 
 
+#: The kinds' list as a refusal says it, and the text rule's sentence, as
+#: the API typed them before P2.5 moved the typed people rule here (the
+#: strings at 286b535).
+_KINDS_SAID = "taxpayer, spouse, dependent, entity, dba, owner, decedent, trust, fiduciary"
+_ONE_LINE = "must be one line of text of at most 1000 characters, with no control character"
+
+
+def test_a_typed_person_is_refused_by_kind_then_by_name_in_the_words_a_person_reads():
+    """SPEC-architecture-p2 P2.5 (R2.5.3): the typed people rule is the
+    record's, every sentence the one the API said, and the first of the
+    three wins - a kind nothing knows before a missing name, a missing name
+    before one past the text rule."""
+    assert records.typed_person_problem("taxpayer", "Jane Smith") == ""
+    assert records.typed_person_problem("cousin", "Jane Smith") == f"'cousin' is not one of {_KINDS_SAID}"
+    assert records.typed_person_problem("", "") == f"'' is not one of {_KINDS_SAID}"
+    assert records.typed_person_problem("cousin", "J" * 1001) == f"'cousin' is not one of {_KINDS_SAID}"
+    assert records.typed_person_problem("taxpayer", "") == "Every person needs a name (Taxpayer)"
+    assert records.typed_person_problem("entity", "") == "Every person needs a name (Entity (Legal Name))"
+    assert records.typed_person_problem("taxpayer", "J" * 1001) == f"People: the Taxpayer's name {_ONE_LINE}"
+    assert records.typed_person_problem("dba", "Park\x07 LLC") == (
+        f"People: the DBA or Abbreviation's name {_ONE_LINE}")
+    assert records.typed_person_problem("spouse", "J" * 1000) == ""
+
+
+def test_a_typed_spelling_is_refused_for_one_word_before_the_text_rule_and_names_whose_it_is():
+    """SPEC-architecture-p2 P2.5 (R2.5.3): one spelling judged at a time, in
+    the API's words - a spelling of one word is told so even when it is
+    also past the text rule, and a spelling past the rule names the person
+    it was typed for."""
+    assert records.typed_spelling_problem("Jane Smith", "Jane Smith") == ""
+    assert records.typed_spelling_problem("Jane Smith", "Smith J") == ""
+    assert records.typed_spelling_problem("Jane Smith", "Smith") == "Spelling Needs Two Words"
+    assert records.typed_spelling_problem("Jane Smith", "x" * 1001) == "Spelling Needs Two Words"
+    assert records.typed_spelling_problem("Jane Smith", "Smith\x07") == "Spelling Needs Two Words"
+    assert records.typed_spelling_problem("Jane Smith", "J " + "x" * 1999) == (
+        f"People: a spelling of Jane Smith {_ONE_LINE}")
+    assert records.typed_spelling_problem("Park LLC", "Park\x07 LLC") == (
+        f"People: a spelling of Park LLC {_ONE_LINE}")
+    assert records.ONE_WORD_SPELLING == "Spelling Needs Two Words"
+
+
 def test_a_stored_row_whose_document_hides_a_spoofing_character_is_a_fault_naming_the_document():
     """P301: ``rule_row_fault`` is the store's gate and the editor's, so a
     refused line is named by its field, as an identifier or a short name is;

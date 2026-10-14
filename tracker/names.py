@@ -56,6 +56,7 @@ from dataclasses import dataclass
 
 from tracker.content_check import PAGE_BREAK
 from tracker.records import (
+    ONE_WORD_SPELLING,  # noqa: F401 - re-exported until P2.14
     WHERE_DEEP,
     WHERE_FIRST_PAGE,
     is_a_spelling,
@@ -63,8 +64,6 @@ from tracker.records import (
     name_words,
 )
 
-#: What the app refuses a one-word spelling with, wherever one is typed.
-ONE_WORD_SPELLING = "Spelling Needs Two Words"
 #: What creation refuses a return with nobody on it with.
 NO_PEOPLE = "Add at Least One Person"
 

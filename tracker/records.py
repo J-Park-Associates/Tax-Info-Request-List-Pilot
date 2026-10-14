@@ -799,6 +799,8 @@ assert set(PERSON_KIND_LABELS) == set(PERSON_KINDS)
 #: reads a spelling holds to (``tracker.names``, the API's refusal, the
 #: store's guard against a hand-edited journal).
 MIN_SPELLING_WORDS = 2
+#: What the app refuses a one-word spelling with, wherever one is typed.
+ONE_WORD_SPELLING = "Spelling Needs Two Words"
 
 
 def name_parts(text: str) -> list[tuple[str, int]]:
@@ -901,6 +903,64 @@ def person_from_json(raw: object) -> Person:
         if not is_a_spelling(spelling):
             raise ValueError(f"{spelling!r} is one word; a spelling needs two or more")
     return Person(kind=kind, name=name, spellings=listed)
+
+
+def typed_person_problem(kind: str, name: str) -> str:
+    """Why a person as the dialog or the editor sends them is refused, by
+    their kind and their name, or "" if they may be saved: a kind nothing
+    knows, a name nobody typed, or a name past the one text rule - the
+    first of the three, in the words a person reads.
+
+    **The typed people rule is the record's** (SPEC-architecture-p2 P2.5;
+    the architecture audit's B-3 b). The typed identifier and short-title
+    rules already live with the bounds they extend; the people rule lived
+    in ``tracker.api._people_from_spec``, beside the parsing of the form.
+    It is here, beside :func:`person_from_json`, which is the store's rule
+    for a *stored* person and refuses in the record's own words; this is
+    the rule for a *typed* one, and its sentences are for a person.
+
+    ``kind`` is already stripped and ``name`` already folded (every run of
+    white space one space), as the API reads them. The spellings are judged
+    one at a time by :func:`typed_spelling_problem`, after this has passed:
+    the API reads each spelling only once the person's kind and name are
+    known good, and judges each before it reads the next.
+    """
+    if kind not in PERSON_KINDS:
+        return f"'{kind}' is not one of {', '.join(PERSON_KINDS)}"
+    if not name:
+        return f"Every person needs a name ({PERSON_KIND_LABELS[kind]})"
+    # The name every page of every document is searched for: held to
+    # the one text rule every other name is, so an unbounded one cannot
+    # cost every pass (P288). The check runs on every save, stored
+    # values included - the editor sends the people block back whole -
+    # so the refusal says whose name (P306).
+    if problem := text_problem(name):
+        return f"{PEOPLE_LABEL}: the {PERSON_KIND_LABELS[kind]}'s name {problem}"
+    return ""
+
+
+def typed_spelling_problem(name: str, spelling: str) -> str:
+    """Why one spelling a person ticked for ``name`` is refused, or "" if it
+    may be saved: :data:`ONE_WORD_SPELLING` for a spelling of one word, else
+    the one text rule's sentence naming whose spelling it is.
+
+    ``spelling`` is already folded and not empty, and ``name`` has passed
+    :func:`typed_person_problem`. **One spelling, not the list** (P2.5): the
+    API folds and judges each spelling in turn, so of two bad spellings the
+    first one's sentence is the reply, and a person whose kind is refused
+    never has their spellings read at all. A function handed the whole list
+    would need them gathered first, and either would change.
+    """
+    if not is_a_spelling(spelling):
+        return ONE_WORD_SPELLING
+    # Searched on every page as the name is, so held to the same
+    # rule where it is typed (P304). A stored one is judged again
+    # on every save, as the name is, so the refusal names the
+    # person (P306); ``name`` has passed its own rule by here, so
+    # the sentence is bounded.
+    if problem := text_problem(spelling):
+        return f"{PEOPLE_LABEL}: a spelling of {name} {problem}"
+    return ""
 
 
 def _objects_from_json(raw: object, one, what: str) -> tuple:

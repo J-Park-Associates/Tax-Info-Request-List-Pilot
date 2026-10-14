@@ -11327,6 +11327,33 @@ def test_a_one_word_spelling_is_refused_before_the_text_rule_is_asked():
         assert str(raised.value) == ONE_WORD_SPELLING
 
 
+def test_a_persons_spellings_are_judged_one_at_a_time_in_order():
+    """SPEC-architecture-p2 P2.5 (R2.5.4): each spelling is folded and judged
+    before the next is read, so of two bad spellings the first one's
+    sentence is the reply - a two-word spelling past the text rule before a
+    one-word spelling, and the other way round."""
+    from tracker.names import ONE_WORD_SPELLING
+
+    past_the_rule, one_word = "J " + "x" * 1999, "Smith"
+    for spellings, said in (([past_the_rule, one_word], _SPELLING_REFUSED),
+                            ([one_word, past_the_rule], ONE_WORD_SPELLING)):
+        people = [{"kind": "taxpayer", "name": "Jane Smith", "spellings": spellings}]
+        with pytest.raises(ManifestError) as raised:
+            api._people_from_spec(people)
+        assert str(raised.value) == said, spellings
+
+
+def test_a_persons_kind_is_judged_before_their_spellings_are_read():
+    """SPEC-architecture-p2 P2.5 (R2.5.4): a person whose kind nothing knows
+    is refused before their spellings are read at all, so spellings that
+    are not even a list are a refusal in the kind's words, never a crash."""
+    people = [{"kind": "cousin", "name": "Jane Smith", "spellings": 5}]
+    with pytest.raises(ManifestError) as raised:
+        api._people_from_spec(people)
+    assert str(raised.value) == ("'cousin' is not one of taxpayer, spouse, dependent, entity, dba, owner, "
+                                 "decedent, trust, fiduciary")
+
+
 def test_the_firms_name_and_phone_are_held_to_the_one_line_text_rule(capsys, tmp_path, monkeypatch):
     from tracker.settings import ENV_SETTINGS_DIR, clients_root, firm, firm_phone, settings_path
 

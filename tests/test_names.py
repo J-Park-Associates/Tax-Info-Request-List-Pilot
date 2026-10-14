@@ -142,3 +142,14 @@ def test_a_name_is_parsed_once_per_text(monkeypatch):
     assert len(folded) == 1
     assert [judged.name(q).outcome for q in questions] == [NAME_CONFIRMED, NAME_VETOED, NAME_VETOED]
     assert judged.name(questions[2]).other_label == "the second"
+
+
+def test_the_spelling_sentence_is_the_records_own():
+    """SPEC-architecture-p2 P2.5 (R2.5.3): the one-word refusal is worded
+    beside the two-word floor it enforces (``records.MIN_SPELLING_WORDS``),
+    with the typed people rule that says it. This module offers it still,
+    until P2.14 points its last readers there - the same object, so the
+    app's vocabulary and the filer's refusal cannot drift from the editor's."""
+    from tracker import names, records
+
+    assert names.ONE_WORD_SPELLING is records.ONE_WORD_SPELLING

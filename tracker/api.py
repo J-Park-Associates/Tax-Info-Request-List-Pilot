@@ -264,7 +264,6 @@ from tracker.records import (
     Person,
     identifier_key,
     info_to_json,
-    is_a_spelling,
     ledger_key,
     person_to_json,
 )
@@ -2309,7 +2308,7 @@ def _people_from_spec(sent: object) -> tuple[Person, ...]:
 
     Every refusal is by name and in the words their one owner gives them:
     a kind nothing knows, a name nobody typed, a spelling of one word
-    (:data:`tracker.names.ONE_WORD_SPELLING`). Nothing is inferred here -
+    (:data:`tracker.records.ONE_WORD_SPELLING`). Nothing is inferred here -
     the app *proposes* spellings through ``propose-spellings`` and a person
     ticks them, and what arrives is what they ticked.
     """
@@ -2320,32 +2319,16 @@ def _people_from_spec(sent: object) -> tuple[Person, ...]:
         if not isinstance(one, dict):
             raise ManifestError(f"{PEOPLE_LABEL} must be a list of people")
         kind = str(one.get("kind", "") or "").strip()
-        if kind not in PERSON_KINDS:
-            raise ManifestError(f"'{kind}' is not one of {', '.join(PERSON_KINDS)}")
         name = " ".join(str(one.get("name", "") or "").split())
-        if not name:
-            raise ManifestError(f"Every person needs a name ({PERSON_KIND_LABELS[kind]})")
-        # The name every page of every document is searched for: held to
-        # the one text rule every other name is, so an unbounded one cannot
-        # cost every pass (P288). The check runs on every save, stored
-        # values included - the editor sends the people block back whole -
-        # so the refusal says whose name (P306).
-        if problem := records.text_problem(name):
-            raise ManifestError(f"{PEOPLE_LABEL}: the {PERSON_KIND_LABELS[kind]}'s name {problem}")
+        if problem := records.typed_person_problem(kind, name):
+            raise ManifestError(problem)
         spellings: list[str] = []
         for spelling in one.get("spellings") or []:
             spelling = " ".join(str(spelling).split())
             if not spelling:
                 continue
-            if not is_a_spelling(spelling):
-                raise ManifestError(ONE_WORD_SPELLING)
-            # Searched on every page as the name is, so held to the same
-            # rule where it is typed (P304). A stored one is judged again
-            # on every save, as the name is, so the refusal names the
-            # person (P306); ``name`` has passed its own rule by here, so
-            # the sentence is bounded.
-            if problem := records.text_problem(spelling):
-                raise ManifestError(f"{PEOPLE_LABEL}: a spelling of {name} {problem}")
+            if problem := records.typed_spelling_problem(name, spelling):
+                raise ManifestError(problem)
             if spelling not in spellings:
                 spellings.append(spelling)
         people.append(Person(kind=kind, name=name, spellings=tuple(spellings)))
