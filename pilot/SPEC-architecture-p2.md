@@ -10,7 +10,12 @@ question (`ORCH/board/threads/P2/003`): B-6 reduced is accepted, and B-10 is car
 
 Round 3: revised against SPEC review 2 (`ORCH/jobs/P2/review-2.md`, S20-S33) and the orchestrator's settlement
 (`ORCH/board/threads/P2/006`): S28 takes option (b), so P2.13 re-pins the store's and the manifest's load sets and
-writes decision row P317, and P2.14's row becomes P318.
+writes decision row P321, and P2.14's row becomes P322.
+
+Settled at P2.3's landing (2026-10-14, review N1 of P2.3): a new module gets a decision row in the commit that creates
+it, as the main SPEC's section 6 says. So `replies` (P2.3), `bounds` (P2.4), `hold` (P2.6) and `index` (P2.9) each get
+one, and the rows after them move up: P2.7's is P318, P2.10's P320, P2.13's P321 and P2.14's P322. Every number in this
+file is the renumbered one.
 
 ## 1. The answer
 
@@ -117,9 +122,14 @@ baseline.
   - a curated node (role, and notes that carry the reasoning, as its neighbours' do);
   - a row in `tests/test_layers.py`'s `LAYERS` and (from P2.2) `DOMAINS`;
   - a line under its layer in `docs/architecture.md` (whose module count, "thirty-eight", goes up by one per new module);
-  - its own `tests/test_<module>.py`.
+  - its own `tests/test_<module>.py`;
+  - a decision row in `pilot/DECISIONS.md`, in the commit that creates it, in its neighbours' form: what the module
+    holds, its layer and domain, and why it is its own module (the reason the job's section gives). P2.3's row, P315,
+    was written at its landing; P2.4 writes P316 (`bounds`), P2.6 P317 (`hold`) and P2.9 P319 (`index`). P2.7's row
+    (P318) still names `hold` and `errlog` at L0, and is `errlog`'s row.
 - The next free decision row is **P314** in `pilot/DECISIONS.md`. The rows this SPEC adds are numbered in landing order
-  (P314 in P2.2, P315 in P2.7, P316 in P2.10, P317 in P2.13, P318 in P2.14). A job that lands out of order takes the
+  (P314 in P2.2, P315 in P2.3, P316 in P2.4, P317 in P2.6, P318 in P2.7, P319 in P2.9, P320 in P2.10, P321 in P2.13,
+  P322 in P2.14). A job that lands out of order takes the
   next free number and says so.
 - **The suite spells the settings module three ways:** `settings`, `settings_module` (13 imports, in test_after_install,
   test_api, test_page_rows, test_scheduling and test_shell) and `data_rules` (`tests/test_settings.py:15`). Every grep
@@ -1008,7 +1018,7 @@ The changed test files are test_api, test_registry, test_resident, test_runner a
 - **R2.7.5** — `tests/test_errlog.py`:
   - `load["errlog"] == {"settings"}` and `call["errlog"] == {"errors", "store"}`;
   - the three error-log tests moved from test_settings (291, 312 and 336's functions).
-- **R2.7.6** — decision row **P315**:
+- **R2.7.6** — decision row **P318**:
   - `hold.py` and `errlog.py` at L0;
   - errlog without a facade, and why;
   - B-6 built reduced: `store_path` stays the rule's home because the store may not import settings at load time
@@ -1438,7 +1448,7 @@ because their `read_index` stand-ins (7367, 345) must still reach rollover's rea
   `docs/architecture.md:31-33` ("The one deliberate cycle, filer and scanner through a rescan, is stated on both nodes of
   the map.") becomes "The scanner never imports the filer; the filer reaches it at call time through a rescan. The three
   call-time cycles that remain are named in `tests/test_layers.py`."
-- **R2.10.6** — decision row **P316**:
+- **R2.10.6** — decision row **P320**:
   - Q-A built: the scanner never imports the filer;
   - the curated edge retyped `calls`;
   - the remaining call-time cycles named and pinned;
@@ -1790,7 +1800,7 @@ the evidence that no routing changed.
     - new: `assert load["store"] == {"bounds", "checkpoint", "ledger", "locking", "records"}, load["store"]`
     - The test at 332, `test_the_store_imports_only_the_record_the_journal_the_lock_and_the_checkpoint`, becomes
       `test_the_store_imports_only_the_bounds_the_record_the_journal_the_lock_and_the_checkpoint`. Its docstring gains
-      one sentence after "...which is below it and imports nothing.": "P317 adds the bounds, which are L0 and read no
+      one sentence after "...which is below it and imports nothing.": "P321 adds the bounds, which are L0 and read no
       file."
   - `tests/test_layers.py:351`:
     - old: `assert load["manifest"] == {"records"}, load["manifest"]`
@@ -1798,12 +1808,12 @@ the evidence that no routing changed.
     - The test at 340, `test_the_manifest_imports_the_record_and_nothing_else`, becomes
       `test_the_manifest_imports_the_bounds_and_the_record_and_nothing_else`. Its docstring's last clause, "so at load
       time it names the shapes it validates into and nothing else", becomes "so at load time it names the shapes it
-      validates into and the bounds it holds them to (P317), and nothing else".
+      validates into and the bounds it holds them to (P321), and nothing else".
   - `tests/test_layers.py`'s module docstring:
     - 44: "``manifest`` imports ``records`` and nothing else at load time, and" becomes "``manifest`` imports
       ``bounds`` and ``records`` and nothing else at load time, and";
     - 88-89: "it imports ``records``, ``ledger``, ``locking`` and (since decision 159) ``checkpoint``, and nothing else
-      of the package" becomes "it imports ``bounds`` (P317), ``records``, ``ledger``, ``locking`` and (since decision
+      of the package" becomes "it imports ``bounds`` (P321), ``records``, ``ledger``, ``locking`` and (since decision
       159) ``checkpoint``, and nothing else of the package". The rest of the sentence is unchanged.
   - **CLAUDE.md 209-211** (a SPEC-named edit, which brief 000 authorizes; the standing rules' wording is untouched):
     - old:
@@ -1830,7 +1840,7 @@ the evidence that no routing changed.
       store imports only the bounds, the record, the journal, the lock and the checkpoint at load";
     - 3595-3596, "the store imports the record, the journal and the lock and nothing else at load time (decision 101)"
       becomes "the store imports the bounds, the record, the journal, the lock and the checkpoint and nothing else at
-      load time (decision 101, P317)".
+      load time (decision 101, P321)".
 
     The three that omit the checkpoint are stale at `286b535` (decision 159 added it). They are corrected in the same
     edit because each is being rewritten anyway.
@@ -1839,9 +1849,9 @@ the evidence that no routing changed.
   - **The curated notes** (`docs/repo-map.curated.json`):
     - 25 (manifest): "so the module still imports tracker/records.py and nothing else at load time
       (tests/test_layers.py)" becomes "so the module still imports tracker/bounds.py and tracker/records.py and nothing
-      else at load time (tests/test_layers.py, P317)";
+      else at load time (tests/test_layers.py, P321)";
     - 437 (store): "It imports records, ledger and locking and nothing else of the package at load time" becomes "It
-      imports bounds, records, ledger, locking and checkpoint and nothing else of the package at load time (P317)", and
+      imports bounds, records, ledger, locking and checkpoint and nothing else of the package at load time (P321)", and
       "so store still imports only records, ledger and locking at load" becomes "so store still imports only bounds,
       records, ledger, locking and checkpoint at load".
 - **R2.13.3** — hold:
@@ -1889,7 +1899,7 @@ the evidence that no routing changed.
 - **R2.13.4** — the spelling sentence: test_api 4423, 4479, 11321 and api.py:236 import `ONE_WORD_SPELLING` from
   `tracker.records`. filer.py:275 does too, but in P2.14, which edits filer anyway. names keeps its re-export until
   P2.14, and P2.14 deletes it.
-- **R2.13.5** — decision row **P317**:
+- **R2.13.5** — decision row **P321**:
   - the store and the manifest import `bounds` at load time: the narrow store of decision 101 widens by one L0
     module, and the manifest's load set of decision 103 by the same one;
   - why it keeps decision 101's point: bounds is in the lowest layer, imports only `layout` and reads no file, so the
@@ -1989,13 +1999,13 @@ test_page_rows runs only because its line 34 does.
     - test_ledger imports `ledger_key` from `tracker.records`.
   - **The identity test.** `tests/test_records.py`'s `RE_EXPORTED` (173-200) loses its `filer` and `content_check` rows.
     The `router` and `manifest` rows stay: those modules use the names themselves. Its docstring says decision 100's
-    shim is retired, and P318 names the commit.
+    shim is retired, and P322 names the commit.
   - Manifest's unused layout re-exports (`WINDOWS_ILLEGAL_CHARS_TEXT`, `WINDOWS_RESERVED_NAMES`,
     `WINDOWS_RESERVED_NAMES_TEXT`, `is_reserved_name`) are decision 137's and 188's, not decision 100's, and are left.
 - **R2.14.3** — the spelling sentence: filer.py:275 imports `ONE_WORD_SPELLING` from `tracker.records`. names deletes
   its re-export, and `tests/test_names.py`'s `test_the_spelling_sentence_is_the_records_own` (R2.5.3) is deleted
   with it.
-- **R2.14.4** — decision row **P318**:
+- **R2.14.4** — decision row **P322**:
   - decision 100's "for one release" shim retired (A-12);
   - phase 2's facades all removed;
   - the identity-pin pattern stays for later phases' re-exports.
@@ -2033,7 +2043,7 @@ only because their import lines changed.
   - P2.13: `records.` → `bounds.` in source lines.
 
   Each job's accept-when names that. A reviewer should diff the pin and the closure sources, not trust the count.
-- **The narrow store widens by one module** (P2.13, P317). store and manifest gain `bounds` at load time, and
+- **The narrow store widens by one module** (P2.13, P321). store and manifest gain `bounds` at load time, and
   test_layers' two pins and CLAUDE.md's sentence move with them in the same commit. The risk is a later job reading the
   wider pin as licence for more: the pin stays an exact set, so any further module still fails it.
 - **A stand-in that silently stops reaching its target** (P2.9, P2.10, P2.13, P2.14). The tool lists stand-ins by the
