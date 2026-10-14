@@ -82,9 +82,11 @@ that chooses between modules picks one of them in such a loop.
 
 A top-level name is followed to its value only where nothing rebinds it: not a
 function of its own file (``global``, ``globals()[...]``), not an assignment to
-``<module>.<name>`` in any other file, and not a stand-in or the builtin
-``setattr`` aimed at it. Any of those means it may hold something else by the
-time a stand-in is aimed through it, so a stand-in aimed through a seam another
+``<module>.<name>`` in any other file through a value the tool follows to that
+module (a store through any other value is on the boundary list below), and
+not a stand-in or the builtin ``setattr`` aimed at it. Any of those means it
+may hold something else by the time a stand-in is aimed through it, so a
+stand-in aimed through a seam another
 file fills (``children.PROC``, which a test replaces with
 ``monkeypatch.setattr(children, "PROC", proc)``) is not placed. Following what
 each store puts there was the rejected alternative (ruling 009 of J4): which of
@@ -131,6 +133,25 @@ its answer would depend on the interpreter.
 - code built at run time: ``exec``, ``eval``, strings handed to ``importlib``,
   and a name given as a string (``getattr(monkeypatch, "setattr")``), which no
   token of the source text spells.
+- a store through a value the tool does not follow, such as a parameter,
+  ``self`` or a call's result (``def fill(mod, value): mod.ENGINE = value``),
+  which is not seen as rebinding the name it stores;
+- a store into ``sys.modules`` (an item assignment or ``del``): a module read
+  back through ``sys.modules[...]``, ``sys.modules.get``,
+  ``importlib.import_module`` or ``pytest.importorskip`` is taken to be the
+  module its name names;
+- a helper module under ``tests/`` imported by its bare name (``import
+  children``, which pytest's ``sys.path`` allows): that is a second copy of
+  the module, which the tool takes for an outside library, so a stand-in on it
+  passes unlisted; the suite imports them as ``tests.<name>``;
+- bindings the test side does not model: there a comprehension or a class body
+  is not a scope of its own, and a walrus inside a comprehension, ``except ...
+  as``, a match capture and a star import are not seen as binding a name, so a
+  name one of them rebinds is followed to its earlier value.
+
+Review 6 of J4 found the last four with made-up cases; none occurs in the
+suite. Jason ruled to land the tool as it is (2026-10-14), so they are written
+here rather than handled, and carried forward.
 
 **What it does not see in the marks.** A name another module copied with ``from
 module import name`` is out of reach of a stand-in on ``module``. That site is

@@ -493,6 +493,7 @@ the same guard files, and each review must see one job's diff alone
 | J1 | Sonnet | a test walker fix and a README edit |
 | J2 | Sonnet | mechanical moves of test helpers, checked byte for byte |
 | J3 | Opus | (c) guards that parse Python and JavaScript |
+| J4 | Opus | 6 | `79d8079`, `4084f9c`, `3511a85`, `0d3283d`, `38b3a06`, `824e704`, `a6480a0`, `a641b1b`, `b13522a`, `3bae20a` | Landed as it is after six reviews, none clean (Jason, 2026-10-14). `tools/patch_sites.py` places each `<x>.setattr` in the suite only by a rule it can prove, and `check` fails an unread site, a stand-in it cannot place, and any `setattr` token in the suite's text it cannot account for (the backstop; R4.1 amended): 742 stand-ins on 41 modules, none unread, none unplaced, no token unaccounted for. What a parameter holds is not followed (ruling 015 of J4), so a test names its module directly. Review 6 found four made-up forms the tool misreads: bindings its test side does not model (a comprehension or class body as a scope, a walrus in a comprehension, except-as, a match capture, a star import), a helper module imported by its bare name (`import children`), a store through a value it does not follow, and a store into `sys.modules`. None occurs in the suite; they are written into its list of what it does not read and carried forward. A stricter rule that names every target plainly was measured and would have rewritten 490 test lines. `report tracker.filer` lists 79 sites (the SPEC's 73 was the audit's search; the acceptance line amended). Real stand-ins rewritten to name their module: two in test_locking, and others in test_fsio, test_store and test_ocr. Eleven recordings in `tests/golden/` (`--record-golden`) reproduce identically on both interpreters; J5 re-records three of them. | The usual pre-merge gate: `pilot\wintest\run_checks.ps1 -Tests test_golden,test_patch_sites,test_layers,test_single_source,test_repo_map,test_tripwire,test_suite_shape,test_errors`. Then one Windows run each of `test_locking` (its platform stand-ins now aim at `platform` itself; a Mac run too if one is available), `test_fsio` (the atomic replace) and `test_store`, whose stand-in targets were rewritten. |
 | J4 | Opus | (c) a tool that parses the suite; recordings of a whole pass |
 | J5 | Opus | (c) an AST-derived register; the resident engine and main.js |
 | J6 | Opus | (d) `Build App.bat` and the Windows kit, which cannot run here |
@@ -661,9 +662,10 @@ pin), D-8. Depends on J2.*
   a stand-in it cannot place, or a call of the builtin. A target is placed
   only by a rule the tool can prove, so a stand-in may fail the check but
   never pass it unseen. What the tool does not read (stores through `vars()`
-  or `__dict__`, `monkeypatch.setitem`, code built at run time) is written
-  in its docstring and its curated node. It keeps a `__main__` (the
-  migration checklist runs it, P233).
+  or `__dict__`, `monkeypatch.setitem`, code built at run time, and the four
+  forms review 6 found, which Jason ruled be written down rather than
+  handled, 2026-10-14) is written in full in its docstring and its curated
+  node. It keeps a `__main__` (the migration checklist runs it, P233).
 - **R4.2** `tests/test_patch_sites.py` owns the tool: its cases on made-up
   modules, and `check` passing on the real suite. Any site found unread today
   is fixed in this job (pointed at the module that reads the name) and listed
@@ -685,7 +687,8 @@ pin), D-8. Depends on J2.*
   Recording a pass runs the sorting engine once; the job says so in its
   handoff and does not run the engine's own test files.
 - **Accept when** `python tools/patch_sites.py check` exits 0 on the suite,
-  `report tracker.filer` lists the 73 filer sites, and the recordings
+  `report tracker.filer` lists at least the 73 filer sites a text search
+  finds (79 when J4 landed), and the recordings
   reproduce identically on a second run.
 
 ### J5. The engine's state between commands, the sender check, and the page's typed sentences
