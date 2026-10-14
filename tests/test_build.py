@@ -148,16 +148,11 @@ def data_home_names() -> tuple[set[str], set[str]]:
         CHECKPOINT_WAL_FILENAME,
         SET_ASIDE_SUFFIX,
     )
+    from tracker.errlog import ERROR_LOG_BACKUPS, ERROR_LOG_FILENAME
     from tracker.progress import PASSES_DIRNAME
     from tracker.runner import LAST_PASS_FILENAME, LOG_FILENAME, PASS_ORDER_FILENAME
     from tracker.scheduling import SCHEDULE_XML_FILENAME
-    from tracker.settings import (
-        DATA_HOME_NAME,
-        ERROR_LOG_BACKUPS,
-        ERROR_LOG_FILENAME,
-        OCR_SCRATCH_DIRNAME,
-        SETTINGS_FILENAME,
-    )
+    from tracker.settings import DATA_HOME_NAME, OCR_SCRATCH_DIRNAME, SETTINGS_FILENAME
     from tracker.store import RECOVERED_DIR, STORE_FILENAME, STORE_SHM_FILENAME, STORE_WAL_FILENAME
 
     names = {

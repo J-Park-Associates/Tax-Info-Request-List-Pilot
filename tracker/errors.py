@@ -45,7 +45,7 @@ programmer mending a parser needs the message and the trace, so they go to
 the debug logger :data:`DEBUG_LOGGER`, at WARNING, and from it to the one
 local debug log the tracker has: decision 193's ``tracker-errors.log``,
 beside the store in decision 186's data home, which
-:func:`tracker.settings.error_log` attaches to the ``tracker`` logger for
+:func:`tracker.errlog.error_log` attaches to the ``tracker`` logger for
 the length of a pass or an app command (decision 190, Part 4). The logger
 propagates to ``tracker`` so that log catches it; it keeps a
 ``NullHandler`` so that outside that block - no log attached, a CLI run by
@@ -53,7 +53,7 @@ hand - Python's last-resort handler never prints a kept message on stderr
 (it writes only for a record that meets no handler at all). This module
 builds no log of its own and names no file: one log, one authority
 (security principle 2), and ``tests/test_errors.py`` fails the suite if any
-module but ``settings`` attaches a file handler or names a log file. The
+module but ``errlog`` attaches a file handler or names a log file. The
 one console the package gives the root logger - a hand-run scan's -
 is made by :func:`console`, which keeps kept words off it.
 

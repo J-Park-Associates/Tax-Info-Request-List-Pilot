@@ -113,6 +113,7 @@ from tests.tripwire import sitecustomize as tripwire
 from tracker import (
     after_install,
     content_check,
+    errlog,
     fsio,
     layout,
     ledger,
@@ -1018,7 +1019,7 @@ def real_places(repo: Path) -> tuple[tuple[str, Path], ...]:
                    ("recovered record copies", where.with_name(store.RECOVERED_DIR)),
                    # Decision 193 writes these beside the store too: the error
                    # log (its rotated copies share its name) and the passes' progress.
-                   ("error log", where.with_name(settings.ERROR_LOG_FILENAME)),
+                   ("error log", where.with_name(errlog.ERROR_LOG_FILENAME)),
                    ("passes folder", where.with_name(PASSES_DIRNAME))]
     if os.environ.get(store.ENV_STORE):
         places.append(("store", Path(os.environ[store.ENV_STORE])))

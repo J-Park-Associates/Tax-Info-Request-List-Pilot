@@ -26,7 +26,7 @@ temporary is ever written beside a client's file.
 
 ## The package, by layer
 
-`tracker/` is one Python package of forty-one modules in six layers.
+`tracker/` is one Python package of forty-two modules in six layers.
 `tests/test_layers.py` pins the layer of every module and that no load-time
 import points upward; an import inside a function is a call-time import
 and may point anywhere. The one deliberate cycle, filer and scanner through
@@ -54,6 +54,9 @@ the package but each other.
 - `hold.py`: the per-reply memo: the machine's answers held for one read-only
   reply or one household of a pass and dropped after it, never an error;
   `settings.py` reads it through the module and re-exports it.
+- `errlog.py`: the one local debug log: an unexpected error's full words and
+  every warning, in a rotating file beside the database and nowhere else;
+  `settings.py` neither imports nor offers it.
 - `layout.py` and `door.py`: the shape of the clients root, named once
   (decision 125), and the disk half of it: a checked root, a return's folder
   from a typed path.

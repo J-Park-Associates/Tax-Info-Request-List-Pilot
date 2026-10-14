@@ -1613,7 +1613,7 @@ household and cannot clear it. Notices (a failure, a warning) sit in a panel at 
    dismissed. *Look again* means the record changed under you: the row is
    outlined, and looking again shows what it holds now. *Retry* re-runs
    the same step. A greyed return is a pass in progress. Every unexpected
-   error's detail is in the error log (`tracker.settings.ERROR_LOG_FILENAME`)
+   error's detail is in the error log (`tracker.errlog.ERROR_LOG_FILENAME`)
    beside the app's database, rotated at 1 MB, three kept. It can hold
    client names: it stays on this machine, and a developer reads it at
    this machine.
@@ -2148,7 +2148,7 @@ already.
 command runs, its `-wal` and `-shm` beside it), the folder
 `recovered` beside them if a recovery was ever run, the last-pass file
 (`last-pass.json`), the pass-order hint (`tracker.runner.PASS_ORDER_FILENAME`),
-the error log (`tracker.settings.ERROR_LOG_FILENAME`) and the `passes`
+the error log (`tracker.errlog.ERROR_LOG_FILENAME`) and the `passes`
 folder (`tracker.progress.PASSES_DIRNAME`) beside it, and the task's file),
 the scheduled task, the app folder itself, and the graphics card pack if
 that machine had one (step 5). The last-pass file, the pass-order hint, the

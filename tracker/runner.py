@@ -184,6 +184,7 @@ from tracker import (
     settings,
     store,
 )
+from tracker.errlog import ERROR_LOG_BACKUPS, ERROR_LOG_FILENAME, error_log
 from tracker.filer import (
     HOUSEHOLD_NO_ROOM,
     NEEDS_REVIEW,
@@ -257,8 +258,6 @@ from tracker.scanner import ScanLockedError, scan_engagement
 from tracker.settings import (
     ENV_PRODUCT_NAME,
     ENV_SETTINGS_DIR,
-    ERROR_LOG_BACKUPS,
-    ERROR_LOG_FILENAME,
     NO_ROOT_HINT,
     OCR_SCRATCH_DIRNAME,
     ScheduleChoiceError,
@@ -267,7 +266,6 @@ from tracker.settings import (
     beside_the_program,
     clients_root,
     data_home,
-    error_log,
     firm,
     logs_dir,
     one_household,

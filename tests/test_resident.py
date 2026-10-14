@@ -26,7 +26,7 @@ import pytest
 
 import tracker.api as api
 from tests.conftest import REPO, child_env, make_engagement
-from tracker import hold, locking, resident, settings, store
+from tracker import errlog, hold, locking, resident, settings, store
 from tracker.manifest import RequestItem
 
 #: The line an end line starts with: ``main.js`` finds it by this prefix.
@@ -76,7 +76,7 @@ def fresh(capsys, argv: list[str]) -> tuple[int, str]:
 
 
 def error_log_text() -> str:
-    path = settings.error_log_path()
+    path = errlog.error_log_path()
     return path.read_text(encoding="utf-8") if path.is_file() else ""
 
 

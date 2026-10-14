@@ -7265,7 +7265,7 @@ def test_a_store_refusal_is_said_in_its_own_sentence_and_kind_refused(capsys, de
 
 def test_an_unexpected_error_is_said_by_class_on_screen_and_in_full_only_in_the_error_log(
         capsys, demo_root, monkeypatch):
-    from tracker.settings import error_log_path
+    from tracker.errlog import error_log_path
 
     def surprise(argv):
         raise ValueError("a fabricated message naming Sample Client's folder")
@@ -7373,8 +7373,8 @@ def test_a_rollover_that_could_not_read_last_years_index_says_so_in_its_reply(
 
 
 def test_the_error_log_rotates_and_never_syncs_to_disk(capsys, demo_root, monkeypatch):
-    from tracker import settings
-    from tracker.settings import error_log_path
+    from tracker import errlog
+    from tracker.errlog import error_log_path
 
     def no_sync(fd):
         raise AssertionError("the error log is never synced to disk")
@@ -7383,13 +7383,13 @@ def test_the_error_log_rotates_and_never_syncs_to_disk(capsys, demo_root, monkey
         raise ValueError("x" * 400)
 
     monkeypatch.setattr(os, "fsync", no_sync)
-    monkeypatch.setattr(settings, "ERROR_LOG_MAX_BYTES", 2000)
+    monkeypatch.setattr(errlog, "ERROR_LOG_MAX_BYTES", 2000)
     monkeypatch.setitem(api.COMMANDS, "templates", surprise)
     for _ in range(12):
         assert run(capsys, "templates")[0] == 1
     path = error_log_path()
     assert path.with_name(path.name + ".1").is_file()
-    assert not path.with_name(path.name + f".{settings.ERROR_LOG_BACKUPS + 1}").exists()
+    assert not path.with_name(path.name + f".{errlog.ERROR_LOG_BACKUPS + 1}").exists()
 
 
 def test_run_now_prints_a_progress_line_per_household_and_file_before_its_one_reply(
@@ -11595,7 +11595,7 @@ def test_stdin_that_is_not_json_is_refused_like_a_non_object_and_logs_nothing(
         capsys, demo_root, monkeypatch):
     import io
 
-    from tracker.settings import error_log_path
+    from tracker.errlog import error_log_path
 
     monkeypatch.setattr("sys.stdin", io.TextIOWrapper(io.BytesIO(b"not json"), encoding="utf-8"))
     code = api.main(["set-schedule"])
@@ -11609,7 +11609,7 @@ def test_stdin_that_is_not_utf8_is_refused_like_a_non_object_and_logs_nothing(
         capsys, demo_root, monkeypatch):
     import io
 
-    from tracker.settings import error_log_path
+    from tracker.errlog import error_log_path
 
     monkeypatch.setattr("sys.stdin", io.TextIOWrapper(io.BytesIO(b"\xff\xfe{"), encoding="utf-8"))
     code = api.main(["set-schedule"])

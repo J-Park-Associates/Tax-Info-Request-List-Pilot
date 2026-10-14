@@ -46,7 +46,7 @@ from tests.conftest import (
     tripwire_log_said,
 )
 from tests.tripwire import sitecustomize as tripwire
-from tracker import fsio, locking, settings, store
+from tracker import errlog, fsio, locking, settings, store
 from tracker.checkpoint import CHECKPOINT_FILENAME, CHECKPOINT_SHM_FILENAME, CHECKPOINT_WAL_FILENAME
 from tracker.layout import CLIENTS_TREE, PRIVATE_TREE
 from tracker.progress import PASSES_DIRNAME
@@ -93,7 +93,7 @@ def test_the_tripwire_guards_every_place_a_real_settings_file_store_or_scratch_r
                   beside.with_name(CHECKPOINT_WAL_FILENAME), beside.with_name(CHECKPOINT_SHM_FILENAME),
                   beside.with_name(store.RECOVERED_DIR),
                   # decision 193's, beside the store
-                  beside.with_name(settings.ERROR_LOG_FILENAME), beside.with_name(PASSES_DIRNAME)):
+                  beside.with_name(errlog.ERROR_LOG_FILENAME), beside.with_name(PASSES_DIRNAME)):
         assert place in guarded, place
 
     named = tmp_path / "named"

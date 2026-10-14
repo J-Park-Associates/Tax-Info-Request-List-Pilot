@@ -98,8 +98,8 @@ journal, its request list, the bounds its values are held to and the shape of
 the clients root), ``reading`` (opening a client's file and getting the text
 out of it), ``sorting`` (deciding where a document belongs), ``pass`` (the
 scheduled run and what it drives), ``door`` (the API, the engine that answers
-it, what an error is called and the shape of every reply) and ``shell`` (the
-pages a person opens).
+it, what an error is called, where its words are kept and the shape of every
+reply) and ``shell`` (the pages a person opens).
 A domain is the grouping a folder tree would show, checked here instead: the
 modules stay flat in ``tracker/``, because a subpackage would escape every
 guard that reads only ``tracker/*.py`` and change every import path, and the
@@ -169,9 +169,13 @@ LAYERS: dict[int, frozenset[str]] = {
     # ``hold`` joins L0 with P317 (SPEC-architecture-p2 P2.6): the per-reply memo
     # out of ``settings``, which reads it through the module - the standard
     # library only.
+    # ``errlog`` joins L0 with P318 (SPEC-architecture-p2 P2.7): the rotating
+    # error log out of ``settings``, which no longer imports the store - the
+    # standard library and ``settings``' ``SettingsError``; the store and
+    # ``errors`` only at call time. Nothing in ``settings`` offers it.
     0: frozenset({"__init__", "reasons", "locking", "checkpoint", "page", "fsio", "settings",
                   "layout", "door", "errors", "progress", "firm_cache", "page_rows", "firm_pages",
-                  "replies", "bounds", "hold"}),
+                  "replies", "bounds", "hold", "errlog"}),
     1: frozenset({"households", "ledger", "manifest", "records", "scaffold", "store",
                   "templates", "validators"}),
     2: frozenset({"containers", "content_check", "names", "ocr", "router"}),
@@ -181,7 +185,7 @@ LAYERS: dict[int, frozenset[str]] = {
     # (L3) and L0; the API imports it, and nothing lower may.
     4: frozenset({"runner", "scheduling", "after_install"}),
     # ``resident`` joins L5 with P276: the engine's loop over ``api.main``; it
-    # imports ``api``, ``locking``, ``ocr``, ``settings`` and the standard library;
+    # imports ``api``, ``errlog``, ``locking``, ``ocr`` and the standard library;
     # nothing imports it but ``api_entry.py``, at call time.
     5: frozenset({"api", "resident"}),
 }
@@ -212,8 +216,9 @@ DOMAINS: dict[str, frozenset[str]] = {
     "pass": frozenset({"progress", "registry", "rollover", "reminder", "runner", "scheduling",
                        "after_install"}),
     # The one way the app reaches the rest, the engine that answers it, what
-    # an error is called and the shape of every reply it prints.
-    "door": frozenset({"errors", "api", "resident", "replies"}),
+    # an error is called, where its words are kept and the shape of every
+    # reply it prints.
+    "door": frozenset({"errors", "errlog", "api", "resident", "replies"}),
     # What a person opens: the pages, their kept rows and the firm's view.
     "shell": frozenset({"page", "page_rows", "firm_cache", "firm_pages", "view"}),
 }
@@ -1025,12 +1030,12 @@ def test_importing_the_api_loads_no_network_module():
         assert json.loads(done.stdout) == [], module
 
 
-def test_the_engine_imports_the_api_the_lock_the_reader_and_the_settings_and_nothing_imports_the_engine():
+def test_the_engine_imports_the_api_the_error_log_the_lock_and_the_reader_and_nothing_imports_the_engine():
     """P276: ``resident`` is the app's engine, a loop over ``api.main``; it
     reaches only those four, and nothing in the package reaches it - the
     entry point (``api_entry.py``, outside the package) starts it."""
     load, call = import_edges()
-    assert load["resident"] == {"api", "locking", "ocr", "settings"}, load["resident"]
+    assert load["resident"] == {"api", "errlog", "locking", "ocr"}, load["resident"]
     assert call["resident"] == set(), call["resident"]
     assert [m for m in load if "resident" in load[m] | call[m]] == []
     assert LAYER_OF["resident"] == LAYER_OF["api"] == 5

@@ -4578,8 +4578,9 @@ def test_what_an_earlier_version_left_is_named_for_deletion_and_never_deleted(tm
     pass-order hint, 159's last-pass file, 193's error log (and a rotated
     copy) and ``passes`` folder, the OCR scratch folder and the root's old
     run log - is named in :data:`LEFT_BEHIND`, never touched."""
+    from tracker.errlog import ERROR_LOG_FILENAME
     from tracker.progress import PASSES_DIRNAME
-    from tracker.settings import ENV_SETTINGS_DIR, ERROR_LOG_FILENAME, OCR_SCRATCH_DIRNAME, data_home
+    from tracker.settings import ENV_SETTINGS_DIR, OCR_SCRATCH_DIRNAME, data_home
 
     settings = tmp_path / "settings"
     (settings / OCR_SCRATCH_DIRNAME).mkdir(parents=True)
@@ -4660,8 +4661,9 @@ def test_the_store_in_use_is_never_named_as_left_behind(tmp_path, monkeypatch):
     checkpoint, ``recovered`` and last-pass file, and decision 193's error
     log and ``passes`` folder, beside it are never "left over"."""
     from tracker import checkpoint
+    from tracker.errlog import ERROR_LOG_FILENAME
     from tracker.progress import PASSES_DIRNAME
-    from tracker.settings import ENV_SETTINGS_DIR, ERROR_LOG_FILENAME
+    from tracker.settings import ENV_SETTINGS_DIR
 
     app = tmp_path / "app"
     monkeypatch.setenv(ENV_SETTINGS_DIR, str(app))

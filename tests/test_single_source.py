@@ -675,13 +675,13 @@ def test_gitignore_knows_every_runtime_file_python_writes_outside_the_repo():
     import fnmatch
     import subprocess
 
+    from tracker.errlog import ERROR_LOG_FILENAME
     from tracker.fsio import TEMP_SUFFIX
     from tracker.progress import PASSES_DIRNAME
     from tracker.reminder import DRAFT_FILENAME, NEW_DRAFT_FILENAME
     from tracker.runner import LOG_FILENAME, STATUS_PAGE_FILENAME
     from tracker.scheduling import SCHEDULE_XML_FILENAME
     from tracker.settings import (
-        ERROR_LOG_FILENAME,
         EXPECTATIONS_FILENAME,
         OCR_SCRATCH_DIRNAME,
         SETTINGS_FILENAME,
@@ -736,6 +736,7 @@ def _deny_list_from_the_constants() -> list[str]:
     stands alone."""
     from tracker.checkpoint import CHECKPOINT_FILENAME, SET_ASIDE_SUFFIX
     from tracker.content_check import RETIRED_CACHE_FILENAME
+    from tracker.errlog import ERROR_LOG_FILENAME
     from tracker.layout import CLIENTS_TREE, INBOX_DIR_NAME, OPENED_DIR_NAME, PRIVATE_TREE, RETURN_NAME_PATTERN
     from tracker.ledger import LEDGER_FILENAME
     from tracker.registry import LEGACY_MANIFEST_FILENAME
@@ -743,7 +744,6 @@ def _deny_list_from_the_constants() -> list[str]:
     from tracker.runner import LAST_PASS_FILENAME, LOG_FILENAME, PASS_ORDER_FILENAME, STATUS_PAGE_FILENAME
     from tracker.settings import (
         DATA_HOME_NAME,
-        ERROR_LOG_FILENAME,
         EXPECTATIONS_FILENAME,
         MAC_SUPPORT,
         OCR_SCRATCH_DIRNAME,
@@ -1736,6 +1736,7 @@ def test_documents_name_only_runtime_files_the_code_owns():
 
     from tracker.after_install import BUILD_INFO_FILENAME, RECORD_FILENAME
     from tracker.checkpoint import CHECKPOINT_FILENAME
+    from tracker.errlog import ERROR_LOG_FILENAME
     from tracker.filer import README_LOCK_FILENAME
     from tracker.firm_cache import CACHE_FILENAME
     from tracker.firm_pages import PAGES_FILENAME
@@ -1747,7 +1748,7 @@ def test_documents_name_only_runtime_files_the_code_owns():
     from tracker.runner import LAST_PASS_FILENAME, LOG_FILENAME, PASS_ORDER_FILENAME, STATUS_PAGE_FILENAME
     from tracker.scaffold import README_NAME
     from tracker.scheduling import SCHEDULE_XML_FILENAME
-    from tracker.settings import ERROR_LOG_FILENAME, SETTINGS_FILENAME
+    from tracker.settings import SETTINGS_FILENAME
     from tracker.store import STORE_FILENAME
     from tracker.view import VIEW_FILENAME
 
@@ -3248,7 +3249,7 @@ def test_with_no_error_log_named_the_failure_is_saved_in_the_fallback_log_and_th
     program - and the screen says just "App Failed", with nothing of
     stderr in the reply."""
     import tracker.api as api
-    from tracker.settings import ERROR_LOG_FILENAME
+    from tracker.errlog import ERROR_LOG_FILENAME
 
     assert api.SHELL_NO_LOG == "App Failed"
     ran = _run_the_shell(tmp_path, [["list"], ["templates"]], FAKE_LOG="")
@@ -3358,8 +3359,8 @@ def test_a_failed_spawn_is_said_by_its_code(tmp_path):
 
 
 def test_the_progress_key_is_typed_once_per_language_and_the_error_log_only_by_the_api():
+    from tracker.errlog import ERROR_LOG_FILENAME
     from tracker.progress import PROGRESS_KEY
-    from tracker.settings import ERROR_LOG_FILENAME
 
     main_js = read("app/main.js")
     assert f'const PROGRESS_KEY = "{PROGRESS_KEY}";' in main_js

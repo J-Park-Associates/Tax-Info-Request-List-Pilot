@@ -88,11 +88,12 @@ command's own first ask of it is not mistaken for a change.
 app command does (``content_check.READ_IN_A_CHILD``, decision 169): the
 reader's process-wide switches change only in that child and end with it.
 It makes no network call and imports none (``tests/test_layers.py``); it
-imports ``api`` (which owns the commands), ``locking``, ``ocr`` (to forget the
-reader's warnings between commands), ``settings`` and the standard library,
-and nothing imports it but ``api_entry.py``, at call time. The register's
-other modules are restored through ``sys.modules`` without importing them: a
-module not yet imported holds its fresh values.
+imports ``api`` (which owns the commands), ``errlog`` (the error log every
+command's lines go to), ``locking``, ``ocr`` (to forget the reader's
+warnings between commands) and the standard library, and nothing imports it
+but ``api_entry.py``, at call time. The register's other modules are restored
+through ``sys.modules`` without importing them: a module not yet imported holds
+its fresh values.
 """
 
 from __future__ import annotations
@@ -106,7 +107,7 @@ import tempfile
 import threading
 from typing import BinaryIO
 
-from tracker import api, locking, ocr, settings
+from tracker import api, errlog, locking, ocr
 
 #: How the app starts the engine: this flag, alone. ``main.js`` names the
 #: same word (``tests/test_single_source.py`` pins it).
@@ -262,9 +263,9 @@ def _left_unlike(before: dict) -> str | None:
 
 
 def _say_retired(reason: str) -> None:
-    """One line on the error log, inside ``settings.error_log()`` as every
+    """One line on the error log, inside ``errlog.error_log()`` as every
     command's lines are: the reason's code alone."""
-    with settings.error_log("tracker"):
+    with errlog.error_log("tracker"):
         log.warning("engine retired: %s", reason)
 
 
@@ -320,7 +321,7 @@ def _run_one_command(argv: list[str], payload: bytes) -> tuple[int, bool]:
     except BaseException as exc:  # SystemExit, or an error outside main's own try
         # Inside the error log, as main's own are: its `with` has already
         # closed, and said outside it the trace the reply promises is dropped.
-        with settings.error_log("tracker"):
+        with errlog.error_log("tracker"):
             return api.say_failure(argv[0], exc), True
     finally:
         sys.stdin = stdin

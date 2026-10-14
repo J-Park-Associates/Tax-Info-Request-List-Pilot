@@ -119,6 +119,7 @@ from tracker import (
     store,
 )
 from tracker.containers import is_container
+from tracker.errlog import ERROR_LOG_FILENAME, error_log, error_log_path
 from tracker.filer import (
     DUPLICATE,
     FILE_MOVED,
@@ -326,15 +327,12 @@ from tracker.scheduling import (
 from tracker.settings import (
     DEFAULT_SCHEDULE_EVERY,
     DEFAULT_SCHEDULE_START,
-    ERROR_LOG_FILENAME,
     REDIRECTED_COPY,
     SET_ROOT_HINT,
     DataHomeRedirected,
     SettingsError,
     clients_root,
     data_home,
-    error_log,
-    error_log_path,
     firm,
     firm_phone,
     one_reading,

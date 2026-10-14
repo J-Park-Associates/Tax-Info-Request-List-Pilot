@@ -183,9 +183,9 @@ def data_home(tmp_path, monkeypatch):
 def test_inside_the_error_log_a_kept_message_lands_in_tracker_errors_log_in_the_data_home(data_home):
     """Decision 190, Part 4: ``errors.keep`` reaches decision 193's one local
     debug log - ``tracker-errors.log`` beside the store, under 186's data
-    home - while ``settings.error_log`` holds it, and after the block it
+    home - while ``errlog.error_log`` holds it, and after the block it
     stops: a later keep is not written."""
-    from tracker.settings import ERROR_LOG_FILENAME, error_log
+    from tracker.errlog import ERROR_LOG_FILENAME, error_log
 
     with error_log("tracker") as path:
         try:
@@ -207,7 +207,7 @@ def test_a_reading_childs_kept_message_reaches_the_parents_log(tmp_path, monkeyp
     child opens no log, so nothing is written but through the parent."""
     from tests import child_readers
     from tracker import content_check
-    from tracker.settings import error_log
+    from tracker.errlog import error_log
 
     monkeypatch.setattr(content_check, "READ_IN_A_CHILD", True)
     page = tmp_path / "W2.pdf"
@@ -239,7 +239,7 @@ def test_a_child_keeps_a_short_list_and_says_how_many_it_dropped(monkeypatch):
 
 #: The one module that may attach a log file to a logger or name one:
 #: decision 193's error log, where every kept word lands.
-THE_ONE_LOG = "settings.py"
+THE_ONE_LOG = "errlog.py"
 #: Files a module names that are not a logger's file, each with why.
 NOT_A_LOGGERS_FILE = {
     ("runner.py", "runs.log"): "the run log: counts and codes appended by fsio, never a logger's (186)",
@@ -318,9 +318,9 @@ def _a_second_log(source: str, file: str) -> list[str]:
     return found
 
 
-def test_no_module_but_settings_attaches_a_log_file_or_names_one():
+def test_no_module_but_errlog_attaches_a_log_file_or_names_one():
     """One log, one authority (decision 190, Part 4; security principle 2):
-    decision 193's ``tracker-errors.log``, attached by ``settings``, is the
+    decision 193's ``tracker-errors.log``, attached by ``errlog``, is the
     only place a logger writes to a file. A second one - a module's own
     handler, a ``logging.handlers`` import (which also loads ``socket``) or
     a file named for it - fails here."""

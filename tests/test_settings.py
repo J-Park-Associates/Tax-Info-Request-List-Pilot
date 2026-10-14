@@ -289,7 +289,7 @@ def test_the_error_log_lives_beside_the_tracker_database(beside_the_app, monkeyp
     import logging
 
     from tracker import store
-    from tracker.settings import ERROR_LOG_FILENAME, error_log, error_log_path
+    from tracker.errlog import ERROR_LOG_FILENAME, error_log, error_log_path
 
     elsewhere = beside_the_app / "data" / store.STORE_FILENAME
     monkeypatch.setenv(store.ENV_STORE, str(elsewhere))
@@ -309,8 +309,8 @@ def test_an_error_log_that_cannot_be_written_never_spills_kept_words_to_stderr(
     import logging
 
     from tracker import errors, store
+    from tracker.errlog import ERROR_LOG_FILENAME, ERROR_LOG_NOT_WRITTEN, error_log
     from tracker.layout import CLIENTS_TREE
-    from tracker.settings import ERROR_LOG_FILENAME, ERROR_LOG_NOT_WRITTEN, error_log
 
     quoted = f"/{CLIENTS_TREE}/Sample Household/Drop files here/W2.pdf"
     elsewhere = beside_the_app / "data" / store.STORE_FILENAME
@@ -334,7 +334,8 @@ def test_the_error_log_is_none_when_the_data_home_cannot_be_had(monkeypatch):
     import logging
 
     from tracker import store
-    from tracker.settings import ENV_DATA_HOME, error_log
+    from tracker.errlog import error_log
+    from tracker.settings import ENV_DATA_HOME
 
     monkeypatch.delenv(store.ENV_STORE, raising=False)
     monkeypatch.setenv(ENV_DATA_HOME, "relative-data")
