@@ -2251,7 +2251,11 @@ exactly as it came.
 1. Install Google Drive for desktop on the new machine, sign in with the
    firm account, and wait for the clients folder to finish syncing. Do not
    start until it has.
-2. Put the app on it: rebuild it from this repository (`Build App.bat`),
+2. Put the app on it: rebuild it from this repository (`Build App.bat`,
+   which checks the package it made before it says it is done: if the
+   package holds a store, a run log, a settings file or a data folder, it
+   stops and names each one, and that package goes nowhere - take the file
+   out of the checkout it came from and build again),
    or download the package from the `build.yml` run a `v*` release tag
    started (decision 191: a package is built from a tag and from nothing
    else, and only an admin can make one, so it is the build of reviewed

@@ -101,6 +101,15 @@ for /f "usebackq delims=" %%i in (`npm --version`) do set NPMVER=%%i
   %PY% -m pip freeze
 )
 
+rem The package must hold nothing a pass derives from clients and no settings
+rem (decision 186): no store, run log, task file, settings file or data
+rem folder. tools\check_package.ps1 is the check build.yml runs before it zips
+rem a package and the one list of those names on Windows (SPEC-architecture
+rem R6.5). Windows PowerShell by its full path, like robocopy above (E-10);
+rem -ExecutionPolicy Bypass is for this one process, not the machine.
+%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "tools\check_package.ps1" -Package "%PKG%"
+if errorlevel 1 (echo The package is not finished: the check above says what it found. & call :wait & exit /b 1)
+
 echo [4/4] Done.
 echo.
 echo Portable app: "%CD%\%PKG%"

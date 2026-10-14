@@ -45,7 +45,8 @@ def test_the_product_name_has_one_home():
     for rel in ("app/renderer/index.html", "app/renderer/app.js", "app/renderer/style.css",
                 "Build App.bat", "Start App.bat", "docs/workflow.md",
                 "setup.command", "start.command", "build-mac.sh", "app/assets/Info-mac.plist",
-                "tracker/settings.py", "tracker/scheduling.py"):
+                "tracker/settings.py", "tracker/scheduling.py",
+                "pilot/wintest/run_checks.ps1", "pilot/wintest/uninstall_checks.ps1"):
         assert package["productName"] not in read(rel), rel
     # The two documents titled after the product carry it in their title only.
     for rel in ("README.md", "docs/ROADMAP.md"):

@@ -166,6 +166,43 @@ def test_every_copy_of_the_earlier_name_matches_the_one_in_settings():
         assert named and set(named) == {old}, path.name
 
 
+#: How both Windows check scripts learn the product's name: from
+#: app\package.json, its one home (SPEC-architecture R6.5), never typed.
+PRODUCT_NAME_LINE = ('$ProductName = (Get-Content -Raw -Encoding UTF8 -LiteralPath '
+                     '(Join-Path $Repo "app\\package.json") | ConvertFrom-Json).productName')
+
+
+def test_both_windows_check_scripts_read_the_product_name_from_package_json():
+    """R6.5: each script finds its repository from its own folder, reads the
+    name from the file the shell and the builds read, and stops with a
+    sentence when it cannot - before the name is used to find the program."""
+    for script in ("run_checks.ps1", "uninstall_checks.ps1"):
+        lines = (WINTEST / script).read_text(encoding="utf-8").splitlines()
+        [repo] = [n for n, line in enumerate(lines) if line.startswith("$Repo ")]
+        assert lines[repo] == '$Repo     = (Resolve-Path "$PSScriptRoot\\..\\..").Path', script
+        [name] = [n for n, line in enumerate(lines) if line.startswith("$ProductName ")]
+        assert repo < name and lines[name] == PRODUCT_NAME_LINE, script
+        assert lines[name + 1].startswith("if (-not $ProductName) {") and lines[name + 1].endswith("exit 1 }"), script
+        assert not any("$ProductName" in line for line in lines[:name]), script
+    assert (WINTEST / "run_checks.ps1").read_text(encoding="utf-8").count("$Repo     =") == 1
+
+
+def test_the_product_name_line_reads_package_json_in_windows_powershell(tmp_path):
+    """The line itself, in Windows PowerShell 5.1, which the office's check
+    runs in: it gives the name package.json holds. Windows only."""
+    import sys
+
+    powershell = shutil.which("powershell.exe") if sys.platform == "win32" else None
+    if powershell is None:
+        pytest.skip("Windows PowerShell 5.1 is the Windows check's shell")
+    driver = tmp_path / "name.ps1"
+    driver.write_text(f'$Repo = $args[0]\n{PRODUCT_NAME_LINE}\nWrite-Output $ProductName\n', encoding="utf-8")
+    done = subprocess.run([powershell, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(driver), str(REPO)],
+                          capture_output=True, text=True, timeout=120, check=False)
+    assert done.returncode == 0, done.stderr
+    assert done.stdout.strip().splitlines()[-1] == _product_name()
+
+
 def test_the_pilot_build_names_the_installer_as_setup_iss_does():
     base = re.search(r"^OutputBaseFilename=(.+)-\{#AppVersion\}$", _sections(_setup())["Setup"],
                      re.MULTILINE).group(1)

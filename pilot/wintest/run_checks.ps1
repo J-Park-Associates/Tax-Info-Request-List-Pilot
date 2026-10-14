@@ -26,7 +26,10 @@ $Test     = Join-Path $env:USERPROFILE "PilotTest"
 $Results  = Join-Path $Test "results"
 $Log      = Join-Path $Results "run_checks.log"
 $Json     = Join-Path $Results "checks.json"
-$ProductName = "Tax Document Console"
+# The product's name, read from app\package.json, its one home: the shell, the
+# builds and the installer read it there too (test_the_product_name_has_one_home).
+$ProductName = (Get-Content -Raw -Encoding UTF8 -LiteralPath (Join-Path $Repo "app\package.json") | ConvertFrom-Json).productName
+if (-not $ProductName) { Write-Host "STOPPED: app\package.json names no productName, so the installed program cannot be found"; exit 1 }
 # The pilot's earlier name, tracker.settings.EARLIER_PRODUCT_NAME (a test holds
 # this copy equal to it). A new install goes to Programs\<new name>; a PC
 # upgraded from the earlier name keeps that program's own folder (P155,
@@ -137,7 +140,7 @@ function Get-AppExePatterns([string]$localAppData, [string[]]$names, [string]$ex
     })
 }
 # The app's own processes: those whose program file matches one of the given
-# path patterns (the installed Tax Document Console.exe, wherever it is).
+# path patterns (the installed program's .exe, wherever it is).
 # Electron runs several processes of that one file; nothing else on the PC is
 # ever counted. A path with no wildcard matches only itself.
 function Find-AppProcess([string[]]$exePaths) {
@@ -292,7 +295,7 @@ Record "build" "PASS" "$($setup.FullName) SHA-256 $sha"
 # Electron's window-less helper processes without force, and
 # /SUPPRESSMSGBOXES answers the installer's "files in use" question with
 # Abort. So the app is asked to close first, as its own Close button does -
-# only processes whose program is the installed Tax Document Console.exe, in
+# only processes whose program is the installed program's .exe, in
 # the new folder or the earlier one, in the real Programs folder or a
 # packaged app's private copy of it (S1). Nothing is forced: if it is still
 # open after 30 seconds the script stops and says so (P200).

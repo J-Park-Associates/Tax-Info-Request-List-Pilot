@@ -173,25 +173,100 @@ def data_home_names() -> tuple[set[str], set[str]]:
     return names, patterns
 
 
+#: The one Windows check that a package holds no data (SPEC-architecture R6.5):
+#: Build App.bat and build.yml both run it.
+PACKAGE_CHECK = "tools/check_package.ps1"
+#: How Build App.bat runs it: Windows PowerShell by its full path (E-10), for
+#: this one process only, on the folder it assembled.
+PACKAGE_CHECK_RUN = (r'%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe -NoProfile -NonInteractive '
+                     r'-ExecutionPolicy Bypass -File "tools\check_package.ps1" -Package "%PKG%"')
+
+
 def test_the_package_is_proved_to_hold_no_store_log_task_file_or_settings():
     """The proof (decision 186): a step before the package is zipped and
     uploaded fails the build when anything in it bears a name the data
     home or the settings folder holds - each spelled by its constant,
     decision 159's files (the checkpoint's write-ahead log and shared memory
     among them, P214) and decision 193's error log, its rotated
-    copies and its ``passes`` folder beside the store among them."""
+    copies and its ``passes`` folder beside the store among them. The names
+    and the check live in one script (R6.5), which the step runs."""
     run = commands()
     step = run.index("- name: The package holds no store, run log, task file or settings")
     assert step < run.index("- name: Zip the package and publish its SHA-256") < run.index(
         "- name: Upload the package")
     body = run[step:run.index("- name: Zip the package and publish its SHA-256")]
+    assert f"& ./{PACKAGE_CHECK} -Package $env:PACKAGE_DIR" in body
+    assert "if ($LASTEXITCODE -ne 0) { throw" in body
+    script = read(PACKAGE_CHECK)
     names, patterns = data_home_names()
-    listed = re.search(r"\$names = @\(([^)]*)\)", body).group(1)
+    listed = re.search(r"^\$names = @\(([^)]*)\)$", script, re.M).group(1)
     assert set(re.findall(r"'([^']+)'", listed)) == names
-    listed_patterns = re.search(r"\$patterns = @\(([^)]*)\)", body).group(1)
+    listed_patterns = re.search(r"^\$patterns = @\(([^)]*)\)$", script, re.M).group(1)
     assert set(re.findall(r"'([^']+)'", listed_patterns)) == patterns
-    assert "$names -contains $name" in body and "$name -like $_" in body
-    assert "$env:PACKAGE_DIR -Recurse -Force" in body and "throw" in body
+    assert "$names -contains $name" in script and "$name -like $_" in script
+    assert "Get-ChildItem -LiteralPath $Package -Recurse -Force" in script
+    # A folder it could not read stops it: a walk that skipped one proves nothing.
+    assert "-ErrorAction SilentlyContinue -ErrorVariable unread" in script
+    assert script.count("exit 1") == 1 and script.count("Stop-Check ") == 3
+
+
+def test_the_windows_build_checks_its_package_before_it_says_done():
+    """R6.5 (audit E-10): Build App.bat, which makes the package the office
+    carries, runs the same check on the folder it assembled, after the
+    build-info file and before "Done", and stops with a sentence - through
+    the one wait - when the check refuses. The names are typed in the script
+    alone: no workflow or batch file holds a copy."""
+    script = read(BUILD_SCRIPT)
+    lines = script.splitlines()
+    [at] = [n for n, line in enumerate(lines) if line == PACKAGE_CHECK_RUN]
+    assert lines[at + 1] == ("if errorlevel 1 (echo The package is not finished: the check above says what it "
+                             "found. & call :wait & exit /b 1)")
+    assert script.index("%PY% -m pip freeze") < script.index(PACKAGE_CHECK_RUN) < script.index("echo [4/4] Done.")
+    assert re.search(r"^set PKG=", script, re.M).start() < script.index(PACKAGE_CHECK_RUN)
+    names, _patterns = data_home_names()
+    holders = [path.relative_to(REPO).as_posix() for path in sorted(
+        [*REPO.glob("*.bat"), *REPO.glob("pilot/*.bat"), *(REPO / ".github" / "workflows").glob("*.yml"),
+         *REPO.glob("tools/*.ps1"), *REPO.glob("pilot/wintest/*.ps1")])
+        if "$names = @(" in path.read_text(encoding="utf-8") or "'record-heads.db-wal'" in path.read_text(encoding="utf-8")]
+    assert holders == [PACKAGE_CHECK]
+    assert {"record-heads.db-wal", "tax-tracker.xml"} <= names
+
+
+def test_the_package_check_passes_a_clean_package_and_stops_on_each_name(tmp_path):
+    """The script itself, in the shell Build App.bat runs it in: a clean
+    package passes; one holding any named file, or a set-aside, stops with
+    the file's path; a folder that is not there stops too. Windows only,
+    so it runs on the office PC (the Windows check names this file)."""
+    import shutil
+    import subprocess
+    import sys
+
+    import pytest
+
+    powershell = shutil.which("powershell.exe") if sys.platform == "win32" else None
+    if powershell is None:
+        pytest.skip("Windows PowerShell 5.1 is the office build's shell")
+
+    def run(package) -> subprocess.CompletedProcess:
+        return subprocess.run([powershell, "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File",
+                               str(REPO / PACKAGE_CHECK), "-Package", str(package)],
+                              capture_output=True, text=True, timeout=120, check=False)
+
+    clean = tmp_path / "Clean"
+    (clean / "resources" / "tracker-api").mkdir(parents=True)
+    (clean / "BUILD-INFO.txt").write_text("x", encoding="utf-8")
+    ran = run(clean)
+    assert ran.returncode == 0, ran.stdout + ran.stderr
+    assert "holds no store" in ran.stdout
+    names, _patterns = data_home_names()
+    for leaked in sorted(names | {"tracker.db.v3.old1", "record-heads.db.v7.old2"}):
+        package = tmp_path / f"with {leaked}"
+        (package / "resources" / "app").mkdir(parents=True)
+        (package / "resources" / "app" / leaked).write_text("x", encoding="utf-8")
+        ran = run(package)
+        assert ran.returncode == 1 and leaked in ran.stderr, (leaked, ran.stdout, ran.stderr)
+    ran = run(tmp_path / "not there")
+    assert ran.returncode == 1 and "There is no package folder" in ran.stderr
 
 
 def test_the_workflow_skips_the_prompts_through_the_switch_the_script_reads():
@@ -1342,8 +1417,8 @@ def test_the_mac_build_info_sits_where_the_after_install_step_looks_in_a_bundle(
 
 
 def test_the_mac_build_proves_the_bundle_holds_no_store_log_task_file_or_settings(tmp_path):
-    """SPEC-mac R17 step 6: the same names and patterns the Windows workflow
-    checks (each spelled by the constant that owns it), and the check itself
+    """SPEC-mac R17 step 6: the same names and patterns the Windows check
+    script holds (each spelled by the constant that owns it), and the check itself
     is run: a clean bundle passes and one holding any named file or a
     set-aside fails with the file's path."""
     import subprocess

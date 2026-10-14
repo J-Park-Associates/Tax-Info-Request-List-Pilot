@@ -260,7 +260,7 @@ and nothing the machine happened to have.
 
 | Script | System | What it makes |
 |---|---|---|
-| `Build App.bat` | Windows | The portable folder: freezes the engine, packages the shell, copies the freeze beside it, writes a build-info text file naming the commit and the tool versions. |
+| `Build App.bat` | Windows | The portable folder: freezes the engine, packages the shell, copies the freeze beside it, writes a build-info text file naming the commit and the tool versions, and proves the folder holds no store or log or settings with `tools/check_package.ps1`, the check `build.yml` runs too. |
 | `pilot/Build Pilot Installer.bat` | Windows | The installer, with Inno Setup (`pilot/installer/setup.iss`), from a clean commit; the version comes from `app/renderer/pilot-content.js`, its one home. |
 | `Build GPU Pack.bat` | Windows | The optional graphics card pack: NVIDIA's CUDA and cuDNN libraries from `requirements-gpu.lock`, one folder to copy beside the packaged engine on a machine with a supported card. Without it the reader reads on the processor. |
 | `build-mac.sh` | Mac | The disk image, in seven steps whose order is the point: freeze, package, copy the freeze into the bundle, write the build-info file, sign the bundle inside out and verify the seal, prove the bundle holds no store or log or settings, make the image and its SHA-256. Built only on an Apple silicon Mac, from a clean commit. |

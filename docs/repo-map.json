@@ -15,9 +15,9 @@
     "a person sends the draft"
   ],
   "counts": {
-    "nodes": 336,
-    "edges": 1439,
-    "reused": 282
+    "nodes": 337,
+    "edges": 1443,
+    "reused": 273
   },
   "node_types": [
     "artifact",
@@ -75,10 +75,10 @@
       "id": ".github/workflows/build.yml",
       "type": "workflow",
       "layer": "ci",
-      "sha256": "ed5d39b7830e745e",
-      "lines": 238,
+      "sha256": "80fce4bef1a51e25",
+      "lines": 239,
       "role": "Builds the portable package from a `v*` tag and nothing else (decision 191) by running Build App.bat itself on a Windows runner, proves the frozen executable answers in both of its modes, prints the build-info file, zips the package, publishes its SHA-256 beside it and on the run's summary page, and uploads the zip and the .sha256 as the run's artifact for seven days.",
-      "notes": "Decision 78. It runs the batch file rather than re-implementing the build, because a second copy of the build is the one that drifts; tests/test_build.py refuses a workflow that names PyInstaller, the packager or the copy itself. The batch file pauses for a person at every exit, so it reads one documented switch that skips the waits, named in its own header and set here. The two smoke checks run the frozen executable, not the source: `list` with the shell's two environment variables set, which must answer JSON rather than a traceback on an install with no clients root yet, and one dry pass over a scratch clients root tests/samples.py builds, which walks filing, routing, scanning and drafting. Since decision 169 the root holds a scan only the reader can file (SCRATCH_SCAN), and the step compares the package's engagement line with the source's own dry pass and reads the run log's first line for reader=processor, so a package missing the reader or a model fails here. It installs the tree in the two steps every install makes (R-11): requirements.lock then rapidocr with --no-deps from requirements-nodeps.lock, both hash-checked (decision 191). Where the package landed is read back out of the batch file's own OUT/PLATFORM/ARCH and app/package.json's two names, so no path here is a second copy of one. Not on push: a freeze, an npm install, an Electron download and a few hundred megabytes of artifact are not what a commit should cost. Decision 191: no workflow_dispatch - v* tags are protected, so a package is the build of reviewed code - and a job guard `if: startsWith(github.ref, 'refs/tags/v')`; the checksum step runs after both smoke checks, and the runbook compares the summary page's hash with certutil -hashfile before a stick is written (transport, not provenance). Its checkout keeps no credentials (F-12). Decision 186: a step right after the dependencies gives every run of the tracker in the job a data folder under the runner's temp (TRACKER_DATA_HOME through GITHUB_ENV, since a job-level env cannot read the runner context), and a step before the zip fails the build when the package holds any name the data home or the settings folder holds (the store and its side files, runs.log, pass-order.json, tax-tracker.xml, ocr-scratch, the data home's own name, settings.json), each pinned to its constant by tests/test_build.py."
+      "notes": "Decision 78. It runs the batch file rather than re-implementing the build, because a second copy of the build is the one that drifts; tests/test_build.py refuses a workflow that names PyInstaller, the packager or the copy itself. The batch file pauses for a person at every exit, so it reads one documented switch that skips the waits, named in its own header and set here. The two smoke checks run the frozen executable, not the source: `list` with the shell's two environment variables set, which must answer JSON rather than a traceback on an install with no clients root yet, and one dry pass over a scratch clients root tests/samples.py builds, which walks filing, routing, scanning and drafting. Since decision 169 the root holds a scan only the reader can file (SCRATCH_SCAN), and the step compares the package's engagement line with the source's own dry pass and reads the run log's first line for reader=processor, so a package missing the reader or a model fails here. It installs the tree in the two steps every install makes (R-11): requirements.lock then rapidocr with --no-deps from requirements-nodeps.lock, both hash-checked (decision 191). Where the package landed is read back out of the batch file's own OUT/PLATFORM/ARCH and app/package.json's two names, so no path here is a second copy of one. Not on push: a freeze, an npm install, an Electron download and a few hundred megabytes of artifact are not what a commit should cost. Decision 191: no workflow_dispatch - v* tags are protected, so a package is the build of reviewed code - and a job guard `if: startsWith(github.ref, 'refs/tags/v')`; the checksum step runs after both smoke checks, and the runbook compares the summary page's hash with certutil -hashfile before a stick is written (transport, not provenance). Its checkout keeps no credentials (F-12). Decision 186: a step right after the dependencies gives every run of the tracker in the job a data folder under the runner's temp (TRACKER_DATA_HOME through GITHUB_ENV, since a job-level env cannot read the runner context), and a step before the zip fails the build when the package holds any name the data home or the settings folder holds (the store and its side files, runs.log, pass-order.json, tax-tracker.xml, ocr-scratch, the data home's own name, settings.json), each pinned to its constant by tests/test_build.py. SPEC-architecture R6.5: the names and the walk are tools/check_package.ps1's, which Build App.bat has already run on the package; this step runs the script again after the smoke checks and throws on its exit code."
     },
     {
       "id": ".github/workflows/ci.yml",
@@ -4635,7 +4635,7 @@
       "id": "docs/architecture.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "e83babe7b14b08ca",
+      "sha256": "c54d831e98c3b90c",
       "lines": 275,
       "role": "The overview between the README and the map: the three programs (the shell, the engine, the scheduled pass) and the reading child; the package layer by layer with each module's one sentence; the tools; the tests and their guards; the three places the app writes; the decisions that shape it (deterministic, offline, standard library first, hash-checked installs, one-time steps built in); and how each package is built.",
       "notes": "Written for a person who did not watch the code grow. It names no numbers a test pins and no file the code does not own; tests/test_layers.py's table is the source of its layers."
@@ -4653,8 +4653,8 @@
       "id": "docs/repo-map.curated.json",
       "type": "file",
       "layer": "docs",
-      "sha256": "f2ad548830af6258",
-      "lines": 1575,
+      "sha256": "8d7dbd035754de19",
+      "lines": 1599,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
     },
@@ -4662,8 +4662,8 @@
       "id": "docs/runbook.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "b37227ee08c1f1bc",
-      "lines": 2909,
+      "sha256": "6fe33e4ea8313227",
+      "lines": 2913,
       "role": "The operator's page for one tax season: the designated machine and today's rule that only one may run a clients root, what a person does each morning and on the draft day, what every index reason and validation note means, and the thirty-minute move to another machine - on a Windows PC or on a Mac.",
       "notes": "Written for a person, not an agent. Roles are docs/workflow.md and the reasons behind the rules are docs/ROADMAP.md; it links to both rather than repeating them. The Mac is written as parallel paragraphs, not edits to the Windows text (SPEC-mac R34): section 1's `### On a Mac` (the heading the pass's own root-not-permitted reason points at) and two paragraphs in section 6 (moving to or from a Mac, taking the app off one). The one-machine rule is still stated once. tests/test_single_source.py quotes the app's sentences against it and holds the data folder's name to settings.DATA_HOME_NAME on both systems (the Windows lines once named a folder the app does not make)."
     },
@@ -5323,10 +5323,10 @@
       "id": "Build App.bat",
       "type": "script",
       "layer": "root",
-      "sha256": "8ce00cdc00967522",
-      "lines": 118,
+      "sha256": "650cc8ae854e5f23",
+      "lines": 127,
       "role": "Builds the portable package: freezes the API with PyInstaller from the committed api_entry.spec inside a virtual environment holding exactly requirements.lock, requirements-build.lock and requirements-nodeps.lock, installed with --require-hashes, packages the Electron shell with @electron/packager, copies the frozen API into resources/ and writes BUILD-INFO.txt.",
-      "notes": "Reproducible from the commit (decision 46): the freeze runs in its own venv because PyInstaller follows optional imports and the machine's Python would otherwise leak unrelated packages into the package (decision 53). The packager runs through its entry script under `node`, not the `npx` shim, for the ampersand reason Start App.bat states; the copy into the package is `robocopy` with its exit code checked and the executable's presence asserted, because `xcopy` gave up on the package's long paths while the script still reported success (decision 53). Guards pin OUT to .gitignore and the resources path to app/main.js. Decision 55: the venv is made fresh each build; no parenthesised value is expanded inside the build-info block. Decision 78: every exit goes through one `:wait` label, which pauses for the person who double-clicked unless TRACKER_BUILD_NONINTERACTIVE is set - the one switch, named in this file's header and read nowhere else, and what lets .github/workflows/build.yml run this file rather than a copy of it. Decision 191: the installs read the locks in hash mode (a replaced file, or a package the locks do not name, fails the build), tests/test_build.py compares BUILD-INFO.txt's freeze with the union of the locks under the build's markers, NoDefaultCurrentDirectoryInExePath is set before the first command and robocopy is called by its full path (E-10). Its Mac twin is build-mac.sh (SPEC-mac R16, R17), which is also pilot/Build Pilot Installer.bat for a Mac: refuses uncommitted changes (P13), then freezes the API for arm64, packages Electron with electron-packager for darwin/arm64 (--icon=assets/icon.icns, --app-bundle-id=com.jparkassociates.taxdocumentconsole, --extend-info=assets/Info-mac.plist), copies the freeze into <productName>.app/Contents/Resources/<apiName>/ with ditto, writes BUILD-INFO.txt into Contents/Resources (where after_install.build_info looks), signs ad hoc inside out and verifies the seal, proves the bundle holds none of the data-home or settings names (the same constants as build.yml's Windows proof), and makes <productName>-<version>-mac-arm64.dmg with its .sha256 beside it in build-portable/installer/. The order is pinned: info before signing, signing before the image. Needs a Mac (codesign, ditto, hdiutil), so Linux proves its parse, its order and its names and the kit proves the build (H1, H2). Signing stays ad hoc and unnotarized (P239); R37 lands later."
+      "notes": "Reproducible from the commit (decision 46): the freeze runs in its own venv because PyInstaller follows optional imports and the machine's Python would otherwise leak unrelated packages into the package (decision 53). The packager runs through its entry script under `node`, not the `npx` shim, for the ampersand reason Start App.bat states; the copy into the package is `robocopy` with its exit code checked and the executable's presence asserted, because `xcopy` gave up on the package's long paths while the script still reported success (decision 53). Guards pin OUT to .gitignore and the resources path to app/main.js. Decision 55: the venv is made fresh each build; no parenthesised value is expanded inside the build-info block. Decision 78: every exit goes through one `:wait` label, which pauses for the person who double-clicked unless TRACKER_BUILD_NONINTERACTIVE is set - the one switch, named in this file's header and read nowhere else, and what lets .github/workflows/build.yml run this file rather than a copy of it. Decision 191: the installs read the locks in hash mode (a replaced file, or a package the locks do not name, fails the build), tests/test_build.py compares BUILD-INFO.txt's freeze with the union of the locks under the build's markers, NoDefaultCurrentDirectoryInExePath is set before the first command and robocopy is called by its full path (E-10). Its Mac twin is build-mac.sh (SPEC-mac R16, R17), which is also pilot/Build Pilot Installer.bat for a Mac: refuses uncommitted changes (P13), then freezes the API for arm64, packages Electron with electron-packager for darwin/arm64 (--icon=assets/icon.icns, --app-bundle-id=com.jparkassociates.taxdocumentconsole, --extend-info=assets/Info-mac.plist), copies the freeze into <productName>.app/Contents/Resources/<apiName>/ with ditto, writes BUILD-INFO.txt into Contents/Resources (where after_install.build_info looks), signs ad hoc inside out and verifies the seal, proves the bundle holds none of the data-home or settings names (the same constants as tools/check_package.ps1, the Windows proof), and makes <productName>-<version>-mac-arm64.dmg with its .sha256 beside it in build-portable/installer/. The order is pinned: info before signing, signing before the image. Needs a Mac (codesign, ditto, hdiutil), so Linux proves its parse, its order and its names and the kit proves the build (H1, H2). Signing stays ad hoc and unnotarized (P239); R37 lands later. SPEC-architecture R6.5 (audit E-10): after BUILD-INFO.txt and before Done, it runs tools/check_package.ps1 on the package it assembled, through Windows PowerShell by its full path, and stops with a sentence, through the one :wait, when the package holds a store, a run log, a settings file or a data folder - the check build.yml already ran, so the package the office carries is proved as CI's is."
     },
     {
       "id": "Build GPU Pack.bat",
@@ -5672,19 +5672,19 @@
       "id": "pilot/wintest/run_checks.ps1",
       "type": "script",
       "layer": "root",
-      "sha256": "f916df1d5a081e14",
-      "lines": 348,
+      "sha256": "5fba0125f0800ec0",
+      "lines": 351,
       "role": "The Windows check kit's script: runs the named test files as separate processes alongside the installer build, installs the installer silently for this user, and makes the sample clients folder from pilot/wintest/make_samples.py; pilot/wintest/PROMPT.md drives it and the hands-on part that follows (CLAUDE.md, 'Test minimally').",
-      "notes": "-Tests <file>,<file> names the files to run (Jason, 2026-09-29); without it the whole suite runs, which is for a change that reaches the engine or when Jason asks."
+      "notes": "-Tests <file>,<file> names the files to run (Jason, 2026-09-29); without it the whole suite runs, which is for a change that reaches the engine or when Jason asks. SPEC-architecture R6.5: the product's name is read from app\\package.json, from the repository the script finds from its own folder, and the script stops with a sentence when it cannot be; tests/test_single_source.py holds it to typing the name nowhere, and tests/test_pilot_installer.py pins the line and, on Windows, runs it."
     },
     {
       "id": "pilot/wintest/uninstall_checks.ps1",
       "type": "script",
       "layer": "root",
-      "sha256": "7ad260ec66d567fd",
-      "lines": 59,
+      "sha256": "1c6882ab7204a73b",
+      "lines": 63,
       "role": "The Windows check kit's uninstall script: removes the installed program and checks that the schedule, the data folder and the settings are left as the runbook says they are (pilot/RELEASE.md names when it runs).",
-      "notes": "Run by hand at the end of a Windows check, never by run_checks.ps1, so a check that stops part-way leaves the installed app for a person to look at."
+      "notes": "Run by hand at the end of a Windows check, never by run_checks.ps1, so a check that stops part-way leaves the installed app for a person to look at. SPEC-architecture R6.5: the product's name is read from app\\package.json, as run_checks.ps1 reads it, from the repository the script finds from its own folder; it stops with a sentence when the name cannot be read."
     },
     {
       "id": "setup.command",
@@ -5866,7 +5866,7 @@
       "id": "artifact:the data home",
       "type": "artifact",
       "layer": "runtime",
-      "role": "The one per-user local folder on the designated machine where the tracker keeps what it derives from clients (decision 186): settings.data_home(), %LOCALAPPDATA% plus settings.DATA_HOME_NAME on Windows, ~/Library/Application Support plus the same name on a Mac (SPEC-mac R1), or TRACKER_DATA_HOME. Holds the store, decision 189's pass-order.json beside it, decision 159's record checkpoint (checkpoint.CHECKPOINT_FILENAME), recovered/ folder (store.RECOVERED_DIR) and last-pass file (runner.LAST_PASS_FILENAME) beside it too - each one an older version left beside the settings file or the frozen executable named by runner.left_behind() and refused in the package by build.yml's proof; decision 193's error log (settings.ERROR_LOG_FILENAME, with its rotated copies) and passes/ folder (progress.PASSES_DIRNAME) beside it too, in the same way; the checkpoint and recovered/ are named only in LEFT_BEHIND_TO_MOVE (move, never delete: security principle 10), the rest in LEFT_BEHIND - the scheduler's task file, scratch/<pid> for each reading child and logs/ for the run log. Never beside the program, in a checkout, on removable media or in the temp folder; data_home() refuses rather than fall back, and creates nothing. Decision 186's rebase review: runner.left_behind() also names 159's set-asides (the store's to delete, the checkpoint's to move) and the checkpoint's journal and .damaged copy, and build.yml's proof refuses them; while the old checkpoint sits beside the program no fresh one is made here (MF1)."
+      "role": "The one per-user local folder on the designated machine where the tracker keeps what it derives from clients (decision 186): settings.data_home(), %LOCALAPPDATA% plus settings.DATA_HOME_NAME on Windows, ~/Library/Application Support plus the same name on a Mac (SPEC-mac R1), or TRACKER_DATA_HOME. Holds the store, decision 189's pass-order.json beside it, decision 159's record checkpoint (checkpoint.CHECKPOINT_FILENAME), recovered/ folder (store.RECOVERED_DIR) and last-pass file (runner.LAST_PASS_FILENAME) beside it too - each one an older version left beside the settings file or the frozen executable named by runner.left_behind() and refused in the package by tools/check_package.ps1, the proof Build App.bat and build.yml run; decision 193's error log (settings.ERROR_LOG_FILENAME, with its rotated copies) and passes/ folder (progress.PASSES_DIRNAME) beside it too, in the same way; the checkpoint and recovered/ are named only in LEFT_BEHIND_TO_MOVE (move, never delete: security principle 10), the rest in LEFT_BEHIND - the scheduler's task file, scratch/<pid> for each reading child and logs/ for the run log. Never beside the program, in a checkout, on removable media or in the temp folder; data_home() refuses rather than fall back, and creates nothing. Decision 186's rebase review: runner.left_behind() also names 159's set-asides (the store's to delete, the checkpoint's to move) and the checkpoint's journal and .damaged copy, and tools/check_package.ps1 refuses them; while the old checkpoint sits beside the program no fresh one is made here (MF1)."
     },
     {
       "id": "artifact:the household inbox",
@@ -7131,8 +7131,8 @@
       "id": "tests/test_build.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "5602e0ebad591681",
-      "lines": 1383,
+      "sha256": "a8323ec2983f0250",
+      "lines": 1458,
       "exports": [
         "APP_INSTALLERS",
         "ARTWORK_APP",
@@ -7160,6 +7160,8 @@
         "NPM_COMMAND",
         "NPM_INSTALL",
         "NPM_SPELLINGS",
+        "PACKAGE_CHECK",
+        "PACKAGE_CHECK_RUN",
         "PATH_BLOCK",
         "PIP_INSTALL",
         "PIP_SPELLINGS",
@@ -7226,6 +7228,7 @@
         "test_the_mac_launcher_and_setup_sentences_are_the_ones_their_owners_say",
         "test_the_mac_launcher_never_installs_and_says_when_setup_must_run",
         "test_the_onnx_runtime_and_numpy_are_pinned_by_platform_and_interpreter",
+        "test_the_package_check_passes_a_clean_package_and_stops_on_each_name",
         "test_the_package_is_proved_to_hold_no_store_log_task_file_or_settings",
         "test_the_package_is_published_with_its_sha256_after_the_smoke_checks",
         "test_the_packaged_exe_carries_the_console_icon",
@@ -7236,6 +7239,7 @@
         "test_the_smoke_check_fails_when_the_package_printed_nothing_to_compare",
         "test_the_smoke_checks_drive_the_frozen_entry_by_the_flags_the_code_owns",
         "test_the_smoke_checks_pass_the_environment_the_electron_shell_passes",
+        "test_the_windows_build_checks_its_package_before_it_says_done",
         "test_the_workflow_skips_the_prompts_through_the_switch_the_script_reads",
         "test_the_workflow_types_no_path_the_build_script_or_the_shell_owns",
         "workflow"
@@ -7245,6 +7249,8 @@
         "GATE_WORKFLOW": "'gate.yml'",
         "BUILD_SCRIPT": "'Build App.bat'",
         "SCRIPT_GLOBS": "('app/*.js', 'app/renderer/*.js')",
+        "PACKAGE_CHECK": "'tools/check_package.ps1'",
+        "PACKAGE_CHECK_RUN": "'%SystemRoot%\\\\System32\\\\WindowsPowerShell\\\\v1.0\\\\powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"tools\\\\check_package.ps1\" -Package \"%PKG%\"'",
         "BUILD_LOCKS": "('requirements.lock', 'requirements-build.lock', 'requirements-nodeps.lock')",
         "RUNTIME_LOCK": "'requirements.lock'",
         "FROZEN_HEADING": "'Python packages frozen'",
@@ -7267,7 +7273,7 @@
         "PATH_BLOCK": "('clean_path=\"\"', 'PATH=$clean_path')"
       },
       "role": "Guards what only the build workflow could otherwise discover ten minutes into a release: that it runs the batch file the repository owns rather than a copy of the build, that the switch it sets is the one that batch file reads, that the flags it fires at the frozen executable are flags tracker/runner.py declares, that it passes the two environment variables tracker/settings.py names, and that both workflows quote the one interpreter pyproject.toml writes down. It also parses every script the app runs with node --check (app/*.js and app/renderer/*.js, the globs the gate's last step loops over; skipped, saying so, where node is absent) and holds that step to those globs (SPEC-architecture R3.5).",
-      "notes": "Decision 78. It also asserts the fixture: a scratch root is one engagement discovery finds and a whole dry pass walks, because a smoke check over an empty folder proves only that discovery does not crash. Nothing here can prove the package runs - only the Windows runner can. Decision 137 (M5), on decision 191's locks: requirements.lock, requirements-build.lock and requirements-nodeps.lock pin the whole tree the portable build freezes, by hash; the suite holds requirements*.txt to them, \"Build App.bat\" to installing them with --require-hashes, and every BUILD-INFO.txt under build-portable/dist to freezing nothing else. Decision 191 also: every pip install in every batch file and workflow is --require-hashes from a .lock and none upgrades pip; the build runs from a v* tag only, with a job guard; the checksum step follows the smoke checks and the upload carries the zip and its .sha256; the launcher installs nothing and speaks the lock tool's sentence; every batch file sets NoDefaultCurrentDirectoryInExePath first and calls Windows' own tools by path (E-10); every checkout keeps no credentials (F-12); the audit workflow is scheduled, Linux-only and never on a push. Decision P310 (R6.1, R6.4): nothing that installs, launches, builds or packages the app names requirements-dev, mypy or typecheck, no lock a build installs holds mypy in any environment, and gate.yml's type-check step runs on Linux only, installs the dev lock by hash before it checks, and leaves the gate called and never fired on its own."
+      "notes": "Decision 78. It also asserts the fixture: a scratch root is one engagement discovery finds and a whole dry pass walks, because a smoke check over an empty folder proves only that discovery does not crash. Nothing here can prove the package runs - only the Windows runner can. Decision 137 (M5), on decision 191's locks: requirements.lock, requirements-build.lock and requirements-nodeps.lock pin the whole tree the portable build freezes, by hash; the suite holds requirements*.txt to them, \"Build App.bat\" to installing them with --require-hashes, and every BUILD-INFO.txt under build-portable/dist to freezing nothing else. Decision 191 also: every pip install in every batch file and workflow is --require-hashes from a .lock and none upgrades pip; the build runs from a v* tag only, with a job guard; the checksum step follows the smoke checks and the upload carries the zip and its .sha256; the launcher installs nothing and speaks the lock tool's sentence; every batch file sets NoDefaultCurrentDirectoryInExePath first and calls Windows' own tools by path (E-10); every checkout keeps no credentials (F-12); the audit workflow is scheduled, Linux-only and never on a push. Decision P310 (R6.1, R6.4): nothing that installs, launches, builds or packages the app names requirements-dev, mypy or typecheck, no lock a build installs holds mypy in any environment, and gate.yml's type-check step runs on Linux only, installs the dev lock by hash before it checks, and leaves the gate called and never fired on its own. SPEC-architecture R6.5: the package proof's names are read out of tools/check_package.ps1 (no workflow, batch file or other script holds a copy), build.yml's step runs it before the zip, Build App.bat runs it by Windows PowerShell's full path after the build-info file and before Done and stops through the one wait, and on Windows the script itself passes a clean package and stops on each name."
     },
     {
       "id": "tests/test_catalog.py",
@@ -8977,11 +8983,12 @@
       "id": "tests/test_pilot_installer.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "313943462c197841",
-      "lines": 322,
+      "sha256": "8500d503e9bb8c51",
+      "lines": 359,
       "exports": [
         "APP_ID",
         "BUILD",
+        "PRODUCT_NAME_LINE",
         "REPO",
         "SETUP",
         "UPSTREAM_DATA_HOME_NAME",
@@ -8989,6 +8996,7 @@
         "WINTEST",
         "test_an_upgrade_installs_over_the_earlier_copy_in_its_own_folder",
         "test_an_upgrade_removes_exactly_the_earlier_shortcuts_and_program_file",
+        "test_both_windows_check_scripts_read_the_product_name_from_package_json",
         "test_every_batch_file_the_pilot_build_calls_is_named_by_its_path",
         "test_every_copy_of_the_earlier_name_matches_the_one_in_settings",
         "test_the_desktop_icon_is_offered_but_not_ticked",
@@ -9003,6 +9011,7 @@
         "test_the_pilot_build_refuses_what_is_not_committed",
         "test_the_pilot_installer_makes_the_overview_ready_before_it_launches_the_app",
         "test_the_pilot_installer_says_so_in_a_small_window_when_the_step_fails",
+        "test_the_product_name_line_reads_package_json_in_windows_powershell",
         "test_the_shortcuts_and_the_window_share_one_app_id",
         "test_the_start_menu_takes_the_new_name_on_an_upgrade",
         "test_the_tester_guide_names_the_pilot_folders_it_leaves_alone",
@@ -9014,7 +9023,8 @@
       "constants": {
         "UPSTREAM_DATA_HOME_NAME": "'tax-document-tracker'",
         "UPSTREAM_PRODUCT_NAME": "'Tax Document Tracker'",
-        "APP_ID": "'AppId={{27812DF2-05B3-4844-81BA-E58F49D2BD7D}'"
+        "APP_ID": "'AppId={{27812DF2-05B3-4844-81BA-E58F49D2BD7D}'",
+        "PRODUCT_NAME_LINE": "'$ProductName = (Get-Content -Raw -Encoding UTF8 -LiteralPath (Join-Path $Repo \"app\\\\package.json\") | ConvertFrom-Json).productName'"
       }
     },
     {
@@ -10937,8 +10947,8 @@
       "id": "tests/test_single_source.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "6c9d21fc964eb5f8",
-      "lines": 5429,
+      "sha256": "a288841b2510972f",
+      "lines": 5430,
       "exports": [
         "AFTER_WHAT",
         "CONSOLE_EXEMPT",
@@ -11875,6 +11885,15 @@
       "notes": "Decision 74. The measure the fifty blank IRS forms and the typed cases cannot be - decision 70's report leaves most keywords and most rows defended by nothing - and the only corpus made of documents a client actually sent. Each document is routed through a hard link (a copy where the file system refuses one) under one neutral name, so the router's by-name fallback can never read the client's name off the file and the score is the routing rules' rather than the firm's naming discipline; the link is the same bytes, so every tier-2 check still sees the real document. A document with no text layer is its own category, because the only evidence left for it would be the name being hidden - unless OCR is allowed, when nothing is handed over and the router does its own reading under its own stricter rule for OCR words. Catalogs are built the way tests/test_irs_forms.py builds them, with the size floor and the year check lifted. Nothing identifying comes back: counts, catalog identifiers and a row's number in the expectations file, never a file name, a folder name below the corpus root or a word of a document; the corpus, its expectations file and the report stay outside the repository and the tool refuses to write into the tree. Decision 127: route_one() also says which of READING_KINDS each document got - text, ocr or image - and the report's timing carries readings_by_kind, so the reader benchmark can say what a photo costs without a folder of text-layer PDFs flattening the number. The rule is unchanged: an image needs OCR_FLAG, exactly as a scan does. Decision 147: collect lists a document wherever the pass would take it - accepted() asks validators.extension_allowed() row by row (a row with no whitelist takes anything), so a photo is on the skeleton wherever a row takes a PDF and a .bmp still is not; no copy of the extension list is kept here. Decision 185: the out-path refusal asks settings.inside_the_app(). F-7 (a copy in the machine's temp folder when a hard link fails) is decision 186's placement. Decision 186: route_corpus() keeps its catalogs and links in this process's own scratch in the data home, and - since the review's N5, because with ocr=True it reads in its own process - points TMP, TEMP, TMPDIR and tempfile.tempdir at that scratch for the run and puts them back."
     },
     {
+      "id": "tools/check_package.ps1",
+      "type": "script",
+      "layer": "tooling",
+      "sha256": "c49b1dabe6b73795",
+      "lines": 50,
+      "role": "The proof that a Windows package holds nothing a pass derives from clients and no settings (decision 186): walks the package folder it is given and exits 1, with one sentence naming each file, when anything in it bears a name the data home or the settings folder holds, or one of decision 159's set-asides, when a file in it could not be read, or when the folder is not there. Build App.bat runs it on the package it has just assembled, before it says the build is done, and .github/workflows/build.yml runs it before the package is zipped.",
+      "notes": "SPEC-architecture J6 (R6.5; audit E-10). The check was build.yml's alone, inline, so the package the office builds by hand and carries on a USB stick was never checked; moved into one script both run, so the list of names has one home on Windows and the two builds cannot check different lists (build-mac.sh checks the same names in bash). tests/test_build.py holds its $names and $patterns to the constants that own them (data_home_names()), holds that no batch file, workflow or other script carries a copy, pins how Build App.bat calls it (Windows PowerShell by its full path, -ExecutionPolicy Bypass for that one process, after BUILD-INFO.txt and before Done, stopping through the one :wait) and, on Windows only, runs it on a clean package, on one holding each name and on a folder that is not there. A walk that could not read a folder stops it rather than passing a check that skipped part of the package. ASCII only, because Windows PowerShell 5.1 reads a file without a byte-order mark in the machine's code page."
+    },
+    {
       "id": "tools/gpu_pack.py",
       "type": "tool",
       "layer": "tooling",
@@ -12327,6 +12346,12 @@
       "source": "curated"
     },
     {
+      "from": ".github/workflows/build.yml",
+      "to": "tools/check_package.ps1",
+      "type": "runs",
+      "source": "curated"
+    },
+    {
       "from": ".github/workflows/ci.yml",
       "to": ".github/workflows/gate.yml",
       "type": "calls",
@@ -12354,6 +12379,12 @@
       "from": "Build App.bat",
       "to": "api_entry.py",
       "type": "freezes",
+      "source": "curated"
+    },
+    {
+      "from": "Build App.bat",
+      "to": "tools/check_package.ps1",
+      "type": "runs",
       "source": "curated"
     },
     {
@@ -12714,6 +12745,18 @@
       "from": "pilot/wintest/make_samples.py",
       "to": "artifact:the check kits' sandbox",
       "type": "writes",
+      "source": "curated"
+    },
+    {
+      "from": "pilot/wintest/run_checks.ps1",
+      "to": "app/package.json",
+      "type": "reads",
+      "source": "curated"
+    },
+    {
+      "from": "pilot/wintest/uninstall_checks.ps1",
+      "to": "app/package.json",
+      "type": "reads",
       "source": "curated"
     },
     {

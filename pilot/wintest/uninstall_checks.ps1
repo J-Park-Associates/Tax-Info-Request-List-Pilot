@@ -7,7 +7,11 @@ $ErrorActionPreference = "Continue"
 $Test     = Join-Path $env:USERPROFILE "PilotTest"
 $Results  = Join-Path $Test "results"
 $Json     = Join-Path $Results "uninstall.json"
-$ProductName = "Tax Document Console"
+$Repo     = (Resolve-Path "$PSScriptRoot\..\..").Path
+# The product's name, read from app\package.json, its one home: the shell, the
+# builds and the installer read it there too (test_the_product_name_has_one_home).
+$ProductName = (Get-Content -Raw -Encoding UTF8 -LiteralPath (Join-Path $Repo "app\package.json") | ConvertFrom-Json).productName
+if (-not $ProductName) { Write-Host "STOPPED: app\package.json names no productName, so the installed program cannot be found"; exit 1 }
 # The pilot's earlier name, tracker.settings.EARLIER_PRODUCT_NAME (a test holds
 # this copy equal to it): its task must be gone too, and a PC upgraded from it
 # keeps that program's own folder (P155, SPEC-rename R2).
