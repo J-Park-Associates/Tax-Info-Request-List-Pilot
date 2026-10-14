@@ -150,8 +150,8 @@ def test_a_program_is_asked_about_in_the_words_any_unusable_file_gets():
 #: cause - by module and function, each with why (decision 190's Part 2
 #: review, S-2). A new one is a decision, made here where it shows.
 TAIL_READERS = {
-    ("filer", "moved_to"): "where the firm's moved sentence says a working copy now is",
-    ("filer", "interrupted"): "the path the firm's interrupted-move sentence names, and the sentence itself",
+    ("index", "moved_to"): "where the firm's moved sentence says a working copy now is",
+    ("index", "interrupted"): "the path the firm's interrupted-move sentence names, and the sentence itself",
     ("review", "_label_of"): "the return's label the firm's own veto sentence names",
     ("scanner", "_regression_why"): "the count the firm's own regression sentence names",
     ("containers", "add"): "which limit (LIMIT_DEPTH) the firm's own container-limit sentence names",

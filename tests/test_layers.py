@@ -177,8 +177,12 @@ LAYERS: dict[int, frozenset[str]] = {
     0: frozenset({"__init__", "reasons", "locking", "checkpoint", "page", "fsio", "settings",
                   "layout", "door", "errors", "progress", "firm_cache", "page_rows", "firm_pages",
                   "replies", "bounds", "hold", "errlog"}),
+    # ``index`` joins L1 with P319 (SPEC-architecture-p2 P2.9): the index's
+    # words and readers out of ``filer``, which imports them back - ``ledger``,
+    # ``records``, ``store`` and ``validators`` (L1) and ``layout`` and
+    # ``reasons`` (L0); it reads the index and sorts nothing.
     1: frozenset({"households", "ledger", "manifest", "records", "scaffold", "store",
-                  "templates", "validators"}),
+                  "templates", "validators", "index"}),
     2: frozenset({"containers", "content_check", "names", "ocr", "router"}),
     3: frozenset({"filer", "scanner", "reminder", "rollover", "view", "registry", "review"}),
     # ``after_install`` joins L4 with decision 209, beside the scheduler it
@@ -199,14 +203,14 @@ LAYER_OF: dict[str, int] = {module: layer for layer, modules in LAYERS.items() f
 #: that is added is added here and in :data:`LAYERS` in the same commit.
 DOMAINS: dict[str, frozenset[str]] = {
     # The household's record: the journal and its lock, the request list and
-    # the catalog it is built from, the bounds its values are held to, and the
-    # shape of the clients root.
+    # the catalog it is built from, the bounds its values are held to, the
+    # index its rows are read as, and the shape of the clients root.
     # ``door`` here is ``tracker/door.py``, the module that knows which
     # household a path is in (decision 188); it is not the API's door, which
     # is the ``door`` domain below.
     "record": frozenset({"__init__", "ledger", "locking", "checkpoint", "fsio", "layout", "door",
-                         "settings", "hold", "records", "bounds", "store", "manifest", "households",
-                         "templates", "scaffold"}),
+                         "settings", "hold", "records", "bounds", "store", "index", "manifest",
+                         "households", "templates", "scaffold"}),
     # Opening a client's file, checking it and getting the text out of it.
     "reading": frozenset({"validators", "containers", "content_check", "ocr"}),
     # Deciding where a document belongs, or that it belongs nowhere yet, and

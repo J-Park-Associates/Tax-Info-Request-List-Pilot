@@ -2999,17 +2999,19 @@ def drag(path, folder):
 def counting_hashes(monkeypatch) -> list[str]:
     """Every path anything in the package hashes, as it is hashed.
 
-    Three modules hold the name now, and each holds its own: the memo's is
+    Four modules hold the name now, and each holds its own: the memo's is
     the content check's, and a pass that reached around it would show up
-    here and nowhere else. The scanner held a fourth until decision 109
-    and holds none.
+    here and nowhere else. The scanner held one until decision 109 and
+    holds none; the index's is the one ``holds_the_row`` reads, since that
+    proof moved out of the filer (P319).
     """
     import tracker.content_check as content_check_module
     import tracker.filer as filer_module
+    import tracker.index as index_module
     import tracker.validators as validators_module
 
     read: list[str] = []
-    for module in (filer_module, content_check_module, validators_module):
+    for module in (filer_module, content_check_module, index_module, validators_module):
         real = module.sha256_of
 
         def counted(path, _real=real):

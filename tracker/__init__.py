@@ -30,6 +30,7 @@ See docs/ROADMAP.md for the build plan. Component modules:
 - ledger        : the engagement's own append-only record of what was decided, written beside the client's files under that lock
 - checkpoint    : what this machine last saw of each record, beside the store; a record shorter, rewritten or claiming this machine is refused
 - store         : the database on this machine, rebuilt from the record; one file per clients root, and the index is read from it
+- index         : the index as the record holds it - the words its rows carry, their readers from the store, and the one proof of a row's bytes
 - fsio          : the one way a file is replaced whole or not at all: the temp name beside it, and the swap
 - page          : the markup both of the firm's pages are drawn with: escaping, tables, the bytes a page is written as
 - view          : the page a person opens, regenerated from the record and the readers every pass

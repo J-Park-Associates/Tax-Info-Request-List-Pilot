@@ -26,7 +26,7 @@ temporary is ever written beside a client's file.
 
 ## The package, by layer
 
-`tracker/` is one Python package of forty-two modules in six layers.
+`tracker/` is one Python package of forty-three modules in six layers.
 `tests/test_layers.py` pins the layer of every module and that no load-time
 import points upward; an import inside a function is a call-time import
 and may point anywhere. The one deliberate cycle, filer and scanner through
@@ -81,6 +81,10 @@ the package but each other.
   is the record's, edited only in the app).
 - `store.py`: one SQLite store per account in the data folder, a rebuildable
   view of every record; the record is the truth and the store is the index.
+- `index.py`: the index as the record holds it: the words its rows carry,
+  their readers (`read_index`, `ensure`, the moved and interrupted sentences
+  read back) and the one proof of a row's bytes; `filer.py` imports them and
+  re-exports them.
 - `templates.py`: the per-form request catalog, the only source of the
   checklists.
 - `households.py`, `scaffold.py`: the household's own record, and the folders
