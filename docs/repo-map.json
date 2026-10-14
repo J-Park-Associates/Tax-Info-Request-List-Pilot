@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 346,
     "edges": 1499,
-    "reused": 288
+    "reused": 292
   },
   "node_types": [
     "artifact",
@@ -4765,7 +4765,7 @@
       "id": "docs/vocab-coverage.json",
       "type": "file",
       "layer": "docs",
-      "sha256": "ca6c619895982f7a",
+      "sha256": "6762d83ce56a53f7",
       "lines": 9416,
       "role": "The coverage report as data, with the SHA-256 of every input it was built from; `check` and the suite compare against these. Generated; never edited by hand."
     },
