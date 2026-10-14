@@ -112,6 +112,7 @@ from tracker.manifest import RequestItem, derived_date_pattern, has_routing_rule
 from tracker.records import (
     EVIDENCE_PLACES,  # noqa: F401
     EVIDENCE_RULES,  # noqa: F401
+    PAGE_BREAK,
     RULE_ANY,
     RULE_DATE,
     RULE_FILENAME,  # noqa: F401
@@ -161,11 +162,6 @@ CACHE_VERSION = 14
 #: CamScanner", "Page 1 of 2"), not the document, and is not read as one.
 #: Pages are counted from the page breaks ``_extract_pdf`` writes.
 _MIN_TEXT_CHARS = 25
-#: What one page of a reading ends with. Public since decision 128:
-#: :mod:`tracker.names` counts the same breaks to say which page a name was
-#: printed on, and a second module holding its own copy of the character
-#: would be a second answer to "which page is this".
-PAGE_BREAK = "\f"
 
 #: Read at most this many pages of any PDF, with or without OCR. The words
 #: that identify a document - its form number, the tax year, the payer -
@@ -1559,8 +1555,9 @@ def judgment_of(reading: Extraction, questions: Questions) -> Judgment:
         )
     names: dict[NameQuestion, object] = {}
     if questions.names:
-        # names imports this module when it loads, so it is reached when
-        # called (the layer table's allowance for a call-time import).
+        # names never imports this module, so the call-time import here
+        # closes no cycle; it stays at call time, as every import this
+        # phase does not need to move does.
         from tracker.names import check_name, read_names
 
         page = read_names(words)

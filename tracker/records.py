@@ -249,6 +249,16 @@ EVIDENCE_PLACES: tuple[str, ...] = (
     WHERE_TITLE, WHERE_FIRST_PAGE, WHERE_FOOTER, WHERE_DEEP,
 )
 
+#: What one page of a reading ends with. Public since decision 128:
+#: :mod:`tracker.names` counts the same breaks to say which page a name was
+#: printed on, and a second module holding its own copy of the character
+#: would be a second answer to "which page is this". The record's module
+#: holds it (SPEC-architecture P2.8): names and :mod:`tracker.content_check`
+#: both read it, names already imports this module, and an
+#: :class:`Evidence`'s ``page`` is counted from these breaks - so names
+#: never imports content_check for it.
+PAGE_BREAK = "\f"
+
 
 @dataclass(frozen=True, slots=True)
 class Evidence:
