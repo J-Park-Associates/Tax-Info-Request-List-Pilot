@@ -155,6 +155,11 @@ with a `report` message there (section 1.6).
   ```
 - Never write a model identifier (a `claude-...` name) into anything
   committed.
+- Never turn commit signing off in the repository: no
+  `-c commit.gpgsign=false`, no `--no-gpg-sign`. The session's git config
+  signs every commit, and GitHub shows an unsigned one as Unverified.
+  A scratch copy under the scratchpad may sign or not. If a signed commit
+  fails, stop and report the error on the board.
 
 **The environment.**
 
