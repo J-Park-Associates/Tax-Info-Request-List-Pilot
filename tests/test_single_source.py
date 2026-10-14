@@ -972,7 +972,7 @@ def test_the_tools_ask_one_rule_whether_a_path_is_inside_the_repository():
     for path in sorted((REPO / "tools").glob("*.py")):
         text = path.read_text(encoding="utf-8")
         assert not spelled.search(text), path.name
-    for name in ("backtest.py", "learned_keywords.py"):
+    for name in ("corpus.py", "learned_keywords.py"):
         assert "inside_the_app(" in read(f"tools/{name}"), name
 
 

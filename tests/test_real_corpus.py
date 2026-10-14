@@ -25,102 +25,35 @@ A row naming a document that is not in the folder fails, by its row: an
 expectation the harness silently dropped would be a document nobody is
 routing and everybody believes is covered.
 
+The reader of the expectations file and the builder of these catalogs are
+``tools/corpus.py``'s, which the backtest and the reader bench share: this
+file routes the rows, and the tools and the suite cannot disagree about what a
+row means because none of them reads the file another way.
+
 Rows are named by number - ``row-N``, counted from one as
 ``tools/backtest.py`` counts them - because a test id is written to the
 console, to ``.pytest_cache`` and into every failure, and a client's file
 name must reach none of them (decision 185, F-5).
 """
 
-import csv
 import logging
-from dataclasses import replace
 from pathlib import Path
 
 import pytest
 
 from tests.routing_cases import filed_to
 from tests.samples import text_pdf
+from tools.corpus import Expectation, catalog_rows, real_corpus
 from tracker.content_check import extract
-from tracker.manifest import RequestItem, validated
 from tracker.router import route_file
 from tracker.settings import (
     COLUMN_CATALOG,
-    COLUMN_EXPECTED,
     COLUMN_FILE,
     COLUMN_YEAR,
     ENV_REAL_CORPUS,
     EXPECTATIONS_COLUMNS,
     EXPECTATIONS_FILENAME,
-    real_corpus_dir,
 )
-from tracker.templates import template_items
-
-#: One row of the expectations file: (file, catalog, year, expected).
-#: ``expected`` is None where the column is blank - the document must park.
-#: Where it carries ``EXPECTED_SEP`` it names every request the document
-#: must file under and no others (``A01+A02``, decision 94): one document
-#: can carry two forms, and a harness that could only say one identifier
-#: would have had to score the second filing as a miss.
-Expectation = tuple[str, str, int, str | None]
-
-
-def read_expectations(path: Path) -> list[Expectation]:
-    """One expectations file, as rows, in the order it lists them.
-
-    Named by its path rather than by its folder because the corpus is not
-    the only caller: ``tools/backtest.py`` scores a folder against an
-    expectations file a person keeps wherever they keep it, and the
-    contract - the columns, the blank that means "parks", the year that
-    must be there - has to have exactly one reader.
-
-    Its errors name the row by number, counted from one as the rows' ids
-    count them, and the column that is wrong - never a document's name nor
-    the file's path, which are a client's and would reach the console of
-    every caller (decision 185).
-    """
-    with path.open(encoding="utf-8-sig", newline="") as handle:
-        reader = csv.DictReader(handle)
-        missing = [c for c in EXPECTATIONS_COLUMNS if c not in (reader.fieldnames or ())]
-        if missing:
-            raise ValueError(f"{EXPECTATIONS_FILENAME} is missing the column(s): {', '.join(missing)}")
-        rows = []
-        for line in reader:
-            name = (line[COLUMN_FILE] or "").strip()
-            if not name:
-                continue                       # a blank line, or a spacer between engagements
-            number = len(rows) + 1             # the row's id: row-N
-            where = (line[COLUMN_EXPECTED] or "").strip()
-            year = (line[COLUMN_YEAR] or "").strip()
-            if not year.isdigit():
-                raise ValueError(f"{EXPECTATIONS_FILENAME} row {number}: no engagement year "
-                                 f"in the column {COLUMN_YEAR}")
-            rows.append((name, (line[COLUMN_CATALOG] or "").strip(), int(year), where or None))
-    return rows
-
-
-def real_corpus() -> tuple[Path | None, list[Expectation]]:
-    """The corpus folder and its expectations, or (None, []) when there is none.
-
-    One answer for both halves of the skip: the variable names nothing,
-    or what it names holds no expectations file.
-    """
-    folder = real_corpus_dir()
-    if folder is None or not (folder / EXPECTATIONS_FILENAME).is_file():
-        return None, []
-    return folder, read_expectations(folder / EXPECTATIONS_FILENAME)
-
-
-def catalog_rows(workspace: Path, form: str, year: int, built: dict) -> list[RequestItem]:
-    """One catalog as an engagement gets it, built once per (form, year).
-
-    The two rules ``tests/test_irs_forms.py`` lifts are lifted here for
-    the same reasons: a redacted document is small, and its year is the
-    engagement's, which the expectations file gives.
-    """
-    if (form, year) not in built:
-        built[(form, year)] = [replace(i, min_size_kb=0, date_pattern="")
-                               for i in validated(template_items(form, year=year))]
-    return built[(form, year)]
 
 
 def _collected() -> tuple[Path | None, list[Expectation], str]:

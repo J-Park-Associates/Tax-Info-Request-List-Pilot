@@ -28,8 +28,11 @@ before a rule it touched is trusted.
 
 The workbook cases' rows (`XLSX_CASES`), the blank forms' placements (`EXPECT`) and
 the lines of two printed forms sit in `tests/routing_cases.py`, which the suites that
-share them import; the report hashes that file as it hashes the suites, and the
-three suites still carry the names the tools import.
+share them import; the report hashes that file as it hashes the suites, and
+`tests/test_catalog.py` and `tests/test_irs_forms.py` still carry the names the
+report imports. The harness the backtest and the reader bench share, and the one
+reader of the expectations file, is `tools/corpus.py`; the report reads the firm's
+documents through it.
 
 The firm's own redacted documents are the third corpus, and they live
 outside the repository: the environment variable TRACKER_REAL_CORPUS names
@@ -88,7 +91,7 @@ routing rules work on real mail. The tool routes them against the shipped
 catalogs and reports the agreement, the confusions (expected this row,
 filed that one), the per-row table, the parked and no-text shares, and the
 time each document took. Each document is routed through a hard link under
-one neutral name (`NEUTRAL_STEM`), so the client's own file naming never
+one neutral name (`NEUTRAL_STEM`, in `tools/corpus.py`), so the client's own file naming never
 reaches the router with the document: nothing is filed on a name (decision
 92), but a name still leaves evidence for the person reviewing, and what
 is scored — and written down — should be the rules, not the firm's naming.

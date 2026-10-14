@@ -31,7 +31,6 @@ from backtest import (  # noqa: E402
     CATALOGS,
     COLLECT_COLUMNS,
     HINT_COLUMN,
-    NEUTRAL_STEM,
     NO_BASELINE,
     OCR_FLAG,
     OUT_FLAG,
@@ -50,6 +49,9 @@ from backtest import (  # noqa: E402
     write_json,
     write_skeleton,
 )
+
+from tools import corpus as corpus_module  # noqa: E402
+from tools.corpus import NEUTRAL_STEM  # noqa: E402
 
 REPO = Path(__file__).resolve().parent.parent
 YEAR = 2025
@@ -392,7 +394,7 @@ def test_a_copy_of_a_document_is_made_in_the_data_home_never_the_machines_temp_f
         assert path.is_file() and not path.is_symlink()
         return None, False, "text"
 
-    monkeypatch.setattr(backtest.os, "link", no_links)
+    monkeypatch.setattr(corpus_module.os, "link", no_links)
     monkeypatch.setattr(backtest, "route_one", remember)
     backtest.route_corpus(corpus, corpus / EXPECTATIONS_FILENAME)
 

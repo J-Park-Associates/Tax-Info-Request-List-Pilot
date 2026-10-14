@@ -9405,8 +9405,9 @@
   "tests/routing_cases.py": "85186181bbdd09695751958a7fa03618d12acae2f9037c60f9c65f8df5e47ee7",
   "tests/test_catalog.py": "30bff1e8a8caffef4dcbbd7f4d2c8e3c4c9ff7f62507ba985d0355ad2cbcf10d",
   "tests/test_irs_forms.py": "1d07675c442a40fefad9d5565fdfda2f4112cce7e6fcea0b0b63302a0a896b9c",
-  "tests/test_real_corpus.py": "ccc24f027f0eb109576609c00301bebbeba53efa962a4fbef8b85140f90327bc",
-  "tools/vocab_report.py": "513fcd5d42d4d281447f9953c8a2d1c6e4393f5c8ae0187cd3224229ae4dceaa",
+  "tests/test_real_corpus.py": "75ee14b401fd539b9a19cb8ac628ceb46901c5cecb624d9ffd8a644ae92f6e15",
+  "tools/corpus.py": "31cdb8ddde8179e0fcbe5d5e5e79023ef3ac785e0f536a026da9edbe46792ded",
+  "tools/vocab_report.py": "c533f24cbbc7a42545df1ae466a3ebdb7480b53dccd794c38f559ce2b9617a07",
   "tracker/content_check.py": "169d4405d82909c91376edf032c0c831e9d283995df23dd0c845b927155ea3bc",
   "tracker/manifest.py": "8eed787399f043ab048f377f57e74c345ae6f6b78eb05de78ef84a7141a321fb",
   "tracker/templates.py": "6426a6835e1aa3ddca2a92b9b06cf5f40c7320ad557bb974ee8fb28be30b559a"

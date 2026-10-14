@@ -167,6 +167,10 @@ never the app:
 - `backtest.py`: routes the firm's own already-sorted documents at the office
   and scores the router against where a person filed each one; the report
   carries counts and never a name.
+- `corpus.py`: the harness the backtest and the reader bench share, and the one
+  reader of the expectations file the firm's own documents are scored against;
+  imported by the two tools and by `tests/test_real_corpus.py`, with no command
+  line.
 - `reader_bench.py`: measures which reading settings help on the firm's own
   scans and photos, one variant of a fixed grid at a time, counts only.
 - `lockfiles.py`: the supply-chain lock: fills, checks, stamps and verifies
@@ -208,9 +212,9 @@ across the package:
   renderer's JavaScript run under node, and `js_function`, the one way to cut
   a function out of a script), `css_rules.py`, `api_driver.py` (the command
   line as `main.js` drives it), `wording.py`, `import_graph.py` and
-  `routing_cases.py`. The tools import the cases, placements and corpus
-  readers from `test_catalog.py`, `test_irs_forms.py` and `test_real_corpus.py`
-  by name (decision 70), and those suites keep carrying the names.
+  `routing_cases.py`. The tools import the cases and placements from
+  `test_catalog.py` and `test_irs_forms.py` by name (decision 70), and those
+  suites keep carrying the names; the corpus readers are `tools/corpus.py`'s.
 
 The suite runs in parallel with pytest-xdist (`python -m pytest -q -n auto`),
 and the gate runs each affected file as its own process under the floor

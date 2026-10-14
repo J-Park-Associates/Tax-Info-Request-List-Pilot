@@ -32,17 +32,18 @@ pass). The bench reads on the processor only
 (``ocr.gpu_pack()`` is None run from source), which is the conservative
 number for the firm's ceiling of 6 seconds a page.
 
-**What it reuses from** ``tools/backtest.py``, imported by name, private
-helpers included, so there is one owner of each: ``_harness`` (the suite's
-reader of the expectations file and its catalog builder),
-``_document_path``, ``_linked_under_a_neutral_name`` (every document read
-through a hard link named ``document.<ext>``, so no client's file name
-reaches the router or the report), ``_temp_pointed_at`` (what a library
-writes through the temp folder lands in this process's scratch and goes
-with the run), ``_outside_the_repository``, ``_corpus``, ``write_json``,
-``_unknown_catalog`` (the sentence for a bad catalog column: a row number,
-never the value), ``BacktestError`` and the ``READING_*`` kinds. A rename there
-is a change to both files.
+**What it reuses**, imported by name, so there is one owner of each. From
+``tools/corpus.py``: ``harness`` (the reader of the expectations file and
+its catalog builder), ``document_path``, ``linked_under_a_neutral_name``
+(every document read through a hard link named ``document.<ext>``, so no
+client's file name reaches the router or the report), ``temp_pointed_at``
+(what a library writes through the temp folder lands in this process's
+scratch and goes with the run), ``outside_the_repository``,
+``corpus_folder`` and ``unknown_catalog`` (the sentence for a bad catalog
+column: a row number, never the value). From ``tools/backtest.py``:
+``write_json``, ``EXPECTATIONS_FILENAME``, the ``READING_*`` kinds and
+``BacktestError``, which the backtest takes from ``tools/corpus.py`` as its
+own. A rename in either is a change to both files.
 
 **The report is rewritten after every variant**, so a crash, an out-of-memory
 or a Ctrl-C costs the variant under way and no earlier one. A variant whose
@@ -125,6 +126,7 @@ import time
 from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
@@ -135,14 +137,16 @@ from tools.backtest import (  # noqa: E402
     READING_IMAGE,
     READING_OCR,
     BacktestError,
-    _corpus,
-    _document_path,
-    _harness,
-    _linked_under_a_neutral_name,
-    _outside_the_repository,
-    _temp_pointed_at,
-    _unknown_catalog,
     write_json,
+)
+from tools.corpus import (  # noqa: E402
+    corpus_folder,
+    document_path,
+    harness,
+    linked_under_a_neutral_name,
+    outside_the_repository,
+    temp_pointed_at,
+    unknown_catalog,
 )
 from tracker import content_check, errors, ocr, reasons  # noqa: E402
 from tracker.router import route_file  # noqa: E402
@@ -233,7 +237,7 @@ def _variant(dpi: int, floor: float, prep: str, tier: str, models: str = "") -> 
 
 
 #: What each ablation changes in the shipped settings.
-_ABLATION_CHANGES = {
+_ABLATION_CHANGES: dict[str, dict[str, Any]] = {
     "no-deskew": {"deskew": False}, "no-binarize": {"binarize": "off"}, "otsu": {"binarize": "otsu"},
     "no-denoise": {"denoise": False}, "no-delining": {"delining": False}}
 
@@ -306,7 +310,7 @@ def survey(folder: Path, rows: list, scratch: Path) -> tuple[list[Document], dic
     """Link every document once, read it once with OCR withheld, and sort
     it: a usable text layer is counted and set aside, a scan or a photo is
     kept for the variants. Returns the kept documents and the corpus counts."""
-    catalog_rows, _read = _harness()
+    catalog_rows, _read = harness()
     workspace = scratch / "catalogs"
     workspace.mkdir()
     built: dict = {}
@@ -314,7 +318,7 @@ def survey(folder: Path, rows: list, scratch: Path) -> tuple[list[Document], dic
     counts = {"documents": 0, "text_layer": 0, "scans": 0, "photos": 0, "pages": 0}
     for row, (name, catalog, year, expected) in enumerate(rows, start=1):
         counts["documents"] += 1
-        link = _linked_under_a_neutral_name(_document_path(folder, name, row), scratch, row)
+        link = linked_under_a_neutral_name(document_path(folder, name, row), scratch, row)
         reading = content_check.extract(link, ocr=False)
         if reading.needs_ocr:
             kind = (READING_IMAGE if content_check.extension_of(link) in content_check.IMAGE_EXTENSIONS
@@ -440,12 +444,12 @@ def run_bench(folder: Path, expectations: Path, variants: list[Variant], *, mode
     A Ctrl-C writes the report so far and is raised again."""
     stream = out or sys.stdout
     write = stream.write
-    _catalog_rows, read_expectations = _harness()
+    _catalog_rows, read_expectations = harness()
     try:
         rows = read_expectations(expectations)
     except ValueError as exc:
         raise BacktestError(str(exc)) from None     # the reader's sentences name a row, never a file
-    if (unknown := _unknown_catalog(rows)):
+    if (unknown := unknown_catalog(rows)):
         raise BacktestError(unknown)
 
     entries: list[dict] = []
@@ -456,7 +460,7 @@ def run_bench(folder: Path, expectations: Path, variants: list[Variant], *, mode
     own.mkdir(parents=True, exist_ok=True)
     try:
         content_check.READ_IN_A_CHILD = False
-        with _temp_pointed_at(own), tempfile.TemporaryDirectory(prefix="bench-", dir=own) as scratch_name:
+        with temp_pointed_at(own), tempfile.TemporaryDirectory(prefix="bench-", dir=own) as scratch_name:
             documents, corpus = survey(folder, rows, Path(scratch_name))
             report = {"schema": SCHEMA_VERSION, "note": BENCH_NOTE, "corpus": corpus, "variants": entries}
             write(_TABLE_HEAD + "\n")
@@ -640,8 +644,8 @@ def _cmd_variants(ns: argparse.Namespace) -> int:
 
 
 def _cmd_run(ns: argparse.Namespace) -> int:
-    out = _outside_the_repository(Path(ns.out))     # before anything is read
-    folder = _corpus(ns.folder)
+    out = outside_the_repository(Path(ns.out))     # before anything is read
+    folder = corpus_folder(ns.folder)
     expectations = Path(ns.expectations).expanduser() if ns.expectations else folder / EXPECTATIONS_FILENAME
     if not expectations.is_file():
         raise BacktestError(f"no expectations file at {expectations}; write one with the backtest's collect command")
@@ -651,7 +655,7 @@ def _cmd_run(ns: argparse.Namespace) -> int:
 
 
 def _cmd_review_codes(ns: argparse.Namespace) -> int:
-    out = _outside_the_repository(Path(ns.out)) if ns.out else None   # before firm's wait, as `run` does
+    out = outside_the_repository(Path(ns.out)) if ns.out else None   # before firm's wait, as `run` does
     done = _run_firm()
     wrote = len([line for line in done.stderr.splitlines() if line.strip()])
     try:

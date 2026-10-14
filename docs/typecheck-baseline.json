@@ -1,7 +1,7 @@
 {
   "note": "Every type error each file had when this was written, by python tools/typecheck.py update. check fails when a file has more; update refuses to raise a count. Never edit it by hand.",
   "mypy": "2.3.1",
-  "total": 217,
+  "total": 216,
   "files": {
     "tools/learned_keywords.py": [
       "Cannot find implementation or library stub for module named \"vocab_report\"  [import-not-found]"
@@ -37,9 +37,6 @@
       "Incompatible types in assignment (expression has type \"ast.Tuple | ast.List\", variable has type \"Name\")  [assignment]",
       "List item 0 has incompatible type \"str | bytes | int | float | complex | EllipsisType | None\"; expected \"str\"  [list-item]",
       "Set comprehension has incompatible type Set[str | None]; expected Set[str]  [misc]"
-    ],
-    "tools/reader_bench.py": [
-      "Argument after ** must be a mapping, not \"object\"  [arg-type]"
     ],
     "tools/repo_map.py": [
       "\"expr\" has no attribute \"value\"  [attr-defined]",

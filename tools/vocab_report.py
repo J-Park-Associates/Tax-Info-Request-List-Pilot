@@ -112,6 +112,7 @@ INPUT_PATHS = (
     "tests/test_irs_forms.py",    # the corpus's expected placements
     "tests/routing_cases.py",     # the workbook cases, the placements and two printed forms those suites share
     "tests/test_real_corpus.py",  # how the firm's own documents are read
+    "tools/corpus.py",            # how the firm's own documents are read
     "tools/vocab_report.py",      # this generator
 )
 
@@ -245,7 +246,7 @@ def real_documents() -> list[Document]:
     folder or a parser's message (decision 208, security principle 7):
     the names are the firm's clients'.
     """
-    from tests.test_real_corpus import real_corpus
+    from tools.corpus import real_corpus
 
     try:
         folder, rows = real_corpus()

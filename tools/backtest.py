@@ -23,7 +23,7 @@ the client, so a backtest that let the router see the name would be
 scoring the firm's own naming discipline, not the routing rules. Each
 document is therefore routed through a hard link (a copy where the file
 system refuses one) in a scratch folder outside the repository, named
-``NEUTRAL_STEM`` plus the document's own extension, with the document read
+``tools.corpus.NEUTRAL_STEM`` plus the document's own extension, with the document read
 once and handed to :func:`tracker.router.route_file` as ``reading``. The link is
 the same bytes, so every tier-2 check - the extension, the size, whether
 the PDF opens - still sees the real document.
@@ -79,13 +79,11 @@ from __future__ import annotations
 import argparse
 import csv
 import json
-import os
 import shutil
 import sys
 import tempfile
 import time
 from collections import Counter
-from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
@@ -94,33 +92,34 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))   # run as a script: the package and the suite must import
 
+from tools.corpus import (  # noqa: E402
+    CATALOGS,
+    OUT_FLAG,
+    BacktestError,
+    corpus_folder,
+    document_path,
+    harness,
+    linked_under_a_neutral_name,
+    outside_the_repository,
+    temp_pointed_at,
+    unknown_catalog,
+)
 from tracker.content_check import extract  # noqa: E402
 from tracker.manifest import RequestItem  # noqa: E402
-from tracker.ocr import SCRATCH_ENV  # noqa: E402
 from tracker.router import route_file  # noqa: E402
 from tracker.settings import (  # noqa: E402
     COLUMN_EXPECTED,
     EXPECTATIONS_COLUMNS,
     EXPECTATIONS_FILENAME,
-    inside_the_app,
     process_scratch,
 )
-from tracker.templates import FORM_TYPES, template_items  # noqa: E402
+from tracker.templates import template_items  # noqa: E402
 from tracker.validators import IMAGE_EXTENSIONS, extension_allowed, extension_of, is_ignored  # noqa: E402
 
 #: The one number this tool commits: the agreement the firm's own
 #: documents scored the last time a person ran the backtest at the office.
 BASELINE_PATH = ROOT / "docs" / "backtest-baseline.json"
 SCHEMA_VERSION = 1
-#: Every catalog a row of the expectations file may name.
-CATALOGS = tuple(entry["id"] for entry in FORM_TYPES)
-
-#: The name every document is routed under, so the client's own naming
-#: never reaches the router with the document. Nothing is filed on a name
-#: any more (decision 92), but a name still leaves evidence for the person
-#: reviewing, and evidence quoting a client's file name is not what this
-#: tool should be scoring - or writing down.
-NEUTRAL_STEM = "document"
 #: How a blank ``expected`` column reads in the report: the document is
 #: meant for a person, not for a request.
 PARKS = "parks"
@@ -141,7 +140,6 @@ COLLECT_COLUMNS = (*EXPECTATIONS_COLUMNS, HINT_COLUMN)
 
 REPORT_FLAG = "--report"
 EXPECTATIONS_FLAG = "--expectations"
-OUT_FLAG = "--out"
 OCR_FLAG = "--ocr"
 CATALOG_FLAG = "--catalog"
 YEAR_FLAG = "--year"
@@ -171,10 +169,6 @@ AT_BASELINE = "Agreement holds: {agreement} now, {baseline} recorded."
 RECORDED = "Recorded {agreement} over {documents} document(s) in {path}."
 
 
-class BacktestError(Exception):
-    """The backtest could not be run, read or scored."""
-
-
 @dataclass(frozen=True, slots=True)
 class Outcome:
     """What became of one row of the expectations file.
@@ -197,53 +191,6 @@ class Outcome:
 
 
 # ------------------------------------------------------------- the corpus ----
-
-
-def _harness():
-    """The suite's own reader of the expectations file, and its catalog builder.
-
-    Imported here rather than at the top, the way ``tools/vocab_report.py``
-    imports the suite's placements: the contract between a corpus and the
-    code has one owner, and a tool that parsed the file a second way would
-    be a second owner of it that could drift.
-    """
-    from tests.test_real_corpus import catalog_rows, read_expectations
-
-    return catalog_rows, read_expectations
-
-
-def _document_path(folder: Path, name: str, row: int) -> Path:
-    """One row's document, checked to be a real file inside the corpus.
-
-    Named by row number rather than by name: a missing document is a
-    person's typo in the expectations file, and this message is the first
-    place the name of a client's file would otherwise escape.
-    """
-    path = (folder / name).resolve()
-    if folder.resolve() not in path.parents:
-        raise BacktestError(f"row {row} names a path outside the corpus folder")
-    if not path.is_file():
-        raise BacktestError(f"row {row} names a document that is not in the corpus folder")
-    return path
-
-
-def _linked_under_a_neutral_name(source: Path, scratch: Path, row: int) -> Path:
-    """``source``'s bytes under ``NEUTRAL_STEM``, in a folder of their own.
-
-    A hard link where the file system allows one - nothing is read and
-    nothing is written - and a copy where it does not (another volume, a
-    file system with no links). Either way the router sees the real bytes
-    under a name that says nothing, and the folders above it are this
-    scratch folder's, never the firm's.
-    """
-    holder = scratch / str(row)
-    holder.mkdir(parents=True, exist_ok=True)
-    target = holder / f"{NEUTRAL_STEM}{source.suffix}"
-    try:
-        os.link(source, target)
-    except OSError:
-        shutil.copy2(source, target)
-    return target
 
 
 def route_one(path: Path, rows: list[RequestItem], *, ocr: bool) -> tuple[str | None, bool, str]:
@@ -271,40 +218,6 @@ def route_one(path: Path, rows: list[RequestItem], *, ocr: bool) -> tuple[str | 
     return route_file(path, rows, reading=reading).identifier, False, kind
 
 
-@contextmanager
-def _temp_pointed_at(folder: Path):
-    """Point every way a library finds the temp folder - ``TMP``, ``TEMP``,
-    ``TMPDIR`` (``ocr.SCRATCH_ENV``) and :data:`tempfile.tempdir` - at
-    ``folder`` for the block, and put each back as it was afterwards, unset
-    ones unset."""
-    saved = {name: os.environ.get(name) for name in SCRATCH_ENV}
-    saved_tempdir = tempfile.tempdir
-    try:
-        for name in SCRATCH_ENV:
-            os.environ[name] = str(folder)
-        tempfile.tempdir = str(folder)
-        yield folder
-    finally:
-        for name, value in saved.items():
-            if value is None:
-                os.environ.pop(name, None)
-            else:
-                os.environ[name] = value
-        tempfile.tempdir = saved_tempdir
-
-
-def _unknown_catalog(rows: list) -> str:
-    """The sentence for a row that names a catalog there is not, or "" when
-    every row names one. It says the row's number and never the value: an
-    unquoted comma in a file name shifts the columns, so the value may be a
-    piece of a client's file name, and no name is ever printed."""
-    bad = [number for number, (_, catalog, _, _) in enumerate(rows, start=1) if catalog not in CATALOGS]
-    if not bad:
-        return ""
-    more = f" (and {len(bad) - 1} more)" if len(bad) > 1 else ""
-    return f"no such catalog in row {bad[0]}{more}; the catalogs are {', '.join(CATALOGS)}"
-
-
 def route_corpus(folder: Path, expectations: Path, *, ocr: bool = False) -> tuple[list[Outcome], float]:
     """Route every row of ``expectations``, and say how long the whole pass took.
 
@@ -322,9 +235,9 @@ def route_corpus(folder: Path, expectations: Path, *, ocr: bool = False) -> tupl
     lands there and goes with the pass. A library that writes to a path of
     its own choosing is not caught, here or in the reading child.
     """
-    catalog_rows, read_expectations = _harness()
+    catalog_rows, read_expectations = harness()
     rows = read_expectations(expectations)
-    if (unknown := _unknown_catalog(rows)):
+    if (unknown := unknown_catalog(rows)):
         raise BacktestError(unknown)
 
     outcomes: list[Outcome] = []
@@ -332,14 +245,14 @@ def route_corpus(folder: Path, expectations: Path, *, ocr: bool = False) -> tupl
     own = process_scratch()
     own.mkdir(parents=True, exist_ok=True)
     try:
-        with _temp_pointed_at(own), tempfile.TemporaryDirectory(prefix="backtest-", dir=own) as scratch_name:
+        with temp_pointed_at(own), tempfile.TemporaryDirectory(prefix="backtest-", dir=own) as scratch_name:
             scratch = Path(scratch_name)
             workspace = scratch / "catalogs"
             workspace.mkdir()
             built: dict = {}
             for row, (name, catalog, year, expected) in enumerate(rows, start=1):
                 items = catalog_rows(workspace, catalog, year, built)
-                link = _linked_under_a_neutral_name(_document_path(folder, name, row), scratch, row)
+                link = linked_under_a_neutral_name(document_path(folder, name, row), scratch, row)
                 began = time.perf_counter()
                 got, no_text, kind = route_one(link, items, ocr=ocr)
                 outcomes.append(Outcome(
@@ -618,27 +531,8 @@ def check(report_path: Path, baseline_path: Path | None = None, out=None) -> int
 # --------------------------------------------------------------------- CLI ----
 
 
-def _outside_the_repository(path: Path) -> Path:
-    """``path``, refused if it would land in the repository.
-
-    A report of the firm's own documents is the firm's, and a file written
-    into the tree is a file somebody commits.
-    """
-    resolved = path.expanduser().resolve()
-    if inside_the_app(resolved):
-        raise BacktestError(f"{OUT_FLAG} must name a path outside the repository: {resolved}")
-    return resolved
-
-
-def _corpus(folder: str) -> Path:
-    path = Path(folder).expanduser()
-    if not path.is_dir():
-        raise BacktestError(f"not a folder: {path}")
-    return path
-
-
 def _cmd_run(ns: argparse.Namespace) -> int:
-    folder = _corpus(ns.folder)
+    folder = corpus_folder(ns.folder)
     expectations = Path(ns.expectations).expanduser() if ns.expectations else folder / EXPECTATIONS_FILENAME
     if not expectations.is_file():
         raise BacktestError(f"no expectations file at {expectations}; write one with the collect command")
@@ -646,15 +540,15 @@ def _cmd_run(ns: argparse.Namespace) -> int:
     data = score(outcomes, seconds)
     print_summary(data)
     if ns.out:
-        out = _outside_the_repository(Path(ns.out))
+        out = outside_the_repository(Path(ns.out))
         write_json(out, data)
         print(f"\nWrote {out}")
     return 0
 
 
 def _cmd_collect(ns: argparse.Namespace) -> int:
-    out = _outside_the_repository(Path(ns.out))
-    written = write_skeleton(_corpus(ns.folder), out, ns.catalog, ns.year)
+    out = outside_the_repository(Path(ns.out))
+    written = write_skeleton(corpus_folder(ns.folder), out, ns.catalog, ns.year)
     print(f"Wrote {written} row(s) to {out}. Fill in {COLUMN_EXPECTED} for each; {HINT_COLUMN} is usually the answer.")
     return 0
 
