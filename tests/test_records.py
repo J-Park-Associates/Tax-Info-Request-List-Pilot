@@ -19,7 +19,7 @@ from pathlib import Path
 import pytest
 
 from tests.import_graph import import_edges
-from tracker import content_check, filer, ledger, manifest, records, router
+from tracker import content_check, filer, manifest, records, router
 from tracker.records import (
     CANDIDATE_SEP,
     ENGAGEMENT_FIELDS,
@@ -274,50 +274,9 @@ def test_the_also_answers_cell_reads_back_as_it_was_written():
                       answers=cell).answered == answers
 
 
-# Decision 187: the value rule, worded once here, for the editor and the gate.
-
-
-def test_a_nested_or_alternating_repetition_is_not_a_date_pattern():
-    """The shape rule is read off the standard library's own parser: a
-    repetition that can repeat more than once may hold no other such
-    repetition, no alternation and no back-reference, at any depth; at most
-    three of them, one open-ended, the rest at most twenty."""
-    refused = {
-        r"(\d+)+x": records.DATE_PATTERN_NESTED,
-        r"(?:(?:\d{1,4}\s)*)x": records.DATE_PATTERN_NESTED,
-        r"(?:Dec|12)+": records.DATE_PATTERN_ALTERNATES,
-        r"(\d)(?:\1x)+": records.DATE_PATTERN_REFERS_BACK,
-        r"\d{1,2}\d{1,2}\d{1,2}\d{1,2}": records.DATE_PATTERN_TOO_MANY,
-        r"\d*-\d*": records.DATE_PATTERN_TOO_OPEN,
-        r"\d{0,21}": records.DATE_PATTERN_TOO_WIDE,
-        "x" * (records.DATE_PATTERN_MAX + 1): records.DATE_PATTERN_TOO_LONG,
-        "([unclosed": records.DATE_PATTERN_NOT_A_REGEX,
-        5: records.TEXT_BOUNDS,
-    }
-    for pattern, phrase in refused.items():
-        assert records.date_pattern_problem(pattern) == phrase, pattern
-    for fine in [r"(?i)\b2025\b", r"\d+/\d{1,2}/2025", r"(?:Dec|12)\s?2025", r"0?1/[0-3]?[0-9]/2025",
-                 r"(?:Dec|12)?\s?2025", r"\d{0,20}x\d{0,20}y"]:
-        assert records.date_pattern_problem(fine) == "", fine
-
-
-def test_every_derived_date_pattern_passes_the_shape_rule():
-    """The flag that marks a pattern derived is the record's claim, so a
-    derived pattern is held to the same rule - and every one the Period
-    derives passes it."""
-    months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
-    periods = [f"{month} {year}" for month in months for year in (2025, 2099)] + ["TY2025", "TY1900"]
-    for period in periods:
-        pattern = manifest.derived_date_pattern(period)
-        assert pattern, period
-        assert records.date_pattern_problem(pattern) == "", period
-
-
-def test_a_flag_is_true_false_zero_or_one_and_nothing_else():
-    for fine in (True, False, 0, 1):
-        assert records.flag_problem(fine) == ""
-    for refused in ("no", "yes", "false", 2, 1.0, None, [], ""):
-        assert records.flag_problem(refused) == records.FLAG_BOUNDS, refused
+# Decision 187: the value rule, worded once, for the editor and the gate. Its own
+# tests are tests/test_bounds.py's since P2.4; these read a row check or the
+# editor's re-export as well.
 
 
 def test_a_count_past_its_bound_is_refused_by_one_phrase():
@@ -352,30 +311,6 @@ def test_the_editors_checks_are_the_records_own_objects():
         assert getattr(manifest, name) is getattr(records, name), name
 
 
-def test_an_optional_chain_is_not_a_date_pattern():
-    """The review's M1: an optional is a choice point too. ``\\d?`` twenty
-    times over a line of digits backtracks without end though no single
-    part repeats more than once, so every variable repetition counts -
-    ``?`` included - for nesting and for the budget, and the ways one line
-    may be tried are held to the measured 0.22 s case."""
-    assert records.date_pattern_problem(r"\d?" * 20 + "x") == records.DATE_PATTERN_TOO_MANY_OPTIONAL
-    assert records.date_pattern_problem(r"\d?" * 60 + "x") == records.DATE_PATTERN_TOO_MANY_OPTIONAL
-    assert records.date_pattern_problem(r"(?:\d?){20}x") == records.DATE_PATTERN_NESTED
-    assert records.date_pattern_problem(r"\d*\d{0,20}\d{0,20}\d?x") == records.DATE_PATTERN_TOO_MANY_WAYS
-    assert records.date_pattern_problem(r"\d?" * 8 + "x") == ""
-    assert records.date_pattern_problem(r"\d*\d{0,20}\d{0,20}x") == records.DATE_PATTERN_TOO_MANY_WAYS
-    assert records.DATE_PATTERN_VARIABLE_MAX == 8 and records.DATE_PATTERN_OPEN_MAX == 1
-
-
-def test_a_stamp_is_the_one_form_the_ledger_writes_from_the_epoch():
-    """The review's S1: ``ledger.stamp`` has only ever written one form, and
-    Windows cannot give a time before 1970 its local day."""
-    assert records.stamp_problem(ledger.stamp()) == ""
-    for refused in ("1900-01-01T00:00:00Z", "2025-W01-1", "20250101T000000", "2025-01-01T00:00:00",
-                    "2025-01-01T00:00:00+00:00", 12345):
-        assert records.stamp_problem(refused) == records.STAMP_BOUNDS, refused
-
-
 def test_a_files_own_name_is_refused_only_for_a_nul_or_its_length():
     """The review's M5: decision 104 files a POSIX name holding a control
     character, so a name, a key or a location a real file gave is held only
@@ -386,67 +321,6 @@ def test_a_files_own_name_is_refused_only_for_a_nul_or_its_length():
     assert records.entry_problem({"original_name": "w2\x01.pdf",
                                   "pbc_location": "../../../../Clients/H/2025/w2\x01.pdf"}) == ""
     assert records.text_problem("w2\x01") == records.TEXT_BOUNDS
-
-
-#: The re-check's timing corpus (decision 187's review, M1a and M1b): each
-#: took from 0.7 s to a minute on one 500-character line under the rule it
-#: broke, and each is refused now.
-RUNAWAYS = [
-    "(?:" + "(?:1|11)" * 23 + "){1}x",                  # a {1} wrapper hid the chain: 60 s at k=22
-    "(?:1|11)" * 17 + "x",                              # an alternation chain: 1.6 s
-    "(?:1|11|111)" * 11 + "x",
-    r"\d+\d{0,20}\d{0,20}\D",                           # no literal ending to short-cut: 0.85 s
-    r"\d+\d{0,20}\d{0,20}\s",
-    r"\d{0,20}" * 3 + r"\d?" * 4 + "x",
-    r"\d{0,20}" * 3 + "(?:1|11)" * 4 + "x",
-]
-
-
-@pytest.mark.parametrize("pattern", RUNAWAYS)
-def test_a_once_wrapped_alternation_is_counted(pattern):
-    """Ways are counted through every repetition - a fixed ``{1}`` too - and
-    an alternation's branches add, so no wrapping hides a chain, and the
-    limit is the one measured on lines with no literal ending."""
-    assert records.date_pattern_problem(pattern) == records.DATE_PATTERN_TOO_MANY_WAYS
-    assert records.DATE_PATTERN_WAYS_MAX == 16_384
-
-
-def test_an_optional_alternation_is_a_date_pattern():
-    """A plain optional may hold an alternation (the re-check's ruling): its
-    ways are counted like any other, and ``(?:Dec|12)?`` tries three. Only a
-    repetition that can repeat more than once may not hold one. The common
-    patterns a person types all pass."""
-    for common in [r"(?:Dec|12)?", r"12/31/20\d\d", r"20(24|25)", r"Q[1-4]",
-                   r"(0[1-9]|1[0-2])/\d{2}/\d{4}", r"Dec(ember)?\s+31", r"(?:Dec|12)?/31/2025",
-                   r"(?:Q4|4th Quarter)?\s*2025", r"\d{1,2}/\d{1,2}/\d{2,4}"]:
-        assert records.date_pattern_problem(common) == "", common
-    assert records.date_pattern_problem(r"(?:Dec|12){0,2}") == records.DATE_PATTERN_ALTERNATES
-
-
-#: The second re-check's table (decision 187's review, M1c): a fixed-count
-#: repetition adds no way and hundreds of characters of matching to each -
-#: from 0.72 s to 15 s on one 500-character line under the ways rule alone.
-COSTLY = [
-    "(?:1|11)" * 14 + r"(?:\d\d){200}\D",
-    "(?:1|11)" * 13 + r"(?:\d\d){200}\D",
-    r"\d{0,20}" * 3 + r"(?:\d\d){200}\D",
-    r"\d+\d{0,20}(?:\d\d){150}\D",
-    "(?:1|11)?" * 8 + r"(?:\d\d){200}\D",
-    "(?:1|11)" * 13 + r"\w{400}\D",
-    "(?:1|11)" * 13 + r"\d{300}\D",
-    "(?:1|11)?" * 8 + r"\d{300}\D",
-    "(?:1|11)" * 13 + r"(?=\d{400})\D",
-    r"\d{0,20}" * 3 + r"\d{400}\D",
-]
-
-
-@pytest.mark.parametrize("pattern", COSTLY)
-def test_a_fixed_count_of_matching_is_counted_in_the_cost(pattern):
-    """A pattern's cost is its ways times the widest match of its bounded
-    parts - a fixed ``{n}`` and a lookaround included - and one over
-    200,000 is refused."""
-    assert records.date_pattern_problem(pattern) == records.DATE_PATTERN_TOO_COSTLY
-    assert records.DATE_PATTERN_COST_MAX == 200_000
 
 
 def test_waits_for_round_trips_and_is_empty_on_every_other_row():
@@ -586,37 +460,6 @@ def test_a_persons_name_is_held_to_the_one_line_text_rule():
     assert records.person_from_json({"kind": "taxpayer", "name": "John Park"}).name == "John Park"
 
 
-def test_an_identifier_or_short_name_with_a_spoofing_character_is_refused_by_code_point():
-    """P290: both become part of a file name, and a right-to-left override
-    there is the classic spoof. The character is named, never quoted. This
-    is the store's gate, so it asks the narrow rule (``layout.spoofing_problem``)
-    and a no-break space or a soft hyphen an older paste left is admitted."""
-    override, joiner = "\u202e", "\u200d"
-    for checker in (records.identifier_problem, records.short_title_problem):
-        assert checker("W-2") == ""
-        assert checker(f"W-2{override}") == (
-            "may not contain an invisible character (U+202E RIGHT-TO-LEFT OVERRIDE)")
-        assert "U+200D ZERO WIDTH JOINER" in checker(f"W{joiner}-2")
-        assert override not in checker(f"W-2{override}")
-        assert checker("A\u00a001") == "" and checker("W\u00adX") == ""
-
-
-def test_a_document_with_a_spoofing_character_is_refused_by_code_point_and_a_paste_is_not():
-    """P301: the Document names a working copy whenever the row has no short
-    name of its own (and an issuer row by the entity it names), so the
-    store's gate reads it as it reads an identifier or a short name: only the
-    spoofing characters, by code point, never quoted. A no-break space or a
-    soft hyphen a paste left in an older Document is admitted."""
-    assert records.document_problem("W-2 Wage Statements") == ""
-    assert records.document_problem("") == ""
-    for hidden, named in (("\u202e", "U+202E RIGHT-TO-LEFT OVERRIDE"),
-                          ("\u200b", "U+200B ZERO WIDTH SPACE")):
-        said = records.document_problem(f"W-2 Wage Statements{hidden}fdp.exe")
-        assert said == f"may not contain an invisible character ({named})"
-        assert hidden not in said
-    assert records.document_problem("W-2\u00a0Wage\u00adStatements") == ""
-
-
 def test_a_stored_row_whose_document_hides_a_spoofing_character_is_a_fault_naming_the_document():
     """P301: ``rule_row_fault`` is the store's gate and the editor's, so a
     refused line is named by its field, as an identifier or a short name is;
@@ -628,28 +471,3 @@ def test_a_stored_row_whose_document_hides_a_spoofing_character_is_a_fault_namin
     assert records.rule_row_fault({"identifier": "A01", "document": "W-2\u00a0Wages"}) == ("", "")
     assert records.rule_row_fault({"identifier": "A01"}) == ("", "")
     assert records.rule_row_fault({"document": 7}) == ("document", records.LONG_TEXT_BOUNDS)
-
-
-def test_what_a_person_types_is_held_to_the_full_invisible_character_rule():
-    """P290: the no-break space and the soft hyphen that the gate admits are
-    refused where a person types, by code point."""
-    for typed in (records.typed_identifier_problem, records.typed_short_title_problem):
-        assert typed("W-2") == ""
-        assert typed("W\u202e-2") == records.identifier_problem("W\u202e-2")
-        assert "U+00A0 NO-BREAK SPACE" in typed("A\u00a001")
-        assert "U+00AD SOFT HYPHEN" in typed("W\u00adX")
-    # The other rules come first, in the same words.
-    assert records.typed_short_title_problem("A" * 21) == records.short_title_problem("A" * 21)
-
-
-def test_a_typed_identifier_longer_than_eighty_characters_is_refused_as_too_long():
-    """P291: the typing limit is the typed check's, not the store's gate,
-    which keeps the unbounded rule - a record's identifier is not re-judged
-    by what a person may type."""
-    assert records.IDENTIFIER_MAX_CHARS == 80
-    assert records.typed_identifier_problem("A" * 80) == ""
-    assert records.typed_identifier_problem("A" * 81) == (
-        "may have at most 80 characters, got 81 (it begins a file name)")
-    assert records.identifier_problem("A" * 200) == ""
-    # The other rules come first, in the same words.
-    assert records.typed_identifier_problem("A:" + "A" * 200) == records.identifier_problem("A:")

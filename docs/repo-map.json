@@ -16,8 +16,8 @@
   ],
   "counts": {
     "nodes": 342,
-    "edges": 1465,
-    "reused": 0
+    "edges": 1466,
+    "reused": 286
   },
   "node_types": [
     "artifact",
@@ -4688,7 +4688,7 @@
       "id": "docs/repo-map.curated.json",
       "type": "file",
       "layer": "docs",
-      "sha256": "570800623c2055e4",
+      "sha256": "d1cc9b9ec512fd30",
       "lines": 1660,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
@@ -7173,18 +7173,32 @@
       "id": "tests/test_bounds.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "535b012f403b22c1",
-      "lines": 128,
+      "sha256": "1ece041557554452",
+      "lines": 314,
       "exports": [
+        "COSTLY",
+        "RUNAWAYS",
+        "test_a_document_with_a_spoofing_character_is_refused_by_code_point_and_a_paste_is_not",
+        "test_a_fixed_count_of_matching_is_counted_in_the_cost",
+        "test_a_flag_is_true_false_zero_or_one_and_nothing_else",
+        "test_a_nested_or_alternating_repetition_is_not_a_date_pattern",
+        "test_a_once_wrapped_alternation_is_counted",
+        "test_a_stamp_is_the_one_form_the_ledger_writes_from_the_epoch",
+        "test_a_typed_identifier_longer_than_eighty_characters_is_refused_as_too_long",
         "test_a_zero_width_assertion_counts_toward_the_width",
+        "test_an_identifier_or_short_name_with_a_spoofing_character_is_refused_by_code_point",
+        "test_an_optional_alternation_is_a_date_pattern",
+        "test_an_optional_chain_is_not_a_date_pattern",
         "test_every_derived_and_common_pattern_is_within_the_cost",
+        "test_every_derived_date_pattern_passes_the_shape_rule",
         "test_every_period_form_derives_a_pattern_the_rule_admits",
         "test_the_bounds_import_nothing_of_the_package_but_the_layouts_name_rule",
         "test_the_bounds_reach_no_file",
-        "test_the_records_re_export_is_the_bounds_own"
+        "test_the_records_re_export_is_the_bounds_own",
+        "test_what_a_person_types_is_held_to_the_full_invisible_character_rule"
       ],
-      "role": "Holds tracker/bounds.py to its layer and its facade: bounds imports the layout and nothing else of the package at load time and nothing at call time; every public name it defines is records' same object; its import lines are the standard library's and the layout's. And the three value-rule tests that read the Date Pattern analyser's privates (_ways, _width, _re_parser): every Period form derives a pattern the rule admits within 176 ways, every derived and common pattern is within the cost, and a zero-width assertion counts toward the width.",
-      "notes": "SPEC-architecture-p2 R2.4.4. The three private-reading tests moved here from tests/test_records.py with the analyser, reading bounds directly, because records re-exports only public names (and _field and _first, which its row checks use). The identity test reads bounds' own names off its source, so a name it only imports (the layout's) is not counted as its own, and it fails if the read found none of the names it must."
+      "role": "Holds tracker/bounds.py to its layer and its facade: bounds imports the layout and nothing else of the package at load time and nothing at call time; every public name it defines is records' same object; its import lines are the standard library's and the layout's. And the value rule's own tests, which came with it: the Date Pattern shape, ways and cost rules over the review's timing corpora (RUNAWAYS, COSTLY), every Period form and every derived and common pattern admitted within the cost, the flag, stamp, spoofing and invisible-character refusals, and the eighty-character identifier.",
+      "notes": "SPEC-architecture-p2 R2.4.4. The value-rule tests whose bodies name only moved names moved here from tests/test_records.py unchanged but for the imports, so they still read the bounds through records' re-export until P2.13 points them here. The three that read the analyser's privates (_ways, _width, _re_parser) read bounds directly, because records re-exports only public names (and _field and _first, which its row checks use). The value-rule tests that also read a row check or the editor's re-export stay in tests/test_records.py. The identity test reads bounds' own names off its source, so a name it only imports (the layout's) is not counted as its own, and it fails if the read found none of the names it must."
     },
     {
       "id": "tests/test_build.py",
@@ -9263,34 +9277,21 @@
       "id": "tests/test_records.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "f6b724eed19281dc",
-      "lines": 655,
+      "sha256": "7cf84eb51f149659",
+      "lines": 473,
       "exports": [
         "A_ROW",
-        "COSTLY",
         "RE_EXPORTED",
-        "RUNAWAYS",
         "test_a_count_past_its_bound_is_refused_by_one_phrase",
-        "test_a_document_with_a_spoofing_character_is_refused_by_code_point_and_a_paste_is_not",
         "test_a_files_own_name_is_refused_only_for_a_nul_or_its_length",
-        "test_a_fixed_count_of_matching_is_counted_in_the_cost",
-        "test_a_flag_is_true_false_zero_or_one_and_nothing_else",
         "test_a_households_related_list_is_held_to_the_text_rule",
         "test_a_households_related_list_round_trips_and_an_old_record_reads_as_none",
-        "test_a_nested_or_alternating_repetition_is_not_a_date_pattern",
-        "test_a_once_wrapped_alternation_is_counted",
         "test_a_persons_name_is_held_to_the_one_line_text_rule",
         "test_a_row_round_trips_through_the_json_helpers_field_for_field",
-        "test_a_stamp_is_the_one_form_the_ledger_writes_from_the_epoch",
         "test_a_stored_row_from_a_later_version_is_read_and_not_thrown_away",
         "test_a_stored_row_whose_document_hides_a_spoofing_character_is_a_fault_naming_the_document",
         "test_a_stored_waits_for_cell_is_refused_unless_it_reads_back_whole",
-        "test_a_typed_identifier_longer_than_eighty_characters_is_refused_as_too_long",
-        "test_an_identifier_or_short_name_with_a_spoofing_character_is_refused_by_code_point",
-        "test_an_optional_alternation_is_a_date_pattern",
-        "test_an_optional_chain_is_not_a_date_pattern",
         "test_as_pattern_reads_a_templates_own_sentence_back",
-        "test_every_derived_date_pattern_passes_the_shape_rule",
         "test_every_name_a_module_re_exports_is_this_modules_own_object",
         "test_every_rule_and_place_is_in_the_list_that_names_them",
         "test_nothing_here_reaches_a_file_or_a_workbook",
@@ -9305,8 +9306,7 @@
         "test_the_identifier_column_is_the_one_the_manifest_asks_for",
         "test_the_index_layout_names_exactly_the_rows_fields_in_order",
         "test_the_records_import_nothing_of_the_package_but_the_layouts_name_rule_and_the_bounds",
-        "test_waits_for_round_trips_and_is_empty_on_every_other_row",
-        "test_what_a_person_types_is_held_to_the_full_invisible_character_rule"
+        "test_waits_for_round_trips_and_is_empty_on_every_other_row"
       ]
     },
     {
@@ -13866,7 +13866,19 @@
     },
     {
       "from": "tests/test_bounds.py",
+      "to": "pkg:pytest",
+      "type": "depends_on",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_bounds.py",
       "to": "tracker/__init__.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_bounds.py",
+      "to": "tracker/ledger.py",
       "type": "exercises",
       "source": "derived"
     },
@@ -16171,12 +16183,6 @@
     {
       "from": "tests/test_records.py",
       "to": "tracker/layout.py",
-      "type": "exercises",
-      "source": "derived"
-    },
-    {
-      "from": "tests/test_records.py",
-      "to": "tracker/ledger.py",
       "type": "exercises",
       "source": "derived"
     },
