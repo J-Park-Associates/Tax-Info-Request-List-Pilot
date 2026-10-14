@@ -18,12 +18,9 @@ from pathlib import Path
 
 import pytest
 
-from tests.node_harness import content, read
+from tests.node_harness import PILOT_SCRIPTS, content, read
 
 REPO = Path(__file__).resolve().parent.parent
-
-
-PILOT_JS = ("pilot-content.js", "pilot.js", "tour.js")
 
 
 def tour_lines(content_: dict):
@@ -81,14 +78,14 @@ def test_every_tour_line_is_five_words_or_fewer():
 def test_the_page_loads_the_pilot_after_the_app():
     html = read("index.html")
     assert html.index("pilot-style.css") > html.index('href="style.css"')
-    order = [html.index(f'src="{name}"') for name in ("app.js", *PILOT_JS)]
+    order = [html.index(f'src="{name}"') for name in ("app.js", *PILOT_SCRIPTS)]
     assert order == sorted(order)
 
 
 def test_the_pilot_files_build_the_page_only_with_text():
     banned = ("innerHTML", "outerHTML", "insertAdjacentHTML", "document.write",
               "eval(", "new Function", "startsWith(")
-    for name in PILOT_JS:
+    for name in PILOT_SCRIPTS:
         text = read(name)
         assert not [b for b in banned if b in text], name
 
@@ -102,7 +99,7 @@ def test_the_pilot_never_types_the_product_name():
     approved = f"A test edition of {product}, built by J Park & Associates."
     content = read("pilot-content.js")
     assert content.count(product) == 1 and approved in content
-    for name in (*PILOT_JS, "pilot-style.css"):
+    for name in (*PILOT_SCRIPTS, "pilot-style.css"):
         assert product not in read(name).replace(approved, ""), name
 
 

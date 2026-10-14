@@ -19,7 +19,7 @@ import pytest
 import tracker.api as api
 from tests.api_driver import HOUSEHOLD, PEOPLE, SAMPLE_PEOPLE, one_reply, run, sample_engagement, scan, where
 from tests.conftest import TEST_CLIENT, app_stdin, make_engagement
-from tests.node_harness import js_function, read
+from tests.node_harness import js_function, read, renderer_text
 from tests.samples import PRIOR_YEAR, text_pdf
 from tests.source_pins import py_function
 from tests.wording import title_case
@@ -1123,10 +1123,9 @@ def test_the_vocabulary_carries_every_word_the_review_card_shows(capsys, demo_ro
         "set_aside_note": SET_ASIDE_NOTE_WORDS,
     }
     # Nothing the card shows is typed in the renderer: every one of these
-    # reaches the screen through vocab, never as a literal of its own.
-    renderer = (Path(__file__).resolve().parent.parent / "app" / "renderer" / "app.js").read_text(
-        encoding="utf-8"
-    )
+    # reaches the screen through vocab, never as a literal of its own. Read
+    # over every script the page loads (R3.3).
+    renderer = renderer_text()
     for word in (*labels.values(), NOTHING_SUGGESTED_WORDS, SET_ASIDE_NOTE_WORDS, *places.values()):
         assert f'"{word}"' not in renderer and f"'{word}'" not in renderer, word
 
@@ -1156,9 +1155,7 @@ def test_the_editor_saves_a_reason_and_the_vocabulary_carries_the_list_and_the_l
     assert vocab["not_applicable_carried"] == api.NOT_APPLICABLE_CARRIED
     assert [c["key"] for c in vocab["columns"]][-4:] == [
         "override_reason", "named", "asked", "short_title"]
-    renderer = (Path(__file__).resolve().parent.parent / "app" / "renderer" / "app.js").read_text(
-        encoding="utf-8"
-    )
+    renderer = renderer_text()   # every script the page loads (R3.3)
     for word in (*OVERRIDE_REASONS, OVERRIDE_REASON_OTHER, *Override.ALL, NOT_APPLICABLE_LABEL,
                  SET_ASIDE_NOTE, api.NOT_APPLICABLE_CARRIED, view.SET_ASIDE_SECTION, view.SET_ASIDE_GROUP):
         assert f'"{word}"' not in renderer and f"'{word}'" not in renderer, word

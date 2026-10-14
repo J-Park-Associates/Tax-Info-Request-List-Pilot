@@ -16,7 +16,7 @@ from pathlib import Path
 import pytest
 
 from tests.conftest import child_env
-from tests.node_harness import js_function
+from tests.node_harness import APP_SCRIPTS, js_function, renderer_text
 from tests.source_pins import calls_of, py_function
 from tracker.content_check import RETIRED_CACHE_FILENAME
 from tracker.reasons import OTHER_MACHINE
@@ -106,16 +106,44 @@ def test_the_shell_and_the_preload_agree_on_every_ipc_channel():
 
 
 def test_the_renderer_calls_only_commands_the_api_has_and_types_no_flag():
+    """Read over every script the page loads (R3.3, D-5). A command is named
+    where it is called - ``call(["list"])``, ``window.tracker.call(["firm"],
+    ...)``, ``withEng("assign")`` - or by a constant the script names it with
+    (pilot.js's ``COMMAND``); a call the guard could not read is a failure,
+    so none goes unchecked. The pass's command is the vocabulary's
+    (test_run_now_is_cut_off_only_at_the_run_limit_its_own_first_line_states)."""
     import tracker.api as api
 
-    js = read("app/renderer/app.js")
-    called = set(re.findall(r'call\(\["([a-z-]+)"', js)) | set(re.findall(r'withEng\("([a-z-]+)"\)', js))
+    js = renderer_text()
+    commands = re.findall(r'\bcall\(\[([^\],]*)', js)
+    constants = dict(re.findall(r'\bconst ([A-Z][A-Z_]*) = "([a-z-]+)";', js))
+    unread = [one for one in commands if not re.fullmatch(r'"[a-z-]+"', one) and one not in constants]
+    assert unread == [], (unread, constants)
+    engaged = re.findall(r'\bwithEng\(([^)]*)\)', js)
+    assert [one for one in engaged if not re.fullmatch(r'"[a-z-]+"', one)] == ["vocab.pass_command"], engaged
+    called = {constants.get(one, one.strip('"')) for one in commands} | {one.strip('"') for one in engaged if one[0] == '"'}
     assert called <= set(api.COMMANDS), called - set(api.COMMANDS)
     # The four a person presses on a card, each one an API command and none
     # of them a path the page walks itself (decisions 77, 110).
     assert {"assign", "dismiss", "unfile", "restore"} <= called
     assert api.ENGAGEMENT_FLAG not in js
     assert "vocab.engagement_flag" in js
+
+
+def test_every_failure_kind_the_renderer_compares_is_one_the_engine_sends():
+    """C-4, R3.6: the page tells a stale reply from a locked, a refused and a
+    failed one by comparing the failure's kind to a literal - a notice's
+    Retry (``entry.kind``), the lock it shows (``kind``), a refusal kept in
+    its dialog (``err.failure.kind``, ``failure.kind``). Each literal it
+    compares is one of ``progress.FAILURE_KINDS``, so a kind renamed in
+    Python cannot leave a comparison that is never true, and each kind the
+    engine sends is one the page tells apart. Read over every script the
+    page loads."""
+    from tracker.progress import FAILURE_KINDS
+
+    compared = re.findall(r'(?<![\w.$])(?:(?:err\.)?failure\.|entry\.)?kind\s*[!=]==?\s*"([^"]*)"', renderer_text())
+    assert set(compared) <= set(FAILURE_KINDS), sorted(set(compared) - set(FAILURE_KINDS))
+    assert set(compared) == set(FAILURE_KINDS), compared
 
 
 def test_accept_and_file_it_are_one_call_site():
@@ -134,8 +162,11 @@ def test_accept_and_file_it_are_one_call_site():
     here and opens one in the return that takes the document - and it
     reaches the same command with a ``target``. The list and the deck both
     reach *that* through one function too.
+
+    Counted across every script the page loads (R3.3), so a call site that
+    moves to another script is still counted.
     """
-    js = read("app/renderer/app.js")
+    js = renderer_text()
     assert js.count('withEng("assign")') == 2
     assert len(re.findall(r"\bfileRow\(", js)) == 2      # the one definition and its one caller
     # The hand-over's own call site is the only one that names a target,
@@ -567,7 +598,7 @@ def test_the_version_is_0_4_in_the_badge_and_the_release_steps():
 
 
 def test_the_renderer_builds_the_page_from_data_not_html():
-    js = read("app/renderer/app.js")
+    js = renderer_text()   # every script the page loads (R3.3, D-5)
     html = read("app/renderer/index.html")
     for sink in ("innerHTML", "outerHTML", "insertAdjacentHTML", "document.write", "eval("):
         assert sink not in js, sink
@@ -3001,8 +3032,8 @@ def test_run_now_is_cut_off_only_at_the_run_limit_its_own_first_line_states():
     assert api._vocab()["pass_command"] == api.PASS_COMMAND
     main = py_function("_pass")
     assert "limit_seconds=RUN_TIME_LIMIT_SECONDS)" in main[:main.index('watch.say("started"')]
-    assert f'"{api.PASS_COMMAND}"' not in read("app/renderer/app.js")
-    assert "withEng(vocab.pass_command)" in read("app/renderer/app.js")
+    assert f'"{api.PASS_COMMAND}"' not in renderer_text()
+    assert "withEng(vocab.pass_command)" in renderer_text()
 
 
 def test_the_runbooks_189_sentence_is_rewritten():
@@ -4220,10 +4251,13 @@ def test_every_dialog_is_in_the_one_registry_and_closes_through_one_guard():
 def test_escape_and_an_overlay_click_reach_every_dialog_the_same_way():
     """One keydown handler on the document sends Escape to ``requestClose``
     for the topmost dialog; a click on any dialog's dim is the same call;
-    and every Cancel button makes it too."""
+    and every Cancel button makes it too. The one listener is found in
+    whichever of the app's scripts holds it (R3.3); the pilot's terms and tour
+    hold keys of their own in the capture phase (test_shell)."""
     js = read("app/renderer/app.js")
-    assert js.count('document.addEventListener("keydown"') == 1
-    handler = js.split('document.addEventListener("keydown", (e) => {', 1)[1].split("\n});", 1)[0]
+    app = renderer_text(APP_SCRIPTS)
+    assert app.count('document.addEventListener("keydown"') == 1
+    handler = app.split('document.addEventListener("keydown", (e) => {', 1)[1].split("\n});", 1)[0]
     assert 'e.key === "Escape"' in handler and "requestClose(id);" in handler
     assert "trapTab(e, id);" in handler
     assert js.count('"Escape"') == 1

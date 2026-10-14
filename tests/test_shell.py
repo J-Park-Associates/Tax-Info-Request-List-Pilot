@@ -10,8 +10,9 @@ dark, at both sizes) come from ``pilot/harness/shoot.mjs``.
 
 This file is S3's part of SPEC section 14.1. S2 adds the menu half (the
 template, the ``menu`` channel, the first paint), S4 the pages' node tests and
-S5 the sheet's; the lists below that name the files a claim covers
-(``SHELL_FILES``, ``TITLE_FREE``) are the ones they extend.
+S5 the sheet's. The files a claim covers are ``node_harness``'s scripts
+(``RENDERER_SCRIPTS``, read from index.html, or a named part of it, R3.2) or
+``TITLE_FREE`` below, which is built from them.
 """
 
 from __future__ import annotations
@@ -32,15 +33,19 @@ import tracker.api as api
 from tests.api_driver import run, sample_engagement, scan
 from tests.css_rules import GRID_PROPS, GRID_TOKEN, blocks, colour_faults, declarations, stripped, top_level
 from tests.node_harness import (
+    APP_SCRIPTS,
     COLUMN_FUNCTIONS,
     EARLY_FIRM,
     ENGINE_BRIDGE,
     FAKE_DOM,
     NODE,
     RENDERER,
+    RENDERER_SCRIPTS,
+    SHELL_SCRIPTS,
     js_function,
     lift_line,
     read,
+    renderer_text,
     run_firm_load,
     run_firm_page,
     run_last_counts,
@@ -59,10 +64,9 @@ from tracker import settings as settings_module
 
 REPO = Path(__file__).resolve().parent.parent
 
-#: The new renderer scripts. S5 adds sheet.js.
-SHELL_FILES = ("shell.js", "tooltip.js", "pages.js", "sheet.js")
 #: Files that hold no ``title`` attribute (SPEC 13): every tooltip is setTip().
-TITLE_FREE = ("shell.js", "tooltip.js", "pages.js", "sheet.js", "shell.css", "pilot.js", "tour.js", "app.js", "index.html")
+#: Every script the page loads, the shell's stylesheet and the page itself.
+TITLE_FREE = (*RENDERER_SCRIPTS, "shell.css", "index.html")
 #: Floating UI, vendored (Jason's ruling 5, 2026-09-29), loaded before app.js, core
 #: first: the DOM build asks for the core build's global.
 FLOATING_UI = RENDERER / "vendor" / "floating-ui"
@@ -644,10 +648,12 @@ def test_the_renderer_has_no_title_attribute():
         assert not re.search(r"\btitle=|\.title\s*=|(?<![\w-])title\s*:\s*[\"'`\w]", text), name
 
 
-def test_the_new_renderer_files_keep_the_renderers_guards():
+def test_every_renderer_script_keeps_the_renderers_guards():
+    """Every script the page loads (R3.3), so code that moves out of a
+    script is still read where it lands."""
     banned = ("innerHTML", "insertAdjacentHTML", "outerHTML", "document.write", "eval(", "new Function", "XMLHttpRequest",
               "WebSocket", "window.open", "openExternal", "startsWith(")
-    for name in SHELL_FILES:
+    for name in RENDERER_SCRIPTS:
         text = stripped_js(name)
         assert not [one for one in banned if one in text], name
         assert not re.search(r"\bfetch\(", text), name
@@ -663,7 +669,7 @@ def test_the_new_renderer_files_type_no_words_of_their_own():
     # A plain word: letters only. A hyphenated token is a class name or an id, not a word.
     word = re.compile(r"^[A-Za-z][A-Za-z'\u2019]*[.,;:!?\u2026]*$")
     literals = re.compile(r'"(?:[^"\\\n]|\\.)*"|\'(?:[^\'\\\n]|\\.)*\'|`(?:[^`\\]|\\.)*`')
-    for name in SHELL_FILES:
+    for name in SHELL_SCRIPTS:
         text = re.sub(r"/[^/\n*][^/\n]*/[gimsuy]*(?=[.,;)])", "", stripped_js(name))   # regex literals
         for literal in literals.findall(text):
             inner = re.sub(r"\$\{[^}]*\}", " ", literal[1:-1])
@@ -685,13 +691,20 @@ def test_every_attribute_the_shell_builds_a_node_with_is_on_its_list():
 
 def test_one_keydown_listener_owns_the_keyboard():
     """SPEC 4.3: app.js keeps the document's one keydown listener and hands
-    the shell's keys to shellKey(e) first; the new files add none."""
-    for name in SHELL_FILES:
+    the shell's keys to shellKey(e) first; the new files add none. Counted
+    across every script the page loads (R3.3), so the listener is found in
+    whichever one holds it. The only other document listeners are the
+    pilot's: its terms and its tour, built at run time without touching
+    app.js (P10), hold the keys in the capture phase while they are up and
+    take the listener off when they close."""
+    for name in SHELL_SCRIPTS:
         assert 'addEventListener("keydown"' not in read(name), name
-    app = read("app.js")
-    listener = app[app.index('document.addEventListener("keydown", (e) => {'):]
+    every = renderer_text()
+    listener = every[every.index('document.addEventListener("keydown", (e) => {'):]
     assert listener.index("if (shellKey(e)) return;") < listener.index("dialogStack[dialogStack.length - 1]")
-    assert app.count('document.addEventListener("keydown"') == 1
+    held = {name: re.findall(r'document\.addEventListener\("keydown", (.*)', read(name)) for name in RENDERER_SCRIPTS}
+    assert [one for name in APP_SCRIPTS for one in held[name]] == ["(e) => {"], held
+    assert all(one.endswith(", true);") for name in RENDERER_SCRIPTS if name not in APP_SCRIPTS for one in held[name]), held
 
 
 def test_the_harness_is_never_loaded_by_the_app():
@@ -1327,7 +1340,7 @@ def test_the_renderer_defines_none_of_the_names_section_13_removes():
     removed = ("chip", "sideLine", "requestTableRow", "ruleTooltip", "renderEngagements", "returnReminderLine", "renderSharing", "banner",
                "REVIEW_MODE_KEY", "REVIEW_MODE", "storedReviewMode", "setReviewMode", "applyReviewMode", "deckOrder", "renderDeck",
                "deckCard", "acceptCard", "openCardInList", "skipCard", "SCAN_LABEL", "LOCKED_BUTTONS")
-    for name in [*SHELL_FILES, "app.js", "tooltip.js"]:
+    for name in RENDERER_SCRIPTS:
         text = stripped_js(name)
         for one in removed:
             assert not re.search(rf"\b(?:function|const|let|var|class)\s+{one}\b", text), f"{name} defines {one}"

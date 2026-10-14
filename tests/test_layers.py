@@ -118,6 +118,7 @@ import ast
 from pathlib import Path
 
 from tests.import_graph import PACKAGE, _modules, import_edges
+from tests.node_harness import RENDERER, RENDERER_SCRIPTS
 
 REPO = Path(__file__).resolve().parents[1]
 
@@ -902,12 +903,13 @@ def test_every_allowed_spelling_is_still_needed():
 
 def test_the_app_never_works_out_whether_a_path_lies_under_another():
     """The same rule for the shell and the page: no ``path.relative(`` and
-    no ``startsWith(`` in ``main.js`` or ``app.js`` - the API says where a
-    path is below the root, in the layout's words."""
-    for rel in ("app/main.js", "app/renderer/app.js"):
-        text = (REPO / rel).read_text(encoding="utf-8")
-        assert "path.relative(" not in text, rel
-        assert "startsWith(" not in text, rel
+    no ``startsWith(`` in ``main.js`` or in any script the page loads
+    (SPEC-architecture R3.3) - the API says where a path is below the root,
+    in the layout's words."""
+    for path in (REPO / "app" / "main.js", *(RENDERER / name for name in RENDERER_SCRIPTS)):
+        text = path.read_text(encoding="utf-8")
+        assert "path.relative(" not in text, path.name
+        assert "startsWith(" not in text, path.name
 
 
 def test_importing_the_api_loads_no_network_module():

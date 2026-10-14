@@ -40,6 +40,29 @@ def read(name: str) -> str:
 RENDERER_SCRIPTS = tuple(src for src in re.findall(r'<script src="([^"]+)"', read("index.html"))
                          if not src.startswith("vendor/"))
 
+# The lists of scripts a claim covers are this one or named parts of it
+# (SPEC-architecture R3.2, D-5): a script added to index.html is read by every
+# claim about the renderer as a whole and by every claim about the app's own
+# scripts without anyone adding it, and test_renderer_seams holds each part
+# inside the whole.
+
+#: The pilot's own scripts (P10): its wording, the terms screen and badge, and
+#: the tour, each built at run time inside its own namespace. test_pilot holds
+#: them to the pilot's rules.
+PILOT_SCRIPTS = ("pilot-content.js", "pilot.js", "tour.js")
+#: The app's own scripts: every one the page loads but the pilot's.
+APP_SCRIPTS = tuple(name for name in RENDERER_SCRIPTS if name not in PILOT_SCRIPTS)
+#: The scripts SPEC-shell added beside app.js (P67), the ones its claims about
+#: the new files name.
+SHELL_SCRIPTS = ("shell.js", "tooltip.js", "pages.js", "sheet.js")
+
+
+def renderer_text(scripts: tuple[str, ...] = RENDERER_SCRIPTS) -> str:
+    """The renderer's scripts as one text, every one the page loads unless
+    ``scripts`` names a part: what a claim about the renderer as a whole reads,
+    so code that moves from one script to another is read where it lands."""
+    return "\n".join(read(name) for name in scripts)
+
 NODE = shutil.which("node")
 
 
@@ -439,16 +462,13 @@ def run_lists(probe: str, tmp_path: Path, extra: str = ""):
                                     "shellFirmAsk", "shellFirmMerge", "shellFirmShaped"])
 
 
-#: The renderer files a probe may lift a function from, in the order searched.
-SPEED_SOURCES = ("app.js", "sheet.js", "shell.js", "pages.js")
-
-
 def lift(*names: str) -> str:
     """The named functions as they are written, each from the renderer file
-    that defines it."""
+    that defines it: one of the app's own scripts (the pilot's define
+    ``show``, ``fill`` and ``render`` of their own, inside their namespaces)."""
     out = []
     for name in names:
-        source = next((one for one in SPEED_SOURCES if f"function {name}(" in read(one)), None)
+        source = next((one for one in APP_SCRIPTS if f"function {name}(" in read(one)), None)
         assert source, name
         out.append(js_function(name, source))
     return "\n".join(out)

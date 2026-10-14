@@ -3,7 +3,7 @@
   "generated": "2026-10-14",
   "generator": "tools/repo_map.py",
   "generator_sha256": "a394d7104da5155d",
-  "module_table_sha256": "4ced56338505b836",
+  "module_table_sha256": "ad7bced15f23baff",
   "pipeline": [
     "tracker.api / create",
     "tracker.scaffold",
@@ -15,8 +15,8 @@
     "a person sends the draft"
   ],
   "counts": {
-    "nodes": 317,
-    "edges": 1388,
+    "nodes": 318,
+    "edges": 1390,
     "reused": 0
   },
   "node_types": [
@@ -4645,8 +4645,8 @@
       "id": "docs/repo-map.curated.json",
       "type": "file",
       "layer": "docs",
-      "sha256": "eb0bb5ab76342177",
-      "lines": 1369,
+      "sha256": "c554e5d2e877319e",
+      "lines": 1373,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
     },
@@ -6131,9 +6131,10 @@
       "id": "tests/node_harness.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "d51985c5c5ac8119",
-      "lines": 976,
+      "sha256": "eba1b1651442f52d",
+      "lines": 996,
       "exports": [
+        "APP_SCRIPTS",
         "COLUMN_FUNCTIONS",
         "EARLY_FIRM",
         "ENGINE_BRIDGE",
@@ -6154,21 +6155,23 @@
         "NOTICE_FUNCTIONS",
         "PAGES_CONSTS",
         "PAGE_WORDS",
+        "PILOT_SCRIPTS",
         "REMINDER_FUNCTIONS",
         "REMINDER_SHEET",
         "RENDERER",
         "RENDERER_SCRIPTS",
         "REPO",
         "RETURN_STATE",
+        "SHELL_SCRIPTS",
         "SORT_END",
         "SPEED_DOM",
-        "SPEED_SOURCES",
         "content",
         "js_function",
         "lift",
         "lift_line",
         "pages_consts",
         "read",
+        "renderer_text",
         "run_firm_load",
         "run_firm_page",
         "run_last_counts",
@@ -6185,6 +6188,8 @@
         "store_functions"
       ],
       "constants": {
+        "PILOT_SCRIPTS": "('pilot-content.js', 'pilot.js', 'tour.js')",
+        "SHELL_SCRIPTS": "('shell.js', 'tooltip.js', 'pages.js', 'sheet.js')",
         "ENGINE_FUNCTIONS": "('shellFirmAsk', 'shellFirmMerge', 'shellFirmShaped', 'pagesAdopt', 'pagesListOf', 'pagesStoredOrder', 'pagesSaveOrder')",
         "ENGINE_SNIPPET": "'\\nimport json, sys\\nfrom tracker import firm_pages\\nspec = json.load(sys.stdin)\\nask = firm_pages.ask_of(spec[\"ask\"], spec[\"words\"][\"client_types\"])\\nreply = firm_pages.page(spec[\"whole\"], spec[\"names\"], spec[\"words\"], ask)\\nreply[\"view\"] = \"made-up-view\"\\nsys.stdout.write(json.dumps(reply))\\n'",
         "FAKE_DOM": "'\\nclass Node {}\\nclass Text extends Node { constructor(data) { super(); this.data = data; } }\\nclass Element extends Node {\\n  constructor(tag) { super(); this.tag = tag; this.className = \"\"; this.dataset = {}; this.attrs = {}; this.kids = []; this.open = false; this.handlers = {};\\n    this.style = { props: {}, setProperty(key, value) { this.props[key] = value; }, removeProperty(key) { delete this.props[key]; } }; }\\n  get classList() {\\n    const self = this;\\n    return { add(one) { if (!self.className.split(\" \").includes(one)) self.className = `${self.className} ${one}`.trim(); },\\n             remove(one) { self.className = self.className.split(\" \").filter((name) => name !== one).join(\" \"); },\\n             toggle(one, on) { if (on) this.add(one); else this.remove(one); return Boolean(on); },\\n             contains(one) { return self.className.split(\" \").includes(one); } };\\n  }\\n  setAttribute(key, value) { this.attrs[key] = String(value); }\\n  removeAttribute(key) { delete this.attrs[key]; }\\n  getAttribute(key) { return this.attrs[key]; }\\n  get id() { return this.attrs.id; }\\n  getBoundingClientRect() { return { left: 10, bottom: 20, top: 0, right: 30 }; }\\n  append(...nodes) { for (const one of nodes) this.kids.push(one instanceof Node ? one : new Text(String(one))); }\\n  replaceChildren(...nodes) { this.kids = []; this.append(...nodes); }\\n  insertBefore(node, before) { const at = before ? this.kids.indexOf(before) : -1; if (at === -1) this.kids.push(node); else this.kids.splice(at, 0, node); return node; }\\n  removeChild(node) { this.kids.splice(this.kids.indexOf(node), 1); return node; }\\n  focus() {}\\n  querySelectorAll(selector) {\\n    if (selector.startsWith(\"[role=\")) return this.find((one) => `[role=\"${one.attrs.role}\"]` === selector);\\n    const names = selector.split(\".\").filter(Boolean);\\n    return this.find((one) => names.every((name) => one.className.split(\" \").includes(name)));\\n  }\\n  addEventListener(type, fn) { (this.handlers[type] = this.handlers[type] || []).push(fn); }\\n  get childNodes() { return this.kids; }\\n  find(test, out = []) { for (const one of this.kids) if (one instanceof Element) { if (test(one)) out.push(one); one.find(test, out); } return out; }\\n  querySelector(selector) { return this.byClass(selector.slice(1))[0] || null; }\\n  byClass(name) { return this.find((one) => one.className.split(\" \").includes(name)); }\\n  get textContent() { return this.kids.map((one) => (one instanceof Text ? one.data : one.textContent)).join(\"\"); }\\n}\\nconst document = { activeElement: null, createDocumentFragment: () => new Element(\"fragment\"), createElement: (tag) => new Element(tag), createElementNS: (_ns, tag) => new Element(tag) };\\nconst page = (nodes) => { const box = new Element(\"div\"); box.append(...nodes.filter(Boolean)); return box; };\\n'",
@@ -6194,7 +6199,6 @@
         "LONG_LIST_FUNCTIONS": "('pagesRegister', 'pagesRowNode', 'pagesIsChild', 'pagesWindow', 'pagesOver', 'pagesListTop', 'pagesVirtualList', 'pagesVirtualMake', 'pagesVirtualNode', 'pagesVirtualPlace', 'pagesVirtualSize', 'pagesVirtualMeasure', 'pagesVirtualPlaceAll', 'pagesVirtualWire', 'pagesVirtualReveal', 'pagesActivateAt', 'pagesKeyLong', 'pagesVirtualNodeSaid', 'pagesVirtualMeasureSaid')",
         "RETURN_STATE": "'\\nconst item = (id, group, extra = {}) => ({ identifier: id, document: `Doc ${id}`, short_name: `Doc ${id}`, group, status_key: \"Missing\", manual_override: \"\",\\n  period: \"\", year: 2025, file_count: 0, expected_count: 1, received_date: null, ...extra });\\nconst parked = (handle, extra = {}) => ({ handle, original_name: `${handle}.pdf`, decision: \"Needs Review\", group: \"needs_you\", code: \"unmatched\", received: \"2026-03-03\", bucket: \"document\", ...extra });\\nconst movedRow = (handle, extra = {}) => ({ handle, original_name: `${handle}.pdf`, decision: \"File Moved\", group: \"needs_you\", code: \"file-moved\", received: \"2026-03-02\", ...extra });\\nconst setAsideRow = (handle, extra = {}) => ({ handle, original_name: `${handle}.pdf`, decision: \"Not Requested\", group: \"set_aside\", code: \"not-requested\", received: \"2026-03-01\", ...extra });\\nconst stateOf = (items, index = [], moved = []) => ({ paths: { engagement: \"r1\" }, engagement: { due: \"2026-04-15\" }, items, index, review: [], moved });\\n'",
         "ENGINE_BRIDGE": "'\\n  let shellFirmData = null; let shellFirmAsOf = \"\";\\n  let shellFirmNow = { status: \"ok\", data: null };   // what the window holds: the pages the engine cut (P278)\\n  const shellFirm = () => (shellFirmAsOf ? { ...shellFirmNow, asOf: shellFirmAsOf } : shellFirmNow);\\n  globalThis.shellRoute = globalThis.shellRoute || { level: \"overview\" };   // a probe that holds its own (let) keeps it\\n  const { execFileSync } = require(\"child_process\");\\n  const enginePages = new Map();\\n  const engineAnswers = (ask) => {\\n    const words = { need: vocab.screen.counts.need, waiting: vocab.screen.counts.waiting, complete: vocab.screen.counts.complete,\\n      paused: vocab.screen.notices.paused, held: vocab.screen.held, client_types: vocab.client_type_forms,\\n      stages: Object.fromEntries(((vocab.reminder || {}).stages || []).map((one) => [one.number, one.short])),\\n      reasons: Object.fromEntries(Object.entries(vocab.reasons).map(([code, one]) => [code, typeof one === \"object\" ? one.short : one])) };\\n    const walk = { returns: Object.fromEntries(shellFirmData.returns.map((one) => [one.path, (shellReturn(one.path) || { return_name: one.path.split(/[\\\\\\\\/]/).pop() }).return_name])),\\n      households: households.map((one) => ({ name: one.name, path: one.path, links: one.links || [], forms: (one.returns || []).map((r) => r.form) })) };\\n    const input = JSON.stringify({ whole: shellFirmData, names: walk, words, ask });\\n    if (!enginePages.has(input)) {\\n      enginePages.set(input, JSON.parse(execFileSync(process.env.FIRM_PY, [\"-c\", process.env.FIRM_SNIPPET], { input, cwd: process.env.FIRM_REPO, encoding: \"utf8\" })));\\n    }\\n    return JSON.parse(JSON.stringify(enginePages.get(input)));\\n  };\\n  // What shellTurnFirm does, at once: the page wanted of the list is asked of the engine and held.\\n  const settle = (...lists) => {\\n    for (const list of lists) {\\n      const reply = engineAnswers(shellFirmAsk(list));\\n      shellFirmNow = { status: \"ok\", data: shellFirmMerge(shellFirmNow.data, reply) };\\n      pagesAdopt(reply);\\n    }\\n  };\\n  const heldRows = (list) => shellFirmNow.data.replies[list].page.rows;\\n'",
-        "SPEED_SOURCES": "('app.js', 'sheet.js', 'shell.js', 'pages.js')",
         "SPEED_DOM": "'\\nclass Node {}\\nclass Text extends Node { constructor(data) { super(); this.data = data; this.parent = null; } get textContent() { return this.data; } }\\nclass El extends Node {\\n  constructor(tag, id) { super(); this.tag = tag; this.id = id || \"\"; this.className = \"\"; this.dataset = {}; this.attrs = {}; this.kids = [];\\n    this.hidden = false; this.disabled = false; this.parent = null; this.handlers = {};\\n    this.style = { props: {}, setProperty(key, value) { this.props[key] = value; }, removeProperty(key) { delete this.props[key]; } }; }\\n  get classList() {\\n    const self = this;\\n    const now = () => self.className.split(\" \").filter(Boolean);\\n    return { add(...names) { self.className = [...new Set([...now(), ...names])].join(\" \"); },\\n             remove(...names) { self.className = now().filter((one) => !names.includes(one)).join(\" \"); },\\n             toggle(name, on) { const want = on === undefined ? !now().includes(name) : Boolean(on); if (want) this.add(name); else this.remove(name); return want; },\\n             contains(name) { return now().includes(name); } };\\n  }\\n  setAttribute(key, value) { this.attrs[key] = String(value); }\\n  getAttribute(key) { return key in this.attrs ? this.attrs[key] : null; }\\n  removeAttribute(key) { delete this.attrs[key]; }\\n  adopt(one) { const node = one instanceof Node ? one : new Text(String(one)); if (node.parent) node.remove(); node.parent = this; return node; }\\n  append(...nodes) { for (const one of nodes) this.kids.push(this.adopt(one)); }\\n  prepend(...nodes) { this.kids.unshift(...nodes.map((one) => this.adopt(one))); }\\n  replaceChildren(...nodes) { for (const one of this.kids) one.parent = null; this.kids = []; this.append(...nodes); }\\n  remove() { if (this.parent) { this.parent.kids = this.parent.kids.filter((one) => one !== this); this.parent = null; } }\\n  get childNodes() { return this.kids; }\\n  get children() { return this.kids.filter((one) => one instanceof El); }\\n  focus() {}\\n  addEventListener(type, fn) { (this.handlers[type] = this.handlers[type] || []).push(fn); }\\n  get textContent() { return this.kids.map((one) => one.textContent).join(\"\"); }\\n  set textContent(value) { this.replaceChildren(String(value)); }\\n  find(test, out = []) { for (const one of this.kids) if (one instanceof El) { if (test(one)) out.push(one); one.find(test, out); } return out; }\\n  byClass(name) { return this.find((one) => one.classList.contains(name)); }\\n  querySelector(selector) { return this.querySelectorAll(selector)[0] || null; }\\n  querySelectorAll(selector) {\\n    const own = selector.replace(/^:scope > /, \"\");\\n    const pool = own === selector ? this.find(() => true) : this.children;\\n    if (own.startsWith(\".\")) return pool.filter((one) => one.classList.contains(own.slice(1)));\\n    if (own.startsWith(\"#\")) return pool.filter((one) => one.id === own.slice(1));\\n    return pool.filter((one) => one.tag === own);\\n  }\\n}\\nconst ELS = {};\\nconst $ = (id) => ELS[id] || (ELS[id] = new El(\"div\", id));\\nconst document = { createElement: (tag) => new El(tag), createElementNS: (_ns, tag) => new El(tag), contains: () => true };\\nconst window = { tracker: { logError() {} } };\\n'",
         "REMINDER_SHEET": "'\\nlet vocab = {\\n  screen: { loading: \"Loading\", sheet: { reminder: \"Draft Reminder\" } },\\n  reminder: { stages: [], palette: { ink: \"#000\" }, hold_colour: \"ink\", stage_group: \"Stage\", edited_by_hand: \"Edited\", subject_prefix: \"Subject: \",\\n              heading: \"Letter\", letter_ink: { body: \"ink\", muted: \"ink\", paper: \"ink\" }, never_drafted_line: \"Never drafted\", copied: \"Copied\", approve: \"Approve\" },\\n};\\nconst card = (ret) => ({ held: [], unsorted: 0, stage: 1, editable: true, file: { edited: false }, subject: `For ${ret}`, letter: { greeting: `Dear ${ret}` },\\n                         html: `<p>${ret}</p>`, text: `Letter for ${ret}`, last: null, approved: null, lapsed: false, fingerprint: `fp-${ret}` });\\nlet active = \"A\"; let lastState = { paths: { engagement: \"A\" }, reminder_card: { reminder: card(\"A\") } };\\nlet shellRoute = { level: \"reminders\" };\\nconst FIRM_LEVELS = [\"overview\", \"needs-review\", \"reminders\", \"clients\"];\\nconst reads = [];\\nconst showReturn = (path) => new Promise((resolve) => reads.push({ path, land() {\\n  active = path; lastState = { paths: { engagement: path }, reminder_card: { reminder: card(path) } };\\n  drawReminderReply(lastState.reminder_card); resolve(true); } }));\\nlet drafts = [{ ret: \"B\" }, { ret: \"C\" }];\\nconst pagesDrafts = () => drafts; const pagesWhere = () => null; const pagesDay = (d) => d;\\nconst openDialog = () => {}; const setTipIfCut = () => {}; const applyLock = () => {}; const closeSheet = () => {};\\nconst failed = (err) => { throw err; }; const outcome = () => {};\\nconst clipboard = []; const sent = [];\\nconst navigator = { clipboard: { write: async (items) => { clipboard.push(items[0].parts[\"text/plain\"].text); } } };\\nclass ClipboardItem { constructor(parts) { this.parts = parts; } }\\nclass Blob { constructor([text]) { this.text = text; } }\\nconst call = async (args, payload) => { sent.push([args[0], payload]); return { reminder: card(active) }; };\\nconst withEng = (name) => [name, \"--engagement\", active];\\nconst loadReminder = async () => {};\\nlet sheetNow = null; let sheetGeneration = 0;\\nconst tick = () => new Promise((resolve) => setImmediate(resolve));\\nconst actions = () => ({ card: reminderCard ? reminderCard.text : null, shown: !$(\"reminder-actions\").hidden, busy: $(\"sheet\").getAttribute(\"aria-busy\"),\\n                         outline: $(\"reminder-wait\").byClass(\"row-skeleton\").length, word: $(\"reminder-wait\").textContent });\\n'",
         "REMINDER_FUNCTIONS": "('el', 'h', 'show', 'fill', 'screenWords', 'shellSkeleton', 'shellWaiting', 'stageOf', 'stageInk', 'marked', 'holdLine', 'reminderStatus', 'lines', 'letterNodes', 'drawReminderReply', 'drawReminderLine', 'drawReminder', 'forgetReminderCard', 'reminderWaitOver', 'reminderCardReady', 'copyReminder', 'approveReminder', 'sheetSet', 'sheetMore', 'sheetFrame', 'openReminder', 'sheetDraftsAfter', 'sheetNextDraft', 'sheetShow', 'sheetDrawCheck', 'sheetAfter')",
@@ -6206,8 +6210,8 @@
         "LONG_SETUP": "'\\nconst hideTip = () => {}; const showTipNow = () => {};\\nlet H = 40;\\nObject.defineProperty(Element.prototype, \"offsetHeight\", { get() { return H; }, configurable: true });\\nconst pageBox = new Element(\"div\");\\npageBox.scrollTop = 0; pageBox.clientHeight = 800; pageBox.getBoundingClientRect = () => ({ top: 0 });\\nconst $ = (id) => (id === \"page\" ? pageBox : null);\\nconst parkedFiles = (n, extra = () => ({})) => Array.from({ length: n }, (_, i) => parked(`f${String(i + 1).padStart(4, \"0\")}`, extra(i)));\\nconst draw = (index, items = []) => {\\n  lastState = stateOf(items, index);\\n  pagesUid = 0; pagesTokens.clear(); pagesBroken = [];\\n  pageBox.replaceChildren(...pagesReturn({ level: \"return\", ret: \"r1\", year: 2025 }));\\n  pageBox.scrollTop = 0;\\n  for (const list of pageBox.querySelectorAll(\".rows.is-virtual\")) list.getBoundingClientRect = () => ({ top: 100 - pageBox.scrollTop });\\n  pagesVirtualMeasure(pageBox);\\n  return pageBox.querySelectorAll(\".rows.is-virtual\")[0];\\n};\\nconst scrollTo = (top) => { pageBox.scrollTop = top; pagesVirtualPlaceAll(pageBox); };\\n'",
         "MENU_HARNESS": "'\\nconst Module = require(\"module\");\\nconst EventEmitter = require(\"events\");\\nconst realFs = require(\"fs\");\\nconst [mainJs, scenarioJson] = process.argv.slice(2);\\nconst sc = JSON.parse(scenarioJson);\\n// Off Windows the fallback is Electron\\'s userData; \"win32\" is %LOCALAPPDATA%.\\nObject.defineProperty(process, \"platform\", { value: sc.platform || \"linux\" });\\n// A Mac is refused below Apple silicon and macOS 14 (SPEC-mac R6), so a scenario\\n// that stands in for one says which chip and which Darwin release it has.\\nif (sc.arch) Object.defineProperty(process, \"arch\", { value: sc.arch });\\nif (sc.release) require(\"os\").release = () => sc.release;\\nif (sc.localAppData !== undefined) process.env.LOCALAPPDATA = sc.localAppData;\\nprocess.resourcesPath = process.resourcesPath || \"/resources\";\\nconst log = { menus: [], popups: [], sends: [], opened: [], revealed: [], answers: [], backgrounds: [], windowOptions: null,\\n              userModelIds: [], spawned: [] };\\nlet openHandler = null;\\nlet menuHandler = null;\\nlet trackerHandler = null;\\nlet updated = null;\\nconst theme = { shouldUseDarkColors: !!sc.dark, shouldUseHighContrastColors: !!sc.contrast,\\n                themeSource: \"\", on(name, fn) { if (name === \"updated\") updated = fn; } };\\nconst snapshot = (items) => items.map((i) => ({\\n  label: i.label, type: i.type, role: i.role, enabled: i.enabled, accelerator: i.accelerator, checked: i.checked,\\n  submenu: i.submenu ? snapshot(i.submenu) : undefined }));\\nlet live = { bar: null, popup: null };\\n// What main.js has started and not yet seen finish: Electron\\'s ready, a fake\\n// tracker child until it closes, a file check (fs.promises). The harness waits\\n// for this to reach nought, never for a fixed time: a busy PC (12 test files at\\n// once) once took longer than the 60 ms it used to wait for a file check (P200).\\nlet pending = 0;\\nconst track = (promise) => {\\n  pending += 1;\\n  const done = () => { pending -= 1; };\\n  promise.then(done, done);\\n  return promise;\\n};\\n// Every continuation of a settled promise runs before the next turn of the\\n// event loop, so a turn with nothing pending means main.js has done answering.\\nconst settle = async () => {\\n  do { await new Promise((resolve) => setImmediate(resolve)); } while (pending > 0);\\n};\\nconst win = {\\n  isDestroyed: () => false,\\n  getContentBounds: () => ({ width: 1400, height: 900 }),\\n  setBackgroundColor: (c) => log.backgrounds.push(c),\\n  loadFile() {}, on() {}, isMinimized: () => false, focus() {},\\n  webContents: { setWindowOpenHandler() {}, on() {}, session: { flushStorageData() {} },\\n                 send: (channel, message) => log.sends.push({ channel, message }) },\\n};\\nclass BrowserWindow {\\n  constructor(options) { log.windowOptions = options; return win; }\\n  static getAllWindows() { return [win]; }\\n}\\nconst electron = {\\n  app: { isPackaged: !!sc.packaged, requestSingleInstanceLock: () => true, quit() {}, on() {},\\n         setPath() {}, setAppUserModelId(id) { log.userModelIds.push(id); },\\n         getPath: (name) => { if (name === \"appData\") return \"appdata\";\\n                              if (!sc.userData) throw new Error(\"no such path\"); return sc.userData; },\\n         whenReady: () => track(Promise.resolve()) },\\n  BrowserWindow,\\n  Menu: {\\n    buildFromTemplate: (template) => ({ template, popup(options) {\\n      live.popup = template;\\n      log.popups.push({ items: snapshot(template), options });\\n    } }),\\n    setApplicationMenu(menu) {\\n      live.bar = menu.template;\\n      log.menus.push(snapshot(menu.template));\\n    },\\n  },\\n  ipcMain: { handle(name, fn) {\\n               if (name === \"tracker-cmd\") trackerHandler = fn;\\n               if (name === \"open-path\") openHandler = fn;\\n             },\\n             on(name, fn) { if (name === \"menu\") menuHandler = fn; } },\\n  nativeTheme: theme,\\n  shell: { openPath: async (p) => { log.opened.push(p); return \"\"; },\\n           showItemInFolder: (p) => { log.revealed.push(p); } },\\n  dialog: {},\\n};\\nconst listReply = () => ({ vocab: { commands: [\"list\", \"after-install\"], menu: sc.vocabMenu,\\n                                    path_kinds: sc.pathKinds,\\n                                    shell: { error_log: sc.errorLog } }, paths: sc.paths });\\nconst fakeSpawn = (cmd, args) => {\\n  const proc = new EventEmitter();\\n  log.spawned.push(cmd);\\n  proc.stdout = new EventEmitter();\\n  proc.stdout.setEncoding = () => {};\\n  proc.stderr = new EventEmitter();\\n  if (args.includes(\"--resident\")) {\\n    // The engine (P276) stays up and answers the frame it is handed: a line {id, argv, bytes},\\n    // then its reply and an end line. Never closed here, or the shell would log an engine\\'s end.\\n    let framed = Buffer.alloc(0);\\n    proc.pid = 1;\\n    proc.kill = () => {};\\n    proc.stdin = { on() {}, end() {},\\n      write(chunk) {\\n        framed = Buffer.concat([framed, Buffer.from(chunk)]);\\n        for (;;) {\\n          const at = framed.indexOf(10);\\n          if (at < 0) return true;\\n          const head = JSON.parse(framed.slice(0, at).toString(\"utf8\"));\\n          if (framed.length - at - 1 < head.bytes) return true;       // the payload\\'s bytes are part of the frame\\n          framed = framed.slice(at + 1 + head.bytes);\\n          pending += 1;\\n          setImmediate(() => {\\n            if (head.argv.includes(\"list\")) proc.stdout.emit(\"data\", JSON.stringify(listReply()) + \"\\\\n\");\\n            proc.stdout.emit(\"data\", \"\\\\n\" + JSON.stringify({ engine_end: head.id, code: 0, retiring: false }) + \"\\\\n\");\\n            pending -= 1;\\n          });\\n        }\\n      } };\\n    return proc;\\n  }\\n  proc.stdin = { write() {}, end() {}, on() {} };\\n  proc.pid = 1;\\n  proc.kill = () => {};\\n  pending += 1;\\n  setImmediate(() => {\\n    if (args.includes(\"list\")) proc.stdout.emit(\"data\", JSON.stringify(listReply()) + \"\\\\n\");\\n    proc.emit(\"close\", 0);\\n    pending -= 1;\\n  });\\n  return proc;\\n};\\nconst load = Module._load;\\nModule._load = function (request, ...rest) {\\n  if (request === \"electron\") return electron;\\n  if (request === \"child_process\") return { spawn: fakeSpawn };\\n  if (request === \"fs\") {\\n    const promises = Object.fromEntries(Object.entries(realFs.promises).map(([name, fn]) =>\\n      [name, typeof fn === \"function\" ? (...args) => track(fn.apply(realFs.promises, args)) : fn]));\\n    return { ...realFs, promises, existsSync: () => true,\\n      readFileSync(p, ...more) {\\n        const base = String(p).split(/[\\\\\\\\/]/).pop();\\n        if (base in (sc.css || {})) {\\n          if (sc.css[base] === null) throw Object.assign(new Error(\"no such file\"), { code: \"ENOENT\" });\\n          return sc.css[base];\\n        }\\n        return realFs.readFileSync(p, ...more);\\n      } };\\n  }\\n  return load.call(this, request, ...rest);\\n};\\nconst items = (list, label) => {\\n  for (const item of list) {\\n    if (item.label === label) return item;\\n    const inner = item.submenu && items(item.submenu, label);\\n    if (inner) return inner;\\n  }\\n  return null;\\n};\\n(async () => {\\n  require(mainJs);\\n  await settle();\\n  for (const step of sc.steps) {\\n    if (step.menu !== undefined) {\\n      menuHandler({ sender: step.stranger ? {} : win.webContents }, step.menu);\\n    } else if (step.tracker) {\\n      await trackerHandler({ sender: { isDestroyed: () => false, send() {} } }, step.tracker, undefined);\\n    } else if (step.open) {\\n      log.answers.push(await openHandler({}, ...step.open));\\n    } else if (step.clickBar) {\\n      const item = items(live.bar, step.clickBar);\\n      if (item && item.click) item.click();\\n    } else if (step.clickPopup) {\\n      const item = items(live.popup, step.clickPopup);\\n      if (item && item.click) item.click();\\n    } else if (step.theme) {\\n      Object.assign(theme, step.theme);\\n      updated();\\n    }\\n    await settle();\\n  }\\n  process.stdout.write(JSON.stringify(log));\\n})();\\n'"
       },
-      "role": "Runs the renderer's own JavaScript under node and reads its text: the runners (run_shell and run_pages lift named functions out of the scripts as written and run a probe against fakes; run_pages_dom adds a small DOM; run_notices, run_lists, run_speed, run_firm_load and the rest add the worlds their claims need), js_function and lift, which cut a function out of a script, and the renderer file reader read(name).",
-      "notes": "SPEC-architecture J2 (R2.1, E-4). tests/test_shell.py grew the runners and test_single_source.py borrowed one (from tests.test_shell import run_pages); they were moved here with their words and the fakes and function lists each always had, and the file reader every renderer test wrote for itself (test_pilot, test_pilot_ui) is read() here. The window is sandboxed and there is no browser in the gate, so a claim about what a page does is made by running its functions in node. Skipped where node is not on PATH (CI installs it)."
+      "role": "Runs the renderer's own JavaScript under node and reads its text: the runners (run_shell and run_pages lift named functions out of the scripts as written and run a probe against fakes; run_pages_dom adds a small DOM; run_notices, run_lists, run_speed, run_firm_load and the rest add the worlds their claims need), js_function and lift, which cut a function out of a script, and the renderer file reader read(name); RENDERER_SCRIPTS (the scripts index.html loads, vendor/ left out), the named parts of it APP_SCRIPTS, PILOT_SCRIPTS and SHELL_SCRIPTS, and renderer_text(), the scripts as one text.",
+      "notes": "SPEC-architecture J2 (R2.1, E-4). SPEC-architecture J3 (R3.2, D-5): the guards on the renderer as a whole read renderer_text() and the lists of files a claim covers are RENDERER_SCRIPTS or a named part of it, so code that moves to another script, or a script added to the page, is still read. tests/test_shell.py grew the runners and test_single_source.py borrowed one (from tests.test_shell import run_pages); they were moved here with their words and the fakes and function lists each always had, and the file reader every renderer test wrote for itself (test_pilot, test_pilot_ui) is read() here. The window is sandboxed and there is no browser in the gate, so a claim about what a page does is made by running its functions in node. Skipped where node is not on PATH (CI installs it)."
     },
     {
       "id": "tests/passes.py",
@@ -6448,8 +6452,8 @@
       "id": "tests/test_api.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "9124051b1f0e01ea",
-      "lines": 11567,
+      "sha256": "236710950cf8128b",
+      "lines": 11564,
       "exports": [
         "COUNTS",
         "DEEPER_ROOT_LENGTH",
@@ -8074,8 +8078,8 @@
       "id": "tests/test_layers.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "0cf67c3d498e7744",
-      "lines": 963,
+      "sha256": "378d7bc58d2c863a",
+      "lines": 965,
       "exports": [
         "REPO",
         "SOCKET_SHAPED",
@@ -8676,8 +8680,8 @@
       "id": "tests/test_pilot.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "9985a5708da54350",
-      "lines": 978,
+      "sha256": "1fce84f673b951d9",
+      "lines": 975,
       "exports": [
         "KIT_PROMPT",
         "KIT_RESULTS",
@@ -8685,7 +8689,6 @@
         "KIT_TESTS",
         "KIT_TESTS_ADDED",
         "MACTEST",
-        "PILOT_JS",
         "POWERSHELL",
         "REPO",
         "test_a_blank_or_spaces_only_name_does_not_enable_accept",
@@ -8741,7 +8744,6 @@
         "tour_lines"
       ],
       "constants": {
-        "PILOT_JS": "('pilot-content.js', 'pilot.js', 'tour.js')",
         "KIT_TESTS": "('test_settings', 'test_after_install', 'test_scheduling', 'test_runner', 'test_locking', 'test_fsio', 'test_checkpoint', 'test_store', 'test_ledger', 'test_layout', 'test_filer', 'test_validators', 'test_ocr', 'test_api', 'test_api_entry', 'test_build', 'test_shell', 'test_shell_menu', 'test_single_source', 'test_layers', 'test_repo_map', 'test_tripwire')",
         "KIT_TESTS_ADDED": "('test_content_check', 'test_pilot', 'test_errors', 'test_lockfiles')"
       },
@@ -9214,6 +9216,18 @@
         "A_WRITE_KILLED_HALF_WAY": "'\\nimport os\\nimport sys\\nfrom pathlib import Path\\nsys.path[:0] = [sys.argv[2]]\\nreal_open = Path.open\\n\\ndef open_(self, mode=\"r\", *args, **kwargs):\\n    handle = real_open(self, mode, *args, **kwargs)\\n    if \"w\" in mode and self.name.startswith(sys.argv[3]):\\n        real_write = handle.write\\n        def half(text):\\n            real_write(text[: len(text) // 2])\\n            handle.flush()\\n            os._exit(9)\\n        handle.write = half\\n    return handle\\n\\nPath.open = open_\\nfolder = Path(sys.argv[1])\\nif sys.argv[4] == \"draft\":\\n    from tracker.reminder import draft_reminder, write_draft\\n    write_draft(draft_reminder(folder), engagement_dir=folder)\\nelse:\\n    from tracker.filer import refresh_household_readme\\n    from tracker.layout import household_of\\n    refresh_household_readme(household_of(folder))\\n'",
         "LETTER_AT_D900768": "\"Subject: Sample 2025: 2 document(s) still needed\\n\\nHi Pat Sample,\\n\\nOf the 6 items we asked for, 2 are in.\\n\\nChecking in on your return. We're still missing a few items for Sample 2025 and wanted to make sure they didn't slip through the cracks:\\n\\nNOT YET RECEIVED\\n  - A01 - W-2 Wage Statements (TY2025) - 2 files expected\\n\\nSTARTED, BUT NOT COMPLETE\\n  - A02 - Bank Statements (TY2025) - 2 of 3 received, 1 still to come\\n\\nEverything goes in the same place - just drop it into the shared\\nfolder. One folder, no sorting and no naming needed; we do that:\\n  https://example.invalid/share\\n\\nAs a reminder, our firm asks to have everything in hand ahead of the filing deadline, which gives us time to prepare and file your return properly. For you that means we'd need these by March 15, 2026.\\n\\nLet us know if you have any questions or if anything's already on its way.\\n\\nThank you,\\nA. Preparer\\nSample Firm\\n\""
       }
+    },
+    {
+      "id": "tests/test_renderer_seams.py",
+      "type": "test",
+      "layer": "tests",
+      "sha256": "c0aacb3b8d91b0d1",
+      "lines": 24,
+      "exports": [
+        "test_every_named_part_of_the_renderer_is_inside_the_scripts_the_page_loads"
+      ],
+      "role": "Holds the renderer's scripts to the page's own list: every named part of it a claim covers (the app's scripts, the pilot's, the shell's) is inside the scripts index.html loads, and the app's and the pilot's are the whole of it between them.",
+      "notes": "SPEC-architecture J3 (R3.2, D-5). The guards that keep the page safe read the scripts through node_harness's RENDERER_SCRIPTS or a named part of it, so a part naming a script the page does not load would be a claim about nothing."
     },
     {
       "id": "tests/test_repo_map.py",
@@ -10198,8 +10212,8 @@
       "id": "tests/test_shell.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "9eeac001ffbd1835",
-      "lines": 8149,
+      "sha256": "c7d6e57d2b63675b",
+      "lines": 8162,
       "exports": [
         "CARD_HOUSEHOLD",
         "COMPACT_FUNCTIONS",
@@ -10226,7 +10240,6 @@
         "REPO",
         "RETURN_FOLLOWS_FAKES",
         "SHEET_SETUP",
-        "SHELL_FILES",
         "SHELL_ROUTE_FAKES",
         "SOON_FUNCTIONS",
         "SOON_PANEL",
@@ -10396,6 +10409,7 @@
         "test_every_loud_failure_of_the_old_screen_reaches_a_notice",
         "test_every_menu_id_the_page_answers_is_in_the_template_and_the_rest_are_the_rows",
         "test_every_phrase_the_page_and_the_dialogs_draw_from_index_html_and_app_js_is_in_title_case",
+        "test_every_renderer_script_keeps_the_renderers_guards",
         "test_every_size_is_a_multiple_of_four",
         "test_every_space_is_a_step_of_the_grid",
         "test_every_token_has_the_value_the_spec_lists_in_both_themes",
@@ -10509,7 +10523,6 @@
         "test_the_loading_order_is_the_specs_and_the_csp_is_unchanged",
         "test_the_menus_enable_list_follows_the_rules_of_the_template",
         "test_the_move_schedule_question_carries_its_warning",
-        "test_the_new_renderer_files_keep_the_renderers_guards",
         "test_the_new_renderer_files_type_no_words_of_their_own",
         "test_the_new_tokens_and_every_new_pair_meet_their_contrast_in_both_themes",
         "test_the_next_arrows_order_is_the_files_a_person_must_look_at_in_the_order_drawn",
@@ -10573,8 +10586,6 @@
         "title_case_ok"
       ],
       "constants": {
-        "SHELL_FILES": "('shell.js', 'tooltip.js', 'pages.js', 'sheet.js')",
-        "TITLE_FREE": "('shell.js', 'tooltip.js', 'pages.js', 'sheet.js', 'shell.css', 'pilot.js', 'tour.js', 'app.js', 'index.html')",
         "FLOATING_UI_SCRIPTS": "('vendor/floating-ui/floating-ui.core.umd.min.js', 'vendor/floating-ui/floating-ui.dom.umd.min.js')",
         "TIP_PAGE": "'\\nclass Element {\\n  constructor(words) { this.dataset = words ? { tip: words } : {}; this.isConnected = true; this.attrs = {};\\n    this.scrollWidth = 10; this.clientWidth = 10; }\\n  closest() { return this.dataset.tip !== undefined ? this : null; }\\n  contains(other) { return other === this; }\\n  matches() { return false; }\\n  setAttribute(k, v) { this.attrs[k] = v; }\\n  removeAttribute(k) { delete this.attrs[k]; }\\n}\\nconst tipBox = { hidden: true, textContent: \"\", style: { setProperty() {} } };\\nconst handlers = {};\\nconst document = { getElementById: (id) => (id === \"tip\" ? tipBox : null),\\n  addEventListener: (type, fn) => { handlers[type] = fn; } };\\nconst window = { addEventListener() {} };\\nconst FloatingUIDOM = { computePosition: () => ({ then() {} }), offset() {}, flip() {}, shift() {}, hide() {} };\\nconst timers = new Map(); let lastTimer = 0;\\nconst setTimeout = (fn) => { lastTimer += 1; timers.set(lastTimer, fn); return lastTimer; };\\nconst clearTimeout = (id) => { timers.delete(id); };\\nconst tick = () => { const due = [...timers.values()]; timers.clear(); due.forEach((fn) => fn()); };\\nconst over = (target) => handlers.mouseover({ target });\\nconst seen = (node) => [tipBox.hidden, tipBox.textContent, node.attrs[\"aria-describedby\"] || null];\\n'",
         "PEOPLE": "'\\nconst fill = (p, v) => p.replace(/\\\\{(\\\\w+)\\\\}/g, (_, k) => v[k] ?? \"\");\\nconst vocab = { screen: { counts: { one_return: \"1 return\", returns: \"{n} returns\" },\\n  sections: { overview: \"Overview\", needs_review: \"Needs review\", reminders: \"Reminders\", clients: \"Clients\" },\\n  sort: { now: \"Sort now\", stop: \"Stop sorting\", locked: \"In use elsewhere\", stopping: \"Stopping\", tip: \"Sort this household\\'s inbox\" } } };\\nconst households = [\\n  { name: \"Smith Family\", path: \"h1\", returns: [{ rollable: true }] }, { name: \"Rivera Design\", path: \"h2\", returns: [] },\\n  { name: \"Ren\\\\u00e9e Okafor\", path: \"h3\", returns: [] }, { name: \"Lopez Household\", path: \"h4\", returns: [] },\\n];\\nconst engagements = [\\n  { name: \"a\", path: \"r1\", household: \"h1\", year: 2025, return_name: \"1040 - John & Jane Smith\" },\\n  { name: \"b\", path: \"r2\", household: \"h1\", year: 2024, return_name: \"1040 - John & Jane Smith\" },\\n  { name: \"c\", path: \"r3\", household: \"h2\", year: 2025, return_name: \"1120-S - Rivera Design LLC\" },\\n];\\nlet calls = 0; const call = () => { calls += 1; };\\n'",
@@ -10594,7 +10605,7 @@
         "CARD_HOUSEHOLD": "'\\n  const LINK = \"LINKTOKEN-share-me\";\\n  const hh = { name: \"Alpha\", path: \"c/Alpha\", contact: \"A Person\", members: [\"A Person\", \"Another\"], link: LINK,\\n               returns: [{ path: \"r/1040 - Alpha\", year: 2025, return_name: \"1040 - Alpha\", form: \"1040\", active: true },\\n                         { path: \"r/old\", year: 2024, return_name: \"1040 - Alpha\", form: \"1040\", active: true }] };\\n  shellHousehold = () => hh;\\n  shellRoute = { level: \"household\", household: \"c/Alpha\" };\\n  lastState = { household: { path: \"c/Alpha\", shared_on: \"2026-02-01\" } };\\n  const cls = (n) => n.className.split(\" \")[0];\\n  const facts = (page) => page.byClass(\"card-fact\").map((f) => [f.kids[0].textContent, f.kids.slice(1).map((k) => k.textContent)]);\\n'"
       },
       "role": "The shell's renderer half: the tokens and their contrast in both themes, the shell stylesheet's discipline, the guards every renderer file keeps, the words the new files may not type, and the route, search, Sort Now button and menu enable list run in node against shell.js's own functions.",
-      "notes": "SHELL_FILES and TITLE_FREE name the files a claim covers; S2 adds the menu half, S4 the pages' node tests and S5 the sheet's. The contrast table and the token values are the SPEC's section 10, copied as data. Its node runners (run_shell, run_pages, run_pages_dom and the rest, with the fakes and function lists each uses) live in tests/node_harness.py since SPEC-architecture J2."
+      "notes": "The files a claim covers are node_harness's RENDERER_SCRIPTS or a named part of it, and TITLE_FREE, built from it (SPEC-architecture R3.2): a script added to index.html is read by the guards every renderer script keeps, the no-title rule and the one keydown listener without anyone adding it. S2 adds the menu half, S4 the pages' node tests and S5 the sheet's. The contrast table and the token values are the SPEC's section 10, copied as data. Its node runners (run_shell, run_pages, run_pages_dom and the rest, with the fakes and function lists each uses) live in tests/node_harness.py since SPEC-architecture J2."
     },
     {
       "id": "tests/test_shell_menu.py",
@@ -10666,8 +10677,8 @@
       "id": "tests/test_single_source.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "de8f1d3197609142",
-      "lines": 5328,
+      "sha256": "b3b0afd11afdcc9e",
+      "lines": 5362,
       "exports": [
         "AFTER_WHAT",
         "CONSOLE_EXEMPT",
@@ -10751,6 +10762,7 @@
         "test_every_document_counts_the_request_lists_columns_as_the_api_does",
         "test_every_draw_after_an_await_goes_through_renderFor",
         "test_every_editor_write_whose_reply_carries_state_redraws_through_renderFor",
+        "test_every_failure_kind_the_renderer_compares_is_one_the_engine_sends",
         "test_every_file_beside_the_store_is_ignored_by_git",
         "test_every_reply_warning_becomes_a_notice",
         "test_every_review_action_the_renderer_sends_carries_the_rows_seq",
@@ -14417,6 +14429,12 @@
       "source": "derived"
     },
     {
+      "from": "tests/test_layers.py",
+      "to": "tests/node_harness.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
       "from": "tests/test_layout.py",
       "to": "pkg:pytest",
       "type": "depends_on",
@@ -15602,6 +15620,12 @@
       "from": "tests/test_reminder.py",
       "to": "tracker/reminder.py",
       "type": "tests",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_renderer_seams.py",
+      "to": "tests/node_harness.py",
+      "type": "imports",
       "source": "derived"
     },
     {
