@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 351,
     "edges": 1557,
-    "reused": 294
+    "reused": 297
   },
   "node_types": [
     "artifact",
@@ -4924,8 +4924,8 @@
       "id": "pilot/SPEC-architecture.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "95e1c5f1111d1dac",
-      "lines": 992
+      "sha256": "2a9d89c9f98df4ca",
+      "lines": 993
     },
     {
       "id": "pilot/SPEC-check-notes-0.3.md",
