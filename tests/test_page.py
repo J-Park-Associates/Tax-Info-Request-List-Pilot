@@ -3,13 +3,15 @@
 The module has values in and markup out, and it is exercised end to end
 through the two pages that draw with it (tests/test_view.py,
 tests/test_runner.py). What is pinned here is the one thing it does that is
-not markup: the console made to take what it cannot encode (decision 108).
+not markup: the console made to take what it cannot encode (decision 108);
+the policy each page carries (decision 190); and, since SPEC-architecture
+P2.8, the skeleton both pages are written in, line for line.
 """
 
 import io
 import sys
 
-from tracker.page import policy, tolerant_console
+from tracker.page import document, esc, policy, tolerant_console
 
 ARROW = "\u2192"
 
@@ -66,3 +68,73 @@ def test_a_policy_names_a_script_only_when_the_page_has_one():
     )
     assert f"script-src {empty}" in policy(style="p {}", script="")
     assert "script-src" not in policy(style="p {}")
+
+
+#: What a page with a style and a script is held to, written out: the hash of
+#: each block is the SHA-256 of exactly the text the page writes for it.
+_STYLE = "p { color: #1B2A4A; }"
+_SCRIPT = 'document.body.dataset.sorted = "";'
+_STYLE_ONLY = ("<meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; "
+               "style-src 'sha256-BwlYNMTLIJ2JS6CdompTZc4t1yr5810MLBgjW6jHVY4='\">")
+_STYLE_AND_SCRIPT = ("<meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; "
+                     "style-src 'sha256-BwlYNMTLIJ2JS6CdompTZc4t1yr5810MLBgjW6jHVY4='; "
+                     "script-src 'sha256-B7XSx4fV+XokioHFZHEPVrVt2tMGCopu+N1WVcgEegA='\">")
+
+
+def test_a_document_is_the_two_pages_skeleton():
+    """C-9: both pages are written through ``document()``, so its lines are
+    the skeleton each page had typed for itself - the policy before the
+    title and the blocks it names, the title and every meta name and value
+    escaped, the style and the body the page's own markup. ``script`` only
+    feeds the policy: no line ``document()`` writes is a script tag, whatever
+    ``script=`` is, so a page with a script writes its own tag, last in its
+    body, as the view does."""
+    body = ["<h1>Made Up &amp; Co</h1>", "<p>made up</p>"]
+    with_meta_and_script = document(
+        'Made Up & "Co" <2025> — Status Report', _STYLE, [*body, f"<script>{_SCRIPT}</script>"],
+        meta=(("tracker-one", "1 < 2"), ("tracker-two", 'a "quoted" & value')), script=_SCRIPT)
+    assert with_meta_and_script == [
+        "<!doctype html>",
+        '<html lang="en">',
+        "<head>",
+        '<meta charset="utf-8">',
+        _STYLE_AND_SCRIPT,
+        "<title>Made Up &amp; &quot;Co&quot; &lt;2025&gt; — Status Report</title>",
+        '<meta name="tracker-one" content="1 &lt; 2">',
+        '<meta name="tracker-two" content="a &quot;quoted&quot; &amp; value">',
+        "<style>p { color: #1B2A4A; }</style>",
+        "</head>",
+        "<body>",
+        "<h1>Made Up &amp; Co</h1>",
+        "<p>made up</p>",
+        '<script>document.body.dataset.sorted = "";</script>',
+        "</body>",
+        "</html>",
+    ]
+    assert document("Made Up Clients", _STYLE, body) == [
+        "<!doctype html>",
+        '<html lang="en">',
+        "<head>",
+        '<meta charset="utf-8">',
+        _STYLE_ONLY,
+        "<title>Made Up Clients</title>",
+        "<style>p { color: #1B2A4A; }</style>",
+        "</head>",
+        "<body>",
+        "<h1>Made Up &amp; Co</h1>",
+        "<p>made up</p>",
+        "</body>",
+        "</html>",
+    ]
+    assert _STYLE_AND_SCRIPT == policy(style=_STYLE, script=_SCRIPT)
+    assert _STYLE_ONLY == policy(style=_STYLE)
+
+    # The tag in the first page was the body's; document() writes none.
+    for script in (None, "", _SCRIPT, "</script><script>alert(1)"):
+        assert not [line for line in document("t", _STYLE, [], script=script) if "<script" in line], script
+
+    # The view's title is joined before it is escaped: the separator holds no
+    # character esc() changes, so that is the title it always wrote.
+    label = 'Made Up & "Co" <2025>'
+    assert esc(" — ") == " — "
+    assert esc(f"{label} — Status Report") == f"{esc(label)} — {esc('Status Report')}"

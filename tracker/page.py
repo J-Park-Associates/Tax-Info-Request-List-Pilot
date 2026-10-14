@@ -12,6 +12,10 @@ get subtly wrong, so those parts live here and nowhere else:
 - :func:`table` - a table with its header row in a ``<thead>`` and its data
   in a ``<tbody>``, so a page that sorts its rows has something to sort and
   a page that does not is no worse for it.
+- :func:`document` - a page's skeleton: the head, with its
+  :func:`policy`, and the page's own lines inside ``<body>``. Both pages
+  are written through it, so the head and the policy that keep a page from
+  fetching anything are written once rather than typed twice.
 - :func:`page_text` - the lines of a page as the bytes that are written. A
   name NTFS holds is not always one UTF-8 can (a lone surrogate), and a
   page about the firm's clients must not be lost to one client's file name.
@@ -204,6 +208,44 @@ def policy(*, style: str, script: str | None = None) -> str:
         sources.append(f"script-src {source_hash(script)}")
     return (f'<meta http-equiv="Content-Security-Policy" '
             f'content="{"; ".join(sources)}">')
+
+
+def document(title: str, style: str, body: Iterable[str], *,
+             meta: Iterable[tuple[str, str]] = (), script: str | None = None) -> list[str]:
+    """A whole page's lines: the head - the character set, the :func:`policy`
+    for the page's own ``style`` and ``script``, the title, one ``<meta>``
+    per ``(name, value)`` in ``meta``, the style block - and then ``body``,
+    lines of markup already drawn, inside ``<body>``.
+
+    It is here so that the head, and the policy that keeps a page from
+    fetching anything, are written once for both pages (SPEC-architecture
+    C-9): a page naming the firm's clients that reached the network would
+    tell somebody else which firm is reading what, so the no-network
+    discipline of standing rule 4 is held in one place, and a page cannot
+    be written without its policy before the blocks it names. ``title`` and
+    every ``meta`` name and value are escaped like every value; ``style``
+    and ``body`` are the page's own markup and are not.
+
+    ``script`` only feeds the policy: this writes no ``<script>`` tag,
+    whatever it is given, because this module has no helper for one. A page
+    with a script hands its text here for the hash and puts its own
+    ``<script>`` line last in ``body``.
+    """
+    return [
+        "<!doctype html>",
+        '<html lang="en">',
+        "<head>",
+        '<meta charset="utf-8">',
+        policy(style=style, script=script),
+        f"<title>{esc(title)}</title>",
+        *(f'<meta name="{esc(name)}" content="{esc(value)}">' for name, value in meta),
+        f"<style>{style}</style>",
+        "</head>",
+        "<body>",
+        *body,
+        "</body>",
+        "</html>",
+    ]
 
 
 def page_text(lines: Iterable[str]) -> str:

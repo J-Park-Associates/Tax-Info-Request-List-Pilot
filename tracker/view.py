@@ -136,9 +136,9 @@ from tracker.page import (
     Cell,
     Row,
     details,
+    document,
     esc,
     page_text,
-    policy,
     slug,
     table,
     tolerant_console,
@@ -327,9 +327,6 @@ for (const th of document.querySelectorAll("th[data-sort]")) {
   });
 }
 """
-#: The page's policy (decision 190): its own style and its own sort script,
-#: each by hash, and nothing fetched.
-_POLICY = policy(style=_STYLE, script=_SORT_SCRIPT)
 
 
 class ViewError(RuntimeError):
@@ -693,24 +690,16 @@ def _page(
     triaged: list[review.Triage],
     stamp: dict[str, str],
 ) -> str:
-    lines = [
-        "<!doctype html>",
-        '<html lang="en">',
-        "<head>",
-        '<meta charset="utf-8">',
-        _POLICY,
-        f"<title>{esc(label_of(engagement_dir))} — {esc(VIEW_LABEL)}</title>",
-        *(f'<meta name="{esc(META_NAMES[label])}" content="{esc(value)}">'
-          for label, value in stamp.items() if label in META_NAMES),
-        f"<style>{_STYLE}</style>",
-        "</head>",
-        "<body>",
-        *_body(engagement_dir, items, entries, triaged, stamp),
-        f"<script>{_SORT_SCRIPT}</script>",
-        "</body>",
-        "</html>",
-    ]
-    return page_text(lines)
+    # The head is page.document()'s, with the page's policy (decision 190):
+    # its own style and its own sort script, each by hash, and nothing
+    # fetched. The script's hash goes in through script=; its tag is the
+    # view's own, the body's last line, as it always was.
+    return page_text(document(f"{label_of(engagement_dir)} — {VIEW_LABEL}", _STYLE,
+                              [*_body(engagement_dir, items, entries, triaged, stamp),
+                               f"<script>{_SORT_SCRIPT}</script>"],
+                              meta=((META_NAMES[label], value)
+                                    for label, value in stamp.items() if label in META_NAMES),
+                              script=_SORT_SCRIPT))
 
 
 def _drawn(engagement_dir: Path, items, entries, head):

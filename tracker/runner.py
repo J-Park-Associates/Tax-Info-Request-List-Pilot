@@ -223,7 +223,7 @@ from tracker.manifest import (
     load_manifest,
     summarize,
 )
-from tracker.page import esc, page_text, policy, table, tolerant_console
+from tracker.page import document, esc, page_text, table, tolerant_console
 from tracker.progress import APP_CLOSED, PASSES_DIRNAME, Watch, failure_reply
 from tracker.records import ENGAGEMENT_LABELS, NO, YES
 from tracker.registry import (
@@ -2612,8 +2612,6 @@ tr:hover td { background: #f6f5f2; }
 ul { margin: 0; padding-left: 1.2rem; }
 li { margin-bottom: 0.3rem; }
 """
-#: The page's policy (decision 190): its own style and nothing else, by hash.
-_STATUS_POLICY = policy(style=_STATUS_STYLE)
 
 
 @dataclass(frozen=True, slots=True)
@@ -2804,16 +2802,9 @@ def write_status_page(root: Path | str, report: RunReport, *,
     queue.sort(key=lambda file: file.received, reverse=True)
 
     title = _page_title(root)
-    lines = [
-        "<!doctype html>",
-        '<html lang="en">',
-        "<head>",
-        '<meta charset="utf-8">',
-        _STATUS_POLICY,
-        f"<title>{esc(title)}</title>",
-        f"<style>{_STATUS_STYLE}</style>",
-        "</head>",
-        "<body>",
+    # The head is page.document()'s, with the page's policy (decision 190):
+    # its own style and nothing else, by hash.
+    lines = document(title, _STATUS_STYLE, [
         f"<h1>{esc(title)}</h1>",
         f'<p class="stamp">{esc(STATUS_GENERATED.format(stamp=stamp))}</p>',
         *_records_needing_a_person(root, report),
@@ -2844,9 +2835,7 @@ def write_status_page(root: Path | str, report: RunReport, *,
         *(table(MISFIT_COLUMNS,
                 ((_under(root, misfit.path), misfit.sentence) for misfit in report.misfits))
           if report.misfits else [f"<p>{esc(STATUS_NO_MISFITS)}</p>"]),
-        "</body>",
-        "</html>",
-    ]
+    ])
     path = root / STATUS_PAGE_FILENAME
     write_text_atomically(path, page_text(lines))
     if kept is not None:
