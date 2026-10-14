@@ -79,9 +79,10 @@ refusal quotes at most 80 characters (P293) and ``manifest`` still loads
 ``names`` joins L2 with decision 128, beside ``router``: it is the matcher
 for the name on a page - normalising, whole-phrase containment, the
 spellings the app proposes and the three-way verdict - and it imports
-``records`` for the one way a name is cut into words and ``content_check``
-for the one page-break character. Like the router it decides nothing about
-a folder: the check itself runs one layer up, in the filer's household
+``records`` for the one way a name is cut into words and for the one
+page-break character (``PAGE_BREAK``, records' since SPEC-architecture
+P2.8), and nothing else of the package. Like the router it decides nothing
+about a folder: the check itself runs one layer up, in the filer's household
 pass, where the returns and their people lists are.
 
 ``store`` joins L1 with decision 101 and is deliberately narrower than its

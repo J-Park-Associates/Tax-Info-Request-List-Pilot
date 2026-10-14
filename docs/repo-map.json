@@ -8400,8 +8400,8 @@
       "id": "tests/test_layers.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "fcbca8459ced4464",
-      "lines": 1054,
+      "sha256": "1244b6c07b2ab2d5",
+      "lines": 1055,
       "exports": [
         "REPO",
         "SOCKET_SHAPED",
