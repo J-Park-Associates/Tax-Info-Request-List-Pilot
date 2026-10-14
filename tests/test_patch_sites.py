@@ -58,6 +58,29 @@ SORTER = {
     """,
 }
 
+#: A third invented module that holds values: an alias of ``sorter``, an
+#: object an outside call made, a constant, a name a function rebinds, and a
+#: class with a module in it.
+HOLDERS = {
+    "tracker/holders.py": """
+        import logging
+
+        from tracker import sorter
+
+        THE = sorter
+        LOG = logging.getLogger("made-up")
+        NOTHING = None
+        LATER = None
+
+        class Holder:
+            module = sorter
+
+        def later():
+            global LATER
+            LATER = sorter
+    """,
+}
+
 
 def _marks(root: Path) -> dict[tuple[str, int, str, str], str]:
     marked, unplaced = patch_sites.stand_ins(root)
@@ -336,15 +359,19 @@ def test_a_tool_imported_by_its_bare_name_is_reported_by_its_dotted_one(tmp_path
 
 
 def test_stand_ins_on_things_outside_the_repository_or_on_no_module_are_not_listed(tmp_path):
-    """A stand-in on ``sys``, on a class, or on an object a known call made
-    lands on that object whoever reads it: there is no namespace to miss."""
-    root = _repository(tmp_path, {**SORTER, "tests/test_a.py": """
+    """A stand-in on ``sys``, on a class or an instance of one, on an object
+    a builtin or an outside call made, on a constant or on a function lands on
+    that object whoever reads it: there is no namespace to miss."""
+    root = _repository(tmp_path, {**SORTER, **HOLDERS, "tests/test_a.py": """
         import os
         import sys
         from pathlib import Path
 
-        from tracker import sorter
+        from tracker import helpers, holders
         from tracker.helpers import Shape
+
+        class Local:
+            pass
 
         def test_one(monkeypatch, tmp_path):
             monkeypatch.setattr(sys, "argv", [])
@@ -353,6 +380,14 @@ def test_stand_ins_on_things_outside_the_repository_or_on_no_module_are_not_list
             monkeypatch.setattr(Shape, "size", 1, raising=False)
             monkeypatch.setattr(type(tmp_path), "exists", lambda self: True)
             monkeypatch.setattr(os, "sep", "/")
+            monkeypatch.setattr(holders.Holder, "module", None)
+            monkeypatch.setattr("tracker.holders.Holder.module", None)
+            monkeypatch.setattr(holders.Holder(), "module", None)
+            monkeypatch.setattr(Local(), "size", 1, raising=False)
+            monkeypatch.setattr(object.__new__(Local).__class__, "size", 1, raising=False)
+            monkeypatch.setattr(holders.LOG, "level", 10)
+            monkeypatch.setattr(holders.NOTHING, "size", 1, raising=False)
+            monkeypatch.setattr(helpers.digest, "__defaults__", None)
     """})
     assert patch_sites.stand_ins(root) == ([], [])
 
@@ -380,19 +415,45 @@ def test_a_target_the_tool_cannot_work_out_fails_the_check_as_not_placed(tmp_pat
 
 def test_no_way_of_writing_a_module_drops_a_stand_in_out_of_the_check(tmp_path):
     """Each stand-in below lands on ``sorter.kept``, which ``sorter`` never
-    reads. The plain form and an annotated alias are sites, unread; a module
-    stored by an unpacking, a walrus, ``with ... as`` or ``except ... as``, or
-    given by a helper of the file or by ``getattr``, is not placed. None is
-    taken for no module, so ``check`` names all eight."""
-    root = _repository(tmp_path, {**SORTER, "tests/test_a.py": """
+    reads. These are sites, unread: the plain form, an annotated alias,
+    ``sys.modules.get``, a helper module's alias read through it or imported
+    from it, and the string form held in a name, in a helper module's
+    constant, in a loop over literals or made by an f-string. These are not
+    placed: a module stored by an unpacking, a walrus, ``with ... as`` or
+    ``except ... as``, or given by a call to a function of the file or of a
+    helper module, to a lambda, to a class's method or to ``getattr``, and a
+    class's attribute. None is taken for no module, so ``check`` names all
+    twenty."""
+    root = _repository(tmp_path, {**SORTER, "tests/aliases.py": """
+        from tracker import sorter
+
+        THE_SORTER = sorter
+        TARGET = "tracker.sorter.kept"
+
+        def the_sorter():
+            return sorter
+    """, "tests/test_a.py": """
         import contextlib
+        import sys
         import types
 
         import tracker
+        from tests import aliases
+        from tests.aliases import THE_SORTER, the_sorter
         from tracker import sorter
+
+        TARGET = "tracker.sorter.kept"
+        get = lambda: sorter
 
         def _the_sorter():
             return sorter
+
+        class Holder:
+            module = sorter
+
+            @staticmethod
+            def give():
+                return sorter
 
         def test_annotated(monkeypatch):
             module: types.ModuleType = sorter
@@ -424,18 +485,111 @@ def test_no_way_of_writing_a_module_drops_a_stand_in_out_of_the_check(tmp_path):
 
         def test_plain(monkeypatch):
             monkeypatch.setattr(sorter, "kept", None)
+
+        def test_string_by_name(monkeypatch):
+            monkeypatch.setattr(TARGET, None)
+
+        def test_string_in_a_loop(monkeypatch):
+            for target in ("tracker.sorter.kept",):
+                monkeypatch.setattr(target, None)
+
+        def test_string_made_by_an_f_string(monkeypatch):
+            monkeypatch.setattr(f"tracker.{'sorter'}.kept", None)
+
+        def test_helper_module_alias(monkeypatch):
+            monkeypatch.setattr(aliases.THE_SORTER, "kept", None)
+
+        def test_helper_module_alias_imported(monkeypatch):
+            monkeypatch.setattr(THE_SORTER, "kept", None)
+
+        def test_helper_module_function(monkeypatch):
+            monkeypatch.setattr(the_sorter(), "kept", None)
+
+        def test_helper_module_function_through_it(monkeypatch):
+            monkeypatch.setattr(aliases.the_sorter(), "kept", None)
+
+        def test_helper_module_string(monkeypatch):
+            monkeypatch.setattr(aliases.TARGET, None)
+
+        def test_lambda(monkeypatch):
+            monkeypatch.setattr(get(), "kept", None)
+
+        def test_sys_modules_get(monkeypatch):
+            monkeypatch.setattr(sys.modules.get("tracker.sorter"), "kept", None)
+
+        def test_class_attribute(monkeypatch):
+            monkeypatch.setattr(Holder.module, "kept", None)
+
+        def test_static_method(monkeypatch):
+            monkeypatch.setattr(Holder.give(), "kept", None)
     """})
     marked, unplaced = patch_sites.stand_ins(root)
     assert [(site.line, site.module, site.name, site.written, mark) for site, mark in marked] == [
-        (12, "tracker.sorter", "kept", "module", patch_sites.UNREAD),
-        (39, "tracker.sorter", "kept", "sorter", patch_sites.UNREAD),
+        (25, "tracker.sorter", "kept", "module", patch_sites.UNREAD),
+        (52, "tracker.sorter", "kept", "sorter", patch_sites.UNREAD),
+        (55, "tracker.sorter", "kept", "TARGET", patch_sites.UNREAD),
+        (59, "tracker.sorter", "kept", "target", patch_sites.UNREAD),
+        (62, "tracker.sorter", "kept", "f\"tracker.{'sorter'}.kept\"", patch_sites.UNREAD),
+        (65, "tracker.sorter", "kept", "aliases.THE_SORTER", patch_sites.UNREAD),
+        (68, "tracker.sorter", "kept", "THE_SORTER", patch_sites.UNREAD),
+        (77, "tracker.sorter", "kept", "aliases.TARGET", patch_sites.UNREAD),
+        (83, "tracker.sorter", "kept", "sys.modules.get('tracker.sorter')", patch_sites.UNREAD),
     ]
     assert [(one.line, one.written) for one in unplaced] == [
-        (16, "module"), (19, "_the_sorter()"), (22, "getattr(tracker, 'sorter')"),
-        (26, "module"), (30, "module"), (36, "module"),
+        (29, "module"), (32, "_the_sorter()"), (35, "getattr(tracker, 'sorter')"),
+        (39, "module"), (43, "module"), (49, "module"),
+        (71, "the_sorter()"), (74, "aliases.the_sorter()"), (80, "get()"),
+        (86, "Holder.module"), (89, "Holder.give()"),
     ]
     ok, said = patch_sites.check(root)
-    assert not ok and len(said) == 8
+    assert not ok and len(said) == 20
+
+
+def test_a_value_is_taken_for_no_module_only_where_the_tool_knows_it_is_none(tmp_path):
+    """No module is a kind the tool has to know, never its fallback. Each
+    stand-in below can land on ``sorter.kept``. A repository module's alias,
+    followed into that module, is a site, and so is the object form with
+    ``value=``. These are not placed: an operand of ``or``, an instance's or a
+    class's attribute, an attribute of what an outside call made, what a
+    method gives, a string form built at run time, what ``next``, ``eval`` or
+    ``globals()`` gives, a lambda called where it is written, and a name the
+    module rebinds in a function or never binds."""
+    root = _repository(tmp_path, {**SORTER, **HOLDERS, "tests/test_a.py": """
+        from types import SimpleNamespace
+
+        from tracker import helpers, holders, sorter
+
+        class Local:
+            module = sorter
+
+        def test_one(monkeypatch, request):
+            monkeypatch.setattr(holders.THE, "kept", None)
+            monkeypatch.setattr("tracker.holders.THE.kept", None)
+            monkeypatch.setattr(sorter, "kept", value=None)
+            monkeypatch.setattr(sorter or helpers, "kept", None)
+            monkeypatch.setattr(Local().module, "kept", None)
+            monkeypatch.setattr(holders.Holder.module, "kept", None)
+            monkeypatch.setattr(SimpleNamespace(module=sorter).module, "kept", None)
+            monkeypatch.setattr({"s": sorter}.get("s"), "kept", None)
+            monkeypatch.setattr(request.getfixturevalue("sorter_module"), "kept", None)
+            monkeypatch.setattr("tracker.sorter." + "kept", None)
+            monkeypatch.setattr("tracker.{}.kept".format("sorter"), None)
+            monkeypatch.setattr(next(iter((sorter,))), "kept", None)
+            monkeypatch.setattr(eval("sorter"), "kept", None)
+            monkeypatch.setattr(globals().get("sorter"), "kept", None)
+            monkeypatch.setattr((lambda: sorter)(), "kept", None)
+            monkeypatch.setattr(holders.LATER, "kept", None)
+            monkeypatch.setattr(holders.missing, "kept", None)
+    """})
+    marked, unplaced = patch_sites.stand_ins(root)
+    assert [(site.line, site.module, site.name, site.written, mark) for site, mark in marked] == [
+        (9, "tracker.sorter", "kept", "holders.THE", patch_sites.UNREAD),
+        (10, "tracker.sorter", "kept", "'tracker.holders.THE.kept'", patch_sites.UNREAD),
+        (11, "tracker.sorter", "kept", "sorter", patch_sites.UNREAD),
+    ]
+    assert [one.line for one in unplaced] == list(range(12, 26))
+    ok, said = patch_sites.check(root)
+    assert not ok and len(said) == 17
 
 
 # ---------------------------------------------------------------- the report ----

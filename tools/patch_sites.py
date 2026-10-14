@@ -35,15 +35,19 @@ fixture that hands its monkeypatch on (``in_a_child``) and
 named three ways: as the test imported it (``setattr(filer, ...)``), under an
 alias (``filer_module``, ``here = children`` or ``here: ModuleType =
 children``), or in a string (``setattr("tracker.filer.name", value)``). The
-stand-ins most worth checking come in loops: a test that forbids four reads
-sets four names in a ``for`` over a literal tuple, and a stand-in there that
-misses makes the test pass for nothing. So the tool also follows a module or a
-name that comes from a ``for`` over literals (or over a literal assigned to a
-name), from a fixture's ``params``, from a fixture that returns it, and from a
-helper's parameter at the helper's calls in the same file. Values bound
-together stay together: ``for module, name in ((a, "x"), (b, "y"))`` is two
-sites, not four, and inside a loop's body its name holds the loop's values,
-whatever else it is bound to.
+string may be written at the call or held in a name, a loop or a helper
+module's constant, or made by an f-string. An alias or a string another module
+of the repository holds at its top level (a helper module's ``THE_SORTER =
+sorter``, read as ``aliases.THE_SORTER`` or imported from it) is followed into
+that module. The stand-ins most worth checking come in loops: a test that
+forbids four reads sets four names in a ``for`` over a literal tuple, and a
+stand-in there that misses makes the test pass for nothing. So the tool also
+follows a module, a name or a string that comes from a ``for`` over literals
+(or over a literal assigned to a name), from a fixture's ``params``, from a
+fixture that returns it, and from a helper's parameter at the helper's calls in
+the same file. Values bound together stay together: ``for module, name in ((a,
+"x"), (b, "y"))`` is two sites, not four, and inside a loop's body its name
+holds the loop's values, whatever else it is bound to.
 
 **What a read is.** A global read in the module's own code, by Python's own
 scope rules: not a parameter or a local of the same name, not a method reading
@@ -58,13 +62,29 @@ import name`` is out of reach of a stand-in on ``module``. That site is
 reported as defined, because some caller may read the name through the module
 and the tool cannot know which caller a test meant. The moves to come make the
 other mistake, an imported name the module stops reading, and that is the one
-``check`` fails. A target the tool cannot work out fails ``check`` as not
-placed, rather than being skipped without a word: a module stored by an
-unpacking, a walrus, ``with ... as`` or ``except ... as``, or given by a call
-to a function the test file defines or to ``getattr``, ``vars`` or
-``__import__``. Only a value
-the tool takes for no module passes unlisted: a class or what calling one
-makes, and what another builtin or an outside library's function returns.
+``check`` fails.
+
+**No module is something the tool knows, never its fallback.** A stand-in
+passes unlisted only when its target is one of these: a constant that is not a
+string, a literal container, a comparison or arithmetic; a function (a
+``def`` or a ``lambda``); a class the tool sees defined, or what calling one
+makes; ``x.__class__``; what one of pytest's own fixtures gives
+(``tmp_path``); and anything outside the repository - a builtin, an outside
+library, and what calling either gives. Each of these lands on that object,
+whoever reads it. Every other target fails ``check`` as not placed: a
+module stored by an unpacking, a walrus, ``with ... as`` or ``except ... as``;
+what a ``def``, a ``lambda``, a method or an instance gives when called, in the
+test file or in another module; what ``getattr``, ``vars``, ``__import__``,
+``globals``, ``locals``, ``eval``, ``next``, ``min`` or ``max`` gives; either
+side of ``or``; an attribute of anything but a module or something outside (a
+class's, an instance's, a function's, one of what an outside call made); a
+top-level name its module rebinds in a function or never binds; and in the
+string form, a first argument that is not a string the tool can read, such as
+one built with ``+`` or ``format``. The remedy is the same each time: name the
+module and the name as an import, an alias or a literal. The fallback this
+replaced, no module wherever the tool did not know, let a stand-in written
+through a helper module, a lambda, a class or a string held in a name drop out
+of the check without a word.
 
 Rejected: importing the modules to ask them (it runs code, and the tests'
 imports reach the sorting engine); tracing a run of the whole suite (it costs a
@@ -287,7 +307,6 @@ class ModuleNames:
     """What one module does with its top-level names."""
 
     defined: frozenset[str]
-    imported: dict[str, ast.AST]
     read: frozenset[str]
 
     def mark(self, name: str) -> str:
@@ -297,12 +316,9 @@ class ModuleNames:
 
 
 def module_names(source: str, filename: str = "<module>") -> ModuleNames:
-    """Which names a module defines, which it imports (with the statement
-    that imports each), and which its code reads."""
+    """Which names a module defines, and which its code reads."""
     tree = ast.parse(source, filename)
     defined, _imported, _declared = _own_bindings(tree.body)
-    imported = {alias.asname or alias.name.split(".")[0]: node for node in _own_code(tree.body)
-                if isinstance(node, (ast.Import, ast.ImportFrom)) for alias in node.names}
     for node in ast.walk(tree):
         if isinstance(node, _FUNCTIONS):
             declared = {name for sub in ast.walk(node) if isinstance(sub, ast.Global) for name in sub.names}
@@ -310,24 +326,30 @@ def module_names(source: str, filename: str = "<module>") -> ModuleNames:
                         if isinstance(sub, ast.Name) and isinstance(sub.ctx, ast.Store) and sub.id in declared}
         elif isinstance(node, ast.Subscript) and isinstance(node.ctx, ast.Store) and _globals_key(node):
             defined.add(_globals_key(node))
-    return ModuleNames(frozenset(defined), imported, frozenset(global_reads(tree)))
+    return ModuleNames(frozenset(defined), frozenset(global_reads(tree)))
 
 
 # ------------------------------------------------------- what the tests name ----
 
 # What an expression in a test can hold, as far as the tool follows it: a
 # module of the repository (by its dotted name), a string, something outside
-# the repository, a thing that is no module (a class, a function, an object),
-# or a value the tool cannot work out. A value is ``(kind, what)``.
+# the repository (a builtin among them), a function, a class or an instance of
+# a class the tool sees defined, a thing the tool knows is no module (a
+# constant, a literal container, what an outside call returns), or a value the
+# tool cannot work out. A value is ``(kind, what)``. Only ``MODULE`` and
+# ``UNKNOWN`` reach the check; "no module" is a kind the tool has to know,
+# never the fallback.
 MODULE, TEXT, OUTSIDE, THING, UNKNOWN = "module", "text", "outside", "thing", "unknown"
+FUNCTION, CLASS, INSTANCE = "function", "class", "instance"
 _A_THING = (THING, None)
 
 #: The calls whose one argument a loop walks as written, the calls that
 #: import the module their one argument names, and the builtins that can give
-#: a module the tool does not follow.
+#: a module the tool does not follow (every other builtin's result is no module).
 _SEQUENCE_CALLS = ("sorted", "list", "tuple", "set", "reversed")
 _IMPORT_CALLS = ("import_module", "importorskip")
-_GIVE_A_MODULE = ("getattr", "vars", "__import__")
+_GIVE_A_MODULE = frozenset(f"builtins.{name}" for name in (
+    "getattr", "vars", "__import__", "globals", "locals", "eval", "next", "min", "max"))
 
 _SCOPES = (ast.Module, *_FUNCTIONS, ast.Lambda)
 _BUILTINS = frozenset(dir(builtins))
@@ -377,38 +399,46 @@ class _Suite:
     def conftests(self) -> list[_TestFile]:
         return [self.test_file(path) for path in sorted((self.root / TESTS).rglob("conftest.py"))]
 
-    def imported(self, statement: ast.AST, alias: ast.alias, importer: str) -> tuple:
-        """What an import statement binds to ``alias``'s name in ``importer``."""
+    def imported(self, statement: ast.AST, alias: ast.alias, importer: str, seen: frozenset = frozenset()) -> list[tuple]:
+        """What an import statement in the module ``importer`` binds to ``alias``'s name."""
         if isinstance(statement, ast.Import):
-            return self.module(alias.name if alias.asname else alias.name.split(".")[0])
+            return [self.module(alias.name if alias.asname else alias.name.split(".")[0])]
         base = statement.module or ""
         if statement.level:
             package = importer.split(".")[: -statement.level]
             base = ".".join([*package, base] if base else package)
         if f"{base}.{alias.name}" in self.index:
-            return self.module(f"{base}.{alias.name}")
+            return [self.module(f"{base}.{alias.name}")]
         if base in self.index:
-            return self.attribute(self.module(base), alias.name)
-        return (OUTSIDE, f"{base}.{alias.name}")
+            return self.attribute(self.module(base), alias.name, f"{base}.{alias.name}", seen)
+        return [(OUTSIDE, f"{base}.{alias.name}")]
 
-    def attribute(self, value: tuple, attr: str) -> tuple:
-        """What ``<value>.<attr>`` holds."""
+    def attribute(self, value: tuple, attr: str, written: str, seen: frozenset = frozenset()) -> list[tuple]:
+        """What ``<value>.<attr>`` can hold, written as ``written``.
+
+        Of a module of the repository: its submodule, or what the module binds
+        to the name at its top level, followed in that module's own code (an
+        import, a ``def``, a ``class``, an assignment). Of something outside
+        the repository: something outside. ``x.__class__`` is a class whatever
+        ``x`` is. Anything else - a class's attribute, an instance's, a
+        function's, a string's method, an attribute of a value the tool knows
+        is no module - may hold a module, so it is not followed."""
         kind, held = value
         if kind == OUTSIDE:
-            return (OUTSIDE, f"{held}.{attr}")
-        if kind != MODULE:
-            return value
-        if f"{held}.{attr}" in self.index:
-            return self.module(f"{held}.{attr}")
-        statement = self.names(held).imported.get(attr)
-        if statement is None:
-            return _A_THING
-        [alias] = [one for one in statement.names if (one.asname or one.name.split(".")[0]) == attr]
-        return self.imported(statement, alias, held)
+            return [(OUTSIDE, f"{held}.{attr}")]
+        if attr == "__class__":
+            return [_A_THING]
+        if kind == MODULE:
+            if f"{held}.{attr}" in self.index:
+                return [self.module(f"{held}.{attr}")]
+            return self.test_file(self.index[held]).top_level(attr, written, seen)
+        return [value if kind == UNKNOWN else (UNKNOWN, written)]
 
 
 class _TestFile:
-    """One file under ``tests/``: its tree, each node's parent, its scopes."""
+    """One file the tool follows values in: its tree, each node's parent, its
+    scopes. A file under ``tests/``, or a module of the repository whose
+    top-level name a test reads through it (``helpers.THE_SORTER``)."""
 
     def __init__(self, suite: _Suite, path: Path):
         self.suite = suite
@@ -423,6 +453,11 @@ class _TestFile:
             if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
                 self.calls[node.func.id].append(node)
         self._bound: dict[ast.AST, dict[str, list[ast.AST]]] = {}
+        # The top-level names a function rebinds with ``global``, or that are
+        # set through ``globals()``: what they hold is not their top-level value.
+        self.rebound = {name for node in ast.walk(self.tree) if isinstance(node, ast.Global) for name in node.names}
+        self.rebound |= {_globals_key(node) for node in ast.walk(self.tree)
+                         if isinstance(node, ast.Subscript) and isinstance(node.ctx, ast.Store) and _globals_key(node)}
 
     # -- where a name is bound
 
@@ -461,6 +496,15 @@ class _TestFile:
                 return found
         return []
 
+    def top_level(self, name: str, written: str, seen: frozenset) -> list[tuple]:
+        """What this file's top-level ``name`` can hold, read from another
+        file as ``written``. A name the file never binds at its top level, or
+        one it rebinds elsewhere, is not followed."""
+        bound = self.bound_in(self.tree).get(name)
+        if not bound or name in self.rebound:
+            return [(UNKNOWN, written)]
+        return self._bound_values(name, bound, seen)
+
     # -- what an expression holds
 
     def values(self, expr: ast.AST, env: dict[str, list[tuple]], seen: frozenset = frozenset()) -> list[tuple]:
@@ -472,7 +516,9 @@ class _TestFile:
         if isinstance(expr, ast.Attribute):
             if isinstance(expr.value, ast.Name) and expr.value.id == "request" and expr.attr == "param":
                 return self._fixture_params(expr, seen)
-            return [self.suite.attribute(one, expr.attr) for one in self.values(expr.value, env, seen)]
+            written = ast.unparse(expr)
+            return [value for one in self.values(expr.value, env, seen)
+                    for value in self.suite.attribute(one, expr.attr, written, seen)]
         if isinstance(expr, ast.JoinedStr):
             return self._joined(expr, env, seen)
         if isinstance(expr, ast.Call):
@@ -481,30 +527,45 @@ class _TestFile:
             if isinstance(expr.value, ast.Attribute) and expr.value.attr == "modules":
                 return [self._module_named(one) for one in self.values(expr.slice, env, seen)]
             return [(UNKNOWN, ast.unparse(expr))]
-        if isinstance(expr, (ast.List, ast.Tuple, ast.Dict, ast.Set, ast.BinOp, ast.Compare, ast.BoolOp,
-                             ast.UnaryOp, ast.Lambda, *_COMPREHENSIONS)):
+        if isinstance(expr, ast.Lambda):
+            return [(FUNCTION, "lambda")]
+        if isinstance(expr, (ast.List, ast.Tuple, ast.Dict, ast.Set, ast.BinOp, ast.Compare, ast.UnaryOp,
+                             *_COMPREHENSIONS)):
             return [_A_THING]
+        # ``a or b`` gives one of its operands, and anything else not named
+        # above is not followed.
         return [(UNKNOWN, ast.unparse(expr))]
 
     def _called(self, call: ast.Call, env, seen) -> list[tuple]:
         """What a call gives: the module an import call names, the module
-        ``reload`` is given, and otherwise no module - where the tool knows
-        what is called. A function the test file defines with ``def``, and
-        ``getattr``, ``vars`` and ``__import__``, can give a module, so a call
-        to one is not followed, nor is a call to something the tool cannot
-        work out."""
+        ``reload`` is given, the module ``sys.modules.get`` names (as
+        ``sys.modules[...]`` does), an instance of a class the tool sees
+        defined, and no module from a builtin or from anything outside the
+        repository. A function - a ``def`` or a ``lambda``, in the test file
+        or in another module of the repository - can return a module, and so
+        can a method, an instance, and ``getattr``, ``vars``, ``__import__``
+        and the other builtins of :data:`_GIVE_A_MODULE` however they are
+        reached, so a call to any of them is not followed, nor is a call to
+        something the tool cannot work out."""
         func = call.func
         called = func.attr if isinstance(func, ast.Attribute) else getattr(func, "id", "")
         if called in _IMPORT_CALLS and len(call.args) == 1:
             return [self._module_named(one) for one in self.values(call.args[0], env, seen)]
         if called == "reload" and len(call.args) == 1:
             return self.values(call.args[0], env, seen)
-        if isinstance(func, ast.Name) and (func.id in _GIVE_A_MODULE or any(
-                isinstance(node, _FUNCTIONS) for node in self.binders(func.id, call))):
-            return [(UNKNOWN, ast.unparse(call))]
-        if any(kind == UNKNOWN for kind, _ in self.values(func, env, seen)):
-            return [(UNKNOWN, ast.unparse(call))]
-        return [_A_THING]
+        if (called == "get" and isinstance(func, ast.Attribute) and isinstance(func.value, ast.Attribute)
+                and func.value.attr == "modules" and len(call.args) in (1, 2)):
+            given = [self._module_named(one) for one in self.values(call.args[0], env, seen)]
+            return given + [value for default in call.args[1:] for value in self.values(default, env, seen)]
+        found = []
+        for kind, held in self.values(func, env, seen):
+            if kind == CLASS:
+                found.append((INSTANCE, held))
+            elif kind == OUTSIDE and held not in _GIVE_A_MODULE:
+                found.append(_A_THING)
+            else:
+                found.append((UNKNOWN, ast.unparse(call)))
+        return found
 
     def _module_named(self, value: tuple) -> tuple:
         kind, held = value
@@ -536,23 +597,30 @@ class _TestFile:
     def _held_by(self, expr: ast.Name, seen) -> list[tuple]:
         bound = self.binders(expr.id, expr)
         if not bound:
-            # A builtin is no module. Any other name the file never binds (a
-            # comprehension's variable, a star import's) is not followed.
-            return [_A_THING] if expr.id in _BUILTINS else [(UNKNOWN, expr.id)]
+            # A builtin is outside the repository. Any other name the file
+            # never binds (a comprehension's variable, a star import's) is not
+            # followed.
+            return [(OUTSIDE, f"builtins.{expr.id}")] if expr.id in _BUILTINS else [(UNKNOWN, expr.id)]
+        return self._bound_values(expr.id, bound, seen)
+
+    def _bound_values(self, name: str, bound: list[ast.AST], seen) -> list[tuple]:
+        """What ``name`` can hold, bound by the nodes ``bound``."""
         if any(id(node) in seen for node in bound):
-            return [(UNKNOWN, expr.id)]
+            return [(UNKNOWN, name)]
         seen = seen | {id(node) for node in bound}
         found: list[tuple] = []
         for node in bound:
             if isinstance(node, ast.alias):
-                found.append(self.suite.imported(self.parent[node], node, self.dotted))
+                found.extend(self.suite.imported(self.parent[node], node, self.dotted, seen))
             elif isinstance(node, ast.arg):
                 _source, rows = self.parameter_rows(node, seen)
                 found.extend(value for row in rows for value in row[node.arg])
             elif isinstance(node, ast.Name):
                 found.extend(self._stored(node, seen))
+            elif isinstance(node, ast.ClassDef):
+                found.append((CLASS, f"{self.dotted}.{node.name}"))
             else:
-                found.append(_A_THING)
+                found.append((FUNCTION, f"{self.dotted}.{node.name}"))
         return found
 
     def _stored(self, target: ast.Name, seen) -> list[tuple]:
@@ -725,28 +793,50 @@ def _rows(test_file: _TestFile, call: ast.Call, args: list[ast.AST]) -> list[dic
     return [{name: values for row in way for name, values in row.items()} for way in ways]
 
 
+def _dotted(suite: _Suite, text: str) -> list[tuple[tuple, tuple]]:
+    """Every (module, name) the string form ``setattr("tracker.filer.name",
+    value)`` replaces: the longest start of the string that names a module of
+    the repository is the module, the parts after it but the last are its
+    attributes, and the last part is the name. A string that names no module of
+    the repository is outside it."""
+    parts = text.split(".")
+    for cut in range(len(parts) - 1, 0, -1):
+        if ".".join(parts[:cut]) in suite.index:
+            values = [suite.module(".".join(parts[:cut]))]
+            for at in range(cut, len(parts) - 1):
+                values = [value for one in values for value in suite.attribute(one, parts[at], ".".join(parts[:at + 1]))]
+            return [(value, (TEXT, parts[-1])) for value in values]
+    return [((OUTSIDE, text), (TEXT, parts[-1]))]
+
+
 def _aimed_at(test_file: _TestFile, call: ast.Call) -> tuple[list[tuple[tuple, tuple]], str]:
     """Every (module, name) a ``setattr`` call can replace, and how its
-    target is written."""
+    target is written.
+
+    Two arguments and no ``value=`` is the string form, whose first argument
+    pytest requires to be a string: each string it can hold is read as the
+    dotted name it is, and any other value it can hold is a string the tool
+    cannot read, so it is not placed."""
     args = call.args
-    if len(args) == 2 and isinstance(args[0], ast.Constant) and isinstance(args[0].value, str):
-        written = args[0].value
-        parts = written.split(".")
-        for cut in range(len(parts) - 1, 0, -1):
-            if ".".join(parts[:cut]) in test_file.suite.index:
-                value = test_file.suite.module(".".join(parts[:cut]))
-                for attr in parts[cut:-1]:
-                    value = test_file.suite.attribute(value, attr)
-                return [(value, (TEXT, parts[-1]))], repr(written)
-        return [((OUTSIDE, written), (TEXT, parts[-1]))], repr(written)
+    string_form = len(args) == 2 and not {"name", "value"} & {keyword.arg for keyword in call.keywords}
+    if string_form and isinstance(args[0], ast.Constant) and isinstance(args[0].value, str):
+        return _dotted(test_file.suite, args[0].value), repr(args[0].value)
     written = ast.unparse(args[0]) if args else ast.unparse(call)
     if len(args) < 2:
         return [((UNKNOWN, written), _A_THING)], written
     ways = _rows(test_file, call, args[:2])
     if ways is None:
         return [((UNKNOWN, written), _A_THING)], written
-    return [(target, name) for env in ways for target in test_file.values(args[0], env)
-            for name in test_file.values(args[1], env)], written
+    found: list[tuple[tuple, tuple]] = []
+    for env in ways:
+        for kind, held in test_file.values(args[0], env):
+            if not string_form:
+                found.extend(((kind, held), name) for name in test_file.values(args[1], env))
+            elif kind == TEXT:
+                found.extend(_dotted(test_file.suite, held))
+            else:
+                found.append(((UNKNOWN, held if kind == UNKNOWN else written), _A_THING))
+    return found, written
 
 
 def stand_ins(root: Path = ROOT) -> tuple[list[tuple[Site, str]], list[Unplaced]]:
