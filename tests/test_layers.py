@@ -166,9 +166,12 @@ LAYERS: dict[int, frozenset[str]] = {
     # ``bounds`` joins L0 with P316 (SPEC-architecture-p2 P2.4): the value rule's
     # bounds out of ``records``, which imports them back - the standard library
     # and ``layout``'s name rule, which reads no file.
+    # ``hold`` joins L0 with P317 (SPEC-architecture-p2 P2.6): the per-reply memo
+    # out of ``settings``, which reads it through the module - the standard
+    # library only.
     0: frozenset({"__init__", "reasons", "locking", "checkpoint", "page", "fsio", "settings",
                   "layout", "door", "errors", "progress", "firm_cache", "page_rows", "firm_pages",
-                  "replies", "bounds"}),
+                  "replies", "bounds", "hold"}),
     1: frozenset({"households", "ledger", "manifest", "records", "scaffold", "store",
                   "templates", "validators"}),
     2: frozenset({"containers", "content_check", "names", "ocr", "router"}),
@@ -197,7 +200,7 @@ DOMAINS: dict[str, frozenset[str]] = {
     # household a path is in (decision 188); it is not the API's door, which
     # is the ``door`` domain below.
     "record": frozenset({"__init__", "ledger", "locking", "checkpoint", "fsio", "layout", "door",
-                         "settings", "records", "bounds", "store", "manifest", "households",
+                         "settings", "hold", "records", "bounds", "store", "manifest", "households",
                          "templates", "scaffold"}),
     # Opening a client's file, checking it and getting the text out of it.
     "reading": frozenset({"validators", "containers", "content_check", "ocr"}),
@@ -420,7 +423,7 @@ def test_the_manifest_imports_the_record_and_nothing_else():
     assert {"store", "ledger", "locking"} <= call["manifest"], call["manifest"]
 
 
-def test_the_settings_import_only_the_atomic_write_and_the_layout():
+def test_the_settings_import_only_the_atomic_write_the_layout_and_the_hold():
     """Decision 120: the one import that held it a layer up is gone.
 
     ``settings`` borrowed ``write_json_atomically`` from ``manifest``, and
@@ -430,9 +433,13 @@ def test_the_settings_import_only_the_atomic_write_and_the_layout():
     that knows nothing of request lists. Decision 188 adds ``layout``, at
     the same layer and reading no file: a root one level too deep is one
     that lies inside a tree of a real root, and the trees are the layout's.
+    P317 (SPEC-architecture-p2 P2.6) adds ``hold``, at the same layer and
+    importing nothing of the package: the per-reply memo moved out, and the
+    settings read it through the module, because a copy of ``_HELD`` taken
+    at import would never see a hold begin.
     """
     load, _ = import_edges()
-    assert load["settings"] == {"fsio", "layout"}, load["settings"]
+    assert load["settings"] == {"fsio", "hold", "layout"}, load["settings"]
 
 
 def test_the_door_imports_only_the_layout_the_atomic_write_and_the_settings():

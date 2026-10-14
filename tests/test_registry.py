@@ -806,7 +806,7 @@ def test_stopped_households_reads_no_return(root, monkeypatch):
 
 
 def test_stopped_households_is_one_reading(root, monkeypatch):
-    from tracker import registry, settings
+    from tracker import hold, registry, settings
     from tracker.registry import stopped_households
 
     make(root)
@@ -814,13 +814,13 @@ def test_stopped_households_is_one_reading(root, monkeypatch):
     real = registry.household_from
 
     def watched(folder):
-        seen.append(settings._HOLDING)
+        seen.append(hold._HOLDING)
         return real(folder)
 
     monkeypatch.setattr(registry, "household_from", watched)
     stopped_households(root)
     assert seen == [settings.HOLD_READING]
-    assert settings._HELD is None
+    assert hold._HELD is None
 
 
 def test_stopped_households_of_an_empty_root_stops_nothing_and_a_missing_one_is_an_error(root, tmp_path):

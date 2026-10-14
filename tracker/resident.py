@@ -168,6 +168,8 @@ PER_PROCESS: dict[tuple[str, str], str] = {
                             "take_kept (decision 190)",
     ("errors", "_for_the_parent"): "a reading child's keeps, started by keep_for_the_parent and emptied "
                                    "by take_kept (decision 190)",
+    ("hold", "_HELD"): "reset by `hold.one_reading`",
+    ("hold", "_HOLDING"): "reset by `hold.one_reading`",
     ("locking", "_held"): "every lock is taken and let go inside one command, and the engine retires "
                           "after one that left a lock held (decision 171, locking.held_now)",
     ("locking", "_mac_host"): "a fact about the machine: its local host name (SPEC-mac R21)",
@@ -183,8 +185,6 @@ PER_PROCESS: dict[tuple[str, str], str] = {
                                 "(decision 169)",
     ("ocr", "_SESSION"): "the reading session, for the life of reading_session's with block "
                          "(decision 169)",
-    ("settings", "_HELD"): "reset by `settings.one_reading`",
-    ("settings", "_HOLDING"): "reset by `settings.one_reading`",
     ("settings", "_redirect_answer"): "a fact about the machine, asked once",
     ("store", "_CHECKPOINT"): "the store's connection, closed by store.close in api.main's finally "
                               "after every command (decision 101, P214)",

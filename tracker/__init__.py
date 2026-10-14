@@ -34,6 +34,7 @@ See docs/ROADMAP.md for the build plan. Component modules:
 - page          : the markup both of the firm's pages are drawn with: escaping, tables, the bytes a page is written as
 - view          : the page a person opens, regenerated from the record and the readers every pass
 - settings      : the settings file beside the app - the clients root and firm, written once
+- hold          : the per-reply memo - the machine's answers held for one read-only reply or one household of a pass, and dropped after it
 - reasons       : every refusal said once: the note, the client's ask, whose problem it is
 - errors        : an error named by its class where a person sees it; its words kept apart
 - api           : the desktop app's command layer, one JSON command in, one JSON reply out

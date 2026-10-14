@@ -3,7 +3,7 @@
   "generated": "2026-10-14",
   "generator": "tools/repo_map.py",
   "generator_sha256": "a394d7104da5155d",
-  "module_table_sha256": "5f7f6c93ac2e77d3",
+  "module_table_sha256": "a8d244f8a54dc7db",
   "pipeline": [
     "tracker.api / create",
     "tracker.scaffold",
@@ -15,9 +15,9 @@
     "a person sends the draft"
   ],
   "counts": {
-    "nodes": 342,
-    "edges": 1468,
-    "reused": 288
+    "nodes": 344,
+    "edges": 1478,
+    "reused": 290
   },
   "node_types": [
     "artifact",
@@ -126,8 +126,8 @@
       "id": "tracker/__init__.py",
       "type": "module",
       "layer": "core",
-      "sha256": "2c9c7060dee2a54e",
-      "lines": 87,
+      "sha256": "6511440c8b1519ed",
+      "lines": 88,
       "role": "Package docstring listing every component, and STANDING_RULES - the four rules worded once.",
       "notes": "Imports nothing of the package at load time since decision 99: the re-exports of the manifest and scaffold APIs (thirteen names no file in tracker/, tools/, tests/ or the entry point consumed) are gone, and with them the package's one load-time cycle (this package -> tracker/manifest.py -> from tracker import ledger). Its module list names the manifest as the request list - its schema, validation, and its reading from and writing to the record - and the scanner as an orchestrator that records rather than writes back (decision 104). There is no load-time cycle left to name: tests/test_layers.py pins the layer of every module and that no load-time import points upward. Every cycle the derived edges show closes through an import at call time (the map labels those separately), and tracker/filer.py <-> tracker/scanner.py inside _rescan() is the deliberate one. Standing rule 1 still says 'deterministic rules in the manifest': the manifest is the request list, and its home changed with decision 104, not the word. SAFEGUARDS (P64): the four standing rules again in one short line each, in the same order, for the app's Safeguards dialog; STANDING_RULES keeps the full wording that every doc quotes."
     },
@@ -1633,6 +1633,33 @@
       "notes": "Decision 120, and no behaviour change: the five names moved here verbatim from tracker/manifest.py, where they had lived because the manifest was once the workbook they were written for. Layer 0, importing nothing of the package, because every layer writes a file of its own and the one that is lowest must be able to reach the write - which is how there comes to be only one. It holds NO POLICY: nothing here knows what a file is for, which folder it belongs in, whether it may be written or who may write it; the module that owns the file owns every other question about it. The manifest does not re-export them - asking it for one raises at the import (tests/test_manifest.py) - and tracker/settings.py, which borrowed the write and nothing else, came down to layer 0 with them. What did NOT move then: tracker/reminder.py's draft, which decision 155 moved onto write_text_atomically - a torn draft failed its own fingerprint and read as a person's edit for good. Decision 137 (M1) added the one policy-free way a folder is made: make_new_folders() makes every missing level with exist_ok=False and hands back the levels THIS call made, outermost first. That list is the whole of what a failed create or rollover may remove (api._undo_made, rollover._roll_one), so a folder that was already there - a person's own, an old return's - is never removed. Decision 143 added write_bytes_atomically(), flushed before the swap, for an attachment taken out of an email or zip. Decision 155 made it the ONE way every file the tracker writes is written, whole or not there: write_text_atomically() flushes and fsyncs before the swap (NTFS journals the rename, not the data, so settings.json or a README could come back empty after a power cut); copy_atomically() is copy2 into the temp (the bytes and the modification time the verdict memo keys on), make_writable() on the temp - a read-only original's attribute is never carried onto a working copy, whose removal then jammed the household - fsync, then prove(temp) before the swap, so a copy that is not the document never holds the name. The working copy (filer._copy_whole), the reminder draft and the store's export moved onto it. A kill runs no clean-up, so a killed write leaves its temp: stranded_temps() finds temps of the exact shape older than a time, never through a link or junction, and tracker/filer.py's sweep_stranded_temps() decides which to remove. Still importing nothing of the package: the process-liveness check the sweep also needs is locking's, so it is the filer's to ask. mark_from_internet(path, *, _opener=None) writes the :Zone.Identifier stream (zone 3) on Windows and returns False elsewhere; a failure is raised, and the filer then makes no copy (decision 190, fail closed). Decision 186: append_rotating() is the one append - the run log's - turning the file over to .1..keep before an entry would pass max_bytes, one writer at a time under an O_EXCL `.rotating` lock file beside the log (the size asked again once it is held, a lock older than ROTATION_LOCK_STALE_SECONDS removed), and abandoning a rotation that fails at any step (any OSError) with a warning and appending anyway, so neither the entry nor the older entries are lost when two writers cross the size at once (the review's S3); hand-rolled rather than RotatingFileHandler, which does not support two writing processes and swallows its failures. LINK_TAGS is the one set of reparse tags that make a link (a symbolic link and a junction, spelled with their numbers so the rule reads the same off Windows); is_link, firm_cache's fingerprint and after_install's test-cache job all use it, and _LINK_TAGS is kept as the name tests/test_filer.py reads. SPEC-mac R22: full_sync(fd) is the one flush of a descriptor to the disk (F_FULLFSYNC on a Mac, os.fsync elsewhere or where the volume refuses it with ENOTSUP/EINVAL, said once), and every write here - the three writers' bytes and the folder flush after a swap - goes through it, as do runner's order-hint mark and scheduling's designation claim. tracker.locking holds an identical copy for ledger, locking and store, which may not import fsio; tests/test_fsio.py holds the two identical and pins that no other os.fsync exists under tracker/. fsio still imports nothing of the package."
     },
     {
+      "id": "tracker/hold.py",
+      "type": "module",
+      "layer": "core",
+      "sha256": "38fe3a7e4393c83e",
+      "lines": 213,
+      "exports": [
+        "HOLD_HOUSEHOLD",
+        "HOLD_READING",
+        "T",
+        "WRITE_WHILE_HOLDING",
+        "WRITE_WHILE_READING",
+        "held",
+        "one_household",
+        "one_reading",
+        "refuse_a_write_while_reading",
+        "resolved"
+      ],
+      "constants": {
+        "HOLD_READING": "'reading'",
+        "HOLD_HOUSEHOLD": "'household'",
+        "WRITE_WHILE_READING": "'{what} may not be written inside a read-only reply (P118): the reply holds its answers, and a write would leave them stale'",
+        "WRITE_WHILE_HOLDING": "\"{what} may not be written while a pass holds a household's answers (P207): it would write back the copy read when the household began\""
+      },
+      "role": "The per-reply memo (P118, P207, P215): the machine's answers held for one read-only reply (one_reading, HOLD_READING) or one household of a pass (one_household, HOLD_HOUSEHOLD) and dropped after it, in _HELD, with _HOLDING saying which hold is under way and _holding the one body of both. held(key, answer, *, there=None) is the one memo whose life is a hold; resolved(path) is Path.resolve asked once per spelling in a hold; refuse_a_write_while_reading() and WRITE_WHILE_READING / WRITE_WHILE_HOLDING are the refusals of a write under held answers. Nothing is held outside a hold, an error never is, and a nested hold is the outer one.",
+      "notes": "SPEC-architecture-p2 P2.6 (P317; the architecture audit's B-5). Layer 0, domain record. It is settings.py's hold region, moved byte for byte but for _SETTINGS_HELD, the settings file's own key, which stayed beside settings._read. It imports the standard library only. P118: one_reading() holds data_home, app_dir, program_folders, the settings file (_read hands each caller its own copy) and resolved(path) for one read-only reply; outside it nothing is held, so data_home still takes an override at once. An error is never held. Review fold: refuse_a_write_while_reading() - _write and store.record raise inside one_reading(). P207 (pilot/SPEC-scale-1000.md): one_household() holds the same answers for one household of a pass while the pass writes; _HOLDING says which hold is under way (HOLD_READING refuses a write, HOLD_HOUSEHOLD does not); inside a household resolved(path) holds only a path that is there (os.path.lexists), and _write refuses inside a household's hold (WRITE_WHILE_HOLDING), so a setter never writes back the held copy over a save the app made meanwhile. Nested holds are the outer one. P215 (pilot/SPEC-speed-round.md): held(key, answer, *, there=None) replaces _held - an answer kept for a reading, and for a household's hold only once there resolves to a held answer; never an error. Its callers: app_dir, the program folders and data_home in settings, and the store's engagement key and held_read. Why its own module: the hold is not the settings file's but the life of an answer, and the store keeps its record reads in it as the settings keep theirs, so the memo every held read goes through sat in the module of the settings file. Through the module, never a from-import: _holding rebinds _HELD and _HOLDING under global, so a copy taken at import would keep None and never see a hold begin; settings reads hold._HELD and asks hold.held, and re-exports the nine public names (never _HELD or _HOLDING), each the same object (tests/test_hold.py), until P2.13 points the readers (store, content_check, registry, runner, api, resident and the suite) here and removes the facade. The facade is a block of assignments (held = hold.held and the rest), not a from-import: settings no longer reads the names itself, and the stand-ins on settings.held and settings.resolved must still reach the callers that read them through settings, which tools/patch_sites.py check sees only for a name the module binds itself (P2.6 question 001). The state register keys both names to this module (resident.PER_PROCESS, ('hold', '_HELD') and ('hold', '_HOLDING')). Its docstrings came with the code word for word, so the data_home, app_dir, program_folders, _read and _write they name are the settings module's."
+    },
+    {
       "id": "tracker/households.py",
       "type": "module",
       "layer": "core",
@@ -3115,7 +3142,7 @@
       "id": "tracker/resident.py",
       "type": "module",
       "layer": "core",
-      "sha256": "ce003f13ee313486",
+      "sha256": "8a745162f105f9a2",
       "lines": 396,
       "cli": "python -m tracker.resident",
       "exports": [
@@ -3895,8 +3922,8 @@
       "id": "tracker/settings.py",
       "type": "module",
       "layer": "core",
-      "sha256": "e84f457c4926ea03",
-      "lines": 1589,
+      "sha256": "7da1384b355049ba",
+      "lines": 1450,
       "cli": "python -m tracker.settings",
       "exports": [
         "COLUMN_CATALOG",
@@ -3986,7 +4013,6 @@
         "ScheduleChoiceError",
         "SchedulePreference",
         "SettingsError",
-        "T",
         "TRANSLOCATION",
         "WRITE_WHILE_HOLDING",
         "WRITE_WHILE_READING",
@@ -4003,14 +4029,11 @@
         "error_log_path",
         "firm",
         "firm_phone",
-        "held",
         "host_system",
         "inside_the_app",
         "logs_dir",
         "mac_floor_refusal",
         "mac_settings_dir",
-        "one_household",
-        "one_reading",
         "process_scratch",
         "product_name",
         "program_drive_refusal",
@@ -4018,9 +4041,7 @@
         "real_corpus_dir",
         "redirect_probe",
         "redirected_copies",
-        "refuse_a_write_while_reading",
         "resolve_data_home",
-        "resolved",
         "root_refusal",
         "schedule_preference",
         "scratch_root",
@@ -4101,10 +4122,6 @@
         "ERROR_LOG_BACKUPS": "3",
         "ERROR_LOG_FORMAT": "'%(asctime)s pid=%(process)d %(name)s %(levelname)s %(message)s'",
         "ERROR_LOG_NOT_WRITTEN": "'{name} could not be written ({kind}); what it would have held is not said here.'",
-        "HOLD_READING": "'reading'",
-        "HOLD_HOUSEHOLD": "'household'",
-        "WRITE_WHILE_READING": "'{what} may not be written inside a read-only reply (P118): the reply holds its answers, and a write would leave them stale'",
-        "WRITE_WHILE_HOLDING": "\"{what} may not be written while a pass holds a household's answers (P207): it would write back the copy read when the household began\"",
         "ROOT_IS_SYSTEM_DRIVE": "'{root} is the whole system drive; the app would walk all of it. Choose the folder the firm keeps its clients in'",
         "ROOT_HOLDS_SETTINGS": "\"{root} holds the app's own settings ({settings}); choose the folder the firm keeps its clients in\"",
         "ROOT_INSIDE_SETTINGS": "\"{root} is inside the app's settings folder ({settings}); choose the folder the firm keeps its clients in\"",
@@ -4114,7 +4131,7 @@
         "ROOT_INSIDE_A_TREE": "'{root} is inside the {tree} folder of the clients root {real}; choose {real}'"
       },
       "role": "The settings file beside the app (SETTINGS_FILENAME): the one place the clients root, the firm and the firm's telephone number are kept. clients_root()/set_clients_root(), firm()/set_firm(), firm_phone()/set_firm_phone(); product_name() reads app/package.json productName (or ENV_PRODUCT_NAME from the shell). ENV_SETTINGS_DIR from the Electron shell says where beside-the-app is. ENV_REAL_CORPUS and real_corpus_dir() name the other folder outside the repository: the firm's own redacted documents, with the expectations file's name and columns beside them.",
-      "notes": "Replaced two roots (an env var for the app defaulting to a demo folder, a command-line path for the job) that nothing tied together. set_clients_root() refuses a folder that does not exist, so a typo cannot become an empty root the run walks for ever. The file is written through fsio.write_json_atomically() (decision 120; it was the manifest's until then, and that one import was the whole of this module's dependence on layer 1): the app and the scheduling CLI can both save it, and neither may swap the other's half-written temp into place. Decision 68: an empty root is refused - Path(\"\") is the working folder. Decision 69: the working folder under any spelling is refused as a root. Decision 71: real_corpus_dir() answers None when the variable is unset and when what it names is not a folder, because raising would fail the suite on every machine that has no corpus, CI included; it is an environment variable rather than a setting because it belongs to a machine, never to an engagement. Decision 117: the firm's phone is a setting for the mirror image of that reason - it belongs to the firm and not to any one engagement, so it sits beside the firm's name rather than in every client's details, and it is taken as typed because a firm writes its number its own way. Only the reminder's final notice says it, and a blank one drops that sentence. Decision 131: the scheduled job names this file's folder (runner --settings) rather than the root, and reads the root from here at every run - one home for the clients root. Decision 137 (M3) replaced decision 69's working-folder check, which meant nothing in the packaged build: root_refusal() (pure, so every rule is testable on any OS) refuses the system drive's root (system_drive_root()), the settings folder, any folder holding it and any folder inside it, and the app's own folder (app_dir(): the frozen executable's, or the repository from source) and any folder holding it, each with its own sentence. Another drive's root is allowed - a letter mapped to the clients share is a real root - and \"D:\" is still recorded as \"D:\\\\\". Review fixes (decision 137): _inside() compares the folders themselves (os.path.samefile up the parent chain) as well as their spellings, so long-path (\\\\?\\) and C$ admin-share forms are refused like plain names; clients_root_refusal() is what set_clients_root and the runner's start both ask. Decision 188: ROOT_INSIDE_A_TREE - the nearest folder above the root that holds both trees (layout.clients_tree_of and private_tree_of are folders) with the root inside one of them (layout.tree_of) is refused naming the root to choose; a lone folder named Clients is not (the runbook's example root). settings imports layout at load (same layer, reads no file). _within and _inside keep their own under-a-folder spelling for the machine's own folders, allowed by name in the layer test. Decision 193: ERROR_LOG_FILENAME and error_log(), the rotating local error log attached by api.main and runner.main for their lifetime - the one log file any logger writes (decision 190, Part 4: errors.keep's words land here through 'tracker.debug', and tests/test_errors.py fails a second one), rotated by _ErrorLog's own few lines (not logging.handlers, which loads socket - the review's S2); error_log_path() is beside the tracker's database (store.store_path()'s folder, asked at call time), so it moves with the store. Decision 185: _read() learns the file is absent by opening it, so the suite's tripwire sees every attempt; OCR_SCRATCH_DIRNAME names the retired scratch folder once; inside_the_app() is the one answer to whether a path lies in the app's folder (the checkout from source), asked by the report tools before writing and by decision 186. Decision 186: data_home() is the one per-user local folder where client-derived data lives (ENV_DATA_HOME, else %LOCALAPPDATA%\\tax-document-tracker on Windows with no fallback, else $XDG_STATE_HOME or ~/.local/state); resolve_data_home() is its pure core, testable on any OS; it refuses a folder inside or around program_folders(), not on a fixed disk, or that is - or would have to be made under - a file (DATA_HOME_NOT_A_FOLDER, P299) (drive_type(), GetDriveTypeW through ctypes), and creates nothing - scratch_root(), process_scratch() and logs_dir() are path answers only. root_refusal() gains data= (ROOT_HOLDS_DATA, ROOT_INSIDE_DATA). OCR_SCRATCH_DIRNAME and inside_the_app() are decision 185's names, landed with 185; 186 uses them. The settings file stays beside the app as a pointer holding nothing about a client. 186c: program_drive_refusal() asks drive_type() of the program's folder and its settings folder, looked up at call time so a test's patch reaches it; only DRIVE_FIXED passes (PROGRAM_ON_REMOVABLE, PROGRAM_ON_NETWORK, PROGRAM_DRIVE_UNKNOWN). Install Schedule (api, scheduling CLI) refuses on it and the app's first screen says it; the scheduled pass never asks, since a pass that refuses goes quiet. Pilot P21: the schedule choice (KEY_SCHEDULE_ENABLED/START/EVERY, written only by set_schedule) lives here with its checks (check_start, check_every, EVERY_CHOICES, ScheduleChoiceError, SchedulePreference), not in scheduling, because the runner reads the saved choice for the last-pass line and may not import scheduling; scheduling re-exports the names. schedule_preference() refuses a hand-edited bad value naming file and key, never resetting it. P118: one_reading() holds data_home, app_dir, program_folders, the settings file (_read hands each caller its own copy) and resolved(path) for one read-only reply; outside it nothing is held, so data_home still takes an override at once. An error is never held. Review fold: refuse_a_write_while_reading() - _write and store.record raise inside one_reading(). EARLIER_PRODUCT_NAME is the pilot's name before the rename (P155), the one home of that name (P235 retired the settings-file carry-over that read from it): setup.iss, the two Windows check scripts and package.json's config.userDataName type it and tests hold each copy equal. DATA_HOME_NAME keeps its name through the rename (SPEC-rename R3): it is package.json's internal name and holds the store. F7 (P193): Windows redirects what a program started from inside a packaged app (the Claude desktop app) writes under %LOCALAPPDATA% into %LOCALAPPDATA%\\Packages\\<package>\\LocalCache\\Local, so such a process sees a second store and checkpoint that refuse the real one's lines. R1: data_home() (through _the_data_home) refuses it with DATA_HOME_REDIRECTED, a SettingsError, on Windows only and only when ENV_DATA_HOME is unset or blank, asked once a process (_redirected_package, _redirect_answer); redirect_probe() writes a uniquely named empty file (REDIRECT_PROBE_PREFIX, pid, 16 hex) in %LOCALAPPDATA%, looks for it under Packages\\*\\LocalCache\\Local, and removes it from wherever it landed in a finally ('make' is injected, as drive_type is). Not in resolve_data_home or default_data_home: the suite always names a data home and the tripwire must still learn the real place without a probe. Rejected: asking Windows for package identity (the redirected process has none) and comparing file IDs (blind until a redirected write has made the copy). R2: redirected_copies() lists every existing Packages\\*\\LocalCache\\Local\\<DATA_HOME_NAME> (Windows, read-only, none with no Packages folder or with ENV_DATA_HOME set) for api._machine_warnings' REDIRECTED_COPY sentence; the app never removes one (client-derived, decision 186), and it is not runner.left_behind's 'beside the program'. Combined review (S2, N3): R1's refusal is its own class, DataHomeRedirected (a SettingsError), so api._machine_warnings says R1's sentence alone, with no REDIRECTED_COPY line calling the folder the process sees 'never used'; a Packages folder Windows will not list (any OSError but absent or not a folder) is a SettingsError with PACKAGES_UNREADABLE from _package_names, naming the folder and errors.error_class (imported at call time, so the load-time imports stay layout and fsio), never a raw PermissionError: the probe then refuses the data home (it cannot rule a redirect out) and still removes its file, and _machine_warnings says the sentence once and shows the rest. P207 (pilot/SPEC-scale-1000.md): one_household() holds the same answers for one household of a pass while the pass writes; _HOLDING says which hold is under way (HOLD_READING refuses a write, HOLD_HOUSEHOLD does not); inside a household resolved(path) holds only a path that is there (os.path.lexists), and _write refuses inside a household's hold (WRITE_WHILE_HOLDING), so a setter never writes back the held copy over a save the app made meanwhile. Nested holds are the outer one. P215 (pilot/SPEC-speed-round.md): held(key, answer, *, there=None) replaces _held - an answer kept for a reading, and for a household's hold only once there resolves to a held answer; never an error. Its callers: app_dir, the program folders and data_home here, and the store's engagement key and held_read. set_firm and set_firm_phone are one-line wrappers on _set_text(key, value). SPEC-mac job 1 (R1-R6): host_system() ('nt', 'darwin' or 'posix', read when called) is the one seam every platform branch reads, so a test stands in for a Mac on any machine; resolve_data_home takes system in place of windows. R1: a Mac's data home is ~/Library/Application Support/<DATA_HOME_NAME> and $XDG_STATE_HOME is not read there. R2: a packaged Mac program's settings folder is mac_settings_dir() = ~/Library/Application Support/<productName> (outside the bundle a dragged-in replacement swaps whole, P155; app/main.js SETTINGS_DIR builds the same folder from the same product name, pinned equal), and _the_app_dir() answers the enclosing .app, so program_folders(), inside_the_app() and ROOT_HOLDS_APP judge the whole bundle; Electron's own userData folder is left where it is. R3: drive_type asks statfs(2) through ctypes behind the _statfs seam (no MNT_LOCAL is DRIVE_REMOTE, a mount under /Volumes is DRIVE_REMOVABLE, the startup volume DRIVE_FIXED, a failed statfs DRIVE_UNKNOWN; a folder not made yet is asked by its nearest existing parent); synced_tree(path) names the sync service a path lies under (CloudStorage providers, iCloud Drive, ~/Dropbox; APFS case-folded) and resolve_data_home refuses a Mac data home inside one (DATA_HOME_SYNCED). R4: program_drive_refusal, for a frozen Mac program, asks its place first - it must be <product>.app directly in /Applications or ~/Applications (PROGRAM_TRANSLOCATED, PROGRAM_ON_DISK_IMAGE, PROGRAM_NOT_IN_APPLICATIONS, each naming the folder); a source checkout keeps only the disk rule. R5: root_refusal gains host= and home= (host_system(), not system, because system already means the system drive's root) and on a Mac refuses ROOT_IN_ICLOUD (iCloud Drive, or Desktop/Documents while ~/Library/Mobile Documents/com~apple~CloudDocs/Desktop exists) and ROOT_IN_OTHER_SYNC (every sync service but Google Drive); a Google Drive root, a plain folder and a root under /Volumes are accepted. R6: MAC_FLOOR is the hardware-floor sentence (Apple silicon, macOS 14 or later) and mac_floor_refusal() fills it; the product name in it and in PROGRAM_TRANSLOCATED comes from product_name(), never typed here (tests/test_single_source.py keeps the product name's one home)."
+      "notes": "Replaced two roots (an env var for the app defaulting to a demo folder, a command-line path for the job) that nothing tied together. set_clients_root() refuses a folder that does not exist, so a typo cannot become an empty root the run walks for ever. The file is written through fsio.write_json_atomically() (decision 120; it was the manifest's until then, and that one import was the whole of this module's dependence on layer 1): the app and the scheduling CLI can both save it, and neither may swap the other's half-written temp into place. Decision 68: an empty root is refused - Path(\"\") is the working folder. Decision 69: the working folder under any spelling is refused as a root. Decision 71: real_corpus_dir() answers None when the variable is unset and when what it names is not a folder, because raising would fail the suite on every machine that has no corpus, CI included; it is an environment variable rather than a setting because it belongs to a machine, never to an engagement. Decision 117: the firm's phone is a setting for the mirror image of that reason - it belongs to the firm and not to any one engagement, so it sits beside the firm's name rather than in every client's details, and it is taken as typed because a firm writes its number its own way. Only the reminder's final notice says it, and a blank one drops that sentence. Decision 131: the scheduled job names this file's folder (runner --settings) rather than the root, and reads the root from here at every run - one home for the clients root. Decision 137 (M3) replaced decision 69's working-folder check, which meant nothing in the packaged build: root_refusal() (pure, so every rule is testable on any OS) refuses the system drive's root (system_drive_root()), the settings folder, any folder holding it and any folder inside it, and the app's own folder (app_dir(): the frozen executable's, or the repository from source) and any folder holding it, each with its own sentence. Another drive's root is allowed - a letter mapped to the clients share is a real root - and \"D:\" is still recorded as \"D:\\\\\". Review fixes (decision 137): _inside() compares the folders themselves (os.path.samefile up the parent chain) as well as their spellings, so long-path (\\\\?\\) and C$ admin-share forms are refused like plain names; clients_root_refusal() is what set_clients_root and the runner's start both ask. Decision 188: ROOT_INSIDE_A_TREE - the nearest folder above the root that holds both trees (layout.clients_tree_of and private_tree_of are folders) with the root inside one of them (layout.tree_of) is refused naming the root to choose; a lone folder named Clients is not (the runbook's example root). settings imports layout at load (same layer, reads no file). _within and _inside keep their own under-a-folder spelling for the machine's own folders, allowed by name in the layer test. Decision 193: ERROR_LOG_FILENAME and error_log(), the rotating local error log attached by api.main and runner.main for their lifetime - the one log file any logger writes (decision 190, Part 4: errors.keep's words land here through 'tracker.debug', and tests/test_errors.py fails a second one), rotated by _ErrorLog's own few lines (not logging.handlers, which loads socket - the review's S2); error_log_path() is beside the tracker's database (store.store_path()'s folder, asked at call time), so it moves with the store. Decision 185: _read() learns the file is absent by opening it, so the suite's tripwire sees every attempt; OCR_SCRATCH_DIRNAME names the retired scratch folder once; inside_the_app() is the one answer to whether a path lies in the app's folder (the checkout from source), asked by the report tools before writing and by decision 186. Decision 186: data_home() is the one per-user local folder where client-derived data lives (ENV_DATA_HOME, else %LOCALAPPDATA%\\tax-document-tracker on Windows with no fallback, else $XDG_STATE_HOME or ~/.local/state); resolve_data_home() is its pure core, testable on any OS; it refuses a folder inside or around program_folders(), not on a fixed disk, or that is - or would have to be made under - a file (DATA_HOME_NOT_A_FOLDER, P299) (drive_type(), GetDriveTypeW through ctypes), and creates nothing - scratch_root(), process_scratch() and logs_dir() are path answers only. root_refusal() gains data= (ROOT_HOLDS_DATA, ROOT_INSIDE_DATA). OCR_SCRATCH_DIRNAME and inside_the_app() are decision 185's names, landed with 185; 186 uses them. The settings file stays beside the app as a pointer holding nothing about a client. 186c: program_drive_refusal() asks drive_type() of the program's folder and its settings folder, looked up at call time so a test's patch reaches it; only DRIVE_FIXED passes (PROGRAM_ON_REMOVABLE, PROGRAM_ON_NETWORK, PROGRAM_DRIVE_UNKNOWN). Install Schedule (api, scheduling CLI) refuses on it and the app's first screen says it; the scheduled pass never asks, since a pass that refuses goes quiet. Pilot P21: the schedule choice (KEY_SCHEDULE_ENABLED/START/EVERY, written only by set_schedule) lives here with its checks (check_start, check_every, EVERY_CHOICES, ScheduleChoiceError, SchedulePreference), not in scheduling, because the runner reads the saved choice for the last-pass line and may not import scheduling; scheduling re-exports the names. schedule_preference() refuses a hand-edited bad value naming file and key, never resetting it. The per-reply memo is tracker/hold.py's (P2.6); data_home, app_dir and program_folders ask hold.held, and _read and _write read hold._HELD. EARLIER_PRODUCT_NAME is the pilot's name before the rename (P155), the one home of that name (P235 retired the settings-file carry-over that read from it): setup.iss, the two Windows check scripts and package.json's config.userDataName type it and tests hold each copy equal. DATA_HOME_NAME keeps its name through the rename (SPEC-rename R3): it is package.json's internal name and holds the store. F7 (P193): Windows redirects what a program started from inside a packaged app (the Claude desktop app) writes under %LOCALAPPDATA% into %LOCALAPPDATA%\\Packages\\<package>\\LocalCache\\Local, so such a process sees a second store and checkpoint that refuse the real one's lines. R1: data_home() (through _the_data_home) refuses it with DATA_HOME_REDIRECTED, a SettingsError, on Windows only and only when ENV_DATA_HOME is unset or blank, asked once a process (_redirected_package, _redirect_answer); redirect_probe() writes a uniquely named empty file (REDIRECT_PROBE_PREFIX, pid, 16 hex) in %LOCALAPPDATA%, looks for it under Packages\\*\\LocalCache\\Local, and removes it from wherever it landed in a finally ('make' is injected, as drive_type is). Not in resolve_data_home or default_data_home: the suite always names a data home and the tripwire must still learn the real place without a probe. Rejected: asking Windows for package identity (the redirected process has none) and comparing file IDs (blind until a redirected write has made the copy). R2: redirected_copies() lists every existing Packages\\*\\LocalCache\\Local\\<DATA_HOME_NAME> (Windows, read-only, none with no Packages folder or with ENV_DATA_HOME set) for api._machine_warnings' REDIRECTED_COPY sentence; the app never removes one (client-derived, decision 186), and it is not runner.left_behind's 'beside the program'. Combined review (S2, N3): R1's refusal is its own class, DataHomeRedirected (a SettingsError), so api._machine_warnings says R1's sentence alone, with no REDIRECTED_COPY line calling the folder the process sees 'never used'; a Packages folder Windows will not list (any OSError but absent or not a folder) is a SettingsError with PACKAGES_UNREADABLE from _package_names, naming the folder and errors.error_class (imported at call time, so the load-time imports stay layout and fsio), never a raw PermissionError: the probe then refuses the data home (it cannot rule a redirect out) and still removes its file, and _machine_warnings says the sentence once and shows the rest. set_firm and set_firm_phone are one-line wrappers on _set_text(key, value). SPEC-mac job 1 (R1-R6): host_system() ('nt', 'darwin' or 'posix', read when called) is the one seam every platform branch reads, so a test stands in for a Mac on any machine; resolve_data_home takes system in place of windows. R1: a Mac's data home is ~/Library/Application Support/<DATA_HOME_NAME> and $XDG_STATE_HOME is not read there. R2: a packaged Mac program's settings folder is mac_settings_dir() = ~/Library/Application Support/<productName> (outside the bundle a dragged-in replacement swaps whole, P155; app/main.js SETTINGS_DIR builds the same folder from the same product name, pinned equal), and _the_app_dir() answers the enclosing .app, so program_folders(), inside_the_app() and ROOT_HOLDS_APP judge the whole bundle; Electron's own userData folder is left where it is. R3: drive_type asks statfs(2) through ctypes behind the _statfs seam (no MNT_LOCAL is DRIVE_REMOTE, a mount under /Volumes is DRIVE_REMOVABLE, the startup volume DRIVE_FIXED, a failed statfs DRIVE_UNKNOWN; a folder not made yet is asked by its nearest existing parent); synced_tree(path) names the sync service a path lies under (CloudStorage providers, iCloud Drive, ~/Dropbox; APFS case-folded) and resolve_data_home refuses a Mac data home inside one (DATA_HOME_SYNCED). R4: program_drive_refusal, for a frozen Mac program, asks its place first - it must be <product>.app directly in /Applications or ~/Applications (PROGRAM_TRANSLOCATED, PROGRAM_ON_DISK_IMAGE, PROGRAM_NOT_IN_APPLICATIONS, each naming the folder); a source checkout keeps only the disk rule. R5: root_refusal gains host= and home= (host_system(), not system, because system already means the system drive's root) and on a Mac refuses ROOT_IN_ICLOUD (iCloud Drive, or Desktop/Documents while ~/Library/Mobile Documents/com~apple~CloudDocs/Desktop exists) and ROOT_IN_OTHER_SYNC (every sync service but Google Drive); a Google Drive root, a plain folder and a root under /Volumes are accepted. R6: MAC_FLOOR is the hardware-floor sentence (Apple silicon, macOS 14 or later) and mac_floor_refusal() fills it; the product name in it and in PROGRAM_TRANSLOCATED comes from product_name(), never typed here (tests/test_single_source.py keeps the product name's one home)."
     },
     {
       "id": "tracker/store.py",
@@ -4672,8 +4689,8 @@
       "id": "docs/architecture.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "158b8a16ac14475f",
-      "lines": 281,
+      "sha256": "ee4b0e72d5a4ff27",
+      "lines": 284,
       "role": "The overview between the README and the map: the three programs (the shell, the engine, the scheduled pass) and the reading child; the package layer by layer with each module's one sentence; the tools; the tests and their guards; the three places the app writes; the decisions that shape it (deterministic, offline, standard library first, hash-checked installs, one-time steps built in); and how each package is built.",
       "notes": "Written for a person who did not watch the code grow. It names no numbers a test pins and no file the code does not own; tests/test_layers.py's table is the source of its layers."
     },
@@ -4690,8 +4707,8 @@
       "id": "docs/repo-map.curated.json",
       "type": "file",
       "layer": "docs",
-      "sha256": "ac62862a73fb1b56",
-      "lines": 1660,
+      "sha256": "0d34099d93a5d2c1",
+      "lines": 1668,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
     },
@@ -4793,8 +4810,8 @@
       "id": "pilot/DECISIONS.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "2e01d5897fd25931",
-      "lines": 310
+      "sha256": "61006621e0027e35",
+      "lines": 311
     },
     {
       "id": "pilot/HANDOFF-client-folder.md",
@@ -6625,7 +6642,7 @@
       "id": "tests/test_api.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "0f2011bc3aab6edd",
+      "sha256": "8fbc241429111d94",
       "lines": 11619,
       "exports": [
         "COUNTS",
@@ -8283,6 +8300,20 @@
       }
     },
     {
+      "id": "tests/test_hold.py",
+      "type": "test",
+      "layer": "tests",
+      "sha256": "47d3bf254febe043",
+      "lines": 69,
+      "exports": [
+        "RE_EXPORTED",
+        "test_the_hold_imports_nothing_of_the_package",
+        "test_the_settings_re_export_is_the_holds_own"
+      ],
+      "role": "Holds tracker/hold.py to its layer and its facade: hold imports nothing of the package at load time or at call time, and settings imports it; every public name it defines but the type variable T is settings' same object, and settings offers no _HELD or _HOLDING. And the hold's own tests, which came with it.",
+      "notes": "SPEC-architecture-p2 R2.6.5. The identity test reads hold's own names off its source, so a name it only imports is not counted as its own, and it fails when the re-exported set and the names hold defines part ways."
+    },
+    {
       "id": "tests/test_households.py",
       "type": "test",
       "layer": "tests",
@@ -8335,8 +8366,8 @@
       "id": "tests/test_layers.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "b631c303148bb6a8",
-      "lines": 1042,
+      "sha256": "44187451d1bd46c3",
+      "lines": 1049,
       "exports": [
         "REPO",
         "SOCKET_SHAPED",
@@ -8373,7 +8404,7 @@
         "test_the_readings_child_talks_over_a_named_pipe_never_a_socket",
         "test_the_reply_shapes_import_nothing_of_the_package",
         "test_the_runner_never_imports_the_scheduler_or_the_api",
-        "test_the_settings_import_only_the_atomic_write_and_the_layout",
+        "test_the_settings_import_only_the_atomic_write_the_layout_and_the_hold",
         "test_the_store_imports_only_the_record_the_journal_the_lock_and_the_checkpoint"
       ],
       "constants": {
@@ -9323,7 +9354,7 @@
       "id": "tests/test_registry.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "5ef5f29294cd5a9d",
+      "sha256": "7b09d77310227377",
       "lines": 1271,
       "exports": [
         "ITEMS",
@@ -9668,7 +9699,7 @@
       "id": "tests/test_resident.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "34845b6f02ec7805",
+      "sha256": "c135422eb6d2c9f0",
       "lines": 715,
       "exports": [
         "CHANGES_IN_PLACE",
@@ -9991,7 +10022,7 @@
       "id": "tests/test_runner.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "1b8924221acfccd1",
+      "sha256": "57b9e847d56b2f63",
       "lines": 5819,
       "exports": [
         "A_CLIENT_PATH",
@@ -10474,8 +10505,8 @@
       "id": "tests/test_settings.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "73e76ce4b951527b",
-      "lines": 1352,
+      "sha256": "a3c1e775380b573c",
+      "lines": 1353,
       "exports": [
         "PACKAGE",
         "a_mac",
@@ -13564,6 +13595,12 @@
     },
     {
       "from": "tests/test_api.py",
+      "to": "tracker/hold.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_api.py",
       "to": "tracker/households.py",
       "type": "exercises",
       "source": "derived"
@@ -15105,6 +15142,30 @@
       "source": "derived"
     },
     {
+      "from": "tests/test_hold.py",
+      "to": "tracker/__init__.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_hold.py",
+      "to": "tracker/settings.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_hold.py",
+      "to": "tests/import_graph.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_hold.py",
+      "to": "tracker/hold.py",
+      "type": "tests",
+      "source": "derived"
+    },
+    {
       "from": "tests/test_households.py",
       "to": "pkg:pytest",
       "type": "depends_on",
@@ -16258,6 +16319,12 @@
     },
     {
       "from": "tests/test_registry.py",
+      "to": "tracker/hold.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_registry.py",
       "to": "tracker/households.py",
       "type": "exercises",
       "source": "derived"
@@ -16589,6 +16656,12 @@
     {
       "from": "tests/test_resident.py",
       "to": "tracker/fsio.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_resident.py",
+      "to": "tracker/hold.py",
       "type": "exercises",
       "source": "derived"
     },
@@ -17086,6 +17159,12 @@
     },
     {
       "from": "tests/test_runner.py",
+      "to": "tracker/hold.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_runner.py",
       "to": "tracker/households.py",
       "type": "exercises",
       "source": "derived"
@@ -17567,6 +17646,12 @@
     {
       "from": "tests/test_settings.py",
       "to": "tracker/fsio.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_settings.py",
+      "to": "tracker/hold.py",
       "type": "exercises",
       "source": "derived"
     },
@@ -20897,6 +20982,12 @@
     {
       "from": "tracker/settings.py",
       "to": "tracker/fsio.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tracker/settings.py",
+      "to": "tracker/hold.py",
       "type": "imports",
       "source": "derived"
     },

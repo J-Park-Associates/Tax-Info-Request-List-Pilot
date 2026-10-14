@@ -7916,17 +7916,17 @@ def test_the_list_a_write_carries_is_one_reading_after_the_write(capsys, demo_ro
     """P209: the write is done, and what follows is the ``list`` command's
     own read, held as that command holds it (P118) - and the write itself
     is never inside the reading, which would refuse it."""
-    from tracker import settings, store
+    from tracker import hold, settings, store
 
     seen = {}
     real_payload, real_record = api._list_payload, store.record
 
     def drawn(*args, **kwargs):
-        seen["list"] = settings._HOLDING
+        seen["list"] = hold._HOLDING
         return real_payload(*args, **kwargs)
 
     def recorded(*args, **kwargs):
-        seen.setdefault("writes", set()).add(settings._HOLDING)
+        seen.setdefault("writes", set()).add(hold._HOLDING)
         return real_record(*args, **kwargs)
 
     monkeypatch.setattr(api, "_list_payload", drawn)
@@ -7937,7 +7937,7 @@ def test_the_list_a_write_carries_is_one_reading_after_the_write(capsys, demo_ro
     assert code == 0, payload
     assert seen["list"] == settings.HOLD_READING and "list" in payload
     assert seen["writes"] == {""}, "the write is made before the reading, holding nothing"
-    assert settings._HELD is None
+    assert hold._HELD is None
 
 
 

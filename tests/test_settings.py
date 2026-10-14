@@ -12,6 +12,7 @@ from pathlib import Path
 
 import pytest
 
+from tracker import hold
 from tracker import settings as data_rules
 from tracker.settings import (
     ENV_REAL_CORPUS,
@@ -927,9 +928,9 @@ def test_a_nested_reading_is_the_same_reading_and_ends_with_the_outer_one():
     with data_rules.one_reading():
         first = data_rules.app_dir()
         with data_rules.one_reading():
-            assert data_rules._HELD is not None and data_rules.app_dir() == first
-        assert data_rules._HELD is not None
-    assert data_rules._HELD is None
+            assert hold._HELD is not None and data_rules.app_dir() == first
+        assert hold._HELD is not None
+    assert hold._HELD is None
 
 
 def test_a_settings_write_inside_a_reading_is_refused_outright():
@@ -962,7 +963,7 @@ def test_one_household_asks_the_data_folder_once_and_drops_it_after(monkeypatch,
         monkeypatch.setenv(data_rules.ENV_DATA_HOME, str(tmp_path / "elsewhere"))
         assert data_rules.data_home() == first, "one household sees one data folder"
     assert len(asked) == 1
-    assert data_rules._HELD is None
+    assert hold._HELD is None
     with data_rules.one_household():
         assert data_rules.data_home() == tmp_path / "elsewhere", "the next household asks again"
 
@@ -1041,14 +1042,14 @@ def test_a_household_inside_a_reading_is_the_reading_and_still_refuses_a_write()
     the household's."""
     with data_rules.one_reading():
         with data_rules.one_household():
-            assert data_rules._HOLDING == data_rules.HOLD_READING
+            assert hold._HOLDING == data_rules.HOLD_READING
             with pytest.raises(RuntimeError, match="read-only reply"):
                 data_rules.set_firm("Written inside a reading")
     with data_rules.one_household():
         with data_rules.one_reading():
-            assert data_rules._HOLDING == data_rules.HOLD_HOUSEHOLD
-        assert data_rules._HELD is not None
-    assert data_rules._HELD is None and data_rules._HOLDING == ""
+            assert hold._HOLDING == data_rules.HOLD_HOUSEHOLD
+        assert hold._HELD is not None
+    assert hold._HELD is None and hold._HOLDING == ""
 
 
 # ----------------------------------------------- the one hold memo (P215) ----

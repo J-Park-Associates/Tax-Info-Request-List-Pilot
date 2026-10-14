@@ -26,7 +26,7 @@ import pytest
 
 import tracker.api as api
 from tests.conftest import REPO, child_env, make_engagement
-from tracker import locking, resident, settings, store
+from tracker import hold, locking, resident, settings, store
 from tracker.manifest import RequestItem
 
 #: The line an end line starts with: ``main.js`` finds it by this prefix.
@@ -388,12 +388,12 @@ def test_every_command_has_its_own_reading_hold_and_store(capsys, engine_root, m
     real_templates = api.COMMANDS["templates"]
 
     def probe(argv):
-        held_during.append((settings._HELD, store._CONNECTION))
+        held_during.append((hold._HELD, store._CONNECTION))
         return real_templates(argv)
 
     _code, out = serve(capsys, frame(1, ["state", api.ENGAGEMENT_FLAG, str(engine_root)]))
     assert replies(out)[0][1]["code"] == 0
-    assert settings._HELD is None and store._CONNECTION is None
+    assert hold._HELD is None and store._CONNECTION is None
     monkeypatch.setitem(api.COMMANDS, "templates", probe)
     serve(capsys, frame(2, ["templates"]))
     assert held_during == [(None, None)]
@@ -648,8 +648,8 @@ def test_each_per_process_name_says_why_it_lives_as_long_as_the_engine():
     two whose life is a ``with`` block say the one the SPEC gives."""
     for key, reason in resident.PER_PROCESS.items():
         assert isinstance(reason, str) and len(reason) > 20, key
-    assert resident.PER_PROCESS[("settings", "_HELD")] == "reset by `settings.one_reading`"
-    assert resident.PER_PROCESS[("settings", "_HOLDING")] == "reset by `settings.one_reading`"
+    assert resident.PER_PROCESS[("hold", "_HELD")] == "reset by `hold.one_reading`"
+    assert resident.PER_PROCESS[("hold", "_HOLDING")] == "reset by `hold.one_reading`"
 
 
 def test_a_second_command_finds_nothing_the_first_left(capsys, monkeypatch):

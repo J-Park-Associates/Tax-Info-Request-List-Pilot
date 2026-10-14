@@ -702,7 +702,7 @@ def test_the_pass_holds_the_machines_answers_for_one_household_at_a_time(tmp_pat
     million times, nearly all of them the same few questions. Each
     household is served inside its own hold, dropped before the next, so a
     change a person makes between two households is seen by the second."""
-    from tracker import runner, settings
+    from tracker import hold, runner, settings
 
     smith = build_engagement(tmp_path, samples, household="Smith Family", name="Smith TY2025")
     jones = build_engagement(tmp_path, samples, household="Jones Family", name="Jones TY2025")
@@ -710,9 +710,9 @@ def test_the_pass_holds_the_machines_answers_for_one_household_at_a_time(tmp_pat
     real = runner.run_household
 
     def watched(household, returns, **kwargs):
-        kind, before = settings._HOLDING, dict(settings._HELD)
+        kind, before = hold._HOLDING, dict(hold._HELD)
         runs = real(household, returns, **kwargs)
-        holds.append((household.name, kind, before, len(settings._HELD)))
+        holds.append((household.name, kind, before, len(hold._HELD)))
         return runs
 
     monkeypatch.setattr(runner, "run_household", watched)
@@ -723,7 +723,7 @@ def test_the_pass_holds_the_machines_answers_for_one_household_at_a_time(tmp_pat
     assert [before for _, _, before, _ in holds] == [{}, {}], \
         "each household starts from nothing held: what the first held is dropped before the second"
     assert all(after > 0 for _, _, _, after in holds), "and each holds the answers it asked"
-    assert settings._HELD is None
+    assert hold._HELD is None
     assert all(not run.error for run in report.runs)
 
 
@@ -4332,7 +4332,7 @@ def test_the_practice_pages_report_asks_each_machine_question_once(tmp_path, sam
     once in all, not once per record read, as P223 counts them."""
     from collections import Counter
 
-    from tracker import settings
+    from tracker import hold, settings
 
     root = tmp_path / "Clients"
     _three_households(root, samples)
@@ -4344,12 +4344,12 @@ def test_the_practice_pages_report_asks_each_machine_question_once(tmp_path, sam
 
     def resolved(path):
         key = ("resolved", str(Path(path)))
-        if settings._HELD is None or key not in settings._HELD:
+        if hold._HELD is None or key not in hold._HELD:
             asked[key] += 1
         return real_resolved(path)
 
     def data_home():
-        if settings._HELD is None or ("data_home",) not in settings._HELD:
+        if hold._HELD is None or ("data_home",) not in hold._HELD:
             asked["data_home"] += 1
         return real_data_home()
 
@@ -4365,7 +4365,7 @@ def test_the_practice_page_is_written_after_its_readings_end(tmp_path, samples, 
     """P226 keeps P215's rule: the report and the parked files are read
     inside a reading, and ``status.html`` is written after it ends - a
     write is never made under held answers."""
-    from tracker import settings
+    from tracker import hold
 
     root = tmp_path / "Clients"
     _three_households(root, samples)
@@ -4374,7 +4374,7 @@ def test_the_practice_page_is_written_after_its_readings_end(tmp_path, samples, 
 
     def write(path, *args, **kwargs):
         if Path(path).name == STATUS_PAGE_FILENAME:
-            held.append(settings._HELD is None)
+            held.append(hold._HELD is None)
         return real(path, *args, **kwargs)
 
     monkeypatch.setattr(runner_module, "write_text_atomically", write)
@@ -5306,7 +5306,7 @@ def test_the_passs_discovery_and_its_page_read_hold_the_machines_answers(tmp_pat
     """P215 (findings-1 #1): discovery and the practice page's parked-file
     read only read, so each runs inside a reading - the machine's answers
     held for the call, and dropped when it returns."""
-    from tracker import settings
+    from tracker import hold, settings
 
     _two_households(tmp_path, samples)
     seen = {}
@@ -5314,19 +5314,19 @@ def test_the_passs_discovery_and_its_page_read_hold_the_machines_answers(tmp_pat
         real = getattr(runner_module, name)
 
         def watched(*args, _real=real, _name=name, **kwargs):
-            seen[_name] = settings._HOLDING
+            seen[_name] = hold._HOLDING
             return _real(*args, **kwargs)
 
         monkeypatch.setattr(runner_module, name, watched)
     assert _the_scheduled_job(tmp_path, monkeypatch, "--reminders", "never") == 0
     assert seen == {"discover_engagements": settings.HOLD_READING, "_parked_files": settings.HOLD_READING}
-    assert settings._HELD is None
+    assert hold._HELD is None
 
 
 def test_the_page_is_written_outside_the_reading(tmp_path, samples, monkeypatch):
     """Only the read is held: the page's write follows the hold's end, so a
     write inside it can never be refused as a write while reading."""
-    from tracker import settings
+    from tracker import hold
 
     _two_households(tmp_path, samples)
     holding = []
@@ -5334,7 +5334,7 @@ def test_the_page_is_written_outside_the_reading(tmp_path, samples, monkeypatch)
 
     def watched(path, *args, **kwargs):
         if Path(path).name == STATUS_PAGE_FILENAME:
-            holding.append(settings._HOLDING)
+            holding.append(hold._HOLDING)
         return real(path, *args, **kwargs)
 
     monkeypatch.setattr(runner_module, "write_text_atomically", watched)
@@ -5508,7 +5508,7 @@ def _an_idle_pass_counted(tmp_path, samples, monkeypatch) -> dict:
     code alone - never seconds, never questions to the disk."""
     import math
 
-    from tracker import checkpoint, settings
+    from tracker import checkpoint, hold, settings
 
     root = tmp_path / "Clients"
     _three_households(root, samples)
@@ -5539,7 +5539,7 @@ def _an_idle_pass_counted(tmp_path, samples, monkeypatch) -> dict:
 
     def unheld(real):
         def asked(*args, **kwargs):
-            counted["unheld"] += settings._HELD is None
+            counted["unheld"] += hold._HELD is None
             return real(*args, **kwargs)
         return asked
 
