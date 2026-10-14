@@ -192,7 +192,7 @@
     },
     "tests/test_corpus.py": {
       "role": "Holds the corpus harness to what it says: the backtest's error is the corpus's own class, a row with no year or a bad catalog is said by its number and never by a document's name or a catalog value, a document missing from the corpus or outside it is said by its row, a link is made under the neutral name, and a report inside the repository is refused.",
-      "notes": "SPEC-architecture P2.12, R2.12.6. Made-up inputs under tmp_path only; nothing here reads ENV_REAL_CORPUS (decision 185), and the rows that route a real folder stay tests/test_real_corpus.py's. The map draws this file as tools/corpus.py's owner (tested by); test_backtest, test_reader_bench and test_real_corpus import the module and are only exercised-by edges, not coverage."
+      "notes": "SPEC-architecture P2.12, R2.12.6. Made-up inputs under tmp_path only; nothing here reads ENV_REAL_CORPUS (decision 185), and the rows that route a real folder stay tests/test_real_corpus.py's. The map draws this file as tools/corpus.py's owner (tested by); test_backtest and test_real_corpus import the module and are only exercised-by edges, not coverage; test_reader_bench reaches it only through tools/reader_bench.py."
     },
     "tests/test_patch_sites.py": {
       "role": "Owns tools/patch_sites.py: its marks and the target forms it follows, each on a made-up repository of a few lines in a temporary folder, the backstop over the suite's setattr tokens, the command line's exit codes, and the check passing on the real suite, with no setattr token it does not account for and every filer site a plain search for setattr finds in the report.",

@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 350,
     "edges": 1536,
-    "reused": 285
+    "reused": 296
   },
   "node_types": [
     "artifact",
@@ -4733,7 +4733,7 @@
       "id": "docs/repo-map.curated.json",
       "type": "file",
       "layer": "docs",
-      "sha256": "7fb2704961df2ff5",
+      "sha256": "cf14cb1cfd2e98ba",
       "lines": 1708,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
@@ -7672,7 +7672,7 @@
         "OTHER_FILE": "'Aardvark Holdings 1098 2025.pdf'"
       },
       "role": "Holds the corpus harness to what it says: the backtest's error is the corpus's own class, a row with no year or a bad catalog is said by its number and never by a document's name or a catalog value, a document missing from the corpus or outside it is said by its row, a link is made under the neutral name, and a report inside the repository is refused.",
-      "notes": "SPEC-architecture P2.12, R2.12.6. Made-up inputs under tmp_path only; nothing here reads ENV_REAL_CORPUS (decision 185), and the rows that route a real folder stay tests/test_real_corpus.py's. The map draws this file as tools/corpus.py's owner (tested by); test_backtest, test_reader_bench and test_real_corpus import the module and are only exercised-by edges, not coverage."
+      "notes": "SPEC-architecture P2.12, R2.12.6. Made-up inputs under tmp_path only; nothing here reads ENV_REAL_CORPUS (decision 185), and the rows that route a real folder stay tests/test_real_corpus.py's. The map draws this file as tools/corpus.py's owner (tested by); test_backtest and test_real_corpus import the module and are only exercised-by edges, not coverage; test_reader_bench reaches it only through tools/reader_bench.py."
     },
     {
       "id": "tests/test_door.py",
