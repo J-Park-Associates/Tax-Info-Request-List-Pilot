@@ -1,5 +1,6 @@
 // The harness's double of app.js (SPEC-shell 14.4): exactly the globals and
-// functions shell.js and tooltip.js use, and nothing else. Loaded in place
+// functions the scripts loaded beside it use, and nothing else
+// (tests/test_renderer_seams.py holds it to them, SPEC-architecture R3.8). Loaded in place
 // of app.js by the harness server. It is the contract, written as code: what
 // the shell needs of app.js is what is defined here, and app.js keeps
 // defining it. Never loaded by the app.
@@ -28,6 +29,17 @@ function toast(msg) {
   box._t = setTimeout(() => box.classList.add("hidden"), 6000);
 }
 
+// A toast is the API's word, as app.js says it; a word the vocabulary lacks
+// is a failure said loudly.
+function toastWord(key) {
+  const said = vocab && vocab.screen && vocab.screen.notices ? vocab.screen.notices[key] : "";
+  if (!said) {
+    failed(new Error(`vocab.screen.notices.${key}`));
+    return;
+  }
+  toast(said);
+}
+
 // The builder and the per-PC store, as app.js defines them (shell.js and
 // pages.js build with `el` under the name `h`).
 const EL_ATTRIBUTES = new Set([
@@ -36,7 +48,8 @@ const EL_ATTRIBUTES = new Set([
   "aria-label", "aria-current", "aria-selected", "aria-expanded", "aria-busy", "aria-hidden",
   "aria-labelledby", "aria-valuemin", "aria-valuemax", "aria-valuenow", "aria-live",
   "aria-controls", "aria-description", "aria-keyshortcuts", "aria-disabled", "aria-pressed",
-  "aria-sort", "aria-haspopup", "aria-posinset", "aria-setsize",
+  "aria-sort", "aria-haspopup", "open",
+  "aria-posinset", "aria-setsize",
 ]);
 
 function el(tag, attrs = {}, ...children) {
@@ -267,6 +280,15 @@ const openSchedule = asked("openSchedule");
 const repairSchedule = asked("repairSchedule");
 const clearLock = asked("clearLock");
 const acceptFolderName = asked("acceptFolderName");
+const removeScheduleHere = asked("removeScheduleHere");
+const openUnfile = asked("openUnfile");
+const withdrawAnswer = asked("withdrawAnswer");
+// A write that is asked is never in flight, so no row's menu greys for one.
+function writeBusy() {
+  return false;
+}
+// Compact Rows tells the editor's long tables; the double has no editor.
+function editorDensityChanged() {}
 
 // pages.js reads a request's set-aside label the way app.js words it.
 function isSetAside(override) {
@@ -274,6 +296,22 @@ function isSetAside(override) {
 }
 function overrideLabel(override, year) {
   return isSetAside(override) && year ? fill(vocab.labels[vocab.overrides.not_applicable].label, { year }) : override || "";
+}
+// ...and, for a parked file's menu, whether a row is not a document and which
+// returns it could be handed to, read from the state as app.js reads them.
+function notADocument(row) {
+  return Boolean(row) && row.bucket === vocab.review_labels.not_a_document;
+}
+function fedReturns() {
+  const hh = lastState && lastState.household;
+  if (!hh) return [];
+  const open = hh.open_years || [];
+  const own = (hh.returns || [])
+    .filter((r) => r.active && open.includes(r.year) && r.path !== active)
+    .map((r) => ({ path: r.path, label: r.label }));
+  const fed = (hh.feeds || []).filter((f) => f.path)
+    .map((f) => ({ path: f.path, label: f.label }));
+  return [...own, ...fed];
 }
 
 // shell.js fills the setup page's draft, which saveRoot() sends.
