@@ -15,9 +15,9 @@
     "a person sends the draft"
   ],
   "counts": {
-    "nodes": 350,
+    "nodes": 351,
     "edges": 1557,
-    "reused": 296
+    "reused": 297
   },
   "node_types": [
     "artifact",
@@ -4912,6 +4912,13 @@
       "layer": "docs",
       "sha256": "246219b7fc49c14a",
       "lines": 2085
+    },
+    {
+      "id": "pilot/SPEC-architecture-p3.md",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "036eb20e5fbb5608",
+      "lines": 1619
     },
     {
       "id": "pilot/SPEC-architecture.md",
