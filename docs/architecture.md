@@ -54,7 +54,7 @@ the package but each other.
   its phone number), the data folder's place and its refusals, the Mac floor.
 - `hold.py`: the per-reply memo: the machine's answers held for one read-only
   reply or one household of a pass and dropped after it, never an error;
-  `settings.py` reads it through the module and re-exports it.
+  `settings.py` reads it through the module (it re-exported it until P2.13).
 - `errlog.py`: the one local debug log: an unexpected error's full words and
   every warning, in a rotating file beside the database and nowhere else;
   `settings.py` neither imports nor offers it.
@@ -68,7 +68,8 @@ the package but each other.
   held to it.
 - `bounds.py`: the value rule's bounds (decision 187): every limit a value in
   the record is held to, and the one phrase each refusal says, worded once for
-  the editor and the store's gate; `records.py` reads them and re-exports them.
+  the editor and the store's gate; `records.py` imports the ones it reads (it
+  re-exported the rest until P2.13).
 - `firm_cache.py`, `page_rows.py`, `firm_pages.py`: the firm view's cache,
   the practice page's kept rows and the firm lists cut into pages, so the
   app opens on hundreds of households without reading every record first.
