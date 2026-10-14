@@ -16,8 +16,8 @@
   ],
   "counts": {
     "nodes": 346,
-    "edges": 1496,
-    "reused": 0
+    "edges": 1500,
+    "reused": 291
   },
   "node_types": [
     "artifact",
@@ -7663,10 +7663,14 @@
       "id": "tests/test_errlog.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "a2abbd349f67dc3d",
-      "lines": 27,
+      "sha256": "6c06ea4021f9b420",
+      "lines": 104,
       "exports": [
-        "test_the_error_log_imports_only_the_settings_when_it_loads_and_the_store_and_errors_when_it_is_used"
+        "beside_the_app",
+        "test_an_error_log_that_cannot_be_written_never_spills_kept_words_to_stderr",
+        "test_the_error_log_imports_only_the_settings_when_it_loads_and_the_store_and_errors_when_it_is_used",
+        "test_the_error_log_is_none_when_the_data_home_cannot_be_had",
+        "test_the_error_log_lives_beside_the_tracker_database"
       ]
     },
     {
@@ -10535,8 +10539,8 @@
       "id": "tests/test_settings.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "b4e1b99e02b702f5",
-      "lines": 1223,
+      "sha256": "4d5caf173966b0d2",
+      "lines": 1161,
       "exports": [
         "PACKAGE",
         "a_mac",
@@ -10575,7 +10579,6 @@
         "test_a_settings_write_inside_a_reading_is_refused_outright",
         "test_a_stale_redirected_copy_is_found_and_never_touched",
         "test_an_absent_settings_file_is_found_absent_by_opening_it",
-        "test_an_error_log_that_cannot_be_written_never_spills_kept_words_to_stderr",
         "test_an_unreadable_settings_file_is_an_error_not_a_default",
         "test_an_unredirected_data_folder_is_answered_as_before",
         "test_asking_where_the_data_home_is_creates_nothing",
@@ -10598,8 +10601,6 @@
         "test_the_data_home_must_be_on_this_computers_own_disk",
         "test_the_data_home_off_windows_is_the_users_own_state_folder",
         "test_the_earlier_product_name_is_the_pilots_old_name_not_the_current_or_production_one",
-        "test_the_error_log_is_none_when_the_data_home_cannot_be_had",
-        "test_the_error_log_lives_beside_the_tracker_database",
         "test_the_firm_phone_is_written_beside_the_firm_name_and_blank_when_unset",
         "test_the_probe_runs_once_a_process",
         "test_the_real_corpus_is_a_folder_outside_the_repo_or_it_is_nothing",
@@ -14507,6 +14508,42 @@
     },
     {
       "from": "tests/test_errlog.py",
+      "to": "pkg:pytest",
+      "type": "depends_on",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_errlog.py",
+      "to": "tracker/__init__.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_errlog.py",
+      "to": "tracker/errors.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_errlog.py",
+      "to": "tracker/layout.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_errlog.py",
+      "to": "tracker/settings.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_errlog.py",
+      "to": "tracker/store.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_errlog.py",
       "to": "tests/import_graph.py",
       "type": "imports",
       "source": "derived"
@@ -17712,18 +17749,6 @@
     {
       "from": "tests/test_settings.py",
       "to": "tracker/__init__.py",
-      "type": "exercises",
-      "source": "derived"
-    },
-    {
-      "from": "tests/test_settings.py",
-      "to": "tracker/errlog.py",
-      "type": "exercises",
-      "source": "derived"
-    },
-    {
-      "from": "tests/test_settings.py",
-      "to": "tracker/errors.py",
       "type": "exercises",
       "source": "derived"
     },

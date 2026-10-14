@@ -282,68 +282,6 @@ def test_a_root_one_level_too_deep_is_refused_and_the_example_root_is_not(beside
     assert set_clients_root(lone) == lone.resolve()
 
 
-def test_the_error_log_lives_beside_the_tracker_database(beside_the_app, monkeypatch):
-    # Decision 193, the lane's ruling: beside the store, the folder 189's
-    # pass-order.json uses, so it moves wherever the store moves - and
-    # never in either client tree.
-    import logging
-
-    from tracker import store
-    from tracker.errlog import ERROR_LOG_FILENAME, error_log, error_log_path
-
-    elsewhere = beside_the_app / "data" / store.STORE_FILENAME
-    monkeypatch.setenv(store.ENV_STORE, str(elsewhere))
-    assert error_log_path() == elsewhere.parent / ERROR_LOG_FILENAME
-    with error_log() as path:
-        logging.getLogger("tracker.test").warning("a fabricated warning")
-    assert path == elsewhere.parent / ERROR_LOG_FILENAME
-    assert "a fabricated warning" in path.read_text(encoding="utf-8")
-    assert not (settings_dir() / ERROR_LOG_FILENAME).exists()
-
-
-def test_an_error_log_that_cannot_be_written_never_spills_kept_words_to_stderr(
-        beside_the_app, monkeypatch, capfd):
-    """Decision 190's landing review, SF1: with the log unwritable, logging's
-    own handleError would print the record's arguments - the kept error's
-    whole words - to stderr. The handler says one fixed line instead."""
-    import logging
-
-    from tracker import errors, store
-    from tracker.errlog import ERROR_LOG_FILENAME, ERROR_LOG_NOT_WRITTEN, error_log
-    from tracker.layout import CLIENTS_TREE
-
-    quoted = f"/{CLIENTS_TREE}/Sample Household/Drop files here/W2.pdf"
-    elsewhere = beside_the_app / "data" / store.STORE_FILENAME
-    monkeypatch.setenv(store.ENV_STORE, str(elsewhere))
-    (elsewhere.parent / ERROR_LOG_FILENAME).mkdir(parents=True)     # a folder: never writable as a file
-    monkeypatch.setattr(logging, "raiseExceptions", True)
-    capfd.readouterr()
-    with error_log("tracker") as path:
-        errors.keep("probe", ValueError(quoted), name="W2.pdf")
-    err = capfd.readouterr().err
-    assert quoted not in err and "W2.pdf" not in err, err
-    said = err.strip().splitlines()
-    head, tail = ERROR_LOG_NOT_WRITTEN.format(name=path.name, kind="\0").split("\0")
-    assert len(said) == 1 and said[0].startswith(head) and said[0].endswith(tail), err
-
-
-def test_the_error_log_is_none_when_the_data_home_cannot_be_had(monkeypatch):
-    """Decision 186 on 193: the error log sits beside the store, in the
-    data home; with no data home there is no log, and the block still runs
-    rather than raising before the command can say why."""
-    import logging
-
-    from tracker import store
-    from tracker.errlog import error_log
-    from tracker.settings import ENV_DATA_HOME
-
-    monkeypatch.delenv(store.ENV_STORE, raising=False)
-    monkeypatch.setenv(ENV_DATA_HOME, "relative-data")
-    with error_log() as path:
-        logging.getLogger("tracker.test").warning("a fabricated warning")
-    assert path is None
-
-
 # ------------------------------------------ decision 185: the suite's own folder ----
 
 
