@@ -378,8 +378,8 @@ def test_a_copy_of_a_document_is_made_in_the_data_home_never_the_machines_temp_f
     monkeypatch.setattr(tempfile, "tempdir", str(machine_temp))
     for name in ("TMP", "TEMP", "TMPDIR"):
         monkeypatch.setenv(name, str(machine_temp))
-    assert not settings._inside(settings.data_home(), machine_temp)
-    assert not settings._inside(machine_temp, settings.data_home())
+    assert not settings.inside(settings.data_home(), machine_temp)
+    assert not settings.inside(machine_temp, settings.data_home())
     corpus = two_documents(tmp_path)
 
     def no_links(source, target):
@@ -398,9 +398,9 @@ def test_a_copy_of_a_document_is_made_in_the_data_home_never_the_machines_temp_f
 
     assert len(seen) == 2
     for path in seen:
-        assert settings._inside(path, settings.process_scratch())      # this process's own folder
+        assert settings.inside(path, settings.process_scratch())      # this process's own folder
         assert path.parents[2] == settings.process_scratch()           # own / backtest-* / <row> / doc
-        assert not settings._inside(path, machine_temp)
+        assert not settings.inside(path, machine_temp)
     assert list(machine_temp.iterdir()) == []
     assert not settings.process_scratch().exists()
 
@@ -438,7 +438,7 @@ def test_a_reading_in_this_process_writes_through_the_temp_folder_into_the_runs_
     backtest.route_corpus(corpus, corpus / EXPECTATIONS_FILENAME, ocr=True)
 
     assert len(written) == 2
-    assert all(settings._inside(path, settings.process_scratch()) for path in written)
+    assert all(settings.inside(path, settings.process_scratch()) for path in written)
     assert not any(path.exists() for path in written)                  # gone with the run
     assert list(machine_temp.iterdir()) == []
     assert tempfile.tempdir == str(machine_temp)

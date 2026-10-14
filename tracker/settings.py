@@ -707,10 +707,10 @@ def inside_the_app(path: Path | str) -> bool:
 
     The one answer the report tools ask before writing, because a file there
     is one `git add -A` away from every clone; judged by the folder itself
-    as well as its spelling (:func:`_inside`). Decision 186 asks it too:
+    as well as its spelling (:func:`inside`). Decision 186 asks it too:
     client data never lives in a code checkout.
     """
-    return _inside(Path(path).expanduser().resolve(), app_dir())
+    return inside(Path(path).expanduser().resolve(), app_dir())
 
 
 def system_drive_root() -> Path:
@@ -821,7 +821,7 @@ def _the_program_folders() -> list[Path]:
     app = app_dir()
     folders = [app]
     settings = settings_dir().resolve()
-    if settings != app and _inside(app, settings):
+    if settings != app and inside(app, settings):
         folders.append(settings)
     return folders
 
@@ -928,7 +928,7 @@ def resolve_data_home(environ, *, system: str, home: Path | None, program, drive
     if (blocker := _file_in_the_way(answer)) is not None:
         raise SettingsError(DATA_HOME_NOT_A_FOLDER.format(home=answer, blocker=blocker))
     for folder in program:
-        if _inside(answer, Path(folder)) or _inside(Path(folder), answer):
+        if inside(answer, Path(folder)) or inside(Path(folder), answer):
             raise SettingsError(DATA_HOME_BESIDE_PROGRAM.format(home=answer, program=folder))
     if system == "darwin" and home is not None and (service := synced_tree(answer, home=home)):
         raise SettingsError(DATA_HOME_SYNCED.format(home=answer, service=service))
@@ -1258,7 +1258,7 @@ def _within(inner: Path, outer: Path) -> bool:
     return a.startswith(b.rstrip(os.sep) + os.sep)
 
 
-def _inside(inner: Path, outer: Path) -> bool:
+def inside(inner: Path, outer: Path) -> bool:
     r"""Whether ``inner`` is ``outer`` or lies below it - by its spelling, or
     by **the folder itself** (decision 137's review, F1).
 
@@ -1268,6 +1268,10 @@ def _inside(inner: Path, outer: Path) -> bool:
     are asked whether they *are* ``outer`` (``os.path.samefile``: the same
     volume and file id), which no spelling changes. A folder that is not
     there has no identity, and only its spelling is compared.
+
+    Public because the store asks it (decision 186's two checks): that a
+    store override is not inside the program, and whether a typed folder is
+    the app's own.
     """
     if _within(inner, outer):
         return True
@@ -1330,17 +1334,17 @@ def root_refusal(root: Path, *, settings: Path, app: Path, system: Path,
     ``home`` the account's home folder, for a Mac's rules (R5,
     :func:`_mac_root_refusal`), which a test gives to run them anywhere.
     """
-    if _inside(system, root) and _inside(root, system):
+    if inside(system, root) and inside(root, system):
         return ROOT_IS_SYSTEM_DRIVE.format(root=root)
-    if _inside(settings, root):
+    if inside(settings, root):
         return ROOT_HOLDS_SETTINGS.format(root=root, settings=settings)
-    if _inside(root, settings):
+    if inside(root, settings):
         return ROOT_INSIDE_SETTINGS.format(root=root, settings=settings)
-    if data is not None and _inside(data, root):
+    if data is not None and inside(data, root):
         return ROOT_HOLDS_DATA.format(root=root, data=data)
-    if data is not None and _inside(root, data):
+    if data is not None and inside(root, data):
         return ROOT_INSIDE_DATA.format(root=root, data=data)
-    if _inside(app, root):
+    if inside(app, root):
         return ROOT_HOLDS_APP.format(root=root, app=app)
     if (host_system() if host is None else host) == "darwin":
         account = _home() if home is None else Path(home)

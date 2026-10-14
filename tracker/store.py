@@ -799,7 +799,7 @@ def store_path() -> Path:
     if not path.is_absolute():
         raise settings.SettingsError(STORE_OVERRIDE_NOT_ABSOLUTE.format(value=override))
     for program in settings.program_folders():
-        if settings._inside(path, program):
+        if settings.inside(path, program):
             raise settings.SettingsError(STORE_OVERRIDE_IN_PROGRAM.format(path=path, program=program))
     if settings.drive_type(path) != settings.DRIVE_FIXED:
         raise settings.SettingsError(STORE_OVERRIDE_NOT_LOCAL.format(path=path))
@@ -3939,7 +3939,7 @@ def store_named(given: Path) -> Path | str | None:
     whole = Path(os.path.abspath(given))
 
     def same(a: Path, b: Path) -> bool:
-        return settings._inside(a, b) and settings._inside(b, a)
+        return settings.inside(a, b) and settings.inside(b, a)
 
     mine = (settings.settings_dir(), settings.app_dir())
     if whole.exists() and any(same(whole, place) for place in (*mine, settings.settings_path())):

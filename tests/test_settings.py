@@ -757,9 +757,9 @@ def test_the_store_the_scratch_and_the_task_file_never_resolve_under_the_program
     places = [store.store_path(), data_rules.scratch_root(), data_rules.process_scratch(),
               scheduling.schedule_xml_path(), data_rules.logs_dir(), runner.log_path()]
     for place in places:
-        assert data_rules._inside(place, account / data_rules.DATA_HOME_NAME), place
+        assert data_rules.inside(place, account / data_rules.DATA_HOME_NAME), place
         for never in (data_rules.app_dir(), repository, clients):
-            assert not data_rules._inside(place, never), (place, never)
+            assert not data_rules.inside(place, never), (place, never)
     assert not (account / data_rules.DATA_HOME_NAME).exists()
 
 
@@ -1020,7 +1020,7 @@ def test_a_packaged_mac_keeps_its_settings_outside_the_bundle(tmp_path, monkeypa
 
     expected = home / "Library" / "Application Support" / data_rules.product_name()
     assert data_rules.settings_dir() == expected
-    assert not data_rules._inside(data_rules.settings_dir(), bundle)
+    assert not data_rules.inside(data_rules.settings_dir(), bundle)
     assert data_rules.mac_settings_dir(home) == expected
     # The shell's own word for it still wins, as on Windows.
     monkeypatch.setenv(ENV_SETTINGS_DIR, str(tmp_path / "told"))

@@ -1629,7 +1629,7 @@ def test_the_readings_own_stop_reads_the_awake_clock():
 
 def test_a_reading_child_keeps_every_temporary_file_in_its_own_folder_in_the_data_home(in_a_child):
     from tests import child_readers
-    from tracker.settings import _inside, scratch_root
+    from tracker.settings import inside, scratch_root
 
     child = ocr.ReadingChild(processor_only=True)
     try:
@@ -1639,7 +1639,7 @@ def test_a_reading_child_keeps_every_temporary_file_in_its_own_folder_in_the_dat
         *places, pid = outcome.answer
         assert int(pid) == child.pid
         for place in places:
-            assert _inside(Path(place), own), place
+            assert inside(Path(place), own), place
         assert Path(places[-1]).is_file()                          # made, and made there
     finally:
         child.finish()
