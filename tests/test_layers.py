@@ -92,6 +92,24 @@ for the readers never depends on the modules that walk folders and move
 files; its command line imports the registry at call time, which is where
 a cycle is allowed to close.
 
+**The domains** (decision P314). A layer says what a module may import; a
+domain says what the module is for. There are six: ``record`` (the household's
+journal, its request list and the shape of the clients root), ``reading``
+(opening a client's file and getting the text out of it), ``sorting``
+(deciding where a document belongs), ``pass`` (the scheduled run and what it
+drives), ``door`` (the API, the engine that answers it and what an error is
+called) and ``shell`` (the pages a person opens). A domain is the grouping a
+folder tree would show, checked here instead: the modules stay flat in
+``tracker/``, because a subpackage would escape every guard that reads only
+``tracker/*.py`` and change every import path, and the layer table already
+says what may lean on what. So :data:`DOMAINS` sits beside
+:data:`LAYERS`, and ``test_every_module_sits_in_exactly_one_domain`` fails
+when a module has no domain, has two, or is named in a domain and not in a
+layer. A domain is documentation that is checked: it forbids nothing the
+layers allow, and no import is refused for crossing one. Each later job that
+adds a module adds it to both tables. The `door` domain is the API's door;
+`tracker/door.py` is the record's.
+
 **An allow-list, not only a denylist** (decision 190). The denylist above
 names what anyone would think of; a module it does not name would arrive
 quietly. So every top-level name imported anywhere under ``tracker/`` must
@@ -157,6 +175,36 @@ LAYERS: dict[int, frozenset[str]] = {
     5: frozenset({"api", "resident"}),
 }
 LAYER_OF: dict[str, int] = {module: layer for layer, modules in LAYERS.items() for module in modules}
+
+#: Domain -> the modules in it (decision P314). A layer says what a module may
+#: import; a domain says what the module is for, the grouping a folder tree
+#: would show. It forbids nothing the layers allow: no import is refused for
+#: crossing a domain. Every file in tracker/ is in exactly one, and a module
+#: that is added is added here and in :data:`LAYERS` in the same commit.
+DOMAINS: dict[str, frozenset[str]] = {
+    # The household's record: the journal and its lock, the request list and
+    # the catalog it is built from, and the shape of the clients root.
+    # ``door`` here is ``tracker/door.py``, the module that knows which
+    # household a path is in (decision 188); it is not the API's door, which
+    # is the ``door`` domain below.
+    "record": frozenset({"__init__", "ledger", "locking", "checkpoint", "fsio", "layout", "door",
+                         "settings", "records", "store", "manifest", "households", "templates",
+                         "scaffold"}),
+    # Opening a client's file, checking it and getting the text out of it.
+    "reading": frozenset({"validators", "containers", "content_check", "ocr"}),
+    # Deciding where a document belongs, or that it belongs nowhere yet, and
+    # the shortlist a person gets for the ones that do not.
+    "sorting": frozenset({"reasons", "router", "names", "filer", "scanner", "review"}),
+    # The scheduled run and what it drives: the engagements it finds, the
+    # year it rolls over, the reminder it drafts and how it is watched.
+    "pass": frozenset({"progress", "registry", "rollover", "reminder", "runner", "scheduling",
+                       "after_install"}),
+    # The one way the app reaches the rest, the engine that answers it and
+    # what an error is called.
+    "door": frozenset({"errors", "api", "resident"}),
+    # What a person opens: the pages, their kept rows and the firm's view.
+    "shell": frozenset({"page", "page_rows", "firm_cache", "firm_pages", "view"}),
+}
 
 #: Load-time edges that may point upward. None today; an entry here is a
 #: debt with a decision row behind it, removed by the step that pays it.
@@ -292,6 +340,17 @@ def test_every_module_is_in_exactly_one_layer():
     listed = [module for layer in LAYERS.values() for module in layer]
     assert sorted(listed) == sorted(set(listed)), "a module is named in two layers"
     assert set(listed) == modules, set(listed) ^ modules
+
+
+def test_every_module_sits_in_exactly_one_domain():
+    assert set(DOMAINS) == {"record", "reading", "sorting", "pass", "door", "shell"}
+    listed = [module for members in DOMAINS.values() for module in members]
+    twice = sorted({module for module in listed if listed.count(module) > 1})
+    assert not twice, f"in two domains: {twice}"
+    assert set(listed) == set(LAYER_OF), {
+        "in a domain with no layer": sorted(set(listed) - set(LAYER_OF)),
+        "in a layer with no domain": sorted(set(LAYER_OF) - set(listed)),
+    }
 
 
 def test_no_load_time_import_points_to_a_higher_layer():
