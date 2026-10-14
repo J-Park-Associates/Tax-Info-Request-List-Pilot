@@ -184,9 +184,11 @@ that wording.
 ```
 pip install --require-hashes -r requirements.lock                     # hash-checked (decision 191)
 pip install --require-hashes --no-deps -r requirements-nodeps.lock    # the reader (decision 169)
+pip install --require-hashes -r requirements-dev.lock                 # the type checker, once (decision P310)
 python -m pytest -q -n auto        # the whole suite, in parallel (a quick local run adds -m "not corpus"; a gate never adds it, so an affected file's corpus walk still runs; agents run the affected tests, below)
 python tools/repo_map.py check      # map matches the tree
 python -m ruff check .              # no dead code, no unused imports (CI runs this too)
+python tools/typecheck.py check     # no file gains a type error (docs/typecheck-baseline.json)
 ```
 
 Conventions worth matching:
@@ -241,9 +243,10 @@ standing rule"):**
   changed module's own test file, the own test file of every module that
   imports a changed one (the grey areas), and `test_layers`,
   `test_single_source` and `test_repo_map`; they run under the floor
-  interpreter and the office's. Then `python -m ruff check .` and both
-  `check`s. After review fixes, only the tests the fix touches run again.
-  The tracker lane runs the same gate on the office PC before every merge.
+  interpreter and the office's. Then `python -m ruff check .`, both
+  `check`s and the type check. After review fixes, only the tests the fix
+  touches run again. The tracker lane runs the same gate on the office PC
+  before every merge.
 - **CI never fires per commit** (decision 211, revising 207). It runs on a
   push to `main` (Linux, the net under what merged) and once when a person
   marks a pull request ready (the run main's protection needs before a
