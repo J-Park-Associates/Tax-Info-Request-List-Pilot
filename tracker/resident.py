@@ -61,6 +61,23 @@ lock-held"``): never a value, a path or a name. The end line then says
 ``retiring: true`` and the engine returns; the shell starts a new one at
 once, at no cost against its restart budget.
 
+**The state between commands** (SPEC-architecture R5.1). A process of its
+own began every command with each module as it was imported; the engine
+keeps its modules, so what one command leaves in them must not reach the
+next. The state register names every module-level name in ``tracker/`` that
+a function rebinds with ``global`` (or through ``globals()``), or that is a
+list, dict or set some function changes in place, in one of two tables.
+:data:`PER_COMMAND` holds each such name with its fresh value, and the
+engine restores every one after every command and before a refusal
+(:func:`_restore_per_command`): a container is emptied in place and filled
+with its fresh value, so whatever holds it still holds the same object, and
+anything else is bound to its fresh value again. :data:`PER_PROCESS` holds
+the rest, each with the reason or decision that keeps it for the engine's
+life. ``tests/test_resident.py`` derives the names by reading the package
+and fails on a name in neither table, in both, or in one no longer derived,
+so a new module-level state is placed the day it is written. ``functools``
+caches on pure functions are outside the register.
+
 **The real input is the engine's alone.** It duplicates file descriptor 0
 for itself and points 0 at the null device, so nothing a command starts - a
 scheduler tool, a reading child - can read a frame (the duplicate is not
@@ -73,7 +90,9 @@ reader's process-wide switches change only in that child and end with it.
 It makes no network call and imports none (``tests/test_layers.py``); it
 imports ``api`` (which owns the commands), ``locking``, ``ocr`` (to forget the
 reader's warnings between commands), ``settings`` and the standard library,
-and nothing imports it but ``api_entry.py``, at call time.
+and nothing imports it but ``api_entry.py``, at call time. The register's
+other modules are restored through ``sys.modules`` without importing them: a
+module not yet imported holds its fresh values.
 """
 
 from __future__ import annotations
@@ -117,6 +136,70 @@ RETIRED_THREAD = "thread-left-running"
 RETIRED_BUDGET = "command-budget"
 
 log = logging.getLogger("tracker.resident")
+
+#: The state register's names restored after every command: ``(module,
+#: name)`` -> the value the module binds it to when imported.
+PER_COMMAND: dict[tuple[str, str], object] = {
+    # What the last command left for its envelope: its warnings, the row it
+    # was asked about, and its own name (api.main sets all three per command).
+    ("api", "_ASKED"): {},
+    ("api", "_RUNNING"): {"command": ""},
+    ("api", "_WARNINGS"): [],
+    # The files whose reader could not start, which only a pass says and
+    # empties: no pass runs here, so they piled up until the engine retired
+    # (finding A-7).
+    ("content_check", "_COULD_NOT_START"): [],
+    # The last line a reading looked at, one document's.
+    ("content_check", "_last_line"): None,
+    # The full-sync warning is said once per command, as before P276 (C-3).
+    ("fsio", "_full_sync_said"): False,
+    ("locking", "_full_sync_said"): False,
+    # The reader's memory-limit warnings, said once per command (P276);
+    # ocr.forget_said empties it before each command too.
+    ("ocr", "_SAID"): set(),
+}
+
+#: The state register's names kept for the engine's life: ``(module, name)``
+#: -> the reason or decision that keeps it.
+PER_PROCESS: dict[tuple[str, str], str] = {
+    ("content_check", "_STOP"): "one document's safety stop, set and cleared around it by "
+                                "extract_by_ocr (decision 137)",
+    ("errors", "_dropped"): "a reading child's count, started by keep_for_the_parent and cleared by "
+                            "take_kept (decision 190)",
+    ("errors", "_for_the_parent"): "a reading child's keeps, started by keep_for_the_parent and emptied "
+                                   "by take_kept (decision 190)",
+    ("locking", "_held"): "every lock is taken and let go inside one command, and the engine retires "
+                          "after one that left a lock held (decision 171, locking.held_now)",
+    ("locking", "_mac_host"): "a fact about the machine: its local host name (SPEC-mac R21)",
+    ("locking", "_unreleased"): "the engine retires after a command that could not let a lock go "
+                                "(decision 171, locking.left_unreleased)",
+    ("ocr", "SETTINGS"): "the reader's settings, changed by use_settings for the reader bench and the "
+                         "suite only",
+    ("ocr", "_DEVICE"): "the reader's device, settled once a process (decision 169)",
+    ("ocr", "_ENGINE"): "the reader's engine, built once a process (decision 169)",
+    ("ocr", "_NOTES"): "a pass's notes, taken by take_notes and cleared by reset; no pass runs in the "
+                       "engine (decision 169)",
+    ("ocr", "_PROCESSOR_ONLY"): "set after a fault on the card, for the rest of the process "
+                                "(decision 169)",
+    ("ocr", "_SESSION"): "the reading session, for the life of reading_session's with block "
+                         "(decision 169)",
+    ("settings", "_HELD"): "reset by `settings.one_reading`",
+    ("settings", "_HOLDING"): "reset by `settings.one_reading`",
+    ("settings", "_redirect_answer"): "a fact about the machine, asked once",
+    ("store", "_CHECKPOINT"): "the store's connection, closed by store.close in api.main's finally "
+                              "after every command (decision 101, P214)",
+    ("store", "_CHECKPOINT_FILE"): "the store's connection, closed by store.close in api.main's "
+                                   "finally after every command (decision 101, P214)",
+    ("store", "_CHECKPOINT_PATH"): "the store's connection, closed by store.close in api.main's "
+                                   "finally after every command (decision 101, P214)",
+    ("store", "_CONNECTION"): "the store's connection, closed by store.close in api.main's finally "
+                              "after every command (decision 101, P214)",
+    ("store", "_CONNECTION_PATH"): "the store's connection, closed by store.close in api.main's "
+                                   "finally after every command (decision 101, P214)",
+    ("store", "_REPLACED"): "part of every held read's token for the process's life, so a row built "
+                            "again is never answered from a read of the one it replaced (P215)",
+    ("validators", "PdfReader"): "pypdf's reader, imported once, at the first PDF (P219)",
+}
 
 
 def _request_of(line: bytes) -> dict | None:
@@ -194,12 +277,26 @@ def _write_end_line(number: int, code: int, retiring: bool) -> None:
     sys.stdout.flush()
 
 
-def _clear_the_last_command() -> None:
-    """Forget what the last command left for an envelope (its warnings and
-    the row it was asked about): a refusal made before any command runs must
-    not carry them, as ``api.main`` clears them at the top of each command."""
-    api._WARNINGS.clear()
-    api._ASKED.clear()
+def _restore_per_command() -> None:
+    """Every :data:`PER_COMMAND` name as its module was imported: a
+    container emptied in place and filled from its fresh value (whatever
+    holds it still holds the same object), anything else bound again. A
+    fresh value holds no container of its own (``tests/test_resident.py``),
+    so filling from it shares nothing a command could change. A module not
+    yet imported is passed over: it holds its fresh values already."""
+    for (name_of_module, name), fresh in PER_COMMAND.items():
+        module = sys.modules.get(f"tracker.{name_of_module}")
+        if module is None:
+            continue
+        held = getattr(module, name)
+        if isinstance(held, (list, dict, set)):
+            held.clear()
+            if isinstance(held, list):
+                held.extend(fresh)
+            else:
+                held.update(fresh)
+        else:
+            setattr(module, name, fresh)
 
 
 def _run_one_command(argv: list[str], payload: bytes) -> tuple[int, bool]:
@@ -209,7 +306,10 @@ def _run_one_command(argv: list[str], payload: bytes) -> tuple[int, bool]:
 
     The reader's memory-limit warnings are said "once by this process"
     (``ocr.forget_said``); a process of its own said them once per command, so the
-    engine forgets them before each command and its error log reads the same."""
+    engine forgets them before each command and its error log reads the same.
+    After the command, its reply said, every :data:`PER_COMMAND` name is
+    restored (:func:`_restore_per_command`), so the next command finds the
+    modules as a process of its own would."""
     ocr.forget_said()
     stdin = sys.stdin
     sys.stdin = io.TextIOWrapper(io.BytesIO(payload), encoding="utf-8")
@@ -224,6 +324,7 @@ def _run_one_command(argv: list[str], payload: bytes) -> tuple[int, bool]:
             return api.say_failure(argv[0], exc), True
     finally:
         sys.stdin = stdin
+        _restore_per_command()
 
 
 def serve(stream: BinaryIO | None = None) -> int:
@@ -261,7 +362,7 @@ def serve(stream: BinaryIO | None = None) -> int:
             return 0
         argv = asked["argv"]
         if argv[0] in api.OWN_PROCESS_COMMANDS:
-            _clear_the_last_command()
+            _restore_per_command()   # a refusal carries nothing the last command left
             code = api.say_failure(argv[0], api.ManifestError(OWN_PROCESS_ONLY))
             retire = RETIRED_REFUSED
         else:

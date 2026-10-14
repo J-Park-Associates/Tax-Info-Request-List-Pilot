@@ -4,12 +4,16 @@ pilot/SPEC-ui-menu-speed.md section 3).
 The contract under test: the engine answers each command handed to it exactly
 as a process of its own would, frames its reply with an end line, never runs a
 pass or the after-install step, and ends itself after any command that left the
-process unlike it found it. The engine is driven in this process through
+process unlike it found it. Its state register (SPEC-architecture R5.1) is held
+to the package's source: every module-level name a function rebinds or changes
+in place is in exactly one of its tables, and a second command finds every
+per-command name as a process of its own would. The engine is driven in this process through
 ``serve`` and a byte stream, as ``tests/test_api.py`` drives ``api.main``; the
 two claims about real descriptors (the input only the engine can read, the
 process end to end) start a real process.
 """
 
+import ast
 import io
 import json
 import os
@@ -504,3 +508,208 @@ def test_the_readers_once_per_process_warnings_are_said_once_per_command_as_a_pr
     monkeypatch.setitem(api.COMMANDS, "templates", lambda argv: ocr._say_once("a memory-limit sentence") or {})
     serve(capsys, frame(1, ["templates"]), frame(2, ["templates"]))
     assert error_log_text().count("a memory-limit sentence") == 2
+
+
+# ------------------------------- the state register (SPEC-architecture R5.1-R5.3) ----
+
+#: The calls that change a list, dict or set in place (SPEC-architecture R5.1).
+CHANGES_IN_PLACE = frozenset({"append", "extend", "insert", "update", "setdefault", "pop", "clear",
+                              "add", "discard", "remove"})
+
+
+def _bound_at_module_level(tree: ast.Module) -> dict[str, ast.expr | None]:
+    """The names a module binds by assignment when it is imported - at its top
+    level, inside a top-level ``if`` or ``try`` too, but not in its
+    ``if __name__ == "__main__":`` block - each with the expression it is
+    bound to."""
+    bound: dict[str, ast.expr | None] = {}
+    statements = list(tree.body)
+    while statements:
+        statement = statements.pop(0)
+        if isinstance(statement, ast.If) and "__name__" in ast.unparse(statement.test):
+            continue
+        if isinstance(statement, (ast.If, ast.Try)):
+            statements.extend(statement.body + statement.orelse
+                              + getattr(statement, "finalbody", [])
+                              + [line for handler in getattr(statement, "handlers", []) for line in handler.body])
+        elif isinstance(statement, (ast.Assign, ast.AnnAssign)):
+            targets = statement.targets if isinstance(statement, ast.Assign) else [statement.target]
+            for target in targets:
+                for node in ast.walk(target):
+                    if isinstance(node, ast.Name):
+                        bound[node.id] = statement.value
+    return bound
+
+
+def _outermost_functions(tree: ast.Module) -> list[ast.FunctionDef | ast.AsyncFunctionDef]:
+    """The module's functions and methods that no function encloses: each is
+    read whole, with the functions inside it."""
+    functions, scopes = [], list(tree.body)
+    while scopes:
+        node = scopes.pop(0)
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            functions.append(node)
+        elif isinstance(node, (ast.ClassDef, ast.If, ast.Try, ast.With, ast.For, ast.While)):
+            scopes.extend(child for child in ast.iter_child_nodes(node) if isinstance(child, ast.stmt))
+            scopes.extend(line for handler in getattr(node, "handlers", []) for line in handler.body)
+    return functions
+
+
+def _locals_of(function: ast.FunctionDef | ast.AsyncFunctionDef, declared: set[str]) -> set[str]:
+    """The names ``function`` and the functions inside it bind for
+    themselves: their parameters and what they assign, less what is declared
+    ``global``."""
+    names = set()
+    for inner in ast.walk(function):
+        if isinstance(inner, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
+            arguments = inner.args
+            names |= {one.arg for one in arguments.posonlyargs + arguments.args + arguments.kwonlyargs}
+            names |= {one.arg for one in (arguments.vararg, arguments.kwarg) if one is not None}
+        elif isinstance(inner, ast.Name) and isinstance(inner.ctx, ast.Store):
+            names.add(inner.id)
+    return names - declared
+
+
+def _derived_register() -> dict[tuple[str, str], ast.expr | None]:
+    """Every ``(module, name)`` of ``tracker/*.py`` that R5.1 puts in the
+    register, read from the source: a module-level name a function rebinds
+    or deletes under ``global`` or stores through ``globals()[...]``, or a
+    module-level list, dict or set a function changes in place (a call of
+    :data:`CHANGES_IN_PLACE`, an item assigned or deleted) where no
+    enclosing function binds that name for itself. Each comes with the
+    expression its module binds it to, ``None`` when no assignment at the
+    top level binds it."""
+    found: dict[tuple[str, str], ast.expr | None] = {}
+    for path in sorted((REPO / "tracker").glob("*.py")):
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        module = path.stem
+        bound = _bound_at_module_level(tree)
+        for function in _outermost_functions(tree):
+            declared = {name for node in ast.walk(function) if isinstance(node, ast.Global) for name in node.names}
+            own = _locals_of(function, declared)
+            for node in ast.walk(function):
+                if isinstance(node, ast.Name) and isinstance(node.ctx, (ast.Store, ast.Del)) and node.id in declared:
+                    found[(module, node.id)] = bound.get(node.id)
+                elif (isinstance(node, ast.Subscript) and isinstance(node.ctx, ast.Store)
+                      and isinstance(node.value, ast.Call) and isinstance(node.value.func, ast.Name)
+                      and node.value.func.id == "globals" and isinstance(node.slice, ast.Constant)):
+                    found[(module, node.slice.value)] = bound.get(node.slice.value)
+                elif (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+                      and node.func.attr in CHANGES_IN_PLACE and isinstance(node.func.value, ast.Name)):
+                    receiver = node.func.value.id
+                    if receiver in bound and receiver not in own:
+                        found[(module, receiver)] = bound[receiver]
+                elif (isinstance(node, ast.Subscript) and isinstance(node.ctx, (ast.Store, ast.Del))
+                      and isinstance(node.value, ast.Name)):
+                    receiver = node.value.id
+                    if receiver in bound and receiver not in own:
+                        found[(module, receiver)] = bound[receiver]
+    return found
+
+
+def _fresh_value_of(expression: ast.expr | None) -> object:
+    """The value ``expression`` binds when its module is imported: a literal,
+    or an empty ``set()``, ``list()`` or ``dict()``."""
+    assert expression is not None, "a per-command name needs a module-level assignment to be fresh from"
+    if (isinstance(expression, ast.Call) and isinstance(expression.func, ast.Name)
+            and expression.func.id in {"set", "list", "dict"} and not expression.args and not expression.keywords):
+        return {"set": set, "list": list, "dict": dict}[expression.func.id]()
+    return ast.literal_eval(expression)
+
+
+def test_every_module_level_state_of_the_package_is_in_exactly_one_table_of_the_register():
+    """R5.1, R5.3: the register names every module-level name the package
+    rebinds or changes in place - no name in neither table, none in both,
+    and none that the source no longer makes state - so a new one is placed,
+    with its reason or its fresh value, the day it is written."""
+    derived = set(_derived_register())
+    per_command, per_process = set(resident.PER_COMMAND), set(resident.PER_PROCESS)
+    assert not per_command & per_process, sorted(per_command & per_process)
+    assert sorted(derived - per_command - per_process) == [], "in neither table"
+    assert sorted((per_command | per_process) - derived) == [], "no longer state the package keeps"
+
+
+def test_each_per_command_value_is_the_one_its_module_binds_when_imported():
+    """R5.1: the value the resident restores is the module's own, read from
+    the assignment that binds it, so a restored module is as a process of
+    its own imports it. None holds a container of its own: a container is
+    filled from it in place, which then shares nothing a command could change."""
+    derived = _derived_register()
+    for key, fresh_value in resident.PER_COMMAND.items():
+        assert fresh_value == _fresh_value_of(derived[key]), key
+        assert type(fresh_value) is type(_fresh_value_of(derived[key])), key
+        inside = fresh_value.values() if isinstance(fresh_value, dict) else (
+            fresh_value if isinstance(fresh_value, (list, set)) else ())
+        assert not [one for one in inside if isinstance(one, (list, dict, set))], key
+
+
+def test_each_per_process_name_says_why_it_lives_as_long_as_the_engine():
+    """R5.1: every name kept for the engine's life carries its reason; the
+    two whose life is a ``with`` block say the one the SPEC gives."""
+    for key, reason in resident.PER_PROCESS.items():
+        assert isinstance(reason, str) and len(reason) > 20, key
+    assert resident.PER_PROCESS[("settings", "_HELD")] == "reset by `settings.one_reading`"
+    assert resident.PER_PROCESS[("settings", "_HOLDING")] == "reset by `settings.one_reading`"
+
+
+def test_a_second_command_finds_nothing_the_first_left(capsys, monkeypatch):
+    """R5.2, R5.3: the first command leaves a reader that could not start (the
+    leak, A-7), a warning, the row it was asked about, the full-sync warnings
+    said (C-3), a line looked at and a memory-limit warning said; the second,
+    through the same engine, finds every one as a process of its own would,
+    replies byte for byte as one would, and after it every per-command name
+    is its fresh value again, in the same object where it is a container."""
+    from tracker import content_check, fsio, ocr
+
+    # Each per-command name as its module is imported, and put back after.
+    monkeypatch.setattr(api, "_ASKED", {})
+    monkeypatch.setattr(api, "_RUNNING", {"command": ""})
+    monkeypatch.setattr(api, "_WARNINGS", [])
+    monkeypatch.setattr(content_check, "_COULD_NOT_START", [])
+    monkeypatch.setattr(content_check, "_last_line", None)
+    monkeypatch.setattr(fsio, "_full_sync_said", False)
+    monkeypatch.setattr(locking, "_full_sync_said", False)
+    monkeypatch.setattr(ocr, "_SAID", set())
+    containers = {key: getattr(sys.modules[f"tracker.{key[0]}"], key[1]) for key, value in resident.PER_COMMAND.items()
+                  if isinstance(value, (list, dict, set))}
+    left: list[set] = []
+    found: list[dict] = []
+
+    def leaves(argv):
+        content_check.could_not_start(1.0, "OSError", "Smith W-2.pdf")
+        api._warn("a sentence of the first command")
+        api._ASKED.update({"identifier": "A01"})
+        content_check._last_line = ("a line of the first command", 0, 1)
+        fsio._full_sync_said = True
+        locking._full_sync_said = True
+        ocr._SAID.add("a memory-limit sentence")
+        left.append({key for key, value in resident.PER_COMMAND.items()   # api.main set _RUNNING's
+                     if getattr(sys.modules[f"tracker.{key[0]}"], key[1]) != value})
+        return {"could_not_start": list(content_check._COULD_NOT_START)}
+
+    def finds(argv):
+        found.append({"could_not_start": list(content_check._COULD_NOT_START),
+                      "last_line": content_check._last_line,
+                      "full_sync_said": (fsio._full_sync_said, locking._full_sync_said),
+                      "said": set(ocr._SAID), "asked": dict(api._ASKED), "warnings": list(api._WARNINGS)})
+        return {"could_not_start": content_check.readers_that_could_not_start()}
+
+    monkeypatch.setitem(api.COMMANDS, "templates", finds)
+    _code, wanted = fresh(capsys, ["templates"])      # the second command, as a process of its own replies
+    found.clear()
+    turns = iter([leaves, finds])
+    monkeypatch.setitem(api.COMMANDS, "templates", lambda argv: next(turns)(argv))
+    _code, out = serve(capsys, frame(1, ["templates"]), frame(2, ["templates"]))
+    (first, first_end), (second, end) = replies(out)
+    assert left == [set(resident.PER_COMMAND)], "the first command leaves every per-command name changed"
+    assert json.loads(first)["could_not_start"] == ["Smith W-2.pdf"]
+    assert json.loads(first)["warnings"] == ["a sentence of the first command"]
+    assert found == [{"could_not_start": [], "last_line": None, "full_sync_said": (False, False),
+                      "said": set(), "asked": {}, "warnings": []}]
+    assert second == wanted and end == {resident.END_KEY: 2, "code": 0, "retiring": False}
+    assert out == first + "\n" + json.dumps(first_end) + "\n" + wanted + "\n" + json.dumps(end) + "\n"
+    for (name_of_module, name), fresh_value in resident.PER_COMMAND.items():
+        now = getattr(sys.modules[f"tracker.{name_of_module}"], name)
+        assert now == fresh_value and type(now) is type(fresh_value), (name_of_module, name)
+    for (name_of_module, name), held in containers.items():
+        assert getattr(sys.modules[f"tracker.{name_of_module}"], name) is held, (name_of_module, name)

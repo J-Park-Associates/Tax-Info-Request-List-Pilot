@@ -16,8 +16,8 @@
   ],
   "counts": {
     "nodes": 332,
-    "edges": 1429,
-    "reused": 278
+    "edges": 1431,
+    "reused": 266
   },
   "node_types": [
     "artifact",
@@ -3070,8 +3070,8 @@
       "id": "tracker/resident.py",
       "type": "module",
       "layer": "core",
-      "sha256": "759166aa2e80445f",
-      "lines": 295,
+      "sha256": "ce003f13ee313486",
+      "lines": 396,
       "cli": "python -m tracker.resident",
       "exports": [
         "COMMANDS_MAX",
@@ -3107,7 +3107,7 @@
         "RETIRED_BUDGET": "'command-budget'"
       },
       "role": "The app's engine (P276, pilot/SPEC-ui-menu-speed.md 3): one process per app session that answers the commands main.js hands it while it is free, over its standard input - a line {id, argv, bytes} and the payload's bytes in, api.main's own output and an end line {engine_end, code, retiring} out. It refuses the own-process commands (a pass, the after-install step), keeps its real input from anything a command starts, and retires after any command that left a lock held or unreleased, the environment, temp or working folder changed, a thread running, an escaped error, or after COMMANDS_MAX commands, saying the reason on the error log by code.",
-      "notes": "Layer 5 beside api; nothing imports it but api_entry.py at call time. Replaces P220's spare (api.spare is gone). Decision 171's leftover answered by retirement; one store, one reading hold and the kill per command kept (SPEC 3.1). The reader's memory-limit warnings are forgotten between commands (ocr.forget_said) so the error log reads as a process per command's would; an error that escapes api.main is said inside settings.error_log so its trace reaches the log."
+      "notes": "Layer 5 beside api; nothing imports it but api_entry.py at call time. Replaces P220's spare (api.spare is gone). Decision 171's leftover answered by retirement; one store, one reading hold and the kill per command kept (SPEC 3.1). The reader's memory-limit warnings are forgotten between commands (ocr.forget_said) so the error log reads as a process per command's would; an error that escapes api.main is said inside settings.error_log so its trace reaches the log. The state register (SPEC-architecture R5.1, J5): PER_COMMAND names every module-level name of tracker/ restored after every command and before a refusal, with its fresh value (a container emptied in place and refilled, so its holders keep the same object; anything else rebound), reaching the modules it does not import through sys.modules; PER_PROCESS names the rest with the reason each is kept for the engine's life. tests/test_resident.py derives the names from the package's source (a global rebinding, a store into the module's globals, an in-place change of a container) and fails on one in neither table, in both, or no longer derived."
     },
     {
       "id": "tracker/review.py",
@@ -4645,7 +4645,7 @@
       "id": "docs/repo-map.curated.json",
       "type": "file",
       "layer": "docs",
-      "sha256": "c0ad154fced939ba",
+      "sha256": "9973c4957a759f01",
       "lines": 1539,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
@@ -9532,9 +9532,10 @@
       "id": "tests/test_resident.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "b48b2fed716066b8",
-      "lines": 506,
+      "sha256": "34845b6f02ec7805",
+      "lines": 715,
       "exports": [
+        "CHANGES_IN_PLACE",
         "END_PREFIX",
         "MARKER",
         "engine_root",
@@ -9549,10 +9550,14 @@
         "test_a_pass_or_the_after_install_step_is_refused_and_never_started_here",
         "test_a_real_engine_process_answers_as_a_process_of_its_own_does",
         "test_a_refusal_carries_nothing_the_last_command_left",
+        "test_a_second_command_finds_nothing_the_first_left",
         "test_a_thread_left_running_retires_the_engine",
         "test_a_write_with_a_payload_is_answered_as_a_fresh_process_would_byte_for_byte",
         "test_an_error_that_escapes_main_is_said_as_the_envelope_and_the_engine_retires",
+        "test_each_per_command_value_is_the_one_its_module_binds_when_imported",
+        "test_each_per_process_name_says_why_it_lives_as_long_as_the_engine",
         "test_every_command_has_its_own_reading_hold_and_store",
+        "test_every_module_level_state_of_the_package_is_in_exactly_one_table_of_the_register",
         "test_nothing_a_command_starts_can_read_the_engines_frames",
         "test_one_command_that_fails_is_answered_and_the_next_is_served",
         "test_the_end_line_follows_the_reply_on_a_line_of_its_own_even_after_unended_output",
@@ -16157,6 +16162,18 @@
     {
       "from": "tests/test_resident.py",
       "to": "tracker/api.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_resident.py",
+      "to": "tracker/content_check.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_resident.py",
+      "to": "tracker/fsio.py",
       "type": "exercises",
       "source": "derived"
     },
