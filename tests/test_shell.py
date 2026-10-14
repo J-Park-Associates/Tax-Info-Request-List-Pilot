@@ -2,7 +2,7 @@
 
 What can be pinned without a browser: the tokens and their contrast in both
 themes, the shell stylesheet's discipline (tokens only, the 4px grid), the
-guards every renderer file keeps, the words the new files may not type, and -
+guards every renderer file keeps, the words the app's scripts may not type, and -
 run in node against the files' own functions, as the repository's other
 renderer tests do - the route, the search, the Sort Now button and the menu's
 enable list. The rendered claims (a screenshot of every scenario, light and
@@ -663,18 +663,130 @@ def test_every_renderer_script_keeps_the_renderers_guards():
         assert "http:" not in text.replace("http://www.w3.org/2000/svg", "") and "https:" not in text, name
 
 
-def test_the_new_renderer_files_type_no_words_of_their_own():
+#: A plain word: letters only. A hyphenated token is a class name or an id, not a word.
+_PLAIN_WORD = re.compile(r"^[A-Za-z][A-Za-z'\u2019]*[.,;:!?\u2026]*$")
+_LITERAL = re.compile(r'"(?:[^"\\\n]|\\.)*"|\'(?:[^\'\\\n]|\\.)*\'|`(?:[^`\\]|\\.)*`')
+#: What a literal that is a query's whole selector argument follows.
+_SELECTOR_CALL = re.compile(r"\.(?:querySelector|querySelectorAll|closest|matches)\(\s*$")
+#: A call whose arguments are an error's text: one thrown or one logged.
+_ERROR_CALL = re.compile(r"(?<![\w$.])(?:new Error|console\.[A-Za-z]+)\(")
+
+#: D-9's sentences (SPEC-architecture 4.1, row 4): words the page types
+#: instead of taking them from the API, against P63, each as the script holds
+#: it. J5 has the API say them and deletes this list (R5.5); nothing else may
+#: be added to it (R3.4).
+KNOWN_TYPED_SENTENCES = {
+    "`${a.original_name} filed as ${a.filed_as}`":
+        "D-9: fileRow's note on the file it filed.",
+    '`"${a.keyword}" added to ${a.identifier} so the next one files itself`':
+        "D-9: fileRow's note on a keyword taught with the filing.",
+    '`"${a.spelling}" added so the next page that prints it confirms itself`':
+        "D-9: fileRow's note on a spelling taught with the filing (decision 128).",
+    "`${form.label} request list \u2014 ${vocab.ask_the_client}`":
+        'D-9, which its scan missed and the widened guard found (R3.4): the new-return dialog\'s heading types "request list".',
+}
+#: The one label a ruling lets the page type (R3.4): the reassign picker's
+#: aria-label and first option, app.js's BELONGS_TO, in Title Case by Jason's
+#: ruling 10 (SPEC-shell 11.1), which
+#: test_every_phrase_the_page_and_the_dialogs_draw_from_index_html_and_app_js_is_in_title_case
+#: already pins.
+RULED_LABELS = ('"Belongs To\u2026"',)
+
+
+def typed_literals(text: str) -> list[str]:
+    """Every string literal in a script's code (its comments already gone)
+    that holds two or more plain words, as the script writes it: a literal
+    the page typed (P63).
+
+    Three kinds are passed over, each found by where it sits and never by
+    what it says, since none is on screen (R3.4): a literal that is the whole
+    selector argument of ``querySelector``, ``querySelectorAll``, ``closest``
+    or ``matches``; the text of an error, every literal inside the brackets
+    of ``new Error(...)`` (``throw new Error(...)`` included) or of
+    ``console.*(...)``; and ``"use strict"`` as the script's first statement.
+    A pattern over the text - "a literal that looks like a selector" - would
+    pass a sentence that happened to look like one, so there is none. A
+    template's ``${...}`` counts as no word, and a literal inside it is not
+    read apart from its template."""
+    text = re.sub(r"/[^/\n*][^/\n]*/[gimsuy]*(?=[.,;)])", "", text)   # regex literals
+    found = list(_LITERAL.finditer(text))
+    ends = {one.start(): one.end() for one in found}
+    quiet = []   # the brackets of each error's call, a literal inside which is the error's text
+    for call in _ERROR_CALL.finditer(text):
+        if any(start <= call.start() < end for start, end in ends.items()):
+            continue   # the words of a literal, not a call
+        depth, i = 1, call.end()
+        while depth:
+            if i >= len(text):
+                raise ValueError(f"an unclosed call at {call.start()}: {text[call.start():call.start() + 60]!r}")
+            if i in ends:
+                i = ends[i]
+                continue
+            depth += {"(": 1, ")": -1}.get(text[i], 0)
+            i += 1
+        quiet.append((call.end(), i - 1))
+    typed = []
+    for one in found:
+        literal = one.group()
+        inner = re.sub(r"\$\{[^}]*\}", " ", literal[1:-1])
+        if len([t for t in inner.split() if _PLAIN_WORD.match(t)]) < 2:
+            continue
+        if _SELECTOR_CALL.search(text[max(0, one.start() - 40):one.start()]) and re.match(r"\s*\)", text[one.end():]):
+            continue
+        if any(start <= one.start() and one.end() <= end for start, end in quiet):
+            continue
+        if literal == '"use strict"' and not text[:one.start()].strip() and text[one.end():].startswith(";"):
+            continue
+        typed.append(literal)
+    return typed
+
+
+def test_the_apps_scripts_type_no_words_of_their_own():
     """P63: every word on screen is the API's. A string literal of two or
-    more plain words in these files would be one the page typed."""
-    # A plain word: letters only. A hyphenated token is a class name or an id, not a word.
-    word = re.compile(r"^[A-Za-z][A-Za-z'\u2019]*[.,;:!?\u2026]*$")
-    literals = re.compile(r'"(?:[^"\\\n]|\\.)*"|\'(?:[^\'\\\n]|\\.)*\'|`(?:[^`\\]|\\.)*`')
-    for name in SHELL_SCRIPTS:
-        text = re.sub(r"/[^/\n*][^/\n]*/[gimsuy]*(?=[.,;)])", "", stripped_js(name))   # regex literals
-        for literal in literals.findall(text):
-            inner = re.sub(r"\$\{[^}]*\}", " ", literal[1:-1])
-            plain = [t for t in inner.split() if word.match(t)]
-            assert len(plain) < 2 or inner == "use strict", f"{name}: {literal}"
+    more plain words in a script the app loads would be one the page typed
+    (R3.4). Every script but the pilot's three, whose words are
+    pilot-content.js's by design and test_pilot's to hold: read across them
+    all, so a sentence is found in whichever script it moves to. The ones
+    typed today are D-9's, which J5 moves into the API, and the one label a
+    ruling lets the page type; each is found exactly once."""
+    assert set(SHELL_SCRIPTS) <= set(APP_SCRIPTS)   # never fewer scripts than the guard read before
+    assert len(KNOWN_TYPED_SENTENCES) == 4 and all(why.startswith("D-9") for why in KNOWN_TYPED_SENTENCES.values())
+    assert len(RULED_LABELS) == 1
+    found = [literal for name in APP_SCRIPTS for literal in typed_literals(stripped_js(name))]
+    listed = [*KNOWN_TYPED_SENTENCES, *RULED_LABELS]
+    assert [one for one in found if one not in listed] == [], "a literal the page typed"
+    assert sorted(found) == sorted(listed), "each listed literal is in a script, once"
+
+
+@pytest.mark.parametrize("query", ["querySelector", "querySelectorAll", "closest", "matches"])
+def test_the_typed_words_guard_passes_a_whole_selector_argument_and_nothing_beside_it(query):
+    """R3.4: the literal that is a query's whole selector argument is CSS and
+    is passed over; a sentence just outside it - the next argument, the line
+    after, a sentence joined to the selector - is still one the page typed."""
+    selector = f'row.{query}("tbody input, tbody select")'
+    assert typed_literals(f"const box = {selector};\n") == []
+    assert typed_literals(f'say({selector}, "Typed here");\n') == ['"Typed here"']
+    assert typed_literals(f'const box = {selector};\nsay("Typed here");\n') == ['"Typed here"']
+    assert typed_literals(f'row.{query}("tbody input" + "Typed here");\n') == ['"tbody input"', '"Typed here"']
+
+
+@pytest.mark.parametrize("call", ["new Error", "console.error", "console.warn", "console.log"])
+def test_the_typed_words_guard_passes_an_errors_text_and_nothing_beside_it(call):
+    """R3.4: the text of a thrown or logged error is for whoever reads the
+    log, never on screen, and is passed over, a bracket inside it included; a
+    sentence just outside the call - the next argument of the call around
+    it, the line after - is still one the page typed."""
+    error = f'{call}(`el(): attribute not allowed: ${{key}}`, "while drawing the row")'
+    assert typed_literals(f"if (bad) {error};\n") == []
+    assert typed_literals(f'reject({error}, "Typed here");\n') == ['"Typed here"']
+    assert typed_literals(f'if (bad) {error};\nsay("Typed here");\n') == ['"Typed here"']
+    assert typed_literals(f'throw {error};\nsay("Typed here");\n') == ['"Typed here"']
+
+
+def test_the_typed_words_guard_passes_use_strict_only_as_the_first_statement():
+    assert typed_literals('\n"use strict";\nconst a = 1;\n') == []
+    assert typed_literals('const a = 1;\n"use strict";\n') == ['"use strict"']
+    assert typed_literals('"use strict";\nsay("Typed here");\n') == ['"Typed here"']
 
 
 def test_every_attribute_the_shell_builds_a_node_with_is_on_its_list():

@@ -605,9 +605,15 @@ pin), D-8. Depends on J2.*
   the `startsWith(` scan (test_layers.py:960-968, which also keeps
   `app/main.js`). The count pins (`withEng("assign")` == 2, `fileRow` == 2,
   one `keydown` listener) count across all scripts.
-- **R3.4** Widening the typed-words guard will find D-9's three sentences in
-  `app.js`. Write them down as `KNOWN_TYPED_SENTENCES`, exactly those three,
-  each citing D-9; J5 empties it. Nothing else may be added to it.
+- **R3.4** The typed-words guard reads every renderer script but the pilot's
+  (`APP_SCRIPTS`). It skips only a literal that is the whole selector argument
+  of `querySelector`, `querySelectorAll`, `closest` or `matches`, and the text
+  of a thrown or logged error; none of them is on screen. Widened, it finds
+  D-9's three sentences in `app.js` and the new-return dialog's typed
+  "request list", which D-9's scan missed. Write them down as
+  `KNOWN_TYPED_SENTENCES`, exactly those four, each citing D-9; J5 empties
+  it. Nothing else may be added to it. The one label a ruling lets the page
+  type, "Belongs To…" (ruling 10), is a one-item list of its own.
 - **R3.5** `node --check` runs on every `app/*.js` and `app/renderer/*.js`
   except `vendor/`: one test in `test_build.py` (skipped with a stated reason
   when `node` is absent) and the same loop in `gate.yml`'s last step,
@@ -716,6 +722,8 @@ pin), D-8. Depends on J2.*
   byte for byte as now and declared as constants in `api.py`. `app.js` shows
   `said` and types none of them. `KNOWN_TYPED_SENTENCES` (R3.4) becomes empty
   and is deleted. `pilot/harness/stub.js` sends `said`.
+  The new-return dialog's heading takes "request list" from the vocabulary,
+  as it already takes `ask_the_client`.
 - **Tests:** `test_resident`, `test_api`, `test_api_entry`, `test_shell`,
   `test_shell_menu`, `test_single_source`, `test_layers`, `test_repo_map`,
   `test_tripwire`, `test_golden` (the `assign` key tree gains `said`; re-record

@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 318,
     "edges": 1391,
-    "reused": 264
+    "reused": 263
   },
   "node_types": [
     "artifact",
@@ -4817,8 +4817,8 @@
       "id": "pilot/SPEC-architecture.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "ccde028951a9eb9e",
-      "lines": 955
+      "sha256": "78b57bd4032e114e",
+      "lines": 963
     },
     {
       "id": "pilot/SPEC-check-notes-0.3.md",
@@ -10238,8 +10238,8 @@
       "id": "tests/test_shell.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "c7d6e57d2b63675b",
-      "lines": 8162,
+      "sha256": "946a463045c2c46a",
+      "lines": 8274,
       "exports": [
         "CARD_HOUSEHOLD",
         "COMPACT_FUNCTIONS",
@@ -10250,6 +10250,7 @@
         "FLOATING_UI_SCRIPTS",
         "FLOATING_UI_SHA256",
         "JOIN_POPUPS",
+        "KNOWN_TYPED_SENTENCES",
         "LAST_PASS_STEPS",
         "LAST_PASS_WATCH_FAKES",
         "LAST_SORT_FAKES",
@@ -10265,6 +10266,7 @@
         "PROBE_EVERY_NOTICE",
         "REPO",
         "RETURN_FOLLOWS_FAKES",
+        "RULED_LABELS",
         "SHEET_SETUP",
         "SHELL_ROUTE_FAKES",
         "SOON_FUNCTIONS",
@@ -10503,6 +10505,7 @@
         "test_tax_year_orders_by_number_and_form_type_by_the_apps_form_order",
         "test_the_active_row_stays_in_the_document_when_scrolled_out_of_the_window",
         "test_the_app_starts_only_after_every_script_has_loaded",
+        "test_the_apps_scripts_type_no_words_of_their_own",
         "test_the_brand_band_is_the_mark_and_the_products_name_and_never_the_firms_name",
         "test_the_card_never_draws_the_inbox_link_itself",
         "test_the_card_says_contact_shared_with_and_whether_the_inbox_link_is_saved",
@@ -10549,7 +10552,6 @@
         "test_the_loading_order_is_the_specs_and_the_csp_is_unchanged",
         "test_the_menus_enable_list_follows_the_rules_of_the_template",
         "test_the_move_schedule_question_carries_its_warning",
-        "test_the_new_renderer_files_type_no_words_of_their_own",
         "test_the_new_tokens_and_every_new_pair_meet_their_contrast_in_both_themes",
         "test_the_next_arrows_order_is_the_files_a_person_must_look_at_in_the_order_drawn",
         "test_the_notices_of_a_first_start_are_drawn_after_the_setup_page_takes_the_screen",
@@ -10601,6 +10603,9 @@
         "test_the_three_info_dialogs_close_with_the_apis_close_word",
         "test_the_title_case_rule_says_what_ruling_10_says",
         "test_the_tooltip_reaches_floating_ui_only_through_its_one_global",
+        "test_the_typed_words_guard_passes_a_whole_selector_argument_and_nothing_beside_it",
+        "test_the_typed_words_guard_passes_an_errors_text_and_nothing_beside_it",
+        "test_the_typed_words_guard_passes_use_strict_only_as_the_first_statement",
         "test_the_vendored_floating_ui_is_the_pinned_bytes_and_nothing_else",
         "test_the_window_and_its_taskbar_button_carry_the_console_icon",
         "test_the_window_colours_are_the_pages",
@@ -10609,11 +10614,13 @@
         "test_the_year_page_leaves_a_gap_under_its_h1_before_its_rows",
         "test_unfile_from_the_menu_asks_first_and_sends_the_reason_as_the_writes_note",
         "test_updating_goes_when_the_new_counts_are_drawn",
-        "title_case_ok"
+        "title_case_ok",
+        "typed_literals"
       ],
       "constants": {
         "FLOATING_UI_SCRIPTS": "('vendor/floating-ui/floating-ui.core.umd.min.js', 'vendor/floating-ui/floating-ui.dom.umd.min.js')",
         "TIP_PAGE": "'\\nclass Element {\\n  constructor(words) { this.dataset = words ? { tip: words } : {}; this.isConnected = true; this.attrs = {};\\n    this.scrollWidth = 10; this.clientWidth = 10; }\\n  closest() { return this.dataset.tip !== undefined ? this : null; }\\n  contains(other) { return other === this; }\\n  matches() { return false; }\\n  setAttribute(k, v) { this.attrs[k] = v; }\\n  removeAttribute(k) { delete this.attrs[k]; }\\n}\\nconst tipBox = { hidden: true, textContent: \"\", style: { setProperty() {} } };\\nconst handlers = {};\\nconst document = { getElementById: (id) => (id === \"tip\" ? tipBox : null),\\n  addEventListener: (type, fn) => { handlers[type] = fn; } };\\nconst window = { addEventListener() {} };\\nconst FloatingUIDOM = { computePosition: () => ({ then() {} }), offset() {}, flip() {}, shift() {}, hide() {} };\\nconst timers = new Map(); let lastTimer = 0;\\nconst setTimeout = (fn) => { lastTimer += 1; timers.set(lastTimer, fn); return lastTimer; };\\nconst clearTimeout = (id) => { timers.delete(id); };\\nconst tick = () => { const due = [...timers.values()]; timers.clear(); due.forEach((fn) => fn()); };\\nconst over = (target) => handlers.mouseover({ target });\\nconst seen = (node) => [tipBox.hidden, tipBox.textContent, node.attrs[\"aria-describedby\"] || null];\\n'",
+        "RULED_LABELS": "('\"Belongs To\u2026\"',)",
         "PEOPLE": "'\\nconst fill = (p, v) => p.replace(/\\\\{(\\\\w+)\\\\}/g, (_, k) => v[k] ?? \"\");\\nconst vocab = { screen: { counts: { one_return: \"1 return\", returns: \"{n} returns\" },\\n  sections: { overview: \"Overview\", needs_review: \"Needs review\", reminders: \"Reminders\", clients: \"Clients\" },\\n  sort: { now: \"Sort now\", stop: \"Stop sorting\", locked: \"In use elsewhere\", stopping: \"Stopping\", tip: \"Sort this household\\'s inbox\" } } };\\nconst households = [\\n  { name: \"Smith Family\", path: \"h1\", returns: [{ rollable: true }] }, { name: \"Rivera Design\", path: \"h2\", returns: [] },\\n  { name: \"Ren\\\\u00e9e Okafor\", path: \"h3\", returns: [] }, { name: \"Lopez Household\", path: \"h4\", returns: [] },\\n];\\nconst engagements = [\\n  { name: \"a\", path: \"r1\", household: \"h1\", year: 2025, return_name: \"1040 - John & Jane Smith\" },\\n  { name: \"b\", path: \"r2\", household: \"h1\", year: 2024, return_name: \"1040 - John & Jane Smith\" },\\n  { name: \"c\", path: \"r3\", household: \"h2\", year: 2025, return_name: \"1120-S - Rivera Design LLC\" },\\n];\\nlet calls = 0; const call = () => { calls += 1; };\\n'",
         "PROBE_EVERY_NOTICE": "'\\n      const seen = [];\\n      for (const scenario of [\"notices\", \"household-notices\", \"locked\", \"stale-lock\"]) {\\n        const { list, state } = await replies(scenario);\\n        vocab = list.vocab;\\n        vocab.screen.notices = Object.assign({}, vocab.screen.notices, %s);\\n        drawn.length = 0; logged.length = 0;\\n        renderMachineNotices(list);\\n        renderAfterInstall(noticeOf(list.after_install));\\n        renderShortOfRoom([{ engagement: \"r1\", sentences: [\"A LONG ROOM SENTENCE\"] }]);\\n        active = state.paths.engagement;\\n        showLock(state.lock);\\n        lastState = state;\\n        pagesHouseholdNotices({ level: \"household\", household: state.household.path });\\n        seen.push({ scenario, drawn: drawn.slice(), logged: logged.slice(), reader: list.reader_warning, machine: list.machine_warnings,\\n                    pause: state.household.pause.sentence || \"\", lock: state.lock });\\n      }\\n      return seen;\\n'",
         "SHEET_SETUP": "'\\nconst vocab = { decisions: { needs_review: \"Needs Review\", dismissed: \"Not Requested\", file_moved: \"File Moved\", filed: \"Filed\" } };\\nlet sheetNow = null; let sheetGeneration = 0; const advanced = []; const closed = [];\\nconst sheetAdvance = () => advanced.push(sheetNow.handle);\\n'",
