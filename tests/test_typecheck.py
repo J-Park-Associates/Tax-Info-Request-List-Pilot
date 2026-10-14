@@ -323,7 +323,7 @@ def test_every_third_party_package_the_checked_code_imports_is_read_as_untyped()
 # private regular-expression parser, which the value rule reads (decision
 # 187) and typeshed does not stub. It is named by file and wording, so a
 # second such line fails here rather than passing as this one.
-UNSTUBBED = (("records.py", "# type: ignore[import-not-found]  # typeshed does not stub the private parser"),)
+UNSTUBBED = (("bounds.py", "# type: ignore[import-not-found]  # typeshed does not stub the private parser"),)
 
 
 def test_every_ignore_in_the_checked_code_is_narrow():

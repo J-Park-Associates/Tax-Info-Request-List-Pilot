@@ -26,7 +26,7 @@ temporary is ever written beside a client's file.
 
 ## The package, by layer
 
-`tracker/` is one Python package of thirty-nine modules in six layers.
+`tracker/` is one Python package of forty modules in six layers.
 `tests/test_layers.py` pins the layer of every module and that no load-time
 import points upward; an import inside a function is a call-time import
 and may point anywhere. The one deliberate cycle, filer and scanner through
@@ -59,6 +59,9 @@ the package but each other.
 - `replies.py`: the shape of every reply the API prints, written down once
   as `TypedDict`s; the recorded replies and the screen's failure kinds are
   held to it.
+- `bounds.py`: the value rule's bounds (decision 187): every limit a value in
+  the record is held to, and the one phrase each refusal says, worded once for
+  the editor and the store's gate; `records.py` reads them and re-exports them.
 - `firm_cache.py`, `page_rows.py`, `firm_pages.py`: the firm view's cache,
   the practice page's kept rows and the firm lists cut into pages, so the
   app opens on hundreds of households without reading every record first.

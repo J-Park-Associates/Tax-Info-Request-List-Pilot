@@ -94,11 +94,12 @@ a cycle is allowed to close.
 
 **The domains** (decision P314). A layer says what a module may import; a
 domain says what the module is for. There are six: ``record`` (the household's
-journal, its request list and the shape of the clients root), ``reading``
-(opening a client's file and getting the text out of it), ``sorting``
-(deciding where a document belongs), ``pass`` (the scheduled run and what it
-drives), ``door`` (the API, the engine that answers it, what an error is
-called and the shape of every reply) and ``shell`` (the pages a person opens).
+journal, its request list, the bounds its values are held to and the shape of
+the clients root), ``reading`` (opening a client's file and getting the text
+out of it), ``sorting`` (deciding where a document belongs), ``pass`` (the
+scheduled run and what it drives), ``door`` (the API, the engine that answers
+it, what an error is called and the shape of every reply) and ``shell`` (the
+pages a person opens).
 A domain is the grouping a folder tree would show, checked here instead: the
 modules stay flat in ``tracker/``, because a subpackage would escape every
 guard that reads only ``tracker/*.py`` and change every import path, and the
@@ -162,9 +163,12 @@ LAYERS: dict[int, frozenset[str]] = {
     # ``replies`` joins L0 with SPEC-architecture-p2 R2.3.1: the shape of every
     # reply the API prints, as ``TypedDict``s - ``typing`` only; the API and the
     # suite import it.
+    # ``bounds`` joins L0 with P316 (SPEC-architecture-p2 P2.4): the value rule's
+    # bounds out of ``records``, which imports them back - the standard library
+    # and ``layout``'s name rule, which reads no file.
     0: frozenset({"__init__", "reasons", "locking", "checkpoint", "page", "fsio", "settings",
                   "layout", "door", "errors", "progress", "firm_cache", "page_rows", "firm_pages",
-                  "replies"}),
+                  "replies", "bounds"}),
     1: frozenset({"households", "ledger", "manifest", "records", "scaffold", "store",
                   "templates", "validators"}),
     2: frozenset({"containers", "content_check", "names", "ocr", "router"}),
@@ -187,13 +191,14 @@ LAYER_OF: dict[str, int] = {module: layer for layer, modules in LAYERS.items() f
 #: that is added is added here and in :data:`LAYERS` in the same commit.
 DOMAINS: dict[str, frozenset[str]] = {
     # The household's record: the journal and its lock, the request list and
-    # the catalog it is built from, and the shape of the clients root.
+    # the catalog it is built from, the bounds its values are held to, and the
+    # shape of the clients root.
     # ``door`` here is ``tracker/door.py``, the module that knows which
     # household a path is in (decision 188); it is not the API's door, which
     # is the ``door`` domain below.
     "record": frozenset({"__init__", "ledger", "locking", "checkpoint", "fsio", "layout", "door",
-                         "settings", "records", "store", "manifest", "households", "templates",
-                         "scaffold"}),
+                         "settings", "records", "bounds", "store", "manifest", "households",
+                         "templates", "scaffold"}),
     # Opening a client's file, checking it and getting the text out of it.
     "reading": frozenset({"validators", "containers", "content_check", "ocr"}),
     # Deciding where a document belongs, or that it belongs nowhere yet, and

@@ -6,6 +6,7 @@ See docs/ROADMAP.md for the build plan. Component modules:
 - door          : the disk half of the layout - the checked root, a typed path, the link check and the one door every write into the client tree passes
 - households    : the household's own record: its members, its contact, its inbox link
 - records       : the record types every layer names - the index row, the evidence, the routing decision, the engagement - and each one's own serialisation
+- bounds        : the value rule's bounds - every limit a value in the record is held to, and the one phrase each refusal says, never the value
 - manifest      : the request list: its schema, validation, and its reading from and writing to the record
 - scaffold      : folder scaffolding from the request list
 - validators    : tier 1-2 file checks + dry-run preview CLI

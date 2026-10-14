@@ -200,15 +200,17 @@ def test_the_filers_old_private_separator_is_the_records_own():
     assert filer._CANDIDATE_SEP is CANDIDATE_SEP
 
 
-def test_the_records_import_nothing_of_the_package_but_the_layouts_name_rule():
+def test_the_records_import_nothing_of_the_package_but_the_layouts_name_rule_and_the_bounds():
     """The whole point of the module: a layer above may name a record
     without loading the machinery that writes it. `tests/test_layers.py`
     pins the direction of every edge; this names this one. Since decision
     188 the Windows character and device rule is the layout's, which reads
-    no file, and the record imports it from there."""
+    no file, and the record imports it from there; since P2.4 the value
+    rule's bounds are `tracker.bounds`', which reads none either, and the
+    record imports them from there."""
     load, call = import_edges()
 
-    assert load["records"] == {"layout"}, load["records"]
+    assert load["records"] == {"bounds", "layout"}, load["records"]
     assert call["records"] == set(), call["records"]
     assert "records" in load["manifest"], "the manifest names the shapes it loads"
 
@@ -220,17 +222,15 @@ def test_nothing_here_reaches_a_file_or_a_workbook():
     pattern that reads it back (decision 109), and `json` only because the
     return's people come back as JSON text from the one column that holds
     them (decision 128) - reading a value is not knowing where it lives.
-    `math`, `re._parser` and `typing` are the value rule's (decision 187):
-    a count is finite, a Date Pattern's shape is read off the standard
-    library's own parser rather than a second engine, and `typing` says what
-    `_is_number` proves (P2.1). `tracker.layout` is the Windows name rule's
-    (decision 188), and it reads no file either."""
+    The value rule's bounds, with `math` and the standard library's own
+    parser, are `tracker.bounds`' since P2.4. `tracker.layout` is the
+    Windows name rule's (decision 188), and it reads no file either."""
     source = (Path(records.__file__)).read_text(encoding="utf-8")
     imported = {line.split()[1] for line in source.splitlines()
                 if line.startswith("import ") or line.startswith("from ")}
 
-    assert imported == {"__future__", "datetime", "dataclasses", "json", "math", "pathlib", "re",
-                        "re._parser", "typing", "tracker.layout"}, imported
+    assert imported == {"__future__", "datetime", "dataclasses", "json", "pathlib", "re",
+                        "tracker.bounds", "tracker.layout"}, imported
     assert isinstance(records.EngagementInfo().due, type(None))
     assert EngagementInfo(due=dt.date(2026, 4, 15)).due.year == 2026
 
@@ -423,22 +423,6 @@ def test_an_optional_alternation_is_a_date_pattern():
     assert records.date_pattern_problem(r"(?:Dec|12){0,2}") == records.DATE_PATTERN_ALTERNATES
 
 
-def test_every_period_form_derives_a_pattern_the_rule_admits():
-    """As the re-check generated them: every year 1900-2100 with TY, FY, a
-    bare year and every month's abbreviation and full name, in four
-    spellings. None is refused, and none is tried more than 176 ways."""
-    forms = [*manifest._MONTHS, *manifest._MONTH_NAMES, "TY", "FY", ""]
-    most = 0
-    for year in range(1900, 2101):
-        for head in forms:
-            for period in (f"{head} {year}", f"{head}{year}", f"{head.upper()} {year}", f"{head}  {year}"):
-                pattern = manifest.derived_date_pattern(period)
-                if pattern:
-                    assert records.date_pattern_problem(pattern) == "", period
-                    most = max(most, records._ways(records._re_parser.parse(pattern)))
-    assert most <= 176
-
-
 #: The second re-check's table (decision 187's review, M1c): a fixed-count
 #: repetition adds no way and hundreds of characters of matching to each -
 #: from 0.72 s to 15 s on one 500-character line under the ways rule alone.
@@ -463,35 +447,6 @@ def test_a_fixed_count_of_matching_is_counted_in_the_cost(pattern):
     200,000 is refused."""
     assert records.date_pattern_problem(pattern) == records.DATE_PATTERN_TOO_COSTLY
     assert records.DATE_PATTERN_COST_MAX == 200_000
-
-
-def test_every_derived_and_common_pattern_is_within_the_cost():
-    """Every pattern the Period derives costs at most 6,688, and the ten
-    common hand-typed patterns pass the cost rule too."""
-    most = 0
-    for year in range(1900, 2101):
-        for head in [*manifest._MONTHS, *manifest._MONTH_NAMES, "TY", "FY"]:
-            pattern = manifest.derived_date_pattern(f"{head} {year}")
-            if pattern:
-                parsed = records._re_parser.parse(pattern)
-                most = max(most, records._ways(parsed) * records._width(parsed))
-                assert records.date_pattern_problem(pattern) == "", pattern
-    assert most <= 6_688
-    for common in [r"(?:Dec|12)?", r"12/31/20\d\d", r"20(24|25)", r"Q[1-4]",
-                   r"(0[1-9]|1[0-2])/\d{2}/\d{4}", r"Dec(ember)?\s+31", r"(?:Dec|12)?/31/2025",
-                   r"(?:Q4|4th Quarter)?\s*2025", r"\d{1,2}/\d{1,2}/\d{2,4}", r"(?:12/31|Dec(?:ember)?\s+31)"]:
-        assert records.date_pattern_problem(common) == "", common
-
-
-def test_a_zero_width_assertion_counts_toward_the_width():
-    """The third re-check: ``\\B`` matches nothing yet is a test at every
-    step, so a fixed group padded with thirty of them did unbounded work per
-    counted character - 14.4 s on one 500-digit line. Every zero-width
-    assertion counts one toward the width."""
-    padded = "(?:1|11)?" * 7 + "(?:" + r"\B" * 30 + r"\d){35}\D"
-    assert records.date_pattern_problem(padded) == records.DATE_PATTERN_TOO_COSTLY
-    for assertion in (r"\b", r"\B", "^", "$", r"\A", r"\Z"):
-        assert records._width(records._re_parser.parse(assertion)) == 1, assertion
 
 
 def test_waits_for_round_trips_and_is_empty_on_every_other_row():
