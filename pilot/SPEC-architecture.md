@@ -650,14 +650,20 @@ pin), D-8. Depends on J2.*
 
 *Phase 0. Cost M. Findings A-4, E-2, C-1 (patch risk), E-7. Depends on J2.*
 
-- **R4.1** New `tools/patch_sites.py`, standard library only:
-  `report <module>` lists every `monkeypatch.setattr` in `tests/` aimed at
-  that module (object form `setattr(filer, "name", ...)`, module-alias form,
-  and string form `setattr("tracker.filer.name", ...)`), each marked
-  **defined** (the module defines `name`), **imported** (the module imports
-  it and reads it) or **unread** (the module never reads `name` outside its
-  own import or definition line). `check` exits 1 if any site is unread.
-  It keeps a `__main__` (the migration checklist runs it, P233).
+- **R4.1** New `tools/patch_sites.py`, standard library only; it reads the
+  code and runs none of it. `report <module>` lists every
+  `monkeypatch.setattr` in `tests/` that it places on that module (object
+  form, module-alias form and string form), each marked **defined** (the
+  module defines `name`), **imported** (the module imports it and reads it)
+  or **unread** (the module never reads `name` outside its own import or
+  definition line). `check` exits 1 if any site is unread, if a stand-in
+  cannot be placed, or if a `setattr` in the suite's text is none of a site,
+  a stand-in it cannot place, or a call of the builtin. A target is placed
+  only by a rule the tool can prove, so a stand-in may fail the check but
+  never pass it unseen. What the tool does not read (stores through `vars()`
+  or `__dict__`, `monkeypatch.setitem`, code built at run time) is written
+  in its docstring and its curated node. It keeps a `__main__` (the
+  migration checklist runs it, P233).
 - **R4.2** `tests/test_patch_sites.py` owns the tool: its cases on made-up
   modules, and `check` passing on the real suite. Any site found unread today
   is fixed in this job (pointed at the module that reads the name) and listed

@@ -319,7 +319,12 @@ def test_a_parametrize_mark_is_read_as_rows_with_its_names_kept_together(tmp_pat
     pairs are two stand-ins, not four. ``pytest.param(...)``, a mark on the
     test's class and a list held in a name are read; values not written out,
     and a name the mark hands to its fixture (``indirect``) whose fixture
-    reads ``request.param``, are not placed."""
+    reads ``request.param``, are not placed. So is ``request.param`` in a
+    fixture that has ``params=`` of its own, where a mark hands the fixture
+    values: pytest gives it the mark's, whether the test asks for the fixture
+    itself, reaches it through another fixture, or the fixture places the
+    stand-in. The tool before review 4 read the fixture's own ``params``
+    there, and placed each of those three on ``helpers``."""
     root = _repository(tmp_path, {**SORTER, "tests/test_a.py": """
         import pytest
 
@@ -351,6 +356,30 @@ def test_a_parametrize_mark_is_read_as_rows_with_its_names_kept_together(tmp_pat
         @pytest.mark.parametrize("chosen", [sorter], indirect=True)
         def test_indirect(monkeypatch, chosen):
             monkeypatch.setattr(chosen, "decide", None)
+
+        @pytest.fixture(params=[helpers])
+        def picked(request):
+            return request.param
+
+        @pytest.fixture
+        def wrapped(picked):
+            return picked
+
+        @pytest.fixture(params=[helpers])
+        def patched(request, monkeypatch):
+            monkeypatch.setattr(request.param, "digest", None)
+
+        @pytest.mark.parametrize("picked", [sorter], indirect=True)
+        def test_indirect_over_params(monkeypatch, picked):
+            monkeypatch.setattr(picked, "digest", None)
+
+        @pytest.mark.parametrize("picked", [sorter], indirect=True)
+        def test_indirect_through_another_fixture(monkeypatch, wrapped):
+            monkeypatch.setattr(wrapped, "digest", None)
+
+        @pytest.mark.parametrize("patched", [sorter], indirect=True)
+        def test_indirect_into_a_fixture_that_places_a_stand_in(patched):
+            pass
     """})
     marked, unplaced = patch_sites.stand_ins(root)
     assert [(site.line, site.module, site.name, mark) for site, mark in marked] == [
@@ -359,7 +388,8 @@ def test_a_parametrize_mark_is_read_as_rows_with_its_names_kept_together(tmp_pat
         (17, "tracker.sorter", "digest", patch_sites.IMPORTED),
         (22, "tracker.sorter", "decide", patch_sites.DEFINED),
     ]
-    assert [(one.line, one.written) for one in unplaced] == [(26, "module"), (30, "chosen")]
+    assert [(one.line, one.written) for one in unplaced] == [
+        (26, "module"), (30, "chosen"), (42, "request.param"), (46, "picked"), (50, "wrapped")]
 
 
 def test_a_fixture_s_params_and_a_fixture_that_gives_a_module_are_followed(tmp_path):
@@ -482,7 +512,27 @@ def test_no_way_of_writing_a_module_drops_a_stand_in_out_of_the_check(tmp_path):
     ``global``, a helper module's name a conftest assigns, whether its own
     value is ``None`` or a module, and one a fixture's stand-in replaces); and
     a ``setattr`` not called where it is written (bound to a name, or handed
-    to ``functools.partial``)."""
+    to ``functools.partial``).
+
+    ``test_c`` and ``sub/test_d`` hold review 4's, in a repository whose
+    ``tests/`` and ``tools/`` have no ``__init__.py``, as the real one's do.
+    These are sites, unread: a module reached through the folder
+    (``tests.wired`` after ``import tests.wired``, and ``tools.mapper``), and
+    a fixture the nearest conftest on the test's own path gives (the one in
+    ``tests/`` gives ``None`` under the same name). These are not placed: the
+    folder itself, and a name in it that is none of its modules; a helper
+    module's name that a conftest rebinds through the folder, read through
+    the folder or through the module; a local that a nested function rebinds
+    with ``nonlocal``, read in either function; a fixture only a conftest off
+    the test's path defines; and a ``setattr`` called on a class
+    (``MonkeyPatch``, ``pytest.MonkeyPatch``, or a class of the file), whose
+    first argument is the instance. The tool before review 4 passed eleven
+    of these unlisted: the five reached through the folder, which it took
+    for something outside the repository; the name rebound through it,
+    which it placed on its first value; the nonlocal read in the outer
+    function and the nearest conftest's fixture, which it took for
+    ``None``; and the three called on a class, whose instance it took for
+    the target."""
     root = _repository(tmp_path, {**SORTER, "tests/aliases.py": """
         from tracker import sorter
 
@@ -599,11 +649,109 @@ def test_no_way_of_writing_a_module_drops_a_stand_in_out_of_the_check(tmp_path):
     """, "tests/seams.py": """
         ENGINE = None
     """, "tests/conftest.py": """
+        import pytest
+
+        import tests.wired
         from tests import fixtures
         from tracker import sorter
 
         fixtures.THE = sorter
         fixtures.FILLED = sorter
+
+        @pytest.fixture(autouse=True)
+        def wire():
+            tests.wired.ENGINE = sorter
+
+        @pytest.fixture
+        def thing():
+            return None
+    """, "tests/wired.py": """
+        from tracker import helpers, sorter
+
+        ENGINE = helpers
+    """, "tools/mapper.py": """
+        ROOT = "."
+    """, "tests/sub/conftest.py": """
+        import pytest
+
+        from tracker import sorter
+
+        @pytest.fixture
+        def thing():
+            return sorter
+    """, "tests/elsewhere/conftest.py": """
+        import pytest
+
+        from tracker import sorter
+
+        @pytest.fixture
+        def beside():
+            return sorter
+    """, "tests/sub/test_d.py": """
+        def test_the_nearest_conftest_gives_the_fixture(monkeypatch, thing):
+            monkeypatch.setattr(thing, "kept", None)
+
+        def test_a_conftest_off_the_path_gives_nothing(monkeypatch, beside):
+            monkeypatch.setattr(beside, "kept", None)
+    """, "tests/test_c.py": """
+        import pytest
+        from pytest import MonkeyPatch
+
+        import tests.wired
+        import tools.mapper
+        from tests import wired
+        from tracker import sorter
+
+        class Patcher:
+            def setattr(self, *args):
+                return args
+
+        def test_through_the_folder(monkeypatch):
+            monkeypatch.setattr(tests.wired, "sorter", None)
+
+        def test_through_the_tools_folder(monkeypatch):
+            monkeypatch.setattr(tools.mapper, "nothing_reads_this", None, raising=False)
+
+        def test_the_folder_itself(monkeypatch):
+            monkeypatch.setattr(tests, "wired", None)
+
+        def test_a_name_in_the_folder_that_is_no_module_of_it(monkeypatch):
+            monkeypatch.setattr(tests.nothing, "kept", None, raising=False)
+
+        def test_through_the_folder_to_a_name_rebound_through_it(monkeypatch):
+            monkeypatch.setattr(tests.wired.ENGINE, "kept", None)
+
+        def test_a_name_rebound_through_the_folder(monkeypatch):
+            monkeypatch.setattr(wired.ENGINE, "kept", None)
+
+        def test_a_local_a_nested_function_rebinds(monkeypatch):
+            module = None
+
+            def fill():
+                nonlocal module
+                module = sorter
+
+            fill()
+            monkeypatch.setattr(module, "kept", None)
+
+        def test_a_local_rebound_in_the_function_that_declares_it(monkeypatch):
+            module = None
+
+            def fill():
+                nonlocal module
+                module = sorter
+                monkeypatch.setattr(module, "kept", None)
+
+            fill()
+
+        def test_called_on_the_class(monkeypatch):
+            MonkeyPatch.setattr(monkeypatch, sorter, "kept", None)
+
+        def test_called_on_the_class_through_pytest(monkeypatch):
+            pytest.MonkeyPatch.setattr(monkeypatch, sorter, "kept", None)
+
+        def test_called_on_a_class_of_the_file(monkeypatch):
+            Patcher.setattr(monkeypatch, sorter, "kept", None)
     """, "tests/test_b.py": """
         import functools
 
@@ -698,10 +846,29 @@ def test_no_way_of_writing_a_module_drops_a_stand_in_out_of_the_check(tmp_path):
         (41, "unheard_of", True), (44, "MOD", True), (47, "fixtures.THE", True), (50, "fixtures.FILLED", True),
         (53, "seams.ENGINE", True), (56, "monkeypatch.setattr", False), (60, "monkeypatch.setattr", False),
     ]
+    assert [(site.file, site.line, site.module, site.name, site.written, mark) for site, mark in marked
+            if site.file not in ("tests/test_a.py", "tests/test_b.py")] == [
+        ("tests/sub/test_d.py", 2, "tracker.sorter", "kept", "thing", patch_sites.UNREAD),
+        ("tests/test_c.py", 14, "tests.wired", "sorter", "tests.wired", patch_sites.UNREAD),
+        ("tests/test_c.py", 17, "tools.mapper", "nothing_reads_this", "tools.mapper", patch_sites.UNREAD),
+    ]
+    assert [(one.file, one.line, one.written) for one in unplaced
+            if one.file not in ("tests/test_a.py", "tests/test_b.py")] == [
+        ("tests/sub/test_d.py", 5, "beside"),
+        ("tests/test_c.py", 20, "tests"), ("tests/test_c.py", 23, "tests.nothing"),
+        ("tests/test_c.py", 26, "tests.wired.ENGINE"), ("tests/test_c.py", 29, "wired.ENGINE"),
+        ("tests/test_c.py", 39, "module"), ("tests/test_c.py", 47, "module"),
+        ("tests/test_c.py", 52, "MonkeyPatch.setattr"), ("tests/test_c.py", 55, "pytest.MonkeyPatch.setattr"),
+        ("tests/test_c.py", 58, "Patcher.setattr"),
+    ]
     ok, said = patch_sites.check(root)
-    assert not ok and len(said) == 32
-    assert said[-1] == ("tests/test_b.py:60: monkeypatch.setattr cannot be placed: it is not called where it is "
-                        "written, so what it replaces is not written out. Call it where it is written.")
+    assert not ok and len(said) == 45
+    assert ("tests/test_c.py:20: setattr(tests, ...) cannot be placed: tests is a folder with no __init__.py, not a "
+            "module. Name the module and the name as an import, an alias or a literal.") in said
+    assert ("tests/test_b.py:60: monkeypatch.setattr cannot be placed: it is not called where it is written, so what "
+            "it replaces is not written out. Call it where it is written.") in said
+    assert said[-1] == ("tests/test_c.py:58: Patcher.setattr cannot be placed: it is called on a class, so its "
+                        "first argument is the instance and what it replaces comes after. Call it on the instance.")
 
 
 def test_a_value_is_taken_for_no_module_only_where_the_tool_proves_it_is_none(tmp_path):
@@ -765,13 +932,19 @@ def test_a_value_is_taken_for_no_module_only_where_the_tool_proves_it_is_none(tm
 NO_MODULE_KINDS = {"THING", "CLASS", "INSTANCE", "_A_THING"}
 
 
-def _no_module_built(source: str) -> tuple[set[str | None], list[str], list[int]]:
-    """Where ``source`` builds a no-module value: the functions that use a
-    no-module kind other than to compare against it (None for the top level,
-    outside the lines that name the kinds and ``_NO_MODULE``), the kind
-    strings ``thing`` and ``instance`` wherever they are spelled outside the
-    lines that name the kinds, and the lines of any value tuple written with
-    a kind's string in place of its name."""
+#: The one kind of value a lookup of a dotted name may take for outside
+#: the repository, which passes a stand-in unlisted too.
+OUTSIDE_KIND = ({"OUTSIDE"}, ("outside",), ("outside",))
+
+
+def _built(source: str, kinds=NO_MODULE_KINDS, spelled=("thing", "instance"),
+           written=("thing", "class", "instance")) -> tuple[set[str | None], list[str], list[int]]:
+    """Where ``source`` builds a value of one of ``kinds``: the functions that
+    use one of the kinds' names other than to compare against it (None for
+    the top level, outside the lines that name the kinds and ``_NO_MODULE``),
+    the strings of ``spelled`` wherever they are spelled outside the lines
+    that name the kinds, and the lines of any value tuple written with a
+    string of ``written`` in place of a kind's name."""
     tree = ast.parse(source)
     parent = {child: node for node in ast.walk(tree) for child in ast.iter_child_nodes(node)}
     naming = {id(node) for statement in tree.body if isinstance(statement, ast.Assign)
@@ -781,18 +954,18 @@ def _no_module_built(source: str) -> tuple[set[str | None], list[str], list[int]
               for node in ast.walk(statement)}
     functions: set[str | None] = set()
     for node in ast.walk(tree):
-        if (isinstance(node, ast.Name) and node.id in NO_MODULE_KINDS and isinstance(node.ctx, ast.Load)
+        if (isinstance(node, ast.Name) and node.id in kinds and isinstance(node.ctx, ast.Load)
                 and id(node) not in naming and not isinstance(parent[node], ast.Compare)):
             holder = parent[node]
             while holder in parent and not isinstance(holder, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 holder = parent[holder]
             functions.add(getattr(holder, "name", None))
-    spelled = [node.value for node in ast.walk(tree) if isinstance(node, ast.Constant)
-               and node.value in ("thing", "instance") and id(node) not in naming]
+    found = [node.value for node in ast.walk(tree) if isinstance(node, ast.Constant)
+             and node.value in spelled and id(node) not in naming]
     tuples = [node.lineno for node in ast.walk(tree) if isinstance(node, ast.Tuple) and node.elts
-              and isinstance(node.elts[0], ast.Constant) and node.elts[0].value in ("thing", "class", "instance")
+              and isinstance(node.elts[0], ast.Constant) and node.elts[0].value in written
               and id(node) not in naming]
-    return functions, spelled, tuples
+    return functions, found, tuples
 
 
 def test_only_one_function_of_the_tool_concludes_that_a_value_is_no_module():
@@ -801,10 +974,134 @@ def test_only_one_function_of_the_tool_concludes_that_a_value_is_no_module():
     is only compared against, or listed in ``_NO_MODULE``, and no value is
     written with a kind's string in place of its name."""
     source = Path(patch_sites.__file__).read_text(encoding="utf-8")
-    assert _no_module_built(source) == ({"_no_module"}, [], [])
+    assert _built(source) == ({"_no_module"}, [], [])
     # The pin sees each way back to a second producer.
-    assert _no_module_built(source + "\ndef elsewhere():\n    return [_A_THING]\n")[0] == {"_no_module", "elsewhere"}
-    assert _no_module_built(source + "\nNOTHING = ('thing', None)\n")[1:] == (["thing"], [source.count("\n") + 2])
+    assert _built(source + "\ndef elsewhere():\n    return [_A_THING]\n")[0] == {"_no_module", "elsewhere"}
+    assert _built(source + "\nNOTHING = ('thing', None)\n")[1:] == (["thing"], [source.count("\n") + 2])
+
+
+def test_only_the_lookup_of_a_dotted_name_takes_a_value_for_outside_the_repository(tmp_path):
+    """F4.1 of review 4: outside the repository passes a stand-in unlisted, so
+    it has one producer too, ``_Suite.module``, which looks in the index and
+    its folders first. ``tests`` and ``tools`` have no ``__init__.py``, and
+    the tool before review 4 took ``import tests.wired`` for outside, which
+    passed a stand-in on a module of the suite unlisted. Neither folder has
+    an ``__init__.py`` in the made-up repository below either: no dotted name
+    of its index, and no folder of one, is taken for outside."""
+    source = Path(patch_sites.__file__).read_text(encoding="utf-8")
+    assert _built(source, *OUTSIDE_KIND) == ({"module"}, [], [])
+    assert _built(source + "\ndef elsewhere(dotted):\n    return (OUTSIDE, dotted)\n",
+                  *OUTSIDE_KIND)[0] == {"module", "elsewhere"}
+    assert _built(source + "\nFAR = ('outside', None)\n", *OUTSIDE_KIND)[1:] == (
+        ["outside"], [source.count("\n") + 2])
+    root = _repository(tmp_path, {**SORTER, "tests/children.py": "SEAM = None\n",
+                                  "tests/sub/deeper.py": "", "tools/mapper.py": "", "tests/test_a.py": ""})
+    assert not (root / "tests" / "__init__.py").exists() and not (root / "tools" / "__init__.py").exists()
+    suite = patch_sites._Suite(root)
+    assert suite.packages == {"tests", "tests.sub", "tools"}
+    assert [dotted for dotted in [*suite.index, *suite.packages]
+            if suite.module(dotted)[0] == patch_sites.OUTSIDE] == []
+    assert suite.module("tests") == (patch_sites.PACKAGE, "tests")
+    assert suite.attribute(suite.module("tests"), "children", "tests.children") == [
+        (patch_sites.MODULE, "tests.children")]
+    assert suite.attribute(suite.module("tests"), "nothing", "tests.nothing") == [
+        (patch_sites.UNKNOWN, "tests.nothing")]
+    assert suite.module("pytest") == (patch_sites.OUTSIDE, "pytest")
+
+
+# -------------------------------------------------------------- the backstop ----
+
+
+def test_a_stand_in_written_in_a_form_the_tool_does_not_read_fails_the_check(tmp_path):
+    """Ruling 012 of J4: the forms the tool reads are a list, and a test can
+    write a stand-in in one off it. Each below replaces ``sorter.kept``, and
+    none is a ``<x>.setattr`` under ``tests/``: one in the root conftest
+    (which pytest loads, but the survey does not walk), one through a
+    fixture named ``setattr`` that gives the monkeypatch's method by a
+    string, and one through a local of that name. The survey sees nothing,
+    and the tool before ruling 012 passed this repository; the backstop
+    holds every ``setattr`` in the suite's text to a form it accounts for,
+    so each fails the check with its file and line. A parameter or a local
+    of the name binds it as surely as a ``def`` does, but no form the tool
+    reads needs one, so each is a line too."""
+    root = _repository(tmp_path, {**SORTER, "conftest.py": """
+        import pytest
+
+        from tracker import sorter
+
+        @pytest.fixture(autouse=True)
+        def quiet(monkeypatch):
+            monkeypatch.setattr(sorter, "kept", None)
+    """, "tests/test_a.py": """
+        import pytest
+
+        from tracker import sorter
+
+        @pytest.fixture
+        def setattr(monkeypatch):
+            return getattr(monkeypatch, "setattr")
+
+        def test_one(setattr):
+            setattr(sorter, "kept", None)
+
+        def test_two(monkeypatch):
+            setattr = getattr(monkeypatch, "setattr")
+            setattr(sorter, "kept", None)
+    """})
+    assert patch_sites.stand_ins(root) == ([], [])
+    assert patch_sites.unaccounted(root) == [patch_sites.Unaccounted("conftest.py", 7),
+                                             patch_sites.Unaccounted("tests/test_a.py", 9),
+                                             patch_sites.Unaccounted("tests/test_a.py", 10),
+                                             patch_sites.Unaccounted("tests/test_a.py", 13),
+                                             patch_sites.Unaccounted("tests/test_a.py", 14)]
+    ok, said = patch_sites.check(root)
+    assert not ok
+    assert said[0] == ("conftest.py:7: setattr is written here in a form the tool does not read, so a stand-in "
+                       "made through it is not checked. Write the stand-in as <x>.setattr(...) in a file under "
+                       "tests/, called where it is written.")
+    assert [line.split(": ")[0] for line in said] == [
+        "conftest.py:7", "tests/test_a.py:9", "tests/test_a.py:10", "tests/test_a.py:13", "tests/test_a.py:14"]
+
+
+def test_every_form_the_backstop_accounts_for_passes_it(tmp_path):
+    """What the backstop lets through is a list too: a ``<x>.setattr`` the
+    survey read (a site, a stand-in on no module, one it cannot place), a
+    call of the builtin ``setattr``, which nothing undoes, the name of a
+    ``def`` or a ``class``, and the name in an import. A ``setattr`` in a
+    string or a comment is not Python, so it is no token. The syntax tree
+    counts a column in bytes and tokenize in characters, so a line with an
+    ``é`` before its ``setattr`` is matched on both."""
+    root = _repository(tmp_path, {**SORTER, "tests/test_a.py": """
+        import builtins
+
+        from tracker import sorter
+
+        class Patcher:
+            def setattr(self, *args):
+                return args
+
+        def test_one(monkeypatch):
+            monkeypatch.setattr(sorter, "decide", None)
+            done = ("\u00e9", monkeypatch.setattr(sorter, "digest", None))
+            monkeypatch.setattr(builtins, "open", None)
+            setattr(Patcher, "size", 1)
+            # monkeypatch.setattr(sorter, "kept", None) is not written here
+            said = "monkeypatch.setattr(sorter, 'kept', None)"
+            assert done and said
+    """, "tests/test_b.py": """
+        from builtins import (
+            setattr,
+        )
+
+        def test_two(monkeypatch):
+            put = monkeypatch.setattr
+            assert put
+    """})
+    assert "\u00e9" in (root / "tests" / "test_a.py").read_text(encoding="utf-8")
+    assert patch_sites.unaccounted(root) == []
+    marked, unplaced = patch_sites.stand_ins(root)
+    assert [(site.line, site.name) for site, _mark in marked] == [(10, "decide"), (11, "digest")]
+    assert [(one.file, one.line) for one in unplaced] == [("tests/test_b.py", 6)]
 
 
 # ---------------------------------------------------------------- the report ----
@@ -857,13 +1154,18 @@ def test_the_tool_uses_the_standard_library_alone_and_imports_nothing_of_the_sui
 
 @pytest.fixture(scope="module")
 def the_suite():
-    return patch_sites.stand_ins(REPO)
+    """The stand-ins of the real suite, each with its mark; the ``setattr``
+    calls the tool cannot place; and the ``setattr`` tokens of the suite's
+    text it does not account for, from one survey."""
+    suite = patch_sites._Suite(REPO)
+    sites, unplaced, read = patch_sites._survey(suite)
+    return patch_sites._marked(suite, sites), sorted(unplaced), patch_sites._unaccounted(suite, read)
 
 
 def test_every_stand_in_in_the_suite_lands_where_the_code_reads_it(the_suite):
     """R4.2: no stand-in in ``tests/`` is unread, and every ``setattr`` is
     placed. One that fails here is pointed at the module that reads the name."""
-    marked, unplaced = the_suite
+    marked, unplaced, _unaccounted = the_suite
     assert not unplaced, unplaced
     assert [site.where() + " " + site.module + "." + site.name for site, mark in marked
             if mark == patch_sites.UNREAD] == []
@@ -877,7 +1179,7 @@ def test_the_report_on_filer_holds_every_filer_site_a_plain_search_finds(the_sui
     A plain search of the suite for ``setattr(filer, "...")`` and its
     alias finds fewer than the tool, which also follows loops and strings;
     every line the search finds is a site of the report."""
-    marked, _unplaced = the_suite
+    marked, _unplaced, _unaccounted = the_suite
     reported = {(site.file, site.line) for site, _mark in marked if site.module == "tracker.filer"}
     searched = set()
     for path in sorted((REPO / "tests").glob("*.py")):
@@ -886,6 +1188,14 @@ def test_the_report_on_filer_holds_every_filer_site_a_plain_search_finds(the_sui
                 searched.add((path.relative_to(REPO).as_posix(), number))
     assert searched and searched <= reported, sorted(searched - reported)
     assert len(reported) >= 73
+
+
+def test_every_setattr_in_the_suite_s_text_is_one_the_tool_accounts_for(the_suite):
+    """Ruling 012 of J4: no ``setattr`` in the suite's Python is written in a
+    form the tool does not read, so no stand-in of the suite is left out of
+    the check."""
+    _marked, _unplaced, unaccounted = the_suite
+    assert [one.said() for one in unaccounted] == []
 
 
 def test_the_command_line_check_passes_on_the_suite():

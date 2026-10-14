@@ -25,45 +25,75 @@ module:
   reads the name.
 
 ``report <module>`` lists the sites aimed at one module, and ``check`` exits 1
-if any site in the suite is unread or cannot be placed. The migration checklist
-runs both (SPEC-architecture section 10, steps 5 and 12), so the tool keeps its
-``__main__`` (P233).
+if any site in the suite is unread, if a stand-in cannot be placed, or if a
+``setattr`` in the suite's text is none of what the tool accounts for (the
+backstop, below). The migration checklist runs both (SPEC-architecture section
+10, steps 5 and 12), so the tool keeps its ``__main__`` (P233).
 
-**What it reads of the tests.** Any ``<x>.setattr(...)`` call is a site, so a
-fixture that hands its monkeypatch on (``in_a_child``) and
-``pytest.MonkeyPatch.context()`` count as well as ``monkeypatch``. A module is
-named three ways: as the test imported it (``setattr(filer, ...)``), under an
-alias (``filer_module``, ``here = children`` or ``here: ModuleType =
-children``), or in a string (``setattr("tracker.filer.name", value)``). The
-string may be written at the call or held in a name, a loop or a helper
-module's constant, or made by an f-string. An alias or a string another module
-of the repository holds at its top level (a helper module's ``THE_SORTER =
-sorter``, read as ``aliases.THE_SORTER`` or imported from it) is followed into
-that module. The stand-ins most worth checking come in loops: a test that
-forbids four reads sets four names in a ``for`` over a literal tuple, and a
-stand-in there that misses makes the test pass for nothing. So the tool also
-follows a module, a name or a string that comes from a ``for`` over literals
-(or over a literal assigned to a name), from a ``parametrize`` mark's list
-(pytest's own loop, on the test or its class), from a fixture's ``params``,
-from a fixture that returns it, and from a helper's parameter at the helper's
-calls in the same file. A fixture is looked for where pytest looks: the classes
-around the test, its file, then a conftest; one the file imports or assigns
-from a helper module is followed into that module. Values bound together stay
-together: ``for module, name in ((a, "x"), (b, "y"))`` and a mark's
-``("module, name", [(a, "x"), (b, "y")])`` are two sites each, not four, and
-inside a loop's body its name holds the loop's values, whatever else it is
-bound to.
+**What it promises (R4.1 as amended by ruling 012 of J4).** A tool that reads
+code without running it cannot be complete about what a target holds. It is
+complete about two other things. Detection is complete against the source
+text: every ``setattr`` token in the suite's Python is a stand-in it read, a
+call of the builtin, or the name defined or imported, or ``check`` fails on
+it. And placement fails closed: a target is placed only by a rule the tool can
+prove, and every other target fails ``check`` as not placed. So a stand-in may
+fail the check, but never pass it unseen.
 
-A top-level name is followed to its value only where nothing rebinds it: not
-a function of its own file (``global``, ``globals()[...]``), not an assignment
-to ``<module>.<name>`` in any other file, and not a stand-in or the builtin
+**What it reads of the tests.** Any ``<x>.setattr(...)`` call is a stand-in, so
+a fixture that hands its monkeypatch on (``in_a_child``) and
+``pytest.MonkeyPatch.context()`` count as well as ``monkeypatch``; one called
+on a class or on something outside the repository
+(``MonkeyPatch.setattr(monkeypatch, sorter, ...)``, whose first argument is the
+instance) is not placed. A module is named three ways: as the test imported it
+(``setattr(filer, ...)``, and through a folder with no ``__init__.py``, as
+``tests.children`` after ``import tests.children``), under an alias
+(``filer_module``, ``here = children`` or ``here: ModuleType = children``), or
+in a string (``setattr("tracker.filer.name", value)``). The string may be
+written at the call or held in a name, a loop or a helper module's constant, or
+made by an f-string. An alias or a string another module of the repository
+holds at its top level (a helper module's ``THE_SORTER = sorter``, read as
+``aliases.THE_SORTER`` or imported from it) is followed into that module. The
+stand-ins most worth checking come in loops: a test that forbids four reads
+sets four names in a ``for`` over a literal tuple, and a stand-in there that
+misses makes the test pass for nothing. So the tool also follows a module, a
+name or a string that comes from a ``for`` over literals (or over a literal
+assigned to a name), from a ``parametrize`` mark's list (pytest's own loop, on
+the test or its class), from a fixture's ``params``, from a fixture that
+returns it, and from a helper's parameter at the helper's calls in the same
+file. A fixture is looked for where pytest looks: the classes around the test,
+its file, then the conftests on its own path, nearest first; one the file
+imports or assigns from a helper module is followed into that module. A
+fixture's ``request.param`` is its ``params`` only where no ``parametrize``
+mark in the suite may hand the fixture values (``indirect``), since pytest
+gives it the mark's values in their place. Values bound together stay together:
+``for module, name in ((a, "x"), (b, "y"))`` and a mark's ``("module, name",
+[(a, "x"), (b, "y")])`` are two sites each, not four, and inside a loop's body
+its name holds the loop's values, whatever else it is bound to.
+
+A top-level name is followed to its value only where nothing rebinds it: not a
+function of its own file (``global``, ``globals()[...]``), not an assignment to
+``<module>.<name>`` in any other file, and not a stand-in or the builtin
 ``setattr`` aimed at it. Any of those means it may hold something else by the
 time a stand-in is aimed through it, so a stand-in aimed through a seam another
 file fills (``children.PROC``, which a test replaces with
 ``monkeypatch.setattr(children, "PROC", proc)``) is not placed. Following what
-each store puts there was the rejected alternative (ruling 009 of J4): which
-of them the name holds when the stand-in goes in depends on the order the
-tests run in.
+each store puts there was the rejected alternative (ruling 009 of J4): which of
+them the name holds when the stand-in goes in depends on the order the tests
+run in. One scope in, the same holds: a function's local name that the function
+or one inside it declares ``nonlocal`` is not followed.
+
+**The backstop.** The rules above say what a stand-in's target holds; the
+backstop says that every stand-in was looked at. ``check`` reads the suite's
+Python (each file under ``tests/``, and the conftest at the root, which pytest
+loads too) with ``tokenize``, so a string or a comment is not read, and holds
+each ``setattr`` token to being one of these: a ``<x>.setattr`` the tool read
+as a stand-in (a site, one on no module, or a not-placed line); a call of the
+builtin ``setattr``, which is not a stand-in, because nothing undoes it; or the
+name of a ``def`` or a ``class``, or a name in an import. Any other fails the
+check with its file and line: a stand-in made through a name ``setattr`` that
+is not the builtin, a parameter or a local of that name, a ``setattr`` passed
+as an argument, one in a file the tool does not walk. A new way of writing a
+stand-in can then fail the check, but never pass it unseen.
 
 **What a read is.** A global read in the module's own code, by Python's own
 scope rules: not a parameter or a local of the same name, not a method reading
@@ -73,8 +103,18 @@ are written out here rather than taken from ``symtable``, which loses a
 module-level comprehension's reads on 3.12 and later (PEP 709 inlines it), so
 its answer would depend on the interpreter.
 
-**What it does not see.** A name another module copied with ``from module
-import name`` is out of reach of a stand-in on ``module``. That site is
+**What it does not read.** This list is the whole of the boundary:
+
+- a store through ``vars()`` or ``__dict__`` (``vars(seams)["ENGINE"] =
+  sorter``), which is not seen as rebinding the name; the placeholder rule
+  below is the only guard, for a seam whose own value is a constant;
+- ``monkeypatch.setitem``, which is not a ``setattr``;
+- code built at run time: ``exec``, ``eval``, strings handed to ``importlib``,
+  and a name given as a string (``getattr(monkeypatch, "setattr")``), which no
+  token of the source text spells.
+
+**What it does not see in the marks.** A name another module copied with ``from
+module import name`` is out of reach of a stand-in on ``module``. That site is
 reported as defined, because some caller may read the name through the module
 and the tool cannot know which caller a test meant. The moves to come make the
 other mistake, an imported name the module stops reading, and that is the one
@@ -83,34 +123,40 @@ other mistake, an imported name the module stops reading, and that is the one
 **No module is something the tool proves, never its fallback.** One function,
 :func:`_no_module`, draws that conclusion, and ``test_patch_sites`` holds it to
 being the only one that does. A stand-in passes unlisted only when its target
-is one of these: a constant that is not a
-string, written where it is used; a literal container; a class the tool sees
-defined, or what calling one makes; a builtin other than those that can hand
-back a module (:data:`_GIVE_A_MODULE`), and what calling one gives; a value
-from an outside library, and what calling it gives; and what one of pytest's
-own fixtures gives, or one of the installed plugin's (:data:`_OUTSIDE_FIXTURES`,
-a fixed list). Each of these lands on that object, whoever reads it. Every
-other target fails ``check`` as not placed. That includes a module stored by
-an unpacking, a walrus, ``with ... as`` or ``except ... as``; a function (a
-decorator can make a ``def`` anything) and what any function, method or
-instance gives when called; what ``getattr``, ``vars``, ``__import__``,
-``globals``, ``locals``, ``eval``, ``next``, ``min`` or ``max`` gives; either
-side of ``or``, arithmetic, a comparison, a comprehension; an attribute of
-anything but a module or an outside library (a class's, an instance's,
-``x.__class__``, one of what an outside call made); a top-level name that is
-rebound (by a function of its own file, an assignment from another file, or a
-``setattr`` aimed at it) or that its module never binds, read in that file or
-another; a top-level name bound to a constant that is not a string
-(``ENGINE = None``), which is a placeholder another module may fill in a way
-the tool does not see; a fixture the tool does not find and pytest does not
-give, and one made some way it does not follow (a call that returns a fixture,
-an import from outside the repository); a ``parametrize`` mark whose names or
-values are not written out, or that hands a name to its fixture; a
-``setattr`` that is not called where it is written (``put =
-monkeypatch.setattr``, or ``functools.partial`` of one); and in the string
-form, a first argument that is not a string the tool can read, such as one
-built with ``+`` or ``format``. The remedy is the same each time: name the
-module and the name as an import, an alias or a literal, and call ``setattr``
+is one of these: a constant that is not a string, written where it is used; a
+literal container; a class the tool sees defined, or what calling one makes; a
+builtin other than those that can hand back a module (:data:`_GIVE_A_MODULE`),
+and what calling one gives; a value from an outside library, and what calling
+it gives, where outside is a dotted name that is neither a module of the
+repository nor a folder holding one (:meth:`_Suite.module` is the one place
+that concludes it, and ``test_patch_sites`` holds it to that too); and what one
+of pytest's own fixtures gives, or one of the installed plugin's
+(:data:`_OUTSIDE_FIXTURES`, a fixed list). Each of these lands on that object,
+whoever reads it. Every other target fails ``check`` as not placed. That
+includes a module stored by an unpacking, a walrus, ``with ... as`` or ``except
+... as``; a function (a decorator can make a ``def`` anything) and what any
+function, method or instance gives when called; what ``getattr``, ``vars``,
+``__import__``, ``globals``, ``locals``, ``eval``, ``next``, ``min`` or ``max``
+gives; either side of ``or``, arithmetic, a comparison, a comprehension; an
+attribute of anything but a module or an outside library (a class's, an
+instance's, ``x.__class__``, one of what an outside call made); a top-level
+name that is rebound (by a function of its own file, an assignment from another
+file, or a ``setattr`` aimed at it) or that its module never binds, read in
+that file or another; a function's local name that it or a function inside it
+declares ``nonlocal``; a top-level name bound to a constant that is not a
+string (``ENGINE = None``), which is a placeholder another module may fill in a
+way the tool does not see; a folder with no ``__init__.py`` (``tests`` itself),
+and a name in one that is none of its modules; a fixture the tool does not find
+and pytest does not give, and one made some way it does not follow (a call that
+returns a fixture, an import from outside the repository); a ``parametrize``
+mark whose names or values are not written out, or that hands a name to its
+fixture, and a fixture's ``request.param`` where any mark in the suite may hand
+it values; a ``setattr`` that is not called where it is written (``put =
+monkeypatch.setattr``, or ``functools.partial`` of one), or that is called on a
+class or on something outside the repository; and in the string form, a first
+argument that is not a string the tool can read, such as one built with ``+``
+or ``format``. The remedy is the same each time: name the module and the name
+as an import, an alias or a literal, and call ``setattr`` on the instance,
 where it is written. The fallback this replaced, no module wherever the tool
 did not know, let a stand-in written through a helper module, a lambda, a
 class, a string held in a name, a ``parametrize`` mark, a helper's fixture or a
@@ -126,9 +172,12 @@ from __future__ import annotations
 import argparse
 import ast
 import builtins
+import io
 import itertools
+import tokenize
 from collections import Counter, defaultdict
 from dataclasses import dataclass
+from functools import cached_property
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -176,9 +225,12 @@ class Unplaced:
     written: str
     why: str
     called: bool = True
+    remedy: str = ""
 
     def said(self) -> str:
         """The line ``check`` prints for it."""
+        if self.remedy:
+            return f"{self.file}:{self.line}: {self.written} cannot be placed: {self.why}. {self.remedy}."
         if not self.called:
             return f"{self.file}:{self.line}: {self.written} cannot be placed: {self.why}. Call it where it is written."
         return (f"{self.file}:{self.line}: setattr({self.written}, ...) cannot be placed: {self.why}. "
@@ -372,13 +424,16 @@ def module_names(source: str, filename: str = "<module>") -> ModuleNames:
 # ------------------------------------------------------- what the tests name ----
 
 # What an expression in a test can hold, as far as the tool follows it: a
-# module of the repository (by its dotted name), a string, something outside
-# the repository (a builtin among them), a class the tool sees defined or an
-# instance of one, a thing the tool can prove is no module (a constant that is
-# not a string, a literal container, what a builtin or an outside library
-# gives), or a value the tool cannot work out. A value is ``(kind, what)``.
+# module of the repository (by its dotted name), a folder of the repository
+# that holds modules but has no ``__init__.py`` (a namespace package, as
+# ``tests`` and ``tools`` are), a string, something outside the repository (a
+# builtin among them), a class the tool sees defined or an instance of one, a
+# thing the tool can prove is no module (a constant that is not a string, a
+# literal container, what a builtin or an outside library gives), or a value
+# the tool cannot work out. A value is ``(kind, what)``.
 MODULE, TEXT, OUTSIDE, THING, UNKNOWN = "module", "text", "outside", "thing", "unknown"
 CLASS, INSTANCE = "class", "instance"
+PACKAGE = "package"
 _A_THING = (THING, None)
 
 #: The name slot of a target the tool cannot place: which name the stand-in
@@ -460,6 +515,16 @@ def _fixture_decorator(function: ast.AST) -> ast.expr | None:
     return None
 
 
+def _fixture_name(function: ast.AST, decorator: ast.expr) -> str | None:
+    """The name pytest knows the fixture ``function`` by: its ``name=``, or
+    else the name it is defined under; None where ``name=`` is not a string
+    written out."""
+    given = _argument(decorator, None, "name") if isinstance(decorator, ast.Call) else None
+    if given is None:
+        return function.name
+    return given.value if isinstance(given, ast.Constant) and isinstance(given.value, str) else None
+
+
 def _argument(call: ast.Call, at: int | None, keyword: str) -> ast.expr | None:
     """The argument ``call`` gives by ``keyword``, or else at position ``at``
     (None for a keyword-only one)."""
@@ -511,6 +576,11 @@ class _Suite:
     def __init__(self, root: Path):
         self.root = root
         self.index = module_index(root)
+        # The folders that hold a module but are none themselves: ``tests``
+        # and ``tools`` have no ``__init__.py``, and ``import tests.children``
+        # reaches a module through one.
+        self.packages = frozenset(".".join(dotted.split(".")[:cut]) for dotted in self.index
+                                  for cut in range(1, dotted.count(".") + 1)) - set(self.index)
         # A tool imported by its bare name is reported by its dotted one.
         self._dotted: dict[Path, str] = {}
         for dotted, path in self.index.items():
@@ -529,7 +599,17 @@ class _Suite:
         return self._dotted.get(path, ".".join(path.relative_to(self.root).with_suffix("").parts))
 
     def module(self, dotted: str) -> tuple:
-        return (MODULE, self.canonical(dotted)) if dotted in self.index else (OUTSIDE, dotted)
+        """What importing ``dotted`` gives: a module of the repository, a
+        folder of it that holds one (:attr:`packages`), or something outside
+        the repository. This is the one place the tool takes a value for
+        outside the repository, and it does so only for a name that is
+        neither, which ``test_patch_sites`` holds it to: a module reached
+        through ``tests.`` or ``tools.`` is followed, not passed unlisted."""
+        if dotted in self.index:
+            return (MODULE, self.canonical(dotted))
+        if dotted in self.packages:
+            return (PACKAGE, dotted)
+        return (OUTSIDE, dotted)
 
     def names(self, module: str) -> ModuleNames:
         if module not in self._names:
@@ -547,8 +627,44 @@ class _Suite:
         return [self.test_file(path) for path in sorted((self.root / TESTS).rglob("*.py"))
                 if "__pycache__" not in path.parts]
 
-    def conftests(self) -> list[_TestFile]:
-        return [self.test_file(path) for path in sorted((self.root / TESTS).rglob("conftest.py"))]
+    def conftests_for(self, path: Path) -> list[_TestFile]:
+        """The conftests pytest gives the file at ``path``: the one in its own
+        folder and the one in each folder above it, up to the repository's
+        root, nearest first. A conftest in another branch of ``tests/`` is
+        not among them."""
+        found = []
+        for folder in path.parents:
+            conftest = folder / "conftest.py"
+            if conftest != path and conftest.is_file():
+                found.append(self.test_file(conftest))
+            if folder == self.root:
+                break
+        return found
+
+    def suite_files(self) -> list[_TestFile]:
+        """Every file of the suite's own Python: each file under ``tests/``,
+        and the conftest at the repository's root, which pytest loads too."""
+        return [*self.test_files(), *self.conftests_for(self.root / TESTS)]
+
+    @cached_property
+    def handed_on(self) -> frozenset[str] | None:
+        """Every name a ``parametrize`` call in the suite hands to its fixture
+        (``indirect``), which then gives the call's values as
+        ``request.param`` in place of its own ``params``. A call whose
+        ``indirect`` is not written out hands on every name it gives, and
+        None means some call's names are not written out, so that any
+        fixture may be handed values the tool does not see."""
+        names: set[str] = set()
+        for test_file in self.suite_files():
+            for node in ast.walk(test_file.tree):
+                if not (isinstance(node, ast.Call) and _named(node) == "parametrize"):
+                    continue
+                given = _argnames(node)
+                if given is None:
+                    return None
+                indirect = _indirect(node, given)
+                names |= set(given) if indirect is None else indirect
+        return frozenset(names)
 
     def stored(self) -> frozenset[tuple[str, str]]:
         """Each (module, name) that a file of the repository stores in a module
@@ -577,29 +693,28 @@ class _Suite:
         if isinstance(statement, ast.Import):
             return [self.module(alias.name if alias.asname else alias.name.split(".")[0])]
         base = self.base(statement, importer)
-        if f"{base}.{alias.name}" in self.index:
-            return [self.module(f"{base}.{alias.name}")]
-        if base in self.index:
-            return self.attribute(self.module(base), alias.name, f"{base}.{alias.name}", seen)
-        return [(OUTSIDE, f"{base}.{alias.name}")]
+        return self.attribute(self.module(base), alias.name, f"{base}.{alias.name}", seen)
 
     def attribute(self, value: tuple, attr: str, written: str, seen: frozenset = frozenset()) -> list[tuple]:
         """What ``<value>.<attr>`` can hold, written as ``written``.
 
         Of a module of the repository: its submodule, or what the module binds
         to the name at its top level, followed in that module's own code (an
-        import, a ``class`` or an assignment; a ``def`` is not followed). Of
-        something outside the
-        repository: something outside. Anything else - a class's attribute, an
-        instance's, a function's, a string's method, an attribute of what a
-        builtin or an outside library gave - may hold a module, so it is not
-        followed."""
+        import, a ``class`` or an assignment; a ``def`` is not followed). Of a
+        folder with no ``__init__.py``: its module or folder of that name, and
+        anything else is not followed (nothing but a run can have put it
+        there). Of something outside the repository: what :meth:`module`
+        makes of the dotted name, so the index is looked in before a name is
+        taken for outside. Anything else - a class's attribute, an instance's,
+        a function's, a string's method, an attribute of what a builtin or an
+        outside library gave - may hold a module, so it is not followed."""
         kind, held = value
-        if kind == OUTSIDE:
-            return [(OUTSIDE, f"{held}.{attr}")]
-        if kind == MODULE:
-            if f"{held}.{attr}" in self.index:
-                return [self.module(f"{held}.{attr}")]
+        if kind == MODULE or kind == PACKAGE or kind == OUTSIDE:
+            found = self.module(f"{held}.{attr}")
+            if found[0] != OUTSIDE or kind == OUTSIDE:
+                return [found]
+            if kind == PACKAGE:
+                return [(UNKNOWN, written)]
             return self.test_file(self.index[held]).top_level(attr, written, seen)
         return [value if kind == UNKNOWN else (UNKNOWN, written)]
 
@@ -611,6 +726,7 @@ class _TestFile:
 
     def __init__(self, suite: _Suite, path: Path):
         self.suite = suite
+        self.path = path
         self.relative = path.relative_to(suite.root).as_posix()
         self.dotted = ".".join(path.relative_to(suite.root).with_suffix("").parts)
         self.canonical = suite.canonical_of(path)
@@ -623,6 +739,7 @@ class _TestFile:
             if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
                 self.calls[node.func.id].append(node)
         self._bound: dict[ast.AST, dict[str, list[ast.AST]]] = {}
+        self._nonlocal: dict[ast.AST, frozenset[str]] = {}
         # The top-level names a function rebinds with ``global``, or that are
         # set through ``globals()``: what they hold is not their top-level value.
         self.rebound = {name for node in ast.walk(self.tree) if isinstance(node, ast.Global) for name in node.names}
@@ -680,6 +797,19 @@ class _TestFile:
         """The nodes that bind ``name`` in the innermost scope around ``at`` that binds it."""
         return self.binding(name, at)[1]
 
+    def shared(self, name: str, scope: ast.AST | None) -> bool:
+        """Whether ``name``, bound in the function ``scope``, is one that a
+        function inside it, or the function itself, declares ``nonlocal``:
+        the name is then rebound in another scope, at a time the tool does
+        not know, so what it holds is not followed (as :meth:`rebinds` does
+        for a top-level name)."""
+        if scope is None or isinstance(scope, ast.Module):
+            return False
+        if scope not in self._nonlocal:
+            self._nonlocal[scope] = frozenset(name for node in ast.walk(scope) if isinstance(node, ast.Nonlocal)
+                                              for name in node.names)
+        return name in self._nonlocal[scope]
+
     def rebinds(self, name: str) -> bool:
         """Whether this file's top-level ``name`` is bound anywhere but its top
         level: by a function of the file (``global``, ``globals()``), or
@@ -730,6 +860,8 @@ class _TestFile:
         if isinstance(expr, ast.Constant):
             return [(TEXT, expr.value) if isinstance(expr.value, str) else _no_module(expr)]
         if isinstance(expr, ast.Name):
+            if self.shared(expr.id, self.binding(expr.id, expr)[0]):
+                return [(UNKNOWN, expr.id)]
             return env[expr.id] if expr.id in env else self._held_by(expr, seen)
         if isinstance(expr, ast.Attribute):
             if isinstance(expr.value, ast.Name) and expr.value.id == "request" and expr.attr == "param":
@@ -793,12 +925,22 @@ class _TestFile:
         return [(TEXT, "".join(row)) for row in itertools.product(*parts)]
 
     def _fixture_params(self, at: ast.AST, seen) -> list[tuple]:
+        """What ``request.param`` holds at ``at``: the ``params`` of the
+        fixture it is read in, where they are written out. A fixture that a
+        ``parametrize`` mark anywhere in the suite may hand values to
+        (``indirect``) is not followed: pytest gives it the mark's values as
+        ``request.param`` in place of its own ``params``, for a test that
+        asks for it or for one that reaches it through another fixture."""
         for scope in self.chain(at):
             decorator = _fixture_decorator(scope)
-            given = [keyword.value for keyword in getattr(decorator, "keywords", []) if keyword.arg == "params"]
-            items = self.items(given[0], seen) if given else None
-            if items is not None:
-                return [value for item in items for value in self.values(item, {}, seen)]
+            if decorator is None:
+                continue
+            handed_on, name = self.suite.handed_on, _fixture_name(scope, decorator)
+            given = _argument(decorator, None, "params") if isinstance(decorator, ast.Call) else None
+            items = None if given is None else self.items(given, seen)
+            if handed_on is None or name is None or name in handed_on or items is None:
+                break
+            return [value for item in items for value in self.values(item, {}, seen)]
         return [(UNKNOWN, "request.param")]
 
     def _held_by(self, expr: ast.Name, seen) -> list[tuple]:
@@ -807,7 +949,7 @@ class _TestFile:
             # A builtin is outside the repository. Any other name the file
             # never binds (a comprehension's variable, a star import's) is not
             # followed.
-            return [(OUTSIDE, f"builtins.{expr.id}")] if expr.id in _BUILTINS else [(UNKNOWN, expr.id)]
+            return [self.suite.module(f"builtins.{expr.id}")] if expr.id in _BUILTINS else [(UNKNOWN, expr.id)]
         if isinstance(scope, ast.Module):
             return self.module_level(expr.id, expr.id, bound, seen)
         return self._bound_values(expr.id, bound, seen)
@@ -898,7 +1040,7 @@ class _TestFile:
             return self.items(expr.args[0], seen)
         if isinstance(expr, ast.Name):
             scope, bound = self.binding(expr.id, expr)
-            if isinstance(scope, ast.Module) and self.rebinds(expr.id):
+            if (isinstance(scope, ast.Module) and self.rebinds(expr.id)) or self.shared(expr.id, scope):
                 return None
             if (len(bound) == 1 and isinstance(bound[0], ast.Name) and id(bound[0]) not in seen
                     and isinstance(self.parent.get(bound[0]), ast.Assign) and self.parent[bound[0]].targets == bound):
@@ -987,9 +1129,12 @@ class _TestFile:
         """What a ``parametrize`` mark gives a test's ``parameter``: the mark
         as the source, and one row per set of values it lists, holding each
         name the mark gives that set together. None where no mark names the
-        parameter, or one names it ``indirect`` (its fixture gives it then). A
-        mark whose names, values or ``indirect`` are not written out gives a
-        value the tool does not follow."""
+        parameter. A mark whose names, values or ``indirect`` are not written
+        out gives a value the tool does not follow, and so does one that
+        hands the parameter to its fixture (``indirect``): pytest gives that
+        fixture the mark's values as ``request.param``, and what the fixture
+        makes of them is not followed, nor are the fixture's own ``params``
+        read in their place."""
         name = parameter.arg
         unknown = (parameter, [{name: [(UNKNOWN, name)]}])
         marks = self._parametrize_marks(function)
@@ -1005,7 +1150,7 @@ class _TestFile:
             if indirect is None:
                 return unknown
             if name in indirect:
-                return None
+                return unknown
             direct = [one for one in names if one not in indirect]
             argvalues = _argument(mark, 1, "argvalues")
             items = None if argvalues is None else self.items(argvalues, seen)
@@ -1031,11 +1176,12 @@ class _TestFile:
     def _fixture_values(self, parameter: ast.arg, function: ast.AST, seen) -> list[tuple]:
         """What the fixture ``parameter`` names gives the test or fixture
         ``function``, found where pytest looks for it: the classes around
-        ``function``, this file, then a conftest under ``tests/``. A name none
-        of them holds is no module only where it is pytest's own fixture or a
+        ``function``, this file, then the conftests on this file's own path,
+        nearest first (:meth:`_Suite.conftests_for`). A name none of them
+        holds is no module only where it is pytest's own fixture or a
         plugin's (:data:`_OUTSIDE_FIXTURES`); any other is not followed."""
         holders = [(self, scope) for scope in (*self.classes_around(function), self.tree)]
-        holders += [(conftest, conftest.tree) for conftest in self.suite.conftests()]
+        holders += [(conftest, conftest.tree) for conftest in self.suite.conftests_for(self.path)]
         for holder, scope in holders:
             given = holder.fixture_in(scope, parameter.arg, seen)
             if given is not None:
@@ -1051,15 +1197,15 @@ class _TestFile:
         or to a name of the scope's own (:meth:`_fixture_followed`)."""
         bound = self.bound_in(scope)
         found: list[tuple] = []
-        for binding, nodes in bound.items():
+        for nodes in bound.values():
             for node in nodes:
                 decorator = _fixture_decorator(node) if isinstance(node, _FUNCTIONS) else None
                 if decorator is None:
                     continue
-                given = _argument(decorator, None, "name") if isinstance(decorator, ast.Call) else None
-                if given is not None and not (isinstance(given, ast.Constant) and isinstance(given.value, str)):
+                known_as = _fixture_name(node, decorator)
+                if known_as is None:
                     return [(UNKNOWN, name)]
-                if (binding if given is None else given.value) != name:
+                if known_as != name:
                     continue
                 if id(node) in seen:
                     return [(UNKNOWN, name)]
@@ -1152,17 +1298,18 @@ def _rows(test_file: _TestFile, call: ast.Call, args: list[ast.AST]) -> list[dic
 def _dotted(suite: _Suite, text: str) -> list[tuple[tuple, tuple]]:
     """Every (module, name) the string form ``setattr("tracker.filer.name",
     value)`` replaces: the longest start of the string that names a module of
-    the repository is the module, the parts after it but the last are its
-    attributes, and the last part is the name. A string that names no module of
-    the repository is outside it."""
+    the repository (or a folder of it with no ``__init__.py``) is the module,
+    the parts after it but the last are its attributes, and the last part is
+    the name. A string that names no module of the repository is outside it."""
     parts = text.split(".")
     for cut in range(len(parts) - 1, 0, -1):
-        if ".".join(parts[:cut]) in suite.index:
-            values = [suite.module(".".join(parts[:cut]))]
+        start = suite.module(".".join(parts[:cut]))
+        if start[0] != OUTSIDE:
+            values = [start]
             for at in range(cut, len(parts) - 1):
                 values = [value for one in values for value in suite.attribute(one, parts[at], ".".join(parts[:at + 1]))]
             return [(value, (TEXT, parts[-1])) for value in values]
-    return [((OUTSIDE, text), (TEXT, parts[-1]))]
+    return [(suite.module(text), (TEXT, parts[-1]))]
 
 
 def _string_form(call: ast.Call) -> bool:
@@ -1200,25 +1347,38 @@ def _aimed_at(test_file: _TestFile, call: ast.Call) -> tuple[list[tuple[tuple, t
     return found, written
 
 
-def stand_ins(root: Path = ROOT) -> tuple[list[tuple[Site, str]], list[Unplaced]]:
+def _survey(suite: _Suite) -> tuple[set[Site], set[Unplaced], set[tuple[str, int, int]]]:
     """Every stand-in under ``tests/`` aimed at a module of the repository,
-    each with its mark, and every ``setattr`` the tool could not place. A
-    ``<x>.setattr`` read but not called where it is written (``put =
+    every ``setattr`` the tool could not place, and where each
+    ``<x>.setattr`` it read ends (its file, line and column), which the
+    backstop (:func:`_unaccounted`) holds the source text to.
+
+    A ``<x>.setattr`` read but not called where it is written (``put =
     monkeypatch.setattr``, or handed to ``functools.partial``) is not placed:
-    its arguments are written somewhere the tool does not look."""
-    suite = _Suite(root)
+    its arguments are written somewhere the tool does not look. Nor is one
+    called on a class or on something outside the repository
+    (``MonkeyPatch.setattr(monkeypatch, sorter, ...)``): its first argument
+    is then the monkeypatch, and what it replaces comes after."""
     sites: set[Site] = set()
     unplaced: set[Unplaced] = set()
+    read: set[tuple[str, int, int]] = set()
     for test_file in suite.test_files():
         for call in ast.walk(test_file.tree):
             if (isinstance(call, ast.Attribute) and call.attr == "setattr" and isinstance(call.ctx, ast.Load)
                     and not (isinstance(test_file.parent.get(call), ast.Call) and test_file.parent[call].func is call)):
+                read.add((test_file.relative, call.end_lineno, call.end_col_offset))
                 unplaced.add(Unplaced(test_file.relative, call.lineno, ast.unparse(call),
                                       "it is not called where it is written, so what it replaces is not written out",
                                       called=False))
                 continue
             if not (isinstance(call, ast.Call) and isinstance(call.func, ast.Attribute)
                     and call.func.attr == "setattr"):
+                continue
+            read.add((test_file.relative, call.func.end_lineno, call.func.end_col_offset))
+            if any(kind == CLASS or kind == OUTSIDE for kind, _held in test_file.values(call.func.value, {})):
+                unplaced.add(Unplaced(test_file.relative, call.lineno, ast.unparse(call.func),
+                                      "it is called on a class, so its first argument is the instance and what it "
+                                      "replaces comes after", remedy="Call it on the instance"))
                 continue
             ways, written = _aimed_at(test_file, call)
             for (kind, held), (name_kind, name) in ways:
@@ -1230,10 +1390,87 @@ def stand_ins(root: Path = ROOT) -> tuple[list[tuple[Site, str]], list[Unplaced]
                 elif kind == TEXT:
                     unplaced.add(Unplaced(test_file.relative, call.lineno, written,
                                           "a string names a module only in the form setattr(\"module.name\", value)"))
+                elif kind == PACKAGE:
+                    unplaced.add(Unplaced(test_file.relative, call.lineno, written,
+                                          f"{held} is a folder with no __init__.py, not a module"))
                 elif kind not in _NO_MODULE:
                     unplaced.add(Unplaced(test_file.relative, call.lineno, written,
                                           f"what {held} holds is not written out"))
-    return [(site, suite.names(site.module).mark(site.name)) for site in sorted(sites)], sorted(unplaced)
+    return sites, unplaced, read
+
+
+def _marked(suite: _Suite, sites: set[Site]) -> list[tuple[Site, str]]:
+    return [(site, suite.names(site.module).mark(site.name)) for site in sorted(sites)]
+
+
+def stand_ins(root: Path = ROOT) -> tuple[list[tuple[Site, str]], list[Unplaced]]:
+    """Every stand-in under ``tests/`` aimed at a module of the repository,
+    each with its mark, and every ``setattr`` the tool could not place
+    (:func:`_survey`)."""
+    suite = _Suite(root)
+    sites, unplaced, _read = _survey(suite)
+    return _marked(suite, sites), sorted(unplaced)
+
+
+# -------------------------------------------------------------- the backstop ----
+
+
+@dataclass(frozen=True, order=True)
+class Unaccounted:
+    """A ``setattr`` in the suite's text that is none of what the tool
+    accounts for: a ``<x>.setattr`` it read, a call of the builtin
+    ``setattr``, or the name defined or imported."""
+
+    file: str
+    line: int
+
+    def said(self) -> str:
+        """The line ``check`` prints for it."""
+        return (f"{self.file}:{self.line}: setattr is written here in a form the tool does not read, so a stand-in "
+                f"made through it is not checked. Write the stand-in as <x>.setattr(...) in a file under tests/, "
+                f"called where it is written.")
+
+
+def _unaccounted(suite: _Suite, read: set[tuple[str, int, int]]) -> list[Unaccounted]:
+    """Every ``setattr`` token in the suite's Python (:meth:`_Suite.suite_files`,
+    read with ``tokenize``, so a string or a comment is not one) that is none
+    of these: a ``<x>.setattr`` the survey read (``read``, by where the name
+    ends); a call of the builtin ``setattr``, which nothing undoes and so is
+    no stand-in; the name of a ``def`` or a ``class``; or a name in an
+    import. A stand-in written in a form the survey does not recognise -
+    through a name ``setattr`` that is not the builtin, in a file it does
+    not walk - can then fail the check, but never pass it unseen."""
+    found: list[Unaccounted] = []
+    for test_file in suite.suite_files():
+        text = test_file.path.read_text(encoding="utf-8")
+        lines = io.StringIO(text).readlines()
+        builtin = {(node.end_lineno, node.end_col_offset) for node in ast.walk(test_file.tree)
+                   if isinstance(node, ast.Name) and node.id == "setattr" and isinstance(node.ctx, ast.Load)
+                   and isinstance(test_file.parent.get(node), ast.Call) and test_file.parent[node].func is node
+                   and not test_file.binders("setattr", node)}
+        imports = [((node.lineno, node.col_offset), (node.end_lineno, node.end_col_offset))
+                   for node in ast.walk(test_file.tree) if isinstance(node, (ast.Import, ast.ImportFrom))]
+        before = ""
+        for token in tokenize.generate_tokens(io.StringIO(text).readline):
+            if token.type == tokenize.NAME and token.string == "setattr":
+                # The syntax tree counts a column in bytes, tokenize in characters.
+                start = (token.start[0], len(lines[token.start[0] - 1][:token.start[1]].encode("utf-8")))
+                end = (token.end[0], len(lines[token.end[0] - 1][:token.end[1]].encode("utf-8")))
+                if not ((test_file.relative, *end) in read or end in builtin or before in ("def", "class")
+                        or any(first <= start and end <= last for first, last in imports)):
+                    found.append(Unaccounted(test_file.relative, token.start[0]))
+            if token.type not in _LAYOUT:
+                before = token.string
+    return sorted(found)
+
+
+_LAYOUT = (tokenize.NL, tokenize.NEWLINE, tokenize.COMMENT, tokenize.INDENT, tokenize.DEDENT)
+
+
+def unaccounted(root: Path = ROOT) -> list[Unaccounted]:
+    """Every ``setattr`` in the suite's text the tool does not account for (:func:`_unaccounted`)."""
+    suite = _Suite(root)
+    return _unaccounted(suite, _survey(suite)[2])
 
 
 # ------------------------------------------------------------------- the CLI ----
@@ -1267,14 +1504,18 @@ def report(module: str, root: Path = ROOT) -> list[str]:
 
 
 def check(root: Path = ROOT) -> tuple[bool, list[str]]:
-    """Whether every stand-in lands where the code reads it, and what to say."""
-    marked, unplaced = stand_ins(root)
-    index = module_index(root)
+    """Whether every stand-in lands where the code reads it, every one can
+    be placed, and every ``setattr`` in the suite's text is accounted for;
+    and what to say."""
+    suite = _Suite(root)
+    sites, unplaced, read = _survey(suite)
+    marked = _marked(suite, sites)
     lines = [f"{site.where()}: {site.module}.{site.name} is unread there: "
-             f"{index[site.module].relative_to(root).as_posix()} never reads it outside its import "
+             f"{suite.index[site.module].relative_to(root).as_posix()} never reads it outside its import "
              f"or definition. Point the stand-in at the module that reads it."
              for site, mark in marked if mark == UNREAD]
-    lines += [one.said() for one in unplaced]
+    lines += [one.said() for one in sorted(unplaced)]
+    lines += [one.said() for one in _unaccounted(suite, read)]
     if lines:
         return False, lines
     modules = len({site.module for site, _mark in marked})
