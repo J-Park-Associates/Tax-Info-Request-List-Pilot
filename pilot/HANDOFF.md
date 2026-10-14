@@ -18,7 +18,7 @@ this repository; [`SPEC.md`](SPEC.md) says what it builds.
   `/Applications` and in `~/Desktop/Apps/Published` is the `d39b92e7` build,
   which is the same program: everything since changed prompts and records only.
 
-- **Decisions live in [`DECISIONS.md`](DECISIONS.md), rows P1 to P313.** The
+- **Decisions live in [`DECISIONS.md`](DECISIONS.md), rows P1 to P323.** The
   badge reads **Pilot 0.4** (P281, 2026-10-11): 0.3 plus the UI review's work. Code
   and tests cite those numbers, so a row is never renumbered or removed. Why
   a thing is the way it is: search the row, do not guess.
@@ -44,6 +44,14 @@ instructions and the loop's rules, including the coordination board the
 agents talk through. SPEC-architecture section 13 is the ledger of landed
 jobs; a session that picks the loop up reads it, `git log` on the branch and
 PROMPT-refactor section 1.5.
+
+**Paused on 2026-10-14 after P3.2, at Jason's word.** Tranche 1, phase 2 and
+phase 3's first two jobs are landed on `claude/quirky-johnson-22edtv` (head
+`969bfd6`); nothing is on `main` and no job is in flight. The next job is
+P3.3. [`HANDOFF-refactor.md`](HANDOFF-refactor.md) is the hand-over: where it
+stopped, the resume steps, what the office PC owes, the carry-forward list,
+and the loop's scripts, which lived in the session's scratch folder and did
+not outlive it.
 
 What landed on 2026-10-12, in the software's words:
 

@@ -84,7 +84,10 @@ buy merge conflicts, and a review must see one job's diff alone.
 If the orchestrating session ends, a new one resumes from the files alone:
 SPEC-architecture section 13 (the ledger), `git log BASE..` on `BRANCH`, and
 this file. A job with commits but no ledger row is reviewed again from round
-1.
+1. When a session pauses the loop on purpose, it writes
+[`HANDOFF-refactor.md`](HANDOFF-refactor.md) first: where it stopped, and
+what `ORCH` held that the next session needs, since `ORCH` does not outlive
+the session.
 
 ### 1.6 The coordination board
 
