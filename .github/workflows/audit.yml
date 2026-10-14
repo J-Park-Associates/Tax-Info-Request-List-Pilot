@@ -1,4 +1,4 @@
-# The weekly supply-chain audit (decision 191): every pin in the four lock
+# The weekly supply-chain audit (decision 191): every pin in the five lock
 # files and every package in app/package-lock.json, asked of OSV, the open
 # vulnerability database - and the two native engines that parse client
 # files (pillow, pypdfium2) held to their cadence: a newer release more than

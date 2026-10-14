@@ -335,7 +335,7 @@ def full_sync(fd: int) -> None:
         import fcntl
 
         try:
-            fcntl.fcntl(fd, fcntl.F_FULLFSYNC)
+            fcntl.fcntl(fd, fcntl.F_FULLFSYNC)  # type: ignore[attr-defined]  # Mac only (mypy checks as Linux)
             return
         except OSError as exc:
             if exc.errno not in (errno.ENOTSUP, errno.EINVAL):
@@ -415,7 +415,7 @@ def pid_alive(pid: str | int) -> bool | None:
         import ctypes
         from ctypes import wintypes
 
-        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)  # type: ignore[attr-defined]  # Windows only (mypy checks as Linux)
         kernel32.OpenProcess.restype = wintypes.HANDLE
         kernel32.OpenProcess.argtypes = (wintypes.DWORD, wintypes.BOOL, wintypes.DWORD)
         kernel32.GetExitCodeProcess.argtypes = (wintypes.HANDLE, ctypes.POINTER(wintypes.DWORD))
@@ -426,7 +426,7 @@ def pid_alive(pid: str | int) -> bool | None:
         handle = kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
         if not handle:
             # Access denied and the like: it exists, we just cannot ask.
-            return False if ctypes.get_last_error() == ERROR_INVALID_PARAMETER else None
+            return False if ctypes.get_last_error() == ERROR_INVALID_PARAMETER else None  # type: ignore[attr-defined]  # Windows only (mypy checks as Linux)
         try:
             code = wintypes.DWORD()
             if not kernel32.GetExitCodeProcess(handle, ctypes.byref(code)):
@@ -453,7 +453,7 @@ def boot_time() -> float | None:
         if os.name == "nt":
             import ctypes
 
-            kernel32 = ctypes.WinDLL("kernel32")
+            kernel32 = ctypes.WinDLL("kernel32")  # type: ignore[attr-defined]  # Windows only (mypy checks as Linux)
             kernel32.GetTickCount64.restype = ctypes.c_ulonglong
             up = kernel32.GetTickCount64() / 1000.0
         elif _on_a_mac():

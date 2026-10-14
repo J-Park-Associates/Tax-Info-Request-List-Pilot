@@ -182,7 +182,7 @@ def full_sync(fd: int) -> None:
         import fcntl
 
         try:
-            fcntl.fcntl(fd, fcntl.F_FULLFSYNC)
+            fcntl.fcntl(fd, fcntl.F_FULLFSYNC)  # type: ignore[attr-defined]  # Mac only (mypy checks as Linux)
             return
         except OSError as exc:
             if exc.errno not in (errno.ENOTSUP, errno.EINVAL):

@@ -1,0 +1,13 @@
+# Development only (decision P310): the type checker, mypy, which a person or
+# a session working on the repository installs once into its own environment,
+# beside the test tools. Nothing that installs the app reads this file or its
+# lock - not Setup.bat, setup.command, Build App.bat, build-mac.sh,
+# api_entry.spec or the pilot installer - so mypy is never frozen into a
+# package, and nothing under tracker/ imports it. Installed from
+# requirements-dev.lock, by hash (decision 191):
+#   pip install --require-hashes -r requirements-dev.lock
+# The version the audit measured the package with (SPEC-architecture E-5).
+# Bump deliberately: move the pin here and in requirements-dev.lock, run
+# `python tools/lockfiles.py hash`, then `python tools/typecheck.py check` -
+# a newer checker may count differently from the baseline it is held to.
+mypy==2.3.1

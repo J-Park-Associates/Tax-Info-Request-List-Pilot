@@ -12,7 +12,7 @@ Linux CI, Windows CI and the Windows build, and ``pip install
 package the lock does not name at all - which is what proves the lock holds
 the whole tree.
 
-The four locks, and what installs each:
+The five locks, and what installs each:
 
 * ``requirements.lock`` - the whole tree of ``requirements.txt`` (runtime
   and the test tools). CI, ``Setup.bat`` and the build install it.
@@ -23,6 +23,10 @@ The four locks, and what installs each:
   ``--no-deps`` after the tree (decision 169, R-11).
 * ``requirements-gpu.lock`` - the NVIDIA pack, installed with ``--no-deps``
   by ``Build GPU Pack.bat`` (decision 169, ruling 2).
+* ``requirements-dev.lock`` - the type checker, mypy, and its tree
+  (decision P310). A person or a session working on the repository installs
+  it by hand, once; nothing that installs the app reads it, so the
+  launcher's stamp leaves it out (``DEV_LOCK`` below).
 
 The tree was already resolved (decision 137), so the honest change was to
 hash that tree, not to re-resolve it. *Rejected:* ``pip-tools`` and ``uv pip
@@ -38,12 +42,12 @@ The commands, none of which the app or the scheduled pass ever runs:
 * ``check`` proves the locks agree with the ``requirements*.txt`` pins and
   that every line carries a hash (no network; the suite runs it).
 * ``stamp <venv>`` / ``verify <venv>`` - ``Setup.bat`` (``setup.command`` on
-  a Mac) records the hash of each lock (and of ``app/package-lock.json``) in
-  the private environment it made; ``Start App.bat`` (``start.command``)
+  a Mac) records the hash of each lock it installs from (and of
+  ``app/package-lock.json``) in the private environment it made; ``Start App.bat`` (``start.command``)
   refuses to start, in one sentence, when the locks have changed since,
   because the launcher never installs anything. On a Mac the sentence names
   ``setup.command``, not a file that is not there.
-* ``audit`` asks OSV about every pin in the four locks and every package in
+* ``audit`` asks OSV about every pin in the five locks and every package in
   ``app/package-lock.json`` (network; the weekly workflow). It also enforces
   the native-engine cadence: ``NATIVE_ENGINES`` below.
 
@@ -73,7 +77,14 @@ LOCK_FILES: dict[str, str] = {
     "requirements-build.lock": "requirements-build.txt",
     "requirements-nodeps.lock": "requirements-nodeps.txt",
     "requirements-gpu.lock": "requirements-gpu.txt",
+    "requirements-dev.lock": "requirements-dev.txt",
 }
+#: The lock no install of the app reads (decision P310): the type checker a
+#: person working on the repository installs by hand. ``hash``, ``check`` and
+#: ``audit`` hold it as they hold the others; ``stamp`` and ``verify`` leave it
+#: out, because Setup.bat never installs it, so a pin moved in it is no reason
+#: for the launcher to send anybody back to Setup.
+DEV_LOCK = "requirements-dev.lock"
 #: The Electron install, stamped beside the locks: ``Setup.bat`` runs
 #: ``npm ci`` from it, so a changed one means Setup must run again too.
 NPM_LOCK = "app/package-lock.json"
@@ -234,9 +245,9 @@ def check(repo: Path = ROOT) -> list[str]:
 
 
 def _fingerprint(repo: Path) -> dict[str, str]:
-    """The SHA-256 of each lock and of the npm lock, by repository path."""
+    """The SHA-256 of each lock Setup installs from and of the npm lock, by repository path."""
     return {name: hashlib.sha256((repo / name).read_bytes()).hexdigest()
-            for name in (*LOCK_FILES, NPM_LOCK) if (repo / name).is_file()}
+            for name in (*LOCK_FILES, NPM_LOCK) if name != DEV_LOCK and (repo / name).is_file()}
 
 
 def stamp(venv: Path, repo: Path = ROOT) -> Path:

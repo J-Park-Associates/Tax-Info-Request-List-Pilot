@@ -1,5 +1,6 @@
-# The gate, written once: the suite, the linter, the two freshness checks and
-# the Electron parse, on whichever runner and interpreter the caller names.
+# The gate, written once: the suite, the linter, the two freshness checks, the
+# type check and the Electron parse, on whichever runner and interpreter the
+# caller names.
 #
 # It lives here rather than in .github/workflows/ci.yml because a job's own
 # `if:` is evaluated before a matrix is expanded and cannot see the `matrix`
@@ -90,6 +91,17 @@ jobs:
       - name: Check the vocabulary coverage report is current
         if: always()
         run: python tools/vocab_report.py check
+
+      # The type checker (decision P310): no file may have more type errors
+      # than docs/typecheck-baseline.json records. Linux only: [tool.mypy]
+      # reads the code as Linux on every machine, so a Windows run would count
+      # the same errors again. mypy comes from its own lock, by hash, here
+      # and in no step that builds the app.
+      - name: Check the types against the baseline
+        if: always() && runner.os == 'Linux'
+        run: |
+          python -m pip install --require-hashes -r requirements-dev.lock
+          python tools/typecheck.py check
 
       # The Electron shell has no test suite of its own; at least every script
       # the app runs must parse: the shell's own and every one the page loads,

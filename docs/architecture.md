@@ -154,6 +154,10 @@ never the app:
   scans and photos, one variant of a fixed grid at a time, counts only.
 - `lockfiles.py`: the supply-chain lock: fills, checks, stamps and verifies
   the hash-checked lock files.
+- `typecheck.py`: runs the type checker, mypy, a development tool installed
+  from its own lock, and fails when any file has more type errors than
+  `docs/typecheck-baseline.json` records; `update` lowers the counts after
+  a fix and never raises one.
 - `gpu_pack.py`: copies the NVIDIA libraries out of an environment into the
   optional graphics card pack.
 
@@ -264,7 +268,7 @@ and nothing the machine happened to have.
 | `Start App.bat`, `start.command` | Both | Starts the app from source and installs nothing; refuses in one sentence when the locks have moved since setup. |
 
 On GitHub, `ci.yml` runs the reusable `gate.yml` (tests, ruff, the map and
-vocabulary checks, and that the shell parses) on a push to `main` and once
+vocabulary checks, the type check on Linux, and that the shell parses) on a push to `main` and once
 when a pull request is marked ready; `build.yml` builds and smoke-checks the
 Windows package from a protected tag; `audit.yml` reads the locks weekly and
 asks OSV about every pinned package, installing nothing. The local gate in

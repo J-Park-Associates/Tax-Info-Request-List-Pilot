@@ -20,6 +20,7 @@ from tools import lockfiles
 from tools.lockfiles import (
     CHANGED,
     CHANGED_MAC,
+    DEV_LOCK,
     LOCK_FILES,
     NATIVE_ENGINES,
     NOT_SET_UP,
@@ -50,17 +51,19 @@ def _not_a_mac(monkeypatch):
 
 
 def fake_repo(root: Path, overrides: dict[str, str] | None = None) -> Path:
-    """A repository holding the four locks and their requirement files, all agreeing."""
+    """A repository holding the five locks and their requirement files, all agreeing."""
     files = {
         "requirements.txt": "# runtime\nexamplepkg==1.0\nnumpy==2.0; python_version < \"3.12\"\n",
         "requirements-build.txt": "-r requirements.txt\nfreezer==2.0\n",
         "requirements-nodeps.txt": "readerpkg==3.0\n",
         "requirements-gpu.txt": "nvidia-example==4.0\n",
+        "requirements-dev.txt": "checker==5.0\n",
         "requirements.lock": ("# header kept\nexamplepkg==1.0 \\\n    --hash=sha256:" + DIGEST_A + "\n"
                               "numpy==2.0; python_version < \"3.12\" \\\n    --hash=sha256:" + DIGEST_B + "\n"),
         "requirements-build.lock": "freezer==2.0 \\\n    --hash=sha256:" + DIGEST_C + "\n",
         "requirements-nodeps.lock": "readerpkg==3.0 \\\n    --hash=sha256:" + DIGEST_A + "\n",
         "requirements-gpu.lock": "nvidia-example==4.0 \\\n    --hash=sha256:" + DIGEST_B + "\n",
+        "requirements-dev.lock": "checker==5.0 \\\n    --hash=sha256:" + DIGEST_C + "\n",
         NPM_LOCK: json.dumps({"packages": {
             "": {"name": "app", "version": "1.0.0"},
             "node_modules/electron": {"version": "40.0.0"},
@@ -89,7 +92,7 @@ def test_every_committed_lock_line_carries_a_hash():
 
 def test_the_direct_pins_and_the_locks_agree():
     """Each ``requirements*.txt`` pin is in its lock at the same version and
-    marker, and no package is pinned twice under one marker across the four."""
+    marker, and no package is pinned twice under one marker across the five."""
     assert check(REPO) == []
     locked = {(lockfiles.normalise(name), version, marker)
               for lock_name in LOCK_FILES for name, version, marker, _hashes in read_lock(REPO / lock_name)}
@@ -111,6 +114,19 @@ def test_the_native_engines_are_pinned_in_the_runtime_lock():
     names = {lockfiles.normalise(name) for name, _v, _m, _h in read_lock(REPO / "requirements.lock")}
     assert set(NATIVE_ENGINES) <= names
     assert STALE_DAYS == 90
+
+
+def test_the_type_checker_is_pinned_in_the_dev_lock_and_in_no_lock_the_app_installs():
+    """Decision P310: mypy is a development tool. It and its tree are in
+    requirements-dev.lock alone, so no install of the app, which reads the
+    other four, ever puts it in a package."""
+    assert LOCK_FILES[DEV_LOCK] == "requirements-dev.txt"
+    assert [name for name, *_rest in lockfiles.direct_pins(REPO / "requirements-dev.txt")] == ["mypy"]
+    assert "mypy" in {lockfiles.normalise(name) for name, _v, _m, _h in read_lock(REPO / DEV_LOCK)}
+    for lock_name in LOCK_FILES:
+        if lock_name != DEV_LOCK:
+            names = {lockfiles.normalise(name) for name, _v, _m, _h in read_lock(REPO / lock_name)}
+            assert "mypy" not in names, lock_name
 
 
 def test_the_constraints_file_is_gone_and_no_install_names_it():
@@ -204,6 +220,19 @@ def test_verify_names_setup_when_the_npm_lock_changed_after_the_stamp(tmp_path):
     stamp(venv, repo)
     (repo / NPM_LOCK).write_text("{}", encoding="utf-8")
     assert verify(venv, repo) == CHANGED
+
+
+def test_a_changed_dev_lock_never_sends_anybody_back_to_setup(tmp_path):
+    """Setup.bat never installs the type checker, so the launcher's stamp
+    leaves its lock out: a pin moved in it is no reason to refuse to start."""
+    repo = fake_repo(tmp_path / "repo")
+    venv = tmp_path / "venv"
+    venv.mkdir()
+    stamp(venv, repo)
+    assert DEV_LOCK not in json.loads((venv / STAMP_NAME).read_text(encoding="utf-8"))["files"]
+    lock = repo / DEV_LOCK
+    lock.write_text(lock.read_text(encoding="utf-8") + "# a comment is a change too\n", encoding="utf-8")
+    assert verify(venv, repo) is None
 
 
 def test_a_mac_is_told_to_run_setup_command_and_never_setup_bat(tmp_path, monkeypatch):
@@ -366,6 +395,7 @@ def test_audit_reads_the_npm_lock_too(tmp_path):
     assert npm == {("electron", "40.0.0"), ("@scope/tool", "2.1.0")}      # the app itself is not a package
     pypi = {(q["package"]["name"], q["version"]) for q in body["queries"] if q["package"]["ecosystem"] == "PyPI"}
     assert ("readerpkg", "3.0") in pypi and ("nvidia-example", "4.0") in pypi   # every lock, not one
+    assert ("checker", "5.0") in pypi                                         # the dev lock too
 
 
 def test_nothing_in_the_tracker_imports_the_lock_tool():

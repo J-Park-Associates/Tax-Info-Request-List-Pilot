@@ -3,7 +3,7 @@
   "generated": "2026-10-14",
   "generator": "tools/repo_map.py",
   "generator_sha256": "a394d7104da5155d",
-  "module_table_sha256": "d5e6870783818cfc",
+  "module_table_sha256": "76da1c7ec5ad6c3a",
   "pipeline": [
     "tracker.api / create",
     "tracker.scaffold",
@@ -15,9 +15,9 @@
     "a person sends the draft"
   ],
   "counts": {
-    "nodes": 332,
-    "edges": 1431,
-    "reused": 278
+    "nodes": 336,
+    "edges": 1439,
+    "reused": 282
   },
   "node_types": [
     "artifact",
@@ -66,7 +66,7 @@
       "id": ".github/workflows/audit.yml",
       "type": "workflow",
       "layer": "ci",
-      "sha256": "5fd50349342273b4",
+      "sha256": "45fde484cc9a50b4",
       "lines": 42,
       "role": "The weekly supply-chain audit (decision 191): on a schedule and by hand only, on ubuntu-latest, runs `python tools/lockfiles.py audit` with no install at all.",
       "notes": "Never on a push or a pull request, so it adds no CI to any change (the cost rule). Scheduled workflows run from the default branch. Detection, not prevention: the hashes stop a replaced file; this finds a known advisory in a file we chose, and a stale native engine."
@@ -93,10 +93,10 @@
       "id": ".github/workflows/gate.yml",
       "type": "workflow",
       "layer": "ci",
-      "sha256": "04f91f7cab1d99e0",
-      "lines": 108,
-      "role": "The gate's steps, written once: the test suite, the linter, `repo_map.py check`, `vocab_report.py check` and `node --check` on every script the app runs (a bash loop over app/*.js and app/renderer/*.js, so vendor/ is left out and a script added beside them is parsed without being named; SPEC-architecture R3.5), on whichever runner and interpreter the caller names. Called by both of ci.yml's jobs.",
-      "notes": "Decision 122. `on: workflow_call` with two required string inputs, os and python-version; the job carries timeout-minutes: 60, the ceiling that stops a hung job (decision 207: the Windows suite measured 26 to 28 minutes on main on 2026-09-26, 159's tests took a healthy run past the old 30 and near 45, and a cut-off run is billed in full; Jason set 60). It exists because a job's own `if:` cannot see the matrix, which makes ci.yml two jobs rather than one conditional matrix - and the steps written out in each of them would be two copies of the gate, the second one to drift. Its job is named for the runner and the interpreter it was given, so the check names read as they did before the split. Every step after the suite reports whatever the suite did, and keeps its point: a stale map and a failing test are separate problems, and seeing both in one run beats finding the second after fixing the first. Decision 137 (B3): every action is pinned by a full commit SHA with its tag beside it (tests/test_build.py holds every workflow to it). Decision 191: it installs requirements.lock then requirements-nodeps.lock with --require-hashes, using the runner's own pip (no --upgrade pip), caches on the lock files, and its checkout keeps no credentials (F-12)."
+      "sha256": "4f041b31abb03a10",
+      "lines": 120,
+      "role": "The gate's steps, written once: the test suite, the linter, `repo_map.py check`, `vocab_report.py check`, `typecheck.py check` on Linux (decision P310) and `node --check` on every script the app runs (a bash loop over app/*.js and app/renderer/*.js, so vendor/ is left out and a script added beside them is parsed without being named; SPEC-architecture R3.5), on whichever runner and interpreter the caller names. Called by both of ci.yml's jobs.",
+      "notes": "Decision 122. `on: workflow_call` with two required string inputs, os and python-version; the job carries timeout-minutes: 60, the ceiling that stops a hung job (decision 207: the Windows suite measured 26 to 28 minutes on main on 2026-09-26, 159's tests took a healthy run past the old 30 and near 45, and a cut-off run is billed in full; Jason set 60). It exists because a job's own `if:` cannot see the matrix, which makes ci.yml two jobs rather than one conditional matrix - and the steps written out in each of them would be two copies of the gate, the second one to drift. Its job is named for the runner and the interpreter it was given, so the check names read as they did before the split. Every step after the suite reports whatever the suite did, and keeps its point: a stale map and a failing test are separate problems, and seeing both in one run beats finding the second after fixing the first. Decision 137 (B3): every action is pinned by a full commit SHA with its tag beside it (tests/test_build.py holds every workflow to it). Decision 191: it installs requirements.lock then requirements-nodeps.lock with --require-hashes, using the runner's own pip (no --upgrade pip), caches on the lock files, and its checkout keeps no credentials (F-12). Decision P310 (SPEC-architecture R6.4): the type-check step runs on Linux only, and like the steps before it whatever the suite did; it installs mypy from requirements-dev.lock by hash and runs `python tools/typecheck.py check`; [tool.mypy] reads the code as Linux everywhere, so a Windows run would count the same errors again. It added a step and no trigger (decision 211)."
     },
     {
       "id": "rule:no-AI-on-client-documents",
@@ -1479,7 +1479,7 @@
       "id": "tracker/fsio.py",
       "type": "module",
       "layer": "core",
-      "sha256": "1ce647dde18c6522",
+      "sha256": "354ee574dc35e67c",
       "lines": 587,
       "exports": [
         "LINK_TAGS",
@@ -1557,7 +1557,7 @@
       "id": "tracker/layout.py",
       "type": "module",
       "layer": "core",
-      "sha256": "fdf9ca834fd74d08",
+      "sha256": "bef5cbcf8b5f4e84",
       "lines": 1270,
       "exports": [
         "CLIENTS",
@@ -1939,7 +1939,7 @@
       "id": "tracker/locking.py",
       "type": "module",
       "layer": "core",
-      "sha256": "a62262f2fb9399da",
+      "sha256": "3fa2ee888389ccba",
       "lines": 1512,
       "cli": "python -m tracker.locking",
       "exports": [
@@ -2185,7 +2185,7 @@
       "id": "tracker/ocr.py",
       "type": "module",
       "layer": "core",
-      "sha256": "679ef6455f274bec",
+      "sha256": "f95c60a3abaaa823",
       "lines": 1898,
       "cli": "python -m tracker.ocr",
       "exports": [
@@ -3858,7 +3858,7 @@
       "id": "tracker/settings.py",
       "type": "module",
       "layer": "core",
-      "sha256": "32653cde8eebf913",
+      "sha256": "c4859c6951ba36c5",
       "lines": 1588,
       "cli": "python -m tracker.settings",
       "exports": [
@@ -4601,9 +4601,9 @@
       "id": "CONTRIBUTING.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "b3d71c6c6902050a",
-      "lines": 247,
-      "role": "How work lands here, for a person: the rules client data and the CI budget impose, the from-source setup by hand, the SPEC-first loop, the gate (dead code first, the affected tests as separate processes under both interpreters, ruff, the map and vocabulary checks), branches, commit subjects, draft pull requests marked ready once and landed by merge commit.",
+      "sha256": "9e0bd351b0b5b598",
+      "lines": 264,
+      "role": "How work lands here, for a person: the rules client data and the CI budget impose, the from-source setup by hand, the SPEC-first loop, the gate (dead code first, the affected tests as separate processes under both interpreters, ruff, the map and vocabulary checks, and the type check with the one-time install of its lock), branches, commit subjects, draft pull requests marked ready once and landed by merge commit.",
       "notes": "Repeats nothing the suite pins in the README; the floor is 'the floor pyproject.toml declares' here too, so nobody types the number."
     },
     {
@@ -4635,8 +4635,8 @@
       "id": "docs/architecture.md",
       "type": "doc",
       "layer": "docs",
-      "sha256": "f479c2cfc2c47a97",
-      "lines": 271,
+      "sha256": "e83babe7b14b08ca",
+      "lines": 275,
       "role": "The overview between the README and the map: the three programs (the shell, the engine, the scheduled pass) and the reading child; the package layer by layer with each module's one sentence; the tools; the tests and their guards; the three places the app writes; the decisions that shape it (deterministic, offline, standard library first, hash-checked installs, one-time steps built in); and how each package is built.",
       "notes": "Written for a person who did not watch the code grow. It names no numbers a test pins and no file the code does not own; tests/test_layers.py's table is the source of its layers."
     },
@@ -4653,8 +4653,8 @@
       "id": "docs/repo-map.curated.json",
       "type": "file",
       "layer": "docs",
-      "sha256": "f29f96328af20d18",
-      "lines": 1539,
+      "sha256": "f2ad548830af6258",
+      "lines": 1575,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
     },
@@ -4682,6 +4682,15 @@
       "layer": "docs",
       "sha256": "6291a0081b494061",
       "lines": 184
+    },
+    {
+      "id": "docs/typecheck-baseline.json",
+      "type": "file",
+      "layer": "docs",
+      "sha256": "04a7ce53f8dc644d",
+      "lines": 292,
+      "role": "Every type error each file in tracker/ and tools/ had when it was last recorded, by message, with their total and the mypy version that counted them: what tools/typecheck.py check holds the code to.",
+      "notes": "Decision P310. Written only by `python tools/typecheck.py update`, which refuses to raise a count, and never by hand (a total that disagrees with the list is refused). 227 errors in 29 files when J6 recorded it with mypy 2.3.1; each phase of SPEC-architecture lowers it. It holds the code's error messages and nothing a client could be read out of."
     },
     {
       "id": "docs/vocab-coverage.json",
@@ -5164,6 +5173,15 @@
       "role": "What Build App.bat's freeze needs beyond requirements.txt: the pinned PyInstaller, and macholib, which PyInstaller needs on a Mac only (SPEC-mac R12; tests/test_build.py resolves every lock in a Mac's environment and pins an Apple silicon wheel for each binary package). Installed from requirements-build.lock (with requirements.lock), by hash (decision 191)."
     },
     {
+      "id": "requirements-dev.txt",
+      "type": "doc",
+      "layer": "docs",
+      "sha256": "953d94ac4134f124",
+      "lines": 13,
+      "role": "The development tools nothing that installs the app reads (decision P310): mypy at one exact version, the checker tools/typecheck.py runs. Installed by hand, once, into a working environment from requirements-dev.lock, the checker and its tree by version and by SHA-256 (`pip install --require-hashes -r requirements-dev.lock`), and by gate.yml's type-check step on Linux.",
+      "notes": "SPEC-architecture J6 (R6.1). requirements-dev.lock (not mapped: the map takes no .lock files) adds to requirements.lock only what mypy pulls in - ast-serialize, librt (with mypy's own not-PyPy marker), mypy-extensions, pathspec and typing-extensions - with the hash of every file PyPI publishes for each. tools/lockfiles.py holds it as a fifth lock for hash, check and audit, and leaves it out of Setup's stamp (DEV_LOCK), so a pin moved in it never sends anybody back to Setup. No setup, launcher, build, freeze spec or installer names it or the checker (tests/test_build.py), no lock but this one holds mypy (tests/test_lockfiles.py), and tests/test_layers.py's ALLOWED_THIRD_PARTY does not gain it: nothing under tracker/ imports it. Moving the pin means recounting: the baseline names the version that counted it, and check refuses a baseline another version counted."
+    },
+    {
       "id": "requirements-gpu.txt",
       "type": "doc",
       "layer": "docs",
@@ -5184,7 +5202,7 @@
       "sha256": "7d2c593cd1ed470f",
       "lines": 57,
       "role": "Runtime and dev dependencies, pinned exactly (a guard refuses a range), including the reader's runtime closure (decision 169) - rapidocr itself is in requirements-nodeps.txt. The human-edited list of direct pins: nothing installs it directly; every install reads requirements.lock, the whole tree by version and by SHA-256 (decision 191).",
-      "notes": "requirements-build.txt adds the pinned freezer on top for Build App.bat; api_entry.spec is the committed freeze and app/package-lock.json the committed Electron install, so a build is made from the commit rather than from whatever was current that day (decision 46). olefile (decision 143) reads an Outlook .msg; pinned here and in requirements.lock, and frozen by the portable build. Decision 169 (R-11): rapidocr's metadata asks for the GUI opencv-python, so its real runtime dependencies are listed here with opencv-python-headless, and rapidocr is installed afterwards with --no-deps from requirements-nodeps.lock - by Setup.bat, Build App.bat, gate.yml, build.yml and the README's setup alike (tests/test_build.py pins both steps everywhere). Two pins carry markers: onnxruntime-gpu on Windows and the plain onnxruntime elsewhere (R-11b, CI has no card), numpy 2.5.3 from Python 3.12 and 2.4.6 for the 3.11 floor (R-11a). pytesseract is gone. Decision 191: constraints.txt is gone; four lock files (requirements.lock, requirements-build.lock, requirements-nodeps.lock, requirements-gpu.lock - not mapped, the map takes no .lock files) carry each pin with the hash of every file PyPI publishes for it, and tools/lockfiles.py check (run by tests/test_lockfiles.py) fails when a pin here and its lock disagree. A pin moves here and in its lock together, then `python tools/lockfiles.py hash`."
+      "notes": "requirements-build.txt adds the pinned freezer on top for Build App.bat; api_entry.spec is the committed freeze and app/package-lock.json the committed Electron install, so a build is made from the commit rather than from whatever was current that day (decision 46). olefile (decision 143) reads an Outlook .msg; pinned here and in requirements.lock, and frozen by the portable build. Decision 169 (R-11): rapidocr's metadata asks for the GUI opencv-python, so its real runtime dependencies are listed here with opencv-python-headless, and rapidocr is installed afterwards with --no-deps from requirements-nodeps.lock - by Setup.bat, Build App.bat, gate.yml, build.yml and the README's setup alike (tests/test_build.py pins both steps everywhere). Two pins carry markers: onnxruntime-gpu on Windows and the plain onnxruntime elsewhere (R-11b, CI has no card), numpy 2.5.3 from Python 3.12 and 2.4.6 for the 3.11 floor (R-11a). pytesseract is gone. Decision 191: constraints.txt is gone; four lock files (requirements.lock, requirements-build.lock, requirements-nodeps.lock, requirements-gpu.lock - not mapped, the map takes no .lock files) carry each pin with the hash of every file PyPI publishes for it, and tools/lockfiles.py check (run by tests/test_lockfiles.py) fails when a pin here and its lock disagree. A pin moves here and in its lock together, then `python tools/lockfiles.py hash`. Decision P310: a fifth lock, requirements-dev.lock, holds the type checker for a working environment only (requirements-dev.txt); nothing that installs the app reads it."
     },
     {
       "id": "pkg:@floating-ui/core",
@@ -5690,7 +5708,7 @@
       "id": "artifact:.venv/tracker-lock.json",
       "type": "artifact",
       "layer": "runtime",
-      "role": "Setup.bat's (on a Mac setup.command's) stamp, inside the checkout's private environment (decision 191): the SHA-256 of each lock file and of app/package-lock.json as they were when Setup installed them. Start App.bat (on a Mac start.command) compares it at every launch through tools/lockfiles.py verify and refuses to start, naming Setup.bat (on a Mac setup.command), when it is missing or differs. Not client data; .venv is gitignored."
+      "role": "Setup.bat's (on a Mac setup.command's) stamp, inside the checkout's private environment (decision 191): the SHA-256 of each lock file it installs from (never requirements-dev.lock, decision P310) and of app/package-lock.json as they were when Setup installed them. Start App.bat (on a Mac start.command) compares it at every launch through tools/lockfiles.py verify and refuses to start, naming Setup.bat (on a Mac setup.command), when it is missing or differs. Not client data; .venv is gitignored."
     },
     {
       "id": "artifact:Prepared/",
@@ -7113,9 +7131,10 @@
       "id": "tests/test_build.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "793b40f6d6b88b02",
-      "lines": 1349,
+      "sha256": "5602e0ebad591681",
+      "lines": 1383,
       "exports": [
+        "APP_INSTALLERS",
         "ARTWORK_APP",
         "BUILD_ENVIRONMENT",
         "BUILD_LOCKS",
@@ -7180,6 +7199,7 @@
         "test_every_spelling_of_an_install_is_recognised",
         "test_mac_setup_and_build_ask_for_the_python_floor_pyproject_declares",
         "test_mac_setup_installs_by_hash_then_stamps_and_runs_the_after_install_step_last",
+        "test_nothing_that_installs_or_builds_the_app_reads_the_type_checker",
         "test_scripts_check_out_with_lf_and_execute",
         "test_setup_runs_the_after_install_step_last_after_the_stamp",
         "test_the_audit_runs_weekly_on_linux_and_never_on_a_push",
@@ -7188,6 +7208,7 @@
         "test_the_build_workflow_runs_the_repositorys_own_build_script",
         "test_the_dev_launch_icon_is_a_byte_identical_copy_of_the_artworks",
         "test_the_frozen_api_is_built_for_apple_silicon_only_and_unsigned_but_ad_hoc",
+        "test_the_gate_checks_the_types_on_linux_from_the_dev_lock",
         "test_the_gate_parses_every_script_the_app_runs",
         "test_the_graphics_card_pack_is_pinned_apart_and_read_by_its_own_build_step",
         "test_the_gui_opencv_is_never_pinned_and_the_locks_cover_every_reader_pin",
@@ -7246,7 +7267,7 @@
         "PATH_BLOCK": "('clean_path=\"\"', 'PATH=$clean_path')"
       },
       "role": "Guards what only the build workflow could otherwise discover ten minutes into a release: that it runs the batch file the repository owns rather than a copy of the build, that the switch it sets is the one that batch file reads, that the flags it fires at the frozen executable are flags tracker/runner.py declares, that it passes the two environment variables tracker/settings.py names, and that both workflows quote the one interpreter pyproject.toml writes down. It also parses every script the app runs with node --check (app/*.js and app/renderer/*.js, the globs the gate's last step loops over; skipped, saying so, where node is absent) and holds that step to those globs (SPEC-architecture R3.5).",
-      "notes": "Decision 78. It also asserts the fixture: a scratch root is one engagement discovery finds and a whole dry pass walks, because a smoke check over an empty folder proves only that discovery does not crash. Nothing here can prove the package runs - only the Windows runner can. Decision 137 (M5), on decision 191's locks: requirements.lock, requirements-build.lock and requirements-nodeps.lock pin the whole tree the portable build freezes, by hash; the suite holds requirements*.txt to them, \"Build App.bat\" to installing them with --require-hashes, and every BUILD-INFO.txt under build-portable/dist to freezing nothing else. Decision 191 also: every pip install in every batch file and workflow is --require-hashes from a .lock and none upgrades pip; the build runs from a v* tag only, with a job guard; the checksum step follows the smoke checks and the upload carries the zip and its .sha256; the launcher installs nothing and speaks the lock tool's sentence; every batch file sets NoDefaultCurrentDirectoryInExePath first and calls Windows' own tools by path (E-10); every checkout keeps no credentials (F-12); the audit workflow is scheduled, Linux-only and never on a push."
+      "notes": "Decision 78. It also asserts the fixture: a scratch root is one engagement discovery finds and a whole dry pass walks, because a smoke check over an empty folder proves only that discovery does not crash. Nothing here can prove the package runs - only the Windows runner can. Decision 137 (M5), on decision 191's locks: requirements.lock, requirements-build.lock and requirements-nodeps.lock pin the whole tree the portable build freezes, by hash; the suite holds requirements*.txt to them, \"Build App.bat\" to installing them with --require-hashes, and every BUILD-INFO.txt under build-portable/dist to freezing nothing else. Decision 191 also: every pip install in every batch file and workflow is --require-hashes from a .lock and none upgrades pip; the build runs from a v* tag only, with a job guard; the checksum step follows the smoke checks and the upload carries the zip and its .sha256; the launcher installs nothing and speaks the lock tool's sentence; every batch file sets NoDefaultCurrentDirectoryInExePath first and calls Windows' own tools by path (E-10); every checkout keeps no credentials (F-12); the audit workflow is scheduled, Linux-only and never on a push. Decision P310 (R6.1, R6.4): nothing that installs, launches, builds or packages the app names requirements-dev, mypy or typecheck, no lock a build installs holds mypy in any environment, and gate.yml's type-check step runs on Linux only, installs the dev lock by hash before it checks, and leaves the gate called and never fired on its own."
     },
     {
       "id": "tests/test_catalog.py",
@@ -8447,14 +8468,15 @@
       "id": "tests/test_lockfiles.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "6247631c211629cd",
-      "lines": 375,
+      "sha256": "280cf96d971b45ad",
+      "lines": 405,
       "exports": [
         "DIGEST_A",
         "DIGEST_B",
         "DIGEST_C",
         "REPO",
         "fake_repo",
+        "test_a_changed_dev_lock_never_sends_anybody_back_to_setup",
         "test_a_direct_pin_the_lock_holds_at_another_version_is_named",
         "test_a_direct_pin_whose_marker_differs_is_named",
         "test_a_fabricated_repository_that_agrees_is_clean",
@@ -8475,6 +8497,7 @@
         "test_the_gui_opencv_in_a_lock_is_named",
         "test_the_gui_opencv_is_in_no_lock",
         "test_the_native_engines_are_pinned_in_the_runtime_lock",
+        "test_the_type_checker_is_pinned_in_the_dev_lock_and_in_no_lock_the_app_installs",
         "test_the_verify_command_prints_the_sentence_and_exits_one",
         "test_this_machine_is_a_mac_only_where_the_platform_says_so",
         "test_verify_is_quiet_when_the_stamp_matches",
@@ -11520,6 +11543,63 @@
       ]
     },
     {
+      "id": "tests/test_typecheck.py",
+      "type": "test",
+      "layer": "tests",
+      "sha256": "ea8bfe56afdec95c",
+      "lines": 359,
+      "exports": [
+        "A_NONE",
+        "A_RETURN",
+        "B_ARG",
+        "REPO",
+        "VERSION",
+        "message",
+        "mypy_saying",
+        "output",
+        "repository",
+        "test_a_baseline_another_mypy_counted_fails_naming_the_install",
+        "test_a_baseline_this_tool_did_not_write_is_refused",
+        "test_a_baseline_whose_total_was_edited_by_hand_is_refused",
+        "test_a_clean_run_reads_as_no_errors",
+        "test_a_command_that_cannot_count_exits_one_with_its_sentence",
+        "test_a_file_above_its_count_names_only_the_errors_the_baseline_does_not_hold",
+        "test_a_file_the_baseline_holds_none_for_fails_on_its_first_error_and_names_it",
+        "test_a_reworded_error_at_the_same_count_is_no_failure",
+        "test_a_summary_that_disagrees_with_the_lines_read_fails",
+        "test_a_windows_run_names_each_file_as_a_linux_run_does",
+        "test_an_exit_code_that_disagrees_with_the_count_fails",
+        "test_check_passes_at_the_baseline",
+        "test_check_passes_below_the_baseline_and_says_update_lowers_it",
+        "test_check_without_a_baseline_says_update_records_the_first",
+        "test_each_error_is_counted_under_its_file_and_a_note_is_not_an_error",
+        "test_every_ignore_in_the_checked_code_is_narrow",
+        "test_every_third_party_package_the_checked_code_imports_is_read_as_untyped",
+        "test_mypy_stopping_before_it_counts_fails_loudly_with_what_it_said",
+        "test_no_checker_installed_is_one_sentence_naming_the_install",
+        "test_nothing_in_the_tracker_imports_the_checker",
+        "test_output_with_no_summary_line_fails",
+        "test_the_check_command_names_each_file_above_the_baseline_and_exits_one",
+        "test_the_check_command_prints_its_summary_and_exits_zero",
+        "test_the_checker_reads_what_the_spec_names",
+        "test_the_committed_baseline_is_one_this_tool_wrote_by_the_pinned_checker",
+        "test_the_install_sentence_names_the_dev_lock_by_hash",
+        "test_the_tool_imports_the_standard_library_alone",
+        "test_the_update_command_that_would_raise_a_count_exits_one_and_says_so",
+        "test_update_lowers_the_counts_after_a_fix",
+        "test_update_records_the_first_baseline",
+        "test_update_refuses_to_raise_a_count_and_leaves_the_baseline_as_it_was"
+      ],
+      "constants": {
+        "VERSION": "'9.9.9'",
+        "A_NONE": "'tracker/a.py:10: error: Item \"None\" of \"str | None\" has no attribute \"strip\"  [union-attr]'",
+        "A_RETURN": "'tracker/a.py:20: error: Incompatible return value type (got \"str\", expected \"int\")  [return-value]'",
+        "B_ARG": "'tools/b.py:5: error: Argument 1 to \"f\" has incompatible type \"int\"; expected \"str\"  [arg-type]'"
+      },
+      "role": "Owns tools/typecheck.py on made-up mypy output, never the real checker: reading the errors file by file (a Windows path is the same file as a Linux one, and a note is not an error), every way the output can fail to be read (exit code 2, no summary, a summary or an exit code that disagrees with the count), check at, below and above the baseline and on a file with none, update recording the first baseline, lowering it and refusing to raise it, the refused baselines (another version's, a hand-edited total, a shape the tool did not write), and the command line's exit codes and sentences.",
+      "notes": "Decision P310 (R6.3). It also holds the committed baseline to the pinned checker's version and to files that exist, [tool.mypy] to the SPEC's keys and the floor, the ignore list to exactly the third-party packages tracker/ and tools/ import, every `# type: ignore` in them to one narrow code with its platform named (nine, read with tokenize so prose that mentions one is not counted), the install sentence to the dev lock, the tool to the standard library, and tracker/ to never importing mypy. A missing checker is made by pointing CHECKER at a distribution that does not exist, so the sentence is proved on a machine that has mypy."
+    },
+    {
       "id": "tests/test_validators.py",
       "type": "test",
       "layer": "tests",
@@ -11873,12 +11953,13 @@
       "id": "tools/lockfiles.py",
       "type": "tool",
       "layer": "tooling",
-      "sha256": "22be5d07bf48f403",
-      "lines": 443,
+      "sha256": "c0eccfe14191e1d8",
+      "lines": 454,
       "cli": "python -m tools.lockfiles",
       "exports": [
         "CHANGED",
         "CHANGED_MAC",
+        "DEV_LOCK",
         "GUI_OPENCV",
         "LockError",
         "NATIVE_ENGINES",
@@ -11905,6 +11986,7 @@
         "verify"
       ],
       "constants": {
+        "DEV_LOCK": "'requirements-dev.lock'",
         "NPM_LOCK": "'app/package-lock.json'",
         "STAMP_NAME": "'tracker-lock.json'",
         "NATIVE_ENGINES": "('pillow', 'pypdfium2')",
@@ -11920,7 +12002,7 @@
         "CHANGED_MAC": "'The package list changed since setup.command ran on this computer. Run setup.command again, then start the app again.'"
       },
       "role": "The supply-chain lock (decision 191), standard library only: `hash` fills every lock's hashes from PyPI's JSON API, `check` holds the locks to the requirements*.txt pins (every line hashed, no name twice under one marker, the GUI OpenCV in none), `stamp`/`verify` record and compare the locks inside Setup.bat's .venv, `audit` asks OSV about every locked Python and npm package and fails a native engine (NATIVE_ENGINES: pillow, pypdfium2) whose first release newer than the pin is older than STALE_DAYS - measured from the first newer release, not the newest (review S-1).",
-      "notes": "hash and audit reach the network; they are a maintainer's and the weekly workflow's commands, never on the app's or the scheduled pass's path, and nothing under tracker/ imports this module (the fourth standing rule; tests/test_lockfiles.py checks). The network is one injectable fetch(url, body), so the tests run on fabricated answers. Rejected: pip-tools and uv pip compile (each re-resolves and would move pins), pip-audit (one more package to lock and trust). verify returns NOT_SET_UP when there is no stamp and CHANGED when a lock or app/package-lock.json differs from it; the CLI prints the sentence and exits 1, which is what Start App.bat shows. SPEC-mac R11: on a Mac (on_a_mac(), the one seam, sys.platform read when called; this tool imports nothing of tracker) verify returns NOT_SET_UP_MAC and CHANGED_MAC, the same two sentences naming setup.command for Setup.bat, and start.command prints the first word for word."
+      "notes": "hash and audit reach the network; they are a maintainer's and the weekly workflow's commands, never on the app's or the scheduled pass's path, and nothing under tracker/ imports this module (the fourth standing rule; tests/test_lockfiles.py checks). The network is one injectable fetch(url, body), so the tests run on fabricated answers. Rejected: pip-tools and uv pip compile (each re-resolves and would move pins), pip-audit (one more package to lock and trust). verify returns NOT_SET_UP when there is no stamp and CHANGED when a lock or app/package-lock.json differs from it; the CLI prints the sentence and exits 1, which is what Start App.bat shows. SPEC-mac R11: on a Mac (on_a_mac(), the one seam, sys.platform read when called; this tool imports nothing of tracker) verify returns NOT_SET_UP_MAC and CHANGED_MAC, the same two sentences naming setup.command for Setup.bat, and start.command prints the first word for word. Decision P310 (SPEC-architecture J6): requirements-dev.lock, the type checker's, is a fifth lock in LOCK_FILES, so hash, check and audit hold it as they hold the others; stamp and verify leave it out (DEV_LOCK), because Setup never installs it and a pin moved in it is no reason for the launcher to refuse to start."
     },
     {
       "id": "tools/patch_sites.py",
@@ -12140,6 +12222,43 @@
       "notes": "Standard library only. `update` re-parses only files whose SHA-256 changed, and a change to this file forces a full rebuild \u2014 new derivation rules must not leave edges typed by the old ones. Test edges are three-way on purpose: `tests` (the test file owning the module by name) is coverage, `exercises` (any other test importing it) is not, and a test importing another test is a plain `imports`. Decision 151: the hash is of the bytes Git commits - git_text_auto_eol_lf() copies the `text=auto eol=lf` rule in .gitattributes, so a CRLF working copy hashes as the LF file CI checks out and `check` only warns about it - and `build`, `update` and `check` refuse while a merge is half-resolved (unmerged_files()), because git ls-files lists an unmerged path once per stage. That refusal is why the resolved files are `git add`-ed before `update`. tools/vocab_report.py hashes its inputs with the same function."
     },
     {
+      "id": "tools/typecheck.py",
+      "type": "tool",
+      "layer": "tooling",
+      "sha256": "b126bd432e5d198d",
+      "lines": 299,
+      "cli": "python -m tools.typecheck",
+      "exports": [
+        "BASELINE",
+        "BASELINE_NOTE",
+        "Baseline",
+        "CHECKER",
+        "INSTALL",
+        "MYPY_FLAGS",
+        "NOT_INSTALLED",
+        "ROOT",
+        "Reading",
+        "TypeCheckError",
+        "check",
+        "load_baseline",
+        "main",
+        "measure",
+        "raised",
+        "read_output",
+        "run_mypy",
+        "update"
+      ],
+      "constants": {
+        "BASELINE": "'docs/typecheck-baseline.json'",
+        "CHECKER": "'mypy'",
+        "INSTALL": "'pip install --require-hashes -r requirements-dev.lock'",
+        "BASELINE_NOTE": "'Every type error each file had when this was written, by python tools/typecheck.py update. check fails when a file has more; update refuses to raise a count. Never edit it by hand.'",
+        "MYPY_FLAGS": "('--hide-error-context', '--hide-column-numbers', '--show-error-codes', '--hide-error-code-links', '--no-pretty', '--no-color-output', '--error-summary', '--hide-absolute-path')"
+      },
+      "role": "The type checker's gate (decision P310), standard library only: `check` runs this environment's mypy over what pyproject.toml's [tool.mypy] names (tracker/ and tools/) and fails when any file has more type errors than docs/typecheck-baseline.json records, or a file it records none for gains one, naming the file and the errors the baseline does not hold; `update` rewrites the baseline from a fresh run and refuses to raise any count, so it records a fix and never lets an error in.",
+      "notes": "SPEC-architecture J6 (R6.3; audit E-5). A ratchet rather than fixing everything first: the first run counted 227 errors in 29 files (the audit's 209 was measured before tools/patch_sites.py), and fixing them all before the gate could start would be a refactor of its own; each later phase lowers the count in the modules it moves. Pass or fail is by count, file by file. The baseline also keeps each error's message, without its line number (which moves with every edit above it), only so that a failure can name the new errors: a reworded message at the same count is no failure, and where the baseline holds a message fewer times than mypy now prints it, every line carrying it is named, since either may be the new one. mypy's output is read with flags the tool fixes on the command line (no column, no context, codes shown, the summary last), and a summary that disagrees with the lines read, an exit code that disagrees with the count, or exit code 2 (a bad setting, a blocking error) stops the check with what mypy said rather than reading as fewer errors. A baseline another mypy version counted, or one whose total was edited by hand, is refused: a count is comparable only with one the same checker made, and the version is requirements-dev.txt's pin (tests/test_typecheck.py holds the two equal). The [tool.mypy] choices make the count the same on the cloud session, the Linux runner and the office PC, under both interpreters: python_version is the floor's; platform is linux, and the nine Windows-only and Mac-only lines (ctypes.WinDLL, ctypes.get_last_error and fcntl.F_FULLFSYNC in layout, fsio, locking, settings and ocr) carry a narrow `# type: ignore[attr-defined]` naming the platform - rewriting them as sys.platform checks was rejected because the tests patch those modules' own platform seams, and so was a baseline per platform; no_site_packages, because numpy 2.5's own annotations use syntax the 3.11 floor rejects as a blocking error and the floor and the office install different numpy releases, so the reader packages are named for ignore_missing_imports instead; and the tests.* modules the tools import are followed but not counted. mypy runs as `python -m mypy` under this interpreter, so it is the environment's own; its cache is .mypy_cache at the root, which mypy marks ignored itself. gate.yml runs `check` on Linux, every session runs it before it pushes, and the suite never runs mypy."
+    },
+    {
       "id": "tools/vocab_report.py",
       "type": "tool",
       "layer": "tooling",
@@ -12221,6 +12340,12 @@
     },
     {
       "from": ".github/workflows/gate.yml",
+      "to": "tools/typecheck.py",
+      "type": "runs",
+      "source": "curated"
+    },
+    {
+      "from": ".github/workflows/gate.yml",
       "to": "tools/vocab_report.py",
       "type": "runs",
       "source": "curated"
@@ -12258,6 +12383,12 @@
     {
       "from": "CLAUDE.md",
       "to": "tools/vocab_report.py",
+      "type": "documents",
+      "source": "curated"
+    },
+    {
+      "from": "CONTRIBUTING.md",
+      "to": "tools/typecheck.py",
       "type": "documents",
       "source": "curated"
     },
@@ -17794,6 +17925,30 @@
       "source": "derived"
     },
     {
+      "from": "tests/test_typecheck.py",
+      "to": "pkg:pytest",
+      "type": "depends_on",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_typecheck.py",
+      "to": "pkg:tools",
+      "type": "depends_on",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_typecheck.py",
+      "to": "tools/lockfiles.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_typecheck.py",
+      "to": "tools/typecheck.py",
+      "type": "tests",
+      "source": "derived"
+    },
+    {
       "from": "tests/test_validators.py",
       "to": "pkg:PIL",
       "type": "depends_on",
@@ -18199,6 +18354,18 @@
       "from": "tools/repo_map.py",
       "to": "docs/repo-map.curated.json",
       "type": "reads",
+      "source": "curated"
+    },
+    {
+      "from": "tools/typecheck.py",
+      "to": "docs/typecheck-baseline.json",
+      "type": "reads",
+      "source": "curated"
+    },
+    {
+      "from": "tools/typecheck.py",
+      "to": "docs/typecheck-baseline.json",
+      "type": "writes",
       "source": "curated"
     },
     {

@@ -1531,7 +1531,7 @@ def _job_memory(job) -> tuple[int, int]:
     from ctypes import wintypes
 
     ExtendedLimits = _extended_limits()
-    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)  # type: ignore[attr-defined]  # Windows only (mypy checks as Linux)
     kernel32.QueryInformationJobObject.argtypes = (wintypes.HANDLE, ctypes.c_int, wintypes.LPVOID,
                                                    wintypes.DWORD, wintypes.LPVOID)
     limits = ExtendedLimits()
@@ -1548,7 +1548,7 @@ def _close_job(job) -> None:
     import ctypes
     from ctypes import wintypes
 
-    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)  # type: ignore[attr-defined]  # Windows only (mypy checks as Linux)
     kernel32.CloseHandle.argtypes = (wintypes.HANDLE,)
     kernel32.CloseHandle(job)
 

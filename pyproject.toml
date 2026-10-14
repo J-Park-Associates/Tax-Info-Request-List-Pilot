@@ -36,3 +36,18 @@ ignore = ["E501"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["tracker", "tests", "tools"]
+
+[tool.mypy]
+files = ["tracker", "tools"]
+python_version = "3.11"
+explicit_package_bases = true
+platform = "linux"
+no_site_packages = true
+
+[[tool.mypy.overrides]]
+module = ["tests.*"]
+follow_imports = "silent"
+
+[[tool.mypy.overrides]]
+module = ["pdfplumber.*", "pypdfium2.*", "rapidocr.*", "cv2.*", "numpy.*", "PIL.*", "pypdf.*", "olefile.*", "openpyxl.*", "onnxruntime.*", "pillow_heif.*"]
+ignore_missing_imports = true

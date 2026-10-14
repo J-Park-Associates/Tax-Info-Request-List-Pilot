@@ -1158,7 +1158,7 @@ def _long_paths_on() -> bool:
     try:
         import ctypes
 
-        ask = ctypes.WinDLL("ntdll").RtlAreLongPathsEnabled
+        ask = ctypes.WinDLL("ntdll").RtlAreLongPathsEnabled  # type: ignore[attr-defined]  # Windows only (mypy checks as Linux)
         ask.argtypes = []
         ask.restype = ctypes.c_ubyte          # a BOOLEAN: the low byte only
         return bool(ask())

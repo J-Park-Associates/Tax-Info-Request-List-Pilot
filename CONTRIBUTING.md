@@ -149,7 +149,7 @@ on GitHub Actions (the CI budget rule below):
    and `test_repo_map` (plus `test_tripwire` and `test_errors` when tests or
    error wording change). The whole suite runs only when a change reaches
    the sorting engine, or when the owner asks.
-3. Lint, and the two freshness checks:
+3. Lint, the two freshness checks and the type check:
 
 ```bash
 python -m ruff check .
@@ -162,6 +162,23 @@ python tools/repo_map.py check
 ```bash
 python tools/vocab_report.py check
 ```
+
+```bash
+python tools/typecheck.py check
+```
+
+The type check runs mypy, a development tool that nothing installing the app
+reads (decision P310). Install it once into the same environment, from its
+own lock and by hash like every other install:
+
+```bash
+pip install --require-hashes -r requirements-dev.lock
+```
+
+It fails when any file has more type errors than
+`docs/typecheck-baseline.json` records, and names them. A change that fixes
+some runs `python tools/typecheck.py update`, which lowers the counts and
+never raises one.
 
 After review fixes, only the tests the fix touched run again.
 

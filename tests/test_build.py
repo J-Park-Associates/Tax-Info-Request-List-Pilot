@@ -785,6 +785,40 @@ def test_the_audit_runs_weekly_on_linux_and_never_on_a_push():
     assert "contents: read" in audit
 
 
+#: Every file that installs, launches, builds or packages the app: none of
+#: them reads the type checker's lock or names the checker (decision P310).
+APP_INSTALLERS = (SETUP_SCRIPT, LAUNCHER, BUILD_SCRIPT, "Build GPU Pack.bat", MAC_SETUP, MAC_LAUNCHER, MAC_BUILD,
+                  "api_entry.spec", "pilot/Build Pilot Installer.bat", "pilot/installer/setup.iss",
+                  f".github/workflows/{BUILD_WORKFLOW}")
+
+
+def test_nothing_that_installs_or_builds_the_app_reads_the_type_checker():
+    """R6.1: mypy is a development tool, installed by hand from its own lock.
+    No setup, launcher, build, freeze spec or installer names that lock, its
+    requirements file or the checker, and no lock a build installs holds it,
+    so it is never frozen into a package."""
+    for rel in APP_INSTALLERS:
+        text = read(rel).lower()
+        for word in ("requirements-dev", "mypy", "typecheck"):
+            assert word not in text, (rel, word)
+    for environment in (BUILD_ENVIRONMENT, MAC_ENVIRONMENT, FLOOR_ENVIRONMENT):
+        assert _name("mypy") not in locked(environment), environment
+
+
+def test_the_gate_checks_the_types_on_linux_from_the_dev_lock():
+    """R6.4: one step, on Linux only, installs the checker from its lock by
+    hash and runs the check, and the gate is still only ever called by
+    ci.yml, never fired by a push of its own (decision 211)."""
+    gate = read(f".github/workflows/{GATE_WORKFLOW}")
+    assert gate.count("- name: Check the types against the baseline") == 1
+    step = gate.split("- name: Check the types against the baseline", 1)[1].split("\n      - ", 1)[0]
+    assert re.search(r"^\s*if: always\(\) && runner\.os == 'Linux'$", step, re.M)
+    install = step.index("python -m pip install --require-hashes -r requirements-dev.lock")
+    assert install < step.index("python tools/typecheck.py check")
+    triggers = gate.split("\non:", 1)[1].split("\npermissions:", 1)[0]
+    assert re.findall(r"^  (\S+):", triggers, re.M) == ["workflow_call"]
+
+
 def test_the_gui_opencv_is_never_pinned_and_the_locks_cover_every_reader_pin():
     """R-11: the headless OpenCV only - the GUI build is in no requirements
     file and no lock - and requirements.lock covers every package in both

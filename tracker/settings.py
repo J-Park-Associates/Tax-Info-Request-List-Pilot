@@ -780,7 +780,7 @@ def drive_type(path: Path) -> int:
         return DRIVE_FIXED
     import ctypes
     drive = os.path.splitdrive(os.path.abspath(str(path)))[0]   # "E:" or "\\\\server\\share"
-    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)  # type: ignore[attr-defined]  # Windows only (mypy checks as Linux)
     kernel32.GetDriveTypeW.argtypes = (ctypes.c_wchar_p,)
     kernel32.GetDriveTypeW.restype = ctypes.c_uint
     return int(kernel32.GetDriveTypeW(drive + "\\"))
