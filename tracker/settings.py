@@ -62,7 +62,7 @@ from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TypeVar
+from typing import TypeVar, cast
 
 from tracker import layout
 from tracker.fsio import write_json_atomically
@@ -409,8 +409,9 @@ class _ErrorLog(logging.Handler):
 
         if logging.raiseExceptions and sys.stderr is not None:
             try:
+                # handleError runs only inside emit's except, so there is an exception.
                 sys.stderr.write(ERROR_LOG_NOT_WRITTEN.format(
-                    name=self.path.name, kind=errors.error_class(sys.exc_info()[1])) + "\n")
+                    name=self.path.name, kind=errors.error_class(cast(BaseException, sys.exc_info()[1]))) + "\n")
             except OSError:
                 pass    # no stderr to say it on either: as logging's own handleError does
 
@@ -999,7 +1000,7 @@ def _redirected_package(local: Path) -> str | None:
     global _redirect_answer
     if _redirect_answer is _UNASKED:
         _redirect_answer = redirect_probe(local)
-    return _redirect_answer
+    return cast("str | None", _redirect_answer)
 
 
 def _make_empty(path: Path) -> None:

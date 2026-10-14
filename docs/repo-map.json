@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 338,
     "edges": 1443,
-    "reused": 279
+    "reused": 283
   },
   "node_types": [
     "artifact",
@@ -3858,8 +3858,8 @@
       "id": "tracker/settings.py",
       "type": "module",
       "layer": "core",
-      "sha256": "c4859c6951ba36c5",
-      "lines": 1588,
+      "sha256": "e84f457c4926ea03",
+      "lines": 1589,
       "cli": "python -m tracker.settings",
       "exports": [
         "COLUMN_CATALOG",
@@ -4687,8 +4687,8 @@
       "id": "docs/typecheck-baseline.json",
       "type": "file",
       "layer": "docs",
-      "sha256": "e75644962f590853",
-      "lines": 282,
+      "sha256": "cf5a61cfa7cccd68",
+      "lines": 278,
       "role": "Every type error each file in tracker/ and tools/ had when it was last recorded, by message, with their total and the mypy version that counted them: what tools/typecheck.py check holds the code to.",
       "notes": "Decision P310. Written only by `python tools/typecheck.py update`, which refuses to raise a count, and never by hand (a total that disagrees with the list is refused). 227 errors in 29 files when J6 recorded it with mypy 2.3.1; each phase of SPEC-architecture lowers it. It holds the code's error messages and nothing a client could be read out of."
     },

@@ -1,7 +1,7 @@
 {
   "note": "Every type error each file had when this was written, by python tools/typecheck.py update. check fails when a file has more; update refuses to raise a count. Never edit it by hand.",
   "mypy": "2.3.1",
-  "total": 219,
+  "total": 217,
   "files": {
     "tools/learned_keywords.py": [
       "Cannot find implementation or library stub for module named \"vocab_report\"  [import-not-found]"
@@ -252,10 +252,6 @@
     "tracker/scheduling.py": [
       "Argument 1 to \"_xml_escape\" has incompatible type \"str | Path\"; expected \"str\"  [arg-type]",
       "Argument 1 to \"_xml_escape\" has incompatible type \"str | Path\"; expected \"str\"  [arg-type]"
-    ],
-    "tracker/settings.py": [
-      "Argument 1 to \"error_class\" has incompatible type \"BaseException | None\"; expected \"BaseException\"  [arg-type]",
-      "Incompatible return value type (got \"object\", expected \"str | None\")  [return-value]"
     ],
     "tracker/store.py": [
       "\"Path\" has no attribute \"at\"  [attr-defined]",
