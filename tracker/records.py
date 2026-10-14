@@ -71,9 +71,10 @@ import datetime as dt
 import json
 import math
 import re
-import re._parser as _re_parser
+import re._parser as _re_parser  # type: ignore[import-not-found]  # typeshed does not stub the private parser
 from dataclasses import MISSING, asdict, dataclass, field, fields
 from pathlib import Path
+from typing import TypeGuard
 
 from tracker.layout import (  # noqa: F401 - re-exported: the record's names since decision 137
     WINDOWS_ILLEGAL_CHARS,
@@ -1688,7 +1689,7 @@ _STAMP = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z")
 _ONE_LINE_REFUSED = re.compile(r"[\x00-\x1f\x7f  ]")
 
 
-def _is_number(value: object) -> bool:
+def _is_number(value: object) -> TypeGuard[int | float]:
     return isinstance(value, (int, float)) and not isinstance(value, bool)
 
 

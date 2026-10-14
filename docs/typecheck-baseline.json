@@ -1,7 +1,7 @@
 {
   "note": "Every type error each file had when this was written, by python tools/typecheck.py update. check fails when a file has more; update refuses to raise a count. Never edit it by hand.",
   "mypy": "2.3.1",
-  "total": 227,
+  "total": 219,
   "files": {
     "tools/learned_keywords.py": [
       "Cannot find implementation or library stub for module named \"vocab_report\"  [import-not-found]"
@@ -206,16 +206,6 @@
     ],
     "tracker/progress.py": [
       "Argument 1 to \"passes_dir\" has incompatible type \"Path | None\"; expected \"Path\"  [arg-type]"
-    ],
-    "tracker/records.py": [
-      "Argument 1 to \"isfinite\" has incompatible type \"object\"; expected \"SupportsFloat | SupportsIndex\"  [arg-type]",
-      "Argument 1 to \"isfinite\" has incompatible type \"object\"; expected \"SupportsFloat | SupportsIndex\"  [arg-type]",
-      "Cannot find implementation or library stub for module named \"re._parser\"  [import-not-found]",
-      "No overload variant of \"int\" matches argument type \"object\"  [call-overload]",
-      "Unsupported operand types for <= (\"float\" and \"object\")  [operator]",
-      "Unsupported operand types for <= (\"int\" and \"object\")  [operator]",
-      "Unsupported operand types for >= (\"float\" and \"object\")  [operator]",
-      "Unsupported operand types for >= (\"int\" and \"object\")  [operator]"
     ],
     "tracker/resident.py": [
       "Argument 1 to \"extend\" of \"list\" has incompatible type \"object\"; expected \"Iterable[Any]\"  [arg-type]",

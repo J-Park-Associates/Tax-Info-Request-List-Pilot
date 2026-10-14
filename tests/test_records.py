@@ -220,16 +220,17 @@ def test_nothing_here_reaches_a_file_or_a_workbook():
     pattern that reads it back (decision 109), and `json` only because the
     return's people come back as JSON text from the one column that holds
     them (decision 128) - reading a value is not knowing where it lives.
-    `math` and `re._parser` are the value rule's (decision 187): a count is
-    finite, and a Date Pattern's shape is read off the standard library's
-    own parser rather than a second engine. `tracker.layout` is the Windows
-    name rule's (decision 188), and it reads no file either."""
+    `math`, `re._parser` and `typing` are the value rule's (decision 187):
+    a count is finite, a Date Pattern's shape is read off the standard
+    library's own parser rather than a second engine, and `typing` says what
+    `_is_number` proves (P2.1). `tracker.layout` is the Windows name rule's
+    (decision 188), and it reads no file either."""
     source = (Path(records.__file__)).read_text(encoding="utf-8")
     imported = {line.split()[1] for line in source.splitlines()
                 if line.startswith("import ") or line.startswith("from ")}
 
     assert imported == {"__future__", "datetime", "dataclasses", "json", "math", "pathlib", "re",
-                        "re._parser", "tracker.layout"}, imported
+                        "re._parser", "typing", "tracker.layout"}, imported
     assert isinstance(records.EngagementInfo().due, type(None))
     assert EngagementInfo(due=dt.date(2026, 4, 15)).due.year == 2026
 

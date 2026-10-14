@@ -319,11 +319,20 @@ def test_every_third_party_package_the_checked_code_imports_is_read_as_untyped()
     assert {name for name in imported if name not in sys.stdlib_module_names and name not in first_party} == untyped
 
 
+# The one excuse that is not a platform line (P2.1): the standard library's
+# private regular-expression parser, which the value rule reads (decision
+# 187) and typeshed does not stub. It is named by file and wording, so a
+# second such line fails here rather than passing as this one.
+UNSTUBBED = (("records.py", "# type: ignore[import-not-found]  # typeshed does not stub the private parser"),)
+
+
 def test_every_ignore_in_the_checked_code_is_narrow():
     """R6.2: a platform line the checker cannot read on Linux is excused by
-    its own error code, never by a whole file."""
+    its own error code, never by a whole file; the one other line is excused
+    by name (UNSTUBBED)."""
     narrow = re.compile(r"# type: ignore\[[a-z-]+(, [a-z-]+)*\]  # (Windows|Mac) only \(mypy checks as Linux\)$")
     excused = 0
+    unstubbed = []
     for path in [*(REPO / "tracker").rglob("*.py"), *(REPO / "tools").glob("*.py")]:
         with path.open("rb") as source:
             comments = [(token.start[0], token.string) for token in tokenize.tokenize(source.readline)
@@ -331,9 +340,13 @@ def test_every_ignore_in_the_checked_code_is_narrow():
         for number, comment in comments:
             assert not comment.lstrip("# ").startswith("mypy:"), f"{path.name}:{number}"
             if "type: ignore" in comment:
+                if (path.name, comment) in UNSTUBBED:
+                    unstubbed.append((path.name, comment))
+                    continue
                 assert narrow.match(comment), f"{path.name}:{number}"
                 excused += 1
     assert excused == 9
+    assert sorted(unstubbed) == sorted(UNSTUBBED)
 
 
 def test_the_install_sentence_names_the_dev_lock_by_hash():
