@@ -211,7 +211,7 @@ person types.
   document aside is the list's, because it deserves the note box.
 - **Not requested**, on anything in Needs Review no row asks for: an agency
   notice, an extra statement. The index row is rewritten
-  `tracker.filer.NOT_REQUESTED`, with an optional note saying why and what
+  `tracker.index.NOT_REQUESTED`, with an optional note saying why and what
   the row said before kept after it. Nothing moves — the copy stays parked
   and the client's original is untouched — so the file is out of the way,
   not gone: the weekly draft stops warning about it, and a person who was
@@ -224,7 +224,7 @@ person types.
   and the card is redrawn from the record.
 - **Unfile**, on anything in the folded-away *Filed documents* list: the
   working copy goes back to `00 - Needs Review` under the client's own name,
-  the index row is rewritten `tracker.filer.NEEDS_REVIEW` as unfiled by a
+  the index row is rewritten `tracker.index.NEEDS_REVIEW` as unfiled by a
   person with what it said before, and the engagement is re-scanned, so the
   request the document was answering goes back to what it is without it,
   with the regression note that pass would have written. Do this rather than
@@ -232,7 +232,7 @@ person types.
   drag is **said**, not learned. Every pass proves each working copy against
   the fingerprint its own index row carries, so a copy that is not where the
   record put it, and whose bytes turn up somewhere else under `Prepared/`,
-  makes its row `tracker.filer.FILE_MOVED`: the request it left reads
+  makes its row `tracker.index.FILE_MOVED`: the request it left reads
   Missing, truthfully, with a firm-side note so the client is never asked for
   it, the copy is not counted under whatever request it now sits in, and
   nothing is moved — a person decides. Drag it back and the next pass files
