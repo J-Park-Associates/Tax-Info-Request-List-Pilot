@@ -826,6 +826,7 @@ def test_a_mac_knows_when_it_last_started(monkeypatch):
 def test_a_mac_names_itself_by_its_local_host_name(monkeypatch):
     """R21: the name in Sharing settings, asked once and case-folded, so the
     lock line and the designation do not follow a DHCP or Bonjour suffix."""
+    import platform
     import subprocess
 
     import tracker.locking as locking_module
@@ -838,7 +839,8 @@ def test_a_mac_names_itself_by_its_local_host_name(monkeypatch):
 
     monkeypatch.setattr(locking_module, "_on_a_mac", lambda: True)
     monkeypatch.setattr(locking_module, "_mac_host", None)
-    monkeypatch.setattr(locking_module.platform, "node", lambda: "Office-Mac-2.local")
+    # platform itself: on a Mac, locking.platform is the suite's pin, which answers a faked platform.node.
+    monkeypatch.setattr(platform, "node", lambda: "Office-Mac-2.local")
     monkeypatch.setattr(locking_module.subprocess, "run", scutil)
     assert locking_module.this_host() == "office-mac"
     assert locking_module.this_host() == "office-mac"
@@ -849,6 +851,8 @@ def test_a_mac_names_itself_by_its_local_host_name(monkeypatch):
 
 def test_a_mac_whose_scutil_fails_falls_back_to_the_platform_name_and_keeps_the_failure(
         monkeypatch):
+    import platform
+
     import tracker.errors as errors
     import tracker.locking as locking_module
 
@@ -859,7 +863,8 @@ def test_a_mac_whose_scutil_fails_falls_back_to_the_platform_name_and_keeps_the_
 
     monkeypatch.setattr(locking_module, "_on_a_mac", lambda: True)
     monkeypatch.setattr(locking_module, "_mac_host", None)
-    monkeypatch.setattr(locking_module.platform, "node", lambda: "Office-Mac-2.local")
+    # platform itself: on a Mac, locking.platform is the suite's pin, which answers a faked platform.node.
+    monkeypatch.setattr(platform, "node", lambda: "Office-Mac-2.local")
     monkeypatch.setattr(locking_module.subprocess, "run", scutil)
     monkeypatch.setattr(errors, "keep", lambda where, exc, **kw: kept.append((where, exc)))
     assert locking_module.this_host() == "office-mac-2.local"

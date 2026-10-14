@@ -474,15 +474,15 @@ def test_no_way_of_writing_a_module_drops_a_stand_in_out_of_the_check(tmp_path):
     twenty in ``test_a``.
 
     ``test_b`` holds review 3's forms. These are sites, unread: a module a
-    ``parametrize`` mark gives, alone or together with its name; one a
+    ``parametrize`` mark gives, alone or together with its name; and one a
     fixture gives, where the fixture is imported from a helper module,
-    assigned from one, or defined in the test's class; and a helper module's
-    top-level name that another file stores a module in (a conftest's
-    assignment, or a fixture's stand-in), as well as its own value. These are
-    not placed: a fixture no file defines and pytest does not give, a test
-    file's own name a fixture rebinds with ``global``, a helper module's
-    ``None`` that a seam fills, and a ``setattr`` not called where it is
-    written (bound to a name, or handed to ``functools.partial``)."""
+    assigned from one, or defined in the test's class. These are not placed:
+    a fixture no file defines and pytest does not give; a top-level name that
+    something rebinds (a test file's own name a fixture rebinds with
+    ``global``, a helper module's name a conftest assigns, whether its own
+    value is ``None`` or a module, and one a fixture's stand-in replaces); and
+    a ``setattr`` not called where it is written (bound to a name, or handed
+    to ``functools.partial``)."""
     root = _repository(tmp_path, {**SORTER, "tests/aliases.py": """
         from tracker import sorter
 
@@ -693,17 +693,13 @@ def test_no_way_of_writing_a_module_drops_a_stand_in_out_of_the_check(tmp_path):
         (27, "tracker.sorter", "kept", "the_module", patch_sites.UNREAD),
         (30, "tracker.sorter", "kept", "other_module", patch_sites.UNREAD),
         (38, "tracker.sorter", "kept", "held", patch_sites.UNREAD),
-        (47, "tracker.sorter", "kept", "fixtures.THE", patch_sites.UNREAD),
-        (50, "tracker.helpers", "kept", "fixtures.FILLED", patch_sites.DEFINED),
-        (50, "tracker.sorter", "kept", "fixtures.FILLED", patch_sites.UNREAD),
-        (53, "tracker.sorter", "kept", "seams.ENGINE", patch_sites.UNREAD),
     ]
     assert [(one.line, one.written, one.called) for one in unplaced if one.file == "tests/test_b.py"] == [
-        (41, "unheard_of", True), (44, "MOD", True), (47, "fixtures.THE", True), (53, "seams.ENGINE", True),
-        (56, "monkeypatch.setattr", False), (60, "monkeypatch.setattr", False),
+        (41, "unheard_of", True), (44, "MOD", True), (47, "fixtures.THE", True), (50, "fixtures.FILLED", True),
+        (53, "seams.ENGINE", True), (56, "monkeypatch.setattr", False), (60, "monkeypatch.setattr", False),
     ]
     ok, said = patch_sites.check(root)
-    assert not ok and len(said) == 34
+    assert not ok and len(said) == 32
     assert said[-1] == ("tests/test_b.py:60: monkeypatch.setattr cannot be placed: it is not called where it is "
                         "written, so what it replaces is not written out. Call it where it is written.")
 
@@ -762,6 +758,53 @@ def test_a_value_is_taken_for_no_module_only_where_the_tool_proves_it_is_none(tm
     assert unplaced[-1].why == 'a string names a module only in the form setattr("module.name", value)'
     ok, said = patch_sites.check(root)
     assert not ok and len(said) == 21
+
+
+#: The kinds of value that pass a stand-in unlisted as no module, and the
+#: one value of the first.
+NO_MODULE_KINDS = {"THING", "CLASS", "INSTANCE", "_A_THING"}
+
+
+def _no_module_built(source: str) -> tuple[set[str | None], list[str], list[int]]:
+    """Where ``source`` builds a no-module value: the functions that use a
+    no-module kind other than to compare against it (None for the top level,
+    outside the lines that name the kinds and ``_NO_MODULE``), the kind
+    strings ``thing`` and ``instance`` wherever they are spelled outside the
+    lines that name the kinds, and the lines of any value tuple written with
+    a kind's string in place of its name."""
+    tree = ast.parse(source)
+    parent = {child: node for node in ast.walk(tree) for child in ast.iter_child_nodes(node)}
+    naming = {id(node) for statement in tree.body if isinstance(statement, ast.Assign)
+              and any(isinstance(target, ast.Name) and target.id in ("_A_THING", "_NO_MODULE")
+                      or isinstance(target, ast.Tuple) and {"THING", "CLASS"} & {one.id for one in target.elts}
+                      for target in statement.targets)
+              for node in ast.walk(statement)}
+    functions: set[str | None] = set()
+    for node in ast.walk(tree):
+        if (isinstance(node, ast.Name) and node.id in NO_MODULE_KINDS and isinstance(node.ctx, ast.Load)
+                and id(node) not in naming and not isinstance(parent[node], ast.Compare)):
+            holder = parent[node]
+            while holder in parent and not isinstance(holder, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                holder = parent[holder]
+            functions.add(getattr(holder, "name", None))
+    spelled = [node.value for node in ast.walk(tree) if isinstance(node, ast.Constant)
+               and node.value in ("thing", "instance") and id(node) not in naming]
+    tuples = [node.lineno for node in ast.walk(tree) if isinstance(node, ast.Tuple) and node.elts
+              and isinstance(node.elts[0], ast.Constant) and node.elts[0].value in ("thing", "class", "instance")
+              and id(node) not in naming]
+    return functions, spelled, tuples
+
+
+def test_only_one_function_of_the_tool_concludes_that_a_value_is_no_module():
+    """Ruling 009 of J4: "no module" has one producer, ``_no_module``, so no
+    other path can reach it by a fallback. Everywhere else a no-module kind
+    is only compared against, or listed in ``_NO_MODULE``, and no value is
+    written with a kind's string in place of its name."""
+    source = Path(patch_sites.__file__).read_text(encoding="utf-8")
+    assert _no_module_built(source) == ({"_no_module"}, [], [])
+    # The pin sees each way back to a second producer.
+    assert _no_module_built(source + "\ndef elsewhere():\n    return [_A_THING]\n")[0] == {"_no_module", "elsewhere"}
+    assert _no_module_built(source + "\nNOTHING = ('thing', None)\n")[1:] == (["thing"], [source.count("\n") + 2])
 
 
 # ---------------------------------------------------------------- the report ----

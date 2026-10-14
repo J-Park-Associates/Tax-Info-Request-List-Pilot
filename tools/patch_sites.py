@@ -54,12 +54,16 @@ together: ``for module, name in ((a, "x"), (b, "y"))`` and a mark's
 inside a loop's body its name holds the loop's values, whatever else it is
 bound to.
 
-A top-level name holds its top-level value and every value the suite stores
-there from another file: an assignment to ``<module>.<name>`` in a conftest, a
-stand-in in a fixture, the builtin ``setattr``. So a stand-in aimed through a
-helper module's seam (``children.PROC``, which a test replaces with
-``monkeypatch.setattr(children, "PROC", proc)``) is followed to what the
-replacement holds as well as to the module's own value.
+A top-level name is followed to its value only where nothing rebinds it: not
+a function of its own file (``global``, ``globals()[...]``), not an assignment
+to ``<module>.<name>`` in any other file, and not a stand-in or the builtin
+``setattr`` aimed at it. Any of those means it may hold something else by the
+time a stand-in is aimed through it, so a stand-in aimed through a seam another
+file fills (``children.PROC``, which a test replaces with
+``monkeypatch.setattr(children, "PROC", proc)``) is not placed. Following what
+each store puts there was the rejected alternative (ruling 009 of J4): which
+of them the name holds when the stand-in goes in depends on the order the
+tests run in.
 
 **What a read is.** A global read in the module's own code, by Python's own
 scope rules: not a parameter or a local of the same name, not a method reading
@@ -76,8 +80,10 @@ and the tool cannot know which caller a test meant. The moves to come make the
 other mistake, an imported name the module stops reading, and that is the one
 ``check`` fails.
 
-**No module is something the tool proves, never its fallback.** A stand-in
-passes unlisted only when its target is one of these: a constant that is not a
+**No module is something the tool proves, never its fallback.** One function,
+:func:`_no_module`, draws that conclusion, and ``test_patch_sites`` holds it to
+being the only one that does. A stand-in passes unlisted only when its target
+is one of these: a constant that is not a
 string, written where it is used; a literal container; a class the tool sees
 defined, or what calling one makes; a builtin other than those that can hand
 back a module (:data:`_GIVE_A_MODULE`), and what calling one gives; a value
@@ -91,9 +97,10 @@ instance gives when called; what ``getattr``, ``vars``, ``__import__``,
 ``globals``, ``locals``, ``eval``, ``next``, ``min`` or ``max`` gives; either
 side of ``or``, arithmetic, a comparison, a comprehension; an attribute of
 anything but a module or an outside library (a class's, an instance's,
-``x.__class__``, one of what an outside call made); a top-level name its module
-rebinds in a function (``global``, ``globals()``) or never binds, read in that
-file or another; a top-level name bound to a constant that is not a string
+``x.__class__``, one of what an outside call made); a top-level name that is
+rebound (by a function of its own file, an assignment from another file, or a
+``setattr`` aimed at it) or that its module never binds, read in that file or
+another; a top-level name bound to a constant that is not a string
 (``ENGINE = None``), which is a placeholder another module may fill in a way
 the tool does not see; a fixture the tool does not find and pytest does not
 give, and one made some way it does not follow (a call that returns a fixture,
@@ -374,6 +381,10 @@ MODULE, TEXT, OUTSIDE, THING, UNKNOWN = "module", "text", "outside", "thing", "u
 CLASS, INSTANCE = "class", "instance"
 _A_THING = (THING, None)
 
+#: The name slot of a target the tool cannot place: which name the stand-in
+#: replaces is not read, since the target fails the check whatever it is.
+_NAME_NOT_READ = (UNKNOWN, None)
+
 #: The kinds a stand-in's target may have and pass unlisted: each is proved no
 #: module, so the stand-in lands on that object whoever reads it. "No module"
 #: is something the tool proves, never its fallback: every other target fails
@@ -399,6 +410,36 @@ _OUTSIDE_FIXTURES = frozenset((
     "recwarn", "request", "subtests", "tmp_path", "tmp_path_factory", "tmpdir", "tmpdir_factory",
     "testrun_uid", "worker_id",
 ))
+
+
+def _no_module(node: ast.AST, module: str = "", callee: tuple | None = None) -> tuple:
+    """The one place the tool concludes that a value is no module (ruling 009
+    of J4), from the syntax it is handed: a constant that is not a string, a
+    literal container, a ``class`` the tool sees defined in ``module``, what a
+    call makes of a class (``callee`` the class) or gives from a builtin
+    outside :data:`_GIVE_A_MODULE` or an outside library (``callee`` that), and
+    what a fixture parameter gives that no file of the suite defines, where
+    its name is one of :data:`_OUTSIDE_FIXTURES`. Anything
+    else it is handed is a value the tool cannot work out, and every other
+    path of the tool follows a value or gives that, so "no module" is never
+    reached by a fallback. ``test_patch_sites`` holds the tool to building
+    the no-module kinds here and nowhere else."""
+    if isinstance(node, ast.Constant) and not isinstance(node.value, str):
+        return _A_THING
+    if isinstance(node, (ast.List, ast.Tuple, ast.Dict, ast.Set)):
+        return _A_THING
+    if isinstance(node, ast.ClassDef):
+        return (CLASS, f"{module}.{node.name}")
+    if isinstance(node, ast.Call) and callee is not None:
+        kind, held = callee
+        if kind == CLASS:
+            return (INSTANCE, held)
+        if kind == OUTSIDE and held not in _GIVE_A_MODULE:
+            return _A_THING
+    if isinstance(node, ast.arg):
+        return _A_THING if node.arg in _OUTSIDE_FIXTURES else (UNKNOWN, node.arg)
+    return (UNKNOWN, ast.unparse(node))
+
 
 _SCOPES = (ast.Module, *_FUNCTIONS, ast.Lambda)
 _BUILTINS = frozenset(dir(builtins))
@@ -477,7 +518,7 @@ class _Suite:
                 self._dotted[path] = dotted
         self._names: dict[str, ModuleNames] = {}
         self._files: dict[Path, _TestFile] = {}
-        self._stored: dict[tuple[str, str], list[tuple[_TestFile, ast.expr | None]]] | None = None
+        self._stored: frozenset[tuple[str, str]] | None = None
 
     def canonical(self, dotted: str) -> str:
         """A module's dotted name from the root, however the test imported it."""
@@ -509,20 +550,17 @@ class _Suite:
     def conftests(self) -> list[_TestFile]:
         return [self.test_file(path) for path in sorted((self.root / TESTS).rglob("conftest.py"))]
 
-    def stored(self) -> dict[tuple[str, str], list[tuple[_TestFile, ast.expr | None]]]:
-        """Each top-level name of a module that a file under ``tests/`` stores
-        from outside that module, with the file and the value it stores (None
-        where that is not written out): an assignment to ``<module>.<name>``,
-        a stand-in, or the builtin ``setattr``. While this is worked out it is
-        empty, so what a store is aimed at is read from the modules alone."""
+    def stored(self) -> frozenset[tuple[str, str]]:
+        """Each (module, name) that a file of the repository stores in a module
+        of the repository through the module: an assignment to
+        ``<module>.<name>``, an augmented one or a ``del``, a stand-in, or the
+        builtin ``setattr``. While this is worked out it is empty, so what a
+        store is aimed at is read from the modules alone."""
         if self._stored is None:
-            self._stored = {}
-            found: dict[tuple[str, str], list[tuple[_TestFile, ast.expr | None]]] = defaultdict(list)
-            for test_file in self.test_files():
-                for node in ast.walk(test_file.tree):
-                    for key, value in test_file.stores(node):
-                        found[key].append((test_file, value))
-            self._stored = dict(found)
+            self._stored = frozenset()
+            self._stored = frozenset(key for path in sorted(set(self.index.values()))
+                                     for node in ast.walk(self.test_file(path).tree)
+                                     for key in self.test_file(path).stores(node))
         return self._stored
 
     @staticmethod
@@ -644,8 +682,9 @@ class _TestFile:
 
     def rebinds(self, name: str) -> bool:
         """Whether this file's top-level ``name`` is bound anywhere but its top
-        level: by a function of the file (``global``, ``globals()``), or from
-        another file (:meth:`_Suite.stored`)."""
+        level: by a function of the file (``global``, ``globals()``), or
+        through the module, by an assignment or a ``setattr`` in any file
+        (:meth:`_Suite.stored`)."""
         return name in self.rebound or (self.canonical, name) in self.suite.stored()
 
     def top_level(self, name: str, written: str, seen: frozenset) -> list[tuple]:
@@ -660,41 +699,28 @@ class _TestFile:
     def module_level(self, name: str, written: str, bound: list[ast.AST], seen: frozenset) -> list[tuple]:
         """What this file's top-level ``name``, bound there by ``bound``, can
         hold wherever it is read, in this file or another: each binding's
-        value, and every value the suite stores there from another file. It is
-        not followed where a function of the file rebinds it (``global``,
-        ``globals()[...]``), and its top-level value is not where that is a
-        constant other than a string: a placeholder for a seam, which another
-        module may fill in a way the tool does not see."""
-        if name in self.rebound:
+        value, followed only where nothing rebinds the name (:meth:`rebinds`).
+        A binding to a constant other than a string is not followed either: it
+        is a placeholder for a seam, which another module may fill in a way
+        the tool does not see."""
+        if self.rebinds(name):
             return [(UNKNOWN, written)]
         placeholders = [node for node in bound if _a_placeholder(self.parent, node)]
         followed = [node for node in bound if node not in placeholders]
         found = [(UNKNOWN, written)] if placeholders else []
         if followed:
             found += self._bound_values(name, followed, seen)
-        for there, value in self.suite.stored().get((self.canonical, name), []):
-            if value is None or id(value) in seen:
-                found.append((UNKNOWN, written))
-            else:
-                found += there.values(value, {}, seen | {id(value)})
         return found
 
-    def stores(self, node: ast.AST) -> list[tuple[tuple[str, str], ast.expr | None]]:
+    def stores(self, node: ast.AST) -> list[tuple[str, str]]:
         """Each (module, name) that ``node`` stores in a module of the
-        repository, with the value it stores (None where that is not written
-        out): an assignment to ``<module>.<name>``, an augmented one or a
-        ``del``, a stand-in, or the builtin ``setattr``."""
+        repository through the module: an assignment to ``<module>.<name>``,
+        an augmented one or a ``del``, a stand-in, or the builtin ``setattr``."""
         if isinstance(node, ast.Attribute) and isinstance(node.ctx, (ast.Store, ast.Del)):
-            holder = self.parent[node]
-            assigned = (isinstance(holder, ast.Assign) and any(node is one for one in holder.targets)
-                        or isinstance(holder, ast.AnnAssign) and holder.target is node)
-            value = holder.value if assigned else None
-            return [((held, node.attr), value) for kind, held in self.values(node.value, {}) if kind == MODULE]
+            return [(held, node.attr) for kind, held in self.values(node.value, {}) if kind == MODULE]
         if isinstance(node, ast.Call) and _named(node) == "setattr":
             ways, _written = _aimed_at(self, node)
-            value = _value_given(node)
-            return [((held, name), value) for (kind, held), (name_kind, name) in ways
-                    if kind == MODULE and name_kind == TEXT]
+            return [(held, name) for (kind, held), (name_kind, name) in ways if kind == MODULE and name_kind == TEXT]
         return []
 
     # -- what an expression holds
@@ -702,7 +728,7 @@ class _TestFile:
     def values(self, expr: ast.AST, env: dict[str, list[tuple]], seen: frozenset = frozenset()) -> list[tuple]:
         """Every value ``expr`` can hold, with the names in ``env`` fixed."""
         if isinstance(expr, ast.Constant):
-            return [(TEXT, expr.value) if isinstance(expr.value, str) else _A_THING]
+            return [(TEXT, expr.value) if isinstance(expr.value, str) else _no_module(expr)]
         if isinstance(expr, ast.Name):
             return env[expr.id] if expr.id in env else self._held_by(expr, seen)
         if isinstance(expr, ast.Attribute):
@@ -720,7 +746,7 @@ class _TestFile:
                 return [self._module_named(one) for one in self.values(expr.slice, env, seen)]
             return [(UNKNOWN, ast.unparse(expr))]
         if isinstance(expr, (ast.List, ast.Tuple, ast.Dict, ast.Set)):
-            return [_A_THING]
+            return [_no_module(expr)]
         # Anything else - ``a or b``, a lambda, arithmetic, a comparison, a
         # comprehension - is not followed.
         return [(UNKNOWN, ast.unparse(expr))]
@@ -746,15 +772,7 @@ class _TestFile:
                 and func.value.attr == "modules" and len(call.args) in (1, 2)):
             given = [self._module_named(one) for one in self.values(call.args[0], env, seen)]
             return given + [value for default in call.args[1:] for value in self.values(default, env, seen)]
-        found = []
-        for kind, held in self.values(func, env, seen):
-            if kind == CLASS:
-                found.append((INSTANCE, held))
-            elif kind == OUTSIDE and held not in _GIVE_A_MODULE:
-                found.append(_A_THING)
-            else:
-                found.append((UNKNOWN, ast.unparse(call)))
-        return found
+        return [_no_module(call, callee=value) for value in self.values(func, env, seen)]
 
     def _module_named(self, value: tuple) -> tuple:
         kind, held = value
@@ -809,7 +827,7 @@ class _TestFile:
             elif isinstance(node, ast.Name):
                 found.extend(self._stored(node, seen))
             elif isinstance(node, ast.ClassDef):
-                found.append((CLASS, f"{self.dotted}.{node.name}"))
+                found.append(_no_module(node, self.dotted))
             else:
                 # A function, or whatever its decorators made of it.
                 found.append((UNKNOWN, f"{self.dotted}.{node.name}"))
@@ -926,7 +944,7 @@ class _TestFile:
             marked = self._parametrized(parameter, function, seen)
             if marked is not None:
                 return marked
-            return parameter, [{parameter.arg: self._fixture_values(parameter.arg, function, seen)}]
+            return parameter, [{parameter.arg: self._fixture_values(parameter, function, seen)}]
         rows = [row for call in self.calls.get(function.name, [])
                 if (row := self._arguments(function, call, seen)) is not None]
         return (function, rows) if rows else unknown
@@ -1010,8 +1028,8 @@ class _TestFile:
             return {one: [(UNKNOWN, one)] for one in direct}
         return {one: self.values(value, {}, seen) for one, value in zip(names, elements, strict=True) if one in direct}
 
-    def _fixture_values(self, name: str, function: ast.AST, seen) -> list[tuple]:
-        """What the fixture called ``name`` gives the test or fixture
+    def _fixture_values(self, parameter: ast.arg, function: ast.AST, seen) -> list[tuple]:
+        """What the fixture ``parameter`` names gives the test or fixture
         ``function``, found where pytest looks for it: the classes around
         ``function``, this file, then a conftest under ``tests/``. A name none
         of them holds is no module only where it is pytest's own fixture or a
@@ -1019,10 +1037,10 @@ class _TestFile:
         holders = [(self, scope) for scope in (*self.classes_around(function), self.tree)]
         holders += [(conftest, conftest.tree) for conftest in self.suite.conftests()]
         for holder, scope in holders:
-            given = holder.fixture_in(scope, name, seen)
+            given = holder.fixture_in(scope, parameter.arg, seen)
             if given is not None:
                 return given
-        return [_A_THING] if name in _OUTSIDE_FIXTURES else [(UNKNOWN, name)]
+        return [_no_module(parameter)]
 
     def fixture_in(self, scope: ast.AST, name: str, seen) -> list[tuple] | None:
         """What the fixture ``name`` gives where ``scope`` (this file's top
@@ -1045,9 +1063,10 @@ class _TestFile:
                     continue
                 if id(node) in seen:
                     return [(UNKNOWN, name)]
-                returned = [sub.value for sub in ast.walk(node)
-                            if isinstance(sub, (ast.Return, ast.Yield)) and sub.value is not None]
-                found += [value for one in returned for value in self.values(one, {}, seen | {id(node)})] or [_A_THING]
+                # A bare return or yield, or none, gives None.
+                returned = [sub.value or ast.Constant(None) for sub in ast.walk(node)
+                            if isinstance(sub, (ast.Return, ast.Yield))] or [ast.Constant(None)]
+                found += [value for one in returned for value in self.values(one, {}, seen | {id(node)})]
         if found:
             return found
         for node in bound.get(name, []):
@@ -1151,11 +1170,6 @@ def _string_form(call: ast.Call) -> bool:
     return len(call.args) == 2 and not {"name", "value"} & {keyword.arg for keyword in call.keywords}
 
 
-def _value_given(call: ast.Call) -> ast.expr | None:
-    """The value a ``setattr`` call puts in place, or None where it gives none."""
-    return _argument(call, 1 if _string_form(call) else 2, "value")
-
-
 def _aimed_at(test_file: _TestFile, call: ast.Call) -> tuple[list[tuple[tuple, tuple]], str]:
     """Every (module, name) a ``setattr`` call can replace, and how its
     target is written.
@@ -1170,10 +1184,10 @@ def _aimed_at(test_file: _TestFile, call: ast.Call) -> tuple[list[tuple[tuple, t
         return _dotted(test_file.suite, args[0].value), repr(args[0].value)
     written = ast.unparse(args[0]) if args else ast.unparse(call)
     if len(args) < 2:
-        return [((UNKNOWN, written), _A_THING)], written
+        return [((UNKNOWN, written), _NAME_NOT_READ)], written
     ways = _rows(test_file, call, args[:2])
     if ways is None:
-        return [((UNKNOWN, written), _A_THING)], written
+        return [((UNKNOWN, written), _NAME_NOT_READ)], written
     found: list[tuple[tuple, tuple]] = []
     for env in ways:
         for kind, held in test_file.values(args[0], env):
@@ -1182,7 +1196,7 @@ def _aimed_at(test_file: _TestFile, call: ast.Call) -> tuple[list[tuple[tuple, t
             elif kind == TEXT:
                 found.extend(_dotted(test_file.suite, held))
             else:
-                found.append(((UNKNOWN, held if kind == UNKNOWN else written), _A_THING))
+                found.append(((UNKNOWN, held if kind == UNKNOWN else written), _NAME_NOT_READ))
     return found, written
 
 
