@@ -1,7 +1,7 @@
 {
   "note": "Every type error each file had when this was written, by python tools/typecheck.py update. check fails when a file has more; update refuses to raise a count. Never edit it by hand.",
   "mypy": "2.3.1",
-  "total": 216,
+  "total": 215,
   "files": {
     "tools/learned_keywords.py": [
       "Cannot find implementation or library stub for module named \"vocab_report\"  [import-not-found]"
@@ -46,9 +46,6 @@
       "Incompatible types in assignment (expression has type \"list[str]\", target has type \"str\")  [assignment]",
       "Incompatible types in assignment (expression has type \"list[str]\", target has type \"str\")  [assignment]",
       "Name \"key\" already defined on line 892  [no-redef]"
-    ],
-    "tools/vocab_report.py": [
-      "Argument 1 to \"as_a_sheet\" has incompatible type \"object\"; expected \"list[list[Any]]\"  [arg-type]"
     ],
     "tracker/after_install.py": [
       "Argument 1 to \"claim\" has incompatible type \"Path | None\"; expected \"str | Path\"  [arg-type]",

@@ -11,8 +11,8 @@ that are not test files (``tests/samples.py``, ``builders.py``, ``children.py``,
 
 These claims read the import statements, not the text, in every form an import
 takes, and read the whole of ``tests/`` the way pytest does: the files at its
-top level. The tools' imports of ``tests.test_catalog``, ``test_irs_forms`` and
-``test_real_corpus`` (decision 70) are not the suite's and are not judged here.
+top level. The tools are not the suite's and are not judged here: that no tool
+imports a test file is ``tests/test_corpus.py``'s claim.
 """
 
 import ast

@@ -8,6 +8,7 @@ reaches a caller's console (decision 185). Everything here is made up under
 folder are ``tests/test_real_corpus.py``'s.
 """
 
+import ast
 import sys
 from pathlib import Path
 
@@ -106,3 +107,21 @@ def test_a_document_is_linked_under_a_name_that_says_nothing(tmp_path):
 
 def test_the_harness_is_this_modules_own_reader_and_builder():
     assert corpus.harness() == (corpus.catalog_rows, corpus.read_expectations)
+
+
+def test_no_tool_imports_a_test_file():
+    """A tool that imports ``tests/test_x.py`` depends on a suite's collection,
+    and the report it writes is then a function of a test. The shared code is
+    ``tools/corpus.py``'s and the shared cases are ``tests/routing_cases.py``'s,
+    a helper module. The tools import some of it inside a function, so every
+    import in the file is read, not the top level only."""
+    for path in sorted((REPO / "tools").glob("*.py")):
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+            if isinstance(node, ast.ImportFrom):
+                named = [node.module or ""] + [f"{node.module}.{alias.name}" for alias in node.names]
+            elif isinstance(node, ast.Import):
+                named = [alias.name for alias in node.names]
+            else:
+                continue
+            for module in named:
+                assert not module.startswith("tests.test_"), (path.name, module)

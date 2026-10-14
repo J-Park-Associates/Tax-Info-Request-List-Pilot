@@ -4,7 +4,7 @@ Every request row in ``tracker/templates.py`` recognises its document by
 keywords, and twelve adversarial readings (decisions 54-69) tuned those
 keywords one confusable at a time. What no reading could see is the
 whole: which keywords the IRS forms in ``tests/irs/`` and the
-reconstructed cases in ``tests/test_catalog.py`` actually reach, and
+reconstructed cases in ``tests/routing_cases.py`` actually reach, and
 which are defended by nothing. A keyword no document in the suite says
 is one that can misfile tomorrow with no test to say so. This report is
 that whole, generated the way the suite routes: each catalog built
@@ -108,10 +108,7 @@ INPUT_PATHS = (
     "tracker/templates.py",       # the catalog
     "tracker/content_check.py",   # says(), the matcher
     "tracker/manifest.py",        # the validation and its defaults
-    "tests/test_catalog.py",      # the cases
-    "tests/test_irs_forms.py",    # the corpus's expected placements
-    "tests/routing_cases.py",     # the workbook cases, the placements and two printed forms those suites share
-    "tests/test_real_corpus.py",  # how the firm's own documents are read
+    "tests/routing_cases.py",     # the typed cases, the workbook cases, the blank forms' placements and two printed forms
     "tools/corpus.py",            # how the firm's own documents are read
     "tools/vocab_report.py",      # this generator
 )
@@ -220,7 +217,7 @@ def corpus_documents() -> list[Document]:
 
     A form is committed public data, so a damaged one is named by its file.
     """
-    from tests.test_irs_forms import EXPECT
+    from tests.routing_cases import EXPECT
 
     expected = _placements(EXPECT)
     documents, failures = [], []
@@ -308,7 +305,7 @@ def case_documents() -> list[Document]:
     Both kinds: the pages typed as lines, and the workbooks typed as rows
     (half of every catalog asks for a schedule a client keeps in Excel).
     """
-    from tests.test_catalog import CASES, XLSX_CASES
+    from tests.routing_cases import CASES, XLSX_CASES
 
     documents = [
         Document(CASE, name, "\n".join(lines), {form: where}, decision)
@@ -429,7 +426,7 @@ def render_markdown(data: dict) -> str:
         f"<!-- {data['note']} -->",
         "",
         "Which keyword is reached by which document: every catalog row's keywords against the "
-        "IRS forms in `tests/irs/` and the reconstructed cases in `tests/test_catalog.py`, "
+        "IRS forms in `tests/irs/` and the reconstructed cases in `tests/routing_cases.py`, "
         "tested with `says()` the way the router and the scanner read. Rebuild with "
         "`python tools/vocab_report.py build`; `check` says whether this matches its inputs.",
         "",

@@ -212,9 +212,10 @@ across the package:
   renderer's JavaScript run under node, and `js_function`, the one way to cut
   a function out of a script), `css_rules.py`, `api_driver.py` (the command
   line as `main.js` drives it), `wording.py`, `import_graph.py` and
-  `routing_cases.py`. The tools import the cases and placements from
-  `test_catalog.py` and `test_irs_forms.py` by name (decision 70), and those
-  suites keep carrying the names; the corpus readers are `tools/corpus.py`'s.
+  `routing_cases.py`. The typed cases, the workbook cases and the blank forms'
+  placements are `routing_cases.py`'s (decision 70), which the suites import and
+  the vocabulary report reads; the corpus readers are `tools/corpus.py`'s. No
+  tool imports a test file.
 
 The suite runs in parallel with pytest-xdist (`python -m pytest -q -n auto`),
 and the gate runs each affected file as its own process under the floor

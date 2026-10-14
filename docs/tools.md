@@ -8,7 +8,7 @@ keyword, a typed case or the matcher, or before running the backtest.
 
 [`docs/vocab-coverage.md`](docs/vocab-coverage.md) is the map's counterpart
 for the routing rules: which keyword in each catalog is reached by which IRS
-form in `tests/irs/` or reconstructed case in `tests/test_catalog.py`, and
+form in `tests/irs/` or reconstructed case in `tests/routing_cases.py`, and
 which keywords nothing in the suite defends. `tools/vocab_report.py`
 generates it from the catalog, the matcher and the suite; it is committed
 and checked by hash, like the map:
@@ -22,17 +22,16 @@ python tools/vocab_report.py show 1040  # one catalog, row by row
 Read its headline lists before changing a keyword: an unreached keyword has
 no test to say when it starts misfiling. Rebuild it in the same commit as a
 catalog, matcher or case change; `tests/test_vocab_report.py` fails on a
-stale one. Every case in `tests/test_catalog.py` carries the decision that
-introduced it, so `python -m pytest -k d67` runs decision 67's whole history
-before a rule it touched is trusted.
+stale one. Every case in `tests/routing_cases.py` carries the decision that
+introduced it, and `tests/test_catalog.py` runs it under an id that names it, so
+`python -m pytest -k d67` runs decision 67's whole history before a rule it
+touched is trusted.
 
-The workbook cases' rows (`XLSX_CASES`), the blank forms' placements (`EXPECT`) and
-the lines of two printed forms sit in `tests/routing_cases.py`, which the suites that
-share them import; the report hashes that file as it hashes the suites, and
-`tests/test_catalog.py` and `tests/test_irs_forms.py` still carry the names the
-report imports. The harness the backtest and the reader bench share, and the one
-reader of the expectations file, is `tools/corpus.py`; the report reads the firm's
-documents through it.
+The typed cases (`CASES`), the workbook cases' rows (`XLSX_CASES`), the blank
+forms' placements (`EXPECT`) and the lines of two printed forms sit in
+`tests/routing_cases.py`, which the suites import and the report reads. The harness
+the backtest and the reader bench share, and the one reader of the expectations
+file, is `tools/corpus.py`. No tool imports a test file.
 
 The firm's own redacted documents are the third corpus, and they live
 outside the repository: the environment variable TRACKER_REAL_CORPUS names
