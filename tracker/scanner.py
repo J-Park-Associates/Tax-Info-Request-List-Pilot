@@ -198,7 +198,7 @@ def _the_index(engagement_dir: Path) -> list[IndexEntry]:
     scan's - the firm's folder is still walked and the statuses still
     recorded.
     """
-    from tracker.filer import read_index
+    from tracker.index import read_index
 
     try:
         return read_index(engagement_dir)
@@ -220,7 +220,7 @@ def _filed_by_a_person(
     are read through the cache's memo (decision 109), so a tree that has
     not moved since the last pass is stats and no reads.
     """
-    from tracker.filer import FILED
+    from tracker.index import FILED
 
     newest = {row.prepared_location: row for row in rows if row.prepared_location}
     accepted = set()
@@ -263,7 +263,7 @@ def _wandered(engagement_dir: Path, rows: list[IndexEntry]) -> frozenset[Path]:
     ``PREPARED_DIR_NAME`` holds under its name, and a file a person can see
     going uncounted would be a lie in the other direction.
     """
-    from tracker.filer import moved_to
+    from tracker.index import moved_to
 
     return frozenset(
         locate(engagement_dir, now) for now in (moved_to(row) for row in rows) if now
@@ -282,7 +282,7 @@ def _interrupted(engagement_dir: Path, rows: list[IndexEntry]) -> dict[Path, str
     counted and the request is told in the row's own sentence instead.
     Firm-side, always: no draft asks a client about a power cut here.
     """
-    from tracker.filer import interrupted
+    from tracker.index import interrupted
 
     found: dict[Path, str] = {}
     for row in rows:
@@ -320,7 +320,7 @@ def _host_not_counted(engagement_dir: Path, row: IndexEntry, cache: ContentCache
     request says so). A row recorded without its bytes (decision 65) has
     nothing to be proved against, and counts as it always did.
     """
-    from tracker.filer import FILE_MOVED, both_gone, moved_to
+    from tracker.index import FILE_MOVED, both_gone, moved_to
 
     if not row.digest or not row.prepared_location:
         return ""
@@ -355,7 +355,7 @@ def _answered(
     by a statement the firm cannot open is held for a person, never
     Received on it. Keyed without case, as a status is.
     """
-    from tracker.filer import FILE_MOVED, FILED
+    from tracker.index import FILE_MOVED, FILED
 
     found: dict[str, list[tuple[str, int, str]]] = {}
     for row in rows:
@@ -476,7 +476,7 @@ def _scan_item(
     put-it-back wording. Both are firm-side, so the letter holds off until
     a person marks the document missing.
     """
-    from tracker.filer import FILE_MOVED, both_gone, moved_to, prepared_location
+    from tracker.index import FILE_MOVED, both_gone, moved_to, prepared_location
 
     claimed = claimed or {}
     interrupted = interrupted or {}
@@ -806,9 +806,9 @@ def scan_engagement(
 
     # The lock comes before the request list is read (see tracker.locking):
     # a sort that finished in between would otherwise be invisible to this scan.
-    # The filer and this module are one deliberate cycle, closed at call
-    # time and asserted to stay that way (tests/test_layers.py).
-    from tracker.filer import ensure
+    # The index is tracker.index's. This module never imports the filer,
+    # which asks for this scan at call time (tests/test_layers.py holds both).
+    from tracker.index import ensure
 
     with nullcontext() if dry_run or lock_held else engagement_lock(engagement_dir):
         # The store is brought up to the journal before a thing is read:

@@ -90,13 +90,13 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from tracker import errors, ledger, review
-from tracker.filer import (
+from tracker.filer import FilingError
+from tracker.fsio import write_text_atomically
+from tracker.index import (
     INDEX_HEADING,
     NEEDS_REVIEW,
-    FilingError,
     read_index,
 )
-from tracker.fsio import write_text_atomically
 from tracker.layout import household_name_of, label_for, year_of
 from tracker.manifest import (
     ANY_EXTENSION,

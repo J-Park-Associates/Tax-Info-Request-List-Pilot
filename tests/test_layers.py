@@ -497,10 +497,10 @@ def test_the_runner_never_imports_the_scheduler_or_the_api():
     assert not {"scheduling", "api"} & (load["runner"] | call["runner"])
 
 
-def test_the_filer_and_scanner_cycle_closes_only_at_call_time():
+def test_the_scanner_never_imports_the_filer_and_the_filer_reaches_it_only_at_call_time():
     load, call = import_edges()
-    assert "scanner" not in load["filer"] and "filer" not in load["scanner"]
-    assert "scanner" in call["filer"] and "filer" in call["scanner"], (call["filer"], call["scanner"])
+    assert "filer" not in load["scanner"] and "filer" not in call["scanner"], (load["scanner"], call["scanner"])
+    assert "scanner" not in load["filer"] and "scanner" in call["filer"], (load["filer"], call["filer"])
 
 
 def _imported_names(tree: ast.AST) -> list[str]:

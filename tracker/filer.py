@@ -6809,9 +6809,9 @@ def mark_missing_again(
 
 def _rescan(engagement_dir: Path, today: dt.date) -> str:
     """Put the request's status back now, and say so if it could not be."""
-    # The scan reads the index this module writes and this module asks for
-    # the scan: the cycle is deliberate and is imported where it is used, so
-    # neither module has to exist before the other at import time.
+    # The scan reads the index from tracker.index, never from this module,
+    # and this module asks for the scan. The import stays inside the call, where
+    # it has always been, and tests/test_layers.py holds it there.
     from tracker.scanner import ScanLockedError, scan_engagement
 
     try:

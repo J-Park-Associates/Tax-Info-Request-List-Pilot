@@ -79,7 +79,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from tracker import reasons
-from tracker.filer import NEEDS_REVIEW
+from tracker.index import NEEDS_REVIEW
 from tracker.manifest import Override, RequestItem, load_manifest, override_label
 from tracker.names import NAME_ABSENT, NAME_CONFIRMED, NAME_VETOED
 from tracker.records import (
@@ -521,7 +521,7 @@ if __name__ == "__main__":
 
     ns.engagement_dir = door.typed_return(parser, ns.engagement_dir)
 
-    from tracker.filer import ensure, read_index
+    from tracker.index import ensure, read_index
 
     engagement = Path(ns.engagement_dir)
     ensure(engagement)

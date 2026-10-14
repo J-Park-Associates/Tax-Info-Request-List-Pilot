@@ -335,14 +335,14 @@ def test_two_unfiled_documents_of_one_name_are_two_and_no_subfolder_is_quoted(pr
 
 
 def _a_torn_index(monkeypatch):
-    """Last year's index cannot be read: ``filer.read_index`` refuses in the
+    """Last year's index cannot be read: ``index.read_index`` refuses in the
     firm's own words."""
-    from tracker import filer
+    from tracker import filer, index
 
     def torn(*_args, **_kwargs):
         raise filer.FilingError("the index is torn")
 
-    monkeypatch.setattr(filer, "read_index", torn)
+    monkeypatch.setattr(index, "read_index", torn)
 
 
 def test_a_rollover_that_could_not_read_last_years_index_still_rolls_and_says_so(

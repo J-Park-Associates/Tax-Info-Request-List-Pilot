@@ -3825,12 +3825,12 @@ def verify(conn: sqlite3.Connection, held: sqlite3.Connection | None, root: Path
     For every folder with a record: the record reads (links, format);
     every line is inside the store's admission (decision 187); it extends
     what the checkpoint vouches for; the store has applied a prefix of it. For every row: its original and each working copy it claims are
-    there and hold the row's bytes - proved by the filer's own proof of a
-    row's bytes (``filer.holds_the_row``, decision 109's reading), not a
+    there and hold the row's bytes - proved by the index's own proof of a
+    row's bytes (``index.holds_the_row``, decision 109's reading), not a
     second one.
     """
     from tracker import layout, registry
-    from tracker.filer import FILE_MOVED, holds_the_row
+    from tracker.index import FILE_MOVED, holds_the_row
     from tracker.layout import locate
     from tracker.validators import is_cloud_placeholder
 

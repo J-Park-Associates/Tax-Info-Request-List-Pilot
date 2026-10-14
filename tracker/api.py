@@ -4878,10 +4878,11 @@ def _row_reply(engagement: Path, key: str, entry, *, full: bool = True, **extra)
 def _shortlist_now(engagement: Path, original: str) -> list[str]:
     """What the evidence points at for one parked row, this moment.
 
-    Computed here, outside the lock the filer takes, because the filer
-    does not import :mod:`tracker.review` - that would be a second
-    call-time cycle beside the one deliberate one - and this module is
-    above both and already draws the card the person picked from. The row
+    Computed here, outside the lock the filer takes, because this module is
+    above both and already draws the card the person picked from. The
+    filer does not import :mod:`tracker.review`; when the shortlist was
+    added that would have closed a second call-time cycle, and since
+    P2.10 it would close none, but the card is still drawn here. The row
     is found exactly as the filer will find it (:func:`filer.find_parked`),
     so what is judged is the row that is filed.
 

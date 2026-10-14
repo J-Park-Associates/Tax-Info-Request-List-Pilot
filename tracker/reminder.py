@@ -907,7 +907,7 @@ def _still_parked(row) -> bool:
     parked row whose copy and original are both gone (decision 157) that
     nobody filed or set aside - read from its decision and its code
     (decision 190), never from its sentence."""
-    from tracker.filer import NEEDS_REVIEW, both_gone
+    from tracker.index import NEEDS_REVIEW, both_gone
 
     if row.decision == NEEDS_REVIEW:
         return True
@@ -1136,7 +1136,7 @@ def count_needs_review(engagement_dir: Path) -> int:
     the loud side of the choice, and the index is the filer's to complain
     about, not the draft's.
     """
-    from tracker.filer import NOT_REQUESTED, read_index
+    from tracker.index import NOT_REQUESTED, read_index
 
     review = engagement_dir / PREPARED_DIR_NAME / REVIEW_DIR_NAME
     parked = iter_candidate_files(review)
@@ -1355,7 +1355,7 @@ def _parked_index_rows(engagement_dir: Path) -> list:
     The draft is still written, and the index is the filer's to complain
     about - the same division :func:`count_needs_review` makes.
     """
-    from tracker.filer import read_index
+    from tracker.index import read_index
 
     try:
         return read_index(engagement_dir)

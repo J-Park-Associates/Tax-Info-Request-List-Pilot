@@ -1100,9 +1100,10 @@ def test_the_store_names_no_reader_at_load_time():
 
     Read from the text with the one function exempted that decision 159
     added on purpose: ``verify``, the read-only firm-wide proof, reaches
-    the registry's walk and the filer's own proof of a row's bytes at call
-    time - reusing them rather than writing a second walk and a second
-    fingerprint - and only when a person runs it."""
+    the registry's walk and the index's own proof of a row's bytes
+    (``tracker.index.holds_the_row``) at call time - reusing them rather
+    than writing a second walk and a second fingerprint - and only when a
+    person runs it."""
     import ast
 
     source = (Path(store.__file__)).read_text(encoding="utf-8")

@@ -7341,7 +7341,7 @@ def test_a_rollover_that_could_not_read_last_years_index_says_so_in_its_reply(
     """E2 (P297): the reply's ``warnings`` - which the page already draws -
     carry the sentence, as the last line, after the one ``create_engagement``
     assigns."""
-    from tracker import filer
+    from tracker import filer, index
     from tracker.rollover import UNFILED_LAST_YEAR_UNREAD
 
     engagement, _ = _issuer_return(capsys, demo_root)
@@ -7349,7 +7349,7 @@ def test_a_rollover_that_could_not_read_last_years_index_says_so_in_its_reply(
     def torn(*_args, **_kwargs):
         raise filer.FilingError("the index is torn")
 
-    monkeypatch.setattr(filer, "read_index", torn)
+    monkeypatch.setattr(index, "read_index", torn)
     code, payload = run(capsys, "rollover", stdin={"prior": str(engagement), "year": BASE_YEAR + 1})
     assert code == 0, payload
     assert payload["rollover"]["warnings"][-1] == UNFILED_LAST_YEAR_UNREAD.format(

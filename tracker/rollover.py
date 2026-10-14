@@ -587,7 +587,8 @@ def _unfiled_last_year(prior_dir: Path) -> tuple[list[str], str]:
     a reason anything was not filed.
     """
     from tracker import ledger, store
-    from tracker.filer import NEEDS_REVIEW, FilingError, ensure, read_index
+    from tracker.filer import FilingError
+    from tracker.index import NEEDS_REVIEW, ensure, read_index
 
     try:
         # A rollover only reads the prior year, and it reads it without
