@@ -396,7 +396,7 @@ SAID_WHOLE_ON_PURPOSE = {
     ("ocr.py", "_build_engine"): "an import failing on this machine: the machine's words",
     ("ocr.py", "_engine"): "the graphics card's engine failing to build: the machine's words",
     ("registry.py", "_children"): "listing a folder of the clients root: the OS's words, never a document's",
-    ("api.py", "_failure_of"): "decision 193's refused kind: the tracker's own errors, said whole (R2)",
+    ("api.py", "_envelope_of"): "decision 193's refused kind: the tracker's own errors, said whole (R2)",
     ("after_install.py", "_schedule"): "Task Scheduler refusing a task: the machine's words; and "
                                          "scheduling's DesignationError, always one of its constants",
     ("after_install.py", "move_schedule_here"): "scheduling's DesignationError, always one of its constants",

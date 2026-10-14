@@ -97,12 +97,12 @@ domain says what the module is for. There are six: ``record`` (the household's
 journal, its request list and the shape of the clients root), ``reading``
 (opening a client's file and getting the text out of it), ``sorting``
 (deciding where a document belongs), ``pass`` (the scheduled run and what it
-drives), ``door`` (the API, the engine that answers it and what an error is
-called) and ``shell`` (the pages a person opens). A domain is the grouping a
-folder tree would show, checked here instead: the modules stay flat in
-``tracker/``, because a subpackage would escape every guard that reads only
-``tracker/*.py`` and change every import path, and the layer table already
-says what may lean on what. So :data:`DOMAINS` sits beside
+drives), ``door`` (the API, the engine that answers it, what an error is
+called and the shape of every reply) and ``shell`` (the pages a person opens).
+A domain is the grouping a folder tree would show, checked here instead: the
+modules stay flat in ``tracker/``, because a subpackage would escape every
+guard that reads only ``tracker/*.py`` and change every import path, and the
+layer table already says what may lean on what. So :data:`DOMAINS` sits beside
 :data:`LAYERS`, and ``test_every_module_sits_in_exactly_one_domain`` fails
 when a module has no domain, has two, or is named in a domain and not in a
 layer. A domain is documentation that is checked: it forbids nothing the
@@ -159,8 +159,12 @@ LAYERS: dict[int, frozenset[str]] = {
     # the view file - the standard library, ``settings``, ``fsio``, ``errors``,
     # ``layout`` (the return naming pattern) and ``firm_cache``'s head and file
     # readers; the API hands it the words.
+    # ``replies`` joins L0 with SPEC-architecture-p2 R2.3.1: the shape of every
+    # reply the API prints, as ``TypedDict``s - ``typing`` only; the API and the
+    # suite import it.
     0: frozenset({"__init__", "reasons", "locking", "checkpoint", "page", "fsio", "settings",
-                  "layout", "door", "errors", "progress", "firm_cache", "page_rows", "firm_pages"}),
+                  "layout", "door", "errors", "progress", "firm_cache", "page_rows", "firm_pages",
+                  "replies"}),
     1: frozenset({"households", "ledger", "manifest", "records", "scaffold", "store",
                   "templates", "validators"}),
     2: frozenset({"containers", "content_check", "names", "ocr", "router"}),
@@ -199,9 +203,9 @@ DOMAINS: dict[str, frozenset[str]] = {
     # year it rolls over, the reminder it drafts and how it is watched.
     "pass": frozenset({"progress", "registry", "rollover", "reminder", "runner", "scheduling",
                        "after_install"}),
-    # The one way the app reaches the rest, the engine that answers it and
-    # what an error is called.
-    "door": frozenset({"errors", "api", "resident"}),
+    # The one way the app reaches the rest, the engine that answers it, what
+    # an error is called and the shape of every reply it prints.
+    "door": frozenset({"errors", "api", "resident", "replies"}),
     # What a person opens: the pages, their kept rows and the firm's view.
     "shell": frozenset({"page", "page_rows", "firm_cache", "firm_pages", "view"}),
 }
@@ -451,6 +455,14 @@ def test_the_layout_imports_nothing_of_the_package():
     load, call = import_edges()
     assert load["layout"] == set(), load["layout"]
     assert call["layout"] == set(), call["layout"]
+
+
+def test_the_reply_shapes_import_nothing_of_the_package():
+    """SPEC-architecture-p2 R2.3.1: ``replies`` is the written shape of what
+    the API prints, and the API and the suite both name it - so it reaches
+    nothing of the package, at load time or at call time."""
+    load, call = import_edges()
+    assert load["replies"] == set() and call["replies"] == set(), (load["replies"], call["replies"])
 
 
 def test_the_package_init_imports_nothing_at_load_time():

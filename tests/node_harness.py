@@ -64,9 +64,11 @@ def renderer_text(scripts: tuple[str, ...] = RENDERER_SCRIPTS) -> str:
     return "\n".join(read(name) for name in scripts)
 
 
-def stripped_js(name: str) -> str:
-    """The file without its comments (no string in these files holds //)."""
-    text = read(name)
+def stripped_js(name: str | Path) -> str:
+    """The file without its comments (no string in these files holds //): a
+    name is a script in ``app/renderer/``, and a path is read as it is, for a
+    script :func:`read` cannot reach (``app/main.js``)."""
+    text = name.read_text(encoding="utf-8") if isinstance(name, Path) else read(name)
     text = re.sub(r"/\*.*?\*/", "", text, flags=re.S)
     return re.sub(r"(?m)^\s*//.*$|(?<=[;{}),])\s*//.*$", "", text)
 

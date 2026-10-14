@@ -93,6 +93,7 @@ from dataclasses import asdict, dataclass, replace
 from functools import cache
 from pathlib import Path, PurePosixPath
 from types import SimpleNamespace
+from typing import cast
 
 from tracker import (
     SAFEGUARDS,
@@ -282,6 +283,7 @@ from tracker.registry import (
 from tracker.registry import (
     held_back as registry_held_back,
 )
+from tracker.replies import Envelope, Failure
 from tracker.rollover import (
     ORIGIN_NEW,
     ORIGIN_NOT_APPLICABLE,
@@ -379,7 +381,7 @@ log = logging.getLogger("tracker.api")
 #
 # Every reply carries ``warnings``, and every error one ``failure`` beside
 # the unchanged ``error`` string (decision 193). How an error is said is
-# decided in one place, :func:`_failure_of`: a refusal the tracker words
+# decided in one place, :func:`_envelope_of`: a refusal the tracker words
 # for a person is said in its own sentence; anything else by its class and
 # code, and its full text and traceback go only to the local error log.
 
@@ -554,9 +556,11 @@ def _not_walked(where: str, exc: BaseException,
     return PRACTICE_NOT_WALKED
 
 
-def _failure_of(exc: BaseException) -> dict:
-    """The one rule for how an error is said (decision 193, ruling 3):
-    ``{"sentence", "kind", "seq", "identifier"}``, plus ``lock`` when
+def _envelope_of(exc: BaseException) -> Envelope:
+    """The one rule for how an error is said (decision 193, ruling 3), as
+    the envelope :func:`say_failure` prints whole: ``error``, ``failure``
+    and this command's ``warnings`` as they stand when it is built. The
+    failure is ``{"sentence", "kind", "seq", "identifier"}``, plus ``lock`` when
     another pass holds the return and ``key`` on the firm page refusal
     (:data:`FIRM_PAGE_REFUSED_KEY`, P278). In this order: stale, locked, a
     checkpoint left behind, the disk's and the store's failures by class
@@ -601,8 +605,15 @@ def _failure_of(exc: BaseException) -> dict:
     else:
         kind, sentence = "failed", FAILED.format(kind=errors.error_class(exc),
                                                  log=ERROR_LOG_FILENAME)
-    reply = progress.failure_reply(sentence, kind, seq=seq, identifier=identifier, **extra)
-    return reply["failure"]
+    # progress builds the envelope and is typed -> dict; P2.3 does not retype it.
+    return cast(Envelope, progress.failure_reply(sentence, kind, seq=seq, identifier=identifier,
+                                                 warnings=_WARNINGS, **extra))
+
+
+def _failure_of(exc: BaseException) -> Failure:
+    """The failure alone, by :func:`_envelope_of`'s one rule, for a caller
+    that says it inside a reply of its own (``_reminder_said``)."""
+    return _envelope_of(exc)["failure"]
 
 
 def _left_behind_to_move(exc: store.CheckpointNotMade | checkpoint.CheckpointLeftBehind) -> str:
@@ -615,17 +626,16 @@ def _left_behind_to_move(exc: store.CheckpointNotMade | checkpoint.CheckpointLef
 def say_failure(command: str, exc: BaseException) -> int:
     """Print the one error envelope for ``exc`` and return the exit code 1.
 
-    The failure is worked out once, since ``_failure_of`` may read a lock
+    The envelope is worked out once, since ``_envelope_of`` may read a lock
     from the disk. An unexpected one (kind ``failed``) keeps its class on the
     log line and its words and trace apart in the error log only (decision
     190); a refusal or a stale row is the person's to read and logs nothing.
     """
-    failure = _failure_of(exc)
-    if failure["kind"] == "failed":
+    envelope = _envelope_of(exc)
+    if envelope["failure"]["kind"] == "failed":
         errors.keep("api: " + command, exc)
         log.error("%s failed (%s)", command, errors.error_class(exc))
-    print(json.dumps({"error": failure["sentence"], "failure": failure,
-                      "warnings": list(_WARNINGS)}))
+    print(json.dumps(envelope))
     return 1
 
 
@@ -6150,7 +6160,7 @@ FIRM_PAGE_REFUSED_KEY = "firm_page_refused"
 
 class _PageRefused(ManifestError):
     """:data:`FIRM_PAGE_REFUSED`: a refusal like any other, whose envelope
-    :func:`_failure_of` marks with :data:`FIRM_PAGE_REFUSED_KEY`."""
+    :func:`_envelope_of` marks with :data:`FIRM_PAGE_REFUSED_KEY`."""
 
 
 def _read_optional_spec() -> dict:
