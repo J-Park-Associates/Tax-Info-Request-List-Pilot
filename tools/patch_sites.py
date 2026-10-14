@@ -64,27 +64,28 @@ and the tool cannot know which caller a test meant. The moves to come make the
 other mistake, an imported name the module stops reading, and that is the one
 ``check`` fails.
 
-**No module is something the tool knows, never its fallback.** A stand-in
+**No module is something the tool proves, never its fallback.** A stand-in
 passes unlisted only when its target is one of these: a constant that is not a
-string, a literal container, a comparison or arithmetic; a function (a
-``def`` or a ``lambda``); a class the tool sees defined, or what calling one
-makes; ``x.__class__``; what one of pytest's own fixtures gives
-(``tmp_path``); and anything outside the repository - a builtin, an outside
-library, and what calling either gives. Each of these lands on that object,
-whoever reads it. Every other target fails ``check`` as not placed: a
-module stored by an unpacking, a walrus, ``with ... as`` or ``except ... as``;
-what a ``def``, a ``lambda``, a method or an instance gives when called, in the
-test file or in another module; what ``getattr``, ``vars``, ``__import__``,
+string; a literal container; a class the tool sees defined, or what calling
+one makes; a builtin other than those that can hand back a module
+(:data:`_GIVE_A_MODULE`), and what calling one gives; and a value from an
+outside library (pytest's own fixtures among them), and what calling it
+gives. Each of these lands on that object, whoever reads it. Every other
+target fails ``check`` as not placed. That includes a module stored by an
+unpacking, a walrus, ``with ... as`` or ``except ... as``; a function (a
+decorator can make a ``def`` anything) and what any function, method or
+instance gives when called; what ``getattr``, ``vars``, ``__import__``,
 ``globals``, ``locals``, ``eval``, ``next``, ``min`` or ``max`` gives; either
-side of ``or``; an attribute of anything but a module or something outside (a
-class's, an instance's, a function's, one of what an outside call made); a
-top-level name its module rebinds in a function or never binds; and in the
-string form, a first argument that is not a string the tool can read, such as
-one built with ``+`` or ``format``. The remedy is the same each time: name the
-module and the name as an import, an alias or a literal. The fallback this
-replaced, no module wherever the tool did not know, let a stand-in written
-through a helper module, a lambda, a class or a string held in a name drop out
-of the check without a word.
+side of ``or``, arithmetic, a comparison, a comprehension; an attribute of
+anything but a module or an outside library (a class's, an instance's,
+``x.__class__``, one of what an outside call made); a top-level name its module
+rebinds in a function or never binds; and in the string form, a first argument
+that is not a string the tool can read, such as one built with ``+`` or
+``format``. The remedy is the same each time: name the module and the name as
+an import, an alias or a literal. The fallback this replaced, no module
+wherever the tool did not know, let a stand-in written through a helper
+module, a lambda, a class or a string held in a name drop out of the check
+without a word.
 
 Rejected: importing the modules to ask them (it runs code, and the tests'
 imports reach the sorting engine); tracing a run of the whole suite (it costs a
@@ -333,15 +334,19 @@ def module_names(source: str, filename: str = "<module>") -> ModuleNames:
 
 # What an expression in a test can hold, as far as the tool follows it: a
 # module of the repository (by its dotted name), a string, something outside
-# the repository (a builtin among them), a function, a class or an instance of
-# a class the tool sees defined, a thing the tool knows is no module (a
-# constant, a literal container, what an outside call returns), or a value the
-# tool cannot work out. A value is ``(kind, what)``. Only ``MODULE`` and
-# ``UNKNOWN`` reach the check; "no module" is a kind the tool has to know,
-# never the fallback.
+# the repository (a builtin among them), a class the tool sees defined or an
+# instance of one, a thing the tool can prove is no module (a constant that is
+# not a string, a literal container, what a builtin or an outside library
+# gives), or a value the tool cannot work out. A value is ``(kind, what)``.
 MODULE, TEXT, OUTSIDE, THING, UNKNOWN = "module", "text", "outside", "thing", "unknown"
-FUNCTION, CLASS, INSTANCE = "function", "class", "instance"
+CLASS, INSTANCE = "class", "instance"
 _A_THING = (THING, None)
+
+#: The kinds a stand-in's target may have and pass unlisted: each is proved no
+#: module, so the stand-in lands on that object whoever reads it. "No module"
+#: is something the tool proves, never its fallback: every other target fails
+#: the check.
+_NO_MODULE = (OUTSIDE, THING, CLASS, INSTANCE)
 
 #: The calls whose one argument a loop walks as written, the calls that
 #: import the module their one argument names, and the builtins that can give
@@ -418,16 +423,15 @@ class _Suite:
 
         Of a module of the repository: its submodule, or what the module binds
         to the name at its top level, followed in that module's own code (an
-        import, a ``def``, a ``class``, an assignment). Of something outside
-        the repository: something outside. ``x.__class__`` is a class whatever
-        ``x`` is. Anything else - a class's attribute, an instance's, a
-        function's, a string's method, an attribute of a value the tool knows
-        is no module - may hold a module, so it is not followed."""
+        import, a ``class`` or an assignment; a ``def`` is not followed). Of
+        something outside the
+        repository: something outside. Anything else - a class's attribute, an
+        instance's, a function's, a string's method, an attribute of what a
+        builtin or an outside library gave - may hold a module, so it is not
+        followed."""
         kind, held = value
         if kind == OUTSIDE:
             return [(OUTSIDE, f"{held}.{attr}")]
-        if attr == "__class__":
-            return [_A_THING]
         if kind == MODULE:
             if f"{held}.{attr}" in self.index:
                 return [self.module(f"{held}.{attr}")]
@@ -527,13 +531,10 @@ class _TestFile:
             if isinstance(expr.value, ast.Attribute) and expr.value.attr == "modules":
                 return [self._module_named(one) for one in self.values(expr.slice, env, seen)]
             return [(UNKNOWN, ast.unparse(expr))]
-        if isinstance(expr, ast.Lambda):
-            return [(FUNCTION, "lambda")]
-        if isinstance(expr, (ast.List, ast.Tuple, ast.Dict, ast.Set, ast.BinOp, ast.Compare, ast.UnaryOp,
-                             *_COMPREHENSIONS)):
+        if isinstance(expr, (ast.List, ast.Tuple, ast.Dict, ast.Set)):
             return [_A_THING]
-        # ``a or b`` gives one of its operands, and anything else not named
-        # above is not followed.
+        # Anything else - ``a or b``, a lambda, arithmetic, a comparison, a
+        # comprehension - is not followed.
         return [(UNKNOWN, ast.unparse(expr))]
 
     def _called(self, call: ast.Call, env, seen) -> list[tuple]:
@@ -546,7 +547,7 @@ class _TestFile:
         can a method, an instance, and ``getattr``, ``vars``, ``__import__``
         and the other builtins of :data:`_GIVE_A_MODULE` however they are
         reached, so a call to any of them is not followed, nor is a call to
-        something the tool cannot work out."""
+        anything else the tool cannot work out."""
         func = call.func
         called = func.attr if isinstance(func, ast.Attribute) else getattr(func, "id", "")
         if called in _IMPORT_CALLS and len(call.args) == 1:
@@ -620,7 +621,8 @@ class _TestFile:
             elif isinstance(node, ast.ClassDef):
                 found.append((CLASS, f"{self.dotted}.{node.name}"))
             else:
-                found.append((FUNCTION, f"{self.dotted}.{node.name}"))
+                # A function, or whatever its decorators made of it.
+                found.append((UNKNOWN, f"{self.dotted}.{node.name}"))
         return found
 
     def _stored(self, target: ast.Name, seen) -> list[tuple]:
@@ -860,7 +862,10 @@ def stand_ins(root: Path = ROOT) -> tuple[list[tuple[Site, str]], list[Unplaced]
                 elif kind == MODULE:
                     unplaced.add(Unplaced(test_file.relative, call.lineno, written,
                                           f"which name of {held} it replaces is not written out"))
-                elif kind == UNKNOWN:
+                elif kind == TEXT:
+                    unplaced.add(Unplaced(test_file.relative, call.lineno, written,
+                                          "a string names a module only in the form setattr(\"module.name\", value)"))
+                elif kind not in _NO_MODULE:
                     unplaced.add(Unplaced(test_file.relative, call.lineno, written,
                                           f"what {held} holds is not written out"))
     return [(site, suite.names(site.module).mark(site.name)) for site in sorted(sites)], sorted(unplaced)

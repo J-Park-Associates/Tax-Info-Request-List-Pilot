@@ -360,14 +360,14 @@ def test_a_tool_imported_by_its_bare_name_is_reported_by_its_dotted_one(tmp_path
 
 def test_stand_ins_on_things_outside_the_repository_or_on_no_module_are_not_listed(tmp_path):
     """A stand-in on ``sys``, on a class or an instance of one, on an object
-    a builtin or an outside call made, on a constant or on a function lands on
-    that object whoever reads it: there is no namespace to miss."""
+    a builtin or an outside call made, or on a constant that is not a string
+    lands on that object whoever reads it: there is no namespace to miss."""
     root = _repository(tmp_path, {**SORTER, **HOLDERS, "tests/test_a.py": """
         import os
         import sys
         from pathlib import Path
 
-        from tracker import helpers, holders
+        from tracker import holders
         from tracker.helpers import Shape
 
         class Local:
@@ -384,10 +384,8 @@ def test_stand_ins_on_things_outside_the_repository_or_on_no_module_are_not_list
             monkeypatch.setattr("tracker.holders.Holder.module", None)
             monkeypatch.setattr(holders.Holder(), "module", None)
             monkeypatch.setattr(Local(), "size", 1, raising=False)
-            monkeypatch.setattr(object.__new__(Local).__class__, "size", 1, raising=False)
             monkeypatch.setattr(holders.LOG, "level", 10)
             monkeypatch.setattr(holders.NOTHING, "size", 1, raising=False)
-            monkeypatch.setattr(helpers.digest, "__defaults__", None)
     """})
     assert patch_sites.stand_ins(root) == ([], [])
 
@@ -545,15 +543,17 @@ def test_no_way_of_writing_a_module_drops_a_stand_in_out_of_the_check(tmp_path):
     assert not ok and len(said) == 20
 
 
-def test_a_value_is_taken_for_no_module_only_where_the_tool_knows_it_is_none(tmp_path):
-    """No module is a kind the tool has to know, never its fallback. Each
-    stand-in below can land on ``sorter.kept``. A repository module's alias,
-    followed into that module, is a site, and so is the object form with
-    ``value=``. These are not placed: an operand of ``or``, an instance's or a
-    class's attribute, an attribute of what an outside call made, what a
-    method gives, a string form built at run time, what ``next``, ``eval`` or
-    ``globals()`` gives, a lambda called where it is written, and a name the
-    module rebinds in a function or never binds."""
+def test_a_value_is_taken_for_no_module_only_where_the_tool_proves_it_is_none(tmp_path):
+    """No module is something the tool proves, never its fallback. Each
+    stand-in below but the last two can land on ``sorter.kept``. A repository
+    module's alias, followed into that module, is a site, and so is the object
+    form with ``value=``. These are not placed: an operand of ``or``, an
+    instance's or a class's attribute, an attribute of what an outside call
+    made, what a method gives, a string form built at run time, what ``next``,
+    ``eval`` or ``globals()`` gives, a lambda called where it is written, a
+    name the module rebinds in a function or never binds; ``x.__class__`` and
+    a function, which a property or a decorator can make anything; and a
+    string in the three-argument form, which names no module there."""
     root = _repository(tmp_path, {**SORTER, **HOLDERS, "tests/test_a.py": """
         from types import SimpleNamespace
 
@@ -580,6 +580,9 @@ def test_a_value_is_taken_for_no_module_only_where_the_tool_knows_it_is_none(tmp
             monkeypatch.setattr((lambda: sorter)(), "kept", None)
             monkeypatch.setattr(holders.LATER, "kept", None)
             monkeypatch.setattr(holders.missing, "kept", None)
+            monkeypatch.setattr(Local().__class__, "size", 1, raising=False)
+            monkeypatch.setattr(helpers.digest, "__defaults__", None)
+            monkeypatch.setattr("tracker.sorter", "kept", None)
     """})
     marked, unplaced = patch_sites.stand_ins(root)
     assert [(site.line, site.module, site.name, site.written, mark) for site, mark in marked] == [
@@ -587,9 +590,10 @@ def test_a_value_is_taken_for_no_module_only_where_the_tool_knows_it_is_none(tmp
         (10, "tracker.sorter", "kept", "'tracker.holders.THE.kept'", patch_sites.UNREAD),
         (11, "tracker.sorter", "kept", "sorter", patch_sites.UNREAD),
     ]
-    assert [one.line for one in unplaced] == list(range(12, 26))
+    assert [one.line for one in unplaced] == list(range(12, 29))
+    assert unplaced[-1].why == 'a string names a module only in the form setattr("module.name", value)'
     ok, said = patch_sites.check(root)
-    assert not ok and len(said) == 17
+    assert not ok and len(said) == 20
 
 
 # ---------------------------------------------------------------- the report ----

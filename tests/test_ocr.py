@@ -1609,8 +1609,8 @@ def test_time_asleep_does_not_count_toward_the_reading_stop(monkeypatch, watches
         assert watches_memory, "Windows' job object caps the child; the pass never reads its memory"
         return False
 
-    monkeypatch.setattr(child.__class__, "_past_its_memory", past_its_memory)
-    monkeypatch.setattr(child.__class__, "end", lambda self: ended.append(True))
+    monkeypatch.setattr(ocr.ReadingChild, "_past_its_memory", past_its_memory)
+    monkeypatch.setattr(ocr.ReadingChild, "end", lambda self: ended.append(True))
 
     outcome = child.run(len, ("x",), {}, stop)
 
