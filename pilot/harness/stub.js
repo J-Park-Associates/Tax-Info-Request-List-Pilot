@@ -564,7 +564,9 @@
       const one = takeFile(path, payload.original);
       if (!one) return null;
       body.received.push(request(`Filed ${payload.identifier}`, one.name, LB("Received"), "Mar 7"));
-      return { state: stateOf(path), assigned: { original_name: one.name, filed_as: payload.identifier, identifier: payload.identifier, keyword: "", keyword_note: "", spelling: "", spelling_note: "", left_in_review: "", overrode_shortlist: "", scan_note: "" } };
+      // `said` in the API's words (tracker.api.ASSIGNED_FILED): the page types none of them.
+      return { state: stateOf(path), assigned: { original_name: one.name, filed_as: payload.identifier, identifier: payload.identifier, keyword: "", keyword_note: "", spelling: "", spelling_note: "", left_in_review: "", overrode_shortlist: "", scan_note: "",
+                                                 said: { filed: `${one.name} filed as ${payload.identifier}`, keyword_added: "", spelling_added: "" } } };
     }
     if (command === "dismiss") {
       const one = takeFile(path, payload.original);

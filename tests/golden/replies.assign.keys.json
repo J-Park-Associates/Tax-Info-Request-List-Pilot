@@ -9,6 +9,11 @@
     "original_name": "str",
     "overrode_shortlist": "str",
     "prepared_location": "str",
+    "said": {
+      "filed": "str",
+      "keyword_added": "str",
+      "spelling_added": "str"
+    },
     "scan_note": "str",
     "spelling": "str",
     "spelling_note": "str"

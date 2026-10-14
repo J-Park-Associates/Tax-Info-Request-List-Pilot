@@ -1132,7 +1132,7 @@ def test_the_renderer_types_no_vocabulary_of_its_own():
     for literal in added:
         assert literal and literal not in js and literal not in html, literal
     # The 31-word note under the ticks is cut with the dialogs' help lines (SPEC 2.7, E90).
-    for key in ("not_asked_label", "ask_the_client",
+    for key in ("not_asked_label", "ask_the_client", "request_list",
                 "not_asked_table_label", "roll_template_label", "nothing_asked",
                 "new_not_asked_carried", "origin_new"):
         assert f"vocab.{key}" in js, key
@@ -4037,7 +4037,7 @@ def test_picking_a_form_is_not_unsaved_work_but_typing_after_it_is(tmp_path):
     a box typed in afterwards makes it dirty."""
     seen = _dialog_guard(tmp_path, "choose_form", (
         "function chooseForm(formId) {", "function wizardModel() {", "function fill(pattern, values) {"), """
-Object.assign(vocab, { household: { items_title: "{form} requests" }, ask_the_client: "Ask" });
+Object.assign(vocab, { household: { items_title: "{form} requests" }, request_list: "request list", ask_the_client: "Ask" });
 const forms = [{ id: "1040", label: "1040", who: "Individuals" }];
 const templatesByForm = { "1040": [{ identifier: "A01" }] };
 let selectedForm = null, templates = [], customItems = [], nameIsAuto = false, wizardPeople = [];

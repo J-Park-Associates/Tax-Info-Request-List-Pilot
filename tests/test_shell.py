@@ -665,20 +665,6 @@ _SELECTOR_CALL = re.compile(r"\.(?:querySelector|querySelectorAll|closest|matche
 #: A call whose arguments are an error's text: one thrown or one logged.
 _ERROR_CALL = re.compile(r"(?<![\w$.])(?:new Error|console\.[A-Za-z]+)\(")
 
-#: D-9's sentences (SPEC-architecture 4.1, row 4): words the page types
-#: instead of taking them from the API, against P63, each as the script holds
-#: it. J5 has the API say them and deletes this list (R5.5); nothing else may
-#: be added to it (R3.4).
-KNOWN_TYPED_SENTENCES = {
-    "`${a.original_name} filed as ${a.filed_as}`":
-        "D-9: fileRow's note on the file it filed.",
-    '`"${a.keyword}" added to ${a.identifier} so the next one files itself`':
-        "D-9: fileRow's note on a keyword taught with the filing.",
-    '`"${a.spelling}" added so the next page that prints it confirms itself`':
-        "D-9: fileRow's note on a spelling taught with the filing (decision 128).",
-    "`${form.label} request list \u2014 ${vocab.ask_the_client}`":
-        'D-9, which its scan missed and the widened guard found (R3.4): the new-return dialog\'s heading types "request list".',
-}
 #: The one label a ruling lets the page type (R3.4): the reassign picker's
 #: aria-label and first option, app.js's BELONGS_TO, in Title Case by Jason's
 #: ruling 10 (SPEC-shell 11.1), which
@@ -740,16 +726,45 @@ def test_the_apps_scripts_type_no_words_of_their_own():
     more plain words in a script the app loads would be one the page typed
     (R3.4). Every script but the pilot's three, whose words are
     pilot-content.js's by design and test_pilot's to hold: read across them
-    all, so a sentence is found in whichever script it moves to. The ones
-    typed today are D-9's, which J5 moves into the API, and the one label a
-    ruling lets the page type; each is found exactly once."""
+    all, so a sentence is found in whichever script it moves to. The one
+    literal typed today is the label a ruling lets the page type, found
+    exactly once: D-9's sentences are the API's since J5 (R5.5), and nothing
+    may join that label."""
     assert set(SHELL_SCRIPTS) <= set(APP_SCRIPTS)   # never fewer scripts than the guard read before
-    assert len(KNOWN_TYPED_SENTENCES) == 4 and all(why.startswith("D-9") for why in KNOWN_TYPED_SENTENCES.values())
     assert len(RULED_LABELS) == 1
     found = [literal for name in APP_SCRIPTS for literal in typed_literals(stripped_js(name))]
-    listed = [*KNOWN_TYPED_SENTENCES, *RULED_LABELS]
+    listed = [*RULED_LABELS]
     assert [one for one in found if one not in listed] == [], "a literal the page typed"
     assert sorted(found) == sorted(listed), "each listed literal is in a script, once"
+
+
+def test_filing_a_row_says_the_apis_sentences_where_the_page_used_to_type_them(tmp_path):
+    """R5.5: ``fileRow`` says the reply's ``said`` as the API sent it, in the
+    order the page typed it before - the filing, then the keyword taught and
+    its note, then the spelling taught and its note, then the rest - and a
+    sentence that is empty (nothing taught) is not said. The warning rule is
+    the notes', as before."""
+    setup = """
+let REPLY = null, said = null;
+const outcome = (text, kind) => { said = { text, kind }; };
+const withEng = (command) => [command];
+async function writeRow(args, payload, options) { options.say(REPLY); }
+"""
+    probe = """
+const reply = (a) => ({ assigned: { keyword_note: "", spelling_note: "", left_in_review: "", overrode_shortlist: "",
+                                    scan_note: "", ...a } });
+const heard = [];
+REPLY = reply({ said: { filed: "FILED", keyword_added: "KEYWORD", spelling_added: "SPELLING" },
+                keyword_note: "KEYWORD NOTE", spelling_note: "SPELLING NOTE", scan_note: "SCAN NOTE" });
+return fileRow("x", "A01", 3, "k", null, null).then(() => {
+  heard.push(said);
+  REPLY = reply({ said: { filed: "FILED", keyword_added: "", spelling_added: "" } });
+  return fileRow("x", "A01", 3, "", null, null);
+}).then(() => [...heard, said]);
+"""
+    taught, plain = run_shell(["fileRow", "sayNotes"], setup, probe, tmp_path, source="app.js")
+    assert taught == {"text": "FILED. KEYWORD. KEYWORD NOTE. SPELLING. SPELLING NOTE. SCAN NOTE.", "kind": "warn"}
+    assert plain == {"text": "FILED.", "kind": "ok"}
 
 
 @pytest.mark.parametrize("query", ["querySelector", "querySelectorAll", "closest", "matches"])

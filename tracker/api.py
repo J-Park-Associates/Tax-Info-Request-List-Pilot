@@ -994,6 +994,11 @@ NEW_NOT_ASKED_CARRIED = "{n} Requests Added, Not Asked"
 #: and reminded of; every row is on the return either way. The screen says
 #: "Taxpayer" where it means the person (P196); the name keeps its code name.
 ASK_THE_CLIENT = "Ask the Taxpayer"
+#: The words the new-return dialog's heading names the list by, between the
+#: form's label and :data:`ASK_THE_CLIENT` ("1040 request list - Ask the
+#: Taxpayer"): sent so the page types none of them (D-9, SPEC-architecture
+#: R5.5). A fragment of the heading, so in lower case as it has always read.
+REQUEST_LIST_WORDS = "request list"
 #: The name the app's folded table of not-asked rows is read out by, and
 #: the roll fold's label over the template pick (decision 142).
 NOT_ASKED_TABLE_LABEL = "Requests Not Asked For"
@@ -1041,6 +1046,13 @@ ROUTING_HELP = ("How the app recognises this document when it arrives. A save ch
 #: return's, after reading it again (decision 201, the review's S4): said
 #: in the banner rather than a button that does nothing.
 EDITOR_NOT_THIS_RETURN = "Request List Did Not Open"
+#: What ``assign`` says it did, as ``said`` (D-9, SPEC-architecture R5.5):
+#: the document filed; the keyword it taught the request, when one was
+#: added; and the spelling it taught one of the return's people (decision
+#: 128), when one was. The page shows these as sent and types none of them.
+ASSIGNED_FILED = "{name} filed as {filed_as}"
+ASSIGNED_KEYWORD_ADDED = '"{keyword}" added to {identifier} so the next one files itself'
+ASSIGNED_SPELLING_ADDED = '"{spelling}" added so the next page that prints it confirms itself'
 #: The keyword box on a parked or moved document's card (decision 201,
 #: D11): its label, and what the word does, as its title.
 KEYWORD_LABEL = "Keyword to Learn (Optional)"
@@ -1722,8 +1734,10 @@ def _vocab() -> dict:
         # What a row nobody asked for is called while nothing has arrived
         # for it (decision 142).
         "not_asked_label": NOT_ASKED_LABEL,
-        # The dialog's heading over the catalog's ticks.
+        # The dialog's heading over the catalog's ticks, and the words it
+        # names the list by (R5.5).
         "ask_the_client": ASK_THE_CLIENT,
+        "request_list": REQUEST_LIST_WORDS,
         "not_asked_table_label": NOT_ASKED_TABLE_LABEL,
         # The one refusal of a list nobody is asked for (R6), which the
         # dialog also says before it calls.
@@ -5123,6 +5137,16 @@ def _cmd_assign(argv: list[str]) -> dict:
             "spelling": result.spelling,
             "spelling_note": result.spelling_note,
             "scan_note": scan_note,
+            # What the page says it did, in these words (R5.5): an empty one
+            # was not done.
+            "said": {
+                "filed": ASSIGNED_FILED.format(name=result.entry.original_name, filed_as=result.entry.filed_as),
+                "keyword_added": (ASSIGNED_KEYWORD_ADDED.format(keyword=result.keyword,
+                                                                identifier=result.entry.identifier)
+                                  if result.keyword else ""),
+                "spelling_added": (ASSIGNED_SPELLING_ADDED.format(spelling=result.spelling)
+                                   if result.spelling else ""),
+            },
         },
         "state": _state(engagement),
     }

@@ -1070,11 +1070,13 @@ function typed(li, className) {
 async function fileRow(original, identifier, seq, keyword, spelling, btn) {
   await writeRow(withEng("assign"), { original, identifier, keyword, spelling, seq }, {
     btn,
-    say: ({ assigned: a }) => sayNotes([`${a.original_name} filed as ${a.filed_as}`], [
-      a.keyword && `"${a.keyword}" added to ${a.identifier} so the next one files itself`,
+    // What was done is said in the API's words (a.said, SPEC-architecture
+    // R5.5): the filing, then a keyword taught, then a spelling taught with
+    // the filing (decision 128); one not done is empty and is not said.
+    say: ({ assigned: a }) => sayNotes([a.said.filed], [
+      a.said.keyword_added,
       a.keyword_note,
-      // A spelling taught with the filing (decision 128), in the API's words.
-      a.spelling && `"${a.spelling}" added so the next page that prints it confirms itself`,
+      a.said.spelling_added,
       a.spelling_note,
       a.left_in_review,
       // What the record now says about a pick the evidence did not point at:
@@ -2755,7 +2757,7 @@ function chooseForm(formId) {
   templates = templatesByForm[formId] || [];
   customItems = [];
   $("items-title").textContent = fill(vocab.household.items_title, { form: form.label });
-  $("tmpl-head-label").textContent = `${form.label} request list — ${vocab.ask_the_client}`;
+  $("tmpl-head-label").textContent = `${form.label} ${vocab.request_list} — ${vocab.ask_the_client}`;
   $("ne-name").value = "";
   nameIsAuto = true;
   $("ne-year").value = defaultYear || "";

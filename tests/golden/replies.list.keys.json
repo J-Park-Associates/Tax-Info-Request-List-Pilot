@@ -549,6 +549,7 @@
       "subject_prefix": "str",
       "unreadable": "str"
     },
+    "request_list": "str",
     "review_labels": {
       "accept": "str",
       "also_answers": "str",

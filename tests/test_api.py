@@ -19,7 +19,7 @@ import pytest
 import tracker.api as api
 from tests.api_driver import HOUSEHOLD, PEOPLE, SAMPLE_PEOPLE, one_reply, run, sample_engagement, scan, where
 from tests.conftest import TEST_CLIENT, app_stdin, make_engagement
-from tests.node_harness import js_function, read, renderer_text
+from tests.node_harness import RENDERER_SCRIPTS, js_function, read, renderer_text, stripped_js
 from tests.samples import PRIOR_YEAR, text_pdf
 from tests.source_pins import py_function
 from tests.wording import title_case
@@ -524,6 +524,12 @@ def test_assign_files_a_parked_document_and_rescans(capsys, demo_root, tmp_path)
     assigned = payload["assigned"]
     assert assigned["identifier"] == "D01" and assigned["moved_review_copy"] is True
     assert assigned["keyword"] == "mortgage notes" and assigned["scan_note"] == ""
+    # What the page says it did, worded as the page typed it before R5.5;
+    # no spelling was taught, so that one is empty and is not said.
+    assert assigned["said"] == {
+        "filed": f"Mortgage Notes.docx filed as {assigned['filed_as']}",
+        "keyword_added": '"mortgage notes" added to D01 so the next one files itself',
+        "spelling_added": ""}
     assert not [e for e in payload["state"]["index"] if e["decision"] == NEEDS_REVIEW]
     d01 = next(i for i in payload["state"]["items"] if i["identifier"] == "D01")
     assert "mortgage notes" in d01["any_keywords"]
@@ -534,6 +540,22 @@ def test_assign_files_a_parked_document_and_rescans(capsys, demo_root, tmp_path)
 
     assert d01["status"] == Status.RECEIVED
     assert ACCEPTED_NOTE.format(n=1) in d01["validation_notes"]
+
+
+def test_the_assign_sentences_are_the_apis_and_the_page_types_none_of_them():
+    """R5.5 (D-9): the three sentences ``fileRow`` said are the API's
+    constants, worded byte for byte as the page typed them, and no script
+    the page loads holds any of their words in its code."""
+    assert api.ASSIGNED_FILED == "{name} filed as {filed_as}"
+    assert api.ASSIGNED_KEYWORD_ADDED == '"{keyword}" added to {identifier} so the next one files itself'
+    assert api.ASSIGNED_SPELLING_ADDED == '"{spelling}" added so the next page that prints it confirms itself'
+    text = "\n".join(stripped_js(name) for name in RENDERER_SCRIPTS)
+    for sentence in (api.ASSIGNED_FILED, api.ASSIGNED_KEYWORD_ADDED, api.ASSIGNED_SPELLING_ADDED):
+        for words in re.split(r"\{\w+\}", sentence):
+            if len(words.split()) >= 2:
+                assert words.strip(' "') not in text, words
+    assert "a.said.filed" in read("app.js") and "a.said.keyword_added" in read("app.js")
+    assert "a.said.spelling_added" in read("app.js")
 
 
 def teach(folder, identifier: str, keyword: str) -> None:
@@ -1168,6 +1190,7 @@ def test_the_editor_saves_a_reason_and_the_vocabulary_carries_the_list_and_the_l
 
     assert vocab["not_asked_label"] == NOT_ASKED_LABEL
     assert vocab["ask_the_client"] == api.ASK_THE_CLIENT
+    assert vocab["request_list"] == api.REQUEST_LIST_WORDS == "request list"   # the dialog's heading (R5.5)
     assert vocab["not_asked_table_label"] == api.NOT_ASKED_TABLE_LABEL
     assert vocab["roll_template_label"] == api.ROLL_TEMPLATE_LABEL
     assert vocab["nothing_asked"] == api.NOTHING_ASKED
@@ -4425,6 +4448,9 @@ def test_teaching_a_spelling_from_a_filing_rides_the_filings_transaction_and_a_o
                                                     "spelling": "J. R. Smith"}})
     assert code == 0, payload
     assert payload["assigned"]["spelling"] == "J. R. Smith"
+    assert payload["assigned"]["said"]["spelling_added"] == (
+        '"J. R. Smith" added so the next page that prints it confirms itself')
+    assert payload["assigned"]["said"]["keyword_added"] == "", "no keyword was taught"
     people = load_engagement_info(engagement).people
     assert "J. R. Smith" in next(p for p in people if p.name == "Jane R. Smith").spellings
     # The filing and the teaching are one decision, so one of the new lines
@@ -9640,6 +9666,8 @@ _TITLE_EXEMPT_STRINGS = {
     ("triage.places.footer", "in the page {page} footer"): "fragment spliced into a longer reason line",
     ("triage.places.first_page", "on page {page}"): "fragment spliced into a longer reason line",
     ("triage.places.deep", "on page {page}"): "fragment spliced into a longer reason line",
+    # The new-return dialog's heading splices it between the form and Ask the Taxpayer (R5.5).
+    ("request_list", "request list"): "fragment spliced into the new-return dialog's heading, as it has always read",
     ("scan.complete", "Pass complete \u2014 {did}.   {summary}"):
         "a sentence with a dash and two placeholders, over the five-word limit once filled",
     ("scan.filed", "Filed {n}"): "piece spliced into the Pass complete line ({did})",
