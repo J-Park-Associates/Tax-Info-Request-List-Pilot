@@ -376,10 +376,15 @@ class _FakeFcntl:
 @pytest.fixture(params=["fsio", "locking"])
 def flusher(request, monkeypatch):
     """Each copy of ``full_sync``, on a "Mac" with ``fcntl`` stood in, and
-    the plain ``os.fsync`` recorded."""
-    import importlib
+    the plain ``os.fsync`` recorded. The copy is picked in a loop over the
+    two modules, each named as an import: ``tools/patch_sites.py`` places
+    the stand-ins below on both, and does not follow ``request.param``."""
+    import tracker.fsio as fsio_module
+    import tracker.locking as locking_module
 
-    module = importlib.import_module(f"tracker.{request.param}")
+    for module in (fsio_module, locking_module):
+        if module.__name__ == f"tracker.{request.param}":
+            break
     synced = []
     monkeypatch.setattr(module, "_on_a_mac", lambda: True)
     monkeypatch.setattr(module, "_full_sync_said", False)

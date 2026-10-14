@@ -5514,15 +5514,18 @@ def test_expect_is_on_disk_before_the_journal_line_and_advance_after_it(root, by
 # ----------------------------------------- answers kept for one hold (P215) ----
 
 
-def _counting(monkeypatch, module, name) -> list:
+def _counting_keys(monkeypatch) -> list:
+    """Every engagement key the store works out from here on. The stand-in
+    names ``store`` itself, as ``_counting_opens`` names ``checkpoint``: what
+    a helper's parameter holds is not followed by ``tools/patch_sites.py``."""
     calls = []
-    real = getattr(module, name)
+    real = store.engagement_path
 
     def counted(*args, **kwargs):
         calls.append(args)
         return real(*args, **kwargs)
 
-    monkeypatch.setattr(module, name, counted)
+    monkeypatch.setattr(store, "engagement_path", counted)
     return calls
 
 
@@ -5533,7 +5536,7 @@ def test_an_engagements_key_is_worked_out_once_per_hold(root, by_hand, monkeypat
 
     conn = store.connect()
     build(conn, root, by_hand)
-    asked = _counting(monkeypatch, store, "engagement_path")
+    asked = _counting_keys(monkeypatch)
     with settings.one_household():
         first = store._engagement_row(conn, by_hand)
         again = store._engagement_row(conn, by_hand)
@@ -5550,7 +5553,7 @@ def test_a_key_asked_before_its_folder_existed_is_asked_again_after(root, monkey
 
     conn = store.connect()
     later = root / "J Park & Associates" / "Later Family" / "2025" / "1040 - Later Client"
-    asked = _counting(monkeypatch, store, "engagement_path")
+    asked = _counting_keys(monkeypatch)
     with settings.one_household():
         assert store._engagement_row(conn, later) is None
         assert store._engagement_row(conn, later) is None

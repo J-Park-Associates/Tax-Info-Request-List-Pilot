@@ -291,43 +291,195 @@ def test_a_loop_over_literal_names_is_one_site_per_name(tmp_path):
 
 def test_values_bound_together_stay_together(tmp_path):
     """``for module, name in ((a, "x"), (b, "y"))`` is two stand-ins, not
-    four; so is a helper called twice with a module and a name."""
+    four."""
     root = _repository(tmp_path, {**SORTER, "tests/test_a.py": """
         from tracker import helpers, sorter
-
-        def _counting(monkeypatch, module, name):
-            monkeypatch.setattr(module, name, None)
 
         def test_one(monkeypatch):
             for module, name in ((sorter, "decide"), (helpers, "kept")):
                 monkeypatch.setattr(module, name, None)
-
-        def test_two(monkeypatch):
-            _counting(monkeypatch, helpers, "digest")
-            _counting(monkeypatch, sorter, "kept")
     """})
     assert _marks(root) == {
-        ("tests/test_a.py", 4, "tracker.helpers", "digest"): patch_sites.DEFINED,
-        ("tests/test_a.py", 4, "tracker.sorter", "kept"): patch_sites.UNREAD,
-        ("tests/test_a.py", 8, "tracker.sorter", "decide"): patch_sites.DEFINED,
-        ("tests/test_a.py", 8, "tracker.helpers", "kept"): patch_sites.DEFINED,
+        ("tests/test_a.py", 5, "tracker.sorter", "decide"): patch_sites.DEFINED,
+        ("tests/test_a.py", 5, "tracker.helpers", "kept"): patch_sites.DEFINED,
     }
 
 
-def test_a_parametrize_mark_is_read_as_rows_with_its_names_kept_together(tmp_path):
-    """pytest's own loop: each set of values a mark lists is one row, so two
-    pairs are two stand-ins, not four. ``pytest.param(...)``, a mark on the
-    test's class and a list held in a name are read; values not written out,
-    and a name the mark hands to its fixture (``indirect``) whose fixture
-    reads ``request.param``, are not placed. So is ``request.param`` in a
-    fixture that has ``params=`` of its own, where a mark hands the fixture
-    values: pytest gives it the mark's, whether the test asks for the fixture
-    itself, reaches it through another fixture, or the fixture places the
-    stand-in. The tool before review 4 read the fixture's own ``params``
-    there, and placed each of those three on ``helpers``."""
+def test_a_loop_fixes_its_names_only_where_nothing_else_binds_them(tmp_path):
+    """A name a loop binds holds the loop's values inside its body, and after
+    the loop where every binding of the name is a loop's. Bound some other
+    way as well - assigned after the loop, or again inside its body - it may
+    hold either, so the first two stand-ins below are placed on both modules,
+    and ``sorter``'s unread ``kept`` fails the check. The tool before ruling
+    015 of J4 fixed the name by the loop alone, and placed each on
+    ``helpers`` only."""
     root = _repository(tmp_path, {**SORTER, "tests/test_a.py": """
+        from tracker import helpers, sorter
+
+        def test_assigned_after_the_loop(monkeypatch):
+            for module in (helpers,):
+                pass
+            module = sorter
+            monkeypatch.setattr(module, "kept", None)
+
+        def test_bound_again_in_the_body(monkeypatch):
+            for module in (helpers,):
+                module = sorter
+                monkeypatch.setattr(module, "kept", None)
+
+        def test_loops_alone(monkeypatch):
+            for module in (helpers,):
+                monkeypatch.setattr(module, "kept", None)
+            for module in (helpers,):
+                pass
+            monkeypatch.setattr(module, "digest", None)
+    """})
+    assert _marks(root) == {
+        ("tests/test_a.py", 7, "tracker.helpers", "kept"): patch_sites.DEFINED,
+        ("tests/test_a.py", 7, "tracker.sorter", "kept"): patch_sites.UNREAD,
+        ("tests/test_a.py", 12, "tracker.helpers", "kept"): patch_sites.DEFINED,
+        ("tests/test_a.py", 12, "tracker.sorter", "kept"): patch_sites.UNREAD,
+        ("tests/test_a.py", 16, "tracker.helpers", "kept"): patch_sites.DEFINED,
+        ("tests/test_a.py", 19, "tracker.helpers", "digest"): patch_sites.DEFINED,
+    }
+
+
+def test_nothing_that_reaches_a_stand_in_through_a_parameter_is_placed(tmp_path):
+    """Ruling 015 of J4: what a parameter holds is settled by whoever calls
+    the function - for a test or a fixture, pytest, from the test that runs -
+    so the tool does not follow it. Each stand-in below can land on
+    ``sorter.kept``, which ``sorter`` never reads, and each is not placed.
+
+    Review 5's forms, each of which the tool before the ruling placed on
+    ``helpers`` alone, with the check passing: a conftest fixture's
+    parameter that the test's own file overrides, or that a mark on the test
+    gives (both at ``conftest.py:11``); a fixture that ``pytest_generate_tests``
+    overrides; an inherited test whose subclass overrides its fixture; and a
+    helper module's function, called from another file or through another
+    name. The forms it followed before them: a ``parametrize`` mark's values,
+    in pairs, in ``pytest.param``, held in a name or on the test's class; a
+    mark that hands its fixture values (``indirect``), into a fixture with no
+    ``params``, one with ``params`` of its own, or one that places the
+    stand-in on ``request.param``; ``importlib`` given ``request.param``; a
+    fixture imported from a helper module; a helper's argument in its own
+    file; and review 4's nearest conftest, whose fixture shadows the root's.
+    And three it never placed: pytest's own ``tmp_path``, a lambda's
+    parameter, and a parameter a loop may rebind, which is not placed for
+    the parameter and is a site on ``helpers`` for the loop."""
+    root = _repository(tmp_path, {**SORTER, "tests/conftest.py": """
         import pytest
 
+        from tracker import helpers
+
+        @pytest.fixture
+        def mod():
+            return helpers
+
+        @pytest.fixture
+        def patched(monkeypatch, mod):
+            monkeypatch.setattr(mod, "kept", None)
+
+        @pytest.fixture
+        def thing():
+            return None
+    """, "tests/test_override.py": """
+        import pytest
+
+        from tracker import sorter
+
+        @pytest.fixture
+        def mod():
+            return sorter
+
+        def test_a_file_overrides_a_conftest_fixtures_parameter(patched):
+            pass
+    """, "tests/test_direct.py": """
+        import pytest
+
+        from tracker import sorter
+
+        @pytest.mark.parametrize("mod", [sorter])
+        def test_a_mark_overrides_a_conftest_fixtures_parameter(patched):
+            pass
+    """, "tests/test_gen.py": """
+        import pytest
+
+        from tracker import helpers, sorter
+
+        @pytest.fixture
+        def target():
+            return helpers
+
+        def pytest_generate_tests(metafunc):
+            if "target" in metafunc.fixturenames:
+                metafunc.parametrize("target", [sorter])
+
+        def test_generated(monkeypatch, target):
+            monkeypatch.setattr(target, "kept", None)
+    """, "tests/test_inherit.py": """
+        import pytest
+
+        from tracker import helpers, sorter
+
+        class Base:
+            @pytest.fixture
+            def target(self):
+                return helpers
+
+            def test_inherited(self, monkeypatch, target):
+                monkeypatch.setattr(target, "kept", None)
+
+        class TestChild(Base):
+            @pytest.fixture
+            def target(self):
+                return sorter
+    """, "tests/patching.py": """
+        from tracker import helpers, sorter
+
+        def forbid(mp, module):
+            mp.setattr(module, "kept", None)
+
+        def forbid_in_helpers(mp):
+            forbid(mp, helpers)
+
+        def forbid_through_a_name(mp, module):
+            mp.setattr(module, "kept", None)
+
+        def forbid_both(mp):
+            forbid_through_a_name(mp, helpers)
+            put = forbid_through_a_name
+            put(mp, sorter)
+    """, "tests/test_cross.py": """
+        from tests import patching
+        from tracker import sorter
+
+        def test_a_helper_called_from_another_file(monkeypatch):
+            patching.forbid(monkeypatch, sorter)
+    """, "tests/helping.py": """
+        import pytest
+
+        from tracker import sorter
+
+        @pytest.fixture
+        def given():
+            return sorter
+    """, "tests/sub/conftest.py": """
+        import pytest
+
+        from tracker import sorter
+
+        @pytest.fixture
+        def thing():
+            return sorter
+    """, "tests/sub/test_d.py": """
+        def test_the_nearest_conftest_gives_the_fixture(monkeypatch, thing):
+            monkeypatch.setattr(thing, "kept", None)
+    """, "tests/test_a.py": """
+        import importlib
+
+        import pytest
+
+        from tests.helping import given
         from tracker import helpers, sorter
 
         MODULES = [sorter]
@@ -336,88 +488,122 @@ def test_a_parametrize_mark_is_read_as_rows_with_its_names_kept_together(tmp_pat
         def chosen(request):
             return request.param
 
-        @pytest.mark.parametrize("module, name", [(sorter, "decide"), pytest.param(helpers, "kept", id="h")])
+        @pytest.fixture(params=[helpers])
+        def picked(request):
+            return request.param
+
+        @pytest.fixture(params=[helpers])
+        def placing(request, monkeypatch):
+            monkeypatch.setattr(request.param, "kept", None)
+
+        @pytest.fixture(params=["sorter"])
+        def by_name(request, monkeypatch):
+            monkeypatch.setattr(importlib.import_module(f"tracker.{request.param}"), "kept", None)
+
+        @pytest.mark.parametrize("module, name", [(sorter, "kept"), pytest.param(helpers, "kept", id="h")])
         def test_pairs(monkeypatch, module, name):
             monkeypatch.setattr(module, name, None)
 
         @pytest.mark.parametrize("module", MODULES)
         def test_held_in_a_name(monkeypatch, module):
-            monkeypatch.setattr(module, "digest", None)
+            monkeypatch.setattr(module, "kept", None)
 
         @pytest.mark.parametrize("module", [sorter])
         class TestMarked:
             def test_on_the_class(self, monkeypatch, module):
-                monkeypatch.setattr(module, "decide", None)
-
-        @pytest.mark.parametrize("module", sorted(helpers.__all__))
-        def test_not_written_out(monkeypatch, module):
-            monkeypatch.setattr(module, "decide", None)
+                monkeypatch.setattr(module, "kept", None)
 
         @pytest.mark.parametrize("chosen", [sorter], indirect=True)
         def test_indirect(monkeypatch, chosen):
-            monkeypatch.setattr(chosen, "decide", None)
-
-        @pytest.fixture(params=[helpers])
-        def picked(request):
-            return request.param
-
-        @pytest.fixture
-        def wrapped(picked):
-            return picked
-
-        @pytest.fixture(params=[helpers])
-        def patched(request, monkeypatch):
-            monkeypatch.setattr(request.param, "digest", None)
+            monkeypatch.setattr(chosen, "kept", None)
 
         @pytest.mark.parametrize("picked", [sorter], indirect=True)
         def test_indirect_over_params(monkeypatch, picked):
-            monkeypatch.setattr(picked, "digest", None)
+            monkeypatch.setattr(picked, "kept", None)
 
-        @pytest.mark.parametrize("picked", [sorter], indirect=True)
-        def test_indirect_through_another_fixture(monkeypatch, wrapped):
-            monkeypatch.setattr(wrapped, "digest", None)
-
-        @pytest.mark.parametrize("patched", [sorter], indirect=True)
-        def test_indirect_into_a_fixture_that_places_a_stand_in(patched):
+        @pytest.mark.parametrize("placing", [sorter], indirect=True)
+        def test_indirect_into_a_fixture_that_places_a_stand_in(placing):
             pass
+
+        def test_a_fixture_imported_from_a_helper(monkeypatch, given):
+            monkeypatch.setattr(given, "kept", None)
+
+        def _counting(monkeypatch, module, name):
+            monkeypatch.setattr(module, name, None)
+
+        def test_a_helpers_argument(monkeypatch):
+            _counting(monkeypatch, sorter, "kept")
+
+        def test_pytests_own_fixture(monkeypatch, tmp_path):
+            monkeypatch.setattr(tmp_path, "size", 1, raising=False)
+
+        def test_a_lambdas_parameter(monkeypatch):
+            (lambda module: monkeypatch.setattr(module, "kept", None))(sorter)
+
+        def _forbid(monkeypatch, module, rebind):
+            if rebind:
+                for module in (helpers,):
+                    pass
+            monkeypatch.setattr(module, "kept", None)
+
+        def test_a_parameter_a_loop_may_rebind(monkeypatch):
+            _forbid(monkeypatch, sorter, False)
     """})
     marked, unplaced = patch_sites.stand_ins(root)
-    assert [(site.line, site.module, site.name, mark) for site, mark in marked] == [
-        (13, "tracker.helpers", "kept", patch_sites.DEFINED),
-        (13, "tracker.sorter", "decide", patch_sites.DEFINED),
-        (17, "tracker.sorter", "digest", patch_sites.IMPORTED),
-        (22, "tracker.sorter", "decide", patch_sites.DEFINED),
+    assert [(site.file, site.line, site.module, site.name, mark) for site, mark in marked] == [
+        ("tests/test_a.py", 70, "tracker.helpers", "kept", patch_sites.DEFINED),
     ]
-    assert [(one.line, one.written) for one in unplaced] == [
-        (26, "module"), (30, "chosen"), (42, "request.param"), (46, "picked"), (50, "wrapped")]
+    assert [(one.file, one.line, one.written) for one in unplaced] == [
+        ("tests/conftest.py", 11, "mod"),
+        ("tests/patching.py", 4, "module"), ("tests/patching.py", 10, "module"),
+        ("tests/sub/test_d.py", 2, "thing"),
+        ("tests/test_a.py", 20, "request.param"), ("tests/test_a.py", 24, "importlib.import_module(f'tracker.{request.param}')"),
+        ("tests/test_a.py", 28, "module"), ("tests/test_a.py", 32, "module"), ("tests/test_a.py", 37, "module"),
+        ("tests/test_a.py", 41, "chosen"), ("tests/test_a.py", 45, "picked"), ("tests/test_a.py", 52, "given"),
+        ("tests/test_a.py", 55, "module"), ("tests/test_a.py", 61, "tmp_path"), ("tests/test_a.py", 64, "module"),
+        ("tests/test_a.py", 70, "module"),
+        ("tests/test_gen.py", 14, "target"), ("tests/test_inherit.py", 11, "target"),
+    ]
+    assert patch_sites.check(root)[0] is False
 
 
-def test_a_fixture_s_params_and_a_fixture_that_gives_a_module_are_followed(tmp_path):
-    root = _repository(tmp_path, {**SORTER, "tests/conftest.py": """
-        import pytest
-
-        from tracker import helpers
-
-        @pytest.fixture
-        def helpers_module():
-            return helpers
-    """, "tests/test_a.py": """
+def test_a_module_picked_in_a_loop_over_literals_is_placed(tmp_path):
+    """The remedy for a fixture or a helper that chooses between modules
+    (ruling 015 of J4): pick one in a ``for`` over the modules, named as
+    imports, or name the module in the helper itself, as
+    ``tests/test_fsio.py``'s ``flusher`` and ``tests/test_store.py``'s
+    ``_counting_keys`` do. A module an import call names with a literal is
+    followed too."""
+    root = _repository(tmp_path, {**SORTER, "tests/test_a.py": """
         import importlib
 
         import pytest
 
-        @pytest.fixture(params=["sorter", "helpers"])
+        @pytest.fixture(params=["helpers", "sorter"])
         def either(request, monkeypatch):
-            module = importlib.import_module(f"tracker.{request.param}")
-            monkeypatch.setattr(module, "digest", None)
+            import tracker.helpers as helpers_module
+            import tracker.sorter as sorter_module
 
-        def test_one(monkeypatch, helpers_module):
-            monkeypatch.setattr(helpers_module, "kept", None)
+            for module in (helpers_module, sorter_module):
+                if module.__name__ == f"tracker.{request.param}":
+                    break
+            monkeypatch.setattr(module, "digest", None)
+            return module
+
+        def _counting(monkeypatch):
+            from tracker import sorter
+
+            monkeypatch.setattr(sorter, "decide", None)
+
+        def test_one(either, monkeypatch):
+            _counting(monkeypatch)
+            monkeypatch.setattr(importlib.import_module("tracker.helpers"), "kept", None)
     """})
     assert _marks(root) == {
-        ("tests/test_a.py", 8, "tracker.sorter", "digest"): patch_sites.IMPORTED,
-        ("tests/test_a.py", 8, "tracker.helpers", "digest"): patch_sites.DEFINED,
-        ("tests/test_a.py", 11, "tracker.helpers", "kept"): patch_sites.DEFINED,
+        ("tests/test_a.py", 13, "tracker.helpers", "digest"): patch_sites.DEFINED,
+        ("tests/test_a.py", 13, "tracker.sorter", "digest"): patch_sites.IMPORTED,
+        ("tests/test_a.py", 19, "tracker.sorter", "decide"): patch_sites.DEFINED,
+        ("tests/test_a.py", 23, "tracker.helpers", "kept"): patch_sites.DEFINED,
     }
 
 
@@ -438,9 +624,10 @@ def test_a_tool_imported_by_its_bare_name_is_reported_by_its_dotted_one(tmp_path
 
 def test_stand_ins_on_things_outside_the_repository_or_on_no_module_are_not_listed(tmp_path):
     """A stand-in on ``sys``, on a class or an instance of one, on an object
-    a builtin or an outside call made, on a constant that is not a string
-    written at the call, or on what one of pytest's own fixtures gives lands
-    on that object whoever reads it: there is no namespace to miss."""
+    a builtin or an outside call made, or on a constant that is not a string
+    written at the call lands on that object whoever reads it: there is no
+    namespace to miss. What one of pytest's own fixtures gives reaches the
+    test through a parameter, and is not placed (ruling 015 of J4)."""
     root = _repository(tmp_path, {**SORTER, **HOLDERS, "tests/test_a.py": """
         import os
         import sys
@@ -465,7 +652,6 @@ def test_stand_ins_on_things_outside_the_repository_or_on_no_module_are_not_list
             monkeypatch.setattr(Local(), "size", 1, raising=False)
             monkeypatch.setattr(holders.LOG, "level", 10)
             monkeypatch.setattr(None, "size", 1, raising=False)
-            monkeypatch.setattr(tmp_path, "size", 1, raising=False)
     """})
     assert patch_sites.stand_ins(root) == ([], [])
 
@@ -503,32 +689,33 @@ def test_no_way_of_writing_a_module_drops_a_stand_in_out_of_the_check(tmp_path):
     class's attribute. None is taken for no module, so ``check`` names all
     twenty in ``test_a``.
 
-    ``test_b`` holds review 3's forms. These are sites, unread: a module a
-    ``parametrize`` mark gives, alone or together with its name; and one a
-    fixture gives, where the fixture is imported from a helper module,
-    assigned from one, or defined in the test's class. These are not placed:
-    a fixture no file defines and pytest does not give; a top-level name that
-    something rebinds (a test file's own name a fixture rebinds with
-    ``global``, a helper module's name a conftest assigns, whether its own
-    value is ``None`` or a module, and one a fixture's stand-in replaces); and
-    a ``setattr`` not called where it is written (bound to a name, or handed
-    to ``functools.partial``).
+    ``test_b`` holds review 3's forms, and none is placed: a module a
+    ``parametrize`` mark gives, alone or together with its name, or a fixture
+    gives, where the fixture is imported from a helper module, assigned from
+    one, defined in the test's class or defined nowhere (each reaches the
+    stand-in through a parameter, which the tool does not follow: ruling 015
+    of J4, which made the first five of these sites not placed); a top-level
+    name that something rebinds (a test file's own name a fixture rebinds
+    with ``global``, a helper module's name a conftest assigns, whether its
+    own value is ``None`` or a module, and one a fixture's stand-in
+    replaces); and a ``setattr`` not called where it is written (bound to a
+    name, or handed to ``functools.partial``).
 
     ``test_c`` and ``sub/test_d`` hold review 4's, in a repository whose
     ``tests/`` and ``tools/`` have no ``__init__.py``, as the real one's do.
     These are sites, unread: a module reached through the folder
-    (``tests.wired`` after ``import tests.wired``, and ``tools.mapper``), and
-    a fixture the nearest conftest on the test's own path gives (the one in
-    ``tests/`` gives ``None`` under the same name). These are not placed: the
-    folder itself, and a name in it that is none of its modules; a helper
-    module's name that a conftest rebinds through the folder, read through
-    the folder or through the module; a local that a nested function rebinds
-    with ``nonlocal``, read in either function; a fixture only a conftest off
-    the test's path defines; and a ``setattr`` called on a class
+    (``tests.wired`` after ``import tests.wired``, and ``tools.mapper``).
+    These are not placed: the folder itself, and a name in it that is none
+    of its modules; a helper module's name that a conftest rebinds through
+    the folder, read through the folder or through the module; a local that
+    a nested function rebinds with ``nonlocal``, read in either function; a
+    fixture, whether the nearest conftest on the test's own path gives it
+    (the one in ``tests/`` gives ``None`` under the same name) or only a
+    conftest off that path does; and a ``setattr`` called on a class
     (``MonkeyPatch``, ``pytest.MonkeyPatch``, or a class of the file), whose
     first argument is the instance, and on one the tool does not see as a
-    class (``type(monkeypatch)``, ``monkeypatch.__class__``), whose target
-    then sits where a name should be. The tool before review 4 passed
+    class (``type(patcher)``, ``patcher.__class__``), whose target then sits
+    where a name should be. The tool before review 4 passed
     thirteen of these unlisted: the five reached through the folder, which
     it took for something outside the repository; the name rebound through
     it, which it placed on its first value; the nonlocal read in the outer
@@ -715,7 +902,7 @@ def test_no_way_of_writing_a_module_drops_a_stand_in_out_of_the_check(tmp_path):
             monkeypatch.setattr(tools.mapper, "nothing_reads_this", None, raising=False)
 
         def test_the_folder_itself(monkeypatch):
-            monkeypatch.setattr(tests, "wired", None)
+            monkeypatch.setattr(tests, "nothing_here", None, raising=False)
 
         def test_a_name_in_the_folder_that_is_no_module_of_it(monkeypatch):
             monkeypatch.setattr(tests.nothing, "kept", None, raising=False)
@@ -755,9 +942,10 @@ def test_no_way_of_writing_a_module_drops_a_stand_in_out_of_the_check(tmp_path):
         def test_called_on_a_class_of_the_file(monkeypatch):
             Patcher.setattr(monkeypatch, sorter, "kept", None)
 
-        def test_called_on_a_class_the_tool_does_not_see_as_one(monkeypatch):
-            type(monkeypatch).setattr(monkeypatch, sorter, "kept", None)
-            monkeypatch.__class__.setattr(monkeypatch, "tracker.sorter.kept", None)
+        def test_called_on_a_class_the_tool_does_not_see_as_one():
+            patcher = pytest.MonkeyPatch()
+            type(patcher).setattr(patcher, sorter, "kept", None)
+            patcher.__class__.setattr(patcher, "tracker.sorter.kept", None)
     """, "tests/test_b.py": """
         import functools
 
@@ -842,31 +1030,27 @@ def test_no_way_of_writing_a_module_drops_a_stand_in_out_of_the_check(tmp_path):
     assert [(site.line, site.module, site.name, site.written, mark) for site, mark in marked
             if site.file == "tests/test_b.py"] == [
         (16, "tests.seams", "ENGINE", "seams", patch_sites.DEFINED),
-        (20, "tracker.sorter", "kept", "module", patch_sites.UNREAD),
-        (24, "tracker.sorter", "kept", "module", patch_sites.UNREAD),
-        (27, "tracker.sorter", "kept", "the_module", patch_sites.UNREAD),
-        (30, "tracker.sorter", "kept", "other_module", patch_sites.UNREAD),
-        (38, "tracker.sorter", "kept", "held", patch_sites.UNREAD),
     ]
     assert [(one.line, one.written, one.called) for one in unplaced if one.file == "tests/test_b.py"] == [
-        (41, "unheard_of", True), (44, "MOD", True), (47, "fixtures.THE", True), (50, "fixtures.FILLED", True),
+        (20, "module", True), (24, "module", True), (27, "the_module", True), (30, "other_module", True),
+        (38, "held", True), (41, "unheard_of", True),
+        (44, "MOD", True), (47, "fixtures.THE", True), (50, "fixtures.FILLED", True),
         (53, "seams.ENGINE", True), (56, "monkeypatch.setattr", False), (60, "monkeypatch.setattr", False),
     ]
     assert [(site.file, site.line, site.module, site.name, site.written, mark) for site, mark in marked
             if site.file not in ("tests/test_a.py", "tests/test_b.py")] == [
-        ("tests/sub/test_d.py", 2, "tracker.sorter", "kept", "thing", patch_sites.UNREAD),
         ("tests/test_c.py", 14, "tests.wired", "sorter", "tests.wired", patch_sites.UNREAD),
         ("tests/test_c.py", 17, "tools.mapper", "nothing_reads_this", "tools.mapper", patch_sites.UNREAD),
     ]
     assert [(one.file, one.line, one.written) for one in unplaced
             if one.file not in ("tests/test_a.py", "tests/test_b.py")] == [
-        ("tests/sub/test_d.py", 5, "beside"),
+        ("tests/sub/test_d.py", 2, "thing"), ("tests/sub/test_d.py", 5, "beside"),
         ("tests/test_c.py", 20, "tests"), ("tests/test_c.py", 23, "tests.nothing"),
         ("tests/test_c.py", 26, "tests.wired.ENGINE"), ("tests/test_c.py", 29, "wired.ENGINE"),
         ("tests/test_c.py", 39, "module"), ("tests/test_c.py", 47, "module"),
         ("tests/test_c.py", 52, "MonkeyPatch.setattr"), ("tests/test_c.py", 55, "pytest.MonkeyPatch.setattr"),
-        ("tests/test_c.py", 58, "Patcher.setattr"), ("tests/test_c.py", 61, "type(monkeypatch).setattr"),
-        ("tests/test_c.py", 62, "monkeypatch.__class__.setattr"),
+        ("tests/test_c.py", 58, "Patcher.setattr"), ("tests/test_c.py", 62, "type(patcher).setattr"),
+        ("tests/test_c.py", 63, "patcher.__class__.setattr"),
     ]
     ok, said = patch_sites.check(root)
     assert not ok and len(said) == 47
@@ -876,9 +1060,86 @@ def test_no_way_of_writing_a_module_drops_a_stand_in_out_of_the_check(tmp_path):
             "it replaces is not written out. Call it where it is written.") in said
     assert ("tests/test_c.py:58: Patcher.setattr cannot be placed: it is called on a class, so its first argument "
             "is the instance and what it replaces comes after. Call it on the instance.") in said
-    assert said[-1] == ("tests/test_c.py:62: monkeypatch.__class__.setattr cannot be placed: what it replaces is not "
+    assert said[-1] == ("tests/test_c.py:63: patcher.__class__.setattr cannot be placed: what it replaces is not "
                         "an attribute name the tool reads, so it may be called on a class, with the instance first "
                         "and the target in the name's place. Call it on the instance, with the name as a string.")
+
+
+def test_a_submodule_something_stores_over_is_not_followed_through_its_package(tmp_path):
+    """F5.3 of review 5: ``import a.b as c``, ``from a import b``, ``a.b``
+    and the string ``"a.b.name"`` each reach ``b`` as an attribute of ``a``,
+    so a file that stores over that attribute, or a package that binds the
+    name itself, decides what they hold. Each stand-in on ``kept`` below but
+    the last three lands on ``sorter.kept``, which ``sorter`` never reads,
+    and each is not placed; the tool before the review placed each on the
+    submodule, which reads ``kept``, and passed it. A stand-in on the
+    package's attribute stores over it too, and is a site on the package. A
+    submodule nothing stores over is still followed, in each of the three
+    forms."""
+    module = """
+        def kept(path):
+            return path
+
+        def decide(path):
+            return kept(path)
+    """
+    root = _repository(tmp_path, {**SORTER, "tracker/other.py": module, "tracker/third.py": module,
+                                  "tracker/fourth.py": module, "tracker/untouched.py": module,
+                                  "tests/wired.py": module, "tracker/pkg/inner.py": module,
+                                  "tracker/pkg/__init__.py": "from tracker import sorter as inner\n",
+                                  "tests/test_a.py": """
+        import tests
+        import tracker
+        import tracker.third
+        from tracker import sorter
+
+        tracker.other = sorter
+        tracker.third = sorter
+        tests.wired = sorter
+
+        import tracker.other as again  # noqa: E402
+        from tests import wired  # noqa: E402
+        from tracker import other, untouched  # noqa: E402
+        from tracker.pkg import inner  # noqa: E402
+
+        def test_import_as_after_a_store(monkeypatch):
+            monkeypatch.setattr(again, "kept", None)
+
+        def test_from_import_after_a_store(monkeypatch):
+            monkeypatch.setattr(other, "kept", None)
+
+        def test_the_attribute_after_a_store(monkeypatch):
+            monkeypatch.setattr(tracker.third, "kept", None)
+
+        def test_the_string_form_after_a_store(monkeypatch):
+            monkeypatch.setattr("tracker.third.kept", None)
+
+        def test_a_folders_module_stored_over(monkeypatch):
+            monkeypatch.setattr(wired, "kept", None)
+
+        def test_a_package_that_binds_its_submodules_name(monkeypatch):
+            monkeypatch.setattr(inner, "kept", None)
+
+        def test_a_stand_in_on_the_package_attribute(monkeypatch):
+            monkeypatch.setattr(tracker, "fourth", sorter)
+            monkeypatch.setattr(tracker.fourth, "kept", None)
+
+        def test_a_submodule_nothing_stores_over(monkeypatch):
+            monkeypatch.setattr(untouched, "kept", None)
+            monkeypatch.setattr(tracker.untouched, "kept", None)
+            monkeypatch.setattr("tracker.untouched.kept", None)
+    """})
+    marked, unplaced = patch_sites.stand_ins(root)
+    assert [(site.line, site.module, site.name, mark) for site, mark in marked] == [
+        (34, "tracker", "fourth", patch_sites.UNREAD),
+        (38, "tracker.untouched", "kept", patch_sites.DEFINED),
+        (39, "tracker.untouched", "kept", patch_sites.DEFINED),
+        (40, "tracker.untouched", "kept", patch_sites.DEFINED),
+    ]
+    assert [(one.line, one.written) for one in unplaced] == [
+        (16, "again"), (19, "other"), (22, "tracker.third"), (25, "'tracker.third.kept'"),
+        (28, "wired"), (31, "inner"), (35, "tracker.fourth"),
+    ]
 
 
 def test_a_value_is_taken_for_no_module_only_where_the_tool_proves_it_is_none(tmp_path):

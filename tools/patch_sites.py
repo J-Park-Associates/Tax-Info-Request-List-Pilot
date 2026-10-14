@@ -59,18 +59,26 @@ stand-ins most worth checking come in loops: a test that forbids four reads
 sets four names in a ``for`` over a literal tuple, and a stand-in there that
 misses makes the test pass for nothing. So the tool also follows a module, a
 name or a string that comes from a ``for`` over literals (or over a literal
-assigned to a name), from a ``parametrize`` mark's list (pytest's own loop, on
-the test or its class), from a fixture's ``params``, from a fixture that
-returns it, and from a helper's parameter at the helper's calls in the same
-file. A fixture is looked for where pytest looks: the classes around the test,
-its file, then the conftests on its own path, nearest first; one the file
-imports or assigns from a helper module is followed into that module. A
-fixture's ``request.param`` is its ``params`` only where no ``parametrize``
-mark in the suite may hand the fixture values (``indirect``), since pytest
-gives it the mark's values in their place. Values bound together stay together:
-``for module, name in ((a, "x"), (b, "y"))`` and a mark's ``("module, name",
-[(a, "x"), (b, "y")])`` are two sites each, not four, and inside a loop's body
-its name holds the loop's values, whatever else it is bound to.
+assigned to a name). Values bound together stay together: ``for module, name
+in ((a, "x"), (b, "y"))`` is two sites, not four. A loop fixes its names only
+where nothing else binds them: inside its body, where the body does not bind
+them again, and after it, where every binding of the name is a loop's.
+
+**What a parameter holds is not followed** (ruling 015 of J4). A value that
+reaches a stand-in through a function's parameter is not placed: a test's or a
+fixture's (a fixture, a ``parametrize`` mark, ``metafunc.parametrize``,
+``request.param``, and pytest's own ``tmp_path`` and the rest), a helper's (an
+argument of its callers), or a lambda's. pytest settles a parameter from the
+test that runs, not from the file the function is written in: a test file's
+fixture overrides a conftest's for every fixture the test reaches, a mark or
+``pytest_generate_tests`` overrides a fixture, a subclass's fixture reaches
+the test methods it inherits, and a helper is called from any file under any
+name. Following that resolution was the rejected alternative: reviews 3, 4
+and 5 of J4 each found one more way it reached a value the tool did not see,
+and a parameter read from the wrong place puts a stand-in on the wrong module
+while the check passes. So a test names its module directly, as an import, an
+alias or a literal, or in a ``for`` over literals, and a fixture or a mark
+that chooses between modules picks one of them in such a loop.
 
 A top-level name is followed to its value only where nothing rebinds it: not a
 function of its own file (``global``, ``globals()[...]``), not an assignment to
@@ -82,7 +90,13 @@ file fills (``children.PROC``, which a test replaces with
 each store puts there was the rejected alternative (ruling 009 of J4): which of
 them the name holds when the stand-in goes in depends on the order the tests
 run in. One scope in, the same holds: a function's local name that the function
-or one inside it declares ``nonlocal`` is not followed.
+or one inside it declares ``nonlocal`` is not followed. One level up it holds
+too: a package's submodule is followed through the package (``tracker.other``,
+``from tracker import other``, ``import tracker.other as other``, the string
+``"tracker.other.name"``, each of which Python reads as the package's
+attribute) only where nothing stores over that attribute: not an assignment or
+a stand-in on ``<package>.<submodule>`` in any file, and not a binding of the
+name at the package's own top level.
 
 **The backstop.** The rules above say what a stand-in's target holds; the
 backstop says that every stand-in was looked at. ``check`` reads the suite's
@@ -110,7 +124,10 @@ its answer would depend on the interpreter.
 - a store through ``vars()`` or ``__dict__`` (``vars(seams)["ENGINE"] =
   sorter``), which is not seen as rebinding the name; the placeholder rule
   below is the only guard, for a seam whose own value is a constant;
-- ``monkeypatch.setitem``, which is not a ``setattr``;
+- ``monkeypatch.setitem`` and ``monkeypatch.delattr``, which are not a
+  ``setattr``, and ``unittest.mock.patch`` and ``patch.object``, which replace
+  a module's name without one: a ``delattr`` or a ``patch.object`` on a name
+  nothing reads is not checked;
 - code built at run time: ``exec``, ``eval``, strings handed to ``importlib``,
   and a name given as a string (``getattr(monkeypatch, "setattr")``), which no
   token of the source text spells.
@@ -131,29 +148,26 @@ builtin other than those that can hand back a module (:data:`_GIVE_A_MODULE`),
 and what calling one gives; a value from an outside library, and what calling
 it gives, where outside is a dotted name that is neither a module of the
 repository nor a folder holding one (:meth:`_Suite.module` is the one place
-that concludes it, and ``test_patch_sites`` holds it to that too); and what one
-of pytest's own fixtures gives, or one of the installed plugin's
-(:data:`_OUTSIDE_FIXTURES`, a fixed list). Each of these lands on that object,
-whoever reads it. Every other target fails ``check`` as not placed. That
-includes a module stored by an unpacking, a walrus, ``with ... as`` or ``except
-... as``; a function (a decorator can make a ``def`` anything) and what any
-function, method or instance gives when called; what ``getattr``, ``vars``,
-``__import__``, ``globals``, ``locals``, ``eval``, ``next``, ``min`` or ``max``
-gives; either side of ``or``, arithmetic, a comparison, a comprehension; an
-attribute of anything but a module or an outside library (a class's, an
-instance's, ``x.__class__``, one of what an outside call made); a top-level
-name that is rebound (by a function of its own file, an assignment from another
-file, or a ``setattr`` aimed at it) or that its module never binds, read in
-that file or another; a function's local name that it or a function inside it
-declares ``nonlocal``; a top-level name bound to a constant that is not a
-string (``ENGINE = None``), which is a placeholder another module may fill in a
-way the tool does not see; a folder with no ``__init__.py`` (``tests`` itself),
-and a name in one that is none of its modules; a fixture the tool does not find
-and pytest does not give, and one made some way it does not follow (a call that
-returns a fixture, an import from outside the repository); a ``parametrize``
-mark whose names or values are not written out, or that hands a name to its
-fixture, and a fixture's ``request.param`` where any mark in the suite may hand
-it values; a ``setattr`` that is not called where it is written (``put =
+that concludes it, and ``test_patch_sites`` holds it to that too). Each of
+these lands on that object, whoever reads it. Every other target fails
+``check`` as not placed. That includes a module stored by an unpacking, a
+walrus, ``with ... as`` or ``except ... as``; a function (a decorator can make
+a ``def`` anything) and what any function, method or instance gives when
+called; what ``getattr``, ``vars``, ``__import__``, ``globals``, ``locals``,
+``eval``, ``next``, ``min`` or ``max`` gives; either side of ``or``,
+arithmetic, a comparison, a comprehension; an attribute of anything but a
+module or an outside library (a class's, an instance's, ``x.__class__``, one of
+what an outside call made); a top-level name that is rebound (by a function of
+its own file, an assignment from another file, or a ``setattr`` aimed at it) or
+that its module never binds, read in that file or another; a function's local
+name that it or a function inside it declares ``nonlocal``; a top-level name
+bound to a constant that is not a string (``ENGINE = None``), which is a
+placeholder another module may fill in a way the tool does not see; a
+package's submodule that something stores over; a folder with no
+``__init__.py`` (``tests`` itself), and a name in one that is none of its
+modules; anything that reaches the stand-in through a function's parameter (a
+fixture, a ``parametrize`` mark, ``request.param``, a helper's argument,
+``tmp_path``); a ``setattr`` that is not called where it is written (``put =
 monkeypatch.setattr``, or ``functools.partial`` of one), or that is called on a
 class or on something outside the repository, and a stand-in on no module whose
 name is not an attribute name the tool reads (a module or a dotted string there
@@ -182,7 +196,6 @@ import itertools
 import tokenize
 from collections import Counter, defaultdict
 from dataclasses import dataclass
-from functools import cached_property
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -459,31 +472,17 @@ _IMPORT_CALLS = ("import_module", "importorskip")
 _GIVE_A_MODULE = frozenset(f"builtins.{name}" for name in (
     "getattr", "vars", "__import__", "globals", "locals", "eval", "next", "min", "max"))
 
-#: The fixtures pytest gives, and those of the one plugin the locks install
-#: (pytest-xdist): what each gives comes from outside the repository, so it is
-#: no module. A fixture the suite defines is looked for first, where pytest
-#: looks; a name found neither there nor here is a fixture the tool did not
-#: find, and is not followed.
-_OUTSIDE_FIXTURES = frozenset((
-    "cache", "capfd", "capfdbinary", "caplog", "capsys", "capsysbinary", "capteesys", "doctest_namespace",
-    "monkeypatch", "pytestconfig", "record_property", "record_testsuite_property", "record_xml_attribute",
-    "recwarn", "request", "subtests", "tmp_path", "tmp_path_factory", "tmpdir", "tmpdir_factory",
-    "testrun_uid", "worker_id",
-))
-
 
 def _no_module(node: ast.AST, module: str = "", callee: tuple | None = None) -> tuple:
     """The one place the tool concludes that a value is no module (ruling 009
     of J4), from the syntax it is handed: a constant that is not a string, a
-    literal container, a ``class`` the tool sees defined in ``module``, what a
-    call makes of a class (``callee`` the class) or gives from a builtin
-    outside :data:`_GIVE_A_MODULE` or an outside library (``callee`` that), and
-    what a fixture parameter gives that no file of the suite defines, where
-    its name is one of :data:`_OUTSIDE_FIXTURES`. Anything
-    else it is handed is a value the tool cannot work out, and every other
-    path of the tool follows a value or gives that, so "no module" is never
-    reached by a fallback. ``test_patch_sites`` holds the tool to building
-    the no-module kinds here and nowhere else."""
+    literal container, a ``class`` the tool sees defined in ``module``, and
+    what a call makes of a class (``callee`` the class) or gives from a
+    builtin outside :data:`_GIVE_A_MODULE` or an outside library (``callee``
+    that). Anything else it is handed is a value the tool cannot work out,
+    and every other path of the tool follows a value or gives that, so "no
+    module" is never reached by a fallback. ``test_patch_sites`` holds the
+    tool to building the no-module kinds here and nowhere else."""
     if isinstance(node, ast.Constant) and not isinstance(node.value, str):
         return _A_THING
     if isinstance(node, (ast.List, ast.Tuple, ast.Dict, ast.Set)):
@@ -496,75 +495,16 @@ def _no_module(node: ast.AST, module: str = "", callee: tuple | None = None) -> 
             return (INSTANCE, held)
         if kind == OUTSIDE and held not in _GIVE_A_MODULE:
             return _A_THING
-    if isinstance(node, ast.arg):
-        return _A_THING if node.arg in _OUTSIDE_FIXTURES else (UNKNOWN, node.arg)
     return (UNKNOWN, ast.unparse(node))
 
 
 _SCOPES = (ast.Module, *_FUNCTIONS, ast.Lambda)
 _BUILTINS = frozenset(dir(builtins))
-_LITERALS = (ast.Constant, ast.JoinedStr, ast.List, ast.Tuple, ast.Dict, ast.Set)
 
 
-def _named(call: ast.AST) -> str:
-    """The last part of the name a call or a decorator is written with: ``fixture`` for ``@pytest.fixture(...)``."""
-    called = call.func if isinstance(call, ast.Call) else call
-    return called.attr if isinstance(called, ast.Attribute) else getattr(called, "id", "")
-
-
-def _fixture_decorator(function: ast.AST) -> ast.expr | None:
-    """The ``@pytest.fixture`` (or ``@pytest.fixture(...)``) on ``function``."""
-    for decorator in getattr(function, "decorator_list", []):
-        if _named(decorator) == "fixture":
-            return decorator
-    return None
-
-
-def _fixture_name(function: ast.AST, decorator: ast.expr) -> str | None:
-    """The name pytest knows the fixture ``function`` by: its ``name=``, or
-    else the name it is defined under; None where ``name=`` is not a string
-    written out."""
-    given = _argument(decorator, None, "name") if isinstance(decorator, ast.Call) else None
-    if given is None:
-        return function.name
-    return given.value if isinstance(given, ast.Constant) and isinstance(given.value, str) else None
-
-
-def _argument(call: ast.Call, at: int | None, keyword: str) -> ast.expr | None:
-    """The argument ``call`` gives by ``keyword``, or else at position ``at``
-    (None for a keyword-only one)."""
-    for one in call.keywords:
-        if one.arg == keyword:
-            return one.value
-    return call.args[at] if at is not None and len(call.args) > at else None
-
-
-def _strings(expr: ast.AST | None) -> list[str] | None:
-    """The strings a literal list or tuple of strings holds, or None."""
-    if isinstance(expr, (ast.List, ast.Tuple)) and all(
-            isinstance(one, ast.Constant) and isinstance(one.value, str) for one in expr.elts):
-        return [one.value for one in expr.elts]
-    return None
-
-
-def _argnames(mark: ast.Call) -> list[str] | None:
-    """The names a ``parametrize`` mark gives, where they are written out."""
-    given = _argument(mark, 0, "argnames")
-    if isinstance(given, ast.Constant) and isinstance(given.value, str):
-        return [one.strip() for one in given.value.split(",") if one.strip()]
-    return _strings(given)
-
-
-def _indirect(mark: ast.Call, names: list[str]) -> set[str] | None:
-    """The names a ``parametrize`` mark hands to their fixtures (``indirect=``),
-    or None where that is not written out."""
-    given = _argument(mark, 2, "indirect")
-    if given is None:
-        return set()
-    if isinstance(given, ast.Constant) and isinstance(given.value, bool):
-        return set(names) if given.value else set()
-    listed = _strings(given)
-    return None if listed is None else set(listed)
+def _named(call: ast.Call) -> str:
+    """The last part of the name a call is written with: ``setattr`` for ``monkeypatch.setattr(...)``."""
+    return call.func.attr if isinstance(call.func, ast.Attribute) else getattr(call.func, "id", "")
 
 
 def _a_placeholder(parent: dict[ast.AST, ast.AST], node: ast.AST) -> bool:
@@ -632,51 +572,19 @@ class _Suite:
         return [self.test_file(path) for path in sorted((self.root / TESTS).rglob("*.py"))
                 if "__pycache__" not in path.parts]
 
-    def conftests_for(self, path: Path) -> list[_TestFile]:
-        """The conftests pytest gives the file at ``path``: the one in its own
-        folder and the one in each folder above it, up to the repository's
-        root, nearest first. A conftest in another branch of ``tests/`` is
-        not among them."""
-        found = []
-        for folder in path.parents:
-            conftest = folder / "conftest.py"
-            if conftest != path and conftest.is_file():
-                found.append(self.test_file(conftest))
-            if folder == self.root:
-                break
-        return found
-
     def suite_files(self) -> list[_TestFile]:
         """Every file of the suite's own Python: each file under ``tests/``,
         and the conftest at the repository's root, which pytest loads too."""
-        return [*self.test_files(), *self.conftests_for(self.root / TESTS)]
-
-    @cached_property
-    def handed_on(self) -> frozenset[str] | None:
-        """Every name a ``parametrize`` call in the suite hands to its fixture
-        (``indirect``), which then gives the call's values as
-        ``request.param`` in place of its own ``params``. A call whose
-        ``indirect`` is not written out hands on every name it gives, and
-        None means some call's names are not written out, so that any
-        fixture may be handed values the tool does not see."""
-        names: set[str] = set()
-        for test_file in self.suite_files():
-            for node in ast.walk(test_file.tree):
-                if not (isinstance(node, ast.Call) and _named(node) == "parametrize"):
-                    continue
-                given = _argnames(node)
-                if given is None:
-                    return None
-                indirect = _indirect(node, given)
-                names |= set(given) if indirect is None else indirect
-        return frozenset(names)
+        conftest = self.root / "conftest.py"
+        return [*self.test_files(), *([self.test_file(conftest)] if conftest.is_file() else [])]
 
     def stored(self) -> frozenset[tuple[str, str]]:
         """Each (module, name) that a file of the repository stores in a module
-        of the repository through the module: an assignment to
-        ``<module>.<name>``, an augmented one or a ``del``, a stand-in, or the
-        builtin ``setattr``. While this is worked out it is empty, so what a
-        store is aimed at is read from the modules alone."""
+        of the repository, or in a folder of it with no ``__init__.py``,
+        through the module: an assignment to ``<module>.<name>``, an augmented
+        one or a ``del``, a stand-in, or the builtin ``setattr``. While this is
+        worked out it is empty, so what a store is aimed at is read from the
+        modules alone."""
         if self._stored is None:
             self._stored = frozenset()
             self._stored = frozenset(key for path in sorted(set(self.index.values()))
@@ -694,11 +602,28 @@ class _Suite:
         return base
 
     def imported(self, statement: ast.AST, alias: ast.alias, importer: str, seen: frozenset = frozenset()) -> list[tuple]:
-        """What an import statement in the module ``importer`` binds to ``alias``'s name."""
+        """What an import statement in the module ``importer`` binds to
+        ``alias``'s name. ``import tracker.other as other`` binds what Python
+        reads as the package's attribute, so it is read as ``tracker.other``
+        is (:meth:`attribute`); ``import tracker.other`` binds ``tracker``.
+        ``from tracker.other import name`` imports ``tracker.other`` itself,
+        whatever the package's attribute holds."""
         if isinstance(statement, ast.Import):
-            return [self.module(alias.name if alias.asname else alias.name.split(".")[0])]
+            if not alias.asname:
+                return [self.module(alias.name.split(".")[0])]
+            return self.dotted_attributes(alias.name)
         base = self.base(statement, importer)
         return self.attribute(self.module(base), alias.name, f"{base}.{alias.name}", seen)
+
+    def dotted_attributes(self, dotted: str) -> list[tuple]:
+        """What ``a.b.c`` can hold when it is read as attributes from ``a``
+        (:meth:`attribute`), as ``import a.b.c as name`` and the string form
+        read it."""
+        parts = dotted.split(".")
+        values = [self.module(parts[0])]
+        for at in range(1, len(parts)):
+            values = [value for one in values for value in self.attribute(one, parts[at], ".".join(parts[:at + 1]))]
+        return values
 
     def attribute(self, value: tuple, attr: str, written: str, seen: frozenset = frozenset()) -> list[tuple]:
         """What ``<value>.<attr>`` can hold, written as ``written``.
@@ -708,20 +633,38 @@ class _Suite:
         import, a ``class`` or an assignment; a ``def`` is not followed). Of a
         folder with no ``__init__.py``: its module or folder of that name, and
         anything else is not followed (nothing but a run can have put it
-        there). Of something outside the repository: what :meth:`module`
-        makes of the dotted name, so the index is looked in before a name is
-        taken for outside. Anything else - a class's attribute, an instance's,
-        a function's, a string's method, an attribute of what a builtin or an
-        outside library gave - may hold a module, so it is not followed."""
+        there). A submodule, or a folder's module, is not followed where
+        something may hold that attribute in its place: a store to
+        ``<package>.<name>`` in any file (:meth:`stored`), or the package's own
+        top-level binding of the name, since the import system and the
+        package's code each write it. Of something outside the repository:
+        what :meth:`module` makes of the dotted name, so the index is looked in
+        before a name is taken for outside. Anything else - a class's
+        attribute, an instance's, a function's, a string's method, an
+        attribute of what a builtin or an outside library gave - may hold a
+        module, so it is not followed."""
         kind, held = value
         if kind == MODULE or kind == PACKAGE or kind == OUTSIDE:
             found = self.module(f"{held}.{attr}")
-            if found[0] != OUTSIDE or kind == OUTSIDE:
+            if kind == OUTSIDE:
                 return [found]
+            if found[0] != OUTSIDE:
+                return [(UNKNOWN, written)] if self.held_over(value, attr) else [found]
             if kind == PACKAGE:
                 return [(UNKNOWN, written)]
             return self.test_file(self.index[held]).top_level(attr, written, seen)
         return [value if kind == UNKNOWN else (UNKNOWN, written)]
+
+    def held_over(self, package: tuple, attr: str) -> bool:
+        """Whether the attribute ``attr`` of ``package`` (a module or a folder
+        of the repository) may hold something other than its submodule of
+        that name: a file stores to it, or the package binds the name at its
+        own top level."""
+        kind, held = package
+        if (held, attr) in self.stored():
+            return True
+        own = self.test_file(self.index[held]) if kind == MODULE else None
+        return own is not None and attr in own.bound_in(own.tree)
 
 
 class _TestFile:
@@ -736,13 +679,8 @@ class _TestFile:
         self.dotted = ".".join(path.relative_to(suite.root).with_suffix("").parts)
         self.canonical = suite.canonical_of(path)
         self.tree = ast.parse(path.read_text(encoding="utf-8"), self.relative)
-        self.parent: dict[ast.AST, ast.AST] = {}
-        self.calls: dict[str, list[ast.Call]] = defaultdict(list)
-        for node in ast.walk(self.tree):
-            for child in ast.iter_child_nodes(node):
-                self.parent[child] = node
-            if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
-                self.calls[node.func.id].append(node)
+        self.parent: dict[ast.AST, ast.AST] = {child: node for node in ast.walk(self.tree)
+                                               for child in ast.iter_child_nodes(node)}
         self._bound: dict[ast.AST, dict[str, list[ast.AST]]] = {}
         self._nonlocal: dict[ast.AST, frozenset[str]] = {}
         # The top-level names a function rebinds with ``global``, or that are
@@ -759,15 +697,6 @@ class _TestFile:
         while node in self.parent:
             node = self.parent[node]
             if isinstance(node, _SCOPES):
-                found.append(node)
-        return found
-
-    def classes_around(self, node: ast.AST) -> list[ast.ClassDef]:
-        """The classes ``node`` sits in, innermost first."""
-        found = []
-        while node in self.parent:
-            node = self.parent[node]
-            if isinstance(node, ast.ClassDef):
                 found.append(node)
         return found
 
@@ -849,13 +778,15 @@ class _TestFile:
 
     def stores(self, node: ast.AST) -> list[tuple[str, str]]:
         """Each (module, name) that ``node`` stores in a module of the
-        repository through the module: an assignment to ``<module>.<name>``,
-        an augmented one or a ``del``, a stand-in, or the builtin ``setattr``."""
+        repository, or in a folder of it, through the module: an assignment to
+        ``<module>.<name>``, an augmented one or a ``del``, a stand-in, or the
+        builtin ``setattr``."""
         if isinstance(node, ast.Attribute) and isinstance(node.ctx, (ast.Store, ast.Del)):
-            return [(held, node.attr) for kind, held in self.values(node.value, {}) if kind == MODULE]
+            return [(held, node.attr) for kind, held in self.values(node.value, {}) if kind in (MODULE, PACKAGE)]
         if isinstance(node, ast.Call) and _named(node) == "setattr":
             ways, _written = _aimed_at(self, node)
-            return [(held, name) for (kind, held), (name_kind, name) in ways if kind == MODULE and name_kind == TEXT]
+            return [(held, name) for (kind, held), (name_kind, name) in ways
+                    if kind in (MODULE, PACKAGE) and name_kind == TEXT]
         return []
 
     # -- what an expression holds
@@ -869,8 +800,6 @@ class _TestFile:
                 return [(UNKNOWN, expr.id)]
             return env[expr.id] if expr.id in env else self._held_by(expr, seen)
         if isinstance(expr, ast.Attribute):
-            if isinstance(expr.value, ast.Name) and expr.value.id == "request" and expr.attr == "param":
-                return self._fixture_params(expr, seen)
             written = ast.unparse(expr)
             return [value for one in self.values(expr.value, env, seen)
                     for value in self.suite.attribute(one, expr.attr, written, seen)]
@@ -929,25 +858,6 @@ class _TestFile:
             parts.append([text for _, text in said])
         return [(TEXT, "".join(row)) for row in itertools.product(*parts)]
 
-    def _fixture_params(self, at: ast.AST, seen) -> list[tuple]:
-        """What ``request.param`` holds at ``at``: the ``params`` of the
-        fixture it is read in, where they are written out. A fixture that a
-        ``parametrize`` mark anywhere in the suite may hand values to
-        (``indirect``) is not followed: pytest gives it the mark's values as
-        ``request.param`` in place of its own ``params``, for a test that
-        asks for it or for one that reaches it through another fixture."""
-        for scope in self.chain(at):
-            decorator = _fixture_decorator(scope)
-            if decorator is None:
-                continue
-            handed_on, name = self.suite.handed_on, _fixture_name(scope, decorator)
-            given = _argument(decorator, None, "params") if isinstance(decorator, ast.Call) else None
-            items = None if given is None else self.items(given, seen)
-            if handed_on is None or name is None or name in handed_on or items is None:
-                break
-            return [value for item in items for value in self.values(item, {}, seen)]
-        return [(UNKNOWN, "request.param")]
-
     def _held_by(self, expr: ast.Name, seen) -> list[tuple]:
         scope, bound = self.binding(expr.id, expr)
         if not bound:
@@ -969,8 +879,10 @@ class _TestFile:
             if isinstance(node, ast.alias):
                 found.extend(self.suite.imported(self.parent[node], node, self.dotted, seen))
             elif isinstance(node, ast.arg):
-                _source, rows = self.parameter_rows(node, seen)
-                found.extend(value for row in rows for value in row[node.arg])
+                # What a parameter holds is settled by whoever calls the
+                # function, which for a test or a fixture is pytest, from
+                # the test that runs: it is not followed (ruling 015 of J4).
+                found.append((UNKNOWN, node.arg))
             elif isinstance(node, ast.Name):
                 found.extend(self._stored(node, seen))
             elif isinstance(node, ast.ClassDef):
@@ -999,7 +911,13 @@ class _TestFile:
             return [(UNKNOWN, ast.unparse(loop.iter))]
         return [value for row in rows for value in row[target.id]]
 
-    # -- loops and parameters
+    # -- loops
+
+    def within(self, node: ast.AST, holder: ast.AST) -> bool:
+        """Whether ``node`` is ``holder`` or sits inside it."""
+        while node is not holder and node in self.parent:
+            node = self.parent[node]
+        return node is holder
 
     def loop_of(self, target: ast.Name) -> ast.For | None:
         """The ``for`` whose target ``target`` is, or is inside."""
@@ -1075,225 +993,35 @@ class _TestFile:
             return row
         return None
 
-    def parameter_rows(self, parameter: ast.arg, seen) -> tuple[ast.AST, list[dict[str, list[tuple]]]]:
-        """What fixes ``parameter``, and its values, one row per way.
-
-        A helper's parameters are fixed together, by each of its calls in this
-        file, so the rows hold every parameter and the helper is the source. A
-        test's parameter that a ``parametrize`` mark names is fixed by the
-        mark, with the names it gives together. Any other parameter of a test
-        or a fixture is a fixture, fixed alone."""
-        function = self.parent[self.parent[parameter]]
-        unknown = (parameter, [{parameter.arg: [(UNKNOWN, parameter.arg)]}])
-        if isinstance(function, ast.Lambda):
-            return unknown
-        if _fixture_decorator(function) or function.name.startswith("test_"):
-            marked = self._parametrized(parameter, function, seen)
-            if marked is not None:
-                return marked
-            return parameter, [{parameter.arg: self._fixture_values(parameter, function, seen)}]
-        rows = [row for call in self.calls.get(function.name, [])
-                if (row := self._arguments(function, call, seen)) is not None]
-        return (function, rows) if rows else unknown
-
-    def _arguments(self, function, call: ast.Call, seen) -> dict[str, list[tuple]] | None:
-        arguments = function.args
-        positional = [*arguments.posonlyargs, *arguments.args]
-        defaults = {one.arg: value for one, value in zip(positional[len(positional) - len(arguments.defaults):],
-                                                          arguments.defaults, strict=True)}
-        defaults |= {one.arg: value for one, value in zip(arguments.kwonlyargs, arguments.kw_defaults, strict=True)
-                     if value is not None}
-        if any(isinstance(value, ast.Starred) for value in call.args) or any(kw.arg is None for kw in call.keywords):
-            return None
-        given = dict(zip((one.arg for one in positional), call.args, strict=False))
-        given |= {keyword.arg: keyword.value for keyword in call.keywords}
-        row = {}
-        for one in [*positional, *arguments.kwonlyargs]:
-            value = given.get(one.arg, defaults.get(one.arg))
-            row[one.arg] = self.values(value, {}, seen) if value is not None else [(UNKNOWN, one.arg)]
-        return row
-
-    def _parametrize_marks(self, function: ast.AST) -> list[ast.Call] | None:
-        """The ``parametrize`` marks on a test: its own decorators, those of
-        the classes around it, and those a ``pytestmark`` assigned in those
-        classes or in the file holds. None where a ``pytestmark`` is bound
-        some other way, which the tool does not read."""
-        classes = self.classes_around(function)
-        marks = [decorator for holder in (function, *classes) for decorator in holder.decorator_list
-                 if isinstance(decorator, ast.Call) and _named(decorator) == "parametrize"]
-        for scope in (*classes, self.tree):
-            for node in self.bound_in(scope).get("pytestmark", []):
-                holder = self.parent.get(node)
-                if not (isinstance(node, ast.Name) and isinstance(holder, (ast.Assign, ast.AnnAssign))
-                        and holder.value is not None):
-                    return None
-                marks += [one for one in ast.walk(holder.value) if isinstance(one, ast.Call) and _named(one) == "parametrize"]
-        return marks
-
-    def _parametrized(self, parameter: ast.arg, function: ast.AST, seen):
-        """What a ``parametrize`` mark gives a test's ``parameter``: the mark
-        as the source, and one row per set of values it lists, holding each
-        name the mark gives that set together. None where no mark names the
-        parameter. A mark whose names, values or ``indirect`` are not written
-        out gives a value the tool does not follow, and so does one that
-        hands the parameter to its fixture (``indirect``): pytest gives that
-        fixture the mark's values as ``request.param``, and what the fixture
-        makes of them is not followed, nor are the fixture's own ``params``
-        read in their place."""
-        name = parameter.arg
-        unknown = (parameter, [{name: [(UNKNOWN, name)]}])
-        marks = self._parametrize_marks(function)
-        if marks is None:
-            return unknown
-        for mark in marks:
-            names = _argnames(mark)
-            if names is None:
-                return unknown
-            if name not in names:
-                continue
-            indirect = _indirect(mark, names)
-            if indirect is None:
-                return unknown
-            if name in indirect:
-                return unknown
-            direct = [one for one in names if one not in indirect]
-            argvalues = _argument(mark, 1, "argvalues")
-            items = None if argvalues is None else self.items(argvalues, seen)
-            if items is None:
-                return mark, [{one: [(UNKNOWN, one)] for one in direct}]
-            return mark, [self._parametrize_row(names, direct, item, seen) for item in items]
-        return None
-
-    def _parametrize_row(self, names: list[str], direct: list[str], item: ast.AST, seen) -> dict[str, list[tuple]]:
-        """The values one item of a ``parametrize`` mark's list gives its
-        names: the item itself for one name, the elements of a tuple or a
-        list for several, and the values of ``pytest.param(...)`` either way."""
-        if isinstance(item, ast.Call) and _named(item) == "param":
-            elements = item.args
-        elif len(names) == 1:
-            elements = [item]
-        else:
-            elements = item.elts if isinstance(item, (ast.Tuple, ast.List)) else []
-        if len(elements) != len(names) or any(isinstance(one, ast.Starred) for one in elements):
-            return {one: [(UNKNOWN, one)] for one in direct}
-        return {one: self.values(value, {}, seen) for one, value in zip(names, elements, strict=True) if one in direct}
-
-    def _fixture_values(self, parameter: ast.arg, function: ast.AST, seen) -> list[tuple]:
-        """What the fixture ``parameter`` names gives the test or fixture
-        ``function``, found where pytest looks for it: the classes around
-        ``function``, this file, then the conftests on this file's own path,
-        nearest first (:meth:`_Suite.conftests_for`). A name none of them
-        holds is no module only where it is pytest's own fixture or a
-        plugin's (:data:`_OUTSIDE_FIXTURES`); any other is not followed."""
-        holders = [(self, scope) for scope in (*self.classes_around(function), self.tree)]
-        holders += [(conftest, conftest.tree) for conftest in self.suite.conftests_for(self.path)]
-        for holder, scope in holders:
-            given = holder.fixture_in(scope, parameter.arg, seen)
-            if given is not None:
-                return given
-        return [_no_module(parameter)]
-
-    def fixture_in(self, scope: ast.AST, name: str, seen) -> list[tuple] | None:
-        """What the fixture ``name`` gives where ``scope`` (this file's top
-        level, or a class in it) holds it, or None where it holds no fixture of
-        that name. A fixture is a ``def`` under ``@pytest.fixture``, known by
-        its ``name=`` or else by the name it is bound to. A name the scope
-        imports or assigns is followed, into another module of the repository
-        or to a name of the scope's own (:meth:`_fixture_followed`)."""
-        bound = self.bound_in(scope)
-        found: list[tuple] = []
-        for nodes in bound.values():
-            for node in nodes:
-                decorator = _fixture_decorator(node) if isinstance(node, _FUNCTIONS) else None
-                if decorator is None:
-                    continue
-                known_as = _fixture_name(node, decorator)
-                if known_as is None:
-                    return [(UNKNOWN, name)]
-                if known_as != name:
-                    continue
-                if id(node) in seen:
-                    return [(UNKNOWN, name)]
-                # A bare return or yield, or none, gives None.
-                returned = [sub.value or ast.Constant(None) for sub in ast.walk(node)
-                            if isinstance(sub, (ast.Return, ast.Yield))] or [ast.Constant(None)]
-                found += [value for one in returned for value in self.values(one, {}, seen | {id(node)})]
-        if found:
-            return found
-        for node in bound.get(name, []):
-            if isinstance(node, (ast.alias, ast.Name)):
-                given = self._fixture_followed(scope, node, name, seen)
-                if given is not None:
-                    return given
-        return None
-
-    def _fixture_followed(self, scope: ast.AST, node: ast.AST, name: str, seen) -> list[tuple] | None:
-        """What the fixture ``name`` gives where ``scope`` binds the name by
-        ``node``, an import or a store, or None where that binds no fixture.
-        ``from <module> import <fixture>`` and ``<name> = <module>.<fixture>``
-        are followed into a module of the repository, and ``<name> = <other
-        name>`` to the other name; a module, a constant and a literal are no
-        fixture. Anything else - an import from outside the repository, a
-        call, a store the tool does not read - may be a fixture the tool does
-        not follow."""
-        if id(node) in seen:
-            return [(UNKNOWN, name)]
-        seen = seen | {id(node)}
-        statement = self.parent[node]
-        if isinstance(node, ast.alias):
-            if isinstance(statement, ast.Import):
-                return None
-            base = self.suite.base(statement, self.dotted)
-            if f"{base}.{node.name}" in self.suite.index:
-                return None
-            if base not in self.suite.index:
-                return [(UNKNOWN, name)]
-            there = self.suite.test_file(self.suite.index[base])
-            return there.fixture_in(there.tree, node.name, seen)
-        if not (isinstance(statement, (ast.Assign, ast.AnnAssign)) and statement.value is not None
-                and (getattr(statement, "target", None) is node or getattr(statement, "targets", None) == [node])):
-            return [(UNKNOWN, name)]
-        value = statement.value
-        if isinstance(value, ast.Name):
-            return self.fixture_in(scope, value.id, seen)
-        if isinstance(value, _LITERALS):
-            return None
-        if not isinstance(value, ast.Attribute):
-            return [(UNKNOWN, name)]
-        found: list[tuple] = []
-        for kind, held in self.values(value.value, {}, seen):
-            if kind != MODULE:
-                return [(UNKNOWN, name)]
-            there = self.suite.test_file(self.suite.index[held])
-            found += there.fixture_in(there.tree, value.attr, seen) or []
-        return found or None
-
 
 # ----------------------------------------------------------------- the sites ----
 
 
 def _rows(test_file: _TestFile, call: ast.Call, args: list[ast.AST]) -> list[dict[str, list[tuple]]] | None:
-    """Every way the loops and calls that fix the names in ``args`` can fix
-    them together, or None where there are more than :data:`MOST_ROWS`."""
+    """Every way the loops that fix the names in ``args`` can fix them
+    together, or None where there are more than :data:`MOST_ROWS`.
+
+    A loop fixes a name only where nothing else binds it: the loop the call
+    sits in, where its body does not bind the name again, or else the loops
+    whose targets are every binding of the name in its scope. A name bound
+    some other way as well - a parameter, an assignment, an import - is left
+    to :meth:`_TestFile.values`, which follows every binding: fixing it by
+    the loop would hide the others."""
     sources: dict[object, list[dict[str, list[tuple]]]] = {}
     for name in (node for arg in args for node in ast.walk(arg) if isinstance(node, ast.Name)):
+        binders = test_file.binders(name.id, call)
         loop = test_file.enclosing_loop(name.id, call)
-        if loop is not None:
-            # The loop the call sits in is the one binding that reaches it.
+        if loop is not None and not any(test_file.within(node, loop) and not test_file.within(node, loop.target)
+                                        for node in binders):
             sources.setdefault(loop, test_file.loop_rows(loop, frozenset()) or [{}])
             continue
-        found: dict[ast.AST, list[dict[str, list[tuple]]]] = {}
-        for node in test_file.binders(name.id, call):
-            if isinstance(node, ast.arg):
-                source, rows = test_file.parameter_rows(node, frozenset())
-                found.setdefault(source, rows)
-            elif isinstance(node, ast.Name) and (loop := test_file.loop_of(node)):
-                found.setdefault(loop, test_file.loop_rows(loop, frozenset()) or [{}])
-        if len(found) == 1:
-            sources.update(found)
-        elif found:
-            # A name bound by several loops or helpers is any one of them.
-            sources.setdefault(tuple(found), [row for rows in found.values() for row in rows])
+        loops = [test_file.loop_of(node) if isinstance(node, ast.Name) else None for node in binders]
+        if not loops or None in loops:
+            continue
+        found = dict.fromkeys(loops)
+        # A name bound by several loops is any one of them.
+        sources.setdefault(loops[0] if len(found) == 1 else tuple(found),
+                           [row for one in found for row in test_file.loop_rows(one, frozenset()) or [{}]])
     ways = list(itertools.islice(itertools.product(*sources.values()), MOST_ROWS + 1))
     if len(ways) > MOST_ROWS:
         return None
@@ -1302,19 +1030,15 @@ def _rows(test_file: _TestFile, call: ast.Call, args: list[ast.AST]) -> list[dic
 
 def _dotted(suite: _Suite, text: str) -> list[tuple[tuple, tuple]]:
     """Every (module, name) the string form ``setattr("tracker.filer.name",
-    value)`` replaces: the longest start of the string that names a module of
-    the repository (or a folder of it with no ``__init__.py``) is the module,
-    the parts after it but the last are its attributes, and the last part is
-    the name. A string that names no module of the repository is outside it."""
+    value)`` replaces. pytest reads the parts but the last as attributes from
+    the first (importing a part no attribute holds yet), so the tool reads
+    them the same way (:meth:`_Suite.dotted_attributes`): a package's
+    submodule something stores over is not followed. The last part is the
+    name. A string whose first part names no module of the repository is
+    outside it."""
     parts = text.split(".")
-    for cut in range(len(parts) - 1, 0, -1):
-        start = suite.module(".".join(parts[:cut]))
-        if start[0] != OUTSIDE:
-            values = [start]
-            for at in range(cut, len(parts) - 1):
-                values = [value for one in values for value in suite.attribute(one, parts[at], ".".join(parts[:at + 1]))]
-            return [(value, (TEXT, parts[-1])) for value in values]
-    return [(suite.module(text), (TEXT, parts[-1]))]
+    holders = suite.dotted_attributes(".".join(parts[:-1])) if len(parts) > 1 else [suite.module(text)]
+    return [(value, (TEXT, parts[-1])) for value in holders]
 
 
 def _string_form(call: ast.Call) -> bool:
