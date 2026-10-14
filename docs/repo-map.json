@@ -16,8 +16,8 @@
   ],
   "counts": {
     "nodes": 318,
-    "edges": 1390,
-    "reused": 0
+    "edges": 1391,
+    "reused": 262
   },
   "node_types": [
     "artifact",
@@ -93,9 +93,9 @@
       "id": ".github/workflows/gate.yml",
       "type": "workflow",
       "layer": "ci",
-      "sha256": "31810d0153eca64d",
-      "lines": 100,
-      "role": "The gate's steps, written once: the test suite, the linter, `repo_map.py check`, `vocab_report.py check` and `node --check` on the three Electron files, on whichever runner and interpreter the caller names. Called by both of ci.yml's jobs.",
+      "sha256": "04f91f7cab1d99e0",
+      "lines": 108,
+      "role": "The gate's steps, written once: the test suite, the linter, `repo_map.py check`, `vocab_report.py check` and `node --check` on every script the app runs (a bash loop over app/*.js and app/renderer/*.js, so vendor/ is left out and a script added beside them is parsed without being named; SPEC-architecture R3.5), on whichever runner and interpreter the caller names. Called by both of ci.yml's jobs.",
       "notes": "Decision 122. `on: workflow_call` with two required string inputs, os and python-version; the job carries timeout-minutes: 60, the ceiling that stops a hung job (decision 207: the Windows suite measured 26 to 28 minutes on main on 2026-09-26, 159's tests took a healthy run past the old 30 and near 45, and a cut-off run is billed in full; Jason set 60). It exists because a job's own `if:` cannot see the matrix, which makes ci.yml two jobs rather than one conditional matrix - and the steps written out in each of them would be two copies of the gate, the second one to drift. Its job is named for the runner and the interpreter it was given, so the check names read as they did before the split. Every step after the suite reports whatever the suite did, and keeps its point: a stale map and a failing test are separate problems, and seeing both in one run beats finding the second after fixing the first. Decision 137 (B3): every action is pinned by a full commit SHA with its tag beside it (tests/test_build.py holds every workflow to it). Decision 191: it installs requirements.lock then requirements-nodeps.lock with --require-hashes, using the runner's own pip (no --upgrade pip), caches on the lock files, and its checkout keeps no credentials (F-12)."
     },
     {
@@ -4645,7 +4645,7 @@
       "id": "docs/repo-map.curated.json",
       "type": "file",
       "layer": "docs",
-      "sha256": "c554e5d2e877319e",
+      "sha256": "4274d1d28ded39b0",
       "lines": 1373,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
@@ -7001,8 +7001,8 @@
       "id": "tests/test_build.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "8e54d4c9a27441c7",
-      "lines": 1309,
+      "sha256": "793b40f6d6b88b02",
+      "lines": 1349,
       "exports": [
         "ARTWORK_APP",
         "BUILD_ENVIRONMENT",
@@ -7036,6 +7036,7 @@
         "PYPDF_ADVISORIES_FIXED_IN",
         "REPO",
         "RUNTIME_LOCK",
+        "SCRIPT_GLOBS",
         "SETUP_SCRIPT",
         "TREE_STEP",
         "batch_files",
@@ -7048,6 +7049,7 @@
         "locked",
         "office_python",
         "read",
+        "shipped_scripts",
         "test_a_package_is_built_only_from_a_version_tag",
         "test_a_scratch_root_is_one_engagement_a_whole_dry_pass_can_walk",
         "test_a_smoke_pass_that_logs_takes_its_root_from_a_settings_folder",
@@ -7062,6 +7064,7 @@
         "test_every_mac_script_opens_in_its_own_folder_and_finds_tools_by_command_v",
         "test_every_mac_script_runs_under_the_bash_macos_ships_and_parses",
         "test_every_run_of_the_tracker_in_the_build_has_a_data_home_of_its_own",
+        "test_every_script_the_app_runs_parses",
         "test_every_spelling_of_an_install_is_recognised",
         "test_mac_setup_and_build_ask_for_the_python_floor_pyproject_declares",
         "test_mac_setup_installs_by_hash_then_stamps_and_runs_the_after_install_step_last",
@@ -7073,6 +7076,7 @@
         "test_the_build_workflow_runs_the_repositorys_own_build_script",
         "test_the_dev_launch_icon_is_a_byte_identical_copy_of_the_artworks",
         "test_the_frozen_api_is_built_for_apple_silicon_only_and_unsigned_but_ad_hoc",
+        "test_the_gate_parses_every_script_the_app_runs",
         "test_the_graphics_card_pack_is_pinned_apart_and_read_by_its_own_build_step",
         "test_the_gui_opencv_is_never_pinned_and_the_locks_cover_every_reader_pin",
         "test_the_icns_packer_refuses_a_missing_wrong_sized_or_non_png_render",
@@ -7107,6 +7111,7 @@
         "BUILD_WORKFLOW": "'build.yml'",
         "GATE_WORKFLOW": "'gate.yml'",
         "BUILD_SCRIPT": "'Build App.bat'",
+        "SCRIPT_GLOBS": "('app/*.js', 'app/renderer/*.js')",
         "BUILD_LOCKS": "('requirements.lock', 'requirements-build.lock', 'requirements-nodeps.lock')",
         "RUNTIME_LOCK": "'requirements.lock'",
         "FROZEN_HEADING": "'Python packages frozen'",
@@ -7128,7 +7133,7 @@
         "ARTWORK_APP": "'pilot/brand/tax-document-console/app'",
         "PATH_BLOCK": "('clean_path=\"\"', 'PATH=$clean_path')"
       },
-      "role": "Guards what only the build workflow could otherwise discover ten minutes into a release: that it runs the batch file the repository owns rather than a copy of the build, that the switch it sets is the one that batch file reads, that the flags it fires at the frozen executable are flags tracker/runner.py declares, that it passes the two environment variables tracker/settings.py names, and that both workflows quote the one interpreter pyproject.toml writes down.",
+      "role": "Guards what only the build workflow could otherwise discover ten minutes into a release: that it runs the batch file the repository owns rather than a copy of the build, that the switch it sets is the one that batch file reads, that the flags it fires at the frozen executable are flags tracker/runner.py declares, that it passes the two environment variables tracker/settings.py names, and that both workflows quote the one interpreter pyproject.toml writes down. It also parses every script the app runs with node --check (app/*.js and app/renderer/*.js, the globs the gate's last step loops over; skipped, saying so, where node is absent) and holds that step to those globs (SPEC-architecture R3.5).",
       "notes": "Decision 78. It also asserts the fixture: a scratch root is one engagement discovery finds and a whole dry pass walks, because a smoke check over an empty folder proves only that discovery does not crash. Nothing here can prove the package runs - only the Windows runner can. Decision 137 (M5), on decision 191's locks: requirements.lock, requirements-build.lock and requirements-nodeps.lock pin the whole tree the portable build freezes, by hash; the suite holds requirements*.txt to them, \"Build App.bat\" to installing them with --require-hashes, and every BUILD-INFO.txt under build-portable/dist to freezing nothing else. Decision 191 also: every pip install in every batch file and workflow is --require-hashes from a .lock and none upgrades pip; the build runs from a v* tag only, with a job guard; the checksum step follows the smoke checks and the upload carries the zip and its .sha256; the launcher installs nothing and speaks the lock tool's sentence; every batch file sets NoDefaultCurrentDirectoryInExePath first and calls Windows' own tools by path (E-10); every checkout keeps no credentials (F-12); the audit workflow is scheduled, Linux-only and never on a push."
     },
     {
@@ -13411,6 +13416,12 @@
     {
       "from": "tests/test_build.py",
       "to": "tests/conftest.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_build.py",
+      "to": "tests/node_harness.py",
       "type": "imports",
       "source": "derived"
     },

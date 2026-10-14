@@ -18,6 +18,7 @@ import json
 import re
 from pathlib import Path
 
+from tests.node_harness import NODE, RENDERER_SCRIPTS
 from tests.samples import DEMO_ITEMS, SCRATCH_HOUSEHOLD, SCRATCH_RETURN, SCRATCH_SCAN, build_scratch_root
 from tracker.registry import discover_engagements
 from tracker.runner import REMINDER_MODES, RUNNER_MODE_FLAG, main
@@ -27,6 +28,10 @@ REPO = Path(__file__).resolve().parent.parent
 BUILD_WORKFLOW = "build.yml"
 GATE_WORKFLOW = "gate.yml"
 BUILD_SCRIPT = "Build App.bat"
+#: The scripts the app runs, as the gate's last step finds them: the shell's
+#: own (main.js, preload.js) and the page's, never vendor/, which is someone
+#: else's code (SPEC-architecture R3.5, E-11).
+SCRIPT_GLOBS = ("app/*.js", "app/renderer/*.js")
 
 
 def read(rel: str) -> str:
@@ -320,6 +325,41 @@ def test_ci_never_fires_per_commit():
     # Without one, a hung job costs until GitHub's six-hour ceiling.
     assert "timeout-minutes:" in gate
     assert "timeout-minutes:" in workflow()
+
+
+def shipped_scripts() -> list[str]:
+    return sorted(path.relative_to(REPO).as_posix() for pattern in SCRIPT_GLOBS for path in REPO.glob(pattern))
+
+
+def test_the_gate_parses_every_script_the_app_runs():
+    """E-11: the gate's last step parsed three of the ten scripts by name. It
+    loops over the globs instead, so a script added beside them is parsed
+    without anyone naming it, and every script the page loads lies under
+    them (one in a folder of its own would escape the loop). It runs in bash,
+    so the one loop is the step on Windows' runner as well."""
+    step = read(f".github/workflows/{GATE_WORKFLOW}").split("- name: Check the Electron shell parses", 1)[1]
+    assert "shell: bash" in step and 'node --check "$f"' in step
+    assert f"for f in {' '.join(SCRIPT_GLOBS)}; do" in step
+    assert "node --check app/" not in step
+    loaded = {"app/main.js", "app/preload.js", *(f"app/renderer/{name}" for name in RENDERER_SCRIPTS)}
+    assert loaded <= set(shipped_scripts()), sorted(loaded - set(shipped_scripts()))
+
+
+def test_every_script_the_app_runs_parses():
+    """R3.5: ``node --check`` on each script the gate's last step parses,
+    every one tried, so two broken scripts are both named."""
+    import subprocess
+
+    import pytest
+
+    if NODE is None:
+        pytest.skip("node is not installed: the gate's last step parses the scripts where it runs")
+    failed = {}
+    for rel in shipped_scripts():
+        done = subprocess.run([NODE, "--check", rel], cwd=REPO, capture_output=True, text=True)
+        if done.returncode:
+            failed[rel] = done.stderr.strip()
+    assert failed == {}
 
 
 def test_a_scratch_root_is_one_engagement_a_whole_dry_pass_can_walk(tmp_path, capsys):

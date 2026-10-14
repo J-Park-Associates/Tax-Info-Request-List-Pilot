@@ -91,10 +91,18 @@ jobs:
         if: always()
         run: python tools/vocab_report.py check
 
-      # The Electron shell has no test suite of its own; at least it must parse.
+      # The Electron shell has no test suite of its own; at least every script
+      # the app runs must parse: the shell's own and every one the page loads,
+      # found by the two globs, so a script added beside them is parsed without
+      # anyone naming it (SPEC-architecture R3.5); vendor/ is someone else's
+      # code. Every one is tried, so two broken scripts are both named. bash,
+      # so the one loop runs on the Windows runner too.
       - name: Check the Electron shell parses
         if: always()
+        shell: bash
         run: |
-          node --check app/main.js
-          node --check app/preload.js
-          node --check app/renderer/app.js
+          failed=0
+          for f in app/*.js app/renderer/*.js; do
+            node --check "$f" || failed=1
+          done
+          exit $failed
