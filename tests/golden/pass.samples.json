@@ -1,0 +1,118 @@
+{
+  "household_record": [
+    "household_changed"
+  ],
+  "index": [
+    {
+      "also_filed": "",
+      "code": "matched",
+      "decision": "Filed",
+      "destination": "Prepared/A02 - 1099-INT-DIV - TY2025.csv",
+      "original": "1099-DIV Vanguard 2025.csv"
+    },
+    {
+      "also_filed": "",
+      "code": "matched",
+      "decision": "Filed",
+      "destination": "Prepared/A02 - 1099-INT-DIV - TY2025.pdf",
+      "original": "1099-INT First National.pdf"
+    },
+    {
+      "also_filed": "",
+      "code": "matched",
+      "decision": "Filed",
+      "destination": "Prepared/B01 - Prior-Year Returns - TY2024.pdf",
+      "original": "2024 Form 1040 Tax Return.pdf"
+    },
+    {
+      "also_filed": "",
+      "code": "google-stub",
+      "decision": "Needs Review",
+      "destination": "Prepared/00 - Needs Review/Donation Receipts 2025.gsheet",
+      "original": "Donation Receipts 2025.gsheet"
+    },
+    {
+      "also_filed": "",
+      "code": "matched",
+      "decision": "Filed",
+      "destination": "Prepared/D01 - Charity Receipts - TY2025.xlsx",
+      "original": "Donation Receipts 2025.xlsx"
+    },
+    {
+      "also_filed": "",
+      "code": "matched",
+      "decision": "Filed",
+      "destination": "Prepared/C01 - 1098 Mortgage - TY2025.pdf",
+      "original": "Form 1098 Mortgage Interest.pdf"
+    },
+    {
+      "also_filed": "",
+      "code": "no-request-accepts",
+      "decision": "Needs Review",
+      "destination": "Prepared/00 - Needs Review/Mortgage Notes.docx",
+      "original": "Mortgage Notes.docx"
+    },
+    {
+      "also_filed": "",
+      "code": "no-request-accepts",
+      "decision": "Needs Review",
+      "destination": "Prepared/00 - Needs Review/vacation photo.bmp",
+      "original": "vacation photo.bmp"
+    },
+    {
+      "also_filed": "",
+      "code": "wrong-period",
+      "decision": "Needs Review",
+      "destination": "Prepared/00 - Needs Review/W-2 Jane Smith 2024 - old.pdf",
+      "original": "W-2 Jane Smith 2024 - old.pdf"
+    },
+    {
+      "also_filed": "",
+      "code": "matched",
+      "decision": "Filed",
+      "destination": "Prepared/A01 - W-2 - TY2025.pdf",
+      "original": "W-2 Jane Smith 2025.pdf"
+    },
+    {
+      "also_filed": "",
+      "code": "matched",
+      "decision": "Filed",
+      "destination": "Prepared/A01 - W-2 - TY2025 (2).pdf",
+      "original": "W-2 John Smith 2025 - Copy.pdf"
+    },
+    {
+      "also_filed": "",
+      "code": "",
+      "decision": "Duplicate",
+      "destination": "",
+      "original": "W-2 John Smith 2025.pdf"
+    }
+  ],
+  "return_record": [
+    "rules_changed",
+    "moving",
+    "moving",
+    "moving",
+    "moving",
+    "moving",
+    "moving",
+    "moving",
+    "moving",
+    "moving",
+    "moving",
+    "moving",
+    "filed",
+    "filed",
+    "filed",
+    "parked",
+    "filed",
+    "filed",
+    "parked",
+    "parked",
+    "parked",
+    "filed",
+    "filed",
+    "duplicate",
+    "scanned"
+  ]
+}

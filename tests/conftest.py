@@ -1143,6 +1143,16 @@ def _short_temp_root(config) -> Path | None:
     return Path(tempfile.mkdtemp(prefix="ts-", dir=SHORT_TEMP_PARENT)).resolve()
 
 
+#: The option that makes ``tests/test_golden.py`` write its recordings
+#: rather than compare against them (SPEC-architecture J4, R4.3).
+RECORD_GOLDEN = "--record-golden"
+
+
+def pytest_addoption(parser):
+    parser.addoption(RECORD_GOLDEN, action="store_true", default=False,
+                     help="rewrite tests/golden/ from this run instead of comparing against it")
+
+
 @pytest.hookimpl(tryfirst=True)
 def pytest_configure(config):
     worker = getattr(config, "workerinput", None)

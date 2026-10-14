@@ -174,6 +174,54 @@
       "role": "Owns tools/patch_sites.py: its marks and the target forms it follows, each on a made-up repository of a few lines in a temporary folder, the command line's exit codes, and the check passing on the real suite with every filer site a plain search for setattr finds in the report.",
       "notes": "SPEC-architecture J4 (R4.2). The made-up cases pin the readings that differ by interpreter (a read in a module-level comprehension, a nested function's parameter) so the marks are the same on 3.11 and 3.14, the joint rows of a loop or helper (two values bound together are one site, not four), and that a target the tool cannot work out fails the check rather than dropping out. The real-suite cases hold the tool to the suite as it stands: no unread site and none it cannot place, the conftest and tests/children.py seams among the sites, and the filer report a superset of a regex search, so the tool is never quieter than grep. When J4 was built no site in the suite was unread and none needed fixing."
     },
+    "tests/test_golden.py": {
+      "role": "Holds the program to tests/golden/: the key tree of api._vocab(), the key tree of the reply to each of nine commands on a scratch clients root with the sample pile (create, list, state, firm, firm-last, reminder, edit-household, edit, assign), and one Sort & Scan over that pile - each index row's decision, reason code and destination relative to the return, and the kinds of the return's and the household's record events in order. `pytest tests/test_golden.py --record-golden` (the option tests/conftest.py adds) rewrites them; without it the test compares and names every path that changed.",
+      "notes": "SPEC-architecture J4 (R4.3; E-2, E-7). The net a move is compared against (the migration guide's step 8): a reply that gains or loses a key no claim reads, or a document that files under another request, passes every other test. A key tree is keys and type names, never a value - no sentence, name, path, date or count; a table keyed by data (a reply's paths, keyed by kind and path) is one <map> entry, and the words-only key rule lets the status labels through as keys. Only tests/samples.py's pile and a short temporary root. The calendar is kept out by what is recorded rather than by a frozen clock - a stand-in for the date in every module that reads it would be more stand-ins a move must keep pointed right, and a frozen clock beside real file times turns a lock stale: the return's year is the pile's own (YEAR), Run now drafts no letter and the return has no Due Date. What still moves is the roll offered from 1 January of YEAR + 2 (decision 196), when the pile is re-dated anyway. The API has no household command; edit-household stands for it. Running it runs the sorting engine once, in this process."
+    },
+    "tests/golden/vocab.keys.json": {
+      "role": "The key tree of api._vocab(), the words the app draws: keys and value types, never a word of it.",
+      "notes": "SPEC-architecture J4 (R4.3). Written by `pytest tests/test_golden.py --record-golden` and compared by that file without it; never edited by hand. A change to it is a change in behaviour, read in review."
+    },
+    "tests/golden/replies.create.keys.json": {
+      "role": "The key tree of the create reply for a 1040 with the core rows and the pile's two people.",
+      "notes": "SPEC-architecture J4 (R4.3). Written by `pytest tests/test_golden.py --record-golden` and compared by that file without it; never edited by hand. A change to it is a change in behaviour, read in review."
+    },
+    "tests/golden/replies.list.keys.json": {
+      "role": "The key tree of the list reply on the scratch root after Sort & Scan, the vocabulary it carries included.",
+      "notes": "SPEC-architecture J4 (R4.3). Written by `pytest tests/test_golden.py --record-golden` and compared by that file without it; never edited by hand. A change to it is a change in behaviour, read in review."
+    },
+    "tests/golden/replies.state.keys.json": {
+      "role": "The key tree of the state reply for the scratch return after Sort & Scan; it holds the household's card, which is what the SPEC's household names.",
+      "notes": "SPEC-architecture J4 (R4.3). Written by `pytest tests/test_golden.py --record-golden` and compared by that file without it; never edited by hand. A change to it is a change in behaviour, read in review."
+    },
+    "tests/golden/replies.firm.keys.json": {
+      "role": "The key tree of the firm reply (the Overview) on the scratch root after Sort & Scan.",
+      "notes": "SPEC-architecture J4 (R4.3). Written by `pytest tests/test_golden.py --record-golden` and compared by that file without it; never edited by hand. A change to it is a change in behaviour, read in review."
+    },
+    "tests/golden/replies.firm-last.keys.json": {
+      "role": "The key tree of the firm-last reply on the scratch root, where the last counts are not shown (last is null).",
+      "notes": "SPEC-architecture J4 (R4.3). Written by `pytest tests/test_golden.py --record-golden` and compared by that file without it; never edited by hand. A change to it is a change in behaviour, read in review."
+    },
+    "tests/golden/replies.reminder.keys.json": {
+      "role": "The key tree of the reminder reply (the letter's card) for the scratch return, at its own stage.",
+      "notes": "SPEC-architecture J4 (R4.3). Written by `pytest tests/test_golden.py --record-golden` and compared by that file without it; never edited by hand. A change to it is a change in behaviour, read in review."
+    },
+    "tests/golden/replies.edit-household.keys.json": {
+      "role": "The key tree of the edit-household reply, which stands for the SPEC's household (the API has no household command).",
+      "notes": "SPEC-architecture J4 (R4.3). Written by `pytest tests/test_golden.py --record-golden` and compared by that file without it; never edited by hand. A change to it is a change in behaviour, read in review."
+    },
+    "tests/golden/replies.edit.keys.json": {
+      "role": "The key tree of the edit reply after one row of the request list is marked Not Applicable.",
+      "notes": "SPEC-architecture J4 (R4.3). Written by `pytest tests/test_golden.py --record-golden` and compared by that file without it; never edited by hand. A change to it is a change in behaviour, read in review."
+    },
+    "tests/golden/replies.assign.keys.json": {
+      "role": "The key tree of the assign reply after the parked Word file is filed under the charity row with a learned keyword.",
+      "notes": "SPEC-architecture J4 (R4.3). Written by `pytest tests/test_golden.py --record-golden` and compared by that file without it; never edited by hand. A change to it is a change in behaviour, read in review."
+    },
+    "tests/golden/pass.samples.json": {
+      "role": "One Sort & Scan over tests/samples.py's pile: each index row's original name, decision word, reason code and destination relative to the return, in the index's order, and the event kinds of the return's record and its household's, in order. No clock, no sentence, no absolute path.",
+      "notes": "SPEC-architecture J4 (R4.3). Written by `pytest tests/test_golden.py --record-golden` and compared by that file without it; never edited by hand. A change to it is a change in behaviour, read in review."
+    },
     "tools/learned_keywords.py": {
       "role": "Lists what the staff taught the router: every keyword a person taught one engagement's request that no catalog row with the same identifier and document carries, across every engagement under the clients root, grouped by request row with the number of engagements that typed it.",
       "notes": "Decision 79. A keyword a filing teaches lives in that one engagement's record, so fifty engagements hold fifty private vocabularies and the catalog is the only one tests/test_catalog.py and tests/test_irs_forms.py defend; this is the season's list of candidates to promote. Read-only in the strong sense: no lock is taken, nothing in an engagement folder is written or moved, and a report path inside the repository is refused - an engagement folder name is a client's name and the report names them on request. The engagement's details have recorded the catalog form since decision 86, but this tool does not read it: a row is compared against every catalog holding it and the report says which matched; a row no catalog holds is a custom request, listed apart with all its keywords. An engagement whose record could not be read is a problem line, never a silent skip. It borrows shipped_catalogs() and corpus_documents() from tools/vocab_report.py, so the catalogs it compares against - built through manifest.validated() over template_items() since decision 104 - and the corpus a candidate can be run over are the coverage report's. manifest_rows() reads through manifest.load_manifest(), which is what puts a taught keyword in front of any reader at all. Decision 185: the default output carries no root, folder or problem text; --engagements names them, and only into a file --out names outside the repository, never onto a console (Jason's J1 (b))."
@@ -1375,6 +1423,116 @@
     {
       "from": "pilot/wintest/make_samples.py",
       "to": "artifact:the check kits' sandbox",
+      "type": "writes"
+    },
+    {
+      "from": "tests/test_golden.py",
+      "to": "tests/golden/vocab.keys.json",
+      "type": "reads"
+    },
+    {
+      "from": "tests/test_golden.py",
+      "to": "tests/golden/vocab.keys.json",
+      "type": "writes"
+    },
+    {
+      "from": "tests/test_golden.py",
+      "to": "tests/golden/replies.create.keys.json",
+      "type": "reads"
+    },
+    {
+      "from": "tests/test_golden.py",
+      "to": "tests/golden/replies.create.keys.json",
+      "type": "writes"
+    },
+    {
+      "from": "tests/test_golden.py",
+      "to": "tests/golden/replies.list.keys.json",
+      "type": "reads"
+    },
+    {
+      "from": "tests/test_golden.py",
+      "to": "tests/golden/replies.list.keys.json",
+      "type": "writes"
+    },
+    {
+      "from": "tests/test_golden.py",
+      "to": "tests/golden/replies.state.keys.json",
+      "type": "reads"
+    },
+    {
+      "from": "tests/test_golden.py",
+      "to": "tests/golden/replies.state.keys.json",
+      "type": "writes"
+    },
+    {
+      "from": "tests/test_golden.py",
+      "to": "tests/golden/replies.firm.keys.json",
+      "type": "reads"
+    },
+    {
+      "from": "tests/test_golden.py",
+      "to": "tests/golden/replies.firm.keys.json",
+      "type": "writes"
+    },
+    {
+      "from": "tests/test_golden.py",
+      "to": "tests/golden/replies.firm-last.keys.json",
+      "type": "reads"
+    },
+    {
+      "from": "tests/test_golden.py",
+      "to": "tests/golden/replies.firm-last.keys.json",
+      "type": "writes"
+    },
+    {
+      "from": "tests/test_golden.py",
+      "to": "tests/golden/replies.reminder.keys.json",
+      "type": "reads"
+    },
+    {
+      "from": "tests/test_golden.py",
+      "to": "tests/golden/replies.reminder.keys.json",
+      "type": "writes"
+    },
+    {
+      "from": "tests/test_golden.py",
+      "to": "tests/golden/replies.edit-household.keys.json",
+      "type": "reads"
+    },
+    {
+      "from": "tests/test_golden.py",
+      "to": "tests/golden/replies.edit-household.keys.json",
+      "type": "writes"
+    },
+    {
+      "from": "tests/test_golden.py",
+      "to": "tests/golden/replies.edit.keys.json",
+      "type": "reads"
+    },
+    {
+      "from": "tests/test_golden.py",
+      "to": "tests/golden/replies.edit.keys.json",
+      "type": "writes"
+    },
+    {
+      "from": "tests/test_golden.py",
+      "to": "tests/golden/replies.assign.keys.json",
+      "type": "reads"
+    },
+    {
+      "from": "tests/test_golden.py",
+      "to": "tests/golden/replies.assign.keys.json",
+      "type": "writes"
+    },
+    {
+      "from": "tests/test_golden.py",
+      "to": "tests/golden/pass.samples.json",
+      "type": "reads"
+    },
+    {
+      "from": "tests/test_golden.py",
+      "to": "tests/golden/pass.samples.json",
       "type": "writes"
     }
   ]

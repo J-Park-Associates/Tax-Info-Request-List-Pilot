@@ -1,0 +1,359 @@
+{
+  "assigned": {
+    "filed_as": "str",
+    "identifier": "str",
+    "keyword": "str",
+    "keyword_note": "str",
+    "left_in_review": "str",
+    "moved_review_copy": "bool",
+    "original_name": "str",
+    "overrode_shortlist": "str",
+    "prepared_location": "str",
+    "scan_note": "str",
+    "spelling": "str",
+    "spelling_note": "str"
+  },
+  "state": {
+    "carries_code": [],
+    "engagement": {
+      "active": "bool",
+      "client": "str",
+      "due": "str",
+      "filing_deadline": "str",
+      "firm": "str",
+      "form": "str",
+      "household": "str",
+      "link": "str",
+      "name": "str",
+      "people": [
+        {
+          "kind": "str",
+          "name": "str",
+          "spellings": [
+            "str"
+          ]
+        }
+      ],
+      "reminders": "bool",
+      "return_name": "str",
+      "rolled_from": "str",
+      "sender": "str",
+      "tax_year": "int"
+    },
+    "household": {
+      "checklist": {
+        "heading": "str",
+        "lines": [
+          "str"
+        ],
+        "note": "str"
+      },
+      "contact": "str",
+      "fed_by": [],
+      "feeds": [],
+      "link": "str",
+      "members": [
+        "str"
+      ],
+      "name": "str",
+      "open_years": [
+        "int"
+      ],
+      "path": "str",
+      "pause": {
+        "engagement": "str",
+        "scope": "str",
+        "sentence": "str",
+        "seq": "NoneType"
+      },
+      "queue": "int",
+      "related": [],
+      "returns": [
+        {
+          "active": "bool",
+          "form": "str",
+          "label": "str",
+          "path": "str",
+          "people": [
+            "str"
+          ],
+          "reminder": {
+            "approved": "NoneType",
+            "held": "int",
+            "lapsed": "bool",
+            "last": "NoneType",
+            "unsorted": "int"
+          },
+          "return_name": "str",
+          "rollable": "bool",
+          "superseded_by": "str",
+          "year": "int"
+        }
+      ],
+      "roll_year": "NoneType",
+      "shared_on": "NoneType"
+    },
+    "index": [
+      {
+        "also_filed": "str",
+        "answered": [],
+        "answers": "str",
+        "bucket": "str",
+        "candidates": [
+          "str"
+        ],
+        "code": "str",
+        "container": "str",
+        "decision": "str",
+        "digest": "str",
+        "evidence": {
+          "A01": [
+            {
+              "page": "int",
+              "rule": "str",
+              "term": "str",
+              "where": "str"
+            }
+          ],
+          "A02": [
+            {
+              "page": "int",
+              "rule": "str",
+              "term": "str",
+              "where": "str"
+            }
+          ],
+          "B01": [
+            {
+              "page": "int",
+              "rule": "str",
+              "term": "str",
+              "where": "str"
+            }
+          ],
+          "C01": [
+            {
+              "page": "int",
+              "rule": "str",
+              "term": "str",
+              "where": "str"
+            }
+          ],
+          "D01": [
+            {
+              "page": "int",
+              "rule": "str",
+              "term": "str",
+              "where": "str"
+            }
+          ]
+        },
+        "extension": "str",
+        "filed_as": "str",
+        "filed_names": [
+          "str"
+        ],
+        "group": "str",
+        "handle": "str",
+        "identifier": "str",
+        "open_key": "str",
+        "open_keys": [
+          "str"
+        ],
+        "original_name": "str",
+        "pbc_location": "str",
+        "prepared_location": "str",
+        "reason": "str",
+        "received": "str",
+        "seq": "int",
+        "shown_key": "str",
+        "size_kb": "float",
+        "subfolder": "str",
+        "waits_for": "str"
+      }
+    ],
+    "items": [
+      {
+        "allowed_extensions": [
+          "str"
+        ],
+        "any_keywords": [
+          "str"
+        ],
+        "asked": "bool",
+        "catalog_row": "bool",
+        "date_pattern": "str",
+        "date_pattern_derived": "bool",
+        "document": "str",
+        "expected_count": "int",
+        "file_count": "int",
+        "group": "str",
+        "has_document": "bool",
+        "identifier": "str",
+        "manual_override": "str",
+        "min_size_kb": "int",
+        "named": "bool",
+        "not_asked_idle": "bool",
+        "note_codes": "str",
+        "override_reason": "str",
+        "period": "str",
+        "received_date": "NoneType|str",
+        "required_keywords": [
+          "str"
+        ],
+        "row": "int",
+        "short_name": "str",
+        "short_title": "str",
+        "side": "NoneType|str",
+        "side_sentence": "str",
+        "status": "str",
+        "status_key": "str",
+        "validation_notes": "str",
+        "year": "int"
+      }
+    ],
+    "learned": {
+      "D01": [
+        "str"
+      ]
+    },
+    "list_head": "str",
+    "lock": "NoneType",
+    "moved": [],
+    "paths": {
+      "<map>": "str"
+    },
+    "reminder": {
+      "held": [],
+      "last_drafted": "NoneType",
+      "unsorted": "int"
+    },
+    "reminder_card": {
+      "reminder": {
+        "approved": "NoneType",
+        "asked": [
+          "str"
+        ],
+        "editable": "bool",
+        "file": {
+          "edited": "bool",
+          "exists": "bool",
+          "name": "str",
+          "path": "str"
+        },
+        "fingerprint": "str",
+        "held": [],
+        "held_too_long": "str",
+        "html": "str",
+        "lapsed": "bool",
+        "last": "NoneType",
+        "letter": {},
+        "link_dropped": "str",
+        "stage": "int",
+        "stages": [
+          {
+            "colour": "str",
+            "emphasis": {
+              "consequences_bold": "bool",
+              "dates_bold": "bool",
+              "deadline_colour": "bool",
+              "list_bold": "bool",
+              "list_colour": "bool",
+              "subject_bold": "bool",
+              "subject_colour": "bool",
+              "target_colour": "bool"
+            },
+            "name": "str",
+            "number": "int",
+            "short": "str"
+          }
+        ],
+        "subject": "str",
+        "text": "str",
+        "unsorted": "int",
+        "unsorted_files": [
+          "str"
+        ]
+      }
+    },
+    "review": [
+      {
+        "bucket": "str",
+        "extension": "str",
+        "genre": "str",
+        "group": "str",
+        "handle": "str",
+        "issuer": "NoneType",
+        "open_key": "str",
+        "original_name": "str",
+        "pbc_location": "str",
+        "seq": "int",
+        "set_aside": [
+          {
+            "identifier": "str",
+            "label": "str"
+          }
+        ],
+        "shortlist": [],
+        "shown_key": "str",
+        "waits_for": "NoneType",
+        "waits_for_refused": "str"
+      }
+    ],
+    "room": {
+      "floor": "int",
+      "least": "int",
+      "limit": "int",
+      "need": "int",
+      "parks": "int",
+      "short": "int"
+    },
+    "room_note": "str",
+    "rules": [
+      {
+        "allowed_extensions": [
+          "str"
+        ],
+        "any_keywords": [
+          "str"
+        ],
+        "asked": "bool",
+        "date_pattern": "str",
+        "date_pattern_derived": "bool",
+        "document": "str",
+        "expected_count": "int",
+        "identifier": "str",
+        "manual_override": "str",
+        "min_size_kb": "int",
+        "named": "bool",
+        "override_reason": "str",
+        "period": "str",
+        "required_keywords": [
+          "str"
+        ],
+        "row": "int",
+        "short_title": "str"
+      }
+    ],
+    "summary": {
+      "also_received": "int",
+      "counts": {
+        "Partial": "int",
+        "Received": "int"
+      },
+      "line": "str",
+      "not_applicable": "int",
+      "not_asked": "int",
+      "outstanding": "int",
+      "received": "int",
+      "total": "int",
+      "unscanned": "int"
+    },
+    "view": {
+      "path": "str",
+      "state": "str"
+    },
+    "warnings": []
+  },
+  "warnings": []
+}

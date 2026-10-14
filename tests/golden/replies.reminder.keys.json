@@ -1,0 +1,49 @@
+{
+  "reminder": {
+    "approved": "NoneType",
+    "asked": [
+      "str"
+    ],
+    "editable": "bool",
+    "file": {
+      "edited": "bool",
+      "exists": "bool",
+      "name": "str",
+      "path": "str"
+    },
+    "fingerprint": "str",
+    "held": [],
+    "held_too_long": "str",
+    "html": "str",
+    "lapsed": "bool",
+    "last": "NoneType",
+    "letter": {},
+    "link_dropped": "str",
+    "stage": "int",
+    "stages": [
+      {
+        "colour": "str",
+        "emphasis": {
+          "consequences_bold": "bool",
+          "dates_bold": "bool",
+          "deadline_colour": "bool",
+          "list_bold": "bool",
+          "list_colour": "bool",
+          "subject_bold": "bool",
+          "subject_colour": "bool",
+          "target_colour": "bool"
+        },
+        "name": "str",
+        "number": "int",
+        "short": "str"
+      }
+    ],
+    "subject": "str",
+    "text": "str",
+    "unsorted": "int",
+    "unsorted_files": [
+      "str"
+    ]
+  },
+  "warnings": []
+}

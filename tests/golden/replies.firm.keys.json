@@ -1,0 +1,54 @@
+{
+  "files": [
+    {
+      "code": "str",
+      "handle": "str",
+      "name": "str",
+      "open_key": "str",
+      "received": "str",
+      "return": "str",
+      "suggestion": "str",
+      "suggestion_short": "str",
+      "year": "int"
+    }
+  ],
+  "next_sort": "str",
+  "paths": {
+    "<map>": "str"
+  },
+  "returns": [
+    {
+      "counts": {
+        "needs_you": "int",
+        "received": "int",
+        "set_aside": "int",
+        "waiting": "int"
+      },
+      "draft": {
+        "drafted": "NoneType",
+        "held": "int",
+        "ready": "bool",
+        "stage": "int"
+      },
+      "due": "str",
+      "files": "int",
+      "form": "str",
+      "household": "str",
+      "label": "str",
+      "links": [],
+      "oldest": "str",
+      "path": "str",
+      "paused": "bool",
+      "problem": "str",
+      "year": "int"
+    }
+  ],
+  "totals": {
+    "complete": "int",
+    "drafts": "int",
+    "files": "int",
+    "need": "int",
+    "waiting": "int"
+  },
+  "warnings": []
+}

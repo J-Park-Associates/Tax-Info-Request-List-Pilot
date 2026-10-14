@@ -1,0 +1,891 @@
+{
+  "after_install": {
+    "heading": "str",
+    "wait": "str"
+  },
+  "ask_the_client": "str",
+  "client_type_forms": {
+    "businesses": [
+      "str"
+    ],
+    "individuals": [
+      "str"
+    ],
+    "nonprofits": [
+      "str"
+    ],
+    "trusts": [
+      "str"
+    ]
+  },
+  "columns": [
+    {
+      "help": "str",
+      "key": "str",
+      "label": "str"
+    }
+  ],
+  "commands": [
+    "str"
+  ],
+  "decisions": {
+    "dismissed": "str",
+    "duplicate": "str",
+    "file_moved": "str",
+    "filed": "str",
+    "needs_review": "str"
+  },
+  "dialogs": {
+    "discard": "str",
+    "keep_editing": "str",
+    "unsaved": "str"
+  },
+  "editor": {
+    "add_row": "str",
+    "advanced": "str",
+    "any_extension": "str",
+    "cancel": "str",
+    "date_fields": [
+      "str"
+    ],
+    "engagement_fields": [
+      {
+        "editable": "bool",
+        "help": "str",
+        "key": "str",
+        "label": "str"
+      }
+    ],
+    "engagement_title": "str",
+    "learned_note": "str",
+    "maximums": {
+      "expected_count": "int",
+      "min_size_kb": "int"
+    },
+    "minimums": {
+      "expected_count": "int",
+      "min_size_kb": "int"
+    },
+    "no": "str",
+    "no_date_check": "str",
+    "not_this_return": "str",
+    "nothing_changed": "str",
+    "open": "str",
+    "paste": "str",
+    "paste_hint": "str",
+    "plain_columns": [
+      "str"
+    ],
+    "remove_row": "str",
+    "rename": "str",
+    "rename_from": "str",
+    "rename_hint": "str",
+    "rename_left_note": "str",
+    "rename_title": "str",
+    "rename_to": "str",
+    "renamed_note": "str",
+    "routing_columns": [
+      "str"
+    ],
+    "routing_help": "str",
+    "save": "str",
+    "saved": "str",
+    "title": "str",
+    "unlearn_label": "str",
+    "unlearned_note": "str",
+    "warnings_heading": "str",
+    "yes": "str",
+    "yes_no_fields": [
+      "str"
+    ]
+  },
+  "engagement_flag": "str",
+  "evidence": {
+    "places": [
+      "str"
+    ],
+    "rules": [
+      "str"
+    ]
+  },
+  "firm": "str",
+  "household": {
+    "accept_folder_name": "str",
+    "accept_folder_name_help": "str",
+    "add_feed": "str",
+    "add_related": "str",
+    "add_return": "str",
+    "add_return_title": "str",
+    "change_form": "str",
+    "change_household": "str",
+    "contact_help": "str",
+    "contact_label": "str",
+    "create_return": "str",
+    "edit": "str",
+    "editable": [
+      "str"
+    ],
+    "empty_root": "str",
+    "fed_by_line": "str",
+    "feed_warning": "str",
+    "feeds_help": "str",
+    "feeds_label": "str",
+    "feeds_line": "str",
+    "form_step_note": "str",
+    "form_step_title": "str",
+    "heading": "str",
+    "items_title": "str",
+    "link_help": "str",
+    "link_label": "str",
+    "mark_shared": "str",
+    "members_help": "str",
+    "members_label": "str",
+    "misfits_heading": "str",
+    "misfits_note": "str",
+    "name_label": "str",
+    "new": "str",
+    "new_intro": "str",
+    "nobody_typed": "str",
+    "not_yet_shared_line": "str",
+    "open_client_folder": "str",
+    "open_inbox": "str",
+    "queue_line": "str",
+    "related_label": "str",
+    "return_created": "str",
+    "return_name_help": "str",
+    "return_name_label": "str",
+    "return_warning": "str",
+    "returns_heading": "str",
+    "roll_carried": "str",
+    "roll_done": "str",
+    "roll_forms_unloaded": "str",
+    "roll_forward_to": "str",
+    "roll_intro": "str",
+    "roll_no_template": "str",
+    "roll_retired_line": "str",
+    "roll_ticked": "str",
+    "roll_unfiled": "str",
+    "rollover_unticked": "str",
+    "shared_on_line": "str",
+    "sharing_heading": "str",
+    "sharing_note": "str",
+    "two_open_years": "str"
+  },
+  "labels": {
+    "Accepted": {
+      "key": "str",
+      "label": "str",
+      "sentence": "str"
+    },
+    "Failed Validation": {
+      "key": "str",
+      "label": "str",
+      "sentence": "str"
+    },
+    "Missing": {
+      "key": "str",
+      "label": "str",
+      "sentence": "str"
+    },
+    "Not Applicable": {
+      "key": "str",
+      "label": "str",
+      "sentence": "str"
+    },
+    "Not asked": {
+      "key": "str",
+      "label": "str",
+      "sentence": "str"
+    },
+    "Partial": {
+      "key": "str",
+      "label": "str",
+      "sentence": "str"
+    },
+    "Pending Sync": {
+      "key": "str",
+      "label": "str",
+      "sentence": "str"
+    },
+    "Received": {
+      "key": "str",
+      "label": "str",
+      "sentence": "str"
+    },
+    "Requested": {
+      "key": "str",
+      "label": "str",
+      "sentence": "str"
+    }
+  },
+  "layout": {
+    "clients_tree": "str",
+    "engagement_label_pattern": "str",
+    "inbox": "str",
+    "private_tree": "str",
+    "return_name_pattern": "str"
+  },
+  "lock": {
+    "buttons_back": "str",
+    "cleared": "str",
+    "greyed": "str",
+    "left_behind": "str",
+    "on": "str",
+    "running": "str",
+    "running_other": "str",
+    "watch_seconds": "int"
+  },
+  "menu": {
+    "about": "str",
+    "add_return": "str",
+    "another_return": "str",
+    "change_root": "str",
+    "check": "str",
+    "clear_lock": "str",
+    "client": "str",
+    "clients": "str",
+    "compact_rows": "str",
+    "draft_reminder": "str",
+    "edit": "str",
+    "edit_household": "str",
+    "edit_list": "str",
+    "edit_request": "str",
+    "error_log": "str",
+    "exit": "str",
+    "file": "str",
+    "find": "str",
+    "firm_report": "str",
+    "help": "str",
+    "keep_here": "str",
+    "mark_missing": "str",
+    "mark_shared": "str",
+    "needs_review": "str",
+    "new_household": "str",
+    "not_requested": "str",
+    "open_client_folder": "str",
+    "open_inbox": "str",
+    "open_root": "str",
+    "open_working": "str",
+    "overview": "str",
+    "put_back": "str",
+    "refresh": "str",
+    "reminders": "str",
+    "remove_schedule_here": "str",
+    "repair_schedule": "str",
+    "reset_columns": "str",
+    "roll_forward": "str",
+    "safeguards": "str",
+    "schedule": "str",
+    "show_in_explorer": "str",
+    "show_under_construction": "str",
+    "sort_now": "str",
+    "stop_sorting": "str",
+    "terms": "str",
+    "tools": "str",
+    "tour": "str",
+    "unfile": "str",
+    "view": "str"
+  },
+  "new_not_asked_carried": "str",
+  "not_applicable_carried": "str",
+  "not_asked_label": "str",
+  "not_asked_table_label": "str",
+  "nothing_asked": "str",
+  "notices": {
+    "about": "str",
+    "labels": {
+      "dismiss": "str",
+      "look": "str",
+      "retry": "str"
+    },
+    "repeated": "str"
+  },
+  "origin_new": "str",
+  "origin_not_applicable": "str",
+  "override_reason_other": "str",
+  "override_reasons": [
+    "str"
+  ],
+  "overrides": {
+    "accepted": "str",
+    "not_applicable": "str"
+  },
+  "own_process_commands": [
+    "str"
+  ],
+  "pass_command": "str",
+  "path_kinds": {
+    "client_folder": "str",
+    "clients_root": "str",
+    "draft": "str",
+    "engagement": "str",
+    "filed_copy": "str",
+    "household": "str",
+    "inbox": "str",
+    "moved_copy": "str",
+    "originals": "str",
+    "prepared": "str",
+    "review_copy": "str",
+    "shown_copy": "str",
+    "status": "str",
+    "view": "str"
+  },
+  "people": {
+    "add": "str",
+    "help": "str",
+    "kind_label": "str",
+    "kinds": [
+      {
+        "label": "str",
+        "value": "str"
+      }
+    ],
+    "label": "str",
+    "name_label": "str",
+    "none_yet": "str",
+    "one_word": "str",
+    "outcomes": {
+      "absent": "str",
+      "confirmed": "str",
+      "other": "str"
+    },
+    "own_spelling": "str",
+    "remove": "str",
+    "review_people": "str",
+    "rolled_note": "str",
+    "spellings_help": "str",
+    "spellings_label": "str",
+    "teach": "str",
+    "teach_hint": "str"
+  },
+  "product": "str",
+  "progress": {
+    "household": "str",
+    "scan": "str",
+    "sort": "str",
+    "stop": "str",
+    "stopping": "str"
+  },
+  "reason_tips": {
+    "opened-not-across": "str"
+  },
+  "reasons": {
+    "ambiguous": "str",
+    "answer-not-counted": "str",
+    "assigned": "str",
+    "between-returns": "str",
+    "container-damaged": "str",
+    "container-empty": "str",
+    "container-limit": "str",
+    "container-locked": "str",
+    "contested": "str",
+    "copy-and-original-gone": "str",
+    "copy-changed": "str",
+    "copy-missing": "str",
+    "could-not-file": "str",
+    "extension": "str",
+    "extraction-failed": "str",
+    "file-moved": "str",
+    "filed-whole": "str",
+    "google-stub": "str",
+    "heic-reader": "str",
+    "interrupted-move": "str",
+    "interrupted-move-lost": "str",
+    "issuer-not-named": "str",
+    "matched": "str",
+    "name-absent": "str",
+    "name-other": "str",
+    "name-points-at": "str",
+    "named-across": "str",
+    "no-keyword": "str",
+    "no-pages": "str",
+    "no-people": "str",
+    "no-request-accepts": "str",
+    "no-room": "str",
+    "no-text-after-ocr": "str",
+    "no-text-layer": "str",
+    "not-a-document": "str",
+    "not-requested": "str",
+    "ocr-failed": "str",
+    "ocr-only": "str",
+    "opened-not-across": "str",
+    "password": "str",
+    "pending-sync": "str",
+    "put-back-refused": "str",
+    "reader-unavailable": "str",
+    "reading-crashed": "str",
+    "reading-stopped": "str",
+    "several-forms": "str",
+    "several-forms-unsorted": "str",
+    "shows-form-number": "str",
+    "too-large": "str",
+    "too-small": "str",
+    "uncheckable-type": "str",
+    "unfiled": "str",
+    "unmatched": "str",
+    "unnamed-across": "str",
+    "unreadable": "str",
+    "unreadable-image": "str",
+    "unreadable-pdf": "str",
+    "vanished": "str",
+    "wrong-document": "str",
+    "wrong-period": "str"
+  },
+  "reminder": {
+    "approve": "str",
+    "approved_line": "str",
+    "approved_then_edited": "str",
+    "copied": "str",
+    "copy": "str",
+    "edited_by_hand": "str",
+    "heading": "str",
+    "held_line": "str",
+    "hold_colour": "str",
+    "inbox_held_line": "str",
+    "last_drafted_line": "str",
+    "letter_ink": {
+      "body": "str",
+      "muted": "str",
+      "paper": "str"
+    },
+    "line_unreadable": "str",
+    "never_drafted_line": "str",
+    "not_yet": "str",
+    "nothing_to_send": "str",
+    "open_draft": "str",
+    "palette": {
+      "cream_50": "str",
+      "danger_600": "str",
+      "gold_800": "str",
+      "grey_500": "str",
+      "navy_900": "str",
+      "slate_600": "str",
+      "warning_600": "str",
+      "white": "str"
+    },
+    "set_aside_line": "str",
+    "sides": [
+      {
+        "key": "str",
+        "label": "str",
+        "sentence": "str"
+      }
+    ],
+    "stage_group": "str",
+    "stage_toggle_hint": "str",
+    "stages": [
+      {
+        "colour": "str",
+        "emphasis": {
+          "consequences_bold": "bool",
+          "dates_bold": "bool",
+          "deadline_colour": "bool",
+          "list_bold": "bool",
+          "list_colour": "bool",
+          "subject_bold": "bool",
+          "subject_colour": "bool",
+          "target_colour": "bool"
+        },
+        "name": "str",
+        "number": "int",
+        "short": "str"
+      }
+    ],
+    "subject_prefix": "str",
+    "unreadable": "str"
+  },
+  "review_labels": {
+    "accept": "str",
+    "also_answers": "str",
+    "bucket_order": [
+      "str"
+    ],
+    "buckets": {
+      "container": "str",
+      "document": "str",
+      "not_a_document": "str"
+    },
+    "came_from": "str",
+    "card_mode": "str",
+    "card_position": "str",
+    "dismiss": "str",
+    "dismiss_note": "str",
+    "dismissed_heading": "str",
+    "file": "str",
+    "file_anyway": "str",
+    "file_where_it_waits": "str",
+    "filed_heading": "str",
+    "hand_over": "str",
+    "hand_over_request": "str",
+    "hand_over_return": "str",
+    "handed_over": "str",
+    "issuer_add": "str",
+    "issuer_help": "str",
+    "issuer_label": "str",
+    "issuer_not_rescanned": "str",
+    "keep": "str",
+    "keyword": "str",
+    "keyword_help": "str",
+    "list_mode": "str",
+    "mark_missing": "str",
+    "moved_heading": "str",
+    "moved_nowhere": "str",
+    "moved_summary": "str",
+    "not_a_document": "str",
+    "open_copy": "str",
+    "open_in_list": "str",
+    "other_requests": "str",
+    "restore": "str",
+    "send_to_review": "str",
+    "skip": "str",
+    "suggested": "str",
+    "true_type": "str",
+    "unfile": "str",
+    "unfile_note": "str"
+  },
+  "roll_template_label": "str",
+  "room": {
+    "heading": "str",
+    "parks": "str",
+    "short": "str"
+  },
+  "rules": [
+    {
+      "detail": "str",
+      "headline": "str",
+      "short": "str"
+    }
+  ],
+  "scan": {
+    "but": "str",
+    "complete": "str",
+    "filed": "str",
+    "not_in_pass": "str",
+    "not_sorted": "str",
+    "nothing_done": "str",
+    "nothing_done_bare": "str",
+    "nothing_to_sort": "str",
+    "problem": "str",
+    "problem_reason": "str",
+    "reasons": {
+      "client-folder-missing": "str",
+      "folder-missing": "str",
+      "household-paused": "str",
+      "lock-held": "str",
+      "other": "str"
+    },
+    "review": "str",
+    "scanning": "str",
+    "skipped": {
+      "inactive": "str",
+      "no-room": "str",
+      "rolled-forward": "str"
+    },
+    "syncing": "str"
+  },
+  "schedule": {
+    "button": "str",
+    "cancel": "str",
+    "draft_day": "str",
+    "enabled_label": "str",
+    "every": "int",
+    "every_choices": [
+      {
+        "label": "str",
+        "minutes": "int"
+      }
+    ],
+    "every_label": "str",
+    "loading": "str",
+    "move_confirm": "str",
+    "move_warning": "str",
+    "note": "str",
+    "off": "str",
+    "on": "str",
+    "remove_confirm": "str",
+    "repair": "str",
+    "repair_confirm": "str",
+    "repair_help": "str",
+    "save": "str",
+    "start": "str",
+    "start_label": "str",
+    "task_name": "str",
+    "title": "str"
+  },
+  "screen": {
+    "about": {
+      "edition": "str"
+    },
+    "client_types": {
+      "businesses": "str",
+      "individuals": "str",
+      "nonprofits": "str",
+      "trusts": "str"
+    },
+    "close": "str",
+    "columns": {
+      "client_name": "str",
+      "date": "str",
+      "drafted": "str",
+      "file": "str",
+      "form_type": "str",
+      "reason": "str",
+      "received": "str",
+      "returns": "str",
+      "sort_by": "str",
+      "stage": "str",
+      "status": "str",
+      "suggestion": "str",
+      "tax_year": "str",
+      "taxpayer": "str",
+      "taxpayer_tip": "str",
+      "width": "str"
+    },
+    "copied": "str",
+    "counts": {
+      "complete": "str",
+      "files": "str",
+      "need": "str",
+      "one_file": "str",
+      "one_return": "str",
+      "returns": "str",
+      "waiting": "str"
+    },
+    "documents": {
+      "many": "str",
+      "one": "str"
+    },
+    "due": "str",
+    "empty": {
+      "clients": "str",
+      "needs_review": "str",
+      "next_sort": "str",
+      "overview": "str",
+      "received": "str",
+      "reminders": "str",
+      "returns": "str",
+      "work": "str"
+    },
+    "figures": {
+      "complete": "str",
+      "need": "str",
+      "waiting": "str"
+    },
+    "filters": {
+      "all": "str",
+      "work": "str"
+    },
+    "find": "str",
+    "find_none": "str",
+    "find_placeholder": "str",
+    "find_placeholder_files": "str",
+    "groups": {
+      "needs_you": "str",
+      "received": "str",
+      "set_aside": "str",
+      "waiting": "str"
+    },
+    "held": "str",
+    "household_card": {
+      "contact": "str",
+      "inbox_link": "str",
+      "link_saved": "str",
+      "no_link": "str",
+      "shared_with": "str"
+    },
+    "icons": {
+      "dismiss": "str",
+      "more": "str",
+      "more_actions": "str",
+      "next": "str",
+      "open": "str",
+      "remove_filter": "str"
+    },
+    "inactive": "str",
+    "last_sort": {
+      "done": "str",
+      "failed": "str",
+      "never": "str",
+      "other_day": "str",
+      "running": "str",
+      "scheduled": "str",
+      "today": "str"
+    },
+    "linked": {
+      "fed_by": "str",
+      "feeds": "str",
+      "related": "str",
+      "tip": "str"
+    },
+    "loading": "str",
+    "misfits": {
+      "reasons": {
+        "bad_name": "str",
+        "client_look_alike": "str",
+        "client_no_record": "str",
+        "legacy_folder": "str",
+        "no_household_record": "str",
+        "no_return": "str",
+        "not_a_tree": "str",
+        "not_a_year": "str",
+        "record_misplaced": "str",
+        "unlisted": "str"
+      },
+      "title": "str"
+    },
+    "moved": "str",
+    "navigate_client": "str",
+    "navigate_return": "str",
+    "not_shared": "str",
+    "notices": {
+      "details": "str",
+      "drive": "str",
+      "feed": "str",
+      "firm_failed": "str",
+      "machine": "str",
+      "name_requests": "str",
+      "no_log": "str",
+      "paused": "str",
+      "pick_request": "str",
+      "reader": "str",
+      "related_pending": "str",
+      "renamed": "str",
+      "show": "str",
+      "skipped": "str",
+      "under_construction": "str"
+    },
+    "paging": {
+      "next": "str",
+      "nouns": {
+        "clients": "str",
+        "needs_review": "str",
+        "overview": "str",
+        "reminders": "str"
+      },
+      "previous": "str",
+      "showing": "str"
+    },
+    "partly": "str",
+    "path_label": "str",
+    "reading_households": "str",
+    "retry": "str",
+    "rolled": "str",
+    "safeguards": {
+      "title": "str"
+    },
+    "saved": "str",
+    "sections": {
+      "clients": "str",
+      "needs_review": "str",
+      "overview": "str",
+      "reminders": "str"
+    },
+    "setup": {
+      "choose": "str",
+      "missing": "str",
+      "start": "str",
+      "title": "str"
+    },
+    "shared": "str",
+    "sheet": {
+      "drafted": "str",
+      "reminder": "str"
+    },
+    "show_in_explorer": "str",
+    "side": {
+      "product": "str",
+      "settings": "str",
+      "soon": {
+        "corporate_entities": "str",
+        "family_entities": "str",
+        "personal_trusts": "str",
+        "portal_settings": "str",
+        "ready_to_sign": "str"
+      },
+      "soon_tag": "str",
+      "types": "str",
+      "under_construction": "str",
+      "workspace": "str"
+    },
+    "side_label": "str",
+    "since": "str",
+    "sort": {
+      "locked": "str",
+      "now": "str",
+      "stop": "str",
+      "stopping": "str",
+      "tip": "str"
+    },
+    "steps": {
+      "check": "str",
+      "draft": "str",
+      "edit": "str",
+      "open": "str"
+    },
+    "tabs": {
+      "need": "str",
+      "waiting": "str"
+    },
+    "updating": "str",
+    "updating_as_of": "str",
+    "work": "str"
+  },
+  "set_aside": {
+    "group": "str",
+    "heading": "str"
+  },
+  "settings": {
+    "firm_help": "str",
+    "firm_label": "str",
+    "phone": "str",
+    "phone_help": "str",
+    "phone_label": "str",
+    "root_label": "str"
+  },
+  "shell": {
+    "could_not_send": "str",
+    "could_not_start": "str",
+    "error_log": "str",
+    "killed": "str",
+    "killed_at": "str",
+    "killed_read": "str",
+    "killed_write": "str",
+    "killed_write_note": "str",
+    "last_pass_file": "str",
+    "no_log": "str",
+    "no_reply": "str",
+    "not_opened": "str",
+    "page_error": "str",
+    "protected_view_mac": "str"
+  },
+  "statuses": [
+    {
+      "key": "str",
+      "value": "str"
+    }
+  ],
+  "triage": {
+    "identifier_separator": "str",
+    "max_suggestions": "int",
+    "nothing_suggested": "str",
+    "places": {
+      "deep": "str",
+      "first_page": "str",
+      "footer": "str",
+      "title": "str"
+    },
+    "set_aside_note": "str"
+  },
+  "view": {
+    "label": "str",
+    "open": "str",
+    "states": [
+      "str"
+    ]
+  },
+  "writing_commands": [
+    "str"
+  ],
+  "year_max": "int",
+  "year_min": "int"
+}
