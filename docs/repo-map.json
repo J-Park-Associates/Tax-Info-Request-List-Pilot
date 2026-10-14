@@ -16,7 +16,7 @@
   ],
   "counts": {
     "nodes": 348,
-    "edges": 1514,
+    "edges": 1520,
     "reused": 294
   },
   "node_types": [
@@ -4735,7 +4735,7 @@
       "id": "docs/repo-map.curated.json",
       "type": "file",
       "layer": "docs",
-      "sha256": "5e1b6a2d437cd6a3",
+      "sha256": "e272d7c0ffcbce03",
       "lines": 1695,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
@@ -7764,8 +7764,8 @@
       "id": "tests/test_filer.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "365e1a430940e633",
-      "lines": 10070,
+      "sha256": "75125562d5de37f4",
+      "lines": 9948,
       "exports": [
         "A_CLIENT_PATH",
         "A_PASS_KILLED_MID_COPY",
@@ -7908,7 +7908,6 @@
         "test_a_name_the_index_cannot_hold_is_reported_not_allowed_to_take_the_index_down",
         "test_a_name_windows_cannot_open_is_reported_not_passed_over",
         "test_a_name_with_a_control_character_is_still_filed_and_recorded",
-        "test_a_new_engagement_is_simply_current",
         "test_a_not_asked_rows_first_document_sits_in_prepared_itself",
         "test_a_page_naming_two_forms_waiting_for_another_household_gets_a_copy_for_each_on_the_click",
         "test_a_page_that_prints_two_forms_files_a_copy_under_each_and_unfiles_as_one",
@@ -8028,7 +8027,6 @@
         "test_an_existing_copy_is_found_before_a_name_is_measured",
         "test_an_existing_long_folder_is_left_as_it_is_and_the_copy_sits_beside_it",
         "test_an_identical_copy_from_a_subfolder_is_a_duplicate_as_before",
-        "test_an_index_read_without_following_is_the_store_as_it_stands",
         "test_an_intent_is_written_before_the_first_file_operation_and_completed_by_the_row",
         "test_an_interrupt_after_the_record_landed_does_not_undo_the_filing",
         "test_an_interrupted_decision_65_intent_finishes_with_a_proved_copy",
@@ -8121,7 +8119,6 @@
         "test_send_to_review_parks_the_wanderer_under_the_clients_name_as_the_persons",
         "test_set_aside_bytes_sent_again_after_their_original_went_are_routed_afresh",
         "test_sync_junk_is_ignored",
-        "test_the_both_gone_sentence_is_read_behind_a_persons_marks_and_never_swallowed_by_one",
         "test_the_conservation_helper_holds_across_every_injected_crash_point",
         "test_the_filer_asks_the_layout_where_a_step_may_act",
         "test_the_filer_holds_the_engagement_lock",
@@ -8130,7 +8127,6 @@
         "test_the_inbox_count_of_names_left_alone_skips_what_is_named_as_syncing",
         "test_the_intake_returns_fit_under_the_real_root",
         "test_the_link_check_stops_at_the_clients_root",
-        "test_the_moved_sentence_is_read_back_from_any_path",
         "test_the_next_pass_leaves_an_unfiled_original_where_the_row_says",
         "test_the_numbered_suffix_is_counted_when_a_name_is_cut",
         "test_the_one_click_files_the_waiting_document_where_it_waits_and_releases_the_row_here",
@@ -8396,15 +8392,19 @@
       "id": "tests/test_index.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "c83432ce2839adb5",
-      "lines": 73,
+      "sha256": "9f6507275350f23a",
+      "lines": 216,
       "exports": [
         "PRIVATE_CROSSING",
+        "test_a_new_engagement_is_simply_current",
+        "test_an_index_read_without_following_is_the_store_as_it_stands",
+        "test_the_both_gone_sentence_is_read_behind_a_persons_marks_and_never_swallowed_by_one",
         "test_the_filers_re_export_is_the_indexs_own",
-        "test_the_index_imports_layer_one_and_below_and_nothing_at_call_time"
+        "test_the_index_imports_layer_one_and_below_and_nothing_at_call_time",
+        "test_the_moved_sentence_is_read_back_from_any_path"
       ],
-      "role": "Holds tracker/index.py to its layer and its facade: index imports the layout, the ledger, the reasons, the records, the store and the validators at load time and nothing at call time; every public name it defines is the filer's same object.",
-      "notes": "SPEC-architecture-p2 R2.9.4. The identity test reads index's own names off its source, so a name it only imports (ledger, PREPARED_DIR_NAME, IndexEntry) is not counted as its own, and it fails when a public name index defines is missing from the filer or is another object there."
+      "role": "Holds tracker/index.py to its layer and its facade: index imports the layout, the ledger, the reasons, the records, the store and the validators at load time and nothing at call time; every public name it defines is the filer's same object. And the index's own tests, which came with it.",
+      "notes": "SPEC-architecture-p2 R2.9.4. The identity test reads index's own names off its source, so a name it only imports (ledger, PREPARED_DIR_NAME, IndexEntry) is not counted as its own, and it fails when a public name index defines is missing from the filer or is another object there. The four tests whose bodies drive only the moved readers moved here from tests/test_filer.py, unchanged but for their imports, which read tracker.index where they read the filer, so P2.14 finds them reading the index already: a new engagement's index is simply current, an index read without following is the store as it stands (decision 192), the moved sentence is read back from any path, and the both-gone sentence is read behind a person's marks (decision 157). No test there drives only interrupted or holds_the_row; each is reached through a pass or a person's action, and those tests stay with the filer."
     },
     {
       "id": "tests/test_irs_forms.py",
@@ -15391,6 +15391,42 @@
       "from": "tests/test_index.py",
       "to": "tracker/filer.py",
       "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_index.py",
+      "to": "tracker/layout.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_index.py",
+      "to": "tracker/ledger.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_index.py",
+      "to": "tracker/records.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_index.py",
+      "to": "tracker/store.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_index.py",
+      "to": "tests/builders.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_index.py",
+      "to": "tests/conftest.py",
+      "type": "imports",
       "source": "derived"
     },
     {
