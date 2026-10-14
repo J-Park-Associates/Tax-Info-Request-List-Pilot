@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 353,
     "edges": 1570,
-    "reused": 0
+    "reused": 298
   },
   "node_types": [
     "artifact",
@@ -4187,8 +4187,8 @@
       "id": "tracker/store.py",
       "type": "module",
       "layer": "core",
-      "sha256": "d1e0dde63e184a3e",
-      "lines": 3745,
+      "sha256": "863b48a2dad7442c",
+      "lines": 3747,
       "cli": "python -m tracker.store",
       "exports": [
         "ACCEPTED",
@@ -6127,7 +6127,7 @@
       "id": "tests/conftest.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "9486f6d14516bd0d",
+      "sha256": "1d1c5f7b4d4fb63b",
       "lines": 1382,
       "exports": [
         "AMac",

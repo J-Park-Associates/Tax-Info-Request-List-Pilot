@@ -337,7 +337,7 @@ def _not_a_mac(original):
 
 def _the_floors_answer(original):
     """``settings.host_system`` answering ``"posix"``, still *reading* as the
-    original (``functools.wraps``), because ``tests/test_store.py`` digests
+    original (``functools.wraps``), because ``tests/test_admission.py`` digests
     ``inspect.getsource(settings.host_system)`` into the store's admission
     version and the pin must not change it."""
     @functools.wraps(original)

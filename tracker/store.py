@@ -904,9 +904,10 @@ def _positional_root(folder: Path) -> Path | None:
     Either, asked as given, would fall back to the year folder - the very
     collision decision 134 removes. The review of decision 134 found both.
     :mod:`tracker.layout` is imported at call time because this module
-    imports ``bounds``, ``records``, ``ledger``, ``locking`` and
-    ``checkpoint`` and nothing else at load time (``tests/test_layers.py``);
-    ``layout`` stays the one place the shape is worded.
+    imports ``admission``, ``bounds``, ``records``, ``ledger``,
+    ``locking`` and ``checkpoint`` and nothing else at load time
+    (``tests/test_layers.py``); ``layout`` stays the one place the shape
+    is worded.
     """
     from tracker import layout
     from tracker.hold import resolved
@@ -3192,9 +3193,10 @@ def export(conn: sqlite3.Connection, out_dir: Path | str) -> list[Path]:
 def _write_csv(path: Path, header: list[str], rows) -> None:
     """One spreadsheet, whole or not written (decision 155): through the
     one atomic replacement, flushed before it takes the name. Reached at
-    call time - the store imports the bounds, the record, the journal, the
-    lock and the checkpoint and nothing else at load time (decision 101,
-    P321), and this is the one file it writes that is not the database."""
+    call time - the store imports the admission, the bounds, the record,
+    the journal, the lock and the checkpoint and nothing else at load time
+    (decision 101, P321, P323), and this is the one file it writes that is
+    not the database."""
     from tracker.fsio import atomic_replacement
 
     with atomic_replacement(path) as temp:
