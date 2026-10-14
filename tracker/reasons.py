@@ -893,3 +893,64 @@ SHORT_REASONS: dict[str, str] = {
 REASON_TIPS: dict[str, str] = {
     "opened-not-across": "Came in Email or Zip",
 }
+
+#: Open is an allow-list (decision 190, following 184): the codes of a
+#: document the tracker **read** and parked for a filing reason - no request
+#: or more than one accepted it, a request contested it, its name is not on
+#: the page or names another return or another household's person (decision
+#: 204, which waits for one click), its forms would not sort, its issuer
+#: is not named, it shows its form number, it came from an email or a zip
+#: and is not filed across households, and the others of that kind. Only a
+#: row carrying one of these opens its marked copy on this machine, the one
+#: that holds the Drive sign-in and every client folder. A text file read
+#: only in part (``TEXT_CUT``, bounded by 178) has no code of its
+#: own - the cut is appended to the verdict it explains - so it keeps Open
+#: where that verdict is here.
+READ_AND_PARKED_CODES = frozenset((
+    UNMATCHED_CODE, AMBIGUOUS_CODE, OCR_ONLY_CODE,
+    CONTESTED_CODE, SEVERAL_FORMS_UNSORTED_CODE,
+    CONTESTED_BETWEEN_RETURNS_CODE, NO_ROOM_CODE,
+    *(reason.code for reason in (
+        WRONG_DOCUMENT, NO_EXPECTED_KEYWORD, WRONG_PERIOD,
+        ISSUER_NOT_NAMED, SHOWS_ITS_FORM_NUMBER, NAME_POINTS_AT,
+        NAME_NOT_ON_PAGE, NAMES_ANOTHER_RETURN, NO_PEOPLE_ON_FILE,
+        UNNAMED_ACROSS_HOUSEHOLDS, OPENED_NOT_ACROSS,
+        # read, and it names another household's person: it waits for one
+        # click (decision 204), and a person looks at it before clicking
+        NAMED_ACROSS_HOUSEHOLDS)),
+))
+#: Every other code, which offers no Open here - listed, not derived, so
+#: that each code is placed by a person and a test proves every code is in
+#: exactly one of the two sets. The allow-list fails closed: a code nobody
+#: has placed yet, or a row with no code, gets no Open. The person asks the
+#: client to send it again, or opens it under 184's rule, on another
+#: machine.
+NO_OPEN_CODES = frozenset((
+    # a reading the tracker refused or could not finish
+    *(reason.code for reason in (
+        UNREADABLE_PDF, UNREADABLE_IMAGE, EXTRACTION_FAILED,
+        OCR_FAILED, READING_CRASHED, READING_STOPPED,
+        TOO_LARGE, PASSWORD_PROTECTED, NO_PAGES,
+        NO_READABLE_TEXT, NO_TEXT_AFTER_OCR, READER_UNAVAILABLE,
+        # a file the tracker did not read: no decoder, no reader on this
+        # machine, a type or a size it refuses, a cloud placeholder, gone
+        HEIC_NOT_SUPPORTED, NO_TEXT_LAYER, EXTENSION_NOT_ALLOWED,
+        GOOGLE_STUB, TOO_SMALL, UNCHECKABLE_TYPE,
+        PENDING_SYNC, VANISHED,
+        # not a document, and an email or a zip (their buckets say so too)
+        NOT_A_DOCUMENT, CONTAINER_LOCKED, CONTAINER_DAMAGED,
+        CONTAINER_EMPTY, CONTAINER_LIMIT,
+        # a working copy that is not the bytes the record filed, or not there
+        FILE_MOVED, COPY_CHANGED, COPY_MISSING,
+        COPY_AND_ORIGINAL_GONE, ANSWER_NOT_COUNTED,
+        INTERRUPTED_MOVE, INTERRUPTED_MOVE_LOST)),
+    # every request refused the file's type, so it was never read
+    NO_REQUEST_ACCEPTS_CODE,
+    # the filer's catch-all, which can stop inside a reading
+    COULD_NOT_FILE_CODE,
+    # a person's action, which can follow a refused reading as well as a read one
+    UNFILED_BY_PERSON_CODE, DISMISSED_BY_PERSON_CODE,
+    ASSIGNED_BY_PERSON_CODE, PUT_BACK_REFUSED_CODE,
+    # a filed row's, never a parked one's
+    MATCHED_CODE, SEVERAL_FORMS_CODE, FILED_WHOLE_CODE,
+))

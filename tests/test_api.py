@@ -933,7 +933,7 @@ def _parked_row(name: str, code: str) -> IndexEntry:
 
 
 @pytest.mark.parametrize("name, code", [
-    *(("statement.pdf", code) for code in sorted(api.NO_OPEN_CODES - api._CONTAINER_CODES)),
+    *(("statement.pdf", code) for code in sorted(reasons.NO_OPEN_CODES - api._CONTAINER_CODES)),
     *(("mail.eml", code) for code in sorted(api._CONTAINER_CODES)),
     ("scans.zip", reasons.AMBIGUOUS_CODE),
 ])
@@ -956,21 +956,6 @@ def test_a_code_nobody_has_placed_gets_no_open(code):
     a code no one has put in either set, offers no Open (decision 190)."""
     payload = api._review_payload(_parked_row("statement.pdf", code))
     assert payload["bucket"] == api.BUCKET_DOCUMENT and payload["open_key"] == "", payload
-
-
-def test_every_code_is_placed_in_exactly_one_of_the_two_open_sets():
-    """Every code a row may carry (reasons.KNOWN_CODES) is either one the
-    tracker read and parked for a filing reason - Open - or one that offers
-    no Open here; none is in both and none in neither, so a new code fails
-    this until a person places it."""
-    opens, closed = api.READ_AND_PARKED_CODES, api.NO_OPEN_CODES
-    assert not opens & closed, sorted(opens & closed)
-    assert opens | closed == reasons.KNOWN_CODES, (
-        sorted(reasons.KNOWN_CODES - (opens | closed)), sorted((opens | closed) - reasons.KNOWN_CODES))
-    not_read = {reasons.HEIC_NOT_SUPPORTED, reasons.NO_TEXT_LAYER, reasons.EXTENSION_NOT_ALLOWED,
-                reasons.GOOGLE_STUB, reasons.TOO_SMALL, reasons.UNCHECKABLE_TYPE}
-    assert not {reason.code for reason in not_read} & opens, "the tracker did not read these"
-    assert reasons.NO_REQUEST_ACCEPTS_CODE not in opens, "every request refused its type unread"
 
 
 @pytest.mark.parametrize("code", sorted(api.READ_AND_PARKED_CODES))

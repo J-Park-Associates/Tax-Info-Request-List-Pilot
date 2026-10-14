@@ -2824,9 +2824,9 @@ def test_the_runbook_opens_no_container_or_refused_file_on_this_machine():
     this machine - it is opened, if at all, on a machine with no Drive
     sign-in and no client folder - and no sentence about a container
     offers the card's **Open** either."""
-    from tracker import api, reasons
+    from tracker import reasons
 
-    closed = api.NO_OPEN_CODES & set(reasons.BY_CODE)
+    closed = reasons.NO_OPEN_CODES & set(reasons.BY_CODE)
     names = {name for name, value in vars(reasons).items()
              if isinstance(value, reasons.Reason) and value.code in closed}
     assert len(names) == len(closed), sorted(names)

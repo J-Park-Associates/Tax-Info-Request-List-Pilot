@@ -231,3 +231,18 @@ def test_a_label_shortened_into_a_tag_keeps_the_words_it_replaced_as_its_tooltip
         assert code in SHORT_REASONS and len(tip) > len(SHORT_REASONS[code]), (code, tip)
         assert 1 <= len(tip.split()) <= 5, (code, tip)
         assert tip == tip.strip() and not tip.endswith("."), (code, tip)
+
+
+def test_every_code_is_placed_in_exactly_one_of_the_two_open_sets():
+    """Every code a row may carry (reasons.KNOWN_CODES) is either one the
+    tracker read and parked for a filing reason - Open - or one that offers
+    no Open here; none is in both and none in neither, so a new code fails
+    this until a person places it."""
+    opens, closed = reasons.READ_AND_PARKED_CODES, reasons.NO_OPEN_CODES
+    assert not opens & closed, sorted(opens & closed)
+    assert opens | closed == reasons.KNOWN_CODES, (
+        sorted(reasons.KNOWN_CODES - (opens | closed)), sorted((opens | closed) - reasons.KNOWN_CODES))
+    not_read = {reasons.HEIC_NOT_SUPPORTED, reasons.NO_TEXT_LAYER, reasons.EXTENSION_NOT_ALLOWED,
+                reasons.GOOGLE_STUB, reasons.TOO_SMALL, reasons.UNCHECKABLE_TYPE}
+    assert not {reason.code for reason in not_read} & opens, "the tracker did not read these"
+    assert reasons.NO_REQUEST_ACCEPTS_CODE not in opens, "every request refused its type unread"
