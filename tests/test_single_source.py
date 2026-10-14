@@ -2330,7 +2330,7 @@ def test_the_pass_and_the_hand_over_file_into_another_household_through_one_func
     and carried out by ``filer._file_into`` and nothing else, so the two
     roads cannot drift apart again. Decision 129's second machinery is gone
     from the package: nothing carries another record's half of a decision
-    (the one place that names the retired key is the store's refusal of
+    (the one place that names the retired key is the admission's refusal of
     it), no ``Handed Over`` decision, no sentence cut at a ``_WAS_PREFIX``."""
     # By name, wherever the code sits (R3.1): one definition in the package,
     # and its two callers, the pass's filing and the hand-over.
@@ -2345,7 +2345,7 @@ def test_the_pass_and_the_hand_over_file_into_another_household_through_one_func
         assert "_also_in_the_other_record" not in text and "INTERRUPTED_ELSEWHERE" not in text, name
         assert "DUPLICATE_OF_HANDED_OVER" not in text, name
     assert sum(text.count('"also_in"') for text in tracker.values()) == 1
-    assert 'ALSO_IN = "also_in"' in tracker["store.py"]
+    assert 'ALSO_IN = "also_in"' in tracker["admission.py"]
 
 
 def test_documents_quote_the_jobs_command_line_as_the_scheduler_writes_it():

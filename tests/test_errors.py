@@ -408,7 +408,7 @@ SAID_WHOLE_ON_PURPOSE = {
     ("ledger.py", "_bytes_of"): "the return's own event log could not be read (SPEC-190 R2: stays)",
     ("ledger.py", "_parse_lines"): "a line of the firm's own event log that does not parse (R2: stays)",
     ("manifest.py", "validated"): "the firm's own date pattern that does not compile",
-    ("store.py", "_refuse_a_malformed_line"): "a line of the firm's own record that does not parse (R2: stays)",
+    ("admission.py", "_refuse_a_malformed_line"): "a line of the firm's own record that does not parse (R2: stays)",
     ("settings.py", "_read"): "the firm's own settings file",
     ("settings.py", "product_name"): "the app's own package file",
     ("ocr.py", "_on_the_card"): "the graphics card's engine failing to build: the machine's words",

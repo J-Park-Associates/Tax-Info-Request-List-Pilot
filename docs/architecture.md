@@ -26,7 +26,7 @@ temporary is ever written beside a client's file.
 
 ## The package, by layer
 
-`tracker/` is one Python package of forty-three modules in six layers.
+`tracker/` is one Python package of forty-four modules in six layers.
 `tests/test_layers.py` pins the layer of every module and that no load-time
 import points upward; an import inside a function is a call-time import
 and may point anywhere. The scanner never imports the filer; the filer reaches
@@ -81,6 +81,9 @@ the package but each other.
 - `manifest.py`: the request list: its schema, its validation, and its
   reading from and writing to the record (decision 104: the request list
   is the record's, edited only in the app).
+- `admission.py`: the one rule every line of a record meets before the store
+  writes or applies it (decision 187), its version (decision 209) and the two
+  sentences a refused line or change is told in; the store imports it back.
 - `store.py`: one SQLite store per account in the data folder, a rebuildable
   view of every record; the record is the truth and the store is the index.
 - `index.py`: the index as the record holds it: the words its rows carry,

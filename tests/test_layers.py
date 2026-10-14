@@ -88,9 +88,10 @@ about a folder: the check itself runs one layer up, in the filer's household
 pass, where the returns and their people lists are.
 
 ``store`` joins L1 with decision 101 and is deliberately narrower than its
-layer allows: it imports ``bounds`` (P321), ``records``, ``ledger``,
-``locking`` and (since decision 159) ``checkpoint``, and nothing else of
-the package, not even the in-layer ``manifest``.
+layer allows: it imports ``admission`` (P323), ``bounds`` (P321),
+``records``, ``ledger``, ``locking`` and (since decision 159)
+``checkpoint``, and nothing else of the package, not even the in-layer
+``manifest``.
 Everything it holds comes out of the journal, so the database that answers
 for the readers never depends on the modules that walk folders and move
 files; its command line imports the registry at call time, which is where
@@ -184,8 +185,12 @@ LAYERS: dict[int, frozenset[str]] = {
     # words and readers out of ``filer``, which imports them back - ``ledger``,
     # ``records``, ``store`` and ``validators`` (L1) and ``layout`` and
     # ``reasons`` (L0); it reads the index and sorts nothing.
+    # ``admission`` joins L1 with P323 (SPEC-architecture-p3 P3.2): the one rule
+    # a line of the record meets, out of ``store``, which imports it back -
+    # ``bounds`` (L0), ``ledger`` and ``records`` (L1); ``layout`` and
+    # ``reasons`` at call time.
     1: frozenset({"households", "ledger", "manifest", "records", "scaffold", "store",
-                  "templates", "validators", "index"}),
+                  "templates", "validators", "index", "admission"}),
     2: frozenset({"containers", "content_check", "names", "ocr", "router"}),
     3: frozenset({"filer", "scanner", "reminder", "rollover", "view", "registry", "review"}),
     # ``after_install`` joins L4 with decision 209, beside the scheduler it
@@ -213,7 +218,7 @@ DOMAINS: dict[str, frozenset[str]] = {
     # is the ``door`` domain below.
     "record": frozenset({"__init__", "ledger", "locking", "checkpoint", "fsio", "layout", "door",
                          "settings", "hold", "records", "bounds", "store", "index", "manifest",
-                         "households", "templates", "scaffold"}),
+                         "households", "templates", "scaffold", "admission"}),
     # Opening a client's file, checking it and getting the text out of it.
     "reading": frozenset({"validators", "containers", "content_check", "ocr"}),
     # Deciding where a document belongs, or that it belongs nowhere yet, and
@@ -413,13 +418,24 @@ def test_the_checkpoint_imports_nothing_of_the_package():
     assert call.get("checkpoint", set()) <= {"page", "door"}, call["checkpoint"]
 
 
-def test_the_store_imports_only_the_bounds_the_record_the_journal_the_lock_and_the_checkpoint():
+def test_the_store_imports_only_the_admission_the_bounds_the_record_the_journal_the_lock_and_the_checkpoint():
     """Decision 101: narrower than its layer, on purpose - the store must
     not depend on what opens a workbook, or it cannot replace it. Decision
     159 adds the checkpoint, which is below it and imports nothing. P321
-    adds the bounds, which are L0 and read no file."""
+    adds the bounds, which are L0 and read no file. P323 adds the admission,
+    which is L1 and imports only the bounds, the journal and the record."""
     load, _ = import_edges()
-    assert load["store"] == {"bounds", "checkpoint", "ledger", "locking", "records"}, load["store"]
+    assert load["store"] == {"admission", "bounds", "checkpoint", "ledger", "locking", "records"}, load["store"]
+
+
+def test_the_admission_imports_the_bounds_the_journal_and_the_record():
+    """P323: the one rule a line of the record meets reads the journal's
+    words, the record's shapes and the bounds at load time, and the layout's
+    place rules and the reasons' codes at call time, as it did in the
+    store - so the store can import it at load time and no cycle closes."""
+    load, call = import_edges()
+    assert load["admission"] == {"bounds", "ledger", "records"}, load["admission"]
+    assert call["admission"] == {"layout", "reasons"}, call["admission"]
 
 
 def test_the_manifest_imports_the_bounds_and_the_record_and_nothing_else():

@@ -211,8 +211,8 @@ Conventions worth matching:
 - Import directions hold, and `tests/test_layers.py` says which: no load-time
   import points to a higher layer; `ledger` and `locking` import nothing of
   the package but each other, and `checkpoint` imports nothing of it at all
-  (its `__main__` alone reaches `page`); `store` imports `bounds`, `ledger`,
-  `locking`, `records` and `checkpoint` and nothing else; `manifest` imports
+  (its `__main__` alone reaches `page`); `store` imports `admission`, `bounds`,
+  `ledger`, `locking`, `records` and `checkpoint` and nothing else; `manifest` imports
   `bounds` and `records` and nothing else at load time, and reaches `store`,
   `ledger` and `locking` at call time
   (decision 104 gave it the request list's writes); `runner` never imports

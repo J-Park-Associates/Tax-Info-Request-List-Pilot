@@ -29,6 +29,7 @@ See docs/ROADMAP.md for the build plan. Component modules:
 - progress      : how a running pass is watched and asked to stop - the one progress line, its file beside the database, and the cancel marker
 - ledger        : the engagement's own append-only record of what was decided, written beside the client's files under that lock
 - checkpoint    : what this machine last saw of each record, beside the store; a record shorter, rewritten or claiming this machine is refused
+- admission     : the one rule every line of a record meets before the store writes or applies it - its version, and the two sentences a refusal is told in
 - store         : the database on this machine, rebuilt from the record; one file per clients root, and the index is read from it
 - index         : the index as the record holds it - the words its rows carry, their readers from the store, and the one proof of a row's bytes
 - fsio          : the one way a file is replaced whole or not at all: the temp name beside it, and the swap

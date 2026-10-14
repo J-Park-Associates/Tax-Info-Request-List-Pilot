@@ -230,7 +230,7 @@ KEYWORD_KEY = "keyword"
 #: record (decision 132): a decision that touches two records is two
 #: intents, one in each, each finished by its own household's pass. The
 #: key decision 129 wrote the other record's half under is refused by
-#: name (``tracker.store.ALSO_IN``) wherever it is met.
+#: name (``tracker.admission.ALSO_IN``) wherever it is met.
 OPS_KEY = "ops"
 OP_KEY = "op"
 FROM_KEY = "from"
