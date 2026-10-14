@@ -33,6 +33,7 @@ from tests.passes import (
     edit_rows,
 )
 from tests.samples import DEMO_ITEMS, PRIOR_YEAR, SCRATCH_PEOPLE, YEAR, text_pdf
+from tests.source_pins import PACKAGE, py_function
 from tracker import ledger, store
 from tracker.filer import NEEDS_REVIEW, IndexEntry, read_index
 from tracker.layout import household_of, inbox_of, originals_of, root_of
@@ -4972,19 +4973,14 @@ def test_every_pass_warning_carries_a_code(tmp_path, samples, monkeypatch):
 
 def test_a_pass_warning_is_added_only_with_its_code():
     """The guard (decision 186): nothing in the runner adds a pass warning
-    but ``_warn``, so none can reach the page without its code in the log."""
-    import ast
-    import re
-
-    source = Path(runner_module.__file__).read_text(encoding="utf-8")
-    tree = ast.parse(source)
-    [warn] = [node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == "_warn"]
-    lines = source.splitlines()
-    outside = [n for n, line in enumerate(lines, start=1)
-               if re.search(r"\b(report|result)\.warnings\.(append|extend|insert)\(", line)
-               and not warn.lineno <= n <= warn.end_lineno]
-    assert outside == []
-    assert re.search(r"report\.warnings\.append\(", "\n".join(lines[warn.lineno - 1:warn.end_lineno]))
+    but ``_warn``, so none can reach the page without its code in the log.
+    ``_warn`` is found by its name and every module of the package is read
+    (R3.1), so a part of the pass that leaves runner.py is still held."""
+    adds = re.compile(r"\b(?:report|result)\.warnings\.(?:append|extend|insert)\(")
+    warn = py_function("_warn", "runner")
+    found = sum(len(adds.findall(path.read_text(encoding="utf-8"))) for path in sorted(PACKAGE.rglob("*.py")))
+    assert found == len(adds.findall(warn))                     # every one of them is inside _warn
+    assert re.search(r"report\.warnings\.append\(", warn)
 
 
 def test_the_run_log_lives_in_the_data_home_when_the_flag_names_no_file(tmp_path, samples, monkeypatch,

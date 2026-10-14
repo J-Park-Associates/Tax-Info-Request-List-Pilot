@@ -1,9 +1,9 @@
 {
   "schema": 2,
-  "generated": "2026-10-13",
+  "generated": "2026-10-14",
   "generator": "tools/repo_map.py",
   "generator_sha256": "a394d7104da5155d",
-  "module_table_sha256": "37c31e7dafcbe719",
+  "module_table_sha256": "4ced56338505b836",
   "pipeline": [
     "tracker.api / create",
     "tracker.scaffold",
@@ -15,9 +15,9 @@
     "a person sends the draft"
   ],
   "counts": {
-    "nodes": 316,
-    "edges": 1384,
-    "reused": 261
+    "nodes": 317,
+    "edges": 1388,
+    "reused": 0
   },
   "node_types": [
     "artifact",
@@ -4645,8 +4645,8 @@
       "id": "docs/repo-map.curated.json",
       "type": "file",
       "layer": "docs",
-      "sha256": "a95df58be4d92e54",
-      "lines": 1365,
+      "sha256": "eb0bb5ab76342177",
+      "lines": 1369,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
     },
@@ -6302,6 +6302,21 @@
       "notes": "No fixture files in the repository and no client data, so every test starts from the same pile. It was the marketing demo's sample builder in tracker/api.py; the demo went (decision 41) and the suite still needed the pile. listing_denied() makes a folder really unlistable for the running account, because rglob and os.walk reach the file system by different calls and a monkeypatch of one proves nothing about the other. Decision 73: sheet_xlsx() is how tests/test_catalog.py routes its workbook cases - half of every catalog asks for a schedule a client keeps in Excel, and a sheet is read as rows of tab-separated cells (a phrase across two cells is one phrase, a phrase down two rows is two labels), so typing one as prose would prove the wrong reading. Decision 78: build_scratch_root() assembles the same pile into a whole clients root - one scaffolded engagement with the documents already dropped - which is what .github/workflows/build.yml runs the frozen package over; the fixture lives beside the pile rather than in a tool of its own so there is one pile and not two that drift. It records the engagement through manifest.create_engagement() directly rather than through the suite's helper, because the build workflow imports this module without conftest (decision 104). openpyxl is imported here to WRITE a client's spreadsheet for the suite to read, which is the one use of it the tree keeps. The pile's 'file nobody accepts' is a .bmp since decision 127: it was a .jpg until a photo became a document, and the claim it carries is about a file type no row takes. Decision 143 added cfb_bytes(), a compound-file writer to the letter of [MS-CFB] (version 3, a mini stream, one FAT), and msg_bytes()/msg_storage() over it, so the suite's .msg fixtures are built from nothing - olefile only reads. Decision 169: scanned_pdf() draws lines on a page and saves a PDF with no text layer, and build_scratch_root() drops one (SCRATCH_SCAN, a W-2 whose box labels and figures are drawn as separate lines) so the frozen smoke check proves the package reads. SPEC-architecture J2 (R2.2): the suite's three hand-built PDF writers are this one text_pdf(path, text_or_lines, *, pages=1, style=...), and each style writes, byte for byte, what its writer wrote: 'page' (the default, from tests/test_scanner.py: a string split on its newlines or a list of lines, parentheses and backslashes escaped, any number of pages), 'padded' (the pile's own: a list of lines, the first 48, and an unreferenced 8 KB object so a file has a realistic size and a request with min_size_kb accepts it) and 'bare' (from tests/test_content_check.py: one ASCII string on one line, the smallest file with a text layer). Merging them into one 'better' file would have changed every size and count a test pins, which is why they stay styles; tests/test_samples.py pins each style's digest and size on three inputs taken from the old writers before they were deleted. write_pdf() (moved here from tests/test_validators.py) is the one writer that is not hand-built: pypdf's blank pages, locked when given a password. SPEC-architecture J2 (R2.4) also brought here two documents more than one suite stages: photo(), a drawn photograph of a form's words (from tests/test_content_check.py, which tests/test_runner.py borrowed it from), and LOST_ONE_PHRASE with the OCR noise it begins with (from tests/test_router.py, which tests/test_reminder.py borrowed it from)."
     },
     {
+      "id": "tests/source_pins.py",
+      "type": "test",
+      "layer": "tests",
+      "sha256": "8a675bf41ec641c0",
+      "lines": 92,
+      "exports": [
+        "PACKAGE",
+        "REPO",
+        "calls_of",
+        "py_function"
+      ],
+      "role": "Finds a function of the package by its name wherever it sits: py_function(name, module=None) is its source, read from the syntax tree of every module under tracker/ at any depth (or of the one module named), asserting exactly one definition; calls_of(name) is every call of a name across the package, each with the file and the function it sits in.",
+      "notes": "SPEC-architecture J3 (R3.1, E-1). The pins on the package's own source used to cut a body out of one file by its exact first line (_pass's signature in runner.py, this_host up to the next def in locking.py, the def line of content_check._extract_xlsx), count a name's call sites in one module's text (_file_into in filer.py, the list key in api.py) or find a function in one module's top-level body (runner._warn); they now name the function and find it, so a signature that gains a parameter or a function that moves to another module is still checked. A nested def or a method of the same name counts as a second definition, so a pin never lands on a function it did not mean; where two modules define a name on purpose (fsio.full_sync and locking.full_sync, SPEC-mac R22), the pin names the module, and each copy is read from its own module's tree, so a re-export could not make one compare with itself. inspect.getsource was the rejected alternative: it needs an importable old address and cannot list call sites."
+    },
+    {
       "id": "tests/test_after_install.py",
       "type": "test",
       "layer": "tests",
@@ -6433,8 +6448,8 @@
       "id": "tests/test_api.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "38b4eee9d4b8aec8",
-      "lines": 11562,
+      "sha256": "9124051b1f0e01ea",
+      "lines": 11567,
       "exports": [
         "COUNTS",
         "DEEPER_ROOT_LENGTH",
@@ -7959,8 +7974,8 @@
       "id": "tests/test_fsio.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "91e03c2332a3632e",
-      "lines": 432,
+      "sha256": "d7e3c8f88f4baef2",
+      "lines": 430,
       "exports": [
         "REPO",
         "flusher",
@@ -9609,8 +9624,8 @@
       "id": "tests/test_runner.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "976cd0c840ae1a12",
-      "lines": 5823,
+      "sha256": "1b8924221acfccd1",
+      "lines": 5819,
       "exports": [
         "A_CLIENT_PATH",
         "DRAFT_DAY",
@@ -10651,8 +10666,8 @@
       "id": "tests/test_single_source.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "a652796407649d45",
-      "lines": 5329,
+      "sha256": "de8f1d3197609142",
+      "lines": 5328,
       "exports": [
         "AFTER_WHAT",
         "CONSOLE_EXEMPT",
@@ -13155,6 +13170,12 @@
     },
     {
       "from": "tests/test_api.py",
+      "to": "tests/source_pins.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_api.py",
       "to": "tests/wording.py",
       "type": "imports",
       "source": "derived"
@@ -14225,6 +14246,12 @@
       "from": "tests/test_fsio.py",
       "to": "tracker/validators.py",
       "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_fsio.py",
+      "to": "tests/source_pins.py",
+      "type": "imports",
       "source": "derived"
     },
     {
@@ -16251,6 +16278,12 @@
     },
     {
       "from": "tests/test_runner.py",
+      "to": "tests/source_pins.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_runner.py",
       "to": "tracker/runner.py",
       "type": "tests",
       "source": "derived"
@@ -16948,6 +16981,12 @@
     {
       "from": "tests/test_single_source.py",
       "to": "tests/node_harness.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_single_source.py",
+      "to": "tests/source_pins.py",
       "type": "imports",
       "source": "derived"
     },

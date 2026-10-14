@@ -21,6 +21,7 @@ from tests.api_driver import HOUSEHOLD, PEOPLE, SAMPLE_PEOPLE, one_reply, run, s
 from tests.conftest import TEST_CLIENT, app_stdin, make_engagement
 from tests.node_harness import js_function, read
 from tests.samples import PRIOR_YEAR, text_pdf
+from tests.source_pins import py_function
 from tests.wording import title_case
 from tracker import layout, ledger, manifest, reasons, reminder, store, view
 from tracker.filer import FILED, NEEDS_REVIEW, read_index
@@ -7874,8 +7875,12 @@ def test_no_command_outside_the_list_changing_ones_carries_the_list():
     assert "set-root" not in api.LIST_CHANGING
     adders = {name for name, fn in api.COMMANDS.items() if "_with_list(" in inspect.getsource(fn)}
     assert adders == set(api.LIST_CHANGING)
-    source = inspect.getsource(api)
+    # Read wherever the door's code sits (R3.1): api and every module a
+    # command's function is written in; the one place is _with_list's.
+    homes = {inspect.getsourcefile(api), *(inspect.getsourcefile(fn) for fn in api.COMMANDS.values())}
+    source = "".join(Path(home).read_text(encoding="utf-8") for home in sorted(homes))
     assert source.count('["list"] =') == 1 and '"list":' not in source.replace('"list": _cmd_list', '')
+    assert '["list"] =' in py_function("_with_list")
     try:
         for command in set(api.COMMANDS) - set(api.LIST_CHANGING):
             api._RUNNING["command"] = command

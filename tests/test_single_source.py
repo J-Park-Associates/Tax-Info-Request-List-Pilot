@@ -10,12 +10,14 @@ reads the owner and the consumer and compares them.
 
 import json
 import re
+import textwrap
 from pathlib import Path
 
 import pytest
 
 from tests.conftest import child_env
 from tests.node_harness import js_function
+from tests.source_pins import calls_of, py_function
 from tracker.content_check import RETIRED_CACHE_FILENAME
 from tracker.reasons import OTHER_MACHINE
 
@@ -917,6 +919,10 @@ def test_openpyxl_is_imported_only_to_read_a_clients_spreadsheet():
     import ast
     import subprocess
 
+    def imports_openpyxl(node):
+        return (isinstance(node, ast.Import) and any(a.name.split(".")[0] == "openpyxl" for a in node.names)
+                or isinstance(node, ast.ImportFrom) and (node.module or "").split(".")[0] == "openpyxl")
+
     tracked = subprocess.run(["git", "ls-files"], cwd=REPO, capture_output=True, text=True).stdout.split()
     hits = []
     for rel in tracked:
@@ -925,16 +931,15 @@ def test_openpyxl_is_imported_only_to_read_a_clients_spreadsheet():
         if rel.endswith(".py"):
             tree = ast.parse(read(rel))
             for node in ast.walk(tree):
-                if isinstance(node, ast.Import) and any(a.name.split(".")[0] == "openpyxl" for a in node.names):
-                    hits.append((rel, node.lineno))
-                if isinstance(node, ast.ImportFrom) and (node.module or "").split(".")[0] == "openpyxl":
+                if imports_openpyxl(node):
                     hits.append((rel, node.lineno))
         elif rel.endswith((".js", ".html", ".css", ".json")):
             assert "openpyxl" not in read(rel), rel
-    assert len(hits) == 1 and hits[0][0] == "tracker/content_check.py", hits
-    source = read("tracker/content_check.py").splitlines()
-    start = next(i for i, line in enumerate(source) if line.startswith("def _extract_xlsx("))
-    assert start < hits[0][1] - 1, "the one import is inside _extract_xlsx"
+    assert len(hits) == 1, hits
+    # The reader is found by its name wherever it sits (R3.1): the one import
+    # in the tree is the one inside _extract_xlsx.
+    reader = ast.parse(textwrap.dedent(py_function("_extract_xlsx")))
+    assert any(imports_openpyxl(node) for node in ast.walk(reader)), "the one import is inside _extract_xlsx"
     assert any(line.startswith("openpyxl==") for line in read("requirements.txt").splitlines())
 
 
@@ -2249,12 +2254,10 @@ def test_the_pass_and_the_hand_over_file_into_another_household_through_one_func
     from the package: nothing carries another record's half of a decision
     (the one place that names the retired key is the store's refusal of
     it), no ``Handed Over`` decision, no sentence cut at a ``_WAS_PREFIX``."""
-    filer = read("tracker/filer.py")
-    calls = re.findall(r"\b_file_into\(", filer)
-    assert len(calls) == 3                          # the definition and its two callers
-    assert len(re.findall(r"^def _file_into\(", filer, re.M)) == 1
-    body = lambda name: re.search(rf"^def {name}\(.*?(?=^def )", filer, re.S | re.M).group(0)  # noqa: E731
-    assert "_file_into(" in body("_file_it") and "_file_into(" in body("hand_over")
+    # By name, wherever the code sits (R3.1): one definition in the package,
+    # and its two callers, the pass's filing and the hand-over.
+    assert py_function("_file_into")
+    assert sorted(function for _file, function in calls_of("_file_into")) == ["_file_it", "hand_over"]
 
     tracker = {path.name: path.read_text(encoding="utf-8")
                for path in (REPO / "tracker").glob("*.py")}
@@ -2602,10 +2605,7 @@ def test_only_the_lock_asks_the_platform_for_this_computers_name():
                     any(alias.name == "node" for alias in node.names):
                 found.append(f"{rel} (from platform import node)")
     assert found == ["tracker/locking.py"], found
-    locking = read("tracker/locking.py")
-    this_host = locking[locking.index("def this_host"):]
-    this_host = this_host[:this_host.index("\ndef ")]
-    assert "platform.node" in this_host
+    assert "platform.node" in py_function("this_host")
 
 
 def hand_comparisons(source: str) -> list[int]:
@@ -2999,8 +2999,7 @@ def test_run_now_is_cut_off_only_at_the_run_limit_its_own_first_line_states():
     assert "said.limit_seconds * 1000" in main_js
     assert "vocab.pass_command" in main_js and f'"{api.PASS_COMMAND}"' not in main_js
     assert api._vocab()["pass_command"] == api.PASS_COMMAND
-    runner = read("tracker/runner.py")
-    main = runner[runner.index("def _pass(ns, parser, reached: dict)"):]
+    main = py_function("_pass")
     assert "limit_seconds=RUN_TIME_LIMIT_SECONDS)" in main[:main.index('watch.say("started"')]
     assert f'"{api.PASS_COMMAND}"' not in read("app/renderer/app.js")
     assert "withEng(vocab.pass_command)" in read("app/renderer/app.js")

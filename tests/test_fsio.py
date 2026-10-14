@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pytest
 
+from tests.source_pins import py_function
 from tracker.fsio import TEMP_SUFFIX, temp_path_for
 
 REPO = Path(__file__).resolve().parents[1]
@@ -350,13 +351,10 @@ def test_the_two_copies_of_full_sync_are_identical():
     """The layering's price (R22): ``fsio`` imports nothing of the package
     and ``ledger``, ``locking`` and ``store`` may not import ``fsio``, so the
     flush is written twice - and the two are the same text, so they cannot
-    drift."""
-    import inspect
-
-    from tracker import fsio, locking
-
-    assert inspect.getsource(fsio.full_sync) == inspect.getsource(locking.full_sync)
-    assert inspect.getsource(fsio._on_a_mac) == inspect.getsource(locking._on_a_mac)
+    drift. Each copy is read from its own module's tree (R3.1), so a module
+    that came to re-export the other's would not compare one with itself."""
+    assert py_function("full_sync", "fsio") == py_function("full_sync", "locking")
+    assert py_function("_on_a_mac", "fsio") == py_function("_on_a_mac", "locking")
 
 
 class _FakeFcntl:
