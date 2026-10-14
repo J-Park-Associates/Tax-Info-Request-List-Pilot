@@ -526,13 +526,15 @@ def test_no_way_of_writing_a_module_drops_a_stand_in_out_of_the_check(tmp_path):
     with ``nonlocal``, read in either function; a fixture only a conftest off
     the test's path defines; and a ``setattr`` called on a class
     (``MonkeyPatch``, ``pytest.MonkeyPatch``, or a class of the file), whose
-    first argument is the instance. The tool before review 4 passed eleven
-    of these unlisted: the five reached through the folder, which it took
-    for something outside the repository; the name rebound through it,
-    which it placed on its first value; the nonlocal read in the outer
+    first argument is the instance, and on one the tool does not see as a
+    class (``type(monkeypatch)``, ``monkeypatch.__class__``), whose target
+    then sits where a name should be. The tool before review 4 passed
+    thirteen of these unlisted: the five reached through the folder, which
+    it took for something outside the repository; the name rebound through
+    it, which it placed on its first value; the nonlocal read in the outer
     function and the nearest conftest's fixture, which it took for
-    ``None``; and the three called on a class, whose instance it took for
-    the target."""
+    ``None``; and the five called on a class, whose instance it took for the
+    target."""
     root = _repository(tmp_path, {**SORTER, "tests/aliases.py": """
         from tracker import sorter
 
@@ -752,6 +754,10 @@ def test_no_way_of_writing_a_module_drops_a_stand_in_out_of_the_check(tmp_path):
 
         def test_called_on_a_class_of_the_file(monkeypatch):
             Patcher.setattr(monkeypatch, sorter, "kept", None)
+
+        def test_called_on_a_class_the_tool_does_not_see_as_one(monkeypatch):
+            type(monkeypatch).setattr(monkeypatch, sorter, "kept", None)
+            monkeypatch.__class__.setattr(monkeypatch, "tracker.sorter.kept", None)
     """, "tests/test_b.py": """
         import functools
 
@@ -859,16 +865,20 @@ def test_no_way_of_writing_a_module_drops_a_stand_in_out_of_the_check(tmp_path):
         ("tests/test_c.py", 26, "tests.wired.ENGINE"), ("tests/test_c.py", 29, "wired.ENGINE"),
         ("tests/test_c.py", 39, "module"), ("tests/test_c.py", 47, "module"),
         ("tests/test_c.py", 52, "MonkeyPatch.setattr"), ("tests/test_c.py", 55, "pytest.MonkeyPatch.setattr"),
-        ("tests/test_c.py", 58, "Patcher.setattr"),
+        ("tests/test_c.py", 58, "Patcher.setattr"), ("tests/test_c.py", 61, "type(monkeypatch).setattr"),
+        ("tests/test_c.py", 62, "monkeypatch.__class__.setattr"),
     ]
     ok, said = patch_sites.check(root)
-    assert not ok and len(said) == 45
+    assert not ok and len(said) == 47
     assert ("tests/test_c.py:20: setattr(tests, ...) cannot be placed: tests is a folder with no __init__.py, not a "
             "module. Name the module and the name as an import, an alias or a literal.") in said
     assert ("tests/test_b.py:60: monkeypatch.setattr cannot be placed: it is not called where it is written, so what "
             "it replaces is not written out. Call it where it is written.") in said
-    assert said[-1] == ("tests/test_c.py:58: Patcher.setattr cannot be placed: it is called on a class, so its "
-                        "first argument is the instance and what it replaces comes after. Call it on the instance.")
+    assert ("tests/test_c.py:58: Patcher.setattr cannot be placed: it is called on a class, so its first argument "
+            "is the instance and what it replaces comes after. Call it on the instance.") in said
+    assert said[-1] == ("tests/test_c.py:62: monkeypatch.__class__.setattr cannot be placed: what it replaces is not "
+                        "an attribute name the tool reads, so it may be called on a class, with the instance first "
+                        "and the target in the name's place. Call it on the instance, with the name as a string.")
 
 
 def test_a_value_is_taken_for_no_module_only_where_the_tool_proves_it_is_none(tmp_path):

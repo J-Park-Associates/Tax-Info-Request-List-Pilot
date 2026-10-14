@@ -44,7 +44,9 @@ a fixture that hands its monkeypatch on (``in_a_child``) and
 ``pytest.MonkeyPatch.context()`` count as well as ``monkeypatch``; one called
 on a class or on something outside the repository
 (``MonkeyPatch.setattr(monkeypatch, sorter, ...)``, whose first argument is the
-instance) is not placed. A module is named three ways: as the test imported it
+instance) is not placed, and so is a stand-in on no module whose name is not an
+attribute name the tool reads, as when ``type(monkeypatch).setattr`` is handed
+the instance first. A module is named three ways: as the test imported it
 (``setattr(filer, ...)``, and through a folder with no ``__init__.py``, as
 ``tests.children`` after ``import tests.children``), under an alias
 (``filer_module``, ``here = children`` or ``here: ModuleType = children``), or
@@ -153,14 +155,17 @@ mark whose names or values are not written out, or that hands a name to its
 fixture, and a fixture's ``request.param`` where any mark in the suite may hand
 it values; a ``setattr`` that is not called where it is written (``put =
 monkeypatch.setattr``, or ``functools.partial`` of one), or that is called on a
-class or on something outside the repository; and in the string form, a first
-argument that is not a string the tool can read, such as one built with ``+``
-or ``format``. The remedy is the same each time: name the module and the name
-as an import, an alias or a literal, and call ``setattr`` on the instance,
-where it is written. The fallback this replaced, no module wherever the tool
-did not know, let a stand-in written through a helper module, a lambda, a
-class, a string held in a name, a ``parametrize`` mark, a helper's fixture or a
-seam another file fills drop out of the check without a word.
+class or on something outside the repository, and a stand-in on no module whose
+name is not an attribute name the tool reads (a module or a dotted string there
+is the target of a ``setattr`` called on a class the tool does not see as one);
+and in the string form, a first argument that is not a string the tool can
+read, such as one built with ``+`` or ``format``. The remedy is the same each
+time: name the module and the name as an import, an alias or a literal, and
+call ``setattr`` on the instance, where it is written. The fallback this
+replaced, no module wherever the tool did not know, let a stand-in written
+through a helper module, a lambda, a class, a string held in a name, a
+``parametrize`` mark, a helper's fixture or a seam another file fills drop out
+of the check without a word.
 
 Rejected: importing the modules to ask them (it runs code, and the tests'
 imports reach the sorting engine); tracing a run of the whole suite (it costs a
@@ -1358,7 +1363,13 @@ def _survey(suite: _Suite) -> tuple[set[Site], set[Unplaced], set[tuple[str, int
     its arguments are written somewhere the tool does not look. Nor is one
     called on a class or on something outside the repository
     (``MonkeyPatch.setattr(monkeypatch, sorter, ...)``): its first argument
-    is then the monkeypatch, and what it replaces comes after."""
+    is then the monkeypatch, and what it replaces comes after. A class the
+    tool does not see as one (``type(monkeypatch)``) is caught by the name:
+    a stand-in on no module passes unlisted only where what it replaces is
+    an attribute name the tool reads, which it always is when ``setattr`` is
+    called on the instance, and never is when the instance comes first and
+    the target (a module, or the string form's dotted name) is in the
+    name's place."""
     sites: set[Site] = set()
     unplaced: set[Unplaced] = set()
     read: set[tuple[str, int, int]] = set()
@@ -1396,6 +1407,11 @@ def _survey(suite: _Suite) -> tuple[set[Site], set[Unplaced], set[tuple[str, int
                 elif kind not in _NO_MODULE:
                     unplaced.add(Unplaced(test_file.relative, call.lineno, written,
                                           f"what {held} holds is not written out"))
+                elif not (name_kind == TEXT and isinstance(name, str) and name.isidentifier()):
+                    unplaced.add(Unplaced(test_file.relative, call.lineno, ast.unparse(call.func),
+                                          "what it replaces is not an attribute name the tool reads, so it may be "
+                                          "called on a class, with the instance first and the target in the name's "
+                                          "place", remedy="Call it on the instance, with the name as a string"))
     return sites, unplaced, read
 
 
