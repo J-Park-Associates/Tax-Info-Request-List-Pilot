@@ -16,7 +16,7 @@ from pathlib import Path
 import pytest
 
 from tests.conftest import child_env
-from tests.node_harness import APP_SCRIPTS, js_function, renderer_text
+from tests.node_harness import APP_SCRIPTS, js_function, renderer_text, stripped_js
 from tests.source_pins import calls_of, py_function
 from tracker.content_check import RETIRED_CACHE_FILENAME
 from tracker.reasons import OTHER_MACHINE
@@ -106,11 +106,19 @@ def test_the_shell_and_the_preload_agree_on_every_ipc_channel():
 
 
 def test_the_renderer_calls_only_commands_the_api_has_and_types_no_flag():
-    """Read over every script the page loads (R3.3, D-5). A command is named
-    where it is called - ``call(["list"])``, ``window.tracker.call(["firm"],
-    ...)``, ``withEng("assign")`` - or by a constant the script names it with
-    (pilot.js's ``COMMAND``); a call the guard could not read is a failure,
-    so none goes unchecked. The pass's command is the vocabulary's
+    """Read over every script the page loads (R3.3, D-5). The guard reads a
+    command in these forms only: ``call([...])`` and
+    ``window.tracker.call([...])``, whose first element is a literal
+    (``call(["list"])``) or a constant the script names it with (pilot.js's
+    ``COMMAND``), and ``withEng(...)``, whose argument is a literal
+    (``withEng("assign")``). A ``call([`` whose first element is neither
+    fails, and so does a ``withEng(`` whose argument is not a literal, the
+    pass's command apart. A call whose arguments are a variable
+    (``call(args)``, ``call(args, payload)``, ``call(...built)``) is not
+    read: its command is checked only where that variable is built through
+    ``withEng``, and one built any other way (``rollHouseholdCall``'s
+    ``roll-household``) is not checked here. The pass's command is the
+    vocabulary's
     (test_run_now_is_cut_off_only_at_the_run_limit_its_own_first_line_states)."""
     import tracker.api as api
 
@@ -1023,7 +1031,16 @@ def test_the_renderer_types_no_vocabulary_of_its_own():
     the statuses, the overrides, the decisions, the defaults, the
     headers of the request list, the yes/no words, the one-character
     values, the year bounds and the editor's floors - none is typed in the
-    renderer, so the app cannot disagree with the tracker about a word."""
+    renderer, so the app cannot disagree with the tracker about a word.
+
+    Read over every app script (R3.3, D-5), so a word typed in code that
+    moves out of app.js is found where it lands. The pilot's scripts are
+    left out, as the typed-words guard leaves them: pilot-content.js is the
+    pilot's wording by design, and test_pilot holds it. app.js is read as it
+    always was, comments and all. The others are read without their
+    comments, and there a bare word is looked for as a whole word: a name
+    such as pages.js's menu id ``not_requested`` holds "requested" and puts
+    no word on screen."""
     from tracker.api import _slug
     from tracker.filer import DUPLICATE, FILE_MOVED, FILED, NEEDS_REVIEW, NOT_REQUESTED
     from tracker.layout import INBOX_DIR_NAME
@@ -1042,14 +1059,17 @@ def test_the_renderer_types_no_vocabulary_of_its_own():
     from tracker.scheduling import DEFAULT_START
     from tracker.settings import EXAMPLE_ROOT
 
-    js = read("app/renderer/app.js")
+    app_js = read("app/renderer/app.js")
+    others = "\n".join(stripped_js(name) for name in APP_SCRIPTS if name != "app.js")
+    js = "\n".join((app_js, others))
     html = read("app/renderer/index.html")
     for literal in (*Status.ALL, *Override.ALL, FILED, NEEDS_REVIEW, DUPLICATE, NOT_REQUESTED,
                     FILE_MOVED, DEFAULT_START,
                     ", ".join(DEFAULT_EXTENSIONS), "looks like", UNSCANNED_LABEL,
                     _slug(UNSCANNED_LABEL), EXPECTED_PATTERN.split("{")[1].split("}")[1].strip()):
         assert f'"{literal}"' not in js and f"'{literal}'" not in js, literal
-        assert literal not in js, literal
+        assert literal not in app_js, literal
+        assert not re.search(rf"(?<!\w){re.escape(literal)}(?!\w)", others), literal
     for literal in (*HEADERS, YES, NO, ANY_EXTENSION):
         assert f'"{literal}"' not in js and f"'{literal}'" not in js, literal
     # The dashboard's own table heads its columns in plain English, so the

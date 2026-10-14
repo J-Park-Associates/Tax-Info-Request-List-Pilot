@@ -63,6 +63,14 @@ def renderer_text(scripts: tuple[str, ...] = RENDERER_SCRIPTS) -> str:
     so code that moves from one script to another is read where it lands."""
     return "\n".join(read(name) for name in scripts)
 
+
+def stripped_js(name: str) -> str:
+    """The file without its comments (no string in these files holds //)."""
+    text = read(name)
+    text = re.sub(r"/\*.*?\*/", "", text, flags=re.S)
+    return re.sub(r"(?m)^\s*//.*$|(?<=[;{}),])\s*//.*$", "", text)
+
+
 NODE = shutil.which("node")
 
 

@@ -59,6 +59,7 @@ from tests.node_harness import (
     run_sort_end,
     run_speed,
     store_functions,
+    stripped_js,
 )
 from tracker import settings as settings_module
 
@@ -634,13 +635,6 @@ def test_every_icon_has_a_name_and_a_tooltip():
 
 
 # ── the guards every renderer file keeps ──────────────────────────────────
-
-def stripped_js(name: str) -> str:
-    """The file without its comments (no string in these files holds //)."""
-    text = read(name)
-    text = re.sub(r"/\*.*?\*/", "", text, flags=re.S)
-    return re.sub(r"(?m)^\s*//.*$|(?<=[;{}),])\s*//.*$", "", text)
-
 
 def test_the_renderer_has_no_title_attribute():
     for name in TITLE_FREE:

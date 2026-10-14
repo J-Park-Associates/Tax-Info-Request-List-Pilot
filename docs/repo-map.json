@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 318,
     "edges": 1391,
-    "reused": 260
+    "reused": 261
   },
   "node_types": [
     "artifact",
@@ -4645,7 +4645,7 @@
       "id": "docs/repo-map.curated.json",
       "type": "file",
       "layer": "docs",
-      "sha256": "d27179031fa73431",
+      "sha256": "a949559def55f4e5",
       "lines": 1373,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
@@ -6131,8 +6131,8 @@
       "id": "tests/node_harness.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "eba1b1651442f52d",
-      "lines": 996,
+      "sha256": "962ff20563f08e5e",
+      "lines": 1004,
       "exports": [
         "APP_SCRIPTS",
         "COLUMN_FUNCTIONS",
@@ -6185,7 +6185,8 @@
         "run_shell",
         "run_sort_end",
         "run_speed",
-        "store_functions"
+        "store_functions",
+        "stripped_js"
       ],
       "constants": {
         "PILOT_SCRIPTS": "('pilot-content.js', 'pilot.js', 'tour.js')",
@@ -6210,7 +6211,7 @@
         "LONG_SETUP": "'\\nconst hideTip = () => {}; const showTipNow = () => {};\\nlet H = 40;\\nObject.defineProperty(Element.prototype, \"offsetHeight\", { get() { return H; }, configurable: true });\\nconst pageBox = new Element(\"div\");\\npageBox.scrollTop = 0; pageBox.clientHeight = 800; pageBox.getBoundingClientRect = () => ({ top: 0 });\\nconst $ = (id) => (id === \"page\" ? pageBox : null);\\nconst parkedFiles = (n, extra = () => ({})) => Array.from({ length: n }, (_, i) => parked(`f${String(i + 1).padStart(4, \"0\")}`, extra(i)));\\nconst draw = (index, items = []) => {\\n  lastState = stateOf(items, index);\\n  pagesUid = 0; pagesTokens.clear(); pagesBroken = [];\\n  pageBox.replaceChildren(...pagesReturn({ level: \"return\", ret: \"r1\", year: 2025 }));\\n  pageBox.scrollTop = 0;\\n  for (const list of pageBox.querySelectorAll(\".rows.is-virtual\")) list.getBoundingClientRect = () => ({ top: 100 - pageBox.scrollTop });\\n  pagesVirtualMeasure(pageBox);\\n  return pageBox.querySelectorAll(\".rows.is-virtual\")[0];\\n};\\nconst scrollTo = (top) => { pageBox.scrollTop = top; pagesVirtualPlaceAll(pageBox); };\\n'",
         "MENU_HARNESS": "'\\nconst Module = require(\"module\");\\nconst EventEmitter = require(\"events\");\\nconst realFs = require(\"fs\");\\nconst [mainJs, scenarioJson] = process.argv.slice(2);\\nconst sc = JSON.parse(scenarioJson);\\n// Off Windows the fallback is Electron\\'s userData; \"win32\" is %LOCALAPPDATA%.\\nObject.defineProperty(process, \"platform\", { value: sc.platform || \"linux\" });\\n// A Mac is refused below Apple silicon and macOS 14 (SPEC-mac R6), so a scenario\\n// that stands in for one says which chip and which Darwin release it has.\\nif (sc.arch) Object.defineProperty(process, \"arch\", { value: sc.arch });\\nif (sc.release) require(\"os\").release = () => sc.release;\\nif (sc.localAppData !== undefined) process.env.LOCALAPPDATA = sc.localAppData;\\nprocess.resourcesPath = process.resourcesPath || \"/resources\";\\nconst log = { menus: [], popups: [], sends: [], opened: [], revealed: [], answers: [], backgrounds: [], windowOptions: null,\\n              userModelIds: [], spawned: [] };\\nlet openHandler = null;\\nlet menuHandler = null;\\nlet trackerHandler = null;\\nlet updated = null;\\nconst theme = { shouldUseDarkColors: !!sc.dark, shouldUseHighContrastColors: !!sc.contrast,\\n                themeSource: \"\", on(name, fn) { if (name === \"updated\") updated = fn; } };\\nconst snapshot = (items) => items.map((i) => ({\\n  label: i.label, type: i.type, role: i.role, enabled: i.enabled, accelerator: i.accelerator, checked: i.checked,\\n  submenu: i.submenu ? snapshot(i.submenu) : undefined }));\\nlet live = { bar: null, popup: null };\\n// What main.js has started and not yet seen finish: Electron\\'s ready, a fake\\n// tracker child until it closes, a file check (fs.promises). The harness waits\\n// for this to reach nought, never for a fixed time: a busy PC (12 test files at\\n// once) once took longer than the 60 ms it used to wait for a file check (P200).\\nlet pending = 0;\\nconst track = (promise) => {\\n  pending += 1;\\n  const done = () => { pending -= 1; };\\n  promise.then(done, done);\\n  return promise;\\n};\\n// Every continuation of a settled promise runs before the next turn of the\\n// event loop, so a turn with nothing pending means main.js has done answering.\\nconst settle = async () => {\\n  do { await new Promise((resolve) => setImmediate(resolve)); } while (pending > 0);\\n};\\nconst win = {\\n  isDestroyed: () => false,\\n  getContentBounds: () => ({ width: 1400, height: 900 }),\\n  setBackgroundColor: (c) => log.backgrounds.push(c),\\n  loadFile() {}, on() {}, isMinimized: () => false, focus() {},\\n  webContents: { setWindowOpenHandler() {}, on() {}, session: { flushStorageData() {} },\\n                 send: (channel, message) => log.sends.push({ channel, message }) },\\n};\\nclass BrowserWindow {\\n  constructor(options) { log.windowOptions = options; return win; }\\n  static getAllWindows() { return [win]; }\\n}\\nconst electron = {\\n  app: { isPackaged: !!sc.packaged, requestSingleInstanceLock: () => true, quit() {}, on() {},\\n         setPath() {}, setAppUserModelId(id) { log.userModelIds.push(id); },\\n         getPath: (name) => { if (name === \"appData\") return \"appdata\";\\n                              if (!sc.userData) throw new Error(\"no such path\"); return sc.userData; },\\n         whenReady: () => track(Promise.resolve()) },\\n  BrowserWindow,\\n  Menu: {\\n    buildFromTemplate: (template) => ({ template, popup(options) {\\n      live.popup = template;\\n      log.popups.push({ items: snapshot(template), options });\\n    } }),\\n    setApplicationMenu(menu) {\\n      live.bar = menu.template;\\n      log.menus.push(snapshot(menu.template));\\n    },\\n  },\\n  ipcMain: { handle(name, fn) {\\n               if (name === \"tracker-cmd\") trackerHandler = fn;\\n               if (name === \"open-path\") openHandler = fn;\\n             },\\n             on(name, fn) { if (name === \"menu\") menuHandler = fn; } },\\n  nativeTheme: theme,\\n  shell: { openPath: async (p) => { log.opened.push(p); return \"\"; },\\n           showItemInFolder: (p) => { log.revealed.push(p); } },\\n  dialog: {},\\n};\\nconst listReply = () => ({ vocab: { commands: [\"list\", \"after-install\"], menu: sc.vocabMenu,\\n                                    path_kinds: sc.pathKinds,\\n                                    shell: { error_log: sc.errorLog } }, paths: sc.paths });\\nconst fakeSpawn = (cmd, args) => {\\n  const proc = new EventEmitter();\\n  log.spawned.push(cmd);\\n  proc.stdout = new EventEmitter();\\n  proc.stdout.setEncoding = () => {};\\n  proc.stderr = new EventEmitter();\\n  if (args.includes(\"--resident\")) {\\n    // The engine (P276) stays up and answers the frame it is handed: a line {id, argv, bytes},\\n    // then its reply and an end line. Never closed here, or the shell would log an engine\\'s end.\\n    let framed = Buffer.alloc(0);\\n    proc.pid = 1;\\n    proc.kill = () => {};\\n    proc.stdin = { on() {}, end() {},\\n      write(chunk) {\\n        framed = Buffer.concat([framed, Buffer.from(chunk)]);\\n        for (;;) {\\n          const at = framed.indexOf(10);\\n          if (at < 0) return true;\\n          const head = JSON.parse(framed.slice(0, at).toString(\"utf8\"));\\n          if (framed.length - at - 1 < head.bytes) return true;       // the payload\\'s bytes are part of the frame\\n          framed = framed.slice(at + 1 + head.bytes);\\n          pending += 1;\\n          setImmediate(() => {\\n            if (head.argv.includes(\"list\")) proc.stdout.emit(\"data\", JSON.stringify(listReply()) + \"\\\\n\");\\n            proc.stdout.emit(\"data\", \"\\\\n\" + JSON.stringify({ engine_end: head.id, code: 0, retiring: false }) + \"\\\\n\");\\n            pending -= 1;\\n          });\\n        }\\n      } };\\n    return proc;\\n  }\\n  proc.stdin = { write() {}, end() {}, on() {} };\\n  proc.pid = 1;\\n  proc.kill = () => {};\\n  pending += 1;\\n  setImmediate(() => {\\n    if (args.includes(\"list\")) proc.stdout.emit(\"data\", JSON.stringify(listReply()) + \"\\\\n\");\\n    proc.emit(\"close\", 0);\\n    pending -= 1;\\n  });\\n  return proc;\\n};\\nconst load = Module._load;\\nModule._load = function (request, ...rest) {\\n  if (request === \"electron\") return electron;\\n  if (request === \"child_process\") return { spawn: fakeSpawn };\\n  if (request === \"fs\") {\\n    const promises = Object.fromEntries(Object.entries(realFs.promises).map(([name, fn]) =>\\n      [name, typeof fn === \"function\" ? (...args) => track(fn.apply(realFs.promises, args)) : fn]));\\n    return { ...realFs, promises, existsSync: () => true,\\n      readFileSync(p, ...more) {\\n        const base = String(p).split(/[\\\\\\\\/]/).pop();\\n        if (base in (sc.css || {})) {\\n          if (sc.css[base] === null) throw Object.assign(new Error(\"no such file\"), { code: \"ENOENT\" });\\n          return sc.css[base];\\n        }\\n        return realFs.readFileSync(p, ...more);\\n      } };\\n  }\\n  return load.call(this, request, ...rest);\\n};\\nconst items = (list, label) => {\\n  for (const item of list) {\\n    if (item.label === label) return item;\\n    const inner = item.submenu && items(item.submenu, label);\\n    if (inner) return inner;\\n  }\\n  return null;\\n};\\n(async () => {\\n  require(mainJs);\\n  await settle();\\n  for (const step of sc.steps) {\\n    if (step.menu !== undefined) {\\n      menuHandler({ sender: step.stranger ? {} : win.webContents }, step.menu);\\n    } else if (step.tracker) {\\n      await trackerHandler({ sender: { isDestroyed: () => false, send() {} } }, step.tracker, undefined);\\n    } else if (step.open) {\\n      log.answers.push(await openHandler({}, ...step.open));\\n    } else if (step.clickBar) {\\n      const item = items(live.bar, step.clickBar);\\n      if (item && item.click) item.click();\\n    } else if (step.clickPopup) {\\n      const item = items(live.popup, step.clickPopup);\\n      if (item && item.click) item.click();\\n    } else if (step.theme) {\\n      Object.assign(theme, step.theme);\\n      updated();\\n    }\\n    await settle();\\n  }\\n  process.stdout.write(JSON.stringify(log));\\n})();\\n'"
       },
-      "role": "Runs the renderer's own JavaScript under node and reads its text: the runners (run_shell and run_pages lift named functions out of the scripts as written and run a probe against fakes; run_pages_dom adds a small DOM; run_notices, run_lists, run_speed, run_firm_load and the rest add the worlds their claims need), js_function and lift, which cut a function out of a script, and the renderer file reader read(name); RENDERER_SCRIPTS (the scripts index.html loads, vendor/ left out), the named parts of it APP_SCRIPTS, PILOT_SCRIPTS and SHELL_SCRIPTS, and renderer_text(), the scripts as one text.",
+      "role": "Runs the renderer's own JavaScript under node and reads its text: the runners (run_shell and run_pages lift named functions out of the scripts as written and run a probe against fakes; run_pages_dom adds a small DOM; run_notices, run_lists, run_speed, run_firm_load and the rest add the worlds their claims need), js_function and lift, which cut a function out of a script, and the renderer file reader read(name); RENDERER_SCRIPTS (the scripts index.html loads, vendor/ left out), the named parts of it APP_SCRIPTS, PILOT_SCRIPTS and SHELL_SCRIPTS, renderer_text(), the scripts as one text, and stripped_js(name), one script without its comments.",
       "notes": "SPEC-architecture J2 (R2.1, E-4). SPEC-architecture J3 (R3.2, D-5): the guards on the renderer as a whole read renderer_text() and the lists of files a claim covers are RENDERER_SCRIPTS or a named part of it, so code that moves to another script, or a script added to the page, is still read. tests/test_shell.py grew the runners and test_single_source.py borrowed one (from tests.test_shell import run_pages); they were moved here with their words and the fakes and function lists each always had, and the file reader every renderer test wrote for itself (test_pilot, test_pilot_ui) is read() here. The window is sandboxed and there is no browser in the gate, so a claim about what a page does is made by running its functions in node. Skipped where node is not on PATH (CI installs it)."
     },
     {
@@ -10238,8 +10239,8 @@
       "id": "tests/test_shell.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "946a463045c2c46a",
-      "lines": 8274,
+      "sha256": "379fc74e3632ed30",
+      "lines": 8268,
       "exports": [
         "CARD_HOUSEHOLD",
         "COMPACT_FUNCTIONS",
@@ -10284,7 +10285,6 @@
         "resolve",
         "root_blocks",
         "scratch_root",
-        "stripped_js",
         "test_a_change_during_an_ask_asks_once_more_when_it_lands",
         "test_a_change_of_the_last_pass_file_asks_last_pass_once",
         "test_a_change_while_hidden_is_asked_when_the_window_is_shown",
@@ -10710,8 +10710,8 @@
       "id": "tests/test_single_source.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "b3b0afd11afdcc9e",
-      "lines": 5362,
+      "sha256": "43a3df81ef5af04d",
+      "lines": 5382,
       "exports": [
         "AFTER_WHAT",
         "CONSOLE_EXEMPT",
