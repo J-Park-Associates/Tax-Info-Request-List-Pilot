@@ -64,21 +64,6 @@ from typing import cast
 from tracker import hold, layout
 from tracker.fsio import write_json_atomically
 
-# The hold's public names, re-exported until P2.13. They are assigned rather than
-# imported because settings no longer reads them itself, and the stand-ins on
-# settings.held and settings.resolved must still reach the callers that read them
-# through settings (P2.6 question 001). _HELD and _HOLDING are never copied here:
-# hold rebinds them, so a copy would keep a stale None.
-HOLD_HOUSEHOLD = hold.HOLD_HOUSEHOLD
-HOLD_READING = hold.HOLD_READING
-WRITE_WHILE_HOLDING = hold.WRITE_WHILE_HOLDING
-WRITE_WHILE_READING = hold.WRITE_WHILE_READING
-held = hold.held
-one_household = hold.one_household
-one_reading = hold.one_reading
-refuse_a_write_while_reading = hold.refuse_a_write_while_reading
-resolved = hold.resolved
-
 SETTINGS_FILENAME = "settings.json"
 #: The folder decision 137 (L7) kept OCR's page images in, beside the app.
 #: Retired by decision 169 - the reader writes none - but an old checkout or

@@ -822,7 +822,7 @@ def test_one_reading_asks_the_data_folder_once_and_outside_it_every_time(monkeyp
 
     monkeypatch.setattr(data_rules, "resolve_data_home", counted)
     first = data_rules.data_home()
-    with data_rules.one_reading():
+    with hold.one_reading():
         assert data_rules.data_home() == data_rules.data_home() == first
         monkeypatch.setenv(data_rules.ENV_DATA_HOME, str(tmp_path / "elsewhere"))
         assert data_rules.data_home() == first, "one reply sees one data folder"
@@ -832,7 +832,7 @@ def test_one_reading_asks_the_data_folder_once_and_outside_it_every_time(monkeyp
 
 def test_one_reading_reads_the_settings_once_and_hands_each_caller_its_own_copy():
     data_rules.set_firm("J Park & Associates, CPA")
-    with data_rules.one_reading():
+    with hold.one_reading():
         mine = data_rules._read()
         mine["firm"] = "changed by one caller"
         settings_path().write_text(json.dumps({"firm": "written meanwhile"}), encoding="utf-8")
@@ -841,9 +841,9 @@ def test_one_reading_reads_the_settings_once_and_hands_each_caller_its_own_copy(
 
 
 def test_a_nested_reading_is_the_same_reading_and_ends_with_the_outer_one():
-    with data_rules.one_reading():
+    with hold.one_reading():
         first = data_rules.app_dir()
-        with data_rules.one_reading():
+        with hold.one_reading():
             assert hold._HELD is not None and data_rules.app_dir() == first
         assert hold._HELD is not None
     assert hold._HELD is None
@@ -852,7 +852,7 @@ def test_a_nested_reading_is_the_same_reading_and_ends_with_the_outer_one():
 def test_a_settings_write_inside_a_reading_is_refused_outright():
     """The review's SHOULD-3: a read-only reply writes nothing, and a write
     under held answers would leave the rest of the reply stale."""
-    with data_rules.one_reading():
+    with hold.one_reading():
         with pytest.raises(RuntimeError, match="read-only reply"):
             data_rules.set_firm("Written inside a reading")
     data_rules.set_firm("Written after it")
@@ -873,14 +873,14 @@ def test_one_household_asks_the_data_folder_once_and_drops_it_after(monkeypatch,
         return real(*args, **kwargs)
 
     monkeypatch.setattr(data_rules, "resolve_data_home", counted)
-    with data_rules.one_household():
+    with hold.one_household():
         first = data_rules.data_home()
         assert data_rules.data_home() == data_rules.data_home() == first
         monkeypatch.setenv(data_rules.ENV_DATA_HOME, str(tmp_path / "elsewhere"))
         assert data_rules.data_home() == first, "one household sees one data folder"
     assert len(asked) == 1
     assert hold._HELD is None
-    with data_rules.one_household():
+    with hold.one_household():
         assert data_rules.data_home() == tmp_path / "elsewhere", "the next household asks again"
 
 
@@ -890,7 +890,7 @@ def test_a_settings_write_inside_a_household_is_refused_and_never_undoes_a_save(
     save the app made meanwhile would be undone in silence. The pass never
     writes the file; one that tried is refused, and the save stands."""
     data_rules.set_firm("Before")
-    with data_rules.one_household():
+    with hold.one_household():
         assert data_rules.firm() == "Before"
         settings_path().write_text(json.dumps({"firm": "Saved by the app meanwhile"}), encoding="utf-8")
         with pytest.raises(RuntimeError, match="holds a household's answers"):
@@ -902,14 +902,14 @@ def test_a_household_inside_a_reading_is_the_reading_and_still_refuses_a_write()
     """Nested, a hold is part of the one outside it: a household's hold
     never lifts a reading's refusal, and a reading inside a household is
     the household's."""
-    with data_rules.one_reading():
-        with data_rules.one_household():
-            assert hold._HOLDING == data_rules.HOLD_READING
+    with hold.one_reading():
+        with hold.one_household():
+            assert hold._HOLDING == hold.HOLD_READING
             with pytest.raises(RuntimeError, match="read-only reply"):
                 data_rules.set_firm("Written inside a reading")
-    with data_rules.one_household():
-        with data_rules.one_reading():
-            assert hold._HOLDING == data_rules.HOLD_HOUSEHOLD
+    with hold.one_household():
+        with hold.one_reading():
+            assert hold._HOLDING == hold.HOLD_HOUSEHOLD
         assert hold._HELD is not None
     assert hold._HELD is None and hold._HOLDING == ""
 

@@ -858,7 +858,8 @@ def _recorded_root_over(folder: Path) -> Path | None:
     the chain that walks folders and moves files.
     """
     from tracker import layout
-    from tracker.settings import clients_root, resolved
+    from tracker.hold import resolved
+    from tracker.settings import clients_root
 
     root = clients_root()
     if root is None:
@@ -937,7 +938,7 @@ def _positional_root(folder: Path) -> Path | None:
     ``layout`` stays the one place the shape is worded.
     """
     from tracker import layout
-    from tracker.settings import resolved
+    from tracker.hold import resolved
 
     try:
         folder = resolved(folder)
@@ -963,7 +964,7 @@ def engagement_path(root: Path | str, engagement_dir: Path | str) -> str:
     root, with forward slashes, so a store copied to another machine or
     another drive letter still names the same engagements."""
     from tracker import layout
-    from tracker.settings import resolved
+    from tracker.hold import resolved
 
     root, folder = resolved(root), resolved(engagement_dir)
     below = layout.parts_below(root, folder)
@@ -980,9 +981,9 @@ def _engagement_key(folder: Path, root: Path | str | None = None) -> str:
     already held for exactly this hold - so it cannot differ from asking
     again. The row itself is never held: its applied_seq moves whenever
     anything is written."""
-    from tracker import settings
+    from tracker import hold
 
-    return settings.held(("engagement key", str(folder), "" if root is None else str(root)),
+    return hold.held(("engagement key", str(folder), "" if root is None else str(root)),
                          lambda: engagement_path(key_root(folder, root), folder), there=folder)
 
 
@@ -1087,20 +1088,20 @@ def held_read(conn: sqlite3.Connection, engagement_dir: Path | str, what: str,
     written only by applying journal lines (which moves the seq, head and
     digest) or by deleting the row, so any change moves the token and the
     next read builds afresh. Nothing is kept outside a
-    hold (:func:`tracker.settings.held`), nor past it; a list is handed out
+    hold (:func:`tracker.hold.held`), nor past it; a list is handed out
     as a copy, so no caller changes another's. ``what`` names the read.
 
     Beyond the SPEC's token: the row's ``built_at`` and the count of rows
     this process deleted (:data:`_REPLACED`), so a row rebuilt from the
     same journal - same head, same seq, an id SQLite may reuse - is read
     afresh all the same."""
-    from tracker import settings
+    from tracker import hold
 
     row = _engagement_row(conn, engagement_dir)
     if row is None:
         return build()
     token = (what, *read_token(row), _REPLACED)
-    value = settings.held(("record read", *token), build, there=engagement_dir)
+    value = hold.held(("record read", *token), build, there=engagement_dir)
     return list(value) if isinstance(value, list) else value
 
 
@@ -2246,10 +2247,10 @@ def record(conn: sqlite3.Connection, engagement_dir: Path | str, *events: dict) 
     that caught up part of this batch meanwhile has none of it re-applied.
 
     Refused outright inside a read-only reply
-    (:func:`tracker.settings.one_reading`, P118): such a reply records
+    (:func:`tracker.hold.one_reading`, P118): such a reply records
     nothing.
     """
-    from tracker.settings import refuse_a_write_while_reading
+    from tracker.hold import refuse_a_write_while_reading
 
     refuse_a_write_while_reading("a return's record")
     engagement_dir = Path(engagement_dir)

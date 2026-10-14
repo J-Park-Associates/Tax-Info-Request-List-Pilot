@@ -4403,7 +4403,7 @@ def test_teaching_a_spelling_from_a_filing_rides_the_filings_transaction_and_a_o
     exactly as a taught keyword is. A spelling of one word is refused
     before a byte is read - a family name alone would confirm a business -
     and so is a person the return does not list."""
-    from tracker.names import ONE_WORD_SPELLING
+    from tracker.records import ONE_WORD_SPELLING
 
     engagement = sample_engagement(capsys, demo_root, tmp_path,
                                    f"W-2 Jane Smith {PRIOR_YEAR} - old.pdf")
@@ -4459,7 +4459,8 @@ def test_create_refuses_a_return_with_no_people_and_the_editor_saves_people_as_o
     refused at setup rather than left to park every W-2 that arrives; and
     the people are edited in the one editor, saved in the one event that
     carries every other detail."""
-    from tracker.names import NO_PEOPLE, ONE_WORD_SPELLING
+    from tracker.names import NO_PEOPLE
+    from tracker.records import ONE_WORD_SPELLING
 
     spec = {"return_name": "No People", "form": "1040", "people": [],
             "items": [{"identifier": "A01", "document": "W-2"}]}
@@ -7899,7 +7900,7 @@ def test_the_list_a_write_carries_is_one_reading_after_the_write(capsys, demo_ro
     """P209: the write is done, and what follows is the ``list`` command's
     own read, held as that command holds it (P118) - and the write itself
     is never inside the reading, which would refuse it."""
-    from tracker import hold, settings, store
+    from tracker import hold, store
 
     seen = {}
     real_payload, real_record = api._list_payload, store.record
@@ -7918,7 +7919,7 @@ def test_the_list_a_write_carries_is_one_reading_after_the_write(capsys, demo_ro
         "household": "Other Household", "return_name": "Smith 2025", "form": "1040",
         "items": [{"identifier": "A01", "document": "W-2"}]})
     assert code == 0, payload
-    assert seen["list"] == settings.HOLD_READING and "list" in payload
+    assert seen["list"] == hold.HOLD_READING and "list" in payload
     assert seen["writes"] == {""}, "the write is made before the reading, holding nothing"
     assert hold._HELD is None
 
@@ -11301,7 +11302,7 @@ def test_a_stored_spelling_past_the_rule_refuses_a_row_only_save_and_names_the_p
 
 
 def test_a_one_word_spelling_is_refused_before_the_text_rule_is_asked():
-    from tracker.names import ONE_WORD_SPELLING
+    from tracker.records import ONE_WORD_SPELLING
 
     for one_word in ("x" * 1001, "Smith\x07"):
         people = [{"kind": "taxpayer", "name": "Jane Smith", "spellings": [one_word]}]
@@ -11315,7 +11316,7 @@ def test_a_persons_spellings_are_judged_one_at_a_time_in_order():
     before the next is read, so of two bad spellings the first one's
     sentence is the reply - a two-word spelling past the text rule before a
     one-word spelling, and the other way round."""
-    from tracker.names import ONE_WORD_SPELLING
+    from tracker.records import ONE_WORD_SPELLING
 
     past_the_rule, one_word = "J " + "x" * 1999, "Smith"
     for spellings, said in (([past_the_rule, one_word], _SPELLING_REFUSED),

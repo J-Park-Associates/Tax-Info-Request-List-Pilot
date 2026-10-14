@@ -154,6 +154,7 @@ from tracker.filer import (
     waiting_target,
 )
 from tracker.fsio import make_new_folders, write_json_atomically
+from tracker.hold import one_reading
 from tracker.households import (
     HOUSEHOLD_PAUSED_YEAR,
     claim_disagrees,
@@ -236,7 +237,7 @@ from tracker.manifest import (
     summarize,
     unlearn_keyword,
 )
-from tracker.names import NO_PEOPLE, ONE_WORD_SPELLING, propose_spellings
+from tracker.names import NO_PEOPLE, propose_spellings
 from tracker.page import PALETTE, slug
 from tracker.reasons import READ_AND_PARKED_CODES
 from tracker.records import (
@@ -250,6 +251,7 @@ from tracker.records import (
     FEED_REFUSED,
     HOUSEHOLD_EDITABLE,
     NO,
+    ONE_WORD_SPELLING,
     PEOPLE_HELP,
     PEOPLE_LABEL,
     PERSON_KIND_LABELS,
@@ -337,7 +339,6 @@ from tracker.settings import (
     data_home,
     firm,
     firm_phone,
-    one_reading,
     product_name,
     program_drive_refusal,
     redirected_copies,
@@ -6616,7 +6617,7 @@ FIRM_LAST_COMMAND = "firm-last"
 
 #: The commands that write nothing - no record, no file, no setting, not the
 #: store's own rows beyond the reader's top-up from a journal - and so run
-#: inside :func:`tracker.settings.one_reading` (P118): each machine question
+#: inside :func:`tracker.hold.one_reading` (P118): each machine question
 #: (where the data folder is, what the settings say, what a folder resolves
 #: to) is asked once per reply instead of thousands of times. A command joins
 #: only when it writes nothing; ``tests/test_api.py`` pins that this and

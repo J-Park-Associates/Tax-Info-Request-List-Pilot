@@ -100,7 +100,7 @@ from collections.abc import Callable, Iterable
 from dataclasses import MISSING, asdict, dataclass, field, fields, replace
 from pathlib import Path
 
-from tracker import errors, ocr, reasons, settings, store
+from tracker import errors, hold, ocr, reasons, store
 from tracker.manifest import RequestItem, derived_date_pattern, has_routing_rules, keyword_alternatives
 
 # The Evidence record and the cell format it is written in live in
@@ -2339,14 +2339,14 @@ class ContentCache:
         on-disk case, which ``.lower()`` folds - so the string is the one a
         whole resolve gives, at one ``lstat`` instead of one a segment.
         Inside a household's hold the folder's answer is held
-        (:func:`tracker.settings.resolved`); outside one it is asked every
+        (:func:`tracker.hold.resolved`); outside one it is asked every
         time, as ``resolve`` was. A name that is not a plain name, or a
         file that is a link, is resolved whole, as before. The key only:
         the verdicts, the digests and the reader's own path are untouched.
         """
         name = file.name
         if name not in ("", ".", "..") and not os.path.islink(file):
-            return str(settings.resolved(file.parent) / name).lower()
+            return str(hold.resolved(file.parent) / name).lower()
         return str(file.resolve()).lower()
 
     def digest_of(self, file: Path) -> str | None:

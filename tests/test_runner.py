@@ -702,7 +702,7 @@ def test_the_pass_holds_the_machines_answers_for_one_household_at_a_time(tmp_pat
     million times, nearly all of them the same few questions. Each
     household is served inside its own hold, dropped before the next, so a
     change a person makes between two households is seen by the second."""
-    from tracker import hold, runner, settings
+    from tracker import hold, runner
 
     smith = build_engagement(tmp_path, samples, household="Smith Family", name="Smith TY2025")
     jones = build_engagement(tmp_path, samples, household="Jones Family", name="Jones TY2025")
@@ -719,7 +719,7 @@ def test_the_pass_holds_the_machines_answers_for_one_household_at_a_time(tmp_pat
     report = run_registry(Registry(source=tmp_path, engagements=[smith, jones]), today=SATURDAY)
 
     assert sorted(name for name, _, _, _ in holds) == ["Jones Family", "Smith Family"]
-    assert all(kind == settings.HOLD_HOUSEHOLD for _, kind, _, _ in holds)
+    assert all(kind == hold.HOLD_HOUSEHOLD for _, kind, _, _ in holds)
     assert [before for _, _, before, _ in holds] == [{}, {}], \
         "each household starts from nothing held: what the first held is dropped before the second"
     assert all(after > 0 for _, _, _, after in holds), "and each holds the answers it asked"
@@ -4337,10 +4337,10 @@ def test_the_practice_pages_report_asks_each_machine_question_once(tmp_path, sam
     root = tmp_path / "Clients"
     _three_households(root, samples)
     assert _the_scheduled_job(root, monkeypatch, "--reminders", REMINDERS_NEVER) == 0
-    with settings.one_reading():
+    with hold.one_reading():
         registry = discover_engagements(root)
     asked: Counter = Counter()
-    real_resolved, real_data_home = settings.resolved, settings.data_home
+    real_resolved, real_data_home = hold.resolved, settings.data_home
 
     def resolved(path):
         key = ("resolved", str(Path(path)))
@@ -4353,7 +4353,7 @@ def test_the_practice_pages_report_asks_each_machine_question_once(tmp_path, sam
             asked["data_home"] += 1
         return real_data_home()
 
-    monkeypatch.setattr(settings, "resolved", resolved)
+    monkeypatch.setattr(hold, "resolved", resolved)
     monkeypatch.setattr(settings, "data_home", data_home)
     report = runner_module.status_report(registry)
     assert len(report.runs) == 3 and not report.errors
@@ -5308,7 +5308,7 @@ def test_the_passs_discovery_and_its_page_read_hold_the_machines_answers(tmp_pat
     """P215 (findings-1 #1): discovery and the practice page's parked-file
     read only read, so each runs inside a reading - the machine's answers
     held for the call, and dropped when it returns."""
-    from tracker import hold, settings
+    from tracker import hold
 
     _two_households(tmp_path, samples)
     seen = {}
@@ -5321,7 +5321,7 @@ def test_the_passs_discovery_and_its_page_read_hold_the_machines_answers(tmp_pat
 
         monkeypatch.setattr(runner_module, name, watched)
     assert _the_scheduled_job(tmp_path, monkeypatch, "--reminders", "never") == 0
-    assert seen == {"discover_engagements": settings.HOLD_READING, "_parked_files": settings.HOLD_READING}
+    assert seen == {"discover_engagements": hold.HOLD_READING, "_parked_files": hold.HOLD_READING}
     assert hold._HELD is None
 
 
@@ -5525,7 +5525,7 @@ def _an_idle_pass_counted(tmp_path, samples, monkeypatch) -> dict:
 
     real_rules, real_connect = store.rules, checkpoint._connect
     real_write = runner_module.write_text_atomically
-    real_resolved, real_data_home = settings.resolved, settings.data_home
+    real_resolved, real_data_home = hold.resolved, settings.data_home
 
     def rules(conn, folder):
         counted["rules"].append(str(folder))
@@ -5550,7 +5550,7 @@ def _an_idle_pass_counted(tmp_path, samples, monkeypatch) -> dict:
         patch.setattr(store, "rules", rules)
         patch.setattr(checkpoint, "_connect", connect)
         patch.setattr(runner_module, "write_text_atomically", write)
-        patch.setattr(settings, "resolved", unheld(real_resolved))
+        patch.setattr(hold, "resolved", unheld(real_resolved))
         patch.setattr(settings, "data_home", unheld(real_data_home))
         assert _the_scheduled_job(root, monkeypatch, "--reminders", REMINDERS_NEVER) == 0
     returns = len(set(counted["rules"])) or 1
@@ -5577,7 +5577,7 @@ def test_an_idle_pass_stays_within_its_budget(tmp_path, samples, monkeypatch):
     statements a household (123 before the round), ``store.rules`` once a
     return (9 before), one checkpoint connection for the whole pass (4
     before, one a question), one whole write of the pass-order hint, and 3
-    machine questions (``settings.resolved``, ``settings.data_home``)
+    machine questions (``hold.resolved``, ``settings.data_home``)
     outside any hold for the pass (111 before). A change that needs a
     higher budget raises it in the same commit with a decision row saying
     why. Run locally, in the gate, like every test (decisions 207, 211)."""

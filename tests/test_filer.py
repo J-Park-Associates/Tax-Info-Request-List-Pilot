@@ -9925,7 +9925,7 @@ def test_a_held_index_is_read_again_after_a_file_is_recorded(engagement, monkeyp
     """P215 (E2): inside a household's hold the index is built once per
     state of the record - kept while nothing is recorded, built again the
     moment a filing moves the record's head."""
-    from tracker import settings
+    from tracker import hold
 
     built = []
     real = store.documents
@@ -9935,7 +9935,7 @@ def test_a_held_index_is_read_again_after_a_file_is_recorded(engagement, monkeyp
         return real(conn, folder)
 
     monkeypatch.setattr(store, "documents", counted)
-    with settings.one_household():
+    with hold.one_household():
         assert read_index(engagement) == []
         assert read_index(engagement) == []
         assert len(built) == 1

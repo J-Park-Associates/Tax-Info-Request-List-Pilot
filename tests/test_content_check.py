@@ -2697,7 +2697,7 @@ def test_a_files_cache_key_is_its_folders_held_answer_and_its_own_name(tmp_path,
     """P216: inside a household's hold the folder is resolved once and every
     file in it is keyed by that answer and its own name - not a whole
     resolve a file."""
-    from tracker import settings
+    from tracker import hold
 
     folder = tmp_path / "Inbox"
     folder.mkdir()
@@ -2712,7 +2712,7 @@ def test_a_files_cache_key_is_its_folders_held_answer_and_its_own_name(tmp_path,
         return real(self, *args, **kwargs)
 
     monkeypatch.setattr(type(folder), "resolve", counted)
-    with settings.one_household():
+    with hold.one_household():
         keys = [ContentCache._key(file) for file in files]
     assert keys == [str(real(folder) / file.name).lower() for file in files]
     assert resolves == [folder]
@@ -2735,7 +2735,7 @@ def test_the_key_is_the_one_a_whole_resolve_gives(tmp_path):
     """The same key string as before (P216): a file in a folder reached
     through a link, a file not there yet, a name in another case, and the
     names that are not plain names."""
-    from tracker import settings
+    from tracker import hold
 
     real = tmp_path / "Real Folder"
     real.mkdir()
@@ -2749,6 +2749,6 @@ def test_the_key_is_the_one_a_whole_resolve_gives(tmp_path):
              tmp_path / "Real Folder" / "..", tmp_path / "Real Folder" / "."]
     for case in cases:
         assert ContentCache._key(case) == str(case.resolve()).lower(), case
-    with settings.one_household():
+    with hold.one_household():
         for case in cases:
             assert ContentCache._key(case) == str(case.resolve()).lower(), case

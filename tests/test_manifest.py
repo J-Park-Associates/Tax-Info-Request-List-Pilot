@@ -1306,7 +1306,7 @@ def _rules_built(monkeypatch) -> list:
 def test_a_held_reading_builds_the_list_once_per_record_head(engagement, monkeypatch):
     """P215 (E2): inside a hold the journal is followed every time, and the
     list is built once while the record's head is unchanged."""
-    from tracker import settings
+    from tracker import hold
 
     built = _rules_built(monkeypatch)
     followed = []
@@ -1317,7 +1317,7 @@ def test_a_held_reading_builds_the_list_once_per_record_head(engagement, monkeyp
         return real_follow(*args)
 
     monkeypatch.setattr(store, "follow_the_journal", follow)
-    with settings.one_reading():
+    with hold.one_reading():
         first = load_manifest(engagement)
         second = load_manifest(engagement)
         load_engagement_info(engagement)
@@ -1329,11 +1329,11 @@ def test_a_held_reading_builds_the_list_once_per_record_head(engagement, monkeyp
 
 def test_a_held_list_is_built_again_once_the_journal_moves(engagement, monkeypatch):
     from tests.conftest import seed_statuses
-    from tracker import settings
+    from tracker import hold
     from tracker.records import StatusUpdate
 
     built = _rules_built(monkeypatch)
-    with settings.one_household():
+    with hold.one_household():
         before = load_manifest(engagement)
         seed_statuses(engagement, {"A01": StatusUpdate(status=Status.RECEIVED, file_count=1)})
         after = load_manifest(engagement)
@@ -1359,9 +1359,9 @@ def test_a_line_another_process_appends_is_seen_by_the_next_read_in_the_hold(eng
     import sys
 
     from tests.conftest import REPO, child_env
-    from tracker import settings
+    from tracker import hold
 
-    with settings.one_reading():
+    with hold.one_reading():
         assert load_manifest(engagement)[0].status != Status.RECEIVED
         done = subprocess.run([sys.executable, "-c", _ANOTHER_PROCESS, str(engagement)], cwd=REPO,
                               env=child_env(), capture_output=True, text=True)
@@ -1370,10 +1370,10 @@ def test_a_line_another_process_appends_is_seen_by_the_next_read_in_the_hold(eng
 
 
 def test_nothing_is_kept_once_the_hold_ends(engagement, monkeypatch):
-    from tracker import settings
+    from tracker import hold
 
     built = _rules_built(monkeypatch)
-    with settings.one_reading():
+    with hold.one_reading():
         load_manifest(engagement)
     load_manifest(engagement)
     load_manifest(engagement)

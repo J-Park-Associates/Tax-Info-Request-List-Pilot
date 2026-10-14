@@ -806,7 +806,7 @@ def test_stopped_households_reads_no_return(root, monkeypatch):
 
 
 def test_stopped_households_is_one_reading(root, monkeypatch):
-    from tracker import hold, registry, settings
+    from tracker import hold, registry
     from tracker.registry import stopped_households
 
     make(root)
@@ -819,7 +819,7 @@ def test_stopped_households_is_one_reading(root, monkeypatch):
 
     monkeypatch.setattr(registry, "household_from", watched)
     stopped_households(root)
-    assert seen == [settings.HOLD_READING]
+    assert seen == [hold.HOLD_READING]
     assert hold._HELD is None
 
 

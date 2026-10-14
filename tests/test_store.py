@@ -5337,7 +5337,7 @@ def test_the_store_beside_the_settings_file_is_never_refused_its_checkpoint(root
 
 def test_a_record_written_inside_a_read_only_reply_is_refused_before_anything_is_written(tmp_path):
     """The review of P118, SHOULD-3: a read-only reply records nothing."""
-    from tracker.settings import one_reading
+    from tracker.hold import one_reading
 
     folder = tmp_path / "return"
     folder.mkdir()
@@ -5540,12 +5540,12 @@ def _counting_keys(monkeypatch) -> list:
 def test_an_engagements_key_is_worked_out_once_per_hold(root, by_hand, monkeypatch):
     """P215 (findings-2 #2): inside a household's hold the key is worked
     out once; the row itself is read every time."""
-    from tracker import settings
+    from tracker import hold
 
     conn = store.connect()
     build(conn, root, by_hand)
     asked = _counting_keys(monkeypatch)
-    with settings.one_household():
+    with hold.one_household():
         first = store._engagement_row(conn, by_hand)
         again = store._engagement_row(conn, by_hand)
     assert first is not None and dict(first) == dict(again)
@@ -5557,12 +5557,12 @@ def test_an_engagements_key_is_worked_out_once_per_hold(root, by_hand, monkeypat
 def test_a_key_asked_before_its_folder_existed_is_asked_again_after(root, monkeypatch):
     """A folder the pass makes later is never answered from before it
     existed (P207's rule 2): its key is kept only once it is there."""
-    from tracker import settings
+    from tracker import hold
 
     conn = store.connect()
     later = root / "J Park & Associates" / "Later Family" / "2025" / "1040 - Later Client"
     asked = _counting_keys(monkeypatch)
-    with settings.one_household():
+    with hold.one_household():
         assert store._engagement_row(conn, later) is None
         assert store._engagement_row(conn, later) is None
         assert len(asked) == 2
@@ -5576,7 +5576,7 @@ def test_a_record_read_is_never_kept_past_a_rebuild_of_its_row(root, by_hand):
     """P215 (E2): a held read is kept while the row's head and applied
     lines are as they were, built again once a line is recorded, and built
     again after the row is rebuilt from the same journal."""
-    from tracker import settings
+    from tracker import hold
 
     conn = store.connect()
     build(conn, root, by_hand)
@@ -5586,7 +5586,7 @@ def test_a_record_read_is_never_kept_past_a_rebuild_of_its_row(root, by_hand):
         built.append(1)
         return [len(built)]
 
-    with settings.one_household():
+    with hold.one_household():
         assert store.held_read(conn, by_hand, "probe", read) == [1]
         kept = store.held_read(conn, by_hand, "probe", read)
         assert kept == [1] and len(built) == 1
@@ -5620,7 +5620,7 @@ def test_the_held_read_and_the_page_use_one_token(recorded_root, by_hand, monkey
     this process's rebuild count), and the page's kept rows key by the same
     ``read_token``, found by ``record_key``, the key ``_engagement_row``
     asks first."""
-    from tracker import settings
+    from tracker import hold
 
     conn = store.connect()
     build(conn, recorded_root, by_hand)
@@ -5631,14 +5631,14 @@ def test_the_held_read_and_the_page_use_one_token(recorded_root, by_hand, monkey
     assert store.read_token(row) == (row["id"], row["path"], row["ledger_head"], row["applied_seq"],
                                      row["applied_digest"], row["built_at"])
     held = []
-    real = settings.held
+    real = hold.held
 
     def asked(key, answer, **kwargs):
         if key[0] == "record read":
             held.append(key)
         return real(key, answer, **kwargs)
 
-    monkeypatch.setattr(settings, "held", asked)
+    monkeypatch.setattr(hold, "held", asked)
     store.held_read(conn, by_hand, "probe", lambda: 1)
     assert held == [("record read", "probe", *store.read_token(row), store._REPLACED)]
     # A rebuild from the same journal, in a later second (``built_at`` is to

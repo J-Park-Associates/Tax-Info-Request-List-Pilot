@@ -27,11 +27,11 @@ from tests.passes import (  # noqa: F401 - ``samples`` is a fixture
     samples,
 )
 from tracker import ledger, page_rows, store
+from tracker.hold import one_reading
 from tracker.layout import household_of
 from tracker.manifest import Override, load_manifest
 from tracker.registry import discover_engagements
 from tracker.runner import REMINDERS_NEVER, STATUS_PAGE_FILENAME, status_report, write_status_page
-from tracker.settings import one_reading
 
 #: The page's stamp, held still so two drawings can be compared byte for byte.
 NOW = dt.datetime(2026, 10, 8, 12, 0, 0)

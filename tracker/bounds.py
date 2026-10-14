@@ -31,8 +31,8 @@ What stays in records is the row checks - ``rule_row_fault``,
 record's own tables (``DATE_FIELDS``, ``RULE_LIST_FIELDS``,
 ``RULE_FLAG_FIELDS``, the Waits For grammar), and a layer 0 module that
 imported them would point up at layer 1, the edge the layer table refuses.
-Records imports every name here that it reads; it re-exported the rest
-until P2.13 pointed their readers here.
+Records imports every name here that it reads; before P2.13 pointed their
+readers here, it re-exported the rest too.
 """
 
 from __future__ import annotations

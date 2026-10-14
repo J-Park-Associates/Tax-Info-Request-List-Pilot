@@ -44,7 +44,7 @@ the engine **retires after any command that left a lock held or unreleased**
 clears the file at the next take exactly as a one-command process's leftover
 is cleared today. One store per command: ``api.main``'s ``finally`` closes it
 after every command. P118's holds: ``api.main`` enters and leaves
-``settings.one_reading()`` per command, so nothing is held between two. The
+``hold.one_reading()`` per command, so nothing is held between two. The
 kill per command: ``main.js`` kills the engine at the same time limit and
 starts a new one. Crash isolation: a command that crashes the engine is
 answered by the shell (a read asked once more in a process of its own, a

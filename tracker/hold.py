@@ -39,9 +39,9 @@ holds an answer under it.
 rebinds :data:`_HELD` and :data:`_HOLDING` under ``global`` when a hold
 begins and when it ends, so ``from tracker.hold import _HELD`` would keep
 the ``None`` it found at import and never see a hold begin. The settings
-module imports ``hold``, reads ``hold._HELD`` and asks ``hold.held``, and it
-re-exports the public names, by assignment - never ``_HELD`` or
-``_HOLDING`` - until P2.13 points their readers here. The engine's state
+module imports ``hold``, reads ``hold._HELD`` and asks ``hold.held``.
+Before P2.13 pointed their readers here, it re-exported the public names,
+by assignment - never ``_HELD`` or ``_HOLDING``. The engine's state
 register (:mod:`tracker.resident`) keys both names to this module.
 
 The docstrings below came with the code, word for word: the

@@ -903,7 +903,7 @@ def stopped_households(root: Path | str) -> dict[Path, str]:
     disk again where the store is. A root that is not a folder, or that
     cannot be walked, raises :class:`RegistryError` as the walk does; a
     root holding nothing stops nothing."""
-    from tracker.settings import one_reading
+    from tracker.hold import one_reading
 
     root = Path(root)
     if not root.is_dir():
