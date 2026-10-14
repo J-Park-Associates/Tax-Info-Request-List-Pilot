@@ -719,6 +719,7 @@ ALLOWED_SPELLINGS: dict[tuple[str, str], str] = {
     ("tools/repo_map.py", "*"): "the repository's paths, never a client's",
     ("tools/vocab_report.py", "*"): "the repository's paths, never a client's",
     ("tools/backtest.py", "*"): "the repository's paths, never a client's",
+    ("tools/patch_sites.py", "*"): "the repository's paths, never a client's",
 }
 #: The owners: the only modules that may spell a rule about the trees.
 SPELLING_OWNERS = ("tracker/layout.py", "tracker/door.py")

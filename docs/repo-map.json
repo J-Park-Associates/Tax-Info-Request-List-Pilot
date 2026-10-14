@@ -3,7 +3,7 @@
   "generated": "2026-10-14",
   "generator": "tools/repo_map.py",
   "generator_sha256": "a394d7104da5155d",
-  "module_table_sha256": "ad7bced15f23baff",
+  "module_table_sha256": "34a2c4f78b60bee8",
   "pipeline": [
     "tracker.api / create",
     "tracker.scaffold",
@@ -15,9 +15,9 @@
     "a person sends the draft"
   ],
   "counts": {
-    "nodes": 318,
-    "edges": 1391,
-    "reused": 264
+    "nodes": 320,
+    "edges": 1394,
+    "reused": 265
   },
   "node_types": [
     "artifact",
@@ -4645,8 +4645,8 @@
       "id": "docs/repo-map.curated.json",
       "type": "file",
       "layer": "docs",
-      "sha256": "a949559def55f4e5",
-      "lines": 1373,
+      "sha256": "b9a2b24d5d6eb092",
+      "lines": 1381,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
     },
@@ -8084,8 +8084,8 @@
       "id": "tests/test_layers.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "378d7bc58d2c863a",
-      "lines": 965,
+      "sha256": "07990e326c2a7e88",
+      "lines": 966,
       "exports": [
         "REPO",
         "SOCKET_SHAPED",
@@ -8681,6 +8681,40 @@
         "test_the_kept_rows_are_kept_only_for_the_saved_root",
         "test_the_practice_page_from_kept_rows_is_the_page_from_fresh_reads"
       ]
+    },
+    {
+      "id": "tests/test_patch_sites.py",
+      "type": "test",
+      "layer": "tests",
+      "sha256": "8fe488091a89251a",
+      "lines": 467,
+      "exports": [
+        "REPO",
+        "SORTER",
+        "test_a_fixture_s_params_and_a_fixture_that_gives_a_module_are_followed",
+        "test_a_loop_over_literal_names_is_one_site_per_name",
+        "test_a_name_every_function_shadows_with_a_local_of_its_own_is_unread",
+        "test_a_name_kept_through_globals_is_defined_and_read_there",
+        "test_a_name_read_only_in_an_annotation_is_unread",
+        "test_a_name_the_module_defines_is_defined_and_one_it_imports_and_calls_is_imported",
+        "test_a_name_the_module_only_re_exports_is_unread_and_fails_the_check",
+        "test_a_read_in_a_module_level_comprehension_is_a_read_on_every_interpreter",
+        "test_a_target_the_tool_cannot_work_out_fails_the_check_as_not_placed",
+        "test_a_tool_imported_by_its_bare_name_is_reported_by_its_dotted_one",
+        "test_any_monkeypatch_counts_not_only_the_fixture_of_that_name",
+        "test_every_stand_in_in_the_suite_lands_where_the_code_reads_it",
+        "test_stand_ins_on_things_outside_the_repository_or_on_no_module_are_not_listed",
+        "test_the_command_line_check_exits_1_on_an_unread_stand_in",
+        "test_the_command_line_check_passes_on_the_suite",
+        "test_the_module_is_found_under_an_alias_a_local_name_and_a_string",
+        "test_the_report_names_one_module_by_its_dotted_name_or_its_path",
+        "test_the_report_on_filer_holds_every_filer_site_a_plain_search_finds",
+        "test_the_tool_uses_the_standard_library_alone_and_imports_nothing_of_the_suite",
+        "test_values_bound_together_stay_together",
+        "the_suite"
+      ],
+      "role": "Owns tools/patch_sites.py: its marks and the target forms it follows, each on a made-up repository of a few lines in a temporary folder, the command line's exit codes, and the check passing on the real suite with every filer site a plain search for setattr finds in the report.",
+      "notes": "SPEC-architecture J4 (R4.2). The made-up cases pin the readings that differ by interpreter (a read in a module-level comprehension, a nested function's parameter) so the marks are the same on 3.11 and 3.14, the joint rows of a loop or helper (two values bound together are one site, not four), and that a target the tool cannot work out fails the check rather than dropping out. The real-suite cases hold the tool to the suite as it stands: no unread site and none it cannot place, the conftest and tests/children.py seams among the sites, and the filer report a superset of a regex search, so the tool is never quieter than grep. When J4 was built no site in the suite was unread and none needed fixing."
     },
     {
       "id": "tests/test_pilot.py",
@@ -11717,6 +11751,46 @@
       },
       "role": "The supply-chain lock (decision 191), standard library only: `hash` fills every lock's hashes from PyPI's JSON API, `check` holds the locks to the requirements*.txt pins (every line hashed, no name twice under one marker, the GUI OpenCV in none), `stamp`/`verify` record and compare the locks inside Setup.bat's .venv, `audit` asks OSV about every locked Python and npm package and fails a native engine (NATIVE_ENGINES: pillow, pypdfium2) whose first release newer than the pin is older than STALE_DAYS - measured from the first newer release, not the newest (review S-1).",
       "notes": "hash and audit reach the network; they are a maintainer's and the weekly workflow's commands, never on the app's or the scheduled pass's path, and nothing under tracker/ imports this module (the fourth standing rule; tests/test_lockfiles.py checks). The network is one injectable fetch(url, body), so the tests run on fabricated answers. Rejected: pip-tools and uv pip compile (each re-resolves and would move pins), pip-audit (one more package to lock and trust). verify returns NOT_SET_UP when there is no stamp and CHANGED when a lock or app/package-lock.json differs from it; the CLI prints the sentence and exits 1, which is what Start App.bat shows. SPEC-mac R11: on a Mac (on_a_mac(), the one seam, sys.platform read when called; this tool imports nothing of tracker) verify returns NOT_SET_UP_MAC and CHANGED_MAC, the same two sentences naming setup.command for Setup.bat, and start.command prints the first word for word."
+    },
+    {
+      "id": "tools/patch_sites.py",
+      "type": "tool",
+      "layer": "tooling",
+      "sha256": "550c33923b34a0b2",
+      "lines": 822,
+      "cli": "python -m tools.patch_sites",
+      "exports": [
+        "DEFINED",
+        "IMPORTED",
+        "MARKS",
+        "MOST_ROWS",
+        "ModuleNames",
+        "ON_THE_PATH",
+        "PACKAGES",
+        "ROOT",
+        "Site",
+        "TESTS",
+        "UNREAD",
+        "Unplaced",
+        "check",
+        "global_reads",
+        "main",
+        "module_index",
+        "module_names",
+        "report",
+        "stand_ins"
+      ],
+      "constants": {
+        "PACKAGES": "('tracker', 'tools', 'tests')",
+        "ON_THE_PATH": "('tools',)",
+        "TESTS": "'tests'",
+        "DEFINED": "'defined'",
+        "IMPORTED": "'imported'",
+        "UNREAD": "'unread'",
+        "MOST_ROWS": "512"
+      },
+      "role": "Lists every monkeypatch.setattr under tests/ aimed at a module of the repository and marks each one where that module's own code would see it: defined (the module defines the name), imported (it imports the name, or it is a builtin, and reads it) or unread (it never reads the name outside its import or definition, so the stand-in replaces nothing anything calls). `report <module>` (a dotted name or a path) lists one module's sites; `check` exits 1 on an unread site or on one it cannot place.",
+      "notes": "SPEC-architecture J4 (R4.1; audit A-4, C-1). A stand-in reaches only code that looks the name up in that module's namespace, so a patch on filer.copy2 after copy2 moved to fsio passes for nothing; this is the list rule 6 of the SPEC's migration guide works from before code leaves a module. It parses, never imports: the module side is a scope walk of each module's syntax tree (annotations skipped, class-scope rules kept, a comprehension its own scope with its first iterator outside it, an augmented assignment and a lookup through the module's globals counted as reads), because symtable was the rejected alternative - from 3.12 it inlines a module-level comprehension (PEP 709) and loses its reads, and on 3.11 it calls a nested function's parameter global, so the marks differed between the two interpreters the gate runs. The test side works out what a setattr's first two arguments hold: the object form, a module alias, a local name holding a module, the dotted string form, sys.modules[...], importlib.import_module and pytest.importorskip, reload, a fixture that returns a module (this file or a conftest) and a fixture's params, a for over a literal (a tuple, list, set, dict's keys, a name bound to one, a sorted copy of one) with names unpacked together kept together, the loop the call sits in over the name's other bindings, and a same-file helper's parameters fixed by each of its calls. A tool imported by its bare name after a sys.path insert is reported by its dotted one. A target it cannot work out - an unknown call, an unbound name, a subscript, more than MOST_ROWS ways - is listed as not placed and fails the check rather than being skipped, so a site cannot silently drop out of the list. What it cannot see, and says so: a module that copied a defined name with from-import keeps its own copy, which a stand-in on the defining module does not replace. Importing the modules and comparing the patched object, or tracing a run, were rejected: both run the suite's code, and neither names a site that no test reaches. Standard library only, and it imports nothing of tests/."
     },
     {
       "id": "tools/reader_bench.py",
@@ -15070,6 +15144,24 @@
     {
       "from": "tests/test_page_rows.py",
       "to": "tracker/page_rows.py",
+      "type": "tests",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_patch_sites.py",
+      "to": "pkg:pytest",
+      "type": "depends_on",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_patch_sites.py",
+      "to": "pkg:tools",
+      "type": "depends_on",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_patch_sites.py",
+      "to": "tools/patch_sites.py",
       "type": "tests",
       "source": "derived"
     },
