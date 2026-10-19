@@ -5,7 +5,7 @@
 # Nothing installs this file directly: every install reads requirements.lock,
 # the whole tree by version and by hash. (Build-time tools: requirements-build.txt.)
 openpyxl==3.1.5
-pypdf==6.19.0
+pypdf==6.21.0
 pdfplumber==0.11.10
 
 # An email a client forwards, saved from Outlook (.msg), is opened to take
@@ -16,8 +16,8 @@ olefile==0.47
 # Pictures and scans: Pillow opens a photo (pillow-heif an iPhone's HEIC),
 # pypdfium2 renders a scanned PDF's page for the reader.
 pillow==12.3.0
-pillow-heif==1.8.0
-pypdfium2==5.13.0
+pillow-heif==1.8.1
+pypdfium2==5.14.0
 
 # The reader (decision 169): RapidOCR on ONNX Runtime, with its models
 # shipped inside the app - nothing to install on the machine, nothing
@@ -32,16 +32,16 @@ pypdfium2==5.13.0
 # where onnxruntime-gpu runs on the processor and, with the graphics card
 # pack beside the app, on an NVIDIA card; everywhere else (CI) the plain
 # package, which provides the same module and never asks for a card.
-onnxruntime-gpu==1.30.0; sys_platform == "win32"
-onnxruntime==1.30.0; sys_platform != "win32"
+onnxruntime-gpu==1.31.0; sys_platform == "win32"
+onnxruntime==1.31.0; sys_platform != "win32"
 opencv-python-headless==5.0.0.93
 # numpy 2.5 needs Python 3.12; the floor's CI row (3.11) takes the last
 # release that supports it (R-11a). The app is frozen on 3.14.
 numpy==2.5.3; python_version >= "3.12"
 numpy==2.4.6; python_version < "3.12"
 pyclipper==1.4.0
-shapely==2.1.2
-omegaconf==2.3.1
+shapely==2.2.0
+omegaconf==2.4.0
 PyYAML==6.0.3
 six==1.17.0
 tqdm==4.70.1
@@ -54,4 +54,4 @@ requests==2.34.2
 # Dev / test
 pytest==9.1.1
 pytest-xdist==3.8.0
-ruff==0.16.9
+ruff==0.17.1
