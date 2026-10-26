@@ -4,10 +4,10 @@
 # never installs these, and a machine without an NVIDIA card never gets
 # them. Installed with --no-deps, so the pack is exactly this list, from
 # requirements-gpu.lock, by hash (decision 191).
-nvidia-cublas==13.8.0.4
+nvidia-cublas==13.8.1.7
 nvidia-cuda-nvrtc==13.4.92
 nvidia-cuda-runtime==13.4.92
-nvidia-cudnn-cu13==9.26.0.51
+nvidia-cudnn-cu13==9.27.0.42
 nvidia-cufft==12.4.0.43
 nvidia-curand==10.4.4.72
 nvidia-nvjitlink==13.4.92
