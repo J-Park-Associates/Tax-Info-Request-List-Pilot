@@ -20,6 +20,14 @@ client's folder for a return's year), :class:`RequestFiles` and
 :func:`_logged_outside_the_debug_log`, which reads what was logged outside
 the debug log (decision 190). Nothing here is new behaviour.
 
+With P332 (SPEC-architecture-p4 P4.6) the tests that drive only the code
+that moved to ``tracker/intents.py`` - the write-ahead intents, the places a
+step may touch and finishing an interrupted move - left for
+``tests/test_intents.py``, and :func:`_forge_line` came here from
+``tests/test_filer.py`` with its words: it puts one line in the journal past
+the store, as another machine would, and a forged step's tests there and an
+old intent's finish in the filer's tests both write with it.
+
 **No fixture lives here.** The one fixture both files take, ``engagement``,
 is ``tests.builders``' ``engagement_fixture(ITEMS)``, named once in each
 file; a fixture imported by name and then taken as a parameter trips ruff's
@@ -29,6 +37,7 @@ F811 (``tests/store_helpers.py``).
 from dataclasses import replace
 from pathlib import Path
 
+from tracker import ledger
 from tracker.layout import originals_of
 from tracker.scaffold import (
     PREPARED_DIR_NAME,
@@ -107,3 +116,15 @@ def _logged_outside_the_debug_log(caplog) -> str:
     from tracker.errors import DEBUG_LOGGER
 
     return "\n".join(record.getMessage() for record in caplog.records if record.name != DEBUG_LOGGER)
+
+
+def _forge_line(engagement, event: dict) -> bytes:
+    """Put one line in the journal past the store, as another machine
+    would; returns the journal as it was. Linked to the line before
+    (decision 159), so it is the store's admission and the filer's own
+    checks that judge it, not the ledger's link."""
+    from tests.builders import written_elsewhere
+
+    honest = ledger.path_for(engagement).read_bytes()
+    written_elsewhere(engagement, event)
+    return honest

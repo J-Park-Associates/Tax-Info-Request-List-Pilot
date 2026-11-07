@@ -3,7 +3,7 @@
   "generated": "2026-11-07",
   "generator": "tools/repo_map.py",
   "generator_sha256": "a394d7104da5155d",
-  "module_table_sha256": "b22e799a50e9b863",
+  "module_table_sha256": "1f7d43278a843ad2",
   "pipeline": [
     "tracker.api / create",
     "tracker.scaffold",
@@ -15,8 +15,8 @@
     "a person sends the draft"
   ],
   "counts": {
-    "nodes": 368,
-    "edges": 1735,
+    "nodes": 369,
+    "edges": 1755,
     "reused": 0
   },
   "node_types": [
@@ -4793,8 +4793,8 @@
       "id": "docs/repo-map.curated.json",
       "type": "file",
       "layer": "docs",
-      "sha256": "15a5d03de7b6c663",
-      "lines": 1828,
+      "sha256": "467de0c2beefe82b",
+      "lines": 1832,
       "role": "The hand-written half of this map: roles, notes, artifacts, cross-language hops and the standing rules. Merged on top of the derived facts and never overwritten by a rebuild.",
       "notes": "Edit this, then run `python tools/repo_map.py update`. The generated docs/repo-map.json and docs/repo-map.md are NOT edited by hand."
     },
@@ -6248,8 +6248,8 @@
       "id": "tests/filer_helpers.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "cb3c5bdb76a06d45",
-      "lines": 109,
+      "sha256": "4a76b002b5eea296",
+      "lines": 130,
       "exports": [
         "A_CLIENT_PATH",
         "RequestFiles",
@@ -6260,8 +6260,8 @@
       "constants": {
         "A_CLIENT_PATH": "'/Clients/Test Household/Drop files here/W2.pdf'"
       },
-      "role": "What the filer's family of test files shares: originals (the client's folder for a return's year), RequestFiles and prepared (a request's files in Prepared, flat since decision 168, and the review folder), review_dir, _catalog_w2 (the 1040 catalog's A01, decision 144), and the fabricated client path a refused read names (A_CLIENT_PATH, _refused_with_a_client_path) with _logged_outside_the_debug_log, every line logged but the debug log's (decision 190).",
-      "notes": "SPEC-architecture-p4 section 4.1 and R4.4.6 (P331), in tests/store_helpers.py's form. tests/test_filer.py wrote these for itself; with P331 the tests that drive only the code that moved to tracker/copies.py left it for tests/test_copies.py, each still reading the helpers it was written against, and a test file may not import another (tests/test_suite_shape.py), so what both read sits in a module that is not a test file and each names it by import - the map draws 'exercised by'. Each came with its words. No fixture lives here: the one both files take, engagement, is tests.builders' engagement_fixture(ITEMS), named once in each file. Each later move out of the filer (P4.6 to P4.9) adds what its own split shares."
+      "role": "What the filer's family of test files shares: originals (the client's folder for a return's year), RequestFiles and prepared (a request's files in Prepared, flat since decision 168, and the review folder), review_dir, _catalog_w2 (the 1040 catalog's A01, decision 144), the fabricated client path a refused read names (A_CLIENT_PATH, _refused_with_a_client_path) with _logged_outside_the_debug_log, every line logged but the debug log's (decision 190), and _forge_line, one line put in the journal past the store as another machine would (decision 187).",
+      "notes": "SPEC-architecture-p4 section 4.1 and R4.4.6 (P331), in tests/store_helpers.py's form. tests/test_filer.py wrote these for itself; with P331 the tests that drive only the code that moved to tracker/copies.py left it for tests/test_copies.py, each still reading the helpers it was written against, and a test file may not import another (tests/test_suite_shape.py), so what both read sits in a module that is not a test file and each names it by import - the map draws 'exercised by'. Each came with its words. No fixture lives here: the one both files take, engagement, is tests.builders' engagement_fixture(ITEMS), named once in each file. Each later move out of the filer (P4.6 to P4.9) adds what its own split shares. P4.6 (P332) added _forge_line, byte for byte from tests/test_filer.py: the forged-step tests that moved to tests/test_intents.py write with it, and so does test_filer's finish of an old intent."
     },
     {
       "id": "tests/golden/pass.samples.json",
@@ -8042,15 +8042,14 @@
       "id": "tests/test_filer.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "63577af74fbab9f7",
-      "lines": 9675,
+      "sha256": "3def50be572c38c8",
+      "lines": 9179,
       "exports": [
         "A_PASS_KILLED_MID_COPY",
         "CRASH_POINTS",
         "DANA",
         "DAY3",
         "FATHER_LABEL",
-        "FORGED",
         "HAND_OVER_KILL_POINTS",
         "INTAKE_RETURNS",
         "INT_ROW",
@@ -8116,7 +8115,6 @@
         "test_a_copy_of_a_read_only_original_is_writable_and_the_original_stays_read_only",
         "test_a_copy_that_fails_half_way_leaves_no_truncated_working_copy",
         "test_a_copy_that_passed_only_on_a_taught_keyword_regresses_after_it_is_unlearned",
-        "test_a_copy_through_a_link_copies_nothing",
         "test_a_copy_whose_bytes_are_not_the_originals_is_unlinked_and_the_drop_is_could_not_be_filed",
         "test_a_cross_household_original_mid_recovery_is_never_a_stray_of_the_dropping_household",
         "test_a_decision_94_split_is_named_if_any_of_its_forms_request_is_named",
@@ -8162,7 +8160,6 @@
         "test_a_filing_that_parks_for_room_leaves_nothing_it_made",
         "test_a_folder_a_person_made_is_never_filed_into",
         "test_a_folder_the_run_cannot_list_is_reported_every_pass",
-        "test_a_forged_step_is_carried_out_nowhere",
         "test_a_hand_over_killed_at_every_point_is_finished_from_the_record_as_the_persons",
         "test_a_hand_over_moves_the_original_copies_the_working_copy_removes_the_parked_copy_and_records_both_records",
         "test_a_hand_over_within_one_household_moves_no_original_and_writes_the_same_two_intents",
@@ -8172,8 +8169,6 @@
         "test_a_legitimate_filing_into_a_fed_return_still_completes",
         "test_a_macro_copy_that_cannot_be_marked_is_not_made",
         "test_a_macro_workbook_copy_is_marked_for_protected_view",
-        "test_a_macro_working_copy_moved_into_review_is_marked_or_not_moved",
-        "test_a_move_into_a_linked_folder_moves_nothing",
         "test_a_moved_copy_dragged_back_by_hand_is_filed_again_on_the_next_pass",
         "test_a_moved_copy_that_is_then_deleted_says_nowhere_once_and_is_made_again_the_pass_after",
         "test_a_moved_row_is_written_once_per_move_and_a_quiet_pass_appends_nothing",
@@ -8218,10 +8213,6 @@
         "test_a_readme_temp_the_firm_left_empty_or_cut_in_its_first_line_is_swept",
         "test_a_readme_that_cannot_be_rewritten_is_said_by_class",
         "test_a_rebuilt_store_still_lets_the_taking_returns_recovery_finish_the_filing",
-        "test_a_recovery_copies_no_original_behind_a_link",
-        "test_a_recovery_copy_is_cut_to_fit_and_one_that_cannot_be_made_names_no_copy",
-        "test_a_recovery_never_copies_an_original_the_row_names_outside_its_places",
-        "test_a_recovery_removes_nothing_behind_a_link",
         "test_a_refused_action_leaves_the_file_count_and_every_byte_unchanged",
         "test_a_refused_issuer_filing_leaves_the_list_the_index_and_the_folders_as_they_were",
         "test_a_refused_mark_on_an_interrupted_step_is_said_once_and_the_pass_goes_on",
@@ -8230,8 +8221,6 @@
         "test_a_refused_record_still_rolls_the_copy_back_and_leaves_no_intent_open",
         "test_a_released_row_is_gone_from_the_index_the_queue_and_every_count_and_the_journal_says_where_it_went",
         "test_a_remake_killed_after_the_copy_is_finished_from_the_record",
-        "test_a_removal_never_acts_in_the_client_tree",
-        "test_a_removal_through_a_link_removes_nothing",
         "test_a_rename_intent_written_before_168_is_finished_as_written",
         "test_a_rename_refusal_quotes_at_most_eighty_characters_of_what_was_typed",
         "test_a_rename_refused_because_the_target_name_is_taken_moves_nothing",
@@ -8250,7 +8239,6 @@
         "test_a_review_copy_is_named_to_fit_and_the_row_keeps_the_clients_name",
         "test_a_row_a_person_deleted_is_recorded_as_removed_and_leaves_the_store",
         "test_a_row_recorded_without_its_bytes_is_never_moved_onto_another_file",
-        "test_a_row_recorded_without_its_bytes_still_gets_a_proved_working_copy",
         "test_a_row_without_a_digest_is_never_swept",
         "test_a_rules_edit_between_two_passes_is_one_event_of_exactly_what_changed",
         "test_a_run_killed_after_copying_does_not_leave_a_second_copy_behind",
@@ -8269,8 +8257,6 @@
         "test_a_split_rows_second_copy_dragged_away_is_said_on_the_request_that_lost_it",
         "test_a_statement_counts_as_the_statements_inside_it_and_no_more",
         "test_a_statement_whose_copy_is_not_counted_answers_nothing_until_it_is_made_again",
-        "test_a_step_may_touch_only_its_returns_places",
-        "test_a_step_outside_its_places_moves_copies_and_removes_nothing",
         "test_a_store_rebuilt_from_the_journal_agrees_after_a_remake_and_a_return",
         "test_a_stray_named_by_another_records_open_intent_is_left_alone_by_the_pass",
         "test_a_stray_no_record_names_is_sorted_like_a_drop_across_the_household",
@@ -8301,7 +8287,6 @@
         "test_an_interrupt_after_the_record_landed_does_not_undo_the_filing",
         "test_an_interrupted_decision_65_intent_finishes_with_a_proved_copy",
         "test_an_old_return_with_request_folders_is_named_and_left_alone",
-        "test_an_open_copy_with_no_digest_is_refused_where_it_is_carried_out",
         "test_an_opened_folder_is_cut_to_fit_where_long_paths_are_off",
         "test_an_original_back_beside_a_different_file_of_its_name_goes_home_in_either_order",
         "test_an_original_deleted_from_pbc_is_said_every_pass",
@@ -8385,7 +8370,6 @@
         "test_set_aside_bytes_sent_again_after_their_original_went_are_routed_afresh",
         "test_sync_junk_is_ignored",
         "test_the_conservation_helper_holds_across_every_injected_crash_point",
-        "test_the_filer_asks_the_layout_where_a_step_may_act",
         "test_the_filer_holds_the_engagement_lock",
         "test_the_filer_reads_nothing_before_it_holds_the_lock",
         "test_the_household_pass_refuses_to_sort_a_return_whose_lock_it_does_not_hold",
@@ -8667,6 +8651,33 @@
       ],
       "role": "Holds tracker/index.py to its layer and its facade: index imports the layout, the ledger, the reasons, the records, the store and the validators at load time and nothing at call time; every public name it defines is the filer's same object. And the index's own tests, which came with it.",
       "notes": "SPEC-architecture-p2 R2.9.4 and P2.14 (P322). The identity test that held the filer's re-export to index's own objects went with the facade in P2.14; its other half stays as test_exactly_the_three_tail_readers_cross_into_the_filer, because nothing else pins P319's one exception: it reads index's own names off its source, so a name it only imports (ledger, PREPARED_DIR_NAME, IndexEntry) is not counted as its own, and it fails when a private name other than the three readers of the moved tail is the filer's too, or one of the three is another object there. The four tests whose bodies drive only the moved readers moved here from tests/test_filer.py, unchanged but for their imports, which read tracker.index where they read the filer: a new engagement's index is simply current, an index read without following is the store as it stands (decision 192), the moved sentence is read back from any path, and the both-gone sentence is read behind a person's marks (decision 157). No test there drives only interrupted or holds_the_row; each is reached through a pass or a person's action, and those tests stay with the filer."
+    },
+    {
+      "id": "tests/test_intents.py",
+      "type": "test",
+      "layer": "tests",
+      "sha256": "a4be4e0dc5d46e66",
+      "lines": 543,
+      "exports": [
+        "FORGED",
+        "test_a_copy_through_a_link_copies_nothing",
+        "test_a_forged_step_is_carried_out_nowhere",
+        "test_a_macro_working_copy_moved_into_review_is_marked_or_not_moved",
+        "test_a_move_into_a_linked_folder_moves_nothing",
+        "test_a_recovery_copies_no_original_behind_a_link",
+        "test_a_recovery_copy_is_cut_to_fit_and_one_that_cannot_be_made_names_no_copy",
+        "test_a_recovery_never_copies_an_original_the_row_names_outside_its_places",
+        "test_a_recovery_removes_nothing_behind_a_link",
+        "test_a_removal_never_acts_in_the_client_tree",
+        "test_a_removal_through_a_link_removes_nothing",
+        "test_a_row_recorded_without_its_bytes_still_gets_a_proved_working_copy",
+        "test_a_step_may_touch_only_its_returns_places",
+        "test_a_step_outside_its_places_moves_copies_and_removes_nothing",
+        "test_an_open_copy_with_no_digest_is_refused_where_it_is_carried_out",
+        "test_the_filer_asks_the_layout_where_a_step_may_act"
+      ],
+      "role": "The intents module's own tests: every step an intent names held to its return's places in the layout's one wording, and a step outside them - forged into the record by another machine - moving, copying and removing nothing, at the gate or where it would be carried out; a step either of whose ends is reached through a link doing nothing; a copy proved against a digest or refused where it is carried out, and a row recorded without its bytes still getting a proved working copy; a removal that never acts in the client tree; the recovery's copy to act on cut to fit or named as no copy, never copied from outside the row's places or behind a link; and a working copy moved into review marked for Protected View or not moved.",
+      "notes": "SPEC-architecture-p4 R4.6.5 (P332). Cut and pasted from tests/test_filer.py with the code, names and decorators kept: the fifteen tests whose highest home, by the SPEC's section 4.1 rule, is tracker/intents.py - a test's homes being the modules that define the old module's functions and classes it calls or constructs, in its body or through a fixture of its own file, with exception classes, sentences and stand-in targets not counted - with _elsewhere and FORGED, which only they read. Their bodies are unchanged but for the reads P4.6's first commit retargeted, so a few still import, through the filer, names the filer imports back for its own code (_intend, _do_op, _op); P4.13 retargets those. The section comments they sat under (decisions 180 and 187) stay in tests/test_filer.py above the tests of those sections that stay. The helpers both files read are tests/filer_helpers.py's, _forge_line among them; the engagement fixture is tests.builders' engagement_fixture(ITEMS), named here as in test_filer."
     },
     {
       "id": "tests/test_irs_forms.py",
@@ -13473,6 +13484,12 @@
     },
     {
       "from": "tests/filer_helpers.py",
+      "to": "tracker/__init__.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/filer_helpers.py",
       "to": "tracker/errors.py",
       "type": "exercises",
       "source": "derived"
@@ -13480,6 +13497,12 @@
     {
       "from": "tests/filer_helpers.py",
       "to": "tracker/layout.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/filer_helpers.py",
+      "to": "tracker/ledger.py",
       "type": "exercises",
       "source": "derived"
     },
@@ -13493,6 +13516,12 @@
       "from": "tests/filer_helpers.py",
       "to": "tracker/templates.py",
       "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/filer_helpers.py",
+      "to": "tests/builders.py",
+      "type": "imports",
       "source": "derived"
     },
     {
@@ -16186,6 +16215,108 @@
     {
       "from": "tests/test_index.py",
       "to": "tracker/index.py",
+      "type": "tests",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_intents.py",
+      "to": "pkg:pytest",
+      "type": "depends_on",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_intents.py",
+      "to": "tracker/__init__.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_intents.py",
+      "to": "tracker/copies.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_intents.py",
+      "to": "tracker/filer.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_intents.py",
+      "to": "tracker/index.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_intents.py",
+      "to": "tracker/layout.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_intents.py",
+      "to": "tracker/ledger.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_intents.py",
+      "to": "tracker/locking.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_intents.py",
+      "to": "tracker/records.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_intents.py",
+      "to": "tracker/registry.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_intents.py",
+      "to": "tracker/runner.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_intents.py",
+      "to": "tracker/scaffold.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_intents.py",
+      "to": "tracker/store.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_intents.py",
+      "to": "tracker/validators.py",
+      "type": "exercises",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_intents.py",
+      "to": "tests/builders.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_intents.py",
+      "to": "tests/filer_helpers.py",
+      "type": "imports",
+      "source": "derived"
+    },
+    {
+      "from": "tests/test_intents.py",
+      "to": "tracker/intents.py",
       "type": "tests",
       "source": "derived"
     },
