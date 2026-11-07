@@ -53,8 +53,8 @@ it is built from, and the store about to be deleted may be the only other
 copy of what was lost. :func:`recover` is the one way past: it exports
 the store's lines and the record as it is, prints the lines that differ
 (never a payload value), and replays only when a person types the
-return's name. :func:`verify` is the same proof firm-wide, read-only, with
-every recorded file held to its bytes.
+return's name. :func:`tracker.verify.verify` is the same proof firm-wide,
+read-only, with every recorded file held to its bytes.
 
 **An older version is set aside and rebuilt - with one kind of
 exception** (decisions 159 and 204; one policy). A store an earlier version
@@ -175,7 +175,8 @@ comes out of the journal, so the store never depends on the modules that
 walk folders and move files; :func:`connect` reads :mod:`tracker.settings`
 at call time and the command line at the bottom imports the registry at
 call time to find the folders, and the check and the export
-(:mod:`tracker.store_check`, P324) to run them, which is where an edge is
+(:mod:`tracker.store_check`, P324) and the read-only firm-wide proof
+(:mod:`tracker.verify`, P325) to run them, which is where an edge is
 allowed to point the other way. ``RequestItem`` is the manifest's own schema and
 deliberately stays there (:mod:`tracker.records` says why), so the rule
 columns are the one field list written out here - ``tests/test_store.py``
@@ -2309,7 +2310,11 @@ class _Judgment:
     problem: str = ""
 
 
-_SHORTER, _REWRITTEN, _CLAIMS, _NO_WRITER, _FOREIGN = "shorter", "rewritten", "claims", "no writer", "foreign"
+_SHORTER = "shorter"
+_REWRITTEN = "rewritten"
+_CLAIMS = "claims"
+_NO_WRITER = "no writer"
+_FOREIGN = "foreign"
 #: A line past the checkpoint whose writer or link the gate's rule refuses
 #: (decision 187): judged by nobody, refused as the gate refuses it.
 _MALFORMED = "malformed"
@@ -2318,8 +2323,8 @@ _MALFORMED = "malformed"
 def _judge(vouched: tuple[int, str], intent: checkpoint.Intent | None, events: list[dict],
            chain: list[str]) -> _Judgment:
     """The one judgment of a record against this machine's checkpoint -
-    the pass's and :func:`verify`'s alike (the review's S3), so neither has
-    a copy of the rule.
+    the pass's and :func:`tracker.verify.verify`'s alike (the review's
+    S3), so neither has a copy of the rule.
 
     - **Shorter** than the lines vouched for; **rewritten**: the chain
       through them is not the one kept.
@@ -3042,111 +3047,6 @@ def recover(conn: sqlite3.Connection, root: Path | str, engagement_dir: Path | s
     return result
 
 
-# ------------------------------------------------------------- verify ----
-
-#: The classes of problem ``verify`` names, one per line with a path below
-#: the root and never a word of a document.
-V_RECORD = "the record does not read"
-V_SHORTER = "the record is shorter than this machine last saw"
-V_REWRITTEN = "the record no longer matches what this machine last saw"
-V_CLAIMS = "a line says it was written on this machine and was not"
-V_NO_WRITER = "a line past what this machine saw carries no writer"
-V_FOREIGN = "a line was written on another machine, which is refused"
-#: A line the store's admission refuses (decision 187), named by the gate's
-#: own sentence - which names the field and the class, never the value.
-V_MALFORMED = "a line is outside the record's rule"
-V_STORE = "the store has applied lines the record does not hold"
-V_MISSING = "a recorded file is missing"
-V_CHANGED = "a recorded file holds other bytes"
-V_BY_KIND = {_CLAIMS: V_CLAIMS, _NO_WRITER: V_NO_WRITER, _FOREIGN: V_FOREIGN, _MALFORMED: V_MALFORMED}
-
-
-def verify(conn: sqlite3.Connection, held: sqlite3.Connection | None, root: Path | str) -> list[str]:
-    """Every problem, firm-wide, as ``class: path below the root``
-    (decision 159, G-10). Read-only: ``conn`` and ``held`` are opened
-    read-only by the caller, no lock is taken, nothing is seeded, copied,
-    moved or created, and a cloud placeholder is never read (reading one
-    downloads it).
-
-    For every folder with a record: the record reads (links, format);
-    every line is inside the store's admission (decision 187); it extends
-    what the checkpoint vouches for; the store has applied a prefix of it. For every row: its original and each working copy it claims are
-    there and hold the row's bytes - proved by the index's own proof of a
-    row's bytes (``index.holds_the_row``, decision 109's reading), not a
-    second one.
-    """
-    from tracker import layout, registry
-    from tracker.index import FILE_MOVED, holds_the_row
-    from tracker.layout import locate
-    from tracker.validators import is_cloud_placeholder
-
-    root = Path(root)
-
-    def below(path: Path) -> str:
-        # The layout's one question of a path under another (decision 188).
-        parts = layout.parts_below(root, path)
-        return str(path) if parts is None else "/".join(parts) or "."
-
-    problems: list[str] = []
-    for folder in registry.record_dirs(root):
-        try:
-            events, _head, chain = ledger.read_with_chain(folder)
-        except ledger.LedgerError as exc:
-            problems.append(f"{V_RECORD}: {below(folder)} ({exc})")
-            continue
-        row = _engagement_row(conn, folder, root)
-        key = row["path"] if row is not None else engagement_path(key_root(folder, root), folder)
-        # Every line held to the one admission first (decision 187), as
-        # ``check`` holds it: no place a line names is looked at, and no
-        # writer judged, before the line's values are inside the rule.
-        refused = ""
-        for seq, event in enumerate(events, start=1):
-            try:
-                _refuse_a_malformed_line(event, seq, key,
-                                         kind=row["kind"] if row is not None else KIND_RETURN)
-            except StoreError as exc:
-                refused = str(exc)
-                break
-        if refused:
-            problems.append(f"{V_MALFORMED}: {below(folder)} ({refused})")
-            continue
-        vouched = checkpoint.vouched(held, key) if held is not None else None
-        if vouched is not None:
-            # The pass's own judgment, not a copy of it (the review's S3).
-            # held is not None: vouched came from it
-            judged = _judge(vouched, checkpoint.intent(cast(sqlite3.Connection, held), key), events, chain)
-            if judged.kind == _SHORTER:
-                problems.append(f"{V_SHORTER}: {below(folder)} ({len(events)} of {judged.seq})")
-            elif judged.kind == _REWRITTEN:
-                problems.append(f"{V_REWRITTEN}: {below(folder)}")
-            elif judged.kind:
-                problems.append(f"{V_BY_KIND[judged.kind]}: {below(folder)} line {judged.seq}")
-        if row is not None and (row["applied_seq"] > len(events) or
-                                ledger.chain_at(chain, row["applied_seq"]) != row["applied_digest"]):
-            problems.append(f"{V_STORE}: {below(folder)}")
-        entries = [records.entry_from_json(one) for one in ledger.replay(events).rows.values()]
-        claims: dict[str, int] = {}
-        for position, entry in enumerate(entries):
-            if entry.digest and entry.decision != FILE_MOVED:
-                for location in entry.filed_locations:
-                    claims[location] = position
-        for position, entry in enumerate(entries):
-            if not entry.digest:
-                continue
-            places = [location for location in entry.filed_locations if claims.get(location) == position]
-            if entry.pbc_location:
-                places.insert(0, entry.pbc_location)
-            for location in places:
-                path = locate(folder, location)
-                if not path.is_file():
-                    problems.append(f"{V_MISSING}: {below(path)}")
-                elif is_cloud_placeholder(path):
-                    continue
-                elif not holds_the_row(path, entry.digest):
-                    problems.append(f"{V_CHANGED}: {below(path)}")
-    return problems
-
-
 # -------------------------------------------------------------------- CLI ----
 
 
@@ -3213,10 +3113,12 @@ if __name__ == "__main__":
     # nobody imports is the one place that may look upwards, and finding
     # the engagement folders under a root is what it looks up for, and the
     # check and the export, which read the store from one module up the
-    # file list (P324).
+    # file list (P324), and verify, the read-only firm-wide proof, which
+    # walks the registry and asks the index from layer 3 (P325).
     from tracker import registry
     from tracker.page import tolerant_console
     from tracker.store_check import check, export
+    from tracker.verify import verify
 
     tolerant_console()   # a client's name the console cannot encode is no traceback
 

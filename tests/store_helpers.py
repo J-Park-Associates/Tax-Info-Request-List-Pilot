@@ -7,8 +7,11 @@
 was written against. A test file may not import another
 (``tests/test_suite_shape.py``), so what more than one of them reads sits
 here, in a module that is not a test file, and every user names it; the map
-draws the edge as "exercised by". From P3.5 ``tests/test_verify.py`` reads
-them too.
+draws the edge as "exercised by". With P325 (SPEC-architecture-p3 P3.5)
+the verify tests left it too, for ``tests/test_verify.py``, and the three
+helpers the one that writes a row by hand shares with the store's tests
+came here with their words: :func:`unlinked`, :func:`a_row` and
+:data:`A_ROW_ORIGINAL`.
 
 Nothing here is new behaviour: each fixture and helper is test_store's own,
 moved with its words. The one edit is :func:`said`, which asks
@@ -55,6 +58,10 @@ ITEMS = [
     ),
 ]
 
+#: Where the original of the row these tests write by hand sits: in the
+#: household's folder for the year, which is across the two trees from the
+#: return - so the location begins with ``..`` (decision 125).
+A_ROW_ORIGINAL = "../../../../Clients/Smith Family/2025/w2.pdf"
 
 
 @pytest.fixture
@@ -65,9 +72,7 @@ def root(tmp_path):
     return folder
 
 
-
 engagement = engagement_fixture(ITEMS, household="Smith Family", root="root")
-
 
 
 @pytest.fixture
@@ -84,7 +89,6 @@ def by_hand(engagement):
     ledger.path_for(engagement).unlink(missing_ok=True)
 
 
-
 @pytest.fixture
 def conn(tmp_path):
     """A store beside the app, which is not under the clients root."""
@@ -93,10 +97,8 @@ def conn(tmp_path):
     connection.close()
 
 
-
 def build(conn, root, engagement):
     store.rebuild_engagement(conn, root, engagement)
-
 
 
 def edit_rules(engagement, **fields_by_identifier):
@@ -108,10 +110,8 @@ def edit_rules(engagement, **fields_by_identifier):
     return save_rules(engagement, edited, load_engagement_info(engagement))
 
 
-
 def said(conn, root, engagement):
     return store_check.check(conn, root, engagement)
-
 
 
 def id_of(conn, folder):
@@ -124,19 +124,16 @@ def id_of(conn, folder):
     return store._engagement_row(conn, folder)["id"]
 
 
-
 def learned(identifier: str, keyword: str) -> dict:
     """A person's filing teaching one request one word."""
     return ledger.new(ledger.KEYWORD_LEARNED, **{ledger.IDENTIFIER_KEY: identifier,
                                                  ledger.KEYWORD_KEY: keyword})
 
 
-
 def unlearned(identifier: str, keyword: str) -> dict:
     """A person taking one of those words back, in the editor (decision 113)."""
     return ledger.new(ledger.KEYWORD_UNLEARNED, **{ledger.IDENTIFIER_KEY: identifier,
                                                    ledger.KEYWORD_KEY: keyword})
-
 
 
 def a_pass(engagement):
@@ -146,12 +143,10 @@ def a_pass(engagement):
     return scan_engagement(engagement, today=DAY1)
 
 
-
 def cli(*argv):
     return subprocess.run([sys.executable, "-m", "tracker.store", *[str(a) for a in argv]],
                           cwd=REPO, capture_output=True, text=True, encoding="utf-8",
                           env=child_env(PYTHONIOENCODING="utf-8"))
-
 
 
 def scanned(**statuses) -> dict:
@@ -160,7 +155,19 @@ def scanned(**statuses) -> dict:
         identifier: {"status": status, "file_count": 0} for identifier, status in statuses.items()}})
 
 
-
 def _a_rule(**fields) -> dict:
     return {**rule_to_json(ITEMS[0]), **fields}
 
+
+def unlinked(events):
+    """``events`` as a journal from before decision 159 held them: without
+    the three keys every line now carries."""
+    return [{k: v for k, v in event.items() if k not in ledger.LINE_KEYS} for event in events]
+
+
+def a_row(**fields) -> dict:
+    base = {"received": "2026-07-01", "original_name": "w2.pdf", "size_kb": 1.0,
+            "digest": "ab" * 32, "identifier": "", "prepared_location": "",
+            "pbc_location": A_ROW_ORIGINAL, "decision": "Needs Review",
+            "reason": "", "candidates": "", "evidence": "", "also_filed": ""}
+    return {**base, **fields}

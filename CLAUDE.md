@@ -63,9 +63,9 @@ The scanner never imports the filer: it reads the index from `index.py`, and
 the filer reaches the scanner only at call time, inside `_rescan()` - a
 curated `calls` edge, stated on both nodes (P313's Q-A). Four two-module
 cycles remain, each closing at call time, and `tests/test_layers.py` names
-them in `CALL_TIME_CYCLES`: store ↔ index (`store.verify`), registry ↔ store,
-store ↔ store_check (the store's `__main__` block), and scaffold ↔ validators
-(validators' `__main__` block). There is no load-time
+them in `CALL_TIME_CYCLES`: registry ↔ store, store ↔ store_check and
+store ↔ verify (each through the store's `__main__` block), and scaffold ↔
+validators (validators' `__main__` block). There is no load-time
 cycle: `tracker/__init__.py` imports nothing (decision 99), and
 `tests/test_layers.py` pins the layer of every module and that no load-time
 import points to a higher layer - a module that moves layers moves in that

@@ -9,8 +9,9 @@ rebuild that is also the recovery and takes the journal alone, the order a
 row that changed identity keeps, the three words it answers its own state
 in, and the one placement rule: the file is never under the clients root,
 because that folder syncs. The check's own behaviour and the export's are
-tests/test_store_check.py's (P324), and the fixtures and helpers both files
-read are tests/store_helpers.py's.
+tests/test_store_check.py's (P324), the read-only verify's is
+tests/test_verify.py's (P325), and the fixtures and helpers these files
+share are tests/store_helpers.py's.
 """
 
 from __future__ import annotations
@@ -30,11 +31,13 @@ from tests.builders import cache_rows, drop
 from tests.conftest import make_engagement, seed_statuses, sort, written_elsewhere
 from tests.samples import text_pdf
 from tests.store_helpers import (
+    A_ROW_ORIGINAL,
     DAY1,
     DAY2,
     ITEMS,
     _a_rule,
     a_pass,
+    a_row,
     build,
     cli,
     edit_rules,
@@ -43,6 +46,7 @@ from tests.store_helpers import (
     said,
     scanned,
     unlearned,
+    unlinked,
 )
 from tracker import admission, checkpoint, ledger, store, store_check
 from tracker.index import ensure, read_index
@@ -99,12 +103,6 @@ def unapplied(conn, folder, *events):
         ledger.append(folder, event)
 
 
-def unlinked(events):
-    """``events`` as a journal from before decision 159 held them: without
-    the three keys every line now carries."""
-    return [{k: v for k, v in event.items() if k not in ledger.LINE_KEYS} for event in events]
-
-
 def rows(conn, table):
     return [tuple(row) for row in conn.execute(f"SELECT * FROM {table} ORDER BY rowid")]
 
@@ -113,10 +111,6 @@ def rows(conn, table):
 #: clients root, in the layout of decision 125.
 KEY = "J Park & Associates/Smith Family/2025/1040 - Test Client"
 
-#: Where the original of the row these tests write by hand sits: in the
-#: household's folder for the year, which is across the two trees from the
-#: return - so the location begins with ``..`` (decision 125).
-A_ROW_ORIGINAL = "../../../../Clients/Smith Family/2025/w2.pdf"
 #: The latest earlier version a store is set aside at and rebuilt from
 #: (decision 159, E3; until 159 it was refused and deleted by hand): the one
 #: before the first in-place step (decision 204 upgrades a version-16 file
@@ -183,14 +177,6 @@ def as_a_rebuild_leaves_it(conn, root, engagement, tmp_path) -> bool:
         return cells(conn) == cells(rebuilt)
     finally:
         rebuilt.close()
-
-
-def a_row(**fields) -> dict:
-    base = {"received": "2026-07-01", "original_name": "w2.pdf", "size_kb": 1.0,
-            "digest": "ab" * 32, "identifier": "", "prepared_location": "",
-            "pbc_location": A_ROW_ORIGINAL, "decision": "Needs Review",
-            "reason": "", "candidates": "", "evidence": "", "also_filed": ""}
-    return {**base, **fields}
 
 
 # --------------------------------------------------------------- the schema ----
@@ -936,21 +922,11 @@ def test_the_store_names_no_reader_at_load_time():
     """The explicit form of the layers test's claim: nothing that walks
     folders or moves files is reachable from importing this module.
 
-    Read from the text with the one function exempted that decision 159
-    added on purpose: ``verify``, the read-only firm-wide proof, reaches
-    the registry's walk and the index's own proof of a row's bytes
-    (``tracker.index.holds_the_row``) at call time - reusing them rather
-    than writing a second walk and a second fingerprint - and only when a
-    person runs it."""
-    import ast
-
+    Read from the text: nothing above the command line names a reader since
+    P325 moved ``verify``, the read-only firm-wide proof that reaches the
+    registry and the index, to ``tracker.verify``."""
     source = (Path(store.__file__)).read_text(encoding="utf-8")
     top, _, command_line = source.partition('if __name__ == "__main__":')
-    tree = ast.parse(top)
-    verify = next(node for node in tree.body
-                  if isinstance(node, ast.FunctionDef) and node.name == "verify")
-    lines = top.splitlines()
-    top = "\n".join(lines[:verify.lineno - 1] + lines[verify.end_lineno:])
     for module in ("filer", "manifest", "view", "validators", "registry", "scaffold"):
         assert f"tracker.{module}" not in top.replace(":mod:`tracker.", "")
         assert f"tracker import {module}" not in top
@@ -2935,60 +2911,6 @@ def test_recover_prints_no_payload_value(conn, root, by_hand, tmp_path):
     assert FABRICATED_NAME not in accepted.stdout + accepted.stderr
 
 
-def _tree(folder: Path) -> dict[str, tuple]:
-    """Every file and folder under ``folder``: bytes and modification time."""
-    return {str(path.relative_to(folder)): ((path.read_bytes(), path.stat().st_mtime_ns)
-                                            if path.is_file() else ("dir",))
-            for path in sorted(folder.rglob("*"))}
-
-
-def test_verify_changes_nothing_and_names_every_mismatch(root, engagement, tmp_path):
-    """G-10: a read-only verify, firm-wide. Nothing under the clients root
-    changes - not a byte, not a time - and neither the store nor the
-    checkpoint is written; every problem is named by class and path below
-    the root, and any problem exits 1."""
-    drop(engagement, "w2.pdf", "Form W-2 Wage and Tax Statement 2025")
-    drop(engagement, "1098.pdf", "Form 1098 Mortgage Interest Statement 2025")
-    sort(engagement, today=DAY1)
-    store.close()
-    home = tmp_path / "app"
-    kept = {name: (home / name).read_bytes()
-            for name in (store.STORE_FILENAME, checkpoint.CHECKPOINT_FILENAME)}
-
-    tree = _tree(root)
-    clean = cli(home / store.STORE_FILENAME, "verify", root)
-    assert clean.returncode == 0, clean.stdout + clean.stderr
-    assert "nothing to report" in clean.stdout
-    assert _tree(root) == tree
-
-    entries = read_index(engagement)
-    store.close()
-    copy = next(entry for entry in entries if entry.prepared_location)
-    (engagement / copy.prepared_location).unlink()                          # a working copy gone
-    original = locate_original(engagement, entries[-1])
-    original.write_bytes(original.read_bytes() + b"changed")                # an original changed
-    household_record = ledger.path_for(engagement.parents[1])               # a record cut short
-    target = household_record if household_record.is_file() else ledger.path_for(engagement)
-    lines = target.read_bytes().splitlines(keepends=True)
-    target.write_bytes(b"".join(lines[:-1]))
-
-    tree = _tree(root)
-    found = cli(home / store.STORE_FILENAME, "verify", root)
-    assert found.returncode == 1
-    said_now = found.stdout
-    assert store.V_MISSING in said_now and store.V_CHANGED in said_now and store.V_SHORTER in said_now
-    assert Path(copy.prepared_location).name in said_now
-    assert _tree(root) == tree                                              # nothing moved, nothing made
-    assert {name: (home / name).read_bytes() for name in kept} == kept
-    assert not (home / store.RECOVERED_DIR).exists()
-
-
-def locate_original(engagement, entry):
-    from tracker.layout import locate
-
-    return locate(engagement, entry.pbc_location)
-
-
 def test_an_older_store_is_set_aside_and_rebuilt(conn, root, by_hand, tmp_path):
     """E3: an older store is renamed out of the way, never deleted, and the
     return is built again from its record - proved against the checkpoint,
@@ -3147,26 +3069,6 @@ def test_a_rewrite_on_a_fresh_store_claims_no_line_number_it_does_not_know(conn,
         store.catch_up(fresh, root, by_hand)
     with pytest.raises(store.StoreError, match="from line 3 onward|line 3 onward"):
         store.catch_up(conn, root, by_hand)
-
-
-def test_verify_names_a_line_with_no_writer_as_the_pass_refuses_it(conn, root, by_hand, tmp_path):
-    """S3 (probe Q5b): verify asks the pass's own judgment, so a line with no
-    link and no writer after a record from before 159 is named by both."""
-    import json as _json
-
-    events = unlinked(ledger.read_events(by_hand))
-    store.forget(conn, by_hand)          # a store, and a checkpoint, that never met it
-    ledger.path_for(by_hand).write_text(
-        "".join(_json.dumps(event, sort_keys=True) + "\n" for event in events), encoding="utf-8")
-    build(conn, root, by_hand)
-    with ledger.path_for(by_hand).open("a", encoding="utf-8") as handle:
-        handle.write(_json.dumps(ledger.new(ledger.PARKED, key=A_ROW_ORIGINAL, row=a_row())) + "\n")
-    with pytest.raises(store.StoreError, match="Line 2 .* carries no writer"):
-        store.catch_up(conn, root, by_hand)
-    conn.close()
-    store.close()
-    shown = cli(tmp_path / "app" / store.STORE_FILENAME, "verify", root)
-    assert shown.returncode == 1 and store.V_NO_WRITER in shown.stdout and "line 2" in shown.stdout
 
 
 def test_a_checkpoint_that_will_not_open_is_that_returns_problem_by_name(conn, root, by_hand, tmp_path):

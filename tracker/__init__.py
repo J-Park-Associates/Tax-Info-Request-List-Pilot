@@ -21,6 +21,7 @@ See docs/ROADMAP.md for the build plan. Component modules:
 - rollover      : build a returning client's list from their prior year
 - reminder      : draft (never send) the client reminder email
 - registry      : finds every engagement under the clients root (no registry file)
+- verify        : the read-only proof, firm-wide - every record held to this machine's checkpoint and the store, every recorded file to its bytes; it changes nothing
 - runner        : the unattended pass (file -> scan -> weekly draft)
 - scheduling    : generate the Task Scheduler job
 - after_install : every one-time step after installing or upgrading - the schedule on the computer that runs it, the record check - run by Setup, the app's launch and the first root saved

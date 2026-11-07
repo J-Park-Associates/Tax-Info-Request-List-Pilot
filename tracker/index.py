@@ -17,8 +17,8 @@ words and everything that reads a row back by them:
   writes its sentence, so rewording one moves its reader with it;
 - :data:`INTERRUPTED_MOVE_DETAIL` and :func:`interrupted`, the path a step
   a pass recovers names (decision 119);
-- :func:`holds_the_row`, the one proof of a row's bytes, which the store's
-  ``verify`` holds every recorded file to (decision 159);
+- :func:`holds_the_row`, the one proof of a row's bytes, which
+  :func:`tracker.verify.verify` holds every recorded file to (decision 159);
 - and :data:`INDEX_HEADING`, what the index is called wherever it is shown.
 
 **Why it is its own module** (SPEC-architecture-p2 P2.9, P319; the
@@ -402,7 +402,7 @@ def holds_the_row(path: Path, digest: str) -> bool:
     moment it is moved. A placeholder is never read (hashing one would make
     the sync client download it); the caller refuses first.
 
-    Public because it is the one proof of a row's bytes: ``tracker.store.verify``
+    Public because it is the one proof of a row's bytes: ``tracker.verify.verify``
     (decision 159) holds every recorded original and working copy to it.
     """
     return path.is_file() and not is_cloud_placeholder(path) and sha256_of(path) == digest

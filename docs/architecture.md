@@ -26,12 +26,14 @@ temporary is ever written beside a client's file.
 
 ## The package, by layer
 
-`tracker/` is one Python package of forty-five modules in six layers.
+`tracker/` is one Python package of forty-six modules in six layers.
 `tests/test_layers.py` pins the layer of every module and that no load-time
 import points upward; an import inside a function is a call-time import
 and may point anywhere. The scanner never imports the filer; the filer reaches
-it at call time through a rescan. The four call-time cycles that remain are
-named in `tests/test_layers.py`.
+it at call time through a rescan. The four call-time cycles that remain -
+registry ↔ store, store ↔ store_check and store ↔ verify (each through the
+store's `__main__` block), and scaffold ↔ validators (validators' `__main__`
+block) - are named in `tests/test_layers.py`.
 
 **Layer 0: words, files and locks.** The standard library and nothing of
 the package but each other.
@@ -134,6 +136,10 @@ the package but each other.
 - `rollover.py`: a returning client's next-year request list from their own
   prior year.
 - `registry.py`: every engagement under the clients root, by its record.
+- `verify.py`: the read-only proof, firm-wide (decision 159): every record
+  under the root held to the admission, this machine's checkpoint and the
+  store, and every recorded file to its bytes; it changes nothing, and the
+  store's command line asks it (P325).
 - `view.py`: the return's Status Report page.
 
 **Layer 4: the unattended run.**

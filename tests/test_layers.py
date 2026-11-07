@@ -196,7 +196,14 @@ LAYERS: dict[int, frozenset[str]] = {
     1: frozenset({"households", "ledger", "manifest", "records", "scaffold", "store",
                   "templates", "validators", "index", "admission", "store_check"}),
     2: frozenset({"containers", "content_check", "names", "ocr", "router"}),
-    3: frozenset({"filer", "scanner", "reminder", "rollover", "view", "registry", "review"}),
+    # ``verify`` joins L3 with P325 (SPEC-architecture-p3 P3.5): decision 159's
+    # read-only firm-wide proof out of ``store`` - ``admission``, ``ledger``,
+    # ``records`` and ``store`` (L1) and ``checkpoint`` (L0) at load time, and
+    # ``registry`` (L3), ``index`` and ``validators`` (L1) and ``layout`` (L0)
+    # at call time. Its place is set by the registry it asks, not by what it
+    # loads; the store's command line asks it at call time.
+    3: frozenset({"filer", "scanner", "reminder", "rollover", "view", "registry", "review",
+                  "verify"}),
     # ``after_install`` joins L4 with decision 209, beside the scheduler it
     # drives: it imports ``scheduling`` (L4), ``store`` (L1), ``registry``
     # (L3) and L0; the API imports it, and nothing lower may.
@@ -222,7 +229,8 @@ DOMAINS: dict[str, frozenset[str]] = {
     # is the ``door`` domain below.
     "record": frozenset({"__init__", "ledger", "locking", "checkpoint", "fsio", "layout", "door",
                          "settings", "hold", "records", "bounds", "store", "index", "manifest",
-                         "households", "templates", "scaffold", "admission", "store_check"}),
+                         "households", "templates", "scaffold", "admission", "store_check",
+                         "verify"}),
     # Opening a client's file, checking it and getting the text out of it.
     "reading": frozenset({"validators", "containers", "content_check", "ocr"}),
     # Deciding where a document belongs, or that it belongs nowhere yet, and
@@ -453,6 +461,18 @@ def test_the_check_imports_the_store_and_the_record_and_writes_through_fsio_alon
     assert call["store_check"] == {"fsio"}, call["store_check"]
 
 
+def test_verify_reads_the_walk_and_the_proof_at_call_time():
+    """P325: the read-only firm-wide proof loads only what the store's
+    judgment of a record needs - the store, the admission, the journal and
+    the record (L1) and the checkpoint (L0) - and asks the registry's walk,
+    the index's proof of a row's bytes, the layout and the validators'
+    placeholder test at call time, when a person runs it. It sits at L3 for
+    the registry it asks; the store's command line asks it at call time."""
+    load, call = import_edges()
+    assert load["verify"] == {"admission", "checkpoint", "ledger", "records", "store"}, load["verify"]
+    assert call["verify"] == {"index", "layout", "registry", "validators"}, call["verify"]
+
+
 def test_the_manifest_imports_the_bounds_and_the_record_and_nothing_else():
     """Narrower since decision 103, and kept so by 104.
 
@@ -544,9 +564,9 @@ def test_the_scanner_never_imports_the_filer_and_the_filer_reaches_it_only_at_ca
 #: before it loads. A new pair is a decision, not an accident: it is added here
 #: with the place it closes, or the import that closes it is removed.
 CALL_TIME_CYCLES: frozenset[frozenset[str]] = frozenset({
-    frozenset({"index", "store"}),          # ``store.verify`` asks the index at call time
-    frozenset({"registry", "store"}),       # the store asks the registry at call time
+    frozenset({"registry", "store"}),       # the store's ``__main__`` asks the registry
     frozenset({"store", "store_check"}),    # the store's ``__main__`` asks the check
+    frozenset({"store", "verify"}),         # the store's ``__main__`` asks verify
     frozenset({"scaffold", "validators"}),  # validators' ``__main__`` block asks scaffold
 })
 
