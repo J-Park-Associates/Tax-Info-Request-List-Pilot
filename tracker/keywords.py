@@ -61,7 +61,7 @@ page 1", not "matched no request", and because a later layer ranks parked
 files from it. What is kept is the *firm's* words - the keyword the
 manifest row asked for, the Period it asked for - and never a word of the
 client's document, which is the same line
-:class:`tracker.content_check.ContentCache` draws.
+:class:`tracker.verdicts.ContentCache` draws.
 
 **A file name is read the same way, but only for a person** (decision
 128). The router reads a file's name with :func:`contains_keyword`, the

@@ -23,7 +23,6 @@ from tests.content_check_helpers import item
 from tests.samples import photo, text_pdf
 from tracker import reasons, store
 from tracker.content_check import (
-    CACHE_VERSION,
     ContentCache,
     check_content,
     evaluate_rules,
@@ -33,6 +32,7 @@ from tracker.content_check import (
 )
 from tracker.locking import engagement_lock
 from tracker.manifest import RequestItem
+from tracker.verdicts import CACHE_VERSION
 
 # ------------------------------------------------------------------ rules ----
 

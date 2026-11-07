@@ -59,7 +59,7 @@ README write holds, so the lock and its file name
 scaffold, the validators and the index (layer 1) and the layout, the door,
 the disk writes, the engagement lock and the errors (layer 0), and in its
 own layer ``containers`` (an email or a zip is marked for Protected View)
-and :class:`tracker.content_check.ContentCache` (a proved copy's digest is
+and :class:`tracker.verdicts.ContentCache` (a proved copy's digest is
 remembered for the pass). It may import nothing above layer 2 - not the
 filer, the scanner or anything that drives a pass - and nothing of the
 filer at all, at load time or at call time: the filer imports it, and so
@@ -95,7 +95,6 @@ from pathlib import Path
 from typing import cast
 
 from tracker import containers, door, errors, ledger, store
-from tracker.content_check import ContentCache
 from tracker.door import through_a_link
 from tracker.fsio import (
     copy_atomically,
@@ -158,6 +157,7 @@ from tracker.validators import (
     is_program,
     sha256_of,
 )
+from tracker.verdicts import ContentCache
 
 # The filer's logger, by its name (SPEC-architecture-p4 section 2.1): the run
 # log and the error log print each line's logger name, so a name of this

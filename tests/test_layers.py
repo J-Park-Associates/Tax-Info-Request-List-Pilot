@@ -198,13 +198,19 @@ LAYERS: dict[int, frozenset[str]] = {
     # ``copies`` joins L2 with P331 (SPEC-architecture-p4 P4.4): the filer's
     # naming, room, byte-proved copy and rename-only move, the client README's
     # lock and the stranded-temp sweep - L1 and L0, and ``containers`` and
-    # ``content_check``'s ``ContentCache`` in-layer; the filer and a person's
+    # ``verdicts``' ``ContentCache`` in-layer; the filer and a person's
     # actions import it.
     # ``keywords`` joins L2 with P336 (SPEC-architecture-p4 P4.10): the matcher
     # and the rules out of ``content_check``, which imports them back -
     # ``manifest`` and ``records`` (L1) and ``reasons`` (L0); nothing at L2 or
     # above. It sits at L2 beside the one reading it judges for.
-    2: frozenset({"containers", "content_check", "copies", "keywords", "names", "ocr", "router"}),
+    # ``verdicts`` joins L2 with P337 (SPEC-architecture-p4 P4.11): the
+    # judgment's shapes and decision 107's verdict cache out of
+    # ``content_check``, which imports them back - ``keywords`` (L2, the rules'
+    # verdict), ``store``, ``validators``, ``records`` and ``manifest`` (L1)
+    # and ``hold`` (L0).
+    2: frozenset({"containers", "content_check", "copies", "keywords", "names", "ocr", "router",
+                  "verdicts"}),
     # ``verify`` joins L3 with P325 (SPEC-architecture-p3 P3.5): decision 159's
     # read-only firm-wide proof out of ``store`` - ``admission``, ``ledger``,
     # ``records`` and ``store`` (L1) and ``checkpoint`` (L0) at load time, and
@@ -213,7 +219,7 @@ LAYERS: dict[int, frozenset[str]] = {
     # loads; the store's command line asks it at call time.
     # ``intents`` joins L3 with P332 (SPEC-architecture-p4 P4.6): decision
     # 119's write-ahead intents and finishing an interrupted move, out of
-    # ``filer`` - ``copies`` and ``content_check``'s ``ContentCache`` (L2), and
+    # ``filer`` - ``copies`` and ``verdicts``' ``ContentCache`` (L2), and
     # L1 and L0; the filer and a person's actions import it. It imports
     # nothing above L2, and sits at L3 beside the two it serves.
     # ``inbox`` joins L3 with P333 (SPEC-architecture-p4 P4.7): the inbox's
@@ -262,7 +268,7 @@ DOMAINS: dict[str, frozenset[str]] = {
                          "households", "templates", "scaffold", "admission", "store_check",
                          "verify"}),
     # Opening a client's file, checking it and getting the text out of it.
-    "reading": frozenset({"validators", "containers", "content_check", "ocr"}),
+    "reading": frozenset({"validators", "containers", "content_check", "ocr", "verdicts"}),
     # Deciding where a document belongs, or that it belongs nowhere yet, and
     # the shortlist a person gets for the ones that do not.
     "sorting": frozenset({"reasons", "router", "names", "filer", "copies", "intents", "inbox",

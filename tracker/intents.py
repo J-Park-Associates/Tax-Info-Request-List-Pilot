@@ -78,7 +78,7 @@ so it is one of the record's writers, named in ``tests/test_layers.py``'s
 here, and a destination that holds somebody else's bytes is never touched.
 
 **Why it sits at layer 3.** It reads :mod:`tracker.copies` and
-:class:`tracker.content_check.ContentCache` (layer 2: the cache is handed
+:class:`tracker.verdicts.ContentCache` (layer 2: the cache is handed
 down the copy path), the record types, the index, the store, the journal,
 the scaffold's folder names and the validators (layer 1), and the layout,
 the door, the disk writes, the reasons and the errors (layer 0). It may
@@ -119,7 +119,6 @@ from pathlib import Path
 from typing import cast
 
 from tracker import door, errors, ledger, reasons, store
-from tracker.content_check import ContentCache
 from tracker.copies import (
     COPY_UNPROVED,
     COPY_UNREAD,
@@ -177,6 +176,7 @@ from tracker.records import (
 )
 from tracker.scaffold import PREPARED_DIR_NAME, REVIEW_DIR_NAME
 from tracker.validators import is_cloud_placeholder, sha256_of
+from tracker.verdicts import ContentCache
 
 # The filer's logger, by its name (SPEC-architecture-p4 section 2.1): the run
 # log and the error log print each line's logger name, so a name of this

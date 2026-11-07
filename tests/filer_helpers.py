@@ -316,28 +316,28 @@ def counting_hashes(monkeypatch) -> list[str]:
     """Every path anything in the package hashes, as it is hashed.
 
     Eight modules hold the name now, and each holds its own: the memo's is
-    the content check's, and a pass that reached around it would show up
-    here and nowhere else. The scanner held one until decision 109 and
-    holds none; the index's is the one ``holds_the_row`` reads, since that
-    proof moved out of the filer (P319), copies' is the one a working
-    copy is found and proved with, since that code did (P331),
-    intents' is the one an intent and its recovery prove a step with,
-    since that code did (P332), inbox's is the one the walk checks a
-    replaced or moved original with, since that code did (P333), and
-    actions' is the one a person's action proves the bytes it is about to
-    move with, since that code did (P335).
+    the verdict cache's, since the cache left the content check (P337), and
+    a pass that reached around it would show up here and nowhere else. The
+    scanner held one until decision 109 and holds none; the index's is the
+    one ``holds_the_row`` reads, since that proof moved out of the filer
+    (P319), copies' is the one a working copy is found and proved with,
+    since that code did (P331), intents' is the one an intent and its
+    recovery prove a step with, since that code did (P332), inbox's is the
+    one the walk checks a replaced or moved original with, since that code
+    did (P333), and actions' is the one a person's action proves the bytes
+    it is about to move with, since that code did (P335).
     """
     import tracker.actions as actions_module
-    import tracker.content_check as content_check_module
     import tracker.copies as copies_module
     import tracker.filer as filer_module
     import tracker.inbox as inbox_module
     import tracker.index as index_module
     import tracker.intents as intents_module
     import tracker.validators as validators_module
+    import tracker.verdicts as verdicts_module
 
     read: list[str] = []
-    for module in (filer_module, copies_module, intents_module, inbox_module, content_check_module, index_module,
+    for module in (filer_module, copies_module, intents_module, inbox_module, verdicts_module, index_module,
                    validators_module, actions_module):
         real = module.sha256_of
 

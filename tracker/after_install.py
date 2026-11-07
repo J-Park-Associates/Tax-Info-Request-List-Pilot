@@ -157,9 +157,9 @@ from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
 
 from tracker import door, errors, fsio, ledger, registry, runner, scheduling, settings, store, store_check
-from tracker.content_check import RETIRED_CACHE_FILENAME
 from tracker.fsio import TEMP_SUFFIX, write_json_atomically
 from tracker.locking import EngagementLockedError, acquire_lock, is_this_host, release_lock, this_host
+from tracker.verdicts import RETIRED_CACHE_FILENAME
 
 log = logging.getLogger(__name__)
 

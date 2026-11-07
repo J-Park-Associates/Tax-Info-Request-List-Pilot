@@ -20,13 +20,13 @@ import pytest
 
 from tests.builders import TEST_HOUSEHOLD, make_engagement
 from tracker import after_install, ledger, scheduling, settings, store
-from tracker.content_check import RETIRED_CACHE_FILENAME
 from tracker.fsio import TEMP_SUFFIX
 from tracker.layout import PRIVATE_TREE, designation_file
 from tracker.locking import engagement_lock
 from tracker.records import rule_to_json
 from tracker.settings import ENV_SETTINGS_DIR, set_clients_root
 from tracker.templates import template_items
+from tracker.verdicts import RETIRED_CACHE_FILENAME
 
 HERE = "office-pc"
 ELSEWHERE = "front-desk"

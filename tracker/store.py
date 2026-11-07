@@ -150,7 +150,7 @@ and never :func:`record` - there is no
 journal line and no ``seq`` - but it still refuses outside the engagement
 lock, because the memo ties a path to bytes and every writer already
 holds it. The version each verdict was written under is carried per row
-(``tracker.content_check.CACHE_VERSION``), so a matcher change still
+(``tracker.verdicts.CACHE_VERSION``), so a matcher change still
 invalidates without a store version.
 
 **One store per process.** :func:`connect` hands out one connection to one
@@ -286,7 +286,7 @@ COPY_INSIDE_APP = ("{path} is inside the app's own folder {app}; a copy of the d
 #: 17 (decision 204) added ``waits_for`` to ``documents``; 18 (decision 190)
 #: added ``code`` and ``subfolder`` to ``documents`` and ``note_codes`` to
 #: ``statuses`` (the verdicts a version-17 file cached are kept as rows but
-#: no longer answer: :data:`tracker.content_check.CACHE_VERSION` moved with
+#: no longer answer: :data:`tracker.verdicts.CACHE_VERSION` moved with
 #: the step); 19 (decision 209, R3b) added ``admitted_by`` to
 #: ``engagements``, which admission judged the lines a row applied -
 #: bookkeeping with a default of 0 that ``store check`` does not compare;
@@ -343,7 +343,7 @@ def _agree(table: str, field: str, held: object, theirs: object) -> bool:
 
 
 #: The verdict cache's two tables (decision 107). Named once, here, because
-#: the cache in :mod:`tracker.content_check` and the tests both speak of
+#: the cache in :mod:`tracker.verdicts` and the tests both speak of
 #: them, and a table name typed twice is a table name that drifts.
 VERDICTS_TABLE = "verdicts"
 FILE_MEMOS_TABLE = "file_memos"
@@ -2529,12 +2529,12 @@ def cached_verdicts(
 ) -> tuple[dict[str, dict], dict[str, dict[str, dict]]]:
     """One engagement's verdict cache at ``version``: the memos and the verdicts.
 
-    The two shapes ``tracker.content_check.ContentCache`` holds in memory -
+    The two shapes ``tracker.verdicts.ContentCache`` holds in memory -
     ``path_key -> {size, mtime_ns, digest}`` and ``digest -> fingerprint ->
     verdict`` - so the cache is loaded once when it is built and the pass's
     hot path stays in memory exactly as it was when the cache was a file.
     The verdict comes back as the dict the cache handed in; this module
-    never learns the record it is (:mod:`tracker.content_check` is above it).
+    never learns the record it is (:mod:`tracker.verdicts` is above it).
     A row at another ``version`` is not returned: a verdict written under
     an older reading of the rules is not a verdict, and :func:`remember_verdicts`
     deletes such rows on the next save.

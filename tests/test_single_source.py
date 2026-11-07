@@ -18,8 +18,8 @@ import pytest
 from tests.node_harness import APP_SCRIPTS, js_function, renderer_text, stripped_js
 from tests.plugin_session import child_env
 from tests.source_pins import calls_of, py_function
-from tracker.content_check import RETIRED_CACHE_FILENAME
 from tracker.reasons import OTHER_MACHINE
+from tracker.verdicts import RETIRED_CACHE_FILENAME
 
 REPO = Path(__file__).resolve().parent.parent
 
@@ -735,7 +735,6 @@ def _deny_list_from_the_constants() -> list[str]:
     inbox - and only a name no person's folder carries (``ocr-scratch``)
     stands alone."""
     from tracker.checkpoint import CHECKPOINT_FILENAME, SET_ASIDE_SUFFIX
-    from tracker.content_check import RETIRED_CACHE_FILENAME
     from tracker.errlog import ERROR_LOG_FILENAME
     from tracker.layout import CLIENTS_TREE, INBOX_DIR_NAME, OPENED_DIR_NAME, PRIVATE_TREE, RETURN_NAME_PATTERN
     from tracker.ledger import LEDGER_FILENAME
@@ -749,6 +748,7 @@ def _deny_list_from_the_constants() -> list[str]:
         OCR_SCRATCH_DIRNAME,
     )
     from tracker.store import RECOVERED_DIR, STORE_FILENAME, STORE_SHM_FILENAME, STORE_WAL_FILENAME
+    from tracker.verdicts import RETIRED_CACHE_FILENAME
     from tracker.view import VIEW_FILENAME
 
     aside = SET_ASIDE_SUFFIX.split("{", 1)[0] + "*"

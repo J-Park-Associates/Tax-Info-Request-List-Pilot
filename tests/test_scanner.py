@@ -9,7 +9,6 @@ import pytest
 from tests.builders import cache_rows, engagement_fixture, make_engagement, named_page, sort
 from tests.samples import text_pdf
 from tracker import ledger, reasons, store
-from tracker.content_check import RETIRED_CACHE_FILENAME
 from tracker.layout import inbox_of
 from tracker.locking import LOCK_FILENAME, STALE_LOCK_SECONDS
 from tracker.manifest import (
@@ -34,6 +33,7 @@ from tracker.scanner import (
     ScanLockedError,
     scan_engagement,
 )
+from tracker.verdicts import RETIRED_CACHE_FILENAME
 
 DAY1 = dt.date(2026, 7, 1)
 DAY2 = dt.date(2026, 7, 9)
@@ -377,12 +377,13 @@ def test_a_scan_past_its_deadline_reads_nothing_more_and_records_only_what_it_sc
 
 def test_a_second_scan_over_an_unchanged_tree_hashes_nothing(engagement, monkeypatch):
     """Step 0's number: the memo makes an unchanged tree cost stats, not reads."""
-    import tracker.content_check as content_check_module
+    import tracker.validators as validators_module
+    import tracker.verdicts as verdicts_module
 
     text_pdf(folder(engagement, "A01") / "chase.pdf", "Chase Bank Statement Dec 2025")
     (folder(engagement, "A02") / "jan.csv").write_text("jan data", encoding="utf-8")
     calls = {"n": 0}
-    real = content_check_module.sha256_of
+    real = validators_module.sha256_of
 
     def counted(path):
         calls["n"] += 1
@@ -391,7 +392,7 @@ def test_a_second_scan_over_an_unchanged_tree_hashes_nothing(engagement, monkeyp
     # One patch is all there is to make: since decision 109 the scanner
     # hashes nothing of its own - a person's filing and the de-duplication
     # both go through the memo, which is this module's sha256_of.
-    monkeypatch.setattr(content_check_module, "sha256_of", counted)
+    monkeypatch.setattr(verdicts_module, "sha256_of", counted)
     scan_engagement(engagement, today=DAY1)
     assert calls["n"] >= 1                                   # the first pass hashes
 
@@ -808,7 +809,8 @@ def test_the_scans_memo_survives_for_parked_copies_and_strays(engagement, monkey
     """The prune used to keep only what a request's folder held, so a parked
     copy and a file nothing claims were forgotten every scan and read again
     every pass. Every file in the firm's folder keeps its memo."""
-    import tracker.content_check as content_check_module
+    import tracker.validators as validators_module
+    import tracker.verdicts as verdicts_module
     from tests.builders import sort
 
     text_pdf(inbox_of(engagement) / "irs-notice.pdf", "nothing the rules recognise")
@@ -824,13 +826,13 @@ def test_the_scans_memo_survives_for_parked_copies_and_strays(engagement, monkey
     assert any(stray.name.lower() in key for key in memos), sorted(memos)
 
     calls = {"n": 0}
-    real = content_check_module.sha256_of
+    real = validators_module.sha256_of
 
     def counted(path):
         calls["n"] += 1
         return real(path)
 
-    monkeypatch.setattr(content_check_module, "sha256_of", counted)
+    monkeypatch.setattr(verdicts_module, "sha256_of", counted)
     scan_engagement(engagement, today=DAY2)
     assert calls["n"] == 0
 
@@ -840,7 +842,8 @@ def test_a_person_filed_copy_is_proved_through_the_memo(engagement, monkeypatch)
     while the bytes do - now goes through the memo like every other hash
     under the firm's folder, so a second scan over an unchanged tree reads
     nothing at all."""
-    import tracker.content_check as content_check_module
+    import tracker.validators as validators_module
+    import tracker.verdicts as verdicts_module
     from tests.builders import sort
     from tracker.actions import assign_review_file
     from tracker.scanner import ACCEPTED_NOTE
@@ -853,13 +856,13 @@ def test_a_person_filed_copy_is_proved_through_the_memo(engagement, monkeypatch)
     assert ACCEPTED_NOTE.format(n=1) in first.updates["A01"].validation_notes
 
     calls = {"n": 0}
-    real = content_check_module.sha256_of
+    real = validators_module.sha256_of
 
     def counted(path):
         calls["n"] += 1
         return real(path)
 
-    monkeypatch.setattr(content_check_module, "sha256_of", counted)
+    monkeypatch.setattr(verdicts_module, "sha256_of", counted)
     again = scan_engagement(engagement, today=DAY2)
     assert calls["n"] == 0
     assert ACCEPTED_NOTE.format(n=1) in again.updates["A01"].validation_notes

@@ -623,9 +623,10 @@ def test_a_retired_cache_file_is_never_read_and_is_not_the_passs_to_remove(engag
     import json
 
     from tests.builders import counting_extractor
-    from tracker.content_check import CACHE_VERSION, RETIRED_CACHE_FILENAME, rules_fingerprint
+    from tracker.content_check import rules_fingerprint
     from tracker.scanner import scan_engagement
     from tracker.validators import sha256_of
+    from tracker.verdicts import CACHE_VERSION, RETIRED_CACHE_FILENAME
 
     calls = counting_extractor(monkeypatch)
     prepared = engagement / PREPARED_DIR_NAME
@@ -662,9 +663,9 @@ def test_a_pass_writes_nothing_under_the_clients_root_but_the_record_and_the_pag
     """Decision 101's walk, extended by 107: after a real sort and scan, the
     only files a pass has put under the clients root are the journal and
     the Status Report - no verdict cache, no temp file, no database."""
-    from tracker.content_check import RETIRED_CACHE_FILENAME
     from tracker.ledger import LEDGER_FILENAME
     from tracker.scanner import scan_engagement
+    from tracker.verdicts import RETIRED_CACHE_FILENAME
     from tracker.view import VIEW_FILENAME
 
     root = tmp_path / "Clients"
@@ -1633,9 +1634,9 @@ def test_deleting_the_store_and_rebuilding_leaves_every_status_and_note_byte_ide
     import os
 
     from tests.samples import scanned_1098_lines, scanned_w2_lines
-    from tracker.content_check import CACHE_VERSION
     from tracker.ledger import EVENT_KEY, SCANNED, read_events
     from tracker.scanner import scan_engagement
+    from tracker.verdicts import CACHE_VERSION
 
     root = tmp_path / "Clients"
     engagement = make_engagement(root / "Smith Family 2025", ITEMS)

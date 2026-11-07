@@ -76,7 +76,7 @@ rule is a long run of ink and crisp on the thresholded page). Each step is a
 switch of :class:`ReaderSettings`; none of the constants is. :data:`RAW` is
 the reading P283 shipped (144 dpi, no step of preparation); :data:`SHIPPED`
 is the prepared one at 300 dpi. The verdict cache moved with it
-(``content_check.CACHE_VERSION``), because every verdict on a scan or a photo
+(``verdicts.CACHE_VERSION``), because every verdict on a scan or a photo
 was reached on other pixels. The trade-off, said plainly: PP-OCR's models
 were trained on grey and colour crops, so pure black and white can lower
 recognition on a clean sharp scan while it helps a faded or shadowed one, a

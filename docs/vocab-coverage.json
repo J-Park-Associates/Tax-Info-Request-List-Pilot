@@ -9406,8 +9406,8 @@
   "tests/samples.py": "20630004c625fa76ef4f1592cb8e262aa14b56498c2b953cfbfd65b5365f5b1c",
   "tools/corpus.py": "780182b07d17d2beaae8e05478cf02400d8125a2c2491a2faf7de751b76736c4",
   "tools/vocab_report.py": "4f4bea113ec6ad12322e77f6c3e3c8615dc3649c55ef0b3d5fe1d7ed3e383487",
-  "tracker/content_check.py": "b74a3b40c8820a14aa880637d99efa5145058824b7ab69ee74b97293306ffb7c",
-  "tracker/keywords.py": "4104cd802ce8c15cedbbf1024d3cc4f2044480154fbc428798b481cec9c862b8",
+  "tracker/content_check.py": "dfeac8cecf94bf21b6c49ab3fcc7c69f65a9662e789378b0562185196de5e6c5",
+  "tracker/keywords.py": "d922880e7d49b5bbf153aef5e2372b458fd18aba22ec0320d1757b885d692674",
   "tracker/manifest.py": "b7b452b989bf3f2a2362d6e07d8353422476b241d8f1104e602f2a1c8be7db5c",
   "tracker/templates.py": "2288e7e78bb9320b6e2491e57f4c3584f19f17619c37c4c47c75e8f173c5d505"
  },

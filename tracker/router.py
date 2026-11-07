@@ -142,7 +142,7 @@ two-return household costs one reading rather than two.
 **The router reads no word of a document** (decision 189). The pass's
 drop is judged once in the reader child against every row it may be
 routed on (:func:`read_once`, :func:`tracker.content_check.judge`), and
-:func:`_decide` reads the :class:`tracker.content_check.Judgment` that
+:func:`_decide` reads the :class:`tracker.verdicts.Judgment` that
 comes back - each row's verdict, whether its required keywords matched,
 which forms the page names as itself, whether it carries a 1099-B - where
 it once read the text. The decision is made here exactly as before; only
@@ -173,16 +173,7 @@ from dataclasses import replace
 from pathlib import Path
 
 from tracker import reasons
-from tracker.content_check import (
-    OPEN_TEST_FINGERPRINT,
-    ContentCache,
-    Extraction,
-    Judgment,
-    Questions,
-    judge_bounded,
-    judgment_of,
-    row_question,
-)
+from tracker.content_check import OPEN_TEST_FINGERPRINT, judge_bounded, judgment_of
 from tracker.keywords import BROKER_FORM, ContentResult, contains_keyword, form_key, rules_fingerprint
 from tracker.manifest import Override, RequestItem, asks_for_a_return, has_routing_rules, narrowing_rows
 
@@ -214,6 +205,7 @@ from tracker.validators import (
     said_extension,
     too_large_reason,
 )
+from tracker.verdicts import ContentCache, Extraction, Judgment, Questions, row_question
 
 #: Why a file was not routed. Stored verbatim in the index's Reason column,
 #: with its code (decision 190) in the Code column. Worded, and coded, once,

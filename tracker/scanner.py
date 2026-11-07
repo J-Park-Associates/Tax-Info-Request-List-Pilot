@@ -81,7 +81,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from tracker import errors, ledger, reasons, store
-from tracker.content_check import ContentCache, OutOfTime, check_content, open_verdict
+from tracker.content_check import OutOfTime, check_content, open_verdict
 from tracker.layout import locate
 from tracker.locking import EngagementLockedError, engagement_lock
 from tracker.manifest import (
@@ -116,6 +116,7 @@ from tracker.validators import (
     is_ignored,
     iter_candidate_files,
 )
+from tracker.verdicts import ContentCache
 
 #: The notes the scanner writes that no reason owns: a person's override on
 #: the row, how far a multi-file request has got, what was ignored, what is

@@ -316,7 +316,7 @@ def original_at(engagement, name):
 
 def cache_rows(engagement):
     """The engagement's verdict cache as the store holds it: (memos, verdicts)."""
-    from tracker.content_check import CACHE_VERSION
+    from tracker.verdicts import CACHE_VERSION
 
     return store.cached_verdicts(store.connect(), engagement, version=CACHE_VERSION)
 

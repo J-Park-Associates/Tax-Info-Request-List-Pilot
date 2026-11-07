@@ -558,7 +558,7 @@ def test_a_rebuild_forgets_the_engagements_verdicts_and_the_next_pass_reads_agai
 
 def test_remembering_verdicts_refuses_outside_the_lock_and_for_an_unknown_engagement(
         conn, root, engagement, tmp_path):
-    from tracker.content_check import CACHE_VERSION
+    from tracker.verdicts import CACHE_VERSION
 
     build(conn, root, engagement)
     a_save = dict(version=CACHE_VERSION, memos={"k": {"size": 1, "mtime_ns": 2, "digest": "d"}},

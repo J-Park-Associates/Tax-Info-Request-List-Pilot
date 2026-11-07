@@ -182,13 +182,7 @@ from pathlib import Path
 from typing import cast
 
 from tracker import containers, door, errors, ledger, ocr, reasons, store
-from tracker.content_check import (
-    ContentCache,
-    Judgment,
-    NameQuestion,
-    OutOfTime,
-    before_a_judgment,
-)
+from tracker.content_check import OutOfTime, before_a_judgment
 
 # Naming, room, the byte-proved copy, the rename-only move, the client
 # README's lock and the stranded-temp sweep live in tracker/copies.py (P331).
@@ -374,6 +368,7 @@ from tracker.validators import (
     sha256_of,
     too_large_reason,
 )
+from tracker.verdicts import ContentCache, Judgment, NameQuestion
 
 log = logging.getLogger("tracker.filer")
 

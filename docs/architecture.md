@@ -26,7 +26,7 @@ temporary is ever written beside a client's file.
 
 ## The package, by layer
 
-`tracker/` is one Python package of fifty-two modules in six layers.
+`tracker/` is one Python package of fifty-three modules in six layers.
 `tests/test_layers.py` pins the layer of every module and that no load-time
 import points upward; an import inside a function is a call-time import
 and may point anywhere. The scanner never imports the filer; a person's actions
@@ -109,12 +109,15 @@ the package but each other.
 - `content_check.py`: tier three, the one reading of a document, used by the
   router and the scanner alike: text from a text layer (pdfplumber,
   openpyxl, plain text) or from the reader, tested against the row's keyword
-  and date rules (`keywords.py`), with a verdict cache keyed by the file's
-  content.
+  and date rules (`keywords.py`), its verdicts kept by `verdicts.py`.
 - `keywords.py`: the matcher and the rules: a keyword said whole, a form's
   number and its variants, which forms a page names as its own and where on
   the page a word is said; pure functions of the text, run in the reading's
   child (decision 189).
+- `verdicts.py`: what a judgment says and what crosses back from the
+  reading's child, and the verdict cache: pass or fail, the reason and the
+  evidence, keyed by the file's content and kept in the store (decision
+  107); never a word of the document.
 - `ocr.py`: the reader: RapidOCR on ONNX Runtime with its three models
   shipped in the app; the graphics card when the pack beside the app works
   and the processor otherwise; the preparation of a page in memory before it
