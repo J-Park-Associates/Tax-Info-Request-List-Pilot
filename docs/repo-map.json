@@ -11749,9 +11749,10 @@
       "id": "tests/test_suite_shape.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "47d342e658e2f6d5",
-      "lines": 113,
+      "sha256": "5436533d4aa6bba1",
+      "lines": 141,
       "exports": [
+        "AUTOUSE_ORDER",
         "NOT_A_HELPER",
         "TESTS",
         "borrowed_test_modules",
@@ -11759,11 +11760,15 @@
         "test_every_helper_module_is_imported_by_a_test_file",
         "test_no_helper_module_or_conftest_imports_a_test_file",
         "test_no_test_file_imports_another_test_file",
+        "test_the_autouse_fixtures_run_in_the_order_the_suite_was_built_on",
         "test_the_guard_does_not_take_a_helper_or_a_word_in_a_string_for_a_test_file",
         "test_the_guard_sees_every_form_of_import_a_test_can_borrow_with",
         "the_helper_modules",
         "the_test_files"
       ],
+      "constants": {
+        "AUTOUSE_ORDER": "('an_app_folder_of_its_own', 'fills_asked', 'no_real_test_cache_is_cleared', 'no_task_scheduler_unless_faked', 'reading_in_this_process', 'room_is_the_absolute_length', 'the_store_agrees_with_the_record', 'the_view_agrees_with_the_readers')"
+      },
       "role": "Holds the suite's own shape: no test file imports another test file, no helper module or conftest imports one either, and every helper module is imported by at least one test file, read from the import statements in every form an import takes.",
       "notes": "SPEC-architecture J2 (R2.5, E-4). A test file that borrowed a helper from another (from tests.test_scanner import text_pdf) made an edge the affected-tests gate cannot see and a split of the owner's file breaks, which every phase of the refactor does. The tools are not the suite's and are not judged here; that no tool imports a test file is tests/test_corpus.py's claim."
     },

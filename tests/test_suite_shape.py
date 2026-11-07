@@ -21,6 +21,23 @@ from pathlib import Path
 TESTS = Path(__file__).resolve().parent
 #: What pytest loads on its own; not a helper any test imports by name.
 NOT_A_HELPER = {"conftest"}
+#: The function-scope autouse fixtures, in the order pytest sets them up (and,
+#: reversed, tears them down), measured at 68b9212 on both interpreters. The
+#: order matters: the app folder is set up first and torn down last, so the
+#: store's connection is closed before the folder goes and the short roots are
+#: cleared after the agreement fixtures have walked them; the agreement
+#: fixtures are set up last, so they are torn down first, while every
+#: stand-in is still in place.
+AUTOUSE_ORDER = (
+    "an_app_folder_of_its_own",
+    "fills_asked",
+    "no_real_test_cache_is_cleared",
+    "no_task_scheduler_unless_faked",
+    "reading_in_this_process",
+    "room_is_the_absolute_length",
+    "the_store_agrees_with_the_record",
+    "the_view_agrees_with_the_readers",
+)
 
 
 def imported(source: str) -> set[str]:
@@ -111,3 +128,14 @@ def test_the_guard_does_not_take_a_helper_or_a_word_in_a_string_for_a_test_file(
     ])
     names = {name for name in imported(source) if name.startswith("tests.test_") and name.count(".") == 1}
     assert names == set()
+
+
+def test_the_autouse_fixtures_run_in_the_order_the_suite_was_built_on(request):
+    """pytest sets autouse fixtures up by plugin, in the order ``pytest_plugins``
+    lists them, and by name inside one plugin (a conftest's, by name too). The
+    cut of the suite's guards into plugins keeps this order without a hook or a
+    new fixture dependency. The names are filtered out of
+    ``request.fixturenames`` because pytest puts the fixtures they depend on
+    (``tmp_path_factory``, ``tmp_path``) and the test's own (``request``) among
+    them."""
+    assert [name for name in request.fixturenames if name in AUTOUSE_ORDER] == list(AUTOUSE_ORDER)
