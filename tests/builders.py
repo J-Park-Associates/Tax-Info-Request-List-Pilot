@@ -538,7 +538,6 @@ def tight_return(base, over: int, items=ROOM_ITEMS, **kwargs):
     """A return whose A01 canonical copy, asking for :data:`TIGHT_PERIOD`,
     passes the limit by ``over`` characters: its folder is
     ``path_limit() + over - 62`` characters long."""
-    from tests.builders import root_for_a_return_of
     from tracker.layout import path_limit
 
     below = CANONICAL_BELOW - len("TY2025") + len(TIGHT_PERIOD)

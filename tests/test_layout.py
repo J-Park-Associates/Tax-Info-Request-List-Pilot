@@ -773,7 +773,7 @@ def test_a_mac_measures_room_as_if_under_the_windows_root(on_a_mac):
 
 
 def test_off_a_mac_room_is_the_absolute_length_of_a_path():
-    """The suite pins ``layout.on_a_mac`` off (the conftest fixture): the
+    """The suite pins ``layout.on_a_mac`` off (the plugin_fakes fixture): the
     same claim on Linux, a Mac and Windows, so no root-length test changes
     its meaning with the machine it runs on."""
     engagement = return_dir_for(MAC_ROOT, HOUSEHOLD, 2026, RETURN)

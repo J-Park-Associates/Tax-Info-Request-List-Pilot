@@ -27,7 +27,7 @@ What is here, and why it is not in either tool:
 
 **Nothing here reads a corpus on its own.** :func:`real_corpus` reads only what ``ENV_REAL_CORPUS`` names, through
 :func:`tracker.settings.real_corpus_dir` (which refuses a folder inside the app, decision 185), as it did in the
-test file: this module opens no second door onto the variable, and the suite's conftest still hides the variable
+test file: this module opens no second door onto the variable, and the suite's plugin_isolation still hides the variable
 from every test after collection. Its errors name a row by number and the column that is wrong, never a
 document's name or the file's path, which are a client's.
 

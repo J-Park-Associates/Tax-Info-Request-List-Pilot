@@ -17,7 +17,7 @@
   "counts": {
     "nodes": 364,
     "edges": 1659,
-    "reused": 310
+    "reused": 306
   },
   "node_types": [
     "artifact",
@@ -4806,7 +4806,7 @@
       "id": "docs/vocab-coverage.json",
       "type": "file",
       "layer": "docs",
-      "sha256": "23db8f9396cc36e1",
+      "sha256": "e5d4144dd04d94a2",
       "lines": 9414,
       "role": "The coverage report as data, with the SHA-256 of every input it was built from; `check` and the suite compare against these. Generated; never edited by hand."
     },
@@ -6051,8 +6051,8 @@
       "id": "tests/builders.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "c2273422ac80aa16",
-      "lines": 582,
+      "sha256": "ece1eefb4715ede5",
+      "lines": 581,
       "exports": [
         "BUSINESS",
         "CANONICAL_BELOW",
@@ -8677,7 +8677,7 @@
       "id": "tests/test_layout.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "c241ee4b7a51df40",
+      "sha256": "db5d6be809a80709",
       "lines": 914,
       "exports": [
         "FILE_NAME_PART_SENTENCES",
@@ -10289,7 +10289,7 @@
       "id": "tests/test_runner.py",
       "type": "test",
       "layer": "tests",
-      "sha256": "e0fa4a32938c0d28",
+      "sha256": "b6e46f17944ea67b",
       "lines": 5820,
       "exports": [
         "A_CLIENT_PATH",
@@ -12270,7 +12270,7 @@
       "id": "tools/corpus.py",
       "type": "tool",
       "layer": "tooling",
-      "sha256": "31cdb8ddde8179e0",
+      "sha256": "780182b07d17d2be",
       "lines": 245,
       "exports": [
         "BacktestError",

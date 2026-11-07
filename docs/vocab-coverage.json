@@ -9403,7 +9403,7 @@
   "tests/irs/nyit204ip.pdf": "22a4a83ed55ade1db141eaa7721160a589f1ece2a0080b006e8c325040cfc764",
   "tests/irs/nyit204ll.pdf": "2fa553d27d160150080a13d8de4e128b5c5c1c5149cb515811ac3b17a9664044",
   "tests/routing_cases.py": "aa04657d08c5fa52be94101fee12c309d49f4c26f658ca7c6630ff93c523d4c3",
-  "tools/corpus.py": "31cdb8ddde8179e0fcbe5d5e5e79023ef3ac785e0f536a026da9edbe46792ded",
+  "tools/corpus.py": "780182b07d17d2beaae8e05478cf02400d8125a2c2491a2faf7de751b76736c4",
   "tools/vocab_report.py": "0b33efbe742c04f8b01184f8f409ebabb6495421f756399a0d9f92a5f72fa57f",
   "tracker/content_check.py": "40a50403bf612417360a74003b247fc988583a11885d6e811c993a6c77a34891",
   "tracker/manifest.py": "499ca112a6686f911be4f977dc5305211ef68728d885e0627b3d8506a62921b4",

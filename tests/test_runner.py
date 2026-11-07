@@ -2327,7 +2327,7 @@ def test_run_now_leaves_the_schedules_log_line_and_page(tmp_path, tmp_path_facto
 
     # The second tree outside ``tmp_path``: the same household by name is a
     # second practice, with a store of its own, which the checks made after
-    # every test (conftest) do not hold to the first's.
+    # every test (plugin_agreement) do not hold to the first's.
     scheduled_root = tmp_path / "scheduled" / "root"
     run_now_root = tmp_path_factory.mktemp("run-now") / "root"
     build_engagement(scheduled_root, samples)
