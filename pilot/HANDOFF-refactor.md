@@ -1,44 +1,29 @@
-# Refactor handoff: phase 4 building (P4.1-P4.9 landed), P4.10-P4.13 to go
+# Refactor handoff: phase 4 complete (P4.1-P4.13), the phase 5 SPEC next
 
-Phase 3 is complete (P3.1-P3.9), and phase 4's SPEC ([`SPEC-architecture-p4.md`](SPEC-architecture-p4.md), 13 jobs,
-`f674d93`) is building. Jason answered its two questions on 2026-11-07: build now, and workers join. P4.1 through P4.9
-have landed on the branch, the last of them in the commit that carries this file.
-
-This file was brought up to date at P4.9's landing and is the whole hand-over. A new session reads it, `CLAUDE.md`,
-[`PROMPT-refactor.md`](PROMPT-refactor.md) (sections 1 and 2) and the ledger
+Phases 3 and 4 are complete. Phase 4's SPEC ([`SPEC-architecture-p4.md`](SPEC-architecture-p4.md), 13 jobs, `f674d93`;
+Jason's answers of 2026-11-07: build now, workers join) landed in full, the last job (P4.13) in the commit that carries
+this file. This file was brought up to date at that landing and is the whole hand-over. A new session reads it,
+`CLAUDE.md`, [`PROMPT-refactor.md`](PROMPT-refactor.md) (sections 1 and 2) and the ledger
 ([`SPEC-architecture.md`](SPEC-architecture.md) section 13), and nothing of an earlier session's transcript.
 
 ## Where it stopped
 
-- **Branch** `claude/quirky-johnson-22edtv`, pushed, with P4.9's landing commit at its head (the commit that carries
+- **Branch** `claude/quirky-johnson-22edtv`, pushed, with P4.13's landing commit at its head (the commit that carries
   this file). No build job is in flight.
-- **Landed on the branch:**
-  - tranche 1 (J1-J6), phase 2 (P2.1-P2.14) and phase 3 (P3.1-P3.9);
-  - phase 4's SPEC;
-  - phase 4's P4.1-P4.9, each with its row in the ledger:
-    - **P4.1** landed `939f241`;
-    - **P4.2** landed `4c14445`;
-    - **P4.3** landed `b59e4a2` (one after-routing road, `_settle`);
-    - **P4.4** landed `f4a7e27` (`tracker/copies.py`);
-    - **P4.5** landed `4a36449` (a person's refusals named once; `_here`);
-    - **P4.6** landed `5fbb412` (`tracker/intents.py`);
-    - **P4.7** landed `1a7a2c7` (`tracker/inbox.py`);
-    - **P4.8** landed `79fd266` (`tracker/readme_ack.py`);
-    - **P4.9** landed with this file (`tracker/actions.py`; the filer is about 3,700 lines, from 7,601 before P4.4).
+- **Landed on the branch:** tranche 1 (J1-J6), phase 2 (P2.1-P2.14), phase 3 (P3.1-P3.9), phase 4's SPEC and all of
+  phase 4, each with its row in the ledger: P4.1 `939f241`, P4.2 `4c14445`, P4.3 `b59e4a2`, P4.4 `f4a7e27`
+  (`copies.py`), P4.5 `4a36449`, P4.6 `5fbb412` (`intents.py`), P4.7 `1a7a2c7` (`inbox.py`), P4.8 `79fd266`
+  (`readme_ack.py`), P4.9 `71c104b` (`actions.py`), P4.10 `a67b7d5` (`keywords.py`), P4.11 `6173008` (`verdicts.py`),
+  P4.12 `a337b22` (`reader_child.py`) and P4.13 with this file (the guard: a test never reads a moved name through
+  the module it left). The filer is 3,717 lines (7,601 before P4.4), content_check 1,014 (2,499) and ocr 971 (1,901).
 - **Nothing is on `main`.** Landing on `main` is a person's step, and no pull request is open: Jason has not asked for
-  one. When he does, CLAUDE.md's cost rules apply (open it as a draft, mark it ready once). These must be recorded
-  first (section "Owed to the office PC"):
-  - P3.8's office `verify`;
-  - phase 4's two backtests.
-- **Next: P4.10** (`keywords.py`, the matcher out of `content_check`), then P4.11, P4.12 and P4.13, in the SPEC's
-  order. Each starts from a brief the orchestrator writes at `ORCH/board/threads/<JOB>/000-orchestrator-brief.md`.
-  - The brief re-measures the SPEC's `68b9212` anchors by name at the new base.
-  - It quotes section 4.0's stand-in rows verbatim. P4.8's review showed what a shortened rule costs.
-  - P4.10-P4.12 move routing code. `vocab_report.py build` and the office backtest after P4.13 matter there.
-- **After P4.13:**
-  - phase 4 is complete;
-  - the phase 5 SPEC ("The door and the pass") is written by the phase-SPEC loop (appendix C);
-  - then phases 6 and 7, each with its own SPEC written when the phase before has landed.
+  one. When he does, CLAUDE.md's cost rules apply (open it as a draft, mark it ready once), and **P3.8's office
+  `verify` and phase 4's two office backtests must be recorded first** (section "Owed to the office PC").
+- **Next: the phase 5 SPEC** ("The door and the pass": `api.py` and `runner.py` split, the firm-row builder to L4,
+  the letter's rendering, after_install's jobs as a table, the test files split by command family). The phase-SPEC
+  loop (appendix C) writes it from the orchestrator's brief, which is message 000 of the board page's thread `P5`
+  (its draft text is also in this file's section "The phase 5 SPEC brief"). It names Q-C and Q-F, which are Jason's;
+  the orchestrator asks him before phase 5 builds, as for phase 4. Then phases 6 and 7.
 
 ## What did not survive the session, and where it is now
 
@@ -72,7 +57,7 @@ so it outlives the container.
 ## Resuming, step by step
 
 1. **Confirm the branch.** `git fetch origin claude/quirky-johnson-22edtv`, check out that branch, and confirm
-   `git log -1` is P4.9's landing commit or a later one a person added. If the branch's pull request has been merged
+   `git log -1` is P4.13's landing commit or a later one a person added. If the branch's pull request has been merged
    since, follow the session's rule for a merged branch (restart it from `main`, keep the same name) before any new
    work.
 2. **If `/home/user/.orch-backup` exists** (the same session's container restarted), copy it back:
@@ -116,10 +101,13 @@ so it outlives the container.
    - `sync.py diff` should then print nothing.
 7. **Arm the watch:** a Monitor on `ORCH/board/threads` for new `*report*.md`, `*review*.md` and `*question*.md` files
    (30 minutes, re-armed on expiry), and the five-minute copy to `/home/user/.orch-backup`.
-8. **Build the next job** with appendix B (`scriptPath`), from the orchestrator's brief, and **land each job** when a
-   review is clean, by the checklist below. Arguments: `job`, `title`, `spec`, `section` (`"4, P4.10"`), `tier`,
-   `base`, `repo`, `branch`, `orch`, `py311`, `py314` (the environment folders), `extra` (the brief's path and the
-   rules that bind this job).
+8. **Write the phase 5 SPEC** with appendix C (`scriptPath`): `phase` "5", `repo`, `branch`, `orch`, `py311`,
+   `py314`, `base` (this file's commit), `thread` "P5", `draft` `ORCH/jobs/P5/SPEC-architecture-p5.md`, `reviews`
+   `ORCH/spec-p5` (a link to `ORCH/jobs/P5`). If the board page's thread `P5` holds a finished draft, start from it.
+   When the SPEC passes review, commit it as `pilot/SPEC-architecture-p5.md` with the map, ask Jason its questions,
+   then **build each job** with appendix B from the orchestrator's brief and **land it** by the checklist below.
+   Appendix B's arguments: `job`, `title`, `spec`, `section` (`"5, P5.1"`), `tier`, `base`, `repo`, `branch`, `orch`,
+   `py311`, `py314` (the environment folders), `extra` (the brief's path and the rules that bind the job).
 
 ## The orchestrator's habits, learned the hard way
 
@@ -136,8 +124,9 @@ so it outlives the container.
   `repo_map.py update`, in the same commit. Phase 4 owns the matcher and the catalog, so most of its jobs meet it.
 - **Known failures under 3.14:** test_api's `test_importing_the_api_opens_no_file_but_the_programs_own` (it
   opens /dev/urandom), and under `-n auto` a test_ocr `resident_pages` load flake that passes alone (rerun the file
-  alone and cite both). Neither is a job's.
-- **Baselines at P4.9's landing:** `typecheck.py check` 138 errors in 22 files (the filer family 0); `patch_sites.py check` 902 stand-ins on 50 modules; the map 375 nodes; collected ids 5,215; `ADMISSION_VERSION` 6; test_layers 38, test_single_source 219 and test_repo_map 82 tests; `FILER_FAMILY` is filer, copies, intents, inbox, readme_ack and actions; `COMPOSERS` is filer, households, intents, actions, manifest, reminder and scanner; architecture.md says "fifty-one" modules.
+  alone and cite both); the test_ocr flake fails alone too, now and then. And with several test files side by side,
+  test_reader_child's posix memory test failed once (36 of 36 reruns passed). None is a job's.
+- **Baselines at P4.13's landing (phase 4 complete):** `typecheck.py check` 138 errors in 22 files (every new module 0); `patch_sites.py check` 910 stand-ins on 53 modules; the map 383 nodes; collected ids 5,217; `ADMISSION_VERSION` 6; test_layers 39, test_single_source 219 and test_repo_map 82 tests; `FILER_FAMILY` is filer, copies, intents, inbox, readme_ack and actions; `COMPOSERS` is actions, filer, households, intents, manifest, reminder and scanner; architecture.md says "fifty-four" modules; `MOVED_OUT` (test_layers) holds phase 4's moves.
 - **Pytest:** one process per test file, in parallel, with `-p no:cacheprovider`; never the whole suite for a job
   that does not reach the engine (CLAUDE.md, "Test minimally").
 - **A SPEC edit by script** must end with the file's write; one did not, and an hour went to edits that never saved.
@@ -191,21 +180,129 @@ None of this can run in the cloud. The ledger's last column is the record; gathe
 - **P4.4:** `pilot\wintest\run_checks.ps1 -Tests test_copies,test_filer,test_scaffold,test_runner,test_api,test_rollover,test_errors`.
 - **P4.6:** `pilot\wintest\run_checks.ps1 -Tests test_intents,test_filer,test_api,test_runner,test_errors,test_containers`.
 - **P4.9:** `pilot\wintest\run_checks.ps1 -Tests test_actions,test_api,test_filer`.
+- **P4.12:** `pilot\wintest\run_checks.ps1 -Tests test_reader_child,test_ocr,test_content_check,test_containers,test_resident,test_runner,test_api_entry,test_errors,test_layers`,
+  and on the installed build with the kit's sample clients folder: (1) Run now files `scan 0001.pdf` to the W-2
+  request, reads the scan in `Scanned forms.zip` and leaves `vacation photo.bmp` in Needs Review, the run log naming
+  the reader's device as before; (2) a pass closed mid-read leaves no second app process in Task Manager.
 
 ## Open for Jason
 
-- **P313's Q-B** (whether the re-send road's across-household park carries a shortlist) and **Q-F** (if unifying the
-  room check would change a save's outcome): kept as today until his word. Q-B touches phase 4, Q-F phase 5.
+- **P313's Q-B** (whether the re-send road's across-household park carries a shortlist): kept as today until his word;
+  phase 4 carried it as `_settle`'s `shortlist_across` (P4.3).
+- **Phase 5's questions, to ask before phase 5 builds:** **Q-C** (whether the pass fills the firm cache in its own
+  process or keeps the child; P313 keeps the child meanwhile) and **Q-F** (whether the editor's room check goes through
+  `copies.refuse_a_path_past_the_limit`, the one room function since P4.4, if no save would come out differently).
+  The phase 5 SPEC measures both and words them for him.
 - **P3.8's office `verify`** (above): its list, if any, is his before P3.8 merges.
 - **Phase 4's Q1 and Q2 are answered** (Jason, 2026-11-07; SPEC-architecture-p4 section 7): Q1 (A) "Build now",
   with the office backtest on the build before phase 4 and the build after, both before phase 4 merges to `main`;
   Q2 (A) "Workers join" (`copies` and `intents` join the filer under "Originals are never altered").
 - Q1 of phase 3 is answered ("a - the full rule", 2026-10-14) and written into the SPEC.
 
-## The phase 4 SPEC brief
+## The phase 5 SPEC brief
 
-Phase 4's SPEC is committed; the brief the phase-SPEC loop was given is message 000 of the board page's
-thread `P4`. Phase 5's brief is written the same way when P4.13 has landed.
+Given to the phase-SPEC loop at phase 4's end (base: the commit that carries this file; draft to
+`ORCH/jobs/P5/SPEC-architecture-p5.md`, reviews to `ORCH/spec-p5`). If the draft is lost, a new session reruns the
+loop with it. Phase 4's brief is message 000 of the board page's thread `P4`.
+
+~~~~markdown
+# Phase 5 brief (orchestrator): the SPEC for "The door and the pass"
+
+Phase 4 has landed: thirteen jobs, the last landing at the commit that lands P4.13 (`SPEC-architecture P4.13: landed`), which is this phase's base. No facade is left. P4.13's
+guard in `tests/test_layers.py` holds every name phase 4 moved to its home. Ledger: SPEC-architecture section 13.
+
+These are still owed before the branch reaches `main`; neither touches this phase's code:
+- P3.8's office `verify`;
+- phase 4's two office backtests: on the build at `68b9212`, and on the build after P4.13.
+
+**Your job (SPEC writer, PROMPT-refactor section 3).** Write the buildable SPEC for phase 5 from the code at the commit that lands P4.13 (`SPEC-architecture P4.13: landed`).
+
+Its scope is SPEC-architecture section 9's "Phase 5" paragraph (829-835):
+- `screen_words.py` (C-1, C-6);
+- `request_edit.py` with Q-F settled, `household_edit.py` and `creation.py` (C-1);
+- `firm_view.py` at L4 with Q-C answered (C-2);
+- `status_page.py`, `run_log.py` and `pass_order.py` (C-5);
+- `letter_render.py` (C-8);
+- after_install's jobs as a table (C-10);
+- the de-facto public names made public (`api.vocab`, `api.state`, ...; E-2);
+- `test_api.py` and `test_runner.py` split by command family (E-3).
+
+Read, in this order:
+- the section 5 rows that scope relies on (api, runner, reminder, after_install, and the new-module table);
+- the audit findings it cites in `pilot/AUDIT-2026-10-13-architecture.md`: **C-1** (859), **C-2** (910), **C-5** (989),
+  **C-6** (1027), **C-8** (1063), **C-10** (1090), and E-2 and E-3 (search for them).
+  - C-3 (per-command state) is phase 7's. Leave it, and say so where a move touches the state it names.
+  - C-4, C-7 and C-9: check whether an earlier phase did them (P2.3's `replies.py` and P2.8's Open lists are likely),
+    and say in one line each.
+- `pilot/SPEC-architecture-p4.md`, the model for form: section 3's rules every job follows, section 4.0's stand-in
+  table, then one section per job with numbered requirements (R5.k.n), measured anchors, the tests, "stop and ask" and
+  "accept when", then risks, what is owed to the office PC, and questions for Jason.
+
+**Where to write it.**
+- Write the draft to `ORCH/jobs/P5/SPEC-architecture-p5.md`, not into the repository. The orchestrator copies it to
+  `pilot/SPEC-architecture-p5.md` and commits it with the map once the review settles.
+- The SPEC reviewer writes to `ORCH/spec-p5/review-<r>.md`. There are at most two rounds.
+
+**Measured at the commit that lands P4.13 (`SPEC-architecture P4.13: landed`)** (re-measure anything you rely on):
+- Line counts: `tracker/api.py` 6,778; `tracker/runner.py` 3,640; `tracker/reminder.py` 2,262;
+  `tracker/after_install.py` 1,358; `tracker/firm_pages.py` 712; `tracker/page_rows.py` 258.
+- Test files: `tests/test_api.py` 11,686 lines; `tests/test_runner.py` 5,824; `tests/test_reminder.py` 2,435.
+- `patch_sites.py report`: tracker.api 62, tracker.runner 80, tracker.reminder 12, tracker.after_install 15. Give each
+  moving job its exact list and section 4.0's readers-after table: phase 4's rule, a stand-in on every module that
+  reads the name as a global, whichever road the test takes.
+- Type-check baseline (`docs/typecheck-baseline.json`): api 24, after_install 4, firm_pages 6 (re-measure; the whole is
+  138 errors in 22 files). A phase starts by burning down the type errors in the modules it will move (section 9).
+
+**What is settled:**
+- **Behaviour does not change** (SPEC-architecture section 6; P313), except where Jason's answer to Q-F says otherwise.
+  - No change to what a person sees, to which file goes where, or to a reply's shape.
+  - `tests/golden/` is unchanged by every job, and each job's "accept when" says so.
+  - A job that touches the JSON contract between Python and the shell says why none of its replies change.
+- **P313's interim answers,** each reversible by Jason:
+  - Q-C: the pass keeps its child for filling the firm cache, unchanged; only the builder moves down.
+  - Q-F: the editor's room check goes through the one room function only if no save could come out differently;
+    otherwise the docstring is corrected and the question goes to Jason.
+    - That function is `copies.refuse_a_path_past_the_limit` since P4.4, not the filer's.
+    - Measure, and put the result in the SPEC.
+- **The guards hold after every commit:**
+  - `test_layers`: no load-time import to a higher layer; every module's layer and domain. A new module moves in
+    that table, in the same commit, with a decision row;
+  - `test_single_source`, `test_repo_map`, `patch_sites.py check` and `typecheck.py check`, where no file gains an
+    error and a new module starts at 0.
+- **Decision rows:** the next free number after phase 4's last (P338) is **P339**. Number the jobs' rows in landing
+  order.
+- **Tier:** section 1.3 of PROMPT-refactor.
+  - Every job that moves code out of `api.py`, `runner.py` or `app/*.js` is Opus.
+  - A grep-driven retarget is Sonnet.
+- **The office PC:**
+  - a job that touches the atomic replace, the held engagement lock or path handling carries the `windows` label and
+    names its `run_checks.ps1 -Tests` list;
+  - one that touches the frozen build names the installer step;
+  - the app's screens change for no job, so no hands-on screen step should be needed. If one is, say why.
+
+**What phase 4 left for this phase** (`ORCH/carry-forward.md`, the phase 4 sections; take each in, or say in one line
+why not):
+- **Prose under `tracker/` that P4.13 could not touch:**
+  - `tracker/index.py` 42-43 ("nobody else's", incomplete since P4.4);
+  - `tracker/door.py` 166 ("the filer's walks and its step check");
+  - `tracker/scaffold.py` 41-42 ("the filer at layer 3", now `readme_ack`'s);
+  - the filer docstring's two-sentence P4.9 pointer;
+  - `tools/backtest.py` 231 ("with ``ocr=True`` there is no reading child").
+  - A wording job, or a line in the job that next edits each file.
+- **The Mac kit's pinned test list** (`pilot/mactest/PROMPT.md` 85, test_pilot's `KIT_TESTS`) names `test_ocr` but
+  not `test_reader_child`. SPEC-mac R33's list needs it, with a decision row.
+- **The test_ocr `resident_pages` flake** (see `ORCH/baseline/README.md` and P4.12's next note): a test-only fix is
+  proposed. Decide whether a phase 5 job carries it.
+- **Curated-map items:**
+  - the `RECORD_PRESERVE_INTENTS` sentence on the intents node;
+  - the ledger node's repeated sentence;
+  - the admission node's "five stand-ins".
+
+**Questions for Jason.** List any that the SPEC cannot settle (Q-C and Q-F are his to answer). The orchestrator asks
+him before the phase builds, as for phase 4.
+
+Return the job list: id, title, tier, depends on.
+~~~~
 
 ## Carry-forward
 
@@ -518,6 +615,49 @@ Two points from that work hold whichever is chosen:
   `is_cloud_placeholder` x2 captures, `.Path`); test_filer 33 and filer_helpers 3 (`_move_whole` x2, `_do_op`) from
   P4.4-P4.8. The next note lists them.
 
+### Phase 4, from P4.10's review 1 (`ORCH/jobs/P4.10/review-1.md`, notes)
+
+- **The test_ocr `resident_pages` flake fails alone too** (2 of 12 runs on a copy of the untouched base), so "passes
+  alone" was not reliable; `ORCH/baseline/README.md` now says so. No clock in it; cause not found (P4.10's next note
+  records what was tried). P4.12, which moves the reading child, looks at it again.
+- **`tests/samples.py` 279** names `content_check.self_named_forms` in a comment; it resolves through content_check's
+  import-back. P4.13's prose sweep points it at `keywords`.
+- **test_content_check's module docstring** still describes the rules' tests, which now live in test_keywords. Reword
+  when the file is next edited (P4.11 edits it).
+- **A moved curated sentence on the keywords node** says the scanner reads `MULTI_FORM_FAMILIES`; the scanner reads the
+  rule through `own_forms`, not the constant. Reword when the keywords node is next edited.
+
+### Phase 4, from P4.11's review 1 (`ORCH/jobs/P4.11/review-1.md`, notes)
+
+- **Two sentences say untrue things since P4.11:** `tracker/keywords.py` 89-92 ("content_check is ... the verdict
+  cache") and content_check's `Evidence` paragraph ("imports the ones it writes into a verdict"). Owner: P4.12, which
+  edits content_check anyway (its brief carries them as section 3's prose retarget of names P4.11 moved).
+- **P4.11 did two carry-forward items:** test_content_check's module docstring and the keywords node's
+  `MULTI_FORM_FAMILIES` wording. Both are closed.
+- **The split moved 2 tests, not "about 5"**: every other cache test also calls a content_check function, so it stays
+  (section 4.1's rule).
+
+### Phase 4, from P4.12's review 1 (`ORCH/jobs/P4.12/review-1.md`, notes) and builder
+
+- **The Mac kit's pinned `--tests` list** (`pilot/mactest/PROMPT.md` 85, pinned by test_pilot's `KIT_TESTS`) names
+  `test_ocr` but not `test_reader_child`, so the darwin memory-watch test (`_darwin_footprint`, now in
+  test_reader_child) is not in the next Mac check. It needs SPEC-mac R33's list changed: the orchestrator's or a SPEC
+  writer's, with a decision row; phase 5's SPEC writer is told.
+- **The test_ocr `resident_pages` flake**: P4.12's builder found it fails as often at the head as at the base when
+  test_ocr's reading tests run first in the same process (1 of 4); a likely cause is the 128 MB served from pages the
+  process already holds. A test-only fix is proposed in `threads/P4.12/001-builder-next.md` for a later job.
+- **`tools/backtest.py` 231's prose** (the tools-job item above) is still outdated.
+- Cosmetic: a few retargeted test lines keep their trailing comment's old column; `LAYERS[2]` lists `"verdicts",
+  "reader_child"` out of alphabetical order.
+
+### Phase 5, from P4.13's review 1 and builder (`ORCH/jobs/P4.13/review-1.md`; `threads/P4.13/001-builder-next.md`)
+
+- **test_index's crossing tuple** (`(filer, copies, intents, inbox, actions)`) leaves `readme_ack` out although the
+  test's docstring says "the filer and the modules carved out of it": phase 5's SPEC decides whether the tuple names
+  the whole family.
+- **`MOVED_OUT`** in test_layers is the guard's table; a later phase that moves names out of a module adds its row
+  there, in the move's commit (the builder's next note says how).
+
 ## Appendix A: the board's status table now (`ORCH/board/STATUS.md`)
 
 ~~~~markdown
@@ -545,8 +685,8 @@ Each phase's SPEC (pilot/SPEC-architecture-p<N>.md) is written when the phase be
 |---|---|
 | 2 Types and shared low layers | landed (14 jobs; last landing 144c5d2; no facade left) |
 | 3 The record | landed: P3.1-P3.9, last 68b9212 (P3.8's office verify owed before main) |
-| 4 The sorting engine | building: SPEC f674d93; Jason answered Q1 (build now) and Q2 (workers join) |
-| 5 The door and the pass | queued |
+| 4 The sorting engine | landed: P4.1-P4.13 (the two office backtests owed before main) |
+| 5 The door and the pass | building: the SPEC is being written |
 | 6 The shell | queued |
 | 7 State | queued |
 
@@ -596,10 +736,10 @@ Each phase's SPEC (pilot/SPEC-architecture-p<N>.md) is written when the phase be
 | P4.7 | `inbox.py`: walking the inbox (A-1) | opus | landed (review 1 clean) | 5fbb412 | 1 |
 | P4.8 | `readme_ack.py`: the received list and the refresh (A-1) | opus | landed (review 2 clean; F1.1 fixed) | 1a7a2c7 | 2 |
 | P4.9 | `actions.py`: a person's actions and the rescan (A-1; windows) | opus | landed (review 1 clean) | 79fd266 | 1 |
-| P4.10 | `keywords.py`: the matcher out of content_check (A-5; routing) | opus | queued | - | - |
-| P4.11 | `verdicts.py`: the judgment's shapes and the verdict cache (A-5; routing) | opus | queued | - | - |
-| P4.12 | `reader_child.py`: the reading's child and its supervisor (A-6; routing; windows) | opus | queued | - | - |
-| P4.13 | The moved names read from their home; a guard | sonnet | queued | - | - |
+| P4.10 | `keywords.py`: the matcher out of content_check (A-5; routing) | opus | landed (review 1 clean) | 71c104b | 1 |
+| P4.11 | `verdicts.py`: the judgment's shapes and the verdict cache (A-5; routing) | opus | landed (review 1 clean) | a67b7d5 | 1 |
+| P4.12 | `reader_child.py`: the reading's child and its supervisor (A-6; routing; windows) | opus | landed (review 1 clean) | 6173008 | 1 |
+| P4.13 | The moved names read from their home; a guard | sonnet | landed (review 1 clean) | a337b22 | 1 |
 
 Carried to later phases: `carry-forward.md` (open items a job found outside its own scope).
 ~~~~
