@@ -987,12 +987,14 @@ def test_the_filer_reads_nothing_before_it_holds_the_lock(engagement, monkeypatc
     import tracker.copies as copies_module
     import tracker.filer as filer_module
     import tracker.intents as intents_module
+    import tracker.readme_ack as readme_ack_module
     from tracker.locking import LOCK_FILENAME
 
     lock = engagement / LOCK_FILENAME
     seen = []
     for module, name in ((filer_module, "load_manifest"), (filer_module, "read_index"),
                          (copies_module, "read_index"), (intents_module, "read_index"),
+                         (readme_ack_module, "load_manifest"), (readme_ack_module, "read_index"),
                          (filer_module, "iter_drops")):
         real = getattr(module, name)
 
@@ -3631,13 +3633,14 @@ def test_put_it_back_refuses_a_row_without_a_digest(engagement, monkeypatch):
     import tracker.copies as copies_module
     import tracker.filer as filer_module
     import tracker.intents as intents_module
+    import tracker.readme_ack as readme_ack_module
     from tracker.filer import FilingError, restore_working_copy
     from tracker.index import FILE_MOVED
 
     filed, wanderer = a_moved_filed_row(engagement)
     [row] = read_index(engagement)
     assert row.decision == FILE_MOVED
-    for module in (filer_module, copies_module, intents_module):
+    for module in (filer_module, copies_module, intents_module, readme_ack_module):
         monkeypatch.setattr(module, "read_index",
                             lambda *a, **k: [replace(row, digest="")])
     files = every_byte(engagement)

@@ -62,8 +62,9 @@ the API and the rollover import the refresh from here. A stand-in follows
 the name's readers (the audit's A-4): one for a name this module reads as a
 global is set on this module. So ``received_for``, ``readme_returns`` and
 ``write_readme`` are set here alone, ``read_index`` and ``load_manifest``
-here beside the filer where a test drives the received list, and one on the
-refresh, which the rollover imports at call time, is set here too.
+here beside the filer and the others that read them, on every loop that
+sets them on the filer, and one on the refresh, which the rollover imports
+at call time, is set here too.
 
 **Why it logs as ``tracker.filer``** (SPEC-architecture-p4 section 2.1).
 The run log and the error log print each line's logger name, so a name of
